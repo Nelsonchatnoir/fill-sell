@@ -29,9 +29,27 @@ import {
   lireDernierRunVinted,
 } from '../utils/syncPlateformes';
 
+// Âge d'un relevé, en DEUX caractères : « 12 min », « 9 h », « 2 j ». La
+// tuile d'une plateforme n'a pas la place de la phrase complète d'ilYA, et
+// n'en a pas besoin — la phrase reste dans le repli.
+const depuisCourt = (iso, fr) => {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return null;
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 60) return `${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h`;
+  return fr ? `${Math.round(h / 24)} j` : `${Math.round(h / 24)} d`;
+};
+
 const P = {
   ink: '#10201B', paper: '#F6F5F1', border: '#E7E3D8', mute: '#8A8578', mute2: '#5C6560',
   teal: '#2F9E90', tealDeep: '#1B6E62', amberBg: '#FFF6E3', amberBd: '#EED9A6', amberInk: '#8A6100',
+  // Ajoutés le 19/09 avec les tuiles de plateforme : un filet INTÉRIEUR plus
+  // clair que la bordure de carte (sinon la carte se lit comme un tableau),
+  // et les trois tons des pastilles d'état. Mêmes valeurs que le reste de
+  // l'app — aucune seconde palette.
+  borderSoft: '#EFECE3', pipOk: '#2F9E90', pipWarn: '#E0A53C', pipBad: '#D4544F',
 };
 
 // ── UNE PLATEFORME ABSENTE N'EST PAS UN RELEVÉ RATÉ (2026-09-18) ────────────
@@ -211,64 +229,156 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
       ? `Relevé ${ilYA(new Date(dernierFini).toISOString(), fr)} · ${totalVus} annonce${totalVus > 1 ? 's' : ''}`
       : `Scanned ${ilYA(new Date(dernierFini).toISOString(), fr)} · ${totalVus} listing${totalVus > 1 ? 's' : ''}`;
   })();
+  // ── L'ÉTAT D'UNE TUILE (2026-09-19) ───────────────────────────────────────
+  // Trois choses, pas une de plus : combien d'annonces, l'état en UN mot, la
+  // couleur de la pastille. Aucune nouvelle lecture — tout vient de ce que le
+  // composant lit déjà (runs, runVinted, compte, etatVinted).
+  // Vinted passe par son propre run (elle a son chemin depuis toujours) ; les
+  // quatre autres par `runs`. Le nombre affiché est celui du DERNIER relevé
+  // réussi — pas le stock, pas une estimation.
+  const etatTuile = (p) => {
+    const vinted = p === 'vinted';
+    const run = vinted ? runVinted : (runs[p] ?? null);
+    const enCours = vinted
+      ? !!etatVinted?.enCours
+      : !!(run && (run.status === 'queued' || run.status === 'running'));
+    if (enCours) return { n: '·', mot: fr ? 'en cours…' : 'running…', pip: P.pipOk, enCours: true };
+    // Vinted : `lireDernierRunVinted` ne rend que des runs finis, son
+    // `finished_at` suffit. Les autres portent un `status`.
+    const fini = vinted ? run?.finished_at : (run?.status === 'done' ? run.finished_at : null);
+    if (fini) {
+      const n = Number(run.items_vus ?? 0);
+      return { n: Number.isFinite(n) ? n : 0, mot: depuisCourt(fini, fr) ?? (fr ? 'relevé' : 'scanned'), pip: P.pipOk, enCours: false };
+    }
+    // Pas de session chez la plateforme : ce n'est PAS un échec (cf. l'en-tête
+    // de ce fichier, dossier Leo-paul Hug) — la tuile le dit en un mot, sans
+    // pastille rouge et sans compter d'annonces.
+    if (!vinted && absenceDePlateforme(run)) {
+      return {
+        n: '—',
+        mot: /opla/i.test(String(run?.erreur ?? '')) ? (fr ? 'à autoriser' : 'to allow') : (fr ? 'à connecter' : 'to connect'),
+        pip: P.pipWarn, enCours: false,
+      };
+    }
+    if (run?.status === 'failed') return { n: '—', mot: fr ? 'échec' : 'failed', pip: P.pipBad, enCours: false };
+    if (run?.status === 'expired' || run?.status === 'cancelled') {
+      return { n: '—', mot: fr ? 'expiré' : 'expired', pip: P.pipWarn, enCours: false };
+    }
+    return { n: '—', mot: fr ? 'jamais' : 'never', pip: P.mute, enCours: false };
+  };
 
   return (
     <div style={integre
       ? { display: 'flex', flexDirection: 'column', gap: 10 }
       : { background: '#fff', border: `1px solid ${P.border}`, borderRadius: 20, padding: '14px 16px', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: P.ink }}>
-          {integre
-            ? (fr ? 'Mes annonces en ligne' : 'My listings online')
-            : (fr ? 'Mes annonces sur les autres plateformes' : 'My listings on the other platforms')}
+      {/* ── L'EN-TÊTE : le titre, la date du dernier relevé, et LE geste ─────
+          « Tout relever » était un pavé teal pleine largeur SOUS trois lignes
+          d'explication : il mangeait la carte et lui donnait un air de
+          formulaire, alors que l'information qu'on vient chercher — mes
+          annonces, plateforme par plateforme — était enfermée dans le repli.
+          Il redevient un bouton, à côté de l'état, et ce sont les PLATEFORMES
+          qui occupent la carte (refonte du 19/09). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: P.ink, letterSpacing: '-0.01em' }}>
+            {integre
+              ? (fr ? 'Mes annonces en ligne' : 'My listings online')
+              : (fr ? 'Mes annonces sur les autres plateformes' : 'My listings on the other platforms')}
+          </div>
+          {integre && (
+            <div style={{ fontSize: 11.5, color: P.mute, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>{ligneEtat}</div>
+          )}
         </div>
-        <span style={{ flex: 1 }} />
-        {nbARattacher > 0 && (
-          <button type="button" onClick={() => setEcran(true)}
-            style={{ padding: '7px 12px', borderRadius: 999, border: 'none', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-            {fr ? `Rattacher ${nbARattacher} annonce${nbARattacher > 1 ? 's' : ''}` : `Match ${nbARattacher} listing${nbARattacher > 1 ? 's' : ''}`}
-          </button>
-        )}
-      </div>
-      {/* UNE phrase — pas deux paragraphes. Ce qui a été retiré d'ici
-          (« un même article, une seule fiche », « le reste, tu le tranches »,
-          et le rappel sur la publication) vit dans le repli, en entier. */}
-      <div style={{ fontSize: 12, lineHeight: 1.5, color: P.mute2 }}>
-        {integre
-          ? (fr
-            ? 'FillSell relit « Mes annonces » sur chaque plateforme et rattache ce qu’il reconnaît à ton stock — rien n’est publié, modifié ni retiré.'
-            : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — nothing is published, edited or removed.')
-          : (fr
-            ? 'FillSell relit « Mes annonces » sur chaque plateforme et rattache ce qu’il reconnaît à ton stock — un même article, une seule fiche. Le reste, tu le tranches. Rien n’est publié, modifié ni retiré.'
-            : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — one item, one card. You decide the rest. Nothing is published, edited or removed.')}
-      </div>
-      {/* ── LE GESTE PRINCIPAL, puis son état. Un seul bouton, un seul verbe. ── */}
-      {integre && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {integre && (
           <button type="button" disabled={!!busy || toutBusy || !extVue} onClick={toutRelever}
             title={!extVue ? (fr ? "Il faut l'extension Chrome sur un ordinateur." : 'The Chrome extension on a computer is needed.') : undefined}
             style={{
-              width: '100%', padding: '12px 14px', borderRadius: 999, border: 'none', fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+              flexShrink: 0, padding: '9px 14px', borderRadius: 999, border: 'none',
+              fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', whiteSpace: 'nowrap',
               background: (busy || toutBusy || !extVue) ? '#E7E3D8' : `linear-gradient(120deg,${P.teal},${P.tealDeep})`,
               color: (busy || toutBusy || !extVue) ? P.mute : '#fff',
               cursor: (busy || toutBusy || !extVue) ? 'default' : 'pointer',
             }}>
             {toutBusy ? (fr ? 'Envoi…' : 'Sending…') : (fr ? 'Tout relever' : 'Scan all')}
           </button>
-          <div style={{ fontSize: 12, color: P.mute2, lineHeight: 1.45, textAlign: 'center' }}>{ligneEtat}</div>
-          {!extVue && (
-            <div style={{ fontSize: 11.5, color: P.mute, lineHeight: 1.45, textAlign: 'center' }}>
-              {fr ? "Il faut l'extension Chrome ouverte sur un ordinateur." : 'The Chrome extension must be open on a computer.'}
-            </div>
-          )}
+        )}
+        {!integre && nbARattacher > 0 && (
+          <button type="button" onClick={() => setEcran(true)}
+            style={{ padding: '7px 12px', borderRadius: 999, border: 'none', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+            {fr ? `Rattacher ${nbARattacher} annonce${nbARattacher > 1 ? 's' : ''}` : `Match ${nbARattacher} listing${nbARattacher > 1 ? 's' : ''}`}
+          </button>
+        )}
+      </div>
+
+      {/* ── LES CINQ PLATEFORMES, À L'ÉCRAN ──────────────────────────────────
+          Le logo, ce qui a été relevé, et l'état en un mot. Une plateforme à
+          connecter ou à autoriser le DIT ici : plus besoin de déplier pour
+          comprendre pourquoi eBay ne remonte rien. Un tap relève cette
+          plateforme-là — le bouton par ligne du repli reste, pour qui l'ouvre. */}
+      {integre && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 6 }}>
+          {['vinted', ...listePlateformes].map((p) => {
+            const t = etatTuile(p);
+            const cliquable = !busy && !toutBusy && extVue && !t.enCours;
+            return (
+              <button key={p} type="button" disabled={!cliquable}
+                onClick={() => { if (p === 'vinted') { try { lancerVinted?.(); } catch { /* la ligne Vinted dit le refus */ } } else lancer(p); }}
+                aria-label={`${LABEL_RELEVE[p] ?? p} — ${t.mot}`}
+                style={{
+                  position: 'relative', background: P.paper, border: `1px solid ${P.borderSoft}`, borderRadius: 13,
+                  padding: '9px 3px 7px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                  fontFamily: 'inherit', cursor: cliquable ? 'pointer' : 'default', minWidth: 0,
+                }}>
+                <span aria-hidden="true" style={{
+                  position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 999,
+                  border: '1.5px solid #fff', background: t.pip,
+                }} />
+                <PlatformLogo platform={p} size={22} desature={t.pip === P.mute} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: P.ink, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{t.n}</span>
+                <span style={{ fontSize: 9.5, fontWeight: 600, color: P.mute, textAlign: 'center', lineHeight: 1.25, width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.mot}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Ce qui reste à trancher — en pied de carte, et SEULEMENT s'il y a
+          vraiment quelque chose à rattacher. */}
+      {integre && nbARattacher > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 10, borderTop: `1px solid ${P.borderSoft}` }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: P.mute2, lineHeight: 1.45 }}>
+            {fr
+              ? `${nbARattacher} annonce${nbARattacher > 1 ? 's relevées ne sont' : ' relevée n’est'} rattachée${nbARattacher > 1 ? 's' : ''} à aucun article.`
+              : `${nbARattacher} scanned listing${nbARattacher > 1 ? 's are' : ' is'} not matched to any item.`}
+          </div>
+          <button type="button" onClick={() => setEcran(true)}
+            style={{ flexShrink: 0, padding: '8px 13px', borderRadius: 999, border: `1px solid ${P.border}`, background: 'transparent', color: P.tealDeep, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {fr ? 'Rattacher' : 'Match'}
+          </button>
+        </div>
+      )}
+
+      {/* Hors bloc intégré, la phrase d'explication reste sous le titre — c'est
+          le seul endroit où elle est encore lue à froid. Dans le Stock, elle a
+          rejoint le repli (elle y est en entier). */}
+      {!integre && (
+        <div style={{ fontSize: 12, lineHeight: 1.5, color: P.mute2 }}>
+          {fr
+            ? 'FillSell relit « Mes annonces » sur chaque plateforme et rattache ce qu’il reconnaît à ton stock — un même article, une seule fiche. Le reste, tu le tranches. Rien n’est publié, modifié ni retiré.'
+            : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — one item, one card. You decide the rest. Nothing is published, edited or removed.'}
+        </div>
+      )}
+      {integre && !extVue && (
+        <div style={{ fontSize: 11.5, color: P.mute, lineHeight: 1.45 }}>
+          {fr ? "Il faut l'extension Chrome ouverte sur un ordinateur." : 'The Chrome extension must be open on a computer.'}
         </div>
       )}
       {/* ── LE DÉTAIL, REPLIÉ ─────────────────────────────────────────────────
           Fermé par défaut. Il garde TOUT ce qui était à l'écran avant : la
-          ligne de chaque plateforme (Vinted comprise), son état, son motif
-          quand elle ne peut pas être relevée, et son bouton. Une plateforme
-          qui n'a pas de session n'est pas retirée de la liste — elle reste
-          visible ici, avec sa raison. */}
+          ligne de chaque plateforme (Vinted comprise), son état complet, son
+          motif quand elle ne peut pas être relevée, son bouton, et le rappel
+          « un relevé ne publie rien ». Une plateforme sans session n'est pas
+          retirée de la liste — elle reste visible ici, avec sa raison. */}
       {integre && (
         <button type="button" onClick={() => setDetail((d) => !d)} aria-expanded={detail}
           style={{ alignSelf: 'flex-start', padding: '4px 0', border: 'none', background: 'none', color: P.tealDeep, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
