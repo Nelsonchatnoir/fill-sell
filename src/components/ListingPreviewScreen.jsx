@@ -13,7 +13,12 @@ import AnalyseMarche from "./AnalyseMarche";
 // Photos : lecture tolérante (chaîne ou objet), écriture TOUJOURS en objets
 // `{ type, url }` — la forme de generate-listing, la seule que les handlers
 // de l'extension savent lire. Règle et incident dans utils/photos.js.
-import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils/photos";
+import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee, MIN_PHOTOS, MAX_PHOTOS } from "../utils/photos";
+// La galerie (ajouter / retirer / réordonner) et ses primitives sont partagées
+// avec le formulaire d'ajout manuel depuis le 19/09 — extraites d'ici, rendu
+// inchangé.
+import GaleriePhotos, { DragHandle, CoverBadge } from "./GaleriePhotos";
+import { usePhotoDrag, moveItem, IS_ANDROID, pickPhotosAndroid } from "../utils/photosGalerie";
 import { texteComparable } from "../utils/texteComparable";
 import { sortirDuBrouillon } from "../utils/brouillon";
 import { sessionsAffichables, PUBLICATION_PROUVE_MS } from "../utils/sessionsPlateformes";
@@ -145,21 +150,9 @@ function deriverCopieOpla(vinted) {
   };
 }
 
-// Minimum de photos exigé pour publier — c'est le minimum de VINTED sur les
-// marques premium (VINTED_MIN_PHOTOS, chrome-extension/content-scripts/vinted.js).
-// Jusqu'ici l'extension COMPLÉTAIT à 3 en dupliquant la dernière photo, faute de
-// mieux. On le demande désormais à la source : de vraies photos, pas des copies.
-const MIN_PHOTOS = 3;
-
-// Photos UPLOADABLES vs photos RETOUCHÉES — deux plafonds distincts (2026-07-14).
-// La limite de 5 côté client n'a jamais été une limite d'upload : c'est le
-// garde-fou de COÛT de la retouche GPT Image. generate-listing le dit lui-même
-// (MAX_RETOUCHED = 5, index.ts l.439) et gère DÉJÀ le surplus : « les photos
-// au-delà sont conservées telles quelles ». Le serveur n'avait donc jamais
-// besoin qu'on plafonne l'upload — le client était juste plus strict que lui.
-// 10 : au-dessus du minimum de toutes les plateformes ciblées et bien en deçà
-// de leurs plafonds (Vinted 20, eBay 24…), sans exploser le payload des jobs.
-const MAX_PHOTOS = 10;
+// MIN_PHOTOS (3) et MAX_PHOTOS (20) vivent dans utils/photos.js depuis le
+// 19/09 : le formulaire d'ajout manuel en a besoin aussi, et une borne écrite
+// à deux endroits finit toujours par diverger. Elles sont importées en haut.
 const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOUCHED
 
 // ── Plateformes qui exigent l'adresse de remise des Réglages (2026-08-10) ────
@@ -247,50 +240,9 @@ const messageCompteEbay = (motif, lang) => {
   return "eBay : ton compte vendeur n'est pas fini de paramétrer (inscription vendeur, conditions de vente) — termine-le pour publier dessus.";
 };
 
-// ── Multi-select photos sur ANDROID uniquement (2026-07-27) ──────────────────
-// L'<input type="file" multiple> de la WebView part en ACTION_GET_CONTENT vers
-// la galerie du constructeur, dont le multi-select exige un appui long — un tap
-// simple retourne UNE photo (bug « un seul fichier retenu », stepper + scan).
-// Camera.pickImages force le Photo Picker système (cases à cocher), sans
-// permission (l'alias photos est toujours granted sur Android).
-// iOS et web NE PASSENT JAMAIS ici : gate Capacitor.getPlatform() === 'android'
-// aux points d'appel — l'<input> reste dans le DOM et reste leur seul chemin,
-// comportement inchangé y compris en erreur (iOS validé par Nico le 27/07).
-const IS_ANDROID = Capacitor.getPlatform() === "android";
-
-// Convertit les GalleryPhoto (webPath) en File STRICTEMENT équivalents à ceux
-// de l'input — MIME réel lu sur le blob (pas un jpeg présumé), extension
-// assortie, octets intacts (aucune recompression ici : fetch du webPath tel
-// quel) — puis les remet au MÊME point d'entrée que l'input (onFiles = le
-// callback que l'onChange de l'input appelle déjà). Cas limites alignés sur
-// l'input : annulation ou sélection vide ⇒ no-op silencieux ; échec du
-// plugin ⇒ repli sur l'input existant, JAMAIS muet (console.error).
-async function pickPhotosAndroid(remaining, onFiles, fallbackClick) {
-  if (remaining <= 0) return; // même garde que le bouton (masqué à MAX_PHOTOS)
-  let res;
-  try {
-    res = await CapCamera.pickImages({ quality: 90, limit: remaining });
-  } catch (e) {
-    const msg = (e?.message || "").toLowerCase();
-    if (msg.includes("cancel")) return; // = refermer l'input sans rien choisir
-    console.error("[stepper] pickImages failed, fallback input", e?.message, e);
-    fallbackClick();
-    return;
-  }
-  const picked = (res?.photos ?? []).slice(0, remaining);
-  if (!picked.length) return;
-  const files = [];
-  for (let i = 0; i < picked.length; i++) {
-    const ph = picked[i];
-    try {
-      const blob = await fetch(ph.webPath).then(r => r.blob());
-      const mime = blob.type || (ph.format ? `image/${ph.format}` : "image/jpeg");
-      const ext = ph.format || mime.split("/")[1] || "jpg";
-      files.push(new File([blob], `photo_${Date.now()}_${i}.${ext}`, { type: mime }));
-    } catch { /* photo illisible : sautée, les autres passent */ }
-  }
-  if (files.length) onFiles(files);
-}
+// Le multi-select Android (Camera.pickImages, 2026-07-27) est passé dans
+// GaleriePhotos avec la grille : IS_ANDROID et pickPhotosAndroid sont
+// importés en haut de ce fichier, comportement inchangé.
 
 // ── Champs partagés taille/couleur/matiere/marque (2026-07-11, Sujet 4) ──────
 // UNE valeur source par champ (canonicalisée côté generate-listing), deux
@@ -1398,101 +1350,9 @@ function StepProgress({ step, labels }) {
   );
 }
 
-// ── Réordonnancement des photos ───────────────────────────────────────────────
-// L'ORDRE COMPTE, à deux titres : la photo 0 est la couverture de l'annonce sur
-// les 4 plateformes (l'extension uploade dans l'ordre du tableau, et
-// generate-listing étiquette l'index 0 "original"), et seules les MAX_RETOUCHED
-// premières passent en retouche IA. Réordonner = choisir sa couverture et ce qui
-// est retouché.
-//
-// Aucune dépendance (rien dans package.json, et le HTML5 drag&drop ne fonctionne
-// pas au tactile, donc inutilisable dans l'app Capacitor). Pointer Events, donc
-// souris ET tactile. Le drag part d'une POIGNÉE dédiée (touch-action:none sur la
-// poignée seulement) : le scroll de la page et le tap sur la photo restent
-// intacts.
-function moveItem(arr, from, to) {
-  const next = [...arr];
-  const [it] = next.splice(from, 1);
-  next.splice(to, 0, it);
-  return next;
-}
-
-function usePhotoDrag(onReorder) {
-  const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
-  const fromRef = useRef(null);
-  const overRef = useRef(null);
-
-  function onPointerDown(e, i) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    fromRef.current = i; overRef.current = i;
-    setDragIdx(i); setOverIdx(i);
-  }
-  // La capture renvoie les events à la poignée : on retrouve la vignette survolée
-  // par hit-test (elementFromPoint reste fiable sous capture).
-  function onPointerMove(e) {
-    if (fromRef.current === null) return;
-    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest?.("[data-photo-idx]");
-    const i = el ? Number(el.dataset.photoIdx) : null;
-    if (i !== null && !Number.isNaN(i) && i !== overRef.current) {
-      overRef.current = i;
-      setOverIdx(i);
-    }
-  }
-  function onPointerUp() {
-    const from = fromRef.current, to = overRef.current;
-    fromRef.current = null; overRef.current = null;
-    setDragIdx(null); setOverIdx(null);
-    if (from !== null && to !== null && from !== to) onReorder(from, to);
-  }
-
-  const handleProps = i => ({
-    onPointerDown: e => onPointerDown(e, i),
-    onPointerMove,
-    onPointerUp,
-    onPointerCancel: onPointerUp,
-    onClick: e => e.stopPropagation(),
-    style: {
-      position:"absolute", left:6, top:6, width:22, height:22, borderRadius:8,
-      background:"rgba(16,32,27,0.55)", border:"none", padding:0, color:"#fff",
-      display:"flex", alignItems:"center", justifyContent:"center",
-      cursor:"grab", touchAction:"none",
-    },
-  });
-
-  // Style de la vignette pendant le drag : la source s'efface, la cible s'entoure.
-  const tileProps = i => ({
-    "data-photo-idx": i,
-    style: {
-      opacity: dragIdx === i ? 0.35 : 1,
-      outline: dragIdx !== null && overIdx === i && dragIdx !== i ? `2px solid ${T.teal}` : "none",
-      outlineOffset: -2,
-    },
-  });
-
-  return { dragging: dragIdx !== null, handleProps, tileProps };
-}
-
-function DragHandle({ bind }) {
-  return (
-    <button aria-label="Réordonner" {...bind}>
-      <GripVertical size={13} />
-    </button>
-  );
-}
-
-function CoverBadge({ lang }) {
-  return (
-    <span style={{
-      position:"absolute", right:5, bottom:5, background:T.teal, color:"#fff",
-      borderRadius:99, padding:"2px 6px", fontSize:8.5, fontWeight:700, whiteSpace:"nowrap",
-    }}>
-      {lang === "en" ? "Cover" : "Couverture"}
-    </span>
-  );
-}
+// Le réordonnancement des photos (moveItem, usePhotoDrag, DragHandle,
+// CoverBadge) vit dans components/GaleriePhotos depuis le 19/09, partagé avec
+// le formulaire d'ajout manuel. Logique et rendu inchangés.
 
 function PrimaryButton({ children, disabled, onClick, icon:Icon }) {
   return (
@@ -1520,10 +1380,7 @@ function PrimaryButton({ children, disabled, onClick, icon:Icon }) {
 
 function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, setNotes, micActive, toggleMic, error, lang }) {
   const { t, tpl } = useTranslation(lang);
-  const fileRef = useRef();
   const count = previews.length;
-  const MAX = MAX_PHOTOS;
-  const drag = usePhotoDrag(onReorder);
 
   return (
     <div>
@@ -1541,82 +1398,18 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
         </div>
       )}
 
-      {/* Pas de capture="environment" (2026-07-21) : il FORÇAIT la caméra sur
-          iOS/Android et masquait la photothèque (et cassait `multiple`). Sans
-          lui, la feuille native propose Photothèque + Prendre une photo. Desktop
-          inchangé (capture y est ignoré). */}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        style={{ display:"none" }}
-        onChange={e => {
-          const files = Array.from(e.target.files || []);
-          if (files.length) { onAdd(files); e.target.value = ""; }
-        }}
+      {/* La galerie — input caché, grille, poignée de réordonnancement,
+          badge « Couverture », croix de retrait, tuile « + » et rappel du
+          minimum — est partagée avec le formulaire d'ajout manuel depuis le
+          19/09. Rendu identique : c'est le même composant, extrait d'ici. */}
+      <GaleriePhotos
+        previews={previews}
+        onAdd={onAdd}
+        onRemove={onRemove}
+        onReorder={onReorder}
+        removable={removable}
+        lang={lang}
       />
-
-      {count > 1 && (
-        <p style={{ margin:"0 0 8px", fontSize:11.5, color:T.mute, lineHeight:1.4 }}>
-          {lang === "en"
-            ? "Drag the handle to reorder — the first photo is the listing cover."
-            : "Glisse la poignée pour réordonner — la 1ʳᵉ photo est la couverture de l'annonce."}
-        </p>
-      )}
-
-      {/* auto-fill minmax et non repeat(3,1fr) : le stepper est plein écran sans
-          maxWidth, 3 colonnes donnaient des tuiles énormes sur desktop. Les
-          vignettes restent carrées et compactes (~80 px) quelle que soit la
-          largeur ; le drag-to-reorder est inchangé (data-photo-idx + poignée). */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(76px, 1fr))", gap:8, marginBottom:20 }}>
-        {previews.map((url, i) => {
-          const tile = drag.tileProps(i);
-          return (
-          <div
-            key={i}
-            data-photo-idx={i}
-            style={{ aspectRatio:"1", borderRadius:12, overflow:"hidden", position:"relative", background:T.card, border:`1px solid ${T.border}`, ...tile.style }}
-          >
-            <img src={url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", pointerEvents:"none" }} />
-            {count > 1 && <DragHandle bind={drag.handleProps(i)} />}
-            {i === 0 && count > 1 && <CoverBadge lang={lang} />}
-            {removable && (
-              <button
-                onClick={() => onRemove(i)}
-                style={{
-                  position:"absolute", top:6, right:6, width:20, height:20, borderRadius:"50%",
-                  background:T.paper, border:`1px solid ${T.border}`, cursor:"pointer",
-                  display:"flex", alignItems:"center", justifyContent:"center", padding:0,
-                }}
-              >
-                <X size={11} color={T.ink} />
-              </button>
-            )}
-          </div>
-          );
-        })}
-        {count < MAX && (
-          <button
-            onClick={() => IS_ANDROID
-              ? pickPhotosAndroid(MAX - count, onAdd, () => fileRef.current?.click())
-              : fileRef.current?.click()}
-            style={{ aspectRatio:"1", borderRadius:12, border:"1px dashed #D8D2C4", background:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
-          >
-            <Plus size={20} color={T.mute} />
-          </button>
-        )}
-      </div>
-
-      {/* Minimum 3 photos : exigence Vinted (marques premium), rappelée ici
-          plutôt que subie à la publication. */}
-      {count > 0 && count < MIN_PHOTOS && (
-        <div style={{ marginTop:-8, marginBottom:16, fontSize:12.5, fontWeight:600, color:T.amber }}>
-          {lang === "en"
-            ? `Add at least ${MIN_PHOTOS} photos to continue (${count}/${MIN_PHOTOS}).`
-            : `Ajoute au moins ${MIN_PHOTOS} photos pour continuer (${count}/${MIN_PHOTOS}).`}
-        </div>
-      )}
 
       <div style={{ position:"relative" }}>
         <input

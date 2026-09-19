@@ -71,6 +71,35 @@ export function entreesPhotos(liste) {
   return sortie;
 }
 
+// ── LES DEUX BORNES, UNE SEULE FOIS (ici) ───────────────────────────────────
+// Elles vivaient dans ListingPreviewScreen, donc hors de portée du formulaire
+// d'ajout manuel. Elles sont désormais ici, avec le reste des règles photo :
+// UNE constante, tous les usages. C'est le même piège que la description
+// manuelle, dont le plafond était écrit à trois endroits et avait commencé à
+// diverger de son intention.
+
+/** Minimum de photos pour publier — c'est le minimum de VINTED sur les marques
+ *  premium (VINTED_MIN_PHOTOS, chrome-extension/content-scripts/vinted.js).
+ *  L'extension COMPLÉTAIT jusqu'ici à 3 en dupliquant la dernière photo, faute
+ *  de mieux : on le demande à la source, de vraies photos plutôt que des
+ *  copies. ⛔ Ne s'applique qu'à la PUBLICATION. Un article peut parfaitement
+ *  vivre en stock avec 0, 1 ou 2 photos. */
+export const MIN_PHOTOS = 3;
+
+/** Plafond de photos par article.
+ *  Photos UPLOADABLES vs photos RETOUCHÉES — deux plafonds distincts
+ *  (2026-07-14). La limite de retouche (5) n'a jamais été une limite d'upload :
+ *  c'est le garde-fou de COÛT de la retouche GPT Image. generate-listing le dit
+ *  lui-même (MAX_RETOUCHED = 5) et gère DÉJÀ le surplus : « les photos au-delà
+ *  sont conservées telles quelles ».
+ *  20 depuis le 19/09 (décision Nico), et c'est une MESURE, pas un réglage :
+ *  sur les publications réussies du parc, 144 portaient DÉJÀ plus de 10 photos
+ *  (98 Leboncoin · 26 eBay · 19 Beebs · 1 Vinted), et le maximum observé est
+ *  exactement 20. Le plafond de 10 était donc plus strict que ce que le parc
+ *  publie réellement. Il reste sous les plafonds des plateformes (Vinted 20,
+ *  eBay 24). */
+export const MAX_PHOTOS = 20;
+
 /** L'entrée est-elle une photo retouchée (flux /enhanced/) ? Les deux formes. */
 export function estPhotoRetouchee(entree) {
   if (!entree) return false;

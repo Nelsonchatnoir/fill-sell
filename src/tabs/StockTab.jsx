@@ -9,6 +9,8 @@ import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
+import GaleriePhotos from '../components/GaleriePhotos';
+import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
 import { repartirParVoie } from '../utils/ebayCompte';
@@ -4632,6 +4634,8 @@ const StockTab = memo(function StockTab({
   iAlreadySold, setIAlreadySold, iSell, setISell,
   iSellingFees, setISellingFees, iRememberSellingFees, setIRememberSellingFees,
   iDesc, setIDesc, iEmplacement, setIEmplacement, iPlateforme, setIPlateforme, iSaved, firstItemAdded,
+  iPhotos = [], iPhotosBusy = false, iPhotosErreur = "",
+  ajouterPhotosAjout, retirerPhotoAjout, reordonnerPhotosAjout,
   // Lot state
   lotManualTotal, setLotManualTotal, lotManualItems, setLotManualItems,
   lotDistributed, setLotDistributed, lotDistributing,
@@ -7646,6 +7650,47 @@ const StockTab = memo(function StockTab({
           <div>
             <Field label={lang==='fr'?"Plateforme de vente (optionnel)":"Resale platform (optional)"} value={iPlateforme} set={setIPlateforme} placeholder={lang==='fr'?"Ex: Vinted, eBay, Depop, Leboncoin...":"Ex: Vinted, eBay, Depop, Leboncoin..."} icon="🏪"/>
           </div>
+          {/* ── PHOTOS (2026-09-19) ─────────────────────────────────────────
+              La MÊME galerie que le stepper — ajouter, retirer, réordonner,
+              badge « Couverture » sur la première. Rien de redessiné.
+              ⛔ FACULTATIVES : elles n'entrent pas dans champsManquantsAjout,
+                 le bouton d'ajout ne les regarde pas. Un article sans photo se
+                 crée exactement comme avant.
+              ⛔ Aucune retouche n'est déclenchée : un article manuel ne
+                 consomme aucun quota. */}
+          {ajouterPhotosAjout&&(
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:C.label,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
+                <span>📸</span>
+                <span>{lang==='fr'?`Photos (optionnel) — jusqu'à ${MAX_PHOTOS}`:`Photos (optional) — up to ${MAX_PHOTOS}`}</span>
+                {iPhotosBusy&&<span style={{fontWeight:500,color:C.sub}}>{lang==='fr'?"envoi…":"uploading…"}</span>}
+              </div>
+              <GaleriePhotos
+                previews={iPhotos}
+                onAdd={ajouterPhotosAjout}
+                onRemove={retirerPhotoAjout}
+                onReorder={reordonnerPhotosAjout}
+                removable
+                /* Le rappel « au moins 3 » appartient à la PUBLICATION, pas au
+                   stock : un article peut vivre ici avec une seule photo. On
+                   dit simplement, plus bas, ce qu'il faudra pour publier. */
+                rappelMinimum={false}
+                lang={lang}
+              />
+              {iPhotosErreur&&(
+                <div style={{fontSize:11,color:"#B91C1C",background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 12px",marginTop:-12,marginBottom:8}}>
+                  {iPhotosErreur}
+                </div>
+              )}
+              {iPhotos.length>0&&iPhotos.length<MIN_PHOTOS&&(
+                <div style={{fontSize:11,color:C.sub,marginTop:-12,marginBottom:8,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?`L'article s'enregistre très bien avec ${iPhotos.length} photo${iPhotos.length>1?"s":""}. Il en faudra ${MIN_PHOTOS} pour le publier sur Vinted.`
+                    :`The item saves fine with ${iPhotos.length} photo${iPhotos.length>1?"s":""}. You'll need ${MIN_PHOTOS} to publish it on Vinted.`}
+                </div>
+              )}
+            </div>
+          )}
           {items.length>0&&(
             <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
               💡 {t('prixHint')}

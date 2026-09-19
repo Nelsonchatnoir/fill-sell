@@ -75,6 +75,9 @@ import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
+import { televerserPhotos } from './utils/photosUpload';
+import { entreesPhotos, MAX_PHOTOS } from './utils/photos';
+import { moveItem } from './utils/photosGalerie';
 import { sonderAnnonceVinted, lireBoutiquesVinted, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 // Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
@@ -2067,6 +2070,14 @@ export default function App({ loginOnly = false }){
   const [iSaved,setISaved]=useState(false);
   const [iEmplacement,setIEmplacement]=useState("");
   const [iPlateforme,setIPlateforme]=useState("");
+  // ── PHOTOS DE L'AJOUT MANUEL (2026-09-19) ─────────────────────────────────
+  // Les URLs déjà montées dans listing-photos, DANS L'ORDRE choisi : la
+  // première est la couverture. ⛔ Facultatives — addItem sert aussi au vocal
+  // et à l'ajout en lot, où il n'y a pas de photo, et le bouton d'ajout ne les
+  // regarde pas (champsManquantsAjout est inchangé).
+  const [iPhotos,setIPhotos]=useState([]);
+  const [iPhotosBusy,setIPhotosBusy]=useState(false);
+  const [iPhotosErreur,setIPhotosErreur]=useState("");
   // ── MARQUES : UNE LISTE, PAS UNE CHAÎNE (2026-09-18) ──────────────────────
   // « Nike ET Adidas » est le cas normal d'un vendeur, pas l'exception.
   // ⛔ LISTE VIDE = AUCUN FILTRE. Pas de valeur sentinelle, pas de « Toutes »
@@ -4066,6 +4077,50 @@ export default function App({ loginOnly = false }){
     setLotDistributed(null);setLotManualItems([{nom:""},{nom:""}]);setLotManualTotal("");setManualMode("single");
   }
 
+  // ── LES PHOTOS DE L'AJOUT MANUEL MONTENT DÈS LA SÉLECTION (2026-09-19) ────
+  // Même brique que le stepper et le viseur (utils/photosUpload) : compression
+  // 1024 px / 0,85, chemin <uid>/raw/, suffixe `?v=` contre le 404 mis en cache.
+  // Le marqueur « manuel_ » distingue la fournée dans le bucket.
+  //
+  // ⛔ AUCUNE RETOUCHE N'EST APPELÉE ICI. Elle est au quota mensuel par palier,
+  //    pas au débit à l'acte : il suffit de ne pas l'invoquer. Un article ajouté
+  //    à la main ne consomme donc rien.
+  // ⛔ Une photo illisible est SAUTÉE et nommée (`surErreur: "ignorer"`), comme
+  //    au step 0 depuis le 04/09 : un HEIC ne fait pas tomber toute la fournée.
+  async function ajouterPhotosAjout(files){
+    if(!user?.id||!Array.isArray(files)||!files.length)return;
+    const place=MAX_PHOTOS-iPhotos.length;
+    if(place<=0)return;
+    setIPhotosBusy(true);setIPhotosErreur("");
+    try{
+      const{urls,illisibles}=await televerserPhotos(supabase,{
+        userId:user.id,
+        sources:files.slice(0,place),
+        marqueur:"manuel_",
+        surErreur:"ignorer",
+      });
+      if(urls.length)setIPhotos(prev=>[...prev,...urls]);
+      if(illisibles.length){
+        setIPhotosErreur(lang==='en'
+          ?`${illisibles.length} photo(s) could not be read and were skipped: ${illisibles.join(", ")}.`
+          :`${illisibles.length} photo(s) n'ont pas pu être lues et ont été ignorées : ${illisibles.join(", ")}.`);
+      }else if(!urls.length){
+        setIPhotosErreur(messageDecodage(lang));
+      }
+    }catch(e){
+      console.warn('[ajout manuel] téléversement des photos en échec —',e?.message??e);
+      setIPhotosErreur(lang==='en'?"Upload failed. Try again.":"Le téléversement a échoué. Réessaie.");
+    }finally{
+      setIPhotosBusy(false);
+    }
+  }
+  // Retirer ne supprime RIEN dans le bucket : l'article n'existe pas encore, et
+  // le ménage des fichiers non référencés est le sujet du lot dédié.
+  function retirerPhotoAjout(i){ setIPhotos(prev=>prev.filter((_,j)=>j!==i)); }
+  // L'ORDRE EST LA COUVERTURE : la photo 0 est celle que les plateformes
+  // montrent en premier. C'est pour ça que le réordonnancement existe ici.
+  function reordonnerPhotosAjout(from,to){ setIPhotos(prev=>moveItem(prev,from,to)); }
+
   async function addItem(){
     // Même garde que le bouton (StockTab) : le prix d'achat n'est plus exigé
     // quand la personne a répondu « je ne sais pas ».
@@ -4086,7 +4141,10 @@ export default function App({ loginOnly = false }){
     const cogs=b+pc;const mg=hasS&&margeCalculable?s-cogs-sf:0;const mgp=hasS&&margeCalculable?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null};
+    // `photos` n'est posé QUE s'il y en a : sans photo, l'insert est
+    // rigoureusement celui d'avant. Forme écrite = { type, url } via
+    // entreesPhotos (règle du 05/09), jamais des chaînes nues.
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null,...(iPhotos.length?{photos:entreesPhotos(iPhotos)}:{})};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: prixAchat, prix_achat_inconnu: iBuyInconnu, has_sell_price: hasS });
@@ -4109,7 +4167,7 @@ export default function App({ loginOnly = false }){
       : hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
-    setITitle("");setIBuy("");setIBuyInconnu(false);setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");
+    setITitle("");setIBuy("");setIBuyInconnu(false);setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");setIPhotos([]);setIPhotosErreur("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -8177,6 +8235,8 @@ export default function App({ loginOnly = false }){
             iRememberSellingFees={iRememberSellingFees} setIRememberSellingFees={setIRememberSellingFees}
             iDesc={iDesc} setIDesc={setIDesc}
             iEmplacement={iEmplacement} setIEmplacement={setIEmplacement}
+            iPhotos={iPhotos} iPhotosBusy={iPhotosBusy} iPhotosErreur={iPhotosErreur}
+            ajouterPhotosAjout={ajouterPhotosAjout} retirerPhotoAjout={retirerPhotoAjout} reordonnerPhotosAjout={reordonnerPhotosAjout}
             iPlateforme={iPlateforme} setIPlateforme={setIPlateforme}
             iSaved={iSaved} firstItemAdded={firstItemAdded}
             lotManualTotal={lotManualTotal} setLotManualTotal={setLotManualTotal}
