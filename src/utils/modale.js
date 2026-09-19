@@ -1,4 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ⛔ LA RÈGLE DES COUCHES — À LIRE AVANT D'EN ÉCRIRE UNE NOUVELLE (2026-09-18)
@@ -152,4 +154,57 @@ export function useFondFige(actif = true) {
     verrouiller();
     return deverrouiller;
   }, [actif]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LES DEUX AUTRES SORTIES D'UNE COUCHE — Échap et le retour Android
+// ═══════════════════════════════════════════════════════════════════════════
+// Elles vivaient en copie locale dans FiltresStock.jsx. Une couche neuve les
+// recopiait ou les oubliait : c'est exactement ce que ce fichier existe pour
+// empêcher (cf. la règle des couches en tête). Elles vivent donc ICI, avec
+// useFondFige, et toute feuille les importe.
+//
+// `actif` : cette couche est-elle AU PREMIER PLAN ? Une liste ouverte PAR une
+// feuille passe false à la feuille — sans quoi Échap et le retour Android
+// fermeraient les DEUX d'un coup (les écouteurs vivent sur `document` et sur
+// le plugin : un stopPropagation ne retient pas un voisin abonné au même
+// nœud).
+//
+// La fonction de fermeture passe par une ref : sans elle, une `onFermer`
+// recréée à chaque rendu ferait se réabonner l'écouteur en boucle.
+
+/** Échap ferme la couche. Une couche sans sortie au clavier n'est pas finie. */
+export function useEchap(onFermer) {
+  const ref = useRef(onFermer);
+  // Dans un effet, jamais pendant le rendu (react-hooks/refs).
+  useEffect(() => { ref.current = onFermer; }, [onFermer]);
+  useEffect(() => {
+    const surTouche = (e) => { if (e.key === 'Escape') { e.stopPropagation(); ref.current?.(); } };
+    document.addEventListener('keydown', surTouche);
+    return () => document.removeEventListener('keydown', surTouche);
+  }, []);
+}
+
+/**
+ * Le retour Android ferme la couche, il ne quitte PAS l'app.
+ * Enregistrer un écouteur `backButton` DÉSACTIVE le comportement par défaut de
+ * Capacitor (history.back puis sortie de l'app) tant qu'il vit : on ne
+ * l'enregistre donc que pendant que la couche est ouverte. Sur le web
+ * l'écouteur n'existe pas — Échap et le tap sur le fond restent les sorties.
+ */
+export function useRetourAndroid(onFermer) {
+  const ref = useRef(onFermer);
+  useEffect(() => { ref.current = onFermer; }, [onFermer]);
+  useEffect(() => {
+    if (!Capacitor?.isNativePlatform?.()) return undefined;
+    let vivant = true;
+    let abo = null;
+    (async () => {
+      try {
+        const h = await CapacitorApp.addListener('backButton', () => { ref.current?.(); });
+        if (vivant) abo = h; else h.remove();
+      } catch { /* pas de plugin : les autres sorties restent */ }
+    })();
+    return () => { vivant = false; try { abo?.remove(); } catch { /* déjà parti */ } };
+  }, []);
 }

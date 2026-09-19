@@ -53,10 +53,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app';
 import { Search, SlidersHorizontal, X, ChevronRight, Check } from 'lucide-react';
-import { useFondFige } from '../utils/modale';
+import { useFondFige, useEchap, useRetourAndroid } from '../utils/modale';
 import { R } from '../reglages/theme';
 
 const fr = (lang) => lang !== 'en';
@@ -74,47 +72,8 @@ const TOUCHE = 44;
 const Z_FEUILLE = 600;
 const Z_FEUILLE_DESSUS = 620; // la liste cherchable, ouverte PAR la feuille
 
-// ═══════════════════════════════════════════════════════════════════════════
-// LE RETOUR ANDROID FERME LA COUCHE, IL NE QUITTE PAS L'APP
-// ═══════════════════════════════════════════════════════════════════════════
-// Enregistrer un écouteur `backButton` DÉSACTIVE le comportement par défaut de
-// Capacitor (history.back, puis sortie de l'app) tant qu'il vit : on ne
-// l'enregistre donc que pendant que la couche est ouverte, et on le retire à la
-// fermeture. Sur le web, l'écouteur n'existe pas — Échap et le tap sur le fond
-// sont les deux sorties, elles suffisent.
-// La fonction de fermeture passe par une ref : sans elle, une `onFermer`
-// recréée à chaque rendu ferait se réabonner l'écouteur en boucle.
-function useRetourAndroid(onFermer) {
-  const ref = useRef(onFermer);
-  // Dans un effet, jamais pendant le rendu (react-hooks/refs) : la ref est
-  // rafraîchie après chaque rendu, l'abonnement ci-dessous n'en dépend pas.
-  useEffect(() => { ref.current = onFermer; }, [onFermer]);
-  useEffect(() => {
-    if (!Capacitor?.isNativePlatform?.()) return undefined;
-    let vivant = true;
-    let abo = null;
-    (async () => {
-      try {
-        const h = await CapacitorApp.addListener('backButton', () => { ref.current?.(); });
-        if (vivant) abo = h; else h.remove();
-      } catch { /* pas de plugin : les autres sorties restent */ }
-    })();
-    return () => { vivant = false; try { abo?.remove(); } catch { /* déjà parti */ } };
-  }, []);
-}
-
-// Échap ferme aussi : une couche sans sortie au clavier n'est pas terminée.
-// Même ref que ci-dessus : l'écouteur se pose UNE fois, il ne se réabonne pas à
-// chaque rendu parce que l'appelant passe une flèche anonyme.
-function useEchap(onFermer) {
-  const ref = useRef(onFermer);
-  useEffect(() => { ref.current = onFermer; }, [onFermer]);
-  useEffect(() => {
-    const surTouche = (e) => { if (e.key === 'Escape') { e.stopPropagation(); ref.current?.(); } };
-    document.addEventListener('keydown', surTouche);
-    return () => document.removeEventListener('keydown', surTouche);
-  }, []);
-}
+// (Le retour Android et Échap vivent désormais dans utils/modale.js, avec
+//  useFondFige : une couche neuve les importe au lieu de les recopier.)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LA COQUE COMMUNE DES DEUX FEUILLES
