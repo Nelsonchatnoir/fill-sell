@@ -29,6 +29,8 @@
     "selftest:sync-veille": "node scripts/sync-veille-selftest.mjs",
     "selftest:conseils-coherents": "node scripts/conseils-coherents-selftest.mjs",
     "selftest:opla-veilleur": "node scripts/opla-veilleur-selftest.mjs",
+    "selftest:langue": "node scripts/langue-selftest.mjs",
+    "selftest:passe2-description": "node scripts/passe2-description-selftest.mjs",
     "selftest:opla-cablage": "node scripts/opla-cablage-selftest.mjs",
     "selftest:opla-catalogue": "node scripts/opla-catalogue-selftest.mjs",
     "gen:opla-catalogue": "node scripts/gen-opla-catalogue.mjs",

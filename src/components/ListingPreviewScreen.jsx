@@ -25,6 +25,10 @@ import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeFou";
+// Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
+// chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
+// passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
+import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
 import { resoudreParMot, candidatsParMot, valeurDecritLObjet } from "../utils/categorieParMot";
 import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
@@ -497,8 +501,73 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // de 🧶 sweat, d'où catégorie eBay « Manteaux/vestes » et Vinted « Doudounes »).
   // L'icône IA ne sert donc plus qu'à COMBLER les cas SANS mot-clé (detect
   // renvoie null) — c'est le rôle « filet » pour lequel elle avait été ajoutée.
-  const keywordIcon = detectObjectIconKeyword(frTitle, `${frDesc} ${marque}`);
-  if (keywordIcon) return { icon: keywordIcon, source: "mot_cle", iconeSansIa: keywordIcon };
+  // ── LE MOT DE L'IA, CALCULÉ ICI POUR SERVIR DEUX FOIS (2026-09-19) ────────
+  // Il garde EXACTEMENT sa place d'autorité (plus bas, après le mot-clé) ;
+  // on le calcule seulement plus tôt, parce que la passe 2 en a besoin pour
+  // savoir si elle a le droit de parler. Aucun changement d'ordre.
+  const objetIa = String(aiObjet ?? "").trim();
+  const iconeDuMotIa = objetIa ? detectObjectIconKeyword(objetIa, "") : null;
+
+  // ── LA PASSE 2 PROPOSE, ELLE NE DÉCIDE PLUS SEULE (2026-09-19) ────────────
+  // Rappel de la mécanique : detectObjectKeywordDetail fait DEUX passes — le
+  // TITRE seul (passe 1, la source du vendeur), puis titre + description +
+  // marque (passe 2, le filet). Jusqu'ici les deux rendaient « mot_cle », donc
+  // le job ne savait pas laquelle avait parlé et le garde-fou ne pouvait pas
+  // les distinguer.
+  //
+  // MESURÉ sur les 754 fiches créées par l'app en 30 jours : 635 ont leur
+  // mot-objet AU TITRE (la passe 2 ne parle jamais), 119 n'en ont pas, et sur
+  // ces 119 la passe 2 pose l'icône 31 fois. Sur ces 31 : 15 fois mieux ou
+  // sauvées, 10 fois cassées, 4 sans effet, 2 imprécises. La retirer coûterait
+  // 6 bons rangements pour en réparer 8 — échange à perte : ON LA GARDE
+  // (décision Nico, 19/09). On borne seulement les deux cas où elle se trompe
+  // de manière DÉMONTRABLE.
+  //
+  // Les 10 échecs ont tous la même forme : le mot ne désigne pas l'objet mais
+  // son EMBALLAGE (« conservée en pochette de protection »), ses ACCESSOIRES
+  // (« comprend : … chargeur USB »), son CONTENU possible (« utilisable pour
+  // bijoux »), sa FINITION (« peinture brillante », « deux vis de fixation »),
+  // son SUJET (« gravure, céramique », la préface de « Jean Alesi ») ou une
+  // mention légale (« copyright Nintendo »).
+  //
+  // ── VOIE 4 : une description qui n'est PAS en français ne nourrit rien ────
+  // Cas fondateur, roehrricky24 le 19/09 : « blue and yellow PULL-tab bands »
+  // dans une description ANGLAISE a donné 🧶 « pull », donc Leboncoin
+  // « Mode > Vêtements », donc « Univers » et « Type d'article neuf » demandés
+  // pour un lot de cigares. « pull » n'est un vêtement qu'en français : la
+  // collision n'existe QUE parce qu'un texte anglais est relu par des règles
+  // françaises. Sur une description française, le cas ne se pose pas.
+  // Le verdict est rendu par _shared/langue.js, qui ne tranche que sur une
+  // certitude (≥ 3 mots-outils anglais ET 0 français) — un doute laisse tout
+  // en l'état.
+  //
+  // ── VOIE 2 : le mot de l'IA arbitre, quand il peut ────────────────────────
+  // Lens nomme l'objet (« Robot cuiseur multifonction », « Carte Pokémon
+  // Lanssorien », « chevalet de table bois »). Si ce nom, passé à NOS règles,
+  // rend une icône DIFFÉRENTE de celle de la passe 2, les deux se contredisent
+  // et c'est la description qui a tort : elle décrit le contexte, pas l'objet.
+  // Corrige 5 des 10 échecs mesurés, sans perdre un seul sauvetage.
+  //
+  // ⛔ ET LA RÈGLE QUI PROTÈGE LES SAUVETAGES, qui est le cœur de la voie : si
+  // nos règles ne connaissent PAS le mot de l'IA (« chapka », « fleece »,
+  // « Cigars »), la contradiction n'est pas PROUVABLE → ON NE BLOQUE PAS, la
+  // passe 2 garde la main. C'est ce qui conserve la chapka (#15), les Air
+  // Jordan (#18), le fleece (#23), les derbies (#24), la veste Gore-Tex (#25)
+  // et le manga (#17). Durcir ça en « l'IA a nommé, nous ne connaissons pas,
+  // donc on se tait » était la voie 3 : elle répare un cas de plus et fait
+  // retomber la chapka en « Divers > Autres ». ÉCARTÉE par Nico le 19/09.
+  const motCle = detectObjectKeywordDetail(frTitle, `${frDesc} ${marque}`);
+  const passe2Ecartee = motCle?.passe === 2 && (
+    estAnglaisAvere(frDesc) ||
+    (iconeDuMotIa != null && iconeDuMotIa !== motCle.icon)
+  );
+  if (motCle && !passe2Ecartee) {
+    // passe 1 = le titre, la source du vendeur : source « mot_cle », comme
+    // avant, MOT POUR MOT — le garde-fou n'écarte jamais un mot du titre et ne
+    // doit pas commencer aujourd'hui.
+    const source = motCle.passe === 1 ? "mot_cle" : "mot_cle_description";
+    return { icon: motCle.icon, source, iconeSansIa: motCle.icon };
+  }
 
   // ── LE MOT DE L'IA, PASSÉ À NOS RÈGLES AUDITÉES (2026-09-07 soir) ─────────
   // Depuis ce soir, generate-listing rend AUSSI le nom de l'objet en clair
@@ -513,11 +582,7 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // ⛔ Après le titre, jamais avant : le titre est la source du vendeur.
   // ⛔ Si nos règles ne connaissent pas le mot, il ne se passe RIEN ici — on
   //    ne devine pas, on retombe sur l'emoji comme avant.
-  const objetIa = String(aiObjet ?? "").trim();
-  if (objetIa) {
-    const iconeDuMot = detectObjectIconKeyword(objetIa, "");
-    if (iconeDuMot) return { icon: iconeDuMot, source: "mot_objet_ia", iconeSansIa: iconeDuMot };
-  }
+  if (iconeDuMotIa) return { icon: iconeDuMotIa, source: "mot_objet_ia", iconeSansIa: iconeDuMotIa };
 
   // Aucun mot-objet reconnu → on fait confiance à l'IA (si valide), exactement
   // là où detectObjectIcon retomberait sur un simple défaut de catégorie.
@@ -531,7 +596,14 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // Calculé AVANT de rendre l'icône de l'IA : c'est la seule valeur de repli
   // que le garde-fou accepte quand il refuse une icône devinée (autorité 3),
   // et elle vient de nos règles, jamais d'une seconde supposition.
-  const sansIa = detectObjectIcon(frTitle, `${frDesc} ${marque}`, categorie);
+  // ⚠️ SI LA PASSE 2 VIENT D'ÊTRE ÉCARTÉE, ELLE NE REVIENT PAS PAR LA BANDE.
+  // detectObjectIcon refait les DEUX passes : lui repasser la description
+  // rendrait exactement l'icône qu'on vient de refuser, et le garde-fou
+  // l'accepterait comme « repli sans l'IA » (autorité 3). Dans ce cas précis,
+  // ce que la fiche dit d'elle-même SANS la passe 2, c'est le défaut de type.
+  const sansIa = passe2Ecartee
+    ? detectObjectIcon(frTitle, "", categorie)
+    : detectObjectIcon(frTitle, `${frDesc} ${marque}`, categorie);
   if (aiIcon && aiIcon !== "📦" && VALID_OBJECT_ICONS.has(aiIcon))
     return { icon: aiIcon, source: "ia", iconeSansIa: sansIa };
 
