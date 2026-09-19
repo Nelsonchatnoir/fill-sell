@@ -9,6 +9,10 @@ import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-gua
 // fichier n'en possède aucune copie.
 import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
+// Verdict de langue sur la sortie du modèle. MÊME fichier que celui chargé par
+// l'app (ListingPreviewScreen) : la garde qui refuse de nourrir la passe 2 avec
+// une description anglaise et la traduction ci-dessous jugent à l'identique.
+import { estAnglaisAvere } from "../_shared/langue.js";
 // Préparation des images (2026-09-05) : mesure, réduction sous la limite de
 // l'API, écartement tracé. Détail complet et raisons dans le module.
 import { preparerPhotos, tracePhoto, type PhotoPreparee } from "./images.ts";
@@ -1752,6 +1756,78 @@ async function callClaude(apiKey: string, payload: object, beta?: string): Promi
   return r.json();
 }
 
+// ── LE FRANÇAIS EN SORTIE : GARANTI, PLUS SEULEMENT DEMANDÉ (2026-09-19) ────
+// La consigne de langue existe dans le prompt depuis le 28/07 (langueDirective,
+// adossée à `lang`) et elle est bien partie chez roehrricky24 le 19/09 — profil
+// lang='fr'. Le modèle l'a ignorée : « Lot of 10 Swisher Sweets Cigars » et une
+// description entièrement anglaise. RIEN ne relisait la langue de ce qui
+// revenait ; assainirSortie contrôle les fuites de jargon, les prix, l'état —
+// jamais la langue.
+//
+// MESURE sur 30 jours : 638 titres Lens, TOUS sur des profils lang='fr' ;
+// 11 descriptions anglaises avérées (1,8 % de celles qui en ont une), zéro
+// faux positif après relecture des 11. Ce n'est pas un volume, c'est une
+// promesse qui ne tient pas — et, pour la catégorie, une bombe à retardement :
+// une description anglaise relue par des règles de mots françaises a rangé un
+// lot de cigares en « Mode > Vêtements » (cf. _shared/langue.js).
+//
+// ⛔ LE PROMPT N'EST PAS TOUCHÉ, ni VERSION_PROMPT, ni la garde
+// « identification contredite », ni le plafond de remboursements. Ceci est un
+// appel EN PLUS, après coup, sur DEUX chaînes — jamais une reprise de scan,
+// donc jamais un second débit.
+//
+// CE QUI NE PART PAS DANS L'APPEL, et c'est le garde-fou : `marque`, `modele`,
+// `reference_fabricant`, `attributs_visibles`, la note utilisateur, les photos.
+// Un nom propre ne peut pas être abîmé par une traduction qu'il ne traverse
+// pas. Pour les deux chaînes qui partent, la consigne interdit nommément de
+// traduire les noms propres, marques, modèles, références et codes.
+//
+// EN CAS D'ÉCHEC (API en panne, JSON illisible, chaîne vide) : on rend null et
+// l'appelant GARDE l'anglais tel quel. Une fiche n'est jamais perdue pour une
+// traduction ratée — et la garde de catégorie (passe 2 refusée sur une
+// description anglaise) protège de toute façon le rangement.
+async function traduireEnFrancais(
+  apiKey: string,
+  textes: { titre: string; description: string },
+): Promise<{ titre: string; description: string; tokens: number } | null> {
+  const systeme =
+    "Tu traduis en FRANÇAIS le titre et la description d'une annonce de revente d'occasion.\n" +
+    "RÈGLES ABSOLUES :\n" +
+    "- Réponds UNIQUEMENT par un objet JSON {\"titre\":string,\"description\":string}, rien d'autre.\n" +
+    "- NE TRADUIS PAS les noms propres, les marques, les noms de modèles, les références, " +
+    "les codes produit ni les titres d'œuvres : recopie-les EXACTEMENT tels qu'ils apparaissent " +
+    "(« The North Face », « Fear of God », « Shattered Backboard », « Grand Theft Auto », « CC Cream »).\n" +
+    "- N'AJOUTE AUCUN FAIT. Tu traduis ce qui est écrit, tu ne complètes rien, tu ne retires rien : " +
+    "pas de matière, pas de mesure, pas de provenance, pas de garantie de fonctionnement inventées.\n" +
+    "- Garde la même structure et la même longueur approximative.\n" +
+    "- Si un texte est DÉJÀ en français, recopie-le à l'identique.";
+  try {
+    const data = await callClaude(apiKey, {
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1200,
+      system: systeme,
+      messages: [{
+        role: "user",
+        content: JSON.stringify({ titre: textes.titre, description: textes.description }),
+      }],
+    });
+    const texte: string = data?.content?.[0]?.text ?? "";
+    const debut = texte.indexOf("{");
+    const fin = texte.lastIndexOf("}");
+    if (debut < 0 || fin <= debut) return null;
+    const json = JSON.parse(texte.slice(debut, fin + 1)) as { titre?: unknown; description?: unknown };
+    const titre = typeof json.titre === "string" ? json.titre.trim() : "";
+    const description = typeof json.description === "string" ? json.description.trim() : "";
+    // Une traduction vide est un échec, pas un résultat : on garde l'anglais.
+    if (!titre || !description) return null;
+    const u = data?.usage ?? {};
+    return { titre, description, tokens: (u.input_tokens ?? 0) + (u.output_tokens ?? 0) };
+  } catch (e) {
+    console.warn("[lens-analysis] traduction FR impossible —", (e as Error)?.message ?? e);
+    return null;
+  }
+}
+
 /**
  * Le refus porte-t-il sur UN bloc image précis ? L'API nomme le chemin exact du
  * bloc fautif dans son message :
@@ -2667,6 +2743,45 @@ serve(async (req) => {
     if (margeNegativeRetiree) logMeta = { ...logMeta, marge_negative_retiree: true };
     if (fuiteVariable) logMeta = { ...logMeta, fuite_variable: true, fuite_identifiants: fuiteIdentifiants };
     if (snakeInconnu) logMeta = { ...logMeta, snake_inconnu: snakeInconnu };
+
+    // ── LA LANGUE DE SORTIE, RELUE ET CORRIGÉE (2026-09-19) ────────────────
+    // Placé ICI, après assainirSortie et AVANT empreinteSortie / la rédaction
+    // des annonces / la création de la fiche : la télémétrie, le titre de la
+    // fiche et le contexte envoyé aux rédacteurs voient tous le texte FINAL.
+    //
+    // Le verdict est rendu sur la DESCRIPTION, jamais sur le titre seul — un
+    // titre est court et c'est souvent un nom de produit (« Grand Theft Auto
+    // The Trilogy », « Captain Tsubasa », « Water Beauty CC Cream » ont tous
+    // une description française et ne doivent RIEN déclencher). Le détecteur
+    // ne compte que des mots-outils, jamais des mots de contenu : une marque
+    // ne produit pas d'article ni de préposition. Cf. _shared/langue.js et son
+    // autotest sur corpus réel (scripts/langue-selftest.mjs).
+    //
+    // L1 — on MARQUE toujours : `langue_sortie` dans usage_logs, pour que le
+    //      taux se suive jour après jour au lieu d'être découvert par un
+    //      inscrit de 4 h du matin.
+    // L2 — on TRADUIT, sauf pour un utilisateur en anglais (`_lang === "en"`),
+    //      pour qui l'anglais EST la sortie attendue.
+    const descriptionSortie = typeof itemData.description === "string" ? itemData.description : "";
+    if (estAnglaisAvere(descriptionSortie)) {
+      logMeta = { ...logMeta, langue_sortie: "en" };
+      if (_lang !== "en") {
+        const trad = await traduireEnFrancais(apiKey, {
+          titre: typeof itemData.titre === "string" ? itemData.titre : "",
+          description: descriptionSortie,
+        });
+        if (trad) {
+          itemData.titre = trad.titre;
+          itemData.description = trad.description;
+          logMeta = { ...logMeta, langue_sortie: "en_traduit", langue_traduction_tokens: trad.tokens };
+        } else {
+          // Échec assumé et TRACÉ : la fiche part en anglais, elle n'est pas
+          // perdue, et la garde de catégorie côté app refuse de toute façon de
+          // nourrir la passe 2 avec cette description.
+          logMeta = { ...logMeta, langue_sortie: "en_traduction_echouee" };
+        }
+      }
+    }
     // Sources de la fourchette : entrées incomplètes écartées, jamais complétées
     // (sans objet en identify — le champ y est reforcé à null juste dessous).
     assainirAnnoncesMarche(itemData);
