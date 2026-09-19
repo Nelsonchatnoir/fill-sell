@@ -6,6 +6,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // bundler du CLI Supabase l'embarque au deploy comme n'importe quel import
 // relatif. Même signature que côté app : detectObjectIcon(titre, description, type).
 import { detectObjectIcon, ALL_OBJECT_ICONS, ICON_LEGEND } from "../../../src/utils/shared.js";
+// Liste FERMÉE des CDN des plateformes dont on importe des annonces — UNE
+// seule source, partagée avec handler-watch (19/09 : la copie locale d'ici ne
+// connaissait que Vinted, celle du filet aussi, et un article importé de Beebs
+// partait en publication avec des URLs que la page de dépôt ne sait pas lire).
+import { estCdnPlateforme } from "../_shared/photos-rapatriement.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -611,31 +616,31 @@ serve(async (req) => {
     const BUCKET = "listing-photos";
 
     // ── Re-hébergement des photos EXTERNES (2026-08-06, « Failed to fetch ») ──
-    // Les articles importés du dressing (origine='vinted_sync') portent des
-    // URLs images1.vinted.net écrites telles quelles par la sync
-    // (background.js, frontière de propriété des photos). Le CDN Vinted ne
-    // sert AUCUN en-tête CORS : le fetch() des content scripts (urlToFile)
-    // échoue depuis les pages Leboncoin/Beebs/eBay en « Failed to fetch » —
-    // et un content script MV3 reste soumis au CORS de la page hôte quoi
-    // qu'autorise le manifeste. Le re-hébergement vit donc CÔTÉ SERVEUR (pas
-    // de CORS ici), AVANT la création du job : mêmes gardes que
-    // republish-capture-photos (hôtes Vinted FERMÉS — jamais un proxy
-    // ouvert —, taille plafonnée, timeout, séquentiel). Un échec par photo ne
+    // Un article importé d'un relevé porte les URLs de SA plateforme d'origine,
+    // écrites telles quelles par la sync (background.js, frontière de propriété
+    // des photos) : images1.vinted.net pour origine='vinted_sync', et depuis
+    // les relevés multiplateformes cdn.beebs.app, img.leboncoin.fr,
+    // i.ebayimg.com, le CloudFront d'Opla. Ces CDN ne servent pas tous
+    // d'en-tête CORS — Vinted jamais, Beebs non plus (mesuré le 19/09) : le
+    // fetch() des content scripts (urlToFile) échoue alors depuis les pages de
+    // dépôt en « Failed to fetch », et un content script MV3 reste soumis au
+    // CORS de la page hôte quoi qu'autorise le manifeste. Le re-hébergement
+    // vit donc CÔTÉ SERVEUR (pas de CORS ici), AVANT la création du job :
+    // mêmes gardes que republish-capture-photos (hôtes de plateformes FERMÉS —
+    // jamais un proxy ouvert —, taille plafonnée, timeout, séquentiel).
+    // ⚠️ Ce chemin ne couvre QUE les publications qui passent par la
+    // génération. Un « Publier » depuis le stock entre par le RPC
+    // spend_coins_and_publish (client) et ne passe pas ici : c'est le filet
+    // de handler-watch qui rattrape ce cas-là, et il partage la même liste
+    // d'hôtes pour qu'ils ne divergent plus. Un échec par photo ne
     // bloque pas la génération : l'URL d'origine est conservée, la
     // publication échouera avec le message actionnable des content scripts.
     // inventaire.photos est réaligné URL par URL (structure préservée —
     // strings nues de la sync ET objets {type,url} coexistent en base) : le
     // travail n'a lieu qu'UNE fois par article, et la frontière de propriété
     // de la sync (photosANous) protège ensuite ces URLs de tout écrasement.
-    const estUrlCdnExterne = (u: unknown): u is string => {
-      if (typeof u !== "string") return false;
-      try {
-        const url = new URL(u);
-        return url.protocol === "https:" && /(^|\.)vinted\.(net|fr|com)$/i.test(url.hostname);
-      } catch { return false; }
-    };
     let photosSource = photos as string[];
-    const externes = photosSource.filter(estUrlCdnExterne);
+    const externes = photosSource.filter(estCdnPlateforme);
     if (externes.length) {
       const MAX_OCTETS_PAR_PHOTO = 10 * 1024 * 1024;
       const REHOST_TIMEOUT_MS = 15_000;
