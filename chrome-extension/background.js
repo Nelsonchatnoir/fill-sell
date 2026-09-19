@@ -16607,7 +16607,52 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
 // un retrait et une republication ne concluent pas pareil. Rend { result,
 // tabId } ; lève comme avant (canal coupé, onglet indisponible) — l'appelant
 // attrape.
+// ── BEEBS : L'IDENTIFIANT EXACT AVANT LE TITRE (2026-09-19) ────────────────
+// Le retrait Beebs vise `/p/<id>` quand le job porte un lien exploitable, et
+// retombe sinon sur « Mes annonces » filtrée par titre — un repli FRAGILE :
+// homonymes, titres tronqués, et la page qui ne rend qu'une fraction du
+// dressing (60 sur 197 chez josephinecerni). C'est ce repli qui a produit les
+// 6 retraits morts de Joe0410 le 11/09, rangs 66 à 175 introuvables.
+// Depuis aujourd'hui l'index public donne l'objectID de CHAQUE annonce, page
+// comprise ou non : `annonces_plateforme` porte donc l'identifiant exact même
+// pour celles que « Mes annonces » ne montre pas. On le relit ICI, juste avant
+// de choisir la cible, et le repli par titre redevient ce qu'il aurait dû
+// rester : un repli.
+// ⛔ LECTURE SEULE, ET JAMAIS UNE DEVINETTE : on ne prend QUE la ligne
+//    rattachée au MÊME article, sur la MÊME plateforme, non disparue. Aucun
+//    rapprochement par titre, aucun « plus proche ». Rien trouvé → on ne
+//    change rien, le comportement d'avant à l'identique.
+async function enrichirCibleBeebs(job, accessToken) {
+  if (job.platform !== "beebs") return job;
+  if (/\/p\/\d+(?:[-/?#]|$)/.test(String(job.listing_url ?? ""))) return job; // déjà exact
+  if (job.inventaire_id == null) return job;
+  try {
+    const lignes = await restRequest(
+      `annonces_plateforme?select=listing_id,url&platform=eq.beebs&disparu_le=is.null` +
+      `&inventaire_id=eq.${encodeURIComponent(String(job.inventaire_id))}&limit=2`,
+      accessToken,
+    );
+    const ligne = (lignes ?? []).find((l) => /^\d+$/.test(String(l?.listing_id ?? "")));
+    if (!ligne) return job;
+    // Une seule ligne attendue : deux annonces Beebs vivantes pour un même
+    // article, c'est un doublon qu'on ne tranche pas ici.
+    if ((lignes ?? []).length > 1) {
+      console.warn(`[retrait][beebs] job ${job.id} : ${lignes.length} annonces vivantes pour l'article ${job.inventaire_id} — identifiant non retenu, repli inchangé`);
+      return job;
+    }
+    const url = `https://www.beebs.app/fr/p/${ligne.listing_id}`;
+    console.log(`[retrait][beebs] job ${job.id} : cible par IDENTIFIANT ${ligne.listing_id} (au lieu du repli par titre)`);
+    return { ...job, listing_url: url, platform_listing_id: String(ligne.listing_id) };
+  } catch (e) {
+    // Lecture ratée = on ne sait pas = comportement d'avant. Jamais un retrait
+    // empêché par cet enrichissement.
+    console.warn("[retrait][beebs] identifiant non relu (repli inchangé) :", e?.message ?? e);
+    return job;
+  }
+}
+
 async function executerRetraitViaHandler(job, accessToken) {
+  job = await enrichirCibleBeebs(job, accessToken);
   const target = DELETE_TARGETS[job.platform]?.(job);
   if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
