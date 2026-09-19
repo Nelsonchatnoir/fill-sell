@@ -918,9 +918,12 @@ serve(async (req) => {
     try {
       const pfDeJob = (j: { platform_fields: unknown }) =>
         ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      // Toutes les republications Leboncoin en attente, pas seulement celles
+      // sans catégorie : la capture porte dix champs, et chacun peut manquer
+      // indépendamment des autres.
       const aCombler = out.filter((j) =>
         j.action === "republish" && j.platform === "leboncoin" && j.status === "pending" &&
-        j.inventaire_id != null && !pfDeJob(j)["lbcCategoryPath"]
+        j.inventaire_id != null
       );
       if (aCombler.length) {
         const ids = [...new Set(aCombler.map((j) => j.inventaire_id))];
@@ -939,31 +942,80 @@ serve(async (req) => {
           const s = String(c ?? "").trim();
           if (s) categorieDe.set(inv, s);
         }
+        // ── ET PAS SEULEMENT LA CATÉGORIE (2026-09-19 soir) ─────────────────
+        // La capture porte DIX champs, pas un. Une annonce en ligne a son
+        // texte, son état, sa marque, sa couleur, sa matière, sa taille — tout
+        // cela est en base depuis le relevé, et la republication repartait
+        // sans rien. Mesuré : une annonce de Louis est restée RETIRÉE 13
+        // minutes sur « Leboncoin demande : État », alors que la capture
+        // portait « État neuf », valeur exacte de la liste relevée pour sa
+        // catégorie.
+        // ⛔ ON NE COMBLE QUE LE VIDE. Une valeur déjà posée — par l'app, par
+        //    la personne, par une réponse à un needs_user — n'est jamais
+        //    écrasée : elle est plus récente que le relevé.
+        // ⚠️ CE N'EST PAS LE DÉBLOCAGE. Mesuré sur les 26 republications en
+        //    file de ce compte : 2 passent, 24 restent bloquées, et toujours
+        //    sur Produit (12), Genre (7), Univers (5), Type (2), Quantité (1)
+        //    — les champs que la capture ne prend PAS. Tant que le relevé ne
+        //    garde pas `ad.attributes` entier, aucune hydratation serveur ne
+        //    peut les inventer. Ce bloc rend ce qu'on a, rien de plus.
+        const CHAMPS_CAPTURE: Array<[string, string]> = [
+          ["etat", "etat"], ["marque", "marque"], ["couleur", "couleur"],
+          ["matiere", "matiere"], ["taille", "taille"],
+        ];
+        const captureDe = new Map<number, Record<string, unknown>>();
+        for (const a of (annonces ?? [])) {
+          const inv = (a as { inventaire_id: number }).inventaire_id;
+          if (captureDe.has(inv)) continue;
+          const cap = (a as { capture?: unknown }).capture;
+          if (cap && typeof cap === "object") captureDe.set(inv, cap as Record<string, unknown>);
+        }
         let poses = 0;
         const sansCategorie: string[] = [];
         for (const j of aCombler) {
-          const brut = categorieDe.get(j.inventaire_id as number);
-          if (!brut) { sansCategorie.push(String(j.id).slice(0, 8)); continue; }
-          const chemin = cheminLbcDepuisFeuille(brut);
-          if (!chemin) { sansCategorie.push(`${String(j.id).slice(0, 8)} (« ${brut} » hors arbre)`); continue; }
+          const cap = captureDe.get(j.inventaire_id as number) ?? {};
           const pf = { ...pfDeJob(j) };
-          pf["lbcCategoryPath"] = chemin;
-          pf["categorie_origine"] = {
-            plateforme: "leboncoin", capturee: brut, chemin,
+          const repris: Record<string, string> = {};
+          const brut = categorieDe.get(j.inventaire_id as number);
+          if (!brut) sansCategorie.push(String(j.id).slice(0, 8));
+          else {
+            const chemin = cheminLbcDepuisFeuille(brut);
+            if (!chemin) sansCategorie.push(`${String(j.id).slice(0, 8)} (« ${brut} » hors arbre)`);
+            else if (!pf["lbcCategoryPath"]) { pf["lbcCategoryPath"] = chemin; repris["categorie"] = brut; }
+          }
+          for (const [cleCapture, clePf] of CHAMPS_CAPTURE) {
+            const v = String(cap[cleCapture] ?? "").trim();
+            if (!v) continue;
+            if (String(pf[clePf] ?? "").trim()) continue; // déjà posé : on n'écrase pas
+            pf[clePf] = v;
+            repris[clePf] = v;
+          }
+          // La description vit dans une COLONNE, pas dans platform_fields.
+          const descCapture = String(cap["description"] ?? "").trim();
+          const descManque = !String((j as { description?: unknown }).description ?? "").trim();
+          const nouvelleDesc = descManque && descCapture ? descCapture : null;
+          if (!Object.keys(repris).length && !nouvelleDesc) continue;
+          if (nouvelleDesc) repris["description"] = `${descCapture.length} caractères`;
+          pf["champs_repris_de_l_annonce"] = {
             le: new Date().toISOString(),
-            pose_par: "get-pending-jobs (catégorie de l'annonce en ligne, relevée)",
+            pose_par: "get-pending-jobs (annonce en ligne relevée — annonces_plateforme.capture)",
+            repris,
           };
+          const patch: Record<string, unknown> = { platform_fields: pf };
+          if (nouvelleDesc) patch["description"] = nouvelleDesc;
           const { error: uErr } = await userClient.from("cross_post_jobs")
-            .update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
+            .update(patch).eq("id", j.id).eq("status", "pending");
           if (uErr) {
-            console.warn(`[get-pending-jobs] catégorie d'origine : job ${String(j.id).slice(0, 8)} non écrit (${uErr.message}) — servi tel quel`);
+            console.warn(`[get-pending-jobs] champs de l'annonce : job ${String(j.id).slice(0, 8)} non écrit (${uErr.message}) — servi tel quel`);
             continue;
           }
           (j as unknown as Record<string, unknown>).platform_fields = pf;
+          if (nouvelleDesc) (j as unknown as Record<string, unknown>).description = nouvelleDesc;
           poses++;
+          console.log(`[get-pending-jobs] republication ${String(j.id).slice(0, 8)} complétée depuis l'annonce en ligne : ${Object.entries(repris).map(([k, v]) => `${k} ← « ${v} »`).join(" ; ")}`);
         }
         if (poses) {
-          console.log(`[get-pending-jobs] user=${user.id} : ${poses} republication(s) Leboncoin complétée(s) depuis la catégorie de l'annonce en ligne`);
+          console.log(`[get-pending-jobs] user=${user.id} : ${poses} republication(s) Leboncoin complétée(s) depuis l'annonce en ligne`);
         }
         if (sansCategorie.length) {
           console.warn(`[get-pending-jobs] user=${user.id} : ${sansCategorie.length} republication(s) Leboncoin sans catégorie retrouvable — ${sansCategorie.join(", ")}`);
@@ -971,6 +1023,66 @@ serve(async (req) => {
       }
     } catch (e) {
       console.warn(`[get-pending-jobs] catégorie d'origine : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
+    // ══ UN SEUL RETRAIT EN VOL, PAR COMPTE ET PAR PLATEFORME (2026-09-19) ═══
+    // L'invariant existait déjà — dans l'extension, à l'étape 'captured' de
+    // processRepublishJobPlateforme. Il a CÉDÉ ce soir : deux annonces de la
+    // même personne se sont retrouvées hors ligne en même temps.
+    // POURQUOI, et c'est une ligne : sa requête compte les jobs
+    //     status=in.(pending,processing) AND republish_step=eq.deleted
+    // — elle IGNORE 'needs_user'. Or un job à l'étape 'deleted' en needs_user
+    // est précisément une annonce retirée ET bloquée : la seule qui ne
+    // repartira pas toute seule. L'invariant fermait les yeux sur le seul cas
+    // qui compte vraiment. Mesuré : « Clé USB Angry birds » retirée depuis
+    // 13 min en needs_user (« Leboncoin demande : État »), pendant que
+    // « Sac à dos milan » était retirée à son tour.
+    //
+    // On le refait ICI, côté serveur, où il ne dépend plus de la version
+    // installée — et en comptant needs_user.
+    // ⛔ Ce n'est PAS la garde « sais-tu tout remplir ? » : celle-là aurait
+    //    retenu 24 des 26 republications en file de ce compte, alors que la
+    //    plupart aboutissent (Leboncoin pré-remplit son formulaire au
+    //    redépôt — 5 annonces recréées ce soir sont sorties complètes, avec
+    //    Produit, Univers et Genre, sans que nous les ayons fournis). Celle-ci
+    //    ne juge aucun champ : elle borne le dégât à UNE annonce à la fois.
+    // ⛔ On RETIENT, on ne requalifie pas : statut inchangé, aucune tentative
+    //    consommée, rien débité, annonce intacte.
+    try {
+      const pfR = (j: { platform_fields: unknown }) =>
+        ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      const vaRetirerMaintenant = out.filter((j) =>
+        j.action === "republish" && String(pfR(j)["republish_step"] ?? "a_capturer") === "captured");
+      if (vaRetirerMaintenant.length) {
+        const { data: enVol } = await userClient
+          .from("cross_post_jobs")
+          .select("id, platform, title, status")
+          .eq("user_id", user.id)
+          .eq("action", "republish")
+          .eq("platform_fields->>republish_step", "deleted")
+          .in("status", ["pending", "processing", "needs_user"]);
+        const horsLigneParPf = new Map<string, Array<{ titre: string; statut: string }>>();
+        for (const r of (enVol ?? [])) {
+          const row = r as { platform: string; title: string | null; status: string };
+          if (!horsLigneParPf.has(row.platform)) horsLigneParPf.set(row.platform, []);
+          horsLigneParPf.get(row.platform)!.push({ titre: String(row.title ?? "").slice(0, 40), statut: row.status });
+        }
+        const retenusRetrait = new Set<string>();
+        for (const j of vaRetirerMaintenant) {
+          const dejaHorsLigne = horsLigneParPf.get(j.platform) ?? [];
+          if (!dejaHorsLigne.length) continue;
+          retenusRetrait.add(String(j.id));
+          console.warn(
+            `[get-pending-jobs] user=${user.id} : retrait ${String(j.id).slice(0, 8)} (${j.platform}) RETENU — ` +
+            `${dejaHorsLigne.length} annonce(s) déjà hors ligne sur cette plateforme : ` +
+            dejaHorsLigne.map((d) => `« ${d.titre} » (${d.statut})`).join(", ") +
+            " — rien n'est retiré, aucune tentative consommée",
+          );
+        }
+        if (retenusRetrait.size) out = out.filter((j) => !retenusRetrait.has(String(j.id)));
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] garde « un seul retrait en vol » : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
     // ══ DEUX ARTICLES, UNE SEULE ANNONCE : ON NE RETIRE RIEN (2026-09-19) ═══
