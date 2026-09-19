@@ -775,12 +775,25 @@ export function ebayGenreRequired(icon) {
   return Object.prototype.hasOwnProperty.call(MODE, icon);
 }
 
+// ── LES DEUX SENS DU `null`, SÉPARÉS (2026-09-19) — cf. l'en-tête de
+// SANS_FEUILLE_DEFAUT dans vintedCategories.js. eBay est le moins touché des
+// quatre : l'audit du 19/07 a DÉJÀ donné une feuille « Autres » réelle aux
+// cinq icônes de défaut de type (🏠 1280, ⚡ 20715, 🎵 308, 🏆 32643,
+// 🌿 159913). Il ne reste que le filet générique, qui ne nomme aucun objet et
+// ne peut donc viser aucune famille — « pas encore prise en charge » plutôt
+// que « non vendable sur eBay », qui serait faux pour à peu près tout objet.
+const SANS_FEUILLE_DEFAUT = new Set([
+  "📦", // filet générique : objet non nommé, donc famille eBay indécidable
+]);
+
 /**
  * Statut de support eBay — dérivé des tables (même contrat que
  * vintedCategoryStatus) : "supported" | "unavailable" (null explicite) |
+ * "no_default" (branche réelle, aucune feuille par défaut sûre) |
  * "unmapped" (dont les NON_CRAWLÉ listés en fin de HORS_MODE).
  */
 export function ebayCategoryStatus(icon) {
+  if (SANS_FEUILLE_DEFAUT.has(icon)) return "no_default";
   if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) {
     return HORS_MODE[icon] ? "supported" : "unavailable";
   }

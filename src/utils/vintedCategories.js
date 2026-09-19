@@ -678,15 +678,44 @@ export function vintedGenreRequired(icon) {
   return Object.prototype.hasOwnProperty.call(MODE_ADULTE, icon);
 }
 
+// ── LES DEUX SENS DU `null`, SÉPARÉS (2026-09-19, dossier Louis THONET) ─────
+// Un `null` dans HORS_MODE dit tantôt « Vinted n'a pas cette branche »
+// (Auto-Moto, cardio), tantôt « la branche existe, mais on n'a pas de feuille
+// par défaut sûre pour un objet qu'aucun mot-clé ne nomme ». Le commentaire du
+// bloc « Icônes DÉFAUT de type » le dit déjà — « une feuille au hasard
+// casserait la publi » — mais les deux sortaient en "unavailable", dont le
+// texte affiché affirme « catégorie non disponible sur cette plateforme ».
+// C'était FAUX et mesuré : un vendeur à qui l'écran disait « non vendable sur
+// Vinted » avait 102 articles de cette famille VENDUS sur son propre compte
+// Vinted, et l'arbre archivé porte bien Maison [1918] > Décoration > Rangement
+// et organisation [1939], et Outils de cuisine > Stockage alimentaire [3523].
+// Ces icônes-là sortent donc en "no_default" : la case reste grisée À
+// L'IDENTIQUE, seul le motif change (« pas encore prise en charge », le texte
+// d'"unmapped" — qui est la vérité : c'est notre mapping qui manque).
+// ⛔ N'entrent ici QUE les icônes de DÉFAUT DE TYPE dont la branche Vinted
+// existe réellement. 🎵 n'y est pas et n'y sera pas : Vinted n'a que les
+// SUPPORTS (CD/vinyles), aucun instrument — son "unavailable" est vrai.
+const SANS_FEUILLE_DEFAUT = new Set([
+  "🏠", // Maison — branche réelle, aucune feuille fourre-tout (vérifié : les
+        // 124 « Autre(s) » de l'arbre sont tous sous les racines Mode)
+  "⚡", // Électroménager — Petits appareils de cuisine + Entretien existent ;
+        // seul le GROS électroménager est absent, et l'icône ne les distingue pas
+  "🌿", // Jardin — Maison > Extérieur et jardin existe (🪴 ✂️ ⛱️ y pointent)
+  "📦", // filet générique : objet non nommé, donc catégorie indécidable
+]);
+
 /**
  * Statut de support Vinted d'une icône — DÉRIVÉ des tables ci-dessus (aucune
  * liste parallèle) :
  *   "supported"   — au moins un chemin réel (validé contre le crawl archivé)
  *   "unavailable" — null explicite : absence CONFIRMÉE par crawl (ex: vélo
  *                   adulte, gros électroménager, Auto-Moto)
+ *   "no_default"  — la branche EXISTE, mais l'icône est un défaut de type :
+ *                   aucune feuille par défaut sûre (cf. SANS_FEUILLE_DEFAUT)
  *   "unmapped"    — aucune clé : catégorie pas encore mappée/crawlée
  */
 export function vintedCategoryStatus(icon) {
+  if (SANS_FEUILLE_DEFAUT.has(icon)) return "no_default";
   if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) {
     return HORS_MODE[icon] ? "supported" : "unavailable";
   }

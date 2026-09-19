@@ -589,13 +589,42 @@ export function beebsGenreRequired(icon) {
  * @returns {string[]|null} chemin catalogue Beebs, ou null si non mappé
  *   (icône hors périmètre Mode, genre absent ou non-Beebs)
  */
+// ── LES DEUX SENS DU `null`, SÉPARÉS (2026-09-19) — même règle que côté
+// Vinted, cf. l'en-tête de SANS_FEUILLE_DEFAUT dans vintedCategories.js.
+// Ici le tri est plus fin qu'il n'y paraît : dans le bloc « Icônes DÉFAUT de
+// type », 🎵 🏆 🌿 sont de VRAIES absences (Beebs n'a que 5 racines : Jeux,
+// Mode, Hygiène, Puériculture, Maison — ni Musique, ni Collection, ni Jardin),
+// tandis que 🏠 et ⚡ tombent sur une racine Maison bien réelle, dont les
+// feuilles sont seulement trop spécifiques pour un objet non nommé. Seuls
+// ces deux-là changent de motif, plus le filet 📦.
+// Mesuré le 19/09 : l'annonce « Rangement Blanc 12 pots & 12 couvercles
+// Multidélices » est EN LIGNE dans la boutique Beebs du vendeur à qui l'écran
+// répondait « non vendable sur Beebs ».
+const SANS_FEUILLE_DEFAUT = new Set([
+  "🏠", // Maison — racine réelle (Décoration, Jardin et bricolage, Valises,
+        // Petit électroménager), aucune feuille fourre-tout
+  "⚡", // Petit électroménager existe (Cuiseurs, Mixeurs, Yaourtières,
+        // Machines à café, Appareils de cuisson) — le défaut ne sait pas viser
+  "📦", // filet générique : objet non nommé, donc catégorie indécidable
+]);
+
+// ⚠️ RELEVÉ DU 19/09 À GARDER SOUS LA MAIN — un objet de RANGEMENT n'a pas de
+// rayon à lui sur Beebs : il hérite de CE QU'IL RANGE. Mesuré sur la boutique
+// d'un vendeur de rangements imprimés en 3D (46 annonces, lues par
+// annonces_plateforme) : 26 en « Maison > Petit électroménager > Yaourtières »
+// (rangements de pots de yaourtière) et 20 en « Jeux, jouets et loisirs > Jeux
+// de société » (calages de boîtes de jeu). Toute tentative future de donner
+// une feuille par défaut à un « rangement » se heurtera à ça : la bonne
+// réponse se demande à la personne, elle ne se devine pas.
+
 /**
  * Statut de support Beebs — dérivé des tables (même contrat que
- * vintedCategoryStatus). ⚠️ "unmapped" est fréquent ici : le crawl Beebs est
- * PARTIEL (racine Maison interrompue, cf. NON_CRAWLÉ en fin de HORS_MODE) —
- * ne pas le confondre avec une absence confirmée.
+ * vintedCategoryStatus, y compris "no_default"). ⚠️ "unmapped" est fréquent
+ * ici : le crawl Beebs est PARTIEL (racine Maison interrompue, cf. NON_CRAWLÉ
+ * en fin de HORS_MODE) — ne pas le confondre avec une absence confirmée.
  */
 export function beebsCategoryStatus(icon) {
+  if (SANS_FEUILLE_DEFAUT.has(icon)) return "no_default";
   if (Object.prototype.hasOwnProperty.call(HORS_MODE, icon)) {
     return HORS_MODE[icon] ? "supported" : "unavailable";
   }
