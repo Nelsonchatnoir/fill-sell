@@ -26,6 +26,7 @@ export default defineConfig([
         // ⚠️ Toute nouvelle clé de `define` doit être ajoutée ICI aussi.
         __FILLSELL_APP_BUILD__: 'readonly',
         __FILLSELL_EXT_MIN_BUILD__: 'readonly',
+        __FILLSELL_EXT_MIN_VERSION__: 'readonly',
       },
       parserOptions: {
         ecmaVersion: 'latest',
