@@ -63,6 +63,10 @@ const APP_BUILD_ID = typeof __FILLSELL_APP_BUILD__ !== 'undefined' ? __FILLSELL_
 // mécaniquement toutes les extensions à jour (faux positif confirmé 23/07 sur
 // le build parti en review Chrome Web Store).
 const EXT_MIN_BUILD = typeof __FILLSELL_EXT_MIN_BUILD__ !== 'undefined' ? __FILLSELL_EXT_MIN_BUILD__ : null;
+// Numéro de version du paquet désigné par EXT_MIN_BUILD (dérivé du registre
+// PUBLISHED_BUILD_IDS côté build, jamais saisi ici). null = on ne sait pas, et
+// alors l'annonce de présence de l'extension ne peut RIEN éteindre.
+const EXT_MIN_VERSION = typeof __FILLSELL_EXT_MIN_VERSION__ !== 'undefined' ? __FILLSELL_EXT_MIN_VERSION__ : null;
 const buildIdTimestamp = (id) => {
   const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/.exec(String(id ?? ''));
   return m ? Date.parse(m[1]) : null;
@@ -71,7 +75,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
-import { sonderAnnonceVinted, lireBoutiquesVinted } from './utils/vintedSync';
+import { sonderAnnonceVinted, lireBoutiquesVinted, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 // Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
 // annonce relevée au même titre qu'un dépôt « plus en ligne » → le bandeau
@@ -2304,8 +2308,42 @@ export default function App({ loginOnly = false }){
   // requis) : elle revient si l'extension change de build en restant obsolète,
   // OU si un nouveau commit extension bumpe l'exigence — jamais pour rien.
   const [extBannerDismissedFor,setExtBannerDismissedFor]=useState(()=>{try{return localStorage.getItem('fs_ext_banner_dismissed');}catch{return null;}});
+  // ── LA VERSION ANNONCÉE DANS LA PAGE, EN DIRECT (2026-09-19) ──────────────
+  // Cas fondateur, ornellaracano le 19/09 à 09:15 : extension mise à jour en
+  // 0.6.44 (build 2026-09-18T20:16:32Z, POSTÉRIEUR au minimum exigé), et la
+  // bannière toujours à l'écran. Elle a fait exactement ce qu'on lui demandait,
+  // et l'app continuait à lui dire le contraire — elle l'a fermée à la croix.
+  //
+  // POURQUOI : profiles.extension_build n'est stampé qu'au poll de l'extension
+  // (get-pending-jobs, POLL_INTERVAL_MINUTES = 2). Entre la mise à jour et ce
+  // poll, la base porte encore l'ANCIEN build ; et l'app, elle, ne relisait la
+  // base qu'au bout de 30 s (premier tick d'un setInterval, sans lecture
+  // immédiate). Le mensonge pouvait donc durer deux minutes et demie.
+  //
+  // LE SIGNAL DIRECT existait déjà et n'était pas utilisé ici : le content
+  // script annonce sa version DANS LA PAGE (window.postMessage __fillsellExt),
+  // spontanément à l'injection et à chaque ping. Aucune base, aucun délai.
+  //
+  // ⛔ RÈGLE : CE SIGNAL NE PEUT QU'ÉTEINDRE LA BANNIÈRE, JAMAIS L'ALLUMER.
+  // Une extension qui répond « 0.6.42 » ne doit pas déclencher un bandeau que
+  // la base ne demandait pas (le cas des installs non empaquetées, dont le
+  // build vaut littéralement '__FILLSELL_BUILD_ID__' et n'est comparable à
+  // rien). On ne gagne que de la réactivité, jamais de nouveaux faux positifs.
+  const [extVersionEnDirect,setExtVersionEnDirect]=useState(null);
+  useEffect(()=>{
+    if(isNative)return;
+    // ecouterPresenceExtension pingue DÉJÀ à la pose : le content script
+    // s'annonce souvent avant le montage, un écouteur posé après n'entendrait
+    // sinon jamais rien.
+    return ecouterPresenceExtension((v)=>{ if(v) setExtVersionEnDirect(String(v)); });
+    // isNative est une constante de module (pas un state) : pas une dépendance.
+  },[]);
+  // L'extension de CE navigateur s'est annoncée avec une version au moins égale
+  // au paquet minimal exigé : elle est à jour, on le sait AVANT la base.
+  const extAJourEnDirect=Boolean(EXT_MIN_VERSION&&extVersionEnDirect&&versionAuMoins(extVersionEnDirect,EXT_MIN_VERSION));
   const extensionOutdated=(()=>{
     if(isNative||isMobileViewport)return false;
+    if(extAJourEnDirect)return false;
     const seen=Date.parse(extensionLastSeenAt??'');
     if(!Number.isFinite(seen)||Date.now()-seen>30*24*60*60*1000)return false;
     const ext=buildIdTimestamp(extensionBuild);
@@ -2360,17 +2398,32 @@ export default function App({ loginOnly = false }){
   // extBannerVisible=false et le cleanup a déjà tout démonté.
   // SELECT ciblé sur les deux seules colonnes qui pilotent la bannière : un
   // fetchAll complet relirait ventes + inventaire toutes les 30 s pour rien.
+  // ⚠️ TROIS CORRECTIONS DU 19/09, toutes payées par le cas ornellaracano :
+  //   · LECTURE IMMÉDIATE. Le premier tick d'un setInterval tombe APRÈS le
+  //     délai : la bannière restait 30 s de plus même quand la base portait
+  //     déjà le bon build au moment où elle s'affichait.
+  //   · CADENCE À 10 s au lieu de 30. Deux colonnes, une ligne, et seulement
+  //     tant que la bannière est À L'ÉCRAN — donc chez les rares comptes
+  //     réellement en retard, jamais dans le parc à jour.
+  //   · RE-PING DE L'EXTENSION à chaque réveil. Le content script ne s'annonce
+  //     spontanément qu'à son injection ; sans ping, un onglet resté ouvert
+  //     n'entendrait plus rien. Le ping coûte un postMessage.
+  // Ce qu'on ne peut PAS raccourcir depuis l'app : les 2 min du poll de
+  // l'extension qui stampent la base. C'est le signal direct (extVersionEnDirect)
+  // qui couvre cet intervalle, pas ce timer.
   useEffect(()=>{
     if(!extBannerVisible||!user?.id) return;
     let arret=false,timer=null;
     const relire=async()=>{
+      if(arret) return;
+      pinguerExtension();
       const {data,error}=await supabase.from('profiles')
         .select('extension_build,extension_last_seen_at').eq('id',user.id).maybeSingle();
       if(arret||error||!data) return;
       setExtensionBuild(data.extension_build??null);
       setExtensionLastSeenAt(data.extension_last_seen_at??null);
     };
-    const demarrer=()=>{ if(timer===null) timer=setInterval(relire,30_000); };
+    const demarrer=()=>{ if(timer===null) timer=setInterval(relire,10_000); };
     const arreter=()=>{ if(timer!==null){ clearInterval(timer); timer=null; } };
     // Onglet caché : on ARRÊTE l'intervalle (pas seulement une lecture sautée)
     // — rien à rafraîchir pour un écran que personne ne regarde. Au retour, une
@@ -2379,9 +2432,15 @@ export default function App({ loginOnly = false }){
       if(document.visibilityState==='visible'){ relire(); demarrer(); }
       else arreter();
     };
-    if(document.visibilityState==='visible') demarrer();
+    // `focus` EN PLUS de `visibilitychange` : revenir depuis une AUTRE FENÊTRE
+    // Chrome (chrome://extensions, précisément ce que la bannière demande
+    // d'ouvrir) ne change pas toujours la visibilité de l'onglet — il ne
+    // déclenchait donc aucune relecture.
+    const onFocus=()=>{ if(document.visibilityState==='visible') relire(); };
+    if(document.visibilityState==='visible'){ relire(); demarrer(); }
     document.addEventListener('visibilitychange',onVisibilite);
-    return()=>{arret=true;arreter();document.removeEventListener('visibilitychange',onVisibilite);};
+    window.addEventListener('focus',onFocus);
+    return()=>{arret=true;arreter();document.removeEventListener('visibilitychange',onVisibilite);window.removeEventListener('focus',onFocus);};
   },[extBannerVisible,user?.id]);
   // ── Bundle périmé (2026-07-19, classe de bug c5fe1414) ────────────────────
   // Un onglet SPA longue vie garde son bundle en mémoire tant que personne ne
