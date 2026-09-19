@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
-import { Check, ChevronRight, Hand, AlertTriangle, Pause } from 'lucide-react';
+import { Check, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -28,6 +28,7 @@ import { useOplaAcces } from '../utils/oplaAcces';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
+import { FeuilleFile, FeuilleAttente } from '../components/FeuilleActivite';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
@@ -3877,19 +3878,25 @@ const activiteEnCours = (j) => !activiteFinie(j) && j.status !== 'needs_user'
   && !estArretUtilisateur(j);
 // Rang d'avancement — LE MÊME que celui qui remonte les cartes en tête de
 // liste (cf. tetesJobs) : le bandeau nomme donc l'article que la liste met en
-// premier, jamais un autre. Rang 4 = en attente de la bonne boutique Vinted :
-// rien ne tourne, il ne peut pas être l'article « en cours » tant qu'un autre
-// travaille réellement.
+// premier, jamais un autre.
+//   0 · EN TRAITEMENT — l'ordinateur travaille dessus MAINTENANT. Toujours
+//       devant, quelle que soit l'étape (demande de Nico, 19/09) : une annonce
+//       hors ligne en attente de recréation passait devant celle réellement en
+//       cours, et le premier article de la liste n'était pas celui qui bougeait.
+//   1 · hors ligne (étape 'deleted') — l'annonce est retirée et attend sa
+//       recréation : urgent, mais personne n'est dessus à cet instant.
+//   2 · relevée, en attente de son tour.
+//   3 · en file.
+//   4 · en attente de la bonne boutique Vinted — rien ne peut bouger.
 const rangActivite = (j) => {
+  if (j.status === 'processing') return 0;
   if (j.platform_fields?.attente_boutique) return 4;
   if (j.action === 'republish') {
     const step = repubStepDe(j);
-    if (step === 'deleted' || (step === 'captured' && j.status === 'processing')) return 0;
-    if (j.status === 'processing') return 1;
+    if (step === 'deleted') return 1;
     if (step === 'captured') return 2;
-    return 3;
   }
-  return j.status === 'processing' ? 1 : 3;
+  return 3;
 };
 // Estimation de durée pour n republications restantes — la formule É5
 // historique (~2 gestes espacés de 2 min + attentes 2-5 min ⇒ 5-7 min par
@@ -5941,26 +5948,50 @@ const StockTab = memo(function StockTab({
     });
   }, [activiteParCle]);
   // Le modèle affiché : UNE file, un article en cours, un compteur honnête.
+  // Le modèle affiché : UNE file, un article en cours, un compteur honnête.
   const activite = useMemo(() => {
     if (!fourneeCles?.size) return null;
-    const lignes = [];
+    const brut = [];
     for (const c of fourneeCles) {
       const j = activiteParCle.get(c);
-      if (j) lignes.push(j);
+      if (j) brut.push([c, j]);
     }
-    if (!lignes.length) return null;
-    const enCours = lignes.filter(activiteEnCours);
+    if (!brut.length) return null;
+    // L'ORDRE DE LA FEUILLE EST L'ORDRE DE TRAITEMENT : le rang d'abord, puis
+    // l'ancienneté CROISSANTE — ce qui est entré en file en premier en sort en
+    // premier. (Avant, l'égalité de rang se tranchait sur le job le plus
+    // récent : la file se lisait à l'envers.)
+    brut.sort(([, a], [, b]) => (rangActivite(a) - rangActivite(b))
+      || (Date.parse(a.created_at ?? 0) - Date.parse(b.created_at ?? 0)));
+    const enCours = brut.filter(([, j]) => activiteEnCours(j));
     if (!enCours.length) return null;
-    // L'article montré = le plus avancé dans le travail réel (rang), et à rang
-    // égal le plus récemment lancé — exactement la règle de la tête de liste.
-    const actif = enCours.slice().sort((a, b) =>
-      (rangActivite(a) - rangActivite(b))
-      || (Date.parse(b.created_at ?? 0) - Date.parse(a.created_at ?? 0)))[0];
+    const actif = enCours[0][1];
+    const fr = lang !== 'en';
+    const lignes = brut.map(([cle, j]) => ({
+      cle,
+      job: j,
+      live: j === actif,
+      fini: !activiteEnCours(j),
+      // Le type d'action reste visible, discret, sur la ligne de l'article.
+      kind: `${LABEL_PF[j.platform] ?? j.platform} · ${j.action === 'republish'
+        ? (fr ? 'republication' : 'repost')
+        : (fr ? 'dépôt' : 'listing')}`,
+      // Une phrase d'étape SEULEMENT pour celui qui tourne : c'est la seule
+      // ligne sur laquelle quelque chose est réellement en train de se passer.
+      // Jamais de pourcentage au grain du job — il serait inventé.
+      detail: j === actif
+        ? (j.action === 'republish'
+          ? (etapeRepublication(j, fr, repubPlafondReprise)?.titre ?? null)
+          : (j.status === 'processing'
+            ? (fr ? 'Ton ordinateur dépose l’annonce' : 'Your computer is posting the listing')
+            : null))
+        : null,
+    }));
     // Arrêtables : la MÊME démonstration qu'avant (republishAnnulable), lue sur
     // la fournée. Une publication n'y entre jamais — le helper exige
     // action='republish' — donc le bouton dit toujours vrai.
-    const annulables = lignes.filter(republishAnnulable);
-    const encoreEnVol = lignes.filter((j) => j.action === 'republish'
+    const annulables = brut.map(([, j]) => j).filter(republishAnnulable);
+    const encoreEnVol = brut.filter(([, j]) => j.action === 'republish'
       && !activiteFinie(j) && !republishAnnulable(j)).length;
     // Ordinateur muet : même seuil que la pastille orpheline (10 min sans
     // heartbeat). Il ne CACHE rien — il fait taire l'estimation de durée, qui
@@ -5968,19 +5999,90 @@ const StockTab = memo(function StockTab({
     const hb = Date.parse(extensionStatus?.lastSeenAt ?? '');
     const hbMuet = !Number.isFinite(hb) || Date.now() - hb > 10 * 60 * 1000;
     return {
-      total: lignes.length,
-      faites: lignes.length - enCours.length,
+      lignes,
+      total: brut.length,
+      faites: brut.length - enCours.length,
       restantes: enCours.length,
       actif, annulables, encoreEnVol, hbMuet,
     };
-  }, [fourneeCles, activiteParCle, extensionStatus?.lastSeenAt]);
-  // « N annonces attendent une action » : le nombre vient du SERVEUR
-  // (get-pending-jobs), comme les ids du filtre — les deux disent le même
-  // périmètre, tout le compte et pas seulement le lot du moment. Repli sur le
-  // compte local du bandeau tant que le serveur n'a pas répondu.
-  const annoncesEnAttente = Number.isFinite(attenteServeur?.total)
-    ? attenteServeur.total
-    : (repubBandeau?.aRelancer ?? 0);
+  }, [fourneeCles, activiteParCle, extensionStatus?.lastSeenAt, repubPlafondReprise, lang]);
+  // L'état d'une ligne, pour la pastille de la feuille. Une republication a
+  // déjà son vocabulaire et ses couleurs (etapeRepublication, partagés avec la
+  // pastille de carte) — on ne les redéfinit pas ici. Un dépôt n'en avait
+  // aucun : il en reçoit un, dans la même grammaire.
+  const etatLigneActivite = useCallback((j) => {
+    if (!j) return null;
+    const fr = lang !== 'en';
+    if (j.action === 'republish') {
+      const e = etapeRepublication(j, fr, repubPlafondReprise, null, fichesParId.get(String(j.inventaire_id)));
+      if (e) return e;
+    }
+    const bleu = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
+    const vert = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
+    const ambre = { fond: '#FFF6E3', bord: '#EED9A6', encre: '#8A6100' };
+    const rouge = { fond: '#FEF2F2', bord: '#FECACA', encre: '#B91C1C' };
+    const gris = { fond: '#F7F5EF', bord: '#E7E3D8', encre: '#5C6560' };
+    if (j.status === 'published' || j.status === 'sold') return { ...vert, court: fr ? 'En ligne' : 'Live' };
+    if (j.status === 'failed') return { ...rouge, court: fr ? 'Pas partie' : 'Not sent' };
+    if (j.status === 'needs_user') return { ...ambre, court: fr ? 'À compléter' : 'To complete' };
+    if (j.status === 'cancelled') return { ...gris, court: fr ? 'Arrêtée' : 'Stopped' };
+    if (j.status === 'dry_run_completed') return { ...gris, court: fr ? 'Test à blanc' : 'Dry run' };
+    if (j.status === 'processing') return { ...bleu, court: fr ? 'Dépôt…' : 'Posting…' };
+    return { ...gris, court: fr ? 'En file' : 'Queued' };
+  }, [lang, repubPlafondReprise, fichesParId]);
+  // ── CE QUI ATTEND UNE ACTION DE TA PART (2026-09-19) ──────────────────────
+  // UN seul endroit pour les DEUX causes qui demandent un geste : l'annonce à
+  // COMPLÉTER (il manque une information) et celle qui N'EST PAS PARTIE. Le
+  // bandeau « N annonce attend une action » ne couvrait que la première ; la
+  // seconde n'était annoncée nulle part en haut de page.
+  // L'unité est la LIGNE (article × plateforme × action), comme côté serveur :
+  // « deux plateformes bloquées sur un même article = deux annonces à
+  // débloquer ». Un article supprimé entre-temps sort : on ne propose pas un
+  // geste sur un fantôme.
+  // Un arrêt demandé et un gel Livres ne demandent RIEN : ils n'entrent pas.
+  const attenteAction = useMemo(() => {
+    const fr = lang !== 'en';
+    const lignes = [];
+    for (const [cle, j] of activiteParCle) {
+      if (estArretUtilisateur(j) || j.platform_fields?.gel_livres_le) continue;
+      const cause = j.status === 'needs_user' ? 'completer'
+        : j.status === 'failed' ? 'echec' : null;
+      if (!cause) continue;
+      if (!fichesParId.has(String(j.inventaire_id))) continue;
+      lignes.push({
+        cle,
+        job: j,
+        cause,
+        // La cause EST le sous-titre de la ligne : on ne fait plus ouvrir une
+        // carte pour savoir ce qui manque.
+        cause_texte: (j.error ? humanizeJobError(j, lang) : null)
+          ?? (cause === 'completer'
+            ? (fr ? 'Il manque une information' : 'A detail is missing')
+            : (fr ? 'Elle n’est pas partie' : 'It didn’t go out')),
+        // Réparable DANS l'app (mini-éditeur) ou seulement chez la plateforme ?
+        completable: cause === 'completer' && needsUserOuvrable(j),
+      });
+    }
+    if (!lignes.length) return null;
+    // Les échecs d'abord — une annonce qui n'est pas partie passe avant une
+    // information manquante — puis la plus récente.
+    lignes.sort((a, b) => (a.cause === b.cause ? 0 : a.cause === 'echec' ? -1 : 1)
+      || (Date.parse(b.job.created_at ?? 0) - Date.parse(a.job.created_at ?? 0)));
+    const echecs = lignes.filter((l) => l.cause === 'echec').length;
+    return {
+      lignes,
+      total: lignes.length,
+      echecs,
+      aCompleter: lignes.length - echecs,
+      // La couleur du bandeau suit le PLUS GRAVE de ce qu'il contient.
+      gravite: echecs > 0 ? 'echec' : 'completer',
+      ids: [...new Set(lignes.map((l) => String(l.job.inventaire_id)))],
+    };
+  }, [activiteParCle, fichesParId, lang]);
+  // Les deux feuilles du haut de page. Affichage seul : elles n'écrivent rien,
+  // elles rouvrent les portes qui existent déjà.
+  const [fileOuverte, setFileOuverte] = useState(false);
+  const [attenteOuverte, setAttenteOuverte] = useState(false);
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
 
@@ -6056,9 +6158,9 @@ const StockTab = memo(function StockTab({
     // Le filtre se retire tout seul quand sa catégorie se vide (relances
     // faites) : jamais une liste vide inexpliquée.
     if (!repubFiltre) return;
-    if (repubFiltre === 'relancer' && annoncesEnAttente === 0) setRepubFiltre(null);
+    if (repubFiltre === 'relancer' && !attenteAction) setRepubFiltre(null);
     if (repubFiltre === 'arretees' && (repubBandeau?.arretees ?? 0) === 0) setRepubFiltre(null);
-  }, [repubFiltre, repubBandeau, annoncesEnAttente]);
+  }, [repubFiltre, repubBandeau, attenteAction]);
   // Liste réellement AFFICHÉE : filtre du bandeau s'il est actif, sinon la
   // liste visible avec les hors-ligne remontés en tête (même au-delà du
   // slice de 10 : un article hors ligne ne peut pas être caché par « Voir
@@ -6073,12 +6175,15 @@ const StockTab = memo(function StockTab({
   // rien — la v1 triait tout le périmètre sur created_at, pending et
   // processing confondus, et un lot créé d'un coup ne se départage pas sur
   // cette clé). Rangs, du haut vers le bas :
-  //   0 · RETRAIT ou RECRÉATION (travail réel : processing @ captured, ou
-  //       étape deleted quel que soit le statut — l'annonce est hors ligne)
-  //   1 · RELEVÉ (processing @ a_capturer) — et un dépôt publish processing
-  //   2 · RELEVÉE, en attente de son tour (pending @ captured)
-  //   3 · EN FILE (pending @ a_capturer, publish pending)
-  // À rang égal : le job démarré le plus récemment d'abord (created_at max).
+  // ── LES RANGS VIVENT DANS rangActivite (2026-09-19) ──────────────────────
+  // UNE seule règle, partagée avec le bandeau du haut : la première carte de
+  // la liste et l'article nommé par le bandeau sont forcément le même.
+  //   0 · EN TRAITEMENT — l'ordinateur travaille dessus MAINTENANT, toujours
+  //       en premier (demande de Nico, 19/09). Avant, une annonce hors ligne
+  //       en attente de recréation passait DEVANT celle réellement en cours.
+  //   1 · hors ligne (étape deleted) · 2 · relevée, en attente · 3 · en file.
+  // À rang égal : le plus ANCIEN d'abord — ce qui est entré en file en premier
+  // en sort en premier. (C'était l'inverse : la file se lisait à l'envers.)
   // ANTI-SAUT : l'ORDRE est un état, recalculé UNIQUEMENT quand la SIGNATURE
   // (ensemble des articles + rang de chacun) change — un job démarre, change
   // d'étape ou se termine — jamais au simple rafraîchissement de
@@ -6095,20 +6200,11 @@ const StockTab = memo(function StockTab({
         if (j.action === "delete") continue;
         if (j.status !== "pending" && j.status !== "processing") continue;
         if (j.platform_fields?.attente_boutique) continue;
-        let r;
-        if (j.action === "republish") {
-          const step = repubStepDe(j);
-          if (step === "recreated") continue; // fini (pastille « En ligne »)
-          if (step === "deleted" || (step === "captured" && j.status === "processing")) r = 0;
-          else if (j.status === "processing") r = 1;
-          else if (step === "captured") r = 2;
-          else r = 3;
-        } else {
-          r = j.status === "processing" ? 1 : 3;
-        }
+        if (j.action === "republish" && repubStepDe(j) === "recreated") continue; // fini (pastille « En ligne »)
+        const r = rangActivite(j);
         if (!(invId in rang) || r < rang[invId]) rang[invId] = r;
         const t = Date.parse(j.created_at ?? "") || 0;
-        if (!(invId in ts) || t > ts[invId]) ts[invId] = t;
+        if (!(invId in ts) || t < ts[invId]) ts[invId] = t;
       }
     }
     const ids = Object.keys(rang);
@@ -6117,7 +6213,7 @@ const StockTab = memo(function StockTab({
     // aucun re-rendu de liste).
     if (sig === tetesSigRef.current) return;
     tetesSigRef.current = sig;
-    setTetesJobs(ids.sort((a, b) => (rang[a] - rang[b]) || (ts[b] - ts[a])));
+    setTetesJobs(ids.sort((a, b) => (rang[a] - rang[b]) || (ts[a] - ts[b])));
   }, [jobsByInventaire]);
 
   // ── TRIS ET FILTRES DU STOCK (2026-09-08) ─────────────────────────────────
@@ -6183,7 +6279,7 @@ const StockTab = memo(function StockTab({
       // la liste en montrait M — c'est exactement la contradiction qu'on
       // supprime. Repli sur la lecture locale (dernier job republish de
       // l'article) tant que le serveur n'a pas répondu.
-      const ids = attenteServeur?.inventaire_ids;
+      const ids = attenteAction?.ids ?? attenteServeur?.inventaire_ids;
       if (Array.isArray(ids)) {
         const set = new Set(ids.map(String));
         return stockFiltre.filter(i => set.has(String(i.id)));
@@ -6216,7 +6312,7 @@ const StockTab = memo(function StockTab({
       .filter(Boolean);
     if (!enCours.length) return base;
     return [...enCours, ...base.filter(i => !setT.has(String(i.id)))];
-  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur,
+  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur, attenteAction,
       stockRetenu, showAllStock, triStock]);
 
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
@@ -7252,7 +7348,22 @@ const StockTab = memo(function StockTab({
                son encart vit EN DESSOUS, séparé, avec sa couleur d'alerte.
             Le bandeau ne s'affiche pas du tout quand il n'y a rien à dire :
             pas d'activité, pas d'arrêtée, pas de test à blanc, pas d'orpheline. */}
-        {(activite||repubBandeau?.arretees>0||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(
+        {/* ── UN SEUL BANDEAU « EN COURS » (2026-09-19) ────────────────────
+            Dépôts ET republications dans la MÊME file, sous le MÊME compteur.
+            Avant, le titre disait « Republications » et une publication lancée
+            n'apparaissait nulle part : l'utilisateur déposait une annonce et
+            l'écran ne lui montrait RIEN.
+            Ce qui se lit en une seconde : QUOI tourne (la miniature + le
+            titre), OÙ (la plateforme), COMBIEN il en reste. Rien d'autre.
+            Le type d'action (« dépôt » / « republication ») vit sur la ligne
+            de l'article, discret — jamais en titre de bandeau.
+            AU TAP : la feuille, qui porte TOUTE la file (l'ordre réel, l'état
+            de chaque annonce) et le bouton d'arrêt. Le bandeau reste à UNE
+            ligne ; c'est la feuille qui explique.
+            ⛔ « Ce qui attend une action » n'est PAS de la progression : son
+               bandeau vit EN DESSOUS, séparé, avec sa couleur d'alerte.
+            Rien à dire ⇒ rien à l'écran. */}
+        {(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(
           <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:20,padding:"12px 14px"}}>
             {activite&&(()=>{
               const fiche=fichesParId.get(String(activite.actif.inventaire_id))??null;
@@ -7270,7 +7381,8 @@ const StockTab = memo(function StockTab({
                 ?(lang==='fr'?'republication':'repost')
                 :(lang==='fr'?'dépôt':'listing');
               return(
-                <>
+                <button type="button" onClick={()=>setFileOuverte(true)} aria-haspopup="dialog"
+                  style={{display:"block",width:"100%",textAlign:"left",border:"none",background:"transparent",padding:0,margin:0,font:"inherit",color:"inherit",cursor:"pointer"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
                     {/* Miniature : la photo DÉJÀ en base, telle quelle. Pas de
                         photo (1 705 articles du parc n'en ont aucune) ou URL
@@ -7278,7 +7390,7 @@ const StockTab = memo(function StockTab({
                         une image cassée ni un carré vide. */}
                     <div style={{width:48,height:48,borderRadius:12,overflow:"hidden",flexShrink:0,background:"#F7F5EF",border:"1px solid #EFECE3",display:"flex",alignItems:"center",justifyContent:"center"}}>
                       {photo
-                        ?<img src={photo} alt="" loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                        ?<GalleryPhoto url={photo} alt="" fallback={<PlatformLogo platform={activite.actif.platform} size={20}/>}/>
                         :<PlatformLogo platform={activite.actif.platform} size={20}/>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
@@ -7303,39 +7415,15 @@ const StockTab = memo(function StockTab({
                         <div style={{fontSize:10.5,color:"#8A8578",fontWeight:500,whiteSpace:"nowrap",marginTop:2}}>{estimation}</div>
                       )}
                     </div>
+                    <ChevronRight size={16} style={{flexShrink:0,color:"#8A8578"}}/>
                   </div>
                   <div role="progressbar" aria-valuemin={0} aria-valuemax={activite.total} aria-valuenow={activite.faites}
                     style={{height:4,borderRadius:999,background:"#F1EEE6",marginTop:11,overflow:"hidden"}}>
                     <div style={{width:`${pct}%`,height:"100%",borderRadius:999,background:"linear-gradient(90deg,#2F9E90,#1B6E62)",transition:"width .6s ease"}}/>
                   </div>
-                </>
+                </button>
               );
             })()}
-            {/* ── ARRÊTER LA VAGUE (07/09/2026, demande Ornella) ─────────────
-                Effet INCHANGÉ (arreterRepublications, mêmes jobs, mêmes
-                gardes). Ce qui change : le nombre est lu sur LA FOURNÉE, le
-                même ensemble que le compteur ci-dessus — plus deux périmètres
-                qui s'écartent en silence. Le singulier est écrit (« Arrêter la
-                republication en attente ») : « les 1 republication » était faux.
-                Rendu volontairement CALME : reprendre la main sur sa propre
-                file n'est pas un incident. */}
-            {activite?.annulables?.length>0&&(
-              <button type="button" onClick={()=>{setRepubArretBilan(null);setRepubArret({annulables:activite.annulables,encoreEnVol:activite.encoreEnVol});}}
-                style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginTop:12,
-                  border:"1px solid #E7E3D8",background:"transparent",color:"#5C6560",borderRadius:12,
-                  padding:"10px 12px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
-                <Pause size={14} style={{flexShrink:0}}/>
-                <span style={{flex:1,minWidth:0}}>
-                  {lang==='fr'
-                    ?(activite.annulables.length>1
-                      ?`Arrêter les ${activite.annulables.length} republications en attente`
-                      :'Arrêter la republication en attente')
-                    :(activite.annulables.length>1
-                      ?`Stop the ${activite.annulables.length} queued reposts`
-                      :'Stop the queued repost')}
-                </span>
-              </button>
-            )}
             {/* Retour COURT après l'arrêt — une ligne, ton posé, et le nombre
                 exact. La mention des « encore en cours » n'apparaît que s'il y
                 en a : on ne fabrique pas une réserve pour rien. */}
@@ -7357,24 +7445,13 @@ const StockTab = memo(function StockTab({
                   :`${repubBandeau.dryRuns} dry run${repubBandeau.dryRuns>1?'s':''} finished`}
               </div>
             )}
-            {/* Arrêtées : ligne CONSERVÉE — sans elle un échec serait invisible
-                ici. Tap → filtre la liste. */}
-            {repubBandeau?.arretees>0&&(
-              <button onClick={()=>{const on=repubFiltre!=='arretees';setRepubFiltre(on?'arretees':null);if(on)sauterAuxArticles();}}
-                style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginTop:12,border:`1px solid ${repubFiltre==='arretees'?"#5C6560":"#E7E3D8"}`,background:repubFiltre==='arretees'?"#5C6560":"#F7F5EF",color:repubFiltre==='arretees'?"#fff":"#5C6560",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
-                <span style={{flex:1,minWidth:0}}>
-                  {repubBandeau.arretees} {lang==='fr'
-                    ?`republication${repubBandeau.arretees>1?'s':''} arrêtée${repubBandeau.arretees>1?'s':''}`
-                    :`stopped repost${repubBandeau.arretees>1?'s':''}`}
-                </span>
-                <ChevronRight size={15} style={{flexShrink:0}}/>
-              </button>
-            )}
-            {repubFiltre==='arretees'&&(
-              <div style={{fontSize:11.5,color:"#8A8578",marginTop:6}}>
-                {lang==='fr'?'Liste filtrée — re-touche le bouton pour tout réafficher.':'List filtered — tap the button again to show everything.'}
-              </div>
-            )}
+            {/* (La ligne « N republications arrêtées » a été RETIRÉE le 19/09 :
+                un échec se répare, il appartient donc au bandeau « ce qui
+                attend une action » juste en dessous, qui le nomme et porte le
+                geste. Le laisser ici aurait dit deux fois la même chose, à deux
+                endroits, avec deux comptes différents. Les republications
+                arrêtées SANS geste attendu — gel Livres, arrêt demandé —
+                gardent leur pastille sur la carte de l'article.) */}
             {/* Recréation ORPHELINE : c'est une alerte de compte (ordinateur
                 muet alors qu'une annonce est hors ligne), pas un état
                 d'avancement. */}
@@ -7390,32 +7467,52 @@ const StockTab = memo(function StockTab({
             )}
           </div>
         )}
-        {/* ── « N annonces attendent une action » — ENCART À PART (19/09) ────
-            C'est une ALERTE, pas de la progression : elle ne se fond pas dans
-            le bandeau d'activité et ne disparaît plus AVEC lui. Le 19/09 à
-            22:33, une annonce attendait une action, la pastille de l'onglet
-            l'annonçait — et la page ne montrait rien, parce que cette ligne
-            vivait à l'intérieur d'un bandeau qui n'était pas monté.
-            Le nombre vient du SERVEUR, comme les ids du filtre. */}
-        {annoncesEnAttente>0&&(
-          <div style={{background:"#fff",border:"1px solid #EED9A6",borderRadius:20,padding:"12px 14px"}}>
-            <button onClick={()=>{const on=repubFiltre!=='relancer';setRepubFiltre(on?'relancer':null);if(on)sauterAuxArticles();}}
-              style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",border:`1px solid ${repubFiltre==='relancer'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='relancer'?"#8A6100":"#FFF6E3",color:repubFiltre==='relancer'?"#fff":"#8A6100",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
-              <Hand size={14} style={{flexShrink:0}}/>
-              <span style={{flex:1,minWidth:0}}>
-                {lang==='fr'
-                  ?`${annoncesEnAttente} annonce${annoncesEnAttente>1?'s attendent':' attend'} une action`
-                  :`${annoncesEnAttente} listing${annoncesEnAttente>1?'s await':' awaits'} your action`}
-              </span>
-              <ChevronRight size={15} style={{flexShrink:0}}/>
-            </button>
-            {repubFiltre==='relancer'&&(
-              <div style={{fontSize:11.5,color:"#8A8578",marginTop:6}}>
-                {lang==='fr'?'Liste filtrée — re-touche le bouton pour tout réafficher.':'List filtered — tap the button again to show everything.'}
+        {/* ── « CE QUI ATTEND UNE ACTION DE TA PART » (19/09) ────────────────
+            UN bandeau pour les DEUX causes qui demandent un geste : l'annonce
+            à COMPLÉTER et celle qui N'EST PAS PARTIE. Le bandeau « N annonce
+            attend une action » ne couvrait que la première, et il vivait DANS
+            le bandeau d'activité — donc il disparaissait avec lui (le 19/09 à
+            22:33 : pastille d'onglet à 1, page muette).
+            La couleur suit le PLUS GRAVE de ce qu'il contient : ambre tant
+            qu'il n'y a que des « à compléter », ROUGE dès qu'une annonce n'est
+            pas partie. Le sous-titre compte par cause — on sait ce qui nous
+            attend avant d'ouvrir.
+            Au tap : la feuille, où chaque ligne porte SA cause et SON geste.
+            Avant, le tap filtrait la liste et il fallait encore ouvrir chaque
+            carte pour savoir ce qui manquait. */}
+        {attenteAction&&(()=>{
+          const rouge=attenteAction.gravite==='echec';
+          const encre=rouge?"#B91C1C":"#8A6100";
+          const fond=rouge?"#FEF2F2":"#FFF6E3";
+          const bord=rouge?"#FECACA":"#EED9A6";
+          const {total,echecs,aCompleter}=attenteAction;
+          const sous=[
+            echecs>0?(lang==='fr'
+              ?`${echecs} n’${echecs>1?'ont':'a'} pas été publiée${echecs>1?'s':''}`
+              :`${echecs} didn’t go out`):null,
+            aCompleter>0?(lang==='fr'?`${aCompleter} à compléter`:`${aCompleter} to complete`):null,
+          ].filter(Boolean).join(' · ');
+          return(
+            <button type="button" onClick={()=>setAttenteOuverte(true)} aria-haspopup="dialog"
+              style={{display:"block",width:"100%",textAlign:"left",background:fond,border:`1px solid ${bord}`,color:encre,
+                borderRadius:20,padding:"12px 13px",font:"inherit",cursor:"pointer"}}>
+              <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}>
+                <span style={{width:30,height:30,borderRadius:9,flexShrink:0,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {rouge?<AlertTriangle size={15}/>:<Hand size={15}/>}
+                </span>
+                <span style={{flex:1,minWidth:0}}>
+                  <span style={{display:"block",fontSize:13.5,fontWeight:700,letterSpacing:"-0.1px",lineHeight:1.35}}>
+                    {lang==='fr'
+                      ?`${total} annonce${total>1?'s attendent':' attend'} une action de ta part`
+                      :`${total} listing${total>1?'s are':' is'} waiting on you`}
+                  </span>
+                  <span style={{display:"block",fontSize:11.5,marginTop:2,opacity:0.85}}>{sous}</span>
+                </span>
+                <ChevronRight size={16} style={{flexShrink:0,opacity:0.7}}/>
               </div>
-            )}
-          </div>
-        )}
+            </button>
+          );
+        })()}
         {/* ── Actualiser mon dressing — TOUT EN HAUT du contenu (27/08).
             Monté UNE seule fois, hors de tout ternaire vide/rempli : le
             composant porte l'état du run (sonde extension, poll de
@@ -10374,6 +10471,37 @@ const StockTab = memo(function StockTab({
           (portail, carte blanche 20 px) : aucun composant exotique.
           Le bouton d'action est TEAL comme les autres actions de l'app, pas
           rouge : c'est une reprise de contrôle, pas une destruction. */}
+      {/* ── LES DEUX FEUILLES DU HAUT DE PAGE (2026-09-19) ──────────────────
+          Ouvertes au tap sur leur bandeau. Elles portent leur propre portail
+          (règle des couches, utils/modale.js) — ne jamais les rendre ici sans.
+          AFFICHAGE SEUL : chaque geste rouvre une porte qui existe déjà —
+          la confirmation d'arrêt, le mini-éditeur « À compléter », la modale
+          d'échec, le filtre de liste. */}
+      {fileOuverte&&activite&&(
+        <FeuilleFile
+          lang={lang}
+          lignes={activite.lignes}
+          total={activite.total}
+          faites={activite.faites}
+          estimation={!repubPlafondEtat?.retenue&&!activite.hbMuet?estimationRepub(activite.restantes):null}
+          annulables={activite.annulables}
+          fiche={(j)=>fichesParId.get(String(j?.inventaire_id))??null}
+          etatDe={etatLigneActivite}
+          onArreter={()=>{setFileOuverte(false);setRepubArretBilan(null);setRepubArret({annulables:activite.annulables,encoreEnVol:activite.encoreEnVol});}}
+          onFermer={()=>setFileOuverte(false)}
+        />
+      )}
+      {attenteOuverte&&attenteAction&&(
+        <FeuilleAttente
+          lang={lang}
+          lignes={attenteAction.lignes}
+          fiche={(j)=>fichesParId.get(String(j?.inventaire_id))??null}
+          onCompleter={(job)=>{setAttenteOuverte(false);setNeedsUserJob(job);}}
+          onVoirEchec={(job)=>{setAttenteOuverte(false);setFailJobModal(job);}}
+          onFiltrerListe={()=>{setAttenteOuverte(false);setRepubFiltre('relancer');sauterAuxArticles();}}
+          onFermer={()=>setAttenteOuverte(false)}
+        />
+      )}
       {repubArret&&createPortal(
         <div onClick={()=>!repubArretEnCours&&setRepubArret(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(16,32,27,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px",width:"min(92vw,420px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",fontFamily:"inherit"}}>
