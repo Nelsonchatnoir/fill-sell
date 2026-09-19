@@ -33,6 +33,7 @@
     "selftest:passe2-description": "node scripts/passe2-description-selftest.mjs",
     "selftest:opla-cablage": "node scripts/opla-cablage-selftest.mjs",
     "selftest:opla-catalogue": "node scripts/opla-catalogue-selftest.mjs",
+    "selftest:opla-resolution": "deno run --allow-read scripts/opla-resolution-selftest.ts",
     "gen:opla-catalogue": "node scripts/gen-opla-catalogue.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",
     "selftest:leboncoin-vendu": "node scripts/leboncoin-vendu-selftest.mjs"
