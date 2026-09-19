@@ -32,7 +32,7 @@ import { oplaNoeud } from "../_shared/opla-catalogue.ts";
 // La RÉSOLUTION de la catégorie Opla (2026-09-18) : l'arbre est déjà là, la
 // fiche aussi — et l'extension 0.6.42 déployée consomme ce qu'on pose ici
 // (opla.js:701 lit oplaCategoryCode, opla.js:479 sort dès que c'est une feuille).
-import { cheminLisible, normaliserTailleOpla, optionsFeuilles, resoudreCategorieOpla } from "../_shared/opla-resolution.ts";
+import { cheminLisible, cleFourche, normaliserTailleOpla, optionsFeuilles, resoudreCategorieOpla } from "../_shared/opla-resolution.ts";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -3652,10 +3652,154 @@ serve(async (req) => {
           }
           return null; // racine non genrée : on ne pose rien
         };
+
+        // ── LA MÊME QUESTION NE SE POSE QU'UNE FOIS (2026-09-19) ──────────
+        // Compte Amiral, en direct : deux jobs Opla en needs_user à trois
+        // minutes d'intervalle, MÊME question, MÊMES deux options —
+        // « Culture et Loisirs › Rangement de collection › Autres rangements »
+        // et « Jeux et jouets › Jeux de société ». Il a une SÉRIE entière de
+        // ces inserts (vert, rose, noir, blanc, bleu…) : la question allait se
+        // reposer à chaque couleur. Elle est légitime la PREMIÈRE fois ; elle
+        // ne l'est plus la deuxième.
+        //
+        // LA CLÉ, ET POURQUOI C'EST CELLE-LÀ : l'ENSEMBLE DES FEUILLES
+        // PROPOSÉES, codes triés (« BOARD_GAMES|HC_STORAGE_OTHER »).
+        //   · C'est LA QUESTION elle-même. Deux articles qui produisent la
+        //     même liste voient la même modale, au mot près : rejouer la
+        //     réponse n'est pas une déduction, c'est la même réponse à la même
+        //     question. Une feuille de plus ou de moins ⇒ autre clé ⇒ on
+        //     redemande.
+        //   · Le MOT d'objet ne marche PAS, et c'est mesuré sur CE compte : la
+        //     même série a produit « insert de rangement » (17:26, une seule
+        //     feuille, résolue), « bac de rangement » (18:01, résolue) puis
+        //     « rangement pour jeu de société » (18:07 et 18:10, deux
+        //     feuilles). L'IA reformule d'un article à l'autre ; la fourche,
+        //     elle, ne bouge pas. Mémoriser le mot, c'est reposer la question
+        //     à chaque synonyme.
+        //   · La CATÉGORIE SOURCE ne marche pas davantage : l'ancre est nulle
+        //     sur les quatre jobs (aucun pouvoir de distinction), et quand elle
+        //     existe elle couvre des centaines de feuilles — elle répondrait
+        //     pour des questions jamais posées.
+        //
+        // ⛔ PAR COMPTE, JAMAIS PARTAGÉE — profiles.platform_settings.opla, lu
+        //    et écrit par userClient (RLS « auth.uid() = id »). On ne passe
+        //    SURTOUT PAS par un catalogue commun : c'est la contamination du
+        //    parc par un témoin isolé qu'on a passé la journée du 18/09 à
+        //    fermer.
+        // ⛔ ON NE DÉDUIT JAMAIS UNE CATÉGORIE QU'IL N'A PAS CHOISIE : la
+        //    valeur rejouée doit être l'un des candidats DU JOUR. Si la
+        //    fourche a bougé, la question repart.
+        //
+        // LA SOURCE : la LISTE QU'IL AVAIT SOUS LES YEUX (« oplaCategoryAsk »,
+        // posée ici ou par l'extension) ET sa réponse (« oplaCategoryChoice »,
+        // confirmée par « needsUserResolved » — la seule trace qui distingue
+        // « il a répondu » de « on a servi » : la mémoire ne peut donc pas se
+        // nourrir d'elle-même). Les deux ne coexistent sur le job que pendant
+        // UNE fenêtre : ce passage-ci. L'extension les efface au suivant
+        // (opla.js, « categorieRetenue »). D'où la récolte ICI et pas ailleurs
+        // — et c'est ce qui lui fait rattraper AUSSI les questions que
+        // l'extension a posées toute seule, sans un octet de plus sur le job.
+        const OPLA_MEM_MAX = 50;
+        type OplaMem = { code: string; titre: string; options: string[]; mot: string | null; le: string };
+        const oplaMemoire = new Map<string, OplaMem>();
+        const oplaARetenir = new Map<string, OplaMem>();
+        // La clé vit dans _shared/opla-resolution.ts (`cleFourche`) : la pose
+        // et la relecture DOIVENT la calculer pareil, sinon la mémoire ne se
+        // retrouve jamais elle-même. Un selftest la verrouille.
+        const optionsDuJob = (pf: Record<string, unknown>): Array<{ code: string; title: string }> => {
+          const ask = pf.oplaCategoryAsk;
+          const brut = (ask && typeof ask === "object") ? (ask as Record<string, unknown>).options : null;
+          if (!Array.isArray(brut)) return [];
+          return brut
+            .map((o) => {
+              const e = (o && typeof o === "object") ? (o as Record<string, unknown>) : {};
+              return { code: String(e.code ?? "").trim(), title: String(e.title ?? "").trim() };
+            })
+            .filter((o) => o.code && o.title);
+        };
+        // ⚠️ Un job en needs_user ne porte pas de réponse fraîche et n'est pas
+        //    exécuté : ni récolte ni rejeu dessus. Les jobs déjà en attente se
+        //    débloquent par le chemin normal, jamais par cette mémoire.
+        const oplaVivants = depotsOpla.filter((j) => String(j.status ?? "") !== "needs_user");
+        try {
+          const besoin = oplaVivants.some((j) => {
+            const pf = ((j.platform_fields ?? {}) as Record<string, unknown>);
+            const c = String(pf.oplaCategoryCode ?? "").trim();
+            return !c || !oplaNoeud(c)?.feuille;
+          });
+          if (besoin) {
+            const { data: prof } = await userClient
+              .from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+            const rangees = ((prof?.platform_settings as Record<string, unknown> | null)?.opla as Record<string, unknown> | undefined)?.categories;
+            if (rangees && typeof rangees === "object") {
+              for (const [cle, v] of Object.entries(rangees as Record<string, unknown>)) {
+                const e = (v && typeof v === "object") ? (v as Record<string, unknown>) : null;
+                const code = String(e?.code ?? "").trim();
+                // Une feuille disparue du référentiel n'est plus une réponse :
+                // on l'ignore et la question repart. Le serveur Opla accepte
+                // une catégorie inexistante en 200 et produit une annonce
+                // silencieusement morte (établi au lot 1) — jamais par nous.
+                if (!code || !oplaNoeud(code)?.feuille) continue;
+                oplaMemoire.set(cle, {
+                  code,
+                  titre: String(e?.titre ?? cheminLisible(code)),
+                  options: Array.isArray(e?.options) ? (e!.options as unknown[]).map((t) => String(t)) : [],
+                  mot: e?.mot != null ? String(e.mot) : null,
+                  le: String(e?.le ?? ""),
+                });
+              }
+              if (oplaMemoire.size) {
+                console.log(`[get-pending-jobs] mémoire catégories Opla user=${user.id} : ${oplaMemoire.size} question(s) déjà tranchée(s) — ${[...oplaMemoire].map(([c, e]) => `${c} → ${e.code}`).join(" ; ")}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] mémoire catégories Opla : lecture impossible (${String((e as Error)?.message ?? e)}) — la question sera posée comme avant`);
+        }
+
         for (const j of depotsOpla) {
           const pf = ((j.platform_fields ?? {}) as Record<string, unknown>);
           const attrs = attrsParArticle.get(Number(j.inventaire_id));
           const trace: Record<string, unknown> = {};
+          const vivant = String(j.status ?? "") !== "needs_user";
+
+          // ── LA RÉCOLTE : IL VIENT DE RÉPONDRE, ON RETIENT ─────────────────
+          // Trois conditions, toutes nécessaires :
+          //   · `oplaCategoryChoice` présent = réponse FRAÎCHE, pas encore
+          //     consommée par l'extension (elle la met à null au passage
+          //     suivant) — c'est notre unique fenêtre ;
+          //   · `needsUserResolved.oplaCategoryChoice` = c'est bien LUI qui a
+          //     tranché (l'app l'écrit au geste « ✋ Compléter »), pas nous ;
+          //   · la réponse est l'un des LIBELLÉS de la liste montrée, sinon on
+          //     ne sait pas de quelle feuille il parle. C'est ce troisième
+          //     point qui écarte les réponses de l'ancienne forme — « Hommes »,
+          //     « Accessoires », « Vêtements », relevées en base sur 6 des 7
+          //     réponses du parc : des choix de NIVEAU, pas de feuille. Les
+          //     rejouer serait répondre à une autre question que celle posée.
+          if (vivant) {
+            const choix = String(pf.oplaCategoryChoice ?? "").trim();
+            const res = (pf.needsUserResolved && typeof pf.needsUserResolved === "object")
+              ? (pf.needsUserResolved as Record<string, unknown>) : null;
+            const tranche = String(res?.["oplaCategoryChoice"] ?? "").trim();
+            const posees = optionsDuJob(pf);
+            if (choix && tranche && posees.length > 1) {
+              const dit = posees.find((o) => o.title.toLowerCase() === choix.toLowerCase());
+              if (dit && oplaNoeud(dit.code)?.feuille) {
+                const cle = cleFourche(posees);
+                const e: OplaMem = {
+                  code: dit.code, titre: dit.title,
+                  options: posees.map((o) => o.title),
+                  mot: String(pf.categorie_objet_ia ?? "").trim() || null,
+                  le: new Date().toISOString(),
+                };
+                oplaARetenir.set(cle, e);   // la plus récente gagne : il a le droit de changer d'avis
+                oplaMemoire.set(cle, e);    // …et elle sert dès CE passage aux autres jobs du lot
+                console.log(`[get-pending-jobs] mémoire catégories Opla ${String(j.id).slice(0, 8)} : réponse retenue « ${dit.title} » pour la question ${cle}`);
+              } else if (!dit) {
+                console.log(`[get-pending-jobs] mémoire catégories Opla ${String(j.id).slice(0, 8)} : réponse « ${choix} » hors de la liste posée — appliquée à ce job, jamais mémorisée`);
+              }
+            }
+          }
 
           // ── LA CATÉGORIE D'ABORD : TOUT LE RESTE EN DÉPEND (2026-09-18) ────
           // Mesure de Nico : la chemise H&M a une catégorie résolue et tout est
@@ -3691,21 +3835,34 @@ serve(async (req) => {
               pf.oplaCategoryCode = r.code;
               trace.oplaCategoryCode = { valeur: r.code, avant: codeCourant || null, source: `arbre Opla → ${cheminLisible(r.code)}` };
             } else if (r.candidats.length) {
-              // ⛔ ON NE PROPOSE QUE DES FEUILLES. C'est la règle : si seules
-              //    les feuilles sont déposables, seules les feuilles
-              //    apparaissent dans la liste. L'extension relit
-              //    `oplaCategoryAsk` en PRIORITÉ ABSOLUE (opla.js:706-712) et
-              //    accepte le code qu'elle y trouve — donc une feuille profonde
-              //    répond en UN geste, là où on brûlait trois paliers.
-              pf.oplaCategoryAsk = {
-                ancre: null,
-                options: optionsFeuilles(r.candidats),
-                le: new Date().toISOString(),
-              };
-              trace.oplaCategoryAsk = {
-                valeur: `${r.candidats.length} feuilles`, avant: null,
-                source: `arbre Opla — question posée sur des feuilles (${r.etapes.at(-1) ?? "ambiguïté"})`,
-              };
+              const options = optionsFeuilles(r.candidats);
+              const cle = cleFourche(options);
+              const deja = vivant ? oplaMemoire.get(cle) : undefined;
+              // ── IL A DÉJÀ TRANCHÉ CETTE QUESTION-LÀ ────────────────────────
+              // ⛔ La garde qui rend ce rejeu honnête : la feuille mémorisée
+              //    doit être l'un des candidats D'AUJOURD'HUI. La clé le
+              //    garantit déjà (même ensemble de codes), on le vérifie quand
+              //    même — c'est l'invariant, il doit être lisible dans le code
+              //    et pas seulement dans un commentaire.
+              if (deja && r.candidats.some((f) => f.code === deja.code)) {
+                pf.oplaCategoryCode = deja.code;
+                trace.oplaCategoryCode = {
+                  valeur: deja.code, avant: codeCourant || null,
+                  source: `mémoire du compte — votre réponse du ${deja.le.slice(0, 10)} à cette même question (${options.length} feuilles : ${cle})`,
+                };
+              } else {
+                // ⛔ ON NE PROPOSE QUE DES FEUILLES. C'est la règle : si seules
+                //    les feuilles sont déposables, seules les feuilles
+                //    apparaissent dans la liste. L'extension relit
+                //    `oplaCategoryAsk` en PRIORITÉ ABSOLUE (opla.js:706-712) et
+                //    accepte le code qu'elle y trouve — donc une feuille profonde
+                //    répond en UN geste, là où on brûlait trois paliers.
+                pf.oplaCategoryAsk = { ancre: null, options, le: new Date().toISOString() };
+                trace.oplaCategoryAsk = {
+                  valeur: `${r.candidats.length} feuilles`, avant: null,
+                  source: `arbre Opla — question posée sur des feuilles (${r.etapes.at(-1) ?? "ambiguïté"})`,
+                };
+              }
             }
           }
 
@@ -3752,6 +3909,44 @@ serve(async (req) => {
           }
         }
         if (oplaCompletes) console.log(`[get-pending-jobs] user=${user.id} jobs Opla complétés depuis la fiche : ${oplaCompletes}`);
+
+        // ── ON RANGE CE QU'IL VIENT DE TRANCHER ───────────────────────────
+        // ⛔ RELECTURE JUSTE AVANT L'ÉCRITURE : `platform_settings` porte
+        //    l'adresse Leboncoin, les réglages eBay, les créneaux… Écrire
+        //    depuis la copie lue en haut du bloc écraserait ce qu'un autre
+        //    onglet y aurait posé entre-temps. La fenêtre reste non nulle (un
+        //    second poll simultané peut perdre l'écriture) : le pire est que
+        //    la question se repose UNE fois de plus. Jamais une valeur fausse.
+        // ⛔ `.select()` OBLIGATOIRE : un UPDATE filtré par RLS rend 0 ligne
+        //    SANS erreur — sans lui, on journaliserait un enregistrement qui
+        //    n'a pas eu lieu (le faux « ✅ » de SousPagePreferences).
+        if (oplaARetenir.size) {
+          try {
+            const { data: prof } = await userClient
+              .from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+            const reglages = ((prof?.platform_settings && typeof prof.platform_settings === "object")
+              ? prof.platform_settings : {}) as Record<string, unknown>;
+            const opla = ((reglages.opla && typeof reglages.opla === "object") ? reglages.opla : {}) as Record<string, unknown>;
+            const cats = ((opla.categories && typeof opla.categories === "object") ? { ...(opla.categories as Record<string, unknown>) } : {}) as Record<string, unknown>;
+            for (const [cle, e] of oplaARetenir) cats[cle] = e;
+            // Plafond : au-delà, on jette les plus ANCIENNES réponses. Une
+            // question oubliée se repose ; une colonne JSON qui enfle, non.
+            const triees = Object.entries(cats)
+              .sort((a, b) => String((b[1] as Record<string, unknown>)?.le ?? "").localeCompare(String((a[1] as Record<string, unknown>)?.le ?? "")))
+              .slice(0, OPLA_MEM_MAX);
+            const { data: ecrit, error: errEcrit } = await userClient
+              .from("profiles")
+              .update({ platform_settings: { ...reglages, opla: { ...opla, categories: Object.fromEntries(triees) } } })
+              .eq("id", user.id).select("id");
+            if (errEcrit || !ecrit?.length) {
+              console.warn(`[get-pending-jobs] mémoire catégories Opla : rien d'enregistré (${errEcrit?.message ?? "0 ligne"}) — la question se reposera`);
+            } else {
+              console.log(`[get-pending-jobs] mémoire catégories Opla user=${user.id} : ${oplaARetenir.size} réponse(s) enregistrée(s), ${triees.length} en mémoire`);
+            }
+          } catch (e) {
+            console.warn(`[get-pending-jobs] mémoire catégories Opla : écriture impossible (${String((e as Error)?.message ?? e)}) — la question se reposera`);
+          }
+        }
       }
     } catch (e) {
       console.warn(`[get-pending-jobs] complément Opla depuis la fiche : ${String((e as Error)?.message ?? e)} — jobs servis tels quels, comme avant`);
