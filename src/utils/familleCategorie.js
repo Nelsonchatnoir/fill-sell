@@ -78,6 +78,16 @@ const RACINES = {
     "Beauté, bien-être, parfums": "beaute",
     "Auto, moto - pièces, accessoires": "vehicules",
     "Animalerie": "animaux",
+    // ── Racine RELEVÉE EN PROD et absente de cette table (2026-09-19) ──────
+    // Lue dans annonces_plateforme.capture sur des annonces eBay réelles ;
+    // sans elle, familleDeChemin rend null et le garde-fou de famille devient
+    // permissif sur toute la branche.
+    // « Céramiques, verres » : vaisselle et objets de déco. Notre propre arbre
+    // range l'équivalent en « Maison > Décoration d'intérieur > Scultures,
+    // figurines » — même famille, on ne l'invente pas.
+    // (« High-tech », l'autre racine relevée, n'est PAS ici : c'est un
+    // REGROUPEMENT dont la famille dépend du niveau 2 — cf. familleDeChemin.)
+    "Céramiques, verres": "maison",
   },
   beebs: {
     "Mode": "mode", "Jeux, jouets et loisirs": "loisirs", "Hygiène et beauté": "beaute",
@@ -123,13 +133,43 @@ export function familleDeChemin(plateforme, chemin) {
   const c = Array.isArray(chemin) ? chemin.map((s) => String(s ?? "").trim()) : [];
   if (!c.length) return null;
   const [racine, niveau2 = ""] = c;
-  if (plateforme === "vinted") {
+  // ── RACINES DE GENRE : Vinted ET OPLA (2026-09-19) ────────────────────────
+  // La règle « la racine est un genre, c'est le niveau 2 qui dit la famille »
+  // n'existait que pour Vinted. Opla a EXACTEMENT les mêmes racines de genre —
+  // « Femmes », « Hommes », « Enfants » — et sa table RACINES les laisse dehors
+  // pour la même raison. Mais personne n'avait écrit son niveau 2 : toute
+  // feuille de mode Opla rendait donc `null`.
+  // MESURÉ le 19/09 : 550 des 886 feuilles Opla sans famille, et 44 des 47
+  // catégories d'origine relevées sans famille sont des racines de genre Opla
+  // (Femmes 21, Enfants 18, Hommes 5). Famille inconnue = garde-fou PERMISSIF
+  // (familleDeLObjet ne filtre plus rien, plausibiliteDuChemin laisse passer) :
+  // c'est la classe de faute du 02/09, sur toute la mode Opla.
+  // Les libellés de niveau 2 d'Opla sont ceux de l'arbre relevé, en français —
+  // « Vêtements », « Vêtements pour filles », « Vêtements pour garçons »,
+  // « Chaussures », « Sacs », « Accessoires » : la regex de Vinted les couvre
+  // déjà toutes. On l'étend, on n'en écrit pas une deuxième.
+  if (plateforme === "vinted" || plateforme === "opla") {
     if (/^(femmes|hommes|enfants)$/i.test(racine)) {
       if (/v[êe]tements|chaussures|^sacs?$|accessoires|bijoux/i.test(niveau2)) return "mode";
       if (/beaut|soins/i.test(niveau2)) return "beaute";
       return null;
     }
-    if (/^électronique$/i.test(racine) && /jeux vid[ée]o|consoles/i.test(niveau2)) return "loisirs";
+  }
+  if (plateforme === "vinted"
+    && /^électronique$/i.test(racine) && /jeux vid[ée]o|consoles/i.test(niveau2)) return "loisirs";
+  // ── eBay « High-tech » : un REGROUPEMENT, pas une famille (2026-09-19) ────
+  // Notre arbre relevé n'a pas cette racine : il porte directement « Jeux
+  // vidéo, consoles », « Informatique, réseaux », « Image, son »,
+  // « Photo, caméscopes », « Téléphonie, mobilité ». Le fil d'Ariane du SITE,
+  // lui, les range toutes sous « High-tech » — et c'est ce fil-là qu'on lit
+  // dans annonces_plateforme.capture. La famille est donc celle du NIVEAU 2,
+  // qui est exactement l'une des racines déjà connues de la table.
+  // ⛔ Surtout pas « High-tech → electronique » à plat : les 4 captures
+  //    relevées sont toutes « High-tech > Jeux vidéo, consoles », qui vaut
+  //    LOISIRS. À plat, chacune serait déclarée hors famille à tort
+  //    (electronique ne tolère rien d'autre qu'elle-même).
+  if (plateforme === "ebay" && /^high.?tech$/i.test(racine)) {
+    return RACINES.ebay[niveau2] ?? null;
   }
   if (plateforme === "leboncoin" && racine === "Électronique" && /consoles|jeux vid[ée]o/i.test(niveau2)) return "loisirs";
   return RACINES[plateforme]?.[racine] ?? null;
