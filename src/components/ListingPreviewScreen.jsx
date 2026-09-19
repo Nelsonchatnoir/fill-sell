@@ -174,9 +174,14 @@ const PLATEFORMES_ADRESSE_LBC = ["leboncoin", "beebs"];
 // pousserait l'utilisateur à chercher une autre catégorie — il n'y en a pas,
 // c'est le PRODUIT qui est interdit. Une case grise muette, elle, se lit comme
 // un bug.
+// "no_default" (2026-09-19) partage le texte d'"unmapped", et c'est exact :
+// dans les deux cas c'est NOTRE mapping qui manque, pas la catégorie de la
+// plateforme. L'entrée est écrite en toutes lettres plutôt que laissée au
+// repli de supportMessage — un motif affiché ne doit jamais dépendre d'un ??.
 const SUPPORT_MESSAGE_KEY = {
   prohibited: "platformProhibited",
   unavailable: "platformUnavailable",
+  no_default: "platformUnmapped",
   unmapped: "platformUnmapped",
 };
 const supportMessage = (t, support, platformLabel) =>
