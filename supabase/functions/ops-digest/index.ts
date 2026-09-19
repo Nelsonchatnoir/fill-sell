@@ -329,6 +329,45 @@ serve(async (req) => {
   //              illisibles) — rare, une ligne suffit ;
   //   'info'     (run repris) — routinier : journalisé, JAMAIS remonté, le
   //              silence du digest doit rester sain.
+  // ── 11e (2026-09-19) : LE POIDS DES PHOTOS PAR COMPTE ────────────────────
+  // Personne n'avait jamais regardé le stockage : 13 Go, 32 858 fichiers,
+  // ~4,8 Go/mois, et 25 comptes qui portent 72 % du poids. `releve_stockage_
+  // photos()` journalise (idempotent par jour) les comptes au-dessus du seuil
+  // de LEUR palier ; on remonte ici ceux du jour.
+  // ⛔ ALERTE SEULEMENT. Rien n'est bloqué, rien n'est supprimé, aucun
+  //    téléversement n'est refusé. Les seuils vivent en base
+  //    (stockage_photos_seuils) et se changent par un UPDATE.
+  // ⛔ ON JOURNALISE TOUS LES JOURS, ON NE REMONTE QUE LES FRANCHISSEMENTS
+  //    NOUVEAUX. Un compte durablement au-dessus de son seuil enverrait sinon
+  //    un mail chaque matin pour toujours — et le silence du digest doit
+  //    rester sain (même doctrine que les gardes 'info' de la sync dressing).
+  //    L'état complet reste lisible dans stockage_photos_alertes et dans la
+  //    vue v_stockage_photos_par_compte.
+  const stockageAlertes: string[] = [];
+  try {
+    await supabase.rpc("releve_stockage_photos");
+    const paris = (d: Date) => new Date(d.getTime() + 2 * 3600 * 1000).toISOString().slice(0, 10);
+    const auj = paris(new Date());
+    const hier = paris(new Date(Date.now() - 24 * 3600 * 1000));
+    const [{ data: sa }, { data: sh }] = await Promise.all([
+      supabase.from("stockage_photos_alertes")
+        .select("user_id, palier, octets, fichiers, seuil_octets")
+        .eq("jour", auj).order("octets", { ascending: false }).range(0, 49),
+      supabase.from("stockage_photos_alertes").select("user_id").eq("jour", hier).range(0, 999),
+    ]);
+    const deja = new Set((sh ?? []).map((r) => String(r.user_id)));
+    const mo = (o: number) => `${Math.round(o / 1048576)} Mo`;
+    for (const a of sa ?? []) {
+      if (deja.has(String(a.user_id))) continue; // déjà au-dessus hier : pas un événement
+      stockageAlertes.push(
+        `${String(a.user_id).slice(0, 8)} (${a.palier}) — ${mo(Number(a.octets))} / ${mo(Number(a.seuil_octets))}` +
+        ` · ${a.fichiers} fichiers · ${Math.round(100 * Number(a.octets) / Number(a.seuil_octets))} % du seuil`,
+      );
+    }
+  } catch (e) {
+    console.error("[ops-digest] relevé stockage ignoré (non bloquant) :", (e as Error)?.message ?? e);
+  }
+
   const gardeGraves: string[] = [];
   const gardeAnomalies: string[] = [];
   try {
@@ -575,6 +614,7 @@ serve(async (req) => {
     reservations_expirees: reservationRows.length,
     sync_gardes_graves: gardeGraves.length,
     sync_gardes_anomalies: gardeAnomalies.length,
+    stockage_au_dessus_du_seuil: stockageAlertes.length,
     dressings_croises: dressingsCroises.length,
     pending_bloques: pendingBloques.length,
   };
@@ -703,6 +743,22 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    stockageAlertes.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      💾 Stockage photos — NOUVEAUX franchissements de seuil (${stockageAlertes.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Alerte seulement : rien n'est bloqué, aucun téléversement refusé, aucune photo supprimée.
+      Seuls les comptes qui passent au-dessus AUJOURD'HUI sont listés — ceux qui l'étaient déjà
+      hier sont journalisés sans être remontés, pour que le silence du digest reste sain.
+      L'état complet : table stockage_photos_alertes et vue v_stockage_photos_par_compte.
+      Les seuils sont en base (stockage_photos_seuils) et se changent par un UPDATE.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${stockageAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     tentativesEnCours.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       🔁 Jobs qui brûlent leurs tentatives (${tentativesEnCours.length})
@@ -767,7 +823,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · tentatives ${counts.tentatives_en_cours})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });
