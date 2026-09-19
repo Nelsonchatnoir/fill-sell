@@ -82,3 +82,51 @@ export async function rapatrierPhotosPublication(admin: SupabaseClient, urls: st
   }
   return { urls: out, rapatriees, deja_chez_nous: dejaChezNous, echecs };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hôtes des plateformes dont on IMPORTE des annonces (19/09/2026)
+//
+// Pourquoi cette liste existe. Un article importé d'un relevé garde les URLs
+// de la plateforme d'origine. Au moment de publier AILLEURS, le content script
+// lit la photo par `fetch()` DEPUIS la page de dépôt (urlToFile) : il est donc
+// soumis au CORS de l'hôte de l'image, quoi qu'autorise le manifeste. Un CDN
+// qui ne sert pas d'en-tête `Access-Control-Allow-Origin` rend « Failed to
+// fetch » et la publication tombe.
+//
+// Mesuré le 19/09 depuis une origine tierce (les quatre URLs vivantes) :
+//   · cdn.beebs.app                  fetch REFUSÉ (pas d'ACAO) · <img> OK 700×700
+//   · img.leboncoin.fr               fetch 200
+//   · i.ebayimg.com                  fetch 200
+//   · d2f61lx5s6m7uh.cloudfront.net  fetch 200
+//   · images1.vinted.net             fetch REFUSÉ (déjà documenté, 06/08)
+// L'image est PUBLIQUE dans tous les cas (elle se charge en <img>) : ce n'est
+// ni un jeton, ni un referer, ni une expiration, ni le réseau — c'est le CORS,
+// et il peut changer côté plateforme sans nous prévenir. C'est ce qui est
+// arrivé à Beebs : d'où une liste qui couvre les CINQ sources d'import, pas
+// seulement celle qui refuse aujourd'hui.
+//
+// Recensement de `inventaire.photos` au 19/09 (parc entier) — c'est la liste
+// complète des hôtes présents, aucun autre :
+//   images1.vinted.net 313 493 · img.leboncoin.fr 245 · cdn.beebs.app 210
+//   · i.ebayimg.com 57 · d2f61lx5s6m7uh.cloudfront.net 4
+//
+// ⛔ LISTE FERMÉE, et elle doit le rester : ces prédicats gardent des fonctions
+// qui TÉLÉCHARGENT une URL et l'écrivent dans notre bucket. Un joker en
+// ferait un proxy de téléchargement arbitraire. En particulier
+// `cloudfront.net` est MUTUALISÉ (n'importe qui y sert n'importe quoi) : la
+// distribution d'Opla est nommée à l'hôte EXACT, jamais en `*.cloudfront.net`.
+// Sa valeur est la même qu'`OPLA_CDN_IMAGES` (chrome-extension/content-scripts/opla.js).
+// ═══════════════════════════════════════════════════════════════════════════
+const CDN_DOMAINES_PLATEFORMES = ["vinted.net", "vinted.fr", "vinted.com", "leboncoin.fr", "beebs.app", "ebayimg.com"];
+const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net"];
+
+export function estCdnPlateforme(u: unknown): u is string {
+  if (typeof u !== "string") return false;
+  try {
+    const url = new URL(u);
+    if (url.protocol !== "https:") return false;
+    const h = url.hostname.toLowerCase();
+    if (CDN_HOTES_EXACTS.includes(h)) return true;
+    return CDN_DOMAINES_PLATEFORMES.some((d) => h === d || h.endsWith(`.${d}`));
+  } catch { return false; }
+}
