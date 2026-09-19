@@ -10,6 +10,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // getTypeStyle / typeLabel sont partis avec les pastilles d'identification :
 // ils vivent désormais dans LensIdentite.
 import { getRotatingLensPlaceholders } from '../utils/shared';
+import { televerserPhotos as televerserVersBucket } from '../utils/photosUpload';
 import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
 import LensIdentite from '../components/LensIdentite';
 import { useTranslation } from '../i18n/useTranslation';
@@ -667,43 +668,21 @@ const LensTab = memo(function LensTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  function compressImage(file, maxWidth = 1024, quality = 0.85) {
-    return new Promise((resolve) => {
-      const img = new window.Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const scale = Math.min(1, maxWidth / img.width);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
-      };
-      img.src = URL.createObjectURL(file);
-    });
-  }
-
-  /** Upload des photos du viseur vers listing-photos (bucket durable). */
+  /** Upload des photos du viseur vers listing-photos (bucket durable).
+   *  Compression, chemin <uid>/raw/ et suffixe `?v=<ts>` vivent désormais dans
+   *  utils/photosUpload — mêmes paramètres, même schéma, même parade au 404 en
+   *  cache. Les sources sont les dataURL du viseur ; la brique les récupère.
+   *  `surErreur: "lever"` reproduit le comportement d'ici : une photo qu'on ne
+   *  sait pas traiter fait remonter l'erreur, elle n'est pas silencieusement
+   *  sautée. (Elle est hors d'atteinte en pratique : les photos du viseur sont
+   *  déjà passées par versImageDecodable à la prise de vue.) */
   async function televerserPhotos(){
-    const uploadedUrls=[];
-    const ts=Date.now();
-    for(let i=0;i<lensPhotos.length;i++){
-      const photo=lensPhotos[i];
-      const res=await fetch(photo.preview);
-      const rawBlob=await res.blob();
-      const blob=await compressImage(rawBlob);
-      const path=`${user.id}/raw/${ts}_${i}.jpg`;
-      const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:'image/jpeg',upsert:true});
-      // `?v=<ts>` (02/09 soir, incident Delavier) : le CDN Supabase avait
-      // servi puis MIS EN CACHE un 404 sur ces URLs — les 3 plateformes ont
-      // refusé « photo indisponible (HTTP 404) » sur des fichiers présents.
-      // Une clé de cache NEUVE par upload (le paramètre entre dans la clé
-      // CDN) ne peut par construction avoir été demandée avant l'upload :
-      // aucun 404 antérieur ne peut être resservi. Même v pour la vie de la
-      // photo → le cache utile (200) est intact.
-      if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl+`?v=${ts}`);
-    }
-    return uploadedUrls;
+    const { urls } = await televerserVersBucket(supabase, {
+      userId: user.id,
+      sources: lensPhotos.map(p => p.preview),
+      surErreur: "lever",
+    });
+    return urls;
   }
 
   // ── LES PHOTOS DÉFINITIVES REJOIGNENT L'ARTICLE (2026-09-15) ──────────────

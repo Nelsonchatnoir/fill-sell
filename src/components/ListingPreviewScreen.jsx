@@ -41,7 +41,10 @@ import { getPlatformSupport } from "../utils/platformCompat";
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
-import { versImageDecodable, chargerImage, messageDecodage } from "../utils/imageDecode";
+// versImageDecodable/chargerImage sont passés dans utils/photosUpload avec la
+// compression : seul le message d'échec reste utilisé ici.
+import { messageDecodage } from "../utils/imageDecode";
+import { televerserPhotos } from "../utils/photosUpload";
 import EbayCompteSection from "./EbayCompteSection";
 import { ebayCompteUtilisable, motifEbayInutilisable, repartirParVoie } from "../utils/ebayCompte";
 import {
@@ -5073,26 +5076,11 @@ export default function ListingPreviewScreen({
     permuterPhotos(from, to);
   }
 
-  // ⚠️ Cette fonction n'avait NI onerror NI délai maximum (2026-09-04) : sur une
-  // image que le navigateur ne sait pas décoder — un HEIC d'iPhone ouvert dans
-  // Chrome ou Firefox — `onload` ne partait jamais, la Promise restait
-  // pendante, `await compressImage(...)` ne rendait jamais la main et
-  // handleUpload laissait « Upload en cours… » à l'écran, définitivement.
-  // versImageDecodable() porte désormais les deux gardes ET la conversion HEIC
-  // (décodeur chargé à la demande). `toBlob` reçoit lui aussi un rejet
-  // explicite : il peut rendre null, ce qui aurait laissé une autre pendante.
-  async function compressImage(file, maxWidth = 1024, quality = 0.85) {
-    const { blob } = await versImageDecodable(file);
-    const img = await chargerImage(blob);
-    const c = document.createElement("canvas");
-    const sc = Math.min(1, maxWidth / img.width);
-    c.width = img.width * sc;
-    c.height = img.height * sc;
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return await new Promise((resolve, reject) => {
-      c.toBlob(b => (b ? resolve(b) : reject(new Error("compression_impossible"))), "image/jpeg", quality);
-    });
-  }
+  // La compression et le téléversement vivent dans utils/photosUpload depuis le
+  // 19/09 (une brique, trois appelants). Les gardes du 04/09 — onerror, délai
+  // maximum, conversion HEIC, rejet explicite de toBlob — y sont conservées à
+  // l'identique : sans elles, un HEIC d'iPhone ouvert dans Chrome laissait
+  // « Upload en cours… » à l'écran, définitivement.
 
   // ── Upload step 0 ─────────────────────────────────────────────────────────
   async function handleUpload() {
@@ -5100,32 +5088,14 @@ export default function ListingPreviewScreen({
     setUploading(true);
     setUploadError("");
     try {
-      const urls = [];
-      const illisibles = [];
-      const ts = Date.now();
-      for (let i = 0; i < pickedFiles.length; i++) {
-        // Une photo illisible ne fait plus tomber tout le lot ni figer l'écran :
-        // elle est SAUTÉE et nommée à la fin. Avant le 04/09, un HEIC bloquait
-        // ici pour toujours (compressImage ne rendait jamais la main).
-        let blob;
-        try {
-          blob = await compressImage(pickedFiles[i]);
-        } catch (e) {
-          console.warn(`[photos] « ${pickedFiles[i]?.name ?? `photo ${i + 1}`} » illisible :`, e?.message ?? e);
-          illisibles.push(pickedFiles[i]?.name ?? `photo ${i + 1}`);
-          continue;
-        }
-        const path = `${userId}/raw/${ts}_${i}.jpg`;
-        const { error: upErr } = await supabase.storage
-          .from("listing-photos")
-          .upload(path, blob, { contentType:"image/jpeg", upsert:true });
-        // `?v=<ts>` : clé de cache CDN neuve par upload — parade au 404 mis en
-        // cache (incident Delavier 02/09, détail dans televerserPhotos de
-        // LensTab). Le nom de fichier posé aux plateformes n'en dépend pas
-        // (urlToFile nomme photo_N.ext sans parser l'URL).
-        if (!upErr)
-          urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl + `?v=${ts}`);
-      }
+      // Une photo illisible ne fait plus tomber tout le lot ni figer l'écran :
+      // elle est SAUTÉE et nommée à la fin — c'est `surErreur: "ignorer"`.
+      // Avant le 04/09, un HEIC bloquait ici pour toujours.
+      const { urls, illisibles } = await televerserPhotos(supabase, {
+        userId,
+        sources: pickedFiles,
+        surErreur: "ignorer",
+      });
       // AUCUNE photo lisible : on le dit avec le message dédié plutôt que
       // l'erreur d'upload générique — rien n'a échoué côté réseau.
       if (!urls.length) throw new Error(illisibles.length ? messageDecodage(lang) : t("stepUploadError"));
@@ -5238,18 +5208,14 @@ export default function ListingPreviewScreen({
   async function handleAddMorePhotos(files) {
     const toAdd = files.slice(0, MAX_PHOTOS - photos.length);
     if (!toAdd.length) return;
-    const ts = Date.now();
-    const urls = [];
-    for (let i = 0; i < toAdd.length; i++) {
-      const blob = await compressImage(toAdd[i]);
-      const path = `${userId}/raw/${ts}_extra_${i}.jpg`;
-      const { error: upErr } = await supabase.storage
-        .from("listing-photos")
-        .upload(path, blob, { contentType:"image/jpeg", upsert:true });
-      // `?v=<ts>` : même parade anti-404-en-cache que handleUpload.
-      if (!upErr)
-        urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl + `?v=${ts}`);
-    }
+    // `marqueur: "extra_"` garde le schéma de nom d'origine
+    // (<ts>_extra_<i>.jpg), qui distingue les photos ajoutées après coup.
+    const { urls } = await televerserPhotos(supabase, {
+      userId,
+      sources: toAdd,
+      marqueur: "extra_",
+      surErreur: "lever",
+    });
     if (urls.length) {
       setPhotos(prev => [...prev, ...urls]);
       // ── LA PHOTO AJOUTÉE APRÈS GÉNÉRATION PART AUSSI (2026-09-08) ────────
