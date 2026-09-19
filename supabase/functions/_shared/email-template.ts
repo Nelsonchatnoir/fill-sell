@@ -16,6 +16,8 @@
 // (`gras`, `lien`, `sautLigne`).
 // ============================================================================
 
+import { BASE_LOGOS, PLATEFORMES, SLUGS_PLATEFORMES } from "./plateformes.ts";
+
 /** Fragment de HTML deja construit et sur : insere tel quel, jamais echappe. */
 export interface Html {
   readonly __html: string;
@@ -141,6 +143,18 @@ export function paragrapheHtml(html: string): Html {
   return paragraphe(brut(html));
 }
 
+/**
+ * Titre de section dans le corps. Pas un <h1> (il n'y en a qu'un, en zone de
+ * titre) : un <h2> discret qui decoupe un mail long sans le hacher.
+ */
+export function sousTitre(texte: string): Html {
+  return brut(
+    `<tr><td align="left" class="fs-pad" style="padding:32px 34px 0 34px; background-color:#FFFFFF;">` +
+      `<h2 style="margin:0; font-family:${POLICE}; font-size:19px; line-height:26px; mso-line-height-rule:exactly; font-weight:700; letter-spacing:-0.015em; color:#0D0D0D;">${echapper(texte)}</h2>` +
+      `</td></tr>`,
+  );
+}
+
 /** Liste a puces vertes. Chaque item est echappe. */
 export function listePuces(items: Contenu[]): Html {
   if (!items.length) return brut("");
@@ -258,6 +272,38 @@ export function boutonSecondaire(texte: string, url: string): Html {
   );
 }
 
+/**
+ * Rangee des logos de plateformes, sur bandeau vert pale.
+ *
+ * La liste vient de _shared/plateformes.ts — JAMAIS d'une table locale : le
+ * mail welcome et le mail de relance ont divergé exactement comme ça, et Opla
+ * a manqué dans les deux pendant quatre jours.
+ *
+ * Chaque <img> porte width/height en ATTRIBUTS (Outlook ignore le CSS de
+ * dimension) et un alt renseigne : quand le client mail bloque les images —
+ * cas par defaut d'Outlook et de Gmail hors contacts — la rangee reste lisible
+ * en toutes lettres.
+ */
+export function logosPlateformes(): Html {
+  const cellules = SLUGS_PLATEFORMES.map((slug, i) => {
+    const p = PLATEFORMES[slug];
+    const gauche = i === 0 ? 0 : 7;
+    return `<td valign="middle" style="padding:0 7px 0 ${gauche}px;">` +
+      `<img src="${BASE_LOGOS}/${p.logo}" width="52" height="52" alt="${echapper(p.label)}" ` +
+      `style="display:block; width:52px; height:52px; border:0; border-radius:12px; outline:none; text-decoration:none; ` +
+      `font-family:${POLICE}; font-size:11px; font-weight:700; color:#3A3A38;">` +
+      `</td>`;
+  }).join("");
+  return brut(
+    `<tr><td align="left" class="fs-pad" style="padding:26px 34px 0 34px; background-color:#FFFFFF;">` +
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; background-color:#F4F9F7; border:1px solid #D9EAE3; border-radius:14px;">` +
+      `<tr><td align="center" style="padding:18px 12px 18px 12px; background-color:#F4F9F7; border-radius:14px;">` +
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>${cellules}</tr></table>` +
+      `</td></tr></table>` +
+      `</td></tr>`,
+  );
+}
+
 /** Filet de separation horizontal. */
 export function separateur(): Html {
   return brut(
@@ -347,6 +393,12 @@ export function renderEmail(opts: OptionsEmail): string {
     lienWeb = "",
     langue = "fr",
   } = opts;
+
+  // Pied de carte : les plateformes, lues sur la MÊME source que la rangée de
+  // logos. Écrites en dur, elles avaient oublié Opla (relevé du 19/09).
+  const ligneMarquePlateformes = SLUGS_PLATEFORMES
+    .map((s) => echapper(PLATEFORMES[s].label))
+    .join(" &middot; ");
 
   const hrefWeb = urlSure(lienWeb);
   const hrefPreferences = urlSure(lienPreferences);
@@ -649,7 +701,7 @@ ${blocSignature}
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
               <tr>
                 <td align="left" valign="middle" style="font-family:${POLICE_MARQUE}; font-size:14px; font-style:italic; font-weight:700; color:#4A5A52; line-height:20px; mso-line-height-rule:exactly;">FillSell</td>
-                <td align="right" valign="middle" class="fs-hide-sm" style="font-family:${POLICE}; font-size:12px; color:#9A9A94; line-height:20px; mso-line-height-rule:exactly;">Vinted &middot; Leboncoin &middot; eBay &middot; Beebs</td>
+                <td align="right" valign="middle" class="fs-hide-sm" style="font-family:${POLICE}; font-size:12px; color:#9A9A94; line-height:20px; mso-line-height-rule:exactly;">${ligneMarquePlateformes}</td>
               </tr>
             </table>
           </td>
