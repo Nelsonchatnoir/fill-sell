@@ -12719,7 +12719,24 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   // Repris ou neuf ? Capté ICI, avant que `run` soit réaffecté par la création
   // d'une nouvelle ligne : c'est ce drapeau qui interdira le marquage des
   // disparitions plus bas (garde (a), 2026-08-05).
-  const runRepris = !!run;
+  //
+  // ── REPRIS VEUT DIRE « QUELQUE CHOSE A DÉJÀ ÉTÉ LU » (2026-09-19) ─────────
+  // `!!run` seul était faux 84 fois sur 88 : le bouton distant INSÈRE sa ligne
+  // en 'queued', la réclame en 'running', puis appelle cette fonction — qui
+  // trouve `status=eq.running` et adopte LA LIGNE QU'ELLE VIENT DE CRÉER, 94 s
+  // plus tôt (médiane mesurée). La garde (a) tirait alors à blanc sur un run
+  // qui repartait de la PAGE 1 et lisait le dressing EN ENTIER (88/88 :
+  // items_vus ≥ total_entries) — aucune disparition marquée, donc aucune vente
+  // Vinted vue, sur 88 runs / 39 comptes en 7 jours, un sur quatre.
+  // Relevé du 19/09 : 78/88 en `bouton_distant` (0 parmi les 112 runs neufs),
+  // 84/88 repartant de la page 1, et seulement 4 vraies reprises (page 2 ×3,
+  // page 5 ×1) — pour celles-là le drapeau reste VRAI, au mot près.
+  // C'est l'intention littérale du motif écrit plus bas : « les articles vus
+  // AVANT la reprise sont inconnus de ce passage ». Si rien n'a été lu, rien
+  // n'est inconnu. Le choix du 05/08 (sauter le marquage plutôt que persister
+  // tous les vus) n'est PAS remis en cause.
+  const runRepris = !!run && ((Number(run.items_vus) || 0) > 0
+                              || (Number(run.page_suivante) || 1) > 1);
   if (run) {
     console.log(`[sync-dressing] reprise du run ${run.id} à la page ${run.page_suivante}`);
   } else {
