@@ -1,11 +1,29 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  desinscrire,
+  envoyerEmail,
+  lienDesinscription,
+  type ResultatEnvoi,
+} from "../_shared/desinscription.ts";
+import {
+  CWS_URL,
+  dateParis,
+  langue,
+  mailBienvenue,
+  mailCommentCaMarche,
+  mailLienExtension,
+  mailPaiementEchoue,
+  mailRelanceJobs,
+  mailResiliation,
+  type CausePaiement,
+  type ContextePaiement,
+} from "../_shared/emails-fillsell.ts";
+import { paragraphe, renderEmail } from "../_shared/email-template.ts";
 
 const RESEND_API = "https://api.resend.com/emails";
-const FROM = "FillSell <support@fillsell.app>";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
 const TO_OPS = "support@fillsell.app";
-const LOGO_URL = "https://fillsell.app/logo.png";
 
 // ── Blast de relance août 2026 ────────────────────────────────────────────────
 // Type DISTINCT de 'welcome' : la dédup d'email_logs porte sur
@@ -78,12 +96,10 @@ const RELANCE_EXT_FRAICHE_H = 2;    // extension vue depuis moins de 2 h = CAS 3
 const RELANCE_COOLDOWN_H    = 72;
 const RELANCE_H_DEBUT       = 8;    // pas d'envoi avant 8h00 Paris
 const RELANCE_H_FIN         = 22;   // ni à partir de 22h00 Paris
-const CWS_URL = "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm";
-
-const PLATEFORME_LABEL: Record<string, string> = {
-  vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs",
-};
-const labelPlateforme = (p: string) => PLATEFORME_LABEL[p] ?? p;
+// CWS_URL, dateParis et les noms de plateformes viennent de _shared : la table
+// locale « vinted/leboncoin/ebay/beebs » qui vivait ici imprimait le slug brut
+// (`?? p`) dès qu'une plateforme lui manquait, et Opla lui manquait.
+// Voir _shared/plateformes.ts — c'est la seule liste, et elle a une garde.
 
 // Heure de Paris via Intl : juste en heure d'été comme d'hiver, sans offset
 // codé en dur. hourCycle 'h23' pour que minuit rende "00" et non "24".
@@ -98,17 +114,6 @@ function heureParis(d: Date = new Date()): number {
     timeZone: "Europe/Paris", hour: "2-digit", hourCycle: "h23",
   }).formatToParts(d);
   return Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
-}
-function dateParis(iso: string): string {
-  return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris", day: "2-digit", month: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  }).format(new Date(iso));
-}
-function listeNaturelle(xs: string[], lang: string): string {
-  const et = lang === "en" ? "and" : "et";
-  if (xs.length <= 1) return xs[0] ?? "";
-  return `${xs.slice(0, -1).join(", ")} ${et} ${xs[xs.length - 1]}`;
 }
 
 // Boîtes internes et alias de test. Remontée au niveau module (elle vivait dans
@@ -125,545 +130,6 @@ function estInterne(email: string): boolean {
   return /\+.*test/.test(local);
 }
 
-// ── HTML Templates ─────────────────────────────────────────────────────────────
-
-function emailHeader(): string {
-  return `
-  <div style="text-align:center;padding:32px 0 24px;">
-    <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-      <tr>
-        <td style="vertical-align:middle;padding-right:10px;">
-          <img src="${LOGO_URL}" width="40" height="40" alt="FillSell"
-               style="display:block;border-radius:10px;">
-        </td>
-        <td style="vertical-align:middle;">
-          <span class="brand-name"
-                style="font-family:'Plus Jakarta Sans',sans-serif;font-style:italic;
-                  font-weight:800;font-size:22px;color:#3EACA0;
-                  background:linear-gradient(135deg,#3EACA0 0%,#E8956D 100%);
-                  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-                  background-clip:text;">FillSell</span>
-        </td>
-      </tr>
-    </table>
-  </div>`;
-}
-
-function emailWrapper(content: string, lang: string): string {
-  return `<!DOCTYPE html>
-<html lang="${lang}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@1,800&display=swap');
-body{margin:0;padding:0;background:#F2F2EE;}
-.brand-name{
-  background:linear-gradient(135deg,#3EACA0 0%,#E8956D 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  background-clip:text;
-}
-a.cta:hover{background:#26b8a6!important;}
-</style>
-</head>
-<body>
-<div style="background:#F2F2EE;padding:16px 0 48px;">
-  <div style="max-width:560px;margin:0 auto;padding:0 16px;">
-    ${emailHeader()}
-    <div style="background:#fff;border-radius:16px;padding:32px;
-      box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-      ${content}
-    </div>
-    <div style="text-align:center;padding:24px 0 0;
-      font-size:12px;color:#9CA3AF;font-family:sans-serif;line-height:1.6;">
-      FillSell ·
-      <a href="https://fillsell.app" style="color:#9CA3AF;text-decoration:none;">
-        fillsell.app
-      </a>
-    </div>
-  </div>
-</div>
-</body>
-</html>`;
-}
-
-function ctaButton(label: string): string {
-  return `
-  <a href="https://fillsell.app" class="cta"
-     style="display:block;text-align:center;background:#2DD4BF;
-       color:#fff;font-weight:800;font-size:15px;padding:14px 24px;
-       border-radius:12px;text-decoration:none;font-family:sans-serif;
-       margin-top:4px;">
-    ${label}
-  </a>`;
-}
-
-function welcomeHtml(lang: string): string {
-  const isFr = lang !== "en";
-  // ── Refonte 2026-08-07 (texte Nico, mot pour mot) ──────────────────────────
-  // L'ancien mail promettait « publie automatiquement […] en quelques
-  // secondes » et « Gagnez et dépensez des unités à chaque action » — périmé
-  // et faux. Le nouveau parle sync du dressing, republication, et du contrat
-  // unités réel (coût affiché avant validation). AUCUN montant en dur (ni
-  // prix d'abonnement, ni coût d'action) — la grille vit dans l'app, comme
-  // dans les CGV. Seule exception, assumée par Nico : « 50 unités
-  // offertes » (grille 2026-08-08), le grant d'inscription, affiché aussi
-  // sur la landing.
-  // Gabarit inchangé : blocs verts, rangée de logos, encart ambre
-  // « ordinateur », visuel unités, CTA — le design n'est pas refait.
-  const logosRow = `
-      <table cellpadding="0" cellspacing="0" width="100%" role="presentation"
-        style="background:#F0FDF9;border-radius:12px;margin:0 0 18px;">
-        <tr><td align="center" style="padding:16px 0;">
-          <table cellpadding="0" cellspacing="0" role="presentation"><tr>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-vinted.png" width="54" height="54" alt="Vinted" style="display:block;"></td>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-leboncoin.png" width="54" height="54" alt="Leboncoin" style="display:block;"></td>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-ebay.png" width="54" height="54" alt="eBay" style="display:block;"></td>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-beebs.png" width="54" height="54" alt="Beebs" style="display:block;"></td>
-          </tr></table>
-        </td></tr>
-      </table>`;
-  const bloc = (titre: string, corps: string, marge = "0 0 16px") => `
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:${marge};">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">${titre}</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">${corps}</p>
-    </div>`;
-  const content = isFr ? `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      Bienvenue sur FillSell&nbsp;! 🎉
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">Salut,</p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      FillSell te fait gagner du temps sur la revente&nbsp;: tu ajoutes un article une
-      fois, et il part sur Vinted, Leboncoin, eBay et Beebs sans que tu remplisses
-      quatre formulaires.
-    </p>
-    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Trois choses à connaître pour démarrer</p>
-    ${bloc("1. Récupère ton dressing Vinted en un clic",
-      "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
-    ${bloc("2. Republie les annonces qui dorment",
-      "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. 50 republications offertes, et automatisable avec Pro.")}
-    ${bloc("3. Publie partout d'un seul geste",
-      "Ajoute un article à la voix ou par photo, FillSell rédige le titre, la description et suggère un prix, puis publie sur les plateformes que tu choisis.", "0 0 24px")}
-    <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
-      <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
-        color:#111827;font-family:sans-serif;">
-        🧩 Ce qu'il te faut&nbsp;: l'extension Chrome
-      </h2>
-      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
-        font-family:sans-serif;">
-        Elle s'installe une seule fois sur un ordinateur, en une minute. C'est elle qui
-        publie à ta place, en utilisant les sessions de tes comptes déjà connectés dans
-        ton navigateur — elle ne se connecte jamais à ta place, tu gardes la main. Une
-        fois installée, tu pilotes tout depuis ton téléphone.
-      </p>
-      ${logosRow}
-      <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 18px;">
-        <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
-          ⚠️ L'extension s'installe sur ordinateur (pas sur mobile). Si tu lis cet email
-          sur ton téléphone, garde-le de côté et reviens-y depuis ton ordinateur.
-        </p>
-      </div>
-      <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" class="cta"
-         style="display:block;text-align:center;background:#2DD4BF;color:#fff;
-           font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
-           text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
-        Installer l'extension
-      </a>
-      <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
-        font-family:sans-serif;">
-        Disponible sur le Chrome Web Store&nbsp;: un clic pour l'installer, et elle se met à
-        jour automatiquement à chaque nouvelle version.
-      </p>
-    </div>
-    <!-- Bascule quotas (02/09) : plus d'unités — le mail dit ce que le
-         forfait gratuit PERMET, en gestes réels (mêmes mots que l'app). -->
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
-        🎁 Ce qui est inclus pour démarrer
-      </p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Chaque mois, tu peux créer des annonces avec l'IA — depuis une photo ou
-        depuis ton stock — et les publier sur les 4 plateformes, et tu démarres
-        avec des republications Vinted offertes. Les compteurs sont visibles
-        dans l'app&nbsp;— rien ne se consomme sans que tu le voies.
-      </p>
-    </div>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">
-      Des questions&nbsp;? Réponds directement à ce mail, je lis tout.
-    </p>
-    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
-      font-family:sans-serif;font-weight:700;">
-      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
-    </p>
-    ${ctaButton("Ouvrir FillSell")}` : `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      Welcome to FillSell! 🎉
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">Hi,</p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      FillSell saves you time on reselling: you add an item once, and it goes to Vinted,
-      Leboncoin, eBay and Beebs without you filling out four forms.
-    </p>
-    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Three things to know to get started</p>
-    ${bloc("1. Bring in your Vinted closet in one click",
-      "If you already sell on Vinted, FillSell imports all your listings — titles, prices, photos, views and favourites. It's free and nothing is deducted from your plan. Your whole stock in one place, nothing to retype.")}
-    ${bloc("2. Repost the listings that sleep",
-      "On Vinted, an old listing barely gets seen. In one click, FillSell saves the listing, removes it and puts it back online identically — you can even lower the price along the way. 50 repostings included, and automatable with Pro.")}
-    ${bloc("3. List everywhere in a single move",
-      "Add an item by voice or photo, FillSell writes the title and description and suggests a price, then lists on the platforms you choose.", "0 0 24px")}
-    <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
-      <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
-        color:#111827;font-family:sans-serif;">
-        🧩 What you need: the Chrome extension
-      </h2>
-      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
-        font-family:sans-serif;">
-        It installs once on a computer, in a minute. It does the listing for you, using
-        the sessions of your accounts already signed in in your browser — it never signs
-        in on your behalf, you stay in control. Once installed, you drive everything
-        from your phone.
-      </p>
-      ${logosRow}
-      <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 18px;">
-        <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
-          ⚠️ The extension installs on a computer (not on mobile). If you're reading this
-          email on your phone, set it aside and come back from your computer.
-        </p>
-      </div>
-      <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" class="cta"
-         style="display:block;text-align:center;background:#2DD4BF;color:#fff;
-           font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
-           text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
-        Install the extension
-      </a>
-      <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
-        font-family:sans-serif;">
-        Available on the Chrome Web Store: one click to install, and it updates itself
-        with every new version.
-      </p>
-    </div>
-    <!-- Nettoyage unités (02/09 soir) : le bloc « Your units » (oublié à
-         la bascule — la version FR avait déjà été recalée en v54) parle
-         désormais les gestes du forfait, comme le FR. -->
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
-        🎁 What's included to get started
-      </p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Every month you can create listings with AI — from a photo or from your
-        stock — and publish them to the 4 marketplaces, and you start with free
-        Vinted repostings. The counters are visible in the app — nothing is
-        used without you seeing it.
-      </p>
-    </div>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">
-      Questions? Reply directly to this email, I read everything.
-    </p>
-    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
-      font-family:sans-serif;font-weight:700;">
-      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
-    </p>
-    ${ctaButton("Open FillSell")}`;
-  return emailWrapper(content, lang);
-}
-
-function howItWorksHtml(lang: string): string {
-  const isFr = lang !== "en";
-  // ── Refonte 2026-08-07 (texte Nico, valeurs VÉRIFIÉES dans le code) ────────
-  // poll 2 min (config.js POLL_INTERVAL_MINUTES) ; vérification de vente
-  // toutes les 2 h par annonce (SALE_CHECK_MIN_INTERVAL_MS, 8 annonces max
-  // par cycle) ; délai de grâce 2 h uniforme (PUBLISH_GRACE_MS) ; sync cron
-  // 1×/24 h (SYNC_DRESSING_ALARM) ; republication : pauses volontaires
-  // 2-5 min et une republication aboutie par article et par 24 h. Le texte
-  // n'affiche AUCUN chiffre technique — « régulièrement », « une fois par
-  // jour », « quelques minutes » : tous vrais au relevé du 07/08.
-  const bloc = (titre: string, corps: string, marge = "0 0 16px") => `
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:${marge};">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">${titre}</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">${corps}</p>
-    </div>`;
-  const content = isFr ? `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      Comment FillSell travaille pour toi 🔍
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">Salut,</p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      Voilà ce que FillSell fait en arrière-plan, sans que tu aies à y penser.
-    </p>
-    ${bloc("⏱️ Il publie pour toi",
-      "Quand tu demandes une publication, l'extension s'en charge dans une fenêtre discrète, sans jamais te voler le focus. Elle espace volontairement ses gestes de quelques secondes à quelques minutes : on travaille au rythme d'un humain, jamais à celui d'un robot. Une publication prend donc quelques minutes par plateforme, c'est normal.")}
-    ${bloc("🔄 Il surveille tes ventes",
-      "FillSell repasse régulièrement sur tes annonces pour voir si elles sont toujours en ligne. Quand un article se vend quelque part, il te le signale et retire les annonces correspondantes sur les autres plateformes — pour que tu ne vendes jamais deux fois le même objet. Aucune vente n'est enregistrée sans que tu la confirmes.")}
-    ${bloc("🧥 Il garde ton dressing Vinted à jour",
-      "Une fois ta première synchronisation lancée, FillSell rafraîchit ton dressing une fois par jour : nouvelles annonces, prix, vues, favoris. Tu peux aussi la relancer à la main quand tu veux, depuis ton téléphone.")}
-    ${bloc("🔁 Et il republie",
-      "Les annonces qui dorment peuvent repartir en ligne d'un clic, avec les mêmes photos et la même fiche. Là aussi, FillSell prend son temps entre chaque geste — c'est ce qui protège ton compte.", "0 0 24px")}
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">
-      Une question&nbsp;? Réponds à ce mail.
-    </p>
-    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
-      font-family:sans-serif;font-weight:700;">
-      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
-    </p>
-    ${ctaButton("Voir mon stock")}` : `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      How FillSell works for you 🔍
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">Hi,</p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      Here's what FillSell does in the background, without you having to think about it.
-    </p>
-    ${bloc("⏱️ It lists for you",
-      "When you request a listing, the extension handles it in a discreet window, without ever stealing your focus. It deliberately spaces its actions from a few seconds to a few minutes: we work at a human's pace, never a robot's. A listing therefore takes a few minutes per platform — that's normal.")}
-    ${bloc("🔄 It watches your sales",
-      "FillSell regularly revisits your listings to see whether they're still online. When an item sells somewhere, it lets you know and removes the matching listings on the other platforms — so you never sell the same object twice. No sale is recorded without your confirmation.")}
-    ${bloc("🧥 It keeps your Vinted closet up to date",
-      "Once your first sync has run, FillSell refreshes your closet once a day: new listings, prices, views, favourites. You can also run it manually whenever you want, from your phone.")}
-    ${bloc("🔁 And it reposts",
-      "Listings that sleep can go back online in one click, with the same photos and the same details. There too, FillSell takes its time between each action — that's what protects your account.", "0 0 24px")}
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">
-      A question? Reply to this email.
-    </p>
-    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
-      font-family:sans-serif;font-weight:700;">
-      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
-    </p>
-    ${ctaButton("View my stock")}`;
-  return emailWrapper(content, lang);
-}
-
-// ── Relance d'un job jamais pris en charge par l'extension ───────────────────
-// Deux messages, deux causes distinctes, JAMAIS interchangeables :
-//   cas 1 — extension_last_seen_at NULL : elle n'a jamais tourné sur ce compte.
-//   cas 2 — vue, mais pas depuis > 2 h : installée, simplement à l'arrêt.
-// Le cas 3 (extension active ET job dormant) ne produit AUCUN mail : c'est un
-// bug de notre côté, cf. la branche job_relaunch.
-//
-// Promesse « vous n'avez rien à refaire » — VÉRIFIÉE dans le code le
-// 2026-08-01, pas supposée : get-pending-jobs ne filtre les jobs QUE sur
-// status et platform_health.paused (aucun filtre d'âge), et
-// pollAndProcessJobsUnlocked traite la totalité de ce qu'il reçoit, sans
-// plafond. Un job de 5 jours repart donc au premier poll qui suit la
-// connexion de l'extension. Ne pas écrire cette promesse ailleurs sans
-// revérifier ces deux fichiers.
-function relanceHtml(
-  cas: 1 | 2,
-  jobs: Array<{ platform: string; title: string | null; created_at: string }>,
-  extensionVueLe: string | null,
-  lang: string,
-): { sujet: string; html: string } {
-  const isFr = lang !== "en";
-  const esc = (v: unknown) =>
-    String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  const plateformes = listeNaturelle(
-    [...new Set(jobs.map((j) => labelPlateforme(j.platform)))], lang,
-  );
-  const titres = [...new Set(jobs.map((j) => (j.title ?? "").trim()).filter(Boolean))];
-  const troisTitres = titres.slice(0, 3).map((t) => `«&nbsp;${esc(t)}&nbsp;»`);
-  const reste = titres.length - troisTitres.length;
-  const articles = titres.length === 0
-    ? (isFr ? "votre annonce" : "your listing")
-    : listeNaturelle(
-        reste > 0
-          ? [...troisTitres, isFr ? `${reste} autre${reste > 1 ? "s" : ""}` : `${reste} more`]
-          : troisTitres,
-        lang,
-      );
-  const multi = titres.length > 1;
-  const depuis = dateParis(jobs[0].created_at);
-
-  const p = "color:#374151;font-size:15px;line-height:1.7;margin:0 0 18px;font-family:sans-serif;";
-  const h1 = "margin:0 0 14px;font-size:24px;font-weight:800;letter-spacing:-0.02em;color:#111827;font-family:sans-serif;";
-  const encadre = "background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 20px;";
-  const titreEncadre = "margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;font-family:sans-serif;";
-  const liste = "margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;line-height:1.8;font-family:sans-serif;";
-  const signature = `
-    <p style="margin:22px 0 0;padding-top:18px;border-top:1px solid #E5E7EB;color:#6B7280;
-      font-size:14px;line-height:1.6;font-family:sans-serif;">
-      ${isFr
-        ? "Un blocage, une question ? Répondez à ce mail, je lis tout."
-        : "Stuck, or a question? Just reply to this email, I read everything."}
-      <br><strong style="color:#111827;">Nico</strong>
-    </p>`;
-
-  if (cas === 1) {
-    const content = isFr ? `
-    <h1 style="${h1}">Votre publication est en attente</h1>
-    <p style="${p}">
-      Vous avez préparé ${articles} pour ${plateformes} le ${depuis}.
-      ${multi ? "Vos annonces sont prêtes" : "L'annonce est prête"}, avec
-      ${multi ? "leurs" : "ses"} photos, ${multi ? "leurs titres" : "son titre"} et
-      ${multi ? "leurs prix" : "son prix"}. Mais
-      ${multi ? "elles ne sont encore parties" : "elle n'est encore partie"} nulle part.
-    </p>
-    <p style="${p}">
-      La raison est simple : sur FillSell, ce n'est pas le site qui publie, c'est l'extension
-      Chrome. Elle remplit les formulaires à votre place sur chaque plateforme. Or elle n'a
-      jamais été lancée sur votre compte — donc personne n'est venu chercher
-      ${multi ? "vos annonces" : "votre annonce"}.
-    </p>
-    <div style="${encadre}">
-      <p style="${titreEncadre}">L'installer prend deux minutes :</p>
-      <ol style="${liste}">
-        <li>Depuis un ordinateur, ajoutez l'extension en un clic depuis le
-          <a href="${CWS_URL}" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a>.</li>
-        <li>Cliquez sur l'icône FillSell, puis «&nbsp;Se connecter&nbsp;» : elle récupère votre
-          session fillsell.app toute seule.</li>
-        <li>Vérifiez que vous êtes connecté à vos comptes ${plateformes} dans CE navigateur.
-          L'extension s'appuie sur ces sessions pour publier en votre nom — elle ne se connecte
-          jamais à votre place, vous gardez la main.</li>
-      </ol>
-    </div>
-    <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 22px;">
-      <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
-        ⚠️ L'extension fonctionne sur ordinateur uniquement, pas sur mobile. Si vous lisez ce
-        mail sur votre téléphone, gardez-le de côté pour votre prochain passage devant un
-        ordinateur.
-      </p>
-    </div>
-    <a href="${CWS_URL}" class="cta"
-       style="display:block;text-align:center;background:#2DD4BF;color:#fff;font-weight:800;
-         font-size:15px;padding:14px 24px;border-radius:12px;text-decoration:none;
-         font-family:sans-serif;margin:0 0 20px;">
-      Installer l'extension
-    </a>
-    <p style="${p}">
-      ${multi ? "Vos annonces ne sont pas perdues" : "Votre annonce n'est pas perdue"} et vous
-      n'avez rien à refaire : dès que l'extension est installée et connectée,
-      ${multi ? "elles partent" : "elle part"} automatiquement.
-    </p>${signature}` : `
-    <h1 style="${h1}">Your listing is on hold</h1>
-    <p style="${p}">
-      You prepared ${articles} for ${plateformes} on ${depuis}.
-      ${multi ? "The listings are ready" : "The listing is ready"}, with photos, title and
-      price. But ${multi ? "they haven't" : "it hasn't"} gone anywhere yet.
-    </p>
-    <p style="${p}">
-      Here's why: on FillSell, the website doesn't do the listing — the Chrome extension does.
-      It fills in the forms for you on each platform. And it has never run on your account, so
-      nobody came to pick up your work.
-    </p>
-    <div style="${encadre}">
-      <p style="${titreEncadre}">Installing it takes two minutes:</p>
-      <ol style="${liste}">
-        <li>From a computer, add the extension in one click from the
-          <a href="${CWS_URL}" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a>.</li>
-        <li>Click the FillSell icon, then «&nbsp;Sign in&nbsp;»: it picks up your fillsell.app
-          session on its own.</li>
-        <li>Make sure you're logged in to your ${plateformes} accounts in THAT browser. The
-          extension relies on those sessions to list on your behalf — it never logs in for you,
-          you stay in control.</li>
-      </ol>
-    </div>
-    <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 22px;">
-      <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
-        ⚠️ The extension only works on a computer, not on mobile. If you're reading this on your
-        phone, keep it aside for your next time at a computer.
-      </p>
-    </div>
-    <a href="${CWS_URL}" class="cta"
-       style="display:block;text-align:center;background:#2DD4BF;color:#fff;font-weight:800;
-         font-size:15px;padding:14px 24px;border-radius:12px;text-decoration:none;
-         font-family:sans-serif;margin:0 0 20px;">
-      Install the extension
-    </a>
-    <p style="${p}">
-      Nothing is lost and there's nothing to redo: as soon as the extension is installed and
-      signed in, ${multi ? "they go" : "it goes"} out automatically.
-    </p>${signature}`;
-    return {
-      sujet: isFr
-        ? "Votre annonce est prête — il ne manque que l'extension"
-        : "Your listing is ready — the extension is all that's missing",
-      html: emailWrapper(content, lang),
-    };
-  }
-
-  const vue = extensionVueLe ? dateParis(extensionVueLe) : null;
-  const content = isFr ? `
-    <h1 style="${h1}">Votre publication est en pause</h1>
-    <p style="${p}">
-      ${articles} ${multi ? "attendent" : "attend"} de partir sur ${plateformes} depuis
-      le ${depuis}.
-    </p>
-    <p style="${p}">
-      Bonne nouvelle : il n'y a rien à réinstaller. Votre extension FillSell est bien en
-      place${vue ? `, je l'ai vue pour la dernière fois le ${vue}` : ""}. Elle ne tourne
-      simplement pas en ce moment — et comme c'est elle qui publie à votre place,
-      ${multi ? "vos annonces patientent" : "votre annonce patiente"}.
-    </p>
-    <div style="${encadre}">
-      <p style="${titreEncadre}">Pour qu'elle reparte :</p>
-      <ul style="${liste}">
-        <li>L'ordinateur sur lequel l'extension est installée doit être allumé.</li>
-        <li>Chrome doit être ouvert (une seule fenêtre suffit, même réduite).</li>
-        <li>Vous devez rester connecté à vos comptes ${plateformes} dans ce navigateur.</li>
-      </ul>
-    </div>
-    <p style="${p}">
-      C'est tout. La publication reprend toute seule, en arrière-plan, sans que vous ayez à
-      recliquer sur «&nbsp;Publier&nbsp;» ni à retoucher
-      ${multi ? "vos annonces" : "votre annonce"}.
-    </p>
-    ${ctaButton("Ouvrir FillSell")}
-    <p style="margin:20px 0 0;color:#6B7280;font-size:14px;line-height:1.65;font-family:sans-serif;">
-      Si votre ordinateur est bien allumé avec Chrome ouvert et que rien ne bouge dans l'heure,
-      répondez à ce mail : c'est alors de mon côté qu'il y a quelque chose à corriger.
-    </p>${signature}` : `
-    <h1 style="${h1}">Your listing is paused</h1>
-    <p style="${p}">
-      ${articles} ${multi ? "have been waiting" : "has been waiting"} to go out on
-      ${plateformes} since ${depuis}.
-    </p>
-    <p style="${p}">
-      Good news: there's nothing to reinstall. Your FillSell extension is in
-      place${vue ? `, I last saw it on ${vue}` : ""}. It simply isn't running right now — and
-      since it's the one doing the listing for you, your work is waiting.
-    </p>
-    <div style="${encadre}">
-      <p style="${titreEncadre}">To get it going again:</p>
-      <ul style="${liste}">
-        <li>The computer where the extension is installed must be switched on.</li>
-        <li>Chrome must be open (a single window is enough, even minimised).</li>
-        <li>You must stay logged in to your ${plateformes} accounts in that browser.</li>
-      </ul>
-    </div>
-    <p style="${p}">
-      That's all. Listing resumes on its own, in the background, without you clicking
-      «&nbsp;Publish&nbsp;» again or touching anything.
-    </p>
-    ${ctaButton("Open FillSell")}
-    <p style="margin:20px 0 0;color:#6B7280;font-size:14px;line-height:1.65;font-family:sans-serif;">
-      If your computer is on with Chrome open and nothing moves within the hour, reply to this
-      email: that would mean something is broken on my side.
-    </p>${signature}`;
-  return {
-    sujet: isFr
-      ? "Votre publication repartira dès que Chrome sera ouvert"
-      : "Your listing will resume as soon as Chrome is open",
-    html: emailWrapper(content, lang),
-  };
-}
 
 // ── Blast de relance août 2026 ────────────────────────────────────────────────
 // Cible : les inscrits qui ont reçu l'ANCIEN welcome (avant la refonte du
@@ -671,13 +137,13 @@ function relanceHtml(
 // Depop » et ne mentionnait pas l'extension Chrome : ces comptes ont une image
 // fausse du produit. Ce template leur redit ce qu'est FillSell aujourd'hui.
 //
-// Volontairement HORS emailWrapper() : c'est un document autonome, validé tel
+// Volontairement HORS du gabarit partagé : c'est un document autonome, validé tel
 // quel, avec son propre design system (canvas #EDEAE0, paper #F6F5F1, ink
 // #10201B, teal #2F9E90/#1B6E62, amber #E8956D). Tables + styles inline
 // uniquement, aucune classe ni balise <style> — compatibilité Gmail/Outlook.
 // Ne pas le « ramener » vers le wrapper des mails du tunnel.
 //
-// Les 4 logos sont les MÊMES assets que welcomeHtml (public/email/*.png servis
+// Les 4 logos sont les assets de public/email/ (servis
 // par fillsell.app) : width/height en attributs HTML, alt renseigné, et
 // styles de police posés sur l'<img> pour que le alt reste lisible quand le
 // client mail bloque les images.
@@ -694,6 +160,15 @@ function blastRelaunchHtml(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FillSell</title>
+<!-- Space Grotesk : DÉCLARÉE dans tous les font-family de ce document depuis
+     le 01/08, jamais CHARGÉE — les deux blasts s'affichaient donc en
+     Helvetica/Arial chez tout le monde (relevé du 19/09). Le <link> et
+     l'@import sont posés ici, comme dans _shared/email-template.ts ; les
+     clients qui les ignorent (Gmail, Outlook) retombent sur la même pile de
+     repli qu'avant, rien ne bouge pour eux. Le TEXTE n'est pas touché : ces
+     deux documents sont historiques. -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet" type="text/css">
+<style type="text/css">@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');</style>
 </head>
 <body style="margin:0; padding:0; background-color:#EDEAE0; -webkit-font-smoothing:antialiased;">
 
@@ -914,6 +389,15 @@ function blastSyncDressingHtml(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FillSell</title>
+<!-- Space Grotesk : DÉCLARÉE dans tous les font-family de ce document depuis
+     le 01/08, jamais CHARGÉE — les deux blasts s'affichaient donc en
+     Helvetica/Arial chez tout le monde (relevé du 19/09). Le <link> et
+     l'@import sont posés ici, comme dans _shared/email-template.ts ; les
+     clients qui les ignorent (Gmail, Outlook) retombent sur la même pile de
+     repli qu'avant, rien ne bouge pour eux. Le TEXTE n'est pas touché : ces
+     deux documents sont historiques. -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet" type="text/css">
+<style type="text/css">@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');</style>
 </head>
 <body style="margin:0; padding:0; background-color:#EDEAE0; -webkit-font-smoothing:antialiased;">
 
@@ -1010,60 +494,6 @@ ${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en
 </html>`;
 }
 
-// ── Paiement échoué : template client (2026-08-07) ───────────────────────────
-// AUCUN montant (règle CGV : la grille vit dans l'app), la CAUSE en clair —
-// « 3D Secure non validé » n'est pas « carte refusée », et pour le client ça
-// change tout. Le contexte pilote la gravité : une souscription échouée n'a
-// rien débité ni rien activé ; un renouvellement échoué laisse l'abonnement
-// ACTIF pendant que Stripe retente (dunning) — le mail le dit pour ne pas
-// affoler, et donne le geste utile. Transactionnel pur : pas d'en-tête
-// List-Unsubscribe, pas d'exclusion marketing_optout — un client qui a tenté
-// de payer doit être prévenu, opt-out marketing ou pas.
-function paymentFailedHtml(lang: string, cause: string, contexte: string): string {
-  const isFr = lang !== "en";
-  const causesFr: Record<string, string> = {
-    "3ds": "Ta banque attendait une validation 3D Secure (l'écran de confirmation de ta banque) qui n'est pas arrivée au bout. Rien n'a été débité.",
-    carte_refusee: "Ta banque a refusé le paiement. Rien n'a été débité — vérifie le plafond ou le solde de ta carte, ou essaie avec une autre carte.",
-    carte_expiree: "La carte enregistrée est expirée. Rien n'a été débité.",
-    autre: "Le paiement n'a pas pu aboutir. Rien n'a été débité.",
-  };
-  const causesEn: Record<string, string> = {
-    "3ds": "Your bank was waiting for a 3D Secure confirmation (your bank's approval screen) that never completed. Nothing was charged.",
-    carte_refusee: "Your bank declined the payment. Nothing was charged — check your card's limit or balance, or try another card.",
-    carte_expiree: "The card on file has expired. Nothing was charged.",
-    autre: "The payment couldn't be completed. Nothing was charged.",
-  };
-  const corpsCause = (isFr ? causesFr : causesEn)[cause] ?? (isFr ? causesFr.autre : causesEn.autre);
-  const corpsContexte = contexte === "renouvellement"
-    ? (isFr
-      ? "Ton abonnement reste actif pour l'instant : le paiement va être retenté automatiquement dans les prochains jours. Pour ne pas le voir s'interrompre, mets à jour ton moyen de paiement — ou réponds simplement à ce mail et on règle ça ensemble."
-      : "Your subscription stays active for now: the payment will be retried automatically over the next few days. To avoid an interruption, update your payment method — or simply reply to this email and we'll sort it out together.")
-    : (isFr
-      ? "Ton abonnement n'a pas démarré — tu peux réessayer quand tu veux depuis l'app, ça prend une minute. Si ça bloque encore, réponds à ce mail et on regarde ensemble."
-      : "Your subscription didn't start — you can try again anytime from the app, it takes a minute. If it still fails, reply to this email and we'll look into it together.");
-  const content = `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      ${isFr ? "Ton paiement n'a pas abouti" : "Your payment didn't go through"}
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
-      font-family:sans-serif;">${isFr ? "Salut," : "Hi,"}</p>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      ${isFr ? "Tu as tenté de t'abonner à FillSell et le paiement s'est arrêté en route. Voilà ce qui s'est passé, et comment le refaire." : "You tried to subscribe to FillSell and the payment stopped along the way. Here's what happened, and how to redo it."}
-    </p>
-    <div style="background:#FEF3C7;border-radius:12px;padding:16px 18px;margin:0 0 16px;">
-      <p style="margin:0;color:#92400E;font-size:14px;line-height:1.65;font-family:sans-serif;">${corpsCause}</p>
-    </div>
-    <p style="color:#374151;font-size:14px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">${corpsContexte}</p>
-    ${ctaButton(isFr ? "Réessayer depuis FillSell" : "Try again from FillSell")}
-    <p style="color:#111827;font-size:15px;line-height:1.5;margin:24px 0 0;
-      font-family:sans-serif;font-weight:700;">
-      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
-    </p>`;
-  return emailWrapper(content, lang);
-}
 
 // ── Main handler ───────────────────────────────────────────────────────────────
 
@@ -1074,14 +504,21 @@ serve(async (req) => {
 
   // ── Désabonnement marketing (2026-08-07) — AVANT le secret cron ───────────
   // Cible des en-têtes List-Unsubscribe / List-Unsubscribe-Post (One-Click,
-  // RFC 8058) posés sur les blasts : Gmail POST ici sans aucun secret quand
-  // l'utilisateur clique « Se désabonner ». Le jeton est l'user_id (UUID non
-  // devinable) ; l'opt-out est journalisé dans email_logs sous le type
-  // RÉCURRENT 'marketing_optout' (plusieurs clics = plusieurs lignes,
-  // légitime → SURTOUT PAS dans l'index one-shot, cf. règle CLAUDE.md).
-  // Toute FUTURE branche de blast doit exclure ces user_id de sa cible —
-  // blast_sync_dressing le fait. Toujours 200, même sur jeton illisible :
-  // un désabonnement ne doit jamais « échouer » côté client mail.
+  // RFC 8058) : Gmail POST ici sans aucun secret quand l'utilisateur clique
+  // « Se désabonner ». Le jeton est l'user_id (UUID non devinable). Toujours
+  // 200, même sur jeton illisible : un désabonnement ne doit jamais
+  // « échouer » côté client mail.
+  //
+  // ── FUSION DES DEUX REGISTRES (19/09/2026) ────────────────────────────────
+  // Avant ce lot, ce point d'entrée n'écrivait QUE la ligne email_logs
+  // 'marketing_optout' — que send-relance ne lisait pas. Quelqu'un qui
+  // cliquait ici restait destinataire de toute campagne partie par l'autre
+  // chemin. Il appelle désormais desinscrire(), qui pose l'état dans le
+  // registre canonique (email_destinataires) ET conserve la ligne
+  // 'marketing_optout' comme trace d'audit (type inchangé : la dédup
+  // historique en dépend, et estDesinscrit() la lit toujours).
+  // L'adresse est résolue depuis auth.users : le jeton One-Click ne porte que
+  // l'user_id, et le registre canonique est indexé par adresse.
   {
     const unsubToken = new URL(req.url).searchParams.get("unsub");
     if (unsubToken) {
@@ -1092,10 +529,22 @@ serve(async (req) => {
             Deno.env.get("SUPABASE_URL")!,
             Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
           );
-          const { error } = await admin.from("email_logs")
-            .insert({ user_id: unsubToken, email_type: "marketing_optout" });
-          if (error) console.error("marketing_optout_insert_echec", unsubToken, error.message);
-          else console.log("marketing_optout", unsubToken);
+          const { data: compte } = await admin.auth.admin.getUserById(unsubToken);
+          const adresse = compte?.user?.email ?? null;
+          if (adresse) {
+            const r = await desinscrire({
+              email: adresse, userId: unsubToken, origine: "one_click",
+            });
+            if (r.ok) console.log("marketing_optout", unsubToken);
+            else console.error("marketing_optout_echec", unsubToken, r.erreur);
+          } else {
+            // Compte introuvable (supprimé entre-temps) : on garde quand même
+            // la trace, elle suffit à bloquer tout envoi à ce compte.
+            const { error } = await admin.from("email_logs")
+              .insert({ user_id: unsubToken, email_type: "marketing_optout" });
+            if (error) console.error("marketing_optout_insert_echec", unsubToken, error.message);
+            else console.log("marketing_optout_sans_adresse", unsubToken);
+          }
         } catch (e) {
           console.error("marketing_optout_exception", unsubToken, String(e));
         }
@@ -1149,91 +598,41 @@ serve(async (req) => {
   const sent: string[] = [];
   const errors: string[] = [];
 
-  // Trace des retours Resend. sendEmail ne rendait que `res.ok` et jetait le
-  // corps : un mail accepté puis jamais délivré était indiscernable d'un
-  // succès, et on n'avait même pas l'id pour aller vérifier chez Resend.
-  // Diagnostic du 2026-08-01 : la fonction répondait « sent », le mail
-  // n'arrivait pas, et ni la réponse ni les logs ne disaient pourquoi.
+  // Trace des retours Resend. La porte rend le corps de la réponse ; on le
+  // garde ici pour la réponse HTTP de diagnostic.
+  // Motif historique (2026-08-01) : un mail accepté puis jamais délivré était
+  // indiscernable d'un succès, et on n'avait même pas l'id pour aller vérifier
+  // chez Resend.
   const resendTrace: Array<Record<string, unknown>> = [];
-
-  async function sendEmail(to: string, subject: string, html: string, mailHeaders?: Record<string, string>): Promise<boolean> {
-    try {
-      const res = await fetch(RESEND_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${resendKey}`,
-        },
-        body: JSON.stringify({
-          from: FROM, to: [to], subject, html,
-          ...(mailHeaders ? { headers: mailHeaders } : {}),
-        }),
-      });
-      const brut = await res.text();
-      let corps: unknown = brut;
-      try {
-        corps = JSON.parse(brut);
-      } catch {
-        /* Resend a répondu autre chose que du JSON : on garde le texte brut */
-      }
-      const detail = corps && typeof corps === "object" ? corps as Record<string, unknown> : { corps };
-      resendTrace.push({ to, http: res.status, ...detail });
-      if (!res.ok) console.error("resend_echec", JSON.stringify({ to, http: res.status, ...detail }));
-      return res.ok;
-    } catch (e) {
-      resendTrace.push({ to, http: 0, erreur: String(e) });
-      console.error("resend_exception", to, String(e));
-      return false;
-    }
-  }
-
-  // ── Écriture email_logs : jamais bloquante, jamais silencieuse ────────────
-  // Un insert raté ne doit JAMAIS faire échouer l'envoi ni le run : le mail
-  // est déjà parti, re-jeter ici provoquerait un renvoi. Mais il ne doit plus
-  // être muet non plus — c'est ce silence qui a laissé 180 doublons 'welcome'
-  // s'accumuler sans alerte (corrigé le 03/08), et qui masquerait un type
-  // one-shot oublié dans l'index email_logs_one_shot_unique (une violation
-  // 23505 ici = un doublon d'envoi vient d'être tenté : c'est PRÉCISÉMENT
-  // l'alarme qu'on veut lire). Chaque échec part en console.error (logs de la
-  // fonction), dans log_echecs (réponse de chaque branche) ET dans le journal
-  // email_log_echecs — le SEUL canal avec un lecteur : la réponse HTTP part
-  // vers pg_net qui la jette, les logs ne sont consultés qu'a posteriori,
-  // mais l'ops-digest de 8h50 interroge le journal chaque matin sur 24 h.
+  // Échecs d'écriture email_logs remontés dans la réponse. La porte les
+  // journalise déjà dans email_log_echecs (lu par l'ops-digest de 8h50) ;
+  // cette liste ne sert qu'au diagnostic immédiat.
   const logEchecs: string[] = [];
-  async function logEmail(userId: string, emailType: string): Promise<void> {
-    const { error } = await supabase
-      .from("email_logs")
-      .insert({ user_id: userId, email_type: emailType });
-    if (error) {
-      console.error("email_logs_insert_echec", JSON.stringify({
-        user_id: userId, email_type: emailType, erreur: error.message,
-      }));
-      logEchecs.push(`${emailType}:${userId}:${error.message}`);
-      const { error: journalErr } = await supabase.from("email_log_echecs").insert({
-        user_id: userId,
-        email_type: emailType,
-        code: (error as { code?: string }).code ?? null,
-        erreur: error.message,
-      });
-      // Échec du journal lui-même : console.error seulement — jamais de
-      // throw, un échec de log ne doit ni casser le run ni renvoyer un mail.
-      if (journalErr) console.error("email_log_echecs_insert_echec", journalErr.message);
-    }
-  }
 
-  // ── En-têtes de désabonnement (RFC 8058, One-Click) — PARTAGÉS ────────────
-  // Hissés au niveau du handler (2026-08-07 soir) : posés d'abord sur le
-  // blast sync, ils accompagnent désormais AUSSI le tunnel (welcome + comment
-  // ça marche), consigne Nico. L'URL porte le user_id du destinataire ;
-  // l'endpoint ?unsub= (plus haut, avant le secret cron) journalise l'opt-out
-  // en email_logs type récurrent 'marketing_optout' — que le tunnel comme les
-  // blasts EXCLUENT de leurs envois.
-  const unsubHeaders = (userId: string): Record<string, string> => ({
-    "List-Unsubscribe":
-      `<${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel?unsub=${userId}>, ` +
-      `<mailto:support@fillsell.app?subject=STOP>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-  });
+  // ── TOUT passe par la PORTE UNIQUE ────────────────────────────────────────
+  // envoyerEmail() (_shared/desinscription.ts) : filtre de désinscription,
+  // écriture email_logs, journal des échecs, en-tête List-Unsubscribe. Cette
+  // fonction locale n'est qu'une prise de trace autour d'elle — elle ne
+  // décide de RIEN, et surtout pas d'écrire email_logs elle-même.
+  async function envoyer(o: {
+    to: string;
+    subject: string;
+    html: string;
+    type: string;
+    userId?: string | null;
+    categorie?: "marketing" | "support";
+    dedup?: "reservation" | "journal";
+  }): Promise<ResultatEnvoi> {
+    const r = await envoyerEmail(o);
+    const detail = (r.resend && typeof r.resend === "object")
+      ? r.resend as Record<string, unknown>
+      : { corps: r.resend ?? null };
+    resendTrace.push({ to: r.to, type: r.type, http: r.status ?? 0, motif: r.motif ?? null, ...detail });
+    if (r.envoye && r.journalise === false) {
+      logEchecs.push(`${r.type}:${o.userId ?? r.to}`);
+    }
+    return r;
+  }
 
   // ── Diagnostic : statut d'un message chez Resend ──────────────────────────
   // {"resend_lookup":"<id>"} → GET /emails/{id}, rendu mot pour mot.
@@ -1300,11 +699,18 @@ serve(async (req) => {
     ${a.erreur ? `<p style="margin:14px 0 0;padding:10px;background:#FEF2F2;border-radius:8px;font-family:sans-serif;font-size:12.5px;color:#B91C1C;">${esc(a.erreur)}</p>` : ""}
   </div>
 </body></html>`;
-    const envoye = await sendEmail(
-      TO_OPS,
-      `${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
+    const r = await envoyer({
+      to: TO_OPS,
+      subject: `${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
       html,
-    );
+      // Alerte interne : 'support' (jamais filtrée), type dédié, journal
+      // simple. user_id reste null — le destinataire est notre propre boîte,
+      // et c'est la colonne `email` qui dit à qui on a écrit.
+      type: "ops_paiement",
+      categorie: "support",
+      dedup: "journal",
+    });
+    const envoye = r.envoye;
     return new Response(JSON.stringify({ ok: true, mail_envoye: envoye }), {
       status: 200, headers: { "Content-Type": "application/json" },
     });
@@ -1336,34 +742,47 @@ serve(async (req) => {
     let clientEnvoye = false;
     let clientSaute: string | null = null;
 
+    // La réservation, l'envoi, le relâchement en cas d'échec Resend et le
+    // journal vivent maintenant DANS la porte (dedup: "reservation"). Cette
+    // branche ne fait plus qu'établir les faits et lire le verdict.
     if (pf.user_id && pf.email) {
-      const { error: resaErr } = await supabase
-        .from("email_logs")
-        .insert({ user_id: pf.user_id, email_type: typeDedup });
-      if (resaErr && (resaErr as { code?: string }).code === "23505") {
-        clientSaute = "deja_notifie";
-      } else if (resaErr) {
-        // Réservation illisible : on n'envoie PAS le mail client (impossible
-        // d'arbitrer un doublon) mais on le JOURNALISE — même canal que les
-        // échecs de dédup du tunnel, relu par l'ops-digest de 8h50.
-        clientSaute = `reservation: ${resaErr.message}`;
-        logEchecs.push(`${typeDedup}:${pf.user_id}:${resaErr.message}`);
-        await supabase.from("email_log_echecs").insert({
-          user_id: pf.user_id, email_type: typeDedup,
-          code: (resaErr as { code?: string }).code ?? null, erreur: resaErr.message,
-        }).then(({ error: jErr }) => { if (jErr) console.error("email_log_echecs_insert_echec", jErr.message); });
-      } else {
-        const lang = pf.lang === "en" ? "en" : "fr";
-        const subject = lang === "en" ? "Your payment didn't go through" : "Ton paiement n'a pas abouti";
-        clientEnvoye = await sendEmail(pf.email, subject, paymentFailedHtml(lang, cause, contexte));
-        if (!clientEnvoye) {
-          await supabase.from("email_logs").delete()
-            .eq("user_id", pf.user_id).eq("email_type", typeDedup);
-          clientSaute = "resend_echec (réservation rendue)";
-        }
+      const lang = langue(pf.lang);
+      const { sujet, html } = mailPaiementEchoue(
+        cause as CausePaiement,
+        contexte as ContextePaiement,
+        lang,
+      );
+      const r = await envoyer({
+        to: pf.email,
+        subject: sujet,
+        html,
+        type: typeDedup,
+        userId: pf.user_id,
+        // Transactionnel : un client qui a tenté de payer doit être prévenu,
+        // opt-out marketing ou pas.
+        categorie: "support",
+        dedup: "reservation",
+      });
+      clientEnvoye = r.envoye;
+      if (!r.envoye) {
+        clientSaute = r.motif === "deja_envoye"
+          ? "deja_notifie"
+          : r.motif === "reservation_illisible"
+          ? "reservation illisible (journalisée)"
+          : `${r.motif ?? "echec"} (réservation rendue)`;
       }
     } else {
-      clientSaute = "compte ou email introuvable";
+      // ⚠️ C'EST ICI QUE LE MAIL CLIENT SE PERDAIT (relevé du 19/09 : zéro
+      // ligne 'payment_failed:%' depuis le 07/08). Un premier abonnement qui
+      // ÉCHOUE n'a jamais écrit profiles.stripe_customer_id — il n'est posé
+      // qu'après un paiement abouti ou sur le chemin d'upgrade. Le webhook ne
+      // retrouvait donc pas le compte, pf.user_id arrivait à null, et cette
+      // branche sautait le mail en silence. stripe-webhook résout désormais le
+      // compte par l'ADRESSE quand l'id client ne donne rien.
+      clientSaute = `compte ou email introuvable (user_id=${pf.user_id ?? "null"}, email=${pf.email ? "présent" : "absent"})`;
+      console.warn("payment_failed_client_non_notifie", JSON.stringify({
+        invoice: pf.invoice_id, user_id: pf.user_id ?? null, email: pf.email ? "présent" : "absent",
+      }));
     }
 
     const esc = (v: unknown) =>
@@ -1396,11 +815,14 @@ serve(async (req) => {
     </p>
   </div>
 </body></html>`;
-    const opsOk = await sendEmail(
-      TO_OPS,
-      `💳 Paiement échoué — ${cause}${pf.email ? ` — ${pf.email}` : ""}`,
-      opsHtml,
-    );
+    const opsOk = (await envoyer({
+      to: TO_OPS,
+      subject: `💳 Paiement échoué — ${cause}${pf.email ? ` — ${pf.email}` : ""}`,
+      html: opsHtml,
+      type: "ops_paiement_echoue",
+      categorie: "support",
+      dedup: "journal",
+    })).envoye;
 
     return new Response(
       JSON.stringify({
@@ -1417,49 +839,33 @@ serve(async (req) => {
   const welcomeUserEmail: string | null = body?.user_email ?? null;
 
   if (welcomeNow && welcomeUserId && welcomeUserEmail) {
-    // .limit(1) obligatoire : sur un compte portant PLUSIEURS lignes 'welcome'
-    // (doublons historiques), maybeSingle() seul rend une ERREUR — donc
-    // existing null — donc renvoi. Avec limit(1), une ligne suffit à bloquer.
-    const { data: existing } = await supabase
-      .from("email_logs")
-      .select("id")
-      .eq("user_id", welcomeUserId)
-      .eq("email_type", "welcome")
-      .limit(1)
-      .maybeSingle();
-    if (existing) {
-      return new Response(JSON.stringify({ skipped: true, reason: "already_sent" }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     const { data: profile } = await supabase
       .from("profiles")
       .select("lang")
       .eq("id", welcomeUserId)
       .maybeSingle();
-    const lang = profile?.lang ?? "fr";
+    const lang = langue(profile?.lang);
 
-    // Opt-out marketing respecté ici aussi (cohérence avec l'en-tête
-    // List-Unsubscribe posé sur ce mail : « tu ne recevras plus ce type
-    // d'email » doit être vrai dès le welcome).
-    const { data: optedOut } = await supabase
-      .from("email_logs")
-      .select("id")
-      .eq("user_id", welcomeUserId)
-      .eq("email_type", "marketing_optout")
-      .limit(1)
-      .maybeSingle();
-    if (optedOut) {
-      return new Response(JSON.stringify({ skipped: true, reason: "marketing_optout" }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const subject = lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
-    const ok = await sendEmail(welcomeUserEmail, subject, welcomeHtml(lang), unsubHeaders(welcomeUserId));
-    if (ok) {
-      await logEmail(welcomeUserId, "welcome");
+    // Plus de lecture-puis-écriture (« déjà envoyé ? » puis insert) : la porte
+    // RÉSERVE la ligne avant d'envoyer, et l'index email_logs_one_shot_unique
+    // rend le doublon impossible même si deux runs se chevauchent. C'est
+    // exactement la course qui a produit 37 welcomes en double du 01 au 03/08.
+    // Le refus des désinscrits vit lui aussi dans la porte — et il lit
+    // désormais LES DEUX registres.
+    const { sujet, html } = mailBienvenue(
+      lang,
+      await lienDesinscription(welcomeUserEmail, welcomeUserId).catch(() => ""),
+    );
+    const r = await envoyer({
+      to: welcomeUserEmail,
+      subject: sujet,
+      html,
+      type: "welcome",
+      userId: welcomeUserId,
+      categorie: "marketing",
+      dedup: "reservation",
+    });
+    if (r.envoye) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -1469,8 +875,13 @@ serve(async (req) => {
         { headers: { "Content-Type": "application/json" } }
       );
     }
+    if (r.motif === "deja_envoye" || r.motif === "desinscrit") {
+      return new Response(JSON.stringify({ skipped: true, reason: r.motif }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     return new Response(
-      JSON.stringify({ success: false, error: `Failed to send to ${welcomeUserEmail}` }),
+      JSON.stringify({ success: false, error: `Failed to send to ${welcomeUserEmail}`, motif: r.motif }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -1482,63 +893,125 @@ serve(async (req) => {
   // Preview du mail de paiement échoué : cause/contexte passables en options
   // pour éprouver chaque variante ({"test_cause":"carte_refusee",
   // "test_contexte":"renouvellement"}). N'écrit PAS email_logs.
-  if (testEmail && body?.test_template === "payment_failed") {
-    const cause = typeof body?.test_cause === "string" ? body.test_cause : "3ds";
-    const contexte = typeof body?.test_contexte === "string" ? body.test_contexte : "souscription";
-    const ok = await sendEmail(testEmail, "Ton paiement n'a pas abouti", paymentFailedHtml("fr", cause, contexte));
-    if (ok) sent.push(`payment_failed:${testEmail}`);
-    else errors.push(`payment_failed:${testEmail}`);
-    return new Response(
-      JSON.stringify({ test: true, template: "payment_failed", cause, contexte, sent, errors, resend: resendTrace }),
-      { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-  if (testEmail && body?.test_template === BLAST_SYNC_TYPE) {
-    const ok = await sendEmail(testEmail, BLAST_SYNC_SUBJECT, blastSyncDressingHtml());
-    if (ok) sent.push(`${BLAST_SYNC_TYPE}:${testEmail}`);
-    else errors.push(`${BLAST_SYNC_TYPE}:${testEmail}`);
-    return new Response(
-      JSON.stringify({ test: true, template: BLAST_SYNC_TYPE, sent, errors, resend: resendTrace }),
-      { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-  if (testEmail && body?.test_template === BLAST_TYPE) {
-    const ok = await sendEmail(testEmail, BLAST_SUBJECT, blastRelaunchHtml());
-    if (ok) sent.push(`${BLAST_TYPE}:${testEmail}`);
-    else errors.push(`${BLAST_TYPE}:${testEmail}`);
-    return new Response(
-      JSON.stringify({ test: true, template: BLAST_TYPE, sent, errors, resend: resendTrace }),
-      { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
+  //
+  // ⚠️ Les aperçus partent sous le type `preview:<template>`, JAMAIS sous le
+  // type réel : un aperçu de welcome envoyé sous le type 'welcome' brûlerait
+  // la ligne one-shot de l'adresse de test, qui ne recevrait plus jamais le
+  // vrai. Ces lignes `preview:` ne sont lues par aucune dédup.
+  // Langue : {"test_lang":"en"} pour voir la version anglaise.
   if (testEmail) {
-    const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
-    if (r1) sent.push(`welcome:${testEmail}`); else errors.push(`welcome:${testEmail}`);
-    const r2 = await sendEmail(testEmail, "Comment FillSell travaille pour toi 🔍", howItWorksHtml("fr"));
-    if (r2) sent.push(`how_it_works:${testEmail}`); else errors.push(`how_it_works:${testEmail}`);
-    return new Response(JSON.stringify({ test: true, sent, errors }), {
+    const langTest = langue(body?.test_lang);
+    const template = typeof body?.test_template === "string" ? body.test_template : "tunnel";
+
+    const apercu = async (nom: string, sujet: string, html: string) => {
+      const r = await envoyer({
+        to: testEmail, subject: sujet, html,
+        type: `preview:${nom}`, categorie: "support", dedup: "journal",
+      });
+      if (r.envoye) sent.push(`${nom}:${testEmail}`);
+      else errors.push(`${nom}:${testEmail}${r.motif ? ` (${r.motif})` : ""}`);
+      return r.envoye;
+    };
+
+    if (template === "payment_failed") {
+      const cause = (typeof body?.test_cause === "string" ? body.test_cause : "3ds") as CausePaiement;
+      const contexte = (typeof body?.test_contexte === "string" ? body.test_contexte : "souscription") as ContextePaiement;
+      const m = mailPaiementEchoue(cause, contexte, langTest);
+      const ok = await apercu("payment_failed", m.sujet, m.html);
+      return new Response(
+        JSON.stringify({ test: true, template, lang: langTest, cause, contexte, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (template === "relance_1" || template === "relance_2") {
+      // Aperçu des deux relances avec un jeu d'essai — dont un slug INCONNU,
+      // pour vérifier de visu que la garde de _shared/plateformes.ts ne le
+      // laisse jamais sortir en clair.
+      const m = mailRelanceJobs(template === "relance_1" ? 1 : 2, {
+        titres: ["Robe Zara verte", "Sac à main cuir"],
+        plateformes: ["vinted", "opla", "plateforme_inexistante"],
+        depuis: new Date(Date.now() - 26 * 3_600_000).toISOString(),
+        extensionVueLe: template === "relance_2"
+          ? new Date(Date.now() - 9 * 3_600_000).toISOString()
+          : null,
+      }, langTest);
+      const ok = await apercu(template, m.sujet, m.html);
+      return new Response(
+        JSON.stringify({ test: true, template, lang: langTest, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (template === "resiliation_ar") {
+      const m = mailResiliation({
+        formule: "Premium",
+        demandeLe: new Date(),
+        finAcces: new Date(Date.now() + 18 * 86_400_000),
+      }, langTest);
+      const ok = await apercu("resiliation_ar", m.sujet, m.html);
+      return new Response(
+        JSON.stringify({ test: true, template, lang: langTest, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (template === "extension_link") {
+      const m = mailLienExtension(langTest);
+      const ok = await apercu("extension_link", m.sujet, m.html);
+      return new Response(
+        JSON.stringify({ test: true, template, lang: langTest, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (template === BLAST_SYNC_TYPE) {
+      const ok = await apercu(BLAST_SYNC_TYPE, BLAST_SYNC_SUBJECT, blastSyncDressingHtml());
+      return new Response(
+        JSON.stringify({ test: true, template: BLAST_SYNC_TYPE, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (template === BLAST_TYPE) {
+      const ok = await apercu(BLAST_TYPE, BLAST_SUBJECT, blastRelaunchHtml());
+      return new Response(
+        JSON.stringify({ test: true, template: BLAST_TYPE, sent, errors, resend: resendTrace }),
+        { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Défaut : les deux mails du tunnel, avec un lien de désinscription RÉEL.
+    const lien = await lienDesinscription(testEmail).catch(() => "");
+    const b = mailBienvenue(langTest, lien);
+    await apercu("welcome", b.sujet, b.html);
+    const c = mailCommentCaMarche(langTest, lien);
+    await apercu("how_it_works", c.sujet, c.html);
+    return new Response(JSON.stringify({ test: true, lang: langTest, sent, errors, resend: resendTrace }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // ── Relance mode: send custom one-off emails using standard wrapper ────────
+  // ── Relance mode: un texte libre, dans le gabarit de marque ───────────────
+  // Le corps arrive en texte brut : chaque ligne non vide devient un
+  // paragraphe ÉCHAPPÉ par le gabarit. Aucun HTML n'est accepté d'un appelant.
   const relanceEmails: Array<{to: string; subject: string; body_text: string}> = body?.relance_emails ?? [];
   if (relanceEmails.length > 0) {
     for (const item of relanceEmails) {
-      const html = emailWrapper(`
-        <p style="color:#6B7280;font-size:15px;line-height:1.75;margin:0 0 28px;
-          font-family:sans-serif;white-space:pre-line;">${item.body_text.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
-        <a href="https://fillsell.app"
-           style="display:block;text-align:center;background:#2DD4BF;
-             color:#fff;font-weight:800;font-size:15px;padding:14px 24px;
-             border-radius:12px;text-decoration:none;font-family:sans-serif;">
-          Ouvrir FillSell
-        </a>`, "fr");
-      const ok = await sendEmail(item.to, item.subject, html);
-      if (ok) sent.push(`relance:${item.to}`); else errors.push(`relance:${item.to}`);
+      const lignes = String(item.body_text ?? "")
+        .split(/\n{1,}/).map((l) => l.trim()).filter(Boolean);
+      const html = renderEmail({
+        titre: "",
+        corps: lignes.map((l) => paragraphe(l)),
+        preheader: lignes[0]?.slice(0, 85) ?? "",
+        formuleFin: "",
+        signatureNom: "Nico",
+        signatureRole: "FillSell",
+        langue: "fr",
+      });
+      const r = await envoyer({
+        to: item.to, subject: item.subject, html,
+        type: "relance_manuelle", categorie: "support", dedup: "journal",
+      });
+      if (r.envoye) sent.push(`relance:${item.to}`);
+      else errors.push(`relance:${item.to}${r.motif ? ` (${r.motif})` : ""}`);
     }
-    return new Response(JSON.stringify({ relance: true, sent, errors }), {
+    return new Response(JSON.stringify({ relance: true, sent, errors, log_echecs: logEchecs }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1632,14 +1105,20 @@ serve(async (req) => {
     for (let i = 0; i < tranche.length; i += BLAST_LOT) {
       await Promise.all(
         tranche.slice(i, i + BLAST_LOT).map(async (c) => {
-          const ok = await sendEmail(c.user_email, BLAST_SUBJECT, html);
+          // Le texte du blast n'est pas touché (document historique, déjà
+          // parti le 01/08) — seul son ENVOI passe par la porte, qui écrit la
+          // ligne email_logs et refuse les désinscrits des deux registres.
           // Resend en échec = AUCUNE ligne email_logs : la cible reste
           // éligible et repartira au prochain run.
-          if (!ok) {
-            errors.push(`${BLAST_TYPE}:${c.user_email}`);
+          const r = await envoyer({
+            to: c.user_email, subject: BLAST_SUBJECT, html,
+            type: BLAST_TYPE, userId: c.user_id,
+            categorie: "marketing", dedup: "journal",
+          });
+          if (!r.envoye) {
+            errors.push(`${BLAST_TYPE}:${c.user_email}${r.motif ? ` (${r.motif})` : ""}`);
             return;
           }
-          await logEmail(c.user_id, BLAST_TYPE);
           sent.push(`${BLAST_TYPE}:${c.user_email}`);
         })
       );
@@ -1851,20 +1330,24 @@ serve(async (req) => {
       );
     }
 
-    // En-têtes de désabonnement : helper partagé du handler (unsubHeaders).
+    // En-têtes de désabonnement : posés par la porte sur tout 'marketing'.
     const html = blastSyncDressingHtml();
     const tranche = cibles.slice(0, limite);
     for (let i = 0; i < tranche.length; i += BLAST_LOT) {
       await Promise.all(
         tranche.slice(i, i + BLAST_LOT).map(async (c) => {
-          const ok = await sendEmail(c.user_email, BLAST_SYNC_SUBJECT, html, unsubHeaders(c.user_id));
+          // Texte historique intact ; l'envoi passe par la porte.
           // Resend en échec = AUCUNE ligne email_logs : la cible reste
           // éligible et repartira au prochain lot.
-          if (!ok) {
-            errors.push(`${BLAST_SYNC_TYPE}:${c.user_email}`);
+          const r = await envoyer({
+            to: c.user_email, subject: BLAST_SYNC_SUBJECT, html,
+            type: BLAST_SYNC_TYPE, userId: c.user_id,
+            categorie: "marketing", dedup: "journal",
+          });
+          if (!r.envoye) {
+            errors.push(`${BLAST_SYNC_TYPE}:${c.user_email}${r.motif ? ` (${r.motif})` : ""}`);
             return;
           }
-          await logEmail(c.user_id, BLAST_SYNC_TYPE);
           sent.push(`${BLAST_SYNC_TYPE}:${c.user_email}`);
         })
       );
@@ -2092,11 +1575,23 @@ serve(async (req) => {
       const aAnnoncer = jobsUser.filter((j) => setClaimes.has(j.id));
       if (aAnnoncer.length === 0) continue; // tout était déjà relancé
 
-      const lang = prof.lang ?? "fr";
-      const { sujet, html } = relanceHtml(cas, aAnnoncer, prof.extension_last_seen_at, lang);
-      const ok = await sendEmail(prof.email, sujet, html);
-      if (ok) {
-        await logEmail(userId, RELANCE_TYPE);
+      const lang = langue(prof.lang);
+      const { sujet, html } = mailRelanceJobs(cas, {
+        titres: [...new Set(aAnnoncer.map((j: any) => String(j.title ?? "").trim()).filter(Boolean))],
+        plateformes: aAnnoncer.map((j: any) => j.platform),
+        depuis: aAnnoncer[0].created_at,
+        extensionVueLe: prof.extension_last_seen_at ?? null,
+      }, lang);
+      // 'support' : c'est une alerte sur le travail de la personne, pas une
+      // campagne. La page d'opt-out le dit — « les emails liés à ton compte
+      // (confirmations, alertes) continuent normalement ».
+      // dedup 'journal' : la vraie réservation vit dans job_relaunch_log,
+      // par JOB, et elle est déjà posée ci-dessus.
+      const r = await envoyer({
+        to: prof.email, subject: sujet, html,
+        type: RELANCE_TYPE, userId, categorie: "support", dedup: "journal",
+      });
+      if (r.envoye) {
         sent.push(`${RELANCE_TYPE}:cas${cas}:${prof.email}`);
       } else {
         // Resend a refusé : on RELÂCHE la réservation pour retenter dans 1 h.
@@ -2194,14 +1689,19 @@ serve(async (req) => {
   for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "welcome")) continue;
     if (alreadySent(user.user_id, "marketing_optout")) continue;
-    const subject =
-      user.lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
-    const ok = await sendEmail(user.user_email, subject, welcomeHtml(user.lang), unsubHeaders(user.user_id));
-    if (ok) {
-      await logEmail(user.user_id, "welcome");
-      sent.push(`welcome:${user.user_email}`);
-    } else {
-      errors.push(`welcome:${user.user_email}`);
+    const lang = langue(user.lang);
+    const { sujet, html } = mailBienvenue(
+      lang,
+      await lienDesinscription(user.user_email, user.user_id).catch(() => ""),
+    );
+    const r = await envoyer({
+      to: user.user_email, subject: sujet, html,
+      type: "welcome", userId: user.user_id,
+      categorie: "marketing", dedup: "reservation",
+    });
+    if (r.envoye) sent.push(`welcome:${user.user_email}`);
+    else if (r.motif !== "deja_envoye" && r.motif !== "desinscrit") {
+      errors.push(`welcome:${user.user_email}${r.motif ? ` (${r.motif})` : ""}`);
     }
   }
 
@@ -2211,16 +1711,19 @@ serve(async (req) => {
   for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "how_it_works")) continue;
     if (alreadySent(user.user_id, "marketing_optout")) continue;
-    const subject =
-      user.lang === "en"
-        ? "How FillSell works for you 🔍"
-        : "Comment FillSell travaille pour toi 🔍";
-    const ok = await sendEmail(user.user_email, subject, howItWorksHtml(user.lang), unsubHeaders(user.user_id));
-    if (ok) {
-      await logEmail(user.user_id, "how_it_works");
-      sent.push(`how_it_works:${user.user_email}`);
-    } else {
-      errors.push(`how_it_works:${user.user_email}`);
+    const lang = langue(user.lang);
+    const { sujet, html } = mailCommentCaMarche(
+      lang,
+      await lienDesinscription(user.user_email, user.user_id).catch(() => ""),
+    );
+    const r = await envoyer({
+      to: user.user_email, subject: sujet, html,
+      type: "how_it_works", userId: user.user_id,
+      categorie: "marketing", dedup: "reservation",
+    });
+    if (r.envoye) sent.push(`how_it_works:${user.user_email}`);
+    else if (r.motif !== "deja_envoye" && r.motif !== "desinscrit") {
+      errors.push(`how_it_works:${user.user_email}${r.motif ? ` (${r.motif})` : ""}`);
     }
   }
 
