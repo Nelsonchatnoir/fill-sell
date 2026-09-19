@@ -20,7 +20,8 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import InstallExtensionCta from '../components/InstallExtensionCta';
-import { useRepublicationPlanifiee, republicationPlanifieeExposee } from '../hooks/useRepublicationPlanifiee';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
+import { RepublicationPlanifieeBloc } from '../components/RepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
@@ -4710,6 +4711,10 @@ const StockTab = memo(function StockTab({
   // premium_cta_click declencheur:'automatique' — cf. App.jsx). Optionnelle :
   // absente, le refus plafond_republication_free retombe sur le message inline.
   ouvrirModalePlafond = null,
+  // Ouvre les Réglages SUR l'écran de republication automatique (20/09) :
+  // le module du pied de liste y mène, il ne remonte pas une seconde copie
+  // des trois écrans ici.
+  ouvrirReglagesRepublication = null,
   // Bascule quotas (02/09) : état des compteurs (quotas_etat via App) — sert
   // le compteur de republications restantes sur le bouton de lot.
   quotas = null,
@@ -5045,8 +5050,23 @@ const StockTab = memo(function StockTab({
   // écrans (réglages, historique) et porte la même porte Pro. Le Stock ne
   // garde de ce hook que planifieeExposee : il décide encore si l'ancien
   // bloc É6 s'affiche ou non — la seule chose qui en dépendait ici.
-  const planifiee = useRepublicationPlanifiee({ userId: user?.id });
+  const planifiee = useRepublicationPlanifiee({ userId: user?.id, multi: true });
   const planifieeExposee = republicationPlanifieeExposee(planifiee);
+  // Les plateformes réellement allumées, dans l'ordre d'affichage — le
+  // module les NOMME (« Active sur Vinted et Beebs »), c'est la première
+  // question qu'on se pose en lisant « active ».
+  const planifieeActives = useMemo(
+    () => PLATEFORMES_PLANIFIEES.filter((pf) => planifiee.parPlateforme?.[pf]?.actif === true),
+    [planifiee.parPlateforme],
+  );
+  // Palier sans le droit : le tap ouvre la modale d'offres EXISTANTE, sur le
+  // motif qui nomme le plan qui débloque (trigger 'republish_auto').
+  // ⛔ Jamais d'ouverture automatique : cette fonction n'est appelée que
+  //    depuis le geste de l'utilisateur, sur le bouton du module.
+  const planifieeActiverNonPro = () => {
+    track('premium_click', { source: 'stock_republication_auto' });
+    openUpgradeModal?.(null, 'stock_republication_auto', 'republish_auto');
+  };
   const [republishPrice, setRepublishPrice] = useState(null);
   // ── Republication multiplateforme : UN interrupteur serveur (2026-09-17) ──
   // coin_config.republication_multi_ouverte (0/1), même doctrine qu'Opla :
@@ -10352,7 +10372,32 @@ const StockTab = memo(function StockTab({
             {/* Module par créneaux EXPOSÉ (13/09) → ce bloc s'efface : le
                 bloc compact en tête du Stock le remplace (réglages et accroche
                 non-Pro compris). Non exposé → rien ne change ici. */}
-            {!planifieeExposee&&(republishActif||!isPro)&&(
+            {/* ── REPUBLICATION AUTOMATIQUE — REMISE EN PIED DE LISTE (20/09) ─
+                Elle avait DÉMÉNAGÉ dans Réglages › Automatismes le 18/09
+                (e484bc9, retrait délibéré et documenté). Résultat : plus rien
+                ici, et l'interrupteur serveur valant 1, É6 ne prenait pas le
+                relais non plus — le pied du Stock était muet pour tout le
+                monde. Le module revient, MONTRÉ À TOUS LES PALIERS : masquer
+                la fonction à qui n'y a pas droit, c'est masquer l'argument de
+                vente avec l'outil (la leçon de la gate d'É6, 31/08).
+                Le tap mène à l'écran de réglages QUI EXISTE (Réglages ›
+                Automatismes) ; sans le droit, « Activer » ouvre la modale
+                d'offres. Rien ne s'ouvre jamais tout seul. */}
+            {planifieeExposee?(
+              <div style={{marginTop:12}}>
+                <RepublicationPlanifieeBloc
+                  lang={lang}
+                  variante="pied"
+                  etat={planifiee.etat}
+                  plateformesActives={planifieeActives}
+                  interrupteur={planifiee.interrupteur}
+                  extensionStatus={extensionStatus}
+                  busy={planifiee.busy}
+                  onOuvrirReglages={()=>ouvrirReglagesRepublication?.()}
+                  onActiverNonPro={planifieeActiverNonPro}
+                />
+              </div>
+            ):(republishActif||!isPro)&&(
               <div style={{marginTop:12}}>
                 <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
               </div>
