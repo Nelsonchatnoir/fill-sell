@@ -1,0 +1,36 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- SOCLE — LES EXTENSIONS QUE LE DÉPÔT N'A JAMAIS DÉCLARÉES (2026-09-19)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- D'OÙ ÇA VIENT : du dashboard Supabase. Sur les 201 fichiers de
+-- supabase/migrations/, PAS UN SEUL ne contient `create extension`. pg_cron et
+-- pg_net ont été activés à la main, et le dépôt n'en garde aucune trace.
+--
+-- CE QUE ÇA CASSAIT, MESURÉ LE 19/09 SUR UNE BASE VIERGE. Rejeu des 201
+-- fichiers : 10 tombent directement sur pg_cron —
+--     « schema "cron" does not exist »  (email_tunnel_cron, coins_monthly_sweep,
+--     ops_digest_cron, handler_watch_cron, lens_temp_purge, ebay_ventes_cron…)
+--     « relation "cron.job" does not exist » (reservation_capture_publication,
+--     ebay_api_voie_emplacement_cron, republish_auto_sweep_serveur,
+--     objets_sans_trace_reconstruits)
+-- et plusieurs autres tombent EN CASCADE derrière elles, parce que les tables
+-- et colonnes qu'elles créent n'existent plus pour la suite.
+--
+-- RELEVÉ SUR LA PROD DU 19/09 (pg_extension × pg_namespace), à l'identique :
+--     pg_cron 1.6.4  dans pg_catalog   ← la seule ABSENTE d'une base neuve
+--     pg_net  0.20.0 dans extensions   ← présente par défaut, déclarée quand même
+-- Les quatre autres de la prod (pg_stat_statements, pgcrypto, plpgsql,
+-- uuid-ossp, supabase_vault) sont livrées d'office par Supabase et ne sont PAS
+-- déclarées ici : on ne déclare que ce dont les migrations se servent
+-- réellement, et pg_cron est la seule qui manquait pour de bon.
+--
+-- ⚠️ LE SCHÉMA COMPTE. `with schema pg_catalog` n'est pas cosmétique : c'est
+-- là que la prod l'a, et c'est ce qui rend `cron.schedule(...)` résolvable tel
+-- que les dix migrations l'écrivent. Un `create extension pg_cron` sans schéma
+-- le poserait ailleurs et la moitié du parc de crons ne se recréerait pas.
+--
+-- Numéro 20260512100000 : après le socle des tables (20260512000000), avant le
+-- premier consommateur (20260612100000_email_tunnel_cron).
+-- Idempotent : `if not exists`, inerte sur la prod — vérifié.
+
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;

@@ -8,8 +8,18 @@
 -- des centaines de fois — ALTER, policies, index, RPC, clés étrangères — et ne
 -- les CRÉE jamais.
 -- DATE DE POSE EN PROD : inconnue, antérieure à la première migration
--- (20260511000000). Le numéro 20260510000000 est choisi pour passer JUSTE
--- AVANT elle : c'est une contrainte d'ordre de rejeu, pas une date réelle.
+-- enregistrée (20260511000000). Le numéro n'est donc pas une date, c'est une
+-- contrainte d'ordre de rejeu — et il a dû être choisi finement :
+--   · APRÈS 20260511000000, la BASELINE de l'historique (la plus ancienne
+--     version présente dans supabase_migrations.schema_migrations). Constaté
+--     le 19/09 : un fichier numéroté AVANT cette baseline n'est pas seulement
+--     rejoué en retard, il est purement IGNORÉ par le moteur de rejeu des
+--     branches Supabase — il n'apparaît même pas dans le schema_migrations de
+--     la branche. Le socle portait d'abord 20260510000000 et n'a jamais été
+--     tenté, sur trois branches de suite.
+--   · AVANT 20260514000000_founder_plan, son premier consommateur
+--     (« ALTER TABLE profiles ADD COLUMN is_founder »).
+-- 20260512000000 est le seul créneau libre qui satisfait les deux.
 --
 -- CE QUE ÇA CASSAIT, MESURÉ ET PAS SUPPOSÉ. Une branche Supabase vierge montée
 -- le 19/09 sur le dépôt a rejoué DEUX migrations sur 199 avant de tomber :
