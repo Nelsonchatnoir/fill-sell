@@ -119,6 +119,7 @@ import VoiceResultCard from './components/voice/VoiceResultCard';
 // Avertissement « encore en ligne » — MÊME composant que la carte vocale
 // inventory_sell. Les deux chemins de vente disent la même chose, une seule fois.
 import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLigne';
+import AvertissementLotEncoreEnLigne from './components/AvertissementLotEncoreEnLigne';
 import { createPortal } from 'react-dom';
 import { useFondFige } from './utils/modale';
 import ReglagesPage from './reglages/ReglagesPage';
@@ -2214,6 +2215,25 @@ export default function App({ loginOnly = false }){
   // vente réelle se déclare toujours depuis la fiche (« Vendre »), et le
   // retrait des copies part comme d'habitude.
   const [alertesMasqueesPf,setAlertesMasqueesPf]=useState({});
+  // ── « JE NE SAIS PAS » — LA TROISIÈME SORTIE (2026-09-19) ────────────────
+  // Les deux réponses existantes concluent : « Vendue » écrit une vente,
+  // « Je l'ai retirée » clôt le job. « Masquer » ne conclut pas mais ne revient
+  // JAMAIS (l'épisode reste le même tant que l'annonce ne réapparaît pas) —
+  // c'est un enterrement silencieux, et c'est ce que les gens cliquent quand
+  // ils ne savent pas. La troisième sortie est un REPORT : elle n'écrit ni
+  // signal, ni statut, ni prix, ni inventaire — seulement une date et un
+  // compteur dans platform_fields.
+  //
+  // LE DÉLAI EST EN JOURS D'EXTENSION OUVERTE, PAS EN JOURS DE CALENDRIER.
+  // Une horloge murale ramène la question à quelqu'un qui n'a pas rouvert
+  // Chrome de la semaine : il ne saura pas plus qu'avant, et il reportera
+  // encore. Ce qu'on attend, c'est une OCCASION de savoir — un passage sur les
+  // plateformes. On compte donc les jours où l'extension s'est annoncée.
+  // Source : platform_settings.extension_jours, une ligne par jour, posée par
+  // l'app elle-même (au plus une écriture par jour et par compte).
+  const REPORT_JOURS_EXT=7;   // ~une semaine d'usage réel
+  const REPORT_MAX=3;         // 3 reports sans réponse → « à vérifier »
+  const [extensionJours,setExtensionJours]=useState([]);
   const [propositionsParJob,setPropositionsParJob]=useState({});
   const [montrerMasquees,setMontrerMasquees]=useState(false);
   const [confirmingSale,setConfirmingSale]=useState(null);
@@ -2391,6 +2411,50 @@ export default function App({ loginOnly = false }){
     return ecouterPresenceExtension((v)=>{ if(v) setExtVersionEnDirect(String(v)); });
     // isNative est une constante de module (pas un state) : pas une dépendance.
   },[]);
+  // ── LE CALENDRIER DES JOURS D'EXTENSION OUVERTE (2026-09-19) ─────────────
+  // Sert UNIQUEMENT à faire revenir un « Je ne sais pas » au bon moment. Une
+  // date par jour, jamais plus : la garde `dejaVu` fait qu'un compte qui ouvre
+  // l'app vingt fois dans la journée n'écrit qu'une seule fois. Lecture-fusion-
+  // écriture sur platform_settings, qui porte aussi l'adresse Leboncoin et les
+  // réglages de republication — jamais d'écrasement global. Borne à 120 jours :
+  // au-delà, aucune question ne peut plus dépendre de ces dates.
+  //
+  // ⚠️ SUR MOBILE, C'EST LE JOUR D'APP OUVERTE. Il n'y a pas d'extension dans
+  // l'app native : exiger sa présence gèlerait le compteur à jamais et un
+  // « Je ne sais pas » ne reviendrait JAMAIS — ce serait un « Masquer »
+  // déguisé, exactement ce qu'on répare. Ce qu'on compte est une OCCASION DE
+  // SAVOIR, pas un navigateur : sur mobile, ouvrir l'app en est une.
+  useEffect(()=>{
+    if(!user?.id)return;
+    if(!isNative&&!extVersionEnDirect)return;
+    const jour=new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+    if(extensionJours.includes(jour))return;
+    let annule=false;
+    (async()=>{
+      const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
+      if(annule)return;
+      const base=cur?.platform_settings||{};
+      const vus=Array.isArray(base.extension_jours)?base.extension_jours:[];
+      if(vus.includes(jour)){setExtensionJours(vus);return;}
+      const suite=[...vus,jour].sort().slice(-120);
+      const{error}=await supabase.from('profiles')
+        .update({platform_settings:{...base,extension_jours:suite}}).eq('id',user.id);
+      if(annule)return;
+      if(error){console.error('[extension_jours]',error.message);return;}
+      setExtensionJours(suite);
+    })();
+    return()=>{annule=true;};
+  },[user?.id,extVersionEnDirect,extensionJours]);
+
+  // Jours d'extension ouverte écoulés DEPUIS une date de report (exclue).
+  // 0 si la date est absente ou illisible : un report qu'on ne sait pas dater
+  // n'a jamais mûri — il ne réapparaît donc pas tout seul, il attend.
+  const joursExtDepuis=useCallback((jour)=>{
+    if(!jour)return 0;
+    const d=String(jour).slice(0,10);
+    return extensionJours.filter(x=>x>d).length;
+  },[extensionJours]);
+
   // L'extension de CE navigateur s'est annoncée avec une version au moins égale
   // au paquet minimal exigé : elle est à jour, on le sait AVANT la base.
   const extAJourEnDirect=Boolean(EXT_MIN_VERSION&&extVersionEnDirect&&versionAuMoins(extVersionEnDirect,EXT_MIN_VERSION));
@@ -3224,6 +3288,7 @@ export default function App({ loginOnly = false }){
       setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
       setSettingsLbcVille(p.data?.platform_settings?.leboncoin?.ville||'');
       setAlertesMasqueesPf(p.data?.platform_settings?.alertes_hors_ligne_masquees||{});
+      setExtensionJours(Array.isArray(p.data?.platform_settings?.extension_jours)?p.data.platform_settings.extension_jours:[]);
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
       setExtensionBuild(p.data?.extension_build??null);
@@ -4280,6 +4345,40 @@ export default function App({ loginOnly = false }){
     setUnavailableListings(prev=>prev.map(j=>j.id===job.id?{...j,platform_fields:pf}:j));
     track(on?'alerte_hors_ligne_masquee':'alerte_hors_ligne_reaffichee',{platform:job.platform});
   }
+  // ── « Je ne sais pas » : REPORTER, ne rien conclure (2026-09-19) ─────────
+  // ⛔ CE CHEMIN N'ÉCRIT NI VENTE, NI STATUT, NI PRIX, NI INVENTAIRE, ET NE
+  // TOUCHE AUCUNE COPIE SUR UNE AUTRE PLATEFORME. Deux clés dans
+  // platform_fields, rien d'autre : la date du report et le nombre de reports.
+  // Le job reste 'published' et SURVEILLÉ — si le veilleur trouve une preuve
+  // positive de vente d'ici là, `sale_signal='sold'` reprend la main et le
+  // bandeau « 🎉 Vendue » passe devant (cf. estReporte, qui s'efface devant).
+  // L'update est bornée à status='published' : un job conclu entre-temps n'est
+  // jamais réécrit.
+  const estReporte=(job)=>{
+    const pf=job.platform_fields||{};
+    if(pf.sale_signal==='sold')return false;
+    return !!pf.reporte_le&&joursExtDepuis(pf.reporte_le)<REPORT_JOURS_EXT;
+  };
+  const estAVerifier=(job)=>{
+    const pf=job.platform_fields||{};
+    if(pf.sale_signal==='sold')return false;
+    return Number(pf.reporte_n||0)>=REPORT_MAX;
+  };
+  async function reporterAlerte(job){
+    const pf={...(job.platform_fields||{})};
+    pf.reporte_le=new Date().toLocaleDateString('en-CA');
+    pf.reporte_n=Number(pf.reporte_n||0)+1;
+    const{data:upd,error}=await supabase.from('cross_post_jobs')
+      .update({platform_fields:pf}).eq('id',job.id).eq('status','published').select('id');
+    if(error||!upd?.length){console.error('[reporterAlerte]',error?.message??'update refusé');return;}
+    setUnavailableListings(prev=>prev.map(j=>j.id===job.id?{...j,platform_fields:pf}:j));
+    // Tracée comme les deux autres réponses : sans ça on ne saurait pas si le
+    // bouton sert, ni combien d'articles finissent en « à vérifier ».
+    logTunnel('reponse_annonce_disparue',{reponse:pf.reporte_n>=REPORT_MAX?'a_verifier':'je_ne_sais_pas',
+                                          mode:'unitaire',count:1,platform:job.platform});
+    track('reporter_alerte',{platform:job.platform,n:pf.reporte_n});
+  }
+
   async function masquerAlertesPlateforme(platform,on){
     if(!user?.id)return;
     // Lecture-fusion-écriture : platform_settings porte aussi l'adresse
@@ -4337,11 +4436,19 @@ export default function App({ loginOnly = false }){
     const soldFlags=new Set(unavailableListings
       .filter(j=>j.platform==='vinted'&&(j.platform_fields||{}).sale_signal==='sold'&&j.inventaire_id!=null)
       .map(j=>String(j.inventaire_id)));
+    // « Je ne sais pas » posé sur le JOB Vinted de cet article (2026-09-19) :
+    // il silencie la question PARTOUT, sinon la modale la reposerait pendant
+    // que le bandeau se tait — et l'article reporté 3 fois apparaîtrait deux
+    // fois, ici ET dans « à vérifier ». Une file, une place.
+    const reportes=new Set(unavailableListings
+      .filter(j=>j.platform==='vinted'&&j.inventaire_id!=null&&(estReporte(j)||estAVerifier(j)))
+      .map(j=>String(j.inventaire_id)));
     return items.filter(i=>i.statut==='stock'&&i.disparu_le&&i.vinted_item_id
       &&i.vinted_status!=='closed'
       &&!republishActifsInv.has(String(i.id))
-      &&!soldFlags.has(String(i.id)));
-  },[items,unavailableListings,republishActifsInv]);
+      &&!soldFlags.has(String(i.id))
+      &&!reportes.has(String(i.id)));
+  },[items,unavailableListings,republishActifsInv,extensionJours]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── LA FILE DES QUATRE AUTRES PLATEFORMES (2026-09-18, point a) ───────────
   // Elle ne peut pas se lire comme celle de Vinted : `disparusATrancher`
@@ -4357,8 +4464,17 @@ export default function App({ loginOnly = false }){
     if(pf.sale_signal==='sold')return false;
     if(alertesMasqueesPf?.[j.platform]===true)return false;
     if(pf.alerte_masquee_pour&&pf.alerte_masquee_pour===String(pf.unavailable_since??''))return false;
+    // Reports (2026-09-19) : un « Je ne sais pas » qui n'a pas mûri, et un
+    // article reporté REPORT_MAX fois, ne comptent plus dans la file — le
+    // second est listé à part, en « à vérifier ».
+    if(estReporte(j)||estAVerifier(j))return false;
     return true;
-  }),[unavailableListings,alertesMasqueesPf]);
+  }),[unavailableListings,alertesMasqueesPf,extensionJours]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Les articles sortis de la file faute de réponse : on ne les perd pas, on
+  // les range. Leurs deux vraies réponses restent offertes dans la modale.
+  const aVerifier=useMemo(()=>unavailableListings.filter(estAVerifier),
+    [unavailableListings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Le compteur de tête : ce qui attend VRAIMENT une réponse, les deux files
   // réunies. Les jobs 'sold' et 'cancelled' qui portent encore le drapeau n'y
@@ -7637,6 +7753,13 @@ export default function App({ loginOnly = false }){
           // « afficher » n'est pas demandé — l'alerte existe toujours.
           const masquee=alerteEstMasquee(job);
           if(masquee&&!montrerMasquees)return null;
+          // Reporté (« Je ne sais pas ») : le bandeau se tait jusqu'à ce que
+          // REPORT_JOURS_EXT jours d'extension ouverte se soient écoulés.
+          // Reporté REPORT_MAX fois : il ne revient plus du tout — l'article
+          // rejoint « à vérifier » dans la modale, où ses deux vraies réponses
+          // restent accessibles. Trois fois sans réponse n'est PAS une réponse,
+          // et continuer à poser la question ne la fera pas apparaître.
+          if(estAVerifier(job)||estReporte(job))return null;
           const proposition=pf.sale_signal!=='sold'?(propositionsParJob[job.id]??null):null;
           if(proposition){
             return (
@@ -7756,6 +7879,20 @@ export default function App({ loginOnly = false }){
                   style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
                   {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
                 </button>
+                {/* LA TROISIÈME SORTIE, visuellement en retrait : ni fond, ni
+                    bordure, corps plus petit. Elle n'écrit rien — c'est une
+                    RESPIRATION, pas une décision. Le titre dit le délai en
+                    clair, parce qu'un bouton qui fait disparaître une question
+                    sans dire quand elle revient se lit comme un enterrement. */}
+                {!vendu&&!masquee&&(
+                  <button disabled={busy} onClick={()=>reporterAlerte(job)}
+                    title={lang==='fr'
+                      ?`Ne décide rien et n'écrit rien. La question revient après ${REPORT_JOURS_EXT} jours d'utilisation de l'extension — pas au bout de ${REPORT_JOURS_EXT} jours de calendrier. Après ${REPORT_MAX} reports, l'annonce passe dans « à vérifier » et ne s'affiche plus ici.`
+                      :`Decides nothing and writes nothing. The question comes back after ${REPORT_JOURS_EXT} days of actually using the extension — not ${REPORT_JOURS_EXT} calendar days. After ${REPORT_MAX} deferrals it moves to “to check” and stops showing here.`}
+                    style={{padding:"9px 14px",borderRadius:999,border:"none",background:"transparent",color:UI.mute2,fontSize:13,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Je ne sais pas':"I don't know"}
+                  </button>
+                )}
                 {!vendu&&(
                   <button disabled={busy} onClick={()=>masquerAlerte(job,!masquee)}
                     title={masquee
@@ -7830,6 +7967,16 @@ export default function App({ loginOnly = false }){
                     :(lang==='fr'?`Pas vendues (${[...disparusSel].filter(id=>disparusATrancher.some(i=>i.id===id)).length})`:`Not sold (${[...disparusSel].filter(id=>disparusATrancher.some(i=>i.id===id)).length})`)}
                 </button>
               </div>
+              {/* L'AVERTISSEMENT DU LOT (2026-09-19). « Pas vendues » en lot
+                  n'a aucun effet sur les autres plateformes — voulu, mais
+                  invisible : on coche trente lignes, on clique une fois, et des
+                  copies restent achetables sans qu'un mot l'ait dit. Le lot les
+                  NOMME (le nombre ne suffit pas : c'est le titre qui permet
+                  d'aller les retirer). Monté sur la SÉLECTION, donc muet tant
+                  que rien n'est coché. */}
+              <AvertissementLotEncoreEnLigne
+                items={disparusATrancher.filter(i=>disparusSel.has(i.id))}
+                lang={lang} style={{marginBottom:10}}/>
               {disparusATrancher.slice(0,disparusRendu).map(item=>{
                 const busy=disparusBusy===item.id||disparusBusy==='lot';
                 const defaut=disparusPropositions[item.vinted_item_id]??item.sell;
@@ -7911,6 +8058,28 @@ export default function App({ loginOnly = false }){
                 achatDraft={buyPriceDraft} setAchatDraft={setBuyPriceDraft}
                 onVendue={confirmSaleFromBanner}
                 onRetiree={dismissUnavailable}
+              />
+
+              {/* ── « À VÉRIFIER » (2026-09-19) ────────────────────────────
+                  Trois « Je ne sais pas » ne font pas une réponse, et
+                  reposer la question une quatrième fois ne la fera pas
+                  apparaître. Ces annonces sortent donc du bandeau — mais
+                  elles ne sont PAS conclues et ne disparaissent pas : elles
+                  atterrissent ici, avec leurs deux vraies réponses toujours
+                  offertes. Rien n'a été écrit sur elles, la surveillance
+                  continue, et une preuve positive de vente les ramènera
+                  d'elle-même en « 🎉 Vendue ». */}
+              <RevueAutresPlateformes
+                lang={lang} jobs={aVerifier} busyId={confirmingSale}
+                devise={currency==='EUR'?'€':currency}
+                prixDraft={salePriceDraft} setPrixDraft={setSalePriceDraft}
+                achatDraft={buyPriceDraft} setAchatDraft={setBuyPriceDraft}
+                onVendue={confirmSaleFromBanner}
+                onRetiree={dismissUnavailable}
+                titre={lang==='fr'?`À vérifier (${aVerifier.length})`:`To check (${aVerifier.length})`}
+                aide={lang==='fr'
+                  ?`Reportées ${REPORT_MAX} fois sans réponse : elles ne s'affichent plus dans les bandeaux. Rien n'a été décidé, rien n'a été écrit — la surveillance continue.`
+                  :`Deferred ${REPORT_MAX} times without an answer: they no longer show in the banners. Nothing was decided, nothing was written — monitoring continues.`}
               />
             </div>
           </>
