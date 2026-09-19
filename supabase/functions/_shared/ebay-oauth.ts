@@ -171,10 +171,32 @@ export function echangerCode(env: EbayEnv, clientId: string, clientSecret: strin
   }));
 }
 
-export function rafraichir(env: EbayEnv, clientId: string, clientSecret: string, refreshToken: string, scopes: readonly string[]) {
-  return posterToken(env, clientId, clientSecret, new URLSearchParams({
-    grant_type: "refresh_token", refresh_token: refreshToken, scope: scopes.join(" "),
-  }));
+// ── LE RENOUVELLEMENT NE DEMANDE QUE CE QUI A ÉTÉ CONSENTI (2026-09-19) ─────
+// RISQUE LATENT, trouvé en chiffrant le chantier Trading : un refresh token
+// porte les scopes DU CONSENTEMENT. Demander au renouvellement un scope qui
+// n'a jamais été consenti, c'est un renouvellement refusé — et notre code
+// traite un refus 400/401 comme une RÉVOCATION (il stampe `revoked_at`). Le
+// jour où l'on ajoute un scope à SCOPES_DEMANDES, tout compte dont on ignore
+// les scopes serait donc renouvelé avec la liste NEUVE, refusé, puis marqué
+// révoqué : le vendeur perdrait la voie API sans avoir rien fait.
+//
+// ÉTAT RELEVÉ LE 19/09 : les 26 comptes reliés portent tous leurs 5 scopes en
+// base (`ebay_accounts.scopes`), donc le repli n'est utilisé nulle part
+// aujourd'hui. Le risque est LATENT, pas actif — raison de plus pour le fermer
+// maintenant, tant qu'il ne coûte rien.
+//
+// CE QU'ON FAIT : `scope` devient FACULTATIF. Quand on connaît les scopes du
+// compte, on les redemande à l'identique ; quand on ne les connaît pas, on
+// N'ENVOIE RIEN — le grant `refresh_token` rend alors un jeton portant les
+// scopes du consentement d'origine. Plus aucun chemin ne peut demander à eBay
+// un privilège que la personne n'a pas accordé.
+export function rafraichir(
+  env: EbayEnv, clientId: string, clientSecret: string, refreshToken: string,
+  scopes?: readonly string[] | null,
+) {
+  const params = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
+  if (scopes?.length) params.set("scope", scopes.join(" "));
+  return posterToken(env, clientId, clientSecret, params);
 }
 
 // Replis SI eBay omet la durée (documentés : 2 h / 18 mois) — jamais utilisés
@@ -260,7 +282,11 @@ export async function obtenirAccessToken(admin: SupabaseClient, userId: string):
   const ids = lireIdentifiants();
   if (!ids.complet) return { ok: false, motif: "config_incomplete", compte };
   const env = lireEnvEbay();
-  const scopes = compte.scopes?.length ? compte.scopes : SCOPES_DEMANDES;
+  // ⛔ PLUS DE REPLI SUR SCOPES_DEMANDES (2026-09-19). On redemande les scopes
+  // DU COMPTE, et rien du tout quand on ne les connaît pas — jamais la liste
+  // courante, qui peut contenir un privilège que ce vendeur n'a pas consenti.
+  // Voir l'en-tête de `rafraichir`.
+  const scopes = compte.scopes?.length ? compte.scopes : null;
   const { http, json } = await rafraichir(env, ids.clientId, ids.clientSecret, compte.refresh_token, scopes);
 
   if (http >= 200 && http < 300 && json.access_token) {
