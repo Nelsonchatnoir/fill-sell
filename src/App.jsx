@@ -137,6 +137,19 @@ const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","
 // voice-intent — Premium/Pro sont désormais illimités côté serveur).
 const VOICE_FREE_LIMIT = 50;
 
+// ── DEUX MESSAGES QUI SE RESSEMBLAIENT TROP (2026-09-19) ────────────────────
+// « Annonce retirée par le vendeur (confirmé dans l'app) » = une RÉPONSE de la
+// personne au bandeau. « Annonce retirée par le vendeur (retrait ciblé depuis
+// l'app) » = NOTRE PROPRE job de retrait (background.js, ebay-api-worker).
+// Les deux commencent pareil : un relevé du 19/09 a lu « 550 personnes disent
+// avoir retiré leur annonce » là où il y avait 358 réponses et 63 de nos
+// retraits. Le nouveau libellé ne peut plus être confondu avec le nôtre, et il
+// dit ce qu'il est : une réponse, pas un constat.
+// ⛔ Les 358 lignes déjà écrites ne sont PAS réécrites — on ne requalifie rien
+//    rétroactivement. Les deux formulations coexisteront le temps qu'il faut.
+const MSG_REPONSE_RETIREE =
+  "Réponse dans l'app : « je l'ai retirée moi-même » — pas une vente";
+
 const C = {
   // Design tokens FillSell
   primary:"#1D9E75",
@@ -1700,14 +1713,41 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
     // Start recording immediately — push-to-stop model
     vaChunksRef.current=[];
     vaMediaRef.current=recorder;
+    // ── LA DURÉE, MESURÉE (2026-09-19) ───────────────────────────────────────
+    // Elle n'était nulle part, et sans elle on ne pouvait pas distinguer les
+    // trois causes possibles d'une hallucination Whisper : appui trop bref,
+    // micro ouvert en retard, double appui. Elle part avec l'audio et se
+    // journalise côté serveur sur TOUTES les issues.
+    const debutEnregistrement=Date.now();
     recorder.ondataavailable=e=>{if(e.data.size>0)vaChunksRef.current.push(e.data);};
     recorder.onstop=async()=>{
       clearTimeout(voiceAutoStopRef.current);
       // Release stream immediately so iOS clears the mic indicator
       vaStreamRef.current?.getTracks().forEach(t=>t.stop());
       vaStreamRef.current=null;
+      const dureeMs=Date.now()-debutEnregistrement;
       const mimeType=(recorder.mimeType||"audio/webm").split(";")[0];
       const blob=new Blob(vaChunksRef.current,{type:mimeType});
+      // ── ON NE FACTURE PAS UN ENREGISTREMENT QUI N'A PAS EU LIEU ────────────
+      // MESURÉ sur 30 jours : 32 % des appels vocaux tracés repartent en
+      // hallucination Whisper, et 23 des 37 « credits_video » étaient le TOUT
+      // PREMIER essai du compte. Sur un audio vide, Whisper n'échoue pas : il
+      // invente des crédits de sous-titres. On payait donc Whisper, on prenait
+      // une unité, et on répondait « je n'ai rien entendu ».
+      // ⛔ LE SEUIL PORTE SUR LA DURÉE, JAMAIS SUR LE NIVEAU SONORE : quelqu'un
+      //    qui parle doucement pendant deux secondes doit passer. 700 ms, c'est
+      //    en dessous du temps qu'il faut pour dire un seul mot — on n'écarte
+      //    qu'un appui double ou un relâchement immédiat.
+      // ⛔ ET ON SORT AVANT LE COMPTEUR : rien n'est débité, ni côté app ni
+      //    côté serveur, puisqu'on n'appelle même pas la fonction.
+      const DUREE_MINIMALE_MS=700;
+      if(dureeMs<DUREE_MINIMALE_MS||blob.size===0){
+        setVaError(lang==="en"
+          ?"That recording was too short to contain anything — hold the button while you speak. Nothing was charged."
+          :"L'enregistrement était trop court pour contenir quoi que ce soit — garde le bouton le temps de parler. Ça ne t'a rien coûté.");
+        setVaStep("");
+        return;
+      }
       // Gate check before Whisper — use in-memory state, no Supabase read
       if(!isPremium&&user?.id){
         if(voiceUsedToday>=VOICE_FREE_LIMIT){
@@ -1729,11 +1769,24 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           if(!vaToken)throw new Error(lang==="en"?"Session expired, please reconnect.":"Session expirée, reconnectez-vous.");
           const fd=new FormData();
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
-          fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
+          fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);fd.append("duree_ms",String(dureeMs));
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
           if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
           let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
+          // ── L'UNITÉ RENDUE EST RENDUE DES DEUX CÔTÉS (2026-09-19) ─────────
+          // Le serveur sort sa ligne du quota (feature 'voice_remboursee') ;
+          // ici on repose le compteur gratuit du jour, sinon les deux
+          // raconteraient des choses différentes et c'est CELUI-CI que la
+          // personne voit. Best-effort : un échec d'écriture ne coûte qu'un
+          // compteur légèrement pessimiste, jamais une erreur à l'écran.
+          if(tJson?.rembourse&&!isPremium&&user?.id){
+            const rendu=Math.max(0,(voiceUsedToday??0));
+            const remis=Math.max(0,rendu-1);
+            if(setVoiceUsedToday)setVoiceUsedToday(remis);
+            supabase.from('profiles').update({voice_count_today:remis,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id)
+              .then(({error})=>{if(error)console.warn('[quota] unité vocale non rendue :',error.message);});
+          }
           if(tErr)throw new Error(tErr);
           if(!text?.trim())throw new Error(lang==="en"?"No speech detected":"Aucune parole détectée");
           setVaTranscript(text.trim());
@@ -4170,9 +4223,16 @@ export default function App({ loginOnly = false }){
     delete pf.unavailable_since;
     const{error}=await supabase.from('cross_post_jobs')
       .update({status:'cancelled',platform_fields:pf,
-               error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
+               error:MSG_REPONSE_RETIREE})
       .eq('id',job.id).select('id');
     if(error){console.error('[dismissUnavailable]',error.message);return;}
+    // ── LA RÉPONSE EST TRACÉE (2026-09-19) ──────────────────────────────────
+    // `track()` n'écrit rien en base : zéro ligne en 14 jours pour
+    // `dismiss_unavailable` alors que 358 jobs portent la réponse. On ne
+    // savait donc ni QUAND une réponse était donnée, ni si elle l'était une
+    // par une ou en lot — impossible de dire si un changement de bandeau
+    // améliore quoi que ce soit. Une ligne par geste, avec le mode.
+    logTunnel('reponse_annonce_disparue',{reponse:'retiree',mode:'unitaire',count:1,platform:job.platform});
     // Même geste que la revue en lot (2026-09-12) : une annonce déclarée
     // retirée n'a plus de republication à faire — celles encore en file, et
     // qui n'ont rien touché, sont annulées avec elle.
@@ -4440,9 +4500,12 @@ export default function App({ loginOnly = false }){
         delete pf.unavailable_pending_since;
         await supabase.from('cross_post_jobs')
           .update({status:'cancelled',platform_fields:pf,
-                   error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
+                   error:MSG_REPONSE_RETIREE})
           .eq('id',j.id);
       }
+      // Le geste EN LOT est tracé comme tel, avec son ampleur : 147 réponses
+      // d'un compte le 11/09 ne sont pas 147 décisions article par article.
+      logTunnel('reponse_annonce_disparue',{reponse:'retiree',mode:'lot',count:(jobsVifs||[]).length,platform:'vinted'});
       // ── Les REPUBLICATIONS encore en file de ces articles (2026-09-12, dossier
       // Anaïs) : une annonce que l'utilisateur vient de déclarer retirée n'a plus
       // rien à republier — la capture ne peut que frapper un 404. Annulées ICI,
