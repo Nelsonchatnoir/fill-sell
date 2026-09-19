@@ -1222,6 +1222,85 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des jobs Opla parqués:", (e as Error)?.message ?? e);
   }
 
+  // ── LES LIGNES ORPHELINES D'UN RUN MORT (2026-09-19) ──────────────────────
+  // Cas fondateur, ornellaracano le 19/09 : le run eBay de 09:11:34 écrit ses
+  // lignes dans annonces_plateforme puis MEURT (« [watchdog] aucune
+  // progression depuis 30 min », items_vus = 0, status 'expired'). Or c'est le
+  // run qui appelle `rapprocher_releve` à sa CONCLUSION : un run mort ne le
+  // fait jamais. La ligne 307186101770 est donc restée sans inventaire_id, ni
+  // job_id, ni source — et l'app a proposé « Annonce à rattacher » pour une
+  // annonce que NOUS avions publiée, dont nous connaissions l'identifiant.
+  // Elle n'a été rattachée qu'au run suivant, à 10:14, une heure plus tard.
+  //
+  // AMPLEUR relevée le 19/09 sur tout le parc (annonces en ligne, non
+  // ignorées, sans inventaire_id) : leboncoin 96 dont 1 rattachable par
+  // identifiant, ebay 18 dont 0, beebs 5 dont 0, opla 1 dont 0. Un cas sur
+  // 120 : c'est rare, et c'est précisément celui qu'on a vu.
+  //
+  // ⛔ ON NE REJOUE SURTOUT PAS `rapprocher_releve` SUR UN RUN MORT. Sa
+  // dernière étape marque `disparu_le` sur tout ce que le run n'a pas vu, et
+  // elle ne se retient que si l'erreur commence par « [incomplet] » — celle
+  // d'un watchdog commence par « [watchdog] ». Sur un run à 0 article lu, ce
+  // serait déclarer TOUT LE COMPTE disparu. C'est exactement la faute qu'on a
+  // payée sur Leboncoin le 18/09, en pire.
+  //
+  // CE QU'ON FAIT DONC, ET RIEN D'AUTRE : le rapprochement PAR IDENTIFIANT,
+  // le plus sûr qui soit — un job publié de ce compte, sur cette plateforme,
+  // porte EXACTEMENT ce listing_id. Aucune disparition, aucun titre, aucun
+  // prix, aucune heuristique. Et on ne touche PAS aux drapeaux du job
+  // (`sale_signal`, `unavailable_since`) : la bande 'job' du moteur les
+  // efface quand l'annonce est revue en ligne, ici on s'en abstient — effacer
+  // une preuve de vente pour cause de rattachement serait le pire des
+  // échanges.
+  let orphelinesRattachees = 0;
+  try {
+    const { data: orphelines } = await supabase
+      .from("annonces_plateforme")
+      .select("id, user_id, platform, listing_id")
+      .is("inventaire_id", null).is("ignoree_le", null).is("disparu_le", null)
+      .not("listing_id", "is", null)
+      .limit(300);
+    // deno-lint-ignore no-explicit-any
+    const lignesOrph = (orphelines ?? []) as any[];
+    if (lignesOrph.length) {
+      const ids = [...new Set(lignesOrph.map((a) => String(a.listing_id)))];
+      // deno-lint-ignore no-explicit-any
+      const jobs: any[] = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data } = await supabase.from("cross_post_jobs")
+          .select("id, user_id, platform, platform_listing_id, inventaire_id")
+          .eq("status", "published").not("inventaire_id", "is", null)
+          .in("platform_listing_id", ids.slice(i, i + 100));
+        // deno-lint-ignore no-explicit-any
+        for (const j of (data ?? []) as any[]) jobs.push(j);
+      }
+      const parCle = new Map<string, { id: string; inventaire_id: number }>();
+      for (const j of jobs) {
+        const cle = `${j.user_id}|${j.platform}|${j.platform_listing_id}`;
+        if (!parCle.has(cle)) parCle.set(cle, { id: String(j.id), inventaire_id: Number(j.inventaire_id) });
+      }
+      for (const a of lignesOrph) {
+        const j = parCle.get(`${a.user_id}|${a.platform}|${a.listing_id}`);
+        if (!j) continue;
+        // Compare-and-swap : si le moteur l'a rattachée entre-temps, on passe.
+        const { data: maj, error: aErr } = await supabase
+          .from("annonces_plateforme")
+          .update({ inventaire_id: j.inventaire_id, job_id: j.id, source_rapprochement: "job", updated_at: new Date().toISOString() })
+          .eq("id", a.id).is("inventaire_id", null).select("id");
+        if (aErr || !maj?.length) continue;
+        await supabase.from("rapprochements").insert({
+          user_id: a.user_id, annonce_id: a.id, inventaire_id: j.inventaire_id,
+          decision: "attache", par: "job", score: 1,
+          detail: { job_id: j.id, motif: "orpheline_run_mort", source: "handler-watch" },
+        });
+        orphelinesRattachees++;
+        console.log(`[handler-watch] annonce ${a.platform}/${a.listing_id} rattachée par identifiant au job ${j.id} (run mort)`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] rattachement des lignes orphelines:", (e as Error)?.message ?? e);
+  }
+
   // ── Déblocage AUTO de la garde Livres (2026-08-27 soir, décision Nico) ────
   // Les jobs pausés par la garde Livres/ISBN (needs_user_source=
   // 'livres_isbn_garde') repassent en 'pending' TOUT SEULS dès que leur
@@ -1550,7 +1629,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1605,7 +1684,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1659,7 +1738,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });
