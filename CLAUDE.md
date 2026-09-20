@@ -140,8 +140,20 @@ JWT, le worker eBay avec `x-cron-secret`) · `voice-intent` (Bearer + getUser
 maison, pour maîtriser sa réponse 401/CORS) · `update-job-status` ·
 `check-listing-status`.
 
-**One-shots déployés à la main** (14) : `send-relance`,
-`send-batch-notifications`, `send-chantier-zip`, et les `send-<prénom>-<date>`.
+**One-shots déployés à la main** : `send-batch-notifications`,
+`send-chantier-zip`, et les `send-<prénom>-<date>`.
+(`send-relance` a été SUPPRIMÉE de la prod le 20/09/2026 — jeton en clair dans
+un fichier gitignoré, campagnes toutes parties, aucun appelant.)
+
+⛔ **DIX-SEPT PORTES D'ENVOI RESTENT OUVERTES SANS SOURCE (relevé 20/09).**
+`functions list` compte 19 fonctions `send-*`, dont **17 en `verify_jwt =
+false`** — joignables sans session. Quinze d'entre elles sont des
+`send-<prénom>-<date>` déployées à la main et **absentes du dépôt** : on ne
+peut ni relire leur garde, ni savoir si elles portent un jeton en dur, ni les
+redéployer. C'est la même famille de défaut que `send-relance`, en quinze
+exemplaires. Un envoi ponctuel doit passer par `email-tunnel` ou par une
+fonction **commitée**, et être supprimé une fois parti — comme le 28/07 et le
+20/09. La liste vivante se lit par le geste `functions list`, jamais ici.
 
 ⚠️ **DEUX ÉCARTS CONNUS, NON CORRIGÉS — à trancher, pas à patcher en passant :**
 - `update-job-status` et `check-listing-status` portent dans leur propre

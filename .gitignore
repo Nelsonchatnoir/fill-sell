@@ -64,9 +64,8 @@ fillsell-backups/
 !supabase/migrations/*.sql
 !supabase/migrations_archive/*.sql
 
-# send-relance : ELLE EST DANS GIT DEPUIS LE 20/09.
-# Elle en etait exclue parce qu elle portait ~110 adresses reelles et le detail
-# de ce qui avait ete ecrit a chacune. Ces adresses sont sorties du code (le
-# registre durable, c est email_logs), et son jeton aussi (RELANCE_SECRET).
-# ⛔ Ne jamais y reposer une adresse : ce serait la re-sortir de git, et son
-#    jeton redeviendrait invisible.
+# send-relance : SUPPRIMEE de la prod ET du depot le 20/09/2026.
+# Elle avait ete exclue d ici parce qu elle portait ~110 adresses reelles ;
+# c est exactement pour ca que son jeton en clair n a jamais pu etre relu.
+# ⛔ Un envoi ponctuel ne se remet pas dans un fichier ignore : il passe par
+#    email-tunnel, ou par une fonction dediee COMMITEE, sans adresse en dur.

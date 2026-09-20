@@ -68,11 +68,18 @@ verify_jwt = false
 verify_jwt = false
 
 # Envois d'e-mails déclenchés côté serveur / outils ponctuels.
-[functions.send-relance]
-verify_jwt = false
-
 [functions.send-batch-notifications]
 verify_jwt = false
+
+# ── SUPPRIMÉE EN PROD LE 2026-09-20 ───────────────────────────────────────
+# send-relance. Elle tournait encore (v195, verify_jwt = false) et son SEUL
+# verrou était un jeton en paramètre d URL, écrit en clair dans un fichier que
+# .gitignore excluait : illisible, donc jamais changé. Ses campagnes étaient
+# toutes parties ; le registre de qui a reçu quoi vit dans email_logs.
+# Vérifié AVANT suppression : aucun job pg_cron, aucune fonction SQL, aucun
+# code applicatif et aucune autre fonction ne l appelait ; le point d envoi de
+# production (email-tunnel) et les envois ponctuels ne dépendent pas d elle.
+# Endpoint public relu après : 404.
 
 # ── SUPPRIMÉES EN PROD LE 2026-07-28 ──────────────────────────────────────
 # email-blast, send-merine-reply, send-merine-reward, send-thomas-reply et
