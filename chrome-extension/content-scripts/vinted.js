@@ -1535,6 +1535,33 @@ async function deleteListing(job) {
   // Le background a navigué l'onglet de travail sur listing_url : on est sur la
   // page de l'annonce (même origine vinted.fr → cookies + tokens accessibles).
   if (!/\/items\/\d+/.test(location.pathname)) {
+    // ── ATTERRIR SUR L'ACCUEIL, C'EST UNE REDIRECTION ANTI-ROBOT ──────────
+    // 🚨 LE CAS, compte ornellaracano, job ed8bbd42 (« Lot de 14 anges
+    //    miniatures »), 19/09 22:48 → FAILED sur « Page inattendue pour une
+    //    suppression Vinted : https://www.vinted.fr/ ».
+    //    Le background avait navigué l'onglet sur listing_url
+    //    (/items/10051385367-…). On s'est retrouvé sur la RACINE. Le même job
+    //    porte `blocage_antirobot` : « HTTP 403, access_denied », vu à 13:25.
+    //    Vinted ne sert pas la page de l'annonce, il renvoie à l'accueil.
+    // ⛔ CE N'ÉTAIT NI UNE PAGE DE CONNEXION (motifSessionMorte ne l'attrape
+    //    donc pas), NI une page inconnue : c'est LA signature du refus
+    //    anti-robot. Sans ce test, le job mourait `failed` alors que le
+    //    mécanisme de reprise gratuite existe et l'attendait.
+    // ⇒ Préfixe `CHALLENGE ` : background.js route vers
+    //   marquerBlocageAntiRobot — reprise toutes les 20 min, bornée à 6 h par
+    //   épisode, AUCUNE tentative consommée, et RIEN n'est supprimé.
+    const racineVinted = /^\/(fr\/?)?$/.test(location.pathname);
+    if (racineVinted) {
+      return {
+        success: false,
+        needsUser: false,
+        error:
+          "CHALLENGE Vinted n'a pas servi la page de ton annonce et nous a renvoyés à son accueil : "
+          + "c'est sa protection anti-robot. Rien n'a été supprimé et ton annonce est intacte. "
+          + "On réessaie tout seul dans quelques minutes.",
+        trace,
+      };
+    }
     return { success: false, error: `Page inattendue pour une suppression Vinted : ${location.href}`, trace };
   }
   const itemId = location.pathname.match(/\/items\/(\d+)/)?.[1];
@@ -1741,6 +1768,45 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
         trace,
         verdict,
       };
+    }
+    // ── UN 4xx AVEC UNE SESSION VALIDE EST DE LA MÊME FAMILLE QUE LE 403 ──
+    // 🚨 LE CAS, compte ornellaracano, job 0df4e6a2 (« Jouet VTech –
+    //    Trompette »), 19/09 23:16 → FAILED sur « l'API a répondu HTTP 400 ».
+    //    Le même job porte `blocage_antirobot` avec deux observations
+    //    (05:58 et 11:31) : « HTTP 403, access_denied, ta session est
+    //    valide ». Ses archives disent, dans l'ordre : reprise gratuite →
+    //    tentative 1/5 → tentative 2/5 → puis ce 400, qui l'a tué SEC.
+    //    Le message promettait « Reprise automatique dans ~15 min » sur un
+    //    job passé en `failed` : un failed n'est jamais reservi.
+    // LE RAISONNEMENT : sur cet endpoint, une vraie requête malformée
+    // échouerait pour TOUT LE MONDE, tout le temps. Ce n'est pas le cas —
+    // le même compte supprime très bien le reste du temps. Un 4xx rendu
+    // pendant que la session est VALIDE vient de la couche qui filtre les
+    // robots, comme le 403 juste au-dessus. On le nomme pareil.
+    // ⛔ CE QUE ÇA NE CHANGE PAS : rien n'est supprimé, rien n'est conclu,
+    //    aucune tentative n'est consommée. Le pire que ça produise est un
+    //    réessai de plus — au lieu d'un job mort avec une annonce en ligne.
+    // ⚠️ Le 401 garde son chemin : là, la session est vraiment morte.
+    // ⚠️ `session` est déclarée dans la branche 401/403 au-dessus : hors de
+    //    portée ici. On la relit — c'est un appel de plus, sur un chemin
+    //    d'échec seulement, et il vaut mieux qu'une variable devinée.
+    if (resp.status >= 400 && resp.status < 500) {
+      const sessionIci = await vintedSessionEtat(t);
+      verdict.session = String(sessionIci);
+      if (sessionIci !== "expiree") {
+        verdict.conclusion = "refus_anti_robot";
+        t(`HTTP ${resp.status} avec session ${sessionIci} — même famille que le 403 anti-robot, reprise espacée`);
+        return {
+          success: false,
+          needsUser: false,
+          error:
+            `CHALLENGE Vinted a refusé la suppression (HTTP ${resp.status}) alors que ta session est valide : `
+            + "c'est sa protection anti-robot. Rien n'a été supprimé et ton annonce est intacte. "
+            + "On réessaie tout seul dans quelques minutes.",
+          trace,
+          verdict,
+        };
+      }
     }
     // Autre code : le background revérifie l'état réel (jamais de faux « deleted »).
     verdict.conclusion = "http_autre";
