@@ -199,13 +199,25 @@ export function classerChamps(lignes, pf, platform) {
   // configuration locale : c'est elle qui sait que « Univers » vit dans
   // `univers`, quel que soit le nom que la plateforme lui donne ce jour-là.
   const cleParLibelle = new Map();
+  // ⛔ ET LES VALEURS, PAS SEULEMENT LES CLÉS (trouvé à l'écran, 20/09).
+  //    Le catalogue relève « Format du colis » sur 112 rayons Beebs, mais
+  //    SANS ses valeurs sur certains : le champ tombait alors en saisie
+  //    LIBRE, une boîte vide où il faut deviner le libellé exact de Beebs.
+  //    Un champ obligatoire en texte libre sur une liste fermée est un champ
+  //    bloqué, juste avec une autre tête. Notre configuration, elle, porte
+  //    les six formats : on les lui prête.
+  const valeursParLibelle = new Map();
   for (const l of lignes ?? []) {
     // Une ligne de la configuration LOCALE porte notre clé par définition :
     // on l'enregistre telle quelle. Sans ça, « Espace de stockage » (notre
     // clé `stockage`, absente du pont) ne se reliait à rien et Vinted
     // redemandait un espace de stockage déjà renseigné.
     const notre = l._locale ? l.field_key : cleConnue(l.field_key);
-    if (notre) cleParLibelle.set(texteSimple(l.field_label ?? l.field_key), notre);
+    const lib = texteSimple(l.field_label ?? l.field_key);
+    if (notre) cleParLibelle.set(lib, notre);
+    if (Array.isArray(l.allowed_values) && l.allowed_values.length && !valeursParLibelle.has(lib)) {
+      valeursParLibelle.set(lib, l.allowed_values.map(String));
+    }
   }
   for (const l of lignes ?? []) {
     // Dédoublonnage : le catalogue dit `clothing_st` et la configuration dit
@@ -223,7 +235,12 @@ export function classerChamps(lignes, pf, platform) {
       cle: l.field_key,
       cleNotre: notre,
       libelle: String(l.field_label ?? l.field_key),
-      valeurs: Array.isArray(l.allowed_values) ? [...new Set(l.allowed_values.map(String))] : [],
+      valeurs: Array.isArray(l.allowed_values) && l.allowed_values.length
+        ? [...new Set(l.allowed_values.map(String))]
+        // Le rayon ne connaît pas les valeurs de ce champ : on emprunte
+        // celles qu on a sous le même libellé, plutôt que de laisser une
+        // liste fermée se transformer en boîte à texte libre.
+        : [...new Set(valeursParLibelle.get(texteSimple(l.field_label ?? l.field_key)) ?? [])],
       requis: l.required === true,
       valeur,
     };
