@@ -51,7 +51,22 @@ const VINTED_SERVER_FIELD_LABELS = {
   description: "Description",
   photos: "Photos",
   isbn: "ISBN",
+  // ── LE CODE EST AU PLURIEL (verdict du 2026-09-20) ────────────────────────
+  // Le singulier `video_game_rating` était seul ici depuis l'origine, et il ne
+  // pouvait JAMAIS matcher : le relevé DOM du formulaire, la config attributes
+  // captée par la sonde (« video_game_ratings-163 », cf. l.168) et le
+  // catalogue platform_category_aspects disent tous « video_game_ratings ».
+  // Vérifié en base le 20/09 : aucune trace du singulier nulle part, et le job
+  // 8256bf6d (« Bravely Default II ») est PUBLIÉ avec
+  // vintedAspects.video_game_ratings = « PEGI 12 ».
+  // ⛔ Conséquence RÉELLE de l'écart : aucune valeur perdue — rien n'écrivait
+  //    le singulier. Seul un message d'échec Vinted nommant ce champ aurait
+  //    affiché le code brut au lieu du libellé. Les deux clés restent, la
+  //    plurielle parce que c'est la vraie, la singulière par prudence si le
+  //    serveur de Vinted, lui, la nomme ainsi dans un 400.
+  video_game_ratings: "Classification par âge (PEGI)",
   video_game_rating: "Classification par âge (PEGI)",
+  video_game_platform: "Plateforme de jeu",
   package_size_id: "Format du colis",
 };
 
