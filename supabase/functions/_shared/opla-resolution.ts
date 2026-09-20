@@ -358,7 +358,23 @@ export function normaliserTailleOpla(codeFeuille: string, taille: unknown): stri
   // `tailleDansGrille` couvre l'exact, l'orthographe, les âges, les demi-
   // pointures, la taille unique et les étiquettes composites des DEUX côtés,
   // sans jamais convertir un système en un autre.
-  const t = tailleDansGrille(brut, grille);
+  // ── « 38 » SUR LA GRILLE DE LETTRES : LA TABLE FEMME (2026-09-20) ────────
+  // Opla ne publie AUCUNE équivalence numérique — relevé du 20/09 sur
+  // WOM_DRE_OTHER : les 14 titres sont « Taille unique », « XXS »… « 8XL »,
+  // rien d'autre. Vinted, lui, publie l'égalité dans /api/v2/size_groups
+  // (groupe 4 : « M / 38 / 10 »), et cette table est dans le projet depuis le
+  // 10/09. On lit SA table ; on n'en fabrique pas une.
+  // ⛔ BORNÉE À LA BRANCHE FEMMES, parce que le MÊME « 38 » est une pointure
+  //    dans les groupes 7 et 38 du même référentiel et qu'un « 36 » d'homme
+  //    est un tour de taille. `tailleDansGrille` pose en plus sa propre garde :
+  //    la grille cible ne doit écrire QUE des lettres (ce qui écarte les
+  //    soutiens-gorge, dont la grille mêle XS…XXL à 75A…115E).
+  // ⚠️ ICI ET PAS SEULEMENT DANS L'EXTENSION : la correction du pré-vol ne
+  //    partira qu'après un examen du Chrome Web Store, quand celle-ci atteint
+  //    TOUS les builds au prochain get-pending-jobs. Même raison qu'au 10/09
+  //    pour la reprise Vinted côté serveur.
+  const femmes = oplaChemin(codeFeuille)[0] === "Femmes";
+  const t = tailleDansGrille(brut, grille, { tableFemme: femmes });
   if (t) return t.valeur;
 
   // ── LE DÉ-PRÉFIXAGE PAYS EN DERNIER, ET PLUS EN PREMIER ──────────────────

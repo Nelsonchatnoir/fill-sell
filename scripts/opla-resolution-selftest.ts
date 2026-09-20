@@ -42,6 +42,33 @@ ok("« 90C » refuse sur une chemise", normaliserTailleOpla(chemise.code, "90C")
 ok("valeur inconnue → null", normaliserTailleOpla(chemise.code, "n'importe quoi") === null);
 ok("categorie sans grille → null", normaliserTailleOpla("BOOKS", "L") === null);
 
+// ── LES TAILLES ENFANT — déjà réparées ici le 18/09, on les VERROUILLE ──────
+// Elles sont la raison d'être du vocabulaire partagé. Aucun contrôle ne les
+// tenait : « 5 ans » contre une grille qui écrit « 5Y » pouvait re-casser sans
+// qu'une seule ligne rougisse.
+ok("« 5 ans » → 5Y", normaliserTailleOpla("LEGGINGS_GIRLS_NEW", "5 ans") === "5Y");
+ok("« 12 ans » → 12Y (le jogging Zara d'Ornella)", normaliserTailleOpla("JOGGINGS_GIRLS_NEW", "12 ans") === "12Y");
+ok("« 24 mois » → 24M", normaliserTailleOpla("SWEATERS_GIRLS_NEW", "24 mois") === "24M");
+ok("« 23 mois » n'existe pas : REFUSÉ, jamais rapproché de 24M",
+  normaliserTailleOpla("SWEATERS_GIRLS_NEW", "23 mois") === null);
+
+// ── LA TABLE FEMME NOMBRE → LETTRE (2026-09-20) ────────────────────────────
+// Relevée chez Vinted (/api/v2/size_groups groupe 4, « M / 38 / 10 »), parce
+// qu'Opla ne publie AUCUNE équivalence numérique sur sa grille de lettres.
+// ⛔ Elle ne doit sortir QUE sous Femmes, et QUE sur une grille de lettres.
+l("=== 3 bis. TABLE FEMME — relevée chez Vinted, bornée aux femmes ===");
+ok("robe femme « 38 » → M", normaliserTailleOpla("WOM_DRE_OTHER", "38") === "M");
+ok("robe femme « 40 » → L", normaliserTailleOpla("WOM_DRE_OTHER", "40") === "L");
+ok("« 46 » hors table → null, on ne devine pas", normaliserTailleOpla("WOM_DRE_OTHER", "46") === null);
+ok("HOMMES « 36 » de pantalon n'est pas un S", normaliserTailleOpla("MEN_TRO_OTHER", "36") === null);
+ok("HOMMES « 38 » de t-shirt reste refusé", normaliserTailleOpla("MEN_TOP_T_SHIRTS", "38") === null);
+ok("ENFANTS « 38 » reste refusé (table FEMME)", normaliserTailleOpla("TOPS_GIRLS_NEW", "38") === null);
+ok("SOUTIENS-GORGE « 38 » est un tour de dos, refusé", normaliserTailleOpla("BRAS", "38") === null);
+ok("CHAUSSURES femme « 38 » reste la pointure 38", normaliserTailleOpla("WOMEN_TRAINERS", "38") === "38");
+ok("demi-pointure « 44.5 » : limite d'Opla, refusée", normaliserTailleOpla("MEN_SNEAKERS", "44.5") === null);
+ok("ce qui passait passe toujours : « M » → M", normaliserTailleOpla("SUMMER_DRESSES", "M") === "M");
+ok("ce qui passait passe toujours : « 75A » → 75A", normaliserTailleOpla("BRAS", "75A") === "75A");
+
 l("=== 4. SANS MOT : on ne devine pas ===");
 const r4 = resoudreCategorieOpla({ mots: [], genre: "Femme" });
 ok("aucun mot → aucun code, aucun candidat", r4.code === null && !r4.candidats.length);
