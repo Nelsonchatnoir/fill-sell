@@ -488,6 +488,12 @@ function motifProposition(prop, fr) {
     return fr ? ` — tu as ${n || 'plusieurs'} articles identiques, on a pris le plus ancien`
               : ` — you have ${n || 'several'} identical items, we took the oldest`;
   }
+  // 'titre_inclus' (2026-09-20, 4-e) : un titre est contenu dans l'autre, aux
+  // frontières de mots. C'est le cas des préfixes de référence (« FIG001 - »)
+  // et des compléments (« tome 3 » / « tome 3 l'invité fantôme ») — le
+  // recouvrement mot à mot tombait sous la barre et l'annonce partait en
+  // création d'une deuxième ligne, sans que personne ne la voie passer.
+  if (m === 'titre_inclus') return fr ? ' — l’un des deux titres est écrit plus court' : ' — one of the two titles is written shorter';
   if (m !== 'faisceau') return '';
   const s = prop.signaux && typeof prop.signaux === 'object' ? prop.signaux : {};
   const preuves = [];
