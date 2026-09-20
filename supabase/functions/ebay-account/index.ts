@@ -540,6 +540,41 @@ Deno.serve(async (req) => {
     if (!TYPES[type]) return json({ error: "Type de politique inconnu" }, 400);
 
     // ── Ce qu'il y a DANS une politique — lecture seule, n'écrit rien ───────
+    // ── LA LISTE DES POLITIQUES, POUR CHOISIR PAR ARTICLE (2026-09-20) ──────
+    // Demande de Louis (Business) : « pouvoir choisir différents modèles de
+    // transport en fonction des articles et si l'on veut ou non envoyer à
+    // l'étranger ». eBay modélise exactement ça par les business policies :
+    // un compte peut en avoir plusieurs, et chaque OFFRE en porte une. Il
+    // manquait à l'app la liste, et au worker la ligne qui lit le choix de
+    // l'article (ebay-api-worker, platform_fields.ebayFulfillmentPolicyId).
+    // ⛔ LECTURE SEULE : aucune écriture, aucun défaut de compte touché.
+    //    `a_international` est calculé sur place (optionType INTERNATIONAL),
+    //    sans appel supplémentaire — la liste rend déjà les politiques
+    //    entières. L'international est une propriété de la POLITIQUE, pas de
+    //    l'annonce : on la montre, on ne la modifie jamais.
+    if (action === "lister_politiques") {
+      const t = TYPES[type];
+      const r = await appelEbay(env, token, `${t.chemin}?marketplace_id=${MARKETPLACE}`);
+      if (r.http !== 200 || !r.json || typeof r.json !== "object") {
+        return json({ liste: [], http: r.http, detail: messageErreurEbay(r.json, r.texte) });
+      }
+      const brut = (r.json as Record<string, unknown>)[t.liste];
+      const liste = Array.isArray(brut)
+        ? brut.map((p) => {
+            const o = p as Record<string, unknown>;
+            const options = Array.isArray(o.shippingOptions) ? o.shippingOptions as Array<Record<string, unknown>> : [];
+            const handling = (o.handlingTime && typeof o.handlingTime === "object") ? o.handlingTime as Record<string, unknown> : {};
+            return {
+              id: String(o[t.id] ?? ""),
+              nom: String(o.name ?? ""),
+              a_international: options.some((op) => String(op.optionType ?? "") === "INTERNATIONAL"),
+              delai_traitement_jours: typeof handling.value === "number" ? handling.value : null,
+            };
+          }).filter((p) => p.id)
+        : [];
+      return json({ liste, http: r.http });
+    }
+
     if (action === "detail_politique") {
       const id = String(body.id ?? "").trim();
       if (!id) return json({ error: "Identifiant de politique absent" }, 400);

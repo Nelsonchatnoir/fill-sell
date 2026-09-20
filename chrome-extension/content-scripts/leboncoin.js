@@ -1417,6 +1417,9 @@ async function fillListingForm(job) {
   relayerEtape("adresse");
   await advanceWizardTo('label[for="location"]', { probeMs: 4000, maxSteps: 2 });
   const addressResult = await fillAddress(fields.adresse, warnings);
+  // Livraison : format du colis et transporteurs, sur la MÊME page que
+  // l'adresse (« Remise du bien »). Jamais bloquant — cf. poserLivraisonLbc.
+  await poserLivraisonLbc(fields, warnings);
   if (!addressResult.ok) {
     return {
       success: false,
@@ -4346,6 +4349,138 @@ function findVisibleFieldError(input) {
     }
   }
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIVRAISON — LE FORMAT DU COLIS ET LES TRANSPORTEURS (2026-09-20)
+// ═══════════════════════════════════════════════════════════════════════════
+// Demande de Louis (Business) : « pouvoir choisir les transporteurs que l'on
+// souhaite ». Relevé LIVE du formulaire le 20/09 : le bloc « En livraison »
+// de l'étape « Remise du bien » porte une case « Activer la livraison » puis
+// DEUX réglages, chacun derrière un crayon —
+//   · « Vos moyens de livraison » : une case par transporteur (Courrier suivi
+//     ≤ 2 kg · Shop2Shop ≤ 20 kg · Mondial Relay ≤ 30 kg · Colissimo ≤ 30 kg,
+//     plus « Autres moyens de livraison » où le vendeur avance les frais) ;
+//   · « Choisissez un format » : Petit / Moyen / Volumineux, et rien d'autre.
+//
+// 🚨 RIEN ICI N'EST BLOQUANT, JAMAIS. Leboncoin fait lui-même une estimation
+//    JUSTE quand on ne dit rien (mesuré : « Colis petit — 250 à 500 g » sur
+//    une robe). Un crayon introuvable, une modale qui ne s'ouvre pas, un
+//    transporteur absent de la liste parce que l'article est trop lourd : on
+//    consigne un warning et on continue. Le pire résultat possible serait de
+//    faire échouer un dépôt pour un confort d'expédition.
+// ⛔ ON NE COCHE QUE CE QUE LA PAGE PROPOSE. Un transporteur que Leboncoin
+//    n'offre pas sur cet article (hors bornes) n'est pas dans la modale : on
+//    ne le force pas, on le note.
+// ⛔ ON NE DÉCOCHE RIEN QUE LA PERSONNE N'AIT PAS DEMANDÉ : sans
+//    `lbcTransporteurs` sur le job, on ne touche pas à la modale du tout.
+
+const LBC_TEXTE_LIVRAISON = /activer la livraison/i;
+const LBC_TEXTE_MODALE_TRANSPORTEURS = /vos moyens de livraison/i;
+const LBC_TEXTE_MODALE_FORMAT = /choisissez un format/i;
+
+/** Le premier élément cliquable dont le texte matche, dans un périmètre. */
+function lbcCliquableParTexte(motif, racine = document) {
+  const cands = [...racine.querySelectorAll('button, [role="button"], label, a')];
+  return cands.find((el) => motif.test((el.innerText || el.textContent || "").trim())) ?? null;
+}
+
+/** La modale ouverte dont le titre matche (LBC les rend dans un portail). */
+function lbcModale(motif) {
+  const noeuds = [...document.querySelectorAll('div, section, dialog')];
+  // La PLUS PETITE qui contient le titre : les ancêtres le contiennent aussi.
+  let meilleure = null;
+  for (const n of noeuds) {
+    const t = (n.innerText || "").trim();
+    if (!motif.test(t)) continue;
+    if (!meilleure || t.length < (meilleure.innerText || "").trim().length) meilleure = n;
+  }
+  return meilleure;
+}
+
+async function poserLivraisonLbc(fields, warnings) {
+  const transporteurs = Array.isArray(fields?.lbcTransporteurs)
+    ? fields.lbcTransporteurs.map((s) => String(s ?? "").trim()).filter(Boolean) : [];
+  const format = String(fields?.lbcFormatColis ?? "").trim();
+  if (!transporteurs.length && !format) return; // rien demandé : on ne touche à rien
+
+  try {
+    // 1. La livraison doit être ACTIVE, sinon les deux crayons sont inertes.
+    const caseLivraison = await waitFor(() => {
+      const l = lbcCliquableParTexte(LBC_TEXTE_LIVRAISON);
+      return l ? (l.querySelector('input[type="checkbox"]') ?? l) : null;
+    }, 5000);
+    if (!caseLivraison) {
+      warnings.push("livraison : le bloc « Activer la livraison » n'est pas sur cette page — réglages d'envoi non posés (l'estimation de Leboncoin s'applique)");
+      return;
+    }
+    const estCochee = caseLivraison.tagName === "INPUT" ? caseLivraison.checked : null;
+    if (estCochee === false) { realClick(caseLivraison); await humanPause(500, 1100); }
+
+    // 2. Les transporteurs.
+    if (transporteurs.length) {
+      const crayon = lbcCliquableParTexte(/modifier les transporteurs/i)
+        ?? document.querySelector('button[aria-label*="transporteur" i], button[title*="transporteur" i]');
+      if (!crayon) {
+        warnings.push("livraison : le réglage des transporteurs n'a pas été trouvé sur la page — choix non appliqué");
+      } else {
+        realClick(crayon);
+        const modale = await waitFor(() => lbcModale(LBC_TEXTE_MODALE_TRANSPORTEURS), 5000);
+        if (!modale) {
+          warnings.push("livraison : la fenêtre des transporteurs ne s'est pas ouverte — choix non appliqué");
+        } else {
+          const absents = [];
+          for (const nom of transporteurs) {
+            const ligne = [...modale.querySelectorAll('label, li, div')]
+              .filter((n) => n.querySelector('input[type="checkbox"]') || n.getAttribute("role") === "checkbox")
+              .find((n) => (n.innerText || "").toLowerCase().includes(nom.toLowerCase()));
+            const boite = ligne?.querySelector('input[type="checkbox"]') ?? ligne;
+            if (!boite) { absents.push(nom); continue; }
+            const deja = boite.tagName === "INPUT" ? boite.checked : boite.getAttribute("aria-checked") === "true";
+            if (!deja) { realClick(boite); await humanPause(250, 600); }
+          }
+          if (absents.length) {
+            warnings.push(`livraison : ${absents.join(", ")} — non proposé par Leboncoin pour cet article (poids ou dimensions), non coché`);
+          }
+          const valider = lbcCliquableParTexte(/^valider$/i, modale) ?? lbcCliquableParTexte(/valider/i, modale);
+          if (valider) { realClick(valider); await humanPause(600, 1300); }
+        }
+      }
+    }
+
+    // 3. Le format du colis.
+    if (format) {
+      const crayonFormat = [...document.querySelectorAll('button')].find((b) => {
+        const bloc = b.closest("div");
+        return bloc && /colis\s+(petit|moyen|volumineux)/i.test((bloc.innerText || ""));
+      });
+      if (!crayonFormat) {
+        warnings.push("livraison : le réglage du format de colis n'a pas été trouvé — l'estimation de Leboncoin s'applique");
+      } else {
+        realClick(crayonFormat);
+        const modale = await waitFor(() => lbcModale(LBC_TEXTE_MODALE_FORMAT), 5000);
+        if (!modale) {
+          warnings.push("livraison : la fenêtre du format de colis ne s'est pas ouverte — l'estimation de Leboncoin s'applique");
+        } else {
+          const choix = [...modale.querySelectorAll('label, li, div')]
+            .filter((n) => n.querySelector('input[type="radio"]') || n.getAttribute("role") === "radio")
+            .find((n) => new RegExp(`^\\s*${format}\\b`, "i").test((n.innerText || "").trim()));
+          const bouton = choix?.querySelector('input[type="radio"]') ?? choix;
+          if (!bouton) {
+            warnings.push(`livraison : format « ${format} » absent de la liste de Leboncoin — l'estimation de la plateforme s'applique`);
+          } else {
+            realClick(bouton);
+            await humanPause(300, 700);
+          }
+          const continuer = lbcCliquableParTexte(/^continuer$/i, modale);
+          if (continuer) { realClick(continuer); await humanPause(600, 1300); }
+        }
+      }
+    }
+  } catch (e) {
+    // Une exception ici ne doit JAMAIS emporter le dépôt.
+    warnings.push(`livraison : réglages d'envoi non posés (${String(e?.message ?? e)}) — l'estimation de Leboncoin s'applique`);
+  }
 }
 
 // Clic "réel" : certains composants React de Leboncoin ignorent un

@@ -64,6 +64,8 @@ import { resoudrePublication, signatureResolution } from "../utils/resolutionPub
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
 import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
+import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
+import CarteLivraisonEbay from "./CarteLivraisonEbay";
 import { CANAL_ASPECTS } from "../utils/champsDuRayon";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -2159,6 +2161,10 @@ function StepGeneration({ generating, generateError, platformListings, processed
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
   prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false,
+  // ebayVoieApiReelle (2026-09-20) : la carte de livraison eBay ne se montre
+  // que quand la voie API est reellement active — par le formulaire, une
+  // politique de livraison ne s'applique pas.
+  ebayVoieApiReelle = false,
   // ── LE RAYON (lot B, 20/09) ────────────────────────────────────────────
   // `rayonsParPf` : ce que le pré-calcul du lot A a trouvé, PAR plateforme,
   // déjà croisé avec le choix de la personne. La carte ne calcule rien : elle
@@ -2544,6 +2550,41 @@ function StepGeneration({ generating, generateError, platformListings, processed
                       return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
                     })}
                   />
+
+                  {/* ── LIVRAISON LEBONCOIN (2026-09-20, demande de Louis) ──
+                      Le format que Leboncoin retiendra (déduit, jamais
+                      redemandé) et le choix des transporteurs — le seul des
+                      deux que le vendeur soit seul à savoir. Replié : qui ne
+                      l'ouvre pas ne tape rien. */}
+                  {p === "leboncoin" && (
+                    <CarteLivraisonLeboncoin
+                      lang={lang}
+                      champs={e.platform_fields ?? {}}
+                      onChange={(cle, valeur) => setEdited(prev => {
+                        const pf = { ...(prev[p]?.platform_fields ?? {}) };
+                        if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+                        return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
+                      })}
+                    />
+                  )}
+                  {/* ── eBAY : la politique de livraison, par article ──────
+                      Même demande de Louis, autre plateforme, autre modèle :
+                      chez eBay c'est une « business policy », et elle porte
+                      aussi l'envoi à l'étranger. Sans choix, l'annonce part
+                      avec celle du compte — rien ne change pour personne.
+                      ⛔ Seulement quand la voie API est réellement active :
+                         par le formulaire, la politique ne s'applique pas. */}
+                  {p === "ebay" && ebayVoieApiReelle && (
+                    <CarteLivraisonEbay
+                      lang={lang}
+                      champs={e.platform_fields ?? {}}
+                      onChange={(cle, valeur) => setEdited(prev => {
+                        const pf = { ...(prev[p]?.platform_fields ?? {}) };
+                        if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+                        return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
+                      })}
+                    />
+                  )}
 
                   {/* ⛔ LA GRILLE HISTORIQUE N'EST PLUS AFFICHÉE (lot B, 20/09).
                       Elle listait 6 à 10 champs ÉCRITS EN DUR, filtrés par
@@ -8461,6 +8502,7 @@ export default function ListingPreviewScreen({
             generatePrice={coinPrices?.generate ?? null}
             noteOverride={noteSharedOverride}
             ficheReprise={ficheReprise}
+            ebayVoieApiReelle={ebayVoieApiReelle}
             rayonsParPf={rayonsParPf}
             suggestionsParPf={suggestionsParPf}
             supabase={supabase}

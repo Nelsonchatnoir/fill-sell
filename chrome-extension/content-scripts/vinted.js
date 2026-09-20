@@ -2270,11 +2270,28 @@ async function fillListingForm(job) {
   // ABSENT : l'étape ne tourne pas du tout, plutôt que d'échouer dessus. En
   // une-passe l'échec de l'étape serait BLOQUANT — une publication par ailleurs
   // valide s'arrêterait sur une valeur qui n'a jamais rien voulu dire.
-  if (fields.isbn && estIsbnDeRemplissage(fields.isbn)) {
-    const note = `isbn « ${String(fields.isbn).trim()} » : valeur de remplissage de l'annonce d'origine, traitée comme ISBN ABSENT (rien envoyé à Vinted)`;
-    console.warn(`[vinted] ⚠️ ${note}`);
-    warnings.push(note);
-    delete fields.isbn;
+  // ── UN ISBN ILLISIBLE VAUT ISBN ABSENT (2026-09-20, cas Louis, Business) ──
+  // Le test ne couvrait que les valeurs de REMPLISSAGE (dix zéros et plus).
+  // Le 20/09, un job Vinted de Louis a ÉCHOUÉ sur « 00 » — deux caractères,
+  // repris d'une annonce Leboncoin où le champ n'avait jamais rien voulu
+  // dire — avec « Rien n'a été envoyé à Vinted ». Et son article était au
+  // rayon « Livres de coloriage et d'activités », où Vinted NE DEMANDE PAS
+  // d'ISBN (relevé LIVE du 20/09, formulaire de dépôt : le champ n'existe
+  // pas). On a donc bloqué un dépôt pour un champ que la plateforme
+  // n'allait même pas réclamer.
+  // RÈGLE : tout ISBN que `normalizeIsbn` ne sait pas valider — longueur
+  // absurde, non numérique, clé de contrôle fausse, valeur de remplissage —
+  // est traité comme ABSENT. Le champ part VIDE, on n'invente rien, et le
+  // dépôt continue. Là où Vinted l'exige vraiment (Fiction, Non-fiction, BD,
+  // scolaire, Enfants), c'est LUI qui refusera, et son refus sera le vrai.
+  if (fields.isbn) {
+    const verdict = normalizeIsbn(fields.isbn);
+    if (!verdict.ok) {
+      const note = `isbn « ${String(fields.isbn).trim()} » : ${verdict.raison} — traité comme ISBN ABSENT (champ laissé vide, rien inventé)`;
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
+      delete fields.isbn;
+    }
   }
   if (fields.isbn) {
     // Pose DURCIE (2026-08-25, 5 annonces détruites 15-22/08 sur « Merci
@@ -2289,12 +2306,14 @@ async function fillListingForm(job) {
     // message porte l'ISBN (en une-passe, le blocage arrive AVANT toute
     // suppression ; en recréation, etape() consigne et B.5 s'applique).
     await etape("ISBN", async () => {
+      // `fields.isbn` a déjà été validé juste au-dessus : un ISBN illisible a
+      // été retiré et on n'est pas ici. Le garde reste, par ceinture — mais
+      // il ne peut plus faire ÉCHOUER un dépôt : il saute l'étape.
+      // (2026-09-20 : c'est ce `throw` qui a bloqué le job de Louis sur « 00 ».)
       const norme = normalizeIsbn(fields.isbn);
       if (!norme.ok) {
-        throw new Error(
-          `ISBN de l'annonce d'origine inutilisable — ${norme.raison}. ` +
-          "Corrige l'ISBN depuis l'app (carte de l'article), puis relance. Rien n'a été envoyé à Vinted."
-        );
+        console.warn(`[vinted] ISBN « ${fields.isbn} » écarté à la pose — ${norme.raison}`);
+        return;
       }
       const el = await waitForElement('#isbn, [data-testid="isbn--input"]');
       const relire = () => readCommittedValue(el).replace(/[\s-]/g, "");

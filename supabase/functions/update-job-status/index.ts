@@ -138,13 +138,25 @@ const LIVRES_CATALOG_IDS = new Set([
   2321, // relevé par Nico le 22/08 (famille Livres)
   2363, // Livres > Enfants et jeunes adultes > Jeunes adultes
   2364, // Livres > Enfants et jeunes adultes > Enfants
-  5424, // Magazines
+  2365, // Livres > Enfants et jeunes adultes > Bébés — relevé LIVE 20/09 : champ ISBN présent
   5425, // Livres > Bandes dessinées, mangas et romans graphiques
   5426, // Livres > Manuels scolaires et ressources pédagogiques
-  5427, // Livres > Livres de coloriage et d'activités et revues de jeux
   // ⚠️ 3039 (Musique > CD) et 3045 (Vidéo > DVD) RETIRÉS le 24/08 : même
   // famille « Livres et médias » chez Vinted, mais AUCUN ISBN réclamé — les
   // bloquer n'évitait aucune perte et paralysait des stocks entiers de DVD.
+  // ── 5424 (Magazines) ET 5427 (Livres de coloriage et d'activités) RETIRÉS
+  //    LE 20/09, SUR RELEVÉ LIVE DU FORMULAIRE DE DÉPÔT VINTED ────────────
+  // Neuf rayons Livres ouverts un par un sur vinted.fr, compte réel :
+  //   Fiction · Non-fiction · BD/mangas · Manuels scolaires · Enfants ·
+  //   Jeunes adultes · Bébés  → le champ ISBN EST là.
+  //   Magazines · Livres de coloriage et d'activités  → il N'EXISTE PAS.
+  // Preuve dans les deux sens, même session : sur Fiction, un formulaire
+  // complet (titre, description, 2 photos, état, prix) avec l'ISBN vide est
+  // REFUSÉ — « Merci d'entrer un numéro ISBN valide », rien ne part. Le même
+  // article basculé sur « Livres de coloriage » n'a plus de champ ISBN du
+  // tout et PUBLIE (annonce créée, puis supprimée).
+  // Ces deux rayons mettaient donc des republications en pause pour un champ
+  // que Vinted ne réclame jamais — c'est exactement le cas de Louis.
 ]);
 // Segments de chemin qui disqualifient l'hypothèse « livre » (sans accents).
 const MEDIA_NON_LIVRE_RE =

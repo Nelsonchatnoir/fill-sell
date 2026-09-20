@@ -324,7 +324,27 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     availableQuantity: 1, categoryId, merchantLocationKey: empl.cle,
     pricingSummary: { price: { value: prix.toFixed(2), currency: "EUR" } },
     listingDescription: descriptionEbay(job.description ?? "", job.title ?? ""),
-    listingPolicies: { fulfillmentPolicyId: compte.fulfillment_policy_id, paymentPolicyId: compte.payment_policy_id, returnPolicyId: compte.return_policy_id },
+    // ── LA POLITIQUE DE LIVRAISON PEUT ÊTRE CHOISIE PAR ARTICLE (2026-09-20,
+    //    demande de Louis, compte Business) ────────────────────────────────
+    // « Il faudrait pouvoir choisir différents modèles de transport en
+    //  fonction des articles et si l'on veut ou non envoyer à l'étranger. »
+    // C'est exactement ce que sont les business policies d'eBay : un compte
+    // peut en avoir plusieurs, et CHAQUE offre en porte une. On appliquait
+    // celle du COMPTE à toutes les annonces ; l'app laisse désormais en
+    // choisir une par article (platform_fields.ebayFulfillmentPolicyId,
+    // alimenté par la liste réelle du vendeur — ebay-account).
+    // ⛔ REPLI SUR LE COMPTE : sans choix, rien ne change pour personne.
+    // ⛔ L'INTERNATIONAL EST UNE PROPRIÉTÉ DE LA POLITIQUE, pas de l'annonce :
+    //    le vendeur crée (ou modifie chez eBay) une politique avec des
+    //    services internationaux, et nous la conservons telle quelle —
+    //    shipToLocations et les quatre booléens sont REPRIS à l'identique par
+    //    ebay-account, on n'efface jamais sa configuration.
+    listingPolicies: {
+      fulfillmentPolicyId: String((job.platform_fields as Record<string, unknown> | null)?.ebayFulfillmentPolicyId ?? "").trim()
+        || compte.fulfillment_policy_id,
+      paymentPolicyId: compte.payment_policy_id,
+      returnPolicyId: compte.return_policy_id,
+    },
   };
   let offerId = "";
   const existantes = await appelEbay(env, token, `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
