@@ -38,13 +38,17 @@
 // home_appliance_brand, shoes_st…), ce qui couvre les rayons jamais relevés
 // sans avoir à tenir une liste à jour.
 const EXACTES = {
-  condition: 'etat', etat: 'etat',
+  condition: 'etat', etat: 'etat', 'état': 'etat',
   size: 'taille', taille: 'taille', clothing_st: 'taille', shoe_size: 'taille',
+  // Une pointure EST une taille chez nous : la liste de tailles porte les
+  // pointures EU (cf. sizeShoeOptions). Sans cette entrée, Beebs redemandait
+  // « Pointure » sur 7 rayons alors que la taille était déjà remplie.
+  pointure: 'taille',
   color: 'couleur', couleur: 'couleur', colour: 'couleur',
   brand: 'marque', marque: 'marque',
-  material: 'matiere', matiere: 'matiere',
+  material: 'matiere', matiere: 'matiere', 'matière': 'matiere',
   clothing_type: 'univers', univers: 'univers',
-  model: 'modele', modele: 'modele',
+  model: 'modele', modele: 'modele', 'modèle': 'modele',
   isbn: 'isbn',
 };
 const SUFFIXES = [
@@ -68,19 +72,36 @@ export function cleConnue(fieldKey) {
 
 // ── LES DEUX BARRIÈRES « QUESTION POSABLE » ──────────────────────────────
 const CONTENU_ANNONCE = /^(photo|photos|image|images|picture|pictures|media|title|titre|description|price|prix)$/i;
-const CLE_BRUTE = /^[a-z0-9]+(_[a-z0-9]+)+$/;
+// ⛔ LE RAYON N'EST PAS UN CHAMP DU RAYON. Opla porte dans son catalogue un
+//    champ `category` intitulé « Catégorie », obligatoire, sur 129 de ses
+//    rayons : c'est le rayon lui-même. Le demander en plus, c'est reposer le
+//    faux champ « Catégorie » qu'on vient justement de retirer — et poser
+//    deux fois la même question sur le même écran. Il se choisit dans le
+//    bloc RAYON, et nulle part ailleurs.
+const CEST_LE_RAYON = /^(category|categorie|catégorie|categories|rayon)$/i;
+const CLE_BRUTE = /^[a-z0-9]+(_[a-z0-9]+)*$/;
 export function questionPosable(ligne) {
-  if (CONTENU_ANNONCE.test(String(ligne?.field_key ?? ''))) return false;
+  const cle = String(ligne?.field_key ?? '');
+  if (CONTENU_ANNONCE.test(cle)) return false;
+  if (CEST_LE_RAYON.test(cle) || CEST_LE_RAYON.test(String(ligne?.field_label ?? '').trim())) return false;
   const lib = String(ligne?.field_label ?? '').trim();
   if (!lib) return false;
-  if (lib === ligne.field_key && CLE_BRUTE.test(lib)) return false;
+  // Libellé jamais traduit : la clé technique brute. `_` n'est plus exigé —
+  // « unisex » et « measurements » sont aussi des noms de machine, et on ne
+  // pose pas une question intitulée « measurements ».
+  if (lib === cle && CLE_BRUTE.test(lib)) return false;
   return true;
 }
 
 /** La valeur qu'on a déjà pour ce champ, ou "" — en cherchant aux deux
  *  endroits où elle peut vivre : la clé dédiée, puis le canal d'aspects. */
-export function valeurConnue(ligne, pf, platform) {
-  const notre = cleConnue(ligne.field_key);
+export function valeurConnue(ligne, pf, platform, cleResolue = undefined) {
+  // ⛔ LA CLÉ RÉSOLUE PRIME, et c'est le nerf de l'affaire : `format_colis`
+  //    et `age` sont NOS clés mais ne figurent pas dans le pont (rien ne les
+  //    renomme), donc les re-deviner ici rendait null et on redemandait un
+  //    format de colis déjà rempli sur 112 rayons Beebs. L'appelant sait —
+  //    il l'a résolue par la clé OU par le libellé — on l'écoute.
+  const notre = cleResolue !== undefined ? cleResolue : cleConnue(ligne.field_key);
   if (notre && String(pf?.[notre] ?? '').trim()) return String(pf[notre]).trim();
   const canal = pf?.[CANAL_ASPECTS[platform]];
   if (canal && typeof canal === 'object') {
@@ -123,6 +144,28 @@ export function lignesDepuisConfigLocale(configLocale) {
   return sortie;
 }
 
+/** ── LE BRUIT : UNE VALEUR PAR DÉFAUT, ET PAS DE QUESTION ────────────────
+ *  Règle de Nico, nommément : « Chargeur inclus », « Référence fabricant »,
+ *  « Année de fabrication » ne méritent pas qu'on arrête quelqu'un. Ils
+ *  prennent une valeur par défaut et ne sont jamais demandés.
+ *  ⛔ LE DÉFAUT DOIT ÊTRE HONNÊTE, donc TOUJOURS le plus prudent : « Non »
+ *     pour un chargeur qu'on n'a peut-être pas. On ne promet rien à la place
+ *     du vendeur. Là où aucun défaut ne peut être honnête (une année de
+ *     fabrication ne s'invente pas), on ne pose rien du tout : le champ n'est
+ *     ni demandé ni rempli, et la publication part — c'est déjà la règle des
+ *     facultatifs.
+ *  Reconnu par le LIBELLÉ : la clé change d'une plateforme à l'autre
+ *  (`laptop_charger_included` chez Vinted, autre chose ailleurs). */
+const BRUIT = [
+  { motif: /^chargeur\s+inclus$/i, defaut: (vals) => vals.find((v) => /^non$/i.test(v)) ?? null },
+  { motif: /^r[ée]f[ée]rence\s+fabricant$/i, defaut: () => null },
+  { motif: /^ann[ée]e\s+de\s+fabrication$/i, defaut: () => null },
+];
+export function estDuBruit(libelle) {
+  const l = String(libelle ?? '').trim();
+  return BRUIT.find((b) => b.motif.test(l)) ?? null;
+}
+
 /** ── DÉDOUBLONNER PAR LE LIBELLÉ QUAND LA CLÉ NE SUFFIT PAS ──────────────
  *  Trouvé en testant en vrai, sur la robe passée au rayon Chaussures :
  *  « Univers » s'affichait DEUX fois — une fois en question (le catalogue
@@ -135,8 +178,14 @@ export function lignesDepuisConfigLocale(configLocale) {
  *  Le LIBELLÉ, lui, est le même des deux côtés : « Univers ». C'est donc lui
  *  qui fait foi en second recours. */
 const identifiant = (l) => cleConnue(l.field_key) ?? `lib:${texteSimple(l.field_label ?? l.field_key)}`;
-function texteSimple(s) {
-  return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+/** Comparaison de LIBELLÉS : sans casse, sans accents, sans ponctuation —
+ *  et sans les petits mots de liaison. « Format du colis » (catalogue Beebs)
+ *  et « Format colis » (le nôtre) sont le MÊME champ ; sans ce nettoyage,
+ *  Beebs redemandait le format du colis sur 112 rayons. */
+const LIAISONS = /\b(de|du|des|d|le|la|les|l|a|au|aux|en|the|of)\b/g;
+export function texteSimple(s) {
+  return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/['’]/g, ' ').replace(LIAISONS, ' ').replace(/[^a-z0-9]+/g, '');
 }
 
 /** Le tri : ce qu'on sait, ce qu'il faut demander, et ce qu'on laisse
@@ -144,13 +193,18 @@ function texteSimple(s) {
 export function classerChamps(lignes, pf, platform) {
   const connus = [];
   const questions = [];
+  const defauts = [];
   const vus = new Set();
   // Notre clé pour un libellé donné, prise dans les lignes de la
   // configuration locale : c'est elle qui sait que « Univers » vit dans
   // `univers`, quel que soit le nom que la plateforme lui donne ce jour-là.
   const cleParLibelle = new Map();
   for (const l of lignes ?? []) {
-    const notre = cleConnue(l.field_key);
+    // Une ligne de la configuration LOCALE porte notre clé par définition :
+    // on l'enregistre telle quelle. Sans ça, « Espace de stockage » (notre
+    // clé `stockage`, absente du pont) ne se reliait à rien et Vinted
+    // redemandait un espace de stockage déjà renseigné.
+    const notre = l._locale ? l.field_key : cleConnue(l.field_key);
     if (notre) cleParLibelle.set(texteSimple(l.field_label ?? l.field_key), notre);
   }
   for (const l of lignes ?? []) {
@@ -164,8 +218,7 @@ export function classerChamps(lignes, pf, platform) {
     const ident = notre ?? identifiant(l);
     if (vus.has(ident)) continue;
     vus.add(ident);
-    const valeur = valeurConnue({ ...l, field_key: notre ?? l.field_key }, pf, platform)
-      || valeurConnue(l, pf, platform);
+    const valeur = valeurConnue(l, pf, platform, notre);
     const entree = {
       cle: l.field_key,
       cleNotre: notre,
@@ -175,6 +228,14 @@ export function classerChamps(lignes, pf, platform) {
       valeur,
     };
     if (valeur) { connus.push(entree); continue; }
+    // Le bruit : jamais une question. Un défaut prudent s'il en existe un
+    // d'honnête, sinon rien — dans les deux cas la publication part.
+    const bruit = estDuBruit(entree.libelle);
+    if (bruit) {
+      const d = bruit.defaut(entree.valeurs);
+      if (d) defauts.push({ ...entree, valeur: d });
+      continue;
+    }
     // ⛔ LA RÈGLE : obligatoire ET inconnu ET posable. Rien d'autre.
     if (entree.requis && questionPosable(l)) questions.push(entree);
     // facultatif et inconnu → on ne l'affiche pas, on ne le demande pas,
@@ -183,7 +244,7 @@ export function classerChamps(lignes, pf, platform) {
   // Les questions d'abord dans l'ordre où la plateforme les pose (le
   // catalogue garde l'ordre du formulaire), les connus par libellé.
   connus.sort((a, b) => a.libelle.localeCompare(b.libelle, 'fr'));
-  return { questions, connus };
+  return { questions, connus, defauts };
 }
 
 /** Lecture du catalogue pour UN rayon. Paginée (PostgREST tronque à 1000 sans
