@@ -2046,7 +2046,17 @@ serve(async (req) => {
         for (const d of retraitsSansLien) {
           const pf = ((d.platform_fields as Record<string, unknown> | null) ?? {});
           const attente = (pf["retrait_attend_lien"] as Record<string, unknown> | undefined) ?? {};
-          const depuisMs = Date.parse(String(attente["depuis"] ?? "")) || Date.now();
+          // ⛔ L'HORLOGE PART DE LA CRÉATION DU JOB, JAMAIS DE MAINTENANT.
+          // Défaut mesuré le 20/09 sur 79370a1a (Ornella, « Pantalon Kiabi ») :
+          // retrait armé le 11/09 à 10:42, TOUJOURS pending 9 jours plus tard,
+          // et son marqueur disait « depuis: 2026-09-20T09:07 ». Le `|| Date.now()`
+          // faisait repartir le plafond de 7 jours à la PREMIÈRE observation du
+          // serveur — un job antérieur à ce code, ou dont le marqueur s'est
+          // perdu, n'expirait donc jamais. Même forme que la garde des dépôts
+          // muets, qui jugeait sur `created_at` et re-fermait les relances.
+          const depuisMs = Date.parse(String(attente["depuis"] ?? ""))
+            || Date.parse(String((d as { created_at?: string }).created_at ?? ""))
+            || Date.now();
           const nowIso = new Date().toISOString();
           try {
             let url: string | null = null;
@@ -2103,8 +2113,22 @@ serve(async (req) => {
               aRetenir.add(String(d.id));
               continue;
             }
+            // ── ET ON LE DIT. ────────────────────────────────────────────
+            // 66030f14 (Ornella, T-shirt Screen Stars) portait 183
+            // observations depuis la veille au soir, `error` VIDE : le job
+            // figurait en rouge dans la liste sans une ligne d'explication,
+            // et Ornella n'avait aucun moyen de savoir qu'on attendait — ni
+            // quoi. Une attente qui ne se dit pas est indiscernable d'une
+            // panne. Le message nomme ce qu'on attend, jusqu'à quand, et
+            // l'issue si ça n'arrive pas.
+            const joursRestants = Math.max(0, Math.ceil((ATTENTE_MAX_MS - (Date.now() - depuisMs)) / 86400000));
             await userClient.from("cross_post_jobs")
               .update({
+                error: "Retrait Beebs en attente : Beebs ne nous a pas encore donné le lien de cette annonce, "
+                  + "et on ne la retire JAMAIS en la cherchant par son titre — deux annonces au même titre, "
+                  + "et c'est la mauvaise qui partirait. On réessaie tout seuls à chaque passage"
+                  + (joursRestants > 0 ? ` (encore ${joursRestants} j)` : "")
+                  + ". Si tu la vois dans ton dressing Beebs, tu peux la retirer à la main — rien ne sera fait en double.",
                 platform_fields: {
                   ...pf,
                   retrait_attend_lien: {

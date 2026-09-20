@@ -170,6 +170,7 @@ export function memeTaille(a, b) {
 //    d'homme est un tour de taille, pas un S. C'est pourquoi l'accès passe
 //    par une option que l'appelant doit poser à la main, après avoir vérifié
 //    sa branche — jamais par défaut.
+/** @type {Readonly<Record<string, string>>} */
 export const TAILLE_FEMME_LETTRE_PAR_NOMBRE = Object.freeze({
   "30": "XXXS", "32": "XXS", "34": "XS", "36": "S",
   "38": "M", "40": "L", "42": "XL", "44": "XXL",
