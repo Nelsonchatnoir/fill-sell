@@ -23,6 +23,7 @@ import PlatformLogo from './platform-logos/PlatformLogo';
 import OplaAutorisationModal from './OplaAutorisationModal';
 import { useOplaAcces } from '../utils/oplaAcces';
 import { track } from '../analytics/analytics';
+import { jumeauProbable } from '../utils/rapprochementJumeau';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
   lireAnnoncesARattacher, compterAnnoncesParPlateforme, deciderRapprochement, texteRefusReleve,
@@ -515,6 +516,10 @@ function EcranRattachement({ lang, items, annonces, onClose, onDecision }) {
   const [recherche, setRecherche] = useState('');
   const [fait, setFait] = useState({});         // annonce id → texte de résultat
   const [erreur, setErreur] = useState(null);
+  // Les suggestions LOCALES (un jumeau vu par l'écran, sans proposition du
+  // serveur) qu'on vient d'écarter : rien à écrire en base — la ligne reste
+  // importable exactement comme avant, on a seulement rangé la phrase.
+  const [jumeauxEcartes, setJumeauxEcartes] = useState(() => new Set());
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -572,7 +577,16 @@ function EcranRattachement({ lang, items, annonces, onClose, onDecision }) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {liste.map((a) => {
-                const prop = a.proposition && typeof a.proposition === 'object' ? a.proposition : null;
+                const propBase = a.proposition && typeof a.proposition === 'object' ? a.proposition : null;
+                // ── LE JUMEAU VU DEPUIS L'ÉCRAN (2026-09-20, point 6-a) ─────
+                // Quand le serveur n'a rien proposé, on regarde nous-mêmes si
+                // un article du stock porte visiblement le même objet. Même
+                // règle qu'en base (utils/rapprochementJumeau), donc l'écran
+                // et le serveur ne peuvent pas se contredire.
+                // ⛔ On PRÉVIENT : le bouton « Importer comme nouvel article »
+                //    reste là, actif, au même endroit.
+                const jumeau = (propBase || jumeauxEcartes.has(a.id)) ? null : jumeauProbable(a.titre, items);
+                const prop = propBase ?? (jumeau ? { inventaire_id: jumeau.id, motif: 'titre_inclus' } : null);
                 const propTitre = prop?.inventaire_id != null ? titreDe(prop.inventaire_id) : null;
                 const done = fait[a.id];
                 return (
@@ -603,7 +617,7 @@ function EcranRattachement({ lang, items, annonces, onClose, onDecision }) {
                                 style={{ padding: '7px 12px', borderRadius: 999, border: 'none', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                                 {fr ? 'Oui, c’est cet article' : 'Yes, that’s the item'}
                               </button>
-                              <button type="button" disabled={busy === a.id} onClick={() => decider(a, 'refus_proposition')}
+                              <button type="button" disabled={busy === a.id} onClick={() => (propBase ? decider(a, 'refus_proposition') : setJumeauxEcartes((v) => new Set([...v, a.id])))}
                                 style={{ padding: '7px 12px', borderRadius: 999, border: `1px solid ${P.amberBd}`, background: '#fff', color: P.amberInk, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                                 {fr ? 'Non' : 'No'}
                               </button>
