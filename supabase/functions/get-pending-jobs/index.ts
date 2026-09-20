@@ -1025,6 +1025,25 @@ serve(async (req) => {
           ["etat", "etat"], ["marque", "marque"], ["couleur", "couleur"],
           ["matiere", "matiere"], ["taille", "taille"],
         ];
+        // ── ET QUAND L'ANNONCE N'EXISTE PLUS, L'ARTICLE, LUI, EST TOUJOURS LÀ ─
+        // Une annonce RETIRÉE n'a plus de capture — et n'en aura plus jamais.
+        // Mais `inventaire.attributs` a gardé ce qu'on savait d'elle : c'est
+        // la mémoire consolidée de l'article, avec sa priorité de source
+        // (manuel > vinted_detail > capture > vinted_liste > lens).
+        // MESURÉ le 20/09 sur le job 60c19562 : la catégorie une fois posée,
+        // Leboncoin a réclamé « État » — et l'article portait
+        // attributs.etat = « Très bon état » depuis la veille, pendant que le
+        // job partait avec etat = null. On avait la réponse et on ne la
+        // lisait pas.
+        const attributsDe = new Map<number, Record<string, unknown>>();
+        try {
+          const { data: articles } = await userClient
+            .from("inventaire").select("id, attributs").in("id", ids);
+          for (const a of (articles ?? [])) {
+            const at = (a as { attributs?: unknown }).attributs;
+            if (at && typeof at === "object") attributsDe.set((a as { id: number }).id, at as Record<string, unknown>);
+          }
+        } catch (_e) { /* best-effort : sans les attributs, on sert ce qu'on a */ }
         const captureDe = new Map<number, Record<string, unknown>>();
         for (const a of (annonces ?? [])) {
           const inv = (a as { inventaire_id: number }).inventaire_id;
@@ -1064,12 +1083,21 @@ serve(async (req) => {
               sansCategorie.push(String(j.id).slice(0, 8));
             }
           }
+          const attrs = attributsDe.get(j.inventaire_id as number) ?? {};
           for (const [cleCapture, clePf] of CHAMPS_CAPTURE) {
-            const v = String(cap[cleCapture] ?? "").trim();
-            if (!v) continue;
             if (String(pf[clePf] ?? "").trim()) continue; // déjà posé : on n'écrase pas
+            // La capture de l'annonce d'abord (c'est ce que la plateforme
+            // AFFICHE), l'article ensuite (c'est ce qu'on a gardé quand
+            // l'annonce a disparu). `{v, source, at}` : seule `v` nous
+            // intéresse ici, la priorité de source est déjà tranchée en base.
+            const vCapture = String(cap[cleCapture] ?? "").trim();
+            const noeud = attrs[clePf];
+            const vArticle = (noeud && typeof noeud === "object")
+              ? String((noeud as Record<string, unknown>)["v"] ?? "").trim() : "";
+            const v = vCapture || vArticle;
+            if (!v) continue;
             pf[clePf] = v;
-            repris[clePf] = v;
+            repris[clePf] = vCapture ? v : `${v} (repris de l'article)`;
           }
           // ── LES CRITÈRES DU FORMULAIRE, REPRIS DE L'ANNONCE (0.6.47) ──────
           // Le trou nommé le 19/09 — « tant que le relevé ne garde pas
@@ -1124,11 +1152,24 @@ serve(async (req) => {
           // ⛔ Ce n'est PAS la garde « sais-tu tout remplir ? » refusée le
           //    19/09 : celle-là retenait des jobs AVANT le retrait. Celle-ci
           //    ne peut que remettre en route ce qui est déjà tombé.
+          // ⛔ LA BORNE N'EST PAS « UNE FOIS POUR TOUJOURS », ELLE EST « UNE
+          //    FOIS PAR CAUSE LEVÉE » — et c'est la mesure qui l'a imposé :
+          //    la première reprise du job 60c19562 a franchi la catégorie et
+          //    buté sur l'État. Avec une borne absolue, il serait resté hors
+          //    ligne malgré le correctif suivant. On redonne donc une chance
+          //    CHAQUE FOIS QU'ON VIENT D'AJOUTER quelque chose qui manquait
+          //    (`repris` non vide) — ce qui ne peut pas boucler, puisqu'un
+          //    champ posé une fois n'est plus jamais « ajouté ». Plafond dur
+          //    à 3 par sécurité.
           const statutJob = (j as { status?: unknown }).status;
+          const repriseAuto = (pf["lbc_reprise_auto"] && typeof pf["lbc_reprise_auto"] === "object")
+            ? pf["lbc_reprise_auto"] as Record<string, unknown> : null;
+          const nReprises = Number(repriseAuto?.["n"] ?? (repriseAuto || pf["lbc_reprise_categorie_url"] ? 1 : 0));
           const estHorsLigne =
             (statutJob === "needs_user" || statutJob === "failed") &&
             pf["republish_step"] === "deleted" &&
-            !pf["lbc_reprise_auto"] && !pf["lbc_reprise_categorie_url"];
+            nReprises < 3 &&
+            (nReprises === 0 || Object.keys(repris).length > 0);
           // ⚠️ ET ELLE PASSE MÊME SI ON N'A RIEN À COMPLÉTER. Sans cette
           //    porte, « Picture Organic Clothing » sortait ici : sa catégorie
           //    était déjà posée, son annonce déjà retirée (donc plus aucun
@@ -1150,7 +1191,11 @@ serve(async (req) => {
           // Rien d'autre ne bouge : ni tentatives consommées, ni débit, ni
           // ordonnancement, ni créneaux.
           if (estHorsLigne) {
-            pf["lbc_reprise_auto"] = { le: new Date().toISOString(), categorie_par_url: categorieParUrl };
+            pf["lbc_reprise_auto"] = {
+              le: new Date().toISOString(), n: nReprises + 1,
+              categorie_par_url: categorieParUrl,
+              ajoute: Object.keys(repris).join(", ") || "(rien à ajouter — annonce hors ligne)",
+            };
             patch["platform_fields"] = pf;
             patch["status"] = "pending";
             patch["error"] = null;
