@@ -1337,7 +1337,21 @@ serve(async (req) => {
       const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
       const echeance = Date.parse(String(pf.next_action_after ?? ""));
       if (Number.isFinite(echeance) && echeance > now) continue;  // il attend son tour
-      const jours = Math.floor((now - Date.parse(String(j.created_at))) / 86400000);
+      // ── LE COMPTEUR REPART À LA RELANCE (2026-09-20, passe 3) ────────────
+      // 🚨 DÉFAUT DE CE BLOC MÊME, vu en s'en servant : il juge sur
+      //    `created_at`. Un job de début septembre relancé aujourd'hui a
+      //    toujours quinze jours d'âge — il était donc re-fermé au passage
+      //    SUIVANT, trois minutes plus tard. Mesuré : sept dépôts muets
+      //    relancés à la main sont tous revenus en `failed` immédiatement.
+      //    Une relance ne pouvait PAS survivre à cette garde.
+      // La fermeture précédente (`pending_muet_clos_le`) fait donc repartir
+      // le compteur : un job relancé après une fermeture a de nouveau dix
+      // jours complets pour aboutir.
+      const ne = Date.parse(String(j.created_at));
+      const clos = Date.parse(String(pf.pending_muet_clos_le ?? ""));
+      const depuis = Number.isFinite(clos) ? Math.max(ne, clos) : ne;
+      if (now - depuis < PENDING_MUET_JOURS * 24 * 3600 * 1000) continue;
+      const jours = Math.floor((now - depuis) / 86400000);
       // ⛔ G11 : le message dit que ça vient de chez nous, n'accuse personne,
       //    ne donne pas de consigne et ne cite aucun chiffre.
       const msg =
