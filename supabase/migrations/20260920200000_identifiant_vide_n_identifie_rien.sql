@@ -1,3 +1,12 @@
+-- ✅ APPLIQUÉE EN PROD LE 2026-09-20 ~19:45 (feu vert de Nico), via
+--    `supabase db query --linked -f`. VÉRIFIÉ APRÈS, sur la prod :
+--      · identifiant VIDE + trois titres sans rapport → bande « aucune »,
+--        motif « aucun_candidat », aucun article (avant : « identifiant »
+--        sur 1789676224963 pour les trois) ;
+--      · identifiant RÉEL 3273586974 + un titre sans rapport → toujours
+--        bande « job », motif « identifiant », article 1789925296476 —
+--        le chemin par identifiant est intact.
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- UN IDENTIFIANT VIDE N'IDENTIFIE RIEN (2026-09-20)
 -- ═══════════════════════════════════════════════════════════════════════════

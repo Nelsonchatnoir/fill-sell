@@ -1,3 +1,9 @@
+-- ✅ APPLIQUÉE EN PROD LE 2026-09-20 ~19:46, APRÈS 20260920200000.
+--    VÉRIFIÉ APRÈS : 0 vente collée restante (284 avant), 18 rattachements
+--    justes conservés, 0 vente sur « Montre G-Shock noire » (7 avant),
+--    938 lignes Leboncoin gardent leur prix de vente (CA intact),
+--    0 article passé à « vendu » par erreur.
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- RÉPARATION : LES VENTES LEBONCOIN COLLÉES AU MAUVAIS ARTICLE (2026-09-20)
 -- ═══════════════════════════════════════════════════════════════════════════
