@@ -232,8 +232,10 @@ const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6',
 // ⚠️ EXTENSION_MIN_BUILD n'est PAS touché ici : le relever allume la bannière
 // « extension obsolète » pour TOUT le parc, c'est une décision de Nico et elle
 // se prend à part. Il se lit alors DANS LE PAQUET PUBLIÉ (le BUILD_ID du zip
-// 0.6.35 ci-dessus), jamais dans EXTENSION_LAST_COMMIT — le printout de fin de
-// ce script dit le contraire et il a tort (cf. build-id.mjs, en-tête).
+// 0.6.35 ci-dessus), jamais dans EXTENSION_LAST_COMMIT (cf. build-id.mjs,
+// en-tête). Le printout de fin de ce script disait le contraire ; il a été
+// corrigé le 20/09 et imprime désormais le BUILD_ID du zip qu'il vient de
+// produire.
 // 0.6.34 ajoutée le 14/09 au bump 0.6.35 : TÉLÉVERSÉE au Chrome Web Store par
 // Nico le 14/09 (déclaré par lui en séance — « j'ai téléversé la 6.34 »). Le
 // numéro est mort : le Web Store refuse tout paquet inférieur ou égal au
@@ -480,10 +482,22 @@ console.log(`  HEAD             : ${head}   (${git('log -1 --format=%cI')})`);
 console.log(`  entrées          : ${count} (manifest.json à la racine)`);
 console.log(`  taille           : ${(fs.statSync(zipPath).size / 1024).toFixed(0)} Ko`);
 console.log(`  chemin           : ${zipPath}`);
+// ⛔ LE PRINTOUT DISAIT DE RECOPIER EXTENSION_LAST_COMMIT — IL AVAIT TORT
+//    (corrigé le 2026-09-20). Le commentaire de ce fichier le signalait déjà
+//    (« le printout de fin de ce script dit le contraire et il a tort »), et
+//    l'en-tête de build-id.mjs aussi ; le piège a quand même survécu, parce
+//    que c'est cette ligne-là qu'on lit, pas le commentaire d'à côté.
+//    EXTENSION_MIN_BUILD se compare à `profiles.extension_build`, qui EST un
+//    BUILD_ID de paquet. La seule valeur juste est donc celle du ZIP qu'on
+//    vient de produire — l'horodatage du dernier commit ne désigne aucun
+//    paquet installable.
+const minBuildAViser = buildId.split('+')[0];
 console.log(`\n  Après une publication ACCEPTÉE, DEUX gestes dans scripts/ :`);
 console.log(`    1. ajouter "${manifest.version}" à ALREADY_PUBLISHED (package-extension.mjs) ;`);
-console.log(`    2. dans build-id.mjs, recopier EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT})`);
-console.log(`       dans EXTENSION_MIN_BUILD (actuellement ${EXTENSION_MIN_BUILD}) puis pousser`);
-console.log(`       le web : c'est CE geste qui allume la bannière « extension obsolète ».`);
+console.log(`    2. dans build-id.mjs, poser EXTENSION_MIN_BUILD = '${minBuildAViser}'`);
+console.log(`       — le BUILD_ID DE CE ZIP, jamais EXTENSION_LAST_COMMIT`);
+console.log(`       (${EXTENSION_LAST_COMMIT}, qui ne désigne aucun paquet installable).`);
+console.log(`       Valeur actuelle : ${EXTENSION_MIN_BUILD}. Puis pousser le web : c'est CE`);
+console.log(`       geste qui allume la bannière « extension obsolète ».`);
 console.log(`       Tant qu'il n'est pas fait, personne n'est prévenu ; fait trop tôt, tout`);
 console.log(`       le parc voit un bandeau sans version à installer (vécu le 29/07).`);
