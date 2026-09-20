@@ -79,9 +79,24 @@ android {
         // Sans ce binaire, le parc Android reste sur le code du 30/07 : l'écran
         // « Bienvenue dans Premium » continue de s'afficher par-dessus une
         // écriture refusée par Postgres (42501).
+        //
+        // versionCode 30 / versionName 2.8.0 (20/09) : le binaire qui rattrape
+        // la prod. Le parc du store tournait sur le code du binaire 2.7, alors
+        // que tout ce qui a été livré depuis partait en OTA Capgo (jusqu'à
+        // 2.7.27) — et une OTA ne s'applique qu'au passage en arrière-plan,
+        // donc un nouvel inscrit voyait toujours une version en retard.
+        // Il porte : le parcours d'entrée refondu (src/entree), « Mes annonces
+        // en ligne » refondu (src/annonces), la sync des ventes, la cascade de
+        // catégorie Opla, le module jeux vidéo, et le reste du main 2.7.x.
+        // Le saut 29 → 30 est nominal.
+        //
+        // ⛔ CE BINAIRE DÉPLACE LE PLANCHER DES OTA. Le canal Capgo sert
+        //    2.7.27 : sur un natif 2.8.0 ce bundle est SOUS le plancher et ne
+        //    sera jamais servi. La prochaine OTA doit être 2.8.1 ou au-dessus,
+        //    jamais 2.7.28.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 29
-        versionName "2.7.0"
+        versionCode 30
+        versionName "2.8.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

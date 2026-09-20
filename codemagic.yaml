@@ -68,9 +68,22 @@ workflows:
           # L'alignement avec package.json n'est pas cosmétique : Capgo compare
           # la version d'un bundle OTA à celle du natif installé et ne sert
           # jamais un bundle numéroté plus bas.
+          #
+          # 2.8 (20/09) : rattrape la prod. Le parc du store tournait sur le
+          # binaire 2.7 + l'OTA 2.7.27 ; un nouvel inscrit lançait donc 2.7 nu
+          # et voyait une version en retard jusqu'au premier passage en fond.
+          # Aligné sur package.json 2.8.0 et Android versionName 2.8.0 /
+          # versionCode 30.
+          #
+          # ⛔ CE BINAIRE DÉPLACE LE PLANCHER DES OTA. Le canal Capgo sert
+          #    2.7.27 : sur un natif 2.8, ce bundle est SOUS le plancher et ne
+          #    sera JAMAIS servi (channel « Updates Under Native: No »). La
+          #    prochaine OTA doit donc être numérotée 2.8.1 ou au-dessus —
+          #    jamais 2.7.28. Elle sera servie aux deux parcs : > 2.7.27 pour
+          #    qui est resté sur le binaire 2.7, > 2.8 pour qui a pris le neuf.
           BUILD_NUMBER=$(date +%y%m%d%H%M)
           echo "Build number (timestamp): $BUILD_NUMBER"
-          cd ios/App && agvtool new-marketing-version 2.7 && agvtool new-version -all $BUILD_NUMBER
+          cd ios/App && agvtool new-marketing-version 2.8 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles
