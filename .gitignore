@@ -64,6 +64,9 @@ fillsell-backups/
 !supabase/migrations/*.sql
 !supabase/migrations_archive/*.sql
 
-# send-relance : source rapatriee de prod le 08/09 pour redeployer par le CLI (numero de version fige) —
-# elle porte des adresses e-mail d utilisateurs et des corps de mails nominatifs : JAMAIS commitee.
-supabase/functions/send-relance/
+# send-relance : ELLE EST DANS GIT DEPUIS LE 20/09.
+# Elle en etait exclue parce qu elle portait ~110 adresses reelles et le detail
+# de ce qui avait ete ecrit a chacune. Ces adresses sont sorties du code (le
+# registre durable, c est email_logs), et son jeton aussi (RELANCE_SECRET).
+# ⛔ Ne jamais y reposer une adresse : ce serait la re-sortir de git, et son
+#    jeton redeviendrait invisible.
