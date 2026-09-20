@@ -1315,16 +1315,32 @@ serve(async (req) => {
             pf["genre"] = chemin[1];
             repris["genre"] = chemin[1];
           }
+          // ── ET LA DESCRIPTION, QUE BEEBS EXIGE ───────────────────────────
+          // Troisième couche du même job, constatée en prod : catégorie posée,
+          // champs posés, le formulaire s'est rempli — et Beebs a refusé le
+          // dépôt avec « Ajouter au moins 5 caractères ». La description du job
+          // était VIDE (0 caractère) et le relevé en portait 170, mot pour mot
+          // celle de l'annonce en ligne. Un article rattaché n'a jamais eu de
+          // description côté FillSell : elle n'existe que dans le relevé.
+          // ⛔ Seulement si celle du job est vide ou trop courte pour Beebs :
+          //    une description écrite par la personne n'est jamais remplacée.
+          const descJob = String((j as { description?: unknown }).description ?? "").trim();
+          const descCap = String(cap["description"] ?? "").trim();
+          const nouvelleDesc = (descJob.length < 5 && descCap.length >= 5) ? descCap : null;
+          if (nouvelleDesc) repris["description"] = `${descCap.length} caractères`;
           if (!Object.keys(repris).length) continue;   // rien à ajouter : on ne réécrit pas pour rien
           pf["champs_repris_de_l_annonce"] = {
             le: new Date().toISOString(),
             pose_par: "get-pending-jobs (annonce Beebs relevée)",
             repris,
           };
+          const patchB: Record<string, unknown> = { platform_fields: pf };
+          if (nouvelleDesc) patchB["description"] = nouvelleDesc;
           const { error: uErr } = await userClient.from("cross_post_jobs")
-            .update({ platform_fields: pf }).eq("id", j.id as string);
+            .update(patchB).eq("id", j.id as string);
           if (uErr) { console.warn(`[get-pending-jobs] catégorie Beebs : job ${String(j.id).slice(0, 8)} non écrit (${uErr.message})`); continue; }
           (j as Record<string, unknown>).platform_fields = pf;
+          if (nouvelleDesc) (j as Record<string, unknown>).description = nouvelleDesc;
           posesBeebs++;
           console.log(`[get-pending-jobs] Beebs ${String(j.id).slice(0, 8)} : catégorie ← « ${chemin.join(" > ")} » (annonce relevée)`);
         }
