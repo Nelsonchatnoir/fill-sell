@@ -1,6 +1,6 @@
 // ── LA CONSTELLATION : CE QUI SE PASSE VRAIMENT, PENDANT QUE ÇA SE PASSE ────
-// FillSell au centre, les plateformes de la vague autour. Chaque satellite
-// porte l'état RÉEL de sa plateforme, lu sur son run :
+// FillSell au centre, les plateformes du compte autour. Chaque satellite porte
+// l'état RÉEL de sa plateforme, lu sur son run :
 //   · terminée    pleinement colorée, liseré teal, coche ;
 //   · en cours    pleinement colorée, liseré teal, halo qui respire ;
 //   · en attente  atténuée, liseré neutre, AUCUN badge ;
@@ -10,56 +10,36 @@
 // ⛔ AUCUNE PASTILLE NE S'ALLUME POUR FAIRE JOLI. Les seules animations sont
 //    l'orbite, la respiration du centre et le halo de la plateforme en cours —
 //    du décor, sur des éléments sans information. Ce qui PORTE l'information
-//    (coche, badge, opacité) est branché sur `vague`.
+//    (coche, badge, opacité) est branché sur l'état lu en base.
 //
-// ── POURQUOI LES LOGOS SONT DROITS (correctif du 20/09) ─────────────────────
-// Constat Nico, capture à l'appui : seul Vinted était droit, les quatre autres
-// penchaient légèrement à droite. La cause n'était pas un angle mal calculé,
-// c'était DEUX HORLOGES : l'anneau portait `rvOrbite` (0 → 360°) et chaque
-// tuile portait `rvOrbiteInv` (0 → −360°) pour se redresser. Sur le papier ça
-// s'annule ; dans un navigateur ce sont deux animations distinctes, démarrées
-// chacune de son côté. À 45°/s, 100 ms d'écart au démarrage = 4,5° de biais
-// PERMANENT sur toutes les tuiles. Vinted, posée à 0°, était la seule dont le
-// redressement ne dépendait de rien.
+// ── LE JEU DE SATELLITES EST STABLE, ET C'EST LE CŒUR DU CORRECTIF ──────────
+// On affiche les plateformes DU COMPTE, pas les membres de la vague. Les
+// membres, eux, entrent au compte-gouttes : les quatre RPC partent l'une après
+// l'autre, et Vinted n'apparaît QUE quand VintedDressingSync remonte son état,
+// avec un tour de rendu de retard. Un satellite qui se monte en retard démarre
+// son animation en retard — et reste décalé sur l'anneau pour toujours
+// (constat Nico, 20/09 : Vinted collée à sa voisine).
+// Ici les cinq tuiles se montent ENSEMBLE, à l'apparition de la constellation,
+// et ne sont plus jamais recréées (clé = identifiant de plateforme). Ce qui
+// change ensuite, c'est leur HABILLAGE, jamais leur présence.
 //
-// Désormais : UNE SEULE animation, par satellite, qui orbite ET redresse dans
-// la MÊME liste de transformations —
-//     rotate(a+t) translateY(-R) rotate(-(a+t))
-// Le redressement est le dernier terme de la même transformation que la
-// rotation : il ne peut plus se désynchroniser de quoi que ce soit, il n'y a
-// plus rien avec quoi se désynchroniser. L'anneau ne tourne plus du tout.
-//
-// ⚠️ Le `transform` INLINE n'est pas décoratif : c'est la position de repos,
-//    déjà redressée. Quand le système demande moins d'animation, la règle
-//    `.rv-anime *` coupe l'animation — sans ce transform inline, les cinq
-//    satellites s'empileraient au centre.
+// ── ET L'APLOMB NE DÉPEND DE RIEN ───────────────────────────────────────────
+// Une seule keyframe pour les cinq (rvTourne, theme.js) : elle orbite et
+// redresse dans la même liste de transformations. L'écart entre satellites
+// vient d'un animation-delay NÉGATIF, pas d'un angle par tuile.
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { A } from './theme';
 
+// ⚠️ Doit rester égal au translateY de la keyframe rvTourne (theme.js).
 const RAYON = 58;
 const TOUR_MS = 8000;
 
-// Une image de repos par satellite, et son tour complet. Générées ici parce
-// qu'elles dépendent du NOMBRE de plateformes de la vague : à trois
-// plateformes, le pas est de 120°, pas de 72°.
-function keyframesOrbite(n, pas) {
-  return Array.from({ length: n }, (_, k) => {
-    const a = k * pas;
-    return `@keyframes rvTourne${k} {
-  from { transform: rotate(${a}deg) translateY(${-RAYON}px) rotate(${-a}deg) }
-  to   { transform: rotate(${a + 360}deg) translateY(${-RAYON}px) rotate(${-(a + 360)}deg) }
-}`;
-  }).join('\n');
-}
-
-export default function ConstellationReleve({ membres, faites, enCours, empechees, labels }) {
-  const n = Math.max(1, membres.length);
+export default function ConstellationReleve({ plateformes, faites, enCours, empechees, labels }) {
+  const n = Math.max(1, plateformes.length);
   const pas = 360 / n;
 
   return (
     <div className="rv-anime" aria-hidden="true" style={{ position: 'relative', width: 148, height: 148, flexShrink: 0 }}>
-      <style>{keyframesOrbite(n, pas)}</style>
-
       <span style={{ position: 'absolute', inset: 24, borderRadius: '50%', border: `1px dashed ${A.mentheBord}` }} />
       <span style={{ position: 'absolute', inset: 52, borderRadius: '50%', border: `1.5px solid ${A.teal}`, animation: 'rvPouls 2.2s ease-out infinite' }} />
       <span style={{
@@ -71,7 +51,7 @@ export default function ConstellationReleve({ membres, faites, enCours, empechee
         <img src="/icon-192x192.png" alt="" style={{ width: 26, height: 26, borderRadius: 7, objectFit: 'contain' }} />
       </span>
 
-      {membres.map((p, k) => {
+      {plateformes.map((p, k) => {
         const fait = faites.includes(p);
         const empechee = empechees.includes(p);
         const active = p === enCours;
@@ -85,8 +65,15 @@ export default function ConstellationReleve({ membres, faites, enCours, empechee
             style={{
               position: 'absolute', left: '50%', top: '50%', margin: '-17px 0 0 -17px',
               width: 34, height: 34,
+              // Position de repos, déjà redressée : c'est elle qui s'applique
+              // quand le système demande moins d'animation (la règle
+              // `.rv-anime *` coupe alors l'orbite). Sans ce transform, les
+              // cinq satellites s'empileraient au centre.
               transform: `rotate(${angle}deg) translateY(${-RAYON}px) rotate(${-angle}deg)`,
-              animation: `rvTourne${k} ${TOUR_MS}ms linear infinite`,
+              animation: `rvTourne ${TOUR_MS}ms linear infinite`,
+              // ⛔ L'ÉCART EST ICI, ET NULLE PART AILLEURS. Négatif : le
+              //    satellite k démarre déjà au k/n de son tour.
+              animationDelay: `${-Math.round((k / n) * TOUR_MS)}ms`,
             }}
           >
             <span style={{

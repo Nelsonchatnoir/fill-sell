@@ -181,8 +181,14 @@ export default function CarteAnnoncesEnLigne({
             l'ordinateur, on n'invente pas un nom. */}
         {enCours && (
           <div className="rv-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '22px 0 8px' }}>
+            {/* ⛔ LES PLATEFORMES DU COMPTE, PAS LES MEMBRES DE LA VAGUE :
+                les membres entrent au compte-gouttes (Vinted avec un tour de
+                rendu de retard), et un satellite monté en retard démarre son
+                orbite en retard — il reste décalé sur l'anneau. Le compte
+                réel de la vague se lit dans le sous-titre, pas dans le
+                nombre de tuiles. */}
             <ConstellationReleve
-              membres={vague.membres}
+              plateformes={r.plateformes}
               faites={vague.faites}
               enCours={vague.enCours}
               empechees={empechees}
