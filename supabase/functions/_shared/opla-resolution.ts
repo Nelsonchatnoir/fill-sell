@@ -69,6 +69,16 @@ const jetons = (s: unknown) =>
     .filter((t) => t && !MOTS_VIDES.has(t))
     .sort().join(" ");
 
+// ── LE FOURRE-TOUT D'UN RAYON ──────────────────────────────────────────────
+// « Autres pantalons », « Autres robes », « Autres bijoux » : la feuille où
+// Opla range ce que les étiquettes nommées du rayon ne couvrent pas. On le lit
+// sur le libellé BRUT, avant `jetons` — qui retire justement « autres » comme
+// mot-outil, et efface donc la distinction qu'on cherche ici.
+// ⛔ Le mot doit OUVRIR le libellé. « Pantalons autres matières » (s'il
+//    existait) nomme une matière, pas un fourre-tout.
+const estFourreTout = (f: { titre: string }) =>
+  /^autres?\b/.test(comparable(f.titre));
+
 // ── L'INDEX DES FEUILLES, construit UNE fois au chargement du module ────────
 // 886 feuilles : un parcours en profondeur depuis les 8 racines, et plus
 // personne ne repaie. `oplaEnfants("")` rend les racines (cf. catalogue).
@@ -414,6 +424,31 @@ export function trancherCandidats(
     const mieux = scoresF.filter((x) => x.r === max);
     if (mieux.length === 1) {
       return { feuille: mieux[0].f, restants: liste, motif: `étiquette qui reprend le plus de mots de l'article (${max})` };
+    }
+    // ── « AUTRES X » EST LE FOURRE-TOUT DU RAYON, PAS SON NOM ──────────────
+    // Mesuré sur le job 27fb9fb1 (meminiandmove, 20/09, « Pantalon cigarette
+    // Sandro », mot-objet « pantalon ») : sous « Femmes › Vêtements ›
+    // Pantalons et leggings » il reste « Pantalons » et « Autres pantalons ».
+    // Les deux marquent le MÊME score — « autres » est un mot-outil, il est
+    // retiré des jetons des deux côtés — donc on posait la question entre une
+    // étiquette qui nomme exactement l'objet et le fourre-tout d'à côté.
+    //
+    // ⛔ CE N'EST PAS UN SCORE DE PLUS, C'EST UNE LECTURE DU CATALOGUE : dans
+    //    un rayon Opla, « Autres ‹ objet › » est la feuille où l'on range ce
+    //    que les étiquettes nommées ne couvrent pas. Quand l'une d'elles nomme
+    //    l'objet, le fourre-tout ne peut pas être une meilleure réponse.
+    // ⛔ ET SEULEMENT S'IL EN RESTE UNE SEULE. « Robes courtes » contre
+    //    « Robes longues » plus « Autres robes » : retirer le fourre-tout en
+    //    laisse deux, on ne tranche pas — la question repart entière.
+    // ⚠️ Cette branche ne rendait QUE `feuille: null` : elle ne peut donc que
+    //    transformer une question en réponse, jamais changer une réponse déjà
+    //    rendue. Vérifié sur les 172 jobs Opla des 30 derniers jours.
+    const nommees = mieux.filter((x) => !estFourreTout(x.f));
+    if (nommees.length === 1 && nommees.length < mieux.length) {
+      return {
+        feuille: nommees[0].f, restants: liste,
+        motif: `étiquette qui nomme l'objet, contre ${mieux.length - 1} fourre-tout « Autres… » du même rayon`,
+      };
     }
     return { feuille: null, restants: liste, motif: `${liste.length} feuilles du même rayon, aucun mot ne les départage` };
   }
