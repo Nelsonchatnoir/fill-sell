@@ -35,7 +35,13 @@ const MODULE = 'src/utils/resolutionPublication.js';
 const PARTIES = [
   [7076, 7229], // genre auto-résolu, garde-fou d'insert, sanitizeJobFields
   [7294, 7362], // étape 2 : la catégorie par le mot
-  [7369, 7502], // étape 3 : candidates + arbitrage IA
+  // Étape 3 : candidates + arbitrage IA. La tranche est COUPÉE EN TROIS depuis
+  // le 20/09 : deux lignes y ont été volontairement réécrites (cf. ADAPTEES),
+  // sur GO explicite de Nico. Tout le reste doit rester mot pour mot — c'est
+  // justement ce que ce découpage continue de vérifier.
+  [7369, 7418], // … jusqu'à l'appel resoudreParMot inclus
+  [7420, 7466], // … entre les deux lignes adaptées
+  [7468, 7502], // … après
   [7507, 7507], // la copie des champs de la plateforme
   [7522, 7651], // garde-fou de catégorie, jeu vidéo, bloc Leboncoin (1/2)
   [7653, 7735], // bloc Leboncoin (2/2)
@@ -63,6 +69,16 @@ const ABANDONNEES = new Map([
   [7915, "l'adresse de remise Beebs : idem"],
   [7991, 'la fermeture du .map'],
   [7230, '(ligne vide)'],
+  // ── DEUX LIGNES RÉÉCRITES SUR GO DE NICO (2026-09-20) ────────────────────
+  // Le lot A disait « déplacement, pas réécriture », et ce script était là
+  // pour le prouver. Nico a donné son accord explicite pour corriger la
+  // cascade : un livre partait sur Opla au rayon « Sport > Musculation »
+  // parce que le mot « musculation » est une feuille de l'arbre. Les deux
+  // lignes ci-dessous sont les SEULES touchées ; les 954 autres restent
+  // vérifiées mot pour mot, et c'est pour ça qu'on les déclare ici au lieu
+  // d'élargir la tolérance.
+  [7419, "certitude retirée quand le mot décrit le SUJET et non l'objet (maison des livres) — GO Nico 20/09"],
+  [7467, 'les feuilles de la maison des livres passent en tête des candidates — GO Nico 20/09'],
 ]);
 
 const lire = (commit, chemin) =>

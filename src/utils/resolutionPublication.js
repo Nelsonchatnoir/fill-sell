@@ -49,6 +49,7 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } fr
 import { lbcClePremierCombobox } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
 import { resoudreParMot, candidatsParMot } from "./categorieParMot";
+import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
 import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme,
          VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT } from "./jeuxVideo";
 import { familleDeLObjet, plausibiliteDuChemin } from "./familleCategorie";
@@ -410,7 +411,32 @@ export async function resoudrePublication({
       const genrePf = pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "";
       try {
         const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
-        if (r.certitude === "exact") categorieParMotParPf[platform] = r;
+        // ── LE MOT DÉCRIT-IL L'OBJET, OU SON SUJET ? (2026-09-20) ─────────
+        // « La Méthode Delavier de MUSCULATION pour la Femme » — un LIVRE —
+        // est parti sur Opla en « Sport > Fitness > Musculation » : le mot
+        // est une feuille de l'arbre, donc une correspondance EXACTE, donc
+        // une certitude sans recours. Le garde-fou de famille n'a rien vu :
+        // chez Opla « Sport » et « Culture et Loisirs » sont tous les deux
+        // « loisirs ». Un haltère et un livre y sont la même chose.
+        // Quand la fiche dit, DE SOURCE CERTAINE, que l'objet est un livre,
+        // on connaît sa maison dans l'arbre de la plateforme. Une feuille
+        // trouvée AILLEURS décrit le sujet, pas l'objet : on retire la
+        // certitude — on ne pose rien à sa place, l'étape 3 tranche avec
+        // les feuilles de la maison (ajoutées aux candidates plus bas).
+        // ⛔ On ne le fait QUE si la maison existe dans cet arbre : sur
+        //    Leboncoin et eBay elle n'existe pas, et on ne conclut rien.
+        let horsMaison = false;
+        if (r.certitude === "exact" && familleLivresFiche) {
+          const maison = await maisonDesLivres(platform);
+          if (maison && sortDeLaMaison(r.chemin, maison)) {
+            horsMaison = true;
+            console.warn(
+              `[publish] ${platform} — « ${motCategorie} » tombe sur « ${r.chemin.join(" > ")} », hors de la maison ` +
+              `des livres (« ${maison.join(" > ")} ») : le mot décrit le SUJET, pas l'objet — certitude retirée`
+            );
+          }
+        }
+        if (r.certitude === "exact" && !horsMaison) categorieParMotParPf[platform] = r;
         if (r.escamotage) {
           escamotageParPf[platform] = r.escamotage;
           console.warn(`[publish] ${platform} — ${r.escamotage.motif}`);
@@ -458,7 +484,30 @@ export async function resoudrePublication({
           titre: edited[platform]?.title || initialListing?.titre || "",
           famille: familleObjet,
         });
-        if (liste.length) candidats[platform] = liste.map(c => ({ chemin: c.chemin, id: c.id }));
+        let retenues = liste.map(c => ({ chemin: c.chemin, id: c.id }));
+        // ── LA BONNE RÉPONSE DOIT ÊTRE DANS LA LISTE (2026-09-20) ────────
+        // Mesuré sur les 3 livres publiés sur Opla : tous les trois rangés
+        // en « Livres SONORES » — des livres papier. Ce n'est PAS une erreur
+        // de l'IA. Pour le mot « livre », les seules candidates qu'on lui
+        // donnait étaient « Livres sonores » et « Livres pour bébé » : les
+        // deux seules feuilles qui RÉPÈTENT le mot. « Romans pour adultes »,
+        // « Fictions », « Non-fiction » n'y entraient jamais. L'IA a choisi
+        // le moins faux de deux mauvais.
+        // Quand la fiche dit, de source certaine, que l'objet est un livre,
+        // les candidates sont les feuilles de sa MAISON — les onze d'Opla,
+        // les huit de Vinted, les douze de Beebs. Elles passent en TÊTE :
+        // ce sont les seules dont on sait qu'elles sont du bon rayon.
+        // ⛔ On n'en choisit AUCUNE ici : c'est l'IA qui tranche, comme avant.
+        if (familleLivresFiche) {
+          const maison = await maisonDesLivres(platform);
+          if (maison) {
+            const dedans = (await feuillesDuNoeud(maison, platform)).map(f => ({ chemin: f.chemin, id: f.id }));
+            const cle = (c) => c.chemin.join(" > ");
+            const vus = new Set(dedans.map(cle));
+            retenues = [...dedans, ...retenues.filter(c => !vus.has(cle(c)))].slice(0, 20);
+          }
+        }
+        if (retenues.length) candidats[platform] = retenues;
       } catch { /* arbre indisponible : on garde l'icône */ }
     }));
     if (Object.keys(candidats).length) {

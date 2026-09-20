@@ -34,7 +34,7 @@ import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
 import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
-import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT } from "../utils/jeuxVideo";
+import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, familleJeuVideo } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
@@ -493,6 +493,45 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, a
   // désarme si le texte dit « livre » : le cas Delavier reste couvert.
   if ((familleFiche === "livres_medias" || /^livres?$/i.test(categorieFiche))
       && !estSupportNonLivre(frTitle, frDesc)) return { icon: "📚", source: "famille_livres", iconeSansIa: "📚" };
+  // ── LA MACHINE EST UN SIGNAL CERTAIN, LE THÈME NE L'EST PAS (2026-09-20) ──
+  // MÊME PIÈGE QUE LES LIVRES, sur l'autre famille qui parle de son sujet :
+  // un jeu vidéo porte le nom de ce qu'il RACONTE. Deux cas réels du parc,
+  // rejoués tels quels :
+  //   · « Jeu Nintendo DS World Snooker Championship » → 🎱 (billard) ;
+  //   · « Télécommande ps2 sony playstation 2 »        → 🚁 (télécommandé).
+  // Dans les deux, le titre nomme une MACHINE — « nintendo ds », « ps2 » — et
+  // c'est elle qui dit ce que l'objet EST. « snooker » dit de quoi il parle.
+  // familleJeuVideo porte déjà tout le discernement de cette famille (jeu /
+  // console / accessoire, et ses exclusions relevées une par une : cadres,
+  // t-shirts, cartes Pokémon, peluches, housses…). Il ne lui manquait qu'une
+  // chose : être appelé. Sa garde « seulement si l'icône vaut 🎮 » l'empêchait
+  // justement de parler dans les cas où l'icône s'était trompée.
+  // ⛔ ON EXIGE LA MACHINE. `familleJeuVideo` sait conclure sans elle (un jeu
+  //    nommé « jeux vidéo » suffit) ; ici on ne se contente pas de ça — sans
+  //    machine nommée, on laisse la détection habituelle décider, comme avant.
+  // ⛔ Après les livres : un guide de jeu vidéo reste un livre.
+  //
+  // 🚨 ET ON NE PREND LA MAIN QUE DANS DEUX CAS, parce que la MESURE a montré
+  //    que la règle large fabriquait ses propres dégâts. Rejouée sur les
+  //    39 692 titres distincts publiés en 60 jours : 428 nomment une machine,
+  //    80 auraient changé d'icône — dont TROIS à tort, tous des vêtements
+  //    dont le titre cite une marque de console :
+  //      « Chemise y2k game boy taille s streetwear »        👔 → 🎮
+  //      « Pantalon vert primark Xbox 9-10 ans »             👖 → 🎮
+  //      « Banane sac Sega Zara »                            👜 → 🎮
+  //    Une chemise reste une chemise. Les deux cas où l'on parle :
+  //      (a) AUCUN objet reconnu (📦) — on n'écrase rien, on comble ;
+  //      (b) la TÊTE du titre nomme le jeu ou l'accessoire (« Jeu … »,
+  //          « Télécommande … ») — le vendeur a dit lui-même ce que c'est.
+  //    ⛔ Sauf les housses et étuis : la décision du 20/09 les laisse à leur
+  //       icône (« Pochette pour Switch » reste 👜), on ne la défait pas ici.
+  {
+    const jv = familleJeuVideo(frTitle, frDesc);
+    const parTete = typeof jv?.regle === "string" && jv.regle.startsWith("tete_") && jv.sousType !== "etui";
+    if (jv?.machine && (parTete || detectObjectIcon(frTitle, frDesc) === "📦")) {
+      return { icon: "🎮", source: "machine_jeu_video", iconeSansIa: "🎮" };
+    }
+  }
   // La marque et la taille sont des signaux : "New Balance" + "EU 44" disent
   // "chaussure" là où le titre marketing ne le dit pas.
   const marque = pf?.marque ?? initialListing?.marque ?? "";
