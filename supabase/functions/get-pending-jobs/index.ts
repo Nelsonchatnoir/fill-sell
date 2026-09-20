@@ -1222,6 +1222,77 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] catégorie d'origine : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
+    // ══ BEEBS : SA CATÉGORIE EST DÉJÀ CHEZ NOUS (2026-09-20) ═══════════════
+    // DÉFAUT MESURÉ, job 4e5f3abe (nicolas.svobodny, PRO, 19/09 23:39) — une
+    // robe Camaïeu rattachée à la main le 17/09 à une annonce Beebs déjà en
+    // ligne. La republication l'a RETIRÉE, puis n'a pas pu la redéposer :
+    // « platform_fields.beebsCategoryPath absent — article non mappé ». Et on
+    // a affiché « Relance une synchronisation de tes annonces » — une consigne
+    // de manœuvre, pour réparer un trou qui est chez nous.
+    //
+    // Or le relevé du 17/09 22:13 portait, mot pour mot :
+    //   capture.categorie = « Mode > Femme > Vêtements (femme) > Robes (femme)
+    //                         > Autres robes (femme) »
+    // c'est-à-dire EXACTEMENT la forme que `beebsCategoryPath` attend (cf.
+    // src/utils/beebsCategories.js et selectCategory dans beebs.js). On avait
+    // la réponse en base et on demandait à la personne d'aller la rechercher.
+    //
+    // ⛔ POURQUOI ICI ET PAS DANS L'APP : un article RATTACHÉ n'est jamais passé
+    //    par le stepper, donc personne n'a jamais calculé sa catégorie Beebs.
+    //    Le seul endroit qui voit à la fois le job et le relevé, c'est le
+    //    service des jobs — et il atteint TOUS les builds d'extension, sans
+    //    passer par le Chrome Web Store.
+    // ⛔ ON NE COMBLE QUE LE VIDE : un chemin déjà posé n'est jamais écrasé.
+    // ⛔ ET ON NE REMET RIEN EN ROUTE ICI. Poser la catégorie ne relance pas le
+    //    job : c'est la reprise Leboncoin ci-dessus qui décide des statuts, et
+    //    elle ne touche pas à Beebs. Un job Beebs bloqué repart quand la
+    //    personne le relance, ou quand la passe de reprise le reprendra.
+    try {
+      const pfB = (j: Record<string, unknown>) =>
+        ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      const beebsACombler = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.platform === "beebs" && j.inventaire_id != null
+          && !Array.isArray(pfB(j)["beebsCategoryPath"]));
+      if (beebsACombler.length) {
+        const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
+        const { data: annonces } = await userClient
+          .from("annonces_plateforme").select("inventaire_id, capture, vu_le")
+          .eq("platform", "beebs").in("inventaire_id", ids)
+          .order("vu_le", { ascending: false });
+        const cheminDe = new Map<number, string[]>();
+        for (const a of (annonces ?? [])) {
+          const inv = Number((a as { inventaire_id: number }).inventaire_id);
+          if (cheminDe.has(inv)) continue;
+          const brut = String(((a as { capture?: { categorie?: unknown } }).capture ?? {})?.categorie ?? "").trim();
+          // ⚠️ AU MOINS DEUX NIVEAUX. « Mode » seul n'est pas une feuille : le
+          //    poser ferait échouer selectCategory plus loin, en silence.
+          const chemin = brut ? brut.split(">").map((s) => s.trim()).filter(Boolean) : [];
+          if (chemin.length >= 2) cheminDe.set(inv, chemin);
+        }
+        let posesBeebs = 0;
+        for (const j of beebsACombler) {
+          const chemin = cheminDe.get(Number(j.inventaire_id));
+          if (!chemin) continue;
+          const pf = { ...pfB(j) };
+          pf["beebsCategoryPath"] = chemin;
+          pf["champs_repris_de_l_annonce"] = {
+            le: new Date().toISOString(),
+            pose_par: "get-pending-jobs (catégorie Beebs de l'annonce relevée)",
+            repris: { beebsCategoryPath: chemin.join(" > ") },
+          };
+          const { error: uErr } = await userClient.from("cross_post_jobs")
+            .update({ platform_fields: pf }).eq("id", j.id as string);
+          if (uErr) { console.warn(`[get-pending-jobs] catégorie Beebs : job ${String(j.id).slice(0, 8)} non écrit (${uErr.message})`); continue; }
+          (j as Record<string, unknown>).platform_fields = pf;
+          posesBeebs++;
+          console.log(`[get-pending-jobs] Beebs ${String(j.id).slice(0, 8)} : catégorie ← « ${chemin.join(" > ")} » (annonce relevée)`);
+        }
+        if (posesBeebs) console.log(`[get-pending-jobs] user=${user.id} : ${posesBeebs} job(s) Beebs complété(s) depuis l'annonce relevée`);
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] catégorie Beebs : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
     // ══ UN SEUL RETRAIT EN VOL, PAR COMPTE ET PAR PLATEFORME (2026-09-19) ═══
     // L'invariant existait déjà — dans l'extension, à l'étape 'captured' de
     // processRepublishJobPlateforme. Il a CÉDÉ ce soir : deux annonces de la
