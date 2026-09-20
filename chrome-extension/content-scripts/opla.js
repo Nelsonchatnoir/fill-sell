@@ -702,6 +702,24 @@ async function oplaMonterPhoto(url, indice) {
     body: JSON.stringify({ contentType: blob.type || "image/jpeg" }),
   });
   if (!presigne.ok || !presigne.corps?.uploadUrl || !presigne.corps?.key) {
+    // ── UN 401 N'EST PAS UN PROBLÈME DE PHOTO (2026-09-20, passe 3) ────────
+    // 🚨 LE CAS : laforge.vinted, « Tee-shirt Nike Sportswear Script »,
+    //    20/09 16:07 → job FAILED sur « Opla : URL présignée refusée pour la
+    //    photo 1 (HTTP 401) ». Motif jamais vu dans le parc, et pour cause :
+    //    ce n'est pas la photo qui est refusée, c'est NOUS. 401 sur
+    //    /public/images/upload-url veut dire que la session Opla de l'onglet
+    //    n'est plus valable — le fichier n'a même pas quitté le poste.
+    //    Le message envoyait la personne chercher un défaut dans ses photos.
+    // ⛔ ET C'ÉTAIT UN `failed` TERMINAL pour une cause qui revient toute
+    //    seule. Les trois autres fonctions du fichier (listerMesArticles,
+    //    deleteListing, republishListing) traitent déjà le 401 en needsUser
+    //    avec OPLA_MSG_SESSION ; le chemin de PUBLICATION était le seul à ne
+    //    pas l'avoir. On aligne : même verdict, même phrase, même porte.
+    if (presigne.statut === 401 || presigne.statut === 403) {
+      const err = new Error(OPLA_MSG_SESSION);
+      err.sessionOpla = true;
+      throw err;
+    }
     throw new Error(`URL présignée refusée pour la photo ${indice + 1} (HTTP ${presigne.statut})`);
   }
 
@@ -922,7 +940,19 @@ async function fillListingForm(job) {
     //    borne déjà 1..20 ; on ne re-tronque pas ici, on ferait mentir sa garde.
     oplaEtape("photos");
     const photos = (job?.photos ?? []).map((p) => p?.url).filter(Boolean);
-    const cles = await oplaMonterPhotos(photos);
+    let cles;
+    try {
+      cles = await oplaMonterPhotos(photos);
+    } catch (e) {
+      // La session, et elle seule, sort par la porte douce : needsUser, le
+      // message de connexion, et RIEN n'a été créé côté Opla (le montage des
+      // photos précède la création). Tout le reste garde le chemin d'avant.
+      if (e?.sessionOpla) {
+        oplaTracer("photos: session Opla refusée (401/403) — aucune photo envoyée");
+        return oplaSortie({ success: false, needsUser: true, error: OPLA_MSG_SESSION, t0 });
+      }
+      throw e;
+    }
     oplaTracer(`photos: ${cles.length}/${photos.length} montées`);
 
     // 4. CRÉATION.
