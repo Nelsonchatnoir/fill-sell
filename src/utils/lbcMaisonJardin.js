@@ -101,6 +101,34 @@ export const LBC_MAISON_JARDIN_DEPENDANTS = {
       "Autre": ["Autre"],
     },
   },
+  // ── AMEUBLEMENT — 7e feuille, relevée LIVE le 2026-09-20 ──────────────────
+  // Elle manquait. Le catalogue portait ses trois champs (furniture_category
+  // « Type », furniture_type « Produit », furniture_quantity « Quantité »)
+  // en OBLIGATOIRES et SANS AUCUNE VALEUR : l'écran demandait donc un
+  // « Type » et un « Produit » en saisie LIBRE, où il faut deviner le libellé
+  // exact de Leboncoin. Même mécanique que les six autres : le second
+  // combobox dépend du premier et se vide quand il change.
+  //
+  // ⚠️ « Quantité » N'EXISTE PAS sur le formulaire particulier (relevé du
+  //    20/09 : Type*, Produit*, Démontable, Pièce, Poids (kg), Marque,
+  //    Matière, Couleur, État — et rien d'autre). La ligne du catalogue vient
+  //    donc d'un relevé fait sur un compte PRO, dont les formulaires portent
+  //    des champs que le parc n'a pas — c'est la contamination déjà vue le
+  //    16/09. On ne la corrige pas ici : ce module ne décide pas des requis,
+  //    il ne fait que fournir les listes (règle du 02/09).
+  "Maison & Jardin > Ameublement": {
+    typeKey: "furniture_category",
+    produitKey: "furniture_type",
+    produits: {
+      "Canapé et fauteuil": ["Canapé", "Canapé convertible et clic clac", "Canapé 2 places", "Canapé 3 places", "Canapé 4 places et plus", "Canapé d'angle", "Banquette", "Méridienne", "Chauffeuse", "Fauteuil", "Fauteuil électrique", "Autre"],
+      "Meuble de rangement": ["Bibliothèque et étagère", "Meuble de rangement", "Armoire", "Buffet bas", "Bibliothèque", "Commode", "Etagère sur pied", "Etagère murale", "Meuble TV", "Meuble de cuisine", "Meuble de jardin", "Meuble de salle de bain", "Meuble à chaussures", "Vaisselier", "Coffre et malle", "Caisson de rangement", "Meuble bar", "Dressing et penderie", "Autre"],
+      "Lit et matelas": ["Lit pour enfant", "Lit", "Sommier", "Pied de lit", "Tête de lit", "Matelas", "Lit + matelas", "Lit superposé et lit mezzanine", "Lit gigogne", "Cadre de lit", "Autre"],
+      "Table et bureau": ["Table de salle à manger", "Table extensible", "Table ronde", "Table haute", "Table d'appoint", "Table basse", "Table de chevet", "Table pliante", "Table bistrot", "Console", "Desserte", "Ensemble table et chaises", "Bureau", "Bureau d'angle", "Secrétaire", "Coiffeuse", "Autre"],
+      "Chaise et tabouret": ["Chaise, tabouret et banc", "Chaise", "Chaise pliante", "Chaise et tabouret de bar", "Chaise de bureau", "Tabouret", "Banc", "Pouf et repose pied", "Autre"],
+      "Accessoire": ["Poubelle", "Etendoir à linge", "Planche à repasser", "Porte-serviette", "Marche-pied", "Panière à linge", "Panier à linge", "Porte-manteau", "Luminaire", "Bain et baignoire", "Porte", "Tapis", "Accessoire", "Autre"],
+      "Autre": ["Autre"],
+    },
+  },
 };
 
 // Texte comparable pour retrouver la valeur du premier combobox telle que
