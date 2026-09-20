@@ -14940,9 +14940,18 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
 // un problème de catalogue.
 function categoryKeyOf(job) {
   const pf = job.platform_fields ?? {};
-  const path = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
+  // ⛔ OPLA MANQUAIT ICI (2026-09-20, passe 2). Relevé : 526 lignes de
+  //    catalogue Opla, TOUTES en source 'manual', toutes posées le 16/09,
+  //    zéro observation depuis — pendant que Leboncoin en apprenait 71 en
+  //    sept jours. Une des deux raisons est ce `??` : `oplaCategoryPath`
+  //    n'était pas lu, donc toute observation Opla serait tombée dans
+  //    « (catégorie inconnue) », c'est-à-dire nulle part d'utile.
+  //    (L'autre raison est qu'Opla ne produisait AUCUNE observation : elle ne
+  //    remplit pas un formulaire, elle poste sur une API. Voir opla.js.)
+  const path = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? pf.oplaCategoryPath ?? null;
   if (Array.isArray(path) && path.length) return path.join(" > ");
   if (pf.ebayCategoryId) return String(pf.ebayCategoryId);
+  if (pf.oplaCategoryCode) return String(pf.oplaCategoryCode);
   return "(catégorie inconnue)";
 }
 

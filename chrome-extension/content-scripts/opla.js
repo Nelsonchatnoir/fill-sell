@@ -835,6 +835,7 @@ async function fillListingForm(job) {
     if (!Object.keys(oplaCategorieRetenue).length) oplaCategorieRetenue = null;
     if (code) job = { ...job, platform_fields: { ...pf0, oplaCategoryCode: code } };
     if (code) await ref.precharger(code);
+    oplaRelverAspects(code, ref);
     oplaTracer(`referentiel: ${ref.feuilles.size} feuilles, categorie « ${code || "(absente)"} »`);
 
     // 2. PRÉ-VOL — LA GARDE. Un échec ici n'est PAS un refus de plateforme :
@@ -1061,6 +1062,9 @@ function oplaSortie(resultat) {
     // La catégorie acquise (fillListingForm), sur toutes les issues — c'est
     // ce que le background recopie sur le job (categorieRetenue).
     ...(oplaCategorieRetenue ? { categorieRetenue: oplaCategorieRetenue } : {}),
+    // Ce qu'Opla exige pour cette feuille, sur TOUTES les issues : une
+    // publication refusée renseigne le catalogue autant qu'une réussie.
+    ...(oplaAspectsReleves ? { discoveredRequired: oplaAspectsReleves } : {}),
     diagnostic: oplaTrace.slice(-30).join(" | "),
     etape: oplaEtapeCourante,
     duree_ms: t0 ? Date.now() - t0 : null,
@@ -1214,6 +1218,7 @@ async function republishListing(job) {
     const code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
     const ref = await oplaChargerReferentiel();
     if (code) await ref.precharger(code);
+    oplaRelverAspects(code, ref);
 
     oplaEtape("prevol");
     const verdict = globalThis.oplaPrevol(job, ref);
@@ -1304,6 +1309,61 @@ const oplaTrace = [];
 // posée par fillListingForm, jointe à TOUTES les sorties par oplaSortie, remise
 // à zéro avec la trace à chaque message.
 let oplaCategorieRetenue = null;
+// ── CE QU'OPLA EXIGE POUR CETTE FEUILLE (2026-09-20, passe 2) ──────────────
+// 🚨 LE DÉFAUT : 526 lignes de catalogue Opla, TOUTES en source 'manual',
+//    toutes posées à la main le 16/09, ZÉRO apprentissage depuis — pendant
+//    que Leboncoin en apprenait 71 en sept jours. Deux causes :
+//      1. `categoryKeyOf` (background.js) ne lisait pas `oplaCategoryPath`
+//         ni `oplaCategoryCode` : une observation Opla serait tombée dans
+//         « (catégorie inconnue) ». Corrigé.
+//      2. Opla ne produisait AUCUNE observation — et pour une bonne raison :
+//         elle ne remplit pas un formulaire, elle POSTE sur une API. Il n'y a
+//         pas d'astérisque à lire, donc `oplaEstFacultatif()` (écrit le
+//         15/09) n'a jamais été appelé une seule fois : du code mort.
+//
+// CE QU'ON OBSERVE À LA PLACE, et c'est mieux : `/public/config/params?
+// category=<code>` rend la vérité d'Opla pour cette feuille — { sizes,
+// colors, materials }. On le charge DÉJÀ à chaque publication (ref.precharger),
+// pour le pré-vol. On ne fait donc aucun appel de plus : on écrit ce qu'on a
+// lu, au lieu de le jeter.
+//
+// ⛔ `required` N'EST PAS DEVINÉ. Seule la TAILLE est déclarée obligatoire, et
+//    seulement quand la grille existe : c'est la règle du pré-vol
+//    (MOTIFS.TAILLE_REQUISE), prouvée par les refus réels d'Opla. Couleur et
+//    matière partent en `required: false` avec leurs valeurs — on ne sait pas
+//    si Opla les exige, on ne le prétend pas. Champ vide plutôt que champ
+//    menteur.
+// ⛔ `source: 'dom'` COMME TOUT LE MONDE : ces lignes passent par la garde de
+//    corroboration (deux témoins distincts, la moitié des releveurs) au même
+//    titre que Vinted ou Leboncoin. On ne relâche rien pour rattraper le
+//    retard — sinon un compte seul redeviendrait la règle du parc, ce qui est
+//    exactement l'incident du 16/09.
+let oplaAspectsReleves = null;
+function oplaRelverAspects(code, ref) {
+  try {
+    if (!code || !ref) { oplaAspectsReleves = null; return; }
+    const tailles = typeof ref.grillePour === "function" ? ref.grillePour(code) : null;
+    const couleurs = typeof ref.couleursPour === "function" ? ref.couleursPour(code) : null;
+    const matieres = typeof ref.matieresPour === "function" ? ref.matieresPour(code) : null;
+    const titresDe = (l) => (Array.isArray(l) ? l.map((e) => String(e?.title ?? e?.code ?? "").trim()).filter(Boolean) : []);
+    const rows = [];
+    if (Array.isArray(tailles) && tailles.length) {
+      rows.push({ key: "size", label: "Taille", required: true, inputType: "selection_only", options: tailles.map(String) });
+    }
+    const opts = (l) => titresDe(l);
+    if (Array.isArray(couleurs) && couleurs.length) {
+      rows.push({ key: "color", label: "Couleur", required: false, inputType: "selection_only", options: opts(couleurs) });
+    }
+    if (Array.isArray(matieres) && matieres.length) {
+      rows.push({ key: "material", label: "Matière", required: false, inputType: "selection_only", options: opts(matieres) });
+    }
+    oplaAspectsReleves = rows.length ? rows : null;
+    if (rows.length) oplaTracer(`aspects relevés: ${rows.map((r) => `${r.key}(${r.options.length})`).join(", ")}`);
+  } catch (e) {
+    oplaAspectsReleves = null; // jamais bloquant : un relevé raté ne coûte rien
+    console.warn("[opla] relevé des aspects ignoré :", String(e?.message ?? e));
+  }
+}
 function oplaTracer(quoi) { oplaTrace.push(`${new Date().toISOString()} ${quoi}`); }
 
 // ── Écouteur ────────────────────────────────────────────────────────────────
@@ -1337,7 +1397,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
       // — le content script survit d'un job à l'autre sur l'onglet de travail
       // persistant. Le diagnostic écrit en base aurait décrit un autre job.
       oplaEtapeCourante = null;
-      oplaTrace.length = 0; oplaCategorieRetenue = null;
+      oplaTrace.length = 0; oplaCategorieRetenue = null; oplaAspectsReleves = null;
       const action = msg.type === "DELETE_LISTING" ? deleteListing : republishListing;
       action(msg.job)
         .then((r) => sendResponse({ ...r, trace: [...oplaTrace], fill_step: oplaEtapeCourante }))
@@ -1353,7 +1413,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
     if (msg?.type !== "FILL_LISTING") return;
 
     oplaEtapeCourante = null;
-    oplaTrace.length = 0; oplaCategorieRetenue = null;
+    oplaTrace.length = 0; oplaCategorieRetenue = null; oplaAspectsReleves = null;
     // trace jointe sur TOUTES les issues, réussites comprises (motif ebay.js)
     fillListingForm(msg.job)
       .then((r) => sendResponse({ ...r, trace: [...oplaTrace], fill_step: oplaEtapeCourante }))
