@@ -4610,6 +4610,29 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
             </div>
           );
         })()}
+        {/* ── CE QUE LA REPUBLICATION ÉCRASE (2026-09-20, question de Louis) ──
+            « Je suis obligé d'aller manuellement sur leboncoin pour faire la
+            modification et je crains que cela saute lors de la republication. »
+            Il a raison, et on le lui dit AVANT, pas après.
+            MESURE : sur Leboncoin et Beebs, republier = retirer l'annonce puis
+            la REDÉPOSER depuis notre copie du dépôt d'origine
+            (spend_coins_and_republish recopie titre, description, prix, photos
+            et platform_fields du job source ; le redépôt est un publish
+            ordinaire, il ne lit rien sur la page). Vérifié sur les 10
+            dernières republications Leboncoin du parc : titre et prix
+            identiques au job d'origine, 10 fois sur 10.
+            Ce qui SURVIT : uniquement les champs que notre copie ne porte pas
+            du tout — get-pending-jobs les complète depuis le dernier relevé de
+            l'annonce (« on ne comble que le vide »).
+            Vinted n'est PAS concernée : sa machine RECAPTURE l'annonce vivante
+            avant de la retirer. Opla non plus : elle modifie en place. */}
+        {nomsSel.some((p) => p === 'leboncoin' || p === 'beebs') && (
+          <div style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
+            {fr
+              ? `Sur ${nomsSel.filter((p) => p === 'leboncoin' || p === 'beebs').map((p) => PLATFORM_LABELS[p] ?? p).join(' et ')}, l’annonce est recréée à partir de la copie enregistrée ici. Si tu as modifié quelque chose à la main sur le site, la modification sera perdue — reporte-la dans l’app avant de republier.`
+              : `On ${nomsSel.filter((p) => p === 'leboncoin' || p === 'beebs').map((p) => PLATFORM_LABELS[p] ?? p).join(' and ')}, the listing is rebuilt from the copy stored here. Anything you edited by hand on the site will be lost — bring it back into the app before republishing.`}
+          </div>
+        )}
         <button onClick={confirmer} disabled={!nbEnvois}
           style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: nbEnvois ? 'linear-gradient(120deg,#2F9E90,#1B6E62)' : '#B9C4C0', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: nbEnvois ? 'pointer' : 'default' }}>
           {bouton}
