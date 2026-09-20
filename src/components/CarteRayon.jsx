@@ -28,21 +28,39 @@ const MOTS = {
   fr: {
     rayon: 'RAYON', changer: 'Changer', annuler: 'Annuler',
     chercher: 'Chercher un rayon…', aucun: 'Aucun rayon trouvé pour ce mot.',
+    // ⛔ TROIS VÉRITÉS DIFFÉRENTES, TROIS PHRASES DIFFÉRENTES. Dire « cette
+    //    plateforme ne partira pas » à tout le monde était faux deux fois sur
+    //    cinq, et ça fait peur pour rien :
+    //    · Vinted / Leboncoin / eBay : sans rayon, la plateforme est
+    //      VRAIMENT écartée avant le débit. La phrase est vraie.
+    //    · Opla : sa catégorie est posée côté serveur au départ du job, et
+    //      son pré-vol demande s'il ne sait pas. Elle part. On le dit.
+    //    · Beebs : son formulaire pose la question au dépôt. Elle part aussi.
     pasDeRayon: 'Aucun rayon trouvé pour cet article. Choisis-le ici — sans lui, cette plateforme ne partira pas.',
-    tonChoix: 'ton choix', trouve: 'trouvé pour toi',
+    pasDeRayonOpla: 'Opla choisit le rayon au moment de l’envoi. Tu peux le fixer ici si tu préfères décider toi-même.',
+    pasDeRayonBeebs: 'Beebs posera la question au moment du dépôt. Tu peux choisir le rayon ici pour ne pas avoir à y répondre.',
+    tonChoix: 'ton choix', trouve: 'trouvé pour toi', aVerifier: 'à vérifier',
     manque: 'À COMPLÉTER', dejaLa: (n) => `Déjà rempli · ${n}`,
     obligatoire: 'demandé par la plateforme',
     revenir: 'Revenir au rayon trouvé',
+    voisins: 'Rayons voisins',
+    chargement: 'Chargement des rayons…',
+    tapez: 'Tape un mot pour chercher un rayon.',
     choisir: 'Choisir',
   },
   en: {
     rayon: 'CATEGORY', changer: 'Change', annuler: 'Cancel',
     chercher: 'Search a category…', aucun: 'No category matches that word.',
     pasDeRayon: 'No category found for this item. Pick one here — without it, this platform will be skipped.',
-    tonChoix: 'your choice', trouve: 'found for you',
+    pasDeRayonOpla: 'Opla picks the category when the listing is sent. You can set it here if you would rather decide.',
+    pasDeRayonBeebs: 'Beebs will ask at posting time. You can pick the category here so you do not have to.',
+    tonChoix: 'your choice', trouve: 'found for you', aVerifier: 'worth checking',
     manque: 'TO COMPLETE', dejaLa: (n) => `Already filled · ${n}`,
     obligatoire: 'required by the platform',
     revenir: 'Back to the found category',
+    voisins: 'Nearby categories',
+    chargement: 'Loading categories…',
+    tapez: 'Type a word to search.',
     choisir: 'Pick',
   },
 };
@@ -111,13 +129,29 @@ export default function CarteRayon({
     return () => { vivant = false; };
   }, [platform, cle, supabase]);
 
-  const { questions, connus } = useMemo(
+  const { questions, connus, defauts } = useMemo(
     () => classerChamps(
       [...(catalogue ?? []), ...lignesDepuisConfigLocale(configLocale)],
       champs ?? {}, platform
     ),
     [catalogue, champs, platform, configLocale]
   );
+
+  // ── LE BRUIT PREND SA VALEUR TOUT SEUL ───────────────────────────────────
+  // « Chargeur inclus » et consorts ne valent pas qu'on arrête quelqu'un : ils
+  // reçoivent le défaut le plus prudent, sans question. Une fois posé, le
+  // champ réapparaît dans « Déjà rempli » — donc ce n'est pas caché, c'est
+  // juste que ce n'était pas une question.
+  const defautsPoses = useRef(new Set());
+  useEffect(() => {
+    if (!defauts?.length || !onChampChange) return;
+    for (const d of defauts) {
+      const marque = `${platform}|${cle}|${d.cle}`;
+      if (defautsPoses.current.has(marque)) continue;
+      defautsPoses.current.add(marque);
+      onChampChange(d.cleNotre, d.valeur, d.cle);
+    }
+  }, [defauts, onChampChange, platform, cle]);
 
   // Les feuilles de la plateforme ne se chargent qu'à l'ouverture du
   // sélecteur : 2 500 entrées pour Vinted, on ne les descend pas pour rien.
@@ -128,13 +162,51 @@ export default function CarteRayon({
     return () => { vivant = false; };
   }, [ouvertPicker, platform, feuilles]);
 
+  // ── L'ÉCRAN N'EST JAMAIS VIDE ────────────────────────────────────────────
+  // Quand le calcul est tombé juste, il n'avait pas ratissé de candidates :
+  // ouvrir « Changer » donnait une boîte de recherche nue, et celui qui ne
+  // sait pas quoi écrire restait bloqué devant rien.
+  // On propose alors les VOISINS : les rayons qui partagent le même parent.
+  // Ce sont exactement les bons candidats — « Jeux vidéo » est le voisin de
+  // « Consoles », « Non-fiction » celui de « Fiction » — et ils sont là sans
+  // une frappe. À défaut de parent (rayon de premier niveau), on montre les
+  // rayons du même sommet d'arbre.
+  const voisins = useMemo(() => {
+    if (!feuilles || !rayon?.chemin?.length) return [];
+    const c = rayon.chemin;
+    const parent = c.slice(0, -1);
+    const memeParent = (f) => f.chemin.length === c.length
+      && parent.every((s, i) => texteComparable(String(s)) === texteComparable(String(f.chemin[i] ?? '')));
+    let liste = feuilles.filter(memeParent);
+    if (liste.length <= 1 && c.length > 1) {
+      // Rayon fils unique : on remonte d'un cran plutôt que de ne rien montrer.
+      const grand = c.slice(0, -2);
+      liste = feuilles.filter((f) => f.chemin.length === c.length
+        && grand.every((s, i) => texteComparable(String(s)) === texteComparable(String(f.chemin[i] ?? ''))));
+    }
+    return liste.slice(0, 40);
+  }, [feuilles, rayon]);
+
   const resultats = useMemo(() => {
     if (motif.trim().length >= 2 && feuilles) return chercher(feuilles, motif);
-    // Sans recherche : les candidates que le calcul avait déjà ratissées pour
-    // CET objet. C'est exactement la liste où se trouve « Jeux » quand l'app a
-    // posé « Consoles » — zéro frappe pour corriger le cas de XEWER.
-    return suggestions.slice(0, 12);
-  }, [motif, feuilles, suggestions]);
+    // Sans recherche : d'abord les candidates que le calcul avait ratissées
+    // pour CET objet (c'est là que se trouve « Jeux vidéo » quand l'app a posé
+    // « Consoles » — zéro frappe pour corriger le cas de XEWER), puis les
+    // voisins du rayon courant. Jamais rien.
+    const vus = new Set();
+    const sortie = [];
+    for (const f of [...suggestions, ...voisins]) {
+      const k = f.chemin.join('>');
+      if (vus.has(k)) continue;
+      vus.add(k);
+      sortie.push(f);
+    }
+    return sortie.slice(0, 25);
+  }, [motif, feuilles, suggestions, voisins]);
+
+  // Les voisins ont besoin de l'arbre : on le charge dès l'ouverture du
+  // sélecteur, exactement comme la recherche (et jamais avant).
+  const listeVide = !motif.trim() && resultats.length === 0;
 
   const memeChemin = (a, b) => Array.isArray(a) && Array.isArray(b)
     && a.length === b.length && a.every((s, i) => texteComparable(String(s)) === texteComparable(String(b[i])));
@@ -158,8 +230,9 @@ export default function CarteRayon({
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
           <span style={st.eyebrow}>{T.rayon}</span>
           {rayon?.chemin?.length ? (
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: rayon.choisi ? UI.tealDeep : UI.mute2 }}>
-              {rayon.choisi ? T.tonChoix : T.trouve}
+            <span style={{ fontSize: 10.5, fontWeight: 700,
+                           color: rayon.choisi ? UI.tealDeep : rayon.incertain ? "#92400E" : UI.mute2 }}>
+              {rayon.choisi ? T.tonChoix : rayon.incertain ? T.aVerifier : T.trouve}
             </span>
           ) : null}
         </div>
@@ -173,7 +246,9 @@ export default function CarteRayon({
                 {rayon.chemin.length > 1 && <div style={st.chemin}>{cheminComplet(rayon.chemin)}</div>}
               </>
             ) : (
-              <div style={{ ...st.chemin, marginTop: 0 }}>{T.pasDeRayon}</div>
+              <div style={{ ...st.chemin, marginTop: 0 }}>
+                {platform === 'opla' ? T.pasDeRayonOpla : platform === 'beebs' ? T.pasDeRayonBeebs : T.pasDeRayon}
+              </div>
             )}
           </div>
           <button type="button" style={st.lien} onClick={() => { setOuvertPicker((v) => !v); setMotif(''); }}>
@@ -203,6 +278,9 @@ export default function CarteRayon({
             <div style={{ maxHeight: 260, overflowY: 'auto', marginTop: 2 }}>
               {resultats.length === 0 && motif.trim().length >= 2 && (
                 <div style={{ ...st.chemin, padding: '10px 2px' }}>{T.aucun}</div>
+              )}
+              {listeVide && (
+                <div style={{ ...st.chemin, padding: '10px 2px' }}>{feuilles ? T.tapez : T.chargement}</div>
               )}
               {resultats.map((f, i) => {
                 const actif = memeChemin(f.chemin, rayon?.chemin);

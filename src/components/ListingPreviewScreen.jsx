@@ -3499,11 +3499,13 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           })}
       </div>
 
-      {chips.length === 0 && (
-        <p style={{ fontSize:13, color:T.mute, textAlign:"center", marginTop:16 }}>
-          {t("stepPublishNoPlatformError")}
-        </p>
-      )}
+      {/* ⛔ TROIS MESSAGES DISAIENT LA MÊME CHOSE (lot B2). « Aucune
+          plateforme sélectionnée. » ici, « Aucune plateforme prête à publier »
+          dans les motifs du bouton, et le libellé du bouton lui-même. Il en
+          reste UN : celui du bouton, « Choisis au moins une plateforme »,
+          parce que c est le seul qui dise le GESTE et qu il est à l endroit
+          où l on regarde. La rangée juste au-dessus montre déjà, en creux,
+          les plateformes qu on peut recocher. */}
 
       {/* ── Comment ça part : réglé sur la VOIE RÉELLE (07/09/2026) ──────────
           Trois cas, et un seul texte à l'écran :
@@ -8134,9 +8136,9 @@ export default function ListingPreviewScreen({
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
     if (beebsGenreBlocked) m.push(lang === "en" ? "Beebs section to choose" : "Rayon Beebs à choisir");
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
-    if (publishChips.length === 0) {
-      m.push(lang === "en" ? "No platform ready to publish" : "Aucune plateforme prête à publier");
-    }
+    // Rien de coché : le BOUTON le dit déjà (« Choisis au moins une
+    // plateforme »), inutile de le répéter dans ses motifs — c est le même
+    // écran, à trois centimètres. Un seul message par idée.
     if (!publishedStateLoaded) {
       m.push(lang === "en" ? "Checking your existing listings…" : "Vérification de tes annonces en cours…");
     }

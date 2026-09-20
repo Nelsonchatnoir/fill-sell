@@ -528,9 +528,16 @@ const HORS_MODE = {
   // (feuilles sœurs).
   "🎹": ["Loisirs et collections", "Instruments de musique et équipement", "Claviers et synthétiseurs", "Claviers électroniques"],
   "📖": ["Livres et médias", "Livres", "Bandes dessinées, mangas et romans graphiques"],
-  // DÉFAUT ASSUMÉ : roman (Fiction) vs encyclopédie/dictionnaire (Non-fiction
-  // serait plus juste) — feuilles sœurs confirmées, roman pris comme
-  // dominant.
+  // DÉFAUT ASSUMÉ — ET SA PRÉMISSE EST FAUSSE (mesuré le 2026-09-20).
+  // Il disait « roman pris comme dominant ». Sur les 2 528 livres du parc,
+  // les signaux de titre donnent 222 non-fiction contre 220 fiction : un
+  // pile ou face EXACT. Aucune des deux feuilles n'est dominante, donc
+  // inverser ce défaut se tromperait tout autant — on le garde, et on cesse
+  // de le présenter comme une évidence.
+  // Ce qui a changé le 20/09 : le rayon est AFFICHÉ sur la carte de
+  // publication, marqué « à vérifier » quand la résolution se dit elle-même
+  // incertaine, et corrigible en trois gestes. Un pile ou face visible vaut
+  // mieux qu'un pile ou face caché.
   "📚": ["Livres et médias", "Livres", "Fiction"],
   "📰": ["Livres et médias", "Magazines"],
   "📮": ["Loisirs et collections", "Timbres", "Timbres à l'unité"],

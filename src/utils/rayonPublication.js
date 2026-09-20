@@ -49,11 +49,25 @@ export const CLE_ID = { ebay: 'ebayCategoryId', opla: 'oplaCategoryCode' };
  *  la personne — c'est ce qui change le mot à l'écran (« ton rayon » vs
  *  « rayon trouvé »), et rien d'autre. */
 export function rayonDuChamp(pf, platform, choix = null) {
-  if (choix?.chemin?.length) return { chemin: choix.chemin, id: choix.id ?? null, choisi: true };
+  if (choix?.chemin?.length) return { chemin: choix.chemin, id: choix.id ?? null, choisi: true, incertain: false };
   const chemin = pf?.[CLE_CHEMIN[platform]];
   if (!Array.isArray(chemin) || !chemin.length) return null;
   const cleId = CLE_ID[platform];
-  return { chemin, id: cleId ? (pf?.[cleId] ?? null) : null, choisi: false };
+  // ⛔ QUAND L'APP N'EST PAS SÛRE, ELLE LE DIT (lot B2). Elle le SAVAIT déjà
+  //    — `categorie_incertaine` est posé depuis le 07/09 et sert à laisser la
+  //    suggestion de la plateforme gagner — mais l'écran n'en montrait rien :
+  //    un rayon deviné à pile ou face s'affichait du même air qu'un rayon
+  //    certain. Cas mesuré : l'icône 📚 range TOUS les livres en « Fiction »,
+  //    alors que sur les 2 528 livres du parc les signaux de titre donnent
+  //    222 non-fiction contre 220 fiction — un pile ou face exact. Inverser
+  //    le défaut se tromperait autant ; le montrer, non.
+  return {
+    chemin,
+    id: cleId ? (pf?.[cleId] ?? null) : null,
+    choisi: false,
+    incertain: Boolean(pf?.categorie_incertaine || pf?.lbcCategorieIncertaine
+      || pf?.categorie_source === 'icone_non_confirmee' || pf?.categorie_source === 'hors_famille'),
+  };
 }
 
 /** Le rayon en une ligne lisible. La FEUILLE d'abord : c'est elle qui compte,
