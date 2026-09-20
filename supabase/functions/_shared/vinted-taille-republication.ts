@@ -121,11 +121,16 @@ const NOMBRE_RE = /^\d{1,3}$/;
 /** Grille FEMME de Vinted, relevée dans /api/v2/size_groups (« XL / 42 / 14 »).
  *  C'est la SEULE table de correspondance nombre → lettre du projet : la copie
  *  qui vivait dans content-scripts/vinted.js (TAILLE_LETTREE_PAR_NUMERIQUE,
- *  0.6.24) n'a jamais pu s'exécuter, et devient un filet pour les vieux builds. */
-export const TAILLE_FEMME_LETTRE_PAR_NOMBRE: Readonly<Record<string, string>> = {
-  "30": "XXXS", "32": "XXS", "34": "XS", "36": "S",
-  "38": "M", "40": "L", "42": "XL", "44": "XXL",
-};
+ *  0.6.24) n'a jamais pu s'exécuter, et devient un filet pour les vieux builds.
+ *
+ *  ⛔ ELLE A DÉMÉNAGÉ LE 20/09 dans _shared/tailles.js, sans une virgule de
+ *  changement, parce qu'Opla en a besoin AUSSI (sa grille G1 n'écrit que des
+ *  lettres) et que le générateur `gen-tailles-content-script.mjs` porte ce
+ *  module-là jusque dans l'extension. Deux copies d'une table, c'est la
+ *  garantie qu'une des deux dérivera : il n'y en a toujours qu'une, et ce
+ *  fichier la re-exporte pour que ses appelants ne bougent pas. */
+export { TAILLE_FEMME_LETTRE_PAR_NOMBRE } from "./tailles.js";
+import { TAILLE_FEMME_LETTRE_PAR_NOMBRE } from "./tailles.js";
 
 /** Racines de la branche Femmes, dans les deux langues où les chemins sont
  *  relevés en base (category_key « Femmes > … » et « Women > … »). */
