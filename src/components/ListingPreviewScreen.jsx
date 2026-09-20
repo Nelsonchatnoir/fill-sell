@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical } from "lucide-react";
+import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical, MapPin } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
@@ -60,6 +60,11 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
 // mêmes messages : un déménagement, pas une réécriture (en-tête du module).
 import { resoudrePublication, signatureResolution } from "../utils/resolutionPublication";
+// Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
+// par-dessus tout recalcul (garde-fou nº1 du lot B).
+import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayon } from "../utils/rayonPublication";
+import CarteRayon from "./CarteRayon";
+import { CANAL_ASPECTS } from "../utils/champsDuRayon";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -1336,7 +1341,15 @@ function Eyebrow({ children }) {
   );
 }
 
-function StepProgress({ step, labels }) {
+// ── DÉFAUT Nº12 : LA BARRE D'ÉTAPES EST CLIQUABLE — EN ARRIÈRE SEULEMENT ──
+// Elle affichait où on en était et ne servait à rien d'autre : on cliquait
+// « Génération » depuis « Publier » et il ne se passait rien.
+// ⛔ EN ARRIÈRE SEULEMENT, et c'est un choix, pas une limite technique :
+//    revenir sur une étape déjà franchie ne peut rien casser, alors que
+//    SAUTER en avant contournerait les gardes qui vivent dans les boutons
+//    (génération payante, plateformes sans adresse, prix manquant). Une étape
+//    pas encore atteinte reste donc grise et inerte.
+function StepProgress({ step, labels, onAller }) {
   return (
     <div style={{ padding:"16px 20px 4px" }}>
       <div style={{ display:"flex", gap:6, marginBottom:10 }}>
@@ -1345,9 +1358,26 @@ function StepProgress({ step, labels }) {
         ))}
       </div>
       <div style={{ display:"flex", justifyContent:"space-between" }}>
-        {labels.map((l, i) => (
-          <span key={l} style={{ fontSize:10.5, fontWeight:500, color: i === step ? T.teal : T.mute }}>{l}</span>
-        ))}
+        {labels.map((l, i) => {
+          const atteignable = i < step && typeof onAller === "function";
+          return (
+            <button
+              key={l}
+              type="button"
+              onClick={atteignable ? () => onAller(i) : undefined}
+              disabled={!atteignable}
+              style={{
+                background:"none", border:"none", padding:"4px 2px", margin:"-4px -2px",
+                fontFamily:"inherit", fontSize:10.5,
+                fontWeight: i === step ? 700 : 500,
+                color: i === step ? T.teal : atteignable ? T.mute2 : T.mute,
+                cursor: atteignable ? "pointer" : "default",
+                textDecoration: atteignable ? "underline" : "none",
+                textUnderlineOffset: 3,
+              }}
+            >{l}</button>
+          );
+        })}
       </div>
     </div>
   );
@@ -2089,7 +2119,12 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
-  prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false }) {
+  prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false,
+  // ── LE RAYON (lot B, 20/09) ────────────────────────────────────────────
+  // `rayonsParPf` : ce que le pré-calcul du lot A a trouvé, PAR plateforme,
+  // déjà croisé avec le choix de la personne. La carte ne calcule rien : elle
+  // affiche ce qu'on lui donne, et remonte les choix.
+  rayonsParPf = {}, suggestionsParPf = {}, supabase = null, onChoisirRayon = null }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -2220,8 +2255,16 @@ function StepGeneration({ generating, generateError, platformListings, processed
       <h1 style={{ margin:"6px 0 4px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepGenReviewTitle")}
       </h1>
+      {/* ⛔ DÉFAUT Nº4 : « CLIQUE SUR UNE CARTE » NE S'AFFICHE PLUS QUAND IL
+          N'Y A PAS DE CARTE. La consigne s'affichait toujours, y compris sur
+          un écran vide — on demandait un geste impossible. Sans carte, on dit
+          ce qui se passe vraiment, et le bouton du bas est le seul geste. */}
       <p style={{ margin:"0 0 16px", fontSize:12.5, color:T.mute2, lineHeight:1.5 }}>
-        {t("stepGenReviewSubtitle")}
+        {platforms.length > 0
+          ? t("stepGenReviewSubtitle")
+          : (lang === "en"
+            ? "No listing was generated for the selected platforms. Go back to the photos step to pick them, then generate."
+            : "Aucune annonce n'a été générée pour les plateformes cochées. Reviens à l'étape des photos pour les choisir, puis relance la génération.")}
       </p>
 
       {/* Fiche reprise (2026-09-15) : l'article rouvert porte des annonces déjà
@@ -2238,7 +2281,11 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
       {processedPhotos?.length > 0 && (
         <div style={{ marginBottom:20 }}>
-          <Eyebrow>{t("stepGenEnhancedPhotosLabel")}</Eyebrow>
+          {/* ⛔ DÉFAUT Nº11 : la bande défile déjà (overflowX), mais RIEN ne
+              le disait — la 5ᵉ photo coupée au bord passait pour un bug
+              d'affichage. Le compte le dit : on sait qu'il y en a plus que
+              ce qu'on voit, et qu'il faut faire glisser. */}
+          <Eyebrow>{t("stepGenEnhancedPhotosLabel")} · {processedPhotos.length}</Eyebrow>
           <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:4 }}>
             {processedPhotos.map((ph, i) => (
               <div
@@ -2350,6 +2397,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
           const fieldConfigs = (platformFieldsConfig[p] ?? []).filter(f => shownSet.has(f.key));
           const etatField = fieldConfigs.find(f => f.key === "etat" || f.key === "condition");
           const etatVal = etatField ? (e.platform_fields?.[etatField.key] ?? "") : "";
+          const rayonCarte = rayonsParPf[p] ?? null;
           const summaryParts = [
             e.title ? (e.title.length > 32 ? e.title.slice(0, 32) + "…" : e.title) : "—",
             etatVal || null,
@@ -2372,9 +2420,27 @@ function StepGeneration({ generating, generateError, platformListings, processed
                     <div style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>
                       {PLATFORM_LABELS[p].toUpperCase()}
                     </div>
-                    <div style={{ fontSize:12, color:T.mute2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {/* ⛔ DÉFAUT Nº9/10 : le titre débordait et la ligne se
+                        coupait. `anywhere` + deux lignes maximum : on lit le
+                        début du titre sans que la carte s'étire. */}
+                    <div style={{ fontSize:12, color:T.mute2, lineHeight:1.35, overflowWrap:"anywhere",
+                                  display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
                       {summaryParts.join(" · ")}
                     </div>
+                    {/* ── DÉFAUT Nº1 : LA CARTE DIT ENFIN OÙ VA L'ARTICLE ──
+                        Repliée, elle donne déjà l'information la plus utile :
+                        le rayon. C'est tout l'objet du lot, et ça ne coûte pas
+                        un geste — c'est écrit, pas à ouvrir. */}
+                    {rayonCarte?.chemin?.length ? (
+                      <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:3 }}>
+                        <MapPin size={11} color={rayonCarte.choisi ? T.tealDeep : T.mute} style={{ flexShrink:0 }} />
+                        <span style={{ fontSize:11.5, fontWeight:700,
+                                       color: rayonCarte.choisi ? T.tealDeep : T.mute2,
+                                       overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                          {libelleRayon(rayonCarte.chemin)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <Pencil size={15} color={T.mute} style={{ flexShrink:0, marginLeft:8 }} />
@@ -2402,69 +2468,60 @@ function StepGeneration({ generating, generateError, platformListings, processed
                     />
                   </div>
 
-                  {fieldConfigs.length > 0 && (
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
-                      {fieldConfigs.map((field, fi) => {
-                        const val = e.platform_fields?.[field.key] ?? "";
-                        // Tailles enfant (2026-07-15) : les groupes du
-                        // référentiel enfant ne s'affichent que si le genre
-                        // de CETTE copie est enfant (genre Vinted/eBay/Beebs,
-                        // univers Leboncoin), et FILTRÉS PAR AXE selon ce
-                        // genre ET la plateforme de la copie (2026-08-08) :
-                        // Bébé → mois ; Fille/Garçon → ans + mois sur
-                        // Vinted/LBC/Beebs (grilles réelles, cf.
-                        // childAxesForGenre) mais ans SEULEMENT sur eBay
-                        // (un axe hors des allowedValues de la catégorie
-                        // eBay = garde bloquée, bug 51581 du 15/07) ;
-                        // pointures toujours.
-                        const copyChildAxes = childAxesForGenre(e.platform_fields?.genre, p)
-                          ?? childAxesForGenre(e.platform_fields?.univers, p);
-                        const fieldGroups = field.childGroups && copyChildAxes
-                          ? [...field.childGroups.filter(g => g.axis === "shoes" || copyChildAxes[g.axis]), ...field.groups]
-                          : field.groups;
-                        const isLastOdd = fi === fieldConfigs.length - 1 && fieldConfigs.length % 2 !== 0;
-                        const onChange = nv => {
-                          // Champ partagé édité à la main sur CETTE plateforme :
-                          // le lien avec la source canonique casse pour cette
-                          // copie seulement (Sujet 4, override local sacré).
-                          noteOverride?.(p, field.key);
-                          setEdited(prev => ({
-                            ...prev,
-                            [p]: { ...prev[p], platform_fields: { ...prev[p].platform_fields, [field.key]: nv } },
-                          }));
-                        };
-                        return (
-                          <div key={field.key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
-                            <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{field.label}</div>
-                            {field.type === "select" ? (
-                              <select
-                                value={val}
-                                onChange={ev => onChange(ev.target.value)}
-                                style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: val ? T.ink : T.mute }}
-                              >
-                                <option value="">—</option>
-                                {fieldGroups
-                                  ? fieldGroups.map(g => (
-                                      <optgroup key={g.groupLabel} label={g.groupLabel}>
-                                        {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                      </optgroup>
-                                    ))
-                                  : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                              </select>
-                            ) : (
-                              <input
-                                type="text"
-                                value={val}
-                                onChange={ev => onChange(ev.target.value)}
-                                placeholder="—"
-                                style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {/* ── LE RAYON, ET LES CHAMPS QUI EN DÉCOULENT (lot B) ──
+                      Le rayon vient du pré-calcul (lot A), le choix de la
+                      personne le recouvre, et les champs sont lus dans le
+                      catalogue relevé sur les vrais formulaires — plus
+                      l'icône, plus la liste en dur. La grille historique
+                      reste EN DESSOUS : elle n'affiche plus que ce que la
+                      personne a déjà ouvert (shownFieldsRef), donc rien
+                      pour une carte fraîche. */}
+                  <CarteRayon
+                    platform={p}
+                    lang={lang}
+                    rayon={rayonsParPf[p] ?? null}
+                    suggestions={suggestionsParPf[p] ?? []}
+                    champs={e.platform_fields ?? {}}
+                    configLocale={platformFieldsConfig[p] ?? []}
+                    supabase={supabase}
+                    onChoisirRayon={(choix) => onChoisirRayon?.(p, choix)}
+                    onChampChange={(cleNotre, valeur, cleCatalogue) => setEdited(prev => {
+                      const pf = { ...(prev[p]?.platform_fields ?? {}) };
+                      // Une clé qu'on connaît va dans son champ dédié ; les
+                      // autres dans le canal d'aspects de la plateforme —
+                      // exactement là où l'extension va les chercher.
+                      if (cleNotre) {
+                        pf[cleNotre] = valeur;
+                        // Le lien avec la source partagée CASSE pour cette copie :
+                        // sans ça, la propagation réécraserait la correction que
+                        // la personne vient de faire (le geste que la grille
+                        // historique faisait déjà, et qui devait la suivre ici).
+                        noteOverride?.(p, cleNotre);
+                      }
+                      else {
+                        const canal = CANAL_ASPECTS[p];
+                        pf[canal] = { ...(pf[canal] && typeof pf[canal] === "object" ? pf[canal] : {}), [cleCatalogue]: valeur };
+                      }
+                      return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
+                    })}
+                  />
+
+                  {/* ⛔ LA GRILLE HISTORIQUE N'EST PLUS AFFICHÉE (lot B, 20/09).
+                      Elle listait 6 à 10 champs ÉCRITS EN DUR, filtrés par
+                      l'ICÔNE de l'article et jamais par son rayon — d'où le
+                      « default: true » qui laissait tout passer et ne montrait
+                      jamais rien de propre au rayon. Sur la robe Camaïeu, ses
+                      NEUF champs Leboncoin portaient déjà la bonne valeur :
+                      neuf champs, zéro question, tout l'écran mangé.
+                      Les champs viennent maintenant du RAYON — CarteRayon
+                      ci-dessus, qui les lit dans le catalogue relevé sur les
+                      vrais formulaires et les reclasse à chaque changement de
+                      rayon.
+                      ⛔ La configuration, elle, RESTE : elle complète les
+                         rayons que le catalogue n'a pas encore relevés, et
+                         elle est le plan de mergeFieldsWithLens — la retirer
+                         JETTERAIT des valeurs à la génération (le piège
+                         documenté quatre fois dans ce fichier). */}
 
                   <div>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
@@ -2700,7 +2757,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3395,29 +3452,51 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         </div>
       )}
 
+      {/* ══ DÉFAUT Nº5 : ON PEUT ENFIN RECOCHER UNE PLATEFORME ICI ══════════
+          Avant, cette rangée ne montrait QUE les plateformes cochées, avec une
+          croix pour les retirer. Pour en remettre une, il fallait remonter
+          DEUX étapes — jusqu'à l'écran des photos, dont le seul bouton est
+          « Générer les annonces », c'est-à-dire une génération PAYANTE. Un
+          décochage était donc irréversible en pratique.
+          Maintenant la rangée montre TOUTES les plateformes qui ont une
+          annonce écrite : cochée = pleine avec sa croix, décochée = creuse,
+          on la retouche d'un geste. Aucun tap en plus pour qui ne change
+          rien — c'est la même rangée, au même endroit.
+          ⛔ Ce qui est VERROUILLÉ (déjà en ligne, republication en vol) ou en
+             PAUSE n'y figure pas : le lot ne peut pas les reprendre, les
+             montrer cochables serait mentir. */}
       <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:24 }}>
-        {chips.map(p => (
-          <div
-            key={p}
-            style={{
-              display:"inline-flex", alignItems:"center", gap:8,
-              background:T.chip, border:`1px solid ${T.border}`,
-              borderRadius:999, padding:"6px 8px 6px 6px",
-            }}
-          >
-            <PlatformLogo platform={p} size={24} />
-            <span style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>{PLATFORM_LABELS[p]}</span>
-            <button
-              onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(p); return s; })}
-              style={{
-                background:"none", border:"none", padding:2,
-                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-              }}
-            >
-              <X size={13} color={T.mute} />
-            </button>
-          </div>
-        ))}
+        {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
+          .filter(p => !plateformesVerrouillees.includes(p) && !pausedPlatforms.includes(p))
+          .map(p => {
+            const cochee = chips.includes(p);
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setSelected(prev => {
+                  const s = new Set(prev);
+                  if (s.has(p)) s.delete(p); else s.add(p);
+                  return s;
+                })}
+                aria-pressed={cochee}
+                style={{
+                  display:"inline-flex", alignItems:"center", gap:8,
+                  background: cochee ? T.chip : "transparent",
+                  border:`1px solid ${cochee ? T.border : T.border}`,
+                  borderRadius:999, padding:"6px 10px 6px 6px",
+                  cursor:"pointer", fontFamily:"inherit",
+                  opacity: cochee ? 1 : 0.5,
+                }}
+              >
+                <PlatformLogo platform={p} size={24} />
+                <span style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>{PLATFORM_LABELS[p]}</span>
+                {cochee
+                  ? <X size={13} color={T.mute} />
+                  : <Plus size={13} color={T.mute} />}
+              </button>
+            );
+          })}
       </div>
 
       {chips.length === 0 && (
@@ -5318,6 +5397,13 @@ export default function ListingPreviewScreen({
   // ⛔ ELLE N'AFFICHE RIEN ET NE BLOQUE RIEN : un échec est silencieux et la
   //    publication reprend le chemin d'origine.
   const resolutionPrevolRef = useRef(null);
+  // ── LE MÊME RÉSULTAT, MAIS AFFICHABLE (lot B) ─────────────────────────────
+  // Le ref est l'autorité pour PUBLIER (il ne doit pas provoquer de rendu) ;
+  // l'écran, lui, a besoin d'un état pour montrer le rayon dès qu'il est
+  // trouvé. Même objet, deux usages — jamais deux calculs.
+  const [resolutionAffichee, setResolutionAffichee] = useState(null);
+  // Défaut nº8 : l'avis « retouche non aboutie » se referme une fois lu.
+  const [retoucheAvisLu, setRetoucheAvisLu] = useState(false);
   useEffect(() => {
     if (!platformListings?.platforms) return undefined;
     const plateformes = [...selected].filter(p => edited[p] && platformListings.platforms[p]);
@@ -5359,6 +5445,7 @@ export default function ListingPreviewScreen({
         //    est complet (tous les champs, par plateforme) : l'écran unique
         //    le lira à cette adresse.
         resolutionPrevolRef.current = { empreinte, resolution };
+        setResolutionAffichee(resolution);
         console.log(`[prévol] catégorie et champs résolus dès la génération : ${plateformes.join(", ")}`);
       } catch (e) {
         console.warn("[prévol] résolution indisponible — le clic recalculera :", e?.message ?? e);
@@ -5478,6 +5565,36 @@ export default function ListingPreviewScreen({
     const o = String(platformListings?.objet ?? "").trim();
     return o || null;
   }, [platformListings]);
+
+  // ══ LE RAYON, PRÊT À AFFICHER (lot B, 20/09) ══════════════════════════════
+  // Ce que le pré-calcul a trouvé, RECOUVERT par le choix de la personne. Une
+  // seule source pour l'écran, la même règle que pour la publication (le
+  // garde-fou nº1 : un choix humain n'est jamais recalculé).
+  const rayonsParPf = useMemo(() => {
+    const pfp = resolutionAffichee?.pfParPlateforme ?? {};
+    const sortie = {};
+    for (const p of Object.keys(edited ?? {})) {
+      const r = rayonDuChamp(pfp[p], p, edited[p]?.rayon_choisi);
+      if (r) sortie[p] = r;
+    }
+    return sortie;
+  }, [resolutionAffichee, edited]);
+  // Les candidates que le calcul avait déjà ratissées pour CET objet : c'est
+  // la liste où « Jeux » se trouve quand l'app a posé « Consoles ». Corriger
+  // le cas de XEWER ne demande donc aucune frappe, juste un choix.
+  const suggestionsParPf = useMemo(() => {
+    const brut = resolutionAffichee?.candidatsRatisses ?? {};
+    const sortie = {};
+    for (const [p, liste] of Object.entries(brut)) {
+      if (Array.isArray(liste) && liste.length) sortie[p] = liste;
+    }
+    return sortie;
+  }, [resolutionAffichee]);
+  // Le choix (ou son retrait) vit sur la COPIE, à côté des champs : il survit
+  // au brouillon et à la fiche en base, et la résolution ne le voit jamais.
+  const choisirRayon = (platform, choix) => setEdited(prev => (
+    prev[platform] ? { ...prev, [platform]: { ...prev[platform], rayon_choisi: choix } } : prev
+  ));
 
   const activeAiIcon = useMemo(() => {
     const ai = platformListings?.category_icon;
@@ -7254,8 +7371,19 @@ export default function ListingPreviewScreen({
       // Le refus « on n'a pas reconnu l'objet » était un throw à cet endroit
       // précis : il l'est resté, au mot près. Seule la résolution a cessé de
       // lever, pour qu'une génération ne casse pas sur une catégorie absente.
-      if (resolution.refus) throw new Error(resolution.refus.message);
-      const { pfParPlateforme, motCategorie } = resolution;
+      //
+      // ⛔ SAUF SI LA PERSONNE A DIT ELLE-MÊME OÙ ÇA VA (lot B). Le refus dit
+      //    « on n'a pas reconnu l'objet, nomme-le dans le titre » — il n'a
+      //    plus aucun sens quand elle vient de choisir le rayon à la main sur
+      //    chaque plateforme du lot. C'était le mur : l'app savait dès la
+      //    génération qu'elle ne saurait pas ranger l'article, se taisait, et
+      //    ne le disait qu'au clic. Maintenant la carte le dit tout de suite
+      //    (« Aucun rayon trouvé — choisis-le ici »), et le choix ouvre la
+      //    porte au lieu de la laisser fermée.
+      const tousChoisis = plateformesAPublier.length > 0
+        && plateformesAPublier.every(p => edited[p]?.rayon_choisi?.chemin?.length);
+      if (resolution.refus && !tousChoisis) throw new Error(resolution.refus.message);
+      const { pfParPlateforme = {}, motCategorie } = resolution;
       // ── LE CLASSEMENT PAR ÂGE SE RELIT ICI, PAS DANS LE PRÉ-CALCUL ────────
       // Ces deux valeurs servent, après publication, à ranger la réponse de
       // l'utilisateur sur l'ARTICLE. Les prendre au pré-calcul ferait ranger
@@ -7278,9 +7406,14 @@ export default function ListingPreviewScreen({
       // Le pré-calcul rend les MÊMES objets à chaque clic : sans copie, une
       // seconde publication repartirait des champs déjà enrichis par la
       // première, et le plafond photo Leboncoin s'appliquerait deux fois.
-      const champsResolus = Object.fromEntries(
-        plateformesAPublier.map(p => [p, { ...(pfParPlateforme[p] ?? {}) }])
-      );
+      // 🚨 LE RAYON CHOISI PAR LA PERSONNE SE REPOSE ICI, APRÈS LE CALCUL.
+      //    C'est le garde-fou nº1 du lot B, et c'est le SEUL endroit du
+      //    chemin de publication qui en a besoin. La résolution (lot A) ne
+      //    connaît pas les choix humains et n'a pas été touchée : elle peut
+      //    repartir autant de fois qu'elle veut — pré-calcul repris ou filet
+      //    déclenché par un titre retouché —, elle parle avant, donc elle
+      //    perd. Prouvé par scripts/rayon-choisi-selftest.mjs.
+      const champsResolus = champsAvecRayonsChoisis(pfParPlateforme, edited, plateformesAPublier);
       // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
       // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
       // n'ait abouti. Elle est alors écartée du lot AVANT le débit, plus bas.
@@ -7861,6 +7994,12 @@ export default function ListingPreviewScreen({
       if (inventoryFull) return lang === "en" ? "See plans" : "Voir les offres";
       if (publishing) return t("ctaPublishing");
       const n = publishChips.length;
+      // ⛔ DÉFAUT Nº3 : PLUS JAMAIS « PUBLIER SUR 0 PLATEFORME ». Un bouton
+      //    d'action qui annonce zéro action est un écran mort : il se
+      //    présentait comme cliquable, ne faisait rien, et ne disait pas quoi
+      //    faire. On dit le GESTE à la place — la rangée de plateformes est
+      //    juste au-dessus depuis ce lot (défaut nº5).
+      if (n === 0) return lang === "en" ? "Pick at least one platform" : "Choisis au moins une plateforme";
       // Grille 2 axes : le CTA affiche le TOTAL débité au clic, recalculé à
       // chaque plateforme cochée/décochée. Config pas encore lue → libellé
       // sans prix (jamais un total faux).
@@ -8195,7 +8334,7 @@ export default function ListingPreviewScreen({
           <ChevronLeft size={18} color={T.ink} />
         </button>
       </div>
-      <StepProgress step={step} labels={stepLabels} />
+      <StepProgress step={step} labels={stepLabels} onAller={(i) => setStep(i)} />
 
       {/* Contenu de l'étape — SEUL élément scrollable (minHeight:0 pour que le
           flex enfant puisse rétrécir et scroller au lieu de pousser le footer
@@ -8281,6 +8420,10 @@ export default function ListingPreviewScreen({
             generatePrice={coinPrices?.generate ?? null}
             noteOverride={noteSharedOverride}
             ficheReprise={ficheReprise}
+            rayonsParPf={rayonsParPf}
+            suggestionsParPf={suggestionsParPf}
+            supabase={supabase}
+            onChoisirRayon={choisirRayon}
             lang={lang}
             price={price}
             setPrice={setPrice}
@@ -8336,6 +8479,7 @@ export default function ListingPreviewScreen({
             onPlatformDedicatedChange={setPlatformDedicatedField}
             pausedPlatforms={pausedPlatforms}
             pausedReasons={pausedReasons}
+            plateformesVerrouillees={[...lockedSet]}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
             descriptionMentions={descriptionMentions}
@@ -8354,11 +8498,28 @@ export default function ListingPreviewScreen({
             ne sera pas facturée (le serveur applique la même règle, RPC v6).
             Jamais un rabais silencieux que l'utilisateur prendrait pour un
             bug de prix. */}
-        {retoucheNonLivree && step >= 2 && (
-          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FCD34D", fontSize:12, lineHeight:1.45, color:"#92400E", fontWeight:600 }}>
-            {lang === "en"
-              ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are."
-              : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}
+        {/* ⛔ DÉFAUT Nº8 : CE BANDEAU SE FERME MAINTENANT (20/09). Le message
+            est VRAI et utile — il dit, avant le clic, que la part photos ne
+            sera pas facturée — mais il restait collé au-dessus du bouton sur
+            les deux dernières étapes, à demeure, mangeant une ligne d'écran à
+            chaque aller-retour. On le dit une fois ; lu, il se referme.
+            ⛔ On ne le SUPPRIME pas : un rabais silencieux, que la personne
+               prendrait pour un bug de prix, serait pire que le bandeau. */}
+        {retoucheNonLivree && step >= 2 && !retoucheAvisLu && (
+          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FCD34D", fontSize:12, lineHeight:1.45, color:"#92400E", fontWeight:600, display:"flex", alignItems:"flex-start", gap:8 }}>
+            <span style={{ flex:1, minWidth:0 }}>
+              {lang === "en"
+                ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are."
+                : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRetoucheAvisLu(true)}
+              aria-label={lang === "en" ? "Got it" : "J'ai compris"}
+              style={{ background:"none", border:"none", cursor:"pointer", padding:0, lineHeight:0, flexShrink:0, color:"#92400E" }}
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
         {/* ── Règle 2 (03/09 soir) : plateforme(s) en attente d'un champ,
