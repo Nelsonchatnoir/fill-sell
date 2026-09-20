@@ -35,6 +35,7 @@ import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeF
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
 import { resoudreParMot, candidatsParMot, valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
+import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT } from "../utils/jeuxVideo";
 import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
@@ -7325,6 +7326,12 @@ export default function ListingPreviewScreen({
       // retenus (combinaison → Téléviseurs, dessous de plat → Assiettes) ;
       // avec la v90 de lens-analysis (objet joint), quelques-uns par mois.
       const frTitrePublication = initialListing?.titre ?? edited?.leboncoin?.title ?? edited?.vinted?.title ?? edited?.beebs?.title ?? "";
+      // Le texte FR de l'article — jamais la copie eBay, traduite en anglais.
+      // Sert de FILET à la reconnaissance jeu/console/accessoire (le titre
+      // reste prioritaire), comme la passe 2 de detectObjectKeywordDetail.
+      const frDescriptionPublication = String(
+        initialListing?.description ?? edited?.leboncoin?.description ?? edited?.vinted?.description ?? ""
+      ).slice(0, 400);
       const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
       const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
       const familleLivresFiche = initialListing?.famille === "livres_medias" || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
@@ -7562,12 +7569,42 @@ export default function ListingPreviewScreen({
         // La catégorie tirée du MOT prime sur celle tirée de l'icône : elle
         // vient du libellé exact d'une feuille relevée, pas d'un emoji.
         if (escamotageParPf[platform]) pf.categorie_escamotage_ecarte = escamotageParPf[platform];
-        const parMot = categorieParMotParPf[platform] ?? null;
+        // ══ JEU / CONSOLE / ACCESSOIRE (2026-09-20, demande XEWER) ═══════════
+        // L'icône 🎮 envoyait TOUT le domaine au rayon des machines — et sur
+        // Vinted la catégorie choisit la GRILLE DE COLIS : « Consoles » n'offre
+        // que des paliers en kilos (plancher 5 kg, mesuré sur le parc), donc
+        // l'acheteur d'un jeu DS payait un port de gros colis. Même mécanique
+        // sur Leboncoin (le poids est un critère DE la catégorie) et Beebs
+        // (notre défaut de colis se déduit du chemin).
+        // On ne déplace pas l'icône : on SÉPARE les trois familles et chacune
+        // vise sa feuille relevée, sur les cinq plateformes.
+        // ⛔ La garde, c'est l'icône : hors 🎮 ce bloc n'existe pas. Mesuré le
+        //    20/09 sur 657 articles du parc (85 comptes), confronté à la
+        //    catégorie choisie par les vendeurs eux-mêmes sur 147 d'entre eux :
+        //    141/141 jeux, 4/4 consoles, 1/1 accessoire, AUCUNE bascule à tort.
+        // ⛔ Doute → familleJeuVideo rend null → rien ne change.
+        const jeuVideo = iconeArticle === "🎮"
+          ? familleJeuVideo(frTitrePublication, frDescriptionPublication)
+          : null;
+        const feuilleJeuVideo = jeuVideo ? cheminJeuVideo(platform, jeuVideo) : null;
+        // Elle PRIME sur l'arbitrage par le mot : « Xbox » ou « PS5 » dans un
+        // titre ne dit pas si l'objet est un jeu ou la machine — c'est
+        // exactement ce que cette règle tranche, et le mot ne le sait pas.
+        const parMot = feuilleJeuVideo
+          ? { chemin: feuilleJeuVideo.chemin, id: feuilleJeuVideo.id ?? null, regle: `jeux_video_${jeuVideo.famille}` }
+          : (categorieParMotParPf[platform] ?? null);
         if (parMot) {
-          pf.categorie_source = parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
+          pf.categorie_source = parMot.regle?.startsWith("jeux_video")
+            ? "famille_jeu_video"
+            : parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
           pf.categorie_par_mot = {
             mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,
             ...(parMot.choisiParIa ? { choisi_par_ia: true } : {}),
+            // Un job en main doit dire POURQUOI il est dans ce rayon : la
+            // famille reconnue et la règle qui l'a reconnue, pas seulement le
+            // chemin (question posée le 07/09 sur la chapka).
+            ...(jeuVideo ? { famille_jeu_video: jeuVideo.famille, regle_jeu_video: jeuVideo.regle,
+                             machine: jeuVideo.machine?.cle ?? null } : {}),
             // Synonyme dirigé (categorieParMot.js, SYNONYMES_DIRIGES) : la
             // règle qui a posé le chemin reste lisible sur le job.
             ...(parMot.regle ? { regle: parMot.regle } : {}),
@@ -7580,6 +7617,18 @@ export default function ListingPreviewScreen({
           const icon = iconeArticle;
           const lbcPath = parMot?.chemin ?? getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
+          // Marque du constructeur — le critère `console_brand` existe sur les
+          // DEUX feuilles du domaine (« Jeux vidéo » et « Consoles », relevé du
+          // 20/09) avec la même liste fermée de 10 valeurs. On pose la valeur
+          // EXACTE de cette liste, jamais autre chose ; jamais par-dessus une
+          // saisie de l'utilisateur.
+          if (jeuVideo?.machine?.lbc) {
+            const aspectsLbc = { ...(pf.lbcAspects && typeof pf.lbcAspects === "object" ? pf.lbcAspects : {}) };
+            if (!String(aspectsLbc.console_brand ?? "").trim()) {
+              aspectsLbc.console_brand = jeuVideo.machine.lbc;
+              pf.lbcAspects = aspectsLbc;
+            }
+          }
           if (!parMot?.chemin && lbcPath) poseParIcone.leboncoin = { chemin: lbcPath, id: null };
           if (lbcAddress) pf.adresse = lbcAddress;
           // Nom historique du même drapeau, conservé pour les extensions
@@ -7706,6 +7755,34 @@ export default function ListingPreviewScreen({
           const categoryPath = parMot?.chemin ?? getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
           if (categoryPath) pf.categoryPath = categoryPath;
           if (!parMot?.chemin && categoryPath) poseParIcone.vinted = { chemin: categoryPath, id: null };
+          // ── Les deux champs que Vinted EXIGE au rayon des jeux ────────────
+          // Relevé du 20/09 (platform_category_aspects) : « Jeux » comme
+          // « Consoles » exigent `video_game_platform` (48 valeurs), et
+          // « Jeux » exige en plus `video_game_ratings` (17 valeurs) — le
+          // classement par âge. Sans eux, le dépôt s'arrête et l'app ne savait
+          // rien ouvrir : cas « Rage 2 » d'ornellaracano (04/09), où le seul
+          // geste possible était d'aller les remplir sur Vinted.
+          // ⚠️ `video_game_ratings` est au PLURIEL — vérifié en prod : le job
+          //    8256bf6d (« Bravely Default II ») est PUBLIÉ avec cette clé.
+          // ⛔ LA PLATEFORME DE JEU SE LIT (« PS5 », « Switch » sont dans le
+          //    titre), LE CLASSEMENT PAR ÂGE NE SE DEVINE PAS : on ne pose que
+          //    ce qui est ÉCRIT noir sur blanc (« PEGI 12 »). Rien d'écrit →
+          //    champ laissé vide, et le stepper pose la question avec la liste
+          //    relevée. Un PEGI faux fait retirer l'annonce.
+          // ⛔ Une valeur déjà posée par l'utilisateur (stepper, mini-éditeur)
+          //    n'est JAMAIS écrasée.
+          if (jeuVideo) {
+            const aspectsJv = { ...(pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {}) };
+            const plateformeJeu = jeuVideo.machine?.vinted ?? null;
+            if (plateformeJeu && !String(aspectsJv[VINTED_CHAMP_PLATEFORME] ?? "").trim()) {
+              aspectsJv[VINTED_CHAMP_PLATEFORME] = plateformeJeu;
+            }
+            const classement = classementAgeEcrit(frTitrePublication, frDescriptionPublication);
+            if (classement && jeuVideo.famille === "jeu" && !String(aspectsJv[VINTED_CHAMP_CLASSEMENT] ?? "").trim()) {
+              aspectsJv[VINTED_CHAMP_CLASSEMENT] = classement;
+            }
+            if (Object.keys(aspectsJv).length) pf.vintedAspects = aspectsJv;
+          }
           // Flag statique lu par l'extension : permet un message d'échec
           // précis ("genre requis") quand un job sans categoryPath vient d'un
           // article de mode plutôt que d'une icône hors mapping.
@@ -7787,6 +7864,18 @@ export default function ListingPreviewScreen({
           if (autoGenre && beebsGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
           const categoryPath = parMot?.chemin ?? getBeebsCategoryPath(icon, pf.genre);
           if (categoryPath) pf.beebsCategoryPath = categoryPath;
+          // « Console » est un champ REQUIS de la feuille « Consoles de jeux »
+          // (18 valeurs relevées le 20/09). Il n'existe PAS au relevé de la
+          // feuille « Jeux vidéo » : on ne le pose donc que pour une machine,
+          // là où on sait qu'il est attendu — on ne sème pas un champ qu'on
+          // n'a jamais vu.
+          if (jeuVideo?.famille === "console" && jeuVideo.machine?.beebs) {
+            const aspectsBeebs = { ...(pf.beebsAspects && typeof pf.beebsAspects === "object" ? pf.beebsAspects : {}) };
+            if (!String(aspectsBeebs["Console"] ?? "").trim()) {
+              aspectsBeebs["Console"] = jeuVideo.machine.beebs;
+              pf.beebsAspects = aspectsBeebs;
+            }
+          }
           if (!parMot?.chemin && categoryPath) poseParIcone.beebs = { chemin: categoryPath, id: null };
           if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
           if (lbcAddress) pf.adresse = lbcAddress;
