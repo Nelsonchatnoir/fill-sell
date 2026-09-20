@@ -636,6 +636,11 @@ const FETCH_BORNE_MS = 30_000;
 // dire « absent ». ⛔ Passé ce délai, on SAUTE l'étape, on ne casse rien.
 const ISBN_ATTENTE_MS = 15_000;
 
+// Delai reel de confirmation des photos, remis a zero a chaque remplissage et
+// consigne dans le diagnostic du job - reussites COMPRISES. Sans lui, on ne
+// peut pas caler le budget sur la realite : on ne verrait que les echecs.
+let photosDelaiConfirmationMs = null;
+
 async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS) {
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => { try { ctrl.abort(); } catch { /* déjà abandonné */ } }, timeoutMs);
@@ -3129,10 +3134,14 @@ async function fillListingForm(job) {
   // l'annonce d'origine a déjà été supprimée, refuser de soumettre est alors
   // strictement pire que soumettre — cf. le bandeau de ensurePhotosLanded.
   if (photoResult) {
+    photosDelaiConfirmationMs = null;
     const photoGardeNote = await ensurePhotosLanded(photoResult, "vinted", {
       bloquant: !recreation,
     });
     if (photoGardeNote) warnings.push(photoGardeNote);
+    if (photosDelaiConfirmationMs != null) {
+      diagnosticsRecreation.push(`photos confirmées en ${photosDelaiConfirmationMs} ms`);
+    }
   }
   marquerPhase("photos_posees");
 
@@ -6608,8 +6617,22 @@ async function ensurePhotosLanded(photoResult, tag, { bloquant = true } = {}) {
     grille = grilleDepuisInjection();
   }
   if (Math.max(reseau, grille) >= count) {
+    // ── ON MESURE AUSSI LES RÉUSSITES (2026-09-20, passe 3) ────────────────
+    // 🚨 Le 20/09, une republication a été retenue sur « 0/4 confirmée(s)
+    //    après 16 s » (budget = max(15 s, 4 s × photos), soit 16 s pour 4
+    //    photos). Question légitime : 16 s, est-ce trop court sur une
+    //    connexion lente ? IMPOSSIBLE DE RÉPONDRE — le délai réel n'était
+    //    consigné NULLE PART sur les réussites : un console.log dans un
+    //    onglet mort. Les seules traces `photos:` en base sont les QUATRE
+    //    échecs. On ne cale pas un seuil sur quatre échecs.
+    // Le délai part désormais dans `photosDelaiConfirmationMs`, que le
+    // remplissage consigne dans le diagnostic du job, refus COMME succès —
+    // même doctrine que la trace de pose ISBN du 30/08. Au prochain lot, le
+    // seuil se calera sur des chiffres, pas sur une impression.
+    photosDelaiConfirmationMs = Date.now() - t0;
     console.log(
-      `[${tag}] photos: ${count}/${count} arrivée(s) — ${Math.max(0, reseau)} POST /api/v2/photos 2xx, ` +
+      `[${tag}] photos: ${count}/${count} arrivée(s) en ${photosDelaiConfirmationMs} ms ` +
+      `(budget ${budgetMs} ms) — ${Math.max(0, reseau)} POST /api/v2/photos 2xx, ` +
       `${Math.max(0, grille)} vignette(s) dans la grille — publication autorisée`
     );
     return null;

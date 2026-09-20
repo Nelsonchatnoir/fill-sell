@@ -1440,6 +1440,95 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des republications en attente de session:", (e as Error)?.message ?? e);
   }
 
+  // ── UNE CAPTURE FRAÎCHE ET VALIDE RÉVEILLE LE JOB (2026-09-20, passe 3) ──
+  // 🚨 LE GASPILLAGE, mesuré le 20/09 : 12 republications Vinted sont figées
+  //    en `needs_user` à l'étape `captured` sur 6 comptes — et 21 captures
+  //    ont été refaites APRÈS leur gel, TOUTES avec le verdict `valide` et
+  //    zéro champ manquant. Vingt et une captures pour rien. Sur la seule
+  //    « Blouse Caroll » de laforge.vinted : cinq captures entre 15:14 et
+  //    16:33, toutes valides, quatre photos, et le job n'a pas bougé d'un
+  //    pouce depuis 08:08. C'est du travail pris sur le poste de la
+  //    personne, sans le moindre effet.
+  //
+  // LE CHOIX : on ne coupe PAS la recapture, on la fait SERVIR. Couper la
+  // laisserait le job figé pour toujours (rien d'autre ne le réveille) et
+  // perdrait la fraîcheur qui le rend justement publiable. Or `capture_id`
+  // est DÉJÀ mis à jour sur le job à chaque passage — la donnée neuve est
+  // là, personne ne s'en servait.
+  //
+  // UNE CAPTURE `valide` AVEC ZÉRO CHAMP MANQUANT EST LA PREUVE QUE LA CAUSE
+  // DU GEL A DISPARU : c'est exactement ce que le gel attendait.
+  //
+  // ⛔ JAMAIS UNE GARDE VOLONTAIRE : `livres_isbn_garde` et
+  //    `republish_couleur_garde` ont leur propre porte de sortie, plus haut,
+  //    et elles ont raison de retenir. On ne passe pas devant.
+  // ⛔ JAMAIS AU-DELÀ DE `captured` : à `deleted`, l'annonce d'origine
+  //    n'existe plus, la machine d'étapes a la main et on ne s'en mêle pas.
+  // ⛔ JAMAIS UN ARTICLE VENDU OU DISPARU : republier ce qui n'est plus à
+  //    vendre, c'est recréer une annonce fantôme.
+  // ⛔ UNE FOIS PAR CAPTURE : le marqueur `reveille_par_capture` porte l'id
+  //    de la capture qui a servi. Une capture ne réveille qu'une fois ; une
+  //    capture NEUVE, elle, a le droit de réessayer — c'est une information
+  //    nouvelle, pas une boucle.
+  const CAPTURE_REVEIL_MAX = 100;
+  let capturesReveil = 0;
+  try {
+    const { data: figes } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, created_at, platform_fields")
+      .eq("status", "needs_user")
+      .eq("action", "republish")
+      .eq("platform", "vinted")
+      .limit(CAPTURE_REVEIL_MAX);
+    for (const j of (figes ?? []) as Array<Record<string, unknown>>) {
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (pf.republish_step !== "captured") continue;
+      const source = String(pf.needs_user_source ?? "");
+      if (source === "livres_isbn_garde" || source === "republish_couleur_garde") continue;
+      if (!j.inventaire_id) continue;
+      // L'article est-il encore à vendre ? On ne republie que du stock vivant.
+      const { data: art } = await supabase
+        .from("inventaire").select("statut, disparu_le, fusionne_dans")
+        .eq("id", j.inventaire_id).maybeSingle();
+      const a = art as { statut?: string; disparu_le?: string | null; fusionne_dans?: number | null } | null;
+      if (!a || a.statut !== "stock" || a.disparu_le || a.fusionne_dans) continue;
+      // La capture la plus fraîche POSTÉRIEURE au gel, et seulement si elle
+      // est valide et complète.
+      const { data: caps } = await supabase
+        .from("vinted_republish_captures")
+        .select("id, verdict, champs_manquants, captured_at")
+        .eq("inventaire_id", j.inventaire_id)
+        .gt("captured_at", String(j.created_at))
+        .order("captured_at", { ascending: false })
+        .limit(1);
+      const c = ((caps ?? []) as Array<Record<string, unknown>>)[0];
+      if (!c || c.verdict !== "valide") continue;
+      const manquants = (c.champs_manquants ?? []) as unknown[];
+      if (Array.isArray(manquants) && manquants.length) continue;
+      if (String(pf.reveille_par_capture ?? "") === String(c.id)) continue;  // déjà servi
+      const { error: rErr } = await supabase
+        .from("cross_post_jobs")
+        .update({
+          status: "pending",
+          error: null,
+          platform_fields: {
+            ...pf,
+            capture_id: String(c.id),
+            reveille_par_capture: String(c.id),
+            reveille_par_capture_le: new Date(now).toISOString(),
+          },
+        })
+        .eq("id", String(j.id))
+        .eq("status", "needs_user");
+      if (!rErr) {
+        capturesReveil++;
+        console.log(`[handler-watch] job ${j.id} (vinted/republish) : capture ${c.id} valide et complète → re-pendu (le gel n'a plus d'objet)`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] réveil par capture fraîche:", (e as Error)?.message ?? e);
+  }
+
   // ── Déblocage AUTO de la garde Livres (2026-08-27 soir, décision Nico) ────
   // Les jobs pausés par la garde Livres/ISBN (needs_user_source=
   // 'livres_isbn_garde') repassent en 'pending' TOUT SEULS dès que leur
@@ -1927,7 +2016,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1982,7 +2071,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2036,7 +2125,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
     headers: { "Content-Type": "application/json" },
   });
 });
