@@ -40,7 +40,8 @@
     "selftest:sortie-et-coherence": "node scripts/sortie-et-coherence-selftest.mjs",
     "selftest:deplacement-resolution": "node scripts/verifier-deplacement-resolution.mjs",
     "selftest:rayon-vaut-pour-larticle": "node --import ./scripts/loader-ext.mjs scripts/rayon-vaut-pour-larticle-selftest.mjs",
-    "selftest:isbn-champ-absent": "node scripts/isbn-champ-absent-selftest.mjs"
+    "selftest:isbn-champ-absent": "node scripts/isbn-champ-absent-selftest.mjs",
+    "mesure:rayon-trou-lexical": "node --import ./scripts/loader-ext.mjs scripts/rayon-trou-lexical-mesure.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
