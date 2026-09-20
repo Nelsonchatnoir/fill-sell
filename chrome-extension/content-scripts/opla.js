@@ -395,9 +395,15 @@ async function oplaChargerReferentiel() {
     return out;
   };
   const comparable = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
-  const MOTS_VIDES = new Set(["de", "des", "du", "le", "la", "les", "l", "d", "et", "ou", "a", "au", "aux", "en", "par", "sur", "avec", "autre", "autres", "divers"]);
+  // ⚠️ « pour » (mot-outil, il départageait un livre de musculation vers les
+  //    livres pour bébé) et « y » → « ie » (« body » ne trouvait pas
+  //    « Bodies ») ajoutés le 2026-09-20, EN MÊME TEMPS que le serveur —
+  //    _shared/opla-resolution.ts. Ces deux fonctions sont jumelles ; si elles
+  //    divergent, le serveur et l'extension ne trancheront pas la même chose
+  //    sur le même article.
+  const MOTS_VIDES = new Set(["de", "des", "du", "le", "la", "les", "l", "d", "et", "ou", "a", "au", "aux", "en", "par", "pour", "sur", "avec", "autre", "autres", "divers"]);
   const jetons = (s) => comparable(s).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
-    .map((t) => t.replace(/(?<=\p{L}{3})[sx]$/u, "")).filter((t) => t && !MOTS_VIDES.has(t)).sort().join(" ");
+    .map((t) => t.replace(/(?<=\p{L}{3})[sx]$/u, "").replace(/(?<=\p{L}{3})y$/u, "ie")).filter((t) => t && !MOTS_VIDES.has(t)).sort().join(" ");
   const sousArbre = (code) => {
     const c = String(code ?? "").trim();
     if (!c || !noeuds.has(c)) return null; // null = tout l'arbre
@@ -431,11 +437,30 @@ async function oplaChargerReferentiel() {
   //    la jette et on laisse la descente poser la question AU NIVEAU, qui tient
   //    sur un écran. Une question qui ne peut pas être répondue coûte un geste
   //    ET la confiance (leçon Blaf69 du 16/09).
+  // ⛔ CE QUI ÉTAIT FAUX, ET QUI A COÛTÉ DEUX JOBS (corrigé le 2026-09-20)
+  // La boucle sortait au PREMIER `return` : dès qu'une passe rendait quelque
+  // chose, les suivantes ne tournaient jamais. Les trois passes étaient rangées
+  // « de la plus sûre à la plus large », mais cette sûreté se mesure sur le
+  // LIBELLÉ, pas sur l'ARTICLE — et le même libellé vit à des PROFONDEURS
+  // différentes selon la branche. « Jeans » est une FEUILLE chez les enfants et
+  // un NŒUD chez les adultes : l'égalité exacte trouvait les deux feuilles
+  // enfant et s'arrêtait là, pendant que les jeans d'adulte attendaient dans la
+  // passe 3, qui ne tournait jamais. Jobs 2e96a21f et 840b67ec (Thomas, 20/09),
+  // « Jean Bootcut Levi's 544 » : deux options, toutes deux fausses.
+  // Les trois passes CONTRIBUENT donc toutes, rangées en ÉTAGES (mot d'abord,
+  // passe ensuite), et c'est l'article — son genre — qui élague.
+  // ⛔ Jumelle de _shared/opla-resolution.ts. Toute retouche ici se reporte
+  //    là-bas, et réciproquement.
   const OPLA_CANDIDATS_MAX = 12;
-  const feuillesParMot = (mots, racine) => {
-    const listeMots = (Array.isArray(mots) ? mots : [mots])
-      .map((m) => jetons(m)).filter(Boolean);
-    if (!listeMots.length) return [];
+  // La borne d'une QUESTION, plus haute que celle du repli : « jean » désigne
+  // 13 feuilles et la bonne y est toujours ; une liste HOMOGÈNE se lit.
+  const OPLA_QUESTION_MAX = 15;
+  const PASSES = [
+    (jt, jm) => jt.join(" ") === jm.join(" "),
+    (jt, jm) => jt.every((t) => jm.includes(t)),
+    (jt, jm) => jm.every((t) => jt.includes(t)),
+  ];
+  const feuillesDedans = (racine) => {
     const perimetre = sousArbre(racine);
     const dedans = [];
     for (const f of feuilles) {
@@ -443,20 +468,48 @@ async function oplaChargerReferentiel() {
       const jt = jetons(titres.get(f));
       if (jt) dedans.push({ code: f, title: titres.get(f), jetons: jt.split(" ") });
     }
-    const passes = [
-      (jt, jm) => jt.join(" ") === jm.join(" "),
-      (jt, jm) => jt.every((t) => jm.includes(t)),
-      (jt, jm) => jm.every((t) => jt.includes(t)),
-    ];
-    for (const passe of passes) {
+    return dedans;
+  };
+  const enFeuille = (f) => ({ code: f.code, title: f.title, chemin: cheminDe(f.code) });
+  /** Un étage par couple (mot, passe) : { feuilles, passe, mot }. Rien n'est jeté. */
+  const feuillesParMotEtages = (mots, racine) => {
+    const listeMots = (Array.isArray(mots) ? mots : [mots]).map((m) => jetons(m)).filter(Boolean);
+    if (!listeMots.length) return [];
+    const dedans = feuillesDedans(racine);
+    const etages = [];
+    const vus = new Set();
+    for (const mot of listeMots) {
+      const jm = mot.split(" ");
+      for (let p = 0; p < PASSES.length; p++) {
+        const lot = dedans.filter((f) => !vus.has(f.code) && PASSES[p](f.jetons, jm));
+        for (const f of lot) vus.add(f.code);
+        if (lot.length) etages.push({ feuilles: lot.map(enFeuille), passe: p + 1, mot });
+      }
+    }
+    return etages;
+  };
+  const feuillesParMot = (mots, racine) => feuillesParMotEtages(mots, racine).flatMap((e) => e.feuilles);
+  /** L'ANCIENNE recherche, gardée comme REPLI quand la liste large est trop longue. */
+  const feuillesParMotEtroit = (mots, racine) => {
+    const listeMots = (Array.isArray(mots) ? mots : [mots]).map((m) => jetons(m)).filter(Boolean);
+    if (!listeMots.length) return [];
+    const dedans = feuillesDedans(racine);
+    for (const passe of PASSES) {
       for (const mot of listeMots) {
         const jm = mot.split(" ");
-        const out = dedans.filter((f) => passe(f.jetons, jm))
-          .map((f) => ({ code: f.code, title: f.title, chemin: cheminDe(f.code) }));
+        const out = dedans.filter((f) => passe(f.jetons, jm)).map(enFeuille);
         if (out.length && out.length <= OPLA_CANDIDATS_MAX) return out;
       }
     }
     return [];
+  };
+  /** Les feuilles sœurs d'une feuille, elle comprise. */
+  const feuillesSoeurs = (code) => {
+    const p = parents.get(code) ?? null;
+    if (!p) return [];
+    const out = [];
+    for (const f of feuilles) if ((parents.get(f) ?? null) === p) out.push({ code: f, title: titres.get(f), chemin: cheminDe(f) });
+    return out;
   };
 
   // ── LE MOT PEUT NOMMER UN RAYON, PAS SEULEMENT UNE FEUILLE (2026-09-20) ───
@@ -495,21 +548,43 @@ async function oplaChargerReferentiel() {
     return [...new Set(out)].map((f) => ({ code: f, title: titres.get(f), chemin: cheminDe(f) }));
   };
 
-  // ── LE GENRE DE LA FICHE FILTRE LES CANDIDATES (2026-09-20) ──────────────
-  // Même règle que l'app (brancheGenre) : une branche genrée incompatible
-  // sort. Sans ça, un jean d'homme se voyait proposer les rayons filles et
-  // garçons. ⛔ On ne filtre QUE si le genre est connu ET qu'il reste au
-  //    moins une candidate : un filtre qui vide la liste est pire que pas de
-  //    filtre.
+  // ── LE GENRE ÉCARTE LES RAYONS QUI LE CONTREDISENT (2026-09-20) ──────────
+  // ⛔ CE QUI ÉTAIT FAUX : « si filtrer vide la liste, on garde la liste
+  //    d'origine ». Job 40ebdf2c, « Robe 12-18 mois », genre Fille : les seules
+  //    feuilles trouvées étaient des robes FEMME, le filtre les écartait
+  //    toutes, se ravisait, et la robe de bébé partait au rayon des femmes. Un
+  //    filtre qui rend ce qu'il vient de juger faux ne filtre pas, il valide.
+  // ⛔ ET UN GENRE CONNU DÉSIGNE UN RAYON : dès qu'une candidate est dans le
+  //    rayon du genre, les autres sortent — genrées ou non. Sans ça, le maillot
+  //    du job eba8a512 gagnait au rayon « Sport › Football ». Ce n'est QUE si
+  //    aucune n'y est qu'on garde les racines non genrées (un ballon reste un
+  //    ballon).
   const GENRE_RACINE = {
-    homme: "hommes", hommes: "hommes", femme: "femmes", femmes: "femmes",
-    garcon: "enfants", fille: "enfants", enfant: "enfants", enfants: "enfants", bebe: "enfants",
+    homme: "hommes", femme: "femmes",
+    garcon: "enfants", fille: "enfants", enfant: "enfants", bebe: "enfants",
+  };
+  const GENRE_RAYON = { fille: "filles", garcon: "garcons" };
+  const RACINES_GENREES = new Set(["hommes", "femmes", "enfants"]);
+  const cleGenre = (genre) => {
+    const g = comparable(genre).replace(/[^a-z]/g, "");
+    return GENRE_RACINE[g] ? g : (GENRE_RACINE[g.replace(/s$/, "")] ? g.replace(/s$/, "") : null);
   };
   const filtrerParGenre = (candidats, genre) => {
-    const g = GENRE_RACINE[comparable(genre).replace(/s$/, "")] ?? GENRE_RACINE[comparable(genre)];
+    const g = cleGenre(genre);
     if (!g || !candidats.length) return candidats;
-    const garde = candidats.filter((c) => comparable(c.chemin[0] ?? "") === g);
-    return garde.length ? garde : candidats;
+    const racine = GENRE_RACINE[g];
+    const rayon = GENRE_RAYON[g] ?? null;   // « filles » / « garçons », dans le libellé du 2e niveau
+    const dansLeRayon = candidats.filter((c) => {
+      if (comparable(c.chemin[0] ?? "") !== racine) return false;
+      if (!rayon) return true;
+      const niveau2 = comparable(c.chemin[1] ?? "");
+      // Job 8de4f86a : « Pull 24M », genre Garçon → rayon des FILLES.
+      if (/\bfilles?\b/.test(niveau2) && rayon !== "filles") return false;
+      if (/\bgarcons?\b/.test(niveau2) && rayon !== "garcons") return false;
+      return true;
+    });
+    if (dansLeRayon.length) return dansLeRayon;
+    return candidats.filter((c) => !RACINES_GENREES.has(comparable(c.chemin[0] ?? "")));
   };
 
   // ── LA DESCENTE AUTOMATIQUE (2026-09-18) ──────────────────────────────────
@@ -538,24 +613,47 @@ async function oplaChargerReferentiel() {
     const etapes = [];
     for (let garde = 0; garde < 12; garde++) {
       if (code && feuilles.has(code)) break;
-      let parMot = filtrerParGenre(feuillesParMot(mots, code || null), genre);
-      // Le mot nomme peut-être un RAYON (« Jeans ») plutôt qu'une feuille :
-      // ses feuilles à lui sont alors les vraies candidates. On ne s'en sert
-      // que quand la recherche par feuille n'a rien donné d'utilisable, et
-      // on garde les deux ensembles quand elle a donné trop peu.
-      const parNoeud = filtrerParGenre(feuillesDuNoeudNomme(mots, code || null), genre);
-      if (parNoeud.length && parNoeud.length <= OPLA_CANDIDATS_MAX) {
-        const vus = new Set(parMot.map((c) => c.code));
-        const fusion = [...parMot, ...parNoeud.filter((c) => !vus.has(c.code))];
-        if (fusion.length <= OPLA_CANDIDATS_MAX) {
-          if (parNoeud.length) etapes.push(`mot → rayon nommé : ${parNoeud.length} feuille(s) de ce rayon ajoutée(s) aux candidates`);
-          parMot = fusion;
+      // Le meilleur ÉTAGE non vide APRÈS élagage au genre : un étage vidé par
+      // le genre laisse sa place au suivant — c'est ce qui sauve le jean
+      // d'homme, dont l'étage d'égalité ne contient que des feuilles enfant.
+      let parMot = [];
+      for (const etage of feuillesParMotEtages(mots, code || null)) {
+        let garde = filtrerParGenre(etage.feuilles, genre);
+        if (!garde.length) continue;
+        // Une passe 3 seule ne tranche pas, elle propose : le mot n'est qu'UNE
+        // PARTIE du libellé, le reste, personne ne l'a demandé (job 9e6d4eb6,
+        // « Pantalon velours enfant » → la seule feuille garçon contenant
+        // « pantalon » est « Pantalons pattes d'éléphant »).
+        if (etage.passe === 3 && garde.length === 1) {
+          const soeurs = filtrerParGenre(feuillesSoeurs(garde[0].code), genre);
+          if (soeurs.length > 1 && soeurs.length <= OPLA_QUESTION_MAX) garde = soeurs;
         }
+        // Le mot nomme peut-être aussi un RAYON (« Jeans », « Jupes ») : ses
+        // feuilles entrent alors dans la course, sans priorité pour la feuille.
+        const parNoeud = filtrerParGenre(feuillesDuNoeudNomme([etage.mot], code || null), genre);
+        if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) {
+          const vus = new Set(garde.map((c) => c.code));
+          const fusion = [...garde, ...parNoeud.filter((c) => !vus.has(c.code))];
+          if (fusion.length <= OPLA_QUESTION_MAX) {
+            etapes.push(`mot → rayon nommé : ${fusion.length - garde.length} feuille(s) de ce rayon ajoutée(s) aux candidates`);
+            garde = fusion;
+          }
+        }
+        parMot = garde;
+        break;
       }
       if (parMot.length === 1) {
         etapes.push(`mot → ${parMot[0].code} (feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"})`);
         code = parMot[0].code;
         continue;
+      }
+      if (parMot.length > OPLA_QUESTION_MAX) {
+        // Trop pour une question : on retombe sur EXACTEMENT ce que faisait le
+        // code d'hier, pour ne rien casser de ce qui marchait.
+        const repli = filtrerParGenre(feuillesParMotEtroit(mots, code || null), genre);
+        etapes.push(`${parMot.length} feuilles, trop pour une question — repli sur la passe la plus sûre (${repli.length})`);
+        parMot = repli;
+        if (parMot.length === 1) { code = parMot[0].code; continue; }
       }
       if (parMot.length > 1) {
         etapes.push(`mot → ${parMot.length} feuilles ${code ? `sous ${code}` : "dans tout l'arbre"} — question au niveau des feuilles`);
