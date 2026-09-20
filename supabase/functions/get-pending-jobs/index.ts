@@ -34,6 +34,44 @@ function cheminLbcDepuisFeuille(libelle: unknown): string[] | null {
   const dernier = segs[segs.length - 1] ?? "";
   return _LBC_PAR_FEUILLE.get(_normFeuille(dernier)) ?? null;
 }
+
+// ── LA CATÉGORIE EST DANS L'URL (2026-09-20) ────────────────────────────────
+// CE QUE ÇA A COÛTÉ : l'annonce « Need for Speed Shift 2 » (XEWER, Pro) est
+// restée HORS LIGNE 12 heures — retirée, jamais recréée — sur un message qui
+// renvoyait la personne synchroniser elle-même. Son job venait d'un RELEVÉ :
+// ses platform_fields ne portent que {source, rattachement}, donc aucune
+// catégorie ; et son annonce ayant été retirée, plus aucun relevé ne pourra
+// jamais la re-capturer. La capture en base était vide, et le restera.
+//
+// Or la catégorie n'a jamais quitté le job : elle est DANS L'ADRESSE de
+// l'annonce d'origine — /ad/**jeux_video**/3240251185. Leboncoin met le slug
+// de la feuille dans le chemin, et ce slug ne bouge pas.
+//
+// MESURE DU 20/09 : 40 slugs distincts sur les 1 797 adresses Leboncoin du
+// parc ; les 40 se résolvent contre l'arbre relevé (79 feuilles), avec ZÉRO
+// collision de jetons. Et 263 jobs Leboncoin issus d'un relevé n'ont AUCUNE
+// catégorie aujourd'hui : les 263 portent une adresse exploitable.
+//
+// La résolution se fait par ENSEMBLE DE JETONS, pas par égalité de texte : le
+// slug aplatit les séparateurs du libellé (« Photo, audio & vidéo » devient
+// photo_audio_video, « Jeux & Jouets » devient jeux_jouets). Comparer les
+// jetons triés fait tomber les 7 cas que l'égalité manquait.
+// ⛔ AUCUNE table de correspondance écrite à la main : l'arbre relevé fait
+//    foi, et une feuille qui disparaîtrait du relevé rendrait null — jamais
+//    une catégorie inventée.
+const _jetonsFeuille = (s: unknown) =>
+  String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .split(/[^a-z0-9]+/).filter(Boolean).sort().join("_");
+const _LBC_PAR_JETONS = new Map<string, string[]>(
+  (FEUILLES_LBC as Array<{ chemin: string[] }>)
+    .map((f) => [_jetonsFeuille(f.chemin[f.chemin.length - 1]), f.chemin]),
+);
+/** [racine, feuille] déduit du slug d'une adresse Leboncoin, ou null. */
+function cheminLbcDepuisUrl(url: unknown): string[] | null {
+  const m = String(url ?? "").match(/leboncoin\.fr\/ad\/([a-z0-9_]+)\//i);
+  if (!m) return null;
+  return _LBC_PAR_JETONS.get(_jetonsFeuille(m[1])) ?? null;
+}
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import { completerDescriptionBeebs } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
@@ -921,10 +959,33 @@ serve(async (req) => {
       // Toutes les republications Leboncoin en attente, pas seulement celles
       // sans catégorie : la capture porte dix champs, et chacun peut manquer
       // indépendamment des autres.
+      // ⚠️ `needs_user` EN PLUS DE `pending` (2026-09-20) : le job de XEWER est
+      //    resté 12 h hors ligne EN needs_user, et ce filtre ne le regardait
+      //    même pas. Un job bloqué est justement celui à qui il manque
+      //    quelque chose — c'est le premier à compléter, pas le dernier.
+      //    On ne touche QUE ses platform_fields ; le statut est traité plus
+      //    bas, et seulement quand la cause du blocage vient de disparaître.
       const aCombler = out.filter((j) =>
-        j.action === "republish" && j.platform === "leboncoin" && j.status === "pending" &&
+        j.action === "republish" && j.platform === "leboncoin" &&
+        (j.status === "pending" || j.status === "needs_user") &&
         j.inventaire_id != null
       );
+      // ── ET LES BLOQUÉS, QUE LA FILE NE MONTRE PAS (2026-09-20) ────────────
+      // Un job `needs_user` n'est servi que quand le POPUP le demande
+      // (include_needs_user) — le background, lui, ne voit que 'pending'. Or
+      // c'est exactement dans cet angle mort qu'une annonce reste hors ligne :
+      // retirée, bloquée, invisible du poll qui aurait pu la compléter.
+      // Une requête, bornée, indexée (user_id + status), 20 lignes au plus.
+      const dejaVus = new Set(aCombler.map((j) => String(j.id)));
+      const { data: bloques } = await userClient
+        .from("cross_post_jobs")
+        .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at, error")
+        .eq("platform", "leboncoin").eq("action", "republish").eq("status", "needs_user")
+        .not("inventaire_id", "is", null)
+        .limit(20);
+      for (const b of (bloques ?? [])) {
+        if (!dejaVus.has(String((b as { id: unknown }).id))) aCombler.push(b as typeof aCombler[number]);
+      }
       if (aCombler.length) {
         const ids = [...new Set(aCombler.map((j) => j.inventaire_id))];
         const { data: annonces } = await userClient
@@ -977,11 +1038,30 @@ serve(async (req) => {
           const pf = { ...pfDeJob(j) };
           const repris: Record<string, string> = {};
           const brut = categorieDe.get(j.inventaire_id as number);
-          if (!brut) sansCategorie.push(String(j.id).slice(0, 8));
-          else {
+          let categorieParUrl = false;
+          if (brut) {
             const chemin = cheminLbcDepuisFeuille(brut);
             if (!chemin) sansCategorie.push(`${String(j.id).slice(0, 8)} (« ${brut} » hors arbre)`);
             else if (!pf["lbcCategoryPath"]) { pf["lbcCategoryPath"] = chemin; repris["categorie"] = brut; }
+          }
+          // ── LE RELEVÉ N'A RIEN : L'ADRESSE, ELLE, A TOUT ──────────────────
+          // Une annonce déjà RETIRÉE ne sera plus jamais re-capturée : son
+          // relevé est vide et le restera. Mais l'adresse d'origine porte le
+          // slug de sa feuille, et le job la garde (old_listing_url, ou la
+          // copie du dépôt). C'est la seule voie qui ne demande RIEN à
+          // personne — ni relevé, ni extension, ni geste.
+          if (!pf["lbcCategoryPath"]) {
+            const url = (j as { listing_url?: unknown }).listing_url
+              ?? pf["old_listing_url"]
+              ?? ((pf["republish_snapshot"] as Record<string, unknown> | undefined)?.["listing_url"]);
+            const parUrl = cheminLbcDepuisUrl(url);
+            if (parUrl) {
+              pf["lbcCategoryPath"] = parUrl;
+              repris["categorie"] = `${parUrl.join(" > ")} (lue dans l'adresse de l'annonce)`;
+              categorieParUrl = true;
+            } else {
+              sansCategorie.push(String(j.id).slice(0, 8));
+            }
           }
           for (const [cleCapture, clePf] of CHAMPS_CAPTURE) {
             const v = String(cap[cleCapture] ?? "").trim();
@@ -989,6 +1069,41 @@ serve(async (req) => {
             if (String(pf[clePf] ?? "").trim()) continue; // déjà posé : on n'écrase pas
             pf[clePf] = v;
             repris[clePf] = v;
+          }
+          // ── LES CRITÈRES DU FORMULAIRE, REPRIS DE L'ANNONCE (0.6.47) ──────
+          // Le trou nommé le 19/09 — « tant que le relevé ne garde pas
+          // `ad.attributes` entier, aucune hydratation serveur ne peut les
+          // inventer » — est comblé : la 0.6.47 garde les attributs ENTIERS,
+          // et 44 annonces du parc en portent déjà (relevées cette nuit).
+          // CE QUI DISTINGUE UN CRITÈRE D'UN ROUAGE : `key_label`. Leboncoin
+          // ne le renseigne que pour ce qui est un CHAMP DE FORMULAIRE
+          // (« Marque », « Modèle », « Univers », « Type de vêtement »…) ; les
+          // rouages techniques (rating_score, profile_picture_url,
+          // is_bundleable, shipping_type…) l'ont à null. C'est le tri, et il
+          // vient de Leboncoin, pas de nous.
+          // ⛔ ON NE COMBLE QUE LE VIDE — même règle que les champs ci-dessus.
+          // ⛔ HORS LISTE IMPOSSIBLE PAR CONSTRUCTION : la valeur qu'on repose
+          //    est celle que Leboncoin AFFICHE sur cette annonce, dans cette
+          //    catégorie. Elle a déjà été acceptée par son propre formulaire.
+          //    On repose `value_label` (« Microsoft »), jamais le code interne
+          //    (« microsoft ») : c'est le libellé que le wizard fait choisir.
+          const bruts = Array.isArray(cap["attributs_bruts"]) ? cap["attributs_bruts"] as Array<Record<string, unknown>> : [];
+          if (bruts.length) {
+            const aspects = { ...((pf["lbcAspects"] && typeof pf["lbcAspects"] === "object") ? pf["lbcAspects"] as Record<string, unknown> : {}) };
+            const posesAsp: string[] = [];
+            for (const b of bruts) {
+              const cle = String(b?.["key"] ?? "").trim();
+              const libelle = String(b?.["key_label"] ?? "").trim();   // null ⇒ rouage technique
+              const valeur = String(b?.["value_label"] ?? "").trim();
+              if (!cle || !libelle || !valeur) continue;
+              if (String(aspects[cle] ?? "").trim()) continue;          // déjà posé : on n'écrase pas
+              aspects[cle] = valeur;
+              posesAsp.push(`${libelle} ← « ${valeur} »`);
+            }
+            if (posesAsp.length) {
+              pf["lbcAspects"] = aspects;
+              repris["criteres"] = posesAsp.join(" ; ");
+            }
           }
           // La description vit dans une COLONNE, pas dans platform_fields.
           const descCapture = String(cap["description"] ?? "").trim();
@@ -1003,8 +1118,30 @@ serve(async (req) => {
           };
           const patch: Record<string, unknown> = { platform_fields: pf };
           if (nouvelleDesc) patch["description"] = nouvelleDesc;
+          // ── REMETTRE EN ROUTE CE QUI NE TENAIT QU'À LA CATÉGORIE ──────────
+          // Un job à l'étape `deleted` en needs_user, c'est une annonce HORS
+          // LIGNE qui attend. Quand le seul motif du blocage était la
+          // catégorie absente et qu'on vient de la poser depuis l'adresse, il
+          // n'y a plus rien à attendre de personne : c'est à l'app de
+          // reprendre, pas à la personne de cliquer.
+          // ⛔ UNE SEULE FOIS, et c'est tracé. Sans cette borne, un job qui
+          //    rebloque pour une AUTRE raison repartirait en boucle. Si le
+          //    redépôt échoue encore, il redevient needs_user et y reste.
+          // ⛔ Rien d'autre ne bouge : ni tentatives consommées, ni débit, ni
+          //    ordonnancement. On ne touche pas non plus aux jobs bloqués
+          //    pour une autre cause (texte refusé, session morte…).
+          const estBloqueSurCategorie =
+            (j as { status?: unknown }).status === "needs_user" &&
+            pf["republish_step"] === "deleted" &&
+            categorieParUrl && !pf["lbc_reprise_categorie_url"];
+          if (estBloqueSurCategorie) {
+            pf["lbc_reprise_categorie_url"] = new Date().toISOString();
+            patch["platform_fields"] = pf;
+            patch["status"] = "pending";
+            patch["error"] = null;
+          }
           const { error: uErr } = await userClient.from("cross_post_jobs")
-            .update(patch).eq("id", j.id).eq("status", "pending");
+            .update(patch).eq("id", j.id).eq("status", (j as { status: string }).status);
           if (uErr) {
             console.warn(`[get-pending-jobs] champs de l'annonce : job ${String(j.id).slice(0, 8)} non écrit (${uErr.message}) — servi tel quel`);
             continue;
