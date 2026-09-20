@@ -19,6 +19,7 @@ import {
   CLE_CHEMIN, CLE_ID, appliquerRayonChoisi, champsAvecRayonsChoisis,
   rayonDuChamp, cleCategorie, libelleRayon,
 } from '../src/utils/rayonPublication.js';
+import { classerChamps } from '../src/utils/champsDuRayon.js';
 
 let echecs = 0;
 const dit = (ok, texte) => { if (!ok) echecs++; console.log(`${ok ? '  ok  ' : ' ÉCHEC'}  ${texte}`); };
@@ -111,7 +112,48 @@ dit(cleCategorie(['Mode', 'Vêtements']) === 'Mode > Vêtements', 'le chemin dev
 dit(cleCategorie([]) === null && cleCategorie(null) === null, 'un rayon absent ne fabrique pas de clé');
 dit(libelleRayon(['Femmes', 'Vêtements', 'Jupes']) === 'Jupes', 'on affiche la feuille, pas tout le chemin');
 
-// ── 6. LA SURCOUCHE EST BIEN CÂBLÉE AUX DEUX SEULS ENDROITS QUI COMPTENT ──
+// ── 6. QUAND L'APP A LE DROIT DE DEMANDER ────────────────────────────────
+console.log('\n6. La règle des questions : obligatoire ET inconnu ET posable\n');
+{
+  const pf = { etat: 'Très bon état', univers: 'Femme', marque: 'Camaïeu' };
+  const lignes = [
+    { field_key: 'condition', field_label: 'État', required: true, allowed_values: ['Neuf', 'Très bon état'] },
+    { field_key: 'clothing_type', field_label: 'Univers', required: true, allowed_values: ['Femme', 'Homme'] },
+    { field_key: 'estimated_parcel_weight', field_label: 'Poids du colis', required: true, allowed_values: ['Jusqu’à 100 g'] },
+    { field_key: 'shipping_cost', field_label: 'Frais de livraison', required: false, allowed_values: null },
+    { field_key: 'title', field_label: 'Titre', required: true, allowed_values: null },
+    { field_key: 'package_size', field_label: 'package_size', required: true, allowed_values: null },
+  ];
+  const { questions, connus } = classerChamps(lignes, pf, 'leboncoin');
+  const libQ = questions.map((q) => q.libelle);
+  dit(libQ.includes('Poids du colis'), 'obligatoire et inconnu → on demande (Poids du colis)');
+  dit(!libQ.includes('État') && !libQ.includes('Univers'), 'obligatoire mais DÉJÀ REMPLI → on ne demande pas');
+  dit(!libQ.includes('Frais de livraison'), 'facultatif et inconnu → ni demandé, ni affiché');
+  dit(!libQ.includes('Titre'), 'le contenu de l\'annonce n\'est jamais une question');
+  dit(!libQ.includes('package_size'), 'un libellé jamais traduit n\'est jamais une question');
+  dit(connus.map((c) => c.libelle).sort((a, b) => a.localeCompare(b, 'fr')).join(',') === 'État,Univers', 'les valeurs déjà connues sont résumées, pas redemandées');
+}
+
+// ── 6 bis. LE DOUBLON TROUVÉ EN TESTANT EN VRAI ──────────────────────────
+// Robe passée au rayon « Mode > Chaussures » : le catalogue y nomme l'univers
+// `shoes_type` (et non `clothing_type`). Sans pont par le LIBELLÉ, « Univers »
+// s'affichait DEUX fois — en question ET en déjà-rempli. On demandait une
+// valeur qu'on avait sous les yeux.
+console.log('\n6 bis. Le doublon « Univers » (trouvé à l\'écran, sur la vraie app)\n');
+{
+  const pf = { univers: 'Femme', etat: 'Très bon état' };
+  const lignes = [
+    { field_key: 'shoes_type', field_label: 'Univers', required: true, allowed_values: ['Femme', 'Homme'] },
+    { field_key: 'univers', field_label: 'Univers', required: false, allowed_values: ['Femme', 'Homme'] },
+    { field_key: 'etat', field_label: 'État', required: false, allowed_values: null },
+  ];
+  const { questions, connus } = classerChamps(lignes, pf, 'leboncoin');
+  dit(!questions.some((q) => q.libelle === 'Univers'), 'on ne demande plus un Univers déjà rempli sous un autre nom');
+  dit(connus.filter((c) => c.libelle === 'Univers').length === 1, 'et il n\'apparaît qu\'UNE fois dans le résumé');
+  dit(connus.find((c) => c.libelle === 'Univers')?.valeur === 'Femme', 'avec la bonne valeur');
+}
+
+// ── 7. LA SURCOUCHE EST BIEN CÂBLÉE AUX DEUX SEULS ENDROITS QUI COMPTENT ──
 console.log('\n6. Le câblage — et la preuve que le lot A n\'a pas été touché\n');
 const lps = fs.readFileSync('src/components/ListingPreviewScreen.jsx', 'utf8');
 dit(/champsAvecRayonsChoisis|appliquerRayonChoisi/.test(lps), 'la surcouche est appliquée dans le stepper');

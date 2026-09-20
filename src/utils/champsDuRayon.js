@@ -123,21 +123,49 @@ export function lignesDepuisConfigLocale(configLocale) {
   return sortie;
 }
 
+/** ── DÉDOUBLONNER PAR LE LIBELLÉ QUAND LA CLÉ NE SUFFIT PAS ──────────────
+ *  Trouvé en testant en vrai, sur la robe passée au rayon Chaussures :
+ *  « Univers » s'affichait DEUX fois — une fois en question (le catalogue
+ *  Leboncoin l'appelle `shoes_type` sur ce rayon-là, une clé qu'on ne
+ *  connaît pas) et une fois en « déjà rempli » (notre clé `univers`, avec
+ *  « Femme » dedans). On demandait donc une valeur qu'on avait sous les yeux.
+ *  Le pont par la clé ne pouvait pas le voir : `clothing_type` sur Vêtements,
+ *  `shoes_type` sur Chaussures, `home_appliance_type` ailleurs — et ce
+ *  dernier n'est PAS un univers, donc on ne peut pas mapper `_type` en bloc.
+ *  Le LIBELLÉ, lui, est le même des deux côtés : « Univers ». C'est donc lui
+ *  qui fait foi en second recours. */
+const identifiant = (l) => cleConnue(l.field_key) ?? `lib:${texteSimple(l.field_label ?? l.field_key)}`;
+function texteSimple(s) {
+  return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '');
+}
+
 /** Le tri : ce qu'on sait, ce qu'il faut demander, et ce qu'on laisse
  *  tranquille. Une seule passe, une seule règle. */
 export function classerChamps(lignes, pf, platform) {
   const connus = [];
   const questions = [];
   const vus = new Set();
+  // Notre clé pour un libellé donné, prise dans les lignes de la
+  // configuration locale : c'est elle qui sait que « Univers » vit dans
+  // `univers`, quel que soit le nom que la plateforme lui donne ce jour-là.
+  const cleParLibelle = new Map();
   for (const l of lignes ?? []) {
-    // Dédoublonnage par NOTRE clé : le catalogue dit `clothing_st` et la
-    // configuration dit `taille` — c'est la même taille, on ne l'affiche pas
-    // deux fois. Le catalogue passe en premier, donc il gagne.
-    const ident = cleConnue(l.field_key) ?? `brut:${l.field_key}`;
+    const notre = cleConnue(l.field_key);
+    if (notre) cleParLibelle.set(texteSimple(l.field_label ?? l.field_key), notre);
+  }
+  for (const l of lignes ?? []) {
+    // Dédoublonnage : le catalogue dit `clothing_st` et la configuration dit
+    // `taille` — c'est la même taille, on ne l'affiche pas deux fois. Le
+    // catalogue passe en premier, donc il gagne.
+    // NOTRE clé d'abord — par la clé de la plateforme si on la connaît,
+    // sinon par le LIBELLÉ. C'est elle qui sert AUSSI d'identité : sans ça,
+    // `shoes_type/Univers` et `univers/Univers` passaient pour deux champs.
+    const notre = cleConnue(l.field_key) ?? cleParLibelle.get(texteSimple(l.field_label ?? l.field_key)) ?? null;
+    const ident = notre ?? identifiant(l);
     if (vus.has(ident)) continue;
     vus.add(ident);
-    const valeur = valeurConnue(l, pf, platform);
-    const notre = cleConnue(l.field_key);
+    const valeur = valeurConnue({ ...l, field_key: notre ?? l.field_key }, pf, platform)
+      || valeurConnue(l, pf, platform);
     const entree = {
       cle: l.field_key,
       cleNotre: notre,
