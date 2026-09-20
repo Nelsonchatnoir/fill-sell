@@ -23,8 +23,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// ⛔ ET ON PEUT LE FAIRE SUR LE PAQUET :
+//    `node scripts/onglet-travail-selftest.mjs build/extension/background.js`
+//    exécute le fichier MINIFIÉ qui part au Chrome Web Store. Un grep sur un
+//    fichier minifié ne prouve rien ; l'exécuter prouve tout.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SRC = fs.readFileSync(path.join(ROOT, 'chrome-extension/background.js'), 'utf8');
+const FICHIER = (process.argv[2] ? String(process.argv[2]).replace(/\\/g, '/') : 'chrome-extension/background.js');
+console.log(`fichier exécuté : ${FICHIER}\n`);
+const SRC = fs.readFileSync(path.join(ROOT, FICHIER), 'utf8');
 
 /** Extrait une fonction nommée de la source, par équilibrage d'accolades. */
 function extraireFonction(source, nom) {
