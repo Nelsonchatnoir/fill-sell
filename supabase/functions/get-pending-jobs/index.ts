@@ -1251,11 +1251,15 @@ serve(async (req) => {
       const pfB = (j: Record<string, unknown>) =>
         ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
       // ⚠️ Pas seulement « sans catégorie » : le relevé porte aussi l'état, la
-      //    marque et la taille, et chacun peut manquer indépendamment.
+      //    marque, la taille ET LA DESCRIPTION, et chacun peut manquer
+      //    indépendamment. Mesuré : avec un filtre qui ne regardait que la
+      //    catégorie et les trois champs, le job 4e5f3abe — déjà complété — ne
+      //    repassait plus par ce bloc, et sa description restait vide.
       const beebsACombler = (out as unknown as Array<Record<string, unknown>>)
         .filter((j) => j.platform === "beebs" && j.inventaire_id != null
           && (!Array.isArray(pfB(j)["beebsCategoryPath"])
-            || ["etat", "marque", "taille"].some((c) => !String(pfB(j)[c] ?? "").trim())));
+            || ["etat", "marque", "taille"].some((c) => !String(pfB(j)[c] ?? "").trim())
+            || String(j["description"] ?? "").trim().length < 5));
       if (beebsACombler.length) {
         const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
         const { data: annonces } = await userClient
