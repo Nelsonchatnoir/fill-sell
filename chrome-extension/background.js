@@ -8398,6 +8398,10 @@ const SALE_CHECK_PAUSE_MAX_MS = 6000;
 // le job est marqué non vérifiable (message explicite en base) et n'est plus
 // retenté qu'une fois par jour. Aucune conclusion n'est jamais inventée.
 const MAX_UNKNOWN_CHECKS = 4;
+// Pages de dressing lues par le repli wardrobe (96 articles chacune, 2026-09-20).
+// Huit pages = 768 articles : couvre 27 des 28 plus gros dressings du parc.
+// Au-delà, la lecture reste indéterminée — jamais une conclusion sur du vide.
+const VINTED_WARDROBE_PAGES = 8;
 const UNKNOWN_RETRY_MS = 24 * 60 * 60 * 1000;
 
 // ── Délai de grâce après publication (2026-07-12) ─────────────────────────────
@@ -15132,10 +15136,32 @@ async function lireWardrobeConnecte() {
     // défaut de 300 s bloquerait tout le cycle de vérification sur un pépin.
     const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }, 30_000);
     if (!ident?.userId) return null;
-    const page = await sendMessageToTab(tabId, { type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId }, 30_000);
-    if (!page?.success || !Array.isArray(page.articles)) return null;
-    console.log(`[background] repli wardrobe : ${page.articles.length} article(s) lus (page 1)`);
-    return new Map(page.articles.filter((a) => a?.vinted_item_id).map((a) => [String(a.vinted_item_id), a]));
+    // ── LE REPLI NE LISAIT QUE LA PAGE 1 (2026-09-20) ───────────────────────
+    // 96 articles par page. Un vendeur qui en a davantage n'était JAMAIS
+    // rattrapé par ce repli : son annonce n'est pas dans la page 1, la carte
+    // rend `undefined`, verdictWardrobe rend null, et la lecture reste
+    // « indéterminée » jusqu'à « invérifiable ».
+    // MESURÉ le 20/09 sur les annonces Vinted publiées du parc :
+    //   nadegemarcelin78  691 invérifiables / 724 annonces  (95 %)
+    //   remialbertholl    403 / 750  ·  philippe.folch  294 / 294 (100 %)
+    //   louloute9choco    238 / 241  ·  davidfc.dlb     212 / 213
+    // Les quatre premiers ont tous PLUS de 96 annonces. Le repli ne pouvait
+    // structurellement pas les servir.
+    // On parcourt donc les pages JUSQU'À TROUVER, borné à VINTED_WARDROBE_PAGES
+    // (768 articles) : au-delà, la lecture reste indéterminée comme avant —
+    // on ne martèle pas Vinted, et on ne conclut jamais sur une lecture ratée.
+    // ⛔ Le cache est CUMULATIF sur le cycle : les pages déjà lues servent à
+    //    tous les jobs du même cycle, on ne relit jamais une page deux fois.
+    const parId = new Map();
+    for (let page = 1; page <= VINTED_WARDROBE_PAGES; page++) {
+      const p = await sendMessageToTab(tabId, { type: "SYNC_DRESSING_PAGE", page, userId: ident.userId }, 30_000);
+      if (!p?.success || !Array.isArray(p.articles)) break;
+      for (const a of p.articles) if (a?.vinted_item_id) parId.set(String(a.vinted_item_id), a);
+      if (p.articles.length < 96) break;   // dernière page
+      if (page < VINTED_WARDROBE_PAGES) await sleep(randInt(400, 900));
+    }
+    console.log(`[background] repli wardrobe : ${parId.size} article(s) lus (jusqu'à ${VINTED_WARDROBE_PAGES} pages)`);
+    return parId.size ? parId : null;
   } catch (e) {
     console.warn("[background] repli wardrobe illisible (aucune conclusion) :", String(e?.message ?? e));
     return null;

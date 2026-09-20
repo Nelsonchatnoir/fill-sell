@@ -451,6 +451,59 @@ async function oplaChargerReferentiel() {
     return [];
   };
 
+  // ── LE MOT PEUT NOMMER UN RAYON, PAS SEULEMENT UNE FEUILLE (2026-09-20) ───
+  // DÉFAUT MESURÉ, job 2e96a21f / 840b67ec (Thomas, 20/09 01:58 et 02:03) :
+  // « Jean Bootcut Levi's 544 Taille 38 » — un jean d'ADULTE. Les deux seules
+  // options proposées étaient
+  //     Enfants › Vêtements pour filles › … › Jeans
+  //     Enfants › Vêtements pour garçons › … › Jeans
+  // parce que ce sont les deux SEULES FEUILLES de l'arbre Opla dont le
+  // libellé est exactement « Jeans ». Les jeans d'adulte existent pourtant —
+  // 12 feuilles — mais elles s'appellent « Jeans droits », « Jeans skinny »,
+  // « Jeans coupe droite »… et « Jeans » y est un NŒUD, pas une feuille.
+  // La bonne réponse n'était pas dans la liste. Il a répondu « Autre », puis
+  // « Autres », et la question est revenue à l'identique. Deux jobs morts.
+  //
+  // C'est le MÊME défaut que les livres sur Opla (« livre » → seulement
+  // « Livres sonores » et « Livres pour bébé ») : quand le mot nomme un
+  // RAYON, les candidates sont les feuilles DE CE RAYON.
+  // ⛔ On ne remplace pas la recherche par feuille : on la COMPLÈTE, et
+  //    seulement quand elle n'a rien donné d'utilisable.
+  const feuillesDuNoeudNomme = (mots, racine) => {
+    const listeMots = (Array.isArray(mots) ? mots : [mots]).map((m) => jetons(m)).filter(Boolean);
+    if (!listeMots.length) return [];
+    const perimetre = sousArbre(racine);
+    const out = [];
+    for (const n of noeuds.keys()) {
+      if (feuilles.has(n)) continue;                       // un nœud, pas une feuille
+      if (perimetre && !perimetre.has(n)) continue;
+      if (!listeMots.includes(jetons(titres.get(n)))) continue;
+      for (const f of feuilles) {
+        if (!cheminDe(f).length) continue;
+        let p = parents.get(f);
+        for (let g = 0; p && g < 12; p = parents.get(p), g++) if (p === n) { out.push(f); break; }
+      }
+    }
+    return [...new Set(out)].map((f) => ({ code: f, title: titres.get(f), chemin: cheminDe(f) }));
+  };
+
+  // ── LE GENRE DE LA FICHE FILTRE LES CANDIDATES (2026-09-20) ──────────────
+  // Même règle que l'app (brancheGenre) : une branche genrée incompatible
+  // sort. Sans ça, un jean d'homme se voyait proposer les rayons filles et
+  // garçons. ⛔ On ne filtre QUE si le genre est connu ET qu'il reste au
+  //    moins une candidate : un filtre qui vide la liste est pire que pas de
+  //    filtre.
+  const GENRE_RACINE = {
+    homme: "hommes", hommes: "hommes", femme: "femmes", femmes: "femmes",
+    garcon: "enfants", fille: "enfants", enfant: "enfants", enfants: "enfants", bebe: "enfants",
+  };
+  const filtrerParGenre = (candidats, genre) => {
+    const g = GENRE_RACINE[comparable(genre).replace(/s$/, "")] ?? GENRE_RACINE[comparable(genre)];
+    if (!g || !candidats.length) return candidats;
+    const garde = candidats.filter((c) => comparable(c.chemin[0] ?? "") === g);
+    return garde.length ? garde : candidats;
+  };
+
   // ── LA DESCENTE AUTOMATIQUE (2026-09-18) ──────────────────────────────────
   // Avant, arriver à MEN_TOP_T_SHIRTS coûtait TROIS needs_user : Hommes, puis
   // Vêtements, puis Hauts et t-shirts — une question par niveau, alors qu'un
@@ -471,13 +524,26 @@ async function oplaChargerReferentiel() {
   //    qu'elle a atteint, et c'est le PRÉ-VOL — la seule garde — qui tranche.
   // ⛔ Et on ne remonte JAMAIS : partir d'un nœud acquis et finir plus haut
   //    ferait perdre ce que l'utilisateur a déjà tranché.
-  const descendre = (depart, mots) => {
+  const descendre = (depart, mots, genre = "") => {
     let code = String(depart ?? "").trim();
     if (code && !noeuds.has(code)) code = ""; // un code inconnu n'est pas une ancre
     const etapes = [];
     for (let garde = 0; garde < 12; garde++) {
       if (code && feuilles.has(code)) break;
-      const parMot = feuillesParMot(mots, code || null);
+      let parMot = filtrerParGenre(feuillesParMot(mots, code || null), genre);
+      // Le mot nomme peut-être un RAYON (« Jeans ») plutôt qu'une feuille :
+      // ses feuilles à lui sont alors les vraies candidates. On ne s'en sert
+      // que quand la recherche par feuille n'a rien donné d'utilisable, et
+      // on garde les deux ensembles quand elle a donné trop peu.
+      const parNoeud = filtrerParGenre(feuillesDuNoeudNomme(mots, code || null), genre);
+      if (parNoeud.length && parNoeud.length <= OPLA_CANDIDATS_MAX) {
+        const vus = new Set(parMot.map((c) => c.code));
+        const fusion = [...parMot, ...parNoeud.filter((c) => !vus.has(c.code))];
+        if (fusion.length <= OPLA_CANDIDATS_MAX) {
+          if (parNoeud.length) etapes.push(`mot → rayon nommé : ${parNoeud.length} feuille(s) de ce rayon ajoutée(s) aux candidates`);
+          parMot = fusion;
+        }
+      }
       if (parMot.length === 1) {
         etapes.push(`mot → ${parMot[0].code} (feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"})`);
         code = parMot[0].code;
@@ -540,6 +606,7 @@ async function oplaChargerReferentiel() {
     noeuds, feuilles, grillePour, couleursPour, matieresPour, precharger,
     titres, enfantsDe, optionsNiveauEchoue,
     cheminDe, feuillesParMot, feuilleParChemin, descendre, SEPARATEUR_CHEMIN,
+    feuillesDuNoeudNomme, filtrerParGenre,
   };
 }
 
@@ -746,7 +813,10 @@ async function fillListingForm(job) {
     // droit à MEN_JERSEYS — l'ancien `a ?? b` n'en lisait qu'un.
     const mots = [pf0.categorie_objet_ia, pf0.categorie_mot_cle_titre]
       .map((m) => String(m ?? "").trim()).filter(Boolean);
-    const descente = ref.descendre(code, mots);
+    // Le GENRE de la fiche filtre les candidates (2026-09-20) : sans lui, un
+    // jean d'homme se voyait proposer les rayons filles et garcons.
+    const genreFiche = String(pf0.genre ?? pf0.univers ?? "").trim();
+    const descente = ref.descendre(code, mots, genreFiche);
     for (const e of descente.etapes) oplaTracer(`categorie: ${e}`);
     const feuillesCandidates = descente.candidats;
     code = descente.code;
@@ -824,6 +894,20 @@ async function fillListingForm(job) {
             field_label: champNU.label,
             allowed_values: options.map((o) => String(o.title ?? o.code)),
             input_type: "selection_only",
+            // ── LA LISTE EST COMPLÈTE, ET ON LE DIT (2026-09-20) ───────────
+            // Sans ce drapeau, la modale laisse « Autre valeur… » : elle
+            // suppose qu'un relevé peut être partiel (doctrine du 29/07, vraie
+            // pour Beebs et Leboncoin dont on lit des listes à l'écran).
+            // Ici la liste ne vient PAS d'un relevé : elle vient de NOTRE
+            // arbre Opla, où les enfants d'un nœud sont connus en entier.
+            // MESURÉ, jobs 2e96a21f et 840b67ec (Thomas, 20/09) : il a répondu
+            // « Autre » puis « Autres » — deux valeurs qui ne sont dans AUCUNE
+            // liste, que le passage suivant ne peut pas traduire, et la même
+            // question est revenue à l'identique. Deux jobs morts.
+            // Une valeur qu'on ne saura jamais consommer ne doit pas pouvoir
+            // être saisie. Et quand aucune option ne convient, la sortie
+            // existe désormais : « Abandonner Opla pour cet article ».
+            options_completes: true,
             target: { root: null, key: champNU.key },
           },
         } : {}),
