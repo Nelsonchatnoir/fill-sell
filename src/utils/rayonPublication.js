@@ -76,6 +76,19 @@ export function libelleRayon(chemin) {
   if (!Array.isArray(chemin) || !chemin.length) return null;
   return String(chemin[chemin.length - 1]);
 }
+
+/** ⛔ LA FEUILLE SEULE PEUT MENTIR (trouvé en testant, 20/09).
+ *  Un livre de musculation est parti sur eBay dans « Jouets et jeux ›
+ *  Modélisme ferroviaire › Livres et guides › Livres ». La carte repliée
+ *  affichait « Livres » : parfaitement rassurant, et complètement faux.
+ *  C'est la RACINE qui trahit l'erreur, pas la feuille — on montre donc les
+ *  deux dès que le chemin est assez profond pour cacher quelque chose. */
+export function libelleRayonCourt(chemin) {
+  if (!Array.isArray(chemin) || !chemin.length) return null;
+  const feuille = String(chemin[chemin.length - 1]);
+  if (chemin.length <= 2) return chemin.join(' › ');
+  return `${chemin[0]} › … › ${feuille}`;
+}
 export function cheminComplet(chemin) {
   return Array.isArray(chemin) ? chemin.join(' › ') : '';
 }

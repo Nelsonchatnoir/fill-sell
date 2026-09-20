@@ -62,7 +62,7 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/
 import { resoudrePublication, signatureResolution } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
-import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayon } from "../utils/rayonPublication";
+import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 import { CANAL_ASPECTS } from "../utils/champsDuRayon";
 
@@ -2435,9 +2435,9 @@ function StepGeneration({ generating, generateError, platformListings, processed
                       <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:3 }}>
                         <MapPin size={11} color={rayonCarte.choisi ? T.tealDeep : T.mute} style={{ flexShrink:0 }} />
                         <span style={{ fontSize:11.5, fontWeight:700,
-                                       color: rayonCarte.choisi ? T.tealDeep : T.mute2,
+                                       color: rayonCarte.choisi ? T.tealDeep : rayonCarte.incertain ? "#92400E" : T.mute2,
                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                          {libelleRayon(rayonCarte.chemin)}
+                          {libelleRayonCourt(rayonCarte.chemin)}
                         </span>
                       </div>
                     ) : null}
