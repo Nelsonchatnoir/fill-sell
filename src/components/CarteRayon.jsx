@@ -23,6 +23,7 @@ import { feuillesDe } from '../utils/categorieParMot';
 import { texteComparable } from '../utils/texteComparable';
 import { libelleRayon, cheminComplet, cleCategorie } from '../utils/rayonPublication';
 import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPECTS } from '../utils/champsDuRayon';
+import { rayonContreditLaFiche, phraseIncoherence } from '../utils/rayonIncoherent';
 
 const MOTS = {
   fr: {
@@ -257,6 +258,27 @@ export default function CarteRayon({
             {ouvertPicker ? T.annuler : T.changer}
           </button>
         </div>
+
+        {/* ── LE RAYON CONTREDIT LA FICHE (2026-09-20) ────────────────────
+            Trouvé en testant : rayon « Pantalons et jeans (garçon) » posé à
+            la main sur un jogging de FEMME en XS. Rien ne prévenait, et
+            c'est Beebs qui l'a dit, en refusant le dépôt.
+            🚨 ON PRÉVIENT, ON N'INTERDIT PAS : une phrase, jamais un
+               blocage, jamais une question de plus. Le choix humain reste
+               souverain — le vendeur a le droit d'avoir raison contre nous. */}
+        {(() => {
+          const inc = rayonContreditLaFiche(rayon?.chemin, champs);
+          if (!inc) return null;
+          return (
+            <div style={{ marginTop: 8, display: 'flex', gap: 7, alignItems: 'flex-start',
+                          background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '8px 10px' }}>
+              <span style={{ fontSize: 12, lineHeight: 1.35 }} aria-hidden>⚠️</span>
+              <span style={{ fontSize: 11.5, color: '#92400E', lineHeight: 1.45 }}>
+                {phraseIncoherence(inc, lang)}
+              </span>
+            </div>
+          );
+        })()}
 
         {ouvertPicker && (
           <div style={{ marginTop: 10 }}>
