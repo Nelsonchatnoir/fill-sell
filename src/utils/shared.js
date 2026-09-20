@@ -4,6 +4,19 @@
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+// ── LE PLAFOND DE LA DESCRIPTION SAISIE À LA MAIN ───────────────────────────
+// Posé à 500 le 19/09 sur l'écran d'AJOUT, après mesure sur les publications
+// réussies du parc (la plus longue description acceptée par chaque
+// plateforme : Leboncoin 1 639 · eBay 1 310 · Vinted 1 310 · Beebs 1 126 ·
+// Opla 1 067). Il vivait dans StockTab, donc hors de portée de la modale de
+// MODIFICATION (App.jsx), restée à 200 : le même article acceptait 500
+// caractères à l'ajout et les tronquait à 200 à la modification.
+// Il vit ici pour que les deux écrans lisent le MÊME chiffre — c'est le piège
+// déjà payé sur ce plafond, écrit trois fois et parti en divergence.
+// ⛔ Ce n'est PAS une limite de base (`inventaire.description` est un `text`)
+//    ni de plateforme : c'est un garde-fou d'écran, et rien d'autre.
+export const DESC_MANUELLE_MAX = 500;
+
 // Pages de connexion des plateformes (chantier onboarding 2026-07-27) —
 // badges de session de l'écran Publier + messages d'échec actionnables du
 // Stock. La cible « brouillon LBC en cours » est la page de dépôt : c'est là

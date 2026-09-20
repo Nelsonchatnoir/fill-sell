@@ -73,7 +73,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
   jobErrorSansFaussePromesse, jobActionRequise,
-  fraicheurExtension, detecterRetardHorloge,
+  fraicheurExtension, detecterRetardHorloge, DESC_MANUELLE_MAX,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
 import { attributsDepuisVinted } from '../utils/vintedAttributs';
@@ -90,11 +90,10 @@ import {
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
 
-// Plafond de la description saisie à la main (2026-09-19). UNE constante,
-// trois usages (slice à la frappe, maxLength, compteur) : le chiffre était
-// écrit trois fois. Cf. le bloc du <textarea> pour la mesure qui a permis de
-// passer de 200 à 500.
-const DESC_MANUELLE_MAX = 500;
+// Plafond de la description saisie à la main : il vit désormais dans
+// utils/shared.js (2026-09-20) — l'écran d'AJOUT (ici) et la modale de
+// MODIFICATION (App.jsx) doivent lire le MÊME chiffre. Cf. le bloc du
+// <textarea> pour la mesure qui a permis de passer de 200 à 500.
 
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
 // Les erreurs « connexion requise » et « brouillon LBC en cours » portent déjà

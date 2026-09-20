@@ -76,8 +76,9 @@ import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
 import { televerserPhotos, menagePhotosArticle } from './utils/photosUpload';
-import { entreesPhotos, MAX_PHOTOS } from './utils/photos';
+import { entreesPhotos, urlsPhotos, MAX_PHOTOS } from './utils/photos';
 import { moveItem } from './utils/photosGalerie';
+import GaleriePhotos from './components/GaleriePhotos';
 import { sonderAnnonceVinted, lireBoutiquesVinted, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 // Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
@@ -95,7 +96,7 @@ import { Bar, Line } from 'react-chartjs-2';
 import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
-import { detectType, normalizeMarque, marqueKey, uuidV4 } from './utils/shared';
+import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX } from './utils/shared';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
@@ -2654,6 +2655,16 @@ export default function App({ loginOnly = false }){
   const listRef=useRef(null);
   const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
+  // ── LES PHOTOS DE LA MODALE DE MODIFICATION (2026-09-20, demande Louis) ────
+  // La LISTE ne vit pas ici : elle vit dans `editItem.photos`, comme le titre
+  // et la description. C'est délibéré — la modale s'ouvre depuis QUATRE
+  // endroits (Stock, Ventes, et deux fois dans App), et un état séparé aurait
+  // demandé un effet de synchronisation à chaque ouverture, c'est-à-dire
+  // exactement le `set-state-in-effect` que ce fichier évite partout.
+  // Ne restent ici que les deux états qui n'appartiennent pas à l'article :
+  // « un téléversement est en cours » et « la dernière tentative a raté ».
+  const [editPhotosBusy,setEditPhotosBusy]=useState(false);
+  const [editPhotosErreur,setEditPhotosErreur]=useState("");
   // ── FUSION D'ARTICLES (2026-09-18, point B/1) ──────────────────────────────
   // `fusionItem` = l'article depuis lequel on a ouvert « C'est le même qu'un
   // article de mon stock ». `fusionsActives` = les fusions non défaites,
@@ -4124,6 +4135,65 @@ export default function App({ loginOnly = false }){
   // Retirer ne supprime RIEN dans le bucket : l'article n'existe pas encore, et
   // le ménage des fichiers non référencés est le sujet du lot dédié.
   function retirerPhotoAjout(i){ setIPhotos(prev=>prev.filter((_,j)=>j!==i)); }
+
+  // Fermer la modale de modification, par n'importe quelle porte (croix,
+  // voile, Annuler, enregistrement réussi, fusion). UNE fonction, parce que
+  // l'erreur de téléversement des photos ne doit JAMAIS survivre à la
+  // fermeture : sinon elle réapparaît sur l'article suivant, qui n'y est pour
+  // rien. (2026-09-20)
+  function fermerModaleEdition(){ setEditItem(null); setEditPhotosErreur(""); }
+
+  // ── LES MÊMES TROIS GESTES, DANS LA MODALE DE MODIFICATION (2026-09-20) ───
+  // Demande de Louis, compte Business : « à l'ajout j'ai 500 caractères et je
+  // peux changer les photos ; à la modification du même article, 200 et rien ».
+  // C'était vrai : l'ancienne fenêtre d'édition n'avait jamais reçu la galerie
+  // du 19/09. On ne redessine rien — même brique (televerserPhotos), même
+  // galerie (GaleriePhotos), mêmes bornes (MAX_PHOTOS), même marqueur de
+  // fournée. Seule la destination change : `editItem.photos`, écrit en base
+  // par handleEditSave.
+  // ⛔ AUCUNE RETOUCHE IA n'est appelée ici non plus : modifier un article ne
+  //    consomme aucun quota, exactement comme l'ajouter.
+  // ⛔ Les ENTRÉES sont conservées telles quelles (objets {type,url} du flux
+  //    retouche compris) : on ne ré-étiquette pas, on réordonne. C'est
+  //    l'ORDRE du tableau qui fait la couverture — l'extension téléverse dans
+  //    cet ordre — pas le champ `type`.
+  async function ajouterPhotosEdition(files){
+    if(!user?.id||!Array.isArray(files)||!files.length)return;
+    const dejaLa=Array.isArray(editItem?.photos)?editItem.photos:[];
+    const place=MAX_PHOTOS-dejaLa.length;
+    if(place<=0)return;
+    setEditPhotosBusy(true);setEditPhotosErreur("");
+    try{
+      const{urls,illisibles}=await televerserPhotos(supabase,{
+        userId:user.id,
+        sources:files.slice(0,place),
+        marqueur:"manuel_",
+        surErreur:"ignorer",
+      });
+      if(urls.length)setEditItem(p=>p?{...p,photos:[...(Array.isArray(p.photos)?p.photos:[]),...urls]}:p);
+      if(illisibles.length){
+        setEditPhotosErreur(lang==='en'
+          ?`${illisibles.length} photo(s) could not be read and were skipped: ${illisibles.join(", ")}.`
+          :`${illisibles.length} photo(s) n'ont pas pu être lues et ont été ignorées : ${illisibles.join(", ")}.`);
+      }else if(!urls.length){
+        setEditPhotosErreur(messageDecodage(lang));
+      }
+    }catch(e){
+      console.warn('[modification] téléversement des photos en échec —',e?.message??e);
+      setEditPhotosErreur(lang==='en'?"Upload failed. Try again.":"Le téléversement a échoué. Réessaie.");
+    }finally{
+      setEditPhotosBusy(false);
+    }
+  }
+  // Retirer ne touche PAS au bucket : le fichier peut être référencé par un
+  // job déjà parti (une annonce en ligne pointe dessus). On retire la photo de
+  // l'ARTICLE, on ne détruit pas l'image.
+  function retirerPhotoEdition(i){
+    setEditItem(p=>p?{...p,photos:(Array.isArray(p.photos)?p.photos:[]).filter((_,j)=>j!==i)}:p);
+  }
+  function reordonnerPhotosEdition(from,to){
+    setEditItem(p=>p?{...p,photos:moveItem(Array.isArray(p.photos)?p.photos:[],from,to)}:p);
+  }
   // L'ORDRE EST LA COUVERTURE : la photo 0 est celle que les plateformes
   // montrent en premier. C'est pour ça que le réordonnancement existe ici.
   function reordonnerPhotosAjout(from,to){ setIPhotos(prev=>moveItem(prev,from,to)); }
@@ -4940,7 +5010,7 @@ export default function App({ loginOnly = false }){
       if(!r?.ok)throw new Error(r?.message??String(r?.reason??'echec'));
       await fetchAll(user.id);
       setFusionsActives(await lireFusionsActives(user.id).catch(()=>({})));
-      setEditItem(null);
+      fermerModaleEdition();
       setToast({visible:true,message:lang==='fr'?"Fusion défaite — l'article est revenu dans ton stock avec son historique."
                                                :'Merge undone — the item is back in your stock with its history.'});
       setTimeout(()=>setToast({visible:false,message:''}),6000);
@@ -5329,11 +5399,12 @@ export default function App({ loginOnly = false }){
       }
       // purchase_costs:f (2026-08-29) : le champ « Frais » de la modale est
       // actif en mode ajout aussi — un 0 en dur jetait la saisie (cas Romain).
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null};
+      // Photos : même forme écrite qu'à l'ajout manuel (entreesPhotos).
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null,...(Array.isArray(editItem.photos)&&editItem.photos.length?{photos:entreesPhotos(editItem.photos)}:{})};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
-        setEditItem(null);
+        fermerModaleEdition();
         setLensAdded(true);
         setToast({visible:true,message:lang==='fr'?'✓ Article ajouté au stock':'✓ Item added to stock'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -5383,7 +5454,7 @@ export default function App({ loginOnly = false }){
       }).eq('id',editItem.id).eq('user_id',user.id).select('id');
       if(!error&&updRows?.length){
         setSales(prev=>prev.map(v=>v.id===editItem.id?{...v,title:editItem.title,marque:marqueNorm||"",type:typeAuto,buy:b,prix_achat:b,sell:hasS?s:null,prix_vente:hasS?s:null,margin:benef,marginPct:benef!=null&&hasS&&s>0?(benef/s)*100:null,sellingFees:f,description:editItem.description||null,quantite:qty>1?qty:null,emplacement:editItem.emplacement?.trim()||null,plateforme:editItem.plateforme||null}:v));
-        setEditItem(null);
+        fermerModaleEdition();
         setToast({visible:true,message:lang==='fr'?'✓ Vente modifiée':'✓ Sale updated'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
       }else{
@@ -5443,10 +5514,19 @@ export default function App({ loginOnly = false }){
       quantite:qty,
       // Même colonne que l'intention vocale inventory_move (moveToLocation).
       emplacement:editItem.emplacement?.trim()||null,
+      // ── LES PHOTOS (2026-09-20, demande Louis) ────────────────────────────
+      // Écrites SEULEMENT si la modale en portait une liste : les ouvreurs
+      // historiques qui n'ont pas de `photos` (repli Lens) ne doivent pas
+      // effacer les photos de l'article en enregistrant un autre champ.
+      // Forme ÉCRITE = celle de generate-listing (entreesPhotos, règle du
+      // 05/09) : jamais des chaînes nues, sinon les handlers d'extension
+      // lisent `p.url` sur une string et le job tombe.
+      // Une liste VIDÉE à l'écran est un geste : elle s'écrit, à `[]`.
+      ...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{}),
     }).eq('id',editItem.id).eq('user_id',user.id).select('id');
     if(!error&&updRows?.length){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
-      setEditItem(null);
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null,...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{})}:i));
+      fermerModaleEdition();
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }else{
@@ -7469,6 +7549,11 @@ export default function App({ loginOnly = false }){
         quantite:existant.quantite||1,
         description:existant.description||"",
         emplacement:existant.emplacement||"",
+        // Les photos de la fiche, pour que la galerie de la modale les montre
+        // (2026-09-20). Cet ouvreur construit son objet champ par champ, il ne
+        // recopie pas l'article — sans cette ligne la modale croirait l'article
+        // sans photo, et une modification les effacerait.
+        photos:Array.isArray(existant.photos)?existant.photos:[],
         priceMode:"unit",
       });
       return;
@@ -8400,7 +8485,7 @@ export default function App({ loginOnly = false }){
           textarea de 2 lignes : un titre long se lit et s'édite en entier —
           même valeur écrite, aucun changement de sauvegarde. */}
       {/* La modale de fusion vit HORS de celle d'édition : ouvrir l'une ferme
-          l'autre (setEditItem(null)), sinon deux voiles se superposeraient et
+          l'autre (fermerModaleEdition()), sinon deux voiles se superposeraient et
           le geste de fermeture deviendrait ambigu. */}
       {fusionItem&&(
         <FusionArticleModal
@@ -8432,11 +8517,11 @@ export default function App({ loginOnly = false }){
         const suffix=<span style={{fontSize:12,fontWeight:600,color:"#8A8578",flexShrink:0}}>{CURRENCY_SYMBOLS[currency]||'€'}</span>;
         return(
         <>
-          <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(16,32,27,0.45)",backdropFilter:"blur(4px)",zIndex:200}}/>
+          <div onClick={()=>fermerModaleEdition()} style={{position:"fixed",inset:0,background:"rgba(16,32,27,0.45)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:18,padding:"20px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(16,32,27,0.25)",maxHeight:"88vh",overflowY:"auto",border:"1px solid #E7E3D8"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{fontSize:15.5,fontWeight:700,color:"#10201B"}}>{editItem._isNew?(lang==='fr'?"Ajouter au stock":"Add to stock"):(lang==='fr'?"Modifier l'article":"Edit item")}</div>
-              <IconButton onClick={()=>setEditItem(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
+              <IconButton onClick={()=>fermerModaleEdition()} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
@@ -8606,15 +8691,56 @@ export default function App({ loginOnly = false }){
                   {lang==='fr'?"Description (optionnel)":"Description (optional)"}
                 </div>
                 <div>
-                  <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
+                  {/* ── 200 → 500, LE MÊME PLAFOND QU'À L'AJOUT (2026-09-20) ──
+                      Demande de Louis, compte Business. L'écran d'ajout est
+                      passé à 500 le 19/09 ; celui-ci était resté à 200, si
+                      bien que MODIFIER un article tronquait une description
+                      que l'AJOUT du même article avait acceptée. Le chiffre
+                      vit maintenant dans utils/shared.js, lu par les deux. */}
+                  <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,DESC_MANUELLE_MAX)}))}
                     placeholder={lang==='fr'?"Ex: Taille M, noir, neuf...":"Ex: Size M, black, new..."}
-                    maxLength={200} rows={2}
+                    maxLength={DESC_MANUELLE_MAX} rows={4}
                     style={{...S.input,resize:"none",lineHeight:1.5,fontWeight:500,fontSize:13}}
                     onFocus={focusTeal} onBlur={blurBorder}
                   />
-                  <div style={{fontSize:10,color:"#8A8578",textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/200</div>
+                  <div style={{fontSize:10,color:"#8A8578",textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/{DESC_MANUELLE_MAX}</div>
                 </div>
               </div>
+
+              {/* ── PHOTOS (2026-09-20, demande Louis) ────────────────────────
+                  LA MÊME galerie qu'à l'ajout : ajouter, retirer, réordonner,
+                  badge « Couverture » sur la première. Rien n'est redessiné —
+                  c'est le composant GaleriePhotos, tel quel.
+                  ⛔ FACULTATIVES : elles n'entrent dans aucune garde
+                     d'enregistrement. Un article sans photo se modifie
+                     exactement comme avant.
+                  Réservé aux lignes d'INVENTAIRE : une ligne de vente n'a pas
+                  de colonne photos. */}
+              {editItem._table==='inventaire'&&(
+                <div style={S.group}>
+                  <div style={S.eyebrow}>
+                    <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></span>
+                    {lang==='fr'?`Photos (optionnel) — jusqu'à ${MAX_PHOTOS}`:`Photos (optional) — up to ${MAX_PHOTOS}`}
+                    {editPhotosBusy&&<span style={{fontWeight:500,color:"#8A8578",marginLeft:6}}>{lang==='fr'?"envoi…":"uploading…"}</span>}
+                  </div>
+                  <GaleriePhotos
+                    previews={urlsPhotos(editItem.photos)}
+                    onAdd={ajouterPhotosEdition}
+                    onRemove={retirerPhotoEdition}
+                    onReorder={reordonnerPhotosEdition}
+                    removable
+                    /* Le rappel « au moins 3 » appartient à la PUBLICATION,
+                       pas au stock — même arbitrage qu'à l'ajout. */
+                    rappelMinimum={false}
+                    lang={lang}
+                  />
+                  {editPhotosErreur&&(
+                    <div style={{fontSize:11,color:"#B91C1C",background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 12px"}}>
+                      {editPhotosErreur}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ── DOUBLON : « C'est le même qu'un article de mon stock » ──────
                   (2026-09-18, point 1.) La carte est le seul endroit où
@@ -8631,7 +8757,7 @@ export default function App({ loginOnly = false }){
                 const mesFusions=fusionsActives[String(editItem.id)]??[];
                 return (
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <button type="button" onClick={()=>{setFusionItem(editItem);setEditItem(null);}}
+                    <button type="button" onClick={()=>{setFusionItem(editItem);fermerModaleEdition();}}
                       style={{width:"100%",padding:"11px 12px",borderRadius:12,textAlign:"left",cursor:"pointer",fontFamily:"inherit",
                         border:`1px solid ${duReleve?"#2F9E90":"#E7E3D8"}`,background:duReleve?"#F0FDFB":"#F6F5F1"}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
@@ -8666,7 +8792,7 @@ export default function App({ loginOnly = false }){
               <PrimaryButton onClick={handleEditSave} style={{flex:1,width:"auto"}}>
                 {lang==='fr'?"Enregistrer":"Save"}
               </PrimaryButton>
-              <SecondaryButton onClick={()=>setEditItem(null)} style={{width:"auto",padding:"13px 20px"}}>
+              <SecondaryButton onClick={()=>fermerModaleEdition()} style={{width:"auto",padding:"13px 20px"}}>
                 {t('annuler')}
               </SecondaryButton>
             </div>
