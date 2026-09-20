@@ -107,7 +107,10 @@ import DashboardTab from './tabs/DashboardTab';
 import { UI, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
-import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
+// Parcours d'entrée (2026-09-20) : il vit dans son propre module, sur le
+// modèle de src/reglages — un plan en données, des textes sortis, une étape
+// par fichier. components/OnboardingFlow.jsx est SUPPRIMÉ, pas neutralisé.
+import ParcoursEntree, { ONBOARD_DONE_KEY } from './entree/ParcoursEntree';
 // Un seul verrou de renvoi dans l'app (60 s, aligné sur la fenêtre de GoTrue) :
 // l'écran d'attente de confirmation reprend celui du lien d'extension plutôt
 // que d'en inventer un second.
@@ -2193,13 +2196,13 @@ export default function App({ loginOnly = false }){
   });
   const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
   // Pseudo à demander : uniquement quand ni profiles.username ni le provider
-  // OAuth ne donnent de nom. Consommé par OnboardingFlow, qui le demande en
-  // fin de parcours — jamais dans une modale avant l'écran de choix (lot 5).
+  // OAuth ne donnent de nom. Consommé par ParcoursEntree (src/entree), qui le
+  // demande en avant-dernière étape — jamais dans une modale avant.
   const [demanderPseudo,setDemanderPseudo]=useState(false);
-  // Onboarding « Tu vends déjà sur Vinted ? » (lot 2) : ouvert à la fermeture
-  // de la modale devise+pseudo (comptes NEUFS uniquement), et REPRIS au
-  // chargement si l'utilisateur était resté sur l'écran d'attente de
-  // l'extension (état persisté par OnboardingFlow).
+  // Parcours d'entrée (refonte du 20/09) : « Où tu vends ? », l'extension, le
+  // relevé ou la première annonce, la republication, le récap. Ouvert sur
+  // profiles.onboarded_at NULL, et REPRIS à l'étape où la personne s'était
+  // arrêtée (position persistée par ParcoursEntree).
   const [showOnboardingFlow,setShowOnboardingFlow]=useState(false);
   // Onboarding terminé dans CETTE session (cf. garde dans fetchAll).
   const onboardingFiniRef=useRef(false);
@@ -2213,8 +2216,8 @@ export default function App({ loginOnly = false }){
   // (La reprise de l'attente d'extension n'a plus d'effet dédié : le
   // déclencheur vit désormais dans fetchAll, sur profiles.onboarded_at. Si le
   // compte n'est pas onboardé et que le cache local porte encore
-  // 'attente_extension', OnboardingFlow rouvre directement sur l'écran
-  // d'attente — la détection puis la sync s'enchaînent sans aucun clic.)
+  // 'attente_extension', ParcoursEntree reprend à l'étape quittée — la
+  // détection puis le relevé s'enchaînent sans aucun clic.)
   const [username,setUsername]=useState('');
   // Bandeau retrait cross-plateforme (Phase B, 2026-07-11) : jobs frères d'un
   // article VENDU encore en ligne ailleurs — flag platform_fields.
@@ -3364,7 +3367,12 @@ export default function App({ loginOnly = false }){
       }else if(p.data?.onboarded_at!=null){
         // La base fait autorité : un compte marqué onboardé ne doit pas voir
         // l'écran, même si le cache local d'un ancien appareil dit l'inverse.
-        setShowOnboardingFlow(false);
+        // ⛔ SAUF SI LE PARCOURS EST OUVERT SOUS LE DOIGT. Depuis le 20/09 il
+        // pose onboarded_at dès que l'app passe en fond (pour que personne ne
+        // le revoie deux fois) : le fetchAll du retour au premier plan le
+        // fermerait alors en plein milieu. Un parcours ouvert se termine par
+        // son bouton, jamais par une relecture de profil.
+        setShowOnboardingFlow(ouvert=>ouvert&&!onboardingFiniRef.current);
         try{localStorage.setItem(ONBOARD_DONE_KEY,'1');}catch{/* cache seul */}
       }
       // ── Devise : lue du profil, jamais demandée (lot 5, décision Nico) ─────
@@ -9587,7 +9595,7 @@ export default function App({ loginOnly = false }){
       ),document.body)}
 
       {showOnboardingFlow&&user&&(
-        <OnboardingFlow
+        <ParcoursEntree
           lang={lang}
           user={user}
           demanderPseudo={demanderPseudo}
