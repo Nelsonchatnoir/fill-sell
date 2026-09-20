@@ -667,6 +667,26 @@ async function oplaChargerReferentiel() {
       }
       break; // ambiguïté réelle : c'est ICI que la question se pose
     }
+    // ── L'ANCRE EST LE BON RAYON, MÊME QUAND AUCUN MOT NE TROUVE SA FEUILLE ──
+    // Job 01e066f1 (« Station d'accueil Articona », 19/09) : le mot ne désigne
+    // aucune feuille de l'arbre Opla, l'ancre posée était un NŒUD, et le
+    // pré-vol refusait « c'est un nœud intermédiaire » SANS aucune option —
+    // un diagnostic juste et aucune issue. Les feuilles de ce nœud font une
+    // question courte, fermée, où la bonne réponse est forcément.
+    // ⛔ En dernier recours seulement : si un mot avait trouvé, on serait déjà
+    //    sorti plus haut. (Le serveur, lui, retente d'abord depuis les racines
+    //    — il a l'arbre entier sous la main au même instant.)
+    if (code && !feuilles.has(code)) {
+      const perimetre = sousArbre(code);
+      const sous = filtrerParGenre(
+        [...feuilles].filter((f) => perimetre?.has(f)).map((f) => ({ code: f, title: titres.get(f), chemin: cheminDe(f) })),
+        genre,
+      );
+      if (sous.length > 1 && sous.length <= OPLA_QUESTION_MAX) {
+        etapes.push(`aucun mot ne désigne de feuille — on propose les ${sous.length} feuilles du rayon « ${titres.get(code)} »`);
+        return { code, candidats: sous, etapes };
+      }
+    }
     return { code, candidats: [], etapes };
   };
   const feuilleParChemin = (libelle) => {

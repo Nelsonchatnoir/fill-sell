@@ -107,6 +107,14 @@ const robeF = EXT.descendre('', ['robe enfant', 'robe'], 'Fille');
 ok('robe de bébé, genre Fille : aucune robe femme',
   (robeF.candidats.length > 0 && robeF.candidats.every((c) => c.chemin[0] === 'Enfants')) || /Enfants/.test(EXT.cheminDe(robeF.code).join(' ')),
   robeF.candidats.map((c) => c.chemin.join(' › ')).join(' | ') || EXT.cheminDe(robeF.code).join(' › '));
+// Job 01e066f1 : ancre = un NŒUD, et aucun mot ne désigne de feuille.
+const station = EXT.descendre('ORDINATEURS_ACCESSOIRES', ["station d'accueil"], '');
+const stationSrv = RES.resoudreCategorieOpla({ mots: ["station d'accueil"], titre: 'Station d’accueil Articona noir TBE', depart: 'ORDINATEURS_ACCESSOIRES' });
+ok('ancre sur un nœud sans feuille nommée : les deux proposent le rayon, jamais rien',
+  station.candidats.length > 1 && stationSrv.candidats.length > 1
+  && station.candidats.length === stationSrv.candidats.length,
+  `extension ${station.candidats.length} · serveur ${stationSrv.candidats.length}`);
+
 const jupeF = EXT.descendre('', ['jupe'], 'Femme');
 const jupeCodes = jupeF.candidats.length ? jupeF.candidats.map((c) => c.code) : [jupeF.code];
 ok('« jupe » Femme : le rayon Jupes est dans la course, pas seulement le sport',

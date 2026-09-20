@@ -567,7 +567,31 @@ export function resoudreCategorieOpla(
   if (depart) {
     etapes.push(`ancre « ${depart} » sans issue — reprise depuis les racines`);
     const global = resoudreCategorieOpla({ mots, titre, genre });
-    return { code: global.code, candidats: global.candidats, etapes: [...etapes, ...global.etapes] };
+    if (global.code || global.candidats.length) {
+      return { code: global.code, candidats: global.candidats, etapes: [...etapes, ...global.etapes] };
+    }
+    // ── ET SI MÊME LA REPRISE NE TROUVE RIEN, L'ANCRE RESTE LE BON RAYON ────
+    // DÉFAUT MESURÉ, job 01e066f1 (nadegemarcelin78, 19/09 23:55) : « Station
+    // d'accueil Articona ». Le mot ne désigne AUCUNE feuille de l'arbre Opla —
+    // le rayon s'appelle « Housses d'ordinateur portable », « Autres »… — et
+    // l'ancre posée était ORDINATEURS_ACCESSOIRES, un NŒUD. On a donc rendu
+    // « rien », et le job est mort sur « ORDINATEURS_ACCESSOIRES est un nœud
+    // intermédiaire, seules les feuilles sont déposables » : un diagnostic
+    // juste, et aucune issue.
+    // Or ce nœud EST le bon rayon. Ses feuilles font une question courte,
+    // fermée, et la bonne réponse y est forcément. On la pose.
+    // ⛔ APRÈS la reprise globale, jamais avant : le job eba8a512 avait une
+    //    ancre MEN_TOPS_T_SHIRTS et sa bonne feuille (MEN_JERSEYS) vit
+    //    AILLEURS. Proposer d'abord les feuilles de l'ancre l'aurait enfermé
+    //    dans la branche où on l'avait égaré.
+    const sousAncre = ecarterGenreIncompatible(
+      FEUILLES.filter((f) => (perimetreDe(depart) ?? new Set<string>()).has(f.code)), genre,
+    );
+    if (sousAncre.length > 1 && sousAncre.length <= OPLA_QUESTION_MAX) {
+      etapes.push(`aucun mot ne désigne de feuille — on propose les ${sousAncre.length} feuilles du rayon « ${oplaNoeud(depart)?.titre ?? depart} »`);
+      return { code: null, candidats: sousAncre, etapes };
+    }
+    return { code: null, candidats: [], etapes: [...etapes, ...global.etapes] };
   }
   return { code: null, candidats: [], etapes };
 }
