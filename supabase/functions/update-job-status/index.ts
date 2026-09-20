@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
@@ -1739,6 +1740,30 @@ serve(async (req) => {
               const tailleEnfant = TAILLE_ENFANT_RE.test(valeurs.taille ?? "");
               const listeSansEnfant = listeServie.length > 0 && !listeServie.some((v) => TAILLE_ENFANT_RE.test(v));
               const grilleAdulteEnfant = tailleEnfant && listeSansEnfant;
+
+              // ── « LA GRILLE NE CORRESPOND PAS » EST PARFOIS FAUX (2026-09-20)
+              // Job e8e1cd5a (laforge.vinted, Blouse Caroll). Le message final
+              // disait : « Le formulaire Vinted n'a pas accepté Taille « S »,
+              // État « Très bon état » […] écris-nous et on regarde la catégorie
+              // de l'annonce. » Or le relevé du MÊME refus, enregistré dans le
+              // job, liste ce que Vinted offrait :
+              //     Taille (accepte : XXXS · XXS · XS · S · M · L · XL · XXL)
+              //     État  (accepte : … Très bon état …)
+              // « S » y est. « Très bon état » y est. La grille correspond
+              // parfaitement — c'est le CHAMP qui a été relu VIDE après qu'on
+              // l'a rempli : notre saisie n'est pas arrivée jusqu'au formulaire.
+              // On envoyait donc la personne enquêter sur une catégorie qui
+              // n'avait rien à se reprocher, pour un défaut qui est chez nous.
+              // ⛔ La discrimination ne se devine pas, elle se lit : la valeur
+              //    est-elle DANS la liste que Vinted a servie ?
+              // La règle vit dans _shared/vinted-grille-servie.ts, où elle est
+              // exécutée par un selftest — elle sépare deux causes qui n'ont ni
+              // le même message ni le même correctif, et elle ne conclut jamais
+              // sans preuve (liste vide, valeur vide ⇒ on ne sait pas).
+              const { offerte: valeurOfferte, valeur: valeurDeLaListe } = valeurFigureDansListeServie({
+                champDemande: nuf?.field_key ?? nuf?.field_label ?? "",
+                valeurs, listeServie, libelles: GRILLE_LIBELLES,
+              });
               const resume = cles.map((c) => `${GRILLE_LIBELLES[c]} « ${valeurs[c]} »`).join(", ");
               const nowIso = new Date().toISOString();
               const motifBrut = typeof body.error === "string" ? body.error.slice(0, 300) : null;
@@ -1776,16 +1801,26 @@ serve(async (req) => {
                   taille_grille_reprise: deja,
                   taille_grille_refus: {
                     le: nowIso, champs: cles, valeurs, grille_adulte_taille_enfant: grilleAdulteEnfant, motif: motifBrut,
-                    pose_par: "update-job-status (reprises épuisées : la grille lue ne correspond pas à l'annonce)",
+                    valeur_offerte_par_vinted: valeurOfferte,
+                    pose_par: valeurOfferte
+                      ? "update-job-status (reprises épuisées : la valeur EST dans la liste servie — la saisie n'atteint pas le formulaire)"
+                      : "update-job-status (reprises épuisées : la grille lue ne correspond pas à l'annonce)",
                   },
                 };
-                messageEffectif =
-                  "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
-                  `Le formulaire Vinted n'a pas accepté ${resume}` +
-                  `${grilleAdulteEnfant ? " : la grille de tailles proposée était une grille adulte, alors que ton annonce est en catégorie enfant" : ""}. ` +
-                  "Ce n'est pas une information manquante, ton annonce la porte déjà. " +
-                  "Relance depuis l'app ; si ça se reproduit, écris-nous et on regarde la catégorie de l'annonce.";
-                raisonRequalif = `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}) : ${GRILLE_MAX_REPRISES} reprises épuisées, needs_user avec le vrai motif`;
+                messageEffectif = valeurOfferte
+                  ? "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted, " +
+                    "rien n'a été envoyé et rien n'a été supprimé. " +
+                    `Le formulaire Vinted proposait bien ${resume}, mais notre saisie n'est pas arrivée jusqu'à lui : ` +
+                    "le champ était encore vide au moment du contrôle. " +
+                    "Ça vient de chez nous, pas de ton annonce ni de sa catégorie — on reprend au prochain passage."
+                  : "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+                    `Le formulaire Vinted n'a pas accepté ${resume}` +
+                    `${grilleAdulteEnfant ? " : la grille de tailles proposée était une grille adulte, alors que ton annonce est en catégorie enfant" : ""}. ` +
+                    "Ce n'est pas une information manquante, ton annonce la porte déjà. " +
+                    "Relance depuis l'app ; si ça se reproduit, écris-nous et on regarde la catégorie de l'annonce.";
+                raisonRequalif = valeurOfferte
+                  ? `pré-vol négatif alors que « ${valeurDeLaListe} » FIGURE dans la liste servie (${cles.join(", ")}) : saisie non commitée au formulaire, ce n'est pas la grille`
+                  : `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}) : ${GRILLE_MAX_REPRISES} reprises épuisées, needs_user avec le vrai motif`;
                 console.log(
                   `[update-job-status] userId=${user.id} job=${jobId} — pré-vol négatif (${cles.join(", ")}) malgré ${GRILLE_MAX_REPRISES} reprises : ` +
                   `needs_user conservé, message « grille incohérente », plus aucun champ demandé`,
