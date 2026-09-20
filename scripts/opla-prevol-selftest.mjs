@@ -17,8 +17,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // n'existe pas. Le module de pré-vol le prévoit et se publie alors sur
 // globalThis (même chemin que dans le monde isolé d'un content script) — c'est
 // donc EXACTEMENT le code que Chrome exécutera qui est testé ici, pas une copie.
+// Le vocabulaire des tailles est injecté AVANT le pré-vol par OPLA_SCRIPTS
+// (background.js) et se publie lui aussi sur globalThis. On le charge dans le
+// même ordre, sinon le test exercerait le REPLI (égalité stricte) et pas le
+// chemin que Chrome emprunte réellement.
+await import(pathToFileURL(path.join(ROOT, 'chrome-extension/content-scripts/tailles-vocabulaire.js')).href);
 await import(pathToFileURL(path.join(ROOT, 'chrome-extension/content-scripts/opla-prevol.js')).href);
 const { oplaPrevol, OPLA_PREVOL_MOTIFS: M } = globalThis;
+if (typeof globalThis.taillesVocabulaire?.tailleDansGrille !== 'function') {
+  console.error('tailles-vocabulaire.js n a pas publié taillesVocabulaire'); process.exit(1);
+}
 if (typeof oplaPrevol !== 'function') { console.error('opla-prevol.js n a pas publié oplaPrevol'); process.exit(1); }
 
 // ── Référentiel, lu dans les fichiers relevés ────────────────────────────────
@@ -45,7 +53,18 @@ const COULEURS = fs.readFileSync(path.join(ROOT, 'docs/opla/colors.txt'), 'utf8'
 const MATIERES = fs.readFileSync(path.join(ROOT, 'docs/opla/materials.txt'), 'utf8').trim().split('\n')
   .map(l => l.split('|')).map(([code, title]) => ({ code, title }));
 
-const ref = { feuilles, noeuds, grillePour, couleursPour: () => COULEURS, matieresPour: () => MATIERES };
+// Le chemin de libellés d'un code, comme opla.js le rend depuis l'arbre VIVANT
+// (`cheminDe`). Il donne la BRANCHE — « Femmes », « Hommes », « Enfants » —, et
+// c'est elle qui autorise ou non la table femme nombre → lettre.
+const parentDe = new Map(cats.map(c => [c[1], c[3]]));
+const titreDe = new Map(cats.map(c => [c[1], c[2]]));
+const cheminDe = (code) => {
+  const out = [];
+  for (let c = String(code ?? '').trim(), n = 0; c && noeuds.has(c) && n < 12; c = parentDe.get(c) ?? '', n++) out.unshift(titreDe.get(c));
+  return out;
+};
+
+const ref = { feuilles, noeuds, grillePour, cheminDe, couleursPour: () => COULEURS, matieresPour: () => MATIERES };
 // Référentiel HISTORIQUE, sans les deux listes : prouve qu'un pré-vol appelé
 // avec l'ancien contrat ne casse pas, et qu'il DIT qu'il n'a pas pu vérifier.
 const refSansListes = { feuilles, noeuds, grillePour };
@@ -206,6 +225,151 @@ verif.push(['liste indisponible → le DOUTE est tracé',
 
 console.log('');
 for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '  KO  '} ${nom}`); }
+
+
+// ── LA TAILLE SE TRADUIT AVANT D'ÊTRE REFUSÉE (2026-09-20, passe 4) ────────
+// Les refus mesurés sur le parc : « 5 ans » contre LEGGINGS_GIRLS_NEW, dont
+// la grille contient `5Y` (titre Opla : « 5 ans »), et « 18 mois » contre une
+// grille qui contient `18M`. C'était une égalité de CHAÎNES.
+// ⛔ Ce qui doit rester refusé le reste : « 38 » contre des lettres et
+//    « 44.5 » contre des pointures entières sont des CONVERSIONS de système.
+{
+  const fsx = await import('node:fs');
+  const prevol = fsx.readFileSync('chrome-extension/content-scripts/opla-prevol.js', 'utf8');
+  const vocab = fsx.readFileSync('chrome-extension/content-scripts/tailles-vocabulaire.js', 'utf8');
+  const partage = fsx.readFileSync('supabase/functions/_shared/tailles.js', 'utf8');
+  // ⚠️ `dit` compte dans le MÊME `ko` que le reste : la version précédente ne
+  //    posait que `process.exitCode`, et la ligne de résumé annonçait
+  //    « TOUT PASSE » sur quatre échecs affichés juste au-dessus.
+  const dit = (nom, c, detail) => { if (!c) ko++; console.log(`  ${c ? 'ok  ' : '❌  '} ${nom}${c || detail === undefined ? '' : `  → ${detail}`}`); };
+
+  console.log('\nLA TAILLE SE TRADUIT AVANT D\'ÊTRE REFUSÉE');
+  // ⛔ CES CONTRÔLES EXÉCUTENT LE PRÉ-VOL, ils ne lisent pas son texte. La
+  //    version précédente ne faisait que des regex sur le fichier : elle est
+  //    passée AU VERT sur un appel qui lisait `traduite.code` quand le module
+  //    rend `{ valeur, motif }` — le payload serait parti avec la chaîne
+  //    « [object Object] » comme taille. Un test qui relit le code ne prouve
+  //    que l'orthographe du code.
+  // LEGGINGS_GIRLS_NEW est en G2 (29 tailles enfant, `5Y`…) ; SUMMER_DRESSES
+  // en G1 (14 lettres) ; MEN_SNEAKERS en G3 (pointures ENTIÈRES 14→50).
+  const enfant = (taille) => oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'LEGGINGS_GIRLS_NEW', taille } }), ref);
+  const sizeDe = (v) => v?.corps?.metadata?.sizes?.[0] ?? null;
+
+  const traduits = [
+    ['« 5 ans » → 5Y   (le refus mesuré d\'Ornella)', '5 ans', '5Y'],
+    ['« 12 ans » → 12Y (le refus mesuré du 18/09)', '12 ans', '12Y'],
+    ['« 18 mois » → 18M', '18 mois', '18M'],
+    ['« 12-18 mois » → 12-18M', '12-18 mois', '12-18M'],
+    ['« 8A » → 8Y', '8A', '8Y'],
+    ['« 6 ans / 116 cm » → 6Y (étiquette composite Vinted)', '6 ans / 116 cm', '6Y'],
+  ];
+  for (const [nom, brut, attendu] of traduits) {
+    const v = enfant(brut);
+    dit(`${nom} — et c'est la valeur de la GRILLE qui part`, v.ok === true && sizeDe(v) === attendu, sizeDe(v));
+  }
+
+  console.log('\n… ET CE QUI DOIT RESTER REFUSÉ LE RESTE');
+  const refuses = [
+    ['« 23 mois » : 23M n\'existe pas (24M est une AUTRE taille)', enfant('23 mois')],
+    ['« 2 ans » ne devient pas 24M — Opla porte les deux, on ne gomme pas', null],
+    ['« 18 mois » contre des lettres = le RAYON est faux, pas la taille',
+      oplaPrevol(avec({ platform_fields: { taille: '18 mois' } }), ref)],
+    ['« XS » contre une grille enfant = le RAYON est faux', enfant('XS')],
+    ['« 44.5 » contre des pointures entières = limite d\'Opla',
+      oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MEN_SNEAKERS', taille: '44.5' } }), ref)],
+    ['« 44,5 » aussi (la virgule ne fabrique pas une pointure)',
+      oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MEN_SNEAKERS', taille: '44,5' } }), ref)],
+  ];
+  for (const [nom, v] of refuses) {
+    if (v === null) { const w = enfant('2 ans'); dit(nom, w.ok === true && sizeDe(w) === '2Y', sizeDe(w)); continue; }
+    dit(nom, v.ok === false && v.motif === M.TAILLE_HORS_GRILLE, `${v.ok} / ${v.motif}`);
+  }
+  dit('« 44.5 » : le message dit la LIMITE, il ne propose pas 44 ni 45',
+    !/\b4[45]\b\s*(ou|à la place|plutôt)/i.test(
+      oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MEN_SNEAKERS', taille: '44.5' } }), ref).message));
+
+  console.log('\nLA TABLE NOMBRE → LETTRE : RELEVÉE CHEZ VINTED, BORNÉE AUX FEMMES');
+  // Opla ne publie AUCUNE équivalence numérique (relevé 20/09 : G1 = « XXS »
+  // … « 8XL »). Vinted si, dans /api/v2/size_groups groupe 4 (« M / 38 / 10 »).
+  // ⛔ Le MÊME « 38 » est une pointure dans les groupes 7 et 38 du MÊME
+  //    référentiel. La table ne sort donc que sous Femmes, et uniquement
+  //    quand la grille cible n'écrit QUE des lettres.
+  const sousFemmes = (cat, taille) => oplaPrevol(avec({ platform_fields: { oplaCategoryCode: cat, taille } }), ref);
+  const G1 = grillePour('SUMMER_DRESSES');
+  for (const [nombre, lettre] of Object.entries(globalThis.taillesVocabulaire.TAILLE_FEMME_LETTRE_PAR_NOMBRE)) {
+    const v = sousFemmes('SUMMER_DRESSES', nombre);
+    // La table relevée chez Vinted descend jusqu'à XXXS ; la grille G1 d'Opla
+    // s'arrête à XXS. Une lettre que la CIBLE n'écrit pas ne se sert pas — on
+    // ne rapproche pas « 30 » du XXS le plus proche.
+    if (G1.includes(lettre)) dit(`robe femme « ${nombre} » → ${lettre}`, v.ok === true && sizeDe(v) === lettre, sizeDe(v));
+    else dit(`robe femme « ${nombre} » : ${lettre} absent de la grille Opla → REFUSÉ, pas rapproché`,
+      v.motif === M.TAILLE_HORS_GRILLE, `${v.ok} / ${sizeDe(v)}`);
+  }
+  dit('« 46 » (hors table femme) reste REFUSÉ — on ne devine pas',
+    sousFemmes('SUMMER_DRESSES', '46').motif === M.TAILLE_HORS_GRILLE);
+  dit('HOMMES : « 36 » de pantalon n\'est pas un S, il reste REFUSÉ',
+    sousFemmes('MEN_TRO_OTHER', '36').motif === M.TAILLE_HORS_GRILLE);
+  dit('HOMMES : « 38 » de t-shirt reste REFUSÉ',
+    sousFemmes('MEN_TOP_T_SHIRTS', '38').motif === M.TAILLE_HORS_GRILLE);
+  dit('ENFANTS : « 38 » reste REFUSÉ (la table est une table FEMME)',
+    sousFemmes('TOPS_GIRLS_NEW', '38').motif === M.TAILLE_HORS_GRILLE);
+  dit('SOUTIENS-GORGE (G4 : XS…XXL + 75A…) : « 38 » est un tour de dos, REFUSÉ',
+    sousFemmes('BRAS', '38').motif === M.TAILLE_HORS_GRILLE);
+  dit('CHAUSSURES femme : « 38 » reste la POINTURE 38, pas un M',
+    sizeDe(sousFemmes('WOMEN_TRAINERS', '38')) === '38');
+  dit('la table du vocabulaire est bien celle relevée chez Vinted (8 lignes, 30→44)',
+    JSON.stringify(globalThis.taillesVocabulaire.TAILLE_FEMME_LETTRE_PAR_NOMBRE)
+    === JSON.stringify({ '30': 'XXXS', '32': 'XXS', '34': 'XS', '36': 'S', '38': 'M', '40': 'L', '42': 'XL', '44': 'XXL' }));
+  dit('il n\'existe qu\'UNE table dans le dépôt (Vinted la re-exporte, ne la recopie pas)',
+    /export \{ TAILLE_FEMME_LETTRE_PAR_NOMBRE \} from "\.\/tailles\.js";/
+      .test(fsx.readFileSync('supabase/functions/_shared/vinted-taille-republication.ts', 'utf8')));
+
+  console.log('\nAUCUNE TAILLE QUI PASSAIT NE CESSE DE PASSER (G1, G2, G3)');
+  // La traduction ne peut qu'ÉLARGIR : première étape du module = l'égalité
+  // exacte. On le prouve sur les 80 valeurs des trois grilles du parc, pas sur
+  // un raisonnement.
+  let intactes = 0, perdues = [];
+  for (const [cat, code] of [['SUMMER_DRESSES', 'G1'], ['LEGGINGS_GIRLS_NEW', 'G2'], ['MEN_SNEAKERS', 'G3']]) {
+    for (const t of grillePour(cat) || []) {
+      const v = oplaPrevol(avec({ platform_fields: { oplaCategoryCode: cat, taille: t } }), ref);
+      if (v.ok === true && sizeDe(v) === t) intactes++; else perdues.push(`${code}:${t}→${v.motif || sizeDe(v)}`);
+    }
+  }
+  dit(`les ${intactes} valeurs des grilles G1+G2+G3 partent inchangées`, perdues.length === 0, perdues.join(' '));
+
+  console.log('\nLE REPLI, QUAND L\'INJECTION EST PARTIELLE');
+  const garde = globalThis.taillesVocabulaire;
+  delete globalThis.taillesVocabulaire;
+  dit('sans vocabulaire, « 5 ans » est refusé (on ne laisse JAMAIS passer)',
+    enfant('5 ans').motif === M.TAILLE_HORS_GRILLE);
+  dit('sans vocabulaire, « 5Y » passe toujours', sizeDe(enfant('5Y')) === '5Y');
+  globalThis.taillesVocabulaire = garde;
+  dit('le repli strict est bien écrit dans le pré-vol',
+    /grille\.indexOf\(taille\) === -1 \? null : \{ valeur: taille/.test(prevol));
+  dit('le refus garde son message et ses options quand la traduction échoue',
+    /if \(!traduite\) \{[\s\S]{0,900}?MOTIFS\.TAILLE_HORS_GRILLE/.test(prevol));
+
+  console.log('\nLE VOCABULAIRE EST UNE COPIE FIDÈLE, PAS UNE SECONDE RÈGLE');
+  // Les DEUX seules transformations que le générateur s'autorise. Si l'une
+  // change ici sans changer là-bas, ce contrôle tombe — c'est lui qui a vu
+  // que le fichier généré n'avait pas été refait après la dernière correction.
+  const regleSource = partage
+    .replace(/^export function /gm, 'function ')
+    .replace(/^export const /gm, 'const ');
+  dit('tailles-vocabulaire.js contient la règle partagée à l\'octet près',
+    vocab.includes(regleSource));
+  dit('aucun `export` ne survit (un content script MV3 n\'est pas un module)',
+    !/^export\b/m.test(vocab));
+  dit('et il publie les trois fonctions ET la table',
+    /globalThis\.taillesVocabulaire = \{[\s\S]{0,200}?memeTaille[\s\S]{0,200}?tailleDansGrille[\s\S]{0,200}?diagnosticTaille[\s\S]{0,200}?TAILLE_FEMME_LETTRE_PAR_NOMBRE/.test(vocab));
+  dit('il est déclaré AVANT opla-prevol.js dans l\'injection',
+    (() => {
+      const bg = fsx.readFileSync('chrome-extension/background.js', 'utf8');
+      const l = /const OPLA_SCRIPTS = \[([^\]]+)\]/.exec(bg)?.[1] ?? '';
+      return l.indexOf('tailles-vocabulaire') > -1 && l.indexOf('tailles-vocabulaire') < l.indexOf('opla-prevol');
+    })());
+}
+
 
 console.log(`\n${ko === 0 ? 'TOUT PASSE' : ko + ' ÉCHEC(S)'} — ${cas.length + verif.length} contrôles`);
 process.exit(ko === 0 ? 0 : 1);

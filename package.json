@@ -41,6 +41,8 @@
     "selftest:deplacement-resolution": "node scripts/verifier-deplacement-resolution.mjs",
     "selftest:rayon-vaut-pour-larticle": "node --import ./scripts/loader-ext.mjs scripts/rayon-vaut-pour-larticle-selftest.mjs",
     "selftest:isbn-champ-absent": "node scripts/isbn-champ-absent-selftest.mjs",
+    "selftest:opla-prevol": "node scripts/opla-prevol-selftest.mjs",
+    "gen:tailles-content-script": "node scripts/gen-tailles-content-script.mjs",
     "mesure:rayon-trou-lexical": "node --import ./scripts/loader-ext.mjs scripts/rayon-trou-lexical-mesure.mjs",
     "selftest:suppression-vinted-antirobot": "node scripts/suppression-vinted-antirobot-selftest.mjs"
   },

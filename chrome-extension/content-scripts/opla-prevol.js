@@ -222,15 +222,62 @@
       if (!taille) {
         return refus(MOTIFS.TAILLE_REQUISE, `La catégorie « ${code} » exige une taille.`, "size", optionsTaille);
       }
-      if (grille.indexOf(taille) === -1) {
+      // ── TRADUIRE AVANT DE REFUSER (2026-09-20, passe 4) ─────────────────
+      // 🚨 C'ÉTAIT UNE ÉGALITÉ DE CHAÎNES (`grille.indexOf(taille)`), et elle
+      //    a refusé des tailles qui SONT dans la grille, écrites autrement :
+      //      · « 5 ans »  contre LEGGINGS_GIRLS_NEW, qui contient `5Y`
+      //        dont le titre Opla est littéralement « 5 ans » ;
+      //      · « 18 mois » contre une grille qui contient `18M` = « 18 mois ».
+      //    Le module qui sait traduire ça existe depuis le 18/09
+      //    (_shared/tailles.js, « TRADUIRE, JAMAIS CONVERTIR ») ; il vivait
+      //    côté serveur et le content script ne pouvait pas l'appeler. Il est
+      //    désormais injecté avec nous (tailles-vocabulaire.js, OPLA_SCRIPTS).
+      // ⛔ CE N'EST PAS UNE CONVERSION : « 5 ans » → `5Y` est la MÊME taille,
+      //    deux orthographes. « 38 » → « M » resterait une conversion de
+      //    système, et le module la refuse toujours.
+      // ⛔ LA GARDE NE FAIBLIT PAS : si la traduction ne donne rien, on refuse
+      //    exactement comme avant, avec la même liste d'options.
+      // ⚠️ Repli : si le vocabulaire n'est pas là (injection partielle), on
+      //    retombe sur l'égalité stricte — jamais sur « on laisse passer ».
+      // ── « 38 » SUR UNE GRILLE DE LETTRES : LA TABLE FEMME, ET ELLE SEULE ──
+      // Opla ne publie AUCUNE équivalence numérique (relevé du 20/09 : la
+      // grille G1 écrit « XXS »… « 8XL », rien d'autre). Vinted, si :
+      // /api/v2/size_groups groupe 4 écrit « M / 38 / 10 ». On lit SA table,
+      // déjà relevée dans le projet depuis le 10/09.
+      // ⛔ Elle ne vaut que pour la branche FEMMES : le MÊME « 38 » est une
+      //    pointure ailleurs, et un « 36 » d'homme est un tour de taille.
+      //    La branche se lit dans l'arbre Opla VIVANT (ref.cheminDe), pas
+      //    dans platform_fields.oplaCategoryPath — absent de 64 jobs sur 159.
+      const branche = typeof ref.cheminDe === "function" ? ref.cheminDe(code)?.[0] : null;
+      const femmes = String(branche ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .toLowerCase().trim() === "femmes";
+
+      const vocab = globalThis.taillesVocabulaire;
+      // ⚠️ Le module rend { valeur, motif } — `valeur` est l'option de la
+      //    grille, écrite EXACTEMENT comme la grille l'écrit. Lire un autre
+      //    champ donnerait « [object Object] » dans le payload.
+      const traduite = typeof vocab?.tailleDansGrille === "function"
+        ? vocab.tailleDansGrille(taille, grille, { tableFemme: femmes })
+        : (grille.indexOf(taille) === -1 ? null : { valeur: taille, motif: "exacte" });
+      if (!traduite) {
+        // Deux refus qui n'ont rien à voir ne partagent pas un message : la
+        // grille ne porte pas cette taille (44.5 sur des entiers = limite
+        // d'Opla), ou plusieurs options y répondent (on ne tranche pas).
+        const pourquoi = typeof vocab?.diagnosticTaille === "function"
+          ? vocab.diagnosticTaille(taille, grille, { tableFemme: femmes }) : "hors_vocabulaire";
         return refus(
           MOTIFS.TAILLE_HORS_GRILLE,
           `La taille « ${taille} » n'appartient pas à la grille de « ${code} » ` +
-          `(${grille.length} valeurs : ${grille.slice(0, 6).join(", ")}…). ` +
-          `Opla l'accepterait en 200 : on refuse.`,
+          `(${grille.length} valeurs : ${grille.slice(0, 6).join(", ")}…)` +
+          (pourquoi === "ambigu"
+            ? ` — plusieurs valeurs de la grille lui répondent, on ne tranche pas.`
+            : `. Opla l'accepterait en 200 : on refuse.`),
           "size", optionsTaille,
         );
       }
+      // C'est la valeur DE LA GRILLE qui part, jamais le mot de la personne.
+      const codeTaille = String(traduite.valeur ?? "").trim();
+      if (codeTaille && codeTaille !== taille) tailleRetenue = codeTaille;
     } else if (taille) {
       // grille absente ⇒ pas de champ Taille ⇒ on n'envoie RIEN (on ne refuse
       // pas le job pour autant : on omet, et on le dit dans le verdict).
