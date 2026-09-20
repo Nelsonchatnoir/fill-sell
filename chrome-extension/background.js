@@ -9281,7 +9281,9 @@ async function lireEtatAnnonce(url, platform) {
 //     scripts désenregistrés, et le prochain job redemande.
 const OPLA_ORIGINE = "https://www.opla.co/*";
 const OPLA_SCRIPTS_ID = "fillsell-opla";
-const OPLA_SCRIPTS = ["content-scripts/consentement.js", "content-scripts/opla-prevol.js", "content-scripts/opla.js"];
+// ⚠️ L ORDRE COMPTE : tailles-vocabulaire.js publie sur globalThis et
+// opla-prevol.js l appelle. Il passe donc AVANT lui (2026-09-20, passe 4).
+const OPLA_SCRIPTS = ["content-scripts/consentement.js", "content-scripts/tailles-vocabulaire.js", "content-scripts/opla-prevol.js", "content-scripts/opla.js"];
 const OPLA_MSG_ACCES =
   "Opla attend ton autorisation : dans Chrome, ouvre le menu FillSell (icône de l'extension) " +
   "et appuie sur « Autoriser Opla ». L'annonce repartira toute seule.";
