@@ -130,6 +130,7 @@ import FusionArticleModal from './components/FusionArticleModal';
 import FileAnnoncesADepiler from './components/FileAnnoncesADepiler';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
+import { apresNouvellesPhotos } from './utils/parcoursLens';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -6957,6 +6958,31 @@ export default function App({ loginOnly = false }){
     setDealMicActive(true);
   }
 
+  // ── DE NOUVELLES PHOTOS AU VISEUR = UN NOUVEL ARTICLE (2026-09-20) ────────
+  // Les trois points d'entrée de photos (fichier, appareil photo, presse-
+  // papiers) faisaient déjà DEUX tiers du geste : jeter le résultat d'analyse
+  // et le drapeau « ajouté au stock ». Ils oubliaient le TROISIÈME, le seul qui
+  // écrive en base : l'identifiant de la ligne d'inventaire. Conséquence, quand
+  // le parcours ne repassait pas par le scan payé (qui, lui, le remettait bien
+  // à zéro) : le stepper s'ouvrait sur l'article PRÉCÉDENT, et les photos du
+  // nouvel article écrasaient celles de l'ancien dans `inventaire.photos`.
+  // C'est la cause unique des deux défauts « Publier ouvre un autre article »
+  // et « ces photos ne correspondent plus à l'article analysé ».
+  //
+  // ⛔ LA RÈGLE N'EST PLUS ÉCRITE TROIS FOIS. Elle est énoncée dans
+  //    utils/parcoursLens.js, rejouée par
+  //    scripts/identite-article-lens-selftest.mjs, et appliquée ICI, en un
+  //    seul endroit — c'est la dispersion qui avait laissé un site en retard.
+  // ⛔ ON NE LE FAIT PAS À L'ABANDON du stepper : mêmes photos = même article,
+  //    et lâcher l'identifiant là poserait une DEUXIÈME ligne d'inventaire au
+  //    « Créer l'annonce » suivant (le doublon du 15/09, compte Akld).
+  // Déclarée en `function` : elle est appelée plus haut dans le fichier.
+  function nouvelArticleAuViseur(){
+    const suite=apresNouvellesPhotos({lensInventaireId});
+    setLensResult(null);setLensAdded(false);
+    setLensInventaireId(suite.lensInventaireId);
+  }
+
   // ⚠️ RÉÉCRIT LE 2026-09-04. L'ancienne version RÉÉTIQUETAIT le mime
   // (`ALLOWED_MIMES.includes(rawMime) ? rawMime : "image/jpeg"`) : les octets
   // restaient du HEIC et on les déclarait JPEG à l'IA. Deux dégâts — l'aperçu
@@ -6969,7 +6995,7 @@ export default function App({ loginOnly = false }){
     const files=Array.from(e.target.files||[]);
     if(lensFileRef.current)lensFileRef.current.value="";
     if(!files.length)return;
-    setLensResult(null);setLensAdded(false);
+    nouvelArticleAuViseur();
     const illisibles=[];
     for(const file of files){
       if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");continue;}
@@ -7023,7 +7049,7 @@ export default function App({ loginOnly = false }){
         source:CameraSource.Camera,
       });
       if(!photo.dataUrl)return;
-      setLensResult(null);setLensAdded(false);
+      nouvelArticleAuViseur();
       setLensPhotos(prev=>{
         if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé)
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
@@ -7087,7 +7113,7 @@ export default function App({ loginOnly = false }){
         }catch{/* photo illisible : sautée */}
       }
       if(!converted.length)return;
-      setLensResult(null);setLensAdded(false);
+      nouvelArticleAuViseur();
       setLensPhotos(prev=>{
         const room=5-prev.length; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
         if(room<=0)return prev;

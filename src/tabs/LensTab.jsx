@@ -2,6 +2,7 @@ import { memo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, HelpCircle, X, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
+import { apresFermetureStepper } from '../utils/parcoursLens';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -816,7 +817,18 @@ const LensTab = memo(function LensTab({
           // ligne inventaire) pour revenir au viseur vide. Sans argument
           // (retour arrière au step 0), on garde l'état : c'est un abandon,
           // l'utilisateur peut vouloir reprendre.
-          onClose={(published)=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);if(published){setRestoredInvId(null);resetLensParcours?.();}onStepperOpenChange?.(false);}}
+          // ⛔ `restoredInvId` NE SURVIT PLUS À LA FERMETURE (2026-09-20).
+          //    Il n'existe que pour remonter le stepper après un rechargement
+          //    d'onglet, et il vient du blob hôte — que la première ligne de ce
+          //    handler efface. Le garder au-delà, c'était garder un pointeur
+          //    vers un article que plus rien ne désigne : le parcours suivant
+          //    s'ouvrait dessus, et ses photos écrasaient les siennes.
+          //    La reprise après abandon, elle, ne passe PAS par lui : elle
+          //    repart de lensInventaireId, qu'on garde exprès (mêmes photos =
+          //    même article, sinon on crée une deuxième ligne d'inventaire).
+          //    Règle énoncée dans utils/parcoursLens.js, rejouée par
+          //    scripts/identite-article-lens-selftest.mjs.
+          onClose={(published)=>{clearStepperPersistence();setShowListingPreview(false);setLensListingPhotos([]);setIdentifyResult(null);setIdentifyEchec(false);setRestoredInvId(apresFermetureStepper({restoredInvId},published===true).restoredInvId);if(published){resetLensParcours?.();}onStepperOpenChange?.(false);}}
           supabase={supabase}
           lang={lang}
           isPremium={isPremium}
