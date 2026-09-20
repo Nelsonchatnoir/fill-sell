@@ -43,6 +43,7 @@ import SousPageExpedition from './SousPageExpedition';
 import SousPageTransporteurs from './SousPageTransporteurs';
 import SousPagePreferences from './SousPagePreferences';
 import SousPageCompte from './SousPageCompte';
+import SousPageCatalogueQuarantaine from './SousPageCatalogueQuarantaine';
 
 // ┌─ LES SOUS-PAGES ─────────────────────────────────────────────────────────┐
 // │ UNE ligne par sous-page : son titre (dans le vocabulaire de textes.js)   │
@@ -60,6 +61,7 @@ const SOUS_PAGES = {
   transporteurs: { titre: (T) => T.transporteurs,  Composant: SousPageTransporteurs },
   preferences:   { titre: (T) => T.gPreferences,   Composant: SousPagePreferences },
   compte:        { titre: (T) => T.gCompte,        Composant: SousPageCompte },
+  'catalogue-quarantaine': { titre: (T) => T.champsPlateformes, Composant: SousPageCatalogueQuarantaine },
 };
 
 export default function ReglagesPage({

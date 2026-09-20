@@ -35,8 +35,24 @@
 //    contexte est monté une fois par ReglagesPage.
 import {
   CreditCard, Link2, MapPin, Truck, Repeat, User, Globe, Coins,
-  LifeBuoy, Bug, FileText, Puzzle, ShieldCheck,
+  LifeBuoy, Bug, FileText, Puzzle, ShieldCheck, ListChecks,
 } from 'lucide-react';
+
+// ── QUI VOIT L'ARBITRAGE DU CATALOGUE ──────────────────────────────────────
+// Une seule personne tranche ce qui devient obligatoire pour tout le parc :
+// valider un champ ici le fait apparaître chez TOUS les utilisateurs de la
+// catégorie. Les alias « +suffixe » sont retirés avant comparaison (Gmail les
+// livre à la même boîte) — sinon l'entrée disparaîtrait sur une adresse
+// aliasée. ⚠️ C'est un masque d'AFFICHAGE, pas une garde de données : les
+// tables du catalogue restent lisibles par tout compte connecté (RLS). Fermer
+// vraiment la porte demande une migration, pas cette ligne.
+const ARBITRES = ['nicolas.svobodny@gmail.com', 'hoosslocal@gmail.com'];
+const estArbitre = (c) => {
+  const e = String(c.user?.email ?? '').trim().toLowerCase();
+  if (!e.includes('@')) return false;
+  const [locale, hote] = e.split('@');
+  return ARBITRES.includes(`${locale.split('+')[0]}@${hote}`);
+};
 
 export const GROUPES = [
   // ── 1. ABONNEMENT ────────────────────────────────────────────────────────
@@ -68,6 +84,15 @@ export const GROUPES = [
         libelle: (T) => T.comptesConnectes,
         valeur: (c, T) => (c.sessions.total > 0 ? T.surN(c.sessions.connectes, c.sessions.total) : null),
         ouvre: 'plateformes',
+      },
+      {
+        // Arbitrage du catalogue des champs — réservé. Ce n'est pas un réglage
+        // de compte : c'est une décision qui engage tous les utilisateurs.
+        id: 'champs-plateformes',
+        icone: ListChecks,
+        libelle: (T) => T.champsPlateformes,
+        ouvre: 'catalogue-quarantaine',
+        visible: estArbitre,
       },
     ],
   },
