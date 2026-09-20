@@ -980,7 +980,8 @@ serve(async (req) => {
       const { data: bloques } = await userClient
         .from("cross_post_jobs")
         .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at, error")
-        .eq("platform", "leboncoin").eq("action", "republish").eq("status", "needs_user")
+        .eq("platform", "leboncoin").eq("action", "republish")
+        .in("status", ["needs_user", "failed"])
         .not("inventaire_id", "is", null)
         .limit(20);
       for (const b of (bloques ?? [])) {
@@ -1109,33 +1110,47 @@ serve(async (req) => {
           const descCapture = String(cap["description"] ?? "").trim();
           const descManque = !String((j as { description?: unknown }).description ?? "").trim();
           const nouvelleDesc = descManque && descCapture ? descCapture : null;
-          if (!Object.keys(repris).length && !nouvelleDesc) continue;
+          // ── UNE ANNONCE RETIRÉE QUI N'EST PAS REVENUE : ON LA REPREND ─────
+          // C'est le pire état possible — l'annonce n'existe plus nulle part.
+          // Quand un job en est là, une reprise ne coûte RIEN (il est déjà
+          // payé : aucune pépite, aucun quota, aucun débit) et ne peut que
+          // l'améliorer. Si le redépôt échoue encore, le job redevient
+          // failed/needs_user et y reste.
+          // ⛔ UNE SEULE FOIS, et c'est tracé (`lbc_reprise_auto`). Sans cette
+          //    borne, un job qui rebloque repartirait en boucle.
+          // ⛔ `failed` COMPTE AUTANT QUE `needs_user` : « Picture Organic
+          //    Clothing » était failed, et son annonce est restée hors ligne
+          //    59 HEURES.
+          // ⛔ Ce n'est PAS la garde « sais-tu tout remplir ? » refusée le
+          //    19/09 : celle-là retenait des jobs AVANT le retrait. Celle-ci
+          //    ne peut que remettre en route ce qui est déjà tombé.
+          const statutJob = (j as { status?: unknown }).status;
+          const estHorsLigne =
+            (statutJob === "needs_user" || statutJob === "failed") &&
+            pf["republish_step"] === "deleted" &&
+            !pf["lbc_reprise_auto"] && !pf["lbc_reprise_categorie_url"];
+          // ⚠️ ET ELLE PASSE MÊME SI ON N'A RIEN À COMPLÉTER. Sans cette
+          //    porte, « Picture Organic Clothing » sortait ici : sa catégorie
+          //    était déjà posée, son annonce déjà retirée (donc plus aucun
+          //    relevé à reprendre) — `repris` était vide, on passait au
+          //    suivant, et elle restait hors ligne. Ce n'est pas parce qu'il
+          //    n'y a rien à COMPLÉTER qu'il n'y a rien à FAIRE.
+          const rienACompleter = !Object.keys(repris).length && !nouvelleDesc;
+          if (rienACompleter && !estHorsLigne) continue;
           if (nouvelleDesc) repris["description"] = `${descCapture.length} caractères`;
-          pf["champs_repris_de_l_annonce"] = {
-            le: new Date().toISOString(),
-            pose_par: "get-pending-jobs (annonce en ligne relevée — annonces_plateforme.capture)",
-            repris,
-          };
+          if (!rienACompleter) {
+            pf["champs_repris_de_l_annonce"] = {
+              le: new Date().toISOString(),
+              pose_par: "get-pending-jobs (annonce en ligne relevée — annonces_plateforme.capture)",
+              repris,
+            };
+          }
           const patch: Record<string, unknown> = { platform_fields: pf };
           if (nouvelleDesc) patch["description"] = nouvelleDesc;
-          // ── REMETTRE EN ROUTE CE QUI NE TENAIT QU'À LA CATÉGORIE ──────────
-          // Un job à l'étape `deleted` en needs_user, c'est une annonce HORS
-          // LIGNE qui attend. Quand le seul motif du blocage était la
-          // catégorie absente et qu'on vient de la poser depuis l'adresse, il
-          // n'y a plus rien à attendre de personne : c'est à l'app de
-          // reprendre, pas à la personne de cliquer.
-          // ⛔ UNE SEULE FOIS, et c'est tracé. Sans cette borne, un job qui
-          //    rebloque pour une AUTRE raison repartirait en boucle. Si le
-          //    redépôt échoue encore, il redevient needs_user et y reste.
-          // ⛔ Rien d'autre ne bouge : ni tentatives consommées, ni débit, ni
-          //    ordonnancement. On ne touche pas non plus aux jobs bloqués
-          //    pour une autre cause (texte refusé, session morte…).
-          const estBloqueSurCategorie =
-            (j as { status?: unknown }).status === "needs_user" &&
-            pf["republish_step"] === "deleted" &&
-            categorieParUrl && !pf["lbc_reprise_categorie_url"];
-          if (estBloqueSurCategorie) {
-            pf["lbc_reprise_categorie_url"] = new Date().toISOString();
+          // Rien d'autre ne bouge : ni tentatives consommées, ni débit, ni
+          // ordonnancement, ni créneaux.
+          if (estHorsLigne) {
+            pf["lbc_reprise_auto"] = { le: new Date().toISOString(), categorie_par_url: categorieParUrl };
             patch["platform_fields"] = pf;
             patch["status"] = "pending";
             patch["error"] = null;
@@ -3400,7 +3415,18 @@ serve(async (req) => {
     let nettoyagesLbc = 0;
     try {
       for (const j of out as unknown as Array<Record<string, unknown>>) {
-        if (j.platform !== "leboncoin" || j.action !== "publish" || typeof j.description !== "string") continue;
+        // ── ET LES REPUBLICATIONS AUSSI (2026-09-20) ──────────────────────
+        // Ce nettoyage ne tournait que sur `publish`. Or une REPUBLICATION
+        // repasse par le même formulaire Leboncoin, avec les mêmes règles —
+        // et c'est exactement ce qui a laissé « Picture Organic Clothing
+        // T-shirt » (compte Pro) HORS LIGNE 59 HEURES : retirée le 17/09,
+        // refusée au redépôt par « vous avez utilisé des mots qui ne
+        // respectent pas nos règles de contenu », sur une description qui
+        // porte DIX hashtags quand Leboncoin en accepte cinq. Le nettoyage
+        // existait, il ne la regardait pas.
+        // Le job en base n'est pas modifié : on ne nettoie que le texte SERVI.
+        if (j.platform !== "leboncoin" || (j.action !== "publish" && j.action !== "republish")
+            || typeof j.description !== "string") continue;
         // Contexte (2026-09-10) : la marque de l'article et le titre — les deux
         // règles de la page de correction Leboncoin (5 hashtags max, aucune
         // marque tierce) en ont besoin ; cf. _shared/description-leboncoin.ts.
