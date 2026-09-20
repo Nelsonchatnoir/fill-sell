@@ -4365,10 +4365,18 @@ serve(async (req) => {
           //    la résolution repart des racines toute seule.
           const codeCourant = String(pf.oplaCategoryCode ?? "").trim();
           if (!codeCourant || !oplaNoeud(codeCourant)?.feuille) {
-            const mots = [pf.categorie_objet_ia, pf.categorie_mot_cle_titre, titreParArticle.get(Number(j.inventaire_id))]
+            // ⚠️ LE TITRE PASSE PAR SON PROPRE PARAMÈTRE (2026-09-20). Versé
+            //    dans `mots`, il jouait à égalité avec les mots-objets — et un
+            //    titre est bavard. Job 9cb681ba : mot-objet « briques de
+            //    construction » (aucune feuille), titre « Lego friends l'aire
+            //    de jeux des bébés chiens » → le Lego est parti dans
+            //    « Maison › Animaux › Chiens ». `resoudreCategorieOpla` ne le
+            //    lit maintenant que si les mots-objets n'ont rien donné.
+            const mots = [pf.categorie_objet_ia, pf.categorie_mot_cle_titre]
               .map((m) => String(m ?? "").trim()).filter(Boolean);
+            const titreArticle = String(titreParArticle.get(Number(j.inventaire_id)) ?? "").trim() || null;
             const genreConnu = String(pf.genre ?? "").trim() || valeurCertaine(attrs, "genre")?.v || null;
-            const r = resoudreCategorieOpla({ mots, depart: codeCourant || null, genre: genreConnu });
+            const r = resoudreCategorieOpla({ mots, titre: titreArticle, depart: codeCourant || null, genre: genreConnu });
             if (r.code) {
               pf.oplaCategoryCode = r.code;
               trace.oplaCategoryCode = { valeur: r.code, avant: codeCourant || null, source: `arbre Opla → ${cheminLisible(r.code)}` };
