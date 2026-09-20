@@ -627,6 +627,15 @@ function entetesApiVinted(extra) {
 // en deçà de la reprise stale (15 min) — ne coupe jamais un remplissage lent
 // mais sain, ne fige plus jamais sur un remplissage mort.
 const FETCH_BORNE_MS = 30_000;
+
+// Combien de temps on attend le champ ISBN avant de conclure qu'il n'est pas
+// là. MESURÉ LIVE le 20/09 sur le formulaire de dépôt réel : il apparaît en
+// **186 ms** après le choix de « Bandes dessinées, mangas et romans
+// graphiques ». 15 s est donc un plafond très large — il ne coûte rien quand
+// le champ est là, et il laisse toute sa chance à une page lente avant de
+// dire « absent ». ⛔ Passé ce délai, on SAUTE l'étape, on ne casse rien.
+const ISBN_ATTENTE_MS = 15_000;
+
 async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS) {
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => { try { ctrl.abort(); } catch { /* déjà abandonné */ } }, timeoutMs);
@@ -2315,7 +2324,55 @@ async function fillListingForm(job) {
         console.warn(`[vinted] ISBN « ${fields.isbn} » écarté à la pose — ${norme.raison}`);
         return;
       }
-      const el = await waitForElement('#isbn, [data-testid="isbn--input"]');
+      // ── LE CHAMP ABSENT N'EST PAS UNE PANNE (2026-09-20, passe 3) ────────
+      // 🚨 LE CAS : laforge.vinted, « Black Clover tome 2 », republication du
+      //    20/09 14:02, v0.6.47 — needs_user sur « Élément introuvable:
+      //    #isbn, [data-testid="isbn--input"] ». Le MÊME après-midi, le MÊME
+      //    compte, le MÊME build et la MÊME série ont republié SEPT mangas
+      //    sans un accroc, Black Clover tome 1 compris (14:43, publié).
+      //
+      // RELEVÉ LIVE SUR VINTED LE 20/09, formulaire de dépôt réel :
+      //   · formulaire frais, AUCUNE catégorie → `#isbn` N'EXISTE PAS
+      //     (seuls add-photos-input, title, description, category) ;
+      //   · catégorie « Bandes dessinées, mangas et romans graphiques »
+      //     (Livres et médias > Livres, celle du job) → `#isbn` apparaît en
+      //     **186 ms**, `id="isbn"` ET `data-testid="isbn--input"`.
+      //   Les deux sélecteurs sont donc BONS et le champ est RAPIDE. Le
+      //   plafond de 10 s n'a jamais été le problème.
+      //
+      // CE QUI S'EST RÉELLEMENT PASSÉ SUR CE JOB, lu dans ses propres
+      // champs : `last_diagnostic` = « photos: 3 injectée(s) dans l'input,
+      // 0 vignette(s) posée(s) dans la grille, 0 POST /api/v2/photos 2xx
+      // capturé(s), budget 15000 ms épuisé », et `erreurs_archivees` =
+      // « Reprise après interruption (bloqué 15 min en cours de
+      // traitement) ». La page n'était pas dans l'état attendu : la
+      // catégorie n'avait pas ouvert ses champs dépendants. L'ISBN est
+      // seulement le PREMIER champ de la suite à en dépendre — c'est là que
+      // ça se voit, ce n'est pas là que ça casse.
+      //
+      // ⛔ ET C'EST FATAL POUR RIEN : `etape()` n'avale les erreurs qu'en
+      //    RECRÉATION (`if (!recreation) throw e`). En une-passe, ce throw
+      //    arrête toute la republication — pour un champ que Vinted n'est
+      //    peut-être même pas en train de demander.
+      //    C'est exactement la moitié manquante du correctif de ce matin :
+      //    un ISBN illisible vaut ISBN absent, et un CHAMP absent vaut la
+      //    même chose. On saute l'étape, on n'invente rien, et on laisse
+      //    Vinted refuser lui-même s'il l'exige vraiment — son refus, lui,
+      //    sera le vrai. En une-passe, rien n'a encore été supprimé.
+      // ⛔ LA GARDE `livres_isbn_garde` N'EST PAS TOUCHÉE : elle vit côté
+      //    serveur (update-job-status) et continue de retenir les livres en
+      //    Fiction/Non-fiction sans ISBN. Ce correctif ne l'élargit pas.
+      const el = await waitForElement('#isbn, [data-testid="isbn--input"]', ISBN_ATTENTE_MS).catch(() => null);
+      if (!el) {
+        const note =
+          "le champ ISBN n'est pas sur le formulaire après " + Math.round(ISBN_ATTENTE_MS / 1000) + " s — " +
+          "soit Vinted ne le demande pas dans ce rayon, soit la catégorie n'a pas ouvert ses champs. " +
+          "Étape sautée, aucun ISBN inventé ; si Vinted l'exige, c'est lui qui le dira.";
+        console.warn(`[vinted] ⚠️ ${note}`);
+        warnings.push(note);
+        diagnosticsRecreation.push(`ISBN → champ absent après ${Math.round(ISBN_ATTENTE_MS / 1000)} s`);
+        return;
+      }
       const relire = () => readCommittedValue(el).replace(/[\s-]/g, "");
       // Trace de pose TOUJOURS consignée (2026-08-30, 12 refus nadegemarcelin78
       // sur 0.6.10) : les 12 last_diagnostic disaient « forme non reconnue »
