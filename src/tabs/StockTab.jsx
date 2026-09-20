@@ -77,6 +77,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   fraicheurExtension, detecterRetardHorloge, DESC_MANUELLE_MAX,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
+import { searchMatch } from '../utils/recherche';
 import { attributsDepuisVinted } from '../utils/vintedAttributs';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
@@ -8310,6 +8311,36 @@ const StockTab = memo(function StockTab({
             pastilles={pastillesFiltresStock}
             onToutEffacer={reinitialiserFiltresStock}
           />
+          {/* ── LA RECHERCHE NE PEUT PAS FAIRE SEMBLANT (2026-09-20, 4-d) ────
+              « Baskets 990 noir » était dans le stock de Nico, statut `stock`,
+              et la recherche ne le trouvait pas : c'est un BROUILLON (fiche
+              générée le 13/09, jamais publiée), et la liste retire les
+              brouillons depuis le 15/09 — volontairement, ils ont leur propre
+              bloc. La règle est bonne ; c'est la recherche qui mentait, parce
+              qu'elle hérite d'une liste où l'article n'est plus.
+              Chercher, ce n'est pas parcourir son stock : c'est demander
+              « où est ma chose ». Quand la réponse est « dans les brouillons »,
+              on le DIT, et on ouvre la porte. On ne réintègre pas le brouillon
+              dans la liste : ses gestes (Vendre, prix d'achat) n'existent pas.
+              ⛔ Ne s'affiche QUE si un texte est saisi ET qu'un brouillon y
+                 répond : zéro pixel en plus le reste du temps. */}
+          {!modeBrouillons&&String(search??"").trim()&&brouillons.some(b=>searchMatch(b.item,search))&&(
+            <button type="button" onClick={()=>setModeBrouillons(true)}
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",
+                      background:"#FFF8E7",border:"1px solid #F0DCA8",borderRadius:12,
+                      padding:"9px 11px",font:"inherit",fontSize:12.5,lineHeight:1.45,
+                      color:"#6B4E00",cursor:"pointer"}}>
+              <span style={{fontSize:15,flexShrink:0}}>📝</span>
+              <span style={{flex:1,minWidth:0}}>
+                {lang==='fr'
+                  ?"Cette liste laisse les brouillons de côté, et il y en a qui portent ce texte."
+                  :"This list leaves drafts aside, and some of them match this text."}
+              </span>
+              <span style={{flexShrink:0,fontWeight:600}}>
+                {lang==='fr'?"Les voir":"View"}
+              </span>
+            </button>
+          )}
           {/* Rescapé de la rangée des boutiques : le décalage avec la boutique
               REGARDÉE. Il est dit ICI, sous la pastille qui le provoque — la
               boutique ACTIVE, elle, reste annoncée par l'en-tête permanent

@@ -11,6 +11,7 @@ import {
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
 } from '../utils/shared';
 import { comptabilisable, comptabilisables, totalMarge, totalCA, margeUnitaire } from '../utils/comptabilite';
+import { searchMatch } from '../utils/recherche';
 
 // ── Design 2026 (Lens / navbar) — liste des ventes ──
 // Même système de cards que StockTab (buildCardCss) + stats mensuelles / profit.
@@ -265,15 +266,12 @@ function parsePrix(v){
   return Number.isFinite(n)&&n>=0?n:NaN;
 }
 
-// Même recherche que searchMatch (App.jsx) — cette fonction n'est pas exportée,
-// et le mode « à compléter » reconstruit sa liste depuis groupedSales (non
-// filtré par la recherche) : sans ce filtre, taper un nom puis cliquer le
-// compteur ferait réapparaître des ventes que la recherche venait d'écarter.
-function matchRecherche(s,q){
-  const t=String(q||"").toLowerCase().trim();
-  if(!t) return true;
-  return !!(s.title?.toLowerCase().includes(t)||s.marque?.toLowerCase().includes(t)||s.description?.toLowerCase().includes(t)||s.type?.toLowerCase().includes(t));
-}
+// Le mode « à compléter » reconstruit sa liste depuis groupedSales (non filtré
+// par la recherche) : sans ce filtre, taper un nom puis cliquer le compteur
+// ferait réapparaître des ventes que la recherche venait d'écarter.
+// (2026-09-20) La copie locale a disparu : c'est la MÊME fonction que le stock,
+// dans src/utils/recherche.js.
+const matchRecherche = searchMatch;
 
 const VentesTab = memo(function VentesTab({
   lang, currency, isPremium, isNative, user,

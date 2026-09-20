@@ -77,6 +77,7 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } fro
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
 import { televerserPhotos, menagePhotosArticle } from './utils/photosUpload';
 import { entreesPhotos, urlsPhotos, MAX_PHOTOS } from './utils/photos';
+import { searchMatch } from './utils/recherche';
 import { moveItem } from './utils/photosGalerie';
 import GaleriePhotos from './components/GaleriePhotos';
 import { sonderAnnonceVinted, lireBoutiquesVinted, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
@@ -3757,11 +3758,9 @@ export default function App({ loginOnly = false }){
   // origine : chaque écran qui monte la bannière dit d'où vient le clic.
   // Sans elle, StockTab et VentesTab seraient indiscernables en base.
   const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal(null,props.origine??'banniere')}/>;return C;},[user]);
-  function searchMatch(item,query){
-    if(!query.trim())return true;
-    const q=query.toLowerCase().trim();
-    return item.title?.toLowerCase().includes(q)||item.marque?.toLowerCase().includes(q)||item.description?.toLowerCase().includes(q)||item.type?.toLowerCase().includes(q);
-  }
+  // (2026-09-20) La définition est sortie dans src/utils/recherche.js — elle
+  // existait en double avec `matchRecherche` de VentesTab, qui le disait déjà
+  // dans son propre commentaire. Une règle, un fichier.
   // ── LA CEINTURE, ET LES CLÉS DE COMPARAISON (2026-09-18) ──────────────────
   // `filterMarque` est une LISTE depuis le passage au multiple. Cette fonction
   // accepte aussi une chaîne — l'ancienne forme — et la rend comme une liste
