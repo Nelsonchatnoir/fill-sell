@@ -26,21 +26,18 @@ import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
-import { normalizeVintedColors } from "../utils/vintedColors";
-import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
-import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
-import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeFou";
+import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
+import { lbcProduitsDependants } from "../utils/lbcMaisonJardin";
+import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
-import { resoudreParMot, candidatsParMot, valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
-import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme,
-         VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT } from "../utils/jeuxVideo";
-import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
+import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
+import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
-import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
+import { getEbayCategoryId } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que le filet serveur
@@ -56,9 +53,13 @@ import EbayCompteSection from "./EbayCompteSection";
 import { ebayCompteUtilisable, motifEbayInutilisable, repartirParVoie } from "../utils/ebayCompte";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
-  isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
+  childAxesForGenre,
 } from "../utils/childSizes";
 import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/stockFiltres";
+// La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
+// le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
+// mêmes messages : un déménagement, pas une réécriture (en-tête du module).
+import { resoudrePublication, signatureResolution } from "../utils/resolutionPublication";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -5300,6 +5301,79 @@ export default function ListingPreviewScreen({
       setPlatformListings(data);
   }
 
+  // ══ LA RÉSOLUTION PART DÈS LA GÉNÉRATION (2026-09-20) ═════════════════════
+  // Jusqu'ici, catégorie et champs plateforme se calculaient au CLIC Publier.
+  // L'écran de publication ne pouvait donc rien en montrer : au moment où il
+  // s'affiche, la catégorie n'existe pas encore. Elle se calcule maintenant
+  // juste après la génération, et le clic n'a plus qu'à la reprendre.
+  //
+  // ⛔ CE N'EST QU'UNE AVANCE, JAMAIS UNE AUTORITÉ. handlePublish revérifie
+  //    l'empreinte et recalcule au moindre écart : c'est lui qui décide de ce
+  //    qui part. Si cet effet ne tourne pas du tout, rien ne change pour
+  //    personne — on retombe exactement sur le comportement d'avant.
+  // ⛔ UNE FOIS PAR GÉNÉRATION, pas à chaque frappe. La résolution appelle
+  //    resolve-categorie, qui est payant : la relancer à chaque édition du
+  //    titre coûterait un appel par caractère. Un titre réécrit après coup
+  //    invalide simplement l'empreinte, et le clic recalcule — comme avant.
+  // ⛔ ELLE N'AFFICHE RIEN ET NE BLOQUE RIEN : un échec est silencieux et la
+  //    publication reprend le chemin d'origine.
+  const resolutionPrevolRef = useRef(null);
+  useEffect(() => {
+    if (!platformListings?.platforms) return undefined;
+    const plateformes = [...selected].filter(p => edited[p] && platformListings.platforms[p]);
+    if (!plateformes.length) return undefined;
+    const contexte = {
+      plateformes, selected, edited, initialListing, sharedFields, sharedOverrides,
+      activeAiIcon, activeAiObjet, origineCat, lang, supabase,
+      outils: {
+        platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
+        normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
+      },
+    };
+    const empreinte = signatureResolution(contexte);
+    if (resolutionPrevolRef.current?.empreinte === empreinte) return undefined;
+    let vivant = true;
+    (async () => {
+      try {
+        const resolution = await resoudrePublication(contexte);
+        if (!vivant) return;
+        if (resolution.refus) {
+          // Catégorie non trouvée. On ne dit RIEN ici : la question se pose au
+          // clic, avec son message, exactement comme avant le déplacement.
+          console.warn(`[prévol] résolution non concluante (${resolution.refus.code}) — le clic reposera la question`);
+          return;
+        }
+        // ⛔ LE RÉSULTAT NE SE FOND PAS DANS `edited`, ET C'EST MESURÉ.
+        //    L'intention était de le ranger directement dans
+        //    edited[p].platform_fields. Le rejeu sur 50 articles réels (148
+        //    copies) l'a refusé : en fusionnant, l'état que le clic relit
+        //    n'est plus celui d'où la résolution est partie, et le jour où le
+        //    filet recalcule (titre réécrit, champ corrigé), il repasse sur
+        //    ses propres valeurs. Deux copies sur 148 en sortaient
+        //    différentes de l'ancien chemin — une trace `brand_mismatch` de
+        //    plus sur le `console_brand` que le module jeux vidéo venait de
+        //    poser. Rien de publié ne changeait, mais « identique à 100 % »
+        //    veut dire identique. Sans fusion : 0 écart sur 148, sur les deux
+        //    chemins, IA jointe comme IA injoignable.
+        //    Le résultat vit donc ICI, à côté de `edited` et pas dedans. Il
+        //    est complet (tous les champs, par plateforme) : l'écran unique
+        //    le lira à cette adresse.
+        resolutionPrevolRef.current = { empreinte, resolution };
+        console.log(`[prévol] catégorie et champs résolus dès la génération : ${plateformes.join(", ")}`);
+      } catch (e) {
+        console.warn("[prévol] résolution indisponible — le clic recalculera :", e?.message ?? e);
+      }
+    })();
+    return () => { vivant = false; };
+    // ⛔ `edited` ET `selected` VOLONTAIREMENT HORS DES DÉPENDANCES : le
+    //    déclencheur est la GÉNÉRATION, pas la frappe. Les y mettre relancerait
+    //    la résolution — donc un appel resolve-categorie payant — à chaque
+    //    caractère tapé dans un titre et à chaque case cochée. Ils sont relus
+    //    à frais quand l'effet part ; s'ils ont bougé depuis, l'empreinte ne
+    //    concorde plus au clic et c'est le filet qui recalcule, comme avant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platformListings]);
+
   // ── Champs partagés : setter propagateur + garde générique (Sujet 4) ──────
   // Écrit la source canonique ET la propage aux copies plateformes non
   // éditées à la main (override local sacré, cf. sharedOverrides).
@@ -7073,161 +7147,6 @@ export default function ListingPreviewScreen({
       // explicite (Femme/Homme/Enfant/…) n'est JAMAIS écrasé — seuls
       // vide/"Mixte" le sont, et l'utilisateur peut corriger dans les champs
       // plateforme avant de publier s'il n'est pas d'accord.
-      const iconFor = (platform) => {
-        const pf = edited[platform]?.platform_fields ?? {};
-        return resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
-      };
-      const genreUnresolved = (platform) => {
-        if (!selected.has(platform)) return false;
-        const g = edited[platform]?.platform_fields?.genre ?? "";
-        if (g && g !== "Mixte") return false; // choix explicite respecté
-        const icon = iconFor(platform);
-        if (platform === "vinted") return vintedGenreRequired(icon);
-        // Opla (2026-09-17 soir) : 62 % des feuilles sont sous une racine genrée
-        // (docs/OPLA_MAPPING.md § 7). Sans genre, « t-shirt » tombe sur 4 feuilles
-        // (femme/homme/fille/garçon), rien n'est posé, et l'extension pose la
-        // question (job cb3dfbb6). On résout donc le genre comme pour les trois
-        // autres — mais le défaut « Femme » ne sert JAMAIS à Opla (cf.
-        // autoGenreDefaut) : mieux vaut une question qu'un rayon femme posé en
-        // 200 sur un t-shirt homme.
-        if (platform === "opla") return true;
-        // 🌸 + Mixte résout un vrai rayon eBay (Parfums mixtes) : pas touché.
-        if (platform === "ebay") return ebayGenreRequired(icon) && !getEbayCategoryId(icon, g);
-        if (platform === "beebs") return beebsGenreRequired(icon);
-        return false;
-      };
-      let autoGenre = null;
-      let autoGenreDefaut = false; // « Femme » posé faute de mieux — jamais servi à Opla
-      if (["vinted", "ebay", "beebs", "opla"].some(genreUnresolved)) {
-        autoGenre = [
-          edited.vinted?.platform_fields?.genre,
-          edited.ebay?.platform_fields?.genre,
-          edited.beebs?.platform_fields?.genre,
-          edited.leboncoin?.platform_fields?.univers,
-        ].find(g => g && g !== "Mixte" && g !== "Enfant") ?? null;
-        if (!autoGenre) {
-          const refP = ["vinted", "ebay", "beebs", "leboncoin"].find(p => edited[p]);
-          try {
-            const { data: gRes } = await supabase.functions.invoke("generate-listing", {
-              body: {
-                resolve_genre: true,
-                item_data: {
-                  titre:       edited[refP]?.title       || initialListing?.titre       || "",
-                  marque:      initialListing?.marque      || null,
-                  description: edited[refP]?.description || initialListing?.description || null,
-                  type:        initialListing?.categorie   || null,
-                },
-              },
-            });
-            if (["Femme", "Homme", "Fille", "Garçon", "Bébé"].includes(gRes?.genre)) autoGenre = gRes.genre;
-          } catch { /* IA indisponible : défaut ci-dessous */ }
-        }
-        if (!autoGenre) { autoGenre = "Femme"; autoGenreDefaut = true; }
-      }
-      // Le genre servi à la résolution de catégorie : le défaut « Femme » vaut
-      // pour Vinted/eBay/Beebs (rayon obligatoire), pas pour Opla.
-      const genrePourCategorie = (platform) => (platform === "opla" && autoGenreDefaut ? "" : autoGenre) || "";
-
-      // ── Garde-fou d'insert (2026-07-30) : aucune valeur manifestement
-      // incomplète ou non voulue ne part en prod sans trace. Deux classes
-      // réellement observées en base (8 jobs, 3 comptes, 27→30/07) :
-      //   · valeur d'UNE lettre ("V", "C", "B", "?") — input démonté à la
-      //     première frappe (fix racine dans StepPublish, ceci est le filet) ;
-      //   · marque DIVERGENTE de celle de l'article sans édition explicite
-      //     ("Springfield" → "Levi's") — résolution IA sur liste partielle
-      //     (fix racine dans l'effet resolve_aspects, ceci est le filet).
-      //     ⚠️ TRACE SANS ÉCRASER (décision 30/07 soir) : 10 jobs en base
-      //     portaient une VRAIE marque lue sur l'article (étiquette en photo,
-      //     description) alors que l'inventaire disait « Sans marque » —
-      //     divergente ≠ suspecte. Le critère qui discriminerait est la
-      //     PROVENANCE (lue sur l'article vs choisie dans une liste relevée),
-      //     qu'on ne marque pas aujourd'hui ; la source empoisonnée (listes
-      //     partielles transmises à l'IA) étant tarie à l'amont, écraser ici
-      //     détruirait plus d'information correcte qu'il n'en protégerait.
-      // Toute valeur écartée/corrigée laisse une trace REQUÊTABLE :
-      //   platform_fields->'suspect_values' IS NOT NULL
-      // Format : { "<champ>": { rejected, kept, reason } }.
-      // Tourne AVANT les branches par plateforme : la normalisation Vinted
-      // des couleurs (colors) repart d'un pf.couleur déjà assaini.
-      // `expected` (optionnel) : valeur attendue quand on trace une
-      // divergence SANS la corriger (brand_mismatch) — rejected === kept
-      // signifie « rien retiré, la valeur part telle quelle ».
-      const flagSuspect = (pf, field, rejected, kept, reason, expected) => {
-        pf.suspect_values = {
-          ...(pf.suspect_values ?? {}),
-          [field]: { rejected, kept: kept ?? null, reason, ...(expected !== undefined ? { expected } : {}) },
-        };
-      };
-      // Une lettre seule (ou "?") n'est une valeur plausible pour aucun champ
-      // texte libre — mais "S"/"M"/"L" sont des TAILLES légitimes et "9" une
-      // pointure : les clés taille/pointure/âge et les chiffres sont exclus.
-      const SUSPECT_SINGLE_RE = /^[A-Za-zÀ-ÿ?]$/;
-      const SIZE_LIKE_KEY_RE = /taille|size|pointure|age|âge/i;
-      const brandChannelKey = (platform, k) =>
-        (platform === "vinted" && k === "brand") ||
-        (platform === "leboncoin" && /_brand$/.test(k)) ||
-        ((platform === "beebs" || platform === "ebay") && k === "Marque");
-      // eBay a le même canal d'aspects (ebayAspects, rempli par la même
-      // résolution IA) : même exposition, même filet. Le "p" tapé en Marque
-      // du run réel du 12/07 était exactement cette classe.
-      const ASPECTS_PF_KEY = { ...GENERIC_ASPECTS_PF_KEY, ebay: "ebayAspects" };
-      const sanitizeJobFields = (platform, pf) => {
-        const OPEN_TEXT_KEYS = ["marque", "matiere", "couleur", "modele"];
-        // Espaces parasites des relevés/committs ("Boutique italienne ").
-        for (const k of OPEN_TEXT_KEYS) if (typeof pf[k] === "string") pf[k] = pf[k].trim();
-        // 1. Valeurs d'une lettre sur les champs dédiés — restauration depuis
-        // l'article (valeur IA d'origine) quand elle existe, sinon retrait :
-        // mieux vaut un requis manquant VISIBLE qu'une marque "B" publiée.
-        for (const k of OPEN_TEXT_KEYS) {
-          const v = pf[k];
-          if (typeof v === "string" && SUSPECT_SINGLE_RE.test(v)) {
-            const restore = String(initialListing?.[k] ?? "").trim();
-            const kept = restore.length > 1 ? restore : null;
-            flagSuspect(pf, k, v, kept, "single_char");
-            if (kept) pf[k] = kept; else delete pf[k];
-          }
-        }
-        // 1bis. Même règle sur le canal d'aspects (vintedAspects/lbcAspects/
-        // beebsAspects/ebayAspects), clés de type taille exclues.
-        const aspectsKey = ASPECTS_PF_KEY[platform];
-        const aspects = aspectsKey && pf[aspectsKey] && typeof pf[aspectsKey] === "object" ? { ...pf[aspectsKey] } : null;
-        if (aspects) {
-          for (const [k, v] of Object.entries(aspects)) {
-            if (typeof v !== "string") continue;
-            const t = v.trim();
-            if (t !== v) aspects[k] = t;
-            if (SUSPECT_SINGLE_RE.test(t) && !SIZE_LIKE_KEY_RE.test(k)) {
-              flagSuspect(pf, `${aspectsKey}.${k}`, t, null, "single_char");
-              delete aspects[k];
-            }
-          }
-        }
-        // 2. Marque divergente de celle de l'article sans édition explicite
-        // de CETTE copie (sharedOverrides trace les éditions manuelles ; les
-        // écritures IA n'en posent pas) : TRACÉE, JAMAIS écrasée — une marque
-        // lue sur l'article (étiquette, description) diverge légitimement
-        // d'un inventaire « Sans marque » (cf. bloc de tête du garde-fou).
-        // `rejected: null` = rien retiré, la valeur part telle quelle ;
-        // `expected` = la marque de l'article, pour compter/comparer en SQL.
-        const canonicalMarque = String(sharedFields.marque || initialListing?.marque || "").trim();
-        const overridden = Boolean(sharedOverrides[platform]?.has("marque"));
-        if (canonicalMarque.length > 1 && !overridden) {
-          if (typeof pf.marque === "string" && pf.marque &&
-              normAspectVal(pf.marque) !== normAspectVal(canonicalMarque)) {
-            flagSuspect(pf, "marque", pf.marque, pf.marque, "brand_mismatch", canonicalMarque);
-          }
-          if (aspects) {
-            for (const [k, v] of Object.entries(aspects)) {
-              if (typeof v === "string" && v && brandChannelKey(platform, k) &&
-                  normAspectVal(v) !== normAspectVal(canonicalMarque)) {
-                flagSuspect(pf, `${aspectsKey}.${k}`, v, v, "brand_mismatch", canonicalMarque);
-              }
-            }
-          }
-        }
-        if (aspects) pf[aspectsKey] = aspects;
-      };
-
       // Les plateformes sans adresse sortent AVANT la construction des jobs :
       // spend_coins_and_publish calcule le débit sur `p_jobs`, donc ce qui ne
       // rentre pas ici n'est ni inséré, ni facturé. Les autres partent
@@ -7291,48 +7210,58 @@ export default function ListingPreviewScreen({
           ? "Add your pickup address in Settings → “Leboncoin pickup address” before publishing on Leboncoin or Beebs."
           : "Renseigne ton adresse dans Réglages → « Adresse de remise Leboncoin » avant de publier sur Leboncoin ou Beebs.");
       }
-      // ══ ÉTAPE 2 : LA CATÉGORIE PAR LE MOT, CONTRE NOS ARBRES ══════════════
-      // L'IA a nommé l'objet en français (étape 1). On résout ce nom contre les
-      // FEUILLES RELEVÉES de chaque plateforme, chez nous, sans IA : recherche
-      // texte, instantanée et gratuite. Aucun emoji dans ce chemin — c'est la
-      // sortie de l'intermédiaire qui coûtait « Claviers arrangeurs, synthés »
-      // à une chapka de bébé.
+      // ══ LA RÉSOLUTION — PRÉ-CALCULÉE À LA GÉNÉRATION, RECALCULÉE ICI AU MOINDRE DOUTE ══
+      // Elle vivait ICI, en entier : genre auto-résolu, garde-fou d'insert,
+      // catégorie par le mot, arbitrage IA, champs de chaque plateforme,
+      // vérification du chemin, plausibilité de famille. Elle a DÉMÉNAGÉ dans
+      // utils/resolutionPublication.js pour pouvoir tourner à la fin de la
+      // génération : l'écran de publication ne peut pas montrer une catégorie
+      // qui n'est calculée qu'une seconde plus tard, au clic. Le déménagement
+      // n'a rien réécrit — cf. l'en-tête du module, et
+      // scripts/verifier-deplacement-resolution.mjs qui le reprouve.
       //
-      // ⛔ EXACT, OU RIEN. Une seule feuille dont le libellé est EXACTEMENT le
-      //    mot (jetons identiques, pluriels ramenés au singulier), après
-      //    filtrage par le genre de la fiche. Deux feuilles, ou seulement des
-      //    voisines, ne décident RIEN : on garde le chemin de l'icône, et la
-      //    règle n°2 laissera la plateforme trancher si la source est incertaine.
-      //    « bonnet » rend « Bonnets de bain » et « Bonnets de douche » comme
-      //    voisines : c'est précisément ce qu'il ne faut jamais poser.
-      // ⛔ Les feuilles viennent des RELEVÉS (scripts/gen-arbres-feuilles.mjs) :
-      //    l'IA ne peut pas produire une catégorie qui n'existe pas chez nous.
-      // Index chargés en import() dynamique, une seule fois, ici — au clic
-      // Publier, jamais au démarrage de l'app.
-      //
-      // ── LE MOT QUI NOURRIT L'ARBRE (2026-09-10, GO Nico) ────────────────
-      // Jusqu'ici seul le mot de l'IA entrait ici. Sans lui (scan Lens avant
-      // la v90, IA muette), on retombait DIRECTEMENT sur l'icône du repli
-      // mot-clé — le dernier endroit où l'emoji décidait seul : « jupe » →
-      // 👗 → « Robes > Midi ». Désormais le mot-clé du TITRE (passe 1 de
-      // detectObjectKeywordDetail, la source du vendeur) prend le relais du
-      // mot de l'IA et se compare aux arbres exactement comme lui.
-      // ⛔ Le titre SEUL : un mot-clé lu dans la description est un filet
-      //    trop lâche pour poser une catégorie (« coton côtelé » → « télé »).
-      // ── RÈGLE (a) : SANS MOT, ON NE PUBLIE PAS DANS UNE CATÉGORIE DEVINÉE ─
-      // Ni mot de l'IA, ni mot-clé au titre, ni catalogue Vinted d'origine,
-      // ni famille livres : on s'arrête et on demande, comme sur Beebs (« on
-      // ne publie jamais une catégorie que le pont n'a pas confirmée »).
-      // Mesuré le 10/09 sur 60 j : 2 articles sur 12 sans mot IA auraient été
-      // retenus (combinaison → Téléviseurs, dessous de plat → Assiettes) ;
-      // avec la v90 de lens-analysis (objet joint), quelques-uns par mois.
-      const frTitrePublication = initialListing?.titre ?? edited?.leboncoin?.title ?? edited?.vinted?.title ?? edited?.beebs?.title ?? "";
-      // Le texte FR de l'article — jamais la copie eBay, traduite en anglais.
-      // Sert de FILET à la reconnaissance jeu/console/accessoire (le titre
-      // reste prioritaire), comme la passe 2 de detectObjectKeywordDetail.
-      const frDescriptionPublication = String(
-        initialListing?.description ?? edited?.leboncoin?.description ?? edited?.vinted?.description ?? ""
-      ).slice(0, 400);
+      // ⛔ LE CHEMIN D'ORIGINE RESTE VIVANT, ET C'EST LUI QUI TRANCHE. Le
+      //    pré-calcul peut manquer (article préparé avant l'OTA, brouillon
+      //    repris, génération d'avant ce lot) ou être devenu faux (titre
+      //    réécrit, champ corrigé au stepper, plateformes recochées).
+      //    L'empreinte le dit, et on recalcule ici exactement comme avant.
+      //    Une publication ne doit jamais échouer, ni partir avec moins de
+      //    champs, parce qu'un pré-calcul a manqué : le doute coûte un calcul.
+      const outilsResolution = {
+        platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
+        normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
+      };
+      const contexteResolution = {
+        plateformes: plateformesAPublier,
+        selected, edited, initialListing, sharedFields, sharedOverrides,
+        activeAiIcon, activeAiObjet, origineCat, lang, supabase,
+        outils: outilsResolution,
+      };
+      const empreintePublication = signatureResolution(contexteResolution);
+      const prevol = resolutionPrevolRef.current;
+      const prevolUtilisable = Boolean(
+        prevol
+        && prevol.empreinte === empreintePublication
+        && plateformesAPublier.every(p => prevol.resolution?.pfParPlateforme?.[p])
+      );
+      const resolution = prevolUtilisable
+        ? prevol.resolution
+        : await resoudrePublication(contexteResolution);
+      console.log(
+        `[publish] résolution ${prevolUtilisable ? "reprise du pré-calcul de la génération" : "recalculée au clic (filet)"}` +
+        ` — ${plateformesAPublier.join(", ")}`
+      );
+      // Le refus « on n'a pas reconnu l'objet » était un throw à cet endroit
+      // précis : il l'est resté, au mot près. Seule la résolution a cessé de
+      // lever, pour qu'une génération ne casse pas sur une catégorie absente.
+      if (resolution.refus) throw new Error(resolution.refus.message);
+      const { pfParPlateforme, motCategorie } = resolution;
+      // ── LE CLASSEMENT PAR ÂGE SE RELIT ICI, PAS DANS LE PRÉ-CALCUL ────────
+      // Ces deux valeurs servent, après publication, à ranger la réponse de
+      // l'utilisateur sur l'ARTICLE. Les prendre au pré-calcul ferait ranger
+      // ce que l'écran savait AVANT que la question soit posée : quelqu'un qui
+      // répond « PEGI 12 » au stepper verrait sa réponse perdue. On les relit
+      // donc à frais, sur les mêmes deux sources et dans le même ordre.
       // ── LE CLASSEMENT PAR ÂGE : ON LE REPREND AVANT DE LE REDEMANDER ──────
       // Trois sources, dans cet ordre, la première qui répond gagne :
       //   1. la RÉPONSE de l'utilisateur, déjà dans la copie Vinted — c'est le
@@ -7346,165 +7275,17 @@ export default function ListingPreviewScreen({
         edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT] ?? ""
       ).trim();
       const classementFiche = String(initialListing?.attributs?.classement_age?.v ?? "").trim();
-      const classementConnu =
-        classementUtilisateur
-        || classementFiche
-        || classementAgeEcrit(frTitrePublication, frDescriptionPublication)
-        || null;
-      const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
-      const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
-      const familleLivresFiche = initialListing?.famille === "livres_medias" || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
-      // ⛔ 5ᵉ CLÉ : la catégorie d'ORIGINE (2026-09-19). Même nature que le
-      // catalogue Vinted juste à côté — une catégorie déclarée par la personne
-      // sur la plateforme qui héberge déjà l'annonce. Un article importé d'un
-      // relevé n'est PAS un article dont on ne sait rien : refuser de publier
-      // « faute de savoir ce que c'est » alors que sa catégorie est en base
-      // depuis le relevé, c'est refuser une information qu'on possède.
-      if (!activeAiObjet && !motCleTitre && !catalogVintedFiche && !familleLivresFiche && !origineCat) {
-        console.warn(`[publish] catégorie NON reconnue pour « ${frTitrePublication} » (ni mot IA, ni mot-clé au titre) — publication retenue, on demande`);
-        throw new Error(lang === "en"
-          ? `We couldn't recognise what this item is from « ${frTitrePublication} », so we won't guess its category. Name the object in the title (e.g. "jumpsuit", "trivet", "jacket") or regenerate the listing, then publish again. Nothing was charged.`
-          : `On n'a pas reconnu l'objet dans « ${frTitrePublication} » : on ne devine pas sa catégorie. Nomme l'objet dans le titre (« combinaison », « dessous de plat », « veste »…) ou régénère l'annonce, puis republie. Rien n'a été débité.`);
-      }
-      const motCategorie = activeAiObjet ?? motCleTitre ?? null;
-      const motCategorieSource = activeAiObjet ? "ia" : (motCleTitre ? "mot_cle" : null);
-      // ══ LA FAMILLE DE L'OBJET — SOURCES CERTAINES SEULEMENT (2026-09-10) ══
-      // Cas fondateur : « Salopette Le Mont Saint Michel » (Victor, dddc7f2a),
-      // catalogue Vinted Hommes > Vêtements, partie sur eBay en « Auto, moto >
-      // Vêtements mécanicien > Combinaisons, salopettes » : la seule feuille
-      // eBay qui contient « salopette », passée au genre (aucune branche
-      // genrée), retenue par l'IA faute d'autre candidate. Rien ne comparait
-      // la FAMILLE du chemin à celle de l'objet. Désormais la famille de l'objet
-      // (catalogue Vinted, icône d'autorité — jamais un mot ou une icône
-      // devinés, et plus jamais la taille depuis le 13/09 : elle rangeait les
-      // jouets importés de Vinted en « mode » et faisait écarter leur rayon
-      // Jeux, cf. familleCategorie.js) filtre les feuilles candidates comme le
-      // genre le fait déjà, et contrôle le chemin final avant l'insert (bloc
-      // PLAUSIBILITÉ plus bas). Famille inconnue → rien ne change.
-      const pfFamille = edited[plateformesAPublier[0]]?.platform_fields ?? {};
-      const detIconeFamille = resolveArticleIconDetail({ initialListing, edited, pf: pfFamille, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
-      const familleObjetDetail = familleDeLObjet({
-        catalogId: catalogVintedFiche, icone: detIconeFamille.icon, sourceIcone: detIconeFamille.source,
-        // La catégorie d'origine entre ici comme source CERTAINE, au même rang
-        // que le catalogue Vinted (cf. familleDeLObjet). Le catalog_id ne sait
-        // dire qu'une famille — « mode » — parce que sa table ne couvre que
-        // les branches mode de Vinted ; l'origine en couvre les huit.
-        origine: origineCat,
-      });
-      const familleObjet = familleObjetDetail.famille;
-      if (origineCat) console.log(`[publish] catégorie d'origine (${origineCat.platform}) : ${origineCat.chemin.join(" > ")}${origineCat.genre ? ` · genre ${origineCat.genre}` : ""}`);
-      if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);
-      const categorieParMotParPf = {};
-      // Feuilles écartées par le garde-fou d'escamotage (2026-09-12) : une
-      // correspondance exacte qui ne tenait que parce que des mots étaient
-      // escamotés. On ne pose RIEN à sa place ici — l'étape 3 tranche — mais on
-      // garde la trace sur le job : sans elle, « pourquoi cette catégorie n'a
-      // pas été posée ? » redevient une reconstitution à rebours.
-      const escamotageParPf = {};
-      if (motCategorie) {
-        await Promise.all(plateformesAPublier.map(async (platform) => {
-          const pfE = edited[platform]?.platform_fields ?? {};
-          // ── LE GENRE DE L'ORIGINE, EN DERNIER RECOURS (2026-09-19) ────────
-          // Beebs suffixe ses feuilles « (femme) », « (fille) », eBay écrit
-          // « Femme : vêtements », Opla code GIRLS_/MENS_ : 85 des 192
-          // catégories d'origine relevées portent un genre EXPLICITE. Il ne
-          // passe qu'APRÈS ce que la fiche dit d'elle-même — la personne a pu
-          // corriger le genre dans l'app, et sa correction prime toujours.
-          // ⛔ Sert UNIQUEMENT à filtrer les feuilles candidates ici. Il
-          //    n'est jamais écrit dans platform_fields.genre : ce champ-là
-          //    part dans le formulaire, il ne se déduit pas d'un autre site.
-          const genrePf = pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "";
-          try {
-            const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
-            if (r.certitude === "exact") categorieParMotParPf[platform] = r;
-            if (r.escamotage) {
-              escamotageParPf[platform] = r.escamotage;
-              console.warn(`[publish] ${platform} — ${r.escamotage.motif}`);
-            }
-          } catch (e) {
-            console.warn(`[publish] ${platform} — arbre indisponible pour « ${motCategorie} » :`, e?.message ?? e);
-          }
-        }));
-        const poses = Object.keys(categorieParMotParPf);
-        console.log(
-          `[publish] mot « ${motCategorie} » → catégorie EXACTE sur ${poses.length ? poses.join(", ") : "aucune plateforme"}`
-        );
-      }
-
-      // Candidates ratissées à l'étape 3, gardées pour la VÉRIFICATION du chemin
-      // tiré de l'icône (bloc après la construction des jobs).
-      const candidatsRatisses = {};
-      // ══ ÉTAPE 3 : LA MACHINE PROPOSE, L'IA TRANCHE ════════════════════════
-      // Le mot n'est pas tombé EXACT sur cette plateforme. Plutôt que de
-      // retomber tout de suite sur l'emoji, on RATISSE des candidates dans
-      // l'arbre relevé (dix à vingt feuilles qui ressemblent, de près ou de
-      // loin) et on demande à l'IA laquelle — resolve-categorie vérifie côté
-      // serveur que sa réponse est bien l'une des candidates ENVOYÉES et rend
-      // la candidate d'origine.
-      // Pourquoi pas un rapprochement de lettres : mesuré sur l'arbre réel,
-      // « bonnet » ne ressemble qu'à « Bonnets de bain » (Natation) et
-      // « Bonnets de douche » (Beauté). Un score choisirait l'un des deux ;
-      // seul un modèle sait qu'un bonnet de bébé n'est ni l'un ni l'autre.
-      // ⛔ AUCUN APPEL s'il n'y a rien à choisir : zéro candidate → on garde
-      //    l'emoji, et la règle n°2 laissera la plateforme trancher. Le coût
-      //    ne se paie donc que sur les cas difficiles.
-      // ⛔ L'IA a le droit de répondre « aucune » : on ne pose alors rien.
-      // ⛔ Une source CERTAINE n'est jamais écrasée : on ne ratisse que pour
-      //    les plateformes sans correspondance exacte.
-      if (motCategorie) {
-        const aRatisser = plateformesAPublier.filter(p => !categorieParMotParPf[p]);
-        const candidats = candidatsRatisses;
-        await Promise.all(aRatisser.map(async (platform) => {
-          const pfE = edited[platform]?.platform_fields ?? {};
-          try {
-            const liste = await candidatsParMot(motCategorie, platform, {
-              // Même cascade qu'à l'étape 2 : le genre de l'origine ne parle
-              // qu'après la fiche, et ne sert qu'au filtrage des candidates.
-              genre: pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "",
-              titre: edited[platform]?.title || initialListing?.titre || "",
-              famille: familleObjet,
-            });
-            if (liste.length) candidats[platform] = liste.map(c => ({ chemin: c.chemin, id: c.id }));
-          } catch { /* arbre indisponible : on garde l'icône */ }
-        }));
-        if (Object.keys(candidats).length) {
-          try {
-            const { data: choixIa } = await supabase.functions.invoke("resolve-categorie", {
-              body: {
-                titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
-                attributs: {
-                  genre: sharedFields.genre || autoGenre || "",
-                  taille: sharedFields.taille || initialListing?.taille || "",
-                  marque: sharedFields.marque || initialListing?.marque || "",
-                  objet: motCategorie,
-                },
-                candidats,
-              },
-            });
-            for (const [platform, choix] of Object.entries(choixIa?.choix ?? {})) {
-              if (!Array.isArray(choix?.chemin) || !choix.chemin.length) continue;
-              categorieParMotParPf[platform] = { chemin: choix.chemin, id: choix.id ?? null, choisiParIa: true };
-            }
-            const retenus = Object.keys(choixIa?.choix ?? {});
-            console.log(
-              `[publish] mot « ${motCategorie} » — l'IA a choisi dans nos candidats sur ` +
-              `${retenus.length ? retenus.join(", ") : "aucune plateforme"}` +
-              (choixIa?.refuses?.length ? ` (réponses hors liste ignorées : ${choixIa.refuses.join(", ")})` : "")
-            );
-          } catch (e) {
-            console.warn("[publish] resolve-categorie injoignable — on garde l'icône :", e?.message ?? e);
-          }
-        }
-      }
-
-      // Chemins posés depuis l'ICÔNE (aucun mot exact, aucun arbitrage) — relevés
-      // ici par plateforme pour être VÉRIFIÉS contre le mot juste après.
-      const poseParIcone = {};
+      // Le pré-calcul rend les MÊMES objets à chaque clic : sans copie, une
+      // seconde publication repartirait des champs déjà enrichis par la
+      // première, et le plafond photo Leboncoin s'appliquerait deux fois.
+      const champsResolus = Object.fromEntries(
+        plateformesAPublier.map(p => [p, { ...(pfParPlateforme[p] ?? {}) }])
+      );
       // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
       // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
       // n'ait abouti. Elle est alors écartée du lot AVANT le débit, plus bas.
       let rows = plateformesAPublier.map(platform => {
-        const pf = { ...(edited[platform]?.platform_fields ?? {}) };
+        const pf = champsResolus[platform];
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
         // SAUF plafonnement Leboncoin (quota gratuit par feuille, cf. bloc LBC
         // plus bas). Aucune autre plateforme n'y touche.
@@ -7519,220 +7300,15 @@ export default function ListingPreviewScreen({
             ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
             : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
         }
-        // Dernier filet avant l'insert du job : un état vidé à la main (ou un
-        // `edited` venant d'un chemin qui n'est pas passé par
-        // mergeFieldsWithLens) ne part JAMAIS vide vers l'extension.
-        for (const field of platformFieldsConfig[platform] ?? []) {
-          if (isConditionKey(field.key) && !String(pf[field.key] ?? "").trim())
-            pf[field.key] = defaultConditionFor(field);
-        }
-        sanitizeJobFields(platform, pf);
-        // ══ GARDE-FOU DE CATÉGORIE — LES QUATRE PLATEFORMES (2026-09-07 soir) ══
-        // L'ICÔNE est le pivot unique dont dérivent les quatre catégories. Le
-        // garde-fou la corrige ICI, une fois, AVANT les blocs par plateforme :
-        // il devient structurellement impossible qu'une plateforme reçoive un
-        // filet que les autres n'ont pas. C'était le défaut de la version du
-        // matin, qui ne corrigeait que le CHEMIN Leboncoin — et le soir même,
-        // « Lot de 4 taies d'oreiller » partait en rayon Beauté sur Vinted,
-        // Beebs et eBay (needs_user « État exigé » sur les trois, parce que ces
-        // rayons n'acceptent qu'un état neuf), pendant que Leboncoin passait
-        // par le fourre-tout « Divers > Autres ».
-        const detIcone = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
-        const catalogVinted = initialListing?.vinted_catalog_id ?? null;
-        const garde = gardeFouCategorie({
-          icone: detIcone.icon,
-          sourceIcone: detIcone.source,
-          catalogId: catalogVinted,
-          genre: pf.univers || pf.genre || edited.vinted?.platform_fields?.genre || "",
-          taille: pf.taille || sharedFields.taille || initialListing?.taille || "",
-          typeFiche: pf.categorie || initialListing?.categorie || "",
-          familleFiche: initialListing?.famille || "",
-          iconeSansIa: detIcone.iconeSansIa ?? null,
-        });
-        const iconeArticle = garde.icone ?? detIcone.icon;
-        // TRAÇABILITÉ SUR LES QUATRE PLATEFORMES (elle n'existait que sur
-        // Leboncoin) : un job en main, on doit pouvoir répondre « d'où venait
-        // cette catégorie ? » — y compris pour un job eBay.
-        pf.categorie_icone = iconeArticle;
-        pf.categorie_icone_ia = activeAiIcon ?? null;
-        // Le MOT rendu par l'IA, tel quel. C'est la seule façon de répondre à
-        // « qu'est-ce que l'IA a compris ? » sans reconstituer à rebours trois
-        // transformations — la question posée le 07/09 sur la chapka.
-        pf.categorie_objet_ia = activeAiObjet ?? null;
-        // Le mot-clé lu au TITRE (2026-09-10) : c'est lui qui a nourri l'arbre
-        // quand l'IA n'avait rien dit — la trace doit pouvoir le dire.
-        pf.categorie_mot_cle_titre = motCleTitre ?? null;
-        pf.categorie_source = garde.source;
-        if (garde.corrige) {
-          pf.categorie_garde_fou = {
-            motif: garde.motif, icone_ecartee: garde.iconeEcartee, source_icone: detIcone.source,
-          };
-          console.warn(`[publish] ${platform} — catégorie corrigée par le garde-fou : ${garde.motif}`);
-        }
-        // ── RÈGLE N°2 : LA PLATEFORME BAT UNE ICÔNE DEVINÉE (07/09 soir) ────
-        // Quand notre catégorie n'est qu'une SUPPOSITION de l'IA — aucun
-        // mot-objet dans le titre, aucun catalogue Vinted, aucun garde-fou
-        // pour trancher — la catégorie que la plateforme propose ELLE-MÊME à
-        // partir du titre et des photos fait foi. Elle gagne SILENCIEUSEMENT :
-        // ni écran, ni question. Cas fondateur : « Chapka Obaibi bébé »,
-        // classée « Claviers arrangeurs, synthés » par une icône 🎹 devinée,
-        // alors qu'eBay proposait « Pyjamas » — et nous lui avons désobéi.
-        // ⛔ JAMAIS quand la source est certaine (mot-objet, catalogue Vinted,
-        // famille Lens) : le drapeau n'est alors pas posé.
-        // Lu par : ebay-api-worker (voie API), vinted.js et leboncoin.js
-        // (0.6.21). Beebs n'expose AUCUNE suggestion — son sélecteur est un
-        // arbre nu : rien à préférer là-bas, constaté au relevé.
-        if (categorieIncertaine({ sourceFinale: garde.source, catalogId: catalogVinted })) {
-          pf.categorie_incertaine = true;
-        }
-        // La catégorie tirée du MOT prime sur celle tirée de l'icône : elle
-        // vient du libellé exact d'une feuille relevée, pas d'un emoji.
-        if (escamotageParPf[platform]) pf.categorie_escamotage_ecarte = escamotageParPf[platform];
-        // ══ JEU / CONSOLE / ACCESSOIRE (2026-09-20, demande XEWER) ═══════════
-        // L'icône 🎮 envoyait TOUT le domaine au rayon des machines — et sur
-        // Vinted la catégorie choisit la GRILLE DE COLIS : « Consoles » n'offre
-        // que des paliers en kilos (plancher 5 kg, mesuré sur le parc), donc
-        // l'acheteur d'un jeu DS payait un port de gros colis. Même mécanique
-        // sur Leboncoin (le poids est un critère DE la catégorie) et Beebs
-        // (notre défaut de colis se déduit du chemin).
-        // On ne déplace pas l'icône : on SÉPARE les trois familles et chacune
-        // vise sa feuille relevée, sur les cinq plateformes.
-        // ⛔ La garde, c'est l'icône : hors 🎮 ce bloc n'existe pas. Mesuré le
-        //    20/09 sur 657 articles du parc (85 comptes), confronté à la
-        //    catégorie choisie par les vendeurs eux-mêmes sur 147 d'entre eux :
-        //    141/141 jeux, 4/4 consoles, 1/1 accessoire, AUCUNE bascule à tort.
-        // ⛔ Doute → familleJeuVideo rend null → rien ne change.
-        const jeuVideo = iconeArticle === "🎮"
-          ? familleJeuVideo(frTitrePublication, frDescriptionPublication)
-          : null;
-        const feuilleJeuVideo = jeuVideo ? cheminJeuVideo(platform, jeuVideo) : null;
-        // Elle PRIME sur l'arbitrage par le mot : « Xbox » ou « PS5 » dans un
-        // titre ne dit pas si l'objet est un jeu ou la machine — c'est
-        // exactement ce que cette règle tranche, et le mot ne le sait pas.
-        const parMot = feuilleJeuVideo
-          ? { chemin: feuilleJeuVideo.chemin, id: feuilleJeuVideo.id ?? null, regle: `jeux_video_${jeuVideo.famille}` }
-          : (categorieParMotParPf[platform] ?? null);
-        if (parMot) {
-          pf.categorie_source = parMot.regle?.startsWith("jeux_video")
-            ? "famille_jeu_video"
-            : parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
-          pf.categorie_par_mot = {
-            mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,
-            ...(parMot.choisiParIa ? { choisi_par_ia: true } : {}),
-            // Un job en main doit dire POURQUOI il est dans ce rayon : la
-            // famille reconnue et la règle qui l'a reconnue, pas seulement le
-            // chemin (question posée le 07/09 sur la chapka).
-            ...(jeuVideo ? { famille_jeu_video: jeuVideo.famille, regle_jeu_video: jeuVideo.regle,
-                             machine: jeuVideo.machine?.cle ?? null } : {}),
-            // Synonyme dirigé (categorieParMot.js, SYNONYMES_DIRIGES) : la
-            // règle qui a posé le chemin reste lisible sur le job.
-            ...(parMot.regle ? { regle: parMot.regle } : {}),
-          };
-          delete pf.categorie_incertaine;
-        }
+        // ── L'ADRESSE DE REMISE RESTE AU CLIC (déplacement du 20/09) ───────
+        // Elle est relue FRAÎCHE quelques lignes plus haut, à chaque
+        // publication : quelqu'un qui vient de la saisir dans les Réglages ne
+        // doit pas être bloqué par un état périmé. La figer au pré-calcul
+        // ferait partir sans adresse le job de celui qui l'a renseignée entre
+        // la génération et le clic. Mêmes deux affectations qu'avant, au même
+        // moment qu'avant.
+        if (lbcAddress && (platform === "leboncoin" || platform === "beebs")) pf.adresse = lbcAddress;
         if (platform === "leboncoin") {
-          // La catégorie Leboncoin découle de l'icône DÉJÀ passée au
-          // garde-fou (bloc commun ci-dessus) — plus aucun calcul local.
-          const icon = iconeArticle;
-          const lbcPath = parMot?.chemin ?? getLbcCategoryPath(icon);
-          if (lbcPath) pf.lbcCategoryPath = lbcPath;
-          // Marque du constructeur — le critère `console_brand` existe sur les
-          // DEUX feuilles du domaine (« Jeux vidéo » et « Consoles », relevé du
-          // 20/09) avec la même liste fermée de 10 valeurs. On pose la valeur
-          // EXACTE de cette liste, jamais autre chose ; jamais par-dessus une
-          // saisie de l'utilisateur.
-          if (jeuVideo?.machine?.lbc) {
-            const aspectsLbc = { ...(pf.lbcAspects && typeof pf.lbcAspects === "object" ? pf.lbcAspects : {}) };
-            if (!String(aspectsLbc.console_brand ?? "").trim()) {
-              aspectsLbc.console_brand = jeuVideo.machine.lbc;
-              pf.lbcAspects = aspectsLbc;
-            }
-          }
-          if (!parMot?.chemin && lbcPath) poseParIcone.leboncoin = { chemin: lbcPath, id: null };
-          if (lbcAddress) pf.adresse = lbcAddress;
-          // Nom historique du même drapeau, conservé pour les extensions
-          // ≤ 0.6.20 déjà déployées. La décision, elle, est prise une seule
-          // fois dans le bloc commun ci-dessus. Aucun job ne part sans
-          // catégorie : le chemin reste posé dans tous les cas.
-          if (pf.categorie_incertaine) pf.lbcCategorieIncertaine = true;
-          // ── ORDRE DES CRITÈRES DANS lbcAspects (2026-09-07) ──────────────
-          // Sur les 6 feuilles Maison & Jardin, la liste « Produit » DÉPEND de
-          // l'Univers/Type et se VIDE quand celui-ci change : poser Produit
-          // avant lui le perdrait. La 0.6.21 trie par position dans le DOM ;
-          // les versions ≤ 0.6.20 parcourent lbcAspects dans l'ordre
-          // D'INSERTION des clés — c'est-à-dire l'ordre des saisies dans
-          // l'app, qui ne garantit rien. On réordonne donc ici, une fois, à
-          // l'insert du job : Univers/Type d'abord, Produit ensuite.
-          //
-          // ⛔ ET SURTOUT : ON NE POSE PLUS DE MIROIR lbcProduit. C'était
-          // l'intention première de ce bloc, et elle était FAUSSE : sur les
-          // extensions ≤ 0.6.20, un lbcProduit non vide fait SAUTER toutes les
-          // clés `_type` du canal générique (dedieAvaitValeur), donc le
-          // « Produit » de Décoration n'aurait jamais été posé — exactement le
-          // bug qu'on corrige (job 2374ed7f : lbcProduit = « Objet décoratif »,
-          // l'Univers, et Produit resté vide). Sans miroir, ces versions
-          // posent les DEUX critères par le canal générique. lbcProduit reste
-          // réservé aux routes qui l'écrivent vraiment (Équipement bébé,
-          // Vêtements bébé, plus bas).
-          if (pf.lbcAspects && typeof pf.lbcAspects === "object") {
-            const catKey = Array.isArray(pf.lbcCategoryPath) ? pf.lbcCategoryPath.join(" > ") : "";
-            const clePremier = lbcClePremierCombobox(catKey);
-            const rang = (k) => (k === clePremier ? 0 : /_type$/.test(k) && !/^decoration_type$/.test(k) ? 1 : 2);
-            const ordonne = {};
-            for (const [k, v] of Object.entries(pf.lbcAspects).sort((a, b) => rang(a[0]) - rang(b[0]))) {
-              ordonne[k] = v;
-            }
-            pf.lbcAspects = ordonne;
-          }
-          // Famille > Équipement bébé : Univers* est FONCTIONNEL
-          // (Alimentation/Mobilité/…) et Produit* en dépend — deux critères
-          // bloquants indéductibles du genre (relevé campagne 2026-07-08).
-          // On écrase l'univers genre (IA/stepper) par la valeur mappée
-          // depuis l'icône, et on pose le Produit attendu par l'extension.
-          const babyEquip = getLbcBabyEquipment(icon);
-          if (babyEquip) {
-            pf.univers = babyEquip.univers;
-            pf.lbcProduit = babyEquip.produit;
-          }
-          // ── Vêtements/chaussures ENFANT (2026-07-15) — relevé DOM réel :
-          // LBC a DEUX foyers de tailles enfant STRUCTURÉES (l'assertion
-          // historique « pas de champ Taille côté LBC » était fausse) :
-          //   - Famille > Vêtements bébé : Prématuré → 36 mois, Produit*
-          //     OBLIGATOIRE — seule feuille à porter la grille 0-36 mois ;
-          //   - Mode > Vêtements : grille enfant 3 → 18 ans SEULEMENT si
-          //     Univers = Enfant/Fille/Garçon. Un Univers adulte poserait la
-          //     grille ADULTE en silence (seul risque résiduel identifié par
-          //     le relevé) → on FORCE l'Univers depuis le genre détecté.
-          // Le genre vient de la copie LBC elle-même (univers IA), sinon des
-          // copies sœurs du même run, sinon de l'auto-résolution.
-          const childGenre = [
-            pf.univers,
-            edited.vinted?.platform_fields?.genre,
-            edited.beebs?.platform_fields?.genre,
-            edited.ebay?.platform_fields?.genre,
-            autoGenre,
-          ].find(g => isChildGenre(g)) ?? null;
-          const sizeRoute = lbcChildSizeCategory(pf.taille); // "bebe" | "mode" | null
-          const babyClothingProduct = getLbcBabyClothingProduct(icon);
-          if (babyClothingProduct && lbcPath?.[0] === "Mode" &&
-              (sizeRoute === "bebe" || (!sizeRoute && childGenre === "Bébé"))) {
-            // Taille en mois (ou article Bébé sans taille exploitable) sur un
-            // article d'habillement : la vraie feuille est Vêtements bébé.
-            // Pas d'Univers sur cette feuille (relevé : Genre facultatif,
-            // Produit*, Taille) — le filet Mixte ci-dessous ne s'applique pas.
-            pf.lbcCategoryPath = ["Famille", "Vêtements bébé"];
-            pf.lbcProduit = babyClothingProduct;
-          } else if (childGenre && lbcPath?.[0] === "Mode") {
-            // Fille/Garçon/Enfant sont des valeurs RÉELLES du dropdown
-            // Univers (relevé 2026-07-15) ; « Bébé » n'y existe pas → Enfant
-            // (cas chaussures/accessoires bébé restés sur le rayon Mode).
-            pf.univers = childGenre === "Bébé" ? "Enfant" : childGenre;
-          }
-          // Univers obligatoire sur le rayon Mode LBC ("Veuillez choisir un
-          // univers de vêtement"). Contrairement à Vinted, LBC a un rayon
-          // Mixte → filet sans friction quand l'IA n'a pas tranché.
-          if (!pf.univers && lbcPath?.[0] === "Mode" &&
-              pf.lbcCategoryPath?.[1] !== "Vêtements bébé") pf.univers = "Mixte";
           // ── Quota de photos GRATUITES (2026-08-10, cause de l'échec du job
           // ad915ed5) ───────────────────────────────────────────────────────
           // Relevé LIVE : en Divers > Autres, Leboncoin n'offre que 3 photos.
@@ -7759,218 +7335,6 @@ export default function ListingPreviewScreen({
             );
           }
         }
-        if (platform === "vinted") {
-          // Chemin catalogue Vinted calculé à l'insert : icône objet (mêmes
-          // règles que les tuiles Stock/Ventes) + genre IA/corrigé. null →
-          // pas de categoryPath → l'extension marque le job "failed" avec un
-          // message explicite (fallback volontaire, cf. vintedCategories.js).
-          const icon = iconeArticle; // passée au garde-fou, comme les 3 autres
-          // Genre vide/Mixte sur une catégorie qui l'exige → genre auto-résolu
-          // (cf. bloc autoGenre) : le job part avec un rayon réel au lieu
-          // d'être condamné au fallback.
-          if (autoGenre && vintedGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
-          // Titre de la copie joint (2026-08-08, B3b) : il affine la feuille
-          // enfant (body → Bodies, manteau → Manteaux) — même chemin sinon.
-          const categoryPath = parMot?.chemin ?? getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
-          if (categoryPath) pf.categoryPath = categoryPath;
-          if (!parMot?.chemin && categoryPath) poseParIcone.vinted = { chemin: categoryPath, id: null };
-          // ── Les deux champs que Vinted EXIGE au rayon des jeux ────────────
-          // Relevé du 20/09 (platform_category_aspects) : « Jeux » comme
-          // « Consoles » exigent `video_game_platform` (48 valeurs), et
-          // « Jeux » exige en plus `video_game_ratings` (17 valeurs) — le
-          // classement par âge. Sans eux, le dépôt s'arrête et l'app ne savait
-          // rien ouvrir : cas « Rage 2 » d'ornellaracano (04/09), où le seul
-          // geste possible était d'aller les remplir sur Vinted.
-          // ⚠️ `video_game_ratings` est au PLURIEL — vérifié en prod : le job
-          //    8256bf6d (« Bravely Default II ») est PUBLIÉ avec cette clé.
-          // ⛔ LA PLATEFORME DE JEU SE LIT (« PS5 », « Switch » sont dans le
-          //    titre), LE CLASSEMENT PAR ÂGE NE SE DEVINE PAS : on ne pose que
-          //    ce qui est ÉCRIT noir sur blanc (« PEGI 12 »). Rien d'écrit →
-          //    champ laissé vide, et le stepper pose la question avec la liste
-          //    relevée. Un PEGI faux fait retirer l'annonce.
-          // ⛔ Une valeur déjà posée par l'utilisateur (stepper, mini-éditeur)
-          //    n'est JAMAIS écrasée.
-          if (jeuVideo) {
-            const aspectsJv = { ...(pf.vintedAspects && typeof pf.vintedAspects === "object" ? pf.vintedAspects : {}) };
-            const plateformeJeu = jeuVideo.machine?.vinted ?? null;
-            if (plateformeJeu && !String(aspectsJv[VINTED_CHAMP_PLATEFORME] ?? "").trim()) {
-              aspectsJv[VINTED_CHAMP_PLATEFORME] = plateformeJeu;
-            }
-            const classement = classementPourPlateforme("vinted", classementConnu);
-            if (classement && jeuVideo.famille === "jeu" && !String(aspectsJv[VINTED_CHAMP_CLASSEMENT] ?? "").trim()) {
-              aspectsJv[VINTED_CHAMP_CLASSEMENT] = classement;
-            }
-            if (Object.keys(aspectsJv).length) pf.vintedAspects = aspectsJv;
-          }
-          // Flag statique lu par l'extension : permet un message d'échec
-          // précis ("genre requis") quand un job sans categoryPath vient d'un
-          // article de mode plutôt que d'une icône hors mapping.
-          if (vintedGenreRequired(icon)) pf.vintedGenreRequired = true;
-          // L'extension consomme `colors` (tableau, 2 max côté Vinted).
-          // NORMALISATION vers la palette FERMÉE Vinted (2026-07-30, job
-          // 243097d4 : couleur IA "Argent" ∉ palette → champ laissé vide →
-          // 400 serveur "Le champ Couleur doit être renseigné"). Le split
-          // brut d'avant laissait passer n'importe quel libellé ; désormais
-          // colors ne porte QUE des libellés exacts (variantes normalisées :
-          // Argent→Argenté, Or→Doré…, composés éclatés : "Bleu gris" →
-          // Bleu + Gris, 2 max, dominante d'abord). Rien ne se normalise →
-          // colors ABSENT + color_unmapped = valeur brute, requêtable :
-          //   platform_fields->>'color_unmapped' IS NOT NULL
-          // Vinted UNIQUEMENT : les couleurs LBC/Beebs sont des champs
-          // libres ("Argent" y passe très bien), eBay fait son propre split.
-          if (pf.couleur) {
-            const { colors, unmapped } = normalizeVintedColors(pf.couleur);
-            if (colors.length) {
-              pf.colors = colors;
-            } else {
-              delete pf.colors;
-              if (unmapped) pf.color_unmapped = unmapped;
-            }
-          }
-        }
-        if (platform === "ebay") {
-          // Catégorie eBay posée à l'insert : categoryPath (libellés, pour
-          // les messages d'erreur et la vérification post-navigation) ET
-          // categoryId numérique (c'est LUI que l'extension met dans l'URL
-          // /sl/list — le path ne sert jamais à naviguer). Genre : les
-          // valeurs du stepper (Femme/Homme/Enfant) passent TELLES QUELLES
-          // — eBay a un vrai rayon "Enfant : unisexe" (contrairement à
-          // Vinted/Beebs) ; seul Mixte reste sans rayon (sauf 🌸 parfums).
-          const icon = iconeArticle; // passée au garde-fou, comme les 3 autres
-          // Même auto-résolution que Vinted — sauf si le genre actuel résout
-          // déjà un rayon (🌸+Mixte = Parfums mixtes, rayon réel).
-          if (autoGenre && ebayGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")
-              && !getEbayCategoryId(icon, pf.genre)) pf.genre = autoGenre;
-          // ⚠️ eBay NAVIGUE PAR IDENTIFIANT, pas par chemin (c'est lui qui va
-          // dans l'URL /sl/list ; le chemin ne sert qu'aux messages et à la
-          // vérification). Un chemin venu du mot avec un identifiant venu de
-          // l'icône publierait dans une catégorie qui ne correspond PAS au
-          // libellé affiché — le pire des deux mondes, et invisible. On ne
-          // retient donc le mot que s'il porte les DEUX.
-          const parMotEbay = parMot?.id ? parMot : null;
-          const categoryPath = parMotEbay?.chemin ?? getEbayCategoryPath(icon, pf.genre);
-          const categoryId = parMotEbay?.id ?? getEbayCategoryId(icon, pf.genre);
-          if (categoryPath) pf.ebayCategoryPath = categoryPath;
-          if (categoryId) pf.ebayCategoryId = categoryId;
-          // Le classement d'âge voyage aussi chez eBay (20/09). Relevé sur la
-          // feuille « Jeux » (139973) : aspect « Classification », FACULTATIF,
-          // 5 valeurs — les cinq PEGI, écrites EXACTEMENT comme chez Vinted.
-          // Les 12 autres valeurs de Vinted (USK, ESRB, « Non précisé »)
-          // n'existent pas ici : classementPourPlateforme rend null et on ne
-          // pose rien. Facultatif = jamais bloquant : sans valeur, l'annonce
-          // part quand même.
-          if (jeuVideo?.famille === "jeu") {
-            const classementEbay = classementPourPlateforme("ebay", classementConnu);
-            const aspectsEbay = { ...(pf.ebayAspects && typeof pf.ebayAspects === "object" ? pf.ebayAspects : {}) };
-            if (classementEbay && !String(aspectsEbay[EBAY_ASPECT_CLASSEMENT] ?? "").trim()) {
-              aspectsEbay[EBAY_ASPECT_CLASSEMENT] = classementEbay;
-              pf.ebayAspects = aspectsEbay;
-            }
-          }
-          if (!parMotEbay && categoryPath && categoryId) poseParIcone.ebay = { chemin: categoryPath, id: String(categoryId) };
-          if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
-          // Couleur : l'extension consomme colors[0] (les specifics eBay
-          // Couleur sont mono-valeur) — même split que Vinted, dominante
-          // d'abord.
-          if (pf.couleur && !pf.colors) {
-            const colors = String(pf.couleur)
-              .split(/\s+et\s+|[,/&+]/i)
-              .map(s => s.trim())
-              .filter(Boolean)
-              .slice(0, 2);
-            if (colors.length) pf.colors = colors;
-          }
-        }
-        if (platform === "beebs") {
-          // Même contrat que Vinted/eBay : chemin catalogue calculé à
-          // l'insert depuis l'icône objet + genre. beebsCategories.js gère
-          // déjà lui-même le cas Enfant/Mixte/vide → null (genre Beebs a 5
-          // valeurs Femme/Homme/Fille/Garçon/Bébé, pas de résolution
-          // automatique depuis Enfant pour l'instant, cf. commentaire de
-          // tête du fichier) — pas de blocage dur ici, comme eBay : le flag
-          // beebsGenreRequired est posé pour que l'extension retourne un
-          // needsUser explicite plutôt qu'un échec silencieux.
-          const icon = iconeArticle; // passée au garde-fou, comme les 3 autres
-          // Même auto-résolution que Vinted/eBay. Indispensable ici : l'arbre
-          // Mode Beebs est genré jusqu'aux accessoires (montres, bijoux,
-          // sacs…) — sans genre, AUCUNE montre ne pouvait jamais partir
-          // (pré-check extension → failed à 100 %, cas réel Casio 2026-07-09).
-          if (autoGenre && beebsGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
-          const categoryPath = parMot?.chemin ?? getBeebsCategoryPath(icon, pf.genre);
-          if (categoryPath) pf.beebsCategoryPath = categoryPath;
-          // « Console » est un champ REQUIS de la feuille « Consoles de jeux »
-          // (18 valeurs relevées le 20/09). Il n'existe PAS au relevé de la
-          // feuille « Jeux vidéo » : on ne le pose donc que pour une machine,
-          // là où on sait qu'il est attendu — on ne sème pas un champ qu'on
-          // n'a jamais vu.
-          if (jeuVideo?.famille === "console" && jeuVideo.machine?.beebs) {
-            const aspectsBeebs = { ...(pf.beebsAspects && typeof pf.beebsAspects === "object" ? pf.beebsAspects : {}) };
-            if (!String(aspectsBeebs["Console"] ?? "").trim()) {
-              aspectsBeebs["Console"] = jeuVideo.machine.beebs;
-              pf.beebsAspects = aspectsBeebs;
-            }
-          }
-          if (!parMot?.chemin && categoryPath) poseParIcone.beebs = { chemin: categoryPath, id: null };
-          if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
-          if (lbcAddress) pf.adresse = lbcAddress;
-          // Format du colis (généralisation 2026-07-19 soir) : requis Beebs
-          // sur des catégories de TOUT l'arbre (15 au catalogue : Mode,
-          // Jouets, Puériculture, beauté…), mais le prompt Beebs de
-          // generate-listing ne produit PAS format_colis — seule la copie LBC
-          // le porte. On sème donc la valeur LBC quand la copie Beebs n'en a
-          // pas : beebs.js la mappe sur ses paliers de poids
-          // (BEEBS_PACKAGE_BY_FORMAT) et ne retombe sur le défaut prudent
-          // 1 kg qu'à défaut de toute donnée.
-          if (!String(pf.format_colis ?? "").trim()) {
-            const lbcFormat = String(edited.leboncoin?.platform_fields?.format_colis ?? "").trim();
-            if (lbcFormat) pf.format_colis = lbcFormat;
-          }
-        }
-        if (platform === "opla") {
-          // ── OPLA (2026-09-17 soir) — champs attendus par le connecteur
-          // (content-scripts/opla-prevol.js, docs/OPLA_MAPPING.md § 2) :
-          // oplaCategoryCode (feuille), etat (5 codes), marque (obligatoire,
-          // texte libre), taille (code de la grille de la feuille), couleurs[]
-          // / matieres[] (résolus par le pré-vol contre la liste de la feuille,
-          // l'inconnu est JETÉ avec avertissement — jamais envoyé tel quel).
-          // Catégorie : le MOT → feuille Opla (categorieParMot, id = code).
-          // Sans feuille certaine on ne pose RIEN : le pré-vol pose alors la
-          // question avec les options du NIVEAU qui a échoué (jamais les 8
-          // racines — défaut Blaf69 du 16/09, à ne pas reproduire).
-          const parMotOpla = parMot?.id ? parMot : null;
-          if (parMotOpla) {
-            pf.oplaCategoryCode = String(parMotOpla.id);
-            pf.oplaCategoryPath = parMotOpla.chemin;
-          }
-          const codeEtat = OPLA_ETAT_PAR_LIBELLE[texteComparable(String(pf.etat ?? "")).toLowerCase()];
-          if (codeEtat) { pf.opla_etat_libelle = pf.etat; pf.etat = codeEtat; }
-          // Marque obligatoire chez Opla (« La marque est obligatoire. »),
-          // champ libre : « Sans marque » dit l'absence, comme sur Vinted.
-          if (!String(pf.marque ?? "").trim()) pf.marque = "Sans marque";
-          if (pf.taille) pf.taille = String(pf.taille).replace(/^EU\s*/i, "").trim();
-          if (pf.couleur) {
-            pf.couleurs = String(pf.couleur).split(/\s+et\s+|[,/&+]/i).map(s => s.trim()).filter(Boolean).slice(0, 3);
-          }
-          if (pf.matiere) pf.matieres = [String(pf.matiere).trim()].filter(Boolean);
-        }
-        // ── Tailles ENFANT (2026-07-15) : conversion canonique → libellé
-        // EXACT de la plateforme (référentiel childSizes.js, relevé DOM réel
-        // docs/sizes-baby-child-raw.txt). Les copies affichées gardent la
-        // canonique (« 6 mois ») ; seul le JOB porte le libellé plateforme
-        // (« 3-6 mois / 62 cm » Vinted, « 6 mois (60-66 cm) » Beebs…) pour
-        // que les cascades des content scripts matchent en EXACT — la garde
-        // anti-nombre-nu des scripts interdit désormais le fuzzy numérique
-        // sur les champs taille. Placée APRÈS les blocs plateforme : le genre
-        // auto-résolu (autoGenre) doit déjà être posé — les pointures ne
-        // convertissent que sur genre enfant (« EU 38 » existe en adulte).
-        // null (pas d'équivalent exact, ex. « 18 ans » hors LBC) → canonique
-        // conservée : échec de cascade VISIBLE plutôt que taille fausse.
-        if (pf.taille) {
-          const converted = toPlatformChildSize(pf.taille, platform, {
-            isChildGenre: isChildGenre(pf.genre) || isChildGenre(pf.univers),
-          });
-          if (converted) pf.taille = converted;
-        }
         return {
           user_id:         userId,
           inventaire_id:   addToStock ? currentInvId : null,
@@ -7989,179 +7353,6 @@ export default function ListingPreviewScreen({
           platform_fields: pf,
         };
       });
-      // ══ VÉRIFICATION DU CHEMIN TIRÉ DE L'ICÔNE CONTRE LE MOT (2026-09-08 soir) ══
-      // Cas fondateur : deux soutiens-gorge (Marie-Pierre, 08/09 15:24 et 15:25)
-      // publiés sur Beebs en « Nuit et pyjamas > Pyjamas (femme) », avec
-      // categorie_objet_ia = « soutien-gorge » et categorie_source =
-      // catalog_vinted. MESURÉ : l'étape 3 avait bien tourné (arbitrage du
-      // legging voisin dans categorie_journal à 15:24:17), mais l'arbre Beebs
-      // n'a AUCUNE feuille lingerie hors maternité → zéro candidate → aucun
-      // appel → le chemin de l'ICÔNE (🩲 → Pyjamas) partait tel quel, étiqueté
-      // « catalog_vinted » par le garde-fou — une étiquette qui ne certifie que
-      // la BRANCHE (Mode / Femme), jamais la feuille. Sur les 22 jobs Beebs
-      // « catalog_vinted » de 3 jours, 18 portaient le mot et aucun ne l'avait
-      // utilisé. Le mot juste était en main et ne servait à rien.
-      // RÈGLE : un chemin qui ne vient PAS du mot (icône, transposition du
-      // catalogue Vinted, garde-fou) est VÉRIFIÉ contre le mot avant de partir,
-      // sur les quatre plateformes : l'IA reçoit ce chemin ET les voisines
-      // ratissées à l'étape 3, et tranche — même resolve-categorie, mêmes clés
-      // opaques, même « aucune » légitime. Confirmé → il part, tracé. Une
-      // voisine préférée → elle remplace (source ia_parmi_candidats). « Aucune »
-      // → INCOHÉRENCE : ce chemin ne part pas tel quel. Beebs n'expose aucune
-      // suggestion : le job part SANS chemin et l'extension le met en needs_user
-      // en disant pourquoi (categorie_a_choisir). Vinted, eBay, Leboncoin
-      // gardent le chemin mais FLAGUÉ incertain → la suggestion de la
-      // plateforme gagne (règle n°2, déjà câblée des trois côtés).
-      // ⛔ Sans mot (categorie_objet_ia absent), rien à vérifier : rien ne change.
-      // ⛔ IA injoignable : rien ne change non plus — on ne bloque pas un dépôt
-      //    sur une panne, on le trace (categorie_verification absent).
-      // Coût : un appel Haiku de plus par publication concernée (≈ 0,0013 $,
-      // mesuré le 07/09), soit au pire quelques centimes par jour.
-      if (motCategorie && Object.keys(poseParIcone).length) {
-        const cle = (chemin) => (Array.isArray(chemin) ? chemin : [chemin])
-          .map(s => texteComparable(String(s ?? ""))).join(" > ");
-        const memeChemin = (a, b) => cle(a) === cle(b);
-        const candidatsVerif = {};
-        for (const [pfKey, pose] of Object.entries(poseParIcone)) {
-          const voisines = (candidatsRatisses[pfKey] ?? []).filter(c => !memeChemin(c.chemin, pose.chemin));
-          candidatsVerif[pfKey] = [{ chemin: pose.chemin, id: pose.id ?? null }, ...voisines].slice(0, 20);
-        }
-        let reponse = null;
-        try {
-          const { data } = await supabase.functions.invoke("resolve-categorie", {
-            body: {
-              titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
-              attributs: {
-                genre: sharedFields.genre || autoGenre || "",
-                taille: sharedFields.taille || initialListing?.taille || "",
-                marque: sharedFields.marque || initialListing?.marque || "",
-                objet: motCategorie,
-              },
-              candidats: candidatsVerif,
-            },
-          });
-          reponse = data ?? null;
-        } catch (e) {
-          console.warn("[publish] vérification du chemin de l'icône : resolve-categorie injoignable — chemins conservés :", e?.message ?? e);
-        }
-        const choixVerif = reponse && reponse.motif !== "ia_indisponible" && reponse.choix && typeof reponse.choix === "object"
-          ? reponse.choix : null;
-        if (choixVerif) {
-          // eBay NAVIGUE PAR IDENTIFIANT : un chemin sans id n'y remplace rien.
-          const poserChemin = (platform, pf, chemin, id) => {
-            if (platform === "vinted") pf.categoryPath = chemin;
-            else if (platform === "beebs") pf.beebsCategoryPath = chemin;
-            else if (platform === "leboncoin") pf.lbcCategoryPath = chemin;
-            else if (platform === "ebay") { if (!id) return false; pf.ebayCategoryPath = chemin; pf.ebayCategoryId = id; }
-            return true;
-          };
-          for (const row of rows) {
-            const pose = poseParIcone[row.platform];
-            if (!pose) continue;
-            const pf = row.platform_fields;
-            const choix = choixVerif[row.platform] ?? null;
-            const cheminChoisi = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
-            const trace = { objet: motCategorie, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
-            if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin)) {
-              pf.categorie_verification = { ...trace, verdict: "confirme" };
-              continue;
-            }
-            if (cheminChoisi && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
-              pf.categorie_source = "ia_parmi_candidats";
-              pf.categorie_par_mot = {
-                mot: motCategorie, mot_source: motCategorieSource, chemin: cheminChoisi, id: choix.id ?? null, choisi_par_ia: true, apres_verification: true,
-              };
-              delete pf.categorie_incertaine;
-              delete pf.lbcCategorieIncertaine;
-              pf.categorie_verification = { ...trace, verdict: "remplace", chemin_retenu: cheminChoisi };
-              console.log(`[publish] ${row.platform} — « ${motCategorie} » : l'IA préfère « ${cheminChoisi.join(" > ")} » au chemin de l'icône « ${pose.chemin.join(" > ")} »`);
-              continue;
-            }
-            // INCOHÉRENCE : l'IA refuse le chemin de l'icône et n'en retient aucun autre.
-            pf.categorie_verification = { ...trace, verdict: "incoherent" };
-            pf.categorie_source = "icone_non_confirmee";
-            console.warn(`[publish] ${row.platform} — « ${motCategorie} » : le chemin de l'icône « ${pose.chemin.join(" > ")} » est INCOHÉRENT avec le mot — il ne part pas tel quel`);
-            if (row.platform === "beebs") {
-              delete pf.beebsCategoryPath;
-              pf.categorie_a_choisir = { objet: motCategorie, chemin_ecarte: pose.chemin };
-            } else {
-              pf.categorie_incertaine = true;
-              if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
-            }
-          }
-        }
-      }
-      // ══ PLAUSIBILITÉ DU CHEMIN FINAL — LA FAMILLE (2026-09-10) ══════════
-      // Dernier contrôle avant l'insert, sur les quatre plateformes, quelle
-      // que soit l'origine du chemin (mot, IA parmi candidats, icône, garde-
-      // fou, vérification) : un chemin dont la famille est CONNUE et
-      // INCOMPATIBLE avec la famille CERTAINE de l'objet ne part pas tel quel.
-      //   · Beebs : aucune suggestion de plateforme → le job part SANS chemin
-      //     et l'extension demande (categorie_a_choisir), comme pour une
-      //     incohérence de mot.
-      //   · Vinted, Leboncoin, eBay : chemin gardé mais FLAGUÉ incertain → la
-      //     suggestion de la plateforme gagne (règle n°2, déjà câblée) ; le
-      //     worker eBay, sans suggestion retenue, DEMANDE au lieu de publier
-      //     dans une famille fausse (jamais une catégorie approchée en silence).
-      // ⛔ Famille de l'objet inconnue → rien à contrôler, rien ne change.
-      if (familleObjet) {
-        const cheminDe = (platform, pf) =>
-          platform === "vinted" ? pf.categoryPath
-            : platform === "beebs" ? pf.beebsCategoryPath
-              : platform === "leboncoin" ? pf.lbcCategoryPath
-                : pf.ebayCategoryPath;
-        for (const row of rows) {
-          const pf = row.platform_fields;
-          const chemin = cheminDe(row.platform, pf);
-          if (!Array.isArray(chemin) || !chemin.length) continue;
-          const verdict = plausibiliteDuChemin(row.platform, chemin, familleObjet);
-          if (verdict.ok) continue;
-          pf.categorie_plausibilite = {
-            verdict: "hors_famille", famille_objet: familleObjet, source_famille: familleObjetDetail.source,
-            famille_chemin: verdict.familleChemin, chemin_ecarte: chemin, source_avant: pf.categorie_source ?? null,
-          };
-          pf.categorie_source = "hors_famille";
-          // ── Une confirmation IA ne survit pas à un « hors_famille » sur le
-          // MÊME chemin (2026-09-12, job 1f9d4c82, ornellaracano : « Jouet
-          // VTech – Trompette, mon éléphant des découvertes » → mot « trompette »
-          // → Loisirs > Instruments de musique, CONFIRMÉ par la vérification du
-          // chemin, puis jugé hors famille ici — deux verdicts contraires sur
-          // un même job, et c'est le « confirme » qui se lisait). Le
-          // « confirme » est RETIRÉ : verdict « refuse_hors_famille », l'avis
-          // de l'IA conservé dans la trace (verdict_ia). Le chemin reste
-          // flagué incertain ci-dessous, exactement comme pour tout autre
-          // hors_famille, et l'arbitrage sur les suggestions de la plateforme
-          // tranche. Rien d'autre ne bouge : ni la plausibilité (on ne fait que
-          // lire son verdict), ni l'arbitrage, ni le mot du titre ; aucun
-          // needs_user nouveau. Périmètre STRICT : verdict « confirme » ET même
-          // chemin — « remplace », « incoherent » ou un autre chemin gardent
-          // leur comportement.
-          const verif = pf.categorie_verification;
-          const cheminConfirme = verif && verif.verdict === "confirme" && Array.isArray(verif.chemin_icone) ? verif.chemin_icone : null;
-          const cleChemin = (c) => c.map(s => texteComparable(String(s ?? ""))).join(" > ");
-          const confirmationRefusee = Boolean(cheminConfirme && cleChemin(cheminConfirme) === cleChemin(chemin));
-          if (confirmationRefusee) {
-            pf.categorie_verification = {
-              ...verif,
-              verdict: "refuse_hors_famille",
-              verdict_ia: "confirme",
-              refuse_par: "categorie_plausibilite",
-              refuse_le: new Date().toISOString(),
-            };
-          }
-          console.warn(
-            `[publish] ${row.platform} — chemin « ${chemin.join(" > ")} » (famille ${verdict.familleChemin}) HORS de la famille de l'objet (${familleObjet}, ${familleObjetDetail.source}) — il ne part pas tel quel` +
-            (confirmationRefusee ? " ; la confirmation IA de ce même chemin (categorie_verification « confirme ») est REFUSÉE, l'arbitrage sur les suggestions de la plateforme tranche" : "")
-          );
-          if (row.platform === "beebs") {
-            delete pf.beebsCategoryPath;
-            pf.categorie_a_choisir = { objet: motCategorie ?? null, chemin_ecarte: chemin, motif: "hors_famille" };
-          } else {
-            pf.categorie_incertaine = true;
-            if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
-          }
-        }
-      }
       // ══ LA CONTREPARTIE DE LA PORTE — AUCUN JOB SANS CATÉGORIE (2026-09-19) ══
       // La case n'est plus grisée sur un simple trou de mapping par icône : le
       // mot et l'arbitrage ont le droit d'essayer. Mais s'ils échouent AUSSI,
