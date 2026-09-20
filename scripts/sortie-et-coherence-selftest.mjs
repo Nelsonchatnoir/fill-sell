@@ -12,7 +12,7 @@
 //
 //   node scripts/sortie-et-coherence-selftest.mjs
 import { abandonPossible, champsApresAbandon, messageAbandon } from '../src/utils/abandonPlateforme.js';
-import { rayonContreditLaFiche, phraseIncoherence, marqueurDuRayon } from '../src/utils/rayonIncoherent.js';
+import { rayonContreditLaFiche, phraseIncoherence, marqueurDuRayon, tailleContreditLaGrille, systemeDeTaille, systemeDeLaGrille } from '../src/utils/rayonIncoherent.js';
 
 let ko = 0;
 const ok = (nom, cond) => { console.log(`  ${cond ? 'ok  ' : '❌  '}  ${nom}`); if (!cond) ko++; };
@@ -104,6 +104,44 @@ ok('« Mode > Enfant > Garçon » dit garçon, pas seulement enfant',
   marqueurDuRayon(['Mode', 'Enfant', 'Garçon', 'Pantalons'])?.sexe === 'M');
 ok('« Enfants > Jouets » dit enfant, sans sexe',
   marqueurDuRayon(['Enfants', 'Jouets'])?.sexe === null);
+
+// ── LA TAILLE TRAHIT LE RAYON (2026-09-20, passe 3, point 6-e) ────────────
+// Les six refus Opla « taille hors grille » du parc, un par un. L'alerte
+// âge/sexe n'en attrapait qu'UN : les deux suivants ont un rayon cohérent sur
+// le papier (« Enfants › Vêtements pour filles » contre une fiche « Fille »)
+// et une grille d'un autre âge. Les trois derniers ont un rayon JUSTE — et
+// l'alerte doit se taire, sinon elle devient du bruit.
+console.log('\n4. La taille contre la grille du rayon');
+const MOIS = ['0M', '0-3M', '3M', '6M', '9M', '12M', '18M', '24M'];
+const LETTRES = ['TAILLE_UNIQUE', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const ANS = ['4Y', '6Y', '8Y', '10Y', '12Y', '14Y'];
+const POINTURES = ['14', '15', '16', '40', '44', '45', '50'];
+ok('système : « 18 mois » est en mois', systemeDeTaille('18 mois') === 'mois');
+ok('système : « 5 ans » est en années', systemeDeTaille('5 ans') === 'ans');
+ok('système : « XS » est une lettre', systemeDeTaille('XS') === 'lettre');
+ok('système : « 44.5 » est un nombre', systemeDeTaille('44.5') === 'nombre');
+ok('système : « Taille unique » est à part', systemeDeTaille('Taille unique') === 'unique');
+ok('système : un libellé inconnu ne rend rien', systemeDeTaille('bleu marine') === null);
+ok('grille en mois reconnue', systemeDeLaGrille(MOIS) === 'mois');
+ok('grille en lettres reconnue malgré TAILLE_UNIQUE', systemeDeLaGrille(LETTRES) === 'lettre');
+ok('grille vide ne conclut rien', systemeDeLaGrille([]) === null);
+ok('CAS RÉEL — Pull Coca-Cola XS dans une grille bébé : ALERTE',
+  tailleContreditLaGrille('XS', MOIS)?.motif === 'taille');
+ok('CAS RÉEL — Legging 5 ans dans une grille en mois : ALERTE',
+  tailleContreditLaGrille('5 ans', MOIS)?.motif === 'taille');
+ok('CAS RÉEL — Robe 18 mois au rayon robes FEMME : ALERTE',
+  tailleContreditLaGrille('18 mois', LETTRES)?.motif === 'taille');
+ok('CAS RÉEL — Camaïeu 38 contre S/M/L : SILENCE, le rayon est juste',
+  tailleContreditLaGrille('38', LETTRES) === null);
+ok('CAS RÉEL — Nike 44.5 contre les pointures : SILENCE, le rayon est juste',
+  tailleContreditLaGrille('44.5', POINTURES) === null);
+ok('« 12 ans » dans une grille en années : SILENCE',
+  tailleContreditLaGrille('12 ans', ANS) === null);
+ok('taille absente : SILENCE', tailleContreditLaGrille('', MOIS) === null);
+ok('grille absente : SILENCE', tailleContreditLaGrille('18 mois', null) === null);
+ok('la phrase nomme les deux systèmes et ne tranche pas',
+  /tailles en mois/.test(phraseIncoherence(tailleContreditLaGrille('XS', MOIS), 'fr') ?? '')
+  && /vérifie que c'est le bon/.test(phraseIncoherence(tailleContreditLaGrille('XS', MOIS), 'fr') ?? ''));
 
 console.log(`\n${ko === 0 ? '✅ Un job bloqué a une sortie, et un rayon qui ment se voit.' : `❌ ${ko} test(s) en échec.`}`);
 process.exit(ko === 0 ? 0 : 1);

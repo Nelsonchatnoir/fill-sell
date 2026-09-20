@@ -105,6 +105,15 @@ export function rayonContreditLaFiche(chemin, pf) {
  *  vendeur de dire qui a raison. Jamais d'impératif, jamais de blocage. */
 export function phraseIncoherence(inc, lang = 'fr') {
   if (!inc) return null;
+  // Le motif 'taille' (20/09, passe 3) : la grille du rayon et la taille de
+  // l'article ne parlent pas le même système. Même ton que les deux autres —
+  // on nomme les deux camps et on ne tranche pas.
+  if (inc.motif === 'taille') {
+    const en = { 'en mois': 'in months', 'en années': 'in years', 'en lettres': 'in letters', 'en chiffres': 'in numbers' };
+    return lang === 'en'
+      ? `This aisle uses sizes ${en[inc.rayon] ?? inc.rayon}, and your item gives one ${en[inc.fiche] ?? inc.fiche}. That usually means it was filed too young or too old — check it's the right aisle.`
+      : `Ce rayon a des tailles ${inc.rayon}, et ta fiche en donne une ${inc.fiche}. C'est souvent le signe qu'il a été rangé trop jeune ou trop vieux — vérifie que c'est le bon.`;
+  }
   if (lang === 'en') {
     return inc.motif === 'age'
       ? `This aisle is a “${inc.rayon}” one, and your item says “${inc.fiche}”. Sizes and shipping differ — check it's the right aisle.`
@@ -113,4 +122,81 @@ export function phraseIncoherence(inc, lang = 'fr') {
   return inc.motif === 'age'
     ? `Ce rayon est un rayon « ${inc.rayon} », et ta fiche dit « ${inc.fiche} ». Les tailles et la livraison n'y sont pas les mêmes — vérifie que c'est le bon.`
     : `Ce rayon est un rayon « ${inc.rayon} », et ta fiche dit « ${inc.fiche} ». Vérifie que c'est le bon.`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA TAILLE TRAHIT LE RAYON (2026-09-20, passe 3, point 6-e)
+// ═══════════════════════════════════════════════════════════════════════════
+// LES SIX REFUS OPLA « taille hors grille », relevés un par un :
+//   · Robe Biloba 12-18 mois → Femmes › Robes (genre Fille) ......... ÂGE, déjà attrapé
+//   · Pull Coca-Cola XXS-XS  → Enfants › filles › Pulls, grille 0M… . TAILLE
+//   · Legging enfant 5 ans   → Enfants › filles › Leggings, grille 0M… TAILLE
+//   · Camaïeu Blue Dress 38  → Femmes › Robes, grille XXS…8XL ....... rayon JUSTE
+//   · Maje robe, taille vide → Femmes › Robes ....................... rayon JUSTE
+//   · Nike 44.5              → Hommes › Baskets, grille sans demi ... rayon JUSTE
+//
+// L'alerte âge/sexe était MUETTE sur les deux du milieu, et elle avait
+// raison : « Enfants › Vêtements pour filles » contre une fiche « Fille »,
+// c'est cohérent. Ce qui ne l'est pas, c'est la GRILLE : ces feuilles
+// `*_GIRLS_NEW` d'Opla sont des rayons BÉBÉ, leur grille va de 0M à 24M. Un
+// « XS » ou un « 5 ans » là-dedans dit que le rayon est trop jeune — et le
+// dit AVANT le refus.
+//
+// ⛔ CE QU'ON NE FAIT PAS, ET LA RÈGLE EST CELLE DU 18/09 (_shared/tailles.js,
+//    « TRADUIRE, JAMAIS CONVERTIR ») :
+//      · « 38 » → « M » : NON. C'est une conversion de système, pas une
+//        traduction. Un 38 Camaïeu n'est pas un 38 Zara. On DEMANDE, et la
+//        question offre déjà les 14 valeurs de la grille.
+//      · « 44.5 » → « 44 » ou « 45 » : NON, JAMAIS. L'en-tête de
+//        _shared/tailles.js nomme ce cas précis. C'est une autre pointure.
+//    Champ vide plutôt que champ menteur — et question plutôt que champ vide
+//    quand la personne, elle, sait.
+// ⛔ CE SIGNAL NE BLOQUE RIEN : il alimente la même alerte ambre que l'âge et
+//    le sexe. On prévient, on n'interdit pas.
+
+/** Le SYSTÈME d'une taille : 'mois' · 'ans' · 'lettre' · 'nombre' · 'unique'.
+ *  null quand on ne sait pas — et alors on se tait. */
+export function systemeDeTaille(brut) {
+  const v = sansAccents(brut).replace(/[.,]/g, '.').trim();
+  if (!v) return null;
+  if (/^(taille[_ ]?unique|unique|os|one size)$/.test(v)) return 'unique';
+  if (/(^|\b)\d{1,2}\s*-?\s*\d{0,2}\s*m(ois)?\b/.test(v) || /^\d{1,2}m$/.test(v)) return 'mois';
+  if (/\b\d{1,2}\s*(ans?|y)\b/.test(v) || /^\d{1,2}y$/.test(v)) return 'ans';
+  if (/^(xx?x?s|s|m|l|xx?x?l|[2-9]xl)$/.test(v)) return 'lettre';
+  if (/^\d{1,3}([.]\d)?$/.test(v)) return 'nombre';
+  return null;
+}
+
+/** Le système MAJORITAIRE d'une grille de valeurs. null si elle est muette
+ *  ou si aucun système ne domine — on ne conclut jamais sur un brouillard. */
+export function systemeDeLaGrille(grille) {
+  const valeurs = (Array.isArray(grille) ? grille : [])
+    .map((o) => (typeof o === 'string' ? o : (o?.code ?? o?.title ?? '')));
+  const compte = {};
+  for (const v of valeurs) {
+    const s = systemeDeTaille(v);
+    if (!s || s === 'unique') continue;   // TAILLE_UNIQUE vit dans toutes les grilles
+    compte[s] = (compte[s] ?? 0) + 1;
+  }
+  const paires = Object.entries(compte).sort((a, b) => b[1] - a[1]);
+  if (!paires.length) return null;
+  const total = paires.reduce((n, [, c]) => n + c, 0);
+  // Il faut une VRAIE majorité : une grille mélangée ne prouve rien.
+  return paires[0][1] * 2 > total ? paires[0][0] : null;
+}
+
+/** La taille de l'article contredit-elle la grille du rayon ?
+ *  Rend `{ motif:'taille', rayon, fiche }` ou null. */
+export function tailleContreditLaGrille(taille, grille) {
+  const tSys = systemeDeTaille(taille);
+  const gSys = systemeDeLaGrille(grille);
+  if (!tSys || !gSys || tSys === 'unique') return null;
+  if (tSys === gSys) return null;
+  // ⛔ lettre ↔ nombre : ce n'est PAS un rayon faux, c'est un système
+  //    d'habillement différent (FR 38 contre S/M/L). On se tait : la question
+  //    de taille, elle, offre déjà la grille.
+  const adulte = (s) => s === 'lettre' || s === 'nombre';
+  if (adulte(tSys) && adulte(gSys)) return null;
+  const nom = { mois: 'en mois', ans: 'en années', lettre: 'en lettres', nombre: 'en chiffres' };
+  return { motif: 'taille', rayon: nom[gSys], fiche: nom[tSys] };
 }

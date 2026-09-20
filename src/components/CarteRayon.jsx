@@ -23,7 +23,7 @@ import { feuillesDe } from '../utils/categorieParMot';
 import { texteComparable } from '../utils/texteComparable';
 import { libelleRayon, cheminComplet, cleCategorie } from '../utils/rayonPublication';
 import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPECTS } from '../utils/champsDuRayon';
-import { rayonContreditLaFiche, phraseIncoherence } from '../utils/rayonIncoherent';
+import { rayonContreditLaFiche, phraseIncoherence, tailleContreditLaGrille } from '../utils/rayonIncoherent';
 
 const MOTS = {
   fr: {
@@ -267,7 +267,20 @@ export default function CarteRayon({
                blocage, jamais une question de plus. Le choix humain reste
                souverain — le vendeur a le droit d'avoir raison contre nous. */}
         {(() => {
-          const inc = rayonContreditLaFiche(rayon?.chemin, champs);
+          // ── ET LA TAILLE, QUI TRAHIT LE RAYON AUSSI (20/09, passe 3) ──
+          // Mesuré sur les six refus Opla « taille hors grille » : l'âge et
+          // le sexe en attrapaient UN seul. Les deux suivants avaient un
+          // rayon cohérent sur le papier (« Enfants › Vêtements pour
+          // filles ») et une grille en MOIS pour un article en « XS » ou en
+          // « 5 ans » — ces feuilles d'Opla sont des rayons BÉBÉ. La grille
+          // le disait avant le refus ; il suffisait de la lire.
+          // ⛔ On ne dit RIEN quand les deux systèmes sont adultes (« 38 »
+          //    contre S/M/L) : là le rayon est juste, et c'est la question
+          //    de taille qui a le dernier mot.
+          const grilleTaille = (catalogue ?? []).find(
+            (l) => l?.field_key === 'size' || l?.field_key === 'taille')?.allowed_values;
+          const inc = rayonContreditLaFiche(rayon?.chemin, champs)
+            ?? tailleContreditLaGrille(champs?.taille, grilleTaille);
           if (!inc) return null;
           return (
             <div style={{ marginTop: 8, display: 'flex', gap: 7, alignItems: 'flex-start',
