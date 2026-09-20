@@ -46,14 +46,26 @@ import { tailleDansGrille } from "./tailles.js";
 const comparable = (s: unknown) =>
   String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
 
+// ⚠️ « pour » ajouté le 2026-09-20 : il manquait, et il a coûté un livre. Job
+//    64170d6f (« La Méthode Delavier de Musculation POUR la Femme ») : le
+//    départage entre feuilles sœurs compte les mots de l'article retrouvés
+//    dans le chemin ; « pour » était compté comme un mot de sens, il ne se
+//    trouvait que dans « Livres POUR bébé », et le livre de musculation
+//    partait au rayon des livres pour bébé. Un mot-outil n'est pas un critère.
 const MOTS_VIDES = new Set([
   "de", "des", "du", "le", "la", "les", "l", "d", "et", "ou", "a", "au", "aux",
-  "en", "par", "sur", "avec", "autre", "autres", "divers",
+  "en", "par", "pour", "sur", "avec", "autre", "autres", "divers",
 ]);
 
+// ⚠️ « body » / « Bodies » (2026-09-20) : le retrait du pluriel rendait
+//    « bodie » d'un côté et « body » de l'autre, et le body — le vêtement de
+//    bébé le plus vendu — ne trouvait AUCUNE feuille alors qu'Opla en a trois
+//    (« Bodies », sous Femmes, bébé filles et bébé garçons). Le « y » final
+//    rejoint donc « ie », des DEUX côtés : c'est une normalisation
+//    symétrique, pas une équivalence inventée.
 const jetons = (s: unknown) =>
   comparable(s).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
-    .map((t) => t.replace(/(?<=\p{L}{3})[sx]$/u, ""))
+    .map((t) => t.replace(/(?<=\p{L}{3})[sx]$/u, "").replace(/(?<=\p{L}{3})y$/u, "ie"))
     .filter((t) => t && !MOTS_VIDES.has(t))
     .sort().join(" ");
 
@@ -67,17 +79,26 @@ export interface FeuilleOpla {
   jetons: string[];
   /** Les jetons de TOUT le chemin, feuille comprise — sert au départage. */
   jetonsChemin: string[];
+  /** Le CODE de la racine (WOMEN_ROOT, MENS, CHILDREN_NEW…), pas son libellé. */
+  racine: string;
+  /** Le CODE du 2e niveau (GIRLS_NEW, BOYS_NEW…), "" si la feuille est à la racine. */
+  rayon: string;
 }
 
 const FEUILLES: FeuilleOpla[] = [];
 const PAR_CODE = new Map<string, FeuilleOpla>();
 (function indexer() {
   const vus = new Set<string>();
-  const descendre = (code: string, chemin: string[]) => {
+  // ⚠️ racine et rayon sont portés en CODES, pas en libellés : le filtre de
+  //    genre s'appuie dessus, et un filtre qui compare des libellés casse au
+  //    premier renommage côté Opla (« Femmes » → « Femme » suffirait).
+  const descendre = (code: string, chemin: string[], racine: string, rayon: string) => {
     for (const n of oplaEnfants(code)) {
       if (vus.has(n.code)) continue;
       vus.add(n.code);
       const sous = [...chemin, n.titre];
+      const maRacine = racine || n.code;
+      const monRayon = racine ? (rayon || n.code) : "";
       if (n.feuille) {
         const jt = jetons(n.titre);
         const f: FeuilleOpla = {
@@ -86,15 +107,17 @@ const PAR_CODE = new Map<string, FeuilleOpla>();
           chemin: sous,
           jetons: jt ? jt.split(" ") : [],
           jetonsChemin: [...new Set(sous.flatMap((t) => (jetons(t) ? jetons(t).split(" ") : [])))],
+          racine: maRacine,
+          rayon: monRayon,
         };
         FEUILLES.push(f);
         PAR_CODE.set(n.code, f);
       } else {
-        descendre(n.code, sous);
+        descendre(n.code, sous, maRacine, monRayon);
       }
     }
   };
-  descendre("", []);
+  descendre("", [], "", "");
 })();
 
 /** Le sous-arbre d'un code, en codes de FEUILLES. null = tout l'arbre. */
@@ -113,28 +136,121 @@ function perimetreDe(ancre: string | null): Set<string> | null {
 }
 
 // ── LA RECHERCHE PAR LE MOT, EN TROIS PASSES ───────────────────────────────
-// Jumelle de opla.js:427-452, plafond compris. On s'arrête à la PREMIÈRE passe
-// qui rend quelque chose : une passe plus large n'ajouterait que du bruit à un
-// résultat déjà trouvé.
 //   1. ÉGALITÉ       : les jetons du libellé SONT ceux du mot ;
 //   2. LIBELLÉ ⊆ MOT : le mot nomme le libellé et le précise
 //                      (« maillot de football » ⊃ « Maillots ») ;
-//   3. MOT ⊆ LIBELLÉ : le mot est une partie du libellé — la plus large.
-// ⛔ PLAFOND : au-delà, la passe ne « trouve » rien d'utile, c'est une liste à
-//    cocher illisible. On la jette.
+//   3. MOT ⊆ LIBELLÉ : le mot est une partie du libellé
+//                      (« jean » ⊂ « Jeans coupe droite ») — la plus large.
+//
+// ⛔ CE QUI ÉTAIT FAUX DANS CETTE LECTURE DU CATALOGUE (corrigé le 2026-09-20)
+// La boucle sortait au PREMIER `return` : dès qu'une passe rendait quelque
+// chose, les suivantes ne tournaient jamais. Les trois passes étaient rangées
+// « de la plus sûre à la plus large » — mais cette sûreté se mesurait sur le
+// LIBELLÉ, pas sur l'ARTICLE. Or le même libellé vit à des PROFONDEURS
+// différentes selon la branche : « Jeans » est une FEUILLE chez les enfants et
+// un NŒUD chez les adultes. L'égalité exacte trouvait donc les deux feuilles
+// enfant et s'arrêtait là, pendant que les 11 feuilles de jean adulte —
+// « Jeans droits », « Jeans skinny »… — attendaient dans la passe 3 qui ne
+// tournait jamais. Mesuré sur les jobs 2e96a21f et 840b67ec (Thomas, 20/09) :
+// « Jean Bootcut Levi's 544 » ne se voyait offrir que « Enfants › filles ›
+// Jeans » et « Enfants › garçons › Jeans ». Aucune réponse n'était juste, la
+// personne n'a pas répondu, les deux jobs dorment encore.
+//
+// Une correspondance exacte dans un rayon que l'article contredit n'est pas
+// plus sûre qu'une correspondance partielle dans le bon rayon : elle est
+// simplement fausse. Donc les trois passes CONTRIBUENT toutes, dans l'ordre
+// (la plus précise d'abord, c'est l'ordre de la liste proposée), et c'est
+// l'article — son genre, son rayon — qui élague ensuite.
+//
+// ⛔ MAIS « toutes les passes contribuent » N'EST PAS « toutes se valent ».
+//    Une correspondance de passe 2 (« maillot de football » ⊃ « Maillots »)
+//    dit plus qu'une correspondance de passe 3 (« maillot » ⊂ « Maillots de
+//    bain »). Mesuré en essayant sans : le maillot du job eba8a512 partait en
+//    « Hommes › Vêtements › Maillots de bain », parce que le score de chemin
+//    préfère le chemin le plus court et que personne ne lui disait que la
+//    correspondance était plus faible. Les candidates sont donc rangées en
+//    ÉTAGES (mot d'abord, passe ensuite) et SEUL LE MEILLEUR ÉTAGE NON VIDE
+//    concourt. C'est aussi ce qui garde le titre à sa place de dernier
+//    recours : il est le dernier mot de la liste, donc le dernier étage.
+//
+// ⛔ PLAFOND : il ne s'applique PLUS à la recherche. Il ne dit rien sur la
+//    qualité d'une correspondance, il dit qu'une liste de cases à cocher trop
+//    longue est illisible (leçon Blaf69 du 16/09). C'est une garde sur la
+//    QUESTION, posée une fois l'élagage fait.
 export const OPLA_CANDIDATS_MAX = 12;
+// La borne de la QUESTION. Plus haute que celle du repli, et pour une raison
+// mesurée : « jean » désigne 13 feuilles (7 femme, 4 homme, 2 enfant) et la
+// bonne y est toujours. Une liste HOMOGÈNE — tous des jeans, chacun avec son
+// chemin entier — se lit ; c'est une liste hétéroclite qui ne se lit pas.
+// Refuser la 13ᵉ, c'était reposer la question des deux jeans enfant à un
+// adulte (jobs 2e96a21f et 840b67ec, Thomas, 20/09).
+export const OPLA_QUESTION_MAX = 15;
 
-export function feuillesParMot(mots: unknown[], ancre: string | null = null): FeuilleOpla[] {
+const PASSES: Array<(jt: string[], jm: string[]) => boolean> = [
+  (jt, jm) => jt.join(" ") === jm.join(" "),
+  (jt, jm) => jt.every((t) => jm.includes(t)),
+  (jt, jm) => jm.every((t) => jt.includes(t)),
+];
+
+function perimetreFeuilles(ancre: string | null): FeuilleOpla[] {
+  const perimetre = perimetreDe(ancre);
+  return FEUILLES.filter((f) => f.jetons.length && (!perimetre || perimetre.has(f.code)));
+}
+
+/**
+ * Les feuilles que ces mots désignent, rangées en ÉTAGES : un étage par
+ * couple (mot, passe), dans l'ordre mot 0 → mot n, puis passe 1 → passe 3.
+ * Rien n'est jeté ici : c'est l'appelant qui prend le meilleur étage non vide,
+ * APRÈS avoir élagué au genre (un étage vidé par le genre doit laisser sa
+ * place au suivant — c'est ce qui sauve le jean d'homme).
+ */
+export interface EtageOpla { feuilles: FeuilleOpla[]; passe: number; mot: string }
+
+export function feuillesParMotEtages(mots: unknown[], ancre: string | null = null): EtageOpla[] {
   const listeMots = (Array.isArray(mots) ? mots : [mots]).map((m) => jetons(m)).filter(Boolean);
   if (!listeMots.length) return [];
-  const perimetre = perimetreDe(ancre);
-  const dedans = FEUILLES.filter((f) => f.jetons.length && (!perimetre || perimetre.has(f.code)));
-  const passes: Array<(jt: string[], jm: string[]) => boolean> = [
-    (jt, jm) => jt.join(" ") === jm.join(" "),
-    (jt, jm) => jt.every((t) => jm.includes(t)),
-    (jt, jm) => jm.every((t) => jt.includes(t)),
-  ];
-  for (const passe of passes) {
+  const dedans = perimetreFeuilles(ancre);
+  const etages: EtageOpla[] = [];
+  const vus = new Set<string>();
+  for (const mot of listeMots) {
+    const jm = mot.split(" ");
+    for (let p = 0; p < PASSES.length; p++) {
+      const feuilles = dedans.filter((f) => !vus.has(f.code) && PASSES[p](f.jetons, jm));
+      for (const f of feuilles) vus.add(f.code);
+      if (feuilles.length) etages.push({ feuilles, passe: p + 1, mot });
+    }
+  }
+  return etages;
+}
+
+/**
+ * TOUTES les feuilles que ces mots désignent, les trois passes réunies, sans
+ * plafond — les étages aplatis. Sert aux relevés et aux selftests.
+ */
+export function feuillesParMot(mots: unknown[], ancre: string | null = null): FeuilleOpla[] {
+  return feuillesParMotEtages(mots, ancre).flatMap((e) => e.feuilles);
+}
+
+/** Les feuilles sœurs d'une feuille, elle comprise. */
+export function feuillesSoeurs(code: string): FeuilleOpla[] {
+  const p = oplaNoeud(code)?.parent ?? null;
+  if (!p) return [];
+  return FEUILLES.filter((f) => (oplaNoeud(f.code)?.parent ?? null) === p);
+}
+
+/**
+ * L'ANCIENNE recherche, mot pour mot : la première passe qui rend entre 1 et
+ * OPLA_CANDIDATS_MAX feuilles gagne, les suivantes ne tournent pas.
+ * ⛔ Elle n'est plus le chemin normal — elle est le REPLI, et elle existe pour
+ *    une seule raison : quand la recherche large rend une liste trop longue
+ *    pour être posée en question, on doit retomber EXACTEMENT sur ce que le
+ *    code d'hier aurait fait, sinon on casserait des résolutions qui marchent.
+ */
+export function feuillesParMotEtroit(mots: unknown[], ancre: string | null = null): FeuilleOpla[] {
+  const listeMots = (Array.isArray(mots) ? mots : [mots]).map((m) => jetons(m)).filter(Boolean);
+  if (!listeMots.length) return [];
+  const dedans = perimetreFeuilles(ancre);
+  for (const passe of PASSES) {
     for (const mot of listeMots) {
       const jm = mot.split(" ");
       const out = dedans.filter((f) => passe(f.jetons, jm));
@@ -142,6 +258,81 @@ export function feuillesParMot(mots: unknown[], ancre: string | null = null): Fe
     }
   }
   return [];
+}
+
+// ── LE MOT PEUT NOMMER UN RAYON, PAS SEULEMENT UNE FEUILLE ────────────────
+// Jumelle de opla.js (feuillesDuNoeudNomme, 2026-09-20), portée ici le même
+// jour : le serveur en avait autant besoin que l'extension, et c'est LUI qui
+// décide pour le parc. Défaut mesuré sur trois jobs réels (c7dae6b5, 2daa420c,
+// e7502c18) : « livre » ne désigne que deux feuilles — « Livres sonores » et
+// « Livres pour bébé » — parce que les autres s'appellent « Romans pour
+// adultes », « Mangas », « Manuels scolaires ». Les trois romans sont donc
+// partis au rayon des livres sonores, en silence. « Livres » est un NŒUD :
+// quand le mot nomme un rayon, les candidates sont les feuilles DE CE RAYON.
+export function feuillesDuNoeudNomme(mots: unknown[], ancre: string | null = null): FeuilleOpla[] {
+  const listeMots = (Array.isArray(mots) ? mots : [mots]).map((m) => jetons(m)).filter(Boolean);
+  if (!listeMots.length) return [];
+  const perimetre = perimetreDe(ancre);
+  const out: FeuilleOpla[] = [];
+  for (const f of FEUILLES) {
+    if (perimetre && !perimetre.has(f.code)) continue;
+    // Un ancêtre NON-feuille dont le libellé est exactement l'un des mots.
+    let p: string | null = oplaNoeud(f.code)?.parent ?? null;
+    for (let g = 0; p && g < 12; p = oplaNoeud(p)?.parent ?? null, g++) {
+      if (listeMots.includes(jetons(oplaNoeud(p)?.titre))) { out.push(f); break; }
+    }
+  }
+  return out;
+}
+
+// ── LE GENRE ÉCARTE LES RAYONS QUI LE CONTREDISENT ────────────────────────
+// ⛔ CE QUI ÉTAIT FAUX (corrigé le 2026-09-20) : le filtre était en FAIL-OPEN —
+//    « si filtrer vide la liste, on garde la liste d'origine ». Mesuré sur le
+//    job 40ebdf2c : « Robe 12-18 mois rose motif floral », genre Fille. Les
+//    seules feuilles trouvées étaient des robes FEMME ; le filtre les écartait
+//    toutes, se ravisait, et la robe de bébé est partie au rayon
+//    « Femmes › Vêtements › Robes › Autres robes ». Un filtre qui rend
+//    exactement ce qu'il vient de juger faux ne filtre pas : il valide.
+//    Désormais il écarte pour de bon, et une liste vide veut dire ce qu'elle
+//    dit — ce mot ne désigne rien dans le rayon de cette personne, on cherche
+//    ailleurs (nœud nommé, puis descente) au lieu de publier à côté.
+// ⛔ ET UN GENRE CONNU DÉSIGNE UN RAYON. Quand au moins une candidate vit dans
+//    le rayon du genre, c'est LUI la réponse : les autres sortent, genrées ou
+//    non. Mesuré sur le job eba8a512 (« Maillot Muangthong United », genre
+//    Homme) — laisser concourir « Sport › Sports d'équipe › Football » le
+//    faisait gagner au score et rangeait un maillot au rayon des ballons.
+//    Ce n'est QUE lorsque aucune candidate n'est dans le rayon du genre qu'on
+//    garde les racines non genrées (Maison, Sport, Culture et Loisirs, Jeux et
+//    jouets, Fait main) : elles ne contredisent aucun genre — un ballon de
+//    foot vendu par un homme reste un ballon de foot.
+const RACINES_GENREES = new Set(["WOMEN_ROOT", "MENS", "CHILDREN_NEW"]);
+const GENRE_RACINE: Record<string, string> = {
+  femme: "WOMEN_ROOT", homme: "MENS",
+  fille: "CHILDREN_NEW", garcon: "CHILDREN_NEW", enfant: "CHILDREN_NEW", bebe: "CHILDREN_NEW",
+};
+const GENRE_RAYON: Record<string, string> = { fille: "GIRLS_NEW", garcon: "BOYS_NEW" };
+const RAYONS_GENRES = new Set(["GIRLS_NEW", "BOYS_NEW"]);
+
+/** « Hommes », « Garçon », « bébé » → la clé du genre, ou null si rien de genré. */
+export function cleGenre(genre: unknown): string | null {
+  const g = comparable(genre).replace(/[^a-z]/g, "");
+  const sansPluriel = g.replace(/s$/, "");
+  return GENRE_RACINE[g] ? g : (GENRE_RACINE[sansPluriel] ? sansPluriel : null);
+}
+
+export function ecarterGenreIncompatible(candidats: FeuilleOpla[], genre: unknown): FeuilleOpla[] {
+  const g = cleGenre(genre);
+  if (!g || !candidats.length) return candidats;
+  const racine = GENRE_RACINE[g];
+  const rayon = GENRE_RAYON[g] ?? null;
+  const dansLeRayon = candidats.filter((f) => {
+    if (f.racine !== racine) return false;
+    // « Garçon » n'a rien à faire dans « Vêtements pour filles » — mesuré sur
+    // le job 8de4f86a (« Pull 24M », genre Garçon → SWEATERS_GIRLS_NEW).
+    return !(rayon && RAYONS_GENRES.has(f.rayon) && f.rayon !== rayon);
+  });
+  if (dansLeRayon.length) return dansLeRayon;
+  return candidats.filter((f) => !RACINES_GENREES.has(f.racine));
 }
 
 // ── LE DÉPARTAGE — « pourquoi ne tranche-t-on pas quand une seule des feuilles
@@ -161,16 +352,9 @@ export function feuillesParMot(mots: unknown[], ancre: string | null = null): Fe
 // ⛔ IL FAUT UN VAINQUEUR STRICT. À égalité, on ne tranche pas : on rend les
 //    candidats et l'appelant pose la question. Deviner ici publierait l'annonce
 //    au mauvais endroit, en silence.
-// ⛔ LE GENRE ÉCARTE, IL NE CHOISIT PAS : un candidat dont la racine contredit
-//    le genre connu de l'article est retiré ; si le filtre vide la liste, on
-//    garde la liste d'origine (fail-open sur le filtre, jamais sur la décision).
-const RACINE_PAR_GENRE: Record<string, RegExp> = {
-  femme: /^femme/i,
-  homme: /^homme/i,
-  fille: /^(fille|enfant)/i,
-  garcon: /^(gar[cç]on|enfant)/i,
-};
-
+// ⛔ LE GENRE ÉCARTE, IL NE CHOISIT PAS : un candidat dont le rayon contredit
+//    le genre connu de l'article est retiré, définitivement
+//    (`ecarterGenreIncompatible` ci-dessus — fail-closed depuis le 20/09).
 export function trancherCandidats(
   candidats: FeuilleOpla[],
   { mots = [], genre = null }: { mots?: unknown[]; genre?: string | null } = {},
@@ -178,14 +362,9 @@ export function trancherCandidats(
   if (!candidats.length) return { feuille: null, restants: [], motif: "aucun candidat" };
   if (candidats.length === 1) return { feuille: candidats[0], restants: candidats, motif: "candidat unique" };
 
-  let liste = candidats;
-  const g = comparable(genre).replace(/[^a-z]/g, "");
-  const re = RACINE_PAR_GENRE[g];
-  if (re) {
-    const gardes = liste.filter((f) => re.test(f.chemin[0] ?? ""));
-    if (gardes.length) liste = gardes;
-    if (liste.length === 1) return { feuille: liste[0], restants: liste, motif: `genre « ${genre} » écarte les autres racines` };
-  }
+  const liste = ecarterGenreIncompatible(candidats, genre);
+  if (!liste.length) return { feuille: null, restants: [], motif: `genre « ${genre} » : aucun candidat dans ce rayon` };
+  if (liste.length === 1) return { feuille: liste[0], restants: liste, motif: `genre « ${genre} » écarte les autres rayons` };
 
   // ⛔ ON NE TIRE JAMAIS AU SORT UN GENRE. Si les candidats restants ne sont
   //    pas d'accord sur leur RACINE (Hommes / Femmes / Enfants…) et que rien ne
@@ -194,6 +373,12 @@ export function trancherCandidats(
   //    exactement pareil. Le score les départagerait quand même — par la
   //    profondeur, c'est-à-dire par hasard — et publierait un maillot homme
   //    dans le rayon femme sans que personne ne le voie. On rend la main.
+  // ⚠️ TOUTES les racines, pas seulement les genrées : essayé en ne comptant
+  //    que Femmes/Hommes/Enfants, ça faisait trancher « Insert / Rangement
+  //    pour jeu de société » entre « Jeux de société » et « Autres rangements »
+  //    sur la longueur du chemin — alors que le compte Amiral a répondu les
+  //    DEUX selon les articles (7 jobs relevés). Deux rayons sans rien pour
+  //    les départager, c'est une question, pas un score.
   const racines = new Set(liste.map((f) => f.chemin[0] ?? ""));
   if (racines.size > 1) {
     return { feuille: null, restants: liste, motif: `${racines.size} rayons possibles (${[...racines].join(", ")}) et aucun genre connu` };
@@ -211,6 +396,28 @@ export function trancherCandidats(
   //     question alors que l'article disait « sport » noir sur blanc.
   const nonDemandes = (f: FeuilleOpla) => f.jetonsChemin.filter((t) => !jetonsMots.has(t)).length;
   const retrouves = (f: FeuilleOpla) => f.jetonsChemin.filter((t) => jetonsMots.has(t)).length;
+
+  // ── ENTRE FRÈRES, LE CHEMIN LE PLUS COURT NE VEUT PLUS RIEN DIRE ─────────
+  // Le critère 1 compare des BRANCHES : « Robes › Autres robes » n'ajoute
+  // aucun qualificatif, « Vêtements de sport › Robes » en ajoute un. Entre
+  // FRÈRES — même parent, même chemin à une étiquette près — il ne mesure plus
+  // que la longueur de l'étiquette, et il tranche alors par hasard. Mesuré sur
+  // le job 64170d6f (« La Méthode Delavier de Musculation ») : les onze
+  // feuilles du rayon Livres se départageaient sur ce critère et le livre
+  // partait en « Livres pour bébé ». Entre frères, SEUL le critère 2 parle :
+  // un mot de l'article retrouvé dans l'étiquette (« jean SKINNY »). Rien à
+  // retrouver ⇒ on ne tranche pas, on demande.
+  const parents = new Set(liste.map((f) => oplaNoeud(f.code)?.parent ?? ""));
+  if (parents.size === 1) {
+    const scoresF = liste.map((f) => ({ f, r: retrouves(f) }));
+    const max = Math.max(...scoresF.map((x) => x.r));
+    const mieux = scoresF.filter((x) => x.r === max);
+    if (mieux.length === 1) {
+      return { feuille: mieux[0].f, restants: liste, motif: `étiquette qui reprend le plus de mots de l'article (${max})` };
+    }
+    return { feuille: null, restants: liste, motif: `${liste.length} feuilles du même rayon, aucun mot ne les départage` };
+  }
+
   const scores = liste.map((f) => ({ f, s: nonDemandes(f), r: retrouves(f) }));
   const min = Math.min(...scores.map((x) => x.s));
   let gagnants = scores.filter((x) => x.s === min);
@@ -232,31 +439,115 @@ export function trancherCandidats(
 // Jumelle de opla.js:474-499, PLUS le départage ci-dessus. Rend soit une
 // feuille, soit les candidats à proposer.
 export function resoudreCategorieOpla(
-  { mots = [], depart = null, genre = null }:
-  { mots?: unknown[]; depart?: string | null; genre?: string | null } = {},
+  { mots = [], titre = null, depart = null, genre = null }:
+  { mots?: unknown[]; titre?: string | null; depart?: string | null; genre?: string | null } = {},
 ): { code: string | null; candidats: FeuilleOpla[]; etapes: string[] } {
   const etapes: string[] = [];
   let code = String(depart ?? "").trim();
   if (code && !oplaNoeud(code)) { etapes.push(`ancre « ${code} » inconnue — ignorée`); code = ""; }
   if (code && oplaNoeud(code)?.feuille) return { code, candidats: [], etapes: ["ancre déjà une feuille"] };
 
+  // ── LE TITRE EST UN DERNIER RECOURS, ET IL DOIT LE RESTER ────────────────
+  // Il a été ajouté le 18/09 pour les jobs créés depuis le Stock, qui n'ont
+  // aucun mot-objet. Mais il était versé dans le MÊME sac que les mots-objets,
+  // donc il jouait à égalité avec eux — et un titre est bavard. Mesuré sur le
+  // job 9cb681ba : « Lego friends l'aire de jeux des bébés chiens », mot-objet
+  // « briques de construction ». Le mot-objet ne trouvait rien ; le titre, lui,
+  // contenait « chiens », et le Lego est parti dans « Maison › Animaux ›
+  // Chiens ». On l'essaie donc SEULEMENT quand les mots-objets n'ont rien
+  // donné, ce que « dernier recours » voulait déjà dire.
+  const motsObjet = (Array.isArray(mots) ? mots : [mots]).map((m) => String(m ?? "").trim()).filter(Boolean);
+  const titreNet = String(titre ?? "").trim();
+
+  const tousLesMots = [...motsObjet, ...(titreNet ? [titreNet] : [])];
+
+  /** Les candidates d'un niveau : le meilleur étage non vide, plus le rayon nommé. */
+  const candidatsSous = (ancre: string | null): { liste: FeuilleOpla[]; via: string } => {
+    // Le rayon nommé est de la même force qu'une égalité de libellé : le mot
+    // EST le nom d'un rayon. ⛔ MAIS IL DOIT VENIR DU MÊME MOT QUE L'ÉTAGE
+    //    RETENU. Sinon un mot large dilue la réponse d'un mot précis : mesuré
+    //    sur le job 76fa3371 (« Jean skinny noir femme ») — l'étage rendait
+    //    « Jeans skinny » tout seul, et le rayon « Jeans » nommé par le mot
+    //    plus court « jean » y rajoutait ses six frères, transformant une
+    //    réponse en question.
+    const etages = feuillesParMotEtages(tousLesMots, ancre);
+    for (const etage of etages) {
+      let garde = ecarterGenreIncompatible(etage.feuilles, genre);
+      if (!garde.length) continue;  // le genre a vidé cet étage : au suivant
+      // ── UNE PASSE 3 SEULE NE TRANCHE PAS, ELLE PROPOSE ──────────────────
+      // Passe 3 = « le mot n'est QU'UNE PARTIE du libellé ». Le reste du
+      // libellé, personne ne l'a demandé. Quand elle ne rend qu'une feuille,
+      // ce n'est pas une réponse : c'est la seule étiquette du rayon qui
+      // contient ce mot. Mesuré sur le job 9e6d4eb6 (« Pantalon velours noir
+      // enfant », garçon) : le rayon des pantalons garçon n'a AUCUNE feuille
+      // « Pantalons » — la bonne réponse s'appelle « Autres » — et la seule
+      // dont l'étiquette contient « pantalon » est « Pantalons pattes
+      // d'éléphant ». On propose donc le rayon entier, où « Autres » figure.
+      if (etage.passe === 3 && garde.length === 1) {
+        const soeurs = ecarterGenreIncompatible(feuillesSoeurs(garde[0].code), genre);
+        if (soeurs.length > 1 && soeurs.length <= OPLA_QUESTION_MAX) garde = soeurs;
+      }
+      // ⛔ LE RAYON DU MÊME MOT ENTRE TOUJOURS DANS LA COURSE. Quand un mot
+      //    nomme À LA FOIS une feuille et un rayon, la feuille n'a aucune
+      //    priorité : mesuré sur « jupe », dont la seule feuille exactement
+      //    nommée « Jupes » sous Femmes est celle du rayon SPORT — une jupe
+      //    quelconque partait donc en vêtement de sport, alors que
+      //    « Femmes › Vêtements › Jupes » existe juste à côté. C'est le même
+      //    défaut que « Jeans », une profondeur plus loin. On fusionne, et
+      //    c'est le départage qui tranche ensuite (pour « robe », « Autres
+      //    robes » gagne toujours : son chemin n'ajoute aucun qualificatif).
+      let liste = garde;
+      const parNoeud = ecarterGenreIncompatible(feuillesDuNoeudNomme([etage.mot], ancre), genre);
+      if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) {
+        const vus = new Set(garde.map((f) => f.code));
+        const fusion = [...garde, ...parNoeud.filter((f) => !vus.has(f.code))];
+        if (fusion.length <= OPLA_QUESTION_MAX) liste = fusion;
+      }
+      return { liste, via: `mot « ${etage.mot} » passe ${etage.passe}` };
+    }
+    // Aucun étage : le mot ne nomme peut-être QUE un rayon.
+    for (const m of tousLesMots) {
+      const parNoeud = ecarterGenreIncompatible(feuillesDuNoeudNomme([m], ancre), genre);
+      if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) return { liste: parNoeud, via: "rayon nommé" };
+    }
+    return { liste: [], via: "" };
+  };
+
   for (let garde = 0; garde < 12; garde++) {
     if (code && oplaNoeud(code)?.feuille) break;
-    const parMot = feuillesParMot(mots, code || null);
+    const { liste: parMot, via } = candidatsSous(code || null);
     if (parMot.length === 1) {
-      etapes.push(`mot → ${parMot[0].code} (feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"})`);
+      etapes.push(`${via} → ${parMot[0].code} (feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"})`);
       code = parMot[0].code;
       continue;
     }
     if (parMot.length > 1) {
-      const { feuille, restants, motif } = trancherCandidats(parMot, { mots, genre });
+      const { feuille, restants, motif } = trancherCandidats(parMot, { mots: [...motsObjet, titreNet], genre });
       if (feuille) {
-        etapes.push(`mot → ${parMot.length} feuilles, tranché sur ${feuille.code} : ${motif}`);
+        etapes.push(`${via} → ${parMot.length} feuilles, tranché sur ${feuille.code} : ${motif}`);
         code = feuille.code;
         continue;
       }
-      etapes.push(`mot → ${parMot.length} feuilles, non tranchable (${motif}) — question au niveau des feuilles`);
-      return { code: code || null, candidats: restants, etapes };
+      // ⛔ UNE QUESTION QUI NE TIENT PAS SUR UN ÉCRAN N'EST PAS UNE QUESTION.
+      //    Au-delà du plafond on ne peut pas la poser ; on retombe alors sur
+      //    EXACTEMENT ce que faisait le code d'hier (la passe la plus sûre,
+      //    plafonnée), pour ne rien casser de ce qui marchait.
+      if (restants.length && restants.length <= OPLA_QUESTION_MAX) {
+        etapes.push(`${via} → ${parMot.length} feuilles, non tranchable (${motif}) — question au niveau des feuilles`);
+        return { code: code || null, candidats: restants, etapes };
+      }
+      const repli = ecarterGenreIncompatible(
+        feuillesParMotEtroit([...motsObjet, ...(titreNet ? [titreNet] : [])], code || null),
+        genre,
+      );
+      if (repli.length) {
+        etapes.push(`${restants.length} feuilles, trop pour une question — repli sur la passe la plus sûre (${repli.length})`);
+        const r = trancherCandidats(repli, { mots: [...motsObjet, titreNet], genre });
+        if (r.feuille) { code = r.feuille.code; continue; }
+        if (r.restants.length > 1) return { code: code || null, candidats: r.restants, etapes };
+      } else {
+        etapes.push(`${restants.length} feuilles, trop pour une question et rien au repli — on continue la descente`);
+      }
     }
     const enf = oplaEnfants(code || "");
     if (enf.length === 1) { etapes.push(`un seul enfant → ${enf[0].code}`); code = enf[0].code; continue; }
@@ -275,7 +566,7 @@ export function resoudreCategorieOpla(
   // racine plutôt que de tourner en rond dans la branche où on nous a égarés.
   if (depart) {
     etapes.push(`ancre « ${depart} » sans issue — reprise depuis les racines`);
-    const global = resoudreCategorieOpla({ mots, genre });
+    const global = resoudreCategorieOpla({ mots, titre, genre });
     return { code: global.code, candidats: global.candidats, etapes: [...etapes, ...global.etapes] };
   }
   return { code: null, candidats: [], etapes };
