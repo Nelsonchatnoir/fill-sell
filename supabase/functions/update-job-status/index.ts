@@ -1838,10 +1838,25 @@ serve(async (req) => {
           // du job, depuis l'annonce en ligne. Un redépôt qui arrive quand
           // même ici n'a donc pas de relevé exploitable : le geste utile est
           // de resynchroniser les annonces, jamais de régénérer.
+          // ── ON NE RENVOIE PLUS PERSONNE FAIRE NOTRE TRAVAIL (2026-09-20) ──
+          // « Relance une synchronisation de tes annonces » est resté affiché
+          // 12 heures sous une annonce Leboncoin HORS LIGNE (job 60c19562,
+          // compte Pro). C'était une consigne de manœuvre pour réparer un trou
+          // qui était chez nous : le job venait d'un relevé, il n'avait pas de
+          // catégorie, et son annonce étant déjà retirée aucune
+          // synchronisation n'aurait PU la retrouver — le geste demandé ne
+          // pouvait pas marcher.
+          // Depuis le même jour, get-pending-jobs lit la catégorie dans
+          // l'ADRESSE de l'annonce d'origine et remet le job en route tout
+          // seul. Ce message ne doit donc plus jamais donner d'ordre : il dit
+          // où en est l'annonce, à qui est le problème, et que c'est repris.
           const { data: jAct } = await userClient
-            .from("cross_post_jobs").select("action").eq("id", jobId).maybeSingle();
+            .from("cross_post_jobs").select("action, platform_fields").eq("id", jobId).maybeSingle();
+          const etapeRepub = ((jAct?.platform_fields ?? {}) as Record<string, unknown>)["republish_step"];
           clair = jAct?.action === "republish"
-            ? "On n'a pas retrouvé la catégorie de ton annonce en ligne. Relance une synchronisation de tes annonces depuis le Stock, puis remets la republication en route — il n'y a rien à refaire côté annonce."
+            ? (etapeRepub === "deleted"
+                ? "Ton annonce a été retirée et n'est pas encore revenue en ligne — le problème vient de chez nous, pas de ton annonce. On la reprend automatiquement ; rien à faire de ton côté, et rien n'est perdu (titre, description, photos et champs sont sauvegardés)."
+                : "Il nous manque la catégorie de cette annonce pour la redéposer. Ton annonce est toujours en ligne, rien n'a été touché — on la reprend automatiquement.")
             : "Cet article n'a pas encore de catégorie sur cette plateforme. Régénère son annonce depuis l'app, puis relance la publication.";
         }
         if (clair) {
