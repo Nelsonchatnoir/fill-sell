@@ -37,7 +37,15 @@ const ARBRE = { categories: CAT.oplaEnfants('').map(noeudApi) };
 //    et que Chrome injecte, et on l'exécute. `chrome` vaut undefined, donc le
 //    bloc d'écoute des messages ne s'enregistre pas — c'est le seul endroit du
 //    fichier qui touche à l'environnement de l'extension au chargement.
-const source = fs.readFileSync(path.join(ROOT, 'chrome-extension/content-scripts/opla.js'), 'utf8');
+// ⛔ ET ON PEUT LE FAIRE SUR LE PAQUET, PAS SEULEMENT SUR LA SOURCE :
+//    `node scripts/opla-jumeau-selftest.mjs build/extension/content-scripts/opla.js`
+//    exécute le fichier MINIFIÉ qui part au Chrome Web Store. Un grep sur un
+//    fichier minifié ne prouve rien (les noms locaux sont renommés) ; l'exécuter
+//    prouve tout. C'est le contrôle à passer avant de téléverser.
+const CIBLE = Deno_args() ?? 'chrome-extension/content-scripts/opla.js';
+function Deno_args() { return process.argv[2] ? String(process.argv[2]).replace(/\\/g, '/') : null; }
+console.log(`fichier exécuté : ${CIBLE}\n`);
+const source = fs.readFileSync(path.join(ROOT, CIBLE), 'utf8');
 const faireModule = new Function('fetch', 'chrome', 'window', 'document', `${source}\n;return { oplaChargerReferentiel };`);
 const faux = async (chemin) => ({
   ok: /config\/articles/.test(chemin),
