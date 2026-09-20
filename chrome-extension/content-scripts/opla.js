@@ -267,19 +267,27 @@ const OPLA_SEL = {
   blocErreur: "main div.bg-red-50",                 // sans role ni aria-live : textContent seul
   menuActions: 'button[aria-label="Actions"]',      // ✅ le seul aria-label du parcours
   retirerPhoto: "main button.absolute.right-1.top-1",
-  parLibelle: {
-    categorie: /^Catégorie/, marque: /^Marque/, etat: /^État/,
-    taille: /^Taille/, couleur: /^Couleur/, matiere: /^Matière/,
-  },
+  // ⛔ `parLibelle` RETIRÉ le 2026-09-20 (passe 3, point 4-b), pour la même
+  //    raison qu'oplaEstFacultatif : jamais lu une seule fois. Ces six
+  //    expressions décrivaient les libellés du formulaire WEB d'Opla, que ce
+  //    fichier n'ouvre jamais — il poste sur l'API. Un sélecteur qui ne sert
+  //    à rien finit par faire croire qu'un chemin existe.
   // ⚠️ Modales = portails en fin de <body>, SANS role="dialog". Le z-index
   // CHANGE d'une modale à l'autre (z-50 / z-[60] / z-[110]) : ne JAMAIS cibler
   // par z-index. ⛔ #_r_3_-input est un id GÉNÉRÉ par React : jamais un sélecteur.
   modale: "div.fixed.inset-0",
 };
 
-// Un champ est FACULTATIF si et seulement si son libellé contient « (optionnel) ».
-// Pur textContent : valide en fenêtre non rendue.
-function oplaEstFacultatif(bouton) { return /\(optionnel\)/i.test(oplaTexte(bouton)); }
+// ⛔ CODE MORT RETIRÉ LE 2026-09-20 (passe 3, point 4-b) : `oplaEstFacultatif()`.
+// Écrite le 15/09 pour repérer les champs « (optionnel) » du formulaire web
+// d'Opla, elle n'a JAMAIS été appelée une seule fois — et elle ne POUVAIT pas
+// l'être : cette plateforme ne se remplit pas par un formulaire, elle se POSTE
+// sur une API (cf. § 1). C'est ce code mort, qui avait toutes les apparences
+// du code vivant, qui a fait chercher un observateur DOM là où il n'y en a
+// jamais eu — et retardé d'autant le point 3 (le catalogue Opla qui
+// n'apprenait rien depuis le 16/09).
+// Ce qu'Opla exige se lit dans /public/config/params, pas dans un libellé :
+// c'est `oplaRelverAspects()`, plus bas.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. PRÉ-VOL — LA SEULE GARDE QUI EXISTE, ET ELLE VIT AILLEURS
