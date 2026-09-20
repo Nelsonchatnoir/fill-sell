@@ -13,7 +13,7 @@ import { PLATEFORMES_STOCK } from './stockFiltres';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
-// L'AFFICHAGE par compte passe par la prop `plateformes` de RelevesPlateformes
+// L'AFFICHAGE par compte passe par la prop `plateformes` de CarteAnnoncesEnLigne
 // (plateformesDuCompte, calculée par StockTab) — ceci est le plafond.
 export const PLATEFORMES_RELEVE = PLATEFORMES_STOCK.filter((p) => p !== 'vinted');
 export const LABEL_RELEVE = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };

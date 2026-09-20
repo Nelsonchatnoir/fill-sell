@@ -46,7 +46,11 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
 // l'annonce (lireSyncMultiOuverte, fail-closed).
-import RelevesPlateformes from '../components/RelevesPlateformes';
+// « Mes annonces en ligne » (refonte du 20/09) : sorti du monolithe dans son
+// propre module, sur le modèle de src/reglages — des textes dans un fichier
+// dédié, la lecture des runs séparée de l'affichage.
+// components/RelevesPlateformes.jsx est SUPPRIMÉ.
+import CarteAnnoncesEnLigne from '../annonces/CarteAnnoncesEnLigne';
 import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
@@ -7697,32 +7701,32 @@ const StockTab = memo(function StockTab({
             liste des plateformes est celle des cartes (plateformesDuCompte),
             jamais une troisième liste. */}
         {syncMultiOuverte ? (
-          <div style={{background:'#fff',border:'1px solid #E7E3D8',borderRadius:20,padding:'14px 16px',display:'flex',flexDirection:'column',gap:10}}>
-            <RelevesPlateformes
-              lang={lang} user={user} items={items} ouvert={syncMultiOuverte} integre
-              plateformes={plateformesCompte.filter(p=>p!=='vinted')}
-              extensionStatus={extensionStatus}
-              onRattache={rafraichirApresSync}
-              lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
-              etatVinted={etatVinted}
-              ligneVinted={
-                <VintedDressingSync
-                  lang={lang} user={user} isNative={isNative}
-                  extensionStatus={extensionStatus}
-                  source={stock.length===0?'stock_empty':'stock_liste'}
-                  onDone={rafraichirApresSync}
-                  repubEnVol={repubVivants}
-                  repubRepriseA={repubRepriseA}
-                  onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
-                  boutiquesVinted={boutiquesVinted}
-                  rechargerBoutiques={rechargerBoutiques}
-                  variante="ligne"
-                  registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
-                  registerEtat={noterEtatVinted}
-                />
-              }
-            />
-          </div>
+          /* La carte pose SON propre cadre et SA note de pied : le parent ne
+             l'enveloppe plus dans une boîte blanche (elle en faisait deux). */
+          <CarteAnnoncesEnLigne
+            lang={lang} user={user} isNative={isNative} items={items} ouvert={syncMultiOuverte}
+            plateformes={plateformesCompte.filter(p=>p!=='vinted')}
+            extensionStatus={extensionStatus}
+            onRattache={rafraichirApresSync}
+            lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
+            etatVinted={etatVinted}
+            ligneVinted={
+              <VintedDressingSync
+                lang={lang} user={user} isNative={isNative}
+                extensionStatus={extensionStatus}
+                source={stock.length===0?'stock_empty':'stock_liste'}
+                onDone={rafraichirApresSync}
+                repubEnVol={repubVivants}
+                repubRepriseA={repubRepriseA}
+                onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
+                boutiquesVinted={boutiquesVinted}
+                rechargerBoutiques={rechargerBoutiques}
+                variante="ligne"
+                registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
+                registerEtat={noterEtatVinted}
+              />
+            }
+          />
         ) : (
           <VintedDressingSync
             lang={lang} user={user} isNative={isNative}
