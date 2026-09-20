@@ -1250,9 +1250,12 @@ serve(async (req) => {
     try {
       const pfB = (j: Record<string, unknown>) =>
         ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      // ⚠️ Pas seulement « sans catégorie » : le relevé porte aussi l'état, la
+      //    marque et la taille, et chacun peut manquer indépendamment.
       const beebsACombler = (out as unknown as Array<Record<string, unknown>>)
         .filter((j) => j.platform === "beebs" && j.inventaire_id != null
-          && !Array.isArray(pfB(j)["beebsCategoryPath"]));
+          && (!Array.isArray(pfB(j)["beebsCategoryPath"])
+            || ["etat", "marque", "taille"].some((c) => !String(pfB(j)[c] ?? "").trim())));
       if (beebsACombler.length) {
         const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
         const { data: annonces } = await userClient
@@ -1260,25 +1263,63 @@ serve(async (req) => {
           .eq("platform", "beebs").in("inventaire_id", ids)
           .order("vu_le", { ascending: false });
         const cheminDe = new Map<number, string[]>();
+        const captureDeB = new Map<number, Record<string, unknown>>();
         for (const a of (annonces ?? [])) {
           const inv = Number((a as { inventaire_id: number }).inventaire_id);
-          if (cheminDe.has(inv)) continue;
-          const brut = String(((a as { capture?: { categorie?: unknown } }).capture ?? {})?.categorie ?? "").trim();
+          if (cheminDe.has(inv) || captureDeB.has(inv)) continue;
+          const cap = (a as { capture?: unknown }).capture;
+          if (cap && typeof cap === "object") captureDeB.set(inv, cap as Record<string, unknown>);
+          const brut = String((cap as { categorie?: unknown } | null ?? {})?.categorie ?? "").trim();
           // ⚠️ AU MOINS DEUX NIVEAUX. « Mode » seul n'est pas une feuille : le
           //    poser ferait échouer selectCategory plus loin, en silence.
           const chemin = brut ? brut.split(">").map((s) => s.trim()).filter(Boolean) : [];
           if (chemin.length >= 2) cheminDe.set(inv, chemin);
         }
+        // ── ET PAS SEULEMENT LA CATÉGORIE (2026-09-20, suite du même job) ────
+        // La catégorie posée, Beebs a réclamé Taille, Marque et État — et le
+        // message disait « la copie Beebs de cette annonce ne le renseigne
+        // pas ». C'ÉTAIT FAUX : le relevé du 17/09 portait « Très bon état »,
+        // « Camaïeu » et « M / 38 ». Ces valeurs viennent de la page Beebs
+        // elle-même, donc elles sont valides chez Beebs par construction —
+        // c'est exactement ce que fait déjà la reprise Leboncoin au-dessus.
+        // ⛔ ON NE COMBLE QUE LE VIDE : une valeur posée par l'app ou par la
+        //    personne est plus récente que le relevé, elle n'est jamais écrasée.
+        const CHAMPS_BEEBS: Array<[string, string]> = [
+          ["etat", "etat"], ["marque", "marque"], ["taille", "taille"],
+          ["couleur", "couleur"], ["matiere", "matiere"],
+        ];
+        // Beebs est genré jusqu'aux accessoires. Le genre n'est pas inventé :
+        // il est LU dans le chemin qu'on vient de poser (« Mode > Femme > … »).
+        const GENRES_BEEBS = new Set(["Femme", "Homme", "Fille", "Garçon", "Bébé"]);
         let posesBeebs = 0;
         for (const j of beebsACombler) {
-          const chemin = cheminDe.get(Number(j.inventaire_id));
-          if (!chemin) continue;
           const pf = { ...pfB(j) };
-          pf["beebsCategoryPath"] = chemin;
+          const chemin = Array.isArray(pf["beebsCategoryPath"]) && (pf["beebsCategoryPath"] as unknown[]).length >= 2
+            ? (pf["beebsCategoryPath"] as unknown[]).map(String)
+            : cheminDe.get(Number(j.inventaire_id));
+          if (!chemin) continue;
+          const repris: Record<string, string> = {};
+          if (!Array.isArray(pf["beebsCategoryPath"])) {
+            pf["beebsCategoryPath"] = chemin;
+            repris["beebsCategoryPath"] = chemin.join(" > ");
+          }
+          const cap = captureDeB.get(Number(j.inventaire_id)) ?? {};
+          for (const [cle, dans] of CHAMPS_BEEBS) {
+            if (String(pf[cle] ?? "").trim()) continue;
+            const v = String(cap[dans] ?? "").trim();
+            if (!v) continue;
+            pf[cle] = v;
+            repris[cle] = v;
+          }
+          if (!String(pf["genre"] ?? "").trim() && GENRES_BEEBS.has(chemin[1] ?? "")) {
+            pf["genre"] = chemin[1];
+            repris["genre"] = chemin[1];
+          }
+          if (!Object.keys(repris).length) continue;   // rien à ajouter : on ne réécrit pas pour rien
           pf["champs_repris_de_l_annonce"] = {
             le: new Date().toISOString(),
-            pose_par: "get-pending-jobs (catégorie Beebs de l'annonce relevée)",
-            repris: { beebsCategoryPath: chemin.join(" > ") },
+            pose_par: "get-pending-jobs (annonce Beebs relevée)",
+            repris,
           };
           const { error: uErr } = await userClient.from("cross_post_jobs")
             .update({ platform_fields: pf }).eq("id", j.id as string);
