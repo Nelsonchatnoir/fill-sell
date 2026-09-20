@@ -1362,6 +1362,84 @@ serve(async (req) => {
     console.error("[handler-watch] dépôts muets:", (e as Error)?.message ?? e);
   }
 
+  // ── LA PROMESSE « ELLE REPARTIRA TOUTE SEULE » EST TENUE (2026-09-20) ─────
+  // 🚨 LE DÉFAUT, relevé le 20/09 : 21 republications Vinted attendent depuis
+  //    le 06, 12, 16 et 18/09 — sur 4 comptes — avec ce message à l'écran :
+  //    « Ta republication attend que Vinted soit rouvert […] la republication
+  //    repartira toute seule dans les minutes qui suivent. »
+  //    Vinted n'est pas en panne (platform_health.paused = false depuis le
+  //    27/08), les annonces sont INTACTES (aucune n'a franchi l'étape de
+  //    suppression, toutes ont encore leur listing_url) — et rien n'est
+  //    reparti. Quatorze jours pour la plus ancienne.
+  //
+  // POURQUOI : la reprise automatique existe, mais elle vit ENTIÈREMENT dans
+  // l'extension — elle se déclenche quand la sonde de sessions (10 min) revoit
+  // Vinted vivant. Si l'extension est éteinte, si la sonde ne cible jamais
+  // Vinted, ou si la session reste refusée, personne ne reprend la main. Et le
+  // solde 72 h ne les atteint pas non plus : il ne compte que le temps
+  // d'extension ACTIVE, à dessein (on ne punit pas une extension éteinte). Le
+  // résultat est une ligne rouge sans fin, sous une phrase qui promet le
+  // contraire.
+  //
+  // LA RÈGLE : passé SESSION_ATTENTE_JOURS, le SERVEUR re-pend le job UNE
+  // SEULE FOIS. Trois issues, toutes meilleures que l'attente éternelle :
+  // la republication part ; ou la capture échoue encore et le job retourne
+  // en needs_user par la même porte (rien n'est touché, l'annonce est
+  // intacte) ; ou l'extension est éteinte et le balayage des dépôts muets
+  // ci-dessus le clôt proprement, visible, quota rendu.
+  //
+  // ⛔ UNE SEULE FOIS PAR JOB : le marqueur `reprise_session_serveur_le` vit
+  //    dans platform_fields, que l'extension relit-modifie-réécrit (elle ne
+  //    remplace jamais l'objet par un neuf) — il survit donc à une nouvelle
+  //    pause. Sans lui, ce bloc re-pendrait toutes les trois minutes.
+  // ⛔ JAMAIS UN JOB QUI A DÉJÀ SUPPRIMÉ (`republish_step === 'deleted'`) :
+  //    celui-là est au milieu du gué, il a sa propre machine d'étapes.
+  // ⛔ JAMAIS SI VINTED EST EN PAUSE : on ne relance pas vers une plateforme
+  //    qu'on vient de déclarer fermée.
+  // ⛔ AUCUN DÉBIT : needs_user → pending ne tire aucun trigger de solde
+  //    (ils ne tirent que sur les statuts terminaux), et le job repart TEL
+  //    QUEL, avec sa réservation d'origine.
+  const SESSION_ATTENTE_JOURS = 3;
+  let repriseSessionServeur = 0;
+  try {
+    const { data: sante } = await supabase
+      .from("platform_health").select("paused").eq("platform", "vinted").maybeSingle();
+    if (!(sante as { paused?: boolean } | null)?.paused) {
+      const limite = new Date(now - SESSION_ATTENTE_JOURS * 24 * 3600 * 1000).toISOString();
+      const { data: enPanne } = await supabase
+        .from("cross_post_jobs")
+        .select("id, created_at, listing_url, platform_fields")
+        .eq("status", "needs_user")
+        .eq("action", "republish")
+        .eq("platform", "vinted")
+        .lt("created_at", limite)
+        .limit(200);
+      for (const j of (enPanne ?? []) as Array<Record<string, unknown>>) {
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        if (pf.needs_user_source !== "session_vinted") continue;
+        if (pf.republish_step === "deleted") continue;       // au milieu du gué
+        if (pf.reprise_session_serveur_le) continue;         // déjà servi une fois
+        if (!j.listing_url) continue;                        // rien à republier
+        const jours = Math.floor((now - Date.parse(String(j.created_at))) / 86400000);
+        const { error: rErr } = await supabase
+          .from("cross_post_jobs")
+          .update({
+            status: "pending",
+            error: null,
+            platform_fields: { ...pf, reprise_session_serveur_le: new Date(now).toISOString(), reprise_session_serveur_jours: jours },
+          })
+          .eq("id", String(j.id))
+          .eq("status", "needs_user");
+        if (!rErr) {
+          repriseSessionServeur++;
+          console.log(`[handler-watch] job ${j.id} (vinted/republish) : ${jours} j en attente de session → re-pendu UNE fois par le serveur`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise des republications en attente de session:", (e as Error)?.message ?? e);
+  }
+
   // ── Déblocage AUTO de la garde Livres (2026-08-27 soir, décision Nico) ────
   // Les jobs pausés par la garde Livres/ISBN (needs_user_source=
   // 'livres_isbn_garde') repassent en 'pending' TOUT SEULS dès que leur
@@ -1849,7 +1927,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1904,7 +1982,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1958,7 +2036,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur }), {
     headers: { "Content-Type": "application/json" },
   });
 });
