@@ -13,7 +13,7 @@
 // Le corpus contient tous les cas qui ont fait échouer une version
 // intermédiaire des règles — ils sont là pour qu'ils ne reviennent pas.
 // ═══════════════════════════════════════════════════════════════════════════
-import { familleJeuVideo, cheminJeuVideo, machineDuTexte, classementAgeEcrit } from "../src/utils/jeuxVideo.js";
+import { familleJeuVideo, cheminJeuVideo, machineDuTexte, classementAgeEcrit, classementPourPlateforme } from "../src/utils/jeuxVideo.js";
 import { FEUILLES as VINTED } from "../src/utils/arbres/vintedFeuilles.js";
 import { FEUILLES as LBC } from "../src/utils/arbres/leboncoinFeuilles.js";
 import { FEUILLES as BEEBS } from "../src/utils/arbres/beebsFeuilles.js";
@@ -209,6 +209,24 @@ for (const [titre, attendu] of AGES) {
   const v = classementAgeEcrit(titre, "");
   if (v !== attendu) ko(`« ${titre} » → ${v ?? "null"} (attendu ${attendu ?? "null"})`);
 }
+
+// ── 5. Le classement d'âge, d'une plateforme à l'autre ───────────────────
+// Listes RELEVÉES le 2026-09-20 : Vinted 17 valeurs (REQUIS sur « Jeux »),
+// eBay 5 valeurs (aspect « Classification », FACULTATIF). Leboncoin, Beebs et
+// Opla n'ont AUCUN champ de classification sur leurs rayons de jeux.
+console.log("5. Classement d'âge");
+for (const v of ["PEGI 3", "PEGI 7", "PEGI 12", "PEGI 16", "PEGI 18"]) {
+  if (classementPourPlateforme("vinted", v) !== v) ko(`Vinted refuse « ${v} » (il est dans sa liste relevée)`);
+  if (classementPourPlateforme("ebay", v) !== v) ko(`eBay refuse « ${v} » (il est dans sa liste relevée)`);
+}
+for (const v of ["USK 16", "Non précisé", "T – 13 ans et plus", "E – Tous publics"]) {
+  if (classementPourPlateforme("vinted", v) !== v) ko(`Vinted refuse « ${v} » (il est dans sa liste relevée)`);
+  if (classementPourPlateforme("ebay", v) !== null) ko(`eBay accepte « ${v} » — ABSENT de sa liste relevée, rien ne doit partir`);
+}
+for (const p of ["leboncoin", "beebs", "opla"]) {
+  if (classementPourPlateforme(p, "PEGI 12") !== null) ko(`${p} : aucun champ de classement relevé, rien ne doit partir`);
+}
+if (classementPourPlateforme("vinted", "PEGI 15") !== null) ko("« PEGI 15 » n'existe pas : rien ne doit partir");
 
 if (echecs) { console.error(`\n❌ ${echecs} échec(s)`); process.exit(1); }
 console.log("\n✅ tout passe");

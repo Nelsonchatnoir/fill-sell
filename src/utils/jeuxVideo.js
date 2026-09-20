@@ -329,3 +329,42 @@ export function classementAgeEcrit(titre, description = "") {
 //    = « PEGI 12 » ; aucune trace du singulier nulle part en base.
 export const VINTED_CHAMP_PLATEFORME = "video_game_platform";
 export const VINTED_CHAMP_CLASSEMENT = "video_game_ratings";
+
+// ── LE CLASSEMENT D'ÂGE, D'UNE PLATEFORME À L'AUTRE ───────────────────────
+// RELEVÉ LE 20/09, plateforme par plateforme, et le résultat est court :
+//   · Vinted « Jeux »  : `video_game_ratings`, 17 valeurs, REQUIS ;
+//   · eBay   « Jeux »  : aspect « Classification », 5 valeurs, FACULTATIF ;
+//   · Leboncoin        : AUCUN champ de classification sur « Jeux vidéo » ni
+//     sur « Consoles » (relevé complet des deux feuilles) ;
+//   · Beebs            : un champ « Âge » existe sur Figurines/LEGO/DVD…, mais
+//     PAS au relevé de « Multimédia > Jeux vidéo » — et c'est l'âge RECOMMANDÉ
+//     d'un jouet (« 8 ans - 12 ans »), pas un classement PEGI. On ne fabrique
+//     pas une équivalence entre deux échelles qui ne mesurent pas la même
+//     chose ;
+//   · Opla             : aucun champ d'aspect sur ses feuilles de jeux.
+// Les 5 valeurs PEGI d'eBay sont ÉCRITES EXACTEMENT comme celles de Vinted
+// (« PEGI 12 ») : la correspondance est l'identité, vérifiée valeur par valeur
+// par scripts/jeux-video-selftest.mjs. Les 12 autres valeurs de Vinted (USK,
+// ESRB, « RP », « Non précisé ») n'existent PAS chez eBay → on ne pose RIEN
+// pour celles-là. Hors liste = rien, jamais un à-peu-près.
+export const EBAY_ASPECT_CLASSEMENT = "Classification";
+
+/** Les 17 valeurs de Vinted, relevées. Rien d'autre ne part chez Vinted. */
+export const VINTED_CLASSEMENTS = [
+  "AO – Réservé aux adultes", "E – Tous publics", "E10+ – 10 ans et plus",
+  "M – 17 ans et plus", "Non précisé", "PEGI 12", "PEGI 16", "PEGI 18",
+  "PEGI 3", "PEGI 7", "RP – En attente de classement", "T – 13 ans et plus",
+  "USK 0", "USK 12", "USK 16", "USK 18", "USK 6",
+];
+
+/** Les 5 valeurs d'eBay, relevées. Rien d'autre ne part chez eBay. */
+export const EBAY_CLASSEMENTS = ["PEGI 3", "PEGI 7", "PEGI 12", "PEGI 16", "PEGI 18"];
+
+/** La valeur acceptée par une plateforme, ou null si elle n'y existe pas. */
+export function classementPourPlateforme(plateforme, valeur) {
+  const v = String(valeur ?? "").trim();
+  if (!v) return null;
+  if (plateforme === "vinted") return VINTED_CLASSEMENTS.includes(v) ? v : null;
+  if (plateforme === "ebay") return EBAY_CLASSEMENTS.includes(v) ? v : null;
+  return null; // Leboncoin, Beebs, Opla : aucun champ relevé.
+}
