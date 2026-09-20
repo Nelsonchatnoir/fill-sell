@@ -31,11 +31,17 @@
 // Une validation humaine écrit source = `manual`, que la garde laisse passer
 // par construction. Rien n'est contourné : c'est la porte prévue.
 //
-// OÙ VIT LE REFUS. Il n'y a pas de table de décisions, et il n'en faut pas :
-// `platform_category_aspects.source` est contraint à (dom|server_400|manual),
-// donc un refus ne peut pas s'y marquer. Il se journalise dans `usage_logs`
-// (feature `catalogue_quarantaine`), qui porte déjà les traces de l'app — qui,
-// quand, quoi. La file exclut ce qui a été tranché : un refus ne revient pas.
+// OÙ VIT LE REFUS. `platform_category_aspects.source` est contraint à
+// (dom|server_400|manual) : un refus ne peut pas s'y marquer. Il vit donc dans
+// `catalogue_quarantaine_decisions`, et la file exclut ce qui a été tranché.
+//
+// ⛔ CETTE TABLE A REMPLACÉ `usage_logs` LE 20/09 (passe 2), et il a fallu un
+//    incident pour le voir : `usage_logs` a pour RLS `auth.uid() = user_id`.
+//    Un refus posé depuis nicolas.svobodny@ n'était PAS vu depuis
+//    hoosslocal@ — et il y a DEUX comptes arbitres. La ligne réapparaissait,
+//    et il fallait la refuser deux fois. Un arbitrage engage TOUT le parc :
+//    il ne peut pas être privé. `usage_logs` continue d'être écrite à côté
+//    (la trace qui/quand/quoi), elle n'arbitre simplement plus rien.
 //
 // ⛔ ÉCRITURE = RELECTURE. Un UPDATE filtré par RLS rend 0 ligne SANS erreur,
 //    et un trigger peut remettre `required` à false en silence. On relit donc
@@ -111,13 +117,19 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
   const lire = useCallback(async () => {
     // Trois lectures, aucune jointure côté serveur : les trois tables sont
     // lisibles par `authenticated`. Chacune paginée (cf. toutLire).
+    // ⛔ LES DÉCISIONS NE SE LISENT PLUS DANS `usage_logs` (2026-09-20, 6-b).
+    //    Sa RLS est `auth.uid() = user_id` : un refus posé depuis
+    //    nicolas.svobodny@ n'était PAS vu depuis hoosslocal@, et la ligne
+    //    réapparaissait. Or un arbitrage engage tout le parc — il est partagé.
+    //    `usage_logs` continue d'être ÉCRITE (la trace qui/quand/quoi), elle
+    //    n'est simplement plus la source de vérité de la file.
     const [obs, dec] = await Promise.all([
       toutLire(() => supabase.from('platform_category_aspect_observations')
         .select('platform, category_key, field_key, observer, required, seen_count, first_seen_at, last_seen_at')
         .eq('required', true)
         .order('platform').order('category_key').order('field_key').order('observer')),
-      toutLire(() => supabase.from('usage_logs').select('metadata')
-        .eq('feature', FEATURE).order('created_at')),
+      toutLire(() => supabase.from('catalogue_quarantaine_decisions')
+        .select('platform, category_key, field_key').order('platform')),
     ]);
 
     // Le catalogue n'est lu que sur les clés effectivement observées : c'est
@@ -132,10 +144,7 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
       .in('field_key', uniques((o) => o.field_key))
       .order('platform').order('category_key').order('field_key')) : [];
 
-    const tranchees = new Set((dec ?? []).map((d) => {
-      const m = d?.metadata ?? {};
-      return `${m.platform}|${m.category_key}|${m.field_key}`;
-    }));
+    const tranchees = new Set((dec ?? []).map(cle));
     const catalogue = new Map((cat ?? []).map((r) => [cle(r), r]));
 
     // Une ligne de file = un champ OBSERVÉ obligatoire, qui ne l'est pas au
@@ -176,8 +185,23 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
     return () => { vivant = false; };
   }, [lire]);
 
+  // DEUX ÉCRITURES, DEUX RÔLES, et c'est voulu :
+  //   · `catalogue_quarantaine_decisions` — la décision, PARTAGÉE : c'est elle
+  //     qui sort la ligne de la file, pour tous les arbitres ;
+  //   · `usage_logs` — la trace « qui, quand, quoi » du parc, personnelle,
+  //     comme tout le reste de l'app. Elle n'arbitre plus rien.
+  // La décision passe d'abord : si la trace échoue, la file reste juste.
   async function tracer(r, decision, resultat) {
     if (!c.user?.id) return;
+    const { error } = await supabase.from('catalogue_quarantaine_decisions').upsert({
+      platform: r.platform, category_key: r.category_key, field_key: r.field_key,
+      decision, par: c.user.id, field_label: r.field_label ?? null,
+      temoins: r.observateurs.size, decided_at: new Date().toISOString(),
+    }, { onConflict: 'platform,category_key,field_key' });
+    if (error) {
+      setMessage({ ton: 'ko', texte: `La décision n'a pas été enregistrée : ${error.message}. La ligne reste dans la file.` });
+      return false;
+    }
     await supabase.from('usage_logs').insert({
       user_id: c.user.id,
       feature: FEATURE,
@@ -187,6 +211,7 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
         temoins: r.observateurs.size,
       },
     });
+    return true;
   }
 
   async function valider(r) {
@@ -216,7 +241,8 @@ export default function SousPageCatalogueQuarantaine({ c, T }) {
     //    obligatoire ». Refuser, c'est seulement dire qu'on ne veut plus voir
     //    la question — sinon la file se remplit des mêmes lignes à chaque
     //    nouvelle observation.
-    await tracer(r, 'refuse', null);
+    const pose = await tracer(r, 'refuse', null);
+    if (!pose) { setEnCours(null); return; }   // écriture refusée : la file ne bouge pas
     setMessage({ ton: 'ok', texte: `« ${r.field_label} » ne sera plus proposé. Il n'est pas demandé aux utilisateurs.` });
     setLignes(await lire());
     setEnCours(null);
