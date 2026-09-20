@@ -244,6 +244,21 @@ export function classerChamps(lignes, pf, platform) {
       requis: l.required === true,
       valeur,
     };
+    // ── UNE VALEUR HORS DE LA GRILLE DU RAYON N'EST PAS UNE RÉPONSE ───────
+    // Trouvé en publiant pour de vrai : jogging enfant passé au rayon
+    // « Pantalons et jeans (garçon) », la taille restait « XS / 34 » — une
+    // taille FEMME. Beebs a refusé : « Beebs exige des champs encore vides
+    // pour cette catégorie : Taille ». Le champ s'affichait pourtant comme
+    // « déjà rempli », donc rien ne prévenait.
+    // Changer de rayon change les grilles ; une valeur qui n'existe pas dans
+    // la nouvelle grille est une valeur MANQUANTE, et on la redemande.
+    // ⛔ Seulement quand le rayon donne VRAIMENT sa liste (valeurs relevées
+    //    sur CETTE ligne, pas empruntées) et que le champ est obligatoire :
+    //    un relevé incomplet ne doit pas inventer des questions.
+    const grille = Array.isArray(l.allowed_values) && l.allowed_values.length
+      ? l.allowed_values.map((v) => texteSimple(v)) : null;
+    const horsGrille = Boolean(valeur && grille && entree.requis && !grille.includes(texteSimple(valeur)));
+    if (horsGrille) { questions.push({ ...entree, horsGrille: true }); continue; }
     if (valeur) { connus.push(entree); continue; }
     // Le bruit : jamais une question. Un défaut prudent s'il en existe un
     // d'honnête, sinon rien — dans les deux cas la publication part.

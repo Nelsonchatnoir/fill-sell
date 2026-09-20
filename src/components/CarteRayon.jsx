@@ -42,6 +42,7 @@ const MOTS = {
     tonChoix: 'ton choix', trouve: 'trouvé pour toi', aVerifier: 'à vérifier',
     manque: 'À COMPLÉTER', dejaLa: (n) => `Déjà rempli · ${n}`,
     obligatoire: 'demandé par la plateforme',
+    horsGrille: (v) => `« ${v} » n’existe pas dans ce rayon — choisis dans la liste`,
     revenir: 'Revenir au rayon trouvé',
     voisins: 'Rayons voisins',
     chargement: 'Chargement des rayons…',
@@ -57,6 +58,7 @@ const MOTS = {
     tonChoix: 'your choice', trouve: 'found for you', aVerifier: 'worth checking',
     manque: 'TO COMPLETE', dejaLa: (n) => `Already filled · ${n}`,
     obligatoire: 'required by the platform',
+    horsGrille: (v) => `“${v}” does not exist in this category — pick from the list`,
     revenir: 'Back to the found category',
     voisins: 'Nearby categories',
     chargement: 'Loading categories…',
@@ -327,7 +329,9 @@ export default function CarteRayon({
           {questions.map((q) => (
             <div key={q.cle} style={{ marginTop: 9 }}>
               <div style={{ fontSize: 11.5, color: UI.ink, fontWeight: 600 }}>{q.libelle}</div>
-              <div style={{ fontSize: 10.5, color: UI.mute2, marginBottom: 4 }}>{T.obligatoire}</div>
+              <div style={{ fontSize: 10.5, color: q.horsGrille ? '#92400E' : UI.mute2, marginBottom: 4 }}>
+                {q.horsGrille ? T.horsGrille(q.valeur) : T.obligatoire}
+              </div>
               {q.valeurs.length > 0 ? (
                 <select
                   value={q.valeur}
