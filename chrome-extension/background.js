@@ -14998,6 +14998,39 @@ async function enregistrerGrillesLbc(msg) {
   console.log(`[background] grilles Leboncoin relevées : ${lignes.length} (${lignes.map((l) => `${l.field_key}:${l.n_options}`).join(", ")})`);
 }
 
+// ── UN RELEVÉ FAIT SUR UN COMPTE PRO NE DÉCIDE PAS POUR LE PARC (2026-09-20)
+// Le formulaire Leboncoin d'un compte PRO porte des champs que le formulaire
+// PARTICULIER n'a pas — « Poids du colis » et « Quantité », relevés sur le
+// compte MeMiniandMove le 16/09. Le catalogue, lui, est PARTAGÉ : une ligne
+// écrite depuis un compte PRO s'applique à tout le monde, et un
+// `required: true` s'y transforme en question posée à des vendeurs dont le
+// formulaire n'a même pas le champ. C'est la régression du 16/09, et elle a
+// laissé une trace : « Quantité » (furniture_quantity) est obligatoire au
+// catalogue sur « Maison & Jardin > Ameublement », alors que le relevé LIVE
+// du 20/09 montre que le champ N'EXISTE PAS là-bas (Type*, Produit*,
+// Démontable, Pièce, Poids, Marque, Matière, Couleur, État — et rien d'autre).
+//
+// LA PORTE QU'ON FERME : ces deux champs-là ne peuvent plus entrer dans le
+// catalogue partagé comme OBLIGATOIRES. Ils y entrent encore (leur liste de
+// valeurs est utile aux comptes PRO), mais en `required: false`.
+// ⛔ On reconnaît le champ par son LIBELLÉ, pas par sa clé : la même
+//    « Quantité » s'appelle `quantity` sur une feuille et `furniture_quantity`
+//    sur une autre — la clé change, le champ est le même.
+// ⛔ Leboncoin SEULEMENT : les quatre autres plateformes n'ont pas de
+//    formulaire professionnel distinct.
+const LBC_CHAMPS_PRO_SEULEMENT = /^(quantité|quantite|poids du colis)$/i;
+function requisSansContaminationPro(job, d) {
+  const requis = d.required !== false;
+  if (!requis || job.platform !== "leboncoin") return requis;
+  const libelle = String(d?.label ?? "").replace(/\s*\*\s*$/, "").trim();
+  if (!LBC_CHAMPS_PRO_SEULEMENT.test(libelle)) return requis;
+  console.log(
+    `[background] catalogue : « ${libelle} » relevé OBLIGATOIRE sur ${job.platform} — champ du formulaire PRO, ` +
+    "écrit en facultatif pour ne pas le rendre obligatoire au parc"
+  );
+  return false;
+}
+
 async function persistDiscoveredAspects(accessToken, job, discovered) {
   const rows = [];
   const seen = new Map(); // key → index dans rows
@@ -15018,7 +15051,7 @@ async function persistDiscoveredAspects(accessToken, job, discovered) {
       // perdre ferait retomber l'app en saisie de texte libre.
       rows[i] = {
         ...ancien,
-        required: d.required !== false,
+        required: requisSansContaminationPro(job, d),
         source: src,
         field_label: d.label ? String(d.label).slice(0, 200) : ancien.field_label,
         allowed_values: Array.isArray(d.options) && d.options.length
@@ -15033,7 +15066,7 @@ async function persistDiscoveredAspects(accessToken, job, discovered) {
       category_key: categoryKeyOf(job).slice(0, 300),
       field_key: key.slice(0, 120),
       field_label: d.label ? String(d.label).slice(0, 200) : null,
-      required: d.required !== false,
+      required: requisSansContaminationPro(job, d),
       input_type: d.inputType ? String(d.inputType).slice(0, 40) : null,
       // trim (2026-07-30) : les options viennent de textContent DOM et
       // certaines portaient des espaces finaux (« Boutique italienne  ») —

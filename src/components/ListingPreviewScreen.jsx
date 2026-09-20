@@ -27,7 +27,7 @@ import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
-import { lbcProduitsDependants } from "../utils/lbcMaisonJardin";
+import { lbcProduitsDependants, lbcListePlate } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
@@ -6712,9 +6712,13 @@ export default function ListingPreviewScreen({
         // la liste unique (souvent fausse : « Autres » seul sur Électroménager,
         // apprise sous Type = Autre) que le catalogue ne peut porter qu'à plat.
         // Premier combobox vide, ou valeur hors relevé : catalogue, comme avant.
+        // Listes dependantes (Maison & Jardin) puis listes PLATES (2026-09-20) :
+        // un champ obligatoire sans liste relevee est un champ bloque, juste avec
+        // une autre tete. Les deux viennent du meme module, releves en live.
         const dependants = platform === "leboncoin"
-          ? lbcProduitsDependants(genericCategoryKeys?.[platform], key,
+          ? (lbcProduitsDependants(genericCategoryKeys?.[platform], key,
               (k) => String(genericKnownSource(platform, k, pf) ?? aspects[k] ?? "").trim())
+             ?? lbcListePlate(genericCategoryKeys?.[platform], key))
           : null;
         const allowedValues = dependants ?? (Array.isArray(r.allowed_values)
           ? r.allowed_values.slice(0, 1000).map(v => String(v).trim()).filter(Boolean)

@@ -131,6 +131,88 @@ export const LBC_MAISON_JARDIN_DEPENDANTS = {
   },
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LES LISTES PLATES — un champ obligatoire dont la liste ne dépend de rien
+// ═══════════════════════════════════════════════════════════════════════════
+// (2026-09-20, point 3-b du lot de clôture.) Le module ci-dessus ne sait
+// porter que des paires DÉPENDANTES (Univers → Produit). Or plusieurs rayons
+// Leboncoin ont un champ obligatoire à liste FERMÉE et INDÉPENDANTE, que le
+// catalogue a relevé SANS ses valeurs — l'écran les demandait donc en saisie
+// libre, où il faut deviner le libellé exact de Leboncoin. Un champ
+// obligatoire en texte libre sur une liste fermée est un champ bloqué.
+//
+// ⛔ MÊME DOCTRINE QUE CI-DESSUS : ce module ne décide pas des REQUIS (c'est
+//    le catalogue et la plateforme qui décident), il ne fait que fournir la
+//    liste quand on la connaît. Une valeur hors liste n'est jamais bloquante.
+// ⛔ CHAQUE LISTE EST UN RELEVÉ LIVE, daté, jamais une reconstruction.
+const LBC_LISTES_PLATES = {
+  // Relevé LIVE du 20/09/2026 sur le formulaire de dépôt (compte particulier),
+  // titre « Souris sans fil Logitech pour ordinateur » → Électronique >
+  // Accessoires informatique. Champ « Produit* », 17 valeurs.
+  "Électronique > Accessoires informatique": {
+    computer_accessories_product: [
+      "Carte graphique", "Carte mère", "Processeur", "Refroidisseur et ventilateur",
+      "Logiciel", "Écran / moniteur", "Clavier et souris", "Tapis de souris",
+      "Imprimante et scanner", "Réseau et modem", "Webcam / caméra",
+      "Câble et adaptateur", "Disque dur (SSD, HDD) et lecteur",
+      "Stockage léger (cartes SD, disques, clés USB)", "Hub / station d'accueil", "Autre",
+    ],
+  },
+  // Relevé LIVE du 20/09/2026, cinq rayons ouverts un par un sur le vrai
+  // formulaire (compte particulier). Ce sont les cinq derniers que le
+  // catalogue portait OBLIGATOIRES et SANS VALEURS — donc en saisie libre.
+  "Maison & Jardin > Papeterie & Fournitures scolaires": {
+    home_office_stationery_school_supplies_product: [
+      "Agenda scolaire", "Calculatrice", "Cahiers et carnets", "Carnet", "Classeurs",
+      "Crayons à papier et crayons de couleur", "Effaceurs, gommes, correcteurs", "Feuilles",
+      "Lot de fournitures scolaires", "Pochettes", "Règles, compas, équerres",
+      "Stylos & feutres", "Trousses", "Autre",
+    ],
+  },
+  "Loisirs > DVD - Films": {
+    dvd_movies_format: ["DVD", "Blu-ray", "Cassettes vidéo"],
+  },
+  "Loisirs > Loisirs créatifs": {
+    creative_activities_product: [
+      "Création de bijoux", "Décoration DIY", "Fournitures de base (papier, carton, tissu, perles...)",
+      "Livres / tutoriels / patrons", "Loisirs créatifs enfants",
+      "Matériel de couture / tricot / crochet / broderie", "Modelage et sculpture",
+      "Peinture et dessin", "Scrapbooking", "Autre",
+    ],
+  },
+  "Loisirs > Équipements vélos": {
+    bicycle_equipment_product: [
+      "Antivol", "Béquille", "Bidon et porte-bidon", "Casque", "Compteur et GPS vélo",
+      "Éclairage", "Gants de cyclisme", "Garde-boue", "Guidon", "Housse de transport",
+      "Lunettes et masque", "Objets réfléchissants", "Outils et Kit de réparation",
+      "Pompe à vélo", "Porte-bagages et panier", "Racks et porte-vélo",
+      "Roues et chambres à air", "Sacoche et bagagerie", "Selle", "Vêtements vélo", "Autre",
+    ],
+  },
+  "Électronique > Téléphones & Objets connectés": {
+    phone_product: [
+      "Smartphone", "Téléphone fixe", "Montre connectée", "GPS et balise (AirTag, SmarTag)",
+      "Bracelet connecté", "Assistant vocal", "Domotique", "Autres",
+    ],
+  },
+  // ⚠️ « Famille > Équipement bébé » (baby_equipment_type) n'est PAS ici : son
+  //    Produit est déjà servi par getLbcBabyEquipment (lbcCategories.js), qui
+  //    le déduit de l'icône. Ajouter une seconde source ferait deux vérités.
+};
+
+/** La liste d'un champ à liste PLATE, ou null si on ne la connaît pas.
+ *  Sert AUSSI le PREMIER combobox des feuilles Maison & Jardin : ses valeurs
+ *  sont les CLÉS de la table des produits dépendants, et personne ne les
+ *  servait (2026-09-20) — le champ « Type »/« Univers » y était obligatoire,
+ *  sans liste, donc en saisie libre, alors que la liste était juste au-dessus. */
+export function lbcListePlate(categoryKey, fieldKey) {
+  const liste = LBC_LISTES_PLATES[String(categoryKey ?? "")]?.[String(fieldKey ?? "")];
+  if (Array.isArray(liste) && liste.length) return liste;
+  const feuille = LBC_MAISON_JARDIN_DEPENDANTS[String(categoryKey ?? "")];
+  if (feuille && feuille.typeKey === String(fieldKey ?? "")) return Object.keys(feuille.produits);
+  return null;
+}
+
 // Texte comparable pour retrouver la valeur du premier combobox telle que
 // l'app la porte (relevé, saisie, IA) : accents, casse, espaces et apostrophes
 // ne doivent pas faire rater la correspondance — mais on ne réécrit jamais une

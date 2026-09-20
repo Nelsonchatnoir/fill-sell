@@ -15,7 +15,7 @@ import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
 import { repartirParVoie } from '../utils/ebayCompte';
 import { logRetrait, CHEMINS_RETRAIT } from '../utils/journalRetraits';
-import { lbcProduitsDependants } from '../utils/lbcMaisonJardin';
+import { lbcProduitsDependants, lbcListePlate } from '../utils/lbcMaisonJardin';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
@@ -1018,6 +1018,9 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
       const dep = lbcProduitsDependants(categoryKey, String(f.field_key ?? ""),
         (k) => String(pf.lbcAspects?.[k] ?? pf[k] ?? "").trim());
       if (Array.isArray(dep) && dep.length) { setCatalogueAllowed(dep); return; }
+      // Liste PLATE relevee en live (2026-09-20) : meme role, sans dependance.
+      const plate = lbcListePlate(categoryKey, String(f.field_key ?? ""));
+      if (plate) { setCatalogueAllowed(plate); return; }
     }
     (async () => {
       try {
