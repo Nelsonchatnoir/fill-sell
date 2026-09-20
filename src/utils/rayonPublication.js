@@ -136,3 +136,41 @@ export function champsAvecRayonsChoisis(pfParPlateforme, edited, plateformes) {
   }
   return sortie;
 }
+
+/** ── LE RAYON CHOISI NOMME L'OBJET (2026-09-20, passe 2) ───────────────────
+ *  Cas d'Ornella : elle choisit « Enfants › Vêtements pour filles › Bébé
+ *  filles › Combinaisons » sur Vinted, et l'écran Publier refuse TOUT le lot
+ *  avec « On n'a pas reconnu l'objet dans "…" : nomme l'objet dans le titre
+ *  ("combinaison", "dessous de plat", "veste"…) ». Elle venait de le nommer.
+ *
+ *  Le choix vivait sur UNE plateforme (`edited[p].rayon_choisi`) et les autres
+ *  repartaient de leur propre titre. Ici, la FEUILLE du rayon choisi devient
+ *  le mot de l'objet pour tout l'article : la cascade de résolution le traduit
+ *  ensuite dans l'arbre de CHAQUE plateforme, exactement comme elle l'aurait
+ *  fait avec un mot venu de l'IA ou du titre. Aucun mapping nouveau, aucune
+ *  table de correspondance : on réutilise la traduction qui existe déjà.
+ *
+ *  ⛔ NE REMPLACE JAMAIS UN MOT DÉJÀ CONNU : ce n'est qu'un REPLI, appelé
+ *     quand ni l'IA ni le titre n'ont nommé l'objet. Un mot certain gagne.
+ *  ⛔ NE TOUCHE PAS LA PLATEFORME QUI A LE CHOIX : son rayon est reposé par
+ *     `appliquerRayonChoisi` après la résolution, comme avant.
+ *  ⛔ AU SINGULIER : les feuilles sont au pluriel (« Combinaisons »,
+ *     « Jeans »), les mots-clés de la cascade au singulier. On enlève le « s »
+ *     ou le « x » final, et RIEN d'autre — pas de lemmatisation maison.
+ */
+export function objetDuRayonChoisi(edited) {
+  for (const p of Object.keys(edited ?? {})) {
+    const chemin = edited[p]?.rayon_choisi?.chemin;
+    if (!Array.isArray(chemin) || !chemin.length) continue;
+    const feuille = String(chemin[chemin.length - 1] ?? '').trim();
+    if (!feuille) continue;
+    const mot = feuille.replace(/[sx]$/i, '');
+    if (mot.length >= 3) return mot.toLowerCase();
+  }
+  return null;
+}
+
+/** Les plateformes sur lesquelles la personne a choisi son rayon. */
+export function plateformesAvecRayonChoisi(edited) {
+  return Object.keys(edited ?? {}).filter(p => edited[p]?.rayon_choisi?.chemin?.length);
+}

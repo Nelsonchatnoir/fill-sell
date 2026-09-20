@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical, MapPin } from "lucide-react";
+import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical, MapPin, Lock, LogOut } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
@@ -62,7 +62,7 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/
 import { resoudrePublication, signatureResolution } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
-import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt } from "../utils/rayonPublication";
+import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
 import CarteLivraisonEbay from "./CarteLivraisonEbay";
@@ -2837,7 +2837,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -2859,7 +2859,10 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   // StepPhotos, RPC platform_paused en dernier filet) : le bandeau se lit donc
   // sur toute plateforme en pause, sélectionnée ou non — ton neutre
   // « maintenance », jamais rouge d'erreur, texte = message_fr/message_en.
-  const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+  // ⛔ PLUS DE COPIE LOCALE (2026-09-20, passe 2). Celle-ci oubliait `opla` :
+  //    sur l'écran Publier, la pastille Opla s'affichait avec son logo, sa
+  //    croix… et AUCUN nom. Vu en faisant le parcours. La table exportée en
+  //    tête de fichier les a toutes les cinq — une seule liste, un seul nom.
   const pausedChips = pausedPlatforms.filter(p => PLATFORM_LABELS[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
   // inputs que l'éditeur de StepGeneration — la taille réutilise les groupes
@@ -3542,42 +3545,62 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           annonce écrite : cochée = pleine avec sa croix, décochée = creuse,
           on la retouche d'un geste. Aucun tap en plus pour qui ne change
           rien — c'est la même rangée, au même endroit.
-          ⛔ Ce qui est VERROUILLÉ (déjà en ligne, republication en vol) ou en
-             PAUSE n'y figure pas : le lot ne peut pas les reprendre, les
-             montrer cochables serait mentir. */}
-      <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:24 }}>
+          ⛔ CE QUI EST VERROUILLÉ Y FIGURE MAINTENANT, ET DIT POURQUOI
+             (2026-09-20, passe 2). Avant, une plateforme déjà en ligne ou
+             occupée par une publication en cours DISPARAISSAIT de la rangée,
+             sans un mot. On la cherche, on ne la trouve pas, on recule dans le
+             parcours pour rien. Elle est désormais là, éteinte, avec sa
+             raison en une ligne sous la rangée. On ne la rend PAS cochable :
+             le lot ne peut vraiment pas la reprendre. */}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:10 }}>
         {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
-          .filter(p => !plateformesVerrouillees.includes(p) && !pausedPlatforms.includes(p))
+          .filter(p => !pausedPlatforms.includes(p))
           .map(p => {
-            const cochee = chips.includes(p);
+            const verrouillee = plateformesVerrouillees.includes(p);
+            const cochee = !verrouillee && chips.includes(p);
             return (
               <button
                 key={p}
                 type="button"
-                onClick={() => setSelected(prev => {
+                disabled={verrouillee}
+                title={verrouillee ? (motifsVerrouillage?.[p] ?? undefined) : undefined}
+                onClick={verrouillee ? undefined : () => setSelected(prev => {
                   const s = new Set(prev);
                   if (s.has(p)) s.delete(p); else s.add(p);
                   return s;
                 })}
-                aria-pressed={cochee}
+                aria-pressed={verrouillee ? undefined : cochee}
                 style={{
                   display:"inline-flex", alignItems:"center", gap:8,
                   background: cochee ? T.chip : "transparent",
-                  border:`1px solid ${cochee ? T.border : T.border}`,
+                  border:`1px solid ${T.border}`,
                   borderRadius:999, padding:"6px 10px 6px 6px",
-                  cursor:"pointer", fontFamily:"inherit",
-                  opacity: cochee ? 1 : 0.5,
+                  cursor: verrouillee ? "default" : "pointer", fontFamily:"inherit",
+                  opacity: verrouillee ? 0.4 : (cochee ? 1 : 0.5),
                 }}
               >
                 <PlatformLogo platform={p} size={24} />
-                <span style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>{PLATFORM_LABELS[p]}</span>
-                {cochee
-                  ? <X size={13} color={T.mute} />
-                  : <Plus size={13} color={T.mute} />}
+                <span style={{ fontSize:13.5, fontWeight:600, color:T.ink }}>{PLATFORM_LABELS[p] ?? p}</span>
+                {verrouillee
+                  ? <Lock size={12} color={T.mute} />
+                  : cochee
+                    ? <X size={13} color={T.mute} />
+                    : <Plus size={13} color={T.mute} />}
               </button>
             );
           })}
       </div>
+      {/* LA RAISON, À CÔTÉ DE CE QU'ELLE EXPLIQUE. Une ligne par plateforme
+          éteinte — pas un bandeau, pas une modale : la phrase se lit là où
+          l'on vient de chercher la case à cocher. */}
+      {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
+        .filter(p => plateformesVerrouillees.includes(p) && !pausedPlatforms.includes(p) && motifsVerrouillage?.[p])
+        .map(p => (
+          <div key={`mv:${p}`} style={{ fontSize:11.5, lineHeight:1.5, color:T.mute, padding:"0 4px 4px" }}>
+            {PLATFORM_LABELS[p] ?? p} — {motifsVerrouillage[p]}
+          </div>
+        ))}
+      <div style={{ height:14 }} />
 
       {/* ⛔ TROIS MESSAGES DISAIENT LA MÊME CHOSE (lot B2). « Aucune
           plateforme sélectionnée. » ici, « Aucune plateforme prête à publier »
@@ -4416,6 +4439,23 @@ export default function ListingPreviewScreen({
   // Union bloquante : tout ce qui interdit un nouveau job publish sur la ligne.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet]), [alreadyPublishedKey, queuedKey]);
+  // ── POURQUOI CETTE PLATEFORME EST ÉTEINTE (2026-09-20, passe 2) ──────────
+  // Deux raisons, deux phrases, et rien d'autre — on ne dit que ce qu'on SAIT.
+  //   · `publishedSet` : l'annonce est déjà en ligne, ce lot ne peut pas la
+  //     republier (le RPC `spend_coins_and_publish` la refuserait de toute
+  //     façon, avec `already_published`) ;
+  //   · `queuedSet` : un dépôt est déjà en file ou en cours sur cette
+  //     plateforme (pending/processing), en remettre un ferait le doublon.
+  // ⛔ Aucune des deux ne dit à la personne quoi faire : elle constate, et
+  //    c'est tout. Et aucune n'invente : les deux ensembles viennent de la
+  //    même relecture des jobs que la garde de publication.
+  const motifsVerrouillage = useMemo(() => {
+    const m = {};
+    for (const p of publishedSet) m[p] = lang === "en" ? "already online for this item" : "déjà en ligne pour cet article";
+    for (const p of queuedSet) if (!m[p]) m[p] = lang === "en" ? "a publication is already under way" : "une publication est déjà en cours";
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alreadyPublishedKey, queuedKey, lang]);
 
   // ── Compte eBay pas paramétré → eBay grisé (07/09/2026, demande Joséphine) ─
   // « Utilisable » = exactement ce que le trigger cross_post_jobs_voie_ebay
@@ -5643,10 +5683,20 @@ export default function ListingPreviewScreen({
   // une copie est retouchée : l'emoji décrivait le contexte des copies
   // générées, le mot décrit l'ARTICLE (titre, marque, type, description de la
   // fiche). Réécrire la copie eBay ne change pas ce qu'est l'objet.
+  // ⛔ ET, EN DERNIER RECOURS, LE RAYON QUE LA PERSONNE A CHOISI (20/09,
+  //    passe 2). Quand l'IA n'a pas nommé l'objet, la feuille du rayon choisi
+  //    le nomme : « Combinaisons » → « combinaison ». Ce mot part ensuite dans
+  //    la cascade, qui le traduit dans l'arbre de CHAQUE plateforme — c'est ce
+  //    qui fait qu'un choix posé sur Vinted sert aussi Opla, Beebs et les
+  //    autres, au lieu de les laisser repartir de leur propre titre.
+  //    Cas fondateur : Ornella choisit « Bébé filles › Combinaisons » sur
+  //    Vinted et l'écran refuse TOUT le lot en lui demandant de « nommer
+  //    l'objet dans le titre ("combinaison"…) ». Elle venait de le faire.
+  //    ⚠️ REPLI SEULEMENT : un mot de l'IA gagne toujours.
   const activeAiObjet = useMemo(() => {
     const o = String(platformListings?.objet ?? "").trim();
-    return o || null;
-  }, [platformListings]);
+    return o || objetDuRayonChoisi(edited) || null;
+  }, [platformListings, edited]);
 
   // ══ LE RAYON, PRÊT À AFFICHER (lot B, 20/09) ══════════════════════════════
   // Ce que le pré-calcul a trouvé, RECOUVERT par le choix de la personne. Une
@@ -7466,9 +7516,17 @@ export default function ListingPreviewScreen({
       //    ne le disait qu'au clic. Maintenant la carte le dit tout de suite
       //    (« Aucun rayon trouvé — choisis-le ici »), et le choix ouvre la
       //    porte au lieu de la laisser fermée.
-      const tousChoisis = plateformesAPublier.length > 0
-        && plateformesAPublier.every(p => edited[p]?.rayon_choisi?.chemin?.length);
-      if (resolution.refus && !tousChoisis) throw new Error(resolution.refus.message);
+      // ⛔ `some`, ET PLUS `every` (2026-09-20, passe 2). Le cas d'Ornella :
+      //    elle choisit son rayon sur Vinted, coche Vinted + Opla, et le lot
+      //    ENTIER est refusé — parce qu'Opla, elle, n'avait pas de choix. Un
+      //    article n'est jamais bloqué partout parce qu'UNE plateforme n'a
+      //    pas su se ranger. Dès qu'un rayon est choisi quelque part, la
+      //    feuille de ce rayon nomme l'objet (objetDuRayonChoisi) et la
+      //    cascade le traduit dans l'arbre de chaque plateforme : le refus
+      //    global n'a plus lieu d'être, et il ne se déclenche d'ailleurs plus
+      //    (activeAiObjet n'est plus vide). Cette ligne reste la ceinture.
+      const unRayonChoisi = plateformesAvecRayonChoisi(edited).length > 0;
+      if (resolution.refus && !unRayonChoisi) throw new Error(resolution.refus.message);
       const { pfParPlateforme = {}, motCategorie } = resolution;
       // ── LE CLASSEMENT PAR ÂGE SE RELIT ICI, PAS DANS LE PRÉ-CALCUL ────────
       // Ces deux valeurs servent, après publication, à ranger la réponse de
@@ -8293,6 +8351,32 @@ export default function ListingPreviewScreen({
     setStep(s => s - 1);
   }
 
+  // ── LA SORTIE (2026-09-20, passe 2) ───────────────────────────────────────
+  // 🚨 LE DÉFAUT, constaté en refaisant le parcours : une fois dans le
+  //    stepper, on n'en sort pas. Le SEUL contrôle du haut est le « ‹ », qui
+  //    ne ferme qu'à la première étape — arrivé à Publier, il faut reculer
+  //    quatre fois. Et l'écran est en `position:fixed` par-dessus toute
+  //    l'app : ni onglets, ni retour navigateur utile.
+  //
+  // UN GESTE, À TOUTES LES ÉTAPES. `onClose()` existait déjà et ne détruit
+  // rien : l'article reste au stock, la fiche générée reste en base (elle est
+  // enregistrée à la génération, pas à la publication — c'est ce que dit
+  // « Fiche enregistrée, rouverte telle quelle » quand on revient).
+  //
+  // ⛔ ELLE NE PUBLIE RIEN ET NE SUPPRIME RIEN. Elle quitte, point.
+  // ⛔ UNE SEULE QUESTION, ET SEULEMENT SI DU TRAVAIL SERAIT PERDU : avant la
+  //    génération, les photos choisies ne sont encore nulle part. Après, il
+  //    n'y a rien à perdre — le bouton quitte du premier coup, sans un mot.
+  //    L'armement se désarme tout seul si on change d'étape.
+  const [quitterArme, setQuitterArme] = useState(false);
+  const quitterPerdraitDuTravail = step <= 1 && pickedPreviews.length > 0 && !platformListings;
+  useEffect(() => { setQuitterArme(false); }, [step]);
+  function quitterLeStepper() {
+    if (isLocked) return;
+    if (quitterPerdraitDuTravail && !quitterArme) { setQuitterArme(true); return; }
+    onClose();
+  }
+
   // ── Render : initializing ─────────────────────────────────────────────────
   // createPortal vers document.body : le stepper DOIT sortir du scroller
   // .wrap.page-pad (celui-ci a -webkit-overflow-scrolling:touch, qui sur iOS
@@ -8404,20 +8488,46 @@ export default function ListingPreviewScreen({
     }}>
       <style>{`* { box-sizing: border-box; }`}</style>
 
-      {/* Header : retour + progression */}
-      <div style={{ padding:"12px 20px 0", flexShrink:0 }}>
+      {/* Header : retour + SORTIE + progression */}
+      <div style={{ padding:"12px 20px 0", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
         <button
           onClick={handleBack}
           disabled={isLocked}
+          aria-label={lang === "en" ? "Previous step" : "Étape précédente"}
           style={{
             width:36, height:36, borderRadius:"50%",
             background:T.chip, border:"none",
             display:"flex", alignItems:"center", justifyContent:"center",
             cursor: isLocked ? "not-allowed" : "pointer",
             opacity: isLocked ? 0.5 : 1,
+            flexShrink:0,
           }}
         >
           <ChevronLeft size={18} color={T.ink} />
+        </button>
+        {/* LA PORTE DE SORTIE. Présente à TOUTES les étapes, un seul geste.
+            Elle ne publie rien, ne supprime rien : l'article reste au stock et
+            la fiche générée reste enregistrée. */}
+        <button
+          type="button"
+          onClick={quitterLeStepper}
+          disabled={isLocked}
+          style={{
+            display:"inline-flex", alignItems:"center", gap:7,
+            height:36, padding:"0 14px", borderRadius:999,
+            background: quitterArme ? "#FDF6E3" : T.chip,
+            border: `1px solid ${quitterArme ? "#EBD9A8" : "transparent"}`,
+            color: quitterArme ? "#8A6100" : T.mute2,
+            fontSize:13, fontWeight:600, fontFamily:"inherit",
+            cursor: isLocked ? "not-allowed" : "pointer",
+            opacity: isLocked ? 0.5 : 1,
+            maxWidth:"70%", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+          }}
+        >
+          <LogOut size={15} />
+          {quitterArme
+            ? (lang === "en" ? "Leave without keeping these photos?" : "Quitter sans garder ces photos ?")
+            : (lang === "en" ? "Leave" : "Quitter")}
         </button>
       </div>
       <StepProgress step={step} labels={stepLabels} onAller={(i) => setStep(i)} />
@@ -8567,6 +8677,7 @@ export default function ListingPreviewScreen({
             pausedPlatforms={pausedPlatforms}
             pausedReasons={pausedReasons}
             plateformesVerrouillees={[...lockedSet]}
+            motifsVerrouillage={motifsVerrouillage}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
             descriptionMentions={descriptionMentions}

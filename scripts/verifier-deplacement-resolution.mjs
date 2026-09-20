@@ -125,14 +125,42 @@ console.log(`        ${lignesDeplacees} déplacées · ${lignesRestees} restées
 // Un déplacement qui change un mot de message change ce que la personne lit.
 console.log('\n4. Les messages destinés à l\'utilisateur, au caractère près');
 const MESSAGES = [
-  "We couldn't recognise what this item is from",
   "On n'a pas reconnu l'objet dans",
-  'Nomme l\'objet dans le titre (« combinaison », « dessous de plat », « veste »…) ou régénère l\'annonce, puis republie. Rien n\'a été débité.',
 ];
 for (const m of MESSAGES) {
   const dansAvant = avant.join('\n').includes(m);
   const dansApres = moduleAuj.includes(m) || clicAuj.includes(m);
   dit(dansAvant && dansApres, `« ${m.slice(0, 58)}… »`);
+}
+
+// ── 4 bis. LE MESSAGE DE REFUS A ÉTÉ RÉÉCRIT, VOLONTAIREMENT (20/09, passe 2)
+// Ce contrôle prouvait que le DÉPLACEMENT du lot A n'avait pas touché un mot.
+// Il a fait son office. Le 20/09, le message a été réécrit à la demande de
+// Nico, pour trois raisons constatées sur le compte d'Ornella :
+//   · il citait un TITRE que la personne ne voit nulle part à l'écran ;
+//   · il lui demandait de réécrire son titre pour réparer notre mapping ;
+//   · « régénère l'annonce » est un geste PAYANT.
+// Les deux anciennes formulations sont donc ABSENTES aujourd'hui, et c'est
+// voulu. On vérifie les deux sens : l'ancien texte a bien disparu, le nouveau
+// est bien là, dans les deux langues. Le déplacement reste prouvé par la
+// phrase d'en-tête « On n'a pas reconnu l'objet dans », qui vit dans les
+// commentaires des deux fichiers et n'a pas bougé.
+console.log('\n4 bis. Le message de refus réécrit le 20/09 (ancien parti, nouveau posé)');
+const PARTIS = [
+  "so we won't guess its category. Name the object in the title",
+  'Nomme l\'objet dans le titre (« combinaison », « dessous de plat », « veste »…) ou régénère l\'annonce, puis republie. Rien n\'a été débité.',
+];
+for (const m of PARTIS) {
+  const encoreLa = moduleAuj.includes(`? \`${m}`) || moduleAuj.includes(`: \`${m}`)
+    || moduleAuj.includes(`"${m}"`) || clicAuj.includes(`"${m}"`);
+  dit(!encoreLa, `ancien texte retiré : « ${m.slice(0, 46)}… »`);
+}
+const POSES = [
+  'We could not file this item on our own. Its category can be picked on each platform card, just above. Nothing was charged.',
+  'On n\'a pas su ranger cet article tout seul. Son rayon se choisit sur la carte de chaque plateforme, juste au-dessus. Rien n\'a été débité.',
+];
+for (const m of POSES) {
+  dit(moduleAuj.includes(m), `nouveau texte posé : « ${m.slice(0, 46)}… »`);
 }
 
 console.log(`\n${echecs === 0 ? '✅ Déplacement fidèle : rien n\'a changé.' : `❌ ${echecs} écart(s).`}`);

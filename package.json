@@ -38,7 +38,8 @@
     "selftest:identite-article-lens": "node scripts/identite-article-lens-selftest.mjs",
     "selftest:mot-objet-ou-sujet": "node --import ./scripts/loader-ext.mjs scripts/mot-objet-ou-sujet-selftest.mjs",
     "selftest:sortie-et-coherence": "node scripts/sortie-et-coherence-selftest.mjs",
-    "selftest:deplacement-resolution": "node scripts/verifier-deplacement-resolution.mjs"
+    "selftest:deplacement-resolution": "node scripts/verifier-deplacement-resolution.mjs",
+    "selftest:rayon-vaut-pour-larticle": "node --import ./scripts/loader-ext.mjs scripts/rayon-vaut-pour-larticle-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

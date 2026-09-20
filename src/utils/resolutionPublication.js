@@ -355,9 +355,23 @@ export async function resoudrePublication({
     return {
       refus: {
         code: "objet_non_reconnu",
+        // ── LE MESSAGE NE DONNE PLUS DE TRAVAIL (2026-09-20, passe 2) ───────
+        // AVANT : « On n'a pas reconnu l'objet dans « <titre> » […] Nomme
+        // l'objet dans le titre (« combinaison », « dessous de plat »,
+        // « veste »…) ou régénère l'annonce ». Trois défauts, vus sur le
+        // compte d'Ornella le 20/09 à 16:24 :
+        //   · il citait un TITRE que la personne ne voit nulle part à l'écran
+        //     (celui de l'article, pas celui de la carte qu'elle regarde) ;
+        //   · il lui demandait de réécrire un titre pour réparer NOTRE
+        //     correspondance de catégories ;
+        //   · « régénère l'annonce » est un geste PAYANT.
+        // Et il s'affichait alors qu'elle venait de choisir son rayon à la
+        // main sur Vinted. Le message dit maintenant que ça vient de chez
+        // nous, montre la porte qui existe déjà — le sélecteur de rayon, sur
+        // la carte de chaque plateforme — et s'arrête là.
         message: lang === "en"
-          ? `We couldn't recognise what this item is from « ${frTitrePublication} », so we won't guess its category. Name the object in the title (e.g. "jumpsuit", "trivet", "jacket") or regenerate the listing, then publish again. Nothing was charged.`
-          : `On n'a pas reconnu l'objet dans « ${frTitrePublication} » : on ne devine pas sa catégorie. Nomme l'objet dans le titre (« combinaison », « dessous de plat », « veste »…) ou régénère l'annonce, puis republie. Rien n'a été débité.`,
+          ? "We could not file this item on our own. Its category can be picked on each platform card, just above. Nothing was charged."
+          : "On n'a pas su ranger cet article tout seul. Son rayon se choisit sur la carte de chaque plateforme, juste au-dessus. Rien n'a été débité.",
       },
     };
   }
