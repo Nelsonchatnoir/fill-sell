@@ -5724,12 +5724,13 @@ async function navigateWorkTab(tabId, target) {
     try {
       // Écouteur attaché AVANT de déclencher la navigation : un chargement
       // rapide pourrait sinon émettre son "complete" avant qu'on ne l'attende.
-      const loaded = waitForTabComplete(effectiveId, target);
+      const loaded = waitForTabComplete(effectiveId, target, 30_000, { differer: true });
       // Ceinture : si l'onglet n'était en fait PAS déchargé (chrome.tabs.discard
       // ment parfois — cf. cas DevTools), naviguer une page aux modifs non
       // enregistrées déclencherait le dialogue. On neutralise beforeunload avant.
       await neutralizeBeforeUnload(effectiveId);
       await chrome.tabs.update(effectiveId, { url: target });
+      loaded.armer();   // à partir d'ici, le prochain « complete » est le nôtre
       await loaded;
       return effectiveId;
     } catch (e) {
@@ -5767,7 +5768,14 @@ async function navigateWorkTab(tabId, target) {
       // SEUL (expectUrl null ⇒ pas de rattrapage possible), garantit une page
       // neuve à chaque job. Le fragment #fillsell-worker survit au reload.
       const memePage = String(tab.url || "").split("#")[0] === String(target).split("#")[0];
-      const loaded = memePage ? waitForTabComplete(tabId) : waitForTabComplete(tabId, target);
+      // ⛔ `differer` DANS LES DEUX CAS. C'est ici qu'est passé l'échec du
+      //    20/09 : l'onglet de travail Leboncoin chargeait encore
+      //    /compte/part/mes-transactions quand le retrait a demandé la page de
+      //    l'annonce — son « complete » a été pris pour le nôtre, et le handler
+      //    a lu la page des transactions.
+      const loaded = memePage
+        ? waitForTabComplete(tabId, null, 30_000, { differer: true })
+        : waitForTabComplete(tabId, target, 30_000, { differer: true });
       await neutralizeBeforeUnload(tabId);
       if (memePage) {
         console.log(`[background] Onglet ${tabId} déjà sur la cible — reload explicite (jamais de formulaire résiduel)`);
@@ -5775,6 +5783,7 @@ async function navigateWorkTab(tabId, target) {
       } else {
         await chrome.tabs.update(tabId, { url: target });
       }
+      loaded.armer();   // à partir d'ici, le prochain « complete » est le nôtre
       await loaded;
       return tabId;
     } catch (e) {
@@ -5845,7 +5854,37 @@ async function replaceWorkTab(oldTabId, target) {
 // écoute de l'événement laissée PERMISSIVE — indispensable car eBay REDIRIGE
 // (/sl/list?… → /lstng?draftId=…) : l'URL finale n'est jamais l'URL demandée, et
 // exiger l'égalité sur l'événement ferait expirer tous les jobs eBay.
-function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
+// ⛔ LE « complete » D'UNE NAVIGATION QUI N'EST PAS LA NÔTRE (2026-09-20)
+// ════════════════════════════════════════════════════════════════════════════
+// L'écouteur ci-dessous est PERMISSIF par dessein — eBay redirige vers une URL
+// différente de celle demandée — et il s'appuyait sur un postulat écrit noir sur
+// blanc : « la navigation est déclenchée juste après l'attachement de cet
+// écouteur, donc le prochain "complete" est le nôtre ».
+// CE POSTULAT EST FAUX DÈS QUE L'ONGLET CHARGE DÉJÀ AUTRE CHOSE. Entre
+// l'attachement et le chrome.tabs.update, navigateWorkTab attend
+// neutralizeBeforeUnload : si un chargement était EN VOL (l'onglet de travail
+// est partagé — l'utilisateur peut l'avoir navigué, une autre passe aussi), son
+// « complete » arrive dans cet intervalle, on le prend pour le nôtre, et
+// getOrCreateWorkTab rend un onglet qui est encore SUR LA PAGE PRÉCÉDENTE.
+// Le handler agit alors sur la mauvaise page.
+//
+// MESURÉ sur 30 jours, jobs de retrait : quand `work_window_state.at_start` dit
+// l'onglet « loading » SUR UNE AUTRE PAGE que la cible, 9 jobs — dont l'échec
+// « Page inattendue pour une suppression LBC : …/compte/part/mes-transactions »
+// d'Ornella (96eed62c, 20/09 18:54) et « …Vinted : https://www.vinted.fr/ »
+// (ed8bbd42, 19/09 22:48). Quand il dit « complete » sur la cible : 196 jobs,
+// AUCUN échec de ce motif. Ce n'est ni un sélecteur, ni une session, ni une
+// redirection de la plateforme : c'est un événement pris pour un autre.
+//
+// PARADE : `differer` retarde l'ARMEMENT de l'écouteur. Tant qu'il n'est pas
+// armé, un « complete » n'est accepté QUE s'il porte la cible (le cas légitime
+// « déjà chargé sur la bonne page »). L'appelant arme JUSTE APRÈS avoir ordonné
+// la navigation — à partir de là, le prochain « complete » est bien le sien, et
+// la permissivité qui sert eBay est intacte.
+// ⚠️ Par défaut `differer` est faux : les appelants qui n'ordonnent aucune
+//    navigation (attente d'un retour, d'un rechargement de la page) gardent le
+//    comportement d'avant, à l'octet près.
+function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000, { differer = false } = {}) {
   // Utilisé UNIQUEMENT par le rattrapage d'état (jamais par l'écouteur).
   const isAlreadyOnTarget = (url) => {
     if (!expectUrl) return false; // sans cible, on ne peut RIEN affirmer : on attend l'événement
@@ -5853,7 +5892,9 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
     return strip(url) === strip(expectUrl);
   };
 
-  return new Promise((resolve, reject) => {
+  let arme = !differer;
+  let armerMaintenant = () => { arme = true; };
+  const attente = new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => {
       clearTimeout(timer);
@@ -5881,10 +5922,14 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
     );
 
     // PERMISSIF à dessein (cf. commentaire de tête) : eBay redirige vers une URL
-    // différente de celle demandée. La navigation est déclenchée juste après
-    // l'attachement de cet écouteur, donc le prochain "complete" est le nôtre.
-    function onUpdated(updatedTabId, info) {
+    // différente de celle demandée. Mais permissif SEULEMENT UNE FOIS ARMÉ :
+    // avant l'armement, seul un « complete » qui porte la cible est le nôtre.
+    function onUpdated(updatedTabId, info, tab) {
       if (updatedTabId !== tabId || info.status !== "complete") return;
+      if (!arme && !isAlreadyOnTarget(tab?.url)) {
+        console.log(`[background] onglet ${tabId} : « complete » sur ${tab?.url ?? "(url inconnue)"} ignoré — notre navigation n'est pas encore ordonnée`);
+        return;
+      }
       succeed();
     }
     function onRemoved(removedTabId) {
@@ -5897,7 +5942,7 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
     // STRICT (isAlreadyOnTarget) : sans cible explicite, ou sur une autre URL, on
     // ne conclut RIEN et on attend l'événement — c'est ce laxisme qui avait cassé
     // eBay (on validait la home au lieu du formulaire).
-    chrome.tabs
+    const rattraper = () => chrome.tabs
       .get(tabId)
       .then((tab) => {
         if (!tab) return;
@@ -5906,7 +5951,20 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
       .catch(() => {
         /* onglet disparu : onRemoved (ou le timeout) tranchera */
       });
+    rattraper();
+
+    // ⚠️ L'ARMEMENT REFAIT LE RATTRAPAGE. Entre l'ordre de navigation et
+    //    l'armement il s'écoule un tour de boucle : une page servie depuis le
+    //    cache peut être « complete » avant. Sans cette relecture, l'événement
+    //    serait passé et on attendrait 30 s pour rien.
+    armerMaintenant = () => {
+      if (arme) return;
+      arme = true;
+      rattraper();
+    };
   });
+  attente.armer = () => armerMaintenant();
+  return attente;
 }
 
 // ── Ré-authentification interceptée après le clic de publication ───────────────
@@ -5977,6 +6035,23 @@ function motifSessionMorte(platform, error) {
   if (/^(?:Connexion|Reconnexion)\s+\S+\s+requise/i.test(e)) return true;
   const m = e.match(/^Page inattendue pour une suppression \S+ : (\S+)/i);
   return Boolean(m && estUrlDeConnexionPlateforme(platform, m[1]));
+}
+
+// ── « Page inattendue » QUI N'EST PAS UNE SESSION MORTE (2026-09-20) ────────
+// Le handler a lu l'adresse de la page, vu que ce n'était pas celle de
+// l'annonce, et refusé d'agir : RIEN n'a été touché. Ce n'est pas un verdict
+// sur l'annonce, c'est l'état de NOTRE onglet de travail — partagé, et qui peut
+// encore charger autre chose au moment où on le prend (cause corrigée dans
+// waitForTabComplete). Ça se reprend ; ça ne meurt pas, et ça ne se raconte
+// pas avec une URL interne.
+function estPageInattendueDeNotreFait(platform, error) {
+  const e = String(error ?? "");
+  return /^Page inattendue pour une (?:suppression|fin d'annonce) /i.test(e)
+    && !motifSessionMorte(platform, e);
+}
+function messagePageInattendue() {
+  return "Le retrait n'a pas pu être tenté : notre onglet de travail n'était pas encore sur la page de " +
+    "ton annonce. Rien n'a été touché, ton annonce est intacte — on réessaie tout seuls au prochain passage.";
 }
 
 // Polling court : la redirection de ré-authentification peut arriver une
@@ -17716,6 +17791,11 @@ async function processRepublishJobPlateforme(job, accessToken) {
       } else if (result.needsUser) {
         await rearmBounded(accessToken, job, String(result.error ?? "retrait non abouti"));
         return { status: "needsUser", error: result.error };
+      } else if (estPageInattendueDeNotreFait(job.platform, result.error)) {
+        // Même verdict que le retrait simple : notre onglet, pas son annonce.
+        const msg = messagePageInattendue();
+        await rearmBounded(accessToken, job, msg);
+        return { status: "retry", error: msg };
       } else {
         // Refus, transitoire, « à reprendre » : reprise espacée, annonce intacte
         // — « intacte » n'est affirmé que sur un état relevé « active ».
@@ -19374,6 +19454,22 @@ async function processDeleteJob(job, accessToken) {
         if (!borne) return { status: "retry", error: verdictBrut };
         await rearmBounded(accessToken, job, verdictBrut);
         return { status: "retry", error: verdictBrut };
+      }
+      // ── « PAGE INATTENDUE » : C'EST NOTRE ONGLET, PAS SON ANNONCE ──────────
+      // (2026-09-20) Le handler n'a RIEN touché : il a lu l'adresse de la page,
+      // vu qu'elle n'était pas celle de l'annonce, et refusé d'agir. Ce verdict
+      // finissait en `failed` SEC — une ligne rouge, un message qui montrait une
+      // URL interne, et aucune reprise (job 96eed62c d'Ornella, 20/09 18:54).
+      // La cause est corrigée à la racine (waitForTabComplete, plus haut) ; ce
+      // filet reste, parce qu'un onglet partagé peut toujours bouger sous nos
+      // pieds — et parce qu'un retrait raté est le geste qui protège de la
+      // double vente : il se reprend, il ne meurt pas.
+      // ⛔ La page de CONNEXION est exclue (motifSessionMorte) : elle a son
+      //    propre circuit d'attente, qui ne consomme aucune tentative.
+      if (!result.needsUser && estPageInattendueDeNotreFait(job.platform, verdictBrut)) {
+        const msg = messagePageInattendue();
+        await rearmBounded(accessToken, job, msg);
+        return { status: "retry", error: msg };
       }
       if (!result.needsUser && TRANSIENT_JOB_ERROR_RE.test(verdictBrut)) {
         await rearmBounded(accessToken, job, verdictBrut);
