@@ -35,8 +35,15 @@ export const DEGRADE = `linear-gradient(120deg,${A.teal},${A.tealDeep})`;
 export const CSS_ANNONCES = `
 @keyframes rvUp { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
 @keyframes rvPop { 0% { transform:scale(.82); opacity:0 } 60% { transform:scale(1.06) } 100% { transform:scale(1); opacity:1 } }
-@keyframes rvOrbite { to { transform:rotate(360deg) } }
-@keyframes rvOrbiteInv { to { transform:rotate(-360deg) } }
+/* ⛔ PAS DE KEYFRAME D'ORBITE ICI, ET C'EST VOULU. Les satellites de la
+   constellation portent chacun LA LEUR, générée dans ConstellationReleve.jsx :
+   elle dépend du nombre de plateformes de la vague, et surtout elle orbite ET
+   redresse la tuile dans la même liste de transformations. L'ancien couple
+   rvOrbite / rvOrbiteInv (l'anneau d'un côté, la tuile de l'autre) faisait
+   dépendre l'aplomb des logos de deux horloges distinctes — d'où les tuiles
+   penchées du 20/09.
+   ⚠️ Ce bloc vit dans un template literal : aucun accent grave ici, il
+   fermerait la chaîne. */
 @keyframes rvPouls { 0%,100% { transform:scale(1); opacity:.45 } 50% { transform:scale(1.18); opacity:0 } }
 @keyframes rvRespire { 0%,100% { transform:scale(1) } 50% { transform:scale(1.05) } }
 /* ⛔ CE BALAYAGE NE DIT PAS « ÇA AVANCE ». Il ne se rend QUE si une plateforme
