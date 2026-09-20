@@ -35,7 +35,8 @@ import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeF
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
 import { resoudreParMot, candidatsParMot, valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
-import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT } from "../utils/jeuxVideo";
+import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme,
+         VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT } from "../utils/jeuxVideo";
 import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
@@ -7332,6 +7333,24 @@ export default function ListingPreviewScreen({
       const frDescriptionPublication = String(
         initialListing?.description ?? edited?.leboncoin?.description ?? edited?.vinted?.description ?? ""
       ).slice(0, 400);
+      // ── LE CLASSEMENT PAR ÂGE : ON LE REPREND AVANT DE LE REDEMANDER ──────
+      // Trois sources, dans cet ordre, la première qui répond gagne :
+      //   1. la RÉPONSE de l'utilisateur, déjà dans la copie Vinted — c'est le
+      //      stepper ou le mini-éditeur ; elle prime sur tout ;
+      //   2. l'ARTICLE lui-même (inventaire.attributs.classement_age) : il l'a
+      //      déjà tranché une fois, on ne le redemande jamais ;
+      //   3. le TEXTE de l'annonce, s'il l'écrit noir sur blanc (« PEGI 12 »).
+      // ⛔ Rien d'autre. Pas de déduction depuis le titre du jeu, pas de valeur
+      //    par défaut : un classement faux fait retirer une annonce.
+      const classementUtilisateur = String(
+        edited?.vinted?.platform_fields?.vintedAspects?.[VINTED_CHAMP_CLASSEMENT] ?? ""
+      ).trim();
+      const classementFiche = String(initialListing?.attributs?.classement_age?.v ?? "").trim();
+      const classementConnu =
+        classementUtilisateur
+        || classementFiche
+        || classementAgeEcrit(frTitrePublication, frDescriptionPublication)
+        || null;
       const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
       const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
       const familleLivresFiche = initialListing?.famille === "livres_medias" || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
@@ -7777,7 +7796,7 @@ export default function ListingPreviewScreen({
             if (plateformeJeu && !String(aspectsJv[VINTED_CHAMP_PLATEFORME] ?? "").trim()) {
               aspectsJv[VINTED_CHAMP_PLATEFORME] = plateformeJeu;
             }
-            const classement = classementAgeEcrit(frTitrePublication, frDescriptionPublication);
+            const classement = classementPourPlateforme("vinted", classementConnu);
             if (classement && jeuVideo.famille === "jeu" && !String(aspectsJv[VINTED_CHAMP_CLASSEMENT] ?? "").trim()) {
               aspectsJv[VINTED_CHAMP_CLASSEMENT] = classement;
             }
@@ -7833,6 +7852,21 @@ export default function ListingPreviewScreen({
           const categoryId = parMotEbay?.id ?? getEbayCategoryId(icon, pf.genre);
           if (categoryPath) pf.ebayCategoryPath = categoryPath;
           if (categoryId) pf.ebayCategoryId = categoryId;
+          // Le classement d'âge voyage aussi chez eBay (20/09). Relevé sur la
+          // feuille « Jeux » (139973) : aspect « Classification », FACULTATIF,
+          // 5 valeurs — les cinq PEGI, écrites EXACTEMENT comme chez Vinted.
+          // Les 12 autres valeurs de Vinted (USK, ESRB, « Non précisé »)
+          // n'existent pas ici : classementPourPlateforme rend null et on ne
+          // pose rien. Facultatif = jamais bloquant : sans valeur, l'annonce
+          // part quand même.
+          if (jeuVideo?.famille === "jeu") {
+            const classementEbay = classementPourPlateforme("ebay", classementConnu);
+            const aspectsEbay = { ...(pf.ebayAspects && typeof pf.ebayAspects === "object" ? pf.ebayAspects : {}) };
+            if (classementEbay && !String(aspectsEbay[EBAY_ASPECT_CLASSEMENT] ?? "").trim()) {
+              aspectsEbay[EBAY_ASPECT_CLASSEMENT] = classementEbay;
+              pf.ebayAspects = aspectsEbay;
+            }
+          }
           if (!parMotEbay && categoryPath && categoryId) poseParIcone.ebay = { chemin: categoryPath, id: String(categoryId) };
           if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
           // Couleur : l'extension consomme colors[0] (les specifics eBay
@@ -8542,6 +8576,26 @@ export default function ListingPreviewScreen({
             " — le prochain « Republier » repartirait sans prix."
           );
         }
+      }
+      // ── LA RÉPONSE DONNÉE À LA MAIN SE RANGE SUR L'ARTICLE (2026-09-20) ────
+      // Le classement par âge est le SEUL champ du domaine que ni le titre ni
+      // la catégorie ne donnent : quand la personne le tranche au stepper, sa
+      // réponse doit survivre au job. Rangée sur l'ARTICLE avec la source
+      // `manuel` — le rang le plus haut du trigger de fusion (migration
+      // 20260907000000) : plus rien ne l'écrase, et le parcours suivant la
+      // relit au lieu de reposer la question.
+      // ⛔ Seule la réponse de l'UTILISATEUR est gardée. Une valeur lue dans le
+      //    texte de l'annonce n'est pas rangée ici : elle est déjà dans le
+      //    texte, elle se relit toute seule, et l'y recopier reviendrait à
+      //    faire passer une lecture pour une décision.
+      if (currentInvId && classementUtilisateur && classementUtilisateur !== classementFiche) {
+        const { error: clErr } = await supabase
+          .from("inventaire")
+          .update({ attributs: { classement_age: { v: classementUtilisateur, source: "manuel", at: new Date().toISOString() } } })
+          .eq("id", currentInvId)
+          .eq("user_id", userId)
+          .select("id");
+        if (clErr) console.warn("[publish] classement par âge non gardé sur l'article :", clErr.message);
       }
       // Règles 2+3 (03/09 soir) : le geste est PARTI, mais sans les
       // plateformes au champ obligatoire manquant — on le dit sur l'écran de
