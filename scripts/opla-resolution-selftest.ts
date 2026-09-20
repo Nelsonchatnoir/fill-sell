@@ -18,12 +18,28 @@ const l = (t: string) => console.log(t);
 let ko = 0;
 const ok = (nom: string, cond: boolean, detail = "") => { l(`${cond ? "  ok  " : "  ⚠ KO"} ${nom}${detail ? " — " + detail : ""}`); if (!cond) ko++; };
 
+// ⛔ ON TESTE PAR LA PORTE D'ENTRÉE (2026-09-20). Ces deux cas passaient par
+//    `feuillesParMot` + `trancherCandidats` à la main — un montage qui n'existe
+//    nulle part en prod. Le jour où `feuillesParMot` a changé de contrat (elle
+//    rend désormais TOUTES les feuilles, les trois passes réunies, et c'est
+//    `resoudreCategorieOpla` qui choisit l'étage), le test a rougi alors que le
+//    comportement réel était intact. Un selftest qui teste un assemblage
+//    imaginaire ne protège rien : on appelle la fonction que le serveur appelle.
 l("=== 1. AMBIGUITE, les deux sens ===");
-const c1 = feuillesParMot(["robe"]);
-const t1 = trancherCandidats(c1, { mots: ["robe"] });
-ok("« robe » → Autres robes", t1.feuille?.code === "WOM_DRE_OTHER", `${t1.feuille?.chemin.join(" > ")} [${t1.motif}]`);
-const t1b = trancherCandidats(c1, { mots: ["robe de sport"] });
-ok("« robe de sport » → branche sport", /sport/i.test(t1b.feuille?.chemin.join(" ") ?? ""), `${t1b.feuille?.chemin.join(" > ")} [${t1b.motif}]`);
+// ⚠️ « robe » AVEC LE GENRE (2026-09-20). Le cas d'origine n'en portait pas et
+//    attendait quand même « Femmes › Autres robes » — ce qui revenait à
+//    supposer le rayon. Depuis que le mot ramène aussi le RAYON qu'il nomme
+//    (« Robes »), un « robe » sans genre voit treize feuilles réparties entre
+//    Femmes et Enfants et rend la main : c'est la règle « on ne tire jamais au
+//    sort un genre », appliquée pour de bon. Avec le genre — ce que porte tout
+//    job réel du parc — le départage rend le même résultat qu'avant.
+const t1 = resoudreCategorieOpla({ mots: ["robe"], genre: "Femme" });
+ok("« robe » (genre Femme) → Autres robes", t1.code === "WOM_DRE_OTHER", `${cheminLisible(t1.code ?? "")} [${t1.etapes.at(-1)}]`);
+const t1s = resoudreCategorieOpla({ mots: ["robe"] });
+ok("« robe » SANS genre → on ne choisit pas le rayon, on demande",
+  t1s.code === null && t1s.candidats.length > 2, `${t1s.candidats.length} feuilles`);
+const t1b = resoudreCategorieOpla({ mots: ["robe de sport"], genre: "Femme" });
+ok("« robe de sport » → branche sport", /sport/i.test(cheminLisible(t1b.code ?? "")), `${cheminLisible(t1b.code ?? "")} [${t1b.etapes.at(-1)}]`);
 
 l("=== 2. MAILLOT — avec et sans genre ===");
 const r2 = resoudreCategorieOpla({ mots: ["maillot de football", "maillot"], genre: "Homme" });
@@ -32,8 +48,9 @@ const r2b = resoudreCategorieOpla({ mots: ["maillot de football", "maillot"] });
 ok("sans genre → on NE tranche PAS le rayon", r2b.code === null, `${r2b.code} | ${r2b.etapes.join(" ; ")}`);
 
 l("=== 2b. OPTIONS : QUE DES FEUILLES, ET JAMAIS TRONQUEES ===");
-const opts = optionsFeuilles(c1);
-ok("options = candidats, 0 noeud", opts.length === c1.length && opts.every(o => oplaNoeud(o.code)?.feuille === true), opts.map(o=>o.title).join(" | "));
+const rOpts = resoudreCategorieOpla({ mots: ["jean"] });   // 13 feuilles, aucune ne tranche
+const opts = optionsFeuilles(rOpts.candidats);
+ok("options = candidats, 0 noeud", opts.length === rOpts.candidats.length && opts.length > 1 && opts.every(o => oplaNoeud(o.code)?.feuille === true), `${opts.length} options`);
 
 l("=== 3. TAILLE ===");
 const chemise = feuillesParMot(["chemise"])[0];
@@ -115,8 +132,97 @@ ok("une feuille de PLUS ⇒ autre clé (on redemande)", cleFourche([A, B, C]) !=
 ok("une feuille de MOINS ⇒ autre clé", cleFourche([A]) !== cleFourche([A, B]));
 // Deux branches portent le même LIBELLÉ (« Robes ») : une clé de libellés les
 // confondrait. On vérifie que la clé est bien faite des CODES.
-const robes = optionsFeuilles(feuillesParMot(["robe"]));
-ok("la clé est faite des codes, pas des libellés", robes.length === 2 && cleFourche(robes) === robes.map((o) => o.code).sort().join("|"), cleFourche(robes));
+const robes = optionsFeuilles(resoudreCategorieOpla({ mots: ["robe"], genre: "Fille" }).candidats);
+ok("la clé est faite des codes, pas des libellés",
+  robes.length === 2 && robes.every((o) => /Robes/.test(o.title)) && cleFourche(robes) === robes.map((o) => o.code).sort().join("|"),
+  cleFourche(robes));
 ok("aucune option ⇒ clé vide (rien à mémoriser)", cleFourche([]) === "");
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. LA CASCADE DU 20/09 — les six défauts nommés, chacun sur son job réel
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ CHAQUE CAS EXÉCUTE `resoudreCategorieOpla`, la fonction que get-pending-jobs
+//    appelle. Aucun montage intermédiaire : c'est la leçon des selftests verts
+//    sur de vrais bugs.
+l("=== 7. LA CASCADE DU 20/09 ===");
+const cas7 = (mots: string[], genre: string | null = null) => resoudreCategorieOpla({ mots, genre });
+
+// (a) jobs 2e96a21f / 840b67ec — la passe 1 ne doit plus court-circuiter les autres.
+const jean = cas7(["jean"]);
+const codesJean = jean.candidats.map((f) => f.code);
+ok("« jean » sans genre : les jeans ADULTES sont dans la liste",
+  jean.code === null && codesJean.includes("MEN_STRAIGHTFIT_JEANS") && codesJean.includes("W_SKINNY_JEANS")
+  && codesJean.includes("JEANS_GIRLS_NEW") && codesJean.includes("JEANS_BOYS_NEW"),
+  `${codesJean.length} feuilles`);
+const jeanH = cas7(["jean"], "Homme");
+ok("« jean » genre Homme : QUE le rayon homme, jamais les deux feuilles enfant",
+  jeanH.candidats.length > 1 && jeanH.candidats.every((f) => f.chemin[0] === "Hommes"),
+  jeanH.candidats.map((f) => f.titre).join(", "));
+
+// (b) job 76fa3371 — une correspondance précise reste une réponse, pas une question.
+ok("« jean skinny noir femme » → Jeans skinny, sans question",
+  cas7(["jean skinny noir femme", "jean"], "Femme").code === "W_SKINNY_JEANS");
+
+// (c) job 40ebdf2c — le genre écarte POUR DE BON (fail-closed).
+const robeBebe = cas7(["robe enfant", "robe"], "Fille");
+ok("robe de bébé, genre Fille : plus AUCUNE robe femme",
+  robeBebe.code === null && robeBebe.candidats.length > 0
+  && robeBebe.candidats.every((f) => f.chemin[0] === "Enfants"),
+  robeBebe.candidats.map((f) => f.chemin.join(" › ")).join(" | "));
+
+// (d) job 8de4f86a — « Garçon » n'entre pas au rayon des filles.
+ok("« pull enfant » genre Garçon → rayon garçons",
+  cas7(["pull enfant", "pull"], "Garçon").code === "SWEATERS_BOYS_NEW");
+
+// (e) jobs c7dae6b5 / 2daa420c / e7502c18 — le mot nomme un RAYON.
+const livre = cas7(["livre"]);
+const codesLivre = livre.candidats.map((f) => f.code);
+ok("« livre » → tout le rayon Livres, pas seulement les livres sonores",
+  livre.code === null && codesLivre.includes("ROMANS_POUR_ADULTES") && codesLivre.includes("MANGAS")
+  && codesLivre.includes("BANDES_DESSINEES"),
+  `${codesLivre.length} feuilles`);
+
+// (f) job 64170d6f — « pour » est un mot-outil, pas un critère de départage.
+ok("« La Méthode Delavier de Musculation pour la Femme » ne part pas en livres pour bébé",
+  cas7(["livre", "musculation", "La Méthode Delavier de Musculation pour la Femme"]).code !== "LIVRES_POUR_BEBE");
+
+// (g) job 9e6d4eb6 — une passe 3 seule propose le rayon, elle ne tranche pas.
+const pantalonG = cas7(["pantalon velours enfant", "pantalon"], "Garçon");
+ok("« pantalon velours enfant » garçon : le rayon entier, « Autres » compris",
+  pantalonG.code === null && pantalonG.candidats.some((f) => f.code === "BOYS_OTH_PANTS"),
+  `${pantalonG.candidats.length} feuilles`);
+
+// (h) job eba8a512 — un genre connu désigne un rayon : le maillot ne part ni au
+//     rayon des ballons, ni au rayon des maillots de bain.
+ok("« maillot de football » genre Homme → MEN_JERSEYS",
+  cas7(["maillot de football", "maillot"], "Homme").code === "MEN_JERSEYS");
+
+// (i) G0 — ce qui marchait marche encore, sur les mots-objets les plus fréquents
+//     du parc (relevé des 147 jobs Opla de 30 jours).
+for (const [mots, genre, attendu] of [
+  [["pull", "pull"], "Femme", "PULLS_SWEATERS_VESTS"],
+  [["t-shirt", "t-shirt"], "Homme", "MEN_TOP_T_SHIRTS"],
+  [["t-shirt", "t-shirt"], "Femme", "WOM_TOP_T_SHIRTS"],
+  [["blouse volants pois", "blouse"], "Femme", "BLOUSES"],
+  [["blazer", "blazer"], "Femme", "WOM_BLA_BLAZERS"],
+  [["sandale", "sandale"], "Femme", "WOMEN_SANDALS"],
+  [["basket", "basket"], "Femme", "WOMEN_TRAINERS"],
+  [["baskets"], "Homme", "MEN_SNEAKERS"],
+  [["cardigan", "cardigan"], "Femme", "CARDIGANS"],
+  [["peluche", "peluche"], null, "STUFFED_ANIMALS_NEW"],
+  [["jogging", "jogging"], "Femme", "JOGGINGS"],
+  [["brassière de sport", "brassiere"], "Femme", "SPORTS_BRA"],
+] as Array<[string[], string | null, string]>) {
+  const r = cas7(mots, genre);
+  ok(`G0 ${JSON.stringify(mots[0])}${genre ? " " + genre : ""} → ${attendu}`, r.code === attendu, r.code ?? `question ${r.candidats.length}`);
+}
+// « casque audio » ne se résout PAS et ne s'est jamais résolu : un casque de
+// vélo, d'équitation ou de ski porte le même mot. La question à six feuilles
+// est la bonne réponse — c'est la personne qui sait. On verrouille le fait que
+// « Casques et écouteurs » y figure (job 37b9bd31, réponse donnée par Nadège).
+const casque = cas7(["casque audio", "casque"]);
+ok("« casque audio » : question honnête, avec Casques et écouteurs dedans",
+  casque.code === null && casque.candidats.some((f) => f.code === "HIGHTECH_AUDIO_CASQUES"),
+  `${casque.candidats.length} feuilles`);
 
 l(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");
