@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-20T16:06:38Z'; // recale 1691d7a (passe 4 : « Mes annonces » Leboncoin ne rend que 30 lignes, on déroule enfin — dernier commit touchant chrome-extension/). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touché : la 0.6.48 est empaquetée mais PAS téléversée — la bannière « extension obsolète » ne bouge pas d'un pixel. Ancienne valeur : 2026-09-20T15:30:33Z.
+export const EXTENSION_LAST_COMMIT = '2026-09-20T16:50:12Z'; // recale aa99609 (passe 5 : cascade de categorie Opla, jumeau de l'extension aligne — dernier commit touchant chrome-extension/). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.48 est empaquetee mais PAS televersee — la banniere « extension obsolete » ne bouge pas d'un pixel. Ancienne valeur : 2026-09-20T16:06:38Z.
 // ⚠️ LA CHAÎNE DES « Ancienne valeur » A ÉTÉ COUPÉE ICI (20/09). Elle avait atteint 14 149
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
