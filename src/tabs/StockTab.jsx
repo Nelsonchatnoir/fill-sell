@@ -902,10 +902,13 @@ function useFermetureEchap(onClose) {
   }, [onClose]);
 }
 
-function NeedsUserModal({ job, lang, onClose, onDone }) {
+function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   useFermetureEchap(onClose);
   const f = job.platform_fields?.needsUserField ?? null;
   const [value, setValue] = useState("");
+  // Sortie propre offerte ici aussi (2026-09-20) : elle se demande, puis se
+  // confirme — comme dans la modale d'echec, et pour la meme raison.
+  const [abandonArme, setAbandonArme] = useState(false);
   // ── PLUSIEURS CHAMPS EN UN GESTE (2026-09-17 soir, formulaire Leboncoin PRO)
   // Leboncoin marque « État » ET « Poids du colis » invalides ensemble ; la
   // modale ne demandait que le premier — répondre, relancer, rebuter sur le
@@ -1370,6 +1373,43 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
         {errMsg && (
           <div style={{ marginTop:10, fontSize:12, color:"#8C2F28", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:10, padding:"8px 10px" }}>
             {errMsg}
+          </div>
+        )}
+        {/* ── LA MÊME SORTIE QUE DANS L'AUTRE MODALE (2026-09-20) ───────────
+            Un job bloqué s'ouvre ICI quand il a un champ à remplir, et dans
+            la modale d'échec quand il n'en a pas. La sortie doit exister aux
+            DEUX endroits, sinon elle n'existe pas : c'est justement le job
+            Beebs (« Taille ») qui l'a montré, et c'est le plus enfermant des
+            deux — on lui demande une valeur qui n'existe pas dans son rayon.
+            Mêmes règles, même fonction (abandonPossible / onAbandonner). */}
+        {onAbandonner && abandonPossible(job).ok && (
+          <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${NU_T.border}` }}>
+            {!abandonArme ? (
+              <button
+                onClick={() => setAbandonArme(true)} disabled={saving}
+                style={{ width:"100%", padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#8A5A52", fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+              >
+                {lang === "en" ? `Give up on ${PLATFORM_LABELS[job.platform] ?? job.platform} for this item` : `Abandonner ${PLATFORM_LABELS[job.platform] ?? job.platform} pour cet article`}
+              </button>
+            ) : (
+              <>
+                <div style={{ fontSize:12, color:NU_T.ink, lineHeight:1.5, marginBottom:8 }}>
+                  {lang === "en"
+                    ? "This closes this attempt only. Your item, your other platforms and your history don't move. Nothing was published, nothing is charged."
+                    : "Ça ferme cette tentative, et rien d'autre. Ton article, tes autres plateformes et ton historique ne bougent pas. Rien n'a été publié, rien n'est décompté."}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={() => { onAbandonner(job); onClose(); }} disabled={saving}
+                    style={{ flex:1, padding:"10px 0", borderRadius:12, border:"1px solid #B0645A", background:"#fff", color:"#8A5A52", fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                    {lang === "en" ? "Yes, give it up" : "Oui, abandonner"}
+                  </button>
+                  <button onClick={() => setAbandonArme(false)} disabled={saving}
+                    style={{ flex:1, padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:12.5, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                    {lang === "en" ? "No, keep it" : "Non, garder"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
         </div>
@@ -10828,6 +10868,7 @@ const StockTab = memo(function StockTab({
           job={needsUserJob}
           lang={lang}
           onClose={()=>setNeedsUserJob(null)}
+          onAbandonner={abandonnerPlateforme}
           onDone={(jobId)=>{
             setNeedsUserJob(null);
             if(jobId){
