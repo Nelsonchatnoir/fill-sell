@@ -1,0 +1,84 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PROPOSITION — FUSION DES VENTES EN DOUBLE (point 6-c, 2026-09-20)
+-- ⛔ CE FICHIER N'EST PAS UNE MIGRATION. Extension .txt, délibérément : il ne
+--    peut pas partir par mégarde. Il attend un feu vert nommé.
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CE QU'IL Y A À RÉPARER, mesuré le 20/09 :
+--   109 lignes de `ventes` écrites par le relevé doublonnent une ligne posée
+--   avant lui (bandeau « vendue ? » ou saisie manuelle, donc commande_ref
+--   NULL, donc invisible à la clé de dédoublonnage). 10 comptes.
+--   · 102 sont CERTAINES : exactement UNE ligne libre correspond (même
+--     compte, même plateforme, même titre normalisé, même prix au centime).
+--     101 d'entre elles ont un article d'un côté ou de l'autre.
+--   ·   7 sont DOUTEUSES : plusieurs candidates. On n'y touche pas — c'est
+--     la même règle que l'adoption : à plusieurs candidates, on s'abstient.
+--   Chiffre d'affaires fantôme sur les 102 certaines : 754,49 €.
+--
+-- LA CAUSE EST FERMÉE depuis 20260920170000 (l'adoption cherche désormais
+-- aussi sans article). Ce fichier ne traite QUE l'existant.
+--
+-- LE GESTE PROPOSÉ, et pourquoi dans ce sens :
+--   On GARDE l'ancienne ligne et on SUPPRIME celle du relevé. L'ancienne
+--   porte ce que la personne a saisi — prix d'achat, bénéfice, emplacement,
+--   description — et le relevé ne porte que ce qu'on a lu. On enrichit donc
+--   l'ancienne des seuls champs qu'elle n'a pas (commande_ref, vendu_le,
+--   devise, frais, article), puis on retire la ligne en trop.
+--   C'est exactement ce que fait l'adoption aujourd'hui, appliqué à rebours.
+--
+-- ⛔ AUCUNE LIGNE DOUTEUSE N'EST TOUCHÉE.
+-- ⛔ AUCUN `inventaire` N'EST MODIFIÉ : on ne touche qu'à `ventes`.
+-- ⛔ IRRÉVERSIBLE. Faire d'abord la lecture (bloc 1), regarder, puis le bloc 2.
+
+-- ── 1. LA LECTURE, À FAIRE D'ABORD (ne modifie rien) ───────────────────────
+WITH r AS (SELECT v.* FROM ventes v WHERE v.source = 'releve' AND v.commande_ref IS NOT NULL),
+paire AS (
+  SELECT r.id AS id_releve, r.user_id, r.titre, r.prix_vente, r.commande_ref,
+         a.id AS id_ancien, a.source AS source_ancien, a.date AS date_ancien,
+         (SELECT count(*) FROM ventes z
+           WHERE z.user_id = r.user_id AND z.commande_ref IS NULL
+             AND lower(coalesce(z.plateforme_code, z.plateforme)) = lower(coalesce(r.plateforme_code, r.plateforme))
+             AND titre_norm(z.titre) = titre_norm(r.titre)
+             AND z.prix_vente IS NOT NULL AND abs(z.prix_vente - r.prix_vente) < 0.01) AS n_candidates
+    FROM r JOIN LATERAL (
+      SELECT a.* FROM ventes a
+       WHERE a.user_id = r.user_id AND a.commande_ref IS NULL
+         AND lower(coalesce(a.plateforme_code, a.plateforme)) = lower(coalesce(r.plateforme_code, r.plateforme))
+         AND titre_norm(a.titre) = titre_norm(r.titre)
+         AND a.prix_vente IS NOT NULL AND r.prix_vente IS NOT NULL AND abs(a.prix_vente - r.prix_vente) < 0.01
+       ORDER BY a.created_at LIMIT 1) a ON true)
+SELECT * FROM paire WHERE n_candidates = 1 ORDER BY user_id, titre;
+
+-- ── 2. LA FUSION (à ne lancer qu'après avoir lu le bloc 1) ─────────────────
+-- BEGIN;
+-- WITH r AS (SELECT v.* FROM ventes v WHERE v.source = 'releve' AND v.commande_ref IS NOT NULL),
+-- paire AS (
+--   SELECT r.id AS id_releve, r.commande_ref, r.plateforme_code, r.vendu_le, r.devise,
+--          r.frais_plateforme, r.inventaire_id AS inv_releve, r.releve_le,
+--          a.id AS id_ancien,
+--          (SELECT count(*) FROM ventes z
+--            WHERE z.user_id = r.user_id AND z.commande_ref IS NULL
+--              AND lower(coalesce(z.plateforme_code, z.plateforme)) = lower(coalesce(r.plateforme_code, r.plateforme))
+--              AND titre_norm(z.titre) = titre_norm(r.titre)
+--              AND z.prix_vente IS NOT NULL AND abs(z.prix_vente - r.prix_vente) < 0.01) AS n_candidates
+--     FROM r JOIN LATERAL (
+--       SELECT a.* FROM ventes a
+--        WHERE a.user_id = r.user_id AND a.commande_ref IS NULL
+--          AND lower(coalesce(a.plateforme_code, a.plateforme)) = lower(coalesce(r.plateforme_code, r.plateforme))
+--          AND titre_norm(a.titre) = titre_norm(r.titre)
+--          AND a.prix_vente IS NOT NULL AND r.prix_vente IS NOT NULL AND abs(a.prix_vente - r.prix_vente) < 0.01
+--        ORDER BY a.created_at LIMIT 1) a ON true),
+-- certaines AS (SELECT * FROM paire WHERE n_candidates = 1)
+-- UPDATE ventes v SET
+--   commande_ref     = c.commande_ref,
+--   plateforme_code  = coalesce(v.plateforme_code, c.plateforme_code),
+--   vendu_le         = coalesce(v.vendu_le, c.vendu_le),
+--   devise           = coalesce(v.devise, c.devise),
+--   frais_plateforme = coalesce(v.frais_plateforme, c.frais_plateforme),
+--   inventaire_id    = coalesce(v.inventaire_id, c.inv_releve),
+--   releve_le        = coalesce(v.releve_le, c.releve_le)
+--   FROM certaines c WHERE v.id = c.id_ancien;
+-- DELETE FROM ventes WHERE id IN (SELECT id_releve FROM certaines);
+-- -- Attendu : 102 lignes enrichies, 102 lignes supprimées, 10 comptes.
+-- -- Relire AVANT de valider :
+-- --   SELECT count(*) FROM ventes WHERE source='releve' AND commande_ref IS NOT NULL;
+-- COMMIT;   -- ou ROLLBACK; si les comptes ne tombent pas juste.
