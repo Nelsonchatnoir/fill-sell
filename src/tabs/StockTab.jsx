@@ -38,6 +38,7 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // que update-job-status et handler-watch — le motif de l'arrêt précédent ne
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
+import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
@@ -6408,6 +6409,90 @@ const StockTab = memo(function StockTab({
   const [relanceBusy, setRelanceBusy] = useState(false);
   const [relanceMsg, setRelanceMsg] = useState(null);
   useEffect(() => { setRelanceMsg(null); }, [failJobModal?.id]);
+
+  // ── ABANDONNER CETTE PLATEFORME POUR CET ARTICLE (2026-09-20) ─────────────
+  // La sortie qui manquait à un job bloqué. Les règles (quoi, quand, jamais)
+  // vivent dans utils/abandonPlateforme.js ; ici, le geste et sa trace.
+  // `abandonConfirme` : l'abandon demande UNE confirmation — c'est terminal,
+  // et la phrase de confirmation dit exactement ce que ça fait.
+  const [abandonBusy, setAbandonBusy] = useState(false);
+  const [abandonConfirme, setAbandonConfirme] = useState(false);
+  const [abandonMsg, setAbandonMsg] = useState(null);
+  useEffect(() => { setAbandonConfirme(false); setAbandonMsg(null); }, [failJobModal?.id]);
+
+  async function abandonnerPlateforme(job) {
+    if (abandonBusy || !user?.id) return;
+    // Les gardes sont REJOUÉES au clic : la copie mémoire du job a jusqu'à
+    // 20 s de retard (période du poll), et pendant ces 20 s le job a pu
+    // repartir, aboutir, ou recevoir son listing_url.
+    if (!abandonPossible(job).ok) {
+      setAbandonMsg(lang === 'en' ? 'This job can no longer be abandoned — close and check its status.'
+                                  : "Ce job ne peut plus être abandonné — ferme et regarde son statut.");
+      return;
+    }
+    setAbandonBusy(true); setAbandonMsg(null);
+    try {
+      const label = PLATFORM_LABELS[job.platform] || job.platform;
+      // Le CAS porte les mêmes gardes que la lecture : statut inchangé, et
+      // toujours aucune annonce en ligne. Si le job a bougé, 0 ligne, on le
+      // dit — jamais un abandon silencieux sur un job qui vient de publier.
+      const { data, error } = await supabase
+        .from('cross_post_jobs')
+        .update({
+          status: 'cancelled',
+          error: messageAbandon(label, lang),
+          platform_fields: champsApresAbandon(job, archiverErreur),
+        })
+        .eq('id', job.id)
+        .eq('user_id', user.id)
+        .eq('status', job.status)
+        .is('listing_url', null)
+        .select('id');
+      if (error) {
+        setAbandonMsg(lang === 'en' ? `Could not abandon: ${error.message}` : `Abandon impossible : ${error.message}`);
+        return;
+      }
+      if (!data?.length) {
+        setAbandonMsg(lang === 'en' ? 'This job already changed state — close and check its status.'
+                                    : "Ce job a déjà changé d'état entre-temps — ferme et regarde son statut.");
+        return;
+      }
+      // ── LA TRACE (2026-09-20) ────────────────────────────────────────────
+      // Un abandon n'est pas un retrait (rien n'est en ligne), il n'entre donc
+      // pas dans journalRetraits. Il a sa propre ligne : sans elle, on ne
+      // saurait pas combien de personnes renoncent à une plateforme, ni
+      // pourquoi — et c'est exactement ce chiffre qui dira quels refus
+      // corriger en premier.
+      supabase.from('usage_logs').insert({
+        user_id: user.id,
+        feature: 'abandon_plateforme',
+        metadata: {
+          platform: job.platform,
+          depuis_statut: job.status,
+          inventaire_id: job.inventaire_id ?? null,
+          job_id: job.id,
+          motif: String(job.error ?? '').slice(0, 300),
+        },
+      }).then(({ error: e }) => { if (e) console.warn('[abandon] non journalisé :', e.message); });
+      // Patch optimiste : la ligne passe « Abandonnée » sans recharger.
+      setJobsByInventaire(prev => {
+        const suivant = {};
+        for (const [inv, liste] of Object.entries(prev)) {
+          suivant[inv] = liste.map(j => j.id === job.id
+            ? { ...j, status: 'cancelled', error: messageAbandon(label, lang),
+                platform_fields: champsApresAbandon(job, archiverErreur) }
+            : j);
+        }
+        return suivant;
+      });
+      setFailJobModal(null);
+      track('abandon_plateforme', { platform: job.platform });
+    } catch (e) {
+      setAbandonMsg(e?.message || (lang === 'en' ? 'Could not abandon.' : "L'abandon n'a pas pu être enregistré."));
+    } finally {
+      setAbandonBusy(false);
+    }
+  }
   async function relancerJobEchoue(job, mode = 'repend') {
     if (relanceBusy) return;
     setRelanceBusy(true); setRelanceMsg(null);
@@ -10668,6 +10753,43 @@ const StockTab = memo(function StockTab({
                     <div style={{fontSize:12,color:"#B0645A",fontWeight:600,textAlign:"center",marginBottom:8}}>{relanceMsg}</div>
                   )}
                 </>
+              );
+            })()}
+            {/* ── ABANDONNER CETTE PLATEFORME (2026-09-20) ──────────────────
+                La sortie qui manquait. Sous « Relancer », parce que relancer
+                reste le bon geste quand la cause est corrigeable — et parce
+                qu'un bouton terminal ne se met pas au-dessus d'un bouton
+                réparateur. Deux temps : on demande, on confirme. */}
+            {(()=>{
+              if(!abandonPossible(failJobModal).ok)return null;
+              const label=PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform;
+              if(!abandonConfirme)return(
+                <button onClick={()=>setAbandonConfirme(true)}
+                  style={{width:"100%",padding:"11px",borderRadius:999,background:"#fff",border:"1px solid #E7E3D8",fontSize:13.5,fontWeight:600,color:"#8A5A52",cursor:"pointer",fontFamily:"inherit",marginBottom:8}}>
+                  {lang==="en"?`Give up on ${label} for this item`:`Abandonner ${label} pour cet article`}
+                </button>
+              );
+              return(
+                <div style={{border:"1px solid #E7E3D8",borderRadius:14,padding:"12px",marginBottom:8,background:"#FAF9F5"}}>
+                  <div style={{fontSize:12.5,color:"#3A443F",lineHeight:1.55,marginBottom:10}}>
+                    {lang==="en"
+                      ?`This closes the ${label} attempt for this item only. Your item, your other platforms and your history don't move. Nothing was published, nothing is charged — and you can publish it on ${label} again whenever you want.`
+                      :`Ça ferme la tentative ${label} pour cet article, et rien d'autre. Ton article, tes autres plateformes et ton historique ne bougent pas. Rien n'a été publié, rien n'est décompté — et tu pourras le publier sur ${label} quand tu voudras.`}
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button disabled={abandonBusy} onClick={()=>abandonnerPlateforme(failJobModal)}
+                      style={{flex:1,padding:"11px",borderRadius:999,border:"1px solid #B0645A",background:abandonBusy?"#F4F2EC":"#fff",color:"#8A5A52",fontSize:13.5,fontWeight:700,cursor:abandonBusy?"default":"pointer",fontFamily:"inherit"}}>
+                      {abandonBusy?(lang==="en"?"…":"…"):(lang==="en"?"Yes, give it up":"Oui, abandonner")}
+                    </button>
+                    <button disabled={abandonBusy} onClick={()=>setAbandonConfirme(false)}
+                      style={{flex:1,padding:"11px",borderRadius:999,border:"1px solid #E7E3D8",background:"#fff",color:"#6B7A75",fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      {lang==="en"?"No, keep it":"Non, garder"}
+                    </button>
+                  </div>
+                  {abandonMsg&&(
+                    <div style={{fontSize:12,color:"#B0645A",fontWeight:600,textAlign:"center",marginTop:8}}>{abandonMsg}</div>
+                  )}
+                </div>
               );
             })()}
             <button onClick={()=>setFailJobModal(null)}
