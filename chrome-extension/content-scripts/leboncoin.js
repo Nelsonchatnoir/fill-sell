@@ -466,9 +466,65 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
 }
 
 // ── Chemin de REPLI : « Mes annonces » (jobs sans listing_url) ───────────────
+// ── « MES ANNONCES » NE REND QUE 30 LIGNES À LA FOIS ───────────────────────
+// CE QUI L'A PROVOQUÉ (job d012a3b0, Ornella, « Veste denim noir Fantazia
+// capuche », 12/09 → 5 tentatives → failed le 20/09). Son diagnostic, conservé
+// sur le job, dit tout : « 30 carte(s) rendue(s) » et vingt-cinq titres relevés
+// dont aucun n'est le sien. Trente, c'est EXACTEMENT le `limit` de
+// dashboard/v1/search. L'annonce n'était pas absente : elle était au-delà du
+// premier lot, et rien ici ne déroulait la suite. On a donc dit cinq fois
+// « introuvable » à propos d'une annonce parfaitement présente.
+//
+// Le défilement infini de cette page est déjà décrit et déroulé côté
+// background (lot 2 du 19/09, relevé dans son bundle) : en atteignant le bas,
+// la page incrémente son offset de 30, rappelle dashboard/v1/search et EMPILE.
+// On applique ici la MÊME technique, et les mêmes bornes d'esprit :
+//   · on attend la CROISSANCE du nombre de cartes, jamais une durée au hasard ;
+//   · on s'arrête dès que la cible est là — inutile de charger 1 200 lignes
+//     pour en retirer une ;
+//   · bornes dures : 40 paliers (1 200 annonces, au-dessus du plus gros compte
+//     du parc) et 60 s. Une liste qu'on n'a pas fini de lire ne conclut RIEN :
+//     le compte de cartes rendu au diagnostic dit jusqu'où on est allé.
+const LBC_CARTES_SEL = 'li[data-qa-id="ad_item_container"], [data-qa-id*="ad_item"], article';
+async function deroulerMesAnnonces(trouve, t) {
+  const compter = () => document.querySelectorAll(LBC_CARTES_SEL).length;
+  const PALIERS_MAX = 40, DUREE_MAX_MS = 60_000;
+  const debut = Date.now();
+  let vues = compter();
+  for (let palier = 0; palier < PALIERS_MAX; palier++) {
+    if (trouve()) { t(`cible trouvée après ${palier} palier(s) (${vues} carte(s) chargée(s))`); return vues; }
+    if (Date.now() - debut > DUREE_MAX_MS) { t(`défilement arrêté au temps (${vues} carte(s))`); return vues; }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    // On sonde court et on repart dès que ça pousse : le lot suivant arrive
+    // après un aller-retour réseau, dont la durée n'est pas devinable.
+    let apres = vues;
+    for (let i = 0; i < 24 && apres === vues; i++) {   // 24 × 250 ms = 6 s max
+      await new Promise((r) => setTimeout(r, 250));
+      apres = compter();
+    }
+    if (apres === vues) { t(`défilement terminé : ${vues} carte(s), plus de croissance`); return vues; }
+    vues = apres;
+  }
+  t(`défilement arrêté au plafond de paliers (${vues} carte(s))`);
+  return vues;
+}
+
 async function deleteDepuisListe(job, adId, trace, t) {
   t(`page Mes annonces ok : ${location.pathname}`);
   await humanPause(1000, 2200);
+
+  // La cible peut être au-delà des 30 premières : on déroule AVANT de chercher,
+  // et on s'arrête dès qu'elle paraît.
+  const cibleLa = () => {
+    if (adId) {
+      return Array.from(document.querySelectorAll("a[href]")).some((a) =>
+        (a.getAttribute("href") ?? "").match(/\/(\d{6,})(?:[/?#]|$)/)?.[1] === adId);
+    }
+    if (!job.title) return false;
+    return Array.from(document.querySelectorAll(LBC_CARTES_SEL))
+      .some((c) => annonceNommee(c.textContent, job, adId));
+  };
+  await deroulerMesAnnonces(cibleLa, t);
 
   let anchor = null;
   if (adId) {
@@ -506,9 +562,7 @@ async function deleteDepuisListe(job, adId, trace, t) {
   // annonces quasi identiques du même vendeur, c'est exactement le cas où une
   // suppression à l'aveugle détruit la mauvaise (vécu sur eBay le même jour).
   if (!card && job.title) {
-    const cartes = Array.from(document.querySelectorAll(
-      'li[data-qa-id="ad_item_container"], [data-qa-id*="ad_item"], article'
-    ));
+    const cartes = Array.from(document.querySelectorAll(LBC_CARTES_SEL));
     const nommees = cartes.filter((c) => annonceNommee(c.textContent, job, adId));
     if (nommees.length === 1) {
       card = nommees[0];
@@ -531,9 +585,7 @@ async function deleteDepuisListe(job, adId, trace, t) {
     // de CETTE page — ou reléguée sur une suivante, la liste n'étant pas
     // paginée par ce flux). Sans ce compte, l'enquête du 12/09 n'avait rien à
     // lire : 5 tentatives sur ce même motif, aucune trace conservée.
-    const cartesRendues = document.querySelectorAll(
-      'li[data-qa-id="ad_item_container"], [data-qa-id*="ad_item"], article'
-    ).length;
+    const cartesRendues = document.querySelectorAll(LBC_CARTES_SEL).length;
     const titresVus = releveActionsLbc(document, 'a[href*="/ad/"]', 25);
     t(`annonce INTROUVABLE dans Mes annonces (id=${adId ?? "?"}, titre="${job.title ?? "?"}") — ${cartesRendues} carte(s) rendue(s)`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
