@@ -1880,6 +1880,79 @@ serve(async (req) => {
       }
     }
 
+    // ══ EBAY : UN ASPECT QUE LA CATÉGORIE NE SAIT PAS DÉCRIRE ═════════════
+    // (2026-09-20 — job bb3bb71f, jocabroc8, « Service de toilette ancien
+    //  Moulin des Loups Camélia Hamage »)
+    //
+    // eBay réclamait « Inclus dans le lot » et « Nombre d'articles par lot ».
+    // On a demandé les deux à la personne. AUCUN des deux n'était répondable :
+    // la catégorie retenue est « Maison › Meubles › Meubles de salle de bain »,
+    // et les valeurs offertes pour « Inclus dans le lot » sont Armoire,
+    // Coiffeuse, Lavabo, Commode à tiroirs… — rien qui décrive un service de
+    // toilette en porcelaine. « Nombre d'articles par lot » commence à 2 : même
+    // un lot d'un seul objet n'a pas de réponse.
+    //
+    // ⛔ ET ON NE DÉDUIT PAS. Un titre qui dit « lot de 5 assiettes » donnerait
+    //    bien la quantité — mais celui-ci ne dit aucun nombre, et écrire « 2 »
+    //    pour avancer serait un champ menteur sur une annonce en vente.
+    //
+    // Le garde-fou « les attributs confirment la catégorie » (18/09) avait DÉJÀ
+    // posé le bon diagnostic dans le job, mot pour mot : « aucun aspect
+    // obligatoire de "Meubles de salle de bain" ne peut décrire "service de
+    // toilette" — catégorie à vérifier avant de demander quoi que ce soit ».
+    // Personne ne le lisait. On le lit ici : le message dit que c'est la
+    // CATÉGORIE qui cloche, nomme celle que la reconnaissance avait trouvée, et
+    // la question d'aspect — si elle reste affichée — reçoit enfin sa liste
+    // fermée au lieu d'une saisie libre que la plateforme refusera.
+    //
+    // ⛔ ON NE CHANGE PAS LA CATÉGORIE À SA PLACE : elle a été choisie à la main
+    //    (categorie_source = « choix_humain »). Un rayon choisi par la personne
+    //    ne se recalcule jamais — on lui dit ce qu'on voit, elle tranche.
+    let pfAspectAveugle: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user") {
+      try {
+        const pfC = (pfIn ?? {}) as Record<string, unknown>;
+        const objet = (v: unknown) => (v && typeof v === "object" ? v as Record<string, unknown> : null);
+        const preuve = objet(pfC["categorie_preuve_aspects"]);
+        const aveugles = Array.isArray(preuve?.["aspects_sans_valeur_descriptive"])
+          ? (preuve!["aspects_sans_valeur_descriptive"] as unknown[]).map(String) : [];
+        const requis = Array.isArray(pfC["ebayRequiredAspects"]) ? (pfC["ebayRequiredAspects"] as unknown[]).map(String) : [];
+        const nuf = objet(pfC["needsUserField"]);
+        const cle = String(nuf?.["field_key"] ?? "").trim();
+        // ⛔ TOUS les aspects obligatoires aveugles, pas un seul : si UN SEUL
+        //    décrit encore l'objet, la catégorie tient et la question est
+        //    légitime. C'est la totalité qui accuse la catégorie.
+        const tousAveugles = requis.length > 0 && requis.every((a) => aveugles.includes(a));
+        if (cle && tousAveugles && aveugles.includes(cle) && String(nuf?.["platform"] ?? "") === "ebay") {
+          const parMot = objet(pfC["categorie_par_mot"]);
+          const autre = Array.isArray(parMot?.["chemin"]) ? (parMot!["chemin"] as unknown[]).map(String).join(" › ") : "";
+          const actuelle = Array.isArray(pfC["ebayCategoryPath"]) ? (pfC["ebayCategoryPath"] as unknown[]).map(String).join(" › ") : "";
+          const quoi = String(preuve?.["mot"] ?? "").trim() || String(pfC["categorie_objet_ia"] ?? "").trim() || "cet objet";
+          messageEffectif =
+            `eBay réclame ${requis.length > 1 ? "des champs obligatoires" : "un champ obligatoire"} ` +
+            `(${requis.join(", ")}) qui ne ${requis.length > 1 ? "décrivent" : "décrit"} pas « ${quoi} »` +
+            (actuelle ? ` : la catégorie retenue est « ${actuelle} »` : "") +
+            `. Le problème vient de la catégorie, pas de toi` +
+            (autre ? ` — la reconnaissance avait proposé « ${autre} »` : "") +
+            `. Change la catégorie eBay depuis la fiche de l'article, puis relance : rien n'a été envoyé, rien n'a été décompté.`;
+          raisonRequalif = raisonRequalif ?? `eBay : les ${requis.length} aspects obligatoires sont tous aveugles à « ${quoi} » — c'est la catégorie qui est en cause`;
+          // La liste fermée, quand on l'a relevée : une question de vocabulaire
+          // ouvert sur un menu eBay ne peut de toute façon pas aboutir.
+          const offertes = objet(preuve?.["valeurs_offertes"]);
+          const valeurs = Array.isArray(offertes?.[cle]) ? (offertes![cle] as unknown[]).map(String) : [];
+          if (valeurs.length && !Array.isArray(nuf?.["allowed_values"])) {
+            pfAspectAveugle = {
+              ...pfC,
+              needsUserField: { ...nuf, allowed_values: valeurs, input_type: "selection_only", options_completes: false },
+            };
+          }
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+        }
+      } catch (e) {
+        console.error("[update-job-status] requalification aspect eBay aveugle:", (e as Error)?.message ?? e);
+      }
+    }
+
     const patch: Record<string, unknown> = { status: statutEffectif };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -1888,6 +1961,9 @@ serve(async (req) => {
     if (body.platform_fields && typeof body.platform_fields === "object") {
       patch.platform_fields = body.platform_fields;
     }
+    // La liste fermée ajoutée à un aspect eBay aveugle (bloc ci-dessus) : elle
+    // ne remplace rien d'autre, elle complète le champ demandé.
+    if (pfAspectAveugle) patch.platform_fields = pfAspectAveugle;
 
     // Détail structuré du palliatif : l'app lit champs_a_completer pour
     // afficher quoi compléter, sans re-parser le message humain.
