@@ -45,6 +45,13 @@ verify_jwt = false
 [functions.handler-watch]
 verify_jwt = false
 
+# Filet du lien d'annonce Beebs (2026-09-21) : appelée par pg_cron
+# (« beebs-lien-5min », x-cron-secret) — jamais par l'app ni par l'extension.
+# Elle lit l'index public de Beebs et pose le lien d'un dépôt qui n'en a pas,
+# sans attendre que la personne rouvre son navigateur.
+[functions.beebs-lien]
+verify_jwt = false
+
 [functions.apple-notification-history]
 verify_jwt = false
 
