@@ -102,6 +102,27 @@ try {
   await page.screenshot({ path: path.join(SORTIE, 'bloc-general-dissocie.png'), fullPage: true });
   console.log('écrit : screenshots-review/bloc-general-dissocie.png');
 
+  // ── LES RETOURS À LA LIGNE (le signalement de Louis, 21/09 16:25) ───────
+  // Sa description porte 6 retours à la ligne. L'aperçu les écrasait : tout
+  // sur une ligne. On vérifie ici la HAUTEUR RENDUE, pas le CSS — un aperçu
+  // d'une seule ligne et un aperçu de deux n'ont pas la même hauteur.
+  const apercu = page.locator('[data-apercu-description]');
+  const boite = await apercu.boundingBox();
+  const uneLigne = await page.evaluate(() => {
+    const el = document.querySelector('[data-apercu-description]');
+    return parseFloat(getComputedStyle(el).lineHeight) || 19;
+  });
+  verifier(boite.height > uneLigne * 1.5,
+    'l’aperçu replié occupe bien DEUX lignes, pas une seule aplatie',
+    `hauteur ${Math.round(boite.height)} px pour une ligne de ${Math.round(uneLigne)} px`);
+  const blanc = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('[data-apercu-description]')).whiteSpace);
+  verifier(blanc === 'pre-wrap', 'white-space: pre-wrap — les retours du vendeur sont rendus', blanc);
+  verifier(/7 lignes/.test(await page.content()),
+    'le compte de lignes est écrit sous l’aperçu (7 lignes)');
+  await page.screenshot({ path: path.join(SORTIE, 'bloc-general-retours-ligne.png'), fullPage: true });
+  console.log('écrit : screenshots-review/bloc-general-retours-ligne.png');
+
   // Rétablir : eBay reprend la valeur générale.
   await page.locator('[data-retablir="ebay:titre"]').click();
   await page.waitForTimeout(250);
