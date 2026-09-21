@@ -2202,19 +2202,68 @@ serve(async (req) => {
     if (statutEffectif === "published") {
       patch.published_at = new Date().toISOString();
       patch.error = null;
-      if (typeof body.listing_url === "string" && body.listing_url) {
-        patch.listing_url = body.listing_url;
+      // UNE seule lecture du job : la plateforme (le motif d'extraction en
+      // dépend, et le body n'est pas de confiance) et l'identifiant déjà posé.
+      const { data: jobRow } = await userClient
+        .from("cross_post_jobs")
+        .select("platform, platform_listing_id")
+        .eq("id", jobId)
+        .maybeSingle();
+      const lienFourni = typeof body.listing_url === "string" && body.listing_url ? body.listing_url : null;
+      if (lienFourni) {
+        patch.listing_url = lienFourni;
         // L'id d'annonce accompagne TOUJOURS l'URL dont il est extrait — les
-        // deux colonnes ne peuvent pas diverger. Lecture du platform du job :
-        // le motif d'extraction en dépend, et le body n'est pas de confiance.
-        const { data: jobRow } = await userClient
-          .from("cross_post_jobs")
-          .select("platform")
-          .eq("id", jobId)
-          .maybeSingle();
+        // deux colonnes ne peuvent pas diverger.
         const re = LISTING_ID_PATTERNS[jobRow?.platform ?? ""];
-        const m = re ? body.listing_url.match(re) : null;
+        const m = re ? lienFourni.match(re) : null;
         if (m) patch.platform_listing_id = m[1];
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // JAMAIS UN « PUBLIÉ » MUET (2026-09-21)
+      // ══════════════════════════════════════════════════════════════════════
+      // Relevé du 21/09 : 40 dépôts 'published'/'sold' sans listing_url sur
+      // 44 651. Ce n'est PAS le lien qui manque, c'est l'IDENTIFIANT : sur les
+      // 18 Leboncoin, 17 portaient déjà leur platform_listing_id (rendu par
+      // Leboncoin dans la réponse à notre dépôt) — retirables sans rien
+      // chercher ; les 21 Beebs n'ont ni l'un ni l'autre, et ce sont eux, et
+      // eux seuls, qui produisent des retraits qui ne pourront jamais agir
+      // (10 sur les 500 retraits du parc, 9 Beebs + 1 Leboncoin).
+      //
+      // POURQUOI PAS UN AUTRE STATUT. Un dépôt Beebs part en modération
+      // humaine : Beebs ne rend RIEN à cet instant, sur 339 dépôts, 339 fois.
+      // Refuser 'published' là, ce serait déclarer non publiés 339 dépôts bien
+      // réels et rouvrir la porte au re-dépôt — le doublon du 09/09. Le dépôt
+      // EST fait : il reste 'published'. Ce qui change, c'est qu'il ne l'est
+      // plus EN SILENCE : lien_en_attente dit depuis quand et jusqu'à quand,
+      // beebs-lien (cron) va chercher l'identifiant dans l'index public, le
+      // retrait s'en sert dès qu'il existe (get-pending-jobs), et le cron de
+      // nuit requalifie à l'échéance. Purement additif, jamais bloquant.
+      const idConnu = String(patch.platform_listing_id ?? jobRow?.platform_listing_id ?? "").trim();
+      const pfBase = ((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>);
+      if (!lienFourni && !idConnu) {
+        // Même échéance que la re-capture, par plateforme (7 j Beebs pour la
+        // modération, 48 h ailleurs) — la valeur vit aussi dans
+        // LISTING_URL_RECOVERY_MAX_AGE_MS (extension) et dans
+        // fail_publish_without_listing_url (SQL) : les trois bougent ensemble.
+        const jours = jobRow?.platform === "beebs" ? 7 : 2;
+        patch.platform_fields = {
+          ...pfBase,
+          lien_en_attente: {
+            depuis: new Date().toISOString(),
+            echeance: new Date(Date.now() + jours * 86_400_000).toISOString(),
+            plateforme: jobRow?.platform ?? null,
+            motif: "publication déclarée sans lien NI identifiant d'annonce — annonce non retirable en l'état",
+          },
+        };
+        console.log(
+          `[update-job-status] job=${jobId} (${jobRow?.platform ?? "?"}) publié SANS identifiant — ` +
+          `lien_en_attente posé, échéance ${jours} j`,
+        );
+      } else if (pfBase["lien_en_attente"]) {
+        const pfN = { ...pfBase };
+        delete pfN["lien_en_attente"];
+        patch.platform_fields = pfN;
       }
     } else if (statutEffectif === "failed") {
       // messageEffectif (bfcache, reprises épuisées) prime sur le brut Chrome,
