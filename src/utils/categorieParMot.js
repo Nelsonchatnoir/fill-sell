@@ -345,6 +345,72 @@ export async function resoudreParMot(mot, plateforme, { genre = "", famille = nu
  *    Les suggestions de la plateforme, elles, sont ajoutées par l'appelant qui
  *    les possède (le worker eBay les a ; l'app ne les a pas).
  */
+// ── LA DESCENTE AVEC L'IA, QUAND LE MOT NE DIT RIEN (2026-09-21) ──────────
+// `candidatsParMot` ne fait entrer une feuille que si le MOT partage un jeton
+// avec son étiquette. C'est juste tant que le mot existe dans le vocabulaire de
+// la plateforme — et muet quand il n'y est pas.
+//
+// MESURÉ SUR DEUX JOBS DU 21/09, tous deux morts sur « Beebs n'a pas de rayon
+// reconnu pour … cet article n'est pas publiable sur Beebs tel quel » :
+//   · « barrette » (fd5c84be, meminiandmove) ne partage un jeton avec AUCUNE
+//     des 579 étiquettes Beebs — zéro candidate. La recherche de Beebs
+//     elle-même ne rend rien non plus (vérifié en direct sur beebs.app).
+//   · « maillot de basket » (1ad1434a, geronimo0550) n'en ramène que DEUX, et
+//     les deux sont des faux amis : « Maillots de bain (homme) » et
+//     « Baskets (homme) ». Le bon rayon — « Hauts et t-shirts de sport
+//     (homme) » — ne partage aucun mot avec l'objet.
+// Les deux fois l'IA a eu raison de refuser : la bonne réponse n'était pas dans
+// la liste. C'est la LISTE qui était fausse, pas l'arbitrage.
+//
+// ⛔ ET LA LISTE DOIT ÊTRE COURTE. Mesuré le 21/09 sur le maillot NBA, en
+//    appelant resolve-categorie pour de vrai : 312 feuilles → « aucune » ;
+//    65 (le rayon du genre) → « Hauts et t-shirts de sport (homme) » ; 42 et 8
+//    → la même. Envoyer l'arbre entier d'un coup ne marche pas — c'est la même
+//    leçon que les questions Opla : une liste qu'on ne peut pas lire ne se
+//    tranche pas. On descend donc NIVEAU PAR NIVEAU, six options au départ,
+//    jamais plus d'une vingtaine ensuite.
+//
+// Ces deux fonctions ne savent RIEN de l'IA : elles rendent les options d'un
+// niveau. C'est l'appelant qui demande, et qui s'arrête dès qu'on lui répond
+// « aucune » — un refus reste un refus.
+
+/** Les feuilles de l'arbre, élaguées au genre. [] si l'arbre est absent. */
+async function feuillesPourGenre(plateforme, genre) {
+  const feuilles = await feuillesDe(plateforme);
+  if (!feuilles.length) return [];
+  const g = genreNormalise(genre);
+  const accepte = g ? new Set(ACCEPTE[g] ?? [g]) : null;
+  if (!accepte) return feuilles;
+  return feuilles.filter((f) => {
+    const b = brancheGenre(f.chemin);
+    return b === null || accepte.has(b);
+  });
+}
+
+/**
+ * Le niveau SUIVANT sous un chemin : les libellés qu'un vendeur verrait à
+ * l'écran à cet endroit de l'arbre, élagués au genre.
+ *
+ * @returns {Promise<{options: string[][], feuille: boolean, restantes: number}>}
+ *   `options` = les chemins COMPLETS de chaque choix (l'IA voit le contexte
+ *   entier, pas une étiquette nue) ; `feuille` = le chemin donné EST déjà une
+ *   feuille ; `restantes` = combien de feuilles vivent sous ce chemin.
+ */
+export async function niveauSousChemin(plateforme, prefixe = [], { genre = '' } = {}) {
+  const feuilles = await feuillesPourGenre(plateforme, genre);
+  const sous = feuilles.filter((f) => prefixe.every((s, i) => f.chemin[i] === s));
+  const feuille = sous.some((f) => f.chemin.length === prefixe.length);
+  const libelles = [...new Set(sous.map((f) => f.chemin[prefixe.length]).filter(Boolean))];
+  return { options: libelles.map((t) => [...prefixe, t]), feuille, restantes: sous.length };
+}
+
+/** Ce chemin est-il une feuille DÉPOSABLE de l'arbre ? */
+export async function estFeuilleDeLArbre(plateforme, chemin) {
+  if (!Array.isArray(chemin) || !chemin.length) return false;
+  const feuilles = await feuillesDe(plateforme);
+  return feuilles.some((f) => f.chemin.length === chemin.length && f.chemin.every((s, i) => s === chemin[i]));
+}
+
 export async function candidatsParMot(mot, plateforme, { genre = "", titre = "", max = 20, famille = null } = {}) {
   const jm = jetons(mot);
   if (!jm.length) return [];

@@ -236,6 +236,22 @@ serve(async (req) => {
   }
 
   const candidats = corps.candidats ?? {};
+  // ── LE PLAFOND, ET POURQUOI IL S'OUVRE (2026-09-21) ───────────────────────
+  // Vingt candidates, c'était la taille d'une liste RATISSÉE PAR LE MOT : au
+  // delà, le mot n'avait rien ratissé de plus. Mais il existe un appel où la
+  // liste n'est pas ratissée du tout — le DERNIER RECOURS, quand le mot ne
+  // désigne RIEN dans l'arbre de la plateforme et qu'on s'apprêtait à déclarer
+  // l'article impubliable. On envoie alors l'arbre ENTIER, élagué au genre.
+  // Mesuré : Beebs 291-372 feuilles selon le genre (≈ 25 Ko), Leboncoin 79,
+  // Opla 412-526. Vinted (1 900) et eBay ne passent pas et n'essaient pas.
+  // ⛔ LE PLAFOND RESTE UN PLAFOND, et il est posé ICI, côté serveur :
+  //    l'appelant demande, la fonction borne. 600, c'est le plus grand arbre
+  //    qui tienne dans une question — pas un chiffre rond.
+  const PLAFOND_DEFAUT = 20, PLAFOND_MAX = 600;
+  const plafond = Math.min(
+    Math.max(Number(corps.max_candidats) || PLAFOND_DEFAUT, PLAFOND_DEFAUT),
+    PLAFOND_MAX,
+  );
   // Clés opaques : « v0…v19 », « e0…e19 ». C'est CE vocabulaire fermé que le
   // modèle doit rendre, et c'est lui qu'on vérifie — pas un libellé recopié.
   const parCle = new Map<string, { plateforme: Plateforme; candidat: Candidat }>();
@@ -244,7 +260,7 @@ serve(async (req) => {
   for (const pf of PLATEFORMES) {
     const brutes = (candidats[pf] ?? []).filter((c) => Array.isArray(c?.chemin) && c.chemin.length);
     const vraies = brutes.filter((c) => !estFourreTout(c));
-    const liste = (vraies.length ? vraies : brutes).slice(0, 20);
+    const liste = (vraies.length ? vraies : brutes).slice(0, plafond);
     if (!liste.length) continue;
     parPlateforme.set(pf, liste.length);
     if (vraies.length && vraies.length < brutes.length) {

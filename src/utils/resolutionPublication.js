@@ -48,7 +48,7 @@ import { normalizeVintedColors } from "./vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "./lbcCategories";
 import { lbcClePremierCombobox } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
-import { resoudreParMot, candidatsParMot } from "./categorieParMot";
+import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre } from "./categorieParMot";
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
 import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme,
          VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT } from "./jeuxVideo";
@@ -1094,6 +1094,106 @@ export async function resoudrePublication({
       }
     }
   }
+
+  // ══ LE DERNIER RECOURS — DESCENDRE L'ARBRE, AVANT DE DIRE « IMPUBLIABLE » ══
+  // (2026-09-21, jobs fd5c84be « barrette » et 1ad1434a « maillot de basket »)
+  // À ce point, pour Beebs, `categorie_a_choisir` est écrit : le job partira
+  // SANS chemin et le handler dira « Beebs n'a pas de rayon reconnu pour
+  // « barrette » […] cet article n'est pas publiable sur Beebs tel quel ».
+  // C'était FAUX les deux fois — les rayons existent (« Accessoires (fille) »,
+  // « Hauts et t-shirts de sport (homme) »), mais ils ne partagent aucun mot
+  // avec l'objet, donc le ratissage ne les avait jamais proposés et l'IA
+  // n'avait pas pu les choisir. Elle a refusé une liste fausse, pas l'article.
+  //
+  // ON REDESCEND DONC L'ARBRE AVEC ELLE, NIVEAU PAR NIVEAU, comme un vendeur
+  // le ferait à l'écran : six racines, puis les enfants du rayon choisi, et
+  // ainsi de suite. Mesuré le 21/09 en appelant resolve-categorie pour de vrai
+  // sur le maillot NBA : 312 feuilles d'un coup → « aucune » ; 65 → la bonne ;
+  // 42 → la bonne ; 8 → la bonne. Une liste qu'on ne peut pas lire ne se
+  // tranche pas — c'est la leçon des questions Opla, appliquée à l'IA.
+  //
+  // ⛔ ELLE GARDE LE DROIT DE REFUSER, À CHAQUE NIVEAU. Un « aucune » arrête
+  //    la descente et le refus d'origine tient : mieux vaut pas de rayon qu'un
+  //    rayon faux, et certains articles n'en ont vraiment pas chez Beebs.
+  // ⛔ UNIQUEMENT SUR LE CHEMIN D'ÉCHEC : on n'entre ici qu'après un verdict
+  //    « incohérent », c'est-à-dire juste avant de perdre l'annonce. Aucune
+  //    publication qui marche aujourd'hui ne passe par là.
+  // ⛔ ET SEULEMENT SUR UN ARBRE QUI SE DESCEND : Beebs (579 feuilles),
+  //    Leboncoin (79), Opla (886). Vinted (2 489) et eBay (des dizaines de
+  //    milliers) ne sont pas de cette taille et n'essaient pas.
+  const ARBRES_DESCENDABLES = new Set(["beebs", "leboncoin", "opla"]);
+  const PALIERS_MAX = 8;
+  const aSauver = rows.filter((r) =>
+    r.platform_fields?.categorie_verification?.verdict === "incoherent"
+    && ARBRES_DESCENDABLES.has(r.platform));
+  if (motCategorie && aSauver.length) {
+    const genreVerif = sharedFields.genre || autoGenre || "";
+    const attributsVerif = {
+      genre: genreVerif,
+      taille: sharedFields.taille || initialListing?.taille || "",
+      marque: sharedFields.marque || initialListing?.marque || "",
+      objet: motCategorie,
+    };
+    const titreVerif = initialListing?.titre || edited[plateformesAPublier[0]]?.title || "";
+    for (const r of aSauver) {
+      const pf = r.platform_fields;
+      let chemin = [];
+      let appels = 0;
+      const journal = [];
+      try {
+        for (let palier = 0; palier < PALIERS_MAX; palier++) {
+          const { options, feuille } = await niveauSousChemin(r.platform, chemin, { genre: genreVerif });
+          if (feuille && !options.length) break;
+          if (!options.length) break;
+          // Un seul chemin possible : on ne dérange pas l'IA pour ça.
+          if (options.length === 1) { chemin = options[0]; journal.push(`${chemin[chemin.length - 1]} (seul)`); continue; }
+          const { data } = await supabase.functions.invoke("resolve-categorie", {
+            body: {
+              titre: titreVerif, attributs: attributsVerif,
+              candidats: { [r.platform]: options.map((c) => ({ chemin: c, id: null })) },
+              // Le branchement maximal des arbres descendables, relevé le 21/09 :
+              // Beebs 19, Leboncoin 14, Opla 22. 25 couvre le plus large sans
+              // jamais tronquer un niveau — et le serveur borne de toute façon.
+              max_candidats: 25,
+            },
+          });
+          appels++;
+          const choix = data && data.motif !== "ia_indisponible" ? (data.choix?.[r.platform] ?? null) : null;
+          const suivant = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
+          if (!suivant) { journal.push(`aucune parmi ${options.length}`); chemin = []; break; }
+          chemin = suivant;
+          journal.push(`${chemin[chemin.length - 1]} (parmi ${options.length})`);
+          if (await estFeuilleDeLArbre(r.platform, chemin)) break;
+        }
+      } catch (e) {
+        console.warn(`[publish] dernier recours ${r.platform} : interrompu —`, e?.message ?? e);
+        chemin = [];
+      }
+      // ⛔ UNE FEUILLE, OU RIEN. Un nœud intermédiaire n'est pas déposable : le
+      //    refus d'origine vaut mieux qu'un chemin qui s'arrête en route.
+      if (!chemin.length || !(await estFeuilleDeLArbre(r.platform, chemin))) {
+        console.log(`[publish] dernier recours ${r.platform} — « ${motCategorie} » : ${journal.join(" | ") || "rien à descendre"} → le refus tient (${appels} appel(s))`);
+        continue;
+      }
+      if (r.platform === "beebs") pf.beebsCategoryPath = chemin;
+      else if (r.platform === "leboncoin") pf.lbcCategoryPath = chemin;
+      else if (r.platform === "opla") pf.oplaCategoryPath = chemin;
+      pf.categorie_source = "ia_descente_arbre";
+      pf.categorie_par_mot = {
+        mot: motCategorie, mot_source: motCategorieSource, chemin, id: null,
+        choisi_par_ia: true, descente_arbre: true,
+      };
+      pf.categorie_verification = {
+        ...(pf.categorie_verification ?? {}), verdict: "descente_arbre",
+        chemin_retenu: chemin, paliers: journal, appels,
+      };
+      delete pf.categorie_a_choisir;
+      delete pf.categorie_incertaine;
+      delete pf.lbcCategorieIncertaine;
+      console.log(`[publish] dernier recours ${r.platform} — « ${motCategorie} » → « ${chemin.join(" > ")} » (${journal.join(" | ")}, ${appels} appel(s))`);
+    }
+  }
+
   // ══ PLAUSIBILITÉ DU CHEMIN FINAL — LA FAMILLE (2026-09-10) ══════════
   // Dernier contrôle avant l'insert, sur les quatre plateformes, quelle
   // que soit l'origine du chemin (mot, IA parmi candidats, icône, garde-
