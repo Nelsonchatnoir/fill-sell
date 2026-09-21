@@ -26,8 +26,18 @@
 --    existé (237 états, 163 tailles, 147 marques, 74 couleurs, 8 matières).
 --
 -- ⚠️ `backfill_job` (1 282 attributs, 482 articles) est AUSSI inconnue de la
---    fonction, donc au rang 0. Elle n'entre PAS dans cette migration : Nico n'a
---    tranché que les `releve_*`. Signalé, pas décidé.
+--    fonction, donc au rang 0 — et elle Y RESTE. Ce n'est pas un oubli, c'est
+--    un arbitrage de Nico du 21/09, posé APRÈS l'application de cette
+--    migration (le SQL ci-dessous n'a pas bougé d'un octet) :
+--
+--      « Ce sont des valeurs RECONSTITUÉES PAR NOUS à partir de jobs passés,
+--        pas des lectures de la page du vendeur : toute vraie lecture doit
+--        pouvoir les remplacer. »
+--
+--    Au rang 0, `backfill_job` perd donc contre TOUT — y compris contre `lens`
+--    (1), ce qui est exactement le but : une reconstitution cède devant
+--    n'importe quelle observation. Ne pas la « ranger » par symétrie avec les
+--    `releve_*` : elle n'est pas de la même nature.
 --
 -- PRÉFIXE, PAS LISTE FERMÉE : `starts_with(p_source, 'releve_')` couvre les
 -- quatre relevés d'aujourd'hui (beebs, leboncoin, ebay, opla) ET le prochain.
