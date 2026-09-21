@@ -50,7 +50,8 @@
     "selftest:suppression-vinted-antirobot": "node scripts/suppression-vinted-antirobot-selftest.mjs",
     "selftest:beebs-appariement": "deno run --allow-read scripts/beebs-appariement-selftest.ts",
     "selftest:valeurs-generales": "node scripts/valeurs-generales-selftest.mjs",
-    "apercu:bloc-general": "node scripts/apercu/capture-bloc-general.mjs"
+    "apercu:bloc-general": "node scripts/apercu/capture-bloc-general.mjs",
+    "selftest:capture-fraicheur": "node scripts/capture-fraicheur-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

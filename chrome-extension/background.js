@@ -12193,7 +12193,8 @@ async function releverAnnoncesPlateforme(platform) {
 // aléatoire entre deux fiches. Écrit par PATCH, une annonce à la fois ; si la
 // colonne n'existe pas encore (migration non appliquée), on le note et on
 // s'arrête — le relevé lui-même n'en dépend pas.
-const CAPTURE_MAX_PAR_RUN = 30;
+// (CAPTURE_MAX_PAR_RUN et les bornes de fraîcheur vivent plus bas, avec la
+//  politique de sélection qui les consomme — 2026-09-21.)
 
 // Lecture EN PAGE : une fonction, un switch par plateforme, zéro requête.
 function capturerFicheEnPage(plateforme) {
@@ -12468,13 +12469,67 @@ function valeurAttributSaine(v) {
   return true;
 }
 
-async function completerArticleDepuisCapture(inventaireId, capture, platform, { token, userId, vignette }) {
+// ═══════════════════════════════════════════════════════════════════════════
+// REPORTER LA CAPTURE SUR LA FICHE — L'ORDRE DE VÉRITÉ (2026-09-21)
+// ═══════════════════════════════════════════════════════════════════════════
+// Arbitrage de Nico, appliqué tel quel :
+//   · le vendeur a modifié le texte DANS FILLSELL (titre_source /
+//     description_source = manuel) → sa retouche n'est JAMAIS écrasée. Si le
+//     texte a AUSSI changé sur la plateforme depuis, la fiche le SIGNALE et il
+//     tranche en un tap. Rien d'automatique dans ce cas ;
+//   · il n'a PAS retouché → la fiche prend le texte actuel de la plateforme,
+//     automatiquement ;
+//   · même logique pour le prix et l'état.
+// Le signal vit dans `attributs.contenu_divergent` — aucune colonne nouvelle,
+// donc aucune migration : la clé suit le même arbitrage de rang que les
+// autres, et l'app la lit pour poser son encart ambre.
+// ⛔ AUCUNE REFORMULATION : le texte relu est rangé tel qu'il est sur la
+//    plateforme, retours à la ligne et émojis compris.
+// ⛔ LECTURE SEULE CÔTÉ PLATEFORME : rien n'est jamais réécrit en ligne.
+async function reporterCaptureSurArticle(inventaireId, capture, platform, { token, userId, vignette, avant = null, prixListe = null, titreListe = null }) {
   const rows = await restRequest(
-    `inventaire?id=eq.${inventaireId}&user_id=eq.${userId}&select=id,photos,description,marque,attributs`, token,
+    `inventaire?id=eq.${inventaireId}&user_id=eq.${userId}&select=id,titre,photos,description,marque,prix_vente,attributs`, token,
   ).catch(() => null);
   const art = Array.isArray(rows) ? rows[0] : null;
-  if (!art) return false;
+  if (!art) return { ecrit: false, divergence: false };
   const patch = {};
+  const attrArt = art.attributs && typeof art.attributs === "object" && !Array.isArray(art.attributs) ? art.attributs : {};
+  const retouchee = (cle) => String(attrArt?.[cle]?.v ?? "").trim().toLowerCase() === "manuel";
+  // « Le texte a changé sur la plateforme depuis notre dernière lecture » :
+  // comparé à la capture PRÉCÉDENTE, jamais à la fiche — sans quoi une simple
+  // différence de rédaction passerait pour une modification du vendeur.
+  const aChangeEnLigne = (champ, valeurLue) => Boolean(avant)
+    && String(avant[champ] ?? "") !== String(valeurLue ?? "");
+  const divergences = [];
+  // ── TITRE et DESCRIPTION ────────────────────────────────────────────────
+  // ⚠️ Le TITRE ne vient PAS de la fiche capturée : `capturerFicheEnPage` ne
+  //    le rend pas. Il vient de la LIGNE de « Mes annonces », relevée à chaque
+  //    passage — c'est donc déjà la valeur fraîche, et c'est elle qui fait foi.
+  for (const [champ, cleSource, lu] of [
+    ["titre", "titre_source", titreListe],
+    ["description", "description_source", capture?.description],
+  ]) {
+    const valeur = String(lu ?? "").trim();
+    if (!valeur) continue;
+    const actuel = String(art[champ] ?? "").trim();
+    if (valeur === actuel) continue;
+    if (!actuel) { patch[champ] = valeur; continue; }          // vide → on complète
+    if (!retouchee(cleSource)) { patch[champ] = valeur; continue; } // pas sa retouche → on suit la plateforme
+    if (aChangeEnLigne(champ, valeur)) divergences.push(champ);     // sa retouche ET ça a bougé en ligne → il tranche
+  }
+  // ── PRIX ────────────────────────────────────────────────────────────────
+  // Le prix de la LIGNE de liste est le prix réellement affiché. On ne le pose
+  // que si la fiche portait encore celui qu'on avait lu la fois d'avant —
+  // sinon c'est le vendeur qui l'a changé chez nous, et on le signale.
+  if (prixListe != null && Number.isFinite(Number(prixListe))) {
+    const ancien = avant?.ligne?.prix;
+    const fiche = art.prix_vente == null ? null : Number(art.prix_vente);
+    if (fiche == null) patch.prix_vente = Number(prixListe);
+    else if (Number(prixListe) !== fiche) {
+      if (ancien != null && Number(ancien) === fiche) patch.prix_vente = Number(prixListe);
+      else if (ancien != null) divergences.push("prix");
+    }
+  }
   const photos = Array.isArray(art.photos) ? art.photos.filter(Boolean).map(String) : [];
   const aNous = (u) => /supabase\.co|fillsell\.app/i.test(u);
   const seulementVignette = photos.length === 0
@@ -12508,9 +12563,18 @@ async function completerArticleDepuisCapture(inventaireId, capture, platform, { 
     attrMaj = true;
     console.log(`[releve][${platform}] article ${inventaireId} : attribut « ${k} » RETIRÉ — valeur de relevé illisible (${String(a.v ?? "").length} car., source ${a.source}) : « ${String(a.v ?? "").slice(0, 60)}… »`);
   }
+  // ── LES ATTRIBUTS : ON PROPOSE, LA BASE ARBITRE (2026-09-21) ─────────────
+  // Avant, `|| attr[k]` refusait d'écrire dès qu'une valeur existait : un état
+  // corrigé sur la plateforme n'arrivait jamais. On écrit désormais ce qu'on a
+  // LU, et c'est `inventaire_attributs_fusion` qui tranche par le rang —
+  // depuis aujourd'hui `releve_*` vaut 3 : il bat `lens` (1) et `vinted_liste`
+  // (2), et il perd contre `vinted_detail` (4) et `manuel` (5). La règle
+  // « jamais une saisie de la personne » est donc tenue PAR LA BASE, au même
+  // endroit pour tout le monde, au lieu d'être réécrite ici.
   for (const k of ["taille", "etat", "couleur", "matiere", "marque"]) {
     const v = capture?.[k];
-    if (v == null || !String(v).trim() || attr[k]) continue;
+    if (v == null || !String(v).trim()) continue;
+    if (String(attr[k]?.v ?? "") === String(v).trim()) continue; // rien de neuf
     if (!valeurAttributSaine(v)) {
       console.log(`[releve][${platform}] article ${inventaireId} : attribut « ${k} » NON écrit — la capture ne rend pas une valeur (${String(v).length} car.) : « ${String(v).slice(0, 60)}… »`);
       continue;
@@ -12518,31 +12582,151 @@ async function completerArticleDepuisCapture(inventaireId, capture, platform, { 
     attr[k] = { v: String(v).trim(), source: `releve_${platform}`, at };
     attrMaj = true;
   }
+  // ── LA DIVERGENCE, DITE PLUTÔT QUE TRANCHÉE ─────────────────────────────
+  // Le vendeur a retouché ce texte chez nous ET il a bougé sur la plateforme :
+  // les deux versions sont légitimes, ce n'est pas à nous de choisir. On range
+  // de quoi poser la question, l'app l'affiche en ambre, il tranche en un tap.
+  // `v: false` quand il n'y a plus rien à dire — surtout pas `null`, que le
+  // trigger de fusion IGNORE (il ne saurait donc jamais s'effacer).
+  const divergenceActuelle = attrArt?.contenu_divergent?.v;
+  if (divergences.length) {
+    attr.contenu_divergent = {
+      v: { champs: divergences, plateforme: platform,
+           texte: divergences.includes("description") ? String(capture?.description ?? "").slice(0, 4000) : null,
+           titre: divergences.includes("titre") ? String(capture?.titre ?? "").slice(0, 300) : null,
+           prix: divergences.includes("prix") ? prixListe : null },
+      source: `releve_${platform}`, at,
+    };
+    attrMaj = true;
+    console.log(`[releve][${platform}] article ${inventaireId} : DIVERGENCE sur ${divergences.join(", ")} — la retouche FillSell est gardée, la personne tranchera`);
+  } else if (divergenceActuelle && divergenceActuelle !== false) {
+    attr.contenu_divergent = { v: false, source: `releve_${platform}`, at };
+    attrMaj = true;
+  }
   if (attrMaj) patch.attributs = attr;
-  if (!Object.keys(patch).length) return false;
+  if (!Object.keys(patch).length) return { ecrit: false, divergence: divergences.length > 0 };
   await restRequest(`inventaire?id=eq.${inventaireId}&user_id=eq.${userId}`, token, { method: "PATCH", body: JSON.stringify(patch) });
-  console.log(`[releve][${platform}] article ${inventaireId} complété depuis la capture : ${Object.keys(patch).join(", ")}`);
-  return true;
+  console.log(`[releve][${platform}] article ${inventaireId} mis à jour depuis la capture : ${Object.keys(patch).join(", ")}`);
+  return { ecrit: true, divergence: divergences.length > 0 };
 }
 
-// La capture des annonces d'un relevé qui ne l'ont pas encore été, bornée.
+// ═══════════════════════════════════════════════════════════════════════════
+// QUELLES ANNONCES RECAPTURER (2026-09-21, cas Louis THONET)
+// ═══════════════════════════════════════════════════════════════════════════
+// 🚨 LE DÉFAUT, et il tenait en une ligne : `capture_le=not.is.null` servait de
+//    drapeau « déjà fait », donc une annonce capturée UNE fois ne l'était plus
+//    JAMAIS. Louis a modifié sa fiche Beebs (lignes vides, ajout d'une couleur,
+//    retrait d'une phrase), relancé le relevé, déclaré l'annonce en nouvel
+//    article — et la fiche est née avec le texte du 19/09. « Si l'on ne fait
+//    pas attention, on se fait avoir. » Il aurait publié sur Leboncoin un texte
+//    qu'il avait corrigé.
+//    Mesuré le 21/09 : 1 300 annonces du parc sur 1 808 capturées portaient
+//    déjà une capture plus ancienne que leur dernier passage de relevé.
+//
+// ⛔ LE BUDGET NE BOUGE PAS. CAPTURE_MAX_PAR_RUN reste à 30 fiches par run,
+//    mêmes pauses : on ne charge pas davantage les plateformes, on RÉPARTIT
+//    autrement les mêmes 30 ouvertures. C'est la contrainte anti-robot, et
+//    elle prime sur la fraîcheur.
+//
+// TROIS FILES, DANS CET ORDRE :
+//   1. CHANGÉES — la ligne de « Mes annonces » (titre, prix) ne dit plus la
+//      même chose que celle mémorisée dans la capture. Signal GRATUIT : il
+//      vient du relevé, aucune page ouverte pour l'obtenir. Une modification
+//      CONNUE passe avant tout le reste : c'est une donnée activement fausse.
+//   2. JAMAIS CAPTURÉES — le rattrapage du parc (1 372 annonces au 21/09).
+//      Elles produisent des articles amputés, c'est le défaut d'origine.
+//   3. PÉRIMÉES — capture plus vieille que CAPTURE_FRAICHEUR_H, la plus
+//      ancienne d'abord. Un PLANCHER de slots leur est réservé, sinon la file 2
+//      les affamerait pendant des semaines sur les gros comptes — et c'est
+//      exactement la file où tombe le cas de Louis (il n'avait touché ni au
+//      titre ni au prix, seulement au corps du texte).
+const CAPTURE_MAX_PAR_RUN = 30;
+const CAPTURE_FRAICHEUR_H = 24;
+// ── LE CONTINGENT DES PÉRIMÉES : UN PLANCHER *ET* UN PLAFOND (2026-09-21) ───
+// Mesuré avant de figer le chiffre. Le plafond de 30 par plateforme ne bouge
+// pas, mais avant ce lot il retombait à ZÉRO dès le rattrapage terminé : un
+// compte à jour n'ouvrait plus aucune page. Avec la seule file « périmées »,
+// il en rouvrirait 30 par run, pour toujours. Relevé du 21/09, pages ouvertes
+// par tour complet (toutes plateformes) : ornellaracano 23 → 117,
+// louis@ttfamily 1 → 73, xxewwer 2 → 60. Ce n'est pas une charge qu'on impose
+// en permanence pour du confort.
+// DIX par run, plancher et plafond à la fois : ~40 s au lieu de 2 min, un parc
+// de 100 annonces entièrement rafraîchi en dix relevés, et une annonce modifiée
+// reste prise le jour même par la file « changées », qui n'est pas contingentée.
+const CAPTURE_PERIMEES_PAR_RUN = 10;
+
+/** La ligne de liste mémorisée DANS la capture — c'est elle qui rend le
+ *  signal « changée » gratuit au run suivant. */
+const ligneDeListe = (a) => ({
+  titre: String(a?.titre ?? "").trim() || null,
+  prix: a?.prix == null || a.prix === "" ? null : Number(a.prix),
+});
+const memeLigne = (x, y) => Boolean(x) && Boolean(y)
+  && String(x.titre ?? "") === String(y.titre ?? "")
+  && String(x.prix ?? "") === String(y.prix ?? "");
+
+/** Les annonces à (re)capturer, dans l'ordre, bornées au budget du run. */
+function choisirCapturesARefaire(annonces, connues, maintenantMs) {
+  const parId = new Map(connues.map((r) => [String(r.listing_id), r]));
+  const jamais = [], changees = [], perimees = [];
+  for (const a of annonces) {
+    const r = parId.get(String(a.listing_id));
+    if (!r || !r.capture_le) { jamais.push(a); continue; }
+    // ⚠️ PAS DE LIGNE MÉMORISÉE = ON NE SAIT PAS, pas « ça a changé ». Les
+    //    captures d'avant ce lot (1 808 au 21/09) n'en portent aucune : les
+    //    verser dans « modifiée » ferait mentir le compteur et noierait le
+    //    vrai signal pendant des jours. Elles tombent dans « périmée », qui
+    //    est exactement ce qu'elles sont.
+    if (r.ligne && !memeLigne(r.ligne, ligneDeListe(a))) { changees.push(a); continue; }
+    const ageH = (maintenantMs - Date.parse(r.capture_le)) / 3_600_000;
+    if (Number.isFinite(ageH) && ageH >= CAPTURE_FRAICHEUR_H) perimees.push({ ...a, _capture_le: r.capture_le });
+  }
+  // La plus ANCIENNE d'abord : une annonce ne peut pas rester indéfiniment au
+  // fond de la file pendant que ses voisines tournent.
+  perimees.sort((x, y) => Date.parse(x._capture_le) - Date.parse(y._capture_le));
+  const budget = CAPTURE_MAX_PAR_RUN;
+  // 1. les MODIFIÉES, sans contingent : c'est de l'information, pas du confort.
+  const pris = changees.slice(0, budget);
+  // 2. les JAMAIS capturées, en laissant leur part aux périmées.
+  const partPerimees = Math.min(CAPTURE_PERIMEES_PAR_RUN, perimees.length, Math.max(0, budget - pris.length));
+  pris.push(...jamais.slice(0, Math.max(0, budget - pris.length - partPerimees)));
+  // 3. les PÉRIMÉES, au contingent — jamais plus, jamais moins tant qu'il y en a.
+  pris.push(...perimees.slice(0, Math.min(partPerimees, Math.max(0, budget - pris.length))));
+  //  est calculé ICI, pas chez l'appelant : une seule définition
+  // de « ce qui attend le run suivant », donc un seul endroit à relire.
+  const attendues = jamais.length + changees.length + perimees.length;
+  return { pris, jamais: jamais.length, changees: changees.length, perimees: perimees.length,
+           restantes: Math.max(0, attendues - pris.length) };
+}
+
+// La capture des annonces d'un relevé — jamais capturées, modifiées, périmées.
 async function capturerAnnonces(platform, annonces, { token, userId }) {
-  const bilan = { capturees: 0, echecs: 0, restantes: 0, completes: 0, motif: null };
+  const bilan = { capturees: 0, echecs: 0, restantes: 0, completes: 0, motif: null,
+                  jamais: 0, changees: 0, perimees: 0, contenu_change: 0, divergences: 0 };
   if (!Array.isArray(annonces) || !annonces.length) return bilan;
-  let deja;
+  let connues;
   try {
+    // `capture->ligne` : la ligne de liste au moment de la capture. Absente sur
+    // les captures d'avant ce lot → l'annonce tombe simplement dans « périmée »,
+    // ce qui est exactement le bon comportement pour elles.
     const rows = await restRequest(
-      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&capture_le=not.is.null&select=listing_id&limit=5000`, token,
+      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&select=listing_id,capture_le,capture&limit=5000`, token,
     );
-    deja = new Set((Array.isArray(rows) ? rows : []).map((r) => String(r.listing_id)));
+    connues = (Array.isArray(rows) ? rows : []).map((r) => ({
+      listing_id: r.listing_id, capture_le: r.capture_le, ligne: r.capture?.ligne ?? null,
+    }));
   } catch (e) {
     bilan.motif = "colonne capture absente (migration non appliquée)";
     console.warn(`[releve][${platform}] capture impossible :`, bilan.motif, String(e?.message ?? e));
     return bilan;
   }
-  const aCapturer = annonces.filter((a) => a?.listing_id && (platform === "opla" || a.url) && !deja.has(String(a.listing_id)));
-  bilan.restantes = Math.max(0, aCapturer.length - CAPTURE_MAX_PAR_RUN);
-  for (const a of aCapturer.slice(0, CAPTURE_MAX_PAR_RUN)) {
+  const candidates = annonces.filter((a) => a?.listing_id && (platform === "opla" || a.url));
+  const choix = choisirCapturesARefaire(candidates, connues, Date.now());
+  bilan.jamais = choix.jamais; bilan.changees = choix.changees; bilan.perimees = choix.perimees;
+  const aCapturer = choix.pris;
+  bilan.restantes = choix.restantes;
+  console.log(`[releve][${platform}] capture : ${aCapturer.length} fiche(s) ce run — ${choix.changees} modifiée(s), ${choix.jamais} jamais capturée(s), ${choix.perimees} périmée(s), ${bilan.restantes} au suivant`);
+  for (const a of aCapturer) {
     try {
       let capture = null;
       if (platform === "opla") {
@@ -12566,14 +12750,34 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
         if (!capture || (!capture.photos?.length && !capture.description)) throw new Error("fiche illisible (ni photo ni description)");
       }
       const at = new Date().toISOString();
+      // `ligne` : le titre et le prix vus dans « Mes annonces » à cet instant.
+      // C'est ce qui rendra le signal « modifiée » gratuit au prochain run.
+      // `ancienne` : ce que la capture précédente disait, pour savoir si le
+      // contenu a RÉELLEMENT changé (et le dire, plutôt que de le supposer).
+      const avant = await restRequest(
+        `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&listing_id=eq.${encodeURIComponent(String(a.listing_id))}&select=capture`, token,
+      ).then((r) => (Array.isArray(r) ? r[0]?.capture ?? null : null)).catch(() => null);
       const maj = await restRequest(
         `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&listing_id=eq.${encodeURIComponent(String(a.listing_id))}&select=inventaire_id`, token,
-        { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ capture: { ...capture, at }, capture_le: at, updated_at: at }) },
+        { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ capture: { ...capture, ligne: ligneDeListe(a), at }, capture_le: at, updated_at: at }) },
       );
       bilan.capturees++;
-      // L'article DÉJÀ rattaché est complété (champs vides seulement).
+      const aChange = Boolean(avant) && (
+        String(avant.description ?? "") !== String(capture?.description ?? "")
+        || String(avant.titre ?? a.titre ?? "") !== String(a.titre ?? "")
+      );
+      if (aChange) {
+        bilan.contenu_change++;
+        console.log(`[releve][${platform}] ${a.listing_id} : le CONTENU a changé sur la plateforme depuis la capture précédente`);
+      }
+      // L'article rattaché reçoit le changement — sans jamais écraser une
+      // retouche faite dans FillSell (cf. reporterCaptureSurArticle).
       const invId = Array.isArray(maj) ? maj[0]?.inventaire_id : null;
-      if (invId && await completerArticleDepuisCapture(invId, capture, platform, { token, userId, vignette: a.photo_url })) bilan.completes++;
+      if (invId) {
+        const r = await reporterCaptureSurArticle(invId, capture, platform, { token, userId, vignette: a.photo_url, avant, prixListe: ligneDeListe(a).prix, titreListe: ligneDeListe(a).titre });
+        if (r?.ecrit) bilan.completes++;
+        if (r?.divergence) bilan.divergences++;
+      }
     } catch (e) {
       bilan.echecs++;
       console.warn(`[releve][${platform}] capture ${a.listing_id} en échec :`, String(e?.message ?? e));
