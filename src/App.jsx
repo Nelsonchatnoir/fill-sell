@@ -5533,10 +5533,28 @@ export default function App({ loginOnly = false }){
       // ⛔ Aucun rattrapage rétroactif : les descriptions déjà en base ne
       // portent pas cette information, et rien ne permet de la reconstituer.
       // La base arbitre : source 'manuel' = rang 5, elle prime sur tout.
-      ...(((editItem.description||'').trim()
-           && (editItem.description||'').trim() !== (items.find(i=>i.id===editItem.id)?.description||'').trim())
-        ? {attributs:{description_source:{v:'manuel',source:'manuel',at:new Date().toISOString()}}}
-        : {}),
+      // ── ET LE TITRE, À LA MÊME ENSEIGNE (2026-09-21) ──────────────────────
+      // Le marqueur du 07/09 ne couvrait que la description. Un titre écrit à
+      // la main n'avait AUCUN marqueur — donc aucun verrou : chaque génération
+      // le réécrivait, même sur l'article dont la personne venait de soigner le
+      // titre. Mesuré sur 30 jours : 276 titres de vendeurs réécrits sur 457
+      // publications. Même geste, même condition, même source 'manuel'
+      // (rang 5 dans inventaire_attributs_rang : elle prime sur tout).
+      // ⛔ UN SEUL `attributs` : deux spreads de la même clé, et le second
+      //    écrase le premier en silence — le marqueur de description serait
+      //    mort le jour où quelqu'un renomme son article sans toucher au texte.
+      ...(() => {
+        const ancien = items.find(i=>i.id===editItem.id);
+        const change = (neuf, avant) => {
+          const n = (neuf||'').trim();
+          return n && n !== (avant||'').trim();
+        };
+        const at = new Date().toISOString();
+        const attributs = {};
+        if (change(editItem.description, ancien?.description)) attributs.description_source = {v:'manuel',source:'manuel',at};
+        if (change(editItem.title, ancien?.title)) attributs.titre_source = {v:'manuel',source:'manuel',at};
+        return Object.keys(attributs).length ? {attributs} : {};
+      })(),
       quantite:qty,
       // Même colonne que l'intention vocale inventory_move (moveToLocation).
       emplacement:editItem.emplacement?.trim()||null,
