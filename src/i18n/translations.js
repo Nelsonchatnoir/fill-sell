@@ -199,6 +199,9 @@ export const translations = {
     generalDescriptionPlaceholder:"La description, pour toutes les plateformes",
     generalEdit:"Modifier",
     generalCollapse:"Replier",
+    // Le compte de lignes (21/09) : deux lignes d’aperçu sur un texte qui en
+    // compte sept, ça ne dit pas que le reste est là. Cette ligne le dit.
+    generalDescriptionLines:"{n} lignes — la mise en forme part telle quelle",
     generalAppliesToAll:"Appliqué à toutes les plateformes sélectionnées. Modifie une valeur sur une carte pour la dissocier.",
     cardFollowsGeneral:"Suit la valeur générale",
     cardCustom:"Modifiée à part",
@@ -554,6 +557,7 @@ export const translations = {
     generalDescriptionPlaceholder:"The description, for every platform",
     generalEdit:"Edit",
     generalCollapse:"Collapse",
+    generalDescriptionLines:"{n} lines — the formatting is published as is",
     generalAppliesToAll:"Applied to every selected platform. Change a value on a card to set it apart.",
     cardFollowsGeneral:"Follows the general value",
     cardCustom:"Set apart",

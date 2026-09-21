@@ -38,6 +38,11 @@ export default function BlocValeursGenerales({
 }) {
   const [descOuverte, setDescOuverte] = useState(false);
   const en = lang === "en";
+  // Le nombre de lignes RÉELLES du texte du vendeur (\r\n compris : une
+  // description venue d'un relevé peut porter des fins de ligne Windows).
+  const nbLignesDescription = String(description ?? "").trim()
+    ? String(description).trim().split(/\r\n|\r|\n/).length
+    : 0;
 
   const st = {
     bloc: {
@@ -117,18 +122,41 @@ export default function BlocValeursGenerales({
               style={{ ...st.champ, fontSize: 13, resize: "vertical", lineHeight: 1.5 }}
             />
           ) : (
-            // Aperçu sur DEUX lignes, jamais plus : c'est la consigne, et c'est
-            // ce qui garde le bloc lisible à 400 px de large.
+            // ── L'APERÇU RESPECTE LES RETOURS À LA LIGNE (2026-09-21, 16:25) ──
+            // 🚨 LE DÉFAUT, signalé par Louis THONET dans l'heure qui a suivi la
+            //    livraison : sa description Beebs porte SIX retours à la ligne et
+            //    cet aperçu la rendait TOUT SUR UNE LIGNE. Il a demandé, à juste
+            //    titre, « cela va être envoyé comme ça ? ».
+            //    La cause était bête et entièrement à moi : sans `white-space`,
+            //    HTML écrase tout blanc consécutif — le \n devient une espace.
+            //    Le texte en base n'a jamais bougé, l'envoi non plus (vérifié sur
+            //    les annonces en ligne, 5 plateformes sur 5). C'est l'aperçu qui
+            //    mentait, et un aperçu qui ment sur ce qui va partir est pire
+            //    qu'un aperçu absent : il a failli lui faire réécrire son texte.
+            // `pre-wrap` + le clamp à 2 : les deux premières VRAIES lignes.
             <div
+              data-apercu-description
               onClick={() => setDescOuverte(true)}
               style={{
                 fontSize: 13, color: String(description ?? "").trim() ? T.ink : T.mute,
                 lineHeight: 1.45, cursor: "pointer", overflowWrap: "anywhere",
+                whiteSpace: "pre-wrap",
                 display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
                 overflow: "hidden", padding: "2px 0",
               }}
             >
               {String(description ?? "").trim() || t("generalDescriptionPlaceholder")}
+            </div>
+          )}
+          {/* ── ET ON LE DIT, PLUTÔT QUE DE LE LAISSER DEVINER ────────────────
+              Deux lignes d'aperçu sur une description qui en compte sept, ça
+              reste ambigu : on ne voit pas ce qu'on ne voit pas. Cette ligne
+              nomme ce qui est là et ce qui part. Elle n'apparaît QUE sur un
+              texte à plusieurs lignes — rien à lire quand il n'y a rien à
+              rassurer, et aucun geste réclamé dans aucun des deux cas. */}
+          {nbLignesDescription > 1 && (
+            <div style={{ ...st.aide, marginTop: 4 }}>
+              {t("generalDescriptionLines").replace("{n}", String(nbLignesDescription))}
             </div>
           )}
 
