@@ -9,6 +9,7 @@
 //
 //   node scripts/valeurs-generales-selftest.mjs
 // ═══════════════════════════════════════════════════════════════════════════
+import { readFileSync } from "node:fs";
 import {
   appliquerGenerale, dissocier, rattacher, valeurCommune, valeurPourPlateforme,
   lireValeur, dissociationsVides, suitLaGenerale,
@@ -166,6 +167,55 @@ console.log("\n6. LES PIÈGES DU MOT « NEUF » ET LE FILET DU TEXTE VIDÉ");
   // Ni un texte qui ne parle pas d'état du tout.
   ok(!retirerEtatContredit("Pull en laine, taille M. Envoi rapide.", "Bon état").modifie,
     "un texte qui ne parle pas d'état n'est pas touché");
+}
+
+console.log("\n7. LA VALEUR GÉNÉRALE NE REGARDE PAS LES CASES COCHÉES (câblage, 21/09)");
+{
+  // ⛔ CE BLOC LIT LE FICHIER D'ÉCRAN, ET C'EST VOULU. Le défaut d'Ornella ne
+  //    vivait PAS dans la logique : appliquerGenerale reçoit ses plateformes
+  //    en paramètre et fait exactement ce qu'on lui demande. Il vivait dans le
+  //    CÂBLAGE — les trois appels passaient `selected`, la liste des cases
+  //    cochées. La copie Opla, elle, ne vient pas de generate-listing (elle
+  //    est dérivée de celle de Vinted un rendu plus tard) et une fiche
+  //    rouverte la décochait ; elle ne recevait donc aucune valeur générale et
+  //    repartait au prix proposé par Lens. Mesuré en base : 13 lots sur 30
+  //    jours, jusqu'à 42 € au lieu de 20.
+  //    Un selftest de logique ne pouvait pas voir ça. Celui-ci le voit.
+  const src = readFileSync(new URL("../src/components/ListingPreviewScreen.jsx", import.meta.url), "utf8");
+  const corpsDe = (nom, n) => {
+    const i = src.indexOf(nom);
+    return i < 0 ? "" : src.slice(i, i + n);
+  };
+
+  const prix = corpsDe("const applyCentralPrice = (raw)", 420);
+  ok(/for \(const p of Object\.keys\(next\)\)/.test(prix), "le prix central écrit dans TOUTES les copies");
+  ok(!/of selected\b/.test(prix), "le prix central ne boucle plus sur les cases cochées");
+  ok(/customPriced\.has\(p\)/.test(prix), "et il saute toujours les cartes au prix personnalisé");
+
+  const poser = corpsDe("const poserValeurGenerale = (champ, valeur)", 250);
+  ok(/plateformes: Object\.keys\(prev\)/.test(poser), "titre / description / état sont écrits dans TOUTES les copies");
+  ok(!/\[\.\.\.selected\]/.test(poser), "et pas sur les seules cases cochées");
+  ok(/dissociees/.test(poser), "les cartes dissociées restent hors d'atteinte");
+
+  ok(/const pf = Object\.keys\(edited\);/.test(src), "le semis des valeurs générales couvre lui aussi toutes les copies");
+
+  // La copie Opla naît sur les valeurs générales, jamais sur l'exception de
+  // Vinted : c'est ce qui la rend identique aux quatre autres dès sa création.
+  const derive = corpsDe("function deriverCopieOpla(", 1100);
+  ok(/prixGeneral/.test(derive) && /prix \?\? vinted\?\.price/.test(derive),
+    "la copie Opla naît sur le prix général, la copie Vinted n'étant qu'un repli");
+  ok(/valeurPourPlateforme\(champ, v, "opla"\)/.test(derive),
+    "et sur le titre / la description / l'état généraux, mis en conformité Opla");
+  ok(/deriverCopieOpla\(src, \{ prixGeneral: price, generales \}\)/.test(src),
+    "l'appel lui passe bien le prix général et les valeurs générales");
+
+  // Le déclencheur : une fiche rouverte ne doit plus décocher Opla.
+  ok(/const aUneCopie = \(p\) => Boolean\(parPlateforme\[p\] \|\| f\.edited\?\.\[p\]\);/.test(src),
+    "une fiche rouverte garde Opla cochée : une copie vaut une annonce générée");
+
+  // Le chemin d'envoi : c'est la copie qui fait le prix du job.
+  ok(/price:\s+edited\[platform\]\?\.price\s+\?\? price,/.test(src),
+    "le job part avec le prix de SA copie, avec le prix général en repli");
 }
 
 console.log(echecs === 0 ? "\n✅ selftest valeurs générales : tout passe\n" : `\n❌ ${echecs} échec(s)\n`);

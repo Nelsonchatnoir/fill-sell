@@ -159,16 +159,29 @@ const OPLA_ETAT_PAR_LIBELLE = {
 // plateforme cochée SANS copie est écartée en silence (plateformesSansAnnonce).
 // Les champs propres à Opla se calculent à l'insert du job (bloc « opla » de
 // handlePublish), jamais ici.
-function deriverCopieOpla(vinted) {
+// ⛔ ELLE NAÎT SUR LES VALEURS GÉNÉRALES, PAS SUR L'EXCEPTION DE VINTED
+//    (2026-09-21). La copie Vinted peut porter un prix personnalisé ou un
+//    texte dissocié : les recopier ferait naître Opla avec l'exception d'une
+//    AUTRE plateforme, que personne n'a demandée pour elle. `generales` et
+//    `prixGeneral` priment donc, et la copie Vinted ne sert que de repli —
+//    pour le texte quand aucune valeur générale n'a encore été semée.
+function deriverCopieOpla(vinted, { prixGeneral = null, generales = null } = {}) {
   const pf = vinted?.platform_fields ?? {};
   const garder = ["etat", "taille", "genre", "marque", "modele", "matiere", "couleur", "categorie"];
   const copie = {};
   for (const k of garder) if (pf[k] != null && String(pf[k]).trim() !== "") copie[k] = pf[k];
+  const general = (champ, repli) => {
+    const v = String(generales?.[champ] ?? "").trim();
+    return v ? valeurPourPlateforme(champ, v, "opla").valeur : repli;
+  };
+  const etatGeneral = general("etat", null);
+  if (etatGeneral) copie.etat = etatGeneral;
+  const prix = prixGeneral === "" || prixGeneral == null ? null : Number(prixGeneral);
   return {
-    title: String(vinted?.title ?? ""),
-    description: String(vinted?.description ?? ""),
+    title: general("titre", String(vinted?.title ?? "")),
+    description: general("description", String(vinted?.description ?? "")),
     platform_fields: copie,
-    price: vinted?.price ?? null,
+    price: prix ?? vinted?.price ?? null,
   };
 }
 
@@ -2226,18 +2239,30 @@ function StepGeneration({ generating, generateError, platformListings, processed
   // (Le repli des sources de l'estimation vit désormais dans AnalyseMarche,
   // partagé avec l'écran Lens — plus d'état local ici.)
 
-  // Prix central (2026-07-14) : écrit le prix dans TOUTES les plateformes
-  // sélectionnées d'un coup. Une plateforme dont le prix a été édité à la main
-  // est marquée « personnalisée » (customPriced) et n'est plus écrasée — sinon
-  // un prix Vinted volontairement différent sautait à la première frappe ici.
+  // Prix central (2026-07-14) : écrit le prix dans TOUTES les copies d'un
+  // coup. Une plateforme dont le prix a été édité à la main est marquée
+  // « personnalisée » (customPriced) et n'est plus écrasée — sinon un prix
+  // Vinted volontairement différent sautait à la première frappe ici.
+  //
+  // ⛔ TOUTES LES COPIES, ET PLUS SEULEMENT LES COCHÉES (2026-09-21, cas
+  //    d'Ornella). Une case cochée dit ce qui SERA PUBLIÉ ; elle ne dit rien
+  //    de ce qu'une copie contient. Boucler sur `selected` laissait donc
+  //    derrière elle toute copie cochée APRÈS la frappe — et la copie Opla
+  //    est exactement dans ce cas : elle ne vient pas de generate-listing,
+  //    elle est dérivée de celle de Vinted, et la reprise d'une fiche la
+  //    décoche (elle n'est pas dans `platforms` de la génération, l. ~5148).
+  //    Mesuré en base sur 30 jours : 13 lots partis avec un prix Opla
+  //    différent du prix général — 22 € au lieu de 10, 42 au lieu de 20 —
+  //    toujours l'estimation de Lens, jamais le prix de la personne.
+  //    `handleAnalyzePhotos` boucle déjà sur toutes les copies depuis le
+  //    28/07 : c'est CETTE boucle-ci qui était l'exception.
   const applyCentralPrice = (raw) => {
     const v = raw === "" ? null : Number(raw);
     setPrice(raw === "" ? null : v);
     setEdited(prev => {
       const next = { ...prev };
-      for (const p of selected) {
+      for (const p of Object.keys(next)) {
         if (customPriced.has(p)) continue;
-        if (!next[p]) continue;
         next[p] = { ...next[p], price: v };
       }
       return next;
@@ -5145,7 +5170,17 @@ export default function ListingPreviewScreen({
       if (f.price != null) setPrice(f.price);
     }
 
-    const sel = (Array.isArray(f.selected) ? f.selected : dispo).filter(p => parPlateforme[p] && !lockedSet.has(p));
+    // ⛔ UNE COPIE VAUT UNE ANNONCE GÉNÉRÉE (2026-09-21). Le filtre ne lisait
+    //    que `parPlateforme` — les quatre plateformes que generate-listing
+    //    rédige. Opla n'y est JAMAIS : sa copie est dérivée de celle de Vinted
+    //    un rendu plus tard. Une fiche rouverte la décochait donc en silence,
+    //    alors que la personne l'avait cochée ; elle la recochait, et sa copie
+    //    — créée avant sa dernière frappe de prix — repartait au prix de Lens.
+    //    C'est le déclencheur des 13 écarts relevés chez Ornella.
+    //    On ne coche RIEN de neuf : `f.selected` reste la seule source, et une
+    //    plateforme n'y figure que parce qu'elle l'a cochée elle-même.
+    const aUneCopie = (p) => Boolean(parPlateforme[p] || f.edited?.[p]);
+    const sel = (Array.isArray(f.selected) ? f.selected : dispo).filter(p => aUneCopie(p) && !lockedSet.has(p));
     setSelected(new Set(sel.length ? sel : dispo.filter(p => !lockedSet.has(p))));
     // On rouvre là où il en était, jamais avant l'étape des annonces : le
     // renvoyer au viseur lui ferait croire que son travail est perdu.
@@ -6061,7 +6096,11 @@ export default function ListingPreviewScreen({
   // que l'IA lui proposait.
   useEffect(() => {
     if (!platformListings) return;
-    const pf = [...selected].filter(p => edited[p]);
+    // ⛔ TOUTES LES COPIES, pas les seules cochées (2026-09-21) : le semis
+    //    doit atteindre la copie Opla, qui n'est pas toujours cochée quand il
+    //    tourne. Elle dérive de celle de Vinted, donc elle ne peut pas faire
+    //    diverger l'unanimité que `valeurCommune` cherche — elle la confirme.
+    const pf = Object.keys(edited);
     if (!pf.length) return;
     if (generales.titre || generales.description || generales.etat) return;
     const duVendeur = texteDuVendeurFiche();
@@ -6100,10 +6139,15 @@ export default function ListingPreviewScreen({
   }, [platformListings, edited, selected]);
 
   // APPLIQUER — écrit la valeur générale sur toutes les cartes qui la suivent.
+  // ⛔ TOUTES LES COPIES, COCHÉES OU NON — même raison que le prix central
+  //    (cf. `applyCentralPrice`) : cocher dit ce qui sera publié, pas ce
+  //    qu'une copie contient. Une copie laissée de côté ici repartirait avec
+  //    le texte d'hier le jour où la case est cochée, et personne ne le
+  //    verrait. Les dissociées restent sautées par `appliquerGenerale`.
   const poserValeurGenerale = (champ, valeur) => {
     setGenerales(prev => ({ ...prev, [champ]: valeur }));
     setEdited(prev => appliquerGenerale(prev, {
-      champ, valeur, plateformes: [...selected], dissociees,
+      champ, valeur, plateformes: Object.keys(prev), dissociees,
     }));
   };
 
@@ -6329,7 +6373,7 @@ export default function ListingPreviewScreen({
     if (!plateformesVisibles.includes("opla")) return;
     const src = edited?.vinted;
     if (!src || edited?.opla) return;
-    const copie = deriverCopieOpla(src);
+    const copie = deriverCopieOpla(src, { prixGeneral: price, generales });
     setEdited(prev => (!prev?.vinted || prev?.opla) ? prev : { ...prev, opla: copie });
     setPlatformListings(prev => (prev?.platforms?.vinted && !prev.platforms.opla)
       ? { ...prev, platforms: { ...prev.platforms, opla: { title: copie.title, description: copie.description, platform_fields: { ...copie.platform_fields } } } }
