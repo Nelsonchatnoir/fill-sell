@@ -178,6 +178,42 @@ fonction **commitée**, et être supprimé une fois parti — comme le 28/07 et 
 Le trigger pg_net appelle email-tunnel via le header `x-cron-secret: fs-cron-2026-tunnel`.
 Ne pas utiliser de query param ni de header `Authorization` dans pg_net — seul le header custom fonctionne.
 
+## Chantier « rotation du secret de cron » — À FAIRE, jamais en passant
+
+`fs-cron-2026-tunnel` est **la** clé de toutes les fonctions en
+`verify_jwt = false` appelées par pg_cron : qui l'a peut déclencher n'importe
+lequel de nos crons. Elle est écrite **en clair** dans le dépôt (donc dans tout
+l'historique git, et elle y restera après rotation).
+
+⛔ On ne la change **jamais** au fil d'un autre lot : le jour où elle tourne,
+**tout part ensemble** — la variable `CRON_SECRET` des fonctions ET chaque
+`cron.job` en base, sinon les jobs tombent en 401 **en silence** et personne ne
+le voit avant que la file s'empile. Prévoir : lire `cron.job` d'abord, tout
+réécrire, relire, et vérifier qu'un job passe juste après.
+
+Les endroits à reprendre, tenus à jour (relevé du 21/09 —
+`grep -rl fs-cron-2026-tunnel` hors node_modules/dist/build/android/ios) :
+
+- `CLAUDE.md` (ce fichier, deux fois) ;
+- `supabase/functions/_shared/payment-notify.ts` — **le seul dans du code**, les
+  autres sont des migrations ;
+- les migrations qui portent un `cron.schedule` ou un trigger pg_net :
+  `20260612100000_email_tunnel_cron.sql` ·
+  `20260617000000_welcome_immediate.sql` ·
+  `20260712100000_ops_digest_cron.sql` ·
+  `20260716110000_handler_watch_cron.sql` ·
+  `20260728220000_grant_de_bienvenue_a_l_inscription.sql` ·
+  `20260805060000_republish_job_et_purge.sql` ·
+  `20260906120000_ebay_api_voie_emplacement_cron.sql` ·
+  `20260908090000_republish_auto_sweep_serveur.sql` ·
+  `20260916082000_lens_temp_purge.sql` ·
+  `20260919162000_ebay_ventes_cron.sql` ·
+  `20260919180000_objets_sans_trace_reconstruits.sql` ·
+  **`20260921090000_beebs_lien_cron.sql`** (ajouté le 21/09, cron
+  `beebs-lien-5min`, jobid 16) ;
+- et, hors dépôt, **la commande de chaque ligne de `cron.job` en prod** : c'est
+  elle qui fait foi, pas les fichiers.
+
 ## Premium detection
 
 Règle métier (2026-07-25) : **résilié/expiré = plus premium, partout**. Expression canonique, identique partout (App.jsx, voice-transcribe, voice-intent, generate-listing, deal-analysis, sweep et RPC Pépites, check_inventory_limit) :
