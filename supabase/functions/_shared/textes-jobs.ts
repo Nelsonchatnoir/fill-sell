@@ -122,3 +122,43 @@ export function compteVendeurEbayInactif(action: string): string {
 
 /** Le marqueur posé sur le job — nommé, donc mesurable et filtrable en base. */
 export const SOURCE_EBAY_COMPTE_VENDEUR_INACTIF = "ebay_compte_vendeur_inactif";
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE FUITE DE DÉVELOPPEUR N'ARRIVE JAMAIS À L'ÉCRAN (2026-09-21)
+// ═══════════════════════════════════════════════════════════════════════════
+// Règle, sans exception : aucun message montré à quelqu'un ne porte un chemin
+// de fichier, un nom de fonction, un identifiant technique ou un nom de route.
+//
+// L'app sait déjà se défendre (humanizeJobError : annexe d'observabilité
+// retirée, incises techniques retirées, et repli générique si un marqueur
+// survit). Mesuré sur les 237 formes de message du parc — 12 246 jobs — il
+// n'en restait qu'UNE à l'écran : « update-job-status → ». Mais ce repli a un
+// coût : il JETTE le message. adamchocho13 lisait « un imprévu technique »
+// alors que sa ligne disait quelle étape avait échoué, chez qui.
+//
+// D'où cette requalification, côté serveur, au point de passage unique : on ne
+// compte plus sur l'app pour cacher le brut, on écrit un texte propre À LA
+// PLACE — et le brut part en platform_fields.error_technique, requêtable.
+// Deux gains : plus rien ne peut fuir même si l'app change, et le message
+// nomme la plateforme et l'étape au lieu de dire « imprévu ».
+//
+// ⛔ CE TEXTE NE DONNE PAS D'ORDRE QUI NE PEUT PAS ABOUTIR. On ne sait pas ce
+//    qui a cassé — sinon un autre bloc l'aurait déjà nommé. On dit donc ce
+//    qu'on sait (l'étape n'est pas passée, c'est de notre côté), et le seul
+//    geste qui existe. Jamais « change ta catégorie » sur une supposition :
+//    la ligne d'adamchocho13 disait « categoryId probablement refusé » et la
+//    vraie cause était ailleurs (son compte eBay n'était pas vendeur).
+export function fuiteDeDeveloppeur(platform: string, action: string, reprend: boolean): string {
+  const nom = ({
+    vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
+  } as Record<string, string>)[platform] ?? "la plateforme";
+  const quoi = action === "delete" ? "Le retrait de cette annonce"
+    : action === "republish" ? "La republication de cette annonce"
+    : "La publication de cet article";
+  return reprend
+    ? `${quoi} sur ${nom} s'est interrompue avant d'aboutir. Le problème vient de chez nous, ` +
+      `il est enregistré, et on reprend automatiquement — rien à faire de ton côté.`
+    : `${quoi} sur ${nom} n'a pas abouti, et la cause est de notre côté. ` +
+      `Elle est enregistrée. Tu peux relancer depuis la fiche de l'article ; si ça se reproduit, écris-nous.`;
+}
