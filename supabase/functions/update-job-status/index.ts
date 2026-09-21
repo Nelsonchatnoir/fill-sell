@@ -5,6 +5,9 @@ import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts"
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // handler-watch — module JS sans import, chargé tel quel par Deno.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// Les phrases lues par la personne vivent dans leur fichier, pas au milieu de
+// la logique qui les déclenche (même convention que src/*/textes.js).
+import { motsAspectAveugle, raisonAspectAveugle, type SourceCategorie } from "../_shared/textes-jobs.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -1943,6 +1946,22 @@ serve(async (req) => {
     // ⛔ ON NE CHANGE PAS LA CATÉGORIE À SA PLACE : elle a été choisie à la main
     //    (categorie_source = « choix_humain »). Un rayon choisi par la personne
     //    ne se recalcule jamais — on lui dit ce qu'on voit, elle tranche.
+    //
+    // ── 2026-09-21 : LE MESSAGE MENTAIT À CELUI QUI AVAIT CHOISI ────────────
+    // jocabroc8 a lu « Le problème vient de la catégorie, pas de toi ». Or LE
+    // rayon, c'était lui : il avait pris « Meubles de salle de bain » pour un
+    // service de toilette — logique vu de chez lui (toilette = salle de bain),
+    // mais c'est le rayon des MEUBLES. La phrase le dédouanait d'un choix
+    // qu'il avait fait, donc elle ne lui disait pas quoi changer. Premier mur
+    // de quelqu'un qui venait de passer Premium le matin même.
+    //
+    // Désormais la SOURCE du rayon choisit les mots (_shared/textes-jobs.ts) :
+    //   · choix_humain → « le rayon que tu as choisi ne correspond pas à … »,
+    //     et la proposition de la reconnaissance passe DEVANT le geste ;
+    //   · posé par nous → le message d'origine, au mot près, parce qu'il est
+    //     vrai dans ce cas-là.
+    // ⛔ LA RÈGLE DU RAYON NE BOUGE PAS D'UN IOTA : on change ce qu'on DIT,
+    //    jamais ce qu'on calcule. Aucune ligne ici n'écrase un choix humain.
     let pfAspectAveugle: Record<string, unknown> | null = null;
     if (statutEffectif === "needs_user") {
       try {
@@ -1963,14 +1982,13 @@ serve(async (req) => {
           const autre = Array.isArray(parMot?.["chemin"]) ? (parMot!["chemin"] as unknown[]).map(String).join(" › ") : "";
           const actuelle = Array.isArray(pfC["ebayCategoryPath"]) ? (pfC["ebayCategoryPath"] as unknown[]).map(String).join(" › ") : "";
           const quoi = String(preuve?.["mot"] ?? "").trim() || String(pfC["categorie_objet_ia"] ?? "").trim() || "cet objet";
-          messageEffectif =
-            `eBay réclame ${requis.length > 1 ? "des champs obligatoires" : "un champ obligatoire"} ` +
-            `(${requis.join(", ")}) qui ne ${requis.length > 1 ? "décrivent" : "décrit"} pas « ${quoi} »` +
-            (actuelle ? ` : la catégorie retenue est « ${actuelle} »` : "") +
-            `. Le problème vient de la catégorie, pas de toi` +
-            (autre ? ` — la reconnaissance avait proposé « ${autre} »` : "") +
-            `. Change la catégorie eBay depuis la fiche de l'article, puis relance : rien n'a été envoyé, rien n'a été décompté.`;
-          raisonRequalif = raisonRequalif ?? `eBay : les ${requis.length} aspects obligatoires sont tous aveugles à « ${quoi} » — c'est la catégorie qui est en cause`;
+          // La SOURCE du rayon décide des mots. Lecture seule : on ne touche
+          // ni à `categorie_source`, ni au rayon.
+          const source: SourceCategorie =
+            String(pfC["categorie_source"] ?? "") === "choix_humain" ? "choix_humain" : "autre";
+          const mots = { quoi, actuelle, proposee: autre, requis };
+          messageEffectif = motsAspectAveugle(source, mots);
+          raisonRequalif = raisonRequalif ?? raisonAspectAveugle(source, mots);
           // La liste fermée, quand on l'a relevée : une question de vocabulaire
           // ouvert sur un menu eBay ne peut de toute façon pas aboutir.
           const offertes = objet(preuve?.["valeurs_offertes"]);
