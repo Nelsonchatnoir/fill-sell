@@ -225,4 +225,52 @@ ok("« casque audio » : question honnête, avec Casques et écouteurs dedans",
   casque.code === null && casque.candidats.some((f) => f.code === "HIGHTECH_AUDIO_CASQUES"),
   `${casque.candidats.length} feuilles`);
 
+
+l("=== 8. UN ÉTAGE QUI NE NOMME QUE DES FOURRE-TOUT CÈDE LA PLACE (21/09) ===");
+// Job e288edef (louis@ttfamily.fr, 21/09 19:50). L'IA a nommé l'article
+// « accessoire de yaourtière » ; « accessoire » ne désigne dans tout l'arbre
+// que quatre fourre-tout, répartis dans trois rayons. On posait donc une
+// question dont AUCUNE des quatre réponses n'était juste, pendant que ses cinq
+// jumeaux du même soir partaient sans rien demander en « Autres rangements ».
+const yaourtiere = "Rangement Blanc et Bleu Ciel pour 12 pots et 12 couvercles pour yaourtière Multidélices";
+const louis = resoudreCategorieOpla({ mots: ["accessoire de yaourtière"], titre: yaourtiere });
+ok("« accessoire de yaourtière » → la feuille de ses jumeaux, plus de question",
+  louis.code === "HC_STORAGE_OTHER", louis.code ?? `question ${louis.candidats.length}`);
+const jumeau = resoudreCategorieOpla({ mots: ["rangement pour pots de yaourt"], titre: yaourtiere });
+ok("et le jumeau qui marchait marche toujours pareil",
+  jumeau.code === "HC_STORAGE_OTHER", jumeau.code ?? `question ${jumeau.candidats.length}`);
+const sansMot = resoudreCategorieOpla({ mots: [], titre: yaourtiere });
+ok("le titre seul y arrive aussi", sansMot.code === "HC_STORAGE_OTHER", sansMot.code ?? "—");
+
+// ⛔ LES TROIS QUESTIONS QUI DOIVENT RESTER DES QUESTIONS. Mesurées en
+//    rejouant les 27 964 articles distincts des 30 derniers jours : avec une
+//    règle plus large, ces trois-là cédaient au titre et partaient FAUX. Leur
+//    étage, lui, nomme l'objet — la bonne réponse est dans la liste.
+const musculation = resoudreCategorieOpla({
+  mots: ["livre", "musculation"],
+  titre: "Sans marque La Méthode Delavier de Musculation pour la Femme - Frédéric Delavier",
+});
+ok("un livre de musculation reste une question du rayon Livres, jamais des haltères",
+  musculation.code === null && musculation.candidats.some((f) => f.code === "NON_FICTION"),
+  musculation.code ?? `${musculation.candidats.length} feuilles`);
+const montre = resoudreCategorieOpla({ mots: ["montre", "montre"], titre: "Casio Montre G-Shock noire" });
+ok("une montre sans genre reste une question entre Femmes et Hommes",
+  montre.code === null && montre.candidats.length === 2,
+  montre.code ?? `${montre.candidats.length} feuilles`);
+const manteau = resoudreCategorieOpla({ mots: ["manteau long", "manteau"], titre: "Manteau long noir Primark taille 38" });
+ok("un manteau sans genre ne part pas en manteau de GROSSESSE",
+  manteau.code === null && manteau.candidats.some((f) => f.code === "W_COATS"),
+  manteau.code ?? `${manteau.candidats.length} feuilles`);
+const chemiseDenim = resoudreCategorieOpla({ mots: ["chemise en denim", "chemise"], titre: "Chemise Esprit denim bleu taille S" });
+ok("une chemise sans genre ne part pas en chemise de NUIT pour fille",
+  chemiseDenim.code === null && chemiseDenim.candidats.some((f) => f.code === "SHIRTS"),
+  chemiseDenim.code ?? `${chemiseDenim.candidats.length} feuilles`);
+
+// Et la question de repli reste intacte quand vraiment rien ne désigne :
+// on repose EXACTEMENT celle d'avant, celle du premier étage.
+const rienDerriere = resoudreCategorieOpla({ mots: ["accessoire"], titre: "accessoire" });
+ok("un mot qui ne nomme QUE des fourre-tout, et rien derrière → la question d'avant",
+  rienDerriere.code === null && rienDerriere.candidats.some((f) => f.code === "W_OTHER_ACCESSORIES"),
+  rienDerriere.code ?? `${rienDerriere.candidats.length} feuilles`);
+
 l(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");

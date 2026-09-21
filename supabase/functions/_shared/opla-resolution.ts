@@ -79,6 +79,22 @@ const jetons = (s: unknown) =>
 const estFourreTout = (f: { titre: string }) =>
   /^autres?\b/.test(comparable(f.titre));
 
+// ── « ET LE RESTE » : L'AUTRE FAÇON DONT OPLA L'ÉCRIT ──────────────────────
+// Une étiquette réduite au seul mot « Accessoires » ne nomme aucun objet : elle
+// nomme la place de ce qui n'en a pas dans son rayon. « Jeux et jouets ›
+// Figurines et accessoires › Accessoires » a pour sœur « Figurines » — c'est le
+// même rôle qu'« Autres… », écrit autrement.
+// Relevé sur le catalogue (886 feuilles) : quatre feuilles répondent à cette
+// lecture — « Accessoires » sous Jeux et jouets, et les trois « Autres
+// accessoires » (Femmes, filles, garçons), que « Autres » attrapait déjà.
+// ⛔ CE N'EST PAS UN REMPLAÇANT DE `estFourreTout`, et le départage entre
+//    sœurs continue de lire « Autres… » SEUL. Élargir là-bas ferait gagner
+//    « Figurines » contre « Accessoires » sur le mot « accessoire de figurine »,
+//    ce que personne n'a mesuré. Cette lecture-ci sert à UNE question, et une
+//    seule : cet étage a-t-il nommé quelque chose ?
+const neNommeAucunObjet = (f: FeuilleOpla) =>
+  estFourreTout(f) || (f.jetons.length === 1 && f.jetons[0] === "accessoire");
+
 // ── L'INDEX DES FEUILLES, construit UNE fois au chargement du module ────────
 // 886 feuilles : un parcours en profondeur depuis les 8 racines, et plus
 // personne ne repaie. `oplaEnfants("")` rend les racines (cf. catalogue).
@@ -496,8 +512,28 @@ export function resoudreCategorieOpla(
 
   const tousLesMots = [...motsObjet, ...(titreNet ? [titreNet] : [])];
 
-  /** Les candidates d'un niveau : le meilleur étage non vide, plus le rayon nommé. */
-  const candidatsSous = (ancre: string | null): { liste: FeuilleOpla[]; via: string } => {
+  /**
+   * Les candidates d'un niveau, PAR ÉTAGE : un étage par couple (mot, passe),
+   * du plus précis au plus large, chacun élagué au genre et complété du rayon
+   * que SON mot nomme.
+   *
+   * ⛔ ELLE REND LA LISTE ENTIÈRE, PLUS LE SEUL PREMIER ÉTAGE (2026-09-21).
+   *    Job e288edef (louis@ttfamily.fr, 21/09 19:50, « Rangement Blanc et Bleu
+   *    Ciel pour 12 pots et 12 couvercles pour yaourtière Multidélices ») : le
+   *    mot-objet de l'IA disait « accessoire de yaourtière ». « Accessoire » ne
+   *    nomme aucun objet — il désigne quatre fourre-tout dans trois rayons
+   *    (Jeux et jouets, Femmes, Enfants) — donc cet étage ne tranchait pas, et
+   *    comme il était le premier NON VIDE, il emportait la décision : on posait
+   *    une question dont AUCUNE des quatre réponses n'était juste. L'étage
+   *    suivant, le titre, désignait « Culture et Loisirs › Rangement de
+   *    collection › Autres rangements » tout seul — la feuille où ses cinq
+   *    jumeaux du même soir sont partis.
+   *    Un étage qui ne DÉSIGNE rien ne doit pas bloquer le suivant, exactement
+   *    comme un étage vidé par le genre lui laisse déjà sa place. Il reste la
+   *    question de repli si aucun autre étage ne désigne quoi que ce soit.
+   */
+  const etagesSous = (ancre: string | null): Array<{ liste: FeuilleOpla[]; via: string }> => {
+    const out: Array<{ liste: FeuilleOpla[]; via: string }> = [];
     // Le rayon nommé est de la même force qu'une égalité de libellé : le mot
     // EST le nom d'un rayon. ⛔ MAIS IL DOIT VENIR DU MÊME MOT QUE L'ÉTAGE
     //    RETENU. Sinon un mot large dilue la réponse d'un mot précis : mesuré
@@ -538,37 +574,75 @@ export function resoudreCategorieOpla(
         const fusion = [...garde, ...parNoeud.filter((f) => !vus.has(f.code))];
         if (fusion.length <= OPLA_QUESTION_MAX) liste = fusion;
       }
-      return { liste, via: `mot « ${etage.mot} » passe ${etage.passe}` };
+      out.push({ liste, via: `mot « ${etage.mot} » passe ${etage.passe}` });
     }
     // Aucun étage : le mot ne nomme peut-être QUE un rayon.
-    for (const m of tousLesMots) {
-      const parNoeud = ecarterGenreIncompatible(feuillesDuNoeudNomme([m], ancre), genre);
-      if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) return { liste: parNoeud, via: "rayon nommé" };
+    if (!out.length) {
+      for (const m of tousLesMots) {
+        const parNoeud = ecarterGenreIncompatible(feuillesDuNoeudNomme([m], ancre), genre);
+        if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) { out.push({ liste: parNoeud, via: "rayon nommé" }); break; }
+      }
     }
-    return { liste: [], via: "" };
+    return out;
   };
 
   for (let garde = 0; garde < 12; garde++) {
     if (code && oplaNoeud(code)?.feuille) break;
-    const { liste: parMot, via } = candidatsSous(code || null);
-    if (parMot.length === 1) {
-      etapes.push(`${via} → ${parMot[0].code} (feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"})`);
-      code = parMot[0].code;
+    const etages = etagesSous(code || null);
+    // ── LE PREMIER ÉTAGE QUI DÉSIGNE QUELQUE CHOSE GAGNE ────────────────────
+    // « Désigner », c'est rendre UNE feuille : seule, ou tranchée par le
+    // départage. Un étage qui ne sait pas trancher ne décide de rien — il
+    // devient seulement la QUESTION de repli, et laisse le suivant parler.
+    let designe: { feuille: FeuilleOpla; via: string; motif: string } | null = null;
+    let aDemander: { total: number; restants: FeuilleOpla[]; motif: string; via: string } | null = null;
+    for (const etage of etages) {
+      if (etage.liste.length === 1) {
+        designe = {
+          feuille: etage.liste[0], via: etage.via,
+          motif: `feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"}`,
+        };
+        break;
+      }
+      const { feuille, restants, motif } = trancherCandidats(etage.liste, { mots: [...motsObjet, titreNet], genre });
+      if (feuille) {
+        designe = { feuille, via: etage.via, motif: `${etage.liste.length} feuilles, tranché : ${motif}` };
+        break;
+      }
+      // ⛔ LA QUESTION RESTE CELLE DU PREMIER ÉTAGE, pas du dernier : c'est le
+      //    mot le plus précis, donc la liste la plus juste à montrer. Seule une
+      //    DÉSIGNATION plus loin peut la remplacer — jamais une autre question.
+      if (!aDemander) aDemander = { total: etage.liste.length, restants, motif, via: etage.via };
+      // ── QUAND UN ÉTAGE CÈDE LA PLACE AU SUIVANT, ET SEULEMENT ALORS ───────
+      // Quand il n'a trouvé QUE des fourre-tout. Le mot est alors tombé sur la
+      // case « et le reste » de plusieurs rayons, jamais sur un objet : la
+      // question qu'on poserait n'est pas une question entre des objets, et sa
+      // bonne réponse peut très bien ne pas y être. C'était le cas du job
+      // e288edef, dont les quatre options étaient toutes fausses.
+      // ⛔ IL FAUT QU'ELLES LE SOIENT TOUTES. Mesuré sur 27 964 articles des 30
+      //    derniers jours : dès qu'UNE candidate nomme l'objet, la question est
+      //    juste et la bonne réponse est dedans. Céder alors ferait parler
+      //    l'étage suivant, plus large, qui se trompe — « Manteau long noir
+      //    Primark 38 » partait en manteau de GROSSESSE, « Chemise Esprit
+      //    denim » en chemise de NUIT pour fille, et « Jean Bootcut Levi's »
+      //    n'aurait plus eu sa liste de jeans.
+      // ⛔ ET L'ÉTAGE RESTE LA QUESTION DE REPLI (`aDemander`, posé juste
+      //    au-dessus) : si aucun étage suivant ne désigne rien, on repose
+      //    exactement la question d'avant. Céder ne peut donc rien perdre.
+      if (!etage.liste.every(neNommeAucunObjet)) break;
+    }
+    if (designe) {
+      etapes.push(`${designe.via} → ${designe.feuille.code} (${designe.motif})`);
+      code = designe.feuille.code;
       continue;
     }
-    if (parMot.length > 1) {
-      const { feuille, restants, motif } = trancherCandidats(parMot, { mots: [...motsObjet, titreNet], genre });
-      if (feuille) {
-        etapes.push(`${via} → ${parMot.length} feuilles, tranché sur ${feuille.code} : ${motif}`);
-        code = feuille.code;
-        continue;
-      }
+    if (aDemander) {
+      const { total: parMotN, restants, motif, via } = aDemander;
       // ⛔ UNE QUESTION QUI NE TIENT PAS SUR UN ÉCRAN N'EST PAS UNE QUESTION.
       //    Au-delà du plafond on ne peut pas la poser ; on retombe alors sur
       //    EXACTEMENT ce que faisait le code d'hier (la passe la plus sûre,
       //    plafonnée), pour ne rien casser de ce qui marchait.
       if (restants.length && restants.length <= OPLA_QUESTION_MAX) {
-        etapes.push(`${via} → ${parMot.length} feuilles, non tranchable (${motif}) — question au niveau des feuilles`);
+        etapes.push(`${via} → ${parMotN} feuilles, non tranchable (${motif}) — question au niveau des feuilles`);
         return { code: code || null, candidats: restants, etapes };
       }
       const repli = ecarterGenreIncompatible(
