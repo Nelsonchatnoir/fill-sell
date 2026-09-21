@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-20T17:35:37Z'; // recale 1c78ec5 (passe 6 : l'onglet de travail n'agit plus sur une page qui charge encore autre chose — dernier commit touchant chrome-extension/). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.48 est empaquetee mais PAS televersee. Ancienne valeur : 2026-09-20T16:50:12Z.
+export const EXTENSION_LAST_COMMIT = '2026-09-20T17:35:37Z'; // recale 1c78ec5 (passe 6 : l'onglet de travail n'agit plus sur une page qui charge encore autre chose — dernier commit touchant chrome-extension/). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. Ancienne valeur : 2026-09-20T16:50:12Z. ⚠️ CORRECTION DU 21/09 : cette note disait « MIN_BUILD NON touche : la 0.6.48 est empaquetee mais PAS televersee ». C'ETAIT FAUX — la 0.6.48 a ete ACCEPTEE et est SERVIE depuis le 20/09 au soir (38 comptes releves en base le 21/09, le parc le plus fourni). MIN_BUILD a donc ete promu sur son BUILD_ID, cf. la note de promotion plus bas.
 // ⚠️ LA CHAÎNE DES « Ancienne valeur » A ÉTÉ COUPÉE ICI (20/09). Elle avait atteint 14 149
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
@@ -1488,7 +1488,27 @@ export const EXTENSION_LAST_COMMIT = '2026-09-20T17:35:37Z'; // recale 1c78ec5 (
 // avant). Elle ne BLOQUE rien - App.jsx ne s'en sert que pour un bandeau
 // refermable (extensionOutdated), aucune fonction n'est coupee.
 // Ancienne valeur : 2026-09-12T08:29:11Z (0.6.32, servie depuis le 12/09).
-export const EXTENSION_MIN_BUILD = '2026-09-18T16:36:03Z';
+//
+// ── PROMOTION 0.6.48 (2026-09-21) ───────────────────────────────────────────
+// La 0.6.43 est restée le seuil TROIS JOURS de trop. Entre-temps le Chrome Web
+// Store a accepté et servi 0.6.46, 0.6.47 et 0.6.48 — et le parc n'en a rien
+// su : la bannière ne réclamait qu'un build du 18/09.
+// PUBLICATION ÉTABLIE, PAS DÉCLARÉE — relevée en base le 21/09
+// (profiles.extension_build × extension_version), jamais supposée :
+//   0.6.48  2026-09-20T17:39:01Z+349ea65  38 comptes  ← le parc le plus fourni
+//   0.6.47  2026-09-19T18:50:24Z+a3d49f9  19 comptes
+//   0.6.46  2026-09-19T12:23:44Z+1604cf2   3 comptes
+// Louis THONET et XEWER sont tous deux en 0.6.48 : le choix des transporteurs
+// Leboncoin est déjà chez eux.
+// CE QUE LA PROMOTION DÉBLOQUE pour les autres : les transporteurs Leboncoin
+// (demande de Louis), la cascade de catégorie Opla par étages, et l'onglet de
+// travail qui n'agit plus sur une page en train de charger autre chose.
+// Le seuil passe donc au BUILD_ID DU PAQUET, lu dans le zip publié — jamais
+// EXTENSION_LAST_COMMIT (2026-09-20T17:35:37Z, soit 3 min 24 s plus tôt : c'est
+// l'écart normal entre un commit et le zip qui l'embarque, et c'est très
+// exactement ce que le registre ci-dessous existe pour tolérer).
+// Ancienne valeur : 2026-09-18T16:36:03Z (0.6.43, servie depuis le 18/09 au soir).
+export const EXTENSION_MIN_BUILD = '2026-09-20T17:39:01Z';
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
@@ -1532,6 +1552,18 @@ export const PUBLISHED_BUILD_IDS = {
   // rejetterait — exactement le trou rattrapé le 06/08 pour les 0.4.7/0.4.8.
   '2026-09-18T20:16:32Z': '0.6.44',
   '2026-09-18T22:19:14Z': '0.6.45',
+  // 0.6.46, 0.6.47 et 0.6.48 : inscrites le 21/09. Même classe d'oubli que les
+  // trois précédentes — publication ÉTABLIE et RELEVÉE EN BASE, jamais
+  // déclarée. Requête du 21/09 sur profiles (extension_build × version) :
+  //   0.6.46 → 3 comptes · 0.6.47 → 19 comptes · 0.6.48 → 38 comptes.
+  // La 0.6.48 est celle que le Store sert aujourd'hui (le parc le plus fourni,
+  // Louis THONET et XEWER compris) : c'est elle qui devient EXTENSION_MIN_BUILD.
+  // Sans ces trois lignes, rien n'empêchait un re-empaquetage de ces numéros,
+  // que le Store rejetterait — et la promotion du seuil aurait fait échouer
+  // `npm run build` (MIN_BUILD postérieur à LAST_COMMIT et absent du registre).
+  '2026-09-19T12:23:44Z': '0.6.46',
+  '2026-09-19T18:50:24Z': '0.6.47',
+  '2026-09-20T17:39:01Z': '0.6.48',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
