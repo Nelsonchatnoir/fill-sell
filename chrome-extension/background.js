@@ -5496,12 +5496,35 @@ async function releverEtatFenetreTravail(platform) {
 // (platform_fields.work_window_state.<phase>) : update-job-status écrase
 // platform_fields en entier, donc toute écriture ultérieure qui repart de
 // job.platform_fields emporte le relevé. Jamais bloquant (relevé null = rien).
+// ── UNE CASE NE PEUT PAS RACONTER CINQ TENTATIVES (2026-09-21, 0.6.50) ──────
+// `work_window_state.at_end` est ÉCRASÉ à chaque tentative. Le 21/09, pendant
+// la mesure du mur d'inscription vendeur eBay, la trace qui avait ouvert le
+// chantier a disparu sous nos yeux : à 18h07 le job d'adamchocho13 portait
+// onboardweb.ebay.fr, à 18h20 il portait /lstng/error. Conséquence : on ne
+// peut ni compter combien de gens butent sur quoi, ni voir qu'un compte a
+// frappé TROIS FOIS le même mur — c'est pourtant ça, le signal.
+// `fins` garde donc une entrée par tentative, SLIM (où, à quelle étape,
+// quand) et BORNÉE : le relevé complet reste dans at_end, inchangé, et rien
+// ne casse côté serveur ni dans les requêtes SQL existantes.
+// Côté serveur, derniereFinDeJob (_shared/pages-de-job.ts) lit déjà la liste
+// quand elle existe et la case sinon : les deux versions cohabitent sans
+// condition de version.
+const FINS_MAX = 8;
 function stampEtatFenetre(job, phase, releve) {
   if (!releve) return;
-  job.platform_fields = {
-    ...(job.platform_fields ?? {}),
-    work_window_state: { ...(job.platform_fields?.work_window_state ?? {}), [phase]: releve },
-  };
+  const wws = { ...(job.platform_fields?.work_window_state ?? {}), [phase]: releve };
+  if (phase === "at_end") {
+    const precedentes = Array.isArray(wws.fins) ? wws.fins : [];
+    wws.fins = [
+      ...precedentes,
+      {
+        at: releve.at ?? new Date().toISOString(),
+        tab_url: releve.tab_url ?? null,
+        fill_step: releve.fill_step ?? null,
+      },
+    ].slice(-FINS_MAX);
+  }
+  job.platform_fields = { ...(job.platform_fields ?? {}), work_window_state: wws };
 }
 
 async function getOrCreateWorkTab(platform, url) {
