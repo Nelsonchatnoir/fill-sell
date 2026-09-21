@@ -202,8 +202,20 @@ verify_jwt = true
 [functions.get-pending-jobs]
 verify_jwt = true
 
+# update-job-status : c'est la PROD qui avait raison (décision Nico, 21/09).
+# Elle tourne en `false` depuis des semaines sans incident, et ce fichier la
+# déclarait `true` — l'écart connu et jamais tranché du 18/09. On aligne le
+# fichier sur la prod, pas l'inverse : la basculer à `true` ferait passer par le
+# gateway TOUS les verdicts du parc, pour un gain nul.
+# ⛔ `false` n'est pas « pas d'authentification », c'est « l'authentification est
+# faite par la fonction ». Vérifié sur pièces le 21/09 : `Authorization: Bearer`
+# exigé (401 sinon), `userClient.auth.getUser()` qui valide le jeton (401 si
+# invalide ou expiré), puis TOUTE lecture et TOUTE écriture par ce client
+# utilisateur, donc sous RLS. Le service_role n'est utilisé qu'après ces deux
+# gardes, et seulement une fois l'appartenance du job établie par le client
+# utilisateur. Le seul retour avant les gardes est le préflight CORS (OPTIONS).
 [functions.update-job-status]
-verify_jwt = true
+verify_jwt = false
 
 [functions.fetch-ebay-aspects]
 verify_jwt = true
