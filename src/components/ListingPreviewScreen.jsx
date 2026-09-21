@@ -2208,6 +2208,8 @@ function StepGeneration({ generating, generateError, platformListings, processed
   // l'hôte. Les valeurs par défaut rendent le composant utilisable sans
   // ces props — l'ancien comportement, à l'identique.
   generales = null, onValeurGenerale = null,
+  // Le texte a bougé sur la plateforme alors qu'elle l'avait retouché ici.
+  divergence = null, divergenceTranchee = null, onTrancherDivergence = null,
   dissociees = null, onModifierCarte = null, onRetablirCarte = null }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
@@ -2384,6 +2386,48 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
+      {/* ── « LE TEXTE A CHANGÉ SUR LA PLATEFORME » (2026-09-21) ───────────
+          Ambre, jamais rouge : rien n'est cassé et rien n'est bloqué. Elle a
+          retouché ce texte dans FillSell, il a AUSSI bougé sur la plateforme —
+          on a gardé SA version et on pose la question, elle tranche en un tap.
+          Sans réponse, sa retouche part : c'est le comportement d'avant.
+          ⛔ Le bandeau NE COMPTE PAS comme un geste : qui l'ignore publie
+             exactement au même nombre de taps qu'hier. */}
+      {divergence && !divergenceTranchee && (
+        <div style={{ marginBottom:16, padding:"11px 13px", borderRadius:14, background:"#FEF6E7", border:"1px solid #F3DFB5" }}>
+          <div style={{ fontSize:12.5, color:"#7A4B00", lineHeight:1.45, fontWeight:600 }}>
+            {tpl("divergenceTitre", { plateforme: PLATFORM_LABELS[divergence.plateforme] ?? divergence.plateforme })}
+          </div>
+          <div style={{ fontSize:11.5, color:"#7A4B00", lineHeight:1.45, marginTop:3 }}>
+            {t("divergenceTexte")}
+          </div>
+          {divergence.texte && (
+            <div style={{ fontSize:11.5, color:"#7A4B00", lineHeight:1.4, marginTop:6, whiteSpace:"pre-wrap",
+                          display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", overflow:"hidden",
+                          background:"rgba(255,255,255,0.55)", borderRadius:8, padding:"6px 8px" }}>
+              {divergence.texte}
+            </div>
+          )}
+          <div style={{ display:"flex", gap:8, marginTop:9, flexWrap:"wrap" }}>
+            <button
+              type="button"
+              onClick={() => onTrancherDivergence?.("plateforme")}
+              style={{ padding:"7px 12px", borderRadius:999, border:"1px solid #7A4B00", background:"#7A4B00",
+                       color:"#fff", fontSize:12, fontWeight:700, fontFamily:"inherit", cursor:"pointer" }}
+            >
+              {tpl("divergencePrendre", { plateforme: PLATFORM_LABELS[divergence.plateforme] ?? divergence.plateforme })}
+            </button>
+            <button
+              type="button"
+              onClick={() => onTrancherDivergence?.("moi")}
+              style={{ padding:"7px 12px", borderRadius:999, border:"1px solid #C7A867", background:"none",
+                       color:"#7A4B00", fontSize:12, fontWeight:700, fontFamily:"inherit", cursor:"pointer" }}
+            >
+              {t("divergenceGarder")}
+            </button>
+          </div>
+        </div>
+      )}
       {/* ── LE BLOC GÉNÉRAL — PRIX, TITRE, DESCRIPTION, ÉTAT (2026-09-21) ────
           La carte « Prix de vente » vivait seule ici depuis le 14/07. Elle
           accueille maintenant les trois autres valeurs générales (demande de
@@ -6076,6 +6120,50 @@ export default function ListingPreviewScreen({
     setDissociees(prev => dissocier(prev, champ, plateforme));
   };
 
+  // ══ « LE TEXTE A CHANGÉ SUR LA PLATEFORME » (2026-09-21, cas Louis) ═══════
+  // Le relevé a relu l'annonce et a trouvé un texte DIFFÉRENT de celui qu'on
+  // avait — mais la personne avait retouché le sien dans FillSell. Les deux
+  // versions sont légitimes ; ce n'est pas à nous de trancher. Le relevé a
+  // gardé SA retouche et rangé de quoi poser la question
+  // (attributs.contenu_divergent) ; ici on la pose, en ambre, et elle tranche
+  // en UN tap. Sans réponse, rien ne bouge — sa retouche reste.
+  const divergence = useMemo(() => {
+    const v = attributV("contenu_divergent");
+    if (!v || typeof v !== "object" || !Array.isArray(v.champs) || !v.champs.length) return null;
+    return v;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attributsBase]);
+  const [divergenceTranchee, setDivergenceTranchee] = useState(null);
+
+  // Écrire dans les attributs SANS toucher au reste : la fusion en base
+  // arbitre par le rang, on ne fait que proposer. Source « manuel » pour
+  // effacer le drapeau — c'est un geste de la personne, et lui seul prime.
+  // ⚠️ `description_source` RESTE à « manuel » même quand elle prend le texte
+  //    de la plateforme : on ne peut pas redescendre un rang (la fusion
+  //    refuse), et surtout ce texte devient SON choix. Conséquence assumée :
+  //    un prochain changement en ligne lui sera SIGNALÉ, pas appliqué. C'est
+  //    le sens de la règle — qui a tranché une fois garde la main.
+  const trancherDivergence = async (choix) => {
+    if (!divergence) return;
+    const at = new Date().toISOString();
+    const patch = { attributs: { contenu_divergent: { v: false, source: "manuel", at } } };
+    if (choix === "plateforme") {
+      if (divergence.champs.includes("description") && divergence.texte) patch.description = divergence.texte;
+      if (divergence.champs.includes("titre") && divergence.titre) patch.titre = divergence.titre;
+      if (divergence.champs.includes("prix") && divergence.prix != null) patch.prix_vente = Number(divergence.prix);
+      // L'écran suit tout de suite : la valeur générale se pose, et les cartes
+      // qui la suivent avec. Pas de rechargement, pas de geste en plus.
+      if (patch.description) poserValeurGenerale("description", patch.description);
+      if (patch.titre) poserValeurGenerale("titre", patch.titre);
+      if (patch.prix_vente != null) setPrice(patch.prix_vente);
+    }
+    setDivergenceTranchee(choix);
+    if (!invId || !userId) return;
+    supabase.from("inventaire").update(patch).eq("id", invId).eq("user_id", userId)
+      .then(({ error }) => { if (error) console.warn("[stepper] divergence non tranchée en base :", error.message); })
+      .catch(() => {});
+  };
+
   // RÉTABLIR — un tap, et la carte reprend la valeur générale.
   const retablirCarte = (plateforme, champ) => {
     const suivant = rattacher(dissociees, champ, plateforme);
@@ -9031,6 +9119,9 @@ export default function ListingPreviewScreen({
             // ── LA VALEUR GÉNÉRALE (2026-09-21) ────────────────────────────
             generales={generales}
             onValeurGenerale={poserValeurGenerale}
+            divergence={divergence}
+            divergenceTranchee={divergenceTranchee}
+            onTrancherDivergence={trancherDivergence}
             dissociees={dissociees}
             onModifierCarte={modifierCarte}
             onRetablirCarte={retablirCarte}

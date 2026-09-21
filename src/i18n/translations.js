@@ -193,6 +193,13 @@ export const translations = {
     // ── Le bloc général (2026-09-21, demande de XEWER) ────────────────────
     // Une valeur écrite une fois, appliquée partout ; le crayon d'une carte
     // la dissocie, exactement comme le prix depuis le 14/07.
+    // ── Le texte a changé sur la plateforme (2026-09-21, cas Louis) ──────
+    // Elle a retouché son texte ici, il a AUSSI bougé en ligne : on a gardé
+    // le sien et on pose la question. Aucune des deux versions n’est fausse.
+    divergenceTitre:"Ton texte a changé sur {plateforme} depuis ta dernière modification ici.",
+    divergenceTexte:"On a gardé TA version — rien n’a été écrasé. Choisis celle qui part.",
+    divergencePrendre:"Prendre celui de {plateforme}",
+    divergenceGarder:"Garder le mien",
     generalTitleLabel:"Titre",
     generalTitlePlaceholder:"Le titre, pour toutes les plateformes",
     generalDescriptionLabel:"Description",
@@ -551,6 +558,10 @@ export const translations = {
     fieldDescriptionLabel:"Description",
     fieldSalePriceLabel:"Sale price (€)",
 
+    divergenceTitre:"Your text changed on {plateforme} since you last edited it here.",
+    divergenceTexte:"We kept YOUR version — nothing was overwritten. Pick the one that goes out.",
+    divergencePrendre:"Use the {plateforme} one",
+    divergenceGarder:"Keep mine",
     generalTitleLabel:"Title",
     generalTitlePlaceholder:"The title, for every platform",
     generalDescriptionLabel:"Description",
