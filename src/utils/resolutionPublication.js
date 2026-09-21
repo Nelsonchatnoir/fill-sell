@@ -56,6 +56,8 @@ import { familleDeLObjet, plausibiliteDuChemin } from "./familleCategorie";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
+import { tailleAGarder } from "./tailleInventee";
+import { rayonContreditLaFiche } from "./rayonIncoherent";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -979,6 +981,39 @@ export async function resoudrePublication({
     // convertissent que sur genre enfant (« EU 38 » existe en adulte).
     // null (pas d'équivalent exact, ex. « 18 ans » hors LBC) → canonique
     // conservée : échec de cascade VISIBLE plutôt que taille fausse.
+    // ── UNE TAILLE QUE PERSONNE N'A DITE N'EST PAS UNE TAILLE (2026-09-21) ──
+    // Jobs fd5c84be et 837d2c8a (meminiandmove) : deux lots de BARRETTES À
+    // CHEVEUX, fiche sans aucune taille, titre « Lot de 2 barrettes Marie Les
+    // Aristochats Disney ». La rédaction a posé « Prématuré » sur les copies
+    // Leboncoin, Opla et Beebs — pas sur Vinted. Les deux sont parties EN LIGNE
+    // avec une taille de vêtement de nouveau-né, et sur Beebs le rayon exige
+    // une taille de SA liste : le job est mort dessus.
+    // Le prompt disait déjà « ne devine JAMAIS ». Une consigne de prompt n'est
+    // pas une garde ; celle-ci en est une, et elle est déterministe.
+    // Mesuré sur tout le parc publié : 10 annonces en ligne portent une taille
+    // que leur fiche ne dit pas (leboncoin 3, vinted 3, beebs 2, opla 2,
+    // ebay 0) sur 4 comptes — dont les 5 barrettes/chouchous en « Prématuré »
+    // et un « 12 mois » sur un article dont le titre est littéralement
+    // « Article ».
+    // ⛔ CE QUI EST GARDÉ, ET POURQUOI (cf. utils/tailleInventee.js) : la
+    //    fiche, le texte de l'article, la valeur neutre — et TOUT ce que la
+    //    personne a touché elle-même (encart partagé ou carte de la copie).
+    //    On ne jette que ce que personne n'a dit.
+    if (pf.taille) {
+      const editeeIci = Boolean(sharedOverrides[platform]?.has("taille"));
+      const partagee = String(sharedFields.taille ?? "").trim();
+      const verdict = tailleAGarder(pf.taille, {
+        tailleFiche: String(
+          initialListing?.attributs?.taille?.v ?? initialListing?.attributs?.taille ?? initialListing?.taille ?? "",
+        ),
+        texte: `${initialListing?.titre ?? ""} ${initialListing?.description ?? ""}`,
+      });
+      if (!editeeIci && !partagee && !verdict.garder) {
+        console.warn(`[publish] ${platform} — taille « ${pf.taille} » ÉCARTÉE : ${verdict.motif}`);
+        pf.taille_ecartee = { valeur: pf.taille, motif: verdict.motif, le: new Date().toISOString() };
+        delete pf.taille;
+      }
+    }
     if (pf.taille) {
       const converted = toPlatformChildSize(pf.taille, platform, {
         isChildGenre: isChildGenre(pf.genre) || isChildGenre(pf.univers),
@@ -1173,6 +1208,63 @@ export async function resoudrePublication({
       //    refus d'origine vaut mieux qu'un chemin qui s'arrête en route.
       if (!chemin.length || !(await estFeuilleDeLArbre(r.platform, chemin))) {
         console.log(`[publish] dernier recours ${r.platform} — « ${motCategorie} » : ${journal.join(" | ") || "rien à descendre"} → le refus tient (${appels} appel(s))`);
+        continue;
+      }
+      // ── LA DESCENTE PROPOSE, ELLE NE DÉCIDE PAS SEULE (2026-09-21) ────────
+      // Job f4c1d7ef (derbies André de philippaa) : la descente rend
+      // « Chaussures à talon (femme) » pour un derby PLAT — Beebs n'a aucune
+      // feuille pour ce type de chaussure, et à chaque palier les options
+      // restaient plausibles ; seul le DERNIER ne l'était plus, et elle a pris
+      // la moins mauvaise au lieu de rendre la main.
+      // Deux gardes, dans cet ordre, et aucune ne coûte quoi que ce soit quand
+      // la feuille est juste :
+      //   1. L'ALERTE DU 20/09, réutilisée telle quelle (utils/rayonIncoherent)
+      //      — un rayon dont l'âge ou le sexe contredit la fiche ne part pas.
+      //      Déterministe, gratuite, et c'est déjà le vocabulaire que la carte
+      //      du stepper affiche au vendeur.
+      //   2. UNE DERNIÈRE QUESTION, la feuille SEULE : « est-ce bien là ? ».
+      //      L'IA a le droit de dire non, et elle le dit. MESURÉ le 21/09 sur
+      //      les quatre cas réels, deux passages chacun : barrette ✓✓,
+      //      barrette ✓✓, maillot NBA ✓✓, derbies ✗✗.
+      // Un refus laisse `categorie_a_choisir` en place — le job ne part pas
+      // dans un rayon faux — mais il porte désormais le chemin PROPOSÉ : la
+      // personne voit ce qu'on avait trouvé, et tranche.
+      const incoherence = rayonContreditLaFiche(chemin, pf);
+      let confirme = !incoherence;
+      if (confirme) {
+        try {
+          const { data } = await supabase.functions.invoke("resolve-categorie", {
+            body: {
+              titre: titreVerif, attributs: attributsVerif,
+              candidats: { [r.platform]: [{ chemin, id: null }] },
+            },
+          });
+          appels++;
+          confirme = Boolean(data && data.motif !== "ia_indisponible"
+            && Array.isArray(data.choix?.[r.platform]?.chemin)
+            && data.choix[r.platform].chemin.length);
+        } catch (e) {
+          // IA injoignable : on ne publie pas sur une confirmation qu'on n'a
+          // pas eue. Le refus d'origine tient, comme avant ce lot.
+          console.warn(`[publish] dernier recours ${r.platform} : confirmation injoignable —`, e?.message ?? e);
+          confirme = false;
+        }
+      }
+      if (!confirme) {
+        const pourquoi = incoherence
+          ? `le rayon dit « ${incoherence.rayon} » et la fiche dit « ${incoherence.fiche} »`
+          : "l'IA ne confirme pas que cette feuille décrive l'article";
+        console.log(`[publish] dernier recours ${r.platform} — « ${chemin.join(" > ")} » ÉCARTÉ : ${pourquoi}`);
+        pf.categorie_a_choisir = {
+          ...(pf.categorie_a_choisir ?? {}),
+          objet: motCategorie,
+          chemin_propose: chemin,
+          motif_propose: pourquoi,
+        };
+        pf.categorie_verification = {
+          ...(pf.categorie_verification ?? {}), verdict: "descente_non_confirmee",
+          chemin_propose: chemin, paliers: journal, appels, pourquoi,
+        };
         continue;
       }
       if (r.platform === "beebs") pf.beebsCategoryPath = chemin;
