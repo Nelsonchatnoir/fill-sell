@@ -66,8 +66,19 @@ import { resoudrePublication, signatureResolution } from "../utils/resolutionPub
 import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
+import { LBC_FORMATS } from "../utils/leboncoinColis";
 import CarteLivraisonEbay from "./CarteLivraisonEbay";
 import { CANAL_ASPECTS } from "../utils/champsDuRayon";
+// ── Valeur générale + exception par plateforme (2026-09-21) ────────────────
+// La LOGIQUE est dans utils/valeursGenerales.js, l'AFFICHAGE dans
+// components/BlocValeursGenerales.jsx — cet écran ne fait que les relier.
+import BlocValeursGenerales from "./BlocValeursGenerales";
+import { ETATS_GENERAUX, etatPourPlateforme } from "../../supabase/functions/_shared/etat-plateformes.js";
+import {
+  CHAMPS_GENERAUX, dissociationsVides, serialiserDissociations, lireDissociations,
+  appliquerGenerale, dissocier, rattacher, suitLaGenerale, valeurCommune,
+  valeurPourPlateforme, ecartsDeConformite,
+} from "../utils/valeursGenerales";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -768,6 +779,23 @@ function getPlatformFieldsConfig(t) {
     { value:"Très grand colis", label:t("packageXLarge") },
     { value:"Non défini",       label:t("packageUndefined") },
   ];
+  // ── LEBONCOIN N'EN A QUE TROIS (2026-09-21, relevé du 20/09) ───────────────
+  // 🚨 Notre liste en offre SIX. « Lettre », « Grand colis » et « Très grand
+  //    colis » N'EXISTENT PAS sur le formulaire Leboncoin : son « Choisissez un
+  //    format » propose Petit / Moyen / Volumineux, et rien d'autre (relevé
+  //    live du 20/09, cf. src/utils/leboncoinColis.js). Proposer les six, c'est
+  //    proposer trois réponses qui ne mènent nulle part.
+  // ⛔ ON NE TOUCHE PAS À LA CLÉ `format_colis` NI AUX SIX AUTRES VALEURS :
+  //    le champ est PARTAGÉ avec Beebs, qui les mappe sur ses propres paliers
+  //    de poids (beebs.js), et il sert de clé de mémoire au poids du formulaire
+  //    Leboncoin PRO côté serveur. On change ce qui est PROPOSÉ sur la carte
+  //    Leboncoin, pas ce que le champ transporte ailleurs.
+  // ⚠️ Conséquence assumée : la mémoire de poids LBC PRO est indexée par cette
+  //    valeur (get-pending-jobs, `trancheColis`). Un vendeur PRO qui choisit
+  //    désormais « Petit » là où il choisissait « Petit colis » se verra
+  //    reposer la question du poids UNE fois, pour cette tranche. Jamais une
+  //    valeur fausse : la mémoire ne se trompe pas, elle ne sait pas encore.
+  const packageFormatLbc = LBC_FORMATS.map(f => ({ value: f.valeur, label: f.valeur }));
 
   // Genre : valeurs FR canoniques ("Femme"/"Homme"/…) — clés du mapping
   // catégorie Vinted (src/utils/vintedCategories.js), remplies par l'IA
@@ -881,7 +909,9 @@ function getPlatformFieldsConfig(t) {
       // entrée, mergeFieldsWithLens jette la taille générée par l'IA (même
       // piège que l'univers, documenté plus bas).
       { key:"taille",       label:t("fieldSizeLabel"),          type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
-      { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormat },
+      // Les TROIS formats réels de Leboncoin (relevé 20/09) — jamais les six
+      // canoniques, dont trois n'existent pas chez eux (cf. packageFormatLbc).
+      { key:"format_colis", label:t("fieldPackageFormatLabel"), type:"select", options: packageFormatLbc },
       // Univers (rayon Mode LBC) : mêmes libellés que le genre Vinted, mapping
       // 1:1 vérifié (docs/leboncoin-form-survey.md) — LBC a un rayon Mixte.
       // Sans cette entrée, mergeFieldsWithLens jetait l'univers généré par
@@ -2170,7 +2200,15 @@ function StepGeneration({ generating, generateError, platformListings, processed
   // `rayonsParPf` : ce que le pré-calcul du lot A a trouvé, PAR plateforme,
   // déjà croisé avec le choix de la personne. La carte ne calcule rien : elle
   // affiche ce qu'on lui donne, et remonte les choix.
-  rayonsParPf = {}, suggestionsParPf = {}, supabase = null, onChoisirRayon = null }) {
+  rayonsParPf = {}, suggestionsParPf = {}, supabase = null, onChoisirRayon = null,
+  // ── LA VALEUR GÉNÉRALE (2026-09-21) ────────────────────────────────────
+  // Cet écran n'en calcule RIEN : il affiche `generales`, il remonte les
+  // gestes. Toute la mécanique (qui suit, qui est dissociée, ce que chaque
+  // plateforme reçoit) vit dans utils/valeursGenerales.js, appelée par
+  // l'hôte. Les valeurs par défaut rendent le composant utilisable sans
+  // ces props — l'ancien comportement, à l'identique.
+  generales = null, onValeurGenerale = null,
+  dissociees = null, onModifierCarte = null, onRetablirCarte = null }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -2346,77 +2384,69 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
-      {/* ── Prix de vente central ─────────────────────────────────────────────
-          Depuis le mode identify (2026-07-28), c'est le SEUL champ qu'une
-          identification gratuite ne remplit pas — et la publication reste
-          bloquée sous 1 € (garde du 13/07, job 3d194668 parti à price=NULL).
-          Cet écran doit donc en faire un moment de vente, pas un message
-          d'erreur : champ mis en avant, focus automatique, et juste dessous
-          l'accès au scan complet qui, lui, produit un prix. Aucun message
-          bloquant ici — la garde ne parle qu'au moment de publier. */}
-      <div style={{ marginBottom:16, background:T.paper, border:`1px solid ${prixManquant ? T.teal : T.border}`, borderRadius:16, padding:"14px 15px", boxShadow: prixManquant ? "0 0 0 3px rgba(47,158,144,0.12)" : "none" }}>
-        <div style={{ fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.08em", color:T.mute, marginBottom:6 }}>
-          {t("fieldSalePriceLabel")}
-        </div>
-        <input
-          type="number"
-          inputMode="decimal"
-          autoFocus={prixManquant}
-          value={price ?? ""}
-          onChange={ev => applyCentralPrice(ev.target.value)}
-          placeholder={prixManquant ? (lang === "en" ? "Your price, in €" : "Ton prix, en €") : "—"}
-          style={{ width:"100%", padding:"12px 14px", borderRadius:12, border:`1px solid ${prixManquant ? T.teal : T.border}`, fontSize:17, fontWeight:700, fontFamily:"inherit", outline:"none", background:"#fff", color:T.ink, boxSizing:"border-box" }}
-        />
-        {prixManquant && onEstimatePrice && (
+      {/* ── LE BLOC GÉNÉRAL — PRIX, TITRE, DESCRIPTION, ÉTAT (2026-09-21) ────
+          La carte « Prix de vente » vivait seule ici depuis le 14/07. Elle
+          accueille maintenant les trois autres valeurs générales (demande de
+          XEWER, qui refaisait la même correction sur chaque carte) — UN seul
+          bloc, pas quatre : même style, mêmes tokens, rien de neuf à dessiner.
+          Le prix garde tout ce qu'il avait : champ mis en avant et focus
+          automatique quand il manque (mode identify, 28/07 — publication
+          bloquée sous 1 €, garde du 13/07, job 3d194668 parti à price=NULL),
+          bouton d'estimation, analyse de marché déjà payée. */}
+      <BlocValeursGenerales
+        T={T} t={t} lang={lang}
+        price={price} onPrixChange={applyCentralPrice} prixManquant={prixManquant}
+        estimateError={estimateError}
+        nbSuiveuses={platforms.length}
+        titre={generales?.titre ?? ""} onTitreChange={v => onValeurGenerale?.("titre", v)}
+        description={generales?.description ?? ""} onDescriptionChange={v => onValeurGenerale?.("description", v)}
+        etat={generales?.etat ?? ""} onEtatChange={v => onValeurGenerale?.("etat", v)}
+        enfantsPrix={
           <>
-            <button
-              onClick={onEstimatePrice}
-              disabled={estimating}
-              style={{
-                width:"100%", marginTop:10, padding:"11px", borderRadius:12,
-                border:`1.5px solid ${T.tealDeep}`, background:"none", color:T.tealDeep,
-                fontSize:13, fontWeight:700, fontFamily:"inherit",
-                cursor: estimating ? "not-allowed" : "pointer", opacity: estimating ? 0.6 : 1,
-                display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6,
-              }}
-            >
-              {estimating
-                ? (lang === "en" ? "Checking the market…" : "Analyse du marché…")
-                : <>
-                    {lang === "en" ? "Not sure? Estimate" : "Pas sûr du prix ? Estimer"}
-                    {estimateCost != null && <> · {estimateCost}</>}
-                  </>}
-            </button>
-            <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
-              {lang === "en"
-                ? "Searches actual listings on the same photos and fills the price."
-                : "Cherche les annonces réelles sur les mêmes photos et remplit le prix."}
-            </div>
+            {prixManquant && onEstimatePrice && (
+              <>
+                <button
+                  onClick={onEstimatePrice}
+                  disabled={estimating}
+                  style={{
+                    width:"100%", marginTop:10, padding:"11px", borderRadius:12,
+                    border:`1.5px solid ${T.tealDeep}`, background:"none", color:T.tealDeep,
+                    fontSize:13, fontWeight:700, fontFamily:"inherit",
+                    cursor: estimating ? "not-allowed" : "pointer", opacity: estimating ? 0.6 : 1,
+                    display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6,
+                  }}
+                >
+                  {estimating
+                    ? (lang === "en" ? "Checking the market…" : "Analyse du marché…")
+                    : <>
+                        {lang === "en" ? "Not sure? Estimate" : "Pas sûr du prix ? Estimer"}
+                        {estimateCost != null && <> · {estimateCost}</>}
+                      </>}
+                </button>
+                <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
+                  {lang === "en"
+                    ? "Searches actual listings on the same photos and fills the price."
+                    : "Cherche les annonces réelles sur les mêmes photos et remplit le prix."}
+                </div>
+              </>
+            )}
+            {/* ── L'analyse déjà payée, ICI (2026-07-31) ────────────────────
+                MÊME composant que l'écran Lens, variante « publication » : une
+                ligne repliée sous le champ prix, dépliable pour qui veut
+                vérifier. Une seule source — la réponse lens-analysis déjà
+                facturée — et aucun nouvel appel. Avant, 6 unités de contenu se
+                réduisaient ici à une ligne de titre. */}
+            {!prixManquant && estimateResult && (
+              <AnalyseMarche
+                result={estimateResult}
+                prixAchat={prixAchat}
+                lang={lang}
+                variant="publication"
+              />
+            )}
           </>
-        )}
-        {estimateError && (
-          <div style={{ fontSize:12, fontWeight:600, color:"#B0645A", marginTop:8 }}>{estimateError}</div>
-        )}
-        {/* ── L'analyse déjà payée, ICI (2026-07-31) ────────────────────────
-            MÊME composant que l'écran Lens, variante « publication » : une
-            ligne repliée sous le champ prix, dépliable pour qui veut
-            vérifier. Une seule source — la réponse lens-analysis déjà
-            facturée — et aucun nouvel appel. Avant, 6 unités de contenu se
-            réduisaient ici à une ligne de titre. */}
-        {!prixManquant && estimateResult && (
-          <AnalyseMarche
-            result={estimateResult}
-            prixAchat={prixAchat}
-            lang={lang}
-            variant="publication"
-          />
-        )}
-        <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
-          {lang === "en"
-            ? "Applied to every selected platform. Change a card's price to set it apart."
-            : "Appliqué à toutes les plateformes sélectionnées. Modifie le prix d'une carte pour la dissocier."}
-        </div>
-      </div>
+        }
+      />
 
       <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
         {platforms.map(p => {
@@ -2449,6 +2479,52 @@ function StepGeneration({ generating, generateError, platformListings, processed
             etatVal || null,
             e.price != null && e.price !== "" ? `${e.price}€` : null,
           ].filter(Boolean);
+          // ── LE MARQUEUR (2026-09-21) ────────────────────────────────────
+          // Une carte « suit la valeur générale » ou « a été modifiée à
+          // part ». Sur l'en-tête replié, une seule pastille discrète, et
+          // seulement quand il y a quelque chose à dire — le prix compte,
+          // lui aussi : il est la première valeur générale de cet écran.
+          const champsAPart = dissociees
+            ? CHAMPS_GENERAUX.filter(c => !suitLaGenerale(dissociees, c, p))
+            : [];
+          const aPart = champsAPart.length > 0 || isCustomPrice;
+          // L'état servi à cette plateforme est-il PLUS FLATTEUR que le réel ?
+          // (Le seul cas connu est Vestiaire, qui n'a pas de palier bas — mais
+          // la question se posera à chaque plateforme ajoutée, alors elle est
+          // posée ici, pas dans une liste.)
+          const etatPlusFlatteur = generales?.etat
+            ? (valeurPourPlateforme("etat", generales.etat, p).meilleur === true)
+            : false;
+          // Ce que la conformité a dû faire au texte de cette carte, ou ce que
+          // la plateforme retirera au dépôt. Vide = le texte part intact.
+          const ecarts = ecartsDeConformite(edited, p, {
+            titreGeneral: suitLaGenerale(dissociees ?? {}, "titre", p) ? generales?.titre : "",
+            descriptionGenerale: suitLaGenerale(dissociees ?? {}, "description", p) ? generales?.description : "",
+          }) ?? [];
+          const CLE_ECART = {
+            titreCoupe: "cardAdjustedTitle",
+            descriptionCoupee: "cardAdjustedDescription",
+            symboles: "cardAdjustedSymbols",
+            lbcMentions: "cardAdjustedLbcMentions",
+            lbcHashtags: "cardAdjustedLbcHashtags",
+          };
+          // Étiquette « modifié à part · Rétablir », posée au-dessus d'un champ.
+          const marqueurChamp = (champ) => (
+            dissociees && !suitLaGenerale(dissociees, champ, p) ? (
+              <span style={{ display:"inline-flex", alignItems:"center", gap:6 }}>
+                <span style={{ fontSize:10, fontWeight:700, color:T.tealDeep, background:"rgba(47,158,144,0.12)", borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap" }}>
+                  {t("cardCustomField")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRetablirCarte?.(p, champ)}
+                  style={{ background:"none", border:"none", padding:0, fontSize:10.5, fontWeight:700, color:T.mute, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline" }}
+                >
+                  {t("cardResetToGeneral")}
+                </button>
+              </span>
+            ) : null
+          );
 
           return (
             <div key={p} style={{ background:T.card, borderRadius:18, border: `1px solid ${isOpen ? T.teal : T.border}`, overflow:"hidden" }}>
@@ -2487,6 +2563,18 @@ function StepGeneration({ generating, generateError, platformListings, processed
                         </span>
                       </div>
                     ) : null}
+                    {/* ── LE MARQUEUR, SUR LA CARTE REPLIÉE (2026-09-21) ──
+                        Une ligne de plus SEULEMENT quand il y a quelque chose
+                        à dire. Une carte qui suit tout ne porte rien : dire
+                        « suit la valeur générale » sur cinq cartes sur cinq
+                        n'informe personne et allonge l'écran pour rien. */}
+                    {aPart && (
+                      <div style={{ marginTop:4 }}>
+                        <span style={{ fontSize:10, fontWeight:700, color:T.tealDeep, background:"rgba(47,158,144,0.12)", borderRadius:99, padding:"2px 8px", whiteSpace:"nowrap" }}>
+                          {t("cardCustom")}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <Pencil size={15} color={T.mute} style={{ flexShrink:0, marginLeft:8 }} />
@@ -2494,25 +2582,88 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
               {isOpen && (
                 <div style={{ padding:"0 16px 16px", borderTop:`1px solid ${T.border}` }}>
+                  {/* ── CE QUE LA CONFORMITÉ A DÛ FAIRE (2026-09-21) ──────
+                      « Si la mise en conformité a dû modifier le texte pour
+                      une plateforme (émoji retiré, titre raccourci), la carte
+                      le signale discrètement, pour que le vendeur le voie. »
+                      Ambre, pas rouge : rien n'est cassé, rien n'est bloqué —
+                      c'est une information, et elle ne réclame aucun geste. */}
+                  {(ecarts.length > 0 || etatPlusFlatteur) && (
+                    <div style={{ marginTop:12, padding:"8px 10px", borderRadius:10, background:"#FEF6E7", border:"1px solid #F3DFB5" }}>
+                      {etatPlusFlatteur && (
+                        <div style={{ fontSize:11.5, color:"#7A4B00", lineHeight:1.4 }}>{t("cardConditionBetter")}</div>
+                      )}
+                      {ecarts.map(cle => (
+                        <div key={cle} style={{ fontSize:11.5, color:"#7A4B00", lineHeight:1.4 }}>
+                          {t(CLE_ECART[cle] ?? "cardAdjustedTitle")}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ marginBottom:10, paddingTop:12 }}>
-                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{t("fieldTitleLabel")}</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+                      <span style={{ fontSize:11, color:T.mute2, fontWeight:600 }}>{t("fieldTitleLabel")}</span>
+                      {marqueurChamp("titre")}
+                    </div>
                     <input
                       type="text"
                       value={e.title}
-                      onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } }))}
+                      onChange={ev => (onModifierCarte
+                        ? onModifierCarte(p, "titre", ev.target.value)
+                        : setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } })))}
                       style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13.5, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                     />
                   </div>
 
                   <div style={{ marginBottom:12 }}>
-                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{t("fieldDescriptionLabel")}</div>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+                      <span style={{ fontSize:11, color:T.mute2, fontWeight:600 }}>{t("fieldDescriptionLabel")}</span>
+                      {marqueurChamp("description")}
+                    </div>
                     <textarea
                       value={e.description}
-                      onChange={ev => setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } }))}
+                      onChange={ev => (onModifierCarte
+                        ? onModifierCarte(p, "description", ev.target.value)
+                        : setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } })))}
                       rows={4}
                       style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
                     />
                   </div>
+
+                  {/* ── L'ÉTAT DE CETTE PLATEFORME (2026-09-21) ────────────
+                      Il n'était éditable QUE si le rayon le réclamait (bloc
+                      CarteRayon, 20/09) : une carte dont le rayon ne pose pas
+                      la question n'avait aucun moyen de corriger un état.
+                      Affiché seulement quand la carte est DISSOCIÉE ou quand
+                      il n'y a pas d'état général — sinon le bloc général suffit
+                      et deux champs pour la même valeur se contrediraient. */}
+                  {(!generales?.etat || (dissociees && !suitLaGenerale(dissociees, "etat", p))) && (
+                    <div style={{ marginBottom:12 }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
+                        <span style={{ fontSize:11, color:T.mute2, fontWeight:600 }}>{t("fieldConditionLabel")}</span>
+                        {marqueurChamp("etat")}
+                      </div>
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        {(ETATS_GENERAUX.map(x => etatPourPlateforme(x.libelle, p)?.valeur).filter(Boolean)).map(libelle => {
+                          const actif = String(e.platform_fields?.etat ?? "").trim() === libelle;
+                          return (
+                            <button
+                              key={libelle}
+                              type="button"
+                              onClick={() => onModifierCarte?.(p, "etat", actif ? "" : libelle)}
+                              style={{ padding:"6px 10px", borderRadius:999, fontFamily:"inherit", fontSize:12, cursor:"pointer",
+                                       fontWeight: actif ? 700 : 600,
+                                       border:`1px solid ${actif ? T.tealDeep : T.border}`,
+                                       background: actif ? "#E8F5F3" : T.chip,
+                                       color: actif ? T.tealDeep : T.mute2 }}
+                            >
+                              {libelle}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── LE RAYON, ET LES CHAMPS QUI EN DÉCOULENT (lot B) ──
                       Le rayon vient du pré-calcul (lot A), le choix de la
@@ -2531,25 +2682,37 @@ function StepGeneration({ generating, generateError, platformListings, processed
                     configLocale={platformFieldsConfig[p] ?? []}
                     supabase={supabase}
                     onChoisirRayon={(choix) => onChoisirRayon?.(p, choix)}
-                    onChampChange={(cleNotre, valeur, cleCatalogue) => setEdited(prev => {
-                      const pf = { ...(prev[p]?.platform_fields ?? {}) };
-                      // Une clé qu'on connaît va dans son champ dédié ; les
-                      // autres dans le canal d'aspects de la plateforme —
-                      // exactement là où l'extension va les chercher.
-                      if (cleNotre) {
-                        pf[cleNotre] = valeur;
-                        // Le lien avec la source partagée CASSE pour cette copie :
-                        // sans ça, la propagation réécraserait la correction que
-                        // la personne vient de faire (le geste que la grille
-                        // historique faisait déjà, et qui devait la suivre ici).
+                    onChampChange={(cleNotre, valeur, cleCatalogue) => {
+                      // ⛔ L'ÉTAT CORRIGÉ ICI DISSOCIE AUSSI LA CARTE (21/09).
+                      //    Ce bloc est l'autre porte d'entrée de `etat` : sans
+                      //    ce renvoi, la valeur générale aurait écrasé au
+                      //    changement suivant une correction faite à la main —
+                      //    exactement ce que la garde du lot interdit.
+                      if (cleNotre === "etat" && onModifierCarte) {
+                        onModifierCarte(p, "etat", valeur);
                         noteOverride?.(p, cleNotre);
+                        return;
                       }
-                      else {
-                        const canal = CANAL_ASPECTS[p];
-                        pf[canal] = { ...(pf[canal] && typeof pf[canal] === "object" ? pf[canal] : {}), [cleCatalogue]: valeur };
-                      }
-                      return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
-                    })}
+                      setEdited(prev => {
+                        const pf = { ...(prev[p]?.platform_fields ?? {}) };
+                        // Une clé qu'on connaît va dans son champ dédié ; les
+                        // autres dans le canal d'aspects de la plateforme —
+                        // exactement là où l'extension va les chercher.
+                        if (cleNotre) {
+                          pf[cleNotre] = valeur;
+                          // Le lien avec la source partagée CASSE pour cette copie :
+                          // sans ça, la propagation réécraserait la correction que
+                          // la personne vient de faire (le geste que la grille
+                          // historique faisait déjà, et qui devait la suivre ici).
+                          noteOverride?.(p, cleNotre);
+                        }
+                        else {
+                          const canal = CANAL_ASPECTS[p];
+                          pf[canal] = { ...(pf[canal] && typeof pf[canal] === "object" ? pf[canal] : {}), [cleCatalogue]: valeur };
+                        }
+                        return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
+                      });
+                    }}
                   />
 
                   {/* ── LIVRAISON LEBONCOIN (2026-09-20, demande de Louis) ──
@@ -3825,7 +3988,7 @@ function chargeFiche(etat) {
   const {
     step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
     modeleConfirme, photoOption, background, platformListings, processedPhotos,
-    edited, sharedFields, sharedOverrides, selected,
+    edited, sharedFields, sharedOverrides, selected, dissociees, generales,
   } = etat;
   return {
     v: 1,
@@ -3834,6 +3997,8 @@ function chargeFiche(etat) {
     photoAnalysis, modeleConfirme, photoOption, background,
     platformListings, processedPhotos, edited, sharedFields,
     sharedOverrides: Object.fromEntries(Object.entries(sharedOverrides).map(([k, v]) => [k, [...v]])),
+    dissociees: serialiserDissociations(dissociees),
+    generales,
     selected: [...selected],
   };
 }
@@ -4194,6 +4359,21 @@ export default function ListingPreviewScreen({
   // Plateformes dont le prix a été édité individuellement : le champ central ne
   // les écrase plus (2026-07-14).
   const [customPriced, setCustomPriced] = useState(() => new Set(draft?.customPriced ?? []));
+  // ── DISSOCIATIONS (2026-09-21) ────────────────────────────────────────────
+  // Même rôle que customPriced, un cran plus large : par CHAMP (titre,
+  // description, état) et par plateforme. Une carte dissociée n'est plus
+  // jamais écrasée par la valeur générale — c'est la garde du lot, et elle
+  // survit au brouillon (sinon un rechargement ramènerait la valeur générale
+  // sur une carte que la personne avait mise à part).
+  const [dissociees, setDissociees] = useState(() => lireDissociations(draft?.dissociees));
+  // ── LES TROIS VALEURS GÉNÉRALES (2026-09-21) ──────────────────────────────
+  // État EXPLICITE, pas déduit des copies. Le déduire semblait plus propre —
+  // une seule source de vérité — mais la mise en conformité peut rendre deux
+  // copies littéralement différentes (Vinted réduit les suites de symboles,
+  // eBay coupe à 80) : le champ général se serait vidé sous les doigts au
+  // premier texte qui diverge après conformité. Il est donc gardé à part, et
+  // ENSEMENCÉ une fois depuis les copies (effet ci-dessous).
+  const [generales, setGenerales] = useState(() => draft?.generales ?? { titre: "", description: "", etat: "" });
   // ── Analyse photo optionnelle (chantier 3) ────────────────────────────────
   // photoAnalysis porte la réponse brute de lens-analysis. Elle complète
   // initialListing SANS le remplacer : le contrat (prix_vente_suggere +
@@ -4404,6 +4584,12 @@ export default function ListingPreviewScreen({
     setProcessedPhotos([]);
     setEdited({});
     setCustomPriced(new Set());
+    // Nouvel article : les dissociations et les valeurs générales de
+    // l'ancien n'ont plus d'objet — les garder ferait suivre le texte d'un
+    // article sur un autre (même classe de défaut que la contamination de
+    // listing_url).
+    setDissociees(dissociationsVides());
+    setGenerales({ titre: "", description: "", etat: "" });
     setModeleConfirme(null);
     setPrice(null);
     setPrixAchatSaisi("");
@@ -4626,7 +4812,7 @@ export default function ListingPreviewScreen({
       ...chargeFiche({
         step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
         modeleConfirme, photoOption, background, platformListings, processedPhotos,
-        edited, sharedFields, sharedOverrides, selected,
+        edited, sharedFields, sharedOverrides, selected, dissociees, generales,
       }),
       ...blocageFicheRef.current,
     };
@@ -4676,6 +4862,7 @@ export default function ListingPreviewScreen({
   }, [initializing, done, step, invId, addToStock, prixAchatSaisi, notes, photos, price,
       customPriced, photoAnalysis, modeleConfirme, photoOption, background, platformListings,
       processedPhotos, edited, sharedFields, sharedOverrides, selected, articleSourceMorte,
+      dissociees, generales,
       supabase, userId]);
 
   // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
@@ -4869,6 +5056,8 @@ export default function ListingPreviewScreen({
     if (typeof f.notes === "string") setNotes(f.notes);
     if (f.prixAchatSaisi != null && String(f.prixAchatSaisi) !== "") setPrixAchatSaisi(String(f.prixAchatSaisi));
     if (Array.isArray(f.customPriced)) setCustomPriced(new Set(f.customPriced));
+    if (f.dissociees) setDissociees(lireDissociations(f.dissociees));
+    if (f.generales && typeof f.generales === "object") setGenerales(f.generales);
     // Le gel de la retouche photo (photoOption) n'est PAS restauré : une fiche
     // écrite avant le gel rouvrirait une option qui n'existe plus. L'effet de
     // gel la ramènerait à "original" de toute façon — autant ne pas la poser.
@@ -5532,6 +5721,14 @@ export default function ListingPreviewScreen({
       }
       setSharedFields(shared);
       setSharedOverrides({});
+      // ── LES VALEURS GÉNÉRALES REPARTENT DE ZÉRO (2026-09-21) ────────────
+      // Même raison que les overrides juste au-dessus : nouvelle génération =
+      // nouvelles copies, donc plus aucune exception à protéger. Les trois
+      // valeurs générales sont re-semées juste après par l'effet de semis,
+      // qui donne la priorité au texte de la FICHE quand c'est celui du
+      // vendeur — et pas à ce que l'IA vient de proposer.
+      setDissociees(dissociationsVides());
+      setGenerales({ titre: "", description: "", etat: "" });
 
       setEdited(initialEdited);
       setPlatformListings(data);
@@ -5762,6 +5959,118 @@ export default function ListingPreviewScreen({
   const choisirRayon = (platform, choix) => setEdited(prev => (
     prev[platform] ? { ...prev, [platform]: { ...prev[platform], rayon_choisi: choix } } : prev
   ));
+
+
+  // ══ LA VALEUR GÉNÉRALE, DE BOUT EN BOUT (2026-09-21) ══════════════════════
+  // Trois gestes, et rien d'autre : SEMER, APPLIQUER, RÉTABLIR.
+  //
+  // ⛔ LA GARDE DU LOT : « Une valeur modifiée sur une carte n'est JAMAIS
+  //    écrasée par un changement ultérieur de la valeur générale. » Elle est
+  //    tenue par appliquerGenerale (utils/valeursGenerales.js), qui saute les
+  //    dissociées — et prouvée par scripts/valeurs-generales-selftest.mjs.
+
+  // ── LE TEXTE DE LA FICHE, QUAND C'EST CELUI DU VENDEUR ────────────────────
+  // MÊME RÈGLE que le serveur (generate-listing, bloc « LE TEXTE DU VENDEUR
+  // FAIT FOI ») : un article venu d'un relevé ou du dressing porte le texte de
+  // son annonce, et une saisie à la main est marquée. Tout le reste — Lens,
+  // vocal — est NOTRE brouillon, et l'IA garde la main dessus.
+  // ⚠️ Les deux listes doivent rester identiques. Si l'une bouge, l'autre
+  //    aussi : le serveur décide ce qui PART, cet écran ce qui s'AFFICHE, et
+  //    un écart entre les deux se lit comme un bug d'affichage.
+  const texteDuVendeurFiche = () => {
+    const origine = String(initialListing?.origine ?? "").trim().toLowerCase();
+    const marqueur = (cle) => String(attributV(cle) ?? "").trim().toLowerCase();
+    const propre = (cle) => {
+      const src = marqueur(cle);
+      return src === "vinted" || src === "manuel" || src.startsWith("releve");
+    };
+    const venuDeSaPage = origine.startsWith("releve") || origine === "vinted_sync";
+    const assezLong = (v) => {
+      const t = String(v ?? "").trim();
+      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : "";
+    };
+    return {
+      titre: (propre("titre_source") || venuDeSaPage) ? assezLong(initialListing?.titre) : "",
+      description: (propre("description_source") || venuDeSaPage) ? assezLong(initialListing?.description) : "",
+    };
+  };
+
+  // SEMER — une fois, quand les copies existent et que rien n'a encore été
+  // écrit. Couvre TOUS les chemins d'entrée sans en toucher un seul : une
+  // génération fraîche, une fiche rouverte, un brouillon d'avant ce lot.
+  // Le texte de la FICHE prime sur les copies quand c'est celui du vendeur :
+  // c'est la règle du 21/09 (« un texte qui EXISTE fait foi »), et c'est ce
+  // qui fait que Louis retrouve SON titre dans le champ général, pas celui
+  // que l'IA lui proposait.
+  useEffect(() => {
+    if (!platformListings) return;
+    const pf = [...selected].filter(p => edited[p]);
+    if (!pf.length) return;
+    if (generales.titre || generales.description || generales.etat) return;
+    const duVendeur = texteDuVendeurFiche();
+    const suivant = {
+      titre: duVendeur.titre || valeurCommune(edited, "titre", pf, dissociees),
+      description: duVendeur.description || valeurCommune(edited, "description", pf, dissociees),
+      etat: valeurCommune(edited, "etat", pf, dissociees),
+    };
+    if (!suivant.titre && !suivant.description && !suivant.etat) return;
+    setGenerales(suivant);
+
+    // ── ET LES CARTES REÇOIVENT CE TEXTE (règle du 21/09, point 1) ──────────
+    // « À la publication d'un article qui a déjà un titre / une description,
+    //  les cartes plateformes sont pré-remplies avec CE texte, mis en
+    //  conformité. Aucune régénération. »
+    // Le serveur ne génère plus ce texte depuis ce lot — mais une fiche
+    // ENREGISTRÉE AVANT porte encore la version réécrite par l'IA, et la
+    // rouvrir doit rendre son texte à la personne, pas le texte d'hier.
+    // ⛔ ON NE TOUCHE QU'AUX COPIES INTACTES : une carte dont le texte
+    //    DIFFÈRE de ce que la génération avait produit a été retouchée à la
+    //    main, et on n'écrase jamais une retouche (même critère que
+    //    `activeAiIcon` juste en dessous, qui compare déjà ces deux valeurs).
+    const genere = platformListings?.platforms ?? {};
+    const aRemettre = pf.filter(p => genere[p]
+      && String(edited[p]?.title ?? "") === String(genere[p]?.title ?? "")
+      && String(edited[p]?.description ?? "") === String(genere[p]?.description ?? ""));
+    if (!aRemettre.length) return;
+    for (const champ of ["titre", "description"]) {
+      const valeur = duVendeur[champ];
+      if (!valeur) continue;
+      setEdited(prev => appliquerGenerale(prev, {
+        champ, valeur, plateformes: aRemettre, dissociees,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platformListings, edited, selected]);
+
+  // APPLIQUER — écrit la valeur générale sur toutes les cartes qui la suivent.
+  const poserValeurGenerale = (champ, valeur) => {
+    setGenerales(prev => ({ ...prev, [champ]: valeur }));
+    setEdited(prev => appliquerGenerale(prev, {
+      champ, valeur, plateformes: [...selected], dissociees,
+    }));
+  };
+
+  // DISSOCIER — toute saisie DANS une carte est un geste explicite : la carte
+  // sort du général, exactement comme le prix depuis le 14/07.
+  const modifierCarte = (plateforme, champ, valeur) => {
+    setEdited(prev => {
+      const base = prev[plateforme];
+      if (!base) return prev;
+      if (champ === "titre") return { ...prev, [plateforme]: { ...base, title: valeur } };
+      if (champ === "description") return { ...prev, [plateforme]: { ...base, description: valeur } };
+      return { ...prev, [plateforme]: { ...base, platform_fields: { ...(base.platform_fields ?? {}), etat: valeur } } };
+    });
+    setDissociees(prev => dissocier(prev, champ, plateforme));
+  };
+
+  // RÉTABLIR — un tap, et la carte reprend la valeur générale.
+  const retablirCarte = (plateforme, champ) => {
+    const suivant = rattacher(dissociees, champ, plateforme);
+    setDissociees(suivant);
+    setEdited(prev => appliquerGenerale(prev, {
+      champ, valeur: generales[champ], plateformes: [plateforme], dissociees: suivant,
+    }));
+  };
 
   const activeAiIcon = useMemo(() => {
     const ai = platformListings?.category_icon;
@@ -8382,6 +8691,10 @@ export default function ListingPreviewScreen({
         setPlatformListings(null);
         setProcessedPhotos([]);
         setEdited({});
+        // Rédaction abandonnée : les valeurs générales seront re-semées
+        // depuis les copies fraîches (effet de semis).
+        setDissociees(dissociationsVides());
+        setGenerales({ titre: "", description: "", etat: "" });
       }
       setStep(2);
       return;
@@ -8702,6 +9015,12 @@ export default function ListingPreviewScreen({
             prixAchat={prixAchatSaisi || initialListing?.prix_achat || null}
             carteAOuvrir={carteAOuvrir}
             onCarteOuverte={() => setCarteAOuvrir(null)}
+            // ── LA VALEUR GÉNÉRALE (2026-09-21) ────────────────────────────
+            generales={generales}
+            onValeurGenerale={poserValeurGenerale}
+            dissociees={dissociees}
+            onModifierCarte={modifierCarte}
+            onRetablirCarte={retablirCarte}
           />
         )}
         {step === 3 && (

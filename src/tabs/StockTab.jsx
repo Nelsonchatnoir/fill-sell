@@ -11029,6 +11029,18 @@ const StockTab = memo(function StockTab({
             //    releve_beebs, releve_opla, vinted_liste, vinted_detail,
             //    capture — toutes se valent. Une taille est une taille.
             attributs:   publishItem.attributs   ?? null,
+            // ── QUI A ÉCRIT LE TEXTE DE CET ARTICLE (2026-09-21) ───────────
+            // `origine` manquait à cette liste blanche, et c'est le SEUL
+            // marqueur que portent les articles rattachés : un `releve_beebs`
+            // / `releve_leboncoin` a le texte de son annonce et AUCUN
+            // `attributs.description_source` (184 articles en base, zéro
+            // marqueur). Sans elle, l'écran ne pouvait pas savoir que le titre
+            // et la description affichés sont ceux du vendeur — et proposait
+            // dans le bloc général le texte réécrit par l'IA plutôt que le
+            // sien. C'est ce que Louis THONET a refusé de valider.
+            // MÊME LISTE que le serveur (generate-listing) : les deux doivent
+            // rester d'accord sur qui a écrit quoi.
+            origine:     publishItem.origine     ?? null,
             // Prix connu de la ligne inventaire (2026-07-13, job 3d194668) :
             // pré-remplissage SYNCHRONE de la carte — le fallback DB du
             // stepper existe mais arrive en async, et surtout il ne couvre
