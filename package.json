@@ -55,7 +55,8 @@
     "selftest:valeurs-generales": "node scripts/valeurs-generales-selftest.mjs",
     "apercu:bloc-general": "node scripts/apercu/capture-bloc-general.mjs",
     "selftest:capture-fraicheur": "node scripts/capture-fraicheur-selftest.mjs",
-    "selftest:beebs-rayon-introuvable": "node --import ./scripts/loader-ext.mjs scripts/beebs-rayon-introuvable-selftest.mjs"
+    "selftest:beebs-rayon-introuvable": "node --import ./scripts/loader-ext.mjs scripts/beebs-rayon-introuvable-selftest.mjs",
+    "selftest:taille-rayon-paiement": "node --import ./scripts/loader-ext.mjs scripts/taille-rayon-paiement-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
