@@ -3534,6 +3534,38 @@ async function selectCategory(path, fields = {}, titre = "") {
     throw err;
   }
 
+  // ── LE CATALOGUE EST UNE PHOTO, LA PAGE EST LA VÉRITÉ (2026-09-21) ──────
+  // Job e7dc0cfc (« Trousse rigide Diddl », meminiandmove, 21/09 21:21) :
+  // notre chemin disait « Maison > Cartables et fournitures scolaires >
+  // Trousses », et Beebs avait SORTI ce rayon de Maison pour en faire une
+  // racine, « Fournitures scolaires ». Le niveau 2 ne contenait plus le
+  // libellé, la descente est morte, et le job avec — alors que la RECHERCHE
+  // de Beebs, elle, rend « Trousses » au premier mot (vérifié en direct).
+  //
+  // Le relevé a été refait (docs/beebs-categories-raw.txt, 21/09) et ce job-là
+  // ne se reproduira pas. Mais un catalogue est une PHOTO : Beebs a déjà bougé
+  // trois fois depuis juillet, et il rebougera. Quand notre chemin ne se
+  // navigue plus, on demande donc à Beebs lui-même où vit cette feuille,
+  // AVANT d'échouer. Même fonction que le chemin « catégorie incertaine »,
+  // même garde : aucun succès sans effet constaté, et un mot inconnu de Beebs
+  // rend 0 résultat — on échoue alors comme avant, avec le même message.
+  const feuilleVoulue = String(path[path.length - 1] ?? "").trim();
+  try {
+    await descendreLesNiveaux(path, trigger);
+  } catch (e) {
+    const catalogueDecale = /libell[ée] absent de la liste lue|s'arr[êe]te sur un niveau interm[ée]diaire|feuille terminale mais le chemin continue/i.test(String(e?.message ?? ""));
+    if (!catalogueDecale || !feuilleVoulue) throw e;
+    console.warn(`[beebs] catégorie : le chemin ${JSON.stringify(path)} ne se navigue plus — on demande à la recherche Beebs où vit « ${feuilleVoulue} »`);
+    if (await categorieParRecherche(trigger, feuilleVoulue, titre)) {
+      console.log(`[beebs] catégorie rattrapée par la recherche Beebs sur la feuille « ${feuilleVoulue} » — notre catalogue a pris du retard, le dépôt continue`);
+      return;
+    }
+    throw e;
+  }
+}
+
+/** La descente niveau par niveau, telle qu'elle a toujours été. */
+async function descendreLesNiveaux(path, trigger) {
   for (let i = 0; i < path.length; i++) {
     const levelLabel = path[i];
     const isLast = i === path.length - 1;
