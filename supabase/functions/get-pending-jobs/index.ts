@@ -2417,6 +2417,111 @@ serve(async (req) => {
       }
     }
 
+    // ══ ASPECTS OBLIGATOIRES eBay : LE SERVEUR LES POSE (2026-09-21, GO Nico) ══
+    //
+    // CE QUI S'EST PASSÉ. Le job bb3bb71f (jocabroc8, « Service de toilette
+    // ancien Moulin des Loups ») est resté bloqué alors que sa catégorie (89508,
+    // Collections › Rasage, salle de bains) venait d'entrer au référentiel. Le
+    // gate d'ebay.js refuse de publier tant que le job ne porte pas
+    // `platform_fields.ebayRequiredAspects` — et ce champ n'est écrit QU'UNE
+    // FOIS, à la création, par ListingPreviewScreen (~l.7698). Il n'est jamais
+    // relu. Un job né pendant que sa catégorie était hors référentiel restait
+    // donc bloqué À VIE : les 5 reprises automatiques rejouaient le même refus,
+    // puis needs_user. Il a fallu poser la valeur à la main.
+    //
+    // DÉSORMAIS, ICI, au moment de servir : champ ABSENT + catégorie connue du
+    // référentiel ⇒ on pose la liste, telle qu'elle y est écrite. L'app se
+    // débrouille seule, sans paquet CWS et sans geste humain.
+    //
+    // ⛔ CE QUE CE BLOC NE FAIT PAS, ET NE DOIT JAMAIS FAIRE :
+    //   · réécrire un `ebayRequiredAspects` DÉJÀ présent — posé à la création ou
+    //     par un humain, il fait foi (le filtre teste la PRÉSENCE de la clé, pas
+    //     sa forme : une valeur bizarre reste celle de quelqu'un d'autre) ;
+    //   · toucher à la CATÉGORIE du job — un rayon `choix_humain` ne se
+    //     recalcule pas, on ne fait que LIRE celui qui est déjà posé ;
+    //   · appeler fetch-ebay-aspects. Catégorie hors référentiel ⇒ on ne change
+    //     RIEN : le refus d'ebay.js (« publication NON tentée pour ne pas
+    //     cliquer à l'aveugle ») reste la bonne réponse, et c'est l'app qui
+    //     comble le trou à la création (refetch_category) ou personne.
+    //
+    // ⚠️ UNE LISTE VIDE EST UNE VRAIE RÉPONSE. 89508 n'a AUCUN aspect
+    //    obligatoire : `[]` se pose tel quel et vaut « référentiel vérifié ».
+    //    C'est exactement ce que fait l'app (`required.map(a => a.name)` sur
+    //    zéro requis), et c'est ce que le gate attend (Array.isArray).
+    //
+    // ⚠️ `empty` est accepté comme `ok`, et c'est délibéré : c'est la définition
+    //    d'« utilisable » de l'app elle-même (« la catégorie n'a AUCUN aspect —
+    //    information valable, pas un trou »). Les deux donnent `[]`. `error` et
+    //    `not_found` restent des trous : on ne pose rien.
+    //
+    // ⛔ ÉCRITURE GARDÉE SUR `pending`/`needs_user` (leçon du 12/09) : écrire
+    //    platform_fields pendant qu'un job est en `processing` est écrasé sans
+    //    trace par le rapport de fin de passe (update-job-status remplace la
+    //    colonne entière par le snapshot que l'extension a lu au départ). On
+    //    n'écrit donc que hors passe — et l'objet servi est mis à jour en
+    //    mémoire pour que CE poll-ci porte déjà la liste.
+    // Seuls les NOMS partent sur le job : la liste des valeurs autorisées d'un
+    // aspect (Marque ≈ 19 000 entrées) n'a rien à faire dans un payload de job.
+    let aspectsPoses = 0;
+    {
+      const pfDe = (j: { platform_fields: unknown }) =>
+        (j.platform_fields as Record<string, unknown> | null) ?? {};
+      const catDe = (j: { platform_fields: unknown }) =>
+        String(pfDe(j)["ebayCategoryId"] ?? "").trim();
+      const candidats = out.filter((j) =>
+        j.platform === "ebay"
+        && (j.status === "pending" || j.status === "needs_user")
+        && !("ebayRequiredAspects" in pfDe(j))
+        && /^\d{1,12}$/.test(catDe(j)));
+      if (candidats.length) {
+        try {
+          const cats = [...new Set(candidats.map(catDe))];
+          const { data: refs } = await userClient
+            .from("ebay_item_aspects")
+            .select("category_id, aspects, aspect_count, required_count, status, source, ebay_env, marketplace_id, category_tree_version")
+            .in("category_id", cats)
+            .in("status", ["ok", "empty"]);
+          const parCat = new Map<string, Record<string, unknown>>();
+          for (const r of (refs ?? []) as Array<Record<string, unknown>>) {
+            parCat.set(String(r.category_id), r);
+          }
+          for (const j of candidats) {
+            const r = parCat.get(catDe(j));
+            if (!r) continue; // hors référentiel : on ne change RIEN
+            const liste = (Array.isArray(r.aspects) ? r.aspects as Array<Record<string, unknown>> : [])
+              .filter((a) => a?.required === true && a?.name)
+              .map((a) => String(a.name));
+            const pfNeuf = {
+              ...pfDe(j),
+              ebayRequiredAspects: liste,
+              ebay_aspects_reference: {
+                le: new Date().toISOString(),
+                categorie: catDe(j),
+                source: `ebay_item_aspects (${String(r.source ?? "?")}, ${String(r.ebay_env ?? "?")} ` +
+                  `${String(r.marketplace_id ?? "?")}, arbre v${String(r.category_tree_version ?? "?")}, statut ${String(r.status ?? "?")})`,
+                aspect_count: Number(r.aspect_count ?? 0),
+                required_count: Number(r.required_count ?? 0),
+                pose_par: "get-pending-jobs (le champ manquait sur le job, le référentiel l'avait)",
+              },
+            };
+            const { data: maj } = await userClient
+              .from("cross_post_jobs")
+              .update({ platform_fields: pfNeuf })
+              .eq("id", j.id)
+              .in("status", ["pending", "needs_user"])
+              .select("id");
+            if (!(maj ?? []).length) continue; // sorti de pending entre-temps : on ne sert pas une valeur non écrite
+            (j as { platform_fields: unknown }).platform_fields = pfNeuf;
+            aspectsPoses++;
+            console.log(
+              `[get-pending-jobs] ebay ${String(j.id).slice(0, 8)} : aspects obligatoires posés depuis le ` +
+              `référentiel (cat. ${catDe(j)}, ${liste.length} requis sur ${Number(r.aspect_count ?? 0)})`,
+            );
+          }
+        } catch (_e) { /* best-effort : jamais un point de panne — le job est servi tel quel */ }
+      }
+    }
+
     let heldPipeline = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const pfOf = (j: { platform_fields: unknown }) =>
@@ -2760,6 +2865,7 @@ serve(async (req) => {
       (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : "") +
       (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
       (heldRetraitSansLien ? `, ${heldRetraitSansLien} retrait(s) retenu(s) (sans lien : attente, jamais par titre)` : "") +
+      (aspectsPoses ? `, ${aspectsPoses} job(s) ebay complété(s) (aspects obligatoires posés depuis le référentiel)` : "") +
       (heldBeebsInterdit ? `, ${heldBeebsInterdit} dépôt(s) beebs → needs_user (article refusé par le catalogue Beebs)` : "") +
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : "") +
       (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
