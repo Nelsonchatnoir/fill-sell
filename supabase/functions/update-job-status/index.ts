@@ -9,12 +9,19 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // la logique qui les déclenche (même convention que src/*/textes.js).
 import {
   compteVendeurEbayInactif,
+  fuiteDeDeveloppeur,
   motsAspectAveugle,
   raisonAspectAveugle,
   SOURCE_EBAY_COMPTE_VENDEUR_INACTIF,
   type SourceCategorie,
 } from "../_shared/textes-jobs.ts";
 import { estPageInscriptionVendeurEbay } from "../_shared/ebay-page-vendeur.ts";
+import {
+  derniereFinDeJob,
+  estPageDeConnexionPlateforme,
+  estPageDeConnexionQuelconque,
+} from "../_shared/pages-de-job.ts";
+import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shared/vocabulaire-developpeur.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -816,7 +823,9 @@ serve(async (req) => {
           (Array.isArray(pfBody.serverRequired) && pfBody.serverRequired.length > 0) ||
           (Array.isArray(pfBody.server_required_fields) && pfBody.server_required_fields.length > 0)
         );
-        const wwsBody = (pfBody?.work_window_state ?? null) as Record<string, unknown> | null;
+        // Liste des fins (0.6.50+) si elle existe, case at_end sinon —
+        // derniereFinDeJob lit toujours la DERNIÈRE tentative.
+        const finBody = derniereFinDeJob(pfBody);
         if (!nommeUnChamp) {
           const { data: jrow } = await userClient
             .from("cross_post_jobs")
@@ -826,11 +835,10 @@ serve(async (req) => {
           if (jrow?.platform === "ebay") {
             const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
             // Le relevé du body fait foi : rearmBounded et la branche d'échec
-            // sec estampillent at_end JUSTE AVANT d'appeler cette fonction.
+            // sec estampillent la fin JUSTE AVANT d'appeler cette fonction.
             // La base ne sert que de repli pour les builds qui ne joignent pas
             // leur platform_fields — et seulement si le body n'en porte aucun.
-            const wws = (wwsBody ?? pfBase.work_window_state ?? null) as Record<string, unknown> | null;
-            const atEnd = (wws?.at_end ?? null) as Record<string, unknown> | null;
+            const atEnd = finBody ?? derniereFinDeJob(pfBase);
             if (estPageInscriptionVendeurEbay(atEnd?.tab_url)) {
               const pfSrc = (pfBody ?? pfBase);
               const precedent = (pfSrc.compte_vendeur_inactif ?? pfBase.compte_vendeur_inactif ?? null) as
@@ -1433,32 +1441,64 @@ serve(async (req) => {
     }
     const SESSION_REQUISE_RE = /^(?:Connexion|Reconnexion)\s+\S+\s+requise/i;
     const PAGE_AUTH_SUPPRESSION_RE = /^Page inattendue pour une suppression \S+ : (\S+)/i;
-    const estUrlDeConnexion = (u: string): boolean => {
-      try {
-        const url = new URL(u);
-        const h = url.hostname, p = url.pathname;
-        if (/(^|\.)beebs\.app$/i.test(h)) return /\/(login|signin|connexion)|\/auth(\/|$)/i.test(p);
-        if (/(^|\.)signin\.ebay\.(fr|com)$/i.test(h)) return true;
-        if (/(^|\.)auth\.leboncoin\.fr$/i.test(h)) return true;
-        if (/(^|\.)leboncoin\.fr$/i.test(h)) return p.startsWith("/connexion");
-        if (/(^|\.)vinted\.(fr|com)$/i.test(h)) return /\/(auth|login|member\/signup_login)/i.test(p);
-      } catch { /* pas une URL : pas une page de connexion */ }
-      return false;
-    };
+    // Les murs de connexion, plateforme par plateforme, vivent dans
+    // _shared/pages-de-job.ts — verrouillés par un selftest.
     const SESSION_ATTENTE_MIN = 60;
     let pfAttenteSession: Record<string, unknown> | null = null;
-    if ((statutEffectif === "pending" || statutEffectif === "failed") && typeof body.error === "string") {
-      const mPage = body.error.match(PAGE_AUTH_SUPPRESSION_RE);
-      const sessionMorte = SESSION_REQUISE_RE.test(body.error) || (mPage != null && estUrlDeConnexion(mPage[1]));
-      if (sessionMorte) {
+    if (statutEffectif === "pending" || statutEffectif === "failed") {
+      // ══════════════════════════════════════════════════════════════════
+      // DEUXIÈME DÉCLENCHEUR : L'ADRESSE DE FIN (2026-09-21)
+      // ══════════════════════════════════════════════════════════════════
+      // Jusqu'ici, seul le TEXTE du verdict pouvait déclencher l'attente de
+      // session. Résultat mesuré sur le parc : sur les 32 jobs arrêtés
+      // devant un mur de connexion (beebs.app/fr/auth ×25,
+      // vinted.fr/member/register/select_type ×7), 13 ont reçu le bon
+      // message et les autres ont lu « restée en attente trop longtemps »,
+      // « publication non confirmée » — ou rien du tout. Le handler ne
+      // reconnaît pas toujours le mur ; l'ADRESSE, elle, ne ment jamais.
+      //
+      // ⛔ `/member/register/select_type` N'EST PAS LA PREUVE D'UNE ABSENCE
+      //    DE COMPTE : c'est la page où Vinted renvoie TOUT visiteur non
+      //    connecté. On ne sait pas distinguer les deux, donc on ne
+      //    l'affirme pas — le message est le même pour tout le monde.
+      // ⛔ L'hôte doit être celui de la plateforme du job : sinon un job
+      //    Vinted fini sur beebs.app dirait « reconnecte-toi à Vinted ».
+      // ⚠️ Un verdict qui NOMME un champ sait déjà ce qu'il demande : il
+      //    n'est jamais recouvert par l'adresse (il l'est toujours par le
+      //    texte, comportement d'origine inchangé).
+      const brutVerdict = typeof body.error === "string" ? body.error : "";
+      const mPage = brutVerdict.match(PAGE_AUTH_SUPPRESSION_RE);
+      const parLeTexte = brutVerdict !== "" &&
+        (SESSION_REQUISE_RE.test(brutVerdict) || (mPage != null && estPageDeConnexionQuelconque(mPage[1])));
+      const pfBodyS = (body.platform_fields && typeof body.platform_fields === "object"
+        ? body.platform_fields : null) as Record<string, unknown> | null;
+      const nommeUnChampS = pfBodyS != null && (
+        pfBodyS.needsUserField != null ||
+        (Array.isArray(pfBodyS.champs_a_completer) && pfBodyS.champs_a_completer.length > 0) ||
+        (Array.isArray(pfBodyS.serverRequired) && pfBodyS.serverRequired.length > 0) ||
+        (Array.isArray(pfBodyS.server_required_fields) && pfBodyS.server_required_fields.length > 0)
+      );
+      // Pré-filtre SANS lecture : la quasi-totalité des verdicts n'est pas
+      // devant un mur, et cette fonction est le chemin le plus chaud du
+      // produit. On ne lit la ligne du job que si l'adresse peut l'être.
+      const finBodyS = derniereFinDeJob(pfBodyS);
+      const peutEtreUnMur = !nommeUnChampS && estPageDeConnexionQuelconque(finBodyS?.tab_url);
+      if (parLeTexte || peutEtreUnMur) {
         try {
           const { data: jrow } = await userClient
             .from("cross_post_jobs")
             .select("platform, action, platform_fields")
             .eq("id", jobId)
             .maybeSingle();
-          if (jrow?.platform) {
-            const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+          const pfBaseS = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+          // La liste des fins (0.6.50+) si elle existe, la case at_end sinon —
+          // celle du body d'abord, la base en repli pour les builds qui ne
+          // joignent pas leur platform_fields.
+          const finS = finBodyS ?? derniereFinDeJob(pfBaseS);
+          const parLAdresse = !nommeUnChampS
+            && estPageDeConnexionPlateforme(jrow?.platform, finS?.tab_url);
+          if (jrow?.platform && (parLeTexte || parLAdresse)) {
+            const pfBase = pfBaseS;
             const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
               ? body.platform_fields : pfBase) as Record<string, unknown>;
             const attentePrec = (pfBody.attente_session ?? pfBase.attente_session ?? null) as Record<string, unknown> | null;
@@ -1475,11 +1515,15 @@ serve(async (req) => {
                 depuis: typeof attentePrec?.depuis === "string" ? attentePrec.depuis : maintenant,
                 observations: (Number(attentePrec?.observations ?? 0) || 0) + 1,
                 derniere: maintenant,
-                motif: body.error.slice(0, 300),
+                motif: brutVerdict ? brutVerdict.slice(0, 300) : null,
+                // Ce qui a tranché : le texte du verdict, ou l'adresse de la
+                // page de fin. La distinction se relit en SQL.
+                reconnu_par: parLeTexte ? "texte du verdict" : "adresse de fin",
+                page_de_fin: parLAdresse ? String(finS?.tab_url ?? "").slice(0, 300) : null,
                 pose_par: "update-job-status (session morte = attente)",
               },
             };
-            const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+            const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
             const quoi = jrow.action === "delete" ? "le retrait de l'annonce"
               : jrow.action === "republish" ? "la republication" : "la publication";
             statutEffectif = "pending";
@@ -2003,6 +2047,12 @@ serve(async (req) => {
         // G4a — fuite de développeur ENTIÈREMENT technique (nom de champ interne,
         // chemin de fichier source, catégorie non mappée). Geste utile : régénérer.
         const G4A_RE = /platform_fields\.[a-zA-Z_]+ absent|non mappé vers le catalogue|Catégorie\s*:\s*feuille .* introuvable/i;
+        // G5 — vocabulaire de développeur, quelle qu'en soit la cause : le
+        // motif vit dans _shared/vocabulaire-developpeur.ts, avec le selftest
+        // qui le passe sur les VRAIS messages du parc (un motif recopié dérive,
+        // et ça s'est produit en écrivant ce contrôle-là — cf. le fichier).
+        // Les causes CONNUES (G1, G4a) sont testées AVANT : elles gardent leur
+        // texte précis, G5 n'attrape que ce que personne n'a su nommer.
         let clair: string | null = null;
         if (G1_RE.test(brut)) {
           clair = statutEffectif === "pending"
@@ -2041,6 +2091,45 @@ serve(async (req) => {
                 ? "Ton annonce a été retirée et n'est pas encore revenue en ligne — le problème vient de chez nous, pas de ton annonce. On la reprend automatiquement ; rien à faire de ton côté, et rien n'est perdu (titre, description, photos et champs sont sauvegardés)."
                 : "Il nous manque la catégorie de cette annonce pour la redéposer. Ton annonce est toujours en ligne, rien n'a été touché — on la reprend automatiquement.")
             : "Cet article n'a pas encore de catégorie sur cette plateforme. Régénère son annonce depuis l'app, puis relance la publication.";
+        } else if (porteDuVocabulaireDeDeveloppeur(brut)) {
+          // ══════════════════════════════════════════════════════════════
+          // G5 — FUITE DE DÉVELOPPEUR, FILET FERMÉ (2026-09-21)
+          // ══════════════════════════════════════════════════════════════
+          // G1 et G4a nomment des signatures CONNUES. G5 fait l'inverse : il
+          // ne reconnaît pas une cause, il reconnaît du VOCABULAIRE QUI N'A
+          // RIEN À FAIRE SOUS LES YEUX D'UN VENDEUR — chemin de fichier, nom
+          // de fonction, identifiant interne, route de plateforme, exception
+          // JS, fragment de DOM. Peu importe d'où ça vient et ce que ça veut
+          // dire : ça ne sort pas.
+          //
+          // Cas fondateur (job 7678a1ed, adamchocho13, 21/09) :
+          //   « Formulaire eBay non atteint (page actuelle: /lstng/error).
+          //     categoryId=139971 probablement refusé par /sl/list — vérifier
+          //     l'id dans src/utils/ebayCategories.js (arbre
+          //     docs/ebay-categories-raw.txt). »
+          // Mesuré : l'app le neutralisait déjà (humanizeJobError voit « .js »
+          // et bascule sur son générique), donc personne n'a lu ce chemin.
+          // Mais le prix de ce filet est qu'il JETTE le message entier : la
+          // personne lisait « un imprévu technique », sans la plateforme ni
+          // l'étape. Ici on écrit un texte propre À LA PLACE, et le brut part
+          // dans error_technique — requêtable, jamais affiché.
+          //
+          // ⛔ CE TEXTE NE DEVINE RIEN. La ligne d'adamchocho13 accusait un
+          //    categoryId « probablement refusé » ; la vraie cause était
+          //    ailleurs (compte eBay pas encore vendeur). Un message qui
+          //    aurait dit « change ton rayon » l'aurait envoyé travailler
+          //    pour rien. On dit l'étape, à qui est le problème, et le geste.
+          const { data: jFuite } = await userClient
+            .from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+          clair = fuiteDeDeveloppeur(
+            String(jFuite?.platform ?? ""),
+            String(jFuite?.action ?? "publish"),
+            statutEffectif === "pending",
+          );
+          console.log(
+            `[update-job-status] userId=${user.id} job=${jobId} — vocabulaire de développeur ` +
+            `retiré de l'affichage (marqueur « ${marqueurDeDeveloppeur(brut)} », brut conservé)`,
+          );
         }
         if (clair) {
           messageEffectif = clair;
