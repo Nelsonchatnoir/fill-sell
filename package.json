@@ -33,6 +33,7 @@
     "selftest:opla-catalogue": "node scripts/opla-catalogue-selftest.mjs",
     "selftest:opla-resolution": "deno run --allow-read scripts/opla-resolution-selftest.ts",
     "selftest:opla-completion": "deno run --allow-read scripts/opla-completion-selftest.ts",
+    "selftest:ebay-page-vendeur": "deno run scripts/ebay-page-vendeur-selftest.ts",
     "gen:opla-catalogue": "node scripts/gen-opla-catalogue.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",
