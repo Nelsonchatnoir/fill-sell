@@ -105,13 +105,14 @@ export function transporteursPlausibles(format) {
   return [];
 }
 
-/** Ce que le job doit porter, à partir de la copie Leboncoin. Rien si on ne
- *  sait rien : un job sans ces clés se comporte exactement comme avant. */
-export function champsColisLeboncoin(pf) {
-  const sortie = {};
-  const format = String(pf?.lbcFormatColis ?? '').trim() || formatLeboncoin(pf?.format_colis);
-  if (format) sortie.lbcFormatColis = format;
-  const choisis = Array.isArray(pf?.lbcTransporteurs) ? pf.lbcTransporteurs.filter(Boolean) : null;
-  if (choisis?.length) sortie.lbcTransporteurs = choisis;
-  return sortie;
-}
+// ── `champsColisLeboncoin()` SUPPRIMÉE le 2026-09-21 ───────────────────────
+// Elle construisait un sous-ensemble de platform_fields pour le job. Elle n'a
+// JAMAIS été appelée : ni l'app, ni le serveur, ni l'extension, ni un selftest.
+// Et pour cause — `platform_fields` part EN ENTIER dans le job, donc
+// `lbcFormatColis` et `lbcTransporteurs` y sont déjà, posés par
+// CarteLivraisonLeboncoin. Un filtre en plus n'aurait rien ajouté qu'un
+// endroit de plus où les oublier.
+//
+// ⚠️ `nomTransporteur(cle)` (juste au-dessus) est dans le même cas : aucun
+//    appelant. Elle RESTE — Nico n'a tranché que celle-ci, et on ne supprime
+//    pas du code de sa propre initiative.
