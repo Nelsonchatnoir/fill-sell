@@ -6,8 +6,26 @@
 # clic de navigation par branche. Remplace le relevé partiel du 8 juillet
 # dont la racine Maison était tronquée après "Cuisine".
 #
-# 5 racines, 688 nœuds. Indentation 2 espaces = 1 niveau. Une ligne sans
+# 6 racines, 688 nœuds. Indentation 2 espaces = 1 niveau. Une ligne sans
 # enfant est une feuille sélectionnable.
+#
+# ── RE-RELEVÉ COMPLET DU 21 SEPTEMBRE 2026 (session connectée) ──────────
+# Méthode : parcours en profondeur du sélecteur lui-même, 688 clics, 0 erreur,
+# 12 secondes — chaque feuille atteinte pour de vrai, aucune déduction.
+# Déclencheur : le job e7dc0cfc (« Trousse rigide Diddl », meminiandmove,
+# 21/09 21:21) est mort sur « Catégorie: libellé absent de la liste lue —
+# niveau 2/3 ("Cartables et fournitures scolaires") […] Options réellement
+# affichées par Beebs: [Petit électroménager, Cuisine, Linge de maison,
+# Meubles, Literie, Décoration, Jardin et bricolage, Valises et bagages] ».
+#
+# L'ÉCART, MESURÉ FEUILLE À FEUILLE contre le relevé du 9 juillet : 579
+# feuilles des deux côtés, 11 déplacées, tout le reste identique.
+#   · « Cartables et fournitures scolaires » a QUITTÉ Maison : c'est
+#     désormais une RACINE, « Fournitures scolaires », et ses dix feuilles
+#     ont remonté d'un niveau ;
+#   · « Porte-clés (femme) » s'appelle maintenant « Porte-clés ».
+# Ordre des racines à l'écran le 21/09 : Mode · Jeux, jouets et loisirs ·
+# Hygiène et beauté · Fournitures scolaires · Puériculture · Maison.
 
 - Jeux, jouets et loisirs
   - Cartes, figurines et collectibles
@@ -256,7 +274,7 @@
       - Paréos (femme)
       - Parapluies
       - Accessoires de sport (femme)
-      - Porte-clés (femme)
+      - Porte-clés
       - Autres accessoires (femme)
     - Chaussures (femme)
       - Bottes (femme)
@@ -488,6 +506,17 @@
   - Accessoires de beauté
     - Trousses de toilette
     - Accessoires de coiffure
+- Fournitures scolaires
+  - Cartables
+  - Calculatrices
+  - Lots de fournitures scolaires
+  - Trousses
+  - Ecriture et correction
+  - Tracer, couper et coller
+  - Cahiers, feuilles et protections
+  - Agendas et cahiers de texte
+  - Classeurs, trieurs et porte-vues
+  - Boites à goûter
 - Puériculture
   - Poussettes
     - Poussettes citadines
@@ -638,17 +667,6 @@
     - Bloque-portes et placards
     - Sécurité extérieure
 - Maison
-  - Cartables et fournitures scolaires
-    - Cartables
-    - Lots de fournitures scolaires
-    - Trousses
-    - Ecriture et correction
-    - Tracer, couper et coller
-    - Cahiers, feuilles et protections
-    - Agendas et cahiers de texte
-    - Classeurs, trieurs et porte-vues
-    - Calculatrices
-    - Boites à goûter
   - Petit électroménager
     - Cuiseurs
     - Mixeurs

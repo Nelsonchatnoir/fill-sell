@@ -485,7 +485,11 @@ const HORS_MODE = {
   // parapluie = feuilles sœurs sous Lits et berceaux).
   "🚼": ["Puériculture", "Chambre et nuit", "Lits et berceaux", "Lits bébé"],
   // ⚠️ "Ecriture" SANS accent (libellé exact du relevé).
-  "🖋️": ["Maison", "Cartables et fournitures scolaires", "Ecriture et correction"],
+  // ⚠️ RELEVÉ LIVE DU 21/09 : Beebs a SORTI ce rayon de « Maison » pour en
+  //    faire une RACINE, « Fournitures scolaires », d'un niveau moins profond.
+  //    Le chemin d'avant ne se navigue plus — le job e7dc0cfc est mort dessus
+  //    (« libellé absent de la liste lue — niveau 2/3 »).
+  "🖋️": ["Fournitures scolaires", "Ecriture et correction"],
   "☕": ["Maison", "Petit électroménager", "Machines à café"],
   // DÉFAUT ASSUMÉ : la regex 🥣 couvre blender/robot — seule feuille
   // "Mixeurs" au relevé (Cuiseurs/Yaourtières = sœurs).
