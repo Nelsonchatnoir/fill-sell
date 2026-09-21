@@ -591,7 +591,7 @@ serve(async (req) => {
       }
     }
 
-    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null; attributs?: Record<string, unknown> | null };
+    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null; attributs?: Record<string, unknown> | null; origine?: string | null };
     if (item_data) {
       item = item_data;
     } else {
@@ -600,7 +600,12 @@ serve(async (req) => {
         // attributs (2026-09-07) : on y lit description_source, le SEUL marqueur qui
         // dit si la description vient de l'annonce Vinted de la vendeuse (verrou)
         // ou d'un texte que nous avons nous-mêmes produit (Lens, vocal).
-        .select("id, titre, marque, description, type, statut, prix_vente, attributs")
+        // origine (2026-09-21) : le SECOND marqueur, et le seul dont disposent
+        // les articles rattachés — un `releve_beebs` / `releve_leboncoin` porte
+        // le texte de son annonce et NE PORTE AUCUN description_source (184
+        // articles en base, zéro marqueur). C'est très exactement le trou par
+        // lequel le texte de Louis THONET est passé.
+        .select("id, titre, marque, description, type, statut, prix_vente, attributs, origine")
         .eq("id", inventaire_id)
         .single();
       if (itemErr || !data) {
@@ -1063,25 +1068,81 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     // ⚠️ RESTE OUVERT : une description SAISIE À LA MAIN par l'utilisateur
     // mériterait le même verrou, mais rien ne la distingue aujourd'hui d'une
     // description d'analyse — à trancher séparément, on ne devine pas ici.
+    //   → TRANCHÉ le 07/09 pour 'manuel', puis ÉLARGI le 21/09 (ci-dessous).
+    //
+    // ═══════════════════════════════════════════════════════════════════════
+    // LE TEXTE DU VENDEUR FAIT FOI — TITRE COMPRIS (2026-09-21)
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🚨 CE QUE LE VERROU DU 07/09 NE COUVRAIT PAS, ET QUI A BLOQUÉ LOUIS
+    //    THONET (Business, 59,99 €/mois) : son article vient du RELEVÉ BEEBS.
+    //    Un article rattaché porte `origine = 'releve_beebs'` et sa description
+    //    est celle de son annonce — mais il ne porte AUCUN
+    //    `attributs.description_source`. Mesuré en base le 21/09 : sur les 184
+    //    articles issus d'un relevé (leboncoin 121, beebs 48, ebay 14, opla 1),
+    //    ZÉRO porte ce marqueur. Le verrou ne pouvait donc jamais s'armer pour
+    //    eux, et l'IA réécrivait le texte de la personne à chaque génération.
+    // 🚨 ET LE TITRE N'AVAIT AUCUN VERROU DU TOUT. Aucun marqueur, aucune
+    //    condition : il était réécrit même quand la description, elle, était
+    //    protégée. Mesuré sur 30 jours (publications d'articles porteurs d'un
+    //    texte de vendeur) : 276 titres réécrits sur 457.
+    //
+    // LA RÈGLE, arbitrée par Nico le 21/09 : « Un texte qui EXISTE fait foi :
+    // celui que le vendeur a écrit ou modifié, ou celui qui vient d'une de ses
+    // annonces relevées (c'est son texte). L'IA ne le réécrit JAMAIS. L'IA ne
+    // rédige que quand il n'y a PAS de texte (article neuf photographié, Lens). »
+    //
+    // ⛔ CE QUI RESTE RÉDIGÉ PAR L'IA, ET C'EST INTACT : un article créé par le
+    //    Lens ou par la saisie vocale. Sa description est NOTRE brouillon
+    //    d'analyse, son titre NOTRE formulation — les figer serait une
+    //    régression de qualité, et aucun litige à couvrir puisque personne n'a
+    //    signalé de défaut dedans. `origine` est alors null ou absente et
+    //    aucun marqueur n'est posé : comportement d'avant, à l'identique.
+    // ⛔ Le client peut toujours forcer la génération avec
+    //    description_verrouillee:false (bouton « régénérer le texte »).
+    const attributsItem = item.attributs as Record<string, { v?: unknown }> | null | undefined;
+    const marqueurSource = (cle: string) => String(attributsItem?.[cle]?.v ?? "").trim().toLowerCase();
+    const origineItem = String(item.origine ?? "").trim().toLowerCase();
+    // Un texte RELEVÉ sur la propre annonce du vendeur est SON texte : la page
+    // qu'on a lue est la sienne. Les quatre relevés valent le marqueur.
+    const venuDUnReleve = origineItem.startsWith("releve");
+    // `vinted_sync` : titre ET description sont ceux du dressing de la
+    // personne. La description porte déjà description_source='vinted' depuis le
+    // 07/09 ; le TITRE n'avait rien, et c'est pourtant la même page.
+    const venuDuDressing = origineItem === "vinted_sync";
+    const texteDuVendeur = (cle: string) => {
+      const src = marqueurSource(cle);
+      return src === "vinted" || src === "manuel" || src.startsWith("releve");
+    };
     const descriptionVendeuse = (() => {
       if (body.description_verrouillee === false) return null;
-      // 'vinted' = rapatriée de l'annonce ; 'manuel' = saisie à la main dans la
-      // modale d'édition (2026-09-07). Les deux sont le texte de la personne,
-      // les deux se publient tels quels. Tout le reste — description d'analyse
-      // Lens ou vocale, dont l'origine est indistinguable — reste rédigé par
-      // plateforme, comme avant.
-      const src = String(
-        (item.attributs as Record<string, { v?: unknown }> | null | undefined)?.description_source?.v ?? "",
-      );
-      const texteDeLaPersonne = src === "vinted" || src === "manuel" || body.description_verrouillee === true;
-      if (!texteDeLaPersonne) return null;
+      const deLaPersonne = texteDuVendeur("description_source") || venuDUnReleve || venuDuDressing
+        || body.description_verrouillee === true;
+      if (!deLaPersonne) return null;
+      // Une description vide ou d'UN SEUL MOT ne dit rien de l'article : l'IA
+      // reprend alors la main (seule exception, demandée par Nico le 07/09).
       const t = String(item.description ?? "").trim();
       return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
     })();
+    const titreVendeur = (() => {
+      if (body.titre_verrouille === false) return null;
+      const deLaPersonne = texteDuVendeur("titre_source") || venuDUnReleve || venuDuDressing
+        || body.titre_verrouille === true;
+      if (!deLaPersonne) return null;
+      // Même seuil que la description : un titre d'un seul mot ne dit rien, et
+      // une chaîne vide encore moins — l'IA reprend la main.
+      const t = String(item.titre ?? "").trim();
+      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
+    })();
+    const traceTexteVendeur = {
+      texte_vendeur_origine: origineItem || null,
+      texte_vendeur_description: Boolean(descriptionVendeuse),
+      texte_vendeur_titre: Boolean(titreVendeur),
+    };
     const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
       apiKey: ANTHROPIC_KEY, platforms: platforms as string[],
       itemContext, item, canonicalProvided, trackClaude,
       descriptionFournie: descriptionVendeuse,
+      titreFourni: titreVendeur,
     });
 
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo
@@ -1119,6 +1180,12 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         ...(inventaire_id ? { inventaire_id: String(inventaire_id) } : {}),
         ...traceEtat,
         ...traceIsbn,
+        // Qui a écrit le texte qui part (2026-09-21) : sans ces trois clés, on
+        // ne peut pas remesurer « combien de textes de vendeurs l'IA réécrit
+        // encore » autrement qu'en comparant après coup les jobs à la fiche —
+        // ce qu'il a fallu faire le 21/09, et qui ne dit rien des générations
+        // qui n'ont pas abouti à une publication.
+        ...traceTexteVendeur,
         claude_calls: cost.claude_calls,
         claude_input_tokens: cost.claude_in,
         claude_output_tokens: cost.claude_out,

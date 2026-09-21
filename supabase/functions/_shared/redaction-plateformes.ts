@@ -129,7 +129,7 @@ const LANG_DIRECTIVE: Record<string, string> = {
 // contenu du prompt, il s'incrémente à chaque deploy même sans changement de
 // texte. À bumper à CHAQUE modification de PLATFORM_CFG.system, de
 // REDACTION_DIRECTIVE ou de PLATFORM_LIMITS.
-export const VERSION_PROMPT = "2026-09-06a"; // eBay en français (lot 2)
+export const VERSION_PROMPT = "2026-09-21a"; // titre de la vendeuse verrouillé + état imposé quand il est connu
 
 // ── Limites de caractères par plateforme (2026-07-29) ───────────────────────
 // PROVENANCE de chaque chiffre — à mettre à jour avec la source, jamais « de
@@ -287,6 +287,19 @@ ${hashtagBloc}`;
 // Vinted créés avant le 08/09 (job f3a5dce8), sans tirer ce module entier.
 // Appliquée ici à la GÉNÉRATION, pour toutes les plateformes, comme avant.
 import { tempererMajuscules } from "./titre-majuscules.ts";
+// ── L'ÉTAT : une seule correspondance, partagée avec l'app (2026-09-21) ─────
+// Déplacement pur du bloc « ÉTAT : UNE SEULE VALEUR, MAPPÉE » (2026-08-31) :
+// même table, même classeur, mêmes libellés. Il en sort pour que l'écran de
+// publication puisse traduire l'« État général » sans en écrire une seconde.
+import {
+  ETAT_PAR_PLATEFORME, tierEtat, DEFAUT_ETAT, retirerEtatContredit,
+} from "./etat-plateformes.js";
+// Le module partagé est en .js — la seule forme que Deno ET Vite savent lire
+// sans transpilation. TypeScript en infère des types littéraux très étroits,
+// alors que ce fichier-ci indexe la table avec un nom de plateforme
+// quelconque. On lui redonne le type qu'elle avait quand elle vivait ici, et
+// rien d'autre : ni la table ni les valeurs ne changent.
+const ETAT_TABLE = ETAT_PAR_PLATEFORME as unknown as Record<string, Record<string, string>>;
 
 // Tronquage de sécurité au dernier mot entier (jamais au milieu d'un mot, et
 // jamais au milieu d'un hashtag : on coupe sur une frontière d'espace).
@@ -392,7 +405,41 @@ const DIRECTIVE_DESCRIPTION_FOURNIE =
   `Renvoie "description": "" (chaîne vide) et concentre-toi sur "title" et "platform_fields". ` +
   `N'essaie ni de la résumer, ni de l'améliorer, ni de la reformuler.`;
 
-export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie }: {
+// ── LE TITRE DE LA VENDEUSE NE SE RÉÉCRIT PAS NON PLUS (2026-09-21) ────────
+// Le verrou du 07/09 ne couvrait QUE la description. Le titre, lui, n'a jamais
+// eu de protection — ni verrou, ni marqueur, rien : chaque génération le
+// réécrivait, même quand l'article portait le titre écrit par la personne.
+// Mesuré sur 30 jours, sur les seules publications d'articles porteurs d'un
+// texte de vendeur : 276 titres réécrits sur 457, contre 124 descriptions.
+// C'est le premier défaut vu par Louis THONET — « Rangement Blanc et Orange
+// pour 12 pots et 12 couvercles pour yaourtière Multidélices » lui est revenu
+// en « Rangement blanc et orange pour yaourtière Multidélices - 12 pots ».
+// ⛔ La consigne du 21/09 : « Un texte qui EXISTE fait foi. L'IA ne le réécrit
+//    JAMAIS. L'IA ne rédige que quand il n'y a PAS de texte. »
+// L'appel subsiste : platform_fields, lui, doit toujours être rédigé par
+// plateforme (listes fermées différentes). On ne paie plus les tokens du titre.
+const DIRECTIVE_TITRE_FOURNI =
+  `TITRE DÉJÀ ÉCRIT PAR LA VENDEUSE : ne rédige AUCUN titre. ` +
+  `Renvoie "title": "" (chaîne vide) et concentre-toi sur "platform_fields". ` +
+  `N'essaie ni de le raccourcir, ni de l'améliorer, ni de le reformuler.`;
+
+// ── L'ÉTAT EST DONNÉ, IL NE SE DEVINE PLUS (2026-09-21) ────────────────────
+// Les cinq prompts portent tous la même phrase de repli : « En l'absence de
+// signal fort et non ambigu d'un article neuf, choisis "Très bon état" ». Elle
+// est juste quand on ne sait rien — et elle a écrasé un état CONNU dans le cas
+// de Louis : l'article était marqué neuf par son propre relevé Beebs, le champ
+// est bien parti en « Neuf sans étiquette » (post-production), mais la prose
+// du modèle disait « TRÈS BON ÉTAT » parce qu'il avait appliqué son repli.
+// Quand l'état est connu, on le DIT au modèle comme un fait, et on lui
+// interdit d'en écrire un autre. La post-production reste en filet.
+const directiveEtatImpose = (etat: string) =>
+  `ÉTAT DE L'ARTICLE — DONNÉ, PAS À DEVINER : cet article est en « ${etat} ». ` +
+  `Mets EXACTEMENT la valeur de TA liste fermée qui correspond à cet état dans platform_fields.etat, ` +
+  `et n'écris JAMAIS dans "title" ni dans "description" un état différent de celui-là — ` +
+  `en particulier, n'applique PAS le repli « Très bon état » ci-dessus, il ne vaut que lorsque l'état est inconnu. ` +
+  `Si tu ne mentionnes pas l'état du tout, c'est très bien aussi.`;
+
+export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni }: {
   apiKey: string;
   platforms: string[];
   itemContext: string;
@@ -401,11 +448,18 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
   trackClaude: (data: unknown) => void;
   /** Description de la vendeuse à publier telle quelle (null = génération normale). */
   descriptionFournie?: string | null;
+  /** Titre de la vendeuse à publier tel quel (null = génération normale). */
+  titreFourni?: string | null;
 }) {
     const descVendeuse = typeof descriptionFournie === "string" && descriptionFournie.trim()
       ? descriptionFournie : null;
     if (descVendeuse) {
       console.log(`[redaction] description de la vendeuse VERROUILLÉE (${descVendeuse.length} car.) — non générée, publiée telle quelle`);
+    }
+    const titreVendeuse = typeof titreFourni === "string" && titreFourni.trim()
+      ? titreFourni.trim() : null;
+    if (titreVendeuse) {
+      console.log(`[redaction] titre de la vendeuse VERROUILLÉ (${titreVendeuse.length} car.) — non généré, publié tel quel`);
     }
     console.log(`[redaction] rédaction prompt ${VERSION_PROMPT} — plateformes: ${(platforms as string[]).join(", ")}`);
     // Marque UNE seule fois dans le titre de repli (2026-07-30, cas réel New
@@ -425,7 +479,7 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       (platforms as string[]).map(async (platform) => {
         const cfg = PLATFORM_CFG[platform];
         if (!cfg) {
-          platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
+          platformListings[platform] = { title: titreVendeuse ?? fallbackTitle, description: descVendeuse ?? item.description ?? "", platform_fields: {} };
           return;
         }
 
@@ -453,7 +507,9 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
               // coûte rien alors qu'un plafond juste casse la réponse.
               max_tokens: 1400,
               system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`
-                + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : ""),
+                + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : "")
+                + (titreVendeuse ? `\n${DIRECTIVE_TITRE_FOURNI}` : "")
+                + (canonicalProvided.etat ? `\n${directiveEtatImpose(canonicalProvided.etat)}` : ""),
               messages: [{ role: "user", content: userMsg }],
             }),
           });
@@ -478,7 +534,16 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
                   console.warn(`[redaction] ${platform} hors gabarit (titre ${brutTitle.length}/${lim.titre}, desc ${brutDesc.length}/${lim.desc}) — tronqué, prompt ${VERSION_PROMPT}`);
                 }
                 platformListings[platform] = {
-                  title: tempererMajuscules(lim ? clampToWord(brutTitle, lim.titre) : brutTitle, item?.marque),
+                  // ⛔ LE TITRE DE LA VENDEUSE PASSE TEL QUEL — à une seule
+                  //    chose près : le PLAFOND de la plateforme, qui n'est pas
+                  //    négociable (eBay refuse à la saisie au-delà de 80,
+                  //    Vinted au-delà de 100). Raccourcir au dernier mot entier
+                  //    est une mise en conformité, pas une réécriture ; et
+                  //    `tempererMajuscules` ne s'applique PAS à son texte —
+                  //    la casse qu'elle a choisie lui appartient.
+                  title: titreVendeuse
+                    ? (lim ? clampToWord(titreVendeuse, lim.titre) : titreVendeuse)
+                    : tempererMajuscules(lim ? clampToWord(brutTitle, lim.titre) : brutTitle, item?.marque),
                   // La description de la vendeuse passe INTACTE : ni tronquée,
                   // ni reformulée, quelle que soit la limite de la plateforme.
                   description: descVendeuse ?? (lim ? clampToWord(brutDesc, lim.desc) : brutDesc),
@@ -496,7 +561,7 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         }
 
         if (!platformListings[platform]) {
-          platformListings[platform] = { title: fallbackTitle, description: descVendeuse ?? item.description ?? "", platform_fields: {} };
+          platformListings[platform] = { title: titreVendeuse ?? fallbackTitle, description: descVendeuse ?? item.description ?? "", platform_fields: {} };
         }
       })
     );
@@ -562,31 +627,15 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
     let traceEtat: Record<string, unknown> = {};
     let traceIsbn: Record<string, unknown> = {};
     {
-      const ETAT_PAR_PLATEFORME: Record<string, Record<string, string>> = {
-        neuf_etiquette: { vinted: "Neuf avec étiquette", ebay: "Neuf avec étiquette", beebs: "Neuf, avec étiquette", leboncoin: "Neuf avec étiquette", vestiaire: "Neuf avec étiquette" },
-        neuf_sans:      { vinted: "Neuf sans étiquette", ebay: "Neuf sans étiquette", beebs: "Neuf, sans étiquette", leboncoin: "Neuf sans étiquette", vestiaire: "Neuf sans étiquette" },
-        tres_bon:       { vinted: "Très bon état",       ebay: "Très bon état",       beebs: "Très bon état",        leboncoin: "Très bon état",      vestiaire: "Très bon état" },
-        bon:            { vinted: "Bon état",            ebay: "Bon état",            beebs: "Bon état",             leboncoin: "Bon état",           vestiaire: "Bon état" },
-        satisfaisant:   { vinted: "Satisfaisant",        ebay: "Satisfaisant",        beebs: "État moyen",           leboncoin: "État satisfaisant",  vestiaire: "Bon état" },
-      };
-      // Texte libre → palier. Le Lens rend une des 5 valeurs Vinted, mais les
-      // relevés du 28/07 montrent aussi « Bon », « bon », « Très bon » : on
-      // tolère. ⚠️ « très bon » AVANT « bon » — le second est inclus dans le
-      // premier et l'ordre des tests fait toute la différence.
-      const tierEtat = (v: string | null | undefined): string | null => {
-        const s = String(v ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-        if (!s) return null;
-        if (/neuf/.test(s) && /avec/.test(s)) return "neuf_etiquette";
-        if (/neuf/.test(s)) return "neuf_sans";
-        if (/tres bon|excellent/.test(s)) return "tres_bon";
-        if (/\bbon\b/.test(s)) return "bon";
-        if (/satisfaisant|moyen|correct|piece/.test(s)) return "satisfaisant";
-        return null;
-      };
-      const DEFAUT_ETAT = "tres_bon"; // règle produit, identique à DEFAULT_CONDITION côté client
-      const lus = Object.values(platformListings)
-        .map((l) => tierEtat(l?.platform_fields?.etat as string | null))
-        .filter((t): t is string => Boolean(t));
+      // ⛔ LA TABLE ET LE CLASSEUR NE VIVENT PLUS ICI (2026-09-21). Ils sont
+      //    passés dans `_shared/etat-plateformes.js`, importé en haut de ce
+      //    fichier — parce que l'écran de publication en a besoin lui aussi
+      //    (« État général », demande de XEWER) et qu'une seconde copie
+      //    divergerait au premier libellé ajouté. Aucun libellé, aucun ordre de
+      //    test n'a bougé : le fichier reprend les lignes telles quelles.
+      const lus: string[] = Object.values(platformListings)
+        .map((l) => String(tierEtat(l?.platform_fields?.etat as string | null) ?? ""))
+        .filter(Boolean);
       // Source unique, dans cet ordre :
       //  1. l'état CANONIQUE (lu par le Lens sur les photos, ou saisi) ;
       //  2. sinon, un « neuf » UNANIME — même palier sur toutes les plateformes
@@ -597,11 +646,48 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
       //     quatre l'appliquaient déjà, les deux autres inventaient du neuf.
       const unanimeNeuf = lus.length > 0 && new Set(lus).size === 1 &&
         (lus[0] === "neuf_etiquette" || lus[0] === "neuf_sans");
-      const tierCanonique = tierEtat(canonicalProvided.etat);
-      const tier = tierCanonique ?? (unanimeNeuf ? lus[0] : DEFAUT_ETAT);
+      const tierCanonique: string | null = tierEtat(canonicalProvided.etat);
+      const tier: string = tierCanonique ?? (unanimeNeuf ? lus[0] : DEFAUT_ETAT);
       for (const [p, l] of Object.entries(platformListings)) {
-        const v = ETAT_PAR_PLATEFORME[tier]?.[p];
+        const v = ETAT_TABLE[tier]?.[p];
         if (l && v) l.platform_fields.etat = v;
+      }
+      // ── ET LE TEXTE CESSE DE CONTREDIRE LE CHAMP (2026-09-21) ──────────────
+      // 🚨 LE DÉFAUT DE LOUIS, mesuré sur son article 1789991601609 (21/09
+      //    14:01) : la trace dit `etat_branche = canonique`, `etat_tier =
+      //    neuf_sans` — le CHAMP partait donc juste — et `etat_lus =
+      //    ["tres_bon"]`, c'est-à-dire que le modèle avait écrit « TRÈS BON
+      //    ÉTAT » dans sa prose. La boucle ci-dessus ne corrige QUE le champ :
+      //    l'annonce se contredisait elle-même, « Neuf sans étiquette » d'un
+      //    côté, « Article en TRÈS BON ÉTAT » de l'autre. Louis a refusé de
+      //    valider, et il avait raison.
+      // ⛔ ON RETIRE LE SEGMENT, ON NE REFORMULE RIEN. Texte vidé → original
+      //    rendu (fail-safe, même doctrine que description-leboncoin.ts).
+      // ⛔ DANS LES DEUX SENS : un texte qui dit MOINS bon que le champ est le
+      //    cas de Louis (annonce qui se contredit, vente perdue), un texte qui
+      //    dit MIEUX est un litige acheteur. Les deux tombent.
+      // ⛔ JAMAIS SUR LE TEXTE DU VENDEUR : il fait foi, y compris quand il dit
+      //    autre chose que notre lecture. C'est SON texte, pas le nôtre — et
+      //    c'est pour ça que chaque champ est gardé séparément (sa description
+      //    peut être verrouillée pendant que le titre, lui, est de nous).
+      const etatServi = ETAT_TABLE[tier]?.vinted ?? null;
+      const textesNettoyes: string[] = [];
+      if (etatServi) {
+        const ecritParNous: Record<"title" | "description", boolean> = {
+          title: !titreVendeuse,
+          description: !descVendeuse,
+        };
+        for (const [p, l] of Object.entries(platformListings)) {
+          if (!l) continue;
+          for (const champ of ["title", "description"] as const) {
+            if (!ecritParNous[champ]) continue;
+            const r = retirerEtatContredit(l[champ], etatServi);
+            if (!r.modifie) continue;
+            l[champ] = r.texte;
+            textesNettoyes.push(`${p}.${champ}`);
+            console.warn(`[redaction] ${p} ${champ} affirmait un état autre que « ${etatServi} » — segment retiré : ${r.retires.join(" | ")}`);
+          }
+        }
       }
       // ── TRACE (2026-08-31) : QUELLE BRANCHE A DÉCIDÉ ────────────────────────
       // Le 31/08, sur le livre « EAT » sorti en « Neuf sans étiquette » alors
@@ -617,6 +703,11 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         // dit si l'unanimité était réelle ou si un seul modèle a entraîné les
         // autres. Trié pour être requêtable.
         etat_lus: [...lus].sort(),
+        // 4e clé (2026-09-21) : les textes dont un segment a dû être retiré
+        // parce qu'il affirmait un état MEILLEUR que celui qui part. Vide =
+        // la prose et le champ disaient la même chose. C'est cette clé qui
+        // permettra de remesurer le défaut de Louis dans trente jours.
+        etat_textes_nettoyes: textesNettoyes,
       };
     }
 
