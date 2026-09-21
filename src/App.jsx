@@ -5396,8 +5396,17 @@ export default function App({ loginOnly = false }){
     // `parseFloat(...)||0` transformait chaque sauvegarde d'un article importé
     // du dressing (prix inconnu) en « gratuit assumé » — marge de 100 % sur du
     // vent, indétectable ensuite. Un vrai 0 tapé reste un 0 valide.
+    // ⛔ Et un prix ILLISIBLE n'est pas non plus un zéro (2026-09-21). Le
+    // `||0` final le transformait en « gratuit assumé » sans rien dire : on
+    // refuse la sauvegarde et on le NOMME, exactement comme le mode « prix
+    // d'achat » du Stock (parsePrixStock → « Prix illisible »).
     const buyVide=String(editItem.buy??'').trim()==='';
-    const rawB=buyVide?null:(parseFloat(String(editItem.buy).replace(',','.'))||0);
+    const rawB=buyVide?null:parseFloat(String(editItem.buy).replace(',','.'));
+    if(rawB!==null&&!Number.isFinite(rawB)){
+      setToast({visible:true,message:lang==='fr'?"⚠️ Prix d'achat illisible":'⚠️ Invalid purchase price'});
+      setTimeout(()=>setToast({visible:false,message:''}),4000);
+      return;
+    }
     const b=rawB==null?null:((editItem.priceMode==="total"&&qty>1)?rawB/qty:rawB);
     const s=parseFloat(editItem.sell)||0;
     const f=parseFloat(editItem.frais)||0;
@@ -5812,15 +5821,30 @@ export default function App({ loginOnly = false }){
     const now=new Date().toISOString();
     const toInsert=rows.map((r,idx)=>{
       const titre=buildTitre(r,mapping.titres);
-      const buy=parseFloat(String(r[mapping.prix_achat]??0).replace(",","."))||0;
-      const sell=mapping.prix_vente?parseFloat(String(r[mapping.prix_vente]??0).replace(",","."))||0:0;
+      // ⛔ VIDE ≠ ZÉRO (règle du 03/08). `parseFloat(x ?? 0) || 0` faisait
+      // entrer chaque cellule VIDE, absente de la feuille ou illisible comme
+      // « gratuit assumé » : marge de 100 % sur du vent, indétectable ensuite.
+      // C'est la fabrique des 346 lignes à 0 € du parc. Une cellule sans
+      // valeur reste INCONNUE (NULL) et sort des calculs ; un vrai 0 tapé
+      // dans la feuille reste un 0.
+      const prixCellule=(v)=>{
+        const t=String(v??"").trim().replace(/[\s€]/g,"").replace(",",".");
+        if(!t) return null;
+        const n=parseFloat(t);
+        return Number.isFinite(n)?n:null;
+      };
+      const buy=mapping.prix_achat?prixCellule(r[mapping.prix_achat]):null;
+      const sell=mapping.prix_vente?(prixCellule(r[mapping.prix_vente])??0):0;
       // ÉTAPE 5 : Statut
       const statut=mapping.statut
         ? (/vendu|sold|vend/i.test(String(r[mapping.statut]))?'vendu':'stock')
         : (sell>0?'vendu':'stock');
       const hasSell=sell>0;
-      const margin=hasSell?sell-buy:null;
-      const marginPct=hasSell?(margin/sell)*100:null;
+      // Marge par la source unique : prix d'achat inconnu ⇒ margin null, et
+      // surtout pas `sell - null` (qui vaut sell) ni `sell - undefined` (NaN).
+      const {margin,marginPct}=hasSell
+        ? margeUnitaire({prixVente:sell,prixAchat:buy})
+        : {margin:null,marginPct:null};
       const parsedDate=mapping.date?parseDate(r[mapping.date]):null;
       const rowDate=parsedDate?(parsedDate+'T00:00:00.000Z'):(r.__sheetDate||now);
       let marque=null;
@@ -5845,7 +5869,9 @@ export default function App({ loginOnly = false }){
         type:typeAuto,
         created_at:now,
       };
-    }).filter(r=>r.prix_achat>=0&&r.titre!=="Article importé");
+    // `r.prix_achat>=0` seul JETAIT les lignes sans prix d'achat (null >= 0 est
+    // faux) : depuis que le vide reste NULL, il faut le dire explicitement.
+    }).filter(r=>(r.prix_achat==null||r.prix_achat>=0)&&r.titre!=="Article importé");
     console.log('[Import] Inserting',toInsert.length,'rows — sample:',toInsert[0]);
 
     const{data,error}=await supabase.from('inventaire').insert(toInsert).select();
@@ -5857,9 +5883,12 @@ export default function App({ loginOnly = false }){
       .map(row=>({
         user_id:user.id,
         titre:row.titre,
-        prix_achat:parseFloat(row.prix_achat)||0,
+        // Même règle côté ventes : un prix d'achat inconnu reste NULL, et sa
+        // marge aussi. Un `|| 0` ici écrivait un bénéfice égal au prix de
+        // vente sur des articles dont on ne savait rien.
+        prix_achat:row.prix_achat==null?null:Number(row.prix_achat),
         prix_vente:parseFloat(row.prix_vente)||0,
-        benefice:parseFloat(row.margin)||0,
+        benefice:row.margin==null?null:Number(row.margin),
         date:(row.date?String(row.date):now.toString()).slice(0,10),
         marque:row.marque||"Sans marque",
         type:row.type||null,
