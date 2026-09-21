@@ -84,11 +84,6 @@ export const LBC_TRANSPORTEURS = [
     contrainte: 'L + l + h ≤ 150 cm, ou le côté le plus long ≤ 100 cm' },
 ];
 
-/** Le nom Leboncoin d'un transporteur, à partir de notre clé. */
-export function nomTransporteur(cle) {
-  return LBC_TRANSPORTEURS.find((t) => t.cle === cle)?.nom ?? null;
-}
-
 /**
  * Les transporteurs PLAUSIBLES pour ce format. Purement indicatif — on ne
  * retire jamais un choix de la personne, on éclaire seulement la liste :
@@ -105,14 +100,22 @@ export function transporteursPlausibles(format) {
   return [];
 }
 
-// ── `champsColisLeboncoin()` SUPPRIMÉE le 2026-09-21 ───────────────────────
-// Elle construisait un sous-ensemble de platform_fields pour le job. Elle n'a
-// JAMAIS été appelée : ni l'app, ni le serveur, ni l'extension, ni un selftest.
-// Et pour cause — `platform_fields` part EN ENTIER dans le job, donc
-// `lbcFormatColis` et `lbcTransporteurs` y sont déjà, posés par
-// CarteLivraisonLeboncoin. Un filtre en plus n'aurait rien ajouté qu'un
-// endroit de plus où les oublier.
+// ── DEUX FONCTIONS SUPPRIMÉES LE 2026-09-21, AUCUN APPELANT ────────────────
+// `champsColisLeboncoin(pf)` : elle construisait un sous-ensemble de
+//   platform_fields pour le job. Inutile par construction — `platform_fields`
+//   part EN ENTIER dans le job, donc `lbcFormatColis` et `lbcTransporteurs` y
+//   sont déjà, posés par CarteLivraisonLeboncoin. Un filtre de plus n'aurait
+//   ajouté qu'un endroit de plus où les oublier.
+// `nomTransporteur(cle)` : elle rendait le nom Leboncoin d'un transporteur à
+//   partir de notre clé. Personne n'en a jamais eu besoin — la carte affiche
+//   `t.nom` directement depuis LBC_TRANSPORTEURS, et c'est le NOM (pas la clé)
+//   que le job transporte et que l'extension coche.
 //
-// ⚠️ `nomTransporteur(cle)` (juste au-dessus) est dans le même cas : aucun
-//    appelant. Elle RESTE — Nico n'a tranché que celle-ci, et on ne supprime
-//    pas du code de sa propre initiative.
+// Vérifié avant chaque suppression, sur tout le dépôt et de trois façons : le
+// nom complet, la chaîne partielle, et la forme d'appel `Transporteur(`. Les
+// deux seuls importateurs du module (CarteLivraisonLeboncoin,
+// ListingPreviewScreen) le font par imports NOMMÉS — aucun `import * as` qui
+// aurait pu les atteindre sans les nommer.
+//
+// CE QUI RESTE, ET QUI SERT : LBC_FORMATS, LBC_TRANSPORTEURS, formatLeboncoin,
+// transporteursPlausibles.
