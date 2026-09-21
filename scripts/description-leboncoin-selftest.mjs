@@ -180,3 +180,67 @@ console.log("▸ le minimum s'applique APRÈS le nettoyage, pas avant");
 // ── VERDICT (toujours en dernier, cf. la note plus haut) ────────────────────
 if (echecs) { console.error(`\n[selftest:description-leboncoin] ÉCHEC — ${echecs} cas.`); process.exit(1); }
 console.log("\n[selftest:description-leboncoin] OK — nettoyage, plafond, marques tierces ET minimum de 10 caractères verrouillés.");
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LE TITRE (2026-09-21) — le 403 de Leboncoin vise « le titre ET/OU le texte »
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const { nettoyerTitreLeboncoin } = await import('../supabase/functions/_shared/description-leboncoin.ts');
+  let ko = 0;
+  const v = (cond, quoi, detail = '') => {
+    if (cond) { console.log(`  ✓ ${quoi}`); return; }
+    ko += 1; console.error(`  ✗ ${quoi}${detail ? `\n      ${detail}` : ''}`);
+  };
+  console.log('\n[titre] mentions de site');
+
+  // Le cas RÉEL : 149 titres du parc, presque tous de cette forme.
+  const r1 = nettoyerTitreLeboncoin('Pas de vinted go - lot de 9 tee-shirts manches courtes fille taille 10 ans');
+  v(r1.titre === 'Lot de 9 tee-shirts manches courtes fille taille 10 ans',
+    'le segment « Pas de vinted go » part, le reste est intact', r1.titre);
+  v(r1.modifie && r1.termes.includes('vinted'), 'le retrait est tracé');
+
+  // Un titre propre ne bouge pas d'un octet.
+  const propre = 'Pull noir et dentelle S La Redoute';
+  v(nettoyerTitreLeboncoin(propre).titre === propre && !nettoyerTitreLeboncoin(propre).modifie,
+    'un titre sans mention ressort IDENTIQUE');
+
+  // Un seul segment : c'est le MOT qui part, pas le titre.
+  const r2 = nettoyerTitreLeboncoin('Robe Vinted taille M');
+  v(r2.titre === 'Robe taille M', 'sur un titre d’un seul tenant, seul le mot part', r2.titre);
+
+  // Une adresse web aussi.
+  const r3 = nettoyerTitreLeboncoin('Sac cuir - voir www.mon-site.fr');
+  v(!/www\./.test(r3.titre) && /Sac cuir/.test(r3.titre), 'une adresse web part avec son segment', r3.titre);
+
+  // FAIL-SAFE : un titre qui n'est QUE la mention ressort tel quel.
+  const r4 = nettoyerTitreLeboncoin('Vinted');
+  v(r4.titre === 'Vinted' && !r4.modifie, 'un titre réduit à la mention est servi TEL QUEL (fail-safe)', r4.titre);
+
+  // « Shein » est une marque, pas un site visé (prouvé le 09/09).
+  const shein = 'Robe Shein en très bon état';
+  v(nettoyerTitreLeboncoin(shein).titre === shein, '« Shein » n’est pas visé — c’est une marque');
+
+  // Les QUATRE autres formes RÉELLES du parc (relevé du 21/09) : elles sont
+  // ici pour que le nettoyage ne se dégrade pas sur ce qui existe vraiment.
+  const reels = [
+    ['Ps de vinted go- Lot tee-shirts fille 8 ans', 'Lot tee-shirts fille 8 ans'],
+    ['Ensemble anti-UV H&M Disney 18 mois (2 ans Vinted) 86/92 cm short de bain',
+     'Ensemble anti-UV H&M Disney 18 mois (2 ans) 86/92 cm short de bain'],
+    ['Robe missoni échancré vinted motif zigzag Gris noir Taille L',
+     'Robe missoni échancré motif zigzag Gris noir Taille L'],
+    ['pas de vinted go - Ensemble été pantalon top shein fleuri taille L',
+     'Ensemble été pantalon top shein fleuri taille L'],
+  ];
+  for (const [avant, apres] of reels) {
+    const r = nettoyerTitreLeboncoin(avant);
+    v(r.titre === apres, `titre réel nettoyé : « ${apres} »`, r.titre);
+  }
+
+  // Ce qui ne DOIT PAS bouger : les tirets et barres INTERNES. Le premier jet
+  // coupait « tee-shirts » en deux ; un séparateur de titre exige un espace.
+  for (const intact of ['Lot de 3 body 12-14 ans taille S/M', 'Sweat Tommy Jeans bleu marine – Taille M']) {
+    v(nettoyerTitreLeboncoin(intact).titre === intact, `« ${intact} » ressort intact`);
+  }
+
+  if (ko) { console.error(`\n[selftest:description-leboncoin] ${ko} échec(s) sur le titre`); process.exit(1); }
+}

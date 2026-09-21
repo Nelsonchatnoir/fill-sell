@@ -74,7 +74,7 @@ function cheminLbcDepuisUrl(url: unknown): string[] | null {
   if (!m) return null;
   return _LBC_PAR_JETONS.get(_jetonsFeuille(m[1])) ?? null;
 }
-import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
+import { nettoyerDescriptionLeboncoin, nettoyerTitreLeboncoin } from "../_shared/description-leboncoin.ts";
 import { completerDescriptionBeebs } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
@@ -3811,8 +3811,25 @@ serve(async (req) => {
         // porte DIX hashtags quand Leboncoin en accepte cinq. Le nettoyage
         // existait, il ne la regardait pas.
         // Le job en base n'est pas modifié : on ne nettoie que le texte SERVI.
-        if (j.platform !== "leboncoin" || (j.action !== "publish" && j.action !== "republish")
-            || typeof j.description !== "string") continue;
+        if (j.platform !== "leboncoin" || (j.action !== "publish" && j.action !== "republish")) continue;
+        // ── LE TITRE AUSSI (2026-09-21) ───────────────────────────────────
+        // Le 403 de Leboncoin vise « le titre ET/OU le texte ». Seul le texte
+        // était nettoyé — et ça tenait tant que l'IA réécrivait le titre, ce
+        // qu'elle ne fait plus depuis ce jour (« un texte qui EXISTE fait
+        // foi »). 149 titres du parc portent une mention de site, presque tous
+        // des « Pas de vinted go - … » : sans ça, ils partiraient sur un refus.
+        // Le job en base n'est pas modifié : on ne nettoie que ce qui est SERVI.
+        if (typeof j.title === "string") {
+          const t = nettoyerTitreLeboncoin(j.title);
+          if (t.modifie) {
+            console.log(`[get-pending-jobs] titre Leboncoin ${String(j.id).slice(0, 8)} : mention de site retirée (${t.termes.join(", ")}) — « ${j.title} » → « ${t.titre} »`);
+            j.title = t.titre;
+            j.title_nettoyage = { termes: t.termes };
+          } else if (t.termes.length) {
+            console.warn(`[get-pending-jobs] titre Leboncoin ${String(j.id).slice(0, 8)} : mention de site (${t.termes.join(", ")}) NON retirable sans vider le titre — servi tel quel, Leboncoin refusera peut-être le dépôt`);
+          }
+        }
+        if (typeof j.description !== "string") continue;
         // Contexte (2026-09-10) : la marque de l'article et le titre — les deux
         // règles de la page de correction Leboncoin (5 hashtags max, aucune
         // marque tierce) en ont besoin ; cf. _shared/description-leboncoin.ts.

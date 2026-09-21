@@ -284,6 +284,105 @@ export function completerSiTropCourte(
   return { texte: "", ajouts: [], vide: true };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LE TITRE AUSSI (2026-09-21)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le refus 403 de Leboncoin est explicite et personne ne l'avait lu jusqu'au
+// bout : « toute mention d'un site internet autre que leboncoin.fr DANS LE
+// TITRE ET/OU LE TEXTE de votre annonce ». Seule la description était
+// nettoyée — et ça suffisait TANT QUE l'IA réécrivait le titre, parce que la
+// mention disparaissait par accident au passage.
+//
+// 🚨 Depuis le 21/09, le titre du vendeur part TEL QUEL (« un texte qui EXISTE
+//    fait foi »). Mesuré le jour même sur les 68 364 articles venus d'un
+//    relevé ou du dressing : 149 titres portent une mention de site, et ce
+//    sont presque tous des « Pas de vinted go - … ». Sans ce nettoyage, ces
+//    149-là partiraient droit sur un 403.
+//
+// ⛔ UN TITRE N'EST PAS UNE DESCRIPTION. Il n'a ni phrases ni lignes : on
+//    découpe sur les séparateurs de TITRE (« - », « | », « / », « : », « , »),
+//    on jette le SEGMENT fautif, et c'est tout. Jamais de reformulation.
+// ⛔ TROIS FILETS, dans cet ordre : segment → mot seul → original. Rendre
+//    l'original expose au 403 que la personne comprendra ; rendre un titre
+//    charcuté ou vide ferait bien pire.
+// ⛔ LE TIRET EXIGE SES ESPACES. « tee-shirts », « 12-14 ans », « S/M » ne
+//    sont pas des séparateurs de titre — le premier jet coupait « lot de 9
+//    tee-shirts » en « tee » et « shirts », et le selftest l'a vu tout de
+//    suite. Un séparateur de titre, c'est « - », « | », « : » ENTOURÉS
+//    d'espaces, ou une virgule suivie d'un espace.
+// Parenthèses capturantes : le séparateur reste dans le découpage, ce qui
+// permet de recoller le titre AVEC SA PONCTUATION D'ORIGINE plutôt que de la
+// normaliser. On ne retouche pas la typographie du vendeur.
+// UN espace suffit, d'un côté ou de l'autre : « Ps de vinted go- Lot … » est
+// un vrai titre du parc, et son tiret n'a d'espace qu'à droite.
+const SEPARATEURS_TITRE = /(\s+[-–—|:]\s*|\s*[-–—|:]\s+|,\s+)/;
+
+export interface NettoyageTitreLeboncoin {
+  titre: string;
+  modifie: boolean;
+  termes: string[];
+}
+
+export function nettoyerTitreLeboncoin(titre: string): NettoyageTitreLeboncoin {
+  const original = String(titre ?? "");
+  try {
+    const trouves = termesDans(original);
+    const aUneAdresse = ADRESSE_WEB.test(original);
+    ADRESSE_WEB.lastIndex = 0; // regex /g : sans ça, le test suivant repart au mauvais endroit
+    if (!trouves.length && !aUneAdresse) return { titre: original, modifie: false, termes: [] };
+    const termes = new Set<string>(trouves);
+
+    // 1. Le SEGMENT fautif, s'il en reste un autre. Les index PAIRS sont les
+    //    segments, les IMPAIRS les séparateurs : un segment qui tombe emporte
+    //    le séparateur qui le suit (ou celui qui le précède s'il est dernier).
+    const parts = original.split(SEPARATEURS_TITRE);
+    if (parts.length > 1) {
+      const garder = parts.map(() => true);
+      for (let i = 0; i < parts.length; i += 2) {
+        ADRESSE_WEB.lastIndex = 0;
+        if (!termesDans(parts[i]).length && !ADRESSE_WEB.test(parts[i])) continue;
+        garder[i] = false;
+        if (i + 1 < parts.length) garder[i + 1] = false;
+        else if (i - 1 >= 0) garder[i - 1] = false;
+      }
+      const recompose = parts.filter((_, i) => garder[i]).join("").trim();
+      if (recompose && /[\p{L}\p{N}]/u.test(recompose)) {
+        // Majuscule initiale rendue au segment devenu premier — on ne change
+        // aucun mot, on relève la première lettre que la coupe a mise en tête.
+        const titrePropre = recompose.charAt(0).toUpperCase() + recompose.slice(1);
+        return { titre: titrePropre, modifie: titrePropre !== original, termes: [...termes] };
+      }
+    }
+
+    // 2. Le MOT seul (un titre d'un seul segment : « Robe Vinted taille M »).
+    let mot = original;
+    for (const t of TERMES_SITES_LEBONCOIN) {
+      mot = mot.replace(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+    }
+    ADRESSE_WEB.lastIndex = 0;
+    mot = mot
+      .replace(ADRESSE_WEB, "")
+      // Ce que le retrait d'un mot laisse derrière lui, et rien d'autre : une
+      // parenthèse devenue vide, un espace avant une ponctuation fermante, des
+      // espaces doublés, un séparateur en tête ou en queue. Aucun mot n'est
+      // touché — c'est du ménage, pas de la réécriture.
+      .replace(/\(\s*\)|\[\s*\]/g, "")
+      .replace(/\s+([),\].!?])/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .replace(/^[\s\-–—|/:,]+|[\s\-–—|/:,]+$/g, "")
+      .trim();
+    if (mot && /[\p{L}\p{N}]/u.test(mot)) {
+      return { titre: mot, modifie: mot !== original, termes: [...termes] };
+    }
+
+    // 3. FAIL-SAFE : l'original. Un refus qu'on comprend vaut mieux qu'un
+    //    titre vide, que Leboncoin refuserait de toute façon.
+    return { titre: original, modifie: false, termes: [...termes] };
+  } catch {
+    return { titre: original, modifie: false, termes: [] };
+  }
+}
+
 export function nettoyerDescriptionLeboncoin(description: string, contexte: ContexteLeboncoin = {}): NettoyageLeboncoin {
   // Le minimum s'applique APRÈS le nettoyage (consigne Nico) : c'est le texte
   // RÉELLEMENT servi qui doit passer la barre, pas celui d'avant — un retrait
