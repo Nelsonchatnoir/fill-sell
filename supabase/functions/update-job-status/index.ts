@@ -7,7 +7,14 @@ import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts"
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // Les phrases lues par la personne vivent dans leur fichier, pas au milieu de
 // la logique qui les déclenche (même convention que src/*/textes.js).
-import { motsAspectAveugle, raisonAspectAveugle, type SourceCategorie } from "../_shared/textes-jobs.ts";
+import {
+  compteVendeurEbayInactif,
+  motsAspectAveugle,
+  raisonAspectAveugle,
+  SOURCE_EBAY_COMPTE_VENDEUR_INACTIF,
+  type SourceCategorie,
+} from "../_shared/textes-jobs.ts";
+import { estPageInscriptionVendeurEbay } from "../_shared/ebay-page-vendeur.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -757,6 +764,126 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // eBay : LE COMPTE N'EST PAS ENCORE VENDEUR (2026-09-21) — SERVEUR SEUL
+    // ══════════════════════════════════════════════════════════════════════
+    // Job 7678a1ed, adamchocho13, inscrit le jour même, PREMIÈRE publication.
+    // Au clic « Mettre en vente », eBay a détourné l'onglet vers son
+    // inscription vendeur : le compte n'a jamais été activé pour vendre, et
+    // eBay refusera toute mise en vente tant qu'elle ne sera pas finie.
+    // La seule trace qui le disait était l'ADRESSE DE LA PAGE :
+    //     work_window_state.at_end.tab_url = https://onboardweb.ebay.fr/…
+    //     work_window_state.at_end.fill_step = clic_mise_en_vente
+    // L'erreur brute, elle, parlait de canal coupé (« message channel
+    // closed ») — signature que le palliatif bfcache plus bas prend pour une
+    // page SUSPENDUE. On a donc requalifié trois fois en « L'onglet de travail
+    // a été mis en veille par Chrome… rien à faire de ton côté », pendant que
+    // le compte brûlait ses reprises contre un mur qui ne tombe pas tout seul.
+    //
+    // ⛔ L'ADRESSE DE LA PAGE PRIME SUR LA SIGNATURE DE L'ERREUR. Un canal
+    //    coupé DEVANT une page d'inscription vendeur n'est pas un incident
+    //    Chrome : c'est le mur. Ce bloc est donc placé AVANT le palliatif
+    //    bfcache, avant l'attente de session et avant la requalification
+    //    d'affichage G1/G4 — et il pose un drapeau qu'ils relisent tous les
+    //    trois. La requalification bfcache reste ENTIÈRE pour tous les autres
+    //    cas : une page de dépôt suspendue reste une page de dépôt suspendue.
+    //
+    // ⛔ AUCUNE REPRISE AUTOMATIQUE À L'AVEUGLE. needs_user, pas pending : le
+    //    job attend un geste qui n'existe que chez eBay. Sans needsUserField
+    //    ni champs_a_completer, l'app le classe « Action » (natureNeedsUser,
+    //    src/utils/shared.js) : le message dit quoi faire, aucun bouton
+    //    « Compléter » qui n'ouvrirait rien, et « Relancer » suffit ensuite.
+    // ⚠️ unité : needs_user n'est pas terminal, le trigger settle_reservation
+    //    ne relâche rien — la relance ne re-débite pas. Les compteurs de
+    //    reprise (needsUserAttempts, bfcache_rearms) sont remis à leur valeur
+    //    d'avant : ces tentatives-là ont été dépensées sur un motif faux.
+    //
+    // Périmètre : plateforme eBay, verdicts failed / pending / needs_user
+    // seulement. Jamais 'processing' (l'écriture de prise en charge), jamais
+    // 'published'. Jamais non plus un verdict qui nomme un champ à compléter :
+    // celui-là sait déjà ce qu'il demande.
+    // Les adresses reconnues (et celles ÉCARTÉES EXPRÈS) vivent dans
+    // _shared/ebay-page-vendeur.ts, verrouillées par un selftest.
+    let pfEbayVendeurInactif: Record<string, unknown> | null = null;
+    if (statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user") {
+      try {
+        const pfBody = (body.platform_fields && typeof body.platform_fields === "object"
+          ? body.platform_fields : null) as Record<string, unknown> | null;
+        // Un verdict qui nomme un champ sait déjà ce qu'il demande : on ne le
+        // recouvre pas (et on ne se laisse pas tromper par un at_end périmé).
+        const nommeUnChamp = pfBody != null && (
+          pfBody.needsUserField != null ||
+          (Array.isArray(pfBody.champs_a_completer) && pfBody.champs_a_completer.length > 0) ||
+          (Array.isArray(pfBody.serverRequired) && pfBody.serverRequired.length > 0) ||
+          (Array.isArray(pfBody.server_required_fields) && pfBody.server_required_fields.length > 0)
+        );
+        const wwsBody = (pfBody?.work_window_state ?? null) as Record<string, unknown> | null;
+        if (!nommeUnChamp) {
+          const { data: jrow } = await userClient
+            .from("cross_post_jobs")
+            .select("action, platform, platform_fields")
+            .eq("id", jobId)
+            .maybeSingle();
+          if (jrow?.platform === "ebay") {
+            const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+            // Le relevé du body fait foi : rearmBounded et la branche d'échec
+            // sec estampillent at_end JUSTE AVANT d'appeler cette fonction.
+            // La base ne sert que de repli pour les builds qui ne joignent pas
+            // leur platform_fields — et seulement si le body n'en porte aucun.
+            const wws = (wwsBody ?? pfBase.work_window_state ?? null) as Record<string, unknown> | null;
+            const atEnd = (wws?.at_end ?? null) as Record<string, unknown> | null;
+            if (estPageInscriptionVendeurEbay(atEnd?.tab_url)) {
+              const pfSrc = (pfBody ?? pfBase);
+              const precedent = (pfSrc.compte_vendeur_inactif ?? pfBase.compte_vendeur_inactif ?? null) as
+                Record<string, unknown> | null;
+              const maintenant = new Date().toISOString();
+              const {
+                next_action_after: _nao,
+                needsUserField: _nuf,
+                needsUserFields: _nufs,
+                champs_a_completer: _cac,
+                serverRequired: _sr,
+                server_required_fields: _srf,
+                bfcache_rearms: _bfc,
+                ...pfSans
+              } = pfSrc;
+              pfEbayVendeurInactif = {
+                ...pfSans,
+                // La valeur EN BASE, jamais celle que l'extension vient
+                // d'incrémenter : ce passage n'est pas une tentative, et les
+                // reprises déjà brûlées l'ont été sur un motif faux.
+                needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+                needs_user_source: SOURCE_EBAY_COMPTE_VENDEUR_INACTIF,
+                compte_vendeur_inactif: {
+                  depuis: typeof precedent?.depuis === "string" ? precedent.depuis : maintenant,
+                  derniere: maintenant,
+                  observations: (Number(precedent?.observations ?? 0) || 0) + 1,
+                  tab_url: String(atEnd?.tab_url ?? "").slice(0, 300),
+                  fill_step: atEnd?.fill_step == null ? null : String(atEnd.fill_step).slice(0, 80),
+                  verdict_extension: typeof body.error === "string" ? body.error.slice(0, 600) : null,
+                  pose_par: "update-job-status (page d'inscription vendeur eBay = mur, pas un incident Chrome)",
+                },
+              };
+              statutEffectif = "needs_user";
+              messageEffectif = compteVendeurEbayInactif(String(jrow.action ?? "publish"));
+              raisonRequalif =
+                `compte eBay pas encore vendeur (page ${String(atEnd?.tab_url ?? "?")}) : ` +
+                `needs_user, reprises automatiques arrêtées`;
+              console.log(
+                `[update-job-status] userId=${user.id} job=${jobId} — page d'inscription vendeur eBay ` +
+                `(${String(atEnd?.tab_url ?? "?")}, fill_step=${String(atEnd?.fill_step ?? "?")}) : ` +
+                `verdict ${status} → needs_user ${SOURCE_EBAY_COMPTE_VENDEUR_INACTIF}, aucune reprise à l'aveugle`,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] compte vendeur eBay inactif :", (e as Error)?.message ?? e);
+        pfEbayVendeurInactif = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // ANNONCE PLUS EN LIGNE (404 CONFIRMÉ) = ANNULATION NEUTRE, PAS UN ÉCHEC
     // (2026-09-12, dossier Anaïs — décision Nico : « un 404 côté Vinted n'est
     // pas un échec FillSell »)
@@ -849,7 +976,13 @@ serve(async (req) => {
     const BFCACHE_RE = /back\/forward cache/i;
     const MAX_BFCACHE_REARMS = 3;
     let bfcacheRearms: number | null = null;
-    if (statutEffectif === "failed" && typeof body.error === "string" && BFCACHE_RE.test(body.error)) {
+    // ⛔ `!pfEbayVendeurInactif` : une page d'inscription vendeur eBay a déjà
+    //    tranché plus haut (le canal coupé y est le SYMPTÔME du mur, pas la
+    //    cause). La ceinture double la bretelle — statutEffectif y est déjà
+    //    passé à needs_user — parce que c'est exactement cette confusion qui
+    //    a coûté trois reprises et un faux « rien à faire de ton côté ».
+    if (!pfEbayVendeurInactif &&
+        statutEffectif === "failed" && typeof body.error === "string" && BFCACHE_RE.test(body.error)) {
       const { data: jrow } = await userClient
         .from("cross_post_jobs")
         .select("platform_fields")
@@ -1859,7 +1992,7 @@ serve(async (req) => {
       const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
         && bfcacheRearms == null && !pfCanalCoupe && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
-        && !pfDepotOptions && !pfDepotNonFinalise;
+        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif;
       const surface = statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user";
       const brut = typeof body.error === "string" ? body.error : "";
       const bodyPfOk = body.platform_fields != null && typeof body.platform_fields === "object";
@@ -2053,6 +2186,11 @@ serve(async (req) => {
     // platform_fields SANS tentative consommée, AVEC l'échéance d'une heure et
     // le marqueur attente_session.
     if (pfAttenteSession) patch.platform_fields = pfAttenteSession;
+    // Compte eBay pas encore vendeur : platform_fields SANS tentative
+    // consommée, SANS échéance de reprise, SANS aucun champ à compléter (il
+    // n'y en a pas : le geste est chez eBay), AVEC le marqueur nommé
+    // needs_user_source = ebay_compte_vendeur_inactif.
+    if (pfEbayVendeurInactif) patch.platform_fields = pfEbayVendeurInactif;
     // Compteur « 72 h d'extension ouverte » (handler-watch, 2026-09-10) : une
     // ENTRÉE en needs_user ouvre un budget neuf — les compteurs d'un épisode
     // précédent (job relancé, réparé, repris) ne doivent jamais solder le
