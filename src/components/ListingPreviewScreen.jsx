@@ -2620,14 +2620,27 @@ function StepGeneration({ generating, generateError, platformListings, processed
                       <span style={{ fontSize:11, color:T.mute2, fontWeight:600 }}>{t("fieldDescriptionLabel")}</span>
                       {marqueurChamp("description")}
                     </div>
+                    {/* ── LE TEXTE À PLUSIEURS LIGNES SE VOIT (2026-09-21) ────
+                        Un `textarea` garde les retours à la ligne — ce n'est
+                        pas lui qui mentait. Mais à 4 lignes fixes, une
+                        description de sept lignes s'ouvrait sur un champ qu'il
+                        fallait faire défiler pour constater qu'elle était
+                        entière. La hauteur suit le texte (bornée à 10 lignes
+                        pour ne pas manger l'écran), et le compte de lignes est
+                        écrit à côté du libellé. Aucun geste en plus. */}
                     <textarea
                       value={e.description}
                       onChange={ev => (onModifierCarte
                         ? onModifierCarte(p, "description", ev.target.value)
                         : setEdited(prev => ({ ...prev, [p]: { ...prev[p], description: ev.target.value } })))}
-                      rows={4}
-                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
+                      rows={Math.min(Math.max(4, String(e.description ?? "").split(/\r\n|\r|\n/).length), 10)}
+                      style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, resize:"vertical", boxSizing:"border-box", lineHeight:1.5, whiteSpace:"pre-wrap" }}
                     />
+                    {String(e.description ?? "").split(/\r\n|\r|\n/).length > 1 && (
+                      <div style={{ fontSize:11.5, color:T.mute2, marginTop:4, lineHeight:1.4 }}>
+                        {t("generalDescriptionLines").replace("{n}", String(String(e.description ?? "").split(/\r\n|\r|\n/).length))}
+                      </div>
+                    )}
                   </div>
 
                   {/* ── L'ÉTAT DE CETTE PLATEFORME (2026-09-21) ────────────
