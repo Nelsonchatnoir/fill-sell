@@ -90,3 +90,35 @@ export function raisonAspectAveugle(source: SourceCategorie, m: MotsAspectAveugl
       : "c'est la catégorie qui est en cause")
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// eBay : LE COMPTE N'EST PAS ENCORE VENDEUR (2026-09-21)
+// ═══════════════════════════════════════════════════════════════════════════
+// Au clic « Mettre en vente », eBay détourne vers son inscription vendeur
+// (onboardweb.ebay.fr) les comptes qui n'ont jamais été activés pour vendre.
+// La page n'est pas cassée, l'onglet n'a pas été suspendu, le canal n'a pas
+// lâché : c'est un mur, et il ne tombera pas tout seul.
+//
+// Ce que la personne lisait jusqu'ici : « L'onglet de travail a été mis en
+// veille par Chrome… On réessaie automatiquement, rien à faire de ton côté. »
+// Trois mensonges en deux phrases — et trois reprises brûlées contre le même
+// mur (bfcache_rearms = 3, mesuré) pendant qu'on lui disait de ne rien faire.
+// Le nouvel inscrit du 21/09 (première publication, jamais aboutie) n'avait
+// aucun moyen de savoir ce qu'on attendait de lui.
+//
+// ⛔ CE MESSAGE NE NOMME PAS DE PAGE. Relevé du 10/09 : ebay.fr/verifyidentity,
+// /sellerregistration et /sh/acc/verification redirigent toutes vers une page
+// d'erreur. On dit « connecte-toi à eBay », qui est vrai partout et le restera.
+export function compteVendeurEbayInactif(action: string): string {
+  const quoi = action === "delete" ? "le retrait"
+    : action === "republish" ? "la republication"
+    : "la publication";
+  return (
+    "Ton compte eBay n'est pas encore prêt pour vendre. " +
+    "Connecte-toi à eBay sur ton ordinateur et termine ton inscription vendeur, " +
+    `puis relance ${quoi}.`
+  );
+}
+
+/** Le marqueur posé sur le job — nommé, donc mesurable et filtrable en base. */
+export const SOURCE_EBAY_COMPTE_VENDEUR_INACTIF = "ebay_compte_vendeur_inactif";
