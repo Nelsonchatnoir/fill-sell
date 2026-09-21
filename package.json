@@ -34,6 +34,8 @@
     "selftest:opla-resolution": "deno run --allow-read scripts/opla-resolution-selftest.ts",
     "selftest:opla-completion": "deno run --allow-read scripts/opla-completion-selftest.ts",
     "selftest:ebay-page-vendeur": "deno run scripts/ebay-page-vendeur-selftest.ts",
+    "selftest:pages-de-job": "deno run scripts/pages-de-job-selftest.ts",
+    "selftest:vocabulaire-developpeur": "deno run --allow-read scripts/vocabulaire-developpeur-selftest.ts",
     "gen:opla-catalogue": "node scripts/gen-opla-catalogue.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",
