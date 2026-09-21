@@ -44,6 +44,7 @@ import { getPlatformSupport } from "../utils/platformCompat";
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
+import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
 // versImageDecodable/chargerImage sont passés dans utils/photosUpload avec la
 // compression : seul le message d'échec reste utilisé ici.
@@ -2837,7 +2838,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3055,6 +3056,40 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           lot publié (handlePublish) — les autres partent normalement.
           Affiché uniquement sur une lecture ABOUTIE : tant qu'on ne sait pas,
           la prop vaut null et rien ne change. */}
+      {/* Jumeau déjà en ligne (2026-09-21) : un AUTRE article du stock a déjà
+          une annonce très ressemblante sur une plateforme cochée. On nomme
+          l'annonce et on donne son lien — la personne tranche. ⛔ JAMAIS
+          BLOQUANT : aucune plateforme décochée, aucun motif de CTA gris, et
+          publier n'est pas plus difficile qu'avant. Deux exemplaires du même
+          objet, c'est banal ; c'est elle qui sait. Le critère de
+          rapprochement et ses limites vivent dans utils/jumeauxEnLigne.js. */}
+      {jumeauxEnLigne.length > 0 && (
+        <div style={{ padding:"11px 14px", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8A6100" }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
+            {lang === "en"
+              ? `A similar item is already online on ${jumeauxEnLigne.map(j => PLATFORM_LABELS[j.platform] ?? j.platform).join(", ")}`
+              : `Un article qui ressemble est déjà en ligne sur ${jumeauxEnLigne.map(j => PLATFORM_LABELS[j.platform] ?? j.platform).join(", ")}`}
+          </div>
+          {lang === "en"
+            ? "If it is the same object, publishing here puts a second copy on sale — marketplaces treat that as a duplicate. If you really own two of them, ignore this: nothing is blocked."
+            : "Si c'est bien le même objet, publier ici en mettra un deuxième en vente — les plateformes comptent ça comme un doublon. Si tu en as réellement deux exemplaires, ignore ce message : rien n'est bloqué."}
+          <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:6 }}>
+            {jumeauxEnLigne.map(j => (
+              <div key={`${j.platform}:${j.url ?? j.titre}`} style={{ fontSize:12.5 }}>
+                <strong>{PLATFORM_LABELS[j.platform] ?? j.platform}</strong>{" · "}
+                {j.titre}{j.prix != null ? ` — ${j.prix} €` : ""}
+                {j.url && (
+                  <>{" "}<a href={j.url} target="_blank" rel="noopener noreferrer"
+                    style={{ color:"#8A6100", fontWeight:700, whiteSpace:"nowrap" }}>
+                    {lang === "en" ? "see it ↗" : "voir l'annonce ↗"}
+                  </a></>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {lbcAdresseManquante && (
         <div style={{ padding:"11px 14px", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8A6100" }}>
           <div style={{ fontWeight:700, marginBottom:4 }}>
@@ -5851,6 +5886,31 @@ export default function ListingPreviewScreen({
       .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
       .filter(p => platformSupport?.[p] !== "prohibited")
   ), [selected, platformListings, lbcAdresseManquante, platformSupport]);
+
+  // ── UN JUMEAU DÉJÀ EN LIGNE SUR LA PLATEFORME VISÉE (2026-09-21) ─────────
+  // Le verrou `publishedSet` ne voit que les jobs de CET article. Quand le
+  // même objet vit sur DEUX lignes de stock (relevé qui n'a pas reconnu une
+  // annonce, import, saisie en double), publier depuis la seconde crée un
+  // doublon en ligne sans que rien ne le dise — cas Romain du 21/09, après un
+  // avertissement Vinted. On le dit AVANT le clic, et on ne bloque rien :
+  // deux exemplaires du même jouet, c'est banal, et c'est la personne qui
+  // sait. Règle et limites du rapprochement : utils/jumeauxEnLigne.js.
+  const [jumeaux, setJumeaux] = useState([]);
+  const titrePourJumeaux = edited?.vinted?.title || edited?.leboncoin?.title
+    || edited?.beebs?.title || edited?.ebay?.title || initialListing?.titre || "";
+  const marquePourJumeaux = sharedFields?.marque || initialListing?.marque || "";
+  const cleJumeaux = `${step}|${[...plateformesPubliables].sort().join(",")}|${titrePourJumeaux}|${marquePourJumeaux}|${price ?? ""}`;
+  useEffect(() => {
+    if (step !== 3 || !plateformesPubliables.size || !titrePourJumeaux.trim()) { setJumeaux([]); return; }
+    let vivant = true;
+    chercherJumeauxEnLigne(supabase, {
+      userId, inventaireId: invId, titre: titrePourJumeaux, marque: marquePourJumeaux, prix: price,
+      plateformes: [...plateformesPubliables],
+    }).then(r => { if (vivant) setJumeaux(r); });
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleJumeaux, invId, userId]);
+
   // ── COPIE OPLA DÉRIVÉE DE LA COPIE VINTED (2026-09-17 soir) ─────────────
   // Pour les seuls comptes qui VOIENT Opla — inerte pour tous les autres.
   // Aucune écriture si la copie existe déjà (brouillon repris, édition à la
@@ -8680,6 +8740,7 @@ export default function ListingPreviewScreen({
             motifsVerrouillage={motifsVerrouillage}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
+            jumeauxEnLigne={jumeaux}
             descriptionMentions={descriptionMentions}
             ebayVoieApiReelle={ebayVoieApiReelle}
             descriptionVideVinted={descriptionVideVinted}
