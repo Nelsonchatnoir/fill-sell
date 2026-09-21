@@ -3420,7 +3420,11 @@ export default function App({ loginOnly = false }){
     // dont 5 d'articles vendus ailleurs et toujours actives. Une annonce en
     // ligne est une annonce en ligne, republiée ou non.
     const{data:pendingRem}=await supabase.from('cross_post_jobs')
-      .select('id, platform, title, inventaire_id, listing_url, platform_fields')
+      // platform_listing_id (21/09) : l'identifiant de l'annonce voyage avec le
+      // retrait. Le pantalon Sandro est resté en ligne sur Leboncoin parce que
+      // son retrait n'avait que `listing_url` (vide) à offrir — alors que
+      // Leboncoin avait rendu l'id de l'annonce au dépôt, et qu'il dormait là.
+      .select('id, platform, title, inventaire_id, listing_url, platform_listing_id, platform_fields')
       .eq('user_id',uid).eq('status','cancelled').in('action',['publish','republish'])
       .contains('platform_fields',{pending_removal:true})
       // « Plus tard » est DURABLE depuis le 07/09 : un report écrit en base
@@ -4360,10 +4364,16 @@ export default function App({ loginOnly = false }){
     // l'extension cible l'annonce par son TITRE dans « Mes annonces ». Le
     // drapeau ne pilote rien — il rend la trace lisible quand on relit un job
     // après coup, au lieu de laisser deviner pourquoi listing_url est vide.
+    // ⚠️ Depuis le 21/09, « sans URL » ne veut plus dire « sans identité » :
+    // platform_listing_id part avec le retrait, et get-pending-jobs sait en
+    // faire un lien (ou le lire dans le relevé du compte pour Leboncoin, dont
+    // l'URL porte un segment de catégorie qu'on ne fabrique jamais). Le
+    // ciblage par titre reste INTERDIT sur toutes les plateformes.
     const rows=group.map(j=>({
       user_id:user.id,inventaire_id:j.inventaire_id,platform:j.platform,
       action:'delete',status:'pending',photo_option:'original',
       title:j.title,listing_url:j.listing_url,
+      platform_listing_id:j.platform_listing_id??null,
       platform_fields:j.listing_url?{}:{removal_url_missing:true},
     }));
     const{data:armes,error}=await supabase.from('cross_post_jobs').insert(rows).select('id,platform');
