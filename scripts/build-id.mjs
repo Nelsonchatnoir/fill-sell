@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-21T15:12:55Z'; // recale 2b518c1 (le releve recapture : modifiees, jamais capturees, perimees au contingent — dernier commit touchant chrome-extension/). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.49 est empaquetee, PAS ENCORE televersee — il restera a le faire, puis a attendre l'acceptation. Ancienne valeur : 2026-09-20T17:35:37Z.
+export const EXTENSION_LAST_COMMIT = '2026-09-21T16:51:42Z'; // recale 9320d8e (0.6.50 : la liste bornee des pages de fin, une par tentative — dernier commit touchant chrome-extension/). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.49 est EN EXAMEN au CWS, la 0.6.50 n'est PAS empaquetee — rien a promouvoir. Ancienne valeur : 2026-09-21T15:12:55Z.
 // ⚠️ LA CHAÎNE DES « Ancienne valeur » A ÉTÉ COUPÉE ICI (20/09). Elle avait atteint 14 149
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
