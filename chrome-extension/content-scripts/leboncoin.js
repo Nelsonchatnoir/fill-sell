@@ -1613,7 +1613,14 @@ async function fillListingForm(job) {
     return (
       btns.find((el) => /déposer sans booster/i.test(el.textContent)) ??
       btns.find((el) => /continuer sans|sans option|non merci|déposer sans/i.test(el.textContent)) ??
-      btns.find((el) => /déposer (mon |l['’])annonce|publier l['’]annonce|valider et déposer/i.test(el.textContent)) ??
+      // ⚠️ « Publier mon annonce » AJOUTÉ le 21/09. Lu dans le dictionnaire
+      //    de la barre d'action de Leboncoin (clé `modify-ad-with-quota`), à
+      //    côté de `deposit-free-submit` (« Déposer sans booster mon
+      //    annonce ») et de `got-to-payment-submit` (« Valider et payer ») :
+      //    c'est le CTA servi quand le compte publie SUR SON FORFAIT. Notre
+      //    motif n'acceptait que « publier L'annonce » — un mot d'écart, et
+      //    le chemin gratuit d'un compte pro passait pour absent.
+      btns.find((el) => /déposer (mon |l['’])annonce|publier (mon |l['’])annonce|valider et déposer/i.test(el.textContent)) ??
       null
     );
   };
@@ -2041,6 +2048,18 @@ async function fillListingForm(job) {
   // doublon (12/12 désactivées, jamais en ligne) : depositUnconfirmed laisse
   // le background relire « Mes annonces » puis ré-armer, borné.
   const LBC_OPTIONS_CTA_ATTENTE_MS = 30_000;
+  // Le bouton qui ferait payer. On ne le clique JAMAIS — on ne fait que le
+  // reconnaître, pour distinguer « Leboncoin demande un paiement » (rien à
+  // retenter) de « la page n'a pas fini de se rendre » (on retente).
+  const trouverBoutonPayant = () =>
+    Array.from(document.querySelectorAll("button, a[role='button'], a"))
+      .find((el) => /valider et payer|payer et publier/i.test(el.textContent)) ?? null;
+  const MSG_LBC_PAYANT_SEULEMENT =
+    "Leboncoin ne propose aucune option gratuite pour ce dépôt : son écran « Boostez votre annonce ! » " +
+    "n'affiche que « Valider et payer ». FillSell ne paie jamais à ta place, donc la publication s'arrête " +
+    "là — rien n'a été mis en ligne. Si tu as un compte pro, regarde le forfait d'annonces de ton espace " +
+    "Leboncoin : c'est lui qui ouvre le dépôt gratuit. Tu peux publier cette annonce à la main, ou la " +
+    "relancer ici quand le bouton gratuit revient.";
   const MSG_LBC_NON_FINALISE =
     "Leboncoin a reçu l'annonce, mais l'option gratuite « Déposer sans booster mon annonce » n'a pas pu être " +
     "choisie — sans ce choix, Leboncoin ne met pas l'annonce en ligne. Relance la publication depuis le Stock : " +
@@ -2134,6 +2153,28 @@ async function fillListingForm(job) {
           if (tard) rendu = tard;
         }
         if (rendu && rendu !== "h1") { freeCta = rendu; break; }
+        // ── LEBONCOIN DEMANDE À ÊTRE PAYÉ : CE N'EST PAS UNE PANNE ────────
+        // (2026-09-21, jobs a04649ec et 4b92f94f, meminiandmove, compte PRO)
+        // Sa barre d'action ne portait que « Valider et payer » et « Voir
+        // détail » — ni « Déposer sans booster mon annonce », ni « Publier
+        // mon annonce ». Lu dans leur bundle : la barre a des états nommés
+        // `out_of_bundle`, `out_of_subscription_quota_not_included` et
+        // `out_of_subscription_quota_overflow` — hors forfait, le dépôt
+        // devient payant. Ses QUATRE autres dépôts du même soir, eux,
+        // avaient bien le bouton gratuit.
+        // On ne paie jamais à sa place, et surtout on ne RETENTE pas : cinq
+        // tentatives sur un écran qui demande une carte bancaire, c'est cinq
+        // dépôts inachevés dans son compte et zéro chance d'aboutir.
+        // attenteUtilisateur ⇒ needs_user PERSISTÉ, aucune reprise.
+        if (surEcranOptions() && trouverBoutonPayant()) {
+          console.warn("[leboncoin] /options : aucune option gratuite, seul le paiement est proposé — arrêt, sans reprise");
+          return {
+            success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_options_payant_seulement",
+            warnings, unfilledRequired, discoveredRequired: enumerated,
+            lbcDepot: { preuve: "ecran_options_payant", note: "barre d'action sans CTA gratuit ; seul « Valider et payer » proposé", adsubmit: depotAccepte, at: new Date().toISOString() },
+            error: `${MSG_LBC_PAYANT_SEULEMENT} — Observabilité: ${dumpEcranVisible()}`,
+          };
+        }
         return depotNonFinalise(
           surEcranOptions() ? "ecran_options_sans_cta" : "adsubmit_sans_ecran",
           surEcranOptions()
