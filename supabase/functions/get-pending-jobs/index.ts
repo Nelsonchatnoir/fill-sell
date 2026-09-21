@@ -4193,11 +4193,41 @@ serve(async (req) => {
       // vide et repart en needs_user avec la liste relevée. La nouvelle réponse
       // devient la plus récente et remplace la mémoire.
       const MEMOIRE_CLES = ["new_item_type", "estimated_parcel_weight"] as const;
+      // ── LA TRANCHE SE NORMALISE, SINON LA MÉMOIRE NE SE RETROUVE PAS ──────
+      // DÉFAUT MESURÉ (21/09 21:21, meminiandmove, jobs a04649ec et 4b92f94f) :
+      // la carte Leboncoin ne propose plus nos six formats mais les TROIS de
+      // Leboncoin depuis le lot du 21/09 (« Petit », « Moyen », « Volumineux »
+      // — cf. src/utils/leboncoinColis.js). Ses réponses d'avant sont rangées
+      // sous « Petit colis » et « Moyen colis » ; ses jobs d'après portent
+      // « Petit » et « Moyen ». La clé étant la chaîne EXACTE, la mémoire ne
+      // se retrouvait plus : deux jobs repartis en needs_user pour une question
+      // à laquelle elle avait déjà répondu deux fois.
+      //
+      // ⛔ ON NE NORMALISE QUE CE QUI EST LITTÉRALEMENT LE MÊME MOT : le
+      //    suffixe « colis ». « Petit colis » ≡ « Petit », « Moyen colis » ≡
+      //    « Moyen ». Rien d'autre ne fusionne.
+      // ⛔ « LETTRE » RESTE SA PROPRE TRANCHE, et c'est le cœur de la garde.
+      //    Leboncoin traduit « Lettre » en « Petit » (leboncoinColis.js), mais
+      //    ses réponses à elle diffèrent : « Jusqu'à 100 g » pour une lettre,
+      //    « De 500 g à 1 kg » pour un petit colis. Fusionner les deux ferait
+      //    partir une barrette déclarée à 1 kg — un poids faux, et c'est elle
+      //    qui paierait la différence. Une tranche jamais répondue pose la
+      //    question ; elle ne l'emprunte jamais à la voisine.
+      // ⛔ « Volumineux » ne rejoint NI « Grand colis » NI « Très grand
+      //    colis » : trois vocabulaires, trois poids possibles. Au pire une
+      //    question de plus, jamais une valeur fausse.
+      const normaliserTranche = (v: string): string => {
+        const t = v.trim().toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g, "")
+          .replace(/\s+/g, " ")
+          .replace(/\s+colis$/, "");
+        return t || "(absent)";
+      };
       const trancheColis = (pf: Record<string, unknown>, articleId: unknown): string => {
         const f = String(pf.format_colis ?? "").trim();
-        if (f) return f;
+        if (f) return normaliserTranche(f);
         const c = articleId != null ? (colisParArticle.get(Number(articleId)) ?? "") : "";
-        return c || "(absent)";
+        return c ? normaliserTranche(c) : "(absent)";
       };
       const memoire: { new_item_type: string | null; poids: Map<string, string> } = {
         new_item_type: null, poids: new Map(),
