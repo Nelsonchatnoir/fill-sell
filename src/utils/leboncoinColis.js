@@ -49,6 +49,16 @@ const TRADUCTION = {
   'grand colis': 'Volumineux',
   'très grand colis': 'Volumineux',
   'tres grand colis': 'Volumineux',
+  // ── LES TROIS VALEURS DE LEBONCOIN SE TRADUISENT EN ELLES-MÊMES (21/09) ──
+  // Depuis le 21/09, la carte Leboncoin ne propose plus que ces trois-là
+  // (packageFormatLbc, ListingPreviewScreen) : `format_colis` peut donc
+  // désormais les porter directement. Sans ces trois lignes, un « Petit »
+  // choisi à l'écran ne se serait traduit en RIEN et la carte serait repassée
+  // en « Leboncoin estimera lui-même le format » — le choix de la personne
+  // perdu en silence, sur le geste même qu'on venait de lui donner.
+  'petit': 'Petit',
+  'moyen': 'Moyen',
+  'volumineux': 'Volumineux',
 };
 
 /** Le format Leboncoin déduit de notre `format_colis`, ou null. */
