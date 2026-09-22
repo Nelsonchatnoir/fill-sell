@@ -7560,31 +7560,55 @@ const BEEBS_MAIN_FONCTIONS = {
       if (!trigger) return { ok: false, reason: "trigger Catégorie introuvable (monde MAIN)" };
       const fk = Object.keys(trigger).find((k) => k.startsWith("__reactFiber$"));
       if (!fk) return { ok: false, reason: "expando __reactFiber$ absent du trigger" };
-      let f = trigger[fk], props = null;
-      for (let i = 0; f && i < 15; i++, f = f.return) {
+      let f = trigger[fk], props = null, modele = null;
+      for (let i = 0; f && i < 30; i++, f = f.return) {
         const p = f.memoizedProps;
-        if (p && Array.isArray(p.categories) && typeof p.onSelected === "function") { props = p; break; }
+        if (!p || typeof p !== "object") continue;
+        // MODÈLE DU 22/09 : le menu porte { items, onSelect }. items est un
+        // arbre récursif { id, label, icon, position, category, children } ;
+        // une feuille a children vide et porte son nœud Contentful dans
+        // .category. onSelect(item) pose le libellé ET fait apparaître les
+        // champs dynamiques (mesuré en session réelle le 23/09).
+        if (Array.isArray(p.items) && typeof p.onSelect === "function") { props = p; modele = "items"; break; }
+        // MODÈLE D'AVANT, gardé en second : si Beebs revenait en arrière,
+        // le chemin rapide continuerait de marcher sans rien retoucher.
+        if (Array.isArray(p.categories) && typeof p.onSelected === "function") { props = p; modele = "categories"; break; }
       }
-      if (!props) return { ok: false, reason: "composant {categories, onSelected} introuvable dans la chaîne fiber" };
+      if (!props) return { ok: false, reason: "ni {items, onSelect} ni {categories, onSelected} dans la chaîne fiber" };
+      const libelleDe = (n) => (modele === "items" ? (n && n.label) : (n && n.title));
+      const enfantsDe = (n) => (modele === "items"
+        ? ((n && n.children) || [])
+        : ((n && n.subcategoriesCollection && n.subcategoriesCollection.items) || []));
       const etapes = Array.isArray(chemin) ? chemin : [];
-      let niveau = props.categories, noeud = null;
+      if (!etapes.length) return { ok: false, reason: "chemin vide" };
+      let niveau = (modele === "items" ? props.items : props.categories), noeud = null;
       for (const etiquette of etapes) {
         const cible = norm(etiquette);
         const items = Array.isArray(niveau) ? niveau : [];
-        noeud = items.find((c) => norm(c && c.title) === cible)
-          || items.find((c) => norm(c && c.title).startsWith(cible) || cible.startsWith(norm(c && c.title)));
+        // ⛔ ÉGALITÉ D'ABORD, ET RIEN QUE L'ÉGALITÉ EN PREMIER. Le repli
+        //    « commence par » ne sert qu'aux libellés tronqués par Beebs ;
+        //    il ne doit jamais choisir à la place d'un titre exact.
+        noeud = items.find((c) => norm(libelleDe(c)) === cible)
+          || items.find((c) => norm(libelleDe(c)).startsWith(cible) || cible.startsWith(norm(libelleDe(c))));
         if (!noeud) {
-          return { ok: false, reason: 'niveau "' + etiquette + '" introuvable dans props.categories — titres du niveau: ' + items.map((c) => c && c.title).slice(0, 12).join(" | ") };
+          return { ok: false, reason: 'niveau "' + etiquette + '" introuvable (modèle ' + modele + ') — niveau: ' + items.map(libelleDe).slice(0, 12).join(" | ") };
         }
-        niveau = (noeud.subcategoriesCollection && noeud.subcategoriesCollection.items) || [];
+        niveau = enfantsDe(noeud);
       }
-      if (!noeud) return { ok: false, reason: "chemin vide" };
-      const enfants = (noeud.subcategoriesCollection && noeud.subcategoriesCollection.items) || [];
+      const enfants = enfantsDe(noeud);
       if (enfants.length) {
-        return { ok: false, reason: 'le chemin finit sur un niveau NON feuille ("' + noeud.title + '", ' + enfants.length + ' enfants)' };
+        return { ok: false, reason: 'le chemin finit sur un niveau NON feuille ("' + libelleDe(noeud) + '", ' + enfants.length + ' enfants)' };
       }
-      props.onSelected(noeud);
-      return { ok: true, feuille: noeud.title, sysId: noeud.sys && noeud.sys.id, canal: "executeScript" };
+      // ⛔ LA FEUILLE ATTEINTE DOIT ÊTRE CELLE QU'ON VISAIT, AU MOT PRÈS.
+      //    Sans ce contrôle, un repli « commence par » pourrait poser une
+      //    catégorie voisine. Garde-fou Nico : jamais de catégorie approximative,
+      //    on rend la main au clic+panneau, qui est vérifié.
+      if (norm(libelleDe(noeud)) !== norm(etapes[etapes.length - 1])) {
+        return { ok: false, reason: 'feuille atteinte ("' + libelleDe(noeud) + '") différente de la feuille visée ("' + etapes[etapes.length - 1] + '")' };
+      }
+      const contentful = (modele === "items" ? noeud.category : noeud) || {};
+      if (modele === "items") props.onSelect(noeud); else props.onSelected(noeud);
+      return { ok: true, feuille: libelleDe(noeud), sysId: contentful.sys && contentful.sys.id, modele: modele, canal: "executeScript" };
     } catch (e) {
       return { ok: false, reason: "exception MAIN: " + (e && e.message) };
     }
