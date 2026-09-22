@@ -12507,12 +12507,45 @@ function capturerFicheEnPage(plateforme) {
   // `capture_complete` : false tant qu'une branche n'a pas pu tout prendre —
   // le repli DOM lit des lignes à l'écran, pas des paires, et rend donc
   // MOINS. Un lecteur doit pouvoir le savoir sans le deviner (2026-09-19).
-  const out = { photos: [], description: null, marque: null, taille: null, etat: null, couleur: null, matiere: null, categorie: null, source: null, attributs_bruts: null, capture_complete: false };
+  // `localisation` : OÙ est l'annonce (2026-09-22). Ajoutée après le job
+  // af34f609 (nicolas.menar) : une republication Leboncoin a supprimé une
+  // annonce localisée à Roost-Warendin (59286), puis n'a pas su la recréer —
+  // la capture ne relevait pas la localisation, la recréation est retombée sur
+  // l'« Adresse de remise » des Réglages, et ces Réglages étaient vides.
+  // 11 minutes hors ligne, et l'annonce n'est revenue que parce que
+  // l'utilisateur a rempli ses Réglages entre-temps.
+  // La doctrine de la republication est de rejouer l'annonce d'origine à
+  // l'identique : sa localisation en fait partie, au même titre que son prix.
+  const out = { photos: [], description: null, marque: null, taille: null, etat: null, couleur: null, matiere: null, categorie: null, localisation: null, source: null, attributs_bruts: null, capture_complete: false };
   if (plateforme === "leboncoin") {
     let ad = null;
     try { ad = JSON.parse(document.getElementById("__NEXT_DATA__")?.textContent ?? "null")?.props?.pageProps?.ad ?? null; } catch { ad = null; }
     if (ad && typeof ad === "object") {
       out.source = "next_data";
+      // ad.location, relevé live le 22/09 sur l'annonce 3274909685 :
+      //   { city:"Roost-Warendin", zipcode:"59286", city_label:"Roost-Warendin 59286",
+      //     department_name, region_name, lat, lng, … }
+      // La VOIE n'y figure pas sur une annonce de particulier (Leboncoin ne
+      // publie pas l'adresse exacte du vendeur) — on la prend si elle est là,
+      // sinon la commune suffit : c'est la granularité que le champ du dépôt
+      // accepte, et celle que la page affiche.
+      const loc = ad.location && typeof ad.location === "object" ? ad.location : null;
+      if (loc) {
+        const ville = propre(loc.city);
+        const cp = propre(loc.zipcode);
+        const voie = propre(loc.street ?? loc.address ?? "");
+        if (ville || cp) {
+          out.localisation = {
+            ville: ville || null,
+            code_postal: cp || null,
+            voie: voie || null,
+            libelle: propre(loc.city_label) || [ville, cp].filter(Boolean).join(" ") || null,
+            // De quoi retrouver la commune si le libellé change de forme.
+            departement: propre(loc.department_name) || null,
+            source: "next_data",
+          };
+        }
+      }
       const grandes = Array.isArray(ad.images?.urls_large) && ad.images.urls_large.length ? ad.images.urls_large : (ad.images?.urls ?? []);
       out.photos = grandes.filter((u) => /^https?:/.test(String(u)));
       out.description = typeof ad.body === "string" && ad.body.trim() ? ad.body.trim() : null;
@@ -12577,6 +12610,18 @@ function capturerFicheEnPage(plateforme) {
       out.etat = critLib(["état", "etat"]) ?? crit(/^condition$|_condition$/i);
       out.couleur = critLib(["couleur"]) ?? crit(/colou?r$/i); out.matiere = critLib(["matière", "matiere"]) ?? crit(/material$/i);
       out.categorie = ld?.category ?? null;
+      // Localisation, repli DOM : la page affiche « Ville 59286 ». On ne prend
+      // QUE cette forme — ville suivie d'un code postal à 5 chiffres — et
+      // jamais une ligne « proche de » ou un texte de livraison.
+      for (const f of feuilles()) {
+        const m = propre(f.textContent).match(/^([A-Za-zÀ-ÿ'’\-. ]{2,60}?)\s+(\d{5})$/);
+        if (!m) continue;
+        out.localisation = {
+          ville: propre(m[1]) || null, code_postal: m[2], voie: null,
+          libelle: `${propre(m[1])} ${m[2]}`, departement: null, source: "dom",
+        };
+        break;
+      }
       // ── TOUT CE QUE LA PAGE DONNE, ICI AUSSI (2026-09-19) ────────────────
       // Le repli DOM n'a pas `ad.attributes`, mais il a les lignes
       // « Libellé / Valeur » de l'encart critères : on les recopie telles
@@ -18188,6 +18233,94 @@ const PREVOL_DEPOT = {
   },
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// CE QU'IL FAUT AVOIR SOUS LA MAIN POUR REMETTRE L'ANNONCE (2026-09-22)
+// ══════════════════════════════════════════════════════════════════════════════
+// L'autre moitié du pré-vol : la PAGE peut être parfaite, si la copie de
+// l'annonce est incomplète la recréation échouera après le retrait.
+//
+// ⛔ CE CONTRÔLE NE TOURNAIT PAS POUR VINTED. Écrit le 22/09 au matin, il
+//    avait été posé dans processRepublishJobPlateforme — qui ne sert QUE
+//    Leboncoin et Beebs (processRepublishJob route : opla → sa fonction,
+//    leboncoin/beebs → la fonction plateforme, Vinted → la suite). Le bloc
+//    `if (job.platform === "vinted")` y était donc INATTEIGNABLE. Il est
+//    remonté ici, et appelé depuis LES DEUX chemins.
+//
+// ⛔ ON NE DEMANDE JAMAIS CE QU'ON SAIT DÉJÀ RETROUVER. Mesuré le 22/09 sur
+//    les 1096 publications Leboncoin des 60 derniers jours : 338 (les imports
+//    du relevé) n'ont ni photo, ni catégorie, ni adresse SUR LE JOB — mais
+//    leurs photos sont sur l'article ou dans la capture, et leur catégorie se
+//    lit dans l'adresse de l'annonce (get-pending-jobs la pose). Exiger ces
+//    champs du seul job aurait bloqué 338 republications qui marchent.
+//    Vérifié après coup : 0 blocage à tort sur ces 1096.
+function prevolCaptureRepublication(job) {
+  const pf = job.platform_fields ?? {};
+  const snap = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : null;
+  const manquants = [];
+
+  if (job.platform === "vinted") {
+    // Vinted recrée par son API depuis la capture : tout vient de là.
+    if (!snap) return ["la copie de ton annonce"];
+    if (!String(snap.titre ?? "").trim()) manquants.push("le titre");
+    if (!Array.isArray(snap.photos) || !snap.photos.length) manquants.push("les photos");
+    if (!(Number(snap.prix) > 0)) manquants.push("le prix");
+    if (!Number(snap.catalog_id)) manquants.push("la catégorie");
+    if (!Number(snap.package_size_id)) manquants.push("le format du colis");
+    return manquants;
+  }
+
+  if (job.platform === "leboncoin") {
+    // Leboncoin rejoue le FORMULAIRE : on regarde ce que le job porte
+    // réellement au moment du retrait, et ce qu'on sait retrouver sans rien
+    // demander à personne.
+    if (!String(job.title ?? "").trim() && !String(snap?.titre ?? "").trim()) manquants.push("le titre");
+    if (!(Number(job.price) > 0) && !(Number(snap?.prix) > 0)) manquants.push("le prix");
+    // Photos et catégorie : un LIEN D'ANNONCE suffit à les retrouver — le
+    // serveur lit la catégorie dans l'adresse de l'annonce (cheminLbcDepuisUrl)
+    // et les photos viennent de l'article ou de la capture. Mesuré le 22/09 :
+    // les 338 imports du relevé n'ont ni photo ni catégorie SUR LE JOB, et
+    // leurs republications aboutissent — exiger ces champs du seul job les
+    // aurait toutes bloquées.
+    const aLien = !!(job.listing_url || pf.old_listing_url || snap?.listing_url);
+    const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
+    if (!nPhotos && !(Number(snap?.photos) > 0) && !aLien) manquants.push("les photos");
+    const aCategorie = Array.isArray(pf.lbcCategoryPath) && pf.lbcCategoryPath.length;
+    if (!aCategorie && !aLien) manquants.push("la catégorie");
+    // ── LA LOCALISATION (le job af34f609, 22/09) ─────────────────────────
+    // C'est CE champ qui a laissé une annonce hors ligne 11 minutes : la
+    // capture n'avait pas de localisation, les Réglages étaient vides, et on
+    // ne s'en est aperçu qu'APRÈS la suppression. L'une des deux suffit.
+    const locOrigine = pf.localisation_origine && typeof pf.localisation_origine === "object"
+      ? pf.localisation_origine : null;
+    const aLocalisation = !!(locOrigine && (locOrigine.ville || locOrigine.code_postal))
+      || !!String(pf.adresse ?? "").trim();
+    if (!aLocalisation) manquants.push("l'adresse où se trouve l'article");
+    return manquants;
+  }
+
+  // Beebs : le redépôt repart du job lui-même (titre, photos, prix, rayon).
+  if (job.platform === "beebs") {
+    if (!String(job.title ?? "").trim()) manquants.push("le titre");
+    if (!(Number(job.price) > 0)) manquants.push("le prix");
+    const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
+    if (!nPhotos && !(Number(snap?.photos) > 0)) manquants.push("les photos");
+    if (!(Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length)) manquants.push("le rayon Beebs");
+    return manquants;
+  }
+
+  return manquants;
+}
+
+// Le message d'un pré-vol négatif — même forme partout : ce qui manque, et le
+// fait que l'annonce n'a PAS été touchée.
+function messagePrevolRepublication(label, manquants) {
+  const quoi = manquants.length > 1
+    ? `${manquants.slice(0, -1).join(", ")} et ${manquants[manquants.length - 1]}`
+    : manquants[0];
+  return `Republication ${label} mise en pause AVANT tout retrait : ${quoi} ${manquants.length > 1 ? "manquent" : "manque"} dans la copie de ton annonce. `
+    + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
+}
+
 // Ouvre la page de dépôt dans l'onglet de travail et lit la sonde.
 // ⛔ FAIL-OPEN : tout ce qui n'est pas une réponse de la page rend
 //    { lisible:false } — l'appelant poursuit alors son chemin normal.
@@ -18308,37 +18441,24 @@ async function processRepublishJobPlateforme(job, accessToken) {
     // hors ligne, pas en message d'erreur. Le dossier XEWER (job 6aabc550,
     // 22/09) a coûté une heure de retrait pour un format de colis.
     //
-    // On vérifie donc AVANT le retrait que la capture porte tout ce que la
-    // plateforme exige et qu'aucun mini-éditeur ne peut inventer après coup —
-    // exactement la liste NON_RESOLUBLES du refus serveur. Il en manque un :
-    // on ne touche à RIEN, l'annonce reste en ligne, et on le dit avec le
-    // geste à faire.
-    // ⛔ Aucune heuristique : on teste la PRÉSENCE de la valeur dans la
-    //    capture, pas sa justesse. Et seulement sur Vinted, seule plateforme
-    //    dont le refus serveur nomme ces champs — ailleurs, le chemin ne
-    //    change pas d'un caractère.
-    if (job.platform === "vinted") {
-      const manquants = [];
-      if (!snapshot) manquants.push("la copie de ton annonce");
-      else {
-        if (!String(snapshot.titre ?? "").trim()) manquants.push("le titre");
-        if (!Array.isArray(snapshot.photos) || !snapshot.photos.length) manquants.push("les photos");
-        if (!(Number(snapshot.prix) > 0)) manquants.push("le prix");
-        if (!Number(snapshot.catalog_id)) manquants.push("la catégorie");
-        if (!Number(snapshot.package_size_id)) manquants.push("le format du colis");
-      }
+    // On vérifie donc AVANT le retrait que la copie porte tout ce que la
+    // plateforme exige et qu'aucun mini-éditeur ne peut inventer après coup.
+    // Il en manque un : on ne touche à RIEN, l'annonce reste en ligne, et on
+    // le dit avec le geste à faire.
+    // ⛔ Aucune heuristique : on teste la PRÉSENCE de la valeur, jamais sa
+    //    justesse — et jamais ce qu'on sait retrouver seul
+    //    (cf. prevolCaptureRepublication).
+    {
+      const manquants = prevolCaptureRepublication(job);
       if (manquants.length) {
-        const quoi = manquants.length > 1
-          ? `${manquants.slice(0, -1).join(", ")} et ${manquants[manquants.length - 1]}`
-          : manquants[0];
-        const msg = `Republication ${label} mise en pause AVANT tout retrait : ${quoi} ${manquants.length > 1 ? "manquent" : "manque"} dans la copie de ton annonce. `
-          + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
+        const msg = messagePrevolRepublication(label, manquants);
         pf.republish_prevol_manquants = manquants;
         await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — capture incomplète (${manquants.join(", ")})`);
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — copie incomplète (${manquants.join(", ")})`);
         return { status: "needsUser", error: msg };
       }
     }
+    void snapshot;
 
     // ══════════════════════════════════════════════════════════════════════
     // PRÉ-VOL SUR LA PAGE DE DÉPÔT (2026-09-22) — LE POT DIDDLINA
@@ -18837,6 +18957,25 @@ async function processRepublishJob(job, accessToken) {
       const msg = "Job republish sans listing_url : rien n'a été touché.";
       await updateJobStatus(accessToken, job.id, "failed", { error: msg });
       return { status: "failed", error: msg };
+    }
+
+    // ── ON NE RETIRE PAS CE QU'ON NE SAIT PAS REMETTRE — VINTED AUSSI ──────
+    // (2026-09-22 soir.) Le contrôle écrit le matin même vivait dans
+    // processRepublishJobPlateforme, qui ne sert QUE Leboncoin et Beebs :
+    // Vinted n'y entre jamais, et le bloc n'a donc jamais tourné une seule
+    // fois. Il est ici, sur le chemin que Vinted emprunte réellement, et
+    // AVANT l'invariant « une seule annonce hors ligne » — un pré-vol qui
+    // refuse ne doit pas d'abord attendre son tour de file.
+    {
+      const manquants = prevolCaptureRepublication(job);
+      if (manquants.length) {
+        const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+        const msg = messagePrevolRepublication(label, manquants);
+        pf.republish_prevol_manquants = manquants;
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — copie incomplète (${manquants.join(", ")})`);
+        return { status: "needsUser", error: msg };
+      }
     }
 
     // ── INVARIANT « UNE SEULE ANNONCE HORS LIGNE À LA FOIS » (2026-08-07) ───
