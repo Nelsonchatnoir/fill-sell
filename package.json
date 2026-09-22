@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.1",
+  "version": "2.9.2",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -60,7 +60,8 @@
     "selftest:capture-fraicheur": "node scripts/capture-fraicheur-selftest.mjs",
     "selftest:beebs-rayon-introuvable": "node --import ./scripts/loader-ext.mjs scripts/beebs-rayon-introuvable-selftest.mjs",
     "selftest:taille-rayon-paiement": "node --import ./scripts/loader-ext.mjs scripts/taille-rayon-paiement-selftest.mjs",
-    "selftest:pas-de-rouge": "node scripts/pas-de-rouge-selftest.mjs"
+    "selftest:pas-de-rouge": "node scripts/pas-de-rouge-selftest.mjs",
+    "selftest:lbc-maison-jardin-secours": "node scripts/lbc-maison-jardin-secours-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
