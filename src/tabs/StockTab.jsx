@@ -1597,7 +1597,9 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
       }
     : (!enFile && (aCompleter || enEchec || enReprise))
     ? {
-        ton: (enEchec || sansRecours) && !aCompleter ? "rouge" : "orange",
+        // ⛔ Jamais rouge (2026-09-22) : « arrêtée » veut dire qu'il reste un
+        //    geste, pas que quelque chose est cassé. L'annonce est intacte.
+        ton: "orange",
         titre: aCompleter
           ? (fr ? "En attente de toi" : "Waiting on you")
           : enEchec || sansRecours
@@ -1898,8 +1900,8 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                       <span style={{ color:"#5A6B66", fontWeight:600 }}>{fr ? "Publication en cours de confirmation" : "Awaiting the platform's confirmation"}</span></>
                     )}
                     {enEchecPar.has(p) && (
-                      <><span style={{ width:5, height:5, borderRadius:"50%", background:"#B91C1C", flex:"0 0 auto" }}/>
-                      <span style={{ color:"#B91C1C", fontWeight:600 }}>{fr ? "La publication a échoué" : "Publishing failed"}</span></>
+                      <><span style={{ width:5, height:5, borderRadius:"50%", background:"#8A6100", flex:"0 0 auto" }}/>
+                      <span style={{ color:"#8A6100", fontWeight:600 }}>{fr ? "Elle n'est pas partie — à relancer" : "It didn't go out — relaunch it"}</span></>
                     )}
                   </div>
                   {/* ⚠️ POURQUOI LE BOUTON EST GRIS, ÉCRIT EN TOUTES LETTRES.
@@ -4074,10 +4076,12 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   const bleu  = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
   const vert  = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
   const ambre = { fond: '#FFF6E3', bord: '#EED9A6', encre: '#8A6100' };
-  // Rouge : RÉSERVÉ aux arrêts APRÈS suppression (2026-08-07) — l'annonce est
-  // HORS LIGNE, c'est le seul cas du produit qui exige un geste immédiat. Un
-  // arrêt AVANT suppression garde l'ambre/bleu : l'annonce est intacte.
-  const rouge = { fond: '#FEF2F2', bord: '#FECACA', encre: '#B91C1C' };
+  // ⛔ PLUS DE ROUGE DU TOUT (2026-09-22). Le rouge était RÉSERVÉ aux arrêts
+  //    APRÈS suppression (2026-08-07) : l'annonce est hors ligne, il faut un
+  //    geste. Le geste reste — la couleur d'alarme part. Une republication
+  //    arrêtée après retrait garde TOUT (titre, description, photos, champs)
+  //    et repart à la recréation d'un clic : c'est une action, pas une panne.
+  //    Ambre pour ce cas, ambre/bleu pour les arrêts avant suppression.
 
   // ── Gel Livres (2026-08-28 soir) : détection par platform_fields.gel_livres_le
   // SEUL — jamais le statut (les jobs gelés sont 'cancelled', le seul statut
@@ -4160,7 +4164,10 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
       // Deux gravités distinctes (2026-08-07) : après suppression, l'article
       // est HORS LIGNE — le mot le dit, la couleur aussi.
       court: apres ? (fr ? 'Hors ligne — arrêtée' : 'Offline — stopped') : T.arretee,
-      ...(apres ? rouge : bleu), fini: true, apresSuppression: apres,
+      // ⛔ Plus de rouge, même après suppression (2026-09-22) : l'annonce est
+      //    hors ligne, mais tout est sauvegardé et la reprise repart à la
+      //    recréation. C'est une action à faire, pas une panne — ambre.
+      ...(apres ? ambre : bleu), fini: true, apresSuppression: apres,
       titre: apres ? (fr ? 'Interrompue après la suppression' : 'Stopped after deletion')
                    : (fr ? 'Interrompue avant tout retrait' : 'Stopped before any removal'),
       detail: apres
@@ -4199,7 +4206,7 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
     return {
       cle: 'needs_user',
       court: apres ? (fr ? 'Hors ligne — republier' : 'Offline — republish') : T.relancer,
-      ...(apres ? rouge : ambre), fini: true, apresSuppression: apres,
+      ...(apres ? ambre : ambre), fini: true, apresSuppression: apres,
       titre: apres ? (fr ? 'Annonce retirée, pas encore recréée' : 'Listing removed, not recreated yet')
                    : (fr ? 'En attente de toi' : 'Waiting for you'),
       detail: apres
@@ -6159,10 +6166,16 @@ const StockTab = memo(function StockTab({
     const bleu = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
     const vert = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
     const ambre = { fond: '#FFF6E3', bord: '#EED9A6', encre: '#8A6100' };
-    const rouge = { fond: '#FEF2F2', bord: '#FECACA', encre: '#B91C1C' };
     const gris = { fond: '#F7F5EF', bord: '#E7E3D8', encre: '#5C6560' };
     if (j.status === 'published' || j.status === 'sold') return { ...vert, court: fr ? 'En ligne' : 'Live' };
-    if (j.status === 'failed') return { ...rouge, court: fr ? 'Pas partie' : 'Not sent' };
+    // ⛔ PLUS AUCUNE LIGNE ROUGE (2026-09-22, demande de Nico). Un `failed`
+    //    s'affichait en rouge — la couleur de la panne — alors que dans les 20
+    //    lignes relevées ce matin l'annonce était intacte et le job relançable
+    //    d'un clic. Le rouge disait « c'est cassé » là où il fallait lire « il
+    //    te reste un geste ». Depuis ce jour le serveur ne produit plus de
+    //    `failed` nommé (_shared/pas-de-rouge.js) ; ce qui passe encore ici
+    //    vient du parc ancien et mérite le même traitement.
+    if (j.status === 'failed') return { ...ambre, court: fr ? 'À relancer' : 'To relaunch' };
     if (j.status === 'needs_user') return { ...ambre, court: fr ? 'À compléter' : 'To complete' };
     if (j.status === 'cancelled') return { ...gris, court: fr ? 'Arrêtée' : 'Stopped' };
     if (j.status === 'dry_run_completed') return { ...gris, court: fr ? 'Test à blanc' : 'Dry run' };
@@ -7704,10 +7717,15 @@ const StockTab = memo(function StockTab({
             Avant, le tap filtrait la liste et il fallait encore ouvrir chaque
             carte pour savoir ce qui manquait. */}
         {attenteAction&&(()=>{
-          const rouge=attenteAction.gravite==='echec';
-          const encre=rouge?"#B91C1C":"#8A6100";
-          const fond=rouge?"#FEF2F2":"#FFF6E3";
-          const bord=rouge?"#FECACA":"#EED9A6";
+          // ⛔ UN BANDEAU QUI DEMANDE UN GESTE N'EST PAS UNE ALARME
+          //    (2026-09-22). Il virait au rouge dès qu'une annonce n'était
+          //    « pas partie » — or une annonce pas partie est intacte, et le
+          //    geste attendu est le même que pour un « à compléter » : un
+          //    clic. Ambre dans les deux cas ; l'icône suffit à distinguer.
+          const rouge=false;
+          const encre="#8A6100";
+          const fond="#FFF6E3";
+          const bord="#EED9A6";
           const {total,echecs,aCompleter}=attenteAction;
           const sous=[
             echecs>0?(lang==='fr'
