@@ -16,20 +16,21 @@
 // dit donc où cliquer ; il ne prétend pas le faire à la place de la personne.
 //
 // Le compte vendeur eBay reste la section existante, montée telle quelle.
-import { useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import EbayCompteSection from '../components/EbayCompteSection';
+import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import OplaCategoriesMemorisees from './OplaCategoriesMemorisees';
+import { MOTIFS } from '../utils/connexionPlateformes';
 import { R } from './theme';
-import { Groupe, Carte, Pastille, Bouton, Note } from './ReglagesUI';
+import { Groupe, Carte, Pastille, Note } from './ReglagesUI';
 
 // Noms propres, pas du vocabulaire : ils ne se traduisent pas.
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
 
 export default function SousPagePlateformes({ c, T }) {
-  const [oplaExplique, setOplaExplique] = useState(false);
-  const { etats, chargement } = c.sessions;
+  const { etats, chargement, relire } = c.sessions;
   const liste = c.plateformesSession;
+  const userId = c.user?.id ?? null;
 
   return (
     <>
@@ -37,31 +38,48 @@ export default function SousPagePlateformes({ c, T }) {
         <Carte>
           {liste.map((pf) => {
             const etat = etats?.[pf] ?? null;
+            // ⛔ LE BOUTON NE S'AFFICHE QUE SUR UNE CERTITUDE. 'ko' est un
+            //    relevé — jamais un 401, jamais un 403, jamais un null (cf.
+            //    utils/sessionsPlateformes). « Jamais vérifié » n'ouvre aucun
+            //    bouton : on ne demande pas de se reconnecter à quelqu'un dont
+            //    on ne sait rien, c'est exactement le faux positif à éviter.
+            const aConnecter = etat === 'ko';
+            // Opla garde son cas à part : son mur n'est pas une session, c'est
+            // la permission d'hôte opla.co, et elle ne s'accorde que dans
+            // l'extension (chrome.permissions.request exige un geste sur une
+            // page d'extension). Le bouton ouvre donc le popup, où le geste
+            // existe depuis le 16/09 — il ne prétend pas le faire à sa place.
             const oplaAAutoriser = pf === 'opla' && etat === null;
             return (
-              <div key={pf} className="rg-ligne">
-                <PlatformLogo platform={pf} size={26} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500, color: R.ink }}>{NOMS[pf] ?? pf}</span>
-                {oplaAAutoriser ? (
-                  <Bouton
-                    ton="creux"
-                    onClick={() => setOplaExplique(true)}
-                    style={{ minHeight: 44, padding: '0 16px', fontSize: 13.5, color: R.tealDeep, borderColor: R.mentheBord }}
-                  >
-                    {T.autoriser}
-                  </Bouton>
-                ) : chargement && etat === null ? (
-                  <Pastille ton="inconnu">…</Pastille>
-                ) : (
-                  <Pastille ton={etat === 'ok' ? 'ok' : etat === 'ko' ? 'ko' : 'inconnu'}>
-                    {etat === 'ok' ? T.connecte : etat === 'ko' ? T.pasConnecte : T.jamaisVerifie}
-                  </Pastille>
+              <div key={pf} style={{ borderBottom: `1px solid ${R.ligneDouce}` }}>
+                <div className="rg-ligne" style={{ borderBottom: 'none' }}>
+                  <PlatformLogo platform={pf} size={26} />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500, color: R.ink }}>{NOMS[pf] ?? pf}</span>
+                  {chargement && etat === null && !oplaAAutoriser ? (
+                    <Pastille ton="inconnu">…</Pastille>
+                  ) : (
+                    <Pastille ton={etat === 'ok' ? 'ok' : etat === 'ko' ? 'ko' : 'inconnu'}>
+                      {etat === 'ok' ? T.connecte : etat === 'ko' ? T.pasConnecte : T.jamaisVerifie}
+                    </Pastille>
+                  )}
+                </div>
+                {(aConnecter || oplaAAutoriser) && (
+                  <div style={{ padding: '0 16px 14px' }}>
+                    <BoutonMeConnecter
+                      userId={userId}
+                      platform={pf}
+                      motif={oplaAAutoriser ? MOTIFS.AUTORISER_OPLA : MOTIFS.CONNEXION}
+                      lang={c.lang}
+                      // Au retour, l'écran relit les sessions : la pastille
+                      // doit suivre sans que la personne recharge.
+                      onOuverte={relire}
+                    />
+                  </div>
                 )}
               </div>
             );
           })}
         </Carte>
-        {oplaExplique && <Note>{T.autoriserOplaComment}</Note>}
         <Note>{T.sessionsNote}</Note>
       </Groupe>
 

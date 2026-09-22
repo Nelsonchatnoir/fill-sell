@@ -86,7 +86,7 @@ const FR = {
   jamaisVerifie: 'jamais vérifié',
   autoriser: 'Autoriser',
   autoriserOplaComment: "Clique sur l'icône FillSell dans Chrome, puis sur « Autoriser Opla ».",
-  sessionsNote: "Ces états viennent de l'extension sur ton ordinateur : pour reconnecter une plateforme, connecte-toi dessus dans Chrome.",
+  sessionsNote: "Ces états viennent de l'extension sur ton ordinateur. Quand une plateforme n'est pas connectée, le bouton ouvre sa page de connexion sur ton ordinateur.",
   sessionsAucune: "L'extension n'a encore relevé aucune session.",
 
   // ── Champs des plateformes (arbitrage, réservé) ─────────────────────────
@@ -271,7 +271,7 @@ const EN = {
   quarantaineValider: 'Ask for it',
   quarantaineRefuser: 'Stop suggesting',
   quarantainePied: '“Ask for it” makes the field appear when publishing, with its values. “Stop suggesting” removes it from this list for good — it is never asked of anyone.',
-  sessionsNote: 'These states come from the extension on your computer: to reconnect a platform, sign in to it in Chrome.',
+  sessionsNote: 'These states come from the extension on your computer. When a platform is not connected, the button opens its sign-in page on your computer.',
   sessionsAucune: 'The extension has not reported any session yet.',
   compteVendeurEbay: 'eBay seller account',
   oplaMemTitre: 'Opla categories you picked',
