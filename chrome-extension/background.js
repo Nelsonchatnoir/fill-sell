@@ -4116,8 +4116,37 @@ function motifLisible(texte, max = 200) {
     .replace(/\s+([.,;!?])/g, "$1")
     .replace(/[\s:—–-]+$/, "")
     .trim();
-  if (Number.isFinite(max) && out.length > max) out = out.slice(0, max - 1).replace(/\s+\S*$/, "") + "…";
+  // ── ON NE COUPE PAS AU MILIEU D'UNE PHRASE (2026-09-22) ──────────────────
+  // Job 202a1720 (seghirdeborah711, manteau Vero Moda). Le motif faisait deux
+  // phrases ; la coupe à 200 caractères est tombée dans la seconde, et
+  // l'appelant a ajouté son point derrière l'ellipse. La personne a lu :
+  //   « …Rien n'a été soumis; l'état réel de l'annonce est…. Relance … »
+  // Un verbe sans complément, une ellipse suivie d'un point : du texte de
+  // développeur, exactement ce que la règle des messages interdit.
+  // Règle : quand il faut couper, on coupe à la dernière FIN DE PHRASE utile ;
+  // à défaut seulement, on coupe au mot et on pose l'ellipse.
+  if (Number.isFinite(max) && out.length > max) {
+    const coupe = out.slice(0, max - 1);
+    const finPhrase = Math.max(
+      coupe.lastIndexOf(". "), coupe.lastIndexOf("! "), coupe.lastIndexOf("? "),
+    );
+    out = finPhrase > max * 0.4
+      ? coupe.slice(0, finPhrase + 1).trim()
+      : coupe.replace(/\s+\S*$/, "") + "…";
+  }
+  // Espace avant un point-virgule : la typographie française en veut un, et
+  // le nettoyage ci-dessus l'avait mangé (« soumis; »).
+  out = out.replace(/\s*;\s*/g, " ; ").replace(/\s{2,}/g, " ").trim();
   return out || "raison inconnue";
+}
+
+// Colle une phrase à la suite d'une autre sans jamais doubler la ponctuation :
+// « …est… » + « . » donnait « …est…. ». Rend le motif TOUJOURS terminé par un
+// point, un point d'exclamation, d'interrogation ou une ellipse — jamais deux.
+function phraseClose(texte) {
+  const t = String(texte ?? "").trim().replace(/[\s.]+$/, (m) => (m.includes("…") ? m : ""));
+  if (!t) return "";
+  return /[.!?…]$/.test(t) ? t : `${t}.`;
 }
 
 function completionExtras(job, result) {
@@ -17001,7 +17030,27 @@ async function paintTab(tabId) {
 const DELETE_TARGETS = {
   vinted: (job) => job.listing_url,
   leboncoin: (job) => job.listing_url || "https://www.leboncoin.fr/compte/part/mes-annonces",
-  ebay: () => "https://www.ebay.fr/sh/lst/active",
+  // eBay (2026-09-22) : le Hub vendeur FILTRÉ PAR L'IDENTIFIANT. La cible
+  // était `/sh/lst/active` nu, c'est-à-dire la PREMIÈRE PAGE — exactement le
+  // défaut déjà payé sur « Mes annonces » de Beebs (Joe0410, rangs 66-175
+  // introuvables) et de Leboncoin. jocabroc8, plat Sarreguemines
+  // (407236479670) : « Annonce introuvable dans le Hub vendeur », 4 tentatives,
+  // alors que l'annonce était bien en ligne — elle n'était simplement pas sur
+  // la page 1. Un autre retrait eBay du même compte, le même jour, a réussi :
+  // son annonce, elle, y était.
+  // `?keyword=` est le paramètre du champ « Rechercher par titre, réf. article,
+  // n° d'objet » du Hub (input[name="keyword"]). MESURÉ le 22/09 en session
+  // réelle : nu → 6 annonces ; `?keyword=<id>` → 1 seule, la bonne, avec son
+  // menu d'actions rendu. `?q=` et `?searchQuery=` sont IGNORÉS par eBay (6
+  // annonces quand même) — c'est `keyword`, et rien d'autre.
+  // Sans identifiant lisible dans le lien : le Hub nu, comme avant.
+  ebay: (job) => {
+    const m = String(job?.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i);
+    const id = m?.[1] ?? m?.[2] ?? null;
+    return id
+      ? `https://www.ebay.fr/sh/lst/active?keyword=${encodeURIComponent(id)}`
+      : "https://www.ebay.fr/sh/lst/active";
+  },
   // Beebs (2026-09-11, GO Nico) : la PAGE DE L'ANNONCE, dont l'URL EST
   // l'identifiant. « Mes annonces » ne rend que sa première page (Joe0410,
   // 189 annonces : rang 9 trouvé, rangs 66-175 introuvables, 6 retraits en
@@ -18253,6 +18302,35 @@ const PREVOL_DEPOT = {
 //    lit dans l'adresse de l'annonce (get-pending-jobs la pose). Exiger ces
 //    champs du seul job aurait bloqué 338 republications qui marchent.
 //    Vérifié après coup : 0 blocage à tort sur ces 1096.
+// ══════════════════════════════════════════════════════════════════════════════
+// UNE GARDE QUI NE LAISSE PAS DE TRACE N'EXISTE PAS (2026-09-22)
+// ══════════════════════════════════════════════════════════════════════════════
+// Le pré-vol de republication annoncé le 22/09 au matin n'a jamais tourné une
+// seule fois — il avait été posé dans une fonction que Vinted n'atteint pas.
+// Personne ne l'a vu, parce qu'une garde qui laisse passer ne dit rien, et
+// qu'on ne peut pas distinguer « elle a tourné et tout allait bien » de « elle
+// n'a pas tourné » quand les deux s'écrivent de la même façon : rien.
+//
+// RÈGLE : chaque garde écrit une ligne DATÉE dans platform_fields, À CHAQUE
+// PASSAGE, qu'elle bloque ou qu'elle laisse passer. On peut alors vérifier EN
+// BASE qu'elle tourne, au lieu de le supposer.
+//   platform_fields.gardes = {
+//     "<nom>": { at, verdict, champs_verifies, … }
+//   }
+// `verdict` dit ce qu'elle a fait ; les autres clés sont libres et propres à
+// chaque garde. On garde la DERNIÈRE ligne de chaque garde — l'historique des
+// blocages vit déjà dans erreurs_archivees.
+// ⛔ Ne lève JAMAIS : une trace ratée ne doit pas casser le geste qu'elle
+//    observe.
+function tracerGarde(pf, nom, detail = {}) {
+  try {
+    if (!pf || typeof pf !== "object") return;
+    const gardes = (pf.gardes && typeof pf.gardes === "object") ? pf.gardes : {};
+    gardes[String(nom)] = { at: new Date().toISOString(), ...detail };
+    pf.gardes = gardes;
+  } catch { /* jamais bloquant */ }
+}
+
 function prevolCaptureRepublication(job) {
   const pf = job.platform_fields ?? {};
   const snap = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : null;
@@ -18450,6 +18528,12 @@ async function processRepublishJobPlateforme(job, accessToken) {
     //    (cf. prevolCaptureRepublication).
     {
       const manquants = prevolCaptureRepublication(job);
+      tracerGarde(pf, "prevol_copie", {
+        verdict: manquants.length ? "bloque" : "ok",
+        plateforme: job.platform,
+        champs_verifies: ["titre", "prix", "photos", "categorie", "localisation", "format_colis"],
+        ...(manquants.length ? { manquants } : {}),
+      });
       if (manquants.length) {
         const msg = messagePrevolRepublication(label, manquants);
         pf.republish_prevol_manquants = manquants;
@@ -18482,6 +18566,13 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const vol = await prevolPageDeDepot(job.platform).catch((e) => {
         console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — le retrait suit son chemin`);
         return { lisible: false };
+      });
+      tracerGarde(pf, "prevol_page", {
+        verdict: !vol.lisible ? "illisible" : vol.mur ? "mur" : (vol.manquants?.length ? "bloque" : "ok"),
+        plateforme: job.platform,
+        champs_verifies: ["page_de_depot"],
+        ...(vol.manquants?.length ? { manquants: vol.manquants } : {}),
+        ...(vol.mur ? { mur: vol.mur } : {}),
       });
       pf.republish_prevol_page = {
         at: new Date().toISOString(), lisible: vol.lisible === true,
@@ -18836,6 +18927,11 @@ async function processRepublishJob(job, accessToken) {
                   .boutiques.find((b) => String(b.user_id) === boutiqueArticle)?.login ?? null;
               } catch { /* libellé générique */ }
             }
+            tracerGarde(pf, "garde_boutique", {
+              verdict: "attente", boutique_article: boutiqueArticle,
+              boutique_connectee: identCourante.user_id,
+              champs_verifies: ["vinted_account_id", "identite_connectee"],
+            });
             pf.attente_boutique = {
               user_id: boutiqueArticle,
               login: loginAttendu,
@@ -18849,6 +18945,12 @@ async function processRepublishJob(job, accessToken) {
           }
           // Boutique correspondante (ou identité inconnue → fail-open) : une
           // attente qui traînait est levée — le flux normal reprend.
+          tracerGarde(pf, "garde_boutique", {
+            verdict: identCourante?.user_id ? "boutique_ok" : "identite_inconnue_fail_open",
+            boutique_article: boutiqueArticle,
+            boutique_connectee: identCourante?.user_id ?? null,
+            champs_verifies: ["vinted_account_id", "identite_connectee"],
+          });
           if (pf.attente_boutique) delete pf.attente_boutique;
         }
       } catch (e) {
@@ -18968,6 +19070,12 @@ async function processRepublishJob(job, accessToken) {
     // refuse ne doit pas d'abord attendre son tour de file.
     {
       const manquants = prevolCaptureRepublication(job);
+      tracerGarde(pf, "prevol_copie", {
+        verdict: manquants.length ? "bloque" : "ok",
+        plateforme: job.platform,
+        champs_verifies: ["titre", "prix", "photos", "categorie", "localisation", "format_colis"],
+        ...(manquants.length ? { manquants } : {}),
+      });
       if (manquants.length) {
         const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
         const msg = messagePrevolRepublication(label, manquants);
@@ -19318,8 +19426,8 @@ async function processRepublishJob(job, accessToken) {
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
             error: state === "active"
-              ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Relance depuis l'app quand tu veux.`
-              : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
+              ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app quand tu veux.`
+              : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
           });
           return { status: "needsUser", error: result?.error };
         }
@@ -19417,8 +19525,8 @@ async function processRepublishJob(job, accessToken) {
         await updateJobStatus(accessToken, job.id, "needs_user", {
           platform_fields: pf,
           error: baseRelue
-            ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.`
-            : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
+            ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.`
+            : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
         });
         return { status: "needsUser", error: result?.error };
       }
@@ -19560,7 +19668,34 @@ async function processRepublishJob(job, accessToken) {
       // chargement de page de plus à chaque recréation, pour un filet
       // best-effort. Le filet d'APRÈS-remplissage (ceinture dressing, plus
       // bas) couvre de toute façon le cas qui compte, celui du doublon.
+      // ══════════════════════════════════════════════════════════════════
+      // SI UNE RECRÉATION A DÉJÀ ÉTÉ TENTÉE, LA VÉRIFICATION N'EST PLUS
+      // « BEST-EFFORT » : ELLE EST OBLIGATOIRE (2026-09-22)
+      // ══════════════════════════════════════════════════════════════════
+      // Déborah (seghirdeborah711), jean Cache Cache, job 3c75553c : l'annonce
+      // est supprimée à 20:06:45, et DEUX annonces naissent entre 20:06 et
+      // 20:11 — 10099182127 puis 10099252025. La réconciliation d'après-coupure
+      // n'en a vu qu'une et a clôturé dessus ; l'autre est revenue par le
+      // relevé de 22:04 comme un article neuf. Deux fiches pour un seul jean.
+      //
+      // LA CAUSE N'EST PAS LA RÉCONCILIATION, C'EST CE QUI LA PRÉCÈDE : la
+      // vérification d'AVANT-recréation s'abstient dès que l'onglet de travail
+      // n'est pas interrogeable — or une coupure de canal, c'est précisément
+      // un onglet détruit ou navigué. Au passage suivant on ne vérifiait donc
+      // rien, et on recréait par-dessus une annonce déjà créée.
+      //
+      // RÈGLE : tant qu'aucune recréation n'a été tentée, l'abstention reste
+      // (elle ne coûte qu'un filet best-effort sur un chemin sain). DÈS QU'UNE
+      // TENTATIVE A EU LIEU, on ne recrée plus sans avoir LU le dressing :
+      // s'il est illisible, on repasse plus tard. Une annonce qui attend 2 min
+      // de plus, ça se rattrape ; un doublon, non.
+      const dejaTentee = pf.recreation_tentee && typeof pf.recreation_tentee === "object";
       let tabVerif = await findExistingWorkTabId("vinted");
+      if (tabVerif == null && dejaTentee) {
+        // Obligatoire : on s'offre l'onglet que le chemin best-effort refusait.
+        tabVerif = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/").catch(() => null);
+        if (tabVerif != null) console.log(`[republish] job ${job.id} : recréation déjà tentée — onglet ouvert exprès pour vérifier le dressing`);
+      }
       if (tabVerif != null) {
         const t = await chrome.tabs.get(tabVerif).catch(() => null);
         const scriptable = t && !t.discarded && /^https:\/\/([^/]*\.)?vinted\./i.test(t.url || "");
@@ -19573,6 +19708,8 @@ async function processRepublishJob(job, accessToken) {
           tabVerif = null;
         }
       }
+      let dressingLu = false;
+      let raisonNonLu = "onglet de travail non interrogeable";
       try {
         // tabVerif null = abstention décidée juste au-dessus : on ne parle à
         // personne et on enchaîne sur la recréation.
@@ -19584,6 +19721,7 @@ async function processRepublishJob(job, accessToken) {
             type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,
           }).catch(() => null);
           if (page?.success) {
+            dressingLu = true;
             const connus = await restRequest(
               `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
               accessToken,
@@ -19593,6 +19731,12 @@ async function processRepublishJob(job, accessToken) {
               deletedAt: pf.deleted_at,
               idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
             });
+            tracerGarde(pf, "prevol_recreation", {
+              verdict: item ? "deja_recreee" : "a_recreer",
+              champs_verifies: ["dressing_page_1", "titre", "deleted_at"],
+              deja_tentee: dejaTentee === true,
+              detail: item ? String(item.vinted_item_id) : (raison ?? null),
+            });
             if (item) {
               await cloreRepublishSurAnnonceExistante(
                 accessToken, job, pf, item.vinted_item_id,
@@ -19601,12 +19745,54 @@ async function processRepublishJob(job, accessToken) {
               );
               return { status: "published", listingUrl: item.url ?? null };
             }
+            // ⛔ PLUSIEURS CANDIDATES = ON NE RECRÉE SURTOUT PAS. C'est le cas
+            //    de Déborah : deux annonces identiques nées de la même
+            //    republication. En recréer une troisième serait la seule chose
+            //    à ne pas faire. reconnaitreAnnonceRecreee s'abstient déjà de
+            //    CHOISIR ; on s'abstient aussi de RECRÉER, et on le dit.
+            if (/annonces correspondent/.test(String(raison ?? ""))) {
+              const msg = "Republication en pause : plusieurs annonces identiques sont en ligne sur Vinted "
+                + "(une republication a abouti deux fois). Garde l'annonce que tu veux, supprime l'autre, "
+                + "puis relance depuis la fiche de l'article. Rien n'a été recréé.";
+              pf.recreation_doublon = { at: new Date().toISOString(), raison: String(raison) };
+              await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+              console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);
+              return { status: "needsUser", error: msg };
+            }
             console.log(`[republish] pas de recréation à éviter (${raison}) — on recrée`);
-          }
-        }
+          } else raisonNonLu = "le dressing n'a pas répondu";
+        } else if (tabVerif != null) raisonNonLu = "identité Vinted illisible";
       } catch (e) {
-        console.warn("[republish] vérification du dressing impossible (on recrée):", e?.message ?? e);
+        raisonNonLu = String(e?.message ?? e);
+        console.warn("[republish] vérification du dressing impossible:", raisonNonLu);
       }
+
+      // ⛔ DÉJÀ TENTÉE + DRESSING ILLISIBLE = ON NE RECRÉE PAS. Sans cette
+      //    porte, une coupure de canal (= onglet détruit = dressing illisible)
+      //    menait tout droit au doublon, passage après passage.
+      if (dejaTentee && !dressingLu) {
+        tracerGarde(pf, "prevol_recreation", {
+          verdict: "report", champs_verifies: ["dressing_page_1"],
+          deja_tentee: true, detail: raisonNonLu,
+        });
+        pf.next_action_after = new Date(Date.now() + 5 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+        console.warn(
+          `[republish] job ${job.id} : recréation DÉJÀ tentée et dressing illisible (${raisonNonLu}) — ` +
+          "on ne recrée pas, nouvel essai dans 5 min (garde anti-doublon)",
+        );
+        return { status: "skipped", error: "dressing illisible après une tentative — recréation reportée" };
+      }
+
+      // La tentative est MARQUÉE AVANT d'être faite : c'est elle qui rend la
+      // vérification obligatoire au passage suivant. Écrite en base tout de
+      // suite — une coupure ne doit pas l'emporter avec elle.
+      pf.recreation_tentee = {
+        at: new Date().toISOString(),
+        n: (Number(pf.recreation_tentee?.n) || 0) + 1,
+      };
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf })
+        .catch((e) => console.warn(`[republish] job ${job.id} : marque de tentative non persistée — ${e?.message ?? e}`));
 
       // ── LA PAGE DE DÉPÔT S'OUVRE ICI, ET LE REMPLISSAGE PART TOUT DE SUITE ──
       // Ces quatre lignes sont la COPIE EXACTE de la séquence de la publication
