@@ -21,12 +21,32 @@ export const DESC_MANUELLE_MAX = 500;
 // badges de session de l'écran Publier + messages d'échec actionnables du
 // Stock. La cible « brouillon LBC en cours » est la page de dépôt : c'est là
 // que le wizard montre le brouillon à publier ou supprimer.
+// ⚠️ CES ADRESSES SE VÉRIFIENT, ELLES NE SE DEVINENT PAS. Elles sont la SEULE
+// source des liens « Me connecter » de l'app (carte d'un job bloqué, étape de
+// publication, Réglages › Mes plateformes). Une URL fausse ici envoie quelqu'un
+// sur un 404 au pire moment — juste après un échec.
+// Relevé en direct le 22/09, page par page :
+//   · vinted    — /member/signup/select_type : 200, et c'est le mur que nos
+//                 handlers reconnaissent. Déjà connecté ⇒ redirige sur l'accueil.
+//   · leboncoin — auth.leboncoin.fr/login : « Se connecter - leboncoin »,
+//                 champs e-mail ET mot de passe. La vraie page.
+//   · ebay      — signin.ebay.fr : _shared/ebay-page-vendeur.ts l'écrit déjà,
+//                 « signin.ebay.* — un mur de CONNEXION ».
+//   · beebs     — CORRIGÉ le 22/09. `/fr/login` rendait une page 404 RENDUE
+//                 (« Oups, page perdue ! », titre « 404 - Beebs ») : le lien
+//                 « Se connecter à Beebs » d'un job échoué menait donc nulle
+//                 part. La bonne route est `/fr/auth` — c'est celle que
+//                 background.js nomme déjà comme le mur de connexion Beebs
+//                 (« Page inattendue pour une suppression Beebs : …/fr/auth?… »),
+//                 relevée en session réelle.
 export const PLATFORM_LOGIN_URLS = {
   vinted: 'https://www.vinted.fr/member/signup/select_type?ref_url=%2F',
   leboncoin: 'https://auth.leboncoin.fr/login',
   ebay: 'https://signin.ebay.fr/',
-  beebs: 'https://www.beebs.app/fr/login',
+  beebs: 'https://www.beebs.app/fr/auth',
 };
+/** L'inscription VENDEUR eBay — le compte existe, il n'est pas encore vendeur. */
+export const EBAY_VENDEUR_URL = 'https://www.ebay.fr/sl/sell';
 export const LBC_DEPOSIT_URL = 'https://www.leboncoin.fr/deposer-une-annonce';
 
 // Pages « Mes annonces » de chaque plateforme (2026-08-10). Mêmes URL que

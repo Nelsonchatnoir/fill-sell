@@ -10,6 +10,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import GaleriePhotos from '../components/GaleriePhotos';
+import BoutonMeConnecter from '../components/BoutonMeConnecter';
+import { MOTIFS } from '../utils/connexionPlateformes';
 import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
@@ -218,6 +220,33 @@ function failJobAction(job, lang) {
     return { url: PLATFORM_LOGIN_URLS[job.platform], label: lang === 'en' ? `Sign in to ${name}` : `Se connecter à ${name}` };
   }
   return null;
+}
+
+// ── LE MUR EST-IL UNE CONNEXION ? (2026-09-22, chantier « Me connecter ») ────
+// ⛔ ANCRÉ, JAMAIS LARGE. `CONN_ERR_RE` ci-dessus teste /connexion|login|…/ n'
+//    importe où dans le message : « vérifie ta connexion internet » y passe.
+//    Assez bon pour proposer un lien en second rideau, PAS pour poser un bouton
+//    « Me connecter » en évidence — celui-là ne doit apparaître que sur un mur
+//    que nos propres handlers ont nommé. Mêmes signatures que la reprise
+//    automatique de handler-watch (bloc « reprise après reconnexion ») : les
+//    deux doivent voir le même mur, sinon on offre un bouton à quelqu'un que le
+//    serveur ne relancera jamais.
+const MUR_CONNEXION_ANCRE = {
+  ebay: /^REAUTH VENTE eBay|^Connexion eBay requise/i,
+  vinted: /^Connexion Vinted requise|page de connexion à la place du formulaire|session Vinted refusée/i,
+  leboncoin: /^Connexion Leboncoin requise|^Adresse requise pour Leboncoin/i,
+  beebs: /^Connexion Beebs requise/i,
+};
+/** Rend le motif MOTIFS.* quand le job bute sur un mur de connexion, sinon null. */
+function murDeConnexion(job) {
+  const err = String(job?.error ?? '');
+  const pf = job?.platform;
+  // Opla : ce n'est pas une connexion mais la permission d'hôte, et le serveur
+  // la NOMME (needs_user_source='opla_acces'). Aucune heuristique de texte.
+  if (pf === 'opla' && job?.platform_fields?.needs_user_source === 'opla_acces') return MOTIFS.AUTORISER_OPLA;
+  if (pf === 'ebay' && /^REAUTH VENTE eBay/i.test(err)) return MOTIFS.REAUTH_EBAY;
+  if (!MUR_CONNEXION_ANCRE[pf]?.test(err)) return null;
+  return MOTIFS.CONNEXION;
 }
 
 // ── Relance MANUELLE d'un job échoué récupérable (2026-08-31) ─────────────────
@@ -1502,7 +1531,7 @@ function isListingUrlRecoverable(platform, pubJob) {
 // (FILLSELL_PROGRESS, background.js:253) ne remonte JAMAIS en base — il n'est
 // émis que vers le popup, et seulement sur PUBLISH_NOW. L'afficher ici
 // demanderait de persister la progression à chaque étape ; reporté.
-function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy }) {
+function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy, userId }) {
   useFermetureEchap(onClose);
   const fr = lang !== "en";
   // ── LE BANDEAU DOIT PARLER DE CET ARTICLE (2026-08-31) ────────────────────
@@ -1675,6 +1704,25 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                 {j.error && (
                   <div style={{ fontSize:11.5, lineHeight:1.45, color: natureNeedsUser(j) === "en_cours" ? "#5A6B66" : "#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
                 )}
+                {/* ── « ME CONNECTER », À L'ENDROIT DU MUR (2026-09-22) ───────
+                    Le geste doit être LÀ, sous le message qui l'explique — pas
+                    au fond des Réglages. Sur ordinateur c'est un lien direct
+                    vers la page de connexion de la plateforme ; sur téléphone,
+                    la page s'ouvre sur l'ordinateur via l'extension.
+                    ⛔ N'apparaît que sur un mur NOMMÉ (murDeConnexion) : jamais
+                       sur un « vérifie ta connexion internet ». */}
+                {(() => {
+                  const motif = murDeConnexion(j);
+                  if (!motif) return null;
+                  return (
+                    <div style={{ marginTop:8 }}>
+                      <BoutonMeConnecter
+                        userId={userId} platform={j.platform} motif={motif}
+                        lang={lang} variante="bouton"
+                      />
+                    </div>
+                  );
+                })()}
                 {/* ── LE BOUTON QUE LE MESSAGE PROMETTAIT (2026-08-31) ────────
                     « Relancer depuis la fiche de l'article » s'affichait sans
                     qu'aucun bouton n'existe : la pastille « Échec » ne route

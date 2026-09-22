@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { UI } from './ui';
-import { MOTIFS, NOMS_PLATEFORME, useDemandeConnexion } from '../utils/connexionPlateformes';
+import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion } from '../utils/connexionPlateformes';
 import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 
 const T = {
@@ -39,6 +39,7 @@ const T = {
     muette: 'Ton ordinateur ne répond pas. Ouvre Chrome, puis réessaie.',
     tropVieille: 'Ton ordinateur met FillSell à jour. Réessaie dans un moment.',
     refusee: "On n'a pas pu envoyer la demande. Réessaie dans un instant.",
+    oplaSurWeb: "Opla s'autorise depuis FillSell dans Chrome : clique sur l'icône FillSell, puis sur « Autoriser Opla ».",
     reessayer: 'Réessayer',
     // eBay, les deux voies
     ebayTitre: 'Connecter eBay',
@@ -65,6 +66,7 @@ const T = {
     muette: 'Your computer is not responding. Open Chrome, then try again.',
     tropVieille: 'Your computer is updating FillSell. Try again shortly.',
     refusee: "We couldn't send the request. Try again in a moment.",
+    oplaSurWeb: 'Opla is allowed from FillSell in Chrome: click the FillSell icon, then “Autoriser Opla”.',
     reessayer: 'Try again',
     ebayTitre: 'Connect eBay',
     ebayIntro: 'Two ways, your choice.',
@@ -85,7 +87,7 @@ function libelle(t, platform, motif) {
 }
 
 /** La phrase qui explique POURQUOI le bouton est là. */
-export function phraseMur(lang, platform, motif) {
+function phraseMur(lang, platform, motif) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
   if (motif === MOTIFS.AUTORISER_OPLA) return t.oplaAcces;
   if (motif === MOTIFS.VENDEUR_EBAY) return t.vendeur;
@@ -109,6 +111,25 @@ export default function BoutonMeConnecter({
 
   const nom = NOMS_PLATEFORME[platform] ?? platform;
   const enVol = etat === 'demande';
+
+  // ══ SUR LE WEB, C'EST UN LIEN. RIEN D'AUTRE. ════════════════════════════
+  // (2026-09-22, correction de cap) L'app tourne DANS le navigateur qui porte
+  // la session : on ouvre la page de connexion dans un onglet, tout de suite.
+  // Aucune file, aucune demande en base, aucune attente d'un paquet Chrome Web
+  // Store. La file reste le chemin du MOBILE, et d'elle seule — sur un
+  // téléphone, ouvrir Vinted ne connecterait pas l'ordinateur.
+  // ⚠️ Détection par Capacitor, JAMAIS par la largeur d'écran : un navigateur
+  //    étroit reste un navigateur.
+  const web = estWeb();
+  // ⛔ eBay PAS CONNECTÉ garde sa pop-up à deux voies, même sur le web : c'est
+  //    là que se choisit « site » ou « API », et l'API est la voie recommandée.
+  //    Filer droit au lien escamoterait le choix.
+  const ebayDeuxVoies = platform === 'ebay' && motif === MOTIFS.CONNEXION;
+  const lien = web && !ebayDeuxVoies ? lienWeb(platform, motif) : null;
+  // Opla sur le web : son mur est une PERMISSION D'HÔTE Chrome. Un lien ne peut
+  // pas l'accorder — seul un geste dans le popup de l'extension le peut. On dit
+  // donc où cliquer, on ne prétend pas le faire.
+  const oplaSurWeb = web && (platform === 'opla' || motif === MOTIFS.AUTORISER_OPLA);
 
   const lancer = async (motifEffectif = motif) => {
     const r = await demander(platform, motifEffectif);
@@ -146,46 +167,61 @@ export default function BoutonMeConnecter({
       : etat === 'refusee' ? t.refusee
       : null;
 
-  const bouton = (
+  // Le même dessin pour un <a> et un <button> : la personne voit un bouton,
+  // pas une technologie.
+  const habit = (inerte) => ({
+    minHeight: 44, padding: '0 16px', borderRadius: 22, border: `1px solid ${UI.border}`,
+    background: UI.card, color: UI.ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
+    display: 'inline-flex', alignItems: 'center', gap: 9, flexShrink: 0,
+    textDecoration: 'none', cursor: inerte ? 'default' : 'pointer',
+    opacity: inerte ? 0.6 : 1, transition: 'opacity .15s ease',
+  });
+  const dedans = (texte) => (<><PlatformLogo platform={platform} size={20} /><span>{texte}</span></>);
+
+  const bouton = lien ? (
+    // ⛔ `rel="noopener noreferrer"` : un onglet ouvert par nous ne doit pas
+    //    pouvoir revenir sur notre fenêtre, et la plateforme n'a pas à savoir
+    //    d'où vient la personne.
+    <a
+      href={lien} target="_blank" rel="noopener noreferrer" className="rg-focus"
+      onClick={() => { if (onOuverte) setTimeout(onOuverte, 1500); }}
+      style={habit(false)}
+    >
+      {dedans(libelle(t, platform, motif))}
+    </a>
+  ) : (
     <button
       type="button"
       onClick={etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' ? () => { reinitialiser(); auClic(); } : auClic}
       disabled={enVol || etat === 'ouverte'}
       className="rg-focus"
-      style={{
-        minHeight: 44, padding: '0 16px', borderRadius: 22, border: `1px solid ${UI.border}`,
-        background: UI.card, color: UI.ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
-        display: 'inline-flex', alignItems: 'center', gap: 9, flexShrink: 0,
-        cursor: enVol || etat === 'ouverte' ? 'default' : 'pointer',
-        opacity: enVol || etat === 'ouverte' ? 0.6 : 1,
-        transition: 'opacity .15s ease',
-      }}
+      style={habit(enVol || etat === 'ouverte')}
     >
-      <PlatformLogo platform={platform} size={20} />
-      <span>
-        {enVol ? t.enCours
-          : etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' ? t.reessayer
-          : libelle(t, platform, motif)}
-      </span>
+      {dedans(enVol ? t.enCours
+        : etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' ? t.reessayer
+        : libelle(t, platform, motif))}
     </button>
   );
+
+  // Opla sur le web : pas de bouton qui mentirait, la consigne exacte.
+  const corps = oplaSurWeb
+    ? <Etat texte={t.oplaSurWeb} ton="info" />
+    : (<>{bouton}{messageEtat && <Etat texte={messageEtat} ton={etat} />}</>);
 
   return (
     <>
       {variante === 'bouton' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>
-          {bouton}
-          {messageEtat && <Etat texte={messageEtat} ton={etat} />}
-        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, ...style }}>{corps}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, ...style }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ flex: 1, minWidth: 180, fontSize: 13.5, lineHeight: 1.5, color: UI.mute2 }}>
               {phraseMur(lang, platform, motif)}
             </span>
-            {bouton}
+            {!oplaSurWeb && bouton}
           </div>
-          {messageEtat && <Etat texte={messageEtat} ton={etat} />}
+          {oplaSurWeb ? <Etat texte={t.oplaSurWeb} ton="info" />
+            : messageEtat && <Etat texte={messageEtat} ton={etat} />}
         </div>
       )}
 
@@ -193,6 +229,9 @@ export default function BoutonMeConnecter({
         <ModaleEbayDeuxVoies
           t={t}
           busyApi={busyApi}
+          // Sur le web, « Me connecter sur eBay » est un lien direct ; sur
+          // mobile, il passe par l'ordinateur comme le reste.
+          lienSite={web ? lienWeb('ebay', MOTIFS.CONNEXION) : null}
           onSite={() => { setModaleEbay(false); lancer(MOTIFS.CONNEXION); }}
           onApi={connecterParApi}
           onFermer={() => setModaleEbay(false)}
@@ -223,7 +262,7 @@ function Etat({ texte, ton }) {
 // ⛔ La voie API réutilise le parcours OAuth existant (demarrerConnexionEbay +
 //    ouvrirConsentementEbay, utils/ebayCompte) — le même que la section eBay
 //    des Réglages et que l'écran d'entrée. Pas de second parcours.
-function ModaleEbayDeuxVoies({ t, onSite, onApi, onFermer, busyApi }) {
+function ModaleEbayDeuxVoies({ t, onSite, onApi, onFermer, busyApi, lienSite }) {
   return (
     <div
       role="dialog"
@@ -255,7 +294,8 @@ function ModaleEbayDeuxVoies({ t, onSite, onApi, onFermer, busyApi }) {
           titre={t.ebayApi} sous={t.ebayApiSous} principal
           onClick={onApi} disabled={busyApi} libelleEnCours="…"
         />
-        <VoieEbay titre={t.ebaySite} sous={t.ebaySiteSous} onClick={onSite} />
+        {/* Sur le WEB, la voie « site » est un lien direct — instantane, aucune file. */}
+        <VoieEbay titre={t.ebaySite} sous={t.ebaySiteSous} onClick={onSite} lien={lienSite} onLien={onFermer} />
 
         <button
           type="button" onClick={onFermer} className="rg-focus"
@@ -271,11 +311,16 @@ function ModaleEbayDeuxVoies({ t, onSite, onApi, onFermer, busyApi }) {
   );
 }
 
-function VoieEbay({ titre, sous, onClick, principal = false, disabled = false, libelleEnCours }) {
+function VoieEbay({ titre, sous, onClick, principal = false, disabled = false, libelleEnCours, lien = null, onLien }) {
+  const Balise = lien ? "a" : "button";
+  const propres = lien
+    ? { href: lien, target: "_blank", rel: "noopener noreferrer", onClick: onLien }
+    : { type: "button", onClick, disabled };
   return (
-    <button
-      type="button" onClick={onClick} disabled={disabled} className="rg-focus"
+    <Balise
+      {...propres} className="rg-focus"
       style={{
+        textDecoration: "none",
         textAlign: 'left', padding: '13px 15px', borderRadius: 14, cursor: disabled ? 'default' : 'pointer',
         fontFamily: 'inherit', opacity: disabled ? 0.6 : 1,
         border: principal ? 'none' : `1px solid ${UI.border}`,
@@ -288,6 +333,6 @@ function VoieEbay({ titre, sous, onClick, principal = false, disabled = false, l
       <span style={{ fontSize: 12.5, lineHeight: 1.45, opacity: principal ? 0.9 : 1, color: principal ? '#fff' : UI.mute2 }}>
         {sous}
       </span>
-    </button>
+    </Balise>
   );
 }

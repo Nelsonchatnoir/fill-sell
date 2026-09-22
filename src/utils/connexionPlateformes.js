@@ -31,7 +31,9 @@
 //    que quelques minutes — au-delà, la personne est passée à autre chose.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
+import { PLATFORM_LOGIN_URLS, EBAY_VENDEUR_URL } from './shared';
 
 /** Le `kind` de nos lignes dans la file. Inerte pour les autres lecteurs. */
 export const KIND_CONNEXION = 'connexion';
@@ -90,6 +92,42 @@ export const ADRESSE_CONNEXION = {
   ebay: 'https://www.ebay.fr/',
   opla: 'https://www.opla.co/',
 };
+
+// ══ SUR LE WEB, LE BOUTON EST UN LIEN. RIEN D'AUTRE. ══════════════════════
+// (2026-09-22, correction de cap) Sur un ordinateur, l'app tourne DANS le
+// navigateur qui porte la session : il n'y a rien à demander à personne, on
+// ouvre la page de connexion dans un onglet. Instantané, aucune file, aucune
+// dépendance à un paquet Chrome Web Store.
+// La file (kind='connexion') reste le chemin du MOBILE, et d'elle seule : sur
+// un téléphone, ouvrir Vinted ne connecte pas l'ordinateur — ça ne servirait
+// à rien.
+//
+// ⛔ UNE SEULE TABLE D'ADRESSES DANS L'APP, ET ELLE EXISTAIT DÉJÀ :
+//    `PLATFORM_LOGIN_URLS` (utils/shared.js), que la carte d'un job échoué et
+//    l'étape de publication utilisent depuis longtemps. En créer une seconde
+//    ici aurait garanti qu'un jour les deux divergent — et c'est justement en
+//    la relisant qu'on a trouvé le 404 de Beebs. On s'y branche, on ne la
+//    double pas. Opla n'y figure pas, et c'est juste : son mur est une
+//    permission d'hôte Chrome, qu'aucun lien ne peut accorder.
+
+/**
+ * Web ou natif ? Capacitor, jamais la largeur d'écran : un navigateur étroit
+ * reste un navigateur, et une tablette native reste native.
+ * Import paresseux pour que ce module reste utilisable hors React/Capacitor.
+ */
+export function estWeb() {
+  try { return !Capacitor.isNativePlatform(); } catch { return true; }
+}
+
+/**
+ * Le lien à ouvrir sur le WEB, ou null quand il n'y en a pas (Opla).
+ * `null` n'est pas un défaut : c'est l'information « ici, un lien ne suffit pas ».
+ */
+export function lienWeb(platform, motif = MOTIFS.CONNEXION) {
+  if (motif === MOTIFS.AUTORISER_OPLA || platform === 'opla') return null;
+  if (motif === MOTIFS.VENDEUR_EBAY) return EBAY_VENDEUR_URL;
+  return PLATFORM_LOGIN_URLS[platform] ?? null;
+}
 
 /**
  * Les motifs pour lesquels on ouvre une page, et ce qu'on demande d'y faire.
