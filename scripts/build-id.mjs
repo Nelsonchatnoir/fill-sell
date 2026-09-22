@@ -1518,7 +1518,7 @@ export const EXTENSION_LAST_COMMIT = '2026-09-22T07:19:38Z'; // recale e936d1f (
 // Ce geste ALLUME la bannière « extension obsolète » pour les 42 comptes restés
 // en 0.6.49 (relevé du même instant), et leur nomme enfin la version à prendre.
 // Ancienne valeur : 2026-09-20T17:39:01Z (0.6.48).
-export const EXTENSION_MIN_BUILD = '2026-09-22T07:07:39Z';
+export const EXTENSION_MIN_BUILD = '2026-09-22T07:19:47Z';
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
@@ -1593,6 +1593,14 @@ export const PUBLISHED_BUILD_IDS = {
   // seuil posé trop tôt montre un bandeau sans version à installer, vécu le
   // 29/07.)
   '2026-09-22T07:07:39Z': '0.6.52',
+  // 0.6.53 : ACCEPTÉE et SERVIE, relevée en base le 22/09 à 15:42 — 24 comptes
+  // en extension_version='0.6.53', build '2026-09-22T07:19:47Z+9885233', le
+  // rang LE PLUS FOURNI du parc devant la 0.6.49 (18) et la 0.6.48 (10). Elle
+  // devient donc EXTENSION_MIN_BUILD : c'est la version que le Store installe
+  // aujourd'hui, et la bannière peut la nommer.
+  // (Relu en base, jamais dans un nom de dossier ni un commentaire : c'est
+  // profiles.extension_build × extension_version qui dit ce qui est servi.)
+  '2026-09-22T07:19:47Z': '0.6.53',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
