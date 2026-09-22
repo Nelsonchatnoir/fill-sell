@@ -63,10 +63,17 @@ function plier(v) {
 // se confondre par accident avec autre chose.
 const serrer = (v) => plier(v).replace(/ /g, "");
 
-// ── Taille unique : le même concept sous huit noms ──────────────────────────
+// ── Taille unique : le même concept sous onze noms ─────────────────────────
+// ⚠️ « UNIVERSEL » EST LE MOT DE VINTED (2026-09-22, bonnet Jack & Jones de
+//    lesnesarthur). C'est le libellé que Vinted propose comme taille unique
+//    sur les chapeaux, bonnets et accessoires — il manquait ici, donc
+//    memeTaille("Unique", "Universel") rendait false et l'article devenait
+//    indéposable alors que la grille portait EXACTEMENT sa taille.
+//    C'est une TRADUCTION, pas une conversion : même taille, autre mot.
 const UNIQUES = new Set([
   "taille unique", "tailleunique", "taille u", "tu", "unique", "one size",
   "onesize", "os", "u", "einheitsgrosse", "talla unica", "taglia unica",
+  "universel", "universelle", "universal",
 ]);
 const estUnique = (v) => UNIQUES.has(plier(v)) || UNIQUES.has(serrer(v));
 
