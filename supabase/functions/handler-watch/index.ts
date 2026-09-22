@@ -1248,6 +1248,7 @@ serve(async (req) => {
   //    bornes par plateforme, même lecture de checked_at_par_plateforme.
   const FRAICHEUR_SONDE_MS: Record<string, number> = {
     vinted: 60 * 60_000, leboncoin: 3 * 60 * 60_000, ebay: 3 * 60 * 60_000, beebs: 3 * 60 * 60_000,
+    opla: 3 * 60 * 60_000,
   };
   // Les murs de CONNEXION, reconnus sur le texte déjà écrit par nos handlers —
   // aucune signature neuve, aucune détection inventée.
@@ -1257,17 +1258,30 @@ serve(async (req) => {
     leboncoin: /^Connexion Leboncoin requise|^Adresse requise pour Leboncoin/i,
     beebs: /^Connexion Beebs requise/i,
   };
+  // ── OPLA : LA MÊME REPRISE, SUR UN MARQUEUR ET NON SUR UN TEXTE (22/09) ──
+  // Le mur d'Opla n'est pas une connexion mais la permission d'hôte de
+  // l'extension, et le serveur la NOMME (needs_user_source='opla_acces') — la
+  // même clé que l'app lit pour poser le bouton. Aucune heuristique de texte
+  // ici : un marqueur, ou rien.
+  // Sans ce bloc, la permission pouvait être accordée sans que RIEN ne
+  // reparte : 6 jobs (geronimo0550, pecqueux.sabine, thomas.vinted590002)
+  // attendaient un geste que la personne avait peut-être déjà fait. La
+  // promesse « la publication repart toute seule ensuite » est désormais
+  // tenue par quelqu'un.
+  const murOplaLeve = (j: { platform?: unknown; platform_fields?: unknown }) =>
+    j.platform === 'opla' &&
+    String(((j.platform_fields ?? {}) as Record<string, unknown>)['needs_user_source'] ?? '') === 'opla_acces';
   let reprisesConnexion = 0;
   try {
     const { data: bloques } = await supabase
       .from("cross_post_jobs")
       .select("id, user_id, platform, status, error, platform_fields")
       .in("status", ["needs_user", "failed"])
-      .in("platform", ["vinted", "leboncoin", "ebay", "beebs"])
+      .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla"])
       .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString());
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) =>
-      MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")));
+      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")));
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
