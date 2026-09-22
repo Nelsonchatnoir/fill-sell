@@ -54,6 +54,7 @@ import { messageDecodage } from "../utils/imageDecode";
 import { televerserPhotos } from "../utils/photosUpload";
 import EbayCompteSection from "./EbayCompteSection";
 import { ebayCompteUtilisable, motifEbayInutilisable, repartirParVoie } from "../utils/ebayCompte";
+import { resumeEbay } from "../utils/ebayParcours";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   childAxesForGenre,
@@ -263,18 +264,30 @@ const categorieFermee = (support) => CATEGORIE_FERMEE.has(support ?? "supported"
 const messagePause = (tpl, pausedReasons, p, platformLabel) =>
   pausedReasons?.[p] || tpl("platformPaused", { platform: platformLabel });
 
-// Compte eBay pas encore utilisable (07/09/2026) : UNE phrase, qui dit le
-// geste — jamais un diagnostic ni un code. Même vocabulaire que la section
-// Réglages › Compte eBay, pour que la personne reconnaisse l'écran d'arrivée.
-const messageCompteEbay = (motif, lang) => {
+// ── COMPTE eBAY PAS ENCORE UTILISABLE ──────────────────────────────────────
+// (22/09/2026, dossier Romain) Avant, la phrase disait « termine-le » sans
+// jamais dire QUOI. Romain est resté plusieurs jours dessus : « pas évident de
+// savoir ce qu'il y avait à faire ». Elle NOMME maintenant l'étape qui reste,
+// et c'est le même module que le parcours guidé des Réglages qui la donne
+// (utils/ebayParcours) — l'écran d'arrivée porte exactement le même mot.
+//
+// ⛔ AUCUN APPEL : `etat` vient de l'action 'statut' déjà lue une fois par
+//    l'app (un SELECT, zéro appel eBay). Le quota du parc n'est pas touché.
+// Repli : si l'état n'a pas été lu, on garde la phrase générique d'avant —
+// on ne nomme jamais une étape qu'on n'a pas relevée.
+const messageCompteEbay = (motif, lang, etat = null) => {
+  if (etat) {
+    const r = resumeEbay(etat, lang === "en" ? "en" : "fr");
+    if (r.phrase && !r.pret) return r.phrase;
+  }
   if (lang === "en") {
     if (motif === "non_connecte") return "eBay: your eBay account isn't linked yet — link it to publish there.";
     if (motif === "a_reconnecter") return "eBay: your eBay account needs to be reconnected before publishing.";
-    return "eBay: your seller account isn't fully set up yet (seller registration, selling policies) — finish it to publish there.";
+    return "eBay: your seller account isn't fully set up yet — finish it to publish there.";
   }
   if (motif === "non_connecte") return "eBay : ton compte eBay n'est pas encore relié — relie-le pour publier dessus.";
   if (motif === "a_reconnecter") return "eBay : ton compte eBay est à reconnecter avant de pouvoir publier.";
-  return "eBay : ton compte vendeur n'est pas fini de paramétrer (inscription vendeur, conditions de vente) — termine-le pour publier dessus.";
+  return "eBay : ton compte vendeur n'est pas fini de paramétrer — termine-le pour publier dessus.";
 };
 
 // Le multi-select Android (Camera.pickImages, 2026-07-27) est passé dans
@@ -1580,7 +1593,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   // GRISÉ — jamais masqué : la personne doit savoir que la plateforme existe
   // et ce qu'il lui reste à faire. Aucune autre plateforme n'est touchée, et
   // un compte en voie extension ne voit rien changer (ebayBloque false).
-  ebayBloque = false, ebayMotif = null, onParametrerEbay = null,
+  ebayBloque = false, ebayMotif = null, ebayEtatCompte = null, onParametrerEbay = null,
   // Plateforme EN PAUSE (platform_health, 2026-09-09) : grisée comme une
   // catégorie non supportée, motif sous la rangée = message_fr/message_en
   // écrit en base. Lecture tolérante en amont : drapeau illisible ou absent
@@ -2026,7 +2039,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                 : enCours
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
                 : compteAbsent
-                ? messageCompteEbay(ebayMotif, lang)
+                ? messageCompteEbay(ebayMotif, lang, ebayEtatCompte)
                 : fermeeCategorie
                 ? (motifSupport ? motifSupport(p, support) : supportMessage(t, support, PLATFORM_LABELS[p]))
                 : enPause
@@ -2143,7 +2156,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
       {ebayBloque && !categorieFermee(platformSupport?.ebay) && (
         <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
           <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
-            {messageCompteEbay(ebayMotif, lang)}
+            {messageCompteEbay(ebayMotif, lang, ebayEtatCompte)}
           </p>
           {onParametrerEbay && (
             <button
@@ -2152,7 +2165,11 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
               style={{ padding:"7px 13px", borderRadius:999, border:`1.5px solid ${T.tealDeep}`, background:"none",
                 color:T.tealDeep, fontSize:12.5, fontWeight:700, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap" }}
             >
-              {lang === "en" ? "Set up eBay" : "Paramétrer eBay"}
+              {/* Le bouton porte le mot du parcours : « Reprendre où j'en suis »
+                  quand il reste une étape, « Relier eBay » quand rien n'est
+                  encore relié. Il ouvre la MÊME section, à la bonne étape. */}
+              {(ebayEtatCompte ? resumeEbay(ebayEtatCompte, lang === "en" ? "en" : "fr").bouton : null)
+                ?? (lang === "en" ? "Set up eBay" : "Paramétrer eBay")}
             </button>
           )}
         </div>
@@ -9159,6 +9176,7 @@ export default function ListingPreviewScreen({
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}
             ebayMotif={ebayMotif}
+            ebayEtatCompte={ebayEtatCompte}
             ebayVoieApi={Boolean(ebayCompte?.voieApi)}
             onParametrerEbay={() => setEbayPanneauOuvert(true)}
             pausedPlatforms={pausedPlatforms}
