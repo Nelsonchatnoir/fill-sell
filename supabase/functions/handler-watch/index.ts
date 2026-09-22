@@ -1304,6 +1304,33 @@ serve(async (req) => {
         // La sonde doit être postérieure au blocage. `needs_user_tick_le` est
         // réécrit par le balayage, donc inutilisable ; on prend la marque qu'on
         // pose nous-mêmes, et à défaut la dernière reprise déjà faite.
+        // ══════════════════════════════════════════════════════════════════
+        // ON NE RELANCE PAS INDÉFINIMENT LE MÊME JOB (2026-09-23)
+        // ══════════════════════════════════════════════════════════════════
+        // Blouse FOCUS.S de seghirdeborah711 (job 7fa92ebf) : le job portait
+        // « Connexion Vinted requise » alors que sa session était parfaite —
+        // elle a republié une douzaine d'annonces le même soir. La sonde
+        // repassait au vert à chaque cycle, donc `vu` était toujours plus
+        // récent que la dernière reprise, donc on relançait, et le job
+        // rebloquait sur le même mur. Une boucle sans fin, invisible.
+        // La cause de fond est corrigée ailleurs (update-job-status ne dit
+        // plus « connexion » quand les identifiants d'annonce divergent),
+        // mais la reprise doit porter sa propre borne : un mécanisme qui
+        // relance ne doit jamais pouvoir tourner en rond.
+        // ⛔ Le compteur ne se remet à zéro que lorsque le job repart pour de
+        //    bon (il quitte needs_user/failed) : c'est le seul signal qui dit
+        //    que la reprise a servi à quelque chose.
+        // Le compteur se remet à zéro dès que le job bute sur un mur DIFFÉRENT :
+        // ça, c'est du progrès, et la reprise a le droit de reprendre son
+        // crédit. Tourner en rond, c'est rebuter sur le MÊME mur.
+        const REPRISES_CONNEXION_MAX = 3;
+        const murCourant = String(j.error ?? "").slice(0, 120);
+        const memeMur = String(pf.reprise_apres_connexion_mur ?? "") === murCourant;
+        const nReprises = memeMur ? (Number(pf.reprises_apres_connexion_n) || 0) : 0;
+        if (nReprises >= REPRISES_CONNEXION_MAX) {
+          console.log(`[handler-watch] job ${j.id} (${j.platform}) : ${nReprises} reprises après reconnexion sans effet — on arrête de relancer (le blocage n'est pas une perte de session)`);
+          continue;
+        }
         const dejaRepris = Date.parse(String(pf.reprise_apres_connexion_le ?? ""));
         if (Number.isFinite(dejaRepris) && vu <= dejaRepris) continue; // rien de neuf depuis
         delete pf.needs_user_source; delete pf.needs_user_actif_ms; delete pf.needs_user_tick_le;
@@ -1315,6 +1342,8 @@ serve(async (req) => {
         //    'deleted' ne doit pas recapturer), le second est la mémoire.
         pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (reprise après reconnexion)");
         pf.reprise_apres_connexion_le = new Date(vu).toISOString();
+        pf.reprises_apres_connexion_n = nReprises + 1;
+        pf.reprise_apres_connexion_mur = murCourant;
         const { data: maj } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: null, platform_fields: pf })

@@ -2301,9 +2301,63 @@ serve(async (req) => {
         const v404 = (pfIn["introuvable_404"] ?? {}) as Record<string, unknown>;
         if (boutiques.length <= 1 && String(v404["verdict"] ?? "") === "identite_inconnue") {
           const { data: jRow } = await userClient
-            .from("cross_post_jobs").select("platform_listing_id, listing_url").eq("id", jobId).maybeSingle();
+            .from("cross_post_jobs").select("platform_listing_id, listing_url, inventaire_id").eq("id", jobId).maybeSingle();
           const idAnnonce = String(jRow?.platform_listing_id ?? "").trim()
             || (/\/items\/(\d+)/.exec(String(jRow?.listing_url ?? ""))?.[1] ?? "");
+
+          // ══════════════════════════════════════════════════════════════
+          // DEUX IDENTIFIANTS SUR LE MÊME JOB = L'ANNONCE A ÉTÉ REMPLACÉE
+          // ══════════════════════════════════════════════════════════════
+          // (2026-09-23, blouse FOCUS.S de seghirdeborah711, job 7fa92ebf.)
+          // La capture vise `platform_fields.vinted_item_id` = 9970803136, et
+          // le job porte listing_url = /items/10042874553. Deux annonces
+          // différentes : la première est morte (d'où le 404 de l'API), la
+          // seconde est bien vivante (d'où le 200 de la sonde publique). On en
+          // concluait « l'annonce est en ligne, donc le navigateur n'est pas
+          // connecté » — faux : Déborah a republié une douzaine d'annonces le
+          // même soir, sa session était parfaite. Le message « Connexion Vinted
+          // requise » portait l'ancre que handler-watch relance, et le job
+          // rebouclait indéfiniment.
+          // C'est le MÊME défaut que le manteau Vero Moda : le relevé réécrit
+          // `inventaire.vinted_item_id` quand l'annonce est remplacée, le job
+          // suit par son listing_url, mais la CAPTURE garde l'ancien id.
+          // Règle : quand les deux identifiants divergent, la conclusion n'est
+          // ni « session perdue » ni « disparue » — c'est « cette capture vise
+          // une annonce remplacée ». On le dit, et on s'arrête là.
+          const idCapture = String(
+            (pfIn["vinted_item_id"] as string | undefined)
+            ?? ((pfIn["republish_snapshot"] as Record<string, unknown> | undefined)?.["vinted_item_id"] as string | undefined)
+            ?? "",
+          ).trim();
+          let idArticle = "";
+          if (jRow?.inventaire_id != null) {
+            const { data: invRow } = await userClient
+              .from("inventaire").select("vinted_item_id").eq("id", jRow.inventaire_id).maybeSingle();
+            idArticle = String(invRow?.vinted_item_id ?? "").trim();
+          }
+          const remplacee = !!idCapture
+            && ((!!idAnnonce && idAnnonce !== idCapture) || (!!idArticle && idArticle !== idCapture));
+          if (remplacee) {
+            const pfRem = { ...pfIn };
+            delete pfRem["introuvable_indetermine"];
+            delete pfRem["next_action_after"];
+            delete pfRem["needs_user_source"];
+            pfRem["annonce_remplacee"] = {
+              at: new Date().toISOString(),
+              id_capture: idCapture,
+              id_courant: idAnnonce || idArticle || null,
+              par: "arbitrage 404 — identifiants divergents",
+            };
+            statutEffectif = "cancelled";
+            messageEffectif =
+              "Republication arrêtée : l'annonce que cette republication devait reprendre n'existe plus — " +
+              "elle a été remplacée par une autre depuis. FillSell n'a rien supprimé, et ton annonce actuelle " +
+              "est intacte. Relance la republication depuis la fiche de l'article pour repartir de l'annonce du moment.";
+            raisonRequalif = `404 indéterminé : identifiants divergents (capture ${idCapture} ≠ courant ${idAnnonce || idArticle}) — annonce remplacée`;
+            pfBoutiqueArbitree = pfRem;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+          }
+          if (!remplacee) {
           let publiqueVivante: boolean | null = null;   // null = non mesuré
           if (idAnnonce) {
             try {
@@ -2340,6 +2394,7 @@ serve(async (req) => {
           }
           pfBoutiqueArbitree = pfArb;
           console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} (boutiques=${boutiques.length}, annonce=${idAnnonce || "?"}, publique=${publiqueVivante})`);
+          }
         }
       } catch (e) {
         console.error("[update-job-status] arbitrage 404 indéterminé :", (e as Error)?.message ?? e);
