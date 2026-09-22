@@ -34,19 +34,70 @@ const FICHIER = (process.argv[2] ? String(process.argv[2]).replace(/\\/g, '/') :
 console.log(`fichier exécuté : ${FICHIER}\n`);
 const SRC = fs.readFileSync(path.join(ROOT, FICHIER), 'utf8');
 
-/** Le bloc « capture périmée », par équilibrage d'accolades. */
+/**
+ * Le bloc « capture périmée », extrait d'une source LISIBLE OU MINIFIÉE.
+ *
+ * ⛔ AUCUNE ANCRE SUR UN NOM DE VARIABLE LOCALE. La minification les renomme
+ *    (`capMeta` → `i`, `pf` → `n`, `job` → `e`) et fond la ligne précédente
+ *    dans le `if` par l'opérateur virgule :
+ *      source   : if (Date.parse(capMeta.captured_at) < Date.now() - 24*3600*1000) {
+ *      minifié  : if(n.prix_recreation=s,Date.parse(i.captured_at)<Date.now()-864e5){
+ *    Ce qui SURVIT : les noms de PROPRIÉTÉS (`captured_at`,
+ *    `recaptures_perimees`) et les fonctions de haut niveau
+ *    (`updateJobStatus`…). On ancre là-dessus, et on LIT les noms locaux
+ *    dans le bloc au lieu de les supposer.
+ */
 function extraireBloc() {
-  const debut = SRC.indexOf('if (Date.parse(capMeta.captured_at)');
-  if (debut < 0) throw new Error('bloc « capture périmée » introuvable dans ' + FICHIER);
-  let i = SRC.indexOf('{', debut);
-  let p = 0;
+  const ancre = SRC.match(/Date\.parse\(\s*([A-Za-z_$][\w$]*)\s*\.captured_at\s*\)/);
+  if (!ancre) throw new Error('bloc « capture périmée » introuvable dans ' + FICHIER);
+  // Remonter au `if (` qui ouvre la condition.
+  const avant = SRC.slice(0, ancre.index);
+  const ouvre = avant.lastIndexOf('if');
+  if (ouvre < 0) throw new Error('`if` d’ouverture introuvable');
+  let p = SRC.indexOf('(', ouvre);
+  let profondeur = 0;
+  for (; p < SRC.length; p++) {
+    if (SRC[p] === '(') profondeur++;
+    else if (SRC[p] === ')') { profondeur--; if (profondeur === 0) break; }
+  }
+  const finCondition = p;               // index du ')' fermant
+  let i = SRC.indexOf('{', p);
+  profondeur = 0;
   for (; i < SRC.length; i++) {
-    if (SRC[i] === '{') p++;
-    else if (SRC[i] === '}') { p--; if (p === 0) return SRC.slice(debut, i + 1); }
+    if (SRC[i] === '{') profondeur++;
+    else if (SRC[i] === '}') {
+      profondeur--;
+      if (profondeur !== 0) continue;
+      const condition = SRC.slice(SRC.indexOf('(', ouvre) + 1, finCondition);
+      const corps = SRC.slice(SRC.indexOf('{', finCondition), i + 1);
+      // ⛔ LA VIRGULE DU MINIFIEUR. En minifié, la ligne qui PRÉCÈDE le bloc est
+      //    fondue dans la condition par l'opérateur virgule :
+      //      if(n.prix_recreation=s,Date.parse(i.captured_at)<Date.now()-864e5){
+      //    `s` est une locale d'AVANT le bloc — elle n'a rien à voir avec la
+      //    décision testée, et elle n'existe pas dans le bac à sable. On coupe
+      //    la condition à son vrai début, `Date.parse(`. Le CORPS, lui, n'est
+      //    jamais retouché : c'est lui qu'on exécute, à l'octet près.
+      const debutVrai = condition.search(/Date\.parse\(/);
+      const conditionPropre = debutVrai > 0 ? condition.slice(debutVrai) : condition;
+      return `if (${conditionPropre}) ${corps}`;
+    }
   }
   throw new Error('accolades non équilibrées');
 }
 const BLOC = extraireBloc();
+
+/** Les noms locaux, LUS dans le bloc — jamais supposés. */
+function nomsLocaux() {
+  const capMeta = BLOC.match(/Date\.parse\(\s*([A-Za-z_$][\w$]*)\s*\.captured_at\s*\)/)?.[1];
+  const pf = BLOC.match(/([A-Za-z_$][\w$]*)\s*\.\s*recaptures_perimees/)?.[1];
+  const maj = BLOC.match(/updateJobStatus\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)\s*\.id/);
+  if (!capMeta || !pf || !maj) {
+    throw new Error(`noms locaux illisibles (capMeta=${capMeta}, pf=${pf}, updateJobStatus=${maj?.[0]})`);
+  }
+  return { capMeta, pf, accessToken: maj[1], job: maj[2] };
+}
+const NOMS = nomsLocaux();
+console.log(`noms locaux lus dans le bloc : capMeta=${NOMS.capMeta} · pf=${NOMS.pf} · job=${NOMS.job} · accessToken=${NOMS.accessToken}\n`);
 
 /** Exécute le bloc avec des doublures, et rend ce qu'il a fait. */
 async function jouer({ ageHeures, pf, recapture }) {
@@ -54,10 +105,11 @@ async function jouer({ ageHeures, pf, recapture }) {
   const capMeta = { captured_at: new Date(Date.now() - ageHeures * 3600 * 1000).toISOString(), payload: {} };
   const etat = { pf: { ...pf }, route404: false };
   const sandbox = {
-    capMeta,
-    pf: etat.pf,
-    job: { id: 'job-test', inventaire_id: 42 },
-    accessToken: 'jeton.avec.sub',
+    // Les quatre locales, sous LEURS noms dans ce fichier-ci (lisible ou minifié).
+    [NOMS.capMeta]: capMeta,
+    [NOMS.pf]: etat.pf,
+    [NOMS.job]: { id: 'job-test', inventaire_id: 42 },
+    [NOMS.accessToken]: 'jeton.avec.sub',
     decodeJwtSub: () => 'user-test',
     updateJobStatus: async (_t, _id, status, opts) => { ecritures.push({ status, error: opts?.error ?? null }); },
     capturerEtPersisterDepuisExtension: async () => recapture,
