@@ -7514,10 +7514,17 @@ const BEEBS_MAIN_FONCTIONS = {
   categorie: function (chemin) {
     try {
       const norm = (x) => String(x ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+      const selLibelle = 'label[class*="group/field-label"], div[class*="__label"]';
+      const triggerDe = (l) => {
+        const p = l && l.parentElement; if (!p) return null;
+        return p.querySelector('button[class*="__selectButton"]')
+          || p.querySelector("button[aria-haspopup]")
+          || p.querySelector("button[aria-controls][data-slot]") || null;
+      };
       let trigger = null;
-      for (const l of document.querySelectorAll('div[class*="__label"]')) {
+      for (const l of document.querySelectorAll(selLibelle)) {
         if (norm(l.textContent).startsWith("categorie")) {
-          trigger = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+          trigger = triggerDe(l);
           if (trigger) break;
         }
       }
@@ -7566,8 +7573,15 @@ const BEEBS_MAIN_FONCTIONS = {
         return String(v).trim();
       };
       const champs = [];
-      for (const l of document.querySelectorAll('div[class*="__label"]')) {
-        const btn = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+      const selLibelle = 'label[class*="group/field-label"], div[class*="__label"]';
+      const triggerDe = (l) => {
+        const p = l && l.parentElement; if (!p) return null;
+        return p.querySelector('button[class*="__selectButton"]')
+          || p.querySelector("button[aria-haspopup]")
+          || p.querySelector("button[aria-controls][data-slot]") || null;
+      };
+      for (const l of document.querySelectorAll(selLibelle)) {
+        const btn = triggerDe(l);
         if (!btn) continue;
         let nom = null, valeurs = null;
         const fk = Object.keys(btn).find((k) => k.indexOf("__reactFiber$") === 0);
@@ -18221,6 +18235,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         return { status: "needsUser", error: msg };
       }
     }
+
     // Invariant « une seule annonce hors ligne à la fois », par plateforme
     // (même échec fermé que Vinted : lecture impossible → on ne retire pas).
     try {

@@ -9,6 +9,40 @@
 // Clés optional: true (A1 — sémantique inversée, d'après les notes déjà
 // portées par le registre ; se résolvent par tryResolveSelector) :
 //   - auth.password_guard (présence = needsUser, absence = état sain)
+//
+// ⛔ 2026-09-22 — BEEBS A REFAIT SA PAGE DE DÉPÔT (entre 13:26 et 15:24, entre
+//    la dernière publication réussie et le premier échec). Les entrées
+//    publish.* ci-dessous décrivent l'ANCIENNE page. Elles sont conservées
+//    parce que le handler garde ces classes en DERNIER maillon (un retour en
+//    arrière de Beebs ne casserait rien), mais ce n'est plus ce que la page
+//    rend. L'état du jour, relevé en direct :
+//
+//      photos            input[type=file] ANONYME (class "sr-only", multiple,
+//                        accept .jpg/.jpeg/.jfif/.pjpeg/.pjp/.png/.webp/.gif),
+//                        dans le <label> « Ajouter des photos ».
+//                        #input-pictures N'EXISTE PLUS — c'est ce qui a arrêté
+//                        tout le dépôt Beebs le 22/09 à 15:24.
+//      libellé de champ  label[class*="group/field-label"], dans div.group/field
+//      déclencheur       le bouton FRÈRE du libellé, porteur de aria-haspopup,
+//                        aria-expanded, aria-controls, data-state
+//      panneau           popover RADIX : div[role="dialog"] PORTALISÉ sur
+//                        <body>, désigné EXACTEMENT par aria-controls du
+//                        déclencheur. L'invariant « un seul panneau visible »
+//                        est MORT : plusieurs listes restent montées.
+//      option            button[class*="popover-item"]
+//      barre de recherche input[type="text"][placeholder="Rechercher"] dans le
+//                        panneau
+//      « (facultatif) »  toujours dans le TEXTE du libellé → required inchangé
+//      #title #description #price   INCHANGÉS
+//      button[type=submit]          INCHANGÉ
+//      confirmation      /fr/listing/success + « Votre article a bien été
+//                        ajouté à votre dressing Beebs » (vérifié bout en bout)
+//
+//    LA LEÇON, écrite une fois : plus aucune classe ne nomme un rôle chez
+//    Beebs (design system à jetons : bg-control-bg-default, text-body-m-bold…).
+//    La résolution vit désormais dans beebs.js (couche du 22/09) et s'appuie,
+//    dans cet ordre, sur les attributs ARIA que le composant pose lui-même,
+//    puis sur la structure HTML sémantique, puis seulement sur ces classes.
 
 export const BEEBS_SELECTORS = {
   "status.my_ads_probe": {

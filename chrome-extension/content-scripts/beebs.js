@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-14-consentement-axeptio-vu-enfin (0.6.35 : le widget de cookies AXEPTIO est enfin detecte — #axeptio_btn_dismiss / « Tout refuser », dans .axeptio_widget ; attente d'apparition 4 s uniquement si $completed est faux, refus clique meme hors ecran, et un widget qui traine sans murer la page ne fait JAMAIS echouer le job) — precedent : 2026-09-09-askBackground-defini-ici (la 0.6.22 appelait askBackground sans le définir dans ce fichier — défini seulement dans vinted.js — ReferenceError, canal executeScript « indisponible », pont inline muet, refus « pas de catégorie sans ";
+const BEEBS_BUILD = "2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -813,7 +813,7 @@ async function fillListingForm(job) {
   const surFormulaireDepot = () =>
     location.pathname.startsWith("/fr/listing")
     && !document.querySelector('input[type="password"]')
-    && !!document.querySelector('#input-pictures, input[type="file"]');
+    && !!beebsPhotoInput();
   if (!(await waitFor(surFormulaireDepot, 15_000))) {
     return {
       success: false,
@@ -937,8 +937,7 @@ async function fillListingForm(job) {
   // sautés en silence (cause probable du dry-run Figurines du 2026-07-09, où
   // le job est remonté dry_run_completed / error:null alors qu'Âge et Matière
   // étaient vides à l'écran). On attend qu'au moins un attribut apparaisse.
-  await waitFor(() => document.querySelector('button[class*="__selectButton"]')
-    && document.querySelectorAll('div[class*="__label"]').length > 2, 8000);
+  await waitFor(() => beebsNombreDeChamps() > 2, 8000);
 
   // Nom d'attribut de CHAQUE champ + son référentiel complet, lus sur le fiber
   // (2026-09-06). C'est ce relevé qui permet de distinguer deux champs au
@@ -1917,10 +1916,160 @@ async function fillPriceField(selector, value) {
 // `ordre` est l'index dans la liste FILTRÉE (libellés porteurs d'un
 // __selectButton) : c'est exactement la numérotation qu'emploie le relevé du
 // monde MAIN, sinon les deux tableaux ne s'aligneraient pas.
+// ══════════════════════════════════════════════════════════════════════════════
+// COUCHE DE RÉSOLUTION DES CHAMPS (2026-09-22) — RELEVÉE SUR LA PAGE DU JOUR
+// ══════════════════════════════════════════════════════════════════════════════
+// Beebs a refait sa page de dépôt entre 13:26 et 15:24 le 22/09 (dernière
+// publication réussie / premier échec). Tout le vocabulaire de sélecteurs sur
+// lequel reposait ce fichier a disparu d'un coup :
+//
+//   AVANT (jusqu'au 22/09 13:26)        MAINTENANT (relevé live le 22/09 au soir)
+//   ─────────────────────────────────   ──────────────────────────────────────────
+//   input#input-pictures                input[type=file] ANONYME (class "sr-only"),
+//                                       même accept, toujours multiple, dans le
+//                                       <label> « Ajouter des photos »
+//   div[class*="__label"]               label.group/field-label dans div.group/field
+//   button[class*="__selectButton"]     le bouton frère du libellé, porteur de
+//                                       aria-haspopup + aria-expanded + aria-controls
+//   div[class*="__options"]             popover RADIX : div[role=dialog] PORTALISÉ
+//                                       sur <body>, désigné par aria-controls
+//   (options = boutons à texte)         button.group/popover-item
+//   span[class*="__optionalAttribute"]  le suffixe « (facultatif) » est resté DANS
+//                                       le texte du libellé → required inchangé
+//   #title / #description / #price      INCHANGÉS
+//   button[type=submit]                 INCHANGÉ
+//
+// Ce n'est donc PAS « le champ photos a bougé » : c'est la migration complète
+// vers un design system à classes utilitaires (jetons bg-control-bg-default,
+// text-body-m-bold…) où plus AUCUNE classe ne nomme un rôle. La leçon est
+// écrite ici une fois pour toutes : on ne s'appuie plus sur une classe pour
+// désigner un champ. On s'appuie, dans cet ordre, sur
+//   1. les attributs ARIA que le composant pose lui-même (aria-controls est
+//      l'identifiant EXACT du panneau : plus aucune heuristique « panneau
+//      unique visible », plus aucun repli global) ;
+//   2. la structure HTML sémantique (<label> et son contrôle frère) ;
+//   3. les anciennes classes, gardées en DERNIER maillon — si Beebs revenait
+//      en arrière, rien ne casserait.
+//
+// Toutes les lectures du fichier passent par les fonctions ci-dessous, y
+// compris les deux ponts du monde MAIN (qui en portent une copie inline :
+// ADR-03, content scripts autonomes).
+
+// ⚠️ NOMMÉS PAR ATTRIBUT, JAMAIS PAR CLASSE POINTÉE. Les noms de groupe
+// Tailwind portent un SLASH (`group/field-label`, `group/popover-item`) :
+// `.group/field-label` est un sélecteur CSS INVALIDE, et querySelectorAll ne
+// rend pas une liste vide dans ce cas — il LÈVE. Un sélecteur d'attribut par
+// sous-chaîne dit la même chose sans échappement, et survit au passage dans
+// les deux ponts du monde MAIN (où il traverse encore un littéral).
+const BEEBS_SEL_LIBELLE = 'label[class*="group/field-label"], div[class*="__label"]';
+const BEEBS_SEL_OPTION = 'button[class*="popover-item"]';
+
+// L'input de photos. Aucun id depuis le 22/09 : on le nomme par ce qui ne
+// change pas — c'est un input file, multiple, qui accepte des images.
+function beebsPhotoInput() {
+  return document.querySelector("#input-pictures")
+    ?? document.querySelector('input[type="file"][multiple][accept*="png"]')
+    ?? document.querySelector('input[type="file"][accept*="image"]')
+    ?? document.querySelector('input[type="file"][multiple]')
+    ?? document.querySelector('input[type="file"]');
+}
+
+// Le déclencheur d'un libellé : son bouton frère. Un bouton de champ se
+// reconnaît à aria-haspopup (le composant le pose lui-même) ; à défaut le
+// premier bouton du conteneur de champ, à défaut l'ancienne classe.
+// ⛔ UN CHAMP, C'EST UN CHAMP À LISTE — PAS « le libellé a un bouton à côté ».
+// Mesuré le 22/09 sur la vraie page : accepter n'importe quel <button> du
+// conteneur faisait entrer « Photos (10 max.) » dans champsFormulaire() dès
+// qu'une vignette était déposée (chaque vignette porte son bouton de retrait).
+// enumerateBeebsFields l'aurait alors remonté comme un champ OBLIGATOIRE jamais
+// rempli, et le job serait reparti en needs_user sur un champ qui n'existe pas.
+// Le marqueur d'un vrai champ est celui que le composant pose lui-même :
+// aria-haspopup (ou l'ancienne classe __selectButton).
+function beebsTriggerDuLibelle(labelEl) {
+  const p = labelEl?.parentElement;
+  if (!p) return null;
+  return p.querySelector('button[class*="__selectButton"]')
+    ?? p.querySelector("button[aria-haspopup]")
+    ?? p.querySelector("button[aria-controls][data-slot]")
+    ?? null;
+}
+
+// Les libellés de champ. Un <label> du design system porte group/field-label ;
+// l'ancien monde posait un div[class*="__label"]. Le libellé des PHOTOS est
+// écarté d'office : il enveloppe l'input file et n'a AUCUN bouton — ce n'est
+// pas un champ à liste, et le compter fausserait form_ready.
+function beebsLibellesDeChamp() {
+  const out = [];
+  for (const el of document.querySelectorAll(BEEBS_SEL_LIBELLE)) {
+    if (!beebsTriggerDuLibelle(el)) continue;
+    out.push(el);
+  }
+  return out;
+}
+
+// LE PANNEAU D'UN DÉCLENCHEUR — plus jamais une devinette.
+// Radix pose aria-controls sur le bouton et rend le panneau en PORTAIL sur
+// <body> : l'ancien panelOf (frère du trigger, puis « unique panneau visible
+// du document ») ne pouvait ni le trouver, ni le distinguer d'un autre — et
+// le 22/09 il y a jusqu'à trois listes montées en même temps.
+function beebsPanneauDe(trigger) {
+  if (!trigger) return null;
+  const id = trigger.getAttribute("aria-controls");
+  if (id) {
+    const p = document.getElementById(id);
+    // Le panneau reste MONTÉ une fois refermé : on ne le rend que s'il est
+    // réellement ouvert, sinon closePanel/openPanelOptions perdraient la main.
+    const ouvert = trigger.getAttribute("aria-expanded") === "true"
+      || trigger.getAttribute("data-state") === "open"
+      || p?.getAttribute("data-state") === "open";
+    if (p && ouvert) return p;
+  }
+  // Anciens chemins, inchangés (scopé puis repli global unique).
+  const scoped = trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
+  if (scoped) return scoped;
+  const panneaux = panneauxVisibles();
+  if (panneaux.length === 1) {
+    if (!panelOfRepliLogge) {
+      panelOfRepliLogge = true;
+      console.warn(
+        "[beebs] panelOf: ni aria-controls ouvert, ni panneau sous le parent du trigger — " +
+        "repli sur l'unique panneau visible du document."
+      );
+    }
+    return panneaux[0];
+  }
+  return null;
+}
+
+// Les options d'un panneau ouvert. Radix les rend en button.group/popover-item ;
+// sinon, comme avant, tout bouton à texte non vide (le seul autre bouton d'un
+// panneau est le retour mobile md:hidden, sans texte).
+function beebsOptionsDuPanneau(panel) {
+  if (!panel) return [];
+  const items = Array.from(panel.querySelectorAll(BEEBS_SEL_OPTION)).filter((b) => b.textContent.trim());
+  if (items.length) return items;
+  return Array.from(panel.querySelectorAll("button")).filter((b) => b.textContent.trim());
+}
+
+// Un panneau de champ n'est PAS un interstitiel. Depuis le 22/09 les popovers
+// Radix sont des [role="dialog"] portalisés sur <body> : sans cette garde,
+// dismissInterstitials fermerait le panneau qu'on vient d'ouvrir — ou pire,
+// cliquerait dedans en croyant fermer une modale promo.
+function estPopoverDeChamp(el) {
+  if (!el) return false;
+  if (el.id && document.querySelector('button[aria-controls="' + CSS.escape(el.id) + '"]')) return true;
+  return !!el.querySelector(BEEBS_SEL_OPTION);
+}
+
+// Le formulaire de dépôt porte-t-il ses champs dynamiques ? (form_ready)
+function beebsNombreDeChamps() {
+  return beebsLibellesDeChamp().length;
+}
+
 function champsFormulaire() {
   const out = [];
-  for (const l of document.querySelectorAll('div[class*="__label"]')) {
-    const trigger = l.parentElement?.querySelector('button[class*="__selectButton"]');
+  for (const l of beebsLibellesDeChamp()) {
+    const trigger = beebsTriggerDuLibelle(l);
     if (!trigger) continue;
     const text = l.textContent.trim();
     const ordre = out.length;
@@ -2234,32 +2383,14 @@ const panneauxVisibles = () =>
 // que lire le mauvais champ. Repli loggé une fois : c'est la preuve demandée
 // pour départager lecture cassée vs panneau réellement absent.
 let panelOfRepliLogge = false;
-const panelOf = (trigger) => {
-  const scoped = trigger.parentElement?.querySelector('div[class*="__options"]') ?? null;
-  if (scoped) return scoped;
-  const panneaux = panneauxVisibles();
-  if (panneaux.length === 1) {
-    if (!panelOfRepliLogge) {
-      panelOfRepliLogge = true;
-      console.warn(
-        "[beebs] panelOf: panneau __options ABSENT sous le parent du trigger mais UNIQUE panneau " +
-        "visible dans le document — lecture par repli global. La structure de ce champ diffère de " +
-        "celle relevée le 25/07 (panneau non frère du trigger)."
-      );
-    }
-    return panneaux[0];
-  }
-  return null;
-};
+// Depuis le 22/09 : aria-controls d'abord (identité EXACTE du panneau), les
+// anciens chemins ensuite — cf. beebsPanneauDe.
+const panelOf = (trigger) => beebsPanneauDe(trigger);
 // Options du panneau OUVERT de ce champ : les boutons à texte non vide — le
 // seul autre bouton du panneau est le retour de l'en-tête mobile (md:hidden),
 // sans texte. textContent uniquement (fenêtre jamais rendue, cf. règle
 // getComputedStyle/textContent plus bas).
-const panelOptions = (trigger) => {
-  const panel = panelOf(trigger);
-  if (!panel) return [];
-  return Array.from(panel.querySelectorAll("button")).filter((b) => b.textContent.trim());
-};
+const panelOptions = (trigger) => beebsOptionsDuPanneau(panelOf(trigger));
 // Barre de recherche du panneau : seul input non-checkbox rendu dedans
 // (placeholder « Rechercher » / « Rechercher une catégorie »).
 const panelSearchInput = (trigger) =>
@@ -2300,6 +2431,12 @@ function findBlockingDialogs() {
     // bouton d'une modale déjà fermée (même règle anti-bascule que le panneau
     // catégorie).
     .filter((d) => d.getAttribute("data-state") !== "closed")
+    // ⛔ UN PANNEAU DE CHAMP N'EST PAS UN INTERSTITIEL (2026-09-22). Depuis le
+    //    passage aux popovers Radix, le panneau d'un dropdown Beebs est un
+    //    [role="dialog"] PORTALISÉ sur <body> : sans cette garde, la purge
+    //    d'interstitiels fermerait le panneau qu'on vient d'ouvrir — ou
+    //    cliquerait dedans en croyant fermer une modale promo.
+    .filter((d) => !estPopoverDeChamp(d))
     // pas nos dropdowns (un panneau __options n'est jamais un interstitiel)
     .filter((d) => !d.querySelector('div[class*="__options"]') && !d.closest('div[class*="__options"]'))
     // le dialogue de suppression est MANIPULÉ par le flux delete, jamais fermé d'office
@@ -2332,6 +2469,9 @@ function interstitielFerme(d) {
 function findGhostDialogs() {
   return Array.from(document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="modal" i]'))
     .filter((d) => d.isConnected && d.getAttribute("data-state") === "closed")
+    // Un popover de champ REFERMÉ reste monté : il appartient au formulaire, pas
+    // aux interstitiels — le purger casserait son aria-controls (22/09).
+    .filter((d) => !estPopoverDeChamp(d))
     .filter((d) => !d.querySelector('div[class*="__options"]') && !d.closest('div[class*="__options"]'))
     .filter((d) => !/supprimer mon annonce/i.test(texteDe(d)));
 }
@@ -2363,7 +2503,7 @@ function purgeInterstitielResidus(d) {
     // un dialogue qui porterait lui-même le formulaire n'est pas touché. Les
     // portails Radix (enfant direct de <body>, sans formulaire) sont retirés
     // comme avant : 262 dépôts publiés sur 16 comptes ont suivi ce chemin.
-    const porteLeFormulaire = (el) => !!el?.querySelector?.("form, #input-pictures");
+    const porteLeFormulaire = (el) => !!(el?.querySelector?.("form") || el?.querySelector?.('input[type="file"]'));
     let portail = d;
     while (portail.parentElement && portail.parentElement !== document.body) portail = portail.parentElement;
     if (porteLeFormulaire(d)) {
@@ -2379,6 +2519,10 @@ function purgeInterstitielResidus(d) {
     }
     for (const el of Array.from(document.body.children)) {
       if (el.querySelector?.('div[class*="__options"]') || el.querySelector?.("form")) continue;
+      // Le portail des popovers Radix est lui aussi un enfant direct de <body> :
+      // on ne retire jamais le conteneur d'un panneau de champ (22/09).
+      if (estPopoverDeChamp(el)) continue;
+      if (Array.from(el.querySelectorAll('[role="dialog"]')).some(estPopoverDeChamp)) continue;
       const cls = String(el.className ?? "");
       const marque = el.hasAttribute?.("data-state") || /overlay|backdrop/i.test(cls);
       if (marque && !el.querySelector('[role="dialog"]') && getComputedStyle(el).position === "fixed") {
@@ -3143,9 +3287,16 @@ function releverChampsViaPontInline() {
           if (typeof v === "object") return String(v.title || v.label || v.name || v.value || "").trim();
           return String(v).trim();
         };
+        const selLibelle = 'label[class*="group/field-label"], div[class*="__label"]';
+        const triggerDe = (l) => {
+          const p = l && l.parentElement; if (!p) return null;
+          return p.querySelector('button[class*="__selectButton"]')
+            || p.querySelector("button[aria-haspopup]")
+            || p.querySelector("button[aria-controls][data-slot]") || null;
+        };
         const champs = [];
-        for (const l of document.querySelectorAll('div[class*="__label"]')) {
-          const btn = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+        for (const l of document.querySelectorAll(selLibelle)) {
+          const btn = triggerDe(l);
           if (!btn) continue;
           let nom = null, valeurs = null;
           const fk = Object.keys(btn).find((k) => k.indexOf("__reactFiber$") === 0);
@@ -3260,10 +3411,17 @@ function commitCategoryViaPontInline(path) {
       const reponds = (p) => window.postMessage(Object.assign({ __fillsellBeebsCategory: ${JSON.stringify(nonce)} }, p), "*");
       try {
         const norm = (x) => String(x ?? "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/\\s+/g, " ").trim().toLowerCase();
+        const selLibelle = 'label[class*="group/field-label"], div[class*="__label"]';
+        const triggerDe = (l) => {
+          const p = l && l.parentElement; if (!p) return null;
+          return p.querySelector('button[class*="__selectButton"]')
+            || p.querySelector("button[aria-haspopup]")
+            || p.querySelector("button[aria-controls][data-slot]") || null;
+        };
         let trigger = null;
-        for (const l of document.querySelectorAll('div[class*="__label"]')) {
+        for (const l of document.querySelectorAll(selLibelle)) {
           if (norm(l.textContent).startsWith("categorie")) {
-            trigger = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+            trigger = triggerDe(l);
             if (trigger) break;
           }
         }
@@ -3357,7 +3515,7 @@ async function categorieParRecherche(trigger, mot, titre) {
       return t && normalizeFuzzy(texteDe(t)).includes(normalizeFuzzy(choisi)) ? t : null;
     }, 6000);
     const champsOk = libelleOk
-      ? await waitFor(() => document.querySelectorAll('div[class*="__label"]').length > 2, 6000)
+      ? await waitFor(() => beebsNombreDeChamps() > 2, 6000)
       : null;
     if (libelleOk && champsOk) {
       cheminCategorie = `RECHERCHE BEEBS (« ${requete} » → "${choisi}")`;
@@ -3406,7 +3564,7 @@ async function selectCategory(path, fields = {}, titre = "") {
       return t && normalizeFuzzy(texteDe(t)).includes(normalizeFuzzy(feuille)) ? t : null;
     }, 8000);
     const champsOk = libelleOk
-      ? await waitFor(() => document.querySelectorAll('div[class*="__label"]').length > 2, 8000)
+      ? await waitFor(() => beebsNombreDeChamps() > 2, 8000)
       : null;
     if (libelleOk && champsOk) {
       cheminCategorie = `FIBER (feuille "${viaFiber.feuille}")`;
@@ -3814,7 +3972,16 @@ async function urlToFile(url, index) {
 
 async function uploadPhotos(photos) {
   const files = await Promise.all(photos.map((p, i) => urlToFile(p.url, i)));
-  const input = await waitForElement("#input-pictures");
+  // Le champ photos N'A PLUS D'ID depuis le 22/09 — c'est ce qui a arrêté tout
+  // le dépôt Beebs à 15:24 (« Élément introuvable: #input-pictures »). On
+  // l'attend désormais par sa NATURE, plus par son nom (cf. beebsPhotoInput).
+  const input = await waitFor(() => beebsPhotoInput(), 10_000);
+  if (!input) {
+    throw new Error(
+      "Le champ « Ajouter des photos » n'a pas été trouvé sur la page de vente Beebs. " +
+      "Rien n'a été publié, ton annonce n'a pas été touchée."
+    );
+  }
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
   const vignettesAvant = photoPreviewCount();
