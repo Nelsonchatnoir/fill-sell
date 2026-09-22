@@ -18111,6 +18111,110 @@ async function executerRetraitViaHandler(job, accessToken) {
 // Opla n'entre pas ici (modification en place, processOplaRepublishJob).
 const REPUBLISH_PF_ETAT_ESSAIS_MAX = 4;
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ON NE RETIRE PAS CE QU'ON NE SAIT PAS REMETTRE — LA PAGE, PAS LA CAPTURE
+// ══════════════════════════════════════════════════════════════════════════════
+// (2026-09-22, « Pot Diddlina violet ») Une republication retire PUIS redépose.
+// Entre les deux l'annonce n'existe plus : ce qui manque à cet instant se paie
+// en annonce hors ligne, pas en message d'erreur. Le 22/09, Beebs a refait sa
+// page de dépôt entre 13:26 et 15:24 ; à 21:04 une republication a retiré une
+// annonce parfaitement capturée, puis n'a pas su la remettre.
+//
+// Chaque sonde ci-dessous est SÉRIALISÉE et injectée dans l'onglet de travail :
+// aucune closure, rien d'extérieur. Elle rend toujours la MÊME forme :
+//   { mur: string|null, manquants: string[] }
+// — `mur` : la page n'est pas le formulaire (connexion, vérification
+//   anti-robot). Ce n'est pas un défaut de formulaire : on attend, sans retirer.
+// — `manquants` : les rôles du formulaire qu'on n'a pas retrouvés, en français
+//   d'utilisateur (« les photos », « le titre »…). Un seul suffit à tout
+//   arrêter.
+// Les libellés des manquants sont ceux qu'on montrerait à la personne : ils
+// partent tels quels dans le message.
+const PREVOL_DEPOT = {
+  beebs: {
+    url: "https://www.beebs.app/fr/listing",
+    sonde: function () {
+      if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], script[src*="captcha-delivery"]')) {
+        return { mur: "vérification anti-robot sur la page de vente", manquants: [] };
+      }
+      if (!/\/fr\/listing/.test(location.pathname) || document.querySelector('input[type="password"]')) {
+        return { mur: "page de connexion à la place du formulaire de vente", manquants: [] };
+      }
+      // Même résolution que le content script (cf. sa couche du 22/09) :
+      // ARIA et structure d'abord, anciennes classes en dernier maillon.
+      const photos = document.querySelector("#input-pictures")
+        || document.querySelector('input[type="file"][multiple][accept*="png"]')
+        || document.querySelector('input[type="file"][accept*="image"]')
+        || document.querySelector('input[type="file"]');
+      const champs = Array.prototype.filter.call(
+        document.querySelectorAll('label[class*="group/field-label"], div[class*="__label"]'),
+        function (l) {
+          const p = l.parentElement;
+          return !!(p && (p.querySelector('button[class*="__selectButton"]')
+            || p.querySelector("button[aria-haspopup]")
+            || p.querySelector("button[aria-controls][data-slot]")));
+        },
+      );
+      const categorie = champs.some((l) => /^cat[ée]gorie/i.test(l.textContent.trim()));
+      const manquants = [];
+      if (!photos) manquants.push("les photos");
+      if (!document.querySelector("#title")) manquants.push("le titre");
+      if (!document.querySelector("#description")) manquants.push("la description");
+      if (!document.querySelector("#price")) manquants.push("le prix");
+      if (!categorie) manquants.push("la catégorie");
+      if (!document.querySelector('button[type="submit"]')) manquants.push("le bouton de mise en vente");
+      return { mur: null, manquants };
+    },
+  },
+  leboncoin: {
+    url: "https://www.leboncoin.fr/deposer-une-annonce",
+    // Relevé live le 22/09 : la première étape du dépôt porte le titre en
+    // input[name="subject"]. On ne vérifie QUE ce qui est certain à l'étape 1 —
+    // le reste du wizard n'est pas rendu avant d'avoir choisi la catégorie, et
+    // réclamer ici un champ qui n'existe pas encore bloquerait des
+    // republications qui marchent.
+    sonde: function () {
+      if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], script[src*="captcha-delivery"]')) {
+        return { mur: "vérification anti-robot sur la page de dépôt", manquants: [] };
+      }
+      if (!/deposer-une-annonce/.test(location.pathname)) {
+        return { mur: "page de connexion à la place du formulaire de dépôt", manquants: [] };
+      }
+      return {
+        mur: null,
+        manquants: document.querySelector('input[name="subject"]') ? [] : ["le titre"],
+      };
+    },
+  },
+};
+
+// Ouvre la page de dépôt dans l'onglet de travail et lit la sonde.
+// ⛔ FAIL-OPEN : tout ce qui n'est pas une réponse de la page rend
+//    { lisible:false } — l'appelant poursuit alors son chemin normal.
+async function prevolPageDeDepot(platform) {
+  const spec = PREVOL_DEPOT[platform];
+  if (!spec) return { lisible: false };
+  const tabId = await getOrCreateWorkTab(platform, spec.url);
+  await waitForTabComplete(tabId, spec.url + WORK_TAB_FRAGMENT, 45_000).catch(() => {});
+  // La page est une SPA : ses champs arrivent après le « complete ». On relit
+  // jusqu'à un verdict sans manquants, ou jusqu'au budget — un pré-vol pressé
+  // déclarerait « les photos » manquantes sur une page simplement pas finie.
+  const t0 = Date.now();
+  let dernier = null;
+  while (Date.now() - t0 < 20_000) {
+    const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: spec.sonde })
+      .catch(() => [null]);
+    const v = res?.result;
+    if (v && typeof v === "object") {
+      dernier = v;
+      if (!v.mur && !(v.manquants ?? []).length) break;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  if (!dernier) return { lisible: false };
+  return { lisible: true, mur: dernier.mur ?? null, manquants: Array.isArray(dernier.manquants) ? dernier.manquants : [] };
+}
+
 // L'identifiant d'annonce dans une URL, par plateforme — la seule partie
 // stable d'un lien (slug ou non, paramètres ou non). null = pas d'identifiant
 // lisible : l'appelant retombe sur l'égalité d'URL, jamais sur une devinette.
@@ -18232,6 +18336,56 @@ async function processRepublishJobPlateforme(job, accessToken) {
         pf.republish_prevol_manquants = manquants;
         await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
         console.warn(`[republish] job ${job.id} : retrait REFUSÉ — capture incomplète (${manquants.join(", ")})`);
+        return { status: "needsUser", error: msg };
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PRÉ-VOL SUR LA PAGE DE DÉPÔT (2026-09-22) — LE POT DIDDLINA
+    // ══════════════════════════════════════════════════════════════════════
+    // Le pré-vol ci-dessus lit la CAPTURE. Il ne dit rien de la PAGE : le
+    // 22/09 à 21:04, la republication Beebs du « Pot Diddlina violet »
+    // (van-breugel.sandra) a retiré l'annonce, puis le redépôt a buté sur un
+    // formulaire que Beebs venait de refaire — annonce perdue, capture
+    // parfaite. Une copie complète ne prouve rien si le formulaire d'en face
+    // n'existe plus.
+    // On ouvre donc la page de dépôt AVANT de retirer, et on vérifie qu'elle
+    // porte encore ses champs indispensables. Rien ne manque → on retire.
+    // Quelque chose manque → on ne touche à RIEN, l'annonce reste en ligne.
+    // ⛔ FAIL-OPEN sur tout ce qui n'est pas une réponse de la page : pas de
+    //    plateforme décrite, onglet impossible à ouvrir, injection refusée,
+    //    sonde muette → le chemin ne change pas d'un caractère. Un pré-vol
+    //    qui se trompe empêcherait des republications qui marchent.
+    // ⛔ Et il ne consomme JAMAIS de tentative : mur de connexion ou
+    //    anti-robot → attente, exactement comme un retrait.
+    if (PREVOL_DEPOT[job.platform]) {
+      const vol = await prevolPageDeDepot(job.platform).catch((e) => {
+        console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — le retrait suit son chemin`);
+        return { lisible: false };
+      });
+      pf.republish_prevol_page = {
+        at: new Date().toISOString(), lisible: vol.lisible === true,
+        ...(vol.manquants?.length ? { manquants: vol.manquants } : {}),
+        ...(vol.mur ? { mur: vol.mur } : {}),
+      };
+      if (vol.lisible && vol.mur) {
+        // Session à ouvrir / vérification anti-robot : ce n'est pas un défaut
+        // de formulaire, et ça ne se règle pas en retirant l'annonce.
+        pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+        console.log(`[republish] job ${job.id} : pré-vol ${label} — ${vol.mur}, aucun retrait, nouvel essai dans 30 min`);
+        return { status: "skipped", error: `pré-vol ${label} : ${vol.mur} — rien retiré` };
+      }
+      if (vol.lisible && vol.manquants?.length) {
+        const quoi = vol.manquants.length > 1
+          ? `${vol.manquants.slice(0, -1).join(", ")} et ${vol.manquants[vol.manquants.length - 1]}`
+          : vol.manquants[0];
+        const msg = `Republication ${label} mise en pause AVANT tout retrait : sur la page de vente ${label}, `
+          + `${quoi} ${vol.manquants.length > 1 ? "ne sont plus au rendez-vous" : "n'est plus au rendez-vous"}. `
+          + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. C'est de notre côté, on s'en occupe ; "
+          + "la republication repartira toute seule.";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ par le pré-vol — ${vol.manquants.join(", ")}`);
         return { status: "needsUser", error: msg };
       }
     }
