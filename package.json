@@ -62,7 +62,8 @@
     "selftest:taille-rayon-paiement": "node --import ./scripts/loader-ext.mjs scripts/taille-rayon-paiement-selftest.mjs",
     "selftest:pas-de-rouge": "node scripts/pas-de-rouge-selftest.mjs",
     "selftest:lbc-maison-jardin-secours": "node scripts/lbc-maison-jardin-secours-selftest.mjs",
-    "selftest:ebay-parcours": "node scripts/ebay-parcours-selftest.mjs"
+    "selftest:ebay-parcours": "node scripts/ebay-parcours-selftest.mjs",
+    "selftest:chaussure-malgre-le-mot": "node scripts/chaussure-malgre-le-mot-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

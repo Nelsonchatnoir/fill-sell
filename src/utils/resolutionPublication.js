@@ -48,6 +48,7 @@ import { normalizeVintedColors } from "./vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "./lbcCategories";
 import { lbcClePremierCombobox, pairesMaisonJardinDeSecours } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
+import { chaussureMalgreLeMot } from "./chaussureMalgreLeMot";
 import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre } from "./categorieParMot";
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
 import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme,
@@ -377,8 +378,30 @@ export async function resoudrePublication({
       },
     };
   }
-  const motCategorie = activeAiObjet ?? motCleTitre ?? null;
-  const motCategorieSource = activeAiObjet ? "ia" : (motCleTitre ? "mot_cle" : null);
+  // ══ LE MOT DU TITRE NE GAGNE PAS CONTRE L'ARTICLE (2026-09-22) ═══════════
+  // « Nike Blazer Mid 77 » partait au rayon des blazers sur les quatre
+  // plateformes, et Vinted refusait ensuite la taille « EU 10 » — qui n'existe
+  // pas dans un rayon de vêtements. La fiche disait pourtant trois fois que
+  // c'était une paire de baskets (pointure relevée, marque + modèle, texte du
+  // vendeur). Le module ne corrige QUE sur preuve (cf. son en-tête) : sans
+  // preuve il rend null et rien ne change. Il s'applique AVANT la résolution
+  // par le mot, donc chaque plateforme résout « baskets » contre SON arbre —
+  // et le garde-fou d'icône plus bas reçoit 👟 au lieu de 🥼.
+  const motAvantChaussure = activeAiObjet ?? motCleTitre ?? null;
+  const chaussureCorrigee = chaussureMalgreLeMot({
+    mot: motAvantChaussure,
+    titre: frTitrePublication,
+    description: frDescriptionPublication,
+    marque: initialListing?.marque ?? "",
+    attributs: initialListing?.attributs ?? null,
+  });
+  if (chaussureCorrigee) {
+    console.warn(`[publish] classement corrigé — ${chaussureCorrigee.motif}`);
+  }
+  const motCategorie = chaussureCorrigee ? chaussureCorrigee.mot : motAvantChaussure;
+  const motCategorieSource = chaussureCorrigee
+    ? "modele_chaussure"
+    : (activeAiObjet ? "ia" : (motCleTitre ? "mot_cle" : null));
   // ══ LA FAMILLE DE L'OBJET — SOURCES CERTAINES SEULEMENT (2026-09-10) ══
   // Cas fondateur : « Salopette Le Mont Saint Michel » (Victor, dddc7f2a),
   // catalogue Vinted Hommes > Vêtements, partie sur eBay en « Auto, moto >
@@ -608,7 +631,18 @@ export async function resoudrePublication({
       familleFiche: initialListing?.famille || "",
       iconeSansIa: detIcone.iconeSansIa ?? null,
     });
-    const iconeArticle = garde.icone ?? detIcone.icon;
+    // L'icône suit le classement corrigé : sans ça le chemin d'icône (le
+    // repli de toute plateforme où « baskets » ne résout pas — Leboncoin,
+    // dont l'arbre n'a pas ce mot) renverrait l'article au rayon 🥼.
+    const iconeArticle = chaussureCorrigee ? chaussureCorrigee.icone : (garde.icone ?? detIcone.icon);
+    if (chaussureCorrigee) {
+      pf.categorie_chaussure_malgre_le_mot = {
+        regle: chaussureCorrigee.regle,
+        mot_ecarte: motAvantChaussure ?? null,
+        icone_ecartee: garde.icone ?? detIcone.icon,
+        preuves: chaussureCorrigee.preuves,
+      };
+    }
     // TRAÇABILITÉ SUR LES QUATRE PLATEFORMES (elle n'existait que sur
     // Leboncoin) : un job en main, on doit pouvoir répondre « d'où venait
     // cette catégorie ? » — y compris pour un job eBay.
