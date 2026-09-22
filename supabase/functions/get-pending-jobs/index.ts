@@ -1185,6 +1185,31 @@ serve(async (req) => {
             pf[clePf] = v;
             repris[clePf] = vCapture ? v : `${v} (repris de l'article)`;
           }
+          // ── OÙ EST L'ANNONCE (2026-09-22) ─────────────────────────────────
+          // Une republication rejoue l'annonce d'origine à l'identique : sa
+          // LOCALISATION en fait partie, au même titre que son prix. Le job
+          // af34f609 (nicolas.menar) l'a payé — annonce de Roost-Warendin
+          // (59286) supprimée, recréation retombée sur l'« Adresse de remise »
+          // des Réglages, Réglages vides, 11 minutes hors ligne.
+          // On la pose à part (`localisation_origine`), JAMAIS dans `adresse` :
+          // `adresse` est l'adresse des Réglages, et les deux ne doivent pas se
+          // confondre — c'est le handler qui arbitre, et seulement sur une
+          // republication (cf. leboncoin.js, fillAddress).
+          const locCap = (cap["localisation"] && typeof cap["localisation"] === "object")
+            ? cap["localisation"] as Record<string, unknown> : null;
+          if (locCap && !pf["localisation_origine"]) {
+            const ville = String(locCap["ville"] ?? "").trim();
+            const cp = String(locCap["code_postal"] ?? "").trim();
+            const voie = String(locCap["voie"] ?? "").trim();
+            if (ville || cp) {
+              pf["localisation_origine"] = {
+                ville: ville || null, code_postal: cp || null, voie: voie || null,
+                libelle: String(locCap["libelle"] ?? "").trim() || [ville, cp].filter(Boolean).join(" "),
+                pose_par: "get-pending-jobs (capture de l'annonce)",
+              };
+              repris["localisation"] = (pf["localisation_origine"] as Record<string, unknown>)["libelle"] as string;
+            }
+          }
           // ── LES CRITÈRES DU FORMULAIRE, REPRIS DE L'ANNONCE (0.6.47) ──────
           // Le trou nommé le 19/09 — « tant que le relevé ne garde pas
           // `ad.attributes` entier, aucune hydratation serveur ne peut les
