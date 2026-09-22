@@ -735,10 +735,16 @@ serve(async (req) => {
     // code. Le serveur tient donc la porte à sa place — c'est le seul endroit
     // qui puisse protéger la flotte déjà installée.
     //
-    // ⛔ On ne retient QUE le geste destructeur. L'étape 'deleted' (l'annonce
-    //    est DÉJÀ hors ligne, il ne reste que le redépôt) continue d'être
-    //    servie : la retenir laisserait les annonces dehors plus longtemps.
-    //    Les publications Beebs normales passent aussi — au pire elles
+    // ⛔ TOUTES LES ÉTAPES, Y COMPRIS 'deleted' (corrigé le 22/09 au soir).
+    //    D'abord servie au motif que « l'annonce est déjà dehors, autant la
+    //    remettre au plus vite », l'étape 'deleted' a été reprise deux fois en
+    //    dix minutes par des builds 0.6.53/0.6.54 (van-breugel.sandra,
+    //    nicolas.menar) : un ancien build ne SAIT PAS déposer sur la page
+    //    refaite — il ne remet rien, il brûle une tentative et repasse le job
+    //    en « à toi de jouer » pour un défaut qui est chez nous. L'annonce
+    //    reste dehors dans les deux cas ; autant garder les tentatives et le
+    //    job en file, pour qu'il reparte SEUL dès la mise à jour installée.
+    //    Les publications Beebs normales passent toujours — au pire elles
     //    échouent sans rien toucher, ce qu'elles font déjà.
     // ⛔ Version illisible ou absente = ancien build (versionAuMoins rend
     //    false) : on retient. Dans le doute, on ne retire pas.
@@ -749,12 +755,9 @@ serve(async (req) => {
     let beebsRetraitsRetenus = 0;
     if (!versionAuMoins(version, BEEBS_RETRAIT_VERSION_MIN)) {
       out = out.filter((j) => {
-        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-        const etape = String(pf.republish_step ?? "a_capturer");
-        const retirerait = j.platform === "beebs" && j.action === "republish"
-          && (etape === "a_capturer" || etape === "captured");
-        if (retirerait) beebsRetraitsRetenus++;
-        return !retirerait;
+        const aRetenir = j.platform === "beebs" && j.action === "republish";
+        if (aRetenir) beebsRetraitsRetenus++;
+        return !aRetenir;
       });
       if (beebsRetraitsRetenus) {
         console.log(
