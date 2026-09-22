@@ -1425,31 +1425,40 @@ serve(async (req) => {
       });
 
       if (murLeve.length) {
-        // Ce qui EXISTE DÉJÀ pour ces comptes : un run en file ou en cours
-        // interdit d'en poser un second (index métier de la RPC), et un relevé
-        // réussi de moins de 15 min arme la cadence.
+        // ── TOUT L'HISTORIQUE UTILE, EN UNE LECTURE ───────────────────────
+        // Trois faits par (compte, plateforme) : un run en file ou en cours
+        // (interdit d'en poser un second, c'est l'index métier de la RPC), la
+        // date du dernier relevé RÉUSSI (cadence de 15 min), et le nombre de
+        // reprises AUTOMATIQUES déjà faites depuis ce dernier succès.
+        //
+        // ⛔ UNE REPRISE PAR ÉPISODE, ET UNE SEULE (2026-09-22, le soir même).
+        //    Mesuré à la première salve : 11 relevés eBay/Opla remis en file,
+        //    6 revenus dans la minute sur EXACTEMENT le même mur (« session
+        //    ebay : page de connexion »). La sonde `extension_sessions.ebay`
+        //    dit « connecté » — et elle n'a pas tort : le compte eBay est
+        //    ouvert. C'est « Mes annonces » qui redemande une connexion.
+        //    Sans cette garde, chaque rafraîchissement de sonde (toutes les
+        //    heures) reposerait la même demande, indéfiniment : la promesse
+        //    « ça repart tout seul » deviendrait un martèlement, et c'est
+        //    exactement ce que l'anti-robot des plateformes guette.
+        //    Une tentative automatique par épisode. Le bouton « Me connecter »
+        //    reste, lui, disponible autant de fois que la personne le veut —
+        //    un geste humain n'est pas un cron.
         const idsLeves = [...new Set(murLeve.map((c) => c.user_id))];
         const actifs = new Set<string>();
         const reussiA = new Map<string, number>();
+        const repriseDepuis = new Map<string, number[]>();
         for (let i = 0; i < idsLeves.length; i += 200) {
-          const { data: encours } = await supabase
+          const { data: histo } = await supabase
             .from("vinted_sync_runs")
-            .select("user_id, platform, status, finished_at")
+            .select("user_id, platform, status, declencheur, queued_at, started_at, finished_at")
             .eq("kind", "annonces")
             .in("user_id", idsLeves.slice(i, i + 200))
-            .in("status", ["queued", "running", "done"])
-            .gte("finished_at", new Date(maintenant - 60 * 60_000).toISOString())
-            .limit(1000);
-          // deno-lint-ignore no-explicit-any
-          for (const r of ((encours ?? []) as any[])) {
-            const cle = `${r.user_id}|${r.platform}`;
-            if (r.status === "queued" || r.status === "running") { actifs.add(cle); continue; }
-            const t = Date.parse(String(r.finished_at ?? ""));
-            if (Number.isFinite(t) && t > (reussiA.get(cle) ?? 0)) reussiA.set(cle, t);
-          }
-          // `gte finished_at` écarte les lignes 'queued' (finished_at NULL) :
-          // on les relit à part, sinon une demande en file passerait inaperçue
-          // et on en empilerait une seconde.
+            .gte("started_at", new Date(maintenant - 30 * 24 * 60 * 60_000).toISOString())
+            .limit(2000);
+          // Les lignes ENCORE EN FILE n'ont ni started_at ni finished_at utile
+          // selon les chemins : on les relit à part plutôt que de risquer
+          // qu'un filtre de date les écarte et qu'on en empile une seconde.
           const { data: enFile } = await supabase
             .from("vinted_sync_runs")
             .select("user_id, platform")
@@ -1459,6 +1468,19 @@ serve(async (req) => {
             .limit(1000);
           // deno-lint-ignore no-explicit-any
           for (const r of ((enFile ?? []) as any[])) actifs.add(`${r.user_id}|${r.platform}`);
+          // deno-lint-ignore no-explicit-any
+          for (const r of ((histo ?? []) as any[])) {
+            const cle = `${r.user_id}|${r.platform}`;
+            if (r.status === "queued" || r.status === "running") { actifs.add(cle); continue; }
+            if (r.status === "done") {
+              const t = Date.parse(String(r.finished_at ?? ""));
+              if (Number.isFinite(t) && t > (reussiA.get(cle) ?? 0)) reussiA.set(cle, t);
+            }
+            if (String(r.declencheur ?? "") === "reprise_connexion") {
+              const t = Date.parse(String(r.queued_at ?? r.started_at ?? ""));
+              if (Number.isFinite(t)) repriseDepuis.set(cle, [...(repriseDepuis.get(cle) ?? []), t]);
+            }
+          }
         }
 
         // L'interrupteur serveur, compte par compte — la RPC le vérifie, nous
@@ -1477,6 +1499,11 @@ serve(async (req) => {
           if (actifs.has(cle)) continue;
           const reussi = reussiA.get(cle) ?? 0;
           if (reussi && maintenant - reussi < 15 * 60_000) continue;     // cadence
+          // L'ÉPISODE court depuis le dernier relevé réussi — ou depuis
+          // toujours si cette plateforme n'a jamais rien rendu. Une reprise
+          // automatique déjà faite dans cet épisode close la question : la
+          // suivante viendra d'un clic, ou d'un relevé qui aura enfin marché.
+          if ((repriseDepuis.get(cle) ?? []).some((t) => t > reussi)) continue;
           const { data: pose } = await supabase
             .from("vinted_sync_runs")
             .insert({
