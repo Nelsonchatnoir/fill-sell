@@ -80,7 +80,7 @@ import { entreesPhotos, urlsPhotos, MAX_PHOTOS } from './utils/photos';
 import { searchMatch } from './utils/recherche';
 import { moveItem } from './utils/photosGalerie';
 import GaleriePhotos from './components/GaleriePhotos';
-import { sonderAnnonceVinted, lireBoutiquesVinted, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
+import { sonderAnnonceVinted, lireBoutiquesVinted, lireBoutiqueConnectee, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 // Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
 // annonce relevée au même titre qu'un dépôt « plus en ligne » → le bandeau
@@ -5052,6 +5052,31 @@ export default function App({ loginOnly = false }){
     // `armes` sort de la portée du if : il sert au journal d'audit en fin de
     // fonction, une fois la suppression RÉELLEMENT faite.
     let armes=[];
+    // ══ ON NE RETIRE JAMAIS L'ANNONCE D'UN AUTRE (2026-09-22) ═══════════════
+    // 🚨 L'INCIDENT DU 22/09 : remialbertholl supprime 41 articles de SON stock,
+    //    et 41 retraits Vinted partent sur les annonces de @nadegemarcelin78.
+    //    Son stock ne contient QUE des boutiques relevées chez d'autres (644 de
+    //    Nadège, 218 de @narema75, 213 de @jcassou) et ZÉRO de la boutique
+    //    ouverte dans son Chrome. Rien n'a été détruit — Vinted a refusé faute
+    //    de jeton CSRF — mais rien, chez nous, ne l'avait empêché.
+    // ⛔ SUPPRIMER DANS SON STOCK NE DOIT JAMAIS TOUCHER L'ANNONCE D'AUTRUI.
+    //    Quand l'article vient d'une boutique qui n'est pas celle de la session,
+    //    on retire la fiche FillSell et RIEN d'autre, et on le dit en une ligne.
+    // ⛔ DEUX CERTITUDES, SINON ON NE RETIENT RIEN : il faut connaître la
+    //    boutique de l'article ET celle de la session. Un compte mono-boutique
+    //    dont l'identité n'a jamais été relevée garde exactement le comportement
+    //    d'avant — c'est le même principe que partout ailleurs.
+    let retenuBoutiqueEtrangere=null;
+    if(p.online.some(pub=>pub.platform==='vinted')&&item?.vinted_account_id){
+      try{
+        const b=await lireBoutiqueConnectee(user.id);
+        if(b?.userId&&String(item.vinted_account_id)!==String(b.userId)){
+          retenuBoutiqueEtrangere={article:String(item.vinted_account_id),session:b.userId,login:b.login};
+          p.online=p.online.filter(pub=>pub.platform!=='vinted');
+          console.warn(`[suppression] article de la boutique ${retenuBoutiqueEtrangere.article}, session sur ${b.userId} — retrait Vinted NON armé, seule la fiche FillSell est retirée`);
+        }
+      }catch{/* illisible : on ne conclut rien, comportement d'avant */}
+    }
     if(p.online.length){
       const rows=p.online.map(pub=>({
         user_id:user.id,inventaire_id:item.id,platform:pub.platform,
@@ -5140,6 +5165,16 @@ export default function App({ loginOnly = false }){
       articleId:item.id,
       extra:extraJournal,
     });
+    // On le DIT, en une ligne, sans jargon : la fiche est partie, l'annonce non.
+    // Sans ça, la personne croit avoir retiré une annonce qui reste en ligne —
+    // et c'est exactement la confusion qui a fait croire à une suppression en
+    // masse le 22/09.
+    if(retenuBoutiqueEtrangere){
+      setToast({visible:true,message:lang==='fr'
+        ?"L'article est retiré de ton stock. Son annonce Vinted appartient à un autre compte que celui ouvert dans Chrome : elle est toujours en ligne."
+        :"The item was removed from your stock. Its Vinted listing belongs to another account than the one open in Chrome: it is still online."});
+      setTimeout(()=>setToast({visible:false,message:''}),8000);
+    }
     await fetchAll(user.id);
   }
 
