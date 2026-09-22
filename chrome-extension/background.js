@@ -3807,7 +3807,14 @@ async function processJob(rawJob, accessToken) {
         // de validation lu dans la réponse de /api/v2/item_upload/items
         // (readServerValidationErrors n'accepte que status >= 400) — Vinted dit
         // lui-même que l'annonce n'a pas été créée.
-        const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id"]);
+        // ⛔ « package_size » AJOUTÉ LE 22/09, ET C'EST UN VRAI TROU. Vinted
+        //    nomme ce refus `package_size` ; la liste ne portait que
+        //    `package_size_id`. Le champ passait donc pour « résoluble » et
+        //    partait au mini-éditeur : on a demandé à XEWER (job 6aabc550) de
+        //    choisir un format de colis que le snapshot contenait déjà
+        //    (« Petit », package_size_id = 1), pendant que son annonce était
+        //    hors ligne. On ne demande JAMAIS ce qu'on possède.
+        const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size"]);
         const champ = job.platform === "vinted"
           ? result.serverRequired.find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)))
           : null;
@@ -17594,7 +17601,7 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   // le trancher. Même liste d'exclusions que le chemin publish : un 400 sur
   // title/description/price/photos/catalog_id/package_size_id ne se corrige
   // pas dans une modale.
-  const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id"]);
+  const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id", "package_size"]);
   const champ = (result?.serverRequired ?? []).find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)));
   if (champ) {
     job.platform_fields = pf;
@@ -18173,6 +18180,46 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const msg = `Republication ${label} sans lien d'annonce : rien n'a été touché.`;
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ON NE RETIRE PAS CE QU'ON NE SAIT PAS REMETTRE (2026-09-22)
+    // ══════════════════════════════════════════════════════════════════════
+    // Une republication retire PUIS redépose. Entre les deux, l'annonce
+    // n'existe plus : tout ce qui manque à ce moment-là se paie en annonce
+    // hors ligne, pas en message d'erreur. Le dossier XEWER (job 6aabc550,
+    // 22/09) a coûté une heure de retrait pour un format de colis.
+    //
+    // On vérifie donc AVANT le retrait que la capture porte tout ce que la
+    // plateforme exige et qu'aucun mini-éditeur ne peut inventer après coup —
+    // exactement la liste NON_RESOLUBLES du refus serveur. Il en manque un :
+    // on ne touche à RIEN, l'annonce reste en ligne, et on le dit avec le
+    // geste à faire.
+    // ⛔ Aucune heuristique : on teste la PRÉSENCE de la valeur dans la
+    //    capture, pas sa justesse. Et seulement sur Vinted, seule plateforme
+    //    dont le refus serveur nomme ces champs — ailleurs, le chemin ne
+    //    change pas d'un caractère.
+    if (job.platform === "vinted") {
+      const manquants = [];
+      if (!snapshot) manquants.push("la copie de ton annonce");
+      else {
+        if (!String(snapshot.titre ?? "").trim()) manquants.push("le titre");
+        if (!Array.isArray(snapshot.photos) || !snapshot.photos.length) manquants.push("les photos");
+        if (!(Number(snapshot.prix) > 0)) manquants.push("le prix");
+        if (!Number(snapshot.catalog_id)) manquants.push("la catégorie");
+        if (!Number(snapshot.package_size_id)) manquants.push("le format du colis");
+      }
+      if (manquants.length) {
+        const quoi = manquants.length > 1
+          ? `${manquants.slice(0, -1).join(", ")} et ${manquants[manquants.length - 1]}`
+          : manquants[0];
+        const msg = `Republication ${label} mise en pause AVANT tout retrait : ${quoi} ${manquants.length > 1 ? "manquent" : "manque"} dans la copie de ton annonce. `
+          + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
+        pf.republish_prevol_manquants = manquants;
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — capture incomplète (${manquants.join(", ")})`);
+        return { status: "needsUser", error: msg };
+      }
     }
     // Invariant « une seule annonce hors ligne à la fois », par plateforme
     // (même échec fermé que Vinted : lecture impossible → on ne retire pas).

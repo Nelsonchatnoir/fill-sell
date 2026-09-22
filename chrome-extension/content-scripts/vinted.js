@@ -6472,9 +6472,57 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
       return;
     }
   }
+  // ══════════════════════════════════════════════════════════════════════
+  // UN RADIO DÉJÀ COCHÉ N'EST PAS UN FORMAT CHOISI (2026-09-22)
+  // ══════════════════════════════════════════════════════════════════════
+  // CE QUI S'EST PASSÉ : XEWER (Pro), « Resident Evil 7 Biohazard Gold »,
+  // job 6aabc550. Annonce SUPPRIMÉE à 17:18 (verdict serveur HTTP 200 « Ok »),
+  // puis recréation refusée TROIS fois — HTTP 400 `package_size` :
+  // « Sélectionne le format de ton colis ». L'annonce est restée hors ligne
+  // une heure. Même motif la veille sur le même compte (« Disney Magical
+  // World », 21/09), même catégorie.
+  //
+  // LE FORMAT ÉTAIT POURTANT CONNU : le snapshot portait colis « Petit » ET
+  // package_size_id = 1. Et la section était bien rendue.
+  // RELEVÉ LIVE le 22/09 sur /items/new, catégorie Électronique > Jeux vidéo
+  // et consoles > Jeux (3026, celle de l'annonce perdue) : les trois radios
+  // package_type_selector_1/2/3 existent, et le n°1 — « Petit » — est
+  // PRÉ-COCHÉ par Vinted, avec son badge « Recommandé »
+  // (package-size-suggestion-badge-id-1).
+  //
+  // Or le format voulu ÉTAIT le n°1. L'ancienne garde `if (!radio.checked)`
+  // ne cliquait donc RIEN, et Vinted n'enregistrait jamais le choix : un
+  // format affiché par la plateforme n'est pas un format retenu par elle tant
+  // que personne ne l'a posé. C'est exactement le piège déjà payé sur la
+  // COULEUR pré-remplie (11/09) et sur le PRIX (commit React).
+  // D'où la sélectivité du défaut, qui l'a rendu introuvable : il ne tombe que
+  // lorsque le format voulu est CELUI que Vinted recommande. Sur les quatre
+  // républications de RoCotCot du 16/09, même catégorie, même id : trois sont
+  // passées, une seule est tombée.
+  //
+  // ⛔ ON POSE DONC TOUJOURS LE FORMAT, même déjà coché. Un radio ne se
+  //    décoche pas au clic : recliquer le nôtre ne changerait rien pour
+  //    Vinted. Il faut donc une VRAIE transition — passer par un autre radio,
+  //    puis revenir sur le bon. L'état final est celui qu'on veut, rien n'est
+  //    soumis entre les deux, et le détour ne coûte qu'une pause.
+  //    S'il n'y a qu'un seul radio offert, il n'y a rien à trancher : le clic
+  //    simple suffit et on ne fabrique pas de transition impossible.
   if (!radio.checked) {
     simulateFullClick(radio);
     await humanPause();
+  } else {
+    const autres = [...document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]')]
+      .filter((r) => r !== radio && !r.disabled);
+    if (autres.length) {
+      simulateFullClick(autres[0]);
+      await humanPause();
+      simulateFullClick(radio);
+      await humanPause();
+      console.log(`[vinted] format de colis : « ${VINTED_PACKAGE_SIZES_PAR_ID[n] ?? size} » était pré-coché — reposé par un aller-retour pour que Vinted l'enregistre`);
+    } else {
+      simulateFullClick(radio);
+      await humanPause();
+    }
   }
   const nEffectif = Number(String(radio.id ?? "").replace("package_type_selector_", "")) || n;
   // Vérification : le format retenu doit être celui demandé (sinon on publierait
