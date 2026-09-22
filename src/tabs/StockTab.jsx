@@ -16,6 +16,8 @@ import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
 import { repartirParVoie } from '../utils/ebayCompte';
+import { resumeEbay } from '../utils/ebayParcours';
+import EbayCompteSection from '../components/EbayCompteSection';
 import { logRetrait, CHEMINS_RETRAIT } from '../utils/journalRetraits';
 import { lbcProduitsDependants, lbcListePlate } from '../utils/lbcMaisonJardin';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
@@ -5189,6 +5191,11 @@ const StockTab = memo(function StockTab({
   // à la place du simple rappel. « Préparer mon annonce » reste possible — la
   // garde de publication (stepper + RPC) prendra le relais au dernier clic.
   const [extPitchItem, setExtPitchItem] = useState(null);
+  // Panneau « Réglages › Compte eBay » ouvert PAR-DESSUS le stock (22/09) : le
+  // parcours guidé s'ouvre là où la personne était, on ne la sort pas de son
+  // stock pour aller le chercher dans les Réglages. À la fermeture, on relit
+  // l'état du compte — l'article cesse de porter la bande sans un geste de plus.
+  const [ebayPanneauStock, setEbayPanneauStock] = useState(false);
   // Quota Free : même assiette que le trigger serveur (non vendus, hors
   // dressing synchronisé) et même limite (miroir 200 de
   // coin_config.free_stock_limit). L'ancien items.length comptait TOUT —
@@ -10328,6 +10335,41 @@ const StockTab = memo(function StockTab({
                                   toujours cliquable → feuille d'avancement.) */}
                             </div>
                           )}
+                        {/* ── eBAY PAS PRÊT : ÇA SE VOIT SUR L'ARTICLE ───────
+                            (2026-09-22, dossier Romain) Il s'est arrêté DANS
+                            L'APP, avant qu'un seul job naisse : aucun échec,
+                            aucun « à toi de jouer », aucune trace. Un article
+                            qui doit partir sur eBay porte donc l'étape qui
+                            manque, et le bouton qui y emmène.
+                            ⛔ Ton NEUTRE, jamais de rouge : ce n'est pas une
+                               panne, c'est un geste qui reste (règle du 22/09).
+                            ⛔ ZÉRO APPEL : `ebayCompte.etat` a été lu une seule
+                               fois par l'app (action 'statut'), et rien ici
+                               n'interroge eBay. Et rien ne s'affiche tant qu'on
+                               n'a pas lu — on ne conclut pas sans savoir. */}
+                        {ebayCompte?.voieApi && ebayCompte?.lu && aPublier.includes('ebay') && (() => {
+                          const r = resumeEbay(ebayCompte.etat, lang === 'en' ? 'en' : 'fr');
+                          if (r.pret) return null;
+                          return (
+                            <div
+                              onClick={e => e.stopPropagation()}
+                              style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, margin:"8px 0 0",
+                                padding:"8px 10px", borderRadius:10, background:"#FFF6E3", border:"1px solid #EED9A6" }}
+                            >
+                              <span style={{ flex:"1 1 160px", minWidth:0, fontSize:11.5, lineHeight:1.4, fontWeight:600, color:"#8A6100" }}>
+                                {r.phrase}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={e => { e.stopPropagation(); setEbayPanneauStock(true); }}
+                                style={{ padding:"6px 11px", borderRadius:999, border:"1.5px solid #8A6100", background:"none",
+                                  color:"#8A6100", fontSize:11.5, fontWeight:700, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap" }}
+                              >
+                                {r.bouton}
+                              </button>
+                            </div>
+                          );
+                        })()}
                         {/* Actions — mêmes gestes, mêmes gardes que la liste
                             d'avant la galerie. margin-top:auto : les boutons
                             s'alignent en bas de carte quelle que soit la
@@ -10751,6 +10793,38 @@ const StockTab = memo(function StockTab({
           userId={user?.id}
           onExtensionSeen={()=>{const it=extPitchItem;setExtPitchItem(null);publierAvecDetail(it);}}
         />
+      )}
+      {/* Le parcours eBay, ouvert par-dessus le stock (2026-09-22). C'est la
+          MÊME section que les Réglages — aucun second écran, aucun second
+          appel : elle relève sa checklist une fois à l'ouverture. */}
+      {ebayPanneauStock&&(
+        <div
+          onClick={()=>{setEbayPanneauStock(false);ebayCompte?.rafraichir?.();}}
+          style={{position:"fixed",inset:0,zIndex:20001,background:"rgba(16,32,27,0.45)",backdropFilter:"blur(2px)",
+            display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"24px 12px",overflowY:"auto"}}
+        >
+          <div
+            onClick={ev=>ev.stopPropagation()}
+            style={{width:"100%",maxWidth:560,background:"#F6F5F1",borderRadius:18,padding:"14px 16px 18px",
+              boxShadow:"0 24px 60px rgba(16,32,27,0.28)"}}
+          >
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:6}}>
+              <div style={{fontSize:14,fontWeight:800,color:NU_T.ink}}>
+                {lang==='en'?'Settings › eBay account':'Réglages › Compte eBay'}
+              </div>
+              <button
+                type="button"
+                onClick={()=>{setEbayPanneauStock(false);ebayCompte?.rafraichir?.();}}
+                style={{width:32,height:32,borderRadius:999,border:"none",background:NU_T.chip,color:NU_T.mute,
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}
+                aria-label={lang==='en'?'Close':'Fermer'}
+              >
+                ✕
+              </button>
+            </div>
+            <EbayCompteSection lang={lang} user={user?.id?{id:user.id}:null} />
+          </div>
+        </div>
       )}
       {/* É5 : feuille de prix de republication — solo et lot passent par elle. */}
       {repubSheet&&(
