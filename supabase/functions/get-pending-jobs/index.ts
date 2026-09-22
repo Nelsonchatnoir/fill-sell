@@ -2455,6 +2455,95 @@ serve(async (req) => {
       }
     }
 
+    // ══ ON N'ÉCRIT JAMAIS SUR LA BOUTIQUE D'UN AUTRE (2026-09-22) ═══════════
+    //
+    // 🚨 L'INCIDENT DU 22/09. remialbertholl a supprimé 41 articles de SON stock
+    //    entre 10:40 et 11:25. Ces articles venaient du dressing de
+    //    @nadegemarcelin78 (16040413), relevé le 03/09 — son stock ne contient
+    //    QUE des boutiques étrangères : 644 articles de @nadegemarcelin78, 218
+    //    de @narema75, 213 de @jcassou, ZÉRO de @celineetmarie, la boutique à
+    //    laquelle son Chrome était connecté. Chaque suppression a lancé un
+    //    retrait Vinted sur les annonces de quelqu'un d'autre.
+    //
+    // ⚠️ CE QUI A SAUVÉ LA MISE, ET QUI N'EST PAS UNE GARDE : Vinted a refusé.
+    //    Sans jeton CSRF (session d'une autre boutique), le handler n'a envoyé
+    //    AUCUNE requête de suppression — c'est écrit dans les 25 traces, mot
+    //    pour mot : « requête de suppression NON envoyée ». Les 25 annonces
+    //    étaient déjà hors ligne AVANT (copie vieille de 19 jours), et le
+    //    verdict `deleted` était donc juste — vérifié le 22/09 sur le dressing
+    //    public de Nadège, 713 annonces lues, les 25 absentes et les 16
+    //    retraits annulés bien présents.
+    //    On ne laisse pas la protection d'un tiers à la bonne volonté de Vinted.
+    //
+    // ⛔ LA GARDE EXISTAIT DÉJÀ — POUR LA LECTURE SEULEMENT. `boutique_a_confirmer`
+    //    refuse un RELEVÉ quand le navigateur est sur une autre boutique (elle a
+    //    bloqué 15 relevés ce matin même). Le RETRAIT et la REPUBLICATION, eux,
+    //    ne la consultaient pas : on gardait la lecture et on laissait l'écriture
+    //    libre. C'est l'inverse qu'il faut.
+    //
+    // ⛔ ET ON NE CONCLUT QUE SUR DEUX CERTITUDES. Il faut que l'article porte un
+    //    `vinted_account_id` ET que la sonde connaisse la boutique de la session
+    //    (`extension_sessions.vinted_identite.user_id`). Si l'un des deux manque,
+    //    on ne retient RIEN : un compte mono-boutique dont l'identité n'a jamais
+    //    été relevée ne doit pas voir ses retraits s'arrêter.
+    let heldBoutiqueEtrangere = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const ecrituresVinted = out.filter((j) =>
+        j.platform === "vinted" && (j.action === "delete" || j.action === "republish") && j.inventaire_id != null);
+      if (ecrituresVinted.length) {
+        try {
+          const { data: profilBoutique } = await userClient
+            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          const identite = ((profilBoutique?.extension_sessions ?? {}) as Record<string, unknown>)
+            .vinted_identite as { user_id?: string; login?: string } | null | undefined;
+          const boutiqueSession = String(identite?.user_id ?? "").trim();
+          if (boutiqueSession) {
+            const ids = [...new Set(ecrituresVinted.map((j) => j.inventaire_id))];
+            const { data: arts } = await userClient
+              .from("inventaire").select("id, vinted_account_id").in("id", ids);
+            const boutiqueDe = new Map<string, string>();
+            for (const a of (arts ?? []) as Record<string, unknown>[]) {
+              const b = String(a.vinted_account_id ?? "").trim();
+              if (b) boutiqueDe.set(String(a.id), b);
+            }
+            const aRetenir = new Set<string>();
+            for (const j of ecrituresVinted) {
+              const boutiqueArticle = boutiqueDe.get(String(j.inventaire_id));
+              if (!boutiqueArticle || boutiqueArticle === boutiqueSession) continue;
+              const pf = ((j.platform_fields as Record<string, unknown> | null) ?? {});
+              const quoi = j.action === "delete" ? "Le retrait" : "La republication";
+              await userClient.from("cross_post_jobs")
+                .update({
+                  status: "needs_user",
+                  error: `${quoi} de cette annonce n'a pas été lancé : elle appartient à un autre compte Vinted que celui ` +
+                    `ouvert dans Chrome sur ton ordinateur. Rien n'a été touché sur Vinted. ` +
+                    `Connecte-toi au bon compte Vinted, puis relance.`,
+                  platform_fields: {
+                    ...pf,
+                    needs_user_source: "boutique_etrangere",
+                    boutique_etrangere: {
+                      article: boutiqueArticle,
+                      session: boutiqueSession,
+                      login_session: identite?.login ?? null,
+                      le: new Date().toISOString(),
+                      pose_par: "get-pending-jobs (garde boutique, 22/09)",
+                    },
+                  },
+                })
+                .eq("id", j.id).eq("status", "pending");
+              aRetenir.add(String(j.id));
+              console.log(`[get-pending-jobs] userId=${user.id} ${j.action} vinted ${String(j.id).slice(0, 8)} RETENU : article de la boutique ${boutiqueArticle}, session sur ${boutiqueSession} — rien n'est envoyé à Vinted`);
+            }
+            if (aRetenir.size) {
+              const avant = out.length;
+              out = out.filter((j) => !aRetenir.has(String(j.id)));
+              heldBoutiqueEtrangere = avant - out.length;
+            }
+          }
+        } catch (_e) { /* best-effort : jamais un point de panne — le job est servi */ }
+      }
+    }
+
     // ══ ASPECTS OBLIGATOIRES eBay : LE SERVEUR LES POSE (2026-09-21, GO Nico) ══
     //
     // CE QUI S'EST PASSÉ. Le job bb3bb71f (jocabroc8, « Service de toilette
@@ -5063,6 +5152,9 @@ serve(async (req) => {
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
+      // Retraits/republications Vinted retenus : l'article appartient a une autre
+      // boutique que celle ouverte dans Chrome (incident du 22/09).
+      boutique_etrangere_retenus: heldBoutiqueEtrangere,
       // Pré-vol de la catégorie de DESTINATION (2026-09-18) : republications
       // arrêtées AVANT toute suppression faute d'un requis prouvé, et ISBN
       // retrouvés tout seuls (description/titre) plutôt que demandés.
