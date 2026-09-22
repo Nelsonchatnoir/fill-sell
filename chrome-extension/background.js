@@ -9660,6 +9660,37 @@ async function sonderSessionEbay() {
   return { etat: /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null, http: r.status };
 }
 
+// ── SONDE DU HUB VENDEUR — CE QUE LE RELEVÉ EXIGE VRAIMENT (2026-09-22) ─────
+// `sonderSessionEbay` teste /sl/prelist/suggest : l'entrée du flux de VENTE.
+// Le RELEVÉ, lui, charge le Hub vendeur /sh/lst/active. Ce sont deux accès
+// distincts, et un compte frappé par le step-up de sécurité passe le premier
+// et bute sur le second.
+//
+// MESURÉ le 22/09 : la reprise automatique des relevés a remis 11 demandes en
+// file sur la foi de `extension_sessions.ebay = true` ; 6 sont revenues dans
+// la minute sur « session ebay : page de connexion ». La sonde n'avait pas
+// tort — elle ne répondait simplement pas à la question posée.
+//
+// Trois issues nommées, jamais devinées :
+//   · signin.ebay.*  → 'reauth'   reconnexion de sécurité (le compte EST
+//                                 connecté, eBay redemande une preuve) ;
+//   · /fpa/upgrade   → 'upgrade'  compte pas (encore) vendeur ;
+//   · ebay.fr + /sh/ → connecté, le relevé peut passer.
+// Tout le reste, 401/403 compris, rend null : on n'affirme rien.
+// ⛔ limit=1 : on ne relève rien ici, on teste une porte. La page complète est
+//    l'affaire du relevé, pas de la sonde.
+async function sonderHubVenteEbay() {
+  const r = await fetch("https://www.ebay.fr/sh/lst/active?limit=1&offset=0", {
+    credentials: "include", redirect: "follow",
+  });
+  const u = new URL(r.url);
+  if (/(^|\.)signin\.ebay\./i.test(u.hostname)) return { etat: false, http: r.status, mur: "reauth" };
+  if (/\/fpa\/upgrade/i.test(u.pathname)) return { etat: false, http: r.status, mur: "upgrade" };
+  if (r.status === 401 || r.status === 403) return { etat: null, http: r.status, mur: null };
+  const ok = /(^|\.)ebay\.fr$/.test(u.hostname) && /^\/sh\//.test(u.pathname);
+  return { etat: ok ? true : null, http: r.status, mur: null };
+}
+
 // Le SEUL endroit où ce libellé s'écrit — c'est lui que teste le déclencheur de
 // noterSessionDeconnectee, il ne doit jamais partir sans arbitrage.
 const MSG_CONNEXION_EBAY =
@@ -9810,7 +9841,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
   // Plateforme non demandée = NON MESURÉE : null/null, jamais une valeur
   // recopiée (2026-09-08). C'est ecrireExtensionSessions qui fusionne.
   const sonde = (pf, fn) => (plateformes.includes(pf) ? probe(fn) : Promise.resolve({ etat: null, http: null }));
-  const [vinted, leboncoin, ebay, beebs, opla] = await Promise.all([
+  const [vinted, leboncoin, ebay, ebayHub, beebs, opla] = await Promise.all([
     sonde("vinted", async () => {
       const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
         headers: { Accept: "application/json" }, credentials: "include",
@@ -9853,6 +9884,12 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
       return { etat: u.pathname.startsWith("/deposer-une-annonce") ? true : null, http: r.status };
     }),
     sonde("ebay", sonderSessionEbay),
+    // Le Hub vendeur, sondé À PART et seulement quand eBay est au programme :
+    // c'est la porte du RELEVÉ, et elle ne s'ouvre pas toujours quand celle de
+    // la publication s'ouvre. Un fetch de plus par cycle eBay (une fois par
+    // heure), pour ne plus remettre en file des relevés qui ne peuvent pas
+    // aboutir.
+    sonde("ebay", sonderHubVenteEbay),
     sonde("beebs", async () => {
       const r = await fetch("https://www.beebs.app/fr/listing", {
         credentials: "include", redirect: "follow",
@@ -9870,6 +9907,9 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
   const maintenant = new Date().toISOString();
   const parPlateforme = {};
   for (const pf of plateformes) parPlateforme[pf] = maintenant;
+  // `ebay_hub` a sa propre date : les lecteurs jugent la fraîcheur par clé, et
+  // une porte sondée n'est pas l'autre.
+  if (plateformes.includes("ebay")) parPlateforme.ebay_hub = maintenant;
   return {
     checked_at: maintenant,
     // (2026-09-08) Quelles plateformes CE relevé a réellement sondées, et
@@ -9877,6 +9917,15 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     sondees: plateformes.slice(),
     checked_at_par_plateforme: parPlateforme,
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat, opla: opla.etat,
+    // ── LA PORTE DU RELEVÉ eBAY, À PART (2026-09-22) ────────────────────────
+    // `ebay` reste la session de VENTE : c'est elle qui arbitre la garde de
+    // publication et la reprise des jobs, et on n'y touche pas. `ebay_hub` dit
+    // si « Mes annonces » s'ouvre — la seule chose qui intéresse le relevé.
+    // `ebay_hub_mur` nomme le mur ('reauth' | 'upgrade' | null) pour que
+    // l'écran propose le bon geste au lieu d'un « connecte-toi » à quelqu'un
+    // qui est déjà connecté.
+    ebay_hub: ebayHub.etat,
+    ebay_hub_mur: ebayHub.mur ?? null,
     // Boutique Vinted connectée (multi-boutiques, 2026-09-03) — null quand la
     // sonde n'a pas pu la lire (401 ambigu compris). L'app l'affiche telle
     // quelle, jamais un repli sur une identité mémorisée.
@@ -9884,7 +9933,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
     // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
     // 403 (challenge) ou d'un échec réseau (null).
-    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, beebs: beebs.http, opla: opla.http },
+    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, ebay_hub: ebayHub.http, beebs: beebs.http, opla: opla.http },
   };
 }
 
@@ -12146,7 +12195,18 @@ async function releverAnnoncesPlateforme(platform) {
         // rien à relever. Ne vaut que si RIEN n'a été collecté (le mur peut
         // aussi tomber en page 3 d'un relevé qui marchait) — la décision est
         // prise dans lancerRelevePlateforme, sur le compte d'annonces.
-        return { annonces: [...annonces.values()], complet: false, absente: true, erreur: `session ${platform} : page de connexion` };
+        // ── eBAY : LE MUR SE NOMME (2026-09-22) ─────────────────────────────
+        // « page de connexion » ne dit pas QUOI faire. Un compte frappé par le
+        // step-up de sécurité EST connecté : l'envoyer se connecter ne règle
+        // rien, et c'est exactement ce qui est arrivé le 22/09. On interroge
+        // la porte du Hub pour NOMMER le mur, et on pose le marqueur que l'app
+        // lit pour choisir le bon bouton (« Me reconnecter », « Ouvrir eBay »).
+        let mur = null;
+        if (platform === "ebay") {
+          mur = await sonderHubVenteEbay().then((s) => s.mur).catch(() => null);
+        }
+        return { annonces: [...annonces.values()], complet: false, absente: true,
+          erreur: `session ${platform} : page de connexion${mur ? ` [mur:${mur}]` : ""}` };
       }
       const vusAvantPage = annonces.size; // sert la garde « cette page n'a rien ajouté »
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) }, surLaListe: false }));
@@ -14803,6 +14863,23 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   if (items_vus === 0 && !mock) {
     notes.push(`${NOTE}dressing lu vide — le profil Vinted (${ident.login ?? "?"}) annonce item_count=${ident.itemCount ?? "?"}, total_items_count=${ident.totalItemsCount ?? "?"}`);
   }
+  // ── 0 LU ALORS QUE LE PROFIL ANNONCE DES ARTICLES EN VENTE (2026-09-22) ───
+  // ⛔ LE CHIFFRE QUI TRANCHE EST `item_count`, PAS `total_items_count`.
+  //    MESURÉ le 22/09 sur les 15 runs « lus vides » de 30 jours : akrstore
+  //    (total 11), lrk_08 (total 23), miroslav53 (total 4) ont tous
+  //    item_count = 0 côté Vinted — leur dressing est VRAIMENT vide, le relevé
+  //    avait raison. `total_items_count` compte aussi ce qui est vendu ; s'en
+  //    servir aurait fait repartir en boucle des relevés parfaitement justes.
+  // Quand `item_count > 0` et qu'on n'a rien lu, en revanche, ce n'est pas une
+  // réussite : le run sort en 'incomplete' (état terminal existant, sans
+  // cadence armée) — il repart donc tout seul au prochain passage, et l'écran
+  // affiche le message orange de l'incomplet, jamais un rouge.
+  const itemCountProfil = Number(ident?.itemCount);
+  const zeroContreProfil = items_vus === 0 && !mock
+    && Number.isFinite(itemCountProfil) && itemCountProfil > 0;
+  if (zeroContreProfil) {
+    notes.push(`${NOTE}rien lu alors que le profil Vinted annonce ${itemCountProfil} article(s) en vente — relevé à refaire`);
+  }
   if (echecsEcriture.length) {
     // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
     // allée au bout) mais sont consignés : items_vus − créés − maj doit
@@ -14830,8 +14907,11 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   // l'appel. Relevé prod : les runs complets sortent à l'unité près
   // (2684/2684, 223/223). total_entries absent = on ne sait pas = on ne
   // dégrade pas (c'est le cas d'un dressing vraiment vide).
-  const releveIncomplet = totalEntries != null && items_vus < totalEntries;
-  if (releveIncomplet) {
+  const releveIncomplet = (totalEntries != null && items_vus < totalEntries) || zeroContreProfil;
+  // `totalEntries` est null sur le cas « 0 lu contre profil » (la pagination
+  // n'a rien annoncé du tout) : sans cette garde, la note dirait « sur null
+  // annoncé(s) » — sa propre note, plus haut, dit déjà le vrai chiffre.
+  if (releveIncomplet && totalEntries != null) {
     notes.push(`${NOTE}relevé incomplet — ${items_vus} article(s) lu(s) sur ${totalEntries} annoncé(s) par Vinted` +
       (motifArretIncomplet ? ` ; arrêt : ${motifArretIncomplet}` : "") +
       ` ; reprise à la page ${page}`);
