@@ -289,11 +289,35 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     // last_diagnostic. Le geste : relancer, eBay propose sa catégorie
     // (branche « relance après à confirmer »).
     const neufSeulement = (conditions ?? []).length > 0 && (conditions ?? []).every((c) => /^(1000|1500|1750)$/.test(String(c.id ?? "")));
+    // ══ ON NE DEMANDE PLUS UN CLIC QU'ON PEUT FAIRE SOI-MÊME (2026-09-22) ══
+    // Le message disait : « Relance la publication, eBay proposera sa propre
+    // catégorie. » C'est exactement un geste que la personne n'a aucune raison
+    // de faire à notre place — la catégorie fautive est la NÔTRE, et la
+    // mécanique qui prend celle d'eBay existe déjà (`ebayCategorieAttente`,
+    // lu par resoudreCategorie à la relance). On la pose et on relance NOUS.
+    // ⛔ UNE SEULE FOIS, et le marqueur le prouve : si la relance échoue à son
+    //    tour sur la condition, on s'arrête et on le dit — jamais une boucle
+    //    qui reviendrait deux fois par minute contre le même mur.
+    const pfCond = (job.platform_fields ?? {}) as Record<string, unknown>;
+    const dejaReprise = Boolean(pfCond.condition_relance_auto);
+    if (!dejaReprise) {
+      job.platform_fields = {
+        ...pfCond,
+        ebayCategorieAttente: { mapping: null, choix: [], at: new Date().toISOString(), pose_par: "condition_sans_correspondance" },
+        condition_relance_auto: { at: new Date().toISOString(), categoryId },
+      };
+      await marquer(admin, job, {
+        status: "pending",
+        error: "La catégorie que nous avions choisie sur eBay ne correspond pas à l'état de ton article. " +
+          "C'est de notre côté : on reprend la publication avec la catégorie qu'eBay propose lui-même. Rien à faire de ton côté.",
+      }, { etape: "condition", quoi: "etat_sans_correspondance_reprise_auto", categoryId, etats_ebay: (conditions ?? []).map((c) => c.libelle) });
+      return { job: job.id, issue: "pending", motif: "condition_reprise_auto" };
+    }
     await marquer(admin, job, {
       status: "needs_user",
       error: neufSeulement
-        ? `La catégorie eBay choisie pour cet article n'accepte que des objets neufs : elle n'est probablement pas la bonne. Relance la publication, eBay proposera sa propre catégorie.`
-        : `L'état « ${pf.etat ?? ""} » n'existe pas dans la catégorie eBay choisie pour cet article : elle n'est probablement pas la bonne. Relance la publication, eBay proposera sa propre catégorie.`,
+        ? `La catégorie eBay de cet article n'accepte que des objets neufs, et celle qu'eBay propose ne convient pas non plus. Change l'icône ou le genre de l'article depuis sa fiche, puis relance d'un clic.`
+        : `eBay n'accepte pas l'état « ${pf.etat ?? ""} » dans le rayon de cet article, ni dans celui qu'il propose lui-même. Change l'icône ou le genre de l'article depuis sa fiche, puis relance d'un clic.`,
     }, { etape: "condition", quoi: "etat_sans_correspondance", categoryId, etats_ebay: (conditions ?? []).map((c) => c.libelle) });
     return { job: job.id, issue: "needs_user", motif: "condition" };
   }

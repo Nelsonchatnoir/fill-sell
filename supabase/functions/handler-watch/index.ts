@@ -1126,14 +1126,20 @@ serve(async (req) => {
             "en ligne, retire-la sur la plateforme."
           : "Cette publication attendait une réponse depuis plusieurs jours : nous l'avons arrêtée. " +
             "Relance-la depuis la fiche de l'article quand tu veux.";
+      // ⛔ `cancelled`, PLUS JAMAIS `failed` (2026-09-22, « plus aucune ligne
+      //    rouge »). Le trigger cross_post_job_settle_reservation traite
+      //    'cancelled' EXACTEMENT comme 'failed' (release) : la personne ne
+      //    perd rien. Ce qui change, c'est l'écran — « Arrêtée » en gris, avec
+      //    le bouton Relancer, au lieu d'un « Pas partie » rouge. Une attente
+      //    qu'on arrête n'est pas une panne : c'est une fin de non-recevoir.
       const { error: fErr } = await supabase
         .from("cross_post_jobs")
-        .update({ status: "failed", error: msg, platform_fields: pf })
+        .update({ status: "cancelled", error: msg, platform_fields: pf })
         .eq("id", j.id)
         .eq("status", "needs_user");
       if (!fErr) {
         needsUserSoldes++;
-        console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) needs_user > 72 h d'extension ouverte (${Math.round(actif / 3600_000)} h créditées) → failed, solde par triggers`);
+        console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) needs_user > 72 h d'extension ouverte (${Math.round(actif / 3600_000)} h créditées) → cancelled, solde par triggers`);
       }
     }
   } catch (e) {
@@ -1451,8 +1457,12 @@ serve(async (req) => {
         "Tu peux la relancer depuis la fiche de l'article.";
       const { error: fErr } = await supabase
         .from("cross_post_jobs")
+        // ⛔ `cancelled`, plus jamais `failed` (2026-09-22) : même solde par
+        //    trigger (release), mais l'écran dit « Arrêtée » en gris avec le
+        //    bouton Relancer — et non « Pas partie » en rouge. Le message dit
+        //    déjà que le défaut vient de chez nous.
         .update({
-          status: "failed",
+          status: "cancelled",
           error: msg,
           platform_fields: { ...pf, pending_muet_clos_le: new Date(now).toISOString(), pending_muet_jours: jours },
         })
@@ -1460,7 +1470,7 @@ serve(async (req) => {
         .eq("status", "pending");
       if (!fErr) {
         pendingMuetsClos++;
-        console.log(`[handler-watch] job ${j.id} (${j.platform}/publish) : ${jours} j en pending sans échéance → failed (visible, quota rendu)`);
+        console.log(`[handler-watch] job ${j.id} (${j.platform}/publish) : ${jours} j en pending sans échéance → cancelled (visible, quota rendu)`);
       }
     }
   } catch (e) {
