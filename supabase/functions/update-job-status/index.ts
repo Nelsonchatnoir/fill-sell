@@ -506,6 +506,35 @@ serve(async (req) => {
       if (cur.action !== "delete") {
         return json({ error: "'deleted' est réservé aux jobs action='delete'" }, 400);
       }
+      // ══ NE PAS S'ATTRIBUER UN RETRAIT QU'ON N'A PAS FAIT (2026-09-22) ═════
+      //
+      // 🚨 L'INCIDENT DU 22/09, et la rectification qu'il impose. remialbertholl
+      //    a vu 25 articles passer « retirés ». Les 25 traces disent pourtant,
+      //    mot pour mot : « jeton CSRF absent — état de l'annonce NON DÉTERMINÉ
+      //    ici ; requête de suppression NON envoyée ». FillSell n'a supprimé
+      //    aucune de ces annonces : elles étaient déjà hors ligne, et
+      //    checkVintedUnanime l'a constaté (404, plusieurs lectures unanimes).
+      //
+      // ⛔ LE VERDICT `deleted` EST JUSTE, ET ON NE LE TOUCHE PAS. Vérifié en
+      //    direct le 22/09 : une annonce VIVANTE d'une boutique étrangère rend
+      //    HTTP 200 et son identifiant est dans la page ; une annonce partie rend
+      //    404. La lecture d'état ne produit donc PAS de faux « unavailable »,
+      //    même depuis la session d'un autre compte. Refuser de conclure ici
+      //    transformerait 166 retraits légitimes du parc (31 comptes depuis le
+      //    16/08) en jobs bloqués — on casserait ce qui marche.
+      //
+      // CE QUI EST VRAIMENT EN DÉFAUT, c'est le RÉCIT : rien ne distinguait
+      // « on l'a retirée » de « elle n'était déjà plus là ». On nomme donc les
+      // deux, et l'app pourra le dire tel quel.
+      const pfIn0 = (body.platform_fields && typeof body.platform_fields === "object"
+        ? body.platform_fields : null) as Record<string, unknown> | null;
+      const trace = JSON.stringify(pfIn0?.delete_trace ?? "");
+      if (/NON envoy|NON DÉTERMIN/i.test(trace)) {
+        (body.platform_fields as Record<string, unknown>).retrait_par = "annonce_deja_hors_ligne";
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — 'deleted' SANS requête envoyée : l'annonce était déjà hors ligne, le retrait n'est pas de notre fait (retrait_par=annonce_deja_hors_ligne)`);
+      } else if (pfIn0) {
+        (body.platform_fields as Record<string, unknown>).retrait_par = "fillsell";
+      }
     }
 
     // ══════════════════════════════════════════════════════════════════════
