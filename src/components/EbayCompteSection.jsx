@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { UI, Eyebrow } from './ui';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
+import EbayParcours from './EbayParcours';
+import { etatsEbayDepuisChecklist, LIENS_EBAY, motsEbay } from '../utils/ebayParcours';
 import { supabase } from '../lib/supabase';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,15 +52,16 @@ import { supabase } from '../lib/supabase';
 //     la phrase de la ligne guide donc AUSSI si la page d'arrivée n'est pas
 //     celle attendue (bannière Mon eBay / Hub vendeur).
 // Les pages exigent une session eBay ouverte dans le navigateur.
-const LIENS = {
-  inscription_vendeur: 'https://www.ebay.fr/sl/sell',
-  politiques_activees: 'https://www.ebay.fr/bp/policyoptin',
-  politique_livraison: 'https://www.ebay.fr/bp/manage',
-  politique_paiement: 'https://www.ebay.fr/bp/manage',
-  politique_retours: 'https://www.ebay.fr/bp/manage',
-};
+// (Les liens eBay vivent desormais dans utils/ebayParcours — LIENS_EBAY —
+// pour que le parcours guide, le stepper et la carte d'article citent les
+// memes adresses. Les trois sont verifiees : /sl/sell, /bp/policyoptin,
+// /bp/manage.)
 
 const TYPE_PAR_CLE = { politique_livraison: 'fulfillment', politique_paiement: 'payment', politique_retours: 'return' };
+
+// Deux relevés de checklist ne peuvent pas se suivre de plus près que ça
+// (5 appels Account API chacun, quota de 5 000/jour pour tout le parc).
+const DELAI_RELECTURE_MS = 20000;
 
 const T = {
   fr: {
@@ -339,13 +342,6 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   // { type, etat: 'envoi' | 'erreur' | 'ok', message }
   const [statutCreation, setStatutCreation] = useState(null);
   const [confirmDeco, setConfirmDeco] = useState(false);
-  // Repli de l'écran quand tout est vert (07/09 nuit) — PRÉSENTATION SEULE :
-  // aucun appel, aucune checklist, aucun calcul ne change. Un compte en règle
-  // n'a pas besoin de relire six lignes cochées à chaque ouverture ; il veut
-  // savoir ce que voit l'acheteur et pouvoir le changer. Dès qu'UNE ligne
-  // n'est pas verte, le détail s'ouvre tout seul et ne peut pas être replié :
-  // un problème ne se cache jamais.
-  const [detailOuvert, setDetailOuvert] = useState(false);
   // ── Transporteurs (07/09/2026) ────────────────────────────────────────────
   // `services` = la liste VIVANTE d'eBay, groupée par le serveur. Jamais une
   // table écrite ici : si eBay retire un mode d'envoi, il disparaît de l'écran
@@ -361,6 +357,9 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   // créer l'emplacement marchand eBay. On la demande donc ICI, avant.
   const [adresse, setAdresse] = useState(null);             // { cp, ville, source }
   const [statutAdresse, setStatutAdresse] = useState(null); // { etat, message }
+  // Bornes du relevé au retour dans l'app (cf. l'effet de visibilité).
+  const dernierReleve = useRef(0);
+  const parcoursFini = useRef(false);
 
   // Un seul appel : sans compte relié, le serveur répond sans toucher eBay ;
   // avec compte, il relève la checklist (5 appels Account API) et la stocke.
@@ -368,6 +367,7 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   // chaque rendu de l'App relançait ce chargement en boucle.
   const charger = useCallback(async () => {
     if (!userId) return;
+    dernierReleve.current = Date.now();
     setChargement(true); setErreurChargement('');
     try {
       const r = await lireEtatEbay('checklist');
@@ -382,10 +382,22 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   }, [userId, langue]);
 
   useEffect(() => { charger(); }, [charger]);
-  // Retour de l'écran de consentement (natif : navigateur système ; web :
-  // nouvel onglet) — on relit dès que l'app redevient visible.
+  // ── LE RETOUR DANS L'APP RELIT TOUT SEUL — MAIS JAMAIS EN BOUCLE ─────────
+  // (22/09) Personne ne doit rafraîchir à la main : quand on revient d'eBay,
+  // l'étape passe au vert sans un geste. C'est la promesse du parcours guidé.
+  // ⛔ MAIS un relevé coûte CINQ appels Account API, et le parc partage un
+  //    quota de 5 000 par jour. Deux bornes, donc :
+  //      · au plus une relecture toutes les 20 s — un aller-retour entre deux
+  //        applis ne déclenche pas cinq appels à chaque bascule ;
+  //      · AUCUNE relecture quand le parcours est déjà fini : plus rien ne
+  //        peut passer au vert, il n'y a rien à surveiller.
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === 'visible') charger(); };
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (parcoursFini.current) return;
+      if (Date.now() - dernierReleve.current < DELAI_RELECTURE_MS) return;
+      charger();
+    };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [charger]);
@@ -640,18 +652,23 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
 
   // Création d'une politique — LE SEUL endroit qui appelle creer_politique, sur
   // clic explicite. Chaque issue est dite sous le formulaire.
-  const soumettreCreation = async (type) => {
-    console.info('[ebay-compte] clic « Créer » —', type);
-    if (!creation || creation.type !== type) {
+  // `optionsDirectes` (22/09) : le parcours guidé crée EN UN CLIC, avec des
+  // valeurs par défaut raisonnables — pas de formulaire à remplir pour un
+  // réglage sur lequel eBay ne laisse rien choisir. Le formulaire complet reste
+  // disponible pour qui veut nommer sa politique autrement.
+  const soumettreCreation = async (type, optionsDirectes = null) => {
+    console.info('[ebay-compte] clic « Créer » —', type, optionsDirectes ? '(défauts)' : '');
+    const source = optionsDirectes ?? (creation && creation.type === type ? creation : null);
+    if (!source) {
       setStatutCreation({ type, etat: 'erreur', message: t.erreurGenerique });
       return;
     }
-    const nom = String(creation.nom ?? '').trim();
+    const nom = String(source.nom ?? '').trim();
     if (!nom) { setStatutCreation({ type, etat: 'erreur', message: t.nomRequis }); return; }
     setBusy(`creer_${type}`); setErreurAction('');
     setStatutCreation({ type, etat: 'envoi', message: t.creationEnCours });
     try {
-      const r = await agirEbay('creer_politique', { type, options: { nom, retours: creation.retours } });
+      const r = await agirEbay('creer_politique', { type, options: { nom, retours: source.retours } });
       if (r.etat) setEtat(r.etat);
       if (r.checklist) setChecklist(r.checklist);
       setCreation(null);
@@ -664,6 +681,17 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     }
   };
 
+  // ── LE PARCOURS GUIDÉ (22/09/2026, dossier Romain) ────────────────────────
+  // Les verdicts par étape viennent de utils/ebayParcours, le MÊME module que
+  // lisent le stepper et la carte d'article. Un seul endroit décrit eBay.
+  const etatsParcours = useMemo(() => etatsEbayDepuisChecklist(checklist), [checklist]);
+  // Parcours fini = plus rien ne peut passer au vert : on cesse de relire au
+  // retour dans l'app (quota eBay, cf. DELAI_RELECTURE_MS).
+  useEffect(() => {
+    const lues = Object.values(etatsParcours).filter((v) => v !== 'inconnu');
+    parcoursFini.current = lues.length > 0 && lues.every((v) => v === 'ok');
+  }, [etatsParcours]);
+
   const connecte = Boolean(etat?.connecte);
   const aReconnecter = Boolean(etat?.a_reconnecter);
   const tonPastille = connecte ? 'ok' : aReconnecter ? 'attention' : 'neutre';
@@ -671,9 +699,6 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   const dateConnexion = etat?.connected_at ? new Date(etat.connected_at).toLocaleDateString(langue === 'fr' ? 'fr-FR' : 'en-GB') : null;
   // Repli : dérivé de la checklist déjà relevée, aucune lecture de plus.
   const lignesChecklist = checklist?.lignes ?? [];
-  const lignesManquantes = lignesChecklist.filter((l) => l.etat !== 'ok');
-  const toutVert = lignesChecklist.length > 0 && lignesManquantes.length === 0;
-  const detailVisible = !toutVert || detailOuvert;
   const ligneLivraison = lignesChecklist.find((l) => l.cle === 'politique_livraison') ?? null;
   const limite = checklist?.selling_limit;
   const montant = limite?.amount?.value != null ? `${Number(limite.amount.value).toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB')} ${limite.amount.currency ?? ''}`.trim() : null;
@@ -875,15 +900,19 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
   // construisons la politique avec ce qu'ils cochent.
   // `compact` = vue repliée : on garde ce que voit l'acheteur et le bouton pour
   // le changer, on laisse tomber le titre, l'intro et les autres politiques.
-  const rendreLivraison = (ligne, compact = false) => {
+  // `sansEntete` : dans le parcours guidé, l'étape a déjà dit ce que c'est et
+  // pourquoi eBay le demande — répéter un titre et une intro ferait deux fois
+  // la même phrase à l'écran.
+  const rendreLivraison = (ligne, compact = false, sansEntete = false) => {
     const choisie = etat?.politiques?.fulfillment ?? null;
     const detail = choisie ? details[choisie] : null;
     const autres = compact ? [] : ((ligne?.existantes ?? []).filter((p) => p.id !== choisie));
     const aDesServices = Boolean(detail && detail !== 'erreur' && (detail.services ?? []).length);
+    const entete = !compact && !sansEntete;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: compact ? 0 : 8 }}>
-        {!compact && <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.transporteurs}</div>}
-        {!compact && <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.transporteursIntro}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: compact || sansEntete ? 0 : 8 }}>
+        {entete && <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.transporteurs}</div>}
+        {entete && <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.transporteursIntro}</div>}
         {choisie && detailEnCours === choisie && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.lectureContenu}</div>}
         {rendreDetailLivraison(detail)}
         {!picker && (
@@ -902,14 +931,100 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     );
   };
 
-  const rendreChoixPolitique = (ligne) => {
+  // ── LE CORPS D'UNE ÉTAPE DU PARCOURS ──────────────────────────────────────
+  // UN seul geste par étape (règle Nico). Tout ce qui peut se faire depuis
+  // FillSell s'y fait ; on ne renvoie chez eBay que là où eBay l'impose
+  // (l'inscription vendeur), et le lien de secours ne se montre que si notre
+  // propre geste a échoué — sinon il ferait deux boutons pour une étape.
+  const rendreCorpsEtape = (cle) => {
+    const ligne = lignesChecklist.find((l) => l.cle === cle) ?? { cle };
+    const e = motsEbay(langue).etapes[cle];
+    if (!e) return null;
+
+    if (cle === 'inscription_vendeur') {
+      return (
+        <a
+          href={LIENS_EBAY.inscription_vendeur} target="_blank" rel="noopener noreferrer"
+          style={{ ...boutonPlein(false), textDecoration: 'none', alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center' }}
+        >
+          {e.bouton}
+        </a>
+      );
+    }
+
+    if (cle === 'politiques_activees') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button type="button" onClick={() => agir('activer_politiques', {}, 'activer')} disabled={busy != null}
+            style={{ ...boutonPlein(busy != null), alignSelf: 'flex-start' }}>
+            {busy === 'activer' ? '…' : e.bouton}
+          </button>
+          {/* Secours, et seulement en secours : si notre demande n'aboutit pas,
+              la personne doit pouvoir le faire elle-même chez eBay. */}
+          {erreurAction && (
+            <a href={LIENS_EBAY.politiques_activees} target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 12.5, fontWeight: 700, color: UI.tealDeep, textDecoration: 'none' }}>
+              {t.lignes.politiques_activees.lien}
+            </a>
+          )}
+        </div>
+      );
+    }
+
+    if (cle === 'politique_livraison') return rendreLivraison(ligne, false, true);
+    if (cle === 'lieu_expedition') return rendreAdresse();
+
+    // Paiement et retours : UN CLIC, avec des valeurs par défaut raisonnables.
+    // ⛔ On ne crée JAMAIS une politique de plus sans qu'elle ait été demandée :
+    //    si le compte en a déjà, on propose d'abord de choisir (règle Nico).
+    if (cle === 'politique_paiement' || cle === 'politique_retours') {
+      const type = TYPE_PAR_CLE[cle];
+      const existantes = ligne.existantes ?? [];
+      const enVol = busy === `creer_${type}`;
+      const retours = creation?.type === type ? creation.retours : 'acceptes_30';
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {existantes.length > 0 && rendreChoixPolitique(ligne, true, true)}
+          {/* Les retours sont le seul endroit où eBay laisse un vrai choix :
+              on le pose ici, déjà tranché sur la valeur la plus courante. */}
+          {cle === 'politique_retours' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {[['acceptes_30', t.retoursAcceptes], ['refuses', t.retoursRefuses]].map(([v, l]) => (
+                <button type="button" key={v} disabled={busy != null}
+                  onClick={() => setCreation({ type, nom: NOMS_DEFAUT[type], retours: v })}
+                  style={{ ...boutonCreux(busy != null), textAlign: 'left', ...(retours === v ? selection : {}) }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+          <button type="button" disabled={busy != null}
+            onClick={() => soumettreCreation(type, { nom: NOMS_DEFAUT[type], retours })}
+            style={{ ...boutonPlein(busy != null), alignSelf: 'flex-start' }}>
+            {enVol ? t.creationEnCours : e.bouton}
+          </button>
+          {statutCreation?.type === type && statutCreation.etat !== 'ok' && (
+            <div role="status" style={statutCreation.etat === 'erreur' ? messageErreur : { fontSize: 12, color: UI.mute2, fontWeight: 600 }}>
+              {statutCreation.message}
+            </div>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // `listeSeule` (22/09) : dans le parcours guidé, la création a son propre
+  // bouton — ce rendu ne sert plus qu'à proposer de CHOISIR une politique que
+  // le vendeur a déjà chez eBay.
+  const rendreChoixPolitique = (ligne, sansMarge = false, listeSeule = false) => {
     const type = TYPE_PAR_CLE[ligne.cle];
     if (!type) return null;
     const existantes = ligne.existantes ?? [];
     const choisie = etat?.politiques?.[type] ?? null;
     const formulaireOuvert = creation?.type === type;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: sansMarge ? 0 : 8 }}>
         {existantes.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.utiliserExistante}</div>
@@ -930,13 +1045,13 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
             })}
           </div>
         )}
-        {!formulaireOuvert && (
+        {!listeSeule && !formulaireOuvert && (
           <button type="button" onClick={() => ouvrirCreation(type)} disabled={busy != null} style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
             {existantes.length > 0 ? t.ouCreer : t.creerDepuis}
           </button>
         )}
-        {formulaireOuvert && rendreFormulaireCreation(type)}
-        {!formulaireOuvert && statutCreation?.type === type && statutCreation.etat === 'ok' && (
+        {!listeSeule && formulaireOuvert && rendreFormulaireCreation(type)}
+        {!listeSeule && !formulaireOuvert && statutCreation?.type === type && statutCreation.etat === 'ok' && (
           <div role="status" style={{ fontSize: 12, color: UI.tealDeep, fontWeight: 600 }}>{statutCreation.message}</div>
         )}
       </div>
@@ -1009,78 +1124,24 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
 
           {chargement && !checklist && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.verif}</div>}
 
-          {/* REPLIÉ — tout est vert : le compte est en règle, on montre ce que
-              voit l'acheteur et le bouton pour le changer. Le reste (checklist,
-              lieu d'expédition, plafond, déconnexion) est à un clic. */}
-          {!detailVisible && ligneLivraison && rendreLivraison(ligneLivraison, true)}
-          {!detailVisible && (
-            <button type="button" onClick={() => setDetailOuvert(true)} disabled={busy != null}
-              style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
-              {t.voirDetail}
-            </button>
+          {/* ── LE PARCOURS GUIDÉ ────────────────────────────────────────────
+              Une étape à la fois, dans l'ordre qu'eBay impose. Ce composant ne
+              fait AUCUN appel : il reçoit les verdicts et rend le corps de
+              l'étape courante par render-prop — toute la mécanique reste ici.
+              Tout vert : « eBay est prêt », et ce que voit l'acheteur. */}
+          {lignesChecklist.length > 0 && (
+            <EbayParcours
+              lang={langue}
+              etats={etatsParcours}
+              chargement={chargement}
+              rendreCorps={rendreCorpsEtape}
+              rendrePret={() => (ligneLivraison ? rendreLivraison(ligneLivraison, true) : null)}
+            />
+          )}
+          {limite && (limite.quantity != null || montant) && (
+            <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantity, montant)}</div>
           )}
 
-          {detailVisible && lignesChecklist.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Ce qui manque, dit en une ligne et en tête — un problème ne se
-                  cherche pas dans une liste de coches. */}
-              {lignesManquantes.length > 0 && (
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#9A5A3A', background: `${UI.amber}22`, border: `1px solid ${UI.amber}55`, borderRadius: 10, padding: '8px 10px', lineHeight: 1.45 }}>
-                  {t.aFinir(lignesManquantes.map((l) => t.lignes[l.cle]?.label ?? l.cle).join(', '))}
-                </div>
-              )}
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.checklist}</div>
-              {lignesChecklist.map((ligne) => {
-                const txt = t.lignes[ligne.cle];
-                if (!txt) return null;
-                const ok = ligne.etat === 'ok';
-                return (
-                  <div key={ligne.cle} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <span aria-hidden style={{ width: 20, height: 20, borderRadius: 999, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: ok ? `${UI.teal}1A` : `${UI.amber}22`, color: ok ? UI.tealDeep : '#9A5A3A', border: `1px solid ${ok ? UI.teal : UI.amber}55` }}>
-                      {ok ? '✓' : '○'}
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: UI.ink }}>{txt.label}</div>
-                      {!ok && (
-                        <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{ fontSize: 12.5, color: UI.ink, lineHeight: 1.5 }}>{txt.manque}</div>
-                          {/* Toutes les lignes n'ont pas de page eBay à ouvrir :
-                              le lieu d'expédition se règle ICI, pas chez eBay. */}
-                          {LIENS[ligne.cle] && txt.lien && (
-                            <a href={LIENS[ligne.cle]} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 700, color: UI.tealDeep, textDecoration: 'none' }}>{txt.lien}</a>
-                          )}
-                          {ligne.cle === 'politiques_activees' && (
-                            <button type="button" onClick={() => agir('activer_politiques', {}, 'activer')} disabled={busy != null} style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
-                              {busy === 'activer' ? '…' : txt.action}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {ligne.cle === 'politique_livraison'
-                        ? rendreLivraison(ligne)
-                        : ligne.cle === 'lieu_expedition'
-                          ? rendreAdresse()
-                          : (TYPE_PAR_CLE[ligne.cle] ? rendreChoixPolitique(ligne) : null)}
-                    </div>
-                  </div>
-                );
-              })}
-              {limite && (limite.quantity != null || montant) && (
-                <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantity, montant)}</div>
-              )}
-              {/* Repliable UNIQUEMENT quand tout est vert : sinon le bouton
-                  n'existe pas, et le détail ne peut pas être refermé sur un
-                  problème non réglé. */}
-              {toutVert && (
-                <button type="button" onClick={() => setDetailOuvert(false)} disabled={busy != null}
-                  style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
-                  {t.masquerDetail}
-                </button>
-              )}
-            </div>
-          )}
-
-          {detailVisible && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
             {!confirmDeco ? (
               <button type="button" onClick={() => setConfirmDeco(true)} disabled={busy != null} style={{ background: 'none', border: 'none', padding: 0, fontSize: 11.5, color: UI.mute, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
@@ -1096,7 +1157,6 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
               </>
             )}
           </div>
-          )}
         </div>
       )}
 
