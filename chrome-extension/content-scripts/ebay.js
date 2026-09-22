@@ -222,16 +222,87 @@ async function deleteListing(job) {
     return { success: false, error: `Page inattendue pour une fin d'annonce eBay : ${location.href}`, trace };
   }
   t(`Hub vendeur ok : ${location.pathname}`);
+
+  // ══ LE HUB N'EST PAS RENDU QUAND SON URL L'EST (2026-09-22) ══════════════
+  // 🚨 LE CAS : lohanobert59, job 4514680c, montre Mortima. Vendue sur VINTED
+  //    le 20/09 à 17:33:34 ; quatre secondes plus tard le retrait du jumeau
+  //    eBay est créé, et il échoue CINQ FOIS de suite sur « Menu d'actions de
+  //    la ligne introuvable ». L'annonce eBay 168643821671 est restée en vente
+  //    48 h avec l'article déjà vendu — vérifié en direct le 22/09 : « Achat
+  //    immédiat » toujours proposé.
+  //
+  // CE QUE DIT LE JOB, DANS SES PROPRES CHAMPS :
+  //   work_window_state.at_start = { tab_url: .../sh/lst/active,
+  //                                  tab_status: "LOADING",
+  //                                  window_state: "minimized",
+  //                                  window_focused: false }
+  //   et at_end, 7 s plus tard seulement, "complete".
+  // On a donc interrogé le DOM d'une page QUI CHARGEAIT ENCORE.
+  //
+  // RELEVÉ LIVE SUR LE HUB VENDEUR LE 22/09 (compte réel, 6 annonces) :
+  //   · l'aria-label n'a PAS changé : « Afficher d'autres actions (<titre>) »,
+  //     6 lignes / 6 boutons. Le sélecteur était bon depuis le début ;
+  //   · load à 1 628 ms, et la colonne Actions est montée par le client APRÈS
+  //     — les ancres /itm/ existent avant elle.
+  // Or on attendait humanPause(1200, 2500) puis on concluait d'UNE SEULE
+  // requête synchrone. Dans une fenêtre minimisée et non focalisée (timers
+  // throttlés par Chrome), sur un compte qui a bien plus de six annonces, ce
+  // budget ne tient pas.
+  //
+  // ⛔ ET L'ERREUR ÉTAIT MUETTE SUR LA VRAIE CAUSE : « Menu d'actions de la
+  //    ligne introuvable » décrit une anomalie de la ligne, alors que la
+  //    colonne n'était simplement pas encore là. On ne peut pas distinguer les
+  //    deux sans regarder si le Hub a rendu QUELQUE chose.
+  // Tout le reste de cette fonction attend déjà proprement (waitFor 8 s pour
+  // l'item de menu, 10 s pour le dialogue) : ces deux premières étapes étaient
+  // les seules à ne pas le faire. On les aligne.
+  const MENU_LIGNE_SEL = 'button[aria-label*="autres actions" i]';
+  if (document.readyState !== "complete") {
+    await waitFor(() => document.readyState === "complete", 15000);
+    t(`readyState à l'entrée : ${document.readyState}`);
+  }
   await humanPause(1200, 2500);
+
+  // Preuve que le Hub a rendu sa grille : AU MOINS un déclencheur de menu, où
+  // que ce soit. Tant qu'il n'y en a aucun, rien ne peut être conclu d'une
+  // ligne — et surtout pas qu'elle n'a pas de menu.
+  const hubRendu = await waitFor(() => document.querySelector(MENU_LIGNE_SEL), 20000);
+  if (!hubRendu) {
+    const lignes = document.querySelectorAll("tr").length;
+    t(`Hub vendeur NON RENDU après 20 s (readyState=${document.readyState}, ${lignes} <tr>, ` +
+      `${document.querySelectorAll('a[href*="/itm/"]').length} ancre(s) /itm/) — aucune conclusion possible`);
+    if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    // Message côté NOUS, et repris : un retrait est le geste qui protège de la
+    // double vente, il ne meurt pas sur une page lente.
+    return { success: false, error: "Le Hub vendeur eBay n'a pas fini de s'afficher — retrait non tenté, rien n'a été touché", trace };
+  }
+  t(`Hub vendeur rendu : ${document.querySelectorAll(MENU_LIGNE_SEL).length} ligne(s) avec menu d'actions`);
 
   const idMatch = String(job.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i);
   const itemId = idMatch?.[1] ?? idMatch?.[2] ?? null;
 
-  let anchor = itemId ? document.querySelector(`a[href*="${itemId}"]`) : null;
-  if (anchor) t(`annonce trouvée par itemId ${itemId}`);
+  // ⛔ JAMAIS `querySelector` SEUL POUR L'ANCRE. Il rend la PREMIÈRE du
+  //    document, et le Hub sert plusieurs ancres par annonce (3 par ligne,
+  //    mesuré le 22/09) ; rien ne garantit que la première vive dans la ligne
+  //    qui porte le menu. On retient l'ancre UTILE — celle dont la ligne a le
+  //    déclencheur — et on ne retombe sur la première que faute de mieux.
+  const ligneDe = (a) => a?.closest("tr") ?? a?.closest('[class*="grid-row"], [class*="listing-row"], li') ?? null;
+  const ancreUtile = (liste) =>
+    liste.find((a) => ligneDe(a)?.querySelector(MENU_LIGNE_SEL)) ?? liste[0] ?? null;
+
+  let anchor = null;
+  if (itemId) {
+    // La ligne peut se monter après la grille : on lui laisse le même budget.
+    anchor = await waitFor(() => {
+      const liste = Array.from(document.querySelectorAll(`a[href*="${itemId}"]`));
+      return liste.length ? ancreUtile(liste) : null;
+    }, 10000);
+    if (anchor) t(`annonce trouvée par itemId ${itemId}`);
+  }
   if (!anchor && job.title) {
-    anchor = Array.from(document.querySelectorAll("a"))
-      .find((a) => a.textContent.trim() === job.title.trim()) ?? null;
+    const cible = job.title.trim();
+    anchor = ancreUtile(Array.from(document.querySelectorAll("a"))
+      .filter((a) => a.textContent.trim() === cible));
     if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
   }
   if (!anchor) {
@@ -240,17 +311,18 @@ async function deleteListing(job) {
     return { success: false, error: "Annonce introuvable dans le Hub vendeur", trace };
   }
 
-  const row = anchor.closest("tr") ?? anchor.closest('[class*="grid-row"], [class*="listing-row"], li');
+  const row = ligneDe(anchor);
   t(`ligne englobante : <${row?.tagName?.toLowerCase() ?? "?"}>`);
 
   // Déclencheur du menu : bouton-icône sans texte, identifié par son aria-label
   // « Afficher d'autres actions (<titre>) » — le titre y figure, ce qui permet
   // de vérifier qu'on ouvre le menu de LA BONNE ligne.
-  const menuBtn = Array.from(row?.querySelectorAll("button") ?? []).find((b) =>
-    /afficher d['’]autres actions/i.test(b.getAttribute("aria-label") || "")
-  );
+  const menuBtn = row ? await waitFor(() => row.querySelector(MENU_LIGNE_SEL), 8000) : null;
   if (!menuBtn) {
-    t("déclencheur de menu (aria-label « Afficher d'autres actions ») INTROUVABLE sur la ligne");
+    // On arrive ici APRÈS avoir prouvé que d'autres lignes ont leur menu : le
+    // constat porte donc bien sur CETTE ligne, et il est dicible.
+    t(`déclencheur de menu INTROUVABLE sur la ligne (ligne=<${row?.tagName?.toLowerCase() ?? "aucune"}>, ` +
+      `${document.querySelectorAll(MENU_LIGNE_SEL).length} autre(s) ligne(s) en ont un)`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     return { success: false, error: "Menu d'actions de la ligne introuvable", trace };
   }
