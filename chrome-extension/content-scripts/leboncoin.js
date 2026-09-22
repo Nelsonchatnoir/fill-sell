@@ -1468,7 +1468,38 @@ async function fillListingForm(job) {
   // l'adresse du compte sur ce flux, relevé live 2026-07-19).
   relayerEtape("adresse");
   await advanceWizardTo('label[for="location"]', { probeMs: 4000, maxSteps: 2 });
-  const addressResult = await fillAddress(fields.adresse, warnings);
+  // ── UNE REPUBLICATION REJOUE L'ANNONCE D'ORIGINE, LOCALISATION COMPRISE ──
+  // (2026-09-22, job af34f609 — nicolas.menar.) La republication Leboncoin
+  // d'une annonce localisée à Roost-Warendin (59286) a supprimé l'annonce,
+  // puis n'a pas su la recréer : la recréation retombait sur l'« Adresse de
+  // remise » des Réglages, qui étaient vides. L'annonce est restée 11 minutes
+  // hors ligne et n'est revenue que parce que l'utilisateur a rempli ses
+  // Réglages entre-temps. Sans son geste, elle restait supprimée.
+  //
+  // DOCTRINE : on rejoue l'annonce d'origine à l'identique. Sa localisation
+  // est une donnée de l'annonce, au même titre que son prix — elle PRIME donc
+  // sur l'adresse des Réglages. Les Réglages ne sont plus qu'un repli, pour
+  // quand la capture n'a pas de localisation.
+  // ⛔ SEULEMENT SUR UNE REPUBLICATION (`republish_step` n'existe que là). Sur
+  //    une publication neuve, l'adresse des Réglages reste la seule source, au
+  //    caractère près.
+  const estRepublication = fields.republish_step != null;
+  const locOrigine = fields.localisation_origine && typeof fields.localisation_origine === "object"
+    ? fields.localisation_origine : null;
+  const adresseOrigine = locOrigine
+    ? String(locOrigine.voie
+        ? `${locOrigine.voie} ${locOrigine.code_postal ?? ""} ${locOrigine.ville ?? ""}`
+        : (locOrigine.libelle || `${locOrigine.code_postal ?? ""} ${locOrigine.ville ?? ""}`)).replace(/\s+/g, " ").trim()
+    : "";
+  const adresseAPoser = (estRepublication && adresseOrigine) ? adresseOrigine : fields.adresse;
+  if (estRepublication && adresseOrigine) {
+    const note = `adresse: localisation de l'annonce d'origine (« ${adresseOrigine} ») — elle prime sur les Réglages sur une republication`;
+    console.log(`[leboncoin] ${note}`);
+    warnings.push(note);
+  } else if (estRepublication && !adresseOrigine) {
+    console.log("[leboncoin] adresse: la capture n'a pas de localisation — repli sur l'adresse des Réglages");
+  }
+  const addressResult = await fillAddress(adresseAPoser, warnings);
   // Livraison : format du colis et transporteurs, sur la MÊME page que
   // l'adresse (« Remise du bien »). Jamais bloquant — cf. poserLivraisonLbc.
   await poserLivraisonLbc(fields, warnings);
