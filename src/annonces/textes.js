@@ -66,6 +66,17 @@ const FR = {
   extensionAbsenteCta: "Installer l'extension",
   extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome, le relevé part tout seul.",
 
+  // ── CE QUI A MARCHÉ, DIT EN PREMIER (2026-09-22) ─────────────────────────
+  // Avant, un relevé Vinted parfait disparaissait sous trois bandes ambre pour
+  // des plateformes où la personne n'a même pas de compte. On dit d'abord la
+  // réussite, et on la NOMME.
+  reussiteReleve: (nom, n) => (n > 0
+    ? `${nom} : ${n} annonce${n > 1 ? 's' : ''} relevée${n > 1 ? 's' : ''} et rangée${n > 1 ? 's' : ''} dans ton stock.`
+    : `${nom} : relevé terminé, aucune annonce en ligne pour l'instant.`),
+  // La promesse que handler-watch tient désormais : la reprise est faite par
+  // le serveur dès que la session est prouvée fraîche, sans nouveau clic.
+  murReprise: 'Dès que tu es connecté, le relevé de cette plateforme repart tout seul.',
+
   note: "Un relevé ne publie rien : FillSell lit « Mes annonces » sur chaque plateforme et rattache ce qu'il reconnaît à ton stock.",
 
   // ── L'écran de rapprochement ─────────────────────────────────────────────
@@ -148,6 +159,11 @@ const EN = {
   extensionAbsente: 'The Chrome extension is not installed: it is what scans your listings from your computer.',
   extensionAbsenteCta: 'Install the extension',
   extensionEndormie: 'Your computer did not answer: open Chrome and the scan starts on its own.',
+
+  reussiteReleve: (nom, n) => (n > 0
+    ? `${nom}: ${n} listing${n > 1 ? 's' : ''} scanned and filed into your stock.`
+    : `${nom}: scan finished, nothing online for now.`),
+  murReprise: 'As soon as you are signed in, this platform is scanned again on its own.',
 
   note: 'A scan publishes nothing: FillSell reads “My listings” on each platform and matches what it recognises to your stock.',
 
