@@ -1331,6 +1331,171 @@ serve(async (req) => {
     console.error("[handler-watch] reprise après reconnexion:", (e as Error)?.message ?? e);
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE RELEVÉ AUSSI REPART TOUT SEUL (2026-09-22)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Même promesse que pour les publications, tenue par le même mécanisme et la
+  // MÊME sonde : une plateforme dont le relevé s'est arrêté sur une page de
+  // connexion est remise en file dès que la session est prouvée fraîche ET
+  // postérieure à l'arrêt. Sans ce bloc, le bouton « Me connecter » ouvrait la
+  // page de connexion et puis plus rien — il fallait revenir dans l'app et
+  // re-cliquer, ce que personne ne fait.
+  //
+  // MESURÉ le 22/09 sur 7 jours, runs `annonces` arrêtés sur « page de
+  // connexion » : eBay 97 runs / 26 comptes, Beebs 83 / 29, Leboncoin 57 / 19.
+  //
+  // ⛔ LES MÊMES GARDES QUE LA RPC `demander_sync_plateforme`, recopiées parce
+  //    qu'un cron ne doit jamais pouvoir poser ce qu'un humain ne pourrait pas
+  //    poser : interrupteur serveur (sync_multi_ouverte_pour), extension déjà
+  //    vue, aucun run de cette plateforme en file ou en cours, et la cadence de
+  //    15 min sur le dernier relevé RÉUSSI.
+  // ⛔ UNE REPRISE PAR MUR, JAMAIS DEUX. La marque, c'est le run qu'on vient de
+  //    poser : tant qu'il existe (queued/running), ou tant que le dernier relevé
+  //    réussi est plus récent que la sonde, on ne repose rien. C'est ce qui
+  //    interdit la boucle — sans quoi ce bloc rejouerait toutes les 3 minutes.
+  // ⛔ VINTED N'EST PAS ICI. Son relevé vit en `kind='dressing'`, avec sa propre
+  //    cadence et son index unique d'unicité ; le remettre en file demande de
+  //    passer par `demander_sync_dressing`, pas par un INSERT. Chantier à part.
+  let relevesRepris = 0;
+  try {
+    const PF_RELEVE = ["leboncoin", "beebs", "ebay", "opla"];
+    const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
+    const { data: arretes } = await supabase
+      .from("vinted_sync_runs")
+      .select("id, user_id, platform, status, erreur, finished_at")
+      .eq("kind", "annonces")
+      .in("status", ["absente", "failed", "expired"])
+      .in("platform", PF_RELEVE)
+      .gte("finished_at", depuis)
+      .order("finished_at", { ascending: false })
+      .limit(1000);
+    // Le mur, reconnu sur le texte que NOS relevés écrivent — jamais une
+    // heuristique. Miroir de `murConnexionReleve` (src/annonces/etatReleve.js).
+    const estMur = (e: unknown) => {
+      const t = String(e ?? "").toLowerCase();
+      return t.includes("page de connexion") || t.includes("opla non accord");
+    };
+    // Le PLUS RÉCENT par (compte, plateforme) : la liste est déjà triée du plus
+    // récent au plus ancien, le premier vu fait foi. Un run plus récent qui
+    // n'est PAS un mur (il a réussi, ou il a échoué autrement) gagne donc, et
+    // la plateforme sort des candidats — c'est voulu.
+    const dernier = new Map<string, { id: string; user_id: string; platform: string; finished_at: string; mur: boolean }>();
+    // deno-lint-ignore no-explicit-any
+    for (const r of ((arretes ?? []) as any[])) {
+      const cle = `${r.user_id}|${r.platform}`;
+      if (dernier.has(cle)) continue;
+      dernier.set(cle, {
+        id: String(r.id), user_id: String(r.user_id), platform: String(r.platform),
+        finished_at: String(r.finished_at ?? ""), mur: estMur(r.erreur),
+      });
+    }
+    const candidats = [...dernier.values()].filter((c) => c.mur && c.finished_at);
+
+    if (candidats.length) {
+      const ids = [...new Set(candidats.map((c) => c.user_id))];
+      const profilsPar = new Map<string, { sessions: Record<string, unknown>; extVue: string | null }>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: profs } = await supabase
+          .from("profiles").select("id, extension_sessions, extension_last_seen_at").in("id", ids.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of ((profs ?? []) as any[])) {
+          profilsPar.set(String(p.id), {
+            sessions: (p.extension_sessions ?? {}) as Record<string, unknown>,
+            extVue: p.extension_last_seen_at ?? null,
+          });
+        }
+      }
+
+      // Session revenue ET postérieure à l'arrêt : le seul filtre qui autorise
+      // à reposer quoi que ce soit. « Je ne sais pas » ne reprend RIEN.
+      const maintenant = Date.now();
+      const murLeve = candidats.filter((c) => {
+        const prof = profilsPar.get(c.user_id);
+        if (!prof || !prof.extVue) return false;              // extension jamais vue
+        const s = prof.sessions ?? {};
+        if (s[c.platform] !== true) return false;             // pas connecté, ou inconnu
+        const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[c.platform]
+          ?? (s.checked_at as string | undefined) ?? null;
+        const vu = brut ? Date.parse(brut) : NaN;
+        if (!Number.isFinite(vu)) return false;
+        if (maintenant - vu > (FRAICHEUR_SONDE_MS[c.platform] ?? 60 * 60_000)) return false;  // trop vieille
+        const arret = Date.parse(c.finished_at);
+        if (!Number.isFinite(arret) || vu <= arret) return false;   // rien de neuf depuis le mur
+        return true;
+      });
+
+      if (murLeve.length) {
+        // Ce qui EXISTE DÉJÀ pour ces comptes : un run en file ou en cours
+        // interdit d'en poser un second (index métier de la RPC), et un relevé
+        // réussi de moins de 15 min arme la cadence.
+        const idsLeves = [...new Set(murLeve.map((c) => c.user_id))];
+        const actifs = new Set<string>();
+        const reussiA = new Map<string, number>();
+        for (let i = 0; i < idsLeves.length; i += 200) {
+          const { data: encours } = await supabase
+            .from("vinted_sync_runs")
+            .select("user_id, platform, status, finished_at")
+            .eq("kind", "annonces")
+            .in("user_id", idsLeves.slice(i, i + 200))
+            .in("status", ["queued", "running", "done"])
+            .gte("finished_at", new Date(maintenant - 60 * 60_000).toISOString())
+            .limit(1000);
+          // deno-lint-ignore no-explicit-any
+          for (const r of ((encours ?? []) as any[])) {
+            const cle = `${r.user_id}|${r.platform}`;
+            if (r.status === "queued" || r.status === "running") { actifs.add(cle); continue; }
+            const t = Date.parse(String(r.finished_at ?? ""));
+            if (Number.isFinite(t) && t > (reussiA.get(cle) ?? 0)) reussiA.set(cle, t);
+          }
+          // `gte finished_at` écarte les lignes 'queued' (finished_at NULL) :
+          // on les relit à part, sinon une demande en file passerait inaperçue
+          // et on en empilerait une seconde.
+          const { data: enFile } = await supabase
+            .from("vinted_sync_runs")
+            .select("user_id, platform")
+            .eq("kind", "annonces")
+            .in("user_id", idsLeves.slice(i, i + 200))
+            .in("status", ["queued", "running"])
+            .limit(1000);
+          // deno-lint-ignore no-explicit-any
+          for (const r of ((enFile ?? []) as any[])) actifs.add(`${r.user_id}|${r.platform}`);
+        }
+
+        // L'interrupteur serveur, compte par compte — la RPC le vérifie, nous
+        // aussi. Un seul appel par compte, pas par plateforme.
+        const ouvertePar = new Map<string, boolean>();
+        for (const uid of idsLeves) {
+          try {
+            const { data } = await supabase.rpc("sync_multi_ouverte_pour", { p_user: uid });
+            ouvertePar.set(uid, data === true);
+          } catch { ouvertePar.set(uid, false); }
+        }
+
+        for (const c of murLeve) {
+          const cle = `${c.user_id}|${c.platform}`;
+          if (!ouvertePar.get(c.user_id)) continue;
+          if (actifs.has(cle)) continue;
+          const reussi = reussiA.get(cle) ?? 0;
+          if (reussi && maintenant - reussi < 15 * 60_000) continue;     // cadence
+          const { data: pose } = await supabase
+            .from("vinted_sync_runs")
+            .insert({
+              user_id: c.user_id, kind: "annonces", platform: c.platform,
+              status: "queued", declencheur: "reprise_connexion",
+              queued_at: new Date().toISOString(),
+            })
+            .select("id");
+          if (pose?.length) {
+            relevesRepris++;
+            console.log(`[handler-watch] relevé ${c.platform} de ${c.user_id} : session revenue → remis en file (mur du ${c.finished_at})`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise du relevé après reconnexion:", (e as Error)?.message ?? e);
+  }
+
   // ── LES LIGNES ORPHELINES D'UN RUN MORT (2026-09-19) ──────────────────────
   // Cas fondateur, ornellaracano le 19/09 : le run eBay de 09:11:34 écrit ses
   // lignes dans annonces_plateforme puis MEURT (« [watchdog] aucune
@@ -2145,7 +2310,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2200,7 +2365,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2254,7 +2419,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
     headers: { "Content-Type": "application/json" },
   });
 });
