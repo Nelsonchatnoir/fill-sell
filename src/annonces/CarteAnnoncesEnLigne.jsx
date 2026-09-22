@@ -24,11 +24,12 @@ import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
 import { LABEL_RELEVE } from '../utils/syncPlateformes';
 import { useReleveAnnonces } from './useReleveAnnonces';
-import { etatTuile, lireVague, lireBilan, ilYA } from './etatReleve';
+import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve } from './etatReleve';
 import { textesAnnonces } from './textes';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 import ConstellationReleve from './ConstellationReleve';
 import EcranRattachement from './EcranRattachement';
+import BandesReleve from './BandesReleve';
 
 const nombreLisible = (n, fr) => (typeof n === 'number' && Number.isFinite(n)
   ? n.toLocaleString(fr ? 'fr-FR' : 'en-GB')
@@ -83,10 +84,33 @@ export default function CarteAnnoncesEnLigne({
   // Ce qui empêche une plateforme de rendre quoi que ce soit — une bande par
   // plateforme concernée, en ambre, jamais en rouge : ce n'est pas un échec.
   const empechees = tuiles.filter((t) => t.e.phase === 'absente').map((t) => t.p);
+  // ── LES MURS DE CONNEXION, QUALIFIÉS UNE FOIS (2026-09-22) ───────────────
+  // Le motif vient de `murConnexionReleve` — la MÊME lecture que la tuile, et
+  // les mêmes signatures que la reprise serveur. Vinted ne passe pas par les
+  // runs `annonces` : son mur remonte de la ligne de sync (`etatVinted`), qui
+  // est le seul endroit où son run d'échec est lu.
+  // ⛔ Une plateforme qui vient de réussir ou qui tourne n'a pas de mur, même
+  //    si son run précédent en portait un : on regarde l'état ACTUEL.
+  const murs = [
+    ...(etatVinted?.murVinted && r.plateformes.includes('vinted')
+      ? [{ platform: 'vinted', nom: LABEL_RELEVE.vinted, motif: etatVinted.murVinted }]
+      : []),
+    ...tuiles
+      .filter((t) => t.p !== 'vinted' && t.e.phase !== 'fait' && t.e.phase !== 'en_cours')
+      .map((t) => ({ platform: t.p, nom: t.nom, motif: murConnexionReleve(r.runs[t.p] ?? null, t.p) }))
+      .filter((t) => !!t.motif),
+  ];
+  const murDe = new Set(murs.map((m) => m.platform));
   const signaux = [
-    ...tuiles.filter((t) => t.e.phase === 'absente')
+    // Une plateforme « absente » dont le texte ne NOMME pas le mur (run ancien,
+    // motif effacé) garde la phrase d'avant, sans bouton : on n'invente pas un
+    // geste sur une erreur qu'on ne sait pas lire.
+    ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p))
       .map((t) => ({ cle: t.p, texte: t.e.opla ? T.signalOpla : T.signalNonConnecte(t.nom) })),
-    ...tuiles.filter((t) => t.e.phase === 'echec')
+    // Un vrai arrêt technique — jamais un mur de connexion, qui a sa bande et
+    // son bouton au-dessus. C'est ce qui fait qu'on n'écrit plus « échec » ni
+    // « incomplet » à quelqu'un qui a seulement besoin de se connecter.
+    ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p))
       .map((t) => ({
         cle: t.p,
         texte: T.signalEchec(t.nom, String((r.runs[t.p]?.erreur) ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || null),
@@ -95,6 +119,19 @@ export default function CarteAnnoncesEnLigne({
     // accuser — c'est une machine qui dormait, pas une faute.
     ...(tuiles.some((t) => t.e.phase === 'expire') ? [{ cle: '_expire', texte: T.extensionEndormie }] : []),
   ];
+
+  // ── LA RÉUSSITE PASSE DEVANT (2026-09-22) ────────────────────────────────
+  // Uniquement quand il y a quelque chose à contrebalancer : sans mur, le
+  // sous-titre dit déjà « Relevé il y a 3 min · 47 annonces », et une seconde
+  // ligne verte ne serait qu'un doublon. Vinted d'abord si elle a réussi —
+  // c'est la plateforme de tout le monde, et celle du premier relevé.
+  const reussite = (() => {
+    if (!murs.length) return null;
+    const faites = tuiles.filter((t) => t.e.phase === 'fait');
+    if (!faites.length) return null;
+    const t = faites.find((x) => x.p === 'vinted') ?? faites[0];
+    return T.reussiteReleve(t.nom, Number(t.e.n) || 0);
+  })();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -244,14 +281,24 @@ export default function CarteAnnoncesEnLigne({
           </div>
         )}
 
-        {/* Les empêchements : une bande par plateforme, en ambre. Le relevé des
-            autres a marché — c'est un état mixte, pas un échec global. */}
-        {!enCours && signaux.map((s) => (
-          <div key={s.cle} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginTop: 12, padding: '10px 12px', borderRadius: 12, background: A.ambreFond, border: `1px solid ${A.ambreBord}` }}>
-            <span aria-hidden="true" style={{ width: 6, height: 6, marginTop: 6, borderRadius: 3, flexShrink: 0, background: A.pipWarn }} />
-            <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.5, color: A.ambreEncre }}>{s.texte}</span>
-          </div>
-        ))}
+        {/* Ce que le relevé a donné : la réussite en tête, puis les murs de
+            connexion AVEC leur bouton, puis ce qui reste. Un seul composant,
+            partagé avec le parcours d'entrée — les deux ne peuvent plus
+            diverger. */}
+        {!enCours && (
+          <BandesReleve
+            lang={lang}
+            userId={r.userId}
+            T={T}
+            reussite={reussite}
+            murs={murs}
+            signaux={signaux}
+            /* La page de connexion vient de s'ouvrir sur l'ordinateur : on
+               relit la base. La REPRISE du relevé, elle, est faite par le
+               serveur dès que la session est prouvée — pas d'ici. */
+            onOuverte={r.recharger}
+          />
+        )}
 
         {/* Les refus de cadence et les demandes déjà en file : sur la carte,
             jamais cachés. */}
