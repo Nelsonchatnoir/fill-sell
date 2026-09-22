@@ -22,6 +22,9 @@ import {
   estPageDeConnexionQuelconque,
 } from "../_shared/pages-de-job.ts";
 import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shared/vocabulaire-developpeur.ts";
+// Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
+// bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
+import { classerEchec } from "../_shared/pas-de-rouge.js";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -2257,6 +2260,158 @@ serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // LA BOUTIQUE QU'ON N'A PAS LUE N'EST PAS UNE BOUTIQUE INCONNUE (22/09)
+    // ══════════════════════════════════════════════════════════════════════
+    // Deux comptes, jobs 7fa92ebf (seghirdeborah711) et fcf5fcdc (erricokatia),
+    // lisaient : « Vinted répond "annonce introuvable" et FillSell n'a pas pu
+    // lire quelle boutique est connectée dans Chrome. Connecte-toi à la
+    // boutique qui porte cette annonce ». MESURÉ : les DEUX comptes n'ont
+    // qu'UNE boutique (vinted_sync_pin), et c'est exactement celle de
+    // l'article. La phrase leur demandait de choisir entre une seule porte.
+    //
+    // CAUSE, lue dans background.js : le verdict `identite_inconnue` naît de
+    //   boutique && !identId  — où identId vient d'un cache de 90 secondes.
+    // Un cache VIDE n'est pas une mesure : c'est l'absence de mesure. Preuve
+    // que la lecture était possible : la synchronisation Vinted de
+    // seghirdeborah711 a tourné `done` à 11:56 avec vinted_user_id =
+    // 3162354985 (sa boutique), QUATRE MINUTES après le verdict de 11:52 qui
+    // disait ne pas savoir qui était connecté.
+    //
+    // Ici on ne devine pas davantage : on MESURE la seule chose qui tranche,
+    // depuis le serveur et sans aucune session — l'annonce existe-t-elle
+    // encore publiquement ?
+    //   · 404 public → elle n'existe plus. Info neutre, job clos, rien de rouge.
+    //   · 200 public → elle est bien en ligne, mais le navigateur n'agit pas
+    //     en propriétaire : c'est un MUR DE CONNEXION. Le message porte
+    //     l'ancre « Connexion Vinted requise », donc le bouton « Me connecter »
+    //     s'affiche ET handler-watch relance tout seul dès le retour de la
+    //     sonde.
+    //   · sonde impossible (réseau, anti-robot) → mur de connexion aussi :
+    //     c'est la sortie qui n'affirme RIEN sur l'annonce et ne supprime rien.
+    // Un compte MULTI-boutiques garde son message d'origine : là, la question
+    // « laquelle ? » a un sens.
+    let pfBoutiqueArbitree: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user" && pfIn?.needs_user_source === "introuvable_indetermine") {
+      try {
+        const { data: prof } = await userClient
+          .from("profiles").select("vinted_sync_pin").eq("id", user.id).maybeSingle();
+        const pin = (prof?.vinted_sync_pin ?? {}) as Record<string, unknown>;
+        const boutiques = Array.isArray(pin["boutiques"]) ? (pin["boutiques"] as unknown[]) : [];
+        const v404 = (pfIn["introuvable_404"] ?? {}) as Record<string, unknown>;
+        if (boutiques.length <= 1 && String(v404["verdict"] ?? "") === "identite_inconnue") {
+          const { data: jRow } = await userClient
+            .from("cross_post_jobs").select("platform_listing_id, listing_url").eq("id", jobId).maybeSingle();
+          const idAnnonce = String(jRow?.platform_listing_id ?? "").trim()
+            || (/\/items\/(\d+)/.exec(String(jRow?.listing_url ?? ""))?.[1] ?? "");
+          let publiqueVivante: boolean | null = null;   // null = non mesuré
+          if (idAnnonce) {
+            try {
+              const rep = await fetch(`https://www.vinted.fr/items/${idAnnonce}`, {
+                method: "GET", redirect: "follow",
+                headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36" },
+              });
+              if (rep.status === 200) publiqueVivante = true;
+              else if (rep.status === 404 || rep.status === 410) publiqueVivante = false;
+            } catch { /* non mesuré : on n'affirme rien */ }
+          }
+          const pfArb = { ...pfIn };
+          delete pfArb["introuvable_indetermine"];
+          delete pfArb["next_action_after"];
+          if (publiqueVivante === false) {
+            pfArb["needs_user_source"] = undefined;
+            delete pfArb["needs_user_source"];
+            pfArb["annonce_disparue"] = { at: new Date().toISOString(), par: "sonde publique serveur" };
+            statutEffectif = "cancelled";
+            messageEffectif =
+              "Cette annonce n'est plus en ligne sur Vinted : on a vérifié, sa page n'existe plus " +
+              "(vendue, retirée ou supprimée). FillSell n'a rien supprimé et la republication s'arrête là. " +
+              "Si tu l'as vendue, marque-la vendue dans ton stock.";
+            raisonRequalif = "404 indéterminé arbitré par la sonde publique : annonce réellement disparue";
+          } else {
+            pfArb["needs_user_source"] = "connexion";
+            messageEffectif =
+              "Connexion Vinted requise : ton annonce est toujours en ligne, mais le navigateur n'est plus " +
+              "connecté à la boutique qui la porte — Vinted nous répond « introuvable ». Rien n'a été touché. " +
+              "Clique sur « Me connecter » ci-dessous : dès que tu es reconnecté, on reprend la republication tout seuls.";
+            raisonRequalif = publiqueVivante === true
+              ? "404 indéterminé arbitré par la sonde publique : annonce en ligne, mur de connexion"
+              : "404 indéterminé, sonde publique non concluante : mur de connexion (aucune affirmation sur l'annonce)";
+          }
+          pfBoutiqueArbitree = pfArb;
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} (boutiques=${boutiques.length}, annonce=${idAnnonce || "?"}, publique=${publiqueVivante})`);
+        }
+      } catch (e) {
+        console.error("[update-job-status] arbitrage 404 indéterminé :", (e as Error)?.message ?? e);
+        pfBoutiqueArbitree = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PAS DE ROUGE — LE DERNIER MOT (2026-09-22, demande de Nico)
+    // ══════════════════════════════════════════════════════════════════════
+    // Toutes les requalifications NOMMÉES sont passées au-dessus : elles
+    // savent ce qui s'est produit et gardent leur texte précis. Ce qui arrive
+    // ici est un `failed` que personne n'a su nommer — et un `failed` s'affiche
+    // en rouge chez la personne. Ça n'existe plus : trois sorties, jamais une
+    // quatrième (_shared/pas-de-rouge.js).
+    //
+    // ⛔ ON NE DÉGUISE RIEN. Un défaut de chez nous devient une REPRISE (on
+    //    relance nous-mêmes), pas une « limite de la plateforme ». Le brut part
+    //    dans error_technique — requêtable, jamais affiché.
+    // ⛔ CE N'EST PAS UN FILET À TOUT FAIRE : il ne touche QUE le statut
+    //    `failed`. Un `published`, un `deleted`, un `cancelled` déjà décidé
+    //    plus haut passent sans être relus.
+    let pfPasDeRouge: Record<string, unknown> | null = null;
+    if (statutEffectif === "failed") {
+      try {
+        const { data: jPdr } = await userClient
+          .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
+        const pfBase = (pfIn ?? (jPdr?.platform_fields ?? {})) as Record<string, unknown>;
+        const essais = Math.max(
+          Number(pfBase["needsUserAttempts"] ?? 0) || 0,
+          Number(((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["needsUserAttempts"] ?? 0) || 0,
+        );
+        const sortie = classerEchec({
+          platform: String(jPdr?.platform ?? ""),
+          action: String(jPdr?.action ?? "publish"),
+          brut: typeof body.error === "string" ? body.error : "",
+          reecrit: messageEffectif,
+          essais,
+          pf: pfBase,
+        });
+        const pfS = { ...pfBase };
+        if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
+          erreurTechniqueBrute = body.error;
+        }
+        if (sortie.source) pfS["needs_user_source"] = sortie.source;
+        else delete pfS["needs_user_source"];
+        if (sortie.champ && !pfS["needsUserField"]) pfS["needsUserField"] = sortie.champ;
+        if (sortie.dansMinutes) {
+          pfS["next_action_after"] = new Date(Date.now() + sortie.dansMinutes * 60_000).toISOString();
+          // Une REPRISE ne consomme pas le budget de l'utilisateur : le défaut
+          // est chez nous. Les compteurs d'attente repartent à zéro.
+          delete pfS["needsUserAttempts"]; delete pfS["needsUserBoucle"];
+          delete pfS["needs_user_tick_le"]; delete pfS["needs_user_actif_ms"];
+          delete pfS["needs_user_vu_le"]; delete pfS["needs_user_vu_erreur"];
+        } else {
+          delete pfS["next_action_after"];
+        }
+        delete pfS["processing_since"];
+        pfS["pas_de_rouge"] = { at: new Date().toISOString(), motif: sortie.motif, verdict: sortie.verdict };
+        statutEffectif = sortie.statut;
+        messageEffectif = sortie.message;
+        raisonRequalif = `pas-de-rouge : ${sortie.motif} → ${sortie.verdict}`;
+        pfPasDeRouge = pfS;
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — pas-de-rouge : ${sortie.motif} → ${sortie.verdict}/${sortie.statut}`);
+      } catch (e) {
+        // ⛔ Un filet ne devient jamais un point de panne : si l'arbitrage
+        //    tombe, le statut d'origine part tel quel (comportement d'avant).
+        console.error("[update-job-status] pas-de-rouge :", (e as Error)?.message ?? e);
+        pfPasDeRouge = null;
+      }
+    }
+
     const patch: Record<string, unknown> = { status: statutEffectif };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -2332,6 +2487,17 @@ serve(async (req) => {
     // Dépôt Leboncoin NON finalisé (/options sans CTA gratuit, 2026-09-13) :
     // platform_fields SANS la reprise programmée, AVEC le marqueur.
     if (pfDepotNonFinalise) patch.platform_fields = pfDepotNonFinalise;
+    // 404 de capture arbitré depuis le serveur (2026-09-22) : soit l'annonce
+    // est réellement disparue (sonde publique 404), soit c'est un mur de
+    // connexion — jamais « on ne sait pas quelle boutique » sur un compte qui
+    // n'en a qu'une.
+    if (pfBoutiqueArbitree) patch.platform_fields = pfBoutiqueArbitree;
+    // ⛔ PAS DE ROUGE EN DERNIER, APRÈS TOUT LE MONDE (2026-09-22) : c'est la
+    //    sortie du seul `failed` que personne n'a su nommer. Rien ne doit la
+    //    réécrire, sinon le statut et les platform_fields divergent — le job
+    //    repartirait `pending` avec l'échéance d'un autre bloc, ou
+    //    `needs_user` sans le marqueur qui porte son bouton.
+    if (pfPasDeRouge) patch.platform_fields = pfPasDeRouge;
 
     // ── HORLOGE DU CLIENT RECALÉE SUR CELLE DU SERVEUR (2026-09-11) ─────────
     // deleted_at (republish Vinted) est le SEUIL de reconnaissance de
