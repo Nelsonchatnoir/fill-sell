@@ -1507,7 +1507,18 @@ export const EXTENSION_LAST_COMMIT = '2026-09-22T07:19:38Z'; // recale e936d1f (
 // l'écart normal entre un commit et le zip qui l'embarque, et c'est très
 // exactement ce que le registre ci-dessous existe pour tolérer).
 // Ancienne valeur : 2026-09-18T16:36:03Z (0.6.43, servie depuis le 18/09 au soir).
-export const EXTENSION_MIN_BUILD = '2026-09-20T17:39:01Z';
+//
+// ── PROMU LE 22/09 SUR LA 0.6.52 ────────────────────────────────────────────
+// Elle est ACCEPTÉE par le Chrome Web Store et SERVIE : relevé en base à 10:26,
+// 2 comptes en extension_version='0.6.52', build '2026-09-22T07:07:39Z+306828f'.
+// Le seuil est le BUILD_ID DU ZIP, jamais EXTENSION_LAST_COMMIT
+// (2026-09-22T07:19:38Z, POSTÉRIEUR : il désigne le bump 0.6.53, qui n'est pas
+// encore téléversée — le prendre pour seuil ferait promettre une version que
+// personne ne peut installer).
+// Ce geste ALLUME la bannière « extension obsolète » pour les 42 comptes restés
+// en 0.6.49 (relevé du même instant), et leur nomme enfin la version à prendre.
+// Ancienne valeur : 2026-09-20T17:39:01Z (0.6.48).
+export const EXTENSION_MIN_BUILD = '2026-09-22T07:07:39Z';
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
@@ -1563,6 +1574,25 @@ export const PUBLISHED_BUILD_IDS = {
   '2026-09-19T12:23:44Z': '0.6.46',
   '2026-09-19T18:50:24Z': '0.6.47',
   '2026-09-20T17:39:01Z': '0.6.48',
+  // 0.6.49 : inscrite le 22/09, MÊME CLASSE D'OUBLI que les six précédentes, et
+  // la plus coûteuse — c'est le parc le plus fourni. Relevé en base le 22/09 à
+  // 10:28 : 42 comptes en extension_version='0.6.49', build
+  // '2026-09-21T15:13:22Z+79465b2'. Elle était dans ALREADY_PUBLISHED depuis le
+  // 22/09 au matin, mais PAS ici : la bannière ne pouvait donc pas nommer la
+  // version attendue tant qu'on ne promouvait pas son build.
+  '2026-09-21T15:13:22Z': '0.6.49',
+  // 0.6.50 et 0.6.51 N'Y SONT PAS, ET C'EST JUSTE : leurs numéros ont été
+  // brûlés par des bumps de manifeste (9320d8e, 85335ba) pour qu'aucun zip ne
+  // puisse jamais les porter, et AUCUN paquet n'a été téléversé. Le Store ne
+  // les a jamais vues. Ce registre ne liste que ce qui est SERVI.
+  // 0.6.52 : ACCEPTÉE et SERVIE, relevée en base le 22/09 à 10:26 — 2 comptes
+  // en extension_version='0.6.52', build '2026-09-22T07:07:39Z+306828f'. C'est
+  // elle qui devient EXTENSION_MIN_BUILD : elle est installable depuis le
+  // Store, donc la bannière a désormais une version à proposer aux 42 comptes
+  // restés en 0.6.49. (Promue le jour même de son acceptation, pas avant — un
+  // seuil posé trop tôt montre un bandeau sans version à installer, vécu le
+  // 29/07.)
+  '2026-09-22T07:07:39Z': '0.6.52',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
