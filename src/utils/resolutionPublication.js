@@ -46,7 +46,7 @@ import { detectObjectKeywordDetail } from "./shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "./vintedCategories";
 import { normalizeVintedColors } from "./vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "./lbcCategories";
-import { lbcClePremierCombobox } from "./lbcMaisonJardin";
+import { lbcClePremierCombobox, pairesMaisonJardinDeSecours } from "./lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
 import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre } from "./categorieParMot";
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
@@ -713,6 +713,48 @@ export async function resoudrePublication({
       // fois dans le bloc commun ci-dessus. Aucun job ne part sans
       // catégorie : le chemin reste posé dans tous les cas.
       if (pf.categorie_incertaine) pf.lbcCategorieIncertaine = true;
+      // ── QUAND LEBONCOIN CHOISIT UNE AUTRE FEUILLE QUE LA NÔTRE (22/09) ──
+      // `categorie_incertaine` veut dire : notre catégorie n'est qu'une
+      // supposition de l'IA, et leboncoin.js laisse alors la SUGGESTION de
+      // Leboncoin l'emporter (règle du 07/09 — et il a raison, c'est lui qui
+      // voit le titre). Mais nos critères, eux, restaient collés à NOTRE
+      // feuille : le formulaire rendait `table_art_*` pendant que nous
+      // posions `decoration_type`. Le Produit obligatoire restait vide, le
+      // repli écrivait « Autre » — absent de la liste d'« Accessoire de
+      // table » — et la personne lisait « la valeur "Autre" n'a pas été
+      // reconnue » pour une valeur qu'elle n'avait jamais choisie.
+      // MESURÉ EN DIRECT le 22/09 sur le formulaire Leboncoin : le titre
+      // « Ancien plateau à olives faïence peint main » lui fait proposer
+      // TROIS feuilles (Arts de la table en tête, puis Bricolage, puis
+      // Décoration) et pré-remplir Univers « Accessoire de table », Produit
+      // « Plateau », Matière « Faïence ».
+      // On pose donc aussi, pour les AUTRES feuilles Maison & Jardin, la
+      // paire (Univers, Produit) que le titre nomme — et RIEN quand il n'en
+      // nomme aucune (cf. le commentaire du module : une paire fourre-tout
+      // ne survit pas à `skipIfPrefilled`). Jamais par-dessus une clé déjà
+      // posée : ce qui vient de la personne ou du relevé passe avant.
+      if (pf.categorie_incertaine && Array.isArray(pf.lbcCategoryPath)) {
+        const feuilleLbc = pf.lbcCategoryPath.join(" > ");
+        if (feuilleLbc.startsWith("Maison & Jardin > ")) {
+          const texteLbc = `${initialListing?.titre ?? ""} ${edited?.leboncoin?.title ?? ""}`;
+          const secours = pairesMaisonJardinDeSecours(texteLbc, feuilleLbc);
+          const clesSecours = Object.keys(secours);
+          if (clesSecours.length) {
+            const aspects = { ...(pf.lbcAspects && typeof pf.lbcAspects === "object" ? pf.lbcAspects : {}) };
+            const poses = [];
+            for (const [k, v] of Object.entries(secours)) {
+              if (String(aspects[k] ?? "").trim()) continue;
+              aspects[k] = v;
+              poses.push(`${k} ← « ${v} »`);
+            }
+            if (poses.length) {
+              pf.lbcAspects = aspects;
+              pf.lbcFeuillesDeSecours = { at: new Date().toISOString(), poses };
+              console.log(`[publish] leboncoin — feuille incertaine, paires de secours posées : ${poses.join(" ; ")}`);
+            }
+          }
+        }
+      }
       // ── ORDRE DES CRITÈRES DANS lbcAspects (2026-09-07) ──────────────
       // Sur les 6 feuilles Maison & Jardin, la liste « Produit » DÉPEND de
       // l'Univers/Type et se VIDE quand celui-ci change : poser Produit

@@ -244,3 +244,102 @@ export function lbcProduitsDependants(categoryKey, produitKey, valeurDe) {
 export function lbcClePremierCombobox(categoryKey) {
   return LBC_MAISON_JARDIN_DEPENDANTS[categoryKey]?.typeKey ?? null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUAND LEBONCOIN CHOISIT UNE AUTRE FEUILLE QUE LA NÔTRE (2026-09-22)
+// ═══════════════════════════════════════════════════════════════════════════
+// Cas jocabroc8, deux dépôts du 22/09, MESURÉ EN DIRECT sur le formulaire :
+//   · job 206cd33b « Ancien plateau à olives faïence peint main » — notre
+//     chemin : Maison & Jardin > Décoration ; nos critères posés :
+//     house_and_garden_type = « Objet décoratif », decoration_type = « Vase,
+//     cache pot et céramique ». Leboncoin, lui, propose TROIS feuilles pour ce
+//     titre (Arts de la table, Bricolage, Décoration) et met Arts de la table
+//     EN TÊTE. Le formulaire rend donc `table_art_type` / `table_art_product`
+//     — deux champs obligatoires que nos critères ne peuvent pas remplir,
+//     puisqu'ils portent les clés de l'autre feuille.
+//   · job fc5e4bff « Présentoir vintage en bois sculpté » — exactement
+//     l'inverse : notre chemin Arts de la table, le formulaire Décoration.
+//
+// POURQUOI LE FORMULAIRE PART AILLEURS : les deux jobs portent
+// `categorie_incertaine = true` (categorie_source = « ia »). Depuis le 07/09,
+// leboncoin.js laisse dans ce cas la SUGGESTION de Leboncoin l'emporter sur
+// notre supposition — décision juste, et c'est bien Leboncoin qui avait raison
+// ici (un plateau à olives est un accessoire de table). Mais nos critères, eux,
+// restaient collés à notre feuille.
+//
+// CE QUI ARRIVAIT ENSUITE : le Produit obligatoire restait vide, le repli
+// écrivait « Autre » — or la liste Produit DÉPEND de l'Univers, et « Autre »
+// n'existe pas dans la liste d'« Accessoire de table ». D'où le message que
+// jocabroc8 a lu : « Produit : la valeur "Autre" n'a pas été reconnue » — une
+// valeur qu'il n'a jamais choisie, dans une catégorie que nous n'avions pas
+// retenue.
+//
+// CE QUE FAIT CETTE FONCTION : pour chaque feuille Maison & Jardin AUTRE que
+// la nôtre, elle propose la paire (Univers, Produit) que le formulaire
+// attendrait si Leboncoin s'y arrêtait. Deux étages, jamais davantage :
+//   1. un Produit de la feuille dont le libellé figure MOT POUR MOT dans le
+//      titre (« plateau » → « Plateau », dans l'Univers « Accessoire de
+//      table ») — la vraie valeur, celle que Leboncoin lui-même pré-remplit ;
+//   2. à défaut, la paire fourre-tout DE CETTE FEUILLE : Univers « Autre » et
+//      son Produit (« Autre » en Décoration et Bricolage, « Autres » en
+//      Électroménager, « Autre » en Arts de la table). Elle est TOUJOURS
+//      valide, parce qu'elle vient de la liste elle-même.
+//
+// ⛔ ON N'INVENTE AUCUNE VALEUR. Les deux étages ne rendent que des libellés
+//    présents dans LBC_MAISON_JARDIN_DEPENDANTS, lui-même relevé sur le vrai
+//    formulaire. Et on n'écrase jamais une clé déjà posée : ce qui vient de la
+//    personne ou du relevé passe avant.
+// ⛔ ON NE TOUCHE PAS À NOTRE FEUILLE. Ses deux clés sont déjà servies par le
+//    stepper ; les rejouer ici ferait deux vérités.
+
+/** Un libellé de Produit figure-t-il, mot pour mot, dans le texte de l'annonce ? */
+function libelleDansLeTexte(libelle, texteComparable) {
+  const l = comparable(libelle);
+  // Les libellés composés (« Vase, cache pot et céramique ») ne se cherchent
+  // pas entiers : on teste chacun de leurs segments, et on exige au moins
+  // quatre lettres pour ne pas accrocher sur « et », « de », « à ».
+  const segments = l.split(/[,/]| et /).map((s) => s.trim()).filter((s) => s.length >= 4);
+  const echappe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return segments.some((s) => new RegExp(`(^| )${echappe(s)}s?( |$)`, "i").test(texteComparable));
+}
+
+/**
+ * Les paires (Univers, Produit) de secours, pour les feuilles Maison & Jardin
+ * où Leboncoin pourrait faire atterrir le formulaire.
+ * @param {string} texte          titre (et description) de l'annonce
+ * @param {string} feuilleChoisie « Maison & Jardin > … », notre propre feuille
+ * @returns {Record<string,string>} clés `for=` → libellé exact de la liste LBC
+ */
+export function pairesMaisonJardinDeSecours(texte, feuilleChoisie) {
+  const out = {};
+  const t = ` ${comparable(texte)} `;
+  for (const [feuille, def] of Object.entries(LBC_MAISON_JARDIN_DEPENDANTS)) {
+    if (feuille === feuilleChoisie) continue;
+    // Étage 1 : un Produit nommé dans le titre. Le libellé le PLUS LONG gagne
+    // (« Plat de service » avant « Plat »), pour ne pas répondre plus court
+    // que ce que l'annonce dit.
+    let meilleur = null;
+    for (const [univers, produits] of Object.entries(def.produits)) {
+      for (const produit of produits) {
+        if (/^autres?$/i.test(produit)) continue;          // le fourre-tout est l'étage 2
+        if (!libelleDansLeTexte(produit, t)) continue;
+        if (!meilleur || produit.length > meilleur.produit.length) meilleur = { univers, produit };
+      }
+    }
+    // ⛔ PAS DE SECOND ÉTAGE « Autre/Autre », ET C'EST MESURÉ (22/09).
+    //    On avait écrit la paire fourre-tout de chaque feuille en repli. Elle
+    //    est valide EN PAIRE, mais l'extension pose les critères un par un
+    //    avec `skipIfPrefilled` : si Leboncoin a déjà pré-rempli l'Univers
+    //    (« Accessoire de table », qu'il déduit du titre — vérifié en direct
+    //    sur son formulaire), notre « Autre » est sauté, et notre Produit
+    //    « Autre » atterrit dans une liste qui ne le contient pas. C'est
+    //    EXACTEMENT la panne qu'on corrige. Une paire qui ne peut pas être
+    //    garantie atomique ne se pose pas.
+    //    Sans correspondance, on ne pose rien : la personne choisit dans la
+    //    VRAIE liste (le job la porte déjà dans needsUserField.allowed_values).
+    if (!meilleur) continue;
+    out[def.typeKey] = meilleur.univers;
+    out[def.produitKey] = meilleur.produit;
+  }
+  return out;
+}
