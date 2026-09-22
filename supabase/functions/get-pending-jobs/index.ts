@@ -1835,6 +1835,50 @@ serve(async (req) => {
             j.action !== "republish" ||
             (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted");
           heldRepublish = avant - out.length;
+          // ══════════════════════════════════════════════════════════════
+          // UNE FILE RETENUE LE DIT DANS SES PROPRES JOBS (2026-09-22)
+          // ══════════════════════════════════════════════════════════════
+          // remialbertholl (118 en file) et nadegemarcelin78 (76) se sont
+          // arrêtés à 03:27 et 03:41 sur le plafond du palier — 50 pile, le
+          // bon chiffre pour Premium (quota_republication_premium 1500 ÷ 30).
+          // La retenue a donc fonctionné. Mais les jobs n'en portaient AUCUNE
+          // trace : ni erreur, ni échéance, ni marqueur. Vu de la base, 194
+          // republications étaient simplement immobiles, et rien ne disait
+          // pourquoi ni jusqu'à quand — ni pour eux, ni pour nous.
+          // On écrit donc la retenue LÀ OÙ ON LA CHERCHE. Ce n'est pas une
+          // erreur (rien n'a raté) : c'est un état, avec son heure de reprise.
+          // ⛔ BORNÉ : on n'écrit que sur les jobs dont la trace a changé
+          //    (même motif + même reprise = rien à réécrire), et au plus
+          //    RETENUE_TRACE_MAX par poll. Sur 118 jobs et un poll de 2 min,
+          //    la file est tracée en trois passages, sans rafale d'écritures.
+          // ⛔ Best-effort : une trace ratée ne retient ni ne libère rien.
+          const RETENUE_TRACE_MAX = 40;
+          try {
+            const p = plafondRepublish;
+            const trace = {
+              at: new Date().toISOString(),
+              motif: p.motif, palier: p.palier ?? null,
+              faits: p.faits, limite: p.limite, reprise: p.reprise ?? null,
+            };
+            const aTracer = (jobs ?? [])
+              .filter((j) => j.action === "republish"
+                && (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] !== "deleted")
+              .filter((j) => {
+                const r = ((j.platform_fields ?? {}) as Record<string, unknown>)["retenue_republication"] as
+                  Record<string, unknown> | undefined;
+                return !r || r.motif !== trace.motif || r.reprise !== trace.reprise;
+              })
+              .slice(0, RETENUE_TRACE_MAX);
+            for (const j of aTracer) {
+              const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>), retenue_republication: trace };
+              await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id);
+            }
+            if (aTracer.length) {
+              console.log(`[get-pending-jobs] userId=${user.id} : retenue tracée sur ${aTracer.length} job(s) (motif=${p.motif}, reprise=${p.reprise})`);
+            }
+          } catch (e) {
+            console.warn("[get-pending-jobs] trace de retenue non écrite (sans effet sur la retenue) :", (e as Error)?.message ?? e);
+          }
           if (heldRepublish) {
             const p = plafondRepublish;
             console.log(
