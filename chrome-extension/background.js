@@ -2450,6 +2450,14 @@ async function pollAndProcessJobsUnlocked() {
     // Relevés multiplateforme (2026-09-17) : [{ id, platform }] — servis aux
     // extensions ≥ 0.6.42 seulement, traités après le poll (verrou rendu).
     commandesAnnoncesEnAttente = Array.isArray(rep.sync_commands_annonces) ? rep.sync_commands_annonces : [];
+    // ── « ME CONNECTER » (2026-09-22) : demandes posées depuis l'app, souvent
+    // depuis le TÉLÉPHONE. On les honore TOUT DE SUITE, avant la file de jobs :
+    // c'est un geste que quelqu'un attend, les yeux sur son écran. Best-effort
+    // et jamais bloquant — une demande qui échoue ne retient aucun job.
+    if (Array.isArray(rep.connexion_commands) && rep.connexion_commands.length) {
+      ouvrirPagesDeConnexion(session.access_token, rep.connexion_commands).catch((e) =>
+        console.warn("[background] demandes de connexion :", String(e?.message ?? e)));
+    }
     // keepalive_actif (2026-09-17) : strictement `=== true` — un serveur qui ne
     // le connaît pas (ou qui l'a coupé) laisse le chemin d'aujourd'hui.
     keepaliveActif = rep.keepalive_actif === true;
@@ -9454,6 +9462,111 @@ async function rearmerJobsOplaEnAttente(accessToken) {
   }
   if (relances) console.log(`[background] opla : ${relances} job(s) relancé(s) après l'octroi de l'accès`);
   return relances;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// « ME CONNECTER » — LE TÉLÉPHONE DEMANDE, CET ORDINATEUR OUVRE (2026-09-22)
+// ══════════════════════════════════════════════════════════════════════════
+// C'est le mur nº1 des nouveaux inscrits : une plateforme pas connectée, un
+// job qui meurt, et rien à cliquer. L'app pose une demande dans la file
+// (vinted_sync_runs, kind='connexion'), get-pending-jobs nous la sert, et
+// c'est ICI que la page s'ouvre — sur l'ordinateur où vit la session, qui
+// n'est presque jamais l'écran que la personne a sous les yeux.
+//
+// ⛔ CET ONGLET EST VISIBLE, ET C'EST TOUT L'INVERSE DE L'ONGLET DE TRAVAIL.
+//    La fenêtre de travail est minimisée, jamais rendue, jamais au premier
+//    plan — c'est la règle produit. Ici on veut exactement le contraire : la
+//    personne doit VOIR la page de connexion. On ouvre donc un onglet normal,
+//    actif, dans la fenêtre courante, et on la met au premier plan.
+//
+// ⛔ OPLA N'EST PAS UNE CONNEXION. Son mur est une PERMISSION D'HÔTE, et
+//    `chrome.permissions.request` n'accepte de s'exécuter que dans un geste de
+//    la personne, sur une page d'extension — jamais depuis ce service worker
+//    (c'est écrit depuis le 16/09 dans popup.js). On ouvre donc le popup, où
+//    le bouton « Autoriser Opla » existe déjà et fait le vrai geste.
+const ADRESSES_CONNEXION = {
+  vinted: "https://www.vinted.fr/",
+  leboncoin: "https://www.leboncoin.fr/",
+  beebs: "https://www.beebs.app/",
+  ebay: "https://www.ebay.fr/",
+  opla: "https://www.opla.co/",
+};
+
+/** L'adresse à ouvrir, selon la plateforme ET le motif. */
+function adresseDeConnexion(platform, motif) {
+  // Reconnexion de sécurité et compte pas encore vendeur mènent au MÊME
+  // endroit : le flux de vente d'eBay, qui déclenche l'un ou l'autre selon le
+  // compte. On ne devine pas lequel — eBay le sait, nous non.
+  if (platform === "ebay" && (motif === "reauth_ebay" || motif === "vendeur_ebay")) {
+    return "https://www.ebay.fr/sl/sell";
+  }
+  return ADRESSES_CONNEXION[platform] ?? null;
+}
+
+/** Ouvre le popup de l'extension — le seul endroit où la permission se demande. */
+async function ouvrirPopupPourOpla() {
+  try {
+    if (chrome.action?.openPopup) { await chrome.action.openPopup(); return true; }
+  } catch { /* indisponible ou hors geste : on retombe sur l'onglet */ }
+  try {
+    // popup.html ouvert en ONGLET reste une page d'extension : le clic sur
+    // « Autoriser Opla » y est un geste utilisateur valable.
+    await chrome.tabs.create({ url: chrome.runtime.getURL("popup.html"), active: true });
+    return true;
+  } catch (e) {
+    console.warn("[background] opla : popup non ouvrable —", String(e?.message ?? e));
+    return false;
+  }
+}
+
+/**
+ * Honore les demandes « me connecter ». Best-effort de bout en bout : aucune
+ * ne doit jamais retenir un job.
+ * On marque la ligne DÈS QUE la page est ouverte — c'est cette marque que
+ * l'app attend pour dire « la page s'est ouverte sur ton ordinateur ».
+ */
+async function ouvrirPagesDeConnexion(accessToken, commandes) {
+  for (const cmd of commandes) {
+    const platform = String(cmd?.platform ?? "");
+    const motif = String(cmd?.motif ?? "connexion");
+    const id = String(cmd?.id ?? "");
+    if (!id || !platform) continue;
+    let ouverte = false;
+    try {
+      if (platform === "opla" && motif !== "connexion") {
+        ouverte = await ouvrirPopupPourOpla();
+      } else {
+        const url = adresseDeConnexion(platform, motif);
+        if (!url) { console.warn(`[background] connexion : plateforme inconnue « ${platform} »`); continue; }
+        const onglet = await chrome.tabs.create({ url, active: true });
+        // Au premier plan : sans ça, l'onglet s'ouvre derrière et la personne
+        // attend devant un écran qui n'a pas bougé.
+        if (onglet?.windowId != null) {
+          await chrome.windows.update(onglet.windowId, { focused: true, drawAttention: true }).catch(() => {});
+        }
+        ouverte = true;
+        console.log(`[background] connexion : page ${platform} (${motif}) ouverte sur cet ordinateur`);
+      }
+    } catch (e) {
+      console.warn(`[background] connexion ${platform} : ouverture impossible —`, String(e?.message ?? e));
+    }
+    // La ligne est close dans les DEUX cas : ouverte, ou impossible. Laisser une
+    // demande en 'queued' la ferait rouvrir au poll suivant, en boucle.
+    try {
+      await restRequest(`vinted_sync_runs?id=eq.${id}&status=eq.queued`, accessToken, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: ouverte ? "done" : "error",
+          claimed_at: new Date().toISOString(),
+          finished_at: new Date().toISOString(),
+          extension_build: FILLSELL_BUILD_ID,
+          ...(ouverte ? {} : { erreur: "page de connexion non ouvrable sur cet ordinateur" }),
+        }),
+      });
+    } catch (e) {
+      console.warn(`[background] connexion ${platform} : ligne non close —`, String(e?.message ?? e));
+    }
+  }
 }
 
 // Démarrage du service worker : si l'accès est déjà là (octroi antérieur, ou

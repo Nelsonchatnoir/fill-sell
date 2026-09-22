@@ -623,6 +623,44 @@ serve(async (req) => {
       } catch (_e) { /* idem */ }
     }
 
+    // ══ « ME CONNECTER » — LE TÉLÉPHONE DEMANDE, L'ORDINATEUR OUVRE ════════
+    // (2026-09-22) C'est le mur nº1 des nouveaux inscrits. L'app ne peut pas
+    // appeler l'extension (aucun `externally_connectable` au manifeste), donc
+    // la demande passe par la file : même table, même forme, `kind='connexion'`.
+    //
+    // ⚠️ TTL COURT, ET LA GARDE EST ICI. purger_sync_queue_perimee ne touche
+    //    que 'dressing' et 'annonces' : nos lignes ne seront jamais purgées par
+    //    elle. Le `.gte` ci-dessous FAIT FOI — une demande de plus de 10 min
+    //    n'est jamais servie. Ouvrir une page de connexion six heures après le
+    //    clic ferait surgir un onglet que plus personne n'attend.
+    //
+    // `declencheur` porte le motif (« app:connexion », « app:reauth_ebay »,
+    // « app:vendeur_ebay ») : c'est lui qui dit QUELLE page ouvrir. Servi tel
+    // quel, l'extension tranche — elle seule connaît ses adresses.
+    let connexionCommands: Array<{ id: string; platform: string; motif: string }> = [];
+    if (versionAuMoins(version, "0.6.53") && !includeProcessing) {
+      try {
+        const ttl = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data: cmds } = await userClient
+          .from("vinted_sync_runs")
+          .select("id, platform, declencheur")
+          .eq("kind", "connexion")
+          .eq("status", "queued")
+          .gte("queued_at", ttl)
+          .order("queued_at", { ascending: true })
+          .limit(3);
+        connexionCommands = ((cmds ?? []) as Array<{ id: unknown; platform: unknown; declencheur: unknown }>)
+          .map((c) => ({
+            id: String(c.id),
+            platform: String(c.platform),
+            motif: String(c.declencheur ?? "").split(":")[1] || "connexion",
+          }));
+        if (connexionCommands.length) {
+          console.log(`[get-pending-jobs] userId=${user.id} : ${connexionCommands.length} demande(s) de connexion servie(s) — ${connexionCommands.map((c) => `${c.platform}/${c.motif}`).join(", ")}`);
+        }
+      } catch (_e) { /* la file de connexion ne doit JAMAIS bloquer les jobs */ }
+    }
+
     // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
     // (action='delete', armés par le bandeau semi-auto de l'app après une
     // vente) passent par la même file — le background route sur job.action
@@ -5012,6 +5050,10 @@ serve(async (req) => {
       annonces_en_attente: annoncesAttente,
       sync_command: syncCommand,
       sync_commands_annonces: syncCommandsAnnonces,
+      // Demandes « me connecter » posées depuis l'app (souvent depuis le
+      // téléphone) : l'extension ouvre la page sur l'ordinateur. Cf. le bloc
+      // « ME CONNECTER » plus haut.
+      connexion_commands: connexionCommands,
       // sync_prioritaire/jobs_retenus_sync portent désormais AUSSI le backlog
       // retenu (cf. bandeau ci-dessus) : « il reste du travail, ne dors pas ».
       sync_prioritaire: travailRetenu > 0,
