@@ -1379,7 +1379,7 @@ serve(async (req) => {
     // récent au plus ancien, le premier vu fait foi. Un run plus récent qui
     // n'est PAS un mur (il a réussi, ou il a échoué autrement) gagne donc, et
     // la plateforme sort des candidats — c'est voulu.
-    const dernier = new Map<string, { id: string; user_id: string; platform: string; finished_at: string; mur: boolean }>();
+    const dernier = new Map<string, { id: string; user_id: string; platform: string; finished_at: string; mur: boolean; alignee?: boolean }>();
     // deno-lint-ignore no-explicit-any
     for (const r of ((arretes ?? []) as any[])) {
       const cle = `${r.user_id}|${r.platform}`;
@@ -1406,21 +1406,35 @@ serve(async (req) => {
         }
       }
 
-      // Session revenue ET postérieure à l'arrêt : le seul filtre qui autorise
-      // à reposer quoi que ce soit. « Je ne sais pas » ne reprend RIEN.
+      // ══ LA SONDE DOIT RÉPONDRE À LA QUESTION POSÉE (2026-09-22, le soir) ══
+      // Première version : on lisait `extension_sessions.ebay`, qui teste la
+      // porte de la PUBLICATION (/sl/prelist/suggest). Le relevé, lui, charge
+      // le Hub vendeur (/sh/lst/active). Un compte frappé par le step-up de
+      // sécurité passe la première et bute sur le second : 11 relevés remis en
+      // file, 6 revenus dans la minute sur le même mur.
+      // L'extension 0.6.54 sonde le Hub à part et écrit `ebay_hub`. On le lit
+      // EN PRIORITÉ pour eBay ; sans lui (extension plus ancienne) on retombe
+      // sur `ebay`, mais la reprise reste alors PLAFONNÉE — voir plus bas.
+      const cleSonde = (s: Record<string, unknown>, pf: string) =>
+        (pf === "ebay" && s.ebay_hub !== undefined ? "ebay_hub" : pf);
       const maintenant = Date.now();
       const murLeve = candidats.filter((c) => {
         const prof = profilsPar.get(c.user_id);
         if (!prof || !prof.extVue) return false;              // extension jamais vue
         const s = prof.sessions ?? {};
-        if (s[c.platform] !== true) return false;             // pas connecté, ou inconnu
-        const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[c.platform]
+        const cle = cleSonde(s, c.platform);
+        if (s[cle] !== true) return false;                    // pas connecté, ou inconnu
+        const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[cle]
+          ?? (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[c.platform]
           ?? (s.checked_at as string | undefined) ?? null;
         const vu = brut ? Date.parse(brut) : NaN;
         if (!Number.isFinite(vu)) return false;
         if (maintenant - vu > (FRAICHEUR_SONDE_MS[c.platform] ?? 60 * 60_000)) return false;  // trop vieille
         const arret = Date.parse(c.finished_at);
         if (!Number.isFinite(arret) || vu <= arret) return false;   // rien de neuf depuis le mur
+        // La sonde répond-elle à la question du RELEVÉ ? Si oui, la reprise
+        // peut aboutir et n'a pas à être plafonnée.
+        c.alignee = cle !== c.platform || c.platform !== "ebay";
         return true;
       });
 
@@ -1500,10 +1514,17 @@ serve(async (req) => {
           const reussi = reussiA.get(cle) ?? 0;
           if (reussi && maintenant - reussi < 15 * 60_000) continue;     // cadence
           // L'ÉPISODE court depuis le dernier relevé réussi — ou depuis
-          // toujours si cette plateforme n'a jamais rien rendu. Une reprise
-          // automatique déjà faite dans cet épisode close la question : la
-          // suivante viendra d'un clic, ou d'un relevé qui aura enfin marché.
-          if ((repriseDepuis.get(cle) ?? []).some((t) => t > reussi)) continue;
+          // toujours si cette plateforme n'a jamais rien rendu.
+          // ⛔ LE PLAFOND DÉPEND DE CE QUE LA SONDE A VRAIMENT VU (22/09) :
+          //   · sonde ALIGNÉE sur la porte du relevé → la reprise PEUT
+          //     aboutir. Plafond large (3 par épisode) : on tient la promesse
+          //     « ça repart tout seul » sans jamais devenir illimité, parce
+          //     qu'une sonde juste peut quand même se tromper.
+          //   · sonde de repli (eBay sans `ebay_hub`, extension < 0.6.54) →
+          //     UNE seule tentative par épisode. C'est la garde du 22/09, et
+          //     elle reste tant qu'on ne sait pas si la porte s'ouvre.
+          const plafond = c.alignee ? 3 : 1;
+          if ((repriseDepuis.get(cle) ?? []).filter((t) => t > reussi).length >= plafond) continue;
           const { data: pose } = await supabase
             .from("vinted_sync_runs")
             .insert({
@@ -1521,6 +1542,128 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] reprise du relevé après reconnexion:", (e as Error)?.message ?? e);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LE RELEVÉ VINTED REPART AUSSI (2026-09-22)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Il manquait à l'appel : les quatre autres plateformes repartaient seules
+  // depuis v47, Vinted non — parce que son relevé vit en `kind='dressing'`,
+  // avec sa propre cadence et un index d'unicité (un seul run actif par
+  // compte). On ne contourne ni l'un ni l'autre : on REPOSE les mêmes gardes
+  // que `demander_sync_dressing()`, qu'un cron ne peut pas appeler (elle lit
+  // auth.uid()).
+  //
+  // ⛔ LA CADENCE ANTI-ROBOT N'EST PAS UNE FORMALITÉ. Vinted coupe la lecture
+  //    des comptes qui martèlent — c'est le dossier des 403 d'août. D'où :
+  //    cadence de 15 min sur le dernier relevé RÉUSSI, aucune demande si une
+  //    autre est déjà en vol, et UNE seule reprise automatique par épisode,
+  //    même si la sonde est alignée. Un geste humain peut insister ; un cron,
+  //    non.
+  let dressingsRepris = 0;
+  try {
+    const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
+    const { data: runsDressing } = await supabase
+      .from("vinted_sync_runs")
+      .select("id, user_id, status, declencheur, erreur, finished_at, started_at")
+      .eq("kind", "dressing")
+      .gte("started_at", depuis)
+      .order("started_at", { ascending: false })
+      .limit(2000);
+    // Le mur Vinted, sur le texte que NOTRE sonde écrit — miroir de
+    // `MUR_VINTED` (src/annonces/etatReleve.js), aucune signature neuve.
+    const murVinted = (e: unknown) => {
+      const t = String(e ?? "").toLowerCase();
+      return t.includes("cause403") || t.includes("aucune session vinted")
+        || (t.includes("session vinted") && t.includes("401"));
+    };
+    const maintenant = Date.now();
+    // Le PLUS RÉCENT par compte fait foi, tous statuts confondus : un `done`
+    // postérieur au mur veut dire que c'est déjà reparti, et un run en vol
+    // interdit d'en poser un second.
+    const etatPar = new Map<string, { dernier: string; mur: boolean; finished_at: string; actif: boolean; dernierDone: number; reprises: number[] }>();
+    // deno-lint-ignore no-explicit-any
+    for (const r of ((runsDressing ?? []) as any[])) {
+      const uid = String(r.user_id);
+      const e = etatPar.get(uid) ?? { dernier: "", mur: false, finished_at: "", actif: false, dernierDone: 0, reprises: [] };
+      if (!e.dernier) {
+        e.dernier = String(r.status ?? "");
+        e.mur = murVinted(r.erreur);
+        e.finished_at = String(r.finished_at ?? r.started_at ?? "");
+      }
+      if (r.status === "queued" || r.status === "running") e.actif = true;
+      if (r.status === "done") {
+        const t = Date.parse(String(r.finished_at ?? ""));
+        if (Number.isFinite(t) && t > e.dernierDone) e.dernierDone = t;
+      }
+      if (String(r.declencheur ?? "") === "reprise_connexion") {
+        const t = Date.parse(String(r.started_at ?? r.finished_at ?? ""));
+        if (Number.isFinite(t)) e.reprises.push(t);
+      }
+      etatPar.set(uid, e);
+    }
+    const aReprendre = [...etatPar.entries()].filter(([, e]) =>
+      e.mur && !e.actif && e.finished_at && Date.parse(e.finished_at) > (e.dernierDone || 0));
+    if (aReprendre.length) {
+      const ids = aReprendre.map(([uid]) => uid);
+      const profsPar = new Map<string, { sessions: Record<string, unknown>; extVue: string | null; version: string | null }>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: profs } = await supabase
+          .from("profiles").select("id, extension_sessions, extension_last_seen_at, extension_version")
+          .in("id", ids.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of ((profs ?? []) as any[])) {
+          profsPar.set(String(p.id), {
+            sessions: (p.extension_sessions ?? {}) as Record<string, unknown>,
+            extVue: p.extension_last_seen_at ?? null,
+            version: p.extension_version ?? null,
+          });
+        }
+      }
+      // Miroir de la garde SQL : une 0.4.x entretient le heartbeat sans savoir
+      // lire un dressing — lui poser une demande la ferait dormir en file.
+      const saitLire = (v: string | null) => {
+        const p = String(v ?? "").trim().split(".").map((n) => Number.parseInt(n, 10) || 0);
+        if (!String(v ?? "").trim()) return false;
+        const min = [0, 5, 0];
+        for (let i = 0; i < 3; i++) { if ((p[i] ?? 0) !== min[i]) return (p[i] ?? 0) > min[i]; }
+        return true;
+      };
+      for (const [uid, e] of aReprendre) {
+        const prof = profsPar.get(uid);
+        if (!prof || !prof.extVue || !saitLire(prof.version)) continue;
+        const s = prof.sessions ?? {};
+        if (s.vinted !== true) continue;                       // pas connecté, ou inconnu
+        const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.vinted
+          ?? (s.checked_at as string | undefined) ?? null;
+        const vu = brut ? Date.parse(brut) : NaN;
+        if (!Number.isFinite(vu)) continue;
+        if (maintenant - vu > (FRAICHEUR_SONDE_MS.vinted ?? 60 * 60_000)) continue;
+        const arret = Date.parse(e.finished_at);
+        if (!Number.isFinite(arret) || vu <= arret) continue;  // rien de neuf depuis le mur
+        if (e.dernierDone && maintenant - e.dernierDone < 15 * 60_000) continue;   // cadence
+        if (e.reprises.some((t) => t > e.dernierDone)) continue;                   // une par épisode
+        try {
+          const { data: pose } = await supabase
+            .from("vinted_sync_runs")
+            .insert({
+              user_id: uid, kind: "dressing", status: "queued",
+              declencheur: "reprise_connexion", queued_at: new Date().toISOString(),
+            })
+            .select("id");
+          if (pose?.length) {
+            dressingsRepris++;
+            console.log(`[handler-watch] dressing de ${uid} : session Vinted revenue (sonde ${new Date(vu).toISOString()}) → remis en file`);
+          }
+        } catch (err) {
+          // L'index unique (user_id, kind) where status in (queued,running) est
+          // le juge en cas de course : son refus n'est pas une panne.
+          console.log(`[handler-watch] dressing de ${uid} : déjà un run actif — ${(err as Error)?.message ?? err}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise du dressing après reconnexion:", (e as Error)?.message ?? e);
   }
 
   // ── LES LIGNES ORPHELINES D'UN RUN MORT (2026-09-19) ──────────────────────
@@ -2337,7 +2480,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2392,7 +2535,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2446,7 +2589,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
     headers: { "Content-Type": "application/json" },
   });
 });
