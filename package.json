@@ -36,6 +36,7 @@
     "selftest:ebay-page-vendeur": "deno run scripts/ebay-page-vendeur-selftest.ts",
     "selftest:ebay-hub-rendu": "node scripts/ebay-hub-rendu-selftest.mjs",
     "selftest:ebay-categorie-message": "node scripts/ebay-categorie-message-selftest.mjs",
+    "selftest:recapture-plafond": "node scripts/recapture-plafond-selftest.mjs",
     "selftest:pages-de-job": "deno run scripts/pages-de-job-selftest.ts",
     "selftest:vocabulaire-developpeur": "deno run --allow-read scripts/vocabulaire-developpeur-selftest.ts",
     "gen:opla-catalogue": "node scripts/gen-opla-catalogue.mjs",

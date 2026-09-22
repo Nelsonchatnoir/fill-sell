@@ -17028,6 +17028,7 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
   pf.reconciliation = motif; // trace : ce succès n'a PAS été observé en direct
   delete pf.next_action_after;
   delete pf.recaptures_perimees;
+  delete pf.recapture_le;
   delete pf.recreation_retries;
   if (job.inventaire_id != null) {
     await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
@@ -17553,6 +17554,7 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     delete pf.next_action_after;
     // Republication aboutie : les diagnostics repartent de zéro.
     delete pf.recaptures_perimees;
+    delete pf.recapture_le;
     delete pf.recreation_retries;
     if (nouvelId && job.inventaire_id != null) {
       await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
@@ -18521,9 +18523,41 @@ async function processRepublishJob(job, accessToken) {
         // une republication ABOUTIE. PLAFOND À 2 recaptures automatiques :
         // au-delà, needs_user — un Chrome qui laisse expirer trois captures
         // de suite ne sera pas sauvé par une quatrième.
-        const peremptions = (Number(pf.recaptures_perimees) || 0) + 1;
-        pf.recaptures_perimees = peremptions;
-        if (peremptions > 2) {
+        //
+        // ══ LE COMPTEUR NE COMPTAIT PAS CE QUE SON NOM DIT (2026-09-22) ═════
+        // 🚨 LE CAS : seghirdeborah711, job 7fa92ebf, « Blouse FOCUS.S ».
+        //    recaptures_perimees = 5, et EN BASE l'article 9970803136 n'a
+        //    qu'UNE SEULE capture : la 6260, du 18/09, jamais remplacée.
+        //    Le compteur a donc grimpé cinq fois SANS qu'aucune capture neuve
+        //    n'ait jamais existé.
+        // POURQUOI, exactement : l'incrément était posé AVANT toute tentative,
+        // et le plafond court-circuitait la recapture. Passé 2, plus aucune
+        // recapture n'était même essayée ⇒ la capture ne pouvait plus jamais
+        // être rafraîchie ⇒ elle restait périmée ⇒ chaque passage suivant
+        // ré-incrémentait. Un cycle FERMÉ, dont rien ne pouvait sortir : le
+        // compteur ne se remet à zéro qu'à une republication aboutie, et
+        // celle-ci était devenue impossible.
+        // ⛔ ET LE MESSAGE ACCUSAIT LA PERSONNE. « Ton Chrome s'ouvre trop
+        //    longtemps après. Republie quand tu es DEVANT ton ordinateur » —
+        //    mesuré le 22/09 : le job a été relancé à 07:55, Chrome vu à 07:49
+        //    PUIS à 08:21, extension en 0.6.49, et il est retombé au même
+        //    endroit, compteur 4 → 5. Être présent ne changeait rien, parce
+        //    que le défaut était chez nous.
+        // DEUX RÈGLES :
+        //   1. LA TENTATIVE D'ABORD. Le plafond ne peut plus empêcher une
+        //      recapture d'être ESSAYÉE quand aucune n'a jamais abouti.
+        //   2. ON NE COMPTE QUE LES VRAIS CYCLES : une péremption ne compte
+        //      que si la capture périmée est une capture QUE NOUS AVONS
+        //      REFAITE (`recapture_le`). Tant qu'on n'a jamais réussi à en
+        //      poser une, le problème n'est pas que « Chrome s'ouvre trop
+        //      tard » — c'est que la recapture échoue, et ça a déjà son
+        //      message, juste en dessous.
+        const dejaRafraichie = Boolean(pf.recapture_le);
+        const peremptions = dejaRafraichie
+          ? (Number(pf.recaptures_perimees) || 0) + 1
+          : (Number(pf.recaptures_perimees) || 0);
+        if (dejaRafraichie) pf.recaptures_perimees = peremptions;
+        if (dejaRafraichie && peremptions > 2) {
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
             error: "Deux captures refaites automatiquement ont encore expiré : ton Chrome s'ouvre trop longtemps après. " +
@@ -18581,6 +18615,11 @@ async function processRepublishJob(job, accessToken) {
         // la borne de fraîcheur passera, et la suppression suivra. Même
         // logique « un geste par passage » que l'étape a_capturer.
         pf.capture_id = recap.capture_id;
+        // La marque qui rend le compteur honnête : à partir d'ici, une
+        // péremption sera bien une capture QUE NOUS AVONS REFAITE et qui a
+        // expiré — le cycle que le plafond doit attraper. Tant qu'elle est
+        // absente, aucune péremption n'est comptée.
+        pf.recapture_le = new Date().toISOString();
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
         console.log(`[background] Job ${job.id} → capture périmée recapturée (${recap.capture_id}, occurrence ${peremptions}) — suppression au prochain passage`);
         return { status: "skipped", error: "capture périmée refaite — suppression au prochain passage" };
