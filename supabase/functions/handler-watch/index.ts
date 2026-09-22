@@ -1220,6 +1220,97 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des jobs Opla parqués:", (e as Error)?.message ?? e);
   }
 
+  // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══
+  // Chantier « Me connecter ». Le mur nº1 des nouveaux inscrits, c'est une
+  // plateforme pas connectée ; le deuxième, c'est qu'après s'être reconnecté,
+  // il fallait encore retrouver chaque article et cliquer « Relancer ».
+  // Relevé du 22/09 : AUCUN mécanisme ne reprenait un job REAUTH eBay — ni le
+  // balayage 72 h, ni la garde Livres, ni la reprise Opla. Quatre jobs de
+  // pecqueux.sabine et philippaa dormaient comme ça, cinq tentatives épuisées.
+  //
+  // ⛔ ON NE REPREND QUE SUR UNE PREUVE, ET UNE PREUVE PLUS RÉCENTE QUE LE MUR.
+  //    La sonde de l'extension doit dire `true`, être FRAÎCHE, et avoir été
+  //    relevée APRÈS le blocage. Sans ce dernier point, un « true » d'avant-hier
+  //    relancerait en boucle un job bloqué ce matin — exactement la boucle que
+  //    la consigne interdit. Une sonde absente, périmée, ou `null` ne reprend
+  //    RIEN : « je ne sais pas » n'est pas « c'est revenu ».
+  // ⛔ ET SEULEMENT LES MURS DE CONNEXION. Un refus anti-robot, un challenge,
+  //    un compte sans forfait ne se règlent pas en se reconnectant : les
+  //    reprendre brûlerait des tentatives pour rien.
+  //
+  // ⚠️ MIROIR de utils/sessionsPlateformes (app) pour la fraîcheur : mêmes
+  //    bornes par plateforme, même lecture de checked_at_par_plateforme.
+  const FRAICHEUR_SONDE_MS: Record<string, number> = {
+    vinted: 60 * 60_000, leboncoin: 3 * 60 * 60_000, ebay: 3 * 60 * 60_000, beebs: 3 * 60 * 60_000,
+  };
+  // Les murs de CONNEXION, reconnus sur le texte déjà écrit par nos handlers —
+  // aucune signature neuve, aucune détection inventée.
+  const MUR_CONNEXION: Record<string, RegExp> = {
+    ebay: /^REAUTH VENTE eBay|^Connexion eBay requise/i,
+    vinted: /^Connexion Vinted requise|page de connexion à la place du formulaire|session Vinted refusée/i,
+    leboncoin: /^Connexion Leboncoin requise|^Adresse requise pour Leboncoin/i,
+    beebs: /^Connexion Beebs requise/i,
+  };
+  let reprisesConnexion = 0;
+  try {
+    const { data: bloques } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, status, error, platform_fields")
+      .in("status", ["needs_user", "failed"])
+      .in("platform", ["vinted", "leboncoin", "ebay", "beebs"])
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString());
+    // deno-lint-ignore no-explicit-any
+    const candidats = ((bloques ?? []) as any[]).filter((j) =>
+      MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")));
+    if (candidats.length) {
+      const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
+      const sessionsPar = new Map<string, Record<string, unknown>>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: profs } = await supabase
+          .from("profiles").select("id, extension_sessions").in("id", ids.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of (profs ?? []) as any[]) sessionsPar.set(String(p.id), p.extension_sessions ?? {});
+      }
+      const maintenant = Date.now();
+      for (const j of candidats) {
+        const s = sessionsPar.get(String(j.user_id)) ?? {};
+        if (s[j.platform] !== true) continue;                       // pas connecté, ou inconnu
+        const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[j.platform]
+          ?? (s.checked_at as string | undefined) ?? null;
+        const vu = brut ? Date.parse(brut) : NaN;
+        if (!Number.isFinite(vu)) continue;
+        if (maintenant - vu > (FRAICHEUR_SONDE_MS[j.platform] ?? 60 * 60_000)) continue;   // trop vieille
+        const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+        // La sonde doit être postérieure au blocage. `needs_user_tick_le` est
+        // réécrit par le balayage, donc inutilisable ; on prend la marque qu'on
+        // pose nous-mêmes, et à défaut la dernière reprise déjà faite.
+        const dejaRepris = Date.parse(String(pf.reprise_apres_connexion_le ?? ""));
+        if (Number.isFinite(dejaRepris) && vu <= dejaRepris) continue; // rien de neuf depuis
+        delete pf.needs_user_source; delete pf.needs_user_actif_ms; delete pf.needs_user_tick_le;
+        delete pf.needs_user_vu_le; delete pf.needs_user_vu_erreur; delete pf.needsUserAttempts;
+        delete pf.needsUserBoucle; delete pf.needsUserResolved; delete pf.next_action_after;
+        delete pf.error_technique; delete pf.processing_since;
+        // ⛔ `republish_step` et `erreurs_archivees` SURVIVENT : le premier dit
+        //    où en est l'annonce d'origine (une republication reprise à
+        //    'deleted' ne doit pas recapturer), le second est la mémoire.
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, j.status, "handler-watch (reprise après reconnexion)");
+        pf.reprise_apres_connexion_le = new Date(vu).toISOString();
+        const { data: maj } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", j.id)
+          .in("status", ["needs_user", "failed"])
+          .select("id");
+        if (maj?.length) {
+          reprisesConnexion++;
+          console.log(`[handler-watch] job ${j.id} (${j.platform}) : session revenue (sonde ${new Date(vu).toISOString()}) → pending`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise après reconnexion:", (e as Error)?.message ?? e);
+  }
+
   // ── LES LIGNES ORPHELINES D'UN RUN MORT (2026-09-19) ──────────────────────
   // Cas fondateur, ornellaracano le 19/09 : le run eBay de 09:11:34 écrit ses
   // lignes dans annonces_plateforme puis MEURT (« [watchdog] aucune
@@ -2030,7 +2121,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2085,7 +2176,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -2139,7 +2230,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil }), {
     headers: { "Content-Type": "application/json" },
   });
 });
