@@ -53,6 +53,10 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // dédié, la lecture des runs séparée de l'affichage.
 // components/RelevesPlateformes.jsx est SUPPRIMÉ.
 import CarteAnnoncesEnLigne from '../annonces/CarteAnnoncesEnLigne';
+// ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
+//    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
+//    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
+import { murConnexionReleve } from '../annonces/etatReleve';
 import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
@@ -2977,6 +2981,17 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // seul. (Les branches [retry403] ci-dessous deviennent inertes pour les
       // textes 403 — conservées pour le contrat RETRY403_RE et l'effet de
       // suivi pendant l'attente, qui continue de relire le run.)
+      // ⛔ LE MUR NOMMÉ PASSE DEVANT (2026-09-22). Quand la sonde a écrit
+      //    « [cause403] session_absente », on SAIT que c'est la session — pas
+      //    « 9 cas sur 10 ». On dit ce qui s'est passé, en une ligne, et le
+      //    bouton « Me connecter » rendu juste en dessous porte le geste :
+      //    plus de consigne en trois étapes, plus un mot sur le navigateur.
+      //    Un 403 qui n'est PAS nommé (bouclier anti-robot) garde son texte.
+      if (murConnexionReleve(run, 'vinted')) {
+        return { ton: 'orange', texte: fr
+          ? "Relevé Vinted arrêté : ta session Vinted n'a pas été trouvée sur ton ordinateur."
+          : "Vinted scan stopped: your Vinted session wasn't found on your computer." };
+      }
       if (brut.includes('403')) {
         return { ton: 'orange', texte: fr
           ? "Vinted n'a pas répondu à FillSell. Dans 9 cas sur 10, c'est que tu n'es pas connecté à Vinted dans ce navigateur.\n1. Ouvre vinted.fr dans un onglet du MÊME Chrome\n2. Connecte-toi\n3. Reviens ici et relance la synchronisation\nSi tu es déjà connecté, réessaie dans quelques minutes."
@@ -3172,10 +3187,22 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   //    qui a VRAIMENT changé.
   const registerEtatRef = useRef(registerEtat);
   registerEtatRef.current = registerEtat;
+  // ── LE MUR VINTED, REMONTÉ À LA CARTE « MES ANNONCES EN LIGNE » ──────────
+  // (2026-09-22) Elle ne peut PAS le voir seule : `lireDernierRunVinted` ne
+  // rend que les runs `done`, donc un relevé Vinted mort sur un 403 de session
+  // n'arrive jamais jusqu'à elle. Ici, `run` est le dernier run QUEL QUE SOIT
+  // son statut — c'est le seul endroit où ce mur se lit.
+  // ⛔ Rien pendant qu'une demande est en vol : l'échec d'avant ne décrit plus
+  //    la situation, et proposer « Me connecter » sous un relevé qui tourne
+  //    serait un contresens.
+  const murVinted = (enCours || envoi || enAttenteDistante || attenteOccupee)
+    ? null
+    : murConnexionReleve(run, 'vinted');
   const etatVintedRemonte = useMemo(() => JSON.stringify({
     enCours: !!enCours || !!envoi || !!enAttenteDistante || !!attenteOccupee,
     cadenceTexte: enCadence && cadenceTexte ? String(cadenceTexte) : null,
-  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte]);
+    murVinted: murVinted ?? null,
+  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte, murVinted]);
   useEffect(() => {
     const fn = registerEtatRef.current;
     if (typeof fn !== 'function') return;
@@ -3386,6 +3413,23 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           </div>
         );
       })()}
+
+      {/* ── « ME CONNECTER » SOUS L'AVIS (2026-09-22) ───────────────────────
+          L'ancien bouton « Synchroniser mon compte Vinted » disait « connecte-
+          toi sur vinted.fr » et s'arrêtait là : une consigne, aucun geste.
+          Trois des quatorze nouveaux inscrits arrêtés après leur relevé ont
+          pris ce mur (misschaussette07, loaneaubert10, rvkbzj5p8g). Le bouton
+          est le MÊME que partout ailleurs, et il n'apparaît que sur un mur
+          NOMMÉ — jamais sur un doute. */}
+      {murVinted && avisEnVue && (
+        <BoutonMeConnecter
+          userId={user?.id ?? null}
+          platform="vinted"
+          motif={murVinted}
+          lang={lang}
+          variante="ligne"
+        />
+      )}
 
       {/* ── Décision « boutique à confirmer » (multi-boutiques, 2026-09-03) ──
           Une QUESTION, deux réponses — jamais un écran mort. « Oui » écrit la
