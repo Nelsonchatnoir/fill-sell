@@ -8804,18 +8804,64 @@ export default function ListingPreviewScreen({
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
     if (beebsGenreBlocked) m.push(lang === "en" ? "Beebs section to choose" : "Rayon Beebs à choisir");
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
-    // Rien de coché : le BOUTON le dit déjà (« Choisis au moins une
-    // plateforme »), inutile de le répéter dans ses motifs — c est le même
-    // écran, à trois centimètres. Un seul message par idée.
+    // ── RIEN DE COCHÉ : ON LE DIT, ET ON DIT QUOI COCHER (2026-09-22) ───────
+    // 🚨 LE DÉFAUT, mail de Romain du 22/09 à 13h48 (« Donc je ne sais pas ce
+    //    que je dois compléter »), capture à l'appui. Son article Funko Star
+    //    Wars était déjà en ligne sur Beebs et Vinted ; il restait Opla, qu'il
+    //    n'avait pas cochée. `publishChips.length === 0` grisait donc le
+    //    bouton — à juste titre — mais AUCUN motif ne se posait ici : la liste
+    //    tombait vide et le filet générique en bas répondait « Un champ
+    //    obligatoire manque encore. Rouvre cette étape pour le voir. »
+    //    C'était FAUX : il ne manquait aucun champ. Il a rouvert les étapes
+    //    une à une à la recherche d'un champ qui n'existait pas.
+    // Le commentaire d'avant disait : « le BOUTON le dit déjà, un seul message
+    // par idée ». L'intention était bonne, la conséquence ne l'était pas — en
+    // ne posant RIEN, on tombait dans le filet, qui lui MENT. Et le bouton dit
+    // « Choisis au moins une plateforme » sans dire LESQUELLES sont
+    // disponibles ni pourquoi les autres sont éteintes.
+    // Ici on nomme les deux : ce qui est cochable, et ce qui ne l'est pas.
+    if (publishChips.length === 0) {
+      const offertes = Object.keys(platformListings?.platforms ?? {});
+      const verrouillees = offertes.filter(p => lockedSet.has(p));
+      const libres = offertes.filter(p => !lockedSet.has(p)
+        && platformSupport?.[p] !== "prohibited"
+        && !(lbcAdresseManquante?.plateformes ?? []).includes(p));
+      const liste = (arr) => arr.map(nomPlateforme).join(", ");
+      if (libres.length) {
+        m.push(lang === "en"
+          ? `Tick where you want to publish: ${liste(libres)}.`
+          : `Coche la plateforme où publier : ${liste(libres)}.`);
+        if (verrouillees.length) {
+          m.push(lang === "en"
+            ? `${liste(verrouillees)} — already online for this item, nothing to do there.`
+            : `${liste(verrouillees)} — déjà en ligne pour cet article, rien à y faire.`);
+        }
+      } else if (verrouillees.length) {
+        m.push(lang === "en"
+          ? `This item is already online on ${liste(verrouillees)}. There is nothing left to publish here.`
+          : `Cet article est déjà en ligne sur ${liste(verrouillees)}. Il n'y a plus rien à publier ici.`);
+      } else if (offertes.length) {
+        // Offertes mais ni libres ni verrouillées : c'est une exclusion NOMMÉE
+        // ailleurs (produit interdit, adresse de remise absente). On renvoie
+        // vers la rangée, qui porte déjà le motif sous chaque logo.
+        m.push(lang === "en"
+          ? "No platform can take this item right now — the reason is under each logo above."
+          : "Aucune plateforme ne peut prendre cet article pour l'instant — le motif est sous chaque logo, juste au-dessus.");
+      }
+    }
     if (!publishedStateLoaded) {
       m.push(lang === "en" ? "Checking your existing listings…" : "Vérification de tes annonces en cours…");
     }
-    // Filet : gris sans motif identifié = anomalie. On le DIT plutôt que de
-    // laisser un bouton mort et muet — c'est tout l'objet de ce bloc.
+    // ── LE FILET NE MENT PLUS (2026-09-22) ──────────────────────────────────
+    // Il disait « Un champ obligatoire manque encore » — une AFFIRMATION, sur
+    // un état où justement on ne sait pas. Romain a cherché ce champ pendant
+    // un quart d'heure ; il n'en manquait aucun. Un filet ne connaît pas la
+    // cause, par construction : il dit donc ce qu'il sait (le bouton est gris,
+    // c'est chez nous) et jamais ce qu'il ignore.
     if (!m.length) {
       m.push(lang === "en"
-        ? "A required field is still missing. Try reopening this step."
-        : "Un champ obligatoire manque encore. Rouvre cette étape pour le voir.");
+        ? "We can't name what is blocking — that's on us, not on your listing. Write to us and we'll unblock it."
+        : "On n'arrive pas à nommer ce qui bloque, et ça vient de chez nous — pas de ton annonce. Écris-nous, on débloque.");
     }
     return m;
   })();
@@ -9290,8 +9336,13 @@ export default function ListingPreviewScreen({
             Placé AU-DESSUS du bouton : c'est ce qu'on lit avant de cliquer, et
             le bas de l'écran est déjà mangé par la safe-area. */}
         {motifsCtaGris.length > 0 && (
-          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", fontSize:12, lineHeight:1.5, color:"#B91C1C", fontWeight:600 }}>
-            {lang === "en" ? "Can't publish yet — still missing:" : "Publication impossible — il manque encore :"}
+          /* ⛔ AMBRE, PLUS ROUGE (2026-09-22). « Publication impossible » en
+             rouge est le registre de la panne ; ici rien n'est cassé, il
+             reste un geste — cocher une plateforme, choisir une valeur. Même
+             règle que le Stock depuis ce matin : le rouge disait « c'est
+             cassé » là où il fallait lire « il te reste un geste ». */
+          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FFF6E3", border:"1px solid #EED9A6", fontSize:12, lineHeight:1.5, color:"#8A6100", fontWeight:600 }}>
+            {lang === "en" ? "One last thing before publishing:" : "Avant de publier, il reste :"}
             <ul style={{ margin:"4px 0 0", paddingLeft:18, fontWeight:600 }}>
               {motifsCtaGris.map((m, i) => <li key={i}>{m}</li>)}
             </ul>
