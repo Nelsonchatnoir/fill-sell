@@ -5,6 +5,8 @@
 import { E, DEGRADE } from './theme';
 import { Scene, Titre, Texte, Carte, BoutonPrimaire } from './EntreeUI';
 import { LIBELLE_PLATEFORME } from '../utils/stockFiltres';
+import BandesReleve from '../annonces/BandesReleve';
+import { textesAnnonces } from '../annonces/textes';
 
 // Une ligne : tuile + libellé + précision + pastille d'état. Les deux tons
 // passent 4,5:1 sur leur fond (menthe ou papier).
@@ -68,6 +70,20 @@ export default function EtapeFin({ c, T, pseudo, onTerminer }) {
         )}
         <Ligne glyphe="↻" libelle={T.finRepub} valeur={T.finRepubOu} fait={false} mot={T.finARegler} delai="210ms" />
       </Carte>
+
+      {/* ── LE MUR DE CONNEXION, DIT AVANT DE SORTIR (2026-09-22) ──────────
+          Dernier écran du parcours : c'est la dernière occasion de donner le
+          geste avant que la personne n'arrive dans un Stock qu'elle croira
+          cassé. Même composant, même détection, même bouton que partout. */}
+      <BandesReleve
+        lang={c.lang}
+        userId={c.user?.id ?? null}
+        T={textesAnnonces(c.lang)}
+        murs={c.murs}
+        reussite={c.murs.length && c.releveVinted != null
+          ? textesAnnonces(c.lang).reussiteReleve(LIBELLE_PLATEFORME.vinted ?? 'Vinted', c.releveVinted)
+          : null}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginTop: 12, padding: '13px 16px', borderRadius: 16, background: E.menthe, border: `1px solid ${E.mentheBord}` }}>
         <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 4, flexShrink: 0, background: E.teal, animation: 'enPouls 2s ease-in-out infinite' }} />

@@ -18,6 +18,8 @@
 //    ne prétendent pas montrer le stock réel, que personne ne connaît encore.
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { LIBELLE_PLATEFORME } from '../utils/stockFiltres';
+import BandesReleve from '../annonces/BandesReleve';
+import { textesAnnonces } from '../annonces/textes';
 import { E } from './theme';
 import { Scene, Kicker, Titre, Texte, BoutonPrimaire, LienDiscret, Etat } from './EntreeUI';
 
@@ -127,6 +129,23 @@ export default function EtapeReleve({ c, T, onSuivant }) {
           <Etat ok={lance}>{lance ? T.relLance : T.relEnFile}</Etat>
         </div>
       )}
+
+      {/* ── CE QUE LE RELEVÉ RENCONTRE, PENDANT QU'IL TOURNE (2026-09-22) ──
+          Une plateforme sans session remonte en quelques secondes. Plutôt que
+          de laisser la personne partir en croyant que tout va bien — puis
+          découvrir trois bandes ambre dans le Stock —, on le dit ICI, avec le
+          bouton. Le même composant que la carte du Stock : une seule vérité.
+          Rien tant qu'aucun mur n'est NOMMÉ : un relevé qui tourne n'affiche
+          pas de reproche. */}
+      <BandesReleve
+        lang={c.lang}
+        userId={c.user?.id ?? null}
+        T={textesAnnonces(c.lang)}
+        murs={c.murs}
+        reussite={c.murs.length && c.releveVinted != null
+          ? textesAnnonces(c.lang).reussiteReleve(LIBELLE_PLATEFORME.vinted ?? 'Vinted', c.releveVinted)
+          : null}
+      />
     </Scene>
   );
 }

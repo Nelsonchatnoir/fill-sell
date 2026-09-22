@@ -14,8 +14,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
-import { lireCapaciteSyncCompte, demanderSyncDressingServeur } from '../utils/vintedSync';
-import { lireSyncMultiOuverte, demanderRelevePlateforme } from '../utils/syncPlateformes';
+import { lireCapaciteSyncCompte, demanderSyncDressingServeur, lireDernierRunDressing } from '../utils/vintedSync';
+import { lireSyncMultiOuverte, demanderRelevePlateforme, lireDerniersRunsReleve } from '../utils/syncPlateformes';
+import { murConnexionReleve } from '../annonces/etatReleve';
 import { useEnvoiLienExtension } from '../hooks/useEnvoiLienExtension';
 
 // ⚠️ CES DEUX CLÉS NE CHANGENT PAS DE NOM NI DE SENS. Elles sont lues
@@ -117,6 +118,15 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
   const [syncMultiOuverte, setSyncMultiOuverte] = useState(false);
   const [releve, setReleve] = useState(() => (lireJSON(ENTREE_RELEVE_KEY, false) ? { etat: 'en_file' } : { etat: 'idle' }));
   const [ebayRelie, setEbayRelie] = useState(false);
+  // ── CE QUE LE PREMIER RELEVÉ A DONNÉ (2026-09-22) ─────────────────────────
+  // Le parcours lançait le relevé puis n'en reparlait JAMAIS : la personne
+  // arrivait dans le Stock sans savoir que Leboncoin, Beebs ou eBay n'avaient
+  // rien pu lire faute de session. C'est le premier endroit où un nouvel
+  // inscrit rencontre une plateforme non connectée — le geste doit être là.
+  // `murs` : [{ platform, motif }], déjà qualifiés. `relevéVinted` : le nombre
+  // d'annonces du dernier relevé Vinted RÉUSSI, ou null.
+  const [murs, setMurs] = useState([]);
+  const [releveVinted, setReleveVinted] = useState(null);
   // Deux faits distincts : la personne a DEMANDÉ le relevé (état 'en_file',
   // relu de ENTREE_RELEVE_KEY au montage) ; les appels sont PARTIS (ce ref).
   // Les confondre, c'est soit perdre l'intention, soit la rejouer.
@@ -182,6 +192,41 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     const id = setInterval(tick, 8000);
     return () => { vivant = false; clearInterval(id); };
   }, [userId, extensionVue]);
+
+  // Le relevé a été lancé : on relit l'état des plateformes toutes les 8 s —
+  // les MÊMES lectures que la carte du Stock, jamais une requête neuve. Le
+  // poll ne tourne que pendant le parcours et s'arrête au démontage.
+  // ⛔ Vinted se lit par `lireDernierRunDressing` (dernier run QUEL QUE SOIT
+  //    son statut) : `lireDernierRunVinted` ne rend que les runs réussis, un
+  //    mur Vinted n'y apparaîtrait jamais.
+  useEffect(() => {
+    if (!userId || releve.etat !== 'lance') return undefined;
+    let vivant = true;
+    const tick = async () => {
+      try {
+        const [runs, dressing] = await Promise.all([
+          lireDerniersRunsReleve(userId).catch(() => ({})),
+          lireDernierRunDressing(userId).catch(() => null),
+        ]);
+        if (!vivant) return;
+        const cibles = choixRef.current.plateformes;
+        const trouves = [];
+        if (cibles.includes('vinted')) {
+          const m = murConnexionReleve(dressing, 'vinted');
+          if (m) trouves.push({ platform: 'vinted', motif: m });
+        }
+        for (const p of cibles.filter((x) => x !== 'vinted')) {
+          const m = murConnexionReleve(runs?.[p] ?? null, p);
+          if (m) trouves.push({ platform: p, motif: m });
+        }
+        setMurs(trouves);
+        setReleveVinted(dressing?.status === 'done' ? Number(dressing.items_vus ?? 0) : null);
+      } catch { /* la lecture d'état ne fait jamais échouer un écran du parcours */ }
+    };
+    tick();
+    const id = setInterval(tick, 8000);
+    return () => { vivant = false; clearInterval(id); };
+  }, [userId, releve.etat]);
 
   const journaliser = useCallback((choixTrace, extra = null) => {
     if (!userId) return;
@@ -265,6 +310,7 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     extensionVue, syncMultiOuverte,
     envoi, secondesRestantes, envoyerLien,
     releve, lancerReleve,
+    murs, releveVinted,
     ebayRelie, setEbayRelie,
     journaliser, jetonRef,
   };
