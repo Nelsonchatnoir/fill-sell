@@ -43,11 +43,15 @@ const T = {
     reessayer: 'Réessayer',
     // eBay, les deux voies
     ebayTitre: 'Connecter eBay',
-    ebayIntro: 'Deux façons, au choix.',
+    ebayIntro: 'Choisis comment tes annonces eBay partent.',
     ebaySite: 'Me connecter sur eBay',
-    ebaySiteSous: 'Ouvre eBay sur ton ordinateur pour t’y connecter.',
-    ebayApi: 'Connecter par API',
-    ebayApiSous: 'Se fait depuis ce téléphone, en une fois. Recommandé.',
+    ebaySiteSous: 'Tes annonces partent depuis ton navigateur : Chrome doit rester ouvert sur ton ordinateur.',
+    // ⛔ AUCUN MOT TECHNIQUE À L'ÉCRAN (22/09, dossier Romain) : ni « API »,
+    //    ni « OAuth », ni « jeton ». Chaque voie dit ce qu'elle CHANGE pour la
+    //    personne, et la voie serveur est proposée d'office — sans être imposée.
+    ebayApi: 'Relier eBay à FillSell',
+    ebayApiSous: 'Tes annonces partent de nos serveurs. Ton ordinateur peut rester éteint.',
+    ebayApiBadge: 'Recommandé',
     fermer: 'Fermer',
   },
   en: {
@@ -69,11 +73,12 @@ const T = {
     oplaSurWeb: 'Opla is allowed from FillSell in Chrome: click the FillSell icon, then “Autoriser Opla”.',
     reessayer: 'Try again',
     ebayTitre: 'Connect eBay',
-    ebayIntro: 'Two ways, your choice.',
+    ebayIntro: 'Choose how your eBay listings go out.',
     ebaySite: 'Sign in on eBay',
-    ebaySiteSous: 'Opens eBay on your computer so you can sign in.',
-    ebayApi: 'Connect with API',
-    ebayApiSous: 'Done from this phone, in one go. Recommended.',
+    ebaySiteSous: 'Your listings go out from your browser: Chrome has to stay open on your computer.',
+    ebayApi: 'Link eBay to FillSell',
+    ebayApiSous: 'Your listings go out from our servers. Your computer can stay off.',
+    ebayApiBadge: 'Recommended',
     fermer: 'Close',
   },
 };
@@ -291,7 +296,7 @@ function ModaleEbayDeuxVoies({ t, onSite, onApi, onFermer, busyApi, lienSite }) 
         </div>
 
         <VoieEbay
-          titre={t.ebayApi} sous={t.ebayApiSous} principal
+          titre={t.ebayApi} sous={t.ebayApiSous} principal badge={t.ebayApiBadge}
           onClick={onApi} disabled={busyApi} libelleEnCours="…"
         />
         {/* Sur le WEB, la voie « site » est un lien direct — instantane, aucune file. */}
@@ -311,7 +316,7 @@ function ModaleEbayDeuxVoies({ t, onSite, onApi, onFermer, busyApi, lienSite }) 
   );
 }
 
-function VoieEbay({ titre, sous, onClick, principal = false, disabled = false, libelleEnCours, lien = null, onLien }) {
+function VoieEbay({ titre, sous, onClick, principal = false, disabled = false, libelleEnCours, lien = null, onLien, badge = null }) {
   const Balise = lien ? "a" : "button";
   const propres = lien
     ? { href: lien, target: "_blank", rel: "noopener noreferrer", onClick: onLien }
@@ -329,7 +334,19 @@ function VoieEbay({ titre, sous, onClick, principal = false, disabled = false, l
         display: 'flex', flexDirection: 'column', gap: 3,
       }}
     >
-      <span style={{ fontSize: 14.5, fontWeight: 700 }}>{disabled ? libelleEnCours ?? titre : titre}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 14.5, fontWeight: 700 }}>{disabled ? libelleEnCours ?? titre : titre}</span>
+        {badge && (
+          <span style={{
+            fontSize: 10.5, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
+            padding: '2px 8px', borderRadius: 999,
+            background: principal ? 'rgba(255,255,255,.22)' : `${UI.teal}1A`,
+            color: principal ? '#fff' : UI.tealDeep,
+          }}>
+            {badge}
+          </span>
+        )}
+      </span>
       <span style={{ fontSize: 12.5, lineHeight: 1.45, opacity: principal ? 0.9 : 1, color: principal ? '#fff' : UI.mute2 }}>
         {sous}
       </span>
