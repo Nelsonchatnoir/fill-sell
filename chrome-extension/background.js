@@ -9671,9 +9671,8 @@ async function sonderSessionEbay() {
 // la minute sur « session ebay : page de connexion ». La sonde n'avait pas
 // tort — elle ne répondait simplement pas à la question posée.
 //
-// Trois issues nommées, jamais devinées :
-//   · signin.ebay.*  → 'reauth'   reconnexion de sécurité (le compte EST
-//                                 connecté, eBay redemande une preuve) ;
+// Cette sonde n'OBSERVE que la porte, elle ne conclut pas :
+//   · signin.ebay.*  → 'signin'   la porte renvoie vers une connexion ;
 //   · /fpa/upgrade   → 'upgrade'  compte pas (encore) vendeur ;
 //   · ebay.fr + /sh/ → connecté, le relevé peut passer.
 // Tout le reste, 401/403 compris, rend null : on n'affirme rien.
@@ -9684,11 +9683,29 @@ async function sonderHubVenteEbay() {
     credentials: "include", redirect: "follow",
   });
   const u = new URL(r.url);
-  if (/(^|\.)signin\.ebay\./i.test(u.hostname)) return { etat: false, http: r.status, mur: "reauth" };
+  if (/(^|\.)signin\.ebay\./i.test(u.hostname)) return { etat: false, http: r.status, mur: "signin" };
   if (/\/fpa\/upgrade/i.test(u.pathname)) return { etat: false, http: r.status, mur: "upgrade" };
   if (r.status === 401 || r.status === 403) return { etat: null, http: r.status, mur: null };
   const ok = /(^|\.)ebay\.fr$/.test(u.hostname) && /^\/sh\//.test(u.pathname);
   return { etat: ok ? true : null, http: r.status, mur: null };
+}
+
+// ── « SIGNIN » NE VEUT PAS DIRE « RECONNEXION DE SÉCURITÉ » ─────────────────
+// Une personne simplement DÉCONNECTÉE d'eBay est renvoyée vers signin, comme
+// celle qui subit le step-up. Les deux murs se ressemblent au Hub et appellent
+// des gestes différents : « Me connecter » pour l'une, « Me reconnecter » pour
+// l'autre. Ce qui les sépare, c'est l'AUTRE porte — celle de la publication :
+//   · elle répond → la session de navigation est vivante, donc c'est bien un
+//     step-up de sécurité ;
+//   · elle bute aussi → la personne n'est pas connectée, tout simplement ;
+//   · elle ne dit rien → on ne prétend PAS à une reconnexion de sécurité qu'on
+//     ne peut pas prouver. « Me connecter » est le geste sûr : il sert dans les
+//     deux cas, il n'accuse personne, et il ne renvoie pas quelqu'un chercher
+//     une alerte de sécurité qui n'existe pas.
+function classerMurHubEbay(hub, session) {
+  if (hub?.mur === "upgrade") return "upgrade";
+  if (hub?.mur !== "signin") return null;
+  return session?.etat === true ? "reauth" : "connexion";
 }
 
 // Le SEUL endroit où ce libellé s'écrit — c'est lui que teste le déclencheur de
@@ -9925,7 +9942,9 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // l'écran propose le bon geste au lieu d'un « connecte-toi » à quelqu'un
     // qui est déjà connecté.
     ebay_hub: ebayHub.etat,
-    ebay_hub_mur: ebayHub.mur ?? null,
+    // Classé avec l'AUTRE porte : « signin » seul ne dit pas si la personne
+    // est déconnectée ou seulement re-challengée.
+    ebay_hub_mur: classerMurHubEbay(ebayHub, ebay),
     // Boutique Vinted connectée (multi-boutiques, 2026-09-03) — null quand la
     // sonde n'a pas pu la lire (401 ambigu compris). L'app l'affiche telle
     // quelle, jamais un repli sur une identité mémorisée.
@@ -12201,9 +12220,16 @@ async function releverAnnoncesPlateforme(platform) {
         // rien, et c'est exactement ce qui est arrivé le 22/09. On interroge
         // la porte du Hub pour NOMMER le mur, et on pose le marqueur que l'app
         // lit pour choisir le bon bouton (« Me reconnecter », « Ouvrir eBay »).
+        // Les DEUX portes, parce qu'une seule ne suffit pas à trancher entre
+        // « pas connecté » et « reconnexion de sécurité » (cf.
+        // classerMurHubEbay). Best-effort : si l'une des deux ne répond pas,
+        // on ne nomme rien et l'app retombe sur « Me connecter ».
         let mur = null;
         if (platform === "ebay") {
-          mur = await sonderHubVenteEbay().then((s) => s.mur).catch(() => null);
+          mur = await Promise.all([
+            sonderHubVenteEbay().catch(() => null),
+            sonderSessionEbay().catch(() => null),
+          ]).then(([hub, session]) => classerMurHubEbay(hub, session)).catch(() => null);
         }
         return { annonces: [...annonces.values()], complet: false, absente: true,
           erreur: `session ${platform} : page de connexion${mur ? ` [mur:${mur}]` : ""}` };
