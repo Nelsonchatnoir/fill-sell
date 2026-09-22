@@ -11995,12 +11995,35 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       };
       let totalEnLigne = null;
       let surLaListe = true;
+      // ── UN COMPTE VIDE N'EST PAS UN ÉCHEC (2026-09-23, m0nc3f) ───────────
+      // eBay ÉCRIT lui-même qu'il n'y a rien : « Vous n'avez aucune annonce en
+      // cours. » (relevé LIVE le 23/09 : la phrase est présente sur une liste
+      // vide, ABSENTE dès qu'une ligne s'affiche — vérifié dans les deux sens
+      // sur le même compte). C'est ce qu'il DIT qui fait foi, pas l'absence de
+      // compteur : le titre « Gérer les annonces en cours(N) » est rendu par
+      // le client et peut n'être pas encore peint.
+      // Leboncoin a sa propre phrase (« Vous n'avez pas encore d'annonce »),
+      // lue ici aussi pour la même raison.
+      const PAGE_DIT_VIDE = {
+        ebay: /vous n'avez aucune annonce en cours|you don't have any active listings|no active listings/i,
+        leboncoin: /vous n'avez pas encore d'annonce|aucune annonce en ligne/i,
+      };
+      const lireVide = () => {
+        const re = PAGE_DIT_VIDE[plateforme];
+        return re ? re.test(document.body?.innerText ?? "") : false;
+      };
+      let pageDitVide = false;
       if (plateforme === "leboncoin" || plateforme === "ebay") {
         const limiteCompteur = Date.now() + 5000;
         totalEnLigne = lireTotal();
-        while (totalEnLigne === null && Date.now() < limiteCompteur) {
+        pageDitVide = lireVide();
+        // On s'arrête dès que la page a parlé — par son compteur OU par sa
+        // phrase de liste vide. Attendre 5 s un compteur qui ne viendra jamais
+        // sur un compte sans annonce, c'est le faire échouer pour rien.
+        while (totalEnLigne === null && !pageDitVide && Date.now() < limiteCompteur) {
           await dormir(400);
           totalEnLigne = lireTotal();
+          pageDitVide = lireVide();
         }
         // ⚠️ Le compteur absent ne veut PAS dire la même chose des deux côtés.
         // Leboncoin : la liste n'a pas été rendue (redirection PRO, challenge)
@@ -12193,7 +12216,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null, vues: stats.vues, favoris: stats.favoris });
       }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
-      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe, defilement };
+      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe, pageDitVide, defilement };
     },
     args: [pattern.source, platform],
   });
@@ -12201,7 +12224,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
 }
 
 // Le relevé d'UNE plateforme, page par page, borné. Rend { annonces, complet }.
-async function releverAnnoncesPlateforme(platform) {
+async function releverAnnoncesPlateforme(platform, { token = null, userId = null } = {}) {
   const annonces = new Map();
   let complet = true;
   const illisibles = { prix: 0, titre: 0 }; // ce que le relevé n'a PAS su lire (jamais deviné)
@@ -12218,6 +12241,8 @@ async function releverAnnoncesPlateforme(platform) {
   // le donne, et lui seul. `beebsIndexMotif` porte la raison quand il se tait :
   // un index muet n'est pas un dressing vide.
   let beebsTotalIndex = null;
+  // La plateforme a-t-elle ÉCRIT qu'elle n'a aucune annonce ? (2026-09-23)
+  let pageDitVide = false;
   let beebsIndexMotif = null;
   // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
   // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
@@ -12323,6 +12348,9 @@ async function releverAnnoncesPlateforme(platform) {
         if (r.surLaListe === false) lbcListeRendue = false;
       }
       if (platform === "ebay" && Number.isFinite(r.totalEnLigne)) ebayTotalEnCours = r.totalEnLigne;
+      // La plateforme a ÉCRIT qu'elle n'a rien : on le retient pour le juge de
+      // couverture, qui en fera un relevé réussi à 0 (cf. plus bas).
+      if (r.pageDitVide === true) pageDitVide = true;
       if (r.defilement) defilements.push(r.defilement);
       // ── eBAY : LA PAGE SUIVANTE SE CONSTRUIT, ELLE NE SE CHERCHE PAS ───────
       // On ne dépend PAS du lien « suivant » de la page (le Hub n'en expose
@@ -12439,9 +12467,59 @@ async function releverAnnoncesPlateforme(platform) {
         : "l'index public de Beebs n'a pas rendu de total exact",
     },
   };
+  // ══════════════════════════════════════════════════════════════════════════
+  // UN COMPTE VIDE EST UN RELEVÉ RÉUSSI À 0, PAS UN ÉCHEC (2026-09-23)
+  // ══════════════════════════════════════════════════════════════════════════
+  // m0nc3f, inscrit le 22/09 à 22:59 : son relevé eBay de 23:49 est parti en
+  // ROUGE — « le Hub vendeur n'a pas rendu son compteur », 0 annonce vue. Ses
+  // relevés Vinted et Leboncoin, eux, sont passés. Il n'a tout simplement
+  // aucune annonce eBay. Même travers que les relevés Vinted « réussis à 0 »
+  // corrigés le 22/09 : un compte vide n'est pas une panne.
+  //
+  // CE QUI REND LA CONCLUSION SÛRE : le rôle d'« incomplet » est d'empêcher
+  // qu'on date des disparitions sur ce qu'on n'a pas vu. Quand on ne connaît
+  // AUCUNE annonce de cette plateforme pour ce compte, il n'y a rien à dater —
+  // « incomplet » ne protège plus personne, il ne fait que peindre en rouge un
+  // compte qui va très bien.
+  //
+  // ⛔ LE GARDE-FOU DE NICO, ET IL PASSE AVANT TOUT LE RESTE : si l'inventaire
+  //    connaît déjà des annonces de cette plateforme pour ce compte et que la
+  //    page en montre 0, ce n'est PAS un compte vide — c'est une page qu'on
+  //    n'a pas su lire. On reste en (c), incomplet, et rien n'est conclu.
   let erreurCouverture = null;
+  let vide = null; // note neutre quand le compte n'a tout simplement rien
   const juge = COUVERTURE[platform];
-  if (juge) {
+  const rienVu = annonces.size === 0;
+  let comptePeutEtreVide = false;
+  if (juge && rienVu) {
+    let dejaConnues = null; // null = lecture impossible → on ne conclut rien
+    try {
+      if (!token || !userId) throw new Error("jeton ou compte absent");
+      const rows = await restRequest(
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.${platform}` +
+        `&status=eq.published&action=neq.delete&select=id&limit=1`,
+        token,
+      );
+      dejaConnues = Array.isArray(rows) ? rows.length : null;
+    } catch (e) {
+      console.warn(`[releve][${platform}] annonces connues illisibles (${e?.message ?? e}) — on ne conclut pas « compte vide »`);
+    }
+    comptePeutEtreVide = dejaConnues === 0;
+    if (dejaConnues > 0) {
+      console.log(`[releve][${platform}] 0 annonce vue MAIS des annonces connues en base — incomplet, rien n'est conclu disparu`);
+    }
+  }
+  if (juge && rienVu && comptePeutEtreVide) {
+    // (a) la plateforme l'ÉCRIT, ou son compteur dit 0 → aucune annonce, et on
+    //     le dit en vert. (b) elle n'a rien écrit du tout (pas encore d'espace
+    //     vendeur, page qui ne rend rien) → même verdict : il n'y a rien à
+    //     perdre, et une info neutre vaut mieux qu'un rouge faux.
+    const explicite = pageDitVide || juge.total === 0;
+    vide = explicite
+      ? "aucune annonce en ligne sur cette plateforme — rien à relever"
+      : "aucune annonce trouvée, et aucune n'était connue pour ce compte — rien à relever";
+    console.log(`[releve][${platform}] relevé réussi à 0 (${explicite ? "la page le dit" : "aucune annonce connue"})`);
+  } else if (juge) {
     if (!juge.listeRendue) {
       complet = false;
       erreurCouverture = `${juge.absent} — rien n'est conclu disparu`;
@@ -12462,7 +12540,7 @@ async function releverAnnoncesPlateforme(platform) {
         + (Number.isFinite(d.cible) ? ` sur ${d.cible} annoncée(s)` : "")
         + ` — arrêt ${d.arret}`).join(" | ")
     : null;
-  return { annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, defilement: defilementResume };
+  return { annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, vide, defilement: defilementResume };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -13174,7 +13252,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       if (!run) return { ok: false, reason: "run_non_cree" };
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
-    const { annonces, complet, erreur, illisibles, absente, defilement } = await releverAnnoncesPlateforme(platform);
+    const { annonces, complet, erreur, illisibles, absente, vide, defilement } = await releverAnnoncesPlateforme(platform, { token, userId });
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -13235,11 +13313,14 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     //    interdit déjà de dater la moindre disparition sur un relevé pareil.
     const rienARelever = absente === true && annonces.length === 0;
     const fin = {
-      status: rienARelever ? "absente" : (annonces.length === 0 && (erreur || !complet) ? "failed" : "done"),
+      // ⛔ `vide` gagne sur tout : un compte sans annonce est un relevé RÉUSSI
+      //    à 0 (2026-09-23, m0nc3f). Il ne porte donc ni « failed », ni le
+      //    préfixe « [incomplet] » que lit rapprocher_releve.
+      status: rienARelever ? "absente" : (annonces.length === 0 && !vide && (erreur || !complet) ? "failed" : "done"),
       finished_at: maintenant(), updated_at: maintenant(),
       items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
       total_entries: annonces.length,
-      erreur: [erreur ? `[incomplet] ${erreur}` : (!complet ? "[incomplet] borne de pagination atteinte" : null),
+      erreur: [vide ? `[vide] ${vide}` : (erreur ? `[incomplet] ${erreur}` : (!complet ? "[incomplet] borne de pagination atteinte" : null)),
                // Le défilement patient (LOT 2), TOUJOURS dit — y compris quand
                // il a tout vu : c'est la seule trace qui prouve qu'il a mordu.
                defilement ? `[défilement] ${defilement}` : null,

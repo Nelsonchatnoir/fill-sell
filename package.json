@@ -64,7 +64,8 @@
     "selftest:lbc-maison-jardin-secours": "node scripts/lbc-maison-jardin-secours-selftest.mjs",
     "selftest:ebay-parcours": "node scripts/ebay-parcours-selftest.mjs",
     "selftest:chaussure-malgre-le-mot": "node scripts/chaussure-malgre-le-mot-selftest.mjs",
-    "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs"
+    "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs",
+    "selftest:releve-compte-vide": "node scripts/releve-compte-vide-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
