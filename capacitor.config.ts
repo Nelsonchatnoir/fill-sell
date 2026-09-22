@@ -13,11 +13,24 @@ const config: CapacitorConfig = {
   // ios/App/App/Info.plist, pas ici.)
   plugins: {
     SplashScreen: {
-      // 2000 ms n'est plus la durée réelle : App.jsx appelle SplashScreen.hide()
-      // au premier render, bien avant. Ce couple est voulu — launchAutoHide:true
-      // + launchShowDuration = PLAFOND de sécurité si le render n'arrive jamais
-      // (un splash sans plafond = écran bloqué, pas une lenteur).
-      launchAutoHide: true,
+      // ⛔ launchAutoHide PASSE À false (2026-09-22) — EXIGENCE DU PLUGIN.
+      // `autoSplashscreen` (CapacitorUpdater, plus bas) ne s'active QUE si le
+      // splash n'est pas auto-masqué : c'est lui qui doit tenir l'écran
+      // pendant que la mise à jour du premier lancement s'applique. Avec
+      // launchAutoHide:true, le splash tombait au bout de launchShowDuration
+      // et la personne voyait la webview se recharger sous ses yeux.
+      //
+      // ⚠️ ON PERD LE PLAFOND `launchShowDuration` (ignoré quand l'auto-hide
+      //    est coupé). Deux ceintures le remplacent, et il en faut DEUX parce
+      //    qu'un splash sans fin est un écran bloqué :
+      //      1. `autoSplashscreenTimeout` (10 s) — le plugin rend la main même
+      //         si le téléchargement traîne, et reporte la pose au prochain
+      //         passage en arrière-plan ;
+      //      2. `SplashScreen.hide()` dans App.jsx, au premier render. VÉRIFIÉ
+      //         le 22/09 : sur natif, `/` redirige vers `/login`, qui monte
+      //         <App loginOnly> — et `/app` monte <App>. Les deux seules
+      //         portes d'entrée natives montent donc App, et l'effet part.
+      launchAutoHide: false,
       launchShowDuration: 2000,
       // Fondu du splash système Android 12+ à la fermeture (l'API launch ignore
       // le fadeOutDuration passé à hide() — c'est CETTE clé qui agit là-bas).
@@ -40,13 +53,40 @@ const config: CapacitorConfig = {
     // tel quel). La clé API Capgo ne sert QU'AU CLI, à l'upload d'un bundle,
     // côté CI — jamais embarquée dans le binaire.
     CapacitorUpdater: {
-      // 'atBackground' = le défaut du plugin, et le moins brutal : le bundle
-      // est téléchargé en tâche de fond, puis appliqué au PROCHAIN passage en
-      // arrière-plan. L'utilisateur ne voit jamais l'app se recharger sous ses
-      // doigts en pleine publication. ('always' appliquerait immédiatement à
-      // chaque retour au premier plan — à proscrire ici : un cross-post en
-      // cours ne doit pas être interrompu par un rechargement de webview.)
-      autoUpdate: 'atBackground',
+      // ══ LE NOUVEL INSCRIT DÉMARRE SUR LE CODE DU JOUR (2026-09-22) ══════
+      // MESURÉ : 26 inscrits depuis le 20/09 ont fait TOUTE leur première
+      // session sur le bundle du 16/09 embarqué dans le binaire 2.7 — ancien
+      // parcours d'entrée, ancien bouton « Synchroniser mon compte Vinted »,
+      // premier relevé compris. 4 d'entre eux n'ont JAMAIS basculé (aucune
+      // seconde session), dont un avec 11 gestes journalisés. Pour ceux qui
+      // ont basculé : médiane ~6 h, jusqu'à 45 h.
+      // Cause : 'atBackground' télécharge au lancement mais n'APPLIQUE qu'au
+      // prochain passage en arrière-plan. Le premier lancement — le seul qui
+      // décide si la personne reste — se fait donc toujours en retard.
+      //
+      // 'atInstall' = applique TOUT DE SUITE, mais uniquement après une
+      // installation fraîche ou une mise à jour du store ; ensuite le plugin
+      // reprend exactement le comportement 'atBackground'.
+      // ⛔ CE N'EST PAS 'always' NI 'onLaunch', et c'est le cœur du réglage :
+      //    'always' recharge la webview à CHAQUE retour au premier plan, et
+      //    'onLaunch' à chaque démarrage à froid — les deux peuvent couper un
+      //    cross-post en vol ou vider un formulaire en pleine saisie. Avec
+      //    'atInstall' il n'existe qu'UN seul rechargement possible, celui du
+      //    tout premier lancement, quand il n'y a encore ni saisie ni file.
+      autoUpdate: 'atInstall',
+      // Le splash tient l'écran pendant ce rechargement-là : ni écran blanc,
+      // ni webview qui se recharge à vue. Exige launchAutoHide:false (ci-dessus).
+      autoSplashscreen: true,
+      // Un indicateur natif pendant le téléchargement. Le splash reste muet
+      // par ailleurs (showSpinner:false) : ce loader-ci ne se montre QUE
+      // pendant une mise à jour directe, donc au premier lancement — quelques
+      // secondes d'attente sans rien à l'écran se lisent comme un plantage.
+      autoSplashscreenLoader: true,
+      // La borne qui interdit le splash sans fin : passé ce délai, le plugin
+      // rend la main, l'app démarre sur le bundle embarqué, et la mise à jour
+      // s'appliquera au prochain passage en arrière-plan — le comportement
+      // d'avant, jamais un blocage.
+      autoSplashscreenTimeout: 10000,
       // Le canal doit EXISTER sous ce nom exact côté Capgo, sinon le serveur
       // ne renvoie jamais de bundle et les updates ne partent tout simplement
       // pas — en silence, sans erreur visible côté app.
