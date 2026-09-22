@@ -31,7 +31,12 @@ async function avec(mot, plateforme, { famille = null, estLivre = false, genre =
       const dedans = (await feuillesDuNoeud(maison, plateforme)).map((f) => ({ chemin: f.chemin, id: f.id }));
       const cle = (c) => c.chemin.join(' > ');
       const vus = new Set(dedans.map(cle));
-      candidats = [...dedans, ...candidats.filter((c) => !vus.has(cle(c)))].slice(0, 20);
+      // ⚠️ MIROIR EXACT de resolutionPublication.js (bloc « LE PLAFOND DE 20 NE
+      //    DOIT PAS AMPUTER LA MAISON »). Les deux bougent ensemble, sinon ce
+      //    test cesse de dire ce que fait la prod.
+      const MAISON_LISIBLE_MAX = 80;
+      const plafond = dedans.length <= MAISON_LISIBLE_MAX ? Math.max(20, dedans.length) : 20;
+      candidats = [...dedans, ...candidats.filter((c) => !vus.has(cle(c)))].slice(0, plafond);
     }
   }
   return { certitude, horsMaison, candidats };
@@ -52,15 +57,29 @@ titre('1. La maison des livres — on ne conclut que là où elle existe');
     vinted: 'Livres et médias > Livres',
     beebs: 'Jeux, jouets et loisirs > Livres',
     leboncoin: null,   // « Livres » y est une FEUILLE, pas un nœud
-    ebay: null,        // l'arbre eBay ne porte pas ce nœud
+    // eBay : on a longtemps écrit « l'arbre eBay ne porte pas ce nœud ».
+    // C'était FAUX (mesuré le 22/09) : il le porte, il l'écrit juste autrement.
+    // « Livres, BD, revues » est une RACINE de 64 feuilles. La croyance
+    // inverse a laissé partir le Hawking d'ornellaracano au rayon modélisme
+    // ferroviaire — cf. le bloc 8.
+    ebay: 'Livres, BD, revues',
   };
   for (const p of PF) {
     const m = await maisonDesLivres(p);
     ok(`${p} → ${attendu[p] ?? '(aucune, on ne conclut rien)'}`, (m ? m.join(' > ') : null) === attendu[p]);
   }
-  for (const p of ['opla', 'vinted', 'beebs']) {
+  for (const p of ['opla', 'vinted', 'beebs', 'ebay']) {
     const n = (await feuillesDuNoeud(await maisonDesLivres(p), p)).length;
     ok(`${p} : la maison a des feuilles (${n})`, n >= 8);
+  }
+  // ⛔ LE REPLI NE DOIT JAMAIS PASSER DEVANT L'EXACT. Chez Vinted, « Livres et
+  //    médias » PORTE le mot (20 feuilles, CD et DVD compris) alors que
+  //    « Livres et médias > Livres » l'EST (8 feuilles) : c'est le second qui
+  //    est la maison d'un livre. Si l'ordre s'inversait, ce contrôle tombe.
+  {
+    const m = await maisonDesLivres('vinted');
+    ok('vinted : le nœud qui EST le mot gagne sur celui qui le PORTE',
+      m.join(' > ') === 'Livres et médias > Livres');
   }
 }
 
@@ -162,6 +181,46 @@ titre('7. noeudDuMot ne prend jamais une FEUILLE pour une maison');
   ok('un mot inconnu ne rend aucune maison', (await noeudDuMot('zzzinconnu', 'opla')) === null);
   ok('un mot vide non plus', (await noeudDuMot('', 'opla')) === null);
   ok('sortDeLaMaison sans maison = null (on ne conclut rien)', sortDeLaMaison(['a'], null) === null);
+}
+
+// ── 8. LE CAS ORNELLA — UN LIVRE AU RAYON MODÉLISME FERROVIAIRE ──────────
+titre('8. « livre » sur eBay — jobs 41f00503 (Hawking) et 7c22f64b (Twilight)');
+{
+  // Le fait qui a tout produit : sur les 3 906 feuilles d'eBay, UNE SEULE
+  // porte le libellé « Livres », et c'est celle du modélisme ferroviaire.
+  // Correspondance exacte + unique ⇒ certitude ⇒ source certaine ⇒ elle prime
+  // sur l'icône 📚 (171228), qui était juste.
+  const feuilles = await feuillesDe('ebay');
+  const exactes = feuilles.filter((f) => /^livres?$/i.test(String(f.chemin[f.chemin.length - 1]).trim()));
+  ok('une seule feuille eBay s\'appelle « Livres »', exactes.length === 1);
+  ok('…et c\'est la 9049, sous Modélisme ferroviaire',
+    exactes[0]?.id === '9049' && exactes[0]?.chemin[0] === 'Jouets et jeux');
+
+  const a = await sans('livre', 'ebay', { famille: null });
+  ok('AVANT : certitude posée sur la feuille du modélisme',
+    a.certitude?.id === '9049');
+
+  const b = await avec('livre', 'ebay', { famille: null, estLivre: true });
+  ok('APRÈS : la certitude tombe — le mot décrit l\'objet, pas ce rayon-là', b.certitude === null);
+  ok('APRÈS : c\'est bien la sortie de maison qui l\'a retirée', b.horsMaison === true);
+  const chemins = b.candidats.map((c) => c.chemin.join(' > '));
+  ok('APRÈS : les candidates viennent de « Livres, BD, revues »',
+    chemins.length > 0 && chemins.every((c) => c.startsWith('Livres, BD, revues')));
+  ok('APRÈS : « Non-fiction » (171243, celle qu\'eBay proposait) est dans la liste',
+    b.candidats.some((c) => c.id === '171243'));
+  ok('APRÈS : la feuille du modélisme n\'est plus candidate',
+    !b.candidats.some((c) => c.id === '9049'));
+
+  // ⛔ NON-RÉGRESSION : un VRAI article de modélisme ferroviaire doit toujours
+  //    pouvoir aller dans ce rayon. La règle ne tire que sur une fiche dont la
+  //    famille dit « livre » — jamais sur les autres.
+  const c = await sans('catalogue', 'ebay', { famille: null });
+  ok('un « catalogue » de modélisme garde sa feuille (la règle ne tire pas)',
+    c.certitude?.chemin?.[1] === 'Modélisme ferroviaire');
+  const d = await avec('montre', 'ebay', { famille: null, estLivre: false });
+  const e = await sans('montre', 'ebay', { famille: null });
+  ok('« montre » sur eBay : strictement identique avec et sans la règle',
+    JSON.stringify(d.certitude?.chemin ?? null) === JSON.stringify(e.certitude?.chemin ?? null));
 }
 
 console.log(`\n${ko === 0 ? '✅ Le mot ne décide plus quand il décrit le sujet, et la bonne réponse est dans la liste.' : `❌ ${ko} test(s) en échec.`}`);

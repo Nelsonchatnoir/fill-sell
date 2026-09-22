@@ -178,8 +178,28 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   if ("choix" in categorie) {
     const mappee = String(pf.ebayCategoryId ?? "").trim();
     const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
-    const feuille = (chemin: string[]) => String(chemin[chemin.length - 1] ?? "").trim();
-    const racine = (chemin: string[]) => String(chemin[0] ?? "").trim();
+    // ══ LE DERNIER SEGMENT NE DIT PAS OÙ ON RANGE (2026-09-22) ══════════════
+    // Le message écrivait « l'app en "Livres" ». Le chemin complet était
+    // « Jouets et jeux > Modélisme ferroviaire > Livres et guides > Livres » :
+    // un rayon de livres de MODÉLISME FERROVIAIRE. Lu au dernier segment, le
+    // choix de l'app paraissait irréprochable — personne ne pouvait voir
+    // l'absurdité, et le Hawking d'ornellaracano est parti là (307191964555).
+    // ⛔ LA RACINE NE TOMBE JAMAIS. On sert le chemin entier tant qu'on tient
+    //    sous les 300 caractères (au-delà, humanizeJobError remplace tout le
+    //    message par « un imprévu technique » et le choix n'est jamais vu) ;
+    //    sinon on élide le MILIEU, jamais les deux bouts.
+    const chemin = (c: string[]) => c.map((s) => String(s ?? "").trim()).filter(Boolean);
+    const complet = (c: string[]) => chemin(c).join(" › ");
+    const abrege = (c: string[]) => {
+      const p = chemin(c);
+      return p.length <= 2 ? p.join(" › ") : `${p[0]} › … › ${p[p.length - 1]}`;
+    };
+    // Dernier recours : la racine seule. Elle suffit encore à dire « ce n'est
+    // pas le bon rayon » — c'est la seule chose qu'on refuse de perdre.
+    const racine = (c: string[]) => {
+      const p = chemin(c);
+      return p.length <= 1 ? (p[0] ?? "") : `${p[0]} › …`;
+    };
     const top = categorie.choix[0];
     const topChemin = top ? top.chemin.split(" > ") : [];
     // ≤ 300 caractères, sans identifiant ni marqueur technique : au-delà,
@@ -192,10 +212,30 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     // refusé par le contrôle de famille de l'app (sansMapping) n'est jamais
     // présenté comme une option.
     const sansMapping = !mappee || Boolean((categorie as { sansMapping?: boolean }).sansMapping);
+    // Chemins entiers d'abord ; on ne retombe sur la forme élidée que si le
+    // message dépasse la borne — et la racine survit dans les deux formes.
+    const aConfirmer = (ebay: string, app: string) =>
+      `Catégorie eBay à confirmer : eBay range cet article en « ${ebay} », l'app en « ${app} », probablement à tort. ` +
+      `Relance pour prendre celle d'eBay ; sinon change l'icône ou le genre avant de relancer.`;
+    const sansSur = (app: string) =>
+      `Aucune catégorie eBay sûre pour cet article : celle de l'app (« ${app} ») est hors du rayon de l'objet, ` +
+      `et eBay n'en propose pas de meilleure. Change l'icône ou le genre de l'article, puis relance.`;
+    // ⛔ LA CASCADE DESCEND PAR LE CÔTÉ eBAY D'ABORD. C'est le chemin de
+    //    L'APP qui doit survivre entier le plus longtemps : c'est lui qui
+    //    révèle l'anomalie (« Modélisme ferroviaire »), celui d'eBay n'est
+    //    qu'une proposition. Et `premierQuiTient` garantit une sortie bornée
+    //    même si les deux chemins sont démesurés.
+    const premierQuiTient = (formes: string[]) =>
+      formes.find((s) => s.length <= 300) ?? `${formes[formes.length - 1].slice(0, 297)}...`;
     const msg = !sansMapping
-      ? `Catégorie eBay à confirmer : eBay classe cet article en « ${feuille(topChemin)} » (${racine(topChemin)}), l'app en « ${feuille(cheminMappe)} », probablement à tort. Relance pour publier dans la catégorie d'eBay ; pour une autre catégorie, change l'icône ou le genre de l'article avant de relancer.`
+      ? premierQuiTient([
+          aConfirmer(complet(topChemin), complet(cheminMappe)),
+          aConfirmer(abrege(topChemin), complet(cheminMappe)),
+          aConfirmer(abrege(topChemin), abrege(cheminMappe)),
+          aConfirmer(racine(topChemin), racine(cheminMappe)),
+        ])
       : mappee
-        ? `Aucune catégorie eBay sûre pour cet article : celle de l'app (« ${feuille(cheminMappe)} ») est hors du rayon de l'objet et eBay n'en propose pas de meilleure. Change l'icône ou le genre de l'article depuis la fiche, puis relance.`
+        ? premierQuiTient([sansSur(complet(cheminMappe)), sansSur(abrege(cheminMappe)), sansSur(racine(cheminMappe))])
         : `Aucune catégorie eBay n'a pu être posée pour cet article. Change l'icône / le genre de l'article depuis la fiche, puis relance.`;
     // ebayCategorieAttente : posé ICI, lu à la relance — relancer sans rien
     // changer = prendre la proposition d'eBay (jamais une boucle automatique).
@@ -211,9 +251,21 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance"
       && categorie.source !== "mapping_confirme_par_attributs") {
     pf.ebayCategoryPath = categorie.chemin;
+    // ⛔ L'IDENTIFIANT AUSSI (2026-09-22). Seul le CHEMIN était réécrit : quand
+    //    la résolution retenait une autre catégorie que le mapping, le job
+    //    gardait `ebayCategoryId` de l'ancienne. C'est `categorie.id` qui part
+    //    dans l'offre (const categoryId ci-dessus, envoyé en `categoryId`), et
+    //    le job racontait donc autre chose que ce qui est réellement en ligne
+    //    — indétectable ensuite, et c'est par ce champ qu'on inventorie les
+    //    annonces mal rangées.
+    pf.ebayCategoryId = categorie.id;
     // pf est une copie de travail : le chemin retenu doit aussi atteindre le
     // job (marquer() écrit job.platform_fields).
-    job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategoryPath: categorie.chemin };
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      ebayCategoryPath: categorie.chemin,
+      ebayCategoryId: categorie.id,
+    };
   }
 
   // 1. Emplacement marchand (une fois par vendeur).
@@ -777,15 +829,58 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     }
     // Garde famille livres (lot 1) : la fiche Lens dit « livres_medias » et le
     // mapping de l'app n'est pas dans Livres → needs_user à choix, comme le
-    // conflit v2 (relancer sans rien changer = garder le mapping, jamais de
-    // boucle). Les suggestions du rayon Livres passent en tête de la liste.
-    if (famille === "livres_medias" && !LIVRES_RE.test(String(cheminMappe[0] ?? "")) && !(pf as Record<string, unknown>).ebayCategorieAttente) {
+    // conflit v2. Les suggestions du rayon Livres passent en tête de la liste.
+    if (famille === "livres_medias" && !LIVRES_RE.test(String(cheminMappe[0] ?? ""))) {
       const livres = suggestions.filter((x) => LIVRES_RE.test(String(x.chemin[0] ?? "")));
       const autres = suggestions.filter((x) => !LIVRES_RE.test(String(x.chemin[0] ?? "")));
+      if (!(pf as Record<string, unknown>).ebayCategorieAttente) {
+        return {
+          choix: [...livres, ...autres].slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+          motif: `l'analyse photo classe cet article en Livres et médias ; l'app l'a classé en « ${cheminMappe.join(" > ")} » (${mappee})`,
+          suggestions: resume,
+        };
+      }
+      // ══ LA RELANCE NE PEUT PAS REMETTRE LE LIVRE HORS DU RAYON LIVRES ════
+      // (2026-09-22 — jobs 41f00503 « Livre Stephen Hawking » et 7c22f64b
+      //  « Twilight Fascination », ornellaracano)
+      //
+      // 🚨 CE QUI S'EST PASSÉ. Cette garde ne portait que sur la PREMIÈRE
+      //    passe (`&& !ebayCategorieAttente`). À la relance, elle était donc
+      //    sautée, `racineContestee` était faux pour le Hawking (UNE seule
+      //    suggestion, et la règle exige n ≥ 3), et on tombait sur le
+      //    `return` de repli : le mapping de l'app, tel quel. Le mapping,
+      //    c'était 9049 « Jouets et jeux > Modélisme ferroviaire > Livres et
+      //    guides > Livres ». Le livre est PARTI comme ça le 22/09 à 08:08
+      //    (annonce 307191964555) — fil d'Ariane vérifié chez eBay.
+      // ⛔ ET LE MESSAGE DISAIT L'INVERSE : « Relance pour publier dans la
+      //    catégorie d'eBay ». Sur cette branche, relancer gardait la nôtre.
+      //    Le texte et le code ne disaient pas la même chose ; c'est le texte
+      //    qui avait raison sur ce qu'il fallait faire.
+      // LA RÈGLE : quand la fiche dit « livre » et qu'eBay propose un rayon
+      // Livres, la relance PREND ce rayon. On ne repose pas la question (pas
+      // de boucle : `ebayCategorieAttente` est déjà là), et on ne réinstalle
+      // pas un rayon dont on sait qu'il contredit l'objet.
+      if (livres.length) {
+        const retenu = await choisirParmiSuggestions(livres, {
+          titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+          marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
+        }, (pf as Record<string, unknown>).__admin as SupabaseClient | undefined) ?? livres[0];
+        return {
+          id: retenu.id, chemin: retenu.chemin, source: "suggestion_livres_apres_confirmation",
+          detail: `fiche « livres_medias » et mapping de l'app hors rayon Livres (« ${cheminMappe.join(" > ")} », ${mappee}) ; ` +
+            `relance = rayon Livres d'eBay retenu « ${retenu.chemin.join(" > ")} » (${retenu.id})`,
+          suggestions: resume,
+        };
+      }
+      // Aucun rayon Livres proposé par eBay : on ne publie pas un livre dans
+      // le rayon qu'on sait faux, et on ne boucle pas non plus. On redemande
+      // UNE fois en le disant, avec le chemin complet.
       return {
-        choix: [...livres, ...autres].slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
-        motif: `l'analyse photo classe cet article en Livres et médias ; l'app l'a classé en « ${cheminMappe.join(" > ")} » (${mappee})`,
+        choix: autres.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+        motif: `l'analyse photo classe cet article en Livres et médias, l'app l'a classé en « ${cheminMappe.join(" > ")} » (${mappee}), ` +
+          `et eBay ne propose AUCUN rayon Livres pour ce titre — aucune catégorie sûre`,
         suggestions: resume,
+        sansMapping: true,
       };
     }
     return { id: mappee, chemin: cheminMappe, source: dejaTrancheSource(pf), suggestions: resume };

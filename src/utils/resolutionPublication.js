@@ -520,7 +520,23 @@ export async function resoudrePublication({
             const dedans = (await feuillesDuNoeud(maison, platform)).map(f => ({ chemin: f.chemin, id: f.id }));
             const cle = (c) => c.chemin.join(" > ");
             const vus = new Set(dedans.map(cle));
-            retenues = [...dedans, ...retenues.filter(c => !vus.has(cle(c)))].slice(0, 20);
+            // ⛔ LE PLAFOND DE 20 NE DOIT PAS AMPUTER LA MAISON (2026-09-22).
+            // Il a été écrit quand les trois maisons connues faisaient 11
+            // feuilles (Opla), 8 (Vinted) et 12 (Beebs) : il ne coupait rien.
+            // eBay en a SOIXANTE-QUATRE. Tronquer à 20 dans l'ordre de l'arbre
+            // laissait « Non-fiction » (171243) DEHORS — celle-là même qu'eBay
+            // proposait sur le Hawking d'ornellaracano. C'est le défaut nº2
+            // ci-dessus, rejoué à l'échelle d'eBay : la bonne réponse absente
+            // de la liste, et l'IA qui choisit le moins faux.
+            // LA BORNE EST MESURÉE (21/09, resolve-categorie appelée en PROD
+            // sur le maillot NBA) : 312 feuilles d'un coup → « aucune » ;
+            // 65 → la bonne ; 42 → la bonne ; 8 → la bonne. Une maison de 64
+            // est donc lisible. Au-delà, on ne sert pas une liste qu'on sait
+            // intranchable : on garde le plafond d'avant, et la descente de
+            // l'arbre (dernier recours) prend le relais.
+            const MAISON_LISIBLE_MAX = 80;
+            const plafond = dedans.length <= MAISON_LISIBLE_MAX ? Math.max(20, dedans.length) : 20;
+            retenues = [...dedans, ...retenues.filter(c => !vus.has(cle(c)))].slice(0, plafond);
           }
         }
         if (retenues.length) candidats[platform] = retenues;

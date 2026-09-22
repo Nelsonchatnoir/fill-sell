@@ -98,13 +98,71 @@ export function sortDeLaMaison(chemin, maison) {
 }
 
 /**
+ * Le nœud le plus PROCHE DE LA RACINE dont le libellé PORTE ce mot parmi ses
+ * jetons, sans lui être égal — « Livres, BD, revues » porte « livres ».
+ *
+ * ⛔ REPLI SEULEMENT, JAMAIS EN PREMIER (2026-09-22). Un libellé qui porte le
+ *    mot est plus large qu'un libellé qui EST le mot : chez Vinted, « Livres et
+ *    médias » (20 feuilles, CD et DVD compris) porte le mot, mais la maison
+ *    d'un livre est bien « Livres et médias > Livres » (8 feuilles), qui l'EST.
+ *    Chercher l'exact d'abord garde Vinted, Beebs et Opla à l'octet près.
+ */
+async function noeudPortantLeMot(mot, plateforme) {
+  const cible = jetonsStricts(mot);
+  if (cible.length !== 1) return null; // un seul mot, sinon ça ne veut plus rien dire
+  const feuilles = await feuillesDe(plateforme);
+  let meilleur = null;
+  for (const f of feuilles) {
+    const c = f.chemin ?? [];
+    for (let i = 0; i < c.length - 1; i++) {
+      const jetons = jetonsStricts(c[i]);
+      if (jetons.length < 2 || !jetons.includes(cible[0])) continue;
+      const prefixe = c.slice(0, i + 1);
+      if (!meilleur || prefixe.length < meilleur.length) meilleur = prefixe;
+      break;
+    }
+  }
+  return meilleur;
+}
+
+/**
  * La maison d'un LIVRE sur cette plateforme — le nœud « Livres » de son arbre.
- * Rend null quand l'arbre n'en a pas (eBay range les livres autrement) : dans
- * ce cas on ne conclut RIEN, comme partout ailleurs.
+ * Rend null quand l'arbre n'en a AUCUN : dans ce cas on ne conclut RIEN, comme
+ * partout ailleurs (c'est le cas de Leboncoin, mesuré : 13 nœuds, zéro).
+ *
+ * ── eBAY AVAIT UNE MAISON, ON NE LA VOYAIT PAS (2026-09-22) ────────────────
+ * 🚨 LE CAS : ornellaracano, « Livre Stephen Hawking » (job 41f00503) et
+ *    « Twilight Fascination » (7c22f64b). Le mot rendu par le Lens est
+ *    « livre », et sur les 3 906 feuilles d'eBay il en existe EXACTEMENT UNE
+ *    dont le libellé est « Livres » : la 9049,
+ *    « Jouets et jeux > Modélisme ferroviaire > Livres et guides > Livres ».
+ *    Correspondance exacte, unique ⇒ certitude ⇒ source certaine ⇒ elle prime
+ *    sur l'icône 📚, qui pointait pourtant juste (171228, Livres BD revues >
+ *    Fiction). Le Hawking est PARTI comme ça : vérifié chez eBay le 22/09, son
+ *    fil d'Ariane dit « Jouets et jeux > Modélisme ferroviaire ». Un livre de
+ *    vulgarisation scientifique au rayon train miniature.
+ * ⛔ CE MODULE AVAIT DÉJÀ LE REMÈDE, ET IL ÉTAIT DÉSARMÉ POUR eBAY. La fiche
+ *    disait famille « livres_medias » (source lens), la garde `sortDeLaMaison`
+ *    était câblée dans resolutionPublication — mais `maisonDesLivres('ebay')`
+ *    rendait null, parce qu'on exigeait un nœud dont le libellé SOIT « Livres »
+ *    et qu'eBay écrit sa racine « Livres, BD, revues ». On avait écrit « eBay
+ *    range les livres autrement » ; c'est faux, eBay l'écrit autrement.
+ * MESURE DU 22/09, nœuds portant le jeton « livre(s) » :
+ *    ebay      → « Livres, BD, revues » (prof. 1, 64 feuilles)
+ *                et « …Modélisme ferroviaire > Livres et guides » (prof. 3, 4)
+ *    vinted    → « Livres et médias » (1, 20) et « …> Livres » (2, 8)
+ *    beebs     → « Jeux, jouets et loisirs > Livres » (2, 12)
+ *    opla      → « Culture et Loisirs > Livres » (2, 11)
+ *    leboncoin → aucun
+ * Le plus proche de la racine gagne : eBay reçoit « Livres, BD, revues », et
+ * jamais le nœud de modélisme, qui est trois étages plus bas.
  */
 export async function maisonDesLivres(plateforme) {
   // Deux orthographes suffisent : nos cinq arbres écrivent « Livres » (Opla,
   // Vinted, Leboncoin, Beebs) ou « Livres et médias » (Vinted, racine).
   // On cherche le nœud le plus profond qui soit exactement « Livres ».
-  return (await noeudDuMot('livres', plateforme)) ?? (await noeudDuMot('livre', plateforme));
+  const exact = (await noeudDuMot('livres', plateforme)) ?? (await noeudDuMot('livre', plateforme));
+  if (exact) return exact;
+  // Aucun nœud n'EST le mot : on accepte celui qui le PORTE (eBay).
+  return (await noeudPortantLeMot('livres', plateforme)) ?? (await noeudPortantLeMot('livre', plateforme));
 }
