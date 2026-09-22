@@ -20,6 +20,18 @@
 //
 // Sortie 0 = le déplacement est fidèle. Sortie 1 = quelque chose a bougé, et
 // le script dit quoi.
+//
+// ⚠️ CETTE PREUVE SE PÉRIME, ET ELLE EST DÉJÀ PÉRIMÉE EN PARTIE (constat du
+//    2026-09-22). Elle compare le module d'aujourd'hui à un fichier figé au
+//    20/09 : toute évolution LÉGITIME du module depuis cette date s'y affiche
+//    comme un « ÉCHEC », alors que rien n'est cassé. État relevé le 22/09 au
+//    soir, sur HEAD ebff443 et AVANT tout travail de la soirée : 3 écarts
+//    (lignes 7653–7735, 7916–7973, 7992–8164) — deux semaines de lots normaux.
+//    Le lot Beebs/chaussures du 22/09 en ajoute 2 (7369–7418 et 7522–7651) :
+//    c'est l'insertion de la règle « chaussure malgré le mot », voulue.
+//    Ce script ne garde donc plus que sa valeur d'archive ; il ne gate aucun
+//    build (il n'est pas dans `prebuild`). Le refaire — ou le retirer — est
+//    une décision à part, pas quelque chose à trancher au fil d'un autre lot.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
