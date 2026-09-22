@@ -13,6 +13,8 @@
 // Le moteur de relevé n'est pas touché : ces fonctions LISENT, le hook
 // (useReleveAnnonces) appelle, et les deux RPC restent celles d'avant.
 
+import { MOTIFS } from '../utils/connexionPlateformes';
+
 // Âge d'un relevé, en DEUX caractères : « 12 min », « 9 h », « 2 j ». La tuile
 // d'une plateforme n'a pas la place de la phrase complète, et n'en a pas besoin.
 export function depuisCourt(iso, fr) {
@@ -50,11 +52,48 @@ export function ilYA(iso, fr) {
 //     runs DÉJÀ enregistrés, sans réécrire une ligne en base.
 // ⛔ La condition `items_vus === 0` n'est pas décorative : un mur de connexion
 //    rencontré en page 3 d'un relevé qui marchait reste un vrai incident.
+// ⛔ LES DEUX SEULES SIGNATURES, ÉCRITES UNE FOIS. `absenceDePlateforme` et
+//    `murConnexionReleve` lisent les MÊMES expressions : deux copies auraient
+//    fini par diverger, et l'écran aurait alors dit « à connecter » sans
+//    proposer le bouton, ou l'inverse. Ce sont des textes que NOS handlers
+//    écrivent (« session beebs : page de connexion », « accès Opla non
+//    accordé ») — jamais une heuristique sur un message de plateforme.
+const MUR_PAGE_CONNEXION = /page de connexion/i;
+const MUR_OPLA = /acc[èe]s opla non accord/i;
+
+// Le relevé Vinted (kind 'dressing') n'écrit pas comme les quatre autres : sa
+// sonde pose « [cause403] session_absente », « aucune session Vinted » ou un
+// 401. C'est le MÊME mur vu de l'utilisateur, et il mérite le même bouton.
+const MUR_VINTED = /cause403|aucune session vinted|session vinted.{0,40}401/i;
+
 export function absenceDePlateforme(run) {
   if (!run) return false;
   if (run.status === 'absente') return true;
   if (run.status !== 'failed' || (run.items_vus ?? 0) > 0) return false;
-  return /accès opla non accordé|page de connexion/i.test(String(run.erreur ?? ''));
+  const e = String(run.erreur ?? '');
+  return MUR_OPLA.test(e) || MUR_PAGE_CONNEXION.test(e);
+}
+
+// ── « ME CONNECTER » SUR LE RELEVÉ (2026-09-22) ─────────────────────────────
+// Rend le motif MOTIFS.* quand le relevé a buté sur un mur de connexion, sinon
+// null. C'est ce motif qu'attend `BoutonMeConnecter` — le même composant que
+// les cartes d'articles bloqués, le stepper et les Réglages.
+//
+// ⛔ ON N'AFFIRME QUE CE QU'ON A LU. Pas de run, pas d'erreur, ou une erreur
+//    qui ne nomme pas le mur → `null`, et l'écran ne propose RIEN. « Jamais
+//    vérifié » n'est pas « pas connecté » : poser le bouton sur un doute
+//    reviendrait à dire à quelqu'un de connecté qu'il ne l'est pas.
+// ⛔ INDÉPENDANT DE `items_vus`, et c'est voulu : un mur rencontré en page 3
+//    reste un relevé INCOMPLET (la phase de la tuile ne bouge pas), mais la
+//    personne a quand même besoin du geste. L'état et le geste sont deux
+//    questions distinctes.
+export function murConnexionReleve(run, platform = null) {
+  const e = String(run?.erreur ?? '');
+  if (!e) return null;
+  if (MUR_OPLA.test(e)) return MOTIFS.AUTORISER_OPLA;
+  if (MUR_PAGE_CONNEXION.test(e)) return MOTIFS.CONNEXION;
+  if (platform === 'vinted' && MUR_VINTED.test(e)) return MOTIFS.CONNEXION;
+  return null;
 }
 
 const estOpla = (run) => /opla/i.test(String(run?.erreur ?? ''));
