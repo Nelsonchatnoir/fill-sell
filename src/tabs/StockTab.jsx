@@ -2910,6 +2910,21 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // à jour » se lisait comme « ça n'a pas marché » — la plupart ne
       // recliqueront pas. On dit donc les deux cas, avec le geste à faire.
       if ((run.items_vus ?? 0) === 0) {
+        // ── « 0 LU » N'EST PLUS UNE QUESTION QUAND VINTED RÉPOND (22/09) ────
+        // Le relevé écrit ce que le profil annonce. `item_count = 0` veut dire
+        // que Vinted elle-même n'a AUCUNE annonce en vente sur ce compte :
+        // c'est une réussite, pas un doute. L'ancien texte envoyait la
+        // personne « vérifier qu'elle est sur SON compte » — une chasse à un
+        // problème inexistant, mesurée sur 3 comptes en 30 jours (akrstore,
+        // lrk_08, miroslav53 : tous à item_count=0, dressing réellement vide).
+        // Le cas inverse — 0 lu alors que le profil annonce des articles — ne
+        // passe plus par ici : le run sort en 'incomplete' et repart seul.
+        const annonce = String(run.erreur ?? '').match(/item_count=(\d+)/);
+        if (annonce && Number(annonce[1]) === 0) {
+          return { ton: 'vert', texte: fr
+            ? "Relevé terminé : Vinted n'a aucune annonce en ligne sur ce compte. Tes prochaines annonces remonteront ici toutes seules."
+            : "Scan finished: Vinted has no live listings on this account. Your next listings will show up here on their own." };
+        }
         return { ton: 'orange', texte: fr
           ? "Synchronisation terminée : aucune annonce en ligne sur le compte Vinted connecté dans ce navigateur. Dressing vide ? Tout est normal — tes prochaines annonces remonteront ici au prochain clic. Sinon, ouvre vinted.fr dans ce navigateur, vérifie que tu es sur TON compte, puis relance."
           : "Sync finished: no live listings on the Vinted account signed in to this browser. Empty closet? All good — your next listings will show up here on your next sync. Otherwise, open vinted.fr in this browser, make sure you're on YOUR account, then run it again." };

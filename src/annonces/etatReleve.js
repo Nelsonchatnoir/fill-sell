@@ -66,6 +66,11 @@ const MUR_OPLA = /acc[èe]s opla non accord/i;
 // 401. C'est le MÊME mur vu de l'utilisateur, et il mérite le même bouton.
 const MUR_VINTED = /cause403|aucune session vinted|session vinted.{0,40}401/i;
 
+// Marqueurs posés par le relevé eBay (extension 0.6.54) quand il a pu NOMMER
+// le mur : reconnexion de sécurité, ou compte pas encore vendeur.
+const MUR_EBAY_REAUTH = /\[mur:reauth\]/i;
+const MUR_EBAY_UPGRADE = /\[mur:upgrade\]/i;
+
 export function absenceDePlateforme(run) {
   if (!run) return false;
   if (run.status === 'absente') return true;
@@ -91,7 +96,18 @@ export function murConnexionReleve(run, platform = null) {
   const e = String(run?.erreur ?? '');
   if (!e) return null;
   if (MUR_OPLA.test(e)) return MOTIFS.AUTORISER_OPLA;
-  if (MUR_PAGE_CONNEXION.test(e)) return MOTIFS.CONNEXION;
+  if (MUR_PAGE_CONNEXION.test(e)) {
+    // ── eBAY : LE MUR EST NOMMÉ PAR L'EXTENSION (2026-09-22) ───────────────
+    // Marqueur posé par le relevé lui-même (0.6.54) après avoir interrogé la
+    // porte du Hub vendeur. Sans lui, on disait « connecte-toi » à quelqu'un
+    // qui EST connecté et à qui eBay redemande seulement une preuve — le
+    // bouton ouvrait eBay, la personne s'y voyait connectée, et rien ne
+    // bougeait. Pas de marqueur (extension plus ancienne) → on retombe sur
+    // « connexion », comme avant : on ne devine pas.
+    if (MUR_EBAY_REAUTH.test(e)) return MOTIFS.REAUTH_EBAY;
+    if (MUR_EBAY_UPGRADE.test(e)) return MOTIFS.VENDEUR_EBAY;
+    return MOTIFS.CONNEXION;
+  }
   if (platform === 'vinted' && MUR_VINTED.test(e)) return MOTIFS.CONNEXION;
   return null;
 }
