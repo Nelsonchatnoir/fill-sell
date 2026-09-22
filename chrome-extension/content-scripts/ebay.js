@@ -2801,10 +2801,14 @@ async function urlToFile(url, index) {
   }
   if (!res) {
     throw new Error(
-      `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
-      "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-      "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
-      "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
+      (/\/storage\/v1\/object\/public\/listing-photos\//.test(String(url))
+        ? `La photo ${index + 1} de l'annonce n'a pas pu être lue à l'instant (elle est pourtant bien chez FillSell). ` +
+          "C'est presque toujours passager. La publication repart toute seule dans quelques minutes — rien à payer, rien à refaire. " +
+          "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
+        : `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
+          "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
+          "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
+          "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app.")
     );
   }
   if (!res.ok) {
