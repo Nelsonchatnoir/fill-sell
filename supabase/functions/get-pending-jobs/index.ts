@@ -720,6 +720,51 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ══════════════════════════════════════════════════════════════════════
+    // ON NE LAISSE PAS UN ANCIEN BUILD RETIRER UNE ANNONCE BEEBS (2026-09-22)
+    // ══════════════════════════════════════════════════════════════════════
+    // Beebs a refait sa page de dépôt le 22/09 entre 13h26 et 15h24. Depuis,
+    // AUCUN build ≤ 0.6.54 ne sait y déposer. Une republication Beebs, elle,
+    // retire PUIS redépose : un build ancien qui prend un job à l'étape
+    // 'a_capturer' ou 'captured' va donc retirer une annonce qu'il ne saura
+    // pas remettre. C'est exactement ce qui a coûté le « Pot Diddlina violet »
+    // (van-breugel.sandra, 21h04).
+    //
+    // Le correctif ET le pré-vol sont dans la 0.6.55, mais elle passe par la
+    // revue du Chrome Web Store : d'ici là tout le parc tourne sur l'ancien
+    // code. Le serveur tient donc la porte à sa place — c'est le seul endroit
+    // qui puisse protéger la flotte déjà installée.
+    //
+    // ⛔ On ne retient QUE le geste destructeur. L'étape 'deleted' (l'annonce
+    //    est DÉJÀ hors ligne, il ne reste que le redépôt) continue d'être
+    //    servie : la retenir laisserait les annonces dehors plus longtemps.
+    //    Les publications Beebs normales passent aussi — au pire elles
+    //    échouent sans rien toucher, ce qu'elles font déjà.
+    // ⛔ Version illisible ou absente = ancien build (versionAuMoins rend
+    //    false) : on retient. Dans le doute, on ne retire pas.
+    //
+    // À RETIRER quand la 0.6.55 sera installée partout — ou à laisser : il
+    // devient inerte dès que tout le monde est à jour.
+    const BEEBS_RETRAIT_VERSION_MIN = "0.6.55";
+    let beebsRetraitsRetenus = 0;
+    if (!versionAuMoins(version, BEEBS_RETRAIT_VERSION_MIN)) {
+      out = out.filter((j) => {
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const etape = String(pf.republish_step ?? "a_capturer");
+        const retirerait = j.platform === "beebs" && j.action === "republish"
+          && (etape === "a_capturer" || etape === "captured");
+        if (retirerait) beebsRetraitsRetenus++;
+        return !retirerait;
+      });
+      if (beebsRetraitsRetenus) {
+        console.log(
+          `[get-pending-jobs] ${beebsRetraitsRetenus} republication(s) Beebs retenue(s) : ` +
+          `extension "${version || "inconnue"}" < ${BEEBS_RETRAIT_VERSION_MIN}, elle retirerait une annonce ` +
+          "qu'elle ne sait pas redéposer (page de dépôt refaite le 22/09)",
+        );
+      }
+    }
+
     // ── SESSION PLATEFORME CONNUE MORTE = ATTENTE, JAMAIS UNE TENTATIVE ─────
     // (2026-09-10 soir, cas Ornella.) 17 jobs Beebs sont morts sur
     // beebs.app/fr/auth en brûlant leurs 5 tentatives espacées, alors que
