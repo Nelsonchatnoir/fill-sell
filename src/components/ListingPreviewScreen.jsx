@@ -24,6 +24,8 @@ import { sortirDuBrouillon } from "../utils/brouillon";
 import { sessionsAffichables, PUBLICATION_PROUVE_MS } from "../utils/sessionsPlateformes";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
+import BoutonMeConnecter from "./BoutonMeConnecter";
+import { MOTIFS } from "../utils/connexionPlateformes";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
@@ -3083,7 +3085,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [] }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [] }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3385,18 +3387,28 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           <div style={{ fontWeight:700, marginBottom:4 }}>
             {lang === "en" ? "Not signed in on some platforms" : "Connexion manquante sur certaines plateformes"}
           </div>
+          {/* ── LE BOUTON, PAS UN LIEN SOULIGNÉ (2026-09-22) ──────────────────
+              C'était un `<a>` vers PLATFORM_LOGIN_URLS : juste, mais discret, et
+              surtout FAUX SUR TÉLÉPHONE — il ouvrait la plateforme sur le
+              mobile, alors que c'est l'ORDINATEUR qui doit se connecter.
+              BoutonMeConnecter tranche : lien direct sur le web, ouverture sur
+              le PC via l'extension sur mobile. Même bouton, même logo, partout.
+              ⛔ LA GARDE NE BOUGE PAS : `=== false` seulement. `sessionsAffichables`
+                 ne pose la clé que sur une mesure — « jamais vérifié » est ABSENT,
+                 donc n'affiche rien. Et rien n'est bloqué : le texte le dit, le
+                 bouton Publier reste actif. Prévenir, jamais interdire. */}
           {chipsSession.filter(p => platformSessions[p] === false).map(p => (
-            <div key={p} style={{ display:"flex", alignItems:"center", gap:8, marginTop:4 }}>
+            <div key={p} style={{ display:"flex", alignItems:"center", gap:10, marginTop:8, flexWrap:"wrap" }}>
               <span style={{ width:8, height:8, borderRadius:"50%", background:"#C0392B", flexShrink:0 }} />
-              <span style={{ flex:1 }}>
+              <span style={{ flex:1, minWidth:150 }}>
                 {lang === "en"
                   ? `${PLATFORM_LABELS[p] ?? p}: not signed in — the listing will wait until you sign in.`
                   : `${PLATFORM_LABELS[p] ?? p} : non connecté — l'annonce attendra que tu te connectes.`}
               </span>
-              <a href={PLATFORM_LOGIN_URLS[p]} target="_blank" rel="noopener noreferrer"
-                style={{ fontWeight:700, color:"#8C2F28", textDecoration:"underline", textUnderlineOffset:2, whiteSpace:"nowrap" }}>
-                {lang === "en" ? "Sign in" : "Se connecter"}
-              </a>
+              <BoutonMeConnecter
+                userId={userId} platform={p} motif={MOTIFS.CONNEXION}
+                lang={lang} variante="bouton"
+              />
             </div>
           ))}
         </div>
@@ -9175,6 +9187,7 @@ export default function ListingPreviewScreen({
           <StepPublish
             selected={selected}
             setSelected={setSelected}
+            userId={userId}
             platformSessions={platformSessions}
             platformListings={platformListings}
             publishError={publishError}
