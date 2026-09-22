@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-22T06:47:36Z'; // recale 49573c4 (0.6.52 : le bump du manifeste TOUCHE chrome-extension/, c'est donc LUI le dernier commit). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.51 n'est pas encore televersee, et on ne promeut rien tant qu'un paquet n'est pas SERVI. Ancienne valeur : 2026-09-21T20:26:50Z (85335ba).
+export const EXTENSION_LAST_COMMIT = '2026-09-22T07:19:38Z'; // recale e936d1f (0.6.53 : le bump du manifeste TOUCHE chrome-extension/, c'est donc LUI le dernier commit). UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.52 est televersee mais pas encore acceptee, et on ne promeut rien tant qu'un paquet n'est pas SERVI. Ancienne valeur : 2026-09-22T06:47:36Z (49573c4).
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
 //    dans git (`git log -p scripts/build-id.mjs`), qui est fait pour ça. On garde désormais UNE
