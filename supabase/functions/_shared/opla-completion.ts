@@ -17,7 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { oplaChemin, oplaNoeud } from "./opla-catalogue.ts";
 import { cheminLisible, cleFourche, normaliserTailleOpla, optionsFeuilles, resoudreCategorieOpla } from "./opla-resolution.ts";
-import { genreDeLEtagereVinted } from "./vinted-branche.ts";
+import { etagereVinted } from "./vinted-branche.ts";
 
 /** Une réponse déjà donnée par la personne, rangée par QUESTION (cf. `cleFourche`). */
 export type OplaMem = { code: string; titre: string; options: string[]; mot: string | null; le: string };
@@ -44,6 +44,29 @@ const valeurCertaine = (attrs: Record<string, unknown> | undefined, cle: string)
 const GENRE_RAYON: Record<string, string> = {
   GIRLS_NEW: "Fille", BOYS_NEW: "Garçon",
 };
+// ── L'ÉTAGÈRE VINTED DE L'ARTICLE — DEUX ENDROITS, LE MÊME IDENTIFIANT ─────
+// Le 20/09 on lisait le genre dans `attributs.categorie_vinted` : un attribut
+// posé par le relevé de détail, présent sur 191 articles. Or l'identifiant de
+// l'étagère vit d'abord dans la COLONNE `inventaire.vinted_catalog_id`, écrite
+// par la synchronisation du dressing : 4 118 articles, dont 3 982 sans
+// l'attribut (mesuré le 23/09 — les escarpins de Sandra en font partie). Quand
+// les deux existent, ils ne divergent jamais (136 sur 136). On lit donc
+// l'attribut d'abord (il porte sa source), la colonne ensuite.
+const etagereDeLArticle = (attrs: Record<string, unknown> | undefined, colonne: unknown) => {
+  const cv = attrs?.categorie_vinted;
+  if (cv && typeof cv === "object") {
+    const e = cv as Record<string, unknown>;
+    // Une valeur d'attribut n'a de sens QUE si elle vient d'un relevé — même
+    // règle que `valeurCertaine` : jamais une valeur sans source.
+    if (/^(capture|vinted|releve)/.test(String(e.source ?? ""))) {
+      const et = etagereVinted(e.v);
+      if (et) return { ...et, via: `attributs.categorie_vinted, ${String(e.source)}` };
+    }
+  }
+  const et = etagereVinted(colonne);
+  return et ? { ...et, via: "inventaire.vinted_catalog_id" } : null;
+};
+
 const genreDeLaBranche = (code: string): { genre: string; via: string } | null => {
   if (!code || !oplaNoeud(code)) return null;
   // On remonte jusqu'à la racine en gardant le dernier rayon traversé.
@@ -89,12 +112,14 @@ const optionsDuJob = (pf: Record<string, unknown>): Array<{ code: string; title:
  * suivants du même lot, comme dans la boucle d'origine.
  */
 export function completerJobOpla(
-  { id, statut, pf, attrs, titre = null, memoire = new Map<string, OplaMem>() }: {
+  { id, statut, pf, attrs, titre = null, vintedCatalogId = null, memoire = new Map<string, OplaMem>() }: {
     id: unknown;
     statut: unknown;
     pf: Record<string, unknown>;
     attrs?: Record<string, unknown>;
     titre?: string | null;
+    /** `inventaire.vinted_catalog_id` — l'étagère du dressing, écrite par la synchronisation. */
+    vintedCatalogId?: unknown;
     memoire?: Map<string, OplaMem>;
   },
 ): CompletionOpla {
@@ -102,6 +127,7 @@ export function completerJobOpla(
   let aRetenir: { cle: string; entree: OplaMem } | null = null;
   const trace: Record<string, unknown> = {};
   const vivant = String(statut ?? "") !== "needs_user";
+  const etagere = etagereDeLArticle(attrs, vintedCatalogId);
 
   // ── LA RÉCOLTE : IL VIENT DE RÉPONDRE, ON RETIENT ─────────────────
   // Trois conditions, toutes nécessaires :
@@ -188,12 +214,16 @@ export function completerJobOpla(
   //    tout se passe comme avant. Mesuré sur les 172 jobs Opla des
   //    30 derniers jours : 117 catégories résolues → 125, zéro perdue,
   //    zéro changée.
-  if (!String(pf.genre ?? "").trim() && !valeurCertaine(attrs, "genre")) {
-    const g = genreDeLEtagereVinted(attrs?.categorie_vinted);
-    if (g) {
-      pf.genre = g.genre;
-      trace.genre = { valeur: g.genre, avant: null, source: `catégorie Vinted de l'article (${g.via})` };
-    }
+  // ⛔ ET DEPUIS LE 23/09, LA COLONNE AUSSI (cf. `etagereDeLArticle`) : les
+  //    escarpins de Sandra (job 796582df) portaient l'étagère 543 dans
+  //    `vinted_catalog_id` et rien dans les attributs — le genre n'était
+  //    jamais posé, et la cascade refusait à raison de choisir un rayon.
+  if (!String(pf.genre ?? "").trim() && !valeurCertaine(attrs, "genre") && etagere?.genre) {
+    pf.genre = etagere.genre;
+    trace.genre = {
+      valeur: etagere.genre, avant: null,
+      source: `catégorie Vinted de l'article (étagère ${etagere.id} « ${etagere.chemin.join(" › ")} », ${etagere.via})`,
+    };
   }
 
   // ── LA CATÉGORIE D'ABORD : TOUT LE RESTE EN DÉPEND (2026-09-18) ────
@@ -233,10 +263,22 @@ export function completerJobOpla(
       .map((m) => String(m ?? "").trim()).filter(Boolean);
     const titreArticle = String(titre ?? "").trim() || null;
     const genreConnu = String(pf.genre ?? "").trim() || valeurCertaine(attrs, "genre")?.v || null;
-    const r = resoudreCategorieOpla({ mots, titre: titreArticle, depart: codeCourant || null, genre: genreConnu });
+    // ⚠️ L'ÉTAGÈRE VINTED PASSE PAR SON PROPRE PARAMÈTRE (2026-09-23), comme
+    //    le titre : le résolveur ne lit que le libellé exact de la feuille où
+    //    le vendeur a rangé l'article, après les mots-objets et avant le titre.
+    const r = resoudreCategorieOpla({
+      mots, titre: titreArticle, depart: codeCourant || null, genre: genreConnu,
+      etagere: etagere?.chemin ?? null,
+    });
     if (r.code) {
       pf.oplaCategoryCode = r.code;
-      trace.oplaCategoryCode = { valeur: r.code, avant: codeCourant || null, source: `arbre Opla → ${cheminLisible(r.code)}` };
+      const parEtagere = etagere && r.etapes.some((e) => e.startsWith("étagère Vinted"));
+      trace.oplaCategoryCode = {
+        valeur: r.code, avant: codeCourant || null,
+        source: parEtagere
+          ? `étagère Vinted de l'article « ${etagere.chemin.join(" › ")} » (${etagere.via}) → ${cheminLisible(r.code)}`
+          : `arbre Opla → ${cheminLisible(r.code)}`,
+      };
     } else if (r.candidats.length) {
       const options = optionsFeuilles(r.candidats);
       const cle = cleFourche(options);

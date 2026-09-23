@@ -4886,11 +4886,18 @@ serve(async (req) => {
         // recours pour chercher la feuille Opla quand le job vient du Stock et
         // n'a donc aucun mot-objet (ceux-ci ne sont posés que par le stepper).
         const titreParArticle = new Map<number, string>();
+        // L'ÉTAGÈRE VINTED en plus (2026-09-23) : `vinted_catalog_id` est la
+        // colonne que la synchronisation du dressing écrit — 3 982 articles la
+        // portent SANS l'attribut `categorie_vinted` que la complétion lisait
+        // seul (job 796582df : escarpins, étagère 543 « Chaussures à talons »,
+        // jamais lue, genre jamais posé, catégorie jamais résolue).
+        const etagereParArticle = new Map<number, unknown>();
         const { data: fiches } = await userClient
-          .from("inventaire").select("id, attributs, titre").in("id", ids);
-        for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown; titre: unknown }>) {
+          .from("inventaire").select("id, attributs, titre, vinted_catalog_id").in("id", ids);
+        for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown; titre: unknown; vinted_catalog_id: unknown }>) {
           if (f.attributs && typeof f.attributs === "object") attrsParArticle.set(Number(f.id), f.attributs as Record<string, unknown>);
           if (String(f.titre ?? "").trim()) titreParArticle.set(Number(f.id), String(f.titre).trim());
+          if (f.vinted_catalog_id != null) etagereParArticle.set(Number(f.id), f.vinted_catalog_id);
         }
 
         // ── LA MÊME QUESTION NE SE POSE QU'UNE FOIS (2026-09-19) ──────────
@@ -5000,6 +5007,7 @@ serve(async (req) => {
             pf,
             attrs: attrsParArticle.get(Number(j.inventaire_id)),
             titre: titreParArticle.get(Number(j.inventaire_id)) ?? null,
+            vintedCatalogId: etagereParArticle.get(Number(j.inventaire_id)) ?? null,
             memoire: oplaMemoire,   // lue ET écrite : sert aux jobs suivants du lot
           });
           for (const l of journal) console.log(l);
