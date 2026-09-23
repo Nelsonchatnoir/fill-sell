@@ -74,8 +74,8 @@
 -- millisecondes. Illisible ou nul ⇒ le défaut.
 CREATE OR REPLACE FUNCTION public.rapprocher_budget(p_part numeric DEFAULT 0.7, p_defaut interval DEFAULT interval '60 seconds')
 RETURNS interval
-LANGUAGE plpgsql STABLE
-AS $$
+LANGUAGE plpgsql STABLE SET search_path = public
+AS $
 DECLARE v_txt text := current_setting('statement_timeout', true); v_b interval;
 BEGIN
   IF v_txt IS NULL OR v_txt = '' THEN RETURN p_defaut; END IF;
