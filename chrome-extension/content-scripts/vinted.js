@@ -856,8 +856,30 @@ async function lireDetailArticle(vintedItemId) {
   } catch (e) {
     return { success: false, error: `réseau : ${String(e?.message ?? e)}` };
   }
-  if (resp.status === 401 || resp.status === 403) {
-    return { success: false, sessionExpiree: true, error: `session Vinted refusée (HTTP ${resp.status})` };
+  // ── 401 ET 403 NE DISENT PAS LA MÊME CHOSE (2026-09-23) ──────────────────
+  // Ils étaient confondus ici sous « session Vinted refusée » — alors que
+  // lirePageDressing les sépare depuis longtemps, et que la règle est écrite
+  // noir sur blanc ailleurs : chez Vinted, 403 = ANTI-ROBOT, pas déconnexion.
+  // Ce qu'a coûté la confusion, le 23/09 chez van-breugel.sandra : 4
+  // republications arrêtées sur « Connecte-toi sur vinted.fr » alors que sa
+  // sonde de session répondait 200 deux minutes plus tôt, que son identité
+  // Vinted se lisait (sandra57050 / 14016270) et que 10 autres annonces du
+  // même compte venaient de partir. On lui demandait de réparer une session
+  // qui n'avait rien.
+  // Le contexte qui rend le 403 probable et qu'il faut nommer : cette
+  // capture tape /api/v2/item_upload/items/{id}, « le profil de trafic le
+  // plus exposé du projet » (cf. le bandeau ⛔ plus haut). Ce matin-là, le
+  // faux blocage du pré-vol a fait recapturer les mêmes articles en boucle —
+  // 37 captures en 3 heures sur un seul compte. Un refus anti-robot à ce
+  // régime n'est pas une anomalie, c'est la réponse attendue.
+  if (resp.status === 401) {
+    return { success: false, sessionExpiree: true, httpStatus: 401, error: "session Vinted refusée (HTTP 401)" };
+  }
+  if (resp.status === 403) {
+    return {
+      success: false, accesRefuse: true, httpStatus: 403,
+      error: "lecture de l'annonce refusée par Vinted (HTTP 403) — protection anti-robot",
+    };
   }
   if (resp.status === 404) {
     return { success: false, error: "annonce introuvable sur Vinted (HTTP 404)" };
