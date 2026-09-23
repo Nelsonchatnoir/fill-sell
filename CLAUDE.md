@@ -145,19 +145,61 @@ maison, pour maîtriser sa réponse 401/CORS) · `update-job-status` ·
 (`send-relance` a été SUPPRIMÉE de la prod le 20/09/2026 — jeton en clair dans
 un fichier gitignoré, campagnes toutes parties, aucun appelant.)
 
-⛔ **TRENTE-DEUX PORTES D'ENVOI RESTENT OUVERTES SANS SOURCE (relevé 23/09 —
-elles étaient 15 le 20/09, le compte a DOUBLÉ en trois jours).**
-`functions list` compte **35** fonctions `send-*`, dont **33 en `verify_jwt =
-false`** — joignables sans session — et **32 absentes du dépôt** : on ne
-peut ni relire leur garde, ni savoir si elles portent un jeton en dur, ni les
-redéployer. C'est la même famille de défaut que `send-relance`, en trente-deux
-exemplaires. Un envoi ponctuel doit passer par `email-tunnel` ou par une
-fonction **commitée**, et être supprimé une fois parti — comme le 28/07, le
-20/09 et le 23/09 (`send-mariemorgane-2309`, `send-mariemorgane-2309-b`,
-`send-apple-relay-2309` supprimées ; leur trace d'envoi vit dans `email_logs`,
-type `extension_link_rattrapage`, 97 lignes).
-Le chiffre ci-dessus se périme à chaque one-shot : la liste vivante se lit par
-le geste `functions list`, jamais ici. Le compte se refait en une ligne :
+## ⛔ ENVOYER UN MAIL — UNE SEULE LIGNE, JAMAIS UNE FONCTION
+
+**Claude ne déploie plus JAMAIS de fonction edge pour envoyer un mail.**
+Le 23/09, les portes d'envoi étaient passées de 19 à **35** en trois jours :
+une fonction `send-<prénom>-<date>` par mail, destinataire en dur,
+`verify_jwt = false`, jeton maison (`fs2026batch`), jamais commitée, jamais
+supprimée. **Trente et une ont été supprimées ce jour-là** après vérification
+(0 cron, 0 fonction SQL, 0 trigger, 0 ligne de code ne les nommait).
+
+LA LIGNE, à exécuter en SQL — c'est tout :
+
+```sql
+select public.envoyer_mail_ponctuel(
+  p_destinataires := '[{"email":"qui@exemple.fr","user_id":"<uuid ou null>","variables":{"prenom":"Marie"}}]'::jsonb,
+  p_sujet         := 'Bonjour {{prenom}}',
+  p_html          := '<p>Le texte, en HTML.</p>',
+  p_type          := 'un_type_parlant',     -- obligatoire, il atterrit dans email_logs
+  p_categorie     := 'support',             -- 'support' (réponse à quelqu'un) | 'marketing' (campagne)
+  p_simulation    := true                   -- true = rien ne part, on lit le verdict
+);
+-- puis, TOUT DE SUITE (net._http_response se purge) :
+select status_code, content from net._http_response where id = <l'id rendu ci-dessus>;
+```
+
+`p_destinataires` accepte une liste : un envoi ou mille, même chemin, même
+journal. `{{cle}}` est remplacé par `variables` **par personne**.
+
+**Toujours lancer en `p_simulation := true` d'abord**, lire le verdict, puis
+relancer à `false`. Et commencer par SON adresse.
+
+CE QUE LA PORTE GARANTIT, et qu'aucune des 31 ne garantissait :
+- clé de service exigée (lue dans le **vault**, secret `service_role_key`,
+  jamais écrite en clair) — **aucun jeton en dur nulle part** ;
+- `verify_jwt = true` ET garde maison : un JWT d'utilisateur ordinaire est
+  signé par le projet, il ne suffit donc pas — seule la clé de service passe ;
+- passage obligé par `envoyerEmail()` (`_shared/desinscription.ts`) :
+  désinscription respectée, ligne `email_logs`, échecs dans
+  `email_log_echecs`, en-tête List-Unsubscribe One-Click sur tout marketing ;
+- `type` et `categorie` **obligatoires, sans défaut** ;
+- **plafond de 2 mails par personne et par 24 h** sur le `marketing`. Il compte
+  toutes les lignes `email_logs` de la personne sur 24 h glissantes, quel que
+  soit le type : « deux mails par jour » se juge depuis SA boîte de réception,
+  pas depuis nos catégories. Un `support` n'est **jamais** plafonné.
+
+⛔ **UN TYPE ONE-SHOT ENTRE DANS L'INDEX, LE JOUR MÊME.** Un type envoyé une
+fois par personne et absent de `email_logs_one_shot_unique` repartira en
+doublon sans que rien ne le signale (bug du welcome, 03/08). Cf. la section
+`email_logs` plus bas.
+
+Les fonctions `send-*` qui RESTENT, et pourquoi : `send-extension-link`
+(appelée par l'app, `verify_jwt` true), `send-bug-report` (idem),
+`send-chantier-zip` (commitée, donc relisible et redéployable),
+`send-batch-notifications` (v20, déclarée dans `config.toml`, **sans source** —
+gardée par précaution le 23/09 faute de preuve qu'elle ne sert plus ; à
+trancher). Le compte vivant se lit par le geste, jamais ici :
 `npx supabase functions list | grep -o '"slug":"send-[^"]*"' | wc -l`.
 
 ⚠️ **DEUX ÉCARTS CONNUS, NON CORRIGÉS — à trancher, pas à patcher en passant :**
