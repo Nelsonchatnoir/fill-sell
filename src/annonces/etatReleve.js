@@ -115,6 +115,20 @@ export function murConnexionReleve(run, platform = null) {
 const estOpla = (run) => /opla/i.test(String(run?.erreur ?? ''));
 const ACTIF = new Set(['queued', 'running']);
 
+// ── UN ARRÊT TECHNIQUE SE NOMME (2026-09-23) ────────────────────────────────
+// Le Hub vendeur eBay qui ne rend pas son compteur (page pas peinte à temps),
+// et la reprise technique que l'extension pose en remettant le run en file.
+// Ce n'est ni un mur de connexion (qui a son bouton), ni un verdict sur les
+// annonces : la carte dit ce qu'on fait, et le bouton « relever » reste là.
+const ARRET_TECHNIQUE_RE = /n'a pas rendu son compteur|\[reprise-technique\]/i;
+
+export function arretTechniqueReleve(run) {
+  if (!run) return false;
+  if (run.status !== 'failed' && run.status !== 'queued') return false;
+  if (murConnexionReleve(run)) return false;
+  return ARRET_TECHNIQUE_RE.test(String(run.erreur ?? ''));
+}
+
 const instant = (...iso) => {
   for (const v of iso) {
     const t = Date.parse(v ?? '');

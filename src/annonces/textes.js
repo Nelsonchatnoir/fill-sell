@@ -62,6 +62,9 @@ const FR = {
   signalNonConnecte: (nom) => `Pas connecté à ${nom} : connecte-toi sur ton ordinateur, le prochain relevé la prendra.`,
   signalOpla: "Opla n'est pas encore autorisée dans l'extension — rien à relever pour l'instant.",
   signalEchec: (nom, motif) => `Le relevé de ${nom} s'est arrêté${motif ? ` — ${motif}` : ''}. Les autres plateformes ont été relevées.`,
+  // Un arrêt TECHNIQUE (la page n'a pas répondu à temps) : ce n'est ni un
+  // échec de la personne ni un verdict sur ses annonces. On dit ce qu'on fait.
+  signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer le relevé d'ici.`,
   extensionAbsente: "L'extension Chrome n'est pas installée : c'est elle qui relève tes annonces depuis ton ordinateur.",
   extensionAbsenteCta: "Installer l'extension",
   extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome, le relevé part tout seul.",
@@ -156,6 +159,7 @@ const EN = {
   signalNonConnecte: (nom) => `Not signed in to ${nom}: sign in on your computer, the next scan will pick it up.`,
   signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
   signalEchec: (nom, motif) => `The ${nom} scan stopped${motif ? ` — ${motif}` : ''}. The other platforms were scanned.`,
+  signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the scan again from here.`,
   extensionAbsente: 'The Chrome extension is not installed: it is what scans your listings from your computer.',
   extensionAbsenteCta: 'Install the extension',
   extensionEndormie: 'Your computer did not answer: open Chrome and the scan starts on its own.',

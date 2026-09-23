@@ -10742,6 +10742,7 @@ const SYNC_ERREUR_TECHNIQUE_RE = new RegExp([
   "Failed to fetch",
   "NetworkError",
   "\\[watchdog\\]",                                 // expiré par le chien de garde 32 min
+  "n'a pas rendu son compteur",                    // Hub eBay muet (2026-09-23) : relevé eBay, jamais la sync Vinted
 ].join("|"), "i");
 
 // ⚠️ L'ORDRE COMPTE : la cause utilisateur est regardée EN PREMIER et ferme la
@@ -11983,6 +11984,30 @@ const RELEVE_PAGES = {
 // que de tourner sans fin — on ne conclut jamais sur ce qu'on n'a pas lu.
 const RELEVE_EBAY_PAGE_MAX = 15;
 const RELEVE_EBAY_TAILLE_PAGE = 200;
+// ── LE COMPTEUR DU HUB VENDEUR eBAY SE LIT À TROIS ENDROITS (2026-09-23) ────
+// « le Hub vendeur n'a pas rendu son compteur » : cassoudesalle ×6 (19/09),
+// m0nc3f (22/09), pironneau (23/09 12:49, une heure après un relevé réussi),
+// pereiramaia (23/09 19:31, 27/27 la veille), Louis (23/09 19:58, réussi à
+// 18:59). Même compte, même build, une heure d'écart : ce n'est pas la page
+// qui change, c'est le MOMENT où on la lit — un seul titre, sondé 5 s, jamais
+// relu, aucun second essai. Relevé LIVE sur le Hub de Nico le 23/09 : le
+// titre « Gérer les annonces en cours(6) » ET la ligne « Résultats : 1-6/6 »
+// portent le même nombre. On lit les deux (et leurs formes anglaises), on
+// attend jusqu'à COMPTEUR_EBAY_ATTENTE_MS, on relit après le défilement, on
+// recharge UNE fois la page vide, et un échec persistant repasse en file
+// (reprise technique) au lieu de se clore en rouge muet.
+// Les expressions sont des CHAÎNES : elles voyagent dans executeScript (une
+// fonction injectée ne voit pas les constantes du service worker) et les
+// selftests les relisent à la source (ebay-hub-compteur-selftest).
+const COMPTEUR_EBAY_SRC = [
+  "annonces?\\s+en\\s+cours\\s*\\(\\s*(\\d+)\\s*\\)",                          // « Gérer les annonces en cours(6) »
+  "active\\s+listings?\\s*\\(\\s*(\\d+)\\s*\\)",                               // « Manage active listings (6) »
+  "r[ée]sultats?\\s*:?\\s*\\d+\\s*[-–]\\s*\\d+\\s*(?:\\/|sur|de)\\s*(\\d+)",  // « Résultats : 1-6/6 »
+  "results?\\s*:?\\s*\\d+\\s*[-–]\\s*\\d+\\s*(?:\\/|of)\\s*(\\d+)",            // « Results: 1-50 of 173 »
+];
+const COMPTEUR_EBAY_ATTENTE_MS = 15_000;
+const COMPTEUR_LBC_ATTENTE_MS = 5_000;
+const HUB_EBAY_NON_RENDU_RE = /n'a pas rendu son compteur/i;
 const RELEVE_PAGES_MAX = 20;         // pagination / défilement : borne dure
 const RELEVE_CADENCE_CRON_MS = 20 * 3600_000;
 // Tours du moteur de rattachement par relevé : le serveur s'arrête au budget
@@ -12041,7 +12066,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: async (src, plateforme) => {
+    func: async (src, plateforme, compteursEbaySrc, attenteCompteurMs) => {
       const re = new RegExp(src, "i");
       const idDe = (url) => {
         const m = plateforme === "leboncoin" ? url.match(/\/(\d{6,})(?:[/?#]|$)/)
@@ -12067,13 +12092,27 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       // « arrêt sans_croissance » voulait dire deux choses opposées — « je
       // suis bloqué » et « j'ai tout vu » — et rien ne permettait de les
       // distinguer.
+      // eBay (2026-09-23) : plusieurs lectures du même nombre — titre du Hub,
+      // ligne « Résultats », formes anglaises — dans l'ordre reçu
+      // (COMPTEUR_EBAY_SRC). La première qui rend un entier fait foi.
+      const compteursEbay = (Array.isArray(compteursEbaySrc) ? compteursEbaySrc : []).map((s) => new RegExp(s, "i"));
       const lireTotal = () => {
         const txt = document.body?.innerText ?? "";
-        const mc = plateforme === "ebay"
-          ? txt.match(/annonces?\s+en\s+cours\s*\(\s*(\d+)\s*\)/i)
-          : txt.match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
+        if (plateforme === "ebay") {
+          for (const rx of compteursEbay) {
+            const m = txt.match(rx);
+            if (m) { const n = parseInt(m[1], 10); if (Number.isFinite(n)) return n; }
+          }
+          return null;
+        }
+        const mc = txt.match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
         return mc ? parseInt(mc[1], 10) : null;
       };
+      // Un mur de connexion rendu SUR PLACE (formulaire, sans redirection
+      // d'URL) : la boucle appelante le traite comme la page de connexion.
+      const formulaireConnexion = () => Boolean(
+        document.querySelector("input[type='password'], form[action*='signin' i], #userid, #pass"),
+      );
       let totalEnLigne = null;
       let surLaListe = true;
       // ── UN COMPTE VIDE N'EST PAS UN ÉCHEC (2026-09-23, m0nc3f) ───────────
@@ -12095,13 +12134,17 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       };
       let pageDitVide = false;
       if (plateforme === "leboncoin" || plateforme === "ebay") {
-        const limiteCompteur = Date.now() + 5000;
+        // Budget d'attente du compteur : 5 s sur Leboncoin (inchangé), 15 s
+        // sur eBay (2026-09-23 : le titre du Hub est peint APRÈS la table,
+        // et 5 s ne suffisaient pas toujours — cf. COMPTEUR_EBAY_SRC).
+        const limiteCompteur = Date.now() + (Number(attenteCompteurMs) || 5000);
         totalEnLigne = lireTotal();
         pageDitVide = lireVide();
         // On s'arrête dès que la page a parlé — par son compteur OU par sa
-        // phrase de liste vide. Attendre 5 s un compteur qui ne viendra jamais
+        // phrase de liste vide. Attendre un compteur qui ne viendra jamais
         // sur un compte sans annonce, c'est le faire échouer pour rien.
         while (totalEnLigne === null && !pageDitVide && Date.now() < limiteCompteur) {
+          if (formulaireConnexion()) break; // un mur : inutile d'attendre un compteur
           await dormir(400);
           totalEnLigne = lireTotal();
           pageDitVide = lireVide();
@@ -12157,6 +12200,10 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         vus = apres;
       }
       window.scrollTo(0, 0);
+      // Le compteur, RELU après le défilement (2026-09-23) : il n'était lu
+      // que dans la fenêtre d'avant — un titre peint pendant le défilement
+      // n'était jamais vu de ce run.
+      if (totalEnLigne === null && plateforme === "ebay") totalEnLigne = lireTotal();
       const defilement = { paliers, arret, vus, cible: totalEnLigne };
       const ancres = Array.from(document.querySelectorAll("a[href]"));
       const annoncesDe = (n) => new Set(
@@ -12297,11 +12344,29 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null, vues: stats.vues, favoris: stats.favoris });
       }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
-      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe, pageDitVide, defilement };
+      // Ce que la page MONTRAIT quand on l'a quittée — lu dans le run quand
+      // le compteur manque, pour que la prochaine occurrence dise sa cause
+      // (page pas peinte, variante, mur rendu sur place) au lieu d'un rouge
+      // muet. Rien de personnel : l'état du document et le début de son texte.
+      const txtFin = document.body?.innerText ?? "";
+      const page = {
+        etat: document.readyState, liens: ancres.filter((a) => re.test(a.href)).length,
+        titre_hub: /annonces?\s+en\s+cours|active\s+listings?/i.test(txtFin),
+        connexion: formulaireConnexion(),
+        texte: txtFin.replace(/\s+/g, " ").trim().slice(0, 140),
+      };
+      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe, pageDitVide, defilement, page };
     },
-    args: [pattern.source, platform],
+    args: [pattern.source, platform, platform === "ebay" ? COMPTEUR_EBAY_SRC : [], platform === "ebay" ? COMPTEUR_EBAY_ATTENTE_MS : COMPTEUR_LBC_ATTENTE_MS],
   });
   return res?.result ?? { annonces: [], diag: null };
+}
+
+/** L'état de la page eBay au moment où le relevé l'a quittée, en une ligne lisible dans le run. */
+function decrirePageHub(page) {
+  if (!page || typeof page !== "object") return null;
+  return `[page] ${page.etat ?? "?"}, ${Number(page.liens) || 0} lien(s) d'annonce, titre du Hub ${page.titre_hub ? "vu" : "absent"}` +
+    `${page.connexion ? ", formulaire de connexion" : ""} — « ${String(page.texte ?? "").slice(0, 100)} »`;
 }
 
 // Le relevé d'UNE plateforme, page par page, borné. Rend { annonces, complet }.
@@ -12412,6 +12477,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // La plateforme a-t-elle ÉCRIT qu'elle n'a aucune annonce ? (2026-09-23)
   let pageDitVide = false;
   let beebsIndexMotif = null;
+  // eBay (2026-09-23) : l'état de la dernière page lue, et si on l'a rechargée.
+  let dernierePageHub = null;
+  let ebayRechargee = false;
   // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
   // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
   const defilements = [];
@@ -12508,6 +12576,20 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       }
       const vusAvantPage = annonces.size; // sert la garde « cette page n'a rien ajouté »
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) }, surLaListe: false }));
+      // ── eBAY : UN MUR RENDU SUR PLACE, SANS REDIRECTION (2026-09-23) ──────
+      // Le formulaire de connexion peut être peint SUR l'adresse du Hub, sans
+      // passer par signin.ebay.fr : l'URL ne dit rien, la page si. Même
+      // sortie que la redirection — nommée par les deux sondes, jamais
+      // « compteur absent ».
+      if (platform === "ebay" && r?.page?.connexion === true && annonces.size === 0 && !(r.annonces ?? []).length) {
+        const mur = await Promise.all([
+          sonderHubVenteEbay().catch(() => null),
+          sonderSessionEbay().catch(() => null),
+        ]).then(([hub, session]) => classerMurHubEbay(hub, session)).catch(() => null);
+        return { annonces: [], complet: false, absente: true,
+          erreur: `session ebay : page de connexion${mur ? ` [mur:${mur}]` : ""} (formulaire rendu sur le Hub)` };
+      }
+      if (platform === "ebay" && r?.page) dernierePageHub = r.page;
       illisibles.prix += Number(r.diag?.sans_prix) || 0;
       illisibles.titre += Number(r.diag?.sans_titre) || 0;
       for (const a of r.annonces ?? []) {
@@ -12548,6 +12630,37 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       url = r.suivant.replace(WORK_TAB_FRAGMENT, "");
       if (n === RELEVE_PAGES_MAX - 1) complet = false; // borne atteinte : relevé partiel
       await sleep(randInt(1200, 2400));
+    }
+  }
+  // ── eBAY : UNE PAGE MUETTE SE RECHARGE UNE FOIS (2026-09-23) ──────────────
+  // Ni compteur, ni annonce, ni phrase de liste vide : la page n'a rien dit.
+  // Avant de conclure « couverture inconnue », on la recharge UNE fois (même
+  // adresse, même onglet) et on la relit — c'est ce qu'une personne ferait.
+  // Un second silence part dans le run avec l'état de la page ([page] …),
+  // puis en reprise technique (cf. lancerRelevePlateforme).
+  if (platform === "ebay" && dernierTabId != null && annonces.size === 0 && !pageDitVide && !Number.isFinite(ebayTotalEnCours)) {
+    try {
+      const url = RELEVE_PAGES.ebay[0].url;
+      const loaded = waitForTabComplete(dernierTabId);
+      await chrome.tabs.reload(dernierTabId);
+      try { await loaded; } catch { /* la page répond peut-être quand même : on lit */ }
+      await sleep(randInt(1500, 3000));
+      const tab = await chrome.tabs.get(dernierTabId).catch(() => null);
+      if (tab?.url && !/\/(?:connexion|login|signin|auth|identification)/i.test(tab.url) && String(tab.url).split("#")[0].startsWith(url.split("?")[0])) {
+        const r2 = await releverLiensAnnoncesDansOnglet(dernierTabId, platform).catch(() => null);
+        if (r2) {
+          for (const a of r2.annonces ?? []) {
+            if (!annonces.has(a.listing_id)) annonces.set(a.listing_id, { ...a, statut: a.statut ?? "en_ligne" });
+          }
+          if (Number.isFinite(r2.totalEnLigne)) ebayTotalEnCours = r2.totalEnLigne;
+          if (r2.pageDitVide === true) pageDitVide = true;
+          if (r2.page) dernierePageHub = r2.page;
+          ebayRechargee = true;
+          console.log(`[releve][ebay] page rechargée une fois : ${annonces.size} annonce(s), compteur ${Number.isFinite(ebayTotalEnCours) ? ebayTotalEnCours : "absent"}`);
+        }
+      }
+    } catch (e) {
+      console.warn("[releve][ebay] rechargement de la page muette :", String(e?.message ?? e));
     }
   }
   // ── VERDICT DE COUVERTURE LEBONCOIN (LOT 1, 2026-09-18) ───────────────────
@@ -12631,7 +12744,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     },
     ebay: {
       total: ebayTotalEnCours, comptees: annonces.size, libelle: "« en cours »", listeRendue: true,
-      absent: "le Hub vendeur n'a pas rendu son compteur « annonces en cours »",
+      absent: "le Hub vendeur n'a pas rendu son compteur « annonces en cours »"
+        + (ebayRechargee ? ", même après rechargement" : "")
+        + (dernierePageHub ? ` · ${decrirePageHub(dernierePageHub)}` : ""),
     },
     beebs: {
       total: beebsTotalIndex, comptees: enLigne(), libelle: "dans l'index public de Beebs", listeRendue: true,
@@ -13382,6 +13497,26 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
 // UN chemin pour tous les déclencheurs : crée ou réclame le run, relève,
 // écrit, laisse le moteur rattacher, clôt le run — et dit tout dans
 // vinted_sync_runs (kind 'annonces', platform).
+// ── UNE PANNE TECHNIQUE SE REPREND, ELLE NE CLÔT PAS (2026-09-23 soir) ──────
+// La ligne repasse 'queued' avec son compteur : get-pending-jobs la resservira
+// au prochain poll (TTL 6 h), et la reprise repart d'ici. Deux reprises au
+// plus, comptées DANS la ligne (le marqueur survit au worker). Rend false
+// quand le compteur est épuisé ou que l'écriture n'a pas pris : l'appelant
+// clôt alors le run comme avant.
+async function remettreEnFileReprise(run, token, msg, maintenant) {
+  const tentative = Number((String(run?.erreur ?? "").match(RELEVE_REPRISE_TECHNIQUE_RE) ?? [])[1]) || 0;
+  if (!run?.id || tentative >= RELEVE_REPRISE_TECHNIQUE_MAX) return false;
+  const requeue = await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
+    method: "PATCH", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: "queued", queued_at: maintenant(), claimed_at: null, started_at: null, finished_at: null, updated_at: maintenant(),
+      erreur: `[reprise-technique] tentative ${tentative + 1}/${RELEVE_REPRISE_TECHNIQUE_MAX} au prochain passage — ${String(msg).slice(0, 220)}`,
+    }),
+  }).then((r) => Array.isArray(r) && r.length > 0).catch(() => false);
+  if (requeue) console.warn(`[releve][${run.platform ?? "?"}] run ${run.id} remis en file (reprise technique ${tentative + 1}/${RELEVE_REPRISE_TECHNIQUE_MAX}) : ${msg}`);
+  return requeue;
+}
+
 async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null } = {}) {
   if (!RELEVE_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (releveEnCours) return { ok: false, reason: "deja_en_cours" };
@@ -13521,6 +13656,16 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
                  ? `[capture] ${capture.capturees} fiche(s) capturée(s)${capture.completes ? `, ${capture.completes} article(s) complété(s)` : ""}${capture.echecs ? `, ${capture.echecs} en échec` : ""}${capture.restantes ? `, ${capture.restantes} au prochain relevé` : ""}${capture.motif ? ` — ${capture.motif}` : ""}` : null]
         .filter(Boolean).join(" · ") || null,
     };
+    // ── eBAY : UN HUB MUET EST UNE PANNE TECHNIQUE, PAS UN VERDICT (2026-09-23)
+    // Rien vu, rien dit, compteur absent malgré l'attente et le rechargement :
+    // le run repasse en file (deux reprises au plus) au lieu de se clore en
+    // rouge — et il garde ce que la page montrait ([page] …) pour la suite.
+    // Le moteur a déjà tourné sur ce run avec le marqueur « [incomplet] » : il
+    // n'a rien conclu, et le rejeu repart d'un run propre.
+    if (fin.status === "failed" && platform === "ebay" && HUB_EBAY_NON_RENDU_RE.test(String(erreur ?? ""))) {
+      const reprise = await remettreEnFileReprise(run, token, `[hub] ${String(erreur)}`, maintenant);
+      if (reprise) return { ok: false, reason: "reprise_technique", message: String(erreur) };
+    }
     await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: JSON.stringify(fin) }).catch(() => {});
     console.log(`[releve][${platform}] run ${run.id} → ${fin.status} : ${annonces.length} annonce(s), ${ecrites} écrite(s)${fin.erreur ? ` — ${fin.erreur}` : ""}`);
     return { ok: fin.status === "done", relevees: annonces.length, bilan };
@@ -13528,22 +13673,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     const msg = String(e?.message ?? e);
     console.error(`[releve][${platform}] échec :`, msg);
     if (run?.id) {
-      // ── UNE PANNE TECHNIQUE SE REPREND, ELLE NE CLÔT PAS (2026-09-23 soir) ──
-      // La ligne repasse 'queued' avec son compteur : get-pending-jobs la
-      // resservira au prochain poll (TTL 6 h), et la reprise repart d'ici.
-      const tentative = Number((String(run.erreur ?? "").match(RELEVE_REPRISE_TECHNIQUE_RE) ?? [])[1]) || 0;
-      if (SYNC_ERREUR_TECHNIQUE_RE.test(msg) && tentative < RELEVE_REPRISE_TECHNIQUE_MAX) {
-        const requeue = await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
-          method: "PATCH", headers: { Prefer: "return=representation" },
-          body: JSON.stringify({
-            status: "queued", queued_at: maintenant(), claimed_at: null, started_at: null, finished_at: null, updated_at: maintenant(),
-            erreur: `[reprise-technique] tentative ${tentative + 1}/${RELEVE_REPRISE_TECHNIQUE_MAX} au prochain passage — ${msg.slice(0, 220)}`,
-          }),
-        }).then((r) => Array.isArray(r) && r.length > 0).catch(() => false);
-        if (requeue) {
-          console.warn(`[releve][${platform}] run ${run.id} remis en file (reprise technique ${tentative + 1}/${RELEVE_REPRISE_TECHNIQUE_MAX}) : ${msg}`);
-          return { ok: false, reason: "reprise_technique", message: msg };
-        }
+      // Une panne technique de la liste fermée repasse en file (cf. remettreEnFileReprise).
+      if (SYNC_ERREUR_TECHNIQUE_RE.test(msg) && (await remettreEnFileReprise(run, token, msg, maintenant))) {
+        return { ok: false, reason: "reprise_technique", message: msg };
       }
       await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
         method: "PATCH", body: JSON.stringify({ status: "failed", finished_at: maintenant(), updated_at: maintenant(), erreur: msg.slice(0, 300) }),

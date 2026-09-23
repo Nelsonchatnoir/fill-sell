@@ -24,7 +24,7 @@ import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
 import { LABEL_RELEVE } from '../utils/syncPlateformes';
 import { useReleveAnnonces } from './useReleveAnnonces';
-import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve } from './etatReleve';
+import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve, arretTechniqueReleve } from './etatReleve';
 import { textesAnnonces } from './textes';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 import ConstellationReleve from './ConstellationReleve';
@@ -113,7 +113,12 @@ export default function CarteAnnoncesEnLigne({
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p))
       .map((t) => ({
         cle: t.p,
-        texte: T.signalEchec(t.nom, String((r.runs[t.p]?.erreur) ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || null),
+        // Un arrêt TECHNIQUE (Hub eBay muet, reprise en file) se dit avec ses
+        // mots : ce qu'on fait, et ce que la personne peut faire. Jamais le
+        // texte brut du run, qui parle de compteur et de couverture.
+        texte: arretTechniqueReleve(r.runs[t.p] ?? null)
+          ? T.signalTechnique(t.nom)
+          : T.signalEchec(t.nom, String((r.runs[t.p]?.erreur) ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || null),
       })),
     // « Ordinateur éteint » : le run a expiré côté serveur. On le dit sans
     // accuser — c'est une machine qui dormait, pas une faute.
@@ -342,7 +347,7 @@ export default function CarteAnnoncesEnLigne({
       {/* La modale Opla — au clic sur sa tuile, sur place. À sa fermeture on
           relit l'autorisation : la personne vient peut-être de l'accorder. */}
       {r.oplaModale && (
-        <OplaAutorisationModal lang={lang} contexte="releve" onClose={r.fermerOplaModale} />
+        <OplaAutorisationModal lang={lang} contexte="releve" userId={r.userId} onClose={r.fermerOplaModale} />
       )}
     </div>
   );
