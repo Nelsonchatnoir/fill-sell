@@ -68,7 +68,8 @@
     "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs",
     "selftest:releve-compte-vide": "node scripts/releve-compte-vide-selftest.mjs",
     "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs",
-    "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs"
+    "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs",
+    "selftest:creneaux-famine": "node scripts/creneaux-famine-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
