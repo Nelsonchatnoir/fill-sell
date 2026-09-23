@@ -284,9 +284,20 @@ for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '
     if (v === null) { const w = enfant('2 ans'); dit(nom, w.ok === true && sizeDe(w) === '2Y', sizeDe(w)); continue; }
     dit(nom, v.ok === false && v.motif === M.TAILLE_HORS_GRILLE, `${v.ok} / ${v.motif}`);
   }
-  dit('« 44.5 » : le message dit la LIMITE, il ne propose pas 44 ni 45',
-    !/\b4[45]\b\s*(ou|à la place|plutôt)/i.test(
-      oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MEN_SNEAKERS', taille: '44.5' } }), ref).message));
+  // ── RÈGLE DU 23/09 (Nico) : au lieu d'une erreur, proposer EN UN GESTE la
+  // pointure entière la plus proche, au-dessus ou en dessous — jamais d'arrondi
+  // silencieux. Le refus reste (ok:false, TAILLE_HORS_GRILLE, vérifié
+  // ci-dessus) ; ce sont les OPTIONS qui changent : deux voisines, pas 37.
+  {
+    const v = oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MEN_SNEAKERS', taille: '44.5' } }), ref);
+    const codes = (v.options ?? []).map((o) => String(o.code));
+    dit('« 44.5 » : le refus ne propose QUE les deux voisines entières, 44 puis 45',
+      codes.length === 2 && codes[0] === '44' && codes[1] === '45', codes.join(','));
+    dit('« 44.5 » : le message nomme les deux voisines (un geste), pas la grille entière',
+      /choisis 44 ou 45/i.test(String(v.message)), String(v.message).slice(0, 120));
+    const w = oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MEN_SNEAKERS', taille: '44,5' } }), ref);
+    dit('« 44,5 » : même chose avec la virgule', (w.options ?? []).map((o) => String(o.code)).join(',') === '44,45', (w.options ?? []).map((o) => o.code).join(','));
+  }
 
   console.log('\nLA TABLE NOMBRE → LETTRE : RELEVÉE CHEZ VINTED, BORNÉE AUX FEMMES');
   // Opla ne publie AUCUNE équivalence numérique (relevé 20/09 : G1 = « XXS »
