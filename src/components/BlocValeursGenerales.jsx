@@ -35,9 +35,61 @@ export default function BlocValeursGenerales({
   etat, onEtatChange,
   // Nombre de plateformes qui suivront (0 → on n'affiche que le prix).
   nbSuiveuses = 0,
+  // ── LES VERSIONS DU TEXTE (2026-09-23, chantier 3) ─────────────────────
+  // `versions` : [{ platform, titre, description, date, enLigne, url }] — ce
+  // que chaque plateforme affiche EN LIGNE (relevé) ; `ficheTexte` : le texte
+  // de la fiche FillSell. Sous le titre et sous la description, une rangée de
+  // « Reprendre le texte de : Beebs · 19/09 · Leboncoin · 23/09 · Ma fiche »
+  // n'apparaît que quand une version DIFFÈRE de ce qui est dans le champ. Un
+  // tap pose ce texte comme valeur générale — la personne choisit, rien ne
+  // s'écrase sans elle.
+  versions = [], ficheTexte = null,
 }) {
   const [descOuverte, setDescOuverte] = useState(false);
   const en = lang === "en";
+  const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+  const dateCourte = (iso) => {
+    const d = new Date(iso ?? "");
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "2-digit", month: "2-digit" }) : "";
+  };
+  // Les versions qui diffèrent de la valeur courante d'un champ, dédoublonnées
+  // par texte (deux plateformes qui portent le même texte = une seule puce).
+  const versionsPour = (champ, courante) => {
+    const vues = new Set();
+    const out = [];
+    const cur = String(courante ?? "").trim();
+    const pousser = (v) => { const t = String(v.texte ?? "").trim(); if (!t || t === cur || vues.has(t)) return; vues.add(t); out.push(v); };
+    for (const v of [...(versions ?? [])].sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))) {
+      pousser({ cle: `${v.platform}:${v.date}`, texte: v[champ], libelle: `${NOMS[v.platform] ?? v.platform}${v.date ? ` · ${dateCourte(v.date)}` : ""}${v.enLigne ? "" : (en ? " · offline" : " · hors ligne")}`, url: v.url });
+    }
+    if (ficheTexte && ficheTexte[champ]) pousser({ cle: "fiche", texte: ficheTexte[champ], libelle: en ? "My item card" : "Ma fiche" });
+    return out;
+  };
+  // Une fonction de rendu, pas un composant défini dans le rendu : un
+  // composant créé ici serait recréé (et remonté) à chaque passage.
+  const rangeeVersions = (champ, courante, onChoisir) => {
+    const liste = versionsPour(champ, courante);
+    if (!liste.length) return null;
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8 }} data-versions={champ}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.mute, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {en ? "Use the text from:" : "Reprendre le texte de :"}
+        </span>
+        {liste.map((v) => (
+          <button
+            key={v.cle} type="button" title={String(v.texte).slice(0, 300)}
+            onClick={() => onChoisir(v.texte)}
+            style={{
+              padding: "5px 10px", borderRadius: 999, fontFamily: "inherit", fontSize: 12, fontWeight: 600,
+              border: `1px solid ${T.border}`, background: T.card, color: T.ink, cursor: "pointer",
+            }}
+          >
+            {v.libelle}
+          </button>
+        ))}
+      </div>
+    );
+  };
   // Le nombre de lignes RÉELLES du texte du vendeur (\r\n compris : une
   // description venue d'un relevé peut porter des fins de ligne Windows).
   const nbLignesDescription = String(description ?? "").trim()
@@ -105,6 +157,7 @@ export default function BlocValeursGenerales({
             placeholder={t("generalTitlePlaceholder")}
             style={st.champ}
           />
+          {rangeeVersions("titre", titre, (v) => onTitreChange(v))}
 
           <div style={st.separateur} />
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
@@ -159,6 +212,7 @@ export default function BlocValeursGenerales({
               {t("generalDescriptionLines").replace("{n}", String(nbLignesDescription))}
             </div>
           )}
+          {rangeeVersions("description", description, (v) => { onDescriptionChange(v); setDescOuverte(true); })}
 
           <div style={st.separateur} />
           <div style={st.intitule}>{t("fieldConditionLabel")}</div>

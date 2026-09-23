@@ -2245,6 +2245,8 @@ function StepGeneration({ generating, generateError, platformListings, processed
   generales = null, onValeurGenerale = null,
   // Le texte a bougé sur la plateforme alors qu'elle l'avait retouché ici.
   divergence = null, divergenceTranchee = null, onTrancherDivergence = null,
+  // Les versions du texte par plateforme (2026-09-23) et le texte de la fiche.
+  versionsTexte = [], ficheTexte = null,
   dissociees = null, onModifierCarte = null, onRetablirCarte = null }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
@@ -2492,6 +2494,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
         titre={generales?.titre ?? ""} onTitreChange={v => onValeurGenerale?.("titre", v)}
         description={generales?.description ?? ""} onDescriptionChange={v => onValeurGenerale?.("description", v)}
         etat={generales?.etat ?? ""} onEtatChange={v => onValeurGenerale?.("etat", v)}
+        versions={versionsTexte} ficheTexte={ficheTexte}
         enfantsPrix={
           <>
             {prixManquant && onEstimatePrice && (
@@ -4611,6 +4614,39 @@ export default function ListingPreviewScreen({
   // ⛔ Échec de lecture, aucune annonce, catégorie introuvable dans nos
   //    arbres → null, et tout se passe exactement comme avant.
   const [origineCat, setOrigineCat] = useState(null);
+  // ── LES VERSIONS DU TEXTE, PAR PLATEFORME (2026-09-23, chantier 3) ────────
+  // Les textes de chaque annonce en ligne existent déjà (annonces_plateforme :
+  // `titre` de la liste, `capture.description`) ; aucun écran ne permettait
+  // de choisir. La fiche importée de Louis portait une capture Beebs plus
+  // vieille que ce qui est en ligne. On lit ici, une fois, les versions de
+  // cet article — plateforme, texte, date — et le bloc général les propose
+  // pour le titre et pour la description, séparément.
+  const [versionsTexte, setVersionsTexte] = useState([]);
+  useEffect(() => {
+    if (!inventaireId) { setVersionsTexte([]); return undefined; }
+    let vivant = true;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("annonces_plateforme")
+          .select("platform, titre, capture, capture_le, vu_le, statut_plateforme, url")
+          .eq("inventaire_id", inventaireId)
+          .is("disparu_le", null)
+          .order("vu_le", { ascending: false })
+          .limit(8);
+        if (!vivant || !Array.isArray(data)) return;
+        setVersionsTexte(data.map(l => ({
+          platform: l.platform,
+          titre: String(l.titre ?? "").trim() || null,
+          description: String(l.capture?.description ?? "").trim() || null,
+          date: l.capture_le ?? l.vu_le ?? null,
+          enLigne: l.statut_plateforme === "en_ligne",
+          url: l.url ?? null,
+        })).filter(v => v.titre || v.description));
+      } catch { /* les versions sont un BONUS : leur absence ne bloque rien */ }
+    })();
+    return () => { vivant = false; };
+  }, [inventaireId, supabase]);
   useEffect(() => {
     if (!inventaireId) { setOrigineCat(null); return undefined; }
     let vivant = true;
@@ -6244,6 +6280,34 @@ export default function ListingPreviewScreen({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [platformListings, edited, selected]);
+
+  // ── PAR DÉFAUT, LE TEXTE LE PLUS RÉCENT RÉELLEMENT EN LIGNE (2026-09-23) ──
+  // Louis : sa fiche importée portait une capture Beebs du 19/09, Beebs
+  // affichait un texte plus neuf. Quand la fiche n'a PAS été retouchée à la
+  // main (titre_source / description_source ≠ manuel) et que le champ général
+  // porte encore le texte de la fiche, on lui donne la version en ligne la
+  // plus récente — elle reste choisissable dans « Reprendre le texte de : ».
+  // Une fiche retouchée par la personne ne bouge pas : c'est SON texte, et la
+  // rangée lui montre les autres versions, sans rien écraser.
+  const versionsAppliquees = useRef(null);
+  useEffect(() => {
+    if (!versionsTexte.length || !generales?.titre && !generales?.description) return;
+    if (versionsAppliquees.current === inventaireId) return;
+    const enLigne = [...versionsTexte].filter(v => v.enLigne).sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+    if (!enLigne.length) return;
+    versionsAppliquees.current = inventaireId;
+    const marqueur = (cle) => String(attributV(cle) ?? "").trim().toLowerCase();
+    for (const [champ, cle] of [["titre", "titre_source"], ["description", "description_source"]]) {
+      if (marqueur(cle) === "manuel") continue;
+      const fiche = String(initialListing?.[champ] ?? "").trim();
+      const courant = String(generales?.[champ] ?? "").trim();
+      if (fiche && courant && courant !== fiche) continue; // déjà retouché dans ce stepper
+      const recente = enLigne.find(v => String(v[champ] ?? "").trim());
+      const texte = recente ? String(recente[champ]).trim() : "";
+      if (texte && texte !== courant) poserValeurGenerale(champ, texte);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionsTexte, generales?.titre, generales?.description, inventaireId]);
 
   // APPLIQUER — écrit la valeur générale sur toutes les cartes qui la suivent.
   // ⛔ TOUTES LES COPIES, COCHÉES OU NON — même raison que le prix central
@@ -9338,6 +9402,9 @@ export default function ListingPreviewScreen({
             // ── LA VALEUR GÉNÉRALE (2026-09-21) ────────────────────────────
             generales={generales}
             onValeurGenerale={poserValeurGenerale}
+            // ── LES VERSIONS DU TEXTE (2026-09-23) : choisir, jamais deviner ──
+            versionsTexte={versionsTexte}
+            ficheTexte={{ titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" }}
             divergence={divergence}
             divergenceTranchee={divergenceTranchee}
             onTrancherDivergence={trancherDivergence}

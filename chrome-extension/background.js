@@ -13398,7 +13398,12 @@ const CAPTURE_FRAICHEUR_H = 24;
 // DIX par run, plancher et plafond à la fois : ~40 s au lieu de 2 min, un parc
 // de 100 annonces entièrement rafraîchi en dix relevés, et une annonce modifiée
 // reste prise le jour même par la file « changées », qui n'est pas contingentée.
-const CAPTURE_PERIMEES_PAR_RUN = 10;
+// 2026-09-23 : DIX ne suffisait pas à Louis — 271 annonces, une capture Beebs
+// du 19/09 encore servie le 23/09 alors que le texte en ligne avait changé ;
+// à dix par relevé, un parc de cette taille se rafraîchit en 27 relevés, soit
+// des semaines. Le chantier « choisir le texte à reprendre » exige une capture
+// qui suit l'annonce : VINGT par run (≈ 80 s de pages, plafond 30 inchangé).
+const CAPTURE_PERIMEES_PAR_RUN = 20;
 
 /** La ligne de liste mémorisée DANS la capture — c'est elle qui rend le
  *  signal « changée » gratuit au run suivant. */

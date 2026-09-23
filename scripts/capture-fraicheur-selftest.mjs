@@ -160,11 +160,17 @@ console.log("\n5. LE CAS DE LOUIS, SUR SES CHIFFRES RÉELS");
     r.pris[0].listing_id === "32750579", r.pris[0].listing_id);
   ok("il n'avait touché ni au titre ni au prix — elle passe par la file « périmées »",
     r.changees === 0 && r.perimees === 47, `changees=${r.changees} perimees=${r.perimees}`);
-  ok("10 fiches ce run, les 37 autres aux suivants — le contingent des périmées",
-    r.pris.length === CAPTURE_PERIMEES_PAR_RUN && r.restantes === 37,
+  // Le contingent se LIT dans background.js (2026-09-23 : DIX → VINGT, une
+  // capture Beebs de Louis du 19/09 encore servie le 23/09). Le test tient au
+  // chiffre, pas à sa valeur : plancher 10, plafond 30 (l'enveloppe mesurée le
+  // 21/09), et toute la file passe en ceil(47 / contingent) relevés.
+  ok("le contingent reste dans l'enveloppe mesurée : 10 ≤ contingent ≤ 30 (plafond de run)",
+    CAPTURE_PERIMEES_PAR_RUN >= 10 && CAPTURE_PERIMEES_PAR_RUN <= 30, String(CAPTURE_PERIMEES_PAR_RUN));
+  ok(`${CAPTURE_PERIMEES_PAR_RUN} fiches ce run, les ${47 - CAPTURE_PERIMEES_PAR_RUN} autres aux suivants — le contingent des périmées`,
+    r.pris.length === CAPTURE_PERIMEES_PAR_RUN && r.restantes === 47 - CAPTURE_PERIMEES_PAR_RUN,
     JSON.stringify({ pris: r.pris.length, restantes: r.restantes }));
-  ok("son parc Beebs est entièrement rafraîchi en 5 relevés",
-    Math.ceil(47 / CAPTURE_PERIMEES_PAR_RUN) === 5);
+  ok(`son parc Beebs est entièrement rafraîchi en ${Math.ceil(47 / CAPTURE_PERIMEES_PAR_RUN)} relevés (3 à vingt par run, c'était 5 à dix)`,
+    Math.ceil(47 / CAPTURE_PERIMEES_PAR_RUN) <= 5);
 }
 
 console.log("\n6. UNE CAPTURE D'AVANT CE LOT (sans ligne mémorisée) N'EST PAS PERDUE");
