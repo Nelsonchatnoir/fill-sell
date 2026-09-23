@@ -1927,6 +1927,18 @@ let syncPrioritaireDuCycle = 0;
 // Couper pour tout le parc, sans paquet :
 //   update coin_config set value = 0 where key = 'keepalive_actif';
 let keepaliveActif = false;
+// ── PRÉ-VOL DE LA COPIE : INTERRUPTEUR SERVEUR (2026-09-23) ─────────────────
+// get-pending-jobs.prevol_copie_actif (source : coin_config.prevol_copie_actif,
+// 0 = éteint). La garde « on ne retire pas ce qu'on ne sait pas remettre » n'en
+// avait AUCUN : le 23/09, sa première version a bloqué 99 republications sur
+// 99 et il a fallu corriger le SERVEUR pour la contourner, faute de pouvoir
+// l'éteindre. Toute garde capable de bloquer doit se couper en une ligne :
+//   update coin_config set value = 0 where key = 'prevol_copie_actif';
+// ⚠️ Le défaut est ALLUMÉ, ici comme au serveur — mais `false` tant que le
+// premier poll n'a pas répondu : au démarrage, on n'a encore rien à vérifier.
+// Un serveur qui ne connaît pas le champ (build antérieur au 23/09) rend
+// `undefined` → la garde reste ALLUMÉE : on n'éteint jamais par ignorance.
+let prevolCopieActif = true;
 
 function pollAndProcessJobs() {
   const p = withJobFlowLock("poll", pollAndProcessJobsUnlocked);
@@ -2461,6 +2473,9 @@ async function pollAndProcessJobsUnlocked() {
     // keepalive_actif (2026-09-17) : strictement `=== true` — un serveur qui ne
     // le connaît pas (ou qui l'a coupé) laisse le chemin d'aujourd'hui.
     keepaliveActif = rep.keepalive_actif === true;
+    // prevol_copie_actif (2026-09-23) : seul un `false` EXPLICITE éteint la
+    // garde. Absent (serveur plus ancien) ou illisible → elle reste armée.
+    prevolCopieActif = rep.prevol_copie_actif !== false;
     // sync_prioritaire (2026-09-04) : le serveur a VOLONTAIREMENT vidé ce
     // cycle pour laisser passer la demande de sync qu'il vient de nous
     // confier. Distinct d'une file réellement vide — et c'est exactement la
@@ -18436,14 +18451,46 @@ function tracerGarde(pf, nom, detail = {}) {
   } catch { /* jamais bloquant */ }
 }
 
-function prevolCaptureRepublication(job) {
+// ══════════════════════════════════════════════════════════════════════════════
+// LE PRÉ-VOL LISAIT UNE COPIE QUE LE CODE D'APRÈS ÉCRIT (2026-09-23)
+// ══════════════════════════════════════════════════════════════════════════════
+// Mesuré en base : 99 passages de cette garde sur Vinted, 99 « bloque », 0
+// « ok ». Les 99 captures étaient valides et complètes (titre, prix, photos,
+// catalog_id, package_size_id : aucun manquant). 100 % de faux positifs.
+// LA CAUSE, et elle est CHRONOLOGIQUE, pas orthographique : sur le chemin
+// Vinted, `pf.republish_snapshot` est écrit par le MÊME passage, ~250 lignes
+// PLUS BAS (« SNAPSHOT OBLIGATOIRE, ÉCRIT ET CONFIRMÉ AVANT TOUT GESTE »).
+// À l'instant où la garde la cherchait, la copie ne POUVAIT pas exister : la
+// garde contrôlait une valeur que le code qu'elle protège fabrique après elle.
+// L'autotest ne l'a pas vu parce qu'il a été écrit sur une forme de job
+// imaginée — `{ platform_fields: { republish_snapshot: {...} } }` — qu'aucun
+// job de production n'a jamais portée à ce moment-là.
+//
+// CE QUI CHANGE. La copie de référence pour Vinted, c'est la CAPTURE en base
+// (vinted_republish_captures, par `capture_id`) : c'est elle que la recréation
+// relit, c'est d'elle que le snapshot est fabriqué. La garde l'accepte donc
+// comme preuve, et le vrai contrôle champ par champ se fait au SEUL moment où
+// la copie existe pour de bon — sur le snapshot fraîchement construit, juste
+// avant le retrait (second appel, avec `snapExterne`). L'annonce est encore en
+// ligne à cet instant : un refus ne coûte toujours rien.
+// ⛔ `snapExterne` est la copie que l'appelant tient en main. Quand il en
+//    passe une, elle fait foi — c'est celle qui servira à recréer.
+function prevolCaptureRepublication(job, snapExterne = null) {
   const pf = job.platform_fields ?? {};
-  const snap = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : null;
+  const snapPf = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : null;
+  const snap = (snapExterne && typeof snapExterne === "object") ? snapExterne : snapPf;
   const manquants = [];
 
   if (job.platform === "vinted") {
     // Vinted recrée par son API depuis la capture : tout vient de là.
-    if (!snap) return ["la copie de ton annonce"];
+    if (!snap) {
+      // Pas de copie SOUS LA MAIN — mais la capture en base en est une, et
+      // c'est la vraie. Son existence suffit ici : sa validité est vérifiée
+      // quelques lignes plus bas (verdict 'valide', fraîcheur 24 h), et ses
+      // champs le sont au second appel, sur le snapshot construit depuis elle.
+      // Sans capture NI copie, en revanche, il n'y a rien pour recréer.
+      return Number(pf.capture_id) > 0 ? [] : ["la copie de ton annonce"];
+    }
     if (!String(snap.titre ?? "").trim()) manquants.push("le titre");
     if (!Array.isArray(snap.photos) || !snap.photos.length) manquants.push("les photos");
     if (!(Number(snap.prix) > 0)) manquants.push("le prix");
@@ -18496,12 +18543,51 @@ function prevolCaptureRepublication(job) {
 
 // Le message d'un pré-vol négatif — même forme partout : ce qui manque, et le
 // fait que l'annonce n'a PAS été touchée.
+// ⛔ « la copie de ton annonce manque dans la copie de ton annonce » (23/09) :
+//    c'est ce que rendait ce message quand le manquant ÉTAIT la copie. Un
+//    message doit nommer ce qui manque, et un seul niveau à la fois — quand
+//    c'est la copie elle-même, on le dit avec ses mots, sans l'emboîter.
 function messagePrevolRepublication(label, manquants) {
+  const intact = "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
+  if (manquants.length === 1 && manquants[0] === "la copie de ton annonce") {
+    return `Republication ${label} mise en pause AVANT tout retrait : la copie de ton annonce n'a pas été retrouvée. ${intact}`;
+  }
   const quoi = manquants.length > 1
     ? `${manquants.slice(0, -1).join(", ")} et ${manquants[manquants.length - 1]}`
     : manquants[0];
-  return `Republication ${label} mise en pause AVANT tout retrait : ${quoi} ${manquants.length > 1 ? "manquent" : "manque"} dans la copie de ton annonce. `
-    + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
+  return `Republication ${label} mise en pause AVANT tout retrait : ${quoi} ${manquants.length > 1 ? "manquent" : "manque"} dans la copie de ton annonce. ${intact}`;
+}
+
+// LE PRÉ-VOL, EN UN SEUL ENDROIT (2026-09-23). Il était recopié à l'identique
+// sur deux chemins ; il l'est maintenant sur trois (Vinted le repasse sur la
+// copie construite). Trois copies d'une garde, c'est trois occasions qu'elles
+// divergent — et c'est déjà arrivé ici, le 22/09, quand la version « Vinted »
+// vivait dans une fonction que Vinted n'atteignait pas.
+// Rend `null` quand ça passe, ou le résultat de job à renvoyer tel quel.
+// `etape` n'est QUE de la trace : elle dit lequel des passages a parlé.
+async function appliquerPrevolCopie({ accessToken, job, pf, snap = null, etape }) {
+  // Interrupteur serveur : éteint, la garde trace son abstention et laisse
+  // passer. On ne fait pas disparaître la ligne — une garde muette ne se
+  // distingue pas d'une garde qui n'a pas tourné (règle du 22/09).
+  if (!prevolCopieActif) {
+    tracerGarde(pf, "prevol_copie", { verdict: "eteint", plateforme: job.platform, etape });
+    return null;
+  }
+  const manquants = prevolCaptureRepublication(job, snap);
+  tracerGarde(pf, "prevol_copie", {
+    verdict: manquants.length ? "bloque" : "ok",
+    plateforme: job.platform,
+    etape,
+    champs_verifies: ["titre", "prix", "photos", "categorie", "localisation", "format_colis"],
+    ...(manquants.length ? { manquants } : {}),
+  });
+  if (!manquants.length) return null;
+  const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+  const msg = messagePrevolRepublication(label, manquants);
+  pf.republish_prevol_manquants = manquants;
+  await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+  console.warn(`[republish] job ${job.id} : retrait REFUSÉ (${etape}) — copie incomplète (${manquants.join(", ")})`);
+  return { status: "needsUser", error: msg };
 }
 
 // Ouvre la page de dépôt dans l'onglet de travail et lit la sonde.
@@ -18631,21 +18717,14 @@ async function processRepublishJobPlateforme(job, accessToken) {
     // ⛔ Aucune heuristique : on teste la PRÉSENCE de la valeur, jamais sa
     //    justesse — et jamais ce qu'on sait retrouver seul
     //    (cf. prevolCaptureRepublication).
+    // Leboncoin et Beebs rejouent le FORMULAIRE depuis le job : tout ce qui
+    // est vérifié ici est déjà sur la ligne au moment du poll (le serveur pose
+    // lbcCategoryPath et beebsCategoryPath). Ces deux-là n'ont donc jamais eu
+    // le défaut de chronologie de Vinted — vérifié le 23/09, et aucun des deux
+    // n'avait encore tourné une seule fois sur la 0.6.58.
     {
-      const manquants = prevolCaptureRepublication(job);
-      tracerGarde(pf, "prevol_copie", {
-        verdict: manquants.length ? "bloque" : "ok",
-        plateforme: job.platform,
-        champs_verifies: ["titre", "prix", "photos", "categorie", "localisation", "format_colis"],
-        ...(manquants.length ? { manquants } : {}),
-      });
-      if (manquants.length) {
-        const msg = messagePrevolRepublication(label, manquants);
-        pf.republish_prevol_manquants = manquants;
-        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — copie incomplète (${manquants.join(", ")})`);
-        return { status: "needsUser", error: msg };
-      }
+      const refus = await appliquerPrevolCopie({ accessToken, job, pf, etape: "avant_retrait" });
+      if (refus) return refus;
     }
     void snapshot;
 
@@ -19173,22 +19252,17 @@ async function processRepublishJob(job, accessToken) {
     // fois. Il est ici, sur le chemin que Vinted emprunte réellement, et
     // AVANT l'invariant « une seule annonce hors ligne » — un pré-vol qui
     // refuse ne doit pas d'abord attendre son tour de file.
+    //
+    // ⚠️ CE PASSAGE-CI NE VÉRIFIE PAS LES CHAMPS, ET C'EST VOULU (2026-09-23).
+    // Ici la copie n'existe pas encore : elle est fabriquée plus bas, depuis la
+    // capture relue en base. Tout ce que ce passage peut honnêtement dire,
+    // c'est « y a-t-il une capture, oui ou non » — et il le dit. Le contrôle
+    // champ par champ a lieu au passage « copie_construite », toujours avant
+    // le retrait. Exiger les champs ICI, c'est ce qui a bloqué 99
+    // republications sur 99 entre le 22 et le 23/09.
     {
-      const manquants = prevolCaptureRepublication(job);
-      tracerGarde(pf, "prevol_copie", {
-        verdict: manquants.length ? "bloque" : "ok",
-        plateforme: job.platform,
-        champs_verifies: ["titre", "prix", "photos", "categorie", "localisation", "format_colis"],
-        ...(manquants.length ? { manquants } : {}),
-      });
-      if (manquants.length) {
-        const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
-        const msg = messagePrevolRepublication(label, manquants);
-        pf.republish_prevol_manquants = manquants;
-        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — copie incomplète (${manquants.join(", ")})`);
-        return { status: "needsUser", error: msg };
-      }
+      const refus = await appliquerPrevolCopie({ accessToken, job, pf, etape: "avant_file" });
+      if (refus) return refus;
     }
 
     // ── INVARIANT « UNE SEULE ANNONCE HORS LIGNE À LA FOIS » (2026-08-07) ───
@@ -19419,6 +19493,30 @@ async function processRepublishJob(job, accessToken) {
       // fire-and-forget. Échec d'écriture → failed AVANT la suppression,
       // annonce intacte, unité rendue par le trigger.
       pf.republish_snapshot = construireSnapshotRepublish(pf, capMeta);
+
+      // ── LE PRÉ-VOL, AU SEUL MOMENT OÙ LA COPIE EXISTE (2026-09-23) ───────
+      // C'est ICI que « on ne retire pas ce qu'on ne sait pas remettre » a du
+      // sens pour Vinted : la copie vient d'être construite depuis la capture,
+      // elle est celle qui servira à recréer, et l'annonce est ENCORE EN LIGNE
+      // (le retrait est plus bas, dans la une-passe). Un refus ne coûte rien.
+      // Ce que ce passage attrape et que rien d'autre n'attrape sur ce chemin :
+      // le catalog_id et le package_size_id — le dossier XEWER (job 6aabc550,
+      // 22/09), une heure d'annonce hors ligne pour un format de colis absent.
+      // (Le prix et le titre, eux, ont déjà été résolus plus haut avec la
+      // fonction même de la recréation.)
+      {
+        const refus = await appliquerPrevolCopie({
+          accessToken, job, pf, snap: pf.republish_snapshot, etape: "copie_construite",
+        });
+        if (refus) {
+          // La copie incomplète ne reste pas sur le job : elle ferait croire au
+          // passage suivant qu'on a de quoi recréer. La capture, elle, demeure.
+          delete pf.republish_snapshot;
+          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf }).catch(() => {});
+          return refus;
+        }
+      }
+
       pf.processing_since = new Date().toISOString();
       try {
         await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
