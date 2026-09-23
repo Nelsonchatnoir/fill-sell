@@ -3,6 +3,14 @@
 // Ce que ce test garantit, et qui a été payé :
 //   · Vinted  : le contrôle tourne (il avait été écrit le 22/09 au matin dans
 //               une fonction que Vinted n'atteint jamais — mort-né) ;
+//   · Vinted  : et il tourne sur LA FORME RÉELLE D'UN JOB (23/09). Ce test
+//               était vert pendant que la prod bloquait 99 republications sur
+//               99 : ses cas Vinted posaient un `republish_snapshot` sur le
+//               job, alors que ce snapshot est écrit 250 lignes PLUS BAS par
+//               le passage même que la garde précède. Un cas de test se RELÈVE
+//               en base, il ne se suppose pas ;
+//   · le MESSAGE : il nomme le champ manquant et ne s'emboîte jamais dans
+//               lui-même (« la copie … manque dans la copie », 23/09) ;
 //   · Leboncoin : la LOCALISATION est exigée avant tout retrait (job af34f609,
 //               nicolas.menar : annonce supprimée, recréation bloquée sur
 //               l'adresse, 11 minutes hors ligne) ;
@@ -21,31 +29,63 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Le dépôt est en CRLF : on normalise avant de découper, sinon les repères
 // « \n} » ne matchent rien et l'extraction rend une fonction vide.
 const src = fs.readFileSync(join(ROOT, "chrome-extension/background.js"), "utf8").split("\r\n").join("\n");
-const debut = src.indexOf("function prevolCaptureRepublication(job) {");
+const debut = src.indexOf("function prevolCaptureRepublication(job, snapExterne = null) {");
 // Fin = la première accolade fermante en COLONNE 0 après le début.
 const fin = src.indexOf("\n}\n", debut);
 if (debut < 0 || fin < 0) { console.error("✗ prevolCaptureRepublication introuvable dans background.js"); process.exit(1); }
 const corps = src.slice(debut, fin + 3);
 const prevolCaptureRepublication = new Function(`${corps}; return prevolCaptureRepublication;`)();
 
+// Le MESSAGE est la deuxième moitié de la garde : le 23/09 il rendait « la
+// copie de ton annonce manque dans la copie de ton annonce ». On le relit à la
+// source lui aussi.
+const dMsg = src.indexOf("function messagePrevolRepublication(label, manquants) {");
+const fMsg = src.indexOf("\n}\n", dMsg);
+if (dMsg < 0 || fMsg < 0) { console.error("✗ messagePrevolRepublication introuvable dans background.js"); process.exit(1); }
+const messagePrevolRepublication = new Function(`${src.slice(dMsg, fMsg + 3)}; return messagePrevolRepublication;`)();
+
 let ko = 0;
-const attendu = (nom, job, manquantsAttendus) => {
-  const r = prevolCaptureRepublication(job);
+const attendu = (nom, job, manquantsAttendus, snap = null) => {
+  const r = prevolCaptureRepublication(job, snap);
   const a = JSON.stringify(r), b = JSON.stringify(manquantsAttendus);
   if (a !== b) { console.error(`  ✗ ${nom}\n      attendu ${b}\n      obtenu  ${a}`); ko++; }
   else console.log(`  ✓ ${nom}${r.length ? ` → bloque sur ${a}` : " → laisse passer"}`);
 };
 
-console.log("\n1. VINTED — le contrôle qui n'avait jamais tourné");
-attendu("capture complète", {
+console.log("\n1. VINTED — LA FORME RÉELLE D'UN JOB, celle qui a coûté 99 blocages");
+// ⛔ CE QUI A MANQUÉ ICI LE 22/09 : les trois cas ci-dessous étaient écrits sur
+//    une forme de job IMAGINÉE — un `republish_snapshot` déjà posé. Aucun job
+//    de production n'a cette forme au moment où la garde tourne : sur le chemin
+//    Vinted, le snapshot est écrit ~250 lignes PLUS BAS, par le même passage.
+//    Le test passait au vert pendant que la prod bloquait 99 fois sur 99.
+//    Un cas de test doit être RELEVÉ EN BASE, jamais supposé.
+// Forme relevée le 23/09 sur les 99 jobs bloqués (aucun n'avait de snapshot) :
+const jobVintedReel = {
   platform: "vinted",
-  platform_fields: { republish_snapshot: { titre: "Pull", photos: ["a"], prix: 12, catalog_id: 221, package_size_id: 2 } },
-}, []);
-attendu("format du colis manquant (cas XEWER, job 6aabc550)", {
-  platform: "vinted",
-  platform_fields: { republish_snapshot: { titre: "Pull", photos: ["a"], prix: 12, catalog_id: 221 } },
-}, ["le format du colis"]);
-attendu("aucune copie", { platform: "vinted", platform_fields: {} }, ["la copie de ton annonce"]);
+  platform_fields: {
+    capture_id: 7633, vinted_item_id: "9455594147", republish_step: "captured",
+    republish_source: "auto", pepites_debitees: 1,
+  },
+};
+attendu("LE CAS DU 23/09 : capture en base, pas encore de copie sur le job → on passe", jobVintedReel, []);
+attendu("ni capture ni copie → là, il n'y a vraiment rien pour recréer", {
+  platform: "vinted", platform_fields: { republish_step: "captured" },
+}, ["la copie de ton annonce"]);
+attendu("capture_id à 0 ne vaut pas une capture", {
+  platform: "vinted", platform_fields: { capture_id: 0 },
+}, ["la copie de ton annonce"]);
+
+console.log("\n1bis. VINTED — la copie CONSTRUITE (passage « copie_construite »)");
+// Le vrai contrôle champ par champ : la copie est passée en 2e argument, telle
+// que `construireSnapshotRepublish` vient de la fabriquer depuis la capture.
+const copie = { titre: "Pull", photos: ["a"], prix: 12, catalog_id: 221, package_size_id: 2 };
+attendu("copie complète", jobVintedReel, [], copie);
+attendu("format du colis manquant (cas XEWER, job 6aabc550)", jobVintedReel, ["le format du colis"], { ...copie, package_size_id: null });
+attendu("catégorie manquante", jobVintedReel, ["la catégorie"], { ...copie, catalog_id: null });
+attendu("photos et prix manquants", jobVintedReel, ["les photos", "le prix"], { ...copie, photos: [], prix: 0 });
+// La copie passée fait foi : même avec une capture_id, une copie construite
+// incomplète bloque — c'est tout l'intérêt du second passage.
+attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "les photos", "le prix", "la catégorie", "le format du colis"], {});
 
 console.log("\n2. LEBONCOIN — le cas af34f609 (nicolas.menar, 22/09)");
 const lbcComplet = {
@@ -91,6 +131,23 @@ attendu("dépôt Beebs complet", {
 attendu("rayon Beebs absent → on ne retire pas", {
   platform: "beebs", title: "Pot Diddlina", price: 9, photos: ["u"], platform_fields: {},
 }, ["le rayon Beebs"]);
+
+console.log("\n5. LE MESSAGE — il nomme ce qui manque, sans l'emboîter dans lui-même");
+const msgDit = (nom, manquants, doitContenir, neDoitPasContenir) => {
+  const m = messagePrevolRepublication("Vinted", manquants);
+  const ok = m.includes(doitContenir) && !(neDoitPasContenir && m.includes(neDoitPasContenir));
+  if (!ok) { console.error(`  ✗ ${nom}\n      message : ${m}`); ko++; }
+  else console.log(`  ✓ ${nom}`);
+};
+msgDit(
+  "LE CAS : « la copie … dans la copie » ne doit plus jamais sortir",
+  ["la copie de ton annonce"],
+  "la copie de ton annonce n'a pas été retrouvée",
+  "la copie de ton annonce manque dans la copie de ton annonce",
+);
+msgDit("un champ : il est nommé", ["le format du colis"], "le format du colis manque dans la copie de ton annonce");
+msgDit("deux champs : ils sont nommés tous les deux", ["le titre", "le prix"], "le titre et le prix manquent");
+msgDit("le message dit TOUJOURS que l'annonce est intacte", ["le prix"], "Ton annonce est TOUJOURS en ligne");
 
 console.log(ko ? `\n✗ ${ko} cas en échec` : "\n✓ tous les cas passent");
 process.exit(ko ? 1 : 0);
