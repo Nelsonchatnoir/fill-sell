@@ -198,6 +198,12 @@ async function fetchPendingJobs(accessToken) {
   const data = await res.json().catch(() => ({}));
   state.sync = data?.contexte?.sync ?? null;
   state.sessions = data?.contexte?.sessions ?? null;
+  // ── LA VÉRITÉ SERVEUR (0.6.61, 2026-09-23) ──────────────────────────────
+  // plateformes_verite, servie par get-pending-jobs : UN état et UNE action
+  // par plateforme, tranchés une fois pour tous les écrans (relevé > dépôt >
+  // sonde ; eBay jamais « connectée » sur une page publique ; Opla 401 = à
+  // autoriser). Absente (serveur d'avant) : l'ancien calcul local reprend.
+  state.verite = data?.contexte?.verite ?? null;
   state.boutiquePause = data?.boutique_pause ?? null;
   state.dejaEnLigne = data?.deja_en_ligne ?? null;
   // ── LE NOMBRE VIENT DU SERVEUR (2026-09-04) ─────────────────────────────
@@ -565,6 +571,31 @@ function etatPlateforme(p, sondeFraiche) {
   if (rec?.error && CHALLENGE_RE.test(String(rec.error).trim())) {
     return { etat: "bloquee", sous: `Vérification anti-robot à passer sur ${hostOf(p.key)}` };
   }
+  // ── LA VÉRITÉ SERVEUR TRANCHE (0.6.61, 2026-09-23) ──────────────────────
+  // Le 23/09, ce popup disait « Connectée » sur eBay à Marine, qui n'a pas de
+  // compte eBay, et « Session fermée » sur Opla alors que son relevé Opla
+  // venait de lire 57 annonces. Le serveur a désormais la vue complète
+  // (relevés, dépôts, sondes, compte API) : quand il a parlé, on ne recalcule
+  // rien ici. Une phrase, un geste — jamais « session », jamais « sonde ».
+  const verite = state.verite?.plateformes?.[p.key];
+  if (verite && verite.etat) {
+    const vuMs = verite.depuis ? Date.parse(verite.depuis) : NaN;
+    const vuLe = Number.isFinite(vuMs) ? vuMs : null;
+    if (verite.etat === "connectee") {
+      const sousV = verite.source === "api" ? "Compte eBay relié à FillSell"
+        : verite.source === "releve" && vuLe ? `Annonces relevées ${depuis(vuLe)}`
+        : verite.source === "depot" && vuLe ? `Dépôt réussi ${depuis(vuLe)}`
+        : null;
+      return { etat: "ok", sous: sousV, vuLe };
+    }
+    if (verite.etat === "a_connecter") {
+      return { etat: "ko", sous: `Connecte-toi à ${p.name} sur cet ordinateur`, vuLe, action: verite.action ?? "connexion" };
+    }
+    if (verite.etat === "a_autoriser") return { etat: "autoriser", sous: "Autorise FillSell sur Opla", vuLe };
+    if (verite.etat === "ecartee") return { etat: "ecartee", sous: "Tu ne vends pas ici", vuLe: null };
+    const sondeMs = verite.sonde_le ? Date.parse(verite.sonde_le) : NaN;
+    return { etat: null, sous: null, vuLe: Number.isFinite(sondeMs) ? sondeMs : null };
+  }
   if (p.key === "beebs") {
     // ⚠️ LE PLUS RÉCENT TRANCHE, dans cet ordre. Un job en needs_user peut
     // porter « Connexion Beebs requise » depuis des jours : s'il primait, on
@@ -644,7 +675,7 @@ function sondeFraichePour(key) {
   // aurait fait clignoter les secondes à chaque cycle.
   return Number.isFinite(vu) && Date.now() - vu < fraicheurDe(key);
 }
-const estKo = (key) => ["ko", "bloquee"].includes(state.etats[key]?.etat);
+const estKo = (key) => ["ko", "bloquee", "autoriser"].includes(state.etats[key]?.etat);
 const plateformesKo = () => PLATFORMS.filter((p) => estKo(p.key));
 const plateformesOk = () => PLATFORMS.filter((p) => state.etats[p.key]?.etat === "ok");
 // Au-delà d'une heure sans passage, on ne prétend plus que tout va bien.
@@ -803,8 +834,15 @@ function renderPlateformes() {
       );
       continue;
     }
-    const { etat, sous, vuLe } = state.etats[p.key] ?? { etat: null, sous: null, vuLe: null };
+    const { etat, sous, vuLe, action } = state.etats[p.key] ?? { etat: null, sous: null, vuLe: null, action: null };
     const nom = escapeHtml(p.name);
+    // « Je ne vends pas sur X » (0.6.61) : la plateforme sort du chemin —
+    // plus relancée, plus affichée comme un problème, plus relevée. Réversible
+    // (« Finalement, si »), et rien n'est supprimé. Seulement quand le serveur
+    // porte la vérité : c'est lui qui range le choix.
+    const lienEcarter = state.verite
+      ? `<button class="lien" data-ecarter="${p.key}" data-valeur="1" type="button">Je ne vends pas sur ${nom}</button>`
+      : "";
     // (D) « Connectée » n'est JAMAIS une affirmation sans date : l'âge de ce
     // qui fonde le verdict s'affiche sous le nom dès qu'il dépasse 10 minutes.
     const dateSous = Number.isFinite(vuLe) && vuLe && Date.now() - vuLe > 10 * 60 * 1000
@@ -815,12 +853,34 @@ function renderPlateformes() {
         `${sous ? `<div class="plat-sous">${escapeHtml(sous)}</div>` : dateSous}</div>` +
         `<span class="etat ok"><i class="dot teal pulse"></i>Connectée</span></div>`,
       );
-    } else if (etat === "ko") {
-      // Session fermée : le mot, et le bouton qui ouvre le site.
+    } else if (etat === "ko" && action === "relier_ebay") {
+      // eBay pas connecté : le geste recommandé est de RELIER le compte par
+      // l'API (dans l'appli) ; la connexion navigateur reste possible, en second.
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
-        `<div class="plat-sous"><i class="dot gris"></i>${escapeHtml(sous || "Session fermée")}</div></div>` +
-        `<button class="btn-outline" data-connect="${p.key}" type="button">Se connecter</button></div>`,
+        `<div class="plat-sous"><i class="dot gris"></i>Relie ton compte eBay dans l'appli — c'est le chemin recommandé</div>` +
+        `<button class="lien" data-connect="${p.key}" type="button">ou connecte-toi sur ebay.fr <span aria-hidden="true">→</span></button>${lienEcarter}</div>` +
+        `<button class="btn-outline" data-open-app type="button">Ouvrir l'appli</button></div>`,
+      );
+    } else if (etat === "ko") {
+      // Pas connecté : la phrase dit quoi faire, le bouton ouvre le site.
+      lignes.push(
+        `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
+        `<div class="plat-sous"><i class="dot gris"></i>${escapeHtml(sous || `Connecte-toi à ${p.name} sur cet ordinateur`)}</div>${lienEcarter}</div>` +
+        `<button class="btn-outline" data-connect="${p.key}" type="button">Ouvrir ${escapeHtml(hostOf(p.key))}</button></div>`,
+      );
+    } else if (etat === "autoriser") {
+      // Opla : ce n'est pas une session à ouvrir, c'est FillSell à autoriser.
+      lignes.push(
+        `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
+        `<div class="plat-sous"><i class="dot gris"></i>Autorise FillSell sur Opla pour lire et publier tes annonces</div>${lienEcarter}</div>` +
+        `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
+      );
+    } else if (etat === "ecartee") {
+      lignes.push(
+        `<div class="plat muette">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
+        `<div class="plat-sous">Tu ne vends pas ici</div>` +
+        `<button class="lien" data-ecarter="${p.key}" data-valeur="0" type="button">Finalement, si</button></div></div>`,
       );
     } else if (etat === "bloquee") {
       // Bloquée = un refus CHALLENGE de moins de 30 min : le geste est sur le
@@ -844,7 +904,7 @@ function renderPlateformes() {
       const jamais = !Number.isFinite(vuLe) || !vuLe;
       lignes.push(
         `<div class="plat muette">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
-        `<div class="plat-sous">${jamais ? "Pas encore vérifié" : `Vérifié ${escapeHtml(depuis(vuLe))}`}</div></div>` +
+        `<div class="plat-sous">${jamais ? "Pas encore vérifié" : `Vérifié ${escapeHtml(depuis(vuLe))}`}</div>${lienEcarter}</div>` +
         `<button class="btn-outline" data-verifier="${p.key}" type="button">Vérifier</button></div>`,
       );
     }
@@ -1333,6 +1393,23 @@ document.body.addEventListener("click", (e) => {
         load();
       })
       .catch(() => { autoriser.disabled = false; autoriser.textContent = "Réessayer"; });
+    return;
+  }
+  // ── « JE NE VENDS PAS SUR X » (0.6.61) — réversible, ne supprime rien ────
+  // plateforme_ecarter range le choix côté serveur (platform_settings), annule
+  // les relevés en file de cette plateforme et la sort des écrans. load()
+  // relit la vérité : la ligne suit.
+  const ecarter = e.target.closest("[data-ecarter]");
+  if (ecarter) {
+    if (ecarter.disabled || !state.session?.access_token) return;
+    ecarter.disabled = true;
+    const pf = ecarter.getAttribute("data-ecarter");
+    const valeur = ecarter.getAttribute("data-valeur") !== "0";
+    fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/plateforme_ecarter`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+      body: JSON.stringify({ p_platform: pf, p_ecarter: valeur }),
+    }).then(() => load()).catch(() => { ecarter.disabled = false; });
     return;
   }
   const connect = e.target.closest("[data-connect]");

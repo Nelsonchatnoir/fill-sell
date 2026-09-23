@@ -9739,14 +9739,23 @@ async function sonderStepUpVente() {
 }
 
 async function sonderSessionEbay() {
-  const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
+  // ⛔ /sl/prelist/suggest RÉPONDAIT 200 SANS COMPTE (2026-09-23, cas Marine
+  //    Rocher) : c'est une page publique. Résultat mesuré en base : « ebay:
+  //    true » chez 16 inscrits sur 16, dont ceux qui n'ont pas de compte eBay,
+  //    et un popup qui affichait « Connectée » à quelqu'un qui n'existe pas
+  //    chez eBay. Un signe d'UTILISATEUR IDENTIFIÉ est exigé : My eBay
+  //    (/mye/myebay/summary) ne s'ouvre qu'avec une session — sans elle, eBay
+  //    renvoie vers signin.ebay.*. Atterrir sur ebay.fr/mye/… = connecté ;
+  //    signin = déconnecté ; tout le reste = indéterminé, jamais un faux vrai.
+  const r = await fetch("https://www.ebay.fr/mye/myebay/summary", {
     credentials: "include", redirect: "follow",
   });
   const u = new URL(r.url);
   if (/(^|\.)signin\.ebay\./.test(u.hostname)) return { etat: false, http: r.status };
   // 401/403 ⇒ null, jamais « connectée » (2026-09-08) — même règle que Leboncoin.
   if (r.status === 401 || r.status === 403) return { etat: null, http: r.status };
-  return { etat: /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null, http: r.status };
+  const identifie = /(^|\.)ebay\.fr$/.test(u.hostname) && /^\/mye\//.test(u.pathname);
+  return { etat: identifie ? true : null, http: r.status };
 }
 
 // ── SONDE DU HUB VENDEUR — CE QUE LE RELEVÉ EXIGE VRAIMENT (2026-09-22) ─────
@@ -13470,7 +13479,17 @@ async function releverQuotidien() {
   const token = session.access_token;
   const userId = decodeJwtSub(token);
   if (!userId || !(await syncMultiOuverte(token, userId))) return;
+  // « Je ne vends pas sur X » (0.6.61) : une plateforme écartée par la
+  // personne n'est plus relevée — ni ici, ni par le serveur (qui annule ses
+  // demandes en file). Lu à chaque passage, jamais mis en cache.
+  let ecartees = [];
+  try {
+    const prof = await restRequest(`profiles?id=eq.${userId}&select=platform_settings`, token);
+    const liste = prof?.[0]?.platform_settings?.plateformes_ecartees;
+    if (Array.isArray(liste)) ecartees = liste.map(String);
+  } catch { /* illisible : on relève comme avant */ }
   for (const platform of RELEVE_PLATEFORMES) {
+    if (ecartees.includes(platform)) continue;
     const jobs = await restRequest(
       `cross_post_jobs?user_id=eq.${userId}&platform=eq.${platform}&status=eq.published&action=in.(publish,republish)&select=id&limit=1`, token,
     ).catch(() => []);
