@@ -1510,13 +1510,23 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
 // background.
 const URL_RECOVERY_PLATFORMS = ["leboncoin", "beebs", "ebay"];
 const URL_RECOVERY_WINDOW_MS = 48 * 60 * 60 * 1000;
+// ── UNE FENÊTRE PAR PLATEFORME (2026-09-23 soir) ─────────────────────────────
+// Miroir du balayage serveur (publish_sans_lien_echec, 20260923113000) : Beebs
+// vérifie à la main et met jusqu'à 7 jours ; Leboncoin et eBay, 48 h. Au-delà,
+// l'app ne dit plus « récupération en cours » : elle dit que la mise en ligne
+// n'a jamais été confirmée, et offre les deux gestes (republier, oublier).
+const URL_RECOVERY_WINDOW_MS_PAR_PLATEFORME = {
+  leboncoin: URL_RECOVERY_WINDOW_MS,
+  ebay: URL_RECOVERY_WINDOW_MS,
+  beebs: 7 * 24 * 60 * 60 * 1000,
+};
 
 function isListingUrlRecoverable(platform, pubJob) {
   return (
     URL_RECOVERY_PLATFORMS.includes(platform) &&
     !!pubJob?.title &&
     !!pubJob?.created_at &&
-    Date.now() - Date.parse(pubJob.created_at) < URL_RECOVERY_WINDOW_MS
+    Date.now() - Date.parse(pubJob.created_at) < (URL_RECOVERY_WINDOW_MS_PAR_PLATEFORME[platform] ?? URL_RECOVERY_WINDOW_MS)
   );
 }
 
@@ -1820,7 +1830,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
 // Bénéfice décisif : elle liste les QUATRE plateformes même quand l'annonce n'y
 // est pas publiée. Un blocage Beebs y apparaît donc toujours — là où le logo
 // sur la photo, lui, n'existe que pour les plateformes en ligne.
-function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, plateformes = [] }) {
+function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, onOublier, onRepublier, plateformes = [] }) {
   useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
@@ -1889,12 +1899,25 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                         ligne — elle est en vérification côté Beebs. Il n'y a
                         rien à retirer, et rien à récupérer tant que Beebs ne
                         l'a pas mise en ligne. */}
+                    {/* ── UN DÉPÔT SANS LIEN A TROIS ÉTATS, ET TOUJOURS UN GESTE
+                        (2026-09-23 soir, Louis : deux dépôts Leboncoin refusés à
+                        la vérification, « Récupération du lien en cours… » à
+                        vie, aucune action). EN LIGNE = le lien arrive et la
+                        ligne redevient retirable. REFUSÉE = le serveur l'a
+                        prouvé sur le relevé et le job est passé en échec (ligne
+                        « à relancer », gestes Relancer / Abandonner). Ici, les
+                        deux états qui restent : la plateforme VÉRIFIE (dans la
+                        fenêtre — 48 h, 7 j sur Beebs) → on le dit et on offre
+                        « Oublier » ; au-delà, la mise en ligne n'a JAMAIS été
+                        confirmée → « Republier » et « Oublier ». Plus jamais
+                        « retire-la sur X » : une annonce qui n'a pas de lien
+                        n'a rien à retirer. */}
                     {noUrl && urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {p === "beebs"
                       ? (fr ? "En vérification Beebs — pas encore en ligne" : "Beebs is reviewing it — not online yet")
-                      : (fr ? "Récupération du lien en cours…" : "Recovering listing link…")}</span>}
-                    {noUrl && !urlRecovering && <span>{p === "beebs"
-                      ? (fr ? "Jamais mise en ligne par Beebs — vérifie ton dressing Beebs" : "Never went live on Beebs — check your Beebs wardrobe")
-                      : (fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`)}</span>}
+                      : (fr ? `${label} vérifie ton annonce — pas encore en ligne` : `${label} is reviewing it — not online yet`)}</span>}
+                    {noUrl && !urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>{fr
+                      ? `Mise en ligne jamais confirmée par ${label}`
+                      : `${label} never confirmed it went live`}</span>}
                     {/* « Pas publiée ici » se tait quand on a mieux à dire :
                         un motif de blocage est plus utile qu'une absence. */}
                     {!isPublished && !aCompleterPar.has(p) && !enEchecPar.has(p) && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
@@ -1924,6 +1947,17 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                       {fr
                         ? "À renseigner sur l'annonce, chez la plateforme — l'app ne peut pas le saisir à ta place. Puis relance."
                         : "To be filled in on the listing, at the platform — the app cannot enter it for you. Then relaunch."}
+                    </div>
+                  )}
+                  {noUrl && (
+                    <div style={{ fontSize:11, lineHeight:1.35, color:"#8A6100", marginTop:3 }}>
+                      {urlRecovering
+                        ? (fr
+                          ? `On relit ${label} à chaque passage. Si tu sais qu'elle a été refusée, « Oublier » ferme cette ligne — rien d'autre ne bouge.`
+                          : `We re-read ${label} at every pass. If you know it was refused, “Forget” closes this line — nothing else moves.`)
+                        : (fr
+                          ? `« Republier » renvoie l'annonce (elle peut faire doublon si ${label} l'avait finalement mise en ligne) ; « Oublier » ferme cette ligne. Rien n'est retiré chez ${label}.`
+                          : `“Republish” sends the listing again (it may duplicate if ${label} did put it online) ; “Forget” closes this line. Nothing is removed on ${label}.`)}
                     </div>
                   )}
                   {enEchecPar.has(p) && !(enEchecPar.get(p)?.job && relanceManuelleInfo(enEchecPar.get(p).job, jobsAll)) && (
@@ -1971,6 +2005,24 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                     </button>
                   );
                 })()}
+                {noUrl && !armed && (
+                  <div style={{ display:"flex", flex:"0 0 auto", gap:6 }}>
+                    {!urlRecovering && (
+                      <button
+                        onClick={() => { const j = latestPubByPlatform[p]; if (j) { onClose(); onRepublier?.(j); } }}
+                        style={{ padding:"7px 12px", borderRadius:10, border:"1px solid #EED9A6", background:"#8A6100", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+                      >
+                        {fr ? "Republier" : "Republish"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { const j = latestPubByPlatform[p]; if (j) { onClose(); onOublier?.(j); } }}
+                      style={{ padding:"7px 12px", borderRadius:10, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#8A5A52", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+                    >
+                      {fr ? "Oublier" : "Forget"}
+                    </button>
+                  </div>
+                )}
                 {online && !armed && (
                   <button
                     onClick={() => { setErrMsg(null); setConfirming(p); }}
@@ -6623,6 +6675,109 @@ const StockTab = memo(function StockTab({
   const [abandonMsg, setAbandonMsg] = useState(null);
   useEffect(() => { setAbandonConfirme(false); setAbandonMsg(null); }, [failJobModal?.id]);
 
+  // ── OUBLIER UNE PUBLICATION JAMAIS CONFIRMÉE (2026-09-23 soir) ────────────
+  // Un dépôt 'published' SANS lien : la plateforme n'a jamais dit « en ligne ».
+  // Louis en avait deux, refusés à la vérification, et rien ne pouvait clore
+  // la ligne (abandonPossible refuse 'published', et refuse un identifiant).
+  // Ce geste-ci clôt CE job ('cancelled'), tracé avec son état d'origine —
+  // rien n'est retiré chez la plateforme (il n'y a pas de lien à retirer), les
+  // autres plateformes ne bougent pas. CAS : statut inchangé ET toujours sans
+  // lien — si le lien est arrivé entre-temps, 0 ligne, on le dit.
+  async function oublierPublication(job) {
+    if (abandonBusy || !user?.id) return;
+    if (job?.status !== 'published' || job?.listing_url) {
+      setAbandonMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
+                                  : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
+      return;
+    }
+    setAbandonBusy(true); setAbandonMsg(null);
+    try {
+      const label = PLATFORM_LABELS[job.platform] || job.platform;
+      const pf = { ...(job.platform_fields ?? {}) };
+      pf.oubli_publication = { le: new Date().toISOString(), depuis_statut: job.status, plateforme: job.platform, identifiant: job.platform_listing_id ?? null };
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, 'oubli_publication');
+      delete pf.next_action_after;
+      const message = lang === 'en'
+        ? `Forgotten at your request — ${label} never confirmed this listing went live. Nothing is removed there; you can publish it again whenever you want.`
+        : `Oubliée à ta demande — ${label} n'a jamais confirmé la mise en ligne de cette annonce. Rien n'est retiré là-bas ; tu peux la republier quand tu veux.`;
+      const { data, error } = await supabase
+        .from('cross_post_jobs')
+        .update({ status: 'cancelled', error: message, platform_fields: pf })
+        .eq('id', job.id).eq('user_id', user.id).eq('status', 'published').is('listing_url', null)
+        .select('id');
+      if (error) { setAbandonMsg(lang === 'en' ? `Could not forget: ${error.message}` : `Oubli impossible : ${error.message}`); return; }
+      if (!data?.length) {
+        setAbandonMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
+                                    : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
+        return;
+      }
+      supabase.from('usage_logs').insert({
+        user_id: user.id, feature: 'oubli_publication',
+        metadata: { platform: job.platform, inventaire_id: job.inventaire_id ?? null, job_id: job.id, identifiant: job.platform_listing_id ?? null, publie_le: job.published_at ?? null },
+      }).then(({ error: e }) => { if (e) console.warn('[oubli] non journalisé :', e.message); });
+      setJobsByInventaire(prev => {
+        const suivant = {};
+        for (const [inv, liste] of Object.entries(prev)) {
+          suivant[inv] = liste.map(j => j.id === job.id ? { ...j, status: 'cancelled', error: message, platform_fields: pf } : j);
+        }
+        return suivant;
+      });
+    } finally {
+      setAbandonBusy(false);
+    }
+  }
+  // ── REPUBLIER UNE PUBLICATION JAMAIS CONFIRMÉE (2026-09-23 soir) ──────────
+  // Le MÊME job repart en 'pending' — zéro débit, exactement comme la relance
+  // d'un échec (relancerJobEchoue) : le contenu est déjà là. Les traces du
+  // dépôt précédent qui feraient croire à l'extension qu'une annonce existe
+  // (identifiant, dépôt Leboncoin, sonde de modération) sont retirées et
+  // archivées sous `republication_sans_confirmation`. Offert SEULEMENT hors
+  // fenêtre de vérification (48 h, 7 j sur Beebs) : dedans, la plateforme peut
+  // encore la mettre en ligne et on ferait un doublon.
+  async function republierSansConfirmation(job) {
+    if (relanceBusy || !user?.id) return;
+    if (job?.status !== 'published' || job?.listing_url) {
+      setRelanceMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
+                                  : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
+      return;
+    }
+    setRelanceBusy(true); setRelanceMsg(null);
+    try {
+      const pf = { ...(job.platform_fields ?? {}) };
+      const anciennes = {};
+      for (const k of ['lbc_depot', 'moderation_probe', 'lien_en_attente', 'refund_unconfirmed', 'beebs_moderation', 'listing_url_recovery_refus', 'processing_since', 'next_action_after', 'attente_session', 'work_window_state']) {
+        if (k in pf) { anciennes[k] = pf[k]; delete pf[k]; }
+      }
+      pf.republication_sans_confirmation = {
+        le: new Date().toISOString(), depuis_statut: job.status, publie_le: job.published_at ?? null,
+        identifiant: job.platform_listing_id ?? null, traces_retirees: Object.keys(anciennes),
+      };
+      pf.needsUserAttempts = 0;
+      pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
+      pf.derniere_relance_manuelle = new Date().toISOString();
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, 'republication_sans_confirmation');
+      const { data, error } = await supabase
+        .from('cross_post_jobs')
+        .update({ status: 'pending', error: null, platform_listing_id: null, published_at: null, platform_fields: pf })
+        .eq('id', job.id).eq('user_id', user.id).eq('status', 'published').is('listing_url', null)
+        .select('id');
+      if (error) { setRelanceMsg(lang === 'en' ? `Republish failed: ${error.message}` : `Republication impossible : ${error.message}`); return; }
+      if (!data?.length) {
+        setRelanceMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
+                                    : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
+        return;
+      }
+      setJobsByInventaire(prev => {
+        const suivant = {};
+        for (const [inv, liste] of Object.entries(prev)) {
+          suivant[inv] = liste.map(j => j.id === job.id ? { ...j, status: 'pending', error: null, platform_listing_id: null, published_at: null, platform_fields: pf } : j);
+        }
+        return suivant;
+      });
+    } finally {
+      setRelanceBusy(false);
+    }
+  }
   async function abandonnerPlateforme(job) {
     if (abandonBusy || !user?.id) return;
     // Les gardes sont REJOUÉES au clic : la copie mémoire du job a jusqu'à
@@ -9835,9 +9990,13 @@ const StockTab = memo(function StockTab({
                                       ?(lang==="en"
                                         ?"Beebs is reviewing your listing before putting it online. Hang tight."
                                         :"Beebs vérifie ton annonce avant de la mettre en ligne. Patiente un peu.")
-                                      :(lang==="en"
+                                      :isListingUrlRecoverable(p,latestPubByPlatform?.[p])
+                                      ?(lang==="en"
                                         ?"Your listing went through to Leboncoin and is awaiting their review. It will show up within a few minutes. Don't repost it — you would create a duplicate."
-                                        :"Ton annonce est partie sur Leboncoin et attend leur vérification. Elle apparaîtra d'ici quelques minutes. Ne la republie pas, tu créerais un doublon."))
+                                        :"Ton annonce est partie sur Leboncoin et attend leur vérification. Elle apparaîtra d'ici quelques minutes. Ne la republie pas, tu créerais un doublon.")
+                                      :(lang==="en"
+                                        ?"Leboncoin never confirmed this listing went live. Tap to republish it or forget it."
+                                        :"Leboncoin n'a jamais confirmé la mise en ligne de cette annonce. Touche pour la republier ou l'oublier."))
                                     :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
                                   style={{cursor:"pointer",
                                     ...(teinte?LOGO_TEINTE(teinte):{}),
@@ -11142,6 +11301,8 @@ const StockTab = memo(function StockTab({
           onClose={()=>setRemoveModalItem(null)}
           onCompleter={(job)=>setNeedsUserJob(job)}
           onRelancer={(job,mode)=>relancerJobEchoue(job,mode)}
+          onOublier={oublierPublication}
+          onRepublier={republierSansConfirmation}
           onRemove={armRemoveJob}
           plateformes={plateformesDeLArticle(jobsByInventaire[removeModalItem.id]||[],plateformesOuvertes)}
         />
