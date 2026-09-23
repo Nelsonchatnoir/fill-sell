@@ -149,3 +149,30 @@ de vente, **887 n'ont AUCUNE vente enregistrée en face** (33 comptes). Deux
 sources indépendantes disent que l'annonce n'est plus là, et rien ne dit ce
 qu'elle est devenue. Voir le bandeau « Vendue ? » et la revue en lot des
 disparus (App.jsx) — l'outil existe, c'est la file qui n'est pas traitée.
+
+## 6. Import automatique, budget et rattrapage (23/09/2026)
+
+- **Le corps du moteur est unique** : `rapprocher_traiter_annonce(annonce, vus,
+  import_ouvert, rattrapage, second_releve_requis)` applique les bandes
+  notification → job → certain → propose → aucune → import. `rapprocher_releve`
+  (le relevé de l'extension) et `rapprocher_rattraper` (service_role, sur ce
+  qui est déjà en base) l'appellent tous les deux. Le 19/09, une réécriture de
+  `rapprocher_releve` repartie d'un corps de la veille avait fait disparaître
+  l'import automatique pendant quatre jours (0 import, ~2 000 lignes « aucune »
+  par jour, le stock d'un nouvel inscrit sans Vinted vide) ;
+  `npm run selftest:moteur-rattachement` et le DO de la migration
+  `20260923180000_import_auto_retabli_rattrapage.sql` vérifient la chaîne.
+- **Import automatique** (point F du 18/09, inchangé) : interrupteur
+  `coin_config.import_auto_ouvert = 1` · `statut_plateforme = 'en_ligne'` ·
+  une ligne « aucune » d'un run précédent. Le geste (`rapprocher_importer`)
+  porte la garde du jumeau (titre inclus → proposition, jamais d'import).
+- **Budget** : le rôle `authenticated` a `statement_timeout = 8 s` ; la boucle
+  s'arrête à 70 % et rend `restantes`, ce qui est fait est commité.
+  L'extension rappelle (≤ 12 tours) ; une ancienne reprend au relevé suivant,
+  les annonces les moins évaluées d'abord.
+- **Rattrapage** : `select rapprocher_rattraper(<user>, 'leboncoin')` simule
+  (défaut) ; `p_simulation := false` écrit. Idempotent : rattachée ou ignorée
+  = jamais réexaminée ; proposition identique = ni réécrite ni rejournalisée.
+- **Alarme quotidienne de l'extension** : relève aussi une plateforme SANS
+  dépôt dès qu'une annonce relevée y attend son rattachement — sinon le
+  « deuxième relevé » n'arrivait jamais pour un compte sans Vinted.
