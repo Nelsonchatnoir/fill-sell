@@ -27,6 +27,7 @@ const passer = (j: {
   pf: Record<string, unknown>;
   attrs?: Record<string, unknown>;
   titre?: string;
+  vintedCatalogId?: unknown;
   memoire?: Map<string, OplaMem>;
 }) => {
   const pf = structuredClone(j.pf);
@@ -36,6 +37,7 @@ const passer = (j: {
     pf,
     attrs: j.attrs,
     titre: j.titre ?? null,
+    vintedCatalogId: j.vintedCatalogId ?? null,
     memoire: j.memoire,
   });
   return { pf, ...r };
@@ -247,6 +249,64 @@ console.log("\n── ③ on ne force aucune taille ──");
   };
   const { pf } = passer(homme);
   ok("un « 38 » d'homme n'est jamais traduit en M", pf.taille === "38", pf.taille);
+}
+
+// ── ④ L'ÉTAGÈRE VINTED DE LA FICHE — LA COLONNE, PAS SEULEMENT L'ATTRIBUT ──
+// Job 796582df (van-breugel.sandra, 23/09 12:35), platform_fields et fiche
+// RELEVÉS EN BASE : « escarpins » deux fois, genre vide, aucune feuille Opla
+// ne porte ce mot ; la fiche a `vinted_catalog_id = 543` (Femmes › Chaussures
+// › Chaussures à talons) et AUCUN attribut `categorie_vinted` — comme 3 982
+// articles du parc. La chaîne ne lisait que l'attribut : rien n'était posé,
+// et le pré-vol proposait les huit racines.
+console.log("\n── ④ l'étagère Vinted lue sur la colonne de la fiche ──");
+const SANDRA = {
+  id: "796582df",
+  titre: "Escarpins rouges Even&Odd T37 neuf",
+  pf: {
+    etat: "new", genre: "", marque: "Even&Odd", taille: "37", couleur: "Rouge", couleurs: ["Rouge"],
+    categorie: "Mode", categorie_source: "catalog_vinted", categorie_icone: "👠",
+    categorie_objet_ia: "escarpins", categorie_mot_cle_titre: "escarpins",
+  },
+  attrs: {
+    etat: attr("Neuf sans étiquette", "capture"), taille: attr("37", "capture"), couleur: attr("Rouge", "capture"),
+    marque: attr("Even&Odd", "vinted_liste"),
+  },
+};
+{
+  const { pf } = passer(SANDRA);
+  ok("AVANT (fiche sans colonne lue) : aucune catégorie, aucun genre — c'est le défaut du 23/09",
+    !pf.oplaCategoryCode && !pf.oplaCategoryAsk && !String(pf.genre ?? ""), { code: pf.oplaCategoryCode, ask: pf.oplaCategoryAsk, genre: pf.genre });
+}
+{
+  const { pf, trace } = passer({ ...SANDRA, vintedCatalogId: 543 });
+  ok("APRÈS : la colonne vinted_catalog_id = 543 pose le genre Femme", pf.genre === "Femme", pf.genre);
+  ok("… et la catégorie HIGH_HEELS (Femmes › Chaussures › Chaussures à talons)", pf.oplaCategoryCode === "HIGH_HEELS", pf.oplaCategoryCode);
+  ok("… par l'étagère, et la trace le dit", String((trace.oplaCategoryCode as Record<string, unknown>)?.source ?? "").startsWith("étagère Vinted de l'article « Femmes › Chaussures › Chaussures à talons » (inventaire.vinted_catalog_id)"), trace.oplaCategoryCode);
+  ok("… la taille 37 est dans la grille de la feuille, elle reste telle quelle", pf.taille === "37", pf.taille);
+  ok("… et aucune question n'est posée", !pf.oplaCategoryAsk, pf.oplaCategoryAsk);
+}
+{
+  // L'attribut garde la priorité quand il existe (il porte sa source) ; une
+  // colonne différente ne le contredit pas.
+  const { pf } = passer({ ...SANDRA, attrs: { ...SANDRA.attrs, categorie_vinted: attr(543) }, vintedCatalogId: 999999 });
+  ok("l'attribut sourcé prime sur la colonne", pf.oplaCategoryCode === "HIGH_HEELS" && pf.genre === "Femme", [pf.oplaCategoryCode, pf.genre]);
+  const sansSource = passer({ ...SANDRA, attrs: { ...SANDRA.attrs, categorie_vinted: { v: 543, source: "manuel" } } }).pf;
+  ok("un attribut sans source relevée ne vaut rien (et sans colonne, rien n'est posé)", !sansSource.oplaCategoryCode && !sansSource.genre, [sansSource.oplaCategoryCode, sansSource.genre]);
+  const inconnue = passer({ ...SANDRA, vintedCatalogId: 424242 }).pf;
+  ok("une étagère inconnue de l'arbre relevé ne pose rien", !inconnue.oplaCategoryCode && !inconnue.genre, [inconnue.oplaCategoryCode, inconnue.genre]);
+}
+{
+  // Job 6339a55e (geronimo0550, « Maillot NBA Mitchell & Ness »), relevé en
+  // base : le serveur avait posé MEN_SNEAKERS — un maillot au rayon des
+  // baskets, parce que « maillot de basket » contient « basket ». L'étagère
+  // du vendeur (3267 = Hommes › … › Maillots) tranche parmi les deux.
+  const { pf } = passer({
+    id: "6339a55e",
+    titre: "Maillot NBA Mitchell & Ness - Penny Hardaway - Orlando Magic 1994-95 - Hardwood Classics",
+    pf: { genre: "Homme", categorie_objet_ia: "maillot de basket", categorie_mot_cle_titre: "maillot" },
+    vintedCatalogId: 3267,
+  });
+  ok("un maillot de basket rangé sur « Maillots » part en MEN_JERSEYS, plus jamais en baskets", pf.oplaCategoryCode === "MEN_JERSEYS", pf.oplaCategoryCode);
 }
 
 console.log(ko ? `\n❌ ${ko} contrôle(s) en échec\n` : "\n✅ la chaîne Opla complète passe — catégorie, genre, taille\n");

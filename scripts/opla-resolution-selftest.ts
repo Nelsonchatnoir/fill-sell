@@ -273,4 +273,62 @@ ok("un mot qui ne nomme QUE des fourre-tout, et rien derrière → la question d
   rienDerriere.code === null && rienDerriere.candidats.some((f) => f.code === "W_OTHER_ACCESSORIES"),
   rienDerriere.code ?? `${rienDerriere.candidats.length} feuilles`);
 
+// ── § 9 — L'ÉTAGÈRE VINTED DE L'ARTICLE (2026-09-23) ────────────────────────
+// Job 796582df (van-breugel.sandra, « Escarpins rouges Even&Odd T37 neuf »,
+// 23/09 12:35) : l'IA et le mot-clé du titre disaient « escarpins », le genre
+// était vide, et AUCUNE feuille Opla ne porte ce mot — la feuille s'appelle
+// « Chaussures à talons ». Le pré-vol posait les huit racines. L'article
+// portait pourtant son étagère Vinted (catalog_id 543 = Femmes › Chaussures ›
+// Chaussures à talons) dans la colonne `vinted_catalog_id` de la fiche.
+l("\n§ 9 — l'étagère Vinted de l'article");
+const SANDRA = { mots: ["escarpins", "escarpins"], titre: "Escarpins rouges Even&Odd T37 neuf" };
+const TALONS = ["Femmes", "Chaussures", "Chaussures à talons"];
+const escarpinsSans = resoudreCategorieOpla({ ...SANDRA });
+ok("LA CAUSE : « escarpins » ne désigne aucune feuille, le titre non plus → rien (ni feuille, ni question)",
+  escarpinsSans.code === null && escarpinsSans.candidats.length === 0,
+  escarpinsSans.code ?? `${escarpinsSans.candidats.length} feuilles`);
+const escarpinsEtagere = resoudreCategorieOpla({ ...SANDRA, etagere: TALONS });
+ok("l'étagère seule, sans genre : « Chaussures à talons » existe pour Femmes ET filles → question à 2, jamais un rayon deviné",
+  escarpinsEtagere.code === null && cleFourche(escarpinsEtagere.candidats) === "GIRLS_HEELS|HIGH_HEELS",
+  escarpinsEtagere.code ?? cleFourche(escarpinsEtagere.candidats));
+const escarpinsFemme = resoudreCategorieOpla({ ...SANDRA, etagere: TALONS, genre: "Femme" });
+ok("l'étagère ET son genre (tous deux lus sur la fiche) → HIGH_HEELS, Femmes › Chaussures › Chaussures à talons",
+  escarpinsFemme.code === "HIGH_HEELS", escarpinsFemme.code ?? `${escarpinsFemme.candidats.length} feuilles`);
+ok("et la trace dit d'où ça vient", escarpinsFemme.etapes.some((e) => e.startsWith("étagère Vinted « Chaussures à talons »")), escarpinsFemme.etapes);
+
+// ⛔ L'ÉTAGÈRE NE PARLE QUE PAR LE LIBELLÉ EXACT D'UNE FEUILLE. Un libellé
+//    Vinted qui n'est pas une feuille Opla ne dit rien — et surtout pas par
+//    inclusion : « Robes de soirée » contient « Robes », dont la seule feuille
+//    femme est celle du rayon SPORT.
+const midi = resoudreCategorieOpla({ mots: [], titre: "Robe Mango à pois noirs et blancs, manches longues", genre: "Femme" });
+const midiEtagere = resoudreCategorieOpla({ mots: [], titre: "Robe Mango à pois noirs et blancs, manches longues", genre: "Femme", etagere: ["Femmes", "Vêtements", "Robes", "Midi"] });
+ok("« Midi » n'est pas une feuille Opla : l'étagère ne change rien",
+  midi.code === midiEtagere.code && cleFourche(midi.candidats) === cleFourche(midiEtagere.candidats), [midi.code, midiEtagere.code]);
+const soiree = resoudreCategorieOpla({ mots: [], titre: "Tenue chic", genre: "Femme", etagere: ["Femmes", "Vêtements", "Robes", "Robes de soirée"] });
+ok("« Robes de soirée » ⊃ « Robes » n'envoie PAS au rayon sport : pas d'inclusion, exact ou rien",
+  soiree.code !== "WOM_SPO_DRESSES", soiree.code ?? "question");
+
+// ⛔ UNE ÉTAGÈRE FAUSSE PERD CONTRE LES MOTS DE L'ARTICLE. Job 5f9e240b :
+//    « Robe portefeuille Flamant Rose », rangée chez Vinted sur « Porte-monnaie ».
+const portefeuille = resoudreCategorieOpla({ mots: [], titre: "Robe portefeuille Flamant Rose motif géométrique M", genre: "Femme" });
+const portefeuilleEtagere = resoudreCategorieOpla({ mots: [], titre: "Robe portefeuille Flamant Rose motif géométrique M", genre: "Femme", etagere: ["Femmes", "Sacs", "Porte-monnaie"] });
+ok("une robe rangée sur « Porte-monnaie » reste une robe : le titre désigne, l'étagère qui le contredit se tait",
+  portefeuille.code === "WOM_DRE_OTHER" && portefeuilleEtagere.code === "WOM_DRE_OTHER", [portefeuille.code, portefeuilleEtagere.code]);
+const robeContredite = resoudreCategorieOpla({ mots: ["robe"], genre: "Femme", etagere: ["Femmes", "Sacs", "Porte-monnaie"] });
+ok("idem quand c'est le mot-objet qui désigne", robeContredite.code === "WOM_DRE_OTHER", robeContredite.code);
+
+// L'ÉTAGÈRE TRANCHE PARMI LES CANDIDATES D'UN ÉTAGE — jamais hors de lui.
+const jeanQuestion = resoudreCategorieOpla({ mots: ["jean", "jean"], genre: "Homme" });
+ok("« jean » homme sans étagère : la question des cinq jeans (inchangée)",
+  jeanQuestion.code === null && jeanQuestion.candidats.length === 5, jeanQuestion.code ?? jeanQuestion.candidats.length);
+const jeanThomas = resoudreCategorieOpla({ mots: ["jean", "jean"], genre: "Homme", etagere: ["Hommes", "Vêtements", "Jeans", "Jeans coupe droite"] });
+ok("840b67ec : l'étagère « Jeans coupe droite » répond à la question → MEN_STRAIGHTFIT_JEANS",
+  jeanThomas.code === "MEN_STRAIGHTFIT_JEANS", jeanThomas.code ?? `${jeanThomas.candidats.length} feuilles`);
+const echarpe = resoudreCategorieOpla({ mots: ["écharpe", "echarpe"], titre: "Écharpe Tour de Cou Stitch", genre: "Fille", etagere: ["Enfants", "Vêtements pour filles", "Accessoires", "Écharpes et châles"] });
+ok("fd8ab3c5 : l'écharpe d'une fille est « Écharpes et châles », pas l'écharpe de PORTAGE que le chemin le plus direct choisissait",
+  echarpe.code === "SCARVES_GIRLS_NEW", echarpe.code ?? `${echarpe.candidats.length} feuilles`);
+const maillotNba = resoudreCategorieOpla({ mots: ["maillot de basket", "maillot"], genre: "Homme", etagere: ["Hommes", "Vêtements", "Vêtements de sport et accessoires", "Maillots"] });
+ok("6339a55e : un maillot de basket est un maillot (MEN_JERSEYS), pas des baskets (MEN_SNEAKERS)",
+  maillotNba.code === "MEN_JERSEYS", maillotNba.code ?? `${maillotNba.candidats.length} feuilles`);
+
 l(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");
