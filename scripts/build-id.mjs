@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-23T17:18:40Z'; // recale sur le commit 0.6.62 (demi-pointure en un geste Beebs/Opla, releve tolerant + reprise technique, garde boutique a confirmer). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : 0.6.62 pas encore televersee.
+export const EXTENSION_LAST_COMMIT = '2026-09-23T21:37:23Z'; // recale sur 7885d1d, dernier commit du lot « zero regression » touchant chrome-extension/ (background.js : taille EU nu->EU N, releve hub eBay tolerant + reprise technique, message Opla unique + AUTORISER_OPLA, captures perimees 20/run). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : rien n'est televerse, aucune extension du parc n'est flaggee obsolete. Le bump de version manifeste (0.6.63) + upload CWS restent des gestes de deploiement, non faits.
 // Historique de la valeur precedente : 2026-09-23T15:18:25Z — recale 064b0ca (0.6.61 : popup sur la verite serveur, sonde eBay My eBay, « je ne vends pas sur X »). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD promu le 23/09 au soir sur cette 0.6.61 (acceptee, 8 comptes servis).
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
