@@ -150,6 +150,61 @@ function versionAuMoins(a: string, b: string): boolean {
   return true;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// LA COPIE DE L'ANNONCE, SERVIE AVEC LE JOB (2026-09-23)
+// ══════════════════════════════════════════════════════════════════════════════
+// Miroir EXACT de `construireSnapshotRepublish` (chrome-extension/background.js)
+// pour les champs que le pré-vol de la 0.6.58 contrôle : titre, photos, prix,
+// catalog_id, package_size_id. La source est la MÊME (vinted_republish_captures) ;
+// ce n'est pas une copie inventée, c'est la copie réelle, lue en base.
+// ⛔ JAMAIS DE VALEUR DE COMPLAISANCE : un champ absent de la capture reste
+//    absent ici. Une capture réellement incomplète doit continuer à bloquer le
+//    retrait — c'est ce que la garde existe pour faire.
+function copieRepublishDepuisCapture(
+  pf: Record<string, unknown>,
+  cap: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload = (cap["payload"] ?? {}) as Record<string, unknown>;
+  const natif = (payload["natif"] ?? {}) as Record<string, unknown>;
+  const lib = (cap["libelles"] ?? {}) as Record<string, unknown>;
+  const attrs = Array.isArray(natif["item_attributes"]) ? natif["item_attributes"] as Array<Record<string, unknown>> : [];
+  const idsAttr = (code: string): unknown[] | null => {
+    const e = attrs.find((a) => String(a?.["code"] ?? "").trim().toLowerCase() === code);
+    const ids = e?.["ids"];
+    return Array.isArray(ids) && ids.length ? ids : null;
+  };
+  return {
+    version: 1,
+    capture_id: pf["capture_id"] ?? null,
+    captured_at: cap["captured_at"] ?? null,
+    vinted_item_id: pf["vinted_item_id"] ?? null,
+    titre: payload["titre"] ?? null,
+    description: payload["description"] ?? null,
+    prix: payload["prix"] ?? null,
+    devise: natif["currency"] ?? "EUR",
+    marque: lib["marque"] ?? null,
+    brand_id: natif["brand_id"] ?? null,
+    taille: lib["taille"] ?? null,
+    size_id: natif["size_id"] ?? idsAttr("size")?.[0] ?? null,
+    etat: lib["etat"] ?? null,
+    status_id: natif["status_id"] ?? idsAttr("condition")?.[0] ?? null,
+    couleurs: lib["couleurs"] ?? null,
+    color1_id: natif["color1_id"] ?? null,
+    color2_id: natif["color2_id"] ?? null,
+    categoryPath: lib["categoryPath"] ?? null,
+    catalog_id: natif["catalog_id"] ?? null,
+    colis: lib["colis"] ?? null,
+    package_size_id: natif["package_size_id"] ?? null,
+    isbn: lib["isbn"] ?? (typeof natif["isbn"] === "string" && (natif["isbn"] as string).trim() ? (natif["isbn"] as string).trim() : null),
+    matiere: lib["matiere"] ?? null,
+    ...(idsAttr("material") ? { material_ids: idsAttr("material") } : {}),
+    photos: cap["photos_urls"] ?? [],
+    // D'où elle vient. Le snapshot écrit par l'extension n'a pas cette clé :
+    // en SQL, `republish_snapshot ? 'servi_par_le_serveur'` sépare les deux.
+    servi_par_le_serveur: true,
+  };
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsOrigin = isAllowedOrigin(origin) ? origin : "https://fillsell.app";
@@ -3579,6 +3634,77 @@ serve(async (req) => {
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
 
+    // ══ LA COPIE SERVIE AVEC LE JOB — DÉBLOCAGE DU PRÉ-VOL 0.6.58 SANS STORE
+    //    (2026-09-23, 94 republications Vinted à l'arrêt) ═══════════════════
+    // CE QUI S'EST PASSÉ. Le pré-vol « on ne retire pas ce qu'on ne sait pas
+    // remettre » de la 0.6.58 lit `platform_fields.republish_snapshot` pour
+    // Vinted — et sur le chemin Vinted, cette clé est ÉCRITE PAR LE MÊME
+    // PASSAGE, 250 lignes PLUS BAS (`pf.republish_snapshot =
+    // construireSnapshotRepublish(...)`, juste avant le retrait). Au moment où
+    // la garde la cherche, elle ne peut pas encore exister : le contrôle porte
+    // sur une valeur que le code qui le suit produit. Résultat mesuré en base :
+    // 99 passages, 99 « bloque », 0 « ok » — 100 % de faux positifs, et un
+    // message absurde (« la copie de ton annonce manque dans la copie de ton
+    // annonce »).
+    // ⛔ LA GARDE N'EST PAS COUPÉE. Elle reçoit enfin ce qu'elle réclame : la
+    //    copie RÉELLE, relue dans vinted_republish_captures par capture_id,
+    //    dans la forme exacte qu'elle sait lire. Une capture à qui il manque
+    //    vraiment un catalog_id ou un package_size_id (le cas XEWER, job
+    //    6aabc550) bloquera toujours le retrait — c'est le seul contrôle que
+    //    rien d'autre ne fait sur ce chemin.
+    // ⛔ ON N'ÉCRASE JAMAIS une copie déjà présente sur le job : le snapshot
+    //    écrit par l'extension prime, toujours.
+    // ⛔ Périmètre : Vinted, action republish, étapes 'captured' (le retrait
+    //    qui va partir) et 'deleted' (recréation après retrait). Rien d'autre.
+    // Mémoire seule : aucune écriture en base. L'extension réécrira sa propre
+    // copie au moment de figer le job, comme aujourd'hui.
+    try {
+      const idCap = (j: { platform_fields: unknown }): number =>
+        Number(((j.platform_fields as Record<string, unknown> | null) ?? {})["capture_id"]);
+      const sansCopie = out.filter((j) => {
+        if (j.action !== "republish" || j.platform !== "vinted") return false;
+        const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+        const step = String(pf["republish_step"] ?? "");
+        if (step !== "captured" && step !== "deleted") return false;
+        const snap = pf["republish_snapshot"];
+        if (snap && typeof snap === "object") return false; // copie déjà sur le job : intouchée
+        return Number.isFinite(idCap(j)) && idCap(j) > 0;
+      });
+      if (sansCopie.length) {
+        const { data: caps } = await userClient
+          .from("vinted_republish_captures")
+          .select("id, verdict, captured_at, payload, libelles, photos_urls")
+          .eq("user_id", user.id)
+          .in("id", [...new Set(sansCopie.map(idCap))]);
+        const parId = new Map<number, Record<string, unknown>>();
+        for (const c of ((caps ?? []) as Array<Record<string, unknown>>)) parId.set(Number(c["id"]), c);
+        let servies = 0;
+        const sansCapture: string[] = [];
+        for (const j of sansCopie) {
+          const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+          const cap = parId.get(idCap(j));
+          // Capture absente ou non valide : on ne sert RIEN. La garde bloquera,
+          // et c'est le bon verdict — il n'y a effectivement pas de copie.
+          if (!cap || cap["verdict"] !== "valide") { sansCapture.push(String(j.id)); continue; }
+          j.platform_fields = {
+            ...pf,
+            republish_snapshot: copieRepublishDepuisCapture(pf, cap),
+            republish_copie_servie: {
+              capture_id: idCap(j), etape: String(pf["republish_step"] ?? ""),
+              source: "vinted_republish_captures (get-pending-jobs)", at: new Date().toISOString(),
+            },
+          };
+          servies++;
+        }
+        if (servies) {
+          console.log(`[get-pending-jobs] userId=${user.id} : copie d'annonce servie sur ${servies} republication(s) Vinted (pré-vol 0.6.58)`);
+        }
+        if (sansCapture.length) {
+          console.warn(`[get-pending-jobs] userId=${user.id} : ${sansCapture.length} republication(s) Vinted SANS capture valide — pré-vol laissé bloquant (${sansCapture.slice(0, 5).join(", ")})`);
+        }
+      }
+    } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+
     // ── TAILLE VINTED À LA **PUBLICATION** : NOMBRE → LETTRE (2026-09-15) ────
     // La republication ci-dessus servait déjà le libellé de la grille ; la
     // PUBLICATION, elle, n'a jamais rien converti. La conversion existait dans
@@ -5251,6 +5377,26 @@ serve(async (req) => {
     // a bien joué pour ce poll (rien n'est loggé à l'état allumé, le normal).
     if (!keepaliveActif) console.log(`[get-pending-jobs] userId=${user.id} : keepalive_actif=0 → port de remplissage ÉTEINT pour ce poll (chemin classique)`);
 
+    // ── prevol_copie_actif (2026-09-23) : INTERRUPTEUR SERVEUR du pré-vol
+    // « on ne retire pas ce qu'on ne sait pas remettre ». Il n'en avait AUCUN :
+    // le 23/09, sa première version a bloqué 99 republications sur 99 et il a
+    // fallu un correctif serveur pour la contourner, faute de pouvoir
+    // l'éteindre. Toute garde capable de bloquer doit pouvoir être coupée sans
+    // paquet — c'est la règle posée ce jour-là.
+    // coin_config 'prevol_copie_actif' : 0 = ÉTEINT ; absent, illisible ou ≠ 0
+    // = ALLUMÉ (le défaut : une garde s'éteint sur décision, jamais par oubli).
+    //   update coin_config set value = 0 where key = 'prevol_copie_actif';
+    // Lu par l'extension ≥ 0.6.60 à chaque poll (≤ 2 min). Éteint, elle ne
+    // vérifie plus la copie — les autres gardes (capture valide, prix/titre
+    // résolus, boutique étrangère, réconciliation) restent en place.
+    let prevolCopieActif = true;
+    try {
+      const { data: cfgPc } = await userClient
+        .from("coin_config").select("value").eq("key", "prevol_copie_actif").maybeSingle();
+      if (cfgPc && Number(cfgPc.value) === 0) prevolCopieActif = false;
+    } catch (_e) { /* allumé par défaut */ }
+    if (!prevolCopieActif) console.log(`[get-pending-jobs] userId=${user.id} : prevol_copie_actif=0 → pré-vol de la copie ÉTEINT pour ce poll`);
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,
@@ -5265,6 +5411,9 @@ serve(async (req) => {
       sync_prioritaire: travailRetenu > 0,
       jobs_retenus_sync: travailRetenu,
       keepalive_actif: keepaliveActif,
+      // prevol_copie_actif (2026-09-23) : interrupteur du pré-vol de la copie.
+      // false = la garde ne vérifie plus rien (extension ≥ 0.6.60).
+      prevol_copie_actif: prevolCopieActif,
       boutique_pause: boutiquePause,
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
