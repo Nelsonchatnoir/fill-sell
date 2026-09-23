@@ -11976,6 +11976,17 @@ const RELEVE_EBAY_PAGE_MAX = 15;
 const RELEVE_EBAY_TAILLE_PAGE = 200;
 const RELEVE_PAGES_MAX = 20;         // pagination / défilement : borne dure
 const RELEVE_CADENCE_CRON_MS = 20 * 3600_000;
+// Tours du moteur de rattachement par relevé : le serveur s'arrête au budget
+// du rôle (70 % de statement_timeout) et rend `restantes` ; on cumule.
+const RELEVE_MOTEUR_TOURS_MAX = 12;
+const RELEVE_BILAN_COMPTEURS = ["par_job", "auto", "proposees", "sans_candidat", "importees", "import_refusees", "ecartees_notification", "disparues", "sautees"];
+function cumulerBilanReleve(total, b) {
+  const out = { ...total, ...b };
+  for (const k of RELEVE_BILAN_COMPTEURS) out[k] = (Number(total[k]) || 0) + (Number(b[k]) || 0);
+  out.restantes = Number(b.restantes) || 0;
+  out.budget_epuise = b.budget_epuise === true;
+  return out;
+}
 let relevesDemandes = new Set();     // plateformes à relever après le poll (veilleur)
 let commandesAnnoncesEnAttente = []; // [{ id, platform }] servies par get-pending-jobs
 let releveEnCours = false;
@@ -13348,14 +13359,27 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       .catch((e) => ({ capturees: 0, echecs: 0, restantes: 0, motif: String(e?.message ?? e) }));
     // LE MOTEUR : rattachements par identifiant, automatiques (certains) et
     // propositions — tout vit côté serveur, rien n'est décidé ici.
+    // ── LE MOTEUR A UN BUDGET (2026-09-23) ──────────────────────────────────
+    // Le rôle authenticated porte statement_timeout = 8 s : un appel qui
+    // dépassait était ANNULÉ EN ENTIER (relevés Opla de 1 004 annonces : rien
+    // d'écrit, aucun « [rattachement] » dans le run, rien n'entrait jamais).
+    // Le serveur s'arrête désormais à 70 % du budget, COMMITE ce qui est fait
+    // et rend `restantes` ; on le rappelle tant qu'il en reste, borné, en
+    // cumulant les compteurs. Un serveur d'avant ne rend pas `restantes` : un
+    // seul tour, exactement comme avant.
     let bilan = null;
     try {
-      const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/rapprocher_releve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
-        body: JSON.stringify({ p_run_id: run.id }),
-      });
-      bilan = await res.json().catch(() => null);
+      for (let tour = 0; tour < RELEVE_MOTEUR_TOURS_MAX; tour++) {
+        const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/rapprocher_releve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+          body: JSON.stringify({ p_run_id: run.id }),
+        });
+        const b = await res.json().catch(() => null);
+        if (!b?.ok) { bilan = bilan ?? b; break; }
+        bilan = bilan ? cumulerBilanReleve(bilan, b) : b;
+        if (!(Number(b.restantes) > 0)) break;
+      }
     } catch (e) {
       console.warn(`[releve][${platform}] moteur de rattachement injoignable :`, String(e?.message ?? e));
     }
@@ -13389,7 +13413,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
                // illisible reste null (bande incertaine), jamais un nombre.
                illisibles && (illisibles.prix || illisibles.titre)
                  ? `[relevé] illisible : prix sur ${illisibles.prix} annonce(s), titre sur ${illisibles.titre}` : null,
-               bilan?.ok ? `[rattachement] par identifiant ${bilan.par_job}, automatiques ${bilan.auto}, proposées ${bilan.proposees}, sans candidat ${bilan.sans_candidat}, disparues ${bilan.disparues}` : null,
+               // « importées » n'était PAS dit (2026-09-23) : l'import automatique est
+               // resté mort quatre jours sans que la ligne du run ne le montre.
+               bilan?.ok ? `[rattachement] par identifiant ${bilan.par_job}, automatiques ${bilan.auto}, proposées ${bilan.proposees}, sans candidat ${bilan.sans_candidat}${bilan.importees != null ? `, importées ${bilan.importees}` : ""}${Number(bilan.import_refusees) ? `, ${bilan.import_refusees} jumeau(x) proposé(s)` : ""}, disparues ${bilan.disparues}${Number(bilan.restantes) ? `, ${bilan.restantes} à reprendre au prochain relevé` : ""}` : null,
                (capture.capturees || capture.echecs || capture.restantes || capture.motif)
                  ? `[capture] ${capture.capturees} fiche(s) capturée(s)${capture.completes ? `, ${capture.completes} article(s) complété(s)` : ""}${capture.echecs ? `, ${capture.echecs} en échec` : ""}${capture.restantes ? `, ${capture.restantes} au prochain relevé` : ""}${capture.motif ? ` — ${capture.motif}` : ""}` : null]
         .filter(Boolean).join(" · ") || null,
@@ -13435,8 +13461,9 @@ function demanderRelevePourRattachement(platform) {
   if (RELEVE_PLATEFORMES.includes(platform)) relevesDemandes.add(platform);
 }
 
-// Alarme quotidienne : une plateforme par passage, seulement celles où le
-// compte a des dépôts en ligne (sinon il n'y a rien à rattacher).
+// Alarme quotidienne : une plateforme par passage, celles où le compte a des
+// dépôts en ligne OU des annonces relevées qui attendent encore leur
+// rattachement (sinon il n'y a rien à rattacher).
 async function releverQuotidien() {
   const session = await getValidSession();
   if (!session?.access_token) return;
@@ -13447,7 +13474,21 @@ async function releverQuotidien() {
     const jobs = await restRequest(
       `cross_post_jobs?user_id=eq.${userId}&platform=eq.${platform}&status=eq.published&action=in.(publish,republish)&select=id&limit=1`, token,
     ).catch(() => []);
-    if (!Array.isArray(jobs) || !jobs.length) continue;
+    // ── ET LES ANNONCES QUI ATTENDENT LEUR DEUXIÈME RELEVÉ (2026-09-23) ────
+    // L'import automatique d'une annonce sans candidat exige un DEUXIÈME
+    // relevé. Un compte sans dépôt sur la plateforme (nouvel inscrit, pas de
+    // Vinted) n'en avait jamais par ici : ses annonces restaient hors du stock
+    // tant qu'il ne recliquait pas lui-même (pironneau.vincent : 9 annonces
+    // Opla ; bertin.dr : 236 annonces Leboncoin, un seul relevé). Une annonce
+    // vivante, non rattachée, non ignorée suffit à mériter le passage.
+    let aRelever = Array.isArray(jobs) && jobs.length > 0;
+    if (!aRelever) {
+      const enAttente = await restRequest(
+        `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&inventaire_id=is.null&ignoree_le=is.null&disparu_le=is.null&select=id&limit=1`, token,
+      ).catch(() => []);
+      aRelever = Array.isArray(enAttente) && enAttente.length > 0;
+    }
+    if (!aRelever) continue;
     await lancerRelevePlateforme({ platform, declencheur: "cron" }).catch((e) => console.error("[releve][cron]", e?.message ?? e));
   }
   // ── LES VENTES, DANS LA FOULÉE (2026-09-19) ──────────────────────────────
