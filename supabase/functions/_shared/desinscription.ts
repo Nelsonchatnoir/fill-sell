@@ -48,7 +48,17 @@
 // quelqu'un qui a demandé à ne plus en recevoir (illégal, irrattrapable).
 // ============================================================================
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ⛔ VERSION ÉPINGLÉE — ET CE N'EST PAS DU CONFORT (2026-09-23).
+// Le spécificateur flottant `@2` a résolu ce jour-là vers supabase-js 2.117.1,
+// dont la dépendance `@supabase/functions-js@2.117.1` rend 404 sur esm.sh (le
+// paquet n'y a jamais été publié). Résultat : PLUS AUCUNE fonction edge
+// important supabase-js ne pouvait être déployée — 48 fichiers du dépôt, soit
+// à peu près tout. Mesuré en direct : 2.117.1 → 404, 2.117.0 → 200.
+// Une dépendance flottante, c'est une panne de déploiement décidée par
+// quelqu'un d'autre, un jour qu'on ne choisit pas.
+// Les 47 autres fichiers portent encore `@2` : ils ne se cassent qu'au moment
+// où on les redéploie. À épingler au prochain lot qui les touche.
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 
 export type CategorieEmail = "marketing" | "support";
 

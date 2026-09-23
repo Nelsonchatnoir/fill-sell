@@ -226,6 +226,15 @@ verify_jwt = true
 [functions.send-bug-report]
 verify_jwt = true
 
+# Envoi ponctuel (2026-09-23) : LA fonction qui remplace les 31 one-shots
+# supprimées le même jour. verify_jwt = TRUE à dessein — la plateforme rejette
+# d'abord tout jeton qui n'est pas signé par ce projet, et la fonction exige
+# ENSUITE la clé de service elle-même (un JWT d'utilisateur ordinaire est signé
+# par le projet : sans cette seconde garde, n'importe quel compte connecté
+# pourrait poster des mails). Aucun jeton en dur, donc rien à fuiter.
+[functions.envoi-ponctuel]
+verify_jwt = true
+
 # Envoi du lien d'installation à SOI-MÊME (lot 2C-1, 2026-08-09) : le JWT
 # désigne le destinataire — l'adresse est lue sur le token, jamais dans le
 # corps. verify_jwt = true : sans porteur identifié, la fonction n'a aucun
