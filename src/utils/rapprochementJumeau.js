@@ -32,11 +32,20 @@ export function titreNorm(t) {
     .trim();
 }
 
+// ── LA COULEUR ET LE NOMBRE EXCLUENT (2026-09-23, kits de Louis) ────────────
+// « Rangement Blanc » est CONTENU dans « Rangement Blanc et Vert Pomme pour
+// 12 pots… » aux frontières de mots : la règle d'inclusion en faisait un
+// jumeau. Deux couleurs différentes, ce sont deux kits. Même règle que la
+// garde SQL (rapprocher_importer, migration 20260924090000) et que l'alerte
+// de l'écran Publier : src/utils/variantesTitre.js.
+import { variantesIncompatibles } from './variantesTitre.js';
+
 /** Deux titres désignent-ils visiblement le même objet ? */
 export function titresJumeaux(a, b) {
   const x = titreNorm(a);
   const y = titreNorm(b);
   if (x.length <= 12 || y.length <= 12) return false;
+  if (variantesIncompatibles(a, b).incompatibles) return false;
   if (x === y) return true;
   return ` ${x} `.includes(` ${y} `) || ` ${y} `.includes(` ${x} `);
 }
@@ -52,6 +61,8 @@ export function jumeauProbable(titreAnnonce, articles) {
   for (const i of articles) {
     const t = titreNorm(i?.title ?? i?.titre);
     if (t.length <= 12) continue;
+    // Une autre couleur ou un autre nombre : un autre objet, jamais un jumeau.
+    if (variantesIncompatibles(titreAnnonce, i?.title ?? i?.titre).incompatibles) continue;
     if (t === cible) { if (!exact) exact = i; continue; }
     if ((` ${cible} `.includes(` ${t} `) || ` ${t} `.includes(` ${cible} `)) && !inclus) inclus = i;
   }

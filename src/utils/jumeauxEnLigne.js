@@ -29,8 +29,25 @@
 // seulement sur les plateformes cochées : le filtre est posé CÔTÉ SERVEUR sur
 // les mots les plus rares du titre, jamais « tous les jobs du compte »
 // (44 651 lignes dans le parc, et PostgREST tronque à 1000 sans prévenir).
-import { texteComparable } from "./texteComparable";
-import { idAnnonceDe } from "./publicationState";
+// Extensions explicites : ce module est aussi importé tel quel par Node
+// (scripts/etats-publication-selftest.mjs) — Vite les accepte à l'identique.
+import { texteComparable } from "./texteComparable.js";
+import { idAnnonceDe } from "./publicationState.js";
+// ── LA COULEUR EXCLUT, LA PHOTO PROUVE (2026-09-23, kits de Louis) ──────────
+// « Rangement Blanc et Noir… » et « Rangement Blanc et Gris… » partagent six
+// mots et la même photo : deux kits, deux annonces. L'alerte les citait comme
+// jumeaux. Désormais :
+//   · deux titres à couleurs (ou nombres) différentes ne sont JAMAIS des
+//     jumeaux (variantesTitre — même règle que le faisceau SQL) ;
+//   · la PHOTO prouve : mêmes empreintes (photo-empreinte, cache
+//     photo_empreintes) → jumeau, même avec peu de mots ;
+//   · sans preuve photo, il faut le titre entier (≥ 4 mots) ET le même prix,
+//     ou le titre normalisé identique — plus jamais « 2 mots + prix ».
+// La fonction edge injoignable → on retombe sur le texte seul, strict.
+import { variantesIncompatibles } from "./variantesTitre.js";
+import { titreNorm } from "./rapprochementJumeau.js";
+import { chargerEmpreintes, meilleurAppariement } from "./empreintePhoto.js";
+import { urlsPhotos } from "./photos.js";
 
 // Mots qui ne distinguent rien : ils sont dans un titre sur trois.
 const MOTS_VIDES = new Set([
@@ -110,6 +127,23 @@ export function estUnJumeau(communs, prixArticle, prixCandidat) {
 }
 
 /**
+ * Le verdict FINAL sur un candidat, une fois les mots communs comptés :
+ *   · variante (couleur / nombre différents) → jamais ;
+ *   · photo identique → jumeau, preuve « photo » ;
+ *   · titre normalisé identique → jumeau, preuve « titre » ;
+ *   · titre entier (≥ 4 mots) ET même prix → jumeau, preuve « texte » ;
+ *   · sinon → non. (Sans empreintes disponibles, la règle texte seule vaut.)
+ */
+export function verdictJumeau({ titre, prix, candidat, photo = null }) {
+  if (variantesIncompatibles(titre, candidat.titre).incompatibles) return null;
+  if (photo && photo.verdict === "identique") return "photo";
+  const tn = titreNorm(titre);
+  if (tn && tn.length > 12 && tn === titreNorm(candidat.titre)) return "titre";
+  if ((candidat.mots?.length ?? 0) >= MOTS_SUFFISANTS && memePrix(prix, candidat.prix)) return "texte";
+  return null;
+}
+
+/**
  * Les annonces d'AUTRES articles, déjà en ligne, qui ressemblent à celui-ci.
  *
  * @param {object}   supabase
@@ -124,7 +158,7 @@ export function estUnJumeau(communs, prixArticle, prixCandidat) {
  *          [] = rien trouvé, ou rien de cherchable, ou lecture en échec. Jamais
  *          null : un aléa réseau se tait, il n'alarme pas et ne bloque rien.
  */
-export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = null, titre, marque = null, prix = null, plateformes = [] }) {
+export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = null, titre, marque = null, prix = null, plateformes = [], photos = [] }) {
   const cibles = [...new Set((plateformes ?? []).filter(Boolean))];
   if (!userId || !cibles.length) return [];
   const mots = motsDuTitre(titre, marque);
@@ -140,6 +174,8 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
     vus.add(cle);
     trouves.push(o);
   };
+  // Les photos de L'ARTICLE (jusqu'à 3) : la preuve se cherche contre elles.
+  const photosArticle = urlsPhotos(photos ?? []).filter((u) => /^https?:\/\//.test(u)).slice(0, 3);
 
   // 1. LE RELEVÉ DU COMPTE — la source la plus sûre : elle dit « en ligne »
   //    parce que l'annonce a été VUE sur la plateforme, pas parce qu'un job
@@ -151,7 +187,7 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
   try {
     const { data, error } = await supabase
       .from("annonces_plateforme")
-      .select("platform, listing_id, url, titre, prix, inventaire_id")
+      .select("platform, listing_id, url, titre, prix, inventaire_id, photo_url")
       .eq("user_id", userId)
       .is("disparu_le", null)
       .eq("statut_plateforme", "en_ligne")
@@ -163,10 +199,13 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
     for (const a of data ?? []) {
       if (inventaireId != null && a.inventaire_id === inventaireId) continue;
       const communs = motsCommuns(mots, a.titre);
-      if (!estUnJumeau(communs, prix, a.prix)) continue;
+      // Au moins deux mots pour être CANDIDAT ; le verdict se rend plus bas,
+      // avec la couleur et la photo.
+      if (communs.length < SEUIL_MOTS_COMMUNS) continue;
       ajouter({
         platform: a.platform, id: a.listing_id ?? null, url: a.url || null,
         titre: a.titre || "", prix: a.prix ?? null, inventaireId: a.inventaire_id ?? null, mots: communs,
+        photos: a.photo_url && /^https?:\/\//.test(a.photo_url) ? [a.photo_url] : [],
       });
     }
   } catch (e) {
@@ -178,7 +217,7 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
   try {
     const { data, error } = await supabase
       .from("cross_post_jobs")
-      .select("inventaire_id, platform, title, price, listing_url, platform_listing_id")
+      .select("inventaire_id, platform, title, price, listing_url, platform_listing_id, photos")
       .eq("user_id", userId)
       .in("platform", cibles)
       .in("action", ["publish", "republish"])
@@ -190,7 +229,7 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
     const candidats = (data ?? []).filter((j) =>
       j.inventaire_id != null
       && j.inventaire_id !== inventaireId
-      && estUnJumeau(motsCommuns(mots, j.title), prix, j.price));
+      && motsCommuns(mots, j.title).length >= SEUIL_MOTS_COMMUNS);
 
     // Un dépôt reste 'published' en base quelques minutes après un retrait
     // réussi (cf. publicationState.js) : sans cette relecture, l'app
@@ -215,16 +254,37 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
         platform: j.platform, id, url: j.listing_url || null,
         titre: j.title || "", prix: j.price ?? null, inventaireId: j.inventaire_id,
         mots: motsCommuns(mots, j.title),
+        photos: urlsPhotos(Array.isArray(j.photos) ? j.photos : []).filter((u) => /^https?:\/\//.test(u)).slice(0, 2),
       });
     }
   } catch (e) {
     console.warn("[jumeauxEnLigne] dépôts:", e?.message ?? e);
   }
 
+  // ── LA COULEUR EXCLUT, LA PHOTO PROUVE ────────────────────────────────────
+  // D'abord l'exclusion (gratuite), puis les empreintes des photos qui
+  // restent à comparer — une seule demande, bornée, jamais bloquante.
+  const restants = trouves.filter((t) => !variantesIncompatibles(titre, t.titre).incompatibles);
+  let empreintes = new Map();
+  if (photosArticle.length && restants.some((t) => t.photos?.length)) {
+    empreintes = await chargerEmpreintes(supabase, [...photosArticle, ...restants.flatMap((t) => t.photos ?? [])]);
+  }
+  const empA = photosArticle.map((u) => empreintes.get(u)).filter(Boolean);
+  const jumeaux = [];
+  for (const t of restants) {
+    const empB = (t.photos ?? []).map((u) => empreintes.get(u)).filter(Boolean);
+    const photo = empA.length && empB.length ? meilleurAppariement(empA, empB) : null;
+    const preuve = verdictJumeau({ titre, prix, candidat: t, photo });
+    if (!preuve) continue;
+    jumeaux.push({ ...t, preuve, photo: photo ? { dhash: photo.dhash, phash: photo.phash, verdict: photo.verdict } : null });
+  }
+
   // UNE annonce nommée par plateforme : le message dit « un jumeau », pas un
-  // inventaire. La mieux rapprochée d'abord, puis celle qui a un lien.
+  // inventaire. La preuve la plus forte d'abord (photo, titre, texte), puis la
+  // mieux rapprochée, puis celle qui a un lien.
+  const rang = { photo: 3, titre: 2, texte: 1 };
   const parPlateforme = new Map();
-  for (const t of trouves.sort((a, b) => (b.mots.length - a.mots.length) || ((b.url ? 1 : 0) - (a.url ? 1 : 0)))) {
+  for (const t of jumeaux.sort((a, b) => (rang[b.preuve] - rang[a.preuve]) || (b.mots.length - a.mots.length) || ((b.url ? 1 : 0) - (a.url ? 1 : 0)))) {
     if (!parPlateforme.has(t.platform)) parPlateforme.set(t.platform, t);
   }
   return [...parPlateforme.values()];
