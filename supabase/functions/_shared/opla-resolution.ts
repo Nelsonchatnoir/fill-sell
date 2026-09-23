@@ -490,13 +490,50 @@ export function trancherCandidats(
 // Jumelle de opla.js:474-499, PLUS le départage ci-dessus. Rend soit une
 // feuille, soit les candidats à proposer.
 export function resoudreCategorieOpla(
-  { mots = [], titre = null, depart = null, genre = null }:
-  { mots?: unknown[]; titre?: string | null; depart?: string | null; genre?: string | null } = {},
+  { mots = [], titre = null, depart = null, genre = null, etagere = null }:
+  { mots?: unknown[]; titre?: string | null; depart?: string | null; genre?: string | null; etagere?: string[] | null } = {},
 ): { code: string | null; candidats: FeuilleOpla[]; etapes: string[] } {
   const etapes: string[] = [];
   let code = String(depart ?? "").trim();
   if (code && !oplaNoeud(code)) { etapes.push(`ancre « ${code} » inconnue — ignorée`); code = ""; }
   if (code && oplaNoeud(code)?.feuille) return { code, candidats: [], etapes: ["ancre déjà une feuille"] };
+
+  // ── L'ÉTAGÈRE VINTED DE L'ARTICLE : UN LIBELLÉ EXACT, OU RIEN (2026-09-23) ─
+  // Job 796582df (van-breugel.sandra, « Escarpins rouges Even&Odd T37 neuf ») :
+  // l'IA et le titre disaient tous deux « escarpins », et AUCUNE des 886
+  // feuilles Opla ne porte ce mot — la feuille s'appelle « Chaussures à
+  // talons ». Les trois passes rendaient vide, le titre aussi, et le pré-vol
+  // posait les huit racines. Le même article était parti sur Beebs deux
+  // minutes plus tôt, par l'icône 👠 — que ce module ne lit pas, et pour une
+  // raison mesurée : 👠 couvre « escarpin » ET « ballerine », et Opla a une
+  // feuille pour chacun ; l'icône ne saurait pas les départager.
+  //
+  // Ce que l'article SAIT, lui, c'est l'étagère où son vendeur l'a rangé chez
+  // Vinted : `Femmes › Chaussures › Chaussures à talons` (catalog_id 543,
+  // porté par la fiche). Opla écrit le même catalogue à quelques mots près
+  // (714 feuilles Vinted sur 2 489 portent le libellé exact d'une feuille
+  // Opla). On lit donc le libellé de CETTE étagère, comme on lisait déjà son
+  // genre depuis le 20/09 — ce n'est pas une déduction, c'est la classification
+  // du vendeur.
+  // ⛔ PAR ÉGALITÉ EXACTE DU LIBELLÉ DE LA FEUILLE, JAMAIS PAR LES PASSES 2 ET 3.
+  //    Essayé : « Robes de soirée » (Vinted) contient « Robes », et la seule
+  //    feuille Opla nommée « Robes » sous Femmes est celle du rayon SPORT — la
+  //    passe 2 aurait rangé une robe de soirée en vêtement de sport. Un
+  //    libellé qui n'est pas exactement une feuille Opla ne dit rien ici.
+  // ⛔ NI LES RAYONS DU CHEMIN : « Chaussures » nomme trente feuilles, et le
+  //    départage en aurait désigné une au hasard. La feuille de l'étagère, ou
+  //    rien.
+  // ⛔ EN DERNIER ÉTAGE, ET PARMI LES CANDIDATES : elle ne tranche seule que si
+  //    ni les mots-objets ni le titre n'ont rien désigné ; sinon elle choisit
+  //    parmi les feuilles que le mot retenu désigne (`feuilleDuVendeur`), et
+  //    jamais hors de cette liste. Mesuré en rejouant les 194 jobs Opla des 30
+  //    derniers jours (scratchpad, corpus tiré par PostgREST) : sur les 25
+  //    publiés dont le serveur avait résolu la catégorie, AVANT = APRÈS sur les
+  //    25 ; les changements sont des questions qui deviennent la réponse du
+  //    vendeur, ou rien qui devient une feuille.
+  const etagereFeuille = Array.isArray(etagere) && etagere.length
+    ? String(etagere[etagere.length - 1] ?? "").trim() : "";
+  const jetonsEtagere = etagereFeuille ? jetons(etagereFeuille) : "";
 
   // ── LE TITRE EST UN DERNIER RECOURS, ET IL DOIT LE RESTER ────────────────
   // Il a été ajouté le 18/09 pour les jobs créés depuis le Stock, qui n'ont
@@ -532,8 +569,43 @@ export function resoudreCategorieOpla(
    *    comme un étage vidé par le genre lui laisse déjà sa place. Il reste la
    *    question de repli si aucun autre étage ne désigne quoi que ce soit.
    */
-  const etagesSous = (ancre: string | null): Array<{ liste: FeuilleOpla[]; via: string }> => {
-    const out: Array<{ liste: FeuilleOpla[]; via: string }> = [];
+  type Etage = { liste: FeuilleOpla[]; via: string; mot: string; etagere?: boolean };
+
+  /** L'étage de l'étagère Vinted : les feuilles dont le libellé EST celui de l'étagère, élaguées au genre. */
+  const etageEtagere = (ancre: string | null): Etage | null => {
+    if (!jetonsEtagere) return null;
+    const exactes = perimetreFeuilles(ancre).filter((f) => f.jetons.join(" ") === jetonsEtagere);
+    const garde = ecarterGenreIncompatible(exactes, genre);
+    return garde.length ? { liste: garde, via: `étagère Vinted « ${etagereFeuille} »`, mot: jetonsEtagere, etagere: true } : null;
+  };
+  /**
+   * L'étagère est le DERNIER étage — après les mots-objets ET après le titre.
+   * Elle ne tranche seule que lorsque rien d'autre n'a rien désigné (les
+   * escarpins de Sandra). Mesuré en la plaçant AVANT le titre : job 5f9e240b,
+   * « Robe portefeuille Flamant Rose », rangée chez Vinted sur « Femmes › Sacs
+   * › Porte-monnaie » — une étagère fausse aurait publié une robe au rayon des
+   * porte-monnaie, là où le titre disait juste. Quand les mots de l'article
+   * désignent une feuille que l'étagère contredit, ce sont eux qui parlent.
+   * Ce que l'étagère fait en plus, c'est TRANCHER PARMI LES CANDIDATES d'un
+   * étage (`feuilleDuVendeur`, dans la boucle) : là elle ne contredit rien.
+   */
+  const insererEtagere = (out: Etage[], ancre: string | null): Etage[] => {
+    const e = etageEtagere(ancre);
+    return e ? [...out, e] : out;
+  };
+  /**
+   * La feuille que l'étagère du vendeur désigne à ce niveau — une seule,
+   * élaguée au genre et départagée comme les autres — ou null.
+   */
+  const feuilleDuVendeur = (ancre: string | null): FeuilleOpla | null => {
+    const e = etageEtagere(ancre);
+    if (!e) return null;
+    if (e.liste.length === 1) return e.liste[0];
+    return trancherCandidats(e.liste, { mots: [...motsObjet, titreNet], genre }).feuille;
+  };
+
+  const etagesSous = (ancre: string | null): Etage[] => {
+    const out: Etage[] = [];
     // Le rayon nommé est de la même force qu'une égalité de libellé : le mot
     // EST le nom d'un rayon. ⛔ MAIS IL DOIT VENIR DU MÊME MOT QUE L'ÉTAGE
     //    RETENU. Sinon un mot large dilue la réponse d'un mot précis : mesuré
@@ -574,21 +646,22 @@ export function resoudreCategorieOpla(
         const fusion = [...garde, ...parNoeud.filter((f) => !vus.has(f.code))];
         if (fusion.length <= OPLA_QUESTION_MAX) liste = fusion;
       }
-      out.push({ liste, via: `mot « ${etage.mot} » passe ${etage.passe}` });
+      out.push({ liste, via: `mot « ${etage.mot} » passe ${etage.passe}`, mot: etage.mot });
     }
     // Aucun étage : le mot ne nomme peut-être QUE un rayon.
     if (!out.length) {
       for (const m of tousLesMots) {
         const parNoeud = ecarterGenreIncompatible(feuillesDuNoeudNomme([m], ancre), genre);
-        if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) { out.push({ liste: parNoeud, via: "rayon nommé" }); break; }
+        if (parNoeud.length && parNoeud.length <= OPLA_QUESTION_MAX) { out.push({ liste: parNoeud, via: "rayon nommé", mot: jetons(m) }); break; }
       }
     }
-    return out;
+    return insererEtagere(out, ancre);
   };
 
   for (let garde = 0; garde < 12; garde++) {
     if (code && oplaNoeud(code)?.feuille) break;
     const etages = etagesSous(code || null);
+    const duVendeur = feuilleDuVendeur(code || null);
     // ── LE PREMIER ÉTAGE QUI DÉSIGNE QUELQUE CHOSE GAGNE ────────────────────
     // « Désigner », c'est rendre UNE feuille : seule, ou tranchée par le
     // départage. Un étage qui ne sait pas trancher ne décide de rien — il
@@ -596,6 +669,28 @@ export function resoudreCategorieOpla(
     let designe: { feuille: FeuilleOpla; via: string; motif: string } | null = null;
     let aDemander: { total: number; restants: FeuilleOpla[]; motif: string; via: string } | null = null;
     for (const etage of etages) {
+      // ── L'ÉTAGÈRE DU VENDEUR PARMI LES CANDIDATES DE L'ÉTAGE (2026-09-23) ─
+      // Quand la feuille où le vendeur a rangé l'article chez Vinted est l'UNE
+      // des feuilles que ce mot désigne, c'est elle — avant tout départage par
+      // le chemin, et à la place de la question. Deux cas réels, mesurés :
+      //   · 840b67ec (Thomas, « Jean Bootcut Levi's 544 ») : « jean » désigne
+      //     cinq jeans homme et on demandait lequel — le vendeur avait répondu
+      //     chez Vinted : « Jeans coupe droite », feuille qu'Opla a sous le
+      //     même nom ;
+      //   · fd8ab3c5 (« Écharpe Tour de Cou Stitch », Fille) : « écharpe »
+      //     désigne « Écharpes et châles » (filles) et « Écharpes et slings »
+      //     (portage bébé) ; le départage par le chemin le plus direct prenait
+      //     l'écharpe de PORTAGE — l'étagère dit « Écharpes et châles ».
+      // ⛔ JAMAIS UNE FEUILLE HORS DE L'ÉTAGE : c'est la garde du rejeu d'une
+      //    réponse mémorisée (opla-completion.ts), et elle vaut ici pareil —
+      //    une étagère qui contredit le mot ne tranche rien, le mot parle.
+      if (duVendeur && !etage.etagere && etage.liste.some((f) => f.code === duVendeur.code)) {
+        designe = {
+          feuille: duVendeur, via: `étagère Vinted « ${etagereFeuille} »`,
+          motif: `parmi les ${etage.liste.length} feuilles de « ${etage.via} » — c'est l'étagère du vendeur`,
+        };
+        break;
+      }
       if (etage.liste.length === 1) {
         designe = {
           feuille: etage.liste[0], via: etage.via,
@@ -675,7 +770,7 @@ export function resoudreCategorieOpla(
   // racine plutôt que de tourner en rond dans la branche où on nous a égarés.
   if (depart) {
     etapes.push(`ancre « ${depart} » sans issue — reprise depuis les racines`);
-    const global = resoudreCategorieOpla({ mots, titre, genre });
+    const global = resoudreCategorieOpla({ mots, titre, genre, etagere });
     if (global.code || global.candidats.length) {
       return { code: global.code, candidats: global.candidats, etapes: [...etapes, ...global.etapes] };
     }
