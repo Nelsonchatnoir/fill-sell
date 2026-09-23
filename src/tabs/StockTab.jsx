@@ -250,6 +250,11 @@ function murDeConnexion(job) {
   // Opla : ce n'est pas une connexion mais la permission d'hôte, et le serveur
   // la NOMME (needs_user_source='opla_acces'). Aucune heuristique de texte.
   if (pf === 'opla' && job?.platform_fields?.needs_user_source === 'opla_acces') return MOTIFS.AUTORISER_OPLA;
+  // eBay « Connecte ton compte eBay » (nouvel inscrit sans connexion API, parqué
+  // par update-job-status le 2026-09-23) : le bouton ouvre le parcours eBay à
+  // deux voies (API recommandée), pas une simple reconnexion — le serveur le
+  // NOMME (needs_user_source), aucune heuristique de texte.
+  if (pf === 'ebay' && job?.platform_fields?.needs_user_source === 'ebay_connexion_requise') return MOTIFS.CONNEXION;
   if (pf === 'ebay' && /^REAUTH VENTE eBay/i.test(err)) return MOTIFS.REAUTH_EBAY;
   if (!MUR_CONNEXION_ANCRE[pf]?.test(err)) return null;
   return MOTIFS.CONNEXION;
