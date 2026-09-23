@@ -10125,6 +10125,35 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
 // session fonctionnera le jour de l'ouverture, sans qu'il faille y repenser.
 // Elle ne coûte rien au parc : sonderSessionOpla rend null SANS requête tant que
 // la permission d'hôte opla.co n'est pas dans le paquet.
+// ── CE QUE LA SONDE VIENT DE VOIR, RELISIBLE SUR PLACE (2026-09-23) ─────────
+// La sonde écrivait son relevé en base et l'oubliait. Résultat : un handler qui
+// échouait ne pouvait pas savoir si la session était bonne — il devinait, et
+// il devinait « session perdue » (van-breugel.sandra, 4 republications).
+// Mémoire seule, avec l'heure : un worker neuf ne sait rien tant qu'il n'a pas
+// sondé, et c'est la bonne réponse — on n'affirme jamais sans mesure.
+let dernierReleveSessions = null;   // { at: ms, sessions: {…} }
+const SESSION_FRAICHEUR_MAX_MS = 30 * 60_000;
+
+/**
+ * La sonde a-t-elle vu cette plateforme VIVANTE récemment ?
+ * Rend le détail (pour la trace) ou null. `null` = on ne sait pas — jamais
+ * « déconnecté » : l'ignorance ne prouve rien, dans aucun des deux sens.
+ */
+function sessionPlateformeVivante(platform) {
+  const d = dernierReleveSessions;
+  if (!d || Date.now() - d.at > SESSION_FRAICHEUR_MAX_MS) return null;
+  if (d.sessions?.[platform] !== true) return null;
+  return { vue: true, http: d.sessions?.http?.[platform] ?? null, il_y_a_s: Math.round((Date.now() - d.at) / 1000) };
+}
+
+/** Symétrique : la sonde a-t-elle vu cette plateforme DÉCONNECTÉE ? */
+function sessionPlateformeMorte(platform) {
+  const d = dernierReleveSessions;
+  if (!d || Date.now() - d.at > SESSION_FRAICHEUR_MAX_MS) return null;
+  if (d.sessions?.[platform] !== false) return null;
+  return { vue: false, http: d.sessions?.http?.[platform] ?? null, il_y_a_s: Math.round((Date.now() - d.at) / 1000) };
+}
+
 async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"], motif = "poll", forcer = false } = {}) {
   // Throttle PERSISTÉ, par plateforme et à la cadence de CHAQUE plateforme
   // (cf. en-tête de SESSION_PROBE_INTERVALS_MS).
@@ -10144,15 +10173,32 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
   await ecrireHorodatagesSondes(Object.fromEntries(cibles.map((pf) => [pf, maintenant])));
   const sessions = await probePlatformSessions(cibles);
   await ecrireExtensionSessions(accessToken, sub, sessions);
+  // Gardé sous la main : c'est ce relevé que les handlers interrogent avant
+  // d'accuser une session (cf. sessionPlateformeVivante). Fusion sur le relevé
+  // précédent — un relevé PARTIEL ne doit pas effacer ce qu'on sait des autres.
+  dernierReleveSessions = {
+    at: Date.now(),
+    sessions: { ...(dernierReleveSessions?.sessions ?? {}), ...sessions,
+      http: { ...(dernierReleveSessions?.sessions?.http ?? {}), ...(sessions.http ?? {}) } },
+  };
   console.log(`[background] sessions plateformes relevées (${motif} : ${cibles.join(", ")}) :`, JSON.stringify(sessions));
 
   // ── REPRISE AUTO des republications en attente de session (2026-09-03) ─────
   // Les jobs mis en needs_user par la capture (needs_user_source =
   // 'session_vinted') repartent d'eux-mêmes dès que la sonde voit Vinted
   // VIVANT (200 sur users/current — le seul signal sûr, jamais un null).
-  // Pas de ping-pong possible : on ne ré-arme QUE session vivante, et une
-  // capture qui échoue à nouveau pour session repassera par la même porte au
-  // pire au prochain cycle de sonde (10 min). Best-effort, jamais bloquant.
+  // ⚠️ « Pas de ping-pong possible » ÉTAIT FAUX (corrigé le 2026-09-23).
+  // La condition de ré-armement — session vivante — restait vraie en
+  // permanence pendant que la capture échouait pour une TOUTE AUTRE raison
+  // (403 anti-robot, rangé à tort sous « session refusée »). Chaque cycle de
+  // sonde re-pendait donc les mêmes jobs, qui re-tapaient l'endpoint d'édition
+  // et se refaisaient refuser : 4 republications de van-breugel.sandra ont
+  // tourné ainsi toute la matinée du 23/09, et c'est ce va-et-vient qui
+  // entretenait le refus. La boucle est coupée EN AMONT : une capture qui
+  // échoue alors que la session est bonne ne porte plus `session_vinted` (elle
+  // devient une reprise espacée), donc il n'y a plus rien à ré-armer ici.
+  // Ce bloc ne sert plus QUE les vraies sessions perdues — ce pour quoi il a
+  // été écrit. Best-effort, jamais bloquant.
   if (sessions.vinted === true) {
     try {
       const repris = await restRequest(
@@ -19158,7 +19204,62 @@ async function processRepublishJob(job, accessToken) {
       // à faire », annonce intacte), et REPRISE AUTOMATIQUE dès que la sonde
       // de sessions (10 min) revoit Vinted vivant — cf. reportPlatformSessions.
       // L'utilisateur qui rouvre Vinted n'a plus RIEN à relancer.
+      // ── UNE CAPTURE QUI ÉCHOUE LAISSE UNE TRACE (2026-09-23) ─────────────
+      // Elle n'en laissait AUCUNE : une capture réussie écrit sa ligne (avec
+      // ses `diagnostics`), une capture en échec n'écrivait rien du tout. Le
+      // 23/09, pour comprendre pourquoi 4 republications de Sandra tournaient
+      // en rond, il a fallu déduire la cause de l'ABSENCE de captures après
+      // 09:25 — il n'y avait littéralement rien à lire. Même règle que les
+      // gardes : ce qui ne s'écrit pas n'existe pas.
+      pf.capture_echec = {
+        at: new Date().toISOString(),
+        etape: "a_capturer",
+        motif: String(cap.error ?? "").slice(0, 300),
+        ...(Number.isFinite(Number(cap.httpStatus)) ? { http: Number(cap.httpStatus) } : {}),
+      };
+
+      // ── ANTI-ROBOT : ON SE CALME, ON N'ACCUSE PERSONNE (2026-09-23) ──────
+      // AVANT ce bloc, un 403 arrivait ici sous l'étiquette « session Vinted
+      // refusée » (les deux codes étaient confondus dans lireDetailArticle) et
+      // produisait « Connecte-toi sur vinted.fr » — un geste inutile, sur une
+      // session qui allait très bien. Pire : la reprise automatique re-pendait
+      // le job toutes les deux minutes, donc on re-tapait l'endpoint le plus
+      // exposé du projet juste après avoir été refusé.
+      // Le bon geste, c'est d'ESPACER : 45 minutes, comme le fait déjà
+      // pas-de-rouge pour l'anti-robot. Rien à faire côté utilisateur, et on
+      // le dit — ici c'est vrai, la reprise aboutira.
+      if (/protection anti-robot|CHALLENGE|anti-?robot/i.test(String(cap.error ?? ""))) {
+        pf.next_action_after = new Date(Date.now() + 45 * 60_000).toISOString();
+        delete pf.needs_user_source;
+        const msg =
+          "Vinted a affiché une vérification anti-robot au lieu de ton annonce. Rien n'a été touché, " +
+          "ton annonce est toujours en ligne. On réessaie tout seuls dans trois quarts d'heure, au calme — " +
+          "tu peux aussi ouvrir Vinted et passer la vérification, ça ira plus vite.";
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : capture refusée par l'anti-robot Vinted — reprise dans 45 min`);
+        return { status: "skipped", error: `capture anti-robot : ${cap.error}` };
+      }
+
+      // ── « SESSION » NE SE DIT QUE SI LA SESSION EST EN CAUSE (2026-09-23) ─
+      // La sonde de sessions écrit `vinted` et `http.vinted` à chaque cycle.
+      // Quand elle vient de voir Vinted vivant, une capture en échec n'est PAS
+      // une session perdue : demander « connecte-toi » à quelqu'un de connecté,
+      // c'est l'envoyer réparer ce qui n'est pas cassé. On garde le report
+      // (l'annonce est intacte, on réessaie), on retire l'accusation.
       if (/session Vinted refusée|CHALLENGE/i.test(String(cap.error ?? ""))) {
+        const sessionVue = sessionPlateformeVivante("vinted");
+        if (sessionVue) {
+          pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+          delete pf.needs_user_source;
+          pf.capture_echec.session_sondee = sessionVue;
+          const msg =
+            "Vinted n'a pas voulu nous rendre ta fiche à l'instant. Ta connexion Vinted est bonne, " +
+            "il n'y a rien à faire de ton côté : ton annonce est intacte et on refait un essai tout seuls " +
+            "dans un quart d'heure.";
+          await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+          console.warn(`[republish] job ${job.id} : capture refusée mais session Vinted vue vivante (${JSON.stringify(sessionVue)}) — reprise dans 15 min, pas d'accusation de session`);
+          return { status: "skipped", error: `capture reportée (session bonne) : ${cap.error}` };
+        }
         pf.needs_user_source = "session_vinted";
         const msg =
           "Ta republication attend que Vinted soit rouvert — ton annonce est intacte, rien n'a été touché. " +
