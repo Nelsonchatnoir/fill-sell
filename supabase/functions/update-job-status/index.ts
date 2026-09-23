@@ -2417,6 +2417,66 @@ serve(async (req) => {
     // ⛔ CE N'EST PAS UN FILET À TOUT FAIRE : il ne touche QUE le statut
     //    `failed`. Un `published`, un `deleted`, un `cancelled` déjà décidé
     //    plus haut passent sans être relus.
+    // ══════════════════════════════════════════════════════════════════════
+    // « SESSION VINTED » NE SE DIT PAS À QUELQU'UN DE CONNECTÉ (2026-09-23)
+    // ══════════════════════════════════════════════════════════════════════
+    // CE QUI S'EST PASSÉ. Quatre republications de van-breugel.sandra (Premium)
+    // ont passé la matinée du 23/09 à afficher « Ta republication attend que
+    // Vinted soit rouvert — connecte-toi sur vinted.fr ». Sa session n'avait
+    // rien : extension_sessions.vinted = true, http.vinted = 200 relevé à
+    // 10:35, son identité Vinted lisible (sandra57050 / 14016270), la garde de
+    // boutique au vert, et 10 autres annonces du même compte republiées dans
+    // la même heure. La cause réelle était un refus 403 (anti-robot) sur
+    // l'endpoint d'édition, que le content script rangeait sous « session
+    // refusée » — les deux codes y étaient confondus.
+    // Et ça TOURNAIT : la reprise automatique re-pendait ces jobs à chaque
+    // cycle de sonde (« session vivante »), la capture se refaisait refuser,
+    // et le va-et-vient entretenait le refus. Le remède est dans la 0.6.60 ;
+    // ce bloc-ci soigne le parc qui tourne encore en 0.6.58, sans Store.
+    //
+    // ⛔ ON N'AFFAIBLIT PAS LA DÉTECTION : il faut que la sonde ait vu Vinted
+    //    VIVANT (`=== true`, jamais un null). Une session réellement perdue
+    //    donne `false` ou `null` et garde son « connecte-toi », intact.
+    // ⛔ ON ESPACE (45 min). Re-tenter tout de suite, c'est re-taper la porte
+    //    qui vient de se fermer — c'était exactement le défaut.
+    let pfSessionBonne: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user") {
+      try {
+        const pfSb = (pfIn ?? {}) as Record<string, unknown>;
+        if (String(pfSb["needs_user_source"] ?? "") === "session_vinted") {
+          const { data: prof } = await userClient
+            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          const s = ((prof as { extension_sessions?: Record<string, unknown> } | null)?.extension_sessions ?? {}) as Record<string, unknown>;
+          if (s["vinted"] === true) {
+            const p = { ...pfSb };
+            delete p["needs_user_source"];
+            delete p["needsUserAttempts"]; delete p["needsUserBoucle"];
+            delete p["needs_user_tick_le"]; delete p["needs_user_actif_ms"];
+            delete p["needs_user_vu_le"]; delete p["needs_user_vu_erreur"];
+            delete p["processing_since"];
+            p["next_action_after"] = new Date(Date.now() + 45 * 60_000).toISOString();
+            p["session_bonne_requalifie"] = {
+              at: new Date().toISOString(),
+              sonde: { vinted: true, http: (s["http"] as Record<string, unknown> | undefined)?.["vinted"] ?? null },
+              motif: "capture refusée alors que la sonde voit Vinted vivant — reprise espacée, aucune accusation de session",
+              message_efface: typeof messageEffectif === "string" ? messageEffectif.slice(0, 200) : null,
+            };
+            statutEffectif = "pending";
+            messageEffectif =
+              "Vinted n'a pas voulu nous rendre ta fiche à l'instant. Ta connexion Vinted est bonne, " +
+              "il n'y a rien à faire de ton côté : ton annonce est intacte et on refait un essai " +
+              "tout seuls dans trois quarts d'heure.";
+            raisonRequalif = "session bonne : refus de capture ≠ session perdue";
+            pfSessionBonne = p;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — session_vinted requalifié : la sonde voit Vinted vivant → reprise dans 45 min`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] requalification session bonne :", (e as Error)?.message ?? e);
+        pfSessionBonne = null;
+      }
+    }
+
     let pfPasDeRouge: Record<string, unknown> | null = null;
     if (statutEffectif === "failed") {
       try {
@@ -2427,6 +2487,20 @@ serve(async (req) => {
           Number(pfBase["needsUserAttempts"] ?? 0) || 0,
           Number(((jPdr?.platform_fields ?? {}) as Record<string, unknown>)["needsUserAttempts"] ?? 0) || 0,
         );
+        // ── LA SONDE DE SESSIONS ENTRE DANS L'ARBITRAGE (2026-09-23) ───────
+        // Sans elle, le classement devine : il a promis « rien à faire de ton
+        // côté » à meminiandmove sur trois publications Opla dont la sonde
+        // disait 401/déconnecté (la reprise ne pouvait pas aboutir), et il
+        // aurait dit « connecte-toi » à van-breugel.sandra dont la sonde
+        // disait 200. Le texte de l'erreur n'est qu'un indice ; la sonde est
+        // une MESURE. Lecture tolérante : illisible → arbitrage d'avant.
+        let sessionsSondees: Record<string, unknown> | null = null;
+        try {
+          const { data: prof } = await userClient
+            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          const s = (prof as { extension_sessions?: unknown } | null)?.extension_sessions;
+          if (s && typeof s === "object") sessionsSondees = s as Record<string, unknown>;
+        } catch (_e) { /* la sonde est un renfort, jamais un prérequis */ }
         const sortie = classerEchec({
           platform: String(jPdr?.platform ?? ""),
           action: String(jPdr?.action ?? "publish"),
@@ -2434,6 +2508,7 @@ serve(async (req) => {
           reecrit: messageEffectif,
           essais,
           pf: pfBase,
+          sessions: sessionsSondees,
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
@@ -2519,6 +2594,9 @@ serve(async (req) => {
     // n'y en a pas : le geste est chez eBay), AVEC le marqueur nommé
     // needs_user_source = ebay_compte_vendeur_inactif.
     if (pfEbayVendeurInactif) patch.platform_fields = pfEbayVendeurInactif;
+    // Refus de capture alors que la sonde voit Vinted vivant : plus de
+    // needs_user_source 'session_vinted', échéance à 45 min, trace nommée.
+    if (pfSessionBonne) patch.platform_fields = pfSessionBonne;
     // Compteur « 72 h d'extension ouverte » (handler-watch, 2026-09-10) : une
     // ENTRÉE en needs_user ouvre un budget neuf — les compteurs d'un épisode
     // précédent (job relancé, réparé, repris) ne doivent jamais solder le

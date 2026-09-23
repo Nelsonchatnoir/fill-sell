@@ -109,6 +109,48 @@ export function classerEchec(arg) {
   // Le BRUT porte la signature ; le réécrit ne sert que si le brut est vide.
   const t = `${String(arg.brut ?? "")}\n${String(arg.reecrit ?? "")}`.trim();
   const source = String(pf["needs_user_source"] ?? "");
+  // ── CE QUE LA SONDE A VU (2026-09-23) ─────────────────────────────────────
+  // profiles.extension_sessions, relevé par l'extension. Tri-état par
+  // plateforme : true connecté, false déconnecté, null/absent INDÉTERMINÉ.
+  // ⛔ null ne vaut JAMAIS false : ne rien savoir n'autorise rien.
+  const sessions = arg.sessions && typeof arg.sessions === "object" ? arg.sessions : null;
+  const sondeDit = sessions ? sessions[platform] : undefined;
+  const deconnecte = sondeDit === false;
+  const connecte = sondeDit === true;
+
+  // ── 0. LA SONDE DIT « DÉCONNECTÉ » : IL Y A UN GESTE, ON LE DIT ───────────
+  // (2026-09-23, meminiandmove.) Ses 3 publications Opla tournaient en
+  // « L'opération a été interrompue sur ton ordinateur. Elle reprend toute
+  // seule, rien à faire de ton côté » — tentatives 2 et 4 — alors que sa sonde
+  // Opla répondait 401 et extension_sessions.opla = false. La reprise promise
+  // ne pouvait PAS aboutir : sans autorisation, chaque essai refait le même
+  // mur. « Rien à faire de ton côté » était faux, et c'est la pire des
+  // réponses : elle laisse quelqu'un attendre indéfiniment un événement qui
+  // n'arrivera jamais.
+  // La règle vaut pour TOUTE plateforme dont la sonde dit « déconnecté » : le
+  // geste passe devant la reprise. Elle est placée AVANT tout le reste parce
+  // qu'un mur d'autorisation se déguise en n'importe quoi en aval (canal
+  // coupé, timeout, 401, page inattendue).
+  // ⛔ Les motifs qui portent DÉJÀ un geste précis (taille à choisir, limite de
+  //    plateforme vérifiée) gardent la main : ils sont plus spécifiques.
+  if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t)) {
+    if (platform === "opla") {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
+        message:
+          "Opla ne nous laisse plus déposer tes annonces : ton autorisation a expiré, ou elle n'a jamais été donnée. " +
+          "Clique sur « Autoriser Opla » ci-dessous, et connecte-toi sur opla.co si on te le demande — " +
+          `${acte(action)} repart toute seule ensuite. Rien n'a été publié.`,
+      };
+    }
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+      message:
+        `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
+        `donc ${acte(action)} ne peut pas aboutir. Clique sur « Me connecter » ci-dessous : ` +
+        "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
+    };
+  }
 
   // ── 1. OPLA, PERMISSION D'HÔTE ────────────────────────────────────────────
   // Marqueur d'abord (le serveur le NOMME), texte ensuite. Il y a un bouton :
@@ -137,6 +179,26 @@ export function classerEchec(arg) {
     };
   }
   if (CONNEXION_RE.test(t) && NOM[platform] && platform !== "opla") {
+    // ── ON N'ENVOIE PAS RÉPARER CE QUI N'EST PAS CASSÉ (2026-09-23) ─────────
+    // La sonde vient de voir la plateforme VIVANTE : le texte dit « session »,
+    // la mesure dit le contraire, et c'est la mesure qui gagne. Vécu chez
+    // van-breugel.sandra le 23/09 — 4 republications arrêtées sur « Connecte-toi
+    // sur vinted.fr » avec http.vinted = 200 relevé DEUX MINUTES plus tôt, son
+    // identité Vinted lisible, et 10 autres annonces parties dans la même
+    // heure. La cause réelle était un 403 anti-robot sur l'endpoint d'édition,
+    // confondu avec un 401 par le content script.
+    // Ce n'est pas un échec et ce n'est pas son problème : c'est une reprise,
+    // ESPACÉE (45 min) — réessayer tout de suite, c'est re-taper la porte qui
+    // vient de se fermer, et c'est ce va-et-vient qui entretenait le refus.
+    if (connecte) {
+      return {
+        verdict: "reprise", statut: "pending", motif: "refus_session_bonne", dansMinutes: 45,
+        message:
+          `${nom} nous a refusé l'accès à ta fiche à l'instant, mais ta connexion ${nom} est bonne : ` +
+          "il n'y a rien à faire de ton côté et rien n'a été touché. " +
+          "On refait un essai tout seuls dans trois quarts d'heure, au calme.",
+      };
+    }
     return {
       verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
       message:
