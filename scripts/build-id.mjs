@@ -1389,12 +1389,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-23T09:02:16Z'; // recale 042773c (fixes republication/vinted du 23/09 : capture Sandra, 403≠401). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : ces commits ne sont ni packages ni televerses.
+export const EXTENSION_LAST_COMMIT = '2026-09-23T14:07:18Z'; // recale 4454b1c (extension : ligne du run « importees », rappel du moteur au budget, alarme quotidienne sur les plateformes sans depot). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : ce commit n'est ni package ni televerse.
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
 //    dans git (`git log -p scripts/build-id.mjs`), qui est fait pour ça. On garde désormais UNE
 //    valeur précédente, pas trente-deux.
-// Historique de la valeur precedente : recale d83e648 (retrait TEMPORAIRE d'opla.co, 0.6.40 prete a empaqueter) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : la 0.6.40 n'est pas televersee.
+// Historique de la valeur precedente : 2026-09-23T09:02:16Z — recale 042773c (fixes republication/vinted du 23/09 : capture Sandra, 403≠401). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : ces commits ne sont ni packages ni televerses.
 // Historique de la valeur precedente : recale 74f6e90 (lot sondes de session A/B/C/D, manifest 0.6.40) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches.
 // Historique de la valeur precedente : recale e3d1fd8 (opla.co REMIS apres l'empaquetage de la 0.6.39 - dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : la 0.6.39 n'est pas televersee.
 // ⚠️ Le commit de REMISE d'opla.co doit etre recale ICI, lui aussi : le laisser
