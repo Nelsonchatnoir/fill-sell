@@ -2426,9 +2426,15 @@ serve(async (req) => {
     // rien : extension_sessions.vinted = true, http.vinted = 200 relevé à
     // 10:35, son identité Vinted lisible (sandra57050 / 14016270), la garde de
     // boutique au vert, et 10 autres annonces du même compte republiées dans
-    // la même heure. La cause réelle était un refus 403 (anti-robot) sur
-    // l'endpoint d'édition, que le content script rangeait sous « session
-    // refusée » — les deux codes y étaient confondus.
+    // la même heure — dont 7 APRÈS les captures des 4 bloquées.
+    // ⚠️ CE QUI A REFUSÉ LA CAPTURE N'EST PAS ÉTABLI, et il faut le dire : une
+    //    capture en échec n'écrivait RIEN en base (seule une capture réussie
+    //    laisse sa ligne). Le code HTTP exact est perdu. Ce qui est prouvé,
+    //    c'est que la session n'y était pour rien, et donc que le message
+    //    était faux. Le content script confondait par ailleurs 401 et 403 sous
+    //    « session refusée » — corrigé dans la 0.6.60, qui écrit désormais
+    //    platform_fields.capture_echec (motif + code) : la prochaine
+    //    occurrence sera lisible.
     // Et ça TOURNAIT : la reprise automatique re-pendait ces jobs à chaque
     // cycle de sonde (« session vivante »), la capture se refaisait refuser,
     // et le va-et-vient entretenait le refus. Le remède est dans la 0.6.60 ;

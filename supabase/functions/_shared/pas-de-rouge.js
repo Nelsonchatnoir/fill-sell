@@ -185,8 +185,9 @@ export function classerEchec(arg) {
     // van-breugel.sandra le 23/09 — 4 republications arrêtées sur « Connecte-toi
     // sur vinted.fr » avec http.vinted = 200 relevé DEUX MINUTES plus tôt, son
     // identité Vinted lisible, et 10 autres annonces parties dans la même
-    // heure. La cause réelle était un 403 anti-robot sur l'endpoint d'édition,
-    // confondu avec un 401 par le content script.
+    // heure. Ce qui a refusé la capture n'est pas établi (une capture en échec
+    // n'écrivait rien : le code HTTP est perdu) — mais la session, elle, est
+    // mesurée, et elle allait bien. C'est tout ce qu'il faut savoir ici.
     // Ce n'est pas un échec et ce n'est pas son problème : c'est une reprise,
     // ESPACÉE (45 min) — réessayer tout de suite, c'est re-taper la porte qui
     // vient de se fermer, et c'est ce va-et-vient qui entretenait le refus.

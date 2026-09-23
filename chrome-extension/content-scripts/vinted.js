@@ -866,12 +866,15 @@ async function lireDetailArticle(vintedItemId) {
   // Vinted se lisait (sandra57050 / 14016270) et que 10 autres annonces du
   // même compte venaient de partir. On lui demandait de réparer une session
   // qui n'avait rien.
-  // Le contexte qui rend le 403 probable et qu'il faut nommer : cette
-  // capture tape /api/v2/item_upload/items/{id}, « le profil de trafic le
-  // plus exposé du projet » (cf. le bandeau ⛔ plus haut). Ce matin-là, le
-  // faux blocage du pré-vol a fait recapturer les mêmes articles en boucle —
-  // 37 captures en 3 heures sur un seul compte. Un refus anti-robot à ce
-  // régime n'est pas une anomalie, c'est la réponse attendue.
+  // ⚠️ CE QUI A REFUSÉ SES 4 CAPTURES N'EST PAS ÉTABLI, et on ne le déguise
+  // pas en certitude : une capture en ÉCHEC n'écrivait rien en base (seule
+  // une capture réussie laisse sa ligne), donc le code HTTP est perdu. Ce qui
+  // est mesuré : la session allait bien, et 7 autres captures du même compte
+  // ont réussi APRÈS les leurs — ce n'était donc pas un mur global.
+  // La séparation ci-dessous vaut pour elle-même : 401 et 403 ne veulent pas
+  // dire la même chose, et le message qui en découle non plus. Le motif et le
+  // code partent maintenant dans platform_fields.capture_echec — la prochaine
+  // occurrence se lira au lieu de se deviner.
   if (resp.status === 401) {
     return { success: false, sessionExpiree: true, httpStatus: 401, error: "session Vinted refusée (HTTP 401)" };
   }
