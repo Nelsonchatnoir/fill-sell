@@ -1384,12 +1384,23 @@ async function fillListingForm(job) {
       };
     }
 
+    // Demi-pointure sur ce rayon : deux voisines en tout et pour tout, et le
+    // message dit la limite du rayon au lieu d'accuser une panne.
+    const demiPointure = /^(taille|pointure)$/i.test(String(libelleHumainDeCle(firstKey) ?? ""))
+      ? voisinesDemiPointure(valeurJobPour(firstKey), optionsChamp)
+      : null;
+    const optionsFinales = demiPointure ? demiPointure.options : optionsChamp;
+    const detailVidesFinal = demiPointure
+      ? detailVides.replace(
+          /« [^»]+ » : la fiche porte « [^»]+ » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante \(relancer, ou attendre le correctif\)/,
+          `« ${nomLisible(firstKey)} » : Beebs n'accepte pas les demi-pointures dans ce rayon — la fiche porte « ${demiPointure.valeur} », choisis ${demiPointure.options[0]} ou ${demiPointure.options[1]} ci-dessous et la publication repart`)
+      : detailVides;
     return {
       success: false,
       needsUser: true,
       error:
         `Beebs exige des champs encore vides pour cette catégorie : ${listeLisible(unfilledRequired)}. ` +
-        `${detailVides}. ` +
+        `${detailVidesFinal}. ` +
         "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication. " +
         `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; ` +
         `champs fiber: ${etatChampsFiber} ; pont MAIN: ${canalPontMain} ; pont inline: ${etatPontInline} ; clé du champ à trancher: ${firstKey}.` +
@@ -1421,11 +1432,13 @@ async function fillListingForm(job) {
         // liste DU champ réellement vide : sur un libellé dupliqué, on ne
         // renvoie plus celle du premier homonyme (déjà rempli, donc un choix
         // qui ne pouvait rien débloquer).
-        allowed_values: optionsChamp,
+        allowed_values: optionsFinales,
         // Référentiel lu sur le fiber = liste ENTIÈRE du champ : l'app peut
         // fermer le select (doctrine options_completes du 04/09). Jamais posé
         // sur un relevé DOM, qui reste une suggestion.
-        ...(optionsCompletes ? { options_completes: true } : {}),
+        // Deux voisines d'une demi-pointure = liste FERMÉE par construction :
+        // l'app la rend en deux boutons, un tap, et n'offre pas « Autre ».
+        ...((optionsCompletes || demiPointure) ? { options_completes: true } : {}),
       },
     };
   }
@@ -2270,6 +2283,31 @@ function optionLabel(el) {
 // chemin : exact après retrait du préfixe, borné à l'exact. Les champs non
 // taille sont strictement inchangés.
 const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
+
+// ── DEMI-POINTURE SUR UNE GRILLE D'ENTIERS (2026-09-23 soir) ─────────────────
+// van-breugel.sandra, « Baskets Reebok Classic blanches neuves – 34,5 », rayon
+// « Baskets (fille) » : la grille Beebs de ce rayon va de 15 à 41 par ENTIERS
+// (celle de « Baskets (femme) » porte les demi-pointures, pas celle-là). La
+// fiche porte 34.5, la valeur ne peut pas être posée, et le message disait
+// « panne de remplissage, relancer ou attendre le correctif » — faux : ce
+// n'est pas une panne, c'est une limite du rayon. Ici : quand la valeur est
+// une demi-pointure ABSENTE de la liste et que ses deux voisines entières y
+// sont, on ne propose QUE ces deux-là — un geste, jamais un arrondi silencieux
+// (règle du 18/09 : traduire, jamais convertir ; 44,5 n'est ni 44 ni 45, c'est
+// à la personne de trancher).
+function voisinesDemiPointure(valeur, options) {
+  const v = String(valeur ?? "").trim().replace(",", ".").replace(/^(?:eu|pointure)\s+/i, "");
+  const m = v.match(/^(\d{1,2})\.5$/);
+  if (!m || !Array.isArray(options) || !options.length) return null;
+  const norm = (o) => String(o ?? "").trim().replace(",", ".");
+  if (options.some((o) => norm(o) === v)) return null; // la grille la porte : rien à trancher
+  const bas = String(Number(m[1]));
+  const haut = String(Number(m[1]) + 1);
+  const oBas = options.find((o) => norm(o) === bas);
+  const oHaut = options.find((o) => norm(o) === haut);
+  if (oBas == null || oHaut == null) return null;
+  return { valeur: v.replace(".", ","), options: [String(oBas), String(oHaut)] };
+}
 
 function findOptionCascade(els, text, { sizeField = false } = {}) {
   const options = Array.from(els)

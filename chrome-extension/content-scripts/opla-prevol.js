@@ -123,6 +123,23 @@
     ok: false, motif, message, champ,
     ...(Array.isArray(options) && options.length ? { options } : {}),
   });
+  // ── DEMI-POINTURE SUR UNE GRILLE D'ENTIERS (2026-09-23 soir) ─────────────
+  // tessy.galy, « Nike Pacific », MEN_SNEAKERS, 44.5 : la grille va de 14 à 50
+  // par entiers. Le refus proposait les 37 valeurs de la grille — un choix à
+  // faire défiler pour une question qui n'a que deux réponses. Quand la taille
+  // est une demi-pointure absente de la grille et que ses deux voisines
+  // entières y sont, on ne propose QUE ces deux-là. Jamais d'arrondi : c'est
+  // la personne qui tranche, en un geste.
+  const voisinesEntieres = (taille, grille) => {
+    const v = String(taille ?? "").trim().replace(",", ".");
+    const m = v.match(/^(\d{1,2})\.5$/);
+    if (!m || !Array.isArray(grille) || !grille.length) return null;
+    const bas = String(Number(m[1]));
+    const haut = String(Number(m[1]) + 1);
+    const codes = grille.map((g) => String(g));
+    if (!codes.includes(bas) || !codes.includes(haut)) return null;
+    return [bas, haut];
+  };
 
   /**
    * Pré-vol COMPLET. Pur : aucune requête, aucun DOM.
@@ -265,6 +282,15 @@
         // d'Opla), ou plusieurs options y répondent (on ne tranche pas).
         const pourquoi = typeof vocab?.diagnosticTaille === "function"
           ? vocab.diagnosticTaille(taille, grille, { tableFemme: femmes }) : "hors_vocabulaire";
+        const voisines = pourquoi === "ambigu" ? null : voisinesEntieres(taille, grille);
+        if (voisines) {
+          return refus(
+            MOTIFS.TAILLE_HORS_GRILLE,
+            `La taille « ${taille} » n'appartient pas à la grille de « ${code} » (entiers seulement) — ` +
+            `demi-pointure : choisis ${voisines[0]} ou ${voisines[1]}. Opla l'accepterait en 200 : on refuse.`,
+            "size", voisines.map((t) => ({ code: t, title: t })),
+          );
+        }
         return refus(
           MOTIFS.TAILLE_HORS_GRILLE,
           `La taille « ${taille} » n'appartient pas à la grille de « ${code} » ` +
