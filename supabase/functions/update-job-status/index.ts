@@ -9,12 +9,14 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // la logique qui les déclenche (même convention que src/*/textes.js).
 import {
   compteVendeurEbayInactif,
+  connexionEbayRequise,
   fuiteDeDeveloppeur,
   motsAspectAveugle,
   raisonAspectAveugle,
   SOURCE_EBAY_COMPTE_VENDEUR_INACTIF,
   type SourceCategorie,
 } from "../_shared/textes-jobs.ts";
+import { compteEbayApiConnecte, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
 import { estPageInscriptionVendeurEbay } from "../_shared/ebay-page-vendeur.ts";
 import {
   derniereFinDeJob,
@@ -920,6 +922,110 @@ serve(async (req) => {
         // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
         console.error("[update-job-status] compte vendeur eBay inactif :", (e as Error)?.message ?? e);
         pfEbayVendeurInactif = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // eBay SANS CONNEXION API + MUR REAUTH = « CONNECTE TON COMPTE eBAY » (2026-09-23)
+    // ══════════════════════════════════════════════════════════════════════
+    // Marie-Morgane (Mmojul56), inscrite le 23/09, PREMIÈRE publication eBay :
+    // le job part par l'extension, bute sur le step-up « REAUTH VENTE » du flux
+    // de vente, et brûle ses 5 tentatives contre un mur qui ne tombe pas — elle
+    // n'a jamais relié de compte eBay par l'API, et rien ne l'y amenait. Le trou
+    // n'est pas le mur : c'est qu'on n'oriente pas les nouveaux vers la voie API
+    // (34 comptes y publient, 140 annonces en 7 jours).
+    //
+    // ⛔ PÉRIMÈTRE ÉTROIT, POUR NE RIEN CASSER. Sur 30 jours, 105 des 178
+    //    publications eBay par l'extension viennent de comptes SANS connexion
+    //    API — elles ABOUTISSENT, ne butent PAS sur REAUTH, ne passent donc
+    //    JAMAIS ici. On ne requalifie que la conjonction : eBay +
+    //    publish/republish + voie extension + signature REAUTH/step-up +
+    //    AUCUNE connexion API active. Un compte API connecté garde son chemin —
+    //    son REAUTH est « réel », c'est le cas laissé tel quel à raison.
+    //
+    // ⛔ AUCUNE REPRISE À L'AVEUGLE : needs_user, pas pending, PAS de
+    //    next_action_after. Les tentatives déjà brûlées sont remises à leur
+    //    valeur d'avant (elles l'ont été sur un mur qu'on n'aurait pas dû
+    //    frapper). Le job repart TOUT SEUL en voie API quand le compte devient
+    //    utilisable — ebay-account (checklist/statut) et handler-watch le
+    //    ré-arment (rearmerJobsEbayConnexionSiUtilisable), même principe
+    //    qu'« Autoriser Opla ». Le bouton « Me connecter » de la carte ouvre le
+    //    parcours eBay (StockTab route needs_user_source='ebay_connexion_requise').
+    let pfEbayConnexionRequise: Record<string, unknown> | null = null;
+    if (!pfEbayVendeurInactif &&
+        (statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user")) {
+      try {
+        const brut = typeof body.error === "string" ? body.error : "";
+        const pfBody = (body.platform_fields && typeof body.platform_fields === "object"
+          ? body.platform_fields : null) as Record<string, unknown> | null;
+        const diagQuoi = (o: Record<string, unknown> | null): string => {
+          const d = o?.["last_diagnostic"];
+          if (typeof d === "string") { try { return String(JSON.parse(d)?.quoi ?? d); } catch { return d; } }
+          return String((d as Record<string, unknown> | null)?.["quoi"] ?? "");
+        };
+        // La SIGNATURE du mur de vente eBay : le libellé « REAUTH VENTE eBay » de
+        // l'extension (rearmBounded et arbitrerSessionEbay), ou le diagnostic du
+        // pré-vol step-up. C'est le seul déclencheur — pas « sans connexion ».
+        const signatureReauth = /^REAUTH VENTE eBay/i.test(brut)
+          || /reconnexion de s[ée]curit[ée] pour vendre/i.test(brut)
+          || /prevol_stepup_vente/i.test(diagQuoi(pfBody));
+        if (signatureReauth) {
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+          const service = serviceKey ? createClient(Deno.env.get("SUPABASE_URL")!, serviceKey) : null;
+          const { data: jrow } = await userClient
+            .from("cross_post_jobs").select("action, platform, voie, platform_fields")
+            .eq("id", jobId).maybeSingle();
+          // eBay, publish/republish, voie extension SEULEMENT (un job voie API
+          // ne passe pas par cette fonction) — et le compte n'a AUCUNE
+          // connexion API active. La lecture d'ebay_accounts exige le
+          // service_role (RLS : le client user n'y a aucun droit).
+          if (service && jrow?.platform === "ebay" && jrow?.voie === "extension"
+              && (jrow.action === "publish" || jrow.action === "republish")
+              && !(await compteEbayApiConnecte(service, user.id))) {
+            const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+            const pfSrc = (pfBody ?? pfBase);
+            const {
+              next_action_after: _nao,
+              needsUserField: _nuf,
+              needsUserFields: _nufs,
+              champs_a_completer: _cac,
+              serverRequired: _sr,
+              server_required_fields: _srf,
+              bfcache_rearms: _bfc,
+              ...pfSans
+            } = pfSrc;
+            const maintenant = new Date().toISOString();
+            const precedent = (pfSrc.ebay_connexion_requise ?? pfBase.ebay_connexion_requise ?? null) as
+              Record<string, unknown> | null;
+            pfEbayConnexionRequise = {
+              ...pfSans,
+              // La valeur EN BASE, jamais celle que l'extension vient
+              // d'incrémenter : ce passage n'est pas une tentative légitime,
+              // le mur n'aurait pas dû être frappé.
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              needs_user_source: SOURCE_EBAY_CONNEXION_REQUISE,
+              ebay_connexion_requise: {
+                depuis: typeof precedent?.depuis === "string" ? precedent.depuis : maintenant,
+                derniere: maintenant,
+                observations: (Number(precedent?.observations ?? 0) || 0) + 1,
+                verdict_extension: brut.slice(0, 400),
+                pose_par: "update-job-status (eBay sans connexion API + mur REAUTH → voie API)",
+              },
+            };
+            statutEffectif = "needs_user";
+            messageEffectif = connexionEbayRequise(String(jrow.action ?? "publish"));
+            raisonRequalif =
+              "eBay sans connexion API + mur REAUTH → « Connecte ton compte eBay » (voie API), reprises arrêtées";
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — eBay REAUTH sans connexion API ` +
+              `(verdict ${status}) → needs_user ${SOURCE_EBAY_CONNEXION_REQUISE}, aucune reprise à l'aveugle`,
+            );
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] eBay connexion requise :", (e as Error)?.message ?? e);
+        pfEbayConnexionRequise = null;
       }
     }
 
@@ -2068,7 +2174,7 @@ serve(async (req) => {
       const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
         && bfcacheRearms == null && !pfCanalCoupe && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
-        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif;
+        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise;
       const surface = statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user";
       const brut = typeof body.error === "string" ? body.error : "";
       const bodyPfOk = body.platform_fields != null && typeof body.platform_fields === "object";
@@ -2600,6 +2706,11 @@ serve(async (req) => {
     // n'y en a pas : le geste est chez eBay), AVEC le marqueur nommé
     // needs_user_source = ebay_compte_vendeur_inactif.
     if (pfEbayVendeurInactif) patch.platform_fields = pfEbayVendeurInactif;
+    // eBay sans connexion API + mur REAUTH : needs_user « Connecte ton compte
+    // eBay », SANS tentative consommée, SANS échéance de reprise (le mur ne
+    // tombe pas tout seul), AVEC le marqueur nommé ebay_connexion_requise. Le
+    // ré-armement vers la voie API se fait ailleurs, quand le compte est prêt.
+    if (pfEbayConnexionRequise) patch.platform_fields = pfEbayConnexionRequise;
     // Refus de capture alors que la sonde voit Vinted vivant : plus de
     // needs_user_source 'session_vinted', échéance à 45 min, trace nommée.
     if (pfSessionBonne) patch.platform_fields = pfSessionBonne;

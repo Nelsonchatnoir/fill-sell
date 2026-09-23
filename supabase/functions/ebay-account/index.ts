@@ -67,6 +67,10 @@ import {
   grouperServicesDomestiques, resoudreCodeService, familleService, PLAFOND_SERVICES_DOMESTIQUES,
   type ServiceLivraison,
 } from "../_shared/ebay-shipping.ts";
+// La publication eBay d'un nouvel inscrit parquée « Connecte ton compte eBay »
+// (update-job-status) repart TOUTE SEULE en voie API dès que le compte devient
+// utilisable — c'est ici qu'on le sait (statut/checklist relisent l'état).
+import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const MARKETPLACE = "EBAY_FR";
@@ -417,6 +421,12 @@ Deno.serve(async (req) => {
     if (action === "statut") {
       const { compte, erreur } = await lireCompte(admin, user.id);
       if (erreur) return json({ error: `Lecture impossible : ${erreur}` }, 500);
+      // Reprise auto (2026-09-23) : si le compte est prêt, les publications eBay
+      // parquées « Connecte ton compte eBay » repartent en voie API. Gardé par
+      // l'état déjà lu (aucun appel eBay), best-effort, jamais bloquant.
+      if (compteEbayApiUsableDepuisLigne(compte)) {
+        await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
+      }
       return json({ etat: etatPublic(compte) });
     }
 
@@ -440,6 +450,12 @@ Deno.serve(async (req) => {
     if (action === "checklist") {
       const checklist = await releverChecklist(admin, env, token, user.id);
       const { compte } = await lireCompte(admin, user.id);
+      // La checklist vient d'écrire seller_state : si le compte est désormais
+      // prêt, les publications eBay parquées repartent en voie API (le moment
+      // exact où le parcours des Réglages se termine). Best-effort.
+      if (compteEbayApiUsableDepuisLigne(compte)) {
+        await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
+      }
       return json({ etat: etatPublic(compte), checklist });
     }
 

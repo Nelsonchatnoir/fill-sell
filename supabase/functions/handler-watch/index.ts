@@ -9,6 +9,7 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // filet ne connaissait que Vinted et les photos Beebs d'un article importé
 // n'étaient jamais rapatriées, 19/09).
 import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
+import { rearmerJobsEbayConnexionSiUtilisable, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1358,6 +1359,34 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] reprise après reconnexion:", (e as Error)?.message ?? e);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // eBay « CONNECTE TON COMPTE » → VOIE API DÈS QUE LE COMPTE EST PRÊT (2026-09-23)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Filet de la reprise auto : un nouvel inscrit dont la publication eBay a été
+  // parquée « Connecte ton compte eBay » (update-job-status) et qui a fini de
+  // relier + paramétrer son compte doit voir sa publication repartir SEULE, en
+  // voie API. ebay-account (statut/checklist) le fait au fil de l'app ; ce
+  // balayage couvre les cas où l'app n'a pas relu l'état (autre appareil, appli
+  // fermée). Aucun appel eBay : rearmerJobsEbayConnexionSiUtilisable lit
+  // seller_state DÉJÀ écrit, et ne ré-arme QUE si le compte est utilisable —
+  // jamais un mur déplacé. Idempotent, borné, best-effort.
+  try {
+    const { data: parques } = await supabase
+      .from("cross_post_jobs")
+      .select("user_id")
+      .eq("platform", "ebay")
+      .eq("status", "needs_user")
+      .eq("platform_fields->>needs_user_source", SOURCE_EBAY_CONNEXION_REQUISE)
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
+      .limit(500);
+    const users = [...new Set(((parques ?? []) as Array<{ user_id: unknown }>).map((r) => String(r.user_id)))];
+    let repris = 0;
+    for (const uid of users) repris += await rearmerJobsEbayConnexionSiUtilisable(supabase, uid);
+    if (repris) console.log(`[handler-watch] eBay : ${repris} publication(s) ré-armée(s) en voie API (compte devenu utilisable)`);
+  } catch (e) {
+    console.error("[handler-watch] reprise eBay voie API:", (e as Error)?.message ?? e);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

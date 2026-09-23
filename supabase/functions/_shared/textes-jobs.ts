@@ -125,6 +125,36 @@ export const SOURCE_EBAY_COMPTE_VENDEUR_INACTIF = "ebay_compte_vendeur_inactif";
 
 
 // ═══════════════════════════════════════════════════════════════════════════
+// eBay : SANS CONNEXION API + MUR REAUTH → « CONNECTE TON COMPTE eBAY » (2026-09-23)
+// ═══════════════════════════════════════════════════════════════════════════
+// Marie-Morgane (Mmojul56), inscrite le 23/09, première publication eBay : le
+// job part par l'extension, bute sur le step-up « REAUTH VENTE » du flux de
+// vente, et brûle ses cinq tentatives — elle n'a jamais relié de compte eBay
+// par l'API, et rien ne l'y menait. La voie API existe et marche (34 comptes,
+// 140 annonces en 7 jours) ; il manquait la porte pour y aller.
+//
+// ⛔ CE MESSAGE NE PARLE NI DE NAVIGATEUR NI DE SESSION, et ne dit jamais
+//    « rien à faire ». Il nomme le geste — relier eBay — et promet la reprise
+//    automatique, qui est tenue par ailleurs (voie API dès que le compte est
+//    prêt). Le bouton « Me connecter » de la carte ouvre le parcours eBay.
+export function connexionEbayRequise(action: string): string {
+  const quoi = action === "delete" ? "ce retrait"
+    : action === "republish" ? "cette republication"
+    : "cette publication";
+  // Formulation VALABLE SUR TOUS LES CLIENTS : le bouton « Me connecter »
+  // n'existe pas encore sur toutes les versions installées — le message ne le
+  // suppose donc pas, il nomme aussi l'endroit (« Réglages › Compte eBay »). Où
+  // le bouton est là (web, prochaine OTA), il fait le même geste.
+  return (
+    "Connecte ton compte eBay pour vendre ici : une fois relié, FillSell publie tes annonces eBay " +
+    "depuis ses serveurs, et tu n'as même plus besoin de laisser ton ordinateur allumé. " +
+    "Relie ton compte dans « Réglages › Compte eBay » (ou avec le bouton « Me connecter » ci-dessous) — " +
+    `dès que c'est prêt, ${quoi} part toute seule.`
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // UNE FUITE DE DÉVELOPPEUR N'ARRIVE JAMAIS À L'ÉCRAN (2026-09-21)
 // ═══════════════════════════════════════════════════════════════════════════
 // Règle, sans exception : aucun message montré à quelqu'un ne porte un chemin
