@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-22T16:45:51Z'; // recale 140e9f3 (0.6.54, correctif format de colis republication). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : la 0.6.54 n'est ni televersee ni acceptee.
+export const EXTENSION_LAST_COMMIT = '2026-09-23T09:02:16Z'; // recale 042773c (fixes republication/vinted du 23/09 : capture Sandra, 403≠401). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : ces commits ne sont ni packages ni televerses.
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
 //    dans git (`git log -p scripts/build-id.mjs`), qui est fait pour ça. On garde désormais UNE
