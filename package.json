@@ -67,7 +67,8 @@
     "selftest:chaussure-malgre-le-mot": "node scripts/chaussure-malgre-le-mot-selftest.mjs",
     "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs",
     "selftest:releve-compte-vide": "node scripts/releve-compte-vide-selftest.mjs",
-    "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs"
+    "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs",
+    "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
