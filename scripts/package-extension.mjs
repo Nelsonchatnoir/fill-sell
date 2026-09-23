@@ -171,7 +171,19 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // couche 2 (priorité d'un republish 'deleted' bornée : N=3 gels sans verdict →
 // bout de file, reste pending/visible/rattrapable). ⚠️ EXTENSION_MIN_BUILD
 // NON touché : décision de Nico, à part, lue dans le paquet publié.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46', '0.6.47', '0.6.48', '0.6.49', '0.6.52', '0.6.53'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46', '0.6.47', '0.6.48', '0.6.49', '0.6.52', '0.6.53', '0.6.54', '0.6.58', '0.6.60', '0.6.61'];
+// 0.6.54, 0.6.58, 0.6.60 et 0.6.61 ajoutees le 23/09 au soir : PUBLIEES et
+// SERVIES, relevees en base a 18:34 (profiles.extension_build x
+// extension_version), pas declarees :
+//   0.6.54 → 7 comptes  (build '2026-09-22T16:46:10Z+4c386b7')
+//   0.6.58 → 14 comptes (build '2026-09-22T21:33:14Z+a44218d')
+//   0.6.60 → 24 comptes (build '2026-09-23T09:27:24Z+fae53bf')
+//   0.6.61 → 8 comptes  (build '2026-09-23T15:18:45Z+26e09f3')
+// 0.6.55, 0.6.56, 0.6.57 et 0.6.59 N'Y SONT PAS : leurs numeros ont ete brules
+// par des bumps de manifeste (46d409d, 84e6740, a7a6d13, 99bd825) et AUCUN
+// compte ne les a jamais portees en base — le Store ne les a pas vues. Meme
+// regle que 0.6.50/0.6.51 : mort des le televersement, pas des le bump.
+// Le prochain paquet portera donc 0.6.62 au minimum.
 // 0.6.49 ajoutee le 22/09 : PUBLIEE et SERVIE, relevee en base le jour meme
 // (profiles.extension_build x extension_version) — 39 comptes en '0.6.49',
 // build '2026-09-21T15:13:22Z+79465b2', le rang le plus fourni du parc. Elle

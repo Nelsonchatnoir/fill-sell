@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-23T15:18:25Z'; // recale 064b0ca (0.6.61 : popup sur la verite serveur, sonde eBay My eBay, « je ne vends pas sur X »). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD NON touche : 0.6.61 packagee, pas encore televersee.
+export const EXTENSION_LAST_COMMIT = '2026-09-23T15:18:25Z'; // recale 064b0ca (0.6.61 : popup sur la verite serveur, sonde eBay My eBay, « je ne vends pas sur X »). UTC VRAI lu par EPOCH. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD promu le 23/09 au soir sur cette 0.6.61 (acceptee, 8 comptes servis).
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
 //    dans git (`git log -p scripts/build-id.mjs`), qui est fait pour ça. On garde désormais UNE
@@ -1518,7 +1518,18 @@ export const EXTENSION_LAST_COMMIT = '2026-09-23T15:18:25Z'; // recale 064b0ca (
 // Ce geste ALLUME la bannière « extension obsolète » pour les 42 comptes restés
 // en 0.6.49 (relevé du même instant), et leur nomme enfin la version à prendre.
 // Ancienne valeur : 2026-09-20T17:39:01Z (0.6.48).
-export const EXTENSION_MIN_BUILD = '2026-09-22T07:19:47Z';
+//
+// ── PROMU LE 23/09 AU SOIR SUR LA 0.6.61 ─────────────────────────────────────
+// ACCEPTÉE par le Chrome Web Store et SERVIE : relevé en base à 18:34, 8 comptes
+// en extension_version='0.6.61', build '2026-09-23T15:18:45Z+26e09f3'. Le seuil
+// est le BUILD_ID DU ZIP (postérieur de 20 s à EXTENSION_LAST_COMMIT
+// 2026-09-23T15:18:25Z — l'écart normal commit → zip, toléré par le registre).
+// Ce que la promotion allume : le popup qui dit la vérité servie par le
+// serveur, la sonde eBay qui exige un utilisateur identifié, « je ne vends pas
+// sur X » — chez les 24 comptes en 0.6.60, 14 en 0.6.58, 18 en 0.6.53, 7 en
+// 0.6.54 et 2 en 0.6.52.
+// Ancienne valeur : 2026-09-22T07:19:47Z (0.6.53).
+export const EXTENSION_MIN_BUILD = '2026-09-23T15:18:45Z';
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
@@ -1601,6 +1612,19 @@ export const PUBLISHED_BUILD_IDS = {
   // (Relu en base, jamais dans un nom de dossier ni un commentaire : c'est
   // profiles.extension_build × extension_version qui dit ce qui est servi.)
   '2026-09-22T07:19:47Z': '0.6.53',
+  // 0.6.54, 0.6.58, 0.6.60, 0.6.61 : inscrites le 23/09 au soir, MÊME CLASSE
+  // D'OUBLI — publication ÉTABLIE et RELEVÉE EN BASE (18:34, profiles
+  // .extension_build × extension_version), jamais déclarée :
+  //   0.6.54 → 7 comptes · 0.6.58 → 14 · 0.6.60 → 24 · 0.6.61 → 8.
+  // (0.6.55, 0.6.56, 0.6.57, 0.6.59 : numéros brûlés par des bumps, aucun
+  // compte ne les porte — pas ici, comme 0.6.50/0.6.51.)
+  '2026-09-22T16:46:10Z': '0.6.54',
+  '2026-09-22T21:33:14Z': '0.6.58',
+  '2026-09-23T09:27:24Z': '0.6.60',
+  // 0.6.61 : ACCEPTÉE et SERVIE — 8 comptes à 18:34 le jour de son
+  // téléversement. C'est elle qui devient EXTENSION_MIN_BUILD (geste d'après
+  // acceptation prévu dès l'empaquetage, cf. bandeau du 23/09).
+  '2026-09-23T15:18:45Z': '0.6.61',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
