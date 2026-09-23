@@ -3178,9 +3178,9 @@ serve(async (req) => {
     // l'utilisateur et tient un client scopé RLS — c'est zéro aller-retour de
     // plus. Derrière un flag : le BACKGROUND, qui poll toutes les 2 minutes,
     // ne paie rien de tout ça.
-    let contexte: { sync: unknown; sessions: unknown } | null = null;
+    let contexte: { sync: unknown; sessions: unknown; verite: unknown } | null = null;
     if (body?.include_context === true) {
-      contexte = { sync: null, sessions: null };
+      contexte = { sync: null, sessions: null, verite: null };
       try {
         const { data: runs } = await userClient
           .from("vinted_sync_runs")
@@ -3195,6 +3195,28 @@ serve(async (req) => {
           .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
         contexte.sessions = prof?.extension_sessions ?? null;
       } catch (_e) { /* idem */ }
+      // ── LA VÉRITÉ DES PLATEFORMES (2026-09-23, cas Marine Rocher) ──────────
+      // Le popup affichait « Connectée » sur eBay à quelqu'un qui n'a PAS de
+      // compte eBay : la sonde de session teste une page publique (200 sans
+      // compte), et son relevé disait pourtant « page de connexion ». Le
+      // serveur tranche désormais UNE fois pour tous les écrans —
+      // plateformes_verite : le fait le plus récent et le plus précis gagne
+      // (relevé > dépôt > sonde), eBay n'est connectée que Hub vendeur ouvert,
+      // relevé réussi, dépôt ou compte relié par l'API ; Opla 401 = à autoriser.
+      // Le popup ≥ 0.6.61 lit `verite` ; les popups d'avant lisent encore
+      // `sessions.ebay` — on leur retire le `true` sans preuve : la ligne
+      // redevient « pas encore vérifié », plus jamais « Connectée » à tort.
+      try {
+        const { data: verite } = await userClient.rpc("plateformes_verite");
+        const v = verite as { ok?: boolean; plateformes?: Record<string, { etat?: string }> } | null;
+        if (v && v.ok === true) {
+          contexte.verite = v;
+          const s = contexte.sessions as Record<string, unknown> | null;
+          if (s && typeof s === "object" && s.ebay === true && v.plateformes?.ebay?.etat !== "connectee") {
+            contexte.sessions = { ...s, ebay: null };
+          }
+        }
+      } catch (_e) { /* la vérité ne bloque jamais la distribution des jobs */ }
     }
 
     // plafond_republish joint au poll d'exécution aussi (null hors calcul) :

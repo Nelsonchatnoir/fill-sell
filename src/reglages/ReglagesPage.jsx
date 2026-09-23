@@ -33,6 +33,7 @@ import { plateformesDuCompte } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
+import { useVeritePlateformes } from './useVeritePlateformes';
 import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero, formaterDatePleine } from './quotas';
 import {
   EcranReglages, Groupe, Carte, Ligne, Jauge, JaugeRepublication, CarteIdentite, PiedPage,
@@ -96,7 +97,14 @@ export default function ReglagesPage({
   // (utils/stockFiltres.plateformesDuCompte), jamais une liste recopiée ici —
   // c'est exactement la divergence corrigée le 17/09 (Opla absente des cartes).
   const plateformesSession = useMemo(() => plateformesDuCompte(plateformesOuvertes), [plateformesOuvertes]);
-  const sessions = useSessionsPlateformes({ userId: user?.id, plateformes: plateformesSession });
+  const sessionsLocales = useSessionsPlateformes({ userId: user?.id, plateformes: plateformesSession });
+  // La vérité serveur (2026-09-23) : c'est elle que l'écran Plateformes et le
+  // compteur du hub affichent. Le calcul local reste le repli.
+  const verite = useVeritePlateformes({ userId: user?.id, plateformes: plateformesSession });
+  const sessions = useMemo(
+    () => (verite.verite ? { ...sessionsLocales, connectes: verite.connectes } : sessionsLocales),
+    [sessionsLocales, verite.verite, verite.connectes],
+  );
 
   const courante = pile.length ? pile[pile.length - 1] : null;
 
@@ -195,7 +203,7 @@ export default function ReglagesPage({
       resume: [adresseLbc?.cp, adresseLbc?.ville].filter(Boolean).join(' ').trim(),
     },
     setAdresseLbc,
-    sessions, plateformesSession,
+    sessions, plateformesSession, verite,
     republication: {
       exposee: planifieeExposee,
       // ⚠️ 18/09 : le module porte QUATRE plateformes. « actif » veut donc dire
