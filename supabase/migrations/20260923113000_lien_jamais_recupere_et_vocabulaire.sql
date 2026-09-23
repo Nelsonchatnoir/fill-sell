@@ -43,11 +43,48 @@
 -- Ces deux fonctions étaient les deux dernières sources vivantes du mot dans
 -- un texte destiné à quelqu'un.
 
+-- ══════════════════════════════════════════════════════════════════════════════
+-- SÉCURITÉ — CE QUE CE LOT GARANTIT, ET POURQUOI (relevé avant application)
+-- ══════════════════════════════════════════════════════════════════════════════
+-- AUCUNE table n'est créée ni modifiée ici, AUCUNE policy n'est touchée : ce
+-- fichier ne remplace que DEUX corps de fonction. RLS reste active telle quelle
+-- sur cross_post_jobs, annonces_plateforme, coin_reservations (vérifié avant :
+-- relrowsecurity = true sur les trois).
+--
+-- SECURITY DEFINER : CONSERVÉ, et c'est délibéré. Ces deux fonctions sont des
+-- BALAYAGES : elles agissent sur les lignes de TOUS les utilisateurs, ce qu'un
+-- appelant soumis à RLS ne pourrait pas faire. C'est exactement le cas où le
+-- DEFINER est la raison d'être de la fonction, et c'est déjà le modèle de
+-- toute la chaîne de nuit (refund_publish_unconfirmed,
+-- settle_publish_reservation — DEFINER toutes les deux). En changer une seule
+-- au passage créerait une incohérence dans la chaîne, pas une sécurité.
+-- La surface est nulle en pratique : après les REVOKE ci-dessous, SEUL
+-- `postgres` peut les exécuter — c'est-à-dire pg_cron, leur unique appelant
+-- (cron.job 8 « expire-publish-reservations-daily » 3h20, cron.job 10
+-- « publish-sans-lien-echec-daily » 3h30, tous deux username=postgres).
+-- Aucune fonction edge ni aucun écran n'appelle ces RPC — vérifié : les trois
+-- occurrences dans supabase/functions/ sont des COMMENTAIRES.
+--
+-- search_path : `public, pg_temp` EXPLICITE. Sans mention de pg_temp, il est
+-- implicitement cherché EN PREMIER — un objet temporaire homonyme pourrait
+-- détourner un appel dans une fonction DEFINER. Le nommer en DERNIER ferme ça.
+--
+-- Droits : REVOKE de PUBLIC / anon / authenticated (une fonction de balayage
+-- ne s'offre pas au navigateur), GRANT du seul postgres.
+-- ⚠️ service_role est RETIRÉ lui aussi : il l'avait par héritage, rien ne
+--    s'en sert. Pour le rendre à une fonction edge, un jour, UNE ligne :
+--      grant execute on function public.fail_publish_without_listing_url(timestamptz) to service_role;
+--
+-- Idempotence : CREATE OR REPLACE + REVOKE/GRANT sont rejouables à l'identique.
+-- ⚠️ CREATE OR REPLACE CONSERVE les droits existants (il ne les remet pas au
+--    défaut) : les REVOKE ci-dessous ne sont donc pas redondants, ils sont la
+--    seule écriture qui rende l'état des droits EXPLICITE et vérifiable.
+
 CREATE OR REPLACE FUNCTION public.fail_publish_without_listing_url(p_publie_apres timestamp with time zone DEFAULT NULL::timestamp with time zone)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   j        record;
@@ -139,7 +176,7 @@ CREATE OR REPLACE FUNCTION public.expire_publish_reservations()
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'public'
+ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   r        record;
@@ -203,3 +240,47 @@ BEGIN
   );
 END;
 $function$;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- DROITS — EXPLICITES, PAS HÉRITÉS
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Un balayage de nuit ne doit pas être appelable depuis un navigateur. On
+-- retire à tout le monde, puis on rend à `postgres` seul (pg_cron).
+REVOKE ALL ON FUNCTION public.fail_publish_without_listing_url(timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fail_publish_without_listing_url(timestamptz) FROM anon;
+REVOKE ALL ON FUNCTION public.fail_publish_without_listing_url(timestamptz) FROM authenticated;
+REVOKE ALL ON FUNCTION public.fail_publish_without_listing_url(timestamptz) FROM service_role;
+GRANT EXECUTE ON FUNCTION public.fail_publish_without_listing_url(timestamptz) TO postgres;
+
+REVOKE ALL ON FUNCTION public.expire_publish_reservations() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.expire_publish_reservations() FROM anon;
+REVOKE ALL ON FUNCTION public.expire_publish_reservations() FROM authenticated;
+REVOKE ALL ON FUNCTION public.expire_publish_reservations() FROM service_role;
+GRANT EXECUTE ON FUNCTION public.expire_publish_reservations() TO postgres;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- GARDE-FOU — CE LOT NE DOIT RIEN AVOIR AFFAIBLI
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Il ne touche aucune table ni aucune policy ; cette vérification est là pour
+-- que ce soit PROUVÉ à l'application, pas supposé. Elle échoue bruyamment si
+-- RLS venait à manquer sur l'une des tables que les deux balayages écrivent.
+-- ⛔ Elle ne CRÉE ni ne MODIFIE rien : une migration de correction ne doit pas
+--    activer RLS au passage sur une table qu'elle n'a pas conçue.
+DO $garde$
+DECLARE
+  t text;
+  v_sans_rls text[] := '{}';
+BEGIN
+  FOREACH t IN ARRAY ARRAY['cross_post_jobs','annonces_plateforme','coin_reservations'] LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = t AND c.relrowsecurity
+    ) THEN
+      v_sans_rls := v_sans_rls || t;
+    END IF;
+  END LOOP;
+  IF array_length(v_sans_rls, 1) IS NOT NULL THEN
+    RAISE EXCEPTION 'RLS absente sur : % — migration interrompue, rien ne doit tourner sans elle', array_to_string(v_sans_rls, ', ');
+  END IF;
+END
+$garde$;
