@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
-import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
+import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
 
@@ -3649,7 +3649,7 @@ serve(async (req) => {
           if (fournis) {
             console.log(
               `[get-pending-jobs] userId=${user.id} : taille servie sur ${fournis} republication(s) ` +
-              `à capture préfixée EU/FR/UK (${aTraiter.length} dans le périmètre)`,
+              `à capture préfixée EU/FR/UK ou nombre nu (${aTraiter.length} dans le périmètre)`,
             );
           }
         }

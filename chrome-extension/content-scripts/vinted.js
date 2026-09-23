@@ -2844,14 +2844,7 @@ async function fillListingForm(job) {
         return {
           success: false,
           needsUser: true,
-          error:
-            `La taille « ${fields.taille} » ne correspond à aucune option du formulaire Vinted pour la ` +
-            `catégorie posée (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}). Tailles proposées : ` +
-            `${optionsTaille.slice(0, 12).map((o) => `« ${o} »`).join(", ")}` +
-            (optionsTaille.length > 12 ? ` … (+${optionsTaille.length - 12} autres)` : "") +
-            `. Si la catégorie est la bonne, corrige la taille de l'article depuis l'app ; sinon regénère ` +
-            `l'annonce pour corriger sa catégorie. Puis relance la publication.`,
-          diagnostic: diagnosticTailleDerniere ? `taille demandée « ${fields.taille} » — ${diagnosticTailleDerniere}`.slice(0, 1900) : undefined,
+          ...verdictTailleHorsGrille(fields, optionsTaille, { onePass, recreation }),
           warnings,
           discoveredRequired: requis?.discovered ?? [],
         };
@@ -2867,14 +2860,7 @@ async function fillListingForm(job) {
       return {
         success: false,
         needsUser: true,
-        error:
-          `La taille « ${fields.taille} » ne correspond à aucune option du formulaire Vinted pour la ` +
-          `catégorie posée (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}). Tailles proposées : ` +
-          `${optionsTaille.slice(0, 12).map((o) => `« ${o} »`).join(", ")}` +
-          (optionsTaille.length > 12 ? ` … (+${optionsTaille.length - 12} autres)` : "") +
-          `. Si la catégorie est la bonne, corrige la taille de l'article depuis l'app ; sinon regénère ` +
-          `l'annonce pour corriger sa catégorie. Puis relance la publication.`,
-        diagnostic: diagnosticTailleDerniere ? `taille demandée « ${fields.taille} » — ${diagnosticTailleDerniere}`.slice(0, 1900) : undefined,
+        ...verdictTailleHorsGrille(fields, optionsTaille, { onePass, recreation }),
         warnings,
         discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
       };
@@ -5207,6 +5193,22 @@ function candidatsTailleVinted(libelle) {
   if (jean) { push(`W${jean[1]}`); push(jean[1]); }
   const w = l.match(/^\s*W\s+(\d{2})\s*$/i);
   if (w) { push(`W${w[1]}`); push(w[1]); }
+  // ── « N » ≡ « EU N » (2026-09-23, vestes de costume de Joséphine) ─────────
+  // Vinted écrit la MÊME taille de deux façons : « 42 » dans la grille
+  // combinée qu'il rend à la capture (size_groups, groupe 75 « 22…30, 42…78,
+  // 90…118 » pour les costumes homme), « EU 42 » dans l'onglet EU du
+  // formulaire de dépôt. Un nombre nu ne peut pas matcher « EU 42 » par
+  // contenance (garde anti-nombre-nu, et c'est juste : « 42 » ⊂ « 42S »
+  // aussi). On ajoute donc le libellé PRÉFIXÉ comme candidat — en DERNIER,
+  // après toutes les formes déjà cherchées dans tous les onglets : une grille
+  // qui porte « 42 » nu (pointures, blazers) continue de le prendre par
+  // l'exact, exactement comme avant. C'est une traduction de vocabulaire
+  // (même nombre), jamais une conversion de système : jamais « FR N » ni
+  // « UK N » — ceux-là désignent d'autres tailles.
+  // Sens inverse (« EU 42 » capturé, grille qui écrit « 42 ») : déjà couvert
+  // par le retrait de préfixe ci-dessous, inchangé.
+  const nu = l.match(/^\s*(\d{1,3}(?:[.,]\d)?)\s*$/);
+  if (nu) push(`EU ${nu[1]}`);
   push(l.replace(/^(EU|UK|FR|IT|US)\s+/i, ""));
   return out;
 }
@@ -5214,11 +5216,50 @@ function candidatsTailleVinted(libelle) {
 // le verdict de fillListingForm et écrit dans last_diagnostic. Avant : vide,
 // on cherchait à l'aveugle.
 let diagnosticTailleDerniere = null;
+// Les options de TOUS les onglets parcourus au dernier échec (2026-09-23) :
+// c'est la liste fermée servie à l'app pour que la personne CHOISISSE la
+// taille d'un tap, au lieu de relire « Tailles proposées » et de relancer un
+// job qui rebutera sur le même mur. Vidée à chaque nouvel essai.
+let optionsTailleVues = [];
+
+// ── TAILLE HORS GRILLE : UN CHOIX, JAMAIS « RELANCE QUAND TU VEUX » (2026-09-23)
+// Vestes de costume de Joséphine (jobs d6ec3d42, 9a3da3d5) : l'ancien verdict
+// disait « corrige la taille depuis l'app … puis relance la publication », et
+// le message de pause côté republication ajoutait « rien à corriger — relance
+// quand tu veux ». Une relance rejouait le même mur, à chaque fois. Un échec
+// DÉTERMINISTE (les options sont là, aucune ne correspond) appelle un CHOIX :
+// on sert la liste fermée des tailles vues (tous onglets) dans needsUserField
+// — la fiche ouvre « ✋ Compléter », la personne tape la bonne, ça repart —
+// et on nomme la seconde sortie (la catégorie) sans inviter à relancer.
+// Cible d'écriture : `taille` du job en publication ; `republish_user_fields.
+// taille` en republication (une-passe ou recréation), le canal que
+// get-pending-jobs et la recapture lisent déjà — rien de nouveau à câbler.
+function verdictTailleHorsGrille(fields, optionsTaille, { onePass = null, recreation = false } = {}) {
+  const chemin = (fields.categoryPath ?? []).join(" > ") || "inconnue";
+  const choix = optionsTailleVues.length ? optionsTailleVues : optionsTaille;
+  const apercu = choix.slice(0, 12).map((o) => `« ${o} »`).join(", ") +
+    (choix.length > 12 ? ` … (+${choix.length - 12} autres)` : "");
+  return {
+    error:
+      `Vinted ne reconnaît pas la taille « ${fields.taille} » pour la catégorie posée (${chemin}). ` +
+      `Tailles acceptées : ${apercu}. Choisis la bonne taille (bouton « ✋ Compléter ») et on repart ; ` +
+      `si la catégorie est fausse, regénère l'annonce.`,
+    diagnostic: diagnosticTailleDerniere ? `taille demandée « ${fields.taille} » — ${diagnosticTailleDerniere}`.slice(0, 1900) : undefined,
+    ...(choix.length ? {
+      needsUserField: {
+        platform: "vinted", field_key: "size", field_label: "Taille", input_type: "grid",
+        allowed_values: choix.slice(0, 120),
+        target: onePass || recreation ? { root: "republish_user_fields", key: "taille" } : { key: "taille" },
+      },
+    } : {}),
+  };
+}
 
 async function selectTailleVinted(fields, warnings) {
   const ids = (Array.isArray(fields.taille_ids) ? fields.taille_ids : []).map(Number).filter(Number.isFinite);
   const libelle = String(fields.taille ?? "").trim();
   diagnosticTailleDerniere = null;
+  optionsTailleVues = [];
   try {
     await openDropdown(TAILLE_TRIGGER_SEL);
     await attendreOptionsTaille();
@@ -5296,6 +5337,9 @@ async function selectTailleVinted(fields, warnings) {
     if (!match) {
       diagnosticTailleDerniere = `candidats essayés : ${candidats.map((c) => `« ${c} »`).join(", ")} — onglets vus : ` +
         ongletsVus.map((o) => `${o.onglet} [${o.options.slice(0, 20).join(", ")}${o.options.length > 20 ? `, … +${o.options.length - 20}` : ""}]`).join(" ; ");
+      // Toutes les options vues, tous onglets confondus, dans l'ordre de
+      // parcours, dédoublonnées — la liste fermée du choix dans l'app.
+      optionsTailleVues = [...new Set(ongletsVus.flatMap((o) => o.options))].slice(0, 120);
       throw new Error(`« ${libelle} »${candidats.length > 1 ? ` (ni ${candidats.slice(1).map((c) => `« ${c} »`).join(", ")})` : ""} dans aucun onglet ${JSON.stringify(onglets.map((o) => o.texte))}`);
     }
     if (candidatRetenu !== libelle) {

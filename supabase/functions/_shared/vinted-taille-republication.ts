@@ -78,6 +78,35 @@ export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3})$/i;
 /** Les lettres de la grille Femme/Homme Vinted : XXXS…S, M, L…XXXL, 4XL…9XL. */
 const LETTRE_RE = /^(?:X{0,3}S|X{0,3}L|M|\dXL)$/i;
 const NOMBRE_RE = /^\d{1,3}$/;
+/** Un nombre NU tel que la capture ou l'article l'écrit : « 42 », « 38,5 ». */
+export const NOMBRE_NU_RE = /^\d{1,3}(?:[.,]\d)?$/;
+
+// ══════════════════════════════════════════════════════════════════════════
+// « N » ≡ « EU N » — LA MÊME TAILLE, DEUX ORTHOGRAPHES DE VINTED (2026-09-23)
+// ══════════════════════════════════════════════════════════════════════════
+// Vestes de costume de Joséphine (Hommes > Vêtements > Costumes et blazers >
+// Autres, catalog 1866) : la capture rend « 42 » (size_id 1592, groupe 75 du
+// référentiel, qui écrit « 22…30, 42…78, 90…118 » nus) ; le formulaire de
+// dépôt, lui, range la même taille sous l'onglet EU et l'écrit « EU 42 ».
+// Mesuré le 23/09 : depuis la 0.6.25 (10/09), qui a cessé de couper « EU »
+// sur le chemin de pose, un nombre nu ne peut plus rejoindre « EU N » ;
+// les costumes homme de fin août (v0.6.11) passaient, les deux du 23/09 non.
+// RÈGLE : quand la grille relevée pour la catégorie n'écrit PAS « N » nu mais
+// écrit « EU N », on sert « EU N » — le libellé EXACT de la grille, jamais un
+// équivalent (« FR N », « UK N » désignent d'AUTRES tailles : jamais).
+// ⛔ EN DERNIER RECOURS SEULEMENT : après les étapes qui servaient déjà (la
+//    table femme à la publication, les étapes 1-2-3 à la republication).
+//    Tout ce qui était servi hier l'est aujourd'hui, à l'identique.
+// ⛔ JAMAIS pour un client qui coupe encore « EU » (builds < 0.6.25) : il
+//    perdrait le préfixe et rebuterait — on ne sert rien, comme avant.
+/** L'option « EU N » d'une grille qui n'écrit pas « N » nu, sinon null. */
+export function optionEuPourNombreNu(nt: string, grille: Array<{ brut: string; norm: string }>): { brut: string; norm: string } | null {
+  if (!NOMBRE_NU_RE.test(nt) || !grille.length) return null;
+  const nu = nt.replace(",", ".");
+  if (grille.some((o) => o.norm.replace(",", ".") === nu)) return null; // le nu est là : l'exact fait foi
+  const cands = grille.filter((o) => o.norm.replace(",", ".") === `EU ${nu}`);
+  return cands.length === 1 ? cands[0] : null;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // LA TAILLE SERVIE À LA **PUBLICATION** (2026-09-15) — MÊME FICHIER, MÊME
@@ -149,36 +178,56 @@ export function tailleAServirPublication(args: {
   taille: unknown;
   cheminCategorie: unknown;
   options: string[] | null | undefined;
-}): TailleServie | TailleRefusee {
+}, opts: { euCoupe?: boolean } = {}): TailleServie | TailleRefusee {
   const ordre = "femme:nombre→lettre";
   const refus = (motif: string): TailleRefusee => ({ valeur: null, etape: null, ordre, motif });
   const nt = normaliserTaille(args.taille);
-  if (!NOMBRE_RE.test(nt)) return refus("taille non numérique (hors périmètre)");
-
-  const chemin = normaliserTaille(args.cheminCategorie);
-  const racine = chemin.split(">")[0]?.trim() ?? "";
-  if (!RACINES_FEMMES.has(racine)) return refus(`branche « ${racine || "inconnue"} » ≠ Femmes (table femme seulement)`);
-
-  const lettre = TAILLE_FEMME_LETTRE_PAR_NOMBRE[nt];
-  if (!lettre) return refus(`« ${nt} » absent de la grille femme (30→44)`);
-
   const grille = (Array.isArray(args.options) ? args.options : [])
     .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
     .filter((o) => o.norm);
-  if (!grille.length) return refus("grille non relevée");
 
-  // La grille propose déjà le nombre nu : l'extension le matche par l'exact.
-  if (grille.some((o) => o.norm === nt)) return refus(`« ${nt} » est déjà une option de la grille`);
+  // ── La règle d'HIER, intacte : branche Femmes, nombre → lettre ────────────
+  const femmeNombreVersLettre = (): TailleServie | TailleRefusee => {
+    if (!NOMBRE_RE.test(nt)) return refus("taille non numérique (hors périmètre)");
 
-  const cible = grille.find((o) => o.norm === lettre);
-  if (!cible) return refus(`lettre « ${lettre} » absente de la grille relevée`);
+    const chemin = normaliserTaille(args.cheminCategorie);
+    const racine = chemin.split(">")[0]?.trim() ?? "";
+    if (!RACINES_FEMMES.has(racine)) return refus(`branche « ${racine || "inconnue"} » ≠ Femmes (table femme seulement)`);
 
-  return {
-    valeur: cible.brut,
-    etape: 3,
-    ordre,
-    detail: `« ${nt} » → « ${cible.brut} » (grille femme Vinted, lettre présente dans la grille relevée)`,
+    const lettre = TAILLE_FEMME_LETTRE_PAR_NOMBRE[nt];
+    if (!lettre) return refus(`« ${nt} » absent de la grille femme (30→44)`);
+
+    if (!grille.length) return refus("grille non relevée");
+
+    // La grille propose déjà le nombre nu : l'extension le matche par l'exact.
+    if (grille.some((o) => o.norm === nt)) return refus(`« ${nt} » est déjà une option de la grille`);
+
+    const cible = grille.find((o) => o.norm === lettre);
+    if (!cible) return refus(`lettre « ${lettre} » absente de la grille relevée`);
+
+    return {
+      valeur: cible.brut,
+      etape: 3,
+      ordre,
+      detail: `« ${nt} » → « ${cible.brut} » (grille femme Vinted, lettre présente dans la grille relevée)`,
+    };
   };
+  const r = femmeNombreVersLettre();
+  if (r.valeur !== null) return r;
+
+  // ── DERNIER RECOURS (2026-09-23) : « N » → « EU N » de la grille relevée ──
+  // Seulement là où hier on ne servait rien, et seulement si le client garde
+  // le préfixe (euCoupe = false, capacité « taille_par_id »).
+  if ((opts.euCoupe ?? true) === false) {
+    const eu = optionEuPourNombreNu(nt, grille);
+    if (eu) {
+      return {
+        valeur: eu.brut, etape: 1, ordre: "nu→EU N",
+        detail: `« ${nt} » → « ${eu.brut} » (la grille relevée écrit « EU ${nt} », pas « ${nt} » nu — même taille, orthographe du formulaire)`,
+      };
+    }
+  }
+  return r;
 }
 /** Options présentes dans TOUTES les grilles : elles ne disent rien de sa forme. */
 const OPTIONS_NEUTRES = new Set(["AUTRE", "TAILLE UNIQUE"]);
@@ -244,12 +293,29 @@ export function tailleAServir(args: {
 }, opts: { ordrePrefixe?: ReadonlyArray<Etape>; euCoupe?: boolean } = {}): TailleServie | TailleRefusee {
   const nt = normaliserTaille(args.captureTaille);
   const m = TAILLE_PREFIXEE_RE.exec(nt);
-  // ── PÉRIMÈTRE : capture préfixée seulement (cf. bandeau) ──────────────────
-  if (!m) return { valeur: null, etape: null, ordre: ORDRE_CAPTURE_NON_PREFIXEE.join("→"), motif: "capture non préfixée (hors périmètre)" };
-  const ordre = opts.ordrePrefixe ?? ORDRE_CAPTURE_PREFIXEE;
   // euCoupe = le client retire encore le préfixe « EU » (builds sans la
   // capacité « taille_par_id ») : un libellé « EU … » servi serait perdu.
   const euCoupe = opts.euCoupe ?? true;
+  // ── PÉRIMÈTRE : capture préfixée (cf. bandeau) — ou NOMBRE NU (23/09) ─────
+  // Un nombre nu n'entre que par la porte « EU N » ci-dessus : la grille
+  // relevée l'écrit préfixé et pas nu, le client garde le préfixe. Sinon,
+  // même refus qu'hier, mot pour mot.
+  if (!m) {
+    if (!euCoupe) {
+      const grilleNue = (Array.isArray(args.options) ? args.options : [])
+        .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
+        .filter((o) => o.norm);
+      const eu = optionEuPourNombreNu(nt, grilleNue);
+      if (eu) {
+        return {
+          valeur: eu.brut, etape: 1, ordre: "nu→EU N",
+          detail: `« ${nt} » → « ${eu.brut} » (la grille relevée écrit « EU ${nt} », pas « ${nt} » nu — même taille, orthographe du formulaire)`,
+        };
+      }
+    }
+    return { valeur: null, etape: null, ordre: ORDRE_CAPTURE_NON_PREFIXEE.join("→"), motif: "capture non préfixée (hors périmètre)" };
+  }
+  const ordre = opts.ordrePrefixe ?? ORDRE_CAPTURE_PREFIXEE;
   const ordreTexte = ordre.join("→");
   const prefixe = m[1].toUpperCase();
   const n = Number(m[2]);
