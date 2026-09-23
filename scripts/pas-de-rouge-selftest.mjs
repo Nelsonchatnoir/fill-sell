@@ -126,6 +126,58 @@ const infos = sorties.filter(({ s }) => s.verdict === "info");
 ok(infos.every(({ s }) => s.statut === "cancelled"), `${infos.length} informations neutres, toutes avec le job clos`);
 ok(infos.every(({ s }) => !/échec|erreur|impossible de/i.test(s.message)), "une information neutre ne parle jamais d'échec");
 
+console.log("\n── 6bis. LA SONDE DE SESSIONS TRANCHE, DANS LES DEUX SENS ──────");
+// (2026-09-23.) Deux faux messages le même jour, opposés et de même famille :
+// on affirmait sans mesurer. Ces cas figent la règle : quand la sonde a vu,
+// c'est elle qui parle ; quand elle n'a rien vu, rien ne change.
+{
+  // (a) meminiandmove : 3 publications Opla en « interrompue, rien à faire de
+  //     ton côté » alors que extension_sessions.opla = false / http 401.
+  //     La reprise promise ne POUVAIT pas aboutir.
+  const oplaMort = classerEchec({
+    platform: "opla", action: "publish", essais: 2, pf: {},
+    brut: "Could not establish connection. Receiving end does not exist.",
+    sessions: { opla: false, http: { opla: 401 } },
+  });
+  ok(oplaMort.verdict === "a_toi" && oplaMort.source === "opla_acces",
+    "Opla sonde 401/déconnecté → « Autoriser Opla », jamais « rien à faire de ton côté »");
+  ok(!/rien à faire de ton côté/i.test(oplaMort.message),
+    "le message ne promet plus une reprise qui ne peut pas aboutir");
+
+  // (b) van-breugel.sandra : « connecte-toi sur vinted.fr » avec http.vinted
+  //     = 200 relevé deux minutes plus tôt.
+  const vintedVivant = classerEchec({
+    platform: "vinted", action: "republish", essais: 0, pf: {},
+    brut: "session Vinted refusée (HTTP 403)",
+    sessions: { vinted: true, http: { vinted: 200 } },
+  });
+  ok(vintedVivant.verdict === "reprise" && vintedVivant.statut === "pending",
+    "Vinted sonde 200 → reprise, jamais « connecte-toi » à quelqu'un de connecté");
+  ok(vintedVivant.dansMinutes >= 45,
+    "la reprise est ESPACÉE : re-tenter tout de suite re-tape la porte qui vient de se fermer");
+  ok(!/connecte-toi|me connecter/i.test(vintedVivant.message),
+    "aucun geste de connexion demandé quand la connexion est bonne");
+
+  // (c) Une session RÉELLEMENT perdue garde son message, intact.
+  const vintedMort = classerEchec({
+    platform: "vinted", action: "republish", essais: 0, pf: {},
+    brut: "session Vinted refusée (HTTP 401)",
+    sessions: { vinted: false, http: { vinted: 401 } },
+  });
+  ok(vintedMort.verdict === "a_toi" && vintedMort.source === "connexion"
+     && ANCRE_APP.vinted.test(vintedMort.message) && ANCRE_WATCH.vinted.test(vintedMort.message),
+    "sonde déconnectée → « Connexion Vinted requise », ancres intactes (bouton + reprise auto)");
+
+  // (d) SANS sonde, et avec une sonde INDÉTERMINÉE (null), rien ne change :
+  //     ne rien savoir n'autorise rien, dans aucun des deux sens.
+  const avant = classerEchec({ platform: "vinted", action: "republish", essais: 0, pf: {}, brut: "session Vinted refusée (HTTP 401)" });
+  const indetermine = classerEchec({ platform: "vinted", action: "republish", essais: 0, pf: {}, brut: "session Vinted refusée (HTTP 401)", sessions: { vinted: null, http: { vinted: null } } });
+  ok(avant.verdict === "a_toi" && indetermine.verdict === "a_toi" && avant.message === indetermine.message,
+    "sonde absente ou indéterminée → comportement d'avant, mot pour mot");
+  const oplaSansSonde = classerEchec({ platform: "opla", action: "publish", essais: 2, pf: {}, brut: "Could not establish connection." });
+  ok(oplaSansSonde.verdict === "reprise", "sans sonde, Opla reste une reprise (on n'invente pas un geste)");
+}
+
 console.log("\n── 6. Un motif inconnu ne vire jamais au rouge ─────────────────");
 for (const essais of [0, 1, 2, 3, 9]) {
   const s = classerEchec({ platform: "vinted", action: "publish", brut: "quelque chose que personne n'a nommé", essais, pf: {} });
