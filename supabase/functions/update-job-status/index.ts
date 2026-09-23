@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { valeurFigureDansListeServie } from "../_shared/vinted-grille-servie.ts";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et

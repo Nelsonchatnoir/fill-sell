@@ -29,7 +29,7 @@
 //     plateforme à l'autre, seule sa traduction en rayon change.
 // ═══════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelAutorise, loggerAppelIA, tokensDe } from "../_shared/usage-guard.ts";
 
 const ALLOWED_ORIGINS = [

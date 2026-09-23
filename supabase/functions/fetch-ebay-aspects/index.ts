@@ -28,7 +28,7 @@
 // Déploiement : verify_jwt reste à TRUE (défaut). Ce n'est ni un webhook ni un
 // cron : pas de --no-verify-jwt (cf. CLAUDE.md). La service_role key est un JWT
 // valide, elle passe verify_jwt ET le contrôle d'égalité ci-dessous.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import categoryIdsFile from "./category-ids.json" with { type: "json" };
 import {
   EbayEnv,

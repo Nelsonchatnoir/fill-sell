@@ -1,5 +1,5 @@
 ﻿import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // Détection de catégorie de l'app (≈120 règles regex + défauts par catégorie) :
 // UNIQUE source de vérité, importée telle quelle — jamais dupliquée ici.
 // shared.js est un module pur (aucun import, aucune API navigateur), le

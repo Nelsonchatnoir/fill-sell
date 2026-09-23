@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
 
 // Valide un achat IAP CONSUMABLE APPLE (pack de pièces) et crédite le wallet

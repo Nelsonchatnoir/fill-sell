@@ -12,7 +12,7 @@
 //     partout (Marque 19 037 valeurs) ; MPN FREE_TEXT sans valeur ;
 //   · 0 emplacement marchand sur le compte → createInventoryLocation.
 // ═══════════════════════════════════════════════════════════════════════════
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 import { resoudreAspectsIA, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";

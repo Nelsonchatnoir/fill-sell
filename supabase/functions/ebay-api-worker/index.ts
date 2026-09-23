@@ -30,7 +30,7 @@
 //     AVANT l'appel), sans Pépite ni quota utilisateur ; un échec de Lens ne
 //     fait jamais échouer la publication.
 // ═══════════════════════════════════════════════════════════════════════════
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";

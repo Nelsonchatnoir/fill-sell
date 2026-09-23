@@ -26,7 +26,7 @@
 // refresh refusé (invalid_grant) est un état NORMAL → revoked_at stampé,
 // l'app affiche « à reconnecter ». Jamais une erreur technique.
 // ═══════════════════════════════════════════════════════════════════════════
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 
 export type EbayEnv = "production" | "sandbox";
 

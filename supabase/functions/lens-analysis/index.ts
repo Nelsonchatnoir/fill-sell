@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // Même helper que les quatre autres fonctions IA non facturées (voice-parse,
 // normalize-title, stats-analysis, lot-distribute) : compte les appels sur 24 h
 // glissantes dans usage_logs et laisse passer si le comptage échoue.

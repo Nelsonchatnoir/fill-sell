@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 
 // ── lens-temp-purge (2026-09-16) ─────────────────────────────────────────────
 // Ménage quotidien du bucket `lens-temp`. Depuis le correctif du 15/09 le

@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 
 // v5 (2026-07-11) — ORCHESTRATEUR DB PUR, appelé par l'extension Chrome.

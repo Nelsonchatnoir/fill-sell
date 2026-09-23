@@ -10,7 +10,7 @@
 // obtient une URL — un state ne se fabrique jamais pour un anonyme.
 // Le client_secret ne sort pas d'ici : il ne sert qu'à signer.
 // ═══════════════════════════════════════════════════════════════════════════
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lireEnvEbay, lireIdentifiants, signerState, urlConsentement, SCOPES_DEMANDES } from "../_shared/ebay-oauth.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];

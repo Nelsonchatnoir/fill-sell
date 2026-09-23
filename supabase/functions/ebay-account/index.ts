@@ -52,7 +52,7 @@
 //                            la fin de l'onboarding global → pas affiché.
 //   Le plafond de vente (sellingLimit) est relevé et stocké, informatif.
 // ═══════════════════════════════════════════════════════════════════════════
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import {
   appelEbay,
   etatPublic,

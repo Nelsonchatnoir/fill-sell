@@ -14,7 +14,7 @@
 // deux tentatives sur échec transitoire. Best-effort : une photo qui ne se
 // rapatrie pas garde son URL d'origine (eBay dira si elle est morte).
 // ═══════════════════════════════════════════════════════════════════════════
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 
 export const PHOTO_BUCKET = "listing-photos";
 const PHOTO_MAX_OCTETS = 10 * 1024 * 1024;

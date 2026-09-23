@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 
 // ── republish-capture-photos (É1 republication, 2026-08-05) ──────────────────
 // Re-héberge les photos CDN d'une annonce Vinted EN LIGNE dans notre bucket

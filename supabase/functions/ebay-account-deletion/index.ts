@@ -40,7 +40,7 @@
 //
 // verify_jwt = FALSE (config.toml) : c'est eBay qui appelle, sans JWT Supabase.
 // ═══════════════════════════════════════════════════════════════════════════
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lireEnvEbay, lireIdentifiants } from "../_shared/ebay-oauth.ts";
 import { verifierSignatureNotification } from "../_shared/ebay-notification.ts";
 
