@@ -1576,7 +1576,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false,
+export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false, userId = null,
   // Plateformes visibles mais pas encore ouvertes pour CE compte (lot 7 Opla).
   // Defaut [] : un compte sans drapeau voit exactement les quatre d avant.
   plateformesAVenir = [],
@@ -2207,6 +2207,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
         <OplaAutorisationModal
           lang={lang}
           contexte="publication"
+          userId={userId}
           onContinuer={() => { setOplaModale(false); basculerPlateforme("opla"); }}
           onClose={() => setOplaModale(false)}
         />
@@ -3329,6 +3330,26 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           publier n'est pas plus difficile qu'avant. Deux exemplaires du même
           objet, c'est banal ; c'est elle qui sait. Le critère de
           rapprochement et ses limites vivent dans utils/jumeauxEnLigne.js. */}
+      {/* ── OPLA : L'AUTORISATION SE DEMANDE AVANT DE PUBLIER (2026-09-23) ──
+          Opla est cochée et l'extension dit que l'accès n'est PAS accordé
+          (oplaAcces === false, jamais sur « on ne sait pas ») : on le dit
+          ICI, avec LE bouton, avant le clic. La publication reste possible —
+          l'annonce Opla attend l'autorisation et repart seule à l'octroi
+          (rearmerJobsOplaEnAttente), les autres plateformes partent tout de
+          suite. Même message et même bouton que la carte et les Réglages. */}
+      {oplaAcces === false && selected.has("opla") && (
+        <div style={{ padding:"11px 14px", background:"#F0FDFB", border:"1px solid rgba(47,158,144,0.28)", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:T.ink }}>
+          <div style={{ fontWeight:700, marginBottom:6 }}>
+            {lang === "en" ? "Opla is waiting for your permission" : "Opla attend ton autorisation"}
+          </div>
+          <div style={{ marginBottom:8, color:T.mute }}>
+            {lang === "en"
+              ? "You can publish now: the Opla listing waits for the permission, then goes out on its own. The other platforms go out right away."
+              : "Tu peux publier maintenant : l'annonce Opla attendra l'autorisation, puis partira toute seule. Les autres plateformes partent tout de suite."}
+          </div>
+          <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />
+        </div>
+      )}
       {jumeauxEnLigne.length > 0 && (
         <div style={{ padding:"11px 14px", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8A6100" }}>
           <div style={{ fontWeight:700, marginBottom:4 }}>
@@ -9226,6 +9247,7 @@ export default function ListingPreviewScreen({
             l'écran d'avant, même liste, même ordre, même rangée. */}
         {step === 1 && (
           <StepPhotos
+            userId={userId}
             photos={photos}
             onAddPhotos={handleAddMorePhotos}
             onRemovePhoto={handleRemovePhoto}
@@ -9368,6 +9390,7 @@ export default function ListingPreviewScreen({
             ebayVoieApiReelle={ebayVoieApiReelle}
             descriptionVideVinted={descriptionVideVinted}
             onOuvrirCopie={ouvrirCopie}
+            oplaAcces={oplaAcces}
           />
         )}
       </div>

@@ -10,6 +10,8 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // n'étaient jamais rapatriées, 19/09).
 import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
 import { rearmerJobsEbayConnexionSiUtilisable, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
+// Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
+import { autorisationOplaRequise } from "../_shared/textes-jobs.ts";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -986,22 +988,25 @@ serve(async (req) => {
   // statut, aucun onglet ouvert, rien à nourrir côté anti-bot.
   const OPLA_ACCES_REPRISES_MAX = 6;          // ~3 h de tentatives, puis on arrête
   const OPLA_ACCES_DELAI_MS = 30 * 60_000;    // une reprise par demi-heure au plus
-  // Le message que la personne LIT dans l'app. L'extension écrit « ouvre le
-  // menu FillSell et appuie sur Autoriser Opla » : envoyer quelqu'un cliquer
-  // dans un menu Chrome qu'il ignore, pour un retrait qu'il n'a pas demandé
-  // deux fois, c'est notre défaut, pas le sien (décision Nico, 19/09). On dit
-  // ce que NOUS faisons, et ce qui reste vrai de l'annonce.
-  // Le message que l'EXTENSION écrit (background.js, OPLA_MSG_ACCES). On le
-  // reconnaît par son début pour ne réécrire QUE lui — jamais un message
-  // qu'on aurait déjà posé, jamais celui d'une autre cause.
-  const PREFIXE_OPLA_ACCES_EXTENSION = "Opla attend ton autorisation";
-  const OPLA_ACCES_MSG_RETRAIT =
-    "Le retrait sur Opla n'a pas pu se faire : l'accès à opla.co a été refusé à l'extension. " +
-    "On réessaie tout seuls. ⚠️ En attendant, l'annonce est peut-être encore en ligne sur Opla " +
-    "alors qu'elle a été retirée ailleurs — vérifie-la si l'article est vendu.";
-  const OPLA_ACCES_MSG_DEPOT =
-    "La publication sur Opla attend : l'accès à opla.co a été refusé à l'extension. " +
-    "On réessaie tout seuls, il n'y a rien à faire de ton côté. Les autres plateformes ne sont pas concernées.";
+  // ── UN SEUL MESSAGE (2026-09-23) ──────────────────────────────────────────
+  // Avant, ce bloc RÉÉCRIVAIT le message de l'extension en « l'accès à opla.co
+  // a été refusé… On réessaie tout seuls, il n'y a rien à faire de ton côté »
+  // — faux : la permission d'hôte ne s'accorde pas toute seule, et Louis a lu
+  // ce texte sur douze cartes. Désormais le message est CELUI de
+  // _shared/textes-jobs (autorisationOplaRequise), le même que l'extension,
+  // le popup et l'app : on ne réécrit que ce qui s'en écarte (anciens jobs).
+  // Et la reprise ne re-pend un job que si la permission est PROUVÉE accordée
+  // par la sonde (extension_sessions) — l'extension l'a normalement déjà
+  // relancé à l'octroi ; ici, le filet quand elle ne l'a pas fait. Re-pendre
+  // un job à l'aveugle, c'était le faire clignoter pending ↔ needs_user
+  // toutes les demi-heures sans que rien ne puisse aboutir.
+  const oplaAutoriseeDepuisSessions = (s: Record<string, unknown> | null | undefined): boolean => {
+    if (!s || typeof s !== "object") return false;
+    if (s["opla_acces"] === true) return true;
+    if (s["opla"] === true || s["opla"] === false) return true;
+    const http = (s["http"] as Record<string, unknown> | undefined)?.["opla"];
+    return http != null && http !== "" && Number.isFinite(Number(http));
+  };
 
   const PREFIXE_GARDE_LIVRES =
     "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : blocage connu sur la catégorie Livres";
@@ -1165,29 +1170,28 @@ serve(async (req) => {
     const rows = (parques ?? []) as any[];
     if (rows.length) {
       const vus = new Map<string, number>();
+      const accesProuve = new Map<string, boolean>();
       const ids = [...new Set(rows.map((j) => String(j.user_id)))];
       for (let i = 0; i < ids.length; i += 200) {
         const { data: profs } = await supabase
-          .from("profiles").select("id, extension_last_seen_at").in("id", ids.slice(i, i + 200));
+          .from("profiles").select("id, extension_last_seen_at, extension_sessions").in("id", ids.slice(i, i + 200));
         // deno-lint-ignore no-explicit-any
-        for (const p of (profs ?? []) as any[]) vus.set(String(p.id), Date.parse(p.extension_last_seen_at ?? ""));
+        for (const p of (profs ?? []) as any[]) {
+          vus.set(String(p.id), Date.parse(p.extension_last_seen_at ?? ""));
+          accesProuve.set(String(p.id), oplaAutoriseeDepuisSessions(p.extension_sessions));
+        }
       }
       const maintenant = Date.now();
       for (const j of rows) {
         const pf = { ...(j.platform_fields ?? {}) };
         const reprises = Number(pf.opla_acces_reprises) || 0;
-        // Le message, réécrit CHAQUE FOIS que celui de l'extension revient —
-        // et il revient : à chaque re-parking, marquerAttenteAccesOpla réécrit
-        // `error` avec sa formulation « ouvre le menu FillSell ». VÉRIFIÉ EN
-        // PROD le 19/09 à 10:06 : un drapeau posé une seule fois se faisait
-        // écraser au premier re-parking et la personne relisait le message
-        // Chrome. Le test porte donc sur le TEXTE, jamais sur un drapeau : il
-        // est idempotent (on ne réécrit que ce qui vient de l'extension) et il
-        // se tait de lui-même dès que les reprises cessent.
-        // On stampe AUSSI needs_user_vu_erreur pour que la réécriture ne passe
-        // pas pour un « nouvel épisode » au balayage des 72 h.
-        if (String(j.error ?? "").startsWith(PREFIXE_OPLA_ACCES_EXTENSION)) {
-          const msg = j.action === "delete" ? OPLA_ACCES_MSG_RETRAIT : OPLA_ACCES_MSG_DEPOT;
+        // Le message UNIQUE : tout job parqué « opla_acces » qui porte un autre
+        // texte (ancienne extension, ancien handler-watch) le reçoit. Idempotent
+        // — on ne réécrit que ce qui diffère. needs_user_vu_erreur suit, pour
+        // que la réécriture ne passe pas pour un « nouvel épisode » au balayage
+        // des 72 h.
+        const msg = autorisationOplaRequise(String(j.action ?? "publish"));
+        if (String(j.error ?? "") !== msg) {
           pf.needs_user_vu_erreur = msg.slice(0, 200);
           const { error: mErr } = await supabase
             .from("cross_post_jobs")
@@ -1201,11 +1205,13 @@ serve(async (req) => {
           pf.opla_acces_reprise_le ?? pf.opla_acces_attendu_le ?? j.created_at ?? "",
         );
         if (!Number.isFinite(depuis) || maintenant - depuis < OPLA_ACCES_DELAI_MS) continue;
-        // Une reprise n'a de sens que si une extension tourne : sans elle, le
-        // job repasserait en `pending` pour attendre au même endroit, en
-        // consommant une des six tentatives pour rien.
+        // Une reprise n'a de sens que si une extension tourne ET que la
+        // permission est prouvée accordée (sonde) : sinon le job repasserait
+        // en `pending` pour attendre au même endroit, en consommant une des
+        // six tentatives pour rien.
         const vu = vus.get(String(j.user_id));
         if (!Number.isFinite(vu as number) || (vu as number) < depuis) continue;
+        if (accesProuve.get(String(j.user_id)) !== true) continue;
         pf.opla_acces_reprises = reprises + 1;
         pf.opla_acces_reprise_le = new Date(maintenant).toISOString();
         delete pf.next_action_after;
@@ -1258,6 +1264,11 @@ serve(async (req) => {
     vinted: /^Connexion Vinted requise|page de connexion à la place du formulaire|session Vinted refusée/i,
     leboncoin: /^Connexion Leboncoin requise|^Adresse requise pour Leboncoin/i,
     beebs: /^Connexion Beebs requise/i,
+    // Opla, session FERMÉE vue par la page (content-scripts/opla.js, 401 dans
+    // l'onglet ; pas-de-rouge la reprend mot pour mot) : même reprise que les
+    // autres, dès que la sonde revoit Opla vivant. La PERMISSION, elle, reste
+    // sur son marqueur (murOplaLeve, ci-dessous) — deux murs, deux gestes.
+    opla: /^Connexion Opla requise/i,
   };
   // ── OPLA : LA MÊME REPRISE, SUR UN MARQUEUR ET NON SUR UN TEXTE (22/09) ──
   // Le mur d'Opla n'est pas une connexion mais la permission d'hôte de

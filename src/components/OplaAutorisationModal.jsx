@@ -24,16 +24,18 @@
 import { createPortal } from 'react-dom';
 import { UI } from './ui';
 import PlatformLogo from './platform-logos/PlatformLogo';
+import BoutonMeConnecter, { MESSAGE_AUTORISATION_OPLA } from './BoutonMeConnecter';
+import { MOTIFS } from '../utils/connexionPlateformes';
 
 // Trois points de contact, trois phrases de contexte — le geste, lui, est le
-// même partout : c'est le seul qui existe.
+// même partout : c'est le seul qui existe, et c'est UN BOUTON (2026-09-23),
+// jamais une description d'icône ou de menu.
 const T = {
   fr: {
     titre: 'Opla a besoin de ton autorisation',
-    // UNE phrase pour le geste. « en haut à droite de Chrome » : sans ça, on
-    // cherche l'icône, et c'est exactement le reproche fait à l'ancien écran.
-    geste: 'Ouvre l’extension FillSell — son icône, en haut à droite de Chrome — puis clique sur « Autoriser Opla ».',
-    pourquoi: 'Opla demande une autorisation d’accès à son site, une seule fois, et Chrome exige qu’elle soit accordée depuis l’extension.',
+    // Le MÊME message que partout ailleurs (serveur, extension, cartes).
+    geste: MESSAGE_AUTORISATION_OPLA,
+    pourquoi: 'Opla demande une autorisation d’accès à son site, une seule fois.',
     publication: 'Ton annonce part quand même : elle attend l’autorisation, puis se dépose toute seule.',
     republication: 'Ta republication part quand même : elle attend l’autorisation, puis repart toute seule.',
     releve: 'Le relevé Opla a besoin de cette autorisation pour lire tes annonces.',
@@ -44,8 +46,8 @@ const T = {
   },
   en: {
     titre: 'Opla needs your permission',
-    geste: 'Open the FillSell extension — its icon, top right in Chrome — then click “Autoriser Opla”.',
-    pourquoi: 'Opla asks for access to its site, once, and Chrome requires that permission to be granted from the extension.',
+    geste: 'Opla is waiting for your permission so FillSell can list there. Tap “Autoriser Opla”: once is enough, and the listing goes out on its own.',
+    pourquoi: 'Opla asks for access to its site, once.',
     publication: 'Your listing still goes out: it waits for the permission, then posts on its own.',
     republication: 'Your repost still goes out: it waits for the permission, then runs on its own.',
     releve: 'The Opla scan needs this permission to read your listings.',
@@ -62,7 +64,7 @@ const T = {
  *        n'est jamais perdue). Absente → la modale ne propose que « J'ai
  *        compris » : c'est le cas du relevé, qui ne peut rien faire sans accès.
  */
-export default function OplaAutorisationModal({ lang = 'fr', contexte = 'publication', onContinuer = null, onClose }) {
+export default function OplaAutorisationModal({ lang = 'fr', contexte = 'publication', onContinuer = null, onClose, userId = null }) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
   const suite = contexte === 'releve' ? t.releve : contexte === 'republication' ? t.republication : t.publication;
 
@@ -93,12 +95,17 @@ export default function OplaAutorisationModal({ lang = 'fr', contexte = 'publica
 
         <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: '#5C6560' }}>{t.pourquoi}</p>
 
-        {/* LE GESTE — mis en avant, parce que c'est la seule chose à faire. */}
+        {/* LE GESTE — mis en avant, parce que c'est la seule chose à faire :
+            le bouton lui-même (web : l'extension ouvre sa page ; mobile :
+            l'ordinateur l'ouvre). Sans compte connu, la phrase seule. */}
         <div style={{
           background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.28)', borderRadius: 14,
-          padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 6,
+          padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 10,
         }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: UI.ink, lineHeight: 1.5 }}>{t.geste}</span>
+          {userId && (
+            <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />
+          )}
           {contexte === 'releve' && (
             <span style={{ fontSize: 12.5, color: '#5C6560', lineHeight: 1.45 }}>{t.releveAppoint}</span>
           )}

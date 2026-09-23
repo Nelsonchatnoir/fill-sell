@@ -499,9 +499,17 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 /* Pastille de STATUT — l'info n°1, lisible sans lire : chip blanc (contraste
    garanti sur n'importe quelle photo) + point de couleur. Le point PULSE quand
    un travail est en cours. */
-.stock-v2 .gstatus{position:absolute;top:8px;left:8px;max-width:calc(100% - 34px);display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,0.93);font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 5px rgba(16,32,27,0.22);z-index:2;}
+.stock-v2 .gstatus{position:absolute;top:8px;left:8px;max-width:calc(100% - 34px);display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;background:#FFFFFF;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 5px rgba(16,32,27,0.22);z-index:2;}
 .stock-v2 .gstatus .gdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-.stock-v2 .gstatus.is-queued{height:18px;padding:0 7px;font-size:9.5px;font-weight:600;letter-spacing:.01em;background:rgba(255,255,255,0.78);box-shadow:0 1px 3px rgba(16,32,27,0.10);}
+.stock-v2 .gstatus.is-queued{height:18px;padding:0 7px;font-size:9.5px;font-weight:600;letter-spacing:.01em;background:#FFFFFF;box-shadow:0 1px 3px rgba(16,32,27,0.10);}
+/* Le mur nommé (Autoriser Opla, Me connecter) : SOUS la photo, fond opaque,
+   texte contrasté — la même lisibilité quel que soit le thème du système
+   (2026-09-23, capture de Louis : le texte gris posé sur la photo était
+   illisible). */
+.stock-v2 .gmur{background:#FFF8E8;border:1px solid #EBD9A8;border-radius:12px;padding:9px 10px;color:#10201B;}
+.stock-v2 .gmur span{color:#3D4744 !important;min-width:0 !important;}
+.stock-v2 .gmur>div>div{gap:8px !important;}
+.stock-v2 .gmur button,.stock-v2 .gmur a{width:100%;justify-content:center;box-sizing:border-box;min-height:40px !important;padding:0 10px !important;font-size:13px !important;white-space:normal;text-align:center;line-height:1.2;}
 .stock-v2 .gstatus.is-queued .gdot{width:5px;height:5px;}
 .stock-v2 .gstatus .gdot.pulsing{animation:fs-pulse 1.4s ease-in-out infinite;}
 @media (prefers-reduced-motion:reduce){.stock-v2 .gstatus .gdot.pulsing{animation:none;}}
@@ -524,7 +532,7 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
    au lieu de coller au bord droit (capture Nico 23:57 : Beebs à ras). */
 .stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap-reverse;align-items:center;gap:4px;padding:18px 7px 6px;box-sizing:border-box;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
 .stock-v2 .glogos .plogo{background:rgba(255,255,255,0.93);border-radius:8px;padding:2px;box-shadow:0 1px 4px rgba(16,32,27,0.25);display:inline-flex;align-items:center;justify-content:center;line-height:0;}
-.stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
+.stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:#FFFFFF;color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
 .stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
 /* ── RANGÉES CONDITIONNELLES (3e passe du 27/08) : une rangée absente ne
    réserve AUCUNE place — les zones toujours-rendues de la 2e passe
@@ -4670,7 +4678,7 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise =
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, userId = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -4893,6 +4901,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
       {oplaModale && (
         <OplaAutorisationModal
           lang={lang}
+          userId={userId}
           contexte="republication"
           onContinuer={() => { setOplaModale(false); basculerVraiment('opla'); }}
           onClose={() => setOplaModale(false)}
@@ -9620,6 +9629,17 @@ const StockTab = memo(function StockTab({
                   // sortent de needsUserJobs pour ne compter dans aucun « actionable ».
                   const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours");
                   const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours");
+                  // ── LE MUR NOMMÉ DE LA CARTE (2026-09-23) ─────────────────
+                  // Même règle que la pastille (voir l'IIFE de la photo) : quand
+                  // rien de plus urgent ne parle (republication, file, échec) et
+                  // que TOUT ce qui attend est un mur de connexion/autorisation
+                  // nommé par le serveur, la carte porte LE bouton — sous la
+                  // photo, dans .gmur, jamais dessus.
+                  const murDirect=(()=>{
+                    if(repubOccupeSlot||hasPausedPending||hasPending||failedJobs.length||!needsUserJobs.length||!user?.id)return null;
+                    const murs=needsUserJobs.map(x=>murDeConnexion(x));
+                    return murs.every(Boolean)?{platform:needsUserJobs[0].platform,motif:murs[0]}:null;
+                  })();
                   // « Publiée — à vérifier » (2026-08-08) : le job a ABOUTI
                   // mais avec un repli dégradant signalé par l'extension
                   // (platform_fields.warnings, ex. brand_fallback_no_brand :
@@ -9773,7 +9793,7 @@ const StockTab = memo(function StockTab({
                     // swipe-supprimer de l'ancienne liste devient le « ✕ » du
                     // coin photo — même chemin delItem (plan + confirmation),
                     // jamais une suppression sèche.
-                    <div key={item.id} className="gcard" role="button" tabIndex={0} onClick={openEdit}
+                    <div key={item.id} className="gcard" role="button" tabIndex={0} onClick={openEdit} data-mur={murDirect?murDirect.motif:undefined}
                       onKeyDown={e=>{if(e.key==='Enter'){openEdit();}}}>
                       <div className="gphoto">
                         <GalleryPhoto url={photoUrl} alt={item.title}
@@ -9926,14 +9946,12 @@ const StockTab = memo(function StockTab({
                           }else if(enLigne){
                             dot="#2F9E90";fg="#1B6E62";txt=fr?'En ligne':'Live';
                           }
-                          if(boutonDirect){
-                            return(
-                              <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
-                                style={{position:"absolute",left:8,right:8,bottom:8,zIndex:2}}>
-                                <BoutonMeConnecter userId={user.id} platform={boutonDirect.platform} motif={boutonDirect.motif} lang={lang} variante="bouton"/>
-                              </div>
-                            );
-                          }
+                          // Le bouton du geste n'est PLUS posé sur la photo
+                          // (2026-09-23, capture de Louis : texte gris illisible
+                          // par-dessus l'image) — il vit SOUS la photo, dans la
+                          // bande .gmur du corps de carte (fond opaque). Ici,
+                          // la pastille courte reste : « ✋ Action Opla ».
+                          void boutonDirect;
                           if(!txt)return null;
                           return(
                             <div className={`gstatus${discrete?' is-queued':''}`} style={{color:fg,cursor:onTap?"pointer":"default"}} title={titre}
@@ -10109,6 +10127,16 @@ const StockTab = memo(function StockTab({
                         {(item.quantite||1)>1&&<div className="gqty">×{item.quantite}</div>}
                       </div>
                       <div className="gbody">
+                        {/* ── LE GESTE, SOUS LA PHOTO, SUR FOND OPAQUE (2026-09-23) ──
+                            Quand TOUT ce qui attend sur l'article est un mur
+                            nommé (Autoriser Opla, Me connecter, Relier eBay) :
+                            la phrase et LE bouton, lisibles en clair comme en
+                            sombre — jamais un texte posé sur l'image. */}
+                        {murDirect&&(
+                          <div className="gmur" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
+                            <BoutonMeConnecter userId={user.id} platform={murDirect.platform} motif={murDirect.motif} lang={lang} variante="ligne"/>
+                          </div>
+                        )}
                         {/* 3. PRIX DE VENTE en évidence (ajout 2026-08-27) —
                             le chiffre que le revendeur cherche en premier :
                             prix de l'annonce Vinted EN LIGNE si relevé, sinon
@@ -11038,6 +11066,7 @@ const StockTab = memo(function StockTab({
       {repubSheet&&(
         <RepublishSheet
           lang={lang}
+          userId={user?.id ?? null}
           items={repubSheet.items}
           prixUnitaire={republishPrice}
           boutiquesVinted={boutiquesVinted}

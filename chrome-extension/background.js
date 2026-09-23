@@ -1030,6 +1030,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Le popup a fait chrome.permissions.request dans SON clic — le geste
   // utilisateur ne se transfère pas au service worker. Ici, la suite :
   // scripts enregistrés, jobs en attente d'accès relancés, session sondée.
+  // ── « AUTORISER OPLA » DEPUIS LA PAGE fillsell.app (2026-09-23) ──────────
+  // Le bouton de l'app (web) ne peut pas demander la permission lui-même :
+  // chrome.permissions.request n'obéit qu'à un geste DANS une page
+  // d'extension. Il demande donc à l'extension d'ouvrir cette page (le
+  // popup, en fenêtre ou en onglet), où le bouton « Autoriser Opla » attend.
+  // Relayé par fillsell-auth.js (liste fermée de commandes), jamais reçu
+  // d'ailleurs. Réponse : ouverte oui/non, et si l'accès est déjà là.
+  if (msg?.type === "AUTORISER_OPLA") {
+    (async () => {
+      if (await oplaAccesAccorde()) return sendResponse({ ok: true, dejaAccordee: true, ouverte: false });
+      const ouverte = await ouvrirPopupPourOpla();
+      sendResponse({ ok: ouverte, dejaAccordee: false, ouverte });
+    })();
+    return true;
+  }
   if (msg?.type === "OPLA_ACCES_ACCORDE") {
     (async () => {
       if (!(await oplaAccesAccorde())) return sendResponse({ ok: false, motif: "acces_non_accorde" });
@@ -2878,7 +2893,7 @@ async function processJob(rawJob, accessToken) {
   if (job.platform === "opla") {
     if (!(await oplaAccesAccorde())) {
       await marquerAttenteAccesOpla(accessToken, job);
-      return { status: "needsUser", error: OPLA_MSG_ACCES };
+      return { status: "needsUser", error: messageAutorisationOpla(job.action) };
     }
     // Les content scripts Opla sont ENREGISTRÉS dynamiquement (pas dans le
     // manifest : un `matches` statique compterait comme hôte obligatoire).
@@ -9479,9 +9494,22 @@ const OPLA_SCRIPTS_ID = "fillsell-opla";
 // ⚠️ L ORDRE COMPTE : tailles-vocabulaire.js publie sur globalThis et
 // opla-prevol.js l appelle. Il passe donc AVANT lui (2026-09-20, passe 4).
 const OPLA_SCRIPTS = ["content-scripts/consentement.js", "content-scripts/tailles-vocabulaire.js", "content-scripts/opla-prevol.js", "content-scripts/opla.js"];
-const OPLA_MSG_ACCES =
-  "Opla attend ton autorisation : dans Chrome, ouvre le menu FillSell (icône de l'extension) " +
-  "et appuie sur « Autoriser Opla ». L'annonce repartira toute seule.";
+// ── UN SEUL MESSAGE, PARTOUT (2026-09-23) ────────────────────────────────────
+// Copie À L'OCTET de `autorisationOplaRequise` (supabase/functions/_shared/
+// textes-jobs.ts) — le service worker n'importe aucun module partagé. Vérifiée
+// par scripts/opla-message-unique-selftest.mjs. Ni icône, ni menu, ni Chrome :
+// le bouton « Autoriser Opla » est le geste, l'app et le popup le portent.
+// ⟦opla-autorisation:début⟧
+function messageAutorisationOpla(action) {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Opla attend ton autorisation pour que FillSell y dépose tes annonces. " +
+    `Appuie sur « Autoriser Opla » : c'est une seule fois, et ${quoi}.`
+  );
+}
+// ⟦opla-autorisation:fin⟧
 
 async function oplaAccesAccorde() {
   try { return await chrome.permissions.contains({ origins: [OPLA_ORIGINE] }); }
@@ -9517,7 +9545,7 @@ async function marquerAttenteAccesOpla(accessToken, job) {
   pf.needs_user_source = "opla_acces";
   pf.opla_acces_attendu_le = new Date().toISOString();
   console.log(`[background] Job ${job.id} → opla : accès opla.co non accordé — needs_user nommé`);
-  await updateJobStatus(accessToken, job.id, "needs_user", { error: OPLA_MSG_ACCES, platform_fields: pf });
+  await updateJobStatus(accessToken, job.id, "needs_user", { error: messageAutorisationOpla(job.action), platform_fields: pf });
 }
 
 // À l'octroi : les jobs mis en attente par la porte ci-dessus repartent seuls.
@@ -9659,8 +9687,18 @@ async function ouvrirPagesDeConnexion(accessToken, commandes) {
 }
 
 // Démarrage du service worker : si l'accès est déjà là (octroi antérieur, ou
-// accordé depuis chrome://extensions), les scripts doivent l'être aussi.
-oplaAccesAccorde().then((ok) => (ok ? assurerScriptsOpla() : undefined)).catch(() => {});
+// accordé depuis chrome://extensions), les scripts doivent l'être aussi — et
+// les jobs parqués « opla_acces » repartent (2026-09-23 : un octroi fait
+// pendant que le worker dormait ne relançait rien ; handler-watch ne re-pend
+// plus à l'aveugle, c'est donc ICI que la reprise doit être sûre).
+oplaAccesAccorde().then(async (ok) => {
+  if (!ok) return;
+  await assurerScriptsOpla();
+  try {
+    const session = await getValidSession();
+    if (session?.access_token) await rearmerJobsOplaEnAttente(session.access_token);
+  } catch (e) { console.warn("[background] opla : reprise au démarrage —", String(e?.message ?? e)); }
+}).catch(() => {});
 if (chrome.permissions?.onAdded) {
   chrome.permissions.onAdded.addListener((p) => {
     if ((p?.origins ?? []).includes(OPLA_ORIGINE)) assurerScriptsOpla().catch(() => {});

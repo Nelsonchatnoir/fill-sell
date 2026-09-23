@@ -125,6 +125,50 @@ export const SOURCE_EBAY_COMPTE_VENDEUR_INACTIF = "ebay_compte_vendeur_inactif";
 
 
 // ═══════════════════════════════════════════════════════════════════════════
+// OPLA : UN SEUL MESSAGE, UN SEUL BOUTON (2026-09-23)
+// ═══════════════════════════════════════════════════════════════════════════
+// Capture de Louis (23/09 20:20) : sur ses cartes, en gris clair PAR-DESSUS la
+// photo, « Opla s'autorise depuis FillSell dans Chrome : clique sur l'icône
+// FillSell… ». En base, QUATRE textes pour la même cause : celui de
+// l'extension (« ouvre le menu FillSell »), celui que handler-watch réécrivait
+// toutes les demi-heures (« l'accès a été refusé… rien à faire de ton côté »
+// — faux : sans le geste, rien ne repart), celui de pas-de-rouge, et celui de
+// la sonde 401. Six comptes les lisaient (Louis ×12, geronimo, laforge,
+// meminiandmove, pecqueux.sabine, thomas.vinted).
+//
+// DÉSORMAIS : CE texte, partout — serveur (pas-de-rouge, handler-watch),
+// extension (background.js, popup.js) et app (BoutonMeConnecter). Les copies
+// hors serveur sont vérifiées à l'octet par scripts/opla-message-unique-
+// selftest.mjs. Le bouton « Autoriser Opla » est le seul geste, et c'est lui
+// qui l'accomplit (ou l'ouvre sur l'ordinateur) — le message ne décrit ni
+// icône, ni menu, ni navigateur.
+// ⛔ « rien à faire de ton côté » est INTERDIT ici : la permission d'hôte ne
+//    s'accorde pas toute seule.
+export function autorisationOplaRequise(action: string): string {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Opla attend ton autorisation pour que FillSell y dépose tes annonces. " +
+    `Appuie sur « Autoriser Opla » : c'est une seule fois, et ${quoi}.`
+  );
+}
+export const SOURCE_OPLA_ACCES = "opla_acces";
+
+/** La session Opla est fermée (401/403) ALORS QUE l'autorisation est là :
+ *  ce n'est pas le même geste. On le dit avec le bouton « Me connecter ». */
+export function connexionOplaRequise(action: string): string {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Connexion Opla requise : ta session Opla est fermée sur ton ordinateur. " +
+    `Appuie sur « Me connecter » et connecte-toi à Opla — dès que c'est fait, ${quoi}.`
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // eBay : SANS CONNEXION API + MUR REAUTH → « CONNECTE TON COMPTE eBAY » (2026-09-23)
 // ═══════════════════════════════════════════════════════════════════════════
 // Marie-Morgane (Mmojul56), inscrite le 23/09, première publication eBay : le

@@ -191,6 +191,33 @@ export async function demanderConnexion({ userId, platform, motif = MOTIFS.CONNE
   }
 }
 
+// ══ « AUTORISER OPLA » SUR LE WEB — LA PAGE DEMANDE, L'EXTENSION OUVRE ═════
+// (2026-09-23) Une page web ne peut pas accorder une permission d'hôte
+// Chrome : `chrome.permissions.request` n'obéit qu'à un geste DANS une page
+// d'extension. Mais la page peut DEMANDER à l'extension d'ouvrir cette page-là
+// (son popup, en fenêtre ou en onglet) — par le pont fillsell-auth.js, liste
+// fermée de commandes, jamais rien d'autre. La personne y appuie sur
+// « Autoriser Opla » : un geste, pas une explication de navigateur.
+// Rend { ok, ouverte, dejaAccordee } ou { ok:false, motif:'extension_absente' }
+// si l'extension ne répond pas dans le délai — c'est l'app qui dit alors quoi
+// faire (installer l'extension), sans décrire d'icône.
+export const AUTORISATION_OPLA_ATTENTE_MS = 4000;
+export function demanderAutorisationOplaSurLeWeb() {
+  return new Promise((resolve) => {
+    let fini = false;
+    const finir = (r) => { if (fini) return; fini = true; window.removeEventListener('message', onMessage); clearTimeout(minuteur); resolve(r); };
+    const onMessage = (e) => {
+      if (e.source !== window || !e.data?.__fillsellOplaOuverture) return;
+      const rep = e.data.__fillsellOplaOuverture;
+      finir({ ok: rep?.ok === true, ouverte: rep?.ouverte === true, dejaAccordee: rep?.dejaAccordee === true, motif: rep?.ok ? null : 'refusee' });
+    };
+    const minuteur = setTimeout(() => finir({ ok: false, ouverte: false, dejaAccordee: false, motif: 'extension_absente' }), AUTORISATION_OPLA_ATTENTE_MS);
+    window.addEventListener('message', onMessage);
+    try { window.postMessage({ __fillsellCmd: 'AUTORISER_OPLA' }, window.location.origin); }
+    catch { finir({ ok: false, ouverte: false, dejaAccordee: false, motif: 'extension_absente' }); }
+  });
+}
+
 /** Marque périmées les demandes de connexion trop vieilles de ce compte. */
 export async function purgerMesDemandes(userId) {
   if (!userId) return;

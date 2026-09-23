@@ -63,12 +63,24 @@
   // l'exposer à toute personne capable d'exécuter du JS sur fillsell.app.
   const COMMANDES = new Set([
     "SYNC_DRESSING", "FETCH_VINTED_ITEM", "CAPTURE_VINTED_ITEM", "PROBE_VINTED_LISTING",
+    // « Autoriser Opla » depuis la page (2026-09-23) : l'extension ouvre SA page
+    // (popup), où le geste que Chrome exige se fait. Aller-retour : la page
+    // apprend si la fenêtre s'est ouverte, ou si l'accès est déjà là.
+    "AUTORISER_OPLA",
   ]);
   window.addEventListener("message", (e) => {
     if (e.source !== window) return;
     const cmd = e.data?.__fillsellCmd;
     if (!cmd || !COMMANDES.has(cmd)) return;
     try {
+      if (cmd === "AUTORISER_OPLA") {
+        chrome.runtime.sendMessage({ type: cmd }, (rep) => {
+          void chrome.runtime.lastError;
+          window.postMessage({ __fillsellOplaOuverture: rep ?? { ok: false, error: "extension muette" } }, window.location.origin);
+        });
+        console.log("[fillsell-auth] commande relayée : AUTORISER_OPLA");
+        return;
+      }
       // PROBE_VINTED_LISTING (2026-08-10) : aller-retour aussi, mais son argument
       // est une URL, pas un id — d'où sa branche à part. Le background REVALIDE
       // l'URL (hôte vinted.fr + /items/<id>) : ce relais ne fait confiance à

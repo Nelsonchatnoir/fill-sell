@@ -18,8 +18,17 @@
 import { useState } from 'react';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { UI } from './ui';
-import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion } from '../utils/connexionPlateformes';
+import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion, demanderAutorisationOplaSurLeWeb } from '../utils/connexionPlateformes';
 import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
+
+// ⟦opla-autorisation-app:début⟧
+// Le MÊME message que le serveur (_shared/textes-jobs.ts, autorisationOplaRequise,
+// forme « publication ») et l'extension — vérifié par
+// scripts/opla-message-unique-selftest.mjs. Ni icône, ni menu, ni Chrome.
+export const MESSAGE_AUTORISATION_OPLA =
+  "Opla attend ton autorisation pour que FillSell y dépose tes annonces. " +
+  "Appuie sur « Autoriser Opla » : c'est une seule fois, et la publication repart toute seule.";
+// ⟦opla-autorisation-app:fin⟧
 
 const T = {
   fr: {
@@ -31,7 +40,7 @@ const T = {
     pasConnecte: (n) => `Tu n'es pas connecté à ${n} sur ton ordinateur.`,
     reauth: 'eBay te demande une reconnexion de sécurité pour vendre.',
     vendeur: "Ton compte eBay n'est pas encore prêt pour vendre.",
-    oplaAcces: "Opla attend ton autorisation pour que FillSell puisse y déposer.",
+    oplaAcces: MESSAGE_AUTORISATION_OPLA,
     enCours: 'On ouvre…',
     ouverte: (n) => `La page de connexion ${n} s'est ouverte sur ton ordinateur.`,
     ouvertePopup: 'La fenêtre FillSell s\'est ouverte sur ton ordinateur : appuie sur « Autoriser Opla ».',
@@ -39,7 +48,10 @@ const T = {
     muette: 'Ton ordinateur ne répond pas. Ouvre Chrome, puis réessaie.',
     tropVieille: 'Ton ordinateur met FillSell à jour. Réessaie dans un moment.',
     refusee: "On n'a pas pu envoyer la demande. Réessaie dans un instant.",
-    oplaSurWeb: "Opla s'autorise depuis FillSell dans Chrome : clique sur l'icône FillSell, puis sur « Autoriser Opla ».",
+    // Sur le web, quand l'extension ne répond pas : elle n'est pas là.
+    oplaExtensionAbsente: "L'extension FillSell n'est pas installée sur cet ordinateur : c'est elle qui publie sur Opla.",
+    oplaExtensionLien: "Installer l'extension",
+    oplaDejaAccordee: "C'est déjà autorisé : l'annonce repart toute seule.",
     reessayer: 'Réessayer',
     // eBay, les deux voies
     ebayTitre: 'Connecter eBay',
@@ -62,7 +74,7 @@ const T = {
     pasConnecte: (n) => `You're not signed in to ${n} on your computer.`,
     reauth: 'eBay is asking you to sign in again to sell.',
     vendeur: 'Your eBay account is not ready to sell yet.',
-    oplaAcces: 'Opla is waiting for your permission so FillSell can list there.',
+    oplaAcces: 'Opla is waiting for your permission so FillSell can list there. Tap “Autoriser Opla”: once is enough, and the listing goes out on its own.',
     enCours: 'Opening…',
     ouverte: (n) => `The ${n} sign-in page opened on your computer.`,
     ouvertePopup: 'The FillSell window opened on your computer: tap “Autoriser Opla”.',
@@ -70,7 +82,9 @@ const T = {
     muette: 'Your computer is not responding. Open Chrome, then try again.',
     tropVieille: 'Your computer is updating FillSell. Try again shortly.',
     refusee: "We couldn't send the request. Try again in a moment.",
-    oplaSurWeb: 'Opla is allowed from FillSell in Chrome: click the FillSell icon, then “Autoriser Opla”.',
+    oplaExtensionAbsente: 'The FillSell extension is not installed on this computer: it is what publishes on Opla.',
+    oplaExtensionLien: 'Install the extension',
+    oplaDejaAccordee: 'Already allowed: the listing goes out on its own.',
     reessayer: 'Try again',
     ebayTitre: 'Connect eBay',
     ebayIntro: 'Choose how your eBay listings go out.',
@@ -110,9 +124,14 @@ export default function BoutonMeConnecter({
   variante = 'ligne', onOuverte, style,
 }) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
-  const { etat, demander, reinitialiser } = useDemandeConnexion({ userId });
+  const { etat: etatDemande, demander, reinitialiser: reinitialiserDemande } = useDemandeConnexion({ userId });
   const [modaleEbay, setModaleEbay] = useState(false);
   const [busyApi, setBusyApi] = useState(false);
+  // Opla sur le WEB (2026-09-23) : le bouton demande à l'extension d'ouvrir sa
+  // page, où le geste se fait. États propres, hors de la file mobile.
+  const [etatOplaWeb, setEtatOplaWeb] = useState('repos'); // repos | demande | ouverte | deja | absente | refusee
+  const etat = etatOplaWeb !== 'repos' ? etatOplaWeb : etatDemande;
+  const reinitialiser = () => { setEtatOplaWeb('repos'); reinitialiserDemande(); };
 
   const nom = NOMS_PLATEFORME[platform] ?? platform;
   const enVol = etat === 'demande';
@@ -132,19 +151,29 @@ export default function BoutonMeConnecter({
   const ebayDeuxVoies = platform === 'ebay' && motif === MOTIFS.CONNEXION;
   const lien = web && !ebayDeuxVoies ? lienWeb(platform, motif) : null;
   // Opla sur le web : son mur est une PERMISSION D'HÔTE Chrome. Un lien ne peut
-  // pas l'accorder — seul un geste dans le popup de l'extension le peut. On dit
-  // donc où cliquer, on ne prétend pas le faire.
-  const oplaSurWeb = web && (platform === 'opla' || motif === MOTIFS.AUTORISER_OPLA);
+  // pas l'accorder — seul un geste dans une page de l'extension le peut. Le
+  // bouton demande donc à l'extension d'OUVRIR cette page (pont
+  // fillsell-auth.js) ; la personne y appuie sur « Autoriser Opla ».
+  const oplaSurWeb = web && motif === MOTIFS.AUTORISER_OPLA;
 
   const lancer = async (motifEffectif = motif) => {
     const r = await demander(platform, motifEffectif);
     if (r?.ok && onOuverte) onOuverte();
   };
 
+  const lancerOplaSurLeWeb = async () => {
+    setEtatOplaWeb('demande');
+    const r = await demanderAutorisationOplaSurLeWeb();
+    if (r.dejaAccordee) { setEtatOplaWeb('deja'); if (onOuverte) onOuverte(); return; }
+    if (r.ok && r.ouverte) { setEtatOplaWeb('ouverte'); if (onOuverte) onOuverte(); return; }
+    setEtatOplaWeb(r.motif === 'extension_absente' ? 'absente' : 'refusee');
+  };
+
   const auClic = () => {
     // eBay PAS CONNECTÉ → les deux voies, côte à côte. Une reconnexion de
     // sécurité, elle, passe TOUJOURS par le site : l'API n'y peut rien.
     if (platform === 'ebay' && motif === MOTIFS.CONNEXION) { setModaleEbay(true); return; }
+    if (oplaSurWeb) { lancerOplaSurLeWeb(); return; }
     lancer();
   };
 
@@ -167,6 +196,8 @@ export default function BoutonMeConnecter({
       ? (motif === MOTIFS.AUTORISER_OPLA ? t.ouvertePopup
         : motif === MOTIFS.VENDEUR_EBAY ? t.ouverteEbayVendeur
         : t.ouverte(nom))
+      : etat === 'deja' ? t.oplaDejaAccordee
+      : etat === 'absente' ? t.oplaExtensionAbsente
       : etat === 'muette' ? t.muette
       : etat === 'trop_vieille' ? t.tropVieille
       : etat === 'refusee' ? t.refusee
@@ -183,6 +214,13 @@ export default function BoutonMeConnecter({
   });
   const dedans = (texte) => (<><PlatformLogo platform={platform} size={20} /><span>{texte}</span></>);
 
+  // L'extension n'est pas là : le seul geste utile est de l'installer. Un lien
+  // vers la page d'installation, à côté du message — jamais une consigne
+  // d'icône ou de menu.
+  const lienExtension = etat === 'absente' ? (
+    <a href="/extension" className="rg-focus" style={habit(false)}>{dedans(t.oplaExtensionLien)}</a>
+  ) : null;
+
   const bouton = lien ? (
     // ⛔ `rel="noopener noreferrer"` : un onglet ouvert par nous ne doit pas
     //    pouvoir revenir sur notre fenêtre, et la plateforme n'a pas à savoir
@@ -197,21 +235,18 @@ export default function BoutonMeConnecter({
   ) : (
     <button
       type="button"
-      onClick={etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' ? () => { reinitialiser(); auClic(); } : auClic}
-      disabled={enVol || etat === 'ouverte'}
+      onClick={etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' || etat === 'absente' ? () => { reinitialiser(); auClic(); } : auClic}
+      disabled={enVol || etat === 'ouverte' || etat === 'deja'}
       className="rg-focus"
-      style={habit(enVol || etat === 'ouverte')}
+      style={habit(enVol || etat === 'ouverte' || etat === 'deja')}
     >
       {dedans(enVol ? t.enCours
-        : etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' ? t.reessayer
+        : etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' || etat === 'absente' ? t.reessayer
         : libelle(t, platform, motif))}
     </button>
   );
 
-  // Opla sur le web : pas de bouton qui mentirait, la consigne exacte.
-  const corps = oplaSurWeb
-    ? <Etat texte={t.oplaSurWeb} ton="info" />
-    : (<>{bouton}{messageEtat && <Etat texte={messageEtat} ton={etat} />}</>);
+  const corps = (<>{lienExtension ?? bouton}{messageEtat && <Etat texte={messageEtat} ton={etat} />}</>);
 
   return (
     <>
@@ -223,10 +258,9 @@ export default function BoutonMeConnecter({
             <span style={{ flex: 1, minWidth: 180, fontSize: 13.5, lineHeight: 1.5, color: UI.mute2 }}>
               {phraseMur(lang, platform, motif)}
             </span>
-            {!oplaSurWeb && bouton}
+            {lienExtension ?? bouton}
           </div>
-          {oplaSurWeb ? <Etat texte={t.oplaSurWeb} ton="info" />
-            : messageEtat && <Etat texte={messageEtat} ton={etat} />}
+          {messageEtat && <Etat texte={messageEtat} ton={etat} />}
         </div>
       )}
 
@@ -247,7 +281,7 @@ export default function BoutonMeConnecter({
 }
 
 function Etat({ texte, ton }) {
-  const alerte = ton === 'muette' || ton === 'refusee' || ton === 'trop_vieille';
+  const alerte = ton === 'muette' || ton === 'refusee' || ton === 'trop_vieille' || ton === 'absente';
   return (
     <div
       role="status"

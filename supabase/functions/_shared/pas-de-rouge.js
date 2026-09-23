@@ -42,6 +42,8 @@
  *  {Object} [champ]   champ à faire choisir, avec sa liste fermée
  */
 
+import { autorisationOplaRequise, connexionOplaRequise } from "./textes-jobs.ts";
+
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
 };
@@ -81,6 +83,11 @@ const CONNEXION_RE =
 
 /** Opla : ce n'est pas une connexion, c'est la permission d'hôte de l'extension. */
 const OPLA_ACCES_RE = /accès à opla\.co a été refusé|permission.*opla\.co|host permission.*opla/i;
+/** Opla, session FERMÉE vue par la PAGE : l'ancre écrite par content-scripts/opla.js
+ *  (OPLA_MSG_SESSION) quand l'API d'Opla répond 401 dans l'onglet. */
+const OPLA_CONNEXION_RE = /^Connexion Opla requise/i;
+/** Le code posé par noterSessionDeconnectee : une page de connexion RÉELLEMENT vue. */
+const HTTP_MUR_OBSERVE = "login_redirect_observee";
 
 /** Leboncoin Pro hors forfait : l'écran de dépôt n'offre que « Valider et payer ». */
 const LBC_PAYANT_RE = /ne propose aucune option gratuite|Boostez votre annonce.*Valider et payer|aucun chemin gratuit/i;
@@ -135,12 +142,27 @@ export function classerEchec(arg) {
   //    plateforme vérifiée) gardent la main : ils sont plus spécifiques.
   if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t)) {
     if (platform === "opla") {
+      // ── DEUX MURS, DEUX GESTES (2026-09-23) ─────────────────────────────
+      // ⛔ Un 401 de la SONDE (service worker) ne prouve PAS une session
+      //    fermée : le 23/09, chez Marine, la sonde rendait 401 pendant que le
+      //    relevé, dans l'onglet, lisait 57 annonces. Le 401 de sonde reste
+      //    donc « à autoriser » — la règle tranchée le 23/09 et servie par
+      //    plateformes_verite (sonde_401 → a_autoriser), même écran, même mot.
+      //    Ce qui prouve une session FERMÉE, c'est la PAGE : l'onglet a vu la
+      //    page de connexion (noterSessionDeconnectee pose http.opla =
+      //    "login_redirect_observee") ou l'API a répondu 401 dans l'onglet
+      //    (content-scripts/opla.js écrit « Connexion Opla requise »). Là, le
+      //    geste est « Me connecter », pas « Autoriser Opla ».
+      const httpOpla = String(sessions?.http?.opla ?? "");
+      if (httpOpla === HTTP_MUR_OBSERVE || OPLA_CONNEXION_RE.test(t)) {
+        return {
+          verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+          message: connexionOplaRequise(action),
+        };
+      }
       return {
         verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
-        message:
-          "Opla ne nous laisse plus déposer tes annonces : ton autorisation a expiré, ou elle n'a jamais été donnée. " +
-          "Clique sur « Autoriser Opla » ci-dessous, et connecte-toi sur opla.co si on te le demande — " +
-          `${acte(action)} repart toute seule ensuite. Rien n'a été publié.`,
+        message: autorisationOplaRequise(action),
       };
     }
     return {
@@ -160,9 +182,7 @@ export function classerEchec(arg) {
   if (platform === "opla" && (source === "opla_acces" || OPLA_ACCES_RE.test(t))) {
     return {
       verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
-      message:
-        "Opla a besoin de ton autorisation pour que FillSell puisse y déposer tes annonces. " +
-        "Clique sur « Autoriser Opla » ci-dessous : c'est une seule fois, et la publication repart toute seule ensuite.",
+      message: autorisationOplaRequise(action),
     };
   }
 
@@ -176,6 +196,15 @@ export function classerEchec(arg) {
         "REAUTH VENTE eBay : eBay te demande de te reconnecter avant de te laisser déposer une annonce. " +
         "Clique sur « Me connecter » ci-dessous, reconnecte-toi sur eBay, et on reprend " +
         `${acte(action)} tout seuls — rien n'a été publié, rien n'est perdu.`,
+    };
+  }
+  // Opla, la PAGE a dit 401 (« Connexion Opla requise ») et la sonde n'a pas
+  // tranché « déconnecté » (sinon la règle 0 a déjà parlé) : le geste est
+  // « Me connecter ». Jamais « Autoriser Opla » pour une session fermée.
+  if (platform === "opla" && OPLA_CONNEXION_RE.test(t)) {
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+      message: connexionOplaRequise(action),
     };
   }
   if (CONNEXION_RE.test(t) && NOM[platform] && platform !== "opla") {

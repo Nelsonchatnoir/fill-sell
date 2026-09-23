@@ -751,9 +751,12 @@ const OPLA_REFUS = Object.freeze({
 // route alors le job vers l'ATTENTE de session — aucune tentative consommée,
 // re-sonde plus tard (règle du 10/09). Un autre libellé ferait brûler les
 // cinq reprises du job sur une session qui ne reviendra pas toute seule.
+// ⛔ Ni « Chrome », ni « onglet » (2026-09-23) : le geste est le bouton « Me
+//    connecter » de l'app, qui ouvre Opla sur l'ordinateur. Le préfixe
+//    « Connexion Opla requise » reste : c'est l'ancre que lit le background.
 const OPLA_MSG_SESSION =
-  "Connexion Opla requise : ouvre opla.co dans Chrome et reconnecte-toi, " +
-  "puis relance depuis la fiche de l'article.";
+  "Connexion Opla requise : ta session Opla est fermée sur ton ordinateur. " +
+  "Appuie sur « Me connecter » et connecte-toi à Opla — dès que c'est fait, la publication repart toute seule.";
 
 // ── LOT 4 (c) — CHEMIN DE PUBLICATION, VOIE API ─────────────────────────────
 // Écrit le 2026-09-15, DERRIÈRE OPLA_ACTIF. Rien ne s'exécute tant que le

@@ -824,9 +824,12 @@ function renderPlateformes() {
     // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
     if (p.optionnel && state.oplaAcces !== true) {
       const n = state.oplaEnAttente.length;
+      // Le MÊME message que l'app et le serveur (autorisationOplaRequise) —
+      // ⟦opla-autorisation-popup:début⟧
       const sous = n
-        ? `${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ton autorisation d'accès à ${escapeHtml(hostOf(p.key))}`
-        : `Autorise l'accès à ${escapeHtml(hostOf(p.key))} pour publier et relever tes annonces`;
+        ? `Opla attend ton autorisation pour que FillSell y dépose tes annonces (${n} en attente). Appuie sur « Autoriser Opla » : c'est une seule fois.`
+        : "Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois.";
+      // ⟦opla-autorisation-popup:fin⟧
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
         `<div class="plat-sous">${sous}</div></div>` +
@@ -873,7 +876,7 @@ function renderPlateformes() {
       // Opla : ce n'est pas une session à ouvrir, c'est FillSell à autoriser.
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
-        `<div class="plat-sous"><i class="dot gris"></i>Autorise FillSell sur Opla pour lire et publier tes annonces</div>${lienEcarter}</div>` +
+        `<div class="plat-sous"><i class="dot gris"></i>Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois.</div>${lienEcarter}</div>` +
         `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
       );
     } else if (etat === "ecartee") {

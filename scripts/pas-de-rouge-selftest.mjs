@@ -98,7 +98,9 @@ console.log("\n── 3. Un « à toi de jouer » a toujours de quoi jouer ─�
 const aToi = sorties.filter(({ s }) => s.verdict === "a_toi");
 const muets = aToi.filter(({ s }) => !s.source && !s.champ);
 ok(muets.length === 0, `${aToi.length} « à toi » — tous porteurs d'un marqueur ou d'une liste${muets.length ? ` (muets : ${muets.map(({ c }) => "#" + c.n).join(", ")})` : ""}`);
-ok(aToi.every(({ s }) => /ci-dessous|relancer|relance-la|choisis/i.test(s.message)), "chaque « à toi » nomme le geste et le situe sous le message");
+// « appuie sur « Autoriser Opla » » (2026-09-23, message unique Opla) nomme le
+// bouton par son libellé exact : c'est le geste, sans décrire l'écran.
+ok(aToi.every(({ s }) => /ci-dessous|relancer|relance-la|choisis|appuie sur/i.test(s.message)), "chaque « à toi » nomme le geste et le situe sous le message");
 const opla = sorties.filter(({ s }) => s.motif === "opla_acces");
 ok(opla.length === 3 && opla.every(({ s }) => s.source === "opla_acces"), "les 3 lignes Opla portent needs_user_source='opla_acces' (bouton « Autoriser Opla »)");
 ok(!opla.some(({ s }) => /rien à faire de ton côté/i.test(s.message)), "le message Opla ne promet plus « rien à faire de ton côté » (c'était faux)");
