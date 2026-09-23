@@ -1221,9 +1221,9 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   // « valeurs indisponibles ». Le job repart en pending avec un budget de
   // re-tentatives neuf — le prochain passage relève la liste (cf. capture des
   // panneaux à barre de recherche) et proposera enfin les vrais choix.
-  const valider = async ({ sansValeur = false } = {}) => {
+  const valider = async ({ sansValeur = false, valeur = null } = {}) => {
     if (saving) return;
-    const v = String(value ?? "").trim();
+    const v = String(valeur ?? value ?? "").trim();
     if (f && !v && !sansValeur) return;
     if (descriptionManquante) return;
     if (!sansValeur && champsSupManquants) return;
@@ -1367,6 +1367,24 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
              valeur que la plateforme refusera — ne vaut que si notre relevé est
              complet, et il ne l'est pas… SAUF quand le handler certifie qu'il
              l'est (listeCertifieeComplete, cf. bandeau ci-dessus). */
+          /* ── DEUX OU TROIS RÉPONSES FERMÉES = DES BOUTONS, UN TAP (2026-09-23 soir)
+             Une demi-pointure sur une grille d'entiers (Opla, Beebs enfant)
+             n'a que deux réponses possibles — 44 ou 45. Un select à dérouler
+             puis « Valider » pour ça, c'est trois gestes pour un. Ici, quand
+             la liste est CELLE du handler, certifiée complète, et qu'elle
+             tient en trois valeurs : un bouton par valeur, et le tap valide.
+             Toute autre liste garde le select (et son « Autre valeur… »). */
+          (listeCertifieeComplete && Array.isArray(allowed) && allowed.length >= 2 && allowed.length <= 3 && !champsSup.length && !descriptionRequise) ? (
+            <div style={{ display:"flex", gap:8 }}>
+              {allowed.map((v) => (
+                <button key={v} type="button" disabled={saving}
+                  onClick={() => { setValue(v); valider({ valeur: v }); }}
+                  style={{ flex:1, padding:"14px 0", borderRadius:12, border:"1px solid #1B6E62", background: saving ? "#B9C4C0" : "#fff", color:"#1B6E62", fontSize:16, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}>
+                  {v}
+                </button>
+              ))}
+            </div>
+          ) : (
           <AspectValueInput
             value={value}
             allowedValues={allowed ?? []}
@@ -1375,6 +1393,7 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
             T={NU_T}
             idBase={`nu-${job.id}`}
           />
+          )
         ))}
         {!valeursIndisponibles && champsSup.map((c) => {
           const liste = listeDeChoixExploitable(c.allowed_values) ? [...new Set(c.allowed_values.map(String))] : [];
@@ -9766,7 +9785,7 @@ const StockTab = memo(function StockTab({
                             corps de carte ; ici, le coup d'œil. */}
                         {(()=>{
                           const fr=lang==='fr';
-                          let dot=null,pulse=false,txt=null,onTap=null,fg="#10201B",titre=null,discrete=false;
+                          let dot=null,pulse=false,txt=null,onTap=null,fg="#10201B",titre=null,discrete=false,boutonDirect=null;
                           if(repubOccupeSlot){
                             // POIDS VISUEL = TRAVAIL RÉEL (04/09, constat Nico :
                             // dix cartes « En file » pulsaient comme l'unique
@@ -9851,6 +9870,18 @@ const StockTab = memo(function StockTab({
                             // statut.
                             dot="#E8956D";fg="#8A6100";
                             const j=needsUserJobs[0];
+                            // ── UN SEUL BOUTON, DROIT VERS LE GESTE (2026-09-23 soir) ──
+                            // « Autoriser Opla » et « Relier ton compte eBay » :
+                            // l'action est connue et nommée par le serveur
+                            // (needs_user_source). Une pastille « ✋ Action Opla »
+                            // qui ouvre une popup qui ouvre une modale qui porte
+                            // enfin le bouton, c'est trois portes pour un geste.
+                            // Ici, LE bouton, sur la carte. Seulement quand TOUT ce
+                            // qui attend sur cet article est de cette nature.
+                            const mursConnexion=needsUserJobs.map(x=>murDeConnexion(x));
+                            if(mursConnexion.every(Boolean)&&user?.id){
+                              boutonDirect={platform:j.platform,motif:mursConnexion[0]};
+                            }
                             // Sans champ à remplir, la pastille dit « Action »,
                             // jamais « À compléter » (2026-09-10).
                             const tousChamp=needsUserJobs.every(x=>natureNeedsUser(x)==="a_completer");
@@ -9894,6 +9925,14 @@ const StockTab = memo(function StockTab({
                               :"Status read from Vinted at the last wardrobe sync — sync again if this has changed.";
                           }else if(enLigne){
                             dot="#2F9E90";fg="#1B6E62";txt=fr?'En ligne':'Live';
+                          }
+                          if(boutonDirect){
+                            return(
+                              <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
+                                style={{position:"absolute",left:8,right:8,bottom:8,zIndex:2}}>
+                                <BoutonMeConnecter userId={user.id} platform={boutonDirect.platform} motif={boutonDirect.motif} lang={lang} variante="bouton"/>
+                              </div>
+                            );
                           }
                           if(!txt)return null;
                           return(

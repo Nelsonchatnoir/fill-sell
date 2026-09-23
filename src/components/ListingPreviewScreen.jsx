@@ -6398,17 +6398,30 @@ export default function ListingPreviewScreen({
   // Pour les seuls comptes qui VOIENT Opla — inerte pour tous les autres.
   // Aucune écriture si la copie existe déjà (brouillon repris, édition à la
   // main) : l'effet ne fait que COMBLER une absence, une fois.
+  // ── DE N'IMPORTE QUELLE COPIE EXISTANTE, PAS SEULEMENT VINTED (2026-09-23 soir)
+  // 🚨 Mail du 23/09 à 19:09, capture à l'appui : article déjà en ligne sur
+  //    Leboncoin et Beebs, jamais généré pour Vinted. La personne coche Opla ;
+  //    l'écran « Confirme la publication » ne montre que « Leboncoin — déjà en
+  //    ligne pour cet article ». Cause : cet effet ne dérivait la copie Opla
+  //    QUE de la copie Vinted. Sans copie Vinted, aucune copie Opla — Opla
+  //    n'entrait donc pas dans plateformesPubliables (« sélectionnée ET
+  //    générée ») et l'écran ne listait que ce qui existait. Rien ne le disait.
+  // Source, dans l'ordre : Vinted (même marché, même vocabulaire d'état),
+  // Leboncoin, eBay, Beebs — la première qui existe. Les valeurs GÉNÉRALES
+  // (titre, description, état, prix) priment de toute façon (cf. deriverCopieOpla).
+  const sourceCopieOpla = edited?.vinted ?? edited?.leboncoin ?? edited?.ebay ?? edited?.beebs ?? null;
+  const plateformeSourceOpla = edited?.vinted ? "vinted" : edited?.leboncoin ? "leboncoin" : edited?.ebay ? "ebay" : edited?.beebs ? "beebs" : null;
   useEffect(() => {
     if (!plateformesVisibles.includes("opla")) return;
-    const src = edited?.vinted;
-    if (!src || edited?.opla) return;
+    const src = sourceCopieOpla;
+    if (!src || !plateformeSourceOpla || edited?.opla) return;
     const copie = deriverCopieOpla(src, { prixGeneral: price, generales });
-    setEdited(prev => (!prev?.vinted || prev?.opla) ? prev : { ...prev, opla: copie });
-    setPlatformListings(prev => (prev?.platforms?.vinted && !prev.platforms.opla)
+    setEdited(prev => (!prev?.[plateformeSourceOpla] || prev?.opla) ? prev : { ...prev, opla: copie });
+    setPlatformListings(prev => (prev?.platforms?.[plateformeSourceOpla] && !prev.platforms.opla)
       ? { ...prev, platforms: { ...prev.platforms, opla: { title: copie.title, description: copie.description, platform_fields: { ...copie.platform_fields } } } }
       : prev);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edited?.vinted, edited?.opla, plateformesVisibles]);
+  }, [sourceCopieOpla, plateformeSourceOpla, edited?.opla, plateformesVisibles]);
   // ── Exemption extension « eBay seul + voie API » (2026-09-06, GO Nico) ──
   // L'écran d'accroche extension (extensionBlocked) protège une file qui
   // n'aurait PERSONNE pour l'exécuter. Quand le lot ne contient QUE eBay et
