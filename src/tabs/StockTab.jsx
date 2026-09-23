@@ -11384,6 +11384,11 @@ const StockTab = memo(function StockTab({
         <ListingPreviewScreen
           inventaireId={publishItem.id}
           userId={user.id}
+          // « Compléter » depuis l'écran Publier (2026-09-23) : un dépôt en
+          // attente d'un champ sur cette plateforme s'achève ICI, pas en
+          // retirant l'annonce ni en décochant — on ferme le stepper et on
+          // ouvre le mini-éditeur du job, le même que la carte.
+          onCompleter={(job)=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);if(needsUserOuvrable(job))setNeedsUserJob(job);else if(job?.error)setFailJobModal(job);}}
           ebayCompte={ebayCompte}
           plateformesVisibles={plateformesVisibles}
           plateformesOuvertes={plateformesOuvertes}

@@ -47,6 +47,8 @@ import { getPlatformSupport } from "../utils/platformCompat";
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
+// Les attentes par plateforme et le geste qui débloque (2026-09-23).
+import { attentesParPlateforme, phraseEtat, messageRefusPublication } from "../utils/etatsPublication";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
 // versImageDecodable/chargerImage sont passés dans utils/photosUpload avec la
 // compression : seul le message d'échec reste utilisé ici.
@@ -3102,7 +3104,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [] }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaAcces = null, attentes = {}, onCompleter = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3904,9 +3906,45 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           l'on vient de chercher la case à cocher. */}
       {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
         .filter(p => plateformesVerrouillees.includes(p) && !pausedPlatforms.includes(p) && motifsVerrouillage?.[p])
+        .map(p => {
+          // ── LE GESTE QUI DÉBLOQUE, À CÔTÉ DE L'ATTENTE (2026-09-23) ──────
+          // Une attente n'est ni « retire » ni « décoche » : un champ se
+          // complète (mini-éditeur du job, le même que la carte), une
+          // autorisation ou une connexion s'accorde (le même bouton que la
+          // carte et les Réglages). Le geste fait, le dépôt repart seul.
+          const a = attentes?.[p];
+          const motifBouton = a?.kind === "attente_autorisation" ? MOTIFS.AUTORISER_OPLA
+            : a?.kind === "attente_connexion" ? (a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION)
+            : null;
+          return (
+            <div key={`mv:${p}`} style={{ padding:"0 4px 6px" }}>
+              <div style={{ fontSize:11.5, lineHeight:1.5, color:T.mute }}>
+                {PLATFORM_LABELS[p] ?? p} — {motifsVerrouillage[p]}
+              </div>
+              {a?.bloque && motifBouton && userId && (
+                <div style={{ marginTop:6 }}>
+                  <BoutonMeConnecter userId={userId} platform={p} motif={motifBouton} lang={lang} variante="bouton" />
+                </div>
+              )}
+              {a?.bloque && a.kind === "attente_champ" && onCompleter && (
+                <button
+                  type="button"
+                  onClick={() => onCompleter(a.job)}
+                  style={{ marginTop:6, minHeight:40, padding:"0 14px", borderRadius:20, border:`1px solid ${T.border}`, background:T.card ?? "#fff", color:T.ink, fontFamily:"inherit", fontSize:13.5, fontWeight:600, cursor:"pointer" }}
+                >
+                  {lang === "en" ? `Complete “${a.champ}”` : `Compléter « ${a.champ} »`}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      {/* Un dépôt REFUSÉ n'est pas un verrou : la plateforme reste cochable,
+          et on le dit en une ligne — la personne sait pourquoi elle republie. */}
+      {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
+        .filter(p => attentes?.[p]?.kind === "refusee" && !plateformesVerrouillees.includes(p) && !pausedPlatforms.includes(p))
         .map(p => (
-          <div key={`mv:${p}`} style={{ fontSize:11.5, lineHeight:1.5, color:T.mute, padding:"0 4px 4px" }}>
-            {PLATFORM_LABELS[p] ?? p} — {motifsVerrouillage[p]}
+          <div key={`rf:${p}`} style={{ fontSize:11.5, lineHeight:1.5, color:T.mute, padding:"0 4px 4px" }}>
+            {PLATFORM_LABELS[p] ?? p} — {phraseEtat(p, attentes[p], lang)}
           </div>
         ))}
       <div style={{ height:14 }} />
@@ -4144,6 +4182,9 @@ export default function ListingPreviewScreen({
   // App.jsx) : la case devient cliquable et la copie Opla se dérive.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
   inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
+  // « Compléter » un dépôt en attente d'un champ depuis l'écran Publier
+  // (2026-09-23) : l'hôte ferme le stepper et ouvre le mini-éditeur du job.
+  onCompleter = null,
   // eBay par API (lot 2b, 06/09) : true = ce compte publie eBay par le worker
   // serveur (profiles.ebay_voie_api, posé par Nico). Un article SANS PHOTO ne
   // part alors jamais en job : arrêté ici, cause nommée.
@@ -4729,24 +4770,34 @@ export default function ListingPreviewScreen({
   // toute façon (already_published bloque aussi ces statuts), autant griser le
   // chip plutôt que laisser refaire tout le tunnel pour un refus au bout.
   const [fetchedQueued, setFetchedQueued] = useState([]);
+  // ── LES ATTENTES ET LES REFUS, PAR PLATEFORME (2026-09-23, cas Louis) ────
+  // Un dépôt `needs_user` (champ, autorisation, connexion) BLOQUE le RPC
+  // depuis le 23/09 — et le stepper ne le lisait pas : refus en bloc après le
+  // clic, message « retire… ou décoche ». On les lit ici, même relecture, et
+  // la rangée dit l'ÉTAT et le GESTE (utils/etatsPublication.js).
+  const [fetchedAttentes, setFetchedAttentes] = useState({});
   useEffect(() => {
-    if (!invId) { setFetchedPublished([]); setFetchedQueued([]); return; } // article hors stock : rien à relire
+    if (!invId) { setFetchedPublished([]); setFetchedQueued([]); setFetchedAttentes({}); return; } // article hors stock : rien à relire
     let cancelled = false;
     setFetchedPublished(null);
     setFetchedQueued([]);
+    setFetchedAttentes({});
     (async () => {
       const { data, error } = await supabase
         .from("cross_post_jobs")
-        .select("platform, status, action, created_at")
+        .select("id, platform, status, action, created_at, error, platform_fields")
         .eq("inventaire_id", invId)
-        .in("status", ["pending", "processing", "published", "deleted"]);
+        .in("status", ["pending", "processing", "published", "deleted", "needs_user", "failed"]);
       if (cancelled) return;
       // Lecture en erreur : on débloque quand même (liste vide) — la garde du
       // RPC spend_coins_and_publish (already_published) reste le filet de
       // vérité, on ne condamne pas la publication sur un aléa réseau.
-      const info = error || !data ? null : computeRemovalInfo(data);
+      // computeRemovalInfo reçoit EXACTEMENT les statuts qu'il connaissait.
+      const connus = (data ?? []).filter(j => ["pending", "processing", "published", "deleted"].includes(j.status));
+      const info = error || !data ? null : computeRemovalInfo(connus);
       setFetchedPublished(info?.publishedActive ?? []);
       setFetchedQueued(info?.queued ?? []);
+      setFetchedAttentes(error || !data ? {} : attentesParPlateforme(data));
     })();
     return () => { cancelled = true; };
   }, [invId, supabase]);
@@ -4768,9 +4819,14 @@ export default function ListingPreviewScreen({
   const queuedKey = (fetchedQueued ?? []).slice().sort().join(",");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const queuedSet = useMemo(() => new Set(fetchedQueued ?? []), [queuedKey]);
+  // En ATTENTE (needs_user : champ, autorisation, connexion) : verrou aussi —
+  // c'est ce que le RPC refuse. La rangée nomme l'attente et son geste.
+  const attentesKey = Object.keys(fetchedAttentes).filter(p => fetchedAttentes[p]?.bloque).sort().join(",");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const attenteSet = useMemo(() => new Set(Object.keys(fetchedAttentes).filter(p => fetchedAttentes[p]?.bloque)), [attentesKey]);
   // Union bloquante : tout ce qui interdit un nouveau job publish sur la ligne.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet]), [alreadyPublishedKey, queuedKey]);
+  const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet, ...attenteSet]), [alreadyPublishedKey, queuedKey, attentesKey]);
   // ── POURQUOI CETTE PLATEFORME EST ÉTEINTE (2026-09-20, passe 2) ──────────
   // Deux raisons, deux phrases, et rien d'autre — on ne dit que ce qu'on SAIT.
   //   · `publishedSet` : l'annonce est déjà en ligne, ce lot ne peut pas la
@@ -4785,9 +4841,10 @@ export default function ListingPreviewScreen({
     const m = {};
     for (const p of publishedSet) m[p] = lang === "en" ? "already online for this item" : "déjà en ligne pour cet article";
     for (const p of queuedSet) if (!m[p]) m[p] = lang === "en" ? "a publication is already under way" : "une publication est déjà en cours";
+    for (const p of attenteSet) if (!m[p]) m[p] = phraseEtat(p, fetchedAttentes[p], lang);
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alreadyPublishedKey, queuedKey, lang]);
+  }, [alreadyPublishedKey, queuedKey, attentesKey, lang]);
 
   // ── Compte eBay pas paramétré → eBay grisé (07/09/2026, demande Joséphine) ─
   // « Utilisable » = exactement ce que le trigger cross_post_jobs_voie_ebay
@@ -6389,6 +6446,8 @@ export default function ListingPreviewScreen({
     chercherJumeauxEnLigne(supabase, {
       userId, inventaireId: invId, titre: titrePourJumeaux, marque: marquePourJumeaux, prix: price,
       plateformes: [...plateformesPubliables],
+      // Les photos de l'article : la PREUVE par l'image (2026-09-23).
+      photos: Array.isArray(photos) ? photos : [],
     }).then(r => { if (vivant) setJumeaux(r); });
     return () => { vivant = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8525,11 +8584,16 @@ export default function ListingPreviewScreen({
         // job pour une plateforme déjà en ligne ou déjà en file — dernier filet
         // quand le griséage front n'a pas suffi (chemin Lens, course).
         if (pubRes.reason === "already_published") {
-          const plats = (Array.isArray(pubRes.platforms) ? pubRes.platforms : [])
-            .map(p => PLATFORM_LABELS[p] ?? p).join(", ");
-          throw new Error(lang === "en"
-            ? `Already live or queued on: ${plats}. Remove that listing first (tap the platform logo on the item card) or unselect the platform.`
-            : `Déjà en ligne (ou en file) sur : ${plats}. Retire d'abord cette annonce (tap sur le logo de la plateforme sur la carte de l'article) ou décoche la plateforme.`);
+          // ── L'ÉTAT, PAS « RETIRE OU DÉCOCHE » (2026-09-23, cas Louis) ─────
+          // Le RPC refuse en bloc dès qu'UNE plateforme a un dépôt publié, en
+          // file ou en attente. On dit, pour chacune, ce qui l'occupe et le
+          // geste qui débloque (utils/etatsPublication.js) — et on la SORT du
+          // lot : le tap suivant publie les autres, sans rien décocher à la main.
+          const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
+          setSelected(prev => new Set([...prev].filter(p => !refusees.includes(p))));
+          throw new Error(messageRefusPublication(refusees, {
+            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang,
+          }));
         }
         // Filet générique (2026-08-04) : un refus futur du RPC qui porte un
         // `message` s'affiche tel quel dans le bandeau — plus jamais « Une
@@ -9295,6 +9359,8 @@ export default function ListingPreviewScreen({
             pausedReasons={pausedReasons}
             plateformesVerrouillees={[...lockedSet]}
             motifsVerrouillage={motifsVerrouillage}
+            attentes={fetchedAttentes}
+            onCompleter={onCompleter}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
             jumeauxEnLigne={jumeaux}
