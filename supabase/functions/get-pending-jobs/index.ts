@@ -3898,6 +3898,37 @@ serve(async (req) => {
           const cat = categorieDuJob(pf);
           if (!cat) continue;
           const r = rapprocherValeursBeebs(pf, parCategorie.get(cat) ?? []);
+          // ── « FERMETURE » DEPUIS LES MOTS DU VENDEUR (2026-09-23 soir) ─────
+          // Beebs exige « Fermeture » sur les chaussures ; la fiche ne porte
+          // pas ce champ, mais le titre ou la description disent souvent
+          // « à lacets », « scratch », « zip ». Table FERMÉE mot → valeur de
+          // LA liste de Beebs pour ce rayon ; un seul mot reconnu, sinon rien
+          // (jamais deviné) ; jamais par-dessus une valeur déjà posée ou déjà
+          // tranchée par la personne.
+          try {
+            const rangee = (parCategorie.get(cat) ?? []).find((a) => /^fermeture$/i.test(String(a.field_key ?? a.field_label ?? "")));
+            const aspectsPf = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
+            const dejaTranchee = Boolean(((pf["needsUserResolved"] ?? {}) as Record<string, unknown>)["beebsAspects.Fermeture"]);
+            if (rangee && !String(aspectsPf["Fermeture"] ?? "").trim() && !dejaTranchee && !("Fermeture" in r.aspects)) {
+              const liste = (Array.isArray(rangee.allowed_values) ? rangee.allowed_values : []).map((v) => String(v ?? ""));
+              const texte = `${String(j.title ?? "")} ${String(j.description ?? "")}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+              const MOTS: Array<[RegExp, RegExp]> = [
+                [/\blacets?\b/, /lacets?/i],
+                [/\b(scratch|velcro)\b/, /scratch/i],
+                [/\b(zip|zippe|zippee|fermeture eclair)\b/, /eclair|zip/i],
+                [/\bboucles?\b/, /boucle/i],
+                [/\b(a enfiler|slip[- ]?on|sans lacets?)\b/, /enfiler/i],
+              ];
+              const trouves = MOTS.filter(([mot]) => mot.test(texte));
+              if (trouves.length === 1) {
+                const valeur = liste.find((v) => trouves[0][1].test(v.normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+                if (valeur) {
+                  r.aspects["Fermeture"] = valeur;
+                  r.posees.push({ cle_source: "titre/description", champ: "Fermeture", valeur_source: String(texte.match(trouves[0][0])?.[0] ?? ""), valeur_posee: valeur, methode: "mots_du_vendeur" });
+                }
+              }
+            }
+          } catch (_e) { /* jamais un point de panne : sans déduction, le handler demandera */ }
           resultats.set(j.id, r);
           if (!r.posees.length) continue;
           const aspectsCourants = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;

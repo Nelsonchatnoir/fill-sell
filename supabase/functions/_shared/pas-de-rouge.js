@@ -248,6 +248,17 @@ export function classerEchec(arg) {
     const valeurs = Array.isArray(nuf?.["allowed_values"])
       ? nuf["allowed_values"].map(String) : [];
     const refusee = /«\s*([^»]+?)\s*»/.exec(String(arg.brut ?? ""))?.[1] ?? "";
+    // Demi-pointure sur une grille d'entiers (2026-09-23 soir) : le handler
+    // n'a envoyé que les DEUX voisines. Le message les nomme — un geste.
+    const demiPointure = /^\d{1,2}[.,]5$/.test(refusee.trim()) && valeurs.length === 2;
+    if (demiPointure) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "taille_hors_grille", source: "champ_a_choisir",
+        message:
+          `${nom} n'accepte pas les demi-pointures pour ce type d'article : pour du ${refusee.trim().replace(".", ",")}, ` +
+          `choisis ${valeurs[0]} ou ${valeurs[1]} ci-dessous — un seul geste, et on repart.`,
+      };
+    }
     const apercu = valeurs.length ? ` ${nom} accepte : ${valeurs.join(", ")}.` : "";
     return {
       verdict: "a_toi", statut: "needs_user", motif: "taille_hors_grille", source: "champ_a_choisir",

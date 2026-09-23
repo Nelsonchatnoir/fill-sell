@@ -200,7 +200,13 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
       const p = chemin(c);
       return p.length <= 1 ? (p[0] ?? "") : `${p[0]} › …`;
     };
-    const top = categorie.choix[0];
+    // ⛔ PAS choix[0] : depuis le 18/09, NOTRE catégorie ouvre la liste. Les
+    //    deux messages de tomcarter13700 du 23/09 disaient « eBay range cet
+    //    article en « Jouets et jeux › … › Livres », l'app en « Jouets et
+    //    jeux › … » » — le même chemin des deux côtés : on présentait notre
+    //    propre mapping comme la proposition d'eBay. La proposition d'eBay,
+    //    c'est la première entrée qui N'EST PAS notre mapping.
+    const top = categorie.choix.find((c) => c.id !== mappee) ?? categorie.choix[0];
     const topChemin = top ? top.chemin.split(" > ") : [];
     // ≤ 300 caractères, sans identifiant ni marqueur technique : au-delà,
     // l'app remplace le message par « un imprévu technique » (humanizeJobError)
@@ -530,6 +536,41 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
 const GENRE_DANS_CHEMIN: Record<string, RegExp> = {
   Femme: /\bfemme\b/i, Homme: /\bhomme\b/i, Fille: /\bfille\b/i, "Garçon": /gar[cç]on/i, "Bébé": /b[ée]b[ée]/i, Enfant: /enfant/i,
 };
+// ── LA FAMILLE DE L'ARTICLE DIT DANS QUELS RAYONS eBAY IL PEUT VIVRE (2026-09-23 soir)
+// tomcarter13700, 23/09 : « Boîtes de rangement slaves », famille Lens
+// maison_deco, mappé par le mot « boîte de rangement » en « Livres, BD, revues
+// > … > Rangement : boîtes » (les boîtes à BD) ; eBay proposait « Maison >
+// Solutions de rangement > Boîtes, bacs ». « Livre Shigeru Ban – Taschen »,
+// famille livres_medias, mappé en « Jouets et jeux > Modélisme ferroviaire >
+// Livres » ; eBay proposait six rayons « Livres, BD, revues ». Les deux sont
+// partis en « catégorie à confirmer » alors que la famille tranchait seule.
+// Table FERMÉE : famille Lens (lens-analysis FAMILLES) → racines eBay FR
+// cohérentes. Une famille absente d'ici ne pèse rien (comportement d'avant).
+const RAYONS_EBAY_PAR_FAMILLE: Record<string, RegExp> = {
+  livres_medias: /^(Livres, BD, revues|DVD, cin[ée]ma|Films, DVD|Musique, CD, vinyles)/i,
+  maison_deco: /^(Maison|Jardin, terrasse|Art, antiquit[ée]s|Luminaires|Bricolage)/i,
+  mobilier: /^(Maison|Jardin, terrasse|Art, antiquit[ée]s)/i,
+  jardin: /^(Jardin, terrasse|Maison|Bricolage)/i,
+  bricolage: /^(Bricolage|Jardin, terrasse|Maison)/i,
+  jouets: /^(Jouets et jeux|B[ée]b[ée], pu[ée]riculture)/i,
+  puericulture: /^(B[ée]b[ée], pu[ée]riculture|V[êe]tements, accessoires|Jouets et jeux)/i,
+  mode: /^(V[êe]tements, accessoires|Bijoux, montres|B[ée]b[ée], pu[ée]riculture)/i,
+  chaussures: /^(V[êe]tements, accessoires|B[ée]b[ée], pu[ée]riculture)/i,
+  sport: /^(Sports, vacances|V[êe]tements, accessoires)/i,
+  beaute: /^(Beaut[ée], bien-[êe]tre, parfums)/i,
+  high_tech: /^(Informatique, r[ée]seaux|T[ée]l[ée]phonie, mobilit[ée]|TV, son, hi-fi|Image, son|Photo, cam[ée]scopes|Jeux vid[ée]o, consoles)/i,
+  electromenager: /^(Électrom[ée]nager|Electrom[ée]nager|Maison)/i,
+  musique: /^(Instruments de musique|Musique, CD, vinyles)/i,
+  collection: /^(Collections|Monnaies|Timbres|Art, antiquit[ée]s|Jouets et jeux)/i,
+  auto_moto: /^(Auto, moto)/i,
+};
+function ordonnerParFamille<T extends { chemin: string[] }>(liste: T[], famille: string | null): T[] {
+  const re = RAYONS_EBAY_PAR_FAMILLE[String(famille ?? "")];
+  if (!re) return liste;
+  const coherentes = liste.filter((x) => re.test(String(x.chemin[0] ?? "")));
+  const autres = liste.filter((x) => !re.test(String(x.chemin[0] ?? "")));
+  return [...coherentes, ...autres];
+}
 // ⛔ CONTRÔLE PAR SUGGESTION DÉSACTIVÉ (06/09 11:55) : sur « T-shirt Adidas
 // Sergio Garcia vintage », la règle a REMPLACÉ le mapping 15687 (T-shirts
 // homme) par la suggestion n°1 d'eBay 121889 (Livres > BD franco-belges) :
@@ -814,6 +855,41 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
           suggestions: resume,
         };
       }
+      // ── LA FAMILLE ARBITRE, AVANT DE DEMANDER (2026-09-23 soir) ────────────
+      // eBay conteste notre rayon, rien chez nous ne le confirme : jusqu'ici on
+      // demandait, avec la liste brute d'eBay. Or on SAIT ce qu'est l'article
+      // (famille Lens / catalogue Vinted). Si notre rayon est hors famille et
+      // qu'eBay en propose un dedans, l'IA choisit PARMI les cohérents et on
+      // publie, sans question. Si notre rayon est dans la famille et qu'aucune
+      // suggestion n'y est, on garde le nôtre, sans question. Dans les autres
+      // cas on demande, et la liste met les rayons cohérents en tête —
+      // jamais la suggestion brute en première place.
+      const rayonsFamille = RAYONS_EBAY_PAR_FAMILLE[String(famille ?? "")] ?? null;
+      if (racineContestee && !attributsConfirment && rayonsFamille) {
+        const mappingCoherent = rayonsFamille.test(racineMappee);
+        const suggestionsCoherentes = suggestions.filter((x) => rayonsFamille.test(String(x.chemin[0] ?? "")));
+        if (!mappingCoherent && suggestionsCoherentes.length) {
+          const retenu = (await choisirParmiSuggestions(suggestionsCoherentes, {
+            titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+            marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
+          }, (pf as Record<string, unknown>).__admin as SupabaseClient | undefined)) ?? suggestionsCoherentes[0];
+          console.log(`[ebay-api-worker] catégorie : notre rayon « ${racineMappee} » est hors de la famille ${famille} — retenu « ${retenu.chemin.join(" > ")} » (${retenu.id}) parmi ${suggestionsCoherentes.length} suggestion(s) cohérente(s)`);
+          return {
+            id: retenu.id, chemin: retenu.chemin, source: "suggestion_coherente_famille",
+            detail: `notre rayon « ${cheminMappe.join(" > ")} » (${mappee}) est hors de la famille de l'article (${famille}) ; ` +
+              `eBay propose ${suggestionsCoherentes.length} rayon(s) dans cette famille, retenu « ${retenu.chemin.join(" > ")} » (${retenu.id})`,
+            suggestions: resume,
+          };
+        }
+        if (mappingCoherent && !suggestionsCoherentes.length) {
+          console.log(`[ebay-api-worker] catégorie : eBay conteste « ${racineMappee} » mais aucune de ses suggestions n'est dans la famille ${famille} — mapping CONSERVÉ`);
+          return {
+            id: mappee, chemin: cheminMappe, source: "mapping_confirme_par_famille",
+            detail: `eBay proposait « ${racineTop} » (${memeRacineQueTop}/${n}) mais aucun de ses rayons n'est dans la famille de l'article (${famille}) ; notre rayon « ${cheminMappe.join(" > ")} » (${mappee}) l'est`,
+            suggestions: resume,
+          };
+        }
+      }
       if (racineContestee && !dejaTranche) {
         return {
           // NOTRE CATÉGORIE EST TOUJOURS DANS LA LISTE, ET EN TÊTE (règle Nico
@@ -825,7 +901,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
           // Jouets. Elle est offerte, pas imposée.
           choix: [
             ...(mappee ? [{ id: mappee, chemin: cheminMappe.join(" > ") }] : []),
-            ...suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+            ...ordonnerParFamille(suggestions, famille).slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
           ],
           motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")}) ; AUCUN attribut de l'article ne confirme notre catégorie (ebayAspects vide) — c'est ce qui distingue ce cas du T-shirt Goldman`,
           suggestions: resume,
