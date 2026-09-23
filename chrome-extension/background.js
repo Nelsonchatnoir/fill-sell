@@ -12305,6 +12305,93 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
 }
 
 // Le relevé d'UNE plateforme, page par page, borné. Rend { annonces, complet }.
+// ── L'ONGLET D'UN RELEVÉ EST PRÊT QUAND LA PAGE RÉPOND (2026-09-23 soir) ──────
+// CAUSE : « Timeout: la page de dépôt n'a pas fini de charger » sur des relevés
+// « Mes annonces » — clairearnould57 (eBay ET Leboncoin, 23/09 17:33-17:37,
+// 0.6.60), seghirdebora (Beebs, eBay, Leboncoin d'affilée le 22/09),
+// lesmillesetu (eBay, 22/09), nph (Beebs, 19/09). Un relevé raté est CLOS
+// 'failed' : le planificateur de premiers relevés le compte comme « déjà un
+// relevé » et ne le repose jamais — stock à 0 pour toujours, sans un mot.
+// Or ce Timeout ne dit PAS que la page est absente : il dit que l'événement
+// « complete » n'est pas arrivé dans les 30 s (page lourde, machine lente,
+// événement manqué — la race documentée sur waitForTabComplete). La sync du
+// dressing Vinted a la même parade depuis la 0.6.34 (ouvrirOngletVintedPret :
+// « le seul verdict qui vaut, c'est la réponse de la page »).
+// Ici, sans content script à interroger (le relevé lit le DOM par
+// executeScript) : on retrouve l'onglet de travail, on exige qu'il soit SUR LA
+// PAGE DEMANDÉE (même hôte, même chemin — ou la page de connexion de l'hôte,
+// que la boucle sait lire), et que son document ne soit plus « loading ».
+// Sinon, l'erreur d'origine est relevée telle quelle.
+// ⛔ LECTURE PURE : rien n'est cliqué, rien n'est écrit.
+function urlSansFragment(u) { return String(u ?? "").split("#")[0].replace(/\/$/, ""); }
+async function retrouverOngletTravail(platform, url) {
+  try {
+    const key = workTabKey(platform);
+    const store = await chrome.storage.session.get(key);
+    const memo = store?.[key];
+    if (Number.isInteger(memo) && (await chrome.tabs.get(memo).catch(() => null))) return memo;
+  } catch { /* storage muet : seconde piste */ }
+  try {
+    const host = new URL(url).hostname.split(".").slice(-2).join(".");
+    const candidats = await chrome.tabs.query({ url: `*://*.${host}/*` });
+    const marque = (candidats ?? []).find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
+    return Number.isInteger(marque?.id) ? marque.id : null;
+  } catch {
+    return null;
+  }
+}
+async function ongletReleveUtilisable(tabId, urlAttendue) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab?.url || tab.discarded) return false;
+  let hoteAttendu, cheminAttendu;
+  try {
+    const u = new URL(urlAttendue);
+    hoteAttendu = u.hostname.split(".").slice(-2).join(".");
+    cheminAttendu = urlSansFragment(u.href);
+  } catch { return false; }
+  let courante;
+  try { courante = new URL(tab.url); } catch { return false; }
+  if (!courante.hostname.endsWith(hoteAttendu)) return false;
+  // La page demandée, ou la page de connexion de la plateforme (la boucle la
+  // reconnaît et rend « absente » proprement) — jamais une autre page du site.
+  const surLaCible = urlSansFragment(courante.href) === cheminAttendu;
+  const surConnexion = /\/(?:connexion|login|signin|auth|identification)/i.test(courante.pathname)
+    || /^(signin|auth)\./i.test(courante.hostname);
+  if (!surLaCible && !surConnexion) return false;
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({ etat: document.readyState, hote: location.hostname }),
+    });
+    return !!r?.result && r.result.etat !== "loading" && String(r.result.hote).endsWith(hoteAttendu);
+  } catch {
+    return false;
+  }
+}
+async function ouvrirOngletReleve(platform, url) {
+  try {
+    return await getOrCreateWorkTab(platform, url);
+  } catch (e) {
+    const motif = String(e?.message ?? e);
+    const tabId = await retrouverOngletTravail(platform, url);
+    if (tabId != null && (await ongletReleveUtilisable(tabId, url))) {
+      console.warn(`[releve][${platform}] chargement non confirmé (${motif}) — la page demandée répond, on relève quand même`);
+      try { await chrome.storage.session.set({ [workTabKey(platform)]: tabId }); } catch { /* sans conséquence */ }
+      return tabId;
+    }
+    throw e;
+  }
+}
+
+// Un relevé qui meurt d'une PANNE TECHNIQUE (liste fermée
+// SYNC_ERREUR_TECHNIQUE_RE, la même que la sync du dressing) repasse en file
+// au lieu de se clore : le prochain passage le reprend. Deux reprises au plus,
+// comptées DANS la ligne (le marqueur survit au worker) ; au-delà, l'échec
+// reste, avec son message. Une cause qui appelle un geste (session, boutique)
+// n'est jamais reprise : elle ne matche pas la liste.
+const RELEVE_REPRISE_TECHNIQUE_MAX = 2;
+const RELEVE_REPRISE_TECHNIQUE_RE = /\[reprise-technique\] tentative (\d)\//;
+
 async function releverAnnoncesPlateforme(platform, { token = null, userId = null } = {}) {
   const annonces = new Map();
   let complet = true;
@@ -12333,7 +12420,7 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     // n'est PAS un échec de relevé — cf. lancerRelevePlateforme.
     if (!(await oplaAccesAccorde())) return { annonces: [], complet: false, absente: true, erreur: "accès Opla non accordé" };
     await assurerScriptsOpla();
-    const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
+    const tabId = await ouvrirOngletReleve("opla", "https://www.opla.co/");
     const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
     if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Opla illisible" };
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
@@ -12373,7 +12460,7 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
 
   let dernierTabId = null; // onglet de travail de la plateforme, réutilisé après la boucle
   for (const page of RELEVE_PAGES[platform] ?? []) {
-    const tabId = await getOrCreateWorkTab(platform, page.url);
+    const tabId = await ouvrirOngletReleve(platform, page.url);
     dernierTabId = tabId;
     let url = page.url;
     for (let n = 0; n < RELEVE_PAGES_MAX; n++) {
@@ -12381,7 +12468,12 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         const loaded = waitForTabComplete(tabId);
         await neutralizeBeforeUnload(tabId);
         await chrome.tabs.update(tabId, { url: url + (url.includes("#") ? "" : WORK_TAB_FRAGMENT) });
-        await loaded;
+        // Même tolérance qu'à l'ouverture : un « complete » qui n'arrive pas
+        // dans le budget ne dit pas que la page est absente (cf. ouvrirOngletReleve).
+        try { await loaded; } catch (e) {
+          if (!(await ongletReleveUtilisable(tabId, url))) throw e;
+          console.warn(`[releve][${platform}] page ${n + 1} : chargement non confirmé (${String(e?.message ?? e)}) — la page répond, on continue`);
+        }
       }
       await sleep(randInt(1500, 3000));
       // Mur de connexion : un relevé qui ne voit rien parce qu'il n'est pas
@@ -13436,6 +13528,23 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     const msg = String(e?.message ?? e);
     console.error(`[releve][${platform}] échec :`, msg);
     if (run?.id) {
+      // ── UNE PANNE TECHNIQUE SE REPREND, ELLE NE CLÔT PAS (2026-09-23 soir) ──
+      // La ligne repasse 'queued' avec son compteur : get-pending-jobs la
+      // resservira au prochain poll (TTL 6 h), et la reprise repart d'ici.
+      const tentative = Number((String(run.erreur ?? "").match(RELEVE_REPRISE_TECHNIQUE_RE) ?? [])[1]) || 0;
+      if (SYNC_ERREUR_TECHNIQUE_RE.test(msg) && tentative < RELEVE_REPRISE_TECHNIQUE_MAX) {
+        const requeue = await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
+          method: "PATCH", headers: { Prefer: "return=representation" },
+          body: JSON.stringify({
+            status: "queued", queued_at: maintenant(), claimed_at: null, started_at: null, finished_at: null, updated_at: maintenant(),
+            erreur: `[reprise-technique] tentative ${tentative + 1}/${RELEVE_REPRISE_TECHNIQUE_MAX} au prochain passage — ${msg.slice(0, 220)}`,
+          }),
+        }).then((r) => Array.isArray(r) && r.length > 0).catch(() => false);
+        if (requeue) {
+          console.warn(`[releve][${platform}] run ${run.id} remis en file (reprise technique ${tentative + 1}/${RELEVE_REPRISE_TECHNIQUE_MAX}) : ${msg}`);
+          return { ok: false, reason: "reprise_technique", message: msg };
+        }
+      }
       await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
         method: "PATCH", body: JSON.stringify({ status: "failed", finished_at: maintenant(), updated_at: maintenant(), erreur: msg.slice(0, 300) }),
       }).catch(() => {});
@@ -14149,6 +14258,38 @@ async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = fa
   }
 }
 
+// La question « c'est bien ta boutique ? » est-elle encore posée pour le
+// dressing ouvert dans Chrome ? Trois lectures pures : le dernier run du
+// compte (refus [boutique_a_confirmer] de moins de 12 h, avec l'identité qu'il
+// a vue), la liste des boutiques confirmées (la décision a pu être prise
+// depuis), et l'identité connectée MAINTENANT (identiteVintedDuCycle, cache
+// 90 s). Rend null dès qu'un des trois ne confirme pas : dans le doute, le run
+// part — un relevé de trop vaut mieux qu'un relevé qu'on aurait dû faire.
+const BOUTIQUE_A_CONFIRMER_MEMOIRE_MS = 12 * 60 * 60 * 1000;
+async function boutiqueEncoreAConfirmer(userId, token) {
+  const derniers = await restRequest(
+    `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&order=started_at.desc.nullslast&limit=1` +
+    "&select=id,status,erreur,vinted_user_id,vinted_login,started_at",
+    token, { headers: { Prefer: "return=representation" } },
+  );
+  const dernier = Array.isArray(derniers) && derniers.length ? derniers[0] : null;
+  if (!dernier || dernier.status !== "failed") return null;
+  if (!/\[boutique_a_confirmer\]/.test(String(dernier.erreur ?? ""))) return null;
+  if (!dernier.vinted_user_id) return null;
+  const t = Date.parse(dernier.started_at ?? "");
+  if (!Number.isFinite(t) || Date.now() - t > BOUTIQUE_A_CONFIRMER_MEMOIRE_MS) return null;
+  const rows = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, token);
+  const pin = lireBoutiquesPin(rows?.[0]?.vinted_sync_pin);
+  if (pin?.boutiques?.some((b) => String(b.user_id) === String(dernier.vinted_user_id))) return null;
+  const ident = await identiteVintedDuCycle();
+  if (!ident?.user_id) return null;
+  if (String(ident.user_id) !== String(dernier.vinted_user_id)) return null;
+  return {
+    motif: `le dressing ouvert dans Chrome est toujours @${ident.login ?? ident.user_id}, refusé au relevé ${dernier.id} — décision attendue dans l'app (« c'est ma boutique » ou changer de compte Vinted)`,
+    login: ident.login ?? null, user_id: ident.user_id,
+  };
+}
+
 async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false, repriseVeille = false) {
   const session = await getValidSession();
   if (!session?.access_token) {
@@ -14305,6 +14446,21 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
         }
       } catch (e) {
         console.warn("[sync-dressing] lecture de cadence impossible (on laisse passer):", e?.message ?? e);
+      }
+    }
+    // ── UNE BOUTIQUE À CONFIRMER NE SE RELÈVE PAS EN BOUCLE (2026-09-23 soir) ──
+    // remialbertholl : 12 relevés 'failed' « [boutique_a_confirmer] … @celineetmarie »
+    // entre 16:22 et 17:44, à 30-60 s d'intervalle — chaque demande créait une
+    // ligne de plus pour reposer la MÊME question, déjà à l'écran. Tant que le
+    // dressing ouvert dans Chrome est celui du dernier refus et que la
+    // décision n'est pas prise (boutique toujours absente de la liste), on ne
+    // crée AUCUN run : on attend la bonne boutique, ou l'ajout de celle-ci.
+    // Si la boutique ouverte a changé (ou est inconnue), le run part et tranche.
+    if (!repriseRetry403 && !repriseAuto && !repriseVeille) {
+      const refus = await boutiqueEncoreAConfirmer(userId, token).catch(() => null);
+      if (refus) {
+        console.warn(`[sync-dressing] relevé refusé sans créer de run — ${refus.motif}`);
+        return { ok: false, reason: "boutique_a_confirmer", boutique: refus.login ?? refus.user_id };
       }
     }
     const cree = await restRequest("vinted_sync_runs", token, {

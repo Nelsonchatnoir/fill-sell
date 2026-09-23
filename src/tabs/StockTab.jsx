@@ -3283,7 +3283,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     try { fn(JSON.parse(etatVintedRemonte)); } catch { /* jamais un point de panne */ }
   }, [etatVintedRemonte]);
   if (variante === 'ligne') {
-    const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee;
+    // ── LA QUESTION « C'EST TA BOUTIQUE ? » PRIME SUR « RELEVER » (2026-09-23 soir)
+    // Tant qu'elle est posée, relancer ne ferait que la reposer (remialbertholl :
+    // 12 relevés refusés en 80 min). Les deux réponses vivent juste en dessous
+    // (blocQuestionBoutique) ; le bouton nu attend la décision.
+    const questionBoutiqueEnCours = !!(avis&&avis===bilan&&bilan?.decision==='boutique');
+    const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee||questionBoutiqueEnCours;
     const etatLigne = (() => {
       if (enCours) return fr ? 'Relevé en cours…' : 'Scanning…';
       if (envoi) return fr ? 'Envoi de la demande…' : 'Sending request…';
@@ -3358,7 +3363,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           source="stock_vide" message={MESSAGE_BLOCAGE}
         />
       ):(
-      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
+      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee||!!(avis&&avis===bilan&&bilan?.decision==='boutique')} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
           : envoi
