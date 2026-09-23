@@ -220,6 +220,37 @@ trancher). Le compte vivant se lit par le geste, jamais ici :
 à l'autre (voice-transcribe v36 quand voice-intent est v148) — un numéro
 « déduit » est faux.
 
+### ⛔ JAMAIS D'IMPORT DISTANT FLOTTANT — TOUJOURS UNE VERSION ÉPINGLÉE
+
+`https://esm.sh/@supabase/supabase-js@2` suit **toutes** les 2.x publiées, y
+compris celle qui casse. Le 23/09, `@2` a résolu vers 2.117.1, dont la
+dépendance `@supabase/functions-js@2.117.1` rend **404** sur esm.sh (le paquet
+n'y a jamais été publié). Mesuré en direct : `2.117.1 → 404`, `2.117.0 → 200`.
+Effet : **plus aucune fonction edge important supabase-js ne pouvait être
+déployée** — 48 fichiers, c'est-à-dire à peu près tout le serveur. Découvert
+par hasard, en déployant autre chose ; personne n'aurait rien vu jusqu'au
+premier déploiement d'urgence.
+
+Une dépendance flottante, c'est **une panne de déploiement décidée par
+quelqu'un d'autre, un jour qu'on ne choisit pas**. On épingle tout :
+`@supabase/supabase-js@2.117.0`, `std@0.168.0`, `stripe@12.18.0`,
+`@peculiar/x509@1.9.0`, `imagescript@1.3.0`.
+
+Le contrôle qui l'empêche de revenir, y compris dans un fichier neuf :
+```
+npm run selftest:imports-epingles
+```
+Il échoue sur toute importation distante sans version complète (`@2` compte
+comme flottant) et sur toute version qui s'écarte de celle qu'on a éprouvée.
+**Pour changer de version** : bouger `VERSIONS_ATTENDUES` dans
+`scripts/imports-epingles-selftest.mjs`, un `sed` sur `supabase/functions/`,
+relancer le test. Une ligne, pas quarante-six.
+
+⚠️ **Pas d'import map partagé, et c'est un choix** : on ne peut pas le PROUVER
+sans déployer (`deno check` résout côté client, c'est le bundler du serveur qui
+tranche à la livraison, et la CLI n'a pas de `--dry-run`). Un import map non
+éprouvé déplacerait le risque d'un cran, jusqu'au premier déploiement pressé.
+
 ## Trigger handle_new_user
 
 Le trigger pg_net appelle email-tunnel via le header `x-cron-secret: fs-cron-2026-tunnel`.
