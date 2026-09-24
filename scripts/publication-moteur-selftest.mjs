@@ -220,6 +220,8 @@ console.log("\n[12] etatsFournee / ordreDePassage — ce que l'écran de suivi d
   ok("Opla : attente d'autorisation", e.opla.kind === "attente_autorisation");
   ok("eBay refusée avec le motif", e.ebay.kind === "refusee" && e.ebay.erreur === "refus eBay");
   ok("plateforme pas encore relue → en file", R.etatsFournee([], ["vinted"], depuis).vinted.kind === "en_file");
+  ok("pending SANS message → en file", R.etatsFournee([{ platform: "leboncoin", status: "pending", created_at: depuis, error: "" }], ["leboncoin"], depuis).leboncoin.kind === "en_file");
+  ok("pending AVEC message (attente de connexion, reprise espacée) → attente", R.etatsFournee([{ platform: "leboncoin", status: "pending", created_at: depuis, error: "En attente de ta connexion à Leboncoin dans Chrome" }], ["leboncoin"], depuis).leboncoin.kind === "attente");
   ok("ordre de passage : Leboncoin 1er, Beebs 2e, les autres sans rang", eq(R.ordreDePassage(e, ["vinted", "leboncoin", "beebs", "opla", "ebay"]), { leboncoin: 1, beebs: 2 }));
 }
 
@@ -228,6 +230,30 @@ ok("SHARED_PROPAGATION : couleur ne se propage pas à Leboncoin", !C.SHARED_PROP
 ok("genericFieldToSharedKey : LBC shoe_size → taille, Beebs Pointure → taille, Vinted brand → marque", C.genericFieldToSharedKey("leboncoin", "shoe_size") === "taille" && C.genericFieldToSharedKey("beebs", "Pointure") === "taille" && C.genericFieldToSharedKey("vinted", "brand") === "marque");
 ok("canalGeneriquePose : Vinted toujours, LBC saute _brand, Beebs saute « Couleur », eBay jamais", C.canalGeneriquePose("vinted", "x") && !C.canalGeneriquePose("leboncoin", "clothing_brand") && !C.canalGeneriquePose("beebs", "Couleur") && !C.canalGeneriquePose("ebay", "x"));
 ok("NO_BRAND_VALUE = « Sans marque »", C.NO_BRAND_VALUE === "Sans marque");
+
+console.log("\n[14] questionsParPlateforme — la ligne de chaque plateforme dit CE qui la retient");
+{
+  const sel = new Set(["vinted", "leboncoin", "beebs", "ebay", "opla"]);
+  const q = R.questionsParPlateforme({
+    selected: sel,
+    missingSharedFieldsDetailed: [{ key: "taille", platforms: ["vinted", "beebs", "ebay"] }],
+    genericRequiredStatus: {
+      leboncoin: [{ key: "furniture_type", label: "Produit", state: "missing" }, { key: "shoe_size", label: "Pointure", state: "missing" }],
+      vinted: [{ key: "size_id", label: "Taille", state: "ok" }],
+    },
+    ebayRequiredStatus: [{ name: "Size", sharedKey: "taille", state: "missing" }, { name: "Department", label: "Département", state: "missing" }, { name: "Brand", state: "ok" }],
+    vintedGenreBlocked: true, beebsGenreBlocked: false, descriptionVideVinted: true,
+    libellePartage: { taille: "Taille", couleur: "Couleur", matiere: "Matière", marque: "Marque" },
+    libelleGenre: "Genre", libelleDescription: "Description",
+    genericFieldToSharedKey: C.genericFieldToSharedKey,
+  });
+  ok("Vinted : Taille (partagée), Genre, Description — chacune une fois", eq(q.vinted, ["Taille", "Genre", "Description"]));
+  ok("Beebs : Taille seulement", eq(q.beebs, ["Taille"]));
+  ok("eBay : Taille (via sharedKey, libellé partagé) puis Département, Brand ok ignoré", eq(q.ebay, ["Taille", "Département"]));
+  ok("Leboncoin : Produit (propre) et Pointure → libellé partagé « Taille »", eq(q.leboncoin, ["Produit", "Taille"]));
+  ok("Opla : rien ne la retient → absente", !("opla" in q));
+  ok("une plateforme non cochée n'a pas de ligne", !("ebay" in R.questionsParPlateforme({ selected: new Set(["vinted"]), ebayRequiredStatus: [{ name: "Department", state: "missing" }] })));
+}
 
 console.log(ko ? `\n${ko} KO` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

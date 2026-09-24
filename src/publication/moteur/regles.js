@@ -316,6 +316,43 @@ export function questionsAPoser({
   return { sharedFieldsToRender, redGenericAspects, redEbayAspects, redTotal, redRestants, genSeule };
 }
 
+// ── LES QUESTIONS QUI RETIENNENT CHAQUE PLATEFORME (écran « Confirmer ») ────
+// Par plateforme cochée, les libellés des questions encore sans réponse qui
+// la retiennent — pour sa ligne (« Attend une réponse : Taille, Département »)
+// au lieu de « Connectée — prête » sous un bouton gris. Mêmes sources que
+// motifsCtaGris (champs partagés manquants, aspects génériques bloquants,
+// aspects eBay bloquants, genre Vinted/Beebs, description Vinted vide), même
+// libellé par champ : un champ partagé porte SON libellé, pas celui de
+// chaque plateforme. Un libellé n'apparaît qu'une fois par plateforme.
+export function questionsParPlateforme({
+  selected, missingSharedFieldsDetailed = [], genericRequiredStatus = null, ebayRequiredStatus = null,
+  vintedGenreBlocked = false, beebsGenreBlocked = false, descriptionVideVinted = false,
+  libellePartage = {}, libelleGenre = "Genre", libelleDescription = "Description",
+  genericFieldToSharedKey,
+}) {
+  const out = {};
+  const ajoute = (p, label) => {
+    if (!selected?.has(p) || !label) return;
+    const l = out[p] ?? (out[p] = []);
+    if (!l.includes(label)) l.push(label);
+  };
+  for (const f of missingSharedFieldsDetailed) for (const p of f.platforms ?? []) ajoute(p, libellePartage[f.key] ?? f.key);
+  for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
+    for (const a of (list ?? []).filter(aspectBloquant)) {
+      const sk = genericFieldToSharedKey ? genericFieldToSharedKey(gp, a.key) : null;
+      ajoute(gp, sk ? (libellePartage[sk] ?? a.label ?? a.key) : (a.label ?? a.key));
+    }
+  }
+  for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) {
+    const sk = a.sharedKey && libellePartage[a.sharedKey] ? a.sharedKey : null;
+    ajoute("ebay", sk ? libellePartage[sk] : (a.label ?? a.name));
+  }
+  if (vintedGenreBlocked) ajoute("vinted", libelleGenre);
+  if (descriptionVideVinted) ajoute("vinted", libelleDescription);
+  if (beebsGenreBlocked) ajoute("beebs", libelleGenre);
+  return out;
+}
+
 // ── L'ÉTAT D'UNE FOURNÉE, LU DANS LA FILE (écran « C'est parti ») ───────────
 // Pour chaque plateforme du lot, le job de publication le plus récent créé
 // depuis le clic (`depuisIso`) — ou, s'il n'est pas encore relu, « en_file ».
@@ -332,7 +369,11 @@ export function etatsFournee(jobs, plateformes, depuisIso) {
     const job = candidats[0] ?? null;
     if (!job) { out[p] = { kind: "en_file", job: null }; continue; }
     switch (job.status) {
-      case "pending":    out[p] = { kind: "en_file", job }; break;
+      // Un pending qui porte déjà un message n'est plus « dans la file » : il
+      // attend quelque chose (ta connexion, une reprise espacée) et le dit.
+      // Observé en réel le 24/09 : « En attente de ta connexion à Leboncoin »
+      // s'affichait « Chrome la prend à son tour ».
+      case "pending":    out[p] = String(job.error ?? "").trim() ? { kind: "attente", job } : { kind: "en_file", job }; break;
       case "processing": out[p] = { kind: "en_cours", job }; break;
       case "published":
       case "dry_run_completed":
