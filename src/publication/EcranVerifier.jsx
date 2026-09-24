@@ -42,6 +42,18 @@ export default function EcranVerifier({ m }) {
       {/* La rédaction n'a pas abouti : UNE carte (rouge = refus), le bouton du
           pied propose de réessayer — pas le bloc et le bouton de l'ancien
           écran en plus. Le message est celui du serveur, en clair. */}
+      {/* Rien de coché parmi les copies rédigées (tout est en ligne, ou fermé) :
+          on le dit ici, dans les mots du nouveau parcours, et on renvoie à
+          l'écran d'avant — pas « l'étape des photos », qui n'existe plus. */}
+      {!enCours && m.platformListings && ![...m.selected].some(p => m.platformListings.platforms?.[p]) && (
+        <Carte gravite="geste" titre={en ? "No platform selected" : "Aucune plateforme cochée"}>
+          <div className="fsn-card-p">
+            {en
+              ? "Go back to the previous screen to choose where to publish. Platforms already online for this item stay locked."
+              : "Reviens à l'écran précédent pour choisir où publier. Les plateformes où cet article est déjà en ligne restent verrouillées."}
+          </div>
+        </Carte>
+      )}
       {!enCours && !m.platformListings && m.platformError ? (
         <Carte gravite="refus" titre={en ? "The listing could not be written" : "La rédaction n'a pas abouti"}>
           <div className="fsn-card-p">{m.platformError}</div>
