@@ -94,9 +94,12 @@ android {
         //    2.7.27 : sur un natif 2.8.0 ce bundle est SOUS le plancher et ne
         //    sera jamais servi. La prochaine OTA doit être 2.8.1 ou au-dessus,
         //    jamais 2.7.28.
+        // versionCode 31 / versionName 2.9.10 (24/09) : binaire du main servi en
+        // OTA 2.9.10 (canal production). Même plancher que le canal : la
+        // prochaine OTA doit être 2.9.11 ou au-dessus. autoUpdate atInstall inchangé.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 30
-        versionName "2.8.0"
+        versionCode 31
+        versionName "2.9.10"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
