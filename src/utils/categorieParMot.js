@@ -396,8 +396,18 @@ async function feuillesPourGenre(plateforme, genre) {
  *   entier, pas une étiquette nue) ; `feuille` = le chemin donné EST déjà une
  *   feuille ; `restantes` = combien de feuilles vivent sous ce chemin.
  */
-export async function niveauSousChemin(plateforme, prefixe = [], { genre = '' } = {}) {
-  const feuilles = await feuillesPourGenre(plateforme, genre);
+export async function niveauSousChemin(plateforme, prefixe = [], { genre = '', exclure = [] } = {}) {
+  // `exclure` (2026-09-25) : des FEUILLES que la descente ne doit jamais
+  // proposer — le rayon que la vérification vient de refuser. Une feuille
+  // exclue disparaît, et avec elle une branche qui ne menait qu'à elle. Vide
+  // par défaut : les appelants d'avant reçoivent exactement la même liste.
+  // Comparaison sans accents ni casse : le chemin refusé peut venir d'une
+  // table d'icônes écrite à la main, pas du relevé.
+  const cleExclue = (c) => c.map((s) => texteComparable(String(s ?? ''))).join(' > ');
+  const exclues = new Set((exclure ?? []).filter((c) => Array.isArray(c) && c.length).map(cleExclue));
+  const feuilles = exclues.size
+    ? (await feuillesPourGenre(plateforme, genre)).filter((f) => !exclues.has(cleExclue(f.chemin)))
+    : await feuillesPourGenre(plateforme, genre);
   const sous = feuilles.filter((f) => prefixe.every((s, i) => f.chemin[i] === s));
   const feuille = sous.some((f) => f.chemin.length === prefixe.length);
   const libelles = [...new Set(sous.map((f) => f.chemin[prefixe.length]).filter(Boolean))];

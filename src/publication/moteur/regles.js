@@ -202,6 +202,12 @@ const CHEMIN_DU_JOB = {
 };
 export function plateformesSansChemin(rows) {
   return (rows ?? []).filter(r => {
+    // (25/09) Rayon refusé par la vérification, aucun rayon sûr trouvé à sa
+    // place : la question est posée au vendeur, et le dépôt ne part pas —
+    // sur TOUTES les plateformes, Beebs et Opla comprises (cf.
+    // utils/rayonApresRefus.js). Le choix du vendeur retire ce marqueur
+    // (appliquerRayonChoisi) : la plateforme repart alors normalement.
+    if (r.platform_fields?.rayon_a_choisir) return true;
     const lire = CHEMIN_DU_JOB[r.platform];
     if (!lire) return false; // opla et tout futur handler serveur
     const v = lire(r.platform_fields ?? {});
@@ -329,6 +335,9 @@ export function questionsParPlateforme({
   vintedGenreBlocked = false, beebsGenreBlocked = false, descriptionVideVinted = false,
   libellePartage = {}, libelleGenre = "Genre", libelleDescription = "Description",
   genericFieldToSharedKey,
+  // (25/09) Les plateformes dont le rayon reste à choisir (rayon refusé, aucun
+  // rayon sûr à sa place). Vide par défaut : sortie identique à avant.
+  rayonsAChoisir = [], libelleRayon = "Rayon",
 }) {
   const out = {};
   const ajoute = (p, label) => {
@@ -350,6 +359,7 @@ export function questionsParPlateforme({
   if (vintedGenreBlocked) ajoute("vinted", libelleGenre);
   if (descriptionVideVinted) ajoute("vinted", libelleDescription);
   if (beebsGenreBlocked) ajoute("beebs", libelleGenre);
+  for (const p of rayonsAChoisir ?? []) ajoute(p, libelleRayon);
   return out;
 }
 

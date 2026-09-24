@@ -59,6 +59,7 @@ import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
 import { tailleAGarder } from "./tailleInventee";
 import { rayonContreditLaFiche } from "./rayonIncoherent";
+import { VERDICTS_REFUS, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -1560,6 +1561,65 @@ export async function resoudrePublication({
         if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
       }
     }
+  }
+
+  // ══ LE RAYON REFUSÉ NE PART JAMAIS (2026-09-25) ═══════════════════════════
+  // Jusqu'ici, un rayon que la vérification venait de REFUSER restait sur le
+  // job de Vinted, Leboncoin et eBay, marqué « incertain » — en comptant sur la
+  // suggestion de la plateforme pour le corriger. Mesuré du 18 au 24/09 : 33
+  // dépôts refusés (« incoherent » ou « refuse_hors_famille »), 21 partis EN
+  // LIGNE dans le rayon refusé. Personne ne demandait à l'IA de choisir le bon.
+  // Désormais, APRÈS tout ce qui précède et sans rien en changer : le rayon
+  // refusé est retiré, l'IA redescend l'arbre réel de la plateforme (le plus
+  // proche qui existe), la feuille est contrôlée puis confirmée — sinon, pas
+  // de rayon et une question au vendeur. Cf. utils/rayonApresRefus.js.
+  // ⛔ PÉRIMÈTRE STRICT : le filtre ci-dessous, et rien d'autre. Un verdict
+  //    « confirme », « remplace », « descente_arbre », une panne en attente,
+  //    un dépôt sans vérification : aucun n'entre ici, aucun ne change.
+  // ⛔ Le choix du vendeur passe toujours : il est reposé après la résolution
+  //    (champsAvecRayonsChoisis), comme pour tout autre rayon.
+  const aReprendre = rows.filter((r) => VERDICTS_REFUS.has(r.platform_fields?.categorie_verification?.verdict));
+  if (aReprendre.length) {
+    const attributsRefus = {
+      genre: sharedFields.genre || autoGenre || "",
+      taille: sharedFields.taille || initialListing?.taille || "",
+      marque: sharedFields.marque || initialListing?.marque || "",
+    };
+    const familleVeto = familleVetoDe(familleObjetDetail);
+    // Les plateformes sont indépendantes : on les traite en même temps.
+    await Promise.all(aReprendre.map(async (r) => {
+      const pf = r.platform_fields;
+      const pfE = edited[r.platform]?.platform_fields ?? {};
+      const refuses = cheminsRefuses(r.platform, pf);
+      let res;
+      try {
+        res = await rayonApresRefus({
+          platform: r.platform,
+          objet: motCategorie || titreDescente,
+          titre: titreDescente,
+          attributs: attributsRefus,
+          // Même cascade de genre que la catégorie par le mot (étapes 2 et 3).
+          genre: pfE.genre || pfE.univers || genrePourCategorie(r.platform) || origineCat?.genre || "",
+          refuses,
+          familleVeto,
+          pf,
+          appelerResolve,
+          candidatsConnus: candidatsRatisses[r.platform] ?? [],
+        });
+      } catch (e) {
+        console.warn(`[publish] ${r.platform} — rayon après refus interrompu :`, e?.message ?? e);
+        res = { issue: "attente", motif: "resolution_interrompue", paliers: [], appels: 0 };
+      }
+      appliquerRayonApresRefus(r.platform, pf, res, { objet: motCategorie ?? null, motSource: motCategorieSource, refuses });
+      // La question montre ses candidats EN TÊTE du sélecteur de la carte.
+      if (res.issue === "question") candidatsRatisses[r.platform] = res.candidats;
+      console.log(
+        `[publish] ${r.platform} — rayon refusé (${refuses.map((c) => c.join(" > ")).join(" | ") || "?"}) → ` +
+        (res.issue === "trouve" ? `« ${res.chemin.join(" > ")} » (confirmé, ${res.paliers.join(" | ")})`
+          : res.issue === "question" ? `QUESTION au vendeur (${res.motif}, ${res.candidats.length} candidat(s))`
+            : `ATTENTE (${res.motif})`)
+      );
+    }));
   }
 
   return {

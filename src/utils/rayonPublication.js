@@ -123,6 +123,10 @@ export function appliquerRayonChoisi(pf, platform, choix) {
   delete suite.categorie_a_choisir;
   delete suite.categorie_verification;
   delete suite.categorie_plausibilite;
+  // (25/09) La question « quel rayon ? » posée après un refus : le choix de la
+  // personne EST la réponse — sans ce retrait, la plateforme resterait écartée
+  // avant le débit (regles.plateformesSansChemin).
+  delete suite.rayon_a_choisir;
   return suite;
 }
 
