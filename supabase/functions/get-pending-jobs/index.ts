@@ -4467,6 +4467,91 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] complément Beebs : ${String((e as Error)?.message ?? e)} — dépôts servis tels quels`);
     }
 
+    // ── MARQUE ET COULEUR VINTED DEPUIS LA FICHE (2026-09-24, dossier jocabroc8) ──
+    // 🚨 Trois publications refusées en 400 le 24/09 (« Le champ Marque doit
+    //    être renseigné » · « Le champ Couleur doit être renseigné »), cinq
+    //    chez ornellaracano depuis le 15/09 : le job partait avec `marque` et
+    //    `couleur` VIDES. Chaîne mesurée sur le job 86a44e7e : la rédaction
+    //    avait produit « S » et « M » (suspect_values : une lettre → rejetées,
+    //    donc rien) ; le stepper n'avait AUCUNE ligne catalogue pour « Maison >
+    //    Décoration > Encadrements » (elle est née de ce 400, 12:04) donc n'a
+    //    rien demandé ; et rien, côté serveur, ne reprenait la fiche.
+    // RÈGLE (Nico, 24/09) : aucune annonce Vinted ne part avec une Marque
+    // vide. La fiche a une marque, même hors liste Vinted (« Vintage », une
+    // marque d'artisan) → on l'envoie : vinted.js la crée par « Utiliser
+    // "X" comme marque » (prouvé sur ce même job à 12:14). Même geste pour la
+    // couleur, que vinted.js ne lit QUE dans fields.colors. Rien n'est
+    // inventé : la valeur vient de la FICHE et d'une source qui est celle du
+    // vendeur (saisie à la main, capture ou synchro de SES annonces Vinted,
+    // relevé de ses annonces) — jamais d'une IA (lens) ni d'un backfill.
+    // ⛔ Fiche sans marque → on ne pose PAS « Sans marque » d'office : c'est
+    //    le bloc « À compléter » du stepper (Vinted exige une marque partout
+    //    sauf Livres et médias, mesuré sur 183 publications abouties) ou le
+    //    needs_user nommé de Vinted qui la pose au vendeur.
+    // Périmètre : publish Vinted servi à l'extension. Une RECRÉATION porte la
+    // marque de sa capture (règle du 12/08 : sentinel brand_id 1 → « Sans
+    // marque »), on n'y touche pas. Servi, pas persisté ici : comme la couleur
+    // Leboncoin, l'extension renvoie le pf au statut suivant. Best-effort.
+    let vintedFiche = 0;
+    try {
+      const depotsVinted = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.platform === "vinted" && j.action === "publish" && j.inventaire_id != null);
+      if (depotsVinted.length) {
+        const ids = [...new Set(depotsVinted.map((j) => Number(j.inventaire_id)))];
+        const { data: arts } = await userClient.from("inventaire").select("id, attributs").in("id", ids);
+        const attrsParArticle = new Map<number, Record<string, unknown>>();
+        for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown }>) {
+          if (a.attributs && typeof a.attributs === "object") attrsParArticle.set(Number(a.id), a.attributs as Record<string, unknown>);
+        }
+        // Une valeur DU VENDEUR : saisie à la main, capture de son annonce,
+        // synchro Vinted, relevé de ses annonces. Jamais lens / IA / backfill.
+        const SOURCE_DU_VENDEUR = /^(manuel|capture|vinted|releve_)/;
+        const valeurDuVendeur = (attrs: Record<string, unknown> | undefined, cle: string): { v: string; source: string } | null => {
+          const e = attrs?.[cle];
+          if (!e) return null;
+          // Deux formes en base : { v, at, source } et la chaîne nue des lignes anciennes.
+          if (typeof e === "string") return e.trim() ? { v: e.trim(), source: "fiche (forme ancienne)" } : null;
+          if (typeof e !== "object") return null;
+          const o = e as Record<string, unknown>;
+          const v = typeof o.v === "string" ? o.v.trim() : "";
+          const source = typeof o.source === "string" ? o.source : "";
+          if (!v || !SOURCE_DU_VENDEUR.test(source)) return null;
+          return { v, source };
+        };
+        for (const j of depotsVinted) {
+          const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
+          const attrs = attrsParArticle.get(Number(j.inventaire_id));
+          if (!pf || !attrs) continue;
+          const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
+          const trace: Record<string, unknown> = {};
+          if (!String(pf.marque ?? "").trim() && !String(aspects.brand ?? "").trim()) {
+            const m = valeurDuVendeur(attrs, "marque");
+            if (m) {
+              pf.marque = m.v;
+              trace.marque = { valeur: m.v, avant: null, source: `inventaire.attributs.marque (${m.source})` };
+            }
+          }
+          const colors = Array.isArray(pf.colors) ? (pf.colors as unknown[]).filter((c) => typeof c === "string" && c.trim()) : [];
+          if (!String(pf.couleur ?? "").trim() && !colors.length && !String(aspects.color ?? "").trim()) {
+            const c = valeurDuVendeur(attrs, "couleur");
+            if (c) {
+              pf.couleur = c.v;
+              pf.colors = [c.v];
+              trace.couleur = { valeur: c.v, avant: null, source: `inventaire.attributs.couleur (${c.source})` };
+            }
+          }
+          if (Object.keys(trace).length) {
+            pf.vinted_deduit = { ...trace, le: new Date().toISOString(), pose_par: "get-pending-jobs (fiche de l'article, sources du vendeur)" };
+            vintedFiche++;
+            console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : ${Object.entries(trace).map(([k, v]) => `${k} ← « ${(v as Record<string, unknown>).valeur} » (${(v as Record<string, unknown>).source})`).join(" ; ")}`);
+          }
+        }
+      }
+      if (vintedFiche) console.log(`[get-pending-jobs] user=${user.id} marque/couleur Vinted posées depuis la fiche : ${vintedFiche}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] marque/couleur Vinted depuis la fiche : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
     // ── TITRE VINTED : TROP DE MAJUSCULES (2026-09-11, job f3a5dce8 Ornella) ──
     // Vinted refuse en 400 « Le titre contient trop de lettres majuscules » —
     // un seul mot en capitales suffit (« BOURSIC », 25 % de l'ensemble). La
