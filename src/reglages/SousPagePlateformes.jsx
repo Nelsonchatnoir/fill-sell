@@ -25,7 +25,8 @@ import EbayCompteSection from '../components/EbayCompteSection';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import OplaCategoriesMemorisees from './OplaCategoriesMemorisees';
 import { MOTIFS } from '../utils/connexionPlateformes';
-import { ETATS } from '../utils/veritePlateformes';
+import { ETATS, etatOplaAffiche } from '../utils/veritePlateformes';
+import { useOplaAcces } from '../utils/oplaAcces';
 import { ilYA } from '../annonces/etatReleve';
 import { R } from './theme';
 import { Groupe, Carte, Pastille, Note } from './ReglagesUI';
@@ -68,11 +69,17 @@ export default function SousPagePlateformes({ c, T }) {
   const userId = c.user?.id ?? null;
   const fr = c.lang !== 'en';
   const extensionJamaisVue = verite ? !verite.extension_vue_le : false;
+  // L'AUTORISATION Opla (24/09) : le verdict du SERVEUR, le même que le
+  // stepper et l'écran de suivi (utils/oplaAcces). Il corrige l'état de
+  // session d'Opla — un refus connu → « à autoriser », un accès prouvé → jamais
+  // « à autoriser » ; sans aucune preuve, le bouton reste (garde-fou).
+  const { verdict: verdictOpla, relire: relireOpla } = useOplaAcces({ userId, actif: (liste ?? []).includes('opla') });
 
   const relire = useCallback(() => {
     c.verite?.relire?.();
     c.sessions?.relire?.();
-  }, [c.verite, c.sessions]);
+    relireOpla();
+  }, [c.verite, c.sessions, relireOpla]);
 
   const ecarter = useCallback((pf, valeur) => {
     if (!c.verite?.ecarter) return;
@@ -90,7 +97,9 @@ export default function SousPagePlateformes({ c, T }) {
           {liste.map((pf) => {
             const nom = NOMS[pf] ?? pf;
             const v = verite?.plateformes?.[pf] ?? depuisAncienEtat(etats?.[pf] ?? null);
-            const etat = v.etat;
+            const etat = pf === 'opla' ? etatOplaAffiche(v.etat, verdictOpla) : v.etat;
+            // Opla sans AUCUNE preuve d'accès, et pas écartée : le bouton reste.
+            const oplaSansPreuve = pf === 'opla' && verdictOpla === 'inconnu' && etat !== ETATS.ECARTEE && etat !== ETATS.A_AUTORISER;
             const quand = v.depuis ? ilYA(v.depuis, fr) : null;
             const ton = etat === ETATS.CONNECTEE ? 'ok'
               : (etat === ETATS.A_CONNECTER || etat === ETATS.A_AUTORISER) ? 'ko' : 'inconnu';
@@ -152,6 +161,12 @@ export default function SousPagePlateformes({ c, T }) {
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <span style={{ fontSize: 14, color: R.ink }}>{T.veriteAutoriseOpla}</span>
                     <span style={{ fontSize: 13, color: R.texteSecondaire }}>{T.veriteAutoriseOplaComment}</span>
+                    <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.AUTORISER_OPLA} lang={c.lang} onOuverte={relire} />
+                  </div>
+                )}
+                {oplaSansPreuve && (
+                  <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 13, color: R.texteSecondaire }}>{T.veriteOplaSansPreuve}</span>
                     <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.AUTORISER_OPLA} lang={c.lang} onOuverte={relire} />
                   </div>
                 )}

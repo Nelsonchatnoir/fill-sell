@@ -34,6 +34,7 @@ import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
 import { useVeritePlateformes } from './useVeritePlateformes';
+import { etatsDepuisVerite } from '../utils/veritePlateformes';
 import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero, formaterDatePleine } from './quotas';
 import {
   EcranReglages, Groupe, Carte, Ligne, Jauge, JaugeRepublication, CarteIdentite, PiedPage,
@@ -101,9 +102,15 @@ export default function ReglagesPage({
   // La vérité serveur (2026-09-23) : c'est elle que l'écran Plateformes et le
   // compteur du hub affichent. Le calcul local reste le repli.
   const verite = useVeritePlateformes({ userId: user?.id, plateformes: plateformesSession });
+  // (24/09) Les ÉTATS aussi viennent du serveur quand il répond — le module de
+  // republication planifiée les lit (« session déconnectée dans Chrome ») :
+  // il disait autre chose que la page Plateformes juste au-dessus. Le calcul
+  // local ne reste que le repli d'une RPC muette.
   const sessions = useMemo(
-    () => (verite.verite ? { ...sessionsLocales, connectes: verite.connectes } : sessionsLocales),
-    [sessionsLocales, verite.verite, verite.connectes],
+    () => (verite.verite
+      ? { ...sessionsLocales, etats: { ...(sessionsLocales.etats ?? {}), ...(etatsDepuisVerite(verite.verite, plateformesSession) ?? {}) }, connectes: verite.connectes }
+      : sessionsLocales),
+    [sessionsLocales, verite.verite, verite.connectes, plateformesSession],
   );
 
   const courante = pile.length ? pile[pile.length - 1] : null;

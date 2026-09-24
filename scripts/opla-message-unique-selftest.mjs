@@ -100,7 +100,14 @@ check("carte : pastilles de statut et quantité sur fond OPAQUE", /\.gstatus\{[^
 const modale = lire("src/components/OplaAutorisationModal.jsx");
 check("modale : BoutonMeConnecter (Autoriser Opla) à la place de l'instruction", /<BoutonMeConnecter[^>]*motif=\{MOTIFS\.AUTORISER_OPLA\}/.test(modale));
 const lps = lire("src/components/ListingPreviewScreen.jsx");
-check("stepper : bloc « Autoriser Opla » avant la confirmation quand l'accès manque", /oplaAcces === false && selected\.has\("opla"\)/.test(lps) && /motif=\{MOTIFS\.AUTORISER_OPLA\}/.test(lps));
+// (24/09, cas Louis) Le bloc se décide sur le verdict SERVEUR (utils/oplaAcces,
+// _shared/acces-opla.js) — refus connu OU aucune preuve — et plus jamais sur la
+// sonde de l'extension (profiles.extension_sessions), que le stepper ne lit plus.
+check("stepper : bloc « Autoriser Opla » avant la confirmation quand l'accès n'est pas prouvé", /selected\.has\("opla"\) && carteAccesOpla\(oplaVerdict, lang\)/.test(lps) && /motif=\{MOTIFS\.AUTORISER_OPLA\}/.test(lps));
+check("stepper : ne décide plus sur la sonde de l'extension (extension_sessions)", !/extension_sessions/.test(lps.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "")));
+const nouveau = lire("src/publication/EcranOuPublier.jsx");
+check("stepper (nouveau) : la ligne Opla suit le verdict serveur, la modale seulement sur un refus connu",
+  /phraseAccesOpla\(m\.oplaVerdict, m\.lang\)/.test(nouveau) && /m\.oplaVerdict === "a_autoriser"\) \{ setOplaModale\(true\)/.test(nouveau));
 const bmc = app;
 check("BoutonMeConnecter (web) : un vrai bouton qui demande à l'extension, plus de texte de consigne", /demanderAutorisationOplaSurLeWeb/.test(bmc) && !/oplaSurWeb\s*\?\s*<Etat/.test(bmc));
 const auth = lire("chrome-extension/content-scripts/fillsell-auth.js");

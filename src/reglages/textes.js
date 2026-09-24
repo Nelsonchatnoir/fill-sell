@@ -101,6 +101,7 @@ const FR = {
   veriteAutoriseOpla: 'Autorise FillSell sur Opla.',
   veriteAutoriseOplaComment: "Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois. Tant que ce n'est pas fait, FillSell ne peut ni lire ni publier tes annonces Opla.",
   veriteExtensionJamaisVue: "Installe l'extension FillSell sur ton ordinateur : c'est elle qui connecte tes plateformes.",
+  veriteOplaSansPreuve: "FillSell n'a pas encore vu ton autorisation Opla. Si tu vends sur Opla, appuie sur « Autoriser Opla » : c'est une seule fois, et rien ne change si c'est déjà fait.",
   veriteJeNeVendsPas: (nom) => `Je ne vends pas sur ${nom}`,
   veriteFinalementSi: 'Finalement, si',
 
@@ -282,6 +283,7 @@ const EN = {
   veriteAutoriseOpla: 'Allow FillSell on Opla.',
   veriteAutoriseOplaComment: 'Opla is waiting for your permission so FillSell can list there. Tap “Autoriser Opla”: once is enough. Until then, FillSell can neither read nor publish your Opla listings.',
   veriteExtensionJamaisVue: 'Install the FillSell extension on your computer: it is what connects your platforms.',
+  veriteOplaSansPreuve: 'FillSell has not seen your Opla permission yet. If you sell on Opla, tap “Autoriser Opla”: once is enough, and nothing changes if it is already done.',
   veriteJeNeVendsPas: (nom) => `I do not sell on ${nom}`,
   veriteFinalementSi: 'Actually, I do',
 

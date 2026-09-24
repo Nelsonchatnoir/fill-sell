@@ -15,6 +15,7 @@
 //     pas : Beebs (adresse de remise manquante) » — plus jamais silencieuses.
 import BoutonMeConnecter from "../components/BoutonMeConnecter";
 import { MOTIFS } from "../utils/connexionPlateformes";
+import { carteAccesOpla, parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
 import BlocQuestions from "./BlocQuestions";
@@ -100,7 +101,12 @@ export default function EcranConfirmer({ m }) {
             let sous = null; let ton = null; let geste = null;
             if (verrouillee) {
               sous = m.motifsVerrouillage?.[p] ?? ""; ton = a?.bloque ? "geste" : "ok";
-              if (a?.bloque && m.userId && a.kind === "attente_autorisation") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
+              // Parcage « Autoriser Opla » plus ancien que la preuve d'accès du
+              // compte (verdict serveur, 24/09) : il repart seul — pas de bouton.
+              if (a?.bloque && a.kind === "attente_autorisation" && parcageDepasse(a.job, m.oplaAccesDetail)) {
+                sous = en ? "Opla is allowed: this listing goes out on its own" : "Opla est autorisée : cette annonce repart toute seule"; ton = "ok";
+              }
+              else if (a?.bloque && m.userId && a.kind === "attente_autorisation") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
               else if (a?.bloque && m.userId && a.kind === "attente_connexion") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
               else if (a?.bloque && a.kind === "attente_champ" && m.onCompleter) geste = (
                 <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(a.job)}>
@@ -174,12 +180,13 @@ export default function EcranConfirmer({ m }) {
       )}
 
       {/* ── Ce qui attend un geste (ambre) ── */}
-      {m.oplaAcces === false && m.selected.has("opla") && (
-        <Carte gravite="geste" titre={en ? "Opla is waiting for your permission" : "Opla attend ton autorisation"}>
+      {/* Opla cochée sans accès PROUVÉ au serveur (verdict de utils/oplaAcces,
+          le même qu'à l'étape 1, dans les Réglages et à l'écran de suivi) :
+          refus connu ou aucune preuve — le bouton reste (garde-fou). */}
+      {m.selected.has("opla") && carteAccesOpla(m.oplaVerdict, m.lang) && (
+        <Carte gravite="geste" titre={carteAccesOpla(m.oplaVerdict, m.lang).titre}>
           <div className="fsn-card-p">
-            {en
-              ? "You can publish now: the Opla listing waits for the permission, then goes out on its own. The other platforms go out right away."
-              : "Tu peux publier maintenant : l'annonce Opla attendra l'autorisation, puis partira toute seule. Les autres plateformes partent tout de suite."}
+            {carteAccesOpla(m.oplaVerdict, m.lang).texte}
           </div>
           {m.userId && <div><BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /></div>}
         </Carte>

@@ -91,6 +91,14 @@ export default function CarteAnnoncesEnLigne({
   // est le seul endroit où son run d'échec est lu.
   // ⛔ Une plateforme qui vient de réussir ou qui tourne n'a pas de mur, même
   //    si son run précédent en portait un : on regarde l'état ACTUEL.
+  // ── OPLA : LE DERNIER RELEVÉ N'EST PAS LE DERNIER MOT (2026-09-24) ────────
+  // Un relevé « accès Opla non accordé » d'hier ne dit plus rien quand le
+  // SERVEUR a, depuis, une preuve d'accès (verdict de utils/oplaAcces : poste
+  // autorisé, publication aboutie…) — le même verdict que le stepper et les
+  // Réglages. On ne repropose alors ni « Autoriser Opla », ni « pas encore
+  // autorisée » : le prochain relevé part normalement.
+  const oplaAutorisee = r.oplaVerdict === 'autorise';
+  const murOplaDepasse = (t) => t.platform === 'opla' && oplaAutorisee;
   const murs = [
     ...(etatVinted?.murVinted && r.plateformes.includes('vinted')
       ? [{ platform: 'vinted', nom: LABEL_RELEVE.vinted, motif: etatVinted.murVinted }]
@@ -98,14 +106,14 @@ export default function CarteAnnoncesEnLigne({
     ...tuiles
       .filter((t) => t.p !== 'vinted' && t.e.phase !== 'fait' && t.e.phase !== 'en_cours')
       .map((t) => ({ platform: t.p, nom: t.nom, motif: murConnexionReleve(r.runs[t.p] ?? null, t.p) }))
-      .filter((t) => !!t.motif),
+      .filter((t) => !!t.motif && !(murOplaDepasse(t) && t.motif === 'autoriser_opla')),
   ];
   const murDe = new Set(murs.map((m) => m.platform));
   const signaux = [
     // Une plateforme « absente » dont le texte ne NOMME pas le mur (run ancien,
     // motif effacé) garde la phrase d'avant, sans bouton : on n'invente pas un
     // geste sur une erreur qu'on ne sait pas lire.
-    ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p))
+    ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
       .map((t) => ({ cle: t.p, texte: t.e.opla ? T.signalOpla : T.signalNonConnecte(t.nom) })),
     // Un vrai arrêt technique — jamais un mur de connexion, qui a sa bande et
     // son bouton au-dessus. C'est ce qui fait qu'on n'écrit plus « échec » ni

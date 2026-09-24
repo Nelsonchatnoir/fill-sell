@@ -15,6 +15,7 @@ import GaleriePhotos from "../components/GaleriePhotos";
 import BoutonMeConnecter from "../components/BoutonMeConnecter";
 import OplaAutorisationModal from "../components/OplaAutorisationModal";
 import { MOTIFS } from "../utils/connexionPlateformes";
+import { phraseAccesOpla, parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
 
@@ -57,6 +58,13 @@ export default function EcranOuPublier({ m }) {
     if (pasEncoreOuverte) { etat = m.motifAVenir(p); ton = "mute"; }
     else if (dejaEnLigne) { etat = en ? "Already online for this item" : "Déjà en ligne pour cet article"; ton = "ok"; }
     else if (enCours) { etat = en ? "A publication is already under way" : "Une publication est déjà en cours"; ton = "ok"; }
+    else if (enAttente && attente.kind === "attente_autorisation" && parcageDepasse(attente.job, m.oplaAccesDetail)) {
+      // Parcage « Autoriser Opla » PLUS ANCIEN que la preuve d'accès du compte
+      // (24/09) : le serveur le relance dès qu'un poste avec accès polle. On le
+      // dit ; on ne redemande pas un geste déjà fait.
+      etat = en ? "Opla is allowed: this listing goes out on its own" : "Opla est autorisée : cette annonce repart toute seule";
+      ton = "ok";
+    }
     else if (enAttente) {
       etat = m.motifsVerrouillage?.[p] ?? "";
       ton = "geste";
@@ -75,8 +83,14 @@ export default function EcranOuPublier({ m }) {
     else if (fermeeCategorie) { etat = m.motifSupport(p, support); ton = "mute"; }
     else if (enPause) { etat = m.motifPause(p); ton = "geste"; }
     else if (parApi) { etat = en ? "Goes out from our servers, no extension needed" : "Part de nos serveurs, sans l'extension"; ton = "ok"; }
-    else if (p === "opla" && m.oplaAcces === false) {
-      etat = en ? "To allow in the extension" : "À autoriser dans l'extension"; ton = "geste";
+    // ── OPLA : L'AUTORISATION DU COMPTE, LUE AU SERVEUR (24/09, cas Louis) ──
+    // Le verdict est celui des Réglages et de l'écran de suivi (utils/oplaAcces,
+    // règle _shared/acces-opla.js) — plus jamais la sonde de l'extension. Un
+    // compte dont un poste a l'accès ne voit plus « Autoriser Opla ». Sans
+    // aucune preuve, le bouton RESTE (garde-fou) ; tant que le verdict n'est
+    // pas lu (null), rien n'est affirmé.
+    else if (p === "opla" && phraseAccesOpla(m.oplaVerdict, m.lang)) {
+      etat = phraseAccesOpla(m.oplaVerdict, m.lang); ton = "geste";
       if (m.userId) geste = <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
     }
     else if (session === false) {
@@ -92,8 +106,10 @@ export default function EcranOuPublier({ m }) {
     return { p, disabled, cochee, etat, ton, geste, pasEncoreOuverte };
   });
 
+  // La modale au clic ne se pose que sur un refus CONNU — « je ne sais pas »
+  // montre la ligne et son bouton, sans interrompre le geste.
   const basculer = (p) => {
-    if (p === "opla" && !m.selected.has(p) && m.oplaAcces === false) { setOplaModale(true); return; }
+    if (p === "opla" && !m.selected.has(p) && m.oplaVerdict === "a_autoriser") { setOplaModale(true); return; }
     m.basculer(p);
   };
 

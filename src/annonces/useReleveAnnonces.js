@@ -48,7 +48,10 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   const [tick, setTick] = useState(0);
   const recharger = useCallback(() => setTick((t) => t + 1), []);
 
-  const { acces: oplaAcces, relire: relireOplaAcces } = useOplaAcces({ userId });
+  // (24/09) Verdict SERVEUR (utils/oplaAcces) : `acces === false` = refus
+  // CONNU seulement. « Je ne sais pas » ne retient plus le relevé — c'est
+  // justement lui qui prouvera l'accès (ou dira « non accordé »).
+  const { acces: oplaAcces, verdict: oplaVerdict, relire: relireOplaAcces } = useOplaAcces({ userId });
 
   useEffect(() => {
     if (!ouvert || !userId) return undefined;
@@ -120,6 +123,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     busy, toutBusy, message, setMessage,
     etatVinted,
     lancer, toutRelever, recharger,
+    oplaVerdict,
     oplaModale, fermerOplaModale: () => { setOplaModale(false); relireOplaAcces().catch(() => {}); },
   };
 }

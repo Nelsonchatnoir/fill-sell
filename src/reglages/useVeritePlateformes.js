@@ -1,12 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// RÉGLAGES — LA VÉRITÉ DES PLATEFORMES, LUE AU SERVEUR (2026-09-23)
+// LA VÉRITÉ DES PLATEFORMES, LUE AU SERVEUR (2026-09-23)
 // ═══════════════════════════════════════════════════════════════════════════
-// Remplace le calcul local de `useSessionsPlateformes` pour l'écran
-// Plateformes : le serveur rend UN état et UNE action par plateforme
-// (utils/veritePlateformes). Le hook lit, relit (toutes les 60 s, au retour
-// d'onglet, après un geste) et porte « je ne vends pas sur X ».
-// `useSessionsPlateformes` reste en place : d'autres écrans le lisent encore,
-// et il sert de repli si la RPC ne répond pas.
+// Remplace le calcul local de `useSessionsPlateformes` : le serveur rend UN
+// état et UNE action par plateforme (utils/veritePlateformes). Le hook lit,
+// relit (toutes les 60 s, au retour d'onglet, après un geste) et porte « je ne
+// vends pas sur X ».
+// (24/09) Monté aussi par le stepper : l'étape « Où publier ? » et l'écran
+// Confirmer disent désormais la MÊME connexion que les Réglages. La lecture est
+// partagée (utils/veritePlateformes, cache de 10 s) — deux écrans montés, une
+// seule requête.
+// `useSessionsPlateformes` reste le repli des Réglages si la RPC ne répond pas.
 import { useCallback, useEffect, useState } from 'react';
 import { lireVeritePlateformes, ecarterPlateforme, compterConnectees } from '../utils/veritePlateformes';
 
@@ -15,13 +18,13 @@ export function useVeritePlateformes({ userId, plateformes, actif = true }) {
   const [chargement, setChargement] = useState(true);
   const [enCours, setEnCours] = useState(null); // plateforme dont on change l'écartement
 
-  const lire = useCallback(async () => {
+  const lire = useCallback(async (frais = false) => {
     if (!userId) return;
     try {
-      const v = await lireVeritePlateformes();
+      const v = await lireVeritePlateformes({ frais });
       setVerite(v);
     } catch (e) {
-      console.warn('[reglages] vérité des plateformes illisible :', e?.message ?? e);
+      console.warn('[verite] vérité des plateformes illisible :', e?.message ?? e);
     } finally {
       setChargement(false);
     }
@@ -30,10 +33,10 @@ export function useVeritePlateformes({ userId, plateformes, actif = true }) {
   useEffect(() => {
     if (!actif || !userId) return undefined;
     let mort = false;
-    const tick = () => { if (!mort) lire(); };
+    const tick = (frais = false) => { if (!mort) lire(frais); };
     tick();
-    const timer = setInterval(tick, 60_000);
-    const surVisibilite = () => { if (document.visibilityState === 'visible') tick(); };
+    const timer = setInterval(() => tick(), 60_000);
+    const surVisibilite = () => { if (document.visibilityState === 'visible') tick(true); };
     document.addEventListener('visibilitychange', surVisibilite);
     return () => {
       mort = true;
@@ -46,7 +49,7 @@ export function useVeritePlateformes({ userId, plateformes, actif = true }) {
     setEnCours(platform);
     try {
       await ecarterPlateforme(platform, valeur);
-      await lire();
+      await lire(true);
     } catch (e) {
       console.warn('[reglages] plateforme non écartée :', e?.message ?? e);
     } finally {
@@ -57,7 +60,7 @@ export function useVeritePlateformes({ userId, plateformes, actif = true }) {
   return {
     verite,
     chargement,
-    relire: lire,
+    relire: () => lire(true),
     ecarter,
     enCours,
     connectes: compterConnectees(verite, plateformes),

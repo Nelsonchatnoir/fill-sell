@@ -14,12 +14,15 @@ import { etatsFournee } from "./moteur/regles";
 // Le texte d'un job passe TOUJOURS par humanizeJobError (24/09) — jamais le
 // brut de l'extension ou du worker (« LIVE : aspect(s) … button.fake-link »).
 import { humanizeJobError } from "../utils/shared";
+import BoutonMeConnecter from "../components/BoutonMeConnecter";
+import { MOTIFS } from "../utils/connexionPlateformes";
+import { parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo } from "./composants";
 import { NOM, ilYA } from "./texte";
 
 const LIBELLE_MOTIF = {
-  fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", refusee_serveur: "déjà en ligne, en file ou en attente" },
-  en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", sans_rayon: "no category found", refusee_serveur: "already online, queued or waiting" },
+  fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", rayon_a_reessayer: "rayon pas trouvé à l'instant — republie pour réessayer", refusee_serveur: "déjà en ligne, en file ou en attente" },
+  en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", sans_rayon: "no category found", rayon_a_reessayer: "category not found just now — publish again to retry", refusee_serveur: "already online, queued or waiting" },
 };
 
 export default function EcranSuivi({ m }) {
@@ -99,7 +102,13 @@ export default function EcranSuivi({ m }) {
       case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}{noteLivraison(e.job)}</>, droite: <Puce ton="ok" point>{en ? "Live" : "En ligne"}</Puce> };
       case "attente_champ": return { texte: (en ? `${NOM(p)} asks for “${e.champ}”` : `${NOM(p)} demande « ${e.champ} »`), droite: <Puce ton="geste">{en ? "Question" : "Question"}</Puce>,
         geste: m.onCompleter && e.job ? <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(e.job)}>{en ? "Answer and resume" : "Répondre et relancer"}</button> : null };
-      case "attente_autorisation": return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce> };
+      // L'autorisation Opla se lit comme partout (verdict serveur, 24/09) : un
+      // parcage plus ancien que la preuve d'accès du compte repart seul — on
+      // ne redemande pas un geste déjà fait ; sinon, LE bouton, ici aussi.
+      case "attente_autorisation": return parcageDepasse(e.job, m.oplaAccesDetail)
+        ? { texte: en ? "Opla is allowed: it goes out on its own in a moment." : "Opla est autorisée : elle repart toute seule dans un instant.", droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> }
+        : { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+            geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
       case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{en ? "Sign in" : "Connexion"}</Puce> };
       case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
       case "refusee": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{en ? "Refused" : "Refusée"}</Puce> };
