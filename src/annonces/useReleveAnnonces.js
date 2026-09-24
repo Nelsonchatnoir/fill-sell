@@ -21,7 +21,9 @@ import { useOplaAcces } from '../utils/oplaAcces';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
   lireAnnoncesARattacher, compterAnnoncesParPlateforme, texteRefusReleve, lireDernierRunVinted,
+  lireRelevesVides,
 } from '../utils/syncPlateformes';
+import { avecDernierReleveVide } from './releveVide';
 
 // Le poll : la base rend compte, jamais l'extension. 30 s — inchangé.
 const POLL_MS = 30000;
@@ -36,6 +38,9 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   const cle = autres.join(',');
 
   const [runs, setRuns] = useState({});
+  // (24/09) Plateformes à relevés vides d'affilée, tranchées par le serveur
+  // (releves_vides_signales) — {} pour tout compte qui n'est pas concerné.
+  const [vides, setVides] = useState({});
   const [runVinted, setRunVinted] = useState(null);
   const [compte, setCompte] = useState({});
   const [aRattacher, setARattacher] = useState([]);
@@ -57,12 +62,15 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     if (!ouvert || !userId) return undefined;
     let annule = false;
     const charger = async () => {
-      const [r, c, a, v] = await Promise.all([
+      const [r, c, a, v, vv] = await Promise.all([
         lireDerniersRunsReleve(userId), compterAnnoncesParPlateforme(userId),
-        lireAnnoncesARattacher(userId), lireDernierRunVinted(userId),
+        lireAnnoncesARattacher(userId), lireDernierRunVinted(userId), lireRelevesVides(userId),
       ]);
       if (annule) return;
-      setRuns(r); setCompte(c); setARattacher(a); setRunVinted(v);
+      // Une plateforme signalée affiche son relevé vide le plus récent : la
+      // tuile ne peut pas dire « 528 » sous une bande qui dit « aucune annonce ».
+      setRuns(avecDernierReleveVide(r, vv)); setVides(vv);
+      setCompte(c); setARattacher(a); setRunVinted(v);
     };
     const t0 = setTimeout(charger, 0);
     const t = setInterval(charger, POLL_MS);
@@ -119,7 +127,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     fr, lang, userId,
     // Vinted en tête : c'est l'ordre des tuiles, et celui du reste du Stock.
     plateformes: ['vinted', ...(cle ? cle.split(',') : [])],
-    runs, runVinted, compte, aRattacher,
+    runs, runVinted, compte, aRattacher, vides,
     busy, toutBusy, message, setMessage,
     etatVinted,
     lancer, toutRelever, recharger,

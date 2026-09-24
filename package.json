@@ -67,6 +67,7 @@
     "selftest:chaussure-malgre-le-mot": "node scripts/chaussure-malgre-le-mot-selftest.mjs",
     "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs",
     "selftest:releve-compte-vide": "node scripts/releve-compte-vide-selftest.mjs",
+    "selftest:releve-vide-repete": "node scripts/releve-vide-repete-selftest.mjs",
     "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs",
     "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs",
     "selftest:creneaux-famine": "node scripts/creneaux-famine-selftest.mjs",

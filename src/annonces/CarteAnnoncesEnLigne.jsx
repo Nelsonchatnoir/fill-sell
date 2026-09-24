@@ -53,14 +53,17 @@ export default function CarteAnnoncesEnLigne({
     () => lireBilan({ plateformes: r.plateformes, runs: r.runs, runVinted: r.runVinted }),
     [r.plateformes, r.runs, r.runVinted],
   );
-  const tuiles = useMemo(() => r.plateformes.map((p) => ({
-    p,
-    nom: LABEL_RELEVE[p] ?? p,
-    e: etatTuile({
+  const tuiles = useMemo(() => r.plateformes.map((p) => {
+    const e = etatTuile({
       run: p === 'vinted' ? r.runVinted : (r.runs[p] ?? null),
       vinted: p === 'vinted', etatVinted, T, fr, pip: A,
-    }),
-  })), [r.plateformes, r.runs, r.runVinted, etatVinted, T, fr]);
+    });
+    // (24/09) Relevés vides d'affilée, tranchés par le serveur : le nombre (0)
+    // est vrai, mais il ne dit rien des annonces — pastille ambre, et la bande
+    // plus bas dit pourquoi. Toute autre tuile : inchangée.
+    const vide = p !== 'vinted' && !!r.vides?.[p] && e.phase === 'fait';
+    return { p, nom: LABEL_RELEVE[p] ?? p, e: vide ? { ...e, pip: A.pipWarn } : e, vide };
+  }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr]);
 
   if (!ouvert || !r.userId) return null;
 
@@ -110,6 +113,12 @@ export default function CarteAnnoncesEnLigne({
   ];
   const murDe = new Set(murs.map((m) => m.platform));
   const signaux = [
+    // ── RELEVÉS VIDES D'AFFILÉE (2026-09-24, pironneau.vincent) ────────────
+    // Le serveur a vu les derniers relevés terminés de cette plateforme revenir
+    // sans AUCUNE annonce, sur un compte qui en avait : le veilleur ne relance
+    // plus. On le dit, et on ne conclut RIEN sur les annonces — ni vendues, ni
+    // retirées. Le geste reste celui de toujours : toucher la tuile.
+    ...tuiles.filter((t) => t.vide).map((t) => ({ cle: `vide-${t.p}`, texte: T.signalVideRepete(t.nom) })),
     // Une plateforme « absente » dont le texte ne NOMME pas le mur (run ancien,
     // motif effacé) garde la phrase d'avant, sans bouton : on n'invente pas un
     // geste sur une erreur qu'on ne sait pas lire.

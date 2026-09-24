@@ -10,6 +10,7 @@
 // serveur refuserait, et n'annonce rien qui n'existe pas encore.
 import { supabase } from '../lib/supabase';
 import { PLATEFORMES_STOCK } from './stockFiltres';
+import { indexerRelevesVides } from '../annonces/releveVide';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
@@ -58,6 +59,22 @@ export async function lireDerniersRunsReleve(userId) {
   const par = {};
   for (const r of data ?? []) if (!par[r.platform]) par[r.platform] = r;
   return par;
+}
+
+// ── LES RELEVÉS VIDES D'AFFILÉE (2026-09-24) ─────────────────────────────────
+// Plateformes dont les derniers relevés terminés n'ont trouvé AUCUNE annonce,
+// sur un compte qui en avait : le serveur (releve_vide_etat) ne laisse plus le
+// veilleur relancer, et ne conclut rien sur les annonces. L'app le dit.
+// Serveur sans la RPC, ou lecture ratée → {} : rien ne s'affiche, rien ne casse.
+export async function lireRelevesVides(userId) {
+  if (!userId) return {};
+  try {
+    const { data, error } = await supabase.rpc('releves_vides_signales');
+    if (error) return {};
+    return indexerRelevesVides(data);
+  } catch {
+    return {};
+  }
 }
 
 // ── LE DERNIER RELEVÉ VINTED (2026-09-18) ────────────────────────────────────

@@ -65,6 +65,10 @@ const FR = {
   // Un arrêt TECHNIQUE (la page n'a pas répondu à temps) : ce n'est ni un
   // échec de la personne ni un verdict sur ses annonces. On dit ce qu'on fait.
   signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer le relevé d'ici.`,
+  // Relevés vides d'affilée sur un compte qui avait des annonces (serveur,
+  // releve_vide_etat, 24/09). ⛔ On ne conclut RIEN : ni vendues, ni retirées,
+  // ni « tu n'as plus d'annonce ». On dit ce qu'on a lu, et le geste possible.
+  signalVideRepete: (nom) => `${nom} : les derniers relevés n'ont trouvé aucune annonce sur le compte connecté sur ton ordinateur. On ne conclut rien sur tes annonces. Si elles sont en ligne, vérifie que tu es connecté au bon compte ${nom}, puis touche sa tuile pour la relever.`,
   extensionAbsente: "L'extension Chrome n'est pas installée : c'est elle qui relève tes annonces depuis ton ordinateur.",
   extensionAbsenteCta: "Installer l'extension",
   extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome, le relevé part tout seul.",
@@ -160,6 +164,7 @@ const EN = {
   signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
   signalEchec: (nom, motif) => `The ${nom} scan stopped${motif ? ` — ${motif}` : ''}. The other platforms were scanned.`,
   signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the scan again from here.`,
+  signalVideRepete: (nom) => `${nom}: the latest scans found no listing on the account signed in on your computer. We draw no conclusion about your listings. If they are online, check you are signed in to the right ${nom} account, then tap its tile to scan it.`,
   extensionAbsente: 'The Chrome extension is not installed: it is what scans your listings from your computer.',
   extensionAbsenteCta: 'Install the extension',
   extensionEndormie: 'Your computer did not answer: open Chrome and the scan starts on its own.',
