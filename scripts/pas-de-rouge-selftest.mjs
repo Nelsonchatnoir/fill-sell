@@ -201,5 +201,17 @@ for (const essais of [0, 1, 2, 3, 9]) {
     `essais=${essais} → ${s.verdict}/${s.statut}${s.verdict === "a_toi" ? " (bouton Relancer)" : ""}`);
 }
 
+console.log("\n── 7. Vinted neuf seulement : une info, jamais une question (24/09) ──");
+{
+  const brut = "Vinted n'accepte que des articles neufs dans ce rayon (Neuf avec étiquette). Ton article est « Bon état » : il ne peut pas y être publié. C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.";
+  const s = classerEchec({ platform: "vinted", action: "publish", brut, essais: 0, pf: {} });
+  ok(s.verdict === "info" && s.statut === "cancelled" && s.motif === "vinted_neuf_seulement", "casque solene.mantero → info/cancelled");
+  ok(s.message.startsWith("Vinted n'accepte que des articles neufs") && !/Veille à ne mettre/.test(s.message), "la phrase claire est gardée, jamais l'avertissement de Vinted");
+  const deco = classerEchec({ platform: "vinted", action: "publish", brut, essais: 0, pf: {}, sessions: { vinted: false } });
+  ok(deco.motif === "vinted_neuf_seulement", "même sonde « déconnecté » : la limite vérifiée garde la main");
+  const ailleurs = classerEchec({ platform: "beebs", action: "publish", brut, essais: 0, pf: {} });
+  ok(ailleurs.motif !== "vinted_neuf_seulement", "hors Vinted, l'ancre ne classe rien");
+}
+
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);

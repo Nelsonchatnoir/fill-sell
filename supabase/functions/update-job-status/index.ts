@@ -2646,6 +2646,47 @@ serve(async (req) => {
       }
     }
 
+    // ── VINTED « NEUF SEULEMENT » : UNE LIMITE, PAS UNE QUESTION (2026-09-24) ──
+    // Casque de solene.mantero (job 4da68910) : rayon Vinted qui n'accepte que
+    // « Neuf avec étiquette », article en « Bon état ». L'extension (≤ 0.6.65)
+    // rendait un needs_user « Vinted exige des champs encore vides : État
+    // (accepte : Veille à ne mettre en ligne que des articles neufs… ) » — le
+    // texte d'avertissement de Vinted pris pour la liste des états, et une
+    // question dont la seule réponse (« neuf ») serait un mensonge.
+    // Le needsUserField porte la liste VRAIE (config du rayon) : si elle ne
+    // contient QUE des « Neuf… » et que l'état de l'article n'y est pas, ce
+    // n'est pas un geste à demander. Le job part en échec avec une phrase
+    // claire, que pas-de-rouge classe en INFO (clos, jamais relancé).
+    if (statutEffectif === "needs_user") {
+      try {
+        const pfL = (pfIn ?? {}) as Record<string, unknown>;
+        const nuf = (pfL["needsUserField"] && typeof pfL["needsUserField"] === "object")
+          ? pfL["needsUserField"] as Record<string, unknown> : null;
+        const acceptees = Array.isArray(nuf?.["allowed_values"])
+          ? (nuf!["allowed_values"] as unknown[]).map((v) => String(v ?? "").trim()).filter(Boolean) : [];
+        const etatArticle = String(pfL["etat"] ?? "").trim();
+        const neuf = (s: string) => /^neuf\b/i.test(s.normalize("NFD").replace(/[̀-ͯ]/g, ""));
+        const comparable = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+        if (nuf && String(nuf["field_key"] ?? "") === "condition" && acceptees.length && acceptees.every(neuf)
+            && etatArticle && !acceptees.some((a) => comparable(a) === comparable(etatArticle))) {
+          const { data: jL } = await userClient.from("cross_post_jobs").select("platform").eq("id", jobId).maybeSingle();
+          if (jL?.platform === "vinted") {
+            if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) erreurTechniqueBrute = body.error;
+            body.error =
+              `Vinted n'accepte que des articles neufs dans ce rayon (${[...new Set(acceptees)].join(" · ")}). ` +
+              `Ton article est « ${etatArticle} » : il ne peut pas y être publié. ` +
+              "C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.";
+            statutEffectif = "failed";
+            // La question n'existe plus : rien à choisir.
+            delete pfL["needsUserField"]; delete pfL["needsUserFields"]; delete pfL["champs_a_completer"];
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — Vinted neuf seulement (état « ${etatArticle} ») : limite de plateforme, pas une question`);
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] requalification neuf seulement :", (e as Error)?.message ?? e);
+      }
+    }
+
     let pfPasDeRouge: Record<string, unknown> | null = null;
     // Opla 494 (cookies du site au-delà de la limite de Vercel, 2026-09-24) :
     // inutile d'attendre les 5 essais espacés de l'extension — chaque essai
