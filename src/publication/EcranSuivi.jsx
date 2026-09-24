@@ -74,19 +74,36 @@ export default function EcranSuivi({ m }) {
   const voies = m.voiesDuLot;
   const ext = m.extFraicheurPublier;
 
+  // Leboncoin : les transporteurs / le format demandés qui n'ont PAS été posés
+  // (bilan relu par l'extension, platform_fields.livraison_lbc — 24/09). Une
+  // annonce en ligne avec l'estimation de Leboncoin au lieu du choix de la
+  // personne ne passe plus en silence.
+  const noteLivraison = (job) => {
+    const b = job?.platform_fields?.livraison_lbc;
+    if (!b || b.posee !== false) return null;
+    const noms = (b.non_poses ?? []).map(n => n?.nom).filter(Boolean);
+    const quoi = noms.length
+      ? (en ? `carriers not applied: ${noms.join(", ")}` : `transporteurs non appliqués : ${noms.join(", ")}`)
+      : (en ? "your delivery settings were not applied — Leboncoin's estimate is used" : "tes réglages de livraison n'ont pas été appliqués — l'estimation de Leboncoin s'applique");
+    return <><br /><span style={{ color: "#92400E" }}>{quoi}</span></>;
+  };
+
   const ligne = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
     const parApi = p === "ebay" && m.ebayVoieApiReelle;
     switch (e.kind) {
       case "en_cours": return { texte: parApi ? (en ? "Publishing from our servers…" : "Publication depuis nos serveurs…") : (en ? "In progress in Chrome" : "En cours dans Chrome"), droite: <span className="fsn-spin" aria-label={en ? "in progress" : "en cours"} /> };
-      case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}</>, droite: <Puce ton="ok" point>{en ? "Live" : "En ligne"}</Puce> };
+      case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}{noteLivraison(e.job)}</>, droite: <Puce ton="ok" point>{en ? "Live" : "En ligne"}</Puce> };
       case "attente_champ": return { texte: (en ? `${NOM(p)} asks for “${e.champ}”` : `${NOM(p)} demande « ${e.champ} »`), droite: <Puce ton="geste">{en ? "Question" : "Question"}</Puce>,
         geste: m.onCompleter && e.job ? <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(e.job)}>{en ? "Answer and resume" : "Répondre et relancer"}</button> : null };
       case "attente_autorisation": return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce> };
       case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{en ? "Sign in" : "Connexion"}</Puce> };
       case "attente": return { texte: e.job?.error || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
       case "refusee": return { texte: e.erreur || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{en ? "Refused" : "Refusée"}</Puce> };
-      case "annulee": return { texte: en ? "Cancelled." : "Annulée.", droite: <Puce ton="mute">{en ? "Cancelled" : "Annulée"}</Puce> };
+      // Une annulation porte sa raison quand la plateforme ne sait pas faire
+      // (pas-de-rouge « info » : Vinted neuf seulement, pas de rayon…) — on la
+      // dit, au lieu d'un « Annulée. » muet.
+      case "annulee": return { texte: String(e.job?.error ?? "").trim() || (en ? "Cancelled." : "Annulée."), droite: <Puce ton="mute">{en ? "Cancelled" : "Annulée"}</Puce> };
       // Pas de rang annoncé (« 1er », « 2e ») : c'est le serveur qui ordonne la
       // file, et l'ordre observé en réel (Vinted avant Opla) n'était pas
       // celui de la fournée — on ne promet que ce qu'on sait.

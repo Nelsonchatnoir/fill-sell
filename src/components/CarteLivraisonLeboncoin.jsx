@@ -20,7 +20,7 @@
 import { useState } from 'react';
 import { Truck, Check } from 'lucide-react';
 import { UI } from './ui';
-import { LBC_TRANSPORTEURS, LBC_FORMATS, formatLeboncoin, transporteursPlausibles } from '../utils/leboncoinColis';
+import { LBC_TRANSPORTEURS, LBC_FORMATS, formatLbcDuJob, transporteursPlausibles } from '../utils/leboncoinColis';
 
 const MOTS = {
   fr: {
@@ -53,7 +53,9 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const [ouvert, setOuvert] = useState(false);
 
-  const format = String(champs.lbcFormatColis ?? '').trim() || formatLeboncoin(champs.format_colis);
+  // UNE seule règle (24/09) : format_colis fait foi, lbcFormatColis n'est
+  // qu'un repli des jobs d'avant — la même que l'extension (formatLbcDuJob).
+  const format = formatLbcDuJob(champs);
   const plausibles = transporteursPlausibles(format);
   const choisis = Array.isArray(champs.lbcTransporteurs) ? champs.lbcTransporteurs : null;
   // Sans choix explicite, la coche suit ce que Leboncoin proposerait.
@@ -105,7 +107,13 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
               const actif = format === f.valeur;
               return (
                 <button key={f.valeur} type="button" title={f.aide}
-                  onClick={() => onChange?.('lbcFormatColis', actif ? '' : f.valeur)}
+                  onClick={() => {
+                    // Le sélecteur « Format du colis » de la copie et ces puces
+                    // écrivent désormais LA MÊME clé : ils ne peuvent plus se
+                    // contredire (13 jobs de Louis « Petit » contre « Moyen »).
+                    onChange?.('format_colis', actif ? '' : f.valeur);
+                    onChange?.('lbcFormatColis', '');
+                  }}
                   style={{ padding: '7px 11px', borderRadius: 999, fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
                            fontWeight: actif ? 700 : 600,
                            border: `1px solid ${actif ? UI.tealDeep : UI.border}`,

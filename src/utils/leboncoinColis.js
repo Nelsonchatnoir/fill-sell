@@ -119,3 +119,18 @@ export function transporteursPlausibles(format) {
 //
 // CE QUI RESTE, ET QUI SERT : LBC_FORMATS, LBC_TRANSPORTEURS, formatLeboncoin,
 // transporteursPlausibles.
+
+// ── UNE SEULE RÈGLE DE FORMAT (2026-09-24) ──────────────────────────────────
+// Audit du 23/09 : deux contrôles sur la même copie Leboncoin — le sélecteur
+// `format_colis` (liste des champs) et les puces `lbcFormatColis` (carte
+// Livraison). 13 jobs de Louis portaient « Petit » d'un côté, « Moyen » de
+// l'autre, et l'extension ne lisait QUE les puces.
+// LA règle : `format_colis` fait foi (c'est le champ visible de la copie, et
+// la clé de mémoire du poids PRO) ; `lbcFormatColis` n'est plus qu'un repli
+// pour les jobs d'avant. Les puces de la carte écrivent désormais
+// `format_colis` et effacent `lbcFormatColis` : les deux ne peuvent plus
+// diverger. ⚠️ MIROIR dans chrome-extension/content-scripts/leboncoin.js
+// (formatLbcDuJob) — même ordre, même traduction.
+export function formatLbcDuJob(pf) {
+  return formatLeboncoin(pf?.format_colis) ?? formatLeboncoin(pf?.lbcFormatColis);
+}

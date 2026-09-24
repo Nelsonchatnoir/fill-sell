@@ -459,6 +459,9 @@ const RELANCE_COPIE_CLES_RETIREES = [
   'needsUserBoucle', 'boucle_needs_user', 'needsUserField', 'needsUserFields',
   'needs_user_tick_le', 'needs_user_actif_ms', 'needs_user_vu_le', 'needs_user_vu_erreur',
   'beebs_valeurs_posees', 'listing_url_recovery', 'beebs_moderation',
+  // Bilan de livraison Leboncoin du dépôt SOURCE (24/09) : il décrit ce
+  // dépôt-là, pas la copie.
+  'livraison_lbc',
 ];
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──

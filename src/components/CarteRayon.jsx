@@ -23,6 +23,7 @@ import { feuillesDe } from '../utils/categorieParMot';
 import { texteComparable } from '../utils/texteComparable';
 import { libelleRayon, cheminComplet, cleCategorie } from '../utils/rayonPublication';
 import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPECTS } from '../utils/champsDuRayon';
+import { messageLimiteNeuf } from '../publication/moteur/listes.js';
 import { rayonContreditLaFiche, phraseIncoherence, tailleContreditLaGrille } from '../utils/rayonIncoherent';
 
 const MOTS = {
@@ -141,7 +142,7 @@ export default function CarteRayon({
     return () => { vivant = false; };
   }, [platform, cle, supabase]);
 
-  const { questions, connus, defauts } = useMemo(
+  const { questions, connus, defauts, limites } = useMemo(
     () => classerChamps(
       [...(catalogue ?? []), ...lignesDepuisConfigLocale(configLocale)],
       champs ?? {}, platform, { regle, cheminCategorie: rayon?.chemin ?? null }
@@ -365,6 +366,16 @@ export default function CarteRayon({
           </div>
         )}
       </div>
+
+      {/* ── CE QUE LA PLATEFORME REFUSE (24/09) — une information, jamais
+             une question : aucune réponse ne la ferait partir. ─────────── */}
+      {(limites ?? []).map((l) => (
+        <div key={`limite-${l.cle}`} style={{ ...st.bloc, background: '#FFFBEB', borderColor: '#F59E0B' }}>
+          <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.45 }}>
+            {messageLimiteNeuf({ valeur: l.valeur, acceptees: l.valeurs }, lang === 'en' ? 'en' : 'fr')}
+          </div>
+        </div>
+      ))}
 
       {/* ── CE QU'IL RESTE À DONNER ─────────────────────────────────── */}
       {questions.length > 0 && (

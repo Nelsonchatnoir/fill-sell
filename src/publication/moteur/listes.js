@@ -232,3 +232,31 @@ export function vintedExigeUneMarque(cheminCategorie) {
   const racine = Array.isArray(cheminCategorie) ? texteComparable(String(cheminCategorie[0] ?? "")) : "";
   return racine !== "livres et medias";
 }
+
+// ── VINTED N'ACCEPTE QUE DU NEUF DANS CERTAINS RAYONS (24/09) ──────────────
+// Dossier solene.mantero : un casque Scorpion en « Bon état », rayon où
+// Vinted affiche « Veille à ne mettre en ligne que des articles neufs et non
+// ouverts dans cette catégorie » et ne propose que « Neuf avec étiquette »
+// (idem Beauté, Parfums, Sous-vêtements : relevé platform_category_aspects).
+// Ce n'est PAS une question : répondre « Neuf avec étiquette » pour un objet
+// porté serait mentir à l'acheteur. C'est une LIMITE de la plateforme — on la
+// dit, Vinted ne part pas, et on ne relance jamais.
+// Vrai seulement quand la liste relevée de l'État ne porte QUE des « Neuf… »
+// et que la valeur de l'article n'en fait pas partie. Valeur vide : la
+// question normale se pose (un objet neuf peut honnêtement y répondre).
+export function limiteNeufSeulement({ platform, key, value, allowedValues }) {
+  if (platform !== "vinted" || key !== "condition") return false;
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
+  if (!vals.length || !vals.every(v => /^neuf\b/.test(texteComparable(v)))) return false;
+  const v = String(value ?? "").trim();
+  if (!v) return false;
+  return !vals.some(a => normAspectVal(a) === normAspectVal(v));
+}
+
+/** La phrase, identique partout (carte, case grisée, écran Confirmer). */
+export function messageLimiteNeuf({ valeur, acceptees }, lang = "fr") {
+  const liste = [...new Set((acceptees ?? []).map(String))].join(" · ");
+  return lang === "en"
+    ? `Vinted only accepts new items in this category (${liste}). This item is “${valeur}”, so it won't be listed on Vinted — this is Vinted's rule, not a question. Your other platforms are not affected.`
+    : `Vinted n'accepte que des articles neufs dans ce rayon (${liste}). Ton article est « ${valeur} » : il ne partira pas sur Vinted. C'est une règle de Vinted, pas une question. Tes autres plateformes ne sont pas concernées.`;
+}
