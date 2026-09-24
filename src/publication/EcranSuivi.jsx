@@ -21,8 +21,8 @@ import { Carte, Puce, Logo } from "./composants";
 import { NOM, ilYA } from "./texte";
 
 const LIBELLE_MOTIF = {
-  fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", rayon_a_reessayer: "rayon pas trouvé à l'instant — republie pour réessayer", refusee_serveur: "déjà en ligne, en file ou en attente" },
-  en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", sans_rayon: "no category found", rayon_a_reessayer: "category not found just now — publish again to retry", refusee_serveur: "already online, queued or waiting" },
+  fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", rayon_a_choisir: "rayon à choisir — aucun rayon sûr trouvé (rien n’a été débité)", rayon_a_reessayer: "rayon pas trouvé à l'instant — republie pour réessayer", refusee_serveur: "déjà en ligne, en file ou en attente" },
+  en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", sans_rayon: "no category found", rayon_a_choisir: "category to pick — none we were sure of (nothing was charged)", rayon_a_reessayer: "category not found just now — publish again to retry", refusee_serveur: "already online, queued or waiting" },
 };
 
 export default function EcranSuivi({ m }) {

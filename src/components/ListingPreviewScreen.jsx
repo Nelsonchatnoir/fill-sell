@@ -2214,6 +2214,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   // déjà croisé avec le choix de la personne. La carte ne calcule rien : elle
   // affiche ce qu'on lui donne, et remonte les choix.
   rayonsParPf = {}, suggestionsParPf = {}, supabase = null, onChoisirRayon = null,
+  // (25/09) La question « quel rayon ? » quand le rayon envisagé a été refusé
+  // et qu'aucun rayon sûr ne l'a remplacé (pf.rayon_a_choisir), par plateforme.
+  questionsRayonParPf = {},
   // ── LA VALEUR GÉNÉRALE (2026-09-21) ────────────────────────────────────
   // Cet écran n'en calcule RIEN : il affiche `generales`, il remonte les
   // gestes. Toute la mécanique (qui suit, qui est dissociée, ce que chaque
@@ -2781,6 +2784,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                     lang={lang}
                     rayon={rayonsParPf[p] ?? null}
                     suggestions={suggestionsParPf[p] ?? []}
+                    question={questionsRayonParPf[p] ?? null}
                     champs={e.platform_fields ?? {}}
                     configLocale={platformFieldsConfig[p] ?? []}
                     supabase={supabase}
@@ -6123,6 +6127,21 @@ export default function ListingPreviewScreen({
     }
     return sortie;
   }, [resolutionAffichee]);
+  // ── LA QUESTION « QUEL RAYON ? » (25/09) ──────────────────────────────────
+  // Le rayon envisagé a été refusé par la vérification et aucun rayon sûr ne
+  // l'a remplacé (utils/rayonApresRefus.js) : la plateforme ne partira pas tant
+  // que la personne n'a pas choisi. Une question par plateforme COCHÉE, qui
+  // tombe dès que la personne choisit (son choix passe toujours).
+  const rayonsAChoisir = useMemo(() => {
+    const pfp = resolutionAffichee?.pfParPlateforme ?? {};
+    const sortie = {};
+    for (const p of Object.keys(pfp)) {
+      if (!selected.has(p)) continue;
+      const q = pfp[p]?.rayon_a_choisir;
+      if (q && !edited?.[p]?.rayon_choisi?.chemin?.length) sortie[p] = q;
+    }
+    return sortie;
+  }, [resolutionAffichee, edited, selected]);
   // Le choix (ou son retrait) vit sur la COPIE, à côté des champs : il survit
   // au brouillon et à la fiche en base, et la résolution ne le voit jamais.
   const choisirRayon = (platform, choix) => setEdited(prev => (
@@ -8515,13 +8534,32 @@ export default function ListingPreviewScreen({
       if (sansCategorie.length) {
         console.warn(`[publish] écartées avant débit, aucun chemin de catégorie trouvé : ${sansCategorie.join(", ")}`);
         rows = rows.filter(r => !sansCategorie.includes(r.platform));
+        const pfExclue = (p) => construction.rows.find(r => r.platform === p)?.platform_fields ?? {};
         exclusRun.push(...sansCategorie.map(p => ({
           platform: p,
+          // (25/09) Rayon refusé, aucun rayon sûr à sa place : c'est une
+          // QUESTION au vendeur (sa carte montre les candidats), pas un
+          // « on ne sait pas ranger ».
           // (24/09) Rayon par défaut retenu sur une panne : il ATTEND (jamais le
           // fourre-tout) — l'écran dit de republier pour réessayer.
-          motif: construction.rows.find(r => r.platform === p)?.platform_fields?.rayon_a_reessayer ? "rayon_a_reessayer" : "sans_rayon",
+          motif: pfExclue(p).rayon_a_choisir ? "rayon_a_choisir"
+            : pfExclue(p).rayon_a_reessayer ? "rayon_a_reessayer" : "sans_rayon",
         })));
         if (!rows.length) {
+          // (25/09) Un rayon est À CHOISIR : on le dit, on dit où — et la carte
+          // de la plateforme le montre, candidats en tête, même quand la
+          // question n'est apparue qu'à ce clic (pré-calcul absent ou périmé).
+          const aChoisir = sansCategorie.filter(p => pfExclue(p).rayon_a_choisir);
+          if (aChoisir.length) {
+            if (!prevolUtilisable) {
+              resolutionPrevolRef.current = { empreinte: empreintePublication, resolution };
+              setResolutionAffichee(resolution);
+            }
+            const noms = aChoisir.map(p => PLATFORM_LABELS[p] ?? p).join(", ");
+            throw new Error(lang === "en"
+              ? `Pick the ${noms} category on its card: the category we had in mind was ruled out, and we found none we're sure of. Nothing was charged.`
+              : `Choisis le rayon ${noms} sur sa carte : celui qu'on envisageait a été écarté, et on n'en a trouvé aucun de sûr. Rien n'a été débité.`);
+          }
           // (24/09) Une panne passagère n'est pas « on ne sait pas ranger » :
           // on dit d'attendre et de republier — rien n'a été débité.
           if (sansCategorie.every(p => construction.rows.find(r => r.platform === p)?.platform_fields?.rayon_a_reessayer)) {
@@ -9078,7 +9116,11 @@ export default function ListingPreviewScreen({
     prixAchatManquant ||
     vintedGenreBlocked ||
     beebsGenreBlocked ||
-    descriptionVideVinted;
+    descriptionVideVinted ||
+    // (25/09) Un rayon À CHOISIR (refusé, aucun rayon sûr à sa place) : la
+    // plateforme attend la réponse, comme pour un champ obligatoire — on la
+    // choisit, ou on décoche la plateforme.
+    Object.keys(rayonsAChoisir).length > 0;
 
   // ── CE QUI MANQUE, RANGÉ DANS LA FICHE (2026-09-15) ──────────────────────
   // Sans ça, un brouillon rouvert trois jours plus tard ne redécouvre son champ
@@ -9154,6 +9196,11 @@ export default function ListingPreviewScreen({
     if (prixAchatManquant) m.push(lang === "en" ? "Purchase price to fill in" : "Prix d'achat à renseigner");
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
     if (beebsGenreBlocked) m.push(lang === "en" ? "Beebs section to choose" : "Rayon Beebs à choisir");
+    for (const p of Object.keys(rayonsAChoisir)) {
+      m.push(lang === "en"
+        ? `${nomPlateforme(p)} category to pick — none we're sure of (on its card, list ready)`
+        : `Rayon ${nomPlateforme(p)} à choisir — aucun rayon sûr trouvé (sur sa carte, liste prête)`);
+    }
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
     // ── RIEN DE COCHÉ : ON LE DIT, ET ON DIT QUOI COCHER (2026-09-22) ───────
     // 🚨 LE DÉFAUT, mail de Romain du 22/09 à 13h48 (« Donc je ne sais pas ce
@@ -9452,7 +9499,9 @@ export default function ListingPreviewScreen({
   ]);
   const nbQuestions = clesQuestions.size
     + (vintedGenreBlocked ? 1 : 0) + (beebsGenreBlocked ? 1 : 0)
-    + (descriptionVideVinted ? 1 : 0) + (prixAchatManquant ? 1 : 0);
+    + (descriptionVideVinted ? 1 : 0) + (prixAchatManquant ? 1 : 0)
+    // (25/09) Un rayon à choisir est une question, posée sur « Confirmer ».
+    + Object.keys(rayonsAChoisir).length;
   // Par plateforme, pour la puce des cartes de « Ce qui va partir ».
   const etatsParPlateforme = (() => {
     const compte = {};
@@ -9468,6 +9517,7 @@ export default function ListingPreviewScreen({
     if (nE) ajoute("ebay", nE);
     if (vintedGenreBlocked || descriptionVideVinted) ajoute("vinted");
     if (beebsGenreBlocked) ajoute("beebs");
+    for (const p of Object.keys(rayonsAChoisir)) ajoute(p);
     const out = {};
     for (const p of Object.keys(platformListings?.platforms ?? {})) {
       if (!selected.has(p)) continue;
@@ -9485,11 +9535,13 @@ export default function ListingPreviewScreen({
     champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
   });
   // Ce qui n'est bloqué que par UNE plateforme se contourne en la décochant.
-  const plateformesRetirables = [
+  const plateformesRetirables = [...new Set([
     ...((ebayRequiredStatus ?? []).some(aspectBloquant) ? ["ebay"] : []),
     ...((vintedGenreBlocked || descriptionVideVinted) ? ["vinted"] : []),
     ...(beebsGenreBlocked ? ["beebs"] : []),
-  ].filter(p => selected.has(p));
+    // (25/09) « Continuer sans X » quand son rayon reste à choisir.
+    ...Object.keys(rayonsAChoisir),
+  ])].filter(p => selected.has(p));
   // Par plateforme cochée, les questions qui la retiennent — pour sa ligne de
   // « Confirmer » (« Attend une réponse : Taille, Département »), au lieu de
   // « Connectée — prête » alors que le bouton est gris à cause d'elle. Mêmes
@@ -9500,6 +9552,7 @@ export default function ListingPreviewScreen({
     libellePartage: { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"), matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") },
     libelleGenre: t("fieldGenderLabel"), libelleDescription: t("fieldDescriptionLabel"),
     genericFieldToSharedKey,
+    rayonsAChoisir: Object.keys(rayonsAChoisir), libelleRayon: lang === "en" ? "Category" : "Rayon",
   });
   const extensionVueLe = (() => {
     const a = Date.parse(extensionLastSeenAt ?? "");
@@ -9513,7 +9566,7 @@ export default function ListingPreviewScreen({
     generating: generatingPlatforms, generateError: platformError, platformListings, processedPhotos,
     selected, edited, setEdited, onPhotoClick: setLightboxUrl, onRetry: handleGeneratePlatforms,
     generatePrice: coinPrices?.generate ?? null, noteOverride: noteSharedOverride, ficheReprise,
-    ebayVoieApiReelle, rayonsParPf, suggestionsParPf, supabase, onChoisirRayon: choisirRayon,
+    ebayVoieApiReelle, rayonsParPf, suggestionsParPf, questionsRayonParPf: rayonsAChoisir, supabase, onChoisirRayon: choisirRayon,
     lang, price, setPrice, customPriced, setCustomPriced, articleIcon, photoOption,
     onEstimatePrice: handleAnalyzePhotos, estimating: analyzing, estimateCost: coinPrices?.lens_overflow ?? null,
     estimateError: analysisError, estimateResult: photoAnalysis,
@@ -9576,6 +9629,8 @@ export default function ListingPreviewScreen({
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
     exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
+    // (25/09) Le rayon à choisir, posé sur « Confirmer » avec ses candidats.
+    rayonsAChoisir, suggestionsParPf, choisirRayon,
     publishError, publishing, motifsCtaGris, ctaDisabled, ctaBlockingActive, requiredBlocking, publishedStateLoaded,
     ctaLabel: step === 3 ? ctaLabel() : null,
     // Le suivi
@@ -9826,6 +9881,7 @@ export default function ListingPreviewScreen({
             ebayVoieApiReelle={ebayVoieApiReelle}
             rayonsParPf={rayonsParPf}
             suggestionsParPf={suggestionsParPf}
+            questionsRayonParPf={rayonsAChoisir}
             supabase={supabase}
             onChoisirRayon={choisirRayon}
             lang={lang}

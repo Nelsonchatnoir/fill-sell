@@ -19,6 +19,7 @@ import { carteAccesOpla, parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
 import BlocQuestions from "./BlocQuestions";
+import CarteRayon from "../components/CarteRayon";
 
 const LIBELLE_MOTIF = {
   fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse" },
@@ -88,6 +89,27 @@ export default function EcranConfirmer({ m }) {
       {m.publishError && <Carte gravite="refus" titre={en ? "Not published" : "Pas publié"}><div className="fsn-card-p">{m.publishError}</div></Carte>}
 
       <BlocQuestions m={m} />
+
+      {/* ── LE RAYON À CHOISIR (25/09) ─────────────────────────────────────
+          Le rayon envisagé a été refusé par la vérification, et aucun rayon
+          sûr ne l'a remplacé : la question est posée ICI, liste ouverte, nos
+          candidats en tête. Choisir un rayon la retire ; « Continuer sans »
+          décoche la plateforme. Même carte que sur « Ce qui va partir ». */}
+      {Object.entries(m.rayonsAChoisir ?? {}).map(([p, q]) => (
+        <CarteRayon
+          key={`rayon-a-choisir-${p}`}
+          platform={p}
+          lang={m.lang}
+          rayon={null}
+          question={q}
+          suggestions={m.suggestionsParPf?.[p] ?? []}
+          champs={{}}
+          configLocale={[]}
+          supabase={m.supabase}
+          onChoisirRayon={(choix) => m.choisirRayon?.(p, choix)}
+          regle="nouvelle"
+        />
+      ))}
 
       {/* ── Les plateformes : cocher, décocher, et lire l'état de ce qui est verrouillé ── */}
       <div>

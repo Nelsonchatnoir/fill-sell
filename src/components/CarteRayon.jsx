@@ -50,6 +50,14 @@ const MOTS = {
     chargement: 'Chargement des rayons…',
     tapez: 'Tape un mot pour chercher un rayon.',
     choisir: 'Choisir',
+    // (25/09) Rayon refusé par la vérification, aucun rayon sûr à sa place.
+    // On dit ce qui s'est passé, ce qu'on attend, et ce qui arrive sinon —
+    // la liste juste en dessous commence par nos candidats.
+    aChoisir: 'RAYON À CHOISIR',
+    question: (pf, objet, ecarte) =>
+      `On n’a pas trouvé de rayon ${pf} sûr pour ${objet ? `« ${objet} »` : 'cet article'}` +
+      (ecarte ? ` (« ${ecarte} » a été écarté : il ne correspond pas à l’objet)` : '') +
+      `. Choisis-le ci-dessous — sans lui, ${pf} ne partira pas. Rien n’est débité.`,
   },
   en: {
     rayon: 'CATEGORY', changer: 'Change', annuler: 'Cancel',
@@ -66,8 +74,15 @@ const MOTS = {
     chargement: 'Loading categories…',
     tapez: 'Type a word to search.',
     choisir: 'Pick',
+    aChoisir: 'CATEGORY TO PICK',
+    question: (pf, objet, ecarte) =>
+      `We found no ${pf} category we’re sure of for ${objet ? `“${objet}”` : 'this item'}` +
+      (ecarte ? ` (“${ecarte}” was ruled out: it doesn’t match the item)` : '') +
+      `. Pick it below — without it, ${pf} won’t go out. Nothing is charged.`,
   },
 };
+
+const NOM_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla' };
 
 /** Recherche dans les feuilles relevées : tous les mots tapés doivent être
  *  dans le chemin. Comparaison sans accents ni casse (texteComparable), la
@@ -107,9 +122,21 @@ export default function CarteRayon({
   // du moteur de publication (une valeur hors d'une liste QUI FAIT FOI) et le
   // catalogue Opla se lit par le code de sa feuille. 'classique' : inchangé.
   regle = 'classique',
+  // (25/09) `pf.rayon_a_choisir` de la résolution : le rayon envisagé a été
+  // refusé et aucun rayon sûr ne l'a remplacé (utils/rayonApresRefus.js).
+  // La carte pose alors la QUESTION, liste ouverte, candidats en tête.
+  // Absent (tous les autres cas) : la carte est exactement celle d'avant.
+  question = null,
 }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
-  const [ouvertPicker, setOuvertPicker] = useState(false);
+  const questionOuverte = Boolean(question) && !rayon?.chemin?.length;
+  // Tant que personne n'a touché au bouton, la liste suit la question : ouverte
+  // quand elle est posée (elle peut arriver APRÈS le montage, la résolution est
+  // asynchrone), fermée sinon — c'est-à-dire exactement comme avant pour toute
+  // carte sans question. Dès le premier geste, c'est la personne qui décide.
+  const [ouvertManuel, setOuvertManuel] = useState(null);
+  const ouvertPicker = ouvertManuel ?? questionOuverte;
+  const setOuvertPicker = (v) => setOuvertManuel((prec) => (typeof v === 'function' ? v(prec ?? questionOuverte) : v));
   const [motif, setMotif] = useState('');
   const [feuilles, setFeuilles] = useState(null);
   const [catalogue, setCatalogue] = useState(null);
@@ -239,9 +266,9 @@ export default function CarteRayon({
   return (
     <>
       {/* ── LE RAYON ────────────────────────────────────────────────── */}
-      <div style={st.bloc}>
+      <div style={questionOuverte ? { ...st.bloc, background: '#FFFBEB', borderColor: '#F59E0B' } : st.bloc}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-          <span style={st.eyebrow}>{T.rayon}</span>
+          <span style={questionOuverte ? { ...st.eyebrow, color: '#92400E' } : st.eyebrow}>{questionOuverte ? T.aChoisir : T.rayon}</span>
           {rayon?.chemin?.length ? (
             <span style={{ fontSize: 10.5, fontWeight: 700,
                            color: rayon.choisi ? UI.tealDeep : rayon.incertain ? "#92400E" : UI.mute2 }}>
@@ -258,6 +285,14 @@ export default function CarteRayon({
                 <div style={st.feuille}>{libelleRayon(rayon.chemin)}</div>
                 {rayon.chemin.length > 1 && <div style={st.chemin}>{cheminComplet(rayon.chemin)}</div>}
               </>
+            ) : questionOuverte ? (
+              <div style={{ ...st.chemin, marginTop: 0, color: '#92400E', fontSize: 12.5 }}>
+                {T.question(
+                  NOM_PLATEFORME[platform] ?? platform,
+                  question?.objet ?? null,
+                  libelleRayon(question?.chemins_refuses?.[0] ?? null),
+                )}
+              </div>
             ) : (
               <div style={{ ...st.chemin, marginTop: 0 }}>
                 {platform === 'opla' ? T.pasDeRayonOpla : platform === 'beebs' ? T.pasDeRayonBeebs : T.pasDeRayon}
