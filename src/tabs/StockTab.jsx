@@ -77,6 +77,11 @@ import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
+// ── Refonte du stepper (24/09/2026) ─────────────────────────────────────────
+// L'interrupteur choisit la peau du stepper (ancienne par défaut) ; les tables
+// de champs partagés servent à ranger une réponse « Compléter » sur la fiche.
+import { useNouveauStepper } from '../publication/interrupteur';
+import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
@@ -955,6 +960,37 @@ function useFermetureEchap(onClose) {
   }, [onClose]);
 }
 
+// ── OÙ RANGER UNE RÉPONSE « COMPLÉTER » SUR LA FICHE (refonte 24/09) ───────
+// Audit du 23/09, point 4.5 : une réponse donnée dans « ✋ Compléter » n'était
+// jamais écrite sur l'article (sauf la description) — la taille Beebs a été
+// redemandée 32 fois en 30 jours. La clé du job (code Vinted, attribut for=
+// Leboncoin, libellé Beebs, nom d'aspect eBay, champ dédié) est traduite vers
+// la clé de la fiche (inventaire.attributs : taille · couleur · matiere ·
+// marque · etat · genre). Inconnue → rien : on ne range que ce qu'on sait
+// nommer.
+const CLE_FICHE_DIRECTE = {
+  taille: "taille", pointure: "taille", size: "taille",
+  couleur: "couleur", color: "couleur",
+  matiere: "matiere", material: "matiere",
+  marque: "marque", brand: "marque",
+  etat: "etat", condition: "etat",
+  genre: "genre", univers: "genre",
+};
+function cleFicheDepuisChamp(platform, key) {
+  const brut = String(key ?? "").trim();
+  if (!brut) return null;
+  const norm = brut.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (CLE_FICHE_DIRECTE[norm]) return CLE_FICHE_DIRECTE[norm];
+  const partage = genericFieldToSharedKey(platform, brut);
+  if (partage) return partage;
+  if (platform === "ebay") {
+    for (const [k, labels] of Object.entries(EBAY_ASPECT_LABELS)) if (labels.includes(brut)) return k;
+  }
+  if (/_condition$/.test(norm)) return "etat";
+  if (norm === "clothing_type" || norm === "shoe_type") return "genre";
+  return null;
+}
+
 function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   useFermetureEchap(onClose);
   const f = job.platform_fields?.needsUserField ?? null;
@@ -1318,6 +1354,27 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
             .eq("id", job.inventaire_id)
             .or("description.is.null,description.eq.");
         } catch { /* l'article garde son texte, le job a le sien */ }
+      }
+      // ── LA RÉPONSE VA AUSSI SUR LA FICHE (refonte 24/09, audit 4.5) ──────
+      // Source `manuel` : le rang le plus haut du trigger de fusion
+      // (inventaire_attributs_fusion, migration 20260907000000) — le BEFORE
+      // UPDATE fusionne, rien d'autre n'est écrasé. Best-effort : le job est
+      // déjà reparti, un échec ici ne doit pas le dire.
+      if (!sansValeur && job.inventaire_id != null) {
+        const attributs = {};
+        const maintenant = new Date().toISOString();
+        const poser = (cle, valeur) => {
+          const val = String(valeur ?? "").trim();
+          const k = cleFicheDepuisChamp(job.platform, cle);
+          if (k && val) attributs[k] = { v: val, source: "manuel", at: maintenant };
+        };
+        if (target) poser(target.key, v);
+        for (const c of champsSup) poser((c.target && c.target.key) ? c.target.key : c.field_key, valeursSup[c.field_key]);
+        if (Object.keys(attributs).length) {
+          try {
+            await supabase.from("inventaire").update({ attributs }).eq("id", job.inventaire_id);
+          } catch { /* la fiche garde ce qu'elle avait ; le job, lui, est reparti */ }
+        }
       }
       onDone?.(job.id);
     } catch (e) {
@@ -5007,6 +5064,10 @@ const StockTab = memo(function StockTab({
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
   const [zoneEdits, setZoneEdits] = useState({});
   const [publishItem, setPublishItem] = useState(null);
+  // La peau du stepper (refonte 24/09) : ancienne par défaut, nouvelle par
+  // l'interrupteur (localStorage · beta_flags · coin_config). Lue une fois,
+  // AVANT qu'on ouvre un stepper.
+  const nouveauStepper = useNouveauStepper(supabase, user?.id);
   // Ouverture du stepper : purge tout brouillon précédent puis pose le blob
   // hôte (sessionStorage) qui permettra de le REMONTER après un remount
   // (reload d'onglet Chrome ou navigation interne).
@@ -11411,6 +11472,7 @@ const StockTab = memo(function StockTab({
           nbEnLigne. */}
       {publishItem&&(
         <ListingPreviewScreen
+          variante={nouveauStepper?"nouvelle":"classique"}
           inventaireId={publishItem.id}
           userId={user.id}
           // « Compléter » depuis l'écran Publier (2026-09-23) : un dépôt en

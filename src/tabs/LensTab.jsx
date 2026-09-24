@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, HelpCircle, X, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import { apresFermetureStepper } from '../utils/parcoursLens';
+// La peau du stepper (refonte 24/09) : ancienne par défaut, nouvelle par l'interrupteur.
+import { useNouveauStepper } from '../publication/interrupteur';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -619,6 +621,7 @@ const LensTab = memo(function LensTab({
   const [generatingListing,setGeneratingListing]=useState(false);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
   const [showListingPreview,setShowListingPreview]=useState(false);
+  const nouveauStepper=useNouveauStepper(supabase,user?.id);
   const [listingError,setListingError]=useState('');
   const [showExtReminder,setShowExtReminder]=useState(false);
   // Accroche extension (2026-08-04) : extension JAMAIS vue → accroche (sync
@@ -796,6 +799,7 @@ const LensTab = memo(function LensTab({
     return (
       <div style={{ width:"100%" }}>
         <ListingPreviewScreen
+          variante={nouveauStepper?"nouvelle":"classique"}
           inventaireId={effectiveInvId}
           userId={user.id}
           initialPhotos={lensListingPhotos}
