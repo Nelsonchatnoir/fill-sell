@@ -84,6 +84,25 @@ import {
   appliquerGenerale, dissocier, rattacher, suitLaGenerale, valeurCommune,
   valeurPourPlateforme, ecartsDeConformite,
 } from "../utils/valeursGenerales";
+// ── LE MOTEUR ET LA NOUVELLE PEAU (refonte du 24/09/2026) ──────────────────
+// Les RÈGLES (qui part, qui est exclu, ce qui bloque, la forme d'un job, la
+// garde eBay) vivent dans src/publication/moteur/ — fonctions pures, lues par
+// cet écran ET par la publication en masse. Ce fichier les APPELLE : chaque
+// appel remplace mot pour mot le code qui vivait ici (prouvé par
+// scripts/publication-moteur-selftest.mjs). Les tables de champs partagés ont
+// déménagé de la même façon (champsPartages.js).
+import StepperNouveau from "../publication/StepperNouveau";
+import {
+  aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
+  champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
+  descriptionVintedVide, calculerExclusions, motifAucunePlateforme, cleCategorieRequis,
+  construireJobs, plateformesSansChemin, gardeAspectsEbay,
+} from "../publication/moteur/regles";
+import {
+  NO_BRAND_VALUE, SHARED_FIELD_KEYS, SHARED_PROPAGATION, EBAY_ASPECT_LABELS,
+  genericFieldToSharedKey, canalGeneriquePose, GENERIC_ASPECTS_PF_KEY,
+  GENERIC_PLATFORM_LABELS, PLATEFORMES_ADRESSE_LBC,
+} from "../publication/moteur/champsPartages";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -202,7 +221,7 @@ const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOU
 // platform_settings.leboncoin.adresse, même adresse d'expédition »).
 // Sans elle, les deux handlers rendent { ok:false } et le job meurt APRÈS le
 // débit, dans le content script — 3 clients touchés (01/08, 10/08 ×2).
-const PLATEFORMES_ADRESSE_LBC = ["leboncoin", "beebs"];
+// PLATEFORMES_ADRESSE_LBC : src/publication/moteur/champsPartages.js.
 
 // Motif affiché quand une plateforme est grisée, par statut de compat (cf.
 // src/utils/platformCompat.js). "prohibited" (2026-08-11) a SON message : dire
@@ -325,35 +344,10 @@ const messageCompteEbay = (motif, lang, etat = null) => {
 // C'est le libellé que les plateformes attendent — Vinted et eBay ont tous deux
 // une entrée « Sans marque » dans leur référentiel de marques. On l'envoie donc
 // telle quelle : la garde Marque reste satisfaite sans rien inventer.
-const NO_BRAND_VALUE = "Sans marque";
+// NO_BRAND_VALUE : importé de src/publication/moteur/champsPartages.js (refonte 24/09).
 
-const SHARED_FIELD_KEYS = ["taille", "couleur", "matiere", "marque"];
-const SHARED_PROPAGATION = {
-  taille:  ["vinted", "beebs", "leboncoin", "ebay", "opla"],
-  couleur: ["vinted", "beebs", "ebay", "opla"],
-  matiere: ["vinted", "beebs", "leboncoin", "ebay", "opla"],
-  marque:  ["vinted", "beebs", "leboncoin", "ebay", "opla"],
-};
-const SHARED_GUARD = {
-  taille:  ["vinted", "beebs", "ebay"],
-  // MATIÈRE — "vinted" RETIRÉ le 2026-07-29 (bug utilisatrice, job a87f8e84).
-  // Vinted ne l'exige nulle part : nos propres relevés DOM le disent depuis
-  // toujours — platform_category_aspects, platform='vinted', field_key
-  // 'material' : 17 lignes, TOUTES required=false, et le libellé relevé est
-  // « Matériau (recommandé) ». La garde statique bloquait pourtant la
-  // publication ; l'utilisatrice a tapé « ? » pour passer, et le point
-  // d'interrogation est parti tel quel chez Vinted.
-  // Pourquoi le chemin data-driven ne rattrapait pas : genericAspectsCatalog
-  // n'est peuplé QU'AVEC les lignes required=true, et les plateformes sans
-  // aucun requis sont retirées de l'objet — « catégorie sans requis » et
-  // « catégorie jamais relevée » y sont indistinguables, donc on retombe sur
-  // cette carte statique (cf. guardPlatforms).
-  // beebs RESTE : ses relevés portent bien un « Matière » required=true
-  // (Jeux, jouets et loisirs > Figurines).
-  couleur: ["vinted", "beebs", "ebay"],
-  matiere: ["beebs", "leboncoin", "ebay"],
-  marque:  ["vinted", "beebs", "leboncoin", "ebay"],
-};
+// SHARED_FIELD_KEYS, SHARED_PROPAGATION, SHARED_GUARD (mémoire des périmètres
+// historiques) : src/publication/moteur/champsPartages.js — mêmes valeurs.
 // Icônes beauté PRODUIT (mêmes 4 que generate-listing) : la Couleur n'y est
 // exigée par AUCUN référentiel réel — eBay (table ebay_item_aspects) : Soins
 // 21205 et Vernis 11873 → Marque+Type, Parfums 11848/29585/112661/159719 →
@@ -361,37 +355,17 @@ const SHARED_GUARD = {
 // champ Couleur ne satisfait pas de toute façon) ; relevé Vinted réel
 // (platform_category_aspects) : Beauté > Parfums → État seul. Les appareils
 // (💇 sèche-cheveux, 🪒 rasoirs) gardent la garde standard.
-const BEAUTY_PRODUCT_ICONS = ["🌸", "💄", "💅", "🧴"];
+// BEAUTY_PRODUCT_ICONS : src/publication/moteur/champsPartages.js.
 
 // Correspondances label d'aspect eBay → champ partagé de l'app — UNE seule
 // source pour l'encart bleu (ebayRequiredStatus) ET la garde data-driven du
 // bloc rouge : aucune divergence possible entre les deux.
-const EBAY_ASPECT_LABELS = {
-  marque:  ["Marque"],
-  taille:  ["Taille", "Pointure EU", "Pointure"],
-  couleur: ["Couleur", "Couleur de la monture", "Couleur extérieure"],
-  matiere: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"],
-};
+// EBAY_ASPECT_LABELS : src/publication/moteur/champsPartages.js — mêmes listes.
 // field_key du catalogue platform_category_aspects → champ partagé de l'app.
 // MÊMES correspondances que genericKnownSource (qui mappe champ→valeur, plus
 // bas) — les deux doivent évoluer ensemble : vinted = codes d'attribut
 // serveur, LBC = attribut for= des labels du wizard, Beebs = libellés exacts.
-function genericFieldToSharedKey(platform, key) {
-  if (platform === "vinted") {
-    return { brand: "marque", size: "taille", color: "couleur", material: "matiere" }[key] ?? null;
-  }
-  if (platform === "leboncoin") {
-    if (/_brand$/.test(key)) return "marque";
-    if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return "taille";
-    if (/_material$/.test(key)) return "matiere";
-    if (/_colou?r$/.test(key)) return "couleur";
-    return null;
-  }
-  if (platform === "beebs") {
-    return { "Marque": "marque", "Pointure": "taille", "Taille": "taille", "Couleur": "couleur", "Matière": "matiere" }[key] ?? null;
-  }
-  return null;
-}
+// genericFieldToSharedKey : src/publication/moteur/champsPartages.js — même corps.
 
 // ── Le canal générique est-il RÉELLEMENT posé sur la plateforme ? ────────────
 // (2026-08-11) MIROIR EXACT des listes de saut des content scripts. Un aspect
@@ -413,17 +387,8 @@ function genericFieldToSharedKey(platform, key) {
 //   · beebs     → handledLabels (beebs.js) : mêmes libellés, même règle.
 // ⚠️ Si une de ces listes change côté extension, elle doit changer ICI aussi :
 // les deux copies ne se lisent pas l'une l'autre.
-const LBC_GENERIQUE_SAUTE =
-  /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
-const BEEBS_GENERIQUE_SAUTE = new Set(
-  ["Couleur", "Marque", "Pointure", "Taille", "État", "Matière", "Âge", "Format du colis"]
-);
-function canalGeneriquePose(platform, key) {
-  if (platform === "vinted") return true;
-  if (platform === "leboncoin") return !LBC_GENERIQUE_SAUTE.test(key);
-  if (platform === "beebs") return !BEEBS_GENERIQUE_SAUTE.has(key);
-  return false;
-}
+// LBC_GENERIQUE_SAUTE, BEEBS_GENERIQUE_SAUTE, canalGeneriquePose :
+// src/publication/moteur/champsPartages.js — mêmes listes, même corps.
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
 // Règle unique (2026-07-29) partagée par la garde du CTA, la liste des motifs
@@ -437,7 +402,7 @@ function canalGeneriquePose(platform, key) {
 // connaître le vocabulaire de la plateforme), le pré-rempli de la plateforme
 // ou le mini-éditeur needs_user (options relevées au blocage, qui REMPLISSENT
 // le catalogue) font foi. Un missing ordinaire reste bloquant.
-const aspectBloquant = (a) => (a.state === "missing" && a.blocking !== false) || (a.state === "invalid" && a.blocking === true);
+// aspectBloquant : src/publication/moteur/regles.js — même expression.
 
 // ── Poids du colis Leboncoin : table format → grammes, NON POSÉE (28/08) ─────
 // ⚠️ PRÉ-REMPLISSAGE RETIRÉ le 2026-08-28 au soir, sur relevé du CODE de
@@ -1242,8 +1207,7 @@ const EBAY_DEPARTMENT_BY_GENRE = {
 // champ dans platform_fields de la copie, consommée telle quelle par le
 // content script correspondant (codes serveur Vinted, attributs for= LBC,
 // libellés exacts Beebs).
-const GENERIC_ASPECTS_PF_KEY = { vinted: "vintedAspects", leboncoin: "lbcAspects", beebs: "beebsAspects", opla: "oplaAspects" };
-const GENERIC_PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", opla: "Opla" };
+// GENERIC_ASPECTS_PF_KEY, GENERIC_PLATFORM_LABELS : src/publication/moteur/champsPartages.js.
 
 function defaultConditionFor(field) {
   if (!field || field.type !== "select") return DEFAULT_CONDITION;
@@ -2223,7 +2187,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
 
 // ── Step 2 — Génération (phase A : loading · phase B : review éditable) ───────
 
-function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
+// Exporté (refonte 24/09) : le nouvel écran « Ce qui va partir » rend CE
+// composant — même corps de cartes, même bloc général, mêmes gestes.
+export function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
   prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false,
@@ -2247,7 +2213,13 @@ function StepGeneration({ generating, generateError, platformListings, processed
   divergence = null, divergenceTranchee = null, onTrancherDivergence = null,
   // Les versions du texte par plateforme (2026-09-23) et le texte de la fiche.
   versionsTexte = [], ficheTexte = null,
-  dissociees = null, onModifierCarte = null, onRetablirCarte = null }) {
+  dissociees = null, onModifierCarte = null, onRetablirCarte = null,
+  // ── LA PEAU (refonte 24/09) ─────────────────────────────────────────────
+  // "nouvelle" : l'en-tête et la bande de photos sont rendus par la coque du
+  // nouveau stepper (ils ne le sont donc pas ici), et chaque carte porte la
+  // puce d'état de sa plateforme (`etatsParPlateforme[p] = { ton, libelle }`).
+  // "classique" (défaut) : rendu inchangé.
+  variante = "classique", etatsParPlateforme = null }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -2386,14 +2358,17 @@ function StepGeneration({ generating, generateError, platformListings, processed
 
   return (
     <div>
+      {variante !== "nouvelle" && (<>
       <Eyebrow>{t("stepGenEyebrow")}</Eyebrow>
       <h1 style={{ margin:"6px 0 4px", fontSize:22, fontWeight:600, color:T.ink }}>
         {t("stepGenReviewTitle")}
       </h1>
+      </>)}
       {/* ⛔ DÉFAUT Nº4 : « CLIQUE SUR UNE CARTE » NE S'AFFICHE PLUS QUAND IL
           N'Y A PAS DE CARTE. La consigne s'affichait toujours, y compris sur
           un écran vide — on demandait un geste impossible. Sans carte, on dit
           ce qui se passe vraiment, et le bouton du bas est le seul geste. */}
+      {(variante !== "nouvelle" || platforms.length === 0) && (
       <p style={{ margin:"0 0 16px", fontSize:12.5, color:T.mute2, lineHeight:1.5 }}>
         {platforms.length > 0
           ? t("stepGenReviewSubtitle")
@@ -2401,6 +2376,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
             ? "No listing was generated for the selected platforms. Go back to the photos step to pick them, then generate."
             : "Aucune annonce n'a été générée pour les plateformes cochées. Reviens à l'étape des photos pour les choisir, puis relance la génération.")}
       </p>
+      )}
 
       {/* Fiche reprise (2026-09-15) : l'article rouvert porte des annonces déjà
           payées. On le DIT — sans quoi l'écran est indistinguable d'une
@@ -2414,7 +2390,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
         </div>
       )}
 
-      {processedPhotos?.length > 0 && (
+      {variante !== "nouvelle" && processedPhotos?.length > 0 && (
         <div style={{ marginBottom:20 }}>
           {/* ⛔ DÉFAUT Nº11 : la bande défile déjà (overflowX), mais RIEN ne
               le disait — la 5ᵉ photo coupée au bord passait pour un bug
@@ -2671,6 +2647,14 @@ function StepGeneration({ generating, generateError, platformListings, processed
                     )}
                   </div>
                 </div>
+                {/* La puce d'état de la plateforme (nouveau stepper seulement) :
+                    « Prêt », « 1 question », « Adresse »… — la question est
+                    dite UNE fois, sur sa ligne. */}
+                {etatsParPlateforme?.[p] ? (
+                  <span className={`fsn-chip fsn-chip--${etatsParPlateforme[p].ton}`} style={{ marginLeft:8 }}>
+                    {etatsParPlateforme[p].libelle}
+                  </span>
+                ) : null}
                 <Pencil size={15} color={T.mute} style={{ flexShrink:0, marginLeft:8 }} />
               </button>
 
@@ -3066,11 +3050,13 @@ function nearestAllowedValue(val, allowedValues) {
 // pour les petites listes : <datalist> n'est PAS supporté par Safari iOS, et
 // l'app tourne en Capacitor — on y perdrait toute suggestion sur mobile.
 const OTHER_SENTINEL = "__fs_other__";
-export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase }) {
+export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase, tailleTexte = 13 }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
   const [libre, setLibre] = useState(false);
-  const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
+  // `tailleTexte` (refonte 24/09) : 13 px partout comme avant ; le nouveau
+  // stepper passe 16 — sous 16 px, Safari iOS zoome sur le champ.
+  const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:tailleTexte, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
   if (n > 0 && (strict || n <= closedMax) && !libre) {
     // Valeur courante hors du relevé : on l'ajoute en tête plutôt que de la
     // faire disparaître du <select> (sinon le champ paraît vide alors que le
@@ -4275,6 +4261,12 @@ export default function ListingPreviewScreen({
   // images existantes sont réutilisées telles quelles et la part photos est
   // à 0 — dit clairement, jamais un 0 silencieux.
   alreadyRetouched: alreadyRetouchedProp = false,
+  // ── LA PEAU (refonte du 24/09/2026) ─────────────────────────────────────
+  // "classique" (défaut) : les quatre écrans historiques, à l'identique.
+  // "nouvelle" : les écrans de src/publication/ (U1 → U4), branchés sur CE
+  // moteur — même état, mêmes effets, mêmes gestes, mêmes RPC. L'hôte
+  // choisit par l'interrupteur (src/publication/interrupteur.js).
+  variante = "classique",
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -5539,7 +5531,9 @@ export default function ListingPreviewScreen({
   // « Upload en cours… » à l'écran, définitivement.
 
   // ── Upload step 0 ─────────────────────────────────────────────────────────
-  async function handleUpload() {
+  // `stepSuivant` (refonte 24/09) : l'ancien parcours arrive à l'étape 1
+  // (Photos), le nouveau — qui n'a plus d'étape Photos — passe 2 (Rédaction).
+  async function handleUpload(stepSuivant = 1) {
     if (!pickedFiles.length) return;
     setUploading(true);
     setUploadError("");
@@ -5561,7 +5555,7 @@ export default function ListingPreviewScreen({
           : `${illisibles.length} photo(s) n'ont pas pu être lues et ont été ignorées : ${illisibles.join(", ")}. Les autres sont bien montées.`);
       }
       setPhotos(urls);
-      setStep(1);
+      setStep(stepSuivant);
     } catch (e) {
       setUploadError(e.message);
     } finally {
@@ -6505,12 +6499,11 @@ export default function ListingPreviewScreen({
   // ⚠️ Ce n'est PAS un quatrième mécanisme : `prohibited` (platformSupport) et
   // `lbcAdresseManquante` existaient déjà et étaient déjà appliqués au
   // compteur — on cesse simplement de les oublier dans les gardes.
-  const plateformesPubliables = useMemo(() => new Set(
-    [...selected]
-      .filter(p => platformListings?.platforms?.[p])
-      .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
-      .filter(p => platformSupport?.[p] !== "prohibited")
-  ), [selected, platformListings, lbcAdresseManquante, platformSupport]);
+  // (refonte 24/09) La règle vit dans src/publication/moteur/regles.js — même
+  // filtre, dans le même ordre ; cet écran l'appelle.
+  const plateformesPubliables = useMemo(
+    () => calculerPlateformesPubliables({ selected, platformListings, lbcAdresseManquante, platformSupport }),
+    [selected, platformListings, lbcAdresseManquante, platformSupport]);
 
   // ── UN JUMEAU DÉJÀ EN LIGNE SUR LA PLATEFORME VISÉE (2026-09-21) ─────────
   // Le verrou `publishedSet` ne voit que les jobs de CET article. Quand le
@@ -7172,10 +7165,21 @@ export default function ListingPreviewScreen({
       if (platform === "beebs") path = getBeebsCategoryPath(icon, pf.genre);
       // MÊME clé que categoryKeyOf de l'extension (background.js) : chemin
       // joint par " > " — c'est elle qui écrit, nous qui lisons.
-      if (Array.isArray(path) && path.length) keys[platform] = path.join(" > ");
+      // ── LE RAYON RÉSOLU, PAS L'ICÔNE (refonte 24/09, n°7 de Louis) ────────
+      // Nouveau stepper : la clé des requis est le chemin RÉELLEMENT publié
+      // (pré-calcul de la génération, ou choix de la personne) — un livre de
+      // coloriage ne se voit plus réclamer l'ISBN de « Fiction ». L'ancien
+      // stepper passe null et garde la clé de l'icône, à l'identique.
+      const cle = cleCategorieRequis({
+        cheminResolu: variante === "nouvelle" ? (rayonsParPf?.[platform]?.chemin ?? null) : null,
+        cheminIcone: path,
+      });
+      if (cle) keys[platform] = cle;
     }
     return keys;
-  }, [selected, edited, initialListing, activeAiIcon, activeAiObjet]);
+    // rayonsParPf : ne change que quand la résolution ou `edited` bougent —
+    // `edited` est déjà une dépendance ; l'ancien chemin ignore sa valeur.
+  }, [selected, edited, initialListing, activeAiIcon, activeAiObjet, rayonsParPf, variante]);
 
   // ⚠️ DÉPENDANCE PAR SIGNATURE, PAS PAR IDENTITÉ (fix boucle 2026-07-16) :
   // genericCategoryKeys est un OBJET recalculé à chaque rendu (useMemo sur
@@ -7686,6 +7690,12 @@ export default function ListingPreviewScreen({
   // Plateformes parties SANS une plateforme bloquée à ce clic — porté jusqu'à
   // l'écran de succès pour le dire nommément.
   const [publieesSansPf, setPublieesSansPf] = useState([]);
+  // ── Ce que le NOUVEAU stepper garde pour son écran de suivi (24/09) ──────
+  // Les exclues nommées du clic, la fournée à suivre dans la file, et le
+  // « je ne sais plus » du prix d'achat. Inertes dans l'ancien stepper.
+  const [exclusionsDuClic, setExclusionsDuClic] = useState([]);
+  const [fournee, setFournee] = useState(null);
+  const [prixAchatInconnu, setPrixAchatInconnu] = useState(false);
   const champBloquantVus = useRef({});      // "gp:key" → {platform, champ, categorie, complete?}
   const champBloquantRestants = useRef(new Set());
   const doneRef = useRef(false);
@@ -7915,8 +7925,10 @@ export default function ListingPreviewScreen({
   // Déclaré AVANT handlePublish, qui le lit : la closure suffirait, mais le
   // garder au-dessus évite toute zone morte temporelle à la relecture.
   const prixAchatNum = Number(String(prixAchatSaisi ?? "").replace(",", "."));
+  // `prixAchatInconnu` (refonte 24/09) : « je ne sais plus » satisfait la
+  // question sans écrire 0 — l'ancien stepper ne peut pas le lever (false).
   const prixAchatManquant =
-    prixAchatARenseigner &&
+    prixAchatARenseigner && !prixAchatInconnu &&
     (String(prixAchatSaisi ?? "").trim() === "" || !Number.isFinite(prixAchatNum) || prixAchatNum < 0);
 
   // ── Publication ───────────────────────────────────────────────────────────
@@ -8016,11 +8028,7 @@ export default function ListingPreviewScreen({
       //     plateformesSansAdresse plus bas), les autres partent normalement.
       //     Rien n'est publié incomplet : la plateforme exclue attend sa
       //     complétion dans l'encart rouge, nommément.
-      const champsManquantsParPf = {};
-      for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
-        const bloquants = list.filter(aspectBloquant).map(a => a.label ?? a.key);
-        if (bloquants.length) champsManquantsParPf[gp] = bloquants;
-      }
+      const champsManquantsParPf = champsBloquantsParPlateforme(genericRequiredStatus);
       const plateformesChampManquant = Object.keys(champsManquantsParPf);
 
       // Article pas encore en stock : on crée sa ligne inventaire maintenant
@@ -8112,7 +8120,6 @@ export default function ListingPreviewScreen({
       // après la coche, retour arrière dans le stepper). Le débit, lui, se joue
       // ICI — c'est donc ici que la garde doit être dure. Recalculé à frais sur
       // platformSupport, jamais sur une décision prise plus tôt.
-      const plateformesInterdites = [...selected].filter(p => platformSupport?.[p] === "prohibited");
       // Troisième terme (2026-08-11) : SANS ANNONCE GÉNÉRÉE. Il manquait, alors
       // que `publishChips` — qui compte les plateformes et calcule le total de
       // unités affiché sur le bouton — le filtre depuis toujours. Une
@@ -8120,25 +8127,30 @@ export default function ListingPreviewScreen({
       // donc quand même : une ligne de job avec des platform_fields VIDES, et
       // un débit de plus que ce que le CTA annonçait. « Jamais un total faux »
       // vaut dans les deux sens.
-      const plateformesSansAnnonce = [...selected].filter(p => !platformListings?.platforms?.[p]);
-      const plateformesAPublier = [...selected].filter(
-        p => !plateformesSansAdresse.includes(p)
-          && !plateformesInterdites.includes(p)
-          && !plateformesSansAnnonce.includes(p)
-          && !plateformesChampManquant.includes(p)
-      );
+      // (refonte 24/09) Les quatre filtres, dans le même ordre, vivent dans
+      // regles.js (calculerExclusions) — et la liste des exclues est NOMMÉE :
+      // le nouveau stepper la dit sur l'écran de suivi, plus jamais en silence.
+      const exclusions = calculerExclusions({
+        selected, platformSupport, platformListings,
+        plateformesSansAdresse, champsManquantsParPf,
+      });
+      const { interdites: plateformesInterdites, aPublier: plateformesAPublier } = exclusions;
+      // Ce qu'on dira à la fin (nouveau stepper) : les exclues autres que « champ
+      // manquant » (celles-là passent par publieesSansPf, comme avant).
+      const exclusRun = exclusions.exclues.filter(e => e.motif !== "champ_manquant");
       if (!plateformesAPublier.length) {
         // Rien de publiable ne restait. Le CTA est déjà gris dans ce cas
         // (publishChips), ce re-check attrape un état périmé ou une course.
         // Aucune unité engagée.
-        if (plateformesInterdites.length) {
+        const motifAucune = motifAucunePlateforme(exclusions);
+        if (motifAucune === "interdites") {
           throw new Error(plateformesInterdites.map(p => motifSupport(p, "prohibited")).join(" "));
         }
         // Seules des plateformes à champ obligatoire manquant : INVITATION à
         // compléter (le champ vit dans l'encart rouge juste au-dessus), plus
         // jamais un « pas possible » sec. Trace règle 3 : ce refus n'existe
         // nulle part côté serveur sans elle.
-        if (plateformesChampManquant.length) {
+        if (motifAucune === "champ_manquant") {
           for (const gp of plateformesChampManquant) logChampBloquant("bloque_au_clic", {
             platform: gp, champs: champsManquantsParPf[gp],
             categorie: genericCategoryKeys?.[gp] ?? initialListing?.categorie ?? null,
@@ -8147,13 +8159,17 @@ export default function ListingPreviewScreen({
             lang === "en"
               ? `${GENERIC_PLATFORM_LABELS[gp] ?? gp} is waiting for: ${champsManquantsParPf[gp].join(", ")}`
               : `${GENERIC_PLATFORM_LABELS[gp] ?? gp} attend : ${champsManquantsParPf[gp].join(", ")}`
-          ).join(" · ") + (lang === "en"
-            ? " — fill it in the red “Some info is missing to publish” box above, then publish again. Nothing was counted."
-            : " — complète dans l'encart rouge « Il manque des infos pour publier » juste au-dessus, puis republie. Rien n'a été décompté."));
+          ).join(" · ") + (variante === "nouvelle"
+            ? (lang === "en"
+              ? " — answer in the questions block above, then publish again. Nothing was counted."
+              : " — réponds dans le bloc de questions ci-dessus, puis republie. Rien n'a été décompté.")
+            : (lang === "en"
+              ? " — fill it in the red “Some info is missing to publish” box above, then publish again. Nothing was counted."
+              : " — complète dans l'encart rouge « Il manque des infos pour publier » juste au-dessus, puis republie. Rien n'a été décompté.")));
         }
         // Aucune annonce générée : dire ÇA, et pas le message d'adresse — un
         // motif faux coûte plus cher qu'un motif générique.
-        if (plateformesSansAnnonce.length && !plateformesSansAdresse.length) {
+        if (motifAucune === "sans_annonce") {
           throw new Error(lang === "en"
             ? "No listing was generated for the selected platforms. Go back to the previous step and generate them again."
             : "Aucune annonce n'a été générée pour les plateformes cochées. Reviens à l'étape précédente et relance la génération.");
@@ -8261,75 +8277,22 @@ export default function ListingPreviewScreen({
       // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
       // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
       // n'ait abouti. Elle est alors écartée du lot AVANT le débit, plus bas.
-      let rows = plateformesAPublier.map(platform => {
-        const pf = champsResolus[platform];
-        // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
-        // SAUF plafonnement Leboncoin (quota gratuit par feuille, cf. bloc LBC
-        // plus bas). Aucune autre plateforme n'y touche.
-        // Forme du JOB garantie ICI, quel que soit l'amont (génération fraîche,
-        // cache, brouillon sessionStorage d'une session ouverte AVANT le
-        // correctif du 05/09, Lens unifié) : des objets { type, url }, jamais
-        // une chaîne — les handlers de l'extension lisent `p.url`.
-        const photosJob = entreesPhotos(processedPhotos);
-        let rowPhotos = photosJob;
-        if (platform === "ebay" && ebayVoieApiReelle && !photosJob.length) {
-          throw new Error(lang === "en"
-            ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
-            : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
-        }
-        // ── L'ADRESSE DE REMISE RESTE AU CLIC (déplacement du 20/09) ───────
-        // Elle est relue FRAÎCHE quelques lignes plus haut, à chaque
-        // publication : quelqu'un qui vient de la saisir dans les Réglages ne
-        // doit pas être bloqué par un état périmé. La figer au pré-calcul
-        // ferait partir sans adresse le job de celui qui l'a renseignée entre
-        // la génération et le clic. Mêmes deux affectations qu'avant, au même
-        // moment qu'avant.
-        if (lbcAddress && (platform === "leboncoin" || platform === "beebs")) pf.adresse = lbcAddress;
-        if (platform === "leboncoin") {
-          // ── Quota de photos GRATUITES (2026-08-10, cause de l'échec du job
-          // ad915ed5) ───────────────────────────────────────────────────────
-          // Relevé LIVE : en Divers > Autres, Leboncoin n'offre que 3 photos.
-          // Dès la 4e, le dépôt devient une commande payante (« Pack photos
-          // supplémentaires », 4 €) et son écran /options RETIRE le bouton
-          // « Déposer sans booster mon annonce » — il ne reste que « Valider et
-          // payer », que l'extension refuse de cliquer (à raison). Résultat :
-          // « écran post-aperçu non reconnu », publication perdue.
-          // On envoie donc au JOB les 3 premières photos seulement, et
-          // uniquement pour CETTE feuille : getLbcFreePhotoQuota ne connaît que
-          // les quotas RELEVÉS (cf. son commentaire — Mode publie jusqu'à 9
-          // photos, mesuré en base, il n'est pas question de l'amputer).
-          // Placé en FIN de bloc : lbcCategoryPath peut avoir été réécrit
-          // au-dessus (route « Vêtements bébé »), c'est la valeur FINALE qui
-          // décide. Les autres plateformes gardent processedPhotos intact.
-          const quotaPhotosLbc = getLbcFreePhotoQuota(pf.lbcCategoryPath);
-          if (quotaPhotosLbc != null && photosJob.length > quotaPhotosLbc) {
-            pf.lbcPhotosOriginales = photosJob.length;
-            pf.lbcPhotosCapped = true;
-            rowPhotos = photosJob.slice(0, quotaPhotosLbc);
-            console.log(
-              `[publish] Leboncoin ${pf.lbcCategoryPath.join(" > ")} : ` +
-              `${photosJob.length} photos → ${quotaPhotosLbc} (quota gratuit de la catégorie)`
-            );
-          }
-        }
-        return {
-          user_id:         userId,
-          inventaire_id:   addToStock ? currentInvId : null,
-          platform,
-          status:          "pending",
-          photo_option:    photoOption,
-          // Vinted refuse un titre trop capitalisé (400 serveur, champ title,
-          // 2026-08-15) : normalisation à l'ENVOI — elle rattrape l'IA comme
-          // la saisie manuelle. Les autres plateformes partent telles quelles.
-          title:           platform === "vinted"
-            ? normalizeVintedTitle(edited[platform]?.title ?? "")
-            : (edited[platform]?.title ?? ""),
-          description:     edited[platform]?.description     ?? "",
-          price:           edited[platform]?.price           ?? price,
-          photos:          rowPhotos,
-          platform_fields: pf,
-        };
+      // (refonte 24/09) La construction des lignes vit dans regles.js
+      // (construireJobs) : photos du JOB par plateforme (plafond Leboncoin par
+      // feuille, forme { type, url } garantie), adresse de remise relue au
+      // clic, titre Vinted normalisé — mot pour mot le code qui vivait ici.
+      const construction = construireJobs({
+        plateformes: plateformesAPublier, champsResolus, processedPhotos, lbcAddress,
+        userId, inventaireId: addToStock ? currentInvId : null, photoOption, edited, price, ebayVoieApiReelle,
+        outils: { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle },
       });
+      if (construction.erreur === "ebay_sans_photo") {
+        throw new Error(lang === "en"
+          ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
+          : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
+      }
+      for (const ligne of construction.journal) console.log(ligne);
+      let rows = construction.rows;
       // ══ LA CONTREPARTIE DE LA PORTE — AUCUN JOB SANS CATÉGORIE (2026-09-19) ══
       // La case n'est plus grisée sur un simple trou de mapping par icône : le
       // mot et l'arbitrage ont le droit d'essayer. Mais s'ils échouent AUSSI,
@@ -8346,21 +8309,13 @@ export default function ListingPreviewScreen({
       //    formulaire (beebs.js, « Beebs n'a pas de rayon reconnu pour … »).
       // ⛔ Opla n'est pas concernée : sa catégorie est posée côté serveur par
       //    get-pending-jobs, et son pré-vol demande quand il ne sait pas.
-      const CHEMIN_DU_JOB = {
-        vinted:    pf => pf.categoryPath,
-        leboncoin: pf => pf.lbcCategoryPath,
-        beebs:     pf => pf.beebsCategoryPath ?? pf.categorie_a_choisir,
-        ebay:      pf => pf.ebayCategoryId,
-      };
-      const sansCategorie = rows.filter(r => {
-        const lire = CHEMIN_DU_JOB[r.platform];
-        if (!lire) return false; // opla et tout futur handler serveur
-        const v = lire(r.platform_fields);
-        return Array.isArray(v) ? v.length === 0 : !v;
-      }).map(r => r.platform);
+      // (refonte 24/09) La table des chemins par plateforme et le filtre vivent
+      // dans regles.js (plateformesSansChemin) — même règle, mêmes exceptions.
+      const sansCategorie = plateformesSansChemin(rows);
       if (sansCategorie.length) {
         console.warn(`[publish] écartées avant débit, aucun chemin de catégorie trouvé : ${sansCategorie.join(", ")}`);
         rows = rows.filter(r => !sansCategorie.includes(r.platform));
+        exclusRun.push(...sansCategorie.map(p => ({ platform: p, motif: "sans_rayon" })));
         if (!rows.length) {
           // Plus rien à publier : on le dit, et on dit le GESTE — nommer
           // l'objet dans le titre, comme la règle (a) plus haut. Jamais un
@@ -8491,118 +8446,24 @@ export default function ListingPreviewScreen({
       // eBay — les règles Vinted/LBC/Beebs sont gérées ailleurs.
       if (ebayRow && ebayRequiredFull) {
         const pfE = ebayRow.platform_fields;
-        // Valeurs telles que l'EXTENSION les enverra (mêmes transformations
-        // que ebay.js : strip "EU " sur la taille, colors[0] prioritaire).
-        // Alias Mode (audit Phase 0) : monture/extérieure/doublure = nos
-        // couleur/matière — mêmes listes que ebay.js, la garde doit juger
-        // exactement ce que l'extension enverra.
-        // `set` : écrit la valeur RAPPROCHÉE dans le job sortant (pfE est le
-        // platform_fields de la row d'insert — la mutation part telle quelle
-        // en base, et rows est reconstruit à chaque clic Publier : idempotent).
-        const knownAspects = [
-          { labels: ["Marque"], value: () => pfE.marque, set: v => { pfE.marque = v; } },
-          { labels: ["Taille", "Pointure EU", "Pointure"], value: () => String(pfE.taille ?? "").replace(/^EU\s*/i, ""), set: v => { pfE.taille = v; } },
-          { labels: ["Couleur", "Couleur de la monture", "Couleur extérieure"], value: () => pfE.colors?.[0] || pfE.couleur,
-            // Gates et handlers lisent colors[0] AVANT couleur : écrire les deux.
-            set: v => { pfE.couleur = v; if (Array.isArray(pfE.colors) && pfE.colors.length) pfE.colors = [v, ...pfE.colors.slice(1)]; } },
-          { labels: ["Matière", "Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"], value: () => pfE.matiere, set: v => { pfE.matiere = v; } },
-        ];
-        // Même normalisation que normalizeFuzzy de ebay.js — la garde doit
-        // accepter exactement ce que l'extension rapprochera au remplissage.
-        const normFuzzy = s => String(s).trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-        // Manquant = champ vide, OU valeur hors du référentiel quand l'aspect
-        // est un vrai choix fermé (patch 2026-07-11 : job dd9ac7a3,
-        // couleur="Black" — non-vide mais absente des 17 valeurs FR de la
-        // liste Couleur → aurait échoué en silence sur la vraie page eBay).
-        //
-        // « Vrai choix fermé » = liste allowedValues ≤ 200 entrées, OU
-        // mode="SELECTION_ONLY" quel que soit le volume. Le seuil sépare les
-        // ensembles fermés réels des listes de référence/typeahead — chiffres
-        // relevés sur la catégorie 15687 : Couleur 17, Taille 55 (choix
-        // fermés à valider) vs Marque 19 037 (FREE_TEXT, aide à la saisie :
-        // eBay accepte une marque hors liste en saisie libre, et l'extension
-        // sait la taper — bloquer "MaMarqueDeNiche123" ici refuserait une
-        // publication qu'eBay aurait acceptée). FREE_TEXT + liste > 200 ou
-        // liste vide → la présence suffit, comme avant ce patch.
-        // ⚠️ RÉVISÉ le 2026-07-29 (doctrine « liste = suggestion ») : le seuil
-        // ≤200 ci-dessus était une HEURISTIQUE à nous pour deviner si un aspect
-        // FREE_TEXT était « en fait » fermé. eBay, lui, le DIT : `mode`. Quand
-        // eBay déclare FREE_TEXT, refuser une valeur ici revenait à interdire
-        // une publication qu'eBay aurait acceptée — 498 aspects requis en base
-        // sont dans ce cas, contre 110 SELECTION_ONLY. Seul SELECTION_ONLY
-        // reste un refus ; le reste devient un avertissement en console, la
-        // publication part.
-        // Deux cas DISTINCTS depuis le 2026-07-15 (bug réel : taille en mois
-        // sur la catégorie 51581 « Robes Fille 2-16 ans » — le message
-        // unique « Complète ce(s) champ(s) » laissait croire à un champ
-        // VIDE alors que la valeur était REMPLIE mais hors de la liste de
-        // la catégorie, et le restait à chaque re-saisie du même axe) :
-        //   - champ vide            → message « complète » historique ;
-        //   - valeur hors liste     → message dédié citant la valeur
-        //     refusée + des exemples acceptés (les valeurs d'ÂGE de la
-        //     liste d'abord quand la saisie est une taille d'âge), + astuce
-        //     d'alignement genre↔axe pour les tailles mois/ans.
-        const missingEmpty = [];
-        const invalidMessages = [];
-        for (const aspect of ebayRequiredFull) {
-          const known = knownAspects.find(k => k.labels.includes(aspect.name));
-          // Canal générique (chantier champs obligatoires) : pf.ebayAspects
-          // porte les obligatoires sans champ dédié (resolve_aspects +
-          // fallback UI) — validés ici comme les champs connus.
-          const genericVal = String(pfE.ebayAspects?.[aspect.name] ?? "").trim();
-          if (!known && !genericVal) continue; // pas de source → canal unfilledRequired de l'extension
-          const val = known ? String(known.value() ?? "").trim() || genericVal : genericVal;
-          if (!val) { missingEmpty.push(aspect.name); continue; }
-          const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
-          if (!allowed.length) continue;
-          if (allowed.some(v => normFuzzy(v) === normFuzzy(val))) continue;
-          const faitFoi = listeFaitFoi("ebay", aspect.mode);
-          // Rapprochement AUTO au moment du publish (2026-07-19, casquette
-          // 52365 : Taille « Unique » absente de la liste mais « Taille
-          // unique » y EXISTE — la garde jetait quand même, avec en
-          // « exemples » les 4 premières valeurs brutes de la liste, tailles
-          // bébé en tête). Même nearestAllowedValue que la pré-sélection du
-          // step 3, appliqué ICI en dernier filet : déterministe, insensible
-          // aux races d'arrivée du référentiel (preview pas encore chargée,
-          // clic rapide). La valeur du JOB est corrigée — c'est elle que
-          // l'extension posera (libellé eBay exact ⇒ match « exact » du menu).
-          const nearest = nearestAllowedValue(val, allowed);
-          if (nearest) {
-            if (known?.set) known.set(nearest);
-            else pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [aspect.name]: nearest };
-            console.log(`[publish] eBay ${aspect.name} : « ${val} » rapproché en « ${nearest} » (liste fermée de la catégorie)`);
-            continue;
-          }
-          // Aucun rapprochement sûr. Liste NON autoritaire (eBay FREE_TEXT) :
-          // avertissement, jamais un refus — la valeur part telle quelle, eBay
-          // l'accepte en saisie libre et l'extension sait la taper.
-          if (!faitFoi) {
-            console.warn(`[publish] eBay ${aspect.name} : « ${val} » absent de la liste (${allowed.length} valeurs, mode=${aspect.mode ?? "?"}) — envoyé tel quel, la liste n'est qu'une suggestion.`);
-            continue;
-          }
-          const ageLike = /\b(mois|ans)\b/i.test(val);
-          // Sans rapprochement sûr : plus JAMAIS les 4 premières valeurs
-          // brutes de la liste en guise d'« exemples » (« Bébé prématuré,
-          // Naissance, XS, S » pour une casquette adulte — absurde). Cas âge
-          // conservé (les valeurs mois/ans de la liste sont un VRAI guide) ;
-          // sinon on renvoie vers le sélecteur de l'encart eBay, qui porte la
-          // liste complète (state "invalid", même critère de liste fermée).
-          if (ageLike) {
-            const preferred = allowed.filter(v => /\b(mois|ans)\b/i.test(v));
-            const sample = (preferred.length ? preferred : allowed).slice(0, 4).join(", ");
-            invalidMessages.push(
-              tpl("stepPublishEbayValueNotAllowed", { name: aspect.name, value: val, sample }) +
-              ` ${t("stepPublishEbayAxisHint")}`
-            );
-          } else {
-            invalidMessages.push(
-              tpl("stepPublishEbayValueNotAllowedPick", { name: aspect.name, value: val, count: allowed.length })
-            );
-          }
+        // (refonte 24/09) La garde vit dans regles.js (gardeAspectsEbay) —
+        // mêmes champs connus, même normalisation que ebay.js, même
+        // rapprochement automatique (la valeur du JOB est corrigée), même
+        // doctrine « liste = suggestion » (seul SELECTION_ONLY refuse). Ici on
+        // ne fait plus que dire ce qu'elle a trouvé, avec les mêmes messages.
+        const verdict = gardeAspectsEbay({ pfE, ebayRequiredFull, outils: { nearestAllowedValue, listeFaitFoi } });
+        for (const r of verdict.rapproches) {
+          console.log(`[publish] eBay ${r.name} : « ${r.val} » rapproché en « ${r.nearest} » (liste fermée de la catégorie)`);
         }
+        for (const h of verdict.horsListe) {
+          console.warn(`[publish] eBay ${h.name} : « ${h.val} » absent de la liste (${h.count} valeurs, mode=${h.mode}) — envoyé tel quel, la liste n'est qu'une suggestion.`);
+        }
+        const invalidMessages = verdict.invalides.map(v => v.ageLike
+          ? tpl("stepPublishEbayValueNotAllowed", { name: v.name, value: v.val, sample: v.sample }) + ` ${t("stepPublishEbayAxisHint")}`
+          : tpl("stepPublishEbayValueNotAllowedPick", { name: v.name, value: v.val, count: v.count }));
         const guardMessages = [];
-        if (missingEmpty.length) {
-          guardMessages.push(tpl("stepPublishEbayRequiredMissing", { fields: missingEmpty.join(", ") }));
+        if (verdict.missingEmpty.length) {
+          guardMessages.push(tpl("stepPublishEbayRequiredMissing", { fields: verdict.missingEmpty.join(", ") }));
         }
         guardMessages.push(...invalidMessages);
         if (guardMessages.length) throw new Error(guardMessages.join(" "));
@@ -8630,11 +8491,42 @@ export default function ListingPreviewScreen({
       // prix et user imposés côté serveur (coin_config + auth.uid()), insert
       // raté = zéro pièce débitée. Remplace check_publish_quota + insert +
       // log_publish pour les clients pièces.
-      const { data: pubRes, error: pubErr } = await supabase.rpc("spend_coins_and_publish", {
-        p_photo_option: photoOption,
-        p_jobs: rows,
-      });
-      if (pubErr) throw new Error(t("genericError"));
+      // ── UN APPEL, ET UNE SECONDE CHANCE POUR LES AUTRES (refonte 24/09) ──
+      // Nouveau stepper seulement : quand le RPC refuse `already_published`
+      // pour UNE plateforme, les autres repartent aussitôt (un seul re-essai)
+      // au lieu de faire échouer tout l'appel — la refusée est dite sur
+      // l'écran de suivi, avec son état. L'ancien stepper garde le refus en
+      // bloc, à l'identique (un seul passage de boucle, même appel).
+      let rowsEnvoyees = rows;
+      let refuseesServeur = [];
+      let pubRes = null;
+      let pubErr = null;
+      for (let tentative = 0; ; tentative++) {
+        const reponse = await supabase.rpc("spend_coins_and_publish", {
+          p_photo_option: photoOption,
+          p_jobs: rowsEnvoyees,
+        });
+        pubRes = reponse.data;
+        pubErr = reponse.error;
+        if (pubErr) break;
+        if (variante === "nouvelle" && tentative === 0 && pubRes?.allowed === false && pubRes.reason === "already_published") {
+          const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
+          const restantes = rowsEnvoyees.filter(r => !refusees.includes(r.platform));
+          if (refusees.length && restantes.length) {
+            setSelected(prev => new Set([...prev].filter(p => !refusees.includes(p))));
+            refuseesServeur = refusees;
+            rowsEnvoyees = restantes;
+            continue;
+          }
+        }
+        break;
+      }
+      // Le vrai motif en clair (refonte) ; l'ancien stepper garde le générique.
+      if (pubErr) throw new Error(variante === "nouvelle"
+        ? (lang === "en"
+            ? `The server refused the publication (${pubErr.message}). Nothing was counted — try again in a moment.`
+            : `Le serveur a refusé la publication (${pubErr.message}). Rien n'a été décompté — réessaie dans un instant.`)
+        : t("genericError"));
       if (pubRes?.allowed === false) {
         setPublishing(false);
         if (pubRes.reason === "insufficient_coins") {
@@ -8702,7 +8594,7 @@ export default function ListingPreviewScreen({
       // et le filet « aucun job » sortirait l'article de la liste de toute
       // façon si cette écriture-ci ratait.
       if (currentInvId) sortirDuBrouillon(supabase, { userId, inventaireId: currentInvId });
-      onJobsQueued?.(currentInvId ?? null, plateformesAPublier);
+      onJobsQueued?.(currentInvId ?? null, variante === "nouvelle" ? rowsEnvoyees.map(r => r.platform) : plateformesAPublier);
       // Photos : PLUS d'UPDATE client ici (2026-08-04). spend_coins_and_publish
       // écrit inventaire.photos DANS la transaction du débit (migration
       // 20260804210000) : la retouche payée est rattachée à l'article même si
@@ -8735,6 +8627,19 @@ export default function ListingPreviewScreen({
           .select("id");
         if (paErr) console.error(`[FillSell] prix_achat NON persisté sur inventaire ${currentInvId} —`, paErr.message);
         else setPrixAchatBase({ valeur: prixAchatNum, inconnu: false });
+      }
+      // « Je ne sais plus » (refonte 24/09, nouveau stepper seulement) : le
+      // DRAPEAU, jamais un 0 écrit à la place d'un « je ne sais pas » (règle
+      // du 03/08). L'ancien stepper ne peut pas lever prixAchatInconnu.
+      if (currentInvId && prixAchatARenseigner && prixAchatInconnu) {
+        const { error: piErr } = await supabase
+          .from("inventaire")
+          .update({ prix_achat_inconnu: true })
+          .eq("id", currentInvId)
+          .eq("user_id", userId)
+          .select("id");
+        if (piErr) console.warn("[publish] prix_achat_inconnu non posé sur l'article :", piErr.message);
+        else setPrixAchatBase({ valeur: null, inconnu: true });
       }
       if (currentInvId && price != null && Number(price) > 0) {
         const { data: prixMaj, error: prixErr } = await supabase
@@ -8785,6 +8690,19 @@ export default function ListingPreviewScreen({
       } else {
         setPublieesSansPf([]);
       }
+      // (refonte 24/09) Ce que l'écran de suivi dira : les exclues NOMMÉES
+      // (adresse, interdite, sans annonce, sans rayon, refusée par le serveur)
+      // et la fournée à suivre dans la file.
+      if (variante === "nouvelle") {
+        setExclusionsDuClic([
+          ...exclusRun,
+          ...refuseesServeur.map(p => ({
+            platform: p, motif: "refusee_serveur",
+            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang }),
+          })),
+        ]);
+        setFournee({ inventaireId: currentInvId ?? null, plateformes: rowsEnvoyees.map(r => r.platform), depuis: new Date().toISOString() });
+      }
       setDone(true);
     } catch (e) {
       setPublishError(e.message);
@@ -8812,8 +8730,7 @@ export default function ListingPreviewScreen({
   // PAS de plateformesPubliables : genericRequiredStatus en dérive — l'en
   // retirer éteindrait le statut qui la bloque (boucle). eBay garde son
   // comportement global (CTA gris), cf. requiredBlocking.
-  const plateformesBloqueesChamps = [...plateformesPubliables].filter(p =>
-    (genericRequiredStatus?.[p] ?? []).some(aspectBloquant));
+  const plateformesBloqueesChamps = calculerPlateformesBloqueesChamps(plateformesPubliables, genericRequiredStatus);
   const publishChips = [...plateformesPubliables].filter(p => !plateformesBloqueesChamps.includes(p));
 
   function ctaLabel() {
@@ -8897,8 +8814,11 @@ export default function ListingPreviewScreen({
   // c'est une NOUVELLE annonce : la copie vide partirait au refus certain.
   // Rien n'est inventé, rien n'est généré : Publier grisé, la ligne dit où
   // l'écrire et la carte Vinted s'ouvre au tap (onOuvrirCopie).
-  const descriptionVideVinted =
-    selected.has("vinted") && !String(edited?.vinted?.description ?? "").trim();
+  // (refonte 24/09) Même règle, dans regles.js. Le nouveau stepper la juge sur
+  // les plateformes PUBLIABLES (une copie Vinted qui ne partira pas n'a rien à
+  // exiger — c'était la « mauvaise liste » de l'audit) ; l'ancien garde
+  // `selected`, à l'identique.
+  const descriptionVideVinted = descriptionVintedVide(variante === "nouvelle" ? plateformesPubliables : selected, edited);
 
   const requiredBlocking =
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
@@ -9132,12 +9052,259 @@ export default function ListingPreviewScreen({
     onClose();
   }
 
+  // ── Les modales, partagées par les deux peaux (refonte 24/09) ────────────
+  // Conversion (quota), accroche extension, Réglages › Compte eBay par-dessus
+  // le stepper, visionneuse : le même JSX, rendu par l'ancienne coque comme
+  // par la nouvelle (StepperNouveau reçoit `modales` dans le moteur).
+  const modales = (
+    <>
+      {quotaModal.open && (
+        <ConversionModal
+          isOpen={true}
+          onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
+          onUpgrade={tier => { setQuotaModal(m => ({ ...m, open: false })); onUpgrade(tier); }}
+          trigger={quotaModal.trigger}
+          targetTiers={quotaModal.targetTiers}
+          itemCount={quotaModal.trigger === "stock" ? stockCount : null}
+          stockLimit={stockLimitCfg}
+          lang={lang}
+          isPremium={isPremium}
+          isPro={isPro}
+          isBusiness={isBusiness}
+          userId={userId}
+          // Bascule quotas (02/09) : les CAS « unités insuffisantes » sont
+          // morts — plus de coinPrice/coinBalance/onUseCoins. quotaInfo porte
+          // le geste refusé (annonces/scans/retouches) pour l'encart dédié.
+          quotaInfo={quotaModal.quotaInfo ?? null}
+        />
+      )}
+
+
+      {/* Accroche extension (2026-08-04) : ouverte par le CTA Publier quand
+          l'extension n'a jamais été vue (ou par le reason extension_required
+          du RPC). Pas de « continuer » ici — l'utilisateur EST déjà au bout du
+          parcours ; le bouton « vérifier » lève la garde dès que le premier
+          poll de l'extension a stampé le profil. */}
+      {showExtGate && (
+        <ExtensionPitchScreen
+          lang={lang}
+          onClose={() => setShowExtGate(false)}
+          supabase={supabase}
+          userId={userId}
+          onExtensionSeen={() => { setExtSeenOverride(true); setShowExtGate(false); }}
+        />
+      )}
+
+      {/* Réglages › Compte eBay, ouvert PAR-DESSUS le stepper (07/09/2026).
+          La même section que les Paramètres, à l'identique — pas une copie.
+          Ouverte ici plutôt qu'en fermant le stepper : le brouillon en cours
+          (photos, annonces générées, prix) ne doit rien perdre pour un compte
+          à finir de paramétrer. À la fermeture, on relit l'état du compte :
+          si tout est vert, eBay redevient cochable sans quitter l'écran. */}
+      {ebayPanneauOuvert && (
+        <div
+          onClick={() => { setEbayPanneauOuvert(false); ebayCompte?.rafraichir?.(); }}
+          style={{ position:"fixed", inset:0, zIndex:20001, background:"rgba(16,32,27,0.45)", backdropFilter:"blur(2px)",
+            display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto" }}
+        >
+          <div
+            onClick={ev => ev.stopPropagation()}
+            style={{ width:"100%", maxWidth:560, background:T.paper, borderRadius:18, padding:"14px 16px 18px", boxShadow:"0 24px 60px rgba(16,32,27,0.28)" }}
+          >
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:6 }}>
+              <div style={{ fontSize:14, fontWeight:800, color:T.ink }}>
+                {lang === "en" ? "Settings › eBay account" : "Réglages › Compte eBay"}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEbayPanneauOuvert(false); ebayCompte?.rafraichir?.(); }}
+                style={{ width:32, height:32, borderRadius:999, border:"none", background:T.chip, color:T.mute2,
+                  display:"inline-flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}
+                aria-label={lang === "en" ? "Close" : "Fermer"}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <EbayCompteSection lang={lang} user={userId ? { id: userId } : null} />
+          </div>
+        </div>
+      )}
+
+      <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+    </>
+  );
+
   // ── Render : initializing ─────────────────────────────────────────────────
   // createPortal vers document.body : le stepper DOIT sortir du scroller
   // .wrap.page-pad (celui-ci a -webkit-overflow-scrolling:touch, qui sur iOS
   // Safari confine tout position:fixed descendant DANS le scroller au lieu du
   // viewport → topbar/bnav passaient par-dessus et le CTA débordait). Portalé
   // sur body, l'overlay fixed couvre réellement tout l'écran.
+  // ══ LE MOTEUR TENDU AU NOUVEAU STEPPER (refonte du 24/09/2026) ═══════════
+  // Tout ce que les écrans de src/publication/ lisent ou déclenchent, en UN
+  // objet. Rien n'est recalculé de leur côté : ils affichent et remontent.
+  // Les gestes de navigation propres à la nouvelle peau (trois écrans au lieu
+  // de quatre étapes) vivent ici ; ceux de l'ancienne (handleNext, handleBack)
+  // ne bougent pas.
+  function handleNextNouveau() {
+    if (step <= 1) {
+      // Photos choisies mais pas encore montées : on les monte et on arrive
+      // directement à la rédaction (l'étape « Photos » n'existe plus ici).
+      if (pickedFiles.length) { handleUpload(2); return; }
+      // Même garde qu'à l'étape 1 de l'ancien parcours (Lens unifié + retouche
+      // choisie : la rédaction pré-générée est abandonnée, l'étape 2 regénère).
+      if (platformListings?.lens_unifie && photoOption !== "original") {
+        setPlatformListings(null);
+        setProcessedPhotos([]);
+        setEdited({});
+        setDissociees(dissociationsVides());
+        setGenerales({ titre: "", description: "", etat: "" });
+      }
+      setStep(2);
+      return;
+    }
+    if (step === 2) { if (platformListings) setStep(3); return; }
+    if (step === 3) handleNext();
+  }
+  function handleBackNouveau() {
+    if (isLocked) return;
+    if (step <= 1) { quitterLeStepper(); return; }
+    setStep(step === 2 ? (photos.length ? 1 : 0) : 2);
+  }
+  const plateformesAVenirVisibles = PLATFORMS_A_VENIR.filter(p => plateformesVisibles.includes(p));
+  const titreArticle = String(generales?.titre || initialListing?.titre || edited?.vinted?.title || edited?.leboncoin?.title
+    || edited?.beebs?.title || edited?.ebay?.title || photoAnalysis?.titre || "").trim();
+  const etatArticle = String(generales?.etat || edited?.vinted?.platform_fields?.etat || attributV("etat") || "").trim();
+  // Les questions, comptées UNE fois par champ logique (même déduplication que
+  // motifsCtaGris) — pour « Continuer · N questions ».
+  const clesQuestions = new Set([
+    ...missingSharedFieldsDetailed.map(f => f.key),
+    ...Object.entries(genericRequiredStatus ?? {}).flatMap(([gp, list]) =>
+      list.filter(aspectBloquant).map(a => genericFieldToSharedKey(gp, a.key) ?? `${gp}:${a.key}`)),
+    ...(ebayRequiredStatus ?? []).filter(aspectBloquant).map(a =>
+      (a.sharedKey && SHARED_FIELD_KEYS.includes(a.sharedKey)) ? a.sharedKey : `ebay:${a.name}`),
+  ]);
+  const nbQuestions = clesQuestions.size
+    + (vintedGenreBlocked ? 1 : 0) + (beebsGenreBlocked ? 1 : 0)
+    + (descriptionVideVinted ? 1 : 0) + (prixAchatManquant ? 1 : 0);
+  // Par plateforme, pour la puce des cartes de « Ce qui va partir ».
+  const etatsParPlateforme = (() => {
+    const compte = {};
+    const ajoute = (p, n = 1) => { compte[p] = (compte[p] ?? 0) + n; };
+    for (const f of missingSharedFieldsDetailed) for (const p of f.platforms) ajoute(p);
+    for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
+      // Un aspect dont le champ partagé manque déjà est la même question.
+      const n = list.filter(a => aspectBloquant(a)
+        && !(genericFieldToSharedKey(gp, a.key) && missingSharedFields.includes(genericFieldToSharedKey(gp, a.key)))).length;
+      if (n) ajoute(gp, n);
+    }
+    const nE = (ebayRequiredStatus ?? []).filter(a => aspectBloquant(a) && !(a.sharedKey && missingSharedFields.includes(a.sharedKey))).length;
+    if (nE) ajoute("ebay", nE);
+    if (vintedGenreBlocked || descriptionVideVinted) ajoute("vinted");
+    if (beebsGenreBlocked) ajoute("beebs");
+    const out = {};
+    for (const p of Object.keys(platformListings?.platforms ?? {})) {
+      if (!selected.has(p)) continue;
+      if (platformSupport?.[p] === "prohibited") out[p] = { ton: "geste", libelle: lang === "en" ? "Refused here" : "Refusé ici" };
+      else if ((lbcAdresseManquante?.plateformes ?? []).includes(p)) out[p] = { ton: "geste", libelle: lang === "en" ? "Address" : "Adresse" };
+      else if (compte[p]) out[p] = { ton: "geste", libelle: `${compte[p]} question${compte[p] > 1 ? "s" : ""}` };
+      else out[p] = { ton: "ok", libelle: lang === "en" ? "Ready" : "Prêt" };
+    }
+    return out;
+  })();
+  // Ce que le clic ferait MAINTENANT : les exclusions, dites avant le geste.
+  const exclusionsPrevues = calculerExclusions({
+    selected, platformSupport, platformListings,
+    plateformesSansAdresse: lbcAdresseManquante?.plateformes ?? [],
+    champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
+  });
+  // Ce qui n'est bloqué que par UNE plateforme se contourne en la décochant.
+  const plateformesRetirables = [
+    ...((ebayRequiredStatus ?? []).some(aspectBloquant) ? ["ebay"] : []),
+    ...((vintedGenreBlocked || descriptionVideVinted) ? ["vinted"] : []),
+    ...(beebsGenreBlocked ? ["beebs"] : []),
+  ].filter(p => selected.has(p));
+  const extensionVueLe = (() => {
+    const a = Date.parse(extensionLastSeenAt ?? "");
+    const b = Date.parse(extSeenRelu ?? "");
+    if (!Number.isFinite(a)) return extSeenRelu ?? extensionLastSeenAt;
+    if (!Number.isFinite(b)) return extensionLastSeenAt;
+    return a >= b ? extensionLastSeenAt : extSeenRelu;
+  })();
+  // Les props de l'écran de rédaction, les MÊMES que dans l'ancienne coque.
+  const propsStepGeneration = {
+    generating: generatingPlatforms, generateError: platformError, platformListings, processedPhotos,
+    selected, edited, setEdited, onPhotoClick: setLightboxUrl, onRetry: handleGeneratePlatforms,
+    generatePrice: coinPrices?.generate ?? null, noteOverride: noteSharedOverride, ficheReprise,
+    ebayVoieApiReelle, rayonsParPf, suggestionsParPf, supabase, onChoisirRayon: choisirRayon,
+    lang, price, setPrice, customPriced, setCustomPriced, articleIcon, photoOption,
+    onEstimatePrice: handleAnalyzePhotos, estimating: analyzing, estimateCost: coinPrices?.lens_overflow ?? null,
+    estimateError: analysisError, estimateResult: photoAnalysis,
+    prixAchat: prixAchatSaisi || initialListing?.prix_achat || null,
+    carteAOuvrir, onCarteOuverte: () => setCarteAOuvrir(null),
+    generales, onValeurGenerale: poserValeurGenerale,
+    versionsTexte, ficheTexte: { titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" },
+    divergence, divergenceTranchee, onTrancherDivergence: trancherDivergence,
+    dissociees, onModifierCarte: modifierCarte, onRetablirCarte: retablirCarte,
+  };
+  const moteur = {
+    // Contexte
+    lang, t, tpl, userId, supabase, onClose, onCompleter, modales,
+    step, done, isLocked, initializing,
+    suivant: handleNextNouveau, retour: handleBackNouveau, quitter: quitterLeStepper, quitterArme, quitterPerdraitDuTravail,
+    MIN_PHOTOS, MAX_PHOTOS, MAX_RETOUCHED,
+    // L'article et ses photos
+    initialListing, invId, titreArticle, etatArticle, price, generales, edited, selected, setSelected,
+    photos, displayPreviews, pickedPreviews, photoCount, addFiles, removeFile, handleReorderPreviews,
+    handleAddMorePhotos, handleRemovePhoto, handleReorderPhotos, uploading, uploadError, setLightboxUrl,
+    notes, setNotes, micActive, toggleMic,
+    micDisponible: typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
+    photoOption, setPhotoOption, reuseRetouched,
+    retoucheNewCount: alreadyRetouched && addedNewPhotos ? photos.filter(u => !initialPhotos.includes(u)).length : 0,
+    retoucheNonLivree, retoucheAvisLu, setRetoucheAvisLu, coinPrices,
+    modeleAConfirmer, modelePropose: initialListing?.modele ?? null, modeleSource: initialListing?.modele_source ?? null, setModeleConfirme,
+    identifyFailed,
+    analysisHidden: initialListing?.prix_vente_suggere != null || initialListing?.taille_estimee != null,
+    photoAnalysis, analyzing, analysisError, handleAnalyzePhotos,
+    texteDuVendeur: Boolean(texteDuVendeurFiche()),
+    // Les plateformes et leurs états
+    plateformesAffichees: [...PLATFORMS_DEFAULT, ...plateformesAVenirVisibles],
+    plateformesAVenir: plateformesAVenirVisibles, plateformesOuvertes, oplaMotifGrise, oplaExtensionMin, oplaAcces,
+    motifAVenir: (p) => oplaMotifGrise === "extension"
+      ? (lang === "en"
+          ? `${PLATFORM_LABELS[p]} opens with the next FillSell extension update${oplaExtensionMin ? ` (${libelleVersionExtension(oplaExtensionMin)})` : ""}.`
+          : `${PLATFORM_LABELS[p]} s'active avec la prochaine mise à jour de l'extension FillSell${oplaExtensionMin ? ` (${libelleVersionExtension(oplaExtensionMin)})` : ""}.`)
+      : (lang === "en"
+          ? `${PLATFORM_LABELS[p]} is being prepared — visible here, not open for publishing yet.`
+          : `${PLATFORM_LABELS[p]} est en préparation — visible ici, pas encore ouverte à la publication.`),
+    basculer: (p) => setSelected(prev => { const s = new Set(prev); if (s.has(p)) s.delete(p); else s.add(p); return s; }),
+    platformSupport, categorieFermee, motifSupport,
+    publishedSet, queuedSet, lockedSet, attentes: fetchedAttentes, motifsVerrouillage,
+    phraseEtat: (p, a) => phraseEtat(p, a, lang),
+    pausedPlatforms, pausedReasons, motifPause: (p) => messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p]),
+    ebayBloque, motifEbay: messageCompteEbay(ebayMotif, lang, ebayEtatCompte),
+    boutonEbay: (ebayEtatCompte ? resumeEbay(ebayEtatCompte, lang === "en" ? "en" : "fr").bouton : null) ?? (lang === "en" ? "Set up eBay" : "Paramétrer eBay"),
+    ebayVoieApi: Boolean(ebayCompte?.voieApi), ebayVoieApiReelle, ouvrirPanneauEbay: () => setEbayPanneauOuvert(true),
+    platformSessions, voiesDuLot, extFraicheurPublier, extensionVueLe, extensionBlocked,
+    plateformesPubliables, plateformesBloqueesChamps, publishChips, publishTotalFor,
+    // La rédaction
+    propsStepGeneration, etatsParPlateforme, nbQuestions,
+    generatingPlatforms, platformError, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
+    modifierCarte, platformFieldsConfig,
+    // Les questions et le geste
+    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed,
+    vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
+    genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
+    demanderPrixAchat: prixAchatARenseigner, prixAchatSaisi, setPrixAchatSaisi, prixAchatInconnu, setPrixAchatInconnu, prixAchatManquant,
+    inventoryFull, stockCount, stockLimitCfg,
+    lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
+    exclusionsPrevues, plateformesRetirables,
+    publishError, publishing, motifsCtaGris, ctaDisabled, ctaBlockingActive, requiredBlocking, publishedStateLoaded,
+    ctaLabel: step === 3 ? ctaLabel() : null,
+    // Le suivi
+    fournee, exclusionsDuClic, publieesSansPf, createdThisRun, parcoursCreation,
+  };
+
   if (initializing) return createPortal((
     <div style={{
       position:"fixed", inset:0, zIndex:300,
@@ -9147,6 +9314,12 @@ export default function ListingPreviewScreen({
       <Loader size={36} thickness={3} />
     </div>
   ), document.body);
+
+  // ── Render : la nouvelle peau (refonte 24/09) ───────────────────────────
+  // Après l'écran d'initialisation (le même), tout le reste — U1 → U4, le
+  // suivi après `done` — est rendu par la coque de src/publication/. L'ancien
+  // chemin, en dessous, n'est pas touché.
+  if (variante === "nouvelle") return <StepperNouveau m={moteur} />;
 
   // ── Render : done ─────────────────────────────────────────────────────────
   if (done) return createPortal((
@@ -9581,79 +9754,7 @@ export default function ListingPreviewScreen({
         </PrimaryButton>
       </div>
 
-      {quotaModal.open && (
-        <ConversionModal
-          isOpen={true}
-          onClose={() => setQuotaModal(m => ({ ...m, open: false }))}
-          onUpgrade={tier => { setQuotaModal(m => ({ ...m, open: false })); onUpgrade(tier); }}
-          trigger={quotaModal.trigger}
-          targetTiers={quotaModal.targetTiers}
-          itemCount={quotaModal.trigger === "stock" ? stockCount : null}
-          stockLimit={stockLimitCfg}
-          lang={lang}
-          isPremium={isPremium}
-          isPro={isPro}
-          isBusiness={isBusiness}
-          userId={userId}
-          // Bascule quotas (02/09) : les CAS « unités insuffisantes » sont
-          // morts — plus de coinPrice/coinBalance/onUseCoins. quotaInfo porte
-          // le geste refusé (annonces/scans/retouches) pour l'encart dédié.
-          quotaInfo={quotaModal.quotaInfo ?? null}
-        />
-      )}
-
-
-      {/* Accroche extension (2026-08-04) : ouverte par le CTA Publier quand
-          l'extension n'a jamais été vue (ou par le reason extension_required
-          du RPC). Pas de « continuer » ici — l'utilisateur EST déjà au bout du
-          parcours ; le bouton « vérifier » lève la garde dès que le premier
-          poll de l'extension a stampé le profil. */}
-      {showExtGate && (
-        <ExtensionPitchScreen
-          lang={lang}
-          onClose={() => setShowExtGate(false)}
-          supabase={supabase}
-          userId={userId}
-          onExtensionSeen={() => { setExtSeenOverride(true); setShowExtGate(false); }}
-        />
-      )}
-
-      {/* Réglages › Compte eBay, ouvert PAR-DESSUS le stepper (07/09/2026).
-          La même section que les Paramètres, à l'identique — pas une copie.
-          Ouverte ici plutôt qu'en fermant le stepper : le brouillon en cours
-          (photos, annonces générées, prix) ne doit rien perdre pour un compte
-          à finir de paramétrer. À la fermeture, on relit l'état du compte :
-          si tout est vert, eBay redevient cochable sans quitter l'écran. */}
-      {ebayPanneauOuvert && (
-        <div
-          onClick={() => { setEbayPanneauOuvert(false); ebayCompte?.rafraichir?.(); }}
-          style={{ position:"fixed", inset:0, zIndex:20001, background:"rgba(16,32,27,0.45)", backdropFilter:"blur(2px)",
-            display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto" }}
-        >
-          <div
-            onClick={ev => ev.stopPropagation()}
-            style={{ width:"100%", maxWidth:560, background:T.paper, borderRadius:18, padding:"14px 16px 18px", boxShadow:"0 24px 60px rgba(16,32,27,0.28)" }}
-          >
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:6 }}>
-              <div style={{ fontSize:14, fontWeight:800, color:T.ink }}>
-                {lang === "en" ? "Settings › eBay account" : "Réglages › Compte eBay"}
-              </div>
-              <button
-                type="button"
-                onClick={() => { setEbayPanneauOuvert(false); ebayCompte?.rafraichir?.(); }}
-                style={{ width:32, height:32, borderRadius:999, border:"none", background:T.chip, color:T.mute2,
-                  display:"inline-flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}
-                aria-label={lang === "en" ? "Close" : "Fermer"}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <EbayCompteSection lang={lang} user={userId ? { id: userId } : null} />
-          </div>
-        </div>
-      )}
-
-      <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      {modales}
     </div>
   ), document.body);
 }
