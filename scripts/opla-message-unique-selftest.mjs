@@ -81,8 +81,8 @@ console.log("\n3. Le serveur parle d'une seule voix");
 const pdr = lire("supabase/functions/_shared/pas-de-rouge.js");
 check("pas-de-rouge importe autorisationOplaRequise, connexionOplaRequise et cookiesOplaTropVolumineux", /import \{ autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux \} from "\.\/textes-jobs\.ts"/.test(pdr));
 check("pas-de-rouge — plus de texte Opla en dur", !/Opla ne nous laisse plus|Opla a besoin de ton autorisation/.test(pdr));
-check("pas-de-rouge — la session fermée VUE PAR LA PAGE rend « connexion » ; un 401 de sonde reste « opla_acces » (règle du 23/09, plateformes_verite)",
-  /httpOpla === HTTP_MUR_OBSERVE \|\| OPLA_CONNEXION_RE\.test\(t\)/.test(pdr) && /message: connexionOplaRequise\(action\)/.test(pdr) && !/http === 401 \|\| http === 403/.test(pdr));
+check("pas-de-rouge — la session fermée VUE PAR LA PAGE rend « connexion » ; un 401 de sonde ne classe RIEN (règle du 24/09 : ni « opla_acces », ni « connexion », ni retenue)",
+  /sondeDit === false && httpOpla === HTTP_MUR_OBSERVE/.test(pdr) && /message: connexionOplaRequise\(action\)/.test(pdr) && !/http === 401 \|\| http === 403/.test(pdr) && !/sonde_401 → a_autoriser/.test(pdr));
 const hw = lire("supabase/functions/handler-watch/index.ts");
 check("handler-watch importe autorisationOplaRequise", /import \{ autorisationOplaRequise \} from "\.\.\/_shared\/textes-jobs\.ts"/.test(hw));
 // Les autres « rien à faire de ton côté » de handler-watch (extension endormie
@@ -110,15 +110,25 @@ check("background : au démarrage, l'accès accordé relance les jobs parqués",
 
 // ── 5. Deux murs, deux gestes — en exécutant classerEchec ─────────────────
 // Permission Chrome manquante ≠ session Opla fermée. La sonde du service
-// worker ne tranche pas la seconde (Marine, 23/09 : sonde 401, relevé de 57
-// annonces dans l'onglet) — seule la PAGE la prouve.
+// worker ne tranche NI l'une NI l'autre (Marine, 23/09 : sonde 401, relevé de
+// 57 annonces dans l'onglet ; Nico, 24/09 : sonde 401, poste autorisé, relevé
+// réussi la veille — quinze comptes mesurés) — seule la PAGE prouve la
+// session fermée, seul le poste (chrome.permissions) prouve la permission.
 console.log("\n5. Permission manquante et session fermée : deux messages, deux boutons");
 const { classerEchec } = await import(pathToFileURL(join(ROOT, "supabase/functions/_shared/pas-de-rouge.js")).href);
 {
   const base = { platform: "opla", action: "publish", essais: 2, pf: {}, brut: "Could not establish connection. Receiving end does not exist." };
+  // ⛔ RÈGLE DU 24/09 (Nico) : le 401 de la sonde du service worker ne prouve
+  //    rien. Il ne vaut ni « Autoriser Opla », ni « Me connecter » : l'échec se
+  //    classe sur son motif brut (ici un canal coupé → reprise), comme s'il n'y
+  //    avait pas de sonde. La 0.6.65 n'écrit plus ce `false` ; les extensions
+  //    d'avant l'écrivent encore, et le serveur DOIT l'ignorer.
   const sonde401 = classerEchec({ ...base, sessions: { opla: false, http: { opla: 401 } } });
-  check("sonde 401 (service worker) → « Autoriser Opla » (opla_acces), texte canonique",
-    sonde401.source === "opla_acces" && sonde401.message === canon, JSON.stringify(sonde401));
+  check("sonde 401 (service worker) → ne prouve RIEN : reprise sur le motif brut, jamais « Autoriser Opla » ni « Me connecter »",
+    sonde401.verdict === "reprise" && sonde401.source !== "opla_acces" && !/Autoriser Opla|Me connecter/.test(sonde401.message), JSON.stringify(sonde401));
+  const sonde401SansAcces = classerEchec({ ...base, sessions: { opla: false, http: { opla: 401 } }, oplaAccesDuPoste: false });
+  check("sonde 401 + poste déclaré SANS accès : toujours rien sur la seule sonde (la permission manquante passe par son marqueur, règle 1)",
+    sonde401SansAcces.source !== "opla_acces" && sonde401SansAcces.source !== "connexion", JSON.stringify(sonde401SansAcces));
   const murVu = classerEchec({ ...base, sessions: { opla: false, http: { opla: "login_redirect_observee" } } });
   check("page de connexion VUE par l'onglet → « Me connecter » (connexion), jamais « Autoriser Opla »",
     murVu.source === "connexion" && /^Connexion Opla requise/.test(murVu.message) && !/Autoriser Opla/.test(murVu.message), JSON.stringify(murVu));

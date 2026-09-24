@@ -125,7 +125,19 @@ export function classerEchec(arg) {
   // ⛔ null ne vaut JAMAIS false : ne rien savoir n'autorise rien.
   const sessions = arg.sessions && typeof arg.sessions === "object" ? arg.sessions : null;
   const sondeDit = sessions ? sessions[platform] : undefined;
-  const deconnecte = sondeDit === false;
+  // ── OPLA : SEULE LA PAGE PROUVE UNE SESSION FERMÉE (2026-09-24) ──────────
+  // Le 401 de la sonde du service worker ne prouve rien : mesuré le 24/09 sur
+  // quinze comptes (Nico, xxewwer, nadegemarcelin78, van-breugel.sandra,
+  // meminiandmove…) dont les relevés et dépôts, dans l'onglet, aboutissaient.
+  // Les extensions ≤ 0.6.64 écrivent encore `opla: false` sur ce 401 : ici,
+  // « déconnecté » ne se lit QUE sur le code posé par noterSessionDeconnectee
+  // (page de connexion vue par l'onglet) — jamais sur un code HTTP numérique.
+  // Ni « à autoriser », ni « session fermée », ni retenue : le brut est classé
+  // plus bas comme n'importe quel autre échec (reprise espacée, ou son motif).
+  const httpOpla = String(sessions?.http?.opla ?? "");
+  const deconnecte = platform === "opla"
+    ? (sondeDit === false && httpOpla === HTTP_MUR_OBSERVE)
+    : sondeDit === false;
   const connecte = sondeDit === true;
   // ── CE QUE LE POSTE SAIT DE LUI-MÊME (2026-09-24) ─────────────────────────
   // update-job-status le pose depuis profiles.extension_postes : le poste qui
@@ -155,33 +167,20 @@ export function classerEchec(arg) {
   //    plateforme vérifiée) gardent la main : ils sont plus spécifiques.
   if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t)) {
     if (platform === "opla") {
-      // ── DEUX MURS, DEUX GESTES (2026-09-23) ─────────────────────────────
-      // ⛔ Un 401 de la SONDE (service worker) ne prouve PAS une session
-      //    fermée : le 23/09, chez Marine, la sonde rendait 401 pendant que le
-      //    relevé, dans l'onglet, lisait 57 annonces. Le 401 de sonde reste
-      //    donc « à autoriser » — la règle tranchée le 23/09 et servie par
-      //    plateformes_verite (sonde_401 → a_autoriser), même écran, même mot.
-      //    Ce qui prouve une session FERMÉE, c'est la PAGE : l'onglet a vu la
-      //    page de connexion (noterSessionDeconnectee pose http.opla =
-      //    "login_redirect_observee") ou l'API a répondu 401 dans l'onglet
-      //    (content-scripts/opla.js écrit « Connexion Opla requise »). Là, le
-      //    geste est « Me connecter », pas « Autoriser Opla ».
-      const httpOpla = String(sessions?.http?.opla ?? "");
-      if (httpOpla === HTTP_MUR_OBSERVE || OPLA_CONNEXION_RE.test(t)) {
-        return {
-          verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
-          message: connexionOplaRequise(action),
-        };
-      }
-      // Accès PROUVÉ sur ce poste et aucune page de connexion vue : le 401 de
-      // la sonde (service worker) ne prouve rien (Marine, 23/09) — on classe
-      // sur le motif, plus bas, jamais « Autorise Opla » à qui l'a fait.
-      if (!accesPoste) {
-        return {
-          verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
-          message: autorisationOplaRequise(action),
-        };
-      }
+      // ── DEUX MURS, DEUX GESTES — ET LE 401 DE SONDE N'EN EST AUCUN ──────
+      // (2026-09-23, revu le 24/09.) `deconnecte` ne peut être vrai ici que
+      // sur une page de connexion VUE par l'onglet (noterSessionDeconnectee →
+      // http.opla = "login_redirect_observee") : le geste est « Me
+      // connecter ». Jamais « Autoriser Opla » pour une session fermée — une
+      // session fermée n'est pas une permission manquante. Et jamais l'un ni
+      // l'autre sur le 401 du service worker : le 23/09 chez Marine il
+      // arrivait pendant que le relevé lisait 57 annonces ; le 24/09 il
+      // faisait dire « Autorise Opla » à Nico, dont le poste avait l'accès.
+      // La permission manquante, elle, se reconnaît à son marqueur (règle 1).
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+        message: connexionOplaRequise(action),
+      };
     } else {
       return {
         verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",

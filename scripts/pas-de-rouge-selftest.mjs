@@ -133,18 +133,32 @@ console.log("\n── 6bis. LA SONDE DE SESSIONS TRANCHE, DANS LES DEUX SENS ─
 // on affirmait sans mesurer. Ces cas figent la règle : quand la sonde a vu,
 // c'est elle qui parle ; quand elle n'a rien vu, rien ne change.
 {
-  // (a) meminiandmove : 3 publications Opla en « interrompue, rien à faire de
-  //     ton côté » alors que extension_sessions.opla = false / http 401.
-  //     La reprise promise ne POUVAIT pas aboutir.
-  const oplaMort = classerEchec({
+  // (a) meminiandmove, 23/09 : ses publications Opla tournaient en reprise
+  //     pendant que la sonde disait 401 ; on en avait conclu « à autoriser ».
+  //     Le 24/09, MESURÉ sur quinze comptes (Nico : poste autorisé, relevé
+  //     réussi la veille ; xxewwer : relevé réussi 21:21, 401 à 21:39 ;
+  //     nadegemarcelin78, van-breugel.sandra…), le 401 du service worker ne
+  //     prouve RIEN : ni permission manquante, ni session fermée. Il ne classe
+  //     donc rien — l'échec se juge sur son motif brut, comme sans sonde.
+  //     Seule la PAGE prouve une session fermée (b'), seul le marqueur du
+  //     poste prouve une permission manquante (règle 1).
+  const oplaSonde401 = classerEchec({
     platform: "opla", action: "publish", essais: 2, pf: {},
     brut: "Could not establish connection. Receiving end does not exist.",
     sessions: { opla: false, http: { opla: 401 } },
   });
-  ok(oplaMort.verdict === "a_toi" && oplaMort.source === "opla_acces",
-    "Opla sonde 401/déconnecté → « Autoriser Opla », jamais « rien à faire de ton côté »");
-  ok(!/rien à faire de ton côté/i.test(oplaMort.message),
-    "le message ne promet plus une reprise qui ne peut pas aboutir");
+  ok(oplaSonde401.verdict === "reprise" && oplaSonde401.statut === "pending" && !oplaSonde401.source,
+    "Opla sonde 401 → ne prouve rien : reprise espacée sur le motif brut, ni « Autoriser Opla » ni « Me connecter » (règle du 24/09)");
+  ok(!/Autoriser Opla|Me connecter/.test(oplaSonde401.message),
+    "le message ne demande aucun geste que la sonde ne peut pas justifier");
+  // (b') la page de connexion VUE par l'onglet — le seul signal qui prouve.
+  const oplaPageVue = classerEchec({
+    platform: "opla", action: "publish", essais: 2, pf: {},
+    brut: "Could not establish connection. Receiving end does not exist.",
+    sessions: { opla: false, http: { opla: "login_redirect_observee" } },
+  });
+  ok(oplaPageVue.verdict === "a_toi" && oplaPageVue.source === "connexion" && /^Connexion Opla requise/.test(oplaPageVue.message),
+    "Opla page de connexion VUE par l'onglet → « Me connecter » (connexion), jamais « Autoriser Opla »");
 
   // (b) van-breugel.sandra : « connecte-toi sur vinted.fr » avec http.vinted
   //     = 200 relevé deux minutes plus tôt.

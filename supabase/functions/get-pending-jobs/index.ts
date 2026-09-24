@@ -937,14 +937,23 @@ serve(async (req) => {
         if (s && typeof s === "object") {
           const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
           const mortes = new Map<string, { observeeLe: number; fraiche: boolean }>();
-          // `opla` ajoutée au lot C (2026-09-16). STRICTEMENT INERTE tant
-          // qu'Opla est fermée : la boucle ne retient que les plateformes dont
-          // extension_sessions dit explicitement `false`, et la sonde Opla ne
-          // rend jamais `false` sans permission d'hôte (elle ne part même pas).
-          // Sans cette entrée, le jour de l'ouverture, une session Opla morte
-          // brûlerait les 5 tentatives de chaque job au lieu d'en retenir un.
+          // `opla` ajoutée au lot C (2026-09-16) : une session Opla morte VUE
+          // PAR LA PAGE retient, au lieu de brûler les 5 tentatives de chaque job.
+          const httpDe = (s["http"] ?? {}) as Record<string, unknown>;
           for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
             if (s[pf] !== false) continue; // null = inconnu, true = vivante : jamais retenu
+            // ── OPLA : SEULE LA PAGE PROUVE (2026-09-24, règle de Nico) ────
+            // Le 401 de la sonde du service worker faisait écrire `opla: false`
+            // + `http.opla = 401` (extensions ≤ 0.6.64) et retenir ICI tous les
+            // jobs Opla du compte pendant une heure — renouvelée à chaque
+            // sonde, donc sans fin. Mesuré le 24/09 : quinze comptes, dont Nico
+            // (3 jobs retenus, poste autorisé, relevé de la veille réussi),
+            // nadegemarcelin78 et meminiandmove ; xxewwer avait relevé à 21:21
+            // et sondait 401 à 21:39. Le worker ne porte pas la session de
+            // l'onglet : son 401 ne prouve rien. Seule une page de connexion
+            // VUE par l'onglet (noterSessionDeconnectee → http.opla =
+            // "login_redirect_observee") retient ; un code numérique, jamais.
+            if (pf === "opla" && String(httpDe["opla"] ?? "") !== "login_redirect_observee") continue;
             const observeeLe = Date.parse(String(parPf[pf] ?? s["checked_at"] ?? ""));
             // Observation sans horodatage lisible : on ne retient pas sur une
             // date qu'on n'a pas — on laisse passer, comme avant.
