@@ -1434,6 +1434,41 @@ serve(async (req) => {
             pf["republish_step"] === "deleted" &&
             nReprises < 3 &&
             (nReprises === 0 || Object.keys(repris).length > 0);
+          // ── LA LIVRAISON DE L'ANNONCE, REPRISE AU REDÉPÔT (2026-09-24) ─────
+          // Audit du 23/09 : un réglage fait À LA MAIN sur Leboncoin
+          // (transporteurs, format) était perdu à la republication — la
+          // capture ne portait que état/marque/couleur/matière/taille. Elle
+          // porte `ad.attributes` entier depuis la 0.6.47, et `values` depuis
+          // la 0.6.65 : shipping_type = TOUS les transporteurs de l'annonce,
+          // estimated_parcel_size = S/M/L, estimated_parcel_weight = grammes.
+          // ⛔ ON NE COMBLE QUE LE VIDE : un choix fait dans l'app (carte
+          //    Livraison) prime toujours. ⛔ Calculé APRÈS estHorsLigne : la
+          //    livraison n'est pas une cause de blocage, elle ne doit pas
+          //    déclencher de reprise à elle seule.
+          {
+            const attrLbc = (k: string) => bruts.find((b) => String(b?.["key"] ?? "") === k) ?? null;
+            const NOMS: Record<string, string> = {
+              courrier_suivi: "Courrier suivi", shop2shop: "Shop2Shop by Chronopost",
+              mondial_relay: "Mondial Relay", colissimo: "Colissimo",
+            };
+            const liv: string[] = [];
+            const ship = attrLbc("shipping_type");
+            const vals = Array.isArray(ship?.["values"]) ? (ship!["values"] as unknown[]).map(String) : null;
+            if (vals && !Array.isArray(pf["lbcTransporteurs"])) {
+              const noms = vals.map((v) => NOMS[v]).filter(Boolean);
+              if (noms.length) { pf["lbcTransporteurs"] = noms; liv.push(`transporteurs ← ${noms.join(", ")}`); }
+            }
+            const taille = String(attrLbc("estimated_parcel_size")?.["value"] ?? "").trim().toUpperCase();
+            const FORMATS: Record<string, string> = { S: "Petit", M: "Moyen", L: "Volumineux" };
+            if (FORMATS[taille] && !String(pf["format_colis"] ?? "").trim() && !String(pf["lbcFormatColis"] ?? "").trim()) {
+              pf["format_colis"] = FORMATS[taille]; liv.push(`format ← ${FORMATS[taille]}`);
+            }
+            const grammes = Number(attrLbc("estimated_parcel_weight")?.["value"]);
+            if (Number.isFinite(grammes) && grammes > 0 && !(Number(pf["lbcPoidsGrammes"]) > 0)) {
+              pf["lbcPoidsGrammes"] = Math.round(grammes); liv.push(`poids ← ${Math.round(grammes)} g`);
+            }
+            if (liv.length) repris["livraison"] = liv.join(" ; ");
+          }
           // ⚠️ ET ELLE PASSE MÊME SI ON N'A RIEN À COMPLÉTER. Sans cette
           //    porte, « Picture Organic Clothing » sortait ici : sa catégorie
           //    était déjà posée, son annonce déjà retirée (donc plus aucun
@@ -2531,6 +2566,11 @@ serve(async (req) => {
             let provenance = "";
             let depotJamaisEnLigne = false;
             let depotsAbandonnes = false;
+            // Un dépôt encore SURVEILLÉ (published sans lien ni identifiant :
+            // beebs-lien le cherche, le balayage des 7 jours le clora). Tant
+            // qu'il l'est, le retrait n'expire pas — sinon il tombait AVANT
+            // son dépôt, en faux « retire-la à la main » (Memini, 24/09).
+            let depotEncoreSurveille = false;
             // L'identifiant que le retrait porte LUI-MÊME (armRemovals le
             // recopie depuis le dépôt depuis le 21/09). Indispensable quand
             // inventaire_id a été NULLifié par la suppression de l'article
@@ -2563,8 +2603,18 @@ serve(async (req) => {
                 const v = String(p.platform_listing_id ?? "").trim();
                 if (v && !idsCandidats.includes(v)) idsCandidats.push(v);
               }
+              // « cancelled » compte autant que « failed » (24/09, retrait 88b96a45
+              // d'Ornella) : depuis pas-de-rouge (22/09), le balayage des dépôts
+              // sans lien réécrit failed → cancelled (verdict info), et un dépôt
+              // abandonné ne l'était donc plus JAMAIS pour cette garde — le
+              // retrait restait retenu 7 jours puis tombait en faux échec.
+              // ⛔ Jamais un dépôt qui porte un lien ou un identifiant.
               depotsAbandonnes = liste.length > 0 && liste.every((p) =>
-                p.status === "failed" && Boolean(((p.platform_fields as Record<string, unknown> | null) ?? {})["listing_url_abandon"]));
+                (p.status === "failed" || p.status === "cancelled")
+                && !String(p.listing_url ?? "").trim() && !String(p.platform_listing_id ?? "").trim()
+                && Boolean(((p.platform_fields as Record<string, unknown> | null) ?? {})["listing_url_abandon"]));
+              depotEncoreSurveille = liste.some((p) =>
+                p.status === "published" && !String(p.listing_url ?? "").trim() && !String(p.platform_listing_id ?? "").trim());
             }
             // 2. et 3. l'IDENTIFIANT — le lien n'en est qu'une écriture.
             if (!url && idsCandidats.length) {
@@ -2616,7 +2666,7 @@ serve(async (req) => {
               aRetenir.add(String(d.id));
               continue;
             }
-            if (Date.now() - depuisMs > ATTENTE_MAX_MS) {
+            if (!depotEncoreSurveille && Date.now() - depuisMs > ATTENTE_MAX_MS) {
               await userClient.from("cross_post_jobs")
                 .update({
                   status: "failed",
@@ -2755,8 +2805,20 @@ serve(async (req) => {
     //    été relevée ne doit pas voir ses retraits s'arrêter.
     let heldBoutiqueEtrangere = 0;
     if (!includeProcessing && !includeNeedsUser) {
+      // ── LES RETRAITS ORPHELINS AUSSI (24/09, remialbertholl) ──────────────
+      // Un retrait né de la SUPPRESSION de l'article (trigger du 16/09) perd
+      // son inventaire_id par la clé étrangère : la garde ne le voyait jamais,
+      // alors que c'est exactement son cas. Deux retraits de Rémi visaient des
+      // annonces de @nadegemarcelin78 (16040413) pendant que Chrome était sur
+      // @jcassou : Vinted répondait 403 access_denied, lu comme « anti-robot »,
+      // en boucle depuis la veille. La boutique vit désormais SUR le job
+      // (platform_fields.vinted_account_id : trigger 20260924200000, et
+      // l'extension ≥ 0.6.65 qui lit le propriétaire sur la page de l'annonce).
+      const boutiqueDuJob = (j: Record<string, unknown>) =>
+        String(((j.platform_fields as Record<string, unknown> | null) ?? {}).vinted_account_id ?? "").trim();
       const ecrituresVinted = out.filter((j) =>
-        j.platform === "vinted" && (j.action === "delete" || j.action === "republish") && j.inventaire_id != null);
+        j.platform === "vinted" && (j.action === "delete" || j.action === "republish") &&
+        (j.inventaire_id != null || boutiqueDuJob(j as Record<string, unknown>) !== ""));
       if (ecrituresVinted.length) {
         try {
           const { data: profilBoutique } = await userClient
@@ -2765,9 +2827,10 @@ serve(async (req) => {
             .vinted_identite as { user_id?: string; login?: string } | null | undefined;
           const boutiqueSession = String(identite?.user_id ?? "").trim();
           if (boutiqueSession) {
-            const ids = [...new Set(ecrituresVinted.map((j) => j.inventaire_id))];
-            const { data: arts } = await userClient
-              .from("inventaire").select("id, vinted_account_id").in("id", ids);
+            const ids = [...new Set(ecrituresVinted.map((j) => j.inventaire_id).filter((x) => x != null))];
+            const { data: arts } = ids.length
+              ? await userClient.from("inventaire").select("id, vinted_account_id").in("id", ids)
+              : { data: [] as Record<string, unknown>[] };
             const boutiqueDe = new Map<string, string>();
             for (const a of (arts ?? []) as Record<string, unknown>[]) {
               const b = String(a.vinted_account_id ?? "").trim();
@@ -2775,7 +2838,8 @@ serve(async (req) => {
             }
             const aRetenir = new Set<string>();
             for (const j of ecrituresVinted) {
-              const boutiqueArticle = boutiqueDe.get(String(j.inventaire_id));
+              const boutiqueArticle = (j.inventaire_id != null ? boutiqueDe.get(String(j.inventaire_id)) : undefined)
+                || boutiqueDuJob(j as Record<string, unknown>) || undefined;
               if (!boutiqueArticle || boutiqueArticle === boutiqueSession) continue;
               const pf = ((j.platform_fields as Record<string, unknown> | null) ?? {});
               const quoi = j.action === "delete" ? "Le retrait" : "La republication";
