@@ -70,7 +70,10 @@
     "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs",
     "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs",
     "selftest:creneaux-famine": "node scripts/creneaux-famine-selftest.mjs",
-    "selftest:publication-moteur": "node scripts/publication-moteur-selftest.mjs"
+    "selftest:publication-moteur": "node scripts/publication-moteur-selftest.mjs",
+    "selftest:acces-opla": "node scripts/acces-opla-selftest.mjs",
+    "selftest:option-du-texte": "node scripts/option-du-texte-selftest.mjs",
+    "selftest:rayon-par-defaut": "node --import ./scripts/loader-ext.mjs scripts/rayon-par-defaut-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
