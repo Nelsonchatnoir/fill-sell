@@ -34,7 +34,10 @@ export default function BlocQuestions({ m }) {
     marque:  { key: "marque",  label: t("fieldBrandLabel"),    type: "text" },
   };
   const [stickyShared, setStickyShared] = useState(() => new Set());
-  const toucherShared = (key) => setStickyShared(prev => prev.has(key) ? prev : new Set([...prev, key]));
+  const toucherShared = (key) => {
+    setStickyShared(prev => prev.has(key) ? prev : new Set([...prev, key]));
+    m.noterReponseFiche?.(key); // sa réponse ira sur la fiche au publish
+  };
   const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
   const toucherGeneric = (gp, key) => setStickyGeneric(prev => {
     const cur = prev[gp] ?? new Set();
@@ -42,6 +45,9 @@ export default function BlocQuestions({ m }) {
   });
   const [stickyEbay, setStickyEbay] = useState(() => new Set());
   const toucherEbay = (name) => setStickyEbay(prev => prev.has(name) ? prev : new Set([...prev, name]));
+  // La description Vinted saisie ici reste sous les yeux (comme les autres
+  // réponses) : elle ne disparaît plus au premier caractère tapé.
+  const [descriptionTouchee, setDescriptionTouchee] = useState(false);
 
   const q = questionsAPoser({
     missingSharedFields: m.redSharedFields, sharedFieldCfg, stickyShared,
@@ -53,7 +59,8 @@ export default function BlocQuestions({ m }) {
   // Les questions HORS aspects : prix d'achat, description Vinted, genre.
   const demandePrixAchat = m.demanderPrixAchat;
   const descriptionVide = m.descriptionVideVinted;
-  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (descriptionVide ? 1 : 0);
+  const montrerDescription = descriptionVide || (descriptionTouchee && m.selected?.has("vinted"));
+  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (montrerDescription ? 1 : 0);
   if (!total && !m.vintedGenreBlocked && !m.beebsGenreBlocked) return null;
   const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0);
 
@@ -99,11 +106,11 @@ export default function BlocQuestions({ m }) {
         )}
 
         {/* Description Vinted vide : SES mots, jamais un texte inventé. */}
-        {descriptionVide && (
-          <div className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
-            <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{t("fieldDescriptionLabel")}</div><Puce ton="geste">Vinted</Puce></div>
+        {montrerDescription && (
+          <div className={`fsn-q${descriptionVide ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }}>
+            <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{t("fieldDescriptionLabel")}</div><Puce ton={descriptionVide ? "geste" : "ok"}>Vinted</Puce></div>
             <div className="fsn-q-why">{en ? "Vinted refuses a listing without a description. Write it in your own words." : "Vinted refuse une annonce sans description. Écris-la avec tes mots."}</div>
-            <textarea className="fsn-textarea" value={m.edited?.vinted?.description ?? ""} onChange={ev => m.modifierCarte("vinted", "description", ev.target.value)} placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"} />
+            <textarea className="fsn-textarea" value={m.edited?.vinted?.description ?? ""} onChange={ev => { setDescriptionTouchee(true); m.modifierCarte("vinted", "description", ev.target.value); }} placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"} />
           </div>
         )}
 
@@ -201,7 +208,7 @@ export default function BlocQuestions({ m }) {
               closedMax={m.EBAY_CLOSED_LIST_MAX}
               onChange={v => {
                 toucherEbay(a.name);
-                if (a.sharedKey && m.setEbaySharedField) m.setEbaySharedField(a.sharedKey, v);
+                if (a.sharedKey && m.setEbaySharedField) { m.noterReponseFiche?.(a.sharedKey); m.setEbaySharedField(a.sharedKey, v); }
                 else m.setEbayAspect(a.name, v);
               }}
               T={TN}
