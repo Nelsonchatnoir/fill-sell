@@ -2886,6 +2886,8 @@ async function fillListingForm(job) {
       if (tailleRequise === false) {
         // On continue : le champ reste vide, la suite du formulaire est remplie.
       } else {
+        const limite = limiteNeufVinted(fields, requis, { warnings });
+        if (limite) return limite;
         return {
           success: false,
           needsUser: true,
@@ -2902,12 +2904,15 @@ async function fillListingForm(job) {
       // catégorie. On constate le non-appariement sans trancher sa cause, on
       // montre jusqu'à 12 options + le compte des restantes, et on donne les
       // DEUX sorties (taille OU catégorie).
+      const requisTaille = await computeVintedRequiredState().catch(() => ({ discovered: [] }));
+      const limite = limiteNeufVinted(fields, requisTaille, { warnings });
+      if (limite) return limite;
       return {
         success: false,
         needsUser: true,
         ...verdictTailleHorsGrille(fields, optionsTaille, { onePass, recreation }),
         warnings,
-        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+        discoveredRequired: requisTaille.discovered,
       };
     }
   }
@@ -5183,6 +5188,33 @@ const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
 //     enchaîne SANS séparateur sur une majuscule (titre + description).
 // Ne sert qu'au RELEVÉ (messages, warnings) : l'appariement de la cascade
 // n'est pas touché.
+// ── « NEUF SEULEMENT » : LA LIMITE, DITE AVANT TOUT AUTRE ARRÊT (24/09) ──────
+// Rayon dont la config n'accepte QUE des états « Neuf… » et article qui ne
+// l'est pas : aucune réponse honnête ne le fera partir. Elle passe AVANT le
+// verdict de taille (casque de solene.mantero, rayon « Bottes de moto » choisi
+// à la main : on lui demandait une pointure pour un casque, alors que Vinted
+// refuserait de toute façon un article porté). Ancre lue par pas-de-rouge.
+function limiteNeufVinted(fields, requiredState, extras = {}) {
+  const meta = (requiredState?.discovered ?? []).find((x) => x.key === "condition");
+  const acceptes = (meta?.options ?? [])
+    .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+    .map((x) => String(x).trim()).filter(Boolean);
+  const etat = String(fields?.etat ?? "").trim();
+  if (!meta || !etat || !acceptes.length) return null;
+  if (!acceptes.every((x) => /^neuf/.test(normalizeFuzzy(x)))) return null;
+  if (acceptes.some((x) => normalizeFuzzy(x) === normalizeFuzzy(etat))) return null;
+  return {
+    success: false,
+    needsUser: false,
+    error:
+      `Vinted n'accepte que des articles neufs dans ce rayon (${[...new Set(acceptes)].join(" · ")}). ` +
+      `Ton article est « ${etat} » : il ne peut pas y être publié. ` +
+      "C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.",
+    discoveredRequired: requiredState?.discovered ?? [],
+    ...extras,
+  };
+}
+
 function libellesOptionsLisibles(textes) {
   const bruts = [...new Set((textes ?? []).map((t) => String(t ?? "").replace(/\s+/g, " ").trim()).filter(Boolean))];
   const courts = bruts.filter((t) => t.length <= 60);
