@@ -95,11 +95,6 @@ const HTTP_MUR_OBSERVE = "login_redirect_observee";
 /** Leboncoin Pro hors forfait : l'écran de dépôt n'offre que « Valider et payer ». */
 const LBC_PAYANT_RE = /ne propose aucune option gratuite|Boostez votre annonce.*Valider et payer|aucun chemin gratuit/i;
 
-/** Vinted n'accepte que du neuf dans ce rayon (casques, beauté, sous-vêtements),
- *  et l'article ne l'est pas. Ancre écrite par update-job-status (requalification
- *  du needs_user « État ») et par vinted.js ≥ 0.6.65. */
-const VINTED_NEUF_RE = /n'accepte que des articles neufs dans ce rayon/i;
-
 /** Beebs n'a aucun rayon pour cet objet — vérifié, pas supposé. */
 const BEEBS_RAYON_RE = /n'a pas de rayon reconnu/i;
 
@@ -170,7 +165,7 @@ export function classerEchec(arg) {
   // coupé, timeout, 401, page inattendue).
   // ⛔ Les motifs qui portent DÉJÀ un geste précis (taille à choisir, limite de
   //    plateforme vérifiée) gardent la main : ils sont plus spécifiques.
-  if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t) && !VINTED_NEUF_RE.test(t)) {
+  if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t)) {
     if (platform === "opla") {
       // ── DEUX MURS, DEUX GESTES — ET LE 401 DE SONDE N'EN EST AUCUN ──────
       // (2026-09-23, revu le 24/09.) `deconnecte` ne peut être vrai ici que
@@ -285,17 +280,6 @@ export function classerEchec(arg) {
         "Leboncoin ne propose plus de dépôt gratuit sur ce compte : son dernier écran n'offre que « Valider et payer ». " +
         "FillSell ne paie jamais à ta place, donc cette annonce n'est pas partie et rien ne t'a été facturé. " +
         "Tes autres plateformes ne sont pas concernées.",
-    };
-  }
-  // Limite VÉRIFIÉE sur la liste du rayon (seuls des « Neuf… » acceptés) :
-  // aucune réponse honnête ne la ferait partir. On le dit et on clôt.
-  if (platform === "vinted" && VINTED_NEUF_RE.test(t)) {
-    const phrase = (String(arg.brut ?? "").match(/Vinted n'accepte que des articles neufs[^\n]*/i) ?? [])[0];
-    return {
-      verdict: "info", statut: "cancelled", motif: "vinted_neuf_seulement",
-      message: phrase ??
-        "Vinted n'accepte que des articles neufs dans ce rayon, et cet article ne l'est pas : il ne peut pas y être publié. " +
-        "C'est une règle de Vinted. Tes autres plateformes ne sont pas concernées.",
     };
   }
   if (platform === "beebs" && BEEBS_RAYON_RE.test(t)) {

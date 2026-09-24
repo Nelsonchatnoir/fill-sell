@@ -1534,7 +1534,7 @@ serve(async (req) => {
     const BEEBS_NON_CONFIRME_RE = /^Dépôt Beebs non confirmé/i;
     const BEEBS_ATTENTE_MESSAGE =
       "En attente de ta connexion à Beebs dans Chrome : la publication repartira toute seule " +
-      "dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.";
+      "dès que tu seras reconnecté(e). Aucune tentative consommée.";
     const MAX_BEEBS_NON_CONFIRME_REQUALIFS = 3;
     const UNE_HEURE_MS = 60 * 60_000;
     let beebsNonConfirmeRequalifie = false;
@@ -2638,6 +2638,54 @@ serve(async (req) => {
             raisonRequalif = "session bonne : refus de capture ≠ session perdue";
             pfSessionBonne = p;
             console.log(`[update-job-status] userId=${user.id} job=${jobId} — session_vinted requalifié : la sonde voit Vinted vivant → reprise dans 45 min`);
+          } else if (s["vinted"] !== false) {
+            // ── SONDE MUETTE (null) : ON NE SAIT PAS, DONC ON N'ARRÊTE PAS (2026-09-24) ──
+            // Carla (ltouze, Premium) : 7 republications figées en needs_user
+            // « attend que Vinted soit rouvert » depuis le 18/09, extension
+            // 0.6.63 vivante. Sa sonde rend http.vinted = 403 (anti-robot sur
+            // le fetch du service worker) → vinted = null, INDÉTERMINÉ. La
+            // reprise côté extension exige `vinted === true` : elle n'arrivait
+            // jamais. Rien ne prouvait la session fermée — l'étiquette venait
+            // d'une 0.6.33, qui rangeait 401 ET 403 sous « session refusée ».
+            // Chez Ritthik (extension éteinte depuis le 18/09), le MÊME état
+            // finissait en pending : handler-watch re-pend UNE fois à 3 jours
+            // et personne ne le reprend. Deux issues pour une même attente.
+            // LA RÈGLE, UNE SEULE, POUR TOUT LE PARC :
+            //   · sonde `true`  → reprise à 45 min (bloc ci-dessus) ;
+            //   · sonde `false` → needs_user « connecte-toi » (session PROUVÉE
+            //     fermée — la sonde Vinted ne l'écrit aujourd'hui jamais : ce
+            //     n'est donc qu'en présence d'une preuve) ;
+            //   · sonde muette (null, 401/403, jamais relevée) → PENDING,
+            //     reprise ESPACÉE (45 min, 3 h, puis 6 h). Jamais un arrêt sur
+            //     une ignorance. Le message nomme le geste possible sans
+            //     accuser : rien n'est bloqué en attendant.
+            // ⛔ Jamais « ta connexion est bonne » ici : on ne le sait pas.
+            const n = Number(pfSb["session_vinted_reprises"] ?? 0) || 0;
+            const dans = n >= 2 ? 360 : n >= 1 ? 180 : 45;
+            const p = { ...pfSb };
+            delete p["needs_user_source"];
+            delete p["needsUserAttempts"]; delete p["needsUserBoucle"];
+            delete p["needs_user_tick_le"]; delete p["needs_user_actif_ms"];
+            delete p["needs_user_vu_le"]; delete p["needs_user_vu_erreur"];
+            delete p["processing_since"];
+            p["next_action_after"] = new Date(Date.now() + dans * 60_000).toISOString();
+            p["session_vinted_reprises"] = n + 1;
+            p["session_muette_requalifie"] = {
+              at: new Date().toISOString(),
+              sonde: { vinted: s["vinted"] ?? null, http: (s["http"] as Record<string, unknown> | undefined)?.["vinted"] ?? null },
+              motif: "capture refusée, sonde Vinted indéterminée — aucune preuve de session fermée, reprise espacée",
+              dans_minutes: dans,
+              message_efface: typeof messageEffectif === "string" ? messageEffectif.slice(0, 200) : null,
+            };
+            statutEffectif = "pending";
+            const quand = dans >= 360 ? "dans six heures" : dans >= 180 ? "dans trois heures" : "dans trois quarts d'heure";
+            messageEffectif =
+              "Vinted n'a pas voulu nous rendre ta fiche à l'instant. Ton annonce est intacte, rien n'a été touché, " +
+              `et on refait un essai tout seuls ${quand}. Si tu n'es plus connecté à Vinted dans Chrome, ` +
+              "reconnecte-toi sur vinted.fr : la republication repartira plus vite.";
+            raisonRequalif = "session muette : refus de capture sans preuve de session fermée → reprise espacée";
+            pfSessionBonne = p;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — session_vinted, sonde muette (http ${JSON.stringify((s["http"] as Record<string, unknown> | undefined)?.["vinted"] ?? null)}) → pending, reprise dans ${dans} min`);
           }
         }
       } catch (e) {
@@ -2646,17 +2694,16 @@ serve(async (req) => {
       }
     }
 
-    // ── VINTED « NEUF SEULEMENT » : UNE LIMITE, PAS UNE QUESTION (2026-09-24) ──
-    // Casque de solene.mantero (job 4da68910) : rayon Vinted qui n'accepte que
-    // « Neuf avec étiquette », article en « Bon état ». L'extension (≤ 0.6.65)
-    // rendait un needs_user « Vinted exige des champs encore vides : État
-    // (accepte : Veille à ne mettre en ligne que des articles neufs… ) » — le
-    // texte d'avertissement de Vinted pris pour la liste des états, et une
-    // question dont la seule réponse (« neuf ») serait un mensonge.
-    // Le needsUserField porte la liste VRAIE (config du rayon) : si elle ne
-    // contient QUE des « Neuf… » et que l'état de l'article n'y est pas, ce
-    // n'est pas un geste à demander. Le job part en échec avec une phrase
-    // claire, que pas-de-rouge classe en INFO (clos, jamais relancé).
+    // ── VINTED : RAYON « NEUF SEULEMENT » → ON DEMANDE LE RAYON (2026-09-24) ──
+    // Relevé réel du formulaire le 24/09 : « Casques de sécurité » (Maison >
+    // Bricolage > Équipement de protection) n'offre qu'UN état cliquable,
+    // « Neuf avec étiquette » ; « Casques de vélo », « Casques d'escalade »,
+    // « Bottes de moto » offrent les cinq. Un article d'occasion se vend donc
+    // sur Vinted — c'est le RAYON qui est mauvais. ⛔ Plus jamais clos ni écarté
+    // (correctif du matin, v71, retiré) : le job reste en attente de la
+    // personne, avec la vraie question — changer de rayon. La question « État »
+    // est retirée : sa seule réponse (« neuf ») serait un mensonge.
+    // Couvre les extensions ≤ 0.6.65, qui rendent encore la question « État ».
     if (statutEffectif === "needs_user") {
       try {
         const pfL = (pfIn ?? {}) as Record<string, unknown>;
@@ -2664,26 +2711,25 @@ serve(async (req) => {
           ? pfL["needsUserField"] as Record<string, unknown> : null;
         const acceptees = Array.isArray(nuf?.["allowed_values"])
           ? (nuf!["allowed_values"] as unknown[]).map((v) => String(v ?? "").trim()).filter(Boolean) : [];
-        const etatArticle = String(pfL["etat"] ?? "").trim();
-        const neuf = (s: string) => /^neuf\b/i.test(s.normalize("NFD").replace(/[̀-ͯ]/g, ""));
-        const comparable = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
-        if (nuf && String(nuf["field_key"] ?? "") === "condition" && acceptees.length && acceptees.every(neuf)
-            && etatArticle && !acceptees.some((a) => comparable(a) === comparable(etatArticle))) {
-          const { data: jL } = await userClient.from("cross_post_jobs").select("platform").eq("id", jobId).maybeSingle();
-          if (jL?.platform === "vinted") {
+        const neuf = (s: string) => /^neuf/i.test(s.normalize("NFD").replace(/[̀-ͯ]/g, ""));
+        const comparable = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/s+/g, " ").trim();
+        if (nuf && String(nuf["field_key"] ?? "") === "condition" && acceptees.length && acceptees.every(neuf)) {
+          const { data: jL } = await userClient.from("cross_post_jobs").select("platform, platform_fields").eq("id", jobId).maybeSingle();
+          const pfJ = (jL?.platform_fields ?? {}) as Record<string, unknown>;
+          const etatArticle = String(pfL["etat"] ?? pfJ["etat"] ?? "").trim();
+          if (jL?.platform === "vinted" && etatArticle && !acceptees.some((a) => comparable(a) === comparable(etatArticle))) {
+            const chemin = Array.isArray(pfL["categoryPath"] ?? pfJ["categoryPath"])
+              ? ((pfL["categoryPath"] ?? pfJ["categoryPath"]) as unknown[]).map(String).join(" > ") : "";
             if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) erreurTechniqueBrute = body.error;
             body.error =
-              `Vinted n'accepte que des articles neufs dans ce rayon (${[...new Set(acceptees)].join(" · ")}). ` +
-              `Ton article est « ${etatArticle} » : il ne peut pas y être publié. ` +
-              "C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.";
-            statutEffectif = "failed";
-            // La question n'existe plus : rien à choisir.
+              `Le rayon Vinted « ${chemin || "choisi"} » n'accepte que des articles neufs, et ton article est « ${etatArticle} ». ` +
+              "Choisis un autre rayon Vinted pour cet article depuis l'app, puis relance la publication.";
             delete pfL["needsUserField"]; delete pfL["needsUserFields"]; delete pfL["champs_a_completer"];
-            console.log(`[update-job-status] userId=${user.id} job=${jobId} — Vinted neuf seulement (état « ${etatArticle} ») : limite de plateforme, pas une question`);
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — Vinted rayon neuf seulement (« ${chemin} », état « ${etatArticle} ») : on demande le rayon`);
           }
         }
       } catch (e) {
-        console.error("[update-job-status] requalification neuf seulement :", (e as Error)?.message ?? e);
+        console.error("[update-job-status] rayon neuf seulement :", (e as Error)?.message ?? e);
       }
     }
 
