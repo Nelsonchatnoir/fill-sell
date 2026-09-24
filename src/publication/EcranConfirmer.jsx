@@ -29,7 +29,13 @@ export default function EcranConfirmer({ m }) {
   const L = LIBELLE_MOTIF[en ? "en" : "fr"];
   const t = m.t; const tpl = m.tpl;
   const chips = [...m.selected].filter(p => m.platformListings?.platforms?.[p]);
-  const toutes = [...new Set([...chips, ...Object.keys(m.platformListings?.platforms ?? {})])].filter(p => !m.pausedPlatforms.includes(p));
+  // Ordre STABLE : celui de « Où publier ? » (plateformesAffichees), limité
+  // aux copies rédigées. Trié « cochées d'abord », une ligne changeait de
+  // place sous le doigt qui venait de la toucher — et le tap suivant tombait
+  // sur une autre.
+  const copies = Object.keys(m.platformListings?.platforms ?? {});
+  const ordre = [...(m.plateformesAffichees ?? []).filter(p => copies.includes(p)), ...copies, ...chips];
+  const toutes = [...new Set(ordre)].filter(p => !m.pausedPlatforms.includes(p));
   const voies = m.voiesDuLot;
   const ex = m.exclusionsPrevues;
   const partent = ex.aPublier;
@@ -103,6 +109,11 @@ export default function EcranConfirmer({ m }) {
               );
             } else if (cochee && exclue) {
               sous = (en ? "Won't go out: " : "Ne partira pas : ") + L[exclue.motif] + (exclue.motif === "champ_manquant" && exclue.champs?.length ? ` (${exclue.champs.join(", ")})` : "");
+              ton = "geste";
+            } else if (cochee && m.questionsParPlateforme?.[p]?.length) {
+              // Retenue par une question posée au-dessus : on le dit sur SA
+              // ligne, jamais « prête » avec un bouton gris.
+              sous = (en ? "Waiting for an answer: " : "Attend une réponse : ") + m.questionsParPlateforme[p].join(", ");
               ton = "geste";
             } else if (cochee && a?.kind === "refusee") {
               sous = m.phraseEtat(p, a); ton = "geste";
