@@ -36,6 +36,7 @@ import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
+import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
@@ -53,6 +54,9 @@ const LOT_MAX = 10;
 // tick suivant (2 min) reprend les jobs restés pending.
 const SCANS_MAX_PAR_PASSE = 3;
 const PASSE_MAX_MS = 100_000;
+// Rayon refusé par l'app et IA en panne (25/09) : 5 ticks (≈ 10 min)
+// d'attente, puis la question.
+const ATTENTES_RAYON_REFUSE_MAX = 5;
 const LENS_TIMEOUT_MS = 45_000;
 interface Passe { scans: number; debut: number }
 const MSG_RETRAIT = "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente";
@@ -175,6 +179,20 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
   delete (pf as Record<string, unknown>).__userId;
   delete (pf as Record<string, unknown>).__admin;
+  // ── LE RAYON REFUSÉ, IA EN PANNE : ON ATTEND (2026-09-25) ─────────────────
+  // Le rayon que l'app a refusé ne part pas, et une suggestion d'eBay ne se
+  // prend pas à l'aveugle : le job repasse au tick suivant (2 min), sans rien
+  // demander à personne. Borné : au-delà, la question est posée, avec les
+  // suggestions d'eBay — jamais une boucle muette.
+  if ("choix" in categorie && categorie.attente) {
+    const pfA = { ...((job.platform_fields ?? {}) as Record<string, unknown>) };
+    const n = (Number((pfA.rayon_refuse_attente as Record<string, unknown> | undefined)?.n) || 0) + 1;
+    if (n <= ATTENTES_RAYON_REFUSE_MAX) {
+      job.platform_fields = { ...pfA, rayon_refuse_attente: { n, at: new Date().toISOString() } };
+      await marquer(admin, job, { status: "pending", error: null }, { etape: "categorie", quoi: "rayon_refuse_ia_indisponible", tentative: n, motif: categorie.motif, suggestions: categorie.suggestions, ...diagAttributs });
+      return { job: job.id, issue: "pending", motif: "rayon_refuse_attente", tentative: n };
+    }
+  }
   if ("choix" in categorie) {
     const mappee = String(pf.ebayCategoryId ?? "").trim();
     const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
@@ -233,7 +251,11 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     //    même si les deux chemins sont démesurés.
     const premierQuiTient = (formes: string[]) =>
       formes.find((s) => s.length <= 300) ?? `${formes[formes.length - 1].slice(0, 297)}...`;
-    const msg = !sansMapping
+    // (25/09) Le rayon refusé, après l'attente bornée : ce n'est pas eBay qui
+    // n'a « rien de meilleur », c'est l'IA qui n'a pas répondu.
+    const msg = categorie.attente
+      ? "Le rayon eBay envisagé pour cet article a été écarté, et on n'a pas pu en choisir un autre (service momentanément indisponible). Relance dans quelques minutes."
+      : !sansMapping
       ? premierQuiTient([
           aConfirmer(complet(topChemin), complet(cheminMappe)),
           aConfirmer(abrege(topChemin), complet(cheminMappe)),
@@ -606,7 +628,9 @@ const CONTROLE_CATEGORIE_PAR_SUGGESTION = true;
 // résolution — « jamais en silence » : on doit pouvoir relire pourquoi la
 // règle a gardé le mapping ou demandé un choix.
 interface ResumeSuggestions { titre_interroge: string; n: number; racine_top: string | null; meme_racine_que_top: number; mapping_dans_liste: boolean; liste: string[] }
-type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions; sansMapping?: boolean };
+// `attente` (25/09) : seul « le rayon refusé ne part jamais » le pose, quand
+// l'IA est en panne — le job repasse au tick suivant au lieu de demander.
+type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions; sansMapping?: boolean; attente?: boolean };
 // ⚠️ 06/09 : le titre du job est le titre eBay RACCOURCI (« La Méthode
 // Delavier de Musculation pour la Femme ») ; interrogé tel quel, eBay
 // répondait 3 Livres / 6 Sports et la règle gardait Haltères — publié deux
@@ -733,6 +757,52 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     liste: suggestions.map((x) => `${x.id} ${x.chemin.join(" > ")}`),
   };
   if (mappee) {
+    // ── LE RAYON REFUSÉ NE PART JAMAIS (2026-09-25) ─────────────────────────
+    // L'app a REFUSÉ ce rayon (sa vérification IA : « incoherent »,
+    // « refuse_hors_famille ») et, par la voie API, le laisse sur le job pour
+    // qu'on tranche ICI avec le catalogue d'eBay — plus complet que notre
+    // arbre relevé (un routeur 4G n'y trouve aucun rayon). La règle n°2
+    // ci-dessous le faisait presque toujours (3 refus sur 3 corrigés depuis le
+    // 10/09) sans le garantir : le mapping refusé repartait dès que la n°1
+    // d'eBay était lui, ou que l'IA ne tranchait pas (repli « mapping »).
+    // Désormais : il sort de la liste ; l'IA choisit le plus PROCHE parmi les
+    // suggestions qui restent ; rien de sûr → la question, avec ces
+    // suggestions (jamais le rayon refusé, jamais une n°1 prise à l'aveugle) ;
+    // IA en panne → attente, le job repasse au tick suivant.
+    // ⛔ Tout autre job — aucun refus, ou un mapping qui n'est pas le rayon
+    //    refusé (choix du vendeur, rayon repris par l'app) — ne voit pas ce
+    //    bloc : son chemin est celui d'avant, au caractère près.
+    const refuses = mappingRefuseParLApp(pf as Record<string, unknown>, cheminMappe);
+    if (refuses) {
+      const restantes = suggestionsSansRefus(suggestions, refuses, mappee);
+      const refusTexte = refuses.map((c) => c.join(" > ")).join(" | ");
+      const verdictApp = String(((pf as Record<string, unknown>).categorie_verification as Record<string, unknown> | undefined)?.verdict ?? "");
+      const issue: IssueApresRefus = restantes.length
+        ? await choisirApresRefus(restantes, {
+          titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+          marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
+          rejeu: (pf as Record<string, unknown>).__rejeu === true,
+        })
+        : { issue: "aucune" };
+      if (issue.issue === "choisi") {
+        return {
+          id: issue.retenu.id, chemin: issue.retenu.chemin, source: "suggestion_apres_refus",
+          detail: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; retenu « ${issue.retenu.chemin.join(" > ")} » ` +
+            `(${issue.retenu.id}) par l'IA parmi ${restantes.length} suggestion(s) eBay, rayon refusé exclu`,
+          suggestions: resume,
+        };
+      }
+      return {
+        choix: ordonnerParFamille(restantes, famille).slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+        motif: `rayon de l'app « ${refusTexte} » refusé par sa vérification (${verdictApp}) ; ` + (
+          issue.issue === "panne" ? `IA indisponible pour choisir parmi les ${restantes.length} suggestion(s) eBay`
+            : restantes.length ? `aucune des ${restantes.length} suggestion(s) eBay retenue par l'IA`
+              : `eBay ne propose aucun autre rayon (${suggestions.length} suggestion(s) reçue(s))`),
+        suggestions: resume,
+        sansMapping: true,
+        ...(issue.issue === "panne" ? { attente: true } : {}),
+      };
+    }
     // ── RÈGLE N°2 : eBAY BAT UNE ICÔNE DEVINÉE (2026-09-07 soir) ───────────
     // L'app pose `categorie_incertaine` quand NOTRE catégorie n'est qu'une
     // supposition : aucun mot-objet dans le titre, aucun catalog_id Vinted,
@@ -1115,6 +1185,96 @@ async function choisirParmiSuggestions(
     await journaliser("ia_indisponible");
     return suggestions[0];
   }
+}
+
+// ── LE CHOIX APRÈS UN REFUS (2026-09-25) ────────────────────────────────────
+// Même appel que choisirParmiSuggestions, avec la consigne « plus proche » de
+// resolve-categorie (le rayon exact n'existe pas toujours : on prend le plus
+// proche qui existe, jamais un rayon d'un autre type d'objet) — et SANS ses
+// replis sur la n°1 d'eBay : après un refus, « aucune » veut dire « rien de
+// sûr », et c'est la question qui suit. Une panne n'est pas une réponse :
+// après une nouvelle tentative, c'est l'attente.
+type IssueApresRefus = { issue: "choisi"; retenu: { id: string; chemin: string[] } } | { issue: "aucune" } | { issue: "panne" };
+async function choisirApresRefus(
+  suggestions: Array<{ id: string; chemin: string[] }>,
+  contexte: { titre: string; genre?: string | null; taille?: string | null; marque?: string | null; userId?: string | null; rejeu?: boolean },
+): Promise<IssueApresRefus> {
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
+  const secret = Deno.env.get("CRON_SECRET") ?? "";
+  for (let essai = 0; essai < 2; essai++) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-cron-secret": secret },
+        body: JSON.stringify({
+          titre: contexte.titre,
+          user_id: contexte.userId ?? null,
+          attributs: { genre: contexte.genre, taille: contexte.taille, marque: contexte.marque },
+          candidats: { ebay: suggestions.slice(0, 10).map((s) => ({ chemin: s.chemin, id: s.id, source: "eBay" })) },
+          consigne: "plus_proche",
+          ...(contexte.rejeu ? { rejeu: true } : {}),
+        }),
+      });
+      if (r.ok) {
+        const data = await r.json() as { motif?: string; choix?: { ebay?: { id?: string | null } } };
+        if (data?.motif !== "ia_indisponible") {
+          // La candidate D'ORIGINE, retrouvée par son identifiant : jamais un
+          // chemin recopié, et jamais autre chose que ce qu'on a envoyé.
+          const id = data?.choix?.ebay?.id;
+          const retenu = id ? suggestions.find((s) => String(s.id) === String(id)) : null;
+          return retenu ? { issue: "choisi", retenu: { id: retenu.id, chemin: retenu.chemin } } : { issue: "aucune" };
+        }
+      } else {
+        console.warn(`[ebay-api-worker] rayon après refus : resolve-categorie HTTP ${r.status}`);
+      }
+    } catch (e) {
+      console.warn("[ebay-api-worker] rayon après refus : resolve-categorie injoignable :", (e as Error)?.message ?? e);
+    }
+    if (essai === 0) await new Promise((ok) => setTimeout(ok, 1500));
+  }
+  return { issue: "panne" };
+}
+
+// ── REJEU À BLANC DU RAYON REFUSÉ (2026-09-25) ──────────────────────────────
+// Lecture seule. Pour des jobs eBay donnés : ce que resoudreCategorie décide
+// AUJOURD'HUI d'un job qui partirait avec le rayon que l'app avait refusé —
+// suggestions d'eBay lues avec le jeton APPLICATIF, IA appelée en `rejeu`
+// (rien dans categorie_journal). Aucun job, aucune annonce, aucune écriture.
+// Le mapping rejoué est le rayon refusé, tel que l'app l'avait laissé : le
+// worker a pu réécrire le chemin du job depuis (c'est même ce qu'on mesure).
+async function rejeuRayonRefuse(admin: SupabaseClient, env: EbayEnv, body: { ids?: string[] }): Promise<Record<string, unknown>> {
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 20);
+  if (!ids.length) return { error: "ids requis" };
+  const { data: jobs, error } = await admin.from("cross_post_jobs")
+    .select("id, title, inventaire_id, status, voie, platform_fields").eq("platform", "ebay").in("id", ids);
+  if (error) return { error: error.message };
+  const token = await obtenirJetonApplicatif(env);
+  const lignes: Record<string, unknown>[] = [];
+  for (const j of (jobs ?? []) as Array<{ id: string; title: string; inventaire_id: number | null; status: string; voie: string | null; platform_fields: PlatformFields | null }>) {
+    const pf0 = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+    const refuses = cheminsRefusesParLApp(pf0);
+    if (!refuses.length) { lignes.push({ job: j.id, erreur: "aucun rayon refusé sur ce job" }); continue; }
+    // L'identifiant du rayon refusé : celui du job s'il n'a pas été réécrit,
+    // sinon celui que la preuve par les aspects a noté au départ de l'app.
+    const memeChemin = cleChemin(pf0.ebayCategoryPath) === cleChemin(refuses[0]);
+    const preuve = (pf0.categorie_preuve_aspects ?? null) as Record<string, unknown> | null;
+    const idRefuse = memeChemin ? String(pf0.ebayCategoryId ?? "") : String(preuve?.categorie_id ?? "");
+    const inv = await lireInventaire(admin, j.inventaire_id);
+    const fam = (inv.attributs as Record<string, { v?: unknown }> | null)?.famille;
+    const famille = fam && typeof fam === "object" ? String(fam.v ?? "") || null : null;
+    const pf = { ...pf0, ebayCategoryPath: refuses[0], ebayCategoryId: idRefuse || "0", __rejeu: true } as PlatformFields;
+    const r = await resoudreCategorie(env, token, { title: inv.titre || j.title }, pf, famille);
+    lignes.push({
+      job: j.id, statut: j.status, voie: j.voie, titre: inv.titre || j.title,
+      rayon_refuse: refuses.map((c) => c.join(" > ")), id_refuse: idRefuse || null,
+      rayon_du_job_aujourdhui: Array.isArray(pf0.ebayCategoryPath) ? (pf0.ebayCategoryPath as string[]).join(" > ") : null,
+      decision: "choix" in r
+        ? { issue: r.attente ? "attente" : "question", choix: r.choix, motif: r.motif }
+        : { issue: "rayon", id: r.id, chemin: r.chemin.join(" > "), source: r.source, detail: r.detail ?? null },
+      suggestions: r.suggestions.liste,
+    });
+  }
+  return { n: lignes.length, lignes };
 }
 
 // ── RÉTRO-TEST SUR LE VRAI PÉRIMÈTRE (consigne Nico, 07/09 soir) ───────────
@@ -1818,6 +1978,7 @@ Deno.serve(async (req) => {
   if (body.action === "mots_sans_mot_objet") return json(await motsSansMotObjet(admin, body));
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
+  if (body.action === "rejeu_rayon_refuse") return json(await rejeuRayonRefuse(admin, env, body as { ids?: string[] }));
 
   // ── Chien de garde (Nico, 06/09 soir) : un job pris (processing) depuis
   // plus de PROCESSING_MAX_MS sans conclusion = l'isolat est mort en route
