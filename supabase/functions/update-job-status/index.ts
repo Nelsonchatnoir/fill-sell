@@ -27,6 +27,9 @@ import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shar
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec } from "../_shared/pas-de-rouge.js";
+// L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
+// que l'app (stepper, modale « Compléter »).
+import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
 import { sessionIdDuJwt, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
@@ -2735,6 +2738,89 @@ serve(async (req) => {
       }
     }
 
+    // ══ CHAMP À LISTE FERMÉE : L'OPTION QUE L'ANNONCE NOMME DÉJÀ (2026-09-24) ══
+    // Job fc5e4bff (Jocabroc) : Leboncoin demandait « Produit » ; la valeur de
+    // l'annonce (« Plat apéritif ») n'était pas dans la liste de l'Univers posé
+    // (« Accessoire de table »), et la question est partie chez le vendeur alors
+    // que le titre disait « … plateau de service ». Nico a posé « Plateau » à la
+    // main : publié en trois minutes.
+    // Ici, au point de passage de TOUTES les extensions : un needs_user
+    // Leboncoin sur un champ à liste fermée — liste relevée sur SON formulaire
+    // (needsUserField.allowed_values) — cherche l'option que nomment le titre,
+    // puis l'objet identifié par l'IA, puis la description (même règle que
+    // l'app : _shared/option-du-texte.js). Trouvée sans ambiguïté → posée dans
+    // le canal que l'extension lit (la cible qu'elle a elle-même nommée), avec
+    // le marqueur needsUserResolved qui la fait primer sur un pré-rempli, et le
+    // job repart aussitôt. UNE fois par champ (option_du_texte) : si Leboncoin
+    // la refuse encore, la question part — avec la liste.
+    // Plusieurs options nommées → la question part, avec elles EN TÊTE.
+    // ⛔ Jamais l'état, la taille, la marque, la matière, le colis ; jamais
+    //    « Autre » ; jamais une cible que l'extension ne relit pas.
+    let pfOptionDuTexte: Record<string, unknown> | null = null;
+    let erreurEffaceeParOption = false;
+    if (statutEffectif === "needs_user" && pfIn && typeof pfIn === "object" && jobId) {
+      try {
+        const pfL = pfIn as Record<string, unknown>;
+        const nuf = (pfL["needsUserField"] && typeof pfL["needsUserField"] === "object")
+          ? pfL["needsUserField"] as Record<string, unknown> : null;
+        const cle = String(nuf?.["field_key"] ?? "").trim();
+        const libelle = String(nuf?.["field_label"] ?? "").trim();
+        const liste = Array.isArray(nuf?.["allowed_values"])
+          ? [...new Set((nuf!["allowed_values"] as unknown[]).map((v) => String(v ?? "").trim()).filter(Boolean))] : [];
+        const cible = (nuf?.["target"] && typeof nuf["target"] === "object") ? nuf["target"] as Record<string, unknown> : null;
+        const racine = cible?.["root"] == null ? null : String(cible["root"]);
+        const cleCible = String(cible?.["key"] ?? "").trim();
+        // Les canaux que leboncoin.js RELIT pour ce champ (lbcTargetFor) :
+        // lbcAspects.<clé>, l'univers, lbcProduit — rien d'autre.
+        const cibleSure = (racine === "lbcAspects" && cleCible === cle)
+          || (racine === null && (cleCible === "univers" || cleCible === "lbcProduit"));
+        if (cle && cibleSure && liste.length && liste.length < 200 && champDeductibleDuTexte(cle, libelle)) {
+          const { data: jO } = await userClient
+            .from("cross_post_jobs").select("platform, title, description, platform_fields").eq("id", jobId).maybeSingle();
+          const pfJ = (jO?.platform_fields ?? {}) as Record<string, unknown>;
+          const traces = ((pfL["option_du_texte"] ?? pfJ["option_du_texte"]) ?? {}) as Record<string, unknown>;
+          if (jO?.platform === "leboncoin" && !traces[cle]) {
+            const r = optionDepuisTextes({
+              options: liste,
+              textes: textesDeLAnnonce({ titre: jO.title, description: jO.description, platformFields: { ...pfJ, ...pfL } }),
+            });
+            if (r.valeur) {
+              const pfN: Record<string, unknown> = { ...pfL };
+              if (racine) pfN[racine] = { ...((pfN[racine] as Record<string, unknown> | undefined) ?? {}), [cleCible]: r.valeur };
+              else pfN[cleCible] = r.valeur;
+              const resolu = racine ? `${racine}.${cleCible}` : cleCible;
+              pfN["needsUserResolved"] = { ...((pfN["needsUserResolved"] as Record<string, unknown> | undefined) ?? {}), [resolu]: r.valeur };
+              for (const k of ["needsUserField", "needsUserFields", "champs_a_completer", "needs_user_source", "next_action_after", "processing_since"]) delete pfN[k];
+              pfN["option_du_texte"] = {
+                ...traces,
+                [cle]: {
+                  valeur: r.valeur, source: r.source,
+                  avant: String(nuf?.["valeur_non_reconnue"] ?? "").trim() || null,
+                  le: new Date().toISOString(), pose_par: "update-job-status (option lue dans l'annonce)",
+                },
+              };
+              if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) erreurTechniqueBrute = body.error;
+              statutEffectif = "pending";
+              messageEffectif = null;
+              erreurEffaceeParOption = true;
+              raisonRequalif = `option lue dans l'annonce (${r.source}) : ${libelle || cle} = « ${r.valeur} »`;
+              pfOptionDuTexte = pfN;
+              console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} → pending`);
+            } else if (r.candidats.length > 1) {
+              pfOptionDuTexte = {
+                ...pfL,
+                needsUserField: { ...nuf, allowed_values: listeCandidatsDabord(liste, r.candidats), candidats_du_texte: r.candidats },
+              };
+              console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${libelle || cle} : l'annonce nomme ${r.candidats.length} options (${r.candidats.join(", ")}) → question, elles en tête`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] option lue dans l'annonce :", (e as Error)?.message ?? e);
+        pfOptionDuTexte = null;
+      }
+    }
+
     let pfPasDeRouge: Record<string, unknown> | null = null;
     // Opla 494 (cookies du site au-delà de la limite de Vercel, 2026-09-24) :
     // inutile d'attendre les 5 essais espacés de l'extension — chaque essai
@@ -2871,6 +2957,10 @@ serve(async (req) => {
     // Refus de capture alors que la sonde voit Vinted vivant : plus de
     // needs_user_source 'session_vinted', échéance à 45 min, trace nommée.
     if (pfSessionBonne) patch.platform_fields = pfSessionBonne;
+    // L'option lue dans l'annonce (24/09) : la valeur posée dans le canal que
+    // l'extension relit et le job repart (pending) ; ou, plusieurs options
+    // nommées, la question avec elles en tête (needs_user).
+    if (pfOptionDuTexte) patch.platform_fields = pfOptionDuTexte;
     // Compteur « 72 h d'extension ouverte » (handler-watch, 2026-09-10) : une
     // ENTRÉE en needs_user ouvre un budget neuf — les compteurs d'un épisode
     // précédent (job relancé, réparé, repris) ne doivent jamais solder le
@@ -3107,7 +3197,7 @@ serve(async (req) => {
       // on garde l'error explicative si fournie, sinon on nettoie.
       // messageEffectif (requalification bfcache) prime sur le brut Chrome.
       // Réparation d'état : l'erreur est EFFACÉE, il n'y a plus rien à corriger.
-      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache)
+      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache || erreurEffaceeParOption)
         ? null
         : (messageEffectif ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null));
     } else if (statutEffectif === "needs_user") {

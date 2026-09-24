@@ -662,6 +662,13 @@ serve(async (req) => {
           const declare = posteAvecOpla || posteSansOpla;
           if (posteAvecOpla) patchPoste.opla_acces = true;
           else if (posteSansOpla) patchPoste.opla_acces = false;
+          // (24/09) Un accès DÉCLARÉ est établi à l'instant du poll : on le date
+          // comme un accès appris (update-job-status) ou prouvé (preuve-opla).
+          // C'est cette date que lit la règle unique « Opla est-il autorisé ? »
+          // (_shared/acces-opla.js) : sans elle, un poste 0.6.64+ qui redit son
+          // accès à chaque minute gardait la date de son dernier job Opla, et un
+          // refus venu d'un AUTRE profil Chrome passait pour plus récent.
+          if (declare) patchPoste.opla_acces_le = patchPoste.le;
           else if (avant.opla_acces === false) posteSansOpla = true;
           else if (avant.opla_acces === true) posteAvecOpla = true;
           // ── UN POSTE QUI NE DÉCLARE RIEN (≤ 0.6.63) : LA PREUVE EN BASE
