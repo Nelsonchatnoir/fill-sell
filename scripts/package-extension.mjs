@@ -171,7 +171,16 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // couche 2 (priorité d'un republish 'deleted' bornée : N=3 gels sans verdict →
 // bout de file, reste pending/visible/rattrapable). ⚠️ EXTENSION_MIN_BUILD
 // NON touché : décision de Nico, à part, lue dans le paquet publié.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46', '0.6.47', '0.6.48', '0.6.49', '0.6.52', '0.6.53', '0.6.54', '0.6.58', '0.6.60', '0.6.61'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46', '0.6.47', '0.6.48', '0.6.49', '0.6.52', '0.6.53', '0.6.54', '0.6.58', '0.6.60', '0.6.61', '0.6.62', '0.6.63', '0.6.64'];
+// 0.6.63 ajoutee le 24/09 : PUBLIEE et SERVIE par le CWS, relevee en base a
+// 11:20 (profiles.extension_build x extension_version) — 23 comptes en
+// '0.6.63', build '2026-09-23T22:48:50Z+d4e424c'. 0.6.62 (zip encore sous
+// build/A-TELEVERSER) et 0.6.64 (zip build/fillsell-extension-0.6.64/, jamais
+// vu en base hors le poste non-builde de Nico) : numeros BRULES des le
+// televersement/empaquetage, jamais re-packages — le paquet suivant est la
+// 0.6.65 (sonde Opla : un 401 ne rend plus jamais `false` ; popup : jamais
+// « Autoriser Opla » sur un poste qui a l'acces). EXTENSION_MIN_BUILD NON
+// touche.
 // 0.6.54, 0.6.58, 0.6.60 et 0.6.61 ajoutees le 23/09 au soir : PUBLIEES et
 // SERVIES, relevees en base a 18:34 (profiles.extension_build x
 // extension_version), pas declarees :

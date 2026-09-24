@@ -201,8 +201,9 @@ async function fetchPendingJobs(accessToken) {
   // ── LA VÉRITÉ SERVEUR (0.6.61, 2026-09-23) ──────────────────────────────
   // plateformes_verite, servie par get-pending-jobs : UN état et UNE action
   // par plateforme, tranchés une fois pour tous les écrans (relevé > dépôt >
-  // sonde ; eBay jamais « connectée » sur une page publique ; Opla 401 = à
-  // autoriser). Absente (serveur d'avant) : l'ancien calcul local reprend.
+  // sonde ; eBay jamais « connectée » sur une page publique ; un 401 de sonde
+  // Opla ne dit RIEN, cf. etatPlateforme). Absente (serveur d'avant) :
+  // l'ancien calcul local reprend.
   state.verite = data?.contexte?.verite ?? null;
   state.boutiquePause = data?.boutique_pause ?? null;
   state.dejaEnLigne = data?.deja_en_ligne ?? null;
@@ -591,7 +592,19 @@ function etatPlateforme(p, sondeFraiche) {
     if (verite.etat === "a_connecter") {
       return { etat: "ko", sous: `Connecte-toi à ${p.name} sur cet ordinateur`, vuLe, action: verite.action ?? "connexion" };
     }
-    if (verite.etat === "a_autoriser") return { etat: "autoriser", sous: "Autorise FillSell sur Opla", vuLe };
+    if (verite.etat === "a_autoriser") {
+      // ── CE POSTE SAIT S'IL A L'ACCÈS (2026-09-24) ─────────────────────
+      // « Autoriser Opla » ne se montre QUE si CE navigateur n'a pas la
+      // permission d'hôte (chrome.permissions.contains, relu à chaque
+      // ouverture). Le serveur voit le compte, pas le poste : un autre profil
+      // Chrome sans accès, ou un relevé ancien, peut lui faire dire « à
+      // autoriser » à un poste qui l'a déjà fait. Nico, 24/09 : bouton cliqué,
+      // rien ne change, bouton revenu — la permission existait déjà. Accès
+      // présent ici → aucun verdict : la ligne dit « jamais vérifié » et offre
+      // « Vérifier », plutôt qu'un geste qui ne peut rien changer.
+      if (state.oplaAcces === true) return { etat: null, sous: null, vuLe: null };
+      return { etat: "autoriser", sous: "Autorise FillSell sur Opla", vuLe };
+    }
     if (verite.etat === "ecartee") return { etat: "ecartee", sous: "Tu ne vends pas ici", vuLe: null };
     const sondeMs = verite.sonde_le ? Date.parse(verite.sonde_le) : NaN;
     return { etat: null, sous: null, vuLe: Number.isFinite(sondeMs) ? sondeMs : null };

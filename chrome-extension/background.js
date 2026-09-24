@@ -10154,25 +10154,26 @@ async function arbitrerSessionEbay(result) {
 // ⛔ La PAGE de dépôt ne sert à rien ici : /sell/create rend 200 avec ET sans
 //    session (SPA, redirection côté client) — le piège Beebs, mesuré identique.
 //
-// ⚠️ LE 401 N'EST PAS PRIS POUR ARGENT COMPTANT, et c'est la leçon Vinted
-// appliquée d'avance : là-bas un access_token périmé rend 401 alors que la
-// session VIT (seule la page sait la rafraîchir), et ce 401 pris pour une
-// déconnexion a produit le faux bandeau du 30/07. Opla pose un marqueur
-// JS-lisible, `opla_has_session`, qu'on lit par chrome.cookies (permission déjà
-// au manifest) :
-//     401 SANS le marqueur  → false  (ni jeton, ni marqueur : déconnexion nette)
-//     401 AVEC le marqueur  → null   (jeton à rafraîchir : on n'accuse pas)
+// ⛔ LE 401 NE PROUVE RIEN — JAMAIS `false` (2026-09-24, règle de Nico).
+// C'est la leçon Vinted, cette fois MESURÉE sur Opla : le service worker ne
+// porte pas la session de l'onglet, et son 401 arrive chez des comptes dont le
+// relevé et les dépôts, dans l'onglet, aboutissent. Relevé du 24/09 : quinze
+// comptes en `opla: false` + `http 401` — Nico (8 annonces relevées la veille,
+// poste autorisé, 3 jobs retenus), xxewwer (relevé réussi à 21:21, 401 à
+// 21:39, même build), nadegemarcelin78, van-breugel.sandra, meminiandmove… Le
+// marqueur `opla_has_session` censé départager était absent chez TOUS : la
+// version d'avant concluait donc `false` à chaque 401, et ce `false` faisait
+// retenir tous les jobs Opla du compte pendant une heure, renouvelée à chaque
+// sonde (get-pending-jobs « session connue morte »), affichait « Autoriser
+// Opla » à des postes qui avaient l'accès (plateformes_verite, popup) et
+// classait les échecs en « à autoriser » (pas-de-rouge).
 //     200 avec user.id      → true
+//     401                   → null   (INDÉTERMINÉ : ni fermée, ni à autoriser)
 //     tout le reste         → null
-//
-// ⚠️ CE QUI RESTE À VÉRIFIER LE JOUR DE L'OUVERTURE, dit franchement : (a) je
-// n'ai PAS pu mesurer ce fetch depuis le service worker — la 0.6.40 qui tourne
-// chez Nico n'a pas la permission d'hôte opla.co. Si Opla rejette le worker en
-// 429 comme il rejette curl, la sonde rendra null : indéterminé, jamais un faux
-// verdict, donc jamais un job retenu à tort. (b) Je n'ai pas vérifié que
-// `opla_has_session` DISPARAÎT à la déconnexion — le tester aurait déconnecté
-// Nico d'Opla. C'est pour ça que le marqueur ne sert qu'à REFUSER de conclure,
-// jamais à conclure tout seul.
+// Ce qui prouve une session FERMÉE, c'est la PAGE : noterSessionDeconnectee
+// (http.opla = "login_redirect_observee") ou l'ancre « Connexion Opla requise »
+// écrite par content-scripts/opla.js sur un 401 DANS L'ONGLET. Ce qui dit si
+// le poste a l'accès, c'est chrome.permissions — jamais un code HTTP.
 async function sonderSessionOpla() {
   // ⛔ PAS UNE REQUÊTE CHEZ QUI NE PEUT PAS L'ÉMETTRE. Le paquet CWS ne porte
   // pas la permission d'hôte opla.co (elle est retirée avant chaque
@@ -10185,10 +10186,6 @@ async function sonderSessionOpla() {
     const autorise = await chrome.permissions.contains({ origins: ["https://www.opla.co/*"] });
     if (!autorise) return { etat: null, http: null };
   } catch { /* API indisponible : on tente, l'échec retombera en null */ }
-  let marqueur = null;
-  try {
-    marqueur = await chrome.cookies.get({ url: "https://www.opla.co/", name: "opla_has_session" });
-  } catch { /* cookies illisibles : marqueur inconnu, on reste prudent */ }
   const r = await fetch("https://www.opla.co/api/public/me", {
     credentials: "include", redirect: "follow", headers: { Accept: "application/json" },
   });
@@ -10197,7 +10194,8 @@ async function sonderSessionOpla() {
     try { id = (await r.json())?.user?.id ?? null; } catch { /* corps illisible */ }
     return { etat: id ? true : null, http: r.status };
   }
-  if (r.status === 401) return { etat: marqueur ? null : false, http: r.status };
+  // 401 compris : le statut brut reste dans `http` (traçabilité), l'état est
+  // indéterminé. Aucun `false` ne sort plus de cette sonde.
   return { etat: null, http: r.status };
 }
 
