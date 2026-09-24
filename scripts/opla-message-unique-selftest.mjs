@@ -38,6 +38,16 @@ for (const action of ["publish", "republish", "delete"]) {
   check(`background.js — forme « ${action} » identique à l'octet`, messageAutorisationOpla(action) === textes.autorisationOplaRequise(action));
 }
 
+// ── 1 bis. Le message « cookies opla.co trop volumineux » et sa copie (2026-09-24)
+const canonCookies = textes.cookiesOplaTropVolumineux?.("publish");
+check("la source de vérité existe (cookiesOplaTropVolumineux)", typeof canonCookies === "string" && canonCookies.length > 40);
+const blocCookies = bg.slice(bg.indexOf("// ⟦opla-cookies:début⟧"), bg.indexOf("// ⟦opla-cookies:fin⟧"));
+const messageCookiesOpla = new Function(`${blocCookies.replace(/^\/\/.*$/gm, "")}; return messageCookiesOpla;`)();
+for (const action of ["publish", "republish", "delete"]) {
+  check(`background.js — cookies, forme « ${action} » identique à l'octet`, messageCookiesOpla(action) === textes.cookiesOplaTropVolumineux(action));
+}
+check("le message cookies ne dit ni « relancer » ni « rien à faire de ton côté »", !/relancer|rien à faire de ton côté/i.test(canonCookies));
+
 const app = lire("src/components/BoutonMeConnecter.jsx");
 const blocApp = app.slice(app.indexOf("// ⟦opla-autorisation-app:début⟧"), app.indexOf("// ⟦opla-autorisation-app:fin⟧"));
 const MESSAGE_AUTORISATION_OPLA = new Function(`${blocApp.replace(/^\/\/.*$/gm, "").replace("export const", "const")}; return MESSAGE_AUTORISATION_OPLA;`)();
@@ -69,7 +79,7 @@ for (const [nom, texte] of surveilles) {
 // ── 3. Le serveur n'a plus de texte propre ────────────────────────────────
 console.log("\n3. Le serveur parle d'une seule voix");
 const pdr = lire("supabase/functions/_shared/pas-de-rouge.js");
-check("pas-de-rouge importe autorisationOplaRequise et connexionOplaRequise", /import \{ autorisationOplaRequise, connexionOplaRequise \} from "\.\/textes-jobs\.ts"/.test(pdr));
+check("pas-de-rouge importe autorisationOplaRequise, connexionOplaRequise et cookiesOplaTropVolumineux", /import \{ autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux \} from "\.\/textes-jobs\.ts"/.test(pdr));
 check("pas-de-rouge — plus de texte Opla en dur", !/Opla ne nous laisse plus|Opla a besoin de ton autorisation/.test(pdr));
 check("pas-de-rouge — la session fermée VUE PAR LA PAGE rend « connexion » ; un 401 de sonde reste « opla_acces » (règle du 23/09, plateformes_verite)",
   /httpOpla === HTTP_MUR_OBSERVE \|\| OPLA_CONNEXION_RE\.test\(t\)/.test(pdr) && /message: connexionOplaRequise\(action\)/.test(pdr) && !/http === 401 \|\| http === 403/.test(pdr));

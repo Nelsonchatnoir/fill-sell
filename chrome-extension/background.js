@@ -1307,7 +1307,10 @@ async function publishSelectedUnlocked(jobIds) {
       // retirer le préfixe « EU ». get-pending-jobs s'en sert pour remettre le
       // libellé exact DEVANT la lettre de la garde-robe — pour CE client
       // seulement, au moment où il tourne ce code : jamais « entre deux ».
-      capacites: ["taille_par_id"],
+      // + « opla_acces » / « sans_opla » (2026-09-24) : ce POSTE a-t-il la
+      // permission d'hôte opla.co ? Le serveur ne sert aucun job Opla à un
+      // poste qui ne l'a pas, et relance les jobs parqués pour celui qui l'a.
+      capacites: await capacitesDeclarees(),
       // Mise a jour que Chrome garde sous le coude (2026-09-10) : "" = rien en
       // attente, absent = build trop vieux pour le dire. Sert a MESURER qui est
       // bloque et depuis quand, jamais a decider.
@@ -2466,7 +2469,10 @@ async function pollAndProcessJobsUnlocked() {
       // retirer le préfixe « EU ». get-pending-jobs s'en sert pour remettre le
       // libellé exact DEVANT la lettre de la garde-robe — pour CE client
       // seulement, au moment où il tourne ce code : jamais « entre deux ».
-      capacites: ["taille_par_id"],
+      // + « opla_acces » / « sans_opla » (2026-09-24) : ce POSTE a-t-il la
+      // permission d'hôte opla.co ? Le serveur ne sert aucun job Opla à un
+      // poste qui ne l'a pas, et relance les jobs parqués pour celui qui l'a.
+      capacites: await capacitesDeclarees(),
       // Mise a jour que Chrome garde sous le coude (2026-09-10) : "" = rien en
       // attente, absent = build trop vieux pour le dire. Sert a MESURER qui est
       // bloque et depuis quand, jamais a decider.
@@ -2892,12 +2898,24 @@ async function processJob(rawJob, accessToken) {
   // navigateur, jamais d'un cache du service worker.
   if (job.platform === "opla") {
     if (!(await oplaAccesAccorde())) {
-      await marquerAttenteAccesOpla(accessToken, job);
-      return { status: "needsUser", error: messageAutorisationOpla(job.action) };
+      // ⛔ 0.6.64 : CE POSTE NE PREND PAS LE JOB — IL NE LE PARQUE PLUS.
+      // Louis, nuit du 23/09 : deux profils Chrome sur un même compte, un seul
+      // autorisé ; le second parquait chaque job « Opla attend ton
+      // autorisation » (131 fois) pendant que le premier pouvait publier. Le
+      // job reste en file : le serveur ne le sert plus à ce poste (capacité
+      // « sans_opla »), un poste autorisé le prend ; s'il n'y en a aucun,
+      // handler-watch pose la demande « Autoriser Opla » après 15 min.
+      console.log(`[background] Job ${job.id} → opla : accès opla.co non accordé sur CE poste — laissé en file, rien d'écrit`);
+      return { status: "skipped", error: "accès opla.co non accordé sur ce poste — job laissé en file" };
     }
     // Les content scripts Opla sont ENREGISTRÉS dynamiquement (pas dans le
     // manifest : un `matches` statique compterait comme hôte obligatoire).
     await assurerScriptsOpla();
+    // Les cookies du site opla.co dans CE Chrome : au-delà de la limite de son
+    // hébergeur, toute requête est refusée (HTTP 494) — on le sait AVANT de
+    // tenter, on purge quand rien n'est en jeu, on demande sinon (2026-09-24).
+    const porteCookies = await porteCookiesOpla(accessToken, job);
+    if (porteCookies) return porteCookies;
   }
 
   // ── Porte de reprise ESPACÉE (2026-08-31) ─────────────────────────────────
@@ -3189,6 +3207,16 @@ async function processJob(rawJob, accessToken) {
     // on lui envoie le job et on attend le résultat du remplissage.
     let result;
     try {
+      if (job.platform === "opla") {
+        const v = await assurerScriptOplaSurOnglet(tabId);
+        if (!v.ok) {
+          job.platform_fields = {
+            ...(job.platform_fields ?? {}),
+            last_diagnostic: `${new Date().toISOString()} onglet Opla : ${v.motif}`,
+          };
+          throw new Error(`pas de réponse du content script Opla (${v.motif})`);
+        }
+      }
       result = await envoyerFillListing(tabId, job);
     } finally {
       // L'utilisateur retrouve son onglet même si le remplissage a jeté.
@@ -9538,14 +9566,173 @@ async function retirerScriptsOpla() {
   } catch (e) { console.warn("[background] opla : désenregistrement —", String(e?.message ?? e)); }
 }
 
-async function marquerAttenteAccesOpla(accessToken, job) {
-  const pf = { ...(job.platform_fields ?? {}) };
+// (marquerAttenteAccesOpla a été retirée le 2026-09-24 : un poste sans accès
+// ne parque plus rien — cf. la porte Opla de processJob. Le message reste
+// servi par le popup et par le serveur, handler-watch compris.)
+
+/** Les capacités déclarées à chaque poll — jamais déduites d'un numéro. */
+async function capacitesDeclarees() {
+  const caps = ["taille_par_id"];
+  caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
+  return caps;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LES COOKIES D'OPLA.CO — LA LIMITE DE SON HÉBERGEUR (2026-09-24)
+// ══════════════════════════════════════════════════════════════════════════
+// Louis, 04:04 → 04:17 : six kits arrêtés sur « Arbre Opla indisponible
+// (HTTP 494) ». 494 = REQUEST_HEADER_TOO_LARGE chez Vercel, l'hébergeur
+// d'Opla : un en-tête au-delà de 16 Ko, et le Cookie en est un. Dans CE
+// profil Chrome, le site Opla a posé plus de cookies que son propre hébergeur
+// n'en accepte : page et API refusées, le content script n'a plus rien à
+// dire. Rien de tout ça n'est visible d'ici sans mesurer — alors on mesure,
+// AVANT d'ouvrir l'onglet (chrome.cookies voit aussi les cookies HttpOnly) :
+//   · jar ≤ plafond → on passe, la mesure part dans platform_fields.opla_cookies ;
+//   · jar > plafond SANS marqueur de session (opla_has_session) → il n'y a
+//     aucune session à perdre : on purge nous-mêmes les cookies opla.co, on
+//     re-mesure, on passe ;
+//   · jar > plafond AVEC une session → needs_user NOMMÉ (opla_cookies), le
+//     geste dit, et dès que le jar est redevenu sain (mesuré ici, ou au
+//     réveil du worker) les jobs parqués repartent seuls.
+const OPLA_COOKIES_PLAFOND = 15 * 1024;
+const OPLA_COOKIES_URL = "https://www.opla.co/";
+let oplaCookiesRearmeLe = 0;
+
+async function mesurerCookiesOpla() {
+  let cookies;
+  try { cookies = await chrome.cookies.getAll({ url: OPLA_COOKIES_URL }); }
+  catch (e) { console.warn("[background] opla : cookies illisibles —", String(e?.message ?? e)); return null; }
+  const tailles = cookies.map((c) => ({
+    name: c.name, len: c.name.length + 1 + String(c.value ?? "").length, domain: c.domain, path: c.path, httpOnly: !!c.httpOnly,
+  })).sort((a, b) => b.len - a.len);
+  // Le Cookie tel qu'il part : « a=b; c=d » — deux octets entre chaque.
+  const octets = tailles.reduce((s, c) => s + c.len, 0) + Math.max(0, tailles.length - 1) * 2;
+  return {
+    le: new Date().toISOString(), octets, n: cookies.length,
+    session: cookies.some((c) => c.name === "opla_has_session"),
+    gros: tailles.slice(0, 6).map(({ name, len, domain, path, httpOnly }) => ({ name, len, domain, path, httpOnly })),
+  };
+}
+
+async function purgerCookiesOpla() {
+  let cookies = [];
+  try { cookies = await chrome.cookies.getAll({ url: OPLA_COOKIES_URL }); } catch { return 0; }
+  let n = 0;
+  for (const c of cookies) {
+    try {
+      await chrome.cookies.remove({ url: OPLA_COOKIES_URL.replace(/\/$/, "") + (c.path || "/"), name: c.name, storeId: c.storeId });
+      n++;
+    } catch { /* un cookie qu'on ne peut pas retirer : on continue */ }
+  }
+  return n;
+}
+
+// Copie À L'OCTET de `cookiesOplaTropVolumineux` (supabase/functions/_shared/
+// textes-jobs.ts), vérifiée par scripts/opla-message-unique-selftest.mjs.
+// ⟦opla-cookies:début⟧
+function messageCookiesOpla(action) {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Opla refuse les demandes de ce navigateur : les cookies du site opla.co y sont devenus trop volumineux " +
+    "pour son hébergeur. C'est le site Opla qui les a posés — ni ton annonce ni FillSell —, et rien n'a été publié. " +
+    "Pour débloquer : dans ce Chrome, supprime les cookies du site opla.co (Réglages Chrome › Confidentialité › " +
+    `Données des sites › opla.co), puis reconnecte-toi à Opla ; dès que c'est fait, ${quoi}.`
+  );
+}
+// ⟦opla-cookies:fin⟧
+
+/** null = on passe (mesure posée sur le job) ; sinon la sortie du job. */
+async function porteCookiesOpla(accessToken, job) {
+  const mesure = await mesurerCookiesOpla();
+  if (!mesure) return null;
+  job.platform_fields = { ...(job.platform_fields ?? {}), opla_cookies: mesure };
+  if (mesure.octets <= OPLA_COOKIES_PLAFOND) {
+    rearmerJobsOplaCookies(accessToken).catch(() => {});
+    return null;
+  }
+  console.warn(`[background] opla : cookies opla.co = ${mesure.octets} octets (${mesure.n}) > ${OPLA_COOKIES_PLAFOND} — Opla refuserait (494)`);
+  if (!mesure.session) {
+    const supprimes = await purgerCookiesOpla();
+    const apres = await mesurerCookiesOpla();
+    job.platform_fields.opla_cookies = { ...(apres ?? mesure), purge: { le: new Date().toISOString(), avant: mesure.octets, supprimes } };
+    if (apres && apres.octets <= OPLA_COOKIES_PLAFOND) {
+      console.log(`[background] opla : ${supprimes} cookie(s) opla.co purgé(s) (aucune session en jeu) — ${mesure.octets} → ${apres.octets} octets, on passe`);
+      return null;
+    }
+  }
+  const pf = { ...job.platform_fields };
   delete pf.next_action_after;
   delete pf.processing_since;
-  pf.needs_user_source = "opla_acces";
-  pf.opla_acces_attendu_le = new Date().toISOString();
-  console.log(`[background] Job ${job.id} → opla : accès opla.co non accordé — needs_user nommé`);
-  await updateJobStatus(accessToken, job.id, "needs_user", { error: messageAutorisationOpla(job.action), platform_fields: pf });
+  pf.needs_user_source = "opla_cookies";
+  pf.opla_cookies_attendu_le = new Date().toISOString();
+  const msg = messageCookiesOpla(job.action);
+  await updateJobStatus(accessToken, job.id, "needs_user", { error: msg, platform_fields: pf });
+  return { status: "needsUser", error: msg };
+}
+
+// Le jar est redevenu sain : les jobs parqués « opla_cookies » repartent seuls
+// (une fois par 10 min au plus, compare-and-swap, erreurs isolées).
+async function rearmerJobsOplaCookies(accessToken) {
+  if (Date.now() - oplaCookiesRearmeLe < 10 * 60 * 1000) return 0;
+  oplaCookiesRearmeLe = Date.now();
+  let relances = 0;
+  try {
+    const rows = await restRequest(
+      "cross_post_jobs?select=id,platform_fields&platform=eq.opla&status=eq.needs_user" +
+      "&platform_fields->>needs_user_source=eq.opla_cookies&limit=200",
+      accessToken,
+    );
+    for (const j of rows ?? []) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      delete pf.needs_user_source;
+      delete pf.next_action_after;
+      pf.opla_cookies_sain_le = new Date().toISOString();
+      try {
+        await restRequest(`cross_post_jobs?id=eq.${j.id}&status=eq.needs_user`, accessToken, {
+          method: "PATCH", body: JSON.stringify({ status: "pending", error: null, platform_fields: pf }),
+        });
+        relances++;
+      } catch (e) {
+        console.warn(`[background] opla : job ${j.id} (cookies) non relancé —`, String(e?.message ?? e));
+      }
+    }
+  } catch (e) {
+    console.warn("[background] opla : lecture des jobs parqués (cookies) —", String(e?.message ?? e));
+  }
+  if (relances) console.log(`[background] opla : ${relances} job(s) relancé(s), cookies opla.co redevenus sains`);
+  return relances;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LE CONTENT SCRIPT OPLA RÉPOND-IL ? SINON, RÉINJECTION, SINON ON LE DIT
+// ══════════════════════════════════════════════════════════════════════════
+// (2026-09-24) « Could not establish connection. Receiving end does not
+// exist » pendant 20 s sur l'onglet Opla de Louis, l'URL de l'onglet
+// ILLISIBLE pour nous (tab.url absent = hors de nos permissions d'hôte) : on
+// ne savait ni où l'onglet était, ni si le script y était. Même parade que
+// la sync Vinted (PING → réinjection une fois → PING), et sur échec un motif
+// qui DÉCRIT l'onglet, pour que le prochain diagnostic parte de là.
+function decrireOnglet(tab) {
+  if (!tab) return "onglet fermé";
+  const url = tab.url ? (urlDiagnostic(tab.url) ?? tab.url.slice(0, 80)) : "URL illisible (hors de nos permissions d'hôte)";
+  return `${url} · statut ${tab.status ?? "?"} · déchargé ${tab.discarded ? "oui" : "non"}`;
+}
+
+async function assurerScriptOplaSurOnglet(tabId) {
+  const ping = () => sendMessageToTabOnce(tabId, { type: "OPLA_PING" }, 4000).then((r) => !!r?.pong).catch(() => false);
+  if (await ping()) return { ok: true };
+  const avant = await chrome.tabs.get(tabId).catch(() => null);
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: OPLA_SCRIPTS });
+  } catch (e) {
+    return { ok: false, motif: `réinjection impossible (${String(e?.message ?? e).slice(0, 120)}) — onglet : ${decrireOnglet(avant)}` };
+  }
+  await sleep(1500);
+  if (await ping()) { console.log(`[background] opla : content script réinjecté sur l'onglet ${tabId}`); return { ok: true }; }
+  const apres = await chrome.tabs.get(tabId).catch(() => null);
+  return { ok: false, motif: `muet après réinjection — onglet : ${decrireOnglet(apres)}` };
 }
 
 // À l'octroi : les jobs mis en attente par la porte ci-dessus repartent seuls.
@@ -9696,12 +9883,37 @@ oplaAccesAccorde().then(async (ok) => {
   await assurerScriptsOpla();
   try {
     const session = await getValidSession();
-    if (session?.access_token) await rearmerJobsOplaEnAttente(session.access_token);
+    if (session?.access_token) {
+      await rearmerJobsOplaEnAttente(session.access_token);
+      // Les jobs parqués « cookies opla.co trop volumineux » repartent si le
+      // jar est redevenu sain (2026-09-24).
+      const mesure = await mesurerCookiesOpla();
+      if (mesure && mesure.octets <= OPLA_COOKIES_PLAFOND) await rearmerJobsOplaCookies(session.access_token);
+    }
   } catch (e) { console.warn("[background] opla : reprise au démarrage —", String(e?.message ?? e)); }
 }).catch(() => {});
+// Mise à jour de l'extension : Chrome EFFACE les content scripts enregistrés
+// dynamiquement, persistAcrossSessions ou pas (doc chrome.scripting). On les
+// re-pose ici, au moment même de la mise à jour (2026-09-24).
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details?.reason !== "update" && details?.reason !== "install") return;
+  oplaAccesAccorde().then(async (ok) => {
+    if (!ok) return;
+    try { await chrome.scripting.unregisterContentScripts({ ids: [OPLA_SCRIPTS_ID] }); } catch { /* jamais enregistrés */ }
+    await assurerScriptsOpla();
+  }).catch(() => {});
+});
 if (chrome.permissions?.onAdded) {
   chrome.permissions.onAdded.addListener((p) => {
-    if ((p?.origins ?? []).includes(OPLA_ORIGINE)) assurerScriptsOpla().catch(() => {});
+    if (!(p?.origins ?? []).includes(OPLA_ORIGINE)) return;
+    assurerScriptsOpla().catch(() => {});
+    // Octroi depuis chrome://extensions ou un autre popup : la sonde Opla
+    // FORCÉE fait bouger extension_sessions, ce qui déclenche côté serveur le
+    // premier relevé Opla (trigger profiles_premiers_releves_trg) — sans clic
+    // (2026-09-24, labouquinerie85). Une fois par octroi, Opla seule.
+    getValidSession().then((s) => {
+      if (s?.access_token) return reportPlatformSessions(s.access_token, { plateformes: ["opla"], motif: "accès Opla accordé (onAdded)", forcer: true });
+    }).catch(() => {});
   });
 }
 if (chrome.permissions?.onRemoved) {
@@ -12527,6 +12739,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     if (!(await oplaAccesAccorde())) return { annonces: [], complet: false, absente: true, erreur: "accès Opla non accordé" };
     await assurerScriptsOpla();
     const tabId = await ouvrirOngletReleve("opla", "https://www.opla.co/");
+    const vivant = await assurerScriptOplaSurOnglet(tabId);
+    if (!vivant.ok) return { annonces: [], complet: false, erreur: `onglet Opla injoignable : ${vivant.motif}` };
     const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
     if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Opla illisible" };
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
