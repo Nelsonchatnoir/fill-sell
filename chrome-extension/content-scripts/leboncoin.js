@@ -4566,13 +4566,18 @@ function lbcLibelleVoisin(el) {
   }
   return "";
 }
+// ⚠️ CLIC NATIF (mesuré le 24/09) : sur ces fenêtres, la séquence complète de
+//    realClick (pointerdown → … → click) NE coche NI une case NI un bouton
+//    radio (aria-checked inchangé). Un .click() natif bascule exactement une
+//    fois — relevé sur les quatre transporteurs et les onze paliers de poids.
+const lbcClic = (el) => { try { el.click(); } catch { realClick(el); } };
 const lbcCoche = (b) => b?.getAttribute("aria-checked") === "true" || b?.checked === true;
 function lbcBoutonTexte(racine, motif) {
   return [...racine.querySelectorAll("button")].find((b) => motif.test((b.innerText || "").trim())) ?? null;
 }
 async function lbcFermerDialogue(dlg) {
   const f = dlg?.querySelector('button[aria-label="Fermer"]');
-  if (f) { realClick(f); await humanPause(300, 700); }
+  if (f) { lbcClic(f); await humanPause(300, 700); }
 }
 function lbcCaseLivraison() {
   const parAria = document.querySelector('button[role="checkbox"][aria-label*="la livraison" i]');
@@ -4584,12 +4589,12 @@ function lbcCaseLivraison() {
 function lbcBlocLivraison() {
   let p = lbcCaseLivraison();
   for (let i = 0; i < 8 && p; i++) {
-    if (p.querySelector('button[aria-label="Modifier les transporteurs"]') && /colis/i.test(p.innerText || "")) return p;
+    // « Colissimo » contient « colis » : on exige la ligne du FORMAT.
+    if (p.querySelector('button[aria-label="Modifier les transporteurs"]') && /colis\s+(petit|moyen|volumineux)/i.test(p.innerText || "")) return p;
     p = p.parentElement;
   }
   return null;
 }
-const lbcEchapper = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 async function poserLivraisonLbc(fields, warnings) {
   const demandes = Array.isArray(fields?.lbcTransporteurs)
@@ -4624,7 +4629,7 @@ async function poserLivraisonLbc(fields, warnings) {
       return;
     }
     if (!lbcCoche(caseL)) {
-      realClick(caseL);
+      lbcClic(caseL);
       await humanPause(500, 1100);
       if (!lbcCoche(lbcCaseLivraison())) {
         echec("la livraison n'a pas pu être activée — réglages d'envoi non posés");
@@ -4633,7 +4638,64 @@ async function poserLivraisonLbc(fields, warnings) {
       }
     }
 
-    // 2. Les transporteurs : l'ensemble demandé, exactement (la carte de
+    // 2. Le format, puis le poids (seconde fenêtre) — AVANT les transporteurs :
+    //    mesuré le 24/09, changer le format REMET les quatre transporteurs cochés
+    //    (Leboncoin recalcule ceux qui acceptent ce colis). Dans l'autre ordre,
+    //    le choix de la personne était effacé juste après avoir été posé.
+    if (format || poids) {
+      const crayonF = [...document.querySelectorAll('button[aria-label="Modifier"]')]
+        .find((b) => /colis\s+(petit|moyen|volumineux)/i.test(b.parentElement?.innerText || ""));
+      if (!crayonF) {
+        echec("le réglage du format de colis n'a pas été trouvé — l'estimation de Leboncoin s'applique");
+      } else {
+        const affiche = (crayonF.parentElement?.innerText || "").match(/colis\s+(petit|moyen|volumineux)/i)?.[1] ?? null;
+        lbcClic(crayonF);
+        const dlgF = await waitFor(() => lbcDialogue(/choisissez un format/i), 6000);
+        if (!dlgF) {
+          echec("la fenêtre du format de colis ne s'est pas ouverte — l'estimation de Leboncoin s'applique");
+        } else {
+          const radios = [...dlgF.querySelectorAll('[role="radio"]')];
+          // Seul un poids est demandé : on garde le format que Leboncoin affiche.
+          const cible = format ?? affiche;
+          const choix = cible ? radios.find((r) => r.value === LBC_FORMAT_VALEUR[cible.toLowerCase()]) : null;
+          if (!choix) {
+            echec(`format « ${cible ?? "?"} » absent de la liste de Leboncoin — l'estimation de la plateforme s'applique`);
+            await lbcFermerDialogue(dlgF);
+          } else {
+            if (!lbcCoche(choix)) { lbcClic(choix); await humanPause(300, 700); }
+            const continuer = lbcBoutonTexte(dlgF, /^continuer$/i);
+            if (!continuer) {
+              echec("le format n'a pas pu être validé — l'estimation de Leboncoin s'applique");
+              await lbcFermerDialogue(dlgF);
+            } else {
+              lbcClic(continuer);
+              const dlgP = await waitFor(() => lbcDialogue(/choisissez un poids/i), 6000);
+              if (dlgP) {
+                const paliers = [...dlgP.querySelectorAll('[role="radio"]')]
+                  .map((r) => ({ r, g: Number(r.value) })).filter((p) => p.g > 0).sort((a, b) => a.g - b.g);
+                // Le poids connu choisit le palier (le plus petit qui le
+                // contient) ; sinon l'estimation pré-cochée de Leboncoin.
+                const palier = (poids ? (paliers.find((p) => p.g >= poids) ?? paliers[paliers.length - 1]) : null)
+                  ?? paliers.find((p) => lbcCoche(p.r)) ?? null;
+                if (!palier) {
+                  echec("aucun palier de poids connu pour ce colis — format non validé (l'estimation de Leboncoin s'applique)");
+                  await lbcFermerDialogue(dlgP);
+                } else {
+                  if (!lbcCoche(palier.r)) { lbcClic(palier.r); await humanPause(300, 700); }
+                  const validerP = lbcBoutonTexte(dlgP, /^valider$/i);
+                  if (!validerP) { echec("le poids du colis n'a pas pu être validé"); await lbcFermerDialogue(dlgP); }
+                  else { lbcClic(validerP); await humanPause(500, 1000); }
+                }
+              } else {
+                await humanPause(400, 800);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Les transporteurs : l'ensemble demandé, exactement (la carte de
     //    l'app part de « tous » et fait décocher : la liste EST le choix).
     if (bilan.demandes) {
       const connu = (n) => LBC_TRANSPORTEURS_PAGE.some((p) => lbcTexteNu(p) === lbcTexteNu(n));
@@ -4643,7 +4705,7 @@ async function poserLivraisonLbc(fields, warnings) {
       if (!crayon) {
         echec("le réglage des transporteurs n'a pas été trouvé sur la page — choix non appliqué");
       } else {
-        realClick(crayon);
+        lbcClic(crayon);
         const dlg = await waitFor(() => lbcDialogue(/vos moyens de livraison/i), 6000);
         if (!dlg) {
           echec("la fenêtre des transporteurs ne s'est pas ouverte — choix non appliqué");
@@ -4670,70 +4732,16 @@ async function poserLivraisonLbc(fields, warnings) {
             await lbcFermerDialogue(dlg);
           } else {
             for (const l of lignes) {
-              if (lbcCoche(l.b) !== voulu(l.nom)) { realClick(l.b); await humanPause(250, 600); }
+              if (lbcCoche(l.b) !== voulu(l.nom)) { lbcClic(l.b); await humanPause(250, 600); }
             }
             const valider = lbcBoutonTexte(dlg, /^valider$/i);
             if (!valider || valider.disabled) {
               echec("la fenêtre des transporteurs n'a pas pu être validée — choix non appliqué");
               await lbcFermerDialogue(dlg);
             } else {
-              realClick(valider);
+              lbcClic(valider);
               await waitFor(() => !lbcDialogue(/vos moyens de livraison/i), 4000);
               await humanPause(400, 900);
-            }
-          }
-        }
-      }
-    }
-
-    // 3. Le format, puis le poids (seconde fenêtre).
-    if (format || poids) {
-      const crayonF = [...document.querySelectorAll('button[aria-label="Modifier"]')]
-        .find((b) => /colis\s+(petit|moyen|volumineux)/i.test(b.parentElement?.innerText || ""));
-      if (!crayonF) {
-        echec("le réglage du format de colis n'a pas été trouvé — l'estimation de Leboncoin s'applique");
-      } else {
-        const affiche = (crayonF.parentElement?.innerText || "").match(/colis\s+(petit|moyen|volumineux)/i)?.[1] ?? null;
-        realClick(crayonF);
-        const dlgF = await waitFor(() => lbcDialogue(/choisissez un format/i), 6000);
-        if (!dlgF) {
-          echec("la fenêtre du format de colis ne s'est pas ouverte — l'estimation de Leboncoin s'applique");
-        } else {
-          const radios = [...dlgF.querySelectorAll('[role="radio"]')];
-          // Seul un poids est demandé : on garde le format que Leboncoin affiche.
-          const cible = format ?? affiche;
-          const choix = cible ? radios.find((r) => r.value === LBC_FORMAT_VALEUR[cible.toLowerCase()]) : null;
-          if (!choix) {
-            echec(`format « ${cible ?? "?"} » absent de la liste de Leboncoin — l'estimation de la plateforme s'applique`);
-            await lbcFermerDialogue(dlgF);
-          } else {
-            if (!lbcCoche(choix)) { realClick(choix); await humanPause(300, 700); }
-            const continuer = lbcBoutonTexte(dlgF, /^continuer$/i);
-            if (!continuer) {
-              echec("le format n'a pas pu être validé — l'estimation de Leboncoin s'applique");
-              await lbcFermerDialogue(dlgF);
-            } else {
-              realClick(continuer);
-              const dlgP = await waitFor(() => lbcDialogue(/choisissez un poids/i), 6000);
-              if (dlgP) {
-                const paliers = [...dlgP.querySelectorAll('[role="radio"]')]
-                  .map((r) => ({ r, g: Number(r.value) })).filter((p) => p.g > 0).sort((a, b) => a.g - b.g);
-                // Le poids connu choisit le palier (le plus petit qui le
-                // contient) ; sinon l'estimation pré-cochée de Leboncoin.
-                const palier = (poids ? (paliers.find((p) => p.g >= poids) ?? paliers[paliers.length - 1]) : null)
-                  ?? paliers.find((p) => lbcCoche(p.r)) ?? null;
-                if (!palier) {
-                  echec("aucun palier de poids connu pour ce colis — format non validé (l'estimation de Leboncoin s'applique)");
-                  await lbcFermerDialogue(dlgP);
-                } else {
-                  if (!lbcCoche(palier.r)) { realClick(palier.r); await humanPause(300, 700); }
-                  const validerP = lbcBoutonTexte(dlgP, /^valider$/i);
-                  if (!validerP) { echec("le poids du colis n'a pas pu être validé"); await lbcFermerDialogue(dlgP); }
-                  else { realClick(validerP); await humanPause(500, 1000); }
-                }
-              } else {
-                await humanPause(400, 800);
-              }
             }
           }
         }
@@ -4745,12 +4753,34 @@ async function poserLivraisonLbc(fields, warnings) {
     await waitFor(() => !lbcDialogue(/vos moyens de livraison|choisissez un (format|poids)/i), 3000);
     const bloc = lbcBlocLivraison();
     const texte = bloc?.innerText ?? "";
-    const affiches = LBC_TRANSPORTEURS_PAGE.filter((p) => new RegExp(`(^|\\n)\\s*${lbcEchapper(p)}\\s*(\\n|$)`, "i").test(texte));
-    bilan.poses = bloc ? affiches : null;
+    // ⚠️ Le bloc affiche TOUJOURS les quatre partenaires, quel que soit le
+    //    choix (mesuré le 24/09 : décochés, validés, ils y restaient). L'état
+    //    réel se relit DANS la fenêtre, rouverte puis refermée par « Fermer »
+    //    (qui n'applique rien).
+    let affiches = null;
+    if (bilan.demandes) {
+      const crayonR = document.querySelector('button[aria-label="Modifier les transporteurs"]');
+      if (crayonR) {
+        lbcClic(crayonR);
+        const dlgR = await waitFor(() => lbcDialogue(/vos moyens de livraison/i), 6000);
+        if (dlgR) {
+          affiches = [...dlgR.querySelectorAll('[role="checkbox"]')]
+            .filter(lbcCoche)
+            .map((b) => {
+              const lib = lbcTexteNu(lbcLibelleVoisin(b));
+              return LBC_TRANSPORTEURS_PAGE.find((p) => lib.startsWith(lbcTexteNu(p))) ?? null;
+            })
+            .filter(Boolean);
+          await lbcFermerDialogue(dlgR);
+        }
+      }
+      if (!affiches) echec("les transporteurs n'ont pas pu être relus après réglage");
+    }
+    bilan.poses = affiches;
     const fp = texte.match(/colis\s+(petit|moyen|volumineux)/i)?.[1] ?? null;
     bilan.format_pose = fp ? fp[0].toUpperCase() + fp.slice(1).toLowerCase() : null;
-    if (!bloc) echec("le bloc livraison n'a pas pu être relu après réglage");
-    if (bilan.demandes && bloc) {
+    if ((format || poids) && !bloc) echec("le format du colis n'a pas pu être relu après réglage");
+    if (bilan.demandes && affiches) {
       const connu = (n) => LBC_TRANSPORTEURS_PAGE.some((p) => lbcTexteNu(p) === lbcTexteNu(n));
       for (const m of demandes.filter((d) => connu(d) && !affiches.some((a) => lbcTexteNu(a) === lbcTexteNu(d)))) {
         if (!bilan.non_poses.some((n) => lbcTexteNu(n.nom) === lbcTexteNu(m))) bilan.non_poses.push({ nom: m, motif: "absent après validation" });
