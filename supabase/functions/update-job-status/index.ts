@@ -27,6 +27,7 @@ import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shar
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec } from "../_shared/pas-de-rouge.js";
+import { sessionIdDuJwt, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -745,6 +746,57 @@ serve(async (req) => {
     let champsACompleter: string[] | null = null;
     let pfDuJob: Record<string, unknown> | null = null;
     let raisonRequalif: string | null = null;
+
+    // ══════════════════════════════════════════════════════════════════════
+    // LE POSTE QUI PARLE (2026-09-24, cf. _shared/poste-extension.ts)
+    // ══════════════════════════════════════════════════════════════════════
+    // Louis, nuit du 23 au 24/09 : deux profils Chrome sur un même compte, un
+    // seul avec la permission opla.co. Le poste sans accès parquait chaque job
+    // Opla « Opla attend ton autorisation », l'autre le relançait à son
+    // réveil — 131 parcages, et Louis lisait « Autorise Opla » alors qu'il
+    // l'avait fait. Ici on apprend de CHAQUE écriture ce que le poste sait de
+    // lui-même : un parcage « opla_acces » = pas d'accès ; tout autre statut
+    // Opla = accès prouvé (il a passé la porte). Et un parcage venu d'un poste
+    // sans accès, alors qu'un autre poste du compte a l'accès, est RELÂCHÉ en
+    // pending pour l'autre — get-pending-jobs ne le resservira pas au premier.
+    const sessionIdPoste = sessionIdDuJwt(authHeader);
+    let pfOplaRelache: Record<string, unknown> | null = null;
+    let erreurEffaceeParRelache = false;
+    let oplaAccesDuPoste: boolean | null = null;
+    if (sessionIdPoste && jobId) {
+      try {
+        const { data: jP } = await userClient
+          .from("cross_post_jobs").select("platform").eq("id", jobId).maybeSingle();
+        if (jP?.platform === "opla") {
+          const parcage = status === "needs_user" && String(pfIn?.["needs_user_source"] ?? "") === "opla_acces";
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { data: pp } = await admin.from("profiles").select("extension_postes").eq("id", user.id).maybeSingle();
+          const postes = postesVivants((pp as { extension_postes?: unknown } | null)?.extension_postes);
+          const avant: Poste = postes[sessionIdPoste] ?? {};
+          postes[sessionIdPoste] = { ...avant, le: new Date().toISOString(), opla_acces: !parcage };
+          oplaAccesDuPoste = !parcage;
+          await admin.from("profiles").update({ extension_postes: postes }).eq("id", user.id);
+          if (parcage) {
+            const autre = posteAvecAccesOpla(postes, { saufSession: sessionIdPoste, depuisMs: 24 * 3600_000 });
+            if (autre) {
+              const pfR: Record<string, unknown> = { ...(pfIn ?? {}) };
+              for (const k of ["needs_user_source", "opla_acces_attendu_le", "next_action_after", "processing_since"]) delete pfR[k];
+              pfR["opla_acces_refuse_par_poste"] = {
+                le: new Date().toISOString(), poste: posteCourt(sessionIdPoste),
+                autre_poste: posteCourt(autre.session), autre_vu_le: autre.le,
+              };
+              pfOplaRelache = pfR;
+              erreurEffaceeParRelache = true;
+              statutEffectif = "pending";
+              raisonRequalif = `poste ${posteCourt(sessionIdPoste)} sans accès Opla, le poste ${posteCourt(autre.session)} l'a : relâché pour lui`;
+              console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] poste :", (e as Error)?.message ?? e);
+      }
+    }
     if (status === "failed" && typeof body.error === "string") {
       const mCapture = body.error.match(/^Capture incomplète \((.+?)\) — republication/s);
       const mPrevol = body.error.match(/^Republication annulée AVANT toute suppression : Vinted exige « (.+?) »/s);
@@ -2174,7 +2226,8 @@ serve(async (req) => {
       const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
         && bfcacheRearms == null && !pfCanalCoupe && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
-        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise;
+        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise
+        && !pfOplaRelache;
       const surface = statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user";
       const brut = typeof body.error === "string" ? body.error : "";
       const bodyPfOk = body.platform_fields != null && typeof body.platform_fields === "object";
@@ -2590,7 +2643,12 @@ serve(async (req) => {
     }
 
     let pfPasDeRouge: Record<string, unknown> | null = null;
-    if (statutEffectif === "failed") {
+    // Opla 494 (cookies du site au-delà de la limite de Vercel, 2026-09-24) :
+    // inutile d'attendre les 5 essais espacés de l'extension — chaque essai
+    // retape le même mur. Le classement parle dès la première remontée.
+    const oplaMurCookies = statutEffectif === "pending" && typeof body.error === "string"
+      && /Arbre Opla indisponible \(HTTP 494\)|HTTP 494\b|REQUEST_HEADER_TOO_LARGE/i.test(body.error);
+    if (statutEffectif === "failed" || oplaMurCookies) {
       try {
         const { data: jPdr } = await userClient
           .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
@@ -2613,6 +2671,9 @@ serve(async (req) => {
           const s = (prof as { extension_sessions?: unknown } | null)?.extension_sessions;
           if (s && typeof s === "object") sessionsSondees = s as Record<string, unknown>;
         } catch (_e) { /* la sonde est un renfort, jamais un prérequis */ }
+        // Reprises déjà faites par pas-de-rouge sur ce job : les suivantes
+        // s'espacent (45 min, 3 h, 6 h) au lieu de tourner toutes les 8 min.
+        const reprisesFaites = Number(pfBase["pas_de_rouge_reprises"] ?? 0) || 0;
         const sortie = classerEchec({
           platform: String(jPdr?.platform ?? ""),
           action: String(jPdr?.action ?? "publish"),
@@ -2621,6 +2682,8 @@ serve(async (req) => {
           essais,
           pf: pfBase,
           sessions: sessionsSondees,
+          oplaAccesDuPoste,
+          reprises: reprisesFaites,
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
@@ -2631,6 +2694,7 @@ serve(async (req) => {
         if (sortie.champ && !pfS["needsUserField"]) pfS["needsUserField"] = sortie.champ;
         if (sortie.dansMinutes) {
           pfS["next_action_after"] = new Date(Date.now() + sortie.dansMinutes * 60_000).toISOString();
+          pfS["pas_de_rouge_reprises"] = reprisesFaites + 1;
           // Une REPRISE ne consomme pas le budget de l'utilisateur : le défaut
           // est chez nous. Les compteurs d'attente repartent à zéro.
           delete pfS["needsUserAttempts"]; delete pfS["needsUserBoucle"];
@@ -2748,6 +2812,9 @@ serve(async (req) => {
     //    repartirait `pending` avec l'échéance d'un autre bloc, ou
     //    `needs_user` sans le marqueur qui porte son bouton.
     if (pfPasDeRouge) patch.platform_fields = pfPasDeRouge;
+    // Parcage « Autoriser Opla » venu d'un poste sans accès alors qu'un autre
+    // poste l'a (2026-09-24) : relâché en pending, marqueur retiré, trace posée.
+    if (pfOplaRelache) patch.platform_fields = pfOplaRelache;
 
     // ── HORLOGE DU CLIENT RECALÉE SUR CELLE DU SERVEUR (2026-09-11) ─────────
     // deleted_at (republish Vinted) est le SEUIL de reconnaissance de
@@ -2947,7 +3014,7 @@ serve(async (req) => {
       // on garde l'error explicative si fournie, sinon on nettoie.
       // messageEffectif (requalification bfcache) prime sur le brut Chrome.
       // Réparation d'état : l'erreur est EFFACÉE, il n'y a plus rien à corriger.
-      patch.error = erreurEffaceeParReparation
+      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache)
         ? null
         : (messageEffectif ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null));
     } else if (statutEffectif === "needs_user") {

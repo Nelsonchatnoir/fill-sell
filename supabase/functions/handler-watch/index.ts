@@ -12,6 +12,7 @@ import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-
 import { rearmerJobsEbayConnexionSiUtilisable, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
 import { autorisationOplaRequise } from "../_shared/textes-jobs.ts";
+import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1174,11 +1175,21 @@ serve(async (req) => {
       const ids = [...new Set(rows.map((j) => String(j.user_id)))];
       for (let i = 0; i < ids.length; i += 200) {
         const { data: profs } = await supabase
-          .from("profiles").select("id, extension_last_seen_at, extension_sessions").in("id", ids.slice(i, i + 200));
+          .from("profiles").select("id, extension_last_seen_at, extension_sessions, extension_postes").in("id", ids.slice(i, i + 200));
         // deno-lint-ignore no-explicit-any
         for (const p of (profs ?? []) as any[]) {
           vus.set(String(p.id), Date.parse(p.extension_last_seen_at ?? ""));
-          accesProuve.set(String(p.id), oplaAutoriseeDepuisSessions(p.extension_sessions));
+          // ── LES POSTES D'ABORD (2026-09-24) ─────────────────────────────
+          // Dès que le compte a des postes connus (profiles.extension_postes),
+          // seule la preuve PAR POSTE compte : un poste avec accès vu depuis
+          // 30 min. La sonde de compte (extension_sessions) était aveugle au
+          // poste : chez Louis, « opla: false » venait d'un profil sans accès
+          // pendant que l'autre en avait — et la reprise nourrissait la boucle.
+          const postes = postesVivants(p.extension_postes);
+          const aDesPostes = Object.keys(postes).length > 0;
+          accesProuve.set(String(p.id), aDesPostes
+            ? posteAvecAccesOpla(postes, { depuisMs: 30 * 60_000 }) != null
+            : oplaAutoriseeDepuisSessions(p.extension_sessions));
         }
       }
       const maintenant = Date.now();
@@ -1231,6 +1242,60 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] reprise des jobs Opla parqués:", (e as Error)?.message ?? e);
+  }
+
+  // ── 0.6.64 : UN POSTE SANS ACCÈS NE PARQUE PLUS — C'EST ICI QU'ON DEMANDE ──
+  // (2026-09-24) Depuis la 0.6.64, un poste sans permission opla.co ne prend
+  // pas le job : get-pending-jobs ne le lui sert plus. S'il est le SEUL poste
+  // du compte, le job resterait pending sans que personne ne sache quoi
+  // faire. Après 15 min de file : si le compte a un poste SANS accès vu
+  // depuis 30 min et AUCUN poste avec accès vu depuis 30 min → needs_user
+  // nommé « Autoriser Opla » — le même texte, le même bouton. Dès qu'un poste
+  // avec accès polle, get-pending-jobs relance.
+  let oplaDemandes = 0;
+  try {
+    const seuil = new Date(now - 15 * 60_000).toISOString();
+    const { data: enFile } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, action, error, platform_fields, created_at")
+      .eq("platform", "opla").eq("status", "pending").lt("created_at", seuil).limit(500);
+    // deno-lint-ignore no-explicit-any
+    const rows = (enFile ?? []) as any[];
+    if (rows.length) {
+      const ids = [...new Set(rows.map((j) => String(j.user_id)))];
+      const demander = new Map<string, boolean>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: profs } = await supabase.from("profiles").select("id, extension_postes").in("id", ids.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of (profs ?? []) as any[]) {
+          const postes = postesVivants(p.extension_postes);
+          const sans = posteSansAccesOpla(postes, { depuisMs: 30 * 60_000 });
+          const avec = posteAvecAccesOpla(postes, { depuisMs: 30 * 60_000 });
+          demander.set(String(p.id), !!sans && !avec);
+        }
+      }
+      for (const j of rows) {
+        if (demander.get(String(j.user_id)) !== true) continue;
+        const pf = { ...(j.platform_fields ?? {}) };
+        const msg = autorisationOplaRequise(String(j.action ?? "publish"));
+        delete pf.next_action_after; delete pf.processing_since;
+        pf.needs_user_source = "opla_acces";
+        pf.opla_acces_attendu_le = new Date(now).toISOString();
+        pf.opla_acces_attendu_par = "handler-watch (aucun poste avec accès Opla vu depuis 30 min)";
+        pf.needs_user_vu_erreur = msg.slice(0, 200);
+        if (j.error) {
+          pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending",
+            "handler-watch → needs_user (aucun poste avec accès Opla)");
+        }
+        const { error: dErr } = await supabase.from("cross_post_jobs")
+          .update({ status: "needs_user", error: msg, platform_fields: pf })
+          .eq("id", j.id).eq("status", "pending");
+        if (!dErr) oplaDemandes++;
+      }
+      if (oplaDemandes) console.log(`[handler-watch] opla : ${oplaDemandes} job(s) en file sans aucun poste autorisé → « Autoriser Opla »`);
+    }
+  } catch (e) {
+    console.error("[handler-watch] opla / aucun poste autorisé :", (e as Error)?.message ?? e);
   }
 
   // ══ LA RECONNEXION FAIT REPARTIR LES JOBS, SANS QU'ON CLIQUE (2026-09-22) ══

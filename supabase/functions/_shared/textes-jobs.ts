@@ -155,6 +155,34 @@ export function autorisationOplaRequise(action: string): string {
 }
 export const SOURCE_OPLA_ACCES = "opla_acces";
 
+// ── OPLA : LES COOKIES DU SITE DÉPASSENT LA LIMITE DE SON HÉBERGEUR (2026-09-24)
+// Louis, nuit du 23 au 24/09 : six kits arrêtés sur « Arbre Opla indisponible
+// (HTTP 494) ». 494 = REQUEST_HEADER_TOO_LARGE chez Vercel, l'hébergeur
+// d'Opla : un en-tête de requête dépasse 16 Ko, et les cookies comptent. Le
+// site Opla a posé, dans CE profil Chrome, plus de cookies que son propre
+// hébergeur n'en accepte : toute requête vers opla.co y est refusée, page ou
+// API. Ce n'est ni l'annonce, ni FillSell — mais rien ne repart sans que ces
+// cookies soient supprimés. L'extension le mesure (chrome.cookies) AVANT de
+// tenter, purge elle-même quand aucune session n'est en jeu, et ne demande le
+// geste que s'il y a une session à préserver. Le mot « relancer » n'a rien à
+// faire ici : relancer, c'est retaper le même mur.
+// Copie À L'OCTET dans chrome-extension/background.js (messageCookiesOpla),
+// vérifiée par scripts/opla-message-unique-selftest.mjs.
+// ⟦opla-cookies:début⟧
+export function cookiesOplaTropVolumineux(action: string): string {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Opla refuse les demandes de ce navigateur : les cookies du site opla.co y sont devenus trop volumineux " +
+    "pour son hébergeur. C'est le site Opla qui les a posés — ni ton annonce ni FillSell —, et rien n'a été publié. " +
+    "Pour débloquer : dans ce Chrome, supprime les cookies du site opla.co (Réglages Chrome › Confidentialité › " +
+    `Données des sites › opla.co), puis reconnecte-toi à Opla ; dès que c'est fait, ${quoi}.`
+  );
+}
+// ⟦opla-cookies:fin⟧
+export const SOURCE_OPLA_COOKIES = "opla_cookies";
+
 /** La session Opla est fermée (401/403) ALORS QUE l'autorisation est là :
  *  ce n'est pas le même geste. On le dit avec le bouton « Me connecter ». */
 export function connexionOplaRequise(action: string): string {

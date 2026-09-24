@@ -42,7 +42,7 @@
  *  {Object} [champ]   champ à faire choisir, avec sa liste fermée
  */
 
-import { autorisationOplaRequise, connexionOplaRequise } from "./textes-jobs.ts";
+import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
@@ -86,6 +86,9 @@ const OPLA_ACCES_RE = /accès à opla\.co a été refusé|permission.*opla\.co|h
 /** Opla, session FERMÉE vue par la PAGE : l'ancre écrite par content-scripts/opla.js
  *  (OPLA_MSG_SESSION) quand l'API d'Opla répond 401 dans l'onglet. */
 const OPLA_CONNEXION_RE = /^Connexion Opla requise/i;
+/** Opla, 494 = REQUEST_HEADER_TOO_LARGE chez Vercel (son hébergeur) : les cookies
+ *  du site dans CE Chrome dépassent 16 Ko. Louis, nuit du 23/09, six kits. */
+const OPLA_494_RE = /Arbre Opla indisponible \(HTTP 494\)|HTTP 494\b|REQUEST_HEADER_TOO_LARGE/i;
 /** Le code posé par noterSessionDeconnectee : une page de connexion RÉELLEMENT vue. */
 const HTTP_MUR_OBSERVE = "login_redirect_observee";
 
@@ -124,6 +127,16 @@ export function classerEchec(arg) {
   const sondeDit = sessions ? sessions[platform] : undefined;
   const deconnecte = sondeDit === false;
   const connecte = sondeDit === true;
+  // ── CE QUE LE POSTE SAIT DE LUI-MÊME (2026-09-24) ─────────────────────────
+  // update-job-status le pose depuis profiles.extension_postes : le poste qui
+  // rapporte cet échec a-t-il la permission d'hôte opla.co ? Un échec Opla ne
+  // peut venir que d'un poste qui a PASSÉ la porte de permission : lui dire
+  // « Autorise Opla », c'est demander un geste déjà fait (Louis, nuit du
+  // 23/09 : 131 fois, deux profils Chrome sur un même compte). true = prouvé ;
+  // absent = inconnu (anciens appelants), et l'arbitrage d'avant s'applique.
+  const accesPoste = arg.oplaAccesDuPoste === true;
+  // Reprises déjà faites par ce module sur ce job (pas_de_rouge_reprises).
+  const reprisesFaites = Number(arg.reprises ?? 0) || 0;
 
   // ── 0. LA SONDE DIT « DÉCONNECTÉ » : IL Y A UN GESTE, ON LE DIT ───────────
   // (2026-09-23, meminiandmove.) Ses 3 publications Opla tournaient en
@@ -160,18 +173,24 @@ export function classerEchec(arg) {
           message: connexionOplaRequise(action),
         };
       }
+      // Accès PROUVÉ sur ce poste et aucune page de connexion vue : le 401 de
+      // la sonde (service worker) ne prouve rien (Marine, 23/09) — on classe
+      // sur le motif, plus bas, jamais « Autorise Opla » à qui l'a fait.
+      if (!accesPoste) {
+        return {
+          verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
+          message: autorisationOplaRequise(action),
+        };
+      }
+    } else {
       return {
-        verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
-        message: autorisationOplaRequise(action),
+        verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+        message:
+          `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
+          `donc ${acte(action)} ne peut pas aboutir. Clique sur « Me connecter » ci-dessous : ` +
+          "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
       };
     }
-    return {
-      verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
-      message:
-        `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
-        `donc ${acte(action)} ne peut pas aboutir. Clique sur « Me connecter » ci-dessous : ` +
-        "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
-    };
   }
 
   // ── 1. OPLA, PERMISSION D'HÔTE ────────────────────────────────────────────
@@ -179,7 +198,7 @@ export function classerEchec(arg) {
   // « Autoriser Opla », déjà servi par l'app. Le message d'avant promettait
   // « on réessaie tout seuls, rien à faire de ton côté » — c'était faux : sans
   // la permission, aucune reprise ne peut aboutir.
-  if (platform === "opla" && (source === "opla_acces" || OPLA_ACCES_RE.test(t))) {
+  if (platform === "opla" && !accesPoste && (source === "opla_acces" || OPLA_ACCES_RE.test(t))) {
     return {
       verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
       message: autorisationOplaRequise(action),
@@ -235,6 +254,20 @@ export function classerEchec(arg) {
         `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
         `donc ${acte(action)} ne peut pas aboutir. Clique sur « Me connecter » ci-dessous : ` +
         "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
+    };
+  }
+
+  // ── 2 bis. OPLA : LES COOKIES DU SITE DÉPASSENT LA LIMITE DE SON HÉBERGEUR ──
+  // (2026-09-24, Louis.) 494 = REQUEST_HEADER_TOO_LARGE chez Vercel : toute
+  // requête vers opla.co depuis ce Chrome est refusée, page comme API. Ce
+  // n'est ni l'annonce ni nous, mais « relancer » retaperait le même mur : il y
+  // a un geste, et un seul — supprimer les cookies du site opla.co dans CE
+  // Chrome. L'extension 0.6.64 le mesure AVANT de tenter, purge elle-même
+  // quand aucune session n'est en jeu, et relance seule quand c'est propre.
+  if (platform === "opla" && OPLA_494_RE.test(t)) {
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "opla_cookies", source: "opla_cookies",
+      message: cookiesOplaTropVolumineux(action),
     };
   }
 
@@ -300,8 +333,19 @@ export function classerEchec(arg) {
   // ── 5. NOTRE DÉFAUT — ON REPREND, ON NE DEMANDE RIEN ──────────────────────
   // Tout ce qui suit est chez nous ou chez la plateforme, jamais chez la
   // personne. On le dit sans jargon, on annonce la reprise, et on la fait.
+  // ── UNE REPRISE N'EST PAS UNE BOUCLE (2026-09-24) ──────────────────────────
+  // Chaque reprise remettait le budget de tentatives à zéro : les 14 kits de
+  // Louis ont tourné toute la nuit, une tentative toutes les 8 minutes, sans
+  // que rien ne change. On reprend toujours — c'est notre défaut, jamais un
+  // geste demandé — mais de plus en plus espacé : dès la 3e reprise 45 min,
+  // dès la 5e 3 h, dès la 8e 6 h. Le compteur est platform_fields.
+  // pas_de_rouge_reprises, tenu par update-job-status.
+  const espacer = (min) => reprisesFaites >= 8 ? Math.max(min, 360)
+    : reprisesFaites >= 5 ? Math.max(min, 180)
+    : reprisesFaites >= 3 ? Math.max(min, 45)
+    : min;
   const reprise = (motif, message, dansMinutes) => ({
-    verdict: "reprise", statut: "pending", motif, message, dansMinutes,
+    verdict: "reprise", statut: "pending", motif, message, dansMinutes: espacer(dansMinutes),
   });
   if (PHOTOS_RE.test(t)) {
     return reprise("photos_non_deposees",

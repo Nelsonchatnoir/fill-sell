@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+import { sessionIdDuJwt, postesVivants, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
@@ -203,6 +205,42 @@ function copieRepublishDepuisCapture(
     // en SQL, `republish_snapshot ? 'servi_par_le_serveur'` sépare les deux.
     servi_par_le_serveur: true,
   };
+}
+
+// ── LES JOBS PARQUÉS « AUTORISER OPLA » REPARTENT QUAND UN POSTE AUTORISÉ POLLE
+// (2026-09-24, cf. _shared/poste-extension.ts). Avant, seule l'extension les
+// relançait, au réveil de son service worker — et un poste SANS accès les
+// re-parquait dans la minute (Louis, deux profils Chrome, 131 parcages en une
+// nuit). Ici la relance est SERVEUR et PRÉCISE : elle ne part que d'un poste
+// dont l'accès est prouvé, et get-pending-jobs ne sert plus Opla aux autres.
+// Un par un (platform_fields se réécrit en entier), compare-and-swap sur le
+// statut, erreur archivée. Le marqueur `opla_acces_accorde_le` est celui que
+// posait l'extension : même trace, lisible en SQL.
+// deno-lint-ignore no-explicit-any
+async function rearmerJobsOplaParques(admin: any, userId: string, sessionId: string): Promise<number> {
+  const { data: rows } = await admin
+    .from("cross_post_jobs")
+    .select("id, error, platform_fields")
+    .eq("user_id", userId).eq("platform", "opla").eq("status", "needs_user")
+    .eq("platform_fields->>needs_user_source", "opla_acces")
+    .limit(200);
+  let n = 0;
+  for (const j of (rows ?? []) as Array<{ id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    const pf: Record<string, unknown> = { ...(j.platform_fields ?? {}) };
+    for (const k of ["needs_user_source", "next_action_after", "processing_since",
+      "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pf[k];
+    pf.opla_acces_accorde_le = new Date().toISOString();
+    pf.opla_acces_accorde_par = `get-pending-jobs · poste ${posteCourt(sessionId)}`;
+    if (j.error) {
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user",
+        "get-pending-jobs → pending (poste avec accès Opla en ligne)");
+    }
+    const { error } = await admin.from("cross_post_jobs")
+      .update({ status: "pending", error: null, platform_fields: pf })
+      .eq("id", j.id).eq("status", "needs_user");
+    if (!error) n++;
+  }
+  return n;
 }
 
 serve(async (req) => {
@@ -568,6 +606,14 @@ serve(async (req) => {
     const capacites: string[] = Array.isArray(body?.capacites)
       ? body.capacites.map((c: unknown) => String(c)).slice(0, 20) : [];
     const tailleParId = capacites.includes("taille_par_id");
+    // ── LE POSTE (2026-09-24, cf. _shared/poste-extension.ts) ───────────────
+    // « opla_acces » / « sans_opla » : déclaré par la 0.6.64 à chaque poll. Un
+    // build plus ancien ne dit rien : on s'en remet à ce qu'update-job-status a
+    // appris de lui (un parcage « Autoriser Opla » = ce poste n'a pas l'accès).
+    // ⛔ Un poste SANS accès ne reçoit AUCUN job Opla (filtre plus bas).
+    const sessionId = sessionIdDuJwt(authHeader);
+    let posteSansOpla = capacites.includes("sans_opla");
+    let posteAvecOpla = capacites.includes("opla_acces");
     try {
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -603,6 +649,31 @@ serve(async (req) => {
           patch.extension_maj_en_attente = null;
           patch.extension_maj_vue_at = null;
         }
+      }
+      if (sessionId) {
+        try {
+          const { data: pp } = await admin.from("profiles").select("extension_postes").eq("id", user.id).maybeSingle();
+          const postes = postesVivants((pp as { extension_postes?: unknown } | null)?.extension_postes);
+          const avant: Poste = postes[sessionId] ?? {};
+          const nouveau: Poste = { ...avant, le: new Date().toISOString(), build: build || avant.build };
+          if (posteAvecOpla) nouveau.opla_acces = true;
+          else if (posteSansOpla) nouveau.opla_acces = false;
+          else if (avant.opla_acces === false) posteSansOpla = true;
+          else if (avant.opla_acces === true) posteAvecOpla = true;
+          postes[sessionId] = nouveau;
+          // Un poste AVEC accès polle : les jobs parqués « Autoriser Opla » (par
+          // un autre poste, ou par lui-même avant l'octroi) repartent pour lui —
+          // au plus une relance par 10 min et par poste.
+          if (posteAvecOpla) {
+            const dernier = Date.parse(String(avant.rearme_le ?? ""));
+            if (!Number.isFinite(dernier) || Date.now() - dernier > 10 * 60_000) {
+              nouveau.rearme_le = nouveau.le;
+              const n = await rearmerJobsOplaParques(admin, user.id, sessionId);
+              if (n) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} avec accès Opla : ${n} job(s) parqué(s) « Autoriser Opla » relancé(s)`);
+            }
+          }
+          patch.extension_postes = postes;
+        } catch (e) { console.warn("[get-pending-jobs] postes :", (e as Error)?.message ?? e); }
       }
       await admin.from("profiles").update(patch).eq("id", user.id);
       // Version du manifest (2026-08-05) : rangée en MAX, pas en dernière vue —
@@ -908,6 +979,18 @@ serve(async (req) => {
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
+    // ── UN POSTE SANS ACCÈS OPLA NE REÇOIT AUCUN JOB OPLA (2026-09-24) ───────
+    // Il ne le prendrait que pour le parquer « Autorise Opla » — un geste que
+    // le poste autorisé du même compte a déjà fait. Le job reste en file pour
+    // lui ; s'il n'y a aucun poste autorisé, handler-watch pose la demande.
+    if (posteSansOpla) {
+      const avantN = out.length;
+      out = out.filter((j) => j.platform !== "opla");
+      if (out.length !== avantN) {
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : ${avantN - out.length} job(s) Opla laissé(s) en file pour un poste autorisé`);
+      }
     }
 
     // ── PORTE « FORMULAIRE PRO LEBONCOIN » : RETENU JUSQU'À L'EXTENSION QUI
