@@ -19,7 +19,7 @@
 //   node --import ./scripts/loader-ext.mjs scripts/rayon-refuse-selftest.mjs
 import { readFileSync } from "node:fs";
 import {
-  VERDICTS_REFUS, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus,
+  VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus,
 } from "../src/utils/rayonApresRefus.js";
 import { appliquerRayonChoisi } from "../src/utils/rayonPublication.js";
 import { plateformesSansChemin, questionsParPlateforme } from "../src/publication/moteur/regles.js";
@@ -167,7 +167,7 @@ console.log("8. Périmètre : rien d'autre n'entre dans l'étape");
 {
   ok([...VERDICTS_REFUS].sort().join(",") === "descente_non_confirmee,incoherent,refuse_hors_famille", "trois verdicts, et eux seuls");
   const resolution = src("src/utils/resolutionPublication.js");
-  ok(/const aReprendre = rows\.filter\(\(r\) => VERDICTS_REFUS\.has\(r\.platform_fields\?\.categorie_verification\?\.verdict\)\);/.test(resolution), "resolutionPublication filtre par le verdict, et par rien d'autre");
+  ok(/const aReprendre = rows\.filter\(\(r\) => aReprendreApresRefus\(r, \{ ebayVoieApi \}\)\);/.test(resolution), "resolutionPublication filtre par aReprendreApresRefus, et par rien d'autre");
   ok(resolution.indexOf("const aReprendre") > resolution.indexOf("══ PLAUSIBILITÉ DU CHEMIN FINAL"), "l'étape vient APRÈS tout le reste (rien d'avant ne change)");
   const fn = src("supabase/functions/resolve-categorie/index.ts");
   ok(/system: corps\.consigne === "plus_proche" \? SYSTEM_PLUS_PROCHE : SYSTEM,/.test(fn), "resolve-categorie : la consigne d'avant sauf demande explicite");
@@ -178,6 +178,37 @@ console.log("8. Périmètre : rien d'autre n'entre dans l'étape");
   ok(!plateformesSansChemin([{ platform: "beebs", platform_fields: { categorie_a_choisir: { objet: "x" } } }]).length, "Beebs « categorie_a_choisir » (ancien chemin) : inchangé");
   ok(JSON.stringify(questionsParPlateforme({ selected: new Set(["vinted"]) })) === "{}", "questionsParPlateforme sans question de rayon : inchangé");
   ok(JSON.stringify(questionsParPlateforme({ selected: new Set(["vinted"]), rayonsAChoisir: ["vinted"] })) === JSON.stringify({ vinted: ["Rayon"] }), "avec une question de rayon : « Rayon »");
+}
+
+console.log("9. eBay par la voie API : la ligne part comme avant, le serveur tranche");
+{
+  const ligne = (platform, verdict) => ({ platform, platform_fields: { categorie_verification: { verdict } } });
+  for (const v of VERDICTS_REFUS) {
+    ok(aReprendreApresRefus(ligne("ebay", v), { ebayVoieApi: true }) === false, `eBay voie API, « ${v} » → pas de descente dans l'app`);
+    ok(aReprendreApresRefus(ligne("ebay", v), { ebayVoieApi: false }) === true, `eBay voie extension, « ${v} » → la descente s'applique`);
+    ok(aReprendreApresRefus(ligne("ebay", v)) === true, `eBay sans voie connue, « ${v} » → la descente s'applique (défaut sûr)`);
+    for (const p of ["vinted", "leboncoin", "beebs", "opla"]) {
+      ok(aReprendreApresRefus(ligne(p, v), { ebayVoieApi: true }) === true, `${p}, « ${v} », compte eBay en voie API → la descente s'applique`);
+    }
+  }
+  for (const v of ["confirme", "remplace", "descente_arbre", "attente_resolution", undefined]) {
+    for (const voie of [true, false]) {
+      ok(aReprendreApresRefus(ligne("ebay", v), { ebayVoieApi: voie }) === false && aReprendreApresRefus(ligne("vinted", v), { ebayVoieApi: voie }) === false,
+        `« ${v ?? "sans vérification"} » (voie API ${voie}) → hors périmètre, partout`);
+    }
+  }
+  // Le serveur reconnaît la MÊME liste de verdicts.
+  const serveur = src("supabase/functions/_shared/rayon-refuse-ebay.ts");
+  ok(/new Set\(\["incoherent", "refuse_hors_famille", "descente_non_confirmee"\]\)/.test(serveur), "le serveur reconnaît les trois mêmes verdicts");
+  const worker = src("supabase/functions/ebay-api-worker/index.ts");
+  const iGarde = worker.indexOf("const refuses = mappingRefuseParLApp(");
+  ok(iGarde > 0 && iGarde < worker.indexOf("// ── RÈGLE N°2 : eBAY BAT UNE ICÔNE DEVINÉE"),
+    "ebay-api-worker : la garde passe AVANT la règle n°2 (le rayon refusé n'est jamais le repli)");
+  // L'empreinte du pré-calcul dit la voie d'eBay (et seulement quand eBay est du lot).
+  const resolution = src("src/utils/resolutionPublication.js");
+  ok(/ev: ordre\.includes\("ebay"\) \? ebayVoieApi === true : null,/.test(resolution), "l'empreinte du pré-calcul porte la voie d'eBay");
+  const ecran = src("src/components/ListingPreviewScreen.jsx");
+  ok((ecran.match(/ebayVoieApi: ebayVoieApiReelle,/g) ?? []).length === 2, "l'écran passe la voie réelle aux DEUX résolutions (pré-calcul et clic)");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ rayon refusé : tout passe");

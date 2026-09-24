@@ -4,7 +4,9 @@
 // Constat (base, dépôts du 18 au 24/09) : 719 dépôts, dont 33 dont la
 // vérification IA a rendu « incoherent » ou « refuse_hors_famille » — et 21 de
 // ces 33 sont partis EN LIGNE quand même, dans le rayon refusé (10 Vinted,
-// 6 Leboncoin, 2 eBay). Le mécanisme fautif : l'app propose un rayon depuis
+// 6 Leboncoin, 2 eBay — ces deux-là, passés par nos serveurs, avaient en fait
+// été corrigés par ebay-api-worker : cf. aReprendreApresRefus plus bas).
+// Le mécanisme fautif : l'app propose un rayon depuis
 // le mot du titre ou l'icône, l'IA le refuse, et l'app le GARDE en le marquant
 // « incertain », en comptant sur la suggestion de la plateforme pour le
 // corriger. Personne ne demandait ensuite à l'IA de CHOISIR le bon.
@@ -54,6 +56,26 @@ import { rayonContreditLaFiche } from "./rayonIncoherent";
 
 /** Les verdicts de vérification qui font entrer un dépôt ici — et eux seuls. */
 export const VERDICTS_REFUS = new Set(["incoherent", "refuse_hors_famille", "descente_non_confirmee"]);
+
+// ── eBAY PAR LA VOIE API : LE SERVEUR TRANCHE, AVEC LE CATALOGUE D'eBAY ──────
+// (2026-09-25, mesuré après le premier déploiement.) Les 3 dépôts eBay
+// « refusés » passés par nos serveurs depuis le 10/09 ont TOUS fini dans le bon
+// rayon : ebay-api-worker remplace un rayon incertain par une suggestion
+// d'eBay (son catalogue entier, lu en direct) que l'IA choisit — routeur 4G
+// en « Routeurs sans fil », peluche Anna en « Disney », EA FC 25 en « Jeux ».
+// Notre arbre eBay relevé n'a ni « Réseau » ni « Art, antiquités » : la
+// descente ci-dessous aurait BLOQUÉ le routeur sur une question sans
+// candidat. Sur cette voie, la règle vit donc côté serveur
+// (_shared/rayon-refuse-ebay.ts : le rayon refusé n'est jamais retenu, l'IA
+// choisit parmi les suggestions d'eBay, sinon la question) et la ligne
+// part d'ici EXACTEMENT comme avant ce lot.
+// ⛔ Par l'extension (formulaire ebay.fr), personne ne corrige derrière nous :
+//    la descente s'applique, comme aux quatre autres plateformes.
+/** La ligne entre-t-elle dans l'étape « le rayon refusé ne part jamais » ? */
+export function aReprendreApresRefus(row, { ebayVoieApi = false } = {}) {
+  if (!VERDICTS_REFUS.has(row?.platform_fields?.categorie_verification?.verdict)) return false;
+  return !(row.platform === "ebay" && ebayVoieApi === true);
+}
 
 /** Où chaque plateforme range son chemin (et son identifiant) dans le job. */
 const CHAMPS = {

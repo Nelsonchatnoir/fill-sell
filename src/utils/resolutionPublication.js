@@ -59,7 +59,7 @@ import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
 import { tailleAGarder } from "./tailleInventee";
 import { rayonContreditLaFiche } from "./rayonIncoherent";
-import { VERDICTS_REFUS, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
+import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -76,9 +76,12 @@ import { VERDICTS_REFUS, cheminsRefuses, familleVetoDe, rayonApresRefus, appliqu
 //    publication — le lot pour rien. Prise après, elle ne bouge plus tant que
 //    personne n'édite, et bouge dès que quelqu'un édite : exactement la
 //    question posée.
-export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat }) {
+export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat, ebayVoieApi = false }) {
   const ordre = [...plateformes].sort();
   return JSON.stringify({
+    // (25/09) La voie d'eBay change ce que la résolution fait d'un rayon
+    // refusé : un pré-calcul fait sous l'autre voie ne se reprend pas.
+    ev: ordre.includes("ebay") ? ebayVoieApi === true : null,
     p: ordre,
     c: ordre.map((p) => [p, edited?.[p]?.title ?? "", edited?.[p]?.description ?? "", edited?.[p]?.platform_fields ?? null]),
     s: sharedFields ?? null,
@@ -147,6 +150,9 @@ export async function resoudrePublication({
   lang,
   supabase,
   outils,
+  // (25/09) La voie RÉELLE d'eBay pour ce compte (App.jsx, ebayCompte) : par
+  // l'API, le serveur applique lui-même « le rayon refusé ne part jamais ».
+  ebayVoieApi = false,
 }) {
   const {
     platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
@@ -1578,7 +1584,15 @@ export async function resoudrePublication({
   //    un dépôt sans vérification : aucun n'entre ici, aucun ne change.
   // ⛔ Le choix du vendeur passe toujours : il est reposé après la résolution
   //    (champsAvecRayonsChoisis), comme pour tout autre rayon.
-  const aReprendre = rows.filter((r) => VERDICTS_REFUS.has(r.platform_fields?.categorie_verification?.verdict));
+  // ⛔ eBay par la VOIE API n'entre pas ici : c'est le serveur qui applique la
+  //    règle, avec les suggestions d'eBay (cf. aReprendreApresRefus) — la
+  //    ligne part donc telle qu'avant ce lot, rayon refusé noté sur le job.
+  const aReprendre = rows.filter((r) => aReprendreApresRefus(r, { ebayVoieApi }));
+  for (const r of rows) {
+    if (r.platform === "ebay" && ebayVoieApi === true && VERDICTS_REFUS.has(r.platform_fields?.categorie_verification?.verdict)) {
+      console.log("[publish] ebay — rayon refusé, voie API : le serveur choisira parmi les suggestions d'eBay, jamais ce rayon-là");
+    }
+  }
   if (aReprendre.length) {
     const attributsRefus = {
       genre: sharedFields.genre || autoGenre || "",

@@ -5938,6 +5938,8 @@ export default function ListingPreviewScreen({
     const contexte = {
       plateformes, selected, edited, initialListing, sharedFields, sharedOverrides,
       activeAiIcon, activeAiObjet, origineCat, lang, supabase,
+      // (25/09) Par l'API, le rayon eBay refusé est tranché par le serveur.
+      ebayVoieApi: ebayVoieApiReelle,
       outils: {
         platformFieldsConfig, isConditionKey, defaultConditionFor, GENERIC_ASPECTS_PF_KEY,
         normAspectVal, resolveArticleIcon, resolveArticleIconDetail, OPLA_ETAT_PAR_LIBELLE,
@@ -8420,6 +8422,7 @@ export default function ListingPreviewScreen({
         plateformes: plateformesAPublier,
         selected, edited, initialListing, sharedFields, sharedOverrides,
         activeAiIcon, activeAiObjet, origineCat, lang, supabase,
+        ebayVoieApi: ebayVoieApiReelle,
         outils: outilsResolution,
       };
       const empreintePublication = signatureResolution(contexteResolution);
