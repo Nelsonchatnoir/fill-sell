@@ -10,7 +10,7 @@
 // pastille d'extension dit si Chrome est vu ; « Tu peux fermer, ça continue »
 // est dit une fois, en clair.
 import { useEffect, useState } from "react";
-import { etatsFournee, ordreDePassage } from "./moteur/regles";
+import { etatsFournee } from "./moteur/regles";
 import { Carte, Puce, Logo } from "./composants";
 import { NOM, ilYA } from "./texte";
 
@@ -18,7 +18,6 @@ const LIBELLE_MOTIF = {
   fr: { sans_adresse: "adresse de remise manquante", interdite: "produit refusé par la plateforme", sans_annonce: "aucune annonce rédigée", champ_manquant: "attend une réponse", sans_rayon: "aucun rayon trouvé", refusee_serveur: "déjà en ligne, en file ou en attente" },
   en: { sans_adresse: "pickup address missing", interdite: "product refused by the platform", sans_annonce: "no listing written", champ_manquant: "waiting for an answer", sans_rayon: "no category found", refusee_serveur: "already online, queued or waiting" },
 };
-const ORDINAL = (n, en) => en ? `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}` : `${n}${n === 1 ? "er" : "e"}`;
 
 export default function EcranSuivi({ m }) {
   const en = m.lang === "en";
@@ -27,6 +26,9 @@ export default function EcranSuivi({ m }) {
   const plateformes = f?.plateformes ?? [];
   const [jobs, setJobs] = useState([]);
   const [lu, setLu] = useState(false);
+  // « Chrome vu il y a … » suit la file : relu à chaque lecture, pas figé sur
+  // la valeur du montage pendant que l'extension travaille justement.
+  const [vueLe, setVueLe] = useState(null);
 
   useEffect(() => {
     if (!f?.inventaireId || !plateformes.length || !m.supabase) return undefined;
@@ -46,10 +48,16 @@ export default function EcranSuivi({ m }) {
           .limit(50);
         if (!vivant) return;
         if (!error && Array.isArray(data)) { setJobs(data); setLu(true); derniers = data; }
+        if (m.userId) {
+          const { data: prof } = await m.supabase.from("profiles").select("extension_last_seen_at").eq("id", m.userId).maybeSingle();
+          if (vivant && prof?.extension_last_seen_at) setVueLe(prof.extension_last_seen_at);
+        }
       } catch { /* la prochaine lecture rattrapera */ }
       if (!vivant) return;
       const etats = etatsFournee(derniers, plateformes, f.depuis);
-      const encore = Object.values(etats).some(e => e.kind === "en_file" || e.kind === "en_cours");
+      // On continue de relire tant qu'une ligne est en file, en cours ou en
+      // attente (une reprise espacée ou un retour de session la fera bouger).
+      const encore = Object.values(etats).some(e => e.kind === "en_file" || e.kind === "en_cours" || e.kind === "attente");
       const cadence = Date.now() - debut < 3 * 60_000 ? 5_000 : 20_000;
       if (encore || Date.now() - debut < 30_000) timer = setTimeout(lire, cadence);
     };
@@ -59,7 +67,6 @@ export default function EcranSuivi({ m }) {
   }, [f?.inventaireId, f?.depuis]);
 
   const etats = etatsFournee(jobs, plateformes, f?.depuis);
-  const ordre = ordreDePassage(etats, plateformes);
   const nbEnLigne = plateformes.filter(p => etats[p]?.kind === "publiee").length;
   const nbAttente = plateformes.filter(p => String(etats[p]?.kind ?? "").startsWith("attente")).length;
   const nbRefus = plateformes.filter(p => etats[p]?.kind === "refusee").length;
@@ -80,7 +87,10 @@ export default function EcranSuivi({ m }) {
       case "attente": return { texte: e.job?.error || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
       case "refusee": return { texte: e.erreur || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{en ? "Refused" : "Refusée"}</Puce> };
       case "annulee": return { texte: en ? "Cancelled." : "Annulée.", droite: <Puce ton="mute">{en ? "Cancelled" : "Annulée"}</Puce> };
-      default: return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (ordre[p] === 1 ? (en ? "Next up in Chrome" : "Passe en premier dans Chrome") : (en ? "Queued" : "Dans la file")), droite: <Puce ton="mute">{ordre[p] ? ORDINAL(ordre[p], en) : (en ? "queued" : "en file")}</Puce> };
+      // Pas de rang annoncé (« 1er », « 2e ») : c'est le serveur qui ordonne la
+      // file, et l'ordre observé en réel (Vinted avant Opla) n'était pas
+      // celui de la fournée — on ne promet que ce qu'on sait.
+      default: return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> };
     }
   };
 
@@ -136,7 +146,8 @@ export default function EcranSuivi({ m }) {
         ext.etat === "vivante" ? (
           <Carte gravite="flat" style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <Puce ton="ok" point>{en ? "Extension active" : "Extension active"}</Puce>
-            <span className="fsn-small">{en ? "Chrome seen " : "Chrome vu "}{ilYA(m.extensionVueLe, m.lang)}</span>
+            <span className="fsn-small">{en ? "Chrome seen " : "Chrome vu "}{ilYA(
+              (Date.parse(vueLe ?? "") || 0) >= (Date.parse(m.extensionVueLe ?? "") || 0) ? (vueLe ?? m.extensionVueLe) : m.extensionVueLe, m.lang)}</span>
           </Carte>
         ) : ext.etat === "session_expiree" ? (
           <Carte gravite="geste" titre={en ? "The extension lost its connection to your account" : "L'extension a perdu sa connexion à ton compte"}>
