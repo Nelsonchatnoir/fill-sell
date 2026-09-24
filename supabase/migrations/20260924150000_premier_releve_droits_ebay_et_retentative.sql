@@ -136,3 +136,34 @@ BEGIN
   EXECUTE v_new;
 END
 $do$;
+
+-- ── 4. (ajouté 10:30) LA PURGE DE CONFORT NE TUE PLUS LA PLANIFICATION ─────
+-- Après les trois changements ci-dessus, le trigger butait sur le mur suivant,
+-- toujours sous le rôle authenticated : « permission denied for function
+-- purger_sync_queue_perimee » (EXECUTE réservé à service_role). Cette purge
+-- n'est qu'un confort ; on la tente sans en dépendre. Aucun droit n'est
+-- élargi. Dérivé du corps prod live, remplacement ancré.
+DO $do$
+DECLARE
+  v_def text; v_new text;
+  a1 text := '  PERFORM purger_sync_queue_perimee(p_user);';
+  r1 text := '  -- La purge des demandes périmées est un confort : sous le rôle authenticated
+  -- (app, trigger déclenché par l''extension) son EXECUTE n''est pas accordé, et
+  -- ce refus abandonnait TOUTE la planification (24/09 10:25, « permission
+  -- denied for function purger_sync_queue_perimee »). On la tente, sans jamais
+  -- en dépendre ; le cron et le service role la font passer de toute façon.
+  BEGIN
+    PERFORM purger_sync_queue_perimee(p_user);
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;';
+BEGIN
+  SELECT pg_get_functiondef(p.oid) INTO v_def FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'planifier_premiers_releves';
+  IF v_def IS NULL THEN RAISE EXCEPTION 'planifier_premiers_releves introuvable'; END IF;
+  IF position(r1 IN v_def) > 0 THEN RAISE NOTICE 'déjà migrée'; RETURN; END IF;
+  IF position(a1 IN v_def) = 0 THEN RAISE EXCEPTION 'ancre PERFORM purger_sync_queue_perimee introuvable'; END IF;
+  v_new := replace(v_def, a1, r1);
+  EXECUTE v_new;
+END
+$do$;
