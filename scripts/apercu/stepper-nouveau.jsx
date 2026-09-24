@@ -26,6 +26,19 @@ import { MIN_PHOTOS, MAX_PHOTOS } from '../../src/utils/photos.js';
 const params = new URLSearchParams(location.search);
 const ECRAN = Number(params.get('ecran') || '1');
 const FICHE = params.get('fiche') === '1';
+// ?rayon=1 (25/09) : le rayon Vinted envisagé a été refusé et aucun rayon sûr
+// ne l'a remplacé — la question « Rayon à choisir », candidats en tête.
+const RAYON = params.get('rayon') === '1';
+const QUESTION_RAYON = {
+  objet: 'bobine de film',
+  chemins_refuses: [['Livres et médias', 'Vidéo', 'DVD']],
+  candidats: [],
+};
+const CANDIDATS_RAYON = [
+  { chemin: ['Loisirs et collections', 'Souvenirs', 'Souvenirs TV et cinéma'], id: 4904 },
+  { chemin: ['Livres et médias', 'Vidéo', 'VHS'], id: 3048 },
+  { chemin: ['Loisirs et collections', 'Souvenirs', 'Autres souvenirs'], id: 4905 },
+];
 
 // Trois photos en dur (SVG), pas de réseau.
 const photoSvg = (couleur, texte) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -106,20 +119,22 @@ function Apercu() {
     selected, platformSupport: {}, platformListings,
     plateformesSansAdresse: [], champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
   });
-  const nbQuestions = redSharedFields.length + nbAspectsBloquants + (ECRAN === 3 && !prixAchatInconnu && !prixAchatSaisi ? 1 : 0);
+  const [rayonChoisi, setRayonChoisi] = useState(null);
+  const rayonsAChoisir = RAYON && !rayonChoisi && selected.has('vinted') ? { vinted: QUESTION_RAYON } : {};
+  const nbQuestions = redSharedFields.length + nbAspectsBloquants + (ECRAN === 3 && !prixAchatInconnu && !prixAchatSaisi ? 1 : 0) + Object.keys(rayonsAChoisir).length;
   const prixAchatManquant = ECRAN === 3 && !prixAchatInconnu && !String(prixAchatSaisi).trim();
-  const ctaDisabled = ECRAN === 3 && prixAchatManquant;
+  const ctaDisabled = ECRAN === 3 && (prixAchatManquant || Object.keys(rayonsAChoisir).length > 0);
 
   const propsStepGeneration = {
     generating: false, generateError: '', platformListings, processedPhotos: PHOTOS,
     selected, edited, setEdited, onPhotoClick: noop, onRetry: noop, generatePrice: null, noteOverride: noop,
     ficheReprise: FICHE, ebayVoieApiReelle: false,
     rayonsParPf: {
-      vinted: { chemin: ['Hommes', 'Chaussures', 'Baskets'], id: null, choisi: false, incertain: false },
+      vinted: RAYON ? (rayonChoisi ? { chemin: rayonChoisi.chemin, id: rayonChoisi.id, choisi: true, incertain: false } : null) : { chemin: ['Hommes', 'Chaussures', 'Baskets'], id: null, choisi: false, incertain: false },
       leboncoin: { chemin: ['Mode', 'Chaussures'], id: null, choisi: false, incertain: false },
       beebs: { chemin: ['Mode', 'Homme', 'Chaussures', 'Baskets (homme)'], id: null, choisi: false, incertain: false },
     },
-    suggestionsParPf: {}, supabase: supabaseFactice, onChoisirRayon: noop,
+    suggestionsParPf: RAYON ? { vinted: CANDIDATS_RAYON } : {}, questionsRayonParPf: rayonsAChoisir, supabase: supabaseFactice, onChoisirRayon: (p, c) => { if (p === 'vinted') setRayonChoisi(c); },
     lang: 'fr', price: 85, setPrice: noop, customPriced: new Set(), setCustomPriced: noop, articleIcon: '👟', photoOption,
     onEstimatePrice: null, estimating: false, estimateCost: null, estimateError: '', estimateResult: null,
     prixAchat: null, carteAOuvrir: null, onCarteOuverte: noop,
@@ -159,7 +174,7 @@ function Apercu() {
     plateformesPubliables: new Set(selected), plateformesBloqueesChamps: Object.keys(champsBloquantsParPlateforme(genericRequiredStatus)),
     publishChips: [...selected].filter((p) => !champsBloquantsParPlateforme(genericRequiredStatus)[p]), publishTotalFor: () => null,
     propsStepGeneration,
-    etatsParPlateforme: { vinted: { ton: 'ok', libelle: 'Prêt' }, leboncoin: { ton: 'geste', libelle: '1 question' }, beebs: { ton: 'ok', libelle: 'Prêt' }, opla: { ton: 'ok', libelle: 'Prêt' } },
+    etatsParPlateforme: { vinted: rayonsAChoisir.vinted ? { ton: 'geste', libelle: '1 question' } : { ton: 'ok', libelle: 'Prêt' }, leboncoin: { ton: 'geste', libelle: '1 question' }, beebs: { ton: 'ok', libelle: 'Prêt' }, opla: { ton: 'ok', libelle: 'Prêt' } },
     nbQuestions,
     generatingPlatforms: false, platformError: '', platformListings, processedPhotos: PHOTOS, handleGeneratePlatforms: noop, ficheReprise: FICHE,
     modifierCarte: propsStepGeneration.onModifierCarte, platformFieldsConfig,
@@ -172,9 +187,10 @@ function Apercu() {
     lbcPhotoCap: null, lbcAdresseManquante: null,
     jumeaux: ECRAN === 3 ? [{ platform: 'leboncoin', titre: 'New Balance 990 noires 42', prix: 80, url: 'https://www.leboncoin.fr/ad/1', preuve: 'photo' }] : [],
     descriptionMentions: null, descriptionVideVinted: false,
-    exclusionsPrevues, plateformesRetirables: [],
-    questionsParPlateforme: Object.fromEntries(missingSharedFieldsDetailed.flatMap((f) => f.platforms.map((p) => [p, ['Taille']]))),
-    publishError: '', publishing: false, motifsCtaGris: ctaDisabled ? ["Prix d'achat à renseigner"] : [], ctaDisabled, ctaBlockingActive: ctaDisabled, requiredBlocking: ctaDisabled, publishedStateLoaded: true,
+    exclusionsPrevues, plateformesRetirables: Object.keys(rayonsAChoisir),
+    questionsParPlateforme: { ...Object.fromEntries(missingSharedFieldsDetailed.flatMap((f) => f.platforms.map((p) => [p, ['Taille']]))), ...(rayonsAChoisir.vinted ? { vinted: ['Rayon'] } : {}) },
+    rayonsAChoisir, suggestionsParPf: RAYON ? { vinted: CANDIDATS_RAYON } : {}, choisirRayon: (p, c) => { if (p === 'vinted') setRayonChoisi(c); },
+    publishError: '', publishing: false, motifsCtaGris: ctaDisabled ? [...(prixAchatManquant ? ["Prix d'achat à renseigner"] : []), ...(rayonsAChoisir.vinted ? ['Rayon Vinted à choisir — aucun rayon sûr trouvé (sur sa carte, liste prête)'] : [])] : [], ctaDisabled, ctaBlockingActive: ctaDisabled, requiredBlocking: ctaDisabled, publishedStateLoaded: true,
     ctaLabel: `Publier sur ${[...selected].filter((p) => !champsBloquantsParPlateforme(genericRequiredStatus)[p]).length} plateformes`,
     fournee: ECRAN === 4 ? { inventaireId: 1, plateformes: ['leboncoin', 'vinted', 'beebs', 'opla'], depuis: new Date(Date.now() - 10_000).toISOString() } : null,
     exclusionsDuClic: ECRAN === 4 ? [{ platform: 'ebay', motif: 'sans_adresse' }] : [],
