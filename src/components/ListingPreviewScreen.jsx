@@ -96,7 +96,7 @@ import {
   aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
   descriptionVintedVide, calculerExclusions, motifAucunePlateforme, cleCategorieRequis,
-  construireJobs, plateformesSansChemin, gardeAspectsEbay,
+  construireJobs, plateformesSansChemin, gardeAspectsEbay, questionsParPlateforme as calculerQuestionsParPlateforme,
 } from "../publication/moteur/regles";
 import {
   NO_BRAND_VALUE, SHARED_FIELD_KEYS, SHARED_PROPAGATION, EBAY_ASPECT_LABELS,
@@ -2368,7 +2368,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
           N'Y A PAS DE CARTE. La consigne s'affichait toujours, y compris sur
           un écran vide — on demandait un geste impossible. Sans carte, on dit
           ce qui se passe vraiment, et le bouton du bas est le seul geste. */}
-      {(variante !== "nouvelle" || platforms.length === 0) && (
+      {variante !== "nouvelle" && (
       <p style={{ margin:"0 0 16px", fontSize:12.5, color:T.mute2, lineHeight:1.5 }}>
         {platforms.length > 0
           ? t("stepGenReviewSubtitle")
@@ -4800,6 +4800,12 @@ export default function ListingPreviewScreen({
   // Champs partagés (Sujet 4) : source canonique unique + trace des copies
   // éditées à la main (sacrées : plus jamais resynchronisées).
   const [sharedFields, setSharedFields]     = useState(draft?.sharedFields ?? { taille:"", couleur:"", matiere:"", marque:"" });
+  // (refonte 24/09, nouvelle peau) Les champs partagés où la PERSONNE a
+  // répondu dans le bloc de questions : eux seuls s'écrivent sur la fiche au
+  // publish (source « manuel »), jamais une valeur pré-remplie par l'IA.
+  // L'ancienne peau n'appelle jamais noterReponseFiche : l'ensemble y reste vide.
+  const [reponsesFiche, setReponsesFiche] = useState(() => new Set());
+  const noterReponseFiche = (key) => setReponsesFiche(prev => prev.has(key) ? prev : new Set([...prev, key]));
   const [sharedOverrides, setSharedOverrides] = useState(() => // { [platform]: Set<fieldKey> }
     draft?.sharedOverrides
       ? Object.fromEntries(Object.entries(draft.sharedOverrides).map(([k, v]) => [k, new Set(v)]))
@@ -5316,11 +5322,17 @@ export default function ListingPreviewScreen({
     //    plateforme n'y figure que parce qu'elle l'a cochée elle-même.
     const aUneCopie = (p) => Boolean(parPlateforme[p] || f.edited?.[p]);
     const sel = (Array.isArray(f.selected) ? f.selected : dispo).filter(p => aUneCopie(p) && !lockedSet.has(p));
-    setSelected(new Set(sel.length ? sel : dispo.filter(p => !lockedSet.has(p))));
+    const selectionFinale = sel.length ? sel : dispo.filter(p => !lockedSet.has(p));
+    setSelected(new Set(selectionFinale));
     // On rouvre là où il en était, jamais avant l'étape des annonces : le
     // renvoyer au viseur lui ferait croire que son travail est perdu.
     const etape = Number(f.step);
-    setStep(Number.isFinite(etape) ? Math.min(Math.max(etape, 2), 3) : 2);
+    // (refonte 24/09, nouvelle peau seulement) Plus rien à cocher parmi les
+    // copies de la fiche (tout est déjà en ligne, ou fermé) : on ouvre sur
+    // « Où publier ? », où les plateformes se choisissent — pas sur un écran
+    // de rédaction vide. L'ancienne peau garde son arrivée, à l'identique.
+    if (variante === "nouvelle" && !selectionFinale.length) setStep(1);
+    else setStep(Number.isFinite(etape) ? Math.min(Math.max(etape, 2), 3) : 2);
     setFicheReprise(true);
     return true;
   }
@@ -8641,6 +8653,31 @@ export default function ListingPreviewScreen({
         if (piErr) console.warn("[publish] prix_achat_inconnu non posé sur l'article :", piErr.message);
         else setPrixAchatBase({ valeur: null, inconnu: true });
       }
+      // ── LES RÉPONSES SAISIES VONT AUSSI SUR LA FICHE (refonte 24/09) ──────
+      // Nouvelle peau seulement : le bloc de questions promet « chaque réponse
+      // s'écrit aussi sur la fiche ». Seuls les champs partagés où la personne
+      // a répondu partent, en source « manuel » — le rang le plus haut du
+      // trigger inventaire_attributs_fusion (migration 20260907000000), qui
+      // fusionne : rien d'autre n'est écrasé. Best-effort : la publication est
+      // partie, un échec ici ne doit pas le contredire.
+      if (variante === "nouvelle" && currentInvId && reponsesFiche.size) {
+        const attributs = {};
+        const maintenant = new Date().toISOString();
+        for (const k of reponsesFiche) {
+          if (!SHARED_FIELD_KEYS.includes(k)) continue;
+          const val = String(sharedFields?.[k] ?? "").trim();
+          if (val) attributs[k] = { v: val, source: "manuel", at: maintenant };
+        }
+        if (Object.keys(attributs).length) {
+          const { error: atErr } = await supabase
+            .from("inventaire")
+            .update({ attributs })
+            .eq("id", currentInvId)
+            .eq("user_id", userId)
+            .select("id");
+          if (atErr) console.warn("[publish] réponses non rangées sur la fiche :", atErr.message);
+        }
+      }
       if (currentInvId && price != null && Number(price) > 0) {
         const { data: prixMaj, error: prixErr } = await supabase
           .from("inventaire")
@@ -9146,6 +9183,11 @@ export default function ListingPreviewScreen({
   // Les gestes de navigation propres à la nouvelle peau (trois écrans au lieu
   // de quatre étapes) vivent ici ; ceux de l'ancienne (handleNext, handleBack)
   // ne bougent pas.
+  // Une plateforme cochée SANS copie rédigée (fiche rouverte avec une
+  // plateforme en plus) : la rédaction repart — comme l'ancien parcours par
+  // « Générer les annonces », et au même prix (une annonce sur le quota).
+  const copieManquante = Boolean(platformListings)
+    && [...selected].some(p => !platformListings.platforms?.[p]);
   function handleNextNouveau() {
     if (step <= 1) {
       // Photos choisies mais pas encore montées : on les monte et on arrive
@@ -9153,12 +9195,13 @@ export default function ListingPreviewScreen({
       if (pickedFiles.length) { handleUpload(2); return; }
       // Même garde qu'à l'étape 1 de l'ancien parcours (Lens unifié + retouche
       // choisie : la rédaction pré-générée est abandonnée, l'étape 2 regénère).
-      if (platformListings?.lens_unifie && photoOption !== "original") {
+      if ((platformListings?.lens_unifie && photoOption !== "original") || copieManquante) {
         setPlatformListings(null);
         setProcessedPhotos([]);
         setEdited({});
         setDissociees(dissociationsVides());
         setGenerales({ titre: "", description: "", etat: "" });
+        setFicheReprise(false);
       }
       setStep(2);
       return;
@@ -9224,6 +9267,17 @@ export default function ListingPreviewScreen({
     ...((vintedGenreBlocked || descriptionVideVinted) ? ["vinted"] : []),
     ...(beebsGenreBlocked ? ["beebs"] : []),
   ].filter(p => selected.has(p));
+  // Par plateforme cochée, les questions qui la retiennent — pour sa ligne de
+  // « Confirmer » (« Attend une réponse : Taille, Département »), au lieu de
+  // « Connectée — prête » alors que le bouton est gris à cause d'elle. Mêmes
+  // sources et même libellé par champ que motifsCtaGris.
+  const questionsParPlateforme = calculerQuestionsParPlateforme({
+    selected, missingSharedFieldsDetailed, genericRequiredStatus, ebayRequiredStatus,
+    vintedGenreBlocked, beebsGenreBlocked, descriptionVideVinted,
+    libellePartage: { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"), matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") },
+    libelleGenre: t("fieldGenderLabel"), libelleDescription: t("fieldDescriptionLabel"),
+    genericFieldToSharedKey,
+  });
   const extensionVueLe = (() => {
     const a = Date.parse(extensionLastSeenAt ?? "");
     const b = Date.parse(extSeenRelu ?? "");
@@ -9288,17 +9342,17 @@ export default function ListingPreviewScreen({
     platformSessions, voiesDuLot, extFraicheurPublier, extensionVueLe, extensionBlocked,
     plateformesPubliables, plateformesBloqueesChamps, publishChips, publishTotalFor,
     // La rédaction
-    propsStepGeneration, etatsParPlateforme, nbQuestions,
+    propsStepGeneration, etatsParPlateforme, nbQuestions, copieManquante,
     generatingPlatforms, platformError, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
     modifierCarte, platformFieldsConfig,
     // Les questions et le geste
-    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed,
+    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche,
     vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
     genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
     demanderPrixAchat: prixAchatARenseigner, prixAchatSaisi, setPrixAchatSaisi, prixAchatInconnu, setPrixAchatInconnu, prixAchatManquant,
     inventoryFull, stockCount, stockLimitCfg,
     lbcPhotoCap, lbcAdresseManquante, jumeaux, descriptionMentions, descriptionVideVinted,
-    exclusionsPrevues, plateformesRetirables,
+    exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
     publishError, publishing, motifsCtaGris, ctaDisabled, ctaBlockingActive, requiredBlocking, publishedStateLoaded,
     ctaLabel: step === 3 ? ctaLabel() : null,
     // Le suivi
