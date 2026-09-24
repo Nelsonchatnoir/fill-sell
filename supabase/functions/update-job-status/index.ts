@@ -770,12 +770,16 @@ serve(async (req) => {
         if (jP?.platform === "opla") {
           const parcage = status === "needs_user" && String(pfIn?.["needs_user_source"] ?? "") === "opla_acces";
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-          const { data: pp } = await admin.from("profiles").select("extension_postes").eq("id", user.id).maybeSingle();
-          const postes = postesVivants((pp as { extension_postes?: unknown } | null)?.extension_postes);
-          const avant: Poste = postes[sessionIdPoste] ?? {};
-          postes[sessionIdPoste] = { ...avant, le: new Date().toISOString(), opla_acces: !parcage };
+          // Fusion ATOMIQUE (RPC noter_poste_extension, verrou de ligne) : deux
+          // postes qui écrivent en parallèle ne se perdent plus leurs mises à jour.
+          const { data: fusion, error: rpcErr } = await admin.rpc("noter_poste_extension", {
+            p_user: user.id, p_session: sessionIdPoste,
+            p_patch: { le: new Date().toISOString(), opla_acces: !parcage },
+          });
+          if (rpcErr) throw new Error(`noter_poste_extension : ${rpcErr.message}`);
+          const postes = postesVivants(fusion);
           oplaAccesDuPoste = !parcage;
-          await admin.from("profiles").update({ extension_postes: postes }).eq("id", user.id);
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — poste ${posteCourt(sessionIdPoste)} : accès Opla ${parcage ? "ABSENT (parcage)" : "présent"} · ${Object.keys(postes).length} poste(s) connu(s)`);
           if (parcage) {
             const autre = posteAvecAccesOpla(postes, { saufSession: sessionIdPoste, depuisMs: 24 * 3600_000 });
             if (autre) {

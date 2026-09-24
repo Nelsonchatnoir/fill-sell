@@ -655,24 +655,27 @@ serve(async (req) => {
           const { data: pp } = await admin.from("profiles").select("extension_postes").eq("id", user.id).maybeSingle();
           const postes = postesVivants((pp as { extension_postes?: unknown } | null)?.extension_postes);
           const avant: Poste = postes[sessionId] ?? {};
-          const nouveau: Poste = { ...avant, le: new Date().toISOString(), build: build || avant.build };
-          if (posteAvecOpla) nouveau.opla_acces = true;
-          else if (posteSansOpla) nouveau.opla_acces = false;
+          const patchPoste: Poste = { le: new Date().toISOString() };
+          if (build) patchPoste.build = build;
+          if (posteAvecOpla) patchPoste.opla_acces = true;
+          else if (posteSansOpla) patchPoste.opla_acces = false;
           else if (avant.opla_acces === false) posteSansOpla = true;
           else if (avant.opla_acces === true) posteAvecOpla = true;
-          postes[sessionId] = nouveau;
           // Un poste AVEC accès polle : les jobs parqués « Autoriser Opla » (par
           // un autre poste, ou par lui-même avant l'octroi) repartent pour lui —
           // au plus une relance par 10 min et par poste.
           if (posteAvecOpla) {
             const dernier = Date.parse(String(avant.rearme_le ?? ""));
             if (!Number.isFinite(dernier) || Date.now() - dernier > 10 * 60_000) {
-              nouveau.rearme_le = nouveau.le;
+              patchPoste.rearme_le = patchPoste.le;
               const n = await rearmerJobsOplaParques(admin, user.id, sessionId);
               if (n) console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} avec accès Opla : ${n} job(s) parqué(s) « Autoriser Opla » relancé(s)`);
             }
           }
-          patch.extension_postes = postes;
+          // Fusion ATOMIQUE (RPC noter_poste_extension, verrou de ligne) : deux
+          // postes qui pollent en parallèle ne se perdent plus leurs mises à jour.
+          const { error: rpcErr } = await admin.rpc("noter_poste_extension", { p_user: user.id, p_session: sessionId, p_patch: patchPoste });
+          if (rpcErr) console.warn(`[get-pending-jobs] userId=${user.id} noter_poste_extension :`, rpcErr.message);
         } catch (e) { console.warn("[get-pending-jobs] postes :", (e as Error)?.message ?? e); }
       }
       await admin.from("profiles").update(patch).eq("id", user.id);
