@@ -1526,6 +1526,34 @@ function getVintedCookie(name) {
 // « Se reconnecter » ne doit être conseillé QUE si la session est réellement
 // morte — c'est /users/current qui tranche (endpoint VIVANT, celui de la sonde
 // de session), pas le code d'erreur du delete.
+// ── À QUI EST CETTE ANNONCE ? (2026-09-24, remialbertholl) ─────────────────
+// Deux retraits refusés en boucle « CHALLENGE… anti-robot », 403
+// access_denied, pendant que les republications du même Chrome passaient
+// toutes les 4 minutes. Relevé sur les deux pages : le seul lien /member/<id>
+// numérique de la page est le VENDEUR (16040413, @nadegemarcelin78), la
+// session était @jcassou (32977976). Vinted refusait de supprimer l'annonce
+// d'un autre compte — ce n'était pas l'anti-robot.
+// Deux certitudes ou rien : l'id du compte connecté (users/current) ET un
+// seul vendeur lisible sur la page. Sinon null : le chemin d'avant s'applique.
+async function proprietaireAnnonceVinted(t) {
+  try {
+    const ids = [...new Set([...document.querySelectorAll('a[href*="/member/"]')]
+      .map((a) => (a.getAttribute("href") || "").match(/\/member\/(\d+)(?:[-/?#]|$)/)?.[1])
+      .filter(Boolean))];
+    if (ids.length !== 1) { t(`propriétaire de l'annonce illisible (${ids.length} profils sur la page)`); return null; }
+    const r = await fetchBorne("/api/v2/users/current", { headers: { Accept: "application/json" }, credentials: "include" });
+    if (!r.ok) return null;
+    const moi = await r.json().catch(() => null);
+    const idMoi = String(moi?.user?.id ?? "").trim();
+    if (!idMoi) return null;
+    t(`propriétaire de l'annonce : ${ids[0]} ; compte connecté : ${idMoi}`);
+    return { vendeur: ids[0], session: idMoi, login_session: moi?.user?.login ?? null };
+  } catch (e) {
+    t(`propriétaire de l'annonce : lecture impossible (${String(e?.message ?? e)})`);
+    return null;
+  }
+}
+
 async function vintedSessionEtat(t) {
   try {
     const r = await fetchBorne("/api/v2/users/current", {
@@ -1769,6 +1797,23 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
         catch { return ""; }
       })();
       if (resp.status === 403 && session !== "expiree") {
+        // L'annonce d'une AUTRE boutique d'abord : Vinted répond le même 403
+        // access_denied, et aucune attente ne le réparera.
+        const proprio = await proprietaireAnnonceVinted(t);
+        if (proprio && proprio.vendeur !== proprio.session) {
+          verdict.conclusion = "boutique_etrangere";
+          return {
+            success: false,
+            needsUser: true,
+            boutiqueEtrangere: { article: proprio.vendeur, session: proprio.session, login_session: proprio.login_session },
+            error:
+              "Le retrait de cette annonce n'a pas été lancé : elle appartient à un autre compte Vinted que celui " +
+              "ouvert dans Chrome sur ton ordinateur. Rien n'a été touché sur Vinted. " +
+              "Connecte-toi au bon compte Vinted, puis relance.",
+            trace,
+            verdict,
+          };
+        }
         verdict.conclusion = "refus_anti_robot";
         t(`403 anti-robot (${codeVinted || "code inconnu"}), session ${session} — reprise espacée, aucune tentative consommée`);
         return {
@@ -3145,6 +3190,35 @@ async function fillListingForm(job) {
       "RECRÉATION : soumission tentée quand même."
     );
   } else if (requiredState.unfilled.length) {
+    // ── « NEUF SEULEMENT » : UNE LIMITE DE VINTED, PAS UNE QUESTION (24/09) ──
+    // Casque de solene.mantero (job 4da68910) : le rayon n'accepte que « Neuf
+    // avec étiquette » et l'article est en « Bon état ». On demandait l'État,
+    // avec pour « options » l'avertissement de Vinted (« Veille à ne mettre en
+    // ligne que des articles neufs… ») — et la seule réponse possible aurait
+    // été un mensonge. La liste de la CONFIG du rayon fait foi ; si elle ne
+    // porte que des « Neuf… » et que l'état de l'article n'en est pas, on le
+    // dit clairement. Ancre lue par pas-de-rouge (serveur) : classé INFO, clos,
+    // jamais relancé. Aucun clic n'a été fait.
+    const metaEtat = requiredState.discovered.find((x) => x.key === "condition" && requiredState.unfilled.includes(x.label));
+    const etatsAcceptes = (metaEtat?.options ?? [])
+      .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+      .map((s) => String(s).trim()).filter(Boolean);
+    const etatArticle = String(fields.etat ?? "").trim();
+    if (metaEtat && etatArticle && etatsAcceptes.length
+        && etatsAcceptes.every((s) => /^neuf\b/.test(normalizeFuzzy(s)))
+        && !etatsAcceptes.some((s) => normalizeFuzzy(s) === normalizeFuzzy(etatArticle))) {
+      return {
+        success: false,
+        needsUser: false,
+        error:
+          `Vinted n'accepte que des articles neufs dans ce rayon (${[...new Set(etatsAcceptes)].join(" · ")}). ` +
+          `Ton article est « ${etatArticle} » : il ne peut pas y être publié. ` +
+          "C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.",
+        warnings,
+        unfilledRequired: requiredState.unfilled,
+        discoveredRequired: requiredState.discovered,
+      };
+    }
     // Options ACCEPTÉES par la catégorie (config attributes) annexées à chaque
     // requis vide : sans elles, l'erreur était inactionnable (cas réel Medik8
     // 18/07 — « État » vide alors que la Beauté n'accepte QUE « Neuf avec
@@ -4636,8 +4710,8 @@ async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000, opts
   while (Date.now() - start < timeoutMs) {
     const found = findOptionCascade(document, optionSelector, text, opts);
     if (found) return found;
-    lastOptions = Array.from(document.querySelectorAll(optionSelector))
-      .map((o) => o.textContent.trim()).filter(Boolean);
+    lastOptions = libellesOptionsLisibles(Array.from(document.querySelectorAll(optionSelector))
+      .map((o) => o.textContent));
     if (lastOptions.length) break; // options rendues mais aucun match : inutile d'attendre
     await sleep(80);
   }
@@ -5096,6 +5170,25 @@ async function selectVintedModel(wanted, warnings) {
 //     tailles vêtement pendant que le DOM affichait des dimensions de literie).
 const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
 
+// ── LES LIBELLÉS D'OPTIONS, PAS TOUT CE QUE LE SÉLECTEUR ATTRAPE (24/09) ─────
+// `[data-testid^="condition-"]` attrape, en plus des options, l'AVERTISSEMENT
+// du rayon (« Veille à ne mettre en ligne que des articles neufs et non
+// ouverts… »), la carte de chaque option (titre + description COLLÉS :
+// « Neuf avec étiquetteArticle neuf, jamais porté… ») et la description
+// seule. Le message du casque de solene.mantero listait les trois comme
+// « états acceptés ». On ne garde que ce qu'une personne peut CHOISIR :
+//   · dédoublonné ;
+//   · au plus 60 caractères — un libellé d'option n'est jamais une phrase ;
+//   · jamais une carte : un texte qui commence par une autre option et
+//     enchaîne SANS séparateur sur une majuscule (titre + description).
+// Ne sert qu'au RELEVÉ (messages, warnings) : l'appariement de la cascade
+// n'est pas touché.
+function libellesOptionsLisibles(textes) {
+  const bruts = [...new Set((textes ?? []).map((t) => String(t ?? "").replace(/\s+/g, " ").trim()).filter(Boolean))];
+  const courts = bruts.filter((t) => t.length <= 60);
+  return courts.filter((t) => !courts.some((c) => c !== t && t.startsWith(c) && /^[A-ZÀ-Ý]/.test(t.slice(c.length))));
+}
+
 // ── TAILLE VINTED : PAR ID, PUIS PAR ONGLET, PUIS CASCADE (2026-09-10) ─────
 // Relevé réel du 10/09 sur /items/new : le panneau Taille des grilles séparées
 // porte des ONGLETS (boutons courts « S/M/L », « EU », « UK », « FR », « IT »,
@@ -5358,9 +5451,8 @@ async function selectTailleVinted(fields, warnings) {
     }
     return true;
   } catch (e) {
-    const visible = Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL))
-      .map((el) => el.textContent.trim())
-      .filter(Boolean)
+    const visible = libellesOptionsLisibles(Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL))
+      .map((el) => el.textContent))
       .slice(0, 12);
     if (visible.length) optionsRelevees.set("taille", visible);
     else optionsRelevees.delete("taille");
@@ -5391,9 +5483,8 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
     // Options réellement affichées par Vinted, annexées au warning — même
     // relevé actionnable que Beebs/LBC (jeu d'options PAR CATÉGORIE : la
     // Beauté n'offre p.ex. que « Neuf avec étiquette » pour l'État).
-    const visible = Array.from(document.querySelectorAll(optionSelector))
-      .map((el) => el.textContent.trim())
-      .filter(Boolean)
+    const visible = libellesOptionsLisibles(Array.from(document.querySelectorAll(optionSelector))
+      .map((el) => el.textContent))
       .slice(0, 12);
     // set OU delete : une entrée périmée d'un échec précédent ne doit jamais
     // parler à la place d'un échec courant sans relevé.
