@@ -774,7 +774,9 @@ serve(async (req) => {
           // postes qui écrivent en parallèle ne se perdent plus leurs mises à jour.
           const { data: fusion, error: rpcErr } = await admin.rpc("noter_poste_extension", {
             p_user: user.id, p_session: sessionIdPoste,
-            p_patch: { le: new Date().toISOString(), opla_acces: !parcage },
+            // opla_acces_le (24/09) : QUAND l'accès a été appris — une preuve
+            // en base plus ancienne ne le lève pas (_shared/preuve-opla.ts).
+            p_patch: { le: new Date().toISOString(), opla_acces: !parcage, opla_acces_le: new Date().toISOString() },
           });
           if (rpcErr) throw new Error(`noter_poste_extension : ${rpcErr.message}`);
           const postes = postesVivants(fusion);
