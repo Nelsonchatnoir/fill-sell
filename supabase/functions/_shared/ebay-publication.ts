@@ -192,7 +192,12 @@ const PREFERENCES_ETAT: Array<[RegExp, string[]]> = [
   [/satisf|correct|us[ée]/i, ["6000", "3010", "5000", "3000"]],
 ];
 
-export interface ConditionCategorie { id: string; libelle: string; }
+// `descripteurs` (24/09, cartes à collectionner) : certaines conditions
+// exigent des descripteurs — « Non gradée » (4000) demande l'état de la carte
+// (descripteur 40001). Lus dans la même réponse Metadata, défensivement :
+// absents → [] et rien ne change.
+export interface DescripteurCondition { id: string; nom: string; requis: boolean; valeurs: Array<{ id: string; nom: string }>; }
+export interface ConditionCategorie { id: string; libelle: string; descripteurs?: DescripteurCondition[]; }
 const cacheConditions = new Map<string, ConditionCategorie[]>();
 
 export async function conditionsCategorie(env: EbayEnv, token: string, categoryId: string): Promise<ConditionCategorie[] | null> {
@@ -200,25 +205,92 @@ export async function conditionsCategorie(env: EbayEnv, token: string, categoryI
   if (enCache) return enCache;
   const r = await appelEbay(env, token, `/sell/metadata/v1/marketplace/${MARKETPLACE}/get_item_condition_policies?filter=categoryIds:%7B${encodeURIComponent(categoryId)}%7D`);
   if (r.http !== 200 || !r.json) return null;
-  const pol = (r.json as { itemConditionPolicies?: Array<{ categoryId?: string; itemConditions?: Array<{ conditionId?: string; conditionDescription?: string }> }> }).itemConditionPolicies?.[0];
+  // deno-lint-ignore no-explicit-any
+  const pol = (r.json as { itemConditionPolicies?: Array<{ categoryId?: string; itemConditions?: Array<Record<string, any>> }> }).itemConditionPolicies?.[0];
   if (!pol?.itemConditions?.length) return null;
-  const liste = pol.itemConditions.map((c) => ({ id: String(c.conditionId ?? ""), libelle: String(c.conditionDescription ?? "") })).filter((c) => c.id);
+  // deno-lint-ignore no-explicit-any
+  const tableau = (x: any): Array<Record<string, any>> => (Array.isArray(x) ? x : []);
+  const liste: ConditionCategorie[] = pol.itemConditions.map((c) => ({
+    id: String(c.conditionId ?? ""),
+    libelle: String(c.conditionDescription ?? ""),
+    descripteurs: tableau(c.conditionDescriptors).map((d) => ({
+      id: String(d.conditionDescriptorId ?? ""),
+      nom: String(d.conditionDescriptorName ?? ""),
+      requis: String(d.conditionDescriptorConstraint?.usage ?? "").toUpperCase() === "REQUIRED",
+      valeurs: tableau(d.conditionDescriptorValues)
+        .map((v) => ({ id: String(v.conditionDescriptorValueId ?? ""), nom: String(v.conditionDescriptorValueName ?? "") }))
+        .filter((v) => v.id),
+    })).filter((d) => d.id),
+  })).filter((c) => c.id);
   cacheConditions.set(categoryId, liste);
   return liste;
 }
 
-export function choisirCondition(etat: string | null | undefined, conditions: ConditionCategorie[] | null): { id: string; enumValue: string; libelle: string } | null {
+export function choisirCondition(etat: string | null | undefined, conditions: ConditionCategorie[] | null): { id: string; enumValue: string; libelle: string; descripteurs: DescripteurCondition[] } | null {
   const e = String(etat ?? "").trim();
   let candidats: string[] = ["3000", "4000", "5000", "2990", "3010"];
   for (const [re, ids] of PREFERENCES_ETAT) { if (re.test(e)) { candidats = ids; break; } }
   const autorises = conditions ? new Set(conditions.map((c) => c.id)) : null;
+  const rendre = (id: string) => {
+    const enumValue = CONDITION_ENUM_PAR_ID[id];
+    if (!enumValue) return null;
+    const c = conditions?.find((x) => x.id === id);
+    return { id, enumValue, libelle: c?.libelle ?? "", descripteurs: c?.descripteurs ?? [] };
+  };
+  // ── CARTES À COLLECTIONNER : « NON GRADÉE » D'ABORD (24/09, Tech-t dbdbd423) ──
+  // Le rayon « Cartes à l'unité » (183050) ne propose que Gradée, Occasion et
+  // Non gradée. « Non gradée » ne dit rien de l'usure : elle dit seulement
+  // que la carte n'a pas été notée par un organisme — vrai de toute carte
+  // qu'on n'a pas fait noter, neuve comprise. L'usure part dans le
+  // descripteur « état de la carte » (descripteursCondition), jamais meilleur
+  // que l'article. « Gradée » n'est JAMAIS choisie : elle affirmerait une
+  // notation qui n'existe pas.
+  const nonGradee = conditions?.find((c) => /non\s*grad|ungraded/i.test(c.libelle));
+  if (nonGradee && autorises?.has(nonGradee.id)) {
+    const r = rendre(nonGradee.id);
+    if (r) return r;
+  }
   for (const id of candidats) {
     if (autorises && !autorises.has(id)) continue;
-    const enumValue = CONDITION_ENUM_PAR_ID[id];
-    if (!enumValue) continue;
-    return { id, enumValue, libelle: conditions?.find((c) => c.id === id)?.libelle ?? "" };
+    const r = rendre(id);
+    if (r) return r;
   }
   return null;
+}
+
+// ── LES DESCRIPTEURS D'UNE CONDITION (24/09) ─────────────────────────────────
+// Descripteur REQUIS → la réponse déjà donnée par la personne
+// (pf.ebayAspects[<nom du descripteur>]) ; sinon une valeur déduite de l'état
+// de l'article, JAMAIS meilleure que lui ; sinon `manquant` → question.
+// « État de la carte » (40001, cartes non gradées) : ids eBay documentés
+// 400010 quasi neuf ou mieux · 400011 excellent · 400012 très bon · 400013
+// mauvais, rapprochés aussi par le libellé pour ne dépendre d'aucun des deux
+// seuls. Un descripteur requis qu'on ne sait pas lire n'est JAMAIS deviné.
+const ETAT_CARTE: Array<[RegExp, string, RegExp]> = [
+  [/^neuf/i, "400010", /near\s*mint|quasi[\s-]*neuf|comme\s*neuf/i],
+  [/tr[eè]s\s*bon/i, "400011", /excellent/i],
+  [/^bon/i, "400012", /very\s*good|tr[eè]s\s*bon/i],
+  [/satisf|correct|us[ée]/i, "400013", /poor|mauvais|ab[iî]m/i],
+];
+export function descripteursCondition(
+  etat: string | null | undefined,
+  condition: { descripteurs?: DescripteurCondition[] } | null,
+  reponses: Record<string, unknown> = {},
+): { descripteurs: Array<{ name: string; values: string[] }>; manquant: DescripteurCondition | null } {
+  const e = String(etat ?? "").trim();
+  const out: Array<{ name: string; values: string[] }> = [];
+  for (const d of condition?.descripteurs ?? []) {
+    if (!d.requis) continue;
+    const repondu = String(reponses[d.nom] ?? reponses[d.id] ?? "").trim().toLowerCase();
+    let valeur = repondu ? (d.valeurs.find((v) => v.nom.toLowerCase() === repondu || v.id === repondu) ?? null) : null;
+    if (!valeur && (d.id === "40001" || /carte|card/i.test(d.nom))) {
+      const regle = ETAT_CARTE.find(([re]) => re.test(e));
+      if (regle) valeur = d.valeurs.find((v) => v.id === regle[1]) ?? d.valeurs.find((v) => regle[2].test(v.nom)) ?? null;
+    }
+    if (!valeur) return { descripteurs: out, manquant: d };
+    out.push({ name: d.id, values: [valeur.id] });
+  }
+  return { descripteurs: out, manquant: null };
 }
 
 // ── Aspects ─────────────────────────────────────────────────────────────────

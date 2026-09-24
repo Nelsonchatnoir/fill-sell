@@ -40,7 +40,7 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import {
-  aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
+  aspectsCategorie, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
   type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
@@ -371,10 +371,32 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     return { job: job.id, issue: "needs_user", motif: "aspects_manquants", manquants, champ_propose: premier, ferme, nb_valeurs: valeurs.length, ia: rempli.ia };
   }
 
+  // 3 bis. Descripteurs de la condition (24/09, cartes non gradées) : déduits
+  // de l'état de l'article sans jamais le flatter, ou demandés — même canal
+  // que les aspects (needsUserField → ebayAspects.<nom>), une vraie question.
+  const desc = descripteursCondition(pf.etat as string, condition, (pf.ebayAspects ?? {}) as Record<string, unknown>);
+  if (desc.manquant) {
+    const d = desc.manquant;
+    const valeurs = d.valeurs.map((v) => v.nom).filter(Boolean);
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      needsUserField: {
+        platform: "ebay", field_key: d.nom, field_label: d.nom, target: { root: "ebayAspects", key: d.nom },
+        ...(valeurs.length ? { allowed_values: valeurs, input_type: "selection_only", options_completes: true } : {}),
+        source: "ebay_api_worker",
+      },
+      needsUserAttempts: (Number((job.platform_fields ?? {}).needsUserAttempts) || 0) + 1,
+    };
+    const msg = `eBay demande « ${d.nom} » pour publier cet article. Choisis-le depuis la fiche de l'article (bouton « ✋ Compléter »), puis « Valider et relancer » : la publication repart d'elle-même.`;
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "condition", quoi: "descripteur_manquant", condition_id: condition.id, descripteur: d.id, valeurs });
+    return { job: job.id, issue: "needs_user", motif: "descripteur_condition", descripteur: d.id };
+  }
+
   // 4. createOrReplaceInventoryItem (PUT, idempotent sur le SKU).
   const sku = skuPour(job.inventaire_id);
   const item = {
     condition: condition.enumValue,
+    ...(desc.descripteurs.length ? { conditionDescriptors: desc.descripteurs } : {}),
     availability: { shipToLocationAvailability: { quantity: 1 } },
     product: {
       title: titreEbay(job.title ?? ""),
