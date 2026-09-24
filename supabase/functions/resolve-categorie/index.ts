@@ -45,7 +45,13 @@ const ALLOWED_ORIGINS = [
 const PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay", "opla"] as const;
 type Plateforme = typeof PLATEFORMES[number];
 
-interface Candidat { chemin: string[]; id?: string | null; source?: string }
+// `sous` (2026-09-25) : ce que CONTIENT une branche — les libellés de son
+// niveau suivant. Envoyé par la seule descente « plus proche » : sans lui, à la
+// racine de Vinted, l'IA choisissait entre « Maison » et « Loisirs et
+// collections » sans savoir que la décoration murale vit sous « Maison », et
+// rangeait un tableau dans les souvenirs. Absent partout ailleurs : la ligne
+// du candidat est alors EXACTEMENT celle d'avant.
+interface Candidat { chemin: string[]; id?: string | null; source?: string; sous?: string[] }
 
 // ── « AUTRE » N'EST PAS UNE CATÉGORIE (règle Nico, appliquée le 07/09 soir) ─
 // Rétro-test sur le VRAI périmètre (22 articles sans mot-objet) : 8 choix
@@ -75,6 +81,39 @@ RÈGLES ABSOLUES :
 
 Réponds UNIQUEMENT du JSON valide, de la forme :
 {"vinted":"v3","leboncoin":null,"beebs":"b1","ebay":"e12"}
+Une plateforme absente de l'entrée est absente de ta réponse.`;
+
+// ── LE RAYON LE PLUS PROCHE, APRÈS UN REFUS (2026-09-25) ────────────────────
+// Consigne DISTINCTE, demandée par l'appelant (`consigne: "plus_proche"`), et
+// seulement par un : l'étape « le rayon refusé ne part jamais » de
+// src/utils/rayonApresRefus.js. Le rayon envisagé vient d'être REFUSÉ par la
+// vérification ; l'appelant redescend l'arbre RÉEL de la plateforme avec
+// l'IA, niveau par niveau, puis fait confirmer la feuille retenue.
+// Ce qui change par rapport à SYSTEM : le rayon EXACT n'existe pas toujours
+// (Vinted n'a pas de rayon « bobines de film ») — on prend alors le plus
+// proche qui existe, EN CONNAISSANCE DE CAUSE, au lieu de répondre null.
+// ⛔ Ce qui ne change pas : un rayon d'un AUTRE type d'objet n'est jamais « le
+//    plus proche », et null reste une réponse légitime — l'appelant pose
+//    alors la question au vendeur.
+// ⛔ Les exemples ne reprennent AUCUN des 33 cas qui ont motivé le lot : un
+//    exemple recopié de l'échantillon ferait passer le test sans rien prouver.
+// ⛔ Sans `consigne`, rien ne change : SYSTEM, au caractère près.
+const SYSTEM_PLUS_PROCHE = `Tu ranges un article d'occasion dans le catalogue d'une plateforme de vente. Le premier rayon envisagé a été écarté : il ne correspondait pas à l'objet. Tu cherches maintenant, parmi les rayons RÉELS de la plateforme, celui où cet objet est le mieux à sa place.
+
+Pour CHAQUE plateforme, on te donne une liste numérotée : des rayons, ou des branches du catalogue qui mènent à des rayons. Quand une entrée est une branche, la liste dit ce qu'elle CONTIENT : sers-t'en pour aller vers la branche qui contient le rayon de l'objet. Tu choisis l'entrée qui correspond à l'article, et tu réponds par sa CLÉ exacte.
+
+RÈGLES ABSOLUES :
+- Tu ne peux répondre QUE par une clé présente dans la liste de cette plateforme. Jamais un libellé, jamais une catégorie inventée, jamais une clé d'une autre plateforme.
+- Juge l'OBJET : ce qu'il EST et à quoi il sert, pas son sujet, sa matière, sa marque ni son époque. Un objet ancien reste l'objet qu'il est.
+- Le rayon exact n'existe pas toujours. Tu prends alors le plus PROCHE qui existe : un rayon voisin ou plus général, où un acheteur chercherait naturellement cet objet. Par exemple, un disque 78 tours va avec les vinyles s'il n'existe aucun rayon 78 tours.
+- Un rayon qui désigne un AUTRE type d'objet n'est jamais « le plus proche » : un blouson n'est pas une veste de costume, une lampe n'est pas une ampoule, une voiture miniature n'est pas un pinceau, des bottes plates ne sont pas des escarpins.
+- Un rayon « Autres » d'une branche ne se choisit que si AUCUN rayon précis de cette même branche ne convient à l'objet.
+- Quand on te propose plusieurs rayons trouvés par des chemins différents du catalogue, choisis celui où un acheteur chercherait CET objet — ou null si aucun ne lui convient.
+- Respecte le genre et l'âge indiqués : un article de bébé ne va pas dans un rayon adulte.
+- Si aucune entrée de la liste ne peut raisonnablement accueillir cet objet, réponds null pour cette plateforme. C'est une bonne réponse : le vendeur choisira lui-même.
+
+Réponds UNIQUEMENT du JSON valide, de la forme :
+{"vinted":"v3","ebay":null}
 Une plateforme absente de l'entrée est absente de ta réponse.`;
 
 const SYSTEM_LISTES = `Tu remplis une annonce d'occasion. Pour chaque CHAMP, on te donne la liste EXACTE des valeurs que la plateforme accepte, chacune précédée de sa CLÉ. Tu choisis la valeur qui correspond à l'article, et tu réponds par sa CLÉ.
@@ -137,6 +176,10 @@ serve(async (req) => {
     candidats?: Partial<Record<Plateforme, Candidat[]>>;
     listes?: Record<string, { plateforme?: string; options?: string[] }>;
     user_id?: string;
+    max_candidats?: number;
+    consigne?: string;
+    garder_fourre_tout?: boolean;
+    rejeu?: boolean;
   };
   try { corps = await req.json(); } catch { return json({ error: "corps illisible" }, 400); }
   // Appel SERVEUR (secret cron) : le coût doit quand même être imputé à
@@ -144,6 +187,11 @@ serve(async (req) => {
   // par utilisateur, lui, ne s'applique qu'aux appels de l'app — un worker ne
   // boucle pas.
   const userPourJournal = userId ?? (typeof corps.user_id === "string" ? corps.user_id : null);
+  // Un REJEU à blanc (scripts de non-régression, 2026-09-25) n'écrit pas dans
+  // categorie_journal : ce journal compte les vraies publications, par jour et
+  // par plateforme — des centaines de rejeux le fausseraient. Le coût, lui,
+  // reste journalisé (loggerAppelIA) : un appel payé est un appel payé.
+  const journaliser = corps.rejeu !== true;
 
   const titre = String(corps.titre ?? "").trim().slice(0, 200);
   // ══ LISTES FERMÉES (point 5, 07/09 soir) ══════════════════════════════════
@@ -230,7 +278,7 @@ serve(async (req) => {
         choisi_chemin: valeurs[champ] ?? null,
         titre: titre.slice(0, 200),
       }));
-      if (lignesJ.length) await admin.from("categorie_journal").insert(lignesJ);
+      if (lignesJ.length && journaliser) await admin.from("categorie_journal").insert(lignesJ);
     } catch (e) { console.error("[resolve-categorie] journal listes:", (e as Error)?.message); }
     return json({ valeurs, refuses: refusesV });
   }
@@ -260,7 +308,12 @@ serve(async (req) => {
   for (const pf of PLATEFORMES) {
     const brutes = (candidats[pf] ?? []).filter((c) => Array.isArray(c?.chemin) && c.chemin.length);
     const vraies = brutes.filter((c) => !estFourreTout(c));
-    const liste = (vraies.length ? vraies : brutes).slice(0, plafond);
+    // (25/09) La descente « plus proche » MONTRE le « autres » d'une branche
+    // (« Pantalons et shorts › Autres » est le seul rayon Vinted d'un jogging
+    // d'enfant) ; c'est elle qui a déjà écarté les fourre-tout de catalogue.
+    // Partout ailleurs, la règle d'avant, à l'identique.
+    const garderFourreTout = corps.consigne === "plus_proche" && corps.garder_fourre_tout === true;
+    const liste = (garderFourreTout ? brutes : (vraies.length ? vraies : brutes)).slice(0, plafond);
     if (!liste.length) continue;
     parPlateforme.set(pf, liste.length);
     if (vraies.length && vraies.length < brutes.length) {
@@ -270,7 +323,8 @@ serve(async (req) => {
     liste.forEach((c, i) => {
       const cle = `${pf[0]}${i}`;
       parCle.set(cle, { plateforme: pf, candidat: c });
-      lignes.push(`  ${cle} = ${c.chemin.join(" > ")}${c.source ? `  (proposée par ${c.source})` : ""}`);
+      const sous = Array.isArray(c.sous) ? c.sous.map((s) => String(s ?? "").trim()).filter(Boolean).slice(0, 30) : [];
+      lignes.push(`  ${cle} = ${c.chemin.join(" > ")}${c.source ? `  (proposée par ${c.source})` : ""}${sous.length ? ` — contient : ${sous.join(", ")}` : ""}`);
     });
   }
   if (!parCle.size) return json({ choix: {}, motif: "aucun candidat fourni" });
@@ -293,7 +347,9 @@ serve(async (req) => {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 120,
         temperature: 0,
-        system: SYSTEM,
+        // La seule consigne alternative reconnue ; toute autre valeur (ou son
+        // absence) garde SYSTEM, comme avant.
+        system: corps.consigne === "plus_proche" ? SYSTEM_PLUS_PROCHE : SYSTEM,
         messages: [{ role: "user", content: message }],
       }),
     });
@@ -355,7 +411,7 @@ serve(async (req) => {
         titre: titre.slice(0, 200),
       });
     }
-    if (lignes.length) await admin.from("categorie_journal").insert(lignes);
+    if (lignes.length && journaliser) await admin.from("categorie_journal").insert(lignes);
   } catch (e) {
     console.error("[resolve-categorie] journal:", (e as Error)?.message);
   }
