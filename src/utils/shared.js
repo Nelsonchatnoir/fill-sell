@@ -343,6 +343,84 @@ export function raccourcirMessageJob(texte, max = 300) {
   return out;
 }
 
+// ── Les familles de messages eBay, en mots de vendeur (24/09) ────────────────
+// Rend null pour tout message non reconnu (circuit commun). Aucune liste
+// brute, aucun sélecteur, aucun code HTTP, aucun « job », aucun « LIVE ».
+function texteEbayLisible(raw, job, en) {
+  const termine = JOB_STATUS_TERMINAL.has(job?.status);
+  const relance = en ? ' Relaunch the publication from the item.' : " Relance la publication depuis la fiche de l'article.";
+  const suite = termine
+    ? (en ? ' Nothing was published.' + relance : " Rien n'a été publié." + relance)
+    : (en ? ' Nothing was published yet — it resumes on its own once answered.' : " Rien n'a été publié pour l'instant — la publication repart d'elle-même une fois la réponse donnée.");
+  const liste = (s) => String(s ?? '').split(/\s*,\s*/).map(x => x.trim()).filter(Boolean);
+  // Aspects obligatoires vides (ebay.js) : « Hauteur, Largeur, Longueur, Type ».
+  const aspects = raw.match(/aspect\(s\) obligatoire\(s\) eBay vide\(s\)(?: sur le formulaire)?\s*:\s*([^—\n]+?)\s*—/i);
+  if (aspects) {
+    const champs = liste(aspects[1]);
+    return en
+      ? `eBay needs ${champs.length > 1 ? 'these details' : 'this detail'} to list the item: ${champs.join(', ')}. Fill ${champs.length > 1 ? 'them' : 'it'} in from the item (“✋ Complete” button).${suite}`
+      : `eBay a besoin de ${champs.length > 1 ? 'ces informations' : 'cette information'} pour publier l'article : ${champs.join(', ')}. Complète-${champs.length > 1 ? 'les' : 'la'} depuis la fiche de l'article (bouton « ✋ Compléter »).${suite}`;
+  }
+  // Taille sans équivalent eBay (ebay.js, deux tournures).
+  const taille = raw.match(/(?:eBay ne propose pas la taille|traduire ta taille)\s*«\s*([^»]+?)\s*»/i);
+  if (taille) {
+    return en
+      ? `eBay does not offer size “${taille[1]}” in this category. Pick one of the sizes eBay accepts from the item (“✋ Complete” button).${suite}`
+      : `eBay ne propose pas la taille « ${taille[1]} » dans ce rayon. Choisis une des tailles qu'eBay accepte depuis la fiche de l'article (bouton « ✋ Compléter »).${suite}`;
+  }
+  if (/liste des aspects obligatoires absente du job/i.test(raw)) {
+    return en
+      ? `This eBay listing was prepared before a change on our side and must be regenerated before it can go out. Nothing was published: regenerate the listing from the item, then publish again.`
+      : `Cette annonce eBay a été préparée avant un changement de notre côté et doit être régénérée avant de partir. Rien n'a été publié : régénère l'annonce depuis la fiche de l'article, puis republie.`;
+  }
+  if (/description non posée dans l'éditeur eBay/i.test(raw)) {
+    return termine
+      ? (en ? `The description could not be set on eBay — the problem is on our side. Nothing was published.${relance}` : `La description n'a pas pu être posée sur eBay — le problème vient de notre côté. Rien n'a été publié.${relance}`)
+      : (en ? 'The description could not be set on eBay — the problem is on our side. Nothing was published; it retries on its own.' : "La description n'a pas pu être posée sur eBay — le problème vient de notre côté. Rien n'a été publié ; la publication réessaie d'elle-même.");
+  }
+  if (/prix absent ou nul sur le formulaire eBay/i.test(raw)) {
+    return en
+      ? `The price could not be set on eBay, so the listing was not created. Check the item's price, then relaunch from the item.`
+      : `Le prix n'a pas pu être posé sur eBay, l'annonce n'a donc pas été créée. Vérifie le prix de l'article, puis relance depuis sa fiche.`;
+  }
+  if (/ebayCategoryId absent|Formulaire eBay non atteint/i.test(raw)) {
+    return en
+      ? `eBay did not accept the category we chose for this item. Nothing was published: change the item's icon or regenerate the listing, then publish again.`
+      : `eBay n'a pas accepté la catégorie que nous avions choisie pour cet article. Rien n'a été publié : change l'icône de l'article ou régénère l'annonce, puis republie.`;
+  }
+  if (/^Session eBay à vérifier/i.test(raw)) {
+    return en
+      ? `eBay did not open its listing form. Check that you are signed in to eBay on your computer; it retries on its own.`
+      : `eBay n'a pas ouvert son formulaire de vente. Vérifie que tu es connecté à eBay sur ton ordinateur ; la publication réessaie d'elle-même.`;
+  }
+  // Genre (ebay.js) : la phrase est lisible, seul « régénérer le job » ne l'est pas.
+  if (/^Genre\b/i.test(raw) && /champs eBay de l'app/i.test(raw)) {
+    return raw.replace(/,?\s*puis régénérer\s+le job\.?/i, ", puis relance la publication.").replace(/\s{2,}/g, ' ').trim();
+  }
+  // Reconnexion de vente (ebay.js 0.6.5+) : le préfixe « REAUTH VENTE eBay : » n'est pas pour le vendeur.
+  const reauth = raw.match(/^REAUTH VENTE eBay\s*:\s*(.+)$/is);
+  if (reauth) return reauth[1].replace(/\s*Reprise automatique dans[^.]*\.\s*$/i, '').trim();
+  // Worker API : « eBay a refusé la fiche produit (400, 25002) : <motif> [params] ».
+  const refus = raw.match(/^eBay a refusé ([^(:]+?)\s*\(\d{3}[^)]*\)\s*:\s*(.+)$/is);
+  if (refus) {
+    const motif = refus[2].replace(/\s*\[[^\]]*\]\s*$/, '').trim().replace(/[.\s]+$/, '');
+    return en
+      ? `eBay refused ${refus[1]}. Its reason: “${motif.slice(0, 220)}”.${termine ? relance : ''}`
+      : `eBay a refusé ${refus[1]}. Son motif : « ${motif.slice(0, 220)} ».${termine ? relance : ''}`;
+  }
+  if (/^Impossible de lire les caractéristiques de la catégorie/i.test(raw)) {
+    return en
+      ? `eBay did not answer when we asked for this category's details. Nothing was published; it retries on its own.`
+      : `eBay n'a pas répondu quand nous lui avons demandé les caractéristiques de ce rayon. Rien n'a été publié ; la publication réessaie d'elle-même.`;
+  }
+  if (/^(Job sans inventaire_id|Job de republication sans inventaire_id|eBay a répondu sans offerId|Erreur interne du worker|Action « [^»]+ » non prise en charge)/i.test(raw)) {
+    return en
+      ? `Publishing on eBay stopped because of a problem on our side. Nothing was published.${relance}`
+      : `La publication sur eBay s'est arrêtée à cause d'un problème de notre côté. Rien n'a été publié.${relance}`;
+  }
+  return null;
+}
+
 export function humanizeJobError(job, lang = 'fr') {
   const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
@@ -636,6 +714,18 @@ export function humanizeJobError(job, lang = 'fr') {
         ? 'The operation was interrupted on your computer. It resumes on its own, nothing to do on your side.'
         : "L'opération a été interrompue sur ton ordinateur. Elle reprend toute seule, rien à faire de ton côté.");
   }
+
+  // ── eBay : PLUS AUCUN TEXTE TECHNIQUE À L'ÉCRAN (24/09, jocabroc8 80d0704f) ──
+  // Les messages rédigés par ebay.js (« LIVE : aspect(s) obligatoire(s) eBay
+  // vide(s) sur le formulaire : … — publication NON tentée … Détail du
+  // remplissage : button.fake-link … ») et par le worker API (« REAUTH VENTE
+  // eBay : », « eBay a refusé la fiche produit (400, 25002) : … ») vivent
+  // dans l'extension ou le serveur, hors de portée d'un OTA : ils sont
+  // réécrits ICI, famille par famille, en phrases de vendeur. Le brut reste en
+  // base pour le support. Toute variante non reconnue retombe dans le circuit
+  // commun ci-dessous (débruitage, sinon générique).
+  const ebayTexte = job?.platform === 'ebay' ? texteEbayLisible(raw, job, en) : null;
+  if (ebayTexte) return ebayTexte;
 
   // Message déjà humain (court, sans marqueur technique) : tel quel.
   if (!TECH_ERR_MARKERS_RE.test(raw) && raw.length <= 300) return raw;

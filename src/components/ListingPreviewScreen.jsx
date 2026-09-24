@@ -108,7 +108,6 @@ import {
 // jugent une valeur contre une liste avec le même code que cet écran.
 import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
-  limiteNeufSeulement, messageLimiteNeuf,
 } from "../publication/moteur/listes";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -5087,13 +5086,8 @@ export default function ListingPreviewScreen({
   // Motif d'une case grisée, par plateforme : Beebs a SON texte (marque ou
   // catégorie nommée, « règle de Beebs », jamais culpabilisant), les autres
   // gardent le motif générique par statut.
-  // Vinted « neuf seulement » (24/09) : sa phrase à lui, jamais le « produit
-  // interdit » générique. vintedLimiteNeuf est calculé plus bas (il dépend du
-  // catalogue du rayon) : motifSupport n'est APPELÉ qu'au rendu, après.
   const motifSupport = (p, support) =>
-    p === "vinted" && support === "prohibited" && vintedLimiteNeuf
-      ? messageLimiteNeuf(vintedLimiteNeuf, lang)
-    : p === "beebs" && support === "prohibited" && beebsInterdit
+    p === "beebs" && support === "prohibited" && beebsInterdit
       ? messageBeebsInterdit(beebsInterdit, lang)
       : supportMessage(t, support, PLATFORM_LABELS[p]);
   const platformSupport = useMemo(() => {
@@ -6773,6 +6767,15 @@ export default function ListingPreviewScreen({
   const ebayPreviewCategoryId = useMemo(() => {
     if (!selected.has("ebay") || !edited.ebay) return null;
     const pf = edited.ebay.platform_fields ?? {};
+    // ── LA CATÉGORIE QUI PARTIRA, PAS CELLE DE L'ICÔNE (24/09, jocabroc8) ──
+    // Panier décoratif (job 80d0704f) : icône 📦 sans rayon eBay → preview
+    // null → encart jamais monté ; la résolution par mot (IA parmi candidats)
+    // avait posé 125072 « Paniers » sur la copie, dont Hauteur, Largeur,
+    // Longueur et Type sont obligatoires. Aucune question avant le débit, le
+    // mur tombait chez l'extension. La catégorie déjà résolue sur la copie est
+    // celle du job : c'est elle qui décide des questions.
+    const resolue = String(pf.ebayCategoryId ?? "").trim();
+    if (resolue) return resolue;
     const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
     const direct = getEbayCategoryId(icon, pf.genre);
     if (direct) return direct;
@@ -7605,12 +7608,6 @@ export default function ListingPreviewScreen({
             // (Marque, relevé tronqué à 200) : présence = ok, la plateforme
             // tranche au dépôt — le comportement d'hier. La carte
             // (champsDuRayon) applique exactement ce jugement.
-            // Vinted « neuf seulement » (24/09, casque solene.mantero) : ni une
-            // question ni un blocage de champ — une LIMITE, qui écarte Vinted
-            // (vintedLimiteNeuf plus bas) avec sa phrase. Jamais « choisis Neuf ».
-            if (limiteNeufSeulement({ platform, key, value: src, allowedValues })) {
-              return { key, label, state: "limite", motif: "neuf_seulement", value: src, allowedValues, blocking: false };
-            }
             const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform) });
             if (!verdict.dans && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
               return {
@@ -7699,21 +7696,6 @@ export default function ListingPreviewScreen({
     // copie n'en porte pas — la fiche arrive après le premier calcul.
   }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── VINTED « NEUF SEULEMENT » : DIT AVANT, JAMAIS DEMANDÉ (24/09) ─────────
-  // Le rayon Vinted n'accepte que « Neuf… » et l'article ne l'est pas : Vinted
-  // est écartée AVANT le débit, avec sa phrase (motifSupport), exactement comme
-  // un produit interdit. ⛔ platformSupport lui-même n'est PAS touché : il
-  // décide de la sélection (useEffect plus haut) et des plateformes publiables,
-  // dont dépend genericRequiredStatus — y injecter la limite ferait osciller
-  // le calcul. La limite ne vit que dans platformSupportEff, lu par les gardes
-  // du clic, le compte du CTA et les écrans du nouveau stepper.
-  const vintedLimiteNeuf = useMemo(() => {
-    const a = (genericRequiredStatus?.vinted ?? []).find(x => x.state === "limite" && x.motif === "neuf_seulement");
-    return a ? { valeur: a.value, acceptees: a.allowedValues } : null;
-  }, [genericRequiredStatus]);
-  const platformSupportEff = useMemo(
-    () => (vintedLimiteNeuf ? { ...platformSupport, vinted: "prohibited" } : platformSupport),
-    [platformSupport, vintedLimiteNeuf]);
 
   // ── UN SEUL endroit de saisie (2026-08-28, remplace l'unicité du 30/07) ────
   // L'ancienne règle répartissait la saisie entre le rouge et les bleus selon
@@ -8250,7 +8232,7 @@ export default function ListingPreviewScreen({
       // regles.js (calculerExclusions) — et la liste des exclues est NOMMÉE :
       // le nouveau stepper la dit sur l'écran de suivi, plus jamais en silence.
       const exclusions = calculerExclusions({
-        selected, platformSupport: platformSupportEff, platformListings,
+        selected, platformSupport, platformListings,
         plateformesSansAdresse, champsManquantsParPf,
       });
       const { interdites: plateformesInterdites, aPublier: plateformesAPublier } = exclusions;
@@ -8890,8 +8872,7 @@ export default function ListingPreviewScreen({
   // retirer éteindrait le statut qui la bloque (boucle). eBay garde son
   // comportement global (CTA gris), cf. requiredBlocking.
   const plateformesBloqueesChamps = calculerPlateformesBloqueesChamps(plateformesPubliables, genericRequiredStatus);
-  // platformSupportEff (24/09) : une plateforme à LIMITE (Vinted « neuf seulement ») ne compte pas.
-  const publishChips = [...plateformesPubliables].filter(p => !plateformesBloqueesChamps.includes(p) && platformSupportEff?.[p] !== "prohibited");
+  const publishChips = [...plateformesPubliables].filter(p => !plateformesBloqueesChamps.includes(p));
 
   function ctaLabel() {
     if (step === 0) {
@@ -9083,7 +9064,7 @@ export default function ListingPreviewScreen({
       const offertes = Object.keys(platformListings?.platforms ?? {});
       const verrouillees = offertes.filter(p => lockedSet.has(p));
       const libres = offertes.filter(p => !lockedSet.has(p)
-        && platformSupportEff?.[p] !== "prohibited"
+        && platformSupport?.[p] !== "prohibited"
         && !(lbcAdresseManquante?.plateformes ?? []).includes(p));
       const liste = (arr) => arr.map(nomPlateforme).join(", ");
       if (libres.length) {
@@ -9379,7 +9360,7 @@ export default function ListingPreviewScreen({
     const out = {};
     for (const p of Object.keys(platformListings?.platforms ?? {})) {
       if (!selected.has(p)) continue;
-      if (platformSupportEff?.[p] === "prohibited") out[p] = { ton: "geste", libelle: lang === "en" ? "Refused here" : "Refusé ici" };
+      if (platformSupport?.[p] === "prohibited") out[p] = { ton: "geste", libelle: lang === "en" ? "Refused here" : "Refusé ici" };
       else if ((lbcAdresseManquante?.plateformes ?? []).includes(p)) out[p] = { ton: "geste", libelle: lang === "en" ? "Address" : "Adresse" };
       else if (compte[p]) out[p] = { ton: "geste", libelle: `${compte[p]} question${compte[p] > 1 ? "s" : ""}` };
       else out[p] = { ton: "ok", libelle: lang === "en" ? "Ready" : "Prêt" };
@@ -9388,7 +9369,7 @@ export default function ListingPreviewScreen({
   })();
   // Ce que le clic ferait MAINTENANT : les exclusions, dites avant le geste.
   const exclusionsPrevues = calculerExclusions({
-    selected, platformSupport: platformSupportEff, platformListings,
+    selected, platformSupport, platformListings,
     plateformesSansAdresse: lbcAdresseManquante?.plateformes ?? [],
     champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
   });
@@ -9463,7 +9444,7 @@ export default function ListingPreviewScreen({
           ? `${PLATFORM_LABELS[p]} is being prepared — visible here, not open for publishing yet.`
           : `${PLATFORM_LABELS[p]} est en préparation — visible ici, pas encore ouverte à la publication.`),
     basculer: (p) => setSelected(prev => { const s = new Set(prev); if (s.has(p)) s.delete(p); else s.add(p); return s; }),
-    platformSupport: platformSupportEff, categorieFermee, motifSupport,
+    platformSupport, categorieFermee, motifSupport,
     publishedSet, queuedSet, lockedSet, attentes: fetchedAttentes, motifsVerrouillage,
     phraseEtat: (p, a) => phraseEtat(p, a, lang),
     pausedPlatforms, pausedReasons, motifPause: (p) => messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p]),

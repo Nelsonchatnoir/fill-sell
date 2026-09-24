@@ -11,6 +11,9 @@
 // est dit une fois, en clair.
 import { useEffect, useState } from "react";
 import { etatsFournee } from "./moteur/regles";
+// Le texte d'un job passe TOUJOURS par humanizeJobError (24/09) — jamais le
+// brut de l'extension ou du worker (« LIVE : aspect(s) … button.fake-link »).
+import { humanizeJobError } from "../utils/shared";
 import { Carte, Puce, Logo } from "./composants";
 import { NOM, ilYA } from "./texte";
 
@@ -98,12 +101,12 @@ export default function EcranSuivi({ m }) {
         geste: m.onCompleter && e.job ? <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(e.job)}>{en ? "Answer and resume" : "Répondre et relancer"}</button> : null };
       case "attente_autorisation": return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce> };
       case "attente_connexion": return { texte: en ? "Waiting for you to sign in on your computer." : "Attend ta connexion sur ton ordinateur.", droite: <Puce ton="geste">{en ? "Sign in" : "Connexion"}</Puce> };
-      case "attente": return { texte: e.job?.error || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
-      case "refusee": return { texte: e.erreur || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{en ? "Refused" : "Refusée"}</Puce> };
+      case "attente": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Waiting for something on your side." : "Attend quelque chose de ton côté."), droite: <Puce ton="geste">{en ? "Waiting" : "Attente"}</Puce> };
+      case "refusee": return { texte: (e.job?.error ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "The platform refused it." : "La plateforme a refusé."), droite: <Puce ton="refus">{en ? "Refused" : "Refusée"}</Puce> };
       // Une annulation porte sa raison quand la plateforme ne sait pas faire
-      // (pas-de-rouge « info » : Vinted neuf seulement, pas de rayon…) — on la
+      // (pas-de-rouge « info » : pas de rayon Beebs…) — on la
       // dit, au lieu d'un « Annulée. » muet.
-      case "annulee": return { texte: String(e.job?.error ?? "").trim() || (en ? "Cancelled." : "Annulée."), droite: <Puce ton="mute">{en ? "Cancelled" : "Annulée"}</Puce> };
+      case "annulee": return { texte: (String(e.job?.error ?? "").trim() ? humanizeJobError(e.job, en ? "en" : "fr") : "") || (en ? "Cancelled." : "Annulée."), droite: <Puce ton="mute">{en ? "Cancelled" : "Annulée"}</Puce> };
       // Pas de rang annoncé (« 1er », « 2e ») : c'est le serveur qui ordonne la
       // file, et l'ordre observé en réel (Vinted avant Opla) n'était pas
       // celui de la fournée — on ne promet que ce qu'on sait.

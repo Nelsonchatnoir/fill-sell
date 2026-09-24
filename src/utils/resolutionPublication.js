@@ -1194,6 +1194,24 @@ export async function resoudrePublication({
         const trace = { objet: motCategorie, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
         if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin)) {
           pf.categorie_verification = { ...trace, verdict: "confirme" };
+          // ── LEBONCOIN : UN CHEMIN CONFIRMÉ N'EST PLUS UNE SUPPOSITION (24/09) ─
+          // Jocabroc, job fc5e4bff (« Présentoir vintage… plateau de service ») :
+          // l'IA CONFIRMAIT « Arts de la table » pour l'objet « plateau de
+          // service », les critères de cette feuille étaient déjà déduits du
+          // titre (Univers « Accessoire de table », Produit « Plat apéritif »)…
+          // et le drapeau `lbcCategorieIncertaine` restait posé. leboncoin.js a
+          // donc laissé sa suggestion « Décoration » l'emporter — une feuille
+          // dont nous ne savions rien : Univers et Produit demandés à la
+          // personne, alors que la bonne réponse était déjà sur le job.
+          // Sur Leboncoin, changer de feuille change les critères OBLIGATOIRES :
+          // une confirmation par le mot-objet désarme le drapeau. Le contrôle
+          // de famille plus bas peut toujours le reposer (et retirer le
+          // « confirme ») — rien d'autre ne bouge, et les autres plateformes
+          // gardent leur règle.
+          if (row.platform === "leboncoin") {
+            delete pf.categorie_incertaine;
+            delete pf.lbcCategorieIncertaine;
+          }
           continue;
         }
         if (cheminChoisi && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {

@@ -23,7 +23,7 @@ import { feuillesDe } from '../utils/categorieParMot';
 import { texteComparable } from '../utils/texteComparable';
 import { libelleRayon, cheminComplet, cleCategorie } from '../utils/rayonPublication';
 import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPECTS } from '../utils/champsDuRayon';
-import { messageLimiteNeuf } from '../publication/moteur/listes.js';
+import { messageRayonNeuf } from '../publication/moteur/listes.js';
 import { rayonContreditLaFiche, phraseIncoherence, tailleContreditLaGrille } from '../utils/rayonIncoherent';
 
 const MOTS = {
@@ -367,12 +367,12 @@ export default function CarteRayon({
         )}
       </div>
 
-      {/* ── CE QUE LA PLATEFORME REFUSE (24/09) — une information, jamais
-             une question : aucune réponse ne la ferait partir. ─────────── */}
+      {/* ── RAYON « NEUF SEULEMENT » (24/09) — changer de rayon, jamais
+             répondre « neuf » pour un objet porté. ─────────────────────── */}
       {(limites ?? []).map((l) => (
         <div key={`limite-${l.cle}`} style={{ ...st.bloc, background: '#FFFBEB', borderColor: '#F59E0B' }}>
           <div style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.45 }}>
-            {messageLimiteNeuf({ valeur: l.valeur, acceptees: l.valeurs }, lang === 'en' ? 'en' : 'fr')}
+            {messageRayonNeuf({ valeur: l.valeur }, lang === 'en' ? 'en' : 'fr')}
           </div>
         </div>
       ))}

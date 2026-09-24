@@ -32,7 +32,7 @@
 // (chantier du 24/09) Le jugement « valeur hors liste » est celui du moteur
 // de publication, et de lui seul : la carte ne peut plus dire « À COMPLÉTER »
 // là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
-import { jugerValeurContreListe, horsListeBloque, limiteNeufSeulement } from '../publication/moteur/listes.js';
+import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement } from '../publication/moteur/listes.js';
 
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
@@ -199,8 +199,8 @@ export function classerChamps(lignes, pf, platform, { regle = 'classique', chemi
   const connus = [];
   const questions = [];
   const defauts = [];
-  // Les LIMITES de la plateforme (24/09) : pas des questions, des faits.
-  // Aujourd'hui une seule : Vinted n'accepte que du neuf dans ce rayon.
+  // Ce que la carte dit EN PLUS des questions (24/09) : aujourd'hui, un rayon
+  // Vinted qui n'accepte que du neuf face à un article porté → changer de rayon.
   const limites = [];
   const vus = new Set();
   // Notre clé pour un libellé donné, prise dans les lignes de la
@@ -275,13 +275,10 @@ export function classerChamps(lignes, pf, platform, { regle = 'classique', chemi
     // Désormais la carte demande exactement ce que le moteur retient : une
     // valeur hors d'une liste QUI FAIT FOI, sans rapprochement sûr (cf.
     // publication/moteur/listes.js). L'ancien stepper garde l'ancien geste.
-    // ── UNE LIMITE DE LA PLATEFORME N'EST PAS UNE QUESTION (24/09) ────────
-    // Casque de solene.mantero : l'État « Bon état » dans un rayon Vinted
-    // qui n'accepte que « Neuf avec étiquette ». Le demander, c'était inviter
-    // à répondre « neuf » pour un objet porté. On le DIT, et c'est tout.
-    if (regle === 'nouvelle' && limiteNeufSeulement({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values })) {
-      limites.push({ ...entree, motif: 'neuf_seulement' });
-      continue;
+    // ── RAYON « NEUF SEULEMENT » (24/09) : la question reste, la carte dit
+    // en plus de changer de rayon (casque de solene.mantero). Jamais d'exclusion.
+    if (rayonNeufSeulement({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values })) {
+      limites.push({ ...entree, motif: 'rayon_neuf' });
     }
     if (horsGrille && regle === 'nouvelle') {
       const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie });
