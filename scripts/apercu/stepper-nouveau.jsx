@@ -40,7 +40,8 @@ const noop = () => {};
 function faux(table, donnees) {
   const chaine = new Proxy(function () {}, {
     get(_, prop) {
-      if (prop === 'then') return (res) => res({ data: donnees, error: null });
+      if (prop === 'then') return (res, rej) => Promise.resolve({ data: donnees, error: null }).then(res, rej);
+      if (prop === 'catch') return () => chaine;
       return () => chaine;
     },
     apply() { return chaine; },

@@ -39,9 +39,21 @@ export default function EcranVerifier({ m }) {
         </div>
       )}
 
-      {/* Le moteur de l'ancien écran, dans la peau du nouveau : en-tête et
-          bande de photos masqués (ils sont ici), puce d'état par plateforme. */}
-      <StepGeneration {...m.propsStepGeneration} variante="nouvelle" etatsParPlateforme={m.etatsParPlateforme} />
+      {/* La rédaction n'a pas abouti : UNE carte (rouge = refus), le bouton du
+          pied propose de réessayer — pas le bloc et le bouton de l'ancien
+          écran en plus. Le message est celui du serveur, en clair. */}
+      {!enCours && !m.platformListings && m.platformError ? (
+        <Carte gravite="refus" titre={en ? "The listing could not be written" : "La rédaction n'a pas abouti"}>
+          <div className="fsn-card-p">{m.platformError}</div>
+          <div className="fsn-small" style={{ color: "inherit" }}>
+            {en ? "Nothing was counted for a failed attempt. Try again below." : "Une tentative qui échoue n'est pas décomptée. Réessaie ci-dessous."}
+          </div>
+        </Carte>
+      ) : (
+        /* Le moteur de l'ancien écran, dans la peau du nouveau : en-tête et
+           bande de photos masqués (ils sont ici), puce d'état par plateforme. */
+        <StepGeneration {...m.propsStepGeneration} variante="nouvelle" etatsParPlateforme={m.etatsParPlateforme} />
+      )}
 
       {!enCours && m.nbQuestions > 0 && (
         <Carte gravite="geste">
