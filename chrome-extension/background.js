@@ -4226,7 +4226,14 @@ function completionExtras(job, result) {
   extras.platform_fields = {
     ...(job.platform_fields ?? {}),
     ...(unfilled.length ? { unfilled_required_fields: unfilled } : {}),
+    // Bilan de la livraison Leboncoin (24/09) : ce qui était demandé, ce qui
+    // a été RELU posé sur la page, et ce qui ne l'a pas été — jamais en
+    // silence. L'app le lit pour le dire à la personne.
+    ...(result.livraisonLbc ? { livraison_lbc: result.livraisonLbc } : {}),
   };
+  // Un bilan hérité (copie de republication, tentative précédente) ne parle
+  // jamais à la place du dépôt courant.
+  if (job.platform === "leboncoin" && !result.livraisonLbc) delete extras.platform_fields.livraison_lbc;
   return extras;
 }
 
@@ -13255,6 +13262,12 @@ function capturerFicheEnPage(plateforme) {
           key_label: a.key_label != null ? String(a.key_label) : null,
           value: a.value != null ? String(a.value) : null,
           value_label: a.value_label != null ? String(a.value_label) : null,
+          // `values` (24/09) : shipping_type porte TOUS les transporteurs de
+          // l'annonce dans `values` (« mondial_relay, shop2shop, courrier_suivi,
+          // colissimo, face_to_face »), `value` n'en montre que le premier.
+          // Sans lui, un réglage fait à la main sur Leboncoin était perdu au
+          // redépôt.
+          ...(Array.isArray(a.values) && a.values.length > 1 ? { values: a.values.map(String) } : {}),
         }));
       out.capture_complete = true;
     } else {
@@ -21408,6 +21421,30 @@ async function processDeleteJob(job, accessToken) {
         await rearmBounded(accessToken, job, verdictBrut);
         return { status: "retry", error: verdictBrut };
       }
+    }
+
+    // ── L'ANNONCE D'UNE AUTRE BOUTIQUE (2026-09-24, remialbertholl) ─────────
+    // vinted.js a lu, sur la page même de l'annonce, qu'elle appartient à un
+    // autre compte Vinted que celui ouvert dans Chrome : le 403 access_denied
+    // n'était pas l'anti-robot. Même sortie que la garde serveur (needs_user
+    // boutique_etrangere), et la boutique est posée SUR LE JOB : au prochain
+    // passage, get-pending-jobs le retient tant que Chrome n'est pas sur la
+    // bonne boutique — plus aucune requête envoyée à Vinted pour rien.
+    if (result?.boutiqueEtrangere && job.platform === "vinted") {
+      const b = result.boutiqueEtrangere;
+      const pfB = { ...(job.platform_fields ?? {}) };
+      delete pfB.processing_since;
+      delete pfB.blocage_antirobot;
+      pfB.vinted_account_id = String(b.article);
+      pfB.needs_user_source = "boutique_etrangere";
+      pfB.boutique_etrangere = {
+        article: String(b.article), session: b.session != null ? String(b.session) : null,
+        login_session: b.login_session ?? null, le: new Date().toISOString(),
+        pose_par: "extension (propriétaire lu sur la page de l'annonce, 24/09)",
+      };
+      pfB.delete_trace = result.trace ?? [];
+      await updateJobStatus(accessToken, job.id, "needs_user", { error: result.error, platform_fields: pfB });
+      return { status: "needsUser", error: result.error };
     }
 
     if (result?.dryRun) {
