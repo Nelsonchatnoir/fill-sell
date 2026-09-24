@@ -27,6 +27,9 @@ export type Poste = {
   le?: string;                    // dernière fois vu (poll ou statut de job)
   build?: string;
   rearme_le?: string;             // dernière relance des jobs parqués faite pour ce poste
+  opla_acces_le?: string;         // (24/09) quand opla_acces a été appris/prouvé — borne les preuves plus anciennes
+  opla_acces_preuve?: string;     // (24/09) la preuve lue en base qui a rendu l'accès (cf. _shared/preuve-opla.ts)
+  preuve_opla_cherchee_le?: string; // (24/09) dernière recherche de preuve pour ce poste (au plus 1 / 10 min)
 };
 
 export const POSTE_TTL_MS = 48 * 3600_000;

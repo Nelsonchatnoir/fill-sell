@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { sessionIdDuJwt, postesVivants, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -658,10 +659,36 @@ serve(async (req) => {
           const avant: Poste = postes[sessionId] ?? {};
           const patchPoste: Poste = { le: new Date().toISOString() };
           if (build) patchPoste.build = build;
+          const declare = posteAvecOpla || posteSansOpla;
           if (posteAvecOpla) patchPoste.opla_acces = true;
           else if (posteSansOpla) patchPoste.opla_acces = false;
           else if (avant.opla_acces === false) posteSansOpla = true;
           else if (avant.opla_acces === true) posteAvecOpla = true;
+          // ── UN POSTE QUI NE DÉCLARE RIEN (≤ 0.6.63) : LA PREUVE EN BASE
+          //    (2026-09-24, solene.mantero / Thomas Dri) ──────────────────────
+          // Appris « sans accès » par un parcage, il ne recevait plus aucun job
+          // Opla — donc ne pouvait plus jamais réapprendre l'accès, même après
+          // l'octroi. Une PREUVE réelle plus récente que ce parcage (relevé ou
+          // publication Opla aboutis, relance posée par l'extension à l'octroi —
+          // jamais une « connexion » Opla, jamais un 401) lui rend l'accès, et
+          // la relance des jobs parqués ci-dessous part d'elle-même.
+          // Au plus une recherche par 10 min et par poste.
+          if (!declare && !posteAvecOpla) {
+            const derniere = Date.parse(String(avant.preuve_opla_cherchee_le ?? ""));
+            if (!Number.isFinite(derniere) || Date.now() - derniere > 10 * 60_000) {
+              patchPoste.preuve_opla_cherchee_le = patchPoste.le;
+              const preuve = await preuveAccesOpla(admin, user.id, avant.opla_acces === false ? (avant.opla_acces_le ?? null) : null)
+                .catch(() => null);
+              if (preuve) {
+                posteSansOpla = false;
+                posteAvecOpla = true;
+                patchPoste.opla_acces = true;
+                patchPoste.opla_acces_le = preuve.le;
+                patchPoste.opla_acces_preuve = preuve.source;
+                console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} : accès Opla PROUVÉ (${preuve.source}, ${preuve.le})${avant.opla_acces === false ? " — le parcage appris est levé" : ""}`);
+              }
+            }
+          }
           // Un poste AVEC accès polle : les jobs parqués « Autoriser Opla » (par
           // un autre poste, ou par lui-même avant l'octroi) repartent pour lui —
           // au plus une relance par 10 min et par poste.
