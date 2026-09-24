@@ -20,7 +20,7 @@ import { useState } from 'react';
 import StepperNouveau from '../../src/publication/StepperNouveau.jsx';
 import { useTranslation } from '../../src/i18n/useTranslation.js';
 import { dissociationsVides } from '../../src/utils/valeursGenerales.js';
-import { calculerExclusions, champsBloquantsParPlateforme } from '../../src/publication/moteur/regles.js';
+import { calculerExclusions, champsBloquantsParPlateforme, aspectBloquant } from '../../src/publication/moteur/regles.js';
 import { MIN_PHOTOS, MAX_PHOTOS } from '../../src/utils/photos.js';
 
 const params = new URLSearchParams(location.search);
@@ -86,16 +86,27 @@ function Apercu() {
   const [retoucheAvisLu, setRetoucheAvisLu] = useState(false);
 
   const platformListings = ECRAN >= 2 || FICHE ? { platforms: { vinted: {}, leboncoin: {}, beebs: {}, opla: {} } } : null;
+  // Écran 3 : un « Produit » Leboncoin manquant (comme avant) + le cas Primark
+  // du 24/09 — une valeur PRÉSENTE mais refusée par la grille Beebs (bloquante,
+  // liste qui fait foi) et un format de colis traduit en palier (ok).
+  const grilleEnfant = ['Prématuré (- de 45 cm)', '3 ans (94-102 cm)', '10 ans (128-140 cm)', '12 ans (140-152 cm)', '14 ans (152-164 cm)', '16 ans (164-176 cm)'];
   const genericRequiredStatus = ECRAN === 3
-    ? { leboncoin: [{ key: 'furniture_type', label: 'Produit', state: 'missing', allowedValues: ['Baskets', 'Bottes', 'Sandales', 'Autre'], dedicatedTarget: null }] }
+    ? {
+        leboncoin: [{ key: 'furniture_type', label: 'Produit', state: 'missing', allowedValues: ['Baskets', 'Bottes', 'Sandales', 'Autre'], dedicatedTarget: null }],
+        beebs: [
+          { key: 'Taille', label: 'Taille', state: 'invalid', value: 'XS / 34', suggested: null, blocking: true, inputType: 'dropdown', allowedValues: grilleEnfant, dedicatedTarget: 'taille' },
+          { key: 'Format du colis', label: 'Format du colis', state: 'ok', value: 'Petit colis', inputType: 'dropdown', allowedValues: ["Poids jusqu'à 200g max", "Poids jusqu'à 500g max", "Poids jusqu'à 1 kg max", "Poids jusqu'à 2 kg max"], dedicatedTarget: 'format_colis' },
+        ],
+      }
     : null;
+  const nbAspectsBloquants = Object.values(genericRequiredStatus ?? {}).flat().filter(aspectBloquant).length;
   const redSharedFields = ECRAN === 3 && !sharedFields.taille ? ['taille'] : [];
   const missingSharedFieldsDetailed = redSharedFields.map((k) => ({ key: k, platforms: ['vinted', 'leboncoin', 'ebay'] }));
   const exclusionsPrevues = calculerExclusions({
     selected, platformSupport: {}, platformListings,
     plateformesSansAdresse: [], champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
   });
-  const nbQuestions = redSharedFields.length + (genericRequiredStatus ? 1 : 0) + (ECRAN === 3 && !prixAchatInconnu && !prixAchatSaisi ? 1 : 0);
+  const nbQuestions = redSharedFields.length + nbAspectsBloquants + (ECRAN === 3 && !prixAchatInconnu && !prixAchatSaisi ? 1 : 0);
   const prixAchatManquant = ECRAN === 3 && !prixAchatInconnu && !String(prixAchatSaisi).trim();
   const ctaDisabled = ECRAN === 3 && prixAchatManquant;
 
@@ -145,8 +156,8 @@ function Apercu() {
     platformSessions: { vinted: true, leboncoin: false },
     voiesDuLot: { extension: ['vinted', 'leboncoin', 'beebs', 'opla'], serveur: ['ebay'], toutServeur: false, mixte: false },
     extFraicheurPublier: { etat: 'vivante', jours: 0 }, extensionVueLe: new Date(Date.now() - 65_000).toISOString(), extensionBlocked: false,
-    plateformesPubliables: new Set(selected), plateformesBloqueesChamps: genericRequiredStatus ? ['leboncoin'] : [],
-    publishChips: [...selected].filter((p) => p !== 'leboncoin' || !genericRequiredStatus), publishTotalFor: () => null,
+    plateformesPubliables: new Set(selected), plateformesBloqueesChamps: Object.keys(champsBloquantsParPlateforme(genericRequiredStatus)),
+    publishChips: [...selected].filter((p) => !champsBloquantsParPlateforme(genericRequiredStatus)[p]), publishTotalFor: () => null,
     propsStepGeneration,
     etatsParPlateforme: { vinted: { ton: 'ok', libelle: 'Prêt' }, leboncoin: { ton: 'geste', libelle: '1 question' }, beebs: { ton: 'ok', libelle: 'Prêt' }, opla: { ton: 'ok', libelle: 'Prêt' } },
     nbQuestions,
@@ -164,7 +175,7 @@ function Apercu() {
     exclusionsPrevues, plateformesRetirables: [],
     questionsParPlateforme: Object.fromEntries(missingSharedFieldsDetailed.flatMap((f) => f.platforms.map((p) => [p, ['Taille']]))),
     publishError: '', publishing: false, motifsCtaGris: ctaDisabled ? ["Prix d'achat à renseigner"] : [], ctaDisabled, ctaBlockingActive: ctaDisabled, requiredBlocking: ctaDisabled, publishedStateLoaded: true,
-    ctaLabel: `Publier sur ${[...selected].filter((p) => p !== 'leboncoin' || !genericRequiredStatus).length} plateformes`,
+    ctaLabel: `Publier sur ${[...selected].filter((p) => !champsBloquantsParPlateforme(genericRequiredStatus)[p]).length} plateformes`,
     fournee: ECRAN === 4 ? { inventaireId: 1, plateformes: ['leboncoin', 'vinted', 'beebs', 'opla'], depuis: new Date(Date.now() - 10_000).toISOString() } : null,
     exclusionsDuClic: ECRAN === 4 ? [{ platform: 'ebay', motif: 'sans_adresse' }] : [],
     publieesSansPf: [], createdThisRun: false, parcoursCreation: false,
