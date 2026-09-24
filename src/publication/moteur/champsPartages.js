@@ -66,6 +66,9 @@ export function genericFieldToSharedKey(platform, key) {
   if (platform === "beebs") {
     return { "Marque": "marque", "Pointure": "taille", "Taille": "taille", "Couleur": "couleur", "Matière": "matiere" }[key] ?? null;
   }
+  // Opla (chantier du 24/09) : « size » = la taille de l'article, dans le
+  // vocabulaire de SA grille (le serveur retraduit en code au départ).
+  if (platform === "opla") return key === "size" ? "taille" : null;
   return null;
 }
 

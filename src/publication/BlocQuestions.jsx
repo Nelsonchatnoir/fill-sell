@@ -15,6 +15,7 @@ import { useState } from "react";
 import { AspectValueInput } from "../components/ListingPreviewScreen";
 import { questionsAPoser, aspectBloquant } from "./moteur/regles";
 import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
+import { listeFaitFoiRelevee } from "./moteur/listes";
 import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
 
@@ -152,16 +153,27 @@ export default function BlocQuestions({ m }) {
 
         {q.redGenericAspects.map(({ gp, a }) => {
           const seule = q.genSeule({ a }) ? a.allowedValues[0] : null;
+          // (chantier du 24/09) La réponse écrit la copie de la plateforme, et
+          // se note pour la fiche quand le champ est un champ de l'article
+          // (taille, marque, couleur, matière) — écrite au publish si la fiche
+          // ne porte encore rien (jamais par-dessus le texte du vendeur).
+          const sk = genericFieldToSharedKey(gp, a.key);
+          const ecrire = (v) => {
+            toucherGeneric(gp, a.key);
+            if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
+            else m.setPlatformAspect(gp, a.key, v);
+            if (sk) m.noterReponseFicheValeur?.(sk, v);
+          };
+          // Une liste qui FAIT FOI (fermée, entière : grille de tailles Opla à
+          // 37 valeurs, paliers Beebs) se choisit dans un vrai sélecteur, même
+          // longue — sous iOS, la liste de suggestions n'existe pas.
+          const faitFoi = listeFaitFoiRelevee({ platform: gp, key: a.key, inputType: a.inputType, allowedValues: a.allowedValues });
           if (seule) return (
             <div key={`g:${gp}:${a.key}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
               <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton="geste">{NOM(gp)}</Puce></div>
               <div className="fsn-q-why">{tpl("stepPublishSingleValueMsg", { value: seule, platform: PLATFORM_LABELS[gp] ?? gp })}</div>
               <div className="fsn-btn-row">
-                <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => {
-                  toucherGeneric(gp, a.key);
-                  if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, seule);
-                  else m.setPlatformAspect(gp, a.key, seule);
-                }}>{t("stepPublishSingleValueYes")}</button>
+                <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => ecrire(seule)}>{t("stepPublishSingleValueYes")}</button>
                 <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" onClick={() => m.setSelected(prev => { const s = new Set(prev); s.delete(gp); return s; })}>{t("stepPublishSingleValueNo")}</button>
               </div>
             </div>
@@ -180,15 +192,18 @@ export default function BlocQuestions({ m }) {
                 value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
                 allowedValues={a.allowedValues}
                 strict={false}
-                onChange={v => {
-                  toucherGeneric(gp, a.key);
-                  if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
-                  else m.setPlatformAspect(gp, a.key, v);
-                }}
+                closedMax={faitFoi ? m.EBAY_CLOSED_LIST_MAX : undefined}
+                onChange={ecrire}
                 T={TN}
                 tailleTexte={16}
                 idBase={`fsn-gen-${gp}-${slug(a.key)}`}
               />
+              {sk === "marque" && (
+                <button type="button" className={`fsn-choice${a.value === NO_BRAND_VALUE ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
+                  onClick={() => ecrire(NO_BRAND_VALUE)}>
+                  {a.value === NO_BRAND_VALUE ? "✓ " : ""}{t("fieldBrandNone")}
+                </button>
+              )}
             </div>
           );
         })}

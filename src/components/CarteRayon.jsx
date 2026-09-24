@@ -102,6 +102,10 @@ export default function CarteRayon({
   supabase,
   onChoisirRayon,         // (choix|null) => void
   onChampChange,          // (cle, valeur, cleCatalogue) => void
+  // (chantier du 24/09) 'nouvelle' : le bloc « À compléter » applique la règle
+  // du moteur de publication (une valeur hors d'une liste QUI FAIT FOI) et le
+  // catalogue Opla se lit par le code de sa feuille. 'classique' : inchangé.
+  regle = 'classique',
 }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const [ouvertPicker, setOuvertPicker] = useState(false);
@@ -111,7 +115,12 @@ export default function CarteRayon({
   const [connusOuverts, setConnusOuverts] = useState(false);
   const cleLue = useRef(null);
 
-  const cle = cleCategorie(rayon?.chemin);
+  // Opla indexe son catalogue par le CODE de la feuille (MEN_SNEAKERS), pas
+  // par le chemin — sans lui, la carte Opla ne lisait jamais sa grille de
+  // tailles et la pointure 44,5 n'était refusée qu'au dépôt.
+  const cle = platform === 'opla' && regle === 'nouvelle'
+    ? (rayon?.id ? String(rayon.id) : cleCategorie(rayon?.chemin))
+    : cleCategorie(rayon?.chemin);
 
   // ── Le catalogue se lit QUAND le rayon est connu, et se RELIT quand il
   //    change : c'est tout le point du lot — les champs découlent du rayon.
@@ -135,9 +144,9 @@ export default function CarteRayon({
   const { questions, connus, defauts } = useMemo(
     () => classerChamps(
       [...(catalogue ?? []), ...lignesDepuisConfigLocale(configLocale)],
-      champs ?? {}, platform
+      champs ?? {}, platform, { regle, cheminCategorie: rayon?.chemin ?? null }
     ),
-    [catalogue, champs, platform, configLocale]
+    [catalogue, champs, platform, configLocale, regle, rayon]
   );
 
   // ── LE BRUIT PREND SA VALEUR TOUT SEUL ───────────────────────────────────

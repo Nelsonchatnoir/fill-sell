@@ -103,6 +103,12 @@ import {
   genericFieldToSharedKey, canalGeneriquePose, GENERIC_ASPECTS_PF_KEY,
   GENERIC_PLATFORM_LABELS, PLATEFORMES_ADRESSE_LBC,
 } from "../publication/moteur/champsPartages";
+// (chantier du 24/09) normAspectVal et nearestAllowedValue ont déménagé dans le
+// moteur, à l'identique : la carte (champsDuRayon) et la publication en masse
+// jugent une valeur contre une liste avec le même code que cet écran.
+import {
+  normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
+} from "../publication/moteur/listes";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -2773,6 +2779,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                     configLocale={platformFieldsConfig[p] ?? []}
                     supabase={supabase}
                     onChoisirRayon={(choix) => onChoisirRayon?.(p, choix)}
+                    regle={variante === "nouvelle" ? "nouvelle" : "classique"}
                     onChampChange={(cleNotre, valeur, cleCatalogue) => {
                       // ⛔ L'ÉTAT CORRIGÉ ICI DISSOCIE AUSSI LA CARTE (21/09).
                       //    Ce bloc est l'autre porte d'entrée de `etat` : sans
@@ -2977,47 +2984,9 @@ const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECT
 // décimale → point, préfixe « EU » rogné devant un chiffre. Depuis le 05/09,
 // apostrophes typographiques, guillemets, tirets longs et espaces insécables
 // des listes relevées ne font plus passer une valeur pour « hors liste ».
-const normAspectVal = s => texteComparable(s)
-  .replace(/(\d),(\d)/g, "$1.$2")
-  // ── LA VIRGULE D'UN LIBELLÉ N'EST PAS UNE DIFFÉRENCE (2026-09-07) ─────────
-  // Mesuré sur les 2 278 articles capturés : la liste Beebs écrit « Neuf, sans
-  // étiquette » (avec virgule), Vinted écrit « Neuf sans étiquette ». 496
-  // articles étaient donc jugés « hors liste » par cet écran pour une seule
-  // virgule — la couverture des états passe de 76,5 % à 98,2 % en la gommant.
-  // ⚠️ L'EXTENSION, ELLE, MATCHE DÉJÀ (beebs.js normalizeFuzzy retire « . » et
-  // « , » depuis toujours) : ce n'était donc PAS un refus de publication, mais
-  // un faux « à compléter » dans l'encart rouge, sur une valeur que la
-  // plateforme aurait acceptée. La virgule est retirée APRÈS le point décimal
-  // ci-dessus, qui doit rester prioritaire (« 38,5 » → « 38.5 »).
-  .replace(/[.,](?!\d)/g, "")
-  .replace(/\s+/g, " ").trim()
-  .replace(/^eu\s+(?=\d)/, "");
-// Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
-// « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers
-// (jamais de sous-chaîne : "S" ne matche pas "XS") : match si tous les tokens
-// d'un côté se retrouvent de l'autre ; à couverture égale, la valeur la plus
-// courte gagne. null si rien d'assez proche — on laisse l'utilisateur choisir.
-function nearestAllowedValue(val, allowedValues) {
-  const vals = Array.isArray(allowedValues) ? allowedValues : [];
-  const v = normAspectVal(val);
-  if (!v || !vals.length) return null;
-  const exact = vals.find(a => normAspectVal(a) === v);
-  if (exact) return exact;
-  const vTokens = v.split(/[^a-z0-9/]+/).filter(Boolean);
-  if (!vTokens.length) return null;
-  const vSet = new Set(vTokens);
-  let best = null, bestScore = 0;
-  for (const a of vals) {
-    const aTokens = normAspectVal(a).split(/[^a-z0-9/]+/).filter(Boolean);
-    if (!aTokens.length) continue;
-    const shared = aTokens.filter(tk => vSet.has(tk)).length;
-    if (!shared) continue;
-    if (shared !== aTokens.length && shared !== vSet.size) continue;
-    const score = shared - aTokens.length * 0.01;
-    if (score > bestScore) { bestScore = score; best = a; }
-  }
-  return best;
-}
+// normAspectVal et nearestAllowedValue : src/publication/moteur/listes.js
+// (déménagées le 24/09 SANS changer un caractère — les commentaires qui
+// expliquent la virgule des libellés et le préfixe EU y sont repris).
 
 // Contrôle de saisie d'un aspect obligatoire dans le fallback UI. Quatre rendus :
 //  · `strict` (eBay mode=SELECTION_ONLY) → <select> : choix IMPOSÉ quel que soit
@@ -4806,6 +4775,12 @@ export default function ListingPreviewScreen({
   // L'ancienne peau n'appelle jamais noterReponseFiche : l'ensemble y reste vide.
   const [reponsesFiche, setReponsesFiche] = useState(() => new Set());
   const noterReponseFiche = (key) => setReponsesFiche(prev => prev.has(key) ? prev : new Set([...prev, key]));
+  // (chantier du 24/09) Les réponses données à UNE plateforme dans le bloc de
+  // questions (Taille Beebs choisie dans sa grille, taille Opla) : la valeur,
+  // par champ partagé. Écrites sur la fiche au publish seulement si la fiche
+  // ne porte encore rien — cf. le bloc « réponses saisies » de handlePublish.
+  const [reponsesFicheValeurs, setReponsesFicheValeurs] = useState(() => ({}));
+  const noterReponseFicheValeur = (key, valeur) => setReponsesFicheValeurs(prev => (prev[key] === valeur ? prev : { ...prev, [key]: valeur }));
   const [sharedOverrides, setSharedOverrides] = useState(() => // { [platform]: Set<fieldKey> }
     draft?.sharedOverrides
       ? Object.fromEntries(Object.entries(draft.sharedOverrides).map(([k, v]) => [k, new Set(v)]))
@@ -7188,6 +7163,16 @@ export default function ListingPreviewScreen({
       });
       if (cle) keys[platform] = cle;
     }
+    // ── OPLA AUSSI (chantier du 24/09, nouveau stepper seulement) ────────
+    // Sa catégorie est un CODE (MEN_SNEAKERS), pas un chemin : c'est la clé
+    // de son catalogue (platform_category_aspects, source manual). Jusqu'ici
+    // le stepper ne contrôlait JAMAIS un requis Opla — la pointure 44,5 d'une
+    // basket n'était refusée qu'au dépôt (« Opla n'accepte pas les
+    // demi-pointures »). L'ancien stepper ne change pas.
+    if (variante === "nouvelle" && selected.has("opla") && edited.opla) {
+      const code = String(rayonsParPf?.opla?.id ?? edited.opla.platform_fields?.oplaCategoryCode ?? "").trim();
+      if (code) keys.opla = code;
+    }
     return keys;
     // rayonsParPf : ne change que quand la résolution ou `edited` bougent —
     // `edited` est déjà une dépendance ; l'ancien chemin ignore sa valeur.
@@ -7220,6 +7205,27 @@ export default function ListingPreviewScreen({
             .eq("category_key", key)
             .eq("required", true);
           let rows = data ?? [];
+          // ── OPLA : LE RÉFÉRENTIEL EN TITRES (chantier du 24/09) ────────────
+          // Ses listes sont des objets { code, title } (relevé de son API) ;
+          // l'écran parle en titres (« 12 ans »), le serveur retraduit en code
+          // (« 12Y ») au service du job (normaliserTailleOpla, même vocabulaire).
+          if (platform === "opla") {
+            rows = rows.map(r => ({
+              ...r,
+              allowed_values: Array.isArray(r.allowed_values)
+                ? r.allowed_values.map(v => (v && typeof v === "object") ? String(v.title ?? v.code ?? "").trim() : String(v).trim()).filter(Boolean)
+                : r.allowed_values,
+            }));
+          }
+          // ── VINTED EXIGE UNE MARQUE (24/09, nouveau stepper) — cf. listes.js ──
+          // Le catalogue n'apprend « brand » qu'au premier 400 d'une catégorie
+          // (Encadrements : appris le jour même, à 12:04, sur le refus d'une
+          // cliente). Avant ce 400, rien n'était demandé et le job partait
+          // sans marque. Une ligne synthétique porte l'exigence — sauf
+          // « Livres et médias », dont le formulaire n'a pas de champ Marque.
+          if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "brand") && vintedExigeUneMarque(String(key).split(" > "))) {
+            rows = [...rows, { field_key: "brand", field_label: "Marque", required: true, input_type: null, allowed_values: [], synthetique: "vinted_marque_exigee" }];
+          }
 
           // ── Repli d'options intra-plateforme (Vinted) — fix « Espace de
           // stockage » en texte libre (2026-07-18) ──────────────────────────
@@ -7376,6 +7382,33 @@ export default function ListingPreviewScreen({
       if (/_type$/.test(key) || /_product$/.test(key)) return null;
       return null;
     }
+    if (platform === "opla") {
+      // Opla (chantier du 24/09) : sa seule exigence contrôlable ici est la
+      // taille (« size », grille par feuille). Sa catégorie est le rayon, jamais
+      // un champ (CEST_LE_RAYON, champsDuRayon) ; ses couleurs et matières ne
+      // sont pas requises.
+      if (key === "size") {
+        if (String(pf.taille ?? "").trim()) return pf.taille;
+        // La copie Opla naît le plus souvent SANS taille : c'est le serveur qui
+        // la prend sur la FICHE au départ du job (opla-completion), et
+        // seulement si sa source est une capture, une synchro Vinted, un
+        // relevé ou une saisie de la personne (« manuel », depuis le 24/09).
+        // On juge ici la même valeur, avec la même règle — sinon la
+        // question « Taille » se poserait à chaque dépôt Opla alors que la
+        // fiche la connaît, et une pointure 44,5 de la fiche ne serait jamais
+        // vue avant le dépôt.
+        // La fiche : attributsBase quand l'init l'a lue, sinon la ligne passée
+        // par le Stock (initialListing) — un brouillon repris saute l'init et
+        // ne relit pas les attributs.
+        const base = (attributsBase && typeof attributsBase === "object") ? attributsBase
+          : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : null);
+        const a = base ? base.taille : null;
+        const v = a && typeof a === "object" ? String(a.v ?? "").trim() : "";
+        const source = a && typeof a === "object" ? String(a.source ?? "") : "";
+        return v && /^(capture|vinted|releve|manuel)/.test(source) ? v : null;
+      }
+      return null;
+    }
     if (platform === "beebs") {
       if (key === "Marque") return pf.marque;
       if (key === "Pointure" || key === "Taille") return pf.taille;
@@ -7455,11 +7488,17 @@ export default function ListingPreviewScreen({
     if (platform === "beebs") {
       return { "Marque": "marque", "Pointure": "taille", "Taille": "taille", "État": "etat", "Matière": "matiere", "Couleur": "couleur", "Âge": "age", "Format du colis": "format_colis" }[key] ?? null;
     }
+    if (platform === "opla") return { size: "taille" }[key] ?? null;
     return null;
   };
 
   const genericRequiredStatus = useMemo(() => {
     const out = {};
+    // Le chemin de catégorie de la copie, pour le vocabulaire des tailles
+    // (la table femme d'Opla ne vaut que sur sa branche « Femmes »).
+    const cheminDe = (p) => p === "opla"
+      ? (edited.opla?.platform_fields?.oplaCategoryPath ?? null)
+      : (typeof genericCategoryKeys?.[p] === "string" ? genericCategoryKeys[p].split(" > ") : null);
     for (const [platform, rows] of Object.entries(genericAspectsCatalog)) {
       // `plateformesPubliables` couvre déjà « sélectionnée ET générée », plus
       // l'adresse de remise et l'interdiction produit qui manquaient ici.
@@ -7548,6 +7587,29 @@ export default function ListingPreviewScreen({
           // sélecteur + rapprochement auto, tout ce qui aide), mais il
           // n'interdit plus la publication. Cf. `listeFaitFoi` plus haut.
           const target = genericDedicatedTarget(platform, key);
+          if (variante === "nouvelle") {
+            // ── LA RÈGLE UNIQUE DU 24/09 (moteur/listes.js) — nouveau stepper ──
+            // Cas Primark : Taille « XS / 34 » sur la grille enfant de Beebs,
+            // « Petit colis » sur ses paliers de poids. Le jugement TRADUIT
+            // d'abord (le palier que beebs.js posera, « XS » dans « XS / 34 /
+            // 6 », « 12 ans » dans « 12Y », 38,5 = 38.5), puis dit si la liste
+            // FAIT FOI (fermée, entière, pas un champ à recherche) : alors une
+            // valeur hors liste BLOQUE — sauf rapprochement sûr, posé d'office
+            // à l'écran Confirmer comme avant. Une liste qui ne fait pas foi
+            // (Marque, relevé tronqué à 200) : présence = ok, la plateforme
+            // tranche au dépôt — le comportement d'hier. La carte
+            // (champsDuRayon) applique exactement ce jugement.
+            const verdict = jugerValeurContreListe({ platform, key, value: src, allowedValues, cheminCategorie: cheminDe(platform) });
+            if (!verdict.dans && target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
+              return {
+                key, label, state: "invalid", value: src, dedicatedTarget: target,
+                suggested: verdict.suggested, inputType: r.input_type,
+                blocking: horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
+                allowedValues,
+              };
+            }
+            return { key, label, state: "ok", value: src, allowedValues, inputType: r.input_type, dedicatedTarget: target };
+          }
           if (target && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX &&
               !allowedValues.some(v => normAspectVal(v) === normAspectVal(src))) {
             return {
@@ -7574,10 +7636,25 @@ export default function ListingPreviewScreen({
           return { key, label, state: "ok", value: src, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
         }
         const generic = String(aspects[key] ?? "").trim();
-        if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
+        if (generic) {
+          if (variante === "nouvelle" && allowedValues.length && allowedValues.length <= EBAY_CLOSED_LIST_MAX) {
+            // Même règle sur le canal générique (une valeur tapée en « Autre
+            // valeur… », ou héritée d'un ancien job) : jugée contre la liste.
+            const verdict = jugerValeurContreListe({ platform, key, value: generic, allowedValues, cheminCategorie: cheminDe(platform) });
+            if (!verdict.dans) {
+              return {
+                key, label, state: "invalid", source: "generic", value: generic, dedicatedTarget: genericDedicatedTarget(platform, key),
+                suggested: verdict.suggested, inputType: r.input_type,
+                blocking: horsListeBloque({ regle: "nouvelle", platform, key, inputType: r.input_type, allowedValues, suggested: verdict.suggested }),
+                allowedValues,
+              };
+            }
+          }
+          return { key, label, state: "ok", source: "generic", value: generic, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
+        }
         if (GENERIC_PREFILLED[platform]?.includes(key)) {
           return {
-            key, label, state: "prefilled", allowedValues,
+            key, label, state: "prefilled", allowedValues, inputType: r.input_type,
             prefilledByPlatform: GENERIC_PREFILLED_BY_PLATFORM[platform]?.includes(key) ?? false,
           };
         }
@@ -7596,7 +7673,7 @@ export default function ListingPreviewScreen({
         // foi. Les champs TEXTE réels (isbn…) restent bloquants : l'utilisateur
         // PEUT les connaître.
         const ferme = ["combobox", "dropdown", "list"].includes(String(r.input_type ?? "").toLowerCase());
-        return { key, label, state: "missing", value: "", allowedValues,
+        return { key, label, state: "missing", value: "", allowedValues, inputType: r.input_type,
                  dedicatedTarget: genericDedicatedTarget(platform, key),
                  blocking: !(ferme && allowedValues.length === 0) };
       });
@@ -7606,7 +7683,9 @@ export default function ListingPreviewScreen({
     // processedPhotos.length : la neutralisation de `photos` ci-dessus affiche
     // le compte réel — sans cette dépendance il resterait figé à celui du
     // premier rendu après une photo ajoutée ou retirée au step Photos.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
+    // copie n'en porte pas — la fiche arrive après le premier calcul.
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── UN SEUL endroit de saisie (2026-08-28, remplace l'unicité du 30/07) ────
   // L'ancienne règle répartissait la saisie entre le rouge et les bleus selon
@@ -8660,13 +8739,28 @@ export default function ListingPreviewScreen({
       // trigger inventaire_attributs_fusion (migration 20260907000000), qui
       // fusionne : rien d'autre n'est écrasé. Best-effort : la publication est
       // partie, un échec ici ne doit pas le contredire.
-      if (variante === "nouvelle" && currentInvId && reponsesFiche.size) {
+      if (variante === "nouvelle" && currentInvId && (reponsesFiche.size || Object.keys(reponsesFicheValeurs).length)) {
         const attributs = {};
         const maintenant = new Date().toISOString();
         for (const k of reponsesFiche) {
           if (!SHARED_FIELD_KEYS.includes(k)) continue;
           const val = String(sharedFields?.[k] ?? "").trim();
           if (val) attributs[k] = { v: val, source: "manuel", at: maintenant };
+        }
+        // ── LES RÉPONSES DONNÉES À UNE PLATEFORME (chantier du 24/09) ──────
+        // Taille Beebs choisie dans SA grille, taille Opla sans demi-pointure :
+        // la réponse est la bonne pour cette plateforme, pas forcément le fait
+        // de l'article (une fiche « XS » ne devient pas « 12 ans » parce qu'un
+        // rayon enfant a été choisi ; une pointure 44,5 ne devient pas 44
+        // parce qu'Opla n'a pas de demi-pointures). Elle ne va sur la fiche
+        // que si la fiche NE PORTE RIEN : là, c'est la première réponse, et on
+        // ne la redemandera pas. Le texte du vendeur n'est jamais écrasé.
+        for (const [k, val] of Object.entries(reponsesFicheValeurs)) {
+          if (attributs[k] || !SHARED_FIELD_KEYS.includes(k)) continue;
+          const brut = initialListing?.attributs?.[k];
+          const dejaLa = brut && typeof brut === "object" ? String(brut.v ?? "").trim() : String(brut ?? "").trim();
+          const v = String(val ?? "").trim();
+          if (!dejaLa && v) attributs[k] = { v, source: "manuel", at: maintenant };
         }
         if (Object.keys(attributs).length) {
           const { error: atErr } = await supabase
@@ -9222,10 +9316,18 @@ export default function ListingPreviewScreen({
   // motifsCtaGris) — pour « Continuer · N questions ».
   const clesQuestions = new Set([
     ...missingSharedFieldsDetailed.map(f => f.key),
+    // Un aspect ne fusionne avec le champ partagé que si ce champ MANQUE
+    // (c'est alors la même question, posée une fois). Une valeur présente
+    // mais hors de la grille d'UNE plateforme (Taille « XS / 34 » sur le
+    // rayon enfant de Beebs) est SA question — même règle que
+    // etatsParPlateforme et que le bloc de questions (questionsAPoser).
     ...Object.entries(genericRequiredStatus ?? {}).flatMap(([gp, list]) =>
-      list.filter(aspectBloquant).map(a => genericFieldToSharedKey(gp, a.key) ?? `${gp}:${a.key}`)),
+      list.filter(aspectBloquant).map(a => {
+        const sk = genericFieldToSharedKey(gp, a.key);
+        return sk && missingSharedFields.includes(sk) ? sk : `${gp}:${a.key}`;
+      })),
     ...(ebayRequiredStatus ?? []).filter(aspectBloquant).map(a =>
-      (a.sharedKey && SHARED_FIELD_KEYS.includes(a.sharedKey)) ? a.sharedKey : `ebay:${a.name}`),
+      (a.sharedKey && missingSharedFields.includes(a.sharedKey)) ? a.sharedKey : `ebay:${a.name}`),
   ]);
   const nbQuestions = clesQuestions.size
     + (vintedGenreBlocked ? 1 : 0) + (beebsGenreBlocked ? 1 : 0)
@@ -9346,7 +9448,7 @@ export default function ListingPreviewScreen({
     generatingPlatforms, platformError, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
     modifierCarte, platformFieldsConfig,
     // Les questions et le geste
-    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche,
+    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
     vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
     genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
     demanderPrixAchat: prixAchatARenseigner, prixAchatSaisi, setPrixAchatSaisi, prixAchatInconnu, setPrixAchatInconnu, prixAchatManquant,

@@ -29,6 +29,11 @@
 //    posable` en base. On les remet ici pour que l'écran ne puisse pas poser
 //    une question que la base refuserait — jamais l'inverse.
 
+// (chantier du 24/09) Le jugement « valeur hors liste » est celui du moteur
+// de publication, et de lui seul : la carte ne peut plus dire « À COMPLÉTER »
+// là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
+import { jugerValeurContreListe, horsListeBloque } from '../publication/moteur/listes.js';
+
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
 // `color`) ; nos copies parlent la nôtre (`taille`, `etat`, `couleur`). Sans
@@ -190,7 +195,7 @@ export function texteSimple(s) {
 
 /** Le tri : ce qu'on sait, ce qu'il faut demander, et ce qu'on laisse
  *  tranquille. Une seule passe, une seule règle. */
-export function classerChamps(lignes, pf, platform) {
+export function classerChamps(lignes, pf, platform, { regle = 'classique', cheminCategorie = null } = {}) {
   const connus = [];
   const questions = [];
   const defauts = [];
@@ -257,7 +262,22 @@ export function classerChamps(lignes, pf, platform) {
     //    un relevé incomplet ne doit pas inventer des questions.
     const grille = Array.isArray(l.allowed_values) && l.allowed_values.length
       ? l.allowed_values.map((v) => texteSimple(v)) : null;
-    const horsGrille = Boolean(valeur && grille && entree.requis && !grille.includes(texteSimple(valeur)));
+    let horsGrille = Boolean(valeur && grille && entree.requis && !grille.includes(texteSimple(valeur)));
+    // ── LA MÊME RÈGLE QUE LE MOTEUR (chantier du 24/09, nouveau stepper) ──
+    // Le 20/09 cette carte disait « n'existe pas dans ce rayon » sur toute
+    // valeur absente de la grille — y compris « Petit colis », que beebs.js
+    // traduit lui-même en palier, et « Primark », absente d'un relevé de
+    // marques tronqué à 200 alors que Beebs la connaît. Pendant ce temps le
+    // moteur ne bloquait sur AUCUNE de ces valeurs : deux vérités à l'écran.
+    // Désormais la carte demande exactement ce que le moteur retient : une
+    // valeur hors d'une liste QUI FAIT FOI, sans rapprochement sûr (cf.
+    // publication/moteur/listes.js). L'ancien stepper garde l'ancien geste.
+    if (horsGrille && regle === 'nouvelle') {
+      const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie });
+      horsGrille = !verdict.dans && horsListeBloque({
+        regle, platform, key: l.field_key, inputType: l.input_type, allowedValues: l.allowed_values, suggested: verdict.suggested,
+      });
+    }
     if (horsGrille) { questions.push({ ...entree, horsGrille: true }); continue; }
     if (valeur) { connus.push(entree); continue; }
     // Le bruit : jamais une question. Un défaut prudent s'il en existe un
@@ -293,6 +313,10 @@ export async function lireChampsDuRayon(supabase, platform, categoryKey) {
       .order('field_key')
       .range(0, 199);
     if (error) return [];
-    return data ?? [];
+    // Opla range ses listes en objets { code, title } : la carte parle en
+    // titres (chantier du 24/09 — le serveur retraduit en code au départ).
+    return (data ?? []).map((l) => (Array.isArray(l.allowed_values)
+      ? { ...l, allowed_values: l.allowed_values.map((v) => (v && typeof v === 'object') ? String(v.title ?? v.code ?? '').trim() : String(v).trim()).filter(Boolean) }
+      : l));
   } catch { return []; }
 }
