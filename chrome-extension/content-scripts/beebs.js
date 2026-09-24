@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -4098,3 +4098,25 @@ async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
 // qu'une version fraîche du script est bien injectée après un reload de
 // l'extension.
 console.log(`[beebs] prêt — build ${BEEBS_BUILD} | BUILD_ID __FILLSELL_BUILD_ID__ | DRY_RUN=${DRY_RUN} | DELETE_DRY_RUN=${DELETE_DRY_RUN}`);
+
+// ── UN COMPTE BEEBS CONNECTÉ, DIT AU BACKGROUND (2026-09-24) ────────────────
+// Deborah (seghirdeborah711) : 101 passages horaires sur beebs.app depuis le
+// 17/09, session anonyme à chaque fois — et aucun moyen de savoir qu'elle
+// s'était reconnectée autrement qu'en rouvrant la page (la sonde du service
+// worker ne sait dire que null pour Beebs). L'attente est désormais espacée
+// (1 h, puis 3 h, puis 6 h) : c'est CE signal qui la lève sans délai.
+// N'importe quel onglet beebs.app (celui de la personne compris), cadre
+// principal seulement, une lecture ~5 s après le chargement. On ne parle QUE
+// pour un compte réel (même lecteur que la garde de dépôt : isAnonymous=false)
+// — jamais pour dire « déconnecté », c'est le handler qui l'observe.
+if (window.top === window && typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+  setTimeout(() => {
+    lireSessionFirebaseBeebs({ essais: 2, attenteMs: 3000 })
+      .then((s) => {
+        if (s?.etat !== "connecte") return;
+        console.log(`[beebs] compte connecté vu sur la page — ${s.resume}`);
+        return chrome.runtime.sendMessage({ type: "FILLSELL_SESSION_COMPTE_VU", platform: "beebs" }).catch(() => null);
+      })
+      .catch(() => { /* jamais bloquant */ });
+  }, 5000);
+}

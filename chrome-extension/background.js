@@ -951,6 +951,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
+  // ── UN COMPTE VU SUR LA PAGE DE LA PLATEFORME (2026-09-24, Beebs) ─────────
+  // beebs.js lit la session Firebase de TOUTE page beebs.app ouverte (onglet
+  // de la personne compris) et nous dit quand un vrai compte y est connecté.
+  // C'est la seule preuve « vivante » dont on dispose pour Beebs (sa sonde ne
+  // sait dire que null) : elle lève l'attente de session sans attendre
+  // l'échéance espacée. Fire-and-forget, jamais bloquant.
+  if (msg?.type === "FILLSELL_SESSION_COMPTE_VU" && msg?.platform === "beebs") {
+    noterCompteVuSurLaPage("beebs").catch((e) =>
+      console.warn("[background] compte Beebs vu (sans conséquence) :", String(e?.message ?? e)));
+    sendResponse({ ok: true });
+    return; // réponse synchrone
+  }
   // Preuve réseau de la soumission eBay (2026-08-14, famille B) : le content
   // script ne décide plus de re-cliquer « Mettre en vente » sur des signaux
   // DOM (bandeau menteur mesuré en direct : notice de validation rendue ~4 s
@@ -2357,13 +2369,43 @@ async function cleanupOrphanWorkTabs() {
     const store = await chrome.storage.session.get(platforms.map(workTabKey));
     const memorizedFor = (platform) => store[workTabKey(platform)] ?? null;
 
+    // ── ORPHELINS SANS FRAGMENT (2026-09-24) ────────────────────────────────
+    // Le fragment #fillsell-worker ne survit pas toujours au travail (la SPA
+    // réécrit l'URL — beebs.app/fr/listing relevé sans lui). Un onglet de
+    // travail qui a perdu son fragment ET son id mémorisé (storage.session
+    // vidé : redémarrage de Chrome, mise à jour de l'extension) n'était plus
+    // vu par personne : getOrCreateWorkTab en ouvrait un neuf, et l'ancien
+    // restait là, à jamais. Dans une fenêtre DE TRAVAIL (registre ou
+    // porte-page, sans onglet utilisateur — cf. fenetresTravailVivantes), un
+    // onglet de la plateforme est forcément à nous : il compte comme marqué.
+    // Jamais dans une fenêtre de l'utilisateur, jamais un onglet temporaire.
+    // Fenêtre retenue seulement si AUCUN de ses onglets n'est ailleurs que sur
+    // une plateforme, un porte-page ou un onglet vide : une fenêtre du
+    // registre où la personne a ouvert fillsell.app (cliquet de Deborah,
+    // 24/09) peut contenir SES onglets de plateforme — on n'y touche pas.
+    const { union: registre } = await fenetresTravailVivantes().catch(() => ({ union: [] }));
+    const hotes = Object.values(PLATFORM_HOSTS).filter(Boolean);
+    const fenetresTravail = [];
+    for (const id of registre) {
+      const w = await chrome.windows.get(id, { populate: true }).catch(() => null);
+      if (!w) continue;
+      const pure = (w.tabs ?? []).every((t) => {
+        const url = t.url || t.pendingUrl || "";
+        if (url === "" || url.startsWith("about:blank") || url.startsWith("chrome://newtab")) return true;
+        if (url.includes(WORK_TAB_FRAGMENT)) return true;
+        try { const h = new URL(url).hostname; return hotes.some((x) => h === x || h.endsWith(`.${x}`)); } catch { return false; }
+      });
+      if (pure) fenetresTravail.push(id);
+    }
+    const dansFenetreTravail = (t) => fenetresTravail.includes(t.windowId) && !(t.url || "").includes(TEMP_TAB_FRAGMENT);
+
     let closed = 0;
     for (const platform of platforms) {
       const host = PLATFORM_HOSTS[platform];
       if (!host) continue;
       // Même requête que getOrCreateWorkTab (permission d'hôte déjà couverte).
       const cands = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
-      const marked = (cands ?? []).filter((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
+      const marked = (cands ?? []).filter((t) => (t.url || "").includes(WORK_TAB_FRAGMENT) || dansFenetreTravail(t));
       // Cas normal : 0 ou 1 onglet de travail → rien à faire, aucun bruit.
       if (marked.length <= 1) continue;
 
@@ -2927,7 +2969,9 @@ async function processJob(rawJob, accessToken) {
   // touche pas à l'ordre de ses vérifications (périmètre 0.6.11 intact).
   if (job.action !== "republish") {
     const echeance = Date.parse(job.platform_fields?.next_action_after ?? "");
-    if (Number.isFinite(echeance) && Date.now() < echeance) {
+    if (Number.isFinite(echeance) && Date.now() < echeance && await attenteSessionLeveeLocalement(job)) {
+      console.log(`[background] Job ${job.id} : attente de session levée — compte ${job.platform} vu sur la page depuis la dernière observation`);
+    } else if (Number.isFinite(echeance) && Date.now() < echeance) {
       console.log(`[background] Job ${job.id} : reprise espacée — pas avant ${job.platform_fields.next_action_after}`);
       return { status: "skipped", error: "reprise espacée — échéance pas encore atteinte" };
     }
@@ -4392,20 +4436,49 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
     motif: String(errorMsg ?? "").slice(0, 300),
     pose_par: "extension",
   };
-  pf.next_action_after = new Date(Date.now() + ATTENTE_SESSION_MIN * 60_000).toISOString();
+  const delaiMin = delaiAttenteSessionMin(pf.attente_session.observations);
+  pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
   const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
   const quoi = job.action === "delete" ? "le retrait de l'annonce"
     : job.action === "republish" ? "la republication" : "la publication";
   console.warn(
     `[background] Job ${job.id} : session ${job.platform} morte (observation ${pf.attente_session.observations}) → ` +
-    `attente, aucune tentative consommée, re-sonde dans ${ATTENTE_SESSION_MIN} min — ${errorMsg}`
+    `attente, aucune tentative consommée, re-sonde dans ${delaiMin} min — ${errorMsg}`
   );
+  // Formulation : la cadence est notre mécanique, pas son affaire (même phrase
+  // qu'update-job-status). Le préfixe « En attente de ta connexion à » est une
+  // ANCRE lue par handler-watch et get-pending-jobs : ne pas le changer.
   await updateJobStatus(accessToken, job.id, "pending", {
     error:
       `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
-      `dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.`,
+      `dès que tu seras reconnecté(e). Aucune tentative consommée.`,
     platform_fields: pf,
   });
+  // ── L'ONGLET DE TRAVAIL SE REFERME (2026-09-24) ────────────────────────────
+  // Il restait ouvert sur la page de connexion (ou le formulaire anonyme)
+  // jusqu'au passage suivant — des heures, dans une fenêtre que la personne
+  // finit par voir. Rien à y garder : aucun geste n'a été tenté. Le passage
+  // suivant en rouvre un seul, neuf (getOrCreateWorkTab).
+  await fermerOngletTravail(job.platform, "attente de session");
+}
+
+// Ferme l'onglet de travail MÉMORISÉ d'une plateforme et oublie son id.
+// beforeunload neutralisé d'abord (sinon tabs.remove ouvre « Quitter le
+// site ? » et l'onglet gèle — cf. neutralizeBeforeUnload). Jamais bloquant.
+async function fermerOngletTravail(platform, motif) {
+  try {
+    const key = workTabKey(platform);
+    const store = await chrome.storage.session.get(key).catch(() => ({}));
+    const tabId = store[key];
+    if (tabId == null) return;
+    await chrome.storage.session.remove(key).catch(() => {});
+    if (!(await chrome.tabs.get(tabId).catch(() => null))) return;
+    await neutralizeBeforeUnload(tabId).catch(() => {});
+    const ok = await chrome.tabs.remove(tabId).then(() => true).catch(() => false);
+    console.log(`[background] onglet de travail ${platform} ${tabId} ${ok ? "refermé" : "NON refermé"} (${motif})`);
+  } catch (e) {
+    console.warn(`[background] fermeture de l'onglet de travail ${platform} (sans conséquence) :`, String(e?.message ?? e));
+  }
 }
 
 // ── BLOCAGE ANTI-ROBOT : la plateforme nous barre, ce n'est pas un essai raté ──
@@ -6147,6 +6220,20 @@ const REAUTH_PATHS = {
 // L'URL de la page de connexion est reconnue par les MÊMES tables que
 // detectReauth (REAUTH_HOSTS / REAUTH_PATHS) : une seule définition.
 const ATTENTE_SESSION_MIN = 60;
+// ── L'ATTENTE S'ESPACE (2026-09-24, Deborah / geronimo0550) ──────────────────
+// Une heure, indéfiniment : chez Deborah, 101 passages sur beebs.app depuis le
+// 17/09 — une page chargée toutes les heures, jour et nuit, pour une session
+// que personne n'a rouverte. On garde l'heure pour les trois premières
+// observations (la personne vient souvent de se déconnecter et va revenir),
+// puis 3 h, puis 6 h. Le job n'est JAMAIS abandonné ni passé en rouge : il
+// reste pending, aucune tentative consommée, et un compte vu sur la page
+// (noterCompteVuSurLaPage) ou une sonde « connecté » (handler-watch) lève
+// l'échéance aussitôt. ⛔ Même barème côté serveur (get-pending-jobs,
+// _shared/attente-session.js) pour les extensions qui ne le portent pas.
+function delaiAttenteSessionMin(observations) {
+  const n = Number(observations) || 0;
+  return n >= 7 ? 360 : n >= 4 ? 180 : ATTENTE_SESSION_MIN;
+}
 const LABEL_PLATEFORME = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" };
 function estUrlDeConnexionPlateforme(platform, url) {
   const hostRe = REAUTH_HOSTS[platform];
@@ -10574,6 +10661,61 @@ async function noterSessionDeconnectee(accessToken, platform) {
   delete releve.sondees;
   await ecrireExtensionSessions(accessToken, sub, releve, base);
   console.log(`[background] session ${platform} : DÉCONNEXION observée par le handler — extension_sessions mis à jour`);
+}
+
+// ── LE PENDANT : UN COMPTE VU SUR LA PAGE (2026-09-24, Beebs) ────────────────
+// Deborah (seghirdeborah711) : 101 passages horaires sur beebs.app depuis le
+// 17/09, session anonyme à chaque fois. L'attente est désormais ESPACÉE (cf.
+// delaiAttenteSessionMin) — il faut donc un signal qui la lève dès que la
+// personne se reconnecte, sinon « dès que tu seras reconnecté(e) » deviendrait
+// « dans six heures ». Ce signal : beebs.js lit la session Firebase de la page
+// (même lecteur que la garde de dépôt) sur n'importe quel onglet beebs.app, et
+// ne parle QUE pour un compte réel (isAnonymous=false). Deux effets :
+//   · local : la porte de processJob laisse passer les jobs en attente de
+//     session de cette plateforme observés AVANT ce signal ;
+//   · serveur : extension_sessions.beebs = true, horodaté — handler-watch lève
+//     l'échéance (même bloc que pour les autres plateformes) et get-pending-jobs
+//     cesse d'espacer.
+// Throttle 10 min : la page peut se recharger souvent, le fait ne change pas.
+const COMPTE_VU_KEY = (platform) => `fillsell_compte_vu_${platform}`;
+async function noterCompteVuSurLaPage(platform) {
+  const maintenant = Date.now();
+  const store = await chrome.storage.session.get(COMPTE_VU_KEY(platform)).catch(() => ({}));
+  const dernier = Number(store[COMPTE_VU_KEY(platform)] ?? 0);
+  await chrome.storage.session.set({ [COMPTE_VU_KEY(platform)]: maintenant }).catch(() => {});
+  if (dernier && maintenant - dernier < 10 * 60_000) return;
+  const session = await getValidSession().catch(() => null);
+  const accessToken = session?.access_token;
+  const sub = accessToken ? decodeJwtSub(accessToken) : null;
+  if (!sub) return;
+  let base = null;
+  try {
+    const rows = await restRequest(`profiles?id=eq.${sub}&select=extension_sessions`, accessToken);
+    base = sessionsSansHistorique(rows?.[0]?.extension_sessions);
+  } catch { /* on écrit quand même le fait observé */ }
+  const vuLe = new Date(maintenant).toISOString();
+  const releve = {
+    vinted: null, leboncoin: null, ebay: null, beebs: null,
+    ...(base ?? {}),
+    [platform]: true,
+    checked_at: vuLe,
+    http: { ...(base?.http ?? {}), [platform]: "compte_vu_sur_la_page" },
+    checked_at_par_plateforme: { ...(base?.checked_at_par_plateforme ?? {}), [platform]: vuLe },
+  };
+  delete releve.sondees;
+  await ecrireExtensionSessions(accessToken, sub, releve, base);
+  console.log(`[background] session ${platform} : COMPTE vu sur la page — attentes de session levées`);
+}
+// La porte de processJob : un job en attente de session de `platform`, dont la
+// dernière observation est ANTÉRIEURE au compte vu sur la page, n'attend plus
+// son échéance.
+async function attenteSessionLeveeLocalement(job) {
+  const att = job?.platform_fields?.attente_session;
+  if (!att || typeof att !== "object" || !/^En attente de ta connexion à /i.test(String(job?.error ?? ""))) return false;
+  const store = await chrome.storage.session.get(COMPTE_VU_KEY(job.platform)).catch(() => ({}));
+  const vu = Number(store[COMPTE_VU_KEY(job.platform)] ?? 0);
+  const derniere = Date.parse(String(att.derniere ?? att.depuis ?? ""));
+  return vu > 0 && Number.isFinite(derniere) && vu > derniere;
 }
 
 async function restRequest(path, accessToken, init = {}) {
@@ -19307,7 +19449,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
   if (Date.now() - dernierGesteRepublishAt < REPUBLISH_ESPACEMENT_MS) {
     return { status: "skipped", error: "espacement entre gestes de republication" };
   }
-  if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after)) {
+  if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after) && !(await attenteSessionLeveeLocalement(job))) {
     return { status: "skipped", error: "attente programmée avant le geste suivant" };
   }
   const snapshot = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : null;
