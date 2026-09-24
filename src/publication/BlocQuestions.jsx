@@ -1,0 +1,219 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// LES QUESTIONS — UN SEUL ENDROIT DE SAISIE (24/09/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+// L'encart rouge de l'ancien écran Publier, refait : mêmes sources (champs
+// partagés manquants, aspects Vinted/LBC/Beebs bloquants, aspects eBay
+// bloquants), même règle de déduplication, même « sticky » (un champ où la
+// personne a écrit ne se démonte jamais sous ses doigts — fix du 30/07 et du
+// 07/09), même écriture (le champ DÉDIÉ prime sur le canal générique — leçon
+// RoCotCot). La sélection vit dans moteur/regles.js (questionsAPoser) : c'est
+// la même fonction que l'ancien écran appelle depuis ce lot.
+// Ce qui change : chaque question dit QUI la pose et pourquoi, les champs
+// font 16 px, une seule couleur (ambre = un geste), et l'encart passe au vert
+// dès que plus rien ne bloque.
+import { useState } from "react";
+import { AspectValueInput } from "../components/ListingPreviewScreen";
+import { questionsAPoser, aspectBloquant } from "./moteur/regles";
+import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
+import { Carte, Puce } from "./composants";
+import { NOM } from "./texte";
+
+// L'objet de jetons attendu par AspectValueInput : des variables, jamais des
+// couleurs en dur.
+const TN = { border: "var(--fs-border)", chip: "var(--fs-card)", ink: "var(--fs-ink)", mute: "var(--fs-mute2)" };
+const slug = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+export default function BlocQuestions({ m }) {
+  const en = m.lang === "en";
+  const t = m.t; const tpl = m.tpl;
+  const fieldsCfg = m.platformFieldsConfig;
+  const sharedFieldCfg = {
+    taille:  fieldsCfg.vinted.find(f => f.key === "taille"),
+    couleur: { key: "couleur", label: t("fieldColorLabel"),    type: "text" },
+    matiere: { key: "matiere", label: t("fieldMaterialLabel"), type: "text" },
+    marque:  { key: "marque",  label: t("fieldBrandLabel"),    type: "text" },
+  };
+  const [stickyShared, setStickyShared] = useState(() => new Set());
+  const toucherShared = (key) => setStickyShared(prev => prev.has(key) ? prev : new Set([...prev, key]));
+  const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
+  const toucherGeneric = (gp, key) => setStickyGeneric(prev => {
+    const cur = prev[gp] ?? new Set();
+    return cur.has(key) ? prev : { ...prev, [gp]: new Set([...cur, key]) };
+  });
+  const [stickyEbay, setStickyEbay] = useState(() => new Set());
+  const toucherEbay = (name) => setStickyEbay(prev => prev.has(name) ? prev : new Set([...prev, name]));
+
+  const q = questionsAPoser({
+    missingSharedFields: m.redSharedFields, sharedFieldCfg, stickyShared,
+    genericRequiredStatus: m.genericRequiredStatus, stickyGeneric, canGeneric: Boolean(m.setPlatformAspect),
+    ebayRequiredStatus: m.ebayRequiredStatus, stickyEbay, canEbay: Boolean(m.setEbayAspect),
+    genericFieldToSharedKey, SHARED_PROPAGATION, peutDecocher: Boolean(m.setSelected),
+  });
+
+  // Les questions HORS aspects : prix d'achat, description Vinted, genre.
+  const demandePrixAchat = m.demanderPrixAchat;
+  const descriptionVide = m.descriptionVideVinted;
+  const total = q.redTotal + (demandePrixAchat ? 1 : 0) + (descriptionVide ? 1 : 0);
+  if (!total && !m.vintedGenreBlocked && !m.beebsGenreBlocked) return null;
+  const restants = q.redRestants + (m.prixAchatManquant ? 1 : 0) + (descriptionVide ? 1 : 0);
+
+  const origine = (texte) => texte ? <span className="qui"> · {texte}</span> : null;
+
+  return (
+    <Carte gravite={restants > 0 ? "geste" : "info"} style={{ gap: 12 }}>
+      <div className="fsn-row fsn-row--between">
+        <div className="fsn-card-t">
+          {restants > 0
+            ? (restants === 1 ? (en ? "One question before publishing" : "Une question avant de publier") : (en ? `${restants} questions before publishing` : `${restants} questions avant de publier`))
+            : (en ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
+        </div>
+        <Puce ton={restants > 0 ? "geste" : "ok"}>{restants > 0 ? (en ? `${restants} to fill in` : `${restants} à compléter`) : "✓"}</Puce>
+      </div>
+      <p className="fsn-card-p">
+        {restants > 0
+          ? (en ? "Each answer is written on the item card too: you won't be asked again." : "Chaque réponse s'écrit aussi sur la fiche de l'article : on ne te la redemandera pas.")
+          : (en ? "What you typed stays below — you can still adjust it." : "Ce que tu as saisi reste ci-dessous — tu peux encore l'ajuster.")}
+      </p>
+
+      <div className="fsn-grid2">
+        {/* Prix d'achat : demandé à un article né de ce parcours. VIDE ≠ ZÉRO,
+            et « je ne sais plus » existe enfin ici (jamais un 0 écrit à la
+            place d'un « je ne sais pas »). */}
+        {demandePrixAchat && (
+          <div className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
+            <div className="fsn-q-t">{t("stepPublishBuyPriceLabel")}</div>
+            <div className="fsn-q-why">{en ? "For your margin. Zero is a valid answer (a gift); if you don't remember, say so." : "Pour ta marge. Zéro est une réponse valable (un cadeau) ; si tu ne sais plus, dis-le."}</div>
+            <div className="fsn-row fsn-row--wrap">
+              <input
+                className="fsn-input" type="number" inputMode="decimal" style={{ flex: "1 1 140px" }}
+                value={m.prixAchatInconnu ? "" : m.prixAchatSaisi}
+                disabled={m.prixAchatInconnu}
+                onChange={ev => { m.setPrixAchatSaisi(ev.target.value); }}
+                placeholder={t("stepPublishBuyPricePlaceholder")}
+              />
+              <button type="button" className={`fsn-choice${m.prixAchatInconnu ? " fsn-choice--on" : ""}`} onClick={() => m.setPrixAchatInconnu(!m.prixAchatInconnu)}>
+                {m.prixAchatInconnu ? "✓ " : ""}{en ? "I don't remember" : "Je ne sais plus"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Description Vinted vide : SES mots, jamais un texte inventé. */}
+        {descriptionVide && (
+          <div className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
+            <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{t("fieldDescriptionLabel")}</div><Puce ton="geste">Vinted</Puce></div>
+            <div className="fsn-q-why">{en ? "Vinted refuses a listing without a description. Write it in your own words." : "Vinted refuse une annonce sans description. Écris-la avec tes mots."}</div>
+            <textarea className="fsn-textarea" value={m.edited?.vinted?.description ?? ""} onChange={ev => m.modifierCarte("vinted", "description", ev.target.value)} placeholder={en ? "Condition, size, what's included…" : "État, taille, ce qui est inclus…"} />
+          </div>
+        )}
+
+        {q.sharedFieldsToRender.map((key) => {
+          const field = sharedFieldCfg[key];
+          const val = m.sharedFields[key] ?? "";
+          const fieldGroups = field.childGroups && m.sharedChildAxes
+            ? [...field.childGroups.filter(g => g.axis === "shoes" || m.sharedChildAxes[g.axis]), ...field.groups]
+            : field.groups;
+          const originLabel = m.redSharedFieldPlatforms[key];
+          const manque = m.redSharedFields.includes(key);
+          return (
+            <div key={key} className={`fsn-q${manque ? " fsn-q--bloque" : ""}`}>
+              <div className="fsn-q-t">{field.label}{origine(originLabel)}</div>
+              <div className="fsn-q-why">{en ? "Required by these platforms. One answer serves them all." : "Exigé par ces plateformes. Une réponse sert à toutes."}</div>
+              {field.type === "select" ? (
+                <select className="fsn-select" value={val} onChange={ev => { toucherShared(key); m.setSharedField(key, ev.target.value); }}>
+                  <option value="">—</option>
+                  {fieldGroups
+                    ? fieldGroups.map(g => (
+                        <optgroup key={g.groupLabel} label={g.groupLabel}>
+                          {g.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </optgroup>
+                      ))
+                    : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              ) : (
+                <input className="fsn-input" type="text" value={val} placeholder="—" onChange={ev => { toucherShared(key); m.setSharedField(key, ev.target.value); }} />
+              )}
+              {key === "marque" && (
+                <button type="button" className={`fsn-choice${val === NO_BRAND_VALUE ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
+                  onClick={() => { toucherShared("marque"); m.setSharedField("marque", NO_BRAND_VALUE); }}>
+                  {val === NO_BRAND_VALUE ? "✓ " : ""}{t("fieldBrandNone")}
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {q.redGenericAspects.map(({ gp, a }) => {
+          const seule = q.genSeule({ a }) ? a.allowedValues[0] : null;
+          if (seule) return (
+            <div key={`g:${gp}:${a.key}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton="geste">{NOM(gp)}</Puce></div>
+              <div className="fsn-q-why">{tpl("stepPublishSingleValueMsg", { value: seule, platform: PLATFORM_LABELS[gp] ?? gp })}</div>
+              <div className="fsn-btn-row">
+                <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => {
+                  toucherGeneric(gp, a.key);
+                  if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, seule);
+                  else m.setPlatformAspect(gp, a.key, seule);
+                }}>{t("stepPublishSingleValueYes")}</button>
+                <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" onClick={() => m.setSelected(prev => { const s = new Set(prev); s.delete(gp); return s; })}>{t("stepPublishSingleValueNo")}</button>
+              </div>
+            </div>
+          );
+          return (
+            <div key={`g:${gp}:${a.key}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>{NOM(gp)}</Puce></div>
+              <div className="fsn-q-why">
+                {a.state === "invalid"
+                  ? (en ? `“${a.value}” is not in the list this platform accepts.` : `« ${a.value} » n'est pas dans la liste que cette plateforme accepte.`)
+                  : (a.allowedValues?.length
+                      ? (en ? "Required here — the values come from its form." : "Exigé ici — les valeurs viennent de son formulaire.")
+                      : (en ? "Required here — free text." : "Exigé ici — texte libre."))}
+              </div>
+              <AspectValueInput
+                value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
+                allowedValues={a.allowedValues}
+                strict={false}
+                onChange={v => {
+                  toucherGeneric(gp, a.key);
+                  if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
+                  else m.setPlatformAspect(gp, a.key, v);
+                }}
+                T={TN}
+                tailleTexte={16}
+                idBase={`fsn-gen-${gp}-${slug(a.key)}`}
+              />
+            </div>
+          );
+        })}
+
+        {q.redEbayAspects.map(a => (
+          <div key={`e:${a.name}`} className={`fsn-q${aspectBloquant(a) ? " fsn-q--bloque" : ""}`}>
+            <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label ?? a.name}</div><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>eBay</Puce></div>
+            <div className="fsn-q-why">
+              {a.state === "invalid"
+                ? (en ? `“${a.value}” is not in eBay's list for this category.` : `« ${a.value} » n'est pas dans la liste eBay de cette catégorie.`)
+                : (en ? "Required by eBay for this category." : "Exigé par eBay pour cette catégorie.")}
+            </div>
+            <AspectValueInput
+              value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
+              allowedValues={a.allowedValues}
+              strict={a.mode === "SELECTION_ONLY"}
+              closedMax={m.EBAY_CLOSED_LIST_MAX}
+              onChange={v => {
+                toucherEbay(a.name);
+                if (a.sharedKey && m.setEbaySharedField) m.setEbaySharedField(a.sharedKey, v);
+                else m.setEbayAspect(a.name, v);
+              }}
+              T={TN}
+              tailleTexte={16}
+              idBase={`fsn-ebay-${slug(a.name)}`}
+            />
+          </div>
+        ))}
+      </div>
+
+      {m.vintedGenreBlocked && <div className="fsn-card-p">{t("vintedGenreRequired")}</div>}
+      {m.beebsGenreBlocked && <div className="fsn-card-p">{t("beebsGenreRequired")}</div>}
+    </Carte>
+  );
+}
