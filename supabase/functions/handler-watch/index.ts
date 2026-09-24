@@ -214,9 +214,17 @@ serve(async (req) => {
 
   const { data: rows, error: qErr } = await supabase
     .from("cross_post_jobs")
-    .select("id, user_id, platform, action, status, error, handler_build, created_at")
-    .eq("status", "failed")
-    .gte("created_at", windowIso);
+    .select("id, user_id, platform, action, status, error, handler_build, created_at, platform_fields")
+    // ── LES SONDES ÉTAIENT AVEUGLES DEPUIS LE 22/09 (constat du 23/09) ──────
+    // pas-de-rouge (update-job-status) n'écrit plus JAMAIS 'failed' : un échec
+    // devient pending (reprise) / needs_user (à toi) / cancelled (info), daté
+    // par platform_fields.pas_de_rouge.at, son texte brut dans
+    // error_technique.brut (la colonne error ne porte plus que la phrase
+    // humaine). On lit donc l'ÉCHEC là où il vit maintenant, daté par l'échec
+    // et non par created_at (un job re-pendu garde son created_at). 'failed'
+    // reste lu : le balayage SQL des dépôts sans lien en écrit encore, et
+    // c'est le repli si le classement a levé.
+    .or(`and(status.eq.failed,created_at.gte."${windowIso}"),platform_fields->pas_de_rouge->>at.gte."${windowIso}"`);
 
   if (qErr) {
     return new Response(JSON.stringify({ error: qErr.message }), {
@@ -225,7 +233,14 @@ serve(async (req) => {
     });
   }
 
-  const jobs = (rows ?? []) as Job[];
+  // deno-lint-ignore no-explicit-any
+  const jobs: Job[] = ((rows ?? []) as any[])
+    // verdict 'info' = la plateforme ne sait pas faire (annonce disparue, pas
+    // d'option gratuite, pas de rayon, Vinted neuf seulement) : un refus
+    // légitime, jamais une panne de handler.
+    .filter((r) => r.platform_fields?.pas_de_rouge?.verdict !== "info")
+    // La signature se calcule sur le BRUT, pas sur la phrase réécrite.
+    .map((r) => ({ ...r, error: r.platform_fields?.error_technique?.brut ?? r.error }));
   // Republication multiplateforme (2026-09-17) : les messages nomment la
   // plateforme du job — « sur Vinted » n'est plus vrai pour tout le monde.
   const libellePlateforme = (p: unknown): string =>
@@ -2443,9 +2458,12 @@ serve(async (req) => {
         .from("cross_post_jobs")
         .select("id, user_id, inventaire_id, status, photos, platform_fields")
         .in("action", ["publish", "republish"])
-        .eq("status", "failed")
+        // 24/09 : depuis pas-de-rouge (22/09) plus rien n'est 'failed' — la
+        // photo hors FillSell finit en needs_user, son texte d'origine dans
+        // error_technique.brut. Même filet, là où l'échec vit maintenant.
+        .in("status", ["failed", "needs_user"])
         .gte("created_at", seuil7jIso)
-        .ilike("error", "%hors FillSell%"),
+        .or("error.ilike.%hors FillSell%,platform_fields->error_technique->>brut.ilike.%hors FillSell%"),
     ]);
     // deno-lint-ignore no-explicit-any
     const candidats = ([...(enAttente ?? []), ...(rates ?? [])] as any[])
@@ -2475,7 +2493,10 @@ serve(async (req) => {
       const complet = externes.length > 0 && remplacements.size === externes.length;
       // deno-lint-ignore no-explicit-any
       const patch: any = { photos: (j.photos as unknown[]).map(maj), platform_fields: pf };
-      if (j.status === "failed" && complet) {
+      if ((j.status === "failed" || j.status === "needs_user") && complet) {
+        // La relance standard : l'attente de la personne n'a plus d'objet.
+        for (const k of ["needs_user_source", "needsUserField", "needsUserFields", "needsUserAttempts",
+          "next_action_after", "error_technique", "processing_since"]) delete pf[k];
         patch.status = "pending";
         patch.error =
           "Reprise automatique : une photo de l'annonce était restée hébergée hors FillSell " +
