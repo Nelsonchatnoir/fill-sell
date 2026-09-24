@@ -124,6 +124,37 @@ async function activePriceOrNull(priceId: string | undefined, secretName: string
   }
 }
 
+// ── Une montée de palier DÉJÀ en attente de paiement (2026-09-24) ─────────────
+// Double clic, retour arrière depuis la page Stripe : si l'abonnement porte une
+// mise à jour en attente dont la facture ouverte vise CE palier, on renvoie sa
+// page — jamais une seconde facture. Autre palier, ou rien d'ouvert : null.
+async function pageDeLaMonteeEnAttente(sub: Stripe.Subscription, planType: string): Promise<string | null> {
+  if (!sub.pending_update || !sub.latest_invoice) return null;
+  try {
+    const id = typeof sub.latest_invoice === "string" ? sub.latest_invoice : sub.latest_invoice.id;
+    const facture = await stripe.invoices.retrieve(id);
+    if (facture.status !== "open") return null;
+    if (String(facture.metadata?.fillsell_upgrade_vers ?? "") !== planType) return null;
+    return facture.hosted_invoice_url ?? null;
+  } catch (e) {
+    console.warn(`[checkout] montée en attente illisible sur ${sub.id} : ${(e as Error)?.message ?? e}`);
+    return null;
+  }
+}
+
+// Le client ne lit JAMAIS l'erreur Stripe brute : un code stable pour le front,
+// et la phrase, en français et en anglais, que l'app peut afficher telle quelle.
+function reponseErreurPaiement(CORS: Record<string, string>): Response {
+  return new Response(JSON.stringify({
+    error: "paiement_impossible",
+    message_fr: "Le paiement n'a pas pu s'ouvrir. Rien n'a été débité : réessaie dans un instant. Si ça recommence, écris-nous depuis Réglages › Aide.",
+    message_en: "The payment could not be opened. Nothing was charged: try again in a moment. If it happens again, write to us from Settings › Help.",
+  }), {
+    status: 500,
+    headers: { "Content-Type": "application/json", ...CORS },
+  });
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -150,11 +181,14 @@ serve(async (req) => {
     });
   }
 
+  // Pour le journal d'échec : ce que la personne demandait.
+  let produitDemande: string | null = null;
   try {
     // product : undefined → abonnement Premium standard (comportement historique) ;
     // "pro" → Pro 29,99 €/mois ; "business" → Business 59,99 €/mois (2026-08-09) ;
     // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
     const { email, product } = await req.json();
+    produitDemande = typeof product === "string" ? product : null;
 
     if (email && authUser.email && email !== authUser.email) {
       return new Response(JSON.stringify({ error: "Email mismatch" }), {
@@ -251,9 +285,10 @@ serve(async (req) => {
     // Founder 9,99 legacy), un checkout Pro créerait un SECOND abonnement :
     // double facturation 12,99 + 29,99, et l'annulation de l'un des deux
     // coupait tous les flags (ancien subscription.deleted). On bascule donc
-    // l'abonnement EXISTANT sur le price Pro (proration facturée immédiatement,
-    // error_if_incomplete = si la carte refuse, Stripe annule l'update et on
-    // ressort en erreur SANS toucher aux flags). Aucun customer.subscription
+    // l'abonnement EXISTANT sur le price Pro (proration facturée immédiatement ;
+    // depuis le 24/09, pending_if_incomplete : la bascule n'a lieu qu'une fois
+    // la différence PAYÉE — sur-le-champ, ou par le client sur la page Stripe
+    // de la facture, cf. le bloc plus bas). Aucun customer.subscription
     // .created — le webhook ne voit qu'un updated (actif) + invoice.paid.
     //
     // ⚠️ RANG, PAS BOOLÉEN (2026-08-09, à l'ajout de Business). La version
@@ -285,14 +320,86 @@ serve(async (req) => {
       const target = live.find((s: Stripe.Subscription) => rangAbonnement(s) < plan.rang);
       if (target) {
         const item = target.items.data[0];
+        // ══ PASSAGE DE PALIER : PAYÉ D'ABORD, APPLIQUÉ ENSUITE (2026-09-24) ══
+        // Jocabroc (Premium payé par KLARNA via Checkout le 21/09) veut passer
+        // Pro depuis le web : 5 essais, 5 HTTP 500. L'ancien appel forçait
+        // `payment_behavior: "error_if_incomplete"` : Stripe tente de prélever
+        // la différence SANS le client ; Klarna (comme Amazon Pay, Link banque,
+        // une carte qui réclame 3-D Secure…) exige que le client valide — la
+        // tentative échoue, Stripe annule tout (PaymentIntent annulé,
+        // failed_invoice, facture supprimée, 0 € débité) et l'erreur remontait
+        // brute, sans une ligne de journal.
+        //
+        // DÉSORMAIS : `pending_if_incomplete` — la mise à jour du prix ne
+        // s'applique QUE si la facture de différence est payée :
+        //   · prélevée sur-le-champ (carte sans authentification) → appliquée
+        //     tout de suite : le chemin d'avant, flags et Pépites posés ici,
+        //     exactement comme avant ;
+        //   · paiement à valider → RIEN ne change sur l'abonnement (prix,
+        //     flags, grant) ; on renvoie la PAGE STRIPE de la facture (même
+        //     forme `{ url }` qu'un Checkout : le front l'ouvre déjà). Le client
+        //     valide lui-même ; au paiement, Stripe applique la mise à jour et
+        //     stripe-webhook (invoice.paid) pose flags + Pépites.
+        //   · abandon → Stripe annule (void) la facture et jette la mise à jour
+        //     à l'échéance (23 h au plus) ; la facture est passée en
+        //     `auto_advance: false` : aucune relance, aucun nouveau prélèvement.
+        //     Le client reste Premium, exactement comme avant.
+        // ⛔ Jamais deux abonnements : c'est LE MÊME abonnement qui change de prix.
+        // ⛔ Jamais deux factures : une montée déjà en attente vers ce palier
+        //    renvoie SA page (double clic, retour arrière) ; vers un autre palier,
+        //    Stripe annule l'ancienne facture en posant la nouvelle.
+        const pageEnAttente = await pageDeLaMonteeEnAttente(target, planType);
+        if (pageEnAttente) {
+          console.log(`[checkout] montée ${target.id} → ${planType} déjà en attente de paiement — page existante renvoyée`);
+          return new Response(JSON.stringify({ url: pageEnAttente, paiement_a_valider: true, tier: planType }), {
+            headers: { "Content-Type": "application/json", ...CORS },
+          });
+        }
         const upgraded = await stripe.subscriptions.update(target.id, {
           items: [{ id: item.id, price: priceId }],
           proration_behavior: "always_invoice",
-          payment_behavior: "error_if_incomplete",
-          // Un Premium en cours d'annulation qui upgrade veut manifestement rester :
-          cancel_at_period_end: false,
-          metadata: { ...(target.metadata ?? {}), plan_type: planType },
+          payment_behavior: "pending_if_incomplete",
+          expand: ["latest_invoice"],
         });
+        const factureMontee = (upgraded.latest_invoice && typeof upgraded.latest_invoice === "object")
+          ? upgraded.latest_invoice as Stripe.Invoice : null;
+        if (upgraded.pending_update) {
+          // Paiement à VALIDER par le client : aucun flag, aucune Pépite, aucun
+          // changement de prix tant que la facture n'est pas payée.
+          if (factureMontee?.id) {
+            try {
+              await stripe.invoices.update(factureMontee.id, {
+                auto_advance: false,
+                metadata: { fillsell_upgrade_vers: planType, fillsell_user_id: authUser.id },
+              });
+            } catch (e) {
+              const se = e as { code?: string; message?: string };
+              console.error(`[checkout] facture de montée ${factureMontee.id} : auto_advance/metadata non posés — code=${se?.code ?? "?"} message=${se?.message ?? e}`);
+            }
+          }
+          const page = factureMontee?.hosted_invoice_url ?? null;
+          console.log(`[checkout] montée ${target.id} → ${planType} EN ATTENTE du paiement client (facture ${factureMontee?.id ?? "?"}, ${factureMontee?.amount_due ?? "?"} ${factureMontee?.currency ?? ""}, expire ${upgraded.pending_update.expires_at ? new Date(upgraded.pending_update.expires_at * 1000).toISOString() : "?"})`);
+          if (!page) {
+            console.error(`[checkout] montée ${target.id} en attente SANS page de paiement (facture ${factureMontee?.id ?? "?"})`);
+            return reponseErreurPaiement(CORS);
+          }
+          return new Response(JSON.stringify({ url: page, paiement_a_valider: true, tier: planType }), {
+            headers: { "Content-Type": "application/json", ...CORS },
+          });
+        }
+        // Payé sur-le-champ : la mise à jour est appliquée. Métadonnée de palier
+        // et annulation programmée levée (« un Premium en cours d'annulation qui
+        // upgrade veut manifestement rester ») — posées APRÈS le paiement, dans
+        // un second appel : une mise à jour en attente ne les porte pas.
+        try {
+          await stripe.subscriptions.update(target.id, {
+            cancel_at_period_end: false,
+            metadata: { ...(target.metadata ?? {}), plan_type: planType },
+          });
+        } catch (e) {
+          const se = e as { code?: string; message?: string };
+          console.error(`[checkout] montée ${target.id} payée — metadata/cancel_at_period_end non posés : code=${se?.code ?? "?"} message=${se?.message ?? e}`);
+        }
         // Miroir de checkout.session.completed (qui ne firera PAS ici — pas de
         // session Checkout) : flags + Pépites du mois. upgrade_monthly_grant
         // (2026-07-23) complète la différence premium→pro si le grant du mois
@@ -357,9 +464,24 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json", ...CORS },
-    });
+    // ⛔ PLUS JAMAIS UN 500 MUET (2026-09-24, Jocabroc : 5 échecs, zéro ligne de
+    //    journal). Tout échec est journalisé avec ce que Stripe en dit — type,
+    //    code, code de refus, identifiant de requête — et le client reçoit une
+    //    phrase claire, jamais le message brut.
+    const e = err as {
+      type?: string; code?: string; decline_code?: string; statusCode?: number;
+      requestId?: string; message?: string; raw?: { message?: string };
+    };
+    console.error("[checkout] ÉCHEC", JSON.stringify({
+      user: authUser.id,
+      produit: produitDemande,
+      type: e?.type ?? null,
+      code: e?.code ?? null,
+      decline_code: e?.decline_code ?? null,
+      statusCode: e?.statusCode ?? null,
+      requestId: e?.requestId ?? null,
+      message: e?.message ?? String(err),
+    }));
+    return reponseErreurPaiement(CORS);
   }
 });

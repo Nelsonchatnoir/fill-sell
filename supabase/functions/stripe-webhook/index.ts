@@ -34,6 +34,55 @@ function portePlan(s: Stripe.Subscription, planType: string, envKey: string): bo
   return !!priceId && !!s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === priceId);
 }
 
+// ── LA FACTURE D'UNE MONTÉE DE PALIER (2026-09-24, Jocabroc / Klarna) ────────
+// create-checkout-session bascule l'abonnement existant en
+// `pending_if_incomplete` : la montée ne s'applique qu'une fois la facture de
+// différence PAYÉE — sur-le-champ (carte), ou par le client sur la page Stripe
+// (Klarna, Amazon Pay, Link, 3-D Secure…). C'est ICI, sur invoice.paid, que le
+// palier se pose alors : flags et Pépites, jamais avant le paiement.
+// Le palier visé se lit sur la marque posée par create-checkout-session
+// (metadata.fillsell_upgrade_vers) ; à défaut (montée payée à l'instant, avant
+// que la marque ne soit posée), sur les lignes POSITIVES d'une facture de
+// changement d'abonnement (billing_reason subscription_update).
+// ⚠️ DEUX FORMES D'OBJETS (relevé le 24/09) : l'endpoint Stripe rend ses
+//    événements au format d'API `2026-03-25.dahlia`, pas au 2023-10-16 du SDK.
+//    Là, `invoice.subscription` et `line.price` n'existent plus : l'abonnement
+//    est sous `parent.subscription_details.subscription`, le prix sous
+//    `pricing.price_details.price`. On lit les deux.
+// deno-lint-ignore no-explicit-any
+function prixDeLigne(l: any): string | null {
+  return l?.price?.id ?? l?.pricing?.price_details?.price ?? null;
+}
+// deno-lint-ignore no-explicit-any
+function abonnementDeFacture(invoice: any): string | null {
+  const s = invoice?.subscription ?? invoice?.parent?.subscription_details?.subscription ?? null;
+  return typeof s === "string" ? s : (s?.id ?? null);
+}
+function planDeMontee(invoice: Stripe.Invoice): "pro" | "business" | null {
+  const marque = String(invoice.metadata?.fillsell_upgrade_vers ?? "");
+  if (marque === "pro" || marque === "business") return marque;
+  if (invoice.billing_reason !== "subscription_update") return null;
+  const lignes = invoice.lines?.data ?? [];
+  const porte = (envKey: string) => {
+    const priceId = Deno.env.get(envKey) ?? "";
+    return !!priceId && lignes.some((l: Stripe.InvoiceLineItem) => (l.amount ?? 0) > 0 && prixDeLigne(l) === priceId);
+  };
+  if (porte("STRIPE_PRICE_BUSINESS")) return "business";
+  if (porte("STRIPE_PRICE_PRO")) return "pro";
+  return null;
+}
+
+// Le palier d'un abonnement lu sur son PRIX seul (jamais sa métadonnée) : c'est
+// lui qui fait foi après une mise à jour en attente appliquée.
+function planDuPrix(s: Stripe.Subscription): string | null {
+  const ids = (s.items?.data ?? []).map((it: Stripe.SubscriptionItem) => it.price?.id ?? "");
+  for (const [plan, envKey] of [["business", "STRIPE_PRICE_BUSINESS"], ["pro", "STRIPE_PRICE_PRO"], ["standard", "STRIPE_PRICE_STANDARD"]] as const) {
+    const priceId = Deno.env.get(envKey) ?? "";
+    if (priceId && ids.includes(priceId)) return plan;
+  }
+  return null;
+}
+
 async function recomputeStripeFlags(supabase: any, customerId: string) {
   const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
   const live = (subs ?? []).filter(
@@ -256,6 +305,36 @@ serve(async (req) => {
   if (event.type === "invoice.paid") {
     const invoice = event.data.object as Stripe.Invoice;
     const customerId = invoice.customer as string;
+    // ── MONTÉE DE PALIER PAYÉE (2026-09-24) ─────────────────────────────────
+    // Le paiement de la différence est CONFIRMÉ : c'est maintenant, et
+    // seulement maintenant, que le palier se pose. Flags CUMULATIFS (Business ⊇
+    // Pro ⊇ Premium), métadonnée de l'abonnement et annulation programmée levée
+    // — celles-ci seulement une fois la mise à jour réellement appliquée (plus
+    // de pending_update), sinon customer.subscription.updated s'en charge.
+    const montee = planDeMontee(invoice);
+    if (montee) {
+      const { error: flagsErr } = await supabase
+        .from("profiles")
+        .update({ is_premium: true, is_pro: true, ...(montee === "business" ? { is_business: true } : {}) })
+        .eq("stripe_customer_id", customerId);
+      if (flagsErr) console.error(`[webhook] montée ${montee} payée — flags non posés : ${flagsErr.message}`);
+      const subId = abonnementDeFacture(invoice);
+      if (subId) {
+        try {
+          const sub = await stripe.subscriptions.retrieve(subId);
+          if (!sub.pending_update && (sub.metadata?.plan_type !== montee || sub.cancel_at_period_end)) {
+            await stripe.subscriptions.update(subId, {
+              metadata: { ...(sub.metadata ?? {}), plan_type: montee },
+              cancel_at_period_end: false,
+            });
+          }
+        } catch (e) {
+          const se = e as { code?: string; message?: string };
+          console.error(`[webhook] montée ${montee} payée — metadata de ${subId} non posée : code=${se?.code ?? "?"} message=${se?.message ?? e}`);
+        }
+      }
+      console.log(`[webhook] montée de palier PAYÉE → ${montee} (facture ${invoice.id}, customer ${customerId}, ${invoice.amount_paid ?? "?"} ${invoice.currency ?? ""})`);
+    }
     const { data: profs } = await supabase
       .from("profiles")
       .select("id, is_pro, is_business")
@@ -269,7 +348,9 @@ serve(async (req) => {
       // is_business testé d'abord (2026-08-08) : Business n'existe pas côté
       // Stripe, mais un Business mobile qui porterait AUSSI un abonnement
       // Stripe résiduel ne doit pas voir son grant rétrogradé à 'pro'.
-      const tier = profs[0].is_business ? "business" : profs[0].is_pro ? "pro" : "premium";
+      // Une montée payée donne SON palier, quel que soit l'ordre d'arrivée des
+      // événements (les flags viennent d'être posés juste au-dessus).
+      const tier = montee ?? (profs[0].is_business ? "business" : profs[0].is_pro ? "pro" : "premium");
       // Fin de la période facturée = échéance du prochain grant. C'est LE
       // signal de renouvellement : depuis le cycle par utilisateur, un compte
       // à canal de paiement n'est plus crédité que sur cet événement (le sweep
@@ -331,6 +412,29 @@ serve(async (req) => {
 
     console.log("[webhook] subscription.updated for customer:", customerId, "status:", status, "cancel_at_period_end:", cancelAtPeriodEnd);
 
+    // ── LE PRIX A CHANGÉ : UNE MONTÉE EN ATTENTE VIENT D'ÊTRE APPLIQUÉE
+    //    (2026-09-24) ─────────────────────────────────────────────────────────
+    // Filet d'invoice.paid : si la facture est arrivée avant que Stripe
+    // n'applique la mise à jour, la métadonnée de palier n'a pas pu suivre. Le
+    // prix fait foi : métadonnée réalignée (le rang de create-checkout-session
+    // la lit en premier) et flags recalculés depuis Stripe. Jamais pendant une
+    // mise à jour encore en attente — rien n'est payé.
+    const precedent = ((event.data as { previous_attributes?: Record<string, unknown> }).previous_attributes) ?? {};
+    const prixChange = "items" in precedent || "plan" in precedent;
+    if (prixChange && !subscription.pending_update
+        && (status === "active" || status === "trialing" || status === "past_due")) {
+      const plan = planDuPrix(subscription);
+      if (plan && subscription.metadata?.plan_type !== plan) {
+        try {
+          await stripe.subscriptions.update(subscription.id, { metadata: { ...(subscription.metadata ?? {}), plan_type: plan } });
+        } catch (e) {
+          const se = e as { code?: string; message?: string };
+          console.error(`[webhook] metadata de palier non réalignée sur ${subscription.id} : code=${se?.code ?? "?"} message=${se?.message ?? e}`);
+        }
+      }
+      await recomputeStripeFlags(supabase, customerId);
+    }
+
     if (status === "unpaid" || status === "incomplete_expired") {
       // Même logique que subscription.deleted : recalcul depuis ce qui reste
       // de vivant, jamais de double remise à zéro aveugle (un double-abo
@@ -369,6 +473,18 @@ serve(async (req) => {
       `customer=${customerId ?? "?"} billing_reason=${invoice.billing_reason ?? "?"} ` +
       `amount_due=${invoice.amount_due ?? "?"}`
     );
+    // ── MONTÉE DE PALIER EN ATTENTE DE VALIDATION (2026-09-24) ──────────────
+    // Une facture de différence (billing_reason subscription_update) qui
+    // réclame une action du client n'est PAS un échec : create-checkout-session
+    // vient d'ouvrir sa page Stripe au client, qui la valide lui-même. Aucun
+    // mail « paiement échoué », aucune alerte : s'il abandonne, Stripe annule la
+    // facture et la mise à jour à l'échéance, et il reste à son palier.
+    if (invoice.billing_reason === "subscription_update") {
+      console.log(`[webhook] ${event.type} sur la facture de MONTÉE ${invoice.id} : le client valide sur la page Stripe — ni mail ni alerte`);
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     // ── POURQUOI LE MAIL CLIENT N'EST JAMAIS PARTI (relevé du 19/09/2026) ────
     // Zéro ligne 'payment_failed:%' dans email_logs depuis la mise en service
@@ -449,7 +565,7 @@ serve(async (req) => {
     const portePrix = (envKey: string) => {
       const priceId = Deno.env.get(envKey) ?? "";
       return !!priceId && (invoice.lines?.data ?? []).some(
-        (l: Stripe.InvoiceLineItem) => l.price?.id === priceId
+        (l: Stripe.InvoiceLineItem) => prixDeLigne(l) === priceId
       );
     };
     const nomPlan = portePrix("STRIPE_PRICE_BUSINESS") ? "Business"
