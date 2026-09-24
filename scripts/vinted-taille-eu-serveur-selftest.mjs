@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ORDRE_EXACT_D_ABORD, optionEuPourNombreNu, tailleAServir, tailleAServirPublication }
+import { ORDRE_EXACT_D_ABORD, grilleDuDernierEchecTaille, optionEuPourNombreNu, tailleAServir, tailleAServirPublication }
   from "../supabase/functions/_shared/vinted-taille-republication.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -104,6 +104,22 @@ console.log("\n[4] Rejeu du parc — résultat attendu = celui du code d'avant (
     ok(`${n} combinaisons rejouées, ${identiques} identiques au code d'avant`, differents.length === 0, differents.slice(0, 5).join(" ; "));
     console.log(`  nouveaux appariements « EU N » (là où il n'y avait rien) : ${nouveaux.length}${nouveaux.length ? " — " + nouveaux.join(" ; ") : ""}`);
   }
+}
+
+console.log("\n── Grille du dernier échec (24/09, veste Brice « 48 », catégorie « Autres » sans grille au catalogue) ──");
+{
+  const diag = "taille demandée « 48 » — candidats essayés : « 48 » — onglets vus : S/M/L [XXS, XS, S, M, L, XL, XXL, XXXL, 4XL, 5XL, 6XL, 7XL, 8XL, Taille unique] ; DE [DE 21, DE 22, DE 42, DE 44, DE 46, DE 48, DE 50, … +20] ; UK/US [32S, 34S, 48S, 48R, … +20] ; EU [EU 42, EU 44, EU 46, EU 48, EU 50, EU 52, … +1]";
+  const g = grilleDuDernierEchecTaille(diag, "48");
+  ok("options relevées, sans « … +N »", Array.isArray(g) && g.includes("EU 48") && !g.some((o) => o.startsWith("…")), JSON.stringify(g));
+  const r = tailleAServir({ captureTaille: "48", inventaireTaille: null, options: g }, { ordrePrefixe: ORDRE_EXACT_D_ABORD, euCoupe: false });
+  ok("« 48 » → « EU 48 » (jamais DE 48, jamais 48S)", r.valeur === "EU 48", JSON.stringify(r));
+  ok("relevé d'une AUTRE taille : rien", grilleDuDernierEchecTaille(diag, "42") === null);
+  ok("pas de relevé : rien", grilleDuDernierEchecTaille(null, "48") === null);
+  const diag42 = diag.replace("demandée « 48 »", "demandée « 42 »");
+  const r42 = tailleAServir({ captureTaille: "42", inventaireTaille: null, options: grilleDuDernierEchecTaille(diag42, "42") }, { ordrePrefixe: ORDRE_EXACT_D_ABORD, euCoupe: false });
+  ok("« 42 » → « EU 42 »", r42.valeur === "EU 42", JSON.stringify(r42));
+  const coupe = tailleAServir({ captureTaille: "48", inventaireTaille: null, options: g }, {});
+  ok("client qui coupe « EU » : rien servi", coupe.valeur === null, JSON.stringify(coupe));
 }
 
 console.log(ko === 0 ? "\n[selftest:vinted-taille-eu-serveur] OK\n" : `\n[selftest:vinted-taille-eu-serveur] ÉCHEC — ${ko} vérification(s) en défaut.\n`);

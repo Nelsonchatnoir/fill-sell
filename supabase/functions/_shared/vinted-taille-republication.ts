@@ -378,3 +378,29 @@ export function tailleAServir(args: {
   }
   return { valeur: null, etape: null, ordre: ordreTexte, motif: motifs.join(" ; ") };
 }
+
+// ── LA GRILLE VUE AU DERNIER ÉCHEC DE CE JOB (2026-09-24) ─────────────────
+// Quand le catalogue n'a pas de grille pour la catégorie (« Hommes > Vêtements
+// > Costumes et blazers > Autres », catalog 1866 : aucune ligne size), la seule
+// grille RÉELLE qu'on connaisse est celle que l'extension a relevée sur le
+// formulaire au dernier échec de taille de ce même job — last_diagnostic :
+//   « taille demandée « 48 » — candidats essayés : « 48 » — onglets vus :
+//     S/M/L [XXS, XS, …] ; DE [DE 21, …, … +20] ; EU [EU 42, EU 44, …] »
+// Rendue SEULEMENT si ce relevé porte sur la même taille que la capture : un
+// relevé d'une autre taille ou d'un autre article ne sert jamais. Liste
+// tronquée (20 par onglet) : ce qu'elle ne montre pas n'est pas servi.
+export function grilleDuDernierEchecTaille(diagnostic: unknown, captureTaille: unknown): string[] | null {
+  const d = String(diagnostic ?? "");
+  const demandee = d.match(/taille demandée « ([^»]+) »/)?.[1];
+  if (!demandee || normaliserTaille(demandee) !== normaliserTaille(captureTaille)) return null;
+  const i = d.indexOf("onglets vus :");
+  if (i < 0) return null;
+  const options: string[] = [];
+  for (const m of d.slice(i).matchAll(/\[([^\]]*)\]/g)) {
+    for (const o of m[1].split(", ")) {
+      const t = o.trim();
+      if (t && !t.startsWith("…") && !options.includes(t)) options.push(t);
+    }
+  }
+  return options.length ? options : null;
+}

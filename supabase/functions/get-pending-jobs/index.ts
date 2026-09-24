@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { sessionIdDuJwt, postesVivants, posteCourt, type Poste } from "../_shared/poste-extension.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
-import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
+import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
+import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
 
@@ -991,6 +992,27 @@ serve(async (req) => {
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
+    // ── L'ATTENTE DE SESSION S'ESPACE, POUR TOUS LES BUILDS (2026-09-24) ─────
+    // Deborah : 101 passages horaires sur beebs.app depuis le 17/09. Les
+    // extensions ≤ 0.6.65 re-posent l'échéance à +1 h à chaque observation ;
+    // on tient ici le barème (1 h ×3, puis 3 h, puis 6 h — _shared/
+    // attente-session.js) : le job reste pending, intact, simplement pas servi
+    // avant son heure. Une preuve « connecté » postérieure (sonde, ou compte vu
+    // sur la page en 0.6.66) le rend aussitôt ; handler-watch efface alors le
+    // message d'attente, ce qui le sort d'ici de toute façon.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => (j.platform_fields as Record<string, unknown> | null)?.["attente_session"])) {
+      try {
+        const { data: profA } = await userClient
+          .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+        const sessionsA = (profA?.extension_sessions ?? null) as Record<string, unknown> | null;
+        const avantA = out.length;
+        out = out.filter((j) => !attenteSessionEncoreEspacee(j, sessionsA));
+        if (out.length !== avantA) {
+          console.log(`[get-pending-jobs] userId=${user.id} : ${avantA - out.length} job(s) en attente de session espacée (pending, intacts)`);
+        }
+      } catch (_e) { /* best-effort : lecture illisible → on distribue comme avant */ }
     }
 
     // ── UN POSTE SANS ACCÈS OPLA NE REÇOIT AUCUN JOB OPLA (2026-09-24) ───────
@@ -3737,9 +3759,14 @@ serve(async (req) => {
           const cle = String(c.inventaire_id);
           if (!derniereCapture.has(cle)) derniereCapture.set(cle, (c.libelles ?? {}) as Record<string, unknown>);
         }
-        const aTraiter = republishTaille.filter((j) =>
-          TAILLE_PREFIXEE_RE.test(normaliserTaille(derniereCapture.get(String(j.inventaire_id))?.["taille"]))
-        );
+        // Le NOMBRE NU entre aussi (24/09) : la porte « N » → « EU N » de
+        // tailleAServir (23/09) n'était jamais atteinte — ce filtre ne laissait
+        // passer que les captures préfixées. Veste Brice « 48 » de Joséphine
+        // (9a3da3d5), « 42 » (d6ec3d42) : trois essais sur le même mur.
+        const aTraiter = republishTaille.filter((j) => {
+          const t = normaliserTaille(derniereCapture.get(String(j.inventaire_id))?.["taille"]);
+          return TAILLE_PREFIXEE_RE.test(t) || NOMBRE_NU_RE.test(t);
+        });
         if (aTraiter.length) {
           const { data: invs } = await userClient
             .from("inventaire")
@@ -3777,10 +3804,15 @@ serve(async (req) => {
             if (String(uf["taille"] ?? "").trim()) continue; // saisie de l'utilisateur : intouchable
             const captureTaille = String(derniereCapture.get(String(j.inventaire_id))?.["taille"] ?? "");
             const chemin = cheminDe(j);
+            // Grille : celle du catalogue relevé ; à défaut, les options que
+            // l'extension a VUES sur le vrai formulaire au dernier échec de CE
+            // job pour CETTE taille (last_diagnostic, tous onglets). « Autres »
+            // des costumes homme (1866) n'a pas de grille au catalogue.
+            const grilleReleve = grilles.get(chemin) ?? grilleDuDernierEchecTaille(pf["last_diagnostic"], captureTaille);
             const r = tailleAServir({
               captureTaille,
               inventaireTaille: tailleInventaire.get(String(j.inventaire_id)) ?? null,
-              options: grilles.get(chemin) ?? null,
+              options: grilleReleve,
             }, tailleParId ? { ordrePrefixe: ORDRE_EXACT_D_ABORD, euCoupe: false } : {});
             // Trace OBLIGATOIRE, servie aussi quand rien n'est servi : capture,
             // catégorie, grille relevée oui/non, étape retenue (1/2/3 ou null),

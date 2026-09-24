@@ -65,6 +65,9 @@ export function chargerTailleVinted(src, document) {
     extraireFonction(src, "attendreOptionsTaille"),
     extraireFonction(src, "activerOngletTaille"),
     extraireFonction(src, "candidatsTailleVinted"),
+    // 24/09 : le relevé d'options ne garde que les libellés sélectionnables
+    // (absente des versions d'avant : repli sur le relevé brut).
+    (() => { try { return extraireFonction(src, "libellesOptionsLisibles"); } catch { return "function libellesOptionsLisibles(t) { return (t ?? []).map((x) => String(x ?? '').trim()).filter(Boolean); }"; } })(),
     optionnel("verdictTailleHorsGrille"),
     extraireFonction(src, "selectTailleVinted"),
     "return { candidatsTailleVinted, selectTailleVinted, verdictTailleHorsGrille, findOptionCascade, optionsRelevees, diag: () => diagnosticTailleDerniere, vues: () => optionsTailleVues };",
