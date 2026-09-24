@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -436,13 +436,48 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
   // <a class="gap-md flex items-center" href="/compte/mes-annonces/suppression">
   // avec <svg data-title="SvgTrashOutline"> (relevé DOM réel, robe Camaïeu).
   // Même href que depuis la liste — findLbcDelete le trouve donc tel quel.
-  const control = findLbcDelete(document);
+  // ── COMPTE PRO + FENÊTRE ÉTROITE : LE PANNEAU N'EST PAS MONTÉ (24/09) ─────
+  // LES PETITES FIOLES (famouus-x3, compte PRO) : 5 republications mortes sur
+  // « 1 <aside>, actions relevées: [] », relancées → idem ; MeMiniandMove (PRO)
+  // pareil du 19 au 20/09, puis UN retrait passé sans rien changer. Lu dans
+  // leur bundle (fiche /ad/, 24/09) :
+  //   · une annonce PRO prend la mise en page Aside:iO, dont TOUT le bloc —
+  //     carte vendeur ET « Gestion de mon annonce » — est enveloppé dans
+  //     <MediaQueryHandler from="custom">. Ce composant lit la largeur par
+  //     matchMedia et rend `null` sous 971 px (breakpoints.custom) : le panneau
+  //     n'est PAS dans le DOM, caché ou non — d'où un <aside> sans aucun lien ;
+  //   · l'annonce d'un PARTICULIER prend Aside:sZ, dont le panneau de gestion
+  //     n'est PAS enveloppé : il est dans le DOM quelle que soit la largeur.
+  //     C'est pourquoi seuls les comptes pro butaient ;
+  //   · sous 971 px, le propriétaire reçoit à la place un bouton « Gérer »
+  //     (Drawer.Trigger, classified-ad.common.handle.cta) dont le tiroir porte
+  //     le même contrôle adview_manager_delete.
+  // La fenêtre de travail est créée minimisée, SANS largeur imposée : elle a
+  // la taille que Chrome lui donne, souvent sous 971 px — et le retrait passé
+  // chez MeMini est celui d'une fenêtre qui, ce jour-là, était assez large.
+  // Donc : on attend d'abord un panneau monté tard, puis on ouvre « Gérer »
+  // (geste SANS effet : un tiroir qui s'ouvre, rien n'est supprimé) et on y
+  // cherche le contrôle. La suite est INCHANGÉE : mêmes gardes d'identité,
+  // même modale « Valider » vérifiée, même relecture.
+  let control = findLbcDelete(document) ?? await waitFor(() => findLbcDelete(document), 6000);
+  let viaTiroir = false;
+  if (!control && !estInterstitielDataDomeLbc()) {
+    const gerer = boutonGererAnnonceLbc();
+    if (gerer) {
+      t(`panneau de gestion non monté (largeur ${window.innerWidth}px) — ouverture du tiroir « Gérer »`);
+      gerer.click();
+      control = await waitFor(() => findLbcDelete(document), 6000);
+      viaTiroir = !!control;
+      if (!control) t("tiroir « Gérer » ouvert : aucun contrôle Supprimer dedans");
+    }
+  }
   if (!control) {
     // Avant d'accuser la page d'un contrôle manquant : est-ce seulement la
     // fiche ? Sur une vérification anti-robot il n'y a évidemment aucun bouton
     // « Supprimer l'annonce », et ce n'est pas un échec de geste.
     if (estInterstitielDataDomeLbc()) return resultatChallengeLbc(`la page de l'annonce ${idPage}`, trace, t);
     const visible = releveActionsLbc(document, "aside a, aside button");
+    const typeVendeur = typeVendeurAnnonceLbc();
     t(`contrôle Supprimer INTROUVABLE sur la page de l'annonce — actions relevées : ${visible.join(" | ") || "(aucune)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     return {
@@ -450,10 +485,12 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
       error: "Contrôle « Supprimer l'annonce » introuvable sur la page de l'annonce",
       diagnostic:
         `contrôle Supprimer introuvable sur la page de l'annonce ${idPage} — ` +
-        `${document.querySelectorAll("aside").length} <aside>, actions relevées: ${JSON.stringify(visible)}`,
+        `${document.querySelectorAll("aside").length} <aside>, actions relevées: ${JSON.stringify(visible)}` +
+        ` ; largeur ${window.innerWidth}px, vendeur ${typeVendeur ?? "?"}, « Gérer » ${boutonGererAnnonceLbc() ? "présent" : "absent"}`,
       trace,
     };
   }
+  if (viaTiroir) t("contrôle trouvé dans le tiroir « Gérer »");
   t(`contrôle localisé : « ${control.textContent.replace(/\s+/g, " ").trim() || "(icône poubelle)"} » → ${control.getAttribute("href")}`);
 
   if (DELETE_DRY_RUN) {
@@ -825,9 +862,18 @@ function estVisibleSansLayoutLbc(el) {
   }
   return true;
 }
+// ⚠️ Le tiroir « Gérer » (fenêtre étroite, 24/09) est LUI AUSSI un
+// role="dialog" et il porte « Supprimer l’annonce » : sans précaution, il
+// passait pour la modale de confirmation. La modale qui porte le bouton
+// « Valider » (delete-ad-modal-confirm) gagne d'abord ; un dialogue qui
+// contient le contrôle adview_manager_delete (le tiroir) n'est jamais retenu.
 function trouverModaleSuppressionLbc() {
-  const dialogues = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]'));
-  return dialogues.find((d) => /supprim/i.test(d.textContent ?? "") && estVisibleSansLayoutLbc(d)) ?? null;
+  const dialogues = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]'))
+    .filter((d) => estVisibleSansLayoutLbc(d));
+  const parQa = dialogues.find((d) => d.querySelector('[data-qa-id="delete-ad-modal-confirm"]'));
+  if (parQa) return parQa;
+  return dialogues.find((d) => /supprim/i.test(d.textContent ?? "")
+    && !d.querySelector('[data-qa-id="adview_manager_delete"]')) ?? null;
 }
 function boutonConfirmationModaleLbc(modale) {
   const parQa = modale.querySelector('[data-qa-id="delete-ad-modal-confirm"], [data-testid="button-delete-confirm"]');
@@ -838,6 +884,24 @@ function boutonConfirmationModaleLbc(modale) {
   const libelles = ["valider", "valider la suppression", "supprimer", "supprimer l annonce", "confirmer", "confirmer la suppression"];
   return Array.from(modale.querySelectorAll('button, [role="button"]'))
     .find((b) => libelles.includes(lbcNorm(b.textContent ?? "")) && estVisibleSansLayoutLbc(b)) ?? null;
+}
+
+// Le bouton « Gérer » du propriétaire sous 971 px (cf. deleteDepuisPageAnnonce).
+// Un BOUTON, jamais un lien : sur grand écran, la carte d'une annonce pro porte
+// un LIEN « Gérer » vers /compte/pro/mon-activite, qu'on ne suit pas ici.
+// Libellé EXACT (« Gérer »), hors de tout dialogue déjà ouvert.
+function boutonGererAnnonceLbc() {
+  return Array.from(document.querySelectorAll('button, [role="button"]'))
+    .find((b) => b.tagName !== "A" && lbcNorm(b.textContent ?? "") === "gerer"
+      && !b.closest('[role="dialog"], dialog') && estVisibleSansLayoutLbc(b)) ?? null;
+}
+// Type du vendeur de l'annonce, lu dans __NEXT_DATA__ (ad.owner.type :
+// "pro" | "private") — pour le diagnostic seulement, jamais pour trancher.
+function typeVendeurAnnonceLbc() {
+  try {
+    const nd = JSON.parse(document.getElementById("__NEXT_DATA__")?.textContent ?? "null");
+    return nd?.props?.pageProps?.ad?.owner?.type ?? null;
+  } catch { return null; }
 }
 
 // Relevé réel 2026-07-12 : le contrôle de suppression n'est PAS (plus ?) un
