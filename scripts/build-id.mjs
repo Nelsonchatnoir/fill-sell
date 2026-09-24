@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-24T13:23:45Z'; // recale b898642 (0.6.65 reconstruite : « neuf seulement » avant le verdict de taille + Vinted « neuf seulement » dit comme une limite + relevé d'options propre + retrait d'une annonce d'une autre boutique reconnu ; Leboncoin transporteurs/format/poids posés d'après la page réelle, relus, bilan livraison_lbc ; capture shipping_type values). UTC VRAI lu par EPOCH. Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : le zip 0.6.65 n'est pas encore accepté par le CWS.
+export const EXTENSION_LAST_COMMIT = '2026-09-24T14:32:30Z'; // recale 155038d (0.6.66 : sonde Opla 401 neutre + chantier du 24/09 SANS le « neuf seulement » — rayon demandé, retrait LBC pro par « Gérer », attente Beebs espacée)
 // Historique de la valeur precedente : '9541e55' — recale sur undefined, le bump manifeste 0.6.64 (postes Opla : un poste sans accès ne parque plus ; cookies opla.co mesurés/purgés avant chaque job ; PING + réinjection du content script Opla ; scripts re-posés à la mise à jour ; sonde Opla forcée à l'octroi). UTC VRAI lu par EPOCH. Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : le zip 0.6.64 n'est pas encore accepté par le CWS.
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
