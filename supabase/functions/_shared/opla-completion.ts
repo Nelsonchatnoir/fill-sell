@@ -38,7 +38,9 @@ const valeurCertaine = (attrs: Record<string, unknown> | undefined, cle: string)
   if (!e || typeof e !== "object") return null;
   const v = String((e as Record<string, unknown>).v ?? "").trim();
   const source = String((e as Record<string, unknown>).source ?? "");
-  if (!v || !/^(capture|vinted|releve)/.test(source)) return null;
+  // « manuel » (24/09) : la réponse que la personne a donnée dans le stepper,
+  // rangée sur la fiche — la source la plus sûre de toutes, née ce jour-là.
+  if (!v || !/^(capture|vinted|releve|manuel)/.test(source)) return null;
   return { v, source };
 };
 const GENRE_RAYON: Record<string, string> = {
