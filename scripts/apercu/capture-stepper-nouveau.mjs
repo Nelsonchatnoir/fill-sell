@@ -107,6 +107,11 @@ try {
       if (t.nom === 'large') {
         const largeur = await page.evaluate(() => Math.max(...[...document.querySelectorAll('.fsn-col')].map((c) => c.getBoundingClientRect().width)));
         verifier(largeur <= 640, `${e.nom} @1280 : contenu ≤ 640 px (${Math.round(largeur)} px)`);
+        if (e.n === 3) {
+          const texte = await page.locator('.fsn').innerText();
+          verifier(/Vinted\s+Attend une réponse : Taille/.test(texte), 'u3 : la ligne Vinted dit « Attend une réponse : Taille » (pas « Connectée — prête » sous un bouton gris)');
+          verifier(/Leboncoin\s+Ne partira pas : attend une réponse \(Produit\)/.test(texte), 'u3 : la ligne Leboncoin nomme son exclusion (Produit)');
+        }
       }
       await page.close();
     }

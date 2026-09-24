@@ -90,7 +90,7 @@ function Apercu() {
     ? { leboncoin: [{ key: 'furniture_type', label: 'Produit', state: 'missing', allowedValues: ['Baskets', 'Bottes', 'Sandales', 'Autre'], dedicatedTarget: null }] }
     : null;
   const redSharedFields = ECRAN === 3 && !sharedFields.taille ? ['taille'] : [];
-  const missingSharedFieldsDetailed = redSharedFields.map((k) => ({ key: k, platforms: ['leboncoin', 'ebay'] }));
+  const missingSharedFieldsDetailed = redSharedFields.map((k) => ({ key: k, platforms: ['vinted', 'leboncoin', 'ebay'] }));
   const exclusionsPrevues = calculerExclusions({
     selected, platformSupport: {}, platformListings,
     plateformesSansAdresse: [], champsManquantsParPf: champsBloquantsParPlateforme(genericRequiredStatus),
@@ -152,7 +152,7 @@ function Apercu() {
     nbQuestions,
     generatingPlatforms: false, platformError: '', platformListings, processedPhotos: PHOTOS, handleGeneratePlatforms: noop, ficheReprise: FICHE,
     modifierCarte: propsStepGeneration.onModifierCarte, platformFieldsConfig,
-    redSharedFields, redSharedFieldPlatforms: { taille: 'Leboncoin, eBay' }, sharedFields,
+    redSharedFields, redSharedFieldPlatforms: { taille: 'Vinted, Leboncoin, eBay' }, sharedFields,
     setSharedField: (k, v) => setSharedFields((s) => ({ ...s, [k]: v })), sharedChildAxes: null, missingSharedFieldsDetailed,
     vintedGenreBlocked: false, beebsGenreBlocked: false, ebayRequiredStatus: null, setEbayAspect: noop, setEbaySharedField: noop,
     genericRequiredStatus, setPlatformAspect: noop, setPlatformDedicatedField: noop, EBAY_CLOSED_LIST_MAX: 200,
@@ -162,6 +162,7 @@ function Apercu() {
     jumeaux: ECRAN === 3 ? [{ platform: 'leboncoin', titre: 'New Balance 990 noires 42', prix: 80, url: 'https://www.leboncoin.fr/ad/1', preuve: 'photo' }] : [],
     descriptionMentions: null, descriptionVideVinted: false,
     exclusionsPrevues, plateformesRetirables: [],
+    questionsParPlateforme: Object.fromEntries(missingSharedFieldsDetailed.flatMap((f) => f.platforms.map((p) => [p, ['Taille']]))),
     publishError: '', publishing: false, motifsCtaGris: ctaDisabled ? ["Prix d'achat à renseigner"] : [], ctaDisabled, ctaBlockingActive: ctaDisabled, requiredBlocking: ctaDisabled, publishedStateLoaded: true,
     ctaLabel: `Publier sur ${[...selected].filter((p) => p !== 'leboncoin' || !genericRequiredStatus).length} plateformes`,
     fournee: ECRAN === 4 ? { inventaireId: 1, plateformes: ['leboncoin', 'vinted', 'beebs', 'opla'], depuis: new Date(Date.now() - 10_000).toISOString() } : null,
