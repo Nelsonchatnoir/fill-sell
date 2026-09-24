@@ -46,11 +46,13 @@ export default function StepperNouveau({ m }) {
     cta = enTeleversement ? (en ? "Uploading photos…" : "Envoi des photos…")
       : photosManquent ? (en ? `Add at least ${m.MIN_PHOTOS} photos` : `Ajoute au moins ${m.MIN_PHOTOS} photos`)
       : n === 0 ? (en ? "Pick at least one platform" : "Choisis au moins une plateforme")
-      : (m.platformListings
+      : (m.platformListings && !m.copieManquante
           ? (en ? `Continue · ${n} platform${n > 1 ? "s" : ""}` : `Continuer · ${n} plateforme${n > 1 ? "s" : ""}`)
           : (en ? `Write the listing · ${n} platform${n > 1 ? "s" : ""}` : `Rédiger l'annonce · ${n} plateforme${n > 1 ? "s" : ""}`));
-    sous = m.platformListings
+    sous = m.platformListings && !m.copieManquante
       ? (en ? "Nothing goes out yet. You check at the next screen." : "Rien ne part encore. Tu vérifies à l'écran suivant.")
+      : m.platformListings && m.copieManquante
+      ? (en ? "A ticked platform has no text yet: the listing is written again (one listing on your quota), then you check it." : "Une plateforme cochée n'a pas encore de texte : l'annonce est rédigée à nouveau (une annonce sur ton quota), puis tu la vérifies.")
       : (en ? "Nothing goes out yet: the text is written, then you check it." : "Rien ne part encore : le texte est rédigé, puis tu le vérifies.");
   } else if (ecran === 2) {
     if (m.generatingPlatforms || (!m.platformListings && !m.platformError)) { cta = en ? "Writing…" : "Rédaction en cours…"; disabled = true; }
@@ -83,7 +85,10 @@ export default function StepperNouveau({ m }) {
           <ul>{m.motifsCtaGris.map((x, i) => <li key={i}>{x}</li>)}</ul>
         </Carte>
       );
-    } else if (m.retoucheNonLivree && !m.retoucheAvisLu) {
+    } else if (m.retoucheNonLivree && !m.retoucheAvisLu && !m.ficheReprise) {
+      // Fiche rouverte telle quelle : aucune retouche n'a tourné dans ce
+      // passage, l'avis « n'a pas abouti » n'a rien à annoncer (l'option photo
+      // n'est pas restaurée avec la fiche, l'ancien calcul le croyait).
       avant = (
         <Carte gravite="info" style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
           <div className="fsn-card-p fsn-grow">{en ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are." : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}</div>
