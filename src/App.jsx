@@ -564,15 +564,16 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
           body: JSON.stringify({ email: userEmail }),
         }
       );
-      const { url, error } = await res.json();
-      if(error) throw new Error(error);
+      const { url, error, message_fr, message_en } = await res.json();
+      if(error){ const err = new Error(error); err.messageClient = lang==='en' ? message_en : message_fr; throw err; }
       window.location.href = url;
     } catch(e) {
-      // Même mapping que triggerCheckout : pas d'erreur Stripe brute (26/07).
+      // Même mapping que triggerCheckout : pas d'erreur Stripe brute (26/07) ;
+      // la phrase du serveur d'abord quand il en rend une (24/09).
       console.error('[checkout] error:', e);
-      alert(e.message==='payment_unavailable'
+      alert(e.messageClient||(e.message==='payment_unavailable'
         ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie dans quelques minutes.")
-        :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant."));
+        :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant.")));
       setLoading(false);
     }
   }
@@ -2842,7 +2843,14 @@ export default function App({ loginOnly = false }){
       const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product?{product}:{})})});
       const body=await res.json();
       const{url,error,upgraded,already_pro,tier}=body;
-      if(error)throw new Error(error);
+      // Le serveur rend, depuis le 24/09, sa propre phrase (message_fr /
+      // message_en) quand un paiement n'a pas pu s'ouvrir : elle dit ce qui
+      // s'est passé (« rien n'a été débité ») mieux que notre phrase générique.
+      if(error){const err=new Error(error);err.messageClient=lang==='en'?body.message_en:body.message_fr;throw err;}
+      // Montée de palier à VALIDER (Klarna, Link, 3-D Secure…) : le serveur rend
+      // l'URL de la facture Stripe (paiement_a_valider) — on y part comme vers
+      // une session Checkout, ci-dessous. Le palier n'est posé qu'au paiement
+      // confirmé (webhook invoice.paid), jamais ici.
       // Upgrade in situ (2026-07-23, généralisé aux paliers le 2026-08-09) :
       // l'abonnement Stripe existant a été basculé sur le price du palier visé
       // côté serveur (proration facturée) — pas de session Checkout, donc pas
@@ -2880,9 +2888,9 @@ export default function App({ loginOnly = false }){
       // conversion). payment_unavailable = price archivé/absent détecté par le
       // garde-fou serveur ; le détail technique reste en console.
       console.error('[checkout] error:', e);
-      alert(e.message==='payment_unavailable'
+      alert(e.messageClient||(e.message==='payment_unavailable'
         ?(lang==='en'?"Payment is temporarily unavailable. We're on it — please try again shortly.":"Le paiement est momentanément indisponible. On est prévenus — réessaie dans quelques minutes.")
-        :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant."));
+        :(lang==='en'?"Could not open checkout. Please try again.":"Impossible d'ouvrir le paiement. Réessaie dans un instant.")));
     }
   }
 
