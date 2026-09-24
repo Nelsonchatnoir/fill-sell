@@ -21,7 +21,9 @@ import GaleriePhotos, { DragHandle, CoverBadge } from "./GaleriePhotos";
 import { usePhotoDrag, moveItem, IS_ANDROID, pickPhotosAndroid } from "../utils/photosGalerie";
 import { texteComparable } from "../utils/texteComparable";
 import { sortirDuBrouillon } from "../utils/brouillon";
-import { sessionsAffichables, PUBLICATION_PROUVE_MS } from "../utils/sessionsPlateformes";
+import { sessionsDepuisVerite } from "../utils/veritePlateformes";
+import { useVeritePlateformes } from "../reglages/useVeritePlateformes";
+import { useOplaAcces, carteAccesOpla } from "../utils/oplaAcces";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import BoutonMeConnecter from "./BoutonMeConnecter";
@@ -29,7 +31,7 @@ import { MOTIFS } from "../utils/connexionPlateformes";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
-import { lbcProduitsDependants, lbcListePlate } from "../utils/lbcMaisonJardin";
+import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // Détecteur de langue, partagé mot pour mot avec lens-analysis (même fichier,
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
@@ -65,7 +67,7 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
 // mêmes messages : un déménagement, pas une réécriture (en-tête du module).
-import { resoudrePublication, signatureResolution } from "../utils/resolutionPublication";
+import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFourreToutLbc } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
 import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi } from "../utils/rayonPublication";
@@ -108,7 +110,9 @@ import {
 // jugent une valeur contre une liste avec le même code que cet écran.
 import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
+  deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../publication/moteur/listes";
+import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -1554,9 +1558,10 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   // serveur + borne de build, App.jsx) : la case devient cliquable. Motif de
   // la case grisée sinon ('fermee' | 'extension') et borne affichée.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
-  // Permission d'hôte opla.co : true accordée · false pas accordée · null on
-  // ne sait rien. On ne pose la question QUE sur false (cf. ListingPreview).
-  oplaAcces = null,
+  // Autorisation Opla du COMPTE, lue au serveur (utils/oplaAcces, 24/09) :
+  // 'autorise' · 'a_autoriser' · 'inconnu' · null (pas encore lue). La modale
+  // au clic ne se pose que sur un refus CONNU ('a_autoriser').
+  oplaVerdict = null,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
   // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
@@ -2024,8 +2029,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                 // avec le geste exact. Elle ne bloque pas : « Continuer »
                 // coche quand même — l’annonce attendra l’autorisation et
                 // partira toute seule. Décocher ne demande rien, et
-                // « on ne sait pas » (oplaAcces null) ne demande rien non plus.
-                if (p === "opla" && !selected.has(p) && oplaAcces === false) { setOplaModale(true); return; }
+                // « on ne sait pas » (verdict 'inconnu') ne demande rien non
+                // plus : le verdict est celui du SERVEUR (utils/oplaAcces).
+                if (p === "opla" && !selected.has(p) && oplaVerdict === "a_autoriser") { setOplaModale(true); return; }
                 basculerPlateforme(p);
               }}
               style={{
@@ -3063,7 +3069,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaAcces = null, attentes = {}, onCompleter = null }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3289,21 +3295,19 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           objet, c'est banal ; c'est elle qui sait. Le critère de
           rapprochement et ses limites vivent dans utils/jumeauxEnLigne.js. */}
       {/* ── OPLA : L'AUTORISATION SE DEMANDE AVANT DE PUBLIER (2026-09-23) ──
-          Opla est cochée et l'extension dit que l'accès n'est PAS accordé
-          (oplaAcces === false, jamais sur « on ne sait pas ») : on le dit
-          ICI, avec LE bouton, avant le clic. La publication reste possible —
-          l'annonce Opla attend l'autorisation et repart seule à l'octroi
-          (rearmerJobsOplaEnAttente), les autres plateformes partent tout de
-          suite. Même message et même bouton que la carte et les Réglages. */}
-      {oplaAcces === false && selected.has("opla") && (
+          Opla est cochée et le SERVEUR n'a pas de preuve d'accès (verdict de
+          utils/oplaAcces, le même que les Réglages et l'écran de suivi — 24/09).
+          On le dit ICI, avec LE bouton, avant le clic : sur un refus connu
+          (« Opla attend ton autorisation ») comme sans preuve du tout (le
+          bouton reste — garde-fou de Nico). La publication reste possible —
+          l'annonce Opla attend l'autorisation et repart seule à l'octroi. */}
+      {selected.has("opla") && carteAccesOpla(oplaVerdict, lang) && (
         <div style={{ padding:"11px 14px", background:"#F0FDFB", border:"1px solid rgba(47,158,144,0.28)", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:T.ink }}>
           <div style={{ fontWeight:700, marginBottom:6 }}>
-            {lang === "en" ? "Opla is waiting for your permission" : "Opla attend ton autorisation"}
+            {carteAccesOpla(oplaVerdict, lang).titre}
           </div>
           <div style={{ marginBottom:8, color:T.mute }}>
-            {lang === "en"
-              ? "You can publish now: the Opla listing waits for the permission, then goes out on its own. The other platforms go out right away."
-              : "Tu peux publier maintenant : l'annonce Opla attendra l'autorisation, puis partira toute seule. Les autres plateformes partent tout de suite."}
+            {carteAccesOpla(oplaVerdict, lang).texte}
           </div>
           <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />
         </div>
@@ -3391,9 +3395,10 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
               mobile, alors que c'est l'ORDINATEUR qui doit se connecter.
               BoutonMeConnecter tranche : lien direct sur le web, ouverture sur
               le PC via l'extension sur mobile. Même bouton, même logo, partout.
-              ⛔ LA GARDE NE BOUGE PAS : `=== false` seulement. `sessionsAffichables`
-                 ne pose la clé que sur une mesure — « jamais vérifié » est ABSENT,
-                 donc n'affiche rien. Et rien n'est bloqué : le texte le dit, le
+              ⛔ LA GARDE NE BOUGE PAS : `=== false` seulement. `sessionsDepuisVerite`
+                 (24/09 : la vérité SERVEUR, celle des Réglages) ne pose la clé que
+                 sur un état tranché — « jamais vérifié » est ABSENT, donc
+                 n'affiche rien. Et rien n'est bloqué : le texte le dit, le
                  bouton Publier reste actif. Prévenir, jamais interdire. */}
           {chipsSession.filter(p => platformSessions[p] === false).map(p => (
             <div key={p} style={{ display:"flex", alignItems:"center", gap:10, marginTop:8, flexWrap:"wrap" }}>
@@ -4291,79 +4296,27 @@ export default function ListingPreviewScreen({
   // l'étape est affichée + au retour de visibilité, et fenêtre de fraîcheur
   // ramenée à 12 min (throttle sonde 10 min + marge) — un relevé plus vieux
   // n'a plus valeur d'affichage.
-  const [platformSessions, setPlatformSessions] = useState(null);
-  // ── OPLA : LA PERMISSION D'HÔTE EST-ELLE ACCORDÉE ? (2026-09-18) ──────────
-  // true = accordée · false = pas accordée · null = on ne sait rien (aucun
-  // relevé d'extension). On ne pose la question à l'écran que sur `false`.
-  //
-  // Comment on le sait SANS pouvoir interroger l'extension (le manifeste n'a
-  // pas d'externally_connectable : une page web ne peut pas lui parler) :
-  //   · `opla_acces` — dit explicitement par l'extension quand elle le sait ;
-  //   · à défaut, la SONDE fait preuve : sonderSessionOpla rend son verdict
-  //     AVANT tout réseau si la permission manque, donc une valeur true/false
-  //     ou un code HTTP relevé sur opla.co ne peut exister QUE permission
-  //     accordée. C'est ce qui rend la détection juste dès aujourd'hui, sans
-  //     attendre un paquet Chrome Web Store.
-  const [oplaAcces, setOplaAcces] = useState(null);
-  useEffect(() => {
-    // Étape 1 (choix des plateformes) ET étape 3 (publication) : la rangée de
-    // cases est à l'étape 1, et c'est là qu'on doit pouvoir dire à quelqu'un
-    // qui coche Opla que son autorisation manque — l'y apprendre à l'étape 3
-    // serait l'apprendre trop tard. Même lecture, mêmes deux requêtes, aucune
-    // de plus : le relevé ne tourne que pendant que l'étape est affichée.
-    if ((step !== 1 && step !== 3) || !supabase || !userId) return;
-    let stale = false;
-    const lire = async () => {
-      // ── DEUX SOURCES, LE PLUS RÉCENT TRANCHE (2026-09-15) ────────────────
-      // (1) le relevé de l'extension, jugé PAR PLATEFORME — la fenêtre globale
-      //     de 12 min lisait `checked_at`, rafraîchi toutes les 10 min par la
-      //     seule sonde Vinted : une valeur eBay vieille de trois heures
-      //     passait pour fraîche, et une valeur non sondée était de toute façon
-      //     écrasée par null en amont (corrigé côté extension, 0.6.40) ;
-      // (2) une publication RÉUSSIE de moins de 72 h, qui PROUVE la session
-      //     sans aucune sonde. C'est le seul signal utilisable sur Leboncoin
-      //     (403 DataDome sur 92,6 % des relevés du parc) et sur Beebs (SPA
-      //     qui sert 200 même déconnectée).
-      // ⚠️ Cette moitié-ci du correctif ne dépend PAS de l'extension : elle
-      //    part par l'app et profite tout de suite au parc, sans attendre le
-      //    Chrome Web Store.
-      const depuisIso = new Date(Date.now() - PUBLICATION_PROUVE_MS).toISOString();
-      const [profil, publiees] = await Promise.all([
-        supabase.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle(),
-        supabase.from("cross_post_jobs").select("platform, created_at")
-          .eq("user_id", userId).eq("status", "published")
-          .gte("created_at", depuisIso)
-          .order("created_at", { ascending: false }).limit(50),
-      ]);
-      if (stale) return;
-      const publicationsOk = {};
-      for (const j of publiees?.data ?? []) {
-        const t = Date.parse(j.created_at ?? "");
-        if (!Number.isFinite(t)) continue;
-        if (!publicationsOk[j.platform] || t > publicationsOk[j.platform]) publicationsOk[j.platform] = t;
-      }
-      const brutes = profil?.data?.extension_sessions ?? null;
-      setPlatformSessions(sessionsAffichables(brutes, publicationsOk));
-      // ⚠️ Number(null) vaut 0, qui est FINI : un http.opla absent passerait
-      // pour un code relevé et on conclurait « permission accordée » à tort.
-      // On exige donc une valeur présente ET numérique.
-      const httpOpla = brutes?.http?.opla;
-      setOplaAcces(brutes
-        ? (brutes.opla_acces === true
-          || brutes.opla === true || brutes.opla === false
-          || (httpOpla != null && httpOpla !== '' && Number.isFinite(Number(httpOpla))))
-        : null);
-    };
-    lire();
-    const timer = setInterval(lire, 60 * 1000);
-    const onVisibilite = () => { if (document.visibilityState === "visible") lire(); };
-    document.addEventListener("visibilitychange", onVisibilite);
-    return () => {
-      stale = true;
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibilite);
-    };
-  }, [step, supabase, userId]);
+  // ── CONNEXION ET AUTORISATION : LE SERVEUR TRANCHE (2026-09-24) ───────────
+  // AVANT : ce bloc relisait `profiles.extension_sessions` — la sonde du
+  // DERNIER poste qui écrit — et décidait SEUL : « Session fermée » sur un
+  // `false` de sonde, « À autoriser dans l'extension » dès qu'Opla n'y
+  // figurait pas. Cas Louis (24/09, 0.6.63, deux profils Chrome) : Opla
+  // « À autoriser » + « Autoriser Opla » à l'étape 1, pendant que les Réglages
+  // disaient « Connectée » et que sa publication Opla partait. Le 23/09,
+  // Marine lisait eBay « Connectée » sans compte eBay, sur la même sonde.
+  // DEPUIS : les deux réponses sont celles des Réglages et de l'écran de suivi,
+  // lues au serveur —
+  //   · la CONNEXION de chaque plateforme : plateformes_verite (le fait le plus
+  //     récent et le plus précis gagne : relevé > dépôt > sonde), réduite à
+  //     true / false / absent par sessionsDepuisVerite ;
+  //   · l'AUTORISATION Opla : useOplaAcces (règle unique,
+  //     supabase/functions/_shared/acces-opla.js).
+  // Lues à TOUTES les étapes : un brouillon repris ouvre directement sur « Où
+  // publier ? ». Relues toutes les 60 s et au retour d'onglet. Elles disent
+  // l'état et le geste, elles ne bloquent jamais une publication.
+  const veriteStepper = useVeritePlateformes({ userId, actif: Boolean(userId) });
+  const platformSessions = useMemo(() => sessionsDepuisVerite(veriteStepper.verite), [veriteStepper.verite]);
+  const { verdict: oplaVerdict, detail: oplaAccesDetail } = useOplaAcces({ userId, actif: Boolean(userId) });
 
   // Ligne inventaire liée à cette annonce : peut ne pas encore exister — elle
   // est créée au moment du publish (l'ajout au stock est systématique).
@@ -6415,14 +6368,27 @@ export default function ListingPreviewScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attributsBase, initialListing?.description, lang]);
 
+  // ── LE PLAFOND PHOTOS SUIT LE RAYON RÉSOLU (2026-09-24, capture de Louis) ──
+  // « Ton article est rangé en « Divers > Autres ». Seules les 3 premières de
+  // tes 5 photos partent sur Leboncoin », au-dessus d'un Type « Cuisine et
+  // cuisson » et d'un Produit « Yaourtière » : le bandeau lisait le chemin de
+  // l'ICÔNE (📦 → le fourre-tout), calculé avant la résolution. Il lit
+  // désormais le rayon RÉELLEMENT retenu pour ce dépôt (pré-calcul de la
+  // génération, ou choix de la personne) — celui que le job emportera. Pas
+  // encore résolu, ou resté sur le rayon par défaut : pas de bandeau — jamais
+  // une limite fausse.
   const lbcPhotoCap = useMemo(() => {
     if (!selected.has("leboncoin")) return null;
-    const path = getLbcCategoryPath(articleIcon);
+    const rayon = rayonsParPf?.leboncoin ?? null;
+    const path = Array.isArray(rayon?.chemin) && rayon.chemin.length ? rayon.chemin : null;
+    if (!path) return null;
+    const pfResolu = resolutionAffichee?.pfParPlateforme?.leboncoin ?? null;
+    if (!rayon.choisi && (pfResolu?.categorie_source === "defaut" || cheminFourreToutLbc(path))) return null;
     const quota = getLbcFreePhotoQuota(path);
     const total = Array.isArray(processedPhotos) ? processedPhotos.length : 0;
     if (quota == null || total <= quota) return null;
     return { quota, total, categorie: path.join(" > ") };
-  }, [selected, articleIcon, processedPhotos]);
+  }, [selected, rayonsParPf, resolutionAffichee, processedPhotos]);
 
   // ── Adresse de remise manquante : on le dit AVANT le débit (2026-08-10) ────
   // UNE seule lecture, UNE seule clé — la même que celle qui alimente
@@ -6865,6 +6831,16 @@ export default function ListingPreviewScreen({
     // sinon saisie manuelle — et l'extension conserve toujours une valeur
     // réellement pré-remplie par eBay (jamais réécrite).
     const PREFILLED_BY_EBAY = [];
+    // (2026-09-24) L'option que l'annonce nomme déjà — même règle que Vinted,
+    // Leboncoin et Beebs (moteur/listes.deduireOptionDuTexte) : pour un aspect
+    // eBay à liste FERMÉE encore vide, le titre, puis l'objet IA, puis la
+    // description. Posée par l'effet des défauts juste en dessous ; plusieurs
+    // options nommées → la question reste, avec elles en tête.
+    const textesEbay = textesDeLAnnonce({
+      titre: edited.ebay?.title || initialListing?.titre || "",
+      description: edited.ebay?.description || "",
+      platformFields: { categorie_objet_ia: activeAiObjet ?? pf.categorie_objet_ia ?? null, categorie_verification: pf.categorie_verification ?? null },
+    });
     return ebayRequiredPreview.map(({ name, allowedValues, mode }) => {
       const src = sources.find(s => s.labels.includes(name));
       const srcVal = src ? String(src.get() ?? "").trim() : "";
@@ -6904,9 +6880,15 @@ export default function ListingPreviewScreen({
       // que le bloc rouge et la garde lisent pf.couleur/canonique — remplir le
       // select eBay ne satisfaisait jamais le bloc rouge (double-saisie, et
       // deux valeurs divergentes possibles au publish).
-      return { name, state: "missing", value: "", sharedKey: src?.key, allowedValues, mode };
+      const manquant = { name, state: "missing", value: "", sharedKey: src?.key, allowedValues, mode };
+      if (!src?.key && isEbayClosedList(allowedValues, mode)) {
+        const ded = deduireOptionDuTexte({ platform: "ebay", key: name, label: name, allowedValues, textes: textesEbay });
+        if (ded?.valeur) return { ...manquant, deduit: { valeur: ded.valeur, source: ded.source } };
+        if (ded?.candidats?.length > 1) return { ...manquant, allowedValues: listeCandidatsDabord(allowedValues, ded.candidats), candidats: ded.candidats };
+      }
+      return manquant;
     });
-  }, [ebayRequiredPreview, edited, plateformesPubliables]);
+  }, [ebayRequiredPreview, edited, plateformesPubliables, activeAiObjet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -6983,6 +6965,13 @@ export default function ListingPreviewScreen({
         const libelle = candidats.find(c =>
           (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(c)));
         if (libelle) { toSet[a.name] = libelle; aspectDefaultsPoses.current.add(a.name); }
+      }
+      // L'option que l'annonce nomme (2026-09-24) — APRÈS les défauts sûrs et
+      // le Département, qui gardent la priorité. Une pose, jamais deux.
+      if (a.deduit?.valeur && a.state === "missing" && !(a.name in toSet)
+          && !String(pfAspects[a.name] ?? "").trim() && !aspectDefaultsPoses.current.has(a.name)) {
+        toSet[a.name] = a.deduit.valeur;
+        aspectDefaultsPoses.current.add(a.name);
       }
     }
     if (!Object.keys(toSet).length) return;
@@ -7686,7 +7675,67 @@ export default function ListingPreviewScreen({
                  dedicatedTarget: genericDedicatedTarget(platform, key),
                  blocking: !(ferme && allowedValues.length === 0) };
       });
-      if (status.length) out[platform] = status;
+      // ── L'OPTION QUE L'ANNONCE NOMME DÉJÀ (2026-09-24, job fc5e4bff) ──────
+      // Leboncoin « Arts de la table », Univers « Accessoire de table » : le
+      // Produit valait « Plat apéritif », hors de la liste de cet univers, et la
+      // question est partie chez le vendeur alors que le titre disait
+      // « … plateau de service ». Désormais, AVANT toute question, un champ à
+      // liste fermée hors liste, vide ou resté sur « Autre » cherche l'option
+      // que nomment le titre, puis l'objet identifié par l'IA, puis la
+      // description (moteur/listes.deduireOptionDuTexte — la même règle que le
+      // serveur). Une option trouvée sans ambiguïté est POSÉE (effet plus bas)
+      // et ne bloque rien ; plusieurs → la question reste, avec elles en tête
+      // de liste. Sur les feuilles Maison & Jardin, le Produit trouvé ailleurs
+      // que sous l'Univers courant emporte son Univers (la liste en dépend).
+      // ⛔ Jamais une taille, une marque, l'état ou le colis (champDeductible) ;
+      //    jamais un champ partagé de la fiche (taille, couleur, matière,
+      //    marque — ils ont leur propre chemin) ; jamais par-dessus un
+      //    rapprochement sûr déjà trouvé.
+      const textes = textesDeLAnnonce({
+        titre: edited[platform]?.title || initialListing?.titre || "",
+        description: edited[platform]?.description || "",
+        platformFields: {
+          categorie_objet_ia: activeAiObjet ?? pf.categorie_objet_ia ?? null,
+          categorie_verification: pf.categorie_verification ?? null,
+        },
+      });
+      const chercher = ({ options }) => optionDepuisTextes({ options, textes });
+      const feuilleMJ = platform === "leboncoin" ? lbcFeuilleDependante(genericCategoryKeys?.[platform]) : null;
+      const enrichi = status.map((a) => {
+        const aTrancher = a.state === "missing" || (a.state === "invalid" && !a.suggested)
+          || (a.state === "ok" && estFourreTout(a.value));
+        if (!aTrancher || !a.allowedValues?.length) return a;
+        if (a.dedicatedTarget && SHARED_FIELD_KEYS.includes(a.dedicatedTarget)) return a;
+        if (a.key === "title" || a.key === "photos" || a.key === "description") return a;
+        let ded = deduireOptionDuTexte({ platform, key: a.key, label: a.label, allowedValues: a.allowedValues, textes });
+        if (!ded) return a;
+        let paire = null;
+        // Maison & Jardin : le Produit introuvable sous l'Univers courant, ou
+        // l'Univers lui-même à trancher → la paire nommée par l'annonce.
+        if (feuilleMJ && (a.key === feuilleMJ.typeKey || (a.key === feuilleMJ.produitKey && !ded.valeur && !(ded.candidats?.length > 1)))) {
+          const p = lbcPaireDepuisTextes(genericCategoryKeys?.[platform], chercher);
+          if (p?.produit) {
+            if (a.key === feuilleMJ.typeKey) {
+              ded = { valeur: p.univers, source: p.source, candidats: [p.univers] };
+              paire = { [p.produitKey]: p.produit };
+            } else {
+              ded = { valeur: p.produit, source: p.source, candidats: [p.produit] };
+              paire = { [p.typeKey]: p.univers };
+            }
+          } else if (a.key === feuilleMJ.typeKey) {
+            ded = { valeur: null, source: null, candidats: [] };
+          }
+        }
+        if (ded.valeur && normAspectVal(ded.valeur) !== normAspectVal(a.value ?? "")) {
+          return { ...a, suggested: ded.valeur, blocking: false,
+                   deduit: { valeur: ded.valeur, source: ded.source, ...(paire ? { paire } : {}) } };
+        }
+        if (ded.candidats?.length > 1) {
+          return { ...a, allowedValues: listeCandidatsDabord(a.allowedValues, ded.candidats), candidats: ded.candidats };
+        }
+        return a;
+      });
+      if (enrichi.length) out[platform] = enrichi;
     }
     return Object.keys(out).length ? out : null;
     // processedPhotos.length : la neutralisation de `photos` ci-dessus affiche
@@ -7694,7 +7743,38 @@ export default function ListingPreviewScreen({
     // premier rendu après une photo ajoutée ou retirée au step Photos.
     // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
     // copie n'en porte pas — la fiche arrive après le premier calcul.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── L'OPTION LUE DANS L'ANNONCE EST POSÉE (2026-09-24) ─────────────────────
+  // Pose ce que genericRequiredStatus a déduit du titre / de l'objet IA / de
+  // la description (`deduit`), dans le canal que l'extension LIT — même routage
+  // que la résolution IA de secours : champ dédié non partagé (univers,
+  // lbcProduit) sinon canal générique (lbcAspects / vintedAspects /
+  // beebsAspects). La trace `option_du_texte` part avec le job : « pourquoi
+  // Plateau ? » a toujours une réponse.
+  // ⛔ UNE écriture par (plateforme, champ, valeur) et par ouverture : si la
+  //    personne choisit autre chose ensuite, on ne la recouvre jamais.
+  const optionsDuTexteEcrites = useRef(new Set());
+  useEffect(() => {
+    if (!genericRequiredStatus) return;
+    for (const [gp, list] of Object.entries(genericRequiredStatus)) {
+      for (const a of list) {
+        const d = a.deduit;
+        if (!d?.valeur) continue;
+        const cle = `${gp}|${a.key}|${d.valeur}`;
+        if (optionsDuTexteEcrites.current.has(cle)) continue;
+        optionsDuTexteEcrites.current.add(cle);
+        for (const [k, v] of Object.entries(d.paire ?? {})) setPlatformAspect(gp, k, v);
+        const versDedie = a.dedicatedTarget && !canalGeneriquePose(gp, a.key) && !SHARED_FIELD_KEYS.includes(a.dedicatedTarget);
+        if (versDedie) setPlatformDedicatedField(gp, a.dedicatedTarget, d.valeur);
+        else setPlatformAspect(gp, a.key, d.valeur);
+        noterOptionDuTexte(gp, a.key, {
+          valeur: d.valeur, source: d.source, avant: a.value ? String(a.value) : null,
+          ...(d.paire ? { paire: d.paire } : {}), le: new Date().toISOString(),
+        });
+      }
+    }
+  }, [genericRequiredStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // ── UN SEUL endroit de saisie (2026-08-28, remplace l'unicité du 30/07) ────
@@ -7998,6 +8078,22 @@ export default function ListingPreviewScreen({
     // genericCategoryKeys/edited/initialListing (identités instables). La garde
     // genericResolvedFor borne déjà à une tentative par (plateforme, catégorie).
   }, [genericRequiredStatus, genericCategoryKeysSig]);
+
+  // Trace d'une option lue dans l'annonce (2026-09-24) : elle part avec le job
+  // (platform_fields.option_du_texte.<clé>) — d'où vient la valeur, et ce
+  // qu'elle remplace. Purement documentaire : aucun handler ne la lit.
+  function noterOptionDuTexte(platform, key, trace) {
+    setEdited(prev => prev[platform] ? {
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        platform_fields: {
+          ...prev[platform].platform_fields,
+          option_du_texte: { ...(prev[platform].platform_fields?.option_du_texte ?? {}), [key]: trace },
+        },
+      },
+    } : prev);
+  }
 
   // Saisie manuelle d'un requis Vinted/LBC/Beebs — écrit dans le canal
   // générique de la copie plateforme (pf.vintedAspects / lbcAspects /
@@ -8313,6 +8409,9 @@ export default function ListingPreviewScreen({
         prevol
         && prevol.empreinte === empreintePublication
         && plateformesAPublier.every(p => prevol.resolution?.pfParPlateforme?.[p])
+        // (24/09) Une panne passagère au pré-calcul (rayon par défaut retenu)
+        // se RETENTE au clic : jamais reprise telle quelle.
+        && !resolutionARetenter(prevol.resolution)
       );
       const resolution = prevolUtilisable
         ? prevol.resolution
@@ -8416,8 +8515,20 @@ export default function ListingPreviewScreen({
       if (sansCategorie.length) {
         console.warn(`[publish] écartées avant débit, aucun chemin de catégorie trouvé : ${sansCategorie.join(", ")}`);
         rows = rows.filter(r => !sansCategorie.includes(r.platform));
-        exclusRun.push(...sansCategorie.map(p => ({ platform: p, motif: "sans_rayon" })));
+        exclusRun.push(...sansCategorie.map(p => ({
+          platform: p,
+          // (24/09) Rayon par défaut retenu sur une panne : il ATTEND (jamais le
+          // fourre-tout) — l'écran dit de republier pour réessayer.
+          motif: construction.rows.find(r => r.platform === p)?.platform_fields?.rayon_a_reessayer ? "rayon_a_reessayer" : "sans_rayon",
+        })));
         if (!rows.length) {
+          // (24/09) Une panne passagère n'est pas « on ne sait pas ranger » :
+          // on dit d'attendre et de republier — rien n'a été débité.
+          if (sansCategorie.every(p => construction.rows.find(r => r.platform === p)?.platform_fields?.rayon_a_reessayer)) {
+            throw new Error(lang === "en"
+              ? `The ${sansCategorie.map(p => PLATFORM_LABELS[p] ?? p).join(", ")} category could not be found just now (service briefly unavailable). Nothing was charged — publish again in a moment.`
+              : `Le rayon ${sansCategorie.map(p => PLATFORM_LABELS[p] ?? p).join(", ")} n'a pas pu être trouvé à l'instant (service momentanément indisponible). Rien n'a été débité — republie dans un instant.`);
+          }
           // Plus rien à publier : on le dit, et on dit le GESTE — nommer
           // l'objet dans le titre, comme la règle (a) plus haut. Jamais un
           // nom de champ interne, jamais « non vendable » : la plateforme
@@ -9435,7 +9546,7 @@ export default function ListingPreviewScreen({
     texteDuVendeur: Boolean(texteDuVendeurFiche()),
     // Les plateformes et leurs états
     plateformesAffichees: [...PLATFORMS_DEFAULT, ...plateformesAVenirVisibles],
-    plateformesAVenir: plateformesAVenirVisibles, plateformesOuvertes, oplaMotifGrise, oplaExtensionMin, oplaAcces,
+    plateformesAVenir: plateformesAVenirVisibles, plateformesOuvertes, oplaMotifGrise, oplaExtensionMin, oplaVerdict, oplaAccesDetail,
     motifAVenir: (p) => oplaMotifGrise === "extension"
       ? (lang === "en"
           ? `${PLATFORM_LABELS[p]} opens with the next FillSell extension update${oplaExtensionMin ? ` (${libelleVersionExtension(oplaExtensionMin)})` : ""}.`
@@ -9673,7 +9784,7 @@ export default function ListingPreviewScreen({
             plateformesOuvertes={plateformesOuvertes}
             oplaMotifGrise={oplaMotifGrise}
             oplaExtensionMin={oplaExtensionMin}
-            oplaAcces={oplaAcces}
+            oplaVerdict={oplaVerdict}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}
@@ -9796,7 +9907,7 @@ export default function ListingPreviewScreen({
             ebayVoieApiReelle={ebayVoieApiReelle}
             descriptionVideVinted={descriptionVideVinted}
             onOuvrirCopie={ouvrirCopie}
-            oplaAcces={oplaAcces}
+            oplaVerdict={oplaVerdict}
           />
         )}
       </div>

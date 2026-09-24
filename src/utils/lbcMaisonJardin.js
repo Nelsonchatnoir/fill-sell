@@ -245,6 +245,50 @@ export function lbcClePremierCombobox(categoryKey) {
   return LBC_MAISON_JARDIN_DEPENDANTS[categoryKey]?.typeKey ?? null;
 }
 
+/** La feuille Maison & Jardin à deux combobox dépendants, ou null. */
+export function lbcFeuilleDependante(categoryKey) {
+  const def = LBC_MAISON_JARDIN_DEPENDANTS[String(categoryKey ?? "")];
+  return def ? { typeKey: def.typeKey, produitKey: def.produitKey, produits: def.produits } : null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA PAIRE (UNIVERS, PRODUIT) QUE L'ANNONCE NOMME (2026-09-24)
+// ═══════════════════════════════════════════════════════════════════════════
+// Sur NOTRE feuille cette fois (pairesMaisonJardinDeSecours, plus bas, sert les
+// AUTRES feuilles). Quand ni la liste de l'Univers courant ni la valeur posée ne
+// conviennent, on cherche le PRODUIT que nomment le titre, puis l'objet IA,
+// puis la description, parmi TOUS les produits de la feuille — et l'Univers
+// suit, puisque la liste Produit en dépend. Cas type : Univers « Accessoire de
+// table » + Produit « Assiette » (hors liste de cet univers) sur « Lot de 6
+// assiettes » → Univers « Vaisselle de table », Produit « Assiette ».
+// ⛔ Même règle que tous les champs à liste fermée (_shared/option-du-texte.js) :
+//    mots entiers, jamais « Autre », jamais au hasard. Un produit que la feuille
+//    range sous DEUX univers (« Traversin » en Linge de lit et en Équipement du
+//    lit) ne départage rien : on ne pose pas la paire.
+/**
+ * @param {string} categoryKey  « Maison & Jardin > … »
+ * @param {(opts: {options: string[]}) => {valeur: string|null, source: string|null, candidats: string[]}} chercher
+ *        la recherche (optionDepuisTextes lié aux textes de l'annonce)
+ * @returns {{ typeKey, produitKey, univers, produit, source } | { candidats: string[] } | null}
+ */
+export function lbcPaireDepuisTextes(categoryKey, chercher) {
+  const feuille = LBC_MAISON_JARDIN_DEPENDANTS[String(categoryKey ?? "")];
+  if (!feuille || typeof chercher !== "function") return null;
+  const universDe = new Map();
+  for (const [univers, produits] of Object.entries(feuille.produits)) {
+    for (const p of produits) {
+      if (/^autres?$/i.test(p.trim())) continue;
+      if (!universDe.has(p)) universDe.set(p, []);
+      universDe.get(p).push(univers);
+    }
+  }
+  const r = chercher({ options: [...universDe.keys()] });
+  if (!r?.valeur) return r?.candidats?.length > 1 ? { candidats: r.candidats } : null;
+  const univers = universDe.get(r.valeur) ?? [];
+  if (univers.length !== 1) return { candidats: [r.valeur] };
+  return { typeKey: feuille.typeKey, produitKey: feuille.produitKey, univers: univers[0], produit: r.valeur, source: r.source };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // QUAND LEBONCOIN CHOISIT UNE AUTRE FEUILLE QUE LA NÔTRE (2026-09-22)
 // ═══════════════════════════════════════════════════════════════════════════

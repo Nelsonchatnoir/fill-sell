@@ -98,6 +98,37 @@ export function signatureResolution({ plateformes, edited, initialListing, share
   });
 }
 
+// ── LE FOURRE-TOUT LEBONCOIN, ET CE QU'ON EN FAIT QUAND ON NE SAIT PAS ───────
+// (2026-09-24, job 8147f963 de Louis.) « Divers > Autres » est le rayon que
+// Leboncoin réserve à ce qui n'entre nulle part — et celui où l'icône par
+// défaut (📦) range tout ce qu'elle ne reconnaît pas. Ce n'est jamais une
+// réponse : la vérification ne le confirme pas, elle cherche mieux.
+export function cheminFourreToutLbc(chemin) {
+  return Array.isArray(chemin) && chemin.length === 2
+    && texteComparable(String(chemin[0] ?? "")) === "divers"
+    && texteComparable(String(chemin[1] ?? "")) === "autres";
+}
+
+// Un rayon PAR DÉFAUT dont la résolution n'a pas abouti à cause d'une PANNE
+// (resolve-categorie injoignable ou IA indisponible, après une nouvelle
+// tentative) : il ne part PAS dans le fourre-tout. Le chemin est retiré — la
+// plateforme sort du lot AVANT le débit (regles.plateformesSansChemin) — et le
+// motif est noté : l'écran dit « rayon pas trouvé à l'instant, republie pour
+// réessayer », le clic suivant recalcule (jamais le pré-calcul d'une panne).
+function retenirRayonParDefaut(row, pf, motif, journal = []) {
+  if (row.platform === "leboncoin") delete pf.lbcCategoryPath;
+  else if (row.platform === "beebs") delete pf.beebsCategoryPath;
+  else if (row.platform === "opla") delete pf.oplaCategoryPath;
+  pf.rayon_a_reessayer = { motif, le: new Date().toISOString(), paliers: journal };
+  pf.categorie_verification = { ...(pf.categorie_verification ?? {}), verdict: "attente_resolution", motif_attente: motif };
+  console.warn(`[publish] ${row.platform} — rayon par défaut RETENU (${motif}) : la plateforme attend, jamais le fourre-tout`);
+}
+
+/** La résolution porte-t-elle une panne passagère à retenter (rayon par défaut retenu) ? */
+export function resolutionARetenter(resolution) {
+  return Object.values(resolution?.pfParPlateforme ?? {}).some((pf) => Boolean(pf?.rayon_a_reessayer));
+}
+
 // `outils` : ce que la résolution lit dans ListingPreviewScreen et qui n'est
 // pas un module à soi — helpers locaux du fichier, configuration dépendant du
 // traducteur, client Supabase reçu en prop. Passés plutôt que déménagés : les
@@ -741,7 +772,16 @@ export async function resoudrePublication({
           pf.lbcAspects = aspectsLbc;
         }
       }
-      if (!parMot?.chemin && lbcPath) poseParIcone.leboncoin = { chemin: lbcPath, id: null };
+      // `parDefaut` (24/09, job 8147f963 de Louis) : le chemin n'est que le
+      // FOURRE-TOUT de l'icône par défaut (📦 → « Divers > Autres »). Ce n'est
+      // pas une réponse : la vérification plus bas ne peut pas le CONFIRMER,
+      // elle doit trouver le vrai rayon (ou descendre l'arbre).
+      if (!parMot?.chemin && lbcPath) {
+        poseParIcone.leboncoin = {
+          chemin: lbcPath, id: null,
+          parDefaut: pf.categorie_source === "defaut" || cheminFourreToutLbc(lbcPath),
+        };
+      }
       // Nom historique du même drapeau, conservé pour les extensions
       // ≤ 0.6.20 déjà déployées. La décision, elle, est prise une seule
       // fois dans le bloc commun ci-dessus. Aucun job ne part sans
@@ -1147,6 +1187,17 @@ export async function resoudrePublication({
   //    sur une panne, on le trace (categorie_verification absent).
   // Coût : un appel Haiku de plus par publication concernée (≈ 0,0013 $,
   // mesuré le 07/09), soit au pire quelques centimes par jour.
+  // ── LE RAYON PAR DÉFAUT NE SE CONFIRME PAS (2026-09-24, Louis) ────────────
+  // Deux rangements de yaourtière publiés à la même minute : 6a0f57a4
+  // (« rangement pour yaourtière ») → l'IA refuse « Divers > Autres », la
+  // descente d'arbre trouve « Maison & Jardin > Électroménager » ; 8147f963
+  // (« accessoire de yaourtière ») → l'IA CONFIRME « Divers > Autres », et
+  // l'annonce part dans le fourre-tout avec 3 photos au lieu de 5. Un
+  // fourre-tout paraît toujours plausible : le proposer comme candidat, c'est
+  // laisser l'IA s'y réfugier. Le chemin par défaut n'est donc JAMAIS proposé
+  // ni confirmé — seules ses voisines le sont, et sans elles c'est la descente.
+  const posesParDefaut = new Set(Object.entries(poseParIcone).filter(([, p]) => p.parDefaut).map(([k]) => k));
+  let verificationInjoignable = false;
   if (motCategorie && Object.keys(poseParIcone).length) {
     const cle = (chemin) => (Array.isArray(chemin) ? chemin : [chemin])
       .map(s => texteComparable(String(s ?? ""))).join(" > ");
@@ -1154,11 +1205,14 @@ export async function resoudrePublication({
     const candidatsVerif = {};
     for (const [pfKey, pose] of Object.entries(poseParIcone)) {
       const voisines = (candidatsRatisses[pfKey] ?? []).filter(c => !memeChemin(c.chemin, pose.chemin));
-      candidatsVerif[pfKey] = [{ chemin: pose.chemin, id: pose.id ?? null }, ...voisines].slice(0, 20);
+      const liste = pose.parDefaut
+        ? voisines.slice(0, 20)
+        : [{ chemin: pose.chemin, id: pose.id ?? null }, ...voisines].slice(0, 20);
+      if (liste.length) candidatsVerif[pfKey] = liste;
     }
     let reponse = null;
-    try {
-      const { data } = await supabase.functions.invoke("resolve-categorie", {
+    if (Object.keys(candidatsVerif).length) try {
+      const { data, error } = await supabase.functions.invoke("resolve-categorie", {
         body: {
           titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
           attributs: {
@@ -1171,7 +1225,9 @@ export async function resoudrePublication({
         },
       });
       reponse = data ?? null;
+      if (error || !data || data.motif === "ia_indisponible") verificationInjoignable = true;
     } catch (e) {
+      verificationInjoignable = true;
       console.warn("[publish] vérification du chemin de l'icône : resolve-categorie injoignable — chemins conservés :", e?.message ?? e);
     }
     const choixVerif = reponse && reponse.motif !== "ia_indisponible" && reponse.choix && typeof reponse.choix === "object"
@@ -1192,7 +1248,7 @@ export async function resoudrePublication({
         const choix = choixVerif[row.platform] ?? null;
         const cheminChoisi = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
         const trace = { objet: motCategorie, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
-        if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin)) {
+        if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin) && !pose.parDefaut) {
           pf.categorie_verification = { ...trace, verdict: "confirme" };
           // ── LEBONCOIN : UN CHEMIN CONFIRMÉ N'EST PLUS UNE SUPPOSITION (24/09) ─
           // Jocabroc, job fc5e4bff (« Présentoir vintage… plateau de service ») :
@@ -1214,7 +1270,7 @@ export async function resoudrePublication({
           }
           continue;
         }
-        if (cheminChoisi && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
+        if (cheminChoisi && !memeChemin(cheminChoisi, pose.chemin) && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
           pf.categorie_source = "ia_parmi_candidats";
           pf.categorie_par_mot = {
             mot: motCategorie, mot_source: motCategorieSource, chemin: cheminChoisi, id: choix.id ?? null, choisi_par_ia: true, apres_verification: true,
@@ -1238,6 +1294,25 @@ export async function resoudrePublication({
         }
       }
     }
+  }
+  // Un rayon PAR DÉFAUT que la vérification n'a pas remplacé — refusé, sans
+  // voisine à proposer, IA injoignable, ou sans mot pour demander — n'est pas
+  // une réponse : il descend l'arbre (dernier recours, juste en dessous) au
+  // lieu de partir dans le fourre-tout.
+  for (const row of rows) {
+    if (!posesParDefaut.has(row.platform)) continue;
+    const pf = row.platform_fields;
+    const verdict = pf.categorie_verification?.verdict;
+    if (verdict === "remplace" || verdict === "incoherent") continue;
+    pf.categorie_verification = {
+      objet: motCategorie ?? null, chemin_icone: poseParIcone[row.platform].chemin, source_avant: pf.categorie_source ?? null,
+      verdict: "incoherent",
+      motif: verificationInjoignable ? "verification_injoignable" : (motCategorie ? "defaut_sans_voisine" : "defaut_sans_mot"),
+    };
+    pf.categorie_source = "icone_non_confirmee";
+    pf.categorie_incertaine = true;
+    if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
+    console.warn(`[publish] ${row.platform} — rayon PAR DÉFAUT « ${poseParIcone[row.platform].chemin.join(" > ")} » : jamais confirmé, on descend l'arbre`);
   }
 
   // ══ LE DERNIER RECOURS — DESCENDRE L'ARBRE, AVANT DE DIRE « IMPUBLIABLE » ══
@@ -1271,19 +1346,37 @@ export async function resoudrePublication({
   const aSauver = rows.filter((r) =>
     r.platform_fields?.categorie_verification?.verdict === "incoherent"
     && ARBRES_DESCENDABLES.has(r.platform));
-  if (motCategorie && aSauver.length) {
+  // (24/09) Sans mot-objet, un rayon PAR DÉFAUT descend quand même l'arbre, sur
+  // le titre : c'est ce que ferait un vendeur devant le formulaire.
+  const titreDescente = initialListing?.titre || edited[plateformesAPublier[0]]?.title || "";
+  const objetDescente = motCategorie || (aSauver.some((r) => posesParDefaut.has(r.platform)) ? titreDescente : "");
+  // Une panne PASSAGÈRE (resolve-categorie injoignable, IA indisponible) n'est
+  // pas un « aucune » : elle se retente une fois, puis le rayon par défaut
+  // ATTEND (rayon_a_reessayer) au lieu de partir dans le fourre-tout.
+  const appelerResolve = async (body) => {
+    for (let essai = 0; essai < 2; essai++) {
+      try {
+        const { data, error } = await supabase.functions.invoke("resolve-categorie", { body });
+        if (!error && data && data.motif !== "ia_indisponible") return { data, injoignable: false };
+      } catch { /* retenté une fois */ }
+      if (essai === 0) await new Promise((ok) => setTimeout(ok, 1200));
+    }
+    return { data: null, injoignable: true };
+  };
+  if (objetDescente && aSauver.length) {
     const genreVerif = sharedFields.genre || autoGenre || "";
     const attributsVerif = {
       genre: genreVerif,
       taille: sharedFields.taille || initialListing?.taille || "",
       marque: sharedFields.marque || initialListing?.marque || "",
-      objet: motCategorie,
+      objet: objetDescente,
     };
-    const titreVerif = initialListing?.titre || edited[plateformesAPublier[0]]?.title || "";
+    const titreVerif = titreDescente;
     for (const r of aSauver) {
       const pf = r.platform_fields;
       let chemin = [];
       let appels = 0;
+      let injoignable = false;
       const journal = [];
       try {
         for (let palier = 0; palier < PALIERS_MAX; palier++) {
@@ -1292,18 +1385,17 @@ export async function resoudrePublication({
           if (!options.length) break;
           // Un seul chemin possible : on ne dérange pas l'IA pour ça.
           if (options.length === 1) { chemin = options[0]; journal.push(`${chemin[chemin.length - 1]} (seul)`); continue; }
-          const { data } = await supabase.functions.invoke("resolve-categorie", {
-            body: {
-              titre: titreVerif, attributs: attributsVerif,
-              candidats: { [r.platform]: options.map((c) => ({ chemin: c, id: null })) },
-              // Le branchement maximal des arbres descendables, relevé le 21/09 :
-              // Beebs 19, Leboncoin 14, Opla 22. 25 couvre le plus large sans
-              // jamais tronquer un niveau — et le serveur borne de toute façon.
-              max_candidats: 25,
-            },
+          const { data, injoignable: panne } = await appelerResolve({
+            titre: titreVerif, attributs: attributsVerif,
+            candidats: { [r.platform]: options.map((c) => ({ chemin: c, id: null })) },
+            // Le branchement maximal des arbres descendables, relevé le 21/09 :
+            // Beebs 19, Leboncoin 14, Opla 22. 25 couvre le plus large sans
+            // jamais tronquer un niveau — et le serveur borne de toute façon.
+            max_candidats: 25,
           });
           appels++;
-          const choix = data && data.motif !== "ia_indisponible" ? (data.choix?.[r.platform] ?? null) : null;
+          if (panne) { injoignable = true; journal.push(`injoignable parmi ${options.length}`); chemin = []; break; }
+          const choix = data.choix?.[r.platform] ?? null;
           const suivant = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
           if (!suivant) { journal.push(`aucune parmi ${options.length}`); chemin = []; break; }
           chemin = suivant;
@@ -1312,12 +1404,14 @@ export async function resoudrePublication({
         }
       } catch (e) {
         console.warn(`[publish] dernier recours ${r.platform} : interrompu —`, e?.message ?? e);
+        injoignable = true;
         chemin = [];
       }
       // ⛔ UNE FEUILLE, OU RIEN. Un nœud intermédiaire n'est pas déposable : le
       //    refus d'origine vaut mieux qu'un chemin qui s'arrête en route.
       if (!chemin.length || !(await estFeuilleDeLArbre(r.platform, chemin))) {
-        console.log(`[publish] dernier recours ${r.platform} — « ${motCategorie} » : ${journal.join(" | ") || "rien à descendre"} → le refus tient (${appels} appel(s))`);
+        console.log(`[publish] dernier recours ${r.platform} — « ${objetDescente} » : ${journal.join(" | ") || "rien à descendre"} → le refus tient (${appels} appel(s))`);
+        if (injoignable && posesParDefaut.has(r.platform)) retenirRayonParDefaut(r, pf, "resolution_injoignable", journal);
         continue;
       }
       // ── LA DESCENTE PROPOSE, ELLE NE DÉCIDE PAS SEULE (2026-09-21) ────────
@@ -1341,24 +1435,24 @@ export async function resoudrePublication({
       // personne voit ce qu'on avait trouvé, et tranche.
       const incoherence = rayonContreditLaFiche(chemin, pf);
       let confirme = !incoherence;
+      let confirmationInjoignable = false;
       if (confirme) {
-        try {
-          const { data } = await supabase.functions.invoke("resolve-categorie", {
-            body: {
-              titre: titreVerif, attributs: attributsVerif,
-              candidats: { [r.platform]: [{ chemin, id: null }] },
-            },
-          });
-          appels++;
-          confirme = Boolean(data && data.motif !== "ia_indisponible"
-            && Array.isArray(data.choix?.[r.platform]?.chemin)
-            && data.choix[r.platform].chemin.length);
-        } catch (e) {
-          // IA injoignable : on ne publie pas sur une confirmation qu'on n'a
-          // pas eue. Le refus d'origine tient, comme avant ce lot.
-          console.warn(`[publish] dernier recours ${r.platform} : confirmation injoignable —`, e?.message ?? e);
-          confirme = false;
-        }
+        // IA injoignable (après une nouvelle tentative) : on ne publie pas sur
+        // une confirmation qu'on n'a pas eue. Le refus d'origine tient — et un
+        // rayon PAR DÉFAUT attend au lieu de partir dans le fourre-tout.
+        const { data, injoignable: panne } = await appelerResolve({
+          titre: titreVerif, attributs: attributsVerif,
+          candidats: { [r.platform]: [{ chemin, id: null }] },
+        });
+        appels++;
+        confirmationInjoignable = panne;
+        if (panne) confirme = false;
+        else confirme = Boolean(Array.isArray(data?.choix?.[r.platform]?.chemin) && data.choix[r.platform].chemin.length);
+      }
+      if (!confirme && confirmationInjoignable && posesParDefaut.has(r.platform)) {
+        console.warn(`[publish] dernier recours ${r.platform} : confirmation injoignable — le rayon par défaut attend`);
+        retenirRayonParDefaut(r, pf, "confirmation_injoignable", journal);
+        continue;
       }
       if (!confirme) {
         const pourquoi = incoherence

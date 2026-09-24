@@ -29,7 +29,8 @@ import { RepublicationPlanifieeBloc } from '../components/RepublicationPlanifiee
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
-import { useOplaAcces } from '../utils/oplaAcces';
+import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
+import { deduireOptionDuTexte, listeCandidatsDabord, textesDeLAnnonce } from '../publication/moteur/listes';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
@@ -1220,9 +1221,26 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   // en double (« Noir, Noir, Gris, Gris… », relevé job ad0c4aa2) — un select
   // qui répète chaque valeur se lit comme un bug.
   const dedoublonne = (l) => (Array.isArray(l) ? [...new Set(l)] : l);
-  const allowed = dedoublonne(prefillAllowed
+  const allowedBrut = dedoublonne(prefillAllowed
     ? [...prefillAllowed, ...(listeRelevee ?? []).filter(v => !prefillAllowed.includes(v))]
     : listeRelevee);
+  // ── L'OPTION QUE L'ANNONCE NOMME DÉJÀ (2026-09-24, job fc5e4bff) ──────────
+  // La question « Produit » était posée à Jocabroc alors que le titre disait
+  // « … plateau de service ». Même règle que le stepper et le serveur
+  // (moteur/listes.deduireOptionDuTexte) : l'option que nomment le titre, puis
+  // l'objet identifié par l'IA, est PRÉ-CHOISIE — un tap sur « Valider » — et
+  // plusieurs options nommées passent EN TÊTE de la liste. Jamais une taille,
+  // une marque, l'état ou le colis ; jamais « Autre ».
+  const deduction = f && Array.isArray(allowedBrut) && allowedBrut.length
+    ? deduireOptionDuTexte({
+        platform: job.platform, key: f.field_key, label: f.field_label, allowedValues: allowedBrut,
+        textes: textesDeLAnnonce({ titre: job.title, platformFields: job.platform_fields }),
+      })
+    : null;
+  const allowed = deduction?.candidats?.length
+    ? listeCandidatsDabord(allowedBrut, deduction.candidats)
+    : allowedBrut;
+  const valeurProposee = deduction?.valeur ?? null;
   const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
 
   // ── RÈGLE DU 19/07 RENDUE INCONTOURNABLE (2026-07-22) ──────────────────────
@@ -1270,7 +1288,9 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   // panneaux à barre de recherche) et proposera enfin les vrais choix.
   const valider = async ({ sansValeur = false, valeur = null } = {}) => {
     if (saving) return;
-    const v = String(valeur ?? value ?? "").trim();
+    // La valeur pré-choisie depuis l'annonce vaut réponse tant que la personne
+    // n'en a pas choisi une autre.
+    const v = String(valeur ?? (value || valeurProposee || "")).trim();
     if (f && !v && !sansValeur) return;
     if (descriptionManquante) return;
     if (!sansValeur && champsSupManquants) return;
@@ -1453,14 +1473,23 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
               ))}
             </div>
           ) : (
+          <>
           <AspectValueInput
-            value={value}
+            value={value || valeurProposee || ""}
             allowedValues={allowed ?? []}
             strict={listeCertifieeComplete}
             onChange={setValue}
             T={NU_T}
             idBase={`nu-${job.id}`}
           />
+          {valeurProposee && !value && (
+            <div style={{ fontSize:12, lineHeight:1.45, color:"#1B6E62", marginTop:6 }}>
+              {lang === "en"
+                ? `“${valeurProposee}” is what your listing says — check it and confirm.`
+                : `« ${valeurProposee} » : c'est ce que dit ton annonce — vérifie et valide.`}
+            </div>
+          )}
+          </>
           )
         ))}
         {!valeursIndisponibles && champsSup.map((c) => {
@@ -1558,8 +1587,8 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
           </button>
           <button
             onClick={() => valider({ sansValeur: valeursIndisponibles })}
-            disabled={saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante || champsSupManquants}
-            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante || champsSupManquants ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+            disabled={saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
           >
             {saving
               ? (lang === "en" ? "Saving…" : "Enregistrement…")
@@ -1642,6 +1671,9 @@ function isListingUrlRecoverable(platform, pubJob) {
 function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy, userId }) {
   useFermetureEchap(onClose);
   const fr = lang !== "en";
+  // L'autorisation Opla du compte (verdict serveur, lecture partagée : aucune
+  // requête de plus quand le Stock l'a déjà lue).
+  const { detail: oplaDetail } = useOplaAcces({ userId });
   // ── LE BANDEAU DOIT PARLER DE CET ARTICLE (2026-08-31) ────────────────────
   // diagnostiquerExtension ne décrit que la SANTÉ DE L'EXTENSION : dès qu'elle
   // a donné signe de vie, il annonçait en vert « En file d'attente —
@@ -1824,6 +1856,16 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                 {(() => {
                   const motif = murDeConnexion(j);
                   if (!motif) return null;
+                  // (24/09) Parcage « Autoriser Opla » plus ancien que la preuve
+                  // d'accès du compte (verdict serveur) : il repart seul — on le
+                  // dit, sans redemander le geste.
+                  if (motif === MOTIFS.AUTORISER_OPLA && parcageDepasse(j, oplaDetail)) {
+                    return (
+                      <div style={{ fontSize:11.5, lineHeight:1.45, color:"#5A6B66", marginTop:6 }}>
+                        {fr ? "Opla est autorisée : cette annonce repart toute seule." : "Opla is allowed: this listing goes out on its own."}
+                      </div>
+                    );
+                  }
                   return (
                     <div style={{ marginTop:8 }}>
                       <BoutonMeConnecter
@@ -4738,7 +4780,7 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise =
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, userId = null }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -4763,6 +4805,9 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
   // ⛔ OPLA : la question au clic, ici aussi (18/09/2026). Cocher Opla sans
   // l’autorisation d’hôte ouvre la modale sur place ; « Continuer » coche
   // quand même, la republication attendra l’autorisation et repartira seule.
+  // (24/09) `oplaAcces` vient du verdict SERVEUR (utils/oplaAcces) : false
+  // = refus CONNU seulement — la modale ne se pose plus sur un silence de la
+  // sonde. Sans preuve, la ligne Opla porte le bouton (garde-fou), sans modale.
   const [oplaModale, setOplaModale] = useState(false);
   const basculer = (p) => {
     if (p === 'opla' && !sel.has(p) && oplaAcces === false) { setOplaModale(true); return; }
@@ -4861,7 +4906,18 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
                 </span>
                 <span style={{ flex: 1, fontSize: 11.5, color: '#5C6560', lineHeight: 1.45 }}>{explication[p]}</span>
               </label>
-            ))}
+            )).flatMap((ligne, i) => {
+              // Opla cochée sans accès PROUVÉ au serveur : la phrase et LE
+              // bouton, sous sa case (hors du <label>, qui cocherait la case).
+              const p = plateformesUnion[i];
+              if (p !== 'opla' || !cochee('opla') || !phraseAccesOpla(oplaVerdict, lang) || !userId) return [ligne];
+              return [ligne, (
+                <div key="opla-acces" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '0 4px 4px 34px' }}>
+                  <span style={{ fontSize: 11.5, color: '#8A6100', fontWeight: 600 }}>{phraseAccesOpla(oplaVerdict, lang)}</span>
+                  <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />
+                </div>
+              )];
+            })}
           </div>
         )}
         {solo && cochee('vinted') && (
@@ -5659,7 +5715,11 @@ const StockTab = memo(function StockTab({
   const [choixPlateformesRepub, setChoixPlateformesRepub] = useState(null);
   // Opla : l’autorisation d’hôte, pour la feuille de republication — la
   // question s’y pose au clic, comme partout ailleurs (18/09/2026).
-  const { acces: oplaAccesRepub } = useOplaAcces({ userId: user?.id });
+  // L'autorisation Opla du compte, lue au SERVEUR (utils/oplaAcces, 24/09) :
+  // la même que le stepper, l'écran de suivi et les Réglages. Sert la feuille
+  // de republication ET les cartes (un parcage « Autoriser Opla » plus ancien
+  // que la preuve d'accès ne porte plus le bouton : il repart seul).
+  const { acces: oplaAccesRepub, verdict: oplaVerdictRepub, detail: oplaAccesDetail } = useOplaAcces({ userId: user?.id });
   const [repubProgress, setRepubProgress] = useState(null); // job republish affiché en détail
   // (repubGratuit est mort le 2026-08-08 : la republication coûte
   // price_republish pour tous les paliers, plus aucun prix conditionné.)
@@ -9691,8 +9751,14 @@ const StockTab = memo(function StockTab({
                   // needs_user EN COURS chez la plateforme (2026-09-10) : ni une
                   // action ni un « À compléter » — pastille grise, sans tap. Ils
                   // sortent de needsUserJobs pour ne compter dans aucun « actionable ».
-                  const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours");
-                  const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours");
+                  // (24/09) Un parcage « Autoriser Opla » PLUS ANCIEN que la preuve
+                  // d'accès du compte (verdict serveur, utils/oplaAcces) n'attend
+                  // plus personne : get-pending-jobs le relance au prochain poll
+                  // d'un poste autorisé. Il rejoint les « en cours » — gris, sans
+                  // bouton « Autoriser Opla » pour un geste déjà fait.
+                  const oplaRepartSeule=j=>j.platform==="opla"&&j.platform_fields?.needs_user_source==="opla_acces"&&parcageDepasse(j,oplaAccesDetail);
+                  const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours"||oplaRepartSeule(j));
+                  const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours"&&!oplaRepartSeule(j));
                   // ── LE MUR NOMMÉ DE LA CARTE (2026-09-23) ─────────────────
                   // Même règle que la pastille (voir l'IIFE de la photo) : quand
                   // rien de plus urgent ne parle (republication, file, échec) et
@@ -9985,10 +10051,17 @@ const StockTab = memo(function StockTab({
                             // action attendue — « en cours », pas « incertain ».
                             dot="#8A938F";fg="#5A6B66";
                             const j=enConfirmationJobs[0];
-                            txt=enConfirmationJobs.length>1
+                            // Parcage Opla dépassé par la preuve d'accès : « en file »,
+                            // jamais « en cours de confirmation » (rien n'est parti).
+                            const toutOplaEnFile=enConfirmationJobs.every(oplaRepartSeule);
+                            txt=toutOplaEnFile
+                              ?(fr?`En file ${PLATFORM_LABELS.opla||"Opla"}`:`Queued ${PLATFORM_LABELS.opla||"Opla"}`)
+                              :enConfirmationJobs.length>1
                               ?(fr?`En cours de confirmation · ${enConfirmationJobs.length}`:`Awaiting confirmation · ${enConfirmationJobs.length}`)
                               :(fr?`En cours de confirmation ${PLATFORM_LABELS[j.platform]||j.platform}`:`Awaiting confirmation ${PLATFORM_LABELS[j.platform]||j.platform}`);
-                            titre=texteEnCoursConfirmation(j,lang);
+                            titre=toutOplaEnFile
+                              ?(fr?"Opla est autorisée : cette annonce repart toute seule.":"Opla is allowed: this listing goes out on its own.")
+                              :texteEnCoursConfirmation(j,lang);
                             onTap=null;
                           }else if(disparuDeVinted){
                             dot="#8A8578";fg="#8A6100";
@@ -11138,6 +11211,7 @@ const StockTab = memo(function StockTab({
           multiOuverte={multiOuverte}
           choixInitial={choixPlateformesRepub}
           oplaAcces={oplaAccesRepub}
+          oplaVerdict={oplaVerdictRepub}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
             setRepubSheet(null);

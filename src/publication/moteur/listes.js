@@ -43,6 +43,29 @@
 //    « à compléter » avec la liste, et c'est la personne qui choisit.
 import { texteComparable } from "../../utils/texteComparable.js";
 import { tailleDansGrille } from "../../../supabase/functions/_shared/tailles.js";
+import {
+  optionDepuisTextes, champDeductibleDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
+} from "../../../supabase/functions/_shared/option-du-texte.js";
+
+export { estFourreTout, listeCandidatsDabord, textesDeLAnnonce };
+
+/**
+ * L'OPTION QUE L'ANNONCE NOMME DÉJÀ (2026-09-24, job fc5e4bff de Jocabroc).
+ * Pour un champ à liste FERMÉE dont la valeur est hors liste, absente ou le
+ * fourre-tout « Autre » : l'option de la liste que nomment le titre, puis
+ * l'objet identifié par l'IA, puis la description (règle unique,
+ * supabase/functions/_shared/option-du-texte.js — la même que le serveur).
+ * Rend { valeur, source, candidats } — ou null quand le champ ne se déduit
+ * jamais d'un texte (taille, marque, état, colis) ou que la liste n'est pas
+ * une vraie liste (vide, ou relevé coupé à 200).
+ */
+export function deduireOptionDuTexte({ platform, key, label = "", allowedValues, textes }) {
+  if (estChampTaille(platform, key) || champARecherche(platform, key)) return null;
+  if (!champDeductibleDuTexte(key, label)) return null;
+  const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
+  if (!vals.length || (platform !== "ebay" && vals.length >= PLAFOND_RELEVE)) return null;
+  return optionDepuisTextes({ options: vals, textes });
+}
 
 // Le plafond du relevé (chrome-extension/background.js, persistDiscoveredAspects
 // : `allowed_values` coupées à 200). Une liste à 200 entrées est tronquée.
