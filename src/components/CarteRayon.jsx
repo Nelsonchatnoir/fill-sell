@@ -266,7 +266,7 @@ export default function CarteRayon({
   return (
     <>
       {/* ── LE RAYON ────────────────────────────────────────────────── */}
-      <div style={questionOuverte ? { ...st.bloc, background: '#FFFBEB', borderColor: '#F59E0B' } : st.bloc}>
+      <div style={questionOuverte ? { ...st.bloc, background: '#FFFBEB', border: '1px solid #F59E0B' } : st.bloc}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
           <span style={questionOuverte ? { ...st.eyebrow, color: '#92400E' } : st.eyebrow}>{questionOuverte ? T.aChoisir : T.rayon}</span>
           {rayon?.chemin?.length ? (
