@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -2886,8 +2886,8 @@ async function fillListingForm(job) {
       if (tailleRequise === false) {
         // On continue : le champ reste vide, la suite du formulaire est remplie.
       } else {
-        const limite = limiteNeufVinted(fields, requis, { warnings });
-        if (limite) return limite;
+        const rayonNeuf = rayonNeufSeulementVinted(fields, requis, { warnings });
+        if (rayonNeuf) return rayonNeuf;
         return {
           success: false,
           needsUser: true,
@@ -2905,8 +2905,8 @@ async function fillListingForm(job) {
       // montre jusqu'à 12 options + le compte des restantes, et on donne les
       // DEUX sorties (taille OU catégorie).
       const requisTaille = await computeVintedRequiredState().catch(() => ({ discovered: [] }));
-      const limite = limiteNeufVinted(fields, requisTaille, { warnings });
-      if (limite) return limite;
+      const rayonNeuf = rayonNeufSeulementVinted(fields, requisTaille, { warnings });
+      if (rayonNeuf) return rayonNeuf;
       return {
         success: false,
         needsUser: true,
@@ -3195,35 +3195,10 @@ async function fillListingForm(job) {
       "RECRÉATION : soumission tentée quand même."
     );
   } else if (requiredState.unfilled.length) {
-    // ── « NEUF SEULEMENT » : UNE LIMITE DE VINTED, PAS UNE QUESTION (24/09) ──
-    // Casque de solene.mantero (job 4da68910) : le rayon n'accepte que « Neuf
-    // avec étiquette » et l'article est en « Bon état ». On demandait l'État,
-    // avec pour « options » l'avertissement de Vinted (« Veille à ne mettre en
-    // ligne que des articles neufs… ») — et la seule réponse possible aurait
-    // été un mensonge. La liste de la CONFIG du rayon fait foi ; si elle ne
-    // porte que des « Neuf… » et que l'état de l'article n'en est pas, on le
-    // dit clairement. Ancre lue par pas-de-rouge (serveur) : classé INFO, clos,
-    // jamais relancé. Aucun clic n'a été fait.
-    const metaEtat = requiredState.discovered.find((x) => x.key === "condition" && requiredState.unfilled.includes(x.label));
-    const etatsAcceptes = (metaEtat?.options ?? [])
-      .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
-      .map((s) => String(s).trim()).filter(Boolean);
-    const etatArticle = String(fields.etat ?? "").trim();
-    if (metaEtat && etatArticle && etatsAcceptes.length
-        && etatsAcceptes.every((s) => /^neuf\b/.test(normalizeFuzzy(s)))
-        && !etatsAcceptes.some((s) => normalizeFuzzy(s) === normalizeFuzzy(etatArticle))) {
-      return {
-        success: false,
-        needsUser: false,
-        error:
-          `Vinted n'accepte que des articles neufs dans ce rayon (${[...new Set(etatsAcceptes)].join(" · ")}). ` +
-          `Ton article est « ${etatArticle} » : il ne peut pas y être publié. ` +
-          "C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.",
-        warnings,
-        unfilledRequired: requiredState.unfilled,
-        discoveredRequired: requiredState.discovered,
-      };
-    }
+    // Rayon « neuf seulement » face à un article porté : c'est le RAYON qu'on
+    // demande, pas l'État (cf. rayonNeufSeulementVinted).
+    const rayonNeuf = rayonNeufSeulementVinted(fields, requiredState, { warnings, unfilledRequired: requiredState.unfilled });
+    if (rayonNeuf) return rayonNeuf;
     // Options ACCEPTÉES par la catégorie (config attributes) annexées à chaque
     // requis vide : sans elles, l'erreur était inactionnable (cas réel Medik8
     // 18/07 — « État » vide alors que la Beauté n'accepte QUE « Neuf avec
@@ -5175,6 +5150,39 @@ async function selectVintedModel(wanted, warnings) {
 //     tailles vêtement pendant que le DOM affichait des dimensions de literie).
 const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
 
+// ── RAYON « NEUF SEULEMENT » : ON DEMANDE LE RAYON, JAMAIS L'ÉTAT (24/09) ──
+// Relevé réel sur /items/new le 24/09 : « Casques de sécurité » (Maison >
+// Outils et bricolage > Équipement de protection) n'offre qu'UN état
+// cliquable, « Neuf avec étiquette », sous le bandeau « Veille à ne mettre en
+// ligne que des articles neufs… ». Mais « Casques de vélo », « Casques
+// d'escalade », « Bottes de moto » offrent les CINQ états : un casque
+// d'occasion se vend sur Vinted, c'est le rayon qui était mauvais.
+// ⛔ Ce n'est donc JAMAIS une limite de plateforme (le correctif du matin
+// fermait le job et écartait Vinted — retiré) : l'article reste publiable,
+// on demande à la personne de choisir un autre rayon. Pas de question
+// « État » dont la seule réponse serait un mensonge. Passe avant le verdict de
+// taille : dans un mauvais rayon, la grille de tailles est fausse aussi.
+function rayonNeufSeulementVinted(fields, requiredState, extras = {}) {
+  const meta = (requiredState?.discovered ?? []).find((x) => x.key === "condition");
+  const acceptes = (meta?.options ?? [])
+    .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+    .map((x) => String(x).trim()).filter(Boolean);
+  const etat = String(fields?.etat ?? "").trim();
+  if (!meta || !etat || !acceptes.length) return null;
+  if (!acceptes.every((x) => /^neuf/.test(normalizeFuzzy(x)))) return null;
+  if (acceptes.some((x) => normalizeFuzzy(x) === normalizeFuzzy(etat))) return null;
+  const rayon = (fields?.categoryPath ?? []).join(" > ") || "choisi";
+  return {
+    success: false,
+    needsUser: true,
+    error:
+      `Le rayon Vinted « ${rayon} » n'accepte que des articles neufs, et ton article est « ${etat} ». ` +
+      "Choisis un autre rayon Vinted pour cet article depuis l'app, puis relance la publication.",
+    discoveredRequired: requiredState?.discovered ?? [],
+    ...extras,
+  };
+}
+
 // ── LES LIBELLÉS D'OPTIONS, PAS TOUT CE QUE LE SÉLECTEUR ATTRAPE (24/09) ─────
 // `[data-testid^="condition-"]` attrape, en plus des options, l'AVERTISSEMENT
 // du rayon (« Veille à ne mettre en ligne que des articles neufs et non
@@ -5188,33 +5196,6 @@ const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
 //     enchaîne SANS séparateur sur une majuscule (titre + description).
 // Ne sert qu'au RELEVÉ (messages, warnings) : l'appariement de la cascade
 // n'est pas touché.
-// ── « NEUF SEULEMENT » : LA LIMITE, DITE AVANT TOUT AUTRE ARRÊT (24/09) ──────
-// Rayon dont la config n'accepte QUE des états « Neuf… » et article qui ne
-// l'est pas : aucune réponse honnête ne le fera partir. Elle passe AVANT le
-// verdict de taille (casque de solene.mantero, rayon « Bottes de moto » choisi
-// à la main : on lui demandait une pointure pour un casque, alors que Vinted
-// refuserait de toute façon un article porté). Ancre lue par pas-de-rouge.
-function limiteNeufVinted(fields, requiredState, extras = {}) {
-  const meta = (requiredState?.discovered ?? []).find((x) => x.key === "condition");
-  const acceptes = (meta?.options ?? [])
-    .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
-    .map((x) => String(x).trim()).filter(Boolean);
-  const etat = String(fields?.etat ?? "").trim();
-  if (!meta || !etat || !acceptes.length) return null;
-  if (!acceptes.every((x) => /^neuf/.test(normalizeFuzzy(x)))) return null;
-  if (acceptes.some((x) => normalizeFuzzy(x) === normalizeFuzzy(etat))) return null;
-  return {
-    success: false,
-    needsUser: false,
-    error:
-      `Vinted n'accepte que des articles neufs dans ce rayon (${[...new Set(acceptes)].join(" · ")}). ` +
-      `Ton article est « ${etat} » : il ne peut pas y être publié. ` +
-      "C'est une règle de Vinted, pas une information à compléter. Tes autres plateformes ne sont pas concernées.",
-    discoveredRequired: requiredState?.discovered ?? [],
-    ...extras,
-  };
-}
-
 function libellesOptionsLisibles(textes) {
   const bruts = [...new Set((textes ?? []).map((t) => String(t ?? "").replace(/\s+/g, " ").trim()).filter(Boolean))];
   const courts = bruts.filter((t) => t.length <= 60);
