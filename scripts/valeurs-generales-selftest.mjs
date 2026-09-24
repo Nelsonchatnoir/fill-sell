@@ -182,6 +182,10 @@ console.log("\n7. LA VALEUR GÉNÉRALE NE REGARDE PAS LES CASES COCHÉES (câbla
   //    jours, jusqu'à 42 € au lieu de 20.
   //    Un selftest de logique ne pouvait pas voir ça. Celui-ci le voit.
   const src = readFileSync(new URL("../src/components/ListingPreviewScreen.jsx", import.meta.url), "utf8");
+  // (refonte 24/09) La forme du job vit dans le moteur (construireJobs,
+  // src/publication/moteur/regles.js) : la ligne « prix de SA copie » se
+  // cherche là aussi — le stepper ne fait plus que l'appeler.
+  const regles = readFileSync(new URL("../src/publication/moteur/regles.js", import.meta.url), "utf8");
   const corpsDe = (nom, n) => {
     const i = src.indexOf(nom);
     return i < 0 ? "" : src.slice(i, i + n);
@@ -214,7 +218,7 @@ console.log("\n7. LA VALEUR GÉNÉRALE NE REGARDE PAS LES CASES COCHÉES (câbla
     "une fiche rouverte garde Opla cochée : une copie vaut une annonce générée");
 
   // Le chemin d'envoi : c'est la copie qui fait le prix du job.
-  ok(/price:\s+edited\[platform\]\?\.price\s+\?\? price,/.test(src),
+  ok(/price:\s+edited\[platform\]\?\.price\s+\?\? price,/.test(src) || /price:\s+edited\[platform\]\?\.price\s+\?\? price,/.test(regles),
     "le job part avec le prix de SA copie, avec le prix général en repli");
 }
 
