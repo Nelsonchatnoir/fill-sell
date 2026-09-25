@@ -825,7 +825,7 @@ serve(async (req) => {
     const muetIso = new Date(now - SYNC_RUN_SANS_PROGRES_MIN * 60_000).toISOString();
     const { data: figes } = await supabase
       .from("vinted_sync_runs")
-      .select("id, user_id, page_suivante, items_vus, updated_at, started_at")
+      .select("id, user_id, kind, platform, page_suivante, items_vus, updated_at, started_at, erreur")
       .eq("status", "running")
       .lt("updated_at", muetIso);
     // ── LA SONDE D'EXTENSION EST CONSULTÉE AVANT DE NOMMER LA CAUSE ─────────
@@ -866,9 +866,65 @@ serve(async (req) => {
         console.warn("[handler-watch] sonde d'extension illisible (message d'origine conservé):", (e as Error)?.message ?? e);
       }
     }
+    // ── UN RELEVÉ DONT LA LISTE EST ÉCRITE N'A PAS « 0 ARTICLE LU » (25/09) ──
+    // SPGL 44 (Opla) et Joe0410 (Beebs), nuit du 24 au 25/09 : la liste était
+    // lue ET écrite (1 003 annonces Opla, 196 Beebs, run_id posé sur chaque
+    // ligne d'annonces_plateforme) ; le run mourait APRÈS — service worker
+    // coupé pendant les tours du rattachement (SPGL, depuis la 0.6.61), ou
+    // ordinateur en veille pendant la capture des fiches (Joe). Le PATCH final
+    // étant le seul à écrire le statut, ce chien de garde écrivait « expiré…
+    // page 1, 0 article lu » — faux, et l'écran disait « arrêté en cours de
+    // route » à chaque relevé.
+    // Désormais : un run 'annonces' figé dont la liste est en base se CLÔT en
+    // 'done', préfixe « [incomplet] » (le moteur ne date alors AUCUNE
+    // disparition, rapprocher_releve.v_complet), avec le vrai nombre
+    // d'annonces lues. Le rattachement inachevé reprend au relevé suivant :
+    // les annonces jamais évaluées passent en tête (ordre de rapprocher_releve).
+    // Rien d'autre ne change : un run sans liste expire comme avant.
+    const listeEcrite = new Map<string, number>();
+    for (const r of figesListe) {
+      if (String(r.kind ?? "") !== "annonces") continue;
+      try {
+        const { count } = await supabase
+          .from("annonces_plateforme").select("id", { count: "exact", head: true })
+          .eq("run_id", r.id as string);
+        if ((count ?? 0) > 0) listeEcrite.set(String(r.id), count as number);
+      } catch { /* illisible : le run expire comme avant */ }
+    }
     for (const r of figesListe) {
       const muetDepuis = Math.round((now - Date.parse(String(r.updated_at ?? ""))) / 60_000);
       if (!Number.isFinite(muetDepuis)) continue;
+      const lues = listeEcrite.get(String(r.id));
+      if (lues) {
+        const sondeUser = sondeParUser.get(String(r.user_id ?? ""));
+        const sondeMinR = sondeUser != null ? Math.round((now - sondeUser) / 60_000) : null;
+        const causeR = sondeMinR != null && sondeMinR <= SONDE_VIVANTE_MIN
+          ? "Chrome a coupé l'extension pendant le rattachement (défaut de notre côté, corrigé dans la 0.6.67)"
+          : "l'ordinateur s'est mis en veille ou Chrome a été fermé";
+        const pluriel = lues > 1 ? "s" : "";
+        const { data: clos } = await supabase
+          .from("vinted_sync_runs")
+          .update({
+            status: "done",
+            finished_at: new Date(now).toISOString(),
+            updated_at: new Date(now).toISOString(),
+            items_vus: lues,
+            total_entries: lues,
+            erreur:
+              `[incomplet] relevé interrompu après la lecture de la liste : ${lues} annonce${pluriel} lue${pluriel} ` +
+              `et enregistrée${pluriel}, puis ${causeR} — le rattachement reprend au prochain relevé [watchdog]` +
+              (r.erreur ? ` · ${String(r.erreur).slice(0, 300)}` : ""),
+          })
+          .eq("id", r.id as string)
+          .eq("status", "running")
+          .eq("updated_at", r.updated_at as string)
+          .select("id");
+        if (clos?.length) {
+          syncRunsExpires++;
+          console.log(`[handler-watch] relevé ${r.platform} ${r.id} (user ${r.user_id}) figé depuis ${muetDepuis} min APRÈS la lecture de ${lues} annonce(s) → clos en done [incomplet], pas expiré`);
+        }
+        continue;
+      }
       const page = Number(r.page_suivante) || 1;
       const vus = Number(r.items_vus) || 0;
       const sonde = sondeParUser.get(String(r.user_id ?? ""));
@@ -915,6 +971,23 @@ serve(async (req) => {
     // capable — donc jamais pour qui n'a pas rouvert Chrome. D'où les deux
     // demandes de 22 jours. On le fait ici, pour tout le monde.
     const ttlIso = new Date(now - SYNC_QUEUE_TTL_H * 3600_000).toISOString();
+    // (25/09) Relevés et dressings : get-pending-jobs les REDEMANDE au premier
+    // poll de l'extension (une fois) — le texte le dit. Les demandes
+    // « connexion » (ouvrir un onglet) ne se rejouent pas des heures après.
+    const { data: majReleves } = await supabase
+      .from("vinted_sync_runs")
+      .update({
+        status: "expired",
+        finished_at: new Date(now).toISOString(),
+        updated_at: new Date(now).toISOString(),
+        erreur:
+          `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +
+          "l'extension FillSell. Elle repartira toute seule dès que Chrome se rouvrira avec l'extension : rien à faire.",
+      })
+      .eq("status", "queued")
+      .in("kind", ["annonces", "dressing"])
+      .lt("queued_at", ttlIso)
+      .select("id");
     const { data: maj } = await supabase
       .from("vinted_sync_runs")
       .update({
@@ -922,13 +995,13 @@ serve(async (req) => {
         finished_at: new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
         erreur:
-          `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'a pas ouvert Chrome avec ` +
-          "l'extension FillSell pendant ce temps. Relance la synchronisation quand il est allumé.",
+          `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'avait pas Chrome ouvert avec ` +
+          "l'extension FillSell. Refais la demande depuis l'app quand il est allumé.",
       })
       .eq("status", "queued")
       .lt("queued_at", ttlIso)
       .select("id");
-    syncQueuesExpirees = maj?.length ?? 0;
+    syncQueuesExpirees = (maj?.length ?? 0) + (majReleves?.length ?? 0);
     if (syncQueuesExpirees) {
       console.log(`[handler-watch] ${syncQueuesExpirees} demande(s) de sync jamais réclamée(s) en ${SYNC_QUEUE_TTL_H} h → expirée(s)`);
     }
@@ -1367,13 +1440,35 @@ serve(async (req) => {
   try {
     const { data: bloques } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, platform, status, error, platform_fields")
+      .select("id, user_id, platform, action, status, error, platform_fields")
       .in("status", ["needs_user", "failed"])
       .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla"])
       .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString());
+    // ── ANTI-ROBOT APRÈS LE RETRAIT : LA RECRÉATION REPART SUR PREUVE (25/09) ──
+    // Le seul état vraiment FIGÉ trouvé au check anti-robot : une republication
+    // Vinted dont l'annonce d'origine est DÉJÀ retirée (étape 'deleted') et
+    // dont la recréation bute sur la vérification anti-robot. Après deux
+    // reprises de l'extension, elle passait en needs_user « Republier
+    // maintenant » — exclue du solde de 72 h, relancée par personne : l'annonce
+    // restait hors ligne jusqu'à un clic. Ici, comme pour un mur de connexion,
+    // elle repart dès que la sonde Vinted revoit Vinted RÉPONDRE (true = 200 ;
+    // un 403 anti-robot écrit null, jamais true), fraîche, après le dernier
+    // essai — trois fois au plus sur le même mur. La recréation relit le
+    // dressing avant de soumettre : pas de doublon si elle était passée.
+    const ANTIROBOT_RECREATION_RE = /anti-?robot|CHALLENGE|access_denied|DataDome|HTTP 403|\b403\b/i;
+    // deno-lint-ignore no-explicit-any
+    const antirobotApresRetrait = (j: any) => {
+      if (j.platform !== "vinted" || j.action !== "republish" || j.status !== "needs_user") return false;
+      const pfj = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (pfj.republish_step !== "deleted") return false;
+      const et = pfj.error_technique;
+      const textes = [j.error, pfj.last_diagnostic, typeof et === "string" ? et : JSON.stringify(et ?? "")]
+        .map((t) => String(t ?? "")).join(" ");
+      return ANTIROBOT_RECREATION_RE.test(textes);
+    };
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) =>
-      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")));
+      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")) || antirobotApresRetrait(j));
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
@@ -1755,6 +1850,13 @@ serve(async (req) => {
           if (!ouvertePar.get(c.user_id)) continue;
           if (actifs.has(cle)) continue;
           const reussi = reussiA.get(cle) ?? 0;
+          // (25/09) Un relevé RÉUSSI après ce mur : il n'y a plus de mur à
+          // lever. La sélection ne lisait que absente/failed/expired, donc un
+          // done postérieur ne retirait pas le candidat, et le plafond, compté
+          // depuis le dernier succès, repartait à zéro à chaque done : xxewwer
+          // 86 relevés Opla en 72 h (85 réussis), Louis 43 eBay, 27 LBC en 8 h
+          // chez nicolas.svobodny — une boucle serveur, invisible.
+          if (reussi && reussi > Date.parse(c.finished_at)) continue;
           if (reussi && maintenant - reussi < 15 * 60_000) continue;     // cadence
           // L'ÉPISODE court depuis le dernier relevé réussi — ou depuis
           // toujours si cette plateforme n'a jamais rien rendu.
