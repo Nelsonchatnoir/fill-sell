@@ -4545,6 +4545,35 @@ async function fermerOngletTravail(platform, motif) {
 // abouti, et rien n'est jamais marqué « retiré » sur cette voie.
 const BLOCAGE_ANTIROBOT_MIN = 20;
 const BLOCAGE_ANTIROBOT_PLAFOND_MS = 6 * 60 * 60 * 1000;
+// Retrait Vinted d'une annonce en « publication différée » (2026-09-25) :
+// pending, retenté toutes les RETRAIT_VERIF_MIN minutes, needsUserAttempts
+// inchangé, aucune borne — le retrait part dès que Vinted l'accepte. Même
+// règle côté serveur (update-job-status, retrait_en_attente_verification).
+const RETRAIT_VERIF_MIN = 60;
+async function attendreFinVerificationVinted(accessToken, job, errorMsg) {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") return;
+  const avant = job.platform_fields?.retrait_en_attente_verification;
+  const maintenant = new Date().toISOString();
+  const pf = { ...(job.platform_fields ?? {}) };
+  delete pf.blocage_antirobot;
+  pf.retrait_en_attente_verification = {
+    depuis: typeof avant?.depuis === "string" ? avant.depuis : maintenant,
+    derniere: maintenant,
+    essais: (Number(avant?.essais) || 0) + 1,
+    signal: "page de l'annonce : item_alert_type = delayed_publication",
+  };
+  pf.next_action_after = new Date(Date.now() + RETRAIT_VERIF_MIN * 60_000).toISOString();
+  console.log(`[background] Job ${job.id} : annonce en vérification chez Vinted — retrait retenté dans ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`);
+  await updateJobStatus(accessToken, job.id, "pending", {
+    platform_fields: pf,
+    error:
+      "Vinted vérifie encore cette annonce : elle est masquée aux acheteurs, et Vinted refuse de la retirer " +
+      "tant que la vérification dure. Le retrait est retenté toutes les heures et part dès qu'elle se termine — " +
+      "rien à faire de ton côté.",
+  }).catch((e) => console.error("[background] update-job-status failed:", e));
+}
+
 async function marquerBlocageAntiRobot(accessToken, job, errorMsg) {
   const actuel = await jobStatusNow(accessToken, job.id);
   if (actuel && actuel !== "processing" && actuel !== "pending") {
@@ -9480,9 +9509,13 @@ async function lireEtatOpla(url) {
 
 async function checkVintedUnanime(url) {
   let dernier = { state: "unknown", price: null };
+  // Les tirs, gardés pour la preuve écrite d'un retrait (2026-09-25).
+  const tirs = [];
   for (let tir = 1; tir <= VINTED_CHECK_TIRS; tir++) {
     if (tir > 1) await sleep(randInt(700, 1600));
-    const res = await lireEtatAnnonce(url, "vinted");
+    const res0 = await lireEtatAnnonce(url, "vinted");
+    tirs.push({ tir, state: res0.state, http: res0.http ?? null, raison: res0.raison ?? null, url_finale: res0.url_finale ?? null });
+    const res = { ...res0, tirs };
     // Preuve POSITIVE : la page a répondu et dit quelque chose. Inutile
     // d'insister, et surtout : un 'active' doit remonter tel quel pour lever
     // un drapeau posé à tort au cycle précédent.
@@ -9492,13 +9525,28 @@ async function checkVintedUnanime(url) {
     }
     if (res.state !== "unavailable") {
       console.log(`[background] vinted : tir ${tir}/${VINTED_CHECK_TIRS} → ${res.state} — unanimité rompue, aucune conclusion`);
-      return { state: "unknown", price: null };
+      return { state: "unknown", price: null, tirs };
     }
     dernier = res;
     console.log(`[background] vinted : tir ${tir}/${VINTED_CHECK_TIRS} → unavailable`);
   }
   console.log(`[background] vinted : ${VINTED_CHECK_TIRS} tirs unanimes 'unavailable' — strike retenu (confirmation au prochain cycle)`);
   return dernier;
+}
+
+// La preuve d'un retrait conclu par l'ÉTAT de l'annonce (2026-09-25) : ce que
+// la page a répondu, écrit sur le job. Lue par update-job-status, qui étiquette
+// `retrait_par` (vendue_sur_la_plateforme / annonce_deja_hors_ligne).
+function preuveDeLecture(lecture, url) {
+  return {
+    etat: lecture?.state ?? "unknown",
+    raison: lecture?.raison ?? null,
+    http: lecture?.http ?? null,
+    tirs: Array.isArray(lecture?.tirs) ? lecture.tirs : null,
+    url: url ?? null,
+    lu_le: new Date().toISOString(),
+    par: "checkListingState",
+  };
 }
 
 async function checkListingState(url, platform) {
@@ -9571,7 +9619,7 @@ async function lireEtatAnnonce(url, platform) {
     const res = await fetchListingHtml(url, platform);
     // 404/410 : l'annonce n'est plus là. Ce n'est PAS une vente — c'était la
     // guillotine qui fabriquait les ventes fantômes.
-    if (res.status === 404 || res.status === 410) return { state: "unavailable", price: null, raison: null };
+    if (res.status === 404 || res.status === 410) return { state: "unavailable", price: null, raison: null, http: res.status };
     if (!res.ok) {
       console.warn(`[background] ${platform} : HTTP ${res.status} sur la page de l'annonce (bot-shield ?) — aucune conclusion`);
       // ── La RAISON de l'indécision, pas seulement l'indécision (2026-09-14) ──
@@ -9583,7 +9631,7 @@ async function lireEtatAnnonce(url, platform) {
       // verdict d'ÉTAT ne change pas d'un iota (règle intacte : "active" exige
       // la preuve positive list_id, sinon "unknown", jamais "active" par
       // défaut) — seul le MOTIF de l'indécision cesse d'être perdu.
-      return { state: "unknown", price: null, raison: res.status === 403 ? "bot_shield_403" : `http_${res.status}` };
+      return { state: "unknown", price: null, raison: res.status === 403 ? "bot_shield_403" : `http_${res.status}`, http: res.status };
     }
     const { html, finalUrl } = res;
     // ⚠️ Une page de bot-shield peut arriver en HTTP 200 (DataDome sert parfois
@@ -9594,7 +9642,7 @@ async function lireEtatAnnonce(url, platform) {
     // qu'on n'a pas vraiment reçue.
     if (estPageBotShield(html)) {
       console.warn(`[background] ${platform} : page de vérification anti-bot reçue (HTTP ${res.status}) — aucune conclusion`);
-      return { state: "unknown", price: null, raison: "bot_shield_200" };
+      return { state: "unknown", price: null, raison: "bot_shield_200", http: res.status };
     }
     // L'id vient de listing_url (la source de vérité), pas de finalUrl : une
     // redirection ne doit jamais changer QUELLE annonce on cherche dans la page.
@@ -9602,12 +9650,15 @@ async function lireEtatAnnonce(url, platform) {
     // ne dit pas « lecture bloquée » mais « annonce non reconnue dans la page » :
     // deux situations opposées, qu'il ne faut pas raconter pareil.
     const adId = extractListingId(url, platform);
+    // `http` (2026-09-25, jocabroc) : la preuve d'un retrait « déjà hors
+    // ligne » doit pouvoir être relue — l'état ET ce que la page a répondu.
+    const http = res.status;
     switch (platform) {
-      case "leboncoin": return { state: detectLeboncoinState(html, adId), price: null, raison: null };
-      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId), raison: null };
-      case "ebay":      return { state: detectEbayState(html, finalUrl, adId), price: null, raison: null };
-      case "beebs":     return { state: detectBeebsState(html, adId), price: null, raison: null };
-      default:          return { state: "unknown", price: null, raison: null };
+      case "leboncoin": return { state: detectLeboncoinState(html, adId), price: null, raison: null, http };
+      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId), raison: null, http, url_finale: finalUrl };
+      case "ebay":      return { state: detectEbayState(html, finalUrl, adId), price: null, raison: null, http };
+      case "beebs":     return { state: detectBeebsState(html, adId), price: null, raison: null, http };
+      default:          return { state: "unknown", price: null, raison: null, http };
     }
   } catch (e) {
     console.warn(`[background] checkListingState(${url}):`, String(e?.message ?? e));
@@ -21613,8 +21664,9 @@ async function processDeleteJob(job, accessToken) {
     // Le ré-armement, lui, reste réservé aux non-needsUser (le cas needsUser a
     // sa propre branche plus bas, avec son message d'origine).
     if (result && !result.success && !result.dryRun) {
-      const { state, raison } = await checkListingState(job.listing_url, job.platform)
+      const lecture = await checkListingState(job.listing_url, job.platform)
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
+      const { state, raison } = lecture;
       if (state === "unavailable" || state === "sold") {
         console.log(
           `[background] Job ${job.id} : le content script n'a pas abouti (${result.error}), MAIS l'annonce ` +
@@ -21626,6 +21678,9 @@ async function processDeleteJob(job, accessToken) {
             ...(job.platform_fields ?? {}),
             delete_confirmed_by: "etat_annonce",
             delete_trace: result.trace ?? [],
+            // ⛔ AUCUN RETRAIT CLOS SANS PREUVE ÉCRITE (2026-09-25, jocabroc) :
+            //    ce que la page a répondu, tir par tir — relisible en base.
+            delete_preuve: preuveDeLecture(lecture, job.listing_url),
           },
         });
         await cancelPublishAfterDelete(accessToken, job);
@@ -21677,6 +21732,14 @@ async function processDeleteJob(job, accessToken) {
       // blocage vient de la plateforme, pas du job — reprise gratuite, bornée
       // à 6 h (marquerBlocageAntiRobot). Au-delà de la borne on retombe
       // exprès sur le circuit ordinaire, qui consomme et finit par le dire.
+      // ── ANNONCE EN VÉRIFICATION CHEZ VINTED = ATTENTE (2026-09-25) ────────
+      // Avant le circuit anti-robot : ici rien n'est bloqué, Vinted refuse le
+      // retrait tant qu'il vérifie l'annonce (c1c8a6b5 : 5 tentatives brûlées
+      // en 8 h). On attend la fin de la vérification, sans tentative ni borne.
+      if (result.enVerification) {
+        await attendreFinVerificationVinted(accessToken, job, verdictBrut);
+        return { status: "retry", error: verdictBrut };
+      }
       if (!result.needsUser && /^CHALLENGE /i.test(verdictBrut)) {
         const { borne } = await marquerBlocageAntiRobot(accessToken, job, verdictBrut);
         if (!borne) return { status: "retry", error: verdictBrut };
@@ -21789,7 +21852,8 @@ async function processDeleteJob(job, accessToken) {
       // (et conclure « annonce introuvable » au tour suivant, en boucle).
       // On demande donc à la PLATEFORME, pas au canal : si l'annonce n'est plus
       // en ligne, la suppression a réussi.
-      const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+      const lectureCanal = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+      const { state } = lectureCanal;
       if (state === "unavailable" || state === "sold") {
         console.log(
           `[background] Job ${job.id} : canal coupé PAR LA NAVIGATION de suppression — ` +
@@ -21797,7 +21861,10 @@ async function processDeleteJob(job, accessToken) {
         );
         await updateJobStatus(accessToken, job.id, "deleted", {
           error: null,
-          platform_fields: { ...(job.platform_fields ?? {}), delete_confirmed_by: "etat_annonce" },
+          platform_fields: {
+            ...(job.platform_fields ?? {}), delete_confirmed_by: "etat_annonce",
+            delete_preuve: preuveDeLecture(lectureCanal, job.listing_url),
+          },
         }).catch((err) => console.error("[background] update-job-status failed:", err));
         await cancelPublishAfterDelete(accessToken, job);
         await recordRecentResult(job, "deleted");

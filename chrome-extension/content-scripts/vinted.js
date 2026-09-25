@@ -1721,6 +1721,21 @@ async function vintedSessionEtat(t) {
 // is_hidden qui a répondu 200) :
 //   POST /api/v2/items/{id}/delete
 //   X-CSRF-Token (script inline), X-Anon-Id (cookie anon_id), Accept/Content-Type JSON.
+// L'annonce est-elle en « publication différée » (vérification Vinted) ? Lu
+// sur la page de l'annonce, vue par son VENDEUR : Vinted n'y expose
+// `item_alert` qu'au propriétaire (mesuré le 25/09 sur 10124335822 :
+// "item_alert":{"item_alert_type":"delayed_publication"}). Seulement sur la
+// page de CET article — jamais une conclusion tirée d'une autre page.
+function annonceEnVerificationVinted(itemId) {
+  try {
+    if (!new RegExp(`/items/${itemId}(?:[-/?#]|$)`).test(location.pathname)) return false;
+    const html = document.documentElement.innerHTML;
+    return /\\?"item_alert_type\\?"\s*:\s*\\?"delayed_publication\\?"/.test(html);
+  } catch {
+    return false;
+  }
+}
+
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[vinted][delete] ${line}`); };
@@ -1950,6 +1965,30 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
               "Le retrait de cette annonce n'a pas été lancé : elle appartient à un autre compte Vinted que celui " +
               "ouvert dans Chrome sur ton ordinateur. Rien n'a été touché sur Vinted. " +
               "Connecte-toi au bon compte Vinted, puis relance.",
+            trace,
+            verdict,
+          };
+        }
+        // ── L'ANNONCE EST EN VÉRIFICATION CHEZ VINTED (2026-09-25, c1c8a6b5) ──
+        // Publiée à 23:47, retrait demandé à 23:54 : Vinted la tient en
+        // « publication différée » (page du vendeur : item_alert_type =
+        // delayed_publication, « Masqué du catalogue ») et refuse le DELETE en
+        // 403 access_denied tant que ça dure — exactement la réponse d'un
+        // anti-robot. Lue comme tel, elle a brûlé 5 tentatives en 8 h. Ce
+        // n'est pas un refus : c'est une ATTENTE, et le background la traite
+        // comme telle (reprise toutes les heures, sans tentative ni plafond).
+        // Préfixe CHALLENGE conservé : un background plus ancien retombe sur
+        // la reprise gratuite anti-robot, jamais sur un échec.
+        if (annonceEnVerificationVinted(itemId)) {
+          verdict.conclusion = "en_verification";
+          t("403 : l'annonce est en vérification chez Vinted (publication différée) — retrait mis en attente, aucune tentative consommée");
+          return {
+            success: false,
+            needsUser: false,
+            enVerification: true,
+            error:
+              "CHALLENGE Vinted a refusé la suppression : l'annonce est encore en vérification chez Vinted " +
+              "(masquée aux acheteurs). Rien n'a été supprimé ; le retrait repart dès la fin de la vérification.",
             trace,
             verdict,
           };
