@@ -637,7 +637,10 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   const n = ctx.ventes.length;
   const lignes = ctx.ventes.map((v) => {
     const titre = String(v.titre ?? "").trim() || (fr ? "Ton article" : "Your item");
-    const ou = plateformesEnClair([v.plateforme], lang);
+    // « ailleurs » (vente sans plateforme certaine, 25/09) : on ne nomme rien.
+    const ou = v.plateforme === "ailleurs"
+      ? (fr ? "vendu ailleurs" : "sold elsewhere")
+      : plateformesEnClair([v.plateforme], lang);
     const argent = v.benefice === null
       ? (fr ? `vendu ${euros(v.prixVente, lang)}` : `sold for ${euros(v.prixVente, lang)}`)
       : (fr
@@ -647,11 +650,12 @@ export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
   });
   const sansPrixAchat = ctx.ventes.some((v) => v.benefice === null);
   const seule = n === 1 ? ctx.ventes[0] : null;
-  const ouSeule = seule ? plateformesEnClair([seule.plateforme], lang) : "";
+  const seuleAilleurs = seule?.plateforme === "ailleurs";
+  const ouSeule = seule && !seuleAilleurs ? plateformesEnClair([seule.plateforme], lang) : "";
 
   const sujet = fr
-    ? (seule ? `Vendu sur ${ouSeule} 🎉` : `${n} articles vendus 🎉`)
-    : (seule ? `Sold on ${ouSeule} 🎉` : `${n} items sold 🎉`);
+    ? (seule ? (seuleAilleurs ? "Article vendu 🎉" : `Vendu sur ${ouSeule} 🎉`) : `${n} articles vendus 🎉`)
+    : (seule ? (seuleAilleurs ? "Item sold 🎉" : `Sold on ${ouSeule} 🎉`) : `${n} items sold 🎉`);
 
   const corps = [
     paragraphe(fr ? "Salut," : "Hi,"),

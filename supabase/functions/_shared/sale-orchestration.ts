@@ -43,6 +43,8 @@ export interface SaleOrchestration {
 // Feature usage_logs d'une vente à annoncer — partagée avec le récapitulatif
 // (_shared/ventes-a-annoncer.ts), qui la lit. ⛔ Ne pas renommer sans lui.
 export const FEATURE_VENTE_A_ANNONCER = "vente_a_annoncer";
+/** Vente dont la plateforme n'est pas certaine (annonce disparue, pas de preuve de vente). */
+export const PLATEFORME_AILLEURS = "ailleurs";
 
 const PLATFORM_LABELS: Record<string, string> = {
   vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", vestiaire: "Vestiaire",
@@ -79,7 +81,7 @@ export async function orchestrateSale(
 
   const { data: job, error: jobErr } = await admin
     .from("cross_post_jobs")
-    .select("id, user_id, status, action, platform, inventaire_id, title, price, listing_url")
+    .select("id, user_id, status, action, platform, inventaire_id, title, price, listing_url, platform_fields")
     .eq("id", jobId)
     .maybeSingle();
   if (jobErr) return { ...none, reason: jobErr.message };
@@ -116,6 +118,27 @@ export async function orchestrateSale(
       .maybeSingle();
     inv = data ?? null;
   }
+
+  // ── OÙ L'ARTICLE A ÉTÉ VENDU : SEULEMENT SI C'EST CERTAIN (2026-09-25) ────
+  // Ornella, lot de 24 DVD (1788723756461001) : l'annonce Vinted a DISPARU
+  // (sale_signal 'unavailable'), elle a confirmé « c'est vendu » au bandeau,
+  // et la vente a été écrite « vinted ». Le lot était vendu sur eBay depuis le
+  // 19/09 (commande 15-15174-66231, sur sa fiche jumelle). Une annonce qui
+  // disparaît n'est pas une vente sur CETTE plateforme : sans preuve positive
+  // (sale_signal 'sold' posé par le détecteur, ou dernier relevé Vinted de
+  // l'article 'sold'), la vente est « ailleurs » — plateforme non devinée.
+  const pfJob = ((job as { platform_fields?: unknown }).platform_fields ?? {}) as Record<string, unknown>;
+  let plateformeCertaine = pfJob["sale_signal"] === "sold";
+  if (!plateformeCertaine && job.platform === "vinted") {
+    const item = String(job.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? null;
+    if (item) {
+      const { data: snap } = await admin
+        .from("vinted_listing_snapshots").select("status")
+        .eq("vinted_item_id", item).order("captured_at", { ascending: false }).limit(1).maybeSingle();
+      plateformeCertaine = (snap as { status?: string } | null)?.status === "sold";
+    }
+  }
+  const plateformeVente = plateformeCertaine ? job.platform : PLATEFORME_AILLEURS;
 
   const override = Number(opts?.priceOverride);
   const prixVente = Number.isFinite(override) && override > 0 ? override : Number(job.price ?? 0);
@@ -183,7 +206,7 @@ export async function orchestrateSale(
       p_margin: benefice,
       p_margin_pct: marginPct,
       p_selling_fees: sellingFees,
-      p_plateforme: job.platform,
+      p_plateforme: plateformeVente,
     });
     if (invErr) console.error(`[sale] consume_one_unit ${inv.id}:`, invErr.message);
     wonSaleGate = consumed?.won === true;
@@ -230,7 +253,7 @@ export async function orchestrateSale(
       description: inv?.description ?? null,
       emplacement: inv?.emplacement ?? null,
       date: nowIso.slice(0, 10),
-      plateforme: job.platform,
+      plateforme: plateformeVente,
       quantite: 1,
       statut: "vendu",
     });
@@ -404,7 +427,8 @@ export async function orchestrateSale(
       metadata: {
         job_id: job.id,
         inventaire_id: job.inventaire_id != null ? String(job.inventaire_id) : null,
-        plateforme: job.platform,
+        plateforme: plateformeVente,
+        plateforme_annonce: job.platform,
         titre: job.title ?? inv?.titre ?? null,
         prix_vente: prixVente,
         // Bénéfice inconnu (prix d'achat non renseigné) : null, jamais 0 — le
