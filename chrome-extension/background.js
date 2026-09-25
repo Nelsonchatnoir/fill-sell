@@ -2331,7 +2331,7 @@ async function staleJobExistingListingUrl(job) {
     const deadline = Date.now() + 12_000;
     while (Date.now() < deadline) {
       await sleep(1500);
-      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true, listeDuCompte: job.platform });
       if (url) return url.replace(WORK_TAB_FRAGMENT, "");
     }
   }
@@ -6610,7 +6610,7 @@ async function ebayConfirmViaActiveListings(tabId, title) {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     await sleep(1500);
-    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true, listeDuCompte: "ebay" });
     if (url) return url.replace(WORK_TAB_FRAGMENT, "");
   }
   return null;
@@ -8439,6 +8439,27 @@ const LISTING_URL_PATTERNS = {
   beebs: /https:\/\/www\.beebs\.app\/[^#\s"']*(?:produit|product|annonce|item|p\/)[^#\s"']+/i,
 };
 
+// ══════════════════════════════════════════════════════════════════════════════
+// LA LISTE DU COMPTE, OU RIEN (2026-09-25 nuit, MeMiniandMove / Louis)
+// ══════════════════════════════════════════════════════════════════════════════
+// Un lien d'annonce n'est une annonce DU VENDEUR que s'il est lu sur SA page
+// « Mes annonces ». Le 25/09 à 21:48, le relevé Leboncoin de MeMiniandMove
+// (compte PRO : /compte/part/mes-annonces la renvoie sur l'accueil « / ») a
+// ramassé TOUS les liens /ad/ de l'accueil : trois immeubles de Montluçon
+// (AGENCY IMMO, un particulier), importés en articles, puis visés par trois
+// retraits. Louis, 19/09 : 40 annonces de l'accueil, dont une balance Wii
+// importée à la main dans son stock. Même cause : la lecture prenait
+// n'importe quelle page du site pour la liste du compte.
+// Le CHEMIN de la page fait la première preuve (celui que lbcMesAnnoncesEtat
+// exige déjà pour Leboncoin) ; le compteur « En ligne (N) » la seconde.
+// ⛔ Hors de ce chemin, AUCUN lien n'est lu — ni pour relever, ni pour
+//    retrouver l'URL d'un dépôt par son titre.
+const CHEMIN_LISTE_DU_COMPTE = {
+  leboncoin: /^\/compte\/[^/]+\/mes-annonces\/?$/i,
+  ebay: /^\/sh\/lst\//i,
+  beebs: /\/account\/my-adverts(?:\/[a-z-]+)?\/?$/i,
+};
+
 // Page "Mes annonces" par plateforme (2026-07-11) : Leboncoin et Beebs NE
 // redirigent PAS vers l'annonce créée — leur dépôt finit sur une page de
 // confirmation générique ("Nous avons bien reçu votre annonce !" /
@@ -8602,11 +8623,19 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // malgré des cycles de re-capture) : impossible de savoir si c'est le pattern
 // d'URL (toujours une supposition pour Beebs) qui ne matche aucun lien, ou le
 // titre qui ne matche aucune carte. Le log du caller nomme désormais la cause.
-async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false } = {}) {
+// `listeDuCompte` (2026-09-25 nuit) : la plateforme dont on attend la page
+// « Mes annonces ». Hors de son chemin (CHEMIN_LISTE_DU_COMPTE), rien n'est
+// lu — une redirection vers l'accueil n'offre QUE des annonces d'autres
+// vendeurs, et un titre n'y prouve rien.
+async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false, listeDuCompte = null } = {}) {
+  const cheminListe = listeDuCompte ? (CHEMIN_LISTE_DU_COMPTE[listeDuCompte]?.source ?? null) : null;
   try {
     const [res] = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (src, wanted, titreObligatoire) => {
+      func: (src, wanted, titreObligatoire, cheminListeSrc) => {
+        if (cheminListeSrc && !new RegExp(cheminListeSrc, "i").test(location.pathname)) {
+          return { url: null, diag: { hors_liste: location.pathname } };
+        }
         const re = new RegExp(src, "i");
         const ancres = Array.from(document.querySelectorAll("a[href]"));
         const matches = [];
@@ -8732,7 +8761,7 @@ async function findListingLinkInPage(tabId, patternSource, title = null, { requi
         const unique = [...new Set(matches.map((m) => m.url))];
         return done(unique.length === 1 ? unique[0] : null);
       },
-      args: [patternSource, title, requireTitle],
+      args: [patternSource, title, requireTitle, cheminListe],
     });
     return res?.result ?? { url: null, diag: null };
   } catch (e) {
@@ -8771,7 +8800,8 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 
       // requireTitle : page de LISTE — jamais de repli « lien unique » ici (c'est
       // ce repli qui a collé l'URL du T-shirt Patagonia sur le job New Balance).
-      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+      // listeDuCompte : un compte PRO atterrit sur l'accueil (2026-09-25).
+      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true, listeDuCompte: platform });
       if (url) {
         console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces (passage ${passage + 1}) — ${url}`);
         return url;
@@ -12611,7 +12641,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: async (src, plateforme, compteursEbaySrc, attenteCompteurMs) => {
+    func: async (src, plateforme, compteursEbaySrc, attenteCompteurMs, cheminListeSrc) => {
       const re = new RegExp(src, "i");
       const idDe = (url) => {
         const m = plateforme === "leboncoin" ? url.match(/\/(\d{6,})(?:[/?#]|$)/)
@@ -12658,6 +12688,28 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       const formulaireConnexion = () => Boolean(
         document.querySelector("input[type='password'], form[action*='signin' i], #userid, #pass"),
       );
+      // Ce que la page MONTRAIT, en une ligne (cf. le retour en fin de fonction).
+      const etatDeLaPage = (liens) => {
+        const txt = document.body?.innerText ?? "";
+        return {
+          etat: document.readyState, liens,
+          titre_hub: /annonces?\s+en\s+cours|active\s+listings?/i.test(txt),
+          connexion: formulaireConnexion(),
+          texte: txt.replace(/\s+/g, " ").trim().slice(0, 140),
+        };
+      };
+      // ── LA LISTE DU COMPTE, OU RIEN (2026-09-25 nuit) ─────────────────────
+      // Hors du chemin de « Mes annonces » (redirection d'un compte PRO vers
+      // l'accueil, page de consentement, autre page du site), la page ne
+      // montre que des annonces d'AUTRES vendeurs : on n'en lit aucune, on ne
+      // défile pas. Cf. CHEMIN_LISTE_DU_COMPTE.
+      if (cheminListeSrc && !new RegExp(cheminListeSrc, "i").test(location.pathname)) {
+        return {
+          annonces: [], suivant: null, diag: { ancres: 0, sans_prix: 0, sans_titre: 0 },
+          totalEnLigne: null, surLaListe: false, pageDitVide: false, defilement: null,
+          horsListe: location.pathname, page: etatDeLaPage(0),
+        };
+      }
       let totalEnLigne = null;
       let surLaListe = true;
       // ── UN COMPTE VIDE N'EST PAS UN ÉCHEC (2026-09-23, m0nc3f) ───────────
@@ -12700,6 +12752,17 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         // table sans que ce titre soit peint ; on se contente de ne pas avoir
         // de cible, et la garde de couverture ne se déclenche pas.
         if (totalEnLigne === null && plateforme === "leboncoin") surLaListe = false;
+      }
+      // ⛔ LEBONCOIN : SANS « En ligne (N) », AUCUN LIEN N'EST LU (2026-09-25
+      //    nuit). Le compteur est la preuve que la liste du compte est peinte ;
+      //    sans lui (challenge, page pas rendue), les liens de la page ne
+      //    prouvent rien. Avant, la lecture continuait — défilement compris —
+      //    et c'est ce qui a importé l'accueil de MeMiniandMove et de Louis.
+      if (plateforme === "leboncoin" && !surLaListe) {
+        return {
+          annonces: [], suivant: null, diag: { ancres: 0, sans_prix: 0, sans_titre: 0 },
+          totalEnLigne, surLaListe, pageDitVide, defilement: null, page: etatDeLaPage(0),
+        };
       }
       // ── DÉFILEMENT PATIENT (LOT 2, 2026-09-19) ────────────────────────────
       // « Mes annonces » a un DÉFILEMENT INFINI — lu dans son bundle, pas
@@ -12893,16 +12956,11 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       // le compteur manque, pour que la prochaine occurrence dise sa cause
       // (page pas peinte, variante, mur rendu sur place) au lieu d'un rouge
       // muet. Rien de personnel : l'état du document et le début de son texte.
-      const txtFin = document.body?.innerText ?? "";
-      const page = {
-        etat: document.readyState, liens: ancres.filter((a) => re.test(a.href)).length,
-        titre_hub: /annonces?\s+en\s+cours|active\s+listings?/i.test(txtFin),
-        connexion: formulaireConnexion(),
-        texte: txtFin.replace(/\s+/g, " ").trim().slice(0, 140),
-      };
+      const page = etatDeLaPage(ancres.filter((a) => re.test(a.href)).length);
       return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe, pageDitVide, defilement, page };
     },
-    args: [pattern.source, platform, platform === "ebay" ? COMPTEUR_EBAY_SRC : [], platform === "ebay" ? COMPTEUR_EBAY_ATTENTE_MS : COMPTEUR_LBC_ATTENTE_MS],
+    args: [pattern.source, platform, platform === "ebay" ? COMPTEUR_EBAY_SRC : [], platform === "ebay" ? COMPTEUR_EBAY_ATTENTE_MS : COMPTEUR_LBC_ATTENTE_MS,
+      CHEMIN_LISTE_DU_COMPTE[platform]?.source ?? null],
   });
   return res?.result ?? { annonces: [], diag: null };
 }
@@ -13028,6 +13086,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // eBay (2026-09-23) : l'état de la dernière page lue, et si on l'a rechargée.
   let dernierePageHub = null;
   let ebayRechargee = false;
+  // Les pages lues HORS de « Mes annonces » (2026-09-25 nuit) : leur chemin,
+  // dit dans le run. Aucune annonce n'en sort (CHEMIN_LISTE_DU_COMPTE).
+  const pagesHorsListe = [];
   // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
   // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
   const defilements = [];
@@ -13126,6 +13187,7 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       }
       const vusAvantPage = annonces.size; // sert la garde « cette page n'a rien ajouté »
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) }, surLaListe: false }));
+      if (r?.horsListe && !pagesHorsListe.includes(r.horsListe)) pagesHorsListe.push(r.horsListe);
       // ── eBAY : UN MUR RENDU SUR PLACE, SANS REDIRECTION (2026-09-23) ──────
       // Le formulaire de connexion peut être peint SUR l'adresse du Hub, sans
       // passer par signin.ebay.fr : l'URL ne dit rien, la page si. Même
@@ -13319,24 +13381,32 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   //    relevées, « en cours de vérification » comprises, ferait mentir le
   //    verdict dans les deux sens. On compare donc les EN LIGNE aux EN LIGNE.
   const enLigne = () => [...annonces.values()].filter((a) => a.statut === "en_ligne").length;
+  // ⚠️ Les deux libellés « n'a pas rendu sa liste » (Leboncoin) et « n'a pas
+  //    rendu son compteur » (eBay) sont LUS PAR LE SERVEUR (releve_hors_liste) :
+  //    un run qui les porte n'importe rien, ne rattache rien, et les annonces
+  //    qu'il a créées sont écartées. Ne pas les reformuler sans la migration.
+  const horsListe = pagesHorsListe.length
+    ? ` · page lue : ${pagesHorsListe.join(", ")} (hors « Mes annonces ») — aucune annonce n'en a été lue`
+    : "";
   const COUVERTURE = {
     leboncoin: {
       total: lbcTotalEnLigne, comptees: annonces.size, libelle: "« en ligne »", listeRendue: lbcListeRendue,
-      absent: "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte)",
+      absent: "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte)" + horsListe,
     },
     ebay: {
-      total: ebayTotalEnCours, comptees: annonces.size, libelle: "« en cours »", listeRendue: true,
+      total: ebayTotalEnCours, comptees: annonces.size, libelle: "« en cours »", listeRendue: !pagesHorsListe.length,
       absent: "le Hub vendeur n'a pas rendu son compteur « annonces en cours »"
         + (ebayRechargee ? ", même après rechargement" : "")
-        + (dernierePageHub ? ` · ${decrirePageHub(dernierePageHub)}` : ""),
+        + (dernierePageHub ? ` · ${decrirePageHub(dernierePageHub)}` : "")
+        + horsListe,
     },
     beebs: {
       total: beebsTotalIndex, comptees: enLigne(), libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null,
-      absent: beebsPageMuette != null
+      absent: (beebsPageMuette != null
         ? `« Mes annonces » de Beebs n'a rien rendu alors que l'index public en montre ${beebsPageMuette}`
         : beebsIndexMotif
           ? `l'index public de Beebs n'a rien pu dire (${beebsIndexMotif})`
-          : "l'index public de Beebs n'a pas rendu de total exact",
+          : "l'index public de Beebs n'a pas rendu de total exact") + horsListe,
     },
   };
   // ══════════════════════════════════════════════════════════════════════════
@@ -13381,7 +13451,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       console.log(`[releve][${platform}] 0 annonce vue MAIS des annonces connues en base — incomplet, rien n'est conclu disparu`);
     }
   }
-  if (juge && rienVu && comptePeutEtreVide) {
+  // ⛔ Une page lue HORS de « Mes annonces » ne dit rien du compte : ni vide,
+  //    ni plein. On ne conclut pas « aucune annonce » sur l'accueil du site.
+  if (juge && rienVu && comptePeutEtreVide && !pagesHorsListe.length) {
     // (a) la plateforme l'ÉCRIT, ou son compteur dit 0 → aucune annonce, et on
     //     le dit en vert. (b) elle n'a rien écrit du tout (pas encore d'espace
     //     vendeur, page qui ne rend rien) → même verdict : il n'y a rien à
@@ -17933,7 +18005,7 @@ async function recoverMissingListingUrls(session) {
         // (il attribuerait la même URL à tous les jobs de la plateforme).
         const { url, diag } = urlParId
           ? { url: urlParId, diag: null }
-          : await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
+          : await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true, listeDuCompte: platform });
         const refusBeebs = url && platform === "beebs" ? await beebsUrlAnterieureAuDepot(session, job, url) : null;
         if (refusBeebs) {
           console.warn(`[background] recover(beebs) job ${job.id} : ${refusBeebs}`);
