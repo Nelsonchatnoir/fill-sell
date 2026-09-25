@@ -1699,9 +1699,43 @@ async function invalidateRejectedSession(session) {
   console.warn(`[background] Token rejeté par le serveur et non rafraîchissable — ${key} purgé, reconnexion via fillsell.app`);
 }
 
+// ── UN 401 APRÈS UNE VEILLE SE REJOUE UNE FOIS, AVEC LE JETON DU MOMENT ──────
+// (0.6.67, 25/09, MeMiniandMove) Le jeton est lu UNE fois par cycle
+// (getValidSession en tête de poll) puis passé à tout ce que le cycle écrit.
+// Un Mac qui s'endort au milieu d'un cycle se réveille avec ce jeton périmé
+// (1 h de vie) : l'écriture suivante prend un 401 et se PERD — cette nuit-là,
+// la capture de la republication de tête (06:07) n'a jamais été écrite, et le
+// job a été resservi puis regelé. Mesuré sur 24 h : update-job-status en 401
+// chez 4 comptes, écritures REST en 401 chez 15.
+// La règle : sur un 401, on relit la session PROPRE de l'extension
+// (refreshIfNeeded rafraîchit un jeton expiré) ; si elle rend un AUTRE jeton
+// du MÊME compte, la MÊME requête part une seconde fois, une seule. Jamais le
+// jeton d'un autre compte, jamais deux rejeux. Un 401 signifie que rien n'a
+// été écrit (la passerelle ou la garde de la fonction refuse avant toute
+// écriture) : rejouer ne double rien.
+// ⛔ PAS getValidSession ici : son chemin d'amorçage appelle lui-même
+//    callEdgeFunction("extension-session") — un 401 à cet endroit relirait la
+//    session, qui réamorcerait, qui reprendrait un 401… sans fin. La session
+//    propre seule, rafraîchie par la même promesse partagée que le poll
+//    (refreshSessionOnce) : aucun appel de fonction, aucune boucle possible.
+//    Sans session propre (copie relayée de dépannage) : pas de rejeu, comme avant.
+async function jetonFraisApres401(ancien) {
+  try {
+    const { SESSION_OWN } = FILLSELL_CONFIG.STORAGE_KEYS;
+    const store = await chrome.storage.local.get(SESSION_OWN);
+    if (!store[SESSION_OWN]?.access_token) return null;
+    const s = await refreshIfNeeded(store[SESSION_OWN], SESSION_OWN);
+    const neuf = s?.access_token ?? null;
+    if (!neuf || neuf === ancien) return null;
+    const avant = decodeJwtClaims(ancien).sub;
+    if (!avant || avant !== decodeJwtClaims(neuf).sub) return null;
+    return neuf;
+  } catch { return null; }
+}
+
 // ── Edge functions ─────────────────────────────────────────────────────────────
 
-async function callEdgeFunction(name, accessToken, body) {
+async function callEdgeFunction(name, accessToken, body, rejeu = false) {
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/${name}`, {
     method: "POST",
     headers: {
@@ -1711,6 +1745,13 @@ async function callEdgeFunction(name, accessToken, body) {
     },
     body: JSON.stringify(body ?? {}),
   });
+  if (res.status === 401 && !rejeu) {
+    const neuf = await jetonFraisApres401(accessToken);
+    if (neuf) {
+      console.warn(`[background] ${name} → 401 avec un jeton périmé (veille ?) — rejouée une fois avec le jeton rafraîchi`);
+      return callEdgeFunction(name, neuf, body, true);
+    }
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data?.error || `${name} → HTTP ${res.status}`);
@@ -10718,7 +10759,7 @@ async function attenteSessionLeveeLocalement(job) {
   return vu > 0 && Number.isFinite(derniere) && vu > derniere;
 }
 
-async function restRequest(path, accessToken, init = {}) {
+async function restRequest(path, accessToken, init = {}, rejeu = false) {
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     headers: {
@@ -10729,6 +10770,16 @@ async function restRequest(path, accessToken, init = {}) {
       ...(init.headers ?? {}),
     },
   });
+  // Même règle que callEdgeFunction (0.6.67) : un 401 de jeton périmé se
+  // rejoue une fois avec le jeton rafraîchi du même compte. PostgREST refuse
+  // un JWT expiré AVANT d'exécuter quoi que ce soit.
+  if (res.status === 401 && !rejeu) {
+    const neuf = await jetonFraisApres401(accessToken);
+    if (neuf) {
+      console.warn(`[background] REST ${path.split("?")[0]} → 401 avec un jeton périmé (veille ?) — rejouée une fois avec le jeton rafraîchi`);
+      return restRequest(path, neuf, init, true);
+    }
+  }
   if (!res.ok) throw new Error(`REST ${path} → HTTP ${res.status}`);
   // Un écrivain qui demande return=representation VEUT les lignes. Avant le
   // 03/08 au soir, tout non-GET rendait null quel que soit Prefer — deux
@@ -12410,6 +12461,8 @@ const RELEVE_CADENCE_CRON_MS = 20 * 3600_000;
 // Tours du moteur de rattachement par relevé : le serveur s'arrête au budget
 // du rôle (70 % de statement_timeout) et rend `restantes` ; on cumule.
 const RELEVE_MOTEUR_TOURS_MAX = 12;
+// (0.6.67) Et dans le temps : au-delà, on clôt le relevé proprement.
+const RELEVE_MOTEUR_DUREE_MAX_MS = 4 * 60_000;
 const RELEVE_BILAN_COMPTEURS = ["par_job", "auto", "proposees", "sans_candidat", "importees", "import_refusees", "ecartees_notification", "disparues", "sautees"];
 function cumulerBilanReleve(total, b) {
   const out = { ...total, ...b };
@@ -14014,8 +14067,20 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     // cumulant les compteurs. Un serveur d'avant ne rend pas `restantes` : un
     // seul tour, exactement comme avant.
     let bilan = null;
+    // ── LE SERVICE WORKER NE MEURT PLUS ENTRE DEUX TOURS (0.6.67, 25/09) ────
+    // SPGL 44, six relevés Opla de suite « arrêtés en cours de route » depuis
+    // la 0.6.61 : la liste (1 003 annonces) était écrite, puis le moteur
+    // tournait par tours de ~6 s — rien que des fetch(), qui ne comptent pas
+    // pour Chrome. ~30 s après le dernier appel d'API d'extension, le service
+    // worker était tué au 4e ou 6e tour, avant le PATCH final. Un appel d'API
+    // d'extension (sans effet) avant chaque tour le garde éveillé ; et la
+    // boucle est bornée dans le TEMPS en plus du nombre de tours : ce qui
+    // reste passe en tête au relevé suivant (ordre de rapprocher_releve).
+    const debutMoteur = Date.now();
     try {
       for (let tour = 0; tour < RELEVE_MOTEUR_TOURS_MAX; tour++) {
+        if (Date.now() - debutMoteur > RELEVE_MOTEUR_DUREE_MAX_MS) break;
+        await chrome.runtime.getPlatformInfo().catch(() => null);
         const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/rapprocher_releve`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },

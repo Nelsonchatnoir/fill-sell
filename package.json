@@ -76,7 +76,9 @@
     "selftest:option-du-texte": "node scripts/option-du-texte-selftest.mjs",
     "selftest:rayon-par-defaut": "node --import ./scripts/loader-ext.mjs scripts/rayon-par-defaut-selftest.mjs",
     "selftest:rayon-refuse": "node --import ./scripts/loader-ext.mjs scripts/rayon-refuse-selftest.mjs",
-    "selftest:rayon-refuse-ebay": "deno run scripts/rayon-refuse-ebay-selftest.ts"
+    "selftest:rayon-refuse-ebay": "deno run scripts/rayon-refuse-ebay-selftest.ts",
+    "selftest:jeton-401-rejeu": "node scripts/jeton-401-rejeu-selftest.mjs",
+    "selftest:correctifs-extension": "node scripts/correctifs-extension-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
