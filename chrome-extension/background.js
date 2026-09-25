@@ -19455,8 +19455,19 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     // ne s'en est aperçu qu'APRÈS la suppression. L'une des deux suffit.
     const locOrigine = pf.localisation_origine && typeof pf.localisation_origine === "object"
       ? pf.localisation_origine : null;
-    const aLocalisation = !!(locOrigine && (locOrigine.ville || locOrigine.code_postal))
-      || !!String(pf.adresse ?? "").trim();
+    // ⛔ ET CE QU'ON VA TAPER DOIT PORTER UN CODE POSTAL (2026-09-25, XEWER).
+    //    Le redépôt Leboncoin ne se garde du mauvais lieu que par le code
+    //    postal (invariant de fillAddress) : sans lui, aucune suggestion ne
+    //    peut être vérifiée, et on le découvrirait APRÈS le retrait. Même
+    //    choix de source que leboncoin.js : la localisation d'origine si elle
+    //    existe, les Réglages sinon. Mesuré le 25/09 : 1 095 captures et 157
+    //    adresses de Réglages, toutes avec un code postal — la garde ne retient
+    //    personne aujourd'hui, elle interdit le cas de demain.
+    const aCp = (s) => /(?:^|\D)\d{5}(?:\D|$)/.test(String(s ?? ""));
+    const origineUtilisable = !!(locOrigine && (locOrigine.ville || locOrigine.code_postal));
+    const aLocalisation = origineUtilisable
+      ? (aCp(locOrigine.code_postal) || aCp(locOrigine.libelle))
+      : aCp(pf.adresse);
     if (!aLocalisation) manquants.push("l'adresse où se trouve l'article");
     return manquants;
   }

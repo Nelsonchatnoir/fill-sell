@@ -1555,10 +1555,24 @@ async function fillListingForm(job) {
   const estRepublication = fields.republish_step != null;
   const locOrigine = fields.localisation_origine && typeof fields.localisation_origine === "object"
     ? fields.localisation_origine : null;
+  // ⛔ LA COMMUNE, JAMAIS LE LIEU-DIT (2026-09-25, XEWER — 5fe3fb95, 04664706).
+  //    `libelle` est le `city_label` de Leboncoin, qui ajoute le lieu-dit après
+  //    le code postal (« Saint-Yrieix-sur-Charente 16710 Les Rochers ») ;
+  //    l'autocomplete du dépôt ne propose que la commune, et la couverture
+  //    exige chaque mot tapé → annonce retirée, redépôt refusé. On tape donc
+  //    « ville code_postal » depuis les champs STRUCTURÉS ; le libellé ne sert
+  //    plus que s'il manque l'un des deux (même règle que le serveur,
+  //    _shared/lbc-localisation.js). Et c'est cette commune-là, pas une
+  //    lecture de la chaîne, qui sert au repli du barreau 3.
+  const villeOrigine = String(locOrigine?.ville ?? "").replace(/\s+/g, " ").trim();
+  const cpOrigine = String(locOrigine?.code_postal ?? "").trim();
+  const communeOrigine = (villeOrigine && /^\d{5}$/.test(cpOrigine)) ? { cp: cpOrigine, ville: villeOrigine } : null;
   const adresseOrigine = locOrigine
     ? String(locOrigine.voie
         ? `${locOrigine.voie} ${locOrigine.code_postal ?? ""} ${locOrigine.ville ?? ""}`
-        : (locOrigine.libelle || `${locOrigine.code_postal ?? ""} ${locOrigine.ville ?? ""}`)).replace(/\s+/g, " ").trim()
+        : (communeOrigine
+          ? `${communeOrigine.ville} ${communeOrigine.cp}`
+          : (locOrigine.libelle || `${locOrigine.code_postal ?? ""} ${locOrigine.ville ?? ""}`))).replace(/\s+/g, " ").trim()
     : "";
   const adresseAPoser = (estRepublication && adresseOrigine) ? adresseOrigine : fields.adresse;
   if (estRepublication && adresseOrigine) {
@@ -1568,7 +1582,9 @@ async function fillListingForm(job) {
   } else if (estRepublication && !adresseOrigine) {
     console.log("[leboncoin] adresse: la capture n'a pas de localisation — repli sur l'adresse des Réglages");
   }
-  const addressResult = await fillAddress(adresseAPoser, warnings);
+  const addressResult = await fillAddress(adresseAPoser, warnings, {
+    commune: (estRepublication && adresseOrigine) ? communeOrigine : null,
+  });
   // Livraison : format du colis et transporteurs, sur la MÊME page que
   // l'adresse (« Remise du bien »). Jamais bloquant — cf. poserLivraisonLbc.
   await poserLivraisonLbc(fields, warnings);
@@ -4203,7 +4219,7 @@ async function advanceWizardTo(selector, { probeMs = 5000, maxSteps = 3 } = {}) 
   return null;
 }
 
-async function fillAddress(adresseBrute, warnings) {
+async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {
   // Normalisation AVANT tout : apostrophe typographique et « 3bis » collé
   // cassaient la saisie ET la vérification (cf. normaliserAdresseLbc).
   const norm = normaliserAdresseLbc(adresseBrute);
@@ -4277,7 +4293,15 @@ async function fillAddress(adresseBrute, warnings) {
   // ⛔ INVARIANT, VRAI SUR LES TROIS BARREAUX : jamais une suggestion à qui il
   // manque le code postal OU la ville des Réglages. On perd de la précision
   // dans la commune, jamais la commune.
-  const repli = replierSurCpVille(adresse);
+  // ⛔ QUAND ON CONNAÎT LA COMMUNE, ON NE LA DEVINE PAS DANS LA CHAÎNE (25/09).
+  //    « Ville 16710 Lieu-dit » (city_label de Leboncoin) faisait lire le
+  //    LIEU-DIT comme ville (« ce qui suit le code postal ») : le repli
+  //    retapait « 16710 Les Rochers » et l'invariant exigeait « les rochers »
+  //    au lieu de « Saint-Yrieix-sur-Charente ». Sur une republication,
+  //    l'appelant passe la commune structurée de l'annonce ; elle fait foi.
+  const repli = (commune && commune.cp && commune.ville)
+    ? { cp: commune.cp, ville: commune.ville, valeur: `${commune.cp} ${commune.ville}` }
+    : replierSurCpVille(adresse);
 
   if (prefilled) {
     if (!missingTokens(prefilled).length) {

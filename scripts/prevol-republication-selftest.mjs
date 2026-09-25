@@ -104,6 +104,24 @@ attendu("pas de localisation capturée MAIS une adresse aux Réglages → on pas
   ...lbcComplet,
   platform_fields: { lbcCategoryPath: ["Loisirs", "Jeux & Jouets"], adresse: "7 allée du saut du loup 91160 Saulx" },
 }, []);
+// XEWER, 25/09 : le lieu-dit ne bloque pas (la commune et le code postal
+// suffisent) ; ce qui bloque AVANT le retrait, c'est l'absence de code postal
+// dans ce qu'on va taper — l'invariant de fillAddress n'a plus rien à tenir.
+attendu("XEWER : localisation avec lieu-dit → on passe (la commune suffit)", {
+  ...lbcComplet,
+  platform_fields: {
+    lbcCategoryPath: ["Loisirs", "Jeux & Jouets"],
+    localisation_origine: { ville: "Saint-Yrieix-sur-Charente", code_postal: "16710", voie: null, libelle: "Saint-Yrieix-sur-Charente 16710 Les Rochers" },
+  },
+}, []);
+attendu("adresse des Réglages sans code postal → on ne retire PAS", {
+  ...lbcComplet,
+  platform_fields: { lbcCategoryPath: ["Loisirs", "Jeux & Jouets"], adresse: "allée du saut du loup Saulx" },
+}, ["l'adresse où se trouve l'article"]);
+attendu("localisation d'origine sans code postal → on ne retire PAS", {
+  ...lbcComplet,
+  platform_fields: { lbcCategoryPath: ["Loisirs", "Jeux & Jouets"], localisation_origine: { ville: "Lyon", code_postal: null, voie: null, libelle: "Lyon" } },
+}, ["l'adresse où se trouve l'article"]);
 
 console.log("\n3. LEBONCOIN — CE QUE LE PRÉ-VOL NE DOIT PAS DEMANDER");
 console.log("   (profil des 338 imports du relevé : rien sur le job, tout dans la capture)");
