@@ -1020,7 +1020,7 @@ function ChampAvecUnite({ value, unite, onChange, lang }) {
   );
 }
 
-function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
+export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   useFermetureEchap(onClose);
   // Le champ principal ; à défaut, le premier des champs demandés ensemble
   // (25/09) — une liste sans champ principal n'avait AUCUN écran.
@@ -1463,8 +1463,12 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
               ? `${platformLabel} only accepts values from its own list for this field, and we could not read that list during the last attempt.`
               : `${platformLabel} n'accepte que des valeurs de sa propre liste pour ce champ, et nous n'avons pas réussi à lire cette liste au dernier passage.`)
             : (lang === "en"
-              ? `${platformLabel} requires this field for this category. Pick a value — the listing will then resume automatically, nothing to do on ${platformLabel}.`
-              : `${platformLabel} exige ce champ pour cette catégorie. Choisis une valeur — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`)}
+              ? (uniteF
+                ? `${platformLabel} requires this measurement for this category. Type it — the listing will then resume automatically, nothing to do on ${platformLabel}.`
+                : `${platformLabel} requires this field for this category. Pick a value — the listing will then resume automatically, nothing to do on ${platformLabel}.`)
+              : (uniteF
+                ? `${platformLabel} exige cette mesure pour cette catégorie. Indique-la — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`
+                : `${platformLabel} exige ce champ pour cette catégorie. Choisis une valeur — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`))}
         </div>
         </>)}
         {f && (valeursIndisponibles ? (
