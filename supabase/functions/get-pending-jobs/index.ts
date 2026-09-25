@@ -1,8 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
-import { sessionIdDuJwt, postesVivants, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+import { sessionIdDuJwt, postesVivants, posteCourt, posteAvecAccesOpla, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
+// (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
+// stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
+// de données sans import, comme leboncoinFeuilles.js plus bas).
+import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
+import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
+// (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
+import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -601,6 +608,9 @@ serve(async (req) => {
     // doivent pas dépendre de la policy UPDATE client. Best-effort : un échec
     // n'empêche JAMAIS la distribution des jobs.
     const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
+    // Le BUILD_ID de CE poll (préfixe horodaté) — celui du poste qui appelle,
+    // jamais profiles.extension_build (dernier écrivain, tous postes confondus).
+    const buildDuPoll = typeof body?.build === "string" ? body.build.slice(0, 120) : "";
     // Capacités DÉCLARÉES par le build (2026-09-10) — jamais déduites d’un
     // numéro de version : « taille_par_id » = ce client pose la taille Vinted
     // par id et par onglet sans retirer « EU » (selectTailleVinted). Un build
@@ -616,6 +626,8 @@ serve(async (req) => {
     const sessionId = sessionIdDuJwt(authHeader);
     let posteSansOpla = capacites.includes("sans_opla");
     let posteAvecOpla = capacites.includes("opla_acces");
+    // (25/09) Les postes vivants du compte, relus par la garde des relevés Opla.
+    let postesDuCompte: Record<string, Poste> = {};
     try {
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -656,6 +668,7 @@ serve(async (req) => {
         try {
           const { data: pp } = await admin.from("profiles").select("extension_postes").eq("id", user.id).maybeSingle();
           const postes = postesVivants((pp as { extension_postes?: unknown } | null)?.extension_postes);
+          postesDuCompte = postes;
           const avant: Poste = postes[sessionId] ?? {};
           const patchPoste: Poste = { le: new Date().toISOString() };
           if (build) patchPoste.build = build;
@@ -680,7 +693,15 @@ serve(async (req) => {
           // jamais une « connexion » Opla, jamais un 401) lui rend l'accès, et
           // la relance des jobs parqués ci-dessous part d'elle-même.
           // Au plus une recherche par 10 min et par poste.
-          if (!declare && !posteAvecOpla) {
+          // ── (25/09, Louis) La preuve lue en base est une preuve du COMPTE : une
+          //    publication Opla aboutie par le poste AUTORISÉ passait pour une
+          //    preuve de CE poste-ci (19:35 : « poste 8632c049 : accès Opla
+          //    PROUVÉ » par une publication de 070b2126) — et il a reçu deux
+          //    relevés Opla qu'il ne pouvait pas faire. Quand un AUTRE poste
+          //    vivant du compte a l'accès, la preuve du compte ne dit rien de
+          //    celui-ci : on ne la lui applique pas.
+          const autrePosteAutorise = posteAvecAccesOpla(postes, { saufSession: sessionId, depuisMs: POSTE_TTL_MS });
+          if (!declare && !posteAvecOpla && !autrePosteAutorise) {
             const derniere = Date.parse(String(avant.preuve_opla_cherchee_le ?? ""));
             if (!Number.isFinite(derniere) || Date.now() - derniere > 10 * 60_000) {
               patchPoste.preuve_opla_cherchee_le = patchPoste.le;
@@ -720,6 +741,57 @@ serve(async (req) => {
       // qui n'écrit que si la version proposée est strictement supérieure.
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
+
+    // ══ UN DÉFAUT D'EXTENSION CORRIGÉ : LE JOB REPART QUAND LE POSTE EST À JOUR ══
+    // (2026-09-25, LES PETITES FIOLES — _shared/correctifs-extension.js)
+    // 5 republications Leboncoin PRO arrêtées en « relance d'un clic » après
+    // 40 essais de la 0.6.63 sur la fiche sans panneau de gestion ; la 0.6.66
+    // ouvre le tiroir « Gérer ». Les relancer sur la 0.6.63 = cinq échecs de
+    // plus ; attendre un geste = oublier. Ici : dès qu'un poste de CE compte
+    // polle avec un build qui porte le correctif, le job repart, une fois, et
+    // n'est servi qu'à un poste à jour (garde `build_min_requis` plus bas).
+    // Poll d'exécution seul ; aucune requête pour un poste plus ancien que le
+    // plus ancien correctif connu. Best-effort : jamais un point de panne.
+    let relancesCorrectif = 0;
+    const correctifsPortes = CORRECTIFS_EXTENSION.filter((c) => buildMsDe(buildDuPoll) >= buildMsDe(c.buildMin));
+    if (!includeProcessing && !includeNeedsUser && correctifsPortes.length) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: bloques } = await admin
+          .from("cross_post_jobs")
+          .select("id, user_id, platform, action, status, error, handler_build, platform_fields")
+          .eq("user_id", user.id).eq("status", "needs_user")
+          .in("platform", [...new Set(correctifsPortes.map((c) => c.platform))])
+          .in("action", [...new Set(correctifsPortes.flatMap((c) => c.actions))])
+          .limit(50);
+        for (const j of (bloques ?? []) as Array<Record<string, unknown>>) {
+          const c = correctifPourJob(j);
+          if (!c || !(buildMsDe(buildDuPoll) >= buildMsDe(c.buildMin))) continue;
+          const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          for (const k of ["needs_user_source", "needsUserAttempts", "needsUserBoucle", "needsUserResolved", "next_action_after",
+            "needs_user_vu_le", "needs_user_vu_erreur", "needs_user_tick_le", "needs_user_actif_ms", "error_technique",
+            "processing_since", "pas_de_rouge", "pas_de_rouge_reprises"]) delete pf[k];
+          // Comme relancer_republish : une annonce pas encore retirée est
+          // RE-VÉRIFIÉE (a_capturer) avant tout retrait ; 'deleted' reste là où il est.
+          if (j.action === "republish" && pf.republish_step !== "deleted") {
+            pf.republish_step = "a_capturer";
+            delete pf.capture_id;
+          }
+          pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", `get-pending-jobs (correctif ${c.version} : ${c.cle})`);
+          pf.correctif_leve = { cle: c.cle, version: c.version, le: new Date().toISOString(), build_echec: j.handler_build ?? null, build_poste: buildDuPoll, motif: c.motif };
+          pf.build_min_requis = c.buildMin;
+          const { data: maj } = await admin.from("cross_post_jobs")
+            .update({ status: "pending", error: null, platform_fields: pf })
+            .eq("id", j.id as string).eq("status", "needs_user").select("id");
+          if ((maj ?? []).length) {
+            relancesCorrectif++;
+            console.log(`[get-pending-jobs] userId=${user.id} job ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) : arrêté sur ${c.cle} par ${String(j.handler_build ?? "?").slice(0, 40)} — poste à jour (${buildDuPoll.slice(0, 40)}) → pending, une fois`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] correctifs d'extension : ${String((e as Error)?.message ?? e)} — rien de relancé`);
+      }
+    }
 
     // ── Commande de sync du dressing mise en file depuis le mobile ──────────
     // (2026-08-05) L'utilisateur installe l'extension UNE FOIS sur son
@@ -766,6 +838,86 @@ serve(async (req) => {
         if (cmds?.length) syncCommand = { id: cmds[0].id as string };
       } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
     }
+    // ══ UNE DEMANDE DE RELEVÉ JAMAIS RÉCLAMÉE REPART AU RETOUR DE CHROME ══════
+    // (2026-09-25, check de nuit, point 6) Joe0410, Sandra, Chrys, MeMiniandMove,
+    // Melanie, alexandrine, m0nc3f : relevés demandés le soir, Chrome fermé la
+    // nuit → « demande jamais réclamée en 6 h » → expirés. Personne ne les
+    // redemandait : ni l'app (demande de l'utilisateur), ni le serveur hors du
+    // premier relevé (planifier_premiers_releves : 3 essais, 6 h d'écart). La
+    // personne restait sans relevé jusqu'au prochain geste.
+    // RÈGLE : au premier poll d'exécution d'un poste capable, chaque demande
+    // EXPIRÉE SANS AVOIR ÉTÉ RÉCLAMÉE (claimed_at nul) depuis moins de 72 h
+    // est reposée, UNE fois, telle quelle (même kind, même plateforme), avec
+    // l'origine suivie de « :redemande ». Elle part dans CE poll (la lecture
+    // des relevés est juste en dessous).
+    // ⛔ BORNES — aucune boucle possible :
+    //    · une seule redemande par demande expirée (marque « [redemandée] »
+    //      posée sur l'expirée) ; une redemande qui expire à son tour n'est
+    //      JAMAIS redemandée (déclencheur « …:redemande ») ;
+    //    · rien si un run plus récent de même nature existe (fait, en cours,
+    //      raté : il a déjà répondu), ni pour une plateforme écartée ;
+    //    · jamais les demandes du VEILLEUR (il se redemande lui-même, sous la
+    //      garde des relevés vides) ni les « connexion » (on ne rouvre pas un
+    //      onglet des heures après le clic) ;
+    //    · l'index un_seul_actif et les gardes d'insertion (cadence du
+    //      dressing) restent juges : un refus d'insertion = rien de posé.
+    // Best-effort : jamais un point de panne.
+    let relevesRedemandes = 0;
+    if (versionAuMoins(version, "0.6.42") && !includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const depuis = new Date(Date.now() - 72 * 3600_000).toISOString();
+        const { data: expirees } = await admin
+          .from("vinted_sync_runs")
+          .select("id, kind, platform, declencheur, erreur, queued_at, finished_at")
+          .eq("user_id", user.id).eq("status", "expired")
+          .is("claimed_at", null).not("queued_at", "is", null)
+          .in("kind", ["annonces", "dressing"])
+          .gte("finished_at", depuis)
+          .order("queued_at", { ascending: false })
+          .limit(20);
+        const candidates = ((expirees ?? []) as Array<Record<string, unknown>>).filter((r) => {
+          const d = String(r.declencheur ?? "");
+          return !/^veilleur/i.test(d) && !/:redemande$/i.test(d) && !String(r.erreur ?? "").includes("[redemandée]");
+        });
+        if (candidates.length) {
+          const { data: prof } = await admin.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+          const ps = ((prof as { platform_settings?: unknown } | null)?.platform_settings ?? {}) as Record<string, unknown>;
+          const ecartees = new Set(Array.isArray(ps.plateformes_ecartees) ? (ps.plateformes_ecartees as unknown[]).map(String) : []);
+          const vues = new Set<string>();
+          for (const r of candidates) {
+            const kind = String(r.kind);
+            const pf = r.platform == null ? null : String(r.platform);
+            const cleNature = `${kind}|${pf ?? ""}`;
+            if (vues.has(cleNature)) continue; // la plus récente seulement
+            vues.add(cleNature);
+            if (ecartees.has(kind === "dressing" ? "vinted" : String(pf ?? ""))) continue;
+            // Un run PLUS RÉCENT de même nature a déjà répondu (ou est en cours).
+            let plusRecent = admin.from("vinted_sync_runs").select("id").eq("user_id", user.id).eq("kind", kind)
+              .neq("id", r.id as string).gt("started_at", String(r.queued_at)).limit(1);
+            plusRecent = pf == null ? plusRecent.is("platform", null) : plusRecent.eq("platform", pf);
+            const { data: recent } = await plusRecent;
+            if ((recent ?? []).length) continue;
+            const origine = String(r.declencheur ?? "app") || "app";
+            const { data: cree, error: insErr } = await admin.from("vinted_sync_runs")
+              .insert({ user_id: user.id, kind, platform: pf, status: "queued", declencheur: `${origine}:redemande`, queued_at: new Date().toISOString() })
+              .select("id").maybeSingle();
+            if (insErr || !cree) {
+              console.log(`[get-pending-jobs] userId=${user.id} relevé ${kind}/${pf ?? "-"} expiré non redemandé : ${insErr?.message ?? "insertion refusée"}`);
+              continue;
+            }
+            await admin.from("vinted_sync_runs")
+              .update({ erreur: `${String(r.erreur ?? "demande expirée").slice(0, 400)} · [redemandée] repartie au retour de l'extension (${String((cree as { id: string }).id).slice(0, 8)})` })
+              .eq("id", r.id as string).eq("status", "expired");
+            relevesRedemandes++;
+            console.log(`[get-pending-jobs] userId=${user.id} relevé ${kind}/${pf ?? "-"} (${origine}) expiré sans avoir été réclamé → redemandé au retour de l'extension (${String((cree as { id: string }).id).slice(0, 8)})`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] redemande des relevés expirés : ${String((e as Error)?.message ?? e)} — rien de posé`);
+      }
+    }
+
     // ── Relevés multiplateforme (2026-09-17, sync lot 1) : les demandes
     // kind='annonces' en file (une par plateforme), servies aux extensions
     // ≥ 0.6.42 seulement — une plus ancienne ne sait pas relever. Même TTL de
@@ -785,6 +937,21 @@ serve(async (req) => {
         syncCommandsAnnonces = ((cmds ?? []) as Array<{ id: unknown; platform: unknown }>)
           .map((c) => ({ id: String(c.id), platform: String(c.platform) }));
       } catch (_e) { /* idem */ }
+    }
+    // ── UN RELEVÉ OPLA N'EST CONFIÉ QU'À UN POSTE QUI A L'ACCÈS (2026-09-25) ──
+    // Louis (Business, deux profils Chrome) : ses relevés Opla de 21:21 et
+    // 22:21 (24/09) sont partis au poste SANS autorisation — premier à poller,
+    // premier servi — et sont revenus « accès Opla non accordé », alors que
+    // ses publications Opla passaient par l'autre poste. 12 relevés Opla ce
+    // jour-là : 6 faits par le poste autorisé, 6 « absente » par l'autre.
+    // Même règle que les jobs Opla (plus bas) : quand un AUTRE poste vivant du
+    // compte a l'accès, la demande reste en file pour lui. Un compte à un seul
+    // poste sans accès ne change pas : son relevé dit « absente », utile au
+    // verdict « Opla est-il autorisé ? ».
+    if (posteSansOpla && syncCommandsAnnonces.some((c) => c.platform === "opla")
+        && posteAvecAccesOpla(postesDuCompte, { saufSession: sessionId, depuisMs: POSTE_TTL_MS })) {
+      syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
+      console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : relevé Opla laissé en file pour le poste autorisé`);
     }
 
     // ══ « ME CONNECTER » — LE TÉLÉPHONE DEMANDE, L'ORDINATEUR OUVRE ════════
@@ -883,6 +1050,52 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // ── UN JOB RÉARMÉ PAR UN CORRECTIF N'EST SERVI QU'À UN POSTE QUI LE PORTE ──
+    // (2026-09-25, cf. « UN DÉFAUT D'EXTENSION CORRIGÉ » plus haut) Un autre
+    // profil Chrome du même compte, resté sur l'ancien build, le reprendrait
+    // pour échouer de la même façon. Build illisible = ancien build : retenu.
+    // TOUS LES MODES : le popup d'un ancien poste ne doit pas le lancer non plus.
+    {
+      const avantCorrectif = out.length;
+      out = out.filter((j) => {
+        const min = String(((j.platform_fields ?? {}) as Record<string, unknown>).build_min_requis ?? "");
+        if (!min) return true;
+        const b = buildMsDe(buildDuPoll);
+        return Number.isFinite(b) && b >= buildMsDe(min);
+      });
+      if (out.length !== avantCorrectif) {
+        console.log(`[get-pending-jobs] userId=${user.id} : ${avantCorrectif - out.length} job(s) réarmé(s) par un correctif retenu(s) — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » plus ancien que le correctif`);
+      }
+    }
+
+    // ── UNE REPUBLICATION REJOUÉE REPART DE L'ANNONCE QU'ELLE A CRÉÉE (25/09) ──
+    // Ornella, cardigan (job afc981fe) : la republication du 17/09 a retiré
+    // 9996392197 et CRÉÉ 10035307070 (new_vinted_item_id), mais vinted_item_id
+    // est resté sur l'ancien. Rejouée à l'étape 'a_capturer' (relance), elle a
+    // capturé l'annonce qu'ELLE avait retirée : 404 → « disparue » → revue des
+    // disparus → « vendue » à 4 € — alors que 10035307070 était en ligne. Le
+    // relevé suivant a réimporté l'annonce vivante en doublon.
+    // Règle : une republication Vinted qui n'a PAS encore retiré (a_capturer,
+    // captured) et qui porte l'identifiant de l'annonce qu'elle a déjà créée
+    // travaille sur CELLE-LÀ — l'ancienne n'existe plus. Écrit sur le job
+    // (trace vinted_item_id_avant), servi tel quel. Tous les modes.
+    for (const j of out as unknown as Array<Record<string, unknown>>) {
+      if (j.platform !== "vinted" || j.action !== "republish") continue;
+      const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
+      if (!pf) continue;
+      const etape = String(pf.republish_step ?? "a_capturer");
+      const ancien = String(pf.vinted_item_id ?? "").trim();
+      const cree = String(pf.new_vinted_item_id ?? "").trim();
+      if ((etape !== "a_capturer" && etape !== "captured") || !cree || !ancien || cree === ancien) continue;
+      pf.vinted_item_id_avant = ancien;
+      pf.vinted_item_id = cree;
+      if (etape === "captured") { pf.republish_step = "a_capturer"; delete pf.capture_id; }
+      try {
+        await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id as string).eq("status", "pending");
+      } catch { /* servi corrigé quand même : l'extension renvoie le pf au statut suivant */ }
+      console.log(`[get-pending-jobs] republication ${String(j.id).slice(0, 8)} : repart de l'annonce qu'elle a créée (${cree}), plus de l'ancienne (${ancien}) déjà retirée`);
+    }
 
     // ══════════════════════════════════════════════════════════════════════
     // ON NE LAISSE PAS UN ANCIEN BUILD RETIRER UNE ANNONCE BEEBS (2026-09-22)
@@ -4682,6 +4895,78 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] marque/couleur Vinted depuis la fiche : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
+    // ══ UN DÉPÔT VINTED SANS COULEUR OU SANS MARQUE NE PART PAS AU REFUS ════
+    // (2026-09-25, check de nuit, point 1) Jocabroc : « Peinture Baptême du
+    // Christ » (24/09 20:31, rayon changé après coup par le rattrapage du
+    // rayon refusé, sans que personne ne recalcule les obligatoires) et
+    // « Grand plateau barbotine » (25/09 06:46) partis SANS couleur → 400
+    // « Le champ Couleur doit être renseigné ». Neuf dépôts partis sans
+    // marque (une lettre tapée, retirée à l'insert) → 400 « Marque ».
+    // Le stepper pose désormais la question AVANT la création du job
+    // (_shared/vinted-exigences.js, même règle) ; ce filet-ci couvre ce qui
+    // ne passe pas par lui : un écran d'avant la mise à jour, un rayon changé
+    // après coup, un job déjà en file. Rien n'est inventé : la fiche a déjà
+    // été lue juste au-dessus (sources du vendeur) — si la valeur manque
+    // ENCORE, la question part chez la personne AVANT tout essai, avec la
+    // palette Vinted (29 libellés) ou « Sans marque » proposé.
+    // Mesuré sur 60 jours (25/09) : AUCUNE publication Vinted aboutie sans
+    // couleur hors des rayons exemptés, aucune sans marque hors des livres —
+    // ce filet ne retient donc aucun dépôt qui serait passé.
+    // Périmètre : poll d'exécution, publish Vinted avec un rayon connu.
+    // Best-effort : une lecture ou une écriture ratée → servi comme avant.
+    let heldVintedExige = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const aRetenir = new Set<string>();
+        for (const j of out as unknown as Array<Record<string, unknown>>) {
+          if (j.platform !== "vinted" || (j.action ?? "publish") !== "publish") continue;
+          const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
+          if (!pf) continue;
+          const chemin = Array.isArray(pf.categoryPath) ? (pf.categoryPath as unknown[]).map((c) => String(c ?? "")) : [];
+          if (!chemin.length) continue; // pas de rayon : rien à juger, servi comme avant
+          const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
+          const vraie = (v: unknown) => { const t = String(v ?? "").trim(); return t && !valeurUneLettre(t) ? t : ""; };
+          const colors = Array.isArray(pf.colors) ? (pf.colors as unknown[]).filter((c) => vraie(c)) : [];
+          const couleurManque = vintedExigeUneCouleur(chemin) && !vraie(pf.couleur) && !colors.length && !vraie(aspects.color);
+          const marqueManque = vintedExigeUneMarque(chemin) && !vraie(pf.marque) && !vraie(aspects.brand);
+          if (!couleurManque && !marqueManque) continue;
+          const champs: Array<Record<string, unknown>> = [];
+          if (marqueManque) champs.push({ field_key: "brand", field_label: "Marque", target: { root: "vintedAspects", key: "brand" }, platform: "vinted" });
+          if (couleurManque) champs.push({ field_key: "color", field_label: "Couleur", allowed_values: [...VINTED_COLORS], input_type: "select", target: { root: "vintedAspects", key: "color" }, platform: "vinted" });
+          const libelles = champs.map((c) => String(c.field_label));
+          const rayon = chemin[chemin.length - 1];
+          const message =
+            `Vinted exige ${libelles.length > 1 ? "une marque et une couleur" : (marqueManque ? "une marque" : "une couleur")} pour le rayon « ${rayon} », ` +
+            `et ton annonce n'en porte pas encore. Choisis-${libelles.length > 1 ? "les" : "la"} ci-dessous (bouton « ✋ Compléter »)` +
+            `${marqueManque ? " — « Sans marque » convient pour un objet sans marque" : ""} : la publication repart d'elle-même. ` +
+            "Rien n'a été envoyé à Vinted.";
+          const pfNu: Record<string, unknown> = {
+            ...pf,
+            needsUserField: champs[0],
+            ...(champs.length > 1 ? { needsUserFields: champs.slice(1) } : {}),
+            vinted_exige: { champs: libelles, rayon: chemin, depuis: new Date().toISOString(), pose_par: "get-pending-jobs (avant tout essai)" },
+          };
+          delete pfNu.processing_since;
+          const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: message, platform_fields: pfNu })
+            .eq("id", j.id as string).eq("status", "pending").select("id");
+          if (uErr) {
+            console.warn(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : question « ${libelles.join(", ")} » non écrite (${uErr.message}) — servi tel quel`);
+            continue;
+          }
+          aRetenir.add(String(j.id));
+          console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : ${libelles.join(" + ")} manquant(s) pour « ${chemin.join(" > ")} » → needs_user AVANT tout essai${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+        }
+        if (aRetenir.size) {
+          const avant = out.length;
+          out = out.filter((j) => !aRetenir.has(String(j.id)));
+          heldVintedExige = avant - out.length;
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] exigences Vinted (couleur/marque) : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+      }
+    }
+
     // ── TITRE VINTED : TROP DE MAJUSCULES (2026-09-11, job f3a5dce8 Ornella) ──
     // Vinted refuse en 400 « Le titre contient trop de lettres majuscules » —
     // un seul mot en capitales suffit (« BOURSIC », 25 % de l'ensemble). La
@@ -5816,6 +6101,12 @@ serve(async (req) => {
       // pro, et jobs relâchés parce qu'elle vient de se mettre à jour.
       jobs_retenus_lbc_pro: heldLbcPro,
       jobs_relaches_lbc_pro: relachesLbcPro,
+      // (25/09) Dépôts Vinted passés en question AVANT tout essai (couleur ou
+      // marque exigée, absente), jobs réarmés par un correctif d'extension
+      // porté par ce poste, relevés expirés redemandés au retour de Chrome.
+      vinted_questions_avant_essai: heldVintedExige,
+      jobs_rearmes_correctif: relancesCorrectif,
+      releves_redemandes: relevesRedemandes,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
