@@ -490,10 +490,41 @@ export function trancherCandidats(
 // Jumelle de opla.js:474-499, PLUS le départage ci-dessus. Rend soit une
 // feuille, soit les candidats à proposer.
 export function resoudreCategorieOpla(
-  { mots = [], titre = null, depart = null, genre = null, etagere = null }:
-  { mots?: unknown[]; titre?: string | null; depart?: string | null; genre?: string | null; etagere?: string[] | null } = {},
+  { mots = [], titre = null, depart = null, genre = null, etagere = null, _rayonsEtagere = true }:
+  {
+    mots?: unknown[]; titre?: string | null; depart?: string | null; genre?: string | null; etagere?: string[] | null;
+    /** Interne : la reprise depuis les racines (branche `depart`) le coupe, l'appelant le joue APRÈS le rayon de l'ancre. */
+    _rayonsEtagere?: boolean;
+  } = {},
 ): { code: string | null; candidats: FeuilleOpla[]; etapes: string[] } {
   const etapes: string[] = [];
+  // ── DERNIER ÉTAGE : LES RAYONS DE L'ÉTAGÈRE VINTED, POUR UNE QUESTION (25/09) ──
+  // nadegemarcelin78, « Contes pour les Filles » (86ff39c5, republication d'une
+  // annonce Opla importée par le relevé) : 10 refus opla_categorie_absente en
+  // un jour, et AUCUNE question — tout ce qui précède rendait « ambiguïté
+  // réelle sous (racines) : 8 enfants, aucun mot ne tranche ». Le titre ne
+  // nomme aucun nœud, et la feuille de l'étagère Vinted (2364 = « Livres et
+  // médias › Livres › Enfants et jeunes adultes › Enfants ») n'est pas une
+  // feuille Opla. Mais un de ses RAYONS nomme un nœud Opla : « Livres » →
+  // les 11 feuilles de « Culture et Loisirs › Livres ». La bonne réponse y est.
+  // ⛔ UNE QUESTION, JAMAIS UN CODE : un rayon ne désigne pas une feuille, il
+  //    borne la liste qu'on montre. La personne choisit.
+  // ⛔ SEULEMENT QUAND TOUT LE RESTE EST VIDE (ni code, ni candidats, ni rayon
+  //    de l'ancre) : aucun job qui résout aujourd'hui ne change de chemin.
+  // Du rayon le plus profond au moins profond, la feuille exclue (elle a déjà
+  // joué son rôle plus haut) ; le premier qui rend une liste posable gagne.
+  const questionParRayonsEtagere = (ancre: string | null): FeuilleOpla[] | null => {
+    if (!Array.isArray(etagere) || etagere.length < 2) return null;
+    const rayons = etagere.slice(0, -1).map((r) => String(r ?? "").trim()).filter(Boolean).reverse();
+    for (const rayon of rayons) {
+      const liste = ecarterGenreIncompatible(feuillesDuNoeudNomme([rayon], ancre), genre);
+      if (liste.length >= 2 && liste.length <= OPLA_QUESTION_MAX) {
+        etapes.push(`rayon « ${rayon} » de l'étagère Vinted → ${liste.length} feuilles — question (jamais tranchée par le rayon)`);
+        return liste;
+      }
+    }
+    return null;
+  };
   let code = String(depart ?? "").trim();
   if (code && !oplaNoeud(code)) { etapes.push(`ancre « ${code} » inconnue — ignorée`); code = ""; }
   if (code && oplaNoeud(code)?.feuille) return { code, candidats: [], etapes: ["ancre déjà une feuille"] };
@@ -770,7 +801,7 @@ export function resoudreCategorieOpla(
   // racine plutôt que de tourner en rond dans la branche où on nous a égarés.
   if (depart) {
     etapes.push(`ancre « ${depart} » sans issue — reprise depuis les racines`);
-    const global = resoudreCategorieOpla({ mots, titre, genre, etagere });
+    const global = resoudreCategorieOpla({ mots, titre, genre, etagere, _rayonsEtagere: false });
     if (global.code || global.candidats.length) {
       return { code: global.code, candidats: global.candidats, etapes: [...etapes, ...global.etapes] };
     }
@@ -795,8 +826,14 @@ export function resoudreCategorieOpla(
       etapes.push(`aucun mot ne désigne de feuille — on propose les ${sousAncre.length} feuilles du rayon « ${oplaNoeud(depart)?.titre ?? depart} »`);
       return { code: null, candidats: sousAncre, etapes };
     }
+    const parRayonsA = _rayonsEtagere ? questionParRayonsEtagere(null) : null;
+    if (parRayonsA) return { code: null, candidats: parRayonsA, etapes: [...etapes, ...global.etapes] };
     return { code: null, candidats: [], etapes: [...etapes, ...global.etapes] };
   }
+  // Borné au nœud où la descente s'est arrêtée : les mots y ont conduit, une
+  // feuille hors de ce nœud les contredirait.
+  const parRayons = _rayonsEtagere ? questionParRayonsEtagere(code || null) : null;
+  if (parRayons) return { code: null, candidats: parRayons, etapes };
   return { code: null, candidats: [], etapes };
 }
 

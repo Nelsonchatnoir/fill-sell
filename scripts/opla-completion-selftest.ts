@@ -309,5 +309,55 @@ const SANDRA = {
   ok("un maillot de basket rangé sur « Maillots » part en MEN_JERSEYS, plus jamais en baskets", pf.oplaCategoryCode === "MEN_JERSEYS", pf.oplaCategoryCode);
 }
 
+// ── ⑤ UN RAYON DE L'ÉTAGÈRE VINTED BORNE LA QUESTION (25/09) ──────────────
+// nadegemarcelin78, « Contes pour les Filles » (86ff39c5, republication d'une
+// annonce Opla importée par le relevé), relevé en base : aucun mot-objet, titre
+// qui ne nomme aucun nœud, étagère 2364 = « Livres et médias › Livres ›
+// Enfants et jeunes adultes › Enfants ». Avant : ni code ni liste, donc aucune
+// question, dix refus opla_categorie_absente. Le rayon « Livres » nomme le nœud
+// Opla « Culture et Loisirs › Livres » : ses 11 feuilles font la question.
+console.log("\n── ⑤ nadegemarcelin78, 25/09 : le rayon de l'étagère borne la question ──");
+{
+  const CONTES = {
+    id: "86ff39c5",
+    statut: "pending",
+    titre: "Livre Contes pour les Filles de Piccolia",
+    pf: { etat: "like-new", source: "releve" },
+    attrs: { etat: attr("Très bon état", "capture"), isbn: attr("9782753028906", "capture") },
+    vintedCatalogId: 2364,
+  };
+  const { pf, trace } = passer(CONTES);
+  const ask = pf.oplaCategoryAsk as { options?: Array<{ code: string; title: string }> } | undefined;
+  ok("aucun code n'est deviné par le rayon", !pf.oplaCategoryCode, pf.oplaCategoryCode);
+  ok("une question est posée sur les 11 feuilles de « Culture et Loisirs › Livres »",
+    ask?.options?.length === 11 && ask.options.every((o) => o.title.startsWith("Culture et Loisirs › Livres › ")), ask?.options);
+  ok("… dont « Romans pour enfants » et « Livres pour bébé »",
+    ["ROMANS_POUR_ENFANTS", "LIVRES_POUR_BEBE"].every((c) => ask?.options?.some((o) => o.code === c)), ask?.options);
+  ok("… et la trace dit d'où vient la liste", /rayon « Livres » de l'étagère Vinted/.test(String((trace.oplaCategoryAsk as Record<string, unknown>)?.source ?? "")), trace.oplaCategoryAsk);
+
+  // Elle répond « Romans pour enfants » depuis l'app (✋ Compléter) : la
+  // réponse se récolte en code au passage suivant, sans reposer la question.
+  const reponse = "Culture et Loisirs › Livres › Romans pour enfants";
+  const apres = passer({
+    ...CONTES,
+    pf: { ...pf, oplaCategoryChoice: reponse, needsUserResolved: { oplaCategoryChoice: reponse } },
+  });
+  ok("sa réponse devient le code de la feuille", apres.pf.oplaCategoryCode === "ROMANS_POUR_ENFANTS", apres.pf.oplaCategoryCode);
+  ok("… et la réponse est mémorisée pour la même question", apres.aRetenir?.entree.code === "ROMANS_POUR_ENFANTS", apres.aRetenir);
+
+  // Rien ne change là où le reste désigne déjà : la même étagère avec un mot qui
+  // nomme une feuille garde sa résolution (le rayon ne joue qu'en dernier).
+  const bd = passer({ ...CONTES, id: "bd", pf: { categorie_objet_ia: "bande dessinée" } });
+  ok("un mot qui désigne une feuille garde la main (le rayon n'est que le dernier étage)",
+    bd.pf.oplaCategoryCode === "BANDES_DESSINEES" && !bd.pf.oplaCategoryAsk, [bd.pf.oplaCategoryCode, bd.trace.oplaCategoryAsk]);
+  const roman = passer({ ...CONTES, id: "roman", pf: { categorie_objet_ia: "roman" } });
+  const optRoman = (roman.pf.oplaCategoryAsk as { options?: unknown[] } | undefined)?.options ?? [];
+  ok("… et une question déjà posée par les mots garde SA liste (2 romans, pas les 11 livres)",
+    optRoman.length === 2 && !/rayon « /.test(String((roman.trace.oplaCategoryAsk as Record<string, unknown>)?.source ?? "")), optRoman);
+  // Sans étagère : rien de nouveau, toujours ni code ni question.
+  const sans = passer({ ...CONTES, id: "sans", vintedCatalogId: null });
+  ok("sans étagère Vinted, rien n'est inventé", !sans.pf.oplaCategoryCode && !sans.pf.oplaCategoryAsk, [sans.pf.oplaCategoryCode, sans.pf.oplaCategoryAsk]);
+}
+
 console.log(ko ? `\n❌ ${ko} contrôle(s) en échec\n` : "\n✅ la chaîne Opla complète passe — catégorie, genre, taille\n");
 Deno.exit(ko ? 1 : 0);
