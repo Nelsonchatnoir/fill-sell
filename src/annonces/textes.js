@@ -57,6 +57,11 @@ const FR = {
     ? `${n} annonces relevées ne correspondent à aucun article de ton stock.`
     : 'Une annonce relevée ne correspond à aucun article de ton stock.'),
   anomalieCta: 'Rattacher',
+  // (25/09) Deux fiches qui désignent peut-être le même objet.
+  doublons: (n) => (n > 1
+    ? `${n} paires de fiches désignent peut-être le même article.`
+    : 'Deux fiches de ton stock désignent peut-être le même article.'),
+  doublonsCta: 'Vérifier',
 
   // ── Les empêchements, dits sans accuser personne ─────────────────────────
   signalNonConnecte: (nom) => `Pas connecté à ${nom} : connecte-toi sur ton ordinateur, le prochain relevé la prendra.`,
@@ -98,6 +103,7 @@ const FR = {
   ratEnVerification: 'en vérification',
   ratSansTitre: (id) => `Annonce ${id}`,
   ratProches: 'Les articles les plus proches',
+  ratQuestion: 'Est-ce le même article ? Touche-le pour le rattacher',
   ratProbable: 'Le plus probable',
   ratAucunCandidat: "Aucun article de ton stock ne ressemble à cette annonce.",
   ratChercher: 'Chercher dans ton stock…',
@@ -159,6 +165,10 @@ const EN = {
     ? `${n} scanned listings match no item in your stock.`
     : 'One scanned listing matches no item in your stock.'),
   anomalieCta: 'Match',
+  doublons: (n) => (n > 1
+    ? `${n} pairs of items may be the same object.`
+    : 'Two items in your stock may be the same object.'),
+  doublonsCta: 'Check',
 
   signalNonConnecte: (nom) => `Not signed in to ${nom}: sign in on your computer, the next scan will pick it up.`,
   signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
@@ -187,6 +197,7 @@ const EN = {
   ratEnVerification: 'under review',
   ratSansTitre: (id) => `Listing ${id}`,
   ratProches: 'The closest items',
+  ratQuestion: 'Is it the same item? Tap it to match',
   ratProbable: 'Most likely',
   ratAucunCandidat: 'No item in your stock looks like this listing.',
   ratChercher: 'Search your stock…',

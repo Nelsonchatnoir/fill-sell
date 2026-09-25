@@ -245,7 +245,10 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
 
             {/* ── EN FACE : LES ARTICLES LES PLUS PROCHES ────────────────── */}
             <div style={{ margin: '16px 0 8px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: A.texteSecondaire }}>
-              {T.ratProches}
+              {/* (25/09) Une proposition du SERVEUR (reconnaissance probable) se
+                  pose en question : « Est-ce le même article ? » — un toucher
+                  sur la fiche la rattache. Sans proposition : la liste d'avant. */}
+              {candidats[0]?.source === 'serveur' ? T.ratQuestion : T.ratProches}
             </div>
             {candidats.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

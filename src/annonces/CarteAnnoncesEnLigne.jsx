@@ -29,6 +29,8 @@ import { textesAnnonces } from './textes';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 import ConstellationReleve from './ConstellationReleve';
 import EcranRattachement from './EcranRattachement';
+import EcranDoublons from './EcranDoublons';
+import { pairesAffichables } from '../utils/doublons';
 import BandesReleve from './BandesReleve';
 
 const nombreLisible = (n, fr) => (typeof n === 'number' && Number.isFinite(n)
@@ -43,6 +45,7 @@ export default function CarteAnnoncesEnLigne({
   const T = useMemo(() => textesAnnonces(lang), [lang]);
   const r = useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted });
   const [ecran, setEcran] = useState(false);
+  const [ecranDoublons, setEcranDoublons] = useState(false);
   const { fr } = r;
 
   const vague = useMemo(
@@ -69,6 +72,8 @@ export default function CarteAnnoncesEnLigne({
 
   const extVue = Number.isFinite(Date.parse(extensionStatus?.lastSeenAt ?? ''));
   const nbARattacher = r.aRattacher.length;
+  // (25/09) Les paires de fiches PROBABLES dont les deux fiches sont encore au stock.
+  const nbDoublons = pairesAffichables(r.doublons, items).length;
   const enCours = vague.active;
   const occupe = !!r.busy || r.toutBusy;
 
@@ -303,6 +308,28 @@ export default function CarteAnnoncesEnLigne({
           </div>
         )}
 
+        {/* (25/09) « Est-ce le même article ? » — deux fiches qui désignent
+            peut-être le même objet. Même rang que les annonces à rattacher :
+            seulement s'il y a une question, seulement au repos. */}
+        {!enCours && nbDoublons > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${A.borderSoft}` }}>
+            <span aria-hidden="true" style={{
+              width: 26, height: 26, borderRadius: 9, flexShrink: 0, background: A.ambreFond,
+              border: `1px solid ${A.ambreBord}`, color: A.ambreEncre, fontSize: 12, fontWeight: 700, lineHeight: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{nbDoublons > 99 ? '99+' : nbDoublons}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.45, color: A.ink }}>{T.doublons(nbDoublons)}</span>
+            <button type="button" className="rv-focus" onClick={() => setEcranDoublons(true)}
+              style={{
+                flexShrink: 0, minHeight: 36, padding: '0 14px', borderRadius: 999,
+                border: `1px solid ${A.border}`, background: A.card, color: A.tealDeep,
+                fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}>
+              {T.doublonsCta}
+            </button>
+          </div>
+        )}
+
         {/* Ce que le relevé a donné : la réussite en tête, puis les murs de
             connexion AVEC leur bouton, puis ce qui reste. Un seul composant,
             partagé avec le parcours d'entrée — les deux ne peuvent plus
@@ -357,6 +384,14 @@ export default function CarteAnnoncesEnLigne({
         <EcranRattachement
           lang={lang} items={items} annonces={r.aRattacher}
           onClose={() => setEcran(false)}
+          onDecision={() => { r.recharger(); if (typeof onRattache === 'function') onRattache(); }}
+        />
+      )}
+
+      {ecranDoublons && (
+        <EcranDoublons
+          lang={lang} items={items} doublons={r.doublons}
+          onClose={() => setEcranDoublons(false)}
           onDecision={() => { r.recharger(); if (typeof onRattache === 'function') onRattache(); }}
         />
       )}

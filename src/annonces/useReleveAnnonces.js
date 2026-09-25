@@ -24,6 +24,7 @@ import {
   lireRelevesVides,
 } from '../utils/syncPlateformes';
 import { avecDernierReleveVide } from './releveVide';
+import { lireDoublonsProposes } from '../utils/doublons';
 
 // Le poll : la base rend compte, jamais l'extension. 30 s — inchangé.
 const POLL_MS = 30000;
@@ -44,6 +45,9 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   const [runVinted, setRunVinted] = useState(null);
   const [compte, setCompte] = useState({});
   const [aRattacher, setARattacher] = useState([]);
+  // (25/09) Les paires de fiches PROBABLES : la question « Est-ce le même
+  // article ? » (inventaire_doublons). [] tant que rien n'est proposé.
+  const [doublons, setDoublons] = useState([]);
   const [busy, setBusy] = useState(null);        // plateforme en cours de demande
   const [toutBusy, setToutBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -62,15 +66,16 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     if (!ouvert || !userId) return undefined;
     let annule = false;
     const charger = async () => {
-      const [r, c, a, v, vv] = await Promise.all([
+      const [r, c, a, v, vv, dd] = await Promise.all([
         lireDerniersRunsReleve(userId), compterAnnoncesParPlateforme(userId),
         lireAnnoncesARattacher(userId), lireDernierRunVinted(userId), lireRelevesVides(userId),
+        lireDoublonsProposes(userId).catch(() => []),
       ]);
       if (annule) return;
       // Une plateforme signalée affiche son relevé vide le plus récent : la
       // tuile ne peut pas dire « 528 » sous une bande qui dit « aucune annonce ».
       setRuns(avecDernierReleveVide(r, vv)); setVides(vv);
-      setCompte(c); setARattacher(a); setRunVinted(v);
+      setCompte(c); setARattacher(a); setRunVinted(v); setDoublons(dd);
     };
     const t0 = setTimeout(charger, 0);
     const t = setInterval(charger, POLL_MS);
@@ -127,7 +132,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     fr, lang, userId,
     // Vinted en tête : c'est l'ordre des tuiles, et celui du reste du Stock.
     plateformes: ['vinted', ...(cle ? cle.split(',') : [])],
-    runs, runVinted, compte, aRattacher, vides,
+    runs, runVinted, compte, aRattacher, vides, doublons,
     busy, toutBusy, message, setMessage,
     etatVinted,
     lancer, toutRelever, recharger,
