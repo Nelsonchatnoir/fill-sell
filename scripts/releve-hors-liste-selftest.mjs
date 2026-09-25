@@ -10,7 +10,7 @@
 //   1. l'extension ne lit AUCUN lien hors du chemin de la liste du compte
 //      (CHEMIN_LISTE_DU_COMPTE), ni sans compteur « En ligne (N) » sur
 //      Leboncoin, et ne conclut jamais « compte vide » sur l'accueil ;
-//   2. le serveur (migration 20260925233000) reconnaît les runs hors liste AU
+//   2. le serveur (migration 20260925214443, ex-20260925233000, APPLIQUÉE le 25/09) reconnaît les runs hors liste AU
 //      TEXTE que l'extension écrit — toutes versions en circulation : si l'un
 //      des deux libellés change d'un côté sans l'autre, la porte se rouvre.
 // La migration a été jouée À BLANC en prod le 25/09 (transaction annulée) :
@@ -29,7 +29,7 @@ let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
 
 const bg = lire('chrome-extension/background.js');
-const migration = lire('supabase/migrations/20260925233000_releve_hors_liste_n_importe_rien.sql');
+const migration = lire('supabase/migrations/20260925214443_releve_hors_liste_n_importe_rien.sql');
 
 console.log('1. Le chemin de la liste du compte');
 {
