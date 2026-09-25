@@ -31,6 +31,9 @@ import { classerEchec } from "../_shared/pas-de-rouge.js";
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
 import { sessionIdDuJwt, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+// Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
+// module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
+import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -3004,6 +3007,51 @@ serve(async (req) => {
     // Parcage « Autoriser Opla » venu d'un poste sans accès alors qu'un autre
     // poste l'a (2026-09-24) : relâché en pending, marqueur retiré, trace posée.
     if (pfOplaRelache) patch.platform_fields = pfOplaRelache;
+
+    // ══ UNE REPUBLICATION RETIRÉE NE S'ARRÊTE JAMAIS AVANT SA RECRÉATION ══
+    // (2026-09-25, Les Petites Fioles, job fb358c75 — règle et bornes dans
+    // _shared/republication-hors-ligne.js.) À l'étape 'deleted', l'annonce
+    // d'origine n'existe plus : un needs_user « Republier maintenant » ou un
+    // failed la laissait hors ligne en attendant un clic. Tout ce qui n'est ni
+    // un mur (bouton qui relance seul), ni une question, ni une impasse nommée
+    // repart en reprise ESPACÉE, avec un message qui dit l'état réel. Placé
+    // après pas-de-rouge : sa reprise générique (« rien n'a été touché ») est
+    // fausse à cette étape, elle est remplacée ici. Illisible → comme avant.
+    const repriseGeneriquePdr = pfPasDeRouge != null && status === "failed" && statutEffectif === "pending";
+    if (statutEffectif === "needs_user" || statutEffectif === "failed" || repriseGeneriquePdr) {
+      try {
+        const { data: jHl } = await userClient
+          .from("cross_post_jobs").select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
+        const pfEnBaseHl = (jHl?.platform_fields ?? {}) as Record<string, unknown>;
+        const pfVue = ((patch.platform_fields && typeof patch.platform_fields === "object")
+          ? patch.platform_fields : (pfIn ?? pfEnBaseHl)) as Record<string, unknown>;
+        const dHl = decisionRecreationHorsLigne({
+          action: String(jHl?.action ?? ""),
+          platform: String(jHl?.platform ?? ""),
+          statut: repriseGeneriquePdr ? "failed" : statutEffectif,
+          pf: pfVue,
+          pfEnBase: pfEnBaseHl,
+          brut: typeof body.error === "string" ? body.error : "",
+          reecrit: messageEffectif ?? "",
+        });
+        if (dHl) {
+          if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
+            erreurTechniqueBrute = body.error;
+          }
+          statutEffectif = dHl.statut;
+          patch.status = dHl.statut;
+          messageEffectif = dHl.message;
+          patch.platform_fields = dHl.pf;
+          raisonRequalif = `republication hors ligne : ${dHl.motif} (reprise ${dHl.n}, ${dHl.dansMinutes} min)`;
+          console.log(
+            `[update-job-status] userId=${user.id} job=${jobId} — republication à l'étape 'deleted' : ${status} → ` +
+            `pending, reprise ${dHl.n} dans ${dHl.dansMinutes} min${(dHl.pf as Record<string, unknown>).verifier_doublon_avant_publication ? " (vérification anti-doublon avant redépôt)" : ""}`,
+          );
+        }
+      } catch (e) {
+        console.error("[update-job-status] republication hors ligne :", (e as Error)?.message ?? e);
+      }
+    }
 
     // ── HORLOGE DU CLIENT RECALÉE SUR CELLE DU SERVEUR (2026-09-11) ─────────
     // deleted_at (republish Vinted) est le SEUIL de reconnaissance de
