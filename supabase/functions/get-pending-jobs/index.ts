@@ -117,6 +117,8 @@ import { completerJobOpla, type OplaMem } from "../_shared/opla-completion.ts";
 // Une plateforme qui fige ne confisque plus le poste (25/09) — module JS sans
 // import, le même qu'exécute scripts/rotation-figes-selftest.mjs.
 import { plateformesFigees, rotationFiges } from "../_shared/rotation-figes.js";
+// La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
+import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -1763,6 +1765,22 @@ serve(async (req) => {
             const grammes = Number(attrLbc("estimated_parcel_weight")?.["value"]);
             if (Number.isFinite(grammes) && grammes > 0 && !(Number(pf["lbcPoidsGrammes"]) > 0)) {
               pf["lbcPoidsGrammes"] = Math.round(grammes); liv.push(`poids ← ${Math.round(grammes)} g`);
+            }
+            // ── « POIDS DU COLIS* » DU FORMULAIRE PRO, RELU EN TRANCHE (25/09) ──
+            // Les Petites Fioles (fb358c75) : 500 g connus depuis l'annonce
+            // d'origine, champ PRO laissé vide, recréation arrêtée sur une
+            // question. Leboncoin stocke la BORNE HAUTE de la tranche choisie
+            // (_shared/lbc-poids-tranche.js) : 500 → « De 250 g à 500 g ».
+            // Seulement le vide ; sans effet sur le formulaire particulier (pas
+            // de ce champ : le handler l'ignore en silence).
+            {
+              const aspectsP = (pf["lbcAspects"] && typeof pf["lbcAspects"] === "object")
+                ? pf["lbcAspects"] as Record<string, unknown> : {};
+              const tranche = trancheLbcDepuisGrammes(pf["lbcPoidsGrammes"]);
+              if (tranche && !String(aspectsP["estimated_parcel_weight"] ?? "").trim()) {
+                pf["lbcAspects"] = { ...aspectsP, estimated_parcel_weight: tranche };
+                liv.push(`poids du colis ← ${tranche}`);
+              }
             }
             if (liv.length) repris["livraison"] = liv.join(" ; ");
           }
