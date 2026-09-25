@@ -210,5 +210,26 @@ console.log("\n── 7. Vinted rayon « neuf seulement » : jamais clos (24/09,
   ok(s.motif !== "vinted_neuf_seulement" && s.statut !== "cancelled", "l'ancienne phrase ne clôt plus rien");
 }
 
+console.log("\n── 8. Retrait Vinted refusé sur UNE annonce : pas un anti-robot (25/09, buste de Nico) ──");
+{
+  const brut = "CHALLENGE Vinted a refusé la suppression : protection anti-robot (HTTP 403, access_denied), ta session est valide. Rien n'a été supprimé et ton annonce est intacte.";
+  const il = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
+  const bloque7h = { blocage_antirobot: { depuis: il(7), derniere: il(0.3), platform: "vinted", observations: 17 } };
+  const sondeOk = { vinted: true, checked_at_par_plateforme: { vinted: il(0.1) } };
+  const a = classerEchec({ platform: "vinted", action: "delete", brut, essais: 5, pf: bloque7h, sessions: sondeOk });
+  ok(a.verdict === "a_toi" && a.statut === "needs_user" && a.motif === "retrait_refuse_annonce" && a.source === "relancer",
+    `blocage 7 h + sonde Vinted 200 fraîche → à toi (relancer), plus de boucle : ${a.motif}/${a.statut}`);
+  const b = classerEchec({ platform: "vinted", action: "delete", brut, essais: 5, pf: bloque7h, sessions: { vinted: null } });
+  ok(b.verdict === "reprise" && b.motif === "antirobot", "sonde muette (vrai anti-robot : 403 → null) → reprise espacée, comme avant");
+  const c = classerEchec({ platform: "vinted", action: "delete", brut, essais: 5, pf: { blocage_antirobot: { depuis: il(1) } }, sessions: sondeOk });
+  ok(c.verdict === "reprise", "blocage de moins de 2 h → reprise, comme avant");
+  const d = classerEchec({ platform: "vinted", action: "delete", brut, essais: 5, pf: bloque7h, sessions: { vinted: true, checked_at_par_plateforme: { vinted: il(8) } } });
+  ok(d.verdict === "reprise", "sonde relevée AVANT le blocage → rien ne la contredit → reprise");
+  const e = classerEchec({ platform: "vinted", action: "republish", brut, essais: 5, pf: bloque7h, sessions: sondeOk });
+  ok(e.verdict === "reprise", "une republication (capture) garde la reprise espacée : seul le RETRAIT est concerné");
+  const f = classerEchec({ platform: "leboncoin", action: "delete", brut, essais: 5, pf: bloque7h, sessions: { leboncoin: true, checked_at_par_plateforme: { leboncoin: il(0.1) } } });
+  ok(f.verdict === "reprise", "Leboncoin : sa sonde ne prouve pas une réponse 200 de l'anti-robot → reprise, comme avant");
+}
+
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);

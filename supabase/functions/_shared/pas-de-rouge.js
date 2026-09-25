@@ -107,6 +107,19 @@ const DISPARUE_RE = /n'est plus en ligne|annonce introuvable|n'existe plus sur/i
 /** Le chien de garde a arrêté une attente trop longue. */
 const VEILLE_RE = /attendait une réponse depuis plusieurs jours/i;
 
+/** (25/09) Le blocage « anti-robot » d'un job est-il CONTREDIT par la sonde ?
+ *  Blocage observé depuis au moins 2 h (platform_fields.blocage_antirobot,
+ *  posé par l'extension) ET sonde de la plateforme à true, fraîche (< 1 h),
+ *  relevée APRÈS le début du blocage. */
+function antirobotContreditParLaSonde(pf, sessions, platform) {
+  const depuis = Date.parse(String(pf?.blocage_antirobot?.depuis ?? ""));
+  if (!Number.isFinite(depuis) || Date.now() - depuis < 2 * 3_600_000) return false;
+  if (!sessions || sessions[platform] !== true) return false;
+  const brut = sessions?.checked_at_par_plateforme?.[platform] ?? sessions?.checked_at ?? "";
+  const vu = Date.parse(String(brut));
+  return Number.isFinite(vu) && vu > depuis && Date.now() - vu < 3_600_000;
+}
+
 /**
  * Classe un échec. Rend TOUJOURS une sortie : il n'existe pas de quatrième
  * issue. `essais` est le nombre de tentatives déjà consommées sur ce job.
@@ -357,6 +370,31 @@ export function classerEchec(arg) {
       "Rien n'a été publié. On recommence tout seuls dans quelques minutes.", 5);
   }
   if (ANTIROBOT_RE.test(t)) {
+    // ── UN RETRAIT REFUSÉ SUR UNE SEULE ANNONCE N'EST PAS UN ANTI-ROBOT (25/09) ──
+    // Compte de Nico, « Buste femme terre cuite » (retrait Vinted du 24/09
+    // 23:54) : 403 access_denied à chaque essai pendant plus de 7 h, alors que
+    // les retraits de la peinture (10 s avant) et des bobines (2 min après)
+    // passaient, et que la sonde Vinted répondait 200. Classé « anti-robot »,
+    // le job tournait SANS FIN : reprise espacée, budget remis à zéro, nouvel
+    // épisode toutes les 6 h — et le message promettait une reprise qui ne
+    // pouvait pas aboutir, pendant que l'annonce restait en ligne.
+    // Un vrai anti-robot coupe TOUT le compte : la sonde, elle aussi, prend un
+    // 403 (Vinted : null, jamais true). Donc : blocage vu depuis ≥ 2 h, et la
+    // sonde Vinted, fraîche, relevée APRÈS le début du blocage, dit que Vinted
+    // répond → c'est CETTE annonce que Vinted refuse de retirer. On le dit, on
+    // rend la main (relance d'un clic), et on arrête de marteler.
+    // Vinted seul : c'est la seule sonde dont le « true » vaut une réponse 200.
+    if (action === "delete" && platform === "vinted" && antirobotContreditParLaSonde(pf, sessions, platform)) {
+      const heures = Math.max(2, Math.round((Date.now() - Date.parse(String(pf?.blocage_antirobot?.depuis))) / 3_600_000));
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "retrait_refuse_annonce", source: "relancer",
+        message:
+          `Vinted refuse de retirer CETTE annonce depuis ${heures} h, alors qu'il répond normalement à ton compte : ` +
+          "ce n'est donc pas une vérification anti-robot. L'annonce est peut-être en cours de vérification chez Vinted. " +
+          "Rien n'a été supprimé : elle est toujours en ligne. Retire-la toi-même sur Vinted si elle doit disparaître, " +
+          "ou relance le retrait d'un clic ci-dessous un peu plus tard.",
+      };
+    }
     return reprise("antirobot",
       `${nom} a affiché une vérification anti-robot au lieu de la page attendue. Rien n'a été ` +
       `${action === "delete" ? "retiré" : "publié"}, ton annonce est intacte. On réessaie plus tard, ` +
