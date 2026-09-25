@@ -5172,6 +5172,15 @@ async function memoriserFenetreCreee(windowId) {
     await chrome.storage.local.set({ [WORK_WINDOWS_CREATED_KEY]: liste.slice(-6) });
   } catch { /* best-effort */ }
 }
+// Fenêtres RENDUES à l'utilisateur (0.6.69) : retirées du registre, jamais
+// fermées — cf. resolveWorkWindow, « une fenêtre habitée n'est plus à nous ».
+async function oublierFenetresCreees(windowIds) {
+  try {
+    const oubli = new Set((windowIds ?? []).map(Number));
+    const liste = await lireRegistreFenetres();
+    await chrome.storage.local.set({ [WORK_WINDOWS_CREATED_KEY]: liste.filter((id) => !oubli.has(id)) });
+  } catch { /* best-effort */ }
+}
 // Ids du registre encore VIVANTS, et le registre est PURGÉ au passage : en
 // storage.local il survit au navigateur, donc les ids morts s'y accumuleraient
 // et finiraient par chasser les vivants de la fenêtre glissante des 6 derniers.
@@ -5341,7 +5350,33 @@ async function resolveWorkWindow() {
   // l'utilisateur, même si un défaut de classification l'a fait abandonner) et
   // on journalise. Aucun défaut de classification ne doit plus jamais pouvoir
   // produire cinq fenêtres.
-  const { union: creees, registre, observees } = await fenetresTravailVivantes();
+  const { union: creeesBrut, registre, observees } = await fenetresTravailVivantes();
+  // ── UNE FENÊTRE HABITÉE PAR L'UTILISATEUR N'EST PLUS À NOUS (0.6.69, 25/09) ──
+  // MeMiniandMove (PRO) : la robe Oh Polly vendue sur Beebs à 10:45 est restée
+  // EN LIGNE sur Leboncoin — son retrait (2cfae2f2) a été interrompu quatre fois
+  // (« Failed to fetch », « onglet fermé », « bloqué 58 min », « bloqué 94 min »).
+  // Le journal du job dit pourquoi : la fenêtre 216972651, créée par nous, était
+  // en PLEIN ÉCRAN et contenait un onglet fillsell.app de la personne ; le
+  // cliquet l'a abandonnée, l'adoption l'a refusée, puis le PLAFOND l'a reprise
+  // quand même (« la plus récente créée par nous ») — et nos onglets de travail
+  // ont été ouverts sous les yeux de la personne, qui a navigué dedans (à 10:36
+  // l'onglet du retrait affichait une AUTRE annonce, celle d'un sac).
+  // Règle : une fenêtre du registre qui porte un onglet utilisateur est RENDUE à
+  // l'utilisateur — oubliée du registre, jamais fermée, ses onglets à lui
+  // intacts (la consolidation n'y déplace que NOS onglets). Elle ne compte plus
+  // dans le plafond ; une fenêtre dédiée minimisée est créée à sa place.
+  // Une fenêtre qui ne porte que nos onglets — le cas de tout le parc — suit
+  // exactement le chemin d'avant.
+  const habitees = [];
+  for (const id of creeesBrut) {
+    const w = await chrome.windows.get(id, { populate: true }).catch(() => null);
+    if (w && compterOngletsFenetre(w, idsConnus).utilisateur > 0) habitees.push(id);
+  }
+  if (habitees.length) {
+    await oublierFenetresCreees(habitees);
+    await journaliserEvenementFenetre("fenetre_rendue_a_l_utilisateur", { windows: habitees, registre, observees });
+  }
+  const creees = creeesBrut.filter((id) => !habitees.includes(id));
   if (creees.length >= MAX_FENETRES_TRAVAIL) {
     const reprise = creees[creees.length - 1];
     await chrome.storage.session.set({ [WORK_WINDOW_KEY]: reprise });
