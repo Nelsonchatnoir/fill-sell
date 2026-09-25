@@ -160,6 +160,12 @@ verify_jwt = true
 [functions.republish-purge]
 verify_jwt = false
 
+# Balayage des doublons (2026-09-25, chantier « zéro doublon ») : cron pg_net
+# toutes les 2 min (doublons-balayage-2min), x-cron-secret vérifié dans le
+# code — empreintes des photos manquantes, puis décisions en base.
+[functions.doublons-balayage]
+verify_jwt = false
+
 # eBay par API (lot 0, 05/09) : eBay redirige le NAVIGATEUR ici après le
 # consentement, sans JWT Supabase — l'identité vient du `state` signé (HMAC,
 # clé = client_secret) vérifié dans le code. Nom IMPOSÉ par le RuName eBay.
