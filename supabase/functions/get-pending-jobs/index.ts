@@ -1087,6 +1087,54 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ══ UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ NI REPUBLIÉ (2026-09-25) ═══════
+    // MEMINIANDMOVE (Pro), robe Oh Polly 1789926947675004 : vendue à 10:45,
+    // vente supprimée depuis l'app à 19:44 (la fiche est revenue « stock »
+    // avec quantite = 0), republiée sur Vinted à 20:57, en ligne à 21:00.
+    // Risque de double vente. RÈGLE (Nico) : statut 'vendu' OU quantite ≤ 0
+    // = vendu, et un job de publication/republication d'un article vendu
+    // n'est JAMAIS servi. Garde de SERVICE (celle de création est en base) :
+    // le job est RETENU en needs_user « article vendu », jamais annulé — si
+    // la vente n'a pas eu lieu, on la supprime et on relance ; rien n'est
+    // perdu. Mesuré le 25/09 : 4 jobs du parc visés (2 déjà en needs_user).
+    // ⛔ Les retraits (action 'delete') passent toujours : ce sont eux qui
+    //    protègent de la double vente.
+    try {
+      const aVerifier = out.filter((j) =>
+        (j.action === "publish" || j.action === "republish" || j.action == null) && j.inventaire_id != null);
+      if (aVerifier.length) {
+        const ids = [...new Set(aVerifier.map((j) => j.inventaire_id))];
+        const { data: fiches } = await userClient
+          .from("inventaire").select("id, statut, quantite").in("id", ids);
+        const vendus = new Map<number, { statut: string; quantite: number | null }>();
+        for (const f of (fiches ?? []) as Array<{ id: number; statut: string; quantite: number | null }>) {
+          if (f.statut === "vendu" || (f.quantite != null && Number(f.quantite) <= 0)) vendus.set(Number(f.id), f);
+        }
+        const retenus = new Set<string>();
+        for (const j of aVerifier) {
+          const f = vendus.get(Number(j.inventaire_id));
+          if (!f) continue;
+          retenus.add(String(j.id));
+          if (j.status !== "pending") continue; // needs_user servi au popup : il l'est déjà, on ne réécrit pas
+          const msg = "Cet article est marqué vendu" + (f.statut !== "vendu" ? " (quantité 0)" : "") +
+            " : on ne le publie pas, pour ne jamais le vendre deux fois. Si la vente n'a pas eu lieu, " +
+            "corrige-la dans l'app (supprime la vente ou remets une quantité), puis relance.";
+          const pfV = {
+            ...((j.platform_fields ?? {}) as Record<string, unknown>),
+            needs_user_source: "article_vendu",
+            article_vendu: { le: new Date().toISOString(), statut: f.statut, quantite: f.quantite, pose_par: "get-pending-jobs" },
+          };
+          const { error: wErr } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: msg, platform_fields: pfV })
+            .eq("id", j.id).eq("status", "pending");
+          console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (${j.platform}/${j.action ?? "publish"}) : article ${j.inventaire_id} vendu (statut ${f.statut}, quantité ${f.quantite ?? "∅"}) → RETENU needs_user${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+        }
+        if (retenus.size) out = out.filter((j) => !retenus.has(String(j.id)));
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] garde article vendu : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
     // ── UN JOB RÉARMÉ PAR UN CORRECTIF N'EST SERVI QU'À UN POSTE QUI LE PORTE ──
     // (2026-09-25, cf. « UN DÉFAUT D'EXTENSION CORRIGÉ » plus haut) Un autre
     // profil Chrome du même compte, resté sur l'ancien build, le reprendrait
