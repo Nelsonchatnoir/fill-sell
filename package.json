@@ -37,6 +37,7 @@
     "selftest:ventes-a-annoncer": "deno run --allow-read --allow-env scripts/ventes-a-annoncer-selftest.ts",
     "selftest:vinted-pays": "deno run scripts/vinted-pays-selftest.ts",
     "selftest:vinted-ids-publication": "deno run --allow-read scripts/vinted-ids-publication-selftest.ts",
+    "selftest:titre-du-job": "node scripts/titre-du-job-selftest.mjs",
     "selftest:ebay-hub-rendu": "node scripts/ebay-hub-rendu-selftest.mjs",
     "selftest:ebay-categorie-message": "node scripts/ebay-categorie-message-selftest.mjs",
     "selftest:recapture-plafond": "node scripts/recapture-plafond-selftest.mjs",

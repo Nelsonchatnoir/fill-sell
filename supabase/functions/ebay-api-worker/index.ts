@@ -36,6 +36,7 @@ import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
+import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
@@ -137,6 +138,26 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
 
   // ── Lot 1 (07/09) : l'article en base — titre (catégorie) et attributs. ──
   const inv = await lireInventaire(admin, job.inventaire_id);
+
+  // ── AUCUN DÉPÔT SANS TITRE (2026-09-25, patrick giry) ───────────────────
+  // Même règle que get-pending-jobs (_shared/titre-du-job.js) : titre vide →
+  // réponse à la question « Titre », sinon titre de la fiche, écrit sur le
+  // job ; rien → la question, AVANT tout appel eBay. Un job titré ne passe
+  // même pas le test.
+  if (titreVide(job.title)) {
+    const r = titrePourJob({ platform: "ebay", titreJob: job.title, titreSaisi: pfJob[CLE_TITRE_SAISI], titreFiche: inv.titre });
+    if (!r) {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        needsUserField: { field_key: "title", field_label: "Titre", target: { root: null, key: CLE_TITRE_SAISI }, platform: "ebay" },
+      };
+      await marquer(admin, job, { status: "needs_user", error: "Ton annonce eBay n'a pas de titre, et l'article n'en porte pas non plus. Écris-le ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. Rien n'a été envoyé à eBay." }, { etape: "controle", quoi: "titre_absent" });
+      return { job: job.id, issue: "needs_user", motif: "titre_absent" };
+    }
+    job.title = r.titre;
+    const { error: tErr } = await admin.from("cross_post_jobs").update({ title: r.titre }).eq("id", job.id).or("title.is.null,title.eq.");
+    console.log(`[ebay-api-worker] job ${job.id} : titre VIDE → « ${r.titre} » (${r.source === "saisi" ? "réponse à la question Titre" : "titre de la fiche"})${tErr ? ` — non écrit sur le job (${tErr.message})` : ""}`);
+  }
   let attributs = inv.attributs;
   let enrichi = enrichirDepuisAttributs(pfJob, attributs);
   let pf = enrichi.pf;

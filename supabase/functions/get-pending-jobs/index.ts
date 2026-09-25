@@ -15,6 +15,7 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -1099,6 +1100,92 @@ serve(async (req) => {
       if (out.length !== avantCorrectif) {
         console.log(`[get-pending-jobs] userId=${user.id} : ${avantCorrectif - out.length} job(s) réarmé(s) par un correctif retenu(s) — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » plus ancien que le correctif`);
       }
+    }
+
+    // ══ AUCUN JOB SERVI SANS TITRE (2026-09-25, patrick giry) ═══════════════
+    // Trois jobs créés à `title = ""` par l'écran (cf. _shared/titre-du-job.js,
+    // qui porte le récit et LA règle) : Opla a refusé trois fois « Opla exige
+    // un titre », Vinted a répondu 400 « Le champ Titre doit être renseigné ».
+    // Ici, AVANT tout autre bloc — plusieurs lisent le titre (résolution de
+    // catégorie Opla, nettoyage Leboncoin, majuscules Vinted) :
+    //   · titre vide → la réponse à la question « Titre » (pf.titre_saisi),
+    //     sinon le titre de la FICHE (inventaire.titre), coupé au plafond de la
+    //     plateforme, jamais reformulé. ÉCRIT sur le job (encore pending, titre
+    //     toujours vide) : c'est ce titre qui part, la file et l'historique
+    //     doivent le dire ;
+    //   · aucun titre connu → la question « Titre » part chez la personne AVANT
+    //     tout essai (poll d'exécution seulement), le job n'est pas servi.
+    // ⛔ Un job qui A un titre ne passe même pas le filtre : mesuré sur 120
+    //    jours, un seul job de publication du parc est à titre vide.
+    // Retraits (delete) non concernés : ils ciblent une annonce par son lien.
+    // Best-effort : une lecture ratée → servi comme avant.
+    try {
+      const sansTitre = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => (j.action === "publish" || j.action === "republish") && titreVide(j.title));
+      if (sansTitre.length) {
+        const NOM_PF: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+        const ids = [...new Set(sansTitre.map((j) => j.inventaire_id).filter((x) => x != null))];
+        const titreParArticle = new Map<string, string>();
+        let ficheLue = true;
+        if (ids.length) {
+          const { data: arts, error: aErr } = await userClient.from("inventaire").select("id, titre").in("id", ids as number[]);
+          if (aErr) ficheLue = false;
+          for (const a of (arts ?? []) as Array<{ id: unknown; titre: unknown }>) titreParArticle.set(String(a.id), String(a.titre ?? ""));
+        }
+        const aRetenir = new Set<string>();
+        for (const j of sansTitre) {
+          const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : {};
+          // Fiche illisible ce passage-ci : ni question (elle a peut-être un
+          // titre), ni dépôt sans titre — le job attend le poll suivant.
+          if (!ficheLue && j.inventaire_id != null && titreVide(pf[CLE_TITRE_SAISI])) {
+            aRetenir.add(String(j.id));
+            console.warn(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : titre vide et fiche illisible — retenu jusqu'au prochain passage`);
+            continue;
+          }
+          const r = titrePourJob({
+            platform: String(j.platform),
+            titreJob: j.title,
+            titreSaisi: pf[CLE_TITRE_SAISI],
+            titreFiche: j.inventaire_id != null ? (titreParArticle.get(String(j.inventaire_id)) ?? "") : "",
+          });
+          if (r) {
+            j.title = r.titre;
+            j.title_complete = { source: r.source };
+            const { error: tErr } = await userClient.from("cross_post_jobs")
+              .update({ title: r.titre })
+              .eq("id", j.id as string).eq("status", "pending").or("title.is.null,title.eq.");
+            console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : titre VIDE → « ${r.titre} » (${r.source === "saisi" ? "réponse à la question Titre" : "titre de la fiche"})${tErr ? ` — servi, non écrit sur le job (${tErr.message})` : ""}`);
+            continue;
+          }
+          // Popup / reprise : on ne pose pas de question depuis un affichage.
+          if (includeProcessing || includeNeedsUser) continue;
+          const nom = NOM_PF[String(j.platform)] ?? String(j.platform);
+          const champ = { field_key: "title", field_label: "Titre", target: { root: null, key: CLE_TITRE_SAISI }, platform: j.platform };
+          const message =
+            `Ton annonce ${nom} n'a pas de titre, et l'article n'en porte pas non plus. ` +
+            "Écris-le ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. " +
+            `Rien n'a été envoyé à ${nom}.`;
+          const pfNu: Record<string, unknown> = {
+            ...pf,
+            needsUserField: champ,
+            titre_manquant: { depuis: new Date().toISOString(), pose_par: "get-pending-jobs (avant tout essai)" },
+          };
+          delete pfNu.processing_since;
+          const { error: uErr } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: message, platform_fields: pfNu })
+            .eq("id", j.id as string).eq("status", "pending");
+          if (uErr) {
+            // Même un refus d'écriture ne sert pas un dépôt sans titre.
+            console.warn(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : question « Titre » non écrite (${uErr.message}) — retenu quand même`);
+          } else {
+            console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : ni titre ni fiche titrée → needs_user « Titre » AVANT tout essai`);
+          }
+          aRetenir.add(String(j.id));
+        }
+        if (aRetenir.size) out = out.filter((j) => !aRetenir.has(String(j.id)));
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] titre vide : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
     // ── UNE REPUBLICATION REJOUÉE REPART DE L'ANNONCE QU'ELLE A CRÉÉE (25/09) ──
