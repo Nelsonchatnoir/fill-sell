@@ -1491,6 +1491,66 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // REPUBLICATION VINTED : REFUS ANTI-ROBOT AVANT TOUT RETRAIT = PAUSE,
+    // PAS UNE QUESTION (2026-09-25, nadegemarcelin78)
+    // ══════════════════════════════════════════════════════════════════════
+    // 5 republications arrêtées en needs_user « Relance depuis l'app » sur
+    // « CHALLENGE Vinted a refusé la suppression » — étape 'captured', rien
+    // supprimé, annonces en ligne (relevé). Le RETRAIT (action 'delete')
+    // reprend déjà ce refus seul, espacé, sans tentative (marquerBlocageAntiRobot) ;
+    // la republication une-passe s'arrêtait et attendait un clic qui rejouait
+    // exactement la même chose. Ici : pending, reprise dans
+    // ANTIROBOT_REPUB_MIN, needsUserAttempts de la base, au plus
+    // ANTIROBOT_REPUB_MAX reprises (~6 h, la borne du retrait) ; au-delà, le
+    // needs_user de l'extension passe tel quel.
+    // ⛔ Étape 'captured' lue sur le body ET en base, sans deleted_at : après
+    //    un retrait, jamais de reprise automatique ici.
+    const ANTIROBOT_REPUB_MIN = 45;
+    const ANTIROBOT_REPUB_MAX = 8;
+    let pfAntirobotRepub: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user" && !pfCanalCoupe && !pfRetraitVerif && typeof body.error === "string" &&
+        /CHALLENGE Vinted a refusé la suppression/i.test(body.error)) {
+      try {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs").select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
+        const pfBase = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+        const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
+          ? body.platform_fields : pfBase) as Record<string, unknown>;
+        const etapeCaptured =
+          pfBody.republish_step === "captured" && !pfBody.deleted_at &&
+          pfBase.republish_step === "captured" && !pfBase.deleted_at;
+        if (jrow?.action === "republish" && jrow.platform === "vinted" && etapeCaptured) {
+          const deja = Math.max(
+            Number(pfBase.antirobot_repub_reprises ?? 0) || 0,
+            Number(pfBody.antirobot_repub_reprises ?? 0) || 0,
+          );
+          if (deja < ANTIROBOT_REPUB_MAX) {
+            const { needs_user_source: _nus, pas_de_rouge: _pdr, ...pfSans } = pfBody;
+            pfAntirobotRepub = {
+              ...pfSans,
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              antirobot_repub_reprises: deja + 1,
+              next_action_after: new Date(Date.now() + ANTIROBOT_REPUB_MIN * 60_000).toISOString(),
+              antirobot_repub_derniere: {
+                le: new Date().toISOString(), motif: body.error.slice(0, 300),
+                pose_par: "update-job-status (refus anti-robot avant retrait = pause)",
+              },
+            };
+            statutEffectif = "pending";
+            messageEffectif =
+              "Vinted a demandé une pause (protection anti-robot) avant le retrait de l'annonce : rien n'a été supprimé, " +
+              `ton annonce est toujours en ligne. La republication reprend toute seule dans ${ANTIROBOT_REPUB_MIN} minutes — ` +
+              "rien à faire de ton côté.";
+            raisonRequalif = `refus anti-robot à l'étape captured, reprise ${deja + 1}/${ANTIROBOT_REPUB_MAX}`;
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] anti-robot republication:", (e as Error)?.message ?? e);
+        pfAntirobotRepub = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // PHOTO « INDISPONIBLE » AU PRÉ-VOL = REPRISE SI LE FICHIER EST EN BASE
     // (2026-09-12, chantier « photo indisponible à la recréation »)
     // ══════════════════════════════════════════════════════════════════════
@@ -2400,7 +2460,7 @@ serve(async (req) => {
     let erreurTechniqueBrute: string | null = null;
     {
       const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
-        && bfcacheRearms == null && !pfCanalCoupe && !pfRetraitVerif && !pfDisparue && !pfPhotoReprise
+        && bfcacheRearms == null && !pfCanalCoupe && !pfRetraitVerif && !pfAntirobotRepub && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
         && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise
         && !pfOplaRelache;
@@ -3119,6 +3179,8 @@ serve(async (req) => {
     // Retrait Vinted refusé pendant la vérification : attente d'une heure,
     // needsUserAttempts de la base, marqueur retrait_en_attente_verification.
     if (pfRetraitVerif) patch.platform_fields = pfRetraitVerif;
+    // Refus anti-robot avant retrait (republication Vinted) : pause espacée.
+    if (pfAntirobotRepub) patch.platform_fields = pfAntirobotRepub;
     // Annonce plus en ligne (404 confirmé avant toute suppression) :
     // platform_fields de l'extension + marqueur annonce_disparue, statut
     // 'cancelled' neutre.
