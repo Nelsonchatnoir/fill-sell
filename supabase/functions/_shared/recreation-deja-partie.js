@@ -60,6 +60,14 @@ export function depotPeutEtrePartiDepuis(platform, pf) {
       dernier = { t, raison: `essai terminé à l'étape « ${etape || "?"} » sur ${url || "?"}` };
     }
   }
+  // Un essai COMMENCÉ après le retrait sans aucune fin relevée depuis : le
+  // service worker est mort en route, et la reprise « stale » de l'extension
+  // (recoverStaleProcessingJobs) l'a remis en file sans rien écrire. On ne
+  // sait pas où il s'est arrêté — donc on ne sait pas si le dépôt est parti.
+  const debut = ms(wws.at_start?.at);
+  if (debut != null && debut > retrait && !fins.some((f) => { const t = ms(f?.at); return t != null && t >= debut; })) {
+    if (!dernier || debut > dernier.t) dernier = { t: debut, raison: "essai commencé après le retrait, sans fin relevée" };
+  }
   // Un essai coupé en route (ordinateur muet) : handler-watch pose ce
   // marqueur, faute de savoir où il s'est arrêté.
   const m = pf.recreation_depot_parti && typeof pf.recreation_depot_parti === "object" ? pf.recreation_depot_parti : null;

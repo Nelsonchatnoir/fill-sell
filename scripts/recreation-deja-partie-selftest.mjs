@@ -57,6 +57,14 @@ ok("Beebs : formulaire en fin d'essai → pas suspect", depotPeutEtrePartiDepuis
   work_window_state: { at_end: { at: "2026-09-25T07:20:00Z", tab_url: "https://www.beebs.app/fr/listing", fill_step: null } },
 }) === null);
 ok("autre plateforme → jamais", depotPeutEtrePartiDepuis("vinted", pfFioles) === null);
+ok("essai commencé après le retrait sans fin relevée → suspect", depotPeutEtrePartiDepuis("leboncoin", {
+  republish_step: "deleted", deleted_at: "2026-09-25T07:48:50Z",
+  work_window_state: { at_start: { at: "2026-09-25T09:40:23.976Z" }, fins: [{ at: "2026-09-25T09:34:49Z", fill_step: "description" }] },
+})?.at === "2026-09-25T09:40:23.976Z");
+ok("essai commencé puis terminé avant le dépôt → pas suspect", depotPeutEtrePartiDepuis("leboncoin", {
+  republish_step: "deleted", deleted_at: "2026-09-25T07:48:50Z",
+  work_window_state: { at_start: { at: "2026-09-25T09:40:23Z" }, fins: [{ at: "2026-09-25T09:45:00Z", fill_step: "description", tab_url: "https://www.leboncoin.fr/deposer-une-annonce" }] },
+}) === null);
 
 console.log("\n2. LES CANDIDATES — apparues depuis le retrait");
 // annonces_plateforme du compte, relevé en base le 25/09.
