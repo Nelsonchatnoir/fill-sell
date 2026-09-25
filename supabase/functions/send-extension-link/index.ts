@@ -14,15 +14,14 @@
 // catégorie 'support' de la porte le porte désormais :
 // - pas d'en-tête List-Unsubscribe, pas de garde `marketing_optout` : un
 //   opt-out marketing ne doit pas bloquer un lien qu'on vient de réclamer ;
-// - journalisé en email_logs sous le type RÉCURRENT 'extension_link' — donc
-//   SURTOUT PAS dans l'index email_logs_one_shot_unique (liste fermée des
-//   one-shot à vie, règle CLAUDE.md) : renvoyer le lien est légitime.
+// - journalisé en email_logs sous le type 'extension_link'.
 //
-// Garde-fou d'abus : un envoi par utilisateur toutes les 60 s, lu sur la
-// dernière ligne email_logs. C'est un LIMITEUR DE DÉBIT, pas une dédup à vie
-// (les dédups lues-puis-écrites sont proscrites ici) : dans le pire des cas
-// une course fait partir deux fois un lien que l'utilisateur a demandé deux
-// fois. Sans conséquence — contrairement à un doublon de mail marketing.
+// ⛔ DEPUIS LE 25/09 : UN SEUL LIEN PAR PERSONNE (règle de Nico, cf. le bloc
+// plus bas). Avant, un limiteur de 60 s laissait repartir le lien à chaque
+// tap espacé (Amandine LC : 3 mails en 17 min). Un lien déjà parti ne repart
+// plus ; l'index email_logs_extension_link_unique (migration 20260925224000)
+// ferme la course de deux appels simultanés. Le type n'entre PAS dans
+// email_logs_one_shot_unique : 202 doublons historiques l'en empêchent.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { envoyerEmail } from "../_shared/desinscription.ts";
@@ -78,7 +77,17 @@ serve(async (req) => {
     lang = profil?.lang === "en" ? "en" : "fr";
   }
 
-  // Limiteur de débit (60 s) — lu sur la dernière ligne du type.
+  // ── UN SEUL LIEN PAR PERSONNE (2026-09-25, règle de Nico) ────────────────
+  // Amandine LC, inscrite à 21:08 : welcome 21:08, puis ce lien à 21:17 ET à
+  // 21:25 — deux taps « M'envoyer le lien » à 8 min d'écart, que le limiteur
+  // de 60 s laissait passer. Trois mails en 17 minutes. Mesuré : 202 liens en
+  // trop sur 931 personnes depuis le 09/08, jusqu'à 6 pour une même personne.
+  // Désormais : un lien déjà parti (n'importe quand) ne repart plus. La
+  // réponse reste « throttle » — l'app l'affiche déjà comme une CONFIRMATION
+  // (« Lien envoyé à … »), jamais comme un échec : aucune mise à jour d'app.
+  // ⛔ Garde lue-puis-écrite : elle suffit contre des taps espacés (le bouton
+  //    est verrouillé pendant l'envoi) ; la course de deux appels simultanés
+  //    se ferme par l'index unique (migration 20260925224000).
   const { data: dernier } = await supabaseAdmin
     .from("email_logs")
     .select("sent_at")
@@ -89,25 +98,28 @@ serve(async (req) => {
     .maybeSingle();
   if (dernier?.sent_at) {
     const ecoule = Date.now() - new Date(dernier.sent_at as string).getTime();
-    if (ecoule >= 0 && ecoule < FENETRE_MS) {
-      // 200 volontaire : ce n'est pas une panne. Le mail précédent est en
-      // route vers la MÊME adresse — l'app affiche « envoyé à … » et le
-      // décompte, elle ne doit pas annoncer un échec.
-      return json({
-        ok: false,
-        reason: "throttle",
-        email: destinataire,
-        retry_dans_s: Math.ceil((FENETRE_MS - ecoule) / 1000),
-      }, 200);
-    }
+    // 200 volontaire : ce n'est pas une panne. Le lien est déjà dans la boîte
+    // de la MÊME adresse — l'app affiche « envoyé à … », jamais un échec.
+    return json({
+      ok: false,
+      reason: "throttle",
+      deja_envoye: true,
+      envoye_le: dernier.sent_at,
+      email: destinataire,
+      retry_dans_s: ecoule >= 0 && ecoule < FENETRE_MS ? Math.ceil((FENETRE_MS - ecoule) / 1000) : 0,
+    }, 200);
   }
 
   // L'envoi, la ligne email_logs et le journal des échecs vivent dans la
   // PORTE UNIQUE (_shared/desinscription.ts). Cette fonction ne fait plus que
-  // authentifier, limiter le débit, et lire le verdict.
+  // authentifier, refuser un second lien, et lire le verdict.
   //
-  // dedup 'journal' : type RÉCURRENT (renvoyer le lien est légitime), donc
-  // écriture APRÈS envoi, et surtout PAS dans l'index one-shot.
+  // dedup 'reservation' (25/09) : la ligne est posée AVANT l'envoi, et
+  // l'index email_logs_extension_link_unique la rend unique — deux appels
+  // simultanés ne font partir qu'un mail. Sûr même avant l'index : la garde
+  // ci-dessus garantit qu'aucune ligne antérieure n'existe, donc l'effacement
+  // de la réservation sur un envoi raté ne touche QUE la ligne qu'on vient de
+  // poser (jamais l'historique).
   // categorie 'support' : l'utilisateur vient de réclamer ce lien — un opt-out
   // marketing ne doit pas le bloquer.
   const { sujet, html } = mailLienExtension(langue(lang));
@@ -118,19 +130,18 @@ serve(async (req) => {
     type: TYPE_LOG,
     userId: authUser.id,
     categorie: "support",
-    dedup: "journal",
+    dedup: "reservation",
   });
 
+  // Un autre appel a posé la ligne une fraction de seconde avant nous : le
+  // lien part (ou est parti) vers la même adresse — une confirmation.
+  if (!r.envoye && r.motif === "deja_envoye") {
+    return json({ ok: false, reason: "throttle", deja_envoye: true, email: destinataire, retry_dans_s: 0 }, 200);
+  }
   if (!r.envoye) {
     console.error("send_extension_link_echec", JSON.stringify({ motif: r.motif, http: r.status ?? 0 }));
     return json({ ok: false, reason: "send_failed" }, r.motif === "sans_cle" ? 500 : 502);
   }
-  // Journal raté : le mail est PARTI, on ne répond jamais « échec » (l'app
-  // relancerait un envoi). Conséquence assumée, inchangée : sans la ligne, la
-  // fenêtre de 60 s ne s'applique pas au prochain appel — un limiteur, pas une
-  // garantie d'unicité. La porte l'a déjà consigné dans email_log_echecs,
-  // relu chaque matin par l'ops-digest de 8h50.
-  if (r.journalise === false) console.error("send_extension_link_log_echec", destinataire);
 
   return json({ ok: true, email: destinataire }, 200);
 });
