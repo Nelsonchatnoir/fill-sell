@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-25T19:28:44Z'; // recale 77c47b4 (0.6.69 : + adresse LBC commune structurée et code postal exigé avant retrait, preuve de lecture écrite sur les retraits, retrait Vinted en vérification = attente, relevé Beebs d'une page vide par l'uid de session)
+export const EXTENSION_LAST_COMMIT = '2026-09-25T21:39:57Z'; // recale efb7843 (0.6.69 : + relevé — aucune annonce lue hors de « Mes annonces » du compte, recherche d'URL par titre bornée à la liste)
+// Historique de la valeur precedente : '2026-09-25T19:28:44Z' — recale 77c47b4 (0.6.69 : + adresse LBC commune structurée et code postal exigé avant retrait, preuve de lecture écrite sur les retraits, retrait Vinted en vérification = attente, relevé Beebs d'une page vide par l'uid de session). Quatrième zip 0.6.69 (0e5e97f) JAMAIS téléversé, remplacé. UTC VRAI lu par EPOCH (%ct 1790372397).
 // Historique de la valeur precedente : '2026-09-25T16:35:08Z' — recale 242a034 (0.6.69 : + republication Opla qui reprend la catégorie et l'état de l'annonce elle-même). Troisième zip 0.6.69 (8541939) JAMAIS téléversé, remplacé. UTC VRAI lu par EPOCH (%ct 1790364524).
 // Historique de la valeur precedente : '2026-09-25T16:25:06Z' — recale b3dc586 (0.6.69 : fenêtre habitée rendue). Deuxième zip 0.6.69 (80c907a) JAMAIS téléversé, remplacé. UTC VRAI lu par EPOCH (%ct 1790354108).
 // Historique de la valeur precedente : '2026-09-25T16:15:27Z' — recale de06054 (0.6.69 : Vinted zone euro). Premier zip 0.6.69 (78068a0) JAMAIS téléversé, remplacé par celui-ci. UTC VRAI lu par EPOCH (%ct 1790353506).
