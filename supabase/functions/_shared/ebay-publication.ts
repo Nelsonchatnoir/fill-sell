@@ -467,9 +467,27 @@ function estLivre(pf: PlatformFields): boolean {
 // inventaire.attributs — respectivement une source Vinted/capture/saisie, ou
 // un scan Lens (stepper ou worker).
 export type SourceAspect = "job" | "genre" | "standard" | "attributs" | "lens" | "defaut" | "ia";
+// ── LES ALIAS MODE, UNE SEULE DOCTRINE POUR LES DEUX VOIES (2026-09-25) ─────
+// Ornella, « Parka C.P.E. Classic Club » (job c0ace243, catégorie 57988) :
+// needs_user « eBay exige encore : Matière doublure externe » APRÈS l'envoi,
+// alors que le job portait matiere = « Polyester » dès sa création — le
+// stepper l'avait vérifié (gardeAspectsEbay, src/publication/moteur/regles.js,
+// qui range « Matière doublure externe » dans la famille Matière, comme
+// ebay.js). Le worker, lui, ne connaissait que « Matière » au mot près :
+// l'aspect partait à l'IA, qui ne trouvait rien, et la personne recevait une
+// question dont la réponse était déjà sur le job.
+// La famille Matière ci-dessous est EXACTEMENT celle de regles.js
+// (knownAspects) et d'ebay.js : même valeur, même champ. La valeur du job
+// prime toujours (ebayAspects, lu en premier) ; ceci ne comble que le vide.
+// ⛔ Couleur (« … de la monture », « … extérieure ») et Pointure NE SONT PAS
+//    ajoutées : mesuré sur 30 j de la voie API, l'IA les a trouvées 5 fois
+//    sur 5 — on ne touche pas à ce qui marche. La Matière : 1 échec sur 8
+//    (celui d'Ornella), c'est elle qu'on répare.
+const ALIAS_MATIERE = ["Matériau", "Matériaux", "Matière de la couche extérieure", "Matière doublure externe", "Matière extérieure"];
 const CHAMP_PAR_ASPECT: Record<string, string> = {
   "Marque": "marque", "Taille": "taille", "Couleur": "couleur", "Matière": "matiere", "Modèle": "modele",
   "Capacité de stockage": "stockage", "ISBN": "isbn",
+  ...Object.fromEntries(ALIAS_MATIERE.map((n) => [n, "matiere"])),
 };
 export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
@@ -492,6 +510,8 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     "Capacité de stockage": String(pf.stockage ?? ""),
     "ISBN": String(pf.isbn ?? ""),
     "Numéro de pièce fabricant": "Ne s'applique pas",
+    // Famille Matière (cf. ALIAS_MATIERE) — même valeur que regles.js.
+    ...Object.fromEntries(ALIAS_MATIERE.map((n) => [n, String(pf.matiere ?? "")])),
   };
   for (const a of catalogue) {
     if (!a.required && !(a.name in ebayAspects)) continue; // 2a : requis + ce que le job porte déjà
