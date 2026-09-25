@@ -32,7 +32,7 @@
 // (chantier du 24/09) Le jugement « valeur hors liste » est celui du moteur
 // de publication, et de lui seul : la carte ne peut plus dire « À COMPLÉTER »
 // là où l'écran Confirmer dit « Prête » (cas Primark, Beebs).
-import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement } from '../publication/moteur/listes.js';
+import { jugerValeurContreListe, horsListeBloque, rayonNeufSeulement, valeurUneLettre } from '../publication/moteur/listes.js';
 
 // ── DU CHAMP DE LA PLATEFORME À CELUI QU'ON CONNAÎT ───────────────────────
 // Le catalogue parle la langue de la plateforme (`clothing_st`, `condition`,
@@ -107,14 +107,27 @@ export function valeurConnue(ligne, pf, platform, cleResolue = undefined) {
   //    format de colis déjà rempli sur 112 rayons Beebs. L'appelant sait —
   //    il l'a résolue par la clé OU par le libellé — on l'écoute.
   const notre = cleResolue !== undefined ? cleResolue : cleConnue(ligne.field_key);
-  if (notre && String(pf?.[notre] ?? '').trim()) return String(pf[notre]).trim();
+  // (25/09) Une valeur d'UNE lettre n'est pas une réponse — sauf pour une
+  // taille (« S », « M », « 9 ») : l'insert la retire (sanitizeJobFields,
+  // suspect_values), le job partirait donc SANS elle. Jocabroc : « S » en
+  // Marque, affiché « Déjà rempli », puis refus Vinted. La question reste.
+  const retenue = (v) => {
+    const t = String(v ?? '').trim();
+    if (!t) return '';
+    if (valeurUneLettre(t) && !CLE_TAILLE_RE.test(`${notre ?? ''} ${ligne.field_key ?? ''} ${ligne.field_label ?? ''}`)) return '';
+    return t;
+  };
+  if (notre && retenue(pf?.[notre])) return retenue(pf[notre]);
   const canal = pf?.[CANAL_ASPECTS[platform]];
   if (canal && typeof canal === 'object') {
     const v = canal[ligne.field_key] ?? canal[ligne.field_label];
-    if (String(v ?? '').trim()) return String(v).trim();
+    if (retenue(v)) return retenue(v);
   }
   return '';
 }
+// Même exclusion que sanitizeJobFields (SIZE_LIKE_KEY_RE) : une taille, une
+// pointure ou un âge d'une lettre est légitime.
+const CLE_TAILLE_RE = /taille|size|pointure|age|âge/i;
 
 /** ── POURQUOI LE CATALOGUE NE SUFFIT PAS (ENCORE) ────────────────────────
  *  Il couvre les rayons RELEVÉS : 85 catégories Vinted sur 2 489 feuilles, 30

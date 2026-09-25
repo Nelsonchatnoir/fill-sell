@@ -42,7 +42,7 @@ const MOTS = {
     pasDeRayonOpla: 'Opla choisit le rayon au moment de l’envoi. Tu peux le fixer ici si tu préfères décider toi-même.',
     pasDeRayonBeebs: 'Beebs posera la question au moment du dépôt. Tu peux choisir le rayon ici pour ne pas avoir à y répondre.',
     tonChoix: 'ton choix', trouve: 'trouvé pour toi', aVerifier: 'à vérifier',
-    manque: 'À COMPLÉTER', dejaLa: (n) => `Déjà rempli · ${n}`,
+    manque: 'À COMPLÉTER', reponses: 'TES RÉPONSES', dejaLa: (n) => `Déjà rempli · ${n}`,
     obligatoire: 'demandé par la plateforme',
     horsGrille: (v) => `« ${v} » n’existe pas dans ce rayon — choisis dans la liste`,
     revenir: 'Revenir au rayon trouvé',
@@ -66,7 +66,7 @@ const MOTS = {
     pasDeRayonOpla: 'Opla picks the category when the listing is sent. You can set it here if you would rather decide.',
     pasDeRayonBeebs: 'Beebs will ask at posting time. You can pick the category here so you do not have to.',
     tonChoix: 'your choice', trouve: 'found for you', aVerifier: 'worth checking',
-    manque: 'TO COMPLETE', dejaLa: (n) => `Already filled · ${n}`,
+    manque: 'TO COMPLETE', reponses: 'YOUR ANSWERS', dejaLa: (n) => `Already filled · ${n}`,
     obligatoire: 'required by the platform',
     horsGrille: (v) => `“${v}” does not exist in this category — pick from the list`,
     revenir: 'Back to the found category',
@@ -176,6 +176,37 @@ export default function CarteRayon({
     ),
     [catalogue, champs, platform, configLocale, regle, rayon]
   );
+
+  // ── UNE QUESTION OÙ L'ON ÉCRIT NE DISPARAÎT PAS SOUS LES DOIGTS (25/09) ──
+  // Jocabroc, du 24/09 12:07 au 25/09 07:25 : neuf publications Vinted refusées
+  // « Le champ Marque doit être renseigné ». La question « Marque » de cette
+  // carte est un champ texte ; à la PREMIÈRE lettre, la valeur devenait
+  // « connue » (classerChamps), la question passait dans « Déjà rempli »,
+  // replié, et l'input disparaissait sous les doigts. Restait « S » : une
+  // lettre, que l'insert retire (suspect_values) → marque vide → refus.
+  // BlocQuestions garde depuis le 30/07 un champ touché à l'écran ; la carte
+  // ne le faisait pas. Même règle ici : un champ où la personne a écrit RESTE
+  // une question tant que la carte est montée, avec sa valeur, à sa place.
+  const [questionsTouchees, setQuestionsTouchees] = useState(() => new Set());
+  const toucherQuestion = (c) => setQuestionsTouchees((prec) => (prec.has(c) ? prec : new Set([...prec, c])));
+  const ordreDesLignes = useMemo(() => {
+    const m = new Map();
+    [...(catalogue ?? []), ...lignesDepuisConfigLocale(configLocale)].forEach((l, i) => {
+      if (!m.has(l.field_key)) m.set(l.field_key, i);
+    });
+    return m;
+  }, [catalogue, configLocale]);
+  const questionsAffichees = useMemo(() => {
+    const restees = connus.filter((c) => questionsTouchees.has(c.cle) && !questions.some((q) => q.cle === c.cle));
+    if (!restees.length) return questions;
+    const rang = (e) => ordreDesLignes.get(e.cle) ?? Number.MAX_SAFE_INTEGER;
+    return [...questions, ...restees].sort((a, b) => rang(a) - rang(b));
+  }, [questions, connus, questionsTouchees, ordreDesLignes]);
+  const connusAffiches = useMemo(
+    () => connus.filter((c) => !questionsTouchees.has(c.cle)),
+    [connus, questionsTouchees],
+  );
+  const resteAQuestionner = questionsAffichees.some((q) => q.horsGrille || !String(q.valeur ?? '').trim());
 
   // ── LE BRUIT PREND SA VALEUR TOUT SEUL ───────────────────────────────────
   // « Chargeur inclus » et consorts ne valent pas qu'on arrête quelqu'un : ils
@@ -413,10 +444,10 @@ export default function CarteRayon({
       ))}
 
       {/* ── CE QU'IL RESTE À DONNER ─────────────────────────────────── */}
-      {questions.length > 0 && (
+      {questionsAffichees.length > 0 && (
         <div style={{ ...st.bloc, background: UI.card, borderColor: UI.teal }}>
-          <div style={st.eyebrow}>{T.manque}</div>
-          {questions.map((q) => (
+          <div style={st.eyebrow}>{resteAQuestionner ? T.manque : T.reponses}</div>
+          {questionsAffichees.map((q) => (
             <div key={q.cle} style={{ marginTop: 9 }}>
               <div style={{ fontSize: 11.5, color: UI.ink, fontWeight: 600 }}>{q.libelle}</div>
               <div style={{ fontSize: 10.5, color: q.horsGrille ? '#92400E' : UI.mute2, marginBottom: 4 }}>
@@ -425,7 +456,7 @@ export default function CarteRayon({
               {q.valeurs.length > 0 ? (
                 <select
                   value={q.valeur}
-                  onChange={(e) => onChampChange?.(q.cleNotre, e.target.value, q.cle)}
+                  onChange={(e) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, e.target.value, q.cle); }}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13.5, fontFamily: 'inherit', background: UI.paper, color: UI.ink, boxSizing: 'border-box' }}
                 >
@@ -435,7 +466,7 @@ export default function CarteRayon({
               ) : (
                 <input
                   type="text" value={q.valeur}
-                  onChange={(e) => onChampChange?.(q.cleNotre, e.target.value, q.cle)}
+                  onChange={(e) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, e.target.value, q.cle); }}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13.5, fontFamily: 'inherit', background: UI.paper, color: UI.ink, boxSizing: 'border-box' }}
                 />
@@ -447,25 +478,25 @@ export default function CarteRayon({
 
       {/* ── CE QU'ON SAIT DÉJÀ — replié, parce que ce ne sont pas des
              questions : ce sont des réponses. ─────────────────────────── */}
-      {connus.length > 0 && (
+      {connusAffiches.length > 0 && (
         <div style={{ ...st.bloc, marginBottom: 12 }}>
           <button type="button" onClick={() => setConnusOuverts((v) => !v)}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
                      width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                      fontFamily: 'inherit', textAlign: 'left' }}>
-            <span style={{ ...st.eyebrow, color: UI.mute2 }}>{T.dejaLa(connus.length)}</span>
+            <span style={{ ...st.eyebrow, color: UI.mute2 }}>{T.dejaLa(connusAffiches.length)}</span>
             <span style={{ fontSize: 11, color: UI.mute2 }}>{connusOuverts ? '▴' : '▾'}</span>
           </button>
           {!connusOuverts && (
             <div style={{ ...st.chemin, marginTop: 5 }}>
-              {connus.map((c) => c.valeur).join(' · ')}
+              {connusAffiches.map((c) => c.valeur).join(' · ')}
             </div>
           )}
           {/* Ouverts, ils redeviennent MODIFIABLES : une valeur trouvée peut
               être fausse, et c'était tout l'intérêt de l'ancienne grille.
               Ce qui change, c'est qu'on ne les montre plus par défaut — ce
               sont des réponses, pas des questions. */}
-          {connusOuverts && connus.map((c) => (
+          {connusOuverts && connusAffiches.map((c) => (
             <div key={c.cle} style={{ marginTop: 9 }}>
               <div style={{ fontSize: 11.5, color: UI.mute2, fontWeight: 600, marginBottom: 3 }}>{c.libelle}</div>
               {c.valeurs.length > 0 ? (
