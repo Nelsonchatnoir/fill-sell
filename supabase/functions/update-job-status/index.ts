@@ -3000,7 +3000,18 @@ serve(async (req) => {
     // retape le même mur. Le classement parle dès la première remontée.
     const oplaMurCookies = statutEffectif === "pending" && typeof body.error === "string"
       && /Arbre Opla indisponible \(HTTP 494\)|HTTP 494\b|REQUEST_HEADER_TOO_LARGE/i.test(body.error);
-    if (statutEffectif === "failed" || oplaMurCookies) {
+    // Catégorie Opla absente ALORS QUE la liste des feuilles est servie (25/09,
+    // 86ff39c5) : chaque essai de l'extension rejoue le même refus faute de
+    // réponse — la question part dès le premier (pas-de-rouge, §4), pas après
+    // quatre reprises inutiles. Sans liste codée (< 2), rien ne change ici.
+    const oplaCategorieAPoser = statutEffectif === "pending" && typeof body.error === "string"
+      && /Aucune catégorie Opla n'a été résolue/i.test(body.error)
+      && (() => {
+        const o = ((pfIn ?? {}) as Record<string, unknown>)["oplaCategoryAsk"] as Record<string, unknown> | undefined;
+        const opts = Array.isArray(o?.["options"]) ? o!["options"] as Array<Record<string, unknown>> : [];
+        return opts.filter((x) => String(x?.["code"] ?? "").trim() && String(x?.["title"] ?? "").trim()).length >= 2;
+      })();
+    if (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser) {
       try {
         const { data: jPdr } = await userClient
           .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
