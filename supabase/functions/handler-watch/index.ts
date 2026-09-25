@@ -704,6 +704,18 @@ serve(async (req) => {
       // extension relègue en bout de file un 'deleted' repris DELETED_HANG_DEMOTE
       // fois, pour qu'il cesse de confisquer le compte (il reste pending/visible).
       pf.deleted_hang_count = (Number(pf0.deleted_hang_count) || 0) + 1;
+      // ── UN ESSAI COUPÉ EN ROUTE A PU ENVOYER LE DÉPÔT (2026-09-25) ────────
+      // Leboncoin et Beebs : l'extension s'est tue pendant la recréation, on
+      // ne sait pas si le dépôt est parti (Les Petites Fioles, f554a951 : deux
+      // annonces pour un job). get-pending-jobs relira les annonces du compte
+      // avant tout redépôt (_shared/recreation-deja-partie.js).
+      if (j.platform === "leboncoin" || j.platform === "beebs") {
+        pf.recreation_depot_parti = {
+          at: new Date(now).toISOString(),
+          raison: "essai de recréation coupé en route (ordinateur muet) — fin inconnue",
+          pose_par: "handler-watch",
+        };
+      }
       const msg =
         "Reprise après interruption : l'ordinateur a été coupé juste après le retrait de l'annonce, " +
         "avant sa recréation. Le job est remis en file et la recréation repartira toute seule dès " +

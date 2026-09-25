@@ -123,6 +123,8 @@ import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rot
 // La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
+import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
+import { comparerEmpreintes } from "../_shared/empreinte-image.ts";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -1940,6 +1942,194 @@ serve(async (req) => {
       }
     } catch (e) {
       console.warn(`[get-pending-jobs] catégorie d'origine : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
+    // ══ REDÉPÔT INTERROMPU : UNE ANNONCE EST PEUT-ÊTRE DÉJÀ PARTIE (2026-09-25) ══
+    // Les Petites Fioles (f554a951) : un essai de recréation arrêté sur la page
+    // /options (dépôt envoyé), rendu « pending », puis redéposé 8 min plus tard
+    // → DEUX annonces chez Leboncoin. Règle et jugement :
+    // _shared/recreation-deja-partie.js. Ici : lire, écrire, servir ou retenir.
+    //   · essai suspect sans relevé COMPLET postérieur → job retenu, relevé
+    //     mis en file (au plus RELEVE_ATTENTE_MAX_H, puis needs_user) ;
+    //   · aucune annonce apparue → servi (redépôt), vérification tracée ;
+    //   · identité CERTAINE (seule, même titre, prix à 1 € près, même photo,
+    //     en ligne) → rattachée : published, sans redépôt ;
+    //   · sinon → needs_user avec le lien, JAMAIS de redépôt.
+    // ⛔ Sert tous les builds (0.6.66, 0.6.68) : rien ne dépend de l'extension.
+    // ⛔ FERMÉ EN CAS DE DOUTE : si la vérification elle-même échoue, les jobs
+    //    suspects sont RETENUS ce cycle — jamais redéposés à l'aveugle.
+    const suspectsRedepot = new Set(
+      (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.action === "republish" && (j.platform === "leboncoin" || j.platform === "beebs") && j.status === "pending"
+          && depotPeutEtrePartiDepuis(String(j.platform), (j.platform_fields ?? {}) as Record<string, unknown>))
+        .map((j) => String(j.id)),
+    );
+    try {
+      const RELEVE_ATTENTE_MAX_H = 6;
+      const EMPREINTE_ATTENTE_MAX_MIN = 60;
+      const suspects = (out as unknown as Array<Record<string, unknown>>).filter((j) =>
+        j.action === "republish" && (j.platform === "leboncoin" || j.platform === "beebs") && j.status === "pending");
+      const retirerDeLaFile = new Set<string>();
+      for (const j of suspects) {
+        const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+        const plateforme = String(j.platform);
+        const susp = depotPeutEtrePartiDepuis(plateforme, pf);
+        if (!susp) continue;
+        const idJ = String(j.id);
+        const court = idJ.slice(0, 8);
+        const nomPf = plateforme === "leboncoin" ? "Leboncoin" : "Beebs";
+        const ecrire = async (patch: Record<string, unknown>, quoi: string) => {
+          const { data: maj, error: wErr } = await userClient.from("cross_post_jobs")
+            .update(patch).eq("id", idJ).eq("status", "pending").select("id");
+          if (wErr || !(maj ?? []).length) {
+            console.warn(`[get-pending-jobs] redépôt ${court} : ${quoi} non écrit (${wErr?.message ?? "job plus en pending"}) — retenu ce cycle`);
+            return false;
+          }
+          return true;
+        };
+        const needsUser = async (message: string, detail: Record<string, unknown>) => {
+          const pfN = {
+            ...pf,
+            needs_user_source: "recreation_deja_partie",
+            // Une relance devra relire les annonces APRÈS cette décision : si
+            // la personne a supprimé l'annonce en trop, le relevé le verra.
+            recreation_depot_parti: { at: new Date().toISOString(), raison: "annonce peut-être déjà partie — relue avant toute relance" },
+            recreation_deja_partie: { le: new Date().toISOString(), ...detail },
+          };
+          const { data: maj } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: message, platform_fields: pfN })
+            .eq("id", idJ).eq("status", "pending").select("id");
+          console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : ${JSON.stringify(detail).slice(0, 300)} → needs_user${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+        };
+        retirerDeLaFile.add(idJ); // retenu par défaut ; seul « aucune » le rend à la file
+
+        // 1. Un relevé COMPLET de la plateforme, terminé APRÈS l'essai suspect.
+        const { data: runs } = await userClient.from("vinted_sync_runs")
+          .select("id, status, finished_at, queued_at")
+          .eq("user_id", user.id).eq("kind", "annonces").eq("platform", plateforme)
+          .order("queued_at", { ascending: false, nullsFirst: false }).limit(5);
+        const liste = (runs ?? []) as Array<Record<string, unknown>>;
+        const tSusp = Date.parse(susp.at);
+        const fait = liste.find((r) => r.status === "done" && Date.parse(String(r.finished_at ?? "")) > tSusp);
+        if (!fait) {
+          if (Date.now() - tSusp > RELEVE_ATTENTE_MAX_H * 3600_000) {
+            await needsUser(
+              `Un essai précédent a peut-être déjà remis ton annonce en ligne sur ${nomPf}, et tes annonces n'ont pas pu ` +
+              `être relues depuis. Pour ne jamais la mettre en double, on ne redépose pas à l'aveugle : regarde tes annonces ` +
+              `${nomPf} — si elle y est, il n'y a rien à faire ; sinon relance la republication d'un clic.`,
+              { verdict: "releve_introuvable", essai: susp },
+            );
+            continue;
+          }
+          const actif = liste.some((r) => r.status === "queued" || r.status === "running");
+          if (!actif) {
+            const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+              user_id: user.id, kind: "annonces", platform: plateforme, status: "queued",
+              declencheur: "serveur:verif_redepot", queued_at: new Date().toISOString(),
+            });
+            console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : ${susp.raison} — relevé mis en file avant tout redépôt${qErr ? ` (refusé : ${qErr.message})` : ""}`);
+          }
+          const msgAttente = `On relit tes annonces ${nomPf} avant de redéposer : un essai précédent a peut-être déjà ` +
+            "remis ton annonce en ligne, et elle ne doit jamais partir en double. Rien à faire de ton côté.";
+          if (j.error !== msgAttente) await ecrire({ error: msgAttente }, "message d'attente");
+          continue;
+        }
+
+        // 2. Les annonces apparues depuis le retrait.
+        const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
+          || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
+        const { data: lignes } = await userClient.from("annonces_plateforme")
+          .select("listing_id, url, titre, prix, photo_url, statut_plateforme, job_id, created_at, disparu_le")
+          .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
+        const candidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [] });
+        let ancienne: Record<string, unknown> | null = null;
+        if (ancienId) {
+          const { data: a } = await userClient.from("annonces_plateforme")
+            .select("titre, photo_url").eq("platform", plateforme).eq("listing_id", ancienId).maybeSingle();
+          ancienne = (a as Record<string, unknown> | null) ?? null;
+        }
+        const urlsPhotos = [ancienne?.["photo_url"], ...candidates.map((c: Record<string, unknown>) => c["photo_url"])]
+          .map((u) => String(u ?? "")).filter(Boolean);
+        const empreinteDe = new Map<string, { dhash: string; phash: string; couleur: string }>();
+        if (urlsPhotos.length) {
+          const { data: emps } = await userClient.from("photo_empreintes")
+            .select("url, dhash, phash, couleur").in("url", urlsPhotos);
+          for (const e of (emps ?? []) as Array<Record<string, string>>) {
+            if (e.dhash && e.phash) empreinteDe.set(e.url, { dhash: e.dhash, phash: e.phash, couleur: e.couleur ?? "" });
+          }
+        }
+        const snapTitre = (pf["republish_snapshot"] as Record<string, unknown> | undefined)?.["titre"];
+        const juge = jugerCandidates({
+          candidates,
+          titres: [j.title, snapTitre, ancienne?.["titre"]],
+          prix: j.price,
+          photoIdentique: (c: Record<string, unknown>) => {
+            const a = empreinteDe.get(String(ancienne?.["photo_url"] ?? ""));
+            const b = empreinteDe.get(String(c["photo_url"] ?? ""));
+            if (!a || !b) return null;
+            return comparerEmpreintes(a, b).verdict === "identique";
+          },
+        });
+        const trace = {
+          apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: juge.verdict,
+          candidates: candidates.map((c: Record<string, unknown>) => String(c["listing_id"])),
+        };
+
+        if (juge.verdict === "aucune") {
+          const pfN = { ...pf, recreation_verifiee: trace };
+          if (await ecrire({ platform_fields: pfN, error: null }, "vérification « aucune annonce »")) {
+            j.platform_fields = pfN;
+            j.error = null;
+            retirerDeLaFile.delete(idJ);
+            console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : relevé ${String(fait.id).slice(0, 8)} postérieur à l'essai suspect, aucune annonce apparue → redépôt autorisé`);
+          }
+          continue;
+        }
+        if (juge.verdict === "certaine") {
+          const c = juge.retenue as Record<string, unknown>;
+          const url = String(c["url"] ?? "") || null;
+          const pfN = {
+            ...pf,
+            republish_step: "recreated",
+            recreated_at: String(c["created_at"] ?? new Date().toISOString()),
+            new_listing_url: url,
+            recreation_verifiee: trace,
+            rattachement_recreation: {
+              le: new Date().toISOString(), listing_id: String(c["listing_id"]),
+              preuve: "seule annonce apparue depuis le retrait ; titre et photo identiques, prix à 1 € près, en ligne",
+              pose_par: "get-pending-jobs (redépôt interrompu : annonce déjà partie)",
+            },
+          };
+          const ok = await ecrire({
+            status: "published", error: null, published_at: new Date().toISOString(),
+            platform_listing_id: String(c["listing_id"]), listing_url: url, platform_fields: pfN,
+          }, "rattachement");
+          if (ok) console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : annonce ${String(c["listing_id"])} déjà partie, identité certaine → RATTACHÉE (published), aucun redépôt`);
+          continue;
+        }
+        if (juge.verdict === "attendre") {
+          const depuisReleve = Date.now() - Date.parse(String(fait.finished_at ?? ""));
+          if (depuisReleve < EMPREINTE_ATTENTE_MAX_MIN * 60_000) {
+            console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : candidate trouvée, ${juge.raison} — retenu`);
+            continue;
+          }
+        }
+        const liens = (juge as { liens?: string[] }).liens ?? [];
+        const raisons = (juge as { raisons?: string[] }).raisons ?? [(juge as { raison?: string }).raison ?? "identité non prouvée"];
+        await needsUser(
+          `Une annonce ${nomPf} est déjà partie lors d'un essai précédent de cette republication : ${liens.join(" ; ")}. ` +
+          `On ne redépose pas, pour ne jamais la mettre en double (${raisons.join(", ")}). Regarde-la sur ${nomPf} : ` +
+          "si c'est la bonne, il n'y a rien d'autre à faire ; si tu la supprimes, relance ensuite la republication d'un clic.",
+          { verdict: "incertaine", liens, raisons, releve: String(fait.id), essai: susp },
+        );
+      }
+      if (retirerDeLaFile.size) {
+        out = out.filter((j) => !retirerDeLaFile.has(String(j.id)));
+        console.log(`[get-pending-jobs] userId=${user.id} : ${retirerDeLaFile.size} republication(s) retenue(s) — annonce peut-être déjà partie, vérification avant redépôt`);
+      }
+    } catch (e) {
+      out = out.filter((j) => !suspectsRedepot.has(String(j.id)));
+      console.warn(`[get-pending-jobs] vérification avant redépôt : ${String((e as Error)?.message ?? e)} — ${suspectsRedepot.size} job(s) suspect(s) retenu(s) ce cycle`);
     }
 
     // ══ BEEBS : SA CATÉGORIE EST DÉJÀ CHEZ NOUS (2026-09-20) ═══════════════

@@ -71,6 +71,7 @@
     "selftest:chaussure-malgre-le-mot": "node scripts/chaussure-malgre-le-mot-selftest.mjs",
     "selftest:prevol-republication": "node scripts/prevol-republication-selftest.mjs",
     "selftest:lbc-localisation": "node scripts/lbc-localisation-selftest.mjs",
+    "selftest:recreation-deja-partie": "node scripts/recreation-deja-partie-selftest.mjs",
     "selftest:releve-compte-vide": "node scripts/releve-compte-vide-selftest.mjs",
     "selftest:releve-vide-repete": "node scripts/releve-vide-repete-selftest.mjs",
     "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs",
