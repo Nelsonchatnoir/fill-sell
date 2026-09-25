@@ -36,7 +36,7 @@
 --   ⛔ Rien ne change pour une annonce dont le titre n'existe nulle part : elle
 --      s'importe dès le premier relevé, comme depuis le 24/09.
 --
--- ÉCRITE le 26/09/2026, NON APPLIQUÉE — en attente de la validation de Nico.
+-- ÉCRITE le 26/09/2026, APPLIQUÉE le 26/09 à 00:38 (GO Nico) — version en base 20260925223824.
 
 DO $do$
 DECLARE

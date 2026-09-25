@@ -54,7 +54,7 @@
 --
 -- Vinted n'est pas concernée : annonces_plateforme ne la porte pas (CHECK
 -- platform), le trigger est borné aux quatre plateformes relevées.
--- ÉCRITE le 26/09/2026, NON APPLIQUÉE — en attente de la validation de Nico.
+-- ÉCRITE le 26/09/2026, APPLIQUÉE le 26/09 à 00:37 (GO Nico) — version en base 20260925223753.
 
 -- ── 0. La trace du retrait ──────────────────────────────────────────────────
 ALTER TABLE public.annonces_plateforme ADD COLUMN IF NOT EXISTS retiree_le timestamptz;

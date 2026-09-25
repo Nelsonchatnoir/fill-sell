@@ -3,7 +3,7 @@
 // vérifiés) sont restées dans la file comme vivantes — la ligne relevée
 // n'était datée qu'au relevé suivant. Elle en a rattaché deux à d'autres
 // livres. Le serveur date désormais la ligne quand le retrait aboutit
-// (migration 20260926100000) ; ici on écarte AUSSI ce dont le retrait est
+// (migration 20260925223753) ; ici on écarte AUSSI ce dont le retrait est
 // demandé ou en cours, et on couvre un serveur qui n'aurait pas la migration.
 // Même règle que `public.listing_designe` : un identifiant de moins de 4
 // caractères ne désigne rien.
