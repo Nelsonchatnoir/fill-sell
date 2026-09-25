@@ -644,6 +644,7 @@ serve(async (req) => {
   // stale_recoveries remis à zéro comme dans la reprise 24 h : les coupures ne
   // sont pas des refus, elles ne doivent pas consommer le plafond de reprises.
   const REPRISE_DELETED_MIN = 30;
+  const PRISE_EN_COURS_MIN = 12;
   let deletedRearmes = 0;
   try {
     const { data: coupes } = await supabase
@@ -669,6 +670,18 @@ serve(async (req) => {
       // re-sonde de l'état réel avant recréation) — jamais une recréation serveur.
       const since = Date.parse(pf0.deleted_at ?? pf0.processing_since ?? j.created_at ?? "");
       if (!Number.isFinite(since) || now - since < REPRISE_DELETED_MIN * 60_000) continue;
+      // ── UNE RECRÉATION EN COURS N'EST PAS UNE COUPURE (2026-09-25) ────────
+      // Mesuré sur deleted_at seul, ce filet arrachait à l'extension une
+      // recréation qu'elle venait de PRENDRE : Les Petites Fioles (fb358c75),
+      // annonce retirée à 11:44, recréation reprise à 15:26:19, remise en
+      // pending par ce bloc à 15:27:02 — 43 s plus tard — avec un message faux
+      // (« l'ordinateur a été coupé ») et un gel compté qui finit par reléguer
+      // le job en bout de file. Une prise de moins de PRISE_EN_COURS_MIN est
+      // une tentative vivante (le remplissage entier a 5 min, la reprise
+      // automatique de l'extension attend 15 min) : on la laisse finir. Le cas
+      // Nyxlaire reste couvert — ses reprises avaient toutes plus de 15 min.
+      const prise = Date.parse(String(pf0.processing_since ?? ""));
+      if (Number.isFinite(prise) && now - prise < PRISE_EN_COURS_MIN * 60_000) continue;
       // Hors Vinted (2026-09-17) : la « capture » est le job lui-même
       // (republish_snapshot v2 = copie du dépôt d'origine, posée par la RPC) —
       // présente, elle vaut une capture 'valide' ; absente, même garde-fou.
