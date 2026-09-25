@@ -44,6 +44,7 @@ import {
 // valeur de la liste transmise repart sous la forme EXACTE de cette valeur.
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
+import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -1153,7 +1154,13 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       texte_vendeur_description: Boolean(descriptionVendeuse),
       texte_vendeur_titre: Boolean(titreVendeur),
     };
+    // Zone euro (lot 4, 25/09) : la copie Vinted dans la langue du site Vinted
+    // du vendeur. null pour un compte français → rédaction d'aujourd'hui.
+    const langueVinted = (platforms as string[]).includes("vinted")
+      ? await langueRedactionVinted(adminClient, user.id).catch(() => null) : null;
+    if (langueVinted) console.log(`[generate-listing] copie Vinted rédigée en « ${langueVinted.langue} » (${langueVinted.source})`);
     const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
+      langues: langueVinted ? { vinted: langueVinted.langue } : null,
       apiKey: ANTHROPIC_KEY, platforms: platforms as string[],
       itemContext, item, canonicalProvided, trackClaude,
       descriptionFournie: descriptionVendeuse,

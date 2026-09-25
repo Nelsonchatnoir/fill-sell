@@ -8,6 +8,7 @@ import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-gua
 // PARTAGÉ avec generate-listing — même code, mêmes prompts, mêmes traces. Ce
 // fichier n'en possède aucune copie.
 import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
+import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
 // Verdict de langue sur la sortie du modèle. MÊME fichier que celui chargé par
 // l'app (ListingPreviewScreen) : la garde qui refuse de nourrir la passe 2 avec
@@ -3137,7 +3138,13 @@ serve(async (req) => {
           item, canonicalProvided,
           familleLivresMedias: itemData.famille === "livres_medias",
         });
+        // Zone euro (lot 4, 25/09) : la copie Vinted dans la langue du site
+        // Vinted du vendeur. null pour un compte français → rien ne change.
+        const langueVinted = platformsDemandees.includes("vinted") && userId
+          ? await langueRedactionVinted(adminClient, userId).catch(() => null) : null;
+        if (langueVinted) console.log(`[lens-analysis] copie Vinted rédigée en « ${langueVinted.langue} » (${langueVinted.source})`);
         const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
+          langues: langueVinted ? { vinted: langueVinted.langue } : null,
           apiKey, platforms: platformsDemandees, itemContext, item, canonicalProvided,
           trackClaude: (data: unknown) => {
             const u = (data as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;

@@ -121,6 +121,19 @@ const PLATFORM_CFG: Record<string, { lang: string; system: string }> = {
 const LANG_DIRECTIVE: Record<string, string> = {
   fr: `LANGUE DE SORTIE : "title" et "description" doivent être rédigés EN FRANÇAIS, quelle que soit la langue du contexte article reçu — un contexte rédigé en anglais ne change RIEN, traduis-le. Les valeurs de platform_fields gardent les libellés exacts imposés ci-dessus.`,
   en: `OUTPUT LANGUAGE: "title" and "description" must be written IN ENGLISH, whatever the language of the item context you receive — a French context changes NOTHING, translate it. platform_fields values keep the exact French labels required above.`,
+  // ── ZONE EURO (lot 4, 25/09/2026) : la langue du site Vinted du vendeur ───
+  // Servies SEULEMENT pour la copie Vinted d'un vendeur dont la langue Vinted
+  // est connue et le pays ouvert (_shared/langue-vendeur.ts) — jamais pour un
+  // compte français, qui garde la directive « fr » ci-dessus, à l'identique.
+  // Les valeurs de platform_fields restent nos libellés français : c'est le
+  // serveur (vinted_ids, get-pending-jobs) qui les traduit en identifiants.
+  ...Object.fromEntries(([
+    ["it", "EN ITALIEN"], ["es", "EN ESPAGNOL"], ["de", "EN ALLEMAND"], ["nl", "EN NÉERLANDAIS"],
+    ["pt", "EN PORTUGAIS (du Portugal)"], ["fi", "EN FINNOIS"], ["et", "EN ESTONIEN"], ["lv", "EN LETTON"],
+    ["lt", "EN LITUANIEN"], ["sk", "EN SLOVAQUE"], ["sl", "EN SLOVÈNE"], ["hr", "EN CROATE"], ["el", "EN GREC"],
+  ] as Array<[string, string]>).map(([code, nom]) => [code,
+    `LANGUE DE SORTIE : "title" et "description" doivent être rédigés ${nom} — la langue du site Vinted de la vendeuse ou du vendeur —, quelle que soit la langue du contexte article reçu. Les noms de marque et de modèle ne se traduisent JAMAIS. Les valeurs de platform_fields gardent les libellés exacts imposés ci-dessus (en français).`,
+  ])),
 };
 
 // ── Version du prompt de rédaction (2026-07-29) ─────────────────────────────
@@ -129,7 +142,7 @@ const LANG_DIRECTIVE: Record<string, string> = {
 // contenu du prompt, il s'incrémente à chaque deploy même sans changement de
 // texte. À bumper à CHAQUE modification de PLATFORM_CFG.system, de
 // REDACTION_DIRECTIVE ou de PLATFORM_LIMITS.
-export const VERSION_PROMPT = "2026-09-21a"; // titre de la vendeuse verrouillé + état imposé quand il est connu
+export const VERSION_PROMPT = "2026-09-25a"; // zone euro : directive de langue de sortie par plateforme (copie Vinted dans la langue du site Vinted du vendeur) — français inchangé
 
 // ── Limites de caractères par plateforme (2026-07-29) ───────────────────────
 // PROVENANCE de chaque chiffre — à mettre à jour avec la source, jamais « de
@@ -443,7 +456,12 @@ const directiveEtatImpose = (etat: string) =>
   `en particulier, n'applique PAS le repli « Très bon état » ci-dessus, il ne vaut que lorsque l'état est inconnu. ` +
   `Si tu ne mentionnes pas l'état du tout, c'est très bien aussi.`;
 
-export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni }: {
+export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie, titreFourni, langues }: {
+  /**
+   * Langue de sortie PAR plateforme (zone euro, 25/09) — p. ex. { vinted: "it" }.
+   * Absente pour une plateforme = sa langue habituelle (cfg.lang), à l'identique.
+   */
+  langues?: Record<string, string> | null;
   apiKey: string;
   platforms: string[];
   itemContext: string;
@@ -510,7 +528,7 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
               // paie que les tokens réellement produits, un plafond haut ne
               // coûte rien alors qu'un plafond juste casse la réponse.
               max_tokens: 1400,
-              system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`
+              system: `${cfg.system}\n${(langues?.[platform] && LANG_DIRECTIVE[langues[platform]]) || LANG_DIRECTIVE[cfg.lang] || LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`
                 + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : "")
                 + (titreVendeuse ? `\n${DIRECTIVE_TITRE_FOURNI}` : "")
                 + (canonicalProvided.etat ? `\n${directiveEtatImpose(canonicalProvided.etat)}` : ""),
