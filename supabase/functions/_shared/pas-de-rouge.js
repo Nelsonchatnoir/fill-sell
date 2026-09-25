@@ -101,6 +101,9 @@ const BEEBS_RAYON_RE = /n'a pas de rayon reconnu/i;
 /** Une taille hors de la grille de la plateforme : liste fermée, choix à faire. */
 const TAILLE_HORS_GRILLE_RE = /n'appartient pas à la grille/i;
 
+/** Opla : aucune feuille résolue pour l'article (pré-vol opla_categorie_absente). */
+const OPLA_CATEGORIE_ABSENTE_RE = /Aucune catégorie Opla n['’]a été résolue/i;
+
 /** L'annonce n'existe plus en face : ce n'est pas un échec, c'est un fait. */
 const DISPARUE_RE = /n'est plus en ligne|annonce introuvable|n'existe plus sur/i;
 
@@ -340,6 +343,43 @@ export function classerEchec(arg) {
         (refusee ? `${nom} n'accepte pas la taille « ${refusee} » pour ce type d'article.` : `${nom} n'accepte pas cette taille.`) +
         apercu + " Choisis celle qui convient ci-dessous et on repart.",
     };
+  }
+
+  // ── OPLA : LA CATÉGORIE, DEMANDÉE DANS LA LISTE QUE LE SERVEUR A POSÉE (25/09) ──
+  // nadegemarcelin78, « Contes pour les Filles » (86ff39c5) : dix refus
+  // « Aucune catégorie Opla n'a été résolue » en un jour, puis un « relancer »
+  // qui rejouait exactement le même refus. La republication de l'extension
+  // 0.6.68 ne sait pas poser la question (seul le dépôt la pose), et rien ne
+  // la posait à sa place. Or le serveur a servi la liste des feuilles
+  // possibles (`oplaCategoryAsk`, get-pending-jobs → opla-completion) ; le
+  // background la renvoie avec le job. On la pose donc ici, au format de
+  // l'extension (content-scripts/opla.js, needsUserField « Catégorie Opla ») :
+  // la réponse est un LIBELLÉ de cette liste, que get-pending-jobs retraduit
+  // en code au passage suivant (récolte de completerJobOpla).
+  // ⛔ SANS LISTE, PAS DE QUESTION : moins de deux feuilles avec leur code, et
+  //    on retombe sur la suite (reprise, puis « relancer »), comme avant.
+  if (platform === "opla" && OPLA_CATEGORIE_ABSENTE_RE.test(t)) {
+    const posees = Array.isArray(pf?.["oplaCategoryAsk"]?.["options"]) ? pf["oplaCategoryAsk"]["options"] : [];
+    const titres = [...new Set(posees
+      .filter((o) => o && typeof o === "object" && String(o.code ?? "").trim() && String(o.title ?? "").trim())
+      .map((o) => String(o.title).trim()))];
+    if (titres.length >= 2) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "categorie_a_choisir", source: "champ_a_choisir",
+        champ: {
+          field_key: "oplaCategoryChoice",
+          field_label: "Catégorie Opla",
+          allowed_values: titres,
+          input_type: "selection_only",
+          options_completes: true,
+          target: { root: null, key: "oplaCategoryChoice" },
+        },
+        message:
+          `${nom} a besoin de savoir dans quelle catégorie ranger cet article, et on ne veut pas la deviner. ` +
+          `Choisis-la ci-dessous parmi les ${titres.length} proposées : un seul geste, et ${acte(action)} repart. ` +
+          (action === "republish" ? "Ton annonce n'a pas été touchée." : "Rien n'a été publié."),
+      };
+    }
   }
 
   // ── 5. NOTRE DÉFAUT — ON REPREND, ON NE DEMANDE RIEN ──────────────────────

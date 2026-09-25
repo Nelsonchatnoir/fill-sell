@@ -231,5 +231,36 @@ console.log("\n── 8. Retrait Vinted refusé sur UNE annonce : pas un anti-ro
   ok(f.verdict === "reprise", "Leboncoin : sa sonde ne prouve pas une réponse 200 de l'anti-robot → reprise, comme avant");
 }
 
+console.log("\n── 9. Opla : la catégorie se DEMANDE dans la liste servie (25/09, « Contes pour les Filles ») ──");
+{
+  // Brut relevé en base sur 86ff39c5 (error_technique.brut, 25/09 16:41).
+  const brut = "Aucune catégorie Opla n'a été résolue pour cet article. Plusieurs essais automatiques n'ont pas abouti : la publication est arrêtée. Relance depuis la fiche de l'article ; si ça se reproduit, écris-nous.";
+  // La liste que get-pending-jobs sert pour ce livre (rayon « Livres » de l'étagère Vinted 2364).
+  const LIVRES = ["LIVRES_POUR_BEBE", "LIVRES_SONORES", "ROMANS_POUR_ENFANTS", "BANDES_DESSINEES", "ROMANS_POUR_ADULTES",
+    "MANGAS", "MANUELS_SCOLAIRES", "FICTIONS", "NON_FICTION", "LIVRES_CUISINE", "LIVRES_MAGAZINES"]
+    .map((code) => ({ code, title: `Culture et Loisirs › Livres › ${code}` }));
+  const pf = { oplaCategoryAsk: { ancre: null, options: LIVRES, le: "2026-09-25T19:00:00.000Z" } };
+  const a = classerEchec({ platform: "opla", action: "republish", brut, essais: 5, pf });
+  ok(a.verdict === "a_toi" && a.statut === "needs_user" && a.motif === "categorie_a_choisir" && a.source === "champ_a_choisir",
+    `liste servie de 11 feuilles → à toi, question de catégorie : ${a.motif}/${a.statut}/${a.source}`);
+  ok(a.champ?.field_key === "oplaCategoryChoice" && a.champ?.target?.root === null && a.champ?.target?.key === "oplaCategoryChoice"
+    && a.champ?.input_type === "selection_only" && a.champ?.options_completes === true,
+    "le champ a la forme de l'extension (oplaCategoryChoice à la racine, liste fermée complète)");
+  ok(Array.isArray(a.champ?.allowed_values) && a.champ.allowed_values.length === 11
+    && a.champ.allowed_values.every((v, i) => v === LIVRES[i].title),
+    "les options sont les LIBELLÉS de la liste servie, dans son ordre (c'est contre elle que la réponse est relue)");
+  ok(!VOCAB_RE.test(a.message) && /n'a pas été touchée/.test(a.message), "message sans vocabulaire de développeur, et il dit que l'annonce est intacte");
+  const b = classerEchec({ platform: "opla", action: "republish", brut, essais: 5, pf: {} });
+  ok(b.motif === "inconnu_relancer" && !b.champ, "sans liste servie : rien ne change (« relancer », comme avant)");
+  const c = classerEchec({ platform: "opla", action: "republish", brut, essais: 5, pf: { oplaCategoryAsk: { options: [LIVRES[0]] } } });
+  ok(c.motif === "inconnu_relancer" && !c.champ, "une seule feuille n'est pas une question : rien ne change");
+  const d = classerEchec({ platform: "opla", action: "republish", brut, essais: 5, pf: { oplaCategoryAsk: { options: [{ title: "A" }, { title: "B" }] } } });
+  ok(d.motif === "inconnu_relancer", "des options sans code ne se retraduiraient pas : pas de question");
+  const e = classerEchec({ platform: "opla", action: "publish", brut, essais: 5, pf });
+  ok(e.motif === "categorie_a_choisir" && /Rien n'a été publié/.test(e.message), "un dépôt : même question, et le message dit que rien n'a été publié");
+  const f = classerEchec({ platform: "vinted", action: "republish", brut, essais: 5, pf });
+  ok(f.motif !== "categorie_a_choisir", "une autre plateforme n'est pas concernée");
+}
+
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);
