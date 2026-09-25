@@ -31,11 +31,17 @@ function derniereDefinition(nom) {
     const src = fs.readFileSync(path.join(dossier, f), 'utf8').replace(/\r\n/g, '\n');
     const m = entete.exec(src);
     if (!m) continue;
-    // Le corps s'arrête au premier `$$;` qui suit le `AS $$` de cette définition.
-    const debutCorps = src.indexOf('$$', m.index);
-    const finCorps = src.indexOf('$$;', debutCorps + 2);
-    if (debutCorps < 0 || finCorps < 0) continue;
-    return { fichier: f, corps: src.slice(m.index, finCorps + 3) };
+    // Le corps s'arrête au délimiteur qui ferme le `AS $tag$` de cette
+    // définition — `$$` ou `$function$` (le corps tel que pg_get_functiondef
+    // le rend, 2026-09-25 : avant, une migration en `$function$` était
+    // sautée et le test lisait une définition PLUS ANCIENNE).
+    const as = /AS\s+(\$[A-Za-z_]*\$)/.exec(src.slice(m.index));
+    if (!as) continue;
+    const tag = as[1];
+    const debutCorps = m.index + as.index + as[0].length;
+    const finCorps = src.indexOf(tag, debutCorps);
+    if (finCorps < 0) continue;
+    return { fichier: f, corps: src.slice(m.index, finCorps + tag.length) };
   }
   return null;
 }

@@ -65,7 +65,16 @@ export function couleursDuTitre(titre) {
 /** Les nombres nus d'un titre (« 12 », « 1000 », « 8 »), dédoublonnés, triés. */
 export function nombresDuTitre(titre) {
   const mots = titreNorm(titre).split(' ').filter(Boolean);
-  return [...new Set(mots.filter((m) => NOMBRE_RE.test(m)))].sort();
+  // Les DÉCENNIES se lisent (2026-09-25, pichet de Jocabroc : « années 30 »
+  // sur Vinted, « années 1930 » sur eBay = le même objet, pas deux) :
+  // « années 30 » → 1930, « 70s » → 1970. Miroir de public.titre_nombres
+  // (migration 20260925150000).
+  const nombres = mots.map((m, i) => {
+    if (/^[1-9]0s$/.test(m)) return `19${m.slice(0, 2)}`;
+    if (/^[1-9]0$/.test(m) && i > 0 && /^annees?$/.test(mots[i - 1])) return `19${m}`;
+    return m;
+  });
+  return [...new Set(nombres.filter((m) => NOMBRE_RE.test(m)))].sort();
 }
 
 const memes = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);

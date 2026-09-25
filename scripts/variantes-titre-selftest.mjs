@@ -54,6 +54,14 @@ comp("Pull polaire licorne 8 ans", "Pull polaire licorne 8 ans");
 comp("Livre sœurs sorcières", "Livre sœurs sorcières livre 1");
 comp("Cluedo Conspiration Hasbro", "Hasbro Cluedo Conspiracy Board Game");
 ok("nombres lus : « 8-10-12 ans » → 10, 12, 8", JSON.stringify(nombresDuTitre("Lot livres 8-10-12 ans")) === JSON.stringify(["10", "12", "8"]), JSON.stringify(nombresDuTitre("Lot livres 8-10-12 ans")));
+// Les décennies (2026-09-25, pichet de Jocabroc : importé en double parce que
+// {30} ≠ {1930}). Miroir de public.titre_nombres (migration 20260925150000).
+comp("Pichet Art déco années 30 Tchécoslovaquie céramique oiseaux fleurs vintage", "Pichet Art Déco Tchécoslovaquie années 1930 Céramique Oiseaux Fleurs Vintage");
+comp("Robe vintage 70s orange", "Robe vintage années 1970 orange");
+ok("« années 30 » → 1930", JSON.stringify(nombresDuTitre("Pichet années 30")) === JSON.stringify(["1930"]), JSON.stringify(nombresDuTitre("Pichet années 30")));
+ok("« 70s » → 1970", JSON.stringify(nombresDuTitre("Vase 70s")) === JSON.stringify(["1970"]), JSON.stringify(nombresDuTitre("Vase 70s")));
+ok("« tome 30 » reste 30 (pas une décennie)", JSON.stringify(nombresDuTitre("Manga tome 30")) === JSON.stringify(["30"]), JSON.stringify(nombresDuTitre("Manga tome 30")));
+excl("Manga tome 30", "Manga tome 1930", "nombre");
 
 console.log("\n[3] Rien ne bouge sans couleur ni nombre");
 comp("Cartable Caméléon", "Cartable caméléon");
