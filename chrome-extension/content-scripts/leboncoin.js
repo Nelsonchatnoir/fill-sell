@@ -1491,7 +1491,9 @@ async function fillListingForm(job) {
     // typeInto (et non setFieldValue) : la description est le plus long champ
     // du wizard, c'est celui dont l'apparition instantanée se voyait le plus.
     // Insérée par blocs à rythme humain (cf. HUMAN_TYPE_MAX_CHARS).
+    DIAGNOSTICS_SAISIE.length = 0;
     await typeInto(bodyArea, job.description);
+    for (const d of DIAGNOSTICS_SAISIE.splice(0)) warnings.push(`description — ${d}`);
     bodyArea.blur();
     await humanPause();
   }
@@ -4949,6 +4951,27 @@ const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
 // humaine — ce que fait de toute façon un vendeur qui colle un texte.
 const HUMAN_TYPE_MAX_CHARS = 120;
 const HUMAN_CHUNK_CHARS = 40;
+// (0.6.68) Un texte long (la description) a 90 s pour être frappé par blocs ;
+// au-delà — ou si le focus quitte le champ — il est posé en une fois. Le
+// remplissage entier n'a que 5 min (sendMessageToTab côté background).
+const TEXTE_LONG_BUDGET_MS = 90_000;
+// Ce que la saisie des textes longs a dû rattraper, pour le diagnostic du job
+// (vidé et versé dans les warnings au moment de la description).
+const DIAGNOSTICS_SAISIE = [];
+
+// Blocs de HUMAN_CHUNK_CHARS unités au plus, SANS JAMAIS couper un caractère :
+// un emoji tient sur deux unités UTF-16, une découpe à l'aveugle en posait
+// chaque moitié séparément.
+function decouperSansCasserLesCaracteres(str, max) {
+  const blocs = [];
+  let courant = "";
+  for (const ch of str) {
+    if (courant && courant.length + ch.length > max) { blocs.push(courant); courant = ""; }
+    courant += ch;
+  }
+  if (courant) blocs.push(courant);
+  return blocs;
+}
 
 const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
 const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => sleep(randInt(min, max));
@@ -5020,12 +5043,21 @@ async function typeInto(input, text) {
   } catch { /* certains types d'input n'exposent pas setSelectionRange */ }
 
   const str = String(text);
-  const pieces = str.length <= HUMAN_TYPE_MAX_CHARS
-    ? [...str]
-    : (str.match(new RegExp(`[\\s\\S]{1,${HUMAN_CHUNK_CHARS}}`, "g")) ?? []);
+  const long = str.length > HUMAN_TYPE_MAX_CHARS;
+  const pieces = long ? decouperSansCasserLesCaracteres(str, HUMAN_CHUNK_CHARS) : [...str];
 
   let ok = true;
+  const debut = Date.now();
   for (const piece of pieces) {
+    // ── TEXTE LONG : BORNÉ, ET JAMAIS DANS UN AUTRE CHAMP (0.6.68) ─────────
+    // execCommand écrit dans l'élément qui a le FOCUS, pas dans `input` : un
+    // focus perdu en route (onglet d'arrière-plan, bandeau qui s'ouvre) enverrait
+    // la suite du texte ailleurs. On s'arrête alors, et la pose unique
+    // ci-dessous écrit dans le bon champ.
+    if (long && (document.activeElement !== input || Date.now() - debut > TEXTE_LONG_BUDGET_MS)) {
+      ok = false;
+      break;
+    }
     dispatchKey(input, "keydown", piece[0]);
     if (piece.length === 1) dispatchKey(input, "keypress", piece);
     ok = document.execCommand("insertText", false, piece) && ok;
@@ -5034,6 +5066,37 @@ async function typeInto(input, text) {
     await (piece.length === 1
       ? sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX))
       : humanPause());
+  }
+
+  if (long && (!ok || input.value !== str)) {
+    // ══ LE CALENDRIER DES PETITES FIOLES (25/09, job fb358c75) ═══════════
+    // Description de 2 365 caractères, formulaire Leboncoin PRO, rayon
+    // Décoration : trois recréations mortes À CETTE ÉTAPE sur « Timeout: pas de
+    // réponse du content script ». Le repli ci-dessous (frappe caractère par
+    // caractère, 80 à 250 ms chacun) coûtait ~6 min 30 pour ce texte — au-delà
+    // des 5 min qu'accorde le background à tout le remplissage. Un texte long
+    // ne se retape donc plus : il est POSÉ en une fois, dans le bon champ, et
+    // relu. Ce qui a fait échouer la frappe par blocs part en diagnostic
+    // (DIAGNOSTICS_SAISIE → warnings du job) : la prochaine fois, on le saura.
+    DIAGNOSTICS_SAISIE.push(
+      `saisie longue : pose unique (${str.length} car.) après ${!ok ? "arrêt de la frappe" : "texte relu différent"}` +
+      ` — relu ${String(input.value ?? "").length}/${str.length}, focus ${document.activeElement === input ? "oui" : "non"},` +
+      ` connecté ${input.isConnected ? "oui" : "non"}, ${Math.round((Date.now() - debut) / 1000)} s`,
+    );
+    // execCommand écrit dans le champ qui a le focus : on ne s'en sert que si
+    // c'est bien le nôtre ; sinon, pose par le setter natif, sur l'élément.
+    try { input.focus(); } catch { /* noop */ }
+    let pose = false;
+    if (document.activeElement === input) {
+      try { input.setSelectionRange?.(0, input.value.length); } catch { /* noop */ }
+      pose = document.execCommand("insertText", false, str) && input.value === str;
+    }
+    if (!pose) setNativeValue(input, str);
+    if (input.value !== str) {
+      DIAGNOSTICS_SAISIE.push(`saisie longue : texte toujours différent après la pose (${String(input.value ?? "").length}/${str.length})`);
+    }
+    await humanPause();
+    return;
   }
 
   if (!ok || input.value !== str) {
