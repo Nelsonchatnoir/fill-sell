@@ -131,24 +131,107 @@ async function beebsAlgolia(corps) {
   return r.json();
 }
 
+// ── LE VENDEUR CONNECTÉ, LU DANS SA SESSION (2026-09-25) ────────────────────
+// MEMINIANDMOVE et pironneau.vincent (24-25/09) : six relevés Beebs en échec,
+// « aucune annonce connue pour retrouver le vendeur ». Leurs annonces avaient
+// toutes disparu (retirées par la vendeuse, 404 public, absentes de l'index) :
+// la page ne montrait rien, donc aucune graine, donc aucun vendeur, donc aucun
+// compteur — et un compte réellement vide restait rouge pour toujours.
+// Le cookie `access_token` de beebs.app est un jeton d'identité Firebase
+// (iss https://securetoken.google.com/babytouch-782e4) ; son `user_id` (= sub)
+// EST le `user_id` de l'index (relevé le 25/09 sur un compte réel : facette
+// user_id:<sub> → 9 annonces, 9/9 = celles connues en base).
+// ⛔ Le jeton ne sort JAMAIS d'ici : on n'en lit que l'identifiant.
+// ⛔ Un jeton d'une autre forme (pas Firebase, pas d'uid propre) → null, et on
+//    retombe exactement sur le chemin d'avant.
+function beebsUidDeJeton(jeton) {
+  try {
+    const parts = String(jeton ?? "").split(".");
+    if (parts.length !== 3) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const octets = Uint8Array.from(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)), (c) => c.charCodeAt(0));
+    const charge = JSON.parse(new TextDecoder().decode(octets));
+    if (!/^https:\/\/securetoken\.google\.com\//.test(String(charge?.iss ?? ""))) return null;
+    const uid = String(charge?.user_id ?? charge?.sub ?? "").trim();
+    return /^[A-Za-z0-9_-]{6,128}$/.test(uid) ? uid : null;
+  } catch {
+    return null;
+  }
+}
+function beebsUidDeSession() {
+  const brut = String(document.cookie ?? "").split(/;\s*/).find((c) => c.startsWith("access_token="));
+  if (!brut) return null;
+  let jeton = brut.slice("access_token=".length);
+  try { jeton = decodeURIComponent(jeton); } catch { /* jeton brut */ }
+  return beebsUidDeJeton(jeton);
+}
+
+// QUEL VENDEUR INTERROGER — une règle, trois sources :
+//   · uidGraines  : le vendeur des annonces que la PAGE vient de montrer ;
+//   · uidSession  : le compte connecté dans ce Chrome ;
+//   · uidsConnus  : les vendeurs sous lesquels l'index range les annonces que
+//                   FillSell connaît pour ce compte (annonces_plateforme).
+// ⛔ Deux sources qui se contredisent = on ne conclut RIEN : relever le
+//    dressing d'un autre compte, c'est dater la disparition d'annonces vivantes.
+// Rend { uid, source } ou { uid:null, motif }.
+function beebsChoisirUid({ uidGraines = null, uidSession = null, uidsConnus = [], graines = 0 } = {}) {
+  const connus = [...new Set((uidsConnus ?? []).filter(Boolean))];
+  const reference = uidSession ?? uidGraines ?? (connus.length === 1 ? connus[0] : null);
+  if (uidSession && uidGraines && uidGraines !== uidSession) {
+    return { uid: null, motif: "autre compte Beebs connecté que celui des annonces de la page" };
+  }
+  if (reference && connus.some((u) => u !== reference)) {
+    return { uid: null, motif: "une annonce connue est en ligne sous un autre compte Beebs que celui connecté" };
+  }
+  if (uidGraines) return { uid: uidGraines, source: "index_public" };
+  if (uidSession) return { uid: uidSession, source: "session" };
+  if (reference) return { uid: reference, source: "annonces_connues" };
+  if (connus.length > 1) return { uid: null, motif: "annonces connues rangées sous plusieurs comptes Beebs" };
+  return {
+    uid: null,
+    motif: graines
+      ? "vendeur introuvable dans l'index à partir des annonces connues"
+      : "aucune annonce connue pour retrouver le vendeur",
+  };
+}
+
 // Rend { ok, total, exhaustif, articles[] } — ou { ok:false, motif } sans
 // jamais lever : un index muet n'est pas un dressing vide, l'appelant garde
 // son relevé de page et se marque INCOMPLET.
-async function beebsDressingParIndex(listingIdsConnus) {
-  const graines = (Array.isArray(listingIdsConnus) ? listingIdsConnus : [])
-    .map((x) => String(x ?? "").trim()).filter((x) => /^\d+$/.test(x)).slice(0, 5);
-  if (!graines.length) return { ok: false, motif: "aucune annonce connue pour retrouver le vendeur" };
-  let uid = null;
-  for (const g of graines) {
-    try {
+// `idsConnus` : les annonces que FillSell croit en ligne pour ce compte. On
+// demande à l'index SOUS QUEL VENDEUR il les range (une requête par lot) — un
+// contrôle indépendant du compte connecté : une annonce encore visible sur
+// Beebs est trouvée par son identifiant, quel que soit son vendeur.
+async function beebsDressingParIndex(listingIdsConnus, idsConnus = []) {
+  const numeriques = (l) => (Array.isArray(l) ? l : [])
+    .map((x) => String(x ?? "").trim()).filter((x) => /^\d+$/.test(x));
+  const graines = numeriques(listingIdsConnus).slice(0, 5);
+  const connus = [...new Set(numeriques(idsConnus))].slice(0, 200);
+  let uidGraines = null;
+  const uidsConnus = [];
+  try {
+    for (const g of graines) {
       const r = await beebsAlgolia({ filters: `objectID:${g}`, hitsPerPage: 1, attributesToRetrieve: ["user_id"] });
       const v = r?.hits?.[0]?.user_id;
-      if (v != null && String(v).trim()) { uid = String(v).trim(); break; }
-    } catch (e) {
-      return { ok: false, motif: `index injoignable (${String(e?.message ?? e).slice(0, 60)})` };
+      if (v != null && String(v).trim()) { uidGraines = String(v).trim(); break; }
     }
+    for (let i = 0; i < connus.length; i += 50) {
+      const lot = connus.slice(i, i + 50);
+      const r = await beebsAlgolia({
+        filters: lot.map((id) => `objectID:${id}`).join(" OR "),
+        hitsPerPage: lot.length, attributesToRetrieve: ["user_id"],
+      });
+      for (const h of (Array.isArray(r?.hits) ? r.hits : [])) {
+        const v = String(h?.user_id ?? "").trim();
+        if (v) uidsConnus.push(v);
+      }
+    }
+  } catch (e) {
+    return { ok: false, motif: `index injoignable (${String(e?.message ?? e).slice(0, 60)})` };
   }
-  if (!uid) return { ok: false, motif: "vendeur introuvable dans l'index à partir des annonces connues" };
+  const choix = beebsChoisirUid({ uidGraines, uidSession: beebsUidDeSession(), uidsConnus, graines: graines.length });
+  if (!choix.uid) return { ok: false, motif: choix.motif };
+  const uid = choix.uid;
 
   const articles = [];
   const vus = new Set();
@@ -193,13 +276,13 @@ async function beebsDressingParIndex(listingIdsConnus) {
     if (hits.length < BEEBS_ALGOLIA_PAGE) break;
     if (page === BEEBS_ALGOLIA_PAGES_MAX - 1) complet = false;
   }
-  return { ok: true, uid, total, exhaustif, complet, articles };
+  return { ok: true, uid, uid_source: choix.source, total, exhaustif, complet, articles };
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === "BEEBS_DRESSING_INDEX") {
-      beebsDressingParIndex(msg.listingIds)
+      beebsDressingParIndex(msg.listingIds, msg.idsConnus)
         .then((r) => sendResponse(r))
         .catch((err) => sendResponse({ ok: false, motif: String(err?.message ?? err) }));
       return true;

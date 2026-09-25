@@ -13022,6 +13022,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // La plateforme a-t-elle ÉCRIT qu'elle n'a aucune annonce ? (2026-09-23)
   let pageDitVide = false;
   let beebsIndexMotif = null;
+  // Beebs (2026-09-25) : la page n'a rien rendu alors que l'index montre des
+  // annonces en ligne pour ce vendeur — cf. le bloc de l'index plus bas.
+  let beebsPageMuette = null; // = le total de l'index quand la page est muette
   // eBay (2026-09-23) : l'état de la dernière page lue, et si on l'a rechargée.
   let dernierePageHub = null;
   let ebayRechargee = false;
@@ -13236,8 +13239,40 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   //    INCOMPLET. Un index muet n'est pas un dressing vide.
   if (platform === "beebs" && dernierTabId != null) {
     const graines = [...annonces.keys()].slice(0, 5);
-    const idx = await sendMessageToTab(dernierTabId, { type: "BEEBS_DRESSING_INDEX", listingIds: graines }, 30_000)
+    // ── ET LES ANNONCES QUE NOUS CONNAISSONS (2026-09-25, MEMINIANDMOVE) ─────
+    // Page vide = aucune graine = aucun vendeur = relevé rouge à vie, même
+    // pour un compte réellement vide. Le content script reçoit maintenant les
+    // annonces que FillSell croit en ligne : il demande à l'index sous quel
+    // vendeur elles sont rangées (contrôle anti-mauvais-compte), et retombe sur
+    // le compte connecté (cookie de session) quand ni la page ni elles ne
+    // désignent personne. Cf. beebsChoisirUid (beebs.js).
+    let idsConnus = [];
+    try {
+      if (token && userId) {
+        const rows = await restRequest(
+          `annonces_plateforme?user_id=eq.${userId}&platform=eq.beebs&disparu_le=is.null` +
+          `&select=listing_id&order=vu_le.desc&limit=200`,
+          token,
+        );
+        idsConnus = (Array.isArray(rows) ? rows : []).map((r) => String(r?.listing_id ?? "")).filter(Boolean);
+      }
+    } catch (e) {
+      console.warn(`[releve][beebs] annonces connues illisibles (${String(e?.message ?? e)}) — graines de la page seules`);
+    }
+    const vusParLaPage = annonces.size;
+    const idx = await sendMessageToTab(dernierTabId, { type: "BEEBS_DRESSING_INDEX", listingIds: graines, idsConnus }, 30_000)
       .catch((e) => ({ ok: false, motif: `canal indisponible : ${String(e?.message ?? e).slice(0, 60)}` }));
+    if (idx?.ok && idx.uid) {
+      // L'identité du vendeur, calculée à chaque relevé et jamais écrite
+      // jusqu'ici : beebs-lien en a besoin pour retrouver le lien d'un dépôt.
+      noterIdentiteBeebs(token, { user_id: String(idx.uid), cle: idx.uid_source ?? "index_public", at: new Date().toISOString() })
+        .catch(() => {});
+    }
+    // ⛔ UNE PAGE MUETTE N'EST PAS UNE PAGE VIDE : l'index montre des annonces
+    //    visibles que « Mes annonces » n'a pas rendues du tout. La liste de
+    //    l'index est vraie, mais l'onglet « En vérification » n'a sans doute
+    //    pas été lu non plus — on ne conclut aucune disparition.
+    if (idx?.ok && vusParLaPage === 0 && Number(idx.total) > 0) beebsPageMuette = Number(idx.total);
     if (!idx?.ok) {
       beebsIndexMotif = String(idx?.motif ?? "index sans réponse").slice(0, 140);
     } else if (!idx.exhaustif || !Number.isFinite(idx.total)) {
@@ -13296,10 +13331,12 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         + (dernierePageHub ? ` · ${decrirePageHub(dernierePageHub)}` : ""),
     },
     beebs: {
-      total: beebsTotalIndex, comptees: enLigne(), libelle: "dans l'index public de Beebs", listeRendue: true,
-      absent: beebsIndexMotif
-        ? `l'index public de Beebs n'a rien pu dire (${beebsIndexMotif})`
-        : "l'index public de Beebs n'a pas rendu de total exact",
+      total: beebsTotalIndex, comptees: enLigne(), libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null,
+      absent: beebsPageMuette != null
+        ? `« Mes annonces » de Beebs n'a rien rendu alors que l'index public en montre ${beebsPageMuette}`
+        : beebsIndexMotif
+          ? `l'index public de Beebs n'a rien pu dire (${beebsIndexMotif})`
+          : "l'index public de Beebs n'a pas rendu de total exact",
     },
   };
   // ══════════════════════════════════════════════════════════════════════════
