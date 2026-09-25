@@ -17,6 +17,7 @@
 // paramètre (`outils`) : le moteur n'importe rien qui ne soit pas une règle.
 
 import { natureAttente } from "../../utils/etatsPublication.js";
+import { titreVide, couperTitre, titrePourJob } from "../../../supabase/functions/_shared/titre-du-job.js";
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
 // Règle unique (2026-07-29) partagée par la garde du CTA, la liste des motifs
@@ -136,9 +137,16 @@ export function cleCategorieRequis({ cheminResolu = null, cheminIcone = null }) 
 // (utils/lbcCategories), normalizeVintedTitle (utils/vintedTitle).
 // Rend { rows, erreur, journal } ; erreur "ebay_sans_photo" reproduit le throw
 // de l'ancien code (eBay par API exige au moins une image).
+// ── AUCUN JOB SANS TITRE (2026-09-25, patrick giry) ─────────────────────────
+// Une carte au titre VIDE ne part plus à vide : la copie rédigée pour cette
+// plateforme (`titresGeneres`), sinon le titre de la fiche (`titreFiche`) —
+// même règle que le serveur (_shared/titre-du-job.js). Rien de connu →
+// erreur "sans_titre" (+ `plateforme`), AVANT tout débit. Une carte qui a un
+// titre part exactement comme avant.
 export function construireJobs({
   plateformes, champsResolus, processedPhotos, lbcAddress = null,
   userId, inventaireId = null, photoOption, edited, price, ebayVoieApiReelle = false, outils,
+  titresGeneres = null, titreFiche = "",
 }) {
   const { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle } = outils;
   const rows = [];
@@ -169,6 +177,16 @@ export function construireJobs({
         );
       }
     }
+    let titre = edited[platform]?.title ?? "";
+    if (titreVide(titre)) {
+      const genere = titresGeneres?.[platform] ?? "";
+      const repli = !titreVide(genere)
+        ? { titre: couperTitre(genere, platform), source: "copie rédigée" }
+        : titrePourJob({ platform, titreFiche });
+      if (!repli) return { rows: null, erreur: "sans_titre", plateforme: platform, journal };
+      titre = repli.titre;
+      journal.push(`[publish] ${platform} : titre de la carte VIDE → « ${titre} » (${repli.source === "fiche" ? "titre de la fiche" : repli.source})`);
+    }
     rows.push({
       user_id:         userId,
       inventaire_id:   inventaireId,
@@ -178,8 +196,8 @@ export function construireJobs({
       // Vinted refuse un titre trop capitalisé (400 serveur, 2026-08-15) :
       // normalisation à l'ENVOI. Les autres plateformes partent telles quelles.
       title:           platform === "vinted"
-        ? normalizeVintedTitle(edited[platform]?.title ?? "")
-        : (edited[platform]?.title ?? ""),
+        ? normalizeVintedTitle(titre)
+        : titre,
       description:     edited[platform]?.description ?? "",
       price:           edited[platform]?.price ?? price,
       photos:          rowPhotos,

@@ -132,8 +132,31 @@ console.log("\n[8] construireJobs — la forme exacte des lignes de l'ancien cod
   ok("journal du plafond", r.journal.length === 1 && /Divers > Autres : 5 photos → 3/.test(r.journal[0]));
   const e = R.construireJobs({ plateformes: ["ebay"], champsResolus: { ebay: {} }, processedPhotos: [], userId: "u", photoOption: "original", edited: { ebay: {} }, price: 5, ebayVoieApiReelle: true, outils });
   ok("eBay par API sans photo → erreur nommée", e.erreur === "ebay_sans_photo" && e.rows === null);
-  const e2 = R.construireJobs({ plateformes: ["ebay"], champsResolus: { ebay: {} }, processedPhotos: [], userId: "u", photoOption: "original", edited: { ebay: {} }, price: 5, ebayVoieApiReelle: false, outils });
+  // (25/09) La copie porte un titre : sans lui, c'est la garde « aucun job
+  // sans titre » qui répondrait — ce cas-ci ne teste que la photo.
+  const e2 = R.construireJobs({ plateformes: ["ebay"], champsResolus: { ebay: {} }, processedPhotos: [], userId: "u", photoOption: "original", edited: { ebay: { title: "Montre" } }, price: 5, ebayVoieApiReelle: false, outils });
   ok("eBay par extension sans photo → pas d'erreur (comme avant)", e2.erreur === null && e2.rows.length === 1);
+
+  // ── AUCUN JOB SANS TITRE (25/09, patrick giry) ──────────────────────────
+  const base = { champsResolus: { vinted: {}, opla: {}, ebay: {} }, processedPhotos: ["a"], userId: "u", photoOption: "original", price: 22, outils };
+  const vides = { vinted: { title: "" }, opla: { title: "" }, ebay: { title: "  " } };
+  const t1 = R.construireJobs({ ...base, plateformes: ["vinted", "opla", "ebay"], edited: vides,
+    titresGeneres: { vinted: "Carhartt T-shirt manches longues gris chiné M", opla: "Carhartt T-shirt manches longues gris chiné M", ebay: "T-shirt Carhartt manches longues gris chiné taille M" },
+    titreFiche: "T-shirt manches longues gris chiné taille M" });
+  ok("carte vide → sa copie rédigée (Vinted normalisé, Opla, eBay)",
+    t1.erreur === null && t1.rows[0].title === "N(Carhartt T-shirt manches longues gris chiné M)"
+      && t1.rows[1].title === "Carhartt T-shirt manches longues gris chiné M"
+      && t1.rows[2].title === "T-shirt Carhartt manches longues gris chiné taille M");
+  ok("le repli est dit au journal", t1.journal.filter((l) => /titre de la carte VIDE/.test(l)).length === 3);
+  const t2 = R.construireJobs({ ...base, plateformes: ["ebay"], edited: { ebay: { title: "" } }, titresGeneres: null, titreFiche: "T-shirt manches longues gris chiné taille M" });
+  ok("ni carte ni copie → titre de la fiche", t2.erreur === null && t2.rows[0].title === "T-shirt manches longues gris chiné taille M");
+  const t3 = R.construireJobs({ ...base, plateformes: ["ebay"], edited: { ebay: { title: "" } }, titreFiche: "" });
+  ok("rien de connu → erreur sans_titre, AUCUNE ligne", t3.erreur === "sans_titre" && t3.plateforme === "ebay" && t3.rows === null);
+  const long = "Veste ".repeat(20).trim();
+  const t4 = R.construireJobs({ ...base, plateformes: ["ebay"], edited: { ebay: { title: "" } }, titreFiche: long });
+  ok("titre de fiche trop long → coupé au mot, 80 car. max pour eBay", t4.rows[0].title.length <= 80 && !/\s$/.test(t4.rows[0].title) && t4.rows[0].title.endsWith("Veste"));
+  const t5 = R.construireJobs({ ...base, plateformes: ["vinted", "ebay"], edited: { vinted: { title: "ROBE" }, ebay: { title: "Robe noire" } }, titresGeneres: { vinted: "AUTRE", ebay: "AUTRE" }, titreFiche: "FICHE" });
+  ok("une carte QUI A un titre part exactement comme avant", t5.rows[0].title === "N(ROBE)" && t5.rows[1].title === "Robe noire" && t5.journal.length === 0);
 }
 
 console.log("\n[9] plateformesSansChemin — la contrepartie de la porte (19/09)");

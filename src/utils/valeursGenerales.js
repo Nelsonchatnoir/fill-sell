@@ -96,9 +96,25 @@ export function valeurPourPlateforme(champ, valeur, plateforme) {
  *
  * @returns {object} le nouvel `edited`
  */
-export function appliquerGenerale(edited, { champ, valeur, plateformes, dissociees }) {
+export function appliquerGenerale(edited, { champ, valeur, plateformes, dissociees, copies = null }) {
   const exceptions = dissociees?.[champ] ?? new Set();
   const suivant = { ...edited };
+  // ⛔ UN TITRE GÉNÉRAL VIDE N'EFFACE AUCUNE CARTE (2026-09-25, patrick giry).
+  //    Quand les copies divergent, le titre général est vide (cf.
+  //    valeurCommune) ; le toucher puis le vider écrivait "" sur les cinq
+  //    cartes, et trois jobs sont partis sans titre (Opla, Vinted, eBay). Un
+  //    titre général vide veut dire « pas de titre commun » : chaque carte qui
+  //    le suivait reprend SA copie rédigée (`copies` = platformListings.
+  //    platforms) ; sans copie connue, elle garde ce qu'elle a. Jamais "".
+  //    Même chose pour « Rétablir » sous un titre général vide.
+  if (champ === "titre" && !String(valeur ?? "").trim()) {
+    for (const p of plateformes ?? []) {
+      if (exceptions.has(p) || !suivant[p]) continue;
+      const sienne = String(copies?.[p]?.title ?? "");
+      if (sienne.trim()) suivant[p] = ecrireValeur(suivant[p], "titre", sienne);
+    }
+    return suivant;
+  }
   for (const p of plateformes ?? []) {
     if (exceptions.has(p)) continue;
     if (!suivant[p]) continue;

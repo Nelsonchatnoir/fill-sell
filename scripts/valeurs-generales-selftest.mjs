@@ -115,6 +115,32 @@ console.log("\n4. LA VALEUR GÉNÉRALE SE DÉDUIT DE CE QUI EXISTE");
   ok(valeurCommune(divergent, "titre", PF, d2) === "Même titre", "la carte dissociée ne vote pas");
 }
 
+console.log("\n4 bis. UN TITRE GÉNÉRAL VIDÉ N'EFFACE AUCUNE CARTE (25/09, patrick giry)");
+{
+  // Ses cinq copies réelles : deux formulations → titre général vide au semis.
+  const A = "Carhartt T-shirt manches longues gris chiné M";
+  const B = "T-shirt Carhartt manches longues gris chiné taille M";
+  const pf = ["vinted", "opla", "beebs", "ebay", "leboncoin"];
+  let edited = { vinted: copie(A, "d1", ""), opla: copie(A, "d1", ""), beebs: copie(A, "d2", ""), ebay: copie(B, "d3", ""), leboncoin: copie(B, "d4", "") };
+  const d = dissociationsVides();
+  ok(valeurCommune(edited, "titre", pf, d) === "", "copies divergentes → titre général vide (le décor du bug)");
+  // Le champ général touché puis vidé : autrefois "" sur les cinq cartes.
+  const copies = Object.fromEntries(pf.map((p) => [p, { title: lireValeur(edited[p], "titre") }]));
+  let apres = appliquerGenerale(edited, { champ: "titre", valeur: "T", plateformes: pf, dissociees: d, copies });
+  ok(pf.every((p) => lireValeur(apres[p], "titre") === "T"), "une frappe : les cinq cartes suivent (inchangé)");
+  apres = appliquerGenerale(apres, { champ: "titre", valeur: "", plateformes: pf, dissociees: d, copies });
+  ok(pf.every((p) => lireValeur(apres[p], "titre") === lireValeur(edited[p], "titre")), "vidé : chaque carte reprend SA copie rédigée, jamais \"\"");
+  const sansCopies = appliquerGenerale(apres, { champ: "titre", valeur: "   ", plateformes: pf, dissociees: d });
+  ok(pf.every((p) => lireValeur(sansCopies[p], "titre") === lireValeur(apres[p], "titre")), "vidé sans copie connue : la carte garde ce qu'elle a");
+  const d2 = dissocier(d, "titre", "ebay");
+  const perso = { ...apres, ebay: copie("Mon titre eBay", "d3", "") };
+  const r2 = appliquerGenerale(perso, { champ: "titre", valeur: "", plateformes: pf, dissociees: d2, copies });
+  ok(lireValeur(r2.ebay, "titre") === "Mon titre eBay", "une carte dissociée n'est jamais touchée, même par un vidage");
+  // La description garde son comportement d'avant (hors périmètre).
+  const descVide = appliquerGenerale(edited, { champ: "description", valeur: "", plateformes: pf, dissociees: d });
+  ok(pf.every((p) => lireValeur(descVide[p], "description") === ""), "description : comportement inchangé");
+}
+
 console.log("\n5. LE CAS DE LOUIS THONET, EN ENTIER");
 {
   // Son article 1789991601609, relevé Beebs du 21/09 — texte et état réels.

@@ -6301,6 +6301,8 @@ export default function ListingPreviewScreen({
     setGenerales(prev => ({ ...prev, [champ]: valeur }));
     setEdited(prev => appliquerGenerale(prev, {
       champ, valeur, plateformes: Object.keys(prev), dissociees,
+      // (25/09) Titre général vidé : chaque carte reprend SA copie rédigée.
+      copies: platformListings?.platforms ?? null,
     }));
   };
 
@@ -6367,6 +6369,7 @@ export default function ListingPreviewScreen({
     setDissociees(suivant);
     setEdited(prev => appliquerGenerale(prev, {
       champ, valeur: generales[champ], plateformes: [plateforme], dissociees: suivant,
+      copies: platformListings?.platforms ?? null,
     }));
   };
 
@@ -8578,11 +8581,21 @@ export default function ListingPreviewScreen({
         plateformes: plateformesAPublier, champsResolus, processedPhotos, lbcAddress,
         userId, inventaireId: addToStock ? currentInvId : null, photoOption, edited, price, ebayVoieApiReelle,
         outils: { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle },
+        // (25/09, patrick giry) Une carte au titre vide reprend sa copie
+        // rédigée, sinon le titre de la fiche — jamais un job à title "".
+        titresGeneres: Object.fromEntries(Object.entries(platformListings?.platforms ?? {}).map(([p, c]) => [p, c?.title ?? ""])),
+        titreFiche: initialListing?.titre ?? "",
       });
       if (construction.erreur === "ebay_sans_photo") {
         throw new Error(lang === "en"
           ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
           : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
+      }
+      if (construction.erreur === "sans_titre") {
+        const nomPf = PLATFORM_LABELS[construction.plateforme] ?? construction.plateforme;
+        throw new Error(lang === "en"
+          ? `${nomPf}: this listing has no title. Write one in the “Title” field, then publish again. Nothing was charged.`
+          : `${nomPf} : cette annonce n'a pas de titre. Écris-le dans le champ « Titre », puis publie à nouveau. Rien n'a été décompté.`);
       }
       for (const ligne of construction.journal) console.log(ligne);
       let rows = construction.rows;
