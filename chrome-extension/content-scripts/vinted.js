@@ -3364,12 +3364,31 @@ async function fillListingForm(job) {
   // pas — un format laissé au défaut de Vinted n'a jamais rien détruit, et le
   // comportement reste identique à la milliseconde près (lecture synchrone).
   // On n'ajoute donc aucun délai à un chemin qui marche.
-  if (colisSectionAbsente && colisVoulu) {
+  // ── RÉPUBLICATION : LE FORMAT CONNU SE REPOSE EN DERNIER (2026-09-25) ────
+  // CE QUI S'EST PASSÉ : nerema75, « Blouses manches longues » (job 81bf5d44,
+  // 0.6.63, 24/09) — recréation refusée en 400 `package_size` alors que le
+  // format était CONNU (« Petit », id 1, capturé) et posé par aller-retour
+  // (correctif du 22/09) : l'annonce est restée hors ligne jusqu'au 3e essai.
+  // Mesuré sur 60 jours : les 7 refus `package_size` avaient TOUS un format
+  // connu, 6 sur 7 étaient des républications ; 0 refus sur 56 dépôts hors
+  // Mode (défaut de Vinted jamais touché) et 0 sur les publications en Mode
+  // depuis la 0.6.58. Le format n'est donc pas une donnée qui manque : c'est
+  // un choix que Vinted perd entre la pose et le clic — gates des requis qui
+  // posent d'autres attributs (la section « Format du colis » se re-rend
+  // quand ils changent), suppression et pause humaine en une-passe.
+  // ⛔ Sur une RÉPUBLICATION (annonce d'origine retirée : un refus la laisse
+  //    hors ligne), le format connu est donc reposé ICI, en dernier geste
+  //    avant le clic, section présente ou non — puis le prix est revérifié
+  //    (un clic sur le format peut re-rendre le composant prix, bug du 18/07).
+  //    Publication neuve : chemin inchangé à la milliseconde près.
+  const reposerAvantDepot = colisVoulu && !colisSectionAbsente && (recreation || onePassDeleted);
+  let colisRepose = false;
+  if ((colisSectionAbsente && colisVoulu) || reposerAvantDepot) {
     const RADIOS_COLIS = 'input[type="radio"][id^="package_type_selector_"]';
     // `recreation` (l.1990, platform_fields.republish_recreation) : le MÊME
     // drapeau que la garde photos ci-dessous, celui qui fait déjà foi pour
     // « l'annonce d'origine est déjà supprimée ». Une seule vérité, pas deux.
-    const estRepublication = recreation;
+    const estRepublication = recreation || onePassDeleted;
     const t0 = Date.now();
     const radiosColis = estRepublication
       ? (await waitFor(() => {
@@ -3377,13 +3396,16 @@ async function fillListingForm(job) {
           return r.length ? r : null;
         }, 8000)) ?? []
       : document.querySelectorAll(RADIOS_COLIS);
-    if (estRepublication && radiosColis.length) {
+    if (estRepublication && radiosColis.length && colisSectionAbsente) {
       console.log(`[vinted] format de colis : section apparue après ${Date.now() - t0} ms d'attente (républication)`);
     }
     if (radiosColis.length) {
       try {
         await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
-        warnings.push(`format de colis : section apparue après les attributs — « ${wantedPackage ?? "Petit"} » reposé avant le dépôt`);
+        colisRepose = true;
+        warnings.push(colisSectionAbsente
+          ? `format de colis : section apparue après les attributs — « ${wantedPackage ?? "Petit"} » reposé avant le dépôt`
+          : `format de colis : « ${wantedPackage ?? "Petit"} » reposé en dernier geste avant le dépôt (républication)`);
       } catch (e) {
         warnings.push(`format de colis : section apparue mais format non posé (${String(e?.message ?? e).slice(0, 120)}) — choix Vinted conservé`);
       }
@@ -3399,6 +3421,11 @@ async function fillListingForm(job) {
       );
     }
   }
+  // Un clic sur le format peut re-rendre le composant prix en onglet caché et
+  // vider sa prop `value` (bug du 18/07, cf. ensurePriceCommitted) : après une
+  // pose de DERNIÈRE PASSE, le prix est relu — la vérification d'avant ne
+  // voyait pas ce clic-là. Déjà commité → aucun geste.
+  if (colisRepose && job.price != null) await ensurePriceCommitted(job.price);
 
   // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
   // de l'audit ; l'assert du registre — visible au sens getComputedStyle +

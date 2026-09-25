@@ -7498,8 +7498,13 @@ export default function ListingPreviewScreen({
   // au sens exact de cette liste. ⚠️ CE CHAMP SEULEMENT — les autres aspects
   // LBC obligatoires bloquent comme avant, on ne généralise pas à « tout
   // combobox non relevé ».
+  // « package_size » (25/09) : le nom que Vinted donne au format dans ses
+  // refus 400. Les lignes du catalogue nées de ces refus (source server_400)
+  // ne doivent jamais devenir une question en texte libre « package_size » :
+  // le format, Vinted le pré-coche toujours (0 cas sans format offert ni
+  // recommandé sur 60 jours) et l'extension pose celui qu'on connaît.
   const GENERIC_PREFILLED = {
-    vinted: ["sim_lock", "package_size_id"],
+    vinted: ["sim_lock", "package_size_id", "package_size"],
     leboncoin: ["quantity", "estimated_parcel_weight"],
     beebs: ["Format du colis"],
   };
