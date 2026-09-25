@@ -110,8 +110,10 @@ import {
 // jugent une valeur contre une liste avec le même code que cet écran.
 import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
+  vintedExigeUneCouleur, valeurUneLettre,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../publication/moteur/listes";
+import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -6621,7 +6623,16 @@ export default function ListingPreviewScreen({
     // ne recevra jamais), ni moins (ce serait bloquer sur une valeur déjà
     // acquise). La règle n'est pas devinée, elle est RECOPIÉE des handlers :
     // cf. CANAL_GENERIQUE_POSE.
+    // (25/09) Une valeur d'UNE lettre en marque, couleur ou matière n'est pas
+    // une réponse : l'insert la retire (sanitizeJobFields, suspect_values) et le
+    // job part SANS elle — neuf refus Vinted « Marque » chez Jocabroc sur un
+    // « S » tapé dans la carte du rayon. Elle compte donc comme manquante ici ;
+    // une taille d'une lettre (« S », « M ») reste une taille.
     const valeurPourPlateforme = (p, key) => {
+      const v = valeurBrutePourPlateforme(p, key);
+      return key !== "taille" && valeurUneLettre(v) ? "" : v;
+    };
+    const valeurBrutePourPlateforme = (p, key) => {
       const pf = edited[p]?.platform_fields ?? {};
       const direct = String(pf[key] ?? "").trim();
       if (direct) return direct;
@@ -7244,6 +7255,20 @@ export default function ListingPreviewScreen({
           // « Livres et médias », dont le formulaire n'a pas de champ Marque.
           if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "brand") && vintedExigeUneMarque(String(key).split(" > "))) {
             rows = [...rows, { field_key: "brand", field_label: "Marque", required: true, input_type: null, allowed_values: [], synthetique: "vinted_marque_exigee" }];
+          }
+          // ── VINTED EXIGE UNE COULEUR (25/09, nouveau stepper) — cf. listes.js ──
+          // Même trou, un jour plus tard (Jocabroc : peinture, plateau barbotine).
+          // La ligne porte la PALETTE Vinted (globale, 29 libellés, vintedColors.js)
+          // pour que la question se réponde dans la liste, jamais en texte libre
+          // qui ne se normaliserait pas. input_type null, exprès : c'est l'ABSENCE
+          // de couleur qui bloque (le 400 réel), pas une couleur présente hors
+          // palette — celle-là, vinted.js la fait choisir parmi les options
+          // affichées, comme avant.
+          // Une ligne `color` déjà connue du catalogue avec required=true passe
+          // devant (le filtre .eq("required", true) plus haut) : la synthétique ne
+          // comble que l'absence.
+          if (platform === "vinted" && variante === "nouvelle" && !rows.some(r => r.field_key === "color") && vintedExigeUneCouleur(String(key).split(" > "))) {
+            rows = [...rows, { field_key: "color", field_label: "Couleur", required: true, input_type: null, allowed_values: [...VINTED_COLORS], synthetique: "vinted_couleur_exigee" }];
           }
 
           // ── Repli d'options intra-plateforme (Vinted) — fix « Espace de

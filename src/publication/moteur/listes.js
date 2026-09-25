@@ -241,20 +241,16 @@ export function horsListeBloque({ regle = "classique", platform, key, inputType,
   return listeFaitFoiRelevee({ platform, key, inputType, allowedValues });
 }
 
-// ── Vinted exige une marque, partout sauf « Livres et médias » ─────────────
-// Mesuré le 24/09 sur 60 jours : 183 publications Vinted abouties depuis le
-// stepper, TOUTES avec une marque (« Sans marque » compris) — la seule partie
-// sans marque était un livre. Et trois refus le jour même chez une cliente,
-// cinq chez une autre depuis le 15/09 (« Le champ Marque doit être
-// renseigné »), parce que le catalogue ne connaissait pas la catégorie et que
-// rien n'était demandé. Règle de Nico : aucune annonce Vinted ne part avec
-// une marque vide — « Sans marque » se PROPOSE, il ne se pose pas tout seul.
-// Le formulaire Vinted des livres et médias n'a pas de champ Marque
-// (vinted.js, brand_field_absent) : là, on ne demande rien.
-export function vintedExigeUneMarque(cheminCategorie) {
-  const racine = Array.isArray(cheminCategorie) ? texteComparable(String(cheminCategorie[0] ?? "")) : "";
-  return racine !== "livres et medias";
-}
+// ── Ce que Vinted exige quel que soit le catalogue : la MARQUE (partout sauf
+// « Livres et médias », 24/09) et la COULEUR (partout sauf les rayons mesurés
+// sans champ Couleur, 25/09 — Jocabroc, Peintures et Bibelots refusés en 400).
+// La règle vit dans supabase/functions/_shared/vinted-exigences.js : le
+// serveur (get-pending-jobs) applique la MÊME au service du job, pour les
+// écrans et les extensions d'avant. Aucune logique ici, un relais.
+// Règle de Nico : aucune annonce Vinted ne part avec une marque ou une couleur
+// vide — « Sans marque » se PROPOSE, il ne se pose pas tout seul ; dans le
+// doute, on demande.
+export { vintedExigeUneMarque, vintedExigeUneCouleur, valeurUneLettre } from "../../../supabase/functions/_shared/vinted-exigences.js";
 
 // ── RAYON VINTED « NEUF SEULEMENT » : C'EST LE RAYON QU'ON CHANGE (24/09) ───
 // Relevé réel du formulaire le 24/09 : « Casques de sécurité » (Maison >

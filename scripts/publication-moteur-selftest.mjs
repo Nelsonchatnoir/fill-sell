@@ -329,6 +329,32 @@ console.log("\n[18] horsListeBloque — la règle classique ne bouge pas, la nou
   ok("nouvelle : un rapprochement sûr n'est pas bloquant (posé d'office à l'écran Confirmer)", L.horsListeBloque({ regle: "nouvelle", platform: "leboncoin", key: "clothing_st", inputType: "combobox", allowedValues: ["34 - XS"], suggested: "34 - XS" }) === false);
   ok("nouvelle : Marque Beebs (recherche) jamais bloquante", L.horsListeBloque({ regle: "nouvelle", platform: "beebs", key: "Marque", inputType: "dropdown", allowedValues: ["Zara", "Nike"] }) === false);
   ok("vintedExigeUneMarque : partout sauf « Livres et médias »", L.vintedExigeUneMarque(["Maison", "Décoration", "Encadrements"]) && L.vintedExigeUneMarque(["Femmes", "Vêtements"]) && !L.vintedExigeUneMarque(["Livres et médias", "Livres"]));
+  // (25/09) La couleur : les deux rayons de Jocabroc, puis chaque exception MESURÉE.
+  ok("vintedExigeUneCouleur : Peintures et Bibelots (les deux refus de Jocabroc)",
+    L.vintedExigeUneCouleur(["Maison", "Décoration", "Décorations murales", "Peintures"])
+    && L.vintedExigeUneCouleur(["Maison", "Décoration", "Accessoires décoratifs", "Bibelots"]));
+  ok("vintedExigeUneCouleur : vêtements, chaussures, jouets, rayon jamais relevé → demandée",
+    L.vintedExigeUneCouleur(["Femmes", "Vêtements", "Robes"]) && L.vintedExigeUneCouleur(["Hommes", "Chaussures", "Baskets"])
+    && L.vintedExigeUneCouleur(["Enfants", "Jeux et jouets"]) && L.vintedExigeUneCouleur(["Électronique", "Tablettes, liseuses et accessoires", "Accessoires", "Stylets"])
+    && L.vintedExigeUneCouleur(["Maison", "Arts de la table", "Vaisselle", "Assiettes"]));
+  ok("vintedExigeUneCouleur : appareils, jeux de société, pièces, couverts et verres → jamais (relevés sans couleur)",
+    !L.vintedExigeUneCouleur(["Électronique", "Tablettes, liseuses et accessoires", "Tablettes"])
+    && !L.vintedExigeUneCouleur(["Électronique", "Ordinateurs et accessoires", "Ordinateurs portables"])
+    && !L.vintedExigeUneCouleur(["Loisirs et collections", "Jeux de société"])
+    && !L.vintedExigeUneCouleur(["Loisirs et collections", "Pièces de monnaie et billets", "Billets"])
+    && !L.vintedExigeUneCouleur(["Maison", "Arts de la table", "Couverts", "Fourchettes"])
+    && !L.vintedExigeUneCouleur(["Maison", "Arts de la table", "Verres", "Verres à pied"]));
+  ok("valeurUneLettre : « S », « p », « ? » ne sont pas des réponses ; « Sans marque », « 9 » oui",
+    L.valeurUneLettre("S") && L.valeurUneLettre(" p ") && L.valeurUneLettre("?") && !L.valeurUneLettre("Sans marque") && !L.valeurUneLettre("9") && !L.valeurUneLettre(""));
+  ok("vintedExigeUneCouleur : Livres, Beauté, Soins, Jeux vidéo, Téléphones, Timbres, Cartes → jamais",
+    !L.vintedExigeUneCouleur(["Livres et médias", "Livres", "Fiction"]) && !L.vintedExigeUneCouleur(["Femmes", "Beauté", "Parfums"])
+    && !L.vintedExigeUneCouleur(["Hommes", "Soins", "Parfums"]) && !L.vintedExigeUneCouleur(["Électronique", "Jeux vidéo et consoles", "Consoles"])
+    && !L.vintedExigeUneCouleur(["Électronique", "Téléphones portables et équipements de communication", "Téléphones portables"])
+    && !L.vintedExigeUneCouleur(["Loisirs et collections", "Timbres", "Timbres à l'unité"])
+    && !L.vintedExigeUneCouleur(["Loisirs et collections", "Cartes à collectionner", "Coffrets de boosters"]));
+  ok("vintedExigeUneCouleur : les ACCESSOIRES de téléphone gardent la couleur ; sans rayon → rien",
+    L.vintedExigeUneCouleur(["Électronique", "Téléphones portables et équipements de communication", "Coques et protections"])
+    && !L.vintedExigeUneCouleur([]) && !L.vintedExigeUneCouleur(null));
 }
 
 console.log("\n[19] le cas Primark, de bout en bout, dans le moteur");

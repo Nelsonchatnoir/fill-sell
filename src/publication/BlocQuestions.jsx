@@ -16,6 +16,7 @@ import { AspectValueInput } from "../components/ListingPreviewScreen";
 import { questionsAPoser, aspectBloquant } from "./moteur/regles";
 import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
 import { listeFaitFoiRelevee } from "./moteur/listes";
+import { VINTED_COLORS } from "../utils/vintedColors";
 import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
 
@@ -123,11 +124,28 @@ export default function BlocQuestions({ m }) {
             : field.groups;
           const originLabel = m.redSharedFieldPlatforms[key];
           const manque = m.redSharedFields.includes(key);
+          // (25/09) La Couleur exigée par Vinted se choisit dans SA palette
+          // (29 libellés, globale) : une couleur tapée hors palette ne se
+          // normalise pas et repartait sans couleur — le 400 qu'on corrige.
+          // La réponse sert toujours à toutes les plateformes cochées.
+          const paletteVinted = key === "couleur"
+            && (m.genericRequiredStatus?.vinted ?? []).some(a => a.key === "color");
           return (
             <div key={key} className={`fsn-q${manque ? " fsn-q--bloque" : ""}`}>
               <div className="fsn-q-t">{field.label}{origine(originLabel)}</div>
               <div className="fsn-q-why">{en ? "Required by these platforms. One answer serves them all." : "Exigé par ces plateformes. Une réponse sert à toutes."}</div>
-              {field.type === "select" ? (
+              {paletteVinted ? (
+                <AspectValueInput
+                  value={val}
+                  allowedValues={VINTED_COLORS}
+                  strict
+                  closedMax={m.EBAY_CLOSED_LIST_MAX}
+                  onChange={v => { toucherShared(key); m.setSharedField(key, v); }}
+                  T={TN}
+                  tailleTexte={16}
+                  idBase="fsn-shared-couleur"
+                />
+              ) : field.type === "select" ? (
                 <select className="fsn-select" value={val} onChange={ev => { toucherShared(key); m.setSharedField(key, ev.target.value); }}>
                   <option value="">—</option>
                   {fieldGroups
