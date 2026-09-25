@@ -6,7 +6,7 @@
 //
 //   node scripts/rotation-figes-selftest.mjs
 
-import { horodatageFige, plateformesFigees, rotationFiges, FIGE_FENETRE_MS } from "../supabase/functions/_shared/rotation-figes.js";
+import { horodatageFige, plateformesFigees, rotationFiges, gelSansConstat, FIGE_FENETRE_MS } from "../supabase/functions/_shared/rotation-figes.js";
 
 let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
@@ -63,6 +63,17 @@ console.log("4. Au-delà de 3 h sans nouveau gel, la plateforme reprend son rang
   const tard = Date.parse("2026-09-25T12:34:40.630Z") + FIGE_FENETRE_MS + 1;
   const figees = plateformesFigees([lbc2cfa], tard);
   ok(!figees.has("leboncoin"), "fenêtre de 3 h écoulée : Leboncoin n'est plus figé");
+}
+
+console.log("5. Le constat daté fait foi (le début du traitement date d'une heure plus tôt)");
+{
+  ok(gelSansConstat(beebs6f23) === true, "retrait Beebs figé sans constat : à dater au prochain poll");
+  const constate = { ...beebs6f23, platform_fields: { ...beebs6f23.platform_fields, fige_le: "2026-09-25T13:55:00.000Z" } };
+  ok(gelSansConstat(constate) === false, "une fois daté, plus rien à poser");
+  ok(horodatageFige(constate) === Date.parse("2026-09-25T13:55:00.000Z"), "l'horodatage du constat prime sur la fenêtre de travail");
+  const t = Date.parse("2026-09-25T15:00:00.000Z");
+  ok(plateformesFigees([constate], t).has("beebs"), "Beebs reste figé 3 h après le constat (et non 3 h après le début du traitement)");
+  ok(gelSansConstat(beebsAe28) === false && gelSansConstat(vintedCc78) === false, "un job sans gel n'est jamais daté");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");

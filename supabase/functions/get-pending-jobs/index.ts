@@ -116,7 +116,7 @@ import { cheminLisible, cleFourche } from "../_shared/opla-resolution.ts";
 import { completerJobOpla, type OplaMem } from "../_shared/opla-completion.ts";
 // Une plateforme qui fige ne confisque plus le poste (25/09) — module JS sans
 // import, le même qu'exécute scripts/rotation-figes-selftest.mjs.
-import { plateformesFigees, rotationFiges } from "../_shared/rotation-figes.js";
+import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rotation-figes.js";
 // La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 
@@ -3657,6 +3657,20 @@ serve(async (req) => {
           .eq("user_id", user.id).in("status", ["pending", "processing"])
           .eq("platform_fields->pas_de_rouge->>motif", "canal_coupe")
           .limit(25);
+        // Le gel est DATÉ au premier poll qui le voit (fige_le) : la fenêtre de
+        // travail ne date que le début du traitement, parfois une heure avant la
+        // reprise. Jamais sur un job en cours (l'extension réécrit ses champs) :
+        // pending seulement, compare-and-swap sur le statut ET l'erreur.
+        const constatLe = new Date().toISOString();
+        for (const jf of (figesReprise ?? []) as Array<Record<string, unknown>>) {
+          if (jf.status !== "pending" || !gelSansConstat(jf)) continue;
+          const pfF = { ...((jf.platform_fields ?? {}) as Record<string, unknown>), fige_le: constatLe };
+          const { data: majF } = await userClient.from("cross_post_jobs")
+            .update({ platform_fields: pfF })
+            .eq("id", String(jf.id)).eq("status", "pending").eq("error", String(jf.error ?? ""))
+            .select("id");
+          if ((majF ?? []).length) jf.platform_fields = pfF;
+        }
         const figees = plateformesFigees([...(figesReprise ?? []), ...(figesCanal ?? [])]);
         if (figees.size) {
           const { garde, retenus } = rotationFiges(out, figees);

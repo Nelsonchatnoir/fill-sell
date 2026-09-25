@@ -38,6 +38,11 @@ export function horodatageFige(job) {
   const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   const instants = [];
   if (REPRISE_FIGEE_RE.test(String(job?.error ?? ""))) {
+    // Constat posé par get-pending-jobs au premier poll qui voit le gel : c'est
+    // l'horodatage qui fait foi quand il existe (la fenêtre de travail ne date
+    // que le DÉBUT du traitement, parfois une heure avant la reprise).
+    const constat = ms(pf.fige_le);
+    if (constat != null) return Math.max(constat, ms(pf.pas_de_rouge?.at) ?? 0);
     // L'erreur remplacée par la reprise est archivée à l'instant de la reprise.
     const arch = Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees : [];
     const t = arch.map((e) => ms(e?.le)).filter((x) => x != null);
@@ -62,6 +67,12 @@ export function plateformesFigees(jobs, maintenant = Date.now()) {
     if (t != null && maintenant - t < FIGE_FENETRE_MS && t <= maintenant + 60_000) out.add(String(j.platform));
   }
   return out;
+}
+
+/** Un job qui porte la preuve d'un gel mais pas encore son constat daté. */
+export function gelSansConstat(job) {
+  const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  return REPRISE_FIGEE_RE.test(String(job?.error ?? "")) && ms(pf.fige_le) == null;
 }
 
 const exempt = (j) => j?.action === "republish" && j?.platform_fields?.republish_step === "deleted";
