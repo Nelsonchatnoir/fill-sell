@@ -226,7 +226,11 @@ export function champsServeurSaisissables(job) {
 // Règle du 09/09 : un bouton « Compléter » qui n'ouvre rien n'existe pas.
 export function needsUserOuvrable(job) {
   if (job?.status !== 'needs_user') return false;
-  return Boolean(job?.platform_fields?.needsUserField) || champsServeurSaisissables(job).length > 0;
+  // (25/09) Des champs demandés ensemble SANS champ principal ouvrent aussi la
+  // modale : elle prend le premier comme principal — jamais une question sans écran.
+  const ensemble = Array.isArray(job?.platform_fields?.needsUserFields)
+    && job.platform_fields.needsUserFields.some((c) => c && c.field_key && c.field_label);
+  return Boolean(job?.platform_fields?.needsUserField) || ensemble || champsServeurSaisissables(job).length > 0;
 }
 // ── Republication arrêtée parce que l'ANNONCE N'EXISTE PLUS (2026-09-12) ────
 // 404 constaté à la CAPTURE, avant toute suppression (verdict 'disparue' posé

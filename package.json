@@ -82,7 +82,11 @@
     "selftest:vinted-colis-derniere-passe": "node scripts/vinted-colis-derniere-passe-selftest.mjs",
     "selftest:dictee": "node --import ./scripts/loader-ext.mjs scripts/dictee-selftest.mjs",
     "selftest:doublons": "node --import ./scripts/loader-ext.mjs scripts/doublons-selftest.mjs",
-    "selftest:fourre-tout": "node --import ./scripts/loader-ext.mjs scripts/fourre-tout-selftest.mjs"
+    "selftest:fourre-tout": "node --import ./scripts/loader-ext.mjs scripts/fourre-tout-selftest.mjs",
+    "selftest:republication-hors-ligne": "node scripts/republication-hors-ligne-selftest.mjs",
+    "selftest:rotation-figes": "node scripts/rotation-figes-selftest.mjs",
+    "selftest:champs-demandes": "node --import ./scripts/loader-ext.mjs scripts/champs-demandes-selftest.mjs",
+    "selftest:lbc-saisie-longue": "node scripts/lbc-saisie-longue-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

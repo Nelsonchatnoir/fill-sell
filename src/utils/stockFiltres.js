@@ -37,6 +37,7 @@
 
 import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
 import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
+import { libellesChampsDemandes } from './etatsPublication';
 
 // Les plateformes que le stock sait TRAITER — c'est une liste de DONNÉES : elle
 // décide quels jobs entrent dans l'état d'un article (indexEtatStock) et quels
@@ -151,15 +152,16 @@ export function champManquant(job, lang = 'fr') {
   const pf = job?.platform_fields ?? {};
   // Plusieurs champs demandés ensemble (needsUserFields, 2026-09-17 soir) :
   // on les nomme tous — « l'état et Poids du colis » — jamais le premier seul.
-  const plusieurs = Array.isArray(pf.needsUserFields) && pf.needsUserFields.length > 1 ? pf.needsUserFields : null;
-  if (plusieurs) {
-    const mots = plusieurs.map((c) => {
-      const b = String(c?.field_label ?? c?.field_key ?? '').replace(/\*\s*$/, '').trim();
-      if (!b) return null;
+  // Le champ PRINCIPAL compte aussi (25/09, Jocabroc) : eBay ne le répète pas
+  // dans needsUserFields, et « Largeur et Longueur » taisait « Hauteur ».
+  const libelles = libellesChampsDemandes(pf);
+  if (libelles.length > 1) {
+    const mots = libelles.map((b) => {
       const fr = CHAMPS_FR[cleNue(b)] ?? b;
       return lang === 'en' ? (CHAMPS_FR_EN[fr] ?? fr) : fr;
-    }).filter(Boolean);
-    if (mots.length) return mots.join(lang === 'en' ? ' and ' : ' et ');
+    });
+    const et = lang === 'en' ? ' and ' : ' et ';
+    return mots.length > 2 ? mots.slice(0, -1).join(', ') + et + mots[mots.length - 1] : mots.join(et);
   }
   const brut = pf.needsUserField?.field_label
     ?? pf.needsUserField?.field_key

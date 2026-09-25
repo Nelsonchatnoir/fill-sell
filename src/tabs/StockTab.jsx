@@ -98,6 +98,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
 import { searchMatch } from '../utils/recherche';
 import { attributsDepuisVinted } from '../utils/vintedAttributs';
+import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
@@ -1001,9 +1002,32 @@ function cleFicheDepuisChamp(platform, key) {
   return null;
 }
 
+// Une case de saisie libre suivie de son unité (dimensions eBay, 25/09 —
+// cf. utils/champsDimension.js). 16 px : en dessous, Safari iOS zoome.
+function ChampAvecUnite({ value, unite, onChange, lang }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={nombreSansUnite(value, unite)}
+        onChange={ev => onChange(ev.target.value)}
+        placeholder={lang === "en" ? "e.g. 30" : "ex. 30"}
+        style={{ flex:1, minWidth:0, padding:"9px 10px", borderRadius:12, border:`1px solid ${NU_T.border}`, fontSize:16, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:NU_T.chip, color:NU_T.ink }}
+      />
+      <span style={{ fontSize:15, fontWeight:600, color:NU_T.ink }}>{unite}</span>
+    </div>
+  );
+}
+
 function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
   useFermetureEchap(onClose);
-  const f = job.platform_fields?.needsUserField ?? null;
+  // Le champ principal ; à défaut, le premier des champs demandés ensemble
+  // (25/09) — une liste sans champ principal n'avait AUCUN écran.
+  const f = job.platform_fields?.needsUserField
+    ?? (Array.isArray(job.platform_fields?.needsUserFields)
+      ? (job.platform_fields.needsUserFields.find((c) => c && c.field_key && c.field_label) ?? null)
+      : null);
   const [value, setValue] = useState("");
   // Sortie propre offerte ici aussi (2026-09-20) : elle se demande, puis se
   // confirme — comme dans la modale d'echec, et pour la meme raison.
@@ -1247,6 +1271,9 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
     ? listeCandidatsDabord(allowedBrut, deduction.candidats)
     : allowedBrut;
   const valeurProposee = deduction?.valeur ?? null;
+  // Dimension eBay (Hauteur, Largeur, Longueur…) : saisie libre AVEC l'unité.
+  const uniteF = f ? uniteDuChamp(job.platform, f.field_key, f.field_label, allowed) : null;
+  const uniteSup = (c) => uniteDuChamp(job.platform, c.field_key, c.field_label, c.allowed_values);
   const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
 
   // ── RÈGLE DU 19/07 RENDUE INCONTOURNABLE (2026-07-22) ──────────────────────
@@ -1296,7 +1323,8 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
     if (saving) return;
     // La valeur pré-choisie depuis l'annonce vaut réponse tant que la personne
     // n'en a pas choisi une autre.
-    const v = String(valeur ?? (value || valeurProposee || "")).trim();
+    // Une dimension eBay part avec son unité (« 30 » → « 30 cm »).
+    const v = valeurAvecUnite(String(valeur ?? (value || valeurProposee || "")).trim(), uniteF);
     if (f && !v && !sansValeur) return;
     if (descriptionManquante) return;
     if (!sansValeur && champsSupManquants) return;
@@ -1339,7 +1367,7 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
       // « tranché par l'utilisateur », dans la MÊME écriture.
       if (!sansValeur) {
         for (const c of champsSup) {
-          const vSup = String(valeursSup[c.field_key] ?? "").trim();
+          const vSup = valeurAvecUnite(String(valeursSup[c.field_key] ?? "").trim(), uniteSup(c));
           if (!vSup) continue;
           const cible = (c.target && c.target.key) ? c.target : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: c.field_key };
           if (cible.root) newPf[cible.root] = { ...(newPf[cible.root] ?? pf[cible.root] ?? {}), [cible.key]: vSup };
@@ -1398,7 +1426,7 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
           if (k && val) attributs[k] = { v: val, source: "manuel", at: maintenant };
         };
         if (target) poser(target.key, v);
-        for (const c of champsSup) poser((c.target && c.target.key) ? c.target.key : c.field_key, valeursSup[c.field_key]);
+        for (const c of champsSup) poser((c.target && c.target.key) ? c.target.key : c.field_key, valeurAvecUnite(String(valeursSup[c.field_key] ?? "").trim(), uniteSup(c)));
         if (Object.keys(attributs).length) {
           try {
             await supabase.from("inventaire").update({ attributs }).eq("id", job.inventaire_id);
@@ -1480,6 +1508,9 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
             </div>
           ) : (
           <>
+          {uniteF ? (
+            <ChampAvecUnite value={value || valeurProposee || ""} unite={uniteF} onChange={setValue} lang={lang} />
+          ) : (
           <AspectValueInput
             value={value || valeurProposee || ""}
             allowedValues={allowed ?? []}
@@ -1488,6 +1519,7 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
             T={NU_T}
             idBase={`nu-${job.id}`}
           />
+          )}
           {valeurProposee && !value && (
             <div style={{ fontSize:12, lineHeight:1.45, color:"#1B6E62", marginTop:6 }}>
               {lang === "en"
@@ -1506,10 +1538,22 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
                 {c.field_label}
               </div>
               <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:8 }}>
-                {lang === "en"
-                  ? `${platformLabel} also requires this field. Pick a value — everything leaves in one go.`
-                  : `${platformLabel} exige aussi ce champ. Choisis une valeur — tout repart en un seul geste.`}
+                {uniteSup(c)
+                  ? (lang === "en"
+                    ? `${platformLabel} also requires this measurement. Type it — everything leaves in one go.`
+                    : `${platformLabel} exige aussi cette mesure. Indique-la — tout repart en un seul geste.`)
+                  : (lang === "en"
+                    ? `${platformLabel} also requires this field. Pick a value — everything leaves in one go.`
+                    : `${platformLabel} exige aussi ce champ. Choisis une valeur — tout repart en un seul geste.`)}
               </div>
+              {uniteSup(c) ? (
+                <ChampAvecUnite
+                  value={valeursSup[c.field_key] ?? ""}
+                  unite={uniteSup(c)}
+                  onChange={(v) => setValeursSup((prev) => ({ ...prev, [c.field_key]: v }))}
+                  lang={lang}
+                />
+              ) : (
               <AspectValueInput
                 value={valeursSup[c.field_key] ?? ""}
                 allowedValues={liste}
@@ -1518,6 +1562,7 @@ function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
                 T={NU_T}
                 idBase={`nu-${job.id}-${c.field_key}`}
               />
+              )}
             </div>
           );
         })}

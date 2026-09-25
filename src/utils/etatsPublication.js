@@ -27,6 +27,30 @@ const PUBLIE = new Set(["publish", "republish"]);
 const CONNEXION_RE = /^Connexion\s+\S+\s+requise/i;
 const REAUTH_RE = /^REAUTH VENTE eBay/i;
 
+/**
+ * Les libellés de TOUS les champs qu'un job demande : le principal
+ * (needsUserField) ET les autres (needsUserFields), dédoublonnés par clé, dans
+ * l'ordre. (25/09, Jocabroc, eBay « Panier décoratif » : le handler eBay met
+ * « Hauteur » dans needsUserField et « Largeur », « Longueur » dans
+ * needsUserFields — sans répéter le premier, contrairement à Leboncoin. La
+ * liste « à compléter » affichait « Largeur et Longueur », la fiche
+ * « Hauteur » seul : aucun écran ne disait les trois.)
+ */
+export function libellesChampsDemandes(pf) {
+  const out = [];
+  const vus = new Set();
+  const autres = Array.isArray(pf?.needsUserFields) ? pf.needsUserFields : [];
+  for (const c of [pf?.needsUserField, ...autres]) {
+    if (!c || typeof c !== "object") continue;
+    const cle = String(c.field_key ?? c.field_label ?? "").trim();
+    const libelle = String(c.field_label ?? c.field_key ?? "").replace(/\*\s*$/, "").trim();
+    if (!cle || !libelle || vus.has(cle)) continue;
+    vus.add(cle);
+    out.push(libelle);
+  }
+  return out;
+}
+
 /** La nature d'un job needs_user, dans les mots de l'écran. */
 export function natureAttente(job) {
   const pf = job?.platform_fields ?? {};
@@ -36,8 +60,10 @@ export function natureAttente(job) {
   if (source === "ebay_connexion_requise") return { kind: "attente_connexion", motif: "connexion" };
   if (job?.platform === "ebay" && REAUTH_RE.test(err)) return { kind: "attente_connexion", motif: "reauth_ebay" };
   if (source === "connexion" || CONNEXION_RE.test(err)) return { kind: "attente_connexion", motif: "connexion" };
-  const champ = pf.needsUserField?.field_label
-    || (Array.isArray(pf.needsUserFields) && pf.needsUserFields[0]?.field_label)
+  // Tous les champs demandés, nommés ensemble (« Hauteur, Largeur, Longueur ») :
+  // un seul reste exactement le libellé d'avant.
+  const libelles = libellesChampsDemandes(pf);
+  const champ = (libelles.length ? libelles.join(", ") : null)
     || (Array.isArray(pf.champs_a_completer) && pf.champs_a_completer[0])
     || null;
   if (champ) return { kind: "attente_champ", champ: String(champ) };
