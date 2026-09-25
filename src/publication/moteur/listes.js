@@ -264,18 +264,25 @@ export { vintedExigeUneMarque, vintedExigeUneCouleur, valeurUneLettre } from "..
 // rayon plutôt que de répondre « neuf » pour un objet porté.
 // Vrai seulement quand la liste relevée de l'État ne porte QUE des « Neuf… »
 // et que la valeur de l'article n'en fait pas partie.
+const ESTNEUF_RE = /^neuf\b/;
 export function rayonNeufSeulement({ platform, key, value, allowedValues }) {
   if (platform !== "vinted" || key !== "condition") return false;
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
-  if (!vals.length || !vals.every(v => /^neuf/.test(texteComparable(v)))) return false;
+  // (25/09) Un « \b » était écrit comme un CARACTÈRE retour arrière (U+0008)
+  // dans cette regex : elle ne reconnaissait JAMAIS « Neuf avec étiquette », et
+  // la détection était morte depuis le 24/09 (eslint no-control-regex le disait).
+  if (!vals.length || !vals.every(v => ESTNEUF_RE.test(texteComparable(v)))) return false;
   const v = String(value ?? "").trim();
   if (!v) return false;
+  // Un article DÉJÀ neuf (« Neuf sans étiquette ») n'est pas un article
+  // d'occasion : il garde la question, sa réponse n'est pas un mensonge.
+  if (ESTNEUF_RE.test(texteComparable(v))) return false;
   return !vals.some(a => normAspectVal(a) === normAspectVal(v));
 }
 
 /** La phrase de la carte du rayon : changer de rayon, jamais « choisis Neuf ». */
 export function messageRayonNeuf({ valeur }, lang = "fr") {
   return lang === "en"
-    ? `This Vinted category only accepts new items, and this item is “${valeur}”. Pick another category with “Change” above — second-hand items sell on Vinted in the right category.`
-    : `Ce rayon Vinted n'accepte que des articles neufs, et ton article est « ${valeur} ». Choisis un autre rayon avec « Changer » ci-dessus : l'occasion se vend sur Vinted, dans le bon rayon.`;
+    ? `This Vinted category only accepts new items, and this item is “${valeur}”. Pick another category with “Change” if the item fits one; otherwise Vinted won't take it second-hand, and it will go to your other platforms.`
+    : `Ce rayon Vinted n'accepte que des articles neufs, et ton article est « ${valeur} ». Choisis un autre rayon avec « Changer » si l'objet y a sa place ; sinon Vinted ne le prendra pas d'occasion, et il partira sur tes autres plateformes.`;
 }

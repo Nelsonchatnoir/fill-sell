@@ -288,10 +288,15 @@ export function classerChamps(lignes, pf, platform, { regle = 'classique', chemi
     // Désormais la carte demande exactement ce que le moteur retient : une
     // valeur hors d'une liste QUI FAIT FOI, sans rapprochement sûr (cf.
     // publication/moteur/listes.js). L'ancien stepper garde l'ancien geste.
-    // ── RAYON « NEUF SEULEMENT » (24/09) : la question reste, la carte dit
-    // en plus de changer de rayon (casque de solene.mantero). Jamais d'exclusion.
+    // ── RAYON « NEUF SEULEMENT » (24/09) : la carte dit de changer de rayon
+    // (casque de solene.mantero). Jamais d'exclusion de la plateforme d'office.
+    // (25/09, Nico) Et la question « État » n'est PLUS posée à côté : sa seule
+    // réponse (« Neuf ») serait un mensonge sur un article d'occasion. La
+    // question, c'est le rayon — ou Vinted ne part pas, message à l'appui.
+    // (La détection était morte jusqu'au 25/09 : regex cassée dans listes.js.)
     if (rayonNeufSeulement({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values })) {
       limites.push({ ...entree, motif: 'rayon_neuf' });
+      continue;
     }
     if (horsGrille && regle === 'nouvelle') {
       const verdict = jugerValeurContreListe({ platform, key: l.field_key, value: valeur, allowedValues: l.allowed_values, cheminCategorie });

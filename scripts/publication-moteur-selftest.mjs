@@ -399,5 +399,49 @@ console.log("\n[19] le cas Primark, de bout en bout, dans le moteur");
   ok("carte (règle classique, ancien stepper) : les trois « hors grille » comme le 20/09, inchangé", eq(carteClassique.questions.map(x => x.cle).sort(), ["Format du colis", "Marque", "Taille"]), JSON.stringify(carteClassique.questions.map(x => x.cle)));
 }
 
+console.log("\n[RN] Rayon Vinted « neuf seulement » (25/09) — jamais « Neuf » sur un article d'occasion");
+{
+  const neufSeul = ["Neuf avec étiquette"];
+  const neufDeux = ["Neuf avec étiquette", "Neuf sans étiquette"];
+  const cinqEtats = ["Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant"];
+  // Le cœur du bug du 24/09 : la regex portait un CARACTÈRE retour arrière
+  // (U+0008) à la place de « \b » — elle ne reconnaissait jamais « Neuf ».
+  const src = readFileSync(join(ROOT, "src/publication/moteur/listes.js"), "utf8");
+  ok("listes.js ne contient AUCUN caractère de contrôle U+0008", !src.includes(String.fromCharCode(8)));
+  const ujs = readFileSync(join(ROOT, "supabase/functions/update-job-status/index.ts"), "utf8");
+  ok("update-job-status ne contient AUCUN caractère de contrôle U+0008", !ujs.includes(String.fromCharCode(8)));
+  const rn = (value, allowedValues, platform = "vinted", key = "condition") => L.rayonNeufSeulement({ platform, key, value, allowedValues });
+  ok("« Bon état » face à [Neuf avec étiquette] → rayon neuf seulement", rn("Bon état", neufSeul) === true);
+  ok("« Très bon état » face à [Neuf avec / sans étiquette] → rayon neuf seulement", rn("Très bon état", neufDeux) === true);
+  ok("« Neuf sans étiquette » face à [Neuf avec étiquette] → PAS un article d'occasion : la question reste", rn("Neuf sans étiquette", neufSeul) === false);
+  ok("« Neuf avec étiquette » dans la liste → rien à dire", rn("Neuf avec étiquette", neufDeux) === false);
+  ok("liste à cinq états (rayon ordinaire) → jamais neuf seulement", rn("Bon état", cinqEtats) === false);
+  ok("état inconnu → rien (la question classique se pose)", rn("", neufSeul) === false && rn(null, neufSeul) === false);
+  ok("liste vide → rien (un relevé absent n'invente rien)", rn("Bon état", []) === false && rn("Bon état", null) === false);
+  ok("autre plateforme / autre champ → jamais", rn("Bon état", neufSeul, "beebs", "État") === false && rn("Bon état", neufSeul, "vinted", "size") === false);
+  ok("le message dit de changer de rayon, jamais de choisir « Neuf »", /Changer/.test(L.messageRayonNeuf({ valeur: "Bon état" })) && !/choisis\s+«\s*Neuf/i.test(L.messageRayonNeuf({ valeur: "Bon état" })));
+  // La CARTE du rayon : plus de question « État » à côté (sa seule réponse
+  // serait « Neuf ») — une limite, avec le message.
+  const cat = [
+    { field_key: "condition", field_label: "État", required: true, input_type: "list", allowed_values: neufSeul },
+    { field_key: "brand", field_label: "Marque", required: true, input_type: "list", allowed_values: [] },
+  ];
+  const carteOcc = D.classerChamps(cat, { etat: "Bon état", marque: "Petzl" }, "vinted", { regle: "nouvelle" });
+  ok("carte : article d'occasion → aucune question « État », une limite « rayon_neuf »",
+    !carteOcc.questions.some(x => x.cle === "condition") && carteOcc.limites.length === 1 && carteOcc.limites[0].motif === "rayon_neuf",
+    JSON.stringify({ q: carteOcc.questions.map(x => x.cle), l: carteOcc.limites.map(x => x.cle) }));
+  const carteNeuf = D.classerChamps(cat, { etat: "Neuf sans étiquette", marque: "Petzl" }, "vinted", { regle: "nouvelle" });
+  ok("carte : article neuf → pas de limite", carteNeuf.limites.length === 0, JSON.stringify(carteNeuf.limites));
+  // L'écran Confirmer : Vinted « attend : Rayon », jamais « État ».
+  const st = { vinted: [{ key: "condition", label: "Rayon", state: "invalid", value: "Bon état", allowedValues: [], neufSeulement: true, blocking: true }] };
+  ok("la ligne neuf seulement bloque Vinted", eq(R.champsBloquantsParPlateforme(st), { vinted: ["Rayon"] }), JSON.stringify(R.champsBloquantsParPlateforme(st)));
+  const lignes = R.questionsParPlateforme({ selected: new Set(["vinted", "leboncoin"]), genericRequiredStatus: st, libellePartage: {}, genericFieldToSharedKey: C.genericFieldToSharedKey });
+  ok("écran Confirmer : Vinted attend « Rayon », Leboncoin rien", eq(lignes, { vinted: ["Rayon"] }), JSON.stringify(lignes));
+  const q = R.questionsAPoser({ genericRequiredStatus: st, genericFieldToSharedKey: C.genericFieldToSharedKey, SHARED_PROPAGATION: C.SHARED_PROPAGATION });
+  ok("bloc de questions : une entrée, jamais une « valeur unique » à confirmer", q.redGenericAspects.length === 1 && q.genSeule(q.redGenericAspects[0]) === false);
+  const ex = R.calculerExclusions({ selected: new Set(["vinted", "leboncoin"]), platformSupport: {}, platformListings: { platforms: { vinted: {}, leboncoin: {} } }, champsManquantsParPf: R.champsBloquantsParPlateforme(st) });
+  ok("« Publier » emmène Leboncoin, Vinted nommée avec son motif", eq(ex.aPublier, ["leboncoin"]), JSON.stringify(ex));
+}
+
 console.log(ko ? `\n${ko} KO` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);

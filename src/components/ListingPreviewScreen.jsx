@@ -110,7 +110,7 @@ import {
 // jugent une valeur contre une liste avec le même code que cet écran.
 import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
-  vintedExigeUneCouleur, valeurUneLettre,
+  vintedExigeUneCouleur, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
 } from "../publication/moteur/listes";
 import { VINTED_COLORS } from "../utils/vintedColors";
@@ -7613,6 +7613,22 @@ export default function ListingPreviewScreen({
         }
         const src = String(genericKnownSource(platform, key, pf) ?? "").trim();
         if (src) {
+          // ── RAYON VINTED « NEUF SEULEMENT » FACE À UN ARTICLE D'OCCASION (25/09) ──
+          // Beauté, soins, sous-vêtements (règle d'hygiène de Vinted), casques de
+          // sécurité : la liste « État » du rayon ne porte QUE du neuf. Proposer
+          // « Neuf avec étiquette » à un article « Bon état », c'est lui faire
+          // écrire un mensonge (Nico, 25/09 : « ne jamais forcer neuf sur un
+          // article d'occasion »). Ce n'est donc pas une question d'État : c'est
+          // le RAYON qui est en cause. La ligne n'offre aucune valeur, bloque
+          // Vinted pour ce clic (les autres plateformes partent) et dit quoi
+          // faire : changer de rayon, ou laisser Vinted de côté.
+          if (variante === "nouvelle" && rayonNeufSeulement({ platform, key, value: src, allowedValues })) {
+            return {
+              key, label: lang === "en" ? "Category" : "Rayon", state: "invalid", value: src, allowedValues: [],
+              neufSeulement: true, blocking: true,
+              message: messageRayonNeuf({ valeur: src }, lang === "en" ? "en" : "fr"),
+            };
+          }
           // Valeur DÉDIÉE validée contre la liste fermée du catalogue quand
           // on en a une (2026-07-19, cas réel Medik8 : Vinted Beauté n'accepte
           // qu'un État « Neuf avec étiquette » — « Très bon état » partait

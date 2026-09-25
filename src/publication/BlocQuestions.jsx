@@ -170,6 +170,23 @@ export default function BlocQuestions({ m }) {
         })}
 
         {q.redGenericAspects.map(({ gp, a }) => {
+          // (25/09) Rayon Vinted « neuf seulement » face à un article d'occasion :
+          // aucune valeur à choisir (la seule serait « Neuf », un mensonge) —
+          // le message dit de changer de rayon, ou de laisser Vinted de côté.
+          if (a.neufSeulement) return (
+            <div key={`g:${gp}:${a.key}`} className="fsn-q fsn-q--bloque" style={{ gridColumn: "1 / -1" }}>
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{a.label}</div><Puce ton="geste">{NOM(gp)}</Puce></div>
+              <div className="fsn-q-why">{a.message}</div>
+              {m.setSelected && (
+                <div className="fsn-btn-row">
+                  <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm"
+                    onClick={() => m.setSelected(prev => { const s = new Set(prev); s.delete(gp); return s; })}>
+                    {en ? `Don't publish on ${NOM(gp)}` : `Ne pas publier sur ${NOM(gp)}`}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
           const seule = q.genSeule({ a }) ? a.allowedValues[0] : null;
           // (chantier du 24/09) La réponse écrit la copie de la plateforme, et
           // se note pour la fiche quand le champ est un champ de l'article

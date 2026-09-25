@@ -2716,13 +2716,19 @@ serve(async (req) => {
           ? pfL["needsUserField"] as Record<string, unknown> : null;
         const acceptees = Array.isArray(nuf?.["allowed_values"])
           ? (nuf!["allowed_values"] as unknown[]).map((v) => String(v ?? "").trim()).filter(Boolean) : [];
-        const neuf = (s: string) => /^neuf/i.test(s.normalize("NFD").replace(/[̀-ͯ]/g, ""));
-        const comparable = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/s+/g, " ").trim();
+        const neuf = (s: string) => /^neuf\b/i.test(s.normalize("NFD").replace(/[̀-ͯ]/g, ""));
+        // (25/09) `\b` et `\s` avaient perdu leur antislash à l'écriture (le
+        // premier en caractère U+0008) : la reconnaissance « neuf seulement »
+        // ne jouait JAMAIS, et une extension ≤ 0.6.65 laissait la question
+        // « État » dont la seule réponse (« Neuf ») était un mensonge.
+        const comparable = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
         if (nuf && String(nuf["field_key"] ?? "") === "condition" && acceptees.length && acceptees.every(neuf)) {
           const { data: jL } = await userClient.from("cross_post_jobs").select("platform, platform_fields").eq("id", jobId).maybeSingle();
           const pfJ = (jL?.platform_fields ?? {}) as Record<string, unknown>;
           const etatArticle = String(pfL["etat"] ?? pfJ["etat"] ?? "").trim();
-          if (jL?.platform === "vinted" && etatArticle && !acceptees.some((a) => comparable(a) === comparable(etatArticle))) {
+          // Un article DÉJÀ neuf (« Neuf sans étiquette ») garde la question « État » :
+          // sa réponse n'est pas un mensonge. Seul l'article d'occasion change de rayon.
+          if (jL?.platform === "vinted" && etatArticle && !neuf(etatArticle) && !acceptees.some((a) => comparable(a) === comparable(etatArticle))) {
             const chemin = Array.isArray(pfL["categoryPath"] ?? pfJ["categoryPath"])
               ? ((pfL["categoryPath"] ?? pfJ["categoryPath"]) as unknown[]).map(String).join(" > ") : "";
             if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) erreurTechniqueBrute = body.error;
