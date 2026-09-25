@@ -1088,6 +1088,9 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
   const warnings = [];
+  // (0.6.68) Une republication REJOUE l'annonce d'origine : ses critères sont
+  // ceux que la personne avait choisis, « Autre » compris (cf. fillCriterionSafe).
+  REJOUE_ANNONCE_D_ORIGINE = fields.republish_recreation === true || fields.republish_step != null;
   // Champs OBLIGATOIRES (au sens du code existant, pas d'une liste inventée)
   // qu'on n'a pas su remplir. Deux seulement sont documentés comme bloquants
   // par des dry-runs réels : l'univers du rayon Mode ("Veuillez choisir un
@@ -1635,6 +1638,28 @@ async function fillListingForm(job) {
         success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
         error: "Prix non vérifiable au moment du dépôt (champ prix sur une étape antérieure, jamais posé/relu non nul) — dépôt annulé pour éviter une annonce sans prix.",
       };
+    }
+  }
+
+  // ── LA DESCRIPTION, RELUE JUSTE AVANT LE DÉPÔT (0.6.68) ───────────────────
+  // Le formulaire PRO propose une description générée par Leboncoin (bandeau
+  // « IA ») : si elle arrive APRÈS notre saisie, c'est elle qui partirait. La
+  // description de la fiche est conservée telle quelle : sur un formulaire où
+  // le champ est encore là (formulaire PRO d'une seule page), on la relit et
+  // on la repose si elle a changé. Jamais bloquant — un écart restant (espaces
+  // normalisés par Leboncoin…) part en diagnostic, pas en échec.
+  if (job.description) {
+    const zone = document.querySelector("textarea#body, #body");
+    const norm = (t) => String(t ?? "").replace(/\r\n/g, "\n").trim();
+    if (zone && "value" in zone && norm(zone.value) !== norm(job.description)) {
+      DIAGNOSTICS_SAISIE.length = 0;
+      await typeInto(zone, job.description);
+      for (const d of DIAGNOSTICS_SAISIE.splice(0)) warnings.push(`description (avant dépôt) — ${d}`);
+      zone.blur();
+      warnings.push(norm(zone.value) === norm(job.description)
+        ? "description : changée sur la page avant le dépôt — reposée à l'identique"
+        : `description : toujours différente avant le dépôt (${norm(zone.value).length}/${norm(job.description).length} car.)`);
+      await humanPause();
     }
   }
 
@@ -3708,6 +3733,9 @@ function contexteCriteresLbc(inputEnCours) {
 // vérité à l'utilisateur : « la valeur X n'a pas été reconnue », et non
 // « ce champ est requis » alors qu'il l'avait rempli. Vidé à chaque job.
 const VALEURS_NON_RECONNUES = {};
+// (0.6.68) Vrai pendant le remplissage d'une REPUBLICATION : l'annonce d'origine
+// fait foi, y compris quand elle dit « Autre » (posé par fillListingForm).
+let REJOUE_ANNONCE_D_ORIGINE = false;
 
 async function releverOptionsCritere(labelSelector) {
   try {
@@ -3812,7 +3840,13 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // pré-rempli est lui-même générique. La valeur du job n'est pas touchée ;
     // le warning dit ce qui a été conservé et pourquoi. Le chemin nominal
     // (notre valeur précise, présente dans la liste) est inchangé.
-    if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled)) {
+    // ⛔ SAUF SUR UNE REPUBLICATION (0.6.68, Les Petites Fioles, fb358c75) : le
+    // « Autre » vient alors de l'annonce d'origine, c'est le choix de la
+    // personne. Garder l'« Objet décoratif » deviné par Leboncoin (Univers)
+    // faisait disparaître le Produit « Autre » — seule option de l'Univers
+    // « Autre » — et la recréation, annonce déjà retirée, butait sur une
+    // question. On rejoue l'annonce à l'identique, comme sa localisation.
+    if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled) && !REJOUE_ANNONCE_D_ORIGINE) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est un repli générique, jamais mieux qu'une valeur précise posée par Leboncoin`;
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);

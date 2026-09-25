@@ -54,5 +54,18 @@ console.log("2. Un texte long est posé en une fois, borné, dans le bon champ")
 console.log("3. Le diagnostic part dans les warnings du job");
 ok(/for \(const d of DIAGNOSTICS_SAISIE\.splice\(0\)\) warnings\.push\(`description — \$\{d\}`\);/.test(src), "DIAGNOSTICS_SAISIE versé dans les warnings à la description");
 
+console.log("4. Une republication rejoue l'annonce d'origine, « Autre » compris");
+ok(/REJOUE_ANNONCE_D_ORIGINE = fields\.republish_recreation === true \|\| fields\.republish_step != null;/.test(src), "drapeau posé à l'entrée du remplissage");
+ok(/estValeurGenerique\(rawValue\) && !estValeurGenerique\(prefilled\) && !REJOUE_ANNONCE_D_ORIGINE\)/.test(src), "la règle du repli générique cède sur une republication");
+
+console.log("5. La description est relue juste avant le dépôt, sans jamais bloquer");
+{
+  const i = src.indexOf("LA DESCRIPTION, RELUE JUSTE AVANT LE DÉPÔT");
+  const j = src.indexOf("🚀 LIVE — Continuer final");
+  ok(i > 0 && j > i, "relecture placée avant le Continuer final");
+  const bloc = src.slice(i, j);
+  ok(/typeInto\(zone, job\.description\)/.test(bloc) && !/return \{/.test(bloc), "reposée si elle a changé, jamais un échec");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");
 process.exit(ko ? 1 : 0);
