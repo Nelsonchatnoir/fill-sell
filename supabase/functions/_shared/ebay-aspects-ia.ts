@@ -73,6 +73,19 @@ function ligneDemande(a: AspectDemande): string {
   return `- "${a.name}" — texte libre, uniquement si lisible ou strictement déductible du contexte, sinon null`;
 }
 
+// (25/09) Les aspects qui portent une MESURE : une valeur n'y vaut que si ses
+// nombres se lisent dans le contexte (cf. resoudreAspectsIA).
+export const ASPECT_MESURE_RE = /^(hauteur|largeur|longueur|profondeur|diam[eè]tre|[ée]paisseur|dimensions?|volume|contenance|tour de )/i;
+export function mesureLueDansLeContexte(valeur: string, contexteTexte: string): boolean {
+  const nombres = String(valeur ?? "").match(/\d+(?:[.,]\d+)?/g) ?? [];
+  if (!nombres.length) return false; // une mesure sans nombre n'est pas une mesure lue
+  const texte = String(contexteTexte ?? "").replace(/(\d),(\d)/g, "$1.$2");
+  return nombres.every((n) => {
+    const motif = n.replace(",", ".").replace(/\./g, "\\.");
+    return new RegExp(`(^|[^0-9.])${motif}([^0-9]|$)`).test(texte);
+  });
+}
+
 export async function resoudreAspectsIA(
   demandes: AspectDemande[],
   contexte: ContexteArticle,
@@ -126,6 +139,19 @@ export async function resoudreAspectsIA(
     if (!d) continue; // jamais une clé non demandée
     const s = typeof v === "string" ? v.trim().slice(0, VALEUR_MAX) : "";
     if (!s || s.toLowerCase() === "null") continue;
+    // ── UNE MESURE NE S'INVENTE PAS : LA GARDE, PAS SEULEMENT LA CONSIGNE ──
+    // (25/09, audit du check de nuit) Voie API eBay, job 97807314 : Hauteur
+    // « 9" », Largeur « 20 cm », Longueur « 15 cm » posées par l'IA — les
+    // premières valeurs SUGGÉRÉES par eBay, aucune mesure dans le texte —
+    // l'annonce est partie en ligne avec. La consigne le lui interdisait
+    // déjà ; elle n'était pas une garde. Une mesure n'est retenue que si
+    // CHACUN de ses nombres figure dans le contexte (titre, description,
+    // attributs lus) ; sinon rien n'est posé et la question revient à la
+    // personne — jamais une valeur inventée.
+    if (ASPECT_MESURE_RE.test(nom) && !mesureLueDansLeContexte(s, ctx)) {
+      refuses.push({ name: nom, valeur: s, motif: "mesure absente du contexte" });
+      continue;
+    }
     const liste = d.allowedValues ?? [];
     const recale = liste.length ? valeurDeListeCorrespondante(s, liste) : null;
     if (d.mode === "SELECTION_ONLY") {
