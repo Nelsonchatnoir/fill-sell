@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-25T07:49:48Z'; // recale b1e90b2 (0.6.67 : format du colis Vinted reposé en dernier geste avant le clic sur une républication, prix relu après)
+export const EXTENSION_LAST_COMMIT = '2026-09-25T13:39:56Z'; // recale e41bbff (0.6.68 : description longue Leboncoin posée sans faire expirer le remplissage)
+// Historique de la valeur precedente : '2026-09-25T07:49:48Z' — recale b1e90b2 (0.6.67 : format du colis Vinted reposé en dernier geste). UTC VRAI lu par EPOCH (%ct 1790343596). Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : ni la 0.6.67 (en examen) ni la 0.6.68 ne sont encore publiées.
 // Historique de la valeur precedente : '2026-09-25T06:02:29Z' — recale 3c6489e (0.6.67 : 401 de jeton périmé rejoué une fois ; relevé gardé éveillé entre les tours du rattachement). UTC VRAI lu par EPOCH. Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : la 0.6.67 n'est pas encore téléversée.
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
