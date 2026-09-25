@@ -1262,10 +1262,28 @@ serve(async (req) => {
     const CANAL_COUPE_PREFIXE_RE = /canal coupé pendant la republication\s*:/i;
     const CANAL_COUPE_CHROME_RE =
       /Receiving end does not exist|A listener indicated an asynchronous response by returning true, but the message channel closed/i;
+    // ── ET LE SILENCE DU CONTENT SCRIPT, AU MÊME ENDROIT (2026-09-25) ────────
+    // Deborah Seghir (Premium, Edge) : 7 republications Vinted, 14 essais de
+    // 13:12Z à 16:19Z, chacun processing → needs_user 5 min 08 s plus tard —
+    // la borne de 300 s de sendMessageToTabOnce (« Timeout: pas de réponse du
+    // content script »). Étape restée 'captured', aucun deleted_at, les 7
+    // originaux EN LIGNE (relevés 16:39/16:50, pages publiques 200) : rien
+    // n'avait été touché, et on lui demandait pourtant « relance quand tu
+    // veux ». Même verdict que le canal coupé — un accident de l'ordinateur,
+    // pas de l'annonce — avec UNE différence : un script muet peut encore
+    // tourner. D'où la reprise ESPACÉE (TIMEOUT_REPRISE_MIN) plutôt
+    // qu'immédiate ; la reprise rejoue le pré-vol entier (état réel relu,
+    // capture re-vérifiée) avant tout retrait, et le garde anti-doublon de la
+    // recréation Vinted (recreation_tentee, dressing relu) reste en place.
+    // Même compteur, même plafond : au-delà, le needs_user passe tel quel.
+    const CANAL_COUPE_TIMEOUT_RE = /Timeout: pas de réponse du content script/i;
+    const TIMEOUT_REPRISE_MIN = 30;
     const MAX_CANAL_COUPE_REPRISES = 3;
     let pfCanalCoupe: Record<string, unknown> | null = null;
+    const canalCoupeParTimeout = typeof body.error === "string" && CANAL_COUPE_TIMEOUT_RE.test(body.error);
     if (statutEffectif === "needs_user" && typeof body.error === "string" &&
-        CANAL_COUPE_PREFIXE_RE.test(body.error) && CANAL_COUPE_CHROME_RE.test(body.error)) {
+        CANAL_COUPE_PREFIXE_RE.test(body.error) &&
+        (CANAL_COUPE_CHROME_RE.test(body.error) || canalCoupeParTimeout)) {
       try {
         const { data: jrow } = await userClient
           .from("cross_post_jobs")
@@ -1302,16 +1320,23 @@ serve(async (req) => {
                 motif: body.error.slice(0, 300),
                 pose_par: "update-job-status (canal coupé à l'étape captured = reprise)",
               },
+              // Script muet : il peut encore tourner — on le laisse finir.
+              ...(canalCoupeParTimeout
+                ? { next_action_after: new Date(Date.now() + TIMEOUT_REPRISE_MIN * 60_000).toISOString() }
+                : {}),
             };
             statutEffectif = "pending";
             // Formulation (2026-09-11, audit des messages) : sans « pont »,
             // sans compteur, et sans affirmer « intacte » — la reprise
             // re-vérifie l'annonce avant tout geste, c'est ça qu'on dit.
-            messageEffectif =
-              "La communication avec l'onglet Vinted s'est interrompue pendant la republication. " +
-              "Elle reprend toute seule au prochain passage de l'extension, après vérification de l'état de ton annonce — " +
-              "rien à faire de ton côté.";
-            raisonRequalif = `canal coupé à l'étape captured, reprise ${reprise}/${MAX_CANAL_COUPE_REPRISES}`;
+            messageEffectif = canalCoupeParTimeout
+              ? "L'onglet Vinted n'a plus répondu pendant la republication, avant tout retrait. " +
+                `Elle reprend toute seule dans ${TIMEOUT_REPRISE_MIN} minutes, après vérification de l'état de ton annonce — ` +
+                "rien à faire de ton côté."
+              : "La communication avec l'onglet Vinted s'est interrompue pendant la republication. " +
+                "Elle reprend toute seule au prochain passage de l'extension, après vérification de l'état de ton annonce — " +
+                "rien à faire de ton côté.";
+            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet (timeout)" : "canal coupé"} à l'étape captured, reprise ${reprise}/${MAX_CANAL_COUPE_REPRISES}`;
           } else {
             console.log(
               `[update-job-status] userId=${user.id} job=${jobId} — canal coupé à l'étape captured : ` +
@@ -1323,6 +1348,101 @@ serve(async (req) => {
         // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
         console.error("[update-job-status] reprise canal coupé:", (e as Error)?.message ?? e);
         pfCanalCoupe = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // RETRAIT VINTED D'UNE ANNONCE EN VÉRIFICATION = ATTENTE, PAS UN ESSAI
+    // (2026-09-25, job c1c8a6b5, compte Nico)
+    // ══════════════════════════════════════════════════════════════════════
+    // Annonce publiée le 24/09 à 23:47, retrait demandé à 23:54. Vinted la
+    // tient en « publication différée » (page propriétaire :
+    // item_alert_type = delayed_publication, is_hidden, « Masqué du
+    // catalogue ») et répond 403 access_denied au DELETE tant que ça dure.
+    // L'extension lit ce 403 comme un anti-robot : 6 h de reprises gratuites,
+    // puis rearmBounded COMPTE (1/5 … 5/5), failed, pas-de-rouge, needs_user —
+    // 5 tentatives brûlées en 8 h sur une annonce que personne ne pouvait
+    // retirer. Et si elle avait été vendue ailleurs, elle serait restée en
+    // ligne à la sortie de vérification, retrait abandonné.
+    // LA RÈGLE : tant que le dernier relevé montre l'annonce MASQUÉE
+    // (vinted_listing_snapshots.status = 'hidden', ou à défaut
+    // inventaire.vinted_status pour CE même item), un refus 403 du retrait est
+    // une ATTENTE : pending, retenté toutes les RETRAIT_VERIF_MIN minutes,
+    // needsUserAttempts remis à sa valeur EN BASE, sans plafond de 6 h. Le
+    // retrait part dès que Vinted l'accepte.
+    // ⛔ Une annonce VISIBLE qui renvoie 403 garde son chemin (anti-robot) :
+    //    c'est le relevé qui distingue, jamais le texte seul.
+    // ⛔ Seulement vinted/delete, seulement la signature CHALLENGE du refus de
+    //    suppression, seulement sur un retour pending/failed/needs_user.
+    const RETRAIT_VERIF_RE = /CHALLENGE Vinted a refusé la suppression|Vinted refuse de retirer CETTE annonce/i;
+    const RETRAIT_VERIF_MIN = 60;
+    let pfRetraitVerif: Record<string, unknown> | null = null;
+    if ((statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user") &&
+        typeof body.error === "string" && RETRAIT_VERIF_RE.test(body.error) && !pfCanalCoupe) {
+      try {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs")
+          .select("action, platform, listing_url, inventaire_id, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        const itemId = String(jrow?.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? null;
+        if (jrow?.action === "delete" && jrow.platform === "vinted" && itemId) {
+          let statutReleve: string | null = null;
+          let releveLe: string | null = null;
+          const { data: snap } = await userClient
+            .from("vinted_listing_snapshots")
+            .select("status, captured_at")
+            .eq("vinted_item_id", itemId)
+            .order("captured_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (snap) {
+            statutReleve = String((snap as { status?: unknown }).status ?? "") || null;
+            releveLe = String((snap as { captured_at?: unknown }).captured_at ?? "") || null;
+          } else if (jrow.inventaire_id != null) {
+            const { data: inv } = await userClient
+              .from("inventaire").select("vinted_status, vinted_item_id")
+              .eq("id", jrow.inventaire_id).maybeSingle();
+            if (inv && String((inv as { vinted_item_id?: unknown }).vinted_item_id ?? "") === itemId) {
+              statutReleve = String((inv as { vinted_status?: unknown }).vinted_status ?? "") || null;
+            }
+          }
+          if (statutReleve === "hidden") {
+            const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+            const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
+              ? body.platform_fields : pfBase) as Record<string, unknown>;
+            const avant = (pfBase.retrait_en_attente_verification && typeof pfBase.retrait_en_attente_verification === "object")
+              ? pfBase.retrait_en_attente_verification as Record<string, unknown> : null;
+            const maintenant = new Date().toISOString();
+            const {
+              needs_user_source: _nus, pas_de_rouge: _pdr, blocage_antirobot: _ba,
+              needs_user_tick_le: _nt, needs_user_actif_ms: _na, needs_user_vu_le: _nv, needs_user_vu_erreur: _ne,
+              ...pfSans
+            } = pfBody;
+            pfRetraitVerif = {
+              ...pfSans,
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              next_action_after: new Date(Date.now() + RETRAIT_VERIF_MIN * 60_000).toISOString(),
+              retrait_en_attente_verification: {
+                depuis: avant?.depuis ?? maintenant,
+                derniere: maintenant,
+                essais: (Number(avant?.essais ?? 0) || 0) + 1,
+                signal: "vinted_listing_snapshots.status = hidden",
+                releve_le: releveLe,
+                pose_par: "update-job-status (retrait refusé pendant la vérification Vinted = attente)",
+              },
+            };
+            statutEffectif = "pending";
+            messageEffectif =
+              "Vinted vérifie encore cette annonce : elle est masquée aux acheteurs, et Vinted refuse de la retirer " +
+              `tant que la vérification dure. Le retrait est retenté toutes les heures et part dès qu'elle se termine — ` +
+              "rien à faire de ton côté.";
+            raisonRequalif = `retrait Vinted refusé, annonce masquée (vérification) — attente ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`;
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] retrait en vérification:", (e as Error)?.message ?? e);
+        pfRetraitVerif = null;
       }
     }
 
@@ -2236,7 +2356,7 @@ serve(async (req) => {
     let erreurTechniqueBrute: string | null = null;
     {
       const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
-        && bfcacheRearms == null && !pfCanalCoupe && !pfDisparue && !pfPhotoReprise
+        && bfcacheRearms == null && !pfCanalCoupe && !pfRetraitVerif && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
         && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise
         && !pfOplaRelache;
@@ -2941,6 +3061,9 @@ serve(async (req) => {
     // l'extension, étape conservée, needsUserAttempts de la base, compteur
     // canal_coupe_rejoue incrémenté.
     if (pfCanalCoupe) patch.platform_fields = pfCanalCoupe;
+    // Retrait Vinted refusé pendant la vérification : attente d'une heure,
+    // needsUserAttempts de la base, marqueur retrait_en_attente_verification.
+    if (pfRetraitVerif) patch.platform_fields = pfRetraitVerif;
     // Annonce plus en ligne (404 confirmé avant toute suppression) :
     // platform_fields de l'extension + marqueur annonce_disparue, statut
     // 'cancelled' neutre.
