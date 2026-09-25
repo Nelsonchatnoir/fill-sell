@@ -1373,6 +1373,37 @@ async function republishListing(job) {
     // champs, elle mérite les mêmes gardes (catégorie, taille, couleurs,
     // matières, prix). Un pré-vol qui refuse ⇒ on ne touche pas à l'annonce
     // existante, qui reste en ligne et intacte.
+    // ── LA CATÉGORIE DE L'ANNONCE ELLE-MÊME (0.6.69, 25/09) ────────────────
+    // nadegemarcelin78 : « Contes pour les Filles » et « Pantalon Morgan »,
+    // 5 refus chacun sur opla_categorie_absente. Leur dépôt d'origine vient du
+    // RELEVÉ (annonce Opla importée) : aucune catégorie sur le job. Or une
+    // republication Opla MODIFIE l'annonce en place (PATCH) — et l'annonce,
+    // lue juste au-dessus (`avant`), porte SA catégorie et SON état. On les
+    // reprend tels quels : c'est la republication à l'identique, sans rien
+    // deviner. Priorité : une catégorie choisie par la personne (pas de trace
+    // `opla_deduit`) garde la main ; une catégorie seulement DÉDUITE par le
+    // serveur (opla_deduit.oplaCategoryCode) cède devant celle de l'annonce.
+    {
+      const art = (avant.corps?.article && typeof avant.corps.article === "object") ? avant.corps.article : (avant.corps ?? {});
+      const pfA = job?.platform_fields ?? {};
+      const codeJob = String(pfA.oplaCategoryCode ?? "").trim();
+      const deduit = Boolean(pfA.opla_deduit && typeof pfA.opla_deduit === "object" && pfA.opla_deduit.oplaCategoryCode);
+      const codeAnnonce = typeof art.category === "string" ? art.category.trim() : "";
+      const reprise = {};
+      if (codeAnnonce && (!codeJob || (deduit && codeJob !== codeAnnonce))) {
+        reprise.oplaCategoryCode = codeAnnonce;
+        oplaTracer(`categorie: reprise de l'annonce elle-même « ${codeAnnonce} »${codeJob ? ` (au lieu de « ${codeJob} », seulement déduit)` : ""}`);
+      }
+      const etatJob = String(pfA.etat ?? "").trim();
+      const etatAnnonce = typeof art.condition === "string" ? art.condition.trim() : "";
+      if (etatAnnonce && !["new-with-tags", "new", "like-new", "good", "fair"].includes(etatJob)
+          && ["new-with-tags", "new", "like-new", "good", "fair"].includes(etatAnnonce)) {
+        reprise.etat = etatAnnonce;
+        oplaTracer(`etat: reprise de l'annonce elle-même « ${etatAnnonce} »${etatJob ? ` (le job portait « ${etatJob} »)` : ""}`);
+      }
+      if (Object.keys(reprise).length) job = { ...job, platform_fields: { ...pfA, ...reprise } };
+    }
+
     oplaEtape("referentiel");
     const code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
     const ref = await oplaChargerReferentiel();
