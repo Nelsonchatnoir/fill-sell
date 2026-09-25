@@ -5322,24 +5322,27 @@ export default function App({ loginOnly = false }){
 
   // Encart « ce qui va se passer », partagé par les deux modales de suppression
   // — la liste exacte des plateformes retirées et le nombre de jobs annulés.
-  const PLATEFORME_LABELS={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs'};
+  const PLATEFORME_LABELS={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs',opla:'Opla'};
   function renderCrossPostConsequences(plan){
     if(!plan||(!plan.online?.length&&!plan.aAnnuler?.length&&!plan.retraitsEnCours?.length))return null;
     const n=plan.aAnnuler?.length??0;
     return(
       <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:14,padding:"12px 14px",marginBottom:16,fontSize:12.5,lineHeight:1.5,color:"#7C2D12"}}>
-        {plan.online?.length>0&&(
-          <div style={{marginBottom:plan.aAnnuler?.length?6:0}}>
-            {lang==='fr'?'Annonces en ligne qui seront retirées :':'Live listings that will be removed:'}
-            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>
-              {plan.online.map(p=>(
-                <span key={p.platform} style={{background:"#fff",border:"1px solid #FED7AA",borderRadius:99,padding:"3px 9px",fontWeight:700}}>
-                  {PLATEFORME_LABELS[p.platform]||p.platform}
-                </span>
-              ))}
+        {plan.online?.length>0&&(()=>{
+          // (26/09) Une phrase, les plateformes NOMMÉES : « ses annonces seront
+          // retirées de Leboncoin et Opla ». labouquinerie85 a supprimé deux
+          // « doublons » sans mesurer que leurs annonces en vente partaient.
+          const noms=[...new Set(plan.online.map(p=>PLATEFORME_LABELS[p.platform]||p.platform))];
+          const et=lang==='fr'?'et':'and';
+          const liste=noms.length>1?`${noms.slice(0,-1).join(', ')} ${et} ${noms[noms.length-1]}`:noms[0];
+          return(
+            <div style={{marginBottom:plan.aAnnuler?.length?6:0}}>
+              {lang==='fr'
+                ?<>{noms.length>1||plan.online.length>1?'Ses annonces en vente seront':'Son annonce en vente sera'} <strong>{noms.length>1||plan.online.length>1?'retirées':'retirée'} de {liste}</strong>.</>
+                :<>{plan.online.length>1?'Its live listings will be':'Its live listing will be'} <strong>removed from {liste}</strong>.</>}
             </div>
-          </div>
-        )}
+          );
+        })()}
         {n>0&&(()=>{
           // Plateformes des jobs annulés — nommées, pas juste comptées : un
           // « 2 publications annulées » sans dire OÙ n'aide pas à décider.
