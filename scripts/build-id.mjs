@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-25T13:50:29Z'; // recale 37a1ec2 (0.6.68 : republication rejouée à l'identique, « Autre » compris ; description relue avant le dépôt)
+export const EXTENSION_LAST_COMMIT = '2026-09-25T16:15:27Z'; // recale de06054 (0.6.69 : Vinted zone euro — catégorie, état et couleurs par identifiant sur une page non française ; pays et langue du compte dans la sonde)
+// Historique de la valeur precedente : '2026-09-25T13:50:29Z' — recale 37a1ec2 (0.6.68 : republication rejouée à l'identique, « Autre » compris ; description relue avant le dépôt). UTC VRAI lu par EPOCH (%ct 1790352927 pour de06054). MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : la 0.6.68 est en examen, la 0.6.69 pas encore téléversée.
 // Historique de la valeur precedente : '2026-09-25T13:39:56Z' — recale e41bbff (0.6.68, premier paquet, jamais téléversé : remplacé par celui-ci). UTC VRAI lu par EPOCH (%ct 1790344229).
 // Historique de la valeur precedente : '2026-09-25T07:49:48Z' — recale b1e90b2 (0.6.67 : format du colis Vinted reposé en dernier geste). UTC VRAI lu par EPOCH (%ct 1790343596). Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : ni la 0.6.67 (en examen) ni la 0.6.68 ne sont encore publiées.
 // Historique de la valeur precedente : '2026-09-25T06:02:29Z' — recale 3c6489e (0.6.67 : 401 de jeton périmé rejoué une fois ; relevé gardé éveillé entre les tours du rattachement). UTC VRAI lu par EPOCH. Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : la 0.6.67 n'est pas encore téléversée.
