@@ -6,6 +6,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // bundler du CLI Supabase l'embarque au deploy comme n'importe quel import
 // relatif. Même signature que côté app : detectObjectIcon(titre, description, type).
 import { detectObjectIcon, ALL_OBJECT_ICONS, ICON_LEGEND } from "../../../src/utils/shared.js";
+// L'âge Beebs d'un jeu vidéo, lu jamais deviné (2026-09-25) — module pur.
+import { familleJeuVideo, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 // Liste FERMÉE des CDN des plateformes dont on importe des annonces — UNE
 // seule source, partagée avec handler-watch (19/09 : la copie locale d'ici ne
 // connaissait que Vinted, celle du filet aussi, et un article importé de Beebs
@@ -361,8 +363,21 @@ serve(async (req) => {
       };
       const out: Record<string, string> = {};
       for (const a of wanted) if (ASPECT_DEFAULTS[a.name]) out[a.name] = ASPECT_DEFAULTS[a.name];
+      // ── ÂGE BEEBS D'UN JEU VIDÉO : JAMAIS À L'IA (2026-09-25, point 3) ────
+      // Le stepper demande ici « Âge » (Beebs, requis) quand la rédaction ne
+      // l'a pas posé — et l'IA le déduisait du TITRE (« 2 ans - 3 ans » sur un
+      // jeu Xbox 360). Pour un JEU, la réponse est la tranche qu'ouvre un
+      // PEGI/USK ÉCRIT (src/utils/jeuxVideo.js, même règle que la rédaction et
+      // get-pending-jobs), sinon RIEN : le champ reste vide, la question part.
+      const ageJeuVideo = familleJeuVideo(String(it.titre ?? ""), String(it.description ?? ""))?.famille === "jeu"
+        && wanted.some((a: { name: string }) => a.name === "Âge");
+      if (ageJeuVideo) {
+        const lu = ageBeebsJeuVideoLu(String(it.titre ?? ""), String(it.description ?? ""));
+        if (lu) out["Âge"] = lu.valeur;
+        console.log(`[generate-listing] resolve_aspects — jeu vidéo : « Âge » jamais demandé à l'IA → ${lu ? `« ${lu.valeur} » (${lu.classement} écrit)` : "rien (la question partira)"}`);
+      }
       // On ne demande à l'IA que les aspects SANS défaut déterministe.
-      const askAI = wanted.filter((a: { name: string }) => !ASPECT_DEFAULTS[a.name]);
+      const askAI = wanted.filter((a: { name: string }) => !ASPECT_DEFAULTS[a.name] && !(ageJeuVideo && a.name === "Âge"));
       const ctx = [
         it.marque && `Marque: ${it.marque}`,
         it.titre && `Article: ${it.titre}`,

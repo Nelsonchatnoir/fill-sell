@@ -340,7 +340,9 @@ export const VINTED_CHAMP_CLASSEMENT = "video_game_ratings";
 //     PAS au relevé de « Multimédia > Jeux vidéo » — et c'est l'âge RECOMMANDÉ
 //     d'un jouet (« 8 ans - 12 ans »), pas un classement PEGI. On ne fabrique
 //     pas une équivalence entre deux échelles qui ne mesurent pas la même
-//     chose ;
+//     chose ; (25/09 : le relevé l'a DEPUIS — « Âge » est REQUIS sur
+//     « Multimédia > Jeux vidéo ». Ce qu'on en fait, lu et jamais deviné :
+//     ageBeebsDuClassement, en bas de ce fichier.)
 //   · Opla             : aucun champ d'aspect sur ses feuilles de jeux.
 // Les 5 valeurs PEGI d'eBay sont ÉCRITES EXACTEMENT comme celles de Vinted
 // (« PEGI 12 ») : la correspondance est l'identité, vérifiée valeur par valeur
@@ -367,4 +369,59 @@ export function classementPourPlateforme(plateforme, valeur) {
   if (plateforme === "vinted") return VINTED_CLASSEMENTS.includes(v) ? v : null;
   if (plateforme === "ebay") return EBAY_CLASSEMENTS.includes(v) ? v : null;
   return null; // Leboncoin, Beebs, Opla : aucun champ relevé.
+}
+
+// ── L'ÂGE BEEBS D'UN JEU VIDÉO — LU SUR SON CLASSEMENT, JAMAIS DEVINÉ ──────
+// (2026-09-25, point 3.) L'IA de rédaction Beebs déduisait l'âge d'un jeu de
+// son TITRE : « 2 ans - 3 ans » sur un jeu Xbox 360, « 0-6 mois » sur deux
+// autres (XEWER, 66 annonces en ligne sur 70, une seule avec un PEGI écrit).
+// Beebs EXIGE « Âge » sur « Multimédia > Jeux vidéo », en tranches d'âge
+// d'ENFANT ; un PEGI est un âge MINIMUM. Décision du 25/09 : l'âge d'un jeu
+// vidéo est LU — sur la fiche ou dans l'annonce (PEGI) —, sinon DEMANDÉ.
+// La lecture : la tranche qui S'OUVRE à l'âge minimum écrit, sinon celle qui
+// le CONTIENT.
+//   · PEGI 3 → « 3 ans - 4 ans » ; PEGI 12 → « 12 ans - 16 ans » ;
+//   · PEGI 7 → « 6 ans - 8 ans » (aucune tranche ne s'ouvre à 7, celle-ci le
+//     contient) ;
+//   · PEGI 16 et PEGI 18 → « 16 ans et + » (la seule tranche qui les contient) ;
+//   · même lecture pour l'USK (6 → « 6 ans - 8 ans », 12, 16, 18) ;
+//   · USK 0, ESRB (« E – Tous publics »…), « Non précisé » : aucun âge
+//     minimum, aucune tranche (« 0-6 mois » n'est pas un public de jeu) → la
+//     question part.
+// MESURÉ le 25/09 sur les 17 jeux XEWER dont la fiche porte le PEGI répondu
+// par la vendeuse : 15 annonces portaient DÉJÀ exactement cette tranche ; la
+// vendeuse elle-même, interrogée, a répondu « 3 ans - 4 ans » pour des jeux
+// PEGI 3.
+// ⛔ Jamais un titre, jamais « le jeu est connu pour être PEGI 12 » : ce que
+//    l'IA « sait » d'un jeu, c'est exactement la déduction interdite.
+export const BEEBS_AGES = [
+  "0-6 mois", "6-12 mois", "12-24 mois", "2 ans - 3 ans", "3 ans - 4 ans",
+  "4 ans - 6 ans", "6 ans - 8 ans", "8 ans - 12 ans", "12 ans - 16 ans", "16 ans et +",
+];
+export const BEEBS_AGE_PAR_CLASSEMENT = {
+  "PEGI 3": "3 ans - 4 ans",
+  "PEGI 7": "6 ans - 8 ans",
+  "PEGI 12": "12 ans - 16 ans",
+  "PEGI 16": "16 ans et +",
+  "PEGI 18": "16 ans et +",
+  "USK 6": "6 ans - 8 ans",
+  "USK 12": "12 ans - 16 ans",
+  "USK 16": "16 ans et +",
+  "USK 18": "16 ans et +",
+};
+
+/** La tranche Beebs qu'ouvre un classement (« PEGI 12 »), ou null. */
+export function ageBeebsDuClassement(classement) {
+  return BEEBS_AGE_PAR_CLASSEMENT[String(classement ?? "").trim()] ?? null;
+}
+
+/**
+ * L'âge Beebs d'un jeu vidéo, LU dans le titre ou la description (PEGI/USK
+ * écrit), ou null — jamais une déduction.
+ * @returns {{valeur:string, classement:string}|null}
+ */
+export function ageBeebsJeuVideoLu(titre, description = "") {
+  const classement = classementAgeEcrit(titre, description);
+  const valeur = ageBeebsDuClassement(classement);
+  return valeur ? { valeur, classement } : null;
 }

@@ -287,6 +287,10 @@ ${hashtagBloc}`;
 // Vinted créés avant le 08/09 (job f3a5dce8), sans tirer ce module entier.
 // Appliquée ici à la GÉNÉRATION, pour toutes les plateformes, comme avant.
 import { tempererMajuscules } from "./titre-majuscules.ts";
+// L'âge Beebs d'un jeu vidéo (2026-09-25) : la MÊME règle que l'app et
+// get-pending-jobs — src/utils/jeuxVideo.js, module sans import, déjà lu par
+// get-pending-jobs côté serveur.
+import { familleJeuVideo, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 // ── L'ÉTAT : une seule correspondance, partagée avec l'app (2026-09-21) ─────
 // Déplacement pur du bloc « ÉTAT : UNE SEULE VALEUR, MAPPÉE » (2026-08-31) :
 // même table, même classeur, mêmes libellés. Il en sort pour que l'écran de
@@ -744,6 +748,30 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         isbn_recu_len: String(canonicalProvided.isbn ?? "").length,
         isbn_pose: Boolean(isbn && platformListings.vinted),
       };
+    }
+    // ── ÂGE BEEBS D'UN JEU VIDÉO : LU, JAMAIS DEVINÉ (2026-09-25, point 3) ──
+    // Le rédacteur Beebs choisissait une tranche d'âge pour un jeu vidéo à
+    // partir de son TITRE (« 2 ans - 3 ans » sur un jeu Xbox 360, « 0-6 mois »
+    // sur deux autres — 66 annonces XEWER sur 70). Pour un JEU (famille « jeu »
+    // de src/utils/jeuxVideo.js), la valeur du modèle est ÉCARTÉE, quelle
+    // qu'elle soit : seule reste la tranche qu'ouvre un PEGI/USK ÉCRIT dans le
+    // titre ou la description du vendeur (ageBeebsJeuVideoLu) ; sinon null, et
+    // le stepper pose la question avec la liste relevée. Déterministe ici, sur
+    // la sortie, plutôt qu'une consigne de plus dans le prompt : c'est une
+    // garde, pas une préférence — et le prompt ne change pas (VERSION_PROMPT
+    // inchangé). Les autres articles (jouets, figurines…) : rien ne bouge.
+    {
+      const beebs = platformListings.beebs;
+      const titre = String(item?.titre || item?.type || "");
+      const description = String(item?.description ?? "");
+      if (beebs && familleJeuVideo(titre, description)?.famille === "jeu") {
+        const avant = String(beebs.platform_fields?.age ?? "").trim();
+        const lu = ageBeebsJeuVideoLu(titre, description);
+        beebs.platform_fields.age = lu?.valeur ?? null;
+        if (avant || lu) {
+          console.log(`[redaction] beebs — jeu vidéo : âge du modèle « ${avant || "∅"} » écarté → ${lu ? `« ${lu.valeur} » (${lu.classement} écrit)` : "null (la question partira)"}`);
+        }
+      }
     }
   return { platformListings, traceEtat, traceIsbn };
 }

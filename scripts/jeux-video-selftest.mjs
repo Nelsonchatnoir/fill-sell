@@ -13,7 +13,7 @@
 // Le corpus contient tous les cas qui ont fait échouer une version
 // intermédiaire des règles — ils sont là pour qu'ils ne reviennent pas.
 // ═══════════════════════════════════════════════════════════════════════════
-import { familleJeuVideo, cheminJeuVideo, machineDuTexte, classementAgeEcrit, classementPourPlateforme } from "../src/utils/jeuxVideo.js";
+import { familleJeuVideo, cheminJeuVideo, machineDuTexte, classementAgeEcrit, classementPourPlateforme, ageBeebsDuClassement, ageBeebsJeuVideoLu, BEEBS_AGES } from "../src/utils/jeuxVideo.js";
 import { FEUILLES as VINTED } from "../src/utils/arbres/vintedFeuilles.js";
 import { FEUILLES as LBC } from "../src/utils/arbres/leboncoinFeuilles.js";
 import { FEUILLES as BEEBS } from "../src/utils/arbres/beebsFeuilles.js";
@@ -227,6 +227,32 @@ for (const p of ["leboncoin", "beebs", "opla"]) {
   if (classementPourPlateforme(p, "PEGI 12") !== null) ko(`${p} : aucun champ de classement relevé, rien ne doit partir`);
 }
 if (classementPourPlateforme("vinted", "PEGI 15") !== null) ko("« PEGI 15 » n'existe pas : rien ne doit partir");
+
+// ── 6. L'âge Beebs d'un jeu vidéo : lu sur son classement, jamais deviné ──
+// (2026-09-25) Liste Beebs RELEVÉE (catalogue, « Multimédia > Jeux vidéo »,
+// REQUIS). La tranche qui s'ouvre à l'âge minimum écrit, sinon celle qui le
+// contient ; sans âge minimum (USK 0, ESRB, « Non précisé ») → la question.
+console.log("6. Âge Beebs d'un jeu vidéo");
+for (const [classement, attendu] of [
+  ["PEGI 3", "3 ans - 4 ans"], ["PEGI 7", "6 ans - 8 ans"], ["PEGI 12", "12 ans - 16 ans"],
+  ["PEGI 16", "16 ans et +"], ["PEGI 18", "16 ans et +"],
+  ["USK 0", null], ["USK 6", "6 ans - 8 ans"], ["USK 18", "16 ans et +"],
+  ["Non précisé", null], ["E – Tous publics", null], ["", null], [null, null],
+]) {
+  const v = ageBeebsDuClassement(classement);
+  if (v !== attendu) ko(`${classement ?? "null"} → ${v ?? "null"} (attendu ${attendu ?? "null"})`);
+  if (v && !BEEBS_AGES.includes(v)) ko(`« ${v} » absent de la liste Beebs relevée`);
+}
+for (const [titre, description, attendu] of [
+  ["Rage 2 PS4 PEGI 18 complet", "", "16 ans et +"],
+  ["Halo 3 Xbox 360", "Jeu complet avec notice. PEGI 16.", "16 ans et +"],
+  ["Mario Kart 8 Switch", "", null],                 // pas écrit : la question
+  ["Crash Bandicoot Xbox 360", "tout public", null],  // « tout public » n'est pas un PEGI
+  ["Disney Magical World Nintendo 3DS", "PEGI 7", "6 ans - 8 ans"], // la tranche qui contient 7
+]) {
+  const lu = ageBeebsJeuVideoLu(titre, description);
+  if ((lu?.valeur ?? null) !== attendu) ko(`« ${titre} » → ${lu?.valeur ?? "null"} (attendu ${attendu ?? "null"})`);
+}
 
 if (echecs) { console.error(`\n❌ ${echecs} échec(s)`); process.exit(1); }
 console.log("\n✅ tout passe");
