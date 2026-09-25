@@ -118,10 +118,16 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
   const prop = annonce?.proposition && typeof annonce.proposition === 'object' ? annonce.proposition : null;
   const motif = prop ? motifProposition(prop, T, fr) : '';
 
+  // (26/09) Le badge « Le plus probable » ne se pose que sur un candidat FORT
+  // (titre exact côté serveur, quasi exact, même ISBN) — jamais sur un voisin
+  // au mot près (labouquinerie85 : deux livres différents badgés « probable »).
+  // Le motif du serveur reste lu sur le premier ; cadre vert et badge
+  // demandent en plus `c.fort`.
   const ligneCandidat = (c, k) => {
     const item = c.item;
     const prix = prixLisible(item.sell, fr);
     const premier = k === 0;
+    const probable = premier && c.fort === true;
     return (
       <button
         key={item.id}
@@ -133,7 +139,7 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
           display: 'flex', alignItems: 'center', gap: 10, width: '100%', boxSizing: 'border-box',
           textAlign: 'left', padding: '9px 11px', borderRadius: 14, fontFamily: 'inherit',
           background: A.card, cursor: busy ? 'default' : 'pointer',
-          border: `1px solid ${premier ? A.mentheBord : A.border}`,
+          border: `1px solid ${probable ? A.mentheBord : A.border}`,
           animationDelay: `${k * 35}ms`,
         }}
       >
@@ -147,7 +153,7 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
             {premier && c.source === 'serveur' && motif ? ` · ${motif}` : ''}
           </span>
         </span>
-        {premier && (
+        {probable && (
           <span style={{
             flexShrink: 0, padding: '4px 9px', borderRadius: 999, background: A.menthe,
             border: `1px solid ${A.mentheBord}`, color: A.tealDeep, fontSize: 10.5, fontWeight: 700,
@@ -250,6 +256,16 @@ export default function EcranRattachement({ lang, items, annonces, onClose, onDe
                   sur la fiche la rattache. Sans proposition : la liste d'avant. */}
               {candidats[0]?.source === 'serveur' ? T.ratQuestion : T.ratProches}
             </div>
+            {/* (26/09) L'import a reconnu un article VENDU du même titre
+                (homonyme_vendu) : on ne propose pas de rattacher une annonce
+                en ligne à un article vendu, on DIT ce qu'on a vu. La personne
+                sait si c'est un autre exemplaire (« Créer ») ou le même,
+                vendu, dont l'annonce traîne (« Ignorer », puis la retirer). */}
+            {prop?.motif === 'homonyme_vendu' && (
+              <div style={{ margin: '0 0 10px', padding: '10px 12px', borderRadius: 12, background: '#FFF7ED', border: '1px solid #FED7AA', fontSize: 12, lineHeight: 1.5, color: '#7C2D12' }}>
+                {T.ratHomonymeVendu(prop.titre_fiche || annonce.titre || '')}
+              </div>
+            )}
             {candidats.length ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {candidats.map(ligneCandidat)}

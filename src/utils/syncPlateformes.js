@@ -11,6 +11,7 @@
 import { supabase } from '../lib/supabase';
 import { PLATEFORMES_STOCK } from './stockFiltres';
 import { indexerRelevesVides } from '../annonces/releveVide';
+import { indexerRetraits, annonceRetiree } from '../annonces/retraits.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
@@ -99,30 +100,57 @@ export async function lireDernierRunVinted(userId) {
   return (data ?? [])[0] ?? null;
 }
 
-// Les annonces relevées PAS ENCORE rattachées (ni ignorées, ni disparues).
-export async function lireAnnoncesARattacher(userId) {
-  if (!userId) return [];
+// La règle « retirée par nous » vit dans annonces/retraits.js (pure, testée :
+// scripts/candidats-rattachement-selftest.mjs).
+// Lecture ratée → index vide : la file se comporte comme avant, rien ne
+// disparaît à tort (le serveur garde de toute façon le refus de rattacher).
+async function lireRetraitsRecents(userId) {
+  const depuis = new Date(Date.now() - 60 * 86400000).toISOString();
   const { data, error } = await supabase
-    .from('annonces_plateforme')
-    .select('id,platform,listing_id,url,titre,prix,photo_url,statut_plateforme,proposition,vu_le')
-    .eq('user_id', userId).is('inventaire_id', null).is('ignoree_le', null).is('disparu_le', null)
-    .order('vu_le', { ascending: false })
-    .limit(300);
-  if (error) return [];
-  return data ?? [];
+    .from('cross_post_jobs')
+    .select('platform,listing_url,platform_listing_id,created_at')
+    .eq('user_id', userId).eq('action', 'delete')
+    .in('platform', PLATEFORMES_RELEVE)
+    .in('status', ['pending', 'processing', 'needs_user', 'deleted'])
+    .gte('created_at', depuis)
+    .limit(1000);
+  if (error) return indexerRetraits([]);
+  return indexerRetraits(data ?? []);
 }
 
-// Compte des annonces rattachées et à rattacher, par plateforme.
+// Les annonces relevées PAS ENCORE rattachées (ni ignorées, ni disparues,
+// ni retirées par FillSell).
+export async function lireAnnoncesARattacher(userId) {
+  if (!userId) return [];
+  const [{ data, error }, retraits] = await Promise.all([
+    supabase
+      .from('annonces_plateforme')
+      .select('id,platform,listing_id,url,titre,prix,photo_url,statut_plateforme,proposition,vu_le')
+      .eq('user_id', userId).is('inventaire_id', null).is('ignoree_le', null).is('disparu_le', null)
+      .order('vu_le', { ascending: false })
+      .limit(300),
+    lireRetraitsRecents(userId).catch(() => indexerRetraits([])),
+  ]);
+  if (error) return [];
+  return (data ?? []).filter((a) => !annonceRetiree(a, retraits));
+}
+
+// Compte des annonces rattachées et à rattacher, par plateforme — le même
+// filtre que la file, sinon le bouton annonce N et la file en montre moins.
 export async function compterAnnoncesParPlateforme(userId) {
   if (!userId) return {};
-  const { data, error } = await supabase
-    .from('annonces_plateforme')
-    .select('platform,inventaire_id,ignoree_le,disparu_le')
-    .eq('user_id', userId).is('disparu_le', null)
-    .limit(2000);
+  const [{ data, error }, retraits] = await Promise.all([
+    supabase
+      .from('annonces_plateforme')
+      .select('platform,listing_id,vu_le,inventaire_id,ignoree_le,disparu_le')
+      .eq('user_id', userId).is('disparu_le', null)
+      .limit(2000),
+    lireRetraitsRecents(userId).catch(() => indexerRetraits([])),
+  ]);
   if (error) return {};
   const par = {};
   for (const a of data ?? []) {
+    if (annonceRetiree(a, retraits)) continue; // retirée par nous : plus en ligne
     const p = par[a.platform] ?? (par[a.platform] = { total: 0, rattachees: 0, aRattacher: 0 });
     p.total += 1;
     if (a.inventaire_id != null) p.rattachees += 1;
