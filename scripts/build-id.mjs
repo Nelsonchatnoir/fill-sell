@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-25T16:25:06Z'; // recale b3dc586 (0.6.69 : + fenêtre de travail habitée rendue à l'utilisateur, retrait LBC de MeMiniandMove)
+export const EXTENSION_LAST_COMMIT = '2026-09-25T16:35:08Z'; // recale 242a034 (0.6.69 : + republication Opla qui reprend la catégorie et l'état de l'annonce elle-même)
+// Historique de la valeur precedente : '2026-09-25T16:25:06Z' — recale b3dc586 (0.6.69 : fenêtre habitée rendue). Deuxième zip 0.6.69 (80c907a) JAMAIS téléversé, remplacé. UTC VRAI lu par EPOCH (%ct 1790354108).
 // Historique de la valeur precedente : '2026-09-25T16:15:27Z' — recale de06054 (0.6.69 : Vinted zone euro). Premier zip 0.6.69 (78068a0) JAMAIS téléversé, remplacé par celui-ci. UTC VRAI lu par EPOCH (%ct 1790353506).
 // Historique de la valeur precedente : '2026-09-25T13:50:29Z' — recale 37a1ec2 (0.6.68 : republication rejouée à l'identique, « Autre » compris ; description relue avant le dépôt). UTC VRAI lu par EPOCH (%ct 1790352927 pour de06054). MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : la 0.6.68 est en examen, la 0.6.69 pas encore téléversée.
 // Historique de la valeur precedente : '2026-09-25T13:39:56Z' — recale e41bbff (0.6.68, premier paquet, jamais téléversé : remplacé par celui-ci). UTC VRAI lu par EPOCH (%ct 1790344229).
