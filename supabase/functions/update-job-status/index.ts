@@ -542,8 +542,52 @@ serve(async (req) => {
         ? body.platform_fields : null) as Record<string, unknown> | null;
       const trace = JSON.stringify(pfIn0?.delete_trace ?? "");
       if (/NON envoy|NON DÉTERMIN/i.test(trace)) {
-        (body.platform_fields as Record<string, unknown>).retrait_par = "annonce_deja_hors_ligne";
-        console.log(`[update-job-status] userId=${user.id} job=${jobId} — 'deleted' SANS requête envoyée : l'annonce était déjà hors ligne, le retrait n'est pas de notre fait (retrait_par=annonce_deja_hors_ligne)`);
+        // ══ ET LA PREUVE EST ÉCRITE (2026-09-25, jocabroc) ══════════════════
+        // Deux retraits Vinted clos à 19:17 « NON DÉTERMINÉ » : l'extension
+        // avait bien lu la page (checkVintedUnanime, 3 lectures d'accord),
+        // mais n'écrivait NI l'état lu NI les codes HTTP. Mesuré ensuite :
+        // l'une était absente du dressing relevé 1 min plus tôt, l'autre
+        // VENDUE sur Vinted (snapshot 'sold') — rien ne le disait sur le job.
+        // Règle : aucun retrait n'est clos sans preuve ÉCRITE de disparition.
+        //   · 0.6.69+ : la lecture de page arrive dans `delete_preuve` ;
+        //   · avant : on la corrobore par le RELEVÉ (dernier état connu de
+        //     l'article, ou absence d'un dressing complet plus récent) ; à
+        //     défaut, on nomme ce qui a tranché (la lecture de page non
+        //     conservée par ce build) — jamais un « fait » sans source.
+        const pfOut = body.platform_fields as Record<string, unknown>;
+        let preuve = (pfIn0?.delete_preuve && typeof pfIn0.delete_preuve === "object")
+          ? pfIn0.delete_preuve as Record<string, unknown> : null;
+        if (!preuve) {
+          try {
+            const { data: jr } = await userClient.from("cross_post_jobs")
+              .select("platform, listing_url, user_id").eq("id", jobId).maybeSingle();
+            const itemId = jr?.platform === "vinted"
+              ? (String(jr?.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? null) : null;
+            if (itemId) {
+              const { data: snap } = await userClient.from("vinted_listing_snapshots")
+                .select("status, captured_at").eq("vinted_item_id", itemId)
+                .order("captured_at", { ascending: false }).limit(1).maybeSingle();
+              const s = snap as { status?: string; captured_at?: string } | null;
+              if (s?.status === "sold") {
+                preuve = { source: "releve", etat: "sold", releve_le: s.captured_at, item: itemId };
+              } else {
+                const { data: run } = await userClient.from("vinted_sync_runs")
+                  .select("id, finished_at").eq("user_id", user.id).eq("kind", "dressing").eq("status", "done")
+                  .order("finished_at", { ascending: false }).limit(1).maybeSingle();
+                const r = run as { id?: string; finished_at?: string } | null;
+                if (r?.finished_at && (!s?.captured_at || Date.parse(r.finished_at) > Date.parse(s.captured_at) + 60_000)) {
+                  preuve = { source: "releve_absente", run: r.id, releve_le: r.finished_at, dernier_etat: s?.status ?? null, item: itemId };
+                }
+              }
+            }
+          } catch (_e) { /* la corroboration est un renfort, jamais un point de panne */ }
+          if (!preuve) {
+            preuve = { source: "lecture_page_extension_non_tracee", note: "lecture de la page par l'extension (plusieurs lectures unanimes), non conservée par ce build" };
+          }
+        }
+        pfOut.delete_preuve = preuve;
+        pfOut.retrait_par = String(preuve.etat ?? "") === "sold" ? "vendue_sur_la_plateforme" : "annonce_deja_hors_ligne";
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — 'deleted' SANS requête envoyée : annonce déjà hors ligne (retrait_par=${pfOut.retrait_par}, preuve=${String(preuve.source)})`);
       } else if (pfIn0) {
         (body.platform_fields as Record<string, unknown>).retrait_par = "fillsell";
       }
