@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, type LangueVinted } from "../_shared/vinted-pays.ts";
 import { sessionIdDuJwt, postesVivants, posteCourt, posteAvecAccesOpla, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
@@ -6508,6 +6509,89 @@ serve(async (req) => {
       } catch (e) {
         console.warn(`[get-pending-jobs] pause anti-robot du compte : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
       }
+    }
+
+    // ══ L'ÉTAT VINTED DANS LA LANGUE DU COMPTE (2026-09-25, zone euro) ══════
+    // Alberto (compte italien, travaille sur www.vinted.fr que Vinted lui sert
+    // en ITALIEN) : ses 2 republications (80c3d14c, b81a3312) sont arrêtées au
+    // pré-vol sur « Condizioni », seul champ vide de tout le formulaire. Cause
+    // exacte : la capture lit l'état par son IDENTIFIANT (status_id 6), puis
+    // l'extension le traduit par une table FRANÇAISE en dur (« Neuf avec
+    // étiquette ») — libellé introuvable dans la liste italienne. Les autres
+    // champs (catégorie, couleur, marque, taille, colis par id) sont passés.
+    // Le serveur sert donc l'état DANS LA LANGUE DE LA PAGE, par le canal que
+    // l'extension installée (0.6.66 et 0.6.68) sait déjà poser :
+    // vintedAspects.condition → pont → champ État (cherché par son texte).
+    // Aucune nouvelle extension, aucune écriture en base : seul le job SERVI
+    // est enrichi, comme la langue des Livres juste au-dessus.
+    // PÉRIMÈTRE, STRICT :
+    //   · republication Vinted avec copie (republish_snapshot.status_id) ;
+    //   · la langue est LUE sur ce que Vinted a affiché à ce compte : racine de
+    //     la catégorie capturée, liste d'états relevée sur son formulaire —
+    //     intersection sans ambiguïté, sinon rien (_shared/vinted-pays.ts) ;
+    //   · ⛔ jamais pour le français : un compte français suit exactement son
+    //     chemin d'aujourd'hui, rien n'est posé ;
+    //   · seulement une langue dont les libellés ont été vus sur un VRAI
+    //     formulaire (it, en) — les autres attendent la 0.6.69, qui choisit
+    //     l'état par son identifiant ;
+    //   · seulement si un pays de cette langue est OUVERT :
+    //     coin_config 'vinted_pays_<cc>' = 1 (absent ou 0 = fermé). Fermer
+    //     l'Italie en un geste : update coin_config set value = 0 where key = 'vinted_pays_it';
+    //   · une valeur DÉJÀ dans vintedAspects.condition prime toujours (réponse
+    //     de l'utilisateur au « ✋ Compléter »).
+    try {
+      const candidatsEtat: Array<{ j: Record<string, unknown>; pf: Record<string, unknown>; langue: LangueVinted; statusId: number }> = [];
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "vinted" || j.action !== "republish") continue;
+        const pf = (j.platform_fields && typeof j.platform_fields === "object")
+          ? (j.platform_fields as Record<string, unknown>) : null;
+        if (!pf) continue;
+        const va = (pf.vintedAspects && typeof pf.vintedAspects === "object")
+          ? (pf.vintedAspects as Record<string, unknown>) : {};
+        if (String(va.condition ?? "").trim()) continue; // réponse déjà là
+        const snap = (pf.republish_snapshot && typeof pf.republish_snapshot === "object")
+          ? (pf.republish_snapshot as Record<string, unknown>) : null;
+        const statusId = Number(snap?.status_id);
+        if (!snap || !Number.isInteger(statusId)) continue;
+        const nuf = (pf.needsUserField && typeof pf.needsUserField === "object")
+          ? (pf.needsUserField as Record<string, unknown>) : null;
+        const langue = langueVintedDuJob({
+          racineCapturee: Array.isArray(snap.categoryPath) ? (snap.categoryPath as unknown[])[0] : null,
+          listeEtatsRelevee: nuf && String(nuf.field_key ?? "") === "condition" ? nuf.allowed_values : undefined,
+        });
+        if (!langue || langue === "fr") continue;
+        if (!ETATS_VINTED[langue].formulaire || !ETATS_VINTED[langue].libelles[statusId]) continue;
+        candidatsEtat.push({ j, pf, langue, statusId });
+      }
+      if (candidatsEtat.length) {
+        const cles = [...new Set(candidatsEtat.flatMap((c) => paysDeLaLangue(c.langue)))]
+          .map((cc) => `vinted_pays_${cc.toLowerCase()}`);
+        const { data: cfgPays } = await userClient.from("coin_config").select("key, value").in("key", cles);
+        const ouverts = new Set(((cfgPays ?? []) as Array<{ key: string; value: number }>)
+          .filter((r) => Number(r.value) === 1).map((r) => r.key));
+        let poses = 0, fermes = 0;
+        for (const { j, pf, langue, statusId } of candidatsEtat) {
+          const pays = paysDeLaLangue(langue);
+          if (!pays.some((cc) => ouverts.has(`vinted_pays_${cc.toLowerCase()}`))) { fermes++; continue; }
+          const valeur = ETATS_VINTED[langue].libelles[statusId];
+          const nowIso = new Date().toISOString();
+          const va = (pf.vintedAspects && typeof pf.vintedAspects === "object")
+            ? (pf.vintedAspects as Record<string, unknown>) : {};
+          pf.vintedAspects = { ...va, condition: valeur };
+          pf.etat_langue_compte = { valeur, langue, pays, status_id: statusId, le: nowIso, pose_par: "get-pending-jobs" };
+          const warnings = Array.isArray(pf.warnings) ? (pf.warnings as unknown[]) : [];
+          pf.warnings = [...warnings, {
+            at: nowIso, code: "etat_langue_compte", champ: "condition", valeur, langue,
+            message: `état « ${valeur} » servi dans la langue du compte Vinted (${langue}) depuis l'identifiant ${statusId} de l'annonce d'origine`,
+          }];
+          poses++;
+          console.log(`[get-pending-jobs] user=${user.id} job=${String(j.id).slice(0, 8)} : état Vinted servi en ${langue} (status ${statusId} → « ${valeur} »)`);
+        }
+        if (fermes) console.log(`[get-pending-jobs] user=${user.id} : ${fermes} job(s) Vinted d'un pays FERMÉ (coin_config vinted_pays_*) — servis tels quels`);
+        if (poses) console.log(`[get-pending-jobs] user=${user.id} : ${poses} état(s) Vinted servis dans la langue du compte`);
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] état Vinted dans la langue du compte : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
     // ── MAINTIEN EN ÉVEIL : COMPTER LA FILE RETENUE, PAS SEULEMENT SERVIE ───
