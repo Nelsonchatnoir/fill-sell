@@ -2264,6 +2264,16 @@ export default function App({ loginOnly = false }){
   const [propositionsParJob,setPropositionsParJob]=useState({});
   const [montrerMasquees,setMontrerMasquees]=useState(false);
   const [confirmingSale,setConfirmingSale]=useState(null);
+  // ── UNE VENTE À LA FOIS, PAS UN TAP PAR BANDEAU (2026-09-25) ───────────────
+  // Ornella, 29/08 10:42 : quatre ventes enregistrées en 1,0 s. Les bandeaux
+  // « Vendue ? » s'empilent, le bouton « Oui, enregistrer la vente » est au
+  // même endroit sur chacun, et le bandeau touché disparaît AVANT l'appel
+  // réseau : chaque tap d'une rafale tombait sur le bandeau suivant — deux
+  // articles toujours en ligne (manteau, ensemble Alphalette) sont passés
+  // « vendus », puis le relevé les a réimportés en doublons. Désormais, tant
+  // qu'une vente s'enregistre, TOUS les bandeaux sont inactifs, et ils le
+  // restent un court instant après (les taps de la rafale tombent à vide).
+  const venteEnVolRef=useRef(false);
   // (Bandeau « vérification impossible » SUPPRIMÉ le 2026-08-15 — décision
   // produit : seul un bandeau de VENTE détectée parle à l'utilisateur. Le
   // mécanisme extension — check_unresolved, retentative quotidienne — continue
@@ -4424,6 +4434,10 @@ export default function App({ loginOnly = false }){
     const defaut=Number(job.platform_fields?.detected_price??job.price)||0;
     const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
     if(!prix){setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
+    // Une vente déjà en vol (ou tout juste enregistrée) : ce tap est celui
+    // d'une rafale, il ne vaut rien (cf. venteEnVolRef).
+    if(venteEnVolRef.current)return;
+    venteEnVolRef.current=true;
     setConfirmingSale(job.id);
     // PRIX D'ACHAT DEMANDÉ ICI, ET NULLE PART AILLEURS (2026-08-03).
     // C'est le seul instant où la personne se souvient de ce qu'elle a payé et
@@ -4465,7 +4479,9 @@ export default function App({ loginOnly = false }){
       setToast({visible:true,message:t('genericError')});
       setTimeout(()=>setToast({visible:false,message:""}),3000);
     }finally{
-      setConfirmingSale(null);
+      // Les bandeaux restent inactifs 0,8 s de plus : la fin d'une rafale de
+      // taps tombe à vide au lieu d'enregistrer la vente du bandeau suivant.
+      setTimeout(()=>{venteEnVolRef.current=false;setConfirmingSale(null);},800);
     }
   }
 
@@ -8071,7 +8087,9 @@ export default function App({ loginOnly = false }){
         {unavailableListings.map(job=>{
           const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire',opla:'Opla'};
           const plat=PLAT[job.platform]||job.platform;
-          const busy=confirmingSale===job.id;
+          // (25/09) Inactif pendant QUELQUE vente que ce soit — cf. venteEnVolRef.
+          const busy=confirmingSale!=null;
+          const ceBandeau=confirmingSale===job.id;
           const pf=job.platform_fields||{};
           // Masquée (par alerte ou par plateforme) : cachée tant que
           // « afficher » n'est pas demandé — l'alerte existe toujours.
@@ -8099,7 +8117,7 @@ export default function App({ loginOnly = false }){
                 <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                   <button disabled={busy} onClick={()=>accepterProposition(job,proposition)}
                     style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
-                    {busy?'…':(lang==='fr'?"Oui, c'est elle":'Yes, that’s it')}
+                    {ceBandeau?'…':(lang==='fr'?"Oui, c'est elle":'Yes, that’s it')}
                   </button>
                   <button disabled={busy} onClick={()=>refuserProposition(job,proposition)}
                     style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
@@ -8197,7 +8215,7 @@ export default function App({ loginOnly = false }){
               <div style={{display:"flex",gap:10}}>
                 <button disabled={busy} onClick={()=>confirmSaleFromBanner(job)}
                   style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>
-                  {busy?(lang==='fr'?'…':'…'):(lang==='fr'?'Oui, enregistrer la vente':'Yes, record the sale')}
+                  {ceBandeau?(lang==='fr'?'…':'…'):(lang==='fr'?'Oui, enregistrer la vente':'Yes, record the sale')}
                 </button>
                 <button disabled={busy} onClick={()=>dismissUnavailable(job)}
                   style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
@@ -8302,7 +8320,9 @@ export default function App({ loginOnly = false }){
                 items={disparusATrancher.filter(i=>disparusSel.has(i.id))}
                 lang={lang} style={{marginBottom:10}}/>
               {disparusATrancher.slice(0,disparusRendu).map(item=>{
-                const busy=disparusBusy===item.id||disparusBusy==='lot';
+                // (25/09) Inactif pendant QUELQUE écriture que ce soit : un tap de
+                // rafale ne tombe plus sur la ligne suivante (cf. venteEnVolRef).
+                const busy=disparusBusy!=null;
                 const defaut=disparusPropositions[item.vinted_item_id]??item.sell;
                 const dateDisp=item.disparu_le?new Date(item.disparu_le).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB'):null;
                 return(
