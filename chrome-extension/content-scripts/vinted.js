@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -1032,6 +1032,146 @@ async function racineDuCatalogue(catalogId, diag) {
   const contient = (n) => Number(n?.id) === id || (n?.catalogs ?? []).some(contient);
   for (const r of racines ?? []) if (contient(r)) return Number(r.id);
   return null;
+}
+
+// ══ ZONE EURO : UNE PAGE VINTED QUI N'EST PAS EN FRANÇAIS (0.6.69, 25/09) ════
+// Alberto (compte italien) travaille sur www.vinted.fr, que Vinted lui sert en
+// ITALIEN — la langue de son COMPTE, pas celle du domaine. Nos libellés
+// français (« Neuf avec étiquette », « Rouge », « Hommes > … ») n'y trouvent
+// rien. Relevé sur le VRAI formulaire de vinted.fr le 25/09 (session réelle,
+// rien soumis) : chaque option porte l'IDENTIFIANT Vinted, indépendant de la
+// langue — #catalog-<id> à chaque niveau (5 > 2050 > 79 > 1813, le clic sur la
+// feuille valide et ferme), #condition-<id> (radio, le clic valide et ferme),
+// #color-<id> (case à cocher). Les trois poses par id ont été rejouées sur
+// cette page : « Pulls ras de cou », « Très bon état », « Rouge, Bordeaux ».
+// ⛔ LE CHEMIN FRANÇAIS NE CHANGE PAS : ces poses par id ne servent QUE sur
+//    une page dont <html lang> n'est pas français. Une page française (ou sans
+//    attribut lang) suit exactement le chemin d'avant, libellé par libellé.
+// ⛔ Une réponse de l'utilisateur (vintedAspects) prime toujours sur l'id.
+// ⛔ Tout échec d'une pose par id retombe sur le chemin par libellé, tel quel :
+//    jamais moins bon qu'avant.
+function pageVintedFrancaise() {
+  const l = String(document.documentElement?.getAttribute("lang") ?? "").trim().toLowerCase();
+  return !l || l === "fr" || l.startsWith("fr-");
+}
+
+// catalog_id → chemin d'IDENTIFIANTS de la racine à la feuille, lu dans
+// l'arbre du compte (/api/v2/item_upload/catalogs — mêmes ids et même
+// hiérarchie dans les 18 pays euro, relevé du 25/09).
+async function resoudreCheminIdsCatalogue(catalogId, diag) {
+  const id = Number(catalogId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const racines = await lireReferentielVinted("catalogs", "/api/v2/item_upload/catalogs", (d) =>
+    Array.isArray(d?.catalogs) && d.catalogs.length ? d.catalogs : null, diag);
+  if (!racines) return null;
+  const chemin = [];
+  const descendre = (noeuds) => {
+    for (const n of noeuds ?? []) {
+      chemin.push(Number(n?.id));
+      if (Number(n?.id) === id) return true;
+      if (descendre(n?.catalogs)) return true;
+      chemin.pop();
+    }
+    return false;
+  };
+  return descendre(racines) && chemin.every((x) => Number.isFinite(x)) ? chemin.slice() : null;
+}
+
+// Catégorie posée par IDENTIFIANTS, niveau par niveau. true = le champ porte
+// une catégorie et le panneau est refermé ; false = on n'a rien conclu, le
+// caller descend par libellés comme avant.
+async function selectCategoryParIds(catalogId, warnings) {
+  const TRIGGER = '#category, [data-testid="catalog-select-dropdown-input"]';
+  const ids = await resoudreCheminIdsCatalogue(catalogId, []).catch(() => null);
+  if (!ids?.length) {
+    warnings.push(`catégorie par id : catalogue ${catalogId} introuvable dans l'arbre du compte — descente par libellés`);
+    return false;
+  }
+  try {
+    await openDropdown(TRIGGER);
+    for (let i = 0; i < ids.length; i++) {
+      const el = await waitForElement(`#catalog-${ids[i]}`, i === 0 ? CATALOG_PREMIER_NIVEAU_MS : 5000).catch(() => null);
+      if (!el) throw new Error(`niveau ${i + 1}/${ids.length} : #catalog-${ids[i]} absent du panneau`);
+      await humanPause();
+      el.click();
+      await sleep(350);
+    }
+    const pose = await waitFor(() => {
+      const t = document.querySelector(TRIGGER);
+      const v = String(t?.value ?? "").trim();
+      return v && !document.querySelector('[data-testid="catalog-select-dropdown-content"]') ? v : null;
+    }, 4000);
+    if (!pose) throw new Error("feuille cliquée mais champ Catégorie vide ou panneau encore ouvert");
+    console.log(`[vinted] catégorie posée par identifiants ${ids.join(" > ")} → « ${pose} » (page non française)`);
+    warnings.push(`catégorie: posée par identifiants ${ids.join(" > ")} → « ${pose} » (page Vinted non française)`);
+    return true;
+  } catch (e) {
+    warnings.push(`catégorie par id : ${e?.message ?? e} — descente par libellés`);
+    await closeAnyOpenDropdown().catch(() => {});
+    return false;
+  }
+}
+
+// État posé par IDENTIFIANT (#condition-<id>). true = le champ porte un état.
+async function selectEtatParId(statusId, warnings) {
+  const TRIGGER = '#condition, [data-testid="category-condition-single-list-input"]';
+  const id = Number(statusId);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  try {
+    await openDropdown(TRIGGER);
+    const el = await waitForElement(`#condition-${id}`, 5000).catch(() => null);
+    if (!el) throw new Error(`#condition-${id} absent de la liste (rayon qui ne l'accepte pas ?)`);
+    await humanPause();
+    if (el.getAttribute("aria-checked") !== "true") el.click();
+    await humanPause();
+    await closeAnyOpenDropdown();
+    const t = document.querySelector(TRIGGER);
+    const v = String(t ? readCommittedValue(t) : "").trim() || String(t?.value ?? "").trim();
+    if (!v) throw new Error("option cliquée mais champ État relu vide");
+    warnings.push(`état: posé par identifiant ${id} → « ${v} » (page Vinted non française)`);
+    return true;
+  } catch (e) {
+    warnings.push(`état par id : ${e?.message ?? e} — pose par libellé`);
+    await closeAnyOpenDropdown().catch(() => {});
+    return false;
+  }
+}
+
+// Couleurs posées par IDENTIFIANTS (#color-<id>, 2 au plus). Une case déjà
+// cochée n'est jamais re-cliquée (cocherOptionSansBasculer) ; une case
+// pré-cochée par Vinted qui n'est pas des nôtres est décochée, comme sur le
+// chemin par libellés. true = au moins une des nôtres est cochée.
+async function selectCouleursParIds(colorIds, warnings) {
+  const TRIGGER = '#color, [data-testid="color-select-dropdown-input"]';
+  const ids = [...new Set((colorIds ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2);
+  if (!ids.length) return false;
+  try {
+    await openDropdown(TRIGGER);
+    const retenues = new Set();
+    for (const id of ids) {
+      const el = await waitForElement(`#color-${id}`, 4000).catch(() => null);
+      if (!el) { warnings.push(`couleur par id : #color-${id} absent de la palette`); continue; }
+      await humanPause();
+      cocherOptionSansBasculer(el);
+      retenues.add(`color-${id}`);
+    }
+    if (!retenues.size) throw new Error("aucun identifiant de couleur présent dans la palette");
+    for (const cell of document.querySelectorAll('[data-testid^="color-"][role="checkbox"][aria-checked="true"]')) {
+      if (retenues.has(cell.id)) continue;
+      await humanPause();
+      cell.click();
+      warnings.push(`couleur: « ${cell.textContent.trim()} » pré-cochée par Vinted mais absente de l'annonce — retirée`);
+    }
+    const cochees = [...document.querySelectorAll('[data-testid^="color-"][role="checkbox"][aria-checked="true"]')].map((c) => c.id);
+    await closeAnyOpenDropdown();
+    if (![...retenues].every((r) => cochees.includes(r))) throw new Error(`cases relues ${JSON.stringify(cochees)} ≠ ${JSON.stringify([...retenues])}`);
+    warnings.push(`couleur: posée par identifiants ${[...retenues].join(", ")} (page Vinted non française)`);
+    return true;
+  } catch (e) {
+    warnings.push(`couleur par id : ${e?.message ?? e} — pose par libellé`);
+    await closeAnyOpenDropdown().catch(() => {});
+    return false;
+  }
 }
 
 // size_id → libellé ("M"). MESURÉ le 2026-08-05 : /api/v2/sizes rend 404, le
@@ -2245,6 +2385,21 @@ async function fillListingForm(job) {
     fields.colors = [_color];
   }
 
+  // ── ZONE EURO (0.6.69) : identifiants Vinted, page NON française SEULEMENT ──
+  // platform_fields.vinted_ids = { catalog_id, status_id, color_ids } — posé par
+  // la recréation d'une republication (capture de l'annonce d'origine) ou par
+  // le serveur pour une publication. Sur une page française, idsVinted reste
+  // null : le chemin d'avant s'exécute à l'identique (cf. pageVintedFrancaise).
+  // vinted_ids_actifs : AUTORISATION du serveur (get-pending-jobs, pays du
+  // compte OUVERT — coin_config vinted_pays_<cc>). Absente = on ne s'en sert
+  // pas : fermer un pays côté serveur coupe ces poses en un geste.
+  const idsVinted = !pageVintedFrancaise() && fields.vinted_ids_actifs === true &&
+    fields.vinted_ids && typeof fields.vinted_ids === "object"
+    ? fields.vinted_ids : null;
+  if (idsVinted) {
+    console.log(`[vinted] page Vinted en « ${document.documentElement.getAttribute("lang")} » — poses par identifiant disponibles :`, idsVinted);
+  }
+
   // Fallback explicite : sans chemin de catégorie, l'annonce ne peut pas être
   // publiée sur Vinted — on échoue AVANT de remplir quoi que ce soit, avec un
   // message actionnable. `vintedGenreRequired` (posé par l'app à la création
@@ -2366,7 +2521,17 @@ async function fillListingForm(job) {
     categorieSuggestionRetenue = null;
     categorieArbitrage = null;
     titreArticleVinted = String(job?.title ?? "");
-    await etape("Catégorie", () => selectCategory(fields.categoryPath, fields, job?.title ?? ""));
+    // Page non française + catalogue connu : pose par identifiants d'abord
+    // (0.6.69) ; tout échec retombe sur la descente par libellés, inchangée.
+    // Un choix de niveau tranché par l'utilisateur garde la main (libellés).
+    if (idsVinted?.catalog_id && !String(fields.categoryLevelChoice ?? "").trim()) {
+      await etape("Catégorie", async () => {
+        if (await selectCategoryParIds(idsVinted.catalog_id, warnings)) return;
+        return selectCategory(fields.categoryPath, fields, job?.title ?? "");
+      });
+    } else {
+      await etape("Catégorie", () => selectCategory(fields.categoryPath, fields, job?.title ?? ""));
+    }
     // Trace lisible en base : la suggestion de Vinted a remplacé notre chemin.
     if (categorieArbitrage) {
       // Forme STRUCTURÉE : c'est elle qu'on compte en SQL (point 2). Le
@@ -2921,7 +3086,12 @@ async function fillListingForm(job) {
   // relevé sur formulaire réel). Sans correspondance dans aucun onglet, le
   // libellé prend le relais ; sans libellé : champ vide → constat des requis →
   // needs_user (mini-éditeur), comme avant.
-  if (fields.etat) {
+  // Page non française (0.6.69) : l'état par son identifiant d'abord, sauf
+  // réponse de l'utilisateur (vintedAspects.condition, qui prime toujours).
+  const etatParId = idsVinted?.status_id && !String(_va.condition ?? "").trim()
+    ? await selectEtatParId(idsVinted.status_id, warnings)
+    : false;
+  if (fields.etat && !etatParId) {
     await selectClosedOptionSafe(
       "état",
       '#condition, [data-testid="category-condition-single-list-input"]',
@@ -2940,7 +3110,15 @@ async function fillListingForm(job) {
   // job 243097d4, couleur "Argent" hors palette). Le retour porte le relevé
   // discoveredRequired (palette comprise) pour que le catalogue
   // platform_category_aspects apprenne malgré l'échec.
-  if (fields.colors?.length) {
+  // Page non française (0.6.69) : les couleurs par identifiants d'abord (en
+  // italien, « Rosa » nomme DEUX couleurs, ids 5 et 24 — relevé du 25/09 :
+  // seul l'id les distingue), sauf réponse de l'utilisateur (vintedAspects.color).
+  const couleursParId = Array.isArray(idsVinted?.color_ids) && idsVinted.color_ids.length && !_color
+    ? await selectCouleursParIds(idsVinted.color_ids, warnings)
+    : false;
+  if (couleursParId) {
+    // posées et relues par identifiant — rien d'autre à faire ici.
+  } else if (fields.colors?.length) {
     const couleurPosee = await selectColors(fields.colors, warnings);
     if (!couleurPosee) {
       const requiredState = await computeVintedRequiredState().catch(() => ({ discovered: [] }));

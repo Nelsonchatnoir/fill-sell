@@ -10363,6 +10363,15 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
           const j = await r.json();
           if (j?.user?.id && j.user.login) {
             identite = { user_id: String(j.user.id), login: String(j.user.login) };
+            // ── PAYS ET LANGUE DU COMPTE (0.6.69, zone euro, 25/09) ──────────
+            // Lus dans la MÊME réponse (country_code, locale — relevé sur la
+            // session de Nico : « FR », « fr »). Le domaine ne dit rien :
+            // Alberto (compte italien) travaille sur vinted.fr, en italien.
+            // Absents ou vides → clés absentes, jamais devinées.
+            const pays = String(j.user.country_code ?? j.user.country_iso_code ?? "").trim().toUpperCase();
+            const langue = String(j.user.locale ?? "").trim().toLowerCase();
+            if (/^[A-Z]{2}$/.test(pays)) identite.pays = pays;
+            if (/^[a-z]{2}(?:[-_][a-z0-9]{2,})?$/.test(langue)) identite.langue = langue;
           }
         } catch { /* corps illisible : identité inconnue */ }
       }
@@ -18573,6 +18582,26 @@ function construireJobRecreation(job, pf, cap, prix) {
       // relance — même trou que vintedAspects en son temps (cf. bandeau).
       ...(typeof pf.categoryLevelChoice === "string" && pf.categoryLevelChoice.trim()
         ? { categoryLevelChoice: pf.categoryLevelChoice.trim() } : {}),
+      // ── ZONE EURO (0.6.69, 25/09) : les IDENTIFIANTS de l'annonce d'origine ──
+      // Lus UNIQUEMENT par vinted.js sur une page Vinted NON française
+      // (pageVintedFrancaise) : catégorie, état et couleurs posés par id,
+      // indépendamment de la langue du compte. Une page française les ignore
+      // et suit le chemin par libellés d'avant, à l'identique.
+      ...(() => {
+        const ids = {};
+        const cat = Number(natifCap.catalog_id);
+        if (Number.isInteger(cat) && cat > 0) ids.catalog_id = cat;
+        const attrEtat = (Array.isArray(natifCap.item_attributes) ? natifCap.item_attributes : [])
+          .find((a) => String(a?.code ?? "").trim().toLowerCase() === "condition");
+        const etat = Number(natifCap.status_id ?? (Array.isArray(attrEtat?.ids) ? attrEtat.ids[0] : null));
+        if (Number.isInteger(etat) && etat > 0) ids.status_id = etat;
+        const couleurs = [natifCap.color1_id, natifCap.color2_id].map(Number).filter((n) => Number.isInteger(n) && n > 0);
+        if (couleurs.length) ids.color_ids = couleurs;
+        return Object.keys(ids).length ? { vinted_ids: ids } : {};
+      })(),
+      // Autorisation serveur (pays ouvert, get-pending-jobs) — sans elle,
+      // vinted_ids reste lettre morte côté vinted.js.
+      ...(pf.vinted_ids_actifs === true ? { vinted_ids_actifs: true } : {}),
     },
   });
 }
