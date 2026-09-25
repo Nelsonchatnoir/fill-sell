@@ -7,7 +7,8 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
-import { classementAgeEcrit } from "../../../src/utils/jeuxVideo.js";
+import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
+import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe } from "../_shared/correctifs-extension.js";
@@ -816,6 +817,26 @@ serve(async (req) => {
     // demander_sync_dressing() (au clic suivant) — c'est le seul endroit où il
     // est nécessaire, puisque c'est là qu'une demande morte bloquerait le
     // compte via l'index unique. Rien à purger depuis un poll.
+    // ── LE COMPTE VINTED EST-IL EN PAUSE ANTI-ROBOT ? (2026-09-25) ──────────
+    // Lu AVANT la commande de relevé du dressing. Pendant la pause (marqueur
+    // `attente_antirobot_compte` sur un job Vinted en file, posé plus bas par
+    // le bloc « ANTI-ROBOT SUR LE COMPTE VINTED »), AUCUN relevé Vinted n'est
+    // servi : la demande reste en file (6 h) et part au premier poll après la
+    // levée — le relevé ne frappe plus Vinted pendant la vérification. Les
+    // relevés des autres plateformes ne sont pas concernés. (L'insertion
+    // directe d'un relevé par l'extension — alarme, bouton — est refusée en
+    // base par le trigger garde_pause_antirobot_sync_runs, migration
+    // 20260925153000 : même règle pour toutes les versions d'extension.)
+    // Illisible → comportement d'avant.
+    let compteEnPauseAr = false;
+    try {
+      const { data: pauseAr } = await userClient.from("cross_post_jobs").select("id")
+        .eq("user_id", user.id).eq("platform", "vinted").eq("status", "pending")
+        .not("platform_fields->attente_antirobot_compte", "is", null)
+        .limit(1);
+      compteEnPauseAr = (pauseAr ?? []).length > 0;
+    } catch (_e) { /* jamais un point de panne */ }
+
     let syncCommand: { id: string } | null = null;
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
       try {
@@ -836,7 +857,9 @@ serve(async (req) => {
           .gte("queued_at", ttl)
           .order("queued_at", { ascending: true })
           .limit(1);
-        if (cmds?.length) syncCommand = { id: cmds[0].id as string };
+        if (cmds?.length && compteEnPauseAr) {
+          console.log(`[get-pending-jobs] userId=${user.id} : relevé Vinted ${String(cmds[0].id).slice(0, 8)} RETENU — compte en pause anti-robot, il partira à la levée`);
+        } else if (cmds?.length) syncCommand = { id: cmds[0].id as string };
       } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
     }
     // ══ UNE DEMANDE DE RELEVÉ JAMAIS RÉCLAMÉE REPART AU RETOUR DE CHROME ══════
@@ -893,6 +916,7 @@ serve(async (req) => {
             if (vues.has(cleNature)) continue; // la plus récente seulement
             vues.add(cleNature);
             if (ecartees.has(kind === "dressing" ? "vinted" : String(pf ?? ""))) continue;
+            if (kind === "dressing" && compteEnPauseAr) continue; // (25/09) pause anti-robot : pas de relevé Vinted
             // Un run PLUS RÉCENT de même nature a déjà répondu (ou est en cours).
             let plusRecent = admin.from("vinted_sync_runs").select("id").eq("user_id", user.id).eq("kind", kind)
               .neq("id", r.id as string).gt("started_at", String(r.queued_at)).limit(1);
@@ -2936,7 +2960,12 @@ serve(async (req) => {
               aRetenir.add(String(d.id));
               continue;
             }
-            if (!depotEncoreSurveille && Date.now() - depuisMs > ATTENTE_MAX_MS) {
+            // (2026-09-25) Un retrait Vinted d'un compte en pause anti-robot
+            // n'expire jamais pendant la pause, et le temps passé en pause ne
+            // compte pas dans les 7 jours.
+            const enPauseAr = d.platform === "vinted" && (Boolean(pf["attente_antirobot_compte"]) || compteEnPauseAr);
+            const pauseMs = Math.max(0, Number(pf["antirobot_pause_cumul_ms"]) || 0);
+            if (!depotEncoreSurveille && !enPauseAr && Date.now() - depuisMs - pauseMs > ATTENTE_MAX_MS) {
               await userClient.from("cross_post_jobs")
                 .update({
                   status: "failed",
@@ -4982,9 +5011,16 @@ serve(async (req) => {
     //   · PEGI : la fiche (réponse du vendeur), sinon ce qui est ÉCRIT dans le
     //     titre ou la description (« PEGI 12 », « USK 16 » — même lecture que
     //     l'app, src/utils/jeuxVideo.js) ; sinon la question.
-    //   · Âge Beebs : aucune déduction (décision du 20/09 : pas d'équivalence
-    //     PEGI → âge). Une valeur saisie dans beebsAspects["Âge"] — canal que
-    //     beebs.js ne lit PAS (seul pf.age compte) — est servie dans pf.age.
+    //   · Âge Beebs : aucune déduction. Une valeur saisie dans
+    //     beebsAspects["Âge"] — canal que beebs.js ne lit PAS (seul pf.age
+    //     compte) — est servie dans pf.age. (25/09, point 3) Pour un JEU VIDÉO,
+    //     l'âge se LIT aussi : la tranche qu'ouvre le classement de la fiche
+    //     (réponse du vendeur), sinon un PEGI/USK écrit dans l'annonce
+    //     (src/utils/jeuxVideo.js, ageBeebsDuClassement) ; sinon la question.
+    //     Et une REPUBLICATION Beebs sans âge s'arrête ici AVANT le retrait
+    //     (elle recopie le dépôt d'origine : les âges devinés de XEWER ont été
+    //     retirés de ces dépôts le 25/09) — sans ce filet, l'annonce était
+    //     retirée PUIS le redépôt s'arrêtait au formulaire, hors ligne.
     // Périmètre : poll d'exécution, PUBLISH seulement (une republication
     // reprend sa copie capturée), feuilles MESURÉES au catalogue (relevé DOM,
     // requis) — une feuille inconnue reste au pré-vol, qui alimente le
@@ -4998,9 +5034,11 @@ serve(async (req) => {
         const presente = (v: unknown) => String(v ?? "").trim();
         const cheminDe = (v: unknown) => Array.isArray(v) ? (v as unknown[]).map((c) => String(c ?? "").trim()).filter(Boolean) : [];
         const candidats = (out as unknown as Array<Record<string, unknown>>).filter((j) => {
-          if ((j.action ?? "publish") !== "publish") return false;
           const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
           if (!pf) return false;
+          const republicationBeebsAvantRetrait = j.action === "republish" && j.platform === "beebs"
+            && !["deleted", "recreated"].includes(String(pf.republish_step ?? ""));
+          if ((j.action ?? "publish") !== "publish" && !republicationBeebsAvantRetrait) return false;
           if (j.platform === "vinted") {
             const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
             return cheminDe(pf.categoryPath).length > 0 && !presente(aspects.video_game_ratings);
@@ -5021,8 +5059,9 @@ serve(async (req) => {
             if (ok && vals.length) listes.set(`${l.platform}|${String(l.category_key ?? "")}`, vals);
           }
           // La fiche : une réponse DU VENDEUR (jamais lens / IA / backfill).
-          const idsVinted = [...new Set(candidats.filter((j) => j.platform === "vinted" && j.inventaire_id != null
-            && listes.has(`vinted|${cheminDe((j.platform_fields as Record<string, unknown>).categoryPath).join(" > ")}`))
+          const idsVinted = [...new Set(candidats.filter((j) => j.inventaire_id != null && (j.platform === "vinted"
+              ? listes.has(`vinted|${cheminDe((j.platform_fields as Record<string, unknown>).categoryPath).join(" > ")}`)
+              : listes.has(`beebs|${cheminDe((j.platform_fields as Record<string, unknown>).beebsCategoryPath).join(" > ")}`)))
             .map((j) => Number(j.inventaire_id)))];
           const classementFiche = new Map<number, { v: string; source: string }>();
           if (idsVinted.length) {
@@ -5064,6 +5103,23 @@ serve(async (req) => {
                 console.log(`[get-pending-jobs] Beebs ${String(j.id).slice(0, 8)} : Âge « ${saisi} » servi depuis beebsAspects (canal que beebs.js ne lit pas)`);
                 continue;
               }
+              // (25/09, point 3) Un JEU VIDÉO : l'âge se LIT — la fiche d'abord
+              // (classement répondu par le vendeur), puis un PEGI/USK écrit.
+              const titreJ = String(j.title ?? ""), descJ = String(j.description ?? "");
+              if (/jeux vid/i.test(feuille) || familleJeuVideo(titreJ, descJ)?.famille === "jeu") {
+                const fiche = j.inventaire_id != null ? classementFiche.get(Number(j.inventaire_id)) : undefined;
+                const parFiche = fiche ? ageBeebsDuClassement(fiche.v) : null;
+                const ecrit = parFiche ? null : ageBeebsJeuVideoLu(titreJ, descJ);
+                const lu = parFiche && fiche
+                  ? { valeur: parFiche, source: `classement de la fiche « ${fiche.v} » (${fiche.source})` }
+                  : ecrit ? { valeur: ecrit.valeur, source: `${ecrit.classement} écrit dans le titre ou la description` } : null;
+                if (lu && liste.includes(lu.valeur)) {
+                  pf.age = lu.valeur;
+                  pf.age_lu = { ...lu, le: new Date().toISOString(), pose_par: "get-pending-jobs (lu, jamais deviné)" };
+                  console.log(`[get-pending-jobs] Beebs ${String(j.id).slice(0, 8)} : Âge « ${lu.valeur} » servi (${lu.source})`);
+                  continue;
+                }
+              }
             }
             const champ = vinted
               ? { field_key: "video_game_ratings", field_label: "Classement du contenu", input_type: "select", allowed_values: liste, options_completes: true, target: { root: "vintedAspects", key: "video_game_ratings" }, platform: "vinted" }
@@ -5072,8 +5128,11 @@ serve(async (req) => {
               ? `Vinted exige le classement par âge (PEGI) pour le rayon « ${feuille} », et ton annonce n'en porte pas encore. ` +
                 "Choisis celui imprimé sur la jaquette ci-dessous (bouton « ✋ Compléter ») — « Non précisé » s'il n'y en a pas : " +
                 "la publication repart d'elle-même. Rien n'a été envoyé à Vinted."
-              : `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et ton annonce ne le renseigne pas. ` +
-                "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. Rien n'a été envoyé à Beebs.";
+              : j.action === "republish"
+                ? `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et nous ne le connaissons pas : l'âge de ton annonce actuelle avait été deviné, pas lu. ` +
+                  "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la republication repart d'elle-même avec cet âge. Ton annonce est restée en ligne telle quelle."
+                : `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et ton annonce ne le renseigne pas. ` +
+                  "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. Rien n'a été envoyé à Beebs.";
             const pfNu: Record<string, unknown> = {
               ...pf,
               needsUserField: champ,
@@ -5098,6 +5157,62 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] PEGI / Âge : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+      }
+    }
+
+    // ══ LEBONCOIN : « DIVERS > AUTRES » N'EST JAMAIS UNE RÉPONSE SILENCIEUSE ══
+    // (2026-09-25, point 2 — le pichet de Jocabroc, job c9a75a0a.) L'objet
+    // était reconnu (« pichet »), mais l'ancienne descente de l'arbre a pris
+    // la racine « Divers », puis son seul enfant « Autres » : Leboncoin a
+    // accepté le dépôt, puis l'a retiré à la modération. Recensé le 25/09 :
+    // 23 dépôts « Divers > Autres » depuis le 18/09, 10 refusés. Un refus de
+    // modération, c'est NOTRE faute.
+    // L'app ne pose plus ce rayon (utils/fourreTout.js : jamais une étape de
+    // la descente, jamais une feuille retenue ; à défaut de rayon sûr, la
+    // question « Rayon à choisir » part dans le stepper). Ce filet-ci couvre
+    // ce que l'app ne voit plus : les jobs DÉJÀ en file et les anciennes
+    // versions de l'app — le job s'arrête AVANT tout essai, rien n'est
+    // envoyé, et « Relancer » re-cherche le rayon (StockTab, même mécanisme
+    // que la publication). Le choix de la PERSONNE (categorie_source
+    // « choix_humain ») part tel quel.
+    // Périmètre : poll d'exécution, PUBLISH seulement — une republication
+    // reprend le rayon de l'annonce en ligne (relevé, adresse), que
+    // Leboncoin a déjà accepté. Best-effort : une écriture ratée → servi
+    // comme avant.
+    let heldFourreTout = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const aRetenir = new Set<string>();
+        for (const j of out as unknown as Array<Record<string, unknown>>) {
+          if (j.platform !== "leboncoin" || (j.action ?? "publish") !== "publish") continue;
+          const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
+          if (!pf || pf.categorie_source === "choix_humain" || !estFourreToutCatalogue(pf.lbcCategoryPath)) continue;
+          const chemin = (pf.lbcCategoryPath as unknown[]).map((c) => String(c ?? "").trim()).join(" > ");
+          const message = `Leboncoin refuse à la vérification les annonces rangées dans « ${chemin} » quand l'objet a son vrai rayon, ` +
+            "et aucun rayon sûr n'a encore été trouvé pour celle-ci. Touche « Relancer » : le rayon sera recherché de nouveau — " +
+            "s'il reste incertain, republie l'article depuis sa fiche, il te sera demandé. Rien n'a été envoyé à Leboncoin.";
+          const pfNu: Record<string, unknown> = {
+            ...pf,
+            fourre_tout_retenu: { chemin: pf.lbcCategoryPath, source: pf.categorie_source ?? null, depuis: new Date().toISOString(), pose_par: "get-pending-jobs (avant tout essai)" },
+          };
+          delete pfNu.processing_since;
+          const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: message, platform_fields: pfNu })
+            .eq("id", j.id as string).eq("status", "pending").select("id");
+          if (uErr) {
+            console.warn(`[get-pending-jobs] leboncoin ${String(j.id).slice(0, 8)} : fourre-tout « ${chemin} » non retenu (${uErr.message}) — servi tel quel`);
+            continue;
+          }
+          aRetenir.add(String(j.id));
+          console.log(`[get-pending-jobs] leboncoin ${String(j.id).slice(0, 8)} : rayon fourre-tout « ${chemin} » (source ${String(pf.categorie_source ?? "∅")}) → needs_user AVANT tout essai${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+        }
+        if (aRetenir.size) {
+          const avant = out.length;
+          out = out.filter((j) => !aRetenir.has(String(j.id)));
+          heldFourreTout = avant - out.length;
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] fourre-tout Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
       }
     }
 
@@ -6243,7 +6358,9 @@ serve(async (req) => {
                 ecritures++;
                 const pfNeuf: Record<string, unknown> = {
                   ...pf,
-                  attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403 },
+                  // pose_le (2026-09-25) : le début de la pause POUR CE JOB — c'est
+                  // de là que la levée compte le temps passé en pause.
+                  attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403, pose_le: new Date().toISOString() },
                 };
                 if (j.error && j.error !== ANTIROBOT_COMPTE_MSG) {
                   pfNeuf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause anti-robot du compte)");
@@ -6271,6 +6388,17 @@ serve(async (req) => {
             if (!pf.attente_antirobot_compte || ecritures >= 40) continue;
             ecritures++;
             const pfNeuf: Record<string, unknown> = { ...pf };
+            // (2026-09-25) LE TEMPS PASSÉ EN PAUSE NE COMPTE PAS : les délais
+            // (dépôts muets à 10 jours, filet à 30 jours) REPRENNENT à la
+            // levée. On cumule la durée de la pause de CE job — depuis la pose
+            // du marqueur (sinon le début de l'épisode), jamais avant sa création.
+            const marq = (pf.attente_antirobot_compte && typeof pf.attente_antirobot_compte === "object")
+              ? pf.attente_antirobot_compte as Record<string, unknown> : {};
+            const poseMs = Date.parse(String(marq.pose_le ?? marq.depuis ?? ""));
+            const neMs = Date.parse(String((j as { created_at?: unknown }).created_at ?? ""));
+            const debutPause = Math.max(Number.isFinite(poseMs) ? poseMs : Date.now(), Number.isFinite(neMs) ? neMs : -Infinity);
+            pfNeuf.antirobot_pause_cumul_ms = Math.max(0, Number(pf.antirobot_pause_cumul_ms) || 0) + Math.max(0, Date.now() - debutPause);
+            pfNeuf.antirobot_pause_levee_le = new Date().toISOString();
             delete pfNeuf.attente_antirobot_compte;
             const { error: wErr } = await userClient.from("cross_post_jobs")
               .update({ ...(j.error === ANTIROBOT_COMPTE_MSG ? { error: null } : {}), platform_fields: pfNeuf })
@@ -6278,6 +6406,30 @@ serve(async (req) => {
             if (wErr) console.warn(`[get-pending-jobs] pause anti-robot levée : marqueur non retiré sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
           }
           if (ecritures) console.log(`[get-pending-jobs] userId=${user.id} : pause anti-robot Vinted levée — ${ecritures} job(s) rendus à la file`);
+          // (2026-09-25) LES RELEVÉS VINTED REPRENNENT SEULS À LA LEVÉE : ceux
+          // qu'on a retenus pendant la pause (alarme quotidienne refusée,
+          // demande laissée en file) ne reviendraient qu'au prochain cycle de
+          // 24 h. Un relevé est mis en file s'il n'y en a ni en cours ni de
+          // moins de 20 h — la cadence du dressing reste juge
+          // (garde_cadence_sync_runs, index un_seul_actif).
+          if (ecritures) {
+            try {
+              const { data: derniers } = await userClient.from("vinted_sync_runs")
+                .select("status, started_at, finished_at, queued_at")
+                .eq("user_id", user.id).eq("kind", "dressing")
+                .order("queued_at", { ascending: false, nullsFirst: false }).limit(1);
+              const d = (derniers ?? [])[0] as Record<string, unknown> | undefined;
+              const actif = d && (d.status === "queued" || d.status === "running");
+              const recentMs = Date.parse(String(d?.finished_at ?? d?.started_at ?? ""));
+              if (!actif && !(Number.isFinite(recentMs) && Date.now() - recentMs < 20 * 3600_000)) {
+                const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+                  user_id: user.id, kind: "dressing", status: "queued",
+                  declencheur: "serveur:levee_antirobot", queued_at: new Date().toISOString(),
+                });
+                console.log(`[get-pending-jobs] userId=${user.id} : relevé Vinted remis en file à la levée de la pause${qErr ? ` — refusé (${qErr.message})` : ""}`);
+              }
+            } catch (_e) { /* la reprise du relevé ne bloque jamais la file */ }
+          }
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] pause anti-robot du compte : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
@@ -6410,9 +6562,17 @@ serve(async (req) => {
       // (25/09) Dépôts PEGI (Vinted « Jeux ») ou Âge (Beebs) passés en question
       // AVANT tout essai — la valeur manquait et rien ne permettait de la lire.
       questions_classement_age_avant_essai: heldClassementAge,
+      // (25/09) Dépôts Leboncoin en rayon fourre-tout (« Divers > Autres ») non
+      // choisi par la personne, passés en question AVANT tout essai.
+      fourre_tout_retenus_avant_essai: heldFourreTout,
       // (25/09) Pause Vinted du compte sur anti-robot : jobs retenus, sonde
       // éventuelle, dates du signal. null = pas de pause.
       antirobot_pause: antirobotPause,
+      // (25/09) Le compte est-il en pause anti-robot Vinted ? L'extension (≥
+      // 0.6.68) ne lance alors AUCUNE lecture de Vinted hors jobs : ni relevé
+      // du dressing, ni relevé des ventes, ni veilleur. La sonde de session
+      // continue : c'est elle qui lève la pause.
+      vinted_pause_antirobot: Boolean(antirobotPause) || compteEnPauseAr,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
