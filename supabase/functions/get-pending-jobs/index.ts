@@ -114,6 +114,9 @@ import { oplaNoeud } from "../_shared/opla-catalogue.ts";
 // (opla.js:701 lit oplaCategoryCode, opla.js:479 sort dès que c'est une feuille).
 import { cheminLisible, cleFourche } from "../_shared/opla-resolution.ts";
 import { completerJobOpla, type OplaMem } from "../_shared/opla-completion.ts";
+// Une plateforme qui fige ne confisque plus le poste (25/09) — module JS sans
+// import, le même qu'exécute scripts/rotation-figes-selftest.mjs.
+import { plateformesFigees, rotationFiges } from "../_shared/rotation-figes.js";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -3612,8 +3615,47 @@ serve(async (req) => {
       }
     }
 
+    // ══ UNE PLATEFORME QUI FIGE NE CONFISQUE PLUS LE POSTE (2026-09-25) ══════
+    // MeMiniandMove : ses retraits Leboncoin/Beebs figeaient 30 à 60 min à
+    // chaque cycle, passaient en tête (rang « delete » de l'extension) et les
+    // 8 republications Vinted n'avaient jamais leur tour. Une plateforme dont
+    // un job a figé ici dans les 3 dernières heures passe APRÈS les autres :
+    // ses jobs attendent tant que ce poll a autre chose à servir. Jamais une
+    // republication hors ligne (étape 'deleted'), jamais de famine (rien
+    // d'autre → ils partent). Règle et bornes : _shared/rotation-figes.js.
+    // Best-effort : illisible → comportement d'avant.
+    let heldFiges = 0;
+    let plateformesFigeesLues: string[] = [];
+    if (!includeProcessing && !includeNeedsUser && new Set(out.map((j) => String(j.platform))).size > 1) {
+      try {
+        const colonnes = "id, platform, action, status, error, platform_fields";
+        const { data: figesReprise } = await userClient
+          .from("cross_post_jobs").select(colonnes)
+          .eq("user_id", user.id).in("status", ["pending", "processing"])
+          .like("error", "Reprise après interruption (bloqué%")
+          .limit(25);
+        const { data: figesCanal } = await userClient
+          .from("cross_post_jobs").select(colonnes)
+          .eq("user_id", user.id).in("status", ["pending", "processing"])
+          .eq("platform_fields->pas_de_rouge->>motif", "canal_coupe")
+          .limit(25);
+        const figees = plateformesFigees([...(figesReprise ?? []), ...(figesCanal ?? [])]);
+        if (figees.size) {
+          const { garde, retenus } = rotationFiges(out, figees);
+          if (retenus.length) {
+            out = garde;
+            heldFiges = retenus.length;
+            plateformesFigeesLues = [...figees];
+          }
+        }
+      } catch (_e) {
+        // Jamais un point de panne : la distribution part telle quelle.
+      }
+    }
+
     console.log(
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
+      (heldFiges ? `, ${heldFiges} job(s) retenu(s) après les autres (plateforme(s) qui figent sur ce poste : ${plateformesFigeesLues.join(", ")})` : "") +
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
       (heldSync ? `, ${heldSync} retenu(s) (la sync passe devant)` : "") +
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
