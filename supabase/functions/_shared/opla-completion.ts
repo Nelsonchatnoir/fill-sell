@@ -18,6 +18,7 @@
 import { oplaChemin, oplaNoeud } from "./opla-catalogue.ts";
 import { cheminLisible, cleFourche, normaliserTailleOpla, optionsFeuilles, resoudreCategorieOpla } from "./opla-resolution.ts";
 import { etagereVinted } from "./vinted-branche.ts";
+import { tierEtat } from "./etat-plateformes.js";
 
 /** Une réponse déjà donnée par la personne, rangée par QUESTION (cf. `cleFourche`). */
 export type OplaMem = { code: string; titre: string; options: string[]; mot: string | null; le: string };
@@ -319,6 +320,33 @@ export function completerJobOpla(
     if (!t) continue;
     pf[cle] = t.v;
     trace[cle] = { valeur: t.v, avant: null, source: `inventaire.attributs.${cle} (${t.source})` };
+  }
+
+  // ── L'ÉTAT EN CODE OPLA, JAMAIS EN LIBELLÉ (2026-09-25) ──────────────────
+  // « Pantalon Morgan » (nadegemarcelin78, 25e0778f) : la catégorie comblée
+  // ci-dessus, la republication a buté juste après au pré-vol sur « État Opla
+  // inconnu : « Très bon état ». Admis : new-with-tags, new, like-new, good,
+  // fair ». Pour une PUBLICATION, l'app pose le code à l'insert du job
+  // (OPLA_ETAT_PAR_LIBELLE, ListingPreviewScreen) ; une republication issue du
+  // relevé n'a pas d'état du tout, et la boucle ci-dessus le comble avec le
+  // libellé de la fiche. On le traduit ici, par la même table (tierEtat, qui
+  // reconnaît déjà les codes Opla). Un état déjà en code n'est pas touché ;
+  // un libellé que la table ne reconnaît pas reste tel quel — le pré-vol le
+  // refusera en le nommant, comme avant.
+  {
+    const CODES = ["new-with-tags", "new", "like-new", "good", "fair"];
+    const CODE_PAR_PALIER: Record<string, string> = {
+      neuf_etiquette: "new-with-tags", neuf_sans: "new", tres_bon: "like-new", bon: "good", satisfaisant: "fair",
+    };
+    const brut = String(pf.etat ?? "").trim();
+    if (brut && !CODES.includes(brut)) {
+      const palier = tierEtat(brut);
+      const code = palier ? CODE_PAR_PALIER[palier] : null;
+      if (code) {
+        pf.etat = code;
+        trace.etat_code = { valeur: code, avant: brut, source: "libellé traduit en code Opla (tierEtat, même table que l'app)" };
+      }
+    }
   }
 
   // ── LA TAILLE, NORMALISÉE AVANT D'ÊTRE REFUSÉE ────────────────────
