@@ -7,6 +7,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
+import { classementAgeEcrit } from "../../../src/utils/jeuxVideo.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe } from "../_shared/correctifs-extension.js";
@@ -4967,6 +4968,139 @@ serve(async (req) => {
       }
     }
 
+    // ══ PEGI (VINTED « JEUX ») ET ÂGE (BEEBS) : LA QUESTION AVANT TOUT ESSAI ══
+    // (2026-09-25, point 6) L'ANCIEN stepper range un jeu par l'icône 🎮, qui
+    // pointe « Consoles » (Vinted) et « Consoles de jeux » (Beebs) — deux
+    // rayons sans PEGI ni Âge : rien ne bloquait, et le job partait sans. Le
+    // rayon juste (« Jeux », « Multimédia > Jeux vidéo ») était ensuite posé
+    // par la résolution, et c'est le PRÉ-VOL de l'extension qui s'arrêtait
+    // devant le formulaire ouvert (XEWER : 2 arrêts PEGI, 5 arrêts Âge depuis
+    // le 18/09). Le NOUVEAU stepper bloque déjà l'absence (rayon résolu) : ses
+    // jobs portent la valeur, la condition ci-dessous est fausse pour eux.
+    // Ce filet-ci avance l'arrêt AVANT l'ouverture du formulaire, avec la
+    // liste relevée. Rien n'est inventé :
+    //   · PEGI : la fiche (réponse du vendeur), sinon ce qui est ÉCRIT dans le
+    //     titre ou la description (« PEGI 12 », « USK 16 » — même lecture que
+    //     l'app, src/utils/jeuxVideo.js) ; sinon la question.
+    //   · Âge Beebs : aucune déduction (décision du 20/09 : pas d'équivalence
+    //     PEGI → âge). Une valeur saisie dans beebsAspects["Âge"] — canal que
+    //     beebs.js ne lit PAS (seul pf.age compte) — est servie dans pf.age.
+    // Périmètre : poll d'exécution, PUBLISH seulement (une republication
+    // reprend sa copie capturée), feuilles MESURÉES au catalogue (relevé DOM,
+    // requis) — une feuille inconnue reste au pré-vol, qui alimente le
+    // catalogue. Seule l'ABSENCE est jugée. Mesuré sur 60 jours : aucun dépôt
+    // Vinted « Jeux » publié sans PEGI, aucun dépôt Beebs publié sans Âge sur
+    // ces feuilles — ce filet ne retient rien qui serait passé.
+    // Best-effort : une lecture ou une écriture ratée → servi comme avant.
+    let heldClassementAge = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const presente = (v: unknown) => String(v ?? "").trim();
+        const cheminDe = (v: unknown) => Array.isArray(v) ? (v as unknown[]).map((c) => String(c ?? "").trim()).filter(Boolean) : [];
+        const candidats = (out as unknown as Array<Record<string, unknown>>).filter((j) => {
+          if ((j.action ?? "publish") !== "publish") return false;
+          const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
+          if (!pf) return false;
+          if (j.platform === "vinted") {
+            const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
+            return cheminDe(pf.categoryPath).length > 0 && !presente(aspects.video_game_ratings);
+          }
+          if (j.platform === "beebs") return cheminDe(pf.beebsCategoryPath).length > 0 && !presente(pf.age);
+          return false;
+        });
+        if (candidats.length) {
+          const { data: lignes, error: cErr } = await userClient.from("platform_category_aspects")
+            .select("platform, category_key, field_key, allowed_values")
+            .in("platform", ["vinted", "beebs"]).in("field_key", ["video_game_ratings", "Âge"])
+            .eq("required", true).eq("source", "dom");
+          if (cErr) throw new Error(`catalogue illisible (${cErr.message})`);
+          const listes = new Map<string, string[]>();
+          for (const l of (lignes ?? []) as Array<Record<string, unknown>>) {
+            const ok = (l.platform === "vinted" && l.field_key === "video_game_ratings") || (l.platform === "beebs" && l.field_key === "Âge");
+            const vals = Array.isArray(l.allowed_values) ? (l.allowed_values as unknown[]).map((v) => String(v ?? "").trim()).filter(Boolean) : [];
+            if (ok && vals.length) listes.set(`${l.platform}|${String(l.category_key ?? "")}`, vals);
+          }
+          // La fiche : une réponse DU VENDEUR (jamais lens / IA / backfill).
+          const idsVinted = [...new Set(candidats.filter((j) => j.platform === "vinted" && j.inventaire_id != null
+            && listes.has(`vinted|${cheminDe((j.platform_fields as Record<string, unknown>).categoryPath).join(" > ")}`))
+            .map((j) => Number(j.inventaire_id)))];
+          const classementFiche = new Map<number, { v: string; source: string }>();
+          if (idsVinted.length) {
+            const { data: arts } = await userClient.from("inventaire").select("id, attributs").in("id", idsVinted);
+            for (const a of (arts ?? []) as Array<{ id: number; attributs: unknown }>) {
+              const e = (a.attributs && typeof a.attributs === "object") ? (a.attributs as Record<string, unknown>).classement_age : null;
+              const o = (e && typeof e === "object") ? e as Record<string, unknown> : null;
+              const v = typeof o?.v === "string" ? o.v.trim() : "";
+              const source = typeof o?.source === "string" ? o.source : "";
+              if (v && /^(manuel|capture|vinted|releve_)/.test(source)) classementFiche.set(Number(a.id), { v, source });
+            }
+          }
+          const aRetenir = new Set<string>();
+          for (const j of candidats) {
+            const pf = j.platform_fields as Record<string, unknown>;
+            const vinted = j.platform === "vinted";
+            const chemin = cheminDe(vinted ? pf.categoryPath : pf.beebsCategoryPath);
+            const liste = listes.get(`${j.platform}|${chemin.join(" > ")}`);
+            if (!liste) continue; // feuille non mesurée : le pré-vol garde la main
+            const feuille = chemin[chemin.length - 1];
+            if (vinted) {
+              const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
+              const fiche = j.inventaire_id != null ? classementFiche.get(Number(j.inventaire_id)) : undefined;
+              const ecrit = classementAgeEcrit(String(j.title ?? ""), String(j.description ?? ""));
+              const lu = fiche && liste.includes(fiche.v)
+                ? { valeur: fiche.v, source: `inventaire.attributs.classement_age (${fiche.source})` }
+                : ecrit && liste.includes(ecrit) ? { valeur: ecrit, source: "écrit dans le titre ou la description" } : null;
+              if (lu) {
+                pf.vintedAspects = { ...aspects, video_game_ratings: lu.valeur };
+                pf.classement_deduit = { ...lu, le: new Date().toISOString(), pose_par: "get-pending-jobs (lu, jamais deviné)" };
+                console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} : PEGI « ${lu.valeur} » servi (${lu.source})`);
+                continue;
+              }
+            } else {
+              const aspectsB = (pf.beebsAspects && typeof pf.beebsAspects === "object") ? (pf.beebsAspects as Record<string, unknown>) : {};
+              const saisi = presente(aspectsB["Âge"]);
+              if (saisi) {
+                pf.age = saisi;
+                console.log(`[get-pending-jobs] Beebs ${String(j.id).slice(0, 8)} : Âge « ${saisi} » servi depuis beebsAspects (canal que beebs.js ne lit pas)`);
+                continue;
+              }
+            }
+            const champ = vinted
+              ? { field_key: "video_game_ratings", field_label: "Classement du contenu", input_type: "select", allowed_values: liste, options_completes: true, target: { root: "vintedAspects", key: "video_game_ratings" }, platform: "vinted" }
+              : { field_key: "Âge", field_label: "Âge", input_type: "dropdown", allowed_values: liste, options_completes: true, target: { root: null, key: "age" }, platform: "beebs" };
+            const message = vinted
+              ? `Vinted exige le classement par âge (PEGI) pour le rayon « ${feuille} », et ton annonce n'en porte pas encore. ` +
+                "Choisis celui imprimé sur la jaquette ci-dessous (bouton « ✋ Compléter ») — « Non précisé » s'il n'y en a pas : " +
+                "la publication repart d'elle-même. Rien n'a été envoyé à Vinted."
+              : `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et ton annonce ne le renseigne pas. ` +
+                "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. Rien n'a été envoyé à Beebs.";
+            const pfNu: Record<string, unknown> = {
+              ...pf,
+              needsUserField: champ,
+              classement_age_exige: { champ: champ.field_label, rayon: chemin, depuis: new Date().toISOString(), pose_par: "get-pending-jobs (avant tout essai)" },
+            };
+            delete pfNu.processing_since;
+            const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
+              .update({ status: "needs_user", error: message, platform_fields: pfNu })
+              .eq("id", j.id as string).eq("status", "pending").select("id");
+            if (uErr) {
+              console.warn(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : question « ${champ.field_label} » non écrite (${uErr.message}) — servi tel quel`);
+              continue;
+            }
+            aRetenir.add(String(j.id));
+            console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : « ${champ.field_label} » manquant pour « ${chemin.join(" > ")} » → needs_user AVANT tout essai${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+          }
+          if (aRetenir.size) {
+            const avant = out.length;
+            out = out.filter((j) => !aRetenir.has(String(j.id)));
+            heldClassementAge = avant - out.length;
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] PEGI / Âge : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+      }
+    }
+
     // ── TITRE VINTED : TROP DE MAJUSCULES (2026-09-11, job f3a5dce8 Ornella) ──
     // Vinted refuse en 400 « Le titre contient trop de lettres majuscules » —
     // un seul mot en capitales suffit (« BOURSIC », 25 % de l'ensemble). La
@@ -6107,6 +6241,9 @@ serve(async (req) => {
       vinted_questions_avant_essai: heldVintedExige,
       jobs_rearmes_correctif: relancesCorrectif,
       releves_redemandes: relevesRedemandes,
+      // (25/09) Dépôts PEGI (Vinted « Jeux ») ou Âge (Beebs) passés en question
+      // AVANT tout essai — la valeur manquait et rien ne permettait de la lire.
+      questions_classement_age_avant_essai: heldClassementAge,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
