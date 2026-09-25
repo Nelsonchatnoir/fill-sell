@@ -125,7 +125,9 @@ fait foi, pas ce tableau.
 · `email-tunnel` (9h + horaire, **et** le trigger `handle_new_user`) ·
 `ops-digest` (8h50) · `republish-purge` (3h40) · `lens-temp-purge` (3h50 —
 jamais de purge côté client : un client ne voit que SON scan, c'est ce qui
-effaçait les photos d'articles avant le 15/09).
+effaçait les photos d'articles avant le 15/09) · `doublons-balayage` (*/2,
+ajoutée le 25/09 — empreintes photo puis décisions de doublons ; déclarée
+`verify_jwt = false` dans `config.toml`).
 
 **Webhooks externes** (l'émetteur n'a pas de session) : `stripe-webhook` ·
 `apple-iap-webhook` · `google-play-webhook` · `ebay-account-deletion` ·
@@ -288,7 +290,9 @@ Les endroits à reprendre, tenus à jour (relevé du 21/09 —
   `20260919162000_ebay_ventes_cron.sql` ·
   `20260919180000_objets_sans_trace_reconstruits.sql` ·
   **`20260921090000_beebs_lien_cron.sql`** (ajouté le 21/09, cron
-  `beebs-lien-5min`, jobid 16) ;
+  `beebs-lien-5min`, jobid 16) ·
+  **`20260925152000_doublons_balayage_cron.sql`** (ajouté le 25/09, cron
+  `doublons-balayage-2min`, jobid 17) ;
 - et, hors dépôt, **la commande de chaque ligne de `cron.job` en prod** : c'est
   elle qui fait foi, pas les fichiers.
 
