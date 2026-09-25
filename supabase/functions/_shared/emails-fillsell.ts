@@ -598,3 +598,97 @@ export function mailPaiementEchoue(
     }),
   };
 }
+
+// ---------------------------------------------------------------------------
+// 8. ventes_du_jour — le récapitulatif des ventes (25/09/2026)
+// ---------------------------------------------------------------------------
+// Remplace le mail « Vendu sur X 🎉 » envoyé à CHAQUE vente (type
+// relance_manuelle) : 14 mails en deux minutes chez les Petites Fioles le 25/09.
+// Un seul mail regroupe toutes les ventes notées depuis le précédent ; c'est
+// _shared/ventes-a-annoncer.ts qui décide QUAND il part (au plus un par 24 h).
+// Les montants sont des FAITS (prix de vente, bénéfice calculé) : ils ne
+// tombent pas sous la règle « aucun chiffre » qui vise les quotas et les prix
+// de FillSell. Un bénéfice inconnu (prix d'achat vide) n'est JAMAIS affiché.
+
+export interface VenteAnnoncee {
+  titre: string | null;
+  /** Slug. Passé par la garde des plateformes, jamais imprimé brut. */
+  plateforme: string;
+  prixVente: number;
+  /** null = prix d'achat inconnu : on n'invente pas de bénéfice. */
+  benefice: number | null;
+}
+
+export interface ContexteVentes {
+  ventes: VenteAnnoncee[];
+  /** Annonces du même article encore en ligne ailleurs, à retirer d'un clic. */
+  retraitsACliquer: number;
+  /** Dépôts Beebs en vérification, retirés automatiquement à leur mise en ligne. */
+  retraitsBeebsAuto: number;
+}
+
+function euros(n: number, lang: Langue): string {
+  const v = Math.round(Number(n) || 0);
+  return lang === "fr" ? `${v} €` : `€${v}`;
+}
+
+export function mailVentes(ctx: ContexteVentes, lang: Langue): MailPret {
+  const fr = lang === "fr";
+  const n = ctx.ventes.length;
+  const lignes = ctx.ventes.map((v) => {
+    const titre = String(v.titre ?? "").trim() || (fr ? "Ton article" : "Your item");
+    const ou = plateformesEnClair([v.plateforme], lang);
+    const argent = v.benefice === null
+      ? (fr ? `vendu ${euros(v.prixVente, lang)}` : `sold for ${euros(v.prixVente, lang)}`)
+      : (fr
+        ? `vendu ${euros(v.prixVente, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} de bénéfice`
+        : `sold for ${euros(v.prixVente, lang)}, ${v.benefice >= 0 ? "+" : ""}${euros(v.benefice, lang)} profit`);
+    return `« ${titre} » — ${ou} : ${argent}`;
+  });
+  const sansPrixAchat = ctx.ventes.some((v) => v.benefice === null);
+  const seule = n === 1 ? ctx.ventes[0] : null;
+  const ouSeule = seule ? plateformesEnClair([seule.plateforme], lang) : "";
+
+  const sujet = fr
+    ? (seule ? `Vendu sur ${ouSeule} 🎉` : `${n} articles vendus 🎉`)
+    : (seule ? `Sold on ${ouSeule} 🎉` : `${n} items sold 🎉`);
+
+  const corps = [
+    paragraphe(fr ? "Salut," : "Hi,"),
+    paragraphe(fr
+      ? (seule ? "Bonne nouvelle, une vente vient d'être enregistrée :" : `Bonne nouvelle, ${n} ventes viennent d'être enregistrées :`)
+      : (seule ? "Good news, a sale has just been recorded:" : `Good news, ${n} sales have just been recorded:`)),
+    listePuces(lignes),
+    ...(sansPrixAchat
+      ? [paragraphe(fr
+        ? "Ajoute le prix d'achat d'un article dans FillSell pour connaître ton bénéfice."
+        : "Add an item's purchase price in FillSell to see your profit.")]
+      : []),
+    ...(ctx.retraitsACliquer > 0
+      ? [paragraphe(fr
+        ? `${ctx.retraitsACliquer} annonce${ctx.retraitsACliquer > 1 ? "s" : ""} de ces articles ${ctx.retraitsACliquer > 1 ? "sont" : "est"} encore en ligne sur d'autres plateformes — ouvre FillSell pour ${ctx.retraitsACliquer > 1 ? "les" : "la"} retirer en un clic.`
+        : `${ctx.retraitsACliquer} listing${ctx.retraitsACliquer > 1 ? "s" : ""} of these items ${ctx.retraitsACliquer > 1 ? "are" : "is"} still online on other marketplaces — open FillSell to take ${ctx.retraitsACliquer > 1 ? "them" : "it"} down in one tap.`)]
+      : []),
+    ...(ctx.retraitsBeebsAuto > 0
+      ? [paragraphe(fr
+        ? "Les dépôts Beebs encore en vérification seront retirés automatiquement dès que Beebs les aura mis en ligne."
+        : "Beebs listings still under review will be taken down automatically as soon as Beebs puts them online.")]
+      : []),
+    boutonPrincipal(fr ? "Ouvrir FillSell" : "Open FillSell", URL_APP),
+  ];
+
+  return {
+    sujet,
+    html: mail({
+      lang,
+      titre: sujet,
+      preheader: fr
+        ? (seule ? "Une vente de plus." : `${n} ventes, un seul mail.`)
+        : (seule ? "One more sale." : `${n} sales, one email.`),
+      corps,
+      raisonEnvoi: fr
+        ? "Tu reçois ce message parce que des ventes ont été enregistrées sur ton compte FillSell."
+        : "You're getting this message because sales were recorded on your FillSell account.",
+    }),
+  };
+}

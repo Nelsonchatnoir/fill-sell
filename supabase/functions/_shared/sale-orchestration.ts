@@ -14,8 +14,10 @@
 //      (published + listing_url) reçoivent platform_fields.pending_removal
 //      = true → le bandeau semi-auto de l'app propose leur retrait, le clic
 //      utilisateur arme les jobs action='delete' (jamais automatique).
-//   5. email de notification via email-tunnel (mode relance_emails, wrapper
-//      standard) — best-effort, n'échoue jamais l'orchestration.
+//   5. la vente est NOTÉE pour le récapitulatif (usage_logs « vente_a_annoncer »,
+//      depuis le 25/09) — le mail part avec le récapitulatif horaire
+//      d'email-tunnel, au plus un par personne et par 24 h ; best-effort,
+//      n'échoue jamais l'orchestration.
 // Idempotent : un job déjà 'sold' retourne ok sans rien refaire (le poll de
 // l'extension peut re-détecter la même vente avant d'avoir vu le nouveau
 // statut).
@@ -33,7 +35,14 @@ export interface SaleOrchestration {
   // aucun bandeau où cliquer. Compris dans pendingRemoval.
   retraitsArmes: number;
   emailSent: boolean;
+  // La vente a-t-elle été notée pour le récapitulatif (usage_logs
+  // « vente_a_annoncer ») ? Remplace l'envoi immédiat depuis le 25/09.
+  venteNotee?: boolean;
 }
+
+// Feature usage_logs d'une vente à annoncer — partagée avec le récapitulatif
+// (_shared/ventes-a-annoncer.ts), qui la lit. ⛔ Ne pas renommer sans lui.
+export const FEATURE_VENTE_A_ANNONCER = "vente_a_annoncer";
 
 const PLATFORM_LABELS: Record<string, string> = {
   vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", vestiaire: "Vestiaire",
@@ -366,53 +375,59 @@ export async function orchestrateSale(
     }
   }
 
-  // ── 5. Email (email-tunnel, mode relance_emails) — best-effort ────────────
+  // ── 5. Annonce de la vente : NOTÉE ICI, ENVOYÉE PAR LE RÉCAPITULATIF ──────
   // ⚠️ SEULEMENT si CETTE orchestration a créé la vente (gagné le gate atomique).
   // Une orchestration concurrente perdante (ou une re-détection d'un article déjà
-  // vendu) ne doit pas renvoyer un 2e email « Vendu ! ».
-  let emailSent = false;
+  // vendu) ne doit pas annoncer une 2e fois « Vendu ! ».
+  //
+  // ── PLUS JAMAIS UN MAIL PAR VENTE (25/09, rafale des Petites Fioles) ──────
+  // Jusqu'ici, chaque vente confirmée partait AUSSITÔT en mail (type
+  // email_logs « relance_manuelle », via email-tunnel mode relance_emails).
+  // Mesuré le 25/09 : famouus-x3@live.fr a confirmé 14 ventes au bandeau
+  // « Vendue ? » entre 11:34 et 11:36 → 14 mails en deux minutes ; le 24/09,
+  // marion.routier60000 en a reçu 25 en treize minutes. 180 mails de ce type
+  // en six jours, pour 27 personnes.
+  // Désormais la vente est seulement NOTÉE (usage_logs, feature
+  // « vente_a_annoncer » — on n'y fait qu'AJOUTER une ligne : aucune écriture
+  // concurrente sur le job vendu, rien à écraser). Le balayage horaire
+  // d'email-tunnel (annoncerVentes, _shared/ventes-a-annoncer.ts) envoie AU
+  // PLUS UN récapitulatif par personne et par 24 h, qui liste TOUTES ses
+  // ventes notées, et rien du tout si elle a déjà reçu 2 mails en 24 h.
+  let venteNotee = false;
   if (venteCreated) try {
-    const cronSecret = Deno.env.get("CRON_SECRET");
-    const { data: userData } = await admin.auth.admin.getUserById(userId);
-    const email = userData?.user?.email;
-    if (cronSecret && email) {
-      const label = PLATFORM_LABELS[job.platform] ?? job.platform;
-      const titre = job.title ?? inv?.titre ?? "Ton article";
-      // Bénéfice inconnu (prix d'achat non renseigné) : on annonce la VENTE et
-      // le prix, jamais un bénéfice inventé. `benefice.toFixed()` aurait de
-      // toute façon planté sur null depuis la règle du 03/08.
-      const ligneArgent = benefice === null
-        ? `vendu ${prixVente.toFixed(0)}€. Ajoute son prix d'achat dans FillSell pour connaître ton bénéfice.`
-        : `${benefice >= 0 ? "+" : ""}${benefice.toFixed(0)}€ de bénéfice.`;
-      // Les retraits armés ici même (Beebs sans lien) n'attendent aucun clic :
-      // on ne les compte pas dans l'invitation, on les annonce à part.
-      const aRetirerParClic = pendingRemoval - retraitsArmes;
-      const removalLine = (aRetirerParClic > 0
-        ? `\n\n${aRetirerParClic} annonce${aRetirerParClic > 1 ? "s" : ""} du même article ${aRetirerParClic > 1 ? "sont" : "est"} encore en ligne sur d'autres plateformes — ouvre FillSell pour ${aRetirerParClic > 1 ? "les" : "la"} retirer en un clic.`
-        : "") + (retraitsArmes > 0
-        ? "\n\nSon dépôt Beebs, encore en vérification, sera retiré automatiquement dès que Beebs l'aura mis en ligne."
-        : "");
-      const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-cron-secret": cronSecret },
-        body: JSON.stringify({
-          relance_emails: [{
-            to: email,
-            subject: `Vendu sur ${label} 🎉`,
-            body_text: `« ${titre} » vient de se vendre sur ${label} : ${ligneArgent}${removalLine}`,
-          }],
-        }),
-      });
-      emailSent = res.ok;
-      if (!res.ok) console.error("[sale] email-tunnel:", res.status, await res.text().catch(() => ""));
-    }
+    // Les retraits armés ici même (Beebs sans lien) n'attendent aucun clic :
+    // on ne les compte pas dans l'invitation, on les annonce à part.
+    const aRetirerParClic = pendingRemoval - retraitsArmes;
+    const { error: noteErr } = await admin.from("usage_logs").insert({
+      user_id: userId,
+      feature: FEATURE_VENTE_A_ANNONCER,
+      metadata: {
+        job_id: job.id,
+        inventaire_id: job.inventaire_id != null ? String(job.inventaire_id) : null,
+        plateforme: job.platform,
+        titre: job.title ?? inv?.titre ?? null,
+        prix_vente: prixVente,
+        // Bénéfice inconnu (prix d'achat non renseigné) : null, jamais 0 — le
+        // récapitulatif annonce alors la VENTE et le prix, pas un bénéfice
+        // inventé (règle VIDE ≠ ZÉRO du 03/08).
+        benefice,
+        retraits_a_cliquer: Math.max(0, aRetirerParClic),
+        retrait_beebs_auto: retraitsArmes,
+        vendu_le: nowIso,
+      },
+    });
+    if (noteErr) console.error("[sale] vente_a_annoncer non notée :", noteErr.message);
+    else venteNotee = true;
   } catch (e) {
-    console.error("[sale] email:", e instanceof Error ? e.message : String(e));
+    console.error("[sale] vente_a_annoncer :", e instanceof Error ? e.message : String(e));
   }
 
   console.log(
     `[sale] job=${job.id} ${job.platform} → sold | vente=${venteCreated} inventaire=${inventaireUpdated} ` +
-    `frères annulés=${siblingsCancelled} à retirer=${pendingRemoval} retraits armés=${retraitsArmes} email=${emailSent}`
+    `frères annulés=${siblingsCancelled} à retirer=${pendingRemoval} retraits armés=${retraitsArmes} annonce_notee=${venteNotee}`
   );
-  return { ok: true, venteCreated, inventaireUpdated, siblingsCancelled, pendingRemoval, retraitsArmes, emailSent };
+  // emailSent reste false : le mail part avec le récapitulatif, plus ici.
+  // Aucun appelant ne lit ce champ (grep du 25/09) ; il est gardé pour la forme
+  // du retour, venteNotee dit ce qui s'est réellement passé.
+  return { ok: true, venteCreated, inventaireUpdated, siblingsCancelled, pendingRemoval, retraitsArmes, emailSent: false, venteNotee };
 }

@@ -20,6 +20,7 @@ import {
   type ContextePaiement,
 } from "../_shared/emails-fillsell.ts";
 import { paragraphe, renderEmail } from "../_shared/email-template.ts";
+import { annoncerVentes, type RapportVentes } from "../_shared/ventes-a-annoncer.ts";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -1379,6 +1380,27 @@ serve(async (req) => {
   // Cron horaire 'email-tunnel-job-relaunch-hourly'. Options manuelles :
   //   {"job_relaunch":true,"dry_run":true} → montre la cible sans rien envoyer
   //                                          et IGNORE la fenêtre de nuit.
+  // ── Récapitulatif des ventes (25/09/2026) — cf. _shared/ventes-a-annoncer.ts
+  // Manuel : {"ventes_du_jour":true,"dry_run":true} montre qui recevrait quoi,
+  // sans rien envoyer. En production il tourne dans l'appel HORAIRE ci-dessous
+  // (job_relaunch), sans cron supplémentaire.
+  if (body?.ventes_du_jour === true) {
+    const dryRun = body?.dry_run === true;
+    const h = heureParis();
+    if (!dryRun && (!Number.isFinite(h) || h < RELANCE_H_DEBUT || h >= RELANCE_H_FIN)) {
+      return new Response(JSON.stringify({ ventes: "reporte_fenetre_nuit", heure_paris: h }),
+        { headers: { "Content-Type": "application/json" } });
+    }
+    try {
+      const rapport = await annoncerVentes(supabase, envoyer, { dryRun });
+      return new Response(JSON.stringify({ ventes: rapport, dry_run: dryRun, heure_paris: h, log_echecs: logEchecs }),
+        { headers: { "Content-Type": "application/json" } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: `ventes_du_jour: ${e instanceof Error ? e.message : String(e)}` }),
+        { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+  }
+
   if (body?.job_relaunch === true) {
     const dryRun = body?.dry_run === true;
     const h = heureParis();
@@ -1390,6 +1412,18 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         relance: RELANCE_TYPE, reporte: "fenetre_nuit", heure_paris: h,
       }), { headers: { "Content-Type": "application/json" } });
+    }
+
+    // ── Récapitulatif des ventes, AVANT la relance des jobs (25/09) ─────────
+    // Même fenêtre de jour. Isolé : une panne ici n'empêche JAMAIS la relance
+    // des jobs de tourner (elle est rendue dans la réponse, rien de plus).
+    let ventes: RapportVentes | { erreur: string } | null = null;
+    try {
+      ventes = await annoncerVentes(supabase, envoyer, { dryRun });
+    } catch (e) {
+      const erreur = e instanceof Error ? e.message : String(e);
+      ventes = { erreur };
+      console.error("ventes_du_jour_echec", erreur);
     }
 
     const t = Date.now();
@@ -1607,6 +1641,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       relance: RELANCE_TYPE, dry_run: dryRun, heure_paris: h,
+      ventes,
       jobs_eligibles: jobs?.length ?? 0, utilisateurs: parUser.size,
       envoyes: sent.length, echecs: errors.length,
       cas3_bug_extension: cas3,
