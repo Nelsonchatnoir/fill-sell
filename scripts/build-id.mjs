@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-24T14:32:30Z'; // recale 155038d (0.6.66 : sonde Opla 401 neutre + chantier du 24/09 SANS le « neuf seulement » — rayon demandé, retrait LBC pro par « Gérer », attente Beebs espacée)
+export const EXTENSION_LAST_COMMIT = '2026-09-25T06:02:29Z'; // recale 3c6489e (0.6.67 : 401 de jeton périmé rejoué une fois ; relevé gardé éveillé entre les tours du rattachement)
 // Historique de la valeur precedente : '9541e55' — recale sur undefined, le bump manifeste 0.6.64 (postes Opla : un poste sans accès ne parque plus ; cookies opla.co mesurés/purgés avant chaque job ; PING + réinjection du content script Opla ; scripts re-posés à la mise à jour ; sonde Opla forcée à l'octroi). UTC VRAI lu par EPOCH. Posée dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés : le zip 0.6.64 n'est pas encore accepté par le CWS.
 //    caractères sur UNE ligne et 32 recalages empilés : le fichier n'était plus lisible et chaque
 //    diff de ce recalage faisait quatorze mille caractères. L'historique n'est pas perdu — il est
@@ -1530,7 +1530,20 @@ export const EXTENSION_LAST_COMMIT = '2026-09-24T14:32:30Z'; // recale 155038d (
 // sur X » — chez les 24 comptes en 0.6.60, 14 en 0.6.58, 18 en 0.6.53, 7 en
 // 0.6.54 et 2 en 0.6.52.
 // Ancienne valeur : 2026-09-22T07:19:47Z (0.6.53).
-export const EXTENSION_MIN_BUILD = '2026-09-23T15:18:45Z';
+//
+// ── PROMU LE 25/09 (check de nuit) SUR LA 0.6.66 ─────────────────────────────
+// ACCEPTÉE par le Chrome Web Store et SERVIE : relevé en base le 25/09 vers
+// 08:00, 40 comptes en extension_version='0.6.66', build
+// '2026-09-24T14:34:46Z+aa459a7' — le rang le plus fourni. Le seuil est le
+// BUILD_ID DU ZIP (postérieur de 2 min 16 s à EXTENSION_LAST_COMMIT de
+// l'époque, 14:32:30Z — l'écart normal commit → zip, toléré par le registre).
+// Ce que la promotion allume : la bannière « extension obsolète » chez les 17
+// comptes restés en 0.6.63 (LES PETITES FIOLES, Jocabroc, SPGL 44, Carla…),
+// qui leur nomme la 0.6.66 — celle qui ouvre le tiroir « Gérer » des fiches
+// Leboncoin PRO. Dès qu'elle tourne, les retraits arrêtés se réarment seuls
+// (get-pending-jobs, _shared/correctifs-extension.js).
+// Ancienne valeur : 2026-09-23T15:18:45Z (0.6.61).
+export const EXTENSION_MIN_BUILD = '2026-09-24T14:34:46Z';
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
@@ -1626,6 +1639,15 @@ export const PUBLISHED_BUILD_IDS = {
   // téléversement. C'est elle qui devient EXTENSION_MIN_BUILD (geste d'après
   // acceptation prévu dès l'empaquetage, cf. bandeau du 23/09).
   '2026-09-23T15:18:45Z': '0.6.61',
+  // 0.6.63 et 0.6.66 : inscrites le 25/09 (check de nuit), MÊME CLASSE
+  // D'OUBLI — publication ÉTABLIE et RELEVÉE EN BASE le 25/09 à ~08:00
+  // (profiles.extension_build × extension_version) :
+  //   0.6.63 → 17 comptes (build '2026-09-23T22:48:50Z+d4e424c')
+  //   0.6.66 → 40 comptes (build '2026-09-24T14:34:46Z+aa459a7'), le rang le
+  //   plus fourni du parc. C'est elle qui devient EXTENSION_MIN_BUILD.
+  // (0.6.62, 0.6.64, 0.6.65 : jamais vues en base — pas ici.)
+  '2026-09-23T22:48:50Z': '0.6.63',
+  '2026-09-24T14:34:46Z': '0.6.66',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
