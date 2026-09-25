@@ -6121,6 +6121,169 @@ serve(async (req) => {
     }
 
 
+    // ══ ANTI-ROBOT SUR LE COMPTE VINTED : TOUT VINTED EN PAUSE (2026-09-25) ══
+    // (Point 4 du GO de Nico.) Carla (ltouze) : 7 republications, 7 annonces
+    // différentes, toutes refusées par la protection anti-robot de Vinted —
+    // et chacune réessayée toutes les 45 min, pendant que la sonde du compte
+    // répondait 403 et que le dernier succès Vinted datait du 13/09. Sept
+    // lectures refusées toutes les 45 minutes : exactement ce qui entretient
+    // le mur.
+    // RÈGLE (Nico) : quand Vinted montre l'anti-robot sur un COMPTE, toutes
+    // ses actions Vinted s'arrêtent jusqu'à la vérification passée, puis
+    // repartent seules. Une pause n'est pas un échec : aucun job ne passe au
+    // rouge, aucune tentative n'est consommée, les autres plateformes
+    // continuent.
+    // LE SIGNAL — deux preuves ensemble, jamais une seule :
+    //   a) au moins DEUX annonces distinctes refusées par l'anti-robot DANS
+    //      L'ONGLET (capture_echec « anti-robot », blocage_antirobot), après
+    //      le dernier succès Vinted du compte ;
+    //   b) la sonde du compte (users/current) répond 403 — à ce relevé ou au
+    //      précédent, pour ne pas clignoter — et ne voit pas Vinted vivant.
+    //   Un 403 de sonde seul ne prouve rien (36 comptes à 403 cette semaine,
+    //   35 sans aucun refus ; 35 republications publiées pendant un 403). Des
+    //   refus seuls non plus (remialbertholl, 24/09 : annonces d'une AUTRE
+    //   boutique, compte sain).
+    // LA SORTIE, sans rien attendre de personne : un succès Vinted postérieur
+    //   aux refus (a tombe) ou la sonde qui revoit Vinted (b tombe). Le message
+    //   de pause est alors retiré, le reste suit.
+    // CE QUI RESTE SERVI : une republication dont l'annonce est DÉJÀ retirée
+    //   (étape 'deleted' : elle doit revenir en ligne), et UNE sonde au plus,
+    //   quand le dernier refus a 45 min — un job jamais refusé d'abord (les
+    //   retraits en tête), sinon le refus le plus ancien.
+    // LES CRÉNEAUX : un job retenu reste pending et dû ; le balayage le compte
+    //   « en vol » (garde par plateforme) et ne crée plus rien sur Vinted pour
+    //   ce compte — Leboncoin, Beebs et Opla continuent. ⛔ Aucune échéance
+    //   (next_action_after) n'est posée sur un job retenu : elle le sortirait
+    //   du compte « en vol ».
+    // Périmètre : poll d'exécution. Best-effort : illisible → servi comme avant.
+    const ANTIROBOT_COMPTE_MSG =
+      "Vinted demande une vérification anti-robot sur ton compte : tes actions Vinted sont en pause, rien n'a été touché. " +
+      "Ouvre vinted.fr dans Chrome et passe la vérification : tout repartira seul. Tes autres plateformes continuent normalement.";
+    const idsAntirobot = new Set<string>();
+    let antirobotPause: Record<string, unknown> | null = null;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const pfAr = (j: { platform_fields: unknown }) =>
+          (j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields as Record<string, unknown> : {};
+        const fileVinted = (jobs ?? []).filter((j) => j.platform === "vinted");
+        type ObsAr = { id: string; article: string; at: number };
+        const obsAr: ObsAr[] = [];
+        for (const j of fileVinted) {
+          const pf = pfAr(j);
+          const ce = (pf.capture_echec && typeof pf.capture_echec === "object") ? pf.capture_echec as Record<string, unknown> : null;
+          const ba = (pf.blocage_antirobot && typeof pf.blocage_antirobot === "object") ? pf.blocage_antirobot as Record<string, unknown> : null;
+          const tCe = ce && /anti-?robot/i.test(String(ce.motif ?? "")) ? Date.parse(String(ce.at ?? "")) : NaN;
+          const tBa = ba ? Date.parse(String(ba.derniere ?? ba.depuis ?? "")) : NaN;
+          const at = Math.max(Number.isFinite(tCe) ? tCe : -Infinity, Number.isFinite(tBa) ? tBa : -Infinity);
+          if (!Number.isFinite(at)) continue;
+          obsAr.push({ id: String(j.id), article: String(j.inventaire_id ?? j.listing_url ?? j.id), at });
+        }
+        const nbArticles = (l: ObsAr[]) => new Set(l.map((o) => o.article)).size;
+        let enPause = false;
+        if (nbArticles(obsAr) >= 2) {
+          const { data: profAr } = await userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          const s = (profAr?.extension_sessions ?? null) as Record<string, unknown> | null;
+          const vu403 = (x: unknown) => Boolean(x && typeof x === "object")
+            && Number(((x as Record<string, unknown>)["http"] as Record<string, unknown> | undefined)?.["vinted"]) === 403;
+          if (s && s["vinted"] !== true && (vu403(s) || vu403(s["previous"]))) {
+            // Le DERNIER SUCCÈS Vinted du compte : un dépôt ou une republication
+            // aboutis par l'extension, un retrait fait, une annonce relue.
+            const [pubAr, delAr, capAr] = await Promise.all([
+              userClient.from("cross_post_jobs").select("published_at")
+                .eq("user_id", user.id).eq("platform", "vinted").in("action", ["publish", "republish"])
+                .in("status", ["published", "sold"]).not("handler_build", "is", null).not("published_at", "is", null)
+                .order("published_at", { ascending: false }).limit(1),
+              userClient.from("cross_post_jobs").select("platform_fields")
+                .eq("user_id", user.id).eq("platform", "vinted").eq("action", "delete").eq("status", "deleted")
+                .order("created_at", { ascending: false }).limit(10),
+              userClient.from("vinted_republish_captures").select("captured_at")
+                .eq("user_id", user.id).order("captured_at", { ascending: false }).limit(1),
+            ]);
+            if (pubAr.error || delAr.error || capAr.error) {
+              throw new Error(`dernier succès illisible (${(pubAr.error ?? delAr.error ?? capAr.error)?.message})`);
+            }
+            const temps = [
+              ...((pubAr.data ?? []) as Array<{ published_at: string | null }>).map((r) => Date.parse(String(r.published_at ?? ""))),
+              ...((delAr.data ?? []) as Array<{ platform_fields: unknown }>).map((r) => Date.parse(String(pfAr(r).processing_since ?? ""))),
+              ...((capAr.data ?? []) as Array<{ captured_at: string | null }>).map((r) => Date.parse(String(r.captured_at ?? ""))),
+            ].filter((t) => Number.isFinite(t));
+            const dernierSucces = temps.length ? Math.max(...temps) : -Infinity;
+            const apres = obsAr.filter((o) => o.at > dernierSucces);
+            if (nbArticles(apres) >= 2) {
+              enPause = true;
+              const vintedOut = out.filter((j) => j.platform === "vinted");
+              const garder = new Set<string>(vintedOut
+                .filter((j) => j.action === "republish" && String(pfAr(j).republish_step ?? "") === "deleted")
+                .map((j) => String(j.id)));
+              const dernierRefus = Math.max(...apres.map((o) => o.at));
+              let sondeAr: string | null = null;
+              if (!garder.size && Date.now() - dernierRefus >= 45 * 60_000) {
+                const du = (j: { platform_fields: unknown }) => {
+                  const t = Date.parse(String(pfAr(j).next_action_after ?? ""));
+                  return !Number.isFinite(t) || t <= Date.now();
+                };
+                const refusDe = new Map(obsAr.map((o) => [o.id, o.at]));
+                const dus = vintedOut.filter(du);
+                const jamais = dus.filter((j) => !refusDe.has(String(j.id)))
+                  .sort((a, b) => (a.action === "delete" ? 0 : 1) - (b.action === "delete" ? 0 : 1));
+                const choisi = jamais[0] ?? dus.filter((j) => refusDe.has(String(j.id)))
+                  .sort((a, b) => (refusDe.get(String(a.id)) ?? 0) - (refusDe.get(String(b.id)) ?? 0))[0];
+                if (choisi) { sondeAr = String(choisi.id); garder.add(sondeAr); }
+              }
+              for (const j of vintedOut) if (!garder.has(String(j.id))) idsAntirobot.add(String(j.id));
+              if (idsAntirobot.size) out = out.filter((j) => !idsAntirobot.has(String(j.id)));
+              // Le message de pause, sur chaque job Vinted en file (sauf ce qui
+              // reste servi) — posé une fois, ≤ 40 écritures par poll.
+              const depuisAr = new Date(Math.min(...apres.map((o) => o.at))).toISOString();
+              let ecritures = 0;
+              for (const j of fileVinted) {
+                if (garder.has(String(j.id)) || ecritures >= 40) continue;
+                const pf = pfAr(j);
+                if (pf.attente_antirobot_compte && j.error === ANTIROBOT_COMPTE_MSG) continue;
+                ecritures++;
+                const pfNeuf: Record<string, unknown> = {
+                  ...pf,
+                  attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403 },
+                };
+                if (j.error && j.error !== ANTIROBOT_COMPTE_MSG) {
+                  pfNeuf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause anti-robot du compte)");
+                }
+                const { error: wErr } = await userClient.from("cross_post_jobs")
+                  .update({ error: ANTIROBOT_COMPTE_MSG, platform_fields: pfNeuf })
+                  .eq("id", j.id as string).eq("status", "pending");
+                if (wErr) console.warn(`[get-pending-jobs] pause anti-robot : message non posé sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
+              }
+              antirobotPause = {
+                retenus: idsAntirobot.size, sonde: sondeAr, articles: nbArticles(apres),
+                depuis: depuisAr, dernier_refus: new Date(dernierRefus).toISOString(),
+                dernier_succes: Number.isFinite(dernierSucces) ? new Date(dernierSucces).toISOString() : null,
+              };
+              console.log(`[get-pending-jobs] userId=${user.id} : anti-robot sur le compte Vinted (${nbArticles(apres)} annonces refusées depuis le dernier succès, sonde 403) — ${idsAntirobot.size} job(s) Vinted en pause${sondeAr ? `, sonde = job ${sondeAr.slice(0, 8)}` : ""}${garder.size && !sondeAr ? `, ${garder.size} recréation(s) servie(s)` : ""} ; aucune tentative consommée`);
+            }
+          }
+        }
+        // SORTIE : la pause est levée (ou n'a jamais tenu) — le message de
+        // pause n'a plus lieu d'être, le job redevient « en file ».
+        if (!enPause) {
+          let ecritures = 0;
+          for (const j of fileVinted) {
+            const pf = pfAr(j);
+            if (!pf.attente_antirobot_compte || ecritures >= 40) continue;
+            ecritures++;
+            const pfNeuf: Record<string, unknown> = { ...pf };
+            delete pfNeuf.attente_antirobot_compte;
+            const { error: wErr } = await userClient.from("cross_post_jobs")
+              .update({ ...(j.error === ANTIROBOT_COMPTE_MSG ? { error: null } : {}), platform_fields: pfNeuf })
+              .eq("id", j.id as string).eq("status", "pending");
+            if (wErr) console.warn(`[get-pending-jobs] pause anti-robot levée : marqueur non retiré sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
+          }
+          if (ecritures) console.log(`[get-pending-jobs] userId=${user.id} : pause anti-robot Vinted levée — ${ecritures} job(s) rendus à la file`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] pause anti-robot du compte : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+      }
+    }
+
     // ── MAINTIEN EN ÉVEIL : COMPTER LA FILE RETENUE, PAS SEULEMENT SERVIE ───
     // (2026-09-17) L'arbitrage keep-awake de l'extension additionne
     // `jobs.length` (les jobs DISTRIBUÉS ce cycle) + `jobs_retenus_sync`. Avec
@@ -6143,6 +6306,9 @@ serve(async (req) => {
     const _nowMs = Date.now();
     const heldBacklog = (jobs ?? []).filter((j) => {
       if (_outIds.has(String(j.id))) return false; // déjà distribué ce cycle
+      // En pause anti-robot du compte (25/09) : rien d'imminent — tenir la
+      // machine éveillée ne ferait que relire un mur.
+      if (idsAntirobot.has(String(j.id))) return false;
       const naa = (j.platform_fields as Record<string, unknown> | null)?.["next_action_after"];
       if (!naa) return true; // prêt maintenant (retenu par le compte-gouttes / une garde de ce cycle)
       const t = Date.parse(String(naa));
@@ -6244,6 +6410,9 @@ serve(async (req) => {
       // (25/09) Dépôts PEGI (Vinted « Jeux ») ou Âge (Beebs) passés en question
       // AVANT tout essai — la valeur manquait et rien ne permettait de la lire.
       questions_classement_age_avant_essai: heldClassementAge,
+      // (25/09) Pause Vinted du compte sur anti-robot : jobs retenus, sonde
+      // éventuelle, dates du signal. null = pas de pause.
+      antirobot_pause: antirobotPause,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
