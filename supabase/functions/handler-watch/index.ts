@@ -2119,15 +2119,43 @@ serve(async (req) => {
     const limite = new Date(now - PENDING_MUET_JOURS * 24 * 3600 * 1000).toISOString();
     const { data: muets } = await supabase
       .from("cross_post_jobs")
-      .select("id, platform, created_at, platform_fields")
+      .select("id, user_id, platform, created_at, platform_fields")
       .eq("status", "pending")
       .eq("action", "publish")
       .lt("created_at", limite)
       .limit(200);
+    // ── UNE PAUSE ANTI-ROBOT N'EST PAS UN SILENCE (2026-09-25) ─────────────
+    // Quand Vinted montre l'anti-robot sur un COMPTE, get-pending-jobs retient
+    // toutes ses actions Vinted (marqueur `attente_antirobot_compte`) : elles
+    // attendent la vérification, elles ne sont pas « muettes ». Règle de
+    // Nico : aucun job d'un compte en pause n'est clos ni compté en échec, et
+    // le délai de 10 jours REPREND à la levée — le temps passé en pause
+    // (`antirobot_pause_cumul_ms`, posé à la levée) ne compte pas.
+    // Un job du compte encore sans marqueur (≤ 40 écritures par poll) est
+    // couvert par la pause du COMPTE, pas seulement par la sienne.
+    const comptesEnPause = new Set<string>();
+    try {
+      const usersVinted = [...new Set(((muets ?? []) as Array<Record<string, unknown>>)
+        .filter((j) => j.platform === "vinted").map((j) => String(j.user_id)))];
+      if (usersVinted.length) {
+        const { data: pauses } = await supabase
+          .from("cross_post_jobs")
+          .select("user_id")
+          .eq("status", "pending").eq("platform", "vinted")
+          .not("platform_fields->attente_antirobot_compte", "is", null)
+          .in("user_id", usersVinted)
+          .limit(1000);
+        for (const p of (pauses ?? []) as Array<{ user_id: string }>) comptesEnPause.add(String(p.user_id));
+      }
+    } catch (e) {
+      console.warn("[handler-watch] dépôts muets : comptes en pause anti-robot illisibles —", (e as Error)?.message ?? e);
+    }
     for (const j of (muets ?? []) as Array<Record<string, unknown>>) {
       const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
       const echeance = Date.parse(String(pf.next_action_after ?? ""));
       if (Number.isFinite(echeance) && echeance > now) continue;  // il attend son tour
+      if (pf.attente_antirobot_compte) continue;                                              // en pause : il attend la vérification
+      if (j.platform === "vinted" && comptesEnPause.has(String(j.user_id))) continue;        // son compte est en pause
       // ── LE COMPTEUR REPART À LA RELANCE (2026-09-20, passe 3) ────────────
       // 🚨 DÉFAUT DE CE BLOC MÊME, vu en s'en servant : il juge sur
       //    `created_at`. Un job de début septembre relancé aujourd'hui a
@@ -2141,8 +2169,10 @@ serve(async (req) => {
       const ne = Date.parse(String(j.created_at));
       const clos = Date.parse(String(pf.pending_muet_clos_le ?? ""));
       const depuis = Number.isFinite(clos) ? Math.max(ne, clos) : ne;
-      if (now - depuis < PENDING_MUET_JOURS * 24 * 3600 * 1000) continue;
-      const jours = Math.floor((now - depuis) / 86400000);
+      // Le temps passé en pause anti-robot ne compte pas (2026-09-25).
+      const pause = Math.max(0, Number(pf.antirobot_pause_cumul_ms) || 0);
+      if (now - depuis - pause < PENDING_MUET_JOURS * 24 * 3600 * 1000) continue;
+      const jours = Math.floor((now - depuis - pause) / 86400000);
       // ⛔ G11 : le message dit que ça vient de chez nous, n'accuse personne,
       //    ne donne pas de consigne et ne cite aucun chiffre.
       const msg =

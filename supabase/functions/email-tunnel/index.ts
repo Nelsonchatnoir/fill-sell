@@ -1428,6 +1428,10 @@ serve(async (req) => {
       // espacement anti-robot) : ce job n'attend personne.
       const rdv = Date.parse(String(j.platform_fields?.next_action_after ?? ""));
       if (Number.isFinite(rdv) && rdv > t) continue;
+      // (2026-09-25) En pause anti-robot du compte Vinted : ce job attend la
+      // vérification de Vinted, pas un humain ni un correctif — ni relance,
+      // ni « cas 3 » (faux « bug de notre côté »).
+      if (j.platform_fields?.attente_antirobot_compte) continue;
       if (!parUser.has(j.user_id)) parUser.set(j.user_id, []);
       parUser.get(j.user_id)!.push(j);
     }
