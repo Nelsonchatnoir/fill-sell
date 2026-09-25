@@ -79,7 +79,8 @@
     "selftest:rayon-refuse-ebay": "deno run scripts/rayon-refuse-ebay-selftest.ts",
     "selftest:jeton-401-rejeu": "node scripts/jeton-401-rejeu-selftest.mjs",
     "selftest:correctifs-extension": "node scripts/correctifs-extension-selftest.mjs",
-    "selftest:vinted-colis-derniere-passe": "node scripts/vinted-colis-derniere-passe-selftest.mjs"
+    "selftest:vinted-colis-derniere-passe": "node scripts/vinted-colis-derniere-passe-selftest.mjs",
+    "selftest:dictee": "node --import ./scripts/loader-ext.mjs scripts/dictee-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

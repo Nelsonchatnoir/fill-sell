@@ -294,13 +294,25 @@ export default function EcranOuPublier({ m }) {
           <div className="fsn-row">
             <input id="fsn-notes" className="fsn-input" value={m.notes} onChange={e => m.setNotes(e.target.value)}
               placeholder={en ? "e.g. never worn, gift" : "ex. jamais porté, cadeau"} />
+            {/* (2026-09-25) Le micro ne s'affiche que là où l'on sait enregistrer
+                (utils/dictee.js) ; « Stop » envoie à la transcription, et ce qui
+                se passe ensuite se DIT sous le champ — jamais un micro muet. */}
             {m.micDisponible && (
               <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" onClick={m.toggleMic} aria-pressed={m.micActive}
+                disabled={m.micEtat === "transcription"}
+                aria-label={m.micActive ? (en ? "Stop dictation" : "Arrêter la dictée") : (en ? "Dictate" : "Dicter")}
                 style={m.micActive ? { borderColor: "var(--fs-bad)", color: "var(--fs-bad-ink)" } : undefined}>
-                {m.micActive ? (en ? "Stop" : "Stop") : "🎙"}
+                {m.micActive ? (en ? "Stop" : "Stop") : m.micEtat === "transcription" ? "…" : "🎙"}
               </button>
             )}
           </div>
+          {(m.micEtat === "ecoute" || m.micEtat === "transcription" || m.micMessage) && (
+            <div className="fsn-small" role="status" style={{ marginTop: 6, color: m.micMessage && m.micEtat === "repos" ? "var(--fs-amber-ink)" : undefined }}>
+              {m.micEtat === "ecoute" ? (en ? "Listening… speak, then tap “Stop”." : "J'écoute… parle, puis touche « Stop ».")
+                : m.micEtat === "transcription" ? (en ? "Transcribing…" : "Je transcris…")
+                : m.micMessage}
+            </div>
+          )}
         </div>
       )}
 

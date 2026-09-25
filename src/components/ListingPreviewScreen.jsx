@@ -49,6 +49,7 @@ import { getPlatformSupport } from "../utils/platformCompat";
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
+import { demarrerDictee, dicteeDisponible, ajouterDictee } from "../utils/dictee";
 // Les attentes par plateforme et le geste qui débloque (2026-09-23).
 import { attentesParPlateforme, phraseEtat, messageRefusPublication } from "../utils/etatsPublication";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
@@ -1489,7 +1490,7 @@ function PrimaryButton({ children, disabled, onClick, icon:Icon }) {
 
 // ── Step 0 — Upload ───────────────────────────────────────────────────────────
 
-function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, setNotes, micActive, toggleMic, error, lang }) {
+function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, setNotes, micActive, toggleMic, micDisponible = true, micEtat = "repos", micMessage = null, error, lang }) {
   const { t, tpl } = useTranslation(lang);
   const count = previews.length;
 
@@ -1533,19 +1534,33 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
             border:`1px solid ${micActive ? "#EF4444" : T.border}`, transition:"border-color 0.15s",
           }}
         />
-        <button
-          onClick={toggleMic}
-          style={{
-            position:"absolute", right:8, top:"50%", transform:"translateY(-50%)",
-            width:32, height:32, borderRadius:"50%", border:"none",
-            background: micActive ? "rgba(239,68,68,0.12)" : T.card,
-            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow: micActive ? "0 0 0 3px rgba(239,68,68,0.15)" : "none",
-          }}
-        >
-          <Mic size={14} color={micActive ? "#EF4444" : T.mute2} />
-        </button>
+        {/* (2026-09-25) Le micro ne s'affiche que là où l'on sait enregistrer ;
+            pendant la transcription il attend, et un échec se DIT dessous. */}
+        {micDisponible && (
+          <button
+            onClick={toggleMic}
+            disabled={micEtat === "transcription"}
+            aria-label={micActive ? (lang === "en" ? "Stop dictation" : "Arrêter la dictée") : (lang === "en" ? "Dictate" : "Dicter")}
+            style={{
+              position:"absolute", right:8, top:"50%", transform:"translateY(-50%)",
+              width:32, height:32, borderRadius:"50%", border:"none",
+              background: micActive ? "rgba(239,68,68,0.12)" : T.card,
+              cursor: micEtat === "transcription" ? "default" : "pointer", display:"flex", alignItems:"center", justifyContent:"center",
+              boxShadow: micActive ? "0 0 0 3px rgba(239,68,68,0.15)" : "none",
+              opacity: micEtat === "transcription" ? 0.5 : 1,
+            }}
+          >
+            <Mic size={14} color={micActive ? "#EF4444" : T.mute2} />
+          </button>
+        )}
       </div>
+      {(micEtat !== "repos" || micMessage) && (
+        <div role="status" style={{ marginTop:6, fontSize:12, lineHeight:1.45, color: micMessage ? "#B45309" : T.mute2 }}>
+          {micEtat === "ecoute" ? (lang === "en" ? "Listening… speak, then tap the mic again." : "J'écoute… parle, puis touche à nouveau le micro.")
+            : micEtat === "transcription" ? (lang === "en" ? "Transcribing…" : "Je transcris…")
+            : micMessage}
+        </div>
+      )}
     </div>
   );
 }
@@ -4442,10 +4457,14 @@ export default function ListingPreviewScreen({
   const [pickedFiles, setPickedFiles]       = useState([]);
   const [pickedPreviews, setPickedPreviews] = useState([]);
   const [notes, setNotes]                   = useState(draft?.notes ?? "");
-  const [micActive, setMicActive]           = useState(false);
+  // Dictée (2026-09-25, utils/dictee.js) : 'repos' | 'ecoute' | 'transcription'.
+  const [micEtat, setMicEtat]               = useState("repos");
+  const [micMessage, setMicMessage]         = useState(null);
+  const micActive                           = micEtat === "ecoute";
   const [uploading, setUploading]           = useState(false);
   const [uploadError, setUploadError]       = useState("");
-  const recognitionRef                      = useRef(null);
+  const dicteeRef                           = useRef(null);
+  const dicteeOuvertureRef                  = useRef(false);
 
   // Photos prêtes
   const [photos, setPhotos] = useState(draft?.photos ?? initialPhotos);
@@ -5387,28 +5406,34 @@ export default function ListingPreviewScreen({
   }, [step]);
 
   // ── Mic ───────────────────────────────────────────────────────────────────
-  function toggleMic() {
-    if (micActive) {
-      recognitionRef.current?.stop();
-      setMicActive(false);
-      return;
+  // (2026-09-25, Romain sur Chrome/Mac : « Stop » et le champ restait vide.)
+  // La reconnaissance vocale DU NAVIGATEUR avalait ses erreurs (onerror →
+  // retour au repos, sans un mot) et n'existe qu'à moitié dans les WebView de
+  // l'app. Désormais un seul chemin partout : on ENREGISTRE, notre serveur
+  // TRANSCRIT (voice-transcribe) — cf. utils/dictee.js. Le texte dicté
+  // s'AJOUTE à ce qui est écrit ; un échec ne touche jamais au champ et se dit.
+  async function toggleMic() {
+    if (micEtat === "transcription" || dicteeOuvertureRef.current) return;
+    if (micEtat === "ecoute") { dicteeRef.current?.arreter(); return; }
+    setMicMessage(null);
+    dicteeOuvertureRef.current = true;
+    try {
+      dicteeRef.current = await demarrerDictee({
+        lang,
+        isNative: Capacitor.isNativePlatform(),
+        onEtat: setMicEtat,
+        onMessage: setMicMessage,
+        onTexte: (texte) => setNotes(prev => ajouterDictee(prev, texte)),
+      });
+    } finally {
+      dicteeOuvertureRef.current = false;
     }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    const r = new SR();
-    r.lang = lang === "en" ? "en-US" : "fr-FR";
-    r.continuous = false;
-    r.interimResults = false;
-    r.onresult = e => {
-      const text = e.results[0]?.[0]?.transcript ?? "";
-      setNotes(prev => (prev ? `${prev} ${text}` : text));
-    };
-    r.onend = () => setMicActive(false);
-    r.onerror = () => setMicActive(false);
-    recognitionRef.current = r;
-    r.start();
-    setMicActive(true);
   }
+  // Le stepper se ferme pendant une dictée : le micro est rendu, rien ne part.
+  useEffect(() => {
+    const dictee = dicteeRef;
+    return () => { dictee.current?.annuler(); };
+  }, []);
 
   // ── Fichiers step 0 ───────────────────────────────────────────────────────
   function addFiles(files) {
@@ -9636,8 +9661,9 @@ export default function ListingPreviewScreen({
     initialListing, invId, titreArticle, etatArticle, price, generales, edited, selected, setSelected,
     photos, displayPreviews, pickedPreviews, photoCount, addFiles, removeFile, handleReorderPreviews,
     handleAddMorePhotos, handleRemovePhoto, handleReorderPhotos, uploading, uploadError, setLightboxUrl,
-    notes, setNotes, micActive, toggleMic,
-    micDisponible: typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
+    notes, setNotes, micActive, toggleMic, micEtat, micMessage,
+    // Le micro ne s'affiche que là où l'on sait ENREGISTRER (utils/dictee.js).
+    micDisponible: dicteeDisponible(),
     photoOption, setPhotoOption, reuseRetouched,
     retoucheNewCount: alreadyRetouched && addedNewPhotos ? photos.filter(u => !initialPhotos.includes(u)).length : 0,
     retoucheNonLivree, retoucheAvisLu, setRetoucheAvisLu, coinPrices,
@@ -9856,6 +9882,9 @@ export default function ListingPreviewScreen({
             setNotes={setNotes}
             micActive={micActive}
             toggleMic={toggleMic}
+            micDisponible={dicteeDisponible()}
+            micEtat={micEtat}
+            micMessage={micMessage}
             error={uploadError}
             lang={lang}
           />
