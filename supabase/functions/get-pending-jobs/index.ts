@@ -122,6 +122,7 @@ import { completerJobOpla, type OplaMem } from "../_shared/opla-completion.ts";
 import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rotation-figes.js";
 // La tranche « Poids du colis » d'une annonce Leboncoin relue depuis ses grammes (25/09).
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
+import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -1749,6 +1750,22 @@ serve(async (req) => {
                 pose_par: "get-pending-jobs (capture de l'annonce)",
               };
               repris["localisation"] = (pf["localisation_origine"] as Record<string, unknown>)["libelle"] as string;
+            }
+          }
+          // ── LA COMMUNE, JAMAIS LE LIEU-DIT (2026-09-25, XEWER) ─────────────
+          // `libelle` vient du `city_label` de Leboncoin, qui ajoute le lieu-dit
+          // après le code postal (« Saint-Yrieix-sur-Charente 16710 Les
+          // Rochers ») ; l'autocomplete du dépôt ne propose que la commune, et
+          // le contrôle de l'extension exige chaque mot tapé → annonce retirée,
+          // redépôt refusé (5fe3fb95, 04664706). On retape « ville code_postal »
+          // lu dans les champs structurés — y compris sur une localisation
+          // posée AVANT ce correctif (d1f94cbe l'était déjà). Cf.
+          // _shared/lbc-localisation.js. Sert TOUS les builds, sans CWS.
+          {
+            const { loc, change } = localisationLbcATaper(pf["localisation_origine"]);
+            if (change && loc) {
+              pf["localisation_origine"] = loc;
+              repris["localisation"] = `${loc["libelle"]} (commune seule ; l'annonce affichait « ${loc["libelle_annonce"] ?? ""} »)`;
             }
           }
           // ── LES CRITÈRES DU FORMULAIRE, REPRIS DE L'ANNONCE (0.6.47) ──────
