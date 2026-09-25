@@ -5850,8 +5850,18 @@ serve(async (req) => {
     // ne posent rien : un genre inventé là serait un genre faux.
     let oplaCompletes = 0;
     try {
+      // ── LA REPUBLICATION AUSSI (2026-09-25, nadegemarcelin78) ─────────────
+      // « Contes pour les Filles » (86ff39c5) et « Pantalon Morgan » (25e0778f) :
+      // 5 essais chacun, tous refusés au pré-vol sur opla_categorie_absente.
+      // Leur job de dépôt d'origine vient du RELEVÉ (import d'une annonce Opla
+      // déjà en ligne, handler « releve-annonces ») : il n'a jamais eu de
+      // catégorie, et la republication, qui recopie ses platform_fields, n'en
+      // avait pas davantage. La complétion depuis la fiche (étagère Vinted,
+      // mots, titre, mémoire des réponses) ne tournait QUE sur action
+      // 'publish'. Même chemin, même garde (le pré-vol reste seul juge) ; un
+      // job qui porte déjà sa feuille n'est pas touché (cf. completerJobOpla).
       const depotsOpla = (out as unknown as Array<Record<string, unknown>>)
-        .filter((j) => j.platform === "opla" && j.action === "publish" && j.inventaire_id != null);
+        .filter((j) => j.platform === "opla" && (j.action === "publish" || j.action === "republish") && j.inventaire_id != null);
       if (depotsOpla.length) {
         const ids = [...new Set(depotsOpla.map((j) => Number(j.inventaire_id)))];
         const attrsParArticle = new Map<number, Record<string, unknown>>();
