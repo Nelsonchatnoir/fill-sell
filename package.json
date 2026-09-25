@@ -81,7 +81,8 @@
     "selftest:correctifs-extension": "node scripts/correctifs-extension-selftest.mjs",
     "selftest:vinted-colis-derniere-passe": "node scripts/vinted-colis-derniere-passe-selftest.mjs",
     "selftest:dictee": "node --import ./scripts/loader-ext.mjs scripts/dictee-selftest.mjs",
-    "selftest:doublons": "node --import ./scripts/loader-ext.mjs scripts/doublons-selftest.mjs"
+    "selftest:doublons": "node --import ./scripts/loader-ext.mjs scripts/doublons-selftest.mjs",
+    "selftest:fourre-tout": "node --import ./scripts/loader-ext.mjs scripts/fourre-tout-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

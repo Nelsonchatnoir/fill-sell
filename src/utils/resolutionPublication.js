@@ -59,6 +59,7 @@ import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
 import { isChildGenre, toPlatformChildSize, lbcChildSizeCategory } from "./childSizes";
 import { tailleAGarder } from "./tailleInventee";
 import { rayonContreditLaFiche } from "./rayonIncoherent";
+import { estFourreToutCatalogue } from "./fourreTout";
 import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
@@ -1387,9 +1388,15 @@ export async function resoudrePublication({
       const journal = [];
       try {
         for (let palier = 0; palier < PALIERS_MAX; palier++) {
-          const { options, feuille } = await niveauSousChemin(r.platform, chemin, { genre: genreVerif });
-          if (feuille && !options.length) break;
-          if (!options.length) break;
+          const { options: toutes, feuille } = await niveauSousChemin(r.platform, chemin, { genre: genreVerif });
+          if (feuille && !toutes.length) break;
+          // (2026-09-25, point 2) Le fourre-tout d'un catalogue n'est JAMAIS une
+          // étape de la descente : la racine « Divers » de Leboncoin n'a qu'un
+          // enfant (« Autres ») qui était pris « seul », puis confirmé seul —
+          // c'est ainsi que le pichet de Jocabroc est parti en « Divers >
+          // Autres » et a été refusé à la modération.
+          const options = toutes.filter((o) => !estFourreToutCatalogue(o));
+          if (!options.length) { if (toutes.length) journal.push("seulement des fourre-tout"); chemin = []; break; }
           // Un seul chemin possible : on ne dérange pas l'IA pour ça.
           if (options.length === 1) { chemin = options[0]; journal.push(`${chemin[chemin.length - 1]} (seul)`); continue; }
           const { data, injoignable: panne } = await appelerResolve({
@@ -1416,7 +1423,8 @@ export async function resoudrePublication({
       }
       // ⛔ UNE FEUILLE, OU RIEN. Un nœud intermédiaire n'est pas déposable : le
       //    refus d'origine vaut mieux qu'un chemin qui s'arrête en route.
-      if (!chemin.length || !(await estFeuilleDeLArbre(r.platform, chemin))) {
+      // ⛔ (2026-09-25) Et jamais un fourre-tout de catalogue, même feuille.
+      if (!chemin.length || estFourreToutCatalogue(chemin) || !(await estFeuilleDeLArbre(r.platform, chemin))) {
         console.log(`[publish] dernier recours ${r.platform} — « ${objetDescente} » : ${journal.join(" | ") || "rien à descendre"} → le refus tient (${appels} appel(s))`);
         if (injoignable && posesParDefaut.has(r.platform)) retenirRayonParDefaut(r, pf, "resolution_injoignable", journal);
         continue;

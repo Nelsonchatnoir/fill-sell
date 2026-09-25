@@ -43,6 +43,7 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // que update-job-status et handler-watch — le motif de l'arrêt précédent ne
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
+import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
@@ -463,6 +464,11 @@ const RELANCE_COPIE_CLES_RETIREES = [
   // Bilan de livraison Leboncoin du dépôt SOURCE (24/09) : il décrit ce
   // dépôt-là, pas la copie.
   'livraison_lbc',
+  // (25/09) La pause anti-robot et les délais du job SOURCE : la copie part
+  // neuve — le serveur repose la pause si le compte y est toujours, et ses
+  // délais (dépôts muets, filet 30 jours) comptent depuis SA création.
+  'attente_antirobot_compte', 'antirobot_pause_cumul_ms', 'antirobot_pause_levee_le',
+  'blocage_antirobot', 'capture_echec', 'pending_muet_clos_le', 'pending_muet_jours',
 ];
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
@@ -7043,6 +7049,13 @@ const StockTab = memo(function StockTab({
       delete pf.attente_session;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();
+      // (2026-09-25, point 2) Un dépôt parti dans un fourre-tout (« Divers >
+      // Autres ») ne repart JAMAIS tel quel : le rayon est re-résolu par le
+      // mécanisme de la publication ; sans rayon sûr, on ne relance pas.
+      if (rayonFourreToutARevoir(job.platform, pf)) {
+        const issue = await reResoudreRayonFourreTout({ platform: job.platform, pf, titre: job.title });
+        if (issue !== 'trouve') { setRelanceMsg(messageRayonNonTrouve(job.platform, lang !== 'en')); return; }
+      }
       // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
       // `error` repasse à null pour l'affichage, comme avant.
       pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, 'relance_manuelle');
@@ -7118,6 +7131,12 @@ const StockTab = memo(function StockTab({
     const pf = { ...(full.platform_fields ?? {}) };
     for (const k of RELANCE_COPIE_CLES_RETIREES) delete pf[k];
     pf.relance_copie_de = full.id;
+    // (2026-09-25, point 2) Même règle que la relance simple : jamais une copie
+    // dans un fourre-tout de catalogue.
+    if (rayonFourreToutARevoir(full.platform, pf)) {
+      const issue = await reResoudreRayonFourreTout({ platform: full.platform, pf, titre: full.title });
+      if (issue !== 'trouve') { setRelanceMsg(messageRayonNonTrouve(full.platform, lang !== 'en')); return; }
+    }
     const { data: pubRes, error: pubErr } = await supabase.rpc('spend_coins_and_publish', {
       p_photo_option: full.photo_option || 'original',
       p_jobs: [{
