@@ -96,7 +96,8 @@
     "selftest:rotation-figes": "node scripts/rotation-figes-selftest.mjs",
     "selftest:champs-demandes": "node --import ./scripts/loader-ext.mjs scripts/champs-demandes-selftest.mjs",
     "selftest:lbc-saisie-longue": "node scripts/lbc-saisie-longue-selftest.mjs",
-    "selftest:lbc-poids-tranche": "node scripts/lbc-poids-tranche-selftest.mjs"
+    "selftest:lbc-poids-tranche": "node scripts/lbc-poids-tranche-selftest.mjs",
+    "selftest:releve-ebay-compte-api": "node scripts/releve-ebay-compte-api-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
