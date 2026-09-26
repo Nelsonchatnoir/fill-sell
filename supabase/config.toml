@@ -166,6 +166,13 @@ verify_jwt = false
 [functions.doublons-balayage]
 verify_jwt = false
 
+# Recalage de l'abonnement de XEWER sur le 1er du mois (2026-09-26) : appelée
+# par pg_cron (« recalage-xewer-1er-oct », 01/10 de 00:00 à 03:55 UTC, via
+# recalage_xewer_tick), x-cron-secret vérifié dans le code. Un seul client,
+# une seule fois — À SUPPRIMER après le 01/10.
+[functions.stripe-recalage-1er-du-mois]
+verify_jwt = false
+
 # eBay par API (lot 0, 05/09) : eBay redirige le NAVIGATEUR ici après le
 # consentement, sans JWT Supabase — l'identité vient du `state` signé (HMAC,
 # clé = client_secret) vérifié dans le code. Nom IMPOSÉ par le RuName eBay.
