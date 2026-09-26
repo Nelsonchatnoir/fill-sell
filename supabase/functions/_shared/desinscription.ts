@@ -324,6 +324,12 @@ export interface EnvoiEmail {
   to: string;
   subject: string;
   html: string;
+  /**
+   * Partie texte brut (multipart). Absente : Resend la génère depuis le HTML
+   * — mais sans les `alt` des images, donc quasi vide pour un mail fait
+   * d'images (blast du 26/09).
+   */
+  text?: string;
   /** Type d'email_logs. OBLIGATOIRE, sans défaut. */
   type: string;
   /** Compte concerné. null pour une adresse sans compte (la ligne le dira). */
@@ -444,6 +450,7 @@ export async function envoyerEmail(envoi: EnvoiEmail): Promise<ResultatEnvoi> {
         to: [adresse],
         subject: envoi.subject,
         html: envoi.html,
+        ...(envoi.text ? { text: envoi.text } : {}),
         ...(Object.keys(enTetes).length > 0 ? { headers: enTetes } : {}),
       }),
     });

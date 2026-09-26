@@ -82,6 +82,37 @@ interface Destinataire {
   variables?: Record<string, string>;
 }
 
+/**
+ * Partie texte brut du mail, tirée du HTML final (2026-09-26).
+ * Resend en génère une d'office, mais elle ignore les `alt` : le blast de
+ * rentrée, rendu en images pour tenir en mode sombre sur Gmail iOS, serait
+ * parti avec une partie texte presque vide — mauvais signal pour les filtres,
+ * et rien à lire pour qui bloque les images. Ici : textes alternatifs des
+ * images, liens écrits en clair, pré-en-tête caché retiré.
+ */
+function htmlVersTexte(html: string): string {
+  const entites: Record<string, string> = { nbsp: " ", amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" };
+  let t = html
+    .replace(/<head[\s\S]*?<\/head>/gi, "")
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<div[^>]*display:\s*none[^>]*>[\s\S]*?<\/div>/gi, "")
+    .replace(/<img[^>]*\balt="([^"]*)"[^>]*>/gi, (_m, alt: string) => (alt ? `\n${alt}\n` : ""))
+    .replace(/<a[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, dedans: string) => {
+      const libelle = dedans.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      if (!libelle) return ` ${href} `;
+      if (libelle === href.replace(/^https?:\/\//, "").replace(/\/$/, "")) return libelle;
+      return `${libelle} : ${href}`;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#\d+|[a-z]+);/gi, (m, e: string) =>
+      e.startsWith("#") ? String.fromCodePoint(Number(e.slice(1))) : (entites[e.toLowerCase()] ?? m));
+  t = t.split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).join("\n");
+  return t.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function appliquerVariables(texte: string, vars?: Record<string, string>): string {
   if (!vars) return texte;
   let out = texte;
@@ -200,6 +231,7 @@ Deno.serve(async (req) => {
       to: email,
       subject: sujetFinal,
       html: htmlFinal,
+      text: htmlVersTexte(htmlFinal),
       type,
       userId: d.user_id ?? null,
       categorie,
