@@ -292,7 +292,10 @@ Les endroits à reprendre, tenus à jour (relevé du 21/09 —
   **`20260921090000_beebs_lien_cron.sql`** (ajouté le 21/09, cron
   `beebs-lien-5min`, jobid 16) ·
   **`20260925152000_doublons_balayage_cron.sql`** (ajouté le 25/09, cron
-  `doublons-balayage-2min`, jobid 17) ;
+  `doublons-balayage-2min`, jobid 17) ·
+  **`20260926192110_recalage_xewer_1er_octobre.sql`** (ajouté le 26/09, tâche
+  UNIQUE `recalage-xewer-1er-oct`, jobid 18, qui se désinscrit le 01/10 ;
+  la fonction `stripe-recalage-1er-du-mois` est à supprimer ensuite) ;
 - et, hors dépôt, **la commande de chaque ligne de `cron.job` en prod** : c'est
   elle qui fait foi, pas les fichiers.
 
