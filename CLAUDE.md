@@ -5,15 +5,24 @@
 Tant que la baseline n'est pas refaite, **ne jamais lancer `supabase db push`**
 sur ce projet.
 
-Les historiques de migrations divergent : 29 fichiers locaux ne sont pas
-enregistrés côté distant, ~35 versions distantes n'ont pas de fichier local. Un
-push rejouerait des migrations **non idempotentes**, dont :
+Les historiques de migrations divergent (audit du 26/09) : les 35 versions
+distantes sans fichier ont été CAPTURÉES dans le dépôt, mais ~118 fichiers
+locaux n'ont aucune trace dans l'historique distant (appliqués hors historique,
+ou jamais appliqués). Un push rejouerait des migrations **non idempotentes**,
+dont :
 - un `cron.schedule('handler-watch-3min')` → job planifié **en double** ;
 - un revert de grants → **soldes utilisateurs modifiés**.
 
 Les migrations s'appliquent **une par une**, après vérification de leur effet
 réel en prod. Interdits également tant que ce bandeau est là : `db reset`,
 `db remote commit`.
+
+⛔ **AVANT de réécrire une fonction SQL : partir de la définition EN PROD**
+(`pg_get_functiondef`), jamais du dernier fichier du dépôt. Le 26/09, 22
+fonctions tournaient dans une version qu'aucun fichier ne portait (correctifs
+appliqués en direct, migrations « patch » par remplacement de texte). Elles
+sont capturées dans `20260926235900_depot_suit_la_prod_capture_2609.sql` —
+mais tout correctif appliqué en direct depuis recrée l'écart.
 
 ## Dossier de travail — UN SEUL, sans exception
 
