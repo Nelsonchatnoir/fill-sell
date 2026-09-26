@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import { track } from '../analytics/analytics';
 import useSeo from '../lib/seo';
+import { oublierOffre } from '../lib/offreMail';
 
 export default function Success(){
   const nav = useNavigate();
@@ -17,6 +18,9 @@ export default function Success(){
     // passé. Sans ce nettoyage, un passage ultérieur par /cancel (retour
     // arrière, onglet rouvert) journaliserait un abandon pour un achat réussi.
     try { localStorage.removeItem('fs_checkout_ctx'); } catch { /* mode privé */ }
+    // L'offre du lien d'e-mail (FILLSELL50) a servi : on ne la colle plus aux
+    // passages suivants par la modale des offres.
+    oublierOffre();
   }, []);
 
   return(

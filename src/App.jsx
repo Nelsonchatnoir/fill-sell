@@ -73,6 +73,7 @@ const buildIdTimestamp = (id) => {
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
+import { offreEnCours, offreAOuvrir } from './lib/offreMail';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
 import { televerserPhotos, menagePhotosArticle } from './utils/photosUpload';
@@ -2850,7 +2851,11 @@ export default function App({ loginOnly = false }){
       // ...(product?{product}:{}) et non plus le seul cas 'pro' : sans ça,
       // triggerCheckout('business') serait parti en checkout PREMIUM (12,99 €)
       // — le produit était simplement omis du corps.
-      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product?{product}:{})})});
+      // promo : code arrivé par un lien d'e-mail (?offre=, cf. lib/offreMail).
+      // Le serveur le revérifie auprès de Stripe et l'applique au Checkout ;
+      // absent ou refusé, le champ « code promo » reste disponible comme avant.
+      const promo=offreEnCours();
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product?{product}:{}),...(promo?{promo}:{})})});
       const body=await res.json();
       const{url,error,upgraded,already_pro,tier}=body;
       // Le serveur rend, depuis le 24/09, sa propre phrase (message_fr /
@@ -3354,6 +3359,14 @@ export default function App({ loginOnly = false }){
       setExtensionBuild(p.data?.extension_build??null);
       setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
       setEbayVoieApi(p.data?.ebay_voie_api===true);
+      // Lien d'e-mail porteur d'une offre (?offre=FILLSELL50, 26/09) : la
+      // modale des offres s'ouvre UNE fois à l'arrivée — compte gratuit, web
+      // seulement (le natif paie par les stores, où un code Stripe ne vaut
+      // rien). Le code est ensuite appliqué au Checkout par triggerCheckout.
+      if(!isNative&&!premiumValue&&offreAOuvrir()){
+        logTunnel('premium_cta_click',{origine:'mail_offre',declencheur:'clic',offre:offreEnCours()});
+        setConversionModal({open:true,trigger:'offre_mail',origine:'mail_offre'});
+      }
 
       // Horodatage NULL ≠ jamais d'extension (05/09) : on cherche une trace
       // sur un job (handler_build) ou un run de sync (extension_build) AVANT
@@ -9202,6 +9215,7 @@ export default function App({ loginOnly = false }){
         quotaInfo={conversionModal.quotaInfo??null}
         origine={conversionModal.origine??null}
         plafondRepub={conversionModal.plafondRepub??null}
+        offre={isNative?null:offreEnCours()}
       />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}

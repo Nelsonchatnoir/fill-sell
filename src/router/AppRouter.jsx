@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
 import { rememberPostLoginTarget } from "../lib/postLoginRedirect";
 import { capterSource } from "../utils/acquisition";
+import { capterOffre } from "../lib/offreMail";
 import BandeauConsentement from "../components/BandeauConsentement";
 import LandingPage from "../pages/LandingPage";
 import Success from "../pages/Success";
@@ -19,6 +20,12 @@ import AuthConfirm from "../pages/AuthConfirm";
 // à la navigation. Fallback null : le canvas #EDEAE0 d'index.html couvre le
 // chargement, comme au boot. Le natif embarque dist/ tel quel (Capacitor,
 // bundles Capgo zippés complets) : les chunks voyagent avec l'entrée.
+// Offre portée par un lien d'e-mail (?offre=CODE, 26/09) : relevée au
+// CHARGEMENT DU MODULE, donc avant le premier rendu et avant la moindre
+// redirection du routeur (RequireAuth, RedirectIfLoggedIn, route « * »), qui
+// effacerait le paramètre. Cf. src/lib/offreMail.js.
+capterOffre();
+
 const App = lazy(() => import("../App"));
 const Legal = lazy(() => import("../pages/Legal"));
 const BlogList = lazy(() => import("../pages/BlogList"));

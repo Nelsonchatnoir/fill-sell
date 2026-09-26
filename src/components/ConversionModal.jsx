@@ -580,6 +580,11 @@ export default function ConversionModal({
   // plafond, consommes } — le refus serveur quota_*_atteint relayé par l'hôte.
   // ('scans' a disparu le 02/09 soir — fusion scans+annonces, un seul geste.)
   quotaInfo    = null,
+  // Code d'offre arrivé par un lien d'e-mail (lib/offreMail, 26/09) — web
+  // seulement, l'hôte passe null en natif. Sert UNIQUEMENT à dire, sur la vue
+  // Free, que la remise s'appliquera au paiement ; c'est le serveur qui
+  // l'applique réellement (create-checkout-session).
+  offre        = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -805,6 +810,22 @@ export default function ConversionModal({
                     : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
                 : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
+
+      {offre === 'FILLSELL50' && (
+        /* Offre de rentrée (blast du 26/09) : -50 % le premier mois, code
+           Stripe à usage de première commande. Le texte ne nomme aucun palier :
+           le coupon vaut pour tous. */
+        <div style={{ background: '#FDEEE6', border: `1px solid ${C.amber}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, color: C.amberInk }}>
+            {fr ? '-50 % sur ton premier mois' : '50% off your first month'}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 4 }}>
+            {fr
+              ? <>Code FILLSELL50 appliqué automatiquement au paiement, jusqu'au 31 octobre.</>
+              : <>Code FILLSELL50 applied automatically at checkout, until October 31.</>}
+          </div>
+        </div>
+      )}
 
       {repubCap && (
         /* Registre des cartes : le Free A eu quelque chose (50 offertes, à
