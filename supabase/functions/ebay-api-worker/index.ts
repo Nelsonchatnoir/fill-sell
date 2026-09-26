@@ -1674,7 +1674,7 @@ async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<
       const j = await r.json().catch(() => ({})) as Record<string, unknown>;
       if (r.status === 200) {
         const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
-        lignes.push({ id, http: 200, etat: "vivante", item_id: j.itemId ?? null, fin: j.itemEndDate ?? null, disponibilite: dispo.estimatedAvailabilityStatus ?? null, quantite_restante: dispo.estimatedAvailableQuantity ?? null, vendus: dispo.estimatedSoldQuantity ?? null, prix: (j.price as Record<string, unknown> | undefined)?.value ?? null, titre: String(j.title ?? "").slice(0, 80) });
+        lignes.push({ id, http: 200, etat: "vivante", item_id: j.itemId ?? null, fin: j.itemEndDate ?? null, disponibilite: dispo.estimatedAvailabilityStatus ?? null, quantite_restante: dispo.estimatedAvailableQuantity ?? null, vendus: dispo.estimatedSoldQuantity ?? null, prix: (j.price as Record<string, unknown> | undefined)?.value ?? null, titre: String(j.title ?? "").slice(0, 80), vendeur: (j.seller as Record<string, unknown> | undefined)?.username ?? null });
       } else {
         const err = (j.errors as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
         lignes.push({ id, http: r.status, etat: r.status === 404 ? "terminee" : "indeterminee", errorId: err.errorId ?? null, message: String(err.message ?? "").slice(0, 160) });
@@ -1952,6 +1952,103 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
   return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, terminees, indeterminees, orphelines, coupe };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LE VENDEUR DES ANNONCES LUES AU HUB (2026-09-26, relevé eBay aligné sur l'API)
+// ═══════════════════════════════════════════════════════════════════════════
+// Un compte relié par l'API ne voit plus son relevé eBay traité que si le Hub
+// lu par Chrome est bien celui du compte relié (migration
+// 20260926110000_releve_ebay_compte_api). La preuve : le vendeur d'une annonce
+// lue, tel qu'eBay le rend (Browse, seller.username, jeton APPLICATIF — aucun
+// jeton vendeur, aucun consentement). La base met en file les annonces dont
+// elle ne connaît pas le vendeur ; on les vérifie ici, par lots bornés.
+// ⛔ Même budget que la veille : on s'arrête net sur un 429 / 5xx, rien n'est
+//    conclu sur le reste. Une annonce introuvable (404) n'a PAS de vendeur :
+//    elle reste en file, retentée plus tard, puis abandonnée — jamais devinée.
+const VENDEURS_LOT_MAX = 30;
+const VENDEURS_TENTATIVES_MAX = 6;
+const VENDEURS_ATTENTE_MS = 15 * 60_000;   // × tentatives
+
+async function verifierVendeursAnnonces(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
+  const { data: file, error } = await admin.from("ebay_annonces_a_verifier")
+    .select("listing_id, user_id, tentatives, derniere_tentative")
+    .lt("tentatives", VENDEURS_TENTATIVES_MAX)
+    .order("demande_le", { ascending: true })
+    .limit(1000);
+  if (error) return { erreur: error.message };
+  const maintenant = Date.now();
+  const eligibles = ((file ?? []) as Array<{ listing_id: string; user_id: string; tentatives: number; derniere_tentative: string | null }>)
+    .filter((l) => /^\d{9,15}$/.test(String(l.listing_id)))
+    .filter((l) => {
+      const t = Date.parse(String(l.derniere_tentative ?? ""));
+      return !Number.isFinite(t) || maintenant - t >= VENDEURS_ATTENTE_MS * Math.max(1, l.tentatives);
+    });
+  // UNE annonce prouvée suffit à établir l'identité d'un relevé (le Hub ne
+  // montre que le compte connecté) : on sert d'abord UNE annonce par personne,
+  // pour qu'un gros dressing (373 annonces) n'affame pas les autres comptes.
+  const premieres: typeof eligibles = [];
+  const reste: typeof eligibles = [];
+  const vus = new Set<string>();
+  for (const l of eligibles) {
+    if (vus.has(l.user_id)) reste.push(l);
+    else { vus.add(l.user_id); premieres.push(l); }
+  }
+  const aVoir = [...premieres, ...reste].slice(0, VENDEURS_LOT_MAX);
+  if (!aVoir.length) return { en_file: (file ?? []).length, verifiees: 0 };
+
+  let token: string;
+  try { token = await obtenirJetonApplicatif(env); }
+  catch (e) { return { erreur: `jeton_applicatif:${String((e as Error)?.message ?? e).slice(0, 120)}` }; }
+
+  let verifiees = 0, sansVendeur = 0, coupe = false;
+  for (const l of aVoir) {
+    let r: Response;
+    try {
+      r = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${encodeURIComponent(l.listing_id)}`, {
+        headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+      });
+    } catch (e) {
+      await admin.from("ebay_annonces_a_verifier")
+        .update({ tentatives: l.tentatives + 1, derniere_tentative: new Date().toISOString(), dernier_motif: `reseau:${String((e as Error)?.message ?? e).slice(0, 80)}` })
+        .eq("listing_id", l.listing_id);
+      continue;
+    }
+    if (r.status === 429 || r.status >= 500) { coupe = true; break; }
+    const j = await r.json().catch(() => null) as Record<string, unknown> | null;
+    const vendeur = (j?.seller as Record<string, unknown> | undefined) ?? {};
+    const username = typeof vendeur.username === "string" ? vendeur.username.trim() : "";
+    if (r.status === 200 && username) {
+      await admin.from("ebay_vendeurs_annonces").upsert({
+        listing_id: l.listing_id, vendeur: username,
+        vendeur_id: typeof vendeur.userId === "string" ? vendeur.userId : null,
+        source: "browse", vu_le: new Date().toISOString(),
+      }, { onConflict: "listing_id" });
+      await admin.from("ebay_annonces_a_verifier").delete().eq("listing_id", l.listing_id);
+      verifiees++;
+    } else {
+      await admin.from("ebay_annonces_a_verifier")
+        .update({ tentatives: l.tentatives + 1, derniere_tentative: new Date().toISOString(), dernier_motif: r.status === 200 ? "vendeur_absent" : `http_${r.status}` })
+        .eq("listing_id", l.listing_id);
+      sansVendeur++;
+    }
+  }
+  if (coupe) console.warn(`[ebay-api-worker] vérification des vendeurs interrompue (quota / eBay) après ${verifiees} annonce(s)`);
+  return { en_file: (file ?? []).length, verifiees, sans_vendeur: sansVendeur, coupe };
+}
+
+// Ce que le worker vient de publier avec le jeton du compte relié appartient,
+// par construction, à ce compte : son vendeur est connu sans rien demander.
+async function noterVendeurPublication(admin: SupabaseClient, userId: string, listingId: unknown): Promise<void> {
+  const id = String(listingId ?? "");
+  if (!/^\d{9,15}$/.test(id)) return;
+  const { data: compte } = await admin.from("ebay_accounts").select("ebay_user_id").eq("user_id", userId).is("revoked_at", null).maybeSingle();
+  const vendeur = String((compte as { ebay_user_id?: string | null } | null)?.ebay_user_id ?? "").trim();
+  if (!vendeur) return;
+  await admin.from("ebay_vendeurs_annonces").upsert(
+    { listing_id: id, vendeur, source: "publication_api", vu_le: new Date().toISOString() },
+    { onConflict: "listing_id", ignoreDuplicates: true },
+  );
+}
+
 const PROCESSING_MAX_MS = 10 * 60_000;
 const PROCESSING_REPRISES_MAX = 3;
 async function reprendreProcessingMorts(admin: SupabaseClient): Promise<Record<string, unknown>> {
@@ -2019,6 +2116,12 @@ Deno.serve(async (req) => {
   try { veille = await veillerVentesEbay(admin, env); }
   catch (e) { veille = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
+  // ── Vendeurs des annonces lues au Hub (relevé eBay aligné sur l'API) :
+  // même règle que la veille — avant la sortie anticipée, jamais bloquant.
+  let vendeurs: Record<string, unknown> = {};
+  try { vendeurs = await verifierVendeursAnnonces(admin, env); }
+  catch (e) { vendeurs = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "pending")
@@ -2026,7 +2129,7 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, vendeurs });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -2057,9 +2160,13 @@ Deno.serve(async (req) => {
         resultats.push({ job: job.id, issue: "jeton", motif: jeton.motif });
         continue;
       }
-      if (job.action === "publish") resultats.push(await publier(admin, env, jeton.token, job, passe));
-      else if (job.action === "delete") resultats.push(await retirer(admin, env, jeton.token, job));
-      else if (job.action === "republish") resultats.push(await republier(admin, env, jeton.token, job, passe));
+      if (job.action === "publish" || job.action === "republish") {
+        const res = job.action === "publish"
+          ? await publier(admin, env, jeton.token, job, passe)
+          : await republier(admin, env, jeton.token, job, passe);
+        resultats.push(res);
+        if (res.issue === "published") await noterVendeurPublication(admin, job.user_id, res.listing_id).catch(() => {});
+      } else if (job.action === "delete") resultats.push(await retirer(admin, env, jeton.token, job));
       else {
         await marquer(admin, job, { status: "failed", error: `Action « ${job.action} » non prise en charge par la voie API en 2a.` }, { etape: "controle", quoi: "action_non_geree" });
         resultats.push({ job: job.id, issue: "failed", motif: "action_non_geree" });
@@ -2072,5 +2179,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, vendeurs, resultats });
 });
