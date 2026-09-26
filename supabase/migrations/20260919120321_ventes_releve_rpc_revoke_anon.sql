@@ -1,0 +1,13 @@
+-- ══════════════════════════════════════════════════════════════════════════════
+-- CAPTURE DE LA PROD (audit dépôt ↔ prod du 26/09/2026)
+-- Migration 20260919120321 « ventes_releve_rpc_revoke_anon » : APPLIQUÉE en prod, mais aucun fichier
+-- ne la portait dans le dépôt. Ce fichier reprend MOT POUR MOT les instructions
+-- enregistrées dans supabase_migrations.schema_migrations.statements — il ne
+-- change rien en prod (même version déjà inscrite dans l'historique distant).
+-- ⛔ Ne pas réappliquer à la main.
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Supabase accorde EXECUTE à `anon` par défaut sur toute fonction du schéma
+-- public : le REVOKE FROM public ne l'enlève pas. Or cette fonction est
+-- SECURITY DEFINER et accepte un p_user quand auth.uid() est NULL — un appel
+-- anonyme pourrait donc écrire pour n'importe quel compte. On ferme.
+REVOKE EXECUTE ON FUNCTION public.enregistrer_ventes_relevees(text, jsonb, uuid) FROM anon;

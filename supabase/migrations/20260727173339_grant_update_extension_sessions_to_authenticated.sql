@@ -1,0 +1,16 @@
+-- ══════════════════════════════════════════════════════════════════════════════
+-- CAPTURE DE LA PROD (audit dépôt ↔ prod du 26/09/2026)
+-- Migration 20260727173339 « grant_update_extension_sessions_to_authenticated » : APPLIQUÉE en prod, mais aucun fichier
+-- ne la portait dans le dépôt. Ce fichier reprend MOT POUR MOT les instructions
+-- enregistrées dans supabase_migrations.schema_migrations.statements — il ne
+-- change rien en prod (même version déjà inscrite dans l'historique distant).
+-- ⛔ Ne pas réappliquer à la main.
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 403 sur reportPlatformSessions (extension, build 2d341ee) : le GRANT UPDATE
+-- de authenticated sur public.profiles est scopé par colonnes et
+-- extension_sessions (ajoutée le 2026-07-27 pour l'onboarding) n'y figurait
+-- pas. La policy RLS « update own profile » (auth.uid() = id) est correcte et
+-- suffisante côté lignes ; depuis le breaking change Supabase de mai 2026, le
+-- GRANT colonne est requis en plus. Additif strict : aucune autre colonne,
+-- aucun DROP, aucune policy modifiée.
+GRANT UPDATE (extension_sessions) ON public.profiles TO authenticated;
