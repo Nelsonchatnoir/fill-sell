@@ -13,7 +13,11 @@
 //      quand même à la publication après la vente) ; les frères déjà LIVE
 //      (published + listing_url) reçoivent platform_fields.pending_removal
 //      = true → le bandeau semi-auto de l'app propose leur retrait, le clic
-//      utilisateur arme les jobs action='delete' (jamais automatique).
+//      utilisateur arme les jobs action='delete'.
+//      ⚠️ DEPUIS LE 26/09 (migration article_vendu_retire_ses_copies) : la
+//      fiche qui devient vendue fait armer PAR LA BASE le retrait de chaque
+//      copie encore en ligne (retrait_arme sur le frère). Ces frères-là sont
+//      clos sans pending_removal — plus rien à cliquer.
 //   5. la vente est NOTÉE pour le récapitulatif (usage_logs « vente_a_annoncer »,
 //      depuis le 25/09) — le mail part avec le récapitulatif horaire
 //      d'email-tunnel, au plus un par personne et par 24 h ; best-effort,
@@ -317,11 +321,20 @@ export async function orchestrateSale(
       // lien est là, le cron 7 j requalifie le dépôt s'il n'arrive jamais.
       // Leboncoin, Vinted, eBay : inchangés.
       const beebsSansLien = wasLive && sib.platform === "beebs" && !sib.listing_url;
+      // ── RETRAIT DÉJÀ ARMÉ PAR LE SERVEUR (2026-09-26, dossier Joséphine) ────
+      // consume_one_unit vient de passer la fiche en 'vendu' : le trigger
+      // inventaire_vendu_retire_ses_copies a DÉJÀ armé le retrait de cette
+      // annonce (platform_fields.retrait_arme). Reposer la question « retirer
+      // ces annonces ? » ferait cliquer pour un retrait qui part déjà : le
+      // frère est clos comme avant, sans pending_removal, et hors du compte
+      // des retraits à cliquer.
+      const retraitDejaArme = wasLive &&
+        !!((sib.platform_fields ?? {}) as Record<string, unknown>)["retrait_arme"];
       const patch: Record<string, unknown> = beebsSansLien ? {} : { status: "cancelled" };
       if (wasLive) {
         patch.platform_fields = {
           ...(sib.platform_fields ?? {}),
-          pending_removal: true,
+          pending_removal: !retraitDejaArme,
           ...(sib.listing_url ? {} : { removal_url_missing: true }),
           ...(beebsSansLien ? { retrait_attend_lien: { depuis: new Date().toISOString(), motif: "depot_beebs_en_verification_a_la_vente" } } : {}),
         };
@@ -329,7 +342,7 @@ export async function orchestrateSale(
       const { error: sibErr } = await admin.from("cross_post_jobs").update(patch).eq("id", sib.id);
       if (sibErr) { console.error(`[sale] Cancel sibling ${sib.id}:`, sibErr.message); continue; }
       siblingsCancelled++;
-      if (wasLive) pendingRemoval++;
+      if (wasLive && !retraitDejaArme) pendingRemoval++;
       // ── BEEBS SANS LIEN : ON ARME LE RETRAIT NOUS-MÊMES (2026-09-16, GO Nico)
       // Le dépôt reste 'published' (décision du 11/09, ci-dessus) — mais le
       // bandeau de retrait de l'app ne lit que les frères 'cancelled' : ce
