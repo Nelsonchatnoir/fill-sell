@@ -187,7 +187,9 @@ serve(async (req) => {
     // product : undefined → abonnement Premium standard (comportement historique) ;
     // "pro" → Pro 29,99 €/mois ; "business" → Business 59,99 €/mois (2026-08-09) ;
     // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
-    const { email, product } = await req.json();
+    // promo (2026-09-26) : code arrivé par un lien d'e-mail (?offre=, cf.
+    // src/lib/offreMail.js) — appliqué au Checkout d'abonnement plus bas.
+    const { email, product, promo } = await req.json();
     produitDemande = typeof product === "string" ? product : null;
 
     if (email && authUser.email && email !== authUser.email) {
@@ -458,7 +460,47 @@ serve(async (req) => {
       metadata: { plan_type: planType },
     };
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    // ── Code promo APPLIQUÉ d'office (2026-09-26, blast FILLSELL50) ─────────
+    // Le lien du mail porte le code : la personne ne doit rien avoir à taper.
+    // On le résout auprès de Stripe (code ACTIF uniquement) et on le passe en
+    // `discounts` — Stripe interdit `discounts` et `allow_promotion_codes`
+    // ensemble, d'où le retrait du second.
+    // Tout ce qui cloche retombe sur le Checkout d'avant, champ code promo
+    // compris : code inconnu/expiré, ou conditions du coupon non remplies
+    // (« première commande » : un ancien client qui a déjà payé est refusé
+    // par Stripe à la création de session). Un bouton de mail qui mène à une
+    // erreur coûte plus cher qu'un prix plein.
+    let promotionCodeId: string | null = null;
+    const codePromo = typeof promo === "string" ? promo.trim() : "";
+    if (codePromo && /^[A-Za-z0-9_-]{3,40}$/.test(codePromo)) {
+      try {
+        const { data: codes } = await stripe.promotionCodes.list({ code: codePromo, active: true, limit: 1 });
+        promotionCodeId = codes?.[0]?.id ?? null;
+        if (!promotionCodeId) console.warn(`[checkout] code promo « ${codePromo} » inconnu ou inactif — Checkout sans remise`);
+      } catch (e) {
+        const se = e as { code?: string; message?: string };
+        console.error(`[checkout] code promo « ${codePromo} » illisible — code=${se?.code ?? "?"} message=${se?.message ?? e}`);
+      }
+    }
+
+    let session: Stripe.Checkout.Session;
+    if (promotionCodeId) {
+      const { allow_promotion_codes: _sansChamp, ...sansChamp } = sessionParams;
+      try {
+        session = await stripe.checkout.sessions.create({
+          ...sansChamp,
+          discounts: [{ promotion_code: promotionCodeId }],
+          metadata: { ...sessionParams.metadata, code_promo: codePromo },
+        });
+        console.log(`[checkout] ${authUser.id} → ${planType} avec code promo ${codePromo}`);
+      } catch (e) {
+        const se = e as { code?: string; message?: string };
+        console.warn(`[checkout] code promo ${codePromo} refusé pour ${authUser.id} (code=${se?.code ?? "?"} message=${se?.message ?? e}) — Checkout sans remise`);
+        session = await stripe.checkout.sessions.create(sessionParams);
+      }
+    } else {
+      session = await stripe.checkout.sessions.create(sessionParams);
+    }
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { "Content-Type": "application/json", ...CORS },
