@@ -221,9 +221,6 @@ verify_jwt = true
 [functions.delete-account]
 verify_jwt = true
 
-[functions.check-early-adopter]
-verify_jwt = true
-
 # Publication / extension.
 [functions.get-pending-jobs]
 verify_jwt = true
@@ -269,7 +266,7 @@ verify_jwt = true
 verify_jwt = true
 
 # ── RÉALIGNÉ SUR LA PROD (audit dépôt ↔ prod du 26/09/2026) ─────────────────
-# Ces trois fonctions tournent en verify_jwt = false (relevé par
+# Ces fonctions tournent en verify_jwt = false (relevé par
 # `npx supabase functions list`) mais n'avaient AUCUNE entrée ici : un
 # redéploiement sans `--no-verify-jwt` les aurait repassées à true — le cron
 # (republish-auto-sweep */3, lens-temp-purge 3h50) serait tombé en 401 en
@@ -280,7 +277,6 @@ verify_jwt = false
 [functions.lens-temp-purge]
 verify_jwt = false
 
-# One-shot du 24/08, NEUTRALISÉ en prod le 25/08 (répond 410 à tout appel) —
-# le dépôt porte désormais ce stub, pas l'ancien envoyeur de pièces jointes.
-[functions.send-chantier-zip]
-verify_jwt = false
+# check-early-adopter et send-chantier-zip : SUPPRIMÉES de la prod le 26/09/2026
+# (stubs 410 ; 0 appel en 30 jours de journaux, 0 cron, 0 fonction SQL, 0
+# ligne de code app/extension).

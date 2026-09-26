@@ -26,12 +26,14 @@ s'empilent.
 
 ## L'inventaire, relevé le 19/09/2026
 
-### Les 12 vérificateurs — tous en `Deno.env.get("CRON_SECRET")`
+### Les 11 vérificateurs — tous en `Deno.env.get("CRON_SECRET")`
 
 `apple-notification-history` · `ebay-api-worker` · `ebay-ventes-sync` ·
 `email-tunnel` · `handler-watch` · `lens-analysis` · `lens-temp-purge` ·
 `ops-digest` · `republish-auto-sweep` · `republish-purge` ·
-`resolve-categorie` · `send-chantier-zip`
+`resolve-categorie`
+
+(`send-chantier-zip` a été supprimée de la prod le 26/09/2026.)
 
 ### Les appelants côté serveur — sains, ils lisent l'environnement
 

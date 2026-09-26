@@ -151,8 +151,10 @@ JWT, le worker eBay avec `x-cron-secret`) · `voice-intent` (Bearer + getUser
 maison, pour maîtriser sa réponse 401/CORS) · `update-job-status` ·
 `check-listing-status`.
 
-**One-shots déployés à la main** : `send-batch-notifications`,
-`send-chantier-zip`, et les `send-<prénom>-<date>`.
+**One-shots déployés à la main** : `send-batch-notifications`, et les
+`send-<prénom>-<date>`. (`send-chantier-zip` et `check-early-adopter` —
+stubs 410 — ont été SUPPRIMÉES de la prod le 26/09/2026 : 0 appel en 30 jours
+de journaux, 0 cron, 0 fonction SQL, 0 ligne de code.)
 (`send-relance` a été SUPPRIMÉE de la prod le 20/09/2026 — jeton en clair dans
 un fichier gitignoré, campagnes toutes parties, aucun appelant.)
 
@@ -207,7 +209,6 @@ doublon sans que rien ne le signale (bug du welcome, 03/08). Cf. la section
 
 Les fonctions `send-*` qui RESTENT, et pourquoi : `send-extension-link`
 (appelée par l'app, `verify_jwt` true), `send-bug-report` (idem),
-`send-chantier-zip` (commitée, donc relisible et redéployable),
 `send-batch-notifications` (v20, déclarée dans `config.toml`, **sans source** —
 gardée par précaution le 23/09 faute de preuve qu'elle ne sert plus ; à
 trancher). Le compte vivant se lit par le geste, jamais ici :
