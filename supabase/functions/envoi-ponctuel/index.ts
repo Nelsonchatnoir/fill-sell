@@ -34,6 +34,20 @@
 // ne peut jamais être BLOQUÉE par le plafond — c'est la seule asymétrie, et
 // elle va dans le bon sens : on préfère retenir une campagne que retenir une
 // réponse à quelqu'un qui attend.
+//
+// ── PIÈCES JOINTES (2026-09-26) — OPTIONNELLES, PAR DESTINATAIRE ────────────
+// Première demande : l'export PDF des ventes de Joséphine. La clé
+// `pieces_jointes` vit DANS chaque destinataire, jamais au niveau de l'appel :
+// un export est personnel, il ne peut partir qu'à la personne qu'il concerne —
+// impossible de joindre par mégarde le fichier de quelqu'un à toute une liste.
+//   { "email": "…", "pieces_jointes": [{ "nom": "ventes.pdf", "base64": "…" }] }
+// La porte SQL envoyer_mail_ponctuel transmet les destinataires tels quels :
+// rien à changer côté base.
+// ⛔ Sans la clé, RIEN ne change : même corps posté à Resend, même réponse.
+// ⛔ Une pièce jointe illisible (nom, type, base64, taille) REFUSE l'envoi de
+//    ce mail — jamais un mail qui annonce une pièce jointe et part sans elle.
+// ⛔ 'support' seulement : une campagne n'a pas de pièce jointe à porter.
+// ⛔ La simulation valide les pièces jointes et rend leur nom et leur poids.
 // ============================================================================
 
 // Version épinglée : cf. le bandeau de _shared/desinscription.ts (le `@2`
@@ -80,6 +94,65 @@ interface Destinataire {
   user_id?: string | null;
   /** Remplacements {{cle}} appliqués au sujet et au HTML, pour cette personne. */
   variables?: Record<string, string>;
+  /** Pièces jointes de CETTE personne, telles que reçues (validées plus bas). */
+  pieces_jointes?: unknown;
+}
+
+interface PieceJointe {
+  nom: string;
+  base64: string;
+  type: string;
+  octets: number;
+}
+
+const PJ_MAX_NOMBRE = 3;
+const PJ_MAX_OCTETS = 5 * 1024 * 1024; // par destinataire, toutes pièces confondues
+const PJ_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  csv: "text/csv",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+};
+
+/**
+ * Valide les pièces jointes d'un destinataire. Absentes → liste vide (le cas de
+ * tous les appels historiques). Le moindre défaut → un motif, et le mail ne
+ * part pas : on ne devine pas, on ne répare pas.
+ */
+function lirePiecesJointes(brut: unknown): { pieces: PieceJointe[] } | { motif: string } {
+  if (brut == null) return { pieces: [] };
+  if (!Array.isArray(brut)) return { motif: "pieces_jointes_pas_une_liste" };
+  if (brut.length > PJ_MAX_NOMBRE) return { motif: "pieces_jointes_trop_nombreuses" };
+  const pieces: PieceJointe[] = [];
+  let total = 0;
+  for (const p of brut) {
+    if (!p || typeof p !== "object") return { motif: "piece_jointe_illisible" };
+    const o = p as Record<string, unknown>;
+    const nom = String(o.nom ?? "").trim();
+    // Un nom de fichier, pas un chemin : lettres, chiffres, espace, . _ - ( ).
+    if (!/^[\p{L}\p{N} ._()-]{1,120}$/u.test(nom) || nom.startsWith(".")) {
+      return { motif: "piece_jointe_nom_invalide" };
+    }
+    const ext = (nom.split(".").pop() ?? "").toLowerCase();
+    const type = PJ_TYPES[ext];
+    if (!type || !nom.includes(".")) return { motif: "piece_jointe_type_refuse" };
+    const base64 = String(o.base64 ?? "").replace(/\s+/g, "");
+    if (!base64 || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+      return { motif: "piece_jointe_base64_invalide" };
+    }
+    let contenu: string;
+    try {
+      contenu = atob(base64);
+    } catch {
+      return { motif: "piece_jointe_base64_invalide" };
+    }
+    if (ext === "pdf" && !contenu.startsWith("%PDF-")) return { motif: "piece_jointe_pas_un_pdf" };
+    total += contenu.length;
+    if (total > PJ_MAX_OCTETS) return { motif: "pieces_jointes_trop_lourdes" };
+    pieces.push({ nom, base64, type, octets: contenu.length });
+  }
+  return { pieces };
 }
 
 /**
@@ -182,6 +255,7 @@ Deno.serve(async (req) => {
         email: String(o.email ?? o.to ?? ""),
         user_id: (o.user_id ?? o.userId ?? null) as string | null,
         variables: (o.variables ?? null) as Record<string, string> | undefined,
+        pieces_jointes: o.pieces_jointes ?? null,
       });
     }
   }
@@ -199,6 +273,21 @@ Deno.serve(async (req) => {
 
   for (const d of valides) {
     const email = d.email.trim().toLowerCase();
+
+    // ── PIÈCES JOINTES — validées AVANT tout, simulation comprise ─────────
+    const pj = lirePiecesJointes(d.pieces_jointes);
+    if ("motif" in pj || (pj.pieces.length > 0 && categorie !== "support")) {
+      refuses++;
+      resultats.push({
+        email, envoye: false,
+        motif: "motif" in pj ? pj.motif : "pieces_jointes_support_seulement",
+      });
+      continue;
+    }
+    const pieces = pj.pieces;
+    const resumePieces = pieces.length
+      ? { pieces_jointes: pieces.map((p) => ({ nom: p.nom, type: p.type, octets: p.octets })) }
+      : {};
 
     // ── PLAFOND 2 / 24 h — marketing SEULEMENT ────────────────────────────
     // Lecture par user_id quand on l'a (fiable), sinon par adresse. Une
@@ -223,7 +312,7 @@ Deno.serve(async (req) => {
     const htmlFinal = appliquerVariables(html, d.variables);
 
     if (simulation) {
-      resultats.push({ email, envoye: false, motif: "simulation", sujet: sujetFinal });
+      resultats.push({ email, envoye: false, motif: "simulation", sujet: sujetFinal, ...resumePieces });
       continue;
     }
 
@@ -236,9 +325,12 @@ Deno.serve(async (req) => {
       userId: d.user_id ?? null,
       categorie,
       dedup,
+      ...(pieces.length
+        ? { attachments: pieces.map((p) => ({ filename: p.nom, content: p.base64, content_type: p.type })) }
+        : {}),
     });
     if (r.envoye) envoyes++; else refuses++;
-    resultats.push({ email, envoye: r.envoye, motif: r.motif ?? null, journalise: r.journalise ?? null });
+    resultats.push({ email, envoye: r.envoye, motif: r.motif ?? null, journalise: r.journalise ?? null, ...resumePieces });
   }
 
   console.log("envoi_ponctuel", JSON.stringify({

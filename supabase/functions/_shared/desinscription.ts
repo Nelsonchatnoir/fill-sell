@@ -330,6 +330,12 @@ export interface EnvoiEmail {
    * d'images (blast du 26/09).
    */
   text?: string;
+  /**
+   * Pièces jointes, contenu en base64 (2026-09-26, export des ventes d'une
+   * personne). Absentes chez tous les appelants historiques : le corps posté
+   * à Resend est alors exactement celui d'avant.
+   */
+  attachments?: Array<{ filename: string; content: string; content_type?: string }>;
   /** Type d'email_logs. OBLIGATOIRE, sans défaut. */
   type: string;
   /** Compte concerné. null pour une adresse sans compte (la ligne le dira). */
@@ -451,6 +457,7 @@ export async function envoyerEmail(envoi: EnvoiEmail): Promise<ResultatEnvoi> {
         subject: envoi.subject,
         html: envoi.html,
         ...(envoi.text ? { text: envoi.text } : {}),
+        ...(envoi.attachments?.length ? { attachments: envoi.attachments } : {}),
         ...(Object.keys(enTetes).length > 0 ? { headers: enTetes } : {}),
       }),
     });

@@ -188,6 +188,17 @@ journal. `{{cle}}` est remplacé par `variables` **par personne**.
 **Toujours lancer en `p_simulation := true` d'abord**, lire le verdict, puis
 relancer à `false`. Et commencer par SON adresse.
 
+**Pièce jointe** (26/09, envoi-ponctuel v3) : clé optionnelle DANS le
+destinataire, jamais au niveau de l'appel —
+`{"email":"…","pieces_jointes":[{"nom":"ventes.pdf","base64":"…"}]}`.
+`support` seulement ; pdf, csv, png, jpg ; 3 pièces et 5 Mo au plus par
+personne. Une pièce illisible REFUSE le mail (jamais un mail parti sans sa
+pièce) ; la simulation rend le nom et le poids. Un gros base64 se met dans un
+fichier `.sql` lancé par `npx supabase db query --linked -f`, jamais collé à la
+main. Un export porte des données personnelles : `build/exports/` (ignoré par
+git), JAMAIS un bucket Storage (les deux existants sont PUBLICS). PDF des
+ventes d'un compte : `node scripts/emails/export-ventes-pdf.mjs --user <uuid>`.
+
 CE QUE LA PORTE GARANTIT, et qu'aucune des 31 ne garantissait :
 - clé de service exigée (lue dans le **vault**, secret `service_role_key`,
   jamais écrite en clair) — **aucun jeton en dur nulle part** ;
