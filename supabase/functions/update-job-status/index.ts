@@ -2625,8 +2625,15 @@ serve(async (req) => {
         // ⛔ TOUS les aspects obligatoires aveugles, pas un seul : si UN SEUL
         //    décrit encore l'objet, la catégorie tient et la question est
         //    légitime. C'est la totalité qui accuse la catégorie.
-        const tousAveugles = requis.length > 0 && requis.every((a) => aveugles.includes(a));
-        if (cle && tousAveugles && aveugles.includes(cle) && String(nuf?.["platform"] ?? "") === "ebay") {
+        // (2026-09-26) La MARQUE (et le numéro de pièce) ne décrit jamais un
+        // TYPE d'objet : sa liste est faite de noms de fabricants. Elle
+        // n'accuse donc pas le rayon — une marque absente se comble par
+        // l'entrée « sans marque » de la liste, jamais par un changement de
+        // rayon. Seuls les aspects DESCRIPTIFS jugent le rayon.
+        const NON_DESCRIPTIFS = new Set(["Marque", "Numéro de pièce fabricant"]);
+        const requisDescriptifs = requis.filter((a) => !NON_DESCRIPTIFS.has(a));
+        const tousAveugles = requisDescriptifs.length > 0 && requisDescriptifs.every((a) => aveugles.includes(a));
+        if (cle && !NON_DESCRIPTIFS.has(cle) && tousAveugles && aveugles.includes(cle) && String(nuf?.["platform"] ?? "") === "ebay") {
           const parMot = objet(pfC["categorie_par_mot"]);
           const autre = Array.isArray(parMot?.["chemin"]) ? (parMot!["chemin"] as unknown[]).map(String).join(" › ") : "";
           const actuelle = Array.isArray(pfC["ebayCategoryPath"]) ? (pfC["ebayCategoryPath"] as unknown[]).map(String).join(" › ") : "";
@@ -2636,6 +2643,40 @@ serve(async (req) => {
           const source: SourceCategorie =
             String(pfC["categorie_source"] ?? "") === "choix_humain" ? "choix_humain" : "autre";
           const mots = { quoi, actuelle, proposee: autre, requis };
+          // ══ RAYON POSÉ PAR NOUS : C'EST À NOUS DE LE CHANGER (2026-09-26) ══
+          // Jocabroc (Pro), f89eb720 : « Change la catégorie eBay depuis la
+          // fiche » — adressé à une cliente pour un rayon que NOUS avions
+          // choisi. Désormais ebay-api-worker re-choisit le rayon au tick
+          // suivant (suggestions d'eBay, IA « plus proche », rayons déjà
+          // écartés exclus) et le job repart seul. Deux essais ; au-delà, la
+          // phrase d'avant (dernier recours). Un rayon choisi à la main n'est
+          // jamais recalculé : son message reste celui d'avant.
+          const suiviAveugle = objet(pfC["ebay_rayon_aveugle"]);
+          const essaisAveugle = Number(suiviAveugle?.["essais"] ?? 0);
+          const idRayon = String(pfC["ebayCategoryId"] ?? "").trim();
+          if (source !== "choix_humain" && essaisAveugle < 2) {
+            const exclus = [...new Set([
+              ...(Array.isArray(suiviAveugle?.["exclus"]) ? (suiviAveugle!["exclus"] as unknown[]).map(String) : []),
+              idRayon,
+            ].filter(Boolean))];
+            messageEffectif = `Le rayon eBay « ${actuelle || idRayon} » ne convient pas à « ${quoi} » ` +
+              `(eBay y exige ${requisDescriptifs.join(", ")} parmi des valeurs qui ne le décrivent pas). ` +
+              "On en choisit un plus juste : la publication repartira toute seule, rien à faire de ton côté.";
+            raisonRequalif = raisonRequalif ?? `eBay : rayon aveugle à « ${quoi} » (${requisDescriptifs.join(", ")}) — re-choix serveur, essai ${essaisAveugle + 1}`;
+            const pfR: Record<string, unknown> = { ...pfC };
+            for (const k of ["needsUserField", "needsUserFields", "needsUserBoucle"]) delete pfR[k];
+            pfR["needs_user_source"] = "ebay_rayon_aveugle";
+            pfR["ebay_rayon_aveugle"] = {
+              ...(suiviAveugle ?? {}),
+              essais: essaisAveugle + 1,
+              exclus,
+              le: new Date().toISOString(),
+              mot: quoi,
+              champ: cle,
+              pose_par: "update-job-status (aspects descriptifs tous aveugles, rayon posé par FillSell)",
+            };
+            pfAspectAveugle = pfR;
+          } else {
           messageEffectif = motsAspectAveugle(source, mots);
           raisonRequalif = raisonRequalif ?? raisonAspectAveugle(source, mots);
           // La liste fermée, quand on l'a relevée : une question de vocabulaire
@@ -2648,10 +2689,56 @@ serve(async (req) => {
               needsUserField: { ...nuf, allowed_values: valeurs, input_type: "selection_only", options_completes: false },
             };
           }
+          }
           console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
         }
       } catch (e) {
         console.error("[update-job-status] requalification aspect eBay aveugle:", (e as Error)?.message ?? e);
+      }
+    }
+
+    // ══ eBay : MARQUE OBLIGATOIRE ET ABSENTE → L'ENTRÉE « SANS MARQUE » (26/09) ══
+    // Règle Nico : une marque obligatoire que la fiche ne porte pas se remplit
+    // avec la valeur « sans marque » qu'eBay accepte DANS CETTE catégorie —
+    // prise dans SA liste (référentiel ebay_item_aspects), jamais inventée.
+    // ⛔ Une marque présente (sur le job ou dans ses aspects) n'est JAMAIS
+    //    remplacée. Une seule pose par job : si eBay la refuse encore, la
+    //    question revient telle quelle (pas de boucle).
+    let pfMarqueGenerique: Record<string, unknown> | null = null;
+    let erreurEffaceeParMarque = false;
+    if (statutEffectif === "needs_user" && !pfAspectAveugle) {
+      try {
+        const pfM = (pfIn ?? {}) as Record<string, unknown>;
+        const nufM = (pfM["needsUserField"] && typeof pfM["needsUserField"] === "object")
+          ? pfM["needsUserField"] as Record<string, unknown> : null;
+        if (nufM && String(nufM["platform"] ?? "") === "ebay" && String(nufM["field_key"] ?? "") === "Marque" && !pfM["marque_generique_posee"]) {
+          const GENERIQUE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*brand)/i;
+          const aspectsJob = (pfM["ebayAspects"] && typeof pfM["ebayAspects"] === "object")
+            ? pfM["ebayAspects"] as Record<string, unknown> : {};
+          const marqueJob = String(pfM["marque"] ?? "").trim();
+          const marqueAspect = String(aspectsJob["Marque"] ?? "").trim();
+          const catId = String(pfM["ebayCategoryId"] ?? "").trim();
+          if (catId && (!marqueJob || GENERIQUE.test(marqueJob)) && (!marqueAspect || GENERIQUE.test(marqueAspect))) {
+            const { data: ref } = await userClient.from("ebay_item_aspects").select("aspects").eq("category_id", catId).maybeSingle();
+            const aspects = Array.isArray((ref as { aspects?: unknown } | null)?.aspects)
+              ? (ref as { aspects: Array<Record<string, unknown>> }).aspects : [];
+            const aspMarque = aspects.find((a) => String(a?.name ?? "") === "Marque");
+            const valeurs = Array.isArray(aspMarque?.allowedValues) ? (aspMarque!.allowedValues as unknown[]).map(String) : [];
+            const entree = valeurs.find((v) => /sans\s*marque|g[ée]n[ée]rique/i.test(v)) ?? null;
+            if (entree) {
+              const pfG: Record<string, unknown> = { ...pfM, marque: entree, ebayAspects: { ...aspectsJob, Marque: entree } };
+              for (const k of ["needsUserField", "needsUserFields", "needsUserBoucle", "needs_user_source"]) delete pfG[k];
+              pfG["marque_generique_posee"] = { le: new Date().toISOString(), valeur: entree, categorie: catId, pose_par: "update-job-status (marque obligatoire absente)" };
+              pfMarqueGenerique = pfG;
+              statutEffectif = "pending";
+              erreurEffaceeParMarque = true;
+              raisonRequalif = raisonRequalif ?? `eBay : Marque obligatoire absente → « ${entree} » (liste de la catégorie ${catId})`;
+              console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] marque générique eBay :", (e as Error)?.message ?? e);
       }
     }
 
@@ -3152,6 +3239,8 @@ serve(async (req) => {
     // La liste fermée ajoutée à un aspect eBay aveugle (bloc ci-dessus) : elle
     // ne remplace rien d'autre, elle complète le champ demandé.
     if (pfAspectAveugle) patch.platform_fields = pfAspectAveugle;
+    // Marque obligatoire absente → entrée « sans marque » de la liste (26/09).
+    if (pfMarqueGenerique) patch.platform_fields = pfMarqueGenerique;
 
     // Détail structuré du palliatif : l'app lit champs_a_completer pour
     // afficher quoi compléter, sans re-parser le message humain.
@@ -3570,7 +3659,7 @@ serve(async (req) => {
       // on garde l'error explicative si fournie, sinon on nettoie.
       // messageEffectif (requalification bfcache) prime sur le brut Chrome.
       // Réparation d'état : l'erreur est EFFACÉE, il n'y a plus rien à corriger.
-      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache || erreurEffaceeParOption)
+      patch.error = (erreurEffaceeParReparation || erreurEffaceeParRelache || erreurEffaceeParOption || erreurEffaceeParMarque)
         ? null
         : (messageEffectif ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null));
     } else if (statutEffectif === "needs_user") {
