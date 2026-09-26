@@ -267,3 +267,20 @@ verify_jwt = true
 # destinataire légitime, le gateway doit refuser avant le code.
 [functions.send-extension-link]
 verify_jwt = true
+
+# ── RÉALIGNÉ SUR LA PROD (audit dépôt ↔ prod du 26/09/2026) ─────────────────
+# Ces trois fonctions tournent en verify_jwt = false (relevé par
+# `npx supabase functions list`) mais n'avaient AUCUNE entrée ici : un
+# redéploiement sans `--no-verify-jwt` les aurait repassées à true — le cron
+# (republish-auto-sweep */3, lens-temp-purge 3h50) serait tombé en 401 en
+# silence. C'est la prod qui fait foi.
+[functions.republish-auto-sweep]
+verify_jwt = false
+
+[functions.lens-temp-purge]
+verify_jwt = false
+
+# One-shot du 24/08, NEUTRALISÉ en prod le 25/08 (répond 410 à tout appel) —
+# le dépôt porte désormais ce stub, pas l'ancien envoyeur de pièces jointes.
+[functions.send-chantier-zip]
+verify_jwt = false
