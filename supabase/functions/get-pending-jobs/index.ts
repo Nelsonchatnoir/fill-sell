@@ -1106,9 +1106,33 @@ serve(async (req) => {
         const ids = [...new Set(aVerifier.map((j) => j.inventaire_id))];
         const { data: fiches } = await userClient
           .from("inventaire").select("id, statut, quantite").in("id", ids);
-        const vendus = new Map<number, { statut: string; quantite: number | null }>();
+        const vendus = new Map<number, { statut: string; quantite: number | null; signale_sur?: string }>();
         for (const f of (fiches ?? []) as Array<{ id: number; statut: string; quantite: number | null }>) {
           if (f.statut === "vendu" || (f.quantite != null && Number(f.quantite) <= 0)) vendus.set(Number(f.id), f);
+        }
+        // ── VENTE PROUVÉE PAR LA PLATEFORME, PAS ENCORE CONFIRMÉE (2026-09-26) ──
+        // Joséphine / nadegemarcelin78 : une annonce que Vinted (relevé) ou
+        // Leboncoin (« Article vendu ») DIT vendue ne fait qu'allumer le bandeau
+        // « Vendue ? » — la fiche reste en stock tant que personne ne clique.
+        // Mesuré le 26/09 : 321 preuves non confirmées, et des articles vendus
+        // sur Vinted le 20/09 PUBLIÉS sur Opla le 23/09. Même règle que la fiche
+        // vendue : une pièce unique dont une annonce porte sale_signal 'sold' ne
+        // se publie ni ne se republie ailleurs — RETENUE, jamais annulée.
+        const LIBELLES_PLATEFORME: Record<string, string> = {
+          vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla",
+        };
+        const nonVendus = ((fiches ?? []) as Array<{ id: number; statut: string; quantite: number | null }>)
+          .filter((f) => !vendus.has(Number(f.id)) && (f.quantite == null || Number(f.quantite) <= 1));
+        if (nonVendus.length) {
+          const { data: preuves } = await userClient
+            .from("cross_post_jobs").select("id, inventaire_id, platform")
+            .in("inventaire_id", nonVendus.map((f) => f.id))
+            .in("action", ["publish", "republish"]).eq("status", "published")
+            .eq("platform_fields->>sale_signal", "sold");
+          for (const p of (preuves ?? []) as Array<{ id: string; inventaire_id: number; platform: string }>) {
+            const f = nonVendus.find((x) => Number(x.id) === Number(p.inventaire_id));
+            if (f && !vendus.has(Number(f.id))) vendus.set(Number(f.id), { ...f, signale_sur: p.platform });
+          }
         }
         const retenus = new Set<string>();
         for (const j of aVerifier) {
@@ -1116,13 +1140,20 @@ serve(async (req) => {
           if (!f) continue;
           retenus.add(String(j.id));
           if (j.status !== "pending") continue; // needs_user servi au popup : il l'est déjà, on ne réécrit pas
-          const msg = "Cet article est marqué vendu" + (f.statut !== "vendu" ? " (quantité 0)" : "") +
-            " : on ne le publie pas, pour ne jamais le vendre deux fois. Si la vente n'a pas eu lieu, " +
-            "corrige-la dans l'app (supprime la vente ou remets une quantité), puis relance.";
+          const msg = f.signale_sur
+            ? `Cet article est signalé vendu sur ${LIBELLES_PLATEFORME[f.signale_sur] ?? f.signale_sur} : ` +
+              "on ne le publie pas ailleurs, pour ne jamais le vendre deux fois. Confirme la vente dans l'app " +
+              "(bandeau « Vendue ? ») ; si elle n'a pas eu lieu, relance ensuite."
+            : "Cet article est marqué vendu" + (f.statut !== "vendu" ? " (quantité 0)" : "") +
+              " : on ne le publie pas, pour ne jamais le vendre deux fois. Si la vente n'a pas eu lieu, " +
+              "corrige-la dans l'app (supprime la vente ou remets une quantité), puis relance.";
           const pfV = {
             ...((j.platform_fields ?? {}) as Record<string, unknown>),
             needs_user_source: "article_vendu",
-            article_vendu: { le: new Date().toISOString(), statut: f.statut, quantite: f.quantite, pose_par: "get-pending-jobs" },
+            article_vendu: {
+              le: new Date().toISOString(), statut: f.statut, quantite: f.quantite, pose_par: "get-pending-jobs",
+              ...(f.signale_sur ? { vente_signalee_sur: f.signale_sur } : {}),
+            },
           };
           const { error: wErr } = await userClient.from("cross_post_jobs")
             .update({ status: "needs_user", error: msg, platform_fields: pfV })
