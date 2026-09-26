@@ -3389,11 +3389,17 @@ serve(async (req) => {
     // absente », écrit republish_step='deleted' + pending… et recrée une
     // annonce neuve à la passe suivante : article vendu remis en vente 12 min.
     // RÈGLE (Nico) : on ne recrée QUE si la suppression est prouvée —
-    // suppression_verdict.conclusion = 'supprimee'. Sinon :
-    //   · annonce vendue (état lu à la suppression, ou relevé du dressing)
-    //     → job CLOS, rien supprimé, rien recréé ;
-    //   · autre cas (masquée, réservée, 404 sans preuve…) → pause needs_user,
-    //     jamais de recréation à l'aveugle.
+    // suppression_verdict.conclusion = 'supprimee'. Sinon, JAMAIS de
+    // recréation (« une annonce disparue peut avoir été vendue, ou retirée
+    // parce que vendue ailleurs : recréer, c'est remettre en vente un article
+    // vendu ») : la republication s'arrête, neutre (annonce_disparue — l'app
+    // dit « Annonce plus en ligne », jamais un échec), et l'annonce part dans
+    // les alertes EXISTANTES « Annonce plus en ligne — Vendue ? » (Oui /
+    // Non, je l'ai retirée / Masquer) : unavailable_since posé sur le job
+    // PUBLIÉ qui porte cette annonce, plus sale_signal='sold' quand la vente
+    // est prouvée (état lu à la suppression, ou relevé du dressing). Pas de
+    // needs_user, pas de rouge : la personne répond en un clic.
+    // (26/09 soir : remplace la pause needs_user posée le matin même.)
     // L'étape en base est CONSERVÉE (pas de 'deleted' mensonger), et les
     // horodatages de suppression retirés : sans eux, rien en aval (recalage
     // d'horloge, reprise hors ligne, get-pending-jobs) ne croit l'annonce
@@ -3410,7 +3416,7 @@ serve(async (req) => {
       if (pfCible && pfCible.republish_step === "deleted" && conclusionB && conclusionB !== "supprimee") {
         try {
           const { data: jB } = await userClient.from("cross_post_jobs")
-            .select("action, platform, listing_url, platform_fields").eq("id", jobId).maybeSingle();
+            .select("action, platform, listing_url, inventaire_id, platform_fields").eq("id", jobId).maybeSingle();
           const pfEnBaseB = (jB?.platform_fields ?? {}) as Record<string, unknown>;
           if (jB?.action === "republish" && jB.platform === "vinted" && pfEnBaseB.republish_step !== "deleted") {
             const itemB = String(pfCible.vinted_item_id ?? pfEnBaseB.vinted_item_id ?? "").trim()
@@ -3436,23 +3442,50 @@ serve(async (req) => {
               item: itemB || null,
               pose_par: "update-job-status (recréation seulement si la suppression est prouvée)",
             };
-            if (vendueB) {
-              statutEffectif = "cancelled";
-              patch.status = "cancelled";
-              pfB.annonce_vendue = { le: new Date().toISOString(), item: itemB || null, releve_le: releveLeB };
-              patch.error = "Republication arrêtée : cette annonce est vendue sur Vinted. Rien n'a été supprimé ni recréé. " +
-                "Enregistre la vente dans l'app si ce n'est pas déjà fait.";
-              messageEffectif = patch.error as string;
-            } else {
-              statutEffectif = "needs_user";
-              patch.status = "needs_user";
-              pfB.needs_user_source = "suppression_non_prouvee";
-              messageEffectif = "Republication en pause : Vinted a refusé de supprimer l'ancienne annonce, et elle n'est plus visible " +
-                "(masquée, réservée ou retirée ?). On ne recrée jamais une annonce sans preuve que l'ancienne a disparu : " +
-                "rien n'a été recréé. Vérifie ton annonce sur Vinted, puis relance depuis l'app.";
-            }
+            const maintenant = new Date().toISOString();
+            statutEffectif = "cancelled";
+            patch.status = "cancelled";
+            pfB.annonce_disparue = {
+              at: maintenant,
+              etat: vendueB ? "sold" : String(verdictB?.etat_annonce ?? "inconnu"),
+              pose_par: "update-job-status (suppression refusée, annonce plus en ligne : rien recréé, alerte « Vendue ? »)",
+            };
+            if (vendueB) pfB.annonce_vendue = { le: maintenant, item: itemB || null, releve_le: releveLeB };
+            patch.error = vendueB
+              ? "Republication arrêtée : cette annonce est vendue sur Vinted. Rien n'a été supprimé ni recréé."
+              : "Republication arrêtée : l'annonce n'est plus en ligne sur Vinted. Rien n'a été recréé.";
+            messageEffectif = patch.error as string;
             patch.platform_fields = pfB;
-            raisonRequalif = `suppression non prouvée (${conclusionB}, état ${String(verdictB?.etat_annonce ?? "?")}) : ${vendueB ? "annonce vendue, job clos" : "pause, aucune recréation"}`;
+
+            // L'alerte « Annonce plus en ligne — Vendue ? » : le job PUBLIÉ qui
+            // porte cette annonce (même article, même identifiant Vinted).
+            // Best-effort : un échec ici n'empêche jamais l'arrêt de la
+            // republication, qui est ce qui protège de la remise en vente.
+            let alerteSur: string | null = null;
+            try {
+              if (jB.inventaire_id != null && /^\d+$/.test(itemB)) {
+                const { data: porteurs } = await userClient.from("cross_post_jobs")
+                  .select("id, listing_url, platform_listing_id, platform_fields")
+                  .eq("user_id", user.id).eq("platform", "vinted").eq("status", "published")
+                  .in("action", ["publish", "republish"]).eq("inventaire_id", jB.inventaire_id);
+                const porteur = ((porteurs ?? []) as Array<{ id: string; listing_url: string | null; platform_listing_id: string | null; platform_fields: Record<string, unknown> | null }>)
+                  .find((p) => String(p.platform_listing_id ?? "").trim() === itemB
+                    || (String(p.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? "") === itemB);
+                if (porteur) {
+                  const pfP = { ...(porteur.platform_fields ?? {}) } as Record<string, unknown>;
+                  if (!pfP.unavailable_since) pfP.unavailable_since = maintenant;
+                  if (vendueB) pfP.sale_signal = "sold";
+                  pfP.alerte_posee_par = { le: maintenant, republication: jobId, pose_par: "update-job-status (suppression refusée, annonce plus en ligne)" };
+                  const { error: aErr } = await userClient.from("cross_post_jobs")
+                    .update({ platform_fields: pfP }).eq("id", porteur.id).eq("status", "published");
+                  if (!aErr) alerteSur = porteur.id;
+                }
+              }
+            } catch (e) {
+              console.error("[update-job-status] alerte « Vendue ? » :", (e as Error)?.message ?? e);
+            }
+            raisonRequalif = `suppression non prouvée (${conclusionB}, état ${String(verdictB?.etat_annonce ?? "?")}) : republication arrêtée, rien recréé` +
+              (alerteSur ? `, alerte « Vendue ? » sur ${alerteSur.slice(0, 8)}${vendueB ? " (vente prouvée)" : ""}` : ", aucun job publié porteur trouvé");
             console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${status} étape 'deleted' REFUSÉE : ${raisonRequalif}`);
           }
         } catch (e) {
