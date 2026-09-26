@@ -355,7 +355,20 @@ serve(async (req) => {
       // signal de renouvellement : depuis le cycle par utilisateur, un compte
       // à canal de paiement n'est plus crédité que sur cet événement (le sweep
       // ne rattrape qu'un retard de 3 jours). D'où p_source: "payment".
-      const invPeriodEnd = invoice.lines?.data?.[0]?.period?.end ?? invoice.period_end;
+      // ⛔ La fin de période la PLUS TARDIVE des lignes, jamais la ligne 0
+      // (2026-09-26, XEWER recalé sur le 1er du mois) : sur une facture de
+      // proration, Stripe range TOUJOURS le crédit « Temps non utilisé » en
+      // premier (relevé sur les 41 factures du compte). Quand l'ancrage de
+      // facturation change, ce crédit s'arrête à l'ANCIENNE échéance : lue en
+      // ligne 0, elle reposait next_grant_at sur l'ancien cycle et le balayage
+      // y aurait fait une seconde recharge. Neutre partout ailleurs : facture à
+      // une ligne = même valeur ; les 4 factures multi-lignes de l'historique
+      // (montées de palier) ont toutes leurs lignes sur la même échéance.
+      const finsDeLignes = (invoice.lines?.data ?? [])
+        // deno-lint-ignore no-explicit-any
+        .map((l: any) => l?.period?.end)
+        .filter((e: unknown): e is number => typeof e === "number" && e > 0);
+      const invPeriodEnd = finsDeLignes.length > 0 ? Math.max(...finsDeLignes) : invoice.period_end;
       const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: profs[0].id,
         p_tier: tier,
