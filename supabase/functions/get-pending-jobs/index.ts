@@ -1135,6 +1135,150 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] garde article vendu : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
+    // ══ UNE ANNONCE VENDUE SUR VINTED N'EST NI REPUBLIÉE NI « RETIRÉE » (2026-09-26)
+    // Le garde ci-dessus lit la FICHE ; la fiche peut ignorer une vente que le
+    // RELEVÉ du dressing connaît déjà (vinted_listing_snapshots, dernier état
+    // 'sold'). Deux incidents du 26/09 :
+    //   · republication dc350ba4 (Lot 5 collants DIM) servie sur une annonce
+    //     VENDUE — suppression refusée (403), recréation quand même, article
+    //     vendu remis en vente 12 min ;
+    //   · nerema75 : trois retraits Vinted envoyés sur les annonces vendues
+    //     ELLES-MÊMES (relevé « sold » depuis la veille) — 403 anti-robot
+    //     (code 106) pour rien, et le compte exposé.
+    // RÈGLE : une vente retire les copies AILLEURS, jamais l'annonce vendue ;
+    // et une annonce vendue ne se republie pas.
+    //   · republication Vinted AVANT suppression (rien capturé ni supprimé) sur
+    //     une annonce vendue → RETENUE needs_user, jamais annulée (même
+    //     doctrine que le garde article vendu : si la vente a été annulée sur
+    //     Vinted, le relevé suivant le dira et la relance repartira) ;
+    //   · retrait Vinted sur une annonce vendue → ANNULÉ sans aucune requête :
+    //     il n'y a rien à retirer, l'annonce n'est plus en vente.
+    // ET UN SEUL RETRAIT OUVERT PAR ANNONCE (même compte, même plateforme,
+    // même annonce) : nerema75 en avait jusqu'à 4 sur la même — le 1er
+    // retirait l'annonce, les suivants tombaient sur « déjà hors ligne ». On
+    // garde celui qui est déjà en cours (sinon le plus ancien), les autres
+    // sont annulés avant d'être servis.
+    // Best-effort : une lecture ratée → distribution d'avant, jamais une panne.
+    try {
+      const idVinted = (j: { listing_url?: unknown; platform_listing_id?: unknown; platform_fields?: unknown }) => {
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const brut = String(pf["vinted_item_id"] ?? j.platform_listing_id ?? "").trim();
+        if (/^\d+$/.test(brut)) return brut;
+        return String(j.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? null;
+      };
+      const etapeAvantSuppression = (j: { platform_fields?: unknown }) => {
+        const s = String(((j.platform_fields ?? {}) as Record<string, unknown>)["republish_step"] ?? "");
+        return s === "" || s === "a_capturer" || s === "captured";
+      };
+      const republicationsVinted = out.filter((j) =>
+        j.action === "republish" && j.platform === "vinted" && j.status === "pending" && etapeAvantSuppression(j) && idVinted(j));
+      const retraitsVinted = out.filter((j) =>
+        j.action === "delete" && j.platform === "vinted" && j.status === "pending" && idVinted(j));
+      const items = [...new Set([...republicationsVinted, ...retraitsVinted].map((j) => idVinted(j) as string))];
+      if (items.length) {
+        const { data: snaps } = await userClient.from("vinted_listing_snapshots")
+          .select("vinted_item_id, status, captured_at").eq("user_id", user.id).in("vinted_item_id", items)
+          .order("captured_at", { ascending: false });
+        const dernier = new Map<string, { status: string; captured_at: string }>();
+        for (const s of (snaps ?? []) as Array<{ vinted_item_id: string; status: string; captured_at: string }>) {
+          if (!dernier.has(String(s.vinted_item_id))) dernier.set(String(s.vinted_item_id), s);
+        }
+        const vendue = (j: Parameters<typeof idVinted>[0]) => {
+          const s = dernier.get(idVinted(j) as string);
+          return s?.status === "sold" ? s : null;
+        };
+        const ecartes = new Set<string>();
+        for (const j of republicationsVinted) {
+          const s = vendue(j);
+          if (!s) continue;
+          const pfV = {
+            ...((j.platform_fields ?? {}) as Record<string, unknown>),
+            needs_user_source: "annonce_vendue",
+            annonce_vendue: { le: new Date().toISOString(), releve_le: s.captured_at, item: idVinted(j), pose_par: "get-pending-jobs (relevé du dressing : annonce vendue)" },
+          };
+          const { error: wErr } = await userClient.from("cross_post_jobs")
+            .update({
+              status: "needs_user",
+              error: "Cette annonce est vendue sur Vinted : on ne la republie pas, rien n'a été supprimé. " +
+                "Enregistre la vente dans l'app. Si la vente a été annulée sur Vinted, relance après le prochain relevé de ton dressing.",
+              platform_fields: pfV,
+            })
+            .eq("id", j.id).eq("status", "pending");
+          ecartes.add(String(j.id));
+          console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (vinted/republish) : annonce ${idVinted(j)} vendue (relevé ${s.captured_at}) → RETENUE needs_user${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+        }
+        for (const j of retraitsVinted) {
+          const s = vendue(j);
+          if (!s) continue;
+          const pfR = {
+            ...((j.platform_fields ?? {}) as Record<string, unknown>),
+            retrait_par: "vendue_sur_la_plateforme",
+            retrait_non_envoye: { le: new Date().toISOString(), motif: "annonce_vendue", releve_le: s.captured_at, item: idVinted(j), pose_par: "get-pending-jobs (relevé du dressing : annonce vendue, aucune requête envoyée)" },
+          };
+          const { error: wErr } = await userClient.from("cross_post_jobs")
+            .update({
+              status: "cancelled",
+              error: "Retrait inutile : cette annonce est vendue sur Vinted, elle n'est plus en vente. Aucune requête envoyée.",
+              platform_fields: pfR,
+            })
+            .eq("id", j.id).eq("status", "pending");
+          ecartes.add(String(j.id));
+          console.log(`[get-pending-jobs] ${String(j.id).slice(0, 8)} (vinted/delete) : annonce ${idVinted(j)} vendue (relevé ${s.captured_at}) → retrait ANNULÉ sans requête${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+        }
+        if (ecartes.size) out = out.filter((j) => !ecartes.has(String(j.id)));
+      }
+
+      // ── Un seul retrait ouvert par annonce, toutes plateformes ─────────────
+      const identite = (j: { platform?: unknown; listing_url?: unknown; platform_listing_id?: unknown; platform_fields?: unknown }) => {
+        if (j.platform === "vinted") { const v = idVinted(j); return v ? `vinted:${v}` : null; }
+        const id = String(j.platform_listing_id ?? "").trim();
+        if (id) return `${j.platform}:${id}`;
+        const url = String(j.listing_url ?? "").trim().split(/[?#]/)[0].replace(/\/$/, "");
+        return url ? `${j.platform}:${url}` : null;
+      };
+      const retraitsServis = out.filter((j) => j.action === "delete" && j.status === "pending" && identite(j));
+      if (retraitsServis.length) {
+        const { data: ouverts } = await userClient.from("cross_post_jobs")
+          .select("id, platform, status, listing_url, platform_listing_id, platform_fields, created_at")
+          .eq("user_id", user.id).eq("action", "delete").in("status", ["pending", "processing", "needs_user"]);
+        const parAnnonce = new Map<string, Array<{ id: string; status: string; created_at: string }>>();
+        for (const o of (ouverts ?? []) as Array<{ id: string; status: string; created_at: string; platform: string; listing_url: string | null; platform_listing_id: string | null; platform_fields: unknown }>) {
+          const k = identite(o);
+          if (!k) continue;
+          const l = parAnnonce.get(k) ?? [];
+          l.push(o);
+          parAnnonce.set(k, l);
+        }
+        const doublons = new Set<string>();
+        for (const [k, liste] of parAnnonce) {
+          if (liste.length < 2) continue;
+          // Garde : celui déjà en cours, sinon le plus ancien EN ATTENTE. Un
+          // retrait needs_user n'avance pas seul : il n'est jamais préféré à un
+          // retrait prêt à partir, et il n'est jamais annulé ici.
+          const garde = liste.find((o) => o.status === "processing")
+            ?? [...liste].filter((o) => o.status === "pending")
+              .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0];
+          if (!garde) continue;
+          for (const o of liste) {
+            if (o.id === garde.id || o.status !== "pending") continue;
+            const src = retraitsServis.find((j) => String(j.id) === o.id);
+            const pfD = {
+              ...(((src?.platform_fields ?? (o as { platform_fields?: unknown }).platform_fields) ?? {}) as Record<string, unknown>),
+              retrait_doublon_de: { job: garde.id, le: new Date().toISOString(), annonce: k, pose_par: "get-pending-jobs (un seul retrait ouvert par annonce)" },
+            };
+            const { error: wErr } = await userClient.from("cross_post_jobs")
+              .update({ status: "cancelled", error: "Doublon : un retrait est déjà en cours pour cette annonce.", platform_fields: pfD })
+              .eq("id", o.id).eq("status", "pending");
+            doublons.add(o.id);
+            console.log(`[get-pending-jobs] ${o.id.slice(0, 8)} (delete) : doublon du retrait ${garde.id.slice(0, 8)} sur ${k} → ANNULÉ${wErr ? ` (écriture refusée : ${wErr.message})` : ""}`);
+          }
+        }
+        if (doublons.size) out = out.filter((j) => !doublons.has(String(j.id)));
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] garde annonce vendue / retrait unique : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
     // ── UN JOB RÉARMÉ PAR UN CORRECTIF N'EST SERVI QU'À UN POSTE QUI LE PORTE ──
     // (2026-09-25, cf. « UN DÉFAUT D'EXTENSION CORRIGÉ » plus haut) Un autre
     // profil Chrome du même compte, resté sur l'ancien build, le reprendrait
