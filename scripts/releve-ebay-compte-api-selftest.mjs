@@ -7,7 +7,7 @@
 // traité QUE si le Hub lu est celui du compte relié ; sinon rien n'entre, rien
 // n'est rattaché, aucun article n'est modifié, rien n'est daté disparu.
 //
-// La garde est SERVEUR (migration 20260926110000_releve_ebay_compte_api +
+// La garde est SERVEUR (migration 20260926091529_releve_ebay_compte_api (ex-20260926110000) +
 // ebay-api-worker) et repose sur TROIS gestes que l'extension fait déjà, dans
 // toutes les versions en circulation. Ce test fige ce qui les relie : si l'un
 // de ces gestes change côté extension, la porte se rouvre sans bruit.
@@ -29,7 +29,7 @@ let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
 
 const bg = lire('chrome-extension/background.js');
-const migration = lire('supabase/migrations/20260926110000_releve_ebay_compte_api.sql');
+const migration = lire('supabase/migrations/20260926091529_releve_ebay_compte_api.sql');
 const worker = lire('supabase/functions/ebay-api-worker/index.ts');
 
 console.log("1. Les gestes de l'extension sur lesquels la garde repose");

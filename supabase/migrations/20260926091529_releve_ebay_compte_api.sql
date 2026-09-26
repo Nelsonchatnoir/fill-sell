@@ -1,6 +1,13 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- RELEVÉ eBAY : SEUL LE COMPTE RELIÉ PAR L'API EST TRAITÉ (2026-09-26)
 -- ═══════════════════════════════════════════════════════════════════════════
+-- APPLIQUÉE le 26/09 (GO Nico) — version enregistrée en base 20260926091529
+-- (ex-20260926110000). SQL exécuté = ce fichier, commentaires d'en-tête
+-- abrégés. Rejouée à blanc juste avant (mêmes résultats A/B/C, 115 vendeurs,
+-- 782 en file). Vérifié après : 3 tables (RLS active), 2 triggers actifs,
+-- garde posée dans rapprocher_releve et releve_run_hors_liste, 115 vendeurs,
+-- 782 annonces en file. ebay-api-worker déployé dans la foulée (v53,
+-- verify_jwt=false relu avant et après).
 -- CONSTAT (preuve France 0.6.69, compte de Nico, 26/09 09:26) : l'API eBay de
 -- Nico est reliée au compte « nelsonthecat » — publication et retrait passent
 -- par le serveur sous ce compte. Le RELEVÉ, lui, lit le Hub vendeur du compte
