@@ -38,6 +38,7 @@ import { hotes } from "../_shared/ebay-oauth.ts";
 import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
+import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
@@ -1256,6 +1257,95 @@ async function choisirApresRefus(
   return { issue: "panne" };
 }
 
+// ══ RAYON AVEUGLE : LE SERVEUR RE-CHOISIT LE RAYON eBAY (2026-09-26) ═══════
+// Jocabroc (Pro), job f89eb720, « mallette de toilette vintage ancienne avec
+// nécessaire et miroir » : rayon 106315 « Kits de rasage et de toilette »,
+// où eBay exige un « Type » à choisir parmi Bol à savon de rasage, Brosse à
+// raser, Kit de coiffure… — aucune valeur ne décrit une mallette. On
+// demandait à une cliente Pro de changer elle-même la catégorie : c'était
+// notre travail (règle Nico : un Type qu'aucune valeur de la liste ne décrit
+// clairement ne se DEVINE pas — on change de rayon).
+// update-job-status marque ces jobs `needs_user_source = ebay_rayon_aveugle`
+// (rayon posé par NOUS seulement : un choix humain ne se recalcule jamais) ;
+// ici, au tick, on lit les suggestions d'eBay pour le titre de la FICHE, on
+// retire les rayons déjà écartés, l'IA prend le plus PROCHE (consigne
+// plus_proche de resolve-categorie, jamais un rayon d'un autre type
+// d'objet), et le job repart en attente avec le nouveau rayon et SES aspects
+// obligatoires. Si ce rayon bute encore, update-job-status l'écarte à son
+// tour (2 essais) ; au-delà, ou sans rayon sûr, on pose la question, avec les
+// suggestions d'eBay.
+// Écriture gardée sur needs_user ; erreurs_archivees et republish_step
+// conservés ; `dry_run` : rien n'est écrit, on rend ce qui serait fait.
+async function recategoriserRayonsAveugles(admin: SupabaseClient, env: EbayEnv, opts: { job_id?: string; dry_run?: boolean } = {}): Promise<Record<string, unknown>> {
+  let q = admin.from("cross_post_jobs")
+    .select("id, user_id, inventaire_id, title, status, voie, error, platform_fields")
+    .eq("platform", "ebay").eq("status", "needs_user");
+  q = opts.job_id ? q.eq("id", opts.job_id)
+    : q.eq("platform_fields->>needs_user_source", "ebay_rayon_aveugle").order("created_at", { ascending: true }).limit(5);
+  const { data: jobs, error } = await q;
+  if (error) return { erreur: error.message };
+  if (!jobs?.length) return { traites: 0 };
+  let token: string;
+  try { token = await obtenirJetonApplicatif(env); }
+  catch (e) { return { erreur: `jeton applicatif : ${String((e as Error)?.message ?? e)}` }; }
+  const lignes: Record<string, unknown>[] = [];
+  for (const j of jobs as Array<{ id: string; user_id: string; inventaire_id: number | null; title: string | null; status: string; voie: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+    if (String(pf.categorie_source ?? "") === "choix_humain") { lignes.push({ job: j.id, issue: "ignore", motif: "rayon choisi à la main" }); continue; }
+    const suivi = (pf.ebay_rayon_aveugle && typeof pf.ebay_rayon_aveugle === "object") ? pf.ebay_rayon_aveugle as Record<string, unknown> : {};
+    const idActuel = String(pf.ebayCategoryId ?? "").trim();
+    const exclus = [...new Set([...(Array.isArray(suivi.exclus) ? (suivi.exclus as unknown[]).map(String) : []), idActuel].filter(Boolean))];
+    const inv = await lireInventaire(admin, j.inventaire_id);
+    const titre = String(inv.titre || j.title || "").trim();
+    const suggestions = await suggererCategories(env, token, titre);
+    const cleActuelle = cleChemin(pf.ebayCategoryPath);
+    const restantes = suggestions.filter((s) => !exclus.includes(String(s.id)) && cleChemin(s.chemin) !== cleActuelle);
+    const issue: IssueApresRefus = restantes.length
+      ? await choisirApresRefus(restantes, {
+        titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+        marque: pf.marque as string | null, userId: j.user_id, rejeu: opts.dry_run === true,
+      })
+      : { issue: "aucune" };
+    const de = { id: idActuel || null, chemin: Array.isArray(pf.ebayCategoryPath) ? pf.ebayCategoryPath : null };
+    if (issue.issue === "panne") { lignes.push({ job: j.id, issue: "attente", motif: "IA indisponible — repris au tick suivant" }); continue; }
+    if (issue.issue === "choisi") {
+      const asp = await aspectsCategorie(admin, env, token, issue.retenu.id);
+      if ("erreur" in asp) { lignes.push({ job: j.id, issue: "attente", motif: `aspects du rayon ${issue.retenu.id} illisibles : ${asp.erreur}` }); continue; }
+      const requis = asp.aspects.filter((a) => a.required).map((a) => a.name);
+      const vers = { id: issue.retenu.id, chemin: issue.retenu.chemin };
+      if (opts.dry_run) { lignes.push({ job: j.id, issue: "choisi", titre, de, vers, requis, suggestions: suggestions.map((s) => `${s.id} ${s.chemin.join(" > ")}`), exclus }); continue; }
+      const pfN: Record<string, unknown> = { ...pf };
+      for (const k of ["needsUserField", "needsUserFields", "needsUserBoucle", "needsUserAttempts", "needsUserResolved", "needs_user_source",
+        "champs_a_completer", "categorie_preuve_aspects", "next_action_after", "error_technique", "processing_since",
+        "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfN[k];
+      pfN.ebayCategoryId = vers.id;
+      pfN.ebayCategoryPath = vers.chemin;
+      pfN.ebayRequiredAspects = requis;
+      pfN.categorie_source = "rayon_aveugle_serveur";
+      pfN.ebay_rayon_aveugle = { ...suivi, exclus, dernier: { le: new Date().toISOString(), de, vers, requis, n_suggestions: suggestions.length, pose_par: "ebay-api-worker (rayon aveugle : suggestions eBay, IA plus_proche)" } };
+      if (j.error) pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error, "needs_user", "ebay-api-worker (rayon eBay re-choisi : aspects obligatoires aveugles)");
+      const { data: maj, error: wErr } = await admin.from("cross_post_jobs")
+        .update({ status: "pending", error: null, platform_fields: pfN })
+        .eq("id", j.id).eq("status", "needs_user").select("id");
+      lignes.push({ job: j.id, issue: (maj ?? []).length ? "rayon_change" : "non_ecrit", de, vers, requis, ...(wErr ? { erreur: wErr.message } : {}) });
+      console.log(`[ebay-api-worker] rayon aveugle ${j.id.slice(0, 8)} : ${de.id} → ${vers.id} ${vers.chemin.join(" > ")} (requis : ${requis.join(", ") || "aucun"})${wErr ? ` — écriture refusée : ${wErr.message}` : ""}`);
+      continue;
+    }
+    // Aucun rayon sûr : on pose la question, avec les vraies options d'eBay.
+    const options = restantes.slice(0, 5).map((s) => s.chemin.join(" › "));
+    if (opts.dry_run) { lignes.push({ job: j.id, issue: "question", titre, de, options, exclus }); continue; }
+    const pfQ: Record<string, unknown> = { ...pf, needs_user_source: "ebay_rayon_a_choisir",
+      ebay_rayon_aveugle: { ...suivi, exclus, epuise_le: new Date().toISOString(), options } };
+    const message = `eBay ne propose pas de rayon sûr pour « ${titre} » : le rayon actuel exige des informations qui ne décrivent pas cet objet. ` +
+      (options.length ? `Rayons possibles : ${options.join(" ; ")}. ` : "") +
+      "Choisis la catégorie eBay depuis la fiche de l'article, puis relance : rien n'a été envoyé, rien n'a été décompté.";
+    if (j.error && j.error !== message) pfQ.erreurs_archivees = archiverErreur(pfQ.erreurs_archivees, j.error, "needs_user", "ebay-api-worker (rayon aveugle : aucun rayon sûr)");
+    await admin.from("cross_post_jobs").update({ error: message, platform_fields: pfQ }).eq("id", j.id).eq("status", "needs_user");
+    lignes.push({ job: j.id, issue: "question", options });
+  }
+  return { traites: lignes.length, lignes };
+}
+
 // ── REJEU À BLANC DU RAYON REFUSÉ (2026-09-25) ──────────────────────────────
 // Lecture seule. Pour des jobs eBay donnés : ce que resoudreCategorie décide
 // AUJOURD'HUI d'un job qui partirait avec le rayon que l'app avait refusé —
@@ -2097,6 +2187,9 @@ Deno.serve(async (req) => {
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
   if (body.action === "rejeu_rayon_refuse") return json(await rejeuRayonRefuse(admin, env, body as { ids?: string[] }));
+  if (body.action === "rayon_aveugle") {
+    return json(await recategoriserRayonsAveugles(admin, env, { job_id: body.job_id, dry_run: (body as { dry_run?: boolean }).dry_run === true }));
+  }
 
   // ── Chien de garde (Nico, 06/09 soir) : un job pris (processing) depuis
   // plus de PROCESSING_MAX_MS sans conclusion = l'isolat est mort en route
@@ -2122,6 +2215,12 @@ Deno.serve(async (req) => {
   try { vendeurs = await verifierVendeursAnnonces(admin, env); }
   catch (e) { vendeurs = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
+  // ── Rayon aveugle (26/09) : toutes voies, avant la sortie anticipée — un
+  // job formulaire (voie extension) n'est jamais dans la file 'api' ci-dessous.
+  let aveugles: Record<string, unknown> = {};
+  try { aveugles = await recategoriserRayonsAveugles(admin, env); }
+  catch (e) { aveugles = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "pending")
@@ -2129,7 +2228,7 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, vendeurs });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, vendeurs, aveugles });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -2179,5 +2278,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, vendeurs, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, vendeurs, aveugles, resultats });
 });
