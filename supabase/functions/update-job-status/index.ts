@@ -3293,6 +3293,85 @@ serve(async (req) => {
       }
     }
 
+    // ══ JAMAIS DE RECRÉATION SANS SUPPRESSION PROUVÉE (2026-09-26) ══════════
+    // Job dc350ba4 (Deborah, « Lot 5 collants DIM ») : Vinted REFUSE la
+    // suppression de l'ancienne annonce (403, code 106 — l'annonce était
+    // VENDUE). L'extension lit l'état (« sold »), le prend pour « déjà
+    // absente », écrit republish_step='deleted' + pending… et recrée une
+    // annonce neuve à la passe suivante : article vendu remis en vente 12 min.
+    // RÈGLE (Nico) : on ne recrée QUE si la suppression est prouvée —
+    // suppression_verdict.conclusion = 'supprimee'. Sinon :
+    //   · annonce vendue (état lu à la suppression, ou relevé du dressing)
+    //     → job CLOS, rien supprimé, rien recréé ;
+    //   · autre cas (masquée, réservée, 404 sans preuve…) → pause needs_user,
+    //     jamais de recréation à l'aveugle.
+    // L'étape en base est CONSERVÉE (pas de 'deleted' mensonger), et les
+    // horodatages de suppression retirés : sans eux, rien en aval (recalage
+    // d'horloge, reprise hors ligne, get-pending-jobs) ne croit l'annonce
+    // retirée. Périmètre : republication VINTED passant à 'deleted' AVEC un
+    // verdict écrit. Sans verdict (anciennes versions) → comportement d'avant.
+    // Leboncoin / Beebs / Opla n'écrivent pas de verdict : jamais touchés.
+    // Placé APRÈS tous les autres blocs : c'est le dernier mot sur ce cas.
+    {
+      const pfCible = ((patch.platform_fields && typeof patch.platform_fields === "object")
+        ? patch.platform_fields : null) as Record<string, unknown> | null;
+      const verdictB = (pfCible?.suppression_verdict && typeof pfCible.suppression_verdict === "object")
+        ? pfCible.suppression_verdict as Record<string, unknown> : null;
+      const conclusionB = verdictB ? String(verdictB.conclusion ?? "") : "";
+      if (pfCible && pfCible.republish_step === "deleted" && conclusionB && conclusionB !== "supprimee") {
+        try {
+          const { data: jB } = await userClient.from("cross_post_jobs")
+            .select("action, platform, listing_url, platform_fields").eq("id", jobId).maybeSingle();
+          const pfEnBaseB = (jB?.platform_fields ?? {}) as Record<string, unknown>;
+          if (jB?.action === "republish" && jB.platform === "vinted" && pfEnBaseB.republish_step !== "deleted") {
+            const itemB = String(pfCible.vinted_item_id ?? pfEnBaseB.vinted_item_id ?? "").trim()
+              || (String(jB.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? "");
+            let vendueB = String(verdictB?.etat_annonce ?? "") === "sold";
+            let releveLeB: string | null = null;
+            if (!vendueB && /^\d+$/.test(itemB)) {
+              const { data: snapB } = await userClient.from("vinted_listing_snapshots")
+                .select("status, captured_at").eq("user_id", user.id).eq("vinted_item_id", itemB)
+                .order("captured_at", { ascending: false }).limit(1).maybeSingle();
+              const s = snapB as { status?: string; captured_at?: string } | null;
+              if (s?.status === "sold") { vendueB = true; releveLeB = s.captured_at ?? null; }
+            }
+            const pfB: Record<string, unknown> = { ...pfCible };
+            pfB.republish_step = pfEnBaseB.republish_step ?? "captured";
+            for (const k of ["deleted_at", "deleted_at_client", "deleted_at_serveur", "next_action_after",
+              "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfB[k];
+            pfB.recreation_refusee = {
+              le: new Date().toISOString(),
+              conclusion: conclusionB,
+              etat_annonce: verdictB?.etat_annonce ?? null,
+              releve_le: releveLeB,
+              item: itemB || null,
+              pose_par: "update-job-status (recréation seulement si la suppression est prouvée)",
+            };
+            if (vendueB) {
+              statutEffectif = "cancelled";
+              patch.status = "cancelled";
+              pfB.annonce_vendue = { le: new Date().toISOString(), item: itemB || null, releve_le: releveLeB };
+              patch.error = "Republication arrêtée : cette annonce est vendue sur Vinted. Rien n'a été supprimé ni recréé. " +
+                "Enregistre la vente dans l'app si ce n'est pas déjà fait.";
+              messageEffectif = patch.error as string;
+            } else {
+              statutEffectif = "needs_user";
+              patch.status = "needs_user";
+              pfB.needs_user_source = "suppression_non_prouvee";
+              messageEffectif = "Republication en pause : Vinted a refusé de supprimer l'ancienne annonce, et elle n'est plus visible " +
+                "(masquée, réservée ou retirée ?). On ne recrée jamais une annonce sans preuve que l'ancienne a disparu : " +
+                "rien n'a été recréé. Vérifie ton annonce sur Vinted, puis relance depuis l'app.";
+            }
+            patch.platform_fields = pfB;
+            raisonRequalif = `suppression non prouvée (${conclusionB}, état ${String(verdictB?.etat_annonce ?? "?")}) : ${vendueB ? "annonce vendue, job clos" : "pause, aucune recréation"}`;
+            console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${status} étape 'deleted' REFUSÉE : ${raisonRequalif}`);
+          }
+        } catch (e) {
+          console.error("[update-job-status] garde suppression prouvée :", (e as Error)?.message ?? e);
+        }
+      }
+    }
+
     // ── HORLOGE DU CLIENT RECALÉE SUR CELLE DU SERVEUR (2026-09-11) ─────────
     // deleted_at (republish Vinted) est le SEUIL de reconnaissance de
     // l'annonce recréée : photo_ts (horloge Vinted) doit lui être postérieur.
