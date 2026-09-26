@@ -180,6 +180,20 @@ const C = {
   rowBg:"#F5F6F5", rowHover:"#EAEBEA",
 };
 
+// Où l'article a été vendu — choix OBLIGATOIRE de la fenêtre « Vendu » (26/09).
+// Les valeurs sont celles déjà écrites en base (ventes.plateforme, texte) ; le
+// serveur les normalise (ventes_garde_annonce_de_la_vente) pour garder
+// l'annonce de CETTE plateforme et retirer toutes les autres. « Ailleurs »
+// ne correspond à aucune plateforme : toutes les annonces en ligne partent.
+const PLATEFORMES_VENTE=[
+  {valeur:'Vinted',fr:'Vinted',en:'Vinted'},
+  {valeur:'Leboncoin',fr:'Leboncoin',en:'Leboncoin'},
+  {valeur:'Beebs',fr:'Beebs',en:'Beebs'},
+  {valeur:'eBay',fr:'eBay',en:'eBay'},
+  {valeur:'Opla',fr:'Opla',en:'Opla'},
+  {valeur:'Ailleurs',fr:'Ailleurs (main propre…)',en:'Elsewhere (in person…)'},
+];
+
 function useCounter(target, duration = 1200, deps = []) {
   const [val, setVal] = useState(0);
   useEffect(() => {
@@ -4865,11 +4879,14 @@ export default function App({ loginOnly = false }){
 
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
-    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total',plateforme:item.plateforme||''});
+    // plateforme VIDE (26/09) : choix obligatoire dans la fenêtre, jamais la
+    // plateforme d'origine de l'article par défaut (cf. PLATEFORMES_VENTE).
+    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total',plateforme:''});
   }
 
   async function confirmSell(){
     if(!sellModal)return;
+    if(!sellModal.plateforme)return; // choix obligatoire (bouton grisé ; filet)
     const sv=parseFloat(sellModal.sellPrice)||0;
     if(!sv||sv<=0)return;
     const sf=parseFloat(sellModal.sellingFees)||0;
@@ -9003,19 +9020,49 @@ export default function App({ loginOnly = false }){
                   )}
                 </>
               )}
-              <Field label={`${lang==='fr'?'Plateforme de vente':'Resale platform'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.plateforme||''} set={v=>setSellModal(p=>({...p,plateforme:v}))} placeholder={lang==='fr'?"Ex: Vinted, eBay, Depop...":"Ex: Vinted, eBay, Depop..."} icon="🏪"/>
+              {/* PLATEFORME DE LA VENTE : CHOIX OBLIGATOIRE, AUCUN DÉFAUT (2026-09-26,
+                  GO Nico). Le champ était libre, optionnel, et pré-rempli avec la
+                  plateforme d'ORIGINE de l'article (« vinted » pour tout import du
+                  dressing). Or c'est lui qui dit au serveur quelle annonce GARDER
+                  (trigger ventes_garde_annonce_de_la_vente) : un article vendu sur
+                  Leboncoin validé avec « vinted » laissait son annonce Vinted en
+                  vente. « Ailleurs » = main propre, vide-grenier… : toutes les
+                  annonces en ligne sont retirées. */}
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:6}}>
+                  🏪 {lang==='fr'?'Vendu sur':'Sold on'} <span style={{color:C.red}}>*</span>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {PLATEFORMES_VENTE.map(pv=>{
+                    const actif=sellModal.plateforme===pv.valeur;
+                    return(
+                      <button key={pv.valeur} type="button" onClick={()=>setSellModal(p=>({...p,plateforme:pv.valeur}))}
+                        style={{padding:"7px 12px",borderRadius:99,fontSize:12.5,fontWeight:700,cursor:"pointer",
+                          border:`1.5px solid ${actif?C.teal:'rgba(0,0,0,0.12)'}`,background:actif?C.teal:'#fff',color:actif?'#fff':C.text}}>
+                        {lang==='fr'?pv.fr:pv.en}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!sellModal.plateforme&&(
+                  <div style={{fontSize:11.5,color:C.sub,marginTop:6}}>
+                    {lang==='fr'?"Choisis où l'article a été vendu : ses annonces ailleurs seront retirées.":'Pick where it sold: its other listings will be taken down.'}
+                  </div>
+                )}
+              </div>
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
                 <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>
                 <span style={{fontSize:12,fontWeight:600,color:C.sub}}>{t('memoriserFrais')}</span>
               </label>
             </div>
-            {/* Encore en ligne ? AVANT le bouton, jamais après : confirmer ici
-                n'arme aucun retrait (cf. confirmSell). Même composant, même
+            {/* En ligne ? AVANT le bouton, jamais après : confirmer ici fait
+                armer par la base le retrait des autres annonces (+10 min,
+                migration article_vendu_retire_ses_copies). Même composant, même
                 texte que la carte vocale inventory_sell. */}
             <AvertissementAnnoncesEnLigne item={sellModal.item} lang={lang} style={{marginTop:16}}/>
             <div style={{display:"flex",gap:10,marginTop:20}}>
-              <PrimaryButton onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,width:"auto"}}>
+              <PrimaryButton onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0||!sellModal.plateforme} style={{flex:1,width:"auto"}}>
                 {t('confirmer')} ✓
               </PrimaryButton>
               <SecondaryButton onClick={()=>setSellModal(null)} style={{width:"auto",padding:"13px 20px"}}>
