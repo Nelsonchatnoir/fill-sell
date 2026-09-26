@@ -4907,8 +4907,16 @@ export default function App({ loginOnly = false }){
       await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,date:new Date().toISOString()}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
     }
+    // VENTE RELIÉE À SA FICHE (2026-09-26, dossier Joséphine) : la vente d'une
+    // pièce unique porte inventaire_id. Sans lui, rien ne savait que CETTE
+    // fiche était vendue (Écharpe, Polo, Jeans Celio : ventes du 06-07/09 sans
+    // article) — supprimer la vente ne remettait pas l'article en stock, et
+    // le serveur ne pouvait pas savoir sur quelle plateforme garder l'annonce
+    // (trigger ventes_garde_annonce_de_la_vente). Les lots gardent leur forme :
+    // une ligne par unité, sans lien, comme avant.
+    const venteReliee=remaining===0&&qVendue===1;
     for(let q=0;q<qVendue;q++){
-      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:sellModal.plateforme||null};
+      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:sellModal.plateforme||null,...(venteReliee?{inventaire_id:item.id}:{})};
       const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
       if(sd){
         if(q===0)track('mark_sold',{profit:mgUnit*qVendue,margin_pct:Math.round(mgpUnit*10)/10});
@@ -7059,7 +7067,9 @@ export default function App({ loginOnly = false }){
       }
       // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
       {
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:plateforme||item.plateforme||null,quantite:qVendue>1?qVendue:null};
+        // Vente d'une pièce unique RELIÉE à sa fiche (2026-09-26) — même règle
+        // que confirmSell ; un lot garde sa ligne sans lien, comme avant.
+        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:plateforme||item.plateforme||null,quantite:qVendue>1?qVendue:null,...(remaining===0&&qVendue===1?{inventaire_id:item.id}:{})};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd)setSales(prev=>[mapSale(sd),...prev]);
       }

@@ -3,9 +3,13 @@
 //   1. la modale « Marquer comme vendu » de la ligne de stock (App.jsx) ;
 //   2. la carte de confirmation de l'intent vocal inventory_sell
 //      (VoiceResultCard, « Confirmer la vente ? »).
-// Aucune des deux ne retire quoi que ce soit des plateformes : ni confirmSell
-// ni confirmSellDirect n'arment de job delete (vérifié). L'annonce reste donc
-// achetable après la vente — d'où cet avertissement.
+// Ni confirmSell ni confirmSellDirect n'arment de job delete eux-mêmes — MAIS
+// depuis le 26/09 (migration article_vendu_retire_ses_copies, dossier
+// Joséphine) la BASE le fait : dès que la fiche passe en vendu, chaque annonce
+// encore en ligne reçoit un retrait, exécuté 10 min plus tard. L'annonce de la
+// plateforme choisie comme lieu de la vente n'est pas touchée (c'est elle qui
+// est vendue). L'avertissement annonce donc ce qui VA se passer, et comment
+// l'annuler — plus « retire-la toi-même ».
 //
 // CE FICHIER EST LE SEUL ENDROIT OÙ ÇA SE DIT. Une formulation, un calcul, deux
 // points de montage : ne recopier ni le texte ni la liste dans un appelant. Le
@@ -14,8 +18,8 @@
 //
 // Rendu volontairement muet tant que la lecture des jobs n'a pas répondu : un
 // avertissement qui clignote « rien » puis « 3 plateformes » se lit comme un
-// bug. Il n'empêche jamais de confirmer — la vente est vraie, c'est le retrait
-// des annonces qui reste à faire.
+// bug. Il n'empêche jamais de confirmer — la vente est vraie, et le retrait des
+// autres annonces suit tout seul.
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { annoncesEncoreEnLigne } from '../utils/publicationState';
@@ -79,12 +83,12 @@ export default function AvertissementAnnoncesEnLigne({ item, lang = 'fr', style 
       padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 6, ...style,
     }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: V.amberInk, lineHeight: 1.35 }}>
-        ⚠️ {fr ? `Encore en ligne sur ${enumerer(noms, fr)}` : `Still online on ${enumerer(noms, fr)}`}
+        ⚠️ {fr ? `En ligne sur ${enumerer(noms, fr)}` : `Online on ${enumerer(noms, fr)}`}
       </div>
       <div style={{ fontSize: 12.5, fontWeight: 500, color: V.amberInk, opacity: 0.92, lineHeight: 1.45 }}>
         {fr
-          ? "Enregistrer la vente ne retire pas l'annonce — retire-la toi-même, sinon elle peut être achetée une deuxième fois."
-          : 'Recording the sale does not take the listing down — remove it yourself, or it can be bought a second time.'}
+          ? "En enregistrant la vente, ces annonces seront retirées automatiquement dans 10 minutes — sauf celle de la plateforme où tu l'as vendu. Une erreur ? Supprime la vente avant : rien ne sera retiré."
+          : 'Once the sale is recorded, these listings are taken down automatically within 10 minutes — except the one on the platform where you sold it. A mistake? Delete the sale before then: nothing will be removed.'}
       </div>
       {liens.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>

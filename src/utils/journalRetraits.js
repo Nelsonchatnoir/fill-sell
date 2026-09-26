@@ -38,6 +38,18 @@
 //   vente_beebs_sans_lien — orchestrateSale (sale-orchestration.ts) : à la
 //                         vente, arme le retrait d'un dépôt Beebs encore en
 //                         vérification, que le bandeau ne peut pas proposer.
+// Et trois chemins SERVEUR du 26/09 (migration article_vendu_retire_ses_copies,
+// dossier Joséphine — « un article vendu ne reste jamais en vente ailleurs ») :
+//   vente_article_serveur — trigger inventaire_vendu_retire_ses_copies : la
+//                         fiche DEVIENT vendue (quel que soit le chemin) → un
+//                         retrait par copie encore en ligne, exécuté 10 min
+//                         plus tard ;
+//   preuve_vente_serveur  — trigger cross_post_jobs_preuve_vente_retire_copies :
+//                         une annonce que la plateforme DIT vendue (sale_signal
+//                         'sold') → retrait immédiat des copies ailleurs ;
+//   publie_apres_vente_serveur — trigger cross_post_jobs_publie_sur_article_vendu :
+//                         une publication qui aboutit sur un article vendu.
+// Plus `intervention_support` : retrait armé à la main par nous, sur GO nommé.
 //
 // ⚠️ ON JOURNALISE CE QUI EST FAIT, PAS CE QUI EST VOULU. L'appel se place
 // APRÈS l'écriture en base, et `nAnnonces` compte les lignes RÉELLEMENT
