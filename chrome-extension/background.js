@@ -3545,14 +3545,44 @@ async function processJob(rawJob, accessToken) {
       const verdictSessionEcrivable = job.platform === "ebay"
         ? result?.sessionConfirmee === true
         : true;
+      // ── PAGE DE DÉPÔT NON ATTEINTE ALORS QUE LE COMPTE RÉPOND (27/09) ──────
+      // vinted.js le signale (refusPassager) : refus passager, quelques
+      // minutes. Si Vinted continue de renvoyer vers le choix du type de
+      // compte alors que le compte répond, c'est une ÉTAPE demandée par
+      // Vinted — on la nomme, jamais « connecte-toi ».
+      if (result.refusPassager && job.platform !== "ebay") {
+        const arbitrage = { verdict: "bonne", par: "page (le compte répond)" };
+        if (await marquerRefusPassager(accessToken, job, result, arbitrage)) {
+          return { status: "needsUser", error: result.error };
+        }
+        if (job.platform === "vinted" && /\/member\/register\/select_type/i.test(String(result?.diagnostic?.url ?? ""))) {
+          const titre = String(result?.diagnostic?.page_titre ?? "").trim();
+          await marquerAttenteUtilisateur(accessToken, job, {
+            attenteMotif: "etape_compte_vinted",
+            error:
+              "Vinted te demande de terminer une étape sur ton compte avant de pouvoir déposer une annonce" +
+              (titre ? ` (page « ${titre.slice(0, 80)} »)` : " (choix du type de compte)") +
+              ". Ta connexion n'est pas en cause : ouvre vinted.fr sur ton ordinateur, termine cette étape, " +
+              "puis relance la publication.",
+          });
+          return { status: "needsUser", error: result.error };
+        }
+        await rearmBounded(accessToken, job, result.error);
+        return { status: "needsUser", error: result.error };
+      }
       if (verdictSessionEcrivable && /^Connexion\s+\S+\s+requise/i.test(String(result.error ?? ""))) {
-        noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
-          console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
         // Session morte = ATTENTE, jamais une tentative (2026-09-10) : le job
-        // reste pending, needsUserAttempts intact, re-sonde dans une heure.
-        // Même condition d'écriture que la sonde de session (eBay : verdict
-        // confirmé seulement) — un soupçon de page ne met personne en attente.
-        await marquerAttenteSession(accessToken, job, result.error);
+        // reste pending, needsUserAttempts intact. (27/09) Plus jamais sur la
+        // seule page : arbitrage par la sonde (traiterMurDeConnexion) — refus
+        // passager si la session est bonne, « false » écrit seulement sur
+        // preuve. eBay : verdict déjà confirmé par sa sonde (règle du 11/08).
+        if (job.platform === "ebay") {
+          noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
+            console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+          await marquerAttenteSession(accessToken, job, result.error);
+        } else {
+          await traiterMurDeConnexion(accessToken, job, result, result.error);
+        }
         return { status: "needsUser", error: result.error };
       }
       await rearmBounded(accessToken, job, result.error);
@@ -4501,6 +4531,97 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
   // finit par voir. Rien à y garder : aucun geste n'a été tenté. Le passage
   // suivant en rouvre un seul, neuf (getOrCreateWorkTab).
   await fermerOngletTravail(job.platform, "attente de session");
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// UN MUR N'EST UNE DÉCONNEXION QUE SUR PREUVE (2026-09-27, point 19)
+// ══════════════════════════════════════════════════════════════════════════
+// Règle de Nico : un refus ou une redirection ponctuels de la plateforme ne
+// suffisent JAMAIS à déclarer quelqu'un déconnecté. Louis (Business) : trois
+// dépôts Vinted redirigés vers /member/register/select_type, sonde de la page
+// « indéterminée » (403) — l'extension écrivait vinted = false, parquait une
+// heure et affichait « Connecte-toi à Vinted » alors qu'il était connecté.
+// Avant toute conclusion, la SONDE de la plateforme est relancée (celle du
+// service worker, forcée pour cette plateforme seulement) :
+//   · session vue BONNE → refus passager : nouvel essai dans 3, 6, puis 10 min,
+//     rien d'écrit dans extension_sessions, aucun « connecte-toi » ; trois au
+//     plus par heure et par job, ensuite le chemin d'avant ;
+//   · session PROUVÉE absente (la page Vinted a dit 401 / compte anonyme, ou la
+//     sonde a vu la redirection d'auth) → comme avant : extension_sessions =
+//     false et attente de session « connecte-toi » ;
+//   · on ne sait pas → attente de session (affichée comme avant, barème court),
+//     mais PAS de « false » écrit : l'ignorance ne prouve rien.
+// eBay garde sa règle (sessionConfirmee) : ce chemin ne le concerne pas.
+async function arbitrerMurDeConnexion(accessToken, platform, result) {
+  const sondePage = result?.diagnostic?.sonde ?? null;
+  if (platform === "vinted" && sondePage === "morte") return { verdict: "absente", par: "page Vinted (session absente ou anonyme)" };
+  if (platform === "vinted" && sondePage === "vivante") return { verdict: "bonne", par: "page Vinted (le compte répond)" };
+  try {
+    await reportPlatformSessions(accessToken, { plateformes: [platform], motif: "arbitrage_mur", forcer: true });
+  } catch (e) {
+    console.warn("[background] arbitrage du mur : sonde impossible —", String(e?.message ?? e));
+  }
+  if (sessionPlateformeVivante(platform)) return { verdict: "bonne", par: "sonde « connecté »" };
+  if (sessionPlateformeMorte(platform)) return { verdict: "absente", par: "sonde « déconnecté »" };
+  return { verdict: "inconnue", par: "sonde sans verdict" };
+}
+
+/**
+ * Refus passager : pending, nouvel essai dans quelques minutes, AUCUN
+ * « connecte-toi ». Rend false quand la borne est atteinte (3 par heure et par
+ * job) — l'appelant reprend alors le chemin d'avant.
+ */
+async function marquerRefusPassager(accessToken, job, result, arbitrage) {
+  const pf = { ...(job.platform_fields ?? {}) };
+  const prec = pf.refus_passager && typeof pf.refus_passager === "object" ? pf.refus_passager : null;
+  const depuisMs = Date.parse(String(prec?.depuis ?? ""));
+  const recent = Number.isFinite(depuisMs) && Date.now() - depuisMs < 3_600_000;
+  const n = recent ? (Number(prec?.n) || 0) : 0;
+  if (n >= 3) return false;
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[background] Job ${job.id} : statut devenu "${actuel}" — refus passager abandonné`);
+    return true;
+  }
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  const maintenant = new Date().toISOString();
+  const delaiMin = [3, 6, 10][n];
+  delete pf.attente_session;
+  pf.refus_passager = {
+    n: n + 1,
+    depuis: recent ? prec.depuis : maintenant,
+    derniere: maintenant,
+    preuve: arbitrage?.par ?? null,
+    signal: result?.diagnostic?.signal ?? null,
+    url: result?.diagnostic?.url ?? null,
+    motif: String(result?.error ?? "").slice(0, 300),
+    pose_par: "extension",
+  };
+  pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+  const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+  console.warn(`[background] Job ${job.id} : mur ${job.platform} mais session bonne (${arbitrage?.par}) → refus passager ${n + 1}/3, nouvel essai dans ${delaiMin} min`);
+  await updateJobStatus(accessToken, job.id, "pending", {
+    error: `${label} a refusé l'accès à la page à l'instant, mais ta connexion ${label} est bonne : ` +
+      "rien à faire de ton côté, nouvel essai automatique dans quelques minutes.",
+    platform_fields: pf,
+  });
+  await fermerOngletTravail(job.platform, "refus passager");
+  return true;
+}
+
+/**
+ * Un mur de connexion rapporté par un handler : arbitré, puis refus passager
+ * (session bonne), ou attente de session — « false » écrit seulement sur preuve.
+ */
+async function traiterMurDeConnexion(accessToken, job, result, errorMsg) {
+  const arbitrage = await arbitrerMurDeConnexion(accessToken, job.platform, result);
+  if (arbitrage.verdict === "bonne" && await marquerRefusPassager(accessToken, job, result, arbitrage)) return arbitrage;
+  if (arbitrage.verdict === "absente") {
+    noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
+      console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+  }
+  await marquerAttenteSession(accessToken, job, errorMsg);
+  return arbitrage;
 }
 
 // Ferme l'onglet de travail MÉMORISÉ d'une plateforme et oublie son id.
@@ -6335,11 +6456,17 @@ const ATTENTE_SESSION_MIN = 60;
 // (noterCompteVuSurLaPage) ou une sonde « connecté » (handler-watch) lève
 // l'échéance aussitôt. ⛔ Même barème côté serveur (get-pending-jobs,
 // _shared/attente-session.js) pour les extensions qui ne le portent pas.
+// (2026-09-27, point 19) Quelques minutes d'abord : 3, 6, 10 min pour les
+// trois premières observations, puis 1 h, 3 h, 6 h — MÊME barème que le
+// serveur (_shared/attente-session.js), qui le tient pour tous les builds.
 function delaiAttenteSessionMin(observations) {
   const n = Number(observations) || 0;
-  return n >= 7 ? 360 : n >= 4 ? 180 : ATTENTE_SESSION_MIN;
+  if (n <= 1) return 3;
+  if (n === 2) return 6;
+  if (n === 3) return 10;
+  return n >= 10 ? 360 : n >= 7 ? 180 : ATTENTE_SESSION_MIN;
 }
-const LABEL_PLATEFORME = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" };
+const LABEL_PLATEFORME = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
 function estUrlDeConnexionPlateforme(platform, url) {
   const hostRe = REAUTH_HOSTS[platform];
   if (!hostRe) return false;
@@ -9974,7 +10101,28 @@ function decrireOnglet(tab) {
 async function assurerScriptOplaSurOnglet(tabId) {
   const ping = () => sendMessageToTabOnce(tabId, { type: "OPLA_PING" }, 4000).then((r) => !!r?.pong).catch(() => false);
   if (await ping()) return { ok: true };
-  const avant = await chrome.tabs.get(tabId).catch(() => null);
+  let avant = await chrome.tabs.get(tabId).catch(() => null);
+  // ── (2026-09-27, point 19 — samazer59) L'ONGLET A QUITTÉ opla.co ──────────
+  // URL illisible = hors de nos permissions d'hôte : le plus souvent un
+  // rafraîchissement de session Opla (aller-retour par leur page d'auth, en
+  // quelques secondes). Ses relevés Opla réussissaient à 12:09 et 12:11
+  // pendant que ses dépôts étaient parqués « Connexion Opla requise ». On
+  // attend que l'onglet revienne sur opla.co (15 s au plus) avant de conclure.
+  if (avant && !avant.url) {
+    const limite = Date.now() + 15_000;
+    while (Date.now() < limite) {
+      await sleep(1000);
+      const t = await chrome.tabs.get(tabId).catch(() => null);
+      if (!t) break;
+      if (typeof t.url === "string" && t.url.startsWith("https://www.opla.co/") && t.status === "complete") {
+        console.log(`[background] opla : l'onglet ${tabId} est revenu sur opla.co — on continue`);
+        avant = t;
+        await sleep(1000);
+        if (await ping()) return { ok: true };
+        break;
+      }
+    }
+  }
   try {
     await chrome.scripting.executeScript({ target: { tabId }, files: OPLA_SCRIPTS });
   } catch (e) {
@@ -15445,7 +15593,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     // Cause d'un éventuel 403, lue AVANT la sonde : le 403 tombe avant que
     // Vinted regarde la session, c'est donc au navigateur qu'on la demande
     // (classifierCause403 — cookie v_uid). Lecture pure, quelques ms.
-    const cause403 = await classifierCause403();
+    let cause403 = await classifierCause403();
     ident = await sonder();
 
     // ── UN 401 À LA PREMIÈRE SONDE N'EST PAS UNE DÉCONNEXION (2026-09-19) ────
@@ -15520,6 +15668,19 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // message qui nomme le geste. « session Vinted » DANS le texte, à
       // dessein : StockTab ≤ 2.4.44 reconnaît ce motif (regex) et affiche déjà
       // « connecte-toi sur vinted.fr » ; la 2.4.45 affiche son encart 403.
+      // (2026-09-27, point 19 — samazer59, cynthiabuterne) Un 403 ponctuel
+      // n'est pas « session absente » tant que la sonde ne l'a pas confirmé :
+      // samazer59 relevait 83 annonces au passage suivant. Sonde « connecté »
+      // → c'est un 403 anti-robot comme les autres (reprises 5/10/20 min).
+      if (cause403 === "session_absente") {
+        try {
+          await reportPlatformSessions(token, { plateformes: ["vinted"], motif: "arbitrage_releve_403", forcer: true });
+          if (sessionPlateformeVivante("vinted")) {
+            console.warn("[sync-dressing] 403 sans cookie de session, mais la sonde voit Vinted connecté — traité comme un refus passager");
+            cause403 = "session_presente_sonde";
+          }
+        } catch { /* sonde impossible : on garde le verdict d'avant */ }
+      }
       if (cause403 === "session_absente") {
         await annulerRetry403(userId, "403 sans session Vinted — rien à retenter avant connexion");
         return await echec(
@@ -19974,8 +20135,13 @@ async function processRepublishJobPlateforme(job, accessToken) {
       if (state === "unavailable" || state === "sold") {
         retire = true; confirmePar = "etat_annonce";
       } else if (motifSessionMorte(job.platform, result.error)) {
-        noterSessionDeconnectee(accessToken, job.platform).catch(() => {});
-        await marquerAttenteSession(accessToken, job, result.error);
+        // (27/09, point 19) arbitré : « false » seulement sur preuve.
+        if (job.platform === "ebay") {
+          noterSessionDeconnectee(accessToken, job.platform).catch(() => {});
+          await marquerAttenteSession(accessToken, job, result.error);
+        } else {
+          await traiterMurDeConnexion(accessToken, job, result, result.error);
+        }
         return { status: "needsUser", error: result.error };
       } else if (/^CHALLENGE /i.test(String(result.error ?? ""))) {
         const { borne } = await marquerBlocageAntiRobot(accessToken, job, String(result.error));
@@ -20141,8 +20307,8 @@ async function processOplaRepublishJob(job, accessToken) {
     }
     if (result?.needsUser) {
       if (motifSessionMorte("opla", result.error)) {
-        noterSessionDeconnectee(accessToken, "opla").catch(() => {});
-        await marquerAttenteSession(accessToken, job, result.error);
+        // (27/09, point 19) arbitré : « false » seulement sur preuve.
+        await traiterMurDeConnexion(accessToken, job, result, result.error);
         return { status: "needsUser", error: result.error };
       }
       await rearmBounded(accessToken, job, result.error);
@@ -21947,9 +22113,8 @@ async function processDeleteJob(job, accessToken) {
         // marquerAttenteSession. Signal sûr (page de connexion vue par le
         // handler) : répercuté dans extension_sessions pour que le serveur
         // retienne les autres jobs de la plateforme derrière lui.
-        noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
-          console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
-        await marquerAttenteSession(accessToken, job, result.error);
+        // (27/09, point 19) arbitré : « false » seulement sur preuve.
+        await traiterMurDeConnexion(accessToken, job, result, result.error);
         return { status: "needsUser", error: result.error };
       }
       await rearmBounded(accessToken, job, result.error);
@@ -21967,9 +22132,8 @@ async function processDeleteJob(job, accessToken) {
       // beebs.js) tombait dans le throw → catch → 'failed' SEC, sans même une
       // reprise (Ornella, jobs f2fc524a et 2f41e4dd du 09/09). C'est une
       // session morte comme les autres : observation + attente (2026-09-10).
-      noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
-        console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
-      await marquerAttenteSession(accessToken, job, result.error);
+      // (27/09, point 19) arbitré : « false » seulement sur preuve.
+      await traiterMurDeConnexion(accessToken, job, result, result.error);
       return { status: "needsUser", error: result.error };
     } else if (result && !result.success && result.reprise) {
       // Le handler a REFUSÉ de confirmer (motif de suppression non certain,

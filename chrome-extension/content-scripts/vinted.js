@@ -2339,9 +2339,21 @@ async function fillListingForm(job) {
       http: Number.isFinite(sonde?.httpStatus) ? sonde.httpStatus : null,
     };
     if (sonde?.success) {
+      // (2026-09-27, point 19) Le compte répond : refus passager (le background
+      // retente dans quelques minutes, sans « connecte-toi »). Sur la page de
+      // choix du type de compte, on relève son titre : si Vinted y renvoie
+      // encore et encore un compte connecté, c'est une ÉTAPE à faire, que le
+      // background nomme.
+      if (/\/member\/register\/select_type/i.test(location.pathname)) {
+        try {
+          diagnostic.page_titre = (document.querySelector("h1, h2")?.textContent ?? document.title ?? "")
+            .replace(/\s+/g, " ").trim().slice(0, 120) || null;
+        } catch { /* lecture seule, best-effort */ }
+      }
       return {
         success: false,
         needsUser: true,
+        refusPassager: true,
         diagnostic,
         error:
           `Page de dépôt Vinted non atteinte (${signal}) alors que le compte ` +
