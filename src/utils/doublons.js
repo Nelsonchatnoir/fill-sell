@@ -38,7 +38,16 @@ export function pairesAffichables(doublons, items) {
   const parId = new Map((Array.isArray(items) ? items : []).map((i) => [String(i.id), i]));
   return (Array.isArray(doublons) ? doublons : [])
     .map((d) => ({ ...d, a: parId.get(String(d.garde)), b: parId.get(String(d.absorbe)) }))
-    .filter((d) => d.a && d.b && d.a.statut !== 'vendu' && d.b.statut !== 'vendu');
+    // (2026-09-27) « Déjà vendu ? » : la fiche gardée est VENDUE par nature —
+    // une annonce encore en ligne ressemble à un objet déjà vendu ; la
+    // question vit tant que la fiche importée est en stock.
+    .filter((d) => d.a && d.b && d.b.statut !== 'vendu'
+      && (d.a.statut !== 'vendu' || estQuestionDejaVendu(d)));
+}
+
+/** La paire demande « cette annonce est-elle l'objet déjà vendu ? ». */
+export function estQuestionDejaVendu(d) {
+  return d?.motif === 'homonyme_vendu' && d?.a?.statut === 'vendu';
 }
 
 /** Ce qui rapproche les deux fiches, en mots simples (les preuves du serveur). */

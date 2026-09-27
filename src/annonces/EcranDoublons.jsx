@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { premierePhoto } from '../components/GalleryPhoto';
 import { track } from '../analytics/analytics';
-import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche } from '../utils/doublons';
+import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu } from '../utils/doublons';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v))
@@ -29,7 +29,7 @@ const photoDe = (item) => {
   try { return premierePhoto(item?.photos) ?? null; } catch { return null; }
 };
 
-function CarteFiche({ item, fr, garde }) {
+function CarteFiche({ item, fr, garde, etiquette }) {
   const url = photoDe(item);
   return (
     <div style={{ flex: 1, minWidth: 0, background: A.card, border: `1px solid ${garde ? A.mentheBord : A.border}`, borderRadius: 16, padding: 10, display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -44,7 +44,7 @@ function CarteFiche({ item, fr, garde }) {
       </div>
       {garde && (
         <span style={{ alignSelf: 'flex-start', padding: '3px 8px', borderRadius: 999, background: A.menthe, border: `1px solid ${A.mentheBord}`, color: A.tealDeep, fontSize: 10.5, fontWeight: 700 }}>
-          {fr ? 'Fiche gardée' : 'Kept item'}
+          {etiquette ?? (fr ? 'Fiche gardée' : 'Kept item')}
         </span>
       )}
     </div>
@@ -69,6 +69,10 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
     [doublons, items, traitees],
   );
   const paire = file[0] ?? null;
+  // (2026-09-27) « Déjà vendu ? » : une annonce encore en ligne ressemble à un
+  // objet VENDU. « Oui » réunit les deux fiches ET retire l'annonce encore en
+  // ligne (le serveur arme le retrait) ; « Non » : deux articles différents.
+  const dejaVendu = estQuestionDejaVendu(paire);
 
   const repondre = async (decision) => {
     if (!paire || busy) return;
@@ -80,7 +84,9 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
       return;
     }
     track('doublon_decision', { decision });
-    setFait(decision === 'oui'
+    setFait(decision === 'oui' && dejaVendu
+      ? (fr ? `C'est noté : « ${paire.a?.title ?? ''} » est vendu. Son annonce encore en ligne va être retirée.` : `Noted: “${paire.a?.title ?? ''}” is sold. Its listing still online will be removed.`)
+      : decision === 'oui'
       ? (fr ? `Réunies en une seule fiche : « ${paire.a?.title ?? ''} ». Tu peux défaire la fusion depuis la fiche.` : `Merged into one item: “${paire.a?.title ?? ''}”. You can undo it from the item.`)
       : (fr ? 'Noté : ce sont deux articles différents. On ne te le redemandera pas.' : "Noted: they're two different items. We won't ask again."));
     setTraitees((v) => new Set([...v, paire.id]));
@@ -101,7 +107,7 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         <style>{CSS_ANNONCES}</style>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: A.ink }}>{fr ? 'Est-ce le même article ?' : 'Is it the same item?'}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: A.ink }}>{dejaVendu ? (fr ? 'Déjà vendu ?' : 'Already sold?') : (fr ? 'Est-ce le même article ?' : 'Is it the same item?')}</div>
             {paire && (
               <div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 500, color: A.texteSecondaire, fontVariantNumeric: 'tabular-nums' }}>
                 {fr ? `1 sur ${file.length}` : `1 of ${file.length}`}
@@ -137,18 +143,24 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: A.texteSecondaire, lineHeight: 1.5, marginBottom: 12 }}>
-              {fr
+              {dejaVendu
+                ? (fr
+                  ? `« ${paire.a?.title ?? ''} » est vendu. Une annonce encore en ligne lui ressemble. Si c'est le même objet, on réunit les deux fiches et on retire cette annonce, pour ne pas le vendre deux fois.`
+                  : `“${paire.a?.title ?? ''}” is sold. A listing still online looks like it. If it's the same object, we merge the two items and remove that listing, so it isn't sold twice.`)
+                : fr
                 ? `Ces deux fiches se ressemblent beaucoup${raisons.length ? ` (${raisons.join(', ')})` : ''}. Si c'est le même objet, on les réunit : ses annonces en ligne restent en ligne, rien n'est retiré.`
                 : `These two items look alike${raisons.length ? ` (${raisons.join(', ')})` : ''}. If they're the same object, we merge them: its online listings stay online, nothing is removed.`}
             </div>
             <div className="rv-up" style={{ display: 'flex', gap: 10 }}>
-              <CarteFiche item={paire.a} fr={fr} garde />
+              <CarteFiche item={paire.a} fr={fr} garde etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : undefined} />
               <CarteFiche item={paire.b} fr={fr} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
               <button type="button" disabled={busy} onClick={() => repondre('oui')} className="rv-cta rv-focus"
                 style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-                {fr ? "Oui, c'est le même" : "Yes, it's the same"}
+                {dejaVendu
+                  ? (fr ? "Oui, c'est le même — retirer l'annonce" : "Yes, same item — remove the listing")
+                  : (fr ? "Oui, c'est le même" : "Yes, it's the same")}
               </button>
               <button type="button" disabled={busy} onClick={() => repondre('non')} className="rv-focus"
                 style={{ width: '100%', minHeight: 46, borderRadius: 999, border: `1px solid ${A.border}`, background: A.card, color: A.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>

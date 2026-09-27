@@ -72,6 +72,7 @@ const buildIdTimestamp = (id) => {
   return m ? Date.parse(m[1]) : null;
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
+import { titreNorm } from './utils/rapprochementJumeau.js';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { offreEnCours, offreAOuvrir } from './lib/offreMail';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
@@ -9454,6 +9455,46 @@ export default function App({ loginOnly = false }){
               //    annonces en ligne » du Stock), avec Choisir / Importer /
               //    Ignorer. Tout est fait côté serveur, en une transaction :
               //    l'annonce est écrite AVANT que la fiche soit supprimée.
+              // ── DEUX FICHES DU MÊME OBJET SE RÉUNISSENT (2026-09-27, audit synchro) ──
+              //    begantonmatheo et angelofthedeath91 ont supprimé un DOUBLON (la
+              //    fiche importée par un relevé) : le geste par défaut a retiré de
+              //    vraies annonces en ligne. Quand une autre fiche du stock porte
+              //    EXACTEMENT le même titre, on propose d'abord de les RÉUNIR
+              //    (inventaire_fusionner : rien n'est retiré, la fusion se défait
+              //    depuis la fiche gardée).
+              const tnItem=titreNorm(item?.title);
+              const jumelle=tnItem&&tnItem.length>=6
+                ?items.find(i=>String(i.id)!==String(item?.id)&&i.statut!=='vendu'&&titreNorm(i.title)===tnItem)??null
+                :null;
+              const reunirAvecJumelle=async()=>{
+                if(!jumelle||suppressionRef.current)return;
+                suppressionRef.current=true;
+                setSuppressionEnCours(item?.id??true);
+                try{
+                  const{data,error}=await supabase.rpc('inventaire_fusionner',{p_garde:jumelle.id,p_absorbe:item.id});
+                  if(error)throw new Error(error.message);
+                  if(!data?.ok)throw new Error(String(data?.reason??'echec'));
+                  await fetchAll(user.id);
+                  setDeleteConfirm(null);
+                  setToast({visible:true,message:lang==='fr'
+                    ?`Fiches réunies : « ${jumelle.title} ». Rien n'a été retiré — la fusion se défait depuis la fiche.`
+                    :`Items merged: “${jumelle.title}”. Nothing was removed — you can undo it from the item.`});
+                  setTimeout(()=>setToast({visible:false,message:''}),6000);
+                }catch(e){
+                  setToast({visible:true,message:(lang==='fr'?'Échec : ':'Failed: ')+String(e?.message??e)});
+                  setTimeout(()=>setToast({visible:false,message:''}),6000);
+                }finally{
+                  suppressionRef.current=false;
+                  setSuppressionEnCours(null);
+                }
+              };
+              // Le retrait NOMME les plateformes : « retirer aussi l'annonce de X ? »
+              const NOMS_PF={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs',opla:'Opla'};
+              const pfsEnLigne=[...new Set((plan?.online??[]).map(j=>NOMS_PF[j.platform]??j.platform))];
+              const nomsRetrait=pfsEnLigne.length<=1
+                ?(lang==='fr'?`l'annonce ${pfsEnLigne[0]??''}`:`the ${pfsEnLigne[0]??''} listing`)
+                :(lang==='fr'?`les annonces ${pfsEnLigne.slice(0,-1).join(', ')} et ${pfsEnLigne.slice(-1)[0]}`
+                            :`the ${pfsEnLigne.slice(0,-1).join(', ')} and ${pfsEnLigne.slice(-1)[0]} listings`);
               const supprimerFicheSeule=async()=>{
                 if(suppressionRef.current)return;
                 suppressionRef.current=true;
@@ -9565,6 +9606,15 @@ export default function App({ loginOnly = false }){
                   </div>
                 ):null}
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {!horsLigne&&jumelle&&(
+                    <button disabled={!!suppressionEnCours} onClick={reunirAvecJumelle}
+                      style={{width:"100%",padding:"12px",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,border:"none",borderRadius:14,fontSize:13,fontWeight:700,color:"#fff",cursor:suppressionEnCours?"default":"pointer",opacity:suppressionEnCours?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
+                      {lang==='fr'?`🔗 C'est un doublon de « ${jumelle.title} » : réunir les deux fiches`:`🔗 It's a duplicate of “${jumelle.title}”: merge both items`}
+                      <div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:2}}>
+                        {lang==='fr'?'Rien n\'est retiré : les annonces en ligne restent en ligne, sur une seule fiche':'Nothing is removed: online listings stay online, on a single item'}
+                      </div>
+                    </button>
+                  )}
                   {horsLigne?(
                     <>
                       <button disabled={busy} onClick={()=>confirmerVenteAvantSuppression(item,jobV)}
@@ -9594,7 +9644,7 @@ export default function App({ loginOnly = false }){
                     </>
                   ):(
                     <button disabled={!!suppressionEnCours} onClick={supprimerCommeAvant} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:suppressionEnCours?"default":"pointer",opacity:suppressionEnCours?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
-                      {suppressionEnCours?(lang==='fr'?'Retrait en cours…':'Removing…'):(lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete')}
+                      {suppressionEnCours?(lang==='fr'?'Retrait en cours…':'Removing…'):(lang==='fr'?`🗑️ Retirer aussi ${nomsRetrait} et supprimer`:`🗑️ Also remove ${nomsRetrait} and delete`)}
                       <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>
                         {lang==='fr'?'Le retrait part en tâche de fond, puis l\'article est supprimé':'Removal runs in the background, then the item is deleted'}
                       </div>
