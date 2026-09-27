@@ -37,10 +37,11 @@ export function buildMsDe(build) {
 // BUILD_ID du premier build d'extension qui remet dans le corps du POST de
 // recréation l'ISBN CAPTURÉ sur l'annonce d'origine, tel quel — « 0000000000000 »
 // compris. Avant lui, toute valeur que normalizeIsbn refuse était écartée et la
-// recréation partait avec "isbn": null (400). Tant qu'il vaut la sentinelle
-// ci-dessous (aucun build ne la dépasse), get-pending-jobs ne sert AUCUNE
-// republication Vinted à l'étape qui supprime quand sa capture porte un tel ISBN.
-export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2099-12-31T00:00:00Z";
+// recréation partait avec "isbn": null (400). Tant qu'un poste est plus ancien
+// que lui, get-pending-jobs ne lui sert AUCUNE republication Vinted à l'étape
+// qui supprime quand sa capture porte un tel ISBN — et, même à jour, pas avant
+// qu'une première recréation l'ait prouvé (marqueur isbn_capture_tel_quel).
+export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID de la 0.6.70 (61cbced), zip build/CWS-0.6.70-A-TELEVERSER
 
 export const CORRECTIFS_EXTENSION = [
   {
