@@ -252,8 +252,20 @@ const MUR_CONNEXION_ANCRE = {
   beebs: /^Connexion Beebs requise/i,
 };
 /** Rend le motif MOTIFS.* quand le job bute sur un mur de connexion, sinon null. */
+// ── DÉPÔT EN ATTENTE D'UNE SESSION MORTE (2026-09-27, Beebs) ──────────────
+// L'extension a trouvé la session de la plateforme fermée : le job reste
+// 'pending', marqué attente_session, avec le message ancré « En attente de ta
+// connexion à … » (background.js / update-job-status). Rien ne travaille : la
+// carte affichait « En cours… » et une barre animée, sans le geste qui
+// débloque. C'est un mur de connexion comme un autre — même bouton.
+function attenteDeConnexion(job) {
+  return job?.status === 'pending'
+    && !!job?.platform_fields?.attente_session
+    && /^En attente de ta connexion à /i.test(String(job?.error ?? ''));
+}
 function murDeConnexion(job) {
   const err = String(job?.error ?? '');
+  if (attenteDeConnexion(job)) return MOTIFS.CONNEXION;
   const pf = job?.platform;
   // Opla : ce n'est pas une connexion mais la permission d'hôte, et le serveur
   // la NOMME (needs_user_source='opla_acces'). Aucune heuristique de texte.
@@ -9837,6 +9849,10 @@ const StockTab = memo(function StockTab({
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
                   const hasPending=jobs.some(j=>j.status==="pending"||j.status==="processing");
+                  // (27/09) Tout ce qui « attend » n'attend en fait qu'une
+                  // connexion : pas un travail, un mur (attenteDeConnexion).
+                  const pendingJobs=jobs.filter(j=>j.status==="pending"||j.status==="processing");
+                  const pendingSurConnexion=pendingJobs.length>0&&pendingJobs.every(attenteDeConnexion);
                   // Job en attente sur une plateforme EN PAUSE (maintenance) :
                   // badge dédié « reprise auto » plutôt que le simple « En cours ».
                   const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
@@ -9878,9 +9894,11 @@ const StockTab = memo(function StockTab({
                   // nommé par le serveur, la carte porte LE bouton — sous la
                   // photo, dans .gmur, jamais dessus.
                   const murDirect=(()=>{
-                    if(repubOccupeSlot||hasPausedPending||hasPending||failedJobs.length||!needsUserJobs.length||!user?.id)return null;
-                    const murs=needsUserJobs.map(x=>murDeConnexion(x));
-                    return murs.every(Boolean)?{platform:needsUserJobs[0].platform,motif:murs[0]}:null;
+                    if(repubOccupeSlot||hasPausedPending||(hasPending&&!pendingSurConnexion)||failedJobs.length||!user?.id)return null;
+                    const attendent=[...needsUserJobs,...(hasPending?pendingJobs:[])];
+                    if(!attendent.length)return null;
+                    const murs=attendent.map(x=>murDeConnexion(x));
+                    return murs.every(Boolean)?{platform:attendent[0].platform,motif:murs[0]}:null;
                   })();
                   // « Publiée — à vérifier » (2026-08-08) : le job a ABOUTI
                   // mais avec un repli dégradant signalé par l'extension
@@ -10070,6 +10088,16 @@ const StockTab = memo(function StockTab({
                             onTap=()=>setRepubProgress(repubLatest);
                           }else if(hasPausedPending){
                             dot="#64748B";txt=fr?'En pause':'Paused';titre=t("stockJobPausedBadge");
+                          }else if(hasPending&&pendingSurConnexion){
+                            // (27/09) Session de la plateforme fermée : rien ne
+                            // tourne, on attend la personne — pastille « ✋ »
+                            // orange (jamais « En cours… »), le bouton est sous
+                            // la photo (murDirect).
+                            const j=pendingJobs[0];
+                            dot="#E8956D";fg="#8A6100";
+                            txt=fr?`✋ Connexion ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Sign in ${PLATFORM_LABELS[j.platform]||j.platform}`;
+                            titre=j.error?humanizeJobError(j,lang):undefined;
+                            onTap=()=>setJobStatusItem(item);
                           }else if(hasPending){
                             // Mêmes règles que l'ancien badge « En cours… »
                             // (2026-08-13) : extension hors fraîcheur → on
@@ -11106,7 +11134,7 @@ const StockTab = memo(function StockTab({
                           &&(repubLatest?.status==='processing'
                             ||((repubLatest?.status==='pending')&&repubStepDe(repubLatest)==='deleted'));
                         const extFraiche=!(extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree");
-                        const pubEnTravail=!repubEnTravail&&hasPending&&!hasPausedPending&&extFraiche;
+                        const pubEnTravail=!repubEnTravail&&hasPending&&!pendingSurConnexion&&!hasPausedPending&&extFraiche;
                         if(!repubEnTravail&&!pubEnTravail)return null;
                         const txt=repubEnTravail
                           ?`${frB?'Republication':'Repost'} · ${repubEtape.court}`
