@@ -3848,6 +3848,14 @@ serve(async (req) => {
       // faux en needs_user.
       patch.error = messageEffectif
         ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null);
+    } else if (statutEffectif === "cancelled" && messageEffectif) {
+      // (27/09, xxewwer « Petit coffre », Beebs « Meubles de rangement ») Un
+      // job CLOS par le classement (pas-de-rouge, verdict « info ») porte sa
+      // phrase : « Beebs n'arrive pas à enregistrer cette annonce… on arrête
+      // ici ». Sans cette branche, le statut passait « annulé » et l'ANCIENNE
+      // erreur restait affichée — « on refait un essai tout seuls » sur un job
+      // qui ne repartira jamais.
+      patch.error = messageEffectif;
     } else if (statutEffectif === "dry_run_completed") {
       // Terminal : dry-run réussi, ne repart pas dans la queue. L'éventuel
       // détail (champs manquants, trace du dry-run delete) vit dans
