@@ -25,6 +25,25 @@
 /** Le marqueur porté par un job parqué : nommé, donc mesurable et filtrable. */
 export const SOURCE_EBAY_CONNEXION_REQUISE = "ebay_connexion_requise";
 
+/**
+ * (2026-09-27) Compte RELIÉ par l'API mais pas encore prêt à vendre (politiques
+ * non retenues, statut vendeur bloqué). Depuis ce jour, une publication d'un
+ * compte relié part TOUJOURS en voie 'api' (trigger cross_post_jobs_voie_ebay) ;
+ * ebay-api-worker la parque ici au lieu de l'envoyer buter chez eBay, et le
+ * ré-armement ci-dessous la relance dès que le compte est prêt — même bouton,
+ * même parcours eBay que « Connecte ton compte eBay ».
+ */
+export const SOURCE_EBAY_COMPTE_A_FINIR = "ebay_compte_a_finir";
+
+/** Les sources qu'un compte devenu utilisable ré-arme vers la voie API. */
+export const SOURCES_EBAY_REARMABLES = [SOURCE_EBAY_CONNEXION_REQUISE, SOURCE_EBAY_COMPTE_A_FINIR];
+
+/** Le message montré sur une publication parquée « compte à finir ». Rien n'est parti chez eBay. */
+export const MESSAGE_EBAY_COMPTE_A_FINIR =
+  "Ton compte eBay est bien relié à FillSell, mais eBay ne le laisse pas encore vendre : " +
+  "il reste à finir sa configuration (paiement, retours, livraison). Rien n'a été envoyé à eBay — " +
+  "l'annonce partira toute seule dès que ton compte sera prêt.";
+
 /** Y a-t-il une connexion API eBay NON révoquée pour ce compte ? (service_role) */
 export async function compteEbayApiConnecte(admin: any, userId: string): Promise<boolean> {
   try {
@@ -88,7 +107,7 @@ export async function rearmerJobsEbayConnexionSiUtilisable(admin: any, userId: s
     let n = 0;
     for (const j of (jobs ?? [])) {
       const pf0 = (j.platform_fields ?? {}) as Record<string, unknown>;
-      if (String(pf0["needs_user_source"] ?? "") !== SOURCE_EBAY_CONNEXION_REQUISE) continue;
+      if (!SOURCES_EBAY_REARMABLES.includes(String(pf0["needs_user_source"] ?? ""))) continue;
       const pf = { ...pf0 };
       delete pf["needs_user_source"]; delete pf["next_action_after"];
       delete pf["needsUserAttempts"]; delete pf["needsUserBoucle"];

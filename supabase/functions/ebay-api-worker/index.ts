@@ -39,6 +39,7 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { compteEbayApiUsable, MESSAGE_EBAY_COMPTE_A_FINIR, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
@@ -72,6 +73,50 @@ interface Job {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+// ══ UNE PUBLICATION D'UN COMPTE RELIÉ PAR L'API REPART PAR L'API (2026-09-27) ══
+// philippaa (reliée le 18/09 à 09:49, 2 jobs du 18/09 17:37) et pironneau
+// (relié le 23/09, job du 25/09) : relié mais pas prêt → le trigger d'avant
+// laissait 'extension', et l'extension butait sur le mur REAUTH eBay. Le
+// trigger est corrigé pour les jobs neufs ; ICI, les publications déjà créées
+// en voie extension pour un compte relié (ebay_voie_api + connexion non
+// révoquée) passent en voie 'api' — pending si le compte est prêt (le worker
+// les prend), sinon needs_user « compte à finir », ré-armé tout seul ensuite.
+// ⛔ PENDING SEULEMENT, écriture conditionnée (status pending ET voie
+//    extension) : un job en cours chez l'extension n'est jamais touché, et
+//    get-pending-jobs v140 ne les sert plus à Chrome. Bornée, idempotente.
+async function rerouterPublicationsVersApi(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data: comptes } = await admin.from("ebay_accounts").select("user_id").is("revoked_at", null).limit(1000);
+  const relies = ((comptes ?? []) as Array<{ user_id: string }>).map((c) => c.user_id);
+  if (!relies.length) return { vues: 0 };
+  const { data: drapeaux } = await admin.from("profiles").select("id").eq("ebay_voie_api", true).in("id", relies);
+  const ids = ((drapeaux ?? []) as Array<{ id: string }>).map((p) => p.id);
+  if (!ids.length) return { vues: 0 };
+  const { data: jobs } = await admin.from("cross_post_jobs")
+    .select("id, user_id, error, platform_fields")
+    .eq("platform", "ebay").eq("action", "publish").eq("voie", "extension").eq("status", "pending")
+    .in("user_id", ids).limit(50);
+  let versApi = 0, parquees = 0;
+  const pretParCompte = new Map<string, boolean>();
+  for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+    if (!pretParCompte.has(j.user_id)) pretParCompte.set(j.user_id, await compteEbayApiUsable(admin, j.user_id));
+    const pret = pretParCompte.get(j.user_id) === true;
+    const pf: Record<string, unknown> = { ...(j.platform_fields ?? {}) };
+    for (const k of ["needs_user_source", "next_action_after", "needsUserAttempts", "needsUserBoucle", "needs_user_tick_le",
+      "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "processing_since", "pas_de_rouge", "pas_de_rouge_reprises"]) delete pf[k];
+    if (j.error) pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "ebay-api-worker (voie extension → api, compte relié)");
+    pf.voie_reroutee = { le: new Date().toISOString(), de: "extension", vers: "api", compte_pret: pret };
+    if (!pret) pf.needs_user_source = SOURCE_EBAY_COMPTE_A_FINIR;
+    const { data: maj } = await admin.from("cross_post_jobs")
+      .update(pret
+        ? { voie: "api", error: null, platform_fields: pf }
+        : { voie: "api", status: "needs_user", error: MESSAGE_EBAY_COMPTE_A_FINIR, platform_fields: pf })
+      .eq("id", j.id).eq("status", "pending").eq("voie", "extension").select("id");
+    if (maj?.length) { if (pret) versApi++; else parquees++; }
+  }
+  if (versApi || parquees) console.log(`[ebay-api-worker] voie extension → api : ${versApi} publication(s) reprise(s) par l'API, ${parquees} parquée(s) « compte à finir »`);
+  return { vues: (jobs ?? []).length, vers_api: versApi, parquees };
 }
 
 async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, unknown>, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>) {
@@ -2221,6 +2266,14 @@ Deno.serve(async (req) => {
   try { aveugles = await recategoriserRayonsAveugles(admin, env); }
   catch (e) { aveugles = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
 
+  // ── Publications d'un compte relié restées en voie extension (27/09) ──────
+  // Avant le 27/09, le trigger laissait 'extension' à un compte relié mais pas
+  // prêt (philippaa, pironneau). Elles repartent ICI par l'API — jamais servies
+  // à Chrome depuis get-pending-jobs v140. Avant tout geste chez eBay.
+  let reroutees: Record<string, unknown> = {};
+  try { reroutees = await rerouterPublicationsVersApi(admin); }
+  catch (e) { reroutees = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "pending")
@@ -2228,7 +2281,7 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, vendeurs, aveugles });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, vendeurs, aveugles, reroutees });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -2245,11 +2298,26 @@ Deno.serve(async (req) => {
     // processing_since posé À LA PRISE (même clé que handler-watch) : c'est
     // lui que lit le chien de garde. Effacé par marquer() à la conclusion.
     const pfPrise = { ...(brut.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    // .eq("voie", "api") (27/09) : la prise elle-même exige la voie — un job
+    // ne peut pas être pris par le worker s'il appartient à l'extension.
     const { data: pris } = await admin.from("cross_post_jobs").update({ status: "processing", handler_build: HANDLER_BUILD, platform_fields: pfPrise })
-      .eq("id", brut.id).eq("status", "pending").select("id");
+      .eq("id", brut.id).eq("status", "pending").eq("voie", "api").select("id");
     if (!pris?.length) continue;
     const job: Job = { ...brut, platform_fields: pfPrise };
     try {
+      // ── COMPTE PAS PRÊT : ON PARQUE, ON N'ENVOIE RIEN (27/09) ──────────────
+      // Un compte relié mais pas prêt (politiques non retenues, statut vendeur
+      // bloqué) : rien ne partirait — hier l'échec tombait APRÈS le PUT de
+      // l'article (étape politiques). needs_user nommé, aucune tentative
+      // consommée ; ré-armé tout seul quand le compte devient prêt
+      // (rearmerJobsEbayConnexionSiUtilisable). Les retraits ne sont pas
+      // concernés : ils ne dépendent pas des politiques.
+      if ((job.action === "publish" || job.action === "republish") && !(await compteEbayApiUsable(admin, job.user_id))) {
+        job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR };
+        await marquer(admin, job, { status: "needs_user", error: MESSAGE_EBAY_COMPTE_A_FINIR }, { etape: "compte", quoi: "compte_pas_pret" });
+        resultats.push({ job: job.id, issue: "needs_user", motif: "compte_pas_pret" });
+        continue;
+      }
       const jeton = await obtenirAccessToken(admin, job.user_id);
       if (!jeton.ok) {
         const msg = jeton.motif === "non_connecte" ? "Ton compte eBay n'est pas relié à FillSell : connecte-le dans les Paramètres, puis relance."
@@ -2278,5 +2346,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, vendeurs, aveugles, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, vendeurs, aveugles, reroutees, resultats });
 });

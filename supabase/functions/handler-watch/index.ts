@@ -9,7 +9,7 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // filet ne connaissait que Vinted et les photos Beebs d'un article importé
 // n'étaient jamais rapatriées, 19/09).
 import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
-import { rearmerJobsEbayConnexionSiUtilisable, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
+import { rearmerJobsEbayConnexionSiUtilisable, SOURCES_EBAY_REARMABLES } from "../_shared/ebay-voie.ts";
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
 import { autorisationOplaRequise } from "../_shared/textes-jobs.ts";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
@@ -1589,7 +1589,7 @@ serve(async (req) => {
       .select("user_id")
       .eq("platform", "ebay")
       .eq("status", "needs_user")
-      .eq("platform_fields->>needs_user_source", SOURCE_EBAY_CONNEXION_REQUISE)
+      .in("platform_fields->>needs_user_source", SOURCES_EBAY_REARMABLES)
       .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString())
       .limit(500);
     const users = [...new Set(((parques ?? []) as Array<{ user_id: unknown }>).map((r) => String(r.user_id)))];
