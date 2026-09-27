@@ -197,8 +197,8 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - **Après acceptation constatée** (`profiles.extension_build`) : version dans
   `ALREADY_PUBLISHED` + `PUBLISHED_BUILD_IDS`, puis `EXTENSION_MIN_BUILD` =
   BUILD_ID du zip — **jamais** `EXTENSION_LAST_COMMIT`.
-- **Actuelle : 0.6.72, à téléverser** :
-  `build\CWS-0.6.72-A-TELEVERSER\fillsell-extension-0.6.72-cws.zip`.
+- **Actuelle : 0.6.73, à téléverser** (contient la 0.6.72, jamais téléversée) :
+  `build\CWS-0.6.73-A-TELEVERSER\fillsell-extension-0.6.73-cws.zip`.
 
 ### 3.3 Lire la prod (sans rien écrire)
 
@@ -472,7 +472,7 @@ qui survit à ça, c'est du code.
 - **Sur le PC, Nico ne fait QUE zipper et téléverser.** Ne jamais lui
   demander d'inspecter un fichier, une version, une console : livrer un
   fichier prêt, **chemin exact en clair** (ex.
-  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.72-A-TELEVERSER\fillsell-extension-0.6.72-cws.zip`).
+  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.73-A-TELEVERSER\fillsell-extension-0.6.73-cws.zip`).
 - **Aucun achat** (serveur, IP, abonnement, crédit) sans GO avec le montant.
 - **Un GO se lit, il ne se déduit pas** : une migration, un envoi de mail, une
   action en prod attend une phrase qui la nomme.
@@ -495,15 +495,17 @@ qui survit à ça, c'est du code.
   toute RPC appelée par PostgREST tient sous 8 s** (`statement_timeout` du
   rôle `authenticator`) ; un travail long se découpe en appels courts dont
   chacun est enregistré.
-- **Audit de la synchronisation** en cours : chaque annonce en ligne dans
-  FillSell une seule fois, rattachée sur preuve (jumeaux Beebs de Louis, ses
-  deux comptes Vinted, doublons entre relevés, fiche supprimée ≠ retrait,
-  relevés incomplets).
+- **Audit de la synchronisation** (27/09 soir) : 784 annonces en ligne
+  étaient retenues hors du stock en attente d'une réponse. Deux migrations
+  sont écrites et **attendent le GO** : 20260927210000 (tout importer, la
+  ressemblance devient une question) et 20260927211000 (rattrapage de 888
+  annonces). App (OTA 2.9.29) et extension 0.6.73 livrées. Détail et
+  décisions : fichier d'état § 7.2.
 - **FillSell Cloud** : prototype hors dépôt
   (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md` fait foi) ; Vinted,
   Leboncoin, Opla validés, Beebs bloqué (DataDome) ; reste la tenue des
   sessions J1-J7 et, avant toute offre, la prise de job atomique.
-- **Extension 0.6.72 à téléverser** ; les livres (gel du 28/08, ISBN
+- **Extension 0.6.73 à téléverser** (BUILD_ID 2026-09-27T18:03:27Z) ; les livres (gel du 28/08, ISBN
   `0000000000000`) se débloquent seuls dès qu'un poste porte ≥ 0.6.70.
 - **Chantier Italie** : migration
   `20260925190000_plateformes_francaises_hors_france.sql` écrite, NON
