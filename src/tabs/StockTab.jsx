@@ -2069,7 +2069,11 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             // Transitoire vs définitif : tant que l'extension retente la
             // re-capture (fenêtre 48 h), pas de consigne manuelle — l'annonce
             // deviendra retirable ici même dès que l'URL est récupérée.
-            const urlRecovering = noUrl && isListingUrlRecoverable(p, latestPubByPlatform[p]);
+            // (27/09, décision de Nico) Beebs : un dépôt sans lien est TOUJOURS
+            // « en vérification » — la modération se fait, le lien arrive
+            // ensuite. Jamais « mise en ligne jamais confirmée », jamais
+            // « Republier » : l'app ne juge pas la modération Beebs.
+            const urlRecovering = noUrl && (p === "beebs" || isListingUrlRecoverable(p, latestPubByPlatform[p]));
             const online = isPublished && !state && !noUrl;
             // vinted_status prime sur les jobs (2026-08-28) : masquée/brouillon
             // ⇒ le libellé ne dit plus « En ligne ». Le RETRAIT reste offert —

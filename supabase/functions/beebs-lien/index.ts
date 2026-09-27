@@ -84,8 +84,8 @@ serve(async (req) => {
     if (selErr) throw new Error(`sélection : ${selErr.message}`);
     // (2026-09-27) Les dépôts CLOS « jamais en ligne » par le balayage de
     // nuit (failed + listing_url_abandon) restent surveillés 30 jours : une
-    // annonce mise en ligne tard est encore rattachée, et une absence prouvée
-    // sort le job de l'impasse rouge (beebs_index_constat).
+    // annonce mise en ligne tard est encore rattachée (lien posé, job repassé
+    // published). Leur absence de l'index n'est jamais interprétée.
     const { data: closBruts } = await supabase
       .from("cross_post_jobs")
       .select("id, user_id, status, title, price, published_at, created_at, platform_fields")
@@ -190,36 +190,15 @@ serve(async (req) => {
       }));
       const paires = apparier(aCaler, annonces, idsPris);
 
-      // ── 5. CE QUE L'INDEX DIT DES AUTRES : UNE TRACE, JAMAIS UN VERDICT ──────
-      // (2026-09-27, v3) Un dépôt sans annonce à ±30 s dans le dressing lu est
-      // noté « absente » (beebs_index) — une TRACE pour nous, rien d'autre.
-      // ⛔ ON NE CLÔT PLUS RIEN SUR CETTE ABSENCE (retiré le jour même, après
-      //    mesure) : l'index ne voit ni les annonces EN MODÉRATION, ni les
-      //    VENDUES, ni un dépôt dont published_at ne date pas le vrai dépôt
-      //    (8 jobs d'ornellaracano « publiés » le 20/09 alors que Beebs les
-      //    avait vus en vérification dès le 11/09). La v2 en a clos 13 en
-      //    « tu peux la republier » : une invitation au doublon. Cf. l'en-tête
-      //    de _shared/beebs-index.ts : « Une absence ne prouve rien. »
-      const dressingComplet = annonces.length < 6000; // 6 pages de 1000 : au-delà, lecture tronquée
-      const maintenant = Date.now();
-      let constats = 0;
-      for (const d of depots) {
-        if (paires.has(d.id) || !dressingComplet) continue;
-        const repere = Date.parse(d.published_at ?? d.created_at ?? "");
-        if (!Number.isFinite(repere)) continue;
-        const proches = annonces.filter((a) => a.creation_ms != null && Math.abs((a.creation_ms as number) - repere) <= FENETRE_MS);
-        const trace = {
-          dernier_passage: new Date(maintenant).toISOString(),
-          en_ligne: annonces.length,
-          verdict: proches.length ? "ambigue" : "absente",
-          ...(proches.length ? { candidats: proches.slice(0, 5).map((a) => a.listing_id) } : {}),
-        };
-        const { error: cErr } = await supabase.rpc("beebs_index_constat", { p_job: d.id, p_trace: trace, p_clore: false });
-        if (cErr) { note("constat_refuse", { job: d.id.slice(0, 8), raison: cErr.message }); continue; }
-        constats++;
-      }
-
-      if (!paires.size) { note("aucun_appariement", { annonces_en_ligne: annonces.length, constats }); continue; }
+      // ── 5. LA MODÉRATION BEEBS NE SE JUGE PAS (2026-09-27, décision de Nico) ──
+      // « Une annonce Beebs sans lien, c'est normal : la modération se fait, le
+      // lien arrive ensuite. » beebs-lien ne fait donc qu'une chose : poser le
+      // lien quand l'annonce apparaît. Il n'écrit plus RIEN sur un dépôt dont
+      // l'annonce n'est pas (encore) dans l'index — ni verdict, ni trace, ni
+      // clôture. (La v2 du matin en avait clos 13 en « tu peux la republier » :
+      // restaurés par 20260927110500 ; la v3 n'écrivait plus qu'une trace.)
+      // L'en-tête de _shared/beebs-index.ts le dit : « Une absence ne prouve rien. »
+      if (!paires.size) { note("aucun_appariement", { annonces_en_ligne: annonces.length }); continue; }
 
       for (const d of depots) {
         const trouve = paires.get(d.id);
