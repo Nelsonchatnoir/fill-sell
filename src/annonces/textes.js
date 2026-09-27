@@ -39,6 +39,7 @@ const FR = {
   motEnCours: 'en cours…',
   motEnAttente: 'en attente',
   motEchec: 'échec',
+  motIncomplet: 'lues',
   motExpire: 'expiré',
   motJamais: 'jamais',
   tuileAria: (nom, mot) => `${nom} — ${mot}`,
@@ -70,6 +71,10 @@ const FR = {
   // Un arrêt TECHNIQUE (la page n'a pas répondu à temps) : ce n'est ni un
   // échec de la personne ni un verdict sur ses annonces. On dit ce qu'on fait.
   signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer le relevé d'ici.`,
+  // (27/09) Un relevé incomplet dit ce qu'il a lu SUR ce qui est annoncé.
+  signalIncomplet: (nom, lus, annonce) => (annonce != null
+    ? `${nom} : relevé incomplet — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''} sur ${annonce}. On relit tout seuls ; rien n'est conclu sur les autres.`
+    : `${nom} : relevé incomplet — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''}, le total n'a pas pu être lu. On relit tout seuls ; rien n'est conclu sur les autres.`),
   // Relevés vides d'affilée sur un compte qui avait des annonces (serveur,
   // releve_vide_etat, 24/09). ⛔ On ne conclut RIEN : ni vendues, ni retirées,
   // ni « tu n'as plus d'annonce ». On dit ce qu'on a lu, et le geste possible.
@@ -154,6 +159,7 @@ const EN = {
   motEnCours: 'running…',
   motEnAttente: 'waiting',
   motEchec: 'failed',
+  motIncomplet: 'read',
   motExpire: 'expired',
   motJamais: 'never',
   tuileAria: (nom, mot) => `${nom} — ${mot}`,
@@ -176,6 +182,9 @@ const EN = {
   signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
   signalEchec: (nom, motif) => `The ${nom} scan stopped${motif ? ` — ${motif}` : ''}. The other platforms were scanned.`,
   signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the scan again from here.`,
+  signalIncomplet: (nom, lus, annonce) => (annonce != null
+    ? `${nom}: incomplete scan — ${lus} listing${lus > 1 ? 's' : ''} read out of ${annonce}. We read again on our own; nothing is concluded about the others.`
+    : `${nom}: incomplete scan — ${lus} listing${lus > 1 ? 's' : ''} read, the total could not be read. We read again on our own; nothing is concluded about the others.`),
   signalVideRepete: (nom) => `${nom}: the latest scans found no listing on the account signed in on your computer. We draw no conclusion about your listings. If they are online, check you are signed in to the right ${nom} account, then tap its tile to scan it.`,
   extensionAbsente: 'The Chrome extension is not installed: it is what scans your listings from your computer.',
   extensionAbsenteCta: 'Install the extension',

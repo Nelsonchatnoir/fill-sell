@@ -95,6 +95,10 @@ export function absenceDePlateforme(run) {
 export function murConnexionReleve(run, platform = null) {
   const e = String(run?.erreur ?? '');
   if (!e) return null;
+  // (27/09) Le serveur nomme aussi ces deux murs eBay (releve_ebay_mur_nomme) :
+  // lus même quand le texte ne dit pas « page de connexion ».
+  if (MUR_EBAY_UPGRADE.test(e)) return MOTIFS.VENDEUR_EBAY;
+  if (MUR_EBAY_REAUTH.test(e)) return MOTIFS.REAUTH_EBAY;
   if (MUR_OPLA.test(e)) return MOTIFS.AUTORISER_OPLA;
   if (MUR_PAGE_CONNEXION.test(e)) {
     // ── eBAY : LE MUR EST NOMMÉ PAR L'EXTENSION (2026-09-22) ───────────────
@@ -113,6 +117,18 @@ export function murConnexionReleve(run, platform = null) {
 }
 
 const estOpla = (run) => /opla/i.test(String(run?.erreur ?? ''));
+
+// Ce que la PLATEFORME annonce pour un relevé : total_entries quand il dépasse
+// le lu (extension 0.6.75 et suivantes), sinon « … sur N » dans le texte du
+// run (toutes versions). null quand rien ne le dit — on n'invente pas.
+export function totalAnnonceDuRun(run) {
+  const lus = Number(run?.items_vus ?? NaN);
+  const te = Number(run?.total_entries ?? NaN);
+  if (Number.isFinite(te) && Number.isFinite(lus) && te > lus) return te;
+  const m = String(run?.erreur ?? '').match(/vue\(s\) sur (\d+)/);
+  const n = m ? Number(m[1]) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
 const ACTIF = new Set(['queued', 'running']);
 
 // ── UN ARRÊT TECHNIQUE SE NOMME (2026-09-23) ────────────────────────────────
@@ -148,6 +164,23 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
   // Vinted : `lireDernierRunVinted` ne rend que des runs finis, son
   // `finished_at` suffit. Les autres portent un `status`.
   const fini = vinted ? run?.finished_at : (run?.status === 'done' ? run.finished_at : null);
+  // ── UN RELEVÉ INCOMPLET NE SE DIT JAMAIS « N ANNONCES » (27/09) ──────────
+  // jocabroc8 : « 30 annonces », pastille verte, alors que le relevé avait lu
+  // 30 annonces sur 176. On dit ce qui a été lu SUR ce que la plateforme
+  // annonce, en ambre ; le serveur relance la lecture tout seul.
+  if (fini && !vinted && String(run.erreur ?? '').startsWith('[incomplet]')) {
+    const lus = Number(run.items_vus ?? 0);
+    const annonce = totalAnnonceDuRun(run);
+    return {
+      n: annonce != null && annonce > lus ? `${lus}/${annonce}` : (Number.isFinite(lus) ? lus : 0),
+      mot: T.motIncomplet ?? 'incomplet',
+      depuis: depuisCourt(fini, fr),
+      pip: pip.pipWarn,
+      phase: 'incomplet',
+      lus: Number.isFinite(lus) ? lus : 0,
+      annonce,
+    };
+  }
   if (fini) {
     const n = Number(run.items_vus ?? 0);
     return {

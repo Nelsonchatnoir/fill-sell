@@ -142,6 +142,9 @@ export default function CarteAnnoncesEnLigne({
           ? T.signalTechnique(t.nom)
           : T.signalEchec(t.nom, String((r.runs[t.p]?.erreur) ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || null),
       })),
+    // (27/09) Un relevé incomplet : ce qui a été lu, sur ce qui est annoncé.
+    ...tuiles.filter((t) => t.e.phase === 'incomplet' && !murDe.has(t.p))
+      .map((t) => ({ cle: `incomplet-${t.p}`, texte: T.signalIncomplet(t.nom, t.e.lus ?? 0, t.e.annonce ?? null) })),
     // « Ordinateur éteint » : le run a expiré côté serveur. On le dit sans
     // accuser — c'est une machine qui dormait, pas une faute.
     ...(tuiles.some((t) => t.e.phase === 'expire') ? [{ cle: '_expire', texte: T.extensionEndormie }] : []),
@@ -204,7 +207,7 @@ export default function CarteAnnoncesEnLigne({
                   className="rv-up rv-focus"
                   disabled={!cliquable}
                   onClick={() => r.lancer(p)}
-                  aria-label={T.tuileAria(nom, e.phase === 'fait' ? `${e.n} ${e.mot}` : e.mot)}
+                  aria-label={T.tuileAria(nom, e.phase === 'fait' || e.phase === 'incomplet' ? `${e.n} ${e.mot}` : e.mot)}
                   /* L'âge du dernier relevé de CETTE plateforme : la tuile n'a
                      pas la place de l'écrire, le sous-titre ne donne que le
                      plus récent des cinq. */

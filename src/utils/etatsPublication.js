@@ -56,6 +56,9 @@ export function natureAttente(job) {
   const pf = job?.platform_fields ?? {};
   const source = String(pf.needs_user_source ?? "");
   const err = String(job?.error ?? "");
+  // (27/09) « Je ne vends pas sur X » : la publication est EN PAUSE, pas en
+  // attente d'un champ ni d'une connexion. Elle repart seule si X est réactivée.
+  if (source === "plateforme_ecartee") return { kind: "attente_plateforme_ecartee" };
   if (job?.platform === "opla" && source === "opla_acces") return { kind: "attente_autorisation", motif: "autoriser_opla" };
   if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
   if (job?.platform === "ebay" && REAUTH_RE.test(err)) return { kind: "attente_connexion", motif: "reauth_ebay" };
@@ -108,6 +111,8 @@ export function phraseEtat(platform, etat, lang = "fr") {
       return en ? "waiting for your Opla permission" : "en attente de ton autorisation Opla";
     case "attente_connexion":
       return en ? `waiting for you to sign in to ${nom}` : `en attente de ta connexion à ${nom}`;
+    case "attente_plateforme_ecartee":
+      return en ? `paused: you said you don't sell on ${nom}` : `en pause : tu as indiqué ne pas vendre sur ${nom}`;
     case "attente":
       return en ? "a publication is waiting" : "une publication est en attente";
     case "refusee":
