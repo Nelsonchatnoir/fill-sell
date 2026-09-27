@@ -55,6 +55,24 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   gestes ne sont pas faits, les utilisateurs tournent sur l'ancien code —
   vérifiable par `profiles.extension_build` / `cross_post_jobs.handler_build`.
 
+## ⛔ RÈGLES DÉFINITIVES DU 27/09 SOIR (synchronisation) — jumelles d'AGENTS.md § 4
+
+- **Un titre n'est JAMAIS une preuve d'identité** : ni pour rattacher une
+  annonce, ni pour fusionner des fiches automatiquement, ni pour retirer. Le
+  doute devient la question « Est-ce le même article ? » / « Déjà vendu ? ».
+  (Louis duplique ses articles sur Beebs — mêmes titres, articles différents :
+  deux annonces à vendre retirées à tort le 27/09.)
+- **Deux annonces sur la même plateforme sont deux exemplaires.** Une vente ne
+  retire que les copies de CET exemplaire sur les AUTRES plateformes, liées
+  par une preuve (`retrait_job_prouve` : dépôt FillSell, identifiant, import,
+  geste de la personne ; jamais une fusion automatique).
+- **Aucun verdict sur un relevé incomplet** (refusée, disparue, vendue) ; un
+  relevé incomplet est repris seul.
+- **Un champ manquant se demande** (choix fermés en français), il ne se
+  relance jamais en boucle.
+- **Republier une annonce importée est normal** ; « import ≠ publication » ne
+  concerne que le comptage (quotas, statistiques).
+
 ## Format des réponses
 
 Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ```) pour faciliter le copier-coller. Diagnostics, rapports, récapitulatifs, listes de changements — tout doit être dans un bloc.

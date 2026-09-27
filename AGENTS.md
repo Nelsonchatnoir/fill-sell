@@ -282,19 +282,32 @@ qui survit à ça, c'est du code.
 
 ### 4.1 Import, publication, republication
 
-- **Import de relevé ≠ publication ≠ republication.** Un import (annonce
+- **Import ≠ publication, POUR LE COMPTAGE SEULEMENT.** Un import (annonce
   trouvée en ligne par un relevé) crée un job « synthétique » qui n'a jamais
-  été déposé par FillSell. Il se reconnaît au `handler_build` contenant
-  **`sync-dressing`** (Vinted) ou **`releve-annonces`** (autres plateformes),
-  **n'importe où dans la chaîne** (tester avec `LIKE '%…%'`, jamais un égal
-  ni un préfixe).
-- Une annonce importée est **lecture seule pour la republication** tant
-  qu'elle n'a pas été déposée par FillSell (pas de capture → pas de redépôt).
+  été déposé par FillSell : il ne compte ni comme une publication (quotas,
+  facturation) ni dans les statistiques de dépôt. Il se reconnaît au
+  `handler_build` contenant **`sync-dressing`** (Vinted) ou
+  **`releve-annonces`** (autres plateformes), **n'importe où dans la chaîne**
+  (tester avec `LIKE '%…%'`, jamais un égal ni un préfixe).
+- **Republier une annonce importée est NORMAL** (correction du 27/09, relevée
+  par Codex : ce fichier disait l'inverse). La republication reprend les
+  données de l'annonce en ligne (capture : photos, texte, marque, taille,
+  catégorie, état) quand la fiche ne les a pas ; un champ vraiment absent se
+  DEMANDE (§ 4.5).
 - **Chaque annonce en ligne est importée.** Elle n'est **rattachée** à une
   fiche existante que sur **preuve certaine** : identifiant de l'annonce, lien
-  déjà connu, dépôt FillSell. Jamais par le titre seul (le repli par titre a
-  croisé des annonces Leboncoin entre deux articles : « doudou » ⊂ « doudous »,
-  corrigé 0.6.70/0.6.71 + trigger `cross_post_jobs_lien_jamais_croise`).
+  déjà connu, dépôt FillSell, geste de la personne.
+- ⛔ **UN TITRE N'EST JAMAIS UNE PREUVE D'IDENTITÉ** (règle définitive, 27/09
+  soir, après deux annonces Beebs de Louis retirées à tort : il duplique ses
+  articles, mêmes titres, articles différents). Ni pour rattacher (bande
+  « certain » et `releve_fiche_vendue` supprimées : import + question), ni
+  pour fusionner automatiquement (balayage), ni pour retirer. Le doute devient
+  la question « Est-ce le même article ? » / « Déjà vendu ? ». (Le repli par
+  titre avait déjà croisé des annonces Leboncoin : « doudou » ⊂ « doudous »,
+  trigger `cross_post_jobs_lien_jamais_croise`.)
+- ⛔ **Deux annonces sur la même plateforme sont deux exemplaires** : jamais
+  rattachées à la même fiche d'office, jamais fusionnées, jamais retirées
+  l'une pour l'autre.
 - **Des annonces identiques sont de vrais exemplaires** (un vendeur peut avoir
   trois fois le même livre) : ne jamais les fusionner d'office. Le doute
   devient une question « Est-ce le même article ? » posée dans l'app.
@@ -307,6 +320,18 @@ qui survit à ça, c'est du code.
 - **Aucune annonce vivante retirée** sans geste explicite de l'utilisateur ou
   **vente prouvée**. Supprimer une fiche de l'app ≠ retirer l'annonce (la
   personne choisit ; « garder l'annonce en ligne » existe).
+- ⛔ **Une vente ne retire que les copies de CET exemplaire sur les AUTRES
+  plateformes**, liées à la fiche par une preuve — `retrait_job_prouve(job)` :
+  dépôt FillSell de la fiche, identifiant, annonce importée comme fiche
+  propre, geste de la personne ; JAMAIS un lien par le titre ni un job amené
+  par une fusion automatique. Une par plateforme, jamais la plateforme de la
+  vente, jamais quand la fiche porte deux annonces vivantes sur la plateforme
+  (`fiche_annonces_vivantes`). Les deux gardes vivent dans `armer_retrait_job`
+  (tous ses appelants) et `armer_retraits_copies` (migration 20260928001000).
+- ⛔ **Aucun verdict sur un relevé incomplet** (refusée, disparue, vendue,
+  « pas en ligne ») : préfixe `[incomplet]`, ou `items_vus < total_entries`
+  (total annoncé par la plateforme). Un relevé incomplet est repris seul
+  (`releve_incomplet_reprise`, 2 fois / 6 h).
 - **Jamais « vendue » ni « disparue » sur une seule lecture** : il faut la
   confirmation au cycle suivant (règle Vinted du 09/08, étendue aux 5
   plateformes par la 0.6.72). Un relevé **vide** ou **incomplet** ne prouve
@@ -362,6 +387,12 @@ qui survit à ça, c'est du code.
 - Un rayon refusé par la vérification ne part pas : « Rayon à choisir ».
 - Une valeur « générale » (ex. « Autre ») n'est jamais posée comme sélection
   par défaut.
+- ⛔ **Un champ manquant se DEMANDE, il ne se relance jamais** : needs_user
+  `champ_a_choisir` avec des choix fermés EN FRANÇAIS (jamais un code :
+  « 18 mois », pas « 18M » ni « KID_SLEEPSACK_BOYS_NEW » —
+  `_shared/question-francais.js`, update-job-status). Une réponse relance le
+  job seule. Taille enfant en cm : l'étiquette (86 cm = 18 mois), traduction
+  et non conversion (`_shared/tailles.js`, étape 6).
 
 ### 4.6 Façon d'intervenir
 
@@ -487,25 +518,19 @@ qui survit à ça, c'est du code.
 
 ## 7. État au 27/09/2026 (détail : `docs/agents/etat-2026-09-27.md`)
 
-- **Panne du 27/09** : machine de la base figée de 15:34 à 16:07 (redémarrage
-  manuel), cause unique non prouvée. Le balayage des doublons, annulé à
-  chaque passage depuis le 26/09 au soir (budgets de 20 et 40 s pour une
-  limite de 8 s), est **corrigé** (migration 20260927190000 : une fiche par
-  appel, chaque appel sous 8 s) et tourne de nouveau depuis 18:50. **Leçon :
-  toute RPC appelée par PostgREST tient sous 8 s** (`statement_timeout` du
-  rôle `authenticator`) ; un travail long se découpe en appels courts dont
-  chacun est enregistré.
-- **Audit de la synchronisation** (27/09 soir) : 784 annonces en ligne
-  étaient retenues hors du stock en attente d'une réponse. Deux migrations
-  ont été appliquées (20260927210000, 211000 : 881 annonces importées). Lot
-  « synchronisation parfaite » du même soir (abandon = aucun relevé, relevé
-  incomplet repris seul, murs eBay et session Opla nommés, photos complètes,
-  verdicts jamais sur relevé partiel) : fichier d'état § 7.6 ; OTA 2.9.30 à
-  envoyer, deux migrations en attente de GO.
-- **FillSell Cloud** : prototype hors dépôt
-  (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md` fait foi) ; Vinted,
-  Leboncoin, Opla validés, Beebs bloqué (DataDome) ; reste la tenue des
-  sessions J1-J7 et, avant toute offre, la prise de job atomique.
+- **Panne du 27/09** (base figée 15:34-16:07, cause unique non prouvée ;
+  balayage des doublons corrigé par 20260927190000). **Leçon : toute RPC
+  appelée par PostgREST tient sous 8 s** ; un travail long se découpe en
+  appels courts, chacun enregistré.
+- **Audit de la synchronisation** (27/09 soir) : 881 annonces en ligne
+  importées (20260927210000, 211000). Lot « synchronisation parfaite » du
+  même soir, TERMINÉ : abandon = aucun relevé, relevé incomplet repris seul,
+  murs eBay et session Opla nommés, photos complètes, verdicts jamais sur
+  relevé partiel, **titre ≠ preuve** (20260928001000) ; OTA 2.9.30 servie ;
+  GO de Nico appliqués (5 retraits prouvés). **Ce qui reste, dans l'ordre** :
+  fichier d'état § 7.7.
+- **FillSell Cloud** : prototype hors dépôt, voir
+  `C:\Users\nicol\fillsell-cloud-proto\REPRISE.md` (fait foi).
 - **Extension 0.6.75 à téléverser** (BUILD_ID 2026-09-27T20:16:30Z) ; les livres (gel du 28/08, ISBN
   `0000000000000`) se débloquent seuls dès qu'un poste porte ≥ 0.6.70.
 - **Chantier Italie** : migration
