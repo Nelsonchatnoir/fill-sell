@@ -1596,7 +1596,11 @@ serve(async (req) => {
     // Périmètre : le poll d'EXÉCUTION seul (le popup voit la file entière),
     // toutes les actions (publier, retirer, republier : aucune ne passe sans
     // session). Best-effort : lecture illisible → on distribue normalement.
-    const SESSION_MORTE_TTL_MS = 60 * 60 * 1000;
+    // (27/09, point 19) 10 min au lieu d'une heure : le mur d'UN profil Chrome
+    // (extension ≤ 0.6.70 : « false » écrit sur toute redirection) ne bloque
+    // plus toute la plateforme du compte pendant une heure ; la cadence des
+    // essais est tenue par le barème court de l'attente de session.
+    const SESSION_MORTE_TTL_MS = 10 * 60 * 1000;
     let heldSession = 0;
     type SessionPauseDetail = Record<string, { retenus: number; observee_le: string | null; sonde: string | null }>;
     let sessionsPause: SessionPauseDetail | null = null;
@@ -1694,6 +1698,43 @@ serve(async (req) => {
       out = out.filter((j) => j.platform !== "opla");
       if (out.length !== avantN) {
         console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : ${avantN - out.length} job(s) Opla laissé(s) en file pour un poste autorisé`);
+      }
+    }
+
+    // ── UN POSTE QUI VIENT DE VOIR LE MUR D'UNE PLATEFORME LA LAISSE À UN AUTRE
+    //    POSTE DU COMPTE (2026-09-27, Louis) ─────────────────────────────────
+    // Deux profils Chrome sur un compte : le profil 8632c049 n'ouvrait pas le
+    // dépôt Vinted (page d'inscription), le profil 070b2126 publiait. Les
+    // relances tombaient toujours sur le premier — six murs en une heure pour
+    // le même dépôt. Désormais un poste qui a vu le mur de la plateforme
+    // (mur_<pf>, noté par update-job-status, moins de 2 h, pas levé par une
+    // publication réussie de ce poste) ne reçoit plus ses jobs tant qu'un
+    // AUTRE poste vivant (vu il y a moins de 15 min) sans mur peut les prendre.
+    // Seul poste du compte → rien ne change.
+    if (sessionId && out.length && Object.keys(postesDuCompte).length > 1) {
+      const emmure = (p: Record<string, unknown> | undefined, pf: string): boolean => {
+        if (!p) return false;
+        const mur = Date.parse(String(p[`mur_${pf}`] ?? ""));
+        if (!Number.isFinite(mur) || Date.now() - mur > 2 * 3600_000) return false;
+        const ok = Date.parse(String(p[`ok_${pf}`] ?? ""));
+        return !(Number.isFinite(ok) && ok > mur);
+      };
+      const moi = postesDuCompte[sessionId] as Record<string, unknown> | undefined;
+      const laisses: string[] = [];
+      for (const pf of ["vinted", "leboncoin", "beebs", "opla"]) {
+        if (!emmure(moi, pf) || !out.some((j) => j.platform === pf)) continue;
+        const autre = Object.entries(postesDuCompte).find(([sid, p]) => {
+          if (sid === sessionId) return false;
+          const le = Date.parse(String((p as Record<string, unknown>).le ?? ""));
+          return Number.isFinite(le) && Date.now() - le < 15 * 60_000 && !emmure(p as Record<string, unknown>, pf);
+        });
+        if (autre) laisses.push(`${pf} → poste ${posteCourt(autre[0])}`);
+      }
+      if (laisses.length) {
+        const pfs = new Set(laisses.map((l) => l.split(" ")[0]));
+        const avantM = out.length;
+        out = out.filter((j) => !pfs.has(String(j.platform)));
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} a vu le mur de connexion : ${avantM - out.length} job(s) laissé(s) à un autre poste du compte (${laisses.join(", ")})`);
       }
     }
 

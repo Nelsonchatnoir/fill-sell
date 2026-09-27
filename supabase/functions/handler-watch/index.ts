@@ -1601,6 +1601,23 @@ serve(async (req) => {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // UN PARCAGE « CONNEXION » N'ATTEND PLUS UNE HEURE (2026-09-27, point 19)
+  // ══════════════════════════════════════════════════════════════════════════
+  // relancer_jobs_connexion_echus (migration 20260927113000) : un job
+  // needs_user classé « connexion » rejoint l'attente de session — même
+  // message (une vraie déconnexion reste affichée), nouvel essai seul 3 min
+  // après le parcage, puis au barème court ; trois fois au plus par job. La
+  // relance IMMÉDIATE sur preuve (sonde, relevé réussi) est faite en base par
+  // les déclencheurs de la même migration.
+  try {
+    const { data: nConv, error: eConv } = await supabase.rpc("relancer_jobs_connexion_echus");
+    if (eConv) throw new Error(eConv.message);
+    if (Number(nConv) > 0) console.log(`[handler-watch] ${nConv} job(s) parqué(s) « connexion » passé(s) en attente courte (nouvel essai dans quelques minutes)`);
+  } catch (e) {
+    console.error("[handler-watch] parcages connexion :", (e as Error)?.message ?? e);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // LES JOBS EN ATTENTE DE SESSION AUSSI (2026-09-22 soir)
   // ══════════════════════════════════════════════════════════════════════════
   // Le bloc ci-dessus ne regarde que `needs_user` et `failed`. Or l'attente de

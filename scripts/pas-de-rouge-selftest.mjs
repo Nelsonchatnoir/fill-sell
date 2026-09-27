@@ -262,5 +262,29 @@ console.log("\n── 9. Opla : la catégorie se DEMANDE dans la liste servie (2
   ok(f.motif !== "categorie_a_choisir", "une autre plateforme n'est pas concernée");
 }
 
+console.log("\n── 10. Faux « déconnecté » : une session Opla prouvée bonne n'est jamais « connecte-toi » (27/09, samazer59) ──");
+{
+  const brutHH = "pas de réponse du content script Opla (réinjection impossible (Cannot access contents of the page. Extension manifest must request permission to access the respective host.) — onglet : URL illisible (hors de nos permissions d'hôte))";
+  const sBonne = { opla: true, http: { opla: 200 } };
+  const a = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: true, reprises: 0 });
+  ok(a.verdict === "reprise" && a.statut === "pending" && a.dansMinutes === 3, `onglet hors opla.co + sonde Opla connectée → reprise dans 3 min (${a.verdict}/${a.dansMinutes})`);
+  ok(!/connecte-toi|me connecter/i.test(a.message), "aucun « connecte-toi » quand la session Opla est prouvée bonne");
+  const b = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: true, reprises: 2 });
+  ok(b.dansMinutes === 10, "troisième essai : 10 min");
+  const c = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: true, reprises: 3 });
+  ok(c.verdict === "reprise" && c.dansMinutes >= 45, "au-delà : espacé (45 min), toujours pas « connecte-toi »");
+  const d = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: { opla: null }, oplaAccesDuPoste: true, reprises: 1 });
+  ok(d.motif === "connexion", "sans preuve de session : comportement d'avant (connexion après une reprise)");
+  const e = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: false, reprises: 0 });
+  ok(e.motif === "opla_acces", "poste sans accès Opla : « Autoriser Opla », comme avant");
+  const brut401 = "Connexion Opla requise : Opla a répondu 401.";
+  const f = classerEchec({ platform: "opla", action: "publish", brut: brut401, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: true, reprises: 0 });
+  ok(f.verdict === "reprise" && f.dansMinutes === 3, "page Opla 401 mais sonde connectée → reprise 3 min");
+  const g = classerEchec({ platform: "opla", action: "publish", brut: brut401, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: true, reprises: 3 });
+  ok(g.motif === "connexion", "trois refus de suite malgré la sonde → « Me connecter », comme avant");
+  const h = classerEchec({ platform: "opla", action: "publish", brut: brut401, essais: 0, pf: {}, sessions: { opla: null }, oplaAccesDuPoste: true, reprises: 0 });
+  ok(h.motif === "connexion", "page Opla 401 sans preuve : « Me connecter », comme avant");
+}
+
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);

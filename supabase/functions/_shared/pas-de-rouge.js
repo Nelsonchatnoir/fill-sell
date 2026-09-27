@@ -242,6 +242,17 @@ export function classerEchec(arg) {
   // tranché « déconnecté » (sinon la règle 0 a déjà parlé) : le geste est
   // « Me connecter ». Jamais « Autoriser Opla » pour une session fermée.
   if (platform === "opla" && OPLA_CONNEXION_RE.test(t)) {
+    // (27/09, point 19) La sonde a vu Opla CONNECTÉ : c'est un refus passager,
+    // jamais « connecte-toi » tant qu'il reste des essais courts.
+    if (connecte && reprisesFaites < 3) {
+      // (objet écrit en entier : l'aide reprise() n'est déclarée que plus bas)
+      return {
+        verdict: "reprise", statut: "pending", motif: "refus_session_bonne", dansMinutes: [3, 6, 10][reprisesFaites],
+        message:
+          "Opla a refusé l'accès à l'instant, mais ta connexion Opla est bonne : il n'y a rien à faire de ton côté " +
+          "et rien n'a été touché. On refait un essai tout seuls dans quelques minutes.",
+      };
+    }
     return {
       verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
       message: connexionOplaRequise(action),
@@ -463,6 +474,15 @@ export function classerEchec(arg) {
         verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
         message: autorisationOplaRequise(action),
       };
+    }
+    // (27/09, point 19 — samazer59) La sonde a vu Opla CONNECTÉ : l'onglet a
+    // quitté opla.co le temps d'un rafraîchissement de session. Jamais
+    // « connecte-toi » : quelques minutes (3, 6, 10), puis 45.
+    if (connecte) {
+      return reprise("opla_hors_hote",
+        `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue : l'onglet Opla a quitté opla.co ` +
+        "un instant. Ta connexion Opla est bonne, rien n'a été touché : on refait un essai tout seuls dans quelques minutes.",
+        reprisesFaites < 3 ? [3, 6, 10][reprisesFaites] : 45);
     }
     const oc = pf && typeof pf.opla_cookies === "object" ? pf.opla_cookies : null;
     const gros = Array.isArray(oc?.gros) ? oc.gros : [];

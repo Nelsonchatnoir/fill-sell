@@ -7,12 +7,24 @@
 // 6 h ensuite. Jamais abandonné, jamais rouge : la levée se fait sur preuve
 // (sonde « connecté » postérieure — handler-watch ; compte vu sur la page —
 // extension 0.6.66).
-// ⛔ MÊME barème dans chrome-extension/background.js (delaiAttenteSessionMin).
+// ── (2026-09-27, point 19 — faux « déconnecté ») QUELQUES MINUTES D'ABORD ──
+// Louis : trois dépôts Vinted repoussés d'une heure à chaque essai alors que sa
+// session était bonne. Barème : 3, 6, 10 min pour les trois premières
+// observations, puis 1 h (4e-6e), 3 h (7e-9e), 6 h ensuite. Une vraie
+// déconnexion reste affichée dès la première observation ; seule la cadence
+// des premiers essais change. Et une preuve de session bonne (sonde, relevé)
+// relance tout de suite (relancer_jobs_connexion, déclencheurs en base).
+// ⚠️ chrome-extension/background.js (delaiAttenteSessionMin) porte encore
+//    l'ancien barème : update-job-status réécrit l'échéance à chaque
+//    observation, et get-pending-jobs tient celui-ci.
 export const ATTENTE_SESSION_RE = /^En attente de ta connexion à /i;
 
 export function delaiAttenteSessionMin(observations) {
   const n = Number(observations) || 0;
-  return n >= 7 ? 360 : n >= 4 ? 180 : 60;
+  if (n <= 1) return 3;
+  if (n === 2) return 6;
+  if (n === 3) return 10;
+  return n >= 10 ? 360 : n >= 7 ? 180 : 60;
 }
 
 /**

@@ -31,6 +31,7 @@ import { classerEchec } from "../_shared/pas-de-rouge.js";
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
 import { sessionIdDuJwt, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
@@ -1872,11 +1873,16 @@ serve(async (req) => {
       }
     }
     const SESSION_REQUISE_RE = /^(?:Connexion|Reconnexion)\s+\S+\s+requise/i;
+    // (27/09) Le rapport « attente » que l'extension pose elle-même
+    // (marquerAttenteSession) : il entre aussi ici, pour que l'échéance suive le
+    // barème court du serveur au lieu de l'heure fixe de l'extension.
+    const ATTENTE_ANCRE_RE = /^En attente de ta connexion à /i;
     const PAGE_AUTH_SUPPRESSION_RE = /^Page inattendue pour une suppression \S+ : (\S+)/i;
     // Les murs de connexion, plateforme par plateforme, vivent dans
     // _shared/pages-de-job.ts — verrouillés par un selftest.
-    const SESSION_ATTENTE_MIN = 60;
     let pfAttenteSession: Record<string, unknown> | null = null;
+    // (27/09) La plateforme du mur, pour le noter sur le POSTE qui l'a vu.
+    let murPostePlateforme: string | null = null;
     if (statutEffectif === "pending" || statutEffectif === "failed") {
       // ══════════════════════════════════════════════════════════════════
       // DEUXIÈME DÉCLENCHEUR : L'ADRESSE DE FIN (2026-09-21)
@@ -1901,7 +1907,8 @@ serve(async (req) => {
       const brutVerdict = typeof body.error === "string" ? body.error : "";
       const mPage = brutVerdict.match(PAGE_AUTH_SUPPRESSION_RE);
       const parLeTexte = brutVerdict !== "" &&
-        (SESSION_REQUISE_RE.test(brutVerdict) || (mPage != null && estPageDeConnexionQuelconque(mPage[1])));
+        (SESSION_REQUISE_RE.test(brutVerdict) || (mPage != null && estPageDeConnexionQuelconque(mPage[1]))
+         || (statutEffectif === "pending" && ATTENTE_ANCRE_RE.test(brutVerdict)));
       const pfBodyS = (body.platform_fields && typeof body.platform_fields === "object"
         ? body.platform_fields : null) as Record<string, unknown> | null;
       const nommeUnChampS = pfBodyS != null && (
@@ -1933,19 +1940,95 @@ serve(async (req) => {
             const pfBase = pfBaseS;
             const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
               ? body.platform_fields : pfBase) as Record<string, unknown>;
-            const attentePrec = (pfBody.attente_session ?? pfBase.attente_session ?? null) as Record<string, unknown> | null;
+            // (27/09) Le COMPTE des observations se lit EN BASE : l'extension
+            // (marquerAttenteSession) incrémente déjà le sien — le reprendre et
+            // ajouter 1 comptait chaque mur deux fois (Louis : 2, 4, 6…).
+            const attentePrec = (pfBase.attente_session ?? pfBody.attente_session ?? null) as Record<string, unknown> | null;
             const maintenant = new Date().toISOString();
             const { next_action_after: _nao, ...pfSans } = pfBody;
+            const observations = (Number(attentePrec?.observations ?? 0) || 0) + 1;
+            murPostePlateforme = String(jrow.platform);
+            // ══ UNE SESSION PROUVÉE BONNE N'EST PAS UNE DÉCONNEXION (27/09) ══
+            // Règle de Nico : un refus ou une redirection ponctuels ne suffisent
+            // JAMAIS à déclarer quelqu'un déconnecté. Preuve de session bonne =
+            // la sonde de l'extension a dit « connecté » il y a moins de 30 min
+            // (y compris juste AVANT que l'extension n'écrive son « false » de
+            // mur — il reste dans extension_sessions.previous), ou un relevé de
+            // la plateforme a réussi dans les 2 h. Alors : refus passager —
+            // pending, nouvel essai dans 3, puis 6, puis 10 min, aucun
+            // « connecte-toi ». Au-delà de 3 refus passagers en 1 h sur ce job,
+            // on retombe dans l'attente de session (affichée comme avant).
+            // Chez Louis, le mur venait d'un AUTRE profil Chrome du compte, non
+            // connecté à Vinted : get-pending-jobs ne sert plus la plateforme à
+            // ce poste tant qu'un autre poste peut la prendre (mur_<pf>).
+            let preuveBonne: string | null = null;
+            if (jrow.platform !== "ebay") {
+              try {
+                const { data: profP } = await userClient
+                  .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+                const sP = (profP?.extension_sessions ?? null) as Record<string, unknown> | null;
+                const fraisSonde = (etat: Record<string, unknown> | null | undefined): boolean => {
+                  if (!etat || etat[jrow.platform] !== true) return false;
+                  const par = (etat.checked_at_par_plateforme ?? {}) as Record<string, unknown>;
+                  const t = Date.parse(String(par[jrow.platform] ?? etat.checked_at ?? ""));
+                  return Number.isFinite(t) && Date.now() - t < 30 * 60_000;
+                };
+                if (fraisSonde(sP)) preuveBonne = "sonde « connecté » (moins de 30 min)";
+                else if (sP && sP[jrow.platform] === false
+                  && fraisSonde((sP.previous ?? null) as Record<string, unknown> | null)) {
+                  preuveBonne = "sonde « connecté » juste avant ce mur (moins de 30 min)";
+                }
+                if (!preuveBonne) {
+                  const { data: rel } = await userClient.from("vinted_sync_runs")
+                    .select("id, finished_at")
+                    .eq("user_id", user.id).eq("platform", jrow.platform)
+                    .in("kind", ["annonces", "dressing"]).eq("status", "done").gt("items_vus", 0)
+                    .gte("finished_at", new Date(Date.now() - 2 * 3600_000).toISOString())
+                    .limit(1);
+                  if (Array.isArray(rel) && rel.length) preuveBonne = "relevé réussi (moins de 2 h)";
+                }
+              } catch (_e) { preuveBonne = null; }
+            }
+            const passagerPrec = (pfBase.refus_passager && typeof pfBase.refus_passager === "object")
+              ? pfBase.refus_passager as Record<string, unknown> : null;
+            const passagerRecent = passagerPrec != null
+              && Date.now() - Date.parse(String(passagerPrec.depuis ?? "")) < 3600_000;
+            const nPassager = passagerRecent ? (Number(passagerPrec?.n ?? 0) || 0) : 0;
+            if (preuveBonne && nPassager < 3) {
+              const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+              const { attente_session: _as, ...pfSansAttente } = pfSans as Record<string, unknown>;
+              pfAttenteSession = {
+                ...pfSansAttente,
+                needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+                next_action_after: new Date(Date.now() + [3, 6, 10][nPassager] * 60_000).toISOString(),
+                refus_passager: {
+                  n: nPassager + 1,
+                  depuis: passagerRecent ? passagerPrec?.depuis : maintenant,
+                  derniere: maintenant,
+                  preuve: preuveBonne,
+                  page_de_fin: parLAdresse ? String(finS?.tab_url ?? "").slice(0, 300) : null,
+                  motif: brutVerdict ? brutVerdict.slice(0, 300) : null,
+                  poste: sessionIdPoste ? posteCourt(sessionIdPoste) : null,
+                },
+              };
+              statutEffectif = "pending";
+              messageEffectif =
+                `${label} a refusé l'accès à la page à l'instant, mais ta connexion ${label} est bonne : ` +
+                "rien à faire de ton côté, nouvel essai automatique dans quelques minutes.";
+              raisonRequalif = `refus passager ${jrow.platform} (${preuveBonne}) : nouvel essai dans ${[3, 6, 10][nPassager]} min (${nPassager + 1}/3)`;
+            } else {
             pfAttenteSession = {
               ...pfSans,
               // La valeur EN BASE, jamais celle que l'extension vient
               // d'incrémenter : ce passage n'est pas une tentative.
               needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
-              next_action_after: new Date(Date.now() + SESSION_ATTENTE_MIN * 60_000).toISOString(),
+              // (27/09) Barème court d'abord (_shared/attente-session.js) : 3, 6,
+              // 10 min, puis horaire — et relance immédiate sur preuve.
+              next_action_after: new Date(Date.now() + delaiAttenteSessionMin(observations) * 60_000).toISOString(),
               attente_session: {
                 platform: jrow.platform,
                 depuis: typeof attentePrec?.depuis === "string" ? attentePrec.depuis : maintenant,
-                observations: (Number(attentePrec?.observations ?? 0) || 0) + 1,
+                observations,
                 derniere: maintenant,
                 motif: brutVerdict ? brutVerdict.slice(0, 300) : null,
                 // Ce qui a tranché : le texte du verdict, ou l'adresse de la
@@ -1965,6 +2048,7 @@ serve(async (req) => {
               `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
               `dès que tu seras reconnecté(e).`;
             raisonRequalif = `session ${jrow.platform} morte : attente sans tentative (observation ${pfAttenteSession.attente_session && (pfAttenteSession.attente_session as Record<string, unknown>).observations})`;
+            }
           }
         } catch (e) {
           // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
@@ -1979,7 +2063,7 @@ serve(async (req) => {
     // d'attente n'a pas pu s'appliquer, le verdict de l'extension est rétabli
     // tel quel (jamais un « Connexion requise » écrit en failed).
     if (beebsNonConfirmeRequalifie) {
-      if (pfAttenteSession && statutEffectif === "pending") {
+      if (pfAttenteSession && statutEffectif === "pending" && !pfAttenteSession.refus_passager) {
         messageEffectif = BEEBS_ATTENTE_MESSAGE;
       } else if (beebsErreurOriginale) {
         body.error = beebsErreurOriginale;
@@ -3288,6 +3372,22 @@ serve(async (req) => {
     // platform_fields SANS tentative consommée, AVEC l'échéance d'une heure et
     // le marqueur attente_session.
     if (pfAttenteSession) patch.platform_fields = pfAttenteSession;
+    // ── LE MUR EST NOTÉ SUR LE POSTE QUI L'A VU (2026-09-27, Louis) ─────────
+    // Deux profils Chrome sur un compte, un seul connecté à Vinted : chaque
+    // dépôt Vinted servi à l'autre profil tombait sur la page d'inscription.
+    // get-pending-jobs ne sert plus la plateforme à ce poste tant qu'un autre
+    // poste vivant du compte peut la prendre (mur_<plateforme>, levé par une
+    // publication réussie de ce poste : ok_<plateforme>). Best-effort.
+    if (murPostePlateforme && sessionIdPoste) {
+      try {
+        const adminM = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const maintenantM = new Date().toISOString();
+        await adminM.rpc("noter_poste_extension", {
+          p_user: user.id, p_session: sessionIdPoste,
+          p_patch: { le: maintenantM, [`mur_${murPostePlateforme}`]: maintenantM },
+        });
+      } catch (e) { console.warn("[update-job-status] mur du poste :", (e as Error)?.message ?? e); }
+    }
     // Compte eBay pas encore vendeur : platform_fields SANS tentative
     // consommée, SANS échéance de reprise, SANS aucun champ à compléter (il
     // n'y en a pas : le geste est chez eBay), AVEC le marqueur nommé
@@ -3632,6 +3732,18 @@ serve(async (req) => {
         .select("platform, platform_listing_id")
         .eq("id", jobId)
         .maybeSingle();
+      // (27/09) Une publication réussie par ce poste lève son mur sur la
+      // plateforme (cf. « le mur est noté sur le poste »). Best-effort.
+      if (sessionIdPoste && jobRow?.platform && ["vinted", "leboncoin", "beebs", "opla"].includes(String(jobRow.platform))) {
+        try {
+          const adminO = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const maintenantO = new Date().toISOString();
+          await adminO.rpc("noter_poste_extension", {
+            p_user: user.id, p_session: sessionIdPoste,
+            p_patch: { le: maintenantO, [`ok_${jobRow.platform}`]: maintenantO },
+          });
+        } catch (e) { console.warn("[update-job-status] publication du poste :", (e as Error)?.message ?? e); }
+      }
       const lienFourni = typeof body.listing_url === "string" && body.listing_url ? body.listing_url : null;
       if (lienFourni) {
         patch.listing_url = lienFourni;
