@@ -100,6 +100,12 @@ export const MIN_PHOTOS = 3;
  *  eBay 24). */
 export const MAX_PHOTOS = 20;
 
+/** Photos LUES par l'IA d'un scan Lens (2026-09-27). Le viseur en accepte
+ *  MAX_PHOTOS, comme le stepper ; l'analyse n'en lit que les cinq premières —
+ *  le coût d'une analyse et le quota Lens ne bougent pas. Les suivantes vont
+ *  sur la fiche et partent à la publication, jamais dans l'analyse. */
+export const LENS_PHOTOS_LUES = 5;
+
 /** L'entrée est-elle une photo retouchée (flux /enhanced/) ? Les deux formes. */
 export function estPhotoRetouchee(entree) {
   if (!entree) return false;

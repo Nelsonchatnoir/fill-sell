@@ -14,6 +14,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // ils vivent désormais dans LensIdentite.
 import { getRotatingLensPlaceholders } from '../utils/shared';
 import { televerserPhotos as televerserVersBucket } from '../utils/photosUpload';
+import { MAX_PHOTOS, LENS_PHOTOS_LUES } from '../utils/photos';
 import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
 import LensIdentite from '../components/LensIdentite';
 import { useTranslation } from '../i18n/useTranslation';
@@ -139,7 +140,9 @@ function LensScanHome({
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
   const [showPhotoSheet, setShowPhotoSheet] = useState(false);
-  const maxPhotos = 5; // uniforme tous tiers (2026-07-17) — plus de perk Pro-8
+  // Autant que le stepper (2026-09-27) — l'IA n'en lit que les LENS_PHOTOS_LUES
+  // premières (App.jsx, envoyerRequeteLens), les autres vont sur la fiche.
+  const maxPhotos = MAX_PHOTOS;
   const photoCount = lensPhotos.length;
 
   // Deux actions distinctes en natif (reprise S5, 2026-07-25) : caméra directe
@@ -734,7 +737,9 @@ const LensTab = memo(function LensTab({
       try{
         const{data:res,error:fnErr}=await supabase.functions.invoke('lens-analysis',{
           body:{
-            urls:uploadedUrls,
+            // L'IA ne lit que les LENS_PHOTOS_LUES premières (2026-09-27) ;
+            // le stepper, lui, reçoit TOUTES les photos (uploadedUrls, plus bas).
+            urls:uploadedUrls.slice(0,LENS_PHOTOS_LUES),
             description:lensDesc.trim()||null,
             prixAchat:parseFloat(lensBuy)||null,
             lang,
@@ -927,7 +932,7 @@ const LensTab = memo(function LensTab({
         onCamera={()=>{setShowPhotoSheet(false);handleLensCameraNative();}}
         onGallery={()=>{setShowPhotoSheet(false);handleLensPhotoNative();}}
         lang={lang}
-        maxPhotos={5}
+        maxPhotos={MAX_PHOTOS}
       />
 
       <input
@@ -1030,9 +1035,9 @@ const LensTab = memo(function LensTab({
         )}
         {lensPhotos.length>0?(
           <div style={{marginBottom:12}}>
-            {/* Grille photos — max 5 UNIFORME (2026-07-17, décision Nico : plus
-                de perk Pro-8, le pipeline lens plafonne à 5 partout). */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:lensPhotos.length<5?8:0}}>
+            {/* Grille photos — autant que le stepper (2026-09-27) ; l'IA ne lit
+                que les LENS_PHOTOS_LUES premières, toutes vont sur la fiche. */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:lensPhotos.length<MAX_PHOTOS?8:0}}>
               {lensPhotos.map((p,i)=>(
                 <div key={i} style={{position:"relative",width:"calc(33.33% - 6px)",aspectRatio:"1",flexShrink:0}}>
                   <img src={p.preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:10,display:"block"}}/>
@@ -1042,7 +1047,7 @@ const LensTab = memo(function LensTab({
                   >×</button>
                 </div>
               ))}
-              {lensPhotos.length<5&&(
+              {lensPhotos.length<MAX_PHOTOS&&(
                 <button
                   onClick={openLensPicker}
                   style={{width:"calc(33.33% - 6px)",aspectRatio:"1",background:"#F9FAFB",border:"2px dashed rgba(0,0,0,0.15)",borderRadius:10,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:"#8A8578",flexShrink:0,fontFamily:"inherit"}}
@@ -1051,7 +1056,7 @@ const LensTab = memo(function LensTab({
                 </button>
               )}
             </div>
-            <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/5 {lang==="en"?"photos":"photos"}</div>
+            <div style={{fontSize:11,color:"#A3A9A6",textAlign:"right"}}>{lensPhotos.length}/{MAX_PHOTOS} {lang==="en"?"photos":"photos"}</div>
           </div>
         ):(
           <button
@@ -1062,7 +1067,7 @@ const LensTab = memo(function LensTab({
           >
             <span style={{fontSize:40}}>📸</span>
             <div style={{fontSize:14,fontWeight:700,color:"#6B7A75"}}>
-              {lang==="en"?"Add photos (up to 5)":"Ajouter des photos (jusqu'à 5)"}
+              {lang==="en"?`Add photos (up to ${MAX_PHOTOS})`:`Ajouter des photos (jusqu'à ${MAX_PHOTOS})`}
             </div>
             <div style={{fontSize:12,color:"#A3A9A6"}}>
               {lang==="en"?"Tap to open camera or gallery":"Appuie pour ouvrir l'appareil photo ou la galerie"}

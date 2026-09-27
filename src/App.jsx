@@ -76,8 +76,8 @@ import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { offreEnCours, offreAOuvrir } from './lib/offreMail';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
-import { televerserPhotos, menagePhotosArticle } from './utils/photosUpload';
-import { entreesPhotos, urlsPhotos, MAX_PHOTOS } from './utils/photos';
+import { televerserPhotos, menagePhotosArticle, compresserImage } from './utils/photosUpload';
+import { entreesPhotos, urlsPhotos, MAX_PHOTOS, LENS_PHOTOS_LUES } from './utils/photos';
 import { searchMatch } from './utils/recherche';
 import { moveItem } from './utils/photosGalerie';
 import GaleriePhotos from './components/GaleriePhotos';
@@ -7261,7 +7261,9 @@ export default function App({ loginOnly = false }){
       }).catch(err=>{console.warn("[lens] lecture du blob impossible :",err?.message??err);return null;});
       if(!dataUrl){illisibles.push(file?.name??"photo");continue;}
       setLensPhotos(prev=>{
-        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
+        // Autant que le stepper (2026-09-27) : l'IA ne lit que les
+        // LENS_PHOTOS_LUES premières (envoyerRequeteLens), toutes vont sur la fiche.
+        if(prev.length>=MAX_PHOTOS)return prev;
         return[...prev,{preview:dataUrl,mime}];
       });
     }
@@ -7297,7 +7299,7 @@ export default function App({ loginOnly = false }){
       if(!photo.dataUrl)return;
       nouvelArticleAuViseur();
       setLensPhotos(prev=>{
-        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé)
+        if(prev.length>=MAX_PHOTOS)return prev; // autant que le stepper (2026-09-27)
         return[...prev,{preview:photo.dataUrl,mime:'image/jpeg'}];
       });
     }catch(e){
@@ -7339,7 +7341,9 @@ export default function App({ loginOnly = false }){
         try{ await Camera.requestPermissions({permissions:['photos']}); }catch(e){console.warn("[camera] demande de permission photothèque en échec — la sélection de photos suivante peut être refusée sans message :",e?.message??e);}
       }
 
-      const res=await Camera.pickImages({ quality:90, limit:5 });
+      // limit = la place qui reste (jamais 0 : pour pickImages, 0 = illimité ;
+      // le « + » disparaît de toute façon une fois le plafond atteint).
+      const res=await Camera.pickImages({ quality:90, limit:Math.max(1,MAX_PHOTOS-lensPhotos.length) });
       const picked=res?.photos??[];
       if(!picked.length)return;
       // pickImages ne fournit pas de DataUrl (contrairement à getPhoto) :
@@ -7361,7 +7365,7 @@ export default function App({ loginOnly = false }){
       if(!converted.length)return;
       nouvelArticleAuViseur();
       setLensPhotos(prev=>{
-        const room=5-prev.length; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
+        const room=MAX_PHOTOS-prev.length; // autant que le stepper (2026-09-27)
         if(room<=0)return prev;
         return[...prev,...converted.slice(0,room)];
       });
@@ -7465,7 +7469,15 @@ export default function App({ loginOnly = false }){
       headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
       body:JSON.stringify({
         scan_id:scanId,
-        urls,
+        // ── L'IA LIT CINQ PHOTOS, LA FICHE LES GARDE TOUTES (2026-09-27) ────
+        // Le viseur accepte autant de photos que le stepper. L'analyse n'en
+        // reçoit que les LENS_PHOTOS_LUES premières — coût d'une analyse et
+        // quota inchangés — et `photos_fiche` porte la liste ENTIÈRE, dans
+        // l'ordre choisi : c'est elle que la fiche créée par le scan garde, et
+        // que la reprise d'un scan interrompu réaffiche. Point de passage
+        // UNIQUE : le scan normal comme la reprise passent ici.
+        urls:urls.slice(0,LENS_PHOTOS_LUES),
+        photos_fiche:urls,
         description:lensDesc.trim()||null,
         prixAchat:parseFloat(lensBuy)||null,
         lang,
@@ -7645,15 +7657,22 @@ export default function App({ loginOnly = false }){
     try{
       // Upload photos to lens-temp (converts data: URLs to blobs — works on iOS WKWebView)
       const urls=[];
-      for(const photo of lensPhotos){
+      for(const[i,photo]of lensPhotos.entries()){
         const brut=await fetch(photo.preview).then(r=>r.blob());
-        // ⚠️ TOUTES les photos du lot, jamais la seule première (2026-09-05) :
+        // ⚠️ TOUTES les photos LUES du lot, jamais la seule première (2026-09-05) :
         // au-delà de 8 000 px de côté, l'API refuse l'image et fait tomber le
         // scan ENTIER avant la moindre lecture — 6 échecs muets en 20 jours.
         // Sous le seuil, `reduite` est faux et le blob d'origine repart intact :
         // la définition pleine reste la règle, la réduction est l'exception.
-        const{blob,mime:mimeReduit,reduite}=await reduireSousLimiteIA(brut);
-        const mime=reduite?mimeReduit:(photo.mime||"image/jpeg");
+        // ── AU-DELÀ DES PHOTOS LUES (2026-09-27) : l'IA ne les voit pas, elles
+        // montent compressées comme dans le stepper (compresserImage : 1024 px,
+        // JPEG 0,85 — les réglages des copies qui partiront en ligne), quelques
+        // centaines de Ko au lieu de plusieurs Mo : quinze photos de plus
+        // n'allongent pas l'attente du scan. Compression impossible → la photo
+        // part telle quelle, jamais perdue.
+        const{blob,mime}=i<LENS_PHOTOS_LUES
+          ?await reduireSousLimiteIA(brut).then(({blob,mime:mimeReduit,reduite})=>({blob,mime:reduite?mimeReduit:(photo.mime||"image/jpeg")}))
+          :await compresserImage(brut).then(b=>({blob:b,mime:"image/jpeg"}),()=>({blob:brut,mime:photo.mime||"image/jpeg"}));
         const ext=(mime||"image/jpeg").split("/")[1]||"jpg";
         const path=`lens/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
         const{error:upErr}=await supabase.storage.from('lens-temp').upload(path,blob,{contentType:mime});
