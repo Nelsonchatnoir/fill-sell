@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-27T11:13:31Z'; // recale cc7247c (0.6.71 : 0.6.70 + faux « déconnecté » — mur arbitré par la sonde avant tout « connecte-toi », refus passager 3/6/10 min, étape Vinted nommée, onglet Opla attendu 15 s, relevé 403 re-sondé). UTC VRAI lu par EPOCH (%ct 1790507611).
+export const EXTENSION_LAST_COMMIT = '2026-09-27T13:11:04Z'; // recale 2125579 (0.6.72 : 0.6.71 + alerte « plus en ligne » confirmée au cycle suivant sur les 5 plateformes, jamais sur une seule lecture). UTC VRAI lu par EPOCH (%ct 1790514664).
 // Historique de la valeur precedente : '2026-09-27T09:41:57Z' — recale 15205cf (0.6.70). Zip 0.6.70 (61cbced) JAMAIS téléversé, remplacé par la 0.6.71.
 // Historique de la valeur precedente : '2026-09-25T21:39:57Z' — recale efb7843 (0.6.69, publiée et servie : 53 comptes au 27/09).
 // Historique de la valeur precedente : '2026-09-25T19:28:44Z' — recale 77c47b4 (0.6.69 : + adresse LBC commune structurée et code postal exigé avant retrait, preuve de lecture écrite sur les retraits, retrait Vinted en vérification = attente, relevé Beebs d'une page vide par l'uid de session). Quatrième zip 0.6.69 (0e5e97f) JAMAIS téléversé, remplacé. UTC VRAI lu par EPOCH (%ct 1790372397).
