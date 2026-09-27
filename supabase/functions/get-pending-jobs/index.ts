@@ -3853,34 +3853,6 @@ serve(async (req) => {
       }
     }
 
-    let heldPipeline = 0;
-    if (!includeProcessing && !includeNeedsUser) {
-      const pfOf = (j: { platform_fields: unknown }) =>
-        (j.platform_fields as Record<string, unknown> | null) ?? {};
-      // Étape normalisée : miroir de repubStepDe (background.js) — absente ou
-      // inconnue = a_capturer, le défaut qui ne touche à rien.
-      const stepOf = (j: { platform_fields: unknown }) => {
-        const s = String(pfOf(j)["republish_step"] ?? "");
-        return s === "captured" || s === "deleted" ? s : "a_capturer";
-      };
-      const enAttenteProgrammee = (j: { platform_fields: unknown }) => {
-        const t = Date.parse(String(pfOf(j)["next_action_after"] ?? ""));
-        return Number.isFinite(t) && t > Date.now();
-      };
-      const filePipeline = out.filter((j) => j.action === "republish" && stepOf(j) !== "deleted");
-      if (filePipeline.length > 1) {
-        const garder = new Set<string>();
-        for (const etape of ["captured", "a_capturer"]) {
-          const cand = filePipeline.find((j) => stepOf(j) === etape && !enAttenteProgrammee(j));
-          if (cand) garder.add(String(cand.id));
-        }
-        const avant = out.length;
-        out = out.filter((j) =>
-          j.action !== "republish" || stepOf(j) === "deleted" || garder.has(String(j.id)));
-        heldPipeline = avant - out.length;
-      }
-    }
-
     // ══ UN ISBN CAPTURÉ NE SE PERD PLUS : PAS DE RETRAIT SANS LE POSTE QUI LE REMET ══
     // (2026-09-27, carhoa, « Livre sur la tentation des gobelins », job 279c046f)
     // L'annonce d'origine portait isbn = "0000000000000", la capture 8609 l'a
@@ -3901,6 +3873,9 @@ serve(async (req) => {
     //       par ce build sur la republication publiée).
     // Une réponse de la personne (vintedAspects.isbn valide) passe comme avant.
     // L'étape 'deleted' n'est JAMAIS retenue (B.5) : l'annonce n'existe plus.
+    // ⛔ PLACÉE AVANT LE COMPTE-GOUTTES (« article par article ») : après lui,
+    //    elle retirait le SEUL job 'captured' qu'il avait gardé, et plus aucune
+    //    republication valide ne partait derrière (3 livres de carhoa, v140).
     // L'annonce reste EN LIGNE. Seule écriture : le marqueur de retenue (daté
     // une fois, lu par l'app), conditionné à status = 'pending'.
     let heldIsbnCapture = 0;
@@ -3957,6 +3932,34 @@ serve(async (req) => {
       // En cas de pépin, la garde « requis de la destination » ci-dessous reste
       // la seule, comme hier.
       console.warn(`[get-pending-jobs] ISBN capturé : ${String((e as Error)?.message ?? e)}`);
+    }
+
+    let heldPipeline = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const pfOf = (j: { platform_fields: unknown }) =>
+        (j.platform_fields as Record<string, unknown> | null) ?? {};
+      // Étape normalisée : miroir de repubStepDe (background.js) — absente ou
+      // inconnue = a_capturer, le défaut qui ne touche à rien.
+      const stepOf = (j: { platform_fields: unknown }) => {
+        const s = String(pfOf(j)["republish_step"] ?? "");
+        return s === "captured" || s === "deleted" ? s : "a_capturer";
+      };
+      const enAttenteProgrammee = (j: { platform_fields: unknown }) => {
+        const t = Date.parse(String(pfOf(j)["next_action_after"] ?? ""));
+        return Number.isFinite(t) && t > Date.now();
+      };
+      const filePipeline = out.filter((j) => j.action === "republish" && stepOf(j) !== "deleted");
+      if (filePipeline.length > 1) {
+        const garder = new Set<string>();
+        for (const etape of ["captured", "a_capturer"]) {
+          const cand = filePipeline.find((j) => stepOf(j) === etape && !enAttenteProgrammee(j));
+          if (cand) garder.add(String(cand.id));
+        }
+        const avant = out.length;
+        out = out.filter((j) =>
+          j.action !== "republish" || stepOf(j) === "deleted" || garder.has(String(j.id)));
+        heldPipeline = avant - out.length;
+      }
     }
 
     // ══ RIEN NE SE SUPPRIME TANT QUE LA RECRÉATION N'EST PAS GARANTIE ═══════
