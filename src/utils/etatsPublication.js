@@ -57,7 +57,7 @@ export function natureAttente(job) {
   const source = String(pf.needs_user_source ?? "");
   const err = String(job?.error ?? "");
   if (job?.platform === "opla" && source === "opla_acces") return { kind: "attente_autorisation", motif: "autoriser_opla" };
-  if (source === "ebay_connexion_requise") return { kind: "attente_connexion", motif: "connexion" };
+  if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
   if (job?.platform === "ebay" && REAUTH_RE.test(err)) return { kind: "attente_connexion", motif: "reauth_ebay" };
   if (source === "connexion" || CONNEXION_RE.test(err)) return { kind: "attente_connexion", motif: "connexion" };
   // Tous les champs demandés, nommés ensemble (« Hauteur, Largeur, Longueur ») :

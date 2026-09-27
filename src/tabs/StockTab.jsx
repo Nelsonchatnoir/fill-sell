@@ -262,7 +262,9 @@ function murDeConnexion(job) {
   // par update-job-status le 2026-09-23) : le bouton ouvre le parcours eBay à
   // deux voies (API recommandée), pas une simple reconnexion — le serveur le
   // NOMME (needs_user_source), aucune heuristique de texte.
-  if (pf === 'ebay' && job?.platform_fields?.needs_user_source === 'ebay_connexion_requise') return MOTIFS.CONNEXION;
+  // (2026-09-27) « ebay_compte_a_finir » : relié mais pas prêt à vendre — le
+  // même parcours eBay le mène à l'étape qui manque.
+  if (pf === 'ebay' && ['ebay_connexion_requise', 'ebay_compte_a_finir'].includes(job?.platform_fields?.needs_user_source)) return MOTIFS.CONNEXION;
   if (pf === 'ebay' && /^REAUTH VENTE eBay/i.test(err)) return MOTIFS.REAUTH_EBAY;
   if (!MUR_CONNEXION_ANCRE[pf]?.test(err)) return null;
   return MOTIFS.CONNEXION;
