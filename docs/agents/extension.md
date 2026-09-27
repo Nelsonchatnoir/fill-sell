@@ -122,5 +122,5 @@ Ce dossier est la SOURCE : on ne le charge jamais tel quel dans Chrome
    sur le **BUILD_ID du zip publié** — **jamais** sur `EXTENSION_LAST_COMMIT`.
    `EXTENSION_MIN_BUILD` déclenche le bandeau « mets à jour ton extension »
    (0.6.66 au 27/09, relevé seulement sur décision).
-- **Version actuelle : 0.6.73, à téléverser** (`docs/agents/etat-2026-09-27.md`). Un numéro téléversé est
+- **Version actuelle : 0.6.75, à téléverser** (`docs/agents/etat-2026-09-27.md`). Un numéro téléversé est
   brûlé : une correction repart sur le numéro suivant.
