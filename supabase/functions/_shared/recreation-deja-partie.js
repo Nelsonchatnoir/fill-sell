@@ -100,13 +100,22 @@ const idNum = (s) => (/^\d+$/.test(String(s ?? "")) ? BigInt(String(s)) : null);
  * identifiants sont numériques, plus récente que l'ancienne), pas déjà
  * rattachée à un AUTRE job, pas disparue.
  */
-export function candidatesDepuisRetrait({ jobId, ancienId, deletedAt, lignes }) {
+/** @param {{ jobId: any, ancienId: any, deletedAt: any, lignes: any[], inventaireId?: any }} arg */
+export function candidatesDepuisRetrait({ jobId, ancienId, deletedAt, lignes, inventaireId = null }) {
   const retrait = ms(deletedAt);
   const ancien = idNum(ancienId);
   return (Array.isArray(lignes) ? lignes : []).filter((l) => {
     if (!l || !l.listing_id || String(l.listing_id) === String(ancienId ?? "")) return false;
     if (l.disparu_le) return false;
-    if (l.job_id && String(l.job_id) !== String(jobId)) return false;
+    // (2026-09-27) Une ligne rattachée à un AUTRE job ne compte plus que si
+    // elle appartient à une AUTRE fiche : la copie déjà en ligne de la MÊME
+    // fiche (importée ou rattachée par le relevé à un job de suivi) est
+    // précisément l'annonce qu'il ne faut pas redéposer — l'écarter donnait un
+    // faux « aucune », donc un doublon.
+    if (l.job_id && String(l.job_id) !== String(jobId)) {
+      const memeFiche = inventaireId != null && l.inventaire_id != null && String(l.inventaire_id) === String(inventaireId);
+      if (!memeFiche) return false;
+    }
     const vu = ms(l.created_at);
     if (retrait == null || vu == null || vu < retrait) return false;
     const n = idNum(l.listing_id);

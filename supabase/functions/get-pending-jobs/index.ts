@@ -2304,16 +2304,31 @@ serve(async (req) => {
         };
         retirerDeLaFile.add(idJ); // retenu par défaut ; seul « aucune » le rend à la file
 
-        // 1. Un relevé COMPLET de la plateforme, terminé APRÈS l'essai suspect.
+        // 1. Un relevé COMPLET de la plateforme, COMMENCÉ APRÈS l'essai suspect.
+        // (2026-09-27, famouus-x3 fb358c75) Trois défauts corrigés : un relevé
+        // « done » suffisait même clos [incomplet], hors-liste ou vide ; on
+        // comparait sa FIN (un relevé commencé avant l'essai pouvait finir
+        // après) ; et le tri par queued_at (NULL pour les relevés cron et
+        // bouton) sortait les plus récents de la liste. Et les 6 h d'attente se
+        // comptent depuis la PREMIÈRE retenue, pas depuis l'essai de la veille.
         const { data: runs } = await userClient.from("vinted_sync_runs")
-          .select("id, status, finished_at, queued_at")
+          .select("id, status, erreur, items_vus, started_at, finished_at, queued_at")
           .eq("user_id", user.id).eq("kind", "annonces").eq("platform", plateforme)
-          .order("queued_at", { ascending: false, nullsFirst: false }).limit(5);
+          .order("started_at", { ascending: false, nullsFirst: false }).limit(10);
         const liste = (runs ?? []) as Array<Record<string, unknown>>;
         const tSusp = Date.parse(susp.at);
-        const fait = liste.find((r) => r.status === "done" && Date.parse(String(r.finished_at ?? "")) > tSusp);
+        const releveComplet = (r: Record<string, unknown>) => {
+          const err = String(r.erreur ?? "");
+          if (r.status !== "done") return false;
+          if (err.startsWith("[incomplet]")) return false;
+          if (err.includes("n'a pas rendu sa liste") || err.includes("Hub vendeur n'a pas rendu son compteur")) return false;
+          return Number(r.items_vus ?? 0) > 0 || err.startsWith("[vide]");
+        };
+        const fait = liste.find((r) => releveComplet(r) && Date.parse(String(r.started_at ?? "")) > tSusp);
         if (!fait) {
-          if (Date.now() - tSusp > RELEVE_ATTENTE_MAX_H * 3600_000) {
+          const attenteDepuis = Date.parse(String(pf["recreation_attente_depuis"] ?? "")) || Date.now();
+          if (!pf["recreation_attente_depuis"]) pf["recreation_attente_depuis"] = new Date(attenteDepuis).toISOString();
+          if (Date.now() - attenteDepuis > RELEVE_ATTENTE_MAX_H * 3600_000) {
             await needsUser(
               `Un essai précédent a peut-être déjà remis ton annonce en ligne sur ${nomPf}, et tes annonces n'ont pas pu ` +
               `être relues depuis. Pour ne jamais la mettre en double, on ne redépose pas à l'aveugle : regarde tes annonces ` +
@@ -2332,7 +2347,9 @@ serve(async (req) => {
           }
           const msgAttente = `On relit tes annonces ${nomPf} avant de redéposer : un essai précédent a peut-être déjà ` +
             "remis ton annonce en ligne, et elle ne doit jamais partir en double. Rien à faire de ton côté.";
-          if (j.error !== msgAttente) await ecrire({ error: msgAttente }, "message d'attente");
+          if (j.error !== msgAttente || !(j.platform_fields as Record<string, unknown> | null)?.["recreation_attente_depuis"]) {
+            await ecrire({ error: msgAttente, platform_fields: pf }, "message d'attente");
+          }
           continue;
         }
 
@@ -2340,9 +2357,9 @@ serve(async (req) => {
         const ancienId = String(pf["old_platform_listing_id"] ?? "").trim()
           || (String(pf["old_listing_url"] ?? "").match(/(\d{6,})(?:[/?#]|$)/)?.[1] ?? "");
         const { data: lignes } = await userClient.from("annonces_plateforme")
-          .select("listing_id, url, titre, prix, photo_url, statut_plateforme, job_id, created_at, disparu_le")
+          .select("listing_id, url, titre, prix, photo_url, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
           .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
-        const candidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [] });
+        const candidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
         let ancienne: Record<string, unknown> | null = null;
         if (ancienId) {
           const { data: a } = await userClient.from("annonces_plateforme")
