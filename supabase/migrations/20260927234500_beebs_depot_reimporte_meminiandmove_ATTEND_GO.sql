@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ NON APPLIQUÉE — ATTEND LE GO DE NICO : ELLE DÉCLENCHE LE RETRAIT D'UNE
+-- ⛔ APPLIQUÉE le 27/09 vers 22:55 sur GO de Nico (condition vérifiée : copie sur une AUTRE plateforme que la vente, liée par dépôt FillSell ou identifiant, jamais par le titre) : ELLE DÉCLENCHE LE RETRAIT D'UNE
 -- ANNONCE BEEBS EN LIGNE (article vendu)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- meminiandmove, « Pantalon cigarette Sandro gris anthracite – Taille 36 »

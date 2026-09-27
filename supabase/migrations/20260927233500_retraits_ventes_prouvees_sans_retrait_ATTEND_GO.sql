@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ NON APPLIQUÉE — ATTEND LE GO DE NICO : ELLE RETIRE 4 ANNONCES EN LIGNE
+-- ⛔ APPLIQUÉE le 27/09 vers 22:55 sur GO de Nico (condition vérifiée : copie sur une AUTRE plateforme que la vente, liée par dépôt FillSell ou identifiant, jamais par le titre) : ELLE RETIRE 4 ANNONCES EN LIGNE
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Revue des 36 annonces encore en ligne sur une fiche « vendue » (27/09 ~21:55).
 -- Quatre copies d'articles dont la vente est PROUVÉE sont toujours en vente, et
