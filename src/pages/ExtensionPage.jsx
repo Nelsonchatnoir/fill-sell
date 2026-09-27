@@ -18,10 +18,32 @@ import useSeo from "../lib/seo";
 const WEBSTORE_URL = "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm";
 const GUIDE = "/extension-guide";
 
+// ── TÉLÉPHONE OU ORDINATEUR ? (27/09, audit du parcours du nouvel inscrit) ──
+// Mesuré sur les demandes de lien du 18 au 27/09 (email_logs extension_link ×
+// auth.sessions.user_agent) : ~80 % des personnes qui demandent le lien
+// n'ouvrent JAMAIS une session FillSell sur un ordinateur ensuite — et celles
+// qui le font ont l'extension reliée dans 95 % des cas. La cassure est donc
+// AVANT l'installation : le mail est ouvert sur le téléphone (Apple/iOS pour
+// une bonne part), le lien mène ici, et cette page proposait « Installer
+// depuis le Chrome Web Store » à quelqu'un dont le Chrome ne sait pas
+// installer d'extension. Sur un écran tactile, on le dit, et on dit quoi
+// faire : rouvrir ce même lien sur un ordinateur.
+function surTelephone() {
+  try {
+    const ua = String(navigator.userAgent ?? "");
+    if (/Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(ua)) return true;
+    // iPad « desktop mode » : UA Macintosh, mais pointeur tactile + multi-touch.
+    return /Macintosh/i.test(ua) && Number(navigator.maxTouchPoints ?? 0) > 1;
+  } catch {
+    return false;
+  }
+}
+
 export default function ExtensionPage() {
   const nav = useNavigate();
   const [lang] = useState(() => localStorage.getItem("fs_lang") || "fr");
   const en = lang === "en";
+  const [mobile] = useState(surTelephone);
 
   // Page à potentiel SEO (« extension revente vinted », « publier vinted
   // leboncoin automatiquement ») : on lui donne ses propres meta plutôt que de
@@ -89,23 +111,42 @@ export default function ExtensionPage() {
             : "L'extension FillSell publie automatiquement tes annonces générées sur Vinted, Leboncoin, Beebs, eBay et Opla, directement depuis ton navigateur."}
         </p>
 
-        {/* Disponible sur le Web Store (2026-07-25) */}
-        <div style={{ background: "#E7F3F0", border: `1px solid ${UI.teal}66`, borderRadius: 14, padding: "12px 14px", marginBottom: 16, fontSize: 13, lineHeight: 1.5, color: UI.tealDeep, fontWeight: 600 }}>
-          ✅ {en
-            ? "Now on the Chrome Web Store — one-click install, automatic updates."
-            : "Disponible sur le Chrome Web Store — installation en un clic, mises à jour automatiques."}
-        </div>
+        {mobile ? (
+          /* Sur un téléphone : PAS de bouton d'installation — Chrome mobile ne
+             sait pas installer d'extension, et ce bouton était une impasse
+             (cf. surTelephone). On dit où ça se passe, et comment y revenir. */
+          <div style={{ background: `${UI.amber}18`, border: `1px solid ${UI.amber}66`, borderRadius: 16, padding: "14px 16px", marginBottom: 22, fontSize: 14, lineHeight: 1.55, color: "#8A5A3C" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
+              📱 {en ? "You're on your phone" : "Tu es sur ton téléphone"}
+            </div>
+            {en
+              ? "The extension installs on a computer, in Chrome — a phone can't do it. Open this same link on your computer: fillsell.app/extension. That's where it happens; everything else stays on your phone."
+              : "L'extension s'installe sur un ordinateur, dans Chrome — un téléphone ne peut pas le faire. Ouvre ce même lien sur ton ordinateur : fillsell.app/extension. C'est là que ça se passe ; tout le reste continue sur ton téléphone."}
+            <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, color: UI.tealDeep }}>
+              🔗 fillsell.app/extension
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Disponible sur le Web Store (2026-07-25) */}
+            <div style={{ background: "#E7F3F0", border: `1px solid ${UI.teal}66`, borderRadius: 14, padding: "12px 14px", marginBottom: 16, fontSize: 13, lineHeight: 1.5, color: UI.tealDeep, fontWeight: 600 }}>
+              ✅ {en
+                ? "Now on the Chrome Web Store — one-click install, automatic updates."
+                : "Disponible sur le Chrome Web Store — installation en un clic, mises à jour automatiques."}
+            </div>
 
-        {/* CTA principal : fiche Chrome Web Store */}
-        <a
-          href={WEBSTORE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", boxSizing: "border-box", padding: "15px 0", borderRadius: 999, marginBottom: 22, textDecoration: "none", fontSize: 15, fontWeight: 700, color: "#FFFFFF", background: `linear-gradient(120deg,${UI.teal},${UI.tealDeep})`, boxShadow: "0 10px 24px rgba(47,158,144,0.28)" }}
-        >
-          <span style={{ fontSize: 18 }}>🧩</span>
-          {en ? "Install from the Chrome Web Store" : "Installer depuis le Chrome Web Store"}
-        </a>
+            {/* CTA principal : fiche Chrome Web Store */}
+            <a
+              href={WEBSTORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", boxSizing: "border-box", padding: "15px 0", borderRadius: 999, marginBottom: 22, textDecoration: "none", fontSize: 15, fontWeight: 700, color: "#FFFFFF", background: `linear-gradient(120deg,${UI.teal},${UI.tealDeep})`, boxShadow: "0 10px 24px rgba(47,158,144,0.28)" }}
+            >
+              <span style={{ fontSize: 18 }}>🧩</span>
+              {en ? "Install from the Chrome Web Store" : "Installer depuis le Chrome Web Store"}
+            </a>
+          </>
+        )}
 
         {/* Ce que ça débloque — la récompense AVANT la procédure (2026-09-01,
             audit onboarding) : le mail qui amène ici vend « ton dressing
