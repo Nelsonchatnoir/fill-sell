@@ -7147,6 +7147,10 @@ const StockTab = memo(function StockTab({
       // Une attente de session (session plateforme morte) est levée par la
       // relance : l'utilisateur dit « j'ai rouvert », on re-sonde tout de suite.
       delete pf.attente_session;
+      // (27/09, point 19 — samazer59) Le parcage « connexion » est levé avec
+      // elle : jamais un marqueur de mur oublié sur un job remis en file.
+      if (['connexion', 'session_vinted'].includes(String(pf.needs_user_source ?? ''))) delete pf.needs_user_source;
+      delete pf.refus_passager;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();
       // (2026-09-25, point 2) Un dépôt parti dans un fourre-tout (« Divers >
