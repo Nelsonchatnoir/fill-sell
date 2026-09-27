@@ -1401,6 +1401,28 @@ async function republishListing(job) {
         reprise.etat = etatAnnonce;
         oplaTracer(`etat: reprise de l'annonce elle-même « ${etatAnnonce} »${etatJob ? ` (le job portait « ${etatJob} »)` : ""}`);
       }
+      // ── LA MARQUE ET LA TAILLE DE L'ANNONCE ELLE-MÊME (0.6.74, 27/09) ─────
+      // doriane-henri (inscrite le 27/09, 189 annonces Opla importées) : 19
+      // republications refusées ICI par le pré-vol (« Opla exige une marque »,
+      // « W_SLIM_STRAIGHT_PANTS exige une taille ») parce que la fiche IMPORTÉE
+      // n'a ni marque ni taille — alors que l'annonce en ligne, lue juste
+      // au-dessus, les porte. Une republication se juge sur l'ANNONCE, jamais
+      // sur la fiche importée : on reprend sa marque et sa taille (code de SA
+      // grille, déjà valide pour SA catégorie) quand le job n'en a pas. Rien
+      // n'est deviné : absentes de l'annonce aussi → le pré-vol refuse comme
+      // avant et la personne choisit.
+      const marqueJob = String(pfA.marque ?? "").trim();
+      const marqueAnnonce = typeof art.brand === "string" ? art.brand.trim() : "";
+      if (!marqueJob && marqueAnnonce) {
+        reprise.marque = marqueAnnonce;
+        oplaTracer(`marque: reprise de l'annonce elle-même « ${marqueAnnonce} »`);
+      }
+      const mdA = (art.metadata && typeof art.metadata === "object") ? art.metadata : {};
+      const tailleAnnonce = Array.isArray(mdA.sizes) && mdA.sizes.length ? String(mdA.sizes[0] ?? "").trim() : "";
+      if (!pfA.oplaSizeChoice && !String(pfA.taille ?? "").trim() && tailleAnnonce) {
+        reprise.oplaSizeChoice = tailleAnnonce;
+        oplaTracer(`taille: reprise de l'annonce elle-même « ${tailleAnnonce} »`);
+      }
       if (Object.keys(reprise).length) job = { ...job, platform_fields: { ...pfA, ...reprise } };
     }
 
