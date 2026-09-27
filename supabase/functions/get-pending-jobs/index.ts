@@ -19,7 +19,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
-import { lienDepuisId } from "../_shared/annonce-lien.ts";
+import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
 
 /** Taille d'article en NOMBRE NU (« 36 », « 42 ») : le seul périmètre de la
  *  conversion nombre → lettre à la publication. Une forme préfixée (« EU 36 »)
@@ -2581,83 +2581,150 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] garde « un seul retrait en vol » : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
-    // ══ DEUX ARTICLES, UNE SEULE ANNONCE : ON NE RETIRE RIEN (2026-09-19) ═══
-    // Mesuré ce soir : 9 URL Leboncoin portées par 2 articles ou plus, sur 4
-    // comptes. Cause établie — la passe de récupération de l'URL
-    // (background.js, findListingLinkInPage) attribue l'annonce PAR TITRE
-    // quand elle n'a pas d'identifiant, et deux titres jumeaux se croisent
-    // (« Carhartt T-shirt coton noir XL » ×2, « Ordi tablette Genius XL » et
-    // « Vtech ordi tablette genius XL »…). C'est la règle déjà écrite pour
-    // Beebs — « sans lien, JAMAIS par titre » — jamais appliquée ici.
-    //
-    // La conséquence est le pire geste du produit : le retrait d'un article
-    // supprime l'annonce d'un AUTRE. Tant que le croisement existe, aucun
+    // ══ DEUX ARTICLES, UNE SEULE ANNONCE : ON NE RETIRE RIEN — ET ON DEMANDE ══
+    // (2026-09-19 ; revu le 27/09, nicolas.menar : la republication du lot
+    // d74689a8 est restée pending EN SILENCE depuis le 23/09 — le marqueur
+    // était posé à chaque poll, et personne ne le lisait.)
+    // Cause des croisements : la récupération du lien par l'extension se
+    // rabattait sur le TITRE (« doudou » ⊂ « doudous »), même quand la
+    // plateforme avait rendu l'identifiant. Tarie le 27/09 : trigger
+    // cross_post_jobs_lien_jamais_croise (toutes versions) + extension 0.6.70.
+    // La conséquence reste le pire geste du produit : le retrait d'un article
+    // supprimerait l'annonce d'un AUTRE. Tant que le croisement existe, aucun
     // geste destructeur ne part.
-    // ⛔ PÉRIMÈTRE : les jobs qui vont RETIRER — action 'delete', et
-    //    'republish' dont l'étape suivante est le retrait ('captured'). Une
-    //    publication neuve ne détruit rien : elle passe.
-    // ⛔ On RETIENT, on ne requalifie pas : statut inchangé, aucune tentative
-    //    consommée, rien de débité. Le job repart tout seul dès que le
-    //    croisement est défait — exactement comme la porte pro Leboncoin.
-    // ⛔ Comparaison sur l'URL NORMALISÉE : c'est l'identifiant d'annonce qui
-    //    compte, pas le slug de catégorie qui le précède.
+    // ⛔ PÉRIMÈTRE : les jobs qui vont RETIRER — 'delete', et 'republish' à
+    //    l'étape 'captured'. Une publication neuve ne détruit rien : elle passe.
+    // 27/09 :
+    //   · l'annonce se lit PAR PLATEFORME (idDepuisLien : Leboncoin, Beebs,
+    //     Vinted, eBay, Opla), platform_listing_id à défaut — l'ancienne
+    //     expression ne voyait que Leboncoin et eBay ;
+    //   · plus d'attente muette : le geste passe en needs_user avec LA question
+    //     « quel article vend cette annonce ? » (mini-éditeur, liste fermée des
+    //     articles qui la portent). L'annonce reste en ligne, rien n'est retiré ;
+    //   · la réponse (platform_fields.annonce_partagee.choix) est appliquée ICI
+    //     au passage suivant : defaire_croisement_annonce rend l'annonce à
+    //     l'article choisi (les jobs des autres sont recâblés sur leur
+    //     identifiant certain, sinon déliés) ; si c'est l'article du geste, il
+    //     repart ; sinon le geste est annulé par la fonction — rien n'est retiré.
     try {
-      const idAnnonce = (url: unknown) => {
-        const m = String(url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
-        return m ? m[1] : null;
+      const pfR = (j: { platform_fields: unknown }) =>
+        ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      const cleDe = (j: { platform: unknown; listing_url?: unknown; platform_listing_id?: unknown }) => {
+        const id = idDepuisLien(String(j.platform ?? ""), j.listing_url) ?? (String(j.platform_listing_id ?? "").trim() || null);
+        return id ? { id, cle: `${String(j.platform)}:${id}` } : null;
       };
       const vaRetirer = (j: { action: string | null; platform_fields: unknown }) => {
         const a = j.action ?? "publish";
         if (a === "delete") return true;
         if (a !== "republish") return false;
-        const pf = ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
-        return String(pf["republish_step"] ?? "a_capturer") === "captured";
+        return String(pfR(j)["republish_step"] ?? "a_capturer") === "captured";
       };
-      const destructeurs = out.filter((j) => vaRetirer(j) && idAnnonce(j.listing_url) && j.inventaire_id != null);
+      const NOM_PF: Record<string, string> = { leboncoin: "Leboncoin", beebs: "Beebs", vinted: "Vinted", ebay: "eBay", opla: "Opla" };
+
+      // ── 1. Les réponses de la personne ─────────────────────────────────────
+      const repondus = out.filter((j) => vaRetirer(j) && j.inventaire_id != null
+        && String(((pfR(j)["annonce_partagee"] ?? {}) as Record<string, unknown>)["choix"] ?? "").trim());
+      const tranches = new Set<string>();
+      if (repondus.length) {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        for (const j of repondus) {
+          tranches.add(String(j.id));
+          const ap = { ...((pfR(j)["annonce_partagee"] ?? {}) as Record<string, unknown>) };
+          const options = Array.isArray(ap["options"]) ? ap["options"] as Array<Record<string, unknown>> : [];
+          const choisi = options.find((o) => String(o["label"]) === String(ap["choix"]));
+          const pf = { ...pfR(j) };
+          if (!choisi) {
+            // Réponse illisible : la question sera reposée au passage suivant.
+            delete ap["choix"];
+            pf["annonce_partagee"] = ap;
+            await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending").then(() => {}, () => {});
+            continue;
+          }
+          const garde = Number(choisi["inventaire_id"]);
+          const { data: res, error: rErr } = await admin.rpc("defaire_croisement_annonce", {
+            p_user: user.id, p_platform: j.platform, p_listing_id: String(ap["annonce"]), p_inventaire_garde: garde,
+          });
+          if (rErr) {
+            console.warn(`[get-pending-jobs] annonce partagée ${String(j.id).slice(0, 8)} : ${rErr.message} — rien n'est retiré, reprise au prochain passage`);
+            continue;
+          }
+          console.log(`[get-pending-jobs] annonce partagée ${String(ap["annonce"])} (${j.platform}) : la personne l'attribue à l'article ${garde} — ${JSON.stringify(res)}`);
+          if (garde === Number(j.inventaire_id)) {
+            ap["tranche_le"] = new Date().toISOString();
+            ap["garde"] = garde;
+            pf["annonce_partagee"] = ap;
+            delete pf["retrait_bloque_url_partagee"];
+            delete pf["needs_user_source"];
+            await userClient.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending").then(() => {}, () => {});
+          }
+          // Sinon : defaire_croisement_annonce a annulé ce geste (il visait
+          // l'annonce d'un autre article) — rien à faire de plus ici.
+        }
+        // Le geste tranché repart au passage suivant, relu d'un état propre.
+        out = out.filter((j) => !tranches.has(String(j.id)));
+      }
+
+      // ── 2. Les croisements : la question, jamais l'attente muette ──────────
+      const destructeurs = out.filter((j) => vaRetirer(j) && cleDe(j) && j.inventaire_id != null);
       if (destructeurs.length) {
-        // Qui d'autre, chez CETTE personne, porte la même annonce ? On relit
-        // la base : le lot servi ne contient qu'une partie de ses jobs.
-        const ids = [...new Set(destructeurs.map((j) => idAnnonce(j.listing_url)))];
+        const cles = new Set(destructeurs.map((j) => cleDe(j)!.cle));
         const { data: tousJobs } = await userClient
           .from("cross_post_jobs")
-          .select("id, inventaire_id, listing_url, title")
+          .select("id, platform, inventaire_id, listing_url, platform_listing_id, title, price")
           .eq("user_id", user.id)
-          .not("listing_url", "is", null)
           .not("inventaire_id", "is", null)
           .in("status", ["pending", "processing", "published", "needs_user"]);
-        const articlesParAnnonce = new Map<string, Map<number, string>>();
+        const articlesParAnnonce = new Map<string, Map<number, { titre: string; prix: number | null }>>();
         for (const r of (tousJobs ?? [])) {
-          const row = r as { inventaire_id: number; listing_url: string; title: string | null };
-          const key = idAnnonce(row.listing_url);
-          if (!key || !ids.includes(key)) continue;
-          if (!articlesParAnnonce.has(key)) articlesParAnnonce.set(key, new Map());
-          articlesParAnnonce.get(key)!.set(row.inventaire_id, String(row.title ?? "").slice(0, 60));
+          const row = r as { platform: string; inventaire_id: number; listing_url: string | null; platform_listing_id: string | null; title: string | null; price: number | null };
+          const c = cleDe(row);
+          if (!c || !cles.has(c.cle)) continue;
+          if (!articlesParAnnonce.has(c.cle)) articlesParAnnonce.set(c.cle, new Map());
+          const m = articlesParAnnonce.get(c.cle)!;
+          if (!m.has(row.inventaire_id)) m.set(row.inventaire_id, { titre: String(row.title ?? "").slice(0, 70), prix: row.price ?? null });
         }
-        const retenus: string[] = [];
         const bloques = new Set<string>();
+        const traces: string[] = [];
         for (const j of destructeurs) {
-          const key = idAnnonce(j.listing_url)!;
-          const articles = articlesParAnnonce.get(key);
+          const c = cleDe(j)!;
+          const articles = articlesParAnnonce.get(c.cle);
           if (!articles || articles.size < 2) continue;
-          const autres = [...articles.entries()].filter(([inv]) => inv !== j.inventaire_id);
           bloques.add(String(j.id));
-          retenus.push(`${String(j.id).slice(0, 8)} (annonce ${key} aussi portée par ${autres.map(([, t]) => `« ${t} »`).join(", ")})`);
-          const pf = { ...(((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>) };
-          pf["retrait_bloque_url_partagee"] = {
-            le: new Date().toISOString(),
-            annonce: key,
-            autres_articles: autres.map(([inv, t]) => ({ inventaire_id: inv, titre: t })),
-            motif: "deux articles portent la meme annonce : retirer celui-ci supprimerait l annonce de l autre",
+          const vus = new Map<string, number>();
+          const options = [...articles.entries()].map(([inv, a]) => {
+            let label = `« ${a.titre || "article sans titre"} »${a.prix != null ? ` — ${a.prix} €` : ""}`;
+            const n = (vus.get(label) ?? 0) + 1;
+            vus.set(label, n);
+            if (n > 1) label = `${label} (fiche n° ${n})`;
+            return { inventaire_id: inv, label };
+          });
+          const pf = { ...pfR(j) };
+          const apAvant = (pf["annonce_partagee"] ?? {}) as Record<string, unknown>;
+          const depuis = String(apAvant["depuis"] ?? (pf["retrait_bloque_url_partagee"] as Record<string, unknown> | undefined)?.["le"] ?? new Date().toISOString());
+          pf["annonce_partagee"] = { annonce: c.id, plateforme: j.platform, options, depuis };
+          pf["needs_user_source"] = "annonce_partagee";
+          pf["needsUserField"] = {
+            platform: j.platform,
+            field_key: "article_de_l_annonce",
+            field_label: "Article vendu par cette annonce",
+            allowed_values: options.map((o) => o.label),
+            target: { root: "annonce_partagee", key: "choix" },
           };
-          await userClient.from("cross_post_jobs")
-            .update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending")
-            .then(() => {}, () => {});
+          const nom = NOM_PF[String(j.platform)] ?? String(j.platform);
+          const message =
+            `Cette annonce ${nom} est rattachée à ${articles.size} articles de ton stock : ${options.map((o) => o.label).join(" et ")}. ` +
+            (j.action === "delete" ? "Avant de la retirer" : "Avant de la republier (ce qui la retire d'abord)") +
+            ", dis-nous lequel elle vend vraiment. Elle est toujours en ligne : rien n'a été retiré.";
+          const { data: maj } = await userClient.from("cross_post_jobs")
+            .update({ status: "needs_user", error: message, platform_fields: pf })
+            .eq("id", j.id).eq("status", "pending").select("id");
+          traces.push(`${String(j.id).slice(0, 8)} (annonce ${c.id}, ${articles.size} articles)${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
         }
-        if (retenus.length) {
+        if (bloques.size) {
           out = out.filter((j) => !bloques.has(String(j.id)));
           console.warn(
-            `[get-pending-jobs] user=${user.id} : ${retenus.length} geste(s) de RETRAIT retenu(s) — deux articles portent la même annonce, ` +
-            `rien n'est retiré, aucune tentative consommée : ${retenus.join(" ; ")}`,
+            `[get-pending-jobs] user=${user.id} : ${bloques.size} geste(s) de RETRAIT → needs_user « quel article vend cette annonce ? », ` +
+            `rien n'est retiré : ${traces.join(" ; ")}`,
           );
         }
       }
