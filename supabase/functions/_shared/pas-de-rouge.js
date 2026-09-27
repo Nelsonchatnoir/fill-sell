@@ -103,6 +103,8 @@ const LBC_PAYANT_RE = /ne propose aucune option gratuite|Boostez votre annonce.*
 
 /** Beebs n'a aucun rayon pour cet objet — vérifié, pas supposé. */
 const BEEBS_RAYON_RE = /n'a pas de rayon reconnu/i;
+/** Beebs : son formulaire a refusé l'enregistrement (TypeError de SON serveur, 27/09). */
+const BEEBS_ENREGISTREMENT_RE = /Une erreur est survenue lors de l['’]enregistrement de votre annonce/i;
 
 /** Une taille hors de la grille de la plateforme : liste fermée, choix à faire. */
 const TAILLE_HORS_GRILLE_RE = /n'appartient pas à la grille/i;
@@ -484,6 +486,51 @@ export function classerEchec(arg) {
   const reprise = (motif, message, dansMinutes) => ({
     verdict: "reprise", statut: "pending", motif, message, dansMinutes: espacer(dansMinutes),
   });
+
+  // ── BEEBS N'ENREGISTRE PAS L'ANNONCE : 3 REFUS SUR LA MÊME CATÉGORIE = INFO,
+  //    JOB CLOS (2026-09-27, GO Nico — xxewwer af4ea3d3) ─────────────────────
+  // « Une erreur est survenue lors de l'enregistrement de votre annonce » :
+  // le formulaire Beebs répond 200 avec une TypeError de SON serveur
+  // (« Cannot read properties of undefined (reading 'id') »). Reproduit deux
+  // fois à la main le 27/09 sur un autre compte, même catégorie (Maison ›
+  // Meubles › Meubles de rangement), marque « Autre » puis « Sans marque » :
+  // c'est la CATÉGORIE, côté Beebs — pas l'annonce, pas la marque, pas le
+  // compte. Le job tournait toutes les 6 h en « on refait un essai » (14 fois).
+  // Règle : on compte les refus PAR CATÉGORIE (beebs_enregistrement_echecs) ;
+  // au 3e, on le dit et on clôt — rien n'a été publié, rien facturé, les
+  // autres plateformes continuent. Une reprise « inconnu » déjà comptée sur ce
+  // même refus (pas_de_rouge_reprises) vaut pour l'historique : un job qui a
+  // déjà buté quatorze fois n'a pas droit à trois essais de plus.
+  if (platform === "beebs" && BEEBS_ENREGISTREMENT_RE.test(t)) {
+    const chemin = Array.isArray(pf.beebsCategoryPath)
+      ? pf.beebsCategoryPath.map(String).join(" › ") : String(pf.beebsCategoryPath ?? "").trim();
+    const prec = pf.beebs_enregistrement_echecs && typeof pf.beebs_enregistrement_echecs === "object"
+      ? pf.beebs_enregistrement_echecs : null;
+    const historique = prec && String(prec.categorie ?? "") === chemin
+      ? (Number(prec.n) || 0)
+      : (String(pf?.pas_de_rouge?.motif ?? "") === "inconnu_reprise" ? reprisesFaites : 0);
+    const n = historique + 1;
+    const marqueur = { beebs_enregistrement_echecs: { categorie: chemin, n, derniere: new Date().toISOString() } };
+    const rayon = chemin ? ` dans la catégorie « ${chemin} »` : "";
+    if (n >= 3) {
+      return {
+        verdict: "info", statut: "cancelled", motif: "beebs_enregistrement_refuse", pf: marqueur,
+        message:
+          `Beebs n'arrive pas à enregistrer cette annonce${rayon} : son formulaire répond « Une erreur est survenue ` +
+          `lors de l'enregistrement » à chaque essai (${n} fois), y compris quand on le remplit à la main. C'est une panne ` +
+          "de Beebs sur cette catégorie, pas ton annonce. On arrête ici : rien n'a été publié sur Beebs, rien ne t'a été " +
+          "facturé, et tes autres plateformes ne sont pas concernées. Tu pourras relancer Beebs pour cet article plus tard.",
+      };
+    }
+    return {
+      ...reprise("beebs_enregistrement",
+        `Beebs n'a pas enregistré l'annonce${rayon} (« Une erreur est survenue lors de l'enregistrement », essai ${n} sur 3) : ` +
+        "rien n'a été publié. On refait un essai tout seuls plus tard ; au troisième refus dans cette catégorie, on arrête et on te le dit.",
+        45),
+      pf: marqueur,
+    };
+  }
+
   if (PHOTOS_RE.test(t)) {
     return reprise("photos_non_deposees",
       `Les photos n'ont pas fini d'arriver chez ${nom} : on a arrêté AVANT de toucher à quoi que ce soit, ` +

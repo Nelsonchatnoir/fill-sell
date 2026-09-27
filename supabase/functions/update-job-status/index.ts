@@ -3314,6 +3314,9 @@ serve(async (req) => {
         if (sortie.source) pfS["needs_user_source"] = sortie.source;
         else delete pfS["needs_user_source"];
         if (sortie.champ && !pfS["needsUserField"]) pfS["needsUserField"] = sortie.champ;
+        // (27/09) Marqueurs que le classement veut garder d'un essai à l'autre
+        // (compteur de refus Beebs par catégorie) : posés tels quels.
+        if (sortie.pf && typeof sortie.pf === "object") Object.assign(pfS, sortie.pf as Record<string, unknown>);
         if (sortie.dansMinutes) {
           pfS["next_action_after"] = new Date(Date.now() + sortie.dansMinutes * 60_000).toISOString();
           pfS["pas_de_rouge_reprises"] = reprisesFaites + 1;
