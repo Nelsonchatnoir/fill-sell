@@ -1974,8 +1974,10 @@ serve(async (req) => {
                   return Number.isFinite(t) && Date.now() - t < 30 * 60_000;
                 };
                 if (fraisSonde(sP)) preuveBonne = "sonde « connecté » (moins de 30 min)";
-                else if (sP && sP[jrow.platform] === false
-                  && fraisSonde((sP.previous ?? null) as Record<string, unknown> | null)) {
+                else if (sP && fraisSonde((sP.previous ?? null) as Record<string, unknown> | null)) {
+                  // Le relevé juste écrasé par le mur (« false » des extensions
+                  // ≤ 0.6.70) ou par la sonde d'un AUTRE profil Chrome (null) :
+                  // la preuve d'un poste connecté survit dans « previous ».
                   preuveBonne = "sonde « connecté » juste avant ce mur (moins de 30 min)";
                 }
                 if (!preuveBonne) {
