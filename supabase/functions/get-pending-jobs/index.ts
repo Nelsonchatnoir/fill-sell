@@ -13,7 +13,7 @@ import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuV
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
-import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL } from "../_shared/correctifs-extension.js";
+import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
@@ -1698,6 +1698,27 @@ serve(async (req) => {
       out = out.filter((j) => j.platform !== "opla");
       if (out.length !== avantN) {
         console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : ${avantN - out.length} job(s) Opla laissé(s) en file pour un poste autorisé`);
+      }
+    }
+
+    // ── LA REPUBLICATION OPLA SE JUGE SUR L'ANNONCE (2026-09-27, doriane-henri)
+    // Un poste plus ancien que la 0.6.74 juge la republication sur la fiche
+    // IMPORTÉE : sans marque (ou refusée « exige une taille »), le pré-vol la
+    // refuse à coup sûr et elle se relance seule toutes les 5 à 30 min. On ne
+    // la lui sert pas (aucune écriture) ; elle part dès qu'un poste porte le
+    // build qui reprend marque et taille de l'annonce en ligne.
+    if (buildMsDe(buildDuPoll) < buildMsDe(BUILD_OPLA_REPUBLICATION_SUR_ANNONCE) || !buildDuPoll) {
+      const avantOpla = out.length;
+      out = out.filter((j) => {
+        if (j.platform !== "opla" || j.action !== "republish") return true;
+        const pfO = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const sansMarque = !String(pfO.marque ?? "").trim();
+        const tailleRefusee = /exige une taille/i.test(String((j as Record<string, unknown>).error ?? ""))
+          && !pfO.oplaSizeChoice && !String(pfO.taille ?? "").trim();
+        return !(sansMarque || tailleRefusee);
+      });
+      if (out.length !== avantOpla) {
+        console.log(`[get-pending-jobs] userId=${user.id} ${avantOpla - out.length} republication(s) Opla sans marque/taille retenue(s) : poste ${buildDuPoll || "sans build"} < 0.6.74`);
       }
     }
 

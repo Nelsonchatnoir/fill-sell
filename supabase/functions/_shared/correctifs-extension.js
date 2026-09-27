@@ -43,6 +43,15 @@ export function buildMsDe(build) {
 // qu'une première recréation l'ait prouvé (marqueur isbn_capture_tel_quel).
 export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID de la 0.6.70 (61cbced), zip build/CWS-0.6.70-A-TELEVERSER
 
+// ── LA REPUBLICATION OPLA JUGÉE SUR L'ANNONCE (2026-09-27, doriane-henri) ───
+// BUILD_ID du premier build (0.6.74, e1dbc59) qui reprend la marque et la
+// taille de l'ANNONCE Opla en ligne quand la fiche importée n'en a pas. Avant
+// lui, une republication Opla sans marque (ou refusée « exige une taille »)
+// échoue au pré-vol à coup sûr et se relance toute seule en boucle : tant que
+// le poste est plus ancien, get-pending-jobs ne la lui sert pas (aucune
+// écriture) ; elle part dès qu'un poste porte ce build.
+export const BUILD_OPLA_REPUBLICATION_SUR_ANNONCE = "2026-09-27T18:22:27Z"; // BUILD_ID de la 0.6.74, zip build/CWS-0.6.74-A-TELEVERSER
+
 export const CORRECTIFS_EXTENSION = [
   {
     cle: "lbc_retrait_pro_tiroir",
