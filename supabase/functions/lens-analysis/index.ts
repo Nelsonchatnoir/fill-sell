@@ -21,6 +21,10 @@ import { preparerPhotos, tracePhoto, type PhotoPreparee } from "./images.ts";
 // ne peut pas devenir un argument de vente. Module PARTAGÉ et sans dépendance
 // Deno, pour être rejouable par Node (scripts/conseils-coherents-selftest.mjs).
 import { retirerConseilsContredits } from "../_shared/conseils-coherents.ts";
+// Lens accepte autant de photos que le stepper (2026-09-27) : l'IA lit
+// `urls` (cinq au plus, côté app), la fiche garde `photos_fiche`. Détail
+// et règle d'acceptation dans le module.
+import { photosDeLaFiche } from "./photos-fiche.js";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
@@ -2103,6 +2107,10 @@ serve(async (req) => {
   // Cap 8 photos : appliqué ICI parce que la clé du cache d'idempotence porte
   // sur la liste RÉELLEMENT envoyée, pas sur ce que le client a proposé.
   const photoUrls = (urls as string[]).slice(0, 8);
+  // Les photos que la FICHE garde (2026-09-27) : toutes celles du viseur, dans
+  // l'ordre choisi, quand l'app les envoie (`photos_fiche`) ; sinon les photos
+  // lues, comme avant. N'entre NI dans l'analyse, NI dans la clé du cache.
+  const photosFiche: string[] = photosDeLaFiche(body?.photos_fiche, photoUrls);
 
   // ── Gardes du mode identify (2026-07-28) ────────────────────────────────
   // Identify est GRATUIT : rien n'empêche de le relancer en boucle sans jamais
@@ -2184,7 +2192,7 @@ serve(async (req) => {
     // `eq("user_id", userId)` n'est pas décoratif : sans lui, connaître un
     // scan_id suffirait à réclamer la réservation de quelqu'un d'autre.
     const { data: reclame } = await adminClient.from("lens_scans")
-      .update({ statut: "en_cours", mode, photos: photoUrls })
+      .update({ statut: "en_cours", mode, photos: photosFiche })
       .eq("scan_id", candidat).eq("user_id", userId).eq("statut", "preparation")
       .select("scan_id").maybeSingle();
     if (reclame) {
@@ -2197,7 +2205,7 @@ serve(async (req) => {
     // premier cas, et heurte l'unicité dans le second — où il ne faut
     // justement RIEN rejouer.
     const { error: resErr } = await adminClient.from("lens_scans").insert({
-      scan_id: candidat, user_id: userId, mode, photos: photoUrls,
+      scan_id: candidat, user_id: userId, mode, photos: photosFiche,
     });
     if (!resErr) {
       scanId = candidat;
@@ -3246,7 +3254,7 @@ serve(async (req) => {
               // compressées dès qu'elle les a. Sans ça, un utilisateur qui
               // génère puis ferme se retrouve avec un article sans photo, alors
               // que ses photos existent.
-              photos: photoUrls,
+              photos: photosFiche,
               attributs: attributsLus({
                 taille:  itemData.taille_estimee ?? null,
                 couleur: itemData.couleur ?? null,
@@ -3267,7 +3275,7 @@ serve(async (req) => {
                 brouillon: true,
                 fiche: {
                   v: 1,
-                  photos: photoUrls,
+                  photos: photosFiche,
                   // MÊME forme que l'état `platformListings` du stepper (la
                   // réponse de génération entière, `.platforms` à l'intérieur) :
                   // le client la repasse telle quelle dans appliquerGeneration,
