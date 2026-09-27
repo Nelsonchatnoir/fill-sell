@@ -7193,9 +7193,16 @@ serve(async (req) => {
     //   (next_action_after) n'est posée sur un job retenu : elle le sortirait
     //   du compte « en vol ».
     // Périmètre : poll d'exécution. Best-effort : illisible → servi comme avant.
+    // (27/09, ltouze : 46 jobs en pause depuis le 25/09, sonde 403 sans
+    // interruption) La sonde à 403 ne distingue pas une vérification
+    // anti-robot d'une session Vinted fermée dans ce Chrome (vinted.js :
+    // « connexion NON vérifiée »). Le message dit les DEUX gestes possibles —
+    // pas seulement « passe la vérification », qui ne s'affiche pas à
+    // quelqu'un de déconnecté.
     const ANTIROBOT_COMPTE_MSG =
       "Vinted demande une vérification anti-robot sur ton compte : tes actions Vinted sont en pause, rien n'a été touché. " +
-      "Ouvre vinted.fr dans Chrome et passe la vérification : tout repartira seul. Tes autres plateformes continuent normalement.";
+      "Ouvre vinted.fr dans Chrome : connecte-toi à ton compte si Vinted te le demande, et passe la vérification si elle s'affiche — " +
+      "tout repartira seul. Tes autres plateformes continuent normalement.";
     const idsAntirobot = new Set<string>();
     let antirobotPause: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser) {
