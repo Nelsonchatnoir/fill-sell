@@ -106,6 +106,44 @@ const BEEBS_RAYON_RE = /n'a pas de rayon reconnu/i;
 
 /** Une taille hors de la grille de la plateforme : liste fermée, choix à faire. */
 const TAILLE_HORS_GRILLE_RE = /n'appartient pas à la grille/i;
+/** Pour update-job-status : un needs_user posé DIRECTEMENT par le pré-vol de
+ *  l'extension (Opla, taille hors grille) doit passer par le classement, sinon
+ *  la personne lit le message brut du handler (« MEN_TRO_OTHER (14 valeurs :
+ *  TAILLE_UNIQUE, XXS… Opla l'accepterait en 200 : on refuse ») — vécu par
+ *  josephinecerni le 27/09 (chino homme 44, grille Opla en lettres). */
+export function estTailleHorsGrille(texte) {
+  return TAILLE_HORS_GRILLE_RE.test(String(texte ?? ""));
+}
+
+// ── VINTED A RESTREINT LE COMPTE, AVEC UNE DATE (27/09, nadegemarcelin78) ────
+// Cinq republications arrêtées « état de l'annonce non vérifié » : le vrai
+// motif dormait dans platform_fields.last_diagnostic — la page
+// vinted.fr/listing-restriction, « Compte restreint jusqu'au 26/09/2026 : tu
+// ne peux plus ajouter de nouveaux articles ni modifier tes annonces ». Rien à
+// faire de son côté, rien à faire du nôtre avant cette date : on le dit, on
+// attend la fin de la restriction, et on repart seuls le lendemain.
+const RESTRICTION_RE = /Compte restreint jusqu'au (\d{2})\/(\d{2})\/(\d{4})/i;
+/**
+ * La restriction Vinted lue dans le diagnostic du job, ou null.
+ * @returns {{ jusquau: string, fin: number, libelle: string }|null}
+ *   `fin` = fin de la journée indiquée (Paris, heure d'été ou d'hiver), en ms.
+ */
+export function restrictionVinted(pf) {
+  const d = pf && typeof pf === "object" && pf.last_diagnostic && typeof pf.last_diagnostic === "object"
+    ? pf.last_diagnostic : null;
+  if (!d) return null;
+  const texte = `${String(d.titre ?? "")}\n${String(d.corps ?? "")}`;
+  const m = RESTRICTION_RE.exec(texte);
+  if (!m && String(d.signal ?? "") !== "listing_restriction") return null;
+  if (!m) return { jusquau: null, fin: null, libelle: String(d.titre ?? "Compte restreint") };
+  const [, jj, mm, aaaa] = m;
+  // Décalage Paris : +02:00 de fin mars à fin octobre, +01:00 sinon (approché
+  // au mois : une heure d'écart sur une reprise à minuit ne change rien).
+  const mois = Number(mm);
+  const decalage = mois >= 4 && mois <= 10 ? "+02:00" : "+01:00";
+  const fin = Date.parse(`${aaaa}-${mm}-${jj}T23:59:59${decalage}`);
+  return { jusquau: `${jj}/${mm}`, fin: Number.isFinite(fin) ? fin : null, libelle: m[0] };
+}
 
 /** Opla : aucune feuille résolue pour l'article (pré-vol opla_categorie_absente). */
 const OPLA_CATEGORIE_ABSENTE_RE = /Aucune catégorie Opla n['’]a été résolue/i;
@@ -185,6 +223,36 @@ export function classerEchec(arg) {
   // geste passe devant la reprise. Elle est placée AVANT tout le reste parce
   // qu'un mur d'autorisation se déguise en n'importe quoi en aval (canal
   // coupé, timeout, 401, page inattendue).
+  // ── 0 pré. VINTED A RESTREINT LE COMPTE JUSQU'À UNE DATE (27/09) ─────────
+  // Le diagnostic porte la page vinted.fr/listing-restriction et sa date : ni
+  // un anti-robot, ni une session fermée, ni un geste à faire — une attente
+  // datée. Lue AVANT tout le reste : le refus 403 du retrait qu'elle provoque
+  // se déguise en « CHALLENGE / access_denied » plus bas (nadegemarcelin78,
+  // 5 republications, 8 reprises de 45 min pour rien, puis un needs_user brut).
+  // (Objet écrit en entier : l'aide reprise() n'est déclarée que plus bas.)
+  if (platform === "vinted") {
+    const r = restrictionVinted(pf);
+    if (r) {
+      const encore = r.fin != null ? r.fin - Date.now() : 0;
+      if (encore > 0) {
+        return {
+          verdict: "reprise", statut: "pending", motif: "compte_restreint",
+          dansMinutes: Math.max(5, Math.ceil(encore / 60_000) + 5),
+          message:
+            `Vinted a restreint ton compte jusqu'au ${r.jusquau} (« ${r.libelle} ») : d'ici là, il n'accepte ni nouvelle annonce ni ` +
+            `modification — de toi comme de FillSell. Rien n'a été touché, ton annonce est intacte. ${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} ` +
+            "repart toute seule dès la fin de la restriction, sans rien faire de ton côté.",
+        };
+      }
+      return {
+        verdict: "reprise", statut: "pending", motif: "compte_restreint_echu", dansMinutes: 1,
+        message:
+          `La restriction de ton compte Vinted${r.jusquau ? ` (jusqu'au ${r.jusquau})` : ""} est terminée : ` +
+          `${acte(action)} repart toute seule, l'état réel de l'annonce est revérifié avant tout geste.`,
+      };
+    }
+  }
+
   // ⛔ Les motifs qui portent DÉJÀ un geste précis (taille à choisir, limite de
   //    plateforme vérifiée) gardent la main : ils sont plus spécifiques.
   if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t)) {

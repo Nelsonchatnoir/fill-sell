@@ -26,7 +26,7 @@ import {
 import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shared/vocabulaire-developpeur.ts";
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
-import { classerEchec } from "../_shared/pas-de-rouge.js";
+import { classerEchec, estTailleHorsGrille, restrictionVinted } from "../_shared/pas-de-rouge.js";
 // L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
@@ -1515,8 +1515,12 @@ serve(async (req) => {
     const ANTIROBOT_REPUB_MIN = 45;
     const ANTIROBOT_REPUB_MAX = 8;
     let pfAntirobotRepub: Record<string, unknown> | null = null;
+    // (27/09) Sauf si le diagnostic dit « Compte restreint jusqu'au … » : ce
+    // refus n'est pas un anti-robot, huit reprises de 45 min n'y changeraient
+    // rien — le classement (pas-de-rouge, règle « compte_restreint ») attend
+    // la date, et c'est lui qui parle.
     if (statutEffectif === "needs_user" && !pfCanalCoupe && !pfRetraitVerif && typeof body.error === "string" &&
-        /CHALLENGE Vinted a refusé la suppression/i.test(body.error)) {
+        /CHALLENGE Vinted a refusé la suppression/i.test(body.error) && !restrictionVinted(pfIn ?? {})) {
       try {
         const { data: jrow } = await userClient
           .from("cross_post_jobs").select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
@@ -3250,7 +3254,19 @@ serve(async (req) => {
         const opts = Array.isArray(o?.["options"]) ? o!["options"] as Array<Record<string, unknown>> : [];
         return opts.filter((x) => String(x?.["code"] ?? "").trim() && String(x?.["title"] ?? "").trim()).length >= 2;
       })();
-    if (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser) {
+    // (27/09, josephinecerni ea202eee) Un needs_user posé DIRECTEMENT par le
+    // pré-vol Opla « taille hors grille » n'était jamais classé : la personne
+    // lisait le message brut du handler (code de grille, « Opla l'accepterait
+    // en 200 : on refuse »), sans needs_user_source. Le classement (§4) en
+    // fait un « champ à choisir » avec la liste — sans toucher à un job qui
+    // porte déjà une source.
+    const tailleHorsGrilleAPoser = statutEffectif === "needs_user" && typeof body.error === "string"
+      && estTailleHorsGrille(body.error) && !String((pfIn ?? {})["needs_user_source"] ?? "");
+    // (27/09, nadegemarcelin78) Le diagnostic porte une restriction Vinted
+    // datée : le classement attend la date, quel que soit le statut posé.
+    const restrictionVintedAPoser = (statutEffectif === "needs_user" || statutEffectif === "failed")
+      && Boolean(restrictionVinted(pfIn ?? {}));
+    if (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser) {
       try {
         const { data: jPdr } = await userClient
           .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
