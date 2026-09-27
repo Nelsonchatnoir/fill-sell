@@ -20,7 +20,10 @@
 -- statut réel (« published », le relevé la voit en ligne), puis
 -- armer_retrait_job arme le retrait (chemin 'vente_prouvee_revue_2709'),
 -- avec toutes ses gardes habituelles (signal de vente, retrait déjà armé…).
--- Rejeu annulé à faire juste avant le GO : 4 retraits attendus.
+-- Rejeu annulé du 27/09 ~23:15 : 4 retraits armés — par le déclencheur
+-- cross_post_jobs_publie_sur_article_vendu dès la remise en « published »
+-- (chemin publie_apres_vente_serveur) ; le SELECT final rend donc NULL (déjà
+-- armé), il ne sert que de filet. À rejouer juste avant le GO.
 
 UPDATE cross_post_jobs j SET
   status = 'published',
