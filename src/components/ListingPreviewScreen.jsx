@@ -74,6 +74,8 @@ import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFo
 import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
+import CarteColisVinted from "./CarteColisVinted";
+import { colisVintedPourJob } from "../utils/vintedColis";
 import { LBC_FORMATS } from "../utils/leboncoinColis";
 import CarteLivraisonEbay from "./CarteLivraisonEbay";
 import { CANAL_ASPECTS } from "../utils/champsDuRayon";
@@ -2226,6 +2228,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   // que quand la voie API est reellement active — par le formulaire, une
   // politique de livraison ne s'applique pas.
   ebayVoieApiReelle = false,
+  // (27/09) Attributs de la fiche : le format de colis Vinted qu'elle a déjà
+  // reçu (attributs.colis_vinted), repris par la carte Vinted.
+  attributsFiche = null,
   // ── LE RAYON (lot B, 20/09) ────────────────────────────────────────────
   // `rayonsParPf` : ce que le pré-calcul du lot A a trouvé, PAR plateforme,
   // déjà croisé avec le choix de la personne. La carte ne calcule rien : elle
@@ -2852,6 +2857,24 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                       onChange={(cle, valeur) => setEdited(prev => {
                         const pf = { ...(prev[p]?.platform_fields ?? {}) };
                         if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+                        return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
+                      })}
+                    />
+                  )}
+                  {/* ── COLIS VINTED (2026-09-27, demande de Louis) ─────────
+                      Les formats que Vinted propose pour le rayon publié ;
+                      replié, jamais bloquant. Sans choix : le format habituel.
+                      Rayon dont la grille n'a jamais été vue : pas de bloc. */}
+                  {p === "vinted" && (
+                    <CarteColisVinted
+                      lang={lang}
+                      chemin={rayonsParPf[p]?.chemin ?? e.platform_fields?.categoryPath ?? null}
+                      champs={e.platform_fields ?? {}}
+                      attributsFiche={attributsFiche}
+                      onChange={(id) => setEdited(prev => {
+                        const pf = { ...(prev[p]?.platform_fields ?? {}) };
+                        pf.packageSizeId = id;
+                        delete pf.packageSize;
                         return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
                       })}
                     />
@@ -8570,6 +8593,14 @@ export default function ListingPreviewScreen({
       //    déclenché par un titre retouché —, elle parle avant, donc elle
       //    perd. Prouvé par scripts/rayon-choisi-selftest.mjs.
       const champsResolus = champsAvecRayonsChoisis(pfParPlateforme, edited, plateformesAPublier);
+      // ── LE FORMAT DU COLIS VINTED (2026-09-27, Louis) ─────────────────────
+      // Posé APRÈS le rayon choisi : la grille est celle du rayon RÉELLEMENT
+      // publié. Sans choix (ici ou sur la fiche), rien n'est posé — le job
+      // part comme avant. utils/vintedColis.js, prouvé par
+      // scripts/vinted-colis-selftest.mjs.
+      const colisVintedARanger = champsResolus.vinted
+        ? colisVintedPourJob(champsResolus.vinted, articleBase?.attributs ?? initialListing?.attributs ?? null).ranger
+        : null;
       // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
       // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
       // n'ait abouti. Elle est alors écartée du lot AVANT le débit, plus bas.
@@ -9048,6 +9079,19 @@ export default function ListingPreviewScreen({
       //    texte de l'annonce n'est pas rangée ici : elle est déjà dans le
       //    texte, elle se relit toute seule, et l'y recopier reviendrait à
       //    faire passer une lecture pour une décision.
+      // ── LE FORMAT DE COLIS CHOISI SE RANGE SUR LA FICHE (2026-09-27) ──────
+      // Seulement un choix FAIT sur cet écran (jamais une valeur par défaut) :
+      // la fois suivante, la carte Vinted le reprend. Source `manuel`, rang le
+      // plus haut du trigger de fusion. v = 0 : « le format habituel », choisi.
+      if (currentInvId && colisVintedARanger && rowsEnvoyees.some(r => r.platform === "vinted")) {
+        const { error: colErr } = await supabase
+          .from("inventaire")
+          .update({ attributs: { colis_vinted: { ...colisVintedARanger, source: "manuel", at: new Date().toISOString() } } })
+          .eq("id", currentInvId)
+          .eq("user_id", userId)
+          .select("id");
+        if (colErr) console.warn("[publish] format de colis Vinted non gardé sur l'article :", colErr.message);
+      }
       if (currentInvId && classementUtilisateur && classementUtilisateur !== classementFiche) {
         const { error: clErr } = await supabase
           .from("inventaire")
@@ -9659,6 +9703,7 @@ export default function ListingPreviewScreen({
     selected, edited, setEdited, onPhotoClick: setLightboxUrl, onRetry: handleGeneratePlatforms,
     generatePrice: coinPrices?.generate ?? null, noteOverride: noteSharedOverride, ficheReprise,
     ebayVoieApiReelle, rayonsParPf, suggestionsParPf, questionsRayonParPf: rayonsAChoisir, supabase, onChoisirRayon: choisirRayon,
+    attributsFiche: articleBase?.attributs ?? initialListing?.attributs ?? null,
     lang, price, setPrice, customPriced, setCustomPriced, articleIcon, photoOption,
     onEstimatePrice: handleAnalyzePhotos, estimating: analyzing, estimateCost: coinPrices?.lens_overflow ?? null,
     estimateError: analysisError, estimateResult: photoAnalysis,
@@ -9975,6 +10020,7 @@ export default function ListingPreviewScreen({
             noteOverride={noteSharedOverride}
             ficheReprise={ficheReprise}
             ebayVoieApiReelle={ebayVoieApiReelle}
+            attributsFiche={articleBase?.attributs ?? initialListing?.attributs ?? null}
             rayonsParPf={rayonsParPf}
             suggestionsParPf={suggestionsParPf}
             questionsRayonParPf={rayonsAChoisir}

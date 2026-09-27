@@ -1,0 +1,2841 @@
+{
+ "releve_le": "2026-09-27",
+ "source": "vinted_republish_captures (libelles.categoryPath ↔ payload.natif.package_size_id) + inventaire.attributs (categorie_vinted.chemin ↔ colis Petit/Moyen/Grand) — la grille de l'observation la plus récente par chemin",
+ "grilles": [
+  {
+   "chemin": "Books & Media > Books > Fiction",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Books & Media > Books > Non-fiction",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Donna > Vestiti > Maglioni e pullover > Felpe e felpe con cappuccio",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Appareils photo et accessoires > Accessoires > Étuis et sacs pour appareils photo",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Électronique > Appareils photo et accessoires > Appareils photo > Appareils photo instantanés",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Appareils photo et accessoires > Appareils photo > Appareils photo numériques",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Électronique > Appareils photo et accessoires > Trépieds et monopodes",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Audio, casques et hi-fi > Casques audio et écouteurs",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Électronique > Audio, casques et hi-fi > Lecteurs de musique portables > Lecteurs MP3",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Audio, casques et hi-fi > Radios portables",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Autres appareils et accessoires > Adaptateurs",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Électronique > Autres appareils et accessoires > Autres accessoires",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Électronique > Autres appareils et accessoires > Câbles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Autres appareils et accessoires > Chargeurs",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Électronique > Autres appareils et accessoires > GPS et appareils de navigation par satellite",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Jeux vidéo et consoles > Consoles",
+   "grille": "KG3",
+   "observations": 4
+  },
+  {
+   "chemin": "Électronique > Jeux vidéo et consoles > Jeux",
+   "grille": "PMG",
+   "observations": 174
+  },
+  {
+   "chemin": "Électronique > Jeux vidéo et consoles > Réalité virtuelle > Casques de réalité virtuelle",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Électronique > Objets connectés > Lunettes connectées",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Objets connectés > Montres connectées",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Accessoires informatiques > Autres accessoires informatiques",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Accessoires pour ordinateurs portables > Sacs et housses pour ordinateurs portables",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Équipements réseau > Routeurs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Imprimantes et accessoires > Cartouches d'encre pour imprimantes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Stations d'accueil et concentrateurs USB",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Supports vierges > Disques durs externes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Ordinateurs et accessoires > Webcams",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Produits de beauté et de soins personnels > Appareils de coiffure > Lisseurs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Tablettes, liseuses et accessoires > Accessoires > Étuis et folios pour tablettes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Électronique > Téléphones portables et équipements de communication > Pièces de rechange et accessoires pour téléphones portables > Charms pour téléphones portables",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Électronique > Téléphones portables et équipements de communication > Pièces de rechange et accessoires pour téléphones portables > Coques pour téléphones portables",
+   "grille": "PMG",
+   "observations": 34
+  },
+  {
+   "chemin": "Électronique > Téléphones portables et équipements de communication > Pièces de rechange et accessoires pour téléphones portables > Supports pour téléphones portables",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Électronique > TV et home cinema > Lecteurs DVD",
+   "grille": "KG3",
+   "observations": 5
+  },
+  {
+   "chemin": "Enfants > Allaitement et alimentation > Allaitement > Coussinets d'allaitement et protège-mamelon",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Allaitement et alimentation > Allaitement > Tire-lait",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Autres articles pour bébé et enfant",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Enfants > Bain et change > Couches > Couches lavables",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Fournitures scolaires > Fournitures scolaires",
+   "grille": "PMG",
+   "observations": 22
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Activités et jouets pour bébé > Planches d'activités",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Activités et jouets pour bébé > Push & pull toys",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Déguisements et jeux de rôle > Boîtes à bijoux pour enfant",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Figurines et accessoires > Accessoires",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Figurines et accessoires > Figurines",
+   "grille": "PMG",
+   "observations": 48
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Figurines et accessoires > Sets de jeux",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Jeux de construction",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Jeux de sport et de plein air > Jeux d'eau et de plage",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Jeux éducatifs > Autres jeux éducatifs",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Jeux et jouets électroniques > Autres jeux et jouets électroniques",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Jeux et jouets électroniques > Peluches interactives",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Jeux/jouets musicaux et instruments",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Loisirs créatifs > Kits créatifs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Loisirs créatifs > Perles et fabrication de bijoux",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Peluches",
+   "grille": "PMG",
+   "observations": 73
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Poupées, poupons et accessoires > Poupées et poupons",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Jeux et jouets > Voitures, trains et autres véhicules > Voitures",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Enfants > Meubles et décoration > Chaises et fauteuils",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Meubles et décoration > Décoration et souvenirs > Décorations murales",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Meubles et décoration > Décoration et souvenirs > Mobiles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Meubles et décoration > Tapis",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Poussettes, porte-bébé et sièges auto > Accessoires de poussette > Nacelles, cosys et adaptateurs",
+   "grille": "KG4",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Poussettes, porte-bébé et sièges auto > Accessoires de poussette > Organisateurs et filets",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Poussettes, porte-bébé et sièges auto > Accessoires pour siège auto > Autres accessoires pour voiture",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Poussettes, porte-bébé et sièges auto > Porte-bébé et écharpes > Porte-bébé souples",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Poussettes, porte-bébé et sièges auto > Sièges auto",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Santé et grossesse > Mouche-bébé",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Sommeil et literie > Babyphones",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Sommeil et literie > Barrières de lit",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Sommeil et literie > Linge de lit, couvertures et plaids > Couvertures et plaids",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Sommeil et literie > Linge de lit, couvertures et plaids > Oreillers",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Accessoires > Autres accessoires",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Accessoires > Bandeaux et barrettes cheveux",
+   "grille": "PMG",
+   "observations": 16
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Accessoires > Casquettes et chapeaux",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Accessoires > Écharpes et châles",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Bébé filles > Bodies",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Bébé filles > Combinaisons",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Bébé filles > Ensembles",
+   "grille": "PMG",
+   "observations": 36
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Bébé filles > Grenouillères",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Baskets",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Baskets > Baskets à lacets",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Baskets > Baskets à scratch",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Bottes > Bottes de neige",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Bottes > Bottines",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Chaussures bébé",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Chaussures de sport > Chaussures aquatiques",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Chaussures de sport > Chaussures de danse",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chaussures > Chaussures plates > Ballerines, babies et Mary-Jane",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chemises et t-shirts > Chemises",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chemises et t-shirts > Chemises manches courtes",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chemises et t-shirts > Chemises manches longues",
+   "grille": "PMG",
+   "observations": 22
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chemises et t-shirts > Chemises sans manches",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chemises et t-shirts > T-shirts",
+   "grille": "PMG",
+   "observations": 104
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Chemises et t-shirts > Tuniques",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Déguisements",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Équipements de natation > Maillot de bain 1 pièce",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Jupes",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Lots de vêtements",
+   "grille": "PMG",
+   "observations": 17
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Autres",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Jeans",
+   "grille": "PMG",
+   "observations": 30
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Jeans slim",
+   "grille": "PMG",
+   "observations": 15
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Leggings",
+   "grille": "PMG",
+   "observations": 20
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Pantalons pattes d'éléphant",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Salopettes",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Sarouels",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pantalons et shorts > Shorts et pantacourts",
+   "grille": "PMG",
+   "observations": 31
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Autre",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Boléros",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Gilets",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Gilets zippés",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Pulls",
+   "grille": "PMG",
+   "observations": 22
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Pulls à capuche & sweatshirts",
+   "grille": "PMG",
+   "observations": 20
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Pulls à col roulé",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pulls & sweats > Pulls col V",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pyjamas et chemises de nuit > Pyjamas deux pièces",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Pyjamas et chemises de nuit > Pyjamas une pièce",
+   "grille": "PMG",
+   "observations": 19
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Robes > Robes courtes",
+   "grille": "PMG",
+   "observations": 66
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Robes > Robes longues",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Sacs et sacs à dos",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Sous-vêtements > Autre",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Sous-vêtements > Chaussettes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Sous-vêtements > Collants",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Tenues de soirée",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Manteaux > Parkas",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Manteaux > Trenchs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vestes > Blazers",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vestes > Doudounes",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vestes > Vestes en jean",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vestes > Vestes polaires",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vestes sans manches",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vêtements de pluie > Imperméables",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vêtements de pluie > Ponchos",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vêtements de ski > Manteaux et vestes de ski",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements d'extérieur > Vêtements de ski > Pantalons de ski",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour filles > Vêtements de sport",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Accessoires > Autres accessoires",
+   "grille": "PMG",
+   "observations": 51
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Accessoires > Ceintures",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Accessoires > Écharpes et châles",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Accessoires > Gants",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Bébé garçons > Bodies",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Bébé garçons > Combinaisons",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Bébé garçons > Ensembles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Bébé garçons > Grenouillères",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Baskets > Baskets à lacets",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Baskets > Baskets à scratch",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Chaussons et pantoufles",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Chaussures bébé",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Chaussures de sport > Chaussures de basket",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Chaussures de sport > Chaussures de course",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chaussures > Chaussures habillées",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chemises et t-shirts > Chemises",
+   "grille": "PMG",
+   "observations": 24
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chemises et t-shirts > Chemises manches courtes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chemises et t-shirts > Chemises manches longues",
+   "grille": "PMG",
+   "observations": 27
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chemises et t-shirts > Polos",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Chemises et t-shirts > T-shirts",
+   "grille": "PMG",
+   "observations": 48
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Équipements de natation > Maillots de bain",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Équipements de natation > Peignoirs",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Lots de vêtements",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pantalons et shorts > Autres",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pantalons et shorts > Jeans",
+   "grille": "PMG",
+   "observations": 18
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pantalons et shorts > Jeans slim",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pantalons et shorts > Salopettes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pantalons et shorts > Shorts et pantacourts",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pulls & sweats > Gilets",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pulls & sweats > Gilets zippés",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pulls & sweats > Pulls",
+   "grille": "PMG",
+   "observations": 46
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pulls & sweats > Pulls à capuche et sweatshirts",
+   "grille": "PMG",
+   "observations": 25
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pulls & sweats > Pulls à col roulé",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pulls & sweats > Pulls col V",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pyjamas > Pyjamas deux pièces",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Pyjamas > Pyjamas une pièce",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Sacs et sacs à dos",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Manteaux > Parkas",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vestes > Blousons aviateur",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vestes > Doudounes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vestes > Vestes coupe-vent",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vestes > Vestes en jean",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vestes > Vestes polaires",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vêtements de pluie > Imperméables",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements d'extérieur > Vêtements de ski > Pantalons de ski",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Enfants > Vêtements pour garçons > Vêtements de sport",
+   "grille": "PMG",
+   "observations": 23
+  },
+  {
+   "chemin": "Femmes > Accessoires > Accessoires pour cheveux",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Femmes > Accessoires > Autres accessoires",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Autres bijoux",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Bagues",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Bijoux de corps",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Boucles d'oreilles",
+   "grille": "PMG",
+   "observations": 18
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Bracelets",
+   "grille": "PMG",
+   "observations": 14
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Bracelets de cheville",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Broches",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Colliers",
+   "grille": "PMG",
+   "observations": 76
+  },
+  {
+   "chemin": "Femmes > Accessoires > Bijoux > Ensembles de bijoux",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Accessoires > Ceintures",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Accessoires > Chapeaux & casquettes > Bonnets",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Accessoires > Chapeaux & casquettes > Cagoules",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Accessoires > Chapeaux & casquettes > Chapeaux",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Accessoires > Chapeaux et casquettes > Bonnets",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Accessoires > Écharpes et châles",
+   "grille": "PMG",
+   "observations": 17
+  },
+  {
+   "chemin": "Femmes > Accessoires > Lunettes de soleil",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Accessoires > Montres",
+   "grille": "PMG",
+   "observations": 44
+  },
+  {
+   "chemin": "Femmes > Accessoires > Porte-clés",
+   "grille": "PMG",
+   "observations": 15
+  },
+  {
+   "chemin": "Femmes > Beauté > Accessoires de beauté > Accessoires soins des ongles",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Beauté > Accessoires de beauté > Accessoires soins du visage",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Beauté > Manucure",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Femmes > Beauté > Maquillage",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Femmes > Beauté > Parfums",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Beauté > Soins cheveux",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Beauté > Soins du corps",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Femmes > Beauté > Soins du visage",
+   "grille": "PMG",
+   "observations": 27
+  },
+  {
+   "chemin": "Femmes > Chaussures > Ballerines",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Femmes > Chaussures > Baskets",
+   "grille": "PMG",
+   "observations": 42
+  },
+  {
+   "chemin": "Femmes > Chaussures > Bottes > Bottes hautes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Chaussures > Bottes > Bottines",
+   "grille": "PMG",
+   "observations": 26
+  },
+  {
+   "chemin": "Femmes > Chaussures > Chaussons et pantoufles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Chaussures > Chaussures à lacets",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Femmes > Chaussures > Chaussures à talons",
+   "grille": "PMG",
+   "observations": 59
+  },
+  {
+   "chemin": "Femmes > Chaussures > Chaussures de sport > Chaussures de course",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Chaussures > Chaussures de sport > Chaussures et bottes de randonnée",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Chaussures > Claquettes et tongs",
+   "grille": "PMG",
+   "observations": 16
+  },
+  {
+   "chemin": "Femmes > Chaussures > Espadrilles",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Chaussures > Mules et sabots",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Chaussures > Sandales",
+   "grille": "PMG",
+   "observations": 45
+  },
+  {
+   "chemin": "Femmes > Sacs > Cartables et sacoches",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Sacs > Housses pour vêtements",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Sacs > Mallettes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Sacs > Pochettes",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Sacs > Porte-monnaie",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs à bandoulière",
+   "grille": "PMG",
+   "observations": 21
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs à dos",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs à main",
+   "grille": "PMG",
+   "observations": 34
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs banane",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs de plage",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs de sport",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Sacs > Sacs fourre-tout",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Femmes > Sacs > Trousses à maquillage",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Autres",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Blazers et tailleurs > Autres ensembles & tailleurs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Blazers et tailleurs > Blazers",
+   "grille": "PMG",
+   "observations": 59
+  },
+  {
+   "chemin": "Femmes > Vêtements > Blazers et tailleurs > Ensembles tailleur/pantalon",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Blazers et tailleurs > Jupes et robes tailleurs",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Combinaisons et combishorts > Combi Shorts",
+   "grille": "PMG",
+   "observations": 31
+  },
+  {
+   "chemin": "Femmes > Vêtements > Combinaisons et combishorts > Combinaisons",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Autres hauts",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Blouses",
+   "grille": "PMG",
+   "observations": 75
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Blouses ¾",
+   "grille": "PMG",
+   "observations": 83
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Blouses manches courtes",
+   "grille": "PMG",
+   "observations": 83
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Blouses manches longues",
+   "grille": "PMG",
+   "observations": 115
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Bodies",
+   "grille": "PMG",
+   "observations": 24
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Chemises",
+   "grille": "PMG",
+   "observations": 123
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Cols roulés",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Débardeurs",
+   "grille": "PMG",
+   "observations": 85
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > T-shirts",
+   "grille": "PMG",
+   "observations": 154
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Tops courts",
+   "grille": "PMG",
+   "observations": 41
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Tops dos nu",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Tops épaules dénudées",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Tuniques",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Femmes > Vêtements > Hauts et t-shirts > Vestes",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Autre",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans boyfriend",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans courts",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans droits",
+   "grille": "PMG",
+   "observations": 57
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans évasés",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans skinny",
+   "grille": "PMG",
+   "observations": 45
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans taille haute",
+   "grille": "PMG",
+   "observations": 23
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jeans > Jeans troués",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes",
+   "grille": "PMG",
+   "observations": 26
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes > Jupes asymétriques",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes > Jupes longues",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes > Jupes longueur genou",
+   "grille": "PMG",
+   "observations": 45
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes > Jupes midi",
+   "grille": "PMG",
+   "observations": 14
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes > Minijupes",
+   "grille": "PMG",
+   "observations": 32
+  },
+  {
+   "chemin": "Femmes > Vêtements > Jupes-shorts",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Accessoires de lingerie",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Chaussettes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Collants",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Culottes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Ensembles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Gaines",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Pyjamas et tenues de nuit",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Femmes > Vêtements > Lingerie et pyjamas > Soutiens-gorge",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Vêtements > Maillots de bain > Autres",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Maillots de bain > Deux pièces",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Vêtements > Maillots de bain > Paréos et sarongs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Maillots de bain > Une pièce",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Capes et ponchos",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Manteaux > Duffle-coats",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Manteaux > Imperméables",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Manteaux > Manteaux en fausse fourrure",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Manteaux > Pardessus et manteaux longs",
+   "grille": "PMG",
+   "observations": 30
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Manteaux > Parkas",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Manteaux > Trenchs",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Blousons aviateur",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Blousons teddy",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Doudounes",
+   "grille": "PMG",
+   "observations": 20
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Perfectos et blousons de moto",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Vestes chemises",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Vestes coupe-vent",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Vestes de ski et snowboard",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Vestes en jean",
+   "grille": "PMG",
+   "observations": 18
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Vestes matelassées",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes > Vestes polaires",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Manteaux et vestes > Vestes sans manches",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Femmes > Vêtements > Maternité > Pantalons maternité",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Autres pantalons",
+   "grille": "PMG",
+   "observations": 16
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Leggings",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Pantalons à jambes larges",
+   "grille": "PMG",
+   "observations": 74
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Pantalons ajustés",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Pantalons courts & chinos",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Pantalons droits",
+   "grille": "PMG",
+   "observations": 114
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Pantalons en cuir",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Pantalons skinny",
+   "grille": "PMG",
+   "observations": 20
+  },
+  {
+   "chemin": "Femmes > Vêtements > Pantalons et leggings > Sarouels",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Autres robes",
+   "grille": "PMG",
+   "observations": 96
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Midi",
+   "grille": "PMG",
+   "observations": 59
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Mini",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Petites robes noires",
+   "grille": "PMG",
+   "observations": 15
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Pour occasions > Fêtes et cocktails",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Pour occasions > Robes de bal de fin d'année",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Pour occasions > Robes de soirée",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Pour occasions > Robes dos nu",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes casual",
+   "grille": "PMG",
+   "observations": 26
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes chics",
+   "grille": "PMG",
+   "observations": 48
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes d'été",
+   "grille": "PMG",
+   "observations": 73
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes d'hiver",
+   "grille": "PMG",
+   "observations": 16
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes en jean",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes longues",
+   "grille": "PMG",
+   "observations": 23
+  },
+  {
+   "chemin": "Femmes > Vêtements > Robes > Robes sans bretelles",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Autres shorts",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Pantacourts",
+   "grille": "PMG",
+   "observations": 17
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Short en jean",
+   "grille": "PMG",
+   "observations": 17
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Shorts cargo",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Shorts en cuir",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Shorts en dentelle",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Shorts longueur genou",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Shorts taille basse",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Shorts > Shorts taille haute",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Autres pull-overs & sweat-shirts",
+   "grille": "PMG",
+   "observations": 65
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Boléros",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Cardigans",
+   "grille": "PMG",
+   "observations": 109
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Kimonos",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats & sweats à capuche",
+   "grille": "PMG",
+   "observations": 60
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats > Autres sweats",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats > Pulls col roulé",
+   "grille": "PMG",
+   "observations": 22
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats > Pulls col V",
+   "grille": "PMG",
+   "observations": 51
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats > Pulls d'hiver",
+   "grille": "PMG",
+   "observations": 87
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats > Sweats longs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Sweats > Sweats manche ¾",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Sweats et sweats à capuche > Vestes",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Accessoires de sports > Écharpes",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Accessoires de sports > Lunettes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Autres",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Brassières",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Hauts & t-shirts",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Maillots",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Pantalons & leggings",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Robes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Shorts",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Survêtements",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Sweats et sweats à capuche",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Femmes > Vêtements > Vêtements de sport > Vêtements d'extérieur",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hobbies & collectables > Memorabilia > Other memorabilia",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Accessoires > Autres",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Accessoires > Bijoux > Boutons de manchette",
+   "grille": "PMG",
+   "observations": 27
+  },
+  {
+   "chemin": "Hommes > Accessoires > Chapeaux et casquettes > Casquettes",
+   "grille": "PMG",
+   "observations": 19
+  },
+  {
+   "chemin": "Hommes > Accessoires > Chapeaux et casquettes > Chapeaux",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Accessoires > Cravates et nœuds papillons",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Accessoires > Écharpes et châles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Accessoires > Lunettes de soleil",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Accessoires > Montres",
+   "grille": "PMG",
+   "observations": 91
+  },
+  {
+   "chemin": "Hommes > Accessoires > Sacs et sacoches > Sacs à bandoulière",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Hommes > Accessoires > Sacs et sacoches > Sacs à dos",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Accessoires > Sacs et sacoches > Sacs banane",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Accessoires > Sacs et sacoches > Sacs de sport",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Chaussures > Baskets",
+   "grille": "PMG",
+   "observations": 28
+  },
+  {
+   "chemin": "Hommes > Chaussures > Chaussures de sport > Bottes de ski",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Chaussures > Chaussures de sport > Chaussures aquatiques",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Hommes > Chaussures > Chaussures de sport > Chaussures de basket",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Chaussures > Chaussures habillées",
+   "grille": "PMG",
+   "observations": 29
+  },
+  {
+   "chemin": "Hommes > Chaussures > Mules et sabots",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Autres",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Costumes et blazers > Autres",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Hommes > Vêtements > Costumes et blazers > Blazers",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Hommes > Vêtements > Costumes et blazers > Ensembles costume",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Hommes > Vêtements > Costumes et blazers > Pantalons de costume",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > Chemises > Chemises à carreaux",
+   "grille": "PMG",
+   "observations": 38
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > Chemises > Chemises à motifs",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > Chemises > Chemises à rayures",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > Chemises > Chemises en jean",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > Chemises > Chemises unies",
+   "grille": "PMG",
+   "observations": 35
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > Polos",
+   "grille": "PMG",
+   "observations": 77
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > T-shirts > T-shirts à manches longues",
+   "grille": "PMG",
+   "observations": 14
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > T-shirts > T-shirts à rayures",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > T-shirts > T-shirts imprimés",
+   "grille": "PMG",
+   "observations": 114
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > T-shirts > T-shirts unis",
+   "grille": "PMG",
+   "observations": 81
+  },
+  {
+   "chemin": "Hommes > Vêtements > Hauts et t-shirts > T-shirts sans manches",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Jeans > Jeans coupe droite",
+   "grille": "PMG",
+   "observations": 29
+  },
+  {
+   "chemin": "Hommes > Vêtements > Jeans > Jeans skinny",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Hommes > Vêtements > Jeans > Jeans slim",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Hommes > Vêtements > Jeans > Jeans troués",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Vêtements > Maillots de bain",
+   "grille": "PMG",
+   "observations": 18
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Manteaux > Cabans",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Manteaux > Pardessus et manteaux longs",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Manteaux > Parkas",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Blousons aviateur",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Doudounes",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Perfectos et blousons de moto",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Vestes chemises",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Vestes coupe-vent",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Vestes de ski et snowboard",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Vestes militaires et utilitaires",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes > Vestes polaires",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Hommes > Vêtements > Manteaux et vestes > Vestes sans manches",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Hommes > Vêtements > Pantalons > Autres pantalons",
+   "grille": "PMG",
+   "observations": 25
+  },
+  {
+   "chemin": "Hommes > Vêtements > Pantalons > Chinos",
+   "grille": "PMG",
+   "observations": 15
+  },
+  {
+   "chemin": "Hommes > Vêtements > Pantalons > Jogging",
+   "grille": "PMG",
+   "observations": 17
+  },
+  {
+   "chemin": "Hommes > Vêtements > Pantalons > Pantalons à jambes larges",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Pantalons > Pantalons de costume",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Pantalons > Pantalons skinny",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Hommes > Vêtements > Shorts > Autres shorts",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Hommes > Vêtements > Shorts > Shorts cargo",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Hommes > Vêtements > Shorts > Shorts chino",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Hommes > Vêtements > Shorts > Shorts en jean",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sous-vêtements et chaussettes > Sous-vêtements",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Cardigans",
+   "grille": "PMG",
+   "observations": 8
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Pulls à capuche avec zip",
+   "grille": "PMG",
+   "observations": 12
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Pulls à col roulé",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Pulls d'hiver",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Pulls et pulls à capuche",
+   "grille": "PMG",
+   "observations": 31
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Pulls ras de cou",
+   "grille": "PMG",
+   "observations": 14
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Sweats",
+   "grille": "PMG",
+   "observations": 29
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Sweats à col V",
+   "grille": "PMG",
+   "observations": 7
+  },
+  {
+   "chemin": "Hommes > Vêtements > Sweats et pulls > Vestes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Accessoires de sports > Gants",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Hauts et t-shirts",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Maillots",
+   "grille": "PMG",
+   "observations": 37
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Pulls & sweats",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Shorts",
+   "grille": "PMG",
+   "observations": 26
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Survêtements",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Hommes > Vêtements > Vêtements de sport et accessoires > Vêtements d'extérieur",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Kids > Boys clothing > Trousers, shorts & dungarees > Other trousers, shorts & dungarees",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Livres et médias > Livres > Bandes dessinées, mangas et romans graphiques",
+   "grille": "PMG",
+   "observations": 28
+  },
+  {
+   "chemin": "Livres et médias > Livres > Enfants et jeunes adultes > Bébés",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Livres et médias > Livres > Enfants et jeunes adultes > Enfants",
+   "grille": "PMG",
+   "observations": 50
+  },
+  {
+   "chemin": "Livres et médias > Livres > Enfants et jeunes adultes > Jeunes adultes",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Livres et médias > Livres > Fiction",
+   "grille": "PMG",
+   "observations": 127
+  },
+  {
+   "chemin": "Livres et médias > Livres > Livres de coloriage et d'activités et revues de jeux",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Livres et médias > Livres > Manuels scolaires et ressources pédagogiques",
+   "grille": "PMG",
+   "observations": 28
+  },
+  {
+   "chemin": "Livres et médias > Livres > Non-fiction",
+   "grille": "PMG",
+   "observations": 196
+  },
+  {
+   "chemin": "Livres et médias > Magazines",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Livres et médias > Musique > CD",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Livres et médias > Musique > Vinyles",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Livres et médias > Vidéo > DVD",
+   "grille": "PMG",
+   "observations": 39
+  },
+  {
+   "chemin": "Livres et médias > Vidéo > VHS",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Loisirs et collections > Cartes à collectionner > Boosters",
+   "grille": "PMG",
+   "observations": 14
+  },
+  {
+   "chemin": "Loisirs et collections > Cartes à collectionner > Cartes à collectionner à l'unité",
+   "grille": "PMG",
+   "observations": 24
+  },
+  {
+   "chemin": "Loisirs et collections > Cartes à collectionner > Coffrets de boosters",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Loisirs et collections > Cartes à collectionner > Jeux de cartes",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Loisirs et collections > Cartes à collectionner > Lots de cartes à collectionner",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Loisirs et collections > Cartes postales",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Loisirs et collections > Jeux de plateau et jeux miniatures",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Loisirs et collections > Jeux de société",
+   "grille": "PMG",
+   "observations": 29
+  },
+  {
+   "chemin": "Loisirs et collections > Loisirs créatifs > Calligraphie > Stylos pour calligraphie",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Loisirs et collections > Loisirs créatifs > Couture, tricot et travaux d'aiguille > Aiguilles et crochets > Crochets",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Loisirs et collections > Loisirs créatifs > Papercraft > Décorations pour scrapbooking",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Loisirs et collections > Loisirs créatifs > Peinture > Toiles et panneaux",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Loisirs et collections > Pièces de monnaie et billets > Lots",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Loisirs et collections > Pièces de monnaie et billets > Pièces de monnaie",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Loisirs et collections > Puzzles",
+   "grille": "PMG",
+   "observations": 10
+  },
+  {
+   "chemin": "Loisirs et collections > Rangements pour objets de collection > Boîtes de rangement",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Loisirs et collections > Souvenirs > Autres souvenirs",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Loisirs et collections > Souvenirs > Souvenirs de sport",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Animaux > Chiens > Paniers & couvertures > Paniers",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Animaux > Chiens > Vêtements & accessoires > Pulls",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Arts de la table > Couverts > Cuillères",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Maison > Arts de la table > Couverts > Fourchettes",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Arts de la table > Couverts > Sets de couverts",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Arts de la table > Vaisselle > Assiettes",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Arts de la table > Vaisselle de service > Accessoires de service spécialisés",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Maison > Arts de la table > Vaisselle de service > Cafetières et théières",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Arts de la table > Vaisselle de service > Carafes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Arts de la table > Vaisselle de service > Plateaux",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Arts de la table > Verres > Sets de verres",
+   "grille": "KG3",
+   "observations": 4
+  },
+  {
+   "chemin": "Maison > Arts de la table > Verres > Tasses et tasses à café",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Maison > Arts de la table > Verres > Verres à eau",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Célébrations et fêtes > Accessoires de fête",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Célébrations et fêtes > Cartes et enveloppes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Célébrations et fêtes > Décorations de table",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Célébrations et fêtes > Décorations pour le sapin",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Célébrations et fêtes > Décorations saisonnières",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Cuisson et pâtisserie > Accessoires pour la cuisine et la pâtisserie",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Accessoires décoratifs > Bibelots",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Maison > Décoration > Bougies et parfums d'ambiance > Bougies",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Décoration > Décorations murales > Affiches et reproductions",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Décoration > Décorations murales > Peintures",
+   "grille": "KG4",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Décorations murales > Plaques",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Décorations murales > Tentures murales",
+   "grille": "KG3",
+   "observations": 4
+  },
+  {
+   "chemin": "Maison > Décoration > Éclairage",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Éclairage > Abat-jours",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Éclairage > Appliques murales",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Éclairage > Lampes",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Décoration > Éclairage > Plafonniers",
+   "grille": "KG4",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Décoration > Encadrements",
+   "grille": "PMG",
+   "observations": 16
+  },
+  {
+   "chemin": "Maison > Décoration > Étagères murales",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Décoration > Horloges > Horloges de table",
+   "grille": "PMG",
+   "observations": 14
+  },
+  {
+   "chemin": "Maison > Décoration > Horloges > Horloges murales",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Miroirs > Miroirs de table",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Plantes et fleurs artificielles > Fleurs artificielles",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Décoration > Rangement et organisation > Boîtes",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Maison > Décoration > Rangement et organisation > Coffres à bijoux",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Décoration > Rangement et organisation > Paniers de rangement",
+   "grille": "PMG",
+   "observations": 4
+  },
+  {
+   "chemin": "Maison > Décoration > Sculptures et figurines",
+   "grille": "PMG",
+   "observations": 5
+  },
+  {
+   "chemin": "Maison > Décoration > Vases",
+   "grille": "KG3",
+   "observations": 5
+  },
+  {
+   "chemin": "Maison > Entretien de la maison > Aspirateurs et nettoyage > Aspirateurs",
+   "grille": "KG4",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Fournitures de bureau > Calculatrices",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Fournitures de bureau > Carnets et blocs-notes",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Fournitures de bureau > Fournitures d'écriture > Stylos",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Fournitures de bureau > Marque-pages",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Fournitures de bureau > Organiseurs de documents > Classeurs",
+   "grille": "PMG",
+   "observations": 6
+  },
+  {
+   "chemin": "Maison > Fournitures de bureau > Trousses",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Outils de cuisine > Balances de cuisine",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Outils de cuisine > Passoires, tamis et chinois",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Outils de cuisine > Ustensiles de cuisine",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Outils et bricolage > Maisons connectées et sécurité > Caméras de sécurité",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Outils et bricolage > Outils électriques > Perceuses > Perceuses-visseuses",
+   "grille": "KG3",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Outils et bricolage > Quincaillerie > Équipement de salle de bains > Porte papier-toilette",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Petits appareils de cuisine > Bouilloires",
+   "grille": "KG3",
+   "observations": 4
+  },
+  {
+   "chemin": "Maison > Petits appareils de cuisine > Extracteurs de jus",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Petits appareils de cuisine > Préparation du café, du thé et de l'expresso > Moulins à café",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Petits appareils de cuisine > Préparation du café, du thé et de l'expresso > Outils pour le café, le thé et l'expresso",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Textiles > Coussins décoratifs",
+   "grille": "PMG",
+   "observations": 13
+  },
+  {
+   "chemin": "Maison > Textiles > Couvertures",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Maison > Textiles > Linge de lit > Parures de lit",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Textiles > Linge de lit > Taies d'oreiller",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Textiles > Linge de table > Napperons",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Textiles > Linge de table > Nappes",
+   "grille": "PMG",
+   "observations": 55
+  },
+  {
+   "chemin": "Maison > Textiles > Rideaux et stores > Voilages",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Maison > Textiles > Serviettes > Serviettes de plage",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Textiles > Tapis > Petits tapis",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Maison > Textiles > Tapisseries",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Men > Accessories > Bags & backpacks > Backpacks",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Men > Accessories > Jewellery > Necklaces",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Men > Clothing > Jumpers & sweaters > Hoodies & sweaters",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Men > Clothing > Jumpers & sweaters > Zip-through hoodies & sweaters",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Men > Clothing > Outerwear > Jackets > Field & utility jackets",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Men > Clothing > Outerwear > Jackets > Fleece jackets",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Men > Clothing > Shorts > Other shorts",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Men > Clothing > Tops & t-shirts > T-shirts > Print t-shirts",
+   "grille": "PMG",
+   "observations": 11
+  },
+  {
+   "chemin": "Men > Clothing > Trousers > Other trousers",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Men > Shoes > Boots > Desert & lace-up boots",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Boxe et arts martiaux > Gants de boxe et d'arts martiaux",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Sport > Équitation > Protections d'équitation",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Sport > Équitation > Selles et harnachement > Autres équipements d'harnachement",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Sport > Fitness, course à pied et yoga > Accessoires de fitness à domicile > Autres accessoires de fitness",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Fitness, course à pied et yoga > Course à pied > Gilets de course",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Fitness, course à pied et yoga > Matériel de yoga et de pilates > Tapis de yoga",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Fitness, course à pied et yoga > Musculation > Autres accessoires de musculation",
+   "grille": "KG3",
+   "observations": 121
+  },
+  {
+   "chemin": "Sport > Fitness, course à pied et yoga > Musculation > Ceintures d'haltérophilie",
+   "grille": "PMG",
+   "observations": 9
+  },
+  {
+   "chemin": "Sport > Sports de plein air > Pêche et chasse > Autres accessoires de pêche et de chasse",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Sports de plein air > Sacs de randonnée > Petits sacs de randonnée",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Sports de plein air > Sacs de randonnée > Sacs à dos de trek",
+   "grille": "PMG",
+   "observations": 3
+  },
+  {
+   "chemin": "Sport > Sports de plein air > Torches, lampes frontales et lanternes > Lampes frontales",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Sports de plein air > Torches, lampes frontales et lanternes > Lampes torches",
+   "grille": "KG3",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Sports de raquette > Tennis > Autres accessoires de tennis",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Sport > Sports de raquette > Tennis > Balles de tennis",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Sport > Sports nautiques > Natation > Lunettes de natation",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Uomo > Vestiti > Maglioni e pullover > Pullover girocollo",
+   "grille": "PMG",
+   "observations": 2
+  },
+  {
+   "chemin": "Women > Clothing > Outerwear > Jackets > Fleece jackets",
+   "grille": "PMG",
+   "observations": 1
+  },
+  {
+   "chemin": "Women > Shoes > Trainers",
+   "grille": "PMG",
+   "observations": 1
+  }
+ ]
+}
