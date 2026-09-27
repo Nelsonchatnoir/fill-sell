@@ -16,9 +16,9 @@
 -- Désormais : la fonction ne fait QUE poser la trace platform_fields.beebs_index
 -- (même signature, p_clore ignoré — beebs-lien v3, déployée le 27/09 à 12:25,
 -- passe déjà false : plus rien ne clôt depuis).
--- ⛔ NON APPLIQUÉE — à valider par Nico (filet de sécurité en base, en plus de
---    la v3). Les 13 dépôts déjà clos NE SONT PAS remis en état : décision de
---    Nico (remise dans l'état laissé par le balayage de nuit, ou autre).
+-- APPLIQUÉE le 27/09 à 12:51 (décision de Nico, point C) après rejeu annulé
+-- (appel p_clore=true → « trace », statut inchangé ; droits identiques).
+-- Les 13 dépôts clos : restaurés par 20260927110500 (12:50).
 
 CREATE OR REPLACE FUNCTION public.beebs_index_constat(p_job uuid, p_trace jsonb, p_clore boolean)
  RETURNS text
