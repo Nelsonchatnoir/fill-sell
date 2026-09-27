@@ -600,7 +600,42 @@ serve(async (req) => {
     tentativesEnCours.push(`Relevé des tentatives en cours illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // 14. needs_user POSÉS SANS MOTIF (2026-09-27, règle de Nico) ─────────────
+  // « Tout needs_user a un needs_user_source, et chaque source a son écran. »
+  // Le filet (update-job-status v89, trigger cross_post_jobs_needs_user_motif)
+  // pose un motif par défaut à ce qui partirait sans, et le marque
+  // needs_user_sans_motif. Chaque ligne ici est un CHEMIN à nommer — jamais
+  // un état normal. Jobs encore en needs_user, marqués dans les 24 h.
+  const sansMotif: string[] = [];
+  try {
+    const depuis24h = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data: muets, error: e14 } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, action, title, error, platform_fields")
+      .eq("status", "needs_user")
+      .gte("platform_fields->needs_user_sans_motif->>le", depuis24h)
+      .range(0, 499);
+    if (e14) throw new Error(e14.message);
+    const lignes = (muets ?? []) as Array<Record<string, unknown>>;
+    if (lignes.length) {
+      const uids = [...new Set(lignes.map((j) => String(j.user_id)))];
+      const { data: profs } = await supabase.from("profiles").select("id, email").in("id", uids);
+      const parId = new Map((profs ?? []).map((p: Record<string, unknown>) => [String(p.id), String(p.email ?? "")]));
+      for (const j of lignes) {
+        const m = ((j.platform_fields ?? {}) as Record<string, unknown>)["needs_user_sans_motif"] as Record<string, unknown> | undefined;
+        sansMotif.push(
+          `${parId.get(String(j.user_id)) ?? j.user_id} — [${j.platform}/${j.action}] « ${String(j.title ?? "").slice(0, 40)} » ` +
+          `motif « ${String(m?.source_posee ?? "?")} » posé par ${String(m?.par ?? "?")} — ${String(j.error ?? "").replace(/\s+/g, " ").slice(0, 110)}`,
+        );
+      }
+      sansMotif.sort();
+    }
+  } catch (e) {
+    sansMotif.push(`Relevé des needs_user sans motif illisible (${String((e as Error)?.message ?? e)}).`);
+  }
+
   const counts = {
+    needs_user_sans_motif_24h: sansMotif.length,
     tentatives_en_cours: tentativesEnCours.length,
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
@@ -770,6 +805,20 @@ serve(async (req) => {
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${tentativesEnCours.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B45309;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    sansMotif.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔇 needs_user posés sans motif (${sansMotif.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Un needs_user est parti sans needs_user_source : le filet lui a posé un motif par défaut
+      (champ_a_choisir s'il porte un champ, relancer sinon). L'utilisateur voit le message et un geste.
+      Chaque ligne est un chemin à nommer dans le code — jamais un état normal.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${sansMotif.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#6D28D9;">${esc(a)}</li>`).join("")}
     </ul>`
   }
     ${
