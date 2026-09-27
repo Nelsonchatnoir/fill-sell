@@ -37,6 +37,18 @@
 --    est VENDUE → fusion comme avant, PUIS ses annonces encore en ligne
 --    partent (armer_retraits_copies, chemin 'doublon_vendu_confirme') : geste
 --    explicite de la personne + vente prouvée.
+-- DÉCISIONS DE NICO (27/09 soir, intégrées avant application) :
+-- 7. « titre identique + même prix + un seul candidat » ne rattache
+--    qu'ENTRE PLATEFORMES DIFFÉRENTES : un candidat de la même plateforme est
+--    un autre exemplaire → import, sans question (rangements de Louis).
+-- 8. jamais de question entre deux fiches dont la candidate porte déjà une
+--    annonce sur la même plateforme ; le balayage (inventaire_doublon_evaluer)
+--    écarte deux fiches qui portent chacune une annonce vivante sur la même
+--    plateforme (ni fusion, ni question).
+-- 9. une fiche VENDUE est comparée au relevé : annonce d'une autre plateforme
+--    au titre EXACT d'une fiche vendue, seule de ce titre → rattachée à la
+--    fiche vendue, retrait armé (chemin releve_fiche_vendue).
+--
 -- CE QUI NE CHANGE PAS (décision à confirmer par Nico) : le rattachement
 -- automatique sur IDENTIFIANT (bandes job / job_clos) et la bande « certain »
 -- (titre EXACT + prix ÉGAL + un seul candidat + aucun homonyme : 2 461
@@ -55,6 +67,7 @@ DO $garde$
 DECLARE r record;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
+      ('inventaire_doublon_evaluer', '8c9fcccf5d347ffccaea41df2944bbba'),
       ('rapprocher_traiter_annonce', '1166fd095d2284b624c75fdd9408111b'),
       ('rapprocher_importer', '7724f5bda1d81c783db19be6f1530a9b'),
       ('armer_retraits_copies', 'baafac7f5d30e8c6567c13d9eca5974f'),
@@ -174,6 +187,19 @@ BEGIN
   END IF;
 
   -- ── CERTAIN : un seul candidat, titre exact, prix égal, aucun homonyme ──
+  -- (2026-09-27, décision de Nico) « titre identique + même prix + un seul
+  -- candidat » ne rattache qu'ENTRE PLATEFORMES DIFFÉRENTES. Un candidat qui
+  -- est un dépôt de la MÊME plateforme, c'est un AUTRE exemplaire (les 11
+  -- rangements de Louis sur Beebs) : l'annonce est importée comme sa propre
+  -- fiche, jamais rattachée, jamais proposée à la fusion.
+  IF v_bande = 'certain' AND v_job IS NOT NULL THEN
+    IF p_import_ouvert AND a.statut_plateforme = 'en_ligne' AND a.fiche_supprimee_le IS NULL THEN
+      UPDATE annonces_plateforme SET proposition = NULL, updated_at = now() WHERE id = a.id;
+      v_imp := rapprocher_importer(v_user, a.id, 'auto');
+      IF COALESCE((v_imp ->> 'ok')::boolean, false) THEN RETURN 'import'; END IF;
+    END IF;
+    RETURN 'aucune';
+  END IF;
   IF v_bande = 'certain' THEN
     IF v_job IS NOT NULL THEN
       PERFORM rapprocher_recabler_job(v_job, a.url, a.listing_id, 'auto',
@@ -362,6 +388,38 @@ BEGIN
       v_q_preuves := jsonb_build_object('titre_annonce', v_titre, 'titre_article', v_jumeau_titre,
                                         'signaux', jsonb_build_object('ov', 0.8));
     END IF;
+  END IF;
+
+  -- (2026-09-27, décision de Nico) DEUX ANNONCES SUR LA MÊME PLATEFORME SONT
+  -- DEUX EXEMPLAIRES : la fiche candidate porte déjà une annonce (ou un
+  -- dépôt) sur CETTE plateforme → aucune question, aucun rattachement.
+  IF v_q_inv IS NOT NULL AND (
+       EXISTS (SELECT 1 FROM cross_post_jobs x
+                WHERE x.user_id = p_user AND x.inventaire_id = v_q_inv AND x.platform = a.platform
+                  AND x.action IN ('publish', 'republish') AND x.status IN ('published', 'sold', 'pending', 'processing', 'needs_user'))
+    OR EXISTS (SELECT 1 FROM annonces_plateforme ap2
+                WHERE ap2.user_id = p_user AND ap2.inventaire_id = v_q_inv AND ap2.platform = a.platform AND ap2.disparu_le IS NULL)) THEN
+    v_q_inv := NULL; v_q_motif := NULL; v_q_preuves := NULL;
+  END IF;
+
+  -- (2026-09-27, décision de Nico) UNE FICHE VENDUE EST COMPARÉE AU RELEVÉ :
+  -- l'annonce d'une AUTRE plateforme qui porte EXACTEMENT le titre d'une fiche
+  -- VENDUE, seule de ce titre sur le compte, est cet objet déjà vendu
+  -- (labouquinerie85 : La présidente, Triominos, Solaris). Elle est rattachée à
+  -- la fiche vendue et son RETRAIT est armé (vente prouvée) — jamais une
+  -- nouvelle fiche « en stock » d'un objet déjà parti.
+  IF v_q_motif = 'homonyme_vendu' AND COALESCE(v_homo_n, 0) = 1 AND titre_norm(v_homo_titre) = v_tn THEN
+    v_job := rapprocher_job_de_suivi(p_user, a.platform, v_homo, v_titre, v_prix, a.url, a.listing_id, p_par,
+                                     jsonb_build_object('annonce_id', a.id, 'motif', 'releve_fiche_vendue'));
+    UPDATE annonces_plateforme
+       SET inventaire_id = v_homo, job_id = v_job, source_rapprochement = 'automatique',
+           proposition = NULL, ignoree_le = NULL, fiche_supprimee_le = NULL, updated_at = now()
+     WHERE id = a.id;
+    INSERT INTO rapprochements (user_id, annonce_id, inventaire_id, decision, par, score, detail)
+    VALUES (p_user, a.id, v_homo, 'attache', p_par, 1,
+            jsonb_build_object('job_id', v_job, 'motif', 'releve_fiche_vendue', 'titre_article', v_homo_titre));
+    RETURN jsonb_build_object('ok', true, 'decision', 'rattachee_fiche_vendue', 'inventaire_id', v_homo, 'job_id', v_job,
+                              'retrait', armer_retrait_job(v_job, 'releve_fiche_vendue', interval '0'));
   END IF;
 
   -- inventaire.id n'a pas de DEFAULT (convention du front : horodatage ms).
@@ -620,6 +678,148 @@ BEGIN
     RETURN r || jsonb_build_object('decision', 'oui');
   END IF;
   RETURN jsonb_build_object('ok', false, 'reason', 'decision_inconnue');
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.inventaire_doublon_evaluer(p_a bigint, p_b bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  a inventaire%ROWTYPE; b inventaire%ROWTYPE; g inventaire%ROWTYPE; x inventaire%ROWTYPE;
+  s jsonb; nv jsonb; v_niveau text; v_motif text; v_freins text[] := '{}'::text[]; v_meme_pf text;
+  v_remise boolean := false;
+BEGIN
+  SELECT * INTO a FROM inventaire WHERE id = p_a;
+  SELECT * INTO b FROM inventaire WHERE id = p_b;
+  IF a.id IS NULL OR b.id IS NULL OR a.id = b.id OR a.user_id <> b.user_id THEN
+    RETURN jsonb_build_object('niveau', 'ecarte', 'motif', 'paire_invalide');
+  END IF;
+  IF a.fusionne_dans IS NOT NULL OR b.fusionne_dans IS NOT NULL THEN
+    RETURN jsonb_build_object('niveau', 'ecarte', 'motif', 'deja_fusionnee');
+  END IF;
+  -- ⛔ UNE DÉCISION HUMAINE EST DÉFINITIVE.
+  IF EXISTS (SELECT 1 FROM inventaire_doublons d
+              WHERE d.user_id = a.user_id AND d.statut IN ('refusee', 'defaite')
+                AND least(d.garde, d.absorbe) = least(a.id, b.id) AND greatest(d.garde, d.absorbe) = greatest(a.id, b.id))
+     OR EXISTS (SELECT 1 FROM inventaire_fusions f
+              WHERE f.user_id = a.user_id AND f.defait_le IS NOT NULL
+                AND ((f.garde = a.id AND f.absorbe = b.id) OR (f.garde = b.id AND f.absorbe = a.id)))
+     OR EXISTS (SELECT 1 FROM rapprochements r JOIN annonces_plateforme ap ON ap.id = r.annonce_id
+              WHERE r.user_id = a.user_id AND r.par = 'utilisateur' AND r.decision IN ('refus_proposition', 'detache')
+                AND ((ap.inventaire_id = b.id AND r.inventaire_id = a.id) OR (ap.inventaire_id = a.id AND r.inventaire_id = b.id))) THEN
+    RETURN jsonb_build_object('niveau', 'ecarte', 'motif', 'refuse_par_la_personne');
+  END IF;
+  -- Deux annonces Vinted = deux identités Vinted : hors de ce que la fusion sait représenter.
+  -- SAUF (2026-09-25 après-midi, migration 20260925160000) la REMISE EN LIGNE :
+  -- l'une retirée (closed + disparue), l'autre vivante, apparue après, même
+  -- boutique — la fusion échange alors les identités.
+  IF a.vinted_item_id IS NOT NULL AND b.vinted_item_id IS NOT NULL THEN
+    v_remise := vinted_remise_en_ligne(a.id, b.id) OR vinted_remise_en_ligne(b.id, a.id)
+             OR vinted_retraits_successifs(a.id, b.id) OR vinted_retraits_successifs(b.id, a.id);
+    IF NOT v_remise THEN
+      RETURN jsonb_build_object('niveau', 'ecarte', 'motif', 'deux_annonces_vinted');
+    END IF;
+  END IF;
+
+  s := meme_objet_signaux(a.titre, b.titre, fiche_marque(a.marque, a.attributs), fiche_marque(b.marque, b.attributs),
+                          a.prix_vente, b.prix_vente, fiche_photos_toutes(a.id), fiche_photos_toutes(b.id));
+  nv := meme_objet_niveau(s);
+  v_niveau := nv ->> 'niveau'; v_motif := nv ->> 'motif';
+  -- AJOUT 2026-09-25 (migration 20260925154000) : sans photo qui prouve, une
+  -- autre VARIANTE (un mot rare du titre court absent de l'autre) n'est pas
+  -- une question — « Hochet hippopotame » / « Hochet Koala ».
+  IF v_niveau = 'probable' AND v_motif = 'titre_proche'
+     AND titres_variante_substituee(a.user_id, a.titre, b.titre) THEN
+    v_niveau := 'ecarte'; v_motif := 'variante_substituee';
+  END IF;
+
+  -- AJOUT 2026-09-25 après-midi (migration 20260925162000) : la REMISE EN
+  -- LIGNE à l'identique — même titre, retirée puis republiée dans les 24 h —
+  -- n'est pas écartée par une photo retouchée (cadre ajouté par un outil de
+  -- republication : 13 paires sur 13 vérifiées à l'œil, le même objet).
+  IF v_remise
+     AND (v_niveau = 'probable' OR (v_niveau = 'ecarte' AND v_motif = 'photos_differentes'))
+     AND lower(btrim(a.titre)) = lower(btrim(b.titre))
+     AND COALESCE(s ->> 'nombre', 'ok') = 'ok' AND COALESCE(s ->> 'lot', 'ok') = 'ok'
+     AND ((a.disparu_le IS NOT NULL AND b.created_at BETWEEN a.disparu_le - interval '1 day' AND a.disparu_le + interval '1 day')
+       OR (b.disparu_le IS NOT NULL AND a.created_at BETWEEN b.disparu_le - interval '1 day' AND b.disparu_le + interval '1 day')) THEN
+    IF COALESCE(array_length(titre_jetons(a.titre), 1), 0) >= 3 THEN
+      v_niveau := 'certain'; v_motif := 'remise_en_ligne_titre_identique';
+    ELSE
+      v_niveau := 'probable'; v_motif := 'remise_en_ligne_titre_court';
+    END IF;
+  END IF;
+
+  -- LE CONTEXTE, que ni le titre ni la photo ne savent :
+  -- une fiche vendue (autre unité ? vente à rattacher ?) → jamais d'ici ;
+  IF v_niveau <> 'ecarte' AND (a.statut IS DISTINCT FROM 'stock' OR b.statut IS DISTINCT FROM 'stock') THEN
+    v_niveau := 'ecarte'; v_motif := 'fiche_vendue';
+  END IF;
+  -- plusieurs exemplaires en stock → la personne tranche ;
+  IF v_niveau = 'certain' AND (COALESCE(a.quantite, 1) > 1 OR COALESCE(b.quantite, 1) > 1) THEN
+    v_niveau := 'probable'; v_motif := 'quantite';
+  END IF;
+  -- (2026-09-25 après-midi) remise en ligne, mais PLUSIEURS exemplaires vivants
+  -- du même titre sur le compte : lequel est la remise en ligne ? La personne tranche.
+  IF v_remise AND v_niveau = 'certain' AND (
+       SELECT count(*) FROM inventaire o
+        WHERE o.user_id = a.user_id
+          AND o.fusionne_dans IS NULL AND o.statut = 'stock'
+          AND o.vinted_item_id IS NOT NULL AND o.disparu_le IS NULL
+          AND lower(btrim(o.titre)) IN (lower(btrim(a.titre)), lower(btrim(b.titre)))) >= 2 THEN
+    v_niveau := 'probable'; v_motif := 'plusieurs_exemplaires_vivants';
+  END IF;
+  -- deux annonces VIVANTES distinctes sur la même plateforme → la personne tranche.
+  IF v_niveau <> 'ecarte' THEN
+    SELECT string_agg(DISTINCT va.platform, ',') INTO v_meme_pf
+      FROM fiche_annonces_vivantes(a.id) va
+      JOIN fiche_annonces_vivantes(b.id) vb ON vb.platform = va.platform AND vb.listing_id <> va.listing_id
+     WHERE NOT EXISTS (SELECT 1 FROM fiche_annonces_vivantes(a.id) x2 JOIN fiche_annonces_vivantes(b.id) y2
+                          ON y2.platform = x2.platform AND y2.listing_id = x2.listing_id
+                        WHERE x2.platform = va.platform);
+    -- (2026-09-27, décision de Nico) Deux fiches qui portent CHACUNE une
+    -- annonce vivante sur la même plateforme sont deux exemplaires : ni
+    -- fusion, ni question (avant : question « à trancher »).
+    IF v_meme_pf IS NOT NULL THEN
+      v_niveau := 'ecarte'; v_motif := 'deux_annonces_meme_plateforme';
+    END IF;
+  END IF;
+
+  -- QUI GARDE : la fiche créée par la personne quand l'autre vient d'un relevé
+  -- ou du dressing ; sinon la plus ancienne. L'identité Vinted suit (fusion).
+  IF (b.origine IS NULL OR b.origine = 'fillsell') AND (a.origine LIKE 'releve\_%' OR a.origine = 'vinted_sync') THEN
+    g := b; x := a;
+  ELSIF (a.origine IS NULL OR a.origine = 'fillsell') AND (b.origine LIKE 'releve\_%' OR b.origine = 'vinted_sync') THEN
+    g := a; x := b;
+  ELSIF a.created_at <= b.created_at THEN g := a; x := b;
+  ELSE g := b; x := a;
+  END IF;
+  -- LES FREINS de la fiche qui disparaîtrait : ce que la personne y a mis.
+  IF EXISTS (SELECT 1 FROM cross_post_jobs j WHERE j.inventaire_id = x.id AND j.status IN ('pending', 'processing', 'needs_user')) THEN
+    v_freins := v_freins || 'job_actif'::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM ventes v WHERE v.inventaire_id = x.id) THEN v_freins := v_freins || 'ventes'::text; END IF;
+  IF EXISTS (SELECT 1 FROM fiches_annonce fa WHERE fa.inventaire_id = x.id)
+     AND EXISTS (SELECT 1 FROM fiches_annonce fa WHERE fa.inventaire_id = g.id) THEN
+    v_freins := v_freins || 'deux_fiches_annonce'::text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(x.attributs) = 'object' THEN x.attributs ELSE '{}'::jsonb END) e
+              WHERE jsonb_typeof(e.value) = 'object' AND e.value ->> 'source' = 'manuel') THEN
+    v_freins := v_freins || 'saisie_manuelle'::text;
+  END IF;
+  IF g.prix_achat IS NOT NULL AND x.prix_achat IS NOT NULL AND g.prix_achat <> x.prix_achat THEN
+    v_freins := v_freins || 'deux_prix_achat'::text;
+  END IF;
+  IF v_niveau = 'certain' AND COALESCE(array_length(v_freins, 1), 0) > 0 THEN
+    v_niveau := 'probable'; v_motif := 'a_trancher';
+  END IF;
+
+  RETURN jsonb_build_object('niveau', v_niveau, 'motif', v_motif, 'garde', g.id, 'absorbe', x.id,
+                            'signaux', s, 'freins', to_jsonb(v_freins), 'deux_annonces', v_meme_pf)
+         || CASE WHEN v_remise THEN jsonb_build_object('remise_en_ligne_vinted', true) ELSE '{}'::jsonb END;
 END;
 $function$;
 
