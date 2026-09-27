@@ -15,6 +15,13 @@
 -- alors l'identifiant « déjà pris » et s'arrête. Le même article vendu est donc
 -- EN VENTE sur Beebs, porté par une fiche « en stock ».
 --
+-- ⚠️ À SAVOIR AVANT LE GO (vérifié le 27/09 ~23:45) : la page PUBLIQUE Beebs
+-- 34010592 est en vente (« Ajouter au panier », 24 €, vendu par Marine F.),
+-- mais le relevé de SA page « Mes annonces » (reprise de 22:05) a lu la carte
+-- comme « vendue ». Soit une commande Beebs est en cours sur cet article déjà
+-- vendu sur Leboncoin (double vente — à lui dire), soit la carte porte un
+-- libellé trompeur. Le retrait échouera proprement si Beebs le refuse.
+--
 -- Ce que fait cette migration :
 --  1. la fiche importée (créée par le relevé, sans aucune donnée saisie) est
 --     réunie à la fiche d'origine (inventaire_fusionner_pour) ;
