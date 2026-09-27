@@ -1,5 +1,13 @@
 # FillSell — Instructions Claude
 
+> **Jumeau de `AGENTS.md`** (lu par Codex), qui reprend toutes les règles
+> ci-dessous + architecture, état des chantiers et glossaire (`supabase/AGENTS.md`,
+> `src/AGENTS.md`, `docs/agents/*.md`). Une règle ajoutée ici se reporte là-bas,
+> le même jour. ⚠️ Codex ne lit que ~32 Ko d'`AGENTS.md` : garder la racine
+> sous cette taille, le détail va dans `docs/agents/`. Jamais d'`AGENTS.md` ni
+> d'autre fichier annexe dans `chrome-extension/` : tout commit dans ce
+> dossier impose de recaler `EXTENSION_LAST_COMMIT`, sinon `npm run build` échoue.
+
 ## ⛔ `supabase db push` est INTERDIT
 
 Tant que la baseline n'est pas refaite, **ne jamais lancer `supabase db push`**
@@ -128,6 +136,11 @@ Commande : `supabase functions deploy <nom> --no-verify-jwt`
 
 Relevé par `functions list`, pas recopié. Il se périme : le geste ci-dessus
 fait foi, pas ce tableau.
+
+⚠️ **Relevé du 27/09/2026 : 48 fonctions actives, 23 en `false`.**
+`send-batch-notifications` et `send-chantier-zip`, citées plus bas comme
+restantes, **n'existent plus en prod**. Liste à jour :
+`docs/agents/architecture.md`.
 
 **Appelées par pg_cron (`x-cron-secret`)** — `cron.job` le prouve :
 `ebay-api-worker` (*/2) · `republish-auto-sweep` (*/3) · `handler-watch` (*/3)
