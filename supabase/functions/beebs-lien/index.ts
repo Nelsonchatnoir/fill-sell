@@ -42,6 +42,7 @@ const COMPTES_MAX = 15;    // comptes interrogés par passage (2 appels index ch
 type Job = {
   id: string;
   user_id: string;
+  status: string;
   title: string | null;
   price: number | null;
   published_at: string | null;
@@ -73,7 +74,7 @@ serve(async (req) => {
     // (même ordre que recoverMissingListingUrls depuis la famine du 09/09).
     const { data: jobsBruts, error: selErr } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, title, price, published_at, created_at, platform_fields")
+      .select("id, user_id, status, title, price, published_at, created_at, platform_fields")
       .eq("platform", "beebs")
       .in("action", ["publish", "republish"])
       .eq("status", "published")
@@ -81,8 +82,22 @@ serve(async (req) => {
       .order("published_at", { ascending: true, nullsFirst: false })
       .limit(JOBS_MAX);
     if (selErr) throw new Error(`sélection : ${selErr.message}`);
+    // (2026-09-27) Les dépôts CLOS « jamais en ligne » par le balayage de
+    // nuit (failed + listing_url_abandon) restent surveillés 30 jours : une
+    // annonce mise en ligne tard est encore rattachée, et une absence prouvée
+    // sort le job de l'impasse rouge (beebs_index_constat).
+    const { data: closBruts } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, status, title, price, published_at, created_at, platform_fields")
+      .eq("platform", "beebs")
+      .in("action", ["publish", "republish"])
+      .eq("status", "failed")
+      .is("listing_url", null)
+      .not("platform_fields->listing_url_abandon", "is", null)
+      .gte("created_at", new Date(Date.now() - 30 * 24 * 3600_000).toISOString())
+      .limit(JOBS_MAX);
 
-    const jobs = (jobsBruts ?? []) as Job[];
+    const jobs = [...(jobsBruts ?? []), ...(closBruts ?? [])] as Job[];
     if (!jobs.length) {
       return new Response(JSON.stringify({ ok: true, depots: 0, liens_poses: 0 }), {
         headers: { "Content-Type": "application/json" },
@@ -174,17 +189,51 @@ serve(async (req) => {
         prix: d.price == null ? null : Number(d.price),
       }));
       const paires = apparier(aCaler, annonces, idsPris);
-      if (!paires.size) { note("aucun_appariement", { annonces_en_ligne: annonces.length }); continue; }
+
+      // ── 5. CE QUE L'INDEX DIT DES AUTRES : ÉCRIT SUR LE JOB (2026-09-27) ────
+      // Un dépôt sans annonce à ±30 s dans un dressing lu en entier est
+      // ABSENT de Beebs — c'est un fait, on l'écrit (beebs_index). Au-delà de
+      // 7 jours (ou déjà clos « jamais en ligne »), il sort de l'impasse :
+      // cancelled, message neutre, relance possible. Une ou plusieurs
+      // annonces à ±30 s sans appariement (Beebs a pu créer DEUX annonces pour
+      // un dépôt) = « ambigue » : on n'écrit pas « absente », on ne clôt rien.
+      const dressingComplet = annonces.length < 6000; // 6 pages de 1000 : au-delà, lecture tronquée
+      const maintenant = Date.now();
+      let constats = 0;
+      for (const d of depots) {
+        if (paires.has(d.id) || !dressingComplet) continue;
+        const repere = Date.parse(d.published_at ?? d.created_at ?? "");
+        if (!Number.isFinite(repere)) continue;
+        const proches = annonces.filter((a) => a.creation_ms != null && Math.abs((a.creation_ms as number) - repere) <= FENETRE_MS);
+        const trace = {
+          dernier_passage: new Date(maintenant).toISOString(),
+          en_ligne: annonces.length,
+          verdict: proches.length ? "ambigue" : "absente",
+          ...(proches.length ? { candidats: proches.slice(0, 5).map((a) => a.listing_id) } : {}),
+        };
+        const clore = d.status === "failed" || maintenant - repere > 7 * 24 * 3600_000;
+        const { data: issue, error: cErr } = await supabase.rpc("beebs_index_constat", { p_job: d.id, p_trace: trace, p_clore: clore });
+        if (cErr) { note("constat_refuse", { job: d.id.slice(0, 8), raison: cErr.message }); continue; }
+        constats++;
+        if (issue === "clos") console.log(`[beebs-lien] job ${d.id.slice(0, 8)} : absent de l'index Beebs (${annonces.length} annonce(s) en ligne) → clos, relance possible`);
+      }
+
+      if (!paires.size) { note("aucun_appariement", { annonces_en_ligne: annonces.length, constats }); continue; }
 
       for (const d of depots) {
         const trouve = paires.get(d.id);
         if (!trouve) continue;
         const url = lienDepuisId("beebs", trouve.annonce.listing_id);
         if (!url) continue;
-        const pf = (d.platform_fields ?? {}) as Record<string, unknown>;
+        const pf = { ...((d.platform_fields ?? {}) as Record<string, unknown>) };
+        // Un dépôt clos « jamais en ligne » dont l'annonce est finalement
+        // apparue redevient publié, avec son lien.
+        const rouvrir = d.status === "failed";
+        if (rouvrir) delete pf["listing_url_abandon"];
         const { error: upErr } = await supabase
           .from("cross_post_jobs")
           .update({
+            ...(rouvrir ? { status: "published", error: null } : {}),
             listing_url: url,
             platform_listing_id: trouve.annonce.listing_id,
             platform_fields: {
