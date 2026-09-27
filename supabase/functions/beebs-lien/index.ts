@@ -190,13 +190,16 @@ serve(async (req) => {
       }));
       const paires = apparier(aCaler, annonces, idsPris);
 
-      // ── 5. CE QUE L'INDEX DIT DES AUTRES : ÉCRIT SUR LE JOB (2026-09-27) ────
-      // Un dépôt sans annonce à ±30 s dans un dressing lu en entier est
-      // ABSENT de Beebs — c'est un fait, on l'écrit (beebs_index). Au-delà de
-      // 7 jours (ou déjà clos « jamais en ligne »), il sort de l'impasse :
-      // cancelled, message neutre, relance possible. Une ou plusieurs
-      // annonces à ±30 s sans appariement (Beebs a pu créer DEUX annonces pour
-      // un dépôt) = « ambigue » : on n'écrit pas « absente », on ne clôt rien.
+      // ── 5. CE QUE L'INDEX DIT DES AUTRES : UNE TRACE, JAMAIS UN VERDICT ──────
+      // (2026-09-27, v3) Un dépôt sans annonce à ±30 s dans le dressing lu est
+      // noté « absente » (beebs_index) — une TRACE pour nous, rien d'autre.
+      // ⛔ ON NE CLÔT PLUS RIEN SUR CETTE ABSENCE (retiré le jour même, après
+      //    mesure) : l'index ne voit ni les annonces EN MODÉRATION, ni les
+      //    VENDUES, ni un dépôt dont published_at ne date pas le vrai dépôt
+      //    (8 jobs d'ornellaracano « publiés » le 20/09 alors que Beebs les
+      //    avait vus en vérification dès le 11/09). La v2 en a clos 13 en
+      //    « tu peux la republier » : une invitation au doublon. Cf. l'en-tête
+      //    de _shared/beebs-index.ts : « Une absence ne prouve rien. »
       const dressingComplet = annonces.length < 6000; // 6 pages de 1000 : au-delà, lecture tronquée
       const maintenant = Date.now();
       let constats = 0;
@@ -211,11 +214,9 @@ serve(async (req) => {
           verdict: proches.length ? "ambigue" : "absente",
           ...(proches.length ? { candidats: proches.slice(0, 5).map((a) => a.listing_id) } : {}),
         };
-        const clore = d.status === "failed" || maintenant - repere > 7 * 24 * 3600_000;
-        const { data: issue, error: cErr } = await supabase.rpc("beebs_index_constat", { p_job: d.id, p_trace: trace, p_clore: clore });
+        const { error: cErr } = await supabase.rpc("beebs_index_constat", { p_job: d.id, p_trace: trace, p_clore: false });
         if (cErr) { note("constat_refuse", { job: d.id.slice(0, 8), raison: cErr.message }); continue; }
         constats++;
-        if (issue === "clos") console.log(`[beebs-lien] job ${d.id.slice(0, 8)} : absent de l'index Beebs (${annonces.length} annonce(s) en ligne) → clos, relance possible`);
       }
 
       if (!paires.size) { note("aucun_appariement", { annonces_en_ligne: annonces.length, constats }); continue; }
