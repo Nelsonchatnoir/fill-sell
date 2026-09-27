@@ -170,7 +170,7 @@ UTC+2 l'été). Relevé du 27/09, 15 jobs actifs ; `cron.job` en prod fait foi.
 | 14 | lens-temp-purge-daily | `50 3 * * *` | fonction `lens-temp-purge` |
 | 15 | ebay-ventes-sync-daily | `40 4 * * *` | fonction `ebay-ventes-sync` |
 | 16 | beebs-lien-5min | `*/5` | fonction `beebs-lien` (index public Beebs : trace seulement, ne clôt rien) |
-| 17 | doublons-balayage-2min | `*/2` | fonction `doublons-balayage` → RPC `rapprochement_urls_a_empreinter` puis `rapprochement_photos_decider` (§ 7.1) |
+| 17 | doublons-balayage-2min | `*/2` | fonction `doublons-balayage` → RPC `rapprochement_urls_a_empreinter` (3 s), `rapprochement_photos_decider` (annonces, 4 s), puis `doublons_reserver_fiches` / `doublons_examiner_fiche` (une fiche par appel) / `doublons_liberer_fiches` — chaque appel sous les 8 s de l'appelant (migration 20260927190000) |
 | 18 | recalage-xewer-1er-oct | `*/5 0-3 1 10 *` | SQL `recalage_xewer_tick()` — tâche unique du 01/10, se désinscrit seule |
 
 Tous les appels HTTP passent par `net.http_post` avec le header

@@ -487,12 +487,14 @@ qui survit à ça, c'est du code.
 
 ## 7. État au 27/09/2026 (détail : `docs/agents/etat-2026-09-27.md`)
 
-- **Panne du 27/09** : API en 522 de 15:35 à 16:05, **redémarrage de la
-  base** à 16:08. Cause racine non établie. Suspect n° 1 : le cron
-  `doublons-balayage-2min` appelle `rapprochement_photos_decider`, qui tombe
-  en `statement timeout` à CHAQUE appel depuis le 26/09 au soir. Au relevé
-  de 18:15, le cron tournait toujours : **mise en pause + correction à
-  décider** (migration montrée, GO).
+- **Panne du 27/09** : machine de la base figée de 15:34 à 16:07 (redémarrage
+  manuel), cause unique non prouvée. Le balayage des doublons, annulé à
+  chaque passage depuis le 26/09 au soir (budgets de 20 et 40 s pour une
+  limite de 8 s), est **corrigé** (migration 20260927190000 : une fiche par
+  appel, chaque appel sous 8 s) et tourne de nouveau depuis 18:50. **Leçon :
+  toute RPC appelée par PostgREST tient sous 8 s** (`statement_timeout` du
+  rôle `authenticator`) ; un travail long se découpe en appels courts dont
+  chacun est enregistré.
 - **Audit de la synchronisation** en cours : chaque annonce en ligne dans
   FillSell une seule fois, rattachée sur preuve (jumeaux Beebs de Louis, ses
   deux comptes Vinted, doublons entre relevés, fiche supprimée ≠ retrait,
