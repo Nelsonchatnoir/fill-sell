@@ -336,12 +336,15 @@ async function deleteListing(job) {
   // (« Sponsoriser », « Utiliser le format Enchères »).
   const control = await waitFor(() => findEbayEnd(document), 8000);
   if (!control) {
-    const visible = Array.from(document.querySelectorAll("button.fake-menu__item"))
+    const visible = Array.from(document.querySelectorAll(SEL_ITEMS_MENU_EBAY))
       .filter(estVisibleSansLayout)
       .map(texteDe).filter(Boolean).slice(0, 15);
     t(`« Mettre fin à l'annonce » INTROUVABLE — items du menu : ${visible.join(" | ") || "(aucun)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Action « Mettre fin à l'annonce » introuvable", trace };
+    // (2026-09-27) Les libellés VUS partent avec l'erreur : le 27/09
+    // (angelofthedeath91, « Juliette ») l'échec n'a laissé AUCUNE trace du
+    // menu en base, et la cause est restée une hypothèse.
+    return { success: false, error: `Action « Mettre fin à l'annonce » introuvable — menu : ${visible.join(" | ").slice(0, 300) || "(aucun item)"}`, trace };
   }
   t(`contrôle localisé : "${control.textContent.trim()}"`);
 
@@ -397,7 +400,7 @@ async function deleteListing(job) {
 
   const confirmBtn = Array.from(dialog.querySelectorAll("button"))
     .filter(estVisibleSansLayout)
-    .find((b) => texteDe(b) === "Mettre fin à l'annonce");
+    .find((b) => estLibelleFinAnnonce(texteDe(b)));
   if (!confirmBtn) {
     await closeDialog();
     return { success: false, error: "Bouton « Mettre fin à l'annonce » du dialogue introuvable", trace };
@@ -464,11 +467,21 @@ function texteDe(el) {
 
 // Texte EXACT (relevé réel) : « Mettre fin à l'annonce ». Le fuzzy est proscrit
 // ici — le même menu porte « Sponsoriser » et « Utiliser le format Enchères ».
+// (2026-09-27) Le texte reste EXACT, mais l'apostrophe ne l'est pas toujours :
+// « Mettre fin à l’annonce » (U+2019, typographique) ne passait pas le test
+// strict — hypothèse la plus probable de l'échec du 27/09 (menu non tracé).
+// On compare après avoir ramené toute apostrophe à « ' ». Toujours aucune
+// approximation sur les MOTS : « Sponsoriser » et « Utiliser le format
+// Enchères » ne peuvent pas correspondre.
+const SEL_ITEMS_MENU_EBAY = "button.fake-menu__item, a.fake-menu__item, .fake-menu__item, [role='menuitem']";
+function estLibelleFinAnnonce(texte) {
+  return String(texte ?? "").replace(/[‘’ʼ′`´]/g, "'") === "Mettre fin à l'annonce";
+}
 function findEbayEnd(root) {
   if (!root) return null;
-  return Array.from(root.querySelectorAll("button.fake-menu__item, [role='menuitem'], button"))
+  return Array.from(root.querySelectorAll(`${SEL_ITEMS_MENU_EBAY}, button`))
     .filter(estVisibleSansLayout)
-    .find((el) => texteDe(el) === "Mettre fin à l'annonce") ?? null;
+    .find((el) => estLibelleFinAnnonce(texteDe(el))) ?? null;
 }
 
 function goToSellFromHome() {

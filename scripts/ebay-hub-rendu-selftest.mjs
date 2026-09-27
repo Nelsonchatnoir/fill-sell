@@ -124,6 +124,12 @@ function correspond(el, sel) {
     return el.tagName === m[1].toUpperCase()
       && String(el.getAttribute('class') ?? '').split(/\s+/).includes(m[2]);
   }
+  // .classe seule (2026-09-27 : items du menu eBay relevés à l'échec)
+  m = sel.match(/^\.([a-z0-9_-]+)$/i);
+  if (m) return String(el.getAttribute('class') ?? '').split(/\s+/).includes(m[1]);
+  // [attr='valeur'] exact (2026-09-27 : [role='menuitem'])
+  m = sel.match(/^\[([a-z-]+)=(?:"([^"]*)"|'([^']*)')\]$/i);
+  if (m) return String(el.getAttribute(m[1]) ?? '') === (m[2] ?? m[3]);
   // tag nu
   if (/^[a-z]+$/i.test(sel)) return el.tagName === sel.toUpperCase();
   throw new Error(`selftest : sélecteur hors du cadre couvert → « ${sel} ». ` +
@@ -186,6 +192,11 @@ async function lancer({ url = 'https://www.ebay.fr/sh/lst/active', hub, job }) {
     DELETE_DRY_RUN: false,
     realClick: () => {},
     findEbayEnd: () => null,          // on s'arrête juste après le menu : c'est là que se joue le test
+    // (2026-09-27) lus dans ebay.js tels quels : les items du menu relevés à
+    // l'échec, et le libellé comparé apostrophe ramenée à « ' ».
+    SEL_ITEMS_MENU_EBAY: SRC.match(/const SEL_ITEMS_MENU_EBAY = ("[^"]+");/) ? JSON.parse(SRC.match(/const SEL_ITEMS_MENU_EBAY = ("[^"]+");/)[1]) : 'button.fake-menu__item',
+    // eslint-disable-next-line no-new-func
+    estLibelleFinAnnonce: new Function(`${extraireFonction(SRC, 'estLibelleFinAnnonce')}\nreturn estLibelleFinAnnonce;`)(),
     estVisibleSansLayout: () => true,
     texteDe: (e) => String(e?.textContent ?? ''),
     console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -221,7 +232,7 @@ console.log('LE CAS RÉEL — job 4514680c, montre Mortima\n');
     job: JOB,
     hub: (h) => faireHub({ annonces: [...AUTRES, MONTRE], menusApres: 6000, horloge: h }),
   });
-  ok(r.error === 'Action « Mettre fin à l\'annonce » introuvable',
+  ok(String(r.error).startsWith('Action « Mettre fin à l\'annonce » introuvable'),
     'colonne Actions montée à 6 s : on attend, on trouve la ligne ET son menu',
     `rendu : ${JSON.stringify(r.error)} — un « Menu d'actions de la ligne introuvable » ici serait la régression du 20/09`);
   ok(r.horlogeFinale >= 6000, 'le budget a réellement été consommé (pas de conclusion hâtive)',
@@ -266,7 +277,7 @@ console.log('LE CAS RÉEL — job 4514680c, montre Mortima\n');
       ancresParasites: [{ id: MONTRE.id }], horloge: h,
     }),
   });
-  ok(r.error === 'Action « Mettre fin à l\'annonce » introuvable',
+  ok(String(r.error).startsWith('Action « Mettre fin à l\'annonce » introuvable'),
     'ancre parasite hors ligne posée en premier : on retient l\'ancre UTILE',
     `rendu : ${JSON.stringify(r.error)}`);
 }
@@ -302,7 +313,7 @@ console.log('LE CAS RÉEL — job 4514680c, montre Mortima\n');
     job: { listing_url: 'https://www.ebay.fr/itm/', title: MONTRE.titre },
     hub: (h) => faireHub({ annonces: [...AUTRES, MONTRE], menusApres: 400, horloge: h }),
   });
-  ok(r.error === 'Action « Mettre fin à l\'annonce » introuvable',
+  ok(String(r.error).startsWith('Action « Mettre fin à l\'annonce » introuvable'),
     'job sans identifiant : le repli par titre exact marche toujours (non-régression)',
     `rendu : ${JSON.stringify(r.error)}`);
 }

@@ -53,8 +53,8 @@ export const EBAY_SELECTORS = {
       {
         type: "text",
         scope: "button",
-        textMatches: "^Mettre fin à l'annonce$",
-        note: "source = comparaison STRICTE === (ebay.js:233) : casse exacte, apostrophe droite U+0027 seule, aucun flag — vérifié au code le 27/07 (la classe ['’] antérieure élargissait le contrat)",
+        textMatches: "^Mettre fin à l['‘’ʼ′`´]annonce$",
+        note: "source = estLibelleFinAnnonce (ebay.js) : casse exacte, mots exacts, aucun flag ; depuis le 27/09 toute apostrophe (’ ‘ ʼ ′ ` ´) est ramenée à « ' » avant la comparaison — échec « Mettre fin introuvable » du 27/09, hypothèse apostrophe typographique",
       },
     ],
     assert: { visible: true, enabled: true },
