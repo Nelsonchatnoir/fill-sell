@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ⛔ NON APPLIQUÉE — ATTEND LE GO DE NICO : ELLE RETIRE 4 ANNONCES EN LIGNE
 -- ═══════════════════════════════════════════════════════════════════════════
--- Revue des 36 annonces encore en ligne sur une fiche « vendue » (27/09 ~23:00).
+-- Revue des 36 annonces encore en ligne sur une fiche « vendue » (27/09 ~21:55).
 -- Quatre copies d'articles dont la vente est PROUVÉE sont toujours en vente, et
 -- AUCUN retrait n'est armé (leur job de dépôt est « cancelled » alors que le
 -- relevé les voit en ligne : armer_retrait_job ne part que d'un job
@@ -20,7 +20,7 @@
 -- statut réel (« published », le relevé la voit en ligne), puis
 -- armer_retrait_job arme le retrait (chemin 'vente_prouvee_revue_2709'),
 -- avec toutes ses gardes habituelles (signal de vente, retrait déjà armé…).
--- Rejeu annulé du 27/09 ~23:15 : 4 retraits armés — par le déclencheur
+-- Rejeu annulé du 27/09 ~22:00 : 4 retraits armés — par le déclencheur
 -- cross_post_jobs_publie_sur_article_vendu dès la remise en « published »
 -- (chemin publie_apres_vente_serveur) ; le SELECT final rend donc NULL (déjà
 -- armé), il ne sert que de filet. À rejouer juste avant le GO.

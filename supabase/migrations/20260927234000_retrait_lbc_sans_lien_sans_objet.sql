@@ -5,7 +5,7 @@
 -- Trois retraits attendaient « le lien » (louis Leboncoin, meminiandmove et
 -- xxewwer Beebs). louis, « Rangement Blanc pour 12 pots » (retrait de54a2b2) :
 -- le dépôt 3275434644 est connu, la page publique dit « Cette annonce est
--- désactivée » (vérifié le 27/09 23:30), et aucun relevé ne l'a jamais vu.
+-- désactivée » (vérifié le 27/09 vers 22:00), et aucun relevé ne l'a jamais vu.
 -- Rien à retirer : il attendait un lien qui ne viendra jamais.
 --  1. releve_clos_tranche_publications (définition PROD + ajout) : à la clôture
 --     d'un relevé Leboncoin COMPLET, un retrait sans lien dont l'identifiant de
@@ -110,7 +110,7 @@ $function$;
 
 UPDATE cross_post_jobs d SET
   status = 'cancelled',
-  error = 'Rien à retirer : cette annonce Leboncoin (3275434644) n''est plus en ligne — sa page publique indique « Cette annonce est désactivée » (vérifié le 27/09 à 23h30). Aucune autre annonce n''a été touchée.',
+  error = 'Rien à retirer : cette annonce Leboncoin (3275434644) n''est plus en ligne — sa page publique indique « Cette annonce est désactivée » (vérifié le 27/09 vers 22h). Aucune autre annonce n''a été touchée.',
   platform_fields = COALESCE(d.platform_fields, '{}'::jsonb) || jsonb_build_object(
     'retrait_sans_objet', jsonb_build_object('le', now(), 'preuve', 'page_publique_desactivee', 'par', 'migration 20260927234000'))
  WHERE d.id = 'de54a2b2-473e-4681-ba96-e69ca4bfeb9f' AND d.status IN ('pending', 'needs_user');

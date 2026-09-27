@@ -2,7 +2,7 @@
 -- VENTE NON PROUVÉE : ON DÉFAIT LE « VENDU », ON NE RETIRE RIEN (27/09 soir)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Revue une par une des 36 annonces encore en ligne sur une fiche « vendue »
--- (27/09 ~23:00). Preuves acceptées : statut Vinted « sold », signal de vente
+-- (27/09 ~21:55). Preuves acceptées : statut Vinted « sold », signal de vente
 -- d'une plateforme (sale_signal), vente relevée (commande), ou vente saisie par
 -- la personne SANS contradiction. 35 sont prouvées. Une ne l'est pas :
 --

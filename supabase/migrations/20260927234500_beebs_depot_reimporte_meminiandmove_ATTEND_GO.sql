@@ -15,7 +15,7 @@
 -- alors l'identifiant « déjà pris » et s'arrête. Le même article vendu est donc
 -- EN VENTE sur Beebs, porté par une fiche « en stock ».
 --
--- ⚠️ À SAVOIR AVANT LE GO (vérifié le 27/09 ~23:45) : la page PUBLIQUE Beebs
+-- ⚠️ À SAVOIR AVANT LE GO (vérifié le 27/09 ~22:10) : la page PUBLIQUE Beebs
 -- 34010592 est en vente (« Ajouter au panier », 24 €, vendu par Marine F.),
 -- mais le relevé de SA page « Mes annonces » (reprise de 22:05) a lu la carte
 -- comme « vendue ». Soit une commande Beebs est en cours sur cet article déjà
@@ -28,7 +28,7 @@
 --  2. le dépôt 3b657a62 reçoit son lien et son identifiant ;
 --  3. le retrait eb499d78 trouve alors le lien au prochain passage
 --     (get-pending-jobs le recopie du dépôt) → l'annonce Beebs est RETIRÉE.
--- Rejeu annulé du 27/09 ~23:40 : fiche importée réunie, lien posé, annonce
+-- Rejeu annulé du 27/09 ~22:05 : fiche importée réunie, lien posé, annonce
 -- rattachée à la fiche vendue. À rejouer juste avant le GO.
 
 SELECT inventaire_fusionner_pour(
