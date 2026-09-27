@@ -45,7 +45,7 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
 import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve, photosApresRayonRetrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
-import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, estGeleLivres, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
@@ -4421,7 +4421,7 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
         : `This listing lives on ${qui}. Sign in to that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch.`,
     };
   }
-  if (pf.gel_livres_le) {
+  if (pf.gel_livres_le && !pf.gel_livres_leve_le) {
     const intacte = step !== 'deleted';
     return {
       cle: 'gel_livres', court: fr ? 'En pause' : 'On hold', ...bleu, fini: true,
@@ -6060,7 +6060,7 @@ const StockTab = memo(function StockTab({
     // sélectionnable en lot ni relançable — une nouvelle republication
     // percerait le gel (job neuf, hors marqueur). La pastille « En pause »
     // (etapeRepublication) dit l'état ; ici on ferme juste la porte.
-    if (last?.platform_fields?.gel_livres_le) return 'gelee';
+    if (estGeleLivres(last)) return 'gelee';
     if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
     if (last && last.status === 'published' && last.platform_fields?.recreated_at
       && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
@@ -6259,7 +6259,7 @@ const StockTab = memo(function StockTab({
     if (!republishActif) return s;
     for (const [invId, last] of Object.entries(repubDernier)) {
       const st = last.status;
-      if (last.platform_fields?.gel_livres_le) continue;
+      if (estGeleLivres(last)) continue;
       if ((st === 'needs_user' || st === 'failed' || st === 'cancelled')
         && last.platform_fields?.republish_step === 'deleted') s.add(Number(invId));
     }
@@ -6533,7 +6533,7 @@ const StockTab = memo(function StockTab({
     const fr = lang !== 'en';
     const lignes = [];
     for (const [cle, j] of activiteParCle) {
-      if (estArretUtilisateur(j) || j.platform_fields?.gel_livres_le) continue;
+      if (estArretUtilisateur(j) || estGeleLivres(j)) continue;
       const cause = j.status === 'needs_user' ? 'completer'
         : j.status === 'failed' ? 'echec' : null;
       if (!cause) continue;
@@ -10915,7 +10915,7 @@ const StockTab = memo(function StockTab({
                               // créerait un job NEUF hors gel (c'est le trou
                               // que le passage en 'cancelled' vient de fermer).
                               // Détection par le marqueur seul, jamais le statut.
-                              if(repubCible?.platform_fields?.gel_livres_le)return null;
+                              if(estGeleLivres(repubCible))return null;
                               const vivant=st==="pending"||st==="processing"||st==="needs_user";
                               if(st==="needs_user"){
                                 // Après suppression (étape 'deleted'), le geste n'est pas une

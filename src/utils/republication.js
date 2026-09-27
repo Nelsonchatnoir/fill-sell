@@ -16,7 +16,7 @@
 // reproduite à l'identique ; les autres : annonce EN LIGNE portée par un job
 // FillSell (computeRemovalInfo.publishedActive + listing_url), aucune
 // republication vivante sur cette plateforme, aucune aboutie depuis 24 h.
-import { computeRemovalInfo, vintedMasqueeMalgreJobs } from './publicationState';
+import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres } from './publicationState';
 import { republierArticleVinted } from './vintedSync';
 import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
 
@@ -54,7 +54,7 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
     if (!String(latestPubByPlatform[platform]?.listing_url ?? '').trim()) return 'ineligible';
   }
   const last = dernierRepublish(jobs, platform);
-  if (last?.platform_fields?.gel_livres_le) return 'gelee';
+  if (estGeleLivres(last)) return 'gelee';
   if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
   if (last && last.status === 'published') {
     const repere = Date.parse(last.platform_fields?.recreated_at ?? last.published_at ?? '');

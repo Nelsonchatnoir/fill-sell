@@ -126,14 +126,14 @@ const TECH_ERR_MARKERS_RE = new RegExp([
 // ⚠️ Ces motifs matchent le MOT HISTORIQUE tel qu'il vit dans les DONNÉES
 // (cross_post_jobs.error du parc) — ils ne doivent JAMAIS être « nettoyés » :
 // c'est précisément ce qui les efface de l'écran.
-const MOT_MONNAIE_RE = /Pépites?|pépites?|Nuggets?|décompté|deducted/;
+const MOT_MONNAIE_RE = /p[ée]pites?|nuggets?|décompté|deducted/i;
 export function sansMentionMonnaie(texte) {
   const t0 = String(texte ?? '');
   if (!MOT_MONNAIE_RE.test(t0)) return t0;
   return t0
-    .replace(/,\s*(?:et\s+)?la Pépite (?:est|sera|te sera) rendue[^.!?…]*/gi, '')
+    .replace(/,\s*(?:et\s+)?la P[ée]pite (?:est|sera|te sera) rendue[^.!?…]*/gi, '')
     .replace(/\s*(?:et|—|–)\s*rien ne t[’']a été décompté[^.!?…]*/gi, '')
-    .replace(/[^.!?…]*(?:Pépites?|Nuggets?|décompté|deducted)[^.!?…]*[.!?…]?/gi, '')
+    .replace(/[^.!?…]*(?:P[ée]pites?|Nuggets?|décompté|deducted)[^.!?…]*[.!?…]?/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([.,;!?])/g, '$1')
     .trim();

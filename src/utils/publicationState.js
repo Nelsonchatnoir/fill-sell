@@ -259,4 +259,12 @@ export function republishAnnulable(job) {
 // simplement « En ligne ». Même doctrine que gel_livres_le, qui a son propre
 // rendu neutre plutôt que le « cancelled » générique.
 export const MARQUEUR_ARRET_UTILISATEUR = "arret_utilisateur";
-export const estArretUtilisateur = (job) => Boolean(job?.platform_fields?.[MARQUEUR_ARRET_UTILISATEUR]);
+// ── LE GEL LIVRES DU 28/08, LEVÉ PAR LE SERVEUR (2026-09-27) ────────────────
+// get-pending-jobs pose gel_livres_leve_le quand le poste du compte porte le
+// correctif de l'ISBN capturé (0.6.70) : la republication gelée n'est plus un
+// état — l'article redevient « En ligne » et républiable, exactement comme
+// après un arrêt demandé. Le marqueur d'origine reste, pour l'histoire.
+export const estArretUtilisateur = (job) => Boolean(job?.platform_fields?.[MARQUEUR_ARRET_UTILISATEUR])
+  || Boolean(job?.platform_fields?.gel_livres_leve_le);
+/** La republication est-elle ENCORE gelée (gel du 28/08 pas encore levé) ? */
+export const estGeleLivres = (job) => Boolean(job?.platform_fields?.gel_livres_le) && !job?.platform_fields?.gel_livres_leve_le;
