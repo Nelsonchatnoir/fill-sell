@@ -3605,6 +3605,15 @@ export default function App({ loginOnly = false }){
           setIsSigningIn(false);
           if(!dejaConnecteRef.current){ setTab(0); localStorage.setItem('tab','0'); }
         }
+        // ── Source d'acquisition posée À LA SESSION, jamais seulement au
+        //    signUp (27/09). L'appel après signUp (handleSignup) tombait dans le
+        //    vide : l'inscription par e-mail exige une confirmation (aucune
+        //    session au retour de signUp → UPDATE anonyme, filtré par RLS en
+        //    silence) et Google/Apple ne passent jamais par signUp. Mesuré :
+        //    0 profil avec une source depuis le 13/09. Ici la session existe.
+        //    Garde-fous dans acquisition.js (capture antérieure au compte,
+        //    compte < 30 j) + trigger profiles_acquisition_immuable.
+        if(event==='SIGNED_IN'||event==='INITIAL_SESSION') poserSourceSurProfil(supabase,u.id,{createdAt:u.created_at});
         dejaConnecteRef.current=true;
         fetchAll(u.id);
       }else{dejaConnecteRef.current=false;setSales([]);setItems([]);setLoading(false);setAppLoading(false);}

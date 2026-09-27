@@ -105,7 +105,7 @@ export default function AppRouter() {
   // navigation interne qui effacerait les paramètres d'URL. Idempotent — seul
   // le PREMIER contact est retenu, les visites suivantes ne l'écrasent pas.
   // Ne lève jamais : une capture impossible n'empêche rien.
-  useEffect(() => { capterSource(); }, []);
+  useEffect(() => { capterSource({ plateforme: isNative ? Capacitor.getPlatform() : null }); }, []);
 
   return (
     <BrowserRouter>
