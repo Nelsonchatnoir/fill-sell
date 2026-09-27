@@ -3247,7 +3247,11 @@ serve(async (req) => {
     // 86ff39c5) : chaque essai de l'extension rejoue le même refus faute de
     // réponse — la question part dès le premier (pas-de-rouge, §4), pas après
     // quatre reprises inutiles. Sans liste codée (< 2), rien ne change ici.
-    const oplaCategorieAPoser = statutEffectif === "pending" && typeof body.error === "string"
+    // (27/09, josephinecerni 67fa12a9 / 9534b06e) La 0.6.69 pose ce refus en
+    // needs_user DIRECTEMENT (pré-vol, liste servie dans oplaCategoryAsk) : le
+    // classement ne partait que sur « pending » — message brut, sans motif, la
+    // question jamais posée. Il part pour les deux statuts.
+    const oplaCategorieAPoser = (statutEffectif === "pending" || statutEffectif === "needs_user") && typeof body.error === "string"
       && /Aucune catégorie Opla n'a été résolue/i.test(body.error)
       && (() => {
         const o = ((pfIn ?? {}) as Record<string, unknown>)["oplaCategoryAsk"] as Record<string, unknown> | undefined;
@@ -3883,6 +3887,44 @@ serve(async (req) => {
         if (change) patch.platform_fields = { ...pfE, erreurs_archivees: archive };
       } catch (e) {
         console.error("[update-job-status] archive d'erreur:", (e as Error)?.message ?? e);
+      }
+    }
+
+    // ══ PLUS JAMAIS DE needs_user MUET (2026-09-27, règle de Nico) ══════════
+    // « Un job ne finit jamais en rouge pour une raison que l'utilisateur peut
+    // trancher. Tout needs_user a un needs_user_source, et chaque source a son
+    // écran. » Ici, le dernier filet, APRÈS toutes les requalifications : un
+    // needs_user qui part sans motif en reçoit un par défaut — « champ_a_choisir »
+    // s'il porte un champ à trancher (needsUserField, needsUserFields,
+    // champs_a_completer, server_required_fields : l'app ouvre l'éditeur),
+    // « relancer » sinon (le message est affiché, le bouton relance). Le
+    // marqueur needs_user_sans_motif et le journal le signalent : un motif posé
+    // par défaut est un chemin à nommer, pas un état normal. (Le trigger
+    // cross_post_jobs_needs_user_motif fait de même pour les écrivains SQL,
+    // get-pending-jobs et handler-watch.)
+    if (statutEffectif === "needs_user") {
+      try {
+        let pfG = (patch.platform_fields && typeof patch.platform_fields === "object")
+          ? { ...(patch.platform_fields as Record<string, unknown>) } : null;
+        if (!pfG) {
+          const { data: jG } = await userClient.from("cross_post_jobs").select("platform_fields").eq("id", jobId).maybeSingle();
+          pfG = { ...((jG?.platform_fields ?? {}) as Record<string, unknown>) };
+        }
+        if (!String(pfG["needs_user_source"] ?? "").trim()) {
+          const nuf = pfG["needsUserField"] as Record<string, unknown> | undefined;
+          const nufs = Array.isArray(pfG["needsUserFields"]) ? pfG["needsUserFields"] as unknown[] : [];
+          const champs = Array.isArray(pfG["champs_a_completer"]) ? pfG["champs_a_completer"] as unknown[] : [];
+          const serveur = Array.isArray(pfG["server_required_fields"]) ? pfG["server_required_fields"] as unknown[] : [];
+          const aUnChamp = Boolean(nuf?.["field_key"]) || nufs.length > 0 || champs.length > 0 || serveur.length > 0;
+          const sourceDefaut = aUnChamp ? "champ_a_choisir" : "relancer";
+          const messageG = String(("error" in patch ? patch.error : messageEffectif) ?? "").slice(0, 300);
+          pfG["needs_user_source"] = sourceDefaut;
+          pfG["needs_user_sans_motif"] = { le: new Date().toISOString(), source_posee: sourceDefaut, message: messageG, par: "update-job-status" };
+          patch.platform_fields = pfG;
+          console.warn(`[update-job-status] userId=${user.id} job=${jobId} — needs_user SANS MOTIF : source « ${sourceDefaut} » posée par défaut — « ${messageG.slice(0, 140)} »`);
+        }
+      } catch (e) {
+        console.error("[update-job-status] filet needs_user sans motif :", (e as Error)?.message ?? e);
       }
     }
 
