@@ -17,6 +17,8 @@ import { supabase } from '../lib/supabase';
 import { rayonApresRefus, appliquerRayonApresRefus, cheminsRefuses, familleVetoDe } from './rayonApresRefus';
 import { candidatsParMot } from './categorieParMot';
 import { estFourreToutCatalogue } from './fourreTout';
+import { getLbcFreePhotoQuota } from './lbcCategories';
+import { entreesPhotos } from './photos';
 
 const CHAMP_RAYON = { leboncoin: 'lbcCategoryPath', beebs: 'beebsCategoryPath', opla: 'oplaCategoryPath', vinted: 'categoryPath' };
 
@@ -78,4 +80,34 @@ export function messageRayonNonTrouve(platform, fr = true) {
   return fr
     ? `${pf} refuse les annonces rangées dans un rayon « Autres » et aucun rayon sûr n'a été trouvé pour cet article : republie-le depuis sa fiche, le rayon te sera demandé.`
     : `${pf} rejects listings filed under an “Other” category and no reliable category was found for this item: republish it from its item page, you'll be asked for the category.`;
+}
+
+// ── LE PLAFOND DE PHOTOS TOMBE AVEC LE FOURRE-TOUT (2026-09-27, Vert Pomme) ──
+// Un dépôt Leboncoin parti en « Divers > Autres » n'a emporté que 3 photos :
+// c'est le seul rayon plafonné (getLbcFreePhotoQuota), et le job garde la liste
+// COUPÉE. Relancé dans un vrai rayon, il repartait quand même avec ces 3 photos.
+// Ici : quand le rayon re-résolu n'est plus plafonné (ou l'est moins), les
+// photos du job reviennent de la FICHE — et seulement si la fiche COMMENCE par
+// les photos du job, dans le même ordre (c'est bien la liste d'où le job a été
+// coupé ; sinon on ne touche à rien). Rend la nouvelle liste, ou null.
+// MUTE `pf` (retire lbcPhotosCapped, trace photos_plafond_leve) quand il rend
+// une liste.
+export async function photosApresRayonRetrouve({ platform, pf, photosJob, inventaireId }) {
+  if (platform !== 'leboncoin' || !pf?.lbcPhotosCapped || inventaireId == null) return null;
+  const quota = getLbcFreePhotoQuota(pf.lbcCategoryPath);
+  const avant = entreesPhotos(photosJob);
+  if (quota != null && quota <= avant.length) return null;
+  try {
+    const { data } = await supabase.from('inventaire').select('photos').eq('id', inventaireId).maybeSingle();
+    const fiche = entreesPhotos(data?.photos);
+    if (fiche.length <= avant.length) return null;
+    if (!avant.every((p, i) => p.url === fiche[i]?.url)) return null;
+    const apres = quota != null ? fiche.slice(0, quota) : fiche;
+    delete pf.lbcPhotosCapped;
+    pf.photos_plafond_leve = { le: new Date().toISOString(), avant: avant.length, apres: apres.length, rayon: pf.lbcCategoryPath ?? null };
+    return apres;
+  } catch (e) {
+    console.warn('[relance] photos de la fiche illisibles — le job repart avec les siennes :', e?.message ?? e);
+    return null;
+  }
 }

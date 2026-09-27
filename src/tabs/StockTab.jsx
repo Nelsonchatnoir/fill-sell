@@ -43,7 +43,7 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // que update-job-status et handler-watch — le motif de l'arrêt précédent ne
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
-import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve } from '../utils/rayonFourreToutRelance';
+import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve, photosApresRayonRetrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
@@ -7101,9 +7101,16 @@ const StockTab = memo(function StockTab({
       // (2026-09-25, point 2) Un dépôt parti dans un fourre-tout (« Divers >
       // Autres ») ne repart JAMAIS tel quel : le rayon est re-résolu par le
       // mécanisme de la publication ; sans rayon sûr, on ne relance pas.
+      // (2026-09-27) Le rayon retrouvé n'est plus plafonné : les photos
+      // coupées à 3 reviennent de la fiche (photosApresRayonRetrouve).
+      let photosRelance = null;
       if (rayonFourreToutARevoir(job.platform, pf)) {
         const issue = await reResoudreRayonFourreTout({ platform: job.platform, pf, titre: job.title });
         if (issue !== 'trouve') { setRelanceMsg(messageRayonNonTrouve(job.platform, lang !== 'en')); return; }
+        try {
+          const { data: jp } = await supabase.from('cross_post_jobs').select('photos').eq('id', job.id).maybeSingle();
+          photosRelance = await photosApresRayonRetrouve({ platform: job.platform, pf, photosJob: jp?.photos, inventaireId: job.inventaire_id });
+        } catch { photosRelance = null; }
       }
       // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
       // `error` repasse à null pour l'affichage, comme avant.
@@ -7118,7 +7125,7 @@ const StockTab = memo(function StockTab({
       // silencieuse ressemble à un succès.
       const { data, error } = await supabase
         .from('cross_post_jobs')
-        .update({ status: 'pending', error: null, platform_fields: pf })
+        .update({ status: 'pending', error: null, platform_fields: pf, ...(photosRelance ? { photos: photosRelance } : {}) })
         .eq('id', job.id)
         .eq('status', job.status)
         .select('id');
@@ -7182,9 +7189,11 @@ const StockTab = memo(function StockTab({
     pf.relance_copie_de = full.id;
     // (2026-09-25, point 2) Même règle que la relance simple : jamais une copie
     // dans un fourre-tout de catalogue.
+    let photosCopie = null;
     if (rayonFourreToutARevoir(full.platform, pf)) {
       const issue = await reResoudreRayonFourreTout({ platform: full.platform, pf, titre: full.title });
       if (issue !== 'trouve') { setRelanceMsg(messageRayonNonTrouve(full.platform, lang !== 'en')); return; }
+      photosCopie = await photosApresRayonRetrouve({ platform: full.platform, pf, photosJob: full.photos, inventaireId: full.inventaire_id });
     }
     const { data: pubRes, error: pubErr } = await supabase.rpc('spend_coins_and_publish', {
       p_photo_option: full.photo_option || 'original',
@@ -7196,7 +7205,7 @@ const StockTab = memo(function StockTab({
         price: full.price,
         // Un job ancien relancé peut porter des chaînes (jobs écrits avant le
         // 05/09 par le parcours Lens unifié) : la copie repart en objets.
-        photos: entreesPhotos(full.photos),
+        photos: photosCopie ?? entreesPhotos(full.photos),
         platform_fields: pf,
       }],
     });
