@@ -1036,6 +1036,7 @@ async function fillListingForm(job) {
         error: verdict.message ?? `Opla refuserait cette annonce : ${verdict.motif}. Rien n'a été envoyé.`,
         motif_prevol: verdict.motif,
         champ: verdict.champ ?? null,
+        ...(!options.length && oplaQuestionDuChamp(verdict.champ, []) ? { needsUserField: oplaQuestionDuChamp(verdict.champ, []) } : {}),
         ...(options.length ? {
           needsUserField: {
             field_key: champNU.key,
@@ -1214,6 +1215,39 @@ async function fillListingForm(job) {
 // Point de sortie UNIQUE (union du contrat, emprunté à eBay) : la trace part
 // sur TOUTES les issues, réussites comprises — sans les réussites on ne mesure
 // pas une couverture, on collectionne des échecs.
+// ── UN CHAMP MANQUANT SE DEMANDE, IL NE SE RELANCE PAS (27/09) ──────────────
+// Un refus du pré-vol qui porte sur un champ que la personne seule peut
+// donner (marque, état — taille et catégorie ont leur liste) devient une
+// QUESTION au format du socle needs_user. Sans elle, le background ne voyait
+// qu'un « needsUser » sans champ et ré-armait le job toutes les 5 à 30 min
+// (doriane-henri, 29 republications Opla : « exige une taille. Reprise
+// automatique dans ~15 min (tentative 2/5) »). Rend null quand le champ n'a
+// pas de question possible (titre, photos, prix : la fiche est à reprendre).
+const OPLA_ETATS_FR = Object.freeze([
+  "Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "État satisfaisant",
+]);
+function oplaQuestionDuChamp(champ, options) {
+  const liste = Array.isArray(options) ? options.map((o) => String(o?.title ?? o?.code ?? "").trim()).filter(Boolean) : [];
+  if (champ === "size" && liste.length) {
+    return { field_key: "oplaSizeChoice", field_label: "Taille", allowed_values: [...new Set(liste)],
+      input_type: "selection_only", options_completes: true, target: { root: null, key: "oplaSizeChoice" } };
+  }
+  if (champ === "category" && liste.length) {
+    return { field_key: "oplaCategoryChoice", field_label: "Catégorie Opla", allowed_values: liste,
+      input_type: "selection_only", options_completes: true, target: { root: null, key: "oplaCategoryChoice" } };
+  }
+  if (champ === "condition") {
+    // Réponse en français, traduite en code par get-pending-jobs (tierEtat).
+    return { field_key: "etat", field_label: "État", allowed_values: [...OPLA_ETATS_FR],
+      input_type: "selection_only", options_completes: true, target: { root: null, key: "etat" } };
+  }
+  if (champ === "brand") {
+    // La marque Opla est un champ LIBRE : pas de liste à proposer, une saisie.
+    return { field_key: "marque", field_label: "Marque", input_type: "text", target: { root: null, key: "marque" } };
+  }
+  return null;
+}
+
 function oplaSortie(resultat) {
   const { t0, ...reste } = resultat;
   return {
@@ -1436,11 +1470,13 @@ async function republishListing(job) {
     const verdict = globalThis.oplaPrevol(job, ref);
     if (!verdict.ok) {
       oplaTracer(`prevol REFUSE: ${verdict.motif}`);
+      const questionR = oplaQuestionDuChamp(verdict.champ, verdict.options);
       return oplaSortie({
         success: false, needsUser: true,
         error: verdict.message ?? `Opla refuserait cette modification : ${verdict.motif}. L'annonce en ligne n'a pas été touchée.`,
         motif_prevol: verdict.motif,
         champ: verdict.champ ?? null,
+        ...(questionR ? { needsUserField: questionR } : {}),
         t0,
       });
     }

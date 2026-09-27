@@ -77,6 +77,7 @@ const borne = (nom) => Number(SOURCE.match(new RegExp(`^const ${nom} = (\\d+);`,
 const CAPTURE_MAX_PAR_RUN = borne("CAPTURE_MAX_PAR_RUN");
 const CAPTURE_FRAICHEUR_H = borne("CAPTURE_FRAICHEUR_H");
 const CAPTURE_PERIMEES_PAR_RUN = borne("CAPTURE_PERIMEES_PAR_RUN");
+const CAPTURE_PERIMEES_PLANCHER = borne("CAPTURE_PERIMEES_PLANCHER");
 const MAINTENANT = Date.parse("2026-09-21T17:00:00Z");
 const ilYaH = (h) => new Date(MAINTENANT - h * 3_600_000).toISOString();
 const annonce = (id, titre = `Article ${id}`, prix = 10) => ({ listing_id: String(id), url: `https://x/${id}`, titre, prix });
@@ -135,11 +136,21 @@ console.log("\n4. LES PÉRIMÉES ONT UN CONTINGENT — PLANCHER ET PLAFOND");
   const connues = Array.from({ length: 50 }, (_, i) => connue(1000 + i, 100 + i));
   const r = choisirCapturesARefaire(annonces, connues, MAINTENANT);
   const perimeesPrises = r.pris.filter((a) => Number(a.listing_id) >= 1000).length;
-  ok(`au moins ${CAPTURE_PERIMEES_PAR_RUN} slots réservés aux périmées`,
-    perimeesPrises >= CAPTURE_PERIMEES_PAR_RUN, `${perimeesPrises} prise(s)`);
+  // (27/09, louis) Quand des annonces n'ont JAMAIS été capturées (fiche à une
+  // photo, sans texte), elles passent devant : les périmées gardent leur
+  // PLANCHER, pas leur contingent plein.
+  ok(`au moins ${CAPTURE_PERIMEES_PLANCHER} slots réservés aux périmées (plancher)`,
+    perimeesPrises >= CAPTURE_PERIMEES_PLANCHER, `${perimeesPrises} prise(s)`);
   ok("le total reste au budget", r.pris.length === CAPTURE_MAX_PAR_RUN, String(r.pris.length));
-  ok(`jamais PLUS de ${CAPTURE_PERIMEES_PAR_RUN} périmées par run (la charge permanente est bornée)`,
-    perimeesPrises === CAPTURE_PERIMEES_PAR_RUN, String(perimeesPrises));
+  ok(`avec des jamais-capturées, les périmées s'en tiennent au plancher (${CAPTURE_PERIMEES_PLANCHER})`,
+    perimeesPrises === CAPTURE_PERIMEES_PLANCHER, String(perimeesPrises));
+  ok(`les jamais-capturées prennent le reste (${CAPTURE_MAX_PAR_RUN - CAPTURE_PERIMEES_PLANCHER})`,
+    r.pris.length - perimeesPrises === CAPTURE_MAX_PAR_RUN - CAPTURE_PERIMEES_PLANCHER, String(r.pris.length - perimeesPrises));
+  const sansJamais = choisirCapturesARefaire(annonces.slice(400), connues, MAINTENANT);
+  ok(`sans jamais-capturée, le contingent des périmées reste ${CAPTURE_PERIMEES_PAR_RUN}`,
+    sansJamais.pris.length === CAPTURE_PERIMEES_PAR_RUN, String(sansJamais.pris.length));
+  const liste = choisirCapturesARefaire(annonces.slice(0, 400), [], MAINTENANT, { budget: 400 });
+  ok("captures tirées de la LISTE (aucune page) : leur propre budget, 400", liste.pris.length === 400, String(liste.pris.length));
   ok("la PLUS ANCIENNE d'abord (aucune ne reste au fond de la file)",
     r.pris.filter((a) => Number(a.listing_id) >= 1000)[0].listing_id === "1049");
   ok("le reste est annoncé pour le run suivant", r.restantes === 450 - 30, String(r.restantes));

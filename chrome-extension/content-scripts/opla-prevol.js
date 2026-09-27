@@ -235,9 +235,15 @@
       // l'union des 150 entrées (qui accepterait « 90C » sur un t-shirt), ni
       // une grille déduite de la branche (elle ne l'est pas — BELTS est en G1
       // quand le reste des accessoires femme est en G0).
-      const optionsTaille = grille.map((t) => ({ code: t, title: t }));
+      // (27/09, doriane-henri) Les choix partent en FRANÇAIS, tels qu'Opla les
+      // affiche (« 18 mois », « 2 ans ») — jamais « 18M » ni « 2Y », et le
+      // message ne nomme jamais le code de la catégorie. La réponse est relue
+      // par le vocabulaire (« 18 mois » ≡ 18M) au passage suivant.
+      const libelle = typeof globalThis.taillesVocabulaire?.libelleTaille === "function"
+        ? globalThis.taillesVocabulaire.libelleTaille : (t) => t;
+      const optionsTaille = grille.map((t) => ({ code: t, title: libelle(t) }));
       if (!taille) {
-        return refus(MOTIFS.TAILLE_REQUISE, `La catégorie « ${code} » exige une taille.`, "size", optionsTaille);
+        return refus(MOTIFS.TAILLE_REQUISE, "Opla demande la taille de cet article pour le déposer. Choisis-la dans la liste ci-dessous : un seul geste, et on repart.", "size", optionsTaille);
       }
       // ── TRADUIRE AVANT DE REFUSER (2026-09-20, passe 4) ─────────────────
       // 🚨 C'ÉTAIT UNE ÉGALITÉ DE CHAÎNES (`grille.indexOf(taille)`), et elle

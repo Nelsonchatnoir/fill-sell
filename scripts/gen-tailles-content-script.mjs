@@ -50,6 +50,7 @@ const pied = [
   '// ── PUBLICATION ────────────────────────────────────────────────────────',
   'globalThis.taillesVocabulaire = {',
   '  memeTaille, tailleDansGrille, diagnosticTaille, TAILLE_FEMME_LETTRE_PAR_NOMBRE,',
+  '  libelleTaille, AGE_PAR_STATURE_ENFANT,',
   '};',
   '',
 ].join('\n');

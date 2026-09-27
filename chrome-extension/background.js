@@ -12799,7 +12799,12 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         return m ? m[1] : null;
       };
       const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
-      const compter = () => Array.from(document.querySelectorAll("a[href]")).filter((a) => re.test(a.href)).length;
+      // (27/09) On compte des ANNONCES, jamais des liens : une carte porte
+      // souvent deux liens (photo + titre) — « 35 vues sur 17 annoncées »
+      // (eBay) et, pire, un défilement Leboncoin qui s'arrêtait « à la
+      // cible » à mi-liste.
+      const compter = () => new Set(Array.from(document.querySelectorAll("a[href]"))
+        .map((a) => (a.href.match(re) || [])[0]).filter(Boolean).map((u) => idDe(u) ?? u)).size;
       // ── CE QUE LA PAGE DIT AVOIR (LOT 1) ─ lu AVANT de défiler ────────────
       // Leboncoin : le compteur d'onglet « En ligne (N) » (même lecture que
       // lbcMesAnnoncesEtat). Il sert DEUX FOIS : c'est la CIBLE du défilement
@@ -13231,6 +13236,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // Beebs (2026-09-25) : la page n'a rien rendu alors que l'index montre des
   // annonces en ligne pour ce vendeur — cf. le bloc de l'index plus bas.
   let beebsPageMuette = null; // = le total de l'index quand la page est muette
+  // (27/09) Les identifiants que l'index a rendus : chacun est LU, quel que
+  // soit le statut que la page lui donne (« vendue », en vérification…).
+  const beebsIdsIndex = new Set();
   // eBay (2026-09-23) : l'état de la dernière page lue, et si on l'a rechargée.
   let dernierePageHub = null;
   let ebayRechargee = false;
@@ -13240,6 +13248,9 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
   // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
   const defilements = [];
+  // Leboncoin (27/09) : pourquoi l'adresse s'est tue, quand on retombe sur le
+  // défilement — écrit dans le run, plus jamais un repli muet.
+  let motifsAdresse = null;
   if (platform === "opla") {
     // `absente` : la plateforme n'est pas là (permission jamais accordée). Ce
     // n'est PAS un échec de relevé — cf. lancerRelevePlateforme.
@@ -13261,7 +13272,25 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // le compteur « en ligne ». On l'appelle ; s'il se tait, on retombe sur le
   // défilement, inchangé à l'octet près.
   if (platform === "leboncoin") {
-    const api = await releverLeboncoinParApi().catch((e) => ({ ok: false, motif: String(e?.message ?? e) }));
+    // ── L'ADRESSE SE RELANCE AVANT DE CÉDER AU DÉFILEMENT (27/09, jocabroc8) ──
+    // 20:20 : l'adresse s'est tue une fois (motif jamais écrit), le repli par
+    // défilement — qui ne voit que 30 cartes dans une fenêtre minimisée — a
+    // rendu « 30 sur 176 », et le relevé s'est clos ainsi. Six minutes plus
+    // tard, la même adresse rendait 176 sur 176. On la relance donc jusqu'à
+    // trois fois (pause croissante) quand elle se tait pour une raison
+    // passagère, ou quand elle rend moins d'annonces en ligne que le compteur ;
+    // un jeton absent (personne connectée ?) ne se relance pas : c'est au
+    // défilement de le constater sur la page. Chaque motif est gardé et dit.
+    const motifsApi = [];
+    let api = null;
+    for (let essai = 1; essai <= 3; essai++) {
+      api = await releverLeboncoinParApi().catch((e) => ({ ok: false, motif: String(e?.message ?? e) }));
+      const partiel = api?.ok && Number.isFinite(api.actives) && api.enLigne < api.actives;
+      if (api?.ok && !partiel && !api.motif) break;
+      motifsApi.push(api?.ok ? (partiel ? `essai ${essai} : ${api.enLigne} en ligne sur ${api.actives}` : `essai ${essai} : ${api.motif}`) : `essai ${essai} : ${api?.motif ?? "sans réponse"}`);
+      if (!api?.ok && /jeton_absent|user_id_absent/.test(String(api?.motif ?? ""))) break;
+      if (essai < 3) await sleep(randInt(3000, 6000) * essai);
+    }
     if (api?.ok && Array.isArray(api.annonces)) {
       for (const a of api.annonces) annonces.set(a.listing_id, a);
       lbcTotalEnLigne = Number.isFinite(api.actives) ? api.actives : null;
@@ -13272,17 +13301,22 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       // pas les annonces d'un autre statut, qui ne sont pas dans « En ligne (N) ».
       const enLigneApi = api.enLigne;
       const jugement = !Number.isFinite(lbcTotalEnLigne) || enLigneApi < lbcTotalEnLigne;
+      const autresStatuts = Object.entries(api.statuts ?? {}).filter(([k]) => k !== "active").map(([k, n]) => `${n} « ${k} »`).join(", ");
       return {
         annonces: [...annonces.values()],
         complet: complet && !jugement,
         illisibles,
+        annonce: Number.isFinite(lbcTotalEnLigne) ? lbcTotalEnLigne : null,
         erreur: jugement
           ? `couverture partielle : ${enLigneApi} annonce(s) vue(s) sur ${lbcTotalEnLigne ?? "?"} « en ligne » — le reste n'est ni relevé ni conclu disparu`
+            + (autresStatuts ? ` (autres statuts lus : ${autresStatuts})` : "")
           : (api.motif ? `relevé par l'adresse interrompu (${api.motif})` : null),
-        defilement: `[adresse] ${api.pages} page(s) de ${LBC_API_PAGE}`,
+        defilement: `[adresse] ${api.pages} page(s), ${enLigneApi} en ligne lues sur ${lbcTotalEnLigne ?? "?"} annoncées`
+          + (motifsApi.length ? ` · relances : ${motifsApi.join(" ; ")}` : ""),
       };
     }
     console.warn(`[releve][leboncoin] relevé par l'adresse indisponible (${api?.motif ?? "sans motif"}) — repli sur le défilement`);
+    motifsAdresse = motifsApi.length ? motifsApi.join(" ; ") : String(api?.motif ?? "sans motif");
   }
 
   let dernierTabId = null; // onglet de travail de la plateforme, réutilisé après la boucle
@@ -13392,6 +13426,24 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       await sleep(randInt(1200, 2400));
     }
   }
+  // ── eBAY : PAS DE HUB, CE N'EST PAS UNE PANNE (27/09) ─────────────────────
+  // kacemksoukaina et antoinelatour8 : eBay renvoie « Mes annonces » vers
+  // /fpa/upgrade (« Renseigner les informations de votre compte ») — le
+  // compte n'est pas encore vendeur. martinteophile : « Veuillez confirmer
+  // votre identité ». Ce sont des MURS, avec leur bouton dans l'app
+  // ([mur:upgrade] / [mur:reauth]) : ni « Hub muet », ni reprise, ni verdict.
+  if (platform === "ebay" && annonces.size === 0) {
+    const texteHub = String(dernierePageHub?.texte ?? "");
+    if (pagesHorsListe.some((p) => /\/fpa\/upgrade/i.test(String(p)))) {
+      return { annonces: [], complet: false, absente: true,
+        erreur: "session ebay : page de connexion vendeur [mur:upgrade] — ton compte eBay n'est pas encore un compte vendeur : "
+          + "eBay demande d'abord de « renseigner les informations de ton compte ». Aucune annonce à relever tant que ce n'est pas fait." };
+    }
+    if (/confirmer votre identit/i.test(texteHub)) {
+      return { annonces: [], complet: false, absente: true,
+        erreur: "session ebay : page de connexion [mur:reauth] — eBay demande de confirmer ton identité avant d'ouvrir tes annonces." };
+    }
+  }
   // ── eBAY : UNE PAGE MUETTE SE RECHARGE UNE FOIS (2026-09-23) ──────────────
   // Ni compteur, ni annonce, ni phrase de liste vide : la page n'a rien dit.
   // Avant de conclure « couverture inconnue », on la recharge UNE fois (même
@@ -13497,6 +13549,7 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     let ajoutees = 0;
     for (const a of idx?.articles ?? []) {
       if (!a?.listing_id) continue;
+      beebsIdsIndex.add(String(a.listing_id));
       if (annonces.has(a.listing_id)) {
         // La page fait foi sur ce qu'elle a vu ; l'index ne comble que les
         // trous (vues/favoris, que « Mes annonces » ne montre pas).
@@ -13549,7 +13602,12 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
         + horsListe,
     },
     beebs: {
-      total: beebsTotalIndex, comptees: enLigne(), libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null,
+      // (27/09, meminiandmove) On compare ce que l'index annonce à ce que le
+      // relevé a LU de l'index — pas aux seules lignes « en ligne » : une carte
+      // lue « vendue » sur la page restait comptée absente, et le relevé se
+      // disait partiel à vie (« 0 sur 1 »).
+      total: beebsTotalIndex, comptees: Math.max(enLigne(), [...beebsIdsIndex].filter((id) => annonces.has(id)).length),
+      libelle: "dans l'index public de Beebs", listeRendue: beebsPageMuette == null,
       absent: (beebsPageMuette != null
         ? `« Mes annonces » de Beebs n'a rien rendu alors que l'index public en montre ${beebsPageMuette}`
         : beebsIndexMotif
@@ -13627,12 +13685,27 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // cette ligne, un relevé réussi ne prouve rien (on ne verrait que items_vus,
   // sans le « sur combien »). C'est ce qu'on lira au premier relevé d'un gros
   // compte (XEWER 181, Joe0410 232) pour savoir si le défilement a mordu.
-  const defilementResume = defilements.length
-    ? defilements.map((d) => `${d.paliers} palier(s), ${d.vus} vue(s)`
-        + (Number.isFinite(d.cible) ? ` sur ${d.cible} annoncée(s)` : "")
-        + ` — arrêt ${d.arret}`).join(" | ")
-    : null;
-  return { annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, vide, defilement: defilementResume };
+  // (27/09) En clair, sans jargon : « arrêt sans_croissance » voulait dire
+  // « la page n'en affichait pas plus » — lu comme une troncature (Beebs
+  // josephinecerni, louis) alors que l'index public complétait la liste.
+  const ARRET_FR = {
+    cible: "toutes affichées", sans_croissance: "la page n'en affichait pas plus",
+    paliers: "borne de défilement atteinte", duree: "borne de temps atteinte",
+  };
+  const defilementResume = [
+    ...defilements.map((d) => `page : ${d.vus} annonce(s) affichée(s)`
+      + (Number.isFinite(d.cible) ? ` sur ${d.cible} annoncée(s)` : "")
+      + ` (${d.paliers} défilement(s), ${ARRET_FR[d.arret] ?? d.arret})`),
+    ...(platform === "beebs" && Number.isFinite(beebsTotalIndex)
+      ? [`index public Beebs : ${beebsTotalIndex} annonce(s) en ligne, ${enLigne()} lue(s) au total`] : []),
+  ].join(" | ") || null;
+  return {
+    annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, vide,
+    // Le total que la PLATEFORME annonce (compteur, index) : c'est lui que
+    // le run écrit dans total_entries — « 30 lues sur 176 annoncées ».
+    annonce: juge && Number.isFinite(juge.total) ? juge.total : null,
+    defilement: [motifsAdresse ? `[adresse muette : ${motifsAdresse}] repli sur la page` : null, defilementResume].filter(Boolean).join(" · ") || null,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -14049,8 +14122,13 @@ async function reporterCaptureSurArticle(inventaireId, capture, platform, { toke
   }
   const photos = Array.isArray(art.photos) ? art.photos.filter(Boolean).map(String) : [];
   const aNous = (u) => /supabase\.co|fillsell\.app/i.test(u);
+  // (27/09, louis) La vignette RECOPIÉE chez nous (…/rapatrie-fiche/<id>/…)
+  // reste la vignette de la plateforme : ce n'est pas une photo du vendeur.
+  // Sans cette ligne, une capture arrivée après la recopie ne complétait
+  // plus jamais la fiche (1 photo au lieu de 4 ou 5).
+  const copieDeVignette = (u) => /\/rapatrie-fiche\//.test(String(u));
   const seulementVignette = photos.length === 0
-    || (photos.length === 1 && !aNous(photos[0]));
+    || (photos.length === 1 && (!aNous(photos[0]) || copieDeVignette(photos[0])));
   if (seulementVignette && Array.isArray(capture?.photos) && capture.photos.length) patch.photos = capture.photos;
   if (!String(art.description ?? "").trim() && capture?.description) patch.description = String(capture.description);
   if (!String(art.marque ?? "").trim() && capture?.marque && valeurAttributSaine(capture.marque)) patch.marque = String(capture.marque);
@@ -14176,6 +14254,9 @@ const CAPTURE_FRAICHEUR_H = 24;
 // des semaines. Le chantier « choisir le texte à reprendre » exige une capture
 // qui suit l'annonce : VINGT par run (≈ 80 s de pages, plafond 30 inchangé).
 const CAPTURE_PERIMEES_PAR_RUN = 20;
+// Le plancher des périmées quand des annonces n'ont JAMAIS été capturées
+// (27/09) : elles passent devant, les périmées gardent 10 slots sur 30.
+const CAPTURE_PERIMEES_PLANCHER = 10;
 
 /** La ligne de liste mémorisée DANS la capture — c'est elle qui rend le
  *  signal « changée » gratuit au run suivant. */
@@ -14188,7 +14269,7 @@ const memeLigne = (x, y) => Boolean(x) && Boolean(y)
   && String(x.prix ?? "") === String(y.prix ?? "");
 
 /** Les annonces à (re)capturer, dans l'ordre, bornées au budget du run. */
-function choisirCapturesARefaire(annonces, connues, maintenantMs) {
+function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   const parId = new Map(connues.map((r) => [String(r.listing_id), r]));
   const jamais = [], changees = [], perimees = [];
   for (const a of annonces) {
@@ -14206,11 +14287,19 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs) {
   // La plus ANCIENNE d'abord : une annonce ne peut pas rester indéfiniment au
   // fond de la file pendant que ses voisines tournent.
   perimees.sort((x, y) => Date.parse(x._capture_le) - Date.parse(y._capture_le));
-  const budget = CAPTURE_MAX_PAR_RUN;
+  // (27/09) Un budget propre aux captures qui ne coûtent AUCUNE page (la
+  // liste Leboncoin porte déjà tout) : `opts.budget`.
+  const budget = Number.isFinite(opts.budget) ? opts.budget : CAPTURE_MAX_PAR_RUN;
   // 1. les MODIFIÉES, sans contingent : c'est de l'information, pas du confort.
   const pris = changees.slice(0, budget);
   // 2. les JAMAIS capturées, en laissant leur part aux périmées.
-  const partPerimees = Math.min(CAPTURE_PERIMEES_PAR_RUN, perimees.length, Math.max(0, budget - pris.length));
+  // ── (27/09, louis) UNE ANNONCE JAMAIS CAPTURÉE EST UNE FICHE À UNE PHOTO ──
+  // Quand il en reste, les périmées ne gardent que leur PLANCHER : 1 420
+  // fiches du parc attendaient encore leur première capture (vignette seule,
+  // sans texte) pendant que 20 slots sur 30 rafraîchissaient des captures
+  // déjà complètes. Sans jamais-capturées, le contingent reste le même.
+  const partPerimees = Math.min(jamais.length ? CAPTURE_PERIMEES_PLANCHER : CAPTURE_PERIMEES_PAR_RUN,
+    perimees.length, Math.max(0, budget - pris.length));
   pris.push(...jamais.slice(0, Math.max(0, budget - pris.length - partPerimees)));
   // 3. les PÉRIMÉES, au contingent — jamais plus, jamais moins tant qu'il y en a.
   pris.push(...perimees.slice(0, Math.min(partPerimees, Math.max(0, budget - pris.length))));
@@ -14243,15 +14332,27 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
     return bilan;
   }
   const candidates = annonces.filter((a) => a?.listing_id && (platform === "opla" || a.url));
-  const choix = choisirCapturesARefaire(candidates, connues, Date.now());
-  bilan.jamais = choix.jamais; bilan.changees = choix.changees; bilan.perimees = choix.perimees;
-  const aCapturer = choix.pris;
-  bilan.restantes = choix.restantes;
+  // ── CE QUE LA LISTE A DÉJÀ DONNÉ NE COÛTE AUCUNE PAGE (27/09) ─────────────
+  // Leboncoin : l'adresse « Mes annonces » rend photos, texte et critères de
+  // chaque annonce (capture_liste). Ces captures-là ne consomment pas le
+  // budget des pages ouvertes ; elles ont le leur, large.
+  const parListe = candidates.filter((a) => Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length);
+  const parPage = candidates.filter((a) => !(Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length));
+  const choixListe = parListe.length ? choisirCapturesARefaire(parListe, connues, Date.now(), { budget: 400 }) : null;
+  const choix = choisirCapturesARefaire(parPage, connues, Date.now());
+  bilan.jamais = choix.jamais + (choixListe?.jamais ?? 0);
+  bilan.changees = choix.changees + (choixListe?.changees ?? 0);
+  bilan.perimees = choix.perimees + (choixListe?.perimees ?? 0);
+  const aCapturer = [...(choixListe?.pris ?? []), ...choix.pris];
+  bilan.restantes = choix.restantes + (choixListe?.restantes ?? 0);
   console.log(`[releve][${platform}] capture : ${aCapturer.length} fiche(s) ce run — ${choix.changees} modifiée(s), ${choix.jamais} jamais capturée(s), ${choix.perimees} périmée(s), ${bilan.restantes} au suivant`);
   for (const a of aCapturer) {
     try {
       let capture = null;
-      if (platform === "opla") {
+      const deLaListe = Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length > 0;
+      if (deLaListe) {
+        capture = a.capture_liste;
+      } else if (platform === "opla") {
         const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
         const r = await sendMessageToTab(tabId, { type: "OPLA_CAPTURE_ARTICLE", listingId: String(a.listing_id) })
           .catch((e) => ({ success: false, error: String(e?.message ?? e) }));
@@ -14304,7 +14405,8 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
       bilan.echecs++;
       console.warn(`[releve][${platform}] capture ${a.listing_id} en échec :`, String(e?.message ?? e));
     }
-    await sleep(randInt(1500, 3000));
+    // Une capture tirée de la liste n'a ouvert aucune page : pas de pause.
+    if (!(Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length)) await sleep(randInt(1500, 3000));
   }
   return bilan;
 }
@@ -14375,7 +14477,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       if (!run) return { ok: false, reason: "run_non_cree" };
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
-    const { annonces, complet, erreur, illisibles, absente, vide, defilement } = await releverAnnoncesPlateforme(platform, { token, userId });
+    const { annonces, complet, erreur, illisibles, absente, vide, defilement, annonce } = await releverAnnoncesPlateforme(platform, { token, userId });
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -14467,7 +14569,10 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       status: rienARelever ? "absente" : (annonces.length === 0 && !vide && (erreur || !complet) ? "failed" : "done"),
       finished_at: maintenant(), updated_at: maintenant(),
       items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
-      total_entries: annonces.length,
+      // (27/09) Le total que la PLATEFORME annonce (compteur Leboncoin / eBay,
+      // index public Beebs), pas le nombre lu : c'est ce qui permet à l'app
+      // de dire « 30 lues sur 176 » au lieu de « 30 annonces ».
+      total_entries: Number.isFinite(annonce) ? annonce : annonces.length,
       erreur: [vide ? `[vide] ${vide}` : (erreur ? `[incomplet] ${erreur}` : (!complet ? "[incomplet] borne de pagination atteinte" : null)),
                // Le défilement patient (LOT 2), TOUJOURS dit — y compris quand
                // il a tout vu : c'est la seule trace qui prouve qu'il a mordu.
@@ -14650,7 +14755,16 @@ async function releverLeboncoinParApi() {
     };
     const vues = new Map();
     let actives = null, total = null, pages = 0, motif = null;
-    for (let offset = 0; pages < pagesMax; offset += perPage) {
+    // (27/09) Statuts vus, comptés : « 4 en ligne sur 5 annoncées » doit
+    // pouvoir dire ce qu'est la cinquième (etmavi987, 26/09).
+    const statuts = {};
+    // ── LA PAGE SUIVANTE PART DE CE QUI A ÉTÉ RENDU, PAS DE CE QU'ON A DEMANDÉ
+    //    (27/09, jocabroc8) : si le serveur plafonne une réponse en dessous du
+    //    « limit » demandé, « moins que demandé » ne veut PAS dire « fin de
+    //    liste ». On avance de ce qui est arrivé ; on s'arrête sur une page
+    //    VIDE ou quand le total est atteint.
+    let offset = 0;
+    for (; pages < pagesMax;) {
       let j = null;
       try {
         const r = await fetch("https://api.leboncoin.fr/api/dashboard/v1/search", {
@@ -14670,6 +14784,42 @@ async function releverLeboncoinParApi() {
       if (ads === null) { motif = "forme_inattendue"; break; }
       if (Number.isFinite(j?.account_stats?.active_ads)) actives = j.account_stats.active_ads;
       if (Number.isFinite(j?.total)) total = j.total;
+      // ── TOUT CE QUE LA LISTE DONNE, SANS OUVRIR UNE PAGE (27/09) ─────────
+      // La réponse porte déjà ce que la capture allait chercher fiche par
+      // fiche : toutes les photos (images.urls_large, dans l'ordre), le texte,
+      // et les critères (marque, taille, état…). Même lecture que
+      // capturerFicheEnPage (__NEXT_DATA__ → ad), mêmes clés.
+      const propre = (v) => String(v ?? "").replace(/[\s  ]+/g, " ").trim();
+      const captureDe = (a) => {
+        const grandes = Array.isArray(a?.images?.urls_large) && a.images.urls_large.length ? a.images.urls_large : (a?.images?.urls ?? []);
+        const photos = (Array.isArray(grandes) ? grandes : []).map(String).filter((u) => /^https?:/.test(u));
+        const attrs = Array.isArray(a?.attributes) ? a.attributes : [];
+        const valeurDe = (x) => (x?.value_label ?? x?.value ?? null);
+        const parLibelle = (labels) => { for (const x of attrs) if (labels.includes(String(x?.key_label ?? "").trim().toLowerCase())) return valeurDe(x); return null; };
+        const parCle = (re) => { for (const x of attrs) if (re.test(String(x?.key ?? ""))) return valeurDe(x); return null; };
+        const loc = a?.location && typeof a.location === "object" ? a.location : null;
+        return {
+          source: "liste_api",
+          photos,
+          description: typeof a?.body === "string" && a.body.trim() ? a.body.trim() : null,
+          marque: parLibelle(["marque"]) ?? parCle(/brand$/i),
+          taille: parLibelle(["taille", "pointure"]) ?? parCle(/^(?!.*parcel)(?:.*_)?(size|st)$/i),
+          etat: parLibelle(["état", "etat"]) ?? parCle(/^condition$|_condition$/i),
+          couleur: parLibelle(["couleur"]) ?? parCle(/colou?r$/i),
+          matiere: parLibelle(["matière", "matiere"]) ?? parCle(/material$/i),
+          categorie: a?.category_name ?? null,
+          ...(loc && (loc.city || loc.zipcode) ? { localisation: {
+            ville: propre(loc.city) || null, code_postal: propre(loc.zipcode) || null, voie: null,
+            libelle: propre(loc.city_label) || [propre(loc.city), propre(loc.zipcode)].filter(Boolean).join(" ") || null,
+            departement: propre(loc.department_name) || null, source: "liste_api" } } : {}),
+          attributs_bruts: attrs.filter((x) => x && (x.key != null || x.key_label != null)).map((x) => ({
+            key: x.key != null ? String(x.key) : null, key_label: x.key_label != null ? String(x.key_label) : null,
+            value: x.value != null ? String(x.value) : null, value_label: x.value_label != null ? String(x.value_label) : null,
+            ...(Array.isArray(x.values) && x.values.length > 1 ? { values: x.values.map(String) } : {}),
+          })),
+          capture_complete: photos.length > 0,
+        };
+      };
       for (const a of ads) {
         const id = a?.list_id != null ? String(a.list_id) : null;
         if (!id) continue;
@@ -14678,6 +14828,7 @@ async function releverLeboncoinParApi() {
         // Une annonce d'un autre statut n'est pas jetée : elle entre avec un
         // statut « inconnu », donc elle ne sera PAS datée disparue par erreur.
         const actif = String(a?.status ?? "") === "active";
+        statuts[String(a?.status ?? "?")] = (statuts[String(a?.status ?? "?")] ?? 0) + 1;
         const cents = nombre(a?.price_cents);
         vues.set(id, {
           listing_id: id,
@@ -14689,16 +14840,18 @@ async function releverLeboncoinParApi() {
           favoris: nombre(a?.stats?.Favorites),
           statut: actif ? "en_ligne" : "inconnu",
           source_releve: "api_dashboard",
+          capture_liste: captureDe(a),
         });
       }
-      if (ads.length < perPage) break;
-      if (Number.isFinite(total) && offset + perPage >= total) break;
+      offset += ads.length;
+      if (!ads.length) break;
+      if (Number.isFinite(total) && offset >= total) break;
       await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
     }
     const liste = [...vues.values()];
     return {
       ok: liste.length > 0 || (!motif && actives === 0),
-      annonces: liste, actives, total, pages, motif,
+      annonces: liste, actives, total, pages, motif, statuts,
       enLigne: liste.filter((a) => a.statut === "en_ligne").length,
     };
   }, [LBC_API_PAGE, LBC_API_PAGES_MAX]);
