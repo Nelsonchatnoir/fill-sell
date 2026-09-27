@@ -33,6 +33,15 @@ export function buildMsDe(build) {
   return m ? Date.parse(m[1]) : NaN;
 }
 
+// ── L'ISBN CAPTURÉ REMIS TEL QUEL (2026-09-27, carhoa « gobelins ») ─────────
+// BUILD_ID du premier build d'extension qui remet dans le corps du POST de
+// recréation l'ISBN CAPTURÉ sur l'annonce d'origine, tel quel — « 0000000000000 »
+// compris. Avant lui, toute valeur que normalizeIsbn refuse était écartée et la
+// recréation partait avec "isbn": null (400). Tant qu'il vaut la sentinelle
+// ci-dessous (aucun build ne la dépasse), get-pending-jobs ne sert AUCUNE
+// republication Vinted à l'étape qui supprime quand sa capture porte un tel ISBN.
+export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2099-12-31T00:00:00Z";
+
 export const CORRECTIFS_EXTENSION = [
   {
     cle: "lbc_retrait_pro_tiroir",

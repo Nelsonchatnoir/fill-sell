@@ -13,7 +13,7 @@ import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuV
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
-import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe } from "../_shared/correctifs-extension.js";
+import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
@@ -1308,6 +1308,40 @@ serve(async (req) => {
       }
     } catch (e) {
       console.warn(`[get-pending-jobs] garde annonce vendue / retrait unique : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
+    // ══ UN COMPTE eBay RELIÉ PAR L'API NE PUBLIE PLUS PAR L'EXTENSION (2026-09-27) ══
+    // philippaa (reliée le 18/09 à 09:49, 2 jobs créés à 17:37) et pironneau
+    // (relié le 23/09, job du 25/09) : comptes reliés mais pas encore
+    // utilisables (politiques non retenues, inscription vendeur) — le trigger
+    // cross_post_jobs_voie_ebay a laissé 'extension' en silence. L'extension
+    // bute alors sur le mur de connexion eBay que l'API évite (REAUTH 3/5), et
+    // le worker retravaille le même job (rayon aveugle) : deux voies sur un
+    // job. Ici, TOUS LES MODES : une PUBLICATION eBay en voie extension n'est
+    // plus servie à Chrome dès que le compte a une connexion API
+    // (profiles.ebay_voie_api + ebay_accounts non révoqué). C'est l'API qui la
+    // prend en charge (trigger et worker corrigés le même jour).
+    // ⛔ Retraits et republications gardent leur voie : le worker ne sait pas
+    //    retirer une annonce créée par le formulaire web.
+    // Filtre pur, aucune écriture. Lecture impossible → comportement d'avant.
+    {
+      const ebayPublications = out.filter((j) => j.platform === "ebay" && String(j.action ?? "publish") === "publish");
+      if (ebayPublications.length) {
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const [{ data: prof }, { data: compte }] = await Promise.all([
+            admin.from("profiles").select("ebay_voie_api").eq("id", user.id).maybeSingle(),
+            admin.from("ebay_accounts").select("user_id").eq("user_id", user.id).is("revoked_at", null).maybeSingle(),
+          ]);
+          if ((prof as { ebay_voie_api?: boolean } | null)?.ebay_voie_api === true && compte) {
+            const retenus = new Set(ebayPublications.map((j) => String(j.id)));
+            out = out.filter((j) => !retenus.has(String(j.id)));
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} publication(s) eBay en voie extension NON servie(s) — compte relié par l'API, c'est le worker qui publie`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] voie eBay : ${String((e as Error)?.message ?? e)} — distribution normale`);
+        }
+      }
     }
 
     // ── UN JOB RÉARMÉ PAR UN CORRECTIF N'EST SERVI QU'À UN POSTE QUI LE PORTE ──
@@ -3847,6 +3881,84 @@ serve(async (req) => {
       }
     }
 
+    // ══ UN ISBN CAPTURÉ NE SE PERD PLUS : PAS DE RETRAIT SANS LE POSTE QUI LE REMET ══
+    // (2026-09-27, carhoa, « Livre sur la tentation des gobelins », job 279c046f)
+    // L'annonce d'origine portait isbn = "0000000000000", la capture 8609 l'a
+    // relevé — et la recréation est partie avec "isbn": null : l'extension écarte
+    // toute valeur que normalizeIsbn refuse (valeur de remplissage, 15/09). 400
+    // « Merci d'entrer un numéro ISBN valide », annonce supprimée, pas recréée.
+    // La garde « requis de la destination » ci-dessous ne l'a pas vue : elle lit
+    // republish_snapshot, que le bloc « copie servie » n'écrit que PLUS BAS.
+    // RÈGLE (Nico, 27/09) : une republication remet EXACTEMENT ce qui était en
+    // ligne ; une valeur capturée n'est jamais écartée, remplacée ni vidée.
+    // Tant que ce n'est pas prouvé possible, on NE SUPPRIME PAS : une
+    // republication Vinted à l'étape 'captured' (celle qui retire l'annonce)
+    // dont la capture porte un ISBN que normalizeIsbn refuse n'est pas servie
+    //   (1) si le poste n'a pas le build qui remet l'ISBN tel quel
+    //       (BUILD_ISBN_CAPTURE_TEL_QUEL, _shared/correctifs-extension.js) ;
+    //   (2) tant qu'AUCUNE recréation n'a prouvé que Vinted accepte une telle
+    //       valeur remise telle quelle (marqueur isbn_capture_tel_quel, écrit
+    //       par ce build sur la republication publiée).
+    // Une réponse de la personne (vintedAspects.isbn valide) passe comme avant.
+    // L'étape 'deleted' n'est JAMAIS retenue (B.5) : l'annonce n'existe plus.
+    // L'annonce reste EN LIGNE. Seule écriture : le marqueur de retenue (daté
+    // une fois, lu par l'app), conditionné à status = 'pending'.
+    let heldIsbnCapture = 0;
+    try {
+      const pfDe = (j: { platform_fields: unknown }) => ((j.platform_fields as Record<string, unknown> | null) ?? {});
+      const aVoir = out.filter((j) => j.platform === "vinted" && j.action === "republish"
+        && String(pfDe(j)["republish_step"] ?? "") === "captured"
+        && Number(pfDe(j)["capture_id"]) > 0
+        && !normalizeIsbn(((pfDe(j)["vintedAspects"] ?? {}) as Record<string, unknown>)["isbn"]).ok);
+      if (aVoir.length) {
+        const { data: caps } = await userClient.from("vinted_republish_captures")
+          .select("id, libelles, payload").in("id", [...new Set(aVoir.map((j) => Number(pfDe(j)["capture_id"])))]);
+        const isbnParCapture = new Map<number, string>();
+        for (const c of ((caps ?? []) as Array<Record<string, unknown>>)) {
+          const lib = (c["libelles"] ?? {}) as Record<string, unknown>;
+          const natif = (((c["payload"] ?? {}) as Record<string, unknown>)["natif"] ?? {}) as Record<string, unknown>;
+          const v = String(lib["isbn"] ?? natif["isbn"] ?? "").trim();
+          if (v) isbnParCapture.set(Number(c["id"]), v);
+        }
+        const exposes = aVoir.filter((j) => {
+          const v = isbnParCapture.get(Number(pfDe(j)["capture_id"]));
+          return !!v && !normalizeIsbn(v).ok;
+        });
+        if (exposes.length) {
+          const posteCorrige = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_ISBN_CAPTURE_TEL_QUEL);
+          let prouve = false;
+          if (posteCorrige) {
+            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            const { data: preuve } = await admin.from("cross_post_jobs").select("id")
+              .eq("platform", "vinted").eq("action", "republish").eq("status", "published")
+              .not("platform_fields->isbn_capture_tel_quel", "is", null).limit(1);
+            prouve = (preuve ?? []).length > 0;
+          }
+          if (!posteCorrige || !prouve) {
+            const retenus = new Set(exposes.map((j) => String(j.id)));
+            out = out.filter((j) => !retenus.has(String(j.id)));
+            heldIsbnCapture = retenus.size;
+            const maintenant = new Date().toISOString();
+            for (const j of exposes) {
+              const pf = pfDe(j);
+              if (pf["retenue_isbn_capture"]) continue; // daté une fois
+              await userClient.from("cross_post_jobs")
+                .update({ platform_fields: { ...pf, retenue_isbn_capture: {
+                  depuis: maintenant, isbn_capture: isbnParCapture.get(Number(pf["capture_id"])),
+                  motif: posteCorrige ? "attente_preuve_recreation" : "attente_correctif_extension",
+                } } })
+                .eq("id", String(j.id)).eq("status", "pending");
+            }
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${posteCorrige ? "attente de la première recréation prouvée" : "poste sans le correctif"}), ANNONCE INTACTE`);
+          }
+        }
+      }
+    } catch (e) {
+      // En cas de pépin, la garde « requis de la destination » ci-dessous reste
+      // la seule, comme hier.
+      console.warn(`[get-pending-jobs] ISBN capturé : ${String((e as Error)?.message ?? e)}`);
+    }
+
     // ══ RIEN NE SE SUPPRIME TANT QUE LA RECRÉATION N'EST PAS GARANTIE ═══════
     // (2026-09-18, GO Nico — job 839f1077, xxewwer, Pro abonné du jour)
     //
@@ -4219,7 +4331,8 @@ serve(async (req) => {
       (heldBeebsInterdit ? `, ${heldBeebsInterdit} dépôt(s) beebs → needs_user (article refusé par le catalogue Beebs)` : "") +
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : "") +
       (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
-      (heldRequisDestination ? `, ${heldRequisDestination} republish → needs_user AVANT suppression (requis de la catégorie de destination introuvable)` : ""),
+      (heldRequisDestination ? `, ${heldRequisDestination} republish → needs_user AVANT suppression (requis de la catégorie de destination introuvable)` : "") +
+      (heldIsbnCapture ? `, ${heldIsbnCapture} republish retenu(s) AVANT suppression (ISBN capturé non standard)` : ""),
     );
 
     // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
