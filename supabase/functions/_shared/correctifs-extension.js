@@ -53,6 +53,28 @@ export const CORRECTIFS_EXTENSION = [
     version: "0.6.66",
     motif: "retrait Leboncoin pro : fiche sans panneau de gestion en fenêtre étroite (tiroir « Gérer » ouvert depuis la 0.6.66)",
   },
+  {
+    // (2026-09-27, carhoa « Livre sur la tentation des gobelins », job
+    // 279c046f) : recréation partie avec "isbn": null alors que l'annonce
+    // d'origine portait « 0000000000000 » — le build qui la remet telle quelle
+    // relance la recréation (l'annonce est déjà retirée : étape 'deleted').
+    cle: "vinted_isbn_capture_tel_quel",
+    platform: "vinted",
+    actions: ["republish"],
+    signature: /"isbn":null[\s\S]*Merci d'entrer un numéro ISBN valide|Merci d'entrer un numéro ISBN valide[\s\S]*"isbn":null/,
+    buildMin: BUILD_ISBN_CAPTURE_TEL_QUEL,
+    version: "0.6.70",
+    motif: "ISBN capturé non standard (« 0000000000000 ») remis tel quel à la recréation",
+    // Seulement si la copie de l'annonce porte bien un ISBN : la signature
+    // seule rattraperait aussi un livre qui n'en avait pas.
+    condition: (job) => {
+      const snap = job?.platform_fields?.republish_snapshot;
+      return !!(snap && typeof snap === "object" && String(snap.isbn ?? "").trim());
+    },
+    // La question « ISBN » posée après l'échec n'a plus lieu d'être, et la
+    // recréation repart avec son budget d'essais entier.
+    clesARetirer: ["needsUserField", "needsUserFields", "server_required_fields", "recreation_retries", "recreation_tentee"],
+  },
 ];
 
 /** Les textes d'un job où la signature d'un défaut peut se lire. */
@@ -84,6 +106,7 @@ export function correctifPourJob(job, correctifs = CORRECTIFS_EXTENSION) {
     if (!(buildEchec < buildMsDe(c.buildMin))) continue;
     if (pf.correctif_leve && typeof pf.correctif_leve === "object" && pf.correctif_leve.cle === c.cle) continue;
     if (!textes.some((t) => c.signature.test(t))) continue;
+    if (typeof c.condition === "function" && !c.condition(job)) continue;
     return c;
   }
   return null;

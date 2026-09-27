@@ -89,6 +89,12 @@ const OPLA_CONNEXION_RE = /^Connexion Opla requise/i;
 /** Opla, 494 = REQUEST_HEADER_TOO_LARGE chez Vercel (son hébergeur) : les cookies
  *  du site dans CE Chrome dépassent 16 Ko. Louis, nuit du 23/09, six kits. */
 const OPLA_494_RE = /Arbre Opla indisponible \(HTTP 494\)|HTTP 494\b|REQUEST_HEADER_TOO_LARGE/i;
+/** Opla, l'onglet a quitté www.opla.co (2026-09-27, carhoa 71df89e9, thomas.vinted590002
+ *  840b67ec) : Chrome refuse la réinjection (« Cannot access contents of the page …
+ *  must request permission to access the respective host ») et l'onglet devient
+ *  illisible. Ce n'est pas un canal coupé : la page est partie ailleurs — le plus
+ *  souvent la connexion Opla (cookies __txn_ d'une connexion en cours, aucun __session). */
+const OPLA_HORS_HOTE_RE = /Cannot access contents of the page|must request permission to access the respective host|URL illisible \(hors de nos permissions d'h[ôo]te\)/i;
 /** Le code posé par noterSessionDeconnectee : une page de connexion RÉELLEMENT vue. */
 const HTTP_MUR_OBSERVE = "login_redirect_observee";
 
@@ -445,6 +451,33 @@ export function classerEchec(arg) {
       `${nom} n'a pas répondu correctement pendant ${acte(action)}. Ce n'est pas ton annonce : ` +
       "on refait un essai tout seuls dans quelques minutes.", 10);
   }
+  // ── OPLA, ONGLET HORS DE www.opla.co (2026-09-27) ─────────────────────────
+  // Classé « canal coupé » jusqu'ici : reprise sans fin toutes les 6 h et « tu
+  // n'as rien à faire » — faux, la page partait sur la connexion d'Opla. On le
+  // dit : poste sans l'accès → « Autoriser Opla » ; connexion absente PROUVÉE
+  // (liste des cookies complète, aucun __session) ou déjà une reprise faite →
+  // « Me connecter » ; sinon une seule reprise, au calme.
+  if (platform === "opla" && OPLA_HORS_HOTE_RE.test(t)) {
+    if (!accesPoste) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "opla_acces", source: "opla_acces",
+        message: autorisationOplaRequise(action),
+      };
+    }
+    const oc = pf && typeof pf.opla_cookies === "object" ? pf.opla_cookies : null;
+    const gros = Array.isArray(oc?.gros) ? oc.gros : [];
+    const listeComplete = !!oc && Number.isFinite(Number(oc.n)) && gros.length >= Number(oc.n);
+    const sansSession = listeComplete && !gros.some((c) => /^__session/.test(String(c?.name ?? "")));
+    if (sansSession || reprisesFaites >= 1) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+        message: connexionOplaRequise(action),
+      };
+    }
+    return reprise("opla_hors_hote",
+      `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue : l'onglet Opla a quitté opla.co ` +
+      "(souvent la page de connexion). Rien n'a été touché : on refait un essai un peu plus tard.", 45);
+  }
   if (CANAL_RE.test(t)) {
     return reprise("canal_coupe",
       `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue sur ton ordinateur ` +
@@ -465,7 +498,10 @@ export function classerEchec(arg) {
   // ⛔ ON NE DIT PAS CE QU'ON NE SAIT PAS. Tant qu'il reste du budget, on
   //    reprend (c'est ce qui répare le plus souvent). Budget épuisé : un
   //    « relancer » ambre, avec le bouton — jamais un échec rouge et muet.
-  if (essais < 3) {
+  // ⛔ (2026-09-27, xxewwer af4ea3d3 : 14 reprises en 2 jours) `essais` est
+  //    remis à zéro à chaque reprise : seul le compteur de reprises du module
+  //    borne la boucle. Au-delà de 3 reprises, « relancer » ambre.
+  if (essais < 3 && reprisesFaites < 3) {
     return reprise("inconnu_reprise",
       `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} n'a pas abouti et ton annonce n'a pas ` +
       "été touchée. On ne sait pas encore pourquoi : on refait un essai tout seuls.", 15);

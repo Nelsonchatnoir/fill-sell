@@ -783,7 +783,7 @@ serve(async (req) => {
           const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
           for (const k of ["needs_user_source", "needsUserAttempts", "needsUserBoucle", "needsUserResolved", "next_action_after",
             "needs_user_vu_le", "needs_user_vu_erreur", "needs_user_tick_le", "needs_user_actif_ms", "error_technique",
-            "processing_since", "pas_de_rouge", "pas_de_rouge_reprises"]) delete pf[k];
+            "processing_since", "pas_de_rouge", "pas_de_rouge_reprises", ...(Array.isArray(c.clesARetirer) ? c.clesARetirer : [])]) delete pf[k];
           // Comme relancer_republish : une annonce pas encore retirée est
           // RE-VÉRIFIÉE (a_capturer) avant tout retrait ; 'deleted' reste là où il est.
           if (j.action === "republish" && pf.republish_step !== "deleted") {
@@ -4020,9 +4020,35 @@ serve(async (req) => {
         const s = String(pfOf(j)["republish_step"] ?? "");
         return s === "captured" || s === "deleted" ? s : "a_capturer";
       };
+      // ── LA COPIE, MÊME QUAND ELLE N'EST PAS ENCORE SUR LE JOB (2026-09-27) ──
+      // republish_snapshot n'est servi que PLUS BAS (bloc « copie servie ») :
+      // au premier passage à l'étape 'captured', cette garde ne voyait AUCUNE
+      // catégorie et servait le job — c'est ainsi que le livre « gobelins » de
+      // carhoa a été retiré. On lit donc la copie dans la capture elle-même,
+      // la même (copieRepublishDepuisCapture), en mémoire seulement.
+      const copiesDepuisCapture = new Map<string, Record<string, unknown>>();
+      try {
+        const aLire = out.filter((j) => j.platform === "vinted" && j.action === "republish"
+          && !(pfOf(j).republish_snapshot && typeof pfOf(j).republish_snapshot === "object")
+          && Number(pfOf(j).capture_id) > 0);
+        if (aLire.length) {
+          const { data: caps } = await userClient.from("vinted_republish_captures")
+            .select("id, verdict, captured_at, payload, libelles, photos_urls")
+            .in("id", [...new Set(aLire.map((j) => Number(pfOf(j).capture_id)))]);
+          const parId = new Map<number, Record<string, unknown>>();
+          for (const c of ((caps ?? []) as Array<Record<string, unknown>>)) parId.set(Number(c.id), c);
+          for (const j of aLire) {
+            const cap = parId.get(Number(pfOf(j).capture_id));
+            if (cap && cap.verdict === "valide") copiesDepuisCapture.set(String(pfOf(j).capture_id), copieRepublishDepuisCapture(pfOf(j), cap));
+          }
+        }
+      } catch (_e) { /* doute : comportement d'avant (copie absente = rien jugé) */ }
       const snapDe = (pf: Record<string, unknown>) =>
         (pf.republish_snapshot && typeof pf.republish_snapshot === "object")
-          ? (pf.republish_snapshot as Record<string, unknown>) : null;
+          ? (pf.republish_snapshot as Record<string, unknown>)
+          : (copiesDepuisCapture.get(String(pf.capture_id)) ?? null);
+      // Le poste remet-il tel quel un ISBN capturé non standard ?
+      const posteIsbnTelQuel = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_ISBN_CAPTURE_TEL_QUEL);
       // Clé de catégorie = le chemin capturé, tel qu'il est écrit dans
       // platform_category_aspects (« A > B > C »). Pas de chemin = pas de
       // catégorie de destination connue = on ne juge rien (doute = servi).
@@ -4054,6 +4080,10 @@ serve(async (req) => {
             const cle = cleCategorie(pf);
             if (!cle || !/(^|>)\s*Livres\s*(>|$)/i.test(cle)) continue;
             if (String(va.isbn ?? "").trim()) continue; // déjà tranché
+            // (2026-09-27) La valeur de l'annonce d'origine n'est jamais
+            // remplacée par une déduction : valide, elle part telle quelle ;
+            // non standard, elle part telle quelle sur un poste corrigé.
+            if (String(snap?.isbn ?? "").trim() && (normalizeIsbn(snap?.isbn).ok || posteIsbnTelQuel)) continue;
             const trouve = resoudreIsbn({
               reponse: va.isbn,
               capture: snap?.isbn,
@@ -4157,7 +4187,11 @@ serve(async (req) => {
               // juge sur sa VALEUR, jamais sur sa présence : ici on exige ce
               // que le formulaire exigera (normalizeIsbn, le même code).
               if (champ === "isbn") {
-                return normalizeIsbn(va.isbn).ok || normalizeIsbn(snap?.isbn).ok;
+                // (2026-09-27) Sur un poste qui remet l'ISBN capturé tel quel,
+                // la PRÉSENCE de la valeur d'origine suffit : c'est elle qui
+                // repart (« 0000000000000 » compris, accepté par Vinted).
+                return normalizeIsbn(va.isbn).ok || normalizeIsbn(snap?.isbn).ok
+                  || (posteIsbnTelQuel && texte(snap?.isbn));
               }
               if (texte(va[champ])) return true;                                     // 1. réponse / déduction
               if (codesParCapture.get(Number(pf.capture_id))?.has(champ.toLowerCase())) return true; // 2. attributs capturés
