@@ -17734,7 +17734,10 @@ async function beebsIdsConnus(session) {
   if (beebsIdsConnusCache) return beebsIdsConnusCache;
   try {
     const rows = await restRequest(
-      "cross_post_jobs?platform=eq.beebs&action=eq.publish&listing_url=not.is.null" +
+      // (2026-09-27) publish ET republish : une republication qui portait déjà
+      // l'annonce était invisible ici — le refus « déjà rattachée » ne jouait
+      // pas (nicolas.menar, Beebs 34035659 attribuée à deux fiches).
+      "cross_post_jobs?platform=eq.beebs&action=in.(publish,republish)&listing_url=not.is.null" +
         "&select=listing_url,published_at,created_at&order=published_at.desc.nullslast&limit=300",
       session.access_token
     );
@@ -17967,7 +17970,8 @@ async function recoverMissingListingUrls(session) {
         // ⛔ Un titre n'est pas un identifiant. C'est la règle déjà écrite
         //    pour Beebs — « sans lien, JAMAIS par titre » — jamais appliquée
         //    ici.
-        const idCertainLbc = String(job.platform_fields?.lbc_depot?.adsubmit?.id ?? "").trim();
+        const idCertainLbc = String(job.platform_fields?.lbc_depot?.adsubmit?.id
+          ?? job.platform_fields?.lbc_depot?.sans_adsubmit?.id ?? "").trim();
         const idPourRecherche = platform === "leboncoin"
           ? (/^\d{6,}$/.test(idCertainLbc) ? idCertainLbc : String(job.platform_listing_id ?? ""))
           : String(job.platform_listing_id ?? "");
@@ -17987,6 +17991,18 @@ async function recoverMissingListingUrls(session) {
         // l'identifiant certain du dépôt. Mieux vaut une URL manquante
         // qu'une URL croisée : la première se rattrape, la seconde fait
         // supprimer l'annonce de quelqu'un d'autre.
+        // ── L'ID CERTAIN CONNU : JAMAIS DE REPLI SUR LE TITRE (2026-09-27) ──
+        // nicolas.menar, « Doudou Mickey gris » : Leboncoin avait rendu l'id
+        // 3275108417 au dépôt, la carte n'était pas encore listée (modération,
+        // 0-1 min), et le repli par TITRE a pris l'annonce du LOT (« doudou »
+        // matche « doudous ») : deux fiches pour une annonce, retrait bloqué.
+        // Quand Leboncoin a rendu l'identifiant, lui seul fait foi : pas de
+        // carte à cet id = on attend la passe suivante.
+        if (platform === "leboncoin" && !urlParId && /^\d{6,}$/.test(idCertainLbc)) {
+          console.log(`[background] recover(leboncoin) job ${job.id} : id certain ${idCertainLbc} pas encore listé — aucun repli par titre, passe suivante`);
+          stillMissing.push(job);
+          continue;
+        }
         const titreComparable = (t) => String(t ?? "").toLowerCase()
           .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
         const monTitre = titreComparable(job.title);
@@ -18743,10 +18759,19 @@ function construireJobRecreation(job, pf, cap, prix) {
       // refuse déjà au point de pose ; on ne la laisse pas non plus entrer dans
       // platform_fields, sinon elle ressort dans les messages et le
       // mini-éditeur comme si c'était l'ISBN de l'article.
+      // ⛔ (2026-09-27, carhoa « Livre sur la tentation des gobelins ») : la
+      //    valeur CAPTURÉE voyage TELLE QUELLE, remplissage compris — règle de
+      //    Nico : une republication remet exactement ce qui était en ligne.
+      //    Le filtre du 15/09 la jetait ici : POST "isbn": null, 400 « Merci
+      //    d'entrer un numéro ISBN valide », annonce supprimée et perdue.
+      //    Vinted accepte « 0000000000000 » en recréation (2286228e et
+      //    f4ad5b06, 15/09, toujours en ligne) quand la langue du livre est
+      //    posée — ce que fait la sonde au POST. `isbn_source` dit au
+      //    formulaire que c'est la valeur de l'annonce d'origine : lui seul
+      //    a le droit de passer outre normalizeIsbn (vinted.js).
       ...(() => {
         const isbn = String(cap.libelles?.isbn ?? natifCap.isbn ?? "").trim();
-        if (!isbn || /^(\d)\1{9,}$/.test(isbn.replace(/[\s-]/g, ""))) return {};
-        return { isbn };
+        return isbn ? { isbn, isbn_source: "capture" } : {};
       })(),
       // Matière (2026-08-13) — OPTIONNELLE, jamais bloquante : libellé si un
       // jour la capture en produit un, sinon les IDS (item_attributes),
@@ -19122,6 +19147,12 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
         `[background] Republish ${job.id} : rattachement inventaire ${job.inventaire_id} → ${nouvelId} NON écrit —`,
         String(e?.message ?? e),
       ));
+    }
+    // (2026-09-27) La PREUVE que Vinted a accepté un ISBN capturé non
+    // standard remis tel quel : get-pending-jobs n'en retire aucune autre
+    // annonce tant qu'elle n'existe pas.
+    if (result.isbnCaptureTelQuel) {
+      pf.isbn_capture_tel_quel = { valeur: String(result.isbnCaptureTelQuel), le: new Date().toISOString() };
     }
     await updateJobStatus(accessToken, job.id, "published", {
       listing_url: result.listingUrl, platform_fields: pf, error: null,

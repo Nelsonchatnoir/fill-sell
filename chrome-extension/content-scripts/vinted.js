@@ -2408,6 +2408,16 @@ async function fillListingForm(job) {
     const v = String(_va[code] ?? "").trim();
     if (v) fields[dedie] = v;
   }
+  // ── L'ISBN DE L'ANNONCE D'ORIGINE, REMIS TEL QUEL (2026-09-27) ────────────
+  // Vrai seulement pour une RECRÉATION (construireJobRecreation pose
+  // isbn_source = "capture") et seulement si personne n'a répondu autre chose
+  // (une réponse dans vintedAspects.isbn a pris la place juste au-dessus).
+  // Cette valeur-là n'est JAMAIS écartée, même si normalizeIsbn la refuse
+  // (« 0000000000000 », la valeur que Vinted stocke lui-même) : règle de Nico,
+  // une republication remet exactement ce qui était en ligne. Pour une
+  // publication neuve et pour les réponses, « illisible = absent » ne change
+  // pas (cas Louis « 00 », 20/09).
+  const isbnDeCapture = fields.isbn_source === "capture" && !String(_va.isbn ?? "").trim();
   // Couleur : cas à part du pont — fields.colors est un TABLEAU, pas une string.
   // « color » était le SEUL code de handledCodes (boucle générique plus bas)
   // sans AUCUN chemin de lecture : le bloc dédié ne lit que fields.colors, ce
@@ -2486,6 +2496,9 @@ async function fillListingForm(job) {
   // entier sur un détail.
   const warnings = [];
   const diagnosticsRecreation = [];
+  // (2026-09-27) ISBN capturé non standard remis tel quel : rendu dans le
+  // résultat, le background en fait la preuve (isbn_capture_tel_quel).
+  let isbnCaptureTelQuel = null;
   // Relevés d'options du run PRÉCÉDENT purgés : chaque remplissage repart
   // d'une page (et souvent d'une catégorie) différente.
   optionsRelevees.clear();
@@ -2640,7 +2653,11 @@ async function fillListingForm(job) {
   // scolaire, Enfants), c'est LUI qui refusera, et son refus sera le vrai.
   if (fields.isbn) {
     const verdict = normalizeIsbn(fields.isbn);
-    if (!verdict.ok) {
+    if (!verdict.ok && isbnDeCapture) {
+      const note = `isbn « ${String(fields.isbn).trim()} » de l'annonce d'origine (${verdict.raison}) — remis TEL QUEL, c'est la valeur qui était en ligne`;
+      console.log(`[vinted] ${note}`);
+      diagnosticsRecreation.push(note);
+    } else if (!verdict.ok) {
       const note = `isbn « ${String(fields.isbn).trim()} » : ${verdict.raison} — traité comme ISBN ABSENT (champ laissé vide, rien inventé)`;
       console.warn(`[vinted] ⚠️ ${note}`);
       warnings.push(note);
@@ -2665,7 +2682,12 @@ async function fillListingForm(job) {
       // il ne peut plus faire ÉCHOUER un dépôt : il saute l'étape.
       // (2026-09-20 : c'est ce `throw` qui a bloqué le job de Louis sur « 00 ».)
       const norme = normalizeIsbn(fields.isbn);
-      if (!norme.ok) {
+      // La valeur posée : l'ISBN normalisé, ou — seulement pour la valeur de
+      // l'annonce d'origine — la valeur capturée telle quelle (2026-09-27).
+      const brutCapture = String(fields.isbn ?? "").replace(/[\s-]/g, "");
+      const valeur = norme.ok ? norme.isbn13 : (isbnDeCapture && brutCapture ? brutCapture : null);
+      const telQuel = !norme.ok && !!valeur;
+      if (!valeur) {
         console.warn(`[vinted] ISBN « ${fields.isbn} » écarté à la pose — ${norme.raison}`);
         return;
       }
@@ -2727,22 +2749,22 @@ async function fillListingForm(job) {
       // prochain 400 dira noir sur blanc quelle pose a eu lieu et si le
       // lookup a rattaché le livre.
       const tracePose = [];
-      insertTextOneShot(el, norme.isbn13);
+      insertTextOneShot(el, valeur);
       el.blur();
       await humanPause();
       let lu = relire();
       let poseParFrappe = false;
-      if (lu !== norme.isbn13) {
-        console.warn(`[vinted] ⚠️ ISBN : relecture « ${lu} » ≠ « ${norme.isbn13} » — retentative typeHuman`);
-        await typeHuman(el, norme.isbn13);
+      if (lu !== valeur) {
+        console.warn(`[vinted] ⚠️ ISBN : relecture « ${lu} » ≠ « ${valeur} » — retentative typeHuman`);
+        await typeHuman(el, valeur);
         el.blur();
         await humanPause();
         lu = relire();
         poseParFrappe = true;
       }
-      if (lu !== norme.isbn13) {
+      if (lu !== valeur) {
         throw new Error(
-          `ISBN ${norme.isbn13} : le formulaire n'a pas retenu la valeur posée (état relu : « ${lu || "vide"} »). ` +
+          `ISBN ${valeur} : le formulaire n'a pas retenu la valeur posée (état relu : « ${lu || "vide"} »). ` +
           "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
         );
       }
@@ -2760,8 +2782,19 @@ async function fillListingForm(job) {
       // Vaut pour les DEUX chemins de recréation — l'une-passe ('captured') et
       // la reprise ('deleted') passent toutes deux par cette étape, ce qui
       // couvre les 26 annonces déjà supprimées et non recréées.
-      armerIsbnPourPost(norme.isbn13);
+      armerIsbnPourPost(valeur);
       tracePose.push("pose au POST armée");
+      // ── VALEUR D'ORIGINE NON STANDARD : PAS D'ATTENTE DU LOOKUP (2026-09-27)
+      // Le lookup livre de Vinted ne rend rien pour « 0000000000000 » (relevé
+      // du 15/09) : l'attendre coûterait 16 à 20 s pour rien, et la re-pose
+      // par frappe n'y changerait rien. La valeur est posée et armée au POST ;
+      // la langue du livre l'est plus bas (capture, sinon défaut).
+      if (telQuel) {
+        isbnCaptureTelQuel = valeur;
+        tracePose.push("ISBN capturé non standard posé TEL QUEL (valeur de l'annonce d'origine), lookup non attendu");
+        diagnosticsRecreation.push(`pose ISBN ${valeur} : ${tracePose.join(" ; ")}`);
+        return;
+      }
       // ── Attente SUR LE RETOUR du lookup livre (2026-08-28, GO Nico — mur
       // « Fairy tail », job a25d171b) : le sleep FIXE de 1,2 s perdait la
       // course — le POST partait avant que le lookup ait rattaché le livre,
@@ -2828,19 +2861,19 @@ async function fillListingForm(job) {
       if (attenteMs < 0 && !poseParFrappe) {
         console.warn("[vinted] ISBN : lookup non vu après la pose en un coup — re-pose par frappe (déclencheur observé : la frappe du 13e chiffre)");
         tracePose.push("lookup NON vu en 8 s après la pose en un coup, re-pose par frappe");
-        await typeHuman(el, norme.isbn13);
+        await typeHuman(el, valeur);
         el.blur();
         await humanPause();
         lu = relire();
-        if (lu !== norme.isbn13) {
-          insertTextOneShot(el, norme.isbn13);
+        if (lu !== valeur) {
+          insertTextOneShot(el, valeur);
           el.blur();
           await humanPause();
           lu = relire();
         }
-        if (lu !== norme.isbn13) {
+        if (lu !== valeur) {
           throw new Error(
-            `ISBN ${norme.isbn13} : la re-pose par frappe a perdu la valeur (état relu : « ${lu || "vide"} »). ` +
+            `ISBN ${valeur} : la re-pose par frappe a perdu la valeur (état relu : « ${lu || "vide"} »). ` +
             "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
           );
         }
@@ -2854,7 +2887,7 @@ async function fillListingForm(job) {
         tracePose.push("lookup livre JAMAIS vu (8 s par pose) — soumission quand même");
         console.warn("[vinted] ISBN : retour du lookup livre non observé — on soumet (plancher 3 s largement couvert)");
       }
-      diagnosticsRecreation.push(`pose ISBN ${norme.isbn13} : ${tracePose.join(" ; ")}`);
+      diagnosticsRecreation.push(`pose ISBN ${valeur} : ${tracePose.join(" ; ")}`);
     });
   }
 
@@ -3826,7 +3859,7 @@ async function fillListingForm(job) {
       : (!sonde.envoi && !sonde.last ? "formulaire_bloque" : null);
     return { success: false, error: messageEchec, warnings, ...annexeRecreation(), preuveEchec, diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
-  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
+  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}), ...(isbnCaptureTelQuel ? { isbnCaptureTelQuel } : {}) };
 
   // La PREUVE DOM des étapes tolérées ne se perd pas parce qu'on a soumis
   // quand même : elle voyage sur result.diagnostic, que le background range
