@@ -17495,19 +17495,40 @@ async function checkPublishedListings(session) {
         // vente peut n'être qu'un remplacement (autre extension, nouvel
         // identifiant). On demande un relevé de « Mes annonces » pour la fin du
         // cycle — le moteur serveur recâble et lève l'alerte si c'est le cas.
-        // Le drapeau est posé quand même : le veilleur ne se tait jamais.
         if (state === "unavailable") demanderRelevePourRattachement(job.platform);
-        patch.platform_fields = {
-          ...pf,
-          unavailable_since: new Date().toISOString(),
-          sale_signal: state, // "sold" = preuve positive | "unavailable" = doute
-          ...(state === "sold" && price ? { detected_price: price } : {}),
-        };
-        console.log(
-          state === "sold"
-            ? `[background] ${job.platform} ${job.id} : VENTE DÉTECTÉE (preuve positive)${price ? ` au prix affiché ${price} €` : ""} → confirmation utilisateur (aucune écriture)`
-            : `[background] ${job.platform} ${job.id} : plus en ligne, AUCUNE preuve de vente → confirmation utilisateur`
-        );
+        // ── PLUS JAMAIS D'ALERTE « DISPARUE » SUR UNE SEULE LECTURE (2026-09-27,
+        //    règle de Nico — 44310spgl) ────────────────────────────────────────
+        // Le 23/09 entre 18 h et 21 h, ce veilleur a marqué 232 annonces Opla
+        // « plus en ligne » sur UNE lecture chacune, pendant que 34 relevés du
+        // même soir lisaient les 1 004 annonces du compte EN LIGNE. Rien ne
+        // relisait un job marqué (garde !unavailable_since), rien ne levait le
+        // drapeau hors Vinted : 232 bandeaux « Vendue ? » faux, et 221 fois
+        // « je ne sais pas » en deux minutes. La règle Vinted du 09/08 vaut
+        // désormais pour les cinq plateformes : la 1re lecture « unavailable »
+        // pose unavailable_pending_since (AUCUN bandeau), la 2e, un cycle plus
+        // tard, pose le drapeau ; un « active » entre les deux efface tout
+        // (bloc « de nouveau EN LIGNE » ci-dessus). « sold » reste immédiat :
+        // c'est une preuve POSITIVE lue sur une page vivante, pas une absence.
+        // Côté serveur, le relevé du compte lève de lui-même une alerte qu'il
+        // dément (alerte_lever_revues_plateformes, migration 20260927170000).
+        if (state === "unavailable" && !pf.unavailable_pending_since) {
+          patch.platform_fields = { ...pf, unavailable_pending_since: new Date().toISOString() };
+          console.log(`[background] ${job.platform} ${job.id} : plus en ligne (1re lecture) — AUCUN bandeau, confirmation exigée au prochain cycle`);
+        } else {
+          const confirme = { ...pf };
+          delete confirme.unavailable_pending_since;
+          patch.platform_fields = {
+            ...confirme,
+            unavailable_since: new Date().toISOString(),
+            sale_signal: state, // "sold" = preuve positive | "unavailable" = doute confirmé sur deux cycles
+            ...(state === "sold" && price ? { detected_price: price } : {}),
+          };
+          console.log(
+            state === "sold"
+              ? `[background] ${job.platform} ${job.id} : VENTE DÉTECTÉE (preuve positive)${price ? ` au prix affiché ${price} €` : ""} → confirmation utilisateur (aucune écriture)`
+              : `[background] ${job.platform} ${job.id} : plus en ligne CONFIRMÉ (2e lecture espacée d'un cycle), AUCUNE preuve de vente → confirmation utilisateur`
+          );
+        }
       }
     }
 
