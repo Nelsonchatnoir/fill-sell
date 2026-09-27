@@ -91,6 +91,7 @@ const FR = {
   // ── La vérité des plateformes (2026-09-23) : une phrase, un geste ──────
   veriteConnecte: 'Connecté ✓',
   veriteAAutoriser: 'à autoriser',
+  veriteAVerifier: 'à vérifier',
   veritePasVerifie: 'pas encore vérifié',
   veriteEcartee: 'tu ne vends pas ici',
   veriteDepuis: (quand) => `vérifié ${quand}`,
@@ -273,6 +274,7 @@ const EN = {
   autoriserOplaComment: 'Opla is waiting for your permission so FillSell can list there. Tap “Autoriser Opla”: once is enough.',
   veriteConnecte: 'Connected ✓',
   veriteAAutoriser: 'to allow',
+  veriteAVerifier: 'to check',
   veritePasVerifie: 'not checked yet',
   veriteEcartee: 'you do not sell here',
   veriteDepuis: (quand) => `checked ${quand}`,

@@ -28,6 +28,10 @@ export const ETATS = Object.freeze({
   A_AUTORISER: 'a_autoriser',
   ECARTEE: 'ecartee',
   INCONNUE: 'inconnue',
+  // (27/09) Une preuve « connectée » de plus de 7 jours (relevé, dépôt ou
+  // sonde) ne vaut plus : le serveur rend « à vérifier » (motif
+  // preuve_perimee), avec la date de cette preuve dans `depuis`.
+  A_VERIFIER: 'a_verifier',
 });
 
 export const PLATEFORMES_VERITE = ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla'];

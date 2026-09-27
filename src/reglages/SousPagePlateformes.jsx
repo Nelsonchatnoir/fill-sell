@@ -107,6 +107,7 @@ export default function SousPagePlateformes({ c, T }) {
               : etat === ETATS.A_CONNECTER ? T.pasConnecte
               : etat === ETATS.A_AUTORISER ? T.veriteAAutoriser
               : etat === ETATS.ECARTEE ? T.veriteEcartee
+              : etat === ETATS.A_VERIFIER ? T.veriteAVerifier
               : T.veritePasVerifie;
             const grisee = etat === ETATS.ECARTEE;
 
@@ -116,7 +117,7 @@ export default function SousPagePlateformes({ c, T }) {
                   <PlatformLogo platform={pf} size={26} />
                   <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={{ fontSize: 15, fontWeight: 500, color: R.ink }}>{nom}</span>
-                    {etat === ETATS.CONNECTEE && quand && (
+                    {(etat === ETATS.CONNECTEE || etat === ETATS.A_VERIFIER) && quand && (
                       <span style={{ fontSize: 12, color: R.texteSecondaire }}>{T.veriteDepuis(quand)}</span>
                     )}
                   </span>
