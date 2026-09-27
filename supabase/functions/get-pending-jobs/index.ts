@@ -806,6 +806,50 @@ serve(async (req) => {
       }
     }
 
+    // ══ LE GEL LIVRES DU 28/08 SE LÈVE QUAND LE POSTE PORTE LE CORRECTIF ═══
+    // (2026-09-27, nadegemarcelin78 83 jobs, fresnelprudence 21) Le 28/08, les
+    // republications Vinted des livres ont été passées en 'cancelled' à la main
+    // (marqueur gel_livres_le), « le temps qu'on corrige un point de notre
+    // côté ». Le correctif est passé, rien ne les a jamais relâchées. Ordre
+    // imposé par Nico : rien ne repart avant que l'ISBN capturé soit remis tel
+    // quel — donc ICI, et seulement pour un poste qui porte ce build :
+    //   · étape 'deleted' (annonce retirée le 28/08, jamais recréée) : le job
+    //     repart tel quel en pending — la recréation ne retire rien, et vérifie
+    //     le dressing avant de déposer (zéro doublon) ;
+    //   · autres étapes (annonce intacte) : le gel est simplement levé
+    //     (gel_livres_leve_le) — l'article redevient « En ligne » et
+    //     républiable dans l'app, au rythme de la personne ; aucun job créé.
+    // Écritures conditionnées au statut 'cancelled'. Best-effort.
+    if (!includeProcessing && !includeNeedsUser && buildMsDe(buildDuPoll) >= buildMsDe(BUILD_ISBN_CAPTURE_TEL_QUEL)) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: geles } = await admin.from("cross_post_jobs")
+          .select("id, inventaire_id, error, platform_fields")
+          .eq("user_id", user.id).eq("platform", "vinted").eq("action", "republish").eq("status", "cancelled")
+          .not("platform_fields->gel_livres_le", "is", null)
+          .is("platform_fields->gel_livres_leve_le", null)
+          .limit(200);
+        let relances = 0, leves = 0;
+        const maintenant = new Date().toISOString();
+        for (const j of (geles ?? []) as Array<{ id: string; inventaire_id: number | null; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+          const pf: Record<string, unknown> = { ...(j.platform_fields ?? {}), gel_livres_leve_le: maintenant, gel_livres_leve_par: `get-pending-jobs (poste ${buildDuPoll.slice(0, 40)})` };
+          const recreer = String(pf["republish_step"] ?? "") === "deleted" && j.inventaire_id != null;
+          if (recreer) {
+            pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "cancelled", "get-pending-jobs (gel Livres levé : recréation)");
+            for (const k of ["next_action_after", "processing_since", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pf[k];
+          }
+          const { data: maj, error: mErr } = await admin.from("cross_post_jobs")
+            .update(recreer ? { status: "pending", error: null, platform_fields: pf } : { platform_fields: pf })
+            .eq("id", j.id).eq("status", "cancelled").select("id");
+          if (mErr) { console.warn(`[get-pending-jobs] gel Livres ${String(j.id).slice(0, 8)} : ${mErr.message}`); continue; }
+          if ((maj ?? []).length) { if (recreer) relances++; else leves++; }
+        }
+        if (relances || leves) console.log(`[get-pending-jobs] userId=${user.id} : gel Livres du 28/08 levé — ${relances} recréation(s) relancée(s), ${leves} article(s) redevenu(s) républiable(s)`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] gel Livres : ${String((e as Error)?.message ?? e)} — rien de levé`);
+      }
+    }
+
     // ── Commande de sync du dressing mise en file depuis le mobile ──────────
     // (2026-08-05) L'utilisateur installe l'extension UNE FOIS sur son
     // ordinateur puis commande depuis son téléphone : le clic pose une ligne

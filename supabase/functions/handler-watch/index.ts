@@ -2464,10 +2464,15 @@ serve(async (req) => {
       .eq("platform", "vinted")
       .filter("platform_fields->>needs_user_source", "eq", "livres_isbn_garde");
     // deno-lint-ignore no-explicit-any
+    // (2026-09-27) Rayon de la famille Livres où Vinted ne réclame AUCUN ISBN
+    // (Magazines 5424, Coloriage 5427, CD 3039, DVD 3045 — miroir de
+    // update-job-status) : la garde n'avait rien à retenir, on la lève aussi.
+    const RAYONS_SANS_ISBN = new Set([5424, 5427, 3039, 3045]);
     const candidats = ((bloques ?? []) as any[]).filter((j) =>
       j.platform_fields?.republish_step === "captured" &&
       !j.platform_fields?.deleted_at &&
-      isbnValide(j.platform_fields?.republish_snapshot?.isbn));
+      (isbnValide(j.platform_fields?.republish_snapshot?.isbn)
+        || RAYONS_SANS_ISBN.has(Number(j.platform_fields?.republish_snapshot?.catalog_id))));
     if (candidats.length) {
       const userIds = [...new Set(candidats.map((j) => j.user_id as string))];
       const { data: profs } = await supabase

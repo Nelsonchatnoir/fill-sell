@@ -193,11 +193,17 @@ const MEDIA_NON_LIVRE_RE =
   /\b(dvd|blu[- ]?ray|cd|vinyle|vinyl|musique|music|film|films|movie|movies|serie|series|jeux? video|video ?game|console|k7|cassette|vhs)\b/;
 const sansAccents = (s: unknown) =>
   String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+// Rayons de la famille « Livres et médias » où Vinted ne réclame AUCUN ISBN
+// (relevés ci-dessus). (2026-09-27, nadegemarcelin78 « Lot de 5 magasines
+// Picsou », rayon 5424 : retiré de la liste le 20/09, mais le CHEMIN
+// « Livres et médias » le rattrapait plus bas — pause à vie.)
+const LIVRES_MEDIAS_SANS_ISBN_CATALOG_IDS = new Set([5424, 5427, 3039, 3045]);
 function snapshotEstLivresMedias(snap: Record<string, unknown>): boolean {
   // 1. ISBN explicite : preuve directe, prime sur tout le reste.
   if (typeof snap.isbn === "string" && snap.isbn.trim()) return true;
   // 2. Catégorie LIVRES relevée (CD et DVD volontairement absents, cf. ci-dessus).
   const cid = Number(snap.catalog_id);
+  if (Number.isFinite(cid) && LIVRES_MEDIAS_SANS_ISBN_CATALOG_IDS.has(cid)) return false;
   if (Number.isFinite(cid) && LIVRES_CATALOG_IDS.has(cid)) return true;
   // 3. Chemin de catégorie : famille Livres, MAIS jamais un média non-livre.
   const path = Array.isArray(snap.categoryPath) ? snap.categoryPath : [];
