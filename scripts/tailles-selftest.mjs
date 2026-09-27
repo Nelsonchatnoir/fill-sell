@@ -1,7 +1,7 @@
 // Autotest du vocabulaire des tailles (_shared/tailles.js).
 // Bâti sur les cas RÉELS relevés en base le 18/09, et sur les refus qui
 // doivent le rester. `node scripts/tailles-selftest.mjs`
-import { tailleDansGrille, memeTaille, diagnosticTaille } from '../supabase/functions/_shared/tailles.js'
+import { tailleDansGrille, memeTaille, diagnosticTaille, libelleTaille } from '../supabase/functions/_shared/tailles.js'
 
 // Grilles Opla réelles (docs/opla/grilles-tailles.tsv)
 const G1 = ['TAILLE_UNIQUE','XXS','XS','S','M','L','XL','XXL','3XL','4XL','5XL','6XL','7XL','8XL']
@@ -52,6 +52,34 @@ doitDonner('M / 38 / 10', G1, 'M', 'composite Vinted → grille en lettres')
 doitDonner('12 ans', VINTED_ENFANT, '12 ans / 152 cm', 'article simple → grille composite Vinted')
 doitDonner('38', VINTED_COMBINE, 'M / 38 / 10', 'le chiffre trouve la ligne de la table Vinted')
 doitDonner('M', VINTED_COMBINE, 'M / 38 / 10')
+
+
+console.log('\n── TAILLE ENFANT EN CM (27/09, doriane-henri) : l\'étiquette, jamais une conversion ──')
+const VINTED_BEBE = ['Naissance / 44 cm','Jusqu\'à 1 mois / 50 cm','1-3 mois / 56 cm','3-6 mois / 62 cm','6-9 mois / 68 cm',
+  '9-12 mois / 74 cm','12-18 mois / 80 cm','18-24 mois / 86 cm','2 ans / 92 cm','3 ans / 98 cm']
+doitDonner('86', G2, '18M', 'Pantalon Zeeman taille 86 → Opla 18 mois (étiquette FR)')
+doitDonner('80', G2, '12M', 'T-shirt Batman taille 80 → 12 mois')
+doitDonner('86 cm', G2, '18M')
+doitDonner('T86', G2, '18M')
+doitDonner('92', G2, '24M', '92 cm = 24 mois (écrit en mois d\'abord)')
+doitDonner('92', ['2Y','3Y','4Y'], '2Y', 'même âge, autre écriture, quand la grille n\'a pas 24M')
+doitDonner('98', G2, '3Y')
+doitDonner('152', G2, '12Y')
+doitDonner('86', VINTED_BEBE, '18-24 mois / 86 cm', 'Vinted publie SA table : on la lit')
+doitDonner('98', VINTED_BEBE, '3 ans / 98 cm')
+doitDonner('86', G3, null, 'grille de pointures : pas une grille d\'âges')
+doitDonner('38', G2, null, '38 n\'est pas une stature de la table')
+doitDonner('87', G2, null, 'stature hors table : jamais arrondie')
+doitDonner('86', ['6M','9M','12M'], null, '18 mois absent de la grille : refus')
+for (const [v, att] of [['18M','18 mois'],['0-3M','0-3 mois'],['2Y','2 ans'],['1Y','1 an'],['TAILLE_UNIQUE','Taille unique'],['M','M'],['38','38']]) {
+  const eu = libelleTaille(v); const ok = eu === att; if (!ok) ko++
+  console.log(`${ok ? '  ok  ' : '  KO  '} libellé « ${v} » → « ${eu} »${ok ? '' : `   ATTENDU « ${att} »`}`)
+}
+{
+  let rate = 0
+  for (const v of G2) { const r = tailleDansGrille(libelleTaille(v), G2); if (r?.valeur !== v) { rate++; ko++; console.log(`  KO  aller-retour « ${v} » → « ${libelleTaille(v)} » → ${r?.valeur}`) } }
+  if (!rate) console.log('  ok   aller-retour code → libellé français → code, sur toute la grille G2')
+}
 
 console.log('\n── CE QUI DOIT ÊTRE REFUSÉ — refuser vaut mieux qu\'approximer ───────')
 doitDonner('44.5', G3, null, 'Opla n\'a pas de demi-pointure : refus LÉGITIME (tessy)')

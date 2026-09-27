@@ -257,7 +257,74 @@ export function tailleDansGrille(brut, grille, opts) {
     }
   }
 
+  // 6. TAILLE ENFANT EN CENTIMÈTRES (27/09, doriane-henri : « Pantalon taille
+  //    86 » refusé par Opla, qui écrit « 18 mois »). Deux lectures, dans cet
+  //    ordre, et aucune n'invente d'équivalence :
+  //    a) la grille écrit ELLE-MÊME la stature (Vinted : « 18-24 mois / 86 cm »)
+  //       → on lit SA table : « 86 » y est l'option qui porte « 86 cm » ;
+  //    b) la grille n'écrit QUE des âges (Opla G2) → la table française des
+  //       étiquettes enfant (taille par stature, celle imprimée sur les
+  //       vêtements : 86 cm = 18 mois, 98 cm = 3 ans). C'est une TRADUCTION
+  //       de l'étiquette, pas une conversion de mesure : la même taille,
+  //       écrite en âge plutôt qu'en stature.
+  //    ⛔ Seulement une stature de la table (50…176) : un « 12 » ou un « 38 »
+  //       n'est jamais lu comme des centimètres.
+  const stature = statureEnfant(valeur);
+  if (stature) {
+    const parCm = options.filter((o) => jetons(o).length > 1
+      && jetons(o).some((m) => memeTaille(m, `${stature} cm`)));
+    if (parCm.length === 1) return { valeur: parCm[0], motif: `stature ${stature} cm lue dans la grille` };
+    const queDesAges = options.every((o) => canonAge(o) || estUnique(o));
+    const ages = AGE_PAR_STATURE_ENFANT[stature];
+    if (queDesAges && ages && !parCm.length) {
+      for (const age of ages) {
+        const cible = options.find((o) => memeTaille(o, age));
+        if (cible) return { valeur: cible, motif: `étiquette enfant ${stature} cm = ${age}` };
+      }
+    }
+  }
+
   return null;
+}
+
+// ── LA TABLE DES ÉTIQUETTES ENFANT : STATURE → ÂGE (27/09) ──────────────────
+// Celle que les vêtements enfant français impriment (« 18 mois / 86 cm »).
+// Chaque stature donne l'âge de l'étiquette, puis, si la grille ne l'écrit
+// pas, l'autre écriture du MÊME âge (92 cm = 24 mois = 2 ans) — jamais un
+// âge voisin.
+/** @type {Readonly<Record<string, readonly string[]>>} */
+export const AGE_PAR_STATURE_ENFANT = Object.freeze({
+  "50": ["0 mois"], "56": ["1 mois"], "62": ["3 mois"], "68": ["6 mois"],
+  "74": ["9 mois"], "80": ["12 mois"], "86": ["18 mois"], "92": ["24 mois", "2 ans"],
+  "98": ["3 ans", "36 mois"], "104": ["4 ans"], "110": ["5 ans"], "116": ["6 ans"],
+  "122": ["7 ans"], "128": ["8 ans"], "134": ["9 ans"], "140": ["10 ans"],
+  "146": ["11 ans"], "152": ["12 ans"], "158": ["13 ans"], "164": ["14 ans"],
+  "170": ["15 ans"], "176": ["16 ans"],
+});
+
+// « 86 », « 86 cm », « 86cm », « T86 », « taille 86 » → "86" ; sinon null.
+function statureEnfant(v) {
+  const s = plier(v).replace(/^(?:taille|t)\s*/, "");
+  const m = /^(\d{2,3})\s*(?:cm)?$/.exec(s);
+  if (!m) return null;
+  return Object.prototype.hasOwnProperty.call(AGE_PAR_STATURE_ENFANT, m[1]) ? m[1] : null;
+}
+
+/**
+ * Le libellé FRANÇAIS d'une valeur de grille, pour une question posée à la
+ * personne : « 18M » → « 18 mois », « 2Y » → « 2 ans », « TAILLE_UNIQUE » →
+ * « Taille unique ». Toute autre valeur est rendue telle quelle (« M », « 38 »).
+ * Réponse relue par tailleDansGrille : « 18 mois » retombe sur « 18M ».
+ */
+export function libelleTaille(v) {
+  const s = String(v ?? "").trim();
+  const age = /^(\d{1,2})(?:-(\d{1,2}))?([MY])$/i.exec(s);
+  if (age) {
+    const borne = age[2] !== undefined ? `${age[1]}-${age[2]}` : age[1];
+    return age[3].toUpperCase() === "M" ? `${borne} mois` : `${borne} ${Number(age[2] ?? age[1]) > 1 ? "ans" : "an"}`;
+  }
+  if (estUnique(s)) return "Taille unique";
+  return s;
 }
 
 /**
