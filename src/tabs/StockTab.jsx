@@ -2512,6 +2512,16 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // mort. Le refus n'écrit rien : consigne « change de compte dans Chrome ».
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [boutiqueRefusee, setBoutiqueRefusee] = useState(false);
+  // ── LA QUESTION « C'EST TA BOUTIQUE ? » N'EST JAMAIS MASQUÉE (2026-09-27) ──
+  // nadegemarcelin78, @celineetmarie : l'extension refuse EN SILENCE tout
+  // relevé redemandé moins de 12 h après un refus de la même boutique ; au
+  // bout de 30 s l'app concluait « occupée par tes republications », et ce
+  // texte-là REMPLAÇAIT la question et son bouton — six clics, aucun ajout.
+  // Tant que le dernier relevé pose la question, elle reste affichée, un
+  // relevé ne part pas sans réponse (le bouton le rappelle), et seuls ses
+  // deux gestes relancent.
+  const [rappelQuestionBoutique, setRappelQuestionBoutique] = useState(false);
+  const runPoseQuestionBoutique = (r) => r?.status === 'failed' && String(r?.erreur ?? '').includes('[boutique_a_confirmer]');
   // Repli des détails de synchro — FERMÉ PAR DÉFAUT (refonte lisibilité
   // 2026-09-04). État d'affichage pur : il ne conditionne aucun calcul.
   const [detailsOuverts, setDetailsOuverts] = useState(false);
@@ -2646,6 +2656,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         // reste néanmoins une file — l'écran le dit, avec son heure de reprise,
         // au lieu de crier « extension muette » sur une extension en bonne
         // santé qui n'a simplement rien à faire.
+        if (runPoseQuestionBoutique(r ?? run)) {
+          // La demande n'est pas partie parce qu'une question attend réponse :
+          // on la remontre, on ne parle ni d'attente ni de republications.
+          setRappelQuestionBoutique(true);
+          return;
+        }
         if (repubEnVol > 0 || repubRepriseA) {
           if (user?.id) {
             supabase.from('usage_logs').insert({
@@ -3019,7 +3035,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
   };
 
-  const lancer = async () => {
+  const lancer = async (opts = {}) => {
+    // (2026-09-27) Une question de boutique en attente : le relevé partirait
+    // vers un refus silencieux de l'extension. On rappelle la question.
+    if (runPoseQuestionBoutique(run) && !opts.apresReponse) {
+      logSyncClick('refusée', 'boutique_a_confirmer');
+      setRappelQuestionBoutique(true);
+      return;
+    }
     // Ceinture si l'état a un tour de retard — journalisée AUSSI : un clic
     // avalé ici est exactement le genre d'échec invisible qu'on mesure.
     if (enCadence || envoi) {
@@ -3331,7 +3354,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // `message` reste prioritaire : c'est le retour d'un clic de CETTE session,
   // et il est remis à null par le chemin d'attente lui-même.
   const demandeEnVol = enCours || envoi || attenteOccupee || enAttenteDistante;
-  const avis = message || ((blocage || demandeEnVol) ? null : bilan);
+  const avis = message || (bilan?.decision === 'boutique' ? bilan : ((blocage || demandeEnVol) ? null : bilan));
   // ── CE QUI PASSE SOUS LE REPLI (refonte lisibilité 2026-09-04) ─────────────
   // Le compte rendu chiffré du dernier passage n'est PAS l'état courant : il
   // dit ce qui s'est passé, pas où on en est. Il descend donc sous le repli,
@@ -3369,9 +3392,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       return;
     }
     setBoutiqueRefusee(false);
+    setRappelQuestionBoutique(false);
     rechargerBoutiques?.();
     setMessage(null);
-    lancer();
+    lancer({ apresReponse: true });
   };
   // Heure de reprise de la file différée — MÊME formateur que la ligne de
   // plafond de l'onglet Stock (repriseRepub) : les deux écrans disent la même
@@ -3391,12 +3415,20 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
             {fr
               ?"Rien n'a été touché. Ouvre vinted.fr dans ce navigateur, connecte-toi à TA boutique, puis relance."
               :"Nothing was touched. Open vinted.fr in this browser, sign in to YOUR shop, then run the sync again."}
-            <button onClick={()=>{setBoutiqueRefusee(false);lancer();}}
+            <button onClick={()=>{setBoutiqueRefusee(false);setRappelQuestionBoutique(false);lancer({ apresReponse: true });}}
               style={{display:"block",width:"100%",marginTop:8,padding:"9px 0",borderRadius:9,border:"1px solid #E7E3D8",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               {fr?"J'ai changé de boutique — relancer":"I switched shops — run again"}
             </button>
           </div>
         ):(
+          <>
+          {rappelQuestionBoutique&&(
+            <div style={{fontSize:12,lineHeight:1.45,color:"#9A3412",marginBottom:6}}>
+              {fr
+                ?`Réponds d'abord à cette question : ce navigateur est toujours connecté ${run?.vinted_login?`à @${run.vinted_login}`:"à ce dressing"}.`
+                :`Answer this question first: this browser is still signed in ${run?.vinted_login?`to @${run.vinted_login}`:"to this closet"}.`}
+            </div>
+          )}
           <div style={{display:"flex",gap:8}}>
             <button onClick={confirmerBoutique} disabled={confirmBusy||!run?.vinted_user_id}
               style={{flex:1.4,padding:"10px 8px",borderRadius:10,border:"none",background:confirmBusy?"#9CB8B2":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,cursor:confirmBusy?"default":"pointer",fontFamily:"inherit"}}>
@@ -3409,6 +3441,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
               {fr?"Non, pas la mienne":"No, not mine"}
             </button>
           </div>
+          </>
         )
   ) : null;
 
