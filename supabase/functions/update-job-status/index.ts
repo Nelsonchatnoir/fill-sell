@@ -27,6 +27,7 @@ import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shar
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec, estTailleHorsGrille, restrictionVinted } from "../_shared/pas-de-rouge.js";
+import { questionEnFrancais } from "../_shared/question-francais.js";
 // L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
@@ -3855,6 +3856,28 @@ serve(async (req) => {
     } else if (statutEffectif === "deleted") {
       // Terminal : annonce réellement supprimée de la plateforme.
       patch.error = null;
+    }
+
+    // ── UNE QUESTION SE POSE EN FRANÇAIS, AVEC DES CHOIX FERMÉS (27/09) ──────
+    // doriane-henri : « La catégorie « KID_SLEEPSACK_BOYS_NEW » exige une
+    // taille. » et des choix « 0M, 0-3M, 2Y… ». Le handler pose la question ;
+    // ici on la réécrit dans les mots de l'écran (libellés Opla : « 18 mois »,
+    // « 2 ans »), la réponse étant relue par le vocabulaire des tailles au
+    // passage suivant. Illisible → la question part telle quelle.
+    if (statutEffectif === "needs_user") {
+      try {
+        const pfQ = (patch.platform_fields && typeof patch.platform_fields === "object")
+          ? patch.platform_fields as Record<string, unknown> : null;
+        const q = questionEnFrancais({
+          platform: String((pfQ?.needsUserField as Record<string, unknown> | undefined)?.platform ?? ""),
+          pf: pfQ,
+          message: typeof patch.error === "string" ? patch.error : null,
+        });
+        if (q?.pf) patch.platform_fields = q.pf;
+        if (q?.message) patch.error = q.message;
+      } catch (e) {
+        console.warn("[update-job-status] question en français :", (e as Error)?.message ?? e);
+      }
     }
 
     // ── ARCHIVE DE L'ERREUR REMPLACÉE (2026-09-12, point 3 du chantier photo) ─

@@ -367,6 +367,18 @@ export function completerJobOpla(
         trace.taille = { valeur: norm, avant: brute, source: `grille Opla de ${cheminLisible(feuille)}` };
       }
     }
+    // (27/09) La RÉPONSE à la question de taille arrive en français
+    // (« 18 mois », question-francais.js) : on la remet dans l'écriture de
+    // la grille (« 18M ») avant de servir le job — les extensions d'avant la
+    // 0.6.75 comparent aussi, et une réponse ne doit jamais reboucler.
+    const choix = String(pf.oplaSizeChoice ?? "").trim();
+    if (feuille && choix) {
+      const normChoix = normaliserTailleOpla(feuille, choix);
+      if (normChoix && normChoix !== choix) {
+        pf.oplaSizeChoice = normChoix;
+        trace.taille_choisie = { valeur: normChoix, avant: choix, source: `réponse de la personne, écrite comme la grille Opla de ${cheminLisible(feuille)}` };
+      }
+    }
   }
 
   if (!String(pf.genre ?? "").trim()) {
