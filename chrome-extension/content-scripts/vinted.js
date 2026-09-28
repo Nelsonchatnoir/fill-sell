@@ -1822,22 +1822,38 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
   // Avant tout POST : la page de l'annonce ou l'origine prouvée du job,
   // confrontée à la session relue maintenant. Un 403 ne sert plus de test
   // de propriété après avoir déjà envoyé la suppression.
+  // ── 0.6.78 (28/09, lowvaucher + begantonmatheo) : la page de l'annonce
+  // illisible ne ferme plus la porte quand l'origine prouvée est là. Même
+  // preuve que depuis /items/new : boutique d'origine (serveur) = session
+  // relue maintenant. Un vendeur LU sur la page reste confronté aux deux.
   const surAnnonce = location.pathname.match(/\/items\/(\d+)(?:[-/]|$)/)?.[1] === String(itemId);
   let proprio = surAnnonce ? await proprietaireAnnonceVinted(t) : null;
   const attendue = String(opts.boutiqueAttendue ?? "").trim();
-  if (!surAnnonce && attendue) {
+  let sessionIllisible = false;
+  if (!proprio && attendue) {
     try {
       const r = await fetchBorne("/api/v2/users/current", { headers: { Accept: "application/json" }, credentials: "include" });
       const compte = r.ok ? await r.json() : null;
       if (compte?.user?.id) proprio = { vendeur: attendue, session: String(compte.user.id), login_session: compte.user.login ?? null };
-    } catch { /* absence de preuve : aucun POST */ }
+      else { sessionIllisible = true; t(`compte connecté illisible (HTTP ${r.status})`); }
+    } catch (e) { sessionIllisible = true; t(`compte connecté illisible (${String(e?.message ?? e)})`); }
   }
   if (!proprio || proprio.vendeur !== proprio.session || (attendue && proprio.vendeur !== attendue)) {
     verdict.conclusion = proprio ? "boutique_etrangere" : "identite_non_prouvee";
+    // La preuve qui manque, nommée : elle décide du message (une relance ne
+    // franchit pas une origine inconnue, elle franchit une lecture ratée).
+    if (!proprio) verdict.preuve_manquante = sessionIllisible ? "session" : "boutique_article";
     t("identité non confirmée — requête de suppression NON envoyée");
+    // `boutiqueEtrangere` seulement sur une boutique ÉTRANGÈRE lue : une
+    // preuve absente n'accuse aucune boutique (le background la poserait
+    // sur le job et le retiendrait comme tel).
     return { success: false, needsUser: true, trace, verdict,
-      boutiqueEtrangere: { article: proprio?.vendeur ?? (attendue || null), session: proprio?.session ?? null, login_session: proprio?.login_session ?? null },
-      error: "FillSell n'a pas confirmé que cette annonce appartient à la boutique ouverte dans Chrome. Vérifie la boutique dans « Actualiser mon dressing ». Rien n'a été retiré." };
+      ...(proprio ? { boutiqueEtrangere: { article: proprio.vendeur, session: proprio.session, login_session: proprio.login_session ?? null } } : {}),
+      error: proprio
+        ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi sur Vinted à la boutique qui la porte. Rien n'a été retiré."
+        : sessionIllisible
+        ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans Chrome : sans cette vérification, rien n'a été retiré."
+        : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce. Ouvre Vinted sur cette boutique puis « Actualiser mon dressing » dans l'app. Rien n'a été retiré." };
   }
   const csrf = await extractVintedCsrfToken();
   const anonId = getVintedCookie("anon_id");

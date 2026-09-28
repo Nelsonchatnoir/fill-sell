@@ -19052,6 +19052,15 @@ function construireJobRecreation(job, pf, cap, prix) {
       // Autorisation serveur (pays ouvert, get-pending-jobs) — sans elle,
       // vinted_ids reste lettre morte côté vinted.js.
       ...(pf.vinted_ids_actifs === true ? { vinted_ids_actifs: true } : {}),
+      // ── BOUTIQUE D'ORIGINE PROUVÉE (0.6.78, 28/09) ─────────────────────────
+      // La une-passe supprime depuis /items/new : la page ne montre pas le
+      // vendeur, la seule preuve est « origine posée par get-pending-jobs =
+      // compte connecté maintenant » (deleteVintedItemViaApi). La 0.6.76
+      // lisait cette origine sur CE job, qui ne la recevait pas : 3
+      // republications sur 3 arrêtées en « identite_non_prouvee », sans
+      // requête (3a721b23, b07b735e, f3ba2985). Recopiée telle quelle,
+      // jamais devinée : absente, le retrait reste refusé.
+      ...(String(pf.vinted_account_id ?? "").trim() ? { vinted_account_id: String(pf.vinted_account_id).trim() } : {}),
     },
   });
 }
@@ -19084,6 +19093,9 @@ function nettoyerVerdictSuppression(v) {
     conclusion: s(v.conclusion, 40) ?? "inconnue",
     ...(v.corps != null ? { corps: s(v.corps, 160) } : {}),
     ...(v.session != null ? { session: s(v.session, 40) } : {}),
+    // Preuve de boutique qui manquait (0.6.78) : « boutique_article » ou
+    // « session » — elle décide du message, elle se lit en base.
+    ...(v.preuve_manquante != null ? { preuve_manquante: s(v.preuve_manquante, 40) } : {}),
     // Heure VINTED de la suppression (en-tête Date de la réponse, 2026-09-11).
     ...(v.date_serveur != null ? { date_serveur: s(v.date_serveur, 40) } : {}),
   };
@@ -21085,12 +21097,27 @@ async function processRepublishJob(job, accessToken) {
             await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
             return { status: "retry", error: "annonce déjà absente — recréation à la prochaine passe" };
           }
+          // ── PREUVE DE BOUTIQUE ABSENTE : LE MUR EST NOMMÉ (0.6.78, 28/09) ──
+          // « Relance quand tu veux » bouclait : une relance rejoue la même
+          // absence de preuve. On dit ce qui manque et le seul geste qui la
+          // fournit ; la garde, elle, ne bouge pas.
+          const verdictPreuve = pf.suppression_verdict ?? {};
+          const murBoutique = verdictPreuve.conclusion === "boutique_etrangere"
+            ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi sur Vinted à la boutique qui la porte, puis relance la republication."
+            : verdictPreuve.conclusion !== "identite_non_prouvee" ? null
+            : verdictPreuve.preuve_manquante === "session"
+            ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans Chrome, et rien n'est retiré sans cette vérification. Vérifie que ta session Vinted est ouverte dans Chrome, puis relance : la boutique sera vérifiée de nouveau avant tout geste."
+            : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce, et ne retire jamais une annonce sans cette preuve. Ouvre Vinted dans Chrome sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app : une fois l'annonce reconnue, relance la republication.";
           // Formulation (2026-09-11) : « intacte » seulement si l'état réel
           // vient d'être relevé « active » ; sinon on dit qu'on n'a pas pu
           // vérifier — jamais rassurant à tort.
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
-            error: state === "active"
+            error: state === "active" && murBoutique
+              ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. ${murBoutique}`
+              : murBoutique
+              ? `Republication interrompue avant toute suppression : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. ${murBoutique}`
+              : state === "active"
               ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app quand tu veux.`
               : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
           });
