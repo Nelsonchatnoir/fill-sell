@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { feuillesPourQuestionOpla, questionOplaFinale } from '../supabase/functions/_shared/opla-questions.js';
+import { oplaNoeud, oplaEnfants } from '../supabase/functions/_shared/opla-catalogue.ts';
+const racines = oplaEnfants('').map(n => ({ code: n.code }));
+const options = feuillesPourQuestionOpla(racines);
+assert.equal(options.length, 886);
+assert.ok(options.every(o => oplaNoeud(o.code).feuille && o.title.includes(' › ')));
+assert.equal(new Set(options.map(o => o.code)).size, 886);
+const pf = { oplaCategoryAsk: { options: racines }, needsUserField: { field_key: 'oplaCategoryChoice' } };
+const corrige = questionOplaFinale(pf);
+assert.equal(corrige.needsUserField.allowed_values.length, 886);
+assert.equal(pf.oplaCategoryAsk.options.length, 8);
+assert.equal(corrige.oplaCategoryCode, undefined);
+assert.deepEqual(questionOplaFinale(corrige), corrige);
+assert.deepEqual(feuillesPourQuestionOpla([{ code: 'inconnu' }]), []);
+console.log('Opla : seules les 886 feuilles sont proposées, aucune sélection automatique.');

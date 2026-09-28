@@ -16,6 +16,7 @@
 // pré-vol de l'extension reste la seule garde.
 // ═══════════════════════════════════════════════════════════════════════════
 import { oplaChemin, oplaNoeud } from "./opla-catalogue.ts";
+import { feuillesPourQuestionOpla } from "./opla-questions.js";
 import { cheminLisible, cleFourche, normaliserTailleOpla, optionsFeuilles, resoudreCategorieOpla } from "./opla-resolution.ts";
 import { etagereVinted } from "./vinted-branche.ts";
 import { tierEtat } from "./etat-plateformes.js";
@@ -98,7 +99,7 @@ const optionsDuJob = (pf: Record<string, unknown>): Array<{ code: string; title:
   const ask = pf.oplaCategoryAsk;
   const brut = (ask && typeof ask === "object") ? (ask as Record<string, unknown>).options : null;
   if (!Array.isArray(brut)) return [];
-  return brut
+  return feuillesPourQuestionOpla(brut)
     .map((o) => {
       const e = (o && typeof o === "object") ? (o as Record<string, unknown>) : {};
       return { code: String(e.code ?? "").trim(), title: String(e.title ?? "").trim() };

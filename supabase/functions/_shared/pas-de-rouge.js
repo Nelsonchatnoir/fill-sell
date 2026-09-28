@@ -447,7 +447,7 @@ export function classerEchec(arg) {
   //    on retombe sur la suite (reprise, puis « relancer »), comme avant.
   if (platform === "opla" && OPLA_CATEGORIE_ABSENTE_RE.test(t)) {
     const posees = Array.isArray(pf?.["oplaCategoryAsk"]?.["options"]) ? pf["oplaCategoryAsk"]["options"] : [];
-    const titres = [...new Set(posees
+    const titres = [...new Set(feuillesPourQuestionOpla(posees)
       .filter((o) => o && typeof o === "object" && String(o.code ?? "").trim() && String(o.title ?? "").trim())
       .map((o) => String(o.title).trim()))];
     if (titres.length >= 2) {
@@ -655,3 +655,4 @@ export function classerEchec(arg) {
       "si ça bloque encore, écris-nous, on regarde avec toi.",
   };
 }
+import { feuillesPourQuestionOpla } from './opla-questions.js';

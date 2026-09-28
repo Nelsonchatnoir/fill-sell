@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
 import { createPortal } from 'react-dom';
 // RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
@@ -1035,6 +1036,7 @@ function ChampAvecUnite({ value, unite, onChange, lang }) {
 }
 
 export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null }) {
+  if (job.platform === 'opla') job = { ...job, platform_fields: questionOplaFinale(job.platform_fields) };
   useFermetureEchap(onClose);
   // Le champ principal ; à défaut, le premier des champs demandés ensemble
   // (25/09) — une liste sans champ principal n'avait AUCUN écran.

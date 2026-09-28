@@ -238,7 +238,7 @@ console.log("\n── 9. Opla : la catégorie se DEMANDE dans la liste servie (2
   // La liste que get-pending-jobs sert pour ce livre (rayon « Livres » de l'étagère Vinted 2364).
   const LIVRES = ["LIVRES_POUR_BEBE", "LIVRES_SONORES", "ROMANS_POUR_ENFANTS", "BANDES_DESSINEES", "ROMANS_POUR_ADULTES",
     "MANGAS", "MANUELS_SCOLAIRES", "FICTIONS", "NON_FICTION", "LIVRES_CUISINE", "LIVRES_MAGAZINES"]
-    .map((code) => ({ code, title: `Culture et Loisirs › Livres › ${code}` }));
+    .map((code) => ({ code, title: oplaChemin(code).join(' › ') }));
   const pf = { oplaCategoryAsk: { ancre: null, options: LIVRES, le: "2026-09-25T19:00:00.000Z" } };
   const a = classerEchec({ platform: "opla", action: "republish", brut, essais: 5, pf });
   ok(a.verdict === "a_toi" && a.statut === "needs_user" && a.motif === "categorie_a_choisir" && a.source === "champ_a_choisir",
@@ -292,3 +292,4 @@ console.log("\n── 10. Faux « déconnecté » : une session Opla prouvée bo
 
 console.log(ko === 0 ? "\n✅ PAS DE ROUGE : tout est vert.\n" : `\n❌ ${ko} contrôle(s) en échec.\n`);
 process.exit(ko === 0 ? 0 : 1);
+import { oplaChemin } from '../supabase/functions/_shared/opla-catalogue.ts';

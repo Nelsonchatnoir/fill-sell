@@ -636,6 +636,8 @@ serve(async (req) => {
     // recréation aggraverait — d'où les gardes step='captured' ET !deleted_at).
     const pfIn = (body.platform_fields && typeof body.platform_fields === "object"
       ? body.platform_fields : null) as Record<string, unknown> | null;
+    // Anciennes extensions : transformer les questions de branches en feuilles avant stockage.
+    if (pfIn) Object.assign(pfIn, questionOplaFinale(pfIn));
     const snapIn = pfIn?.republish_snapshot as Record<string, unknown> | undefined;
     // ── INTERRUPTEUR de l'exemption Livres 0.6.9 (2026-08-28, GO Nico) ──────
     // Cas Joe0410 (job a25d171b, « Fairy tail de 1 à 11 ») : premier cas réel
@@ -4004,3 +4006,4 @@ serve(async (req) => {
   }
 });
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
+import { questionOplaFinale } from "../_shared/opla-questions.js";
