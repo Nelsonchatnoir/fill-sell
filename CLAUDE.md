@@ -1,3 +1,16 @@
+## Passe Astra du 28/09 — reprise après incident
+
+**Déploiements suivants bloqués après ralentissement.** Lire la
+[passation](docs/agents/passe-astra-2026-09-28.md) : état A–I, cas, commits,
+migrations/inverses, versions servies et travaux non livrés ; puis le
+[rapport incident](docs/INCIDENT_ASTRA_2026-09-28_LATENCE.md).
+Les [consignes actuelles](docs/agents/consignes-2026-09-28.md) remplacent les
+indications historiques contraires du 27/09. Vente exacte = enregistrement
+atomique automatique puis copies ; activation générale encore bloquée.
+Angel : trois ventes enregistrées, aucune recréation. Cron doublons suspendu.
+Aucun push, OTA ni ZIP livré. 0.6.75 publiée. Détail de reprise obligatoire
+dans les deux documents liés ; ne pas déployer main en bloc.
+
 # FillSell — Instructions Claude
 
 > **Jumeau de `AGENTS.md`** (lu par Codex), qui reprend toutes les règles
@@ -41,9 +54,9 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   Beebs, deux extensions actives se disputant les jobs). Si un rapport, une
   mémoire ou un commentaire de code y fait encore référence, il est périmé —
   ne JAMAIS y rediriger Nico, ne jamais le recréer.
-- L'extension unpacked se charge dans Chrome depuis
-  `C:\Users\nicol\fill-and-sell\build\extension\` (produit par
-  `npm run build:extension`). Aucun autre chemin.
+- Le build de l'extension est produit dans `build\extension\`.
+  Le poste Nico charge la copie stable autorisée dans
+  `C:\Users\nicol\FillSell-Extension-Nico` (Fable, 28/09).
 - UNE SEULE extension FillSell active dans Chrome à la fois — jamais la
   version Web Store ET une unpacked ensemble : elles pollent les mêmes jobs,
   se les disputent, et `handler_build` en base ment sur qui a traité quoi.

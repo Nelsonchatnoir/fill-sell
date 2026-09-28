@@ -1,3 +1,16 @@
+## Passe Astra du 28/09 — reprise après incident
+
+**Déploiements suivants bloqués après ralentissement.** Lire la
+[passation](docs/agents/passe-astra-2026-09-28.md) : état A–I, cas, commits,
+migrations/inverses, versions servies et travaux non livrés ; puis le
+[rapport incident](docs/INCIDENT_ASTRA_2026-09-28_LATENCE.md).
+Les [consignes actuelles](docs/agents/consignes-2026-09-28.md) remplacent les
+indications historiques contraires du 27/09. Vente exacte = enregistrement
+atomique automatique puis copies ; activation générale encore bloquée.
+Angel : trois ventes enregistrées, aucune recréation. Cron doublons suspendu.
+Aucun push, OTA ni ZIP livré. 0.6.75 publiée. Détail de reprise obligatoire
+dans les deux documents liés ; ne pas déployer main en bloc.
+
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
 > chantiers et le glossaire. Une règle ajoutée à l'un se reporte dans l'autre, le
@@ -92,9 +105,9 @@ l'extension dans un navigateur cloud (Steel) sortant par une IP française
   le 26/07/2026 (zip CWS parti sans un correctif, deux extensions actives se
   disputant les jobs). Toute référence à ce chemin est périmée : ne jamais y
   renvoyer, ne jamais le recréer.
-- L'extension non empaquetée se charge dans Chrome depuis
-  `C:\Users\nicol\fill-and-sell\build\extension\` (produit par
-  `npm run build:extension`). Aucun autre chemin.
+- Le build de l'extension est produit dans `build\extension\`.
+  Le poste Nico charge la copie stable autorisée dans
+  `C:\Users\nicol\FillSell-Extension-Nico` (Fable, 28/09).
 - **UNE SEULE extension FillSell active dans Chrome à la fois** (jamais la
   version Web Store ET une non empaquetée : elles pollent les mêmes jobs et
   `handler_build` ment sur qui a traité quoi).
@@ -197,8 +210,8 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - **Après acceptation constatée** (`profiles.extension_build`) : version dans
   `ALREADY_PUBLISHED` + `PUBLISHED_BUILD_IDS`, puis `EXTENSION_MIN_BUILD` =
   BUILD_ID du zip — **jamais** `EXTENSION_LAST_COMMIT`.
-- **Actuelle : 0.6.75, à téléverser** (contient 0.6.70 → 0.6.74, jamais téléversées) :
-  `build\CWS-0.6.75-A-TELEVERSER\fillsell-extension-0.6.75-cws.zip`.
+- **Publiée : 0.6.75**, build officiel `2026-09-27T20:16:30Z+66a8887`.
+  .76 préparée en source, aucun ZIP livré ; voir la passation du 28/09.
 
 ### 3.3 Lire la prod (sans rien écrire)
 
@@ -531,7 +544,7 @@ qui survit à ça, c'est du code.
   fichier d'état § 7.7.
 - **FillSell Cloud** : prototype hors dépôt, voir
   `C:\Users\nicol\fillsell-cloud-proto\REPRISE.md` (fait foi).
-- **Extension 0.6.75 à téléverser** (BUILD_ID 2026-09-27T20:16:30Z) ; les livres (gel du 28/08, ISBN
+- **Historique corrigé : extension 0.6.75 publiée** (BUILD_ID 2026-09-27T20:16:30Z) ; les livres (gel du 28/08, ISBN
   `0000000000000`) se débloquent seuls dès qu'un poste porte ≥ 0.6.70.
 - **Chantier Italie** : migration
   `20260925190000_plateformes_francaises_hors_france.sql` écrite, NON

@@ -68,3 +68,14 @@ Aucun autre cron arrêté, aucune fiche modifiée par cette mesure.
 autres crons réussissent (12–44 ms d'envoi). Suspension = mesure de protection,
 PAS correction racine de la recherche : sa pagination et sa progression
 persistante restent à corriger et à mesurer avant réactivation.
+
+## Contrôle 17:03–17:05
+
+Les vingt derniers appels RPC à 17:02:39–59 répondent en 26–72 ms, tous
+200/204, dont réservation 38 ms et écriture de statut 38 ms. Les crons
+handler-watch et republish-auto-sweep réussissent à 17:03, envois 40/48 ms ;
+ces durées mesurent l'envoi, pas tout le traitement asynchrone.
+Pas de nouveau succès de publication confirmé par ce contrôle : lecture
+ciblée Nadège sans résultat depuis 16:54:46 ; recherche globale bornée par
+statement_timeout=2s annulée à cette limite, non relancée. Ne pas présenter
+la baisse de latence comme une preuve de reprise complète du parc.
