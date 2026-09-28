@@ -18783,8 +18783,16 @@ function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
     return Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000;
   });
   if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond" };
-  // Point A : une date de photo, un titre ou une candidate unique ne prouvent
-  // jamais que le dépôt de CE job a créé cette annonce.
+  // ── RECRÉATION APRÈS NOTRE PROPRE SUPPRESSION : RÈGLE 0.6.75 RÉTABLIE ──────
+  // (décision Nico, 28/09 soir). Le point A (0.6.76) ne rendait plus jamais
+  // de candidate : 626 recréations sur 637 en 3 jours n'étaient rattachées
+  // que par ici, et les deux tests réels de la 0.6.78 (T-shirt 221274a6,
+  // Sweat 4bd5c671) ont fini en question puis en doublon au relevé. Les trois
+  // appelants sont des recréations qui suivent NOTRE suppression (deletedAt
+  // de notre verdict) ; l'identifiant exact de notre dépôt, quand il est lu,
+  // passe avant (annonceDeNotreDepot). Hors de ce contexte — rattachement
+  // d'un relevé, fusion, retrait — un titre ne prouve toujours rien.
+  if (candidats.length === 1) return { item: candidats[0], raison: null, candidats };
   return { item: null, raison: `${candidats.length} annonces correspondent — identité à confirmer`, candidats };
 }
 
@@ -19288,19 +19296,40 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
 // le relevé suivant des doublons (T-shirt de Nico, job 221274a6).
 // Suivi posé AVANT l'envoi du formulaire, relu à la fin : toutes les
 // annonces /items/<id> vues dans l'onglet pendant ce dépôt.
+// ⚠️ 2e test réel (Sweat Tommy, job 4bd5c671) : aucun identifiant vu. Le
+// canal se coupe au DÉBUT de la navigation, avant que la nouvelle adresse
+// soit engagée : s'arrêter au retour d'envoyerFillListing ne suffit pas. Sur
+// un échec, l'écoute continue donc, bornée (attendreMs), adresse en cours de
+// chargement (pendingUrl) comprise. Les chemins vus (sans paramètres) sont
+// gardés sur le job : une prochaine absence se lira au lieu de se deviner.
 function suivreRedirectionsAnnonce(tabId) {
   const ids = [];
+  const chemins = [];
   const noter = (url) => {
-    const id = String(url ?? "").match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/i)?.[1];
+    const u = String(url ?? "");
+    const chemin = u.match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+(\/[^?#]*)/i)?.[1]?.slice(0, 80);
+    if (chemin && chemins[chemins.length - 1] !== chemin && chemins.length < 8) chemins.push(chemin);
+    const id = u.match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/i)?.[1];
     if (id && !ids.includes(id)) ids.push(id);
   };
   const ecoute = (idOnglet, info, tab) => { if (idOnglet === tabId) noter(info?.url ?? tab?.url); };
   chrome.tabs.onUpdated.addListener(ecoute);
+  const relire = async () => {
+    const t = await chrome.tabs.get(tabId).catch(() => null);
+    noter(t?.pendingUrl);
+    noter(t?.url);
+    return t;
+  };
   return {
-    async arreter() {
+    async arreter({ attendreMs = 0 } = {}) {
+      const fin = Date.now() + attendreMs;
+      while (!ids.length && Date.now() < fin) {
+        if (!(await relire())) break;
+        if (!ids.length) await new Promise((r) => setTimeout(r, 500));
+      }
       chrome.tabs.onUpdated.removeListener(ecoute);
-      noter((await chrome.tabs.get(tabId).catch(() => null))?.url);
-      return ids;
+      await relire();
+      return { ids, chemins };
     },
   };
 }
@@ -19316,7 +19345,9 @@ function annonceDeNotreDepot(idsRedirection, ancienId, articles, idsConnus) {
 
 async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result) {
   if (Array.isArray(result?.idsRedirection)) {
-    pf.recreation_redirection = { ids: result.idsRedirection.slice(0, 5), at: new Date().toISOString() };
+    pf.recreation_redirection = { ids: result.idsRedirection.slice(0, 5), at: new Date().toISOString(),
+      chemins: Array.isArray(result.cheminsRedirection) ? result.cheminsRedirection : [],
+      ...(result.success ? {} : { erreur: String(result.error ?? "").slice(0, 200) }) };
   }
   // ── Catalogue des requis : les RECRÉATIONS écrivent aussi (2026-09-10) ──
   // Mesuré : 0 job republish ne porte categoryPath au niveau du job, donc
@@ -21089,8 +21120,14 @@ async function processRepublishJob(job, accessToken) {
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
       }
-      const idsRedirection = await suiviRedirection.arreter();
-      if (result && typeof result === "object") result.idsRedirection = idsRedirection;
+      // On n'attend la page d'arrivée que si l'annonce d'origine est partie :
+      // un refus avant suppression n'a rien soumis, rien à suivre.
+      const aAttendre = !result?.success && (result?.deleted === true || republishSupprimes.has(job.id));
+      const redirection = await suiviRedirection.arreter({ attendreMs: aAttendre ? 15_000 : 0 });
+      if (result && typeof result === "object") {
+        result.idsRedirection = redirection.ids;
+        result.cheminsRedirection = redirection.chemins;
+      }
       dernierGesteRepublishAt = Date.now();
 
       // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
@@ -21280,6 +21317,16 @@ async function processRepublishJob(job, accessToken) {
       // ── SUPPRIMÉE : étape actée, puis MÊME conclusion que la reprise ───────
       pf.republish_step = "deleted";
       pf.deleted_at = pf.deleted_at ?? marqueDeletedAt ?? enBase?.deletedAt ?? new Date().toISOString();
+      // La une-passe a SOUMIS le formulaire après la suppression : c'est une
+      // tentative de recréation. Marquée comme telle (0.6.78), une relance
+      // lira obligatoirement le dressing avant de recréer — sans elle, un
+      // onglet de travail absent laissait recréer par-dessus l'annonce déjà
+      // créée (cas du Sweat Tommy 4bd5c671, relancé depuis l'app).
+      pf.recreation_tentee = {
+        at: new Date().toISOString(),
+        n: (Number(pf.recreation_tentee?.n) || 0) + 1,
+        une_passe: true,
+      };
       // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — le
       // veilleur quotidien scannerait sinon l'ancienne URL, la trouverait
       // morte, et poserait le faux « plus en ligne — vendue ? ».
@@ -21435,7 +21482,9 @@ async function processRepublishJob(job, accessToken) {
       // TENTATIVE A EU LIEU, on ne recrée plus sans avoir LU le dressing :
       // s'il est illisible, on repasse plus tard. Une annonce qui attend 2 min
       // de plus, ça se rattrape ; un doublon, non.
-      const dejaTentee = pf.recreation_tentee && typeof pf.recreation_tentee === "object";
+      // Une candidate déjà vue (recreation_doublon, jobs arrêtés en 0.6.76/0.6.78
+      // avant correctif) vaut tentative : le dressing se lit avant tout dépôt.
+      const dejaTentee = (pf.recreation_tentee && typeof pf.recreation_tentee === "object") || !!pf.recreation_doublon;
       let tabVerif = await findExistingWorkTabId("vinted");
       if (tabVerif == null && dejaTentee) {
         // Obligatoire : on s'offre l'onglet que le chemin best-effort refusait.
@@ -21473,6 +21522,21 @@ async function processRepublishJob(job, accessToken) {
               accessToken,
             ).catch(() => []);
             const idsConnus = new Set((connus ?? []).map((r) => String(r.vinted_item_id)));
+            // ── LA RECRÉATION D'AVANT A ÉTÉ IMPORTÉE EN FICHE SÉPARÉE ──────────
+            // (0.6.76, T-shirt de Nico 221274a6 : relevé de 21:42.) L'annonce
+            // vue après notre dépôt est maintenant CONNUE de l'inventaire, donc
+            // exclue des candidates : sans cette garde, on en recréerait une
+            // troisième. Rien n'est déposé ; les deux fiches se fusionnent.
+            const dejaImportees = (Array.isArray(pf.recreation_doublon?.liens) ? pf.recreation_doublon.liens : [])
+              .map((l) => String(l).match(/\/items\/(\d+)/)?.[1]).filter((id) => id && idsConnus.has(id));
+            if (dejaImportees.length) {
+              const msg = "Ta nouvelle annonce est déjà en ligne sur Vinted, mais elle a été ajoutée à ton stock comme une "
+                + "fiche séparée. Fusionne les deux fiches de cet article depuis l'app. Rien n'a été redéposé.";
+              pf.needs_user_source = "recreation_deja_partie";
+              pf.recreation_importee = { at: new Date().toISOString(), ids: dejaImportees.slice(0, 5) };
+              await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+              return { status: "needsUser", error: msg };
+            }
             // Une tentative précédente a été redirigée vers SON annonce :
             // identifiant exact, confirmé au dressing (0.6.78).
             const notreAnnonce = annonceDeNotreDepot(pf.recreation_redirection?.ids, pf.vinted_item_id, page.articles, idsConnus);
@@ -21572,8 +21636,11 @@ async function processRepublishJob(job, accessToken) {
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
-      const idsRedirection = await suiviRedirection.arreter();
-      if (result && typeof result === "object") result.idsRedirection = idsRedirection;
+      const redirection = await suiviRedirection.arreter({ attendreMs: result?.success ? 0 : 15_000 });
+      if (result && typeof result === "object") {
+        result.idsRedirection = redirection.ids;
+        result.cheminsRedirection = redirection.chemins;
+      }
       dernierGesteRepublishAt = Date.now();
 
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);

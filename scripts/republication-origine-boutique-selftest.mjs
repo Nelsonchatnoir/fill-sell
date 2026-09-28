@@ -154,9 +154,10 @@ console.log("\n5. Rattachement de la recréation par la redirection de notre dé
     f(8, { url: "https://www.vinted.fr/items/555" }, {}); // autre onglet : ignoré
     f(7, { status: "loading", url: "https://www.vinted.fr/items/10173633450-t-shirt-adidas-sergio-garcia-vintage" }, {});
   }
-  const ids = await suivi.arreter();
+  const { ids, chemins } = await suivi.arreter();
   ok("seul l'identifiant de NOTRE onglet est retenu, une fois", JSON.stringify(ids) === JSON.stringify(["10173633450"]), JSON.stringify(ids));
   ok("l'écoute est retirée à la fin du dépôt", ecouteurs.size === 0);
+  ok("chemins vus gardés, sans paramètres", JSON.stringify(chemins) === JSON.stringify(["/items/new", "/items/10173633450-t-shirt-adidas-sergio-garcia-vintage"]), JSON.stringify(chemins));
 
   const dressing = [
     { vinted_item_id: "10173633450", titre: "T-shirt Adidas Sergio Garcia vintage", url: "https://www.vinted.fr/items/10173633450" },
@@ -177,8 +178,36 @@ console.log("\n5. Rattachement de la recréation par la redirection de notre dé
     bgSrc.indexOf("annonceDeNotreDepot(result?.idsRedirection") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page2.articles"));
   ok("avant une nouvelle tentative : la redirection précédente passe AVANT le titre",
     bgSrc.indexOf("annonceDeNotreDepot(pf.recreation_redirection?.ids") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page.articles"));
-  ok("le titre seul ne rattache toujours rien (point A intact)",
-    /identité à confirmer`, candidats \};/.test(bgSrc));
+  ok("l'écoute continue après une coupure quand l'annonce d'origine est partie",
+    /const aAttendre = !result\?\.success && \(result\?\.deleted === true \|\| republishSupprimes\.has\(job\.id\)\);/.test(bgSrc)
+    && /suiviRedirection\.arreter\(\{ attendreMs: result\?\.success \? 0 : 15_000 \}\)/.test(bgSrc));
+  ok("les chemins vus et l'erreur restent sur le job (diagnostic)", /chemins: Array\.isArray\(result\.cheminsRedirection\)/.test(bgSrc));
+}
+
+// ── 6. RÈGLE 0.6.75 RÉTABLIE POUR LA RECRÉATION (décision Nico, 28/09) ─────
+// Sweat Tommy (job 4bd5c671) : supprimé 19:57:31Z, recréé 10173856703.
+console.log("\n6. Recréation après notre suppression : candidate unique rattachée, plusieurs = question");
+{
+  const supprimeLe = "2026-09-28T19:57:31.000Z";
+  const photo = Math.floor(Date.parse("2026-09-28T19:57:36Z") / 1000);
+  const sweat = { vinted_item_id: "10173856703", titre: "Sweat Tommy Jeans bleu marine – Taille M", photo_ts: photo };
+  const r1 = bg.reconnaitreAnnonceRecreee([sweat], { titre: "Sweat Tommy Jeans bleu marine – Taille M", deletedAt: supprimeLe, idsConnus: new Set(["10061791333"]) });
+  ok("cas réel : 10173856703 rattachée (comme en 0.6.75)", r1.item?.vinted_item_id === "10173856703");
+  const jumeau = { ...sweat, vinted_item_id: "10173856999" };
+  const r2 = bg.reconnaitreAnnonceRecreee([sweat, jumeau], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() });
+  ok("deux candidates : rien rattaché, la question reste", r2.item === null && r2.candidats?.length === 2);
+  const avant = { ...sweat, photo_ts: photo - 3600 };
+  ok("photos antérieures à notre suppression : rien", bg.reconnaitreAnnonceRecreee([avant], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() }).item === null);
+  ok("déjà connue de l'inventaire : rien", bg.reconnaitreAnnonceRecreee([sweat], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set(["10173856703"]) }).item === null);
+
+  const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
+  ok("la une-passe marque sa soumission comme tentative de recréation",
+    /pf\.republish_step = "deleted";[\s\S]{0,700}?pf\.recreation_tentee = \{[\s\S]{0,120}?une_passe: true,/.test(bgSrc));
+  ok("une candidate déjà vue impose la lecture du dressing avant tout dépôt",
+    /const dejaTentee = \(pf\.recreation_tentee && typeof pf\.recreation_tentee === "object"\) \|\| !!pf\.recreation_doublon;/.test(bgSrc));
+  ok("T-shirt : recréation déjà importée en fiche séparée → aucune 3e annonce, fusion demandée",
+    bgSrc.indexOf("const dejaImportees =") > 0
+    && bgSrc.indexOf("const dejaImportees =") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page.articles"));
 }
 
 console.log(ko ? `\n${ko} échec(s).` : "\nUne-passe Vinted : origine transmise, preuve exacte ou aucune requête ; recréation rattachée par son identifiant.");
