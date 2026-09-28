@@ -12776,7 +12776,7 @@ async function syncMultiOuverte(token, userId) {
 async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   const pattern = LISTING_URL_PATTERNS[platform];
   if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
-  const [res] = await chrome.scripting.executeScript({
+  const injection = chrome.scripting.executeScript({
     target: { tabId },
     func: async (src, plateforme, compteursEbaySrc, attenteCompteurMs, cheminListeSrc) => {
       const re = new RegExp(src, "i");
@@ -13104,6 +13104,13 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
     args: [pattern.source, platform, platform === "ebay" ? COMPTEUR_EBAY_SRC : [], platform === "ebay" ? COMPTEUR_EBAY_ATTENTE_MS : COMPTEUR_LBC_ATTENTE_MS,
       CHEMIN_LISTE_DU_COMPTE[platform]?.source ?? null],
   });
+  let attente;
+  const borne = new Promise((_, rejet) => {
+    attente = setTimeout(() => rejet(new Error("Lecture du relevé interrompue : la page ne répond plus après 3 minutes [incomplet]")), 180_000);
+  });
+  let res;
+  try { [res] = await Promise.race([injection, borne]); }
+  finally { clearTimeout(attente); }
   return res?.result ?? { annonces: [], diag: null };
 }
 
@@ -14440,6 +14447,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     return { ok: false, reason: "ferme" };
   }
   releveEnCours = true;
+  // Les longues lectures injectées ne maintiennent pas le worker MV3 vivant.
+  // Ceci ne simule aucune progression en base : le watchdog reste indépendant.
+  const reveilReleve = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20_000);
   const maintenant = () => new Date().toISOString();
   let run = null;
   try {
@@ -14467,6 +14477,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
     const { annonces, complet, erreur, illisibles, absente, vide, defilement, annonce } = await releverAnnoncesPlateforme(platform, { token, userId });
+    await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
+      method: "PATCH", body: JSON.stringify({ items_vus: annonces.length, updated_at: maintenant() }),
+    });
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -14604,6 +14617,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     return { ok: false, reason: "erreur", message: msg };
   } finally {
+    clearInterval(reveilReleve);
     releveEnCours = false;
   }
 }
