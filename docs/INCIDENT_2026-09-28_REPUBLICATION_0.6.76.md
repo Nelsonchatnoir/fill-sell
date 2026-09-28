@@ -71,3 +71,40 @@ Anciens dossiers 0.6.75/0.6.76 déplacés dans `build\CWS-PERIMES\`.
   leur poste sur un build sans ce défaut (0.6.77 de rollback ou 0.6.78).
 - Ventes automatiques au poll et cron `doublons-balayage-2min` : toujours
   suspendus.
+
+## Suite, 28/09 22:00–22:50 : retour à la base 0.6.75
+
+Deux tests réels de Nico sur les paquets 0.6.78 bâtis sur la 0.6.76 : la
+suppression passait, mais la recréation n'était plus rattachée (question,
+puis doublon au relevé : T-shirt Adidas 221274a6, Sweat Tommy 4bd5c671). Un
+troisième paquet a fait tomber la Casio G-Shock (inventaire 1785444834689,
+republiée sans souci en 0.6.42/0.6.46/0.6.48) en « capture_incomplete ».
+xxewwer (job 28f1b00e) : livre « Maquillage … Livre Relié AGEP » en Loisirs >
+Livres, retiré à 21:09 puis bloqué au redépôt par la garde cosmétiques (titre
+seul), message « rien à faire » faux.
+
+**Décision Nico** : la 0.6.78 = code de la 0.6.75 (66a8887, reconstruit à
+l'identique du zip publié, 31/31 fichiers) + deux changements seulement :
+1. garde cosmétiques Leboncoin jugée d'abord sur la catégorie (hors Divers >
+   Autres = pas un cosmétique) ;
+2. precheckJob avant le retrait des republications Leboncoin/Beebs.
+Commits 9d8c2d4 (retour du dossier chrome-extension/ à 66a8887), a86e0d2
+(les deux changements), 2701d9a (recalage). Zip
+`build\CWS-0.6.78-A-TELEVERSER\fillsell-extension-0.6.78-cws.zip`, BUILD_ID
+`2026-09-28T20:49:09Z+2701d9a`, SHA-256 `048280ae…430d`. Écart avec le zip
+0.6.75 publié : background.js (les deux changements, 2 blocs dans le code
+minifié) et manifest.json (version) ; les 29 autres fichiers sont identiques.
+Les quatre paquets 0.6.78 précédents (105f343, 4a3c557, 82a1a75, adba2ee),
+jamais téléversés, sont dans `build\CWS-PERIMES\`.
+
+Rejeux : le vrai job de xxewwer passe la garde sur ce zip (bloqué sur le zip
+0.6.75). La suite de tests de la 0.6.75 donne le même résultat sur ce code.
+Les tests écrits pour la 0.6.76 et ces paquets (identité à la suppression,
+rattachement de recréation…) échouent sur main : ils décrivent des morceaux
+mis de côté, qui reviendront un par un avec une vraie republication.
+
+Serveur : update-job-status v101 (verify_jwt=false) = code servi 45b15a0 +
+`_shared/republication-hors-ligne.js` seulement (téléchargé et comparé).
+Rien n'y suppose le code 0.6.76 : il lit les textes des extensions
+≤ 0.6.77 ; la source `garde_depot` n'est émise par aucune extension en
+circulation. Aucune autre fonction déployée.
