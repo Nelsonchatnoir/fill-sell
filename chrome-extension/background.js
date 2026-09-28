@@ -468,23 +468,8 @@ const LBC_NON_CONSOMMABLE =
 // Le TITRE seul, jamais la description : celle d'un vêtement dit « crème » pour
 // une couleur, celle d'un parfum dit « boîte d'origine » — la lire produit des
 // faux verdicts dans les deux sens (mesuré sur les 4 881 lignes de la base).
-// ── LA CATÉGORIE D'ABORD (0.6.78, 28/09, xxewwer job 28f1b00e) ──────────────
-// « Maquillage Fabienne Sévigné Francis Giacobetti Livre Relié AGEP » : un
-// LIVRE, rangé et accepté par Leboncoin en Loisirs > Livres, retiré pour être
-// republié, puis bloqué 4 fois ici sur le seul mot « Maquillage » — annonce
-// hors ligne. L'app ne juge un cosmétique QUE sur une icône Beauté, que son
-// mapping range en Divers > Autres (lbcCategories.js) : ce miroir avait perdu
-// cette moitié de la règle. Catégorie résolue ailleurs = pas un cosmétique.
-function lbcCategorieHorsBeaute(job) {
-  const chemin = job?.platform_fields?.lbcCategoryPath;
-  if (!Array.isArray(chemin) || !chemin.length) return false;
-  const n = chemin.map((s) => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
-  return !(n[0] === "divers" && (n.length === 1 || n[1] === "autres"));
-}
-
 function lbcProduitInterdit(job) {
   if (job.platform !== "leboncoin") return false;
-  if (lbcCategorieHorsBeaute(job)) return false;
   const titre = String(job.title ?? "");
   if (LBC_NON_CONSOMMABLE.test(titre)) return false;
   return LBC_COSMETIQUE_CONSOMMABLE.test(titre);
@@ -1750,22 +1735,7 @@ async function jetonFraisApres401(ancien) {
 
 // ── Edge functions ─────────────────────────────────────────────────────────────
 
-let posteInstancePromise = null;
-function identifiantInstallation() {
-  if (!posteInstancePromise) posteInstancePromise = (async () => {
-    const ancien = (await chrome.storage.local.get('fillsell_poste_instance')).fillsell_poste_instance;
-    if (typeof ancien === 'string' && /^[a-f0-9-]{36}$/i.test(ancien)) return ancien;
-    const nouveau = crypto.randomUUID();
-    await chrome.storage.local.set({ fillsell_poste_instance: nouveau });
-    return nouveau;
-  })().catch(e => { posteInstancePromise = null; throw e; });
-  return posteInstancePromise;
-}
-
 async function callEdgeFunction(name, accessToken, body, rejeu = false) {
-  if (name === 'get-pending-jobs' || name === 'update-job-status') {
-    body = { ...(body ?? {}), poste_instance: await identifiantInstallation() };
-  }
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/${name}`, {
     method: "POST",
     headers: {
@@ -8785,9 +8755,6 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // lu — une redirection vers l'accueil n'offre QUE des annonces d'autres
 // vendeurs, et un titre n'y prouve rien.
 async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false, listeDuCompte = null } = {}) {
-  // Point A : une liste et un titre ne prouvent jamais quel exemplaire a été déposé.
-  // Les recherches dont le motif contient l'identifiant du reçu restent possibles.
-  if (requireTitle || title) return { url: null, diag: { identite_non_prouvee: true } };
   const cheminListe = listeDuCompte ? (CHEMIN_LISTE_DU_COMPTE[listeDuCompte]?.source ?? null) : null;
   try {
     const [res] = await chrome.scripting.executeScript({
@@ -9006,10 +8973,6 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // avec une pause jitter entre deux fetches — un humain qui re-regarde ses
 // annonces, pas une rafale.
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
-function venteConfirmeeDeuxLectures(pf, maintenantMs) {
-  const premiere = Date.parse(pf?.sold_pending_since ?? "");
-  return Number.isFinite(premiere) && maintenantMs - premiere >= SALE_CHECK_MIN_INTERVAL_MS;
-}
 // Plafond par cycle : MAINTENU À 8 (audit du 24/08). Le poll étant à 2 min,
 // ce plafond vaut jusqu'à 240 lectures/h en phase de RATTRAPAGE (backlog de
 // never-checked, navigateur ouvert) — un passage à 12 (tenté le 24/08 au
@@ -9042,9 +9005,43 @@ const UNKNOWN_RETRY_MS = 24 * 60 * 60 * 1000;
 // publiquement dans les minutes qui suivent son dépôt — elle serait lue comme
 // "unavailable" et un bandeau « Vendue ? » s'afficherait sur une annonce qui
 // vient d'être mise en ligne.
-// Point E : grâce commune de quatre heures ; deux lectures restent exigées.
-const PUBLISH_GRACE_DEFAULT_MS = 4 * 60 * 60 * 1000;
-const graceDuJob = () => PUBLISH_GRACE_DEFAULT_MS;
+// ⚠️ UNIFORME SUR LES 4 PLATEFORMES depuis le 2026-07-13 (décision Nico — a
+// remplacé les fenêtres par plateforme beebs 24 h · leboncoin 6 h · ebay 2 h ·
+// vinted 2 h, calées sur des observations ponctuelles, ET les 20 min « TEMP
+// TEST » du 2026-07-12). Réduit 4 h → 2 h le 2026-07-19 (décision Nico,
+// launch) : 2 h couvrent toujours la modération/propagation CDN observées, et
+// une vraie vente devient détectable deux fois plus tôt. La garde reste doublée
+// par SALE_CHECK_MIN_INTERVAL_MS (2 h entre deux lectures d'une même annonce)
+// et par la règle « unknown ne conclut jamais rien ».
+const PUBLISH_GRACE_MS = {
+  beebs: 2 * 60 * 60 * 1000,
+  leboncoin: 2 * 60 * 60 * 1000,
+  ebay: 2 * 60 * 60 * 1000,
+  vinted: 2 * 60 * 60 * 1000,
+};
+const PUBLISH_GRACE_DEFAULT_MS = 2 * 60 * 60 * 1000;
+
+// ── Grâce PLUS LONGUE pour une annonce RECRÉÉE (2026-09-07) ──────────────────
+// Une republication vient de supprimer une annonce et d'en créer une autre
+// quelques secondes plus tard. C'est précisément l'annonce que Vinted sert le
+// moins bien : elle s'indexe, et le job d'Ornella l'a montré — bandeau à
+// 20:13 pour une recréation de 16:12, soit 4 h 01 après, sur une annonce
+// parfaitement en ligne. Deux heures de grâce (celles d'un publish) ne
+// couvraient pas cette fenêtre.
+// 12 H, et voici pourquoi ce n'est pas cher payé :
+//   · le bandeau exige grâce + un second strike deux heures plus tard : le
+//     plus tôt possible devient +14 h, très au-delà des 4 h observées ;
+//   · une VRAIE vente n'attend pas pour autant. La sync du dressing pose
+//     sale_signal='sold' sur preuve POSITIVE (is_closed + item_closing_action)
+//     et n'est PAS soumise à cette grâce — le bandeau « Vendue 🎉 » arrive par
+//     ce chemin-là, inchangé ;
+//   · on reste sous les 24 h : une vente que seule la page révélerait sort
+//     quand même dans la journée.
+// Ne s'applique qu'aux jobs action='republish' : un publish garde ses 2 h.
+const REPUBLISH_GRACE_MS = 12 * 60 * 60 * 1000;
+const graceDuJob = (j) =>
+  (j?.action === "republish" ? REPUBLISH_GRACE_MS : null)
+  ?? PUBLISH_GRACE_MS[j?.platform] ?? PUBLISH_GRACE_DEFAULT_MS;
 
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
@@ -9157,17 +9154,16 @@ function vintedListedPrice(html, adId) {
 // scope les lectures de page à NOTRE annonce — jamais « la première chaîne qui
 // matche quelque part dans le document ».
 function extractListingId(url, platform) {
-  let u;
-  try { u = new URL(String(url)); } catch { return null; }
-  const domaines = { vinted: /(^|\.)vinted\.[a-z.]+$/i, leboncoin: /(^|\.)leboncoin\.fr$/i,
-    ebay: /(^|\.)ebay\.[a-z.]+$/i, beebs: /(^|\.)beebs\.app$/i, opla: /(^|\.)opla\.co$/i };
-  if (!domaines[platform]?.test(u.hostname)) return null;
-  const motifs = { vinted: /^\/items\/(\d+)(?:[-/]|$)/,
-    leboncoin: /^\/ad\/[^/]+\/(\d+)(?:[./]|$)/,
-    ebay: /^\/itm\/(?:[^/]+\/)?(\d{9,})(?:\/|$)/,
-    beebs: /\/p\/(\d+)(?:[-/]|$)/,
-    opla: /\/(?:product|article)\/(art_[a-zA-Z0-9_-]+)/ };
-  return u.pathname.match(motifs[platform])?.[1] ?? null;
+  const patterns = {
+    vinted: /\/items\/(\d+)/,
+    leboncoin: /\/ad\/[^/]+\/(\d+)/,
+    ebay: /\/itm\/[^?#]*?(\d{9,})/,
+    // ⚠️ Format d'URL produit Beebs toujours NON OBSERVÉ : on suppose un long
+    // nombre dans le chemin. À confirmer dès la première URL réelle capturée.
+    beebs: /(\d{6,})/,
+  };
+  const m = String(url ?? "").match(patterns[platform] ?? /(\d{6,})/);
+  return m ? m[1] : null;
 }
 
 // LEBONCOIN — RÉÉCRIT le 2026-07-13 après un FAUX POSITIF SYSTÉMATIQUE prouvé
@@ -9992,7 +9988,6 @@ async function mesurerCookiesOpla() {
   return {
     le: new Date().toISOString(), octets, n: cookies.length,
     session: cookies.some((c) => c.name === "opla_has_session"),
-    session_cookie_presente: cookies.some((c) => /^__session(?:__\d+)?$/.test(c.name)),
     gros: tailles.slice(0, 6).map(({ name, len, domain, path, httpOnly }) => ({ name, len, domain, path, httpOnly })),
   };
 }
@@ -12792,7 +12787,7 @@ async function syncMultiOuverte(token, userId) {
 async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   const pattern = LISTING_URL_PATTERNS[platform];
   if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
-  const injection = chrome.scripting.executeScript({
+  const [res] = await chrome.scripting.executeScript({
     target: { tabId },
     func: async (src, plateforme, compteursEbaySrc, attenteCompteurMs, cheminListeSrc) => {
       const re = new RegExp(src, "i");
@@ -13120,13 +13115,6 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
     args: [pattern.source, platform, platform === "ebay" ? COMPTEUR_EBAY_SRC : [], platform === "ebay" ? COMPTEUR_EBAY_ATTENTE_MS : COMPTEUR_LBC_ATTENTE_MS,
       CHEMIN_LISTE_DU_COMPTE[platform]?.source ?? null],
   });
-  let attente;
-  const borne = new Promise((_, rejet) => {
-    attente = setTimeout(() => rejet(new Error("Lecture du relevé interrompue : la page ne répond plus après 3 minutes [incomplet]")), 180_000);
-  });
-  let res;
-  try { [res] = await Promise.race([injection, borne]); }
-  finally { clearTimeout(attente); }
   return res?.result ?? { annonces: [], diag: null };
 }
 
@@ -14463,9 +14451,6 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     return { ok: false, reason: "ferme" };
   }
   releveEnCours = true;
-  // Les longues lectures injectées ne maintiennent pas le worker MV3 vivant.
-  // Ceci ne simule aucune progression en base : le watchdog reste indépendant.
-  const reveilReleve = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20_000);
   const maintenant = () => new Date().toISOString();
   let run = null;
   try {
@@ -14493,9 +14478,6 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
     const { annonces, complet, erreur, illisibles, absente, vide, defilement, annonce } = await releverAnnoncesPlateforme(platform, { token, userId });
-    await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
-      method: "PATCH", body: JSON.stringify({ items_vus: annonces.length, updated_at: maintenant() }),
-    });
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -14633,7 +14615,6 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     return { ok: false, reason: "erreur", message: msg };
   } finally {
-    clearInterval(reveilReleve);
     releveEnCours = false;
   }
 }
@@ -15953,8 +15934,25 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     }).catch((e) => console.warn("[sync-dressing] trace identité non écrite (migration absente ?):", e?.message ?? e));
   }
 
-  // Avant tout import, y compris le premier, la boutique doit avoir été
-  // confirmée par la personne. Une lecture de profil manquée arrête le relevé.
+  // ── GARDE D'IDENTITÉ — boutiques confirmées (2026-09-03, incident Nadège) ──
+  // Le dressing lu est celui du compte Vinted connecté dans CE navigateur ;
+  // jusqu'ici il atterrissait dans l'inventaire du compte FillSell de
+  // l'extension SANS AUCUN contrôle de propriété (~716 articles de
+  // @nadegemarcelin78 importés chez deux autres comptes FillSell). AVANT tout
+  // import désormais :
+  //   · boutique déjà confirmée (liste v2 de vinted_sync_pin) → sync normale ;
+  //   · aucune boutique connue, adoption permise → la boutique courante est
+  //     ADOPTÉE (source 'premiere_sync') — zéro friction pour le parc
+  //     mono-boutique, qui est la quasi-totalité ;
+  //   · a_confirmer:true (posé à la main sur les comptes à historique
+  //     douteux) OU boutique inconnue → AUCUN import : run 'failed' porteur
+  //     du marqueur [boutique_a_confirmer], l'app affiche la DÉCISION
+  //     (« c'est bien ma boutique » → ajout + relance / changer de compte
+  //     Vinted dans Chrome). Multi-boutiques légitime (cas Manon) : une
+  //     confirmation par boutique, une seule fois.
+  // Fail-open UNIQUEMENT sur l'aléa réseau de lecture du profil : on ne
+  // bloque pas le parc entier sur un 5xx PostgREST — ce run-là garde
+  // l'ancien comportement et la garde reprend au run suivant.
   if (!mock && ident?.userId) {
     const idActuel = String(ident.userId);
     let pinInfo = null;
@@ -15962,7 +15960,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       const rows = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, token);
       pinInfo = lireBoutiquesPin(rows?.[0]?.vinted_sync_pin);
     } catch (e) {
-      return await echec("[lecture_boutiques] FillSell ne peut pas vérifier tes boutiques pour le moment. Aucun article n’a été importé. Réessaie dans quelques minutes.");
+      console.warn("[sync-dressing] boutiques confirmées illisibles — garde passée pour CE run:", e?.message ?? e);
     }
     if (pinInfo) {
       const connue = pinInfo.boutiques.some((b) => String(b.user_id) === idActuel);
@@ -15979,6 +15977,33 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
             method: "PATCH", headers: { Prefer: "return=representation" },
             body: JSON.stringify({ vinted_sync_pin: maj }),
           }).catch(() => {});
+        }
+      } else if (pinInfo.boutiques.length === 0 && !pinInfo.aConfirmer) {
+        // Adoption du 1er run : écrite AVANT l'import et VÉRIFIÉE (un UPDATE
+        // profiles bloqué par la RLS échoue en silence sans representation —
+        // leçon du 2026-07-06). Échec d'écriture = ancien comportement,
+        // retentée au prochain run.
+        const nouveau = {
+          v: 2, a_confirmer: false,
+          boutiques: [{
+            user_id: idActuel,
+            login: ident.login ? String(ident.login) : null,
+            ajoute_le: new Date().toISOString(),
+            source: "premiere_sync",
+          }],
+        };
+        try {
+          const maj = await restRequest(`profiles?id=eq.${userId}`, token, {
+            method: "PATCH", headers: { Prefer: "return=representation" },
+            body: JSON.stringify({ vinted_sync_pin: nouveau }),
+          });
+          if (Array.isArray(maj) && maj.length) {
+            console.log(`[sync-dressing] boutique @${ident.login ?? idActuel} adoptée (première sync du régime multi-boutiques)`);
+          } else {
+            console.warn("[sync-dressing] adoption de boutique non confirmée (0 ligne) — retentée au prochain run");
+          }
+        } catch (e) {
+          console.warn("[sync-dressing] adoption de boutique refusée — retentée au prochain run:", e?.message ?? e);
         }
       } else {
         const connues = pinInfo.boutiques.map((b) => `@${b.login ?? b.user_id}`).join(", ");
@@ -16373,23 +16398,44 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       const disparus = republishActifs === null ? [] : (connus ?? []).filter((r) =>
         r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id) && !republishActifs.has(r.vinted_item_id));
 
-      // Deux relevés complets distincts de LA boutique confirmée. Le nombre
-      // de remplacements externes n'est pas une preuve et ne les masque plus.
-      if (!motifSautDisparitions && !motifArretIncomplet && !echecsEcriture.length) {
-        const cle = `fillsell.absencesDressing.${userId}.${ident.userId}`;
-        const avant = (await chrome.storage.local.get(cle))[cle] ?? {};
-        const apres = {};
-        const maintenantMs = Date.now();
-        for (const d of disparus) {
-          const id = String(d.vinted_item_id);
-          const precedent = avant[id];
-          apres[id] = precedent ?? { run: run.id, le: maintenantMs };
-          if (!precedent || precedent.run === run.id || maintenantMs - precedent.le < 5 * 60 * 1000) continue;
-          await restRequest(`inventaire?id=eq.${d.id}&user_id=eq.${userId}&vinted_item_id=eq.${id}`, token, {
-            method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
-          });
+      // ── Gardes (d)/(e) : anti-effondrement (2026-08-14, dossier Manon) ────
+      // Le 12/08, un run a lu le dressing d'un AUTRE compte Vinted (session
+      // Chrome sur un autre profil : 384 créations, items_maj=0, zéro
+      // recoupement). Le run suivant, COMPLET et cohérent avec sa propre
+      // pagination (28 vus / 28 annoncés / 1 page), a passé (a)(b)(c) et daté
+      // disparu_le sur les 384 d'un coup : ces gardes comparent le run à
+      // lui-même, jamais à l'inventaire. Deux ceintures de plus, même doctrine
+      // d'échec FERMÉ : on ne marque RIEN, le motif part en [note], un run
+      // sain suivant marquera. Ce bloc n'EMPÊCHE que des écritures, il n'en
+      // déclenche aucune.
+      // (d) RECOUPEMENT NUL : des vus, des connus, pas UNE intersection ⇒ ce
+      //     dressing n'est probablement pas celui dont vient l'inventaire
+      //     (signature du mauvais compte). Un run normal revoit l'écrasante
+      //     majorité de ses connus.
+      // (e) EFFONDREMENT : plus de max(20, 40 % des connus) à marquer d'une
+      //     passe. Les ventes/retraits ordinaires passent largement dessous ;
+      //     éteindre la majorité du stock exige un run qu'on croirait sur
+      //     parole. Résidu ASSUMÉ : un vrai retrait massif au-delà du plafond
+      //     ne sera plus daté automatiquement — constatable par la [note],
+      //     le run suivant un retour à la normale marquera.
+      if (disparus.length) {
+        const recoupement = (connus ?? []).some((r) => r.vinted_item_id && vusCetteSync.has(r.vinted_item_id));
+        const plafond = Math.max(20, Math.ceil((connus?.length ?? 0) * 0.4));
+        if (!recoupement) {
+          motifSautDisparitions = `dressing sans recoupement avec l'inventaire (${connus.length} connu(s), ${vusCetteSync.size} vu(s)) — mauvais compte Vinted possible, aucun marquage`;
+        } else if (disparus.length > plafond) {
+          motifSautDisparitions = `effondrement suspect : ${disparus.length} disparition(s) à marquer sur ${connus.length} connu(s), plafond ${plafond} — aucun marquage`;
         }
-        await chrome.storage.local.set({ [cle]: apres });
+        if (motifSautDisparitions) console.warn(`[sync-dressing] disparitions NON marquées — ${motifSautDisparitions}`);
+      }
+
+      if (!motifSautDisparitions) {
+        for (const d of disparus) {
+          await restRequest(`inventaire?id=eq.${d.id}`, token, {
+            method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
+          }).catch(() => {});
+        }
+        if (disparus.length) console.log(`[sync-dressing] ${disparus.length} annonce(s) disparue(s), datées (aucune suppression)`);
       }
     } catch (e) {
       console.warn("[sync-dressing] marquage des disparus:", e?.message ?? e);
@@ -16583,7 +16629,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   let existants = [];
   try {
     existants = await restRequest(
-      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,vinted_status,origine,photos,prix_vente`,
+      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine,photos,prix_vente`,
       token, { headers: { Prefer: "return=representation" } },
     ) ?? [];
   } catch (e) {
@@ -16684,9 +16730,63 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // sont clos par le ré-appariement du poll (superseded_listing) dès cette
   // version ; l'affichage app des bandeaux republish rouvrira par un commit
   // séparé, sur GO explicite, après acceptation de la 0.5.4.
-  // Le relevé importe des observations, jamais une vente. Les pages suivantes
-  // peuvent échouer. Le veilleur de l'annonce confirme sur deux lectures,
-  // puis l'utilisateur enregistre la vente par la RPC atomique.
+  const ventesSignaleesAuJob = new Set(); // vinted_item_id dont un job vivant porte le drapeau
+  const soldFrais = articles.filter((a) =>
+    a.statut === "sold" && parVintedId.get(a.vinted_item_id)?.statut !== "vendu");
+  if (soldFrais.length) {
+    try {
+      const jobsVifs = await restRequest(
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=in.(publish,republish)` +
+          `&status=eq.published&select=id,inventaire_id,platform_listing_id,listing_url,platform_fields` +
+          `&order=created_at.desc&limit=1000`,
+        token, { headers: { Prefer: "return=representation" } },
+      ) ?? [];
+      // Correspondance par ID VINTED d'abord (même règle que le rattrapage
+      // ci-dessus : jamais le titre), inventaire_id en repli — un job publié
+      // avant l'écriture de platform_listing_id peut n'avoir que ce lien-là.
+      const jobParIdVinted = new Map();
+      const jobParInventaire = new Map();
+      for (const j of jobsVifs) {
+        const idV = j.platform_listing_id ?? extractListingId(j.listing_url, "vinted");
+        if (idV != null && !jobParIdVinted.has(String(idV))) jobParIdVinted.set(String(idV), j);
+        if (j.inventaire_id != null && !jobParInventaire.has(String(j.inventaire_id))) jobParInventaire.set(String(j.inventaire_id), j);
+      }
+      for (const a of soldFrais) {
+        const invId = parVintedId.get(a.vinted_item_id)?.id ?? parJob.get(String(a.vinted_item_id)) ?? null;
+        const job = jobParIdVinted.get(String(a.vinted_item_id)) ??
+          (invId != null ? jobParInventaire.get(String(invId)) : null);
+        if (!job) continue; // aucun job Vinted vivant : import pur, flip direct comme avant
+        const pf = job.platform_fields ?? {};
+        if (pf.unavailable_since) { ventesSignaleesAuJob.add(a.vinted_item_id); continue; } // déjà signalé (poll ou run précédent) : ne pas écraser son horodatage
+        try {
+          await restRequest(`cross_post_jobs?id=eq.${job.id}`, token, {
+            method: "PATCH",
+            body: JSON.stringify({
+              platform_fields: {
+                ...pf,
+                unavailable_since: maintenant,
+                sale_signal: "sold", // preuve positive : is_closed + item_closing_action='sold' (wardrobe)
+                ...(Number.isFinite(a.prix) && a.prix > 0 ? { detected_price: a.prix } : {}),
+              },
+            }),
+          });
+          ventesSignaleesAuJob.add(a.vinted_item_id);
+          console.log(
+            `[sync-dressing] VENTE Vinted détectée sur ${a.vinted_item_id} → drapeau posé sur le job ${job.id} ` +
+            "(confirmation via le bandeau de l'app — aucune écriture de vente ici)"
+          );
+        } catch (e) {
+          // PATCH raté : l'article N'ENTRE PAS dans ventesSignaleesAuJob → il
+          // retombe sur l'ancien comportement (statut='vendu' direct) — jamais
+          // une vente perdue, au pire sans bandeau ce run-ci.
+          console.warn(`[sync-dressing] drapeau de vente refusé sur le job ${job.id}:`, e?.message ?? e);
+        }
+      }
+    } catch (e) {
+      // Lecture des jobs indisponible : repli complet sur l'ancien comportement.
+      console.warn("[sync-dressing] signalement des ventes aux jobs:", e?.message ?? e);
+    }
+  }
   // ── PATCH léger : la règle de propriété (2026-08-03, 2e revue) ────────────
   // La sync ne réécrit EN ENTIER que SES lignes (origine='vinted_sync').
   // Toute autre ligne — rattachée via un job ce run-ci, OU déjà identifiée
@@ -16703,7 +16803,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_item_id: a.vinted_item_id,
       vinted_view_count: a.vues,
       vinted_favourite_count: a.favoris,
-      vinted_status: a.statut === "sold" ? (parVintedId.get(a.vinted_item_id)?.vinted_status ?? "active") : a.statut,
+      vinted_status: a.statut,
       last_synced_at: maintenant,
       disparu_le: null,
       // (a) taille / état / marque de la liste — la base fusionne (trigger) :
@@ -16814,8 +16914,21 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       // la carte préfère quand il existe, prix_vente est son repli.
       prix_vente: dejaLa?.prix_vente
         ?? (dejaLa?.statut !== "vendu" && a.statut !== "sold" && Number.isFinite(a.prix) && a.prix > 0 ? a.prix : null),
-      // Un relevé ne consomme pas le stock, même s'il observe une vente.
-      statut: dejaLa?.statut ?? "stock",
+      // STATUT : règle ASYMÉTRIQUE (2026-08-03 soir). La sync peut faire
+      // stock → vendu (Vinted dit sold), JAMAIS vendu → stock : un article
+      // vendu hors Vinted (vide-grenier, LBC) dont l'annonce Vinted vit
+      // encore doit RESTER vendu — le rétrograder cassait la comptabilité et
+      // relançait la détection de vente dessus. L'état brut de Vinted reste
+      // lisible dans vinted_status, écrit à chaque run.
+      // ⚠️ SAUF si un job vivant vient d'être signalé (2026-08-09) : c'est
+      // alors le clic du bandeau (orchestrateSale) qui écrira vente + statut.
+      // Flipper ici ferait perdre le gate consume_one_unit à la confirmation
+      // → la vente ne serait JAMAIS comptabilisée (le trou exact du constat
+      // Ornella). Sans job vivant : flip direct, comportement du 03/08.
+      statut: dejaLa?.statut === "vendu" ? "vendu"
+        : a.statut !== "sold" ? "stock"
+        : ventesSignaleesAuJob.has(a.vinted_item_id) ? (dejaLa?.statut ?? "stock")
+        : "vendu",
       marque: a.marque ?? null,
       // PHOTOS : cf. frontière de propriété ci-dessus. Le lot d'upsert exige
       // les mêmes clés sur toutes les lignes — la colonne reste présente et
@@ -16833,7 +16946,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_item_id: a.vinted_item_id,
       vinted_view_count: a.vues,
       vinted_favourite_count: a.favoris,
-      vinted_status: a.statut === "sold" ? (parVintedId.get(a.vinted_item_id)?.vinted_status ?? "active") : a.statut,
+      vinted_status: a.statut,
       // Estimation assumée : timestamp de la photo la plus ancienne. Le nom
       // « guess » est là pour qu'on ne l'affiche jamais à l'heure près.
       listed_at_guess: a.photo_ts ? new Date(a.photo_ts * 1000).toISOString() : null,
@@ -16912,7 +17025,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // aussi : leur inventaire_id ne pointerait sur rien (FK cross_post_jobs).
   const nonEcrits = new Set(echecs.map((f) => f.vinted_item_id));
   const aCreer = articles.filter((a) =>
-    ["active", "sold"].includes(a.statut) && a.url && !parVintedId.has(a.vinted_item_id)
+    a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id)
     && !patchesLegers.has(a.vinted_item_id) && !nonEcrits.has(a.vinted_item_id));
   if (aCreer.length) {
     const parId = new Map(lignes.map((l) => [l.vinted_item_id, l.id]));
@@ -17416,35 +17529,17 @@ async function checkPublishedListings(session) {
       // ⚠️ On repart de patch.platform_fields s'il existe déjà (remise à zéro des
       // compteurs d'indétermination juste au-dessus) — sinon on l'écraserait.
       const pf = patch.platform_fields ?? job.platform_fields ?? {};
-      if (pf.unavailable_since || pf.unavailable_pending_since || pf.sold_pending_since) {
+      if (pf.unavailable_since || pf.unavailable_pending_since) {
         const cleaned = { ...pf };
         delete cleaned.unavailable_since;
         delete cleaned.sale_signal;
-        delete cleaned.sale_evidence;
         delete cleaned.detected_price;
         delete cleaned.unavailable_pending_since;
-        delete cleaned.sold_pending_since;
         patch.platform_fields = cleaned;
         console.log(`[background] ${job.platform} ${job.id} : de nouveau EN LIGNE → drapeau levé, bandeau retiré (fausse alerte)`);
       }
     }
 
-    if (state === "sold") {
-      const pf = patch.platform_fields ?? job.platform_fields ?? {};
-      const premiere = Date.parse(pf.sold_pending_since ?? "");
-      if (!venteConfirmeeDeuxLectures(pf, Date.now())) {
-        patch.platform_fields = { ...pf, sold_pending_since: Number.isFinite(premiere) ? pf.sold_pending_since : new Date().toISOString() };
-        await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
-          method: "PATCH", body: JSON.stringify(patch),
-        });
-        continue; // Première lecture : aucun bandeau, aucun retrait, aucune vente.
-      }
-    }
-
-    if (state === "unavailable" && (patch.platform_fields ?? job.platform_fields ?? {}).sold_pending_since) {
-      patch.platform_fields = { ...(patch.platform_fields ?? job.platform_fields) };
-      delete patch.platform_fields.sold_pending_since;
-    }
     if (state === "sold" || state === "unavailable") {
       const pf = patch.platform_fields ?? job.platform_fields ?? {}; // idem : ne pas écraser la remise à zéro
 
@@ -17579,10 +17674,6 @@ async function checkPublishedListings(session) {
             ...confirme,
             unavailable_since: new Date().toISOString(),
             sale_signal: state, // "sold" = preuve positive | "unavailable" = doute confirmé sur deux cycles
-            ...(state === "sold" && job.platform_listing_id &&
-              String(extractListingId(job.listing_url, job.platform)) === String(job.platform_listing_id)
-              ? { sale_evidence: { platform: job.platform, listing_id: String(job.platform_listing_id),
-                  state: "sold", exact: true, observed_at: new Date().toISOString() } } : {}),
             ...(state === "sold" && price ? { detected_price: price } : {}),
           };
           console.log(
@@ -18797,18 +18888,9 @@ function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
     const ts = Number(a.photo_ts);
     return Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000;
   });
+  if (candidats.length === 1) return { item: candidats[0], raison: null };
   if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond" };
-  // ── RECRÉATION APRÈS NOTRE PROPRE SUPPRESSION : RÈGLE 0.6.75 RÉTABLIE ──────
-  // (décision Nico, 28/09 soir). Le point A (0.6.76) ne rendait plus jamais
-  // de candidate : 626 recréations sur 637 en 3 jours n'étaient rattachées
-  // que par ici, et les deux tests réels de la 0.6.78 (T-shirt 221274a6,
-  // Sweat 4bd5c671) ont fini en question puis en doublon au relevé. Les trois
-  // appelants sont des recréations qui suivent NOTRE suppression (deletedAt
-  // de notre verdict) ; l'identifiant exact de notre dépôt, quand il est lu,
-  // passe avant (annonceDeNotreDepot). Hors de ce contexte — rattachement
-  // d'un relevé, fusion, retrait — un titre ne prouve toujours rien.
-  if (candidats.length === 1) return { item: candidats[0], raison: null, candidats };
-  return { item: null, raison: `${candidats.length} annonces correspondent — identité à confirmer`, candidats };
+  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire` };
 }
 
 // Clôt un job republish en SUCCÈS sur une annonce déjà en ligne (reconnue par
@@ -19075,15 +19157,6 @@ function construireJobRecreation(job, pf, cap, prix) {
       // Autorisation serveur (pays ouvert, get-pending-jobs) — sans elle,
       // vinted_ids reste lettre morte côté vinted.js.
       ...(pf.vinted_ids_actifs === true ? { vinted_ids_actifs: true } : {}),
-      // ── BOUTIQUE D'ORIGINE PROUVÉE (0.6.78, 28/09) ─────────────────────────
-      // La une-passe supprime depuis /items/new : la page ne montre pas le
-      // vendeur, la seule preuve est « origine posée par get-pending-jobs =
-      // compte connecté maintenant » (deleteVintedItemViaApi). La 0.6.76
-      // lisait cette origine sur CE job, qui ne la recevait pas : 3
-      // republications sur 3 arrêtées en « identite_non_prouvee », sans
-      // requête (3a721b23, b07b735e, f3ba2985). Recopiée telle quelle,
-      // jamais devinée : absente, le retrait reste refusé.
-      ...(String(pf.vinted_account_id ?? "").trim() ? { vinted_account_id: String(pf.vinted_account_id).trim() } : {}),
     },
   });
 }
@@ -19116,9 +19189,6 @@ function nettoyerVerdictSuppression(v) {
     conclusion: s(v.conclusion, 40) ?? "inconnue",
     ...(v.corps != null ? { corps: s(v.corps, 160) } : {}),
     ...(v.session != null ? { session: s(v.session, 40) } : {}),
-    // Preuve de boutique qui manquait (0.6.78) : « boutique_article » ou
-    // « session » — elle décide du message, elle se lit en base.
-    ...(v.preuve_manquante != null ? { preuve_manquante: s(v.preuve_manquante, 40) } : {}),
     // Heure VINTED de la suppression (en-tête Date de la réponse, 2026-09-11).
     ...(v.date_serveur != null ? { date_serveur: s(v.date_serveur, 40) } : {}),
   };
@@ -19301,69 +19371,7 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
 // la suppression a été actée) et la reprise de l'étape 'deleted'. Ils ne
 // peuvent pas diverger : mêmes filets (sonde réseau, ceinture dressing), même
 // rattachement, mêmes retentatives.
-// ── L'IDENTIFIANT DE NOTRE DÉPÔT, LU SUR LA REDIRECTION (0.6.78, 28/09) ──────
-// Vinted redirige l'onglet de travail vers l'annonce qu'il vient de créer.
-// Cette navigation, dans NOTRE onglet et juste après NOTRE clic « Publier »,
-// porte l'identifiant exact de la recréation — la preuve que le titre et la
-// date des photos ne donnent pas (point A). Mesuré sur 3 jours avant la
-// 0.6.76 : 626 recréations sur 637 n'étaient rattachées que par titre, la
-// sonde réseau manquant la réponse ; la 0.6.76 en a fait des questions, puis
-// le relevé suivant des doublons (T-shirt de Nico, job 221274a6).
-// Suivi posé AVANT l'envoi du formulaire, relu à la fin : toutes les
-// annonces /items/<id> vues dans l'onglet pendant ce dépôt.
-// ⚠️ 2e test réel (Sweat Tommy, job 4bd5c671) : aucun identifiant vu. Le
-// canal se coupe au DÉBUT de la navigation, avant que la nouvelle adresse
-// soit engagée : s'arrêter au retour d'envoyerFillListing ne suffit pas. Sur
-// un échec, l'écoute continue donc, bornée (attendreMs), adresse en cours de
-// chargement (pendingUrl) comprise. Les chemins vus (sans paramètres) sont
-// gardés sur le job : une prochaine absence se lira au lieu de se deviner.
-function suivreRedirectionsAnnonce(tabId) {
-  const ids = [];
-  const chemins = [];
-  const noter = (url) => {
-    const u = String(url ?? "");
-    const chemin = u.match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+(\/[^?#]*)/i)?.[1]?.slice(0, 80);
-    if (chemin && chemins[chemins.length - 1] !== chemin && chemins.length < 8) chemins.push(chemin);
-    const id = u.match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/i)?.[1];
-    if (id && !ids.includes(id)) ids.push(id);
-  };
-  const ecoute = (idOnglet, info, tab) => { if (idOnglet === tabId) noter(info?.url ?? tab?.url); };
-  chrome.tabs.onUpdated.addListener(ecoute);
-  const relire = async () => {
-    const t = await chrome.tabs.get(tabId).catch(() => null);
-    noter(t?.pendingUrl);
-    noter(t?.url);
-    return t;
-  };
-  return {
-    async arreter({ attendreMs = 0 } = {}) {
-      const fin = Date.now() + attendreMs;
-      while (!ids.length && Date.now() < fin) {
-        if (!(await relire())) break;
-        if (!ids.length) await new Promise((r) => setTimeout(r, 500));
-      }
-      chrome.tabs.onUpdated.removeListener(ecoute);
-      await relire();
-      return { ids, chemins };
-    },
-  };
-}
-
-// Un seul identifiant NOUVEAU vu, inconnu de l'inventaire, et présent dans le
-// dressing du compte connecté : sinon rien (plusieurs = ambigu).
-function annonceDeNotreDepot(idsRedirection, ancienId, articles, idsConnus) {
-  const nouveaux = (Array.isArray(idsRedirection) ? idsRedirection : [])
-    .map(String).filter((id) => id && id !== String(ancienId ?? ""));
-  if (nouveaux.length !== 1 || idsConnus.has(nouveaux[0])) return null;
-  return (articles ?? []).find((a) => String(a?.vinted_item_id ?? "") === nouveaux[0]) ?? null;
-}
-
 async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result) {
-  if (Array.isArray(result?.idsRedirection)) {
-    pf.recreation_redirection = { ids: result.idsRedirection.slice(0, 5), at: new Date().toISOString(),
-      chemins: Array.isArray(result.cheminsRedirection) ? result.cheminsRedirection : [],
-      ...(result.success ? {} : { erreur: String(result.error ?? "").slice(0, 200) }) };
-  }
   // ── Catalogue des requis : les RECRÉATIONS écrivent aussi (2026-09-10) ──
   // Mesuré : 0 job republish ne porte categoryPath au niveau du job, donc
   // ~1 600 recréations/45 j n'alimentaient JAMAIS platform_category_aspects
@@ -19414,22 +19422,10 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
             `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
             accessToken,
           ).catch(() => []);
-          const idsConnus2 = new Set((connus2 ?? []).map((r) => String(r.vinted_item_id)));
-          // Identifiant exact de notre dépôt (redirection), confirmé au
-          // dressing : rattachement sans passer par le titre.
-          const notreAnnonce = annonceDeNotreDepot(result?.idsRedirection, pf.vinted_item_id, page2.articles, idsConnus2);
-          if (notreAnnonce) {
-            await cloreRepublishSurAnnonceExistante(
-              accessToken, job, pf, notreAnnonce.vinted_item_id,
-              notreAnnonce.url ?? `https://www.vinted.fr/items/${notreAnnonce.vinted_item_id}`,
-              "identifiant de la redirection Vinted après notre dépôt, présent au dressing",
-            );
-            return { status: "published", listingUrl: notreAnnonce.url ?? null };
-          }
-          const { item: trouve, raison: pourquoi, candidats } = reconnaitreAnnonceRecreee(page2.articles, {
+          const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
             titre: jobRecreation.title,
             deletedAt: pf.deleted_at,
-            idsConnus: idsConnus2,
+            idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
           });
           if (trouve) {
             await cloreRepublishSurAnnonceExistante(
@@ -19438,14 +19434,6 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
               "recréation confirmée dans le dressing après coupure du canal",
             );
             return { status: "published", listingUrl: trouve.url ?? null };
-          }
-          if (candidats?.length) {
-            const msg = "Une annonce pourrait correspondre à cet article. Confirme dans tes annonces s'il s'agit du même exemplaire avant de reprendre la republication. Rien n'a été rattaché ni redéposé.";
-            pf.needs_user_source = "recreation_deja_partie";
-            pf.recreation_doublon = { at: new Date().toISOString(), raison: pourquoi,
-              liens: candidats.map((c) => c.url ?? `https://www.vinted.fr/items/${c.vinted_item_id}`) };
-            await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-            return { status: "needsUser", error: msg };
           }
           console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
         }
@@ -19684,21 +19672,7 @@ async function executerRetraitViaHandler(job, accessToken) {
   if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
   // Même onglet de travail persistant que la publication (anti-DataDome).
-  let tabId = await getOrCreateWorkTab(job.platform, target);
-  const cibleId = extractListingId(target, job.platform);
-  if (cibleId && ["vinted", "leboncoin", "beebs"].includes(job.platform)) {
-    let page = await chrome.tabs.get(tabId);
-    if (extractListingId(page.url, job.platform) !== cibleId && !estUrlDeConnexionPlateforme(job.platform, page.url)) {
-      tabId = await navigateWorkTab(tabId, target + WORK_TAB_FRAGMENT);
-      await chrome.storage.session.set({ [workTabKey(job.platform)]: tabId });
-      page = await chrome.tabs.get(tabId);
-    }
-    if (extractListingId(page.url, job.platform) !== cibleId && !estUrlDeConnexionPlateforme(job.platform, page.url)) {
-      return { tabId, result: { success: false,
-        error: 'Page inattendue pour une suppression ' + job.platform + ' : ' + page.url,
-        diagnostic: 'Destination vérifiée après navigation : identifiant attendu ' + cibleId + ', URL ' + page.url } };
-    }
-  }
+  const tabId = await getOrCreateWorkTab(job.platform, target);
 
   // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
   // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
@@ -19809,16 +19783,6 @@ async function executerRetraitViaHandler(job, accessToken) {
 //                reprise espacée → inchangés, le poll suivant rejoue l'étape.
 // Opla n'entre pas ici (modification en place, processOplaRepublishJob).
 const REPUBLISH_PF_ETAT_ESSAIS_MAX = 4;
-
-function recreationRetientFile(job) {
-  const pf = job?.platform_fields ?? {};
-  if (pf.republish_step !== "deleted") return false;
-  if (job.status === "processing") return true;
-  if (job.status !== "pending") return false;
-  // Un refus sur cet article attend sa propre reprise ou sa réponse.
-  // Il conserve sa priorité lorsqu'il est dû, sans retenir les autres articles.
-  return !pf.recreation_reprise && !pf.needsUserField && !pf.needsUserFields?.length;
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ON NE RETIRE PAS CE QU'ON NE SAIT PAS REMETTRE — LA PAGE, PAS LA CAPTURE
@@ -19987,7 +19951,6 @@ function prevolCaptureRepublication(job, snapExterne = null) {
       return Number(pf.capture_id) > 0 ? [] : ["la copie de ton annonce"];
     }
     if (!String(snap.titre ?? "").trim()) manquants.push("le titre");
-    if (!String(snap.description ?? "").trim()) manquants.push("la description");
     if (!Array.isArray(snap.photos) || !snap.photos.length) manquants.push("les photos");
     if (!(Number(snap.prix) > 0)) manquants.push("le prix");
     if (!Number(snap.catalog_id)) manquants.push("la catégorie");
@@ -20007,13 +19970,11 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     // les 338 imports du relevé n'ont ni photo ni catégorie SUR LE JOB, et
     // leurs republications aboutissent — exiger ces champs du seul job les
     // aurait toutes bloquées.
-    // Un lien ne sauvegarde ni les photos ni la catégorie.
+    const aLien = !!(job.listing_url || pf.old_listing_url || snap?.listing_url);
     const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
-    if (!nPhotos) manquants.push("les photos");
-    else if (Number(snap?.photos) > nPhotos) manquants.push("toutes les photos");
-    if (!String(job.description ?? "").trim()) manquants.push("la description");
+    if (!nPhotos && !(Number(snap?.photos) > 0) && !aLien) manquants.push("les photos");
     const aCategorie = Array.isArray(pf.lbcCategoryPath) && pf.lbcCategoryPath.length;
-    if (!aCategorie) manquants.push("la catégorie");
+    if (!aCategorie && !aLien) manquants.push("la catégorie");
     // ── LA LOCALISATION (le job af34f609, 22/09) ─────────────────────────
     // C'est CE champ qui a laissé une annonce hors ligne 11 minutes : la
     // capture n'avait pas de localisation, les Réglages étaient vides, et on
@@ -20042,9 +20003,7 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     if (!String(job.title ?? "").trim()) manquants.push("le titre");
     if (!(Number(job.price) > 0)) manquants.push("le prix");
     const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
-    if (!nPhotos) manquants.push("les photos");
-    else if (Number(snap?.photos) > nPhotos) manquants.push("toutes les photos");
-    if (!String(job.description ?? "").trim()) manquants.push("la description");
+    if (!nPhotos && !(Number(snap?.photos) > 0)) manquants.push("les photos");
     if (!(Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length)) manquants.push("le rayon Beebs");
     return manquants;
   }
@@ -20059,7 +20018,7 @@ function prevolCaptureRepublication(job, snapExterne = null) {
 //    message doit nommer ce qui manque, et un seul niveau à la fois — quand
 //    c'est la copie elle-même, on le dit avec ses mots, sans l'emboîter.
 function messagePrevolRepublication(label, manquants) {
-  const intact = "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Complète la copie depuis la fiche de l'article avant de relancer la republication.";
+  const intact = "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
   if (manquants.length === 1 && manquants[0] === "la copie de ton annonce") {
     return `Republication ${label} mise en pause AVANT tout retrait : la copie de ton annonce n'a pas été retrouvée. ${intact}`;
   }
@@ -20077,7 +20036,13 @@ function messagePrevolRepublication(label, manquants) {
 // Rend `null` quand ça passe, ou le résultat de job à renvoyer tel quel.
 // `etape` n'est QUE de la trace : elle dit lequel des passages a parlé.
 async function appliquerPrevolCopie({ accessToken, job, pf, snap = null, etape }) {
-  // La copie complète reste obligatoire, même si un ancien interrupteur est éteint.
+  // Interrupteur serveur : éteint, la garde trace son abstention et laisse
+  // passer. On ne fait pas disparaître la ligne — une garde muette ne se
+  // distingue pas d'une garde qui n'a pas tourné (règle du 22/09).
+  if (!prevolCopieActif) {
+    tracerGarde(pf, "prevol_copie", { verdict: "eteint", plateforme: job.platform, etape });
+    return null;
+  }
   const manquants = prevolCaptureRepublication(job, snap);
   tracerGarde(pf, "prevol_copie", {
     verdict: manquants.length ? "bloque" : "ok",
@@ -20090,14 +20055,14 @@ async function appliquerPrevolCopie({ accessToken, job, pf, snap = null, etape }
   const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
   const msg = messagePrevolRepublication(label, manquants);
   pf.republish_prevol_manquants = manquants;
-  pf.needs_user_source = "capture_incomplete";
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
   console.warn(`[republish] job ${job.id} : retrait REFUSÉ (${etape}) — copie incomplète (${manquants.join(", ")})`);
   return { status: "needsUser", error: msg };
 }
 
 // Ouvre la page de dépôt dans l'onglet de travail et lit la sonde.
-// Une réponse illisible interdit le retrait ; la lecture sera retentée.
+// ⛔ FAIL-OPEN : tout ce qui n'est pas une réponse de la page rend
+//    { lisible:false } — l'appelant poursuit alors son chemin normal.
 async function prevolPageDeDepot(platform) {
   const spec = PREVOL_DEPOT[platform];
   if (!spec) return { lisible: false };
@@ -20231,29 +20196,6 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const refus = await appliquerPrevolCopie({ accessToken, job, pf, etape: "avant_retrait" });
       if (refus) return refus;
     }
-    // ── LES GARDES DU REDÉPÔT PASSENT AVANT LE RETRAIT (0.6.78, 28/09) ──────
-    // RÈGLE : on ne retire jamais une annonce qu'une de nos gardes empêchera
-    // de redéposer. precheckJob tourne ici sur le job EXACT du redépôt (même
-    // forme que plus bas) : ce qu'il refuserait après le retrait, il le
-    // refuse maintenant, annonce en ligne. Cas fondateur : le livre
-    // « Maquillage… » de xxewwer (28f1b00e), retiré puis bloqué 4 fois.
-    {
-      const jobRedepot = { ...job, action: "publish", listing_url: null, platform_listing_id: null,
-        platform_fields: { ...pf, republish_recreation: true } };
-      const blocage = precheckJob(jobRedepot);
-      tracerGarde(pf, "prevol_gardes", {
-        verdict: blocage ? "bloque" : "ok", plateforme: job.platform, etape: "avant_retrait",
-        champs_verifies: ["produit_autorise", "categorie"],
-      });
-      if (blocage) {
-        const motif = blocage.replace(/\s*Aucun onglet n'a été ouvert\.?\s*$/, "");
-        const msg = `Republication ${label} mise en pause AVANT tout retrait, ton annonce est toujours en ligne : ${motif}`;
-        pf.needs_user_source = "garde_depot";
-        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — le redépôt serait bloqué (${motif.slice(0, 120)})`);
-        return { status: "needsUser", error: msg };
-      }
-    }
     void snapshot;
 
     // ══════════════════════════════════════════════════════════════════════
@@ -20276,7 +20218,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     //    anti-robot → attente, exactement comme un retrait.
     if (PREVOL_DEPOT[job.platform]) {
       const vol = await prevolPageDeDepot(job.platform).catch((e) => {
-        console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — aucun retrait autorisé`);
+        console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — le retrait suit son chemin`);
         return { lisible: false };
       });
       tracerGarde(pf, "prevol_page", {
@@ -20291,12 +20233,6 @@ async function processRepublishJobPlateforme(job, accessToken) {
         ...(vol.manquants?.length ? { manquants: vol.manquants } : {}),
         ...(vol.mur ? { mur: vol.mur } : {}),
       };
-      if (!vol.lisible) {
-        pf.next_action_after = new Date(Date.now() + 3 * 60_000).toISOString();
-        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf,
-          error: "La page de dépôt n'a pas pu être vérifiée. Aucun retrait effectué ; nouvelle vérification automatique." });
-        return { status: "skipped", error: "pré-vol illisible — aucun retrait" };
-      }
       if (vol.lisible && vol.mur) {
         // Session à ouvrir / vérification anti-robot : ce n'est pas un défaut
         // de formulaire, et ça ne se règle pas en retirant l'annonce.
@@ -20325,10 +20261,10 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const horsLigne = await restRequest(
         `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
         `&platform=eq.${job.platform}&id=neq.${job.id}&status=in.(pending,processing)` +
-        `&platform_fields->>republish_step=eq.deleted&select=id,status,platform_fields&limit=100`,
+        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
-      if (Array.isArray(horsLigne) && (horsLigne.length === 100 || horsLigne.some(recreationRetientFile))) {
+      if (Array.isArray(horsLigne) && horsLigne.length) {
         console.log(`[republish] job ${job.id} : retrait reporté — une annonce ${label} du compte est déjà hors ligne (job ${horsLigne[0].id})`);
         return { status: "skipped", error: `une annonce ${label} est déjà hors ligne — sa recréation passe d'abord` };
       }
@@ -20453,20 +20389,6 @@ async function processRepublishJobPlateforme(job, accessToken) {
       platform_fields: { ...pf, republish_recreation: true },
     };
     delete jobRecreation.platform_fields.next_action_after;
-    // Une garde qui refuse le redépôt refusera aussi chaque reprise : ce n'est
-    // pas une panne passagère. Nommée (garde_depot), le serveur ne la change
-    // plus en « on réessaie tout seuls — rien à faire » (0.6.78, 28/09).
-    const blocageRedepot = precheckJob(jobRecreation);
-    if (blocageRedepot) {
-      pf.republish_step = "deleted";
-      pf.needs_user_source = "garde_depot";
-      delete pf.next_action_after;
-      const motif = blocageRedepot.replace(/\s*Aucun onglet n'a été ouvert\.?\s*$/, "");
-      const msg = `Ton annonce a été retirée de ${label} et ne peut pas y être redéposée telle quelle : ${motif} ` +
-        "Une nouvelle tentative automatique n'y changerait rien. Rien n'est perdu : titre, description, photos et champs sont sauvegardés.";
-      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg.slice(0, 590) });
-      return { status: "needsUser", error: msg };
-    }
     const resultat = await processJob(jobRecreation, accessToken);
     dernierGesteRepublishAt = Date.now();
 
@@ -20909,10 +20831,10 @@ async function processRepublishJob(job, accessToken) {
         // Leboncoin hors ligne n'a pas à retenir un retrait Vinted — les deux
         // chaînes ne partagent ni page, ni fenêtre hors ligne.
         `&platform=eq.vinted&id=neq.${job.id}&status=in.(pending,processing)` +
-        `&platform_fields->>republish_step=eq.deleted&select=id,status,platform_fields&limit=100`,
+        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
-      if (Array.isArray(horsLigne) && (horsLigne.length === 100 || horsLigne.some(recreationRetientFile))) {
+      if (Array.isArray(horsLigne) && horsLigne.length) {
         console.log(`[republish] job ${job.id} : suppression reportée — une annonce du compte est déjà hors ligne (job ${horsLigne[0].id}), sa recréation passe d'abord`);
         return { status: "skipped", error: "une annonce est déjà hors ligne — sa recréation passe d'abord" };
       }
@@ -20936,7 +20858,7 @@ async function processRepublishJob(job, accessToken) {
       // de pré-vol (une-passe) rempli pendant que l'annonce est encore en ligne.
       const capRows = await restRequest(
         `vinted_republish_captures?id=eq.${Number(pf.capture_id)}` +
-        `&vinted_item_id=eq.${encodeURIComponent(String(pf.vinted_item_id))}&select=verdict,captured_at,payload,libelles,photos_urls&limit=1`,
+        `&select=verdict,captured_at,payload,libelles,photos_urls`,
         accessToken,
       );
       const capMeta = capRows?.[0];
@@ -21166,19 +21088,10 @@ async function processRepublishJob(job, accessToken) {
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
-      const suiviRedirection = suivreRedirectionsAnnonce(tabId);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
-      }
-      // On n'attend la page d'arrivée que si l'annonce d'origine est partie :
-      // un refus avant suppression n'a rien soumis, rien à suivre.
-      const aAttendre = !result?.success && (result?.deleted === true || republishSupprimes.has(job.id));
-      const redirection = await suiviRedirection.arreter({ attendreMs: aAttendre ? 15_000 : 0 });
-      if (result && typeof result === "object") {
-        result.idsRedirection = redirection.ids;
-        result.cheminsRedirection = redirection.chemins;
       }
       dernierGesteRepublishAt = Date.now();
 
@@ -21240,27 +21153,12 @@ async function processRepublishJob(job, accessToken) {
             await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
             return { status: "retry", error: "annonce déjà absente — recréation à la prochaine passe" };
           }
-          // ── PREUVE DE BOUTIQUE ABSENTE : LE MUR EST NOMMÉ (0.6.78, 28/09) ──
-          // « Relance quand tu veux » bouclait : une relance rejoue la même
-          // absence de preuve. On dit ce qui manque et le seul geste qui la
-          // fournit ; la garde, elle, ne bouge pas.
-          const verdictPreuve = pf.suppression_verdict ?? {};
-          const murBoutique = verdictPreuve.conclusion === "boutique_etrangere"
-            ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi sur Vinted à la boutique qui la porte, puis relance la republication."
-            : verdictPreuve.conclusion !== "identite_non_prouvee" ? null
-            : verdictPreuve.preuve_manquante === "session"
-            ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans Chrome, et rien n'est retiré sans cette vérification. Vérifie que ta session Vinted est ouverte dans Chrome, puis relance : la boutique sera vérifiée de nouveau avant tout geste."
-            : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce, et ne retire jamais une annonce sans cette preuve. Ouvre Vinted dans Chrome sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app : une fois l'annonce reconnue, relance la republication.";
           // Formulation (2026-09-11) : « intacte » seulement si l'état réel
           // vient d'être relevé « active » ; sinon on dit qu'on n'a pas pu
           // vérifier — jamais rassurant à tort.
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
-            error: state === "active" && murBoutique
-              ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. ${murBoutique}`
-              : murBoutique
-              ? `Republication interrompue avant toute suppression : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. ${murBoutique}`
-              : state === "active"
+            error: state === "active"
               ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app quand tu veux.`
               : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${phraseClose(motifLisible(result?.error ?? "inconnu", 200))} Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
           });
@@ -21369,16 +21267,6 @@ async function processRepublishJob(job, accessToken) {
       // ── SUPPRIMÉE : étape actée, puis MÊME conclusion que la reprise ───────
       pf.republish_step = "deleted";
       pf.deleted_at = pf.deleted_at ?? marqueDeletedAt ?? enBase?.deletedAt ?? new Date().toISOString();
-      // La une-passe a SOUMIS le formulaire après la suppression : c'est une
-      // tentative de recréation. Marquée comme telle (0.6.78), une relance
-      // lira obligatoirement le dressing avant de recréer — sans elle, un
-      // onglet de travail absent laissait recréer par-dessus l'annonce déjà
-      // créée (cas du Sweat Tommy 4bd5c671, relancé depuis l'app).
-      pf.recreation_tentee = {
-        at: new Date().toISOString(),
-        n: (Number(pf.recreation_tentee?.n) || 0) + 1,
-        une_passe: true,
-      };
       // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — le
       // veilleur quotidien scannerait sinon l'ancienne URL, la trouverait
       // morte, et poserait le faux « plus en ligne — vendue ? ».
@@ -21534,9 +21422,7 @@ async function processRepublishJob(job, accessToken) {
       // TENTATIVE A EU LIEU, on ne recrée plus sans avoir LU le dressing :
       // s'il est illisible, on repasse plus tard. Une annonce qui attend 2 min
       // de plus, ça se rattrape ; un doublon, non.
-      // Une candidate déjà vue (recreation_doublon, jobs arrêtés en 0.6.76/0.6.78
-      // avant correctif) vaut tentative : le dressing se lit avant tout dépôt.
-      const dejaTentee = (pf.recreation_tentee && typeof pf.recreation_tentee === "object") || !!pf.recreation_doublon;
+      const dejaTentee = pf.recreation_tentee && typeof pf.recreation_tentee === "object";
       let tabVerif = await findExistingWorkTabId("vinted");
       if (tabVerif == null && dejaTentee) {
         // Obligatoire : on s'offre l'onglet que le chemin best-effort refusait.
@@ -21573,37 +21459,10 @@ async function processRepublishJob(job, accessToken) {
               `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
               accessToken,
             ).catch(() => []);
-            const idsConnus = new Set((connus ?? []).map((r) => String(r.vinted_item_id)));
-            // ── LA RECRÉATION D'AVANT A ÉTÉ IMPORTÉE EN FICHE SÉPARÉE ──────────
-            // (0.6.76, T-shirt de Nico 221274a6 : relevé de 21:42.) L'annonce
-            // vue après notre dépôt est maintenant CONNUE de l'inventaire, donc
-            // exclue des candidates : sans cette garde, on en recréerait une
-            // troisième. Rien n'est déposé ; les deux fiches se fusionnent.
-            const dejaImportees = (Array.isArray(pf.recreation_doublon?.liens) ? pf.recreation_doublon.liens : [])
-              .map((l) => String(l).match(/\/items\/(\d+)/)?.[1]).filter((id) => id && idsConnus.has(id));
-            if (dejaImportees.length) {
-              const msg = "Ta nouvelle annonce est déjà en ligne sur Vinted, mais elle a été ajoutée à ton stock comme une "
-                + "fiche séparée. Fusionne les deux fiches de cet article depuis l'app. Rien n'a été redéposé.";
-              pf.needs_user_source = "recreation_deja_partie";
-              pf.recreation_importee = { at: new Date().toISOString(), ids: dejaImportees.slice(0, 5) };
-              await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-              return { status: "needsUser", error: msg };
-            }
-            // Une tentative précédente a été redirigée vers SON annonce :
-            // identifiant exact, confirmé au dressing (0.6.78).
-            const notreAnnonce = annonceDeNotreDepot(pf.recreation_redirection?.ids, pf.vinted_item_id, page.articles, idsConnus);
-            if (notreAnnonce) {
-              await cloreRepublishSurAnnonceExistante(
-                accessToken, job, pf, notreAnnonce.vinted_item_id,
-                notreAnnonce.url ?? `https://www.vinted.fr/items/${notreAnnonce.vinted_item_id}`,
-                "identifiant de la redirection Vinted d'une tentative précédente, présent au dressing",
-              );
-              return { status: "published", listingUrl: notreAnnonce.url ?? null };
-            }
             const { item, raison } = reconnaitreAnnonceRecreee(page.articles, {
               titre: jobRecreation.title,
               deletedAt: pf.deleted_at,
-              idsConnus,
+              idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
             });
             tracerGarde(pf, "prevol_recreation", {
               verdict: item ? "deja_recreee" : "a_recreer",
@@ -21625,10 +21484,9 @@ async function processRepublishJob(job, accessToken) {
             //    à ne pas faire. reconnaitreAnnonceRecreee s'abstient déjà de
             //    CHOISIR ; on s'abstient aussi de RECRÉER, et on le dit.
             if (/annonces correspondent/.test(String(raison ?? ""))) {
-              const msg = "Une annonce pourrait correspondre à cet article sur Vinted. "
-                + "Confirme dans tes annonces s'il s'agit du même exemplaire avant de reprendre la republication. "
-                + "Ne supprime aucune annonce pour résoudre ce doute. Rien n'a été rattaché ni redéposé.";
-              pf.needs_user_source = "recreation_deja_partie";
+              const msg = "Republication en pause : plusieurs annonces identiques sont en ligne sur Vinted "
+                + "(une republication a abouti deux fois). Garde l'annonce que tu veux, supprime l'autre, "
+                + "puis relance depuis la fiche de l'article. Rien n'a été recréé.";
               pf.recreation_doublon = { at: new Date().toISOString(), raison: String(raison) };
               await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
               console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);
@@ -21666,7 +21524,8 @@ async function processRepublishJob(job, accessToken) {
         at: new Date().toISOString(),
         n: (Number(pf.recreation_tentee?.n) || 0) + 1,
       };
-      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf })
+        .catch((e) => console.warn(`[republish] job ${job.id} : marque de tentative non persistée — ${e?.message ?? e}`));
 
       // ── LA PAGE DE DÉPÔT S'OUVRE ICI, ET LE REMPLISSAGE PART TOUT DE SUITE ──
       // Ces quatre lignes sont la COPIE EXACTE de la séquence de la publication
@@ -21682,16 +21541,10 @@ async function processRepublishJob(job, accessToken) {
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
-      const suiviRedirection = suivreRedirectionsAnnonce(tabId);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
-      }
-      const redirection = await suiviRedirection.arreter({ attendreMs: result?.success ? 0 : 15_000 });
-      if (result && typeof result === "object") {
-        result.idsRedirection = redirection.ids;
-        result.cheminsRedirection = redirection.chemins;
       }
       dernierGesteRepublishAt = Date.now();
 
@@ -22407,10 +22260,10 @@ async function processDeleteJob(job, accessToken) {
       const pfB = { ...(job.platform_fields ?? {}) };
       delete pfB.processing_since;
       delete pfB.blocage_antirobot;
-      if (b.article != null && String(b.article).trim()) pfB.vinted_account_id = String(b.article);
+      pfB.vinted_account_id = String(b.article);
       pfB.needs_user_source = "boutique_etrangere";
       pfB.boutique_etrangere = {
-        article: b.article != null ? String(b.article) : null, session: b.session != null ? String(b.session) : null,
+        article: String(b.article), session: b.session != null ? String(b.session) : null,
         login_session: b.login_session ?? null, le: new Date().toISOString(),
         pose_par: "extension (propriétaire lu sur la page de l'annonce, 24/09)",
       };

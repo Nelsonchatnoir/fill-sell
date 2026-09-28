@@ -356,20 +356,9 @@ async function oplaChargerReferentiel() {
    * sont la bonne réponse.
    */
   const optionsNiveauEchoue = (code, chemin) => {
-    const finales = (ancre) => {
-      const resultat = [];
-      const visiter = (c) => {
-        for (const n of enfantsDe(c)) {
-          if (feuilles.has(n.code)) resultat.push({ code: n.code, title: cheminDe(n.code).join(' › ') });
-          else visiter(n.code);
-        }
-      };
-      visiter(ancre);
-      return resultat;
-    };
     const c = String(code ?? "").trim();
     if (noeuds.has(c)) {
-      return finales(feuilles.has(c) ? parents.get(c) ?? "" : c);
+      return feuilles.has(c) ? enfantsDe(parents.get(c) ?? "") : enfantsDe(c);
     }
     let ancre = "";
     for (const segment of Array.isArray(chemin) ? chemin : []) {
@@ -377,10 +366,10 @@ async function oplaChargerReferentiel() {
       if (!cible) break;
       const suivant = enfantsDe(ancre).find((e) => String(e.title).trim().toLowerCase() === cible);
       if (!suivant) break;
-      if (feuilles.has(suivant.code)) return finales(ancre);
+      if (feuilles.has(suivant.code)) return enfantsDe(ancre); // c'est la feuille qui a échoué
       ancre = suivant.code;
     }
-    return finales(ancre);
+    return enfantsDe(ancre);
   };
 
   // ── LE CHEMIN D'UN CODE, ET LA DESCENTE PAR LE MOT (2026-09-17 soir) ──────

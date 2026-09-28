@@ -1778,19 +1778,12 @@ async function deleteListing(job) {
   }
   t(`page annonce ok : item ${itemId}`);
 
-  const idLien = String(job.listing_url ?? "").match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1];
-  const idJob = String(job.platform_listing_id ?? idLien ?? "").trim();
-  if (!idJob || idJob !== itemId || (idLien && idLien !== idJob)) {
-    return { success: false, needsUser: true,
-      error: "L'identifiant de cette page ne correspond pas à l'annonce à retirer. Rien n'a été touché.", trace };
-  }
-
   if (DELETE_DRY_RUN) {
     t("🧪 DELETE_DRY_RUN actif — endpoint prêt, AUCUN appel de suppression.");
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  return await deleteVintedItemViaApi(itemId, t, trace, { boutiqueAttendue: job.platform_fields?.vinted_account_id });
+  return await deleteVintedItemViaApi(itemId, t, trace);
 }
 
 // ── Appel API de suppression, FACTORISÉ (2026-08-12) ─────────────────────────
@@ -1819,42 +1812,6 @@ async function deleteListing(job) {
 async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
   const endpoint = `/api/v2/items/${itemId}/delete`;
   const verdict = { at: new Date().toISOString(), endpoint, http: null, conclusion: "non_envoyee" };
-  // Avant tout POST : la page de l'annonce ou l'origine prouvée du job,
-  // confrontée à la session relue maintenant. Un 403 ne sert plus de test
-  // de propriété après avoir déjà envoyé la suppression.
-  // ── 0.6.78 (28/09, lowvaucher + begantonmatheo) : la page de l'annonce
-  // illisible ne ferme plus la porte quand l'origine prouvée est là. Même
-  // preuve que depuis /items/new : boutique d'origine (serveur) = session
-  // relue maintenant. Un vendeur LU sur la page reste confronté aux deux.
-  const surAnnonce = location.pathname.match(/\/items\/(\d+)(?:[-/]|$)/)?.[1] === String(itemId);
-  let proprio = surAnnonce ? await proprietaireAnnonceVinted(t) : null;
-  const attendue = String(opts.boutiqueAttendue ?? "").trim();
-  let sessionIllisible = false;
-  if (!proprio && attendue) {
-    try {
-      const r = await fetchBorne("/api/v2/users/current", { headers: { Accept: "application/json" }, credentials: "include" });
-      const compte = r.ok ? await r.json() : null;
-      if (compte?.user?.id) proprio = { vendeur: attendue, session: String(compte.user.id), login_session: compte.user.login ?? null };
-      else { sessionIllisible = true; t(`compte connecté illisible (HTTP ${r.status})`); }
-    } catch (e) { sessionIllisible = true; t(`compte connecté illisible (${String(e?.message ?? e)})`); }
-  }
-  if (!proprio || proprio.vendeur !== proprio.session || (attendue && proprio.vendeur !== attendue)) {
-    verdict.conclusion = proprio ? "boutique_etrangere" : "identite_non_prouvee";
-    // La preuve qui manque, nommée : elle décide du message (une relance ne
-    // franchit pas une origine inconnue, elle franchit une lecture ratée).
-    if (!proprio) verdict.preuve_manquante = sessionIllisible ? "session" : "boutique_article";
-    t("identité non confirmée — requête de suppression NON envoyée");
-    // `boutiqueEtrangere` seulement sur une boutique ÉTRANGÈRE lue : une
-    // preuve absente n'accuse aucune boutique (le background la poserait
-    // sur le job et le retiendrait comme tel).
-    return { success: false, needsUser: true, trace, verdict,
-      ...(proprio ? { boutiqueEtrangere: { article: proprio.vendeur, session: proprio.session, login_session: proprio.login_session ?? null } } : {}),
-      error: proprio
-        ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi sur Vinted à la boutique qui la porte. Rien n'a été retiré."
-        : sessionIllisible
-        ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans Chrome : sans cette vérification, rien n'a été retiré."
-        : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce. Ouvre Vinted sur cette boutique puis « Actualiser mon dressing » dans l'app. Rien n'a été retiré." };
-  }
   const csrf = await extractVintedCsrfToken();
   const anonId = getVintedCookie("anon_id");
   t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
@@ -3595,18 +3552,11 @@ async function fillListingForm(job) {
   // C'est LE point où supprimer devient sûr — tout ce qui pouvait refuser a
   // déjà eu sa chance de refuser pendant que l'annonce était en ligne.
   if (onePass?.item_id) {
-    // Même format que la capture, vérifié sur le formulaire AVANT le retrait.
-    if (!wantedPackageId && !wantedPackage) {
-      return { success: false, needsUser: true, preflightFailed: true,
-        error: "Le format du colis manque. Ton annonce reste en ligne.", unfilledRequired: ["Format du colis"] };
-    }
-    await selectPackageSize(wantedPackage, wantedPackageId, { strict: true });
-    if (job.price != null) await ensurePriceCommitted(job.price);
     const traceDel = [];
     const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
     // preuveRequise : ici, un 404 sur le POST ne vaut PAS suppression — on
     // enchaînerait une création juste derrière (cf. bandeau de la fonction).
-    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, { preuveRequise: true, boutiqueAttendue: job.platform_fields?.vinted_account_id });
+    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, { preuveRequise: true });
     if (!del?.success) {
       // AUCUNE soumission sans suppression acquise : soumettre créerait un
       // DOUBLON à côté de l'annonce d'origine toujours en ligne. Le background
@@ -3713,17 +3663,15 @@ async function fillListingForm(job) {
     }
     if (radiosColis.length) {
       try {
-        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId, { strict: estRepublication });
+        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
         colisRepose = true;
         warnings.push(colisSectionAbsente
           ? `format de colis : section apparue après les attributs — « ${wantedPackage ?? "Petit"} » reposé avant le dépôt`
           : `format de colis : « ${wantedPackage ?? "Petit"} » reposé en dernier geste avant le dépôt (républication)`);
       } catch (e) {
-        if (estRepublication) throw e;
         warnings.push(`format de colis : section apparue mais format non posé (${String(e?.message ?? e).slice(0, 120)}) — choix Vinted conservé`);
       }
     } else {
-      if (estRepublication) throw new Error("Vinted ne présente pas le format du colis : la recréation attend un formulaire complet, sans dépôt avec une valeur par défaut.");
       // Sur une républication, ce warning est un signal GRAVE : l'annonce
       // d'origine est déjà supprimée, et si Vinted refuse le POST pour
       // `package_size` elle est perdue. On le dit, avec le temps attendu.
@@ -4936,6 +4884,15 @@ function containsAsWords(hay, needle) {
 // laissé vide avec warning, jamais faux). Les autres champs sont inchangés.
 const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
 
+// ── Taille NUMÉRIQUE sur une grille purement LETTRÉE (0.6.24) ────────────────
+// Jupe d'Ornella (job 571ad7e5) : « Femmes > Vêtements > Jupes » n'accepte que
+// XXXS…9XL / Autre / Taille unique, l'article dit 42 → 5 tentatives brûlées.
+// Grille FEMME de Vinted, relevée dans /api/v2/size_groups (« XL / 42 / 14 ») :
+// 30→XXXS, 32→XXS, 34→XS, 36→S, 38→M, 40→L, 42→XL, 44→XXL. Appliquée SEULEMENT
+// quand AUCUNE option n'a de chiffre (grille purement lettrée) et que le
+// nombre est dans la table — hors table, rien n'est posé (jamais deviné).
+const TAILLE_LETTREE_PAR_NUMERIQUE = { "30": "XXXS", "32": "XXS", "34": "XS", "36": "S", "38": "M", "40": "L", "42": "XL", "44": "XXL" };
+
 function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
@@ -4970,7 +4927,15 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
       return !!m && m[1].replace(",", ".") === num;
     });
     if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
-
+    // 1ter. grille purement lettrée : traduction par la grille femme de Vinted
+    if (!options.some((o) => /\d/.test(o.norm))) {
+      const lettre = TAILLE_LETTREE_PAR_NUMERIQUE[String(num).replace(/\.0+$/, "")];
+      if (lettre) {
+        const cible = normalizeFuzzy(lettre);
+        const opt = options.find((o) => o.norm === cible);
+        if (opt) return { ...opt, stage: "taille-lettree" };
+      }
+    }
   }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
@@ -5619,8 +5584,6 @@ function candidatsTailleVinted(libelle) {
   const out = [];
   const push = (v) => { const t = String(v ?? "").trim(); if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t); };
   push(l);
-  const ageAnglais = l.match(/^(\d{1,2}(?:\s*[-/]\s*\d{1,2})?)\s*(years?|yrs?|months?)$/i);
-  if (ageAnglais) push(`${ageAnglais[1]} ${/^month/i.test(ageAnglais[2]) ? "mois" : "ans"}`);
   const jean = l.match(/^\s*W?\s*(\d{2})\s*(?:[xX\/\-\s]\s*L?|L)\s*(\d{2})\s*$/i);
   if (jean) { push(`W${jean[1]}`); push(jean[1]); }
   const w = l.match(/^\s*W\s+(\d{2})\s*$/i);
@@ -5641,7 +5604,7 @@ function candidatsTailleVinted(libelle) {
   // par le retrait de préfixe ci-dessous, inchangé.
   const nu = l.match(/^\s*(\d{1,3}(?:[.,]\d)?)\s*$/);
   if (nu) push(`EU ${nu[1]}`);
-  // Le système fait partie de la taille : UK 12 ne devient pas EU/FR 12.
+  push(l.replace(/^(EU|UK|FR|IT|US)\s+/i, ""));
   return out;
 }
 // Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par
@@ -6896,7 +6859,7 @@ async function reposerCouleurRepublication(fields, titre, warnings) {
 // Décision produit Nico (2026-07-12) : sur TOUTE la branche Mode (vêtements ET
 // chaussures), c'est TOUJOURS « Petit », sans exception. On CLIQUE désormais le
 // format, on ne le suppose plus.
-async function selectPackageSize(size = "Petit", packageSizeId = null, { strict = false } = {}) {
+async function selectPackageSize(size = "Petit", packageSizeId = null) {
   // Table partagée avec la capture republication (VINTED_PACKAGE_SIZES_PAR_ID,
   // en tête de fichier) : le rang du radio EST le package_size_id. Une seule
   // table dans les deux sens — capturer « Petit » puis recliquer « Petit » ne
@@ -6907,10 +6870,6 @@ async function selectPackageSize(size = "Petit", packageSizeId = null, { strict 
   // résolution libellé→id ne sert qu'aux appels historiques (« Petit » de la
   // branche Mode), dont les libellés sont uniques dans la table.
   const idCapture = Number(packageSizeId);
-  if (strict && !(Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
-      && !Object.values(VINTED_PACKAGE_SIZES_PAR_ID).includes(size)) {
-    throw new Error("Format du colis inconnu : aucun retrait ni dépôt autorisé.");
-  }
   const n = (Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
     ? idCapture
     : Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
@@ -6947,7 +6906,6 @@ async function selectPackageSize(size = "Petit", packageSizeId = null, { strict 
     // son travail, et la dernière passe avant le dépôt reposera le format si
     // la section est apparue entre-temps.
     if (!offerts.length) {
-      if (strict) throw new Error("Le format du colis ne peut pas être vérifié : aucun retrait ni dépôt autorisé.");
       console.warn(
         "[vinted] ⚠️ format de colis : section non rendue par Vinted à cet instant (aucun radio " +
         "package_type_selector_*) — un attribut requis de la catégorie manque probablement ; " +
@@ -6968,7 +6926,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null, { strict 
       );
     } else {
       const precoche = offerts.find((r) => r.checked);
-      if (!precoche || strict) throw e;
+      if (!precoche) throw e;
       console.warn(
         `[vinted] ⚠️ format de colis: ni l'id ${n} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
         `choix Vinted pré-coché « ${titreDe(precoche) || "recommandé"} » conservé`
@@ -7041,7 +6999,6 @@ async function selectPackageSize(size = "Petit", packageSizeId = null, { strict 
   } catch (e) {
     if (e?.name !== "SelectorResolutionError") throw e;
   }
-  if (strict && (!after || !after.checked)) throw new Error("Le format du colis n’a pas été conservé par Vinted : aucun retrait ni dépôt autorisé.");
   if (after && !after.checked) {
     console.warn(`[vinted] ⚠️ format de colis : "${size}" n'a pas pris (radio non coché après clic)`);
   }
