@@ -468,8 +468,24 @@ const LBC_NON_CONSOMMABLE =
 // Le TITRE seul, jamais la description : celle d'un vêtement dit « crème » pour
 // une couleur, celle d'un parfum dit « boîte d'origine » — la lire produit des
 // faux verdicts dans les deux sens (mesuré sur les 4 881 lignes de la base).
+// ── LA CATÉGORIE D'ABORD (0.6.78, 28/09, xxewwer job 28f1b00e) ──────────────
+// « Maquillage Fabienne Sévigné Francis Giacobetti Livre Relié AGEP » : un
+// LIVRE, accepté par Leboncoin en Loisirs > Livres, retiré pour être republié
+// puis bloqué ici sur le seul mot « Maquillage » — annonce hors ligne. L'app ne
+// juge un cosmétique QUE sur une icône Beauté, que son mapping range en
+// Divers > Autres (lbcCategories.js) : ce miroir avait perdu cette moitié de
+// la règle. Catégorie résolue ailleurs = pas un cosmétique ; sans catégorie ou
+// en Divers > Autres, la règle d'avant reste entière.
+function lbcCategorieHorsBeaute(job) {
+  const chemin = job?.platform_fields?.lbcCategoryPath;
+  if (!Array.isArray(chemin) || !chemin.length) return false;
+  const n = chemin.map((x) => String(x ?? "").trim().toLowerCase());
+  return !(n[0] === "divers" && (n.length === 1 || n[1] === "autres"));
+}
+
 function lbcProduitInterdit(job) {
   if (job.platform !== "leboncoin") return false;
+  if (lbcCategorieHorsBeaute(job)) return false;
   const titre = String(job.title ?? "");
   if (LBC_NON_CONSOMMABLE.test(titre)) return false;
   return LBC_COSMETIQUE_CONSOMMABLE.test(titre);
@@ -20195,6 +20211,27 @@ async function processRepublishJobPlateforme(job, accessToken) {
     {
       const refus = await appliquerPrevolCopie({ accessToken, job, pf, etape: "avant_retrait" });
       if (refus) return refus;
+    }
+    // ── LA GARDE DU REDÉPÔT PASSE AVANT LE RETRAIT (0.6.78, 28/09) ──────────
+    // On ne retire jamais une annonce que precheckJob empêchera de redéposer :
+    // il tourne ici sur le job EXACT du redépôt (même forme qu'à l'étape
+    // 'deleted'). Un refus laisse l'annonce en ligne. Cas fondateur : le livre
+    // « Maquillage… » de xxewwer (28f1b00e), retiré puis bloqué au redépôt.
+    {
+      const jobRedepot = { ...job, action: "publish", listing_url: null, platform_listing_id: null,
+        platform_fields: { ...pf, republish_recreation: true } };
+      const blocage = precheckJob(jobRedepot);
+      tracerGarde(pf, "prevol_gardes", {
+        verdict: blocage ? "bloque" : "ok", plateforme: job.platform, etape: "avant_retrait",
+        champs_verifies: ["produit_autorise", "categorie"],
+      });
+      if (blocage) {
+        const motif = blocage.replace(/\s*Aucun onglet n'a été ouvert\.?\s*$/, "");
+        const msg = `Republication ${label} mise en pause AVANT tout retrait, ton annonce est toujours en ligne : ${motif}`;
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — le redépôt serait bloqué (${motif.slice(0, 120)})`);
+        return { status: "needsUser", error: msg };
+      }
     }
     void snapshot;
 

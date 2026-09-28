@@ -11,9 +11,8 @@
 //   1. la garde juge d'abord la catégorie : résolue hors Divers > Autres (où
 //      l'app range seule les cosmétiques), ce n'est pas un cosmétique ;
 //   2. sans catégorie, ou en Divers > Autres, la garde d'avant reste entière ;
-//   3. elle tourne AVANT le retrait, sur le job exact du redépôt ;
-//   4. après un retrait, une garde qui refuse le redépôt n'est plus présentée
-//      comme une panne passagère (garde_depot).
+//   3. elle tourne AVANT le retrait, sur le job exact du redépôt.
+// (0.6.78 = code de la 0.6.75 + ces deux changements seulement, décision Nico 28/09.)
 //
 //   node scripts/lbc-garde-cosmetique-categorie-selftest.mjs
 import fs from "node:fs";
@@ -82,10 +81,7 @@ console.log("\n2. Les gardes du redépôt passent avant le retrait");
   ok("même forme que le redépôt (publish, sans URL, republish_recreation)",
     /const jobRedepot = \{ \.\.\.job, action: "publish", listing_url: null, platform_listing_id: null,\s*platform_fields: \{ \.\.\.pf, republish_recreation: true \} \};/.test(corps));
   ok("refus : needs_user, annonce toujours en ligne, garde tracée", /prevol_gardes/.test(corps) && /AVANT tout retrait, ton annonce est toujours en ligne/.test(corps));
-  ok("après un retrait, un refus de garde est nommé garde_depot, sans promesse de reprise",
-    /const blocageRedepot = precheckJob\(jobRecreation\);[\s\S]{0,300}?pf\.needs_user_source = "garde_depot";/.test(corps)
-    && /Une nouvelle tentative automatique n'y changerait rien/.test(corps));
 }
 
-console.log(ko ? `\n${ko} échec(s).` : "\nGarde cosmétiques Leboncoin : catégorie d'abord, avant le retrait, jamais « rien à faire » sur un refus certain.");
+console.log(ko ? `\n${ko} échec(s).` : "\nGarde cosmétiques Leboncoin : catégorie d'abord, et avant le retrait.");
 process.exit(ko ? 1 : 0);
