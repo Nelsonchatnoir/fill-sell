@@ -1661,6 +1661,8 @@ export const PUBLISHED_BUILD_IDS = {
   // 0.6.69 : inscrite le 27/09 — publication ÉTABLIE et relevée en base :
   // 53 comptes en extension_build '2026-09-25T21:40:31Z+9ea22dd' le 27/09.
   '2026-09-25T21:40:31Z': '0.6.69',
+  // Publication confirmée par Nico et usage réel du parc le 28/09.
+  '2026-09-27T20:16:30Z': '0.6.75',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────

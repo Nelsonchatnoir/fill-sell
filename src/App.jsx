@@ -2440,7 +2440,6 @@ export default function App({ loginOnly = false }){
   // Renvoi de la bannière mémorisé par couple (build installé | build minimal
   // requis) : elle revient si l'extension change de build en restant obsolète,
   // OU si un nouveau commit extension bumpe l'exigence — jamais pour rien.
-  const [extBannerDismissedFor,setExtBannerDismissedFor]=useState(()=>{try{return localStorage.getItem('fs_ext_banner_dismissed');}catch{return null;}});
   // ── LA VERSION ANNONCÉE DANS LA PAGE, EN DIRECT (2026-09-19) ──────────────
   // Cas fondateur, ornellaracano le 19/09 à 09:15 : extension mise à jour en
   // 0.6.44 (build 2026-09-18T20:16:32Z, POSTÉRIEUR au minimum exigé), et la
@@ -2519,7 +2518,6 @@ export default function App({ loginOnly = false }){
   // au paquet minimal exigé : elle est à jour, on le sait AVANT la base.
   const extAJourEnDirect=Boolean(EXT_MIN_VERSION&&extVersionEnDirect&&versionAuMoins(extVersionEnDirect,EXT_MIN_VERSION));
   const extensionOutdated=(()=>{
-    if(isNative||isMobileViewport)return false;
     if(extAJourEnDirect)return false;
     const seen=Date.parse(extensionLastSeenAt??'');
     if(!Number.isFinite(seen)||Date.now()-seen>30*24*60*60*1000)return false;
@@ -2527,7 +2525,6 @@ export default function App({ loginOnly = false }){
     const min=Date.parse(EXT_MIN_BUILD??'');
     return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
-  const extBannerKey=`${extensionBuild}|${EXT_MIN_BUILD}`;
   // ── OPLA EST OUVERTE À TOUT LE MONDE (2026-09-18, décision Nico) ─────────
   // Ici vivaient DEUX verrous qui décidaient si Opla se voyait : l'interrupteur
   // coin_config.opla_ouvert et la borne de build opla_extension_min, comparée
@@ -2561,7 +2558,7 @@ export default function App({ loginOnly = false }){
   const oplaMotifGrise='fermee';
   // Source UNIQUE de « la bannière est à l'écran » : lue par le rendu ET par
   // le rafraîchissement ci-dessous, pour qu'ils ne puissent pas diverger.
-  const extBannerVisible=extensionOutdated&&extBannerDismissedFor!==extBannerKey;
+  const extBannerVisible=extensionOutdated;
   // ── Rafraîchissement pendant que la bannière est affichée (2026-08-09) ──────
   // extensionBuild n'était écrit QUE par fetchAll. Or la sonde des jobs
   // (plus bas) ne rappelle fetchAll que si l'empreinte des jobs a CHANGÉ, et
@@ -7949,8 +7946,8 @@ export default function App({ loginOnly = false }){
           <div style={{flex:1,lineHeight:1.45,minWidth:0}}>
             <div style={{fontWeight:600}}>
               {lang==='fr'
-                ?"Ton extension Chrome FillSell n'est plus à jour. La dernière version corrige un problème qui bloquait la publication et la republication sur Vinted."
-                :"Your FillSell Chrome extension is out of date. The latest version fixes an issue that blocked publishing and re-listing on Vinted."}
+                ?"Mets à jour l’extension FillSell sur ton ordinateur. Tes annonces restent en attente et repartiront après la mise à jour."
+                :"Update the FillSell extension on your computer. Your listings are queued and will resume after the update."}
             </div>
             <div style={{marginTop:4,fontWeight:500,opacity:0.85,fontSize:12.5}}>
               {lang==='fr'
@@ -7961,9 +7958,7 @@ export default function App({ loginOnly = false }){
           <a href="/extension" style={{fontWeight:700,fontSize:12.5,color:"#fff",background:UI.ink,borderRadius:99,padding:"7px 16px",textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>
             {lang==='fr'?"Mettre à jour":"Update"}
           </a>
-          <button onClick={()=>{setExtBannerDismissedFor(extBannerKey);try{localStorage.setItem('fs_ext_banner_dismissed',extBannerKey);}catch{/* stockage indisponible : dismiss valable pour la session seulement */}}}
-            aria-label={lang==='fr'?"Masquer":"Dismiss"} title={lang==='fr'?"Masquer":"Dismiss"}
-            style={{background:"transparent",border:"none",color:UI.ink,fontSize:16,lineHeight:1,cursor:"pointer",padding:"4px 6px",opacity:0.7,flexShrink:0,fontFamily:"inherit"}}>✕</button>
+
         </div>
       )}
 
