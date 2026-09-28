@@ -1148,10 +1148,11 @@ serve(async (req) => {
           if (garde?.pose_par !== "get-pending-jobs (identité prouvée)") continue;
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
           const { origine, contradictoire } = origineBoutiqueProuvee(article?.vinted_account_id, pf.vinted_account_id);
-          if (contradictoire || verifierBoutiqueOperation({action: attente.action, platform: attente.platform,
+          const motifAttente = verifierBoutiqueOperation({action: attente.action, platform: attente.platform,
             boutiqueArticle: origine, boutiqueSession: identite?.user_id,
             boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: !!profil, sessionRequise: false,
-            historiqueListingProuve: !origine && await historiqueListingProuve(attente)})) continue;
+            historiqueListingProuve: !origine && await historiqueListingProuve(attente)});
+          if (contradictoire || (motifAttente && !["session_inconnue", "origine_inconnue"].includes(motifAttente))) continue;
           const suite = { ...pf, boutique_reconnue_le: new Date().toISOString() };
           delete suite.needs_user_source;
           delete suite.boutique_etrangere;
@@ -3946,6 +3947,9 @@ serve(async (req) => {
           }
           retenus.add(String(j.id));
           if (!fiable) continue;
+          // Une vérification impossible reste une attente serveur. La garde
+          // retient ce job à chaque poll sans inventer une boutique étrangère.
+          if (motif === "session_inconnue" || motif === "origine_inconnue") continue;
           const message = motif === "boutique_etrangere"
             ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi à la boutique qui porte cette annonce, puis relance."
             : motif === "boutique_non_confirmee"
