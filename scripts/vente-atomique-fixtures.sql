@@ -43,11 +43,18 @@ BEGIN
  (j3,u,2,'vinted','publish','published','ECHEC',12,'222222222','{"preuve":"oui","sale_signal":"sold"}');
  r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j1,12);
  IF r->>'ok'<>'true' OR (SELECT quantite FROM pg_temp.inventaire WHERE id=1)<>1 THEN RAISE EXCEPTION 'vente job'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_temp.retraits_test) OR (SELECT status FROM pg_temp.cross_post_jobs WHERE id=j2)<>'published'
+ OR (SELECT platform_fields ? 'vente_operation_cle' FROM pg_temp.cross_post_jobs WHERE id=j2)
+ THEN RAISE EXCEPTION 'une vente partielle a retiré ou consommé une copie'; END IF;
+ r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j1,12);
+ IF r->>'rejouee'<>'true' OR (SELECT quantite FROM pg_temp.inventaire WHERE id=1)<>1 THEN RAISE EXCEPTION 'vente partielle rejouée'; END IF;
  r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j2,12);
- IF r->>'rejouee'<>'true' OR (SELECT quantite FROM pg_temp.inventaire WHERE id=1)<>1
- OR (SELECT count(*) FROM pg_temp.ventes WHERE inventaire_id=1)<>2 THEN RAISE EXCEPTION 'copie autre plateforme comptée deux fois'; END IF;
- IF EXISTS(SELECT 1 FROM pg_temp.retraits_test WHERE job_id=j1) OR NOT EXISTS(SELECT 1 FROM pg_temp.retraits_test WHERE job_id=j2)
+ IF r->>'ok'<>'true' OR (SELECT quantite FROM pg_temp.inventaire WHERE id=1)<>0
+ OR (SELECT count(*) FROM pg_temp.ventes WHERE inventaire_id=1)<>3 THEN RAISE EXCEPTION 'dernière unité non consommée'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_temp.retraits_test WHERE job_id=j1) OR EXISTS(SELECT 1 FROM pg_temp.retraits_test WHERE job_id=j2)
  THEN RAISE EXCEPTION 'plateforme de la vente retirée'; END IF;
+ INSERT INTO pg_temp.cross_post_jobs(id,user_id,inventaire_id,platform,action,status,title,price,platform_listing_id,platform_fields)
+ VALUES('00000000-0000-4000-8000-000000000014',u,2,'opla','publish','published','ECHEC',12,'art_fin','{"preuve":"oui"}');
  ALTER TABLE pg_temp.ventes ADD CONSTRAINT panne_vente CHECK(titre<>'ECHEC');
  BEGIN
   PERFORM pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j3,12);
@@ -62,14 +69,17 @@ BEGIN
  r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j3,12);
  IF r->>'ok'<>'true' OR (SELECT quantite FROM pg_temp.inventaire WHERE id=2)<>0
  OR (SELECT count(*) FROM pg_temp.ventes WHERE inventaire_id=2)<>1 THEN RAISE EXCEPTION 'reprise après panne'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_temp.retraits_test WHERE job_id='00000000-0000-4000-8000-000000000014')
+ THEN RAISE EXCEPTION 'dernière unité : copie prouvée non retirée'; END IF;
  r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j3,12);
  IF r->>'rejouee'<>'true' OR (SELECT count(*) FROM pg_temp.ventes WHERE inventaire_id=2)<>1 THEN RAISE EXCEPTION 'rejeu après panne'; END IF;
  INSERT INTO pg_temp.ventes(user_id,inventaire_id,titre,prix_vente) VALUES(u,3,'Historique',8);
  r:=pg_temp.enregistrer_vente_atomique(u,'historique',3,NULL,8,0,1,1,'vinted');
  IF r->>'ok'<>'false' OR (SELECT count(*) FROM pg_temp.ventes WHERE inventaire_id=3)<>1
  THEN RAISE EXCEPTION 'vente historique recomptée'; END IF;
- UPDATE pg_temp.cross_post_jobs SET status='sold',platform_fields='{"preuve":"oui"}' WHERE id=j2;
- r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,j2,12);
+ INSERT INTO pg_temp.cross_post_jobs(id,user_id,inventaire_id,platform,action,status,title,price,platform_listing_id,platform_fields)
+ VALUES('00000000-0000-4000-8000-000000000019',u,3,'opla','publish','sold','Historique',12,'art_historique','{"preuve":"oui"}');
+ r:=pg_temp.enregistrer_vente_atomique(u,NULL,NULL,'00000000-0000-4000-8000-000000000019',12);
  IF r->>'ok'<>'false' THEN RAISE EXCEPTION 'ancien sold sans reçu rejoué'; END IF;
  INSERT INTO pg_temp.cross_post_jobs(id,user_id,inventaire_id,platform,action,status,title,price,platform_listing_id,platform_fields) VALUES
  ('00000000-0000-4000-8000-000000000041',u,4,'vinted','publish','published','Même plateforme',10,'444444441','{"preuve":"oui"}'),
