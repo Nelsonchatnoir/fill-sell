@@ -73,6 +73,7 @@ const buildIdTimestamp = (id) => {
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { titreNorm } from './utils/rapprochementJumeau.js';
+import { enregistrerVenteArticle } from './utils/venteAtomique.js';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { offreEnCours, offreAOuvrir } from './lib/offreMail';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
@@ -4789,37 +4790,13 @@ export default function App({ loginOnly = false }){
       const{data:jobsVifs}=await supabase.from('cross_post_jobs')
         .select('id').eq('user_id',user.id).eq('platform','vinted')
         .in('action',['publish','republish']).eq('status','published')
-        .eq('inventaire_id',item.id).limit(1);
+        .eq('inventaire_id',item.id).eq('platform_listing_id',String(item.vinted_item_id??'')).limit(1);
       if(jobsVifs&&jobsVifs.length){
         const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:jobsVifs[0].id,price:prix}});
         if(error)throw error;
       }else{
-        const{margin:mg,marginPct:mgp}=margeUnitaire({
-          prixVente:prix,
-          prixAchat:prixAchatConnu(art)?art.buy:null,
-          purchaseCosts:art.purchaseCosts||0,
-          sellingFees:0,
-        });
-        const qTotal=art.quantite||1;
-        if(qTotal>1){
-          // Convention lots de confirmSell : l'article reste en stock amputé
-          // d'une unité + une ligne d'historique vendue.
-          await supabase.from('inventaire').update({quantite:qTotal-1}).eq('id',art.id).eq('user_id',user.id);
-          const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:art.title,
-            prix_achat:prixAchatConnu(art)?art.buy:null,prix_vente:prix,margin:mg,margin_pct:mgp,
-            statut:"vendu",selling_fees:0,purchase_costs:0,quantite:1,marque:art.marque||null,
-            type:art.type||null,description:art.description||null,date:new Date().toISOString(),plateforme:'vinted'};
-          await supabase.from('inventaire').insert([soldRow]);
-        }else{
-          await supabase.from('inventaire')
-            .update({prix_vente:prix,margin:mg,margin_pct:mgp,selling_fees:0,statut:'vendu',date:new Date().toISOString()})
-            .eq('id',art.id).eq('user_id',user.id);
-        }
-        await supabase.from('ventes').insert([{user_id:user.id,titre:art.title,
-          prix_achat:prixAchatConnu(art)?art.buy:null,prix_vente:prix,benefice:mg,
-          marque:art.marque||null,type:art.type||null,description:art.description||null,
-          emplacement:art.emplacement||null,date:new Date().toISOString().split('T')[0],
-          plateforme:'vinted',quantite:1,inventaire_id:art.id,statut:'vendu'}]);
+        await enregistrerVenteArticle({userId:user.id,article:art,prix,
+          quantite:1,plateforme:'ailleurs'});
       }
       track('confirm_sale_disparue',{via_job:!!(jobsVifs&&jobsVifs.length)});
       await fetchAll(user.id,{silencieux:true});
@@ -4895,63 +4872,30 @@ export default function App({ loginOnly = false }){
   }
 
   async function confirmSell(){
-    if(!sellModal)return;
-    if(!sellModal.plateforme)return; // choix obligatoire (bouton grisé ; filet)
-    const sv=parseFloat(sellModal.sellPrice)||0;
-    if(!sv||sv<=0)return;
+    if(!sellModal||sellModal.enregistrement)return;
+    if(!sellModal.plateforme)return;
+    const sv=parseFloat(sellModal.sellPrice);
+    if(!Number.isFinite(sv)||sv<=0)return;
     const sf=parseFloat(sellModal.sellingFees)||0;
-    if(sellModal.rememberFees)localStorage.setItem('savedFees',String(sf));
     const{item}=sellModal;
-    const qTotal=item.quantite||1;
+    const qTotal=item.quantite??1;
     const qVendue=Math.max(1,Math.min(parseInt(sellModal.sellQty)||1,qTotal));
-    // Compute per-unit values based on selected price/fees mode
-    const svUnit=sellModal.prixMode==="unit"||qVendue<=1?sv:sv/qVendue;
-    const sfUnit=sellModal.feesMode==="unit"||qVendue<=1?sf:sf/qVendue;
-    // VIDE ≠ ZÉRO (03/08) : `item.buy` à null donnait cogsUnit=0, donc une
-    // marge égale au prix de vente entier, ÉCRITE EN BASE. margeUnitaire rend
-    // null quand le prix d'achat est inconnu — la vente est enregistrée, le
-    // bénéfice reste vide jusqu'à ce que l'utilisateur le complète.
-    const {margin:mgUnit,marginPct:mgpUnit}=margeUnitaire({
-      prixVente:svUnit,
-      prixAchat:prixAchatConnu(item)?item.buy:null,
-      purchaseCosts:item.purchaseCosts||0,
-      sellingFees:sfUnit,
-    });
-    const remaining=qTotal-qVendue;
-    if(remaining>0){
-      await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
-      setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-      const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString(),plateforme:sellModal.plateforme||null};
-      const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
-      if(siErr)console.error("[confirmSell] soldRow insert failed:",siErr.message);
-      if(si)setItems(prev=>[mapItem(si),...prev]);
-    }else{
-      // `date` AUSSI (2026-08-24, point C du chantier détection des ventes) :
-      // cette branche laissait la date de l'article inchangée (souvent NULL
-      // pour un import du dressing) — une vente confirmée sans date, illisible
-      // dans les stats et indistinguable d'un marquage automatique. Convention
-      // des lignes vendues (soldRow, consume_one_unit) : date = date de vente.
-      await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,date:new Date().toISOString()}).eq('id',item.id);
-      setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
+    const svUnit=sellModal.prixMode==='unit'||qVendue<=1?sv:sv/qVendue;
+    const sfUnit=sellModal.feesMode==='unit'||qVendue<=1?sf:sf/qVendue;
+    setSellModal(p=>p?{...p,enregistrement:true}:p);
+    try{
+      await enregistrerVenteArticle({userId:user.id,article:item,prix:svUnit,
+        frais:sfUnit,quantite:qVendue,plateforme:sellModal.plateforme});
+      if(sellModal.rememberFees)localStorage.setItem('savedFees',String(sf));
+      track('mark_sold',{quantite:qVendue});
+      setSellModal(null);
+      await fetchAll(user.id);
+    }catch(e){
+      setToast({visible:true,message:e.message||t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:''}),5000);
+    }finally{
+      setSellModal(p=>p?{...p,enregistrement:false}:p);
     }
-    // VENTE RELIÉE À SA FICHE (2026-09-26, dossier Joséphine) : la vente d'une
-    // pièce unique porte inventaire_id. Sans lui, rien ne savait que CETTE
-    // fiche était vendue (Écharpe, Polo, Jeans Celio : ventes du 06-07/09 sans
-    // article) — supprimer la vente ne remettait pas l'article en stock, et
-    // le serveur ne pouvait pas savoir sur quelle plateforme garder l'annonce
-    // (trigger ventes_garde_annonce_de_la_vente). Les lots gardent leur forme :
-    // une ligne par unité, sans lien, comme avant.
-    const venteReliee=remaining===0&&qVendue===1;
-    for(let q=0;q<qVendue;q++){
-      const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:svUnit,benefice:mgUnit,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:sellModal.plateforme||null,...(venteReliee?{inventaire_id:item.id}:{})};
-      const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
-      if(sd){
-        if(q===0)track('mark_sold',{profit:mgUnit*qVendue,margin_pct:Math.round(mgpUnit*10)/10});
-        setSales(prev=>[mapSale(sd),...prev]);
-      }
-    }
-    setSellModal(null);
-    await fetchAll(user.id);
   }
 
   // ── Suppression d'un article : retrait des annonces AVANT le delete ─────────
@@ -7057,50 +7001,9 @@ export default function App({ loginOnly = false }){
       const sv=parseFloat(String(prix_vente??0).replace(",","."))||0;
       if(!sv||sv<=0)throw new Error("Prix vente invalide");
       const sf=parseFloat(String(frais??0).replace(",","."))||0;
-      // VIDE ≠ ZÉRO (03/08) — même trou que confirmSell : `item.buy` null
-      // donnait cogs=0 et un bénéfice égal au prix de vente, écrit en base.
-      const {margin:mg,marginPct:mgp}=margeUnitaire({
-        prixVente:sv,
-        prixAchat:prixAchatConnu(item)?item.buy:null,
-        purchaseCosts:item.purchaseCosts||0,
-        sellingFees:sf,
-      });
-      const qTotal=item.quantite||1;
-      const qVendue=Math.min(quantite_vendue||1,qTotal);
-      const remaining=qTotal-qVendue;
-      if(remaining>0){
-        // Vente partielle : réduire la quantité du stock d'abord
-        const{error:updQtyErr}=await supabase.from('inventaire').update({quantite:remaining}).eq('id',item.id);
-        if(updQtyErr)throw new Error(updQtyErr.message);
-        setItems(prev=>prev.map(i=>i.id===item.id?{...i,quantite:remaining}:i));
-        // Insérer une ligne "vendu" séparée pour la quantité vendue
-        const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,purchase_costs:0,quantite:qVendue,marque:item.marque||null,type:item.type||null,description:item.description||null,date:new Date().toISOString(),plateforme:plateforme||item.plateforme||null};
-        const{data:si,error:siErr}=await supabase.from('inventaire').insert([soldRow]).select().single();
-        if(siErr)console.error("[confirmSellDirect] soldRow insert failed:",siErr.message);
-        if(si)setItems(prev=>[mapItem(si),...prev]);
-      }else{
-        // Vente complète : marquer l'article comme vendu dans inventaire
-        // .select('id') permet de vérifier que la ligne a bien été mise à jour
-        // `date` AUSSI (2026-08-24, point C — même trou que confirmSell) :
-        // date = date de vente sur toute ligne qui passe en vendu.
-        const{data:updRows,error:updErr}=await supabase.from('inventaire')
-          .update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,date:new Date().toISOString()})
-          .eq('id',item.id)
-          .select('id');
-        // Lever une erreur si la mise à jour a échoué — on n'insère pas dans ventes si inventaire non modifié
-        if(updErr)throw new Error(updErr.message);
-        if(!updRows?.length)throw new Error(lang==="fr"?"Article introuvable en inventaire":"Item not found in inventory");
-        setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:sv,margin:mg,marginPct:mgp,statut:"vendu"}:i));
-      }
-      // Insérer dans ventes uniquement si l'inventaire a bien été mis à jour
-      {
-        // Vente d'une pièce unique RELIÉE à sa fiche (2026-09-26) — même règle
-        // que confirmSell ; un lot garde sa ligne sans lien, comme avant.
-        const srow={user_id:user.id,titre:item.title,prix_achat:item.buy,prix_vente:sv,benefice:mg,marque:item.marque||null,type:item.type||null,description:item.description||null,emplacement:item.emplacement||null,date:new Date().toISOString().split('T')[0],plateforme:plateforme||item.plateforme||null,quantite:qVendue>1?qVendue:null,...(remaining===0&&qVendue===1?{inventaire_id:item.id}:{})};
-        const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
-        if(sd)setSales(prev=>[mapSale(sd),...prev]);
-      }
-      // Resynchroniser depuis la base pour garantir la cohérence (comme confirmSell le fait)
+      const qVendue=Math.max(1,Math.min(quantite_vendue||1,item.quantite??1));
+      await enregistrerVenteArticle({userId:user.id,article:item,prix:sv,frais:sf,
+        quantite:qVendue,plateforme:plateforme||'ailleurs'});
       await fetchAll(user.id);
     },
     deleteItem:(id)=>delItem(id),
@@ -9091,7 +8994,7 @@ export default function App({ loginOnly = false }){
                 texte que la carte vocale inventory_sell. */}
             <AvertissementAnnoncesEnLigne item={sellModal.item} lang={lang} style={{marginTop:16}}/>
             <div style={{display:"flex",gap:10,marginTop:20}}>
-              <PrimaryButton onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0||!sellModal.plateforme} style={{flex:1,width:"auto"}}>
+              <PrimaryButton onClick={confirmSell} disabled={sellModal.enregistrement||!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0||!sellModal.plateforme} style={{flex:1,width:"auto"}}>
                 {t('confirmer')} ✓
               </PrimaryButton>
               <SecondaryButton onClick={()=>setSellModal(null)} style={{width:"auto",padding:"13px 20px"}}>

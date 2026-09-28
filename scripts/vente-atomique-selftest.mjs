@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const source=fs.readFileSync('src/utils/venteAtomique.js','utf8')
+ .replace(/^import .*;$/m,'').replace('export async function','async function');
+const espace=new Map();
+const stockage={getItem:k=>espace.get(k),setItem:(k,v)=>espace.set(k,v),removeItem:k=>espace.delete(k)};
+const contexte=vm.createContext({Map,Error,globalThis:{},crypto:{randomUUID:()=> 'cle-fixture'}});
+vm.runInContext(source+'\nthis.enregistrer=enregistrerVenteArticle;',contexte);
+const args={userId:'fixture',article:{id:1,quantite:3},prix:12,frais:1,quantite:1,plateforme:'opla'};
+const appels=[];let panne=true;
+const client={rpc:async(nom,p)=>{appels.push({nom,p});return panne?{error:{message:'réponse perdue'}}:{data:{ok:true,rejouee:true}};}};
+await assert.rejects(()=>contexte.enregistrer(args,{client,stockage}),/ne sera pas comptée deux fois/);
+assert.equal(espace.size,1);
+panne=false;
+await contexte.enregistrer(args,{client,stockage});
+assert.equal(appels[0].p.p_cle,appels[1].p.p_cle);
+assert.equal(appels[1].p.p_quantite_attendue,3);
+assert.equal(appels[1].nom,'enregistrer_vente_atomique');
+assert.equal(espace.size,0);
+const refus={rpc:async()=>({data:{ok:false,reason:'Quantité modifiée'}})};
+await assert.rejects(()=>contexte.enregistrer(args,{client:refus,stockage}),/Quantité modifiée/);
+assert.equal(espace.size,0);
+console.log('Vente : réponse perdue rejouée avec la même clé, quantité attendue conservée, refus affiché.');
