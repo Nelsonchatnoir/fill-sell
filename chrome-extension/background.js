@@ -8991,6 +8991,10 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // avec une pause jitter entre deux fetches — un humain qui re-regarde ses
 // annonces, pas une rafale.
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
+function venteConfirmeeDeuxLectures(pf, maintenantMs) {
+  const premiere = Date.parse(pf?.sold_pending_since ?? "");
+  return Number.isFinite(premiere) && maintenantMs - premiere >= SALE_CHECK_MIN_INTERVAL_MS;
+}
 // Plafond par cycle : MAINTENU À 8 (audit du 24/08). Le poll étant à 2 min,
 // ce plafond vaut jusqu'à 240 lectures/h en phase de RATTRAPAGE (backlog de
 // never-checked, navigateur ouvert) — un passage à 12 (tenté le 24/08 au
@@ -9023,43 +9027,9 @@ const UNKNOWN_RETRY_MS = 24 * 60 * 60 * 1000;
 // publiquement dans les minutes qui suivent son dépôt — elle serait lue comme
 // "unavailable" et un bandeau « Vendue ? » s'afficherait sur une annonce qui
 // vient d'être mise en ligne.
-// ⚠️ UNIFORME SUR LES 4 PLATEFORMES depuis le 2026-07-13 (décision Nico — a
-// remplacé les fenêtres par plateforme beebs 24 h · leboncoin 6 h · ebay 2 h ·
-// vinted 2 h, calées sur des observations ponctuelles, ET les 20 min « TEMP
-// TEST » du 2026-07-12). Réduit 4 h → 2 h le 2026-07-19 (décision Nico,
-// launch) : 2 h couvrent toujours la modération/propagation CDN observées, et
-// une vraie vente devient détectable deux fois plus tôt. La garde reste doublée
-// par SALE_CHECK_MIN_INTERVAL_MS (2 h entre deux lectures d'une même annonce)
-// et par la règle « unknown ne conclut jamais rien ».
-const PUBLISH_GRACE_MS = {
-  beebs: 2 * 60 * 60 * 1000,
-  leboncoin: 2 * 60 * 60 * 1000,
-  ebay: 2 * 60 * 60 * 1000,
-  vinted: 2 * 60 * 60 * 1000,
-};
-const PUBLISH_GRACE_DEFAULT_MS = 2 * 60 * 60 * 1000;
-
-// ── Grâce PLUS LONGUE pour une annonce RECRÉÉE (2026-09-07) ──────────────────
-// Une republication vient de supprimer une annonce et d'en créer une autre
-// quelques secondes plus tard. C'est précisément l'annonce que Vinted sert le
-// moins bien : elle s'indexe, et le job d'Ornella l'a montré — bandeau à
-// 20:13 pour une recréation de 16:12, soit 4 h 01 après, sur une annonce
-// parfaitement en ligne. Deux heures de grâce (celles d'un publish) ne
-// couvraient pas cette fenêtre.
-// 12 H, et voici pourquoi ce n'est pas cher payé :
-//   · le bandeau exige grâce + un second strike deux heures plus tard : le
-//     plus tôt possible devient +14 h, très au-delà des 4 h observées ;
-//   · une VRAIE vente n'attend pas pour autant. La sync du dressing pose
-//     sale_signal='sold' sur preuve POSITIVE (is_closed + item_closing_action)
-//     et n'est PAS soumise à cette grâce — le bandeau « Vendue 🎉 » arrive par
-//     ce chemin-là, inchangé ;
-//   · on reste sous les 24 h : une vente que seule la page révélerait sort
-//     quand même dans la journée.
-// Ne s'applique qu'aux jobs action='republish' : un publish garde ses 2 h.
-const REPUBLISH_GRACE_MS = 12 * 60 * 60 * 1000;
-const graceDuJob = (j) =>
-  (j?.action === "republish" ? REPUBLISH_GRACE_MS : null)
-  ?? PUBLISH_GRACE_MS[j?.platform] ?? PUBLISH_GRACE_DEFAULT_MS;
+// Point E : grâce commune de quatre heures ; deux lectures restent exigées.
+const PUBLISH_GRACE_DEFAULT_MS = 4 * 60 * 60 * 1000;
+const graceDuJob = () => PUBLISH_GRACE_DEFAULT_MS;
 
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
@@ -16373,44 +16343,23 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       const disparus = republishActifs === null ? [] : (connus ?? []).filter((r) =>
         r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id) && !republishActifs.has(r.vinted_item_id));
 
-      // ── Gardes (d)/(e) : anti-effondrement (2026-08-14, dossier Manon) ────
-      // Le 12/08, un run a lu le dressing d'un AUTRE compte Vinted (session
-      // Chrome sur un autre profil : 384 créations, items_maj=0, zéro
-      // recoupement). Le run suivant, COMPLET et cohérent avec sa propre
-      // pagination (28 vus / 28 annoncés / 1 page), a passé (a)(b)(c) et daté
-      // disparu_le sur les 384 d'un coup : ces gardes comparent le run à
-      // lui-même, jamais à l'inventaire. Deux ceintures de plus, même doctrine
-      // d'échec FERMÉ : on ne marque RIEN, le motif part en [note], un run
-      // sain suivant marquera. Ce bloc n'EMPÊCHE que des écritures, il n'en
-      // déclenche aucune.
-      // (d) RECOUPEMENT NUL : des vus, des connus, pas UNE intersection ⇒ ce
-      //     dressing n'est probablement pas celui dont vient l'inventaire
-      //     (signature du mauvais compte). Un run normal revoit l'écrasante
-      //     majorité de ses connus.
-      // (e) EFFONDREMENT : plus de max(20, 40 % des connus) à marquer d'une
-      //     passe. Les ventes/retraits ordinaires passent largement dessous ;
-      //     éteindre la majorité du stock exige un run qu'on croirait sur
-      //     parole. Résidu ASSUMÉ : un vrai retrait massif au-delà du plafond
-      //     ne sera plus daté automatiquement — constatable par la [note],
-      //     le run suivant un retour à la normale marquera.
-      if (disparus.length) {
-        const recoupement = (connus ?? []).some((r) => r.vinted_item_id && vusCetteSync.has(r.vinted_item_id));
-        const plafond = Math.max(20, Math.ceil((connus?.length ?? 0) * 0.4));
-        if (!recoupement) {
-          motifSautDisparitions = `dressing sans recoupement avec l'inventaire (${connus.length} connu(s), ${vusCetteSync.size} vu(s)) — mauvais compte Vinted possible, aucun marquage`;
-        } else if (disparus.length > plafond) {
-          motifSautDisparitions = `effondrement suspect : ${disparus.length} disparition(s) à marquer sur ${connus.length} connu(s), plafond ${plafond} — aucun marquage`;
-        }
-        if (motifSautDisparitions) console.warn(`[sync-dressing] disparitions NON marquées — ${motifSautDisparitions}`);
-      }
-
-      if (!motifSautDisparitions) {
+      // Deux relevés complets distincts de LA boutique confirmée. Le nombre
+      // de remplacements externes n'est pas une preuve et ne les masque plus.
+      if (!motifSautDisparitions && !motifArretIncomplet && !echecsEcriture.length) {
+        const cle = `fillsell.absencesDressing.${userId}.${ident.userId}`;
+        const avant = (await chrome.storage.local.get(cle))[cle] ?? {};
+        const apres = {};
+        const maintenantMs = Date.now();
         for (const d of disparus) {
-          await restRequest(`inventaire?id=eq.${d.id}`, token, {
+          const id = String(d.vinted_item_id);
+          const precedent = avant[id];
+          apres[id] = precedent ?? { run: run.id, le: maintenantMs };
+          if (!precedent || precedent.run === run.id || maintenantMs - precedent.le < 5 * 60 * 1000) continue;
+          await restRequest(`inventaire?id=eq.${d.id}&user_id=eq.${userId}&vinted_item_id=eq.${id}`, token, {
             method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
-          }).catch(() => {});
+          });
         }
-        if (disparus.length) console.log(`[sync-dressing] ${disparus.length} annonce(s) disparue(s), datées (aucune suppression)`);
+        await chrome.storage.local.set({ [cle]: apres });
       }
     } catch (e) {
       console.warn("[sync-dressing] marquage des disparus:", e?.message ?? e);
@@ -16604,7 +16553,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   let existants = [];
   try {
     existants = await restRequest(
-      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,origine,photos,prix_vente`,
+      `inventaire?user_id=eq.${userId}&vinted_item_id=in.(${ids})&select=id,vinted_item_id,first_seen_at,statut,vinted_status,origine,photos,prix_vente`,
       token, { headers: { Prefer: "return=representation" } },
     ) ?? [];
   } catch (e) {
@@ -16705,63 +16654,9 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // sont clos par le ré-appariement du poll (superseded_listing) dès cette
   // version ; l'affichage app des bandeaux republish rouvrira par un commit
   // séparé, sur GO explicite, après acceptation de la 0.5.4.
-  const ventesSignaleesAuJob = new Set(); // vinted_item_id dont un job vivant porte le drapeau
-  const soldFrais = articles.filter((a) =>
-    a.statut === "sold" && parVintedId.get(a.vinted_item_id)?.statut !== "vendu");
-  if (soldFrais.length) {
-    try {
-      const jobsVifs = await restRequest(
-        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=in.(publish,republish)` +
-          `&status=eq.published&select=id,inventaire_id,platform_listing_id,listing_url,platform_fields` +
-          `&order=created_at.desc&limit=1000`,
-        token, { headers: { Prefer: "return=representation" } },
-      ) ?? [];
-      // Correspondance par ID VINTED d'abord (même règle que le rattrapage
-      // ci-dessus : jamais le titre), inventaire_id en repli — un job publié
-      // avant l'écriture de platform_listing_id peut n'avoir que ce lien-là.
-      const jobParIdVinted = new Map();
-      const jobParInventaire = new Map();
-      for (const j of jobsVifs) {
-        const idV = j.platform_listing_id ?? extractListingId(j.listing_url, "vinted");
-        if (idV != null && !jobParIdVinted.has(String(idV))) jobParIdVinted.set(String(idV), j);
-        if (j.inventaire_id != null && !jobParInventaire.has(String(j.inventaire_id))) jobParInventaire.set(String(j.inventaire_id), j);
-      }
-      for (const a of soldFrais) {
-        const invId = parVintedId.get(a.vinted_item_id)?.id ?? parJob.get(String(a.vinted_item_id)) ?? null;
-        const job = jobParIdVinted.get(String(a.vinted_item_id)) ??
-          (invId != null ? jobParInventaire.get(String(invId)) : null);
-        if (!job) continue; // aucun job Vinted vivant : import pur, flip direct comme avant
-        const pf = job.platform_fields ?? {};
-        if (pf.unavailable_since) { ventesSignaleesAuJob.add(a.vinted_item_id); continue; } // déjà signalé (poll ou run précédent) : ne pas écraser son horodatage
-        try {
-          await restRequest(`cross_post_jobs?id=eq.${job.id}`, token, {
-            method: "PATCH",
-            body: JSON.stringify({
-              platform_fields: {
-                ...pf,
-                unavailable_since: maintenant,
-                sale_signal: "sold", // preuve positive : is_closed + item_closing_action='sold' (wardrobe)
-                ...(Number.isFinite(a.prix) && a.prix > 0 ? { detected_price: a.prix } : {}),
-              },
-            }),
-          });
-          ventesSignaleesAuJob.add(a.vinted_item_id);
-          console.log(
-            `[sync-dressing] VENTE Vinted détectée sur ${a.vinted_item_id} → drapeau posé sur le job ${job.id} ` +
-            "(confirmation via le bandeau de l'app — aucune écriture de vente ici)"
-          );
-        } catch (e) {
-          // PATCH raté : l'article N'ENTRE PAS dans ventesSignaleesAuJob → il
-          // retombe sur l'ancien comportement (statut='vendu' direct) — jamais
-          // une vente perdue, au pire sans bandeau ce run-ci.
-          console.warn(`[sync-dressing] drapeau de vente refusé sur le job ${job.id}:`, e?.message ?? e);
-        }
-      }
-    } catch (e) {
-      // Lecture des jobs indisponible : repli complet sur l'ancien comportement.
-      console.warn("[sync-dressing] signalement des ventes aux jobs:", e?.message ?? e);
-    }
-  }
+  // Le relevé importe des observations, jamais une vente. Les pages suivantes
+  // peuvent échouer. Le veilleur de l'annonce confirme sur deux lectures,
+  // puis l'utilisateur enregistre la vente par la RPC atomique.
   // ── PATCH léger : la règle de propriété (2026-08-03, 2e revue) ────────────
   // La sync ne réécrit EN ENTIER que SES lignes (origine='vinted_sync').
   // Toute autre ligne — rattachée via un job ce run-ci, OU déjà identifiée
@@ -16778,7 +16673,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_item_id: a.vinted_item_id,
       vinted_view_count: a.vues,
       vinted_favourite_count: a.favoris,
-      vinted_status: a.statut,
+      vinted_status: a.statut === "sold" ? (parVintedId.get(a.vinted_item_id)?.vinted_status ?? "active") : a.statut,
       last_synced_at: maintenant,
       disparu_le: null,
       // (a) taille / état / marque de la liste — la base fusionne (trigger) :
@@ -16889,21 +16784,8 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       // la carte préfère quand il existe, prix_vente est son repli.
       prix_vente: dejaLa?.prix_vente
         ?? (dejaLa?.statut !== "vendu" && a.statut !== "sold" && Number.isFinite(a.prix) && a.prix > 0 ? a.prix : null),
-      // STATUT : règle ASYMÉTRIQUE (2026-08-03 soir). La sync peut faire
-      // stock → vendu (Vinted dit sold), JAMAIS vendu → stock : un article
-      // vendu hors Vinted (vide-grenier, LBC) dont l'annonce Vinted vit
-      // encore doit RESTER vendu — le rétrograder cassait la comptabilité et
-      // relançait la détection de vente dessus. L'état brut de Vinted reste
-      // lisible dans vinted_status, écrit à chaque run.
-      // ⚠️ SAUF si un job vivant vient d'être signalé (2026-08-09) : c'est
-      // alors le clic du bandeau (orchestrateSale) qui écrira vente + statut.
-      // Flipper ici ferait perdre le gate consume_one_unit à la confirmation
-      // → la vente ne serait JAMAIS comptabilisée (le trou exact du constat
-      // Ornella). Sans job vivant : flip direct, comportement du 03/08.
-      statut: dejaLa?.statut === "vendu" ? "vendu"
-        : a.statut !== "sold" ? "stock"
-        : ventesSignaleesAuJob.has(a.vinted_item_id) ? (dejaLa?.statut ?? "stock")
-        : "vendu",
+      // Un relevé ne consomme pas le stock, même s'il observe une vente.
+      statut: dejaLa?.statut ?? "stock",
       marque: a.marque ?? null,
       // PHOTOS : cf. frontière de propriété ci-dessus. Le lot d'upsert exige
       // les mêmes clés sur toutes les lignes — la colonne reste présente et
@@ -16921,7 +16803,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_item_id: a.vinted_item_id,
       vinted_view_count: a.vues,
       vinted_favourite_count: a.favoris,
-      vinted_status: a.statut,
+      vinted_status: a.statut === "sold" ? (parVintedId.get(a.vinted_item_id)?.vinted_status ?? "active") : a.statut,
       // Estimation assumée : timestamp de la photo la plus ancienne. Le nom
       // « guess » est là pour qu'on ne l'affiche jamais à l'heure près.
       listed_at_guess: a.photo_ts ? new Date(a.photo_ts * 1000).toISOString() : null,
@@ -17000,7 +16882,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // aussi : leur inventaire_id ne pointerait sur rien (FK cross_post_jobs).
   const nonEcrits = new Set(echecs.map((f) => f.vinted_item_id));
   const aCreer = articles.filter((a) =>
-    a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id)
+    ["active", "sold"].includes(a.statut) && a.url && !parVintedId.has(a.vinted_item_id)
     && !patchesLegers.has(a.vinted_item_id) && !nonEcrits.has(a.vinted_item_id));
   if (aCreer.length) {
     const parId = new Map(lignes.map((l) => [l.vinted_item_id, l.id]));
@@ -17504,17 +17386,34 @@ async function checkPublishedListings(session) {
       // ⚠️ On repart de patch.platform_fields s'il existe déjà (remise à zéro des
       // compteurs d'indétermination juste au-dessus) — sinon on l'écraserait.
       const pf = patch.platform_fields ?? job.platform_fields ?? {};
-      if (pf.unavailable_since || pf.unavailable_pending_since) {
+      if (pf.unavailable_since || pf.unavailable_pending_since || pf.sold_pending_since) {
         const cleaned = { ...pf };
         delete cleaned.unavailable_since;
         delete cleaned.sale_signal;
         delete cleaned.detected_price;
         delete cleaned.unavailable_pending_since;
+        delete cleaned.sold_pending_since;
         patch.platform_fields = cleaned;
         console.log(`[background] ${job.platform} ${job.id} : de nouveau EN LIGNE → drapeau levé, bandeau retiré (fausse alerte)`);
       }
     }
 
+    if (state === "sold") {
+      const pf = patch.platform_fields ?? job.platform_fields ?? {};
+      const premiere = Date.parse(pf.sold_pending_since ?? "");
+      if (!venteConfirmeeDeuxLectures(pf, Date.now())) {
+        patch.platform_fields = { ...pf, sold_pending_since: Number.isFinite(premiere) ? pf.sold_pending_since : new Date().toISOString() };
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+          method: "PATCH", body: JSON.stringify(patch),
+        });
+        continue; // Première lecture : aucun bandeau, aucun retrait, aucune vente.
+      }
+    }
+
+    if (state === "unavailable" && (patch.platform_fields ?? job.platform_fields ?? {}).sold_pending_since) {
+      patch.platform_fields = { ...(patch.platform_fields ?? job.platform_fields) };
+      delete patch.platform_fields.sold_pending_since;
+    }
     if (state === "sold" || state === "unavailable") {
       const pf = patch.platform_fields ?? job.platform_fields ?? {}; // idem : ne pas écraser la remise à zéro
 

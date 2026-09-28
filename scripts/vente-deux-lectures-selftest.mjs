@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync('chrome-extension/background.js','utf8').replaceAll('\r\n','\n');
+const a=source.indexOf('function venteConfirmeeDeuxLectures(');
+const fonction=source.slice(a,source.indexOf('\n}',a)+2);
+const confirme=vm.runInNewContext('('+fonction+')',{Date,Number,SALE_CHECK_MIN_INTERVAL_MS:7200000});
+const maintenant=Date.parse('2026-09-28T14:00:00Z');
+assert.equal(confirme({},maintenant),false);
+assert.equal(confirme({sold_pending_since:'illisible'},maintenant),false);
+assert.equal(confirme({sold_pending_since:'2026-09-28T13:59:00Z'},maintenant),false);
+assert.equal(confirme({sold_pending_since:'2026-09-28T12:00:00Z'},maintenant),true);
+assert.equal(confirme({sold_pending_since:'2026-09-28T15:00:00Z'},maintenant),false);
+assert.ok(!source.includes('ventesSignaleesAuJob'));
+console.log('Première lecture, cycle rapproché, seconde lecture et horloge invalide : OK');
