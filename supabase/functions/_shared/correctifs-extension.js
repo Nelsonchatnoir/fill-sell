@@ -54,6 +54,13 @@ export const BUILD_OPLA_REPUBLICATION_SUR_ANNONCE = "2026-09-27T18:22:27Z"; // B
 
 export const CORRECTIFS_EXTENSION = [
   {
+    cle: "vinted_navigation_annonce_exacte",
+    platform: "vinted", actions: ["delete", "republish"],
+    signature: /onglet de travail n'était pas encore sur la page de ton annonce/,
+    buildMin: "2026-09-28T14:31:20Z", version: "0.6.76",
+    motif: "navigation vérifiée vers l'identifiant exact avant le retrait",
+  },
+  {
     cle: "lbc_retrait_pro_tiroir",
     platform: "leboncoin",
     actions: ["delete", "republish"],
