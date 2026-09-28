@@ -1,15 +1,41 @@
-## Passe Astra du 28/09 — reprise après incident
+## Passe Astra du 28/09 — état de production pour la reprise
 
-**Déploiements suivants bloqués après ralentissement.** Lire la
-[passation](docs/agents/passe-astra-2026-09-28.md) : état A–I, cas, commits,
-migrations/inverses, versions servies et travaux non livrés ; puis le
-[rapport incident](docs/INCIDENT_ASTRA_2026-09-28_LATENCE.md).
-Les [consignes actuelles](docs/agents/consignes-2026-09-28.md) remplacent les
-indications historiques contraires du 27/09. Vente exacte = enregistrement
-atomique automatique puis copies ; activation générale encore bloquée.
-Angel : trois ventes enregistrées, aucune recréation. Cron doublons suspendu.
-Aucun push, OTA ni ZIP livré. 0.6.75 publiée. Détail de reprise obligatoire
-dans les deux documents liés ; ne pas déployer main en bloc.
+Avant toute action, lire
+`C:\Users\nicol\fill-and-sell\docs\agents\passe-astra-2026-09-28.md`,
+`C:\Users\nicol\fill-and-sell\docs\INCIDENT_ASTRA_2026-09-28_LATENCE.md` et
+`C:\Users\nicol\fill-and-sell\docs\agents\consignes-2026-09-28.md`, qui
+remplace tout historique contraire.
+
+**Production au 28/09 :**
+
+- **A** : preuves exactes, boutiques, questions et gardes de retrait actives
+  (085904, 101812, 102522, 103046, 104620, 105655, 135541,
+  135758, 142419).
+- **B** : vente/reçu/stock atomiques (111221, 133204). La fonction
+  140738/143457 existe sans appel périodique. 144357, inutile à l'app 2.9.31,
+  a été retirée sans application.
+- **C** : réservation compatible active (130523) ; essais 114322/114721
+  annulés par 115314/115330.
+- **E** : aucun verdict sur relevé incomplet (133555).
+- **F** : app 2.9.31 servie avec bandeau ; extension 0.6.76 en examen au CWS ;
+  minimum serveur 0.6.75. Après acceptation constatée, enregistrer 0.6.76 dans
+  les registres de publication **sans relever le minimum**.
+
+Fonctions relues : `get-pending-jobs` v160 (`verify_jwt=true`),
+`update-job-status` v100 (`false`), `handler-watch` v65 (`false`),
+`check-listing-status` v34 (`false`), `generate-listing` v108 (`true`),
+`lens-analysis` v102 (`true`), `doublons-balayage` v2 (`false`). Réglages à
+conserver exactement.
+
+**Suspendu :** ventes automatiques à chaque demande de jobs, cause de la hausse
+vers 16:42, à refaire en version légère/bornée/mesurée ; cron
+`doublons-balayage-2min` inactif, car sa recherche globale avant limite prenait
+8–13 s. Au moindre écart de latence ou de verrou : retour arrière immédiat,
+arrêt, plus rien ne part. Aucune règle serveur sans rejeu sur cas réels.
+
+**Suite :** « zéro orange » (autorisation Opla avant job, eBay prêt avant
+publication, nom/prénom Leboncoin au branchement), puis catégories, seulement
+après étude complète du système de résolution.
 
 # FillSell — Instructions Claude
 

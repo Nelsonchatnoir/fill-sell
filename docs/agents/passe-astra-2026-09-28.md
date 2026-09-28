@@ -130,7 +130,8 @@ Appliquées : 085904, 101812, 102522, 103046, 104620, 105655 (A), 111221 (B),
 133204 (B stock), 133555 (E), 135541/135758 (A ventes avant retraits),
 140738 (B automatique, fonction désormais sans appel périodique), 142419
 (retrait déjà abouti), 142605 (vues), 143457 (B rejeu), 145446 (cron suspendu).
-Préfixe commun : **20260928**. **144357 NON APPLIQUÉE**, bloquée après latence.
+Préfixe commun : **20260928**. **144357 jamais appliquée, puis retirée du dépôt**
+car l'app 2.9.31 n'en dépend pas et l'automatisme concerné reste suspendu.
 La migration Italie 20260925190000 reste non suivie et intacte.
 
 ## Git, artefacts et reprise
@@ -183,8 +184,9 @@ Les deux différences locales préexistantes sont restées intactes ; le
 prototype cloud et la jonction `node_modules` n'ont pas été touchés. Aucun
 mail n'a été envoyé.
 
-**Reste** : Nico téléverse le zip 0.6.76 et clique « Envoyer pour examen ».
-Ne promouvoir ni le minimum 0.6.76 ni les registres de publication avant
-acceptation constatée dans le parc. L'enregistrement automatique périodique
-des ventes et le balayage des doublons attendent toujours une version légère,
-bornée et mesurée avant toute réactivation.
+**État suivant communiqué par Nico** : le zip 0.6.76 a été téléversé et
+l'extension est en examen au Chrome Web Store. Après acceptation constatée
+dans le parc, enregistrer sa publication sans relever le minimum serveur, qui
+reste 0.6.75. L'enregistrement automatique périodique des ventes et le balayage
+des doublons attendent toujours une version légère, bornée et mesurée avant
+toute réactivation.

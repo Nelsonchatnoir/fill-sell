@@ -106,3 +106,10 @@ Le cron `doublons-balayage-2min` reste `active=false`. Aucun appel périodique
 restent bloqués jusqu'à une version bornée, légère et mesurée. Aucun mail,
 aucune correction manuelle de données et aucune intervention sur le prototype
 cloud pendant la reprise.
+
+## Clôture de la migration 20260928144357
+
+La migration n'a jamais été appliquée et l'app 2.9.31 ne l'appelle pas : elle
+ne servait qu'à élargir le futur traitement automatique des ventes Vinted à
+une preuve exacte issue d'un relevé. Son fichier et son inverse ont été retirés
+du dépôt ; la production n'a pas été modifiée.

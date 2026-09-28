@@ -1,15 +1,41 @@
-## Passe Astra du 28/09 — reprise après incident
+## Passe Astra du 28/09 — état de production pour la reprise
 
-**Déploiements suivants bloqués après ralentissement.** Lire la
-[passation](docs/agents/passe-astra-2026-09-28.md) : état A–I, cas, commits,
-migrations/inverses, versions servies et travaux non livrés ; puis le
-[rapport incident](docs/INCIDENT_ASTRA_2026-09-28_LATENCE.md).
-Les [consignes actuelles](docs/agents/consignes-2026-09-28.md) remplacent les
-indications historiques contraires du 27/09. Vente exacte = enregistrement
-atomique automatique puis copies ; activation générale encore bloquée.
-Angel : trois ventes enregistrées, aucune recréation. Cron doublons suspendu.
-Aucun push, OTA ni ZIP livré. 0.6.75 publiée. Détail de reprise obligatoire
-dans les deux documents liés ; ne pas déployer main en bloc.
+Avant toute action, lire
+`C:\Users\nicol\fill-and-sell\docs\agents\passe-astra-2026-09-28.md`,
+`C:\Users\nicol\fill-and-sell\docs\INCIDENT_ASTRA_2026-09-28_LATENCE.md` et
+`C:\Users\nicol\fill-and-sell\docs\agents\consignes-2026-09-28.md`, qui
+remplace tout historique contraire.
+
+**Production au 28/09 :**
+
+- **A** : preuves exactes, boutiques, questions et gardes de retrait actives
+  (085904, 101812, 102522, 103046, 104620, 105655, 135541,
+  135758, 142419).
+- **B** : vente/reçu/stock atomiques (111221, 133204). La fonction
+  140738/143457 existe sans appel périodique. 144357, inutile à l'app 2.9.31,
+  a été retirée sans application.
+- **C** : réservation compatible active (130523) ; essais 114322/114721
+  annulés par 115314/115330.
+- **E** : aucun verdict sur relevé incomplet (133555).
+- **F** : app 2.9.31 servie avec bandeau ; extension 0.6.76 en examen au CWS ;
+  minimum serveur 0.6.75. Après acceptation constatée, enregistrer 0.6.76 dans
+  les registres de publication **sans relever le minimum**.
+
+Fonctions relues : `get-pending-jobs` v160 (`verify_jwt=true`),
+`update-job-status` v100 (`false`), `handler-watch` v65 (`false`),
+`check-listing-status` v34 (`false`), `generate-listing` v108 (`true`),
+`lens-analysis` v102 (`true`), `doublons-balayage` v2 (`false`). Réglages à
+conserver exactement.
+
+**Suspendu :** ventes automatiques à chaque demande de jobs, cause de la hausse
+vers 16:42, à refaire en version légère/bornée/mesurée ; cron
+`doublons-balayage-2min` inactif, car sa recherche globale avant limite prenait
+8–13 s. Au moindre écart de latence ou de verrou : retour arrière immédiat,
+arrêt, plus rien ne part. Aucune règle serveur sans rejeu sur cas réels.
+
+**Suite :** « zéro orange » (autorisation Opla avant job, eBay prêt avant
+publication, nom/prénom Leboncoin au branchement), puis catégories, seulement
+après étude complète du système de résolution.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
@@ -207,11 +233,11 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - **Un seul zip par version**, seul dans `build\CWS-<version>-A-TELEVERSER\` ;
   les zips remplacés vont dans `build\anciens-zips\`. Nico téléverse et
   clique « Envoyer pour examen ». Un push ne déploie PAS l'extension.
-- **Après acceptation constatée** (`profiles.extension_build`) : version dans
-  `ALREADY_PUBLISHED` + `PUBLISHED_BUILD_IDS`, puis `EXTENSION_MIN_BUILD` =
-  BUILD_ID du zip — **jamais** `EXTENSION_LAST_COMMIT`.
-- **Publiée : 0.6.75**, build officiel `2026-09-27T20:16:30Z+66a8887`.
-  .76 préparée en source, aucun ZIP livré ; voir la passation du 28/09.
+- **Après acceptation** (`profiles.extension_build`) : ajouter aux registres
+  `ALREADY_PUBLISHED` et `PUBLISHED_BUILD_IDS`. Minimum = geste séparé fondé
+  sur le BUILD_ID, jamais `EXTENSION_LAST_COMMIT` ; **pas de hausse pour .76**.
+- **Publiée : 0.6.75**, build `2026-09-27T20:16:30Z+66a8887` ; **0.6.76 en
+  examen CWS**. Après acceptation, l'enregistrer sans relever le minimum.
 
 ### 3.3 Lire la prod (sans rien écrire)
 
@@ -529,27 +555,10 @@ qui survit à ça, c'est du code.
 
 ---
 
-## 7. État au 27/09/2026 (détail : `docs/agents/etat-2026-09-27.md`)
+## 7. État 27/09/2026
 
-- **Panne du 27/09** (base figée 15:34-16:07, cause unique non prouvée ;
-  balayage des doublons corrigé par 20260927190000). **Leçon : toute RPC
-  appelée par PostgREST tient sous 8 s** ; un travail long se découpe en
-  appels courts, chacun enregistré.
-- **Audit de la synchronisation** (27/09 soir) : 881 annonces en ligne
-  importées (20260927210000, 211000). Lot « synchronisation parfaite » du
-  même soir, TERMINÉ : abandon = aucun relevé, relevé incomplet repris seul,
-  murs eBay et session Opla nommés, photos complètes, verdicts jamais sur
-  relevé partiel, **titre ≠ preuve** (20260928001000) ; OTA 2.9.30 servie ;
-  GO de Nico appliqués (5 retraits prouvés). **Ce qui reste, dans l'ordre** :
-  fichier d'état § 7.7.
-- **FillSell Cloud** : prototype hors dépôt, voir
-  `C:\Users\nicol\fillsell-cloud-proto\REPRISE.md` (fait foi).
-- **Historique corrigé : extension 0.6.75 publiée** (BUILD_ID 2026-09-27T20:16:30Z) ; les livres (gel du 28/08, ISBN
-  `0000000000000`) se débloquent seuls dès qu'un poste porte ≥ 0.6.70.
-- **Chantier Italie** : migration
-  `20260925190000_plateformes_francaises_hors_france.sql` écrite, NON
-  appliquée, NON commitée — ne pas toucher sans GO.
-- Autres décisions en attente : voir le fichier d'état.
+Voir `docs/agents/etat-2026-09-27.md`. Italie 20260925190000 non
+appliquée/non commitée : intouchée sans GO.
 
 ---
 
