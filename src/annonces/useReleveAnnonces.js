@@ -77,8 +77,16 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       setRuns(avecDernierReleveVide(r, vv)); setVides(vv);
       setCompte(c); setARattacher(a); setRunVinted(v); setDoublons(dd);
     };
-    const t0 = setTimeout(charger, 0);
-    const t = setInterval(charger, POLL_MS);
+    let enLecture = false;
+    const actualiser = async () => {
+      if (enLecture || annule) return;
+      enLecture = true;
+      try { await charger(); }
+      catch { /* Lecture incomplète : conserver les derniers compteurs complets. */ }
+      finally { enLecture = false; }
+    };
+    const t0 = setTimeout(actualiser, 0);
+    const t = setInterval(actualiser, POLL_MS);
     return () => { annule = true; clearTimeout(t0); clearInterval(t); };
   }, [ouvert, userId, tick]);
 

@@ -12,6 +12,7 @@ import { supabase } from '../lib/supabase';
 import { PLATEFORMES_STOCK } from './stockFiltres';
 import { indexerRelevesVides } from '../annonces/releveVide';
 import { indexerRetraits, annonceRetiree } from '../annonces/retraits.js';
+import { lireToutesPages } from './lireToutesPages.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
@@ -106,15 +107,13 @@ export async function lireDernierRunVinted(userId) {
 // disparaît à tort (le serveur garde de toute façon le refus de rattacher).
 async function lireRetraitsRecents(userId) {
   const depuis = new Date(Date.now() - 60 * 86400000).toISOString();
-  const { data, error } = await supabase
+  const data = await lireToutesPages(() => supabase
     .from('cross_post_jobs')
-    .select('platform,listing_url,platform_listing_id,created_at')
+    .select('id,platform,listing_url,platform_listing_id,created_at')
     .eq('user_id', userId).eq('action', 'delete')
     .in('platform', PLATEFORMES_RELEVE)
     .in('status', ['pending', 'processing', 'needs_user', 'deleted'])
-    .gte('created_at', depuis)
-    .limit(1000);
-  if (error) return indexerRetraits([]);
+    .gte('created_at', depuis));
   return indexerRetraits(data ?? []);
 }
 
@@ -139,15 +138,13 @@ export async function lireAnnoncesARattacher(userId) {
 // filtre que la file, sinon le bouton annonce N et la file en montre moins.
 export async function compterAnnoncesParPlateforme(userId) {
   if (!userId) return {};
-  const [{ data, error }, retraits] = await Promise.all([
-    supabase
+  const [data, retraits] = await Promise.all([
+    lireToutesPages(() => supabase
       .from('annonces_plateforme')
-      .select('platform,listing_id,vu_le,inventaire_id,ignoree_le,disparu_le')
-      .eq('user_id', userId).is('disparu_le', null)
-      .limit(2000),
-    lireRetraitsRecents(userId).catch(() => indexerRetraits([])),
+      .select('id,platform,listing_id,vu_le,inventaire_id,ignoree_le,disparu_le')
+      .eq('user_id', userId).is('disparu_le', null)),
+    lireRetraitsRecents(userId),
   ]);
-  if (error) return {};
   const par = {};
   for (const a of data ?? []) {
     if (annonceRetiree(a, retraits)) continue; // retirée par nous : plus en ligne
@@ -207,13 +204,11 @@ export function texteRefusReleve(res, lang = 'fr', platform = null) {
 // montre pas — jamais compté comme 0.
 export async function lireStatsAnnoncesParArticle(userId) {
   if (!userId) return {};
-  const { data, error } = await supabase
+  const data = await lireToutesPages(() => supabase
     .from('annonces_plateforme')
-    .select('platform,inventaire_id,vues,favoris,vu_le')
-    .eq('user_id', userId).not('inventaire_id', 'is', null).is('disparu_le', null)
-    .order('vu_le', { ascending: false })
-    .limit(2000);
-  if (error) return {};
+    .select('id,platform,inventaire_id,vues,favoris,vu_le')
+    .eq('user_id', userId).not('inventaire_id', 'is', null).is('disparu_le', null));
+  data.sort((a, b) => String(b.vu_le ?? '').localeCompare(String(a.vu_le ?? '')));
   const par = {};
   for (const a of data ?? []) {
     if (a.vues == null && a.favoris == null) continue;
