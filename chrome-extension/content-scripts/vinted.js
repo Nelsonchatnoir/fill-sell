@@ -1778,12 +1778,19 @@ async function deleteListing(job) {
   }
   t(`page annonce ok : item ${itemId}`);
 
+  const idLien = String(job.listing_url ?? "").match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1];
+  const idJob = String(job.platform_listing_id ?? idLien ?? "").trim();
+  if (!idJob || idJob !== itemId || (idLien && idLien !== idJob)) {
+    return { success: false, needsUser: true,
+      error: "L'identifiant de cette page ne correspond pas à l'annonce à retirer. Rien n'a été touché.", trace };
+  }
+
   if (DELETE_DRY_RUN) {
     t("🧪 DELETE_DRY_RUN actif — endpoint prêt, AUCUN appel de suppression.");
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  return await deleteVintedItemViaApi(itemId, t, trace);
+  return await deleteVintedItemViaApi(itemId, t, trace, { boutiqueAttendue: job.platform_fields?.vinted_account_id });
 }
 
 // ── Appel API de suppression, FACTORISÉ (2026-08-12) ─────────────────────────
@@ -1812,6 +1819,26 @@ async function deleteListing(job) {
 async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
   const endpoint = `/api/v2/items/${itemId}/delete`;
   const verdict = { at: new Date().toISOString(), endpoint, http: null, conclusion: "non_envoyee" };
+  // Avant tout POST : la page de l'annonce ou l'origine prouvée du job,
+  // confrontée à la session relue maintenant. Un 403 ne sert plus de test
+  // de propriété après avoir déjà envoyé la suppression.
+  const surAnnonce = location.pathname.match(/\/items\/(\d+)(?:[-/]|$)/)?.[1] === String(itemId);
+  let proprio = surAnnonce ? await proprietaireAnnonceVinted(t) : null;
+  const attendue = String(opts.boutiqueAttendue ?? "").trim();
+  if (!surAnnonce && attendue) {
+    try {
+      const r = await fetchBorne("/api/v2/users/current", { headers: { Accept: "application/json" }, credentials: "include" });
+      const compte = r.ok ? await r.json() : null;
+      if (compte?.user?.id) proprio = { vendeur: attendue, session: String(compte.user.id), login_session: compte.user.login ?? null };
+    } catch { /* absence de preuve : aucun POST */ }
+  }
+  if (!proprio || proprio.vendeur !== proprio.session || (attendue && proprio.vendeur !== attendue)) {
+    verdict.conclusion = proprio ? "boutique_etrangere" : "identite_non_prouvee";
+    t("identité non confirmée — requête de suppression NON envoyée");
+    return { success: false, needsUser: true, trace, verdict,
+      boutiqueEtrangere: { article: proprio?.vendeur ?? (attendue || null), session: proprio?.session ?? null, login_session: proprio?.login_session ?? null },
+      error: "FillSell n'a pas confirmé que cette annonce appartient à la boutique ouverte dans Chrome. Vérifie la boutique dans « Actualiser mon dressing ». Rien n'a été retiré." };
+  }
   const csrf = await extractVintedCsrfToken();
   const anonId = getVintedCookie("anon_id");
   t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
@@ -3556,7 +3583,7 @@ async function fillListingForm(job) {
     const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
     // preuveRequise : ici, un 404 sur le POST ne vaut PAS suppression — on
     // enchaînerait une création juste derrière (cf. bandeau de la fonction).
-    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, { preuveRequise: true });
+    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, { preuveRequise: true, boutiqueAttendue: job.platform_fields?.vinted_account_id });
     if (!del?.success) {
       // AUCUNE soumission sans suppression acquise : soumettre créerait un
       // DOUBLON à côté de l'annonce d'origine toujours en ligne. Le background

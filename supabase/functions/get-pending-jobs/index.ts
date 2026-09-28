@@ -1,3 +1,4 @@
+import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -124,7 +125,6 @@ import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rot
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
-import { comparerEmpreintes } from "../_shared/empreinte-image.ts";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -1079,6 +1079,39 @@ serve(async (req) => {
     // Voie d'exécution (lot 2a eBay API, 06/09) : l'extension ne reçoit que
     // les jobs voie='extension' (= tout le parc existant, valeur par défaut).
     // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
+    // Une identité temporairement inconnue n'exige pas un clic de relance.
+    // Seule une nouvelle sonde positive, avec l'origine toujours confirmée,
+    // libère les gardes posées par ce chemin. Les autres questions restent ouvertes.
+    if (!includeProcessing && !includeNeedsUser) {
+      const { data: attentes, error: erreurAttentes } = await userClient.from("cross_post_jobs")
+        .select("id,action,platform,platform_fields,inventaire_id,inventaire:inventaire_id(vinted_account_id)")
+        .eq("user_id", user.id).eq("status", "needs_user").eq("voie", "extension")
+        .eq("platform_fields->>needs_user_source", "boutique_etrangere")
+        .eq("platform_fields->boutique_etrangere->>motif", "session_inconnue")
+        .order("created_at", { ascending: true }).limit(10);
+      if (!erreurAttentes && attentes?.length) {
+        const { data: profil, error: erreurProfil } = await userClient.from("profiles")
+          .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
+        const identite = !erreurProfil && identiteBoutiqueFraiche(profil?.extension_sessions);
+        if (identite) for (const attente of attentes) {
+          const pf = attente.platform_fields ?? {};
+          const garde = pf.boutique_etrangere;
+          if (garde?.pose_par !== "get-pending-jobs (identité prouvée)") continue;
+          const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
+          const { origine, contradictoire } = origineBoutiqueProuvee(article?.vinted_account_id, pf.vinted_account_id);
+          if (contradictoire || verifierBoutiqueOperation({action: attente.action, platform: attente.platform,
+            boutiqueArticle: origine, boutiqueSession: identite.user_id,
+            boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: !!profil})) continue;
+          const suite = { ...pf, boutique_reconnue_le: new Date().toISOString() };
+          delete suite.needs_user_source;
+          delete suite.boutique_etrangere;
+          await userClient.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: suite })
+            .eq("id", attente.id).eq("status", "needs_user")
+            .eq("platform_fields->>needs_user_source", "boutique_etrangere")
+            .eq("platform_fields->boutique_etrangere->>le", garde.le);
+        }
+      }
+    }
     const lireFile = () => userClient
       .from("cross_post_jobs")
       .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, platform_listing_id, created_at, error")
@@ -2329,7 +2362,6 @@ serve(async (req) => {
     );
     try {
       const RELEVE_ATTENTE_MAX_H = 6;
-      const EMPREINTE_ATTENTE_MAX_MIN = 60;
       const suspects = (out as unknown as Array<Record<string, unknown>>).filter((j) =>
         j.action === "republish" && (j.platform === "leboncoin" || j.platform === "beebs") && j.status === "pending");
       const retirerDeLaFile = new Set<string>();
@@ -2422,33 +2454,10 @@ serve(async (req) => {
           .select("listing_id, url, titre, prix, photo_url, statut_plateforme, job_id, inventaire_id, created_at, disparu_le")
           .eq("platform", plateforme).gte("created_at", String(pf["deleted_at"])).limit(50);
         const candidates = candidatesDepuisRetrait({ jobId: idJ, ancienId, deletedAt: pf["deleted_at"], lignes: lignes ?? [], inventaireId: j.inventaire_id ?? null });
-        let ancienne: Record<string, unknown> | null = null;
-        if (ancienId) {
-          const { data: a } = await userClient.from("annonces_plateforme")
-            .select("titre, photo_url").eq("platform", plateforme).eq("listing_id", ancienId).maybeSingle();
-          ancienne = (a as Record<string, unknown> | null) ?? null;
-        }
-        const urlsPhotos = [ancienne?.["photo_url"], ...candidates.map((c: Record<string, unknown>) => c["photo_url"])]
-          .map((u) => String(u ?? "")).filter(Boolean);
-        const empreinteDe = new Map<string, { dhash: string; phash: string; couleur: string }>();
-        if (urlsPhotos.length) {
-          const { data: emps } = await userClient.from("photo_empreintes")
-            .select("url, dhash, phash, couleur").in("url", urlsPhotos);
-          for (const e of (emps ?? []) as Array<Record<string, string>>) {
-            if (e.dhash && e.phash) empreinteDe.set(e.url, { dhash: e.dhash, phash: e.phash, couleur: e.couleur ?? "" });
-          }
-        }
-        const snapTitre = (pf["republish_snapshot"] as Record<string, unknown> | undefined)?.["titre"];
+        // Point A : seul l'identifiant conservé après la réponse du dépôt fait preuve.
         const juge = jugerCandidates({
           candidates,
-          titres: [j.title, snapTitre, ancienne?.["titre"]],
-          prix: j.price,
-          photoIdentique: (c: Record<string, unknown>) => {
-            const a = empreinteDe.get(String(ancienne?.["photo_url"] ?? ""));
-            const b = empreinteDe.get(String(c["photo_url"] ?? ""));
-            if (!a || !b) return null;
-            return comparerEmpreintes(a, b).verdict === "identique";
-          },
+          listingIdProuve: String(pf["new_platform_listing_id"] ?? "") || null,
         });
         const trace = {
           apres: susp.at, le: new Date().toISOString(), releve: String(fait.id), verdict: juge.verdict,
@@ -2476,7 +2485,7 @@ serve(async (req) => {
             recreation_verifiee: trace,
             rattachement_recreation: {
               le: new Date().toISOString(), listing_id: String(c["listing_id"]),
-              preuve: "seule annonce apparue depuis le retrait ; titre et photo identiques, prix à 1 € près, en ligne",
+              preuve: "identifiant conservé après le dépôt",
               pose_par: "get-pending-jobs (redépôt interrompu : annonce déjà partie)",
             },
           };
@@ -2487,19 +2496,12 @@ serve(async (req) => {
           if (ok) console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : annonce ${String(c["listing_id"])} déjà partie, identité certaine → RATTACHÉE (published), aucun redépôt`);
           continue;
         }
-        if (juge.verdict === "attendre") {
-          const depuisReleve = Date.now() - Date.parse(String(fait.finished_at ?? ""));
-          if (depuisReleve < EMPREINTE_ATTENTE_MAX_MIN * 60_000) {
-            console.log(`[get-pending-jobs] redépôt ${court} (${plateforme}) : candidate trouvée, ${juge.raison} — retenu`);
-            continue;
-          }
-        }
         const liens = (juge as { liens?: string[] }).liens ?? [];
         const raisons = (juge as { raisons?: string[] }).raisons ?? [(juge as { raison?: string }).raison ?? "identité non prouvée"];
         await needsUser(
-          `Une annonce ${nomPf} est déjà partie lors d'un essai précédent de cette republication : ${liens.join(" ; ")}. ` +
+          `Une annonce ${nomPf} pourrait correspondre à cet article : ${liens.join(" ; ")}. ` +
           `On ne redépose pas, pour ne jamais la mettre en double (${raisons.join(", ")}). Regarde-la sur ${nomPf} : ` +
-          "si c'est la bonne, il n'y a rien d'autre à faire ; si tu la supprimes, relance ensuite la republication d'un clic.",
+          "Confirme dans tes annonces s’il s’agit du même exemplaire. Ne supprime aucune annonce pour résoudre ce doute.",
           { verdict: "incertaine", liens, raisons, releve: String(fait.id), essai: susp },
         );
       }
@@ -3637,12 +3639,14 @@ serve(async (req) => {
             const idsCandidats: string[] = [];
             const idPropre = String((d as { platform_listing_id?: string | null }).platform_listing_id ?? "").trim();
             if (idPropre) idsCandidats.push(idPropre);
-            if (d.inventaire_id != null) {
+            const depotProuve = String((pf["arme_par"] as Record<string, unknown> | undefined)?.["depot"] ?? "");
+            if (d.inventaire_id != null && /^[0-9a-f-]{36}$/i.test(depotProuve)) {
               const { data: depots } = await userClient
                 .from("cross_post_jobs")
                 .select("id, status, listing_url, platform_listing_id, platform_fields")
                 .eq("platform", d.platform)
                 .eq("inventaire_id", d.inventaire_id)
+                .eq("id", depotProuve)
                 .in("action", ["publish", "republish"])
                 .order("created_at", { ascending: false })
                 .limit(5);
@@ -3861,81 +3865,52 @@ serve(async (req) => {
     //    ne la consultaient pas : on gardait la lecture et on laissait l'écriture
     //    libre. C'est l'inverse qu'il faut.
     //
-    // ⛔ ET ON NE CONCLUT QUE SUR DEUX CERTITUDES. Il faut que l'article porte un
-    //    `vinted_account_id` ET que la sonde connaisse la boutique de la session
-    //    (`extension_sessions.vinted_identite.user_id`). Si l'un des deux manque,
-    //    on ne retient RIEN : un compte mono-boutique dont l'identité n'a jamais
-    //    été relevée ne doit pas voir ses retraits s'arrêter.
+    // Sans origine confirmée, aucune opération ne part. Une erreur de lecture
+    // retient le lot jusqu’au prochain poll ; elle ne devient pas une permission.
     let heldBoutiqueEtrangere = 0;
     if (!includeProcessing && !includeNeedsUser) {
-      // ── LES RETRAITS ORPHELINS AUSSI (24/09, remialbertholl) ──────────────
-      // Un retrait né de la SUPPRESSION de l'article (trigger du 16/09) perd
-      // son inventaire_id par la clé étrangère : la garde ne le voyait jamais,
-      // alors que c'est exactement son cas. Deux retraits de Rémi visaient des
-      // annonces de @nadegemarcelin78 (16040413) pendant que Chrome était sur
-      // @jcassou : Vinted répondait 403 access_denied, lu comme « anti-robot »,
-      // en boucle depuis la veille. La boutique vit désormais SUR le job
-      // (platform_fields.vinted_account_id : trigger 20260924200000, et
-      // l'extension ≥ 0.6.65 qui lit le propriétaire sur la page de l'annonce).
-      const boutiqueDuJob = (j: Record<string, unknown>) =>
-        String(((j.platform_fields as Record<string, unknown> | null) ?? {}).vinted_account_id ?? "").trim();
-      const ecrituresVinted = out.filter((j) =>
-        j.platform === "vinted" && (j.action === "delete" || j.action === "republish") &&
-        (j.inventaire_id != null || boutiqueDuJob(j as Record<string, unknown>) !== ""));
-      if (ecrituresVinted.length) {
-        try {
-          const { data: profilBoutique } = await userClient
-            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
-          const identite = ((profilBoutique?.extension_sessions ?? {}) as Record<string, unknown>)
-            .vinted_identite as { user_id?: string; login?: string } | null | undefined;
-          const boutiqueSession = String(identite?.user_id ?? "").trim();
-          if (boutiqueSession) {
-            const ids = [...new Set(ecrituresVinted.map((j) => j.inventaire_id).filter((x) => x != null))];
-            const { data: arts } = ids.length
-              ? await userClient.from("inventaire").select("id, vinted_account_id").in("id", ids)
-              : { data: [] as Record<string, unknown>[] };
-            const boutiqueDe = new Map<string, string>();
-            for (const a of (arts ?? []) as Record<string, unknown>[]) {
-              const b = String(a.vinted_account_id ?? "").trim();
-              if (b) boutiqueDe.set(String(a.id), b);
-            }
-            const aRetenir = new Set<string>();
-            for (const j of ecrituresVinted) {
-              const boutiqueArticle = (j.inventaire_id != null ? boutiqueDe.get(String(j.inventaire_id)) : undefined)
-                || boutiqueDuJob(j as Record<string, unknown>) || undefined;
-              if (!boutiqueArticle || boutiqueArticle === boutiqueSession) continue;
-              const pf = ((j.platform_fields as Record<string, unknown> | null) ?? {});
-              const quoi = j.action === "delete" ? "Le retrait" : "La republication";
-              await userClient.from("cross_post_jobs")
-                .update({
-                  status: "needs_user",
-                  error: `${quoi} de cette annonce n'a pas été lancé : elle appartient à un autre compte Vinted que celui ` +
-                    `ouvert dans Chrome sur ton ordinateur. Rien n'a été touché sur Vinted. ` +
-                    `Connecte-toi au bon compte Vinted, puis relance.`,
-                  platform_fields: {
-                    ...pf,
-                    needs_user_source: "boutique_etrangere",
-                    boutique_etrangere: {
-                      article: boutiqueArticle,
-                      session: boutiqueSession,
-                      login_session: identite?.login ?? null,
-                      le: new Date().toISOString(),
-                      pose_par: "get-pending-jobs (garde boutique, 22/09)",
-                    },
-                  },
-                })
-                .eq("id", j.id).eq("status", "pending");
-              aRetenir.add(String(j.id));
-              console.log(`[get-pending-jobs] userId=${user.id} ${j.action} vinted ${String(j.id).slice(0, 8)} RETENU : article de la boutique ${boutiqueArticle}, session sur ${boutiqueSession} — rien n'est envoyé à Vinted`);
-            }
-            if (aRetenir.size) {
-              const avant = out.length;
-              out = out.filter((j) => !aRetenir.has(String(j.id)));
-              heldBoutiqueEtrangere = avant - out.length;
-            }
+      const operations = out.filter(j => ["publish", "delete", "republish"].includes(j.action));
+      const retenus = new Set<string>();
+      if (operations.length) {
+        const { data: profil, error: erreurProfil } = await userClient.from("profiles")
+          .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
+        const ids = [...new Set(operations.map(j => j.inventaire_id).filter(x => x != null))];
+        const { data: articles, error: erreurArticles } = ids.length
+          ? await userClient.from("inventaire").select("id,vinted_account_id").in("id", ids)
+          : { data: [], error: null };
+        const origines = new Map((articles ?? []).map(a => [String(a.id), String(a.vinted_account_id ?? "").trim()]));
+        const identite = identiteBoutiqueFraiche(profil?.extension_sessions);
+        const fiable = !erreurProfil && !erreurArticles && !!profil;
+        for (const j of operations) {
+          const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          const { origine, contradictoire } = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id);
+          const motif = contradictoire ? "origine_contradictoire" : verifierBoutiqueOperation({ action: j.action, platform: j.platform,
+            boutiqueArticle: origine, boutiqueSession: identite?.user_id,
+            boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: fiable });
+          // Une lecture manquée n'autorise aucune opération sur une fiche dont
+          // on n'a pas pu vérifier l'origine. Le prochain poll relit la preuve.
+          if (!motif && (fiable || j.inventaire_id == null)) {
+            if (origine) j.platform_fields = { ...pf, vinted_account_id: origine };
+            continue;
           }
-        } catch (_e) { /* best-effort : jamais un point de panne — le job est servi */ }
+          retenus.add(String(j.id));
+          if (!fiable) continue;
+          const message = motif === "boutique_etrangere"
+            ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi à la boutique qui porte cette annonce, puis relance."
+            : motif === "boutique_non_confirmee"
+            ? "La boutique d'origine de cet article n'est pas confirmée sur ton compte FillSell. Si c'est bien ta boutique, connecte-toi à celle-ci sur Vinted et confirme-la dans « Actualiser mon dressing ». Sinon, ne relance pas cette opération."
+            : motif === "origine_contradictoire"
+            ? "La fiche et l'opération désignent deux boutiques Vinted différentes. FillSell garde l'annonce en ligne : son origine doit être confirmée avant toute opération."
+            : "FillSell attend de pouvoir vérifier la boutique ouverte dans Chrome. L'annonce reste en ligne ; l'opération reprendra lorsque la bonne boutique sera reconnue.";
+          await userClient.from("cross_post_jobs").update({ status: "needs_user", error: message,
+            platform_fields: { ...pf, needs_user_source: "boutique_etrangere",
+              boutique_etrangere: { motif, article: origine || null, session: identite?.user_id ?? null,
+                login_session: identite?.login ?? null, le: new Date().toISOString(), pose_par: "get-pending-jobs (identité prouvée)" } }
+          }).eq("id", j.id).eq("status", "pending");
+        }
       }
+      heldBoutiqueEtrangere = retenus.size;
+      out = out.filter(j => !retenus.has(String(j.id)));
     }
 
     // ══ ASPECTS OBLIGATOIRES eBay : LE SERVEUR LES POSE (2026-09-21, GO Nico) ══

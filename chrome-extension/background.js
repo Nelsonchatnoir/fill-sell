@@ -8755,6 +8755,9 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // lu — une redirection vers l'accueil n'offre QUE des annonces d'autres
 // vendeurs, et un titre n'y prouve rien.
 async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false, listeDuCompte = null } = {}) {
+  // Point A : une liste et un titre ne prouvent jamais quel exemplaire a été déposé.
+  // Les recherches dont le motif contient l'identifiant du reçu restent possibles.
+  if (requireTitle || title) return { url: null, diag: { identite_non_prouvee: true } };
   const cheminListe = listeDuCompte ? (CHEMIN_LISTE_DU_COMPTE[listeDuCompte]?.source ?? null) : null;
   try {
     const [res] = await chrome.scripting.executeScript({
@@ -15934,25 +15937,8 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     }).catch((e) => console.warn("[sync-dressing] trace identité non écrite (migration absente ?):", e?.message ?? e));
   }
 
-  // ── GARDE D'IDENTITÉ — boutiques confirmées (2026-09-03, incident Nadège) ──
-  // Le dressing lu est celui du compte Vinted connecté dans CE navigateur ;
-  // jusqu'ici il atterrissait dans l'inventaire du compte FillSell de
-  // l'extension SANS AUCUN contrôle de propriété (~716 articles de
-  // @nadegemarcelin78 importés chez deux autres comptes FillSell). AVANT tout
-  // import désormais :
-  //   · boutique déjà confirmée (liste v2 de vinted_sync_pin) → sync normale ;
-  //   · aucune boutique connue, adoption permise → la boutique courante est
-  //     ADOPTÉE (source 'premiere_sync') — zéro friction pour le parc
-  //     mono-boutique, qui est la quasi-totalité ;
-  //   · a_confirmer:true (posé à la main sur les comptes à historique
-  //     douteux) OU boutique inconnue → AUCUN import : run 'failed' porteur
-  //     du marqueur [boutique_a_confirmer], l'app affiche la DÉCISION
-  //     (« c'est bien ma boutique » → ajout + relance / changer de compte
-  //     Vinted dans Chrome). Multi-boutiques légitime (cas Manon) : une
-  //     confirmation par boutique, une seule fois.
-  // Fail-open UNIQUEMENT sur l'aléa réseau de lecture du profil : on ne
-  // bloque pas le parc entier sur un 5xx PostgREST — ce run-là garde
-  // l'ancien comportement et la garde reprend au run suivant.
+  // Avant tout import, y compris le premier, la boutique doit avoir été
+  // confirmée par la personne. Une lecture de profil manquée arrête le relevé.
   if (!mock && ident?.userId) {
     const idActuel = String(ident.userId);
     let pinInfo = null;
@@ -15960,7 +15946,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       const rows = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, token);
       pinInfo = lireBoutiquesPin(rows?.[0]?.vinted_sync_pin);
     } catch (e) {
-      console.warn("[sync-dressing] boutiques confirmées illisibles — garde passée pour CE run:", e?.message ?? e);
+      return await echec("[lecture_boutiques] FillSell ne peut pas vérifier tes boutiques pour le moment. Aucun article n’a été importé. Réessaie dans quelques minutes.");
     }
     if (pinInfo) {
       const connue = pinInfo.boutiques.some((b) => String(b.user_id) === idActuel);
@@ -15977,33 +15963,6 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
             method: "PATCH", headers: { Prefer: "return=representation" },
             body: JSON.stringify({ vinted_sync_pin: maj }),
           }).catch(() => {});
-        }
-      } else if (pinInfo.boutiques.length === 0 && !pinInfo.aConfirmer) {
-        // Adoption du 1er run : écrite AVANT l'import et VÉRIFIÉE (un UPDATE
-        // profiles bloqué par la RLS échoue en silence sans representation —
-        // leçon du 2026-07-06). Échec d'écriture = ancien comportement,
-        // retentée au prochain run.
-        const nouveau = {
-          v: 2, a_confirmer: false,
-          boutiques: [{
-            user_id: idActuel,
-            login: ident.login ? String(ident.login) : null,
-            ajoute_le: new Date().toISOString(),
-            source: "premiere_sync",
-          }],
-        };
-        try {
-          const maj = await restRequest(`profiles?id=eq.${userId}`, token, {
-            method: "PATCH", headers: { Prefer: "return=representation" },
-            body: JSON.stringify({ vinted_sync_pin: nouveau }),
-          });
-          if (Array.isArray(maj) && maj.length) {
-            console.log(`[sync-dressing] boutique @${ident.login ?? idActuel} adoptée (première sync du régime multi-boutiques)`);
-          } else {
-            console.warn("[sync-dressing] adoption de boutique non confirmée (0 ligne) — retentée au prochain run");
-          }
-        } catch (e) {
-          console.warn("[sync-dressing] adoption de boutique refusée — retentée au prochain run:", e?.message ?? e);
         }
       } else {
         const connues = pinInfo.boutiques.map((b) => `@${b.login ?? b.user_id}`).join(", ");
@@ -18888,9 +18847,10 @@ function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
     const ts = Number(a.photo_ts);
     return Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000;
   });
-  if (candidats.length === 1) return { item: candidats[0], raison: null };
   if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond" };
-  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire` };
+  // Point A : une date de photo, un titre ou une candidate unique ne prouvent
+  // jamais que le dépôt de CE job a créé cette annonce.
+  return { item: null, raison: `${candidats.length} annonces correspondent — identité à confirmer`, candidats };
 }
 
 // Clôt un job republish en SUCCÈS sur une annonce déjà en ligne (reconnue par
@@ -19422,7 +19382,7 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
             `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
             accessToken,
           ).catch(() => []);
-          const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
+          const { item: trouve, raison: pourquoi, candidats } = reconnaitreAnnonceRecreee(page2.articles, {
             titre: jobRecreation.title,
             deletedAt: pf.deleted_at,
             idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
@@ -19434,6 +19394,14 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
               "recréation confirmée dans le dressing après coupure du canal",
             );
             return { status: "published", listingUrl: trouve.url ?? null };
+          }
+          if (candidats?.length) {
+            const msg = "Une annonce pourrait correspondre à cet article. Confirme dans tes annonces s'il s'agit du même exemplaire avant de reprendre la republication. Rien n'a été rattaché ni redéposé.";
+            pf.needs_user_source = "recreation_deja_partie";
+            pf.recreation_doublon = { at: new Date().toISOString(), raison: pourquoi,
+              liens: candidats.map((c) => c.url ?? `https://www.vinted.fr/items/${c.vinted_item_id}`) };
+            await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+            return { status: "needsUser", error: msg };
           }
           console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
         }
@@ -21484,9 +21452,10 @@ async function processRepublishJob(job, accessToken) {
             //    à ne pas faire. reconnaitreAnnonceRecreee s'abstient déjà de
             //    CHOISIR ; on s'abstient aussi de RECRÉER, et on le dit.
             if (/annonces correspondent/.test(String(raison ?? ""))) {
-              const msg = "Republication en pause : plusieurs annonces identiques sont en ligne sur Vinted "
-                + "(une republication a abouti deux fois). Garde l'annonce que tu veux, supprime l'autre, "
-                + "puis relance depuis la fiche de l'article. Rien n'a été recréé.";
+              const msg = "Une annonce pourrait correspondre à cet article sur Vinted. "
+                + "Confirme dans tes annonces s'il s'agit du même exemplaire avant de reprendre la republication. "
+                + "Ne supprime aucune annonce pour résoudre ce doute. Rien n'a été rattaché ni redéposé.";
+              pf.needs_user_source = "recreation_deja_partie";
               pf.recreation_doublon = { at: new Date().toISOString(), raison: String(raison) };
               await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
               console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);
@@ -22260,10 +22229,10 @@ async function processDeleteJob(job, accessToken) {
       const pfB = { ...(job.platform_fields ?? {}) };
       delete pfB.processing_since;
       delete pfB.blocage_antirobot;
-      pfB.vinted_account_id = String(b.article);
+      if (b.article != null && String(b.article).trim()) pfB.vinted_account_id = String(b.article);
       pfB.needs_user_source = "boutique_etrangere";
       pfB.boutique_etrangere = {
-        article: String(b.article), session: b.session != null ? String(b.session) : null,
+        article: b.article != null ? String(b.article) : null, session: b.session != null ? String(b.session) : null,
         login_session: b.login_session ?? null, le: new Date().toISOString(),
         pose_par: "extension (propriétaire lu sur la page de l'annonce, 24/09)",
       };

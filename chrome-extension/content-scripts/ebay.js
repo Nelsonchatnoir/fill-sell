@@ -294,17 +294,15 @@ async function deleteListing(job) {
   if (itemId) {
     // La ligne peut se monter après la grille : on lui laisse le même budget.
     anchor = await waitFor(() => {
-      const liste = Array.from(document.querySelectorAll(`a[href*="${itemId}"]`));
+      const liste = Array.from(document.querySelectorAll('a[href*="/itm/"], a[href*="itemId="]')).filter(a => {
+        const id = String(a.getAttribute('href') ?? '').match(/\/itm\/(?:[^/]*\/)?(\d{9,})(?:[/?#]|$)|[?&]itemId=(\d{9,})(?:[&#]|$)/i);
+        return (id?.[1] ?? id?.[2]) === itemId;
+      });
       return liste.length ? ancreUtile(liste) : null;
     }, 10000);
     if (anchor) t(`annonce trouvée par itemId ${itemId}`);
   }
-  if (!anchor && job.title) {
-    const cible = job.title.trim();
-    anchor = ancreUtile(Array.from(document.querySelectorAll("a"))
-      .filter((a) => a.textContent.trim() === cible));
-    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
-  }
+  // Point A : aucun repli par titre ; deux annonces identiques sont deux unités.
   if (!anchor) {
     t(`annonce INTROUVABLE dans le Hub vendeur (itemId=${itemId ?? "?"}, titre="${job.title ?? "?"}")`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };

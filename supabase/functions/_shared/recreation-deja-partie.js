@@ -16,8 +16,8 @@
 // LA RÈGLE (Nico, 25/09) : après un essai de recréation qui a PU envoyer le
 // dépôt, on ne redépose plus sans avoir relu les annonces du compte. Une
 // annonce apparue depuis le retrait est rattachée AUTOMATIQUEMENT seulement si
-// son identité est CERTAINE — même compte, même titre, même prix, même photo,
-// apparue après le retrait, en ligne, seule candidate. Sinon : needs_user avec
+// un identifiant issu du dépôt la désigne. Titre, prix, photo et date ne
+// prouvent jamais l'exemplaire (règle Nico du 28/09). Sinon : needs_user avec
 // le lien de l'annonce déjà partie. Jamais de redépôt en double.
 //
 // Ce module ne fait que JUGER, sur des données passées en paramètre (pur,
@@ -128,29 +128,19 @@ export function candidatesDepuisRetrait({ jobId, ancienId, deletedAt, lignes, in
  * Le verdict sur les candidates.
  *   · { verdict: "aucune" }                      → on peut redéposer ;
  *   · { verdict: "certaine", retenue }           → rattachement automatique ;
- *   · { verdict: "attendre", raison }            → l'empreinte photo n'est pas
- *                                                  encore calculée : on patiente ;
  *   · { verdict: "incertaine", raisons, liens }  → needs_user avec les liens.
- * `photoIdentique(ligne)` rend true / false / null (null = empreinte absente).
+ * @param {{ candidates: any[], listingIdProuve?: string | null }} arg
  */
-export function jugerCandidates({ candidates, titres, prix, photoIdentique }) {
+export function jugerCandidates({ candidates, listingIdProuve = null }) {
   if (!candidates.length) return { verdict: "aucune" };
   const liens = candidates.map((c) => c.url || c.listing_id).filter(Boolean);
   if (candidates.length > 1) {
     return { verdict: "incertaine", raisons: [`${candidates.length} annonces apparues depuis le retrait`], liens };
   }
   const c = candidates[0];
-  const raisons = [];
-  const titresOk = (titres ?? []).map(titreComparable).filter(Boolean);
-  if (!titresOk.includes(titreComparable(c.titre))) raisons.push("titre différent");
-  // Leboncoin arrondit price[0] à l'euro (44,99 → 45) : moins d'un euro d'écart.
-  if (!(Number.isFinite(Number(c.prix)) && Number.isFinite(Number(prix)) && Math.abs(Number(c.prix) - Number(prix)) < 1)) {
-    raisons.push("prix différent");
+  const preuve = String(listingIdProuve ?? "").trim();
+  if (preuve && String(c.listing_id) === preuve && c.statut_plateforme === "en_ligne") {
+    return { verdict: "certaine", retenue: c };
   }
-  if (c.statut_plateforme !== "en_ligne") raisons.push(`statut « ${c.statut_plateforme ?? "inconnu"} » (pas en ligne)`);
-  if (raisons.length) return { verdict: "incertaine", raisons, liens };
-  const photo = photoIdentique(c);
-  if (photo === null) return { verdict: "attendre", raison: "empreinte photo pas encore calculée", liens };
-  if (photo !== true) return { verdict: "incertaine", raisons: ["photo différente"], liens };
-  return { verdict: "certaine", retenue: c };
+  return { verdict: "incertaine", raisons: ["aucun identifiant de dépôt ne prouve que cette annonce est le même exemplaire"], liens };
 }

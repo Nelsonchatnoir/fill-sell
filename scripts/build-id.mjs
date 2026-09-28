@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-27T20:14:49Z'; // recale 4732e82 (0.6.75 : 0.6.74 + relevés complets et vrais — Leboncoin relu par l'adresse, comptage par annonce, total annoncé, captures depuis la liste, jamais-capturées d'abord, murs eBay nommés ; Opla : un champ manquant se demande aussi en republication, tailles en français). UTC VRAI lu par EPOCH (%ct 1790540089). La 0.6.74 (e1dbc59), jamais téléversée, est remplacée par la 0.6.75 ; MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-09-28T10:58:50Z'; // Point A, 0.6.76 en préparation : identité prouvée. MIN_BUILD inchangé.
 // Historique de la valeur precedente : '2026-09-27T09:41:57Z' — recale 15205cf (0.6.70). Zip 0.6.70 (61cbced) JAMAIS téléversé, remplacé par la 0.6.71.
 // Historique de la valeur precedente : '2026-09-25T21:39:57Z' — recale efb7843 (0.6.69, publiée et servie : 53 comptes au 27/09).
 // Historique de la valeur precedente : '2026-09-25T19:28:44Z' — recale 77c47b4 (0.6.69 : + adresse LBC commune structurée et code postal exigé avant retrait, preuve de lecture écrite sur les retraits, retrait Vinted en vérification = attente, relevé Beebs d'une page vide par l'uid de session). Quatrième zip 0.6.69 (0e5e97f) JAMAIS téléversé, remplacé. UTC VRAI lu par EPOCH (%ct 1790372397).

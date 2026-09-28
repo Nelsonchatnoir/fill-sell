@@ -281,6 +281,7 @@ export async function orchestrateSale(
       // vinted action='republish' resté 'published' après la vente LBC).
       .in("action", ["publish", "republish"])
       .neq("id", job.id)
+      .neq("platform", job.platform)
       // needs_user inclus (2026-09-16, GO Nico) : un frère qui ATTEND une
       // réponse (catégorie eBay à confirmer, champ manquant) n'est ni en file
       // ni en ligne — il était donc ignoré ici, survivait à la vente, et
@@ -291,6 +292,18 @@ export async function orchestrateSale(
       .in("status", ["pending", "processing", "needs_user", "published"]);
 
     for (const sib of siblings ?? []) {
+      // Point A : toutes les copies passent par les mêmes preuves SQL.
+      const { data: prouve, error: preuveErr } = await admin.rpc("retrait_job_prouve", { p_job: sib.id });
+      if (preuveErr || prouve !== true) continue;
+      if (sib.status === "published") {
+        const { data: arme, error: armeErr } = await admin.rpc("armer_retrait_job", {
+          p_job_id: sib.id, p_chemin: "vente_copie_prouvee", p_delai: "0 seconds",
+        });
+        if (armeErr) throw new Error(armeErr.message);
+        if (arme) retraitsArmes++;
+        // Le dépôt reste suivi tant que le retrait n'a pas abouti.
+        continue;
+      }
       // ⚠️ NE PLUS EXIGER listing_url (2026-07-22, cas réel : la montre G-Shock
       // est restée EN LIGNE sur Leboncoin alors que l'article était vendu).
       // AVANT : `sib.status === "published" && sib.listing_url`. Un job
@@ -343,71 +356,7 @@ export async function orchestrateSale(
       if (sibErr) { console.error(`[sale] Cancel sibling ${sib.id}:`, sibErr.message); continue; }
       siblingsCancelled++;
       if (wasLive && !retraitDejaArme) pendingRemoval++;
-      // ── BEEBS SANS LIEN : ON ARME LE RETRAIT NOUS-MÊMES (2026-09-16, GO Nico)
-      // Le dépôt reste 'published' (décision du 11/09, ci-dessus) — mais le
-      // bandeau de retrait de l'app ne lit que les frères 'cancelled' : ce
-      // dépôt-là n'y apparaissait jamais, personne n'armait rien, et le bloc
-      // « retrait Beebs sans lien » de get-pending-jobs (qui recopie le lien du
-      // dépôt sur le retrait dès qu'il arrive, ou le clôt au bout de 7 jours)
-      // n'avait AUCUN job à servir. Cas mesuré : ensemble de sport
-      // 1788463952919004 vendu sur Vinted le 15/09 08:02, dépôt Beebs 1d074570
-      // laissé 'published' + retrait_attend_lien, zéro retrait armé.
-      // C'est la seule exception à « le clic de l'utilisateur arme le
-      // retrait » : ici il n'a AUCUN endroit où cliquer. Même forme de job
-      // qu'armRemovals (removal_url_missing, aucun lien — jamais de ciblage
-      // par titre) ; retrait_attend_lien est le marqueur que get-pending-jobs
-      // lit. Idempotent : un retrait Beebs déjà actif sur l'article → rien.
-      if (beebsSansLien) {
-        try {
-          const { data: deja } = await admin.from("cross_post_jobs").select("id")
-            .eq("user_id", userId).eq("inventaire_id", job.inventaire_id)
-            .eq("platform", "beebs").eq("action", "delete")
-            .in("status", ["pending", "processing", "needs_user"]).limit(1);
-          if (!(deja ?? []).length) {
-            const armeLe = new Date().toISOString();
-            const { data: arme, error: armeErr } = await admin.from("cross_post_jobs").insert({
-              user_id: userId,
-              inventaire_id: job.inventaire_id,
-              platform: "beebs",
-              action: "delete",
-              status: "pending",
-              photo_option: "original",
-              title: sib.title ?? job.title ?? null,
-              listing_url: null,
-              platform_fields: {
-                removal_url_missing: true,
-                retrait_attend_lien: { depuis: armeLe, motif: "depot_beebs_en_verification_a_la_vente" },
-                arme_par: { chemin: "vente_beebs_sans_lien", job_vendu: job.id, depot: sib.id, le: armeLe },
-              },
-            }).select("id").maybeSingle();
-            if (armeErr) {
-              console.error(`[sale] retrait Beebs sans lien (dépôt ${sib.id}) non armé :`, armeErr.message);
-            } else {
-              retraitsArmes++;
-              // Le retrait existe : plus rien à proposer (même geste qu'armRemovals).
-              const pfDepot = {
-                ...((patch.platform_fields as Record<string, unknown>) ?? {}),
-                pending_removal: false,
-                retrait_arme: { job: arme?.id ?? null, le: armeLe },
-              };
-              await admin.from("cross_post_jobs").update({ platform_fields: pfDepot }).eq("id", sib.id);
-              // Journal d'audit (src/utils/journalRetraits.js) : un retrait armé
-              // sans geste utilisateur laisse sa ligne, sous son propre chemin.
-              const { error: jErr } = await admin.from("usage_logs").insert({
-                user_id: userId,
-                feature: "retrait_annonces",
-                metadata: {
-                  chemin: "vente_beebs_sans_lien", plateformes: ["beebs"], n_annonces: 1, n_articles: 1,
-                  article_id: String(job.inventaire_id), job_vendu: job.id,
-                },
-              });
-              if (jErr) console.warn("[sale] retrait_annonces non journalisé :", jErr.message);
-            }
-          }
-        } catch (e) {
-          console.error(`[sale] retrait Beebs sans lien (dépôt ${sib.id}) :`, e instanceof Error ? e.message : String(e));
-        }
-      }
+
     }
   }
 

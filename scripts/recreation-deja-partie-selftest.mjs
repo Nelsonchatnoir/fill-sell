@@ -90,12 +90,14 @@ const v1 = jugerCandidates({ candidates: cands, titres, prix: 44.99, photoIdenti
 ok("f554a951 : statut « inconnu » (pas en ligne) → incertaine, lien donné",
   v1.verdict === "incertaine" && v1.liens[0].includes("3276284130"), JSON.stringify(v1));
 const enLigne = [{ ...cands[0], statut_plateforme: "en_ligne" }];
-ok("en ligne, même titre, prix à 1 € près, même photo → certaine",
-  jugerCandidates({ candidates: enLigne, titres, prix: 44.99, photoIdentique: () => true }).verdict === "certaine");
+ok("titre, prix et photo identiques ne prouvent jamais le même exemplaire",
+  jugerCandidates({ candidates: enLigne, titres, prix: 44.99, photoIdentique: () => true }).verdict === "incertaine");
+ok("identifiant du dépôt exact → certaine", jugerCandidates({ candidates: enLigne, listingIdProuve: "3276284130" }).verdict === "certaine");
+ok("identifiant d’un autre dépôt → incertaine", jugerCandidates({ candidates: enLigne, listingIdProuve: "327628413" }).verdict === "incertaine");
 ok("photo différente → incertaine",
   jugerCandidates({ candidates: enLigne, titres, prix: 44.99, photoIdentique: () => false }).verdict === "incertaine");
-ok("empreinte pas encore calculée → attendre",
-  jugerCandidates({ candidates: enLigne, titres, prix: 44.99, photoIdentique: () => null }).verdict === "attendre");
+ok("empreinte absente → question, sans attendre un calcul inutile",
+  jugerCandidates({ candidates: enLigne, titres, prix: 44.99, photoIdentique: () => null }).verdict === "incertaine");
 ok("prix trop différent → incertaine",
   jugerCandidates({ candidates: enLigne, titres, prix: 39, photoIdentique: () => true }).verdict === "incertaine");
 ok("titre différent → incertaine",

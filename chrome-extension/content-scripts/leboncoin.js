@@ -343,6 +343,9 @@ async function deleteListing(job) {
   const idMatch = String(job.listing_url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
   const adId = idMatch?.[1] ?? null;
 
+  if (!adId) return { success: false, needsUser: true,
+    error: "Le lien de l'annonce à retirer manque. Confirme l'annonce dans FillSell ; aucun retrait n'a été tenté.", trace };
+
   if (/^\/ad\//.test(location.pathname)) return deleteDepuisPageAnnonce(job, adId, trace, t);
   if (/mes-annonces/.test(location.pathname)) return deleteDepuisListe(job, adId, trace, t);
   return { success: false, error: `Page inattendue pour une suppression LBC : ${location.href}`, trace };
@@ -587,33 +590,7 @@ async function deleteDepuisListe(job, adId, trace, t) {
     ? (anchor.closest('[data-qa-id*="ad"], article, li') ?? anchor.closest("div"))
     : null;
 
-  // Repli par TITRE — REÉCRIT le 2026-07-22. L'ancien exigeait l'égalité EXACTE
-  // (el.textContent.trim() === job.title.trim()) : inutilisable en pratique.
-  // Relevé réel sur la montre restée en ligne :
-  //   job     « Montre Casio G-Shock noire bracelet résine »
-  //   annonce « Casio G-Shock Noire Bracelet Résine »
-  // Un mot d'écart, et le repli ne trouvait rien. On raisonne désormais en
-  // CARTES (le périmètre qui porte les actions) et on exige que la carte NOMME
-  // l'annonce, avec la même garde que celle qui protège le clic. Et surtout :
-  // si PLUSIEURS cartes correspondent, on ne devine pas — on abandonne. Deux
-  // annonces quasi identiques du même vendeur, c'est exactement le cas où une
-  // suppression à l'aveugle détruit la mauvaise (vécu sur eBay le même jour).
-  if (!card && job.title) {
-    const cartes = Array.from(document.querySelectorAll(LBC_CARTES_SEL));
-    const nommees = cartes.filter((c) => annonceNommee(c.textContent, job, adId));
-    if (nommees.length === 1) {
-      card = nommees[0];
-      t(`annonce retrouvée par titre parmi ${cartes.length} carte(s) — ${annonceNommee(card.textContent, job, adId)}`);
-    } else if (nommees.length > 1) {
-      t(`ABANDON : ${nommees.length} annonces correspondent au titre « ${job.title} » — impossible de trancher, aucun clic`);
-      return {
-        success: false,
-        error: `${nommees.length} annonces Leboncoin correspondent au titre du job — suppression abandonnée (ambiguïté, il faut trancher à la main)`,
-        trace,
-      };
-    }
-  }
-
+  // Point A : seule la carte portant l’identifiant exact peut être retirée.
   if (!card) {
     if (estInterstitielDataDomeLbc()) return resultatChallengeLbc("« Mes annonces »", trace, t);
     // Le relevé qui sépare les deux « introuvable » que rien ne distinguait :
