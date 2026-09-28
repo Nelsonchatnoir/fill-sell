@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, type LangueVinted } from "../_shared/vinted-pays.ts";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
-import { sessionIdDuJwt, postesVivants, posteCourt, posteAvecAccesOpla, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
+import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // (25/09) Ce que Vinted exige quel que soit le catalogue — la MÊME règle que le
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
@@ -7516,6 +7516,18 @@ serve(async (req) => {
     // le plafond de 4 h côté extension reste le garde-fou absolu. `jobs` est la
     // file pending déjà en mémoire, `out` son sous-ensemble distribué : aucun
     // appel de plus.
+    // Point C : seule la file d'exécution réserve. Le popup reste une lecture.
+    // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: pris, error: erreurReservation } = await admin.rpc("reserver_jobs_extension", {
+        p_user: user.id, p_poste: identifiantPosteExtension(authHeader, body.poste_instance),
+        p_jobs: out.slice(0, 100).map(j => j.id),
+      });
+      if (erreurReservation) return json({ error: "La réservation des jobs est indisponible. La file sera relue au prochain passage." }, 503);
+      const idsPris = new Set(Array.isArray(pris) ? pris.map(String) : []);
+      out = out.filter(j => idsPris.has(String(j.id)));
+    }
     const _outIds = new Set(out.map((j) => String(j.id)));
     const _nowMs = Date.now();
     const heldBacklog = (jobs ?? []).filter((j) => {

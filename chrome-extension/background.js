@@ -1735,7 +1735,22 @@ async function jetonFraisApres401(ancien) {
 
 // ── Edge functions ─────────────────────────────────────────────────────────────
 
+let posteInstancePromise = null;
+function identifiantInstallation() {
+  if (!posteInstancePromise) posteInstancePromise = (async () => {
+    const ancien = (await chrome.storage.local.get('fillsell_poste_instance')).fillsell_poste_instance;
+    if (typeof ancien === 'string' && /^[a-f0-9-]{36}$/i.test(ancien)) return ancien;
+    const nouveau = crypto.randomUUID();
+    await chrome.storage.local.set({ fillsell_poste_instance: nouveau });
+    return nouveau;
+  })().catch(e => { posteInstancePromise = null; throw e; });
+  return posteInstancePromise;
+}
+
 async function callEdgeFunction(name, accessToken, body, rejeu = false) {
+  if (name === 'get-pending-jobs' || name === 'update-job-status') {
+    body = { ...(body ?? {}), poste_instance: await identifiantInstallation() };
+  }
   const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/${name}`, {
     method: "POST",
     headers: {
@@ -21493,8 +21508,7 @@ async function processRepublishJob(job, accessToken) {
         at: new Date().toISOString(),
         n: (Number(pf.recreation_tentee?.n) || 0) + 1,
       };
-      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf })
-        .catch((e) => console.warn(`[republish] job ${job.id} : marque de tentative non persistée — ${e?.message ?? e}`));
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
 
       // ── LA PAGE DE DÉPÔT S'OUVRE ICI, ET LE REMPLISSAGE PART TOUT DE SUITE ──
       // Ces quatre lignes sont la COPIE EXACTE de la séquence de la publication

@@ -99,3 +99,12 @@ export function posteSansAccesOpla(postes: Record<string, Poste>, o: Options = {
 export function posteCourt(sid: string | null | undefined): string {
   return String(sid ?? "").slice(0, 8) || "?";
 }
+
+/** Ancien parc : session existante. Nouveau : distingue aussi deux extensions
+ * partageant le même JWT, sans imposer ce nouveau champ aux clients installés. */
+export function identifiantPosteExtension(authHeader: string, instance: unknown): string | null {
+  const session = sessionIdDuJwt(authHeader);
+  if (!session) return null;
+  return typeof instance === "string" && /^[a-f0-9-]{36}$/i.test(instance)
+    ? `${session}/${instance}` : session;
+}

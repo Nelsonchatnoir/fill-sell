@@ -31,7 +31,7 @@ import { questionEnFrancais } from "../_shared/question-francais.js";
 // L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
-import { sessionIdDuJwt, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
+import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
@@ -515,6 +515,16 @@ serve(async (req) => {
       return json({ error: `status invalide, valeurs acceptées : ${ALLOWED_STATUSES.join(", ")}` }, 400);
     }
 
+    // Point C : contrôle avant toute écriture et surtout avant l'ACK processing
+    // attendu par les anciennes extensions avant d'agir sur les plateformes.
+    const posteReservation = identifiantPosteExtension(authHeader, body.poste_instance);
+    const adminReservation = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: reservation, error: erreurReservation } = await adminReservation.rpc("controler_job_extension", {
+      p_user: user.id, p_poste: posteReservation, p_job: jobId, p_statut: status,
+    });
+    if (erreurReservation) return json({ error: "La réservation du job est indisponible. Aucun geste ne doit partir." }, 503);
+    if (!reservation?.ok) return json({ error: reservation?.reason || "Ce job n'est plus réservé à ce poste." }, 409);
+
     // ── 'deleted' : réservé aux jobs action='delete' (suppression LIVE) ──────
     if (status === "deleted") {
       const { data: cur } = await userClient
@@ -731,7 +741,7 @@ serve(async (req) => {
             const montant = Number(pfCur.pepites_debitees ?? pfIn?.pepites_debitees ?? 0) || 0;
             const dejaRendue = String(pfCur.pepite_remboursee ?? pfIn?.pepite_remboursee ?? "") === "true";
             if (montant > 0 && !dejaRendue && serviceClient) {
-              const { error: rErr } = await serviceClient.rpc("refund_coins", {
+              const { error: rErr } = await adminReservation.rpc("refund_coins", {
                 p_user_id: user.id,
                 p_amount: montant,
                 p_metadata: { source: garde.refundSource, job_id: jobId },
@@ -748,7 +758,7 @@ serve(async (req) => {
               }
             }
           }
-          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${garde.log} : écriture processing REFUSÉE, job en needs_user, annonce intacte (catalog_id=${snapIn.catalog_id ?? "?"})`);
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${garde.log} : écriture processing REFUSÉE, job en needs_user, annonce intacte (catalog_id=${snapIn?.catalog_id ?? "?"})`);
           // Réponse non-2xx OBLIGATOIRE : c'est elle qui fait renoncer
           // l'extension avant toute suppression (catch de background.js ~9261).
           return json({ error: garde.reponse }, 409);
@@ -3312,13 +3322,13 @@ serve(async (req) => {
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {
           erreurTechniqueBrute = body.error;
         }
-        if (sortie.source) pfS["needs_user_source"] = sortie.source;
+        if ('source' in sortie && sortie.source) pfS["needs_user_source"] = sortie.source;
         else delete pfS["needs_user_source"];
-        if (sortie.champ && !pfS["needsUserField"]) pfS["needsUserField"] = sortie.champ;
+        if ('champ' in sortie && sortie.champ && !pfS["needsUserField"]) pfS["needsUserField"] = sortie.champ;
         // (27/09) Marqueurs que le classement veut garder d'un essai à l'autre
         // (compteur de refus Beebs par catégorie) : posés tels quels.
-        if (sortie.pf && typeof sortie.pf === "object") Object.assign(pfS, sortie.pf as Record<string, unknown>);
-        if (sortie.dansMinutes) {
+        if ('pf' in sortie && sortie.pf && typeof sortie.pf === "object") Object.assign(pfS, sortie.pf as Record<string, unknown>);
+        if ('dansMinutes' in sortie && sortie.dansMinutes) {
           pfS["next_action_after"] = new Date(Date.now() + sortie.dansMinutes * 60_000).toISOString();
           pfS["pas_de_rouge_reprises"] = reprisesFaites + 1;
           // Une REPRISE ne consomme pas le budget de l'utilisateur : le défaut
@@ -3962,15 +3972,15 @@ serve(async (req) => {
       }
     }
 
-    const { data: updated, error: updateErr } = await userClient
-      .from("cross_post_jobs")
-      .update(patch)
-      .eq("id", jobId)
-      .select("id, status")
-      .maybeSingle();
-
+    // Le propriétaire et la génération sont revérifiés SOUS le verrou d'écriture.
+    // Une annulation ou une reprise intervenue pendant cette fonction prime.
+    const { data: ecriture, error: updateErr } = await adminReservation.rpc("ecrire_statut_job_extension", {
+      p_user: user.id, p_poste: posteReservation, p_job: jobId,
+      p_reservation: reservation.reservation, p_avant: reservation.statut, p_patch: patch,
+    });
     if (updateErr) return json({ error: updateErr.message }, 500);
-    if (!updated) return json({ error: "Job introuvable" }, 404);
+    if (!ecriture?.ok) return json({ error: ecriture?.reason || "Le job a changé entre-temps." }, 409);
+    const updated = ecriture.job;
 
     console.log(`[update-job-status] userId=${user.id} job=${jobId} → ${statutEffectif}${raisonRequalif ? ` (requalifié depuis ${status} : ${raisonRequalif})` : ""}`);
 
