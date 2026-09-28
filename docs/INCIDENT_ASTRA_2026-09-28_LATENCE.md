@@ -42,3 +42,29 @@ Reprise : observer des comptes avec un job réellement prêt et une extension
 active ; contrôler latence par RPC et attente de verrous. Ne pas confondre un
 poste en ligne avec un job dû (créneaux, anti-robot et questions restent des
 attentes légitimes). Aucun autre déploiement avant levée de ce blocage.
+
+## Complément, 16:57
+
+Les pointes persistent après get-pending 159. Les plus lentes concernent
+`rapprochement_urls_a_empreinter` (13 701 ms, HTTP 500 à 16:50:04) et
+`doublons_reserver_fiches` (8 391 ms, HTTP 500 à 16:50:22). Ces fonctions
+datent du 27/09. Leur source commune `doublons_fiches_a_examiner` fait un
+UNION avec une recherche corrélée sur toutes les fiches candidates AVANT
+le LIMIT. Le budget de trois secondes de la fonction photos n'est vérifié
+qu'entre les boucles : il ne borne pas la requête qui les précède.
+
+Retour arrière également d'update-job-status : version **99**, code fba7c15,
+verify_jwt=false, pour ne pas laisser un lot partiellement nouveau pendant
+l'incident. handler-watch 65 garde le même comportement que 64 : l'ajout au
+module poste-extension est une fonction qu'il n'appelle pas.
+
+Migration **20260928145446_incident_suspendre_balayage_doublons**, appliquée
+à 16:54:46 après inverse écrit et simulation annulée : un seul cron suspendu,
+`doublons-balayage-2min` (job 17). Passage par `cron.alter_job` ; l'essai initial
+d'UPDATE direct, en transaction annulée, a été refusé par les droits PostgreSQL.
+Aucun autre cron arrêté, aucune fiche modifiée par cette mesure.
+
+À 16:56:32–36, appels ordinaires 26–84 ms, réservation de jobs 30 ms ; les
+autres crons réussissent (12–44 ms d'envoi). Suspension = mesure de protection,
+PAS correction racine de la recherche : sa pagination et sa progression
+persistante restent à corriger et à mesurer avant réactivation.
