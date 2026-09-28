@@ -21,3 +21,12 @@ L’erreur connue `Élément introuvable: #input-pictures` tombait dans le motif
 ## Louis : Leboncoin
 
 Job 232c54d6-c19b-4386-80c8-f835a8ab4949 : dépôt annoncé réussi, rayon `Divers > Autres`, source `defaut`. Le verdict du 28/09 venait uniquement de l’absence au relevé, sans réponse de modération. La cause d’un refus de modération n’est donc pas établie. La garde contre le rayon par défaut est déjà présente dans le code courant ; le point E supprime la conclusion de refus tirée d’une absence. L’abandon utilisateur reste respecté.
+# Double retrait eBay xxewwer
+
+Les jobs 97170b15 et c9d402b9 ont supprimé le même identifiant eBay
+377494187315, à 02:16 et 07:12 le 28/09. `armer_retrait_job` ne cherchait
+que les retraits en attente, jamais ceux déjà aboutis. La migration
+20260928142419 inclut un retrait abouti postérieur au dépôt exact, et verrouille
+le dépôt pendant la réservation. Aucun retrait supplémentaire ni reprise de données.
+Rejeu annulé : le même identifiant est bloqué ; un autre reste distinct.
+Retour arrière homonyme dans `supabase/rollbacks/`. Appliquée à 16:24 Paris.
