@@ -468,8 +468,23 @@ const LBC_NON_CONSOMMABLE =
 // Le TITRE seul, jamais la description : celle d'un vêtement dit « crème » pour
 // une couleur, celle d'un parfum dit « boîte d'origine » — la lire produit des
 // faux verdicts dans les deux sens (mesuré sur les 4 881 lignes de la base).
+// ── LA CATÉGORIE D'ABORD (0.6.78, 28/09, xxewwer job 28f1b00e) ──────────────
+// « Maquillage Fabienne Sévigné Francis Giacobetti Livre Relié AGEP » : un
+// LIVRE, rangé et accepté par Leboncoin en Loisirs > Livres, retiré pour être
+// republié, puis bloqué 4 fois ici sur le seul mot « Maquillage » — annonce
+// hors ligne. L'app ne juge un cosmétique QUE sur une icône Beauté, que son
+// mapping range en Divers > Autres (lbcCategories.js) : ce miroir avait perdu
+// cette moitié de la règle. Catégorie résolue ailleurs = pas un cosmétique.
+function lbcCategorieHorsBeaute(job) {
+  const chemin = job?.platform_fields?.lbcCategoryPath;
+  if (!Array.isArray(chemin) || !chemin.length) return false;
+  const n = chemin.map((s) => String(s ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+  return !(n[0] === "divers" && (n.length === 1 || n[1] === "autres"));
+}
+
 function lbcProduitInterdit(job) {
   if (job.platform !== "leboncoin") return false;
+  if (lbcCategorieHorsBeaute(job)) return false;
   const titre = String(job.title ?? "");
   if (LBC_NON_CONSOMMABLE.test(titre)) return false;
   return LBC_COSMETIQUE_CONSOMMABLE.test(titre);
@@ -20216,6 +20231,29 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const refus = await appliquerPrevolCopie({ accessToken, job, pf, etape: "avant_retrait" });
       if (refus) return refus;
     }
+    // ── LES GARDES DU REDÉPÔT PASSENT AVANT LE RETRAIT (0.6.78, 28/09) ──────
+    // RÈGLE : on ne retire jamais une annonce qu'une de nos gardes empêchera
+    // de redéposer. precheckJob tourne ici sur le job EXACT du redépôt (même
+    // forme que plus bas) : ce qu'il refuserait après le retrait, il le
+    // refuse maintenant, annonce en ligne. Cas fondateur : le livre
+    // « Maquillage… » de xxewwer (28f1b00e), retiré puis bloqué 4 fois.
+    {
+      const jobRedepot = { ...job, action: "publish", listing_url: null, platform_listing_id: null,
+        platform_fields: { ...pf, republish_recreation: true } };
+      const blocage = precheckJob(jobRedepot);
+      tracerGarde(pf, "prevol_gardes", {
+        verdict: blocage ? "bloque" : "ok", plateforme: job.platform, etape: "avant_retrait",
+        champs_verifies: ["produit_autorise", "categorie"],
+      });
+      if (blocage) {
+        const motif = blocage.replace(/\s*Aucun onglet n'a été ouvert\.?\s*$/, "");
+        const msg = `Republication ${label} mise en pause AVANT tout retrait, ton annonce est toujours en ligne : ${motif}`;
+        pf.needs_user_source = "garde_depot";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ — le redépôt serait bloqué (${motif.slice(0, 120)})`);
+        return { status: "needsUser", error: msg };
+      }
+    }
     void snapshot;
 
     // ══════════════════════════════════════════════════════════════════════
@@ -20415,6 +20453,20 @@ async function processRepublishJobPlateforme(job, accessToken) {
       platform_fields: { ...pf, republish_recreation: true },
     };
     delete jobRecreation.platform_fields.next_action_after;
+    // Une garde qui refuse le redépôt refusera aussi chaque reprise : ce n'est
+    // pas une panne passagère. Nommée (garde_depot), le serveur ne la change
+    // plus en « on réessaie tout seuls — rien à faire » (0.6.78, 28/09).
+    const blocageRedepot = precheckJob(jobRecreation);
+    if (blocageRedepot) {
+      pf.republish_step = "deleted";
+      pf.needs_user_source = "garde_depot";
+      delete pf.next_action_after;
+      const motif = blocageRedepot.replace(/\s*Aucun onglet n'a été ouvert\.?\s*$/, "");
+      const msg = `Ton annonce a été retirée de ${label} et ne peut pas y être redéposée telle quelle : ${motif} ` +
+        "Une nouvelle tentative automatique n'y changerait rien. Rien n'est perdu : titre, description, photos et champs sont sauvegardés.";
+      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg.slice(0, 590) });
+      return { status: "needsUser", error: msg };
+    }
     const resultat = await processJob(jobRecreation, accessToken);
     dernierGesteRepublishAt = Date.now();
 

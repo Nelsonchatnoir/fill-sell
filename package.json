@@ -61,6 +61,7 @@
     "selftest:suppression-vinted-antirobot": "node scripts/suppression-vinted-antirobot-selftest.mjs",
     "selftest:vinted-identite-retrait": "node scripts/vinted-identite-retrait-selftest.mjs",
     "selftest:republication-origine-boutique": "node scripts/republication-origine-boutique-selftest.mjs",
+    "selftest:lbc-garde-cosmetique-categorie": "node scripts/lbc-garde-cosmetique-categorie-selftest.mjs",
     "selftest:beebs-appariement": "deno run --allow-read scripts/beebs-appariement-selftest.ts",
     "selftest:valeurs-generales": "node scripts/valeurs-generales-selftest.mjs",
     "apercu:bloc-general": "node scripts/apercu/capture-bloc-general.mjs",
