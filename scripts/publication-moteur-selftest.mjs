@@ -186,12 +186,12 @@ console.log("\n[10] gardeAspectsEbay — manquant, rapprochement, suggestion, re
     { name: "Longueur", allowedValues: ["Mini"], mode: "SELECTION_ONLY" },
   ];
   const v = R.gardeAspectsEbay({ pfE, ebayRequiredFull: req, outils: { nearestAllowedValue: nearest, listeFaitFoi } });
-  ok("Marque vide → manquante", eq(v.missingEmpty, ["Marque"]), v.missingEmpty.join(","));
+  ok("Tous les requis vides sont demandés", eq(v.missingEmpty, ["Marque", "Longueur"]), v.missingEmpty.join(","));
   ok("Taille « EU 42 » jugée sur « 42 » → acceptée telle quelle", !v.invalides.some(x => x.name === "Taille") && !v.rapproches.some(x => x.name === "Taille"));
   ok("Couleur « Black » hors liste FREE_TEXT → avertissement, pas un refus", v.horsListe.some(x => x.name === "Couleur") && !v.invalides.some(x => x.name === "Couleur"));
   ok("Matière « Unique » rapprochée en « Taille unique », valeur du job corrigée", v.rapproches.some(x => x.name === "Matière" && x.nearest === "Taille unique") && pfE.matiere === "Taille unique");
   ok("Type par le canal générique, présent dans la liste → rien à dire", !v.invalides.some(x => x.name === "Type") && !v.missingEmpty.includes("Type"));
-  ok("Longueur sans aucune source → ignorée (canal unfilledRequired de l'extension)", !v.missingEmpty.includes("Longueur"));
+  ok("Longueur sans source → demandée avant publication", v.missingEmpty.includes("Longueur"));
   const pf2 = { taille: "24 mois", ebayAspects: {} };
   const v2 = R.gardeAspectsEbay({ pfE: pf2, ebayRequiredFull: [{ name: "Taille", allowedValues: ["2 ans", "3 ans", "XS", "S"], mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: () => null, listeFaitFoi } });
   ok("SELECTION_ONLY sans rapprochement → refus, cas âge avec les valeurs mois/ans en exemple", v2.invalides.length === 1 && v2.invalides[0].ageLike === true && v2.invalides[0].sample === "2 ans, 3 ans", JSON.stringify(v2.invalides));

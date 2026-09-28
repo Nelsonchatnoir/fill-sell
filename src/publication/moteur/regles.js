@@ -265,7 +265,6 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     const known = knownAspects.find(k => k.labels.includes(aspect.name));
     // Canal générique : pf.ebayAspects porte les obligatoires sans champ dédié.
     const genericVal = String(pfE.ebayAspects?.[aspect.name] ?? "").trim();
-    if (!known && !genericVal) continue; // pas de source → canal unfilledRequired de l'extension
     const val = known ? String(known.value() ?? "").trim() || genericVal : genericVal;
     if (!val) { missingEmpty.push(aspect.name); continue; }
     const allowed = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
