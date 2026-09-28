@@ -51,8 +51,8 @@
 npx supabase functions list | grep -o '"slug":"<nom>"[^}]*' | grep -o '"version":[0-9]*\|"verify_jwt":[a-z]*'
 ```
 
-On lit `verify_jwt` AVANT, on le relit APRÈS. `supabase/config.toml` est la
-source de vérité pour les fonctions qui y sont déclarées ; pour les autres, un
+On lit `verify_jwt` en PRODUCTION AVANT, on conserve exactement ce réglage et
+on le relit APRÈS. `supabase/config.toml` doit reproduire cet état ; pour les autres, un
 déploiement sans `--no-verify-jwt` remet `verify_jwt` à `true` → le cron ou le
 webhook tombe en 401, en silence.
 

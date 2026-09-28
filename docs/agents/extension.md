@@ -1,3 +1,5 @@
+> Mise à jour du 28/09 : lire [les consignes opérationnelles](consignes-2026-09-28.md). La 0.6.75 est publiée ; les mentions « à téléverser » ci-dessous décrivent l’état historique du 27/09.
+
 # Extension Chrome — structure, règles, livraison
 
 > Référence pour agents de code, appelée par `AGENTS.md` (racine). Rédigé le 27/09/2026.
