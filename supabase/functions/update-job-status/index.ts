@@ -515,6 +515,18 @@ serve(async (req) => {
       return json({ error: `status invalide, valeurs acceptées : ${ALLOWED_STATUSES.join(", ")}` }, 400);
     }
 
+    // Point F : une ancienne file locale ne contourne pas la garde du poll.
+    // Un travail déjà commencé peut finir et transmettre son résultat.
+    if (status === "processing" && !posteExtensionCompatible(body.handler_build)) {
+      const { data: enCours, error: lecture } = await userClient.from("cross_post_jobs")
+        .select("status").eq("id", jobId).maybeSingle();
+      if (lecture) return json({ error: "Le début du travail ne peut pas être vérifié. Réessaie au prochain passage." }, 503);
+      if (enCours?.status !== "processing") return json({
+        error: "Mets l’extension FillSell à jour dans Chrome avant de démarrer cette tâche. Aucun retrait n’est autorisé.",
+        extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
+      }, 409);
+    }
+
     // Point C : contrôle avant toute écriture et surtout avant l'ACK processing
     // attendu par les anciennes extensions avant d'agir sur les plateformes.
     const posteReservation = identifiantPosteExtension(authHeader, body.poste_instance);
@@ -3991,3 +4003,4 @@ serve(async (req) => {
     return json({ error: msg }, 500);
   }
 });
+import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";

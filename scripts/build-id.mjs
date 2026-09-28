@@ -1552,7 +1552,8 @@ export const EXTENSION_LAST_COMMIT = '2026-09-28T13:39:28Z'; // Point E, 0.6.76 
 // Leboncoin PRO. Dès qu'elle tourne, les retraits arrêtés se réarment seuls
 // (get-pending-jobs, _shared/correctifs-extension.js).
 // Ancienne valeur : 2026-09-23T15:18:45Z (0.6.61).
-export const EXTENSION_MIN_BUILD = '2026-09-24T14:34:46Z';
+import { EXTENSION_MIN_BUILD } from '../supabase/functions/_shared/version-min-extension.js';
+export { EXTENSION_MIN_BUILD };
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est

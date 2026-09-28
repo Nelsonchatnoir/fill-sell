@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { EXTENSION_MIN_BUILD,posteExtensionCompatible } from '../supabase/functions/_shared/version-min-extension.js';
+assert.equal(posteExtensionCompatible('v0.6.47 · 2026-09-19T18:50:24Z+ancien'),false);
+assert.equal(posteExtensionCompatible('2026-09-24T14:34:45Z+ancien'),false);
+assert.equal(posteExtensionCompatible(EXTENSION_MIN_BUILD+'+abc1234'),true);
+assert.equal(posteExtensionCompatible('0.6.75 · 2026-09-27T20:16:30Z+66a8887'),true);
+assert.equal(posteExtensionCompatible(''),false);
+assert.equal(posteExtensionCompatible('0.6.99'),false);
+assert.equal(posteExtensionCompatible('2026-99-99T99:99:99Z'),false);
+console.log('Version du poste appelant, borne exacte et build inconnu : OK');

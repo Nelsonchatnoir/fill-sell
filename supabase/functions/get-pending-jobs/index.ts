@@ -1,4 +1,5 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
+import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
@@ -755,6 +756,16 @@ serve(async (req) => {
       // qui n'écrit que si la version proposée est strictement supérieure.
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
+
+    // Point F : contrôler CE poste avant toute distribution ou réservation.
+    // Le profil est une télémétrie partagée, pas l'identité du demandeur.
+    // Les lectures du popup restent compatibles avec toutes les versions.
+    if (!includeProcessing && !includeNeedsUser && !posteExtensionCompatible(buildDuPoll)) {
+      return json({ jobs: [], sync_commands: [], connexion_commands: [],
+        extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
+        message: "Mets l’extension FillSell à jour dans Chrome. Tes annonces restent en ligne et tes tâches attendent la mise à jour.",
+      });
+    }
 
     // ══ UN DÉFAUT D'EXTENSION CORRIGÉ : LE JOB REPART QUAND LE POSTE EST À JOUR ══
     // (2026-09-25, LES PETITES FIOLES — _shared/correctifs-extension.js)
