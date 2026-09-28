@@ -17,9 +17,9 @@ remplace tout historique contraire.
 - **C** : réservation compatible active (130523) ; essais 114322/114721
   annulés par 115314/115330.
 - **E** : aucun verdict sur relevé incomplet (133555).
-- **F** : app 2.9.31 servie avec bandeau ; extension 0.6.76 en examen au CWS ;
-  minimum serveur 0.6.75. Après acceptation constatée, enregistrer 0.6.76 dans
-  les registres de publication **sans relever le minimum**.
+- **F** : app 2.9.31 (bandeau) ; minimum 0.6.75. 0.6.76 retirée le 28/09 soir
+  (republications Vinted bloquées) : rollback Nico = 0.6.77 ; 0.6.78 à
+  téléverser. `docs/INCIDENT_2026-09-28_REPUBLICATION_0.6.76.md`.
 
 Fonctions relues : `get-pending-jobs` v160 (`verify_jwt=true`),
 `update-job-status` v100 (`false`), `handler-watch` v65 (`false`),

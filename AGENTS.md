@@ -17,9 +17,9 @@ remplace tout historique contraire.
 - **C** : réservation compatible active (130523) ; essais 114322/114721
   annulés par 115314/115330.
 - **E** : aucun verdict sur relevé incomplet (133555).
-- **F** : app 2.9.31 servie avec bandeau ; extension 0.6.76 en examen au CWS ;
-  minimum serveur 0.6.75. Après acceptation constatée, enregistrer 0.6.76 dans
-  les registres de publication **sans relever le minimum**.
+- **F** : app 2.9.31 (bandeau) ; minimum 0.6.75. 0.6.76 retirée le 28/09 soir
+  (republications Vinted bloquées) : rollback Nico = 0.6.77 ; 0.6.78 à
+  téléverser. `docs/INCIDENT_2026-09-28_REPUBLICATION_0.6.76.md`.
 
 Fonctions relues : `get-pending-jobs` v160 (`verify_jwt=true`),
 `update-job-status` v100 (`false`), `handler-watch` v65 (`false`),
@@ -236,8 +236,8 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - **Après acceptation** (`profiles.extension_build`) : ajouter aux registres
   `ALREADY_PUBLISHED` et `PUBLISHED_BUILD_IDS`. Minimum = geste séparé fondé
   sur le BUILD_ID, jamais `EXTENSION_LAST_COMMIT` ; **pas de hausse pour .76**.
-- **Publiée : 0.6.75**, build `2026-09-27T20:16:30Z+66a8887` ; **0.6.76 en
-  examen CWS**. Après acceptation, l'enregistrer sans relever le minimum.
+- **Servie : 0.6.75** (`2026-09-27T20:16:30Z+66a8887`) ; 0.6.76 retirée,
+  0.6.77 = rollback, 0.6.78 à téléverser. Rien d'enregistré sans GO.
 
 ### 3.3 Lire la prod (sans rien écrire)
 
