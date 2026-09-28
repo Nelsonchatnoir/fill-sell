@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-28T20:22:39Z'; // Garde cosmétiques LBC sur la catégorie et avant le retrait, extension 0.6.78 (d84c475).
+export const EXTENSION_LAST_COMMIT = '2026-09-28T20:46:09Z'; // 0.6.78 = code 0.6.75 (66a8887) + garde cosmétiques LBC (a86e0d2).
+// Historique de la valeur precedente : '2026-09-28T20:22:39Z' — d84c475, quatrième paquet 0.6.78 (adba2ee, base 0.6.76) JAMAIS téléversé : régression Casio, retour à la base 0.6.75 (décision Nico). UTC VRAI lu par EPOCH (%ct 1790628369).
 // Historique de la valeur precedente : '2026-09-28T20:08:10Z' — 67d6749, troisième paquet 0.6.78 (82a1a75) JAMAIS téléversé, remplacé pour la garde LBC (xxewwer). UTC VRAI lu par EPOCH (%ct 1790626959).
 // Historique de la valeur precedente : '2026-09-28T19:47:48Z' — 99782e6, deuxième paquet 0.6.78 (4a3c557) JAMAIS téléversé : redirection non vue au 2e test réel. UTC VRAI lu par EPOCH (%ct 1790626090).
 // Historique de la valeur precedente : '2026-09-28T19:19:34Z' — 811a193, 0.6.78 premier paquet (105f343) JAMAIS téléversé : le test réel de Nico a trouvé la recréation non rattachée. UTC VRAI lu par EPOCH (%ct 1790624868).
