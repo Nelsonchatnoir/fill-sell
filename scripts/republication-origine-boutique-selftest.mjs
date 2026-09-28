@@ -137,5 +137,49 @@ console.log("\n4. Le message nomme le mur");
     bg.nettoyerVerdictSuppression({ conclusion: "identite_non_prouvee", preuve_manquante: "boutique_article" }).preuve_manquante === "boutique_article");
 }
 
-console.log(ko ? `\n${ko} échec(s).` : "\nUne-passe Vinted : origine transmise, preuve exacte ou aucune requête.");
+// ── 5. LA RECRÉATION SE RATTACHE PAR L'IDENTIFIANT DE NOTRE DÉPÔT ──────────
+// Test réel du 28/09 (poste Nico, job 221274a6, T-shirt Adidas) : suppression
+// 9974779287 HTTP 200, recréation 10173633450 en ligne, mais rattachement
+// refusé (titre = soupçon, point A) → question, puis doublon au relevé de
+// 21:42. La redirection de l'onglet vers /items/10173633450 est la preuve.
+console.log("\n5. Rattachement de la recréation par la redirection de notre dépôt");
+{
+  const ecouteurs = new Set();
+  bg.chrome.tabs = { ...bg.chrome.tabs,
+    onUpdated: { addListener: (f) => ecouteurs.add(f), removeListener: (f) => ecouteurs.delete(f) },
+    get: async () => ({ id: 7, url: "https://www.vinted.fr/items/10173633450-t-shirt-adidas-sergio-garcia-vintage?referrer=upload" }) };
+  const suivi = bg.suivreRedirectionsAnnonce(7);
+  for (const f of ecouteurs) {
+    f(7, { url: "https://www.vinted.fr/items/new" }, {});
+    f(8, { url: "https://www.vinted.fr/items/555" }, {}); // autre onglet : ignoré
+    f(7, { status: "loading", url: "https://www.vinted.fr/items/10173633450-t-shirt-adidas-sergio-garcia-vintage" }, {});
+  }
+  const ids = await suivi.arreter();
+  ok("seul l'identifiant de NOTRE onglet est retenu, une fois", JSON.stringify(ids) === JSON.stringify(["10173633450"]), JSON.stringify(ids));
+  ok("l'écoute est retirée à la fin du dépôt", ecouteurs.size === 0);
+
+  const dressing = [
+    { vinted_item_id: "10173633450", titre: "T-shirt Adidas Sergio Garcia vintage", url: "https://www.vinted.fr/items/10173633450" },
+    { vinted_item_id: "10144115529", titre: "Short de bain Quiksilver taille M orange" },
+  ];
+  const trouve = bg.annonceDeNotreDepot(ids, "9974779287", dressing, new Set(["9974779287"]));
+  ok("cas réel : 10173633450 rattachée sans passer par le titre", trouve?.vinted_item_id === "10173633450");
+  ok("deux annonces vues dans l'onglet : ambigu, rien", bg.annonceDeNotreDepot(["10173633450", "10144115529"], "9974779287", dressing, new Set()) === null);
+  ok("identifiant déjà connu de l'inventaire : rien", bg.annonceDeNotreDepot(ids, "9974779287", dressing, new Set(["10173633450"])) === null);
+  ok("absente du dressing du compte connecté : rien", bg.annonceDeNotreDepot(ids, "9974779287", dressing.slice(1), new Set()) === null);
+  ok("seule l'ancienne annonce vue : rien", bg.annonceDeNotreDepot(["9974779287"], "9974779287", dressing, new Set()) === null);
+  ok("aucune redirection (modale Vinted) : rien, la question reste", bg.annonceDeNotreDepot([], "9974779287", dressing, new Set()) === null);
+
+  const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
+  ok("les deux dépôts de recréation suivent la redirection",
+    (bgSrc.match(/const suiviRedirection = suivreRedirectionsAnnonce\(tabId\);\n      try \{\n        result = await envoyerFillListing\(tabId, jobRecreation\);/g) ?? []).length === 2);
+  ok("après coupure : l'identifiant de notre dépôt passe AVANT le titre",
+    bgSrc.indexOf("annonceDeNotreDepot(result?.idsRedirection") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page2.articles"));
+  ok("avant une nouvelle tentative : la redirection précédente passe AVANT le titre",
+    bgSrc.indexOf("annonceDeNotreDepot(pf.recreation_redirection?.ids") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page.articles"));
+  ok("le titre seul ne rattache toujours rien (point A intact)",
+    /identité à confirmer`, candidats \};/.test(bgSrc));
+}
+
+console.log(ko ? `\n${ko} échec(s).` : "\nUne-passe Vinted : origine transmise, preuve exacte ou aucune requête ; recréation rattachée par son identifiant.");
 process.exit(ko ? 1 : 0);

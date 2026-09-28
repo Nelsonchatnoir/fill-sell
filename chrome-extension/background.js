@@ -19278,7 +19278,46 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
 // la suppression a été actée) et la reprise de l'étape 'deleted'. Ils ne
 // peuvent pas diverger : mêmes filets (sonde réseau, ceinture dressing), même
 // rattachement, mêmes retentatives.
+// ── L'IDENTIFIANT DE NOTRE DÉPÔT, LU SUR LA REDIRECTION (0.6.78, 28/09) ──────
+// Vinted redirige l'onglet de travail vers l'annonce qu'il vient de créer.
+// Cette navigation, dans NOTRE onglet et juste après NOTRE clic « Publier »,
+// porte l'identifiant exact de la recréation — la preuve que le titre et la
+// date des photos ne donnent pas (point A). Mesuré sur 3 jours avant la
+// 0.6.76 : 626 recréations sur 637 n'étaient rattachées que par titre, la
+// sonde réseau manquant la réponse ; la 0.6.76 en a fait des questions, puis
+// le relevé suivant des doublons (T-shirt de Nico, job 221274a6).
+// Suivi posé AVANT l'envoi du formulaire, relu à la fin : toutes les
+// annonces /items/<id> vues dans l'onglet pendant ce dépôt.
+function suivreRedirectionsAnnonce(tabId) {
+  const ids = [];
+  const noter = (url) => {
+    const id = String(url ?? "").match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/i)?.[1];
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+  const ecoute = (idOnglet, info, tab) => { if (idOnglet === tabId) noter(info?.url ?? tab?.url); };
+  chrome.tabs.onUpdated.addListener(ecoute);
+  return {
+    async arreter() {
+      chrome.tabs.onUpdated.removeListener(ecoute);
+      noter((await chrome.tabs.get(tabId).catch(() => null))?.url);
+      return ids;
+    },
+  };
+}
+
+// Un seul identifiant NOUVEAU vu, inconnu de l'inventaire, et présent dans le
+// dressing du compte connecté : sinon rien (plusieurs = ambigu).
+function annonceDeNotreDepot(idsRedirection, ancienId, articles, idsConnus) {
+  const nouveaux = (Array.isArray(idsRedirection) ? idsRedirection : [])
+    .map(String).filter((id) => id && id !== String(ancienId ?? ""));
+  if (nouveaux.length !== 1 || idsConnus.has(nouveaux[0])) return null;
+  return (articles ?? []).find((a) => String(a?.vinted_item_id ?? "") === nouveaux[0]) ?? null;
+}
+
 async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result) {
+  if (Array.isArray(result?.idsRedirection)) {
+    pf.recreation_redirection = { ids: result.idsRedirection.slice(0, 5), at: new Date().toISOString() };
+  }
   // ── Catalogue des requis : les RECRÉATIONS écrivent aussi (2026-09-10) ──
   // Mesuré : 0 job republish ne porte categoryPath au niveau du job, donc
   // ~1 600 recréations/45 j n'alimentaient JAMAIS platform_category_aspects
@@ -19329,10 +19368,22 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
             `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
             accessToken,
           ).catch(() => []);
+          const idsConnus2 = new Set((connus2 ?? []).map((r) => String(r.vinted_item_id)));
+          // Identifiant exact de notre dépôt (redirection), confirmé au
+          // dressing : rattachement sans passer par le titre.
+          const notreAnnonce = annonceDeNotreDepot(result?.idsRedirection, pf.vinted_item_id, page2.articles, idsConnus2);
+          if (notreAnnonce) {
+            await cloreRepublishSurAnnonceExistante(
+              accessToken, job, pf, notreAnnonce.vinted_item_id,
+              notreAnnonce.url ?? `https://www.vinted.fr/items/${notreAnnonce.vinted_item_id}`,
+              "identifiant de la redirection Vinted après notre dépôt, présent au dressing",
+            );
+            return { status: "published", listingUrl: notreAnnonce.url ?? null };
+          }
           const { item: trouve, raison: pourquoi, candidats } = reconnaitreAnnonceRecreee(page2.articles, {
             titre: jobRecreation.title,
             deletedAt: pf.deleted_at,
-            idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
+            idsConnus: idsConnus2,
           });
           if (trouve) {
             await cloreRepublishSurAnnonceExistante(
@@ -21032,11 +21083,14 @@ async function processRepublishJob(job, accessToken) {
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
+      const suiviRedirection = suivreRedirectionsAnnonce(tabId);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
       }
+      const idsRedirection = await suiviRedirection.arreter();
+      if (result && typeof result === "object") result.idsRedirection = idsRedirection;
       dernierGesteRepublishAt = Date.now();
 
       // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
@@ -21418,10 +21472,22 @@ async function processRepublishJob(job, accessToken) {
               `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
               accessToken,
             ).catch(() => []);
+            const idsConnus = new Set((connus ?? []).map((r) => String(r.vinted_item_id)));
+            // Une tentative précédente a été redirigée vers SON annonce :
+            // identifiant exact, confirmé au dressing (0.6.78).
+            const notreAnnonce = annonceDeNotreDepot(pf.recreation_redirection?.ids, pf.vinted_item_id, page.articles, idsConnus);
+            if (notreAnnonce) {
+              await cloreRepublishSurAnnonceExistante(
+                accessToken, job, pf, notreAnnonce.vinted_item_id,
+                notreAnnonce.url ?? `https://www.vinted.fr/items/${notreAnnonce.vinted_item_id}`,
+                "identifiant de la redirection Vinted d'une tentative précédente, présent au dressing",
+              );
+              return { status: "published", listingUrl: notreAnnonce.url ?? null };
+            }
             const { item, raison } = reconnaitreAnnonceRecreee(page.articles, {
               titre: jobRecreation.title,
               deletedAt: pf.deleted_at,
-              idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
+              idsConnus,
             });
             tracerGarde(pf, "prevol_recreation", {
               verdict: item ? "deja_recreee" : "a_recreer",
@@ -21500,11 +21566,14 @@ async function processRepublishJob(job, accessToken) {
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
+      const suiviRedirection = suivreRedirectionsAnnonce(tabId);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
+      const idsRedirection = await suiviRedirection.arreter();
+      if (result && typeof result === "object") result.idsRedirection = idsRedirection;
       dernierGesteRepublishAt = Date.now();
 
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
