@@ -124,5 +124,37 @@ console.log("6. Hors périmètre : rien ne change");
     pf: pfFioles(), pfEnBase: pfFioles(), maintenant: T0 }) === null, "un published");
 }
 
+// ── GARDE DE L'EXTENSION : JAMAIS « RIEN À FAIRE » SUR UN REFUS CERTAIN (28/09) ──
+// xxewwer, job 28f1b00e : livre « Maquillage … Livre Relié AGEP » (Loisirs >
+// Livres) retiré à 21:09, redépôt refusé 4 fois par la garde cosmétiques
+// (titre seul), réécrit ici « On réessaie tout seuls vers 22:21 — rien à faire ».
+console.log("\n6. Un refus de garde n'est pas une panne passagère");
+{
+  const BRUT_XXEWWER = "Ton annonce a été retirée de Leboncoin et n'a pas pu être redéposée automatiquement : Leboncoin " +
+    "interdit la vente de cosmétiques et parfums (crèmes, soins, maquillage) : l'annonce serait refusée par leur modération, " +
+    "quelle que soit la catégorie choisie. Publier cet article sur Vinted, eBay ou Beebs.";
+  const pfLivre = (cat = ["Loisirs", "Livres"], extra = {}) => ({ republish_step: "deleted", deleted_at: "2026-09-28T19:09:16.543Z",
+    lbcCategoryPath: cat, recreation_reprises: 3, ...extra });
+  const T1 = Date.parse("2026-09-28T19:51:19.000Z");
+  const d = decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user",
+    pf: pfLivre(), pfEnBase: pfLivre(), brut: BRUT_XXEWWER, maintenant: T1 });
+  ok(d && d.statut === "pending", "cas réel (livre en Loisirs > Livres) : la reprise continue — elle aboutira sur un poste à jour");
+  ok(d && !/rien à faire/.test(d.message) && /pris(e)? à tort pour un cosmétique/.test(d.message) && /prochaine version de l'extension/.test(d.message),
+    "… avec un message qui dit la vérité, sans « rien à faire »");
+  ok(d && d.dansMinutes >= 60, "… et sans retaper toutes les 5 min (≥ 60 min)");
+  ok(decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user",
+    pf: pfLivre(["Divers", "Autres"]), pfEnBase: pfLivre(["Divers", "Autres"]), brut: BRUT_XXEWWER, maintenant: T1 }) === null,
+    "vrai cosmétique (Divers > Autres) : impasse, la main revient");
+  ok(decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user",
+    pf: pfLivre(null), pfEnBase: pfLivre(null), brut: BRUT_XXEWWER, maintenant: T1 }) === null,
+    "sans catégorie : impasse, rien n'est présumé");
+  ok(decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user",
+    pf: pfLivre(["Loisirs", "Livres"], { needs_user_source: "garde_depot" }), pfEnBase: pfLivre(), brut: "garde", maintenant: T1 }) === null,
+    "refus nommé garde_depot (0.6.78) : impasse, jamais « rien à faire »");
+  const normal = decisionRecreationHorsLigne({ action: "republish", platform: "leboncoin", statut: "needs_user",
+    pf: pfFioles(), pfEnBase: pfFioles(), brut: BRUT_FIOLES, maintenant: T0 });
+  ok(normal && /rien à faire/.test(normal.message), "une panne passagère garde son message d'avant");
+}
+
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");
 process.exit(ko ? 1 : 0);

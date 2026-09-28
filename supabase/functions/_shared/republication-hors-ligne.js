@@ -47,6 +47,23 @@ const SOURCES_MUR = new Set([
 ]);
 /** Questions : une valeur à choisir, jamais devinée. */
 const SOURCES_QUESTION = new Set(["capture_incomplete", "champ_a_choisir"]);
+/** Une garde de l'extension refuse CE redépôt : chaque reprise serait refusée
+ *  pareil (0.6.78, 28/09). Jamais « on réessaie — rien à faire ». */
+const SOURCES_IMPASSE = new Set(["garde_depot"]);
+
+// ── LA GARDE COSMÉTIQUES DES ANCIENNES EXTENSIONS (28/09, xxewwer 28f1b00e) ──
+// Jusqu'à la 0.6.77, l'extension refusait un redépôt Leboncoin sur un seul mot
+// du titre (« Maquillage … Livre Relié »), catégorie ignorée. En Divers >
+// Autres (où l'app range seule les cosmétiques) ou sans catégorie, le refus
+// est réel : impasse, la main revient avec le message de l'extension. Rangé
+// ailleurs, c'est l'erreur de notre garde, corrigée en 0.6.78 : la reprise
+// continue (elle aboutira sur un poste à jour), avec un message qui le dit.
+const GARDE_COSMETIQUE_RE = /interdit la vente de cosm[ée]tiques et parfums/i;
+function categorieLbcHorsBeaute(chemin) {
+  if (!Array.isArray(chemin) || !chemin.length) return false;
+  const n = chemin.map((x) => String(x ?? "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+  return !(n[0] === "divers" && (n.length === 1 || n[1] === "autres"));
+}
 
 const MUR_TEXTE_RE = /^Connexion \S+ requise|^REAUTH VENTE eBay/i;
 const IMPASSE_RE =
@@ -65,6 +82,15 @@ function heureDeParis(ms) {
   } catch {
     return null;
   }
+}
+
+/** Garde cosmétiques trompée : la reprise aboutira avec l'extension à jour, pas avant. */
+export function messageGardeCorrigee(platform) {
+  const nom = NOM[platform] ?? "la plateforme";
+  return `Ton annonce a été retirée de ${nom} et n'a pas encore pu être redéposée : un contrôle de l'extension ` +
+    "FillSell l'a prise à tort pour un cosmétique. Ce contrôle est corrigé dans la prochaine version de l'extension : " +
+    "la remise en ligne repartira toute seule dès qu'elle sera installée sur ton ordinateur. Rien n'est perdu : titre, " +
+    "description, photos et champs sont conservés tels quels.";
 }
 
 /** Le message unique, cohérent avec l'état réel : retirée, pas encore revenue, reprise auto. */
@@ -111,6 +137,11 @@ export function decisionRecreationHorsLigne(a) {
   if (SOURCES_MUR.has(source) || MUR_TEXTE_RE.test(String(a.brut ?? "").trim()) || MUR_TEXTE_RE.test(String(a.reecrit ?? "").trim())) return null;
   if (aUneQuestion(pf)) return null;
   if (IMPASSE_RE.test(texte) || pf.recreation_doublon) return null;
+  if (SOURCES_IMPASSE.has(source)) return null;
+  const gardeCosmetique = GARDE_COSMETIQUE_RE.test(texte);
+  const gardeCorrigee = gardeCosmetique && a.platform === "leboncoin"
+    && categorieLbcHorsBeaute(pf.lbcCategoryPath ?? pfEnBase.lbcCategoryPath);
+  if (gardeCosmetique && !gardeCorrigee) return null;
 
   // Palier : une même tentative ratée remonte souvent DEUX écritures à la
   // suite (le dépôt écrit failed, la republication needs_user) — elles ne
@@ -121,7 +152,9 @@ export function decisionRecreationHorsLigne(a) {
   const recente = precedente && maintenant - Date.parse(String(precedente.at ?? "")) < 90_000;
   const n = recente ? Math.max(1, nAvant) : nAvant + 1;
   const palier = PALIERS_REPRISE_MIN[n - 1] ?? REPRISE_MAX_MIN;
-  const dansMinutes = ANTIROBOT_RE.test(texte) ? Math.max(palier, ANTIROBOT_MIN) : palier;
+  // Garde corrigée : l'extension à jour arrive par Chrome, pas en 5 min.
+  const dansMinutes = ANTIROBOT_RE.test(texte) ? Math.max(palier, ANTIROBOT_MIN)
+    : gardeCorrigee ? Math.max(palier, 60) : palier;
   const prochain = recente && Number.isFinite(Date.parse(String(pfEnBase.next_action_after ?? "")))
     ? Date.parse(String(pfEnBase.next_action_after))
     : maintenant + dansMinutes * 60_000;
@@ -153,7 +186,7 @@ export function decisionRecreationHorsLigne(a) {
 
   return {
     statut: "pending",
-    message: messageRecreationEnCours(a.platform, prochain),
+    message: gardeCorrigee ? messageGardeCorrigee(a.platform) : messageRecreationEnCours(a.platform, prochain),
     pf: pfNeuf,
     n,
     dansMinutes,
