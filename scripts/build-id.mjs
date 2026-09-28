@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-28T19:19:34Z'; // Une-passe Vinted : origine de boutique transmise, extension 0.6.78 (811a193).
+export const EXTENSION_LAST_COMMIT = '2026-09-28T19:47:48Z'; // Recréation Vinted rattachée par la redirection de notre dépôt, extension 0.6.78 (99782e6).
+// Historique de la valeur precedente : '2026-09-28T19:19:34Z' — 811a193, 0.6.78 premier paquet (105f343) JAMAIS téléversé : le test réel de Nico a trouvé la recréation non rattachée. UTC VRAI lu par EPOCH (%ct 1790624868).
 // Historique de la valeur precedente : '2026-09-28T14:31:20Z' — Questions Opla finales, 0.6.76 (publiée au CWS le 28/09, retirée le soir même par un rollback de Nico publié en 0.6.77 : republications Vinted bloquées). MIN_BUILD et PUBLISHED_BUILD_IDS NON touchés. UTC VRAI lu par EPOCH (%ct 1790623174).
 // Historique de la valeur precedente : '2026-09-27T09:41:57Z' — recale 15205cf (0.6.70). Zip 0.6.70 (61cbced) JAMAIS téléversé, remplacé par la 0.6.71.
 // Historique de la valeur precedente : '2026-09-25T21:39:57Z' — recale efb7843 (0.6.69, publiée et servie : 53 comptes au 27/09).
