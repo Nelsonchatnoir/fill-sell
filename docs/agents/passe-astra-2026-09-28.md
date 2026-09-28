@@ -146,3 +146,45 @@ avant retour au commit choisi, arbre propre et vérification d'empreinte.
 Les actions suivantes attendent la résolution de l'incident : push, OTA,
 ZIP .76, minimum .75, recharge Nico et tests réels. Aucun mail, aucun geste
 Stripe, aucune action chez nicolas.menar ou thomas.vinted590002.
+
+## Reprise après levée du blocage — 18:03 Paris
+
+Nico a levé le blocage après stabilité de la base (26–72 ms) et 38 jobs
+aboutis entre 16:39 et 17:35 sur six comptes. La reprise a suivi l'ordre
+demandé, avec un contrôle du parc entre chaque étape :
+
+1. **Push unique sur `main`** : `e6c4e0c` → `2c298b4`. Le web sert
+   `2026-09-28T15:52:13Z+2c298b4-dirty`. Build, imports épinglés, content
+   scripts et tests ciblés verts. Après le push : 69 ms de moyenne, p95
+   167 ms ; trois jobs aboutis sur trois des six comptes ayant une extension
+   vue et un job en file.
+2. **OTA 2.9.31** : `bundle list` confirmait que 2.9.31 était libre ; build
+   propre `2026-09-28T15:55:01Z+2c298b4`, puis upload. Le canal public
+   `production` sert 2.9.31 sur iOS et Android. Après l'OTA : 60 ms de
+   moyenne, p95 118 ms ; un job abouti sur un compte actif.
+3. **Extension 0.6.76** : paquet construit depuis `2c298b4`, BUILD_ID
+   `2026-09-28T15:56:22Z+2c298b4`, manifest 0.6.76 et contenu vérifiés. Le
+   seul zip du dossier est
+   `build/CWS-0.6.76-A-TELEVERSER/fillsell-extension-0.6.76-cws.zip`.
+   Après fabrication : 64 ms de moyenne, p95 78 ms ; un job abouti.
+4. **Minimum serveur 0.6.75** : déployé depuis `45b15a0`, dont le seul diff
+   avec le code serveur `fba7c15` est la borne
+   `2026-09-27T20:16:30Z`. `get-pending-jobs` est en version 160 avec
+   `verify_jwt=true` ; `update-job-status` en version 100 avec
+   `verify_jwt=false`, relus après chaque déploiement. Retour arrière prêt
+   depuis `fba7c15`. Après un cycle complet : moyenne 56 ms, médiane 45 ms,
+   p95 120 ms ; zéro attente de verrou ; deux jobs aboutis sur deux des cinq
+   comptes compatibles ayant une file ; trois comptes ont des réservations
+   vivantes. Un pic isolé à 692 ms a précédé ce second échantillon stable.
+
+Le cron `doublons-balayage-2min` reste suspendu (`active=false`). L'appel à
+`enregistrer_ventes_prouvees` n'est pas présent dans le code serveur livré.
+Les deux différences locales préexistantes sont restées intactes ; le
+prototype cloud et la jonction `node_modules` n'ont pas été touchés. Aucun
+mail n'a été envoyé.
+
+**Reste** : Nico téléverse le zip 0.6.76 et clique « Envoyer pour examen ».
+Ne promouvoir ni le minimum 0.6.76 ni les registres de publication avant
+acceptation constatée dans le parc. L'enregistrement automatique périodique
+des ventes et le balayage des doublons attendent toujours une version légère,
+bornée et mesurée avant toute réactivation.

@@ -79,3 +79,30 @@ Pas de nouveau succès de publication confirmé par ce contrôle : lecture
 ciblée Nadège sans résultat depuis 16:54:46 ; recherche globale bornée par
 statement_timeout=2s annulée à cette limite, non relancée. Ne pas présenter
 la baisse de latence comme une preuve de reprise complète du parc.
+
+## Reprise contrôlée après levée du blocage — 18:03
+
+Nico a levé le blocage après une plage stable à 26–72 ms et 38 jobs aboutis
+entre 16:39 et 17:35 sur six comptes. Les livraisons ont ensuite été faites
+une par une : push `2c298b4`, OTA 2.9.31, zip extension 0.6.76, puis minimum
+serveur 0.6.75 seulement après présence du bandeau dans le web et l'OTA.
+
+Contrôles successifs de l'API : 69 ms de moyenne / p95 167 ms après le push ;
+60 / 118 ms après l'OTA ; 64 / 78 ms après le zip. Le premier échantillon
+après les fonctions serveur a porté un pic isolé à 692 ms ; le second, sur
+40 lectures, est revenu à 56 ms de moyenne, 45 ms de médiane et 120 ms de
+p95, sans aucune attente de verrou en base.
+
+Après le déploiement complet du minimum, deux jobs ont abouti sur deux des
+cinq comptes compatibles qui avaient encore une file ; trois comptes avaient
+des réservations vivantes, dont un job en traitement. Les réglages relus sont
+`get-pending-jobs` version 160 / `verify_jwt=true` et `update-job-status`
+version 100 / `verify_jwt=false`. Le diff livré par rapport au retour serveur
+`fba7c15` est uniquement la borne 0.6.75 ; le retour arrière reste prêt depuis
+ce commit.
+
+Le cron `doublons-balayage-2min` reste `active=false`. Aucun appel périodique
+à `enregistrer_ventes_prouvees` n'a été réintroduit. Ces deux automatismes
+restent bloqués jusqu'à une version bornée, légère et mesurée. Aucun mail,
+aucune correction manuelle de données et aucune intervention sur le prototype
+cloud pendant la reprise.
