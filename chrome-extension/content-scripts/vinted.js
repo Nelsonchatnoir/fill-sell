@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -1034,6 +1034,101 @@ async function racineDuCatalogue(catalogId, diag) {
   return null;
 }
 
+// ══ RAYON DÉPLACÉ PAR VINTED : LA PAGE DE L'ANNONCE TRANCHE (0.6.79, 28/09) ══
+// Vinted remanie ses catégories par vagues, COMPTE PAR COMPTE (relevé du 28/09
+// au soir, session de Nico) :
+//   · l'arbre du formulaire de Nico n'a plus « Jupes » et ses 5 sous-rayons
+//     (11, 198, 199, 200, 2927, 2928) mais une seule feuille « Jupes » (5523) ;
+//     l'arbre anonyme et celui d'autres comptes les ont encore ;
+//   · le formulaire d'ÉDITION de sa Casio (10062296164) rend catalog_id 5570
+//     et un attribut department=575 — un rayon qu'AUCUN arbre ne porte, et
+//     que le propre formulaire de Vinted affiche VIDE. La page publique de la
+//     même annonce la range toujours sous 97 (Hommes > Accessoires > Montres),
+//     là où elle vit depuis août (captures 2046, 3112, 5196, 6633).
+// Effet avant ce correctif : catalog_id → chemin impossible, capture
+// « incomplet », republication arrêtée AVANT suppression (la garde a tenu).
+// ⛔ CE N'EST PAS UNE CORRESPONDANCE. Aucune table 5570 → 97, rien de deviné :
+//    c'est Vinted qui dit, pour CET identifiant d'annonce, dans quel rayon de
+//    l'arbre d'aujourd'hui il la montre. Accepté SEULEMENT si :
+//      · le catalog_id lu est attaché à l'identifiant exact de l'annonce ;
+//      · tous les endroits de la page qui le portent disent le même ;
+//      · c'est une FEUILLE de l'arbre du formulaire de CE compte ;
+//      · le fil d'Ariane de la page, s'il se lit, est exactement le chemin
+//        d'identifiants de l'arbre jusqu'à lui.
+//    Sinon : null — la catégorie reste dans champs_manquants et l'arrêt AVANT
+//    suppression reste en place, exactement comme avant.
+// Appelée SEULEMENT quand l'id du formulaire d'édition est absent de l'arbre :
+// une capture ordinaire ne fait aucune requête de plus.
+async function catalogueDeLaPagePublique(vintedItemId, catalogIdEdition, diag) {
+  const itemId = String(vintedItemId ?? "").trim();
+  if (!/^\d+$/.test(itemId)) return null;
+  const trace = { cle: "categorie_page_publique", url: `/items/${itemId}`, catalog_id_edition: Number(catalogIdEdition) };
+  try {
+    const racines = await lireReferentielVinted("catalogs", "/api/v2/item_upload/catalogs", (d) =>
+      Array.isArray(d?.catalogs) && d.catalogs.length ? d.catalogs : null, diag);
+    if (!racines) { trace.motif = "arbre du formulaire illisible"; return null; }
+    const r = await fetchBorne(`/items/${itemId}`, { headers: { Accept: "text/html" }, credentials: "include" });
+    trace.status = r.status;
+    const brut = await r.text();
+    trace.taille = brut.length;
+    if (r.redirected) trace.url_finale = String(r.url ?? "").replace(/^https?:\/\/[^/]+/, "").slice(0, 120);
+    if (!r.ok) { trace.motif = `page de l'annonce HTTP ${r.status}`; return null; }
+    // Jeton web périmé : Vinted sert sa page d'attente « session-refresh », que
+    // seul un chargement réel de page renouvelle. Rien n'est conclu — la
+    // capture suivante, sur un onglet fraîchement chargé, relira la page.
+    if (/^\/session-refresh/.test(trace.url_finale ?? "")) {
+      trace.motif = "page de l'annonce : session Vinted à rafraîchir (redirigée vers /session-refresh)";
+      return null;
+    }
+    // Le flux de la page (React Server Components) échappe ses guillemets.
+    const page = brut.replace(/\\+"/g, '"');
+    const vus = new Set();
+    const lectures = [
+      new RegExp(`"item":\\{"id":${itemId},[^{}]{0,800}?"catalog_id":(\\d+)`, "g"),
+      new RegExp(`"item_id":${itemId},[^{}]{0,200}?"catalog_id":(\\d+)`, "g"),
+    ];
+    for (const re of lectures) for (const m of page.matchAll(re)) vus.add(Number(m[1]));
+    trace.catalog_ids_page = [...vus];
+    if (vus.size !== 1) {
+      trace.motif = vus.size ? "la page porte plusieurs rayons pour cette annonce" : "rayon de l'annonce introuvable dans la page";
+      return null;
+    }
+    const catalogId = [...vus][0];
+    const noeuds = [];
+    let feuille = false;
+    const descendre = (liste) => {
+      for (const n of liste ?? []) {
+        noeuds.push(n);
+        if (Number(n?.id) === catalogId) { feuille = !(n?.catalogs ?? []).length; return true; }
+        if (descendre(n?.catalogs)) return true;
+        noeuds.pop();
+      }
+      return false;
+    };
+    if (!descendre(racines)) { trace.motif = `rayon ${catalogId} absent de l'arbre du formulaire`; return null; }
+    if (!feuille) { trace.motif = `rayon ${catalogId} n'est pas une feuille de l'arbre du formulaire`; return null; }
+    const ids = noeuds.map((n) => Number(n?.id));
+    const chemin = noeuds.map((n) => String(n?.title ?? ""));
+    if (!chemin.every(Boolean)) { trace.motif = "libellé vide dans le chemin"; return null; }
+    // Fil d'Ariane de la page (liens « item-crumbs », sans le lien de marque).
+    const fil = [...new Set([...brut.matchAll(/href="\/catalog\/(\d+)-[^"?\/]*\?referrer=item-crumbs"/g)].map((m) => Number(m[1])))];
+    trace.fil_ariane = fil;
+    if (fil.length && fil.join(">") !== ids.join(">")) {
+      trace.motif = `fil d'Ariane de la page (${fil.join(" > ")}) ≠ chemin de l'arbre (${ids.join(" > ")})`;
+      return null;
+    }
+    trace.catalog_id_page = catalogId;
+    trace.chemin = chemin;
+    trace.resolu = true;
+    return { catalogId, chemin };
+  } catch (e) {
+    trace.erreur = String(e?.message ?? e);
+    return null;
+  } finally {
+    diag?.push(trace);
+  }
+}
+
 // ══ ZONE EURO : UNE PAGE VINTED QUI N'EST PAS EN FRANÇAIS (0.6.69, 25/09) ════
 // Alberto (compte italien) travaille sur www.vinted.fr, que Vinted lui sert en
 // ITALIEN — la langue de son COMPTE, pas celle du domaine. Nos libellés
@@ -1324,7 +1419,20 @@ async function capturerAnnonceVinted(vintedItemId) {
 
   // Catégorie — le champ le plus important pour « à l'identique ».
   const catalogId = natif?.catalog_id ?? null;
-  const chemin = catalogId != null ? await resoudreCheminCatalogue(catalogId, diagnostics) : null;
+  let chemin = catalogId != null ? await resoudreCheminCatalogue(catalogId, diagnostics) : null;
+  // Rayon DÉPLACÉ par Vinted (0.6.79) : l'id du formulaire d'édition n'est plus
+  // dans l'arbre du compte → la page de l'annonce dit où Vinted la range
+  // aujourd'hui (cf. catalogueDeLaPagePublique). libelles.catalog_id_depot =
+  // l'id POSÉ à la recréation ; absent, c'est celui du natif, comme avant.
+  let catalogIdDepot = catalogId;
+  if (!chemin?.length && catalogId != null) {
+    const pub = await catalogueDeLaPagePublique(vintedItemId, catalogId, diagnostics);
+    if (pub) {
+      chemin = pub.chemin;
+      catalogIdDepot = pub.catalogId;
+      libelles.catalog_id_depot = pub.catalogId;
+    }
+  }
   if (chemin?.length) libelles.categoryPath = chemin;
   else manquants.push("categorie (catalog_id → chemin de libellés)");
 
@@ -1486,7 +1594,7 @@ async function capturerAnnonceVinted(vintedItemId) {
   // repli si le référentiel est illisible à cet instant.
   const RACINE_LIVRES_ET_MEDIAS = 2309;
   const estLivre =
-    (await racineDuCatalogue(natif?.catalog_id, diagnostics)) === RACINE_LIVRES_ET_MEDIAS ||
+    (await racineDuCatalogue(catalogIdDepot, diagnostics)) === RACINE_LIVRES_ET_MEDIAS ||
     String(chemin?.[0] ?? "") === "Livres et médias" ||
     Number(natif?.catalog_id) === 2320;
   if (estLivre) {

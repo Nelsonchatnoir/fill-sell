@@ -1213,7 +1213,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // la réponse à l'app ; RLS « update own » limite l'écriture aux lignes
         // du compte de la session.
         try {
-          const attributs = r?.success ? attributsDepuisDetail(r.natif, new Date().toISOString()) : {};
+          const attributs = r?.success ? attributsDepuisDetail(r.natif, new Date().toISOString(), r.libelles?.catalog_id_depot) : {};
           if (Object.keys(attributs).length) {
             const session = await getValidSession();
             if (session?.access_token) {
@@ -12643,7 +12643,9 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
   // Écrit SEULEMENT s'il manque : on ne réécrit jamais une valeur déjà posée.
   // Best-effort : un échec ici ne compromet pas la capture, qui est le geste
   // important (la colonne se remplira à la publication suivante).
-  const catalogId = Number(capture.natif?.catalog_id);
+  // Rayon déplacé (0.6.79) : l'id de l'arbre relu sur la page de l'annonce
+  // prime — un id que l'arbre ne porte pas ne sert à aucun mapping.
+  const catalogId = Number(capture.libelles?.catalog_id_depot ?? capture.natif?.catalog_id);
   if (Number.isFinite(catalogId) && catalogId > 0 && inventaireId != null) {
     await restRequest(
       `inventaire?id=eq.${inventaireId}&vinted_catalog_id=is.null`,
@@ -16622,15 +16624,18 @@ function attributsDepuisListe(a, at) {
 // (b) Le DÉTAIL (formulaire d'édition, un appel, sur geste utilisateur) porte
 // couleur(s), état, marque, catalogue, ISBN — le clic Publier ne gardait que
 // la description et le catalog_id.
-function attributsDepuisDetail(natif, at) {
+// catalogIdDepot (0.6.79) : rayon relu sur la page de l'annonce quand Vinted a
+// déplacé celui du formulaire d'édition hors de l'arbre (capturerAnnonceVinted).
+function attributsDepuisDetail(natif, at, catalogIdDepot = null) {
   if (!natif || typeof natif !== "object") return {};
   const marque = String(natif.brand_dto?.title ?? "").trim();
+  const categorie = Number(catalogIdDepot ?? natif.catalog_id);
   return attributsChamps({
     couleur: natif.color1 ?? null,
     couleur2: natif.color2 ?? null,
     etat: natif.status ?? null,
     marque: marque || null,
-    categorie_vinted: Number.isFinite(Number(natif.catalog_id)) && Number(natif.catalog_id) > 0 ? Number(natif.catalog_id) : null,
+    categorie_vinted: Number.isFinite(categorie) && categorie > 0 ? categorie : null,
     isbn: natif.isbn ?? null,
   }, "vinted_detail", at);
 }
@@ -19160,7 +19165,10 @@ function construireJobRecreation(job, pf, cap, prix) {
       // et suit le chemin par libellés d'avant, à l'identique.
       ...(() => {
         const ids = {};
-        const cat = Number(natifCap.catalog_id);
+        // Rayon déplacé par Vinted (0.6.79) : la capture porte l'id relu sur la
+        // page de l'annonce (libelles.catalog_id_depot) — c'est lui qui existe
+        // dans l'arbre du formulaire. Absent : l'id du natif, comme avant.
+        const cat = Number(cap.libelles?.catalog_id_depot ?? natifCap.catalog_id);
         if (Number.isInteger(cat) && cat > 0) ids.catalog_id = cat;
         const attrEtat = (Array.isArray(natifCap.item_attributes) ? natifCap.item_attributes : [])
           .find((a) => String(a?.code ?? "").trim().toLowerCase() === "condition");
