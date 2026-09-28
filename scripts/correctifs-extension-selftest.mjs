@@ -43,7 +43,7 @@ console.log("\n1. Les 5 republications des Petites Fioles sont reconnues");
 
 console.log("\n2. Le poste qui polle porte-t-il le correctif ?");
 {
-  const c = CORRECTIFS_EXTENSION[0];
+  const c = CORRECTIFS_EXTENSION.find(c => c.platform === 'leboncoin');
   ok(posteAJour(B066, c) && posteAJour(B067, c), "0.6.66 et au-delà : oui");
   ok(!posteAJour(B063, c) && !posteAJour("", c) && !posteAJour("0.6.66", c), "0.6.63, build vide, numéro sans horodatage : non");
 }
