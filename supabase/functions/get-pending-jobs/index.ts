@@ -757,15 +757,10 @@ serve(async (req) => {
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
 
-    // Vente certaine : le stock et la vente sont enregistrés ensemble avant
-    // les retraits. Le serveur attend la fin d’un relevé encore en cours.
-    if (!includeProcessing && !includeNeedsUser) {
-      try {
-        const ventesAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-        const { error: venteError } = await ventesAdmin.rpc("enregistrer_ventes_prouvees", { p_user: user.id });
-        if (venteError) console.warn("[ventes automatiques]", venteError.message);
-      } catch (e) { console.warn("[ventes automatiques]", String(e)); }
-    }
+    // 28/09 16:46 : appel périodique des ventes automatiques retiré après
+    // dégradation de latence. La transaction de vente reste disponible ;
+    // ne pas réintroduire le balayage à chaque poll sans cause et charge vérifiées.
+    // Voir docs/INCIDENT_ASTRA_2026-09-28_LATENCE.md.
 
     // Point F : contrôler CE poste avant toute distribution ou réservation.
     // Le profil est une télémétrie partagée, pas l'identité du demandeur.
