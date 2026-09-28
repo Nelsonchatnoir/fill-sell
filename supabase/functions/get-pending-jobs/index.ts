@@ -1,4 +1,4 @@
-import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee } from "../_shared/identite-boutique.js";
+import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -1079,29 +1079,57 @@ serve(async (req) => {
     // Voie d'exécution (lot 2a eBay API, 06/09) : l'extension ne reçoit que
     // les jobs voie='extension' (= tout le parc existant, valeur par défaut).
     // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
+    // Historique exact pour les dépôts anciens, antérieurs à la colonne boutique.
+    // Dix recherches maximum par appel, chacune par l'index de fiche.
+    const historiquesBoutique = new Map<string, boolean>();
+    const historiqueListingProuve = async (job: Record<string, unknown>) => {
+      if (job.platform !== "vinted" || job.inventaire_id == null) return false;
+      const cle = String(job.id);
+      if (historiquesBoutique.has(cle)) return historiquesBoutique.get(cle) === true;
+      if (historiquesBoutique.size >= 10) return false;
+      historiquesBoutique.set(cle, false);
+      const { data, error } = await userClient.from("cross_post_jobs")
+        .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id")
+        .eq("user_id", user.id).eq("inventaire_id", job.inventaire_id).eq("platform", "vinted")
+        .eq("status", "published").in("action", ["publish", "republish"])
+        .order("created_at", { ascending: false }).limit(10);
+      const depot = !error && (data ?? []).find(d => depotVintedExact(job, [d]));
+      let preuve = false;
+      if (depot) {
+        // Un job déplacé par une ancienne fusion automatique ne constitue pas
+        // un historique d'identité. Même porte que les retraits après vente.
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const r = await admin.rpc("retrait_job_prouve", { p_job: depot.id });
+        preuve = !r.error && r.data === true;
+      }
+      historiquesBoutique.set(cle, preuve);
+      return preuve;
+    };
     // Une identité temporairement inconnue n'exige pas un clic de relance.
-    // Seule une nouvelle sonde positive, avec l'origine toujours confirmée,
-    // libère les gardes posées par ce chemin. Les autres questions restent ouvertes.
+    // Retour arrière de la garde serveur « session inconnue » du point A :
+    // l'absence de télémétrie ne prouve pas une boutique étrangère. L'origine
+    // doit rester confirmée ; le handler lit la session locale avant le geste.
     if (!includeProcessing && !includeNeedsUser) {
       const { data: attentes, error: erreurAttentes } = await userClient.from("cross_post_jobs")
-        .select("id,action,platform,platform_fields,inventaire_id,inventaire:inventaire_id(vinted_account_id)")
+        .select("id,action,platform,platform_fields,inventaire_id,listing_url,platform_listing_id,inventaire:inventaire_id(vinted_account_id)")
         .eq("user_id", user.id).eq("status", "needs_user").eq("voie", "extension")
         .eq("platform_fields->>needs_user_source", "boutique_etrangere")
-        .eq("platform_fields->boutique_etrangere->>motif", "session_inconnue")
+        .in("platform_fields->boutique_etrangere->>motif", ["session_inconnue", "origine_inconnue"])
         .order("created_at", { ascending: true }).limit(10);
       if (!erreurAttentes && attentes?.length) {
         const { data: profil, error: erreurProfil } = await userClient.from("profiles")
           .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
         const identite = !erreurProfil && identiteBoutiqueFraiche(profil?.extension_sessions);
-        if (identite) for (const attente of attentes) {
+        if (!erreurProfil && profil) for (const attente of attentes) {
           const pf = attente.platform_fields ?? {};
           const garde = pf.boutique_etrangere;
           if (garde?.pose_par !== "get-pending-jobs (identité prouvée)") continue;
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
           const { origine, contradictoire } = origineBoutiqueProuvee(article?.vinted_account_id, pf.vinted_account_id);
           if (contradictoire || verifierBoutiqueOperation({action: attente.action, platform: attente.platform,
-            boutiqueArticle: origine, boutiqueSession: identite.user_id,
-            boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: !!profil})) continue;
+            boutiqueArticle: origine, boutiqueSession: identite?.user_id,
+            boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: !!profil, sessionRequise: false,
+            historiqueListingProuve: !origine && await historiqueListingProuve(attente)})) continue;
           const suite = { ...pf, boutique_reconnue_le: new Date().toISOString() };
           delete suite.needs_user_source;
           delete suite.boutique_etrangere;
@@ -3886,7 +3914,8 @@ serve(async (req) => {
           const { origine, contradictoire } = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id);
           const motif = contradictoire ? "origine_contradictoire" : verifierBoutiqueOperation({ action: j.action, platform: j.platform,
             boutiqueArticle: origine, boutiqueSession: identite?.user_id,
-            boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: fiable });
+            boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: fiable, sessionRequise: false,
+            historiqueListingProuve: !origine && await historiqueListingProuve(j) });
           // Une lecture manquée n'autorise aucune opération sur une fiche dont
           // on n'a pas pu vérifier l'origine. Le prochain poll relit la preuve.
           if (!motif && (fiable || j.inventaire_id == null)) {

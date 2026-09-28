@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee } from '../supabase/functions/_shared/identite-boutique.js';
+import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
 const base={action:'delete',platform:'vinted',boutiqueArticle:'nadege',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
 assert.equal(verifier(base),'boutique_non_confirmee');
 assert.equal(verifier({...base,boutiqueSession:'nadege'}),'boutique_non_confirmee');
@@ -7,6 +7,9 @@ assert.equal(verifier({...base,action:'publish',platform:'opla'}),'boutique_non_
 assert.equal(verifier({...base,boutiques:[{user_id:'nadege'}]}),'boutique_etrangere');
 assert.equal(verifier({...base,boutiqueArticle:'albert'}),null);
 assert.equal(verifier({...base,boutiqueArticle:'albert',boutiqueSession:null}),'session_inconnue');
+assert.equal(verifier({...base,boutiqueArticle:'albert',boutiqueSession:null,sessionRequise:false}),null);
+assert.equal(verifier({...base,boutiqueSession:null,sessionRequise:false}),'boutique_non_confirmee');
+assert.equal(verifier({...base,boutiques:[{user_id:'nadege'}],sessionRequise:false}),'boutique_etrangere');
 assert.equal(verifier({...base,boutiqueArticle:null}),'origine_inconnue');
 assert.equal(verifier({...base,lectureFiable:false}),'lecture_indisponible');
 assert.equal(verifier({...base,action:'publish',boutiqueArticle:null}),null);
@@ -18,4 +21,12 @@ assert.equal(identiteBoutiqueFraiche({checked_at:'2026-09-28T10:01:00Z',vinted_i
 assert.equal(identiteBoutiqueFraiche({checked_at:'2026-09-28T09:59:00Z',vinted_identite:{user_id:'a'}},maintenant).user_id,'a');
 assert.deepEqual(origineBoutiqueProuvee('a','b'),{origine:'a',contradictoire:true});
 assert.deepEqual(origineBoutiqueProuvee(null,'b'),{origine:'b',contradictoire:false});
-console.log('16 contrôles de cloisonnement des boutiques réussis.');
+const job={id:'nouveau',inventaire_id:123,listing_url:'https://www.vinted.fr/items/9991856071'};
+const depot={id:'ancien',inventaire_id:123,platform:'vinted',action:'republish',status:'published',handler_build:'2026-09-13T10:16:27Z+dbe8d1b',platform_listing_id:'9991856071'};
+assert.equal(depotVintedExact(job,[depot]),true);
+assert.equal(depotVintedExact(job,[{...depot,inventaire_id:124}]),false);
+assert.equal(depotVintedExact(job,[{...depot,platform_listing_id:'9991856072'}]),false);
+assert.equal(depotVintedExact(job,[{...depot,handler_build:'2026-09-13T10:16:27Z-sync-dressing'}]),false);
+assert.equal(verifier({...base,boutiqueArticle:null,sessionRequise:false,historiqueListingProuve:true}),null);
+assert.equal(verifier({...base,boutiqueArticle:null,historiqueListingProuve:true}),'origine_inconnue');
+console.log('25 contrôles de cloisonnement des boutiques et de compatibilité réussis.');
