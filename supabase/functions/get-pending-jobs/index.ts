@@ -6140,8 +6140,8 @@ serve(async (req) => {
     // comme avant.
     let heldFourreTout = 0;
     if (!includeProcessing && !includeNeedsUser) {
+      const aRetenir = new Set<string>();
       try {
-        const aRetenir = new Set<string>();
         for (const j of out as unknown as Array<Record<string, unknown>>) {
           if (j.platform !== "leboncoin" || (j.action ?? "publish") !== "publish") continue;
           const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
@@ -6155,23 +6155,24 @@ serve(async (req) => {
             fourre_tout_retenu: { chemin: pf.lbcCategoryPath, source: pf.categorie_source ?? null, depuis: new Date().toISOString(), pose_par: "get-pending-jobs (avant tout essai)" },
           };
           delete pfNu.processing_since;
+          aRetenir.add(String(j.id)); // Une panne d'écriture ne doit pas autoriser ce dépôt.
           const { data: maj, error: uErr } = await userClient.from("cross_post_jobs")
             .update({ status: "needs_user", error: message, platform_fields: pfNu })
             .eq("id", j.id as string).eq("status", "pending").select("id");
           if (uErr) {
-            console.warn(`[get-pending-jobs] leboncoin ${String(j.id).slice(0, 8)} : fourre-tout « ${chemin} » non retenu (${uErr.message}) — servi tel quel`);
+            console.warn(`[get-pending-jobs] leboncoin ${String(j.id).slice(0, 8)} : question non enregistrée (${uErr.message}) — dépôt retenu`);
             continue;
           }
-          aRetenir.add(String(j.id));
           console.log(`[get-pending-jobs] leboncoin ${String(j.id).slice(0, 8)} : rayon fourre-tout « ${chemin} » (source ${String(pf.categorie_source ?? "∅")}) → needs_user AVANT tout essai${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
         }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] question de rayon Leboncoin non enregistrée : ${String((e as Error)?.message ?? e)}`);
+      } finally {
         if (aRetenir.size) {
           const avant = out.length;
           out = out.filter((j) => !aRetenir.has(String(j.id)));
           heldFourreTout = avant - out.length;
         }
-      } catch (e) {
-        console.warn(`[get-pending-jobs] fourre-tout Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
       }
     }
 
