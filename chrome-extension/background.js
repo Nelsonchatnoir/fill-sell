@@ -9977,6 +9977,7 @@ async function mesurerCookiesOpla() {
   return {
     le: new Date().toISOString(), octets, n: cookies.length,
     session: cookies.some((c) => c.name === "opla_has_session"),
+    session_cookie_presente: cookies.some((c) => /^__session(?:__\d+)?$/.test(c.name)),
     gros: tailles.slice(0, 6).map(({ name, len, domain, path, httpOnly }) => ({ name, len, domain, path, httpOnly })),
   };
 }

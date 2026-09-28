@@ -590,6 +590,15 @@ export function classerEchec(arg) {
         message: autorisationOplaRequise(action),
       };
     }
+    const oc = pf && typeof pf.opla_cookies === "object" ? pf.opla_cookies : null;
+    const gros = Array.isArray(oc?.gros) ? oc.gros : [];
+    const listeComplete = !!oc && Number.isFinite(Number(oc.n)) && gros.length >= Number(oc.n);
+    const sansSession = oc?.session_cookie_presente === false ||
+      (listeComplete && !gros.some((c) => /^__session/.test(String(c?.name ?? ""))));
+    if (sansSession) {
+      return { verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
+        message: connexionOplaRequise(action) };
+    }
     // (27/09, point 19 — samazer59) La sonde a vu Opla CONNECTÉ : l'onglet a
     // quitté opla.co le temps d'un rafraîchissement de session. Jamais
     // « connecte-toi » : quelques minutes (3, 6, 10), puis 45.
@@ -598,16 +607,6 @@ export function classerEchec(arg) {
         `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue : l'onglet Opla a quitté opla.co ` +
         "un instant. Ta connexion Opla est bonne, rien n'a été touché : on refait un essai tout seuls dans quelques minutes.",
         reprisesFaites < 3 ? [3, 6, 10][reprisesFaites] : 45);
-    }
-    const oc = pf && typeof pf.opla_cookies === "object" ? pf.opla_cookies : null;
-    const gros = Array.isArray(oc?.gros) ? oc.gros : [];
-    const listeComplete = !!oc && Number.isFinite(Number(oc.n)) && gros.length >= Number(oc.n);
-    const sansSession = listeComplete && !gros.some((c) => /^__session/.test(String(c?.name ?? "")));
-    if (sansSession || reprisesFaites >= 1) {
-      return {
-        verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
-        message: connexionOplaRequise(action),
-      };
     }
     return reprise("opla_hors_hote",
       `${acte(action).replace(/^la /, "La ").replace(/^le /, "Le ")} a été interrompue : l'onglet Opla a quitté opla.co ` +
@@ -627,6 +626,13 @@ export function classerEchec(arg) {
         "sans que ton ordinateur puisse la reprendre. Rien n'a été touché. " +
         "Ouvre Chrome avec l'extension FillSell, puis relance-la d'un clic ci-dessous.",
     };
+  }
+
+  if (platform === "beebs" && /élément introuvable:\s*#input-pictures/i.test(t)) {
+    const message = "FillSell n’a pas pu ouvrir l’ajout des photos sur Beebs. Rien n’a été publié. ";
+    if (essais < 3 && reprisesFaites < 3) return reprise("beebs_formulaire_photos", message + "Un nouvel essai est prévu automatiquement.", 15);
+    return { verdict: "a_toi", statut: "needs_user", motif: "beebs_formulaire_photos", source: "relancer",
+      message: message + "Tu peux relancer après la mise à jour de l’extension." };
   }
 
   // ── 6. MOTIF INCONNU — TOUJOURS PAS DE ROUGE ──────────────────────────────

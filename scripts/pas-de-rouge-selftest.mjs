@@ -274,7 +274,11 @@ console.log("\n── 10. Faux « déconnecté » : une session Opla prouvée bo
   const c = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: true, reprises: 3 });
   ok(c.verdict === "reprise" && c.dansMinutes >= 45, "au-delà : espacé (45 min), toujours pas « connecte-toi »");
   const d = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: { opla: null }, oplaAccesDuPoste: true, reprises: 1 });
-  ok(d.motif === "connexion", "sans preuve de session : comportement d'avant (connexion après une reprise)");
+  ok(d.motif === "opla_hors_hote", "sans preuve de session fermée : le nombre d'essais ne prouve pas une déconnexion");
+  const fermee = classerEchec({ platform: "opla", action: "publish", brut: brutHH, pf: { opla_cookies: { n: 13, gros: [], session_cookie_presente: false } }, sessions: { opla: null }, oplaAccesDuPoste: true });
+  ok(fermee.motif === "connexion", "Malena : absence de cookie de session mesurée sur la liste entière, même si le diagnostic n'en montre que six");
+  const photos = classerEchec({ platform: "beebs", action: "publish", brut: "Élément introuvable: #input-pictures", essais: 3, reprises: 3 });
+  ok(photos.motif === "beebs_formulaire_photos" && !photos.message.includes("pourquoi"), "Tessy : le formulaire photo absent garde sa cause connue");
   const e = classerEchec({ platform: "opla", action: "publish", brut: brutHH, essais: 0, pf: {}, sessions: sBonne, oplaAccesDuPoste: false, reprises: 0 });
   ok(e.motif === "opla_acces", "poste sans accès Opla : « Autoriser Opla », comme avant");
   const brut401 = "Connexion Opla requise : Opla a répondu 401.";
