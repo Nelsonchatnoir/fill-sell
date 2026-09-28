@@ -60,13 +60,20 @@ for (const [taille, attendu] of [["42", "EU 42"], ["48", "EU 48"]]) {
   const c = bac(COSTUMES().document).candidatsTailleVinted("42");
   ok("candidats de « 42 » : « 42 » d'abord, « EU 42 » ensuite", JSON.stringify(c) === JSON.stringify(["42", "EU 42"]), JSON.stringify(c));
   const c2 = bac(COSTUMES().document).candidatsTailleVinted("EU 42");
-  ok("candidats de « EU 42 » : inchangés (« EU 42 », « 42 »)", JSON.stringify(c2) === JSON.stringify(["EU 42", "42"]), JSON.stringify(c2));
+  ok("« EU 42 » garde son pays", JSON.stringify(c2) === JSON.stringify(["EU 42"]), JSON.stringify(c2));
+  const uk = bac(COSTUMES().document).candidatsTailleVinted("UK 12");
+  ok("« UK 12 » ne devient pas « 12 »", JSON.stringify(uk) === JSON.stringify(["UK 12"]), JSON.stringify(uk));
   const c3 = bac(COSTUMES().document).candidatsTailleVinted("W32 L34");
   ok("candidats de « W32 L34 » : inchangés (jamais « EU »)", JSON.stringify(c3) === JSON.stringify(["W32 L34", "W32", "32"]), JSON.stringify(c3));
   ok("jamais « FR N » ni « UK N » pour un nombre nu", !bac(COSTUMES().document).candidatsTailleVinted("42").some((x) => /^(FR|UK|IT|US)\s/i.test(x)));
 }
 
 // ── [2] CE QUI PASSAIT PASSE PAREIL — cas relevés ────────────────────────────
+{
+  const { document, clics } = panneau([{ texte: "", groupe: 7, idDepart: 100, options: ["8 ans", "10 ans", "12 ans"] }]);
+  await bac(document).selectTailleVinted({ taille: "10 years" }, []);
+  ok("Beganton : 10 years est traduit en 10 ans", clics[0] === "10 ans", JSON.stringify(clics));
+}
 console.log("\n[2] Rien ne bouge là où ça marchait");
 {
   const { document, clics } = panneau([{ texte: "", groupe: 7, idDepart: 100, options: ["34", "34,5", "35", "38", "38,5", "39", "42", "Taille unique", "Autre"] }]);

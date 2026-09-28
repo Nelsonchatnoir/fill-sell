@@ -48,7 +48,6 @@ export function chargerTailleVinted(src, document) {
   const optionnel = (nom) => { try { return extraireFonction(src, nom); } catch { return `function ${nom}() { throw new Error("${nom} absente de cette version"); }`; } };
   const corps = [
     ligne(src, /^const PURE_NUMBER_RE = .+;$/m),
-    ligne(src, /^const TAILLE_LETTREE_PAR_NUMERIQUE = .+;$/m),
     ligne(src, /^const TAILLE_TRIGGER_SEL = .+;$/m),
     ligne(src, /^const TAILLE_OPTIONS_SEL = .+;$/m),
     ligne(src, /^const TAILLE_PREFIXE_ONGLET_RE = .+;$/m),

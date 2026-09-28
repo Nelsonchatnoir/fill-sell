@@ -159,7 +159,7 @@ export function optionEuPourNombreNu(nt: string, grille: Array<{ brut: string; n
  *  garantie qu'une des deux dérivera : il n'y en a toujours qu'une, et ce
  *  fichier la re-exporte pour que ses appelants ne bougent pas. */
 export { TAILLE_FEMME_LETTRE_PAR_NOMBRE } from "./tailles.js";
-import { TAILLE_FEMME_LETTRE_PAR_NOMBRE } from "./tailles.js";
+
 
 /** Racines de la branche Femmes, dans les deux langues où les chemins sont
  *  relevés en base (category_key « Femmes > … » et « Women > … »). */
@@ -186,34 +186,9 @@ export function tailleAServirPublication(args: {
     .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
     .filter((o) => o.norm);
 
-  // ── La règle d'HIER, intacte : branche Femmes, nombre → lettre ────────────
-  const femmeNombreVersLettre = (): TailleServie | TailleRefusee => {
-    if (!NOMBRE_RE.test(nt)) return refus("taille non numérique (hors périmètre)");
-
-    const chemin = normaliserTaille(args.cheminCategorie);
-    const racine = chemin.split(">")[0]?.trim() ?? "";
-    if (!RACINES_FEMMES.has(racine)) return refus(`branche « ${racine || "inconnue"} » ≠ Femmes (table femme seulement)`);
-
-    const lettre = TAILLE_FEMME_LETTRE_PAR_NOMBRE[nt];
-    if (!lettre) return refus(`« ${nt} » absent de la grille femme (30→44)`);
-
-    if (!grille.length) return refus("grille non relevée");
-
-    // La grille propose déjà le nombre nu : l'extension le matche par l'exact.
-    if (grille.some((o) => o.norm === nt)) return refus(`« ${nt} » est déjà une option de la grille`);
-
-    const cible = grille.find((o) => o.norm === lettre);
-    if (!cible) return refus(`lettre « ${lettre} » absente de la grille relevée`);
-
-    return {
-      valeur: cible.brut,
-      etape: 3,
-      ordre,
-      detail: `« ${nt} » → « ${cible.brut} » (grille femme Vinted, lettre présente dans la grille relevée)`,
-    };
-  };
-  const r = femmeNombreVersLettre();
-  if (r.valeur !== null) return r;
+  // Une grille uniquement lettrée ne prouve aucune correspondance numérique.
+  if (grille.some((o) => o.norm === nt)) return refus(`« ${nt} » est déjà une option de la grille`);
+  const r = refus("La grille ne prouve pas cette taille : demande le choix à la personne.");
 
   // ── DERNIER RECOURS (2026-09-23) : « N » → « EU N » de la grille relevée ──
   // Seulement là où hier on ne servait rien, et seulement si le client garde
@@ -355,10 +330,9 @@ export function tailleAServir(args: {
     if (!lettre) { motifs.push(`3 : aucune lettre exploitable dans « ${gardeRobe} »`); return null; }
     const coherent =
       (prefixe === "EU" && eu != null && eu === n) ||
-      (prefixe === "FR" && eu != null && eu + 2 === n) ||
       (prefixe === "UK" && uk != null && uk === n);
     if (!coherent) { motifs.push(`3 : incohérence capture « ${prefixe} ${n} » ↔ garde-robe « ${gardeRobe} »`); return null; }
-    if (!relevee) return servi(lettre, 3, "lettre de la garde-robe (grille non relevée)");
+    if (!relevee) { motifs.push("3 : grille non relevée, choix nécessaire"); return null; }
     if (grilleEnChiffres(grille.map((o) => o.norm))) {
       const opt = eu != null ? grille.find((o) => o.norm === String(eu)) : undefined;
       if (opt) return servi(opt.brut, 3, "chiffre de la garde-robe (grille en chiffres)");

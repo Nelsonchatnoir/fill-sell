@@ -898,8 +898,6 @@ export function cleFourche(options: Array<{ code?: unknown }>): string {
 // ⛔ CONTRE LA GRILLE DE LA FEUILLE, jamais contre l'union des 150 entrées :
 //    TAILLE_UNIQUE et XS…XXL vivent en G1 ET en G4 (soutiens-gorge), et
 //    « 90C » passerait sur un t-shirt (bandeau d'opla-catalogue.ts).
-const sansPrefixePays = (s: string) => s.replace(/^(eu|fr|uk|us|it|de)\s*/i, "").trim();
-
 export function normaliserTailleOpla(codeFeuille: string, taille: unknown): string | null {
   const brut = String(taille ?? "").trim();
   if (!brut) return null;
@@ -914,37 +912,10 @@ export function normaliserTailleOpla(codeFeuille: string, taille: unknown): stri
   // `tailleDansGrille` couvre l'exact, l'orthographe, les âges, les demi-
   // pointures, la taille unique et les étiquettes composites des DEUX côtés,
   // sans jamais convertir un système en un autre.
-  // ── « 38 » SUR LA GRILLE DE LETTRES : LA TABLE FEMME (2026-09-20) ────────
-  // Opla ne publie AUCUNE équivalence numérique — relevé du 20/09 sur
-  // WOM_DRE_OTHER : les 14 titres sont « Taille unique », « XXS »… « 8XL »,
-  // rien d'autre. Vinted, lui, publie l'égalité dans /api/v2/size_groups
-  // (groupe 4 : « M / 38 / 10 »), et cette table est dans le projet depuis le
-  // 10/09. On lit SA table ; on n'en fabrique pas une.
-  // ⛔ BORNÉE À LA BRANCHE FEMMES, parce que le MÊME « 38 » est une pointure
-  //    dans les groupes 7 et 38 du même référentiel et qu'un « 36 » d'homme
-  //    est un tour de taille. `tailleDansGrille` pose en plus sa propre garde :
-  //    la grille cible ne doit écrire QUE des lettres (ce qui écarte les
-  //    soutiens-gorge, dont la grille mêle XS…XXL à 75A…115E).
-  // ⚠️ ICI ET PAS SEULEMENT DANS L'EXTENSION : la correction du pré-vol ne
-  //    partira qu'après un examen du Chrome Web Store, quand celle-ci atteint
-  //    TOUS les builds au prochain get-pending-jobs. Même raison qu'au 10/09
-  //    pour la reprise Vinted côté serveur.
-  const femmes = oplaChemin(codeFeuille)[0] === "Femmes";
-  const t = tailleDansGrille(brut, grille, { tableFemme: femmes });
+  const t = tailleDansGrille(brut, grille);
   if (t) return t.valeur;
 
-  // ── LE DÉ-PRÉFIXAGE PAYS EN DERNIER, ET PLUS EN PREMIER ──────────────────
-  // ⚠️ `sansPrefixePays` est le seul étage qui puisse se TROMPER de système :
-  // « UK 12 » et « FR 12 » ne sont pas la même taille, et retirer le préfixe
-  // les rend identiques. Il était en tête ; il passe en dernier recours, donc
-  // il ne peut plus court-circuiter une correspondance sûre. Conservé tel quel
-  // (comportement en prod), pas étendu.
-  for (const e of [brut, ...brut.split("/").map((s) => s.trim())].filter(Boolean)) {
-    const sansPays = sansPrefixePays(e);
-    if (sansPays === e) continue; // rien à retirer : déjà jugé ci-dessus
-    const c = grille.find((g) => comparable(g) === comparable(sansPays));
-    if (c) return c;
-  }
+  // Un préfixe régional est une information de taille : ne jamais le supprimer.
   return null;
 }
 

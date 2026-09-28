@@ -93,14 +93,14 @@ const POLO = { // PASSÉ ce soir — idem
 
 for (
   const [nom, cas, feuille, taille] of [
-    ["robe rouge Oh Polly", ROBE_ROUGE, "WOM_DRE_OTHER", "M"],
-    ["robe champagne Oh Polly", ROBE_CHAMPAGNE, "WOM_DRE_OTHER", "M"],
-    ["pantalon cigarette Sandro", PANTALON, "W_REGULAR_PANTS", "M"],
+    ["robe rouge Oh Polly", ROBE_ROUGE, "WOM_DRE_OTHER", "38"],
+    ["robe champagne Oh Polly", ROBE_CHAMPAGNE, "WOM_DRE_OTHER", "38"],
+    ["pantalon cigarette Sandro", PANTALON, "W_REGULAR_PANTS", "38"],
   ] as const
 ) {
   const { pf } = passer(cas);
   ok(`${nom} → ${feuille}`, pf.oplaCategoryCode === feuille, pf.oplaCategoryCode ?? pf.oplaCategoryAsk);
-  ok(`${nom} → taille « ${taille} », et plus « 38 »`, pf.taille === taille, pf.taille);
+  ok(`${nom} → taille « ${taille} » conservée avant le choix dans la grille`, pf.taille === taille, pf.taille);
   ok(`${nom} → aucune question posée`, !pf.oplaCategoryAsk, pf.oplaCategoryAsk);
   ok(`${nom} → genre « Femme », lu sur l'étagère Vinted`, pf.genre === "Femme", pf.genre);
 }
@@ -148,7 +148,7 @@ console.log("\n── ① la réponse donnée n'est jamais recalculée (G2) ─�
     Array.isArray(pf.oplaCategoryPath) && (pf.oplaCategoryPath as string[])[0] === "Femmes",
     pf.oplaCategoryPath,
   );
-  ok("et la taille se normalise contre SA feuille : 38 → M", pf.taille === "M", pf.taille);
+  ok("la taille 38 n'est pas convertie en M : le choix reste nécessaire", pf.taille === "38", pf.taille);
   ok("la question n'est pas reposée par-dessus", !(trace as Record<string, unknown>).oplaCategoryAsk, trace);
   ok("la trace nomme la source", /votre réponse/.test(JSON.stringify(trace)), trace);
   ok("la réponse est rangée pour le compte", aRetenir?.entree.code === "WOM_DRE_OTHER", aRetenir);

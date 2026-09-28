@@ -152,8 +152,7 @@ export function estChampTaille(platform, key) {
 export const normAspectVal = s => texteComparable(s)
   .replace(/(\d),(\d)/g, "$1.$2")
   .replace(/[.,](?!\d)/g, "")
-  .replace(/\s+/g, " ").trim()
-  .replace(/^eu\s+(?=\d)/, "");
+  .replace(/\s+/g, " ").trim();
 
 // Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
 // « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers

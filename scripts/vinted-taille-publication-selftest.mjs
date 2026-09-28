@@ -70,16 +70,16 @@ t("chemin de catégorie absent → refusé",
 console.log("\n[2] LES DEUX CAS RÉELS D'ORNELLA (jobs 6aefaa2b et 55d99d75/dab128c6)");
 {
   const blazer = sert("36", "Femmes > Vêtements > Blazers et tailleurs > Blazers", GRILLE_FEMME_VETEMENTS);
-  t("blazer « 36 » → « S »", blazer.valeur === "S");
+  t("blazer « 36 » : choix nécessaire", blazer.valeur === null);
   const jupe = sert("42", "Femmes > Vêtements > Jupes", GRILLE_FEMME_VETEMENTS);
-  t("jupe « 42 » → « XL »", jupe.valeur === "XL");
-  t("la trace dit d'où vient la valeur", /grille femme Vinted/.test(blazer.detail ?? ""));
+  t("jupe « 42 » : choix nécessaire", jupe.valeur === null);
+  t("la trace dit d'où vient la valeur", /demande le choix/.test(blazer.motif ?? ""));
 }
 
 console.log("\n[3] LA TABLE, EN ENTIER, CONTRE LA GRILLE RELEVÉE");
 for (const [nombre, lettre] of Object.entries(TAILLE_FEMME_LETTRE_PAR_NOMBRE)) {
   const r = sert(nombre, "Femmes > Vêtements > Jupes", GRILLE_FEMME_VETEMENTS);
-  t(`${nombre} → ${lettre}`, r.valeur === lettre);
+  t(`${nombre} → ${lettre}`, r.valeur === null);
 }
 
 console.log("\n[4] FORMES HORS PÉRIMÈTRE — comportement inchangé");
@@ -90,7 +90,7 @@ t("une forme préfixée (« EU 36 ») reste au chemin republication",
 t("« Taille unique » n'est pas un nombre",
   sert("Taille unique", "Femmes > Vêtements > Jupes", GRILLE_FEMME_VETEMENTS).valeur === null);
 t("un chemin en anglais (« Women > … ») est reconnu",
-  sert("38", "Women > Clothing > Skirts", GRILLE_FEMME_VETEMENTS).valeur === "M");
+  sert("38", "Women > Clothing > Skirts", GRILLE_FEMME_VETEMENTS).valeur === null);
 
 console.log(ko ? `\n${ko} CONTRÔLE(S) EN ÉCHEC` : "\nTOUS LES CONTRÔLES PASSENT");
 process.exit(ko ? 1 : 0);

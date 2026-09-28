@@ -328,12 +328,12 @@ console.log("\n[17] jugerValeurContreListe — traduire, rapprocher, jamais conv
   ok("Opla : « 12 ans / 152 cm » (composite Vinted) est « 12 ans » dans la grille enfant", L.jugerValeurContreListe({ platform: "opla", key: "size", value: "12 ans / 152 cm", allowedValues: titresFilles }).valeurListe === "12 ans");
   ok("Opla : « 12Y » (code) désigne « 12 ans » (titre)", L.jugerValeurContreListe({ platform: "opla", key: "size", value: "12Y", allowedValues: titresFilles }).valeurListe === "12 ans");
   const femmes = ["Taille unique", "XXS", "XS", "S", "M", "L", "XL"];
-  ok("Opla branche Femmes : « 38 » sur une grille de lettres → M (table Vinted, autorisée là seulement)", L.jugerValeurContreListe({ platform: "opla", key: "size", value: "38", allowedValues: femmes, cheminCategorie: ["Femmes", "Vêtements", "Robes"] }).valeurListe === "M");
+  ok("Opla branche Femmes : « 38 » sur une grille de lettres demande un choix", L.jugerValeurContreListe({ platform: "opla", key: "size", value: "38", allowedValues: femmes, cheminCategorie: ["Femmes", "Vêtements", "Robes"] }).valeurListe === null);
   ok("Opla branche Hommes : le même « 38 » n'est PAS converti", L.jugerValeurContreListe({ platform: "opla", key: "size", value: "38", allowedValues: femmes, cheminCategorie: ["Hommes", "Vêtements"] }).dans === false);
   const grilleVinted = ["XXS / 32 / 4", "XS / 34 / 6", "S / 36 / 8", "M / 38 / 10", "Taille unique", "Autre"];
   ok("Vinted : « XS » est dans « XS / 34 / 6 » (étiquette composite de la grille)", L.jugerValeurContreListe({ platform: "vinted", key: "size", value: "XS", allowedValues: grilleVinted }).valeurListe === "XS / 34 / 6");
   ok("Vinted : « 38,5 » = « 38.5 » et « EU 39 » = « 39 »", L.jugerValeurContreListe({ platform: "vinted", key: "size", value: "38,5", allowedValues: ["38", "38.5", "39"] }).valeurListe === "38.5"
-    && L.jugerValeurContreListe({ platform: "vinted", key: "size", value: "EU 39", allowedValues: ["38", "38.5", "39"] }).valeurListe === "39");
+    && L.jugerValeurContreListe({ platform: "vinted", key: "size", value: "EU 39", allowedValues: ["38", "38.5", "39"] }).valeurListe === null);
   const v5 = L.jugerValeurContreListe({ platform: "leboncoin", key: "clothing_st", value: "XS", allowedValues: ["32 - XXS", "34 - XS", "36 - S"] });
   ok("Leboncoin : « XS » EST « 34 - XS » (composant exact de l'étiquette, comme leboncoin.js)", v5.dans === true && v5.valeurListe === "34 - XS", JSON.stringify(v5));
   ok("pointure 38.5 sur une grille d'entiers : hors liste, aucune suggestion (jamais 38)", (() => { const r = L.jugerValeurContreListe({ platform: "beebs", key: "Pointure", value: "38.5", allowedValues: ["37", "38", "39"] }); return r.dans === false && r.suggested === null; })());

@@ -4920,15 +4920,6 @@ function containsAsWords(hay, needle) {
 // laissé vide avec warning, jamais faux). Les autres champs sont inchangés.
 const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
 
-// ── Taille NUMÉRIQUE sur une grille purement LETTRÉE (0.6.24) ────────────────
-// Jupe d'Ornella (job 571ad7e5) : « Femmes > Vêtements > Jupes » n'accepte que
-// XXXS…9XL / Autre / Taille unique, l'article dit 42 → 5 tentatives brûlées.
-// Grille FEMME de Vinted, relevée dans /api/v2/size_groups (« XL / 42 / 14 ») :
-// 30→XXXS, 32→XXS, 34→XS, 36→S, 38→M, 40→L, 42→XL, 44→XXL. Appliquée SEULEMENT
-// quand AUCUNE option n'a de chiffre (grille purement lettrée) et que le
-// nombre est dans la table — hors table, rien n'est posé (jamais deviné).
-const TAILLE_LETTREE_PAR_NUMERIQUE = { "30": "XXXS", "32": "XXS", "34": "XS", "36": "S", "38": "M", "40": "L", "42": "XL", "44": "XXL" };
-
 function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
@@ -4963,15 +4954,7 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
       return !!m && m[1].replace(",", ".") === num;
     });
     if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
-    // 1ter. grille purement lettrée : traduction par la grille femme de Vinted
-    if (!options.some((o) => /\d/.test(o.norm))) {
-      const lettre = TAILLE_LETTREE_PAR_NUMERIQUE[String(num).replace(/\.0+$/, "")];
-      if (lettre) {
-        const cible = normalizeFuzzy(lettre);
-        const opt = options.find((o) => o.norm === cible);
-        if (opt) return { ...opt, stage: "taille-lettree" };
-      }
-    }
+
   }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
@@ -5620,6 +5603,8 @@ function candidatsTailleVinted(libelle) {
   const out = [];
   const push = (v) => { const t = String(v ?? "").trim(); if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t); };
   push(l);
+  const ageAnglais = l.match(/^(\d{1,2}(?:\s*[-/]\s*\d{1,2})?)\s*(years?|yrs?|months?)$/i);
+  if (ageAnglais) push(`${ageAnglais[1]} ${/^month/i.test(ageAnglais[2]) ? "mois" : "ans"}`);
   const jean = l.match(/^\s*W?\s*(\d{2})\s*(?:[xX\/\-\s]\s*L?|L)\s*(\d{2})\s*$/i);
   if (jean) { push(`W${jean[1]}`); push(jean[1]); }
   const w = l.match(/^\s*W\s+(\d{2})\s*$/i);
@@ -5640,7 +5625,7 @@ function candidatsTailleVinted(libelle) {
   // par le retrait de préfixe ci-dessous, inchangé.
   const nu = l.match(/^\s*(\d{1,3}(?:[.,]\d)?)\s*$/);
   if (nu) push(`EU ${nu[1]}`);
-  push(l.replace(/^(EU|UK|FR|IT|US)\s+/i, ""));
+  // Le système fait partie de la taille : UK 12 ne devient pas EU/FR 12.
   return out;
 }
 // Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par

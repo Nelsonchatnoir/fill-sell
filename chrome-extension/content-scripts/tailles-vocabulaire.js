@@ -169,25 +169,10 @@ function memeTaille(a, b) {
   return false;
 }
 
-// ── LA TABLE NOMBRE → LETTRE, RELEVÉE CHEZ VINTED ──────────────────────────
-// Elle vivait dans _shared/vinted-taille-republication.ts, qui la déclarait
-// « la SEULE table de correspondance nombre → lettre du projet ». Elle monte
-// ici SANS UNE VIRGULE DE CHANGEMENT (20/09) parce qu'Opla en a besoin aussi :
-// la grille G1 d'Opla (`XXS`…`8XL`, relevée le 20/09) ne porte AUCUNE
-// équivalence numérique, donc un « 38 » de robe y était refusé.
-//
-// ⛔ CE N'EST PAS UNE CONVERSION INVENTÉE. Vinted publie lui-même l'égalité,
-//    dans /api/v2/size_groups, groupe 4 : « XXXS / 30 / 2 », « S / 36 / 8 »,
-//    « M / 38 / 10 », « XL / 42 / 14 ». On lit sa table, on n'en fabrique pas.
-// ⛔ ET ELLE NE VAUT QUE POUR LA BRANCHE FEMMES. Le MÊME « 38 » est une
-//    pointure dans les groupes 7 et 38 du même référentiel, et un « 36 »
-//    d'homme est un tour de taille, pas un S. C'est pourquoi l'accès passe
-//    par une option que l'appelant doit poser à la main, après avoir vérifié
-//    sa branche — jamais par défaut.
-/** @type {Readonly<Record<string, string>>} */
+// Registre historique conservé pour compatibilité des imports, jamais utilisé
+// pour choisir une taille. Une table d'une autre grille ne prouve pas la cible.
 const TAILLE_FEMME_LETTRE_PAR_NOMBRE = Object.freeze({
-  "30": "XXXS", "32": "XXS", "34": "XS", "36": "S",
-  "38": "M", "40": "L", "42": "XL", "44": "XXL",
+  "30":"XXXS", "32":"XXS", "34":"XS", "36":"S", "38":"M", "40":"L", "42":"XL", "44":"XXL",
 });
 
 /**
@@ -197,11 +182,7 @@ const TAILLE_FEMME_LETTRE_PAR_NOMBRE = Object.freeze({
  *   (« 12 ans », « 44,5 », « M / 38 / 10 », « Taille unique »).
  * @param {unknown[]} grille — les valeurs EXACTES que la plateforme accepte
  *   pour CETTE catégorie. Jamais l'union de plusieurs grilles.
- * @param {{tableFemme?: boolean}} [opts] — `tableFemme: true` autorise la
- *   dernière étape, la table relevée ci-dessus. L'appelant ne la pose QUE
- *   s'il a vérifié que la catégorie est un VÊTEMENT de la branche FEMMES.
- *   Absente par défaut : sans elle, le module se comporte à l'octet près
- *   comme avant le 20/09.
+ * @param {{tableFemme?: boolean}} [opts] — ancien argument conservé, sans conversion.
  * @returns {{valeur:string, motif:string}|null} la valeur À ENVOYER, telle
  *   qu'elle est écrite dans la grille — ou null si aucune ne désigne la même
  *   taille. null n'est pas un échec : c'est un refus, et il est voulu.
@@ -243,26 +224,7 @@ function tailleDansGrille(brut, grille, opts) {
     jetons(o).length > 1 && jetons(o).some((m) => morceaux.some((x) => memeTaille(m, x))));
   if (parMorceau.length === 1) return { valeur: parMorceau[0], motif: "étiquette composite de la grille" };
 
-  // 5. DERNIER RECOURS, ET SEULEMENT SUR DEMANDE : la table femme relevée
-  //    chez Vinted. La grille cible écrit des LETTRES et rien d'autre (Opla
-  //    G1) ; l'article porte un nombre ; Vinted publie leur égalité.
-  //    Deux verrous en plus de l'option, parce qu'une taille fausse coûte
-  //    plus cher qu'un refus :
-  //      · la grille doit n'écrire QUE des lettres (plus « taille unique ») :
-  //        une grille de pointures écrit « 38 » pour dire 38, et la grille
-  //        des soutiens-gorge (Opla G4) mêle `XS`…`XXL` à `75A`…`115E` — un
-  //        « 38 » y est un tour de dos, jamais un M. Tester « aucun nombre »
-  //        ne l'aurait pas vue : « 75A » n'est pas un nombre ;
-  //      · la lettre doit exister dans la grille, sans quoi on ne sert rien.
-  if (opts?.tableFemme) {
-    const queDesLettres = options.every((o) => canonLettre(o) || estUnique(o));
-    const nombre = canonNombre(valeur);
-    const lettre = nombre ? TAILLE_FEMME_LETTRE_PAR_NOMBRE[nombre] : null;
-    if (queDesLettres && lettre) {
-      const cible = options.find((o) => canonLettre(o) === canonLettre(lettre));
-      if (cible) return { valeur: cible, motif: `table femme Vinted (${nombre} = ${lettre})` };
-    }
-  }
+  // Un nombre ne devient jamais une lettre sur la table d’une autre grille.
 
   // 6. TAILLE ENFANT EN CENTIMÈTRES (27/09, doriane-henri : « Pantalon taille
   //    86 » refusé par Opla, qui écrit « 18 mois »). Deux lectures, dans cet

@@ -312,7 +312,7 @@ for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '
     // La table relevée chez Vinted descend jusqu'à XXXS ; la grille G1 d'Opla
     // s'arrête à XXS. Une lettre que la CIBLE n'écrit pas ne se sert pas — on
     // ne rapproche pas « 30 » du XXS le plus proche.
-    if (G1.includes(lettre)) dit(`robe femme « ${nombre} » → ${lettre}`, v.ok === true && sizeDe(v) === lettre, sizeDe(v));
+    if (G1.includes(lettre)) dit(`robe femme « ${nombre} » : aucune lettre déduite`, v.ok === false && v.motif === "opla_taille_hors_grille", v.motif);
     else dit(`robe femme « ${nombre} » : ${lettre} absent de la grille Opla → REFUSÉ, pas rapproché`,
       v.motif === M.TAILLE_HORS_GRILLE, `${v.ok} / ${sizeDe(v)}`);
   }

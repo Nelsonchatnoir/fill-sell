@@ -16,7 +16,7 @@ import { resoudreCategorieOpla, feuillesParMot, trancherCandidats, optionsFeuill
 import { oplaNoeud } from "../supabase/functions/_shared/opla-catalogue.ts";
 const l = (t: string) => console.log(t);
 let ko = 0;
-const ok = (nom: string, cond: boolean, detail = "") => { l(`${cond ? "  ok  " : "  ⚠ KO"} ${nom}${detail ? " — " + detail : ""}`); if (!cond) ko++; };
+const ok = (nom: string, cond: boolean, detail: unknown = "") => { l(`${cond ? "  ok  " : "  ⚠ KO"} ${nom}${detail ? " — " + detail : ""}`); if (!cond) ko++; };
 
 // ⛔ ON TESTE PAR LA PORTE D'ENTRÉE (2026-09-20). Ces deux cas passaient par
 //    `feuillesParMot` + `trancherCandidats` à la main — un montage qui n'existe
@@ -74,8 +74,9 @@ ok("« 23 mois » n'existe pas : REFUSÉ, jamais rapproché de 24M",
 // qu'Opla ne publie AUCUNE équivalence numérique sur sa grille de lettres.
 // ⛔ Elle ne doit sortir QUE sous Femmes, et QUE sur une grille de lettres.
 l("=== 3 bis. TABLE FEMME — relevée chez Vinted, bornée aux femmes ===");
-ok("robe femme « 38 » → M", normaliserTailleOpla("WOM_DRE_OTHER", "38") === "M");
-ok("robe femme « 40 » → L", normaliserTailleOpla("WOM_DRE_OTHER", "40") === "L");
+ok("robe femme « 38 » : choix nécessaire", normaliserTailleOpla("WOM_DRE_OTHER", "38") === null);
+ok("robe femme « 40 » : choix nécessaire", normaliserTailleOpla("WOM_DRE_OTHER", "40") === null);
+ok("UK 38 ne devient pas une pointure Opla 38", normaliserTailleOpla("MEN_SNEAKERS", "UK 38") === null);
 ok("« 46 » hors table → null, on ne devine pas", normaliserTailleOpla("WOM_DRE_OTHER", "46") === null);
 ok("HOMMES « 36 » de pantalon n'est pas un S", normaliserTailleOpla("MEN_TRO_OTHER", "36") === null);
 ok("HOMMES « 38 » de t-shirt reste refusé", normaliserTailleOpla("MEN_TOP_T_SHIRTS", "38") === null);
