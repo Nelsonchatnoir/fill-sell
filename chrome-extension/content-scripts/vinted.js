@@ -3579,6 +3579,13 @@ async function fillListingForm(job) {
   // C'est LE point où supprimer devient sûr — tout ce qui pouvait refuser a
   // déjà eu sa chance de refuser pendant que l'annonce était en ligne.
   if (onePass?.item_id) {
+    // Même format que la capture, vérifié sur le formulaire AVANT le retrait.
+    if (!wantedPackageId && !wantedPackage) {
+      return { success: false, needsUser: true, preflightFailed: true,
+        error: "Le format du colis manque. Ton annonce reste en ligne.", unfilledRequired: ["Format du colis"] };
+    }
+    await selectPackageSize(wantedPackage, wantedPackageId, { strict: true });
+    if (job.price != null) await ensurePriceCommitted(job.price);
     const traceDel = [];
     const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
     // preuveRequise : ici, un 404 sur le POST ne vaut PAS suppression — on
@@ -3690,15 +3697,17 @@ async function fillListingForm(job) {
     }
     if (radiosColis.length) {
       try {
-        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId, { strict: estRepublication });
         colisRepose = true;
         warnings.push(colisSectionAbsente
           ? `format de colis : section apparue après les attributs — « ${wantedPackage ?? "Petit"} » reposé avant le dépôt`
           : `format de colis : « ${wantedPackage ?? "Petit"} » reposé en dernier geste avant le dépôt (républication)`);
       } catch (e) {
+        if (estRepublication) throw e;
         warnings.push(`format de colis : section apparue mais format non posé (${String(e?.message ?? e).slice(0, 120)}) — choix Vinted conservé`);
       }
     } else {
+      if (estRepublication) throw new Error("Vinted ne présente pas le format du colis : la recréation attend un formulaire complet, sans dépôt avec une valeur par défaut.");
       // Sur une républication, ce warning est un signal GRAVE : l'annonce
       // d'origine est déjà supprimée, et si Vinted refuse le POST pour
       // `package_size` elle est perdue. On le dit, avec le temps attendu.
@@ -6886,7 +6895,7 @@ async function reposerCouleurRepublication(fields, titre, warnings) {
 // Décision produit Nico (2026-07-12) : sur TOUTE la branche Mode (vêtements ET
 // chaussures), c'est TOUJOURS « Petit », sans exception. On CLIQUE désormais le
 // format, on ne le suppose plus.
-async function selectPackageSize(size = "Petit", packageSizeId = null) {
+async function selectPackageSize(size = "Petit", packageSizeId = null, { strict = false } = {}) {
   // Table partagée avec la capture republication (VINTED_PACKAGE_SIZES_PAR_ID,
   // en tête de fichier) : le rang du radio EST le package_size_id. Une seule
   // table dans les deux sens — capturer « Petit » puis recliquer « Petit » ne
@@ -6897,6 +6906,10 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   // résolution libellé→id ne sert qu'aux appels historiques (« Petit » de la
   // branche Mode), dont les libellés sont uniques dans la table.
   const idCapture = Number(packageSizeId);
+  if (strict && !(Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
+      && !Object.values(VINTED_PACKAGE_SIZES_PAR_ID).includes(size)) {
+    throw new Error("Format du colis inconnu : aucun retrait ni dépôt autorisé.");
+  }
   const n = (Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
     ? idCapture
     : Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
@@ -6933,6 +6946,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
     // son travail, et la dernière passe avant le dépôt reposera le format si
     // la section est apparue entre-temps.
     if (!offerts.length) {
+      if (strict) throw new Error("Le format du colis ne peut pas être vérifié : aucun retrait ni dépôt autorisé.");
       console.warn(
         "[vinted] ⚠️ format de colis : section non rendue par Vinted à cet instant (aucun radio " +
         "package_type_selector_*) — un attribut requis de la catégorie manque probablement ; " +
@@ -6953,7 +6967,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
       );
     } else {
       const precoche = offerts.find((r) => r.checked);
-      if (!precoche) throw e;
+      if (!precoche || strict) throw e;
       console.warn(
         `[vinted] ⚠️ format de colis: ni l'id ${n} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
         `choix Vinted pré-coché « ${titreDe(precoche) || "recommandé"} » conservé`
@@ -7026,6 +7040,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   } catch (e) {
     if (e?.name !== "SelectorResolutionError") throw e;
   }
+  if (strict && (!after || !after.checked)) throw new Error("Le format du colis n’a pas été conservé par Vinted : aucun retrait ni dépôt autorisé.");
   if (after && !after.checked) {
     console.warn(`[vinted] ⚠️ format de colis : "${size}" n'a pas pris (radio non coché après clic)`);
   }

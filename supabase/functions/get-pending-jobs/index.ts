@@ -1,3 +1,4 @@
+import { recreationRetientFile } from "../_shared/file-republication.js";
 import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
@@ -2705,13 +2706,13 @@ serve(async (req) => {
       if (vaRetirerMaintenant.length) {
         const { data: enVol } = await userClient
           .from("cross_post_jobs")
-          .select("id, platform, title, status")
+          .select("id, platform, title, status, platform_fields")
           .eq("user_id", user.id)
           .eq("action", "republish")
           .eq("platform_fields->>republish_step", "deleted")
           .in("status", ["pending", "processing", "needs_user"]);
         const horsLigneParPf = new Map<string, Array<{ titre: string; statut: string }>>();
-        for (const r of (enVol ?? [])) {
+        for (const r of (enVol ?? []).filter(recreationRetientFile)) {
           const row = r as { platform: string; title: string | null; status: string };
           if (!horsLigneParPf.has(row.platform)) horsLigneParPf.set(row.platform, []);
           horsLigneParPf.get(row.platform)!.push({ titre: String(row.title ?? "").slice(0, 40), statut: row.status });

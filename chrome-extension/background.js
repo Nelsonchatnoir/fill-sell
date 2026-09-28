@@ -9172,16 +9172,17 @@ function vintedListedPrice(html, adId) {
 // scope les lectures de page à NOTRE annonce — jamais « la première chaîne qui
 // matche quelque part dans le document ».
 function extractListingId(url, platform) {
-  const patterns = {
-    vinted: /\/items\/(\d+)/,
-    leboncoin: /\/ad\/[^/]+\/(\d+)/,
-    ebay: /\/itm\/[^?#]*?(\d{9,})/,
-    // ⚠️ Format d'URL produit Beebs toujours NON OBSERVÉ : on suppose un long
-    // nombre dans le chemin. À confirmer dès la première URL réelle capturée.
-    beebs: /(\d{6,})/,
-  };
-  const m = String(url ?? "").match(patterns[platform] ?? /(\d{6,})/);
-  return m ? m[1] : null;
+  let u;
+  try { u = new URL(String(url)); } catch { return null; }
+  const domaines = { vinted: /(^|\.)vinted\.[a-z.]+$/i, leboncoin: /(^|\.)leboncoin\.fr$/i,
+    ebay: /(^|\.)ebay\.[a-z.]+$/i, beebs: /(^|\.)beebs\.app$/i, opla: /(^|\.)opla\.co$/i };
+  if (!domaines[platform]?.test(u.hostname)) return null;
+  const motifs = { vinted: /^\/items\/(\d+)(?:[-/]|$)/,
+    leboncoin: /^\/ad\/[^/]+\/(\d+)(?:[./]|$)/,
+    ebay: /^\/itm\/(?:[^/]+\/)?(\d{9,})(?:\/|$)/,
+    beebs: /\/p\/(\d+)(?:[-/]|$)/,
+    opla: /\/(?:product|article)\/(art_[a-zA-Z0-9_-]+)/ };
+  return u.pathname.match(motifs[platform])?.[1] ?? null;
 }
 
 // LEBONCOIN — RÉÉCRIT le 2026-07-13 après un FAUX POSITIF SYSTÉMATIQUE prouvé
@@ -19655,7 +19656,21 @@ async function executerRetraitViaHandler(job, accessToken) {
   if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
   // Même onglet de travail persistant que la publication (anti-DataDome).
-  const tabId = await getOrCreateWorkTab(job.platform, target);
+  let tabId = await getOrCreateWorkTab(job.platform, target);
+  const cibleId = extractListingId(target, job.platform);
+  if (cibleId && ["vinted", "leboncoin", "beebs"].includes(job.platform)) {
+    let page = await chrome.tabs.get(tabId);
+    if (extractListingId(page.url, job.platform) !== cibleId && !estUrlDeConnexionPlateforme(job.platform, page.url)) {
+      tabId = await navigateWorkTab(tabId, target + WORK_TAB_FRAGMENT);
+      await chrome.storage.session.set({ [workTabKey(job.platform)]: tabId });
+      page = await chrome.tabs.get(tabId);
+    }
+    if (extractListingId(page.url, job.platform) !== cibleId && !estUrlDeConnexionPlateforme(job.platform, page.url)) {
+      return { tabId, result: { success: false,
+        error: 'Page inattendue pour une suppression ' + job.platform + ' : ' + page.url,
+        diagnostic: 'Destination vérifiée après navigation : identifiant attendu ' + cibleId + ', URL ' + page.url } };
+    }
+  }
 
   // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
   // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
@@ -19766,6 +19781,16 @@ async function executerRetraitViaHandler(job, accessToken) {
 //                reprise espacée → inchangés, le poll suivant rejoue l'étape.
 // Opla n'entre pas ici (modification en place, processOplaRepublishJob).
 const REPUBLISH_PF_ETAT_ESSAIS_MAX = 4;
+
+function recreationRetientFile(job) {
+  const pf = job?.platform_fields ?? {};
+  if (pf.republish_step !== "deleted") return false;
+  if (job.status === "processing") return true;
+  if (job.status !== "pending") return false;
+  // Un refus sur cet article attend sa propre reprise ou sa réponse.
+  // Il conserve sa priorité lorsqu'il est dû, sans retenir les autres articles.
+  return !pf.recreation_reprise && !pf.needsUserField && !pf.needsUserFields?.length;
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ON NE RETIRE PAS CE QU'ON NE SAIT PAS REMETTRE — LA PAGE, PAS LA CAPTURE
@@ -19934,6 +19959,7 @@ function prevolCaptureRepublication(job, snapExterne = null) {
       return Number(pf.capture_id) > 0 ? [] : ["la copie de ton annonce"];
     }
     if (!String(snap.titre ?? "").trim()) manquants.push("le titre");
+    if (!String(snap.description ?? "").trim()) manquants.push("la description");
     if (!Array.isArray(snap.photos) || !snap.photos.length) manquants.push("les photos");
     if (!(Number(snap.prix) > 0)) manquants.push("le prix");
     if (!Number(snap.catalog_id)) manquants.push("la catégorie");
@@ -19953,11 +19979,13 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     // les 338 imports du relevé n'ont ni photo ni catégorie SUR LE JOB, et
     // leurs republications aboutissent — exiger ces champs du seul job les
     // aurait toutes bloquées.
-    const aLien = !!(job.listing_url || pf.old_listing_url || snap?.listing_url);
+    // Un lien ne sauvegarde ni les photos ni la catégorie.
     const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
-    if (!nPhotos && !(Number(snap?.photos) > 0) && !aLien) manquants.push("les photos");
+    if (!nPhotos) manquants.push("les photos");
+    else if (Number(snap?.photos) > nPhotos) manquants.push("toutes les photos");
+    if (!String(job.description ?? "").trim()) manquants.push("la description");
     const aCategorie = Array.isArray(pf.lbcCategoryPath) && pf.lbcCategoryPath.length;
-    if (!aCategorie && !aLien) manquants.push("la catégorie");
+    if (!aCategorie) manquants.push("la catégorie");
     // ── LA LOCALISATION (le job af34f609, 22/09) ─────────────────────────
     // C'est CE champ qui a laissé une annonce hors ligne 11 minutes : la
     // capture n'avait pas de localisation, les Réglages étaient vides, et on
@@ -19986,7 +20014,9 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     if (!String(job.title ?? "").trim()) manquants.push("le titre");
     if (!(Number(job.price) > 0)) manquants.push("le prix");
     const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
-    if (!nPhotos && !(Number(snap?.photos) > 0)) manquants.push("les photos");
+    if (!nPhotos) manquants.push("les photos");
+    else if (Number(snap?.photos) > nPhotos) manquants.push("toutes les photos");
+    if (!String(job.description ?? "").trim()) manquants.push("la description");
     if (!(Array.isArray(pf.beebsCategoryPath) && pf.beebsCategoryPath.length)) manquants.push("le rayon Beebs");
     return manquants;
   }
@@ -20001,7 +20031,7 @@ function prevolCaptureRepublication(job, snapExterne = null) {
 //    message doit nommer ce qui manque, et un seul niveau à la fois — quand
 //    c'est la copie elle-même, on le dit avec ses mots, sans l'emboîter.
 function messagePrevolRepublication(label, manquants) {
-  const intact = "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Relance la republication depuis la fiche de l'article.";
+  const intact = "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Complète la copie depuis la fiche de l'article avant de relancer la republication.";
   if (manquants.length === 1 && manquants[0] === "la copie de ton annonce") {
     return `Republication ${label} mise en pause AVANT tout retrait : la copie de ton annonce n'a pas été retrouvée. ${intact}`;
   }
@@ -20019,13 +20049,7 @@ function messagePrevolRepublication(label, manquants) {
 // Rend `null` quand ça passe, ou le résultat de job à renvoyer tel quel.
 // `etape` n'est QUE de la trace : elle dit lequel des passages a parlé.
 async function appliquerPrevolCopie({ accessToken, job, pf, snap = null, etape }) {
-  // Interrupteur serveur : éteint, la garde trace son abstention et laisse
-  // passer. On ne fait pas disparaître la ligne — une garde muette ne se
-  // distingue pas d'une garde qui n'a pas tourné (règle du 22/09).
-  if (!prevolCopieActif) {
-    tracerGarde(pf, "prevol_copie", { verdict: "eteint", plateforme: job.platform, etape });
-    return null;
-  }
+  // La copie complète reste obligatoire, même si un ancien interrupteur est éteint.
   const manquants = prevolCaptureRepublication(job, snap);
   tracerGarde(pf, "prevol_copie", {
     verdict: manquants.length ? "bloque" : "ok",
@@ -20038,14 +20062,14 @@ async function appliquerPrevolCopie({ accessToken, job, pf, snap = null, etape }
   const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
   const msg = messagePrevolRepublication(label, manquants);
   pf.republish_prevol_manquants = manquants;
+  pf.needs_user_source = "capture_incomplete";
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
   console.warn(`[republish] job ${job.id} : retrait REFUSÉ (${etape}) — copie incomplète (${manquants.join(", ")})`);
   return { status: "needsUser", error: msg };
 }
 
 // Ouvre la page de dépôt dans l'onglet de travail et lit la sonde.
-// ⛔ FAIL-OPEN : tout ce qui n'est pas une réponse de la page rend
-//    { lisible:false } — l'appelant poursuit alors son chemin normal.
+// Une réponse illisible interdit le retrait ; la lecture sera retentée.
 async function prevolPageDeDepot(platform) {
   const spec = PREVOL_DEPOT[platform];
   if (!spec) return { lisible: false };
@@ -20201,7 +20225,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     //    anti-robot → attente, exactement comme un retrait.
     if (PREVOL_DEPOT[job.platform]) {
       const vol = await prevolPageDeDepot(job.platform).catch((e) => {
-        console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — le retrait suit son chemin`);
+        console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — aucun retrait autorisé`);
         return { lisible: false };
       });
       tracerGarde(pf, "prevol_page", {
@@ -20216,6 +20240,12 @@ async function processRepublishJobPlateforme(job, accessToken) {
         ...(vol.manquants?.length ? { manquants: vol.manquants } : {}),
         ...(vol.mur ? { mur: vol.mur } : {}),
       };
+      if (!vol.lisible) {
+        pf.next_action_after = new Date(Date.now() + 3 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf,
+          error: "La page de dépôt n'a pas pu être vérifiée. Aucun retrait effectué ; nouvelle vérification automatique." });
+        return { status: "skipped", error: "pré-vol illisible — aucun retrait" };
+      }
       if (vol.lisible && vol.mur) {
         // Session à ouvrir / vérification anti-robot : ce n'est pas un défaut
         // de formulaire, et ça ne se règle pas en retirant l'annonce.
@@ -20244,10 +20274,10 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const horsLigne = await restRequest(
         `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
         `&platform=eq.${job.platform}&id=neq.${job.id}&status=in.(pending,processing)` +
-        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
+        `&platform_fields->>republish_step=eq.deleted&select=id,status,platform_fields&limit=100`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
-      if (Array.isArray(horsLigne) && horsLigne.length) {
+      if (Array.isArray(horsLigne) && (horsLigne.length === 100 || horsLigne.some(recreationRetientFile))) {
         console.log(`[republish] job ${job.id} : retrait reporté — une annonce ${label} du compte est déjà hors ligne (job ${horsLigne[0].id})`);
         return { status: "skipped", error: `une annonce ${label} est déjà hors ligne — sa recréation passe d'abord` };
       }
@@ -20814,10 +20844,10 @@ async function processRepublishJob(job, accessToken) {
         // Leboncoin hors ligne n'a pas à retenir un retrait Vinted — les deux
         // chaînes ne partagent ni page, ni fenêtre hors ligne.
         `&platform=eq.vinted&id=neq.${job.id}&status=in.(pending,processing)` +
-        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
+        `&platform_fields->>republish_step=eq.deleted&select=id,status,platform_fields&limit=100`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
-      if (Array.isArray(horsLigne) && horsLigne.length) {
+      if (Array.isArray(horsLigne) && (horsLigne.length === 100 || horsLigne.some(recreationRetientFile))) {
         console.log(`[republish] job ${job.id} : suppression reportée — une annonce du compte est déjà hors ligne (job ${horsLigne[0].id}), sa recréation passe d'abord`);
         return { status: "skipped", error: "une annonce est déjà hors ligne — sa recréation passe d'abord" };
       }
@@ -20841,7 +20871,7 @@ async function processRepublishJob(job, accessToken) {
       // de pré-vol (une-passe) rempli pendant que l'annonce est encore en ligne.
       const capRows = await restRequest(
         `vinted_republish_captures?id=eq.${Number(pf.capture_id)}` +
-        `&select=verdict,captured_at,payload,libelles,photos_urls`,
+        `&vinted_item_id=eq.${encodeURIComponent(String(pf.vinted_item_id))}&select=verdict,captured_at,payload,libelles,photos_urls&limit=1`,
         accessToken,
       );
       const capMeta = capRows?.[0];

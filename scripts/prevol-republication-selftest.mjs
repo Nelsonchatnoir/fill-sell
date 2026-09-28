@@ -78,18 +78,18 @@ attendu("capture_id à 0 ne vaut pas une capture", {
 console.log("\n1bis. VINTED — la copie CONSTRUITE (passage « copie_construite »)");
 // Le vrai contrôle champ par champ : la copie est passée en 2e argument, telle
 // que `construireSnapshotRepublish` vient de la fabriquer depuis la capture.
-const copie = { titre: "Pull", photos: ["a"], prix: 12, catalog_id: 221, package_size_id: 2 };
+const copie = { titre: "Pull", description: "Pull en bon état", photos: ["a"], prix: 12, catalog_id: 221, package_size_id: 2 };
 attendu("copie complète", jobVintedReel, [], copie);
 attendu("format du colis manquant (cas XEWER, job 6aabc550)", jobVintedReel, ["le format du colis"], { ...copie, package_size_id: null });
 attendu("catégorie manquante", jobVintedReel, ["la catégorie"], { ...copie, catalog_id: null });
 attendu("photos et prix manquants", jobVintedReel, ["les photos", "le prix"], { ...copie, photos: [], prix: 0 });
 // La copie passée fait foi : même avec une capture_id, une copie construite
 // incomplète bloque — c'est tout l'intérêt du second passage.
-attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "les photos", "le prix", "la catégorie", "le format du colis"], {});
+attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "la description", "les photos", "le prix", "la catégorie", "le format du colis"], {});
 
 console.log("\n2. LEBONCOIN — le cas af34f609 (nicolas.menar, 22/09)");
 const lbcComplet = {
-  platform: "leboncoin", title: "Lot 2 doudous Lama Simba Toys", price: 28, photos: ["u1"],
+  platform: "leboncoin", description: "Description conservée de cette annonce", title: "Lot 2 doudous Lama Simba Toys", price: 28, photos: ["u1"],
   listing_url: "https://www.leboncoin.fr/ad/jeux_jouets/3254722711",
   platform_fields: {
     lbcCategoryPath: ["Loisirs", "Jeux & Jouets"],
@@ -123,31 +123,31 @@ attendu("localisation d'origine sans code postal → on ne retire PAS", {
   platform_fields: { lbcCategoryPath: ["Loisirs", "Jeux & Jouets"], localisation_origine: { ville: "Lyon", code_postal: null, voie: null, libelle: "Lyon" } },
 }, ["l'adresse où se trouve l'article"]);
 
-console.log("\n3. LEBONCOIN — CE QUE LE PRÉ-VOL NE DOIT PAS DEMANDER");
+console.log("\n3. LEBONCOIN — un lien ou un compteur ne remplace pas la copie");
 console.log("   (profil des 338 imports du relevé : rien sur le job, tout dans la capture)");
 attendu("catégorie absente mais lien d'annonce présent (elle se lit dans l'adresse)", {
   ...lbcComplet, platform_fields: { localisation_origine: lbcComplet.platform_fields.localisation_origine },
-}, []);
-attendu("photos absentes du job mais comptées dans la copie", {
+}, ["la catégorie"]);
+attendu("un simple compteur de photos ne sauvegarde pas les images", {
   ...lbcComplet, photos: [],
   platform_fields: { ...lbcComplet.platform_fields, republish_snapshot: { photos: 3 } },
-}, []);
+}, ["les photos"]);
 attendu("titre et prix absents du job mais présents dans la copie", {
   ...lbcComplet, title: "", price: 0,
   platform_fields: { ...lbcComplet.platform_fields, republish_snapshot: { titre: "Lot 2 doudous", prix: 28 } },
 }, []);
 attendu("ni catégorie ni lien nulle part → là, on bloque", {
-  platform: "leboncoin", title: "Truc", price: 5, photos: ["u"],
+  platform: "leboncoin", description: "Description conservée de cette annonce", title: "Truc", price: 5, photos: ["u"],
   platform_fields: { adresse: "1 rue de la Paix 75002 Paris" },
 }, ["la catégorie"]);
 
 console.log("\n4. BEEBS — même règle, rayon compris");
 attendu("dépôt Beebs complet", {
-  platform: "beebs", title: "Pot Diddlina", price: 9, photos: ["u"],
+  platform: "beebs", description: "Description conservée de cette annonce", title: "Pot Diddlina", price: 9, photos: ["u"],
   platform_fields: { beebsCategoryPath: ["Jeux, jouets et loisirs", "Figurines"] },
 }, []);
 attendu("rayon Beebs absent → on ne retire pas", {
-  platform: "beebs", title: "Pot Diddlina", price: 9, photos: ["u"], platform_fields: {},
+  platform: "beebs", description: "Description conservée de cette annonce", title: "Pot Diddlina", price: 9, photos: ["u"], platform_fields: {},
 }, ["le rayon Beebs"]);
 
 console.log("\n5. LE MESSAGE — il nomme ce qui manque, sans l'emboîter dans lui-même");
