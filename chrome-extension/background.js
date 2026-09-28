@@ -17390,6 +17390,7 @@ async function checkPublishedListings(session) {
         const cleaned = { ...pf };
         delete cleaned.unavailable_since;
         delete cleaned.sale_signal;
+        delete cleaned.sale_evidence;
         delete cleaned.detected_price;
         delete cleaned.unavailable_pending_since;
         delete cleaned.sold_pending_since;
@@ -17548,6 +17549,10 @@ async function checkPublishedListings(session) {
             ...confirme,
             unavailable_since: new Date().toISOString(),
             sale_signal: state, // "sold" = preuve positive | "unavailable" = doute confirmé sur deux cycles
+            ...(state === "sold" && job.platform_listing_id &&
+              String(extractListingId(job.listing_url, job.platform)) === String(job.platform_listing_id)
+              ? { sale_evidence: { platform: job.platform, listing_id: String(job.platform_listing_id),
+                  state: "sold", exact: true, observed_at: new Date().toISOString() } } : {}),
             ...(state === "sold" && price ? { detected_price: price } : {}),
           };
           console.log(
