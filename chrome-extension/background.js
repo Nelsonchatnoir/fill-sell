@@ -13182,6 +13182,66 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         const stats = statsDeCarte(carte);
         annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null, vues: stats.vues, favoris: stats.favoris });
       }
+      // ── BEEBS « EN COURS DE VÉRIFICATION » : L'ID EST LA CLÉ REACT ──────
+      // Relevé réel du 29/09/2026, republication Casio de Nico : la page
+      // /account/my-adverts/creating rend chaque carte SANS aucun lien /p/.
+      // L'identifiant durable est néanmoins fourni par Beebs dans le flux RSC
+      // Next.js, comme clé du nœud de carte :
+      //   ["$","div","34076509",{"className":"px-section w-section ..."}]
+      // Ne lire que cette forme EXACTE, sur cette page EXACTE. On aligne les
+      // clés et les cartes dans l'ordre rendu par Beebs, uniquement si les deux
+      // listes ont la même longueur et des ids uniques. Au moindre écart, rien
+      // n'est relevé : ni le titre, ni le prix, ni la photo ne servent à choisir
+      // un identifiant. Ils ne sont que le contenu descriptif de la ligne.
+      if (plateforme === "beebs" && /\/account\/my-adverts\/creating\/?$/.test(location.pathname)) {
+        const fluxRsc = Array.from(document.scripts).map((s) => s.textContent || "").join("\n");
+        const idsRsc = [];
+        const vusRsc = new Set();
+        const cleCarteRsc = /\\?"div\\?",\\?"(\d{6,})\\?",\{\\?"className\\?":\\?"px-section w-section border-grey-metal flex flex-wrap items-center gap-x-10 gap-y-2 border-b border-solid py-5\\?"/g;
+        let mr;
+        while ((mr = cleCarteRsc.exec(fluxRsc))) {
+          if (vusRsc.has(mr[1])) continue;
+          vusRsc.add(mr[1]);
+          idsRsc.push(mr[1]);
+        }
+        const cartesRsc = [...new Set(
+          Array.from(document.querySelectorAll("main img[alt]"))
+            .map((img) => img.closest("div.px-section.w-section.border-grey-metal.border-b"))
+            .filter((el) => el && /Vérification en cours/i.test(el.textContent || "")),
+        )];
+        diag.beebs_rsc = {
+          ids: idsRsc.length,
+          cartes: cartesRsc.length,
+          relevees: 0,
+          motif: idsRsc.length === cartesRsc.length && idsRsc.length > 0
+            ? "cles exactes du flux RSC"
+            : "désaccord ids/cartes — aucune ligne sans lien relevée",
+        };
+        if (idsRsc.length > 0 && idsRsc.length === cartesRsc.length) {
+          for (let i = 0; i < idsRsc.length; i++) {
+            const id = idsRsc[i];
+            if (annonces.some((a) => a.listing_id === id)) continue;
+            const carte = cartesRsc[i];
+            const titre = titreDeCarte(carte, []);
+            const prix = prixDeCarte(carte);
+            const photo = carte.querySelector?.("img")?.currentSrc || carte.querySelector?.("img")?.src || null;
+            if (!titre) diag.sans_titre++;
+            if (prix === null) diag.sans_prix++;
+            annonces.push({
+              listing_id: id,
+              url: `https://www.beebs.app/fr/p/${id}`,
+              titre,
+              prix,
+              statut: "en_verification",
+              photo_url: photo && /^https?:/.test(photo) ? photo : null,
+              vues: null,
+              favoris: null,
+              source_releve: "cle_rsc_exacte",
+            });
+            diag.beebs_rsc.relevees++;
+          }
+        }
+      }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
       // Ce que la page MONTRAIT quand on l'a quittée — lu dans le run quand
       // le compteur manque, pour que la prochaine occurrence dise sa cause

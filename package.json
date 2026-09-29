@@ -63,6 +63,7 @@
     "selftest:republication-origine-boutique": "node scripts/republication-origine-boutique-selftest.mjs",
     "selftest:lbc-garde-cosmetique-categorie": "node scripts/lbc-garde-cosmetique-categorie-selftest.mjs",
     "selftest:beebs-appariement": "deno run --allow-read scripts/beebs-appariement-selftest.ts",
+    "selftest:beebs-releve-moderation": "node scripts/beebs-releve-moderation-selftest.mjs",
     "selftest:valeurs-generales": "node scripts/valeurs-generales-selftest.mjs",
     "apercu:bloc-general": "node scripts/apercu/capture-bloc-general.mjs",
     "selftest:capture-fraicheur": "node scripts/capture-fraicheur-selftest.mjs",

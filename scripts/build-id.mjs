@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-29T15:50:47Z'; // 0.6.80 = 0.6.79 + preuves de boutique/retrait Vinted et identité/pré-vol Beebs (lot 1).
+export const EXTENSION_LAST_COMMIT = '2026-09-29T17:40:00Z'; // 0.6.80 = 0.6.79 + lot 1, dont identifiant Beebs exact lu dans le relevé de modération.
 // Historique de la valeur precedente : '2026-09-28T20:46:09Z' — a86e0d2, 0.6.78 (zip 2701d9a, en test chez Nico, intact). UTC VRAI lu par EPOCH (%ct 1790631858 pour ffbcb27).
 // Historique de la valeur precedente : '2026-09-28T20:22:39Z' — d84c475, quatrième paquet 0.6.78 (adba2ee, base 0.6.76) JAMAIS téléversé : régression Casio, retour à la base 0.6.75 (décision Nico). UTC VRAI lu par EPOCH (%ct 1790628369).
 // Historique de la valeur precedente : '2026-09-28T20:08:10Z' — 67d6749, troisième paquet 0.6.78 (82a1a75) JAMAIS téléversé, remplacé pour la garde LBC (xxewwer). UTC VRAI lu par EPOCH (%ct 1790626959).
