@@ -1,52 +1,32 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { apparier, dressing, FENETRE_MS, uidVendeur } from "../_shared/beebs-index.ts";
-import { idDepuisLien, lienDepuisId } from "../_shared/annonce-lien.ts";
+import { lienDepuisId } from "../_shared/annonce-lien.ts";
+import {
+  choisirIdentifiantBeebsExact,
+  type ReleveBeebsExact,
+} from "../_shared/beebs-lien-exact.ts";
 
-// ═══════════════════════════════════════════════════════════════════════════
-// beebs-lien — LE FILET QUI VA CHERCHER LE LIEN D'UN DÉPÔT BEEBS (2026-09-21)
-// ═══════════════════════════════════════════════════════════════════════════
-// Appelée par pg_cron toutes les 5 min (header x-cron-secret).
-// Déployer avec --no-verify-jwt.
+// beebs-lien — rattachement EXACT des dépôts Beebs sans identifiant.
+// Appelée par pg_cron (x-cron-secret), verify_jwt=false inchangé.
 //
-// CE QU'ELLE RÉPARE. Un dépôt Beebs part en MODÉRATION HUMAINE : Beebs ne rend
-// AUCUN lien à cet instant et c'est normal (« il sera mis en ligne dès qu'il
-// aura été vérifié par notre équipe »). Le lien arrive plus tard — et jusqu'ici
-// il n'arrivait QUE si la personne rouvrait Beebs avec l'extension : la
-// re-capture différée (recoverMissingListingUrls) navigue dans « Mes annonces »
-// depuis son navigateur. Deux conséquences mesurées le 21/09 :
-//   · 21 dépôts du parc sont 'published' sans listing_url ;
-//   · 2 d'entre eux portent un article VENDU dont le retrait attend ce lien
-//     (règle du 11/09 : sans lien, on ne retire JAMAIS par le titre) — dont le
-//     pantalon Sandro de meminiandmove, vendu le 20/09 à 22:42.
-// Et « Mes annonces » ne rend que sa PREMIÈRE page : chez une vendeuse à 197
-// annonces, la page en montrait 60 (relevé du 19/09) — les dépôts anciens n'y
-// étaient jamais revus, quel que soit le nombre de passages.
-//
-// CE QU'ELLE FAIT. Elle lit l'index public de Beebs (le même que leur propre
-// recherche, clé de recherche publique) et apparie CHAQUE dépôt sans lien à son
-// annonce par la DATE DE CRÉATION à la seconde — trois verrous obligatoires
-// (candidat unique, appariement mutuel, prix identique), détaillés dans
-// _shared/beebs-index.ts. Aucun appariement par titre, jamais.
-//
-// ⛔ CE QU'ELLE NE FAIT PAS, ET NE DOIT JAMAIS FAIRE : conclure une absence.
-// Un dépôt introuvable dans l'index n'est PAS un dépôt raté — il peut être en
-// modération (le cas du Sandro : dépôt confirmé, vu trois fois dans « En cours
-// de vérification », absent de l'index 13 h après). Elle n'écrit que des liens ;
-// la requalification des dépôts jamais mis en ligne reste au cron de 7 jours
-// (fail_publish_without_listing_url), qui lui est fait pour ça.
+// Règle du 29/09 : ni le titre, ni le prix, ni la proximité temporelle ne
+// prouvent qu'une annonce est celle d'un dépôt. Deux exemplaires peuvent avoir
+// le même titre et le même prix. La seule entrée acceptée ici est une ligne de
+// relevé `annonces_plateforme` qui porte directement le `job_id` du dépôt et
+// son identifiant numérique. Une seconde voie existe après le geste explicite
+// « c'est le même article » : un seul dépôt sans identité + un seul identifiant
+// exact sur la fiche confirmée. L'absence ou l'ambiguïté ne prouve rien : le
+// dépôt reste en vérification, sans re-soumission et sans retrait possible.
 
-const JOBS_MAX = 200;      // dépôts examinés par passage
-const COMPTES_MAX = 15;    // comptes interrogés par passage (2 appels index chacun)
+const JOBS_MAX = 200;
 
 type Job = {
   id: string;
   user_id: string;
   status: string;
-  title: string | null;
-  price: number | null;
+  created_at: string;
   published_at: string | null;
-  created_at: string | null;
+  inventaire_id: number | null;
   platform_fields: Record<string, unknown> | null;
 };
 
@@ -57,7 +37,8 @@ serve(async (req) => {
   const expectedSecret = Deno.env.get("CRON_SECRET");
   if (!expectedSecret || cronSecret !== expectedSecret) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401, headers: { "Content-Type": "application/json" },
+      status: 401,
+      headers: { "Content-Type": "application/json" },
     });
   }
 
@@ -66,193 +47,173 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const journal: Array<Record<string, unknown>> = [];
-  let poses = 0;
-
   try {
-    // Les PLUS ANCIENS d'abord : ce sont eux que l'échéance des 7 jours menace
-    // (même ordre que recoverMissingListingUrls depuis la famine du 09/09).
-    const { data: jobsBruts, error: selErr } = await supabase
-      .from("cross_post_jobs")
-      .select("id, user_id, status, title, price, published_at, created_at, platform_fields")
-      .eq("platform", "beebs")
-      .in("action", ["publish", "republish"])
-      .eq("status", "published")
-      .is("listing_url", null)
-      .order("published_at", { ascending: true, nullsFirst: false })
-      .limit(JOBS_MAX);
-    if (selErr) throw new Error(`sélection : ${selErr.message}`);
-    // (2026-09-27) Les dépôts CLOS « jamais en ligne » par le balayage de
-    // nuit (failed + listing_url_abandon) restent surveillés 30 jours : une
-    // annonce mise en ligne tard est encore rattachée (lien posé, job repassé
-    // published). Leur absence de l'index n'est jamais interprétée.
-    const { data: closBruts } = await supabase
-      .from("cross_post_jobs")
-      .select("id, user_id, status, title, price, published_at, created_at, platform_fields")
-      .eq("platform", "beebs")
-      .in("action", ["publish", "republish"])
-      .eq("status", "failed")
-      .is("listing_url", null)
-      .not("platform_fields->listing_url_abandon", "is", null)
-      .gte("created_at", new Date(Date.now() - 30 * 24 * 3600_000).toISOString())
-      .limit(JOBS_MAX);
+    const selection = "id,user_id,status,created_at,published_at,inventaire_id,platform_fields";
+    const [historiques, confirmesSansId] = await Promise.all([
+      supabase
+        .from("cross_post_jobs")
+        .select(selection)
+        .eq("platform", "beebs")
+        .in("action", ["publish", "republish"])
+        .eq("status", "published")
+        .is("platform_listing_id", null)
+        .is("listing_url", null)
+        .order("created_at", { ascending: true })
+        // Le +1 ne sert pas à traiter davantage de lignes : il prouve si la
+        // sélection est exhaustive. Si elle ne l'est pas, la voie manuelle
+        // reste fermée (un homonyme pourrait se trouver après la borne).
+        .limit(JOBS_MAX + 1),
+      supabase
+        .from("cross_post_jobs")
+        .select(selection)
+        .eq("platform", "beebs")
+        .in("action", ["publish", "republish"])
+        .eq("status", "pending")
+        // Un `pending` ordinaire n'a peut-être jamais été soumis. Il ne peut
+        // jamais être rattaché à une annonce déjà présente. Seul ce marqueur,
+        // posé APRÈS la confirmation du dépôt, l'admet dans le balayage.
+        .not("platform_fields->attente_identifiant_beebs", "is", null)
+        .is("platform_listing_id", null)
+        .is("listing_url", null)
+        .order("created_at", { ascending: true })
+        .limit(JOBS_MAX + 1),
+    ]);
+    if (historiques.error) throw new Error(`sélection des dépôts historiques : ${historiques.error.message}`);
+    if (confirmesSansId.error) throw new Error(`sélection des dépôts confirmés : ${confirmesSansId.error.message}`);
 
-    const jobs = [...(jobsBruts ?? []), ...(closBruts ?? [])] as Job[];
+    const tousLesCandidats = ([...(historiques.data ?? []), ...(confirmesSansId.data ?? [])] as Job[])
+      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    const selectionExhaustive = (historiques.data?.length ?? 0) <= JOBS_MAX
+      && (confirmesSansId.data?.length ?? 0) <= JOBS_MAX
+      && tousLesCandidats.length <= JOBS_MAX;
+    const jobs = tousLesCandidats.slice(0, JOBS_MAX);
     if (!jobs.length) {
-      return new Response(JSON.stringify({ ok: true, depots: 0, liens_poses: 0 }), {
+      return new Response(JSON.stringify({ ok: true, depots: 0, rattaches: 0 }), {
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const parCompte = new Map<string, Job[]>();
-    for (const j of jobs) {
-      if (!parCompte.has(j.user_id)) parCompte.set(j.user_id, []);
-      parCompte.get(j.user_id)!.push(j);
+    const { data: relevesDirectsBruts, error: relevesDirectsErr } = await supabase
+      .from("annonces_plateforme")
+      .select("job_id,user_id,inventaire_id,listing_id,disparu_le,source_rapprochement")
+      .eq("platform", "beebs")
+      .in("job_id", jobs.map((j) => j.id))
+      .is("disparu_le", null)
+      .limit(JOBS_MAX * 2);
+    if (relevesDirectsErr) throw new Error(`lecture du relevé direct : ${relevesDirectsErr.message}`);
+
+    const inventaires = [...new Set(jobs.map((j) => j.inventaire_id).filter((id): id is number => id != null))];
+    const { data: relevesManuelsBruts, error: relevesManuelsErr } = inventaires.length
+      ? await supabase
+        .from("annonces_plateforme")
+        .select("job_id,user_id,inventaire_id,listing_id,disparu_le,source_rapprochement")
+        .eq("platform", "beebs")
+        .eq("source_rapprochement", "manuel")
+        .in("inventaire_id", inventaires)
+        .is("disparu_le", null)
+        .limit(JOBS_MAX * 2)
+      : { data: [], error: null };
+    if (relevesManuelsErr) throw new Error(`lecture du relevé confirmé : ${relevesManuelsErr.message}`);
+
+    const relevesParUtilisateur = new Map<string, ReleveBeebsExact[]>();
+    const cleReleve = (r: ReleveBeebsExact) => [r.job_id, r.user_id, r.inventaire_id, r.listing_id].join("|");
+    const vus = new Set<string>();
+    for (const ligne of [...(relevesDirectsBruts ?? []), ...(relevesManuelsBruts ?? [])] as ReleveBeebsExact[]) {
+      const cle = cleReleve(ligne);
+      if (vus.has(cle)) continue;
+      vus.add(cle);
+      if (!relevesParUtilisateur.has(ligne.user_id)) relevesParUtilisateur.set(ligne.user_id, []);
+      relevesParUtilisateur.get(ligne.user_id)!.push(ligne);
+    }
+    const depotsParInventaire = new Map<string, number>();
+    for (const job of jobs) {
+      if (job.inventaire_id == null) continue;
+      const cle = `${job.user_id}|${job.inventaire_id}`;
+      depotsParInventaire.set(cle, (depotsParInventaire.get(cle) ?? 0) + 1);
     }
 
-    for (const [userId, depots] of [...parCompte.entries()].slice(0, COMPTES_MAX)) {
-      const note = (etat: string, extra: Record<string, unknown> = {}) =>
-        journal.push({ compte: userId.slice(0, 8), depots: depots.length, etat, ...extra });
+    let rattaches = 0;
+    let ambigus = 0;
+    let confirmesParUtilisateur = 0;
 
-      // ── 1. QUI EST CE VENDEUR CHEZ BEEBS ? ─────────────────────────────────
-      // Jamais deviné. On part d'annonces dont on est SÛR qu'elles sont à lui :
-      // son relevé Beebs (annonces_plateforme) puis, à défaut, les identifiants
-      // déjà posés sur ses propres jobs. Sans graine → on s'arrête, point.
-      const { data: profil } = await supabase
-        .from("profiles").select("extension_sessions").eq("id", userId).maybeSingle();
-      const sessions = ((profil?.extension_sessions ?? {}) as Record<string, unknown>);
-      const identite = (sessions["beebs_identite"] ?? {}) as Record<string, unknown>;
-      let uid = String(identite["user_id"] ?? "").trim() || null;
+    for (const job of jobs) {
+      const nbSurInventaire = !selectionExhaustive
+        ? 2 // fail-closed : un second dépôt peut se trouver hors de la borne
+        : job.inventaire_id == null
+        ? 0
+        : (depotsParInventaire.get(`${job.user_id}|${job.inventaire_id}`) ?? 0);
+      const verdict = choisirIdentifiantBeebsExact(
+        job,
+        relevesParUtilisateur.get(job.user_id) ?? [],
+        nbSurInventaire,
+      );
+      const pf = { ...(job.platform_fields ?? {}) };
 
-      if (!uid) {
-        const graines: string[] = [];
-        const { data: releve } = await supabase
-          .from("annonces_plateforme")
-          .select("listing_id")
-          .eq("user_id", userId).eq("platform", "beebs")
-          .not("listing_id", "is", null)
-          .order("created_at", { ascending: false }).limit(5);
-        for (const r of (releve ?? []) as Array<{ listing_id: string | null }>) {
-          const v = String(r.listing_id ?? "").trim();
-          if (/^\d+$/.test(v)) graines.push(v);
-        }
-        if (graines.length < 3) {
-          const { data: autres } = await supabase
-            .from("cross_post_jobs")
-            .select("listing_url, platform_listing_id")
-            .eq("user_id", userId).eq("platform", "beebs")
-            .not("listing_url", "is", null)
-            .order("published_at", { ascending: false }).limit(5);
-          for (const a of (autres ?? []) as Array<{ listing_url: string | null; platform_listing_id: string | null }>) {
-            const v = idDepuisLien("beebs", a.listing_url) ?? String(a.platform_listing_id ?? "").trim();
-            if (/^\d+$/.test(v)) graines.push(v);
-          }
-        }
-        if (!graines.length) { note("sans_graine"); continue; }
-        uid = await uidVendeur(graines);
-        if (!uid) { note("vendeur_introuvable"); continue; }
-        // Mémorisé : le prochain passage n'aura plus qu'un appel à faire.
-        await supabase.from("profiles").update({
-          extension_sessions: {
-            ...sessions,
-            beebs_identite: { user_id: uid, cle: "index_public", at: new Date().toISOString() },
-          },
-        }).eq("id", userId);
-      }
-
-      // ── 2. SON DRESSING EN LIGNE, AVEC LES DATES DE CRÉATION ───────────────
-      const annonces = await dressing(uid);
-      if (annonces == null) { note("index_muet"); continue; }
-      if (!annonces.length) { note("dressing_vide_ou_tout_en_moderation"); continue; }
-
-      // ── 3. GARDE ANTI-CROISEMENT ──────────────────────────────────────────
-      // Une annonce déjà portée par un autre job de ce compte ne peut pas être
-      // la nôtre : c'est l'écho d'une annonce existante (même principe
-      // qu'ebayIdAlreadyKnown côté extension).
-      const { data: deja } = await supabase
-        .from("cross_post_jobs")
-        .select("listing_url, platform_listing_id")
-        .eq("user_id", userId).eq("platform", "beebs")
-        .not("listing_url", "is", null);
-      const idsPris = new Set<string>();
-      for (const d of (deja ?? []) as Array<{ listing_url: string | null; platform_listing_id: string | null }>) {
-        const a = idDepuisLien("beebs", d.listing_url);
-        if (a) idsPris.add(a);
-        const b = String(d.platform_listing_id ?? "").trim();
-        if (b) idsPris.add(b);
-      }
-
-      // ── 4. APPARIEMENT ────────────────────────────────────────────────────
-      const aCaler = depots.map((d) => ({
-        id: d.id,
-        repere_ms: Date.parse(d.published_at ?? d.created_at ?? ""),
-        prix: d.price == null ? null : Number(d.price),
-      }));
-      const paires = apparier(aCaler, annonces, idsPris);
-
-      // ── 5. LA MODÉRATION BEEBS NE SE JUGE PAS (2026-09-27, décision de Nico) ──
-      // « Une annonce Beebs sans lien, c'est normal : la modération se fait, le
-      // lien arrive ensuite. » beebs-lien ne fait donc qu'une chose : poser le
-      // lien quand l'annonce apparaît. Il n'écrit plus RIEN sur un dépôt dont
-      // l'annonce n'est pas (encore) dans l'index — ni verdict, ni trace, ni
-      // clôture. (La v2 du matin en avait clos 13 en « tu peux la republier » :
-      // restaurés par 20260927110500 ; la v3 n'écrivait plus qu'une trace.)
-      // L'en-tête de _shared/beebs-index.ts le dit : « Une absence ne prouve rien. »
-      if (!paires.size) { note("aucun_appariement", { annonces_en_ligne: annonces.length }); continue; }
-
-      for (const d of depots) {
-        const trouve = paires.get(d.id);
-        if (!trouve) continue;
-        const url = lienDepuisId("beebs", trouve.annonce.listing_id);
+      if (verdict.ok) {
+        const id = verdict.id;
+        const url = lienDepuisId("beebs", id);
         if (!url) continue;
-        const pf = { ...((d.platform_fields ?? {}) as Record<string, unknown>) };
-        // Un dépôt clos « jamais en ligne » dont l'annonce est finalement
-        // apparue redevient publié, avec son lien.
-        const rouvrir = d.status === "failed";
-        if (rouvrir) delete pf["listing_url_abandon"];
-        const { error: upErr } = await supabase
+        const attente = (pf["attente_identifiant_beebs"] && typeof pf["attente_identifiant_beebs"] === "object")
+          ? pf["attente_identifiant_beebs"] as Record<string, unknown> : null;
+        delete pf["attente_identifiant_beebs"];
+        delete pf["lien_en_attente"];
+        delete pf["listing_url_abandon"];
+        pf["lien_par_releve_exact"] = {
+          at: new Date().toISOString(),
+          listing_id: id,
+          job_id: job.id,
+          regle: verdict.preuve === "job_id_exact"
+            ? "annonces_plateforme.job_id exact"
+            : "identifiant du relevé sur fiche confirmée par utilisateur",
+        };
+        const { data: maj, error: majErr } = await supabase
           .from("cross_post_jobs")
           .update({
-            ...(rouvrir ? { status: "published", error: null } : {}),
+            status: "published",
+            error: null,
             listing_url: url,
-            platform_listing_id: trouve.annonce.listing_id,
-            platform_fields: {
-              ...pf,
-              lien_par_index: {
-                at: new Date().toISOString(),
-                listing_id: trouve.annonce.listing_id,
-                ecart_s: Math.round(trouve.ecart_ms / 1000),
-                fenetre_s: FENETRE_MS / 1000,
-                titre_index: trouve.annonce.titre,
-                prix_index: trouve.annonce.prix,
-                regle: "creation_date ↔ published_at, candidat unique + appariement mutuel + prix",
-              },
-            },
+            platform_listing_id: id,
+            published_at: job.published_at
+              ?? (typeof attente?.["depot_confirme_le"] === "string" ? attente["depot_confirme_le"] : new Date().toISOString()),
+            platform_fields: pf,
           })
-          // La condition de course qui compte : la re-capture de l'extension a
-          // pu poser le lien entre notre lecture et notre écriture. Elle gagne.
-          .eq("id", d.id).is("listing_url", null);
-        if (upErr) { note("ecriture_refusee", { job: d.id.slice(0, 8), raison: upErr.message }); continue; }
-        poses++;
-        console.log(
-          `[beebs-lien] job ${d.id.slice(0, 8)} → ${url} (écart ${Math.round(trouve.ecart_ms / 1000)} s, ` +
-          `« ${trouve.annonce.titre ?? "?"} »)`,
-        );
+          .eq("id", job.id)
+          .in("status", ["published", "pending"])
+          .select("id");
+        if (majErr) throw new Error(`rattachement ${job.id}: ${majErr.message}`);
+        if ((maj ?? []).length) {
+          rattaches++;
+          if (verdict.preuve === "inventaire_confirme_par_utilisateur") confirmesParUtilisateur++;
+        }
+        continue;
       }
-      note("ok", { apparies: paires.size, annonces_en_ligne: annonces.length });
+
+      if (verdict.raison === "ambigu" || verdict.raison === "inventaire_ambigu") {
+        ambigus++;
+        continue;
+      }
+
+      // Un ancien dépôt `published` sans identifiant reste historiquement tel
+      // quel. Le corriger en masse ici allongerait le cron et serait une
+      // migration de données déguisée. Les retraits sont retenus ailleurs ; ce
+      // moteur n'écrit que lorsqu'une preuve exacte apporte enfin l'identifiant.
     }
 
     return new Response(JSON.stringify({
       ok: true,
       depots: jobs.length,
-      comptes: Math.min(parCompte.size, COMPTES_MAX),
-      liens_poses: poses,
-      journal,
+      rattaches,
+      ambigus,
+      confirmes_par_utilisateur: confirmesParUtilisateur,
+      selection_exhaustive: selectionExhaustive,
+      regle: "identifiant de relevé exact ; jamais titre/prix/date/photo",
     }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {
-    console.error("[beebs-lien]", e instanceof Error ? e.message : String(e));
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), {
-      status: 500, headers: { "Content-Type": "application/json" },
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[beebs-lien]", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
     });
   }
 });

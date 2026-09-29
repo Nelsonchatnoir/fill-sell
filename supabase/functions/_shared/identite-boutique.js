@@ -19,17 +19,46 @@ export function verifierBoutiqueOperation({ action, platform, boutiqueArticle, b
   return null;
 }
 
-// La preuve porte sur CET identifiant, publié par FillSell pour CETTE fiche.
-// Elle n'invente pas le propriétaire Chrome : sa lecture reste locale.
+export function idAnnonceVintedExact(j) {
+  const colonne = String(j?.platform_listing_id || '').trim();
+  const lienBrut = String(j?.listing_url || '').trim();
+  const lien = lienBrut.match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/i)?.[1] || '';
+  // Deux identifiants présents doivent raconter exactement la même chose.
+  // Une colonne invalide ou un lien Vinted illisible n'est jamais masqué par
+  // l'autre champ : le retrait attend une preuve cohérente.
+  if (colonne && !/^\d+$/.test(colonne)) return '';
+  if (lienBrut && !lien) return '';
+  if (colonne && lien && colonne !== lien) return '';
+  return colonne || lien;
+}
+
+function estDepotVintedFillSellExact(job, d) {
+  const cible = idAnnonceVintedExact(job);
+  return !!cible && d?.id !== job?.id && d?.platform === 'vinted'
+    && ['publish','republish'].includes(d?.action)
+    && ['published','cancelled','sold'].includes(d?.status)
+    && idAnnonceVintedExact(d) === cible
+    && String(d?.handler_build || '').trim().length > 0
+    && !/sync-dressing|releve-annonces/i.test(String(d?.handler_build || ''));
+}
+
+// La preuve historique porte sur CET identifiant, publié par FillSell pour
+// CETTE fiche. Elle n'invente pas le propriétaire Chrome : sa lecture reste
+// locale.
 export function depotVintedExact(job, depots) {
-  const id = j => String(j?.platform_listing_id || '').trim() || String(j?.listing_url || '').match(/^https:\/\/(?:www\.)?vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/i)?.[1] || '';
-  const cible = id(job);
+  const cible = idAnnonceVintedExact(job);
   if (!cible || job?.inventaire_id == null) return false;
-  return (depots || []).some(d => d.id !== job.id && d.platform === 'vinted' &&
-    ['publish','republish'].includes(d.action) && d.status === 'published' &&
-    String(d.inventaire_id) === String(job.inventaire_id) && id(d) === cible &&
-    /^\d{4}-\d{2}-\d{2}T/.test(String(d.handler_build || '')) &&
-    !/sync-dressing|releve-annonces/i.test(d.handler_build));
+  return (depots || []).some(d => estDepotVintedFillSellExact(job, d)
+    && String(d.inventaire_id) === String(job.inventaire_id));
+}
+
+// Après suppression de la fiche, la FK met `inventaire_id` à NULL. L'identité
+// de l'annonce, elle, survit : on peut retrouver le dépôt par son id exact,
+// même si son statut est ensuite devenu cancelled/sold. C'est
+// `retrait_job_prouve(source.id)` qui exclut les imports, fusions et
+// rattachements non certains. Cette fonction ne compare JAMAIS les titres.
+export function depotVintedExactParAnnonce(job, depots) {
+  return (depots || []).find(d => estDepotVintedFillSellExact(job, d)) ?? null;
 }
 
 export function identiteBoutiqueFraiche(sessions, maintenant = Date.now()) {

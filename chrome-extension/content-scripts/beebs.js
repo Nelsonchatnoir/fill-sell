@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -940,6 +940,11 @@ async function fillListingForm(job) {
   }
 
   const fields = job.platform_fields || {};
+  // Pré-vol de republication : même formulaire, même catégorie, mêmes champs
+  // dynamiques et mêmes listes que le futur redépôt, mais aucun upload ni clic
+  // de publication. Le background ne retire l'ancienne annonce que si ce
+  // passage complet rend une preuve positive.
+  const republishPreflightOnly = fields.republish_prevol_only === true;
 
   // Interstitiel à l'arrivée (2026-07-26) : la modale promo peut être déjà
   // posée au chargement du formulaire — la fermer avant TOUTE interaction
@@ -990,7 +995,7 @@ async function fillListingForm(job) {
     };
   }
 
-  const photoNote = job.photos?.length ? await uploadPhotos(job.photos) : null;
+  const photoNote = !republishPreflightOnly && job.photos?.length ? await uploadPhotos(job.photos) : null;
   if (job.title) await fillTextField("#title", job.title);
   if (job.description) await fillTextField("#description", job.description);
 
@@ -1541,6 +1546,17 @@ async function fillListingForm(job) {
         error: `Prix absent ou nul dans le formulaire Beebs au moment du dépôt (#price = "${priceEl?.value ?? "introuvable"}") — dépôt annulé pour éviter une annonce sans prix.`,
       };
     }
+  }
+
+  if (republishPreflightOnly) {
+    console.log("[beebs] pré-vol de republication complet : formulaire remplissable, aucun clic de mise en vente");
+    return {
+      success: true,
+      republishPreflight: true,
+      warnings,
+      unfilledRequired,
+      discoveredRequired: enumerated,
+    };
   }
 
   const publishBtn = document.querySelector('button[type="submit"]');

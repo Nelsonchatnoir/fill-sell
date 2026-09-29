@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -486,6 +486,25 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
         ))
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
+    }
+    if (msg?.type === "VINTED_ITEM_OWNER_CHECK") {
+      // Vérification légère d'un identifiant DÉJÀ prouvé par notre dépôt.
+      // L'endpoint item_upload est celui de l'édition : un succès prouve que
+      // la boutique ouverte peut modifier CETTE annonce exacte. Aucun titre,
+      // aucune recherche et aucune capture de republication.
+      lireDetailArticle(msg.vintedItemId)
+        .then((result) => {
+          if (!result?.success) return sendResponse(result);
+          const natif = result.natif && typeof result.natif === "object" ? result.natif : {};
+          const proprietaire = natif.user?.id ?? natif.owner?.id ?? natif.user_id ?? natif.owner_id ?? null;
+          sendResponse({
+            success: true,
+            vintedItemId: String(result.vintedItemId ?? msg.vintedItemId ?? ""),
+            ...(proprietaire != null ? { vintedAccountId: String(proprietaire) } : {}),
+          });
+        })
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true;
     }
     if (msg?.type === "VINTED_ITEM_CAPTURE") {
       // É1 republication : capture complète, lecture SEULE, à l'unité.
@@ -1376,6 +1395,44 @@ async function capturerAnnonceVinted(vintedItemId) {
   const manquants = [];
   const diagnostics = [];
 
+  // Boutique de CETTE annonce, lue sur sa page exacte, confrontée au compte
+  // ouvert maintenant. Cette preuve ne participe pas au contenu capturé : elle
+  // ferme uniquement la porte du futur retrait. Une lecture impossible reste
+  // `null`; une différence est nommée, jamais assimilée à un anti-robot.
+  let boutiquePreuve = null;
+  if (typeof location !== "undefined" &&
+      location.pathname.match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] === String(vintedItemId)) {
+    const lignesBoutique = [];
+    const p = await proprietaireAnnonceVinted((ligne) => lignesBoutique.push(ligne));
+    if (p?.vendeur && p?.session) {
+      boutiquePreuve = {
+        item_id: String(vintedItemId),
+        vendeur: String(p.vendeur),
+        session: String(p.session),
+        concordante: String(p.vendeur) === String(p.session),
+        login_session: p.login_session ?? null,
+        source: "page_annonce_exacte",
+        lu_le: new Date().toISOString(),
+      };
+    }
+    diagnostics.push({
+      cle: "boutique_annonce",
+      item_id: String(vintedItemId),
+      vendeur: p?.vendeur != null ? String(p.vendeur) : null,
+      session: p?.session != null ? String(p.session) : null,
+      verdict: boutiquePreuve?.concordante === true ? "prouvee"
+        : boutiquePreuve ? "differente" : "illisible",
+      trace: lignesBoutique.slice(0, 4),
+    });
+  } else {
+    diagnostics.push({
+      cle: "boutique_annonce",
+      item_id: String(vintedItemId),
+      verdict: "page_exacte_absente",
+      note: "aucune preuve de boutique sans /items/<id> exact",
+    });
+  }
+
   // dto PUBLIC — REPLI SEULEMENT depuis le 2026-08-05. Il était le chemin
   // PRINCIPAL des libellés ; le premier test réel a montré qu'il ne rend plus
   // rien, et la mesure a tranché la cause : GET /api/v2/items/{id} → 404 avec
@@ -1649,6 +1706,7 @@ async function capturerAnnonceVinted(vintedItemId) {
     description: detail.description,
     photos_cdn: photosCdn,
     libelles,
+    boutique_preuve: boutiquePreuve,
     natif,        // payload d'édition COMPLET — rien n'est jeté
     dto_public: dtoPublic, // null tant qu'aucun libellé ne l'a réclamé (repli)
     // Trace des lectures réseau de CETTE capture. C'est elle qui doit répondre
@@ -1886,12 +1944,29 @@ async function deleteListing(job) {
   }
   t(`page annonce ok : item ${itemId}`);
 
+  // L'URL et l'identifiant transmis doivent viser la page réellement ouverte.
+  // Une incohérence est un arrêt de sécurité, jamais une tentative sur l'id de
+  // la barre d'adresse ni sur celui du job pris au hasard.
+  const idLien = String(job?.listing_url ?? "").match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] ?? null;
+  const idJob = String(job?.platform_listing_id ?? idLien ?? "").trim();
+  if (!idJob || idJob !== itemId || (idLien && idLien !== idJob)) {
+    return {
+      success: false,
+      needsUser: false,
+      verificationBoutiqueImpossible: true,
+      error: "L'identifiant de la page ne correspond pas à l'annonce à retirer. Rien n'a été touché.",
+      trace,
+    };
+  }
+
   if (DELETE_DRY_RUN) {
     t("🧪 DELETE_DRY_RUN actif — endpoint prêt, AUCUN appel de suppression.");
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  return await deleteVintedItemViaApi(itemId, t, trace);
+  return await deleteVintedItemViaApi(itemId, t, trace, {
+    boutiqueAttendue: job?.platform_fields?.vinted_account_id,
+  });
 }
 
 // ── Appel API de suppression, FACTORISÉ (2026-08-12) ─────────────────────────
@@ -1920,6 +1995,77 @@ async function deleteListing(job) {
 async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
   const endpoint = `/api/v2/items/${itemId}/delete`;
   const verdict = { at: new Date().toISOString(), endpoint, http: null, conclusion: "non_envoyee" };
+  // GARDE AVANT LE POST. La preuve de la boutique de l'annonce vient soit de
+  // sa page exacte (retrait ordinaire), soit de l'origine exacte capturée sur
+  // cette page avant le pré-vol de republication. La session est toujours
+  // relue maintenant. Au moindre inconnu ou contradiction, rien ne part.
+  const attendue = String(opts.boutiqueAttendue ?? "").trim();
+  const surAnnonce = location.pathname.match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] === String(itemId);
+  let proprio = surAnnonce ? await proprietaireAnnonceVinted(t) : null;
+  let sourcePreuve = proprio ? "page_annonce_exacte" : null;
+  if (!proprio && attendue) {
+    try {
+      const r = await fetchBorne("/api/v2/users/current", {
+        headers: { Accept: "application/json" }, credentials: "include",
+      });
+      const compte = r.ok ? await r.json().catch(() => null) : null;
+      if (compte?.user?.id) {
+        proprio = {
+          vendeur: attendue,
+          session: String(compte.user.id),
+          login_session: compte.user.login ?? null,
+        };
+        sourcePreuve = "origine_exacte_du_job_et_session_relue";
+      }
+    } catch { /* preuve absente : le retrait reste fermé */ }
+  }
+  if (!proprio) {
+    verdict.conclusion = "identite_non_prouvee";
+    verdict.preuve_manquante = attendue ? "session" : "boutique_article";
+    t("boutique impossible à vérifier — requête de suppression NON envoyée");
+    return {
+      success: false,
+      needsUser: false,
+      verificationBoutiqueImpossible: true,
+      error: "FillSell n'a pas pu vérifier à la fois la boutique de cette annonce et le compte Vinted ouvert. Rien n'a été retiré ; la vérification sera reprise.",
+      trace,
+      verdict,
+    };
+  }
+  const vendeur = String(proprio.vendeur ?? "").trim();
+  const session = String(proprio.session ?? "").trim();
+  if (!vendeur || !session) {
+    verdict.conclusion = "identite_non_prouvee";
+    verdict.preuve_manquante = !vendeur ? "boutique_article" : "session";
+    t("identité partielle — requête de suppression NON envoyée");
+    return {
+      success: false,
+      needsUser: false,
+      verificationBoutiqueImpossible: true,
+      error: "FillSell n'a pas obtenu les deux identifiants nécessaires pour sécuriser ce retrait. Rien n'a été touché.",
+      trace,
+      verdict,
+    };
+  }
+  if ((attendue && vendeur !== attendue) || vendeur !== session) {
+    verdict.conclusion = attendue && vendeur !== attendue ? "origine_contradictoire" : "boutique_etrangere";
+    verdict.preuve_boutique = { source: sourcePreuve, article: vendeur, attendue: attendue || null, session };
+    t(`boutique différente (annonce=${vendeur}, attendue=${attendue || "∅"}, session=${session}) — requête NON envoyée`);
+    return {
+      success: false,
+      needsUser: true,
+      boutiqueEtrangere: {
+        article: vendeur,
+        session,
+        login_session: proprio.login_session ?? null,
+        contradictoire: Boolean(attendue && vendeur !== attendue),
+      },
+      error: "Le retrait n'a pas été lancé : cette annonce n'appartient pas à la boutique Vinted ouverte dans Chrome. Rien n'a été touché.",
+      trace,
+      verdict,
+    };
+  }
+  verdict.preuve_boutique = { source: sourcePreuve, article: vendeur, session };
   const csrf = await extractVintedCsrfToken();
   const anonId = getVintedCookie("anon_id");
   t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
@@ -3664,7 +3810,10 @@ async function fillListingForm(job) {
     const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
     // preuveRequise : ici, un 404 sur le POST ne vaut PAS suppression — on
     // enchaînerait une création juste derrière (cf. bandeau de la fonction).
-    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, { preuveRequise: true });
+    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, {
+      preuveRequise: true,
+      boutiqueAttendue: onePass.vinted_account_id ?? job.platform_fields?.vinted_account_id,
+    });
     if (!del?.success) {
       // AUCUNE soumission sans suppression acquise : soumettre créerait un
       // DOUBLON à côté de l'annonce d'origine toujours en ligne. Le background

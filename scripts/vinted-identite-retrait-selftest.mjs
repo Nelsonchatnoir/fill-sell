@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { parse } from 'espree';
 const source=fs.readFileSync('chrome-extension/content-scripts/vinted.js','utf8');
+assert.match(source, /if \(p\?\.vendeur && p\?\.session\) \{[\s\S]{0,400}?concordante: String\(p\.vendeur\) === String\(p\.session\)/,
+  "la capture conserve aussi la preuve d'une boutique réellement différente");
 const arbre=parse(source,{ecmaVersion:'latest',range:true});
 const fonctions=['deleteListing','deleteVintedItemViaApi'];
 const extrait=arbre.body.filter(n=>n.type==='FunctionDeclaration'&&fonctions.includes(n.id.name)).map(n=>source.slice(...n.range)).join('\n');
@@ -40,4 +42,4 @@ for(const options of [
 { const r=await scenario({page:'/items/new'}); assert.equal(r.resultat.verdict.preuve_manquante,'boutique_article'); assert.equal('boutiqueEtrangere' in r.resultat,false); }
 { const r=await scenario({page:'/items/new',attendue:'albert',session:null}); assert.equal(r.posts.length,0); assert.equal(r.resultat.verdict.preuve_manquante,'session'); }
 { const r=await scenario({proprietaire:{vendeur:'nadege',session:'albert'}}); assert.equal(r.resultat.boutiqueEtrangere.article,'nadege'); }
-console.log('14 scénarios de retrait Vinted : aucune requête sur identité absente, étrangère ou contradictoire.');
+console.log('15 scénarios de retrait Vinted : aucune requête sur identité absente, étrangère ou contradictoire.');

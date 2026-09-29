@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
+import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
 const base={action:'delete',platform:'vinted',boutiqueArticle:'nadege',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
 assert.equal(verifier(base),'boutique_non_confirmee');
 assert.equal(verifier({...base,boutiqueSession:'nadege'}),'boutique_non_confirmee');
@@ -27,6 +27,9 @@ assert.equal(depotVintedExact(job,[depot]),true);
 assert.equal(depotVintedExact(job,[{...depot,inventaire_id:124}]),false);
 assert.equal(depotVintedExact(job,[{...depot,platform_listing_id:'9991856072'}]),false);
 assert.equal(depotVintedExact(job,[{...depot,handler_build:'2026-09-13T10:16:27Z-sync-dressing'}]),false);
+assert.equal(depotVintedExactParAnnonce({...job,inventaire_id:null},[depot])?.id,'ancien');
+assert.equal(depotVintedExactParAnnonce({...job,inventaire_id:null},[{...depot,handler_build:'2026-09-13T10:16:27Z-releve-annonces'}]),null);
+assert.equal(idAnnonceVintedExact({listing_url:'https://www.vinted.fr/items/9991856071',platform_listing_id:'9991856072'}),'');
 assert.equal(verifier({...base,boutiqueArticle:null,sessionRequise:false,historiqueListingProuve:true}),null);
 assert.equal(verifier({...base,boutiqueArticle:null,historiqueListingProuve:true}),'origine_inconnue');
-console.log('25 contrôles de cloisonnement des boutiques et de compatibilité réussis.');
+console.log('28 contrôles de cloisonnement des boutiques et de compatibilité réussis.');

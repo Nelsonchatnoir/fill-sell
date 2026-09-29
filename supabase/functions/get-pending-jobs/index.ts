@@ -1,6 +1,6 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
-import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from "../_shared/identite-boutique.js";
+import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -633,6 +633,7 @@ serve(async (req) => {
     const capacites: string[] = Array.isArray(body?.capacites)
       ? body.capacites.map((c: unknown) => String(c)).slice(0, 20) : [];
     const tailleParId = capacites.includes("taille_par_id");
+    const preuvesRetraitsPoint1 = capacites.includes("preuves_retraits_point1_v1");
     // ── LE POSTE (2026-09-24, cf. _shared/poste-extension.ts) ───────────────
     // « opla_acces » / « sans_opla » : déclaré par la 0.6.64 à chaque poll. Un
     // build plus ancien ne dit rien : on s'en remet à ce qu'update-job-status a
@@ -1098,19 +1099,46 @@ serve(async (req) => {
     // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
     // Historique exact pour les dépôts anciens, antérieurs à la colonne boutique.
     // Dix recherches maximum par appel, chacune par l'index de fiche.
-    const historiquesBoutique = new Map<string, boolean>();
+    type PreuveHistoriqueVinted = {
+      prouve: boolean;
+      source_job_id?: string;
+      listing_id?: string;
+      vinted_account_id?: string;
+    };
+    const historiquesBoutique = new Map<string, PreuveHistoriqueVinted>();
     const historiqueListingProuve = async (job: Record<string, unknown>) => {
-      if (job.platform !== "vinted" || job.inventaire_id == null) return false;
+      const aucune: PreuveHistoriqueVinted = { prouve: false };
+      if (job.platform !== "vinted") return aucune;
       const cle = String(job.id);
-      if (historiquesBoutique.has(cle)) return historiquesBoutique.get(cle) === true;
-      if (historiquesBoutique.size >= 10) return false;
-      historiquesBoutique.set(cle, false);
-      const { data, error } = await userClient.from("cross_post_jobs")
-        .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id")
-        .eq("user_id", user.id).eq("inventaire_id", job.inventaire_id).eq("platform", "vinted")
-        .eq("status", "published").in("action", ["publish", "republish"])
-        .order("created_at", { ascending: false }).limit(10);
-      const depot = !error && (data ?? []).find(d => depotVintedExact(job, [d]));
+      const memorisee = historiquesBoutique.get(cle);
+      if (memorisee) return memorisee;
+      if (historiquesBoutique.size >= 10) return aucune;
+      historiquesBoutique.set(cle, aucune);
+      const listingId = idAnnonceVintedExact(job);
+      if (!listingId) return aucune;
+      const pfJob = (job.platform_fields && typeof job.platform_fields === "object")
+        ? job.platform_fields as Record<string, unknown> : {};
+      const embarquee = (pfJob.preuve_retrait_vinted && typeof pfJob.preuve_retrait_vinted === "object")
+        ? pfJob.preuve_retrait_vinted as Record<string, unknown> : null;
+      const sourceEmbarquee = embarquee && String(embarquee.listing_id ?? "") === listingId
+        ? String(embarquee.source_job_id ?? "").trim() : "";
+      let data: Array<Record<string, unknown>> | null = null;
+      let error: { message?: string } | null = null;
+      if (sourceEmbarquee) {
+        const r = await userClient.from("cross_post_jobs")
+          .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields")
+          .eq("user_id", user.id).eq("id", sourceEmbarquee).eq("platform", "vinted").limit(1);
+        data = (r.data ?? []) as Array<Record<string, unknown>>; error = r.error;
+      } else {
+        const r = await userClient.from("cross_post_jobs")
+          .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields")
+          .eq("user_id", user.id).eq("platform", "vinted")
+          .or(`platform_listing_id.eq.${listingId},listing_url.like.%/items/${listingId}%`)
+          .in("action", ["publish", "republish"])
+          .order("created_at", { ascending: false }).limit(10);
+        data = (r.data ?? []) as Array<Record<string, unknown>>; error = r.error;
+      }
+      const depot = !error ? depotVintedExactParAnnonce(job, data ?? []) as Record<string, unknown> | null : null;
       let preuve = false;
       if (depot) {
         // Un job déplacé par une ancienne fusion automatique ne constitue pas
@@ -1119,8 +1147,17 @@ serve(async (req) => {
         const r = await admin.rpc("retrait_job_prouve", { p_job: depot.id });
         preuve = !r.error && r.data === true;
       }
-      historiquesBoutique.set(cle, preuve);
-      return preuve;
+      const pfDepot = (depot?.platform_fields && typeof depot.platform_fields === "object")
+        ? depot.platform_fields as Record<string, unknown> : {};
+      const detail: PreuveHistoriqueVinted = preuve ? {
+        prouve: true,
+        source_job_id: String(depot!.id),
+        listing_id: listingId,
+        ...(String(pfDepot.vinted_account_id ?? "").trim()
+          ? { vinted_account_id: String(pfDepot.vinted_account_id).trim() } : {}),
+      } : aucune;
+      historiquesBoutique.set(cle, detail);
+      return detail;
     };
     // Une identité temporairement inconnue n'exige pas un clic de relance.
     // Retour arrière de la garde serveur « session inconnue » du point A :
@@ -1137,18 +1174,35 @@ serve(async (req) => {
         const { data: profil, error: erreurProfil } = await userClient.from("profiles")
           .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
         const identite = !erreurProfil && identiteBoutiqueFraiche(profil?.extension_sessions);
+        const historiquesAttentes = new Map<string, PreuveHistoriqueVinted>();
+        if (!erreurProfil && profil) await Promise.all(attentes.map(async (attente) => {
+          const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
+          const origine = origineBoutiqueProuvee(article?.vinted_account_id, attente.platform_fields?.vinted_account_id).origine;
+          if (!origine) historiquesAttentes.set(String(attente.id), await historiqueListingProuve(attente));
+        }));
         if (!erreurProfil && profil) for (const attente of attentes) {
           const pf = attente.platform_fields ?? {};
           const garde = pf.boutique_etrangere;
           if (garde?.pose_par !== "get-pending-jobs (identité prouvée)") continue;
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
           const { origine, contradictoire } = origineBoutiqueProuvee(article?.vinted_account_id, pf.vinted_account_id);
+          const historique = !origine ? (historiquesAttentes.get(String(attente.id)) ?? { prouve: false }) : { prouve: false };
           const motifAttente = verifierBoutiqueOperation({action: attente.action, platform: attente.platform,
             boutiqueArticle: origine, boutiqueSession: identite?.user_id,
             boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: !!profil, sessionRequise: false,
-            historiqueListingProuve: !origine && await historiqueListingProuve(attente)});
+            historiqueListingProuve: historique.prouve});
           if (contradictoire || (motifAttente && !["session_inconnue", "origine_inconnue"].includes(motifAttente))) continue;
           const suite = { ...pf, boutique_reconnue_le: new Date().toISOString() };
+          if (historique.prouve) {
+            suite.preuve_retrait_vinted = {
+              source_job_id: historique.source_job_id,
+              listing_id: historique.listing_id,
+              retrait_job_prouve: true,
+              le: new Date().toISOString(),
+              pose_par: "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
+            };
+            if (!suite.vinted_account_id && historique.vinted_account_id) suite.vinted_account_id = historique.vinted_account_id;
+          }
           delete suite.needs_user_source;
           delete suite.boutique_etrangere;
           await userClient.from("cross_post_jobs").update({ status: "pending", error: null, platform_fields: suite })
@@ -1209,6 +1263,36 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // Les opérations Vinted et les retraits/republications Beebs exigent les
+    // preuves locales livrées ensemble : estampille de boutique après dépôt,
+    // vérification juste avant le DELETE Vinted, identifiant Beebs durable et
+    // pré-vol complet Beebs. Les anciens builds restent simplement en attente :
+    // aucun changement d'état, aucune boucle, aucun relèvement du minimum.
+    let heldPreuvesRetraitsPoint1 = 0;
+    if (!preuvesRetraitsPoint1) {
+      const avant = out.length;
+      out = out.filter((j) => !(
+        j.platform === "vinted" ||
+        (j.platform === "beebs" && (j.action === "delete" || j.action === "republish"))
+      ));
+      heldPreuvesRetraitsPoint1 = avant - out.length;
+    }
+
+    // Un dépôt Beebs confirmé sans identifiant durable ne doit jamais être
+    // soumis une seconde fois. Il attend le relevé exact, qui seul peut le
+    // clôturer et autoriser ensuite un retrait ciblé.
+    let heldBeebsSansIdentifiant = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const aRetenir = new Set<string>();
+      for (const j of out) {
+        if (j.platform !== "beebs") continue;
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        if (pf["attente_identifiant_beebs"]) aRetenir.add(String(j.id));
+      }
+      heldBeebsSansIdentifiant = aRetenir.size;
+      if (aRetenir.size) out = out.filter((j) => !aRetenir.has(String(j.id)));
+    }
 
     // ══ UN ARTICLE VENDU N'EST JAMAIS PUBLIÉ NI REPUBLIÉ (2026-09-25) ═══════
     // MEMINIANDMOVE (Pro), robe Oh Polly 1789926947675004 : vendue à 10:45,
@@ -3669,6 +3753,7 @@ serve(async (req) => {
           const nowIso = new Date().toISOString();
           try {
             let url: string | null = null;
+            let idRetrouve: string | null = null;
             let provenance = "";
             let depotJamaisEnLigne = false;
             let depotsAbandonnes = false;
@@ -3686,12 +3771,11 @@ serve(async (req) => {
             const idPropre = String((d as { platform_listing_id?: string | null }).platform_listing_id ?? "").trim();
             if (idPropre) idsCandidats.push(idPropre);
             const depotProuve = String((pf["arme_par"] as Record<string, unknown> | undefined)?.["depot"] ?? "");
-            if (d.inventaire_id != null && /^[0-9a-f-]{36}$/i.test(depotProuve)) {
+            if (/^[0-9a-f-]{36}$/i.test(depotProuve)) {
               const { data: depots } = await userClient
                 .from("cross_post_jobs")
                 .select("id, status, listing_url, platform_listing_id, platform_fields")
                 .eq("platform", d.platform)
-                .eq("inventaire_id", d.inventaire_id)
                 .eq("id", depotProuve)
                 .in("action", ["publish", "republish"])
                 .order("created_at", { ascending: false })
@@ -3703,6 +3787,9 @@ serve(async (req) => {
               for (const p of liste) {
                 if (String(p.listing_url ?? "").trim()) {
                   url = String(p.listing_url);
+                  idRetrouve = String(p.platform_listing_id ?? "").trim()
+                    || idDepuisLien(String(d.platform ?? ""), p.listing_url)
+                    || null;
                   provenance = "lien_du_depot";
                   break;
                 }
@@ -3728,7 +3815,7 @@ serve(async (req) => {
             if (!url && idsCandidats.length) {
               for (const id of idsCandidats) {
                 const canonique = lienDepuisId(d.platform, id);
-                if (canonique) { url = canonique; provenance = "id_de_l_annonce"; break; }
+                if (canonique) { url = canonique; idRetrouve = id; provenance = "id_de_l_annonce"; break; }
               }
               // Leboncoin (et toute plateforme sans forme d'URL relevée) : le
               // lien se LIT dans le relevé du compte, il ne se fabrique pas.
@@ -3741,7 +3828,9 @@ serve(async (req) => {
                   .not("url", "is", null)
                   .limit(5);
                 for (const a of (releve ?? []) as Array<{ listing_id: string; url: string | null }>) {
-                  if (String(a.url ?? "").trim()) { url = String(a.url); provenance = "releve_du_compte"; break; }
+                  if (String(a.url ?? "").trim()) {
+                    url = String(a.url); idRetrouve = String(a.listing_id); provenance = "releve_du_compte"; break;
+                  }
                 }
               }
             }
@@ -3755,9 +3844,10 @@ serve(async (req) => {
               await userClient.from("cross_post_jobs")
                 // `error` effacé : le job part maintenant, le message d'attente
                 // n'a plus de sens et resterait affiché en rouge à l'écran.
-                .update({ listing_url: url, error: null, platform_fields: pfNeuf })
+                .update({ listing_url: url, ...(idRetrouve ? { platform_listing_id: idRetrouve } : {}), error: null, platform_fields: pfNeuf })
                 .eq("id", d.id).eq("status", "pending");
               (d as { listing_url: string | null }).listing_url = url;
+              if (idRetrouve) (d as { platform_listing_id?: string | null }).platform_listing_id = idRetrouve;
               (d as { error: string | null }).error = null;
               (d as { platform_fields: unknown }).platform_fields = pfNeuf;
               console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : lien retrouvé (${provenance}, ${url}) — servi`);
@@ -3927,17 +4017,38 @@ serve(async (req) => {
         const origines = new Map((articles ?? []).map(a => [String(a.id), String(a.vinted_account_id ?? "").trim()]));
         const identite = identiteBoutiqueFraiche(profil?.extension_sessions);
         const fiable = !erreurProfil && !erreurArticles && !!profil;
+        const historiquesOperations = new Map<string, PreuveHistoriqueVinted>();
+        if (fiable) await Promise.all(operations.map(async (j) => {
+          const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          const origine = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id).origine;
+          if (!origine) historiquesOperations.set(String(j.id), await historiqueListingProuve(j));
+        }));
         for (const j of operations) {
           const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
           const { origine, contradictoire } = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id);
+          const historique = !origine ? (historiquesOperations.get(String(j.id)) ?? { prouve: false }) : { prouve: false };
           const motif = contradictoire ? "origine_contradictoire" : verifierBoutiqueOperation({ action: j.action, platform: j.platform,
             boutiqueArticle: origine, boutiqueSession: identite?.user_id,
             boutiques: profil?.vinted_sync_pin?.boutiques, lectureFiable: fiable, sessionRequise: false,
-            historiqueListingProuve: !origine && await historiqueListingProuve(j) });
+            historiqueListingProuve: historique.prouve });
           // Une lecture manquée n'autorise aucune opération sur une fiche dont
           // on n'a pas pu vérifier l'origine. Le prochain poll relit la preuve.
           if (!motif && (fiable || j.inventaire_id == null)) {
-            if (origine) j.platform_fields = { ...pf, vinted_account_id: origine };
+            const pfProuve: Record<string, unknown> = { ...pf };
+            if (origine) pfProuve.vinted_account_id = origine;
+            if (historique.prouve) {
+              pfProuve.preuve_retrait_vinted = {
+                source_job_id: historique.source_job_id,
+                listing_id: historique.listing_id,
+                retrait_job_prouve: true,
+                le: new Date().toISOString(),
+                pose_par: "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
+              };
+              if (!pfProuve.vinted_account_id && historique.vinted_account_id) pfProuve.vinted_account_id = historique.vinted_account_id;
+              await userClient.from("cross_post_jobs").update({ platform_fields: pfProuve })
+                .eq("id", j.id).eq("status", "pending");
+            }
+            j.platform_fields = pfProuve;
             continue;
           }
           retenus.add(String(j.id));
@@ -7622,6 +7733,8 @@ serve(async (req) => {
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
+      beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,
+      retraits_point1_retenus: heldPreuvesRetraitsPoint1,
       // Retraits/republications Vinted retenus : l'article appartient a une autre
       // boutique que celle ouverte dans Chrome (incident du 22/09).
       boutique_etrangere_retenus: heldBoutiqueEtrangere,

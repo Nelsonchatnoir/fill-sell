@@ -17,6 +17,8 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-09-29-point1-preuves-retraits (0.6.80 : boutique Vinted prouvée avant DELETE et estampillée après dépôt ; " +
+  "identifiant Beebs durable obligatoire ; formulaire Beebs complet éprouvé avant retrait de republication) — précédent : " +
   "2026-09-14-retrait-lbc-challenge-et-releve (suppression Leboncoin, 2 points : [1] un CHALLENGE anti-robot ne consomme " +
   "PLUS de tentative — reprise gratuite toutes les 20 min, bornée à 6 h par ÉPISODE (marquerBlocageAntiRobot), au-delà " +
   "retour au circuit ordinaire qui compte et finit par un failed assumé ; et le motif de l'indécision de lecture est " +
@@ -3888,6 +3890,30 @@ async function processJob(rawJob, accessToken) {
         // le resultat du handler, pas encore relu depuis platform_fields.
         listingUrl = await captureListingUrl(tabId, job.platform, job, 25_000, result);
       }
+      if (job.platform === "beebs" && !beebsProductId) {
+        beebsProductId = extractListingId(listingUrl, "beebs");
+      }
+      if (job.platform === "beebs" && !/^\d+$/.test(String(beebsProductId ?? ""))) {
+        const pfAttente = {
+          ...(job.platform_fields ?? {}),
+          attente_identifiant_beebs: {
+            depuis: new Date().toISOString(),
+            depot_confirme_le: new Date().toISOString(),
+            preuve_attendue: "identifiant exact du relevé Beebs rattaché à ce job",
+            pose_par: "extension 0.6.80",
+          },
+        };
+        delete pfAttente.processing_since;
+        await updateJobStatus(accessToken, job.id, "pending", {
+          error: null,
+          platform_fields: pfAttente,
+        });
+        console.log(
+          `[background] Job ${job.id} (beebs) : dépôt confirmé mais aucun identifiant durable — ` +
+          "retenu jusqu'au relevé exact, aucune nouvelle soumission",
+        );
+        return { status: "skipped", error: "dépôt Beebs en attente de son identifiant exact" };
+      }
       if (!listingUrl) {
         console.log(
           `[background] Job ${job.id} (${job.platform}) : publié, listing_url différé ` +
@@ -3895,19 +3921,9 @@ async function processJob(rawJob, accessToken) {
         );
       }
       console.log(`[background] Job ${job.id} publié : ${listingUrl ?? "(URL non récupérée)"}`);
-      // platform_listing_id Beebs : PATCH direct (RLS user, même canal que
-      // recoverMissingListingUrls) — update-job-status ne dérive l'id que d'un
-      // listing_url, qu'on ne pose volontairement pas ici (cf. bloc au-dessus).
-      // Best-effort AVANT l'écriture du statut : un échec de ce PATCH ne
-      // change rien au published, et l'id se re-capte à la re-tentative de la
-      // re-capture (fetch /fr/p/<id> impossible sans id → le balayage de
-      // pages reste le filet).
-      if (beebsProductId) {
-        await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
-          method: "PATCH",
-          body: JSON.stringify({ platform_listing_id: beebsProductId }),
-        }).catch((e) => console.warn(`[background] PATCH platform_listing_id beebs :`, String(e?.message ?? e)));
-      }
+      // Beebs : l'identifiant voyage dans la même écriture atomique que le
+      // statut. Aucun `published` ne peut donc gagner la course en perdant son
+      // identité durable entre un PATCH séparé et update-job-status.
       // Leboncoin (0.6.24) : l'id lu dans la réponse adsubmit — s'il y en a un —
       // devient platform_listing_id, et la trace du dépôt (preuve : écran
       // /options ou adsubmit 2xx, extrait de la réponse) part dans
@@ -3917,6 +3933,9 @@ async function processJob(rawJob, accessToken) {
       // (même règle que Beebs). C'est la re-capture qui posera l'URL, et elle
       // peut désormais viser l'id au lieu du seul titre.
       const extrasPublie = completionExtras(job, result);
+      if (job.platform === "vinted") {
+        extrasPublie.platform_fields = await preuveBoutiqueVintedApresDepot(extrasPublie.platform_fields);
+      }
       if (job.platform === "leboncoin" && result.lbcDepot) {
         extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), lbc_depot: result.lbcDepot };
       }
@@ -3929,6 +3948,7 @@ async function processJob(rawJob, accessToken) {
       await updateJobStatus(accessToken, job.id, "published", {
         ...extrasPublie,
         listing_url: listingUrl ?? undefined,
+        platform_listing_id: beebsProductId ?? undefined,
       });
       // Après le 'published', jamais avant : la publication est déjà acquise.
       stampVintedItemId(accessToken, job, listingUrl);
@@ -4184,9 +4204,11 @@ async function processJob(rawJob, accessToken) {
           `[background] Job ${job.id} : canal coupé PAR LA REDIRECTION de succès — ` +
           `l'annonce EXISTE (${publishedUrl}), publication confirmée par la réponse serveur`
         );
+        const pfSucces = await preuveBoutiqueVintedApresDepot(job.platform_fields);
         await updateJobStatus(accessToken, job.id, "published", {
           error: null,
           listing_url: publishedUrl,
+          platform_fields: pfSucces,
         });
         stampVintedItemId(accessToken, job, publishedUrl);
         await recordRecentResult(job, "published");
@@ -9966,7 +9988,7 @@ async function retirerScriptsOpla() {
 
 /** Les capacités déclarées à chaque poll — jamais déduites d'un numéro. */
 async function capacitesDeclarees() {
-  const caps = ["taille_par_id"];
+  const caps = ["taille_par_id", "preuves_retraits_point1_v1"];
   caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
   return caps;
 }
@@ -10944,8 +10966,8 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
 // re-frapper l'API. null = identité inconnue (401 ambigu, réseau) → la garde
 // est FAIL-OPEN : on tente la capture normalement, l'onglet tranchera.
 let identiteVintedCache = { at: 0, val: null };
-async function identiteVintedDuCycle() {
-  if (Date.now() - identiteVintedCache.at < 90_000) return identiteVintedCache.val;
+async function identiteVintedDuCycle({ forcer = false } = {}) {
+  if (!forcer && Date.now() - identiteVintedCache.at < 90_000) return identiteVintedCache.val;
   let val = null;
   try {
     const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
@@ -10958,6 +10980,31 @@ async function identiteVintedDuCycle() {
   } catch { /* inconnue */ }
   identiteVintedCache = { at: Date.now(), val };
   return val;
+}
+
+// Estampille la boutique qui vient réellement de déposer sur Vinted. La
+// lecture forcée a lieu après la confirmation du dépôt ; le serveur ne posera
+// l'origine sur l'article que si cette preuve structurée est présente.
+async function preuveBoutiqueVintedApresDepot(platformFields) {
+  const pf = { ...(platformFields ?? {}) };
+  const ident = await identiteVintedDuCycle({ forcer: true }).catch(() => null);
+  if (!ident?.user_id) {
+    pf.vinted_boutique_a_estampiller = {
+      le: new Date().toISOString(),
+      motif: "users/current illisible après dépôt confirmé",
+    };
+    return pf;
+  }
+  const userId = String(ident.user_id);
+  pf.vinted_account_id = userId;
+  pf.vinted_account_proof = {
+    user_id: userId,
+    login: ident.login ?? null,
+    source: "users/current_apres_depot",
+    lu_le: new Date().toISOString(),
+  };
+  delete pf.vinted_boutique_a_estampiller;
+  return pf;
 }
 
 // Signal SÛR de déconnexion (2026-07-30) : la garde d'entrée d'un handler
@@ -12400,7 +12447,10 @@ async function fetchVintedItemDetail(vintedItemId) {
   return await withJobFlowLock("fetch-vinted-item", async () => {
     let tabId;
     try {
-      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      // La page exacte porte le vendeur de CETTE annonce. La capture réseau
+      // seule sait lire les champs, mais elle ne prouve pas la boutique ; la
+      // republication a besoin des deux avant d'autoriser le retrait.
+      tabId = await getOrCreateWorkTab("vinted", `https://www.vinted.fr/items/${encodeURIComponent(id)}`);
     } catch (e) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
@@ -12622,6 +12672,9 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
           // dit pas POURQUOI il manque — le premier test réel du 05/08 a coûté
           // un aller-retour de diagnostic pour ça.
           diagnostics: capture.diagnostics ?? null,
+          // Preuve exacte lue sur /items/<id> : jamais un titre ni un compte
+          // supposé. Elle accompagne la capture jusqu'au pré-vol de retrait.
+          boutique_preuve: capture.boutique_preuve ?? null,
           // Valeurs saisies par l'utilisateur (déjà fusionnées dans libelles) :
           // la capture DIT quand un libellé ne vient pas de Vinted.
           ...(Object.keys(fournis).length ? { champs_utilisateur: fournis } : {}),
@@ -12653,7 +12706,14 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
       { method: "PATCH", body: JSON.stringify({ vinted_catalog_id: catalogId }) },
     ).catch((e) => console.warn("[republish] catalog_id non écrit:", e?.message ?? e));
   }
-  return { success: true, verdict, champs_manquants: manquants, capture_id: captureId, titre: capture.titre ?? null };
+  return {
+    success: true,
+    verdict,
+    champs_manquants: manquants,
+    capture_id: captureId,
+    titre: capture.titre ?? null,
+    boutique_preuve: capture.boutique_preuve ?? null,
+  };
 }
 
 // ── Commande de sync venue du mobile (2026-08-05) ────────────────────────────
@@ -18138,7 +18198,7 @@ async function recoverMissingListingUrls(session) {
         // platform_listing_id ajouté le 2026-08-13 (item 9 Beebs) : quand l'id
         // produit a été capté au dépôt, la re-capture Beebs devient une simple
         // lecture HTTP de /fr/p/<id> — plus aucune navigation d'onglet.
-        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
+        "?select=id,platform,action,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
         // republish inclus (2026-09-17) : une republication Beebs redéposée a
         // son URL différée exactement comme un dépôt — sans elle, ni veilleur
         // ni retrait ; le cron fail_publish_without_listing_url ne la touche
@@ -18182,9 +18242,13 @@ async function recoverMissingListingUrls(session) {
   // (needs_user entre les deux, cas Ritthik) perdait 31 h de fenêtre sur
   // created_at.
   const repereDe = (j) => Date.parse(j.published_at ?? j.created_at ?? "");
-  const eligible = (jobs ?? []).filter(
-    (j) => j.title && Number.isFinite(repereDe(j)) && now - repereDe(j) < listingUrlRecoveryMaxAgeMs(j.platform)
-  );
+  const eligible = (jobs ?? []).filter((j) => {
+    const identiteDisponible = j.platform === "beebs"
+      ? /^\d+$/.test(String(j.platform_listing_id ?? "").trim())
+      : Boolean(j.title);
+    return identiteDisponible && Number.isFinite(repereDe(j))
+      && now - repereDe(j) < listingUrlRecoveryMaxAgeMs(j.platform);
+  });
   if (!eligible.length) return;
 
   const byPlatform = new Map();
@@ -18209,13 +18273,15 @@ async function recoverMissingListingUrls(session) {
     // (ou refusée — indistinguable de l'extérieur), rien d'écrit, le cron
     // 48 h reste le juge. Les jobs SANS id gardent le balayage (filet).
     if (platform === "beebs") {
-      const sansId = [];
       for (const job of remaining) {
-        if (!job.platform_listing_id) { sansId.push(job); continue; }
+        if (!job.platform_listing_id) continue;
         await beebsProductPageOnline(session, job).catch((e) =>
           console.warn(`[background] recover(beebs) lecture /fr/p/${job.platform_listing_id} :`, String(e?.message ?? e)));
       }
-      remaining = sansId;
+      // Sans identifiant durable, jamais de balayage par titre. Le relevé
+      // Beebs doit rattacher l'annonce exacte (annonces_plateforme.job_id), ou
+      // le dépôt reste en attente sans pouvoir être resoumis ni retiré.
+      remaining = [];
     }
     // ── Pagination « Mes annonces » Leboncoin (2026-08-23, GO 9b) ────────────
     // « Mes annonces » n'affiche que ~30 annonces par page : sur les comptes
@@ -18939,8 +19005,9 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
       }),
     }).catch((e) => console.error("[republish] rattachement inventaire échoué:", e?.message ?? e));
   }
+  const pfSucces = await preuveBoutiqueVintedApresDepot(pf);
   await updateJobStatus(accessToken, job.id, "published", {
-    platform_fields: pf, error: null, listing_url: url,
+    platform_fields: pfSucces, error: null, listing_url: url,
   });
   await recordRecentResult(job, "published").catch(() => {});
   console.log(`[republish] job ${job.id} clos en succès par réconciliation (${motif}) → ${url}`);
@@ -18996,6 +19063,7 @@ function construireSnapshotRepublish(pf, cap) {
     capture_id: pf.capture_id ?? null,
     captured_at: cap?.captured_at ?? null,
     vinted_item_id: pf.vinted_item_id ?? null,
+    boutique_preuve: cap?.payload?.boutique_preuve ?? null,
     titre: cap?.payload?.titre ?? null,
     description: cap?.payload?.description ?? null,
     prix: cap?.payload?.prix ?? null,
@@ -19086,6 +19154,12 @@ function construireJobRecreation(job, pf, cap, prix) {
     photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
     inventaire_id: job.inventaire_id ?? null,
     platform_fields: {
+      // Origine exacte acquise sur la page de l'annonce lors de la capture.
+      // Absente = aucune clé : la porte du retrait refusera d'envoyer le POST.
+      ...(() => {
+        const id = String(pf.vinted_account_id ?? cap?.payload?.boutique_preuve?.vendeur ?? "").trim();
+        return id ? { vinted_account_id: id } : {};
+      })(),
       categoryPath: cap.libelles?.categoryPath ?? null,
       etat: cap.libelles?.etat ?? null,
       taille: cap.libelles?.taille ?? null,
@@ -19513,8 +19587,9 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     if (result.isbnCaptureTelQuel) {
       pf.isbn_capture_tel_quel = { valeur: String(result.isbnCaptureTelQuel), le: new Date().toISOString() };
     }
+    const pfSucces = await preuveBoutiqueVintedApresDepot(pf);
     await updateJobStatus(accessToken, job.id, "published", {
-      listing_url: result.listingUrl, platform_fields: pf, error: null,
+      listing_url: result.listingUrl, platform_fields: pfSucces, error: null,
     });
     console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl} (id ${ancienId ?? "?"} → ${nouvelId ?? "?"})`);
     return { status: "published", listingUrl: result.listingUrl };
@@ -19646,52 +19721,115 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
 // un retrait et une republication ne concluent pas pareil. Rend { result,
 // tabId } ; lève comme avant (canal coupé, onglet indisponible) — l'appelant
 // attrape.
-// ── BEEBS : L'IDENTIFIANT EXACT AVANT LE TITRE (2026-09-19) ────────────────
-// Le retrait Beebs vise `/p/<id>` quand le job porte un lien exploitable, et
-// retombe sinon sur « Mes annonces » filtrée par titre — un repli FRAGILE :
-// homonymes, titres tronqués, et la page qui ne rend qu'une fraction du
-// dressing (60 sur 197 chez josephinecerni). C'est ce repli qui a produit les
-// 6 retraits morts de Joe0410 le 11/09, rangs 66 à 175 introuvables.
-// Depuis aujourd'hui l'index public donne l'objectID de CHAQUE annonce, page
-// comprise ou non : `annonces_plateforme` porte donc l'identifiant exact même
-// pour celles que « Mes annonces » ne montre pas. On le relit ICI, juste avant
-// de choisir la cible, et le repli par titre redevient ce qu'il aurait dû
-// rester : un repli.
-// ⛔ LECTURE SEULE, ET JAMAIS UNE DEVINETTE : on ne prend QUE la ligne
-//    rattachée au MÊME article, sur la MÊME plateforme, non disparue. Aucun
-//    rapprochement par titre, aucun « plus proche ». Rien trouvé → on ne
-//    change rien, le comportement d'avant à l'identique.
+// ── BEEBS : L'IDENTIFIANT EXACT, JAMAIS LA FICHE NI LE TITRE (29/09) ───────
+// Un retrait porte l'id exact du dépôt qui l'a armé (`arme_par.depot`) ; une
+// republication porte `republish_source_job_id` et la capture de l'annonce.
+// Ces preuves survivent à la suppression de la fiche. On ne cherche donc QUE
+// l'identifiant déjà embarqué, le dépôt exact ou la ligne de relevé dont
+// `job_id` est exactement ce dépôt. `inventaire_id`, titre, prix, photo et date
+// ne sont jamais des preuves : deux exemplaires peuvent les partager.
+function identifiantsBeebsPortes({ platform_listing_id, listing_url } = {}) {
+  const ids = new Set();
+  const colonne = String(platform_listing_id ?? "").trim();
+  const lienBrut = String(listing_url ?? "").trim();
+  const lien = lienBrut.match(/^https:\/\/(?:www\.)?beebs\.app\/fr\/p\/(\d+)(?:[-/?#]|$)/i)?.[1] ?? "";
+  if (colonne) {
+    if (!/^\d+$/.test(colonne)) return { ids, invalide: true };
+    ids.add(colonne);
+  }
+  if (lienBrut) {
+    if (!lien) return { ids, invalide: true };
+    ids.add(lien);
+  }
+  return { ids, invalide: false };
+}
+
 async function enrichirCibleBeebs(job, accessToken) {
   if (job.platform !== "beebs") return job;
-  if (/\/p\/\d+(?:[-/?#]|$)/.test(String(job.listing_url ?? ""))) return job; // déjà exact
-  if (job.inventaire_id == null) return job;
+  const directs = identifiantsBeebsPortes(job);
+  const snapshotId = String(job.platform_fields?.republish_snapshot?.platform_listing_id ?? "").trim();
+  if (snapshotId) {
+    if (!/^\d+$/.test(snapshotId)) directs.invalide = true;
+    else directs.ids.add(snapshotId);
+  }
+  if (directs.invalide || directs.ids.size > 1) {
+    console.warn(`[retrait][beebs] job ${job.id} : identifiants directs absents ou contradictoires — abstention`);
+    return { ...job, platform_listing_id: null, listing_url: null };
+  }
+  if (directs.ids.size === 1) {
+    const [idDirect] = [...directs.ids];
+    return { ...job, platform_listing_id: idDirect, listing_url: `https://www.beebs.app/fr/p/${idDirect}` };
+  }
   try {
-    const lignes = await restRequest(
-      `annonces_plateforme?select=listing_id,url&platform=eq.beebs&disparu_le=is.null` +
-      `&inventaire_id=eq.${encodeURIComponent(String(job.inventaire_id))}&limit=2`,
+    const sourceId = String(job.platform_fields?.arme_par?.depot ?? "").trim()
+      || String(job.platform_fields?.republish_source_job_id ?? "").trim()
+      || String(job.platform_fields?.republish_snapshot?.source_job_id ?? "").trim()
+      || String(job.platform_fields?.preuve_retrait_beebs?.source_job_id ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(sourceId)) return job;
+    const depots = await restRequest(
+      `cross_post_jobs?select=id,platform_listing_id,listing_url&platform=eq.beebs` +
+      `&action=in.(publish,republish)&id=eq.${encodeURIComponent(sourceId)}&limit=1`,
       accessToken,
     );
-    const ligne = (lignes ?? []).find((l) => /^\d+$/.test(String(l?.listing_id ?? "")));
-    if (!ligne) return job;
-    // Une seule ligne attendue : deux annonces Beebs vivantes pour un même
-    // article, c'est un doublon qu'on ne tranche pas ici.
-    if ((lignes ?? []).length > 1) {
-      console.warn(`[retrait][beebs] job ${job.id} : ${lignes.length} annonces vivantes pour l'article ${job.inventaire_id} — identifiant non retenu, repli inchangé`);
+    const ids = new Set();
+    for (const depot of depots ?? []) {
+      const preuveDepot = identifiantsBeebsPortes(depot);
+      if (preuveDepot.invalide || preuveDepot.ids.size > 1) return job;
+      for (const id of preuveDepot.ids) ids.add(id);
+    }
+    const lignes = await restRequest(
+      `annonces_plateforme?select=job_id,listing_id,url&platform=eq.beebs&disparu_le=is.null` +
+      `&job_id=eq.${encodeURIComponent(sourceId)}&limit=2`,
+      accessToken,
+    );
+    for (const ligne of lignes ?? []) {
+      const id = String(ligne?.listing_id ?? "").trim();
+      if (/^\d+$/.test(id)) ids.add(id);
+    }
+    if (ids.size !== 1) {
+      if (ids.size > 1) {
+        console.warn(`[retrait][beebs] job ${job.id} : le dépôt exact ${sourceId} porte ${ids.size} identifiants — abstention`);
+      }
       return job;
     }
-    const url = `https://www.beebs.app/fr/p/${ligne.listing_id}`;
-    console.log(`[retrait][beebs] job ${job.id} : cible par IDENTIFIANT ${ligne.listing_id} (au lieu du repli par titre)`);
-    return { ...job, listing_url: url, platform_listing_id: String(ligne.listing_id) };
+    const [id] = [...ids];
+    const url = `https://www.beebs.app/fr/p/${id}`;
+    console.log(`[retrait][beebs] job ${job.id} : cible ${id} prouvée par le dépôt exact ${sourceId}`);
+    return {
+      ...job,
+      listing_url: url,
+      platform_listing_id: String(id),
+      platform_fields: {
+        ...(job.platform_fields ?? {}),
+        preuve_retrait_beebs: { source_job_id: sourceId, listing_id: String(id), le: new Date().toISOString() },
+      },
+    };
   } catch (e) {
-    // Lecture ratée = on ne sait pas = comportement d'avant. Jamais un retrait
-    // empêché par cet enrichissement.
-    console.warn("[retrait][beebs] identifiant non relu (repli inchangé) :", e?.message ?? e);
+    // Lecture ratée = on ne sait pas = aucun retrait. Un titre ne prend jamais
+    // le relais.
+    console.warn("[retrait][beebs] identifiant exact non relu :", e?.message ?? e);
     return job;
   }
 }
 
 async function executerRetraitViaHandler(job, accessToken) {
   job = await enrichirCibleBeebs(job, accessToken);
+  if (job.platform === "beebs") {
+    const idExact = String(job.platform_listing_id ?? "").trim()
+      || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+    if (!/^\d+$/.test(idExact)) {
+      return {
+        tabId: null,
+        result: {
+          success: false,
+          needsUser: false,
+          attenteIdentifiantBeebs: true,
+          error: "Retrait Beebs retenu : l'identifiant exact de cette annonce n'est pas encore rattaché par le relevé. Rien n'a été touché.",
+          trace: [],
+        },
+      };
+    }
+  }
   const target = DELETE_TARGETS[job.platform]?.(job);
   if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
@@ -19720,34 +19858,9 @@ async function executerRetraitViaHandler(job, accessToken) {
     await restore();
   }
 
-  // ── BEEBS : REPLI PAR « MES ANNONCES » FILTRÉE PAR LE TITRE (2026-09-11) ─
-  // La page de l'annonce n'a pas montré son bouton propriétaire (annonce déjà
-  // retirée, autre compte connecté, page non rendue) : on ouvre « Mes
-  // annonces » filtrée côté serveur par ?searchText=<titre> — mesuré : la
-  // liste ne contient alors que les annonces dont le TITRE contient les mots
-  // — et le handler y cherche la carte par IDENTIFIANT (case name=<id>,
-  // lien /p/<id>-). Le titre filtre, l'identifiant décide ; sans carte
-  // portant l'identifiant, « introuvable » → attente (règle du 11/09), jamais
-  // une autre carte. Sans titre, la liste non filtrée (première page).
-  if (job.platform === "beebs" && result && !result.success && result.pageAnnonceSansControle) {
-    const titre = String(job.title ?? "").trim();
-    const urlRepli = "https://www.beebs.app/fr/account/my-adverts" + (titre ? `?searchText=${encodeURIComponent(titre)}` : "");
-    console.log(
-      `[background] Job ${job.id} : page de l'annonce sans bouton propriétaire — repli « Mes annonces »` +
-      `${titre ? " filtrée par le titre" : ""}, carte par identifiant`,
-    );
-    const tracePage = Array.isArray(result.trace) ? result.trace : [];
-    const tabRepli = await getOrCreateWorkTab("beebs", urlRepli);
-    const restoreRepli = await paintTab(tabRepli);
-    try {
-      result = await sendMessageToTab(tabRepli, { type: "DELETE_LISTING", job });
-    } finally {
-      await restoreRepli();
-    }
-    if (result && typeof result === "object") {
-      result.trace = [...tracePage, "— repli « Mes annonces » —", ...(Array.isArray(result.trace) ? result.trace : [])];
-    }
-  }
+  // Beebs : pas de repli par `searchText=<titre>`. Même si la carte finale
+  // était filtrée par identifiant, le titre pouvait masquer la bonne annonce
+  // et encourager une réparation approximative. L'URL exacte tranche seule.
 
   // ── LE RELEVÉ SURVIT À L'ÉCHEC (2026-09-14) ──────────────────────────────
   // Le chemin de PUBLICATION range depuis toujours result.diagnostic dans
@@ -20111,6 +20224,29 @@ async function prevolPageDeDepot(platform) {
   return { lisible: true, mur: dernier.mur ?? null, manquants: Array.isArray(dernier.manquants) ? dernier.manquants : [] };
 }
 
+// Beebs construit ses champs obligatoires APRÈS la sélection de catégorie.
+// Regarder la page vide ne peut donc jamais prouver que le redépôt est prêt
+// (Bottines LPB, 29/09 : « Pointure » découverte après le retrait). On fait
+// tourner le vrai remplisseur sans upload ni clic de publication.
+async function prevolFormulaireRecreationBeebs(job) {
+  const spec = PREVOL_DEPOT.beebs;
+  const tabId = await getOrCreateWorkTab("beebs", spec.url);
+  await waitForTabComplete(tabId, spec.url + WORK_TAB_FRAGMENT, 45_000).catch(() => {});
+  const jobPrevol = {
+    ...job,
+    action: "publish",
+    listing_url: null,
+    platform_listing_id: null,
+    platform_fields: {
+      ...(job.platform_fields ?? {}),
+      republish_recreation: true,
+      republish_prevol_only: true,
+    },
+  };
+  const result = await envoyerFillListing(tabId, jobPrevol);
+  return { tabId, result };
+}
+
 // L'identifiant d'annonce dans une URL, par plateforme — la seule partie
 // stable d'un lien (slug ou non, paramètres ou non). null = pas d'identifiant
 // lisible : l'appelant retombe sur l'égalité d'URL, jamais sur une devinette.
@@ -20241,6 +20377,51 @@ async function processRepublishJobPlateforme(job, accessToken) {
         return { status: "needsUser", error: msg };
       }
     }
+
+    // ── BEEBS : LE VRAI FORMULAIRE DOIT ÊTRE REMPLISSABLE AVANT LE RETRAIT ──
+    if (job.platform === "beebs") {
+      let resultatPrevol = null;
+      try {
+        ({ result: resultatPrevol } = await prevolFormulaireRecreationBeebs({ ...job, platform_fields: pf }));
+      } catch (e) {
+        console.warn(`[republish] job ${job.id} : pré-vol complet Beebs injoignable — ${String(e?.message ?? e)}`);
+      }
+      if (resultatPrevol?.discoveredRequired?.length) {
+        persistDiscoveredAspects(accessToken, job, resultatPrevol.discoveredRequired).catch(() => {});
+      }
+      const champs = Array.isArray(resultatPrevol?.unfilledRequired)
+        ? resultatPrevol.unfilledRequired.map((x) => String(x)).filter(Boolean) : [];
+      const ok = resultatPrevol?.success === true && resultatPrevol?.republishPreflight === true && champs.length === 0;
+      tracerGarde(pf, "prevol_formulaire_beebs", {
+        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : "illisible",
+        plateforme: "beebs", etape: "avant_retrait",
+        champs_verifies: ["categorie", "champs_dynamiques", "adresse", "prix"],
+        ...(champs.length ? { manquants: champs } : {}),
+      });
+      job.platform_fields = pf;
+      if (!ok && resultatPrevol?.needsUserField?.field_key && resultatPrevol?.needsUserField?.field_label) {
+        const libelle = String(resultatPrevol.needsUserField.field_label);
+        resultatPrevol.error = `Republication Beebs mise en pause AVANT tout retrait : Beebs exige « ${libelle} » pour ce rayon et aucune valeur certaine n'a pu être posée. `
+          + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Choisis la valeur dans l'app : la republication repartira seule.";
+        await markNeedsUser(accessToken, job, resultatPrevol);
+        console.warn(`[republish] job ${job.id} : retrait Beebs REFUSÉ — champ dynamique « ${libelle} » manquant`);
+        return { status: "needsUser", error: resultatPrevol.error };
+      }
+      if (!ok) {
+        // Une absence de preuve n'est jamais une permission de retirer. Ce qui
+        // n'exige pas de choix utilisateur se resonde seul, sans tentative.
+        pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
+        pf.republish_prevol_formulaire = {
+          at: new Date().toISOString(), verdict: "illisible",
+          detail: String(resultatPrevol?.error ?? "aucune preuve positive du formulaire").slice(0, 300),
+        };
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+        console.warn(`[republish] job ${job.id} : retrait Beebs reporté — le formulaire complet n'est pas prouvé remplissable`);
+        return { status: "skipped", error: "pré-vol complet Beebs non concluant — rien retiré" };
+      }
+      delete pf.next_action_after;
+      pf.republish_prevol_formulaire = { at: new Date().toISOString(), verdict: "ok" };
+    }
     void snapshot;
 
     // ══════════════════════════════════════════════════════════════════════
@@ -20261,7 +20442,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     //    qui se trompe empêcherait des republications qui marchent.
     // ⛔ Et il ne consomme JAMAIS de tentative : mur de connexion ou
     //    anti-robot → attente, exactement comme un retrait.
-    if (PREVOL_DEPOT[job.platform]) {
+    if (PREVOL_DEPOT[job.platform] && job.platform !== "beebs") {
       const vol = await prevolPageDeDepot(job.platform).catch((e) => {
         console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — le retrait suit son chemin`);
         return { lisible: false };
@@ -20915,6 +21096,50 @@ async function processRepublishJob(job, accessToken) {
         return { status: "needsUser", error: "capture invalide avant suppression" };
       }
 
+      // ── PREUVE DE BOUTIQUE AVANT TOUT RETRAIT (29/09) ────────────────────
+      // La capture a été faite sur /items/<id> et porte vendeur + session.
+      // Les trois identifiants doivent coïncider. Une ancienne capture sans
+      // cette preuve est simplement refaite : jamais classée « étrangère »,
+      // jamais autorisée par un titre, jamais suivie d'un POST de suppression.
+      const preuveBoutique = capMeta?.payload?.boutique_preuve;
+      const vendeurPreuve = String(preuveBoutique?.vendeur ?? "").trim();
+      const sessionPreuve = String(preuveBoutique?.session ?? "").trim();
+      const itemPreuve = String(preuveBoutique?.item_id ?? "").trim();
+      const itemAttendu = String(pf.vinted_item_id ?? "").trim();
+      if (!vendeurPreuve || !sessionPreuve || !itemPreuve || itemPreuve !== itemAttendu) {
+        const pfReprise = { ...pf };
+        delete pfReprise.capture_id;
+        delete pfReprise.republish_snapshot;
+        pfReprise.republish_step = "a_capturer";
+        pfReprise.verification_boutique_vinted = {
+          motif: "preuve_absente_ou_incomplete",
+          item_attendu: itemAttendu || null,
+          item_lu: itemPreuve || null,
+          le: new Date().toISOString(),
+        };
+        pfReprise.next_action_after = new Date(Date.now() + 2 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pfReprise, error: null });
+        return { status: "skipped", error: "preuve de boutique absente — capture exacte redemandée" };
+      }
+      if (vendeurPreuve !== sessionPreuve) {
+        pf.needs_user_source = "boutique_etrangere";
+        pf.boutique_etrangere = {
+          motif: "boutique_etrangere",
+          article: vendeurPreuve,
+          session: sessionPreuve,
+          login_session: preuveBoutique?.login_session ?? null,
+          le: new Date().toISOString(),
+          pose_par: "extension (page exacte de l'annonce avant republication)",
+        };
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Rien n'a été retiré.",
+        });
+        return { status: "needsUser", error: "boutique Vinted réellement différente" };
+      }
+      pf.vinted_account_id = vendeurPreuve;
+      delete pf.verification_boutique_vinted;
+
       // ── RÈGLE D'OR, ÉPROUVÉE DU BON CÔTÉ (2026-08-05) ────────────────────
       // « On ne supprime jamais tant que tout ce qu'il faut pour recréer n'est
       // pas écrit en base. » Le 05/08, tout ÉTAIT en base — mais le prix était
@@ -21119,7 +21344,10 @@ async function processRepublishJob(job, accessToken) {
       // puis découvrir le refus à la recréation » est exactement ce qui a
       // perdu les annonces de lowvaucher.)
       const jobRecreation = construireJobRecreation(job, pf, capMeta, prixPrevu);
-      jobRecreation.platform_fields.republish_delete_then_submit = { item_id: String(pf.vinted_item_id ?? "") };
+      jobRecreation.platform_fields.republish_delete_then_submit = {
+        item_id: String(pf.vinted_item_id ?? ""),
+        vinted_account_id: vendeurPreuve,
+      };
       // Fix Couleur (2026-08-26) : capture SANS couleur seulement — cf. bandeau
       // de couleursDePublicationOrigine. Une capture avec couleur n'est pas touchée.
       if (!jobRecreation.platform_fields.colors?.length) {
@@ -22118,6 +22346,25 @@ async function autoCaptureEtRepublier(cand, token, userId) {
 async function processDeleteJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
 
+  if (job.platform === "beebs") {
+    job = await enrichirCibleBeebs(job, accessToken);
+    const idExact = String(job.platform_listing_id ?? "").trim()
+      || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+    if (!/^\d+$/.test(idExact)) {
+      const pf = {
+        ...(job.platform_fields ?? {}),
+        attente_identifiant_beebs: {
+          depuis: job.platform_fields?.attente_identifiant_beebs?.depuis ?? new Date().toISOString(),
+          preuve_attendue: "identifiant exact du relevé Beebs rattaché au dépôt",
+          pose_par: "extension 0.6.80 (porte avant retrait)",
+        },
+      };
+      delete pf.processing_since;
+      await updateJobStatus(accessToken, job.id, "pending", { error: null, platform_fields: pf });
+      return { status: "skipped", error: "retrait Beebs retenu : identifiant exact absent" };
+    }
+  }
+
   // ── Ce qu'il faut pour cibler, PAR PLATEFORME (2026-07-22) ────────────────
   // AVANT : `if (!job.listing_url) → failed`, sans distinction. Un verrou
   // trop large, qui a fait échouer le retrait de la montre G-Shock (job
@@ -22189,6 +22436,43 @@ async function processDeleteJob(job, accessToken) {
     // Le ré-armement, lui, reste réservé aux non-needsUser (le cas needsUser a
     // sa propre branche plus bas, avec son message d'origine).
     if (result && !result.success && !result.dryRun) {
+      // Boutique inconnue ≠ boutique étrangère. Si une des deux identités
+      // manque, aucune requête n'est partie et le job revient en file : le
+      // serveur peut retrouver la preuve exacte du dépôt et la prochaine
+      // sonde relira la session. On n'accuse personne à tort.
+      if (job.platform === "vinted" && result.verificationBoutiqueImpossible) {
+        const verdict = nettoyerVerdictSuppression(result.verdict ?? null);
+        const pfV = { ...(job.platform_fields ?? {}) };
+        delete pfV.processing_since;
+        pfV.verification_boutique_vinted = {
+          motif: verdict?.preuve_manquante === "session" ? "session_inconnue" : "origine_inconnue",
+          le: new Date().toISOString(),
+          pose_par: "extension (garde avant retrait)",
+        };
+        if (verdict) pfV.suppression_verdict = verdict;
+        pfV.next_action_after = new Date(Date.now() + 2 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { error: null, platform_fields: pfV });
+        return { status: "skipped", error: "identité de boutique encore invérifiable — retrait non envoyé" };
+      }
+      if (job.platform === "vinted" && result.boutiqueEtrangere) {
+        const b = result.boutiqueEtrangere;
+        const pfB = { ...(job.platform_fields ?? {}) };
+        delete pfB.processing_since;
+        delete pfB.blocage_antirobot;
+        pfB.vinted_account_id = String(b.article);
+        pfB.needs_user_source = "boutique_etrangere";
+        pfB.boutique_etrangere = {
+          motif: "boutique_etrangere",
+          article: String(b.article), session: b.session != null ? String(b.session) : null,
+          login_session: b.login_session ?? null, le: new Date().toISOString(),
+          pose_par: "extension (propriétaire lu sur la page exacte)",
+        };
+        const verdict = nettoyerVerdictSuppression(result.verdict ?? null);
+        if (verdict) pfB.suppression_verdict = verdict;
+        pfB.delete_trace = result.trace ?? [];
+        await updateJobStatus(accessToken, job.id, "needs_user", { error: result.error, platform_fields: pfB });
+        return { status: "needsUser", error: result.error };
+      }
       const lecture = await checkListingState(job.listing_url, job.platform)
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       const { state, raison } = lecture;

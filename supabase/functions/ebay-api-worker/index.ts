@@ -40,6 +40,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { compteEbayApiUsable, MESSAGE_EBAY_COMPTE_A_FINIR, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
+import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
@@ -169,7 +170,14 @@ function verdictHttp(http: number, tentatives: number): "needs_user" | "pending"
   return "needs_user";
 }
 
-async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job, passe?: Passe): Promise<Record<string, unknown>> {
+async function publier(
+  admin: SupabaseClient,
+  env: EbayEnv,
+  token: string,
+  job: Job,
+  passe?: Passe,
+  { offerIdAttendu = "" }: { offerIdAttendu?: string } = {},
+): Promise<Record<string, unknown>> {
   // pfJob = la photographie des choix de l'utilisateur (jamais réécrite par
   // l'enrichissement) ; pf = la copie de travail, comblée depuis
   // inventaire.attributs puis, au besoin, par le scan Lens.
@@ -550,7 +558,15 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   }
   // Offre existante non publiée (jamais publiée, ou RETIRÉE par withdraw) :
   // on la met à jour et on la republie — c'est la republication par API.
-  const brouillon = offres.find((o) => o.offerId);
+  const brouillon = offerIdAttendu
+    ? offres.find((o) => String(o.offerId ?? "") === offerIdAttendu)
+    : offres.find((o) => o.offerId);
+  if (offerIdAttendu && !brouillon) {
+    await marquer(admin, job, { status: "failed", error: `Republication eBay arrêtée : l'offre exacte ${offerIdAttendu} n'existe plus pour cet article. FillSell n'en a pas choisi une autre.` },
+      { etape: "offre", quoi: "offre_attendue_absente", offer_id_attendu: offerIdAttendu },
+      { sku, offer_id: offerIdAttendu });
+    return { job: job.id, issue: "failed", motif: "offre_attendue_absente", offer_id: offerIdAttendu };
+  }
   if (brouillon?.offerId) {
     const maj = await appelEbay(env, token, `/sell/inventory/v1/offer/${brouillon.offerId}`, { method: "PUT", body: offre });
     if (maj.http !== 200 && maj.http !== 204) {
@@ -1690,61 +1706,218 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
 // listing_url » ne valait pas pour la voie API.
 // Ce qui SURVIT au SET NULL : l'identifiant de l'annonce (listing_url du
 // retrait, platform_listing_id du job de publication) et
-// platform_fields.ebay_api {offer_id, sku} du job de publication. On part de là :
-//   1. job de publication API du MÊME compte qui porte l'id de l'annonce ;
-//   2. sinon, dernier job de publication API de l'article (quand le lien est là) ;
-//   3. sinon, l'offre du SKU chez eBay (quand le SKU est calculable).
-// Sans annonce identifiable ET sans article : failed, en le disant.
-function idAnnonceDe(job: Job): string {
-  const m = String(job.listing_url ?? "").match(/\/itm\/(\d+)/);
-  return m?.[1] ?? String(job.platform_listing_id ?? "").trim();
+// platform_fields.ebay_api {listing_id, offer_id, sku} du job de publication.
+// Les trois doivent former UNE preuve cohérente sur le même job API FillSell :
+// aucun repli par article, dernier dépôt ou SKU n'est autorisé.
+type JobPublicationApi = SourceRetraitEbay & {
+  id: string;
+  inventaire_id: number | null;
+  platform_fields: Record<string, unknown> | null;
+};
+
+async function publicationApiExacte(
+  admin: SupabaseClient,
+  userId: string,
+  listingId: string,
+): Promise<JobPublicationApi | null> {
+  if (!/^\d{9,}$/.test(listingId)) return null;
+  const { data } = await admin.from("cross_post_jobs")
+    .select("id, inventaire_id, action, status, voie, handler_build, listing_url, platform_listing_id, platform_fields")
+    .eq("user_id", userId).eq("platform", "ebay").eq("voie", "api")
+    .in("action", ["publish", "republish"]).in("status", ["published", "cancelled"])
+    .eq("platform_listing_id", listingId)
+    .order("created_at", { ascending: false }).limit(10);
+  // Une fiche supprimée peut avoir passé son dépôt en `cancelled` tout en
+  // laissant expressément l'annonce en ligne. Le statut ne choisit donc pas
+  // la source : seule la preuve interne listing/offer/SKU cohérente le fait.
+  // Deux sources cohérentes différentes restent ambiguës, donc abstention.
+  const coherentes = ((data ?? []) as JobPublicationApi[]).filter((source) =>
+    verifierSourceRetraitEbay(listingId, source, { statutsAutorises: ["published", "cancelled"] }).ok
+  );
+  return coherentes.length === 1 ? coherentes[0] : null;
 }
 
-type JobPublicationApi = { id: string; inventaire_id: number | null; platform_fields: Record<string, unknown> | null };
+async function publicationApiParId(
+  admin: SupabaseClient,
+  userId: string,
+  jobId: string,
+): Promise<JobPublicationApi | null> {
+  if (!jobId) return null;
+  const { data } = await admin.from("cross_post_jobs")
+    .select("id, inventaire_id, action, status, voie, handler_build, listing_url, platform_listing_id, platform_fields")
+    .eq("id", jobId).eq("user_id", userId).eq("platform", "ebay").eq("voie", "api")
+    .in("action", ["publish", "republish"]).maybeSingle();
+  return (data as JobPublicationApi | null) ?? null;
+}
+
+async function relireOffreExacte(
+  env: EbayEnv,
+  token: string,
+  preuve: Extract<ReturnType<typeof verifierSourceRetraitEbay>, { ok: true }>,
+  { accepterDejaRetiree = false }: { accepterDejaRetiree?: boolean } = {},
+) {
+  const lecture = await appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(preuve.offer_id)}`);
+  if (lecture.http !== 200) return { ok: false as const, motif: "offre_api_illisible", lecture };
+  const verdict = verifierOffreRetraitEbay(
+    preuve,
+    lecture.json as Parameters<typeof verifierOffreRetraitEbay>[1],
+    { accepterDejaRetiree },
+  );
+  return verdict.ok
+    ? { ok: true as const, lecture, verdict }
+    : { ok: false as const, motif: verdict.motif, detail: verdict.detail, lecture };
+}
+
+async function annulerSourceEbayRetiree(
+  admin: SupabaseClient,
+  source: JobPublicationApi | null,
+  withdrawnAt: string,
+) {
+  if (!source?.id) throw new Error("publication eBay source absente après retrait");
+  if (String(source.status ?? "") === "cancelled") return;
+  if (String(source.status ?? "") !== "published") {
+    throw new Error(`publication eBay source dans un état inattendu (${String(source.status ?? "absent")})`);
+  }
+  const pfSource = { ...((source.platform_fields as Record<string, unknown>) ?? {}) };
+  pfSource.ebay_api = {
+    ...((pfSource.ebay_api as Record<string, unknown>) ?? {}),
+    withdrawn_at: withdrawnAt,
+  };
+  const { data, error } = await admin.from("cross_post_jobs")
+    .update({ status: "cancelled", error: MSG_RETRAIT, platform_fields: pfSource })
+    .eq("id", source.id).eq("status", "published").select("id");
+  if (error || !data?.length) {
+    throw new Error(`publication eBay source non annulée${error?.message ? ` : ${error.message}` : ""}`);
+  }
+}
+
+async function memoriserIntentionRetraitAvantRepublication(
+  admin: SupabaseClient,
+  job: Job,
+  preuve: Extract<ReturnType<typeof verifierSourceRetraitEbay>, { ok: true }>,
+  requestedAt: string,
+) {
+  const pf = {
+    ...(job.platform_fields ?? {}),
+    republish_step: "withdrawing",
+    ebay_republish_withdrawal_intent: {
+      source_job_id: preuve.source_job_id,
+      listing_id: preuve.cible,
+      offer_id: preuve.offer_id,
+      sku: preuve.sku,
+      requested_at: requestedAt,
+    },
+  };
+  job.platform_fields = pf;
+  const { data, error } = await admin.from("cross_post_jobs").update({ platform_fields: pf })
+    .eq("id", job.id).eq("status", "processing").select("id");
+  if (error || !data?.length) {
+    throw new Error(`intention du retrait eBay non persistée${error?.message ? ` : ${error.message}` : ""}`);
+  }
+}
+
+async function memoriserRetraitAvantRepublication(
+  admin: SupabaseClient,
+  job: Job,
+  preuve: Extract<ReturnType<typeof verifierSourceRetraitEbay>, { ok: true }>,
+  completedAt: string,
+  methode: "withdraw_response" | "offer_unpublished_browse_no_sale",
+) {
+  const pf = {
+    ...(job.platform_fields ?? {}),
+    republish_step: "deleted",
+    ebay_republish_withdrawal: {
+      source_job_id: preuve.source_job_id,
+      listing_id: preuve.cible,
+      offer_id: preuve.offer_id,
+      sku: preuve.sku,
+      completed_at: completedAt,
+      methode,
+    },
+  };
+  job.platform_fields = pf;
+  const { data, error } = await admin.from("cross_post_jobs").update({ platform_fields: pf })
+    .eq("id", job.id).eq("status", "processing").select("id");
+  if (error || !data?.length) {
+    throw new Error(`preuve du retrait eBay non persistée${error?.message ? ` : ${error.message}` : ""}`);
+  }
+}
+
+async function lireEtatHorsLigneAvantSuite(env: EbayEnv, listingId: string): Promise<EtatAnnonce> {
+  try {
+    const token = await obtenirJetonApplicatif(env);
+    return await lireEtatAnnonceEbay(env, token, listingId);
+  } catch (e) {
+    return { verdict: "indetermine", motif: `jeton_applicatif:${String((e as Error)?.message ?? e).slice(0, 80)}`, limite: false };
+  }
+}
 
 async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
-  const idAnnonce = idAnnonceDe(job);
-  let precedent: JobPublicationApi | null = null;
-  let source = "";
-  if (idAnnonce) {
-    const { data } = await admin.from("cross_post_jobs").select("id, inventaire_id, platform_fields")
-      .eq("user_id", job.user_id).eq("platform", "ebay").eq("voie", "api").in("action", ["publish", "republish"])
-      .eq("status", "published").eq("platform_listing_id", idAnnonce)
-      .order("created_at", { ascending: false }).limit(1).maybeSingle();
-    precedent = (data as JobPublicationApi | null) ?? null;
-    if (precedent) source = "annonce";
+  const idAnnonce = idAnnonceEbay(job);
+  const precedent = idAnnonce ? await publicationApiExacte(admin, job.user_id, idAnnonce) : null;
+
+  // ⛔ L'article et son SKU ne prouvent pas une annonce. Le job 8ce613d3
+  // ciblait 377506248476, mais sa source a5d466df portait en interne
+  // 377512032291 : l'ancien repli par source/SKU a retiré cette AUTRE offre.
+  // Un import de relevé (89afc218) n'est pas davantage un dépôt API FillSell.
+  const preuve = verifierSourceRetraitEbay(idAnnonce, precedent, { statutsAutorises: ["published", "cancelled"] });
+  if (!preuve.ok) {
+    const message = idAnnonce
+      ? `Retrait eBay arrêté par FillSell avant tout appel : aucune publication API cohérente ne prouve exactement l'annonce ${idAnnonce}. L'annonce n'a pas été touchée.`
+      : "Retrait eBay arrêté par FillSell avant tout appel : l'identifiant exact de l'annonce manque. Aucune annonce n'a été touchée.";
+    await marquer(admin, job, { status: "failed", error: message }, {
+      etape: "controle_identite", quoi: preuve.motif, annonce: idAnnonce || null,
+      source_job_id: precedent?.id ?? null, detail: preuve.detail ?? null,
+    });
+    return { job: job.id, issue: "failed", motif: preuve.motif, annonce: idAnnonce || null };
   }
-  if (!precedent && job.inventaire_id) {
-    const { data } = await admin.from("cross_post_jobs").select("id, inventaire_id, platform_fields")
-      .eq("user_id", job.user_id).eq("inventaire_id", job.inventaire_id).eq("platform", "ebay").eq("voie", "api")
-      .eq("status", "published").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    precedent = (data as JobPublicationApi | null) ?? null;
-    if (precedent) source = "article";
+
+  // L'Inventory API expose `listing.listingId` sur GET /offer/{offerId}.
+  // C'est la dernière preuve, relue immédiatement avant le geste destructif :
+  // offre, SKU et listing doivent tous désigner la même publication.
+  const controleOffre = await relireOffreExacte(env, token, preuve, { accepterDejaRetiree: true });
+  if (!controleOffre.ok && controleOffre.motif === "offre_api_illisible") {
+    const e = lireErreurEbay(controleOffre.lecture.json, controleOffre.lecture.texte);
+    const status = verdictHttp(controleOffre.lecture.http, Number((job.platform_fields ?? {}).attempt_count ?? 0));
+    await marquer(admin, job, { status, error: `Retrait eBay reporté : l'identité de l'offre n'a pas pu être relue (${controleOffre.lecture.http || "réseau"}). Aucune annonce n'a été touchée.` },
+      { etape: "controle_offre", quoi: "offre_api_illisible", http: controleOffre.lecture.http, errorId: e.errorId, message: e.message },
+      { offer_id: preuve.offer_id, sku: preuve.sku });
+    return { job: job.id, issue: status, motif: "offre_api_illisible", http: controleOffre.lecture.http };
   }
-  const ebayApi = (precedent?.platform_fields ?? {}).ebay_api as Record<string, unknown> | undefined;
-  const inventaireId = job.inventaire_id ?? precedent?.inventaire_id ?? null;
-  const sku = String(ebayApi?.sku ?? (inventaireId ? skuPour(inventaireId) : "")).trim();
-  if (!idAnnonce && !inventaireId) {
-    await marquer(admin, job, { status: "failed", error: "Retrait impossible : ce job ne porte ni l'identifiant de l'annonce eBay ni l'article." }, { etape: "controle", quoi: "annonce_et_article_absents" });
-    return { job: job.id, issue: "failed", motif: "annonce_et_article_absents" };
+  if (!controleOffre.ok) {
+    const message = `Retrait eBay arrêté par FillSell : l'offre ${preuve.offer_id} ne désigne pas exactement l'annonce ${preuve.cible}. Aucune annonce n'a été touchée.`;
+    await marquer(admin, job, { status: "failed", error: message }, {
+      etape: "controle_offre", quoi: controleOffre.motif, annonce: preuve.cible,
+      source_job_id: preuve.source_job_id, detail: controleOffre.detail ?? null,
+    }, { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
+    return { job: job.id, issue: "failed", motif: controleOffre.motif, annonce: preuve.cible };
   }
-  let offerId = String(ebayApi?.offer_id ?? "");
-  if (!offerId && sku) {
-    const r = await appelEbay(env, token, `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
-    const offres = (r.json as { offers?: Array<{ offerId?: string; status?: string }> } | null)?.offers ?? [];
-    offerId = String(offres.find((o) => o.status === "PUBLISHED")?.offerId ?? offres[0]?.offerId ?? "");
-    if (offerId && !source) source = "sku";
-  }
-  if (!offerId) {
-    if (!sku) {
-      // Annonce identifiée, mais aucune publication API de ce compte ne la porte :
-      // on ne sait pas quelle offre retirer, et on ne devine jamais.
-      await marquer(admin, job, { status: "failed", error: `Retrait impossible : aucune publication FillSell par API ne porte l'annonce eBay ${idAnnonce} — retire-la depuis eBay.` }, { etape: "controle", quoi: "offre_introuvable", annonce: idAnnonce });
-      return { job: job.id, issue: "failed", motif: "offre_introuvable", annonce: idAnnonce };
+
+  if (controleOffre.verdict.deja_retiree) {
+    const etat = await lireEtatHorsLigneAvantSuite(env, preuve.cible);
+    if (etat.verdict === "vendue") {
+      await marquer(admin, job, { status: "cancelled", error: "Retrait eBay annulé : eBay confirme que cette annonce a été vendue. Aucune autre annonce n'a été touchée." },
+        { etape: "controle_offre", quoi: "annonce_deja_vendue", source_job_id: preuve.source_job_id, fin: etat.fin, vendus: etat.vendus },
+        { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
+      return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", listing_id: preuve.cible };
     }
-    await marquer(admin, job, { status: "deleted", error: null }, { etape: "retrait", quoi: "aucune_offre", note: "rien à retirer chez eBay (aucune offre pour ce SKU)" }, { sku });
-    return { job: job.id, issue: "deleted", note: "aucune offre" };
+    if (etat.verdict !== "terminee_sans_vente") {
+      await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : l'offre est hors ligne, mais FillSell ne peut pas encore prouver qu'elle n'a pas été vendue. Aucun autre geste n'est lancé." },
+        { etape: "controle_offre", quoi: "offre_hors_ligne_indeterminee", source_job_id: preuve.source_job_id, etat },
+        { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
+      return { job: job.id, issue: "pending", motif: "offre_hors_ligne_indeterminee", listing_id: preuve.cible };
+    }
+    const withdrawnAt = new Date().toISOString();
+    await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: preuve.cible },
+      { etape: "retire", quoi: "offre_deja_hors_ligne_sans_vente", source_job_id: preuve.source_job_id, fin: etat.fin },
+      { sku: preuve.sku, offer_id: preuve.offer_id, listing_id: preuve.cible, withdrawn_at: withdrawnAt });
+    await annulerSourceEbayRetiree(admin, precedent, withdrawnAt);
+    return { job: job.id, issue: "deleted", sku: preuve.sku, offer_id: preuve.offer_id, listing_id: preuve.cible, source: "offre_exacte_deja_hors_ligne_sans_vente" };
   }
+
+  const offerId = preuve.offer_id;
+  const sku = preuve.sku;
+  const source = "annonce_exacte_et_offre_relue";
   const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${offerId}/withdraw`, { method: "POST" });
   if (w.http !== 200) {
     const e = lireErreurEbay(w.json, w.texte);
@@ -1752,14 +1925,16 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     return { job: job.id, issue: "withdraw", http: w.http, ebay: e };
   }
   const listingId = String((w.json as { listingId?: string } | null)?.listingId ?? "");
-  const withdrawnAt = new Date().toISOString();
-  await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: listingId || job.platform_listing_id || idAnnonce || null }, { etape: "retire", http: 200, source }, { sku, offer_id: offerId, listing_id: listingId || idAnnonce || null, withdrawn_at: withdrawnAt });
-  if (precedent?.id) {
-    const pfPrec = { ...((precedent.platform_fields as Record<string, unknown>) ?? {}) };
-    pfPrec.ebay_api = { ...((pfPrec.ebay_api as Record<string, unknown>) ?? {}), withdrawn_at: withdrawnAt };
-    await admin.from("cross_post_jobs").update({ status: "cancelled", error: MSG_RETRAIT, platform_fields: pfPrec }).eq("id", precedent.id);
+  if (listingId && listingId !== preuve.cible) {
+    await marquer(admin, job, { status: "failed", error: `eBay a retiré une offre mais a renvoyé un identifiant inattendu (${listingId} au lieu de ${preuve.cible}). FillSell a arrêté la suite.` },
+      { etape: "withdraw", quoi: "reponse_listing_contradictoire", attendu: preuve.cible, recu: listingId, source },
+      { sku, offer_id: offerId, listing_id: listingId });
+    return { job: job.id, issue: "failed", motif: "reponse_listing_contradictoire", listing_id: listingId };
   }
-  return { job: job.id, issue: "deleted", sku, offer_id: offerId, listing_id: listingId, source };
+  const withdrawnAt = new Date().toISOString();
+  await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: preuve.cible }, { etape: "retire", http: 200, source, source_job_id: preuve.source_job_id }, { sku, offer_id: offerId, listing_id: preuve.cible, withdrawn_at: withdrawnAt });
+  await annulerSourceEbayRetiree(admin, precedent, withdrawnAt);
+  return { job: job.id, issue: "deleted", sku, offer_id: offerId, listing_id: preuve.cible, source };
 }
 
 // Republication par API = retrait de l'annonce en ligne (si elle l'est encore)
@@ -1768,26 +1943,141 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
 // que la frise de l'app reste lisible.
 async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job, passe?: Passe): Promise<Record<string, unknown>> {
   if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job de republication sans inventaire_id." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed" }; }
-  const sku = skuPour(job.inventaire_id);
-  const r = await appelEbay(env, token, `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
-  const offres = (r.json as { offers?: Array<{ offerId?: string; status?: string }> } | null)?.offers ?? [];
-  const publiee = offres.find((o) => o.status === "PUBLISHED");
-  if (publiee?.offerId) {
-    const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${publiee.offerId}/withdraw`, { method: "POST" });
+
+  // Une fiche vendue/supprimée pendant une reprise ne doit jamais être remise
+  // en ligne par un ancien job dont le retrait avait déjà abouti.
+  const { data: article, error: articleErreur } = await admin.from("inventaire")
+    .select("statut").eq("id", job.inventaire_id).eq("user_id", job.user_id).maybeSingle();
+  if (articleErreur || !article) {
+    await marquer(admin, job, { status: "failed", error: "Republication eBay arrêtée : la fiche source n'existe plus. Aucune annonce n'a été recréée." },
+      { etape: "controle", quoi: "inventaire_absent_avant_recreation", detail: articleErreur?.message ?? null });
+    return { job: job.id, issue: "failed", motif: "inventaire_absent_avant_recreation" };
+  }
+  if (String((article as { statut?: unknown }).statut ?? "").toLowerCase() !== "stock") {
+    await marquer(admin, job, { status: "cancelled", error: "Republication eBay annulée : l'article n'est plus en stock. Aucune annonce n'a été recréée." },
+      { etape: "controle", quoi: "article_plus_en_stock", statut: (article as { statut?: unknown }).statut ?? null });
+    return { job: job.id, issue: "cancelled", motif: "article_plus_en_stock" };
+  }
+
+  const retraitMemorise = preuveRetraitRepublicationEbayMemorisee(job);
+  if (retraitMemorise) {
+    const sourceMemorisee = await publicationApiParId(admin, job.user_id, retraitMemorise.source_job_id);
+    const sourceVerifiee = verifierSourceRetraitEbay(retraitMemorise.cible, sourceMemorisee, { statutsAutorises: ["published", "cancelled"] });
+    const sourceConforme = sourceVerifiee.ok
+      && sourceVerifiee.source_job_id === retraitMemorise.source_job_id
+      && sourceVerifiee.offer_id === retraitMemorise.offer_id
+      && sourceVerifiee.sku === retraitMemorise.sku;
+    if (!sourceConforme) {
+      await marquer(admin, job, { status: "failed", error: "Republication eBay arrêtée : la preuve mémorisée ne correspond plus exactement à sa publication source. Aucune annonce n'a été recréée." },
+        { etape: "controle_preuve_retrait", quoi: "source_memorisee_contradictoire", source_job_id: retraitMemorise.source_job_id });
+      return { job: job.id, issue: "failed", motif: "source_memorisee_contradictoire" };
+    }
+    try {
+      await annulerSourceEbayRetiree(admin, sourceMemorisee, retraitMemorise.completed_at);
+    } catch (e) {
+      await marquer(admin, job, { status: "pending", error: "Le retrait eBay est acquis ; FillSell termine sa synchronisation avant de recréer l'annonce." },
+        { etape: "synchronisation_source", quoi: "source_non_annulee", detail: String((e as Error)?.message ?? e).slice(0, 180) });
+      return { job: job.id, issue: "pending", motif: "source_non_annulee" };
+    }
+    const res = await publier(admin, env, token, job, passe, { offerIdAttendu: retraitMemorise.offer_id });
+    if (res.issue === "published") {
+      const { data: apres } = await admin.from("cross_post_jobs").select("platform_fields").eq("id", job.id).maybeSingle();
+      const pf = { ...((apres?.platform_fields as Record<string, unknown>) ?? {}), republish_step: "recreated" };
+      await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id);
+    }
+    return { ...res, republication: true, retiree_avant: true, reprise_apres_retrait: true };
+  }
+  // Une republication commence elle aussi par un geste destructif : elle passe
+  // exactement la même preuve annonce → publication API → offerId/SKU relus.
+  // Le SKU calculé depuis l'article ne choisit plus jamais l'offre à retirer.
+  const intentionMemorisee = preuveIntentionRetraitRepublicationEbayMemorisee(job);
+  const idAnnonce = idAnnonceEbay(job);
+  const precedent = intentionMemorisee
+    ? await publicationApiParId(admin, job.user_id, intentionMemorisee.source_job_id)
+    : (idAnnonce ? await publicationApiExacte(admin, job.user_id, idAnnonce) : null);
+  const preuve = verifierSourceRetraitEbay(idAnnonce, precedent, { statutsAutorises: ["published", "cancelled"] });
+  const intentionConforme = !intentionMemorisee || (preuve.ok
+    && intentionMemorisee.cible === preuve.cible
+    && intentionMemorisee.source_job_id === preuve.source_job_id
+    && intentionMemorisee.offer_id === preuve.offer_id
+    && intentionMemorisee.sku === preuve.sku);
+  if (!preuve.ok || !intentionConforme) {
+    await marquer(admin, job, {
+      status: "failed",
+      error: idAnnonce
+        ? `Republication eBay arrêtée avant retrait : aucune publication API cohérente ne prouve exactement l'annonce ${idAnnonce}. L'annonce est intacte.`
+        : "Republication eBay arrêtée avant retrait : l'identifiant exact de l'annonce manque. L'annonce est intacte.",
+    }, { etape: "controle_identite_avant_republication", quoi: preuve.ok ? "intention_memorisee_contradictoire" : preuve.motif, annonce: idAnnonce || null, source_job_id: precedent?.id ?? null, detail: preuve.ok ? null : (preuve.detail ?? null) });
+    return { job: job.id, issue: "failed", motif: preuve.ok ? "intention_memorisee_contradictoire" : preuve.motif, annonce: idAnnonce || null };
+  }
+  const controleOffre = await relireOffreExacte(env, token, preuve, { accepterDejaRetiree: true });
+  if (!controleOffre.ok) {
+    const http = controleOffre.lecture.http;
+    const e = lireErreurEbay(controleOffre.lecture.json, controleOffre.lecture.texte);
+    const transitoire = controleOffre.motif === "offre_api_illisible";
+    const status = transitoire ? verdictHttp(http, Number((job.platform_fields ?? {}).attempt_count ?? 0)) : "failed";
+    await marquer(admin, job, { status, error: transitoire
+      ? `Republication eBay reportée : l'identité de l'offre n'a pas pu être relue (${http || "réseau"}). L'annonce est intacte.`
+      : `Republication eBay arrêtée : l'offre ${preuve.offer_id} ne désigne pas exactement l'annonce ${preuve.cible}. L'annonce est intacte.` },
+    { etape: "controle_offre_avant_republication", quoi: controleOffre.motif, http, errorId: e.errorId, message: e.message, detail: controleOffre.detail ?? null },
+    { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
+    return { job: job.id, issue: status, motif: controleOffre.motif, http };
+  }
+  const sku = preuve.sku;
+  const offerId = preuve.offer_id;
+  let completedAt = new Date().toISOString();
+  let methode: "withdraw_response" | "offer_unpublished_browse_no_sale";
+  if (controleOffre.verdict.deja_retiree) {
+    const etat = await lireEtatHorsLigneAvantSuite(env, preuve.cible);
+    if (etat.verdict === "vendue") {
+      await marquer(admin, job, { status: "cancelled", error: "Republication eBay annulée : eBay confirme que l'annonce précédente a été vendue. Aucune annonce n'a été recréée." },
+        { etape: "controle_vente_avant_recreation", quoi: "annonce_deja_vendue", fin: etat.fin, vendus: etat.vendus },
+        { sku, offer_id: offerId, listing_id: preuve.cible });
+      return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", listing_id: preuve.cible };
+    }
+    if (etat.verdict !== "terminee_sans_vente") {
+      await marquer(admin, job, { status: "pending", error: "Republication eBay reportée : l'offre est hors ligne, mais FillSell ne peut pas encore prouver qu'elle n'a pas été vendue. Aucune annonce n'est recréée." },
+        { etape: "controle_vente_avant_recreation", quoi: "offre_hors_ligne_indeterminee", etat },
+        { sku, offer_id: offerId, listing_id: preuve.cible });
+      return { job: job.id, issue: "pending", motif: "offre_hors_ligne_indeterminee", listing_id: preuve.cible };
+    }
+    completedAt = new Date().toISOString();
+    methode = "offer_unpublished_browse_no_sale";
+  } else {
+    if (!intentionMemorisee) {
+      await memoriserIntentionRetraitAvantRepublication(admin, job, preuve, new Date().toISOString());
+    }
+    const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${offerId}/withdraw`, { method: "POST" });
     if (w.http !== 200) {
       const e = lireErreurEbay(w.json, w.texte);
-      await marquer(admin, job, { status: "failed", error: messageRefus("le retrait avant republication", w.http, e).error }, { etape: "withdraw", http: w.http, errorId: e.errorId }, { sku, offer_id: publiee.offerId });
+      await marquer(admin, job, { status: "failed", error: messageRefus("le retrait avant republication", w.http, e).error }, { etape: "withdraw", http: w.http, errorId: e.errorId }, { sku, offer_id: offerId, listing_id: preuve.cible });
       return { job: job.id, issue: "withdraw", http: w.http, ebay: e };
     }
-    job.platform_fields = { ...(job.platform_fields ?? {}), republish_step: "deleted" };
+    const listingId = String((w.json as { listingId?: string } | null)?.listingId ?? "");
+    if (listingId && listingId !== preuve.cible) {
+      await marquer(admin, job, { status: "failed", error: `eBay a retiré une offre mais a renvoyé un identifiant inattendu (${listingId} au lieu de ${preuve.cible}). FillSell n'a pas recréé l'annonce.` },
+        { etape: "withdraw", quoi: "reponse_listing_contradictoire", attendu: preuve.cible, recu: listingId },
+        { sku, offer_id: offerId, listing_id: listingId });
+      return { job: job.id, issue: "failed", motif: "reponse_listing_contradictoire", listing_id: listingId };
+    }
+    completedAt = new Date().toISOString();
+    methode = "withdraw_response";
   }
-  const res = await publier(admin, env, token, job, passe);
+  await memoriserRetraitAvantRepublication(admin, job, preuve, completedAt, methode);
+  try {
+    await annulerSourceEbayRetiree(admin, precedent, completedAt);
+  } catch (e) {
+    await marquer(admin, job, { status: "pending", error: "Le retrait eBay est acquis ; FillSell termine sa synchronisation avant de recréer l'annonce." },
+      { etape: "synchronisation_source", quoi: "source_non_annulee", detail: String((e as Error)?.message ?? e).slice(0, 180) });
+    return { job: job.id, issue: "pending", motif: "source_non_annulee" };
+  }
+  const res = await publier(admin, env, token, job, passe, { offerIdAttendu: offerId });
   if (res.issue === "published") {
     const { data: apres } = await admin.from("cross_post_jobs").select("platform_fields").eq("id", job.id).maybeSingle();
     const pf = { ...((apres?.platform_fields as Record<string, unknown>) ?? {}), republish_step: "recreated" };
     await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id);
   }
-  return { ...res, republication: true, retiree_avant: Boolean(publiee?.offerId) };
+  return { ...res, republication: true, retiree_avant: true };
 }
 
 // ── Mesure SANS écriture (Nico, 06/09 soir, avant tout chantier « détection
