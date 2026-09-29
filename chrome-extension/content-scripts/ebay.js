@@ -278,8 +278,26 @@ async function deleteListing(job) {
   }
   t(`Hub vendeur rendu : ${document.querySelectorAll(MENU_LIGNE_SEL).length} ligne(s) avec menu d'actions`);
 
+  const idDirect = String(job.platform_listing_id ?? "").trim();
   const idMatch = String(job.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i);
-  const itemId = idMatch?.[1] ?? idMatch?.[2] ?? null;
+  const idUrl = idMatch?.[1] ?? idMatch?.[2] ?? null;
+  if (idDirect && idUrl && idDirect !== idUrl) {
+    t(`ABANDON : identifiants contradictoires (colonne=${idDirect}, URL=${idUrl}) — aucun clic`);
+    return {
+      success: false,
+      error: `Retrait eBay impossible : deux identifiants contradictoires (${idDirect} / ${idUrl}). Rien n'a été touché.`,
+      trace,
+    };
+  }
+  const itemId = /^\d{9,}$/.test(idDirect) ? idDirect : idUrl;
+  if (!itemId) {
+    t("ABANDON : identifiant durable eBay absent — aucune recherche par titre, aucun clic");
+    return {
+      success: false,
+      error: "Retrait eBay impossible : l'identifiant exact de l'annonce est absent. Rien n'a été touché.",
+      trace,
+    };
+  }
 
   // ⛔ JAMAIS `querySelector` SEUL POUR L'ANCRE. Il rend la PREMIÈRE du
   //    document, et le Hub sert plusieurs ancres par annonce (3 par ligne,
@@ -299,14 +317,8 @@ async function deleteListing(job) {
     }, 10000);
     if (anchor) t(`annonce trouvée par itemId ${itemId}`);
   }
-  if (!anchor && job.title) {
-    const cible = job.title.trim();
-    anchor = ancreUtile(Array.from(document.querySelectorAll("a"))
-      .filter((a) => a.textContent.trim() === cible));
-    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
-  }
   if (!anchor) {
-    t(`annonce INTROUVABLE dans le Hub vendeur (itemId=${itemId ?? "?"}, titre="${job.title ?? "?"}")`);
+    t(`annonce INTROUVABLE dans le Hub vendeur (itemId exact=${itemId})`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
     return { success: false, error: "Annonce introuvable dans le Hub vendeur", trace };
   }
@@ -388,8 +400,8 @@ async function deleteListing(job) {
     }
   };
 
-  // Garde du titre : elle reste, mais sur textContent (innerText est vide sans
-  // rendu — c'est ce qui la faisait échouer, pas un vrai désaccord de titre).
+  // Le titre n'est jamais la preuve d'identité : la ligne a été choisie par
+  // itemId exact. Il reste seulement une garde de contradiction avant le clic.
   const titleOk = !job.title || texteDe(dialog).toLowerCase().includes(job.title.trim().toLowerCase());
   if (!titleOk) {
     t(`ABANDON : le dialogue ne nomme pas "${job.title}" — aucun clic`);

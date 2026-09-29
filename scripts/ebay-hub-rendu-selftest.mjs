@@ -221,7 +221,7 @@ const AUTRES = [
   { id: '800423009959', titre: 'Quiksilver Swim Short M Orange Navy' },
   { id: '800578127338', titre: 'Camaieu Floral Blue Dress' },
 ];
-const JOB = { listing_url: `https://www.ebay.fr/itm/${MONTRE.id}`, title: MONTRE.titre };
+const JOB = { listing_url: `https://www.ebay.fr/itm/${MONTRE.id}`, platform_listing_id: MONTRE.id, title: MONTRE.titre };
 
 console.log('LE CAS RÉEL — job 4514680c, montre Mortima\n');
 
@@ -308,13 +308,24 @@ console.log('LE CAS RÉEL — job 4514680c, montre Mortima\n');
 
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  // Retrait par TITRE quand le job n'a pas d'identifiant dans son lien.
+  // Un titre, même exact et unique dans ce faux Hub, n'est jamais une preuve.
   const r = await lancer({
     job: { listing_url: 'https://www.ebay.fr/itm/', title: MONTRE.titre },
     hub: (h) => faireHub({ annonces: [...AUTRES, MONTRE], menusApres: 400, horloge: h }),
   });
-  ok(String(r.error).startsWith('Action « Mettre fin à l\'annonce » introuvable'),
-    'job sans identifiant : le repli par titre exact marche toujours (non-régression)',
+  ok(/identifiant exact/.test(String(r.error)),
+    'job sans identifiant : aucun repli par titre, aucun clic',
+    `rendu : ${JSON.stringify(r.error)}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const r = await lancer({
+    job: { ...JOB, platform_listing_id: '377512032291', listing_url: 'https://www.ebay.fr/itm/377506248476' },
+    hub: (h) => faireHub({ annonces: [...AUTRES, MONTRE], menusApres: 300, horloge: h }),
+  });
+  ok(/identifiants contradictoires/.test(String(r.error)),
+    'colonne et URL contradictoires : aucun identifiant n’est choisi, aucun clic',
     `rendu : ${JSON.stringify(r.error)}`);
 }
 

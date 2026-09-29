@@ -52,6 +52,13 @@ export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID d
 // écriture) ; elle part dès qu'un poste porte ce build.
 export const BUILD_OPLA_REPUBLICATION_SUR_ANNONCE = "2026-09-27T18:22:27Z"; // BUILD_ID de la 0.6.74, zip build/CWS-0.6.74-A-TELEVERSER
 
+// Premier build 0.6.80 : le formulaire Beebs entier est rempli et contrôlé
+// AVANT le retrait d'une republication. Tous les paquets 0.6.79 et antérieurs
+// ont été construits le 28/09 ou avant ; ce seuil fermé ne peut donc pas les
+// faire passer pour corrigés. Le BUILD_ID complet du zip restera la preuve de
+// livraison, comme pour les autres portes.
+export const BUILD_BEEBS_PREVOL_AVANT_RETRAIT = "2026-09-29T00:00:00Z";
+
 export const CORRECTIFS_EXTENSION = [
   {
     cle: "vinted_navigation_annonce_exacte",
@@ -69,6 +76,22 @@ export const CORRECTIFS_EXTENSION = [
     buildMin: "2026-09-24T14:34:46Z", // BUILD_ID de la 0.6.66 (aa459a7) — commit du correctif f3891c7
     version: "0.6.66",
     motif: "retrait Leboncoin pro : fiche sans panneau de gestion en fenêtre étroite (tiroir « Gérer » ouvert depuis la 0.6.66)",
+  },
+  {
+    // misscat801, Bottines LPB, 2586c549 : l'ancienne extension a retiré
+    // l'annonce puis découvert « Pointure » au formulaire de recréation. Dès
+    // qu'un poste porte le pré-vol complet, le job repart seul ; get-pending
+    // lui ressert d'abord la taille/pointure certaine de la fiche. Sans valeur
+    // certaine, le nouveau pré-vol repose la question AVANT tout retrait.
+    cle: "beebs_prevol_champs_avant_retrait",
+    platform: "beebs",
+    actions: ["republish"],
+    signature: /Beebs exige des champs encore vides[\s\S]*(Pointure|Taille|Format du colis)|clé du champ à trancher:\s*(Pointure|Taille|Format du colis)/i,
+    buildMin: BUILD_BEEBS_PREVOL_AVANT_RETRAIT,
+    version: "0.6.80",
+    motif: "formulaire Beebs complet contrôlé avant le retrait ; valeurs certaines de la fiche resservies à la recréation",
+    condition: (job) => job?.platform_fields?.needs_user_source === "champ_a_choisir",
+    clesARetirer: ["needsUserField", "needsUserFields", "server_required_fields"],
   },
   {
     // (2026-09-27, carhoa « Livre sur la tentation des gobelins », job

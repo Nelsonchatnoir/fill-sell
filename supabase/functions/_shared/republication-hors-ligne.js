@@ -29,8 +29,9 @@
 //      irrésoluble, plusieurs annonces identiques déjà en ligne) — retenter
 //      ne changerait rien, et la dernière serait un doublon.
 // ⛔ JAMAIS DE DOUBLON : si la tentative ratée avait atteint l'envoi du dépôt,
-//    la reprise porte `verifier_doublon_avant_publication` — l'extension relit
-//    « Mes annonces » avant de redéposer (processJob, depuis le 07/09).
+//    la reprise porte `verifier_doublon_avant_publication` — get-pending-jobs
+//    exige alors l'identifiant exact de notre tentative dans le relevé. Aucun
+//    titre ne rattache et aucun redépôt ne part dans le doute.
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
@@ -49,7 +50,15 @@ const SOURCES_MUR = new Set([
 const SOURCES_QUESTION = new Set(["capture_incomplete", "champ_a_choisir"]);
 /** Une garde de l'extension refuse CE redépôt : chaque reprise serait refusée
  *  pareil (0.6.78, 28/09). Jamais « on réessaie — rien à faire ». */
-const SOURCES_IMPASSE = new Set(["garde_depot"]);
+const SOURCES_IMPASSE = new Set([
+  "garde_depot",
+  // Une tentative Vinted a peut-être déjà créé une annonce. Sans identifiant
+  // exact, ou quand cet id a déjà été importé dans une autre fiche, toute
+  // reprise automatique pourrait créer un doublon. Le titre ne tranche jamais.
+  "recreation_identite_impossible",
+  "recreation_deja_importee",
+  "boutique_inconnue",
+]);
 
 // ── LA GARDE COSMÉTIQUES DES ANCIENNES EXTENSIONS (28/09, xxewwer 28f1b00e) ──
 // Jusqu'à la 0.6.77, l'extension refusait un redépôt Leboncoin sur un seul mot

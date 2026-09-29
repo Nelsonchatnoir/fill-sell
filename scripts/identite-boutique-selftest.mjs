@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
+import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
 const base={action:'delete',platform:'vinted',boutiqueArticle:'nadege',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
 assert.equal(verifier(base),'boutique_non_confirmee');
 assert.equal(verifier({...base,boutiqueSession:'nadege'}),'boutique_non_confirmee');
@@ -27,6 +27,22 @@ assert.equal(depotVintedExact(job,[depot]),true);
 assert.equal(depotVintedExact(job,[{...depot,inventaire_id:124}]),false);
 assert.equal(depotVintedExact(job,[{...depot,platform_listing_id:'9991856072'}]),false);
 assert.equal(depotVintedExact(job,[{...depot,handler_build:'2026-09-13T10:16:27Z-sync-dressing'}]),false);
+// Suppression de la fiche : inventaire_id devient NULL, mais le retrait garde
+// l'identifiant exact du dépôt FillSell. Cas xxewwer 8911409c / 195d3bc3 et
+// Short d'Ornella : la preuve ne doit plus disparaître avec la FK.
+const sansFiche={...job,inventaire_id:null};
+assert.equal(depotVintedExact(sansFiche,[depot]),false);
+assert.equal(depotVintedExactParAnnonce(sansFiche,[depot])?.id,'ancien');
+assert.equal(depotVintedExactParAnnonce(sansFiche,[{...depot,status:'cancelled'}])?.id,'ancien');
+assert.equal(depotVintedExactParAnnonce(sansFiche,[{...depot,status:'sold'}])?.id,'ancien');
+assert.equal(depotVintedExactParAnnonce(sansFiche,[{...depot,status:'failed'}]),null);
+assert.equal(depotVintedExactParAnnonce(sansFiche,[{...depot,platform_listing_id:'9991856072'}]),null);
+assert.equal(depotVintedExactParAnnonce(sansFiche,[{...depot,handler_build:'releve-annonces'}]),null);
+assert.equal(depotVintedExactParAnnonce(sansFiche,[{...depot,status:'cancelled',handler_build:'SOURCE non-buildé (dossier chrome-extension/ chargé tel quel) · v0.6.46'}])?.id,'ancien');
+assert.equal(idAnnonceVintedExact({platform_listing_id:'9991856071'}),'9991856071');
+assert.equal(idAnnonceVintedExact({platform_listing_id:'9991856071,listing_url.ilike.*'}),'');
+assert.equal(idAnnonceVintedExact({platform_listing_id:'9991856071',listing_url:'https://www.vinted.fr/items/9991856072-autre'}),'');
+assert.equal(idAnnonceVintedExact({platform_listing_id:'9991856071',listing_url:'https://example.test/items/9991856071'}),'');
 assert.equal(verifier({...base,boutiqueArticle:null,sessionRequise:false,historiqueListingProuve:true}),null);
 assert.equal(verifier({...base,boutiqueArticle:null,historiqueListingProuve:true}),'origine_inconnue');
-console.log('25 contrôles de cloisonnement des boutiques et de compatibilité réussis.');
+console.log('37 contrôles de cloisonnement des boutiques et de preuve durable réussis.');

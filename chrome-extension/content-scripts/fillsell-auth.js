@@ -67,6 +67,9 @@
     // (popup), où le geste que Chrome exige se fait. Aller-retour : la page
     // apprend si la fenêtre s'est ouverte, ou si l'accès est déjà là.
     "AUTORISER_OPLA",
+    // Pause Vinted prouvée par HTTP 403 : ouvre une page visible et arme la
+    // sonde immédiate qui reprendra toute la file après le geste.
+    "VINTED_ANTIROBOT_OUVRIR",
   ]);
   window.addEventListener("message", (e) => {
     if (e.source !== window) return;
@@ -79,6 +82,14 @@
           window.postMessage({ __fillsellOplaOuverture: rep ?? { ok: false, error: "extension muette" } }, window.location.origin);
         });
         console.log("[fillsell-auth] commande relayée : AUTORISER_OPLA");
+        return;
+      }
+      if (cmd === "VINTED_ANTIROBOT_OUVRIR") {
+        chrome.runtime.sendMessage({ type: cmd }, (rep) => {
+          void chrome.runtime.lastError;
+          window.postMessage({ __fillsellVintedAntirobotOuverture: rep ?? { ok: false, ouverte: false } }, window.location.origin);
+        });
+        console.log("[fillsell-auth] commande relayée : VINTED_ANTIROBOT_OUVRIR");
         return;
       }
       // PROBE_VINTED_LISTING (2026-08-10) : aller-retour aussi, mais son argument

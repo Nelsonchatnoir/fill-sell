@@ -42,7 +42,13 @@ const ITEM = 10062296164;
 // Arbre du compte de Nico, réduit aux branches utiles, tel que relevé le 28/09 :
 // « Jupes » y est la feuille 5523 ; 5570 n'y est nulle part.
 const ARBRE_NICO = [
-  { id: 1904, title: "Femmes", catalogs: [{ id: 4, title: "Vêtements", catalogs: [{ id: 5523, title: "Jupes", catalogs: [] }] }] },
+  { id: 1904, title: "Femmes", catalogs: [
+    { id: 4, title: "Vêtements", catalogs: [{ id: 5523, title: "Jupes", catalogs: [] }] },
+    { id: 1187, title: "Accessoires", catalogs: [
+      { id: 20, title: "Ceintures", catalogs: [] },
+      { id: 1852, title: "Porte-clés", catalogs: [] },
+    ] },
+  ] },
   { id: 5, title: "Hommes", catalogs: [{ id: 82, title: "Accessoires", catalogs: [
     { id: 97, title: "Montres", catalogs: [] }, { id: 99, title: "Autres", catalogs: [] },
   ] }] },
@@ -72,6 +78,19 @@ function pagePublique({ id = ITEM, catalogs = [97, 97], fil = [5, 82, 97], voisi
   const liens = fil.map((c) => `<li><a href="/catalog/${c}-rayon?referrer=item-crumbs" itemProp="url" data-testid="breadcrumb"><span>x</span></a></li>`).join("")
     + (fil.length ? `<li><a href="/catalog/${fil.at(-1)}-watches/brand/2575-casio?referrer=item-crumbs">CASIO Montres</a></li>` : "");
   return `<!DOCTYPE html><html lang="fr-FR"><head><title>Casio G-Shock Noir | Vinted</title></head><body><ul>${liens}</ul>${rsc}</body></html>`;
+}
+
+// Forme relevée en direct le 29/09 sur la ceinture 10100959188 et les trois
+// porte-clés de Deborah : `catalog_id` AVANT `item_id`, les deux sous forme de
+// chaînes, dans le flux RSC échappé. L'ancien parseur de la 0.6.79 ne lisait
+// que des nombres dans l'ordre inverse ; cette doublure verrouille la règle,
+// sans utiliser le titre comme preuve.
+function pagePubliqueFormeLive({ catalogId, fil }) {
+  const bloc = `{"data":{"catalog_id":"${catalogId}","currency":"EUR","item_id":"${ITEM}"}}`;
+  const rsc = `<script>self.__next_f.push([1,"${esc(bloc)}"])</script>`;
+  const liens = fil.map((c) => `<li><a href="/catalog/${c}-rayon?referrer=item-crumbs"><span>x</span></a></li>`).join("")
+    + `<li><a href="/catalog/${fil.at(-1)}-rayon/brand/1-marque?referrer=item-crumbs">marque</a></li>`;
+  return `<!DOCTYPE html><html lang="fr-FR"><body><ul>${liens}</ul>${rsc}</body></html>`;
 }
 
 function reseau({ natif, arbre = ARBRE_NICO, page = pagePublique(), pageStatus = 200, pageRedirigee = null }) {
@@ -153,6 +172,23 @@ console.log("\n2. Nouveau code : 5570 absent de l'arbre → la page de l'annonce
   // Les seuls champs encore manquants sont les photos (re-hébergement, posé
   // côté background) : le verdict sera « valide » une fois les photos faites.
   dit((res.champs_manquants ?? []).every((m) => /^photos_rehebergees/.test(m)), "seul manque le re-hébergement des photos (fait par le background)", JSON.stringify(res.champs_manquants));
+}
+
+console.log("\n2b. Forme RSC live du 29/09 : identifiants entre guillemets et rayon avant l'article");
+for (const cas of [
+  { ancien: 5542, actuel: 20, fil: [1904, 1187, 20], chemin: ["Femmes", "Accessoires", "Ceintures"], nom: "Ceinture" },
+  { ancien: 5552, actuel: 1852, fil: [1904, 1187, 1852], chemin: ["Femmes", "Accessoires", "Porte-clés"], nom: "trois objets de collection" },
+]) {
+  const { res } = await capturer(SRC, {
+    natif: natifCasio(cas.ancien),
+    page: pagePubliqueFormeLive({ catalogId: cas.actuel, fil: cas.fil }),
+  });
+  const t = trace(res);
+  dit(!manqueCategorie(res), `${cas.nom} : la catégorie n'est plus manquante`, JSON.stringify(res.champs_manquants));
+  dit(JSON.stringify(res.libelles?.categoryPath) === JSON.stringify(cas.chemin)
+      && res.libelles?.catalog_id_depot === cas.actuel
+      && t?.catalog_id_page === cas.actuel,
+    `${cas.ancien} déplacé → feuille exacte ${cas.actuel} (${cas.chemin.join(" > ")})`, JSON.stringify(t));
 }
 
 // ── 3. Aucune requête de plus quand l'id est dans l'arbre ────────────────────

@@ -10,6 +10,9 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // n'étaient jamais rapatriées, 19/09).
 import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
 import { rearmerJobsEbayConnexionSiUtilisable, SOURCES_EBAY_REARMABLES } from "../_shared/ebay-voie.ts";
+import { estJobVendeurEbayInactif, preuveHubApresActivationVendeur } from "../_shared/ebay-reprise-extension.ts";
+import { estJobIdentiteLbc, preuveIdentiteLbcApresBlocage } from "../_shared/lbc-identite.ts";
+import { estJobPlateformeEcartee } from "../_shared/plateforme-ecartee.ts";
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
 import { autorisationOplaRequise } from "../_shared/textes-jobs.ts";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
@@ -384,12 +387,11 @@ serve(async (req) => {
   //     repris à 15 min) : reprise à 45 min au lieu de 24 h ;
   //   · 'republish' garde ses 24 h : son étape 'captured' SUPPRIME l'annonce,
   //     on ne raccourcit pas le délai d'un traitement destructif.
-  // Filet anti-doublon : c'est l'extension qui sait demander à la plateforme
-  // « une annonce à notre titre existe-t-elle déjà ? » (staleJobExistingListingUrl,
-  // jamais exécuté côté serveur). On pose donc verifier_doublon_avant_publication
-  // sur le job ré-armé : la 0.6.21 fait la vérification AVANT de re-publier ;
-  // les versions antérieures ignorent le marqueur et se comportent comme
-  // aujourd'hui à 24 h.
+  // Filet anti-doublon : le serveur ne sait pas si la plateforme a accepté la
+  // requête juste avant la mort du worker. Il ne ré-arme donc PLUS une
+  // publication : le titre ne prouve rien et son absence dans une liste ne
+  // prouve pas l'absence du dépôt. Le job attend l'identifiant exact du relevé,
+  // sans bouton de relance. Les republications gardent leur machine à étapes.
   const SEUIL_ABANDON_RAPIDE_MS = 45 * 60_000;
   const SEUIL_MUET_RAPIDE_MS = 30 * 60_000;
   let processingRearmes = 0;
@@ -449,11 +451,36 @@ serve(async (req) => {
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.processing_since;
         delete pf.stale_recoveries;
-        // Le serveur ne sait pas demander à la plateforme si l'annonce existe
-        // déjà (le worker est mort peut-être APRÈS l'acceptation du dépôt) :
-        // on le demande à l'extension, qui a ce filet depuis le 19/07.
-        // Publication seule : une republication 'a_capturer' n'a rien déposé.
-        if (repriseRapide && j.action === "publish") pf.verifier_doublon_avant_publication = true;
+        if (j.action === "publish") {
+          const attenteLe = new Date().toISOString();
+          pf.needs_user_source = "publication_issue_inconnue";
+          pf.last_diagnostic = {
+            quoi: "publication_issue_inconnue",
+            detail: "worker muet après prise du job ; identifiant durable exact attendu avant toute nouvelle soumission",
+            at: attenteLe,
+          };
+          pf.publication_issue_inconnue = {
+            depuis: (pf.publication_issue_inconnue as Record<string, unknown> | undefined)?.depuis ?? attenteLe,
+            derniere: attenteLe,
+            preuve_attendue: "identifiant durable exact de notre tentative ou rattachement explicite du relevé",
+            pose_par: "handler-watch",
+          };
+          delete pf.next_action_after;
+          const message =
+            `La demande de publication ${libellePlateforme(j.platform)} a peut-être été reçue, mais son ` +
+            "identifiant exact n'a pas été récupéré. FillSell ne la renvoie pas : le prochain relevé " +
+            "doit d'abord confirmer l'annonce exacte.";
+          const { error: nErr } = await supabase
+            .from("cross_post_jobs")
+            .update({ status: "needs_user", error: message, platform_fields: pf })
+            .eq("id", j.id)
+            .eq("status", "processing");
+          if (!nErr) {
+            processingNeedsUser++;
+            console.log(`[handler-watch] job ${j.id} (${j.platform}/publish) processing abandonné → confirmation exacte, aucun renvoi`);
+          }
+          continue;
+        }
 
         // Vinted seul (2026-09-17) : hors Vinted la « capture » est la copie du
         // dépôt d'origine sur le job, elle ne périme pas — ré-armement simple.
@@ -553,6 +580,7 @@ serve(async (req) => {
       .range(0, 499);
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) => {
+      if (estJobPlateformeEcartee(j)) return false;
       const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
       if (pf.etat_repare_le) return false;                       // déjà réparé une fois
       const uf = (pf.republish_user_fields ?? {}) as Record<string, unknown>;
@@ -1161,6 +1189,7 @@ serve(async (req) => {
       .eq("status", "needs_user");
     // deno-lint-ignore no-explicit-any
     const lignes = ((attente ?? []) as any[]).filter((j) => {
+      if (estJobPlateformeEcartee(j)) return false;
       if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") return false;
       if (j.platform_fields?.needs_user_source === "livres_isbn_garde" ||
           String(j.error ?? "").startsWith(PREFIXE_GARDE_LIVRES)) return false;
@@ -1493,7 +1522,10 @@ serve(async (req) => {
     };
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) =>
-      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")) || antirobotApresRetrait(j));
+      !estJobPlateformeEcartee(j) && (
+        murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? ""))
+        || antirobotApresRetrait(j) || estJobVendeurEbayInactif(j) || estJobIdentiteLbc(j)
+      ));
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
@@ -1506,10 +1538,22 @@ serve(async (req) => {
       const maintenant = Date.now();
       for (const j of candidats) {
         const s = sessionsPar.get(String(j.user_id)) ?? {};
-        if (s[j.platform] !== true) continue;                       // pas connecté, ou inconnu
+        const vendeurEbayInactif = estJobVendeurEbayInactif(j);
+        const identiteLbc = estJobIdentiteLbc(j);
+        // L'activation VENDEUR exige le Hub. La sonde eBay générale teste une
+        // autre porte et peut être verte sur un compte incapable de vendre.
+        const vuVendeur = vendeurEbayInactif
+          ? preuveHubApresActivationVendeur(j, s, maintenant)
+          : null;
+        if (vendeurEbayInactif && vuVendeur == null) continue;
+        const vuIdentiteLbc = identiteLbc
+          ? preuveIdentiteLbcApresBlocage(j, s, maintenant)
+          : null;
+        if (identiteLbc && vuIdentiteLbc == null) continue;
+        if (!vendeurEbayInactif && !identiteLbc && s[j.platform] !== true) continue; // pas connecté, ou inconnu
         const brut = (s.checked_at_par_plateforme as Record<string, string> | undefined)?.[j.platform]
           ?? (s.checked_at as string | undefined) ?? null;
-        const vu = brut ? Date.parse(brut) : NaN;
+        const vu = vendeurEbayInactif ? vuVendeur! : identiteLbc ? vuIdentiteLbc! : (brut ? Date.parse(brut) : NaN);
         if (!Number.isFinite(vu)) continue;
         if (maintenant - vu > (FRAICHEUR_SONDE_MS[j.platform] ?? 60 * 60_000)) continue;   // trop vieille
         const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
@@ -1549,6 +1593,11 @@ serve(async (req) => {
         delete pf.needs_user_vu_le; delete pf.needs_user_vu_erreur; delete pf.needsUserAttempts;
         delete pf.needsUserBoucle; delete pf.needsUserResolved; delete pf.next_action_after;
         delete pf.error_technique; delete pf.processing_since;
+        if (vendeurEbayInactif) pf.compte_vendeur_reactive_le = new Date(vu).toISOString();
+        if (identiteLbc) {
+          delete pf.identite_lbc_bloquee_le;
+          pf.identite_lbc_verifiee_le = new Date(vu).toISOString();
+        }
         // ⛔ `republish_step` et `erreurs_archivees` SURVIVENT : le premier dit
         //    où en est l'annonce d'origine (une republication reprise à
         //    'deleted' ne doit pas recapturer), le second est la mémoire.
@@ -2362,6 +2411,7 @@ serve(async (req) => {
       .eq("platform", "vinted")
       .limit(CAPTURE_REVEIL_MAX);
     for (const j of (figes ?? []) as Array<Record<string, unknown>>) {
+      if (estJobPlateformeEcartee(j)) continue;
       const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
       if (pf.republish_step !== "captured") continue;
       const source = String(pf.needs_user_source ?? "");
@@ -2646,6 +2696,7 @@ serve(async (req) => {
     ]);
     // deno-lint-ignore no-explicit-any
     const candidats = ([...(enAttente ?? []), ...(rates ?? [])] as any[])
+      .filter((j) => !estJobPlateformeEcartee(j))
       .filter((j) => Array.isArray(j.photos) && (j.photos as unknown[]).some((p) => estCdnPlateforme(urlDePhoto(p))));
     for (const j of candidats) {
       const pf = { ...(j.platform_fields ?? {}) };

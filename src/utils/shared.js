@@ -48,6 +48,8 @@ export const PLATFORM_LOGIN_URLS = {
 /** L'inscription VENDEUR eBay — le compte existe, il n'est pas encore vendeur. */
 export const EBAY_VENDEUR_URL = 'https://www.ebay.fr/sl/sell';
 export const LBC_DEPOSIT_URL = 'https://www.leboncoin.fr/deposer-une-annonce';
+/** Informations personnelles — destination exacte du mur Transaction sécurisée. */
+export const LBC_IDENTITE_URL = 'https://www.leboncoin.fr/account/private-details/informations';
 
 // Pages « Mes annonces » de chaque plateforme (2026-08-10). Mêmes URL que
 // MY_LISTINGS_URL côté extension — celles-là sont RELEVÉES en réel, c'est là
@@ -181,7 +183,11 @@ export function jobActionRequise(job) {
 //   · 'action'      : une action hors app (identité Leboncoin, catégorie
 //     eBay à confirmer…) → « Action », le message dit quoi, jamais
 //     « Compléter ».
-export const NEEDS_USER_EN_COURS = new Set(['vinted_depot_incertain', 'lbc_depot_incertain']);
+export const NEEDS_USER_EN_COURS = new Set([
+  'vinted_depot_incertain',
+  'lbc_depot_incertain',
+  'publication_issue_inconnue',
+]);
 export function natureNeedsUser(job) {
   if (job?.status !== 'needs_user') return null;
   const pf = job.platform_fields ?? {};
@@ -436,6 +442,15 @@ export function humanizeJobError(job, lang = 'fr') {
   // jamais affiché — quand l'app ne sait pas encore, elle dit « en cours » et
   // ne demande rien.
   if (natureNeedsUser(job) === 'en_cours') return texteEnCoursConfirmation(job, lang);
+
+  // Pause de compte Vinted prouvée par HTTP 403. Le geste et la reprise sont
+  // portés par le bouton dédié ; le texte ne doit jamais retomber sur le vieux
+  // circuit CHALLENGE (tentative restante / relance manuelle).
+  if (job?.platform === 'vinted' && Number(job?.platform_fields?.attente_antirobot_compte?.http) === 403) {
+    return en
+      ? 'Vinted is asking for an account check. Open Vinted with the button; FillSell checks again immediately, then your whole queue resumes automatically.'
+      : 'Vinted demande une vérification sur ton compte. Ouvre Vinted avec le bouton : FillSell vérifie aussitôt, puis toute ta file repart seule.';
+  }
 
   // ── Challenge anti-robot (message RÉÉCRIT ICI depuis le 2026-08-10) ────────
   // Le libellé stocké commence par « CHALLENGE <nom> : » (motif SQL) suivi

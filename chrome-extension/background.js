@@ -831,6 +831,64 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Preuve de commit du prix Vinted (2026-07-13) — demandes émises par le
   // content script vinted.js PENDANT le remplissage (cf. readVintedPriceState).
   const senderTabId = _sender?.tab?.id;
+  // La page officielle « Informations personnelles » vient d'enregistrer un
+  // formulaire. Le content script ne transmet NI nom NI prénom, seulement la
+  // demande de refaire la lecture officielle du compte. Cette lecture rend un
+  // booléen combiné ; aucune valeur personnelle ne quitte Leboncoin.
+  if (msg?.type === "LBC_IDENTITE_VERIFIER") {
+    (async () => {
+      try {
+        const u = new URL(_sender?.tab?.url ?? "https://x.invalid");
+        if (!(u.hostname === "leboncoin.fr" || u.hostname.endsWith(".leboncoin.fr"))) {
+          return sendResponse({ ok: false });
+        }
+        const session = await getValidSession();
+        if (!session?.access_token) return sendResponse({ ok: false });
+        const releve = await reportPlatformSessions(session.access_token, {
+          plateformes: ["leboncoin"], motif: "identité Leboncoin enregistrée", forcer: true,
+        });
+        return sendResponse({ ok: true, presente: releve?.leboncoin_identite === true });
+      } catch {
+        return sendResponse({ ok: false });
+      }
+    })();
+    return true;
+  }
+  // Le bouton « Vérifier sur Vinted » est relayé exclusivement par le content
+  // script de fillsell.app. Il ouvre une page visible, arme une sonde courte,
+  // puis la page Vinted tranche : 200 = reprise, 401 = session, 403 = pause.
+  if (msg?.type === "VINTED_ANTIROBOT_OUVRIR") {
+    (async () => {
+      try {
+        const u = new URL(_sender?.tab?.url ?? "https://x.invalid");
+        if (u.hostname !== "fillsell.app" && !u.hostname.endsWith(".fillsell.app")) {
+          return sendResponse({ ok: false, ouverte: false });
+        }
+        const onglet = await ouvrirVerificationVintedVisible();
+        sendResponse({ ok: Boolean(onglet), ouverte: Boolean(onglet) });
+      } catch {
+        sendResponse({ ok: false, ouverte: false });
+      }
+    })();
+    return true;
+  }
+  // Après chaque navigation de l'onglet visible armé, le content script nous
+  // réveille. Aucun fetch n'est lancé sur les autres pages Vinted.
+  if (msg?.type === "VINTED_ANTIROBOT_PAGE_PRETE") {
+    (async () => {
+      try {
+        const u = new URL(_sender?.tab?.url ?? "https://x.invalid");
+        if (!(u.hostname === "vinted.fr" || u.hostname.endsWith(".vinted.fr")) || senderTabId == null) {
+          return sendResponse({ ok: false, sondee: false });
+        }
+        const sondee = await sonderOngletVintedArme(senderTabId);
+        sendResponse({ ok: true, sondee });
+      } catch {
+        sendResponse({ ok: false, sondee: false });
+      }
+    })();
+    return true;
+  }
   // ── CHOIX DE CATÉGORIE ARBITRÉ (2026-09-07 soir) ─────────────────────────
   // Vinted et Leboncoin proposent PLUSIEURS catégories, et elles ne sont
   // visibles que dans la page — donc seulement ici, au remplissage. Prendre la
@@ -2081,7 +2139,7 @@ async function recoverStaleProcessingJobs(session) {
   let jobs;
   try {
     jobs = await restRequest(
-      "cross_post_jobs?select=id,platform,action,title,inventaire_id,created_at,platform_fields&status=eq.processing",
+      "cross_post_jobs?select=id,platform,action,title,inventaire_id,created_at,listing_url,platform_listing_id,platform_fields&status=eq.processing",
       session.access_token
     );
   } catch (e) {
@@ -2118,21 +2176,16 @@ async function recoverStaleProcessingJobs(session) {
       cleaned.deleted_hang_count = (Number(pf.deleted_hang_count) || 0) + 1;
     }
 
-    // ── Filet anti-DOUBLON sur reprise stale (2026-07-19) ─────────────────────
-    // TROU IDENTIFIÉ À L'INVESTIGATION : si le worker meurt APRÈS que la
-    // plateforme a accepté le dépôt mais AVANT l'écriture du statut, le
-    // ré-armement en pending ci-dessous re-déposait l'annonce de zéro → DEUX
-    // annonces réelles pour le même article. Les filets existants (sonde canal
-    // coupé, « Mes annonces » LBC, Hub vendeur eBay) ne tournent que dans le
-    // processJob d'un worker VIVANT — jamais ici. On demande donc à la
-    // plateforme, AVANT tout ré-armement (et avant l'abandon en failed : un
-    // job épuisé dont l'annonce existe est un succès, pas un échec) : une
-    // annonce à NOTRE titre existe-t-elle déjà ? Oui → published direct avec
-    // son URL, AUCUNE re-soumission. Non (ou invérifiable : pas de titre,
-    // onglet disparu, page de liste muette) → pending normal, comme avant.
-    // Jobs delete exclus : re-supprimer une annonce déjà supprimée est
-    // inoffensif (« introuvable » géré), et « published » y serait un
-    // contresens.
+    // ── Filet anti-DOUBLON sur reprise stale (2026-09-29) ────────────────────
+    // Un titre n'est jamais l'identité d'une annonce. Après une interruption,
+    // trois issues seulement sont sûres :
+    //   1. l'onglet prouve qu'aucune requête n'est partie → reprise permise ;
+    //   2. notre tentative porte un identifiant durable exact → published ;
+    //   3. tout le reste → confirmation en cours, AUCUN second dépôt.
+    // Le vieux filet allait lire « Mes annonces » par titre. Sur deux
+    // exemplaires homonymes il pouvait à la fois voler l'URL de l'autre et
+    // déclarer le mauvais job publié ; sur une absence il redéposait alors que
+    // le premier envoi avait peut-être abouti. Ce chemin est supprimé.
     if (job.action !== "delete") {
       // ── Point de reprise (2026-09-17, keepalive) : AVANT le filet plateforme,
       // demander à l'onglet ce qu'il sait de CE job. Derrière le drapeau
@@ -2141,7 +2194,9 @@ async function recoverStaleProcessingJobs(session) {
       //     cycle (naviguer par-dessus tuerait le remplissage en cours) ;
       //   · résultat avec URL → published direct (mêmes gardes que « existing ») ;
       //   · envoyé sans résultat → doute : le filet plateforme tranche.
-      let existingDepuisOnglet = null;
+      let preuveDepuisOnglet = null;
+      let absenceEnvoiProuvee = false;
+      let envoiPeutEtreParti = false;
       if (keepaliveActif) {
         try {
           const cp = await lireCheckpointRemplissage();
@@ -2154,10 +2209,16 @@ async function recoverStaleProcessingJobs(session) {
                 continue;
               }
               if (etat.resultat?.success && etat.resultat?.listingUrl) {
-                existingDepuisOnglet = String(etat.resultat.listingUrl);
-                console.log(`[background] Job ${job.id} : résultat retrouvé dans l'onglet ${cp.tabId} (${existingDepuisOnglet}) — aucun renvoi`);
+                const url = String(etat.resultat.listingUrl);
+                const id = extractListingId(url, job.platform);
+                if (id) preuveDepuisOnglet = { id, listingUrl: url, source: "resultat_onglet" };
+                console.log(`[background] Job ${job.id} : résultat exact retrouvé dans l'onglet ${cp.tabId} (${url}) — aucun renvoi`);
               } else if (etat.envoye) {
-                console.log(`[background] Job ${job.id} : envoi parti dans l'onglet ${cp.tabId}, verdict inconnu — le filet plateforme tranche, aucun renvoi`);
+                envoiPeutEtreParti = true;
+                console.log(`[background] Job ${job.id} : envoi parti dans l'onglet ${cp.tabId}, verdict inconnu — aucun renvoi`);
+              } else {
+                absenceEnvoiProuvee = true;
+                console.log(`[background] Job ${job.id} : l'onglet prouve qu'aucun envoi n'est parti — reprise autorisée`);
               }
             }
           }
@@ -2165,49 +2226,8 @@ async function recoverStaleProcessingJobs(session) {
           console.warn(`[background] point de reprise (job ${job.id}) illisible — filet plateforme :`, String(e?.message ?? e));
         }
       }
-      // Republication Leboncoin/Beebs AVANT le retrait (2026-09-17) : l'annonce
-      // d'ORIGINE est encore en ligne — la retrouver par son titre serait un
-      // faux succès (« published » sur l'ancienne URL, rien republié). Le filet
-      // ne vaut qu'à l'étape 'deleted', où l'ancienne annonce n'existe plus.
-      const republishAvantRetrait = job.action === "republish" && job.platform !== "vinted"
-        && (pf.republish_step ?? "a_capturer") !== "deleted";
-      const existing = republishAvantRetrait ? null : existingDepuisOnglet ?? await staleJobExistingListingUrl(job).catch((e) => {
-        console.warn(`[background] Filet anti-doublon (job ${job.id}) :`, String(e?.message ?? e));
-        return null;
-      });
-      // ── Garde de PROPRIÉTÉ de l'URL (2026-07-20) ────────────────────────
-      // Le filet identifie l'annonce par le TITRE (findListingLinkInPage,
-      // requireTitle:true) — c'est la seule preuve disponible sur une page de
-      // liste. Or un titre n'identifie pas un article : mesuré sur le stock
-      // réel, 36 % des articles ont un homonyme, et l'inventaire contient
-      // 45 « robe », 16 « veste », 11 « chemise ». Sur homonymie, ce filet
-      // s'attribuait l'URL de l'annonce d'un AUTRE article : le job passait
-      // 'published' sans qu'aucune annonce n'existe pour lui, et il entrait
-      // dans le scan de vente pointé sur l'annonce d'autrui — classe
-      // « listing_url croisée », celle où un retrait cross-plateforme
-      // supprime la MAUVAISE annonce.
-      // On ne cherche pas à mieux identifier l'annonce côté page (le prix y
-      // est trop peu discriminant — 5 prix distincts pour 22 jobs — et
-      // inventaire_id n'existe PAS sur les pages des plateformes). On vérifie
-      // la propriété côté BASE, où inventaire_id existe vraiment.
-      const volee = existing
-        ? await urlPossedeeParUnAutreArticle(session.access_token, job, existing).catch((e) => {
-            console.warn(`[background] Vérification de propriété d'URL (job ${job.id}) :`, String(e?.message ?? e));
-            // Vérification impossible = doute. Le doute profite au
-            // ré-armement, comme partout dans ce filet : un ré-armement
-            // inutile coûte une republication différée, un vol d'URL coûte la
-            // suppression d'une annonce valide.
-            return { id: "(vérification indisponible)" };
-          })
-        : null;
-      if (existing && volee) {
-        console.warn(
-          `[background] Job ${job.id} (${job.platform}) : l'annonce ${existing} appartient DÉJÀ à un autre ` +
-          `article (job ${volee.id}) — filet anti-doublon refusé, ré-armement normal. ` +
-          "Titres homonymes : le titre seul ne prouve pas qu'il s'agit de notre annonce."
-        );
-      }
-      if (existing && !volee) {
+      const preuve = preuveDepuisOnglet ?? preuvePublicationExacte(job);
+      if (preuve) {
         // Même garde que rearmBounded : ne jamais réécrire par-dessus une
         // annulation intervenue entre la lecture et cette écriture.
         const actuel = await jobStatusNow(session.access_token, job.id);
@@ -2227,16 +2247,30 @@ async function recoverStaleProcessingJobs(session) {
           delete done.next_action_after;
         }
         console.log(
-          `[background] Job ${job.id} (${job.platform}) bloqué en 'processing' ${minutes} min MAIS l'annonce ` +
-          `EXISTE déjà côté plateforme (${existing}) — published direct, aucune re-soumission (doublon évité)`
+          `[background] Job ${job.id} (${job.platform}) bloqué en 'processing' ${minutes} min, ` +
+          `mais notre dépôt porte l'identifiant exact ${preuve.id} (${preuve.source}) — published, aucun renvoi`
         );
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+          method: "PATCH",
+          body: JSON.stringify({ platform_listing_id: String(preuve.id) }),
+        }).catch((e) => console.warn(`[background] Job ${job.id} : identifiant exact non persisté —`, String(e?.message ?? e)));
         await updateJobStatus(session.access_token, job.id, "published", {
           error: null,
-          listing_url: existing,
+          ...(preuve.listingUrl ? { listing_url: preuve.listingUrl } : {}),
           platform_fields: done,
         }).catch((e) => console.error("[background] published anti-doublon:", String(e?.message ?? e)));
-        stampVintedItemId(session.access_token, job, existing);
+        if (preuve.listingUrl) stampVintedItemId(session.access_token, job, preuve.listingUrl);
         await recordRecentResult(job, "published").catch(() => {});
+        continue;
+      }
+
+      // Sans preuve positive d'absence d'envoi, remettre en pending serait une
+      // deuxième publication à l'aveugle. On attend que le relevé fournisse
+      // l'identifiant exact ; l'app affiche cet état comme une confirmation en
+      // cours, sans bouton « Relancer ».
+      if (!absenceEnvoiProuvee || envoiPeutEtreParti) {
+        await marquerPublicationIssueInconnue(session.access_token, job,
+          `Traitement interrompu après ${minutes} min sans identifiant durable de notre dépôt.`);
         continue;
       }
     }
@@ -2266,139 +2300,40 @@ async function recoverStaleProcessingJobs(session) {
   }
 }
 
-// ── Une listing_url appartient-elle DÉJÀ à un autre article ? (2026-07-20) ───
-// Rend le job propriétaire concurrent, ou null si l'URL est libre / déjà à nous.
-// IDENTITÉ D'ARTICLE, dans cet ordre :
-//   · inventaire_id des DEUX côtés → comparaison d'id, la plus fiable ;
-//   · sinon → titre EXACT. inventaire_id est nullable et l'est réellement :
-//     ListingPreviewScreen.jsx:4038 écrit `addToStock ? currentInvId : null`,
-//     donc un article publié sans être ajouté au stock n'en a pas. Dans ce cas
-//     on retombe sur le titre — c'est la faiblesse d'origine, MAIS le sens du
-//     repli s'inverse : ici on REFUSE en cas de doute au lieu de s'attribuer
-//     l'URL.
-// PARTAGE LÉGITIME PRÉSERVÉ : publish + delete (et republication) du MÊME
-// article partagent normalement une URL — même inventaire_id, ou même titre :
-// ils ne sont jamais vus comme « un autre article ». Relevé en base au moment
-// d'écrire cette garde : 12 URL partagées par plusieurs jobs, 11 sont
-// exactement ce cas ; la 12e (ebay.fr/itm/800372232491, 2 inventaires et
-// 2 titres distincts) est l'incident de croisement d'id eBay du 19/07, déjà
-// fermé par 5d9d308 — c'est précisément ce que cette garde refuserait.
-async function urlPossedeeParUnAutreArticle(accessToken, job, url) {
-  const rows = await restRequest(
-    "cross_post_jobs?select=id,inventaire_id,title" +
-      `&listing_url=eq.${encodeURIComponent(url)}`,
-    accessToken
-  );
-  const memeArticle = (r) =>
-    r.inventaire_id != null && job.inventaire_id != null
-      ? String(r.inventaire_id) === String(job.inventaire_id)
-      : String(r.title ?? "").trim() === String(job.title ?? "").trim();
-  return (rows ?? []).find((r) => r.id !== job.id && !memeArticle(r)) ?? null;
-}
-
-// ── Filet anti-doublon : l'annonce d'un job stale existe-t-elle déjà ? ────────
-// N'écrit RIEN : rend l'URL de l'annonce si une preuve TITRE-OBLIGATOIRE est
-// trouvée, null sinon (le doute profite au ré-armement, comme avant). Réutilise
-// les filets existants, aucun nouveau détecteur :
-//   - LBC / eBay / Beebs : les pages de liste du compte déjà cataloguées par
-//     recoverMissingListingUrls (LISTING_URL_RECOVERY_PAGES), lues par
-//     findListingLinkInPage en requireTitle:true — la règle « jamais l'URL
-//     d'une autre annonce » (leçon listing_url croisée) s'applique telle quelle.
-//   - Vinted : pas de page de liste cataloguée. Deux preuves possibles SI
-//     l'onglet de travail a survécu à l'interruption (window.__fsCaptures et la
-//     page survivent à la mort du service worker tant que l'onglet n'a pas
-//     re-navigué) : la réponse serveur de la sonde, ou un lien à notre titre
-//     dans la page courante (profil vendeur post-redirection).
-// Appelé SOUS withJobFlowLock (via recoverStaleProcessingJobs, début de poll) :
-// les navigations d'onglet de travail ne croisent jamais un remplissage.
-async function staleJobExistingListingUrl(job) {
-  const title = job.title ?? "";
-  const pattern = LISTING_URL_PATTERNS[job.platform];
-  // Sans titre, aucune vérification n'est SÛRE (le match par titre est la seule
-  // garde anti-annonce-croisée) : on ne devine pas, ré-armement comme avant.
-  if (!title.trim() || !pattern) return null;
-
-  if (job.platform === "vinted") {
-    const tabId = await findExistingWorkTabId("vinted");
-    if (tabId == null) return null; // onglet mort avec l'interruption : invérifiable
-    // Preuve 1 : réponse serveur captée par la sonde. Garde anti-croisée : la
-    // réponse doit porter NOTRE titre — si l'interruption a frappé AVANT la
-    // purge clearProbeCaptures du job, les captures encore en page sont celles
-    // du job PRÉCÉDENT, et son annonce ne doit jamais devenir la nôtre.
-    const fromProbe = await vintedUploadSucceededForTitle(tabId, title).catch(() => null);
-    if (fromProbe) return fromProbe;
-    // Preuve 2 : un lien /items/ portant notre titre dans la page courante
-    // (après publication, Vinted redirige vers le profil vendeur, qui liste
-    // les annonces avec leur titre).
-    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
-    return url ? url.replace(WORK_TAB_FRAGMENT, "") : null;
+// ── Preuve exacte laissée par NOTRE tentative ────────────────────────────────
+// Aucun titre, prix, photo ou date. Pour une republication, les colonnes
+// listing_url/platform_listing_id peuvent encore désigner l'ANCIENNE annonce :
+// seuls les marqueurs explicitement produits par la recréation sont admis.
+function preuvePublicationExacte(job) {
+  const pf = job?.platform_fields ?? {};
+  const ids = [];
+  const ajouter = (v, source) => {
+    const id = String(v ?? "").trim();
+    if (/^\d+$/.test(id)) ids.push({ id, source });
+  };
+  if (job?.action === "publish") {
+    ajouter(job.platform_listing_id, "platform_listing_id");
+    ajouter(extractListingId(job.listing_url, job.platform), "listing_url");
   }
-
-  for (const pageUrl of LISTING_URL_RECOVERY_PAGES[job.platform] ?? []) {
-    let tabId;
-    try {
-      tabId = await getOrCreateWorkTab(job.platform, pageUrl);
-    } catch (e) {
-      console.warn(`[background] Filet anti-doublon (${job.platform}) : onglet indisponible — ${String(e?.message ?? e)}`);
-      return null;
+  if (job?.platform === "vinted") {
+    ajouter(pf.new_vinted_item_id, "reponse_vinted");
+    for (const id of Array.isArray(pf.recreation_redirection?.ids) ? pf.recreation_redirection.ids : []) {
+      ajouter(id, "redirection_vinted");
     }
-    // SPA : les cartes arrivent après le HTML — mêmes attentes que
-    // ebayConfirmViaActiveListings, bornées.
-    const deadline = Date.now() + 12_000;
-    while (Date.now() < deadline) {
-      await sleep(1500);
-      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true, listeDuCompte: job.platform });
-      if (url) return url.replace(WORK_TAB_FRAGMENT, "");
-    }
+  } else if (job?.platform === "leboncoin") {
+    ajouter(pf.lbc_depot?.adsubmit?.id, "adsubmit_lbc");
+    ajouter(pf.lbc_depot?.sans_adsubmit?.id, "reponse_lbc");
+  } else if (job?.platform === "ebay") {
+    ajouter(pf.ebay_api_publish?.itemId, "reponse_ebay");
   }
-  return null;
-}
-
-// Étapes 1-2 de getOrCreateWorkTab SANS création ni navigation : on veut juste
-// savoir si l'onglet de travail d'une plateforme a survécu, et le lire tel quel
-// (le filet Vinted repose sur l'état laissé par le job interrompu — le naviguer
-// détruirait précisément la preuve qu'on cherche).
-async function findExistingWorkTabId(platform) {
-  const key = workTabKey(platform);
-  const store = await chrome.storage.session.get(key);
-  if (store[key] != null) {
-    const tab = await chrome.tabs.get(store[key]).catch(() => null);
-    if (tab) return tab.id;
-  }
-  const host = PLATFORM_HOSTS[platform];
-  if (!host) return null;
-  const cands = await chrome.tabs.query({ url: `*://*.${host}/*` }).catch(() => []);
-  return (cands ?? []).find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT))?.id ?? null;
-}
-
-// vintedUploadSucceeded + exigence du TITRE dans la réponse serveur. Même
-// lecture (HTTP 200 + code:0 + item.id, cf. vintedUploadSucceeded), plus la
-// normalisation de findListingLinkInPage (lettres/chiffres seuls — insensible
-// aux emoji retirés par sanitizeJob et à la ponctuation). Un titre accentué
-// échappé en \uXXXX dans le JSON ne matchera pas : faux négatif assumé (le job
-// repart en pending, comme avant ce filet) — jamais de faux positif.
-async function vintedUploadSucceededForTitle(tabId, title) {
-  const norm = (s) => String(s ?? "").toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const wanted = norm(title);
-  if (!wanted) return null;
-  const { captures } = await readProbeCaptures(tabId);
-  for (let i = captures.length - 1; i >= 0; i--) {
-    const c = captures[i];
-    if (Number(c?.status) !== 200) continue;
-    if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
-    // Marqueur pré-troncature : comparaison EXACTE de titre à titre, au lieu
-    // d'un « includes » sur un extrait de 250 caractères où le titre pouvait
-    // ne pas tenir. Cf. vintedUploadSucceeded pour le pourquoi.
-    if (c?.succesVinted?.id && norm(c.succesVinted.titre) === wanted) {
-      return `https://www.vinted.fr/items/${c.succesVinted.id}`;
-    }
-    const body = String(c?.reponse ?? "");
-    const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
-    if (id && /"code"\s*:\s*0\b/.test(body) && norm(body).includes(wanted)) {
-      return `https://www.vinted.fr/items/${id[1]}`;
-    }
-  }
-  return null;
+  const ancienVinted = String(pf.vinted_item_id ?? "");
+  const uniques = [...new Map(ids.filter((x) => x.id !== ancienVinted).map((x) => [x.id, x])).values()];
+  if (uniques.length !== 1) return null;
+  const preuve = uniques[0];
+  const listingUrl = job.platform === "vinted" ? `https://www.vinted.fr/items/${preuve.id}`
+    : job.platform === "ebay" ? `https://www.ebay.fr/itm/${preuve.id}`
+      : (extractListingId(job.listing_url, job.platform) === preuve.id ? job.listing_url : null);
+  return { ...preuve, listingUrl };
 }
 
 // ── Nettoyage périodique des onglets de travail orphelins (2026-07-18) ────────
@@ -2530,17 +2465,28 @@ async function pollAndProcessJobsUnlocked() {
     console.error("[background] recoverStaleProcessingJobs:", e)
   );
 
-  // Sondes de session des QUATRE plateformes (2026-09-15) — chacune à sa
+  // Sondes de session des CINQ plateformes (2026-09-15) — chacune à sa
   // cadence (Vinted 10 min, les autres 60 min, cf. SESSION_PROBE_INTERVALS_MS),
   // et toutes au premier poll après l'installation. Avant, seule Vinted était
   // sondée ici : un compte qui ne publie que sur Vinted, ou qui vient de
   // s'inscrire, ne voyait jamais rien des trois autres.
-  // Fire-and-forget : le poll n'attend pas et un échec de sonde n'affecte
-  // jamais les jobs.
+  // Vinted est attendu AVANT la file quand sa cadence de 10 min est due. Sans
+  // cet ordre, un Chrome rouvert après 20 min lisait la vieille preuve 403,
+  // lançait get-pending-jobs en parallèle de la nouvelle sonde, et pouvait
+  // libérer ou retenir la file sur l'état précédent. Les quatre autres restent
+  // fire-and-forget : elles ne portent pas cette pause de compte.
   // console.error, pas warn : un échec ici veut dire que la détection de
   // connexion aux plateformes n'est JAMAIS remontée en base (vécu : 403
   // silencieux pendant que l'onboarding attendait extension_sessions).
-  reportPlatformSessions(session.access_token).catch((e) =>
+  await reportPlatformSessions(session.access_token, {
+    plateformes: ["vinted"], motif: "avant lecture de la file",
+  }).catch((e) =>
+    console.error(
+      "[background] sonde Vinted avant file : ÉCHEC — la file reste gouvernée par la dernière preuve datée :",
+      String(e?.message ?? e)
+    )
+  );
+  reportPlatformSessions(session.access_token, { plateformes: ["leboncoin", "ebay", "beebs", "opla"] }).catch((e) =>
     console.error(
       "[background] reportPlatformSessions : ÉCHEC — profiles.extension_sessions non écrit, " +
       "l'app ne verra pas l'état de connexion aux plateformes :",
@@ -2962,15 +2908,11 @@ async function murEbayDeLOnglet(tabId) {
 // Le repli Hub vendeur (requireTitle, jamais l'URL d'une autre annonce) NAVIGUE
 // l'onglet : il est interdit quand un mur a été reconnu, sinon on rebondit sur
 // le signin pour rien.
-async function ebayIssueApresCanalCoupe(accessToken, job, tabId, { hubAutorise }) {
+async function ebayIssueApresCanalCoupe(accessToken, tabId) {
   const partie = await ebaySubmitRequestSeen(tabId);
   if (!partie) return null; // rien n'a quitté le navigateur : reprise sans danger
   const url = await ebayUploadSucceeded(tabId, accessToken).catch(() => null);
   if (url) return { published: true, listingUrl: url };
-  if (hubAutorise && job.title) {
-    const viaHub = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
-    if (viaHub) return { published: true, listingUrl: viaHub };
-  }
   return { incertain: true };
 }
 
@@ -3068,34 +3010,38 @@ async function processJob(rawJob, accessToken) {
     }
 
     // ── REPRISE SERVEUR D'UN JOB INTERROMPU (2026-09-07, job 6b4e9f45) ──────
-    // handler-watch ré-arme désormais une PUBLICATION laissée en 'processing'
-    // par un ordinateur muet au bout de 45 min (au lieu de 24 h : l'app
-    // promettait « reprise dans ~5 min » et personne ne reprenait le job de la
-    // journée). Le serveur, lui, ne peut pas demander à la plateforme si
-    // l'annonce a été acceptée juste avant la mort du worker — il pose donc ce
-    // marqueur, et la question se pose ICI, avec le filet qui existe depuis le
-    // 19/07. Annonce déjà en ligne → published direct, aucune re-soumission,
-    // aucun doublon. Invérifiable → publication normale, comme avant.
+    // Compatibilité avec les marqueurs posés avant la 0.6.80. Le vieux chemin
+    // cherchait une annonce par titre puis redéposait si elle n'était pas
+    // trouvée. Désormais : identifiant exact de notre tentative, ou attente de
+    // confirmation. L'absence d'un titre dans une liste ne prouve jamais que
+    // le premier dépôt n'est pas parti.
     if (job.platform_fields?.verifier_doublon_avant_publication) {
-      const dejaEnLigne = await staleJobExistingListingUrl(job).catch((e) => {
-        console.warn(`[background] Job ${job.id} : vérification anti-doublon impossible —`, String(e?.message ?? e));
-        return null;
-      });
+      const preuve = preuvePublicationExacte(job);
       const pfSansMarqueur = { ...(job.platform_fields ?? {}) };
       delete pfSansMarqueur.verifier_doublon_avant_publication;
       job.platform_fields = pfSansMarqueur;
-      if (dejaEnLigne) {
+      if (preuve) {
         console.log(
-          `[background] Job ${job.id} (${job.platform}) repris par le serveur MAIS l'annonce existe déjà ` +
-          `(${dejaEnLigne}) — published direct, aucune re-soumission (doublon évité)`
+          `[background] Job ${job.id} (${job.platform}) repris par le serveur avec la preuve exacte ` +
+          `${preuve.id} (${preuve.source}) — published, aucune re-soumission`
         );
-        await updateJobStatus(accessToken, job.id, "published", {
-          error: null, listing_url: dejaEnLigne, platform_fields: pfSansMarqueur,
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+          method: "PATCH", body: JSON.stringify({ platform_listing_id: String(preuve.id) }),
         });
-        stampVintedItemId(accessToken, job, dejaEnLigne);
+        await updateJobStatus(accessToken, job.id, "published", {
+          error: null,
+          ...(preuve.listingUrl ? { listing_url: preuve.listingUrl } : {}),
+          platform_fields: pfSansMarqueur,
+        });
+        if (preuve.listingUrl) stampVintedItemId(accessToken, job, preuve.listingUrl);
         await recordRecentResult(job, "published").catch(() => {});
-        return { status: "published", listingUrl: dejaEnLigne };
+        return { status: "published", listingUrl: preuve.listingUrl ?? null };
       }
+      await marquerPublicationIssueInconnue(
+        accessToken, job,
+        "Une ancienne reprise serveur ne porte aucun identifiant durable de notre dépôt.",
+      );
+      return { status: "needsUser", error: "publication en attente de confirmation exacte" };
     }
 
     // processing_since : horodatage du DÉBUT de traitement, lu par
@@ -3118,7 +3064,13 @@ async function processJob(rawJob, accessToken) {
     // quand les tests accumulaient un onglet Vinted par requête).
     // newListingUrl peut être une fonction (eBay : URL par job, construite
     // avec le categoryId du mapping) ou une chaîne fixe (Vinted, LBC).
-    const listingUrl = typeof handler.newListingUrl === "function"
+    const ebayDraftIdReprise = job.platform === "ebay"
+      && /^\d+$/.test(String(job.platform_fields?.ebay_draft_id ?? ""))
+      ? String(job.platform_fields.ebay_draft_id)
+      : null;
+    const listingUrl = ebayDraftIdReprise
+      ? `https://www.ebay.fr/lstng?draftId=${encodeURIComponent(ebayDraftIdReprise)}&mode=AddItem`
+      : typeof handler.newListingUrl === "function"
       ? handler.newListingUrl(job)
       : handler.newListingUrl;
 
@@ -3194,41 +3146,13 @@ async function processJob(rawJob, accessToken) {
       }
     }
 
-    // ── Anti-doublon brouillon eBay (2026-08-31) ──────────────────────────────
-    // Un échec précédent a laissé un brouillon chez eBay ET un message qui
-    // propose de le compléter/publier à la main (ebay_draft_id consigné,
-    // famille B). Si l'utilisateur l'a FAIT pendant que le job attendait sa
-    // reprise, re-déposer créerait un DOUBLON : avant tout formulaire, on
-    // cherche le TITRE EXACT dans les annonces ACTIVES du vendeur
-    // (ebayConfirmViaActiveListings, requireTitle — jamais l'URL d'une autre
-    // annonce, leçon listing_url croisée). Trouvé → published avec l'URL,
-    // AUCUN dépôt. Introuvable → dépôt normal : navigateHomeToForm part du
-    // Hub aussi bien que de la home (son repli est une navigation directe
-    // vers /sl/list). Gate sur ebay_draft_id : seuls les restes de famille B
-    // paient ce détour — le dépôt nominal n'ajoute aucune navigation.
-    if (job.platform === "ebay" && job.platform_fields?.ebay_draft_id && job.title) {
-      const dejaEnLigne = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
-      if (dejaEnLigne) {
-        console.log(`[background] Job ${job.id} : annonce déjà ACTIVE chez eBay (brouillon publié à la main ?) — ${dejaEnLigne}, aucun re-dépôt`);
-        job.platform_fields = {
-          ...(job.platform_fields ?? {}),
-          publish_proof: {
-            exit: "pre_deposit_active_listing",
-            at: new Date().toISOString(),
-            listing_url_capturee: true,
-          },
-        };
-        await updateJobStatus(accessToken, job.id, "published", {
-          error: null,
-          listing_url: dejaEnLigne,
-          platform_fields: job.platform_fields,
-        });
-        await recordRecentResult(job, "published");
-        return { status: "published", listingUrl: dejaEnLigne };
-      }
+    // Un brouillon eBay connu est repris PAR SON ID. On ne clique pas « Vendre »
+    // (ce clic créerait un autre brouillon) et on ne cherche jamais une annonce
+    // active par titre. S'il a été publié à la main, la page de ce même draft
+    // le dira ou restera inaccessible ; aucun nouveau dépôt n'est créé.
+    if (handler.entryUrl) {
+      await navigateHomeToForm(tabId, listingUrl, { skipSellClick: Boolean(ebayDraftIdReprise) });
     }
-
-    if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
     // ⚠️ eBay : onglet PEINT pendant le remplissage (2026-07-12, non encore
     // validé en run réel — voir rapport). Les aspects obligatoires (Marque,
@@ -3492,33 +3416,18 @@ async function processJob(rawJob, accessToken) {
       await recordRecentResult(job, "dry_run_completed");
       return { status: "dry_run_completed", unfilled: result.unfilledRequired ?? [] };
     } else if (result?.needsUser) {
-      // Dépôt LBC sans signal lisible (2026-07-19, job 0591781d) : AVANT de
-      // ré-armer — un re-dépôt aveugle créerait un DOUBLON si le dépôt avait
-      // en réalité abouti sans que le content script lise la confirmation —
-      // on vérifie « Mes annonces » par TITRE (captureFromMyListings passe
-      // requireTitle:true : jamais l'URL d'une autre annonce, leçon
-      // listing_url croisée). Trouvée → publié AVEC URL (même filet que
-      // ebayConfirmViaActiveListings) ; absente → le needsUser était juste.
-      // depotPeutEtreParti (2026-09-08) : l'aperçu est resté affiché mais la
-      // sonde a vu partir une requête — même filet « Mes annonces » AVANT de
-      // persister l'attente utilisateur.
-      // ⛔ Sauf si l'adsubmit a rendu un id (2026-09-10) : dans ce cas le dépôt
-      // est PROUVÉ et son annonce NOMMÉE — chercher par titre ne pourrait
-      // qu'attraper une annonce voisine du même vendeur (jean de Choupette).
-      if (job.platform === "leboncoin" && (result.depositUnconfirmed || result.depotPeutEtreParti)
-          && job.title && tabId != null && !idAdsubmitLbc("leboncoin", job, result)) {
-        const url = await captureFromMyListings(
-          tabId, "leboncoin", LISTING_URL_PATTERNS.leboncoin, MY_LISTINGS_URL.leboncoin, job.title
-        ).catch(() => null);
-        if (url) {
-          console.log(`[background] Job ${job.id} : dépôt LBC confirmé a posteriori par Mes annonces — ${url}`);
-          await updateJobStatus(accessToken, job.id, "published", {
-            ...completionExtras(job, result),
-            listing_url: url,
-          });
-          await recordRecentResult(job, "published");
-          return { status: "published", listingUrl: url };
-        }
+      // Une requête LBC partie sans identifiant ne se tranche jamais dans
+      // « Mes annonces » par le titre. Le relevé exact doit fournir l'id ; en
+      // attendant, aucun second dépôt. `depositUnconfirmed` seul signifie au
+      // contraire que le handler a prouvé l'absence de finalisation et garde
+      // son circuit de reprise normal.
+      if (job.platform === "leboncoin" && result.depotPeutEtreParti
+          && !idAdsubmitLbc("leboncoin", job, result)) {
+        await marquerPublicationIssueInconnue(
+          accessToken, job,
+          "La requête Leboncoin est partie, mais aucune réponse ne porte l'identifiant de l'annonce.",
+        );
+        return { status: "needsUser", error: "publication Leboncoin en attente de confirmation exacte" };
       }
       // ── Attente utilisateur NOMMÉE par le handler (2026-09-05, Leboncoin) ──
       // Une information de COMPTE manque chez la plateforme (nom/prénom de la
@@ -3631,7 +3540,7 @@ async function processJob(rawJob, accessToken) {
       // en "published" fantôme. Seul le background peut trancher : il survit
       // à la redirection (succès) comme à l'absence de redirection (refus).
       if (job.platform === "ebay") {
-        const verdict = await verifyEbaySubmission(tabId, 20_000, job, accessToken);
+        const verdict = await verifyEbaySubmission(tabId, 20_000, accessToken);
         // ── PREUVE DE SORTIE PERSISTÉE (2026-08-10) ───────────────────────────
         // Jusqu'ici, `published` s'écrivait sans que rien ne dise LAQUELLE des
         // sorties de verifyEbaySubmission avait servi. Sur le job 56c15a53 il a
@@ -3818,6 +3727,25 @@ async function processJob(rawJob, accessToken) {
             );
           }
         }
+        if (["timeout_unconfirmed", "tab_gone"].includes(verdict.proof)) {
+          if (verdict.diagnostic) {
+            job.platform_fields = {
+              ...(job.platform_fields ?? {}),
+              last_diagnostic: {
+                quoi: "publication_issue_inconnue",
+                detail: String(verdict.diagnostic).slice(0, 1500),
+                at: new Date().toISOString(),
+              },
+            };
+          }
+          await marquerPublicationIssueInconnue(
+            accessToken, job,
+            verdict.proof === "tab_gone"
+              ? "L'onglet eBay a disparu après le clic ; aucune réponse portant l'identifiant n'a pu être relue."
+              : "La requête eBay est partie mais sa réponse ne porte aucun identifiant lisible.",
+          );
+          return { status: "needsUser", error: "publication eBay en attente de confirmation exacte" };
+        }
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}${verdict.diagnostic ?? ""}`);
           // Annexe sonde/popup → last_diagnostic (rearmBounded repart de
@@ -3888,6 +3816,43 @@ async function processJob(rawJob, accessToken) {
         // le resultat du handler, pas encore relu depuis platform_fields.
         listingUrl = await captureListingUrl(tabId, job.platform, job, 25_000, result);
       }
+      if (job.platform === "beebs" && !beebsProductId) {
+        beebsProductId = extractListingId(listingUrl, "beebs");
+      }
+      if (job.platform === "beebs" && !/^\d+$/.test(String(beebsProductId ?? ""))) {
+        const pfAttente = {
+          ...(job.platform_fields ?? {}),
+          attente_identifiant_beebs: {
+            depuis: new Date().toISOString(),
+            depot_confirme_le: new Date().toISOString(),
+            preuve_attendue: "identifiant exact du relevé Beebs rattaché à ce job",
+            pose_par: "extension 0.6.80",
+          },
+        };
+        delete pfAttente.processing_since;
+        await updateJobStatus(accessToken, job.id, "pending", {
+          error: null,
+          platform_fields: pfAttente,
+        });
+        console.log(
+          `[background] Job ${job.id} (beebs) : dépôt confirmé mais aucun identifiant durable — ` +
+          "retenu jusqu'au relevé exact, aucune nouvelle soumission",
+        );
+        return { status: "skipped", error: "dépôt Beebs en attente de son identifiant exact" };
+      }
+      const identifiantDurable = job.platform === "beebs"
+        ? String(beebsProductId ?? "")
+        : job.platform === "leboncoin"
+          ? String(idAdsubmitLbc("leboncoin", job, result) ?? extractListingId(listingUrl, "leboncoin") ?? "")
+          : String(extractListingId(listingUrl, job.platform) ?? "");
+      if (["vinted", "leboncoin", "ebay", "beebs"].includes(job.platform)
+          && !/^\d+$/.test(identifiantDurable)) {
+        await marquerPublicationIssueInconnue(
+          accessToken, job,
+          `Le dépôt ${job.platform} a rendu un signal de succès sans identifiant durable lisible.`,
+        );
+        return { status: "needsUser", error: `publication ${job.platform} en attente de son identifiant exact` };
+      }
       if (!listingUrl) {
         console.log(
           `[background] Job ${job.id} (${job.platform}) : publié, listing_url différé ` +
@@ -3917,6 +3882,9 @@ async function processJob(rawJob, accessToken) {
       // (même règle que Beebs). C'est la re-capture qui posera l'URL, et elle
       // peut désormais viser l'id au lieu du seul titre.
       const extrasPublie = completionExtras(job, result);
+      if (job.platform === "vinted") {
+        extrasPublie.platform_fields = await preuveBoutiqueVintedApresDepot(extrasPublie.platform_fields);
+      }
       if (job.platform === "leboncoin" && result.lbcDepot) {
         extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), lbc_depot: result.lbcDepot };
       }
@@ -4047,7 +4015,7 @@ async function processJob(rawJob, accessToken) {
     // routage historique juste en dessous.
     if (job.platform === "ebay" && tabId != null && CANAL_COUPE_RE.test(msg)) {
       const mur = await murEbayDeLOnglet(tabId).catch(() => null);
-      const issue = await ebayIssueApresCanalCoupe(accessToken, job, tabId, { hubAutorise: !mur })
+      const issue = await ebayIssueApresCanalCoupe(accessToken, tabId)
         .catch(() => ({ incertain: true }));
 
       if (issue?.published) {
@@ -4069,25 +4037,21 @@ async function processJob(rawJob, accessToken) {
       }
 
       if (issue?.incertain) {
-        const msgIncertain =
-          "Une demande de publication est partie vers eBay avant que l'onglet ne soit interrompu, " +
-          "et son résultat n'a pas pu être lu. Vérifie tes annonces eBay : si l'article y est, " +
-          "ne relance pas — sinon relance la publication depuis la fiche de l'article.";
         job.platform_fields = {
           ...(job.platform_fields ?? {}),
           last_diagnostic: {
-            quoi: "canal_coupe_publication_incertaine",
+            quoi: "publication_issue_inconnue",
             detail: `interruption après le départ de la requête de publication${mur ? ` (onglet retrouvé sur un mur : ${mur.quoi})` : ""} — ${msg.slice(0, 200)}`,
             at: new Date().toISOString(),
           },
         };
         stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
         console.warn(`[background] Job ${job.id} : publication d'issue INCONNUE — needs_user, aucune reprise (garde anti-doublon)`);
-        await updateJobStatus(accessToken, job.id, "needs_user", {
-          error: msgIncertain,
-          platform_fields: job.platform_fields,
-        }).catch((err) => console.error("[background] update-job-status failed:", err));
-        return { status: "needsUser", error: msgIncertain };
+        await marquerPublicationIssueInconnue(
+          accessToken, job,
+          "Le canal eBay s'est interrompu après le départ de la requête, sans identifiant lisible.",
+        ).catch((err) => console.error("[background] update-job-status failed:", err));
+        return { status: "needsUser", error: "publication eBay en attente de confirmation exacte" };
       }
 
       if (mur) {
@@ -4184,9 +4148,11 @@ async function processJob(rawJob, accessToken) {
           `[background] Job ${job.id} : canal coupé PAR LA REDIRECTION de succès — ` +
           `l'annonce EXISTE (${publishedUrl}), publication confirmée par la réponse serveur`
         );
+        const pfSucces = await preuveBoutiqueVintedApresDepot(job.platform_fields);
         await updateJobStatus(accessToken, job.id, "published", {
           error: null,
           listing_url: publishedUrl,
+          platform_fields: pfSucces,
         });
         stampVintedItemId(accessToken, job, publishedUrl);
         await recordRecentResult(job, "published");
@@ -4682,12 +4648,23 @@ async function fermerOngletTravail(platform, motif) {
 // abouti, et rien n'est jamais marqué « retiré » sur cette voie.
 const BLOCAGE_ANTIROBOT_MIN = 20;
 const BLOCAGE_ANTIROBOT_PLAFOND_MS = 6 * 60 * 60 * 1000;
+const MOTIF_ANTIROBOT_VINTED_403 = "antirobot_vinted_403";
+/** Vinted n'entre dans cette famille que sur le code 403 exact. Une valeur
+ * structurée prime sur le texte, pour qu'un 401 portant un ancien message ne
+ * soit jamais reclassé. Leboncoin conserve son signal DataDome historique. */
+function estBlocageAntiRobotExact(job, resultatOuErreur) {
+  const resultat = resultatOuErreur && typeof resultatOuErreur === "object" ? resultatOuErreur : null;
+  const erreur = String(resultat?.error ?? resultatOuErreur ?? "");
+  if (job?.platform !== "vinted") return /^CHALLENGE /i.test(erreur);
+  if (resultat?.httpStatus != null) return Number(resultat.httpStatus) === 403;
+  return /\bHTTP\s*403\b/i.test(erreur);
+}
 // Retrait Vinted d'une annonce en « publication différée » (2026-09-25) :
 // pending, retenté toutes les RETRAIT_VERIF_MIN minutes, needsUserAttempts
 // inchangé, aucune borne — le retrait part dès que Vinted l'accepte. Même
 // règle côté serveur (update-job-status, retrait_en_attente_verification).
 const RETRAIT_VERIF_MIN = 60;
-async function attendreFinVerificationVinted(accessToken, job, errorMsg) {
+async function attendreFinVerificationVinted(accessToken, job) {
   const actuel = await jobStatusNow(accessToken, job.id);
   if (actuel && actuel !== "processing" && actuel !== "pending") return;
   const avant = job.platform_fields?.retrait_en_attente_verification;
@@ -4712,6 +4689,10 @@ async function attendreFinVerificationVinted(accessToken, job, errorMsg) {
 }
 
 async function marquerBlocageAntiRobot(accessToken, job, errorMsg) {
+  if (!estBlocageAntiRobotExact(job, errorMsg)) {
+    console.warn(`[background] Job ${job.id} : motif anti-robot refusé — Vinted n'a pas fourni HTTP 403`);
+    return { borne: false, ignore: true };
+  }
   const actuel = await jobStatusNow(accessToken, job.id);
   if (actuel && actuel !== "processing" && actuel !== "pending") {
     console.warn(
@@ -4751,6 +4732,7 @@ async function marquerBlocageAntiRobot(accessToken, job, errorMsg) {
     observations: (Number(prec?.observations) || 0) + 1,
     derniere: maintenant,
     motif: String(errorMsg ?? "").slice(0, 300),
+    ...(job.platform === "vinted" ? { http: 403, motif_code: MOTIF_ANTIROBOT_VINTED_403 } : {}),
   };
   pf.next_action_after = new Date(Date.now() + BLOCAGE_ANTIROBOT_MIN * 60_000).toISOString();
   const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
@@ -4808,6 +4790,40 @@ async function tracerTaillesEbay(accessToken, job, traces) {
   await restRequest("usage_logs", accessToken, { method: "POST", body: JSON.stringify(lignes) });
 }
 
+// ── Dépôt peut-être parti : confirmation exacte, jamais un second envoi ─────
+// Cet état n'attend aucun geste de l'utilisateur. Le prochain relevé peut le
+// résoudre en rattachant l'identifiant exact ; l'app le rend donc en gris
+// (« confirmation en cours »), sans bouton de relance. C'est le seul verdict
+// honnête lorsque le worker meurt après un possible envoi sans réponse lisible.
+async function marquerPublicationIssueInconnue(accessToken, job, detail = "") {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && !["processing", "pending", "needs_user"].includes(actuel)) {
+    console.warn(`[background] Job ${job.id} : statut devenu « ${actuel} » — attente de confirmation non écrite`);
+    return;
+  }
+  const maintenant = new Date().toISOString();
+  const pf = {
+    ...(job.platform_fields ?? {}),
+    needs_user_source: "publication_issue_inconnue",
+    last_diagnostic: {
+      quoi: "publication_issue_inconnue",
+      detail: String(detail || "issue du dépôt inconnue, identifiant exact attendu").slice(0, 500),
+      at: maintenant,
+    },
+    publication_issue_inconnue: {
+      depuis: job.platform_fields?.publication_issue_inconnue?.depuis ?? maintenant,
+      derniere: maintenant,
+      preuve_attendue: "identifiant durable exact de notre tentative ou rattachement explicite du relevé",
+    },
+  };
+  for (const cle of ["processing_since", "next_action_after", "verifier_doublon_avant_publication"]) delete pf[cle];
+  job.platform_fields = pf;
+  const message =
+    `La demande de publication ${job.platform} a peut-être été reçue, mais son identifiant exact n'a pas été ` +
+    "récupéré. FillSell ne la renvoie pas : le prochain relevé doit d'abord confirmer l'annonce exacte.";
+  await updateJobStatus(accessToken, job.id, "needs_user", { error: message, platform_fields: pf });
+}
+
 // ── Attente utilisateur NOMMÉE par le handler (2026-09-05, Leboncoin) ─────────
 // Le content script a établi qu'une information de COMPTE manque chez la
 // plateforme (result.attenteUtilisateur = true, motif dans attenteMotif) : nom
@@ -4836,12 +4852,18 @@ async function marquerAttenteUtilisateur(accessToken, job, result) {
   }
   stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
   const motif = String(result.attenteMotif ?? "attente_utilisateur").slice(0, 60);
+  const maintenant = new Date().toISOString();
   console.warn(`[background] Job ${job.id} : attente utilisateur « ${motif} » → needs_user (aucune reprise espacée, aucune tentative consommée)`);
   await updateJobStatus(accessToken, job.id, "needs_user", {
     error: result.error,
     platform_fields: {
       ...(job.platform_fields ?? {}),
-      last_diagnostic: { quoi: motif, detail: String(result.error ?? "").slice(0, 300), at: new Date().toISOString() },
+      // Le motif officiel ne doit jamais être laissé au trigger générique
+      // (`relancer`). L'app sait ainsi proposer LE geste correspondant, et la
+      // reprise automatique sait exactement quel mur elle a le droit de lever.
+      needs_user_source: motif,
+      ...(motif === "lbc_escrow_identite" ? { identite_lbc_bloquee_le: maintenant } : {}),
+      last_diagnostic: { quoi: motif, detail: String(result.error ?? "").slice(0, 300), at: maintenant },
     },
   });
 }
@@ -5058,21 +5080,25 @@ async function retryInTempTab(job, handler, originalResult) {
 // une navigation ratée n'échouent PAS le job — on retombe sur la navigation
 // directe vers l'URL de dépôt (comportement d'avant le 2026-07-09), le
 // remplissage lui-même est identique dans les deux cas.
-async function navigateHomeToForm(tabId, listingUrl) {
-  await sleep(randInt(1500, 4000)); // temps de "lecture" de la home
+async function navigateHomeToForm(tabId, listingUrl, { skipSellClick = false } = {}) {
+  if (!skipSellClick) {
+    await sleep(randInt(1500, 4000)); // temps de "lecture" de la home
 
-  try {
-    const res = await sendMessageToTab(tabId, { type: "GO_TO_SELL" }, 15_000);
-    if (res?.clicked) {
-      // Le content script répond AVANT de cliquer (la navigation détruit le
-      // canal de message) : on attend ici le chargement de la page de vente.
-      await waitForTabComplete(tabId).catch(() => {});
-      await sleep(randInt(1200, 3000));
-    } else {
-      console.warn(`[background] Entrée par la home : clic "Vendre" non effectué (${res?.reason ?? "sans raison"}) — navigation directe`);
+    try {
+      const res = await sendMessageToTab(tabId, { type: "GO_TO_SELL" }, 15_000);
+      if (res?.clicked) {
+        // Le content script répond AVANT de cliquer (la navigation détruit le
+        // canal de message) : on attend ici le chargement de la page de vente.
+        await waitForTabComplete(tabId).catch(() => {});
+        await sleep(randInt(1200, 3000));
+      } else {
+        console.warn(`[background] Entrée par la home : clic "Vendre" non effectué (${res?.reason ?? "sans raison"}) — navigation directe`);
+      }
+    } catch (e) {
+      console.warn("[background] Entrée par la home : content script injoignable —", String(e?.message ?? e));
     }
-  } catch (e) {
-    console.warn("[background] Entrée par la home : content script injoignable —", String(e?.message ?? e));
+  } else {
+    console.log("[background] eBay : reprise du brouillon exact — aucun clic « Vendre », aucun nouveau draft");
   }
 
   // Navigation interne vers le formulaire (depuis une page du site, avec
@@ -6576,7 +6602,7 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
 // Retourne { error, listingUrl } : error non-null = refus/non confirmé ;
 // listingUrl non-null = numéro d'annonce extrait de la preuve (modale ou
 // réponse serveur), à prendre comme listing_url sans repasser par la capture.
-async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, accessToken = null) {
+async function verifyEbaySubmission(tabId, timeoutMs = 20_000, accessToken = null) {
   const deadline = Date.now() + timeoutMs;
   // ── Chemin AU MOMENT DU CLIC (2026-08-10) ─────────────────────────────────
   // On entre ici juste après le retour du content script, donc à quelques
@@ -6596,9 +6622,16 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
   const etatAvec = async () => ({ ...(await readEbayPostSubmitState(tabId)), path_au_clic: pathAuClic });
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
-    // Onglet disparu : impossible d'observer quoi que ce soit — on n'invente
-    // pas un refus (captureListingUrl rendra listing_url null, c'est tout).
-    if (!tab) return { error: null, listingUrl: null, proof: "tab_gone", state: null };
+    // Onglet disparu : impossible de prouver que rien n'est parti. Ce n'est ni
+    // un succès ni un refus ; le caller parque sans re-soumettre.
+    if (!tab) {
+      return {
+        error: "Publication eBay d'issue inconnue : l'onglet a disparu avant la réponse.",
+        listingUrl: null,
+        proof: "tab_gone",
+        state: null,
+      };
+    }
     let path = "";
     try {
       path = new URL(tab.url || "").pathname;
@@ -6646,7 +6679,8 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
       // bandeau de succès reste un succès) : la modale post-publication porte
       // aussi des liens « Vendre un objet similaire »/cross-promo — un /itm/
       // déjà connu en base n'est pas l'annonce créée, on laisse l'URL en
-      // différé (recoverMissingListingUrls / hub par titre la rattraperont).
+      // différé ; seul un identifiant exact issu de notre tentative pourra la
+      // rattacher ensuite, jamais une ligne du Hub choisie par titre.
       let successUrl = success.listingUrl;
       const sm = String(successUrl ?? "").match(/\/itm\/(\d{9,})/);
       if (sm && await ebayIdAlreadyKnown(accessToken, sm[1])) successUrl = null;
@@ -6689,27 +6723,6 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     await sleep(1000);
   }
 
-  // ── 3e PREUVE : LES ANNONCES ACTIVES DU VENDEUR (2026-07-16, faux négatif réel)
-  // Les deux sondes ci-dessus (bandeau + réponse serveur) sont FRAGILES : le
-  // bandeau dépend d'un markup qui change et d'un onglet rendu à temps, la
-  // réponse serveur d'un endpoint capté par la sonde. Le 2026-07-16, l'annonce
-  // itm/800354759898 (Switch OLED) était BEL ET BIEN EN LIGNE alors que les
-  // deux ont raté → job « non confirmée », re-armé : au prochain poll il
-  // recréait un DOUBLON (le 3e cas du genre après 800330102796 et 800332793676).
-  // La source de vérité qui, elle, ne ment pas : le Hub vendeur /sh/lst/active
-  // liste l'annonce avec son TITRE EXACT et son lien /itm/. On l'interroge en
-  // DERNIER RECOURS, avant de déclarer l'échec — exactement ce que fait déjà
-  // captureListingUrl pour l'URL, mais ici comme PREUVE de publication.
-  // ⚠️ requireTitle:true impératif (page de LISTE) : ne jamais ramener l'URL
-  // d'une autre annonce (danger listing_url croisée, cf. findListingLinkInPage).
-  if (job?.title) {
-    const viaListings = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
-    if (viaListings) {
-      console.log(`[background] eBay : publication CONFIRMÉE par les annonces actives (${viaListings})`);
-      return { error: null, listingUrl: viaListings, proof: "hub_title", state: await etatAvec() };
-    }
-  }
-
   // Sonde + markup de popup en annexe `diagnostic`, plus dans `error`
   // (2026-08-06) : cross_post_jobs.error est affiché tel quel à l'utilisateur —
   // le caller range l'annexe dans platform_fields.last_diagnostic.
@@ -6717,8 +6730,8 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     error:
       `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
       `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
-      "ni d'erreur, sans réponse serveur portant un numéro d'annonce, ET absente des annonces " +
-      "actives du vendeur — job NON marqué publié, il repartira au prochain passage.",
+      "ni d'erreur et sans réponse serveur portant un numéro d'annonce. Le job reste en attente " +
+      "de l'identifiant exact et ne sera pas renvoyé.",
     diagnostic: await readEbayFailureDiagnostics(tabId),
     listingUrl: null,
     // ── submit_never_sent vs timeout_unconfirmed (2026-08-10) ────────────────
@@ -6730,33 +6743,6 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     proof: (await ebaySubmitRequestSeen(tabId)) ? "timeout_unconfirmed" : "submit_never_sent",
     state: await etatAvec(),
   };
-}
-
-// Dernier recours de confirmation eBay : l'annonce figure-t-elle dans le Hub
-// vendeur (/sh/lst/active) avec NOTRE titre exact ? Navigue l'onglet de travail
-// vers la liste, attend le rendu, cherche le lien /itm/ porté par une carte au
-// titre correspondant (requireTitle:true — jamais l'URL d'une autre annonce).
-// Retourne l'URL /itm/ ou null. À n'appeler qu'APRÈS l'échec des sondes bandeau
-// et réponse serveur : il coûte une navigation et n'a de sens que si l'annonce
-// a pu être créée sans qu'on l'ait vu.
-async function ebayConfirmViaActiveListings(tabId, title) {
-  const listUrl = MY_LISTINGS_URL.ebay;
-  const pattern = LISTING_URL_PATTERNS.ebay;
-  if (!listUrl || !pattern) return null;
-  try {
-    // L'onglet est encore sur le formulaire /lstng NON publié (aux modifs non
-    // enregistrées) : neutraliser beforeunload avant de le quitter.
-    await neutralizeBeforeUnload(tabId);
-    await chrome.tabs.update(tabId, { url: listUrl });
-  } catch { return null; }
-  // Laisse le Hub vendeur se charger (SPA : les cartes arrivent après le HTML).
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    await sleep(1500);
-    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true, listeDuCompte: "ebay" });
-    if (url) return url.replace(WORK_TAB_FRAGMENT, "");
-  }
-  return null;
 }
 
 // Diagnostic joint au message « non confirmée » (2026-07-13, job 5e3ee1e2) :
@@ -8397,18 +8383,29 @@ function clearProbeCaptures(tabId) {
 // 05/08. Le repli sur l'extrait tronqué reste, pour les captures posées par une
 // sonde antérieure au correctif : il n'aboutira pas sur Vinted, mais il ne
 // coûte rien et ne ment pas.
-async function vintedUploadSucceeded(tabId) {
+async function vintedUploadIdsExact(tabId) {
   const { captures } = await readProbeCaptures(tabId);
+  const ids = [];
   for (let i = captures.length - 1; i >= 0; i--) {
     const c = captures[i];
     if (Number(c?.status) !== 200) continue;
     if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
-    if (c?.succesVinted?.id) return `https://www.vinted.fr/items/${c.succesVinted.id}`;
+    if (c?.succesVinted?.id) {
+      ids.push(String(c.succesVinted.id));
+      continue;
+    }
     const body = String(c?.reponse ?? "");
     const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
-    if (id && /"code"\s*:\s*0\b/.test(body)) return `https://www.vinted.fr/items/${id[1]}`;
+    if (id && /"code"\s*:\s*0\b/.test(body)) ids.push(String(id[1]));
   }
-  return null;
+  return [...new Set(ids.filter((id) => /^\d+$/.test(id)))];
+}
+
+async function vintedUploadSucceeded(tabId) {
+  const ids = await vintedUploadIdsExact(tabId);
+  // Deux ids acceptés pendant une même tentative signifient que deux annonces
+  // ont été créées. Choisir la dernière masquerait déjà un doublon : abstention.
+  return ids.length === 1 ? `https://www.vinted.fr/items/${ids[0]}` : null;
 }
 
 // Résumé lisible de ce que Vinted a REÇU, à joindre à l'erreur du job.
@@ -8603,14 +8600,6 @@ const CHEMIN_LISTE_DU_COMPTE = {
   beebs: /\/account\/my-adverts(?:\/[a-z-]+)?\/?$/i,
 };
 
-// Page "Mes annonces" par plateforme (2026-07-11) : Leboncoin et Beebs NE
-// redirigent PAS vers l'annonce créée — leur dépôt finit sur une page de
-// confirmation générique ("Nous avons bien reçu votre annonce !" /
-// "Votre article a bien été ajouté…"), sans le moindre lien vers l'annonce.
-// Constaté en publication réelle. Le SEUL endroit où l'URL existe est la liste
-// des annonces du compte : on y fait un aller-retour, on repère l'annonce par
-// son TITRE (exact), et on revient. Vinted et eBay, eux, redirigent
-// directement — pas d'aller-retour pour eux.
 // Plateformes dont l'annonce n'est PAS consultable au moment du dépôt : leur
 // listing_url est DIFFÉRÉ par nature, et le chercher tout de suite est du temps
 // perdu (une navigation, plusieurs minutes) pour un résultat garanti vide.
@@ -8618,22 +8607,6 @@ const CHEMIN_LISTE_DU_COMPTE = {
 // été vérifié par notre équipe ». Le job est publié quand même ; la re-capture
 // différée fera le reste.
 const PLATFORMS_WITH_DEFERRED_URL = new Set(["beebs"]);
-
-const MY_LISTINGS_URL = {
-  leboncoin: "https://www.leboncoin.fr/compte/part/mes-annonces",
-  // Beebs : conservé pour la RE-CAPTURE DIFFÉRÉE uniquement (jamais appelé au
-  // moment du dépôt — cf. PLATFORMS_WITH_DEFERRED_URL).
-  beebs: "https://www.beebs.app/fr/account/my-adverts/creating",
-  // eBay (ajouté le 2026-07-13) : le commentaire ci-dessus disait « eBay
-  // redirige directement, pas d'aller-retour » — c'était une SUPPOSITION, eBay
-  // n'ayant jamais publié en réel à l'époque (ré-auth passkey). Maintenant qu'il
-  // publie : la page d'après-publication n'expose PAS d'URL /itm/ exploitable
-  // (job f89341ab : annonce 800332688748 bel et bien en ligne, listing_url vide,
-  // « aucune URL capturée »). VÉRIFIÉ sur le Hub vendeur : /sh/lst/active porte
-  // le lien https://www.ebay.fr/itm/800332688748 avec le TITRE exact de
-  // l'annonce — exactement ce dont findListingLinkInPage a besoin.
-  ebay: "https://www.ebay.fr/sh/lst/active",
-};
 
 // ── L'ADSUBMIT FAIT FOI (2026-09-10, jean de Choupette) ──────────────────────
 // CE QUI S'EST PASSÉ. Le job 718eed78 (« Jean brut Bleu Bonheur Taille 46 »,
@@ -8699,21 +8672,11 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
     await sleep(1000);
   }
 
-  // Repli 1 : la page où l'on a atterri contient le lien de l'annonce —
-  // profil Vinted (qui liste TOUTES les annonces : le titre est indispensable
-  // pour ne pas ramener la mauvaise) ou vraie page de confirmation.
-  const { url: fromLinks } = await findListingLinkInPage(tabId, pattern.source, job?.title ?? null);
-  if (fromLinks) return fromLinks;
-
-  // Repli 2 (LBC/Beebs) : aller-retour par "Mes annonces". L'onglet de travail
-  // est navigué puis RENDU à la page où il était — un vendeur qui va vérifier
-  // son annonce fait exactement ce trajet.
-  const myListings = MY_LISTINGS_URL[platform];
-  if (!myListings) {
-    console.warn(`[background] captureListingUrl(${platform}) : aucune URL capturée — listing_url restera vide`);
-    return null;
-  }
-  return captureFromMyListings(tabId, platform, pattern, myListings, job?.title ?? null);
+  // Aucun repli par « Mes annonces » ou profil : une carte portant le même
+  // titre peut être un autre exemplaire. L'URL vient de la redirection causée
+  // par CE dépôt ou de sa réponse réseau ; sinon elle reste inconnue.
+  console.warn(`[background] captureListingUrl(${platform}) : aucun identifiant exact capturé — aucun rattachement par titre`);
+  return null;
 }
 
 // Cherche le lien de NOTRE annonce dans la page courante.
@@ -8771,6 +8734,15 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
 // lu — une redirection vers l'accueil n'offre QUE des annonces d'autres
 // vendeurs, et un titre n'y prouve rien.
 async function findListingLinkInPage(tabId, patternSource, title = null, { requireTitle = false, listeDuCompte = null } = {}) {
+  // Garde définitive 0.6.80 : aucun appel présent ou futur n'a le droit de
+  // transformer un titre en identité d'annonce. Le code historique reste
+  // dessous pour la lecture des anciens diagnostics, mais il est rendu
+  // inatteignable dès qu'un titre est fourni. Les seuls appels autorisés
+  // passent un motif qui contient déjà l'identifiant numérique exact.
+  if (String(title ?? "").trim() || requireTitle) {
+    console.warn("[background] findListingLinkInPage : recherche par titre refusée — identifiant exact requis");
+    return { url: null, diag: { refus: "titre_non_identifiant" } };
+  }
   const cheminListe = listeDuCompte ? (CHEMIN_LISTE_DU_COMPTE[listeDuCompte]?.source ?? null) : null;
   try {
     const [res] = await chrome.scripting.executeScript({
@@ -8910,70 +8882,6 @@ async function findListingLinkInPage(tabId, patternSource, title = null, { requi
   } catch (e) {
     console.warn("[background] findListingLinkInPage :", String(e?.message ?? e));
     return { url: null, diag: null };
-  }
-}
-
-async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, title) {
-  const tab = await chrome.tabs.get(tabId).catch(() => null);
-  const backTo = tab?.url ?? null;
-  try {
-    console.log(`[background] captureListingUrl(${platform}) : aller-retour par "Mes annonces"`);
-    // 8-15 s : constaté en LIVE réel (2026-07-12), 1,5-3,5 s ne suffisaient
-    // pas — l'annonce venait d'être déposée mais n'était pas encore indexée
-    // dans "Mes annonces" (LBC comme Beebs). Si elle n'y est toujours pas
-    // (modération plus longue), recoverMissingListingUrls re-cherchera aux
-    // cycles de poll suivants.
-    await sleep(randInt(8000, 15000));
-    // DEUX passages au lieu d'un (2026-09-09). Un job « publié sans URL » coûte
-    // cher en aval : invisible pour la garde already_published, retrait à la
-    // vente impossible (Ritthik, gants de boxe : vendu sur Vinted le lendemain,
-    // l'annonce Leboncoin introuvable faute de lien), et la re-capture
-    // différée reste aveugle au-delà de la 1re page de « Mes annonces ». Le
-    // second passage ne part QUE si le premier revient bredouille, ~30 s plus
-    // tard — le temps d'indexation qui manquait à ~10 s.
-    const DELAIS_PASSAGES_MS = [0, randInt(25000, 40000)];
-    for (let passage = 0; passage < DELAIS_PASSAGES_MS.length; passage++) {
-      if (DELAIS_PASSAGES_MS[passage]) await sleep(DELAIS_PASSAGES_MS[passage]);
-      const loaded = waitForTabComplete(tabId);
-      await neutralizeBeforeUnload(tabId);
-      if (passage === 0) await chrome.tabs.update(tabId, { url: myListingsUrl + WORK_TAB_FRAGMENT });
-      else await chrome.tabs.reload(tabId);
-      await loaded;
-      await sleep(randInt(1200, 2500)); // rendu de la liste
-
-      // requireTitle : page de LISTE — jamais de repli « lien unique » ici (c'est
-      // ce repli qui a collé l'URL du T-shirt Patagonia sur le job New Balance).
-      // listeDuCompte : un compte PRO atterrit sur l'accueil (2026-09-25).
-      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true, listeDuCompte: platform });
-      if (url) {
-        console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces (passage ${passage + 1}) — ${url}`);
-        return url;
-      }
-      console.log(
-        `[background] captureListingUrl(${platform}) : titre absent de Mes annonces au passage ${passage + 1}/${DELAIS_PASSAGES_MS.length}`
-      );
-    }
-    // Log volontairement NEUTRE (2026-07-13) : un listing_url pas encore
-    // disponible n'est PAS une anomalie — le job est publié, l'annonce est
-    // déposée, et la re-capture différée s'en charge. On ne crie plus au loup.
-    console.log(
-      `[background] captureListingUrl(${platform}) : annonce pas encore listée dans Mes annonces ` +
-      "(indexation en cours) — listing_url différé, re-tentative aux prochains cycles de poll."
-    );
-    return null;
-  } catch (e) {
-    console.warn(`[background] captureFromMyListings(${platform}) :`, String(e?.message ?? e));
-    return null;
-  } finally {
-    // Rendre l'onglet de travail à sa page d'origine (page de confirmation) :
-    // le job suivant le renaviguera de toute façon, mais on ne le laisse pas
-    // planté sur la liste des annonces du vendeur.
-    if (backTo) {
-      const back = waitForTabComplete(tabId).catch(() => {});
-      await neutralizeBeforeUnload(tabId);
-      await chrome.tabs.update(tabId, { url: backTo }).catch(() => {});
-      await back;
-    }
   }
 }
 
@@ -10210,6 +10118,123 @@ const ADRESSES_CONNEXION = {
   ebay: "https://www.ebay.fr/",
   opla: "https://www.opla.co/",
 };
+const ADRESSE_IDENTITE_LEBONCOIN = "https://www.leboncoin.fr/account/private-details/informations";
+const VINTED_ANTIROBOT_GESTE_KEY = "fillsell_vinted_antirobot_geste";
+const VINTED_ANTIROBOT_GESTE_TTL_MS = 10 * 60_000;
+const VINTED_ANTIROBOT_SONDE_MIN_MS = 2_000;
+
+async function armerVerificationVinted(tabId) {
+  const maintenant = Date.now();
+  await chrome.storage.session.set({
+    [VINTED_ANTIROBOT_GESTE_KEY]: {
+      tab_id: tabId,
+      pose_le: new Date(maintenant).toISOString(),
+      expire_le: new Date(maintenant + VINTED_ANTIROBOT_GESTE_TTL_MS).toISOString(),
+      derniere_sonde_le: null,
+    },
+  });
+}
+
+async function verificationVintedArmee(tabId) {
+  const st = await chrome.storage.session.get(VINTED_ANTIROBOT_GESTE_KEY).catch(() => ({}));
+  const geste = st?.[VINTED_ANTIROBOT_GESTE_KEY];
+  if (!geste || Number(geste.tab_id) !== Number(tabId)) return null;
+  const expire = Date.parse(String(geste.expire_le ?? ""));
+  if (!Number.isFinite(expire) || expire <= Date.now()) {
+    await chrome.storage.session.remove(VINTED_ANTIROBOT_GESTE_KEY).catch(() => {});
+    return null;
+  }
+  return geste;
+}
+
+async function ecrireSondeVintedApresGeste(accessToken, resultat) {
+  const sub = decodeJwtSub(accessToken);
+  if (!sub) return null;
+  const http = Number(resultat?.httpStatus);
+  const succes = resultat?.success === true && http === 200 && resultat?.userId;
+  const sessionMorte = resultat?.sessionExpiree === true && http === 401;
+  const antirobot = http === 403;
+  if (!succes && !sessionMorte && !antirobot) return null;
+
+  let base = null;
+  try {
+    const rows = await restRequest(`profiles?id=eq.${sub}&select=extension_sessions`, accessToken);
+    base = sessionsSansHistorique(rows?.[0]?.extension_sessions);
+  } catch { /* l'écriture du fait courant reste prioritaire */ }
+  const observeLe = new Date().toISOString();
+  const etat = succes ? true : sessionMorte ? false : null;
+  const releve = {
+    checked_at: observeLe,
+    sondees: ["vinted"],
+    checked_at_par_plateforme: { vinted: observeLe },
+    vinted: etat,
+    vinted_identite: succes
+      ? { user_id: String(resultat.userId), login: resultat.login ?? null }
+      : null,
+    http: { vinted: http },
+  };
+  await ecrireExtensionSessions(accessToken, sub, releve, base);
+  await ecrireHorodatagesSondes({ vinted: Date.now() });
+  dernierReleveSessions = {
+    at: Date.now(),
+    sessions: {
+      ...(dernierReleveSessions?.sessions ?? {}),
+      vinted: etat,
+      vinted_identite: releve.vinted_identite,
+      checked_at_par_plateforme: {
+        ...(dernierReleveSessions?.sessions?.checked_at_par_plateforme ?? {}),
+        vinted: observeLe,
+      },
+      http: { ...(dernierReleveSessions?.sessions?.http ?? {}), vinted: http },
+    },
+  };
+  if (succes) await reprendreJobsVintedApresSession(accessToken, sub);
+  console.log(`[background] geste Vinted : sonde de page HTTP ${http} (${succes ? "compte vivant" : sessionMorte ? "session absente" : "anti-robot maintenu"})`);
+  return { succes: Boolean(succes), sessionMorte, antirobot };
+}
+
+async function sonderOngletVintedArme(tabId) {
+  const geste = await verificationVintedArmee(tabId);
+  if (!geste) return false;
+  const derniere = Date.parse(String(geste.derniere_sonde_le ?? ""));
+  if (Number.isFinite(derniere) && Date.now() - derniere < VINTED_ANTIROBOT_SONDE_MIN_MS) return false;
+  await chrome.storage.session.set({
+    [VINTED_ANTIROBOT_GESTE_KEY]: { ...geste, derniere_sonde_le: new Date().toISOString() },
+  }).catch(() => {});
+  const resultat = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }, 30_000).catch(() => null);
+  if (!resultat) return false;
+  const session = await getValidSession().catch(() => null);
+  if (!session?.access_token) return false;
+  const verdict = await ecrireSondeVintedApresGeste(session.access_token, resultat);
+  if (!verdict) return false;
+  if (verdict.succes) {
+    await chrome.storage.session.remove(VINTED_ANTIROBOT_GESTE_KEY).catch(() => {});
+  }
+  // Premier poll : lève les marqueurs. Le second, sérialisé après lui, prend
+  // immédiatement la file que le compte-gouttes avait déjà filtrée en mémoire.
+  pollAndProcessJobs().finally(() => {
+    if (verdict.succes || verdict.sessionMorte) {
+      setTimeout(() => { pollAndProcessJobs().catch(() => {}); }, 1500);
+    }
+  }).catch(() => {});
+  return true;
+}
+
+async function ouvrirVerificationVintedVisible() {
+  const onglet = await chrome.tabs.create({ url: ADRESSES_CONNEXION.vinted, active: true });
+  if (onglet?.id == null) return null;
+  await armerVerificationVinted(onglet.id);
+  if (onglet.windowId != null) {
+    await chrome.windows.update(onglet.windowId, { focused: true, drawAttention: true }).catch(() => {});
+  }
+  // Filet contre la course « document_idle avant stockage » : le signal de la
+  // page reste principal ; cette relance tente une fois quand l'onglet est prêt.
+  (async () => {
+    await waitForTabComplete(onglet.id, null, 30_000).catch(() => {});
+    await sonderOngletVintedArme(onglet.id);
+  })().catch(() => {});
+  return onglet;
+}
 
 /** L'adresse à ouvrir, selon la plateforme ET le motif. */
 function adresseDeConnexion(platform, motif) {
@@ -10219,6 +10244,7 @@ function adresseDeConnexion(platform, motif) {
   if (platform === "ebay" && (motif === "reauth_ebay" || motif === "vendeur_ebay")) {
     return "https://www.ebay.fr/sl/sell";
   }
+  if (platform === "leboncoin" && motif === "identite_lbc") return ADRESSE_IDENTITE_LEBONCOIN;
   return ADRESSES_CONNEXION[platform] ?? null;
 }
 
@@ -10254,6 +10280,8 @@ async function ouvrirPagesDeConnexion(accessToken, commandes) {
     try {
       if (platform === "opla" && motif !== "connexion") {
         ouverte = await ouvrirPopupPourOpla();
+      } else if (platform === "vinted" && motif === "antirobot_vinted") {
+        ouverte = Boolean(await ouvrirVerificationVintedVisible());
       } else {
         const url = adresseDeConnexion(platform, motif);
         if (!url) { console.warn(`[background] connexion : plateforme inconnue « ${platform} »`); continue; }
@@ -10662,13 +10690,53 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
         credentials: "include", redirect: "follow",
       });
       const u = new URL(r.url);
-      if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) return { etat: false, http: r.status };
+      if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) {
+        return { etat: false, http: r.status, identite: null, identiteHttp: null };
+      }
       // 401/403 ⇒ null, JAMAIS « connectée » (2026-09-08, décision Nico) : sur
       // un 403 DataDome l'URL ne bouge pas, et « leboncoin: true » à côté d'un
       // http 403 est ce qui a fait chercher au mauvais endroit sur le cas
       // Joséphine. Le statut brut reste dans `http`.
-      if (r.status === 401 || r.status === 403) return { etat: null, http: r.status };
-      return { etat: u.pathname.startsWith("/deposer-une-annonce") ? true : null, http: r.status };
+      if (r.status === 401 || r.status === 403) return { etat: null, http: r.status, identite: null, identiteHttp: null };
+      const etat = u.pathname.startsWith("/deposer-une-annonce") ? true : null;
+      if (etat !== true) return { etat, http: r.status, identite: null, identiteHttp: null };
+
+      // Transaction sécurisée : présence conjointe du prénom et du nom dans
+      // le compte. La requête tourne dans un onglet Leboncoin pour utiliser le
+      // jeton `luat`; elle ne renvoie que le booléen combiné et le HTTP. Les
+      // valeurs ne quittent jamais la page et ne sont jamais journalisées.
+      const identite = await executerDansOngletPlateforme("leboncoin", async () => {
+        const tok = localStorage.getItem("luat");
+        if (!tok) return { ok: false, presente: null, http: null, motif: "jeton_absent" };
+        try {
+          const rep = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account", {
+            headers: { authorization: `Bearer ${tok}`, accept: "application/json" },
+            cache: "no-store",
+          });
+          if (rep.status !== 200) return { ok: false, presente: null, http: rep.status };
+          const json = await rep.json();
+          // La même route est déjà lue plus bas pour le type de compte : sa
+          // racine courante est `account`. `member` reste accepté pour les
+          // anciennes réponses observées, sans jamais faire sortir les
+          // valeurs de la page.
+          const membre = (json?.account && typeof json.account === "object")
+            ? json.account
+            : (json?.member && typeof json.member === "object" ? json.member : null);
+          if (!membre) return { ok: false, presente: null, http: rep.status };
+          const presente = Boolean(
+            String(membre.first_name ?? membre.firstName ?? "").trim()
+            && String(membre.last_name ?? membre.lastName ?? "").trim()
+          );
+          return { ok: true, presente, http: rep.status };
+        } catch {
+          return { ok: false, presente: null, http: null, motif: "lecture_impossible" };
+        }
+      });
+      return {
+        etat, http: r.status,
+        identite: typeof identite?.presente === "boolean" ? identite.presente : null,
+        identiteHttp: identite?.http ?? identite?.motif ?? null,
+      };
     }),
     sonde("ebay", sonderSessionEbay),
     // Le Hub vendeur, sondé À PART et seulement quand eBay est au programme :
@@ -10697,6 +10765,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
   // `ebay_hub` a sa propre date : les lecteurs jugent la fraîcheur par clé, et
   // une porte sondée n'est pas l'autre.
   if (plateformes.includes("ebay")) parPlateforme.ebay_hub = maintenant;
+  if (plateformes.includes("leboncoin")) parPlateforme.leboncoin_identite = maintenant;
   return {
     checked_at: maintenant,
     // (2026-09-08) Quelles plateformes CE relevé a réellement sondées, et
@@ -10704,6 +10773,9 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     sondees: plateformes.slice(),
     checked_at_par_plateforme: parPlateforme,
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat, opla: opla.etat,
+    // Présence seulement, jamais les valeurs. `null` = lecture impossible ;
+    // `false` = lecture certaine, un des deux champs manque.
+    leboncoin_identite: leboncoin.identite ?? null,
     // ── LA PORTE DU RELEVÉ eBAY, À PART (2026-09-22) ────────────────────────
     // `ebay` reste la session de VENTE : c'est elle qui arbitre la garde de
     // publication et la reprise des jobs, et on n'y touche pas. `ebay_hub` dit
@@ -10722,7 +10794,11 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
     // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
     // 403 (challenge) ou d'un échec réseau (null).
-    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, ebay_hub: ebayHub.http, beebs: beebs.http, opla: opla.http },
+    http: {
+      vinted: vinted.http, leboncoin: leboncoin.http,
+      leboncoin_identite: leboncoin.identiteHttp ?? null,
+      ebay: ebay.http, ebay_hub: ebayHub.http, beebs: beebs.http, opla: opla.http,
+    },
   };
 }
 
@@ -10793,6 +10869,20 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
       fusion.http[pf] = prevHttp[pf] ?? null;
       fusion.checked_at_par_plateforme[pf] = prevPar[pf] ?? prev.checked_at ?? null;
       if (pf === "vinted") fusion.vinted_identite = prev.vinted_identite ?? null;
+      // Les portes auxiliaires ont leur propre preuve et leur propre date.
+      // Un relevé Vinted partiel ne doit pas effacer le Hub eBay ni l'identité
+      // Leboncoin mesurés au cycle précédent.
+      if (pf === "ebay") {
+        fusion.ebay_hub = prev.ebay_hub ?? null;
+        fusion.ebay_hub_mur = prev.ebay_hub_mur ?? null;
+        fusion.http.ebay_hub = prevHttp.ebay_hub ?? null;
+        fusion.checked_at_par_plateforme.ebay_hub = prevPar.ebay_hub ?? null;
+      }
+      if (pf === "leboncoin") {
+        fusion.leboncoin_identite = prev.leboncoin_identite ?? null;
+        fusion.http.leboncoin_identite = prevHttp.leboncoin_identite ?? null;
+        fusion.checked_at_par_plateforme.leboncoin_identite = prevPar.leboncoin_identite ?? null;
+      }
     }
     final = fusion;
   }
@@ -10833,6 +10923,28 @@ function sessionPlateformeMorte(platform) {
   if (!d || Date.now() - d.at > SESSION_FRAICHEUR_MAX_MS) return null;
   if (d.sessions?.[platform] !== false) return null;
   return { vue: false, http: d.sessions?.http?.[platform] ?? null, il_y_a_s: Math.round((Date.now() - d.at) / 1000) };
+}
+
+async function reprendreJobsVintedApresSession(accessToken, sub) {
+  try {
+    const repris = await restRequest(
+      `cross_post_jobs?user_id=eq.${sub}&status=eq.needs_user&action=eq.republish&platform=eq.vinted` +
+      `&platform_fields->>needs_user_source=eq.session_vinted`,
+      accessToken,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ status: "pending", error: null }),
+      },
+    );
+    if (Array.isArray(repris) && repris.length) {
+      console.log(`[background] session Vinted revenue — ${repris.length} republication(s) en attente reprises automatiquement`);
+    }
+    return Array.isArray(repris) ? repris.length : 0;
+  } catch (e) {
+    console.warn("[background] reprise auto des republications en attente de session:", e?.message ?? e);
+    return 0;
+  }
 }
 
 async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"], motif = "poll", forcer = false } = {}) {
@@ -10881,23 +10993,7 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
   // Ce bloc ne sert plus QUE les vraies sessions perdues — ce pour quoi il a
   // été écrit. Best-effort, jamais bloquant.
   if (sessions.vinted === true) {
-    try {
-      const repris = await restRequest(
-        `cross_post_jobs?user_id=eq.${sub}&status=eq.needs_user&action=eq.republish&platform=eq.vinted` +
-        `&platform_fields->>needs_user_source=eq.session_vinted`,
-        accessToken,
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=representation" },
-          body: JSON.stringify({ status: "pending", error: null }),
-        },
-      );
-      if (Array.isArray(repris) && repris.length) {
-        console.log(`[background] session Vinted revenue — ${repris.length} republication(s) en attente reprises automatiquement`);
-      }
-    } catch (e) {
-      console.warn("[background] reprise auto des republications en attente de session:", e?.message ?? e);
-    }
+    await reprendreJobsVintedApresSession(accessToken, sub);
   }
 
   // ── LIBÉRATION des republications EN ATTENTE D'UNE BOUTIQUE (2026-09-03) ──
@@ -10936,6 +11032,43 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
       console.warn("[background] libération des attentes de boutique:", e?.message ?? e);
     }
   }
+
+  // ── IDENTITÉ LEBONCOIN : LE GESTE RÉUSSI RÉVEILLE TOUTE LA FILE ─────────
+  // La preuve vient de l'endpoint du compte, jamais des inputs locaux. Le
+  // chemin couvre aussi les anciens jobs dont le trigger avait remplacé le
+  // motif par `relancer` : `last_diagnostic.quoi` contient encore la cause
+  // exacte. Aucune recherche par titre, aucune valeur personnelle.
+  if (sessions.leboncoin_identite === true) {
+    try {
+      const preuveLe = Date.parse(String(sessions.checked_at_par_plateforme?.leboncoin_identite ?? ""));
+      const bloques = await restRequest(
+        `cross_post_jobs?user_id=eq.${sub}&status=eq.needs_user&platform=eq.leboncoin` +
+        `&action=in.(publish,republish)&select=id,platform_fields&limit=100`,
+        accessToken,
+      );
+      let repris = 0;
+      for (const j of bloques ?? []) {
+        const pf = { ...(j.platform_fields ?? {}) };
+        const exact = pf.needs_user_source === "lbc_escrow_identite"
+          || pf.last_diagnostic?.quoi === "lbc_escrow_identite";
+        if (!exact) continue;
+        const bloqueLe = Date.parse(String(pf.identite_lbc_bloquee_le ?? pf.last_diagnostic?.at ?? ""));
+        if (!Number.isFinite(preuveLe) || !Number.isFinite(bloqueLe) || preuveLe <= bloqueLe) continue;
+        delete pf.needs_user_source;
+        delete pf.identite_lbc_bloquee_le;
+        pf.identite_lbc_verifiee_le = new Date(preuveLe).toISOString();
+        const maj = await restRequest(`cross_post_jobs?id=eq.${j.id}&status=eq.needs_user`, accessToken, {
+          method: "PATCH", headers: { Prefer: "return=representation" },
+          body: JSON.stringify({ status: "pending", error: null, platform_fields: pf }),
+        });
+        if (Array.isArray(maj) && maj.length) repris++;
+      }
+      if (repris) console.log(`[background] identité Leboncoin confirmée — ${repris} publication(s) reprise(s) automatiquement`);
+    } catch (e) {
+      console.warn("[background] reprise après identité Leboncoin:", String(e?.message ?? e));
+    }
+  }
+  return sessions;
 }
 
 // ── Identité Vinted du CYCLE de poll (multi-boutiques, 2026-09-03) ──────────
@@ -10944,8 +11077,8 @@ async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "l
 // re-frapper l'API. null = identité inconnue (401 ambigu, réseau) → la garde
 // est FAIL-OPEN : on tente la capture normalement, l'onglet tranchera.
 let identiteVintedCache = { at: 0, val: null };
-async function identiteVintedDuCycle() {
-  if (Date.now() - identiteVintedCache.at < 90_000) return identiteVintedCache.val;
+async function identiteVintedDuCycle({ forcer = false } = {}) {
+  if (!forcer && Date.now() - identiteVintedCache.at < 90_000) return identiteVintedCache.val;
   let val = null;
   try {
     const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
@@ -10958,6 +11091,31 @@ async function identiteVintedDuCycle() {
   } catch { /* inconnue */ }
   identiteVintedCache = { at: Date.now(), val };
   return val;
+}
+
+// Estampille la boutique qui vient réellement de déposer sur Vinted. La
+// lecture forcée a lieu après la confirmation du dépôt ; le serveur ne posera
+// l'origine sur l'article que si cette preuve structurée est présente.
+async function preuveBoutiqueVintedApresDepot(platformFields) {
+  const pf = { ...(platformFields ?? {}) };
+  const ident = await identiteVintedDuCycle({ forcer: true }).catch(() => null);
+  if (!ident?.user_id) {
+    pf.vinted_boutique_a_estampiller = {
+      le: new Date().toISOString(),
+      motif: "users/current illisible après dépôt confirmé",
+    };
+    return pf;
+  }
+  const userId = String(ident.user_id);
+  pf.vinted_account_id = userId;
+  pf.vinted_account_proof = {
+    user_id: userId,
+    login: ident.login ?? null,
+    source: "users/current_apres_depot",
+    lu_le: new Date().toISOString(),
+  };
+  delete pf.vinted_boutique_a_estampiller;
+  return pf;
 }
 
 // Signal SÛR de déconnexion (2026-07-30) : la garde d'entrée d'un handler
@@ -12400,7 +12558,10 @@ async function fetchVintedItemDetail(vintedItemId) {
   return await withJobFlowLock("fetch-vinted-item", async () => {
     let tabId;
     try {
-      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      // La page exacte porte le vendeur de CETTE annonce. La capture réseau
+      // seule sait lire les champs, mais elle ne prouve pas la boutique ; la
+      // republication a besoin des deux avant d'autoriser le retrait.
+      tabId = await getOrCreateWorkTab("vinted", `https://www.vinted.fr/items/${encodeURIComponent(id)}`);
     } catch (e) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
@@ -12622,6 +12783,9 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
           // dit pas POURQUOI il manque — le premier test réel du 05/08 a coûté
           // un aller-retour de diagnostic pour ça.
           diagnostics: capture.diagnostics ?? null,
+          // Preuve exacte lue sur /items/<id> : jamais un titre ni un compte
+          // supposé. Elle accompagne la capture jusqu'au pré-vol de retrait.
+          boutique_preuve: capture.boutique_preuve ?? null,
           // Valeurs saisies par l'utilisateur (déjà fusionnées dans libelles) :
           // la capture DIT quand un libellé ne vient pas de Vinted.
           ...(Object.keys(fournis).length ? { champs_utilisateur: fournis } : {}),
@@ -12653,7 +12817,14 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
       { method: "PATCH", body: JSON.stringify({ vinted_catalog_id: catalogId }) },
     ).catch((e) => console.warn("[republish] catalog_id non écrit:", e?.message ?? e));
   }
-  return { success: true, verdict, champs_manquants: manquants, capture_id: captureId, titre: capture.titre ?? null };
+  return {
+    success: true,
+    verdict,
+    champs_manquants: manquants,
+    capture_id: captureId,
+    titre: capture.titre ?? null,
+    boutique_preuve: capture.boutique_preuve ?? null,
+  };
 }
 
 // ── Commande de sync venue du mobile (2026-08-05) ────────────────────────────
@@ -12679,10 +12850,9 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
 // d'annonces sur « Mes annonces » (Leboncoin, Beebs, eBay) ou par l'API du
 // vendeur (Opla) : identifiant, lien, titre, prix, statut. Le relevé est
 // écrit dans annonces_plateforme, puis le MOTEUR serveur (rapprocher_releve)
-// rattache : par identifiant (un dépôt FillSell = certain), par titre exact +
-// prix + sans homonyme (certain, automatique — c'est ce qui recâble un dépôt
-// « plus en ligne » remplacé sous un autre identifiant par une autre
-// extension), sinon PROPOSE (c'est le bouton de l'utilisateur), sinon rien.
+// rattache automatiquement par IDENTIFIANT exact. Un titre, un prix ou une
+// photo ne sont jamais une preuve : ils peuvent seulement alimenter une
+// PROPOSITION que la personne confirme, sinon rien ne se rattache.
 // ⛔ Un relevé n'est NI une publication NI une republication : aucun quota,
 //    aucun compteur, aucune unité. Il ne publie, ne modifie ni ne retire rien.
 // ⛔ FERMÉ PAR DÉFAUT : coin_config.sync_multi_ouverte = 1 (ou le drapeau du
@@ -16037,32 +16207,20 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
 
   // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
   // Les republications ARRÊTÉES À L'ÉTAPE 'deleted' : leur annonce a été
-  // retirée et sa remplaçante peut déjà être en ligne. On charge leur titre
-  // CAPTURÉ (celui de l'annonce Vinted, pas celui de la fiche FillSell, qui
-  // peut différer) pour que la sync reconnaisse la recréation au lieu de
-  // l'importer comme un article neuf. Lecture best-effort : en cas d'échec on
-  // sync normalement — le filet ne doit jamais bloquer l'import.
+  // retirée et sa remplaçante peut déjà être en ligne. On ne réserve QUE les
+  // identifiants exacts captés pendant leur propre tentative (réponse serveur
+  // ou redirection de l'onglet). Le titre n'est jamais une identité.
   const reservesRepublish = [];
   try {
     const enVol = await restRequest(
       `cross_post_jobs?user_id=eq.${userId}&action=eq.republish&platform=eq.vinted` +
       `&status=in.(pending,processing,needs_user)` +
-      `&platform_fields->>republish_step=eq.deleted&select=id,title,platform_fields`,
+      `&platform_fields->>republish_step=eq.deleted&select=id,platform_fields`,
       token, { headers: { Prefer: "return=representation" } },
     );
     for (const j of enVol ?? []) {
-      const capId = Number(j.platform_fields?.capture_id);
-      let titre = j.title ?? null;
-      if (Number.isFinite(capId)) {
-        const c = await restRequest(
-          `vinted_republish_captures?id=eq.${capId}&select=titre:payload->titre`,
-          token, { headers: { Prefer: "return=representation" } },
-        ).catch(() => null);
-        if (c?.[0]?.titre) titre = c[0].titre;
-      }
-      if (titre && j.platform_fields?.deleted_at) {
-        reservesRepublish.push({ job_id: j.id, titre, deleted_at: j.platform_fields.deleted_at });
-      }
+      const ids = idsRecreationExacts(j.platform_fields ?? {});
+      if (ids.length === 1) reservesRepublish.push({ job_id: j.id, ids });
     }
     if (reservesRepublish.length) {
       console.log(`[sync-dressing] ${reservesRepublish.length} republication(s) à l'étape 'deleted' — leurs recréations ne seront pas importées`);
@@ -16664,15 +16822,12 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // — le doublon vécu le 05/08 (deux lignes, l'ancienne gardant un id mort).
   // La garde des disparitions empêchait le faux « disparu », pas ça.
   // On SAUTE l'import : c'est au republish de rattacher l'annonce à SA ligne
-  // (volets a et b), avec son historique et son prix d'achat. Sauter est
-  // réversible et sans perte — dès que le job quitte l'étape 'deleted',
-  // l'article redevient importable normalement par la sync suivante.
+  // sur cet identifiant exact. Sauter est réversible et sans perte — dès que
+  // le job quitte l'étape 'deleted', l'article redevient importable.
   const connusIds = new Set(existants.map((r) => String(r.vinted_item_id)));
   const reserves = new Set();
   for (const r of reservesRepublish ?? []) {
-    const { item } = reconnaitreAnnonceRecreee(articles, {
-      titre: r.titre, deletedAt: r.deleted_at, idsConnus: connusIds,
-    });
+    const item = annonceDeNotreDepot(r.ids, null, articles, connusIds);
     if (item) {
       reserves.add(String(item.vinted_item_id));
       console.log(
@@ -18027,106 +18182,7 @@ async function beebsProductPageOnline(session, job) {
   return true;
 }
 
-// Le TITRE d'un job apparaît-il dans le TEXTE d'une page (sans lien) ? Même
-// règle de repérage que findListingLinkInPage (tous les mots, dans l'ordre,
-// intercalaires ignorés), mais sur le texte seul — c'est tout ce que l'onglet
-// Beebs « En cours de vérification » offre (2026-09-09). Deux gardes contre le
-// faux positif d'un titre court (« Robe été S » = trois mots que n'importe
-// quelle page contient) : on ne teste que des éléments COURTS (≤ 200 c., une
-// carte ou un titre, jamais le body), et le texte couvert par le match doit
-// rester proche de la longueur du titre. textContent, jamais innerText : la
-// fenêtre de travail est minimisée, donc sans layout.
-async function titrePresentDansPage(tabId, title) {
-  if (!title) return false;
-  try {
-    const [res] = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: (wanted) => {
-        const norm = (s) => (s || "").toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-        const target = norm(wanted);
-        const mots = target.split(" ").filter(Boolean);
-        if (!mots.length) return false;
-        const ordre = new RegExp(mots.map((m) => `(?<![\\p{L}\\p{N}])${m}`).join("[\\s\\S]*?"), "u");
-        for (const el of document.querySelectorAll("h1, h2, h3, h4, p, span, a, li, div")) {
-          const txt = el.textContent ?? "";
-          if (!txt || txt.length > 200) continue;
-          const m = ordre.exec(norm(txt));
-          if (m && m[0].length <= target.length + 40) return true;
-        }
-        return false;
-      },
-      args: [title],
-    });
-    return res?.result === true;
-  } catch { return false; }
-}
-
-// Read-modify-write de platform_fields sur la copie mémoire du balayage — même
-// contrat que lbcPatchSonde : personne d'autre n'écrit ce champ sur un job déjà
-// publié, un écrasement coûterait au pire un compteur, jamais une décision.
-async function patchPlatformFields(session, job, patch) {
-  const pf = { ...(job.platform_fields ?? {}), ...patch };
-  await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
-    method: "PATCH",
-    body: JSON.stringify({ platform_fields: pf }),
-  }).catch((e) => console.warn("[background] PATCH platform_fields:", String(e?.message ?? e)));
-  job.platform_fields = pf;
-}
-
-// ── URL Beebs HÉRITÉE (2026-09-11, chantier Beebs) ────────────────────────────
-// La récupération par TITRE dans « Mes annonces » attrape aussi une annonce
-// PLUS ANCIENNE du même article (déjà en ligne avant le dépôt : dépôt manuel,
-// ou dépôt FillSell antérieur). Mesuré sur 30 j : 6 URL sur 252 portent un
-// identifiant Beebs INFÉRIEUR à celui d'un dépôt publié plus de 2 h avant
-// (chino Inesis 33909468 attaché au dépôt du 10/09 22:49 alors que les
-// dépôts du 07/09 portent 3392xxxx). Les identifiants Beebs sont monotones :
-// une annonce créée par CE dépôt a forcément un id supérieur à ceux des
-// dépôts antérieurs du même compte. On lit une fois les URL Beebs déjà
-// connues du compte (RLS utilisateur) et on refuse tout candidat plus ancien.
-// Refus = le job reste sans URL (la vraie annonce, si elle existe, sera
-// trouvée plus tard ou par le cron), jamais une URL fausse.
-let beebsIdsConnusCache = null;
-async function beebsIdsConnus(session) {
-  if (beebsIdsConnusCache) return beebsIdsConnusCache;
-  try {
-    const rows = await restRequest(
-      // (2026-09-27) publish ET republish : une republication qui portait déjà
-      // l'annonce était invisible ici — le refus « déjà rattachée » ne jouait
-      // pas (nicolas.menar, Beebs 34035659 attribuée à deux fiches).
-      "cross_post_jobs?platform=eq.beebs&action=in.(publish,republish)&listing_url=not.is.null" +
-        "&select=listing_url,published_at,created_at&order=published_at.desc.nullslast&limit=300",
-      session.access_token
-    );
-    beebsIdsConnusCache = (rows ?? [])
-      .map((r) => ({
-        id: Number((String(r.listing_url ?? "").match(/\/fr\/p\/(\d+)/) ?? [])[1]),
-        at: Date.parse(r.published_at ?? r.created_at ?? ""),
-      }))
-      .filter((r) => Number.isFinite(r.id) && Number.isFinite(r.at));
-  } catch (e) {
-    console.warn("[background] recover(beebs) : ids connus illisibles —", String(e?.message ?? e));
-    beebsIdsConnusCache = [];
-  }
-  return beebsIdsConnusCache;
-}
-async function beebsUrlAnterieureAuDepot(session, job, url) {
-  const id = Number((String(url ?? "").match(/\/fr\/p\/(\d+)/) ?? [])[1]);
-  const repere = Date.parse(job.published_at ?? job.created_at ?? "");
-  if (!Number.isFinite(id) || !Number.isFinite(repere)) return null;
-  const connus = await beebsIdsConnus(session);
-  const anterieurs = connus.filter((r) => r.at < repere - 2 * 60 * 60 * 1000);
-  const plafond = anterieurs.reduce((m, r) => Math.max(m, r.id), 0);
-  if (plafond && id <= plafond) {
-    return `annonce ${id} antérieure à un dépôt publié plus de 2 h avant celui-ci (id ${plafond}) — URL héritée d'une annonce déjà en ligne, refusée`;
-  }
-  if (connus.some((r) => r.id === id)) {
-    return `annonce ${id} déjà rattachée à un autre job de ce compte — URL non attribuée deux fois`;
-  }
-  return null;
-}
-
 async function recoverMissingListingUrls(session) {
-  beebsIdsConnusCache = null;
   let jobs;
   try {
     jobs = await restRequest(
@@ -18138,7 +18194,7 @@ async function recoverMissingListingUrls(session) {
         // platform_listing_id ajouté le 2026-08-13 (item 9 Beebs) : quand l'id
         // produit a été capté au dépôt, la re-capture Beebs devient une simple
         // lecture HTTP de /fr/p/<id> — plus aucune navigation d'onglet.
-        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
+        "?select=id,platform,action,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
         // republish inclus (2026-09-17) : une republication Beebs redéposée a
         // son URL différée exactement comme un dépôt — sans elle, ni veilleur
         // ni retrait ; le cron fail_publish_without_listing_url ne la touche
@@ -18175,16 +18231,25 @@ async function recoverMissingListingUrls(session) {
   }
 
   const now = Date.now();
-  // Le titre est indispensable au repérage dans la liste (règle
-  // findListingLinkInPage : jamais "le premier lien qui matche").
+  // Une re-capture n'est éligible qu'avec un identifiant durable exact déjà
+  // rendu par NOTRE dépôt. Le titre n'est jamais une clé de rattachement.
   // Repère = published_at, repli created_at — le MÊME que le cron serveur
   // (2026-09-09) : un job créé le 07/09 à 14 h et publié le 08/09 à 21 h
   // (needs_user entre les deux, cas Ritthik) perdait 31 h de fenêtre sur
   // created_at.
   const repereDe = (j) => Date.parse(j.published_at ?? j.created_at ?? "");
-  const eligible = (jobs ?? []).filter(
-    (j) => j.title && Number.isFinite(repereDe(j)) && now - repereDe(j) < listingUrlRecoveryMaxAgeMs(j.platform)
-  );
+  const idExactRecovery = (j) => {
+    const pf = j?.platform_fields ?? {};
+    const v = j.platform === "leboncoin"
+      ? (pf.lbc_depot?.adsubmit?.id ?? pf.lbc_depot?.sans_adsubmit?.id
+        ?? (j.action === "publish" ? j.platform_listing_id : null))
+      : j.platform_listing_id;
+    const id = String(v ?? "").trim();
+    return /^\d+$/.test(id) ? id : null;
+  };
+  const eligible = (jobs ?? []).filter((j) =>
+    Boolean(idExactRecovery(j))
+      && Number.isFinite(repereDe(j)) && now - repereDe(j) < listingUrlRecoveryMaxAgeMs(j.platform));
   if (!eligible.length) return;
 
   const byPlatform = new Map();
@@ -18194,7 +18259,6 @@ async function recoverMissingListingUrls(session) {
   }
 
   for (const [platform, platformJobs] of byPlatform) {
-    const pattern = LISTING_URL_PATTERNS[platform];
     console.log(
       `[background] listing_url manquant : ${platformJobs.length} job(s) ${platform} — passage par "Mes annonces"`
     );
@@ -18207,15 +18271,42 @@ async function recoverMissingListingUrls(session) {
     // modération). Un fetch de /fr/p/<id> tranche : page produit → EN LIGNE,
     // URL canonique posée ; « Oups, page perdue ! » → encore en modération
     // (ou refusée — indistinguable de l'extérieur), rien d'écrit, le cron
-    // 48 h reste le juge. Les jobs SANS id gardent le balayage (filet).
+      // 48 h reste le juge. Les jobs SANS id attendent le relevé exact : aucun
+      // balayage par titre, prix, date ou photo ne peut les identifier.
     if (platform === "beebs") {
-      const sansId = [];
       for (const job of remaining) {
-        if (!job.platform_listing_id) { sansId.push(job); continue; }
+        if (!job.platform_listing_id) continue;
         await beebsProductPageOnline(session, job).catch((e) =>
           console.warn(`[background] recover(beebs) lecture /fr/p/${job.platform_listing_id} :`, String(e?.message ?? e)));
       }
-      remaining = sansId;
+      // Sans identifiant durable, jamais de balayage par titre. Le relevé
+      // Beebs doit rattacher l'annonce exacte (annonces_plateforme.job_id), ou
+      // le dépôt reste en vérification sans pouvoir être resoumis/retiré.
+      remaining = [];
+    }
+    // eBay : l'identifiant numérique EST l'URL canonique. Aucun passage par le
+    // Hub vendeur, où un titre homonyme pourrait voler l'URL d'une autre offre.
+    if (platform === "ebay") {
+      for (const job of remaining) {
+        const id = idExactRecovery(job);
+        if (!id) continue;
+        const url = `https://www.ebay.fr/itm/${id}`;
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+          method: "PATCH",
+          body: JSON.stringify({
+            listing_url: url,
+            platform_listing_id: id,
+            platform_fields: {
+              ...(job.platform_fields ?? {}),
+              listing_url_recovery: {
+                at: new Date().toISOString(),
+                source: "identifiant_exact_du_depot",
+              },
+            },
+          }),
+        }).catch((e) => console.warn(`[background] recover(ebay) ${job.id} :`, String(e?.message ?? e)));
+      }
+      remaining = [];
     }
     // ── Pagination « Mes annonces » Leboncoin (2026-08-23, GO 9b) ────────────
     // « Mes annonces » n'affiche que ~30 annonces par page : sur les comptes
@@ -18326,74 +18417,30 @@ async function recoverMissingListingUrls(session) {
         // ⛔ Un titre n'est pas un identifiant. C'est la règle déjà écrite
         //    pour Beebs — « sans lien, JAMAIS par titre » — jamais appliquée
         //    ici.
-        const idCertainLbc = String(job.platform_fields?.lbc_depot?.adsubmit?.id
-          ?? job.platform_fields?.lbc_depot?.sans_adsubmit?.id ?? "").trim();
-        const idPourRecherche = platform === "leboncoin"
-          ? (/^\d{6,}$/.test(idCertainLbc) ? idCertainLbc : String(job.platform_listing_id ?? ""))
-          : String(job.platform_listing_id ?? "");
+        const idCertainLbc = platform === "leboncoin" ? idExactRecovery(job) : null;
+        const idPourRecherche = String(idCertainLbc ?? "");
         let urlParId = null;
         if (platform === "leboncoin" && /^\d{6,}$/.test(idPourRecherche)) {
           const motifParIdLbc = String.raw`https://www\.leboncoin\.fr/ad/[^#\s"'/]+/` + idPourRecherche + String.raw`(?![0-9])`;
           urlParId = (await findListingLinkInPage(tabId, motifParIdLbc, null).catch(() => ({ url: null }))).url ?? null;
           if (urlParId) {
-            const provenance = idPourRecherche === idCertainLbc ? "id CERTAIN du dépôt (adsubmit 201)" : "platform_listing_id";
-            console.log(`[background] listing_url récupéré PAR ID (leboncoin, job ${job.id}, ${provenance} ${idPourRecherche}) : ${urlParId}`);
+            console.log(`[background] listing_url récupéré PAR ID exact (leboncoin, job ${job.id}, ${idPourRecherche}) : ${urlParId}`);
           }
         }
-        // ── ET SANS IDENTIFIANT, LE TITRE NE TRANCHE QUE S'IL EST UNIQUE ───
-        // Deux jobs de la même passe qui portent le même titre (aux accents
-        // et à la casse près) ne peuvent pas être départagés par lui : on
-        // n'attribue rien, et la passe suivante réessaiera — avec, d'ici là,
-        // l'identifiant certain du dépôt. Mieux vaut une URL manquante
-        // qu'une URL croisée : la première se rattrape, la seconde fait
-        // supprimer l'annonce de quelqu'un d'autre.
-        // ── L'ID CERTAIN CONNU : JAMAIS DE REPLI SUR LE TITRE (2026-09-27) ──
-        // nicolas.menar, « Doudou Mickey gris » : Leboncoin avait rendu l'id
-        // 3275108417 au dépôt, la carte n'était pas encore listée (modération,
-        // 0-1 min), et le repli par TITRE a pris l'annonce du LOT (« doudou »
-        // matche « doudous ») : deux fiches pour une annonce, retrait bloqué.
-        // Quand Leboncoin a rendu l'identifiant, lui seul fait foi : pas de
-        // carte à cet id = on attend la passe suivante.
-        if (platform === "leboncoin" && !urlParId && /^\d{6,}$/.test(idCertainLbc)) {
+        // Identifiant connu mais pas encore listé = modération/indexation. Le
+        // titre ne prend jamais le relais, même s'il est unique aujourd'hui.
+        if (platform === "leboncoin" && !urlParId && /^\d{6,}$/.test(idPourRecherche)) {
           console.log(`[background] recover(leboncoin) job ${job.id} : id certain ${idCertainLbc} pas encore listé — aucun repli par titre, passe suivante`);
           stillMissing.push(job);
           continue;
         }
-        const titreComparable = (t) => String(t ?? "").toLowerCase()
-          .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
-        const monTitre = titreComparable(job.title);
-        const titreAmbigu = !urlParId && monTitre
-          && remaining.filter((autre) => autre !== job && titreComparable(autre.title) === monTitre).length > 0;
-        if (titreAmbigu) {
-          console.warn(
-            `[background] recover(${platform}) job ${job.id} : titre « ${job.title} » porté par un AUTRE job de la même passe — ` +
-            "aucune URL attribuée (un titre n'est pas un identifiant)",
-          );
-          stillMissing.push(job);
-          continue;
-        }
-        // requireTitle : on est sur une page de LISTE, et on y cherche PLUSIEURS
-        // jobs à la fois — le repli « lien unique » y serait catastrophique
-        // (il attribuerait la même URL à tous les jobs de la plateforme).
-        const { url, diag } = urlParId
-          ? { url: urlParId, diag: null }
-          : await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true, listeDuCompte: platform });
-        const refusBeebs = url && platform === "beebs" ? await beebsUrlAnterieureAuDepot(session, job, url) : null;
-        if (refusBeebs) {
-          console.warn(`[background] recover(beebs) job ${job.id} : ${refusBeebs}`);
-          await patchPlatformFields(session, job, {
-            listing_url_recovery_refus: { at: new Date().toISOString(), url, motif: refusBeebs },
-          }).catch(() => {});
-          stillMissing.push(job);
-          continue;
-        }
+        const { url, diag } = { url: urlParId, diag: null };
         if (url) {
           console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
           // platform_listing_id accompagne l'URL (même règle que
-          // update-job-status côté serveur) — beebs exclu : son format d'URL
-          // n'a jamais été observé, un id extrait au hasard serait pire que
-          // NULL.
-          const listingId = platform === "beebs" ? null : extractListingId(url, platform);
+          // update-job-status côté serveur). Beebs n'arrive jamais ici : son
+          // chemin exact est traité plus haut par platform_listing_id.
+          const listingId = extractListingId(url, platform);
           // ISSUE 1/3 — TITRE TROUVÉ. Le compteur de la sonde est remis à zéro
           // et l'épisode horodaté. L'annonce EXISTE : si un remboursement
           // anticipé avait eu lieu, elle redevient suivie pour la vente et le
@@ -18429,28 +18476,6 @@ async function recoverMissingListingUrls(session) {
           diagPage = diag;
           // LBC : plus de verdict de sonde par PAGE — il est rendu après la
           // dernière page, sur la couverture cumulée (GO 9b, 2026-08-23).
-          // Beebs, onglet « En cours de vérification » (2026-09-09) : la carte
-          // n'y porte AUCUN lien /p/ (vérifié le 13/08), mais elle porte le
-          // TITRE. Le voir, c'est savoir que le dépôt EXISTE et attend la
-          // modération — exactement l'information qui manquait pour ne pas le
-          // déclarer perdu. Pur relevé horodaté (platform_fields
-          // .beebs_moderation) : aucune décision n'en dépend encore, il
-          // apprend d'abord la durée réelle de la modération.
-          if (platform === "beebs" && /my-adverts\/creating/.test(pageUrl)) {
-            const vu = await titrePresentDansPage(tabId, job.title).catch(() => false);
-            if (vu) {
-              const prec = job.platform_fields?.beebs_moderation ?? {};
-              const maintenant = new Date().toISOString();
-              await patchPlatformFields(session, job, {
-                beebs_moderation: {
-                  premiere_vue_at: prec.premiere_vue_at ?? maintenant,
-                  vu_at: maintenant,
-                  vues: (Number(prec.vues) || 0) + 1,
-                },
-              });
-              console.log(`[background] recover(beebs) job ${job.id} : titre vu dans « En cours de vérification » — dépôt existant, modération en cours`);
-            }
-          }
         }
       }
       // Échec sur cette page : le diagnostic NOMME la cause au lieu de laisser
@@ -18594,7 +18619,9 @@ async function paintTab(tabId) {
 // la mauvaise annonce.
 const DELETE_TARGETS = {
   vinted: (job) => job.listing_url,
-  leboncoin: (job) => job.listing_url || "https://www.leboncoin.fr/compte/part/mes-annonces",
+  // Un titre n'identifie jamais un exemplaire. Sans URL exacte reconstruite
+  // depuis le dépôt ou le relevé, le retrait attend côté serveur.
+  leboncoin: (job) => job.listing_url,
   // eBay (2026-09-22) : le Hub vendeur FILTRÉ PAR L'IDENTIFIANT. La cible
   // était `/sh/lst/active` nu, c'est-à-dire la PREMIÈRE PAGE — exactement le
   // défaut déjà payé sur « Mes annonces » de Beebs (Joe0410, rangs 66-175
@@ -18717,34 +18744,6 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
             : `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`),
         accessToken
       );
-    } else if (deleteJob.inventaire_id != null && String(deleteJob.title ?? "").trim()) {
-      // ── Repli sans URL (2026-07-22) ─────────────────────────────────────
-      // Une suppression peut désormais aboutir SANS listing_url (ciblage par
-      // titre dans « Mes annonces », cf. processDeleteJob). Sans ce repli, le
-      // job publish d'origine resterait 'published' : checkPublishedListings
-      // le re-scannerait, trouverait l'annonce disparue — normal, on vient de
-      // la retirer — et poserait sale_signal="unavailable" → faux bandeau
-      // « Plus en ligne, vendue ? » sur un article déjà vendu.
-      // On restreint à (plateforme + inventaire_id) côté serveur, puis on
-      // compare le TITRE en JS : PostgREST demanderait un échappement délicat
-      // pour des titres à virgules et emoji, et la liste est minuscule (les
-      // jobs d'UN article). Comparaison sur titre normalisé (espaces/casse),
-      // jamais approximative : le job delete a copié le titre du publish, ils
-      // sont identiques à la normalisation près.
-      const rows = await restRequest(
-        "cross_post_jobs?select=id,platform_fields,title" +
-          `&action=in.(publish,republish)&status=eq.published&platform=eq.${deleteJob.platform}` +
-          `&id=neq.${deleteJob.id}` +
-          `&inventaire_id=eq.${deleteJob.inventaire_id}`,
-        accessToken
-      );
-      const cle = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-      pubs = (rows ?? []).filter((r) => cle(r.title) === cle(deleteJob.title));
-      console.log(
-        `[background] cancelPublishAfterDelete : pas d'URL — repli par ` +
-        `(${deleteJob.platform} + article ${deleteJob.inventaire_id} + titre) → ` +
-        `${pubs.length}/${(rows ?? []).length} publish à clôturer`
-      );
     }
     if (!pubs?.length) return;
     for (const pub of pubs) {
@@ -18865,53 +18864,91 @@ function resoudrePrixRepublication(pf, payload) {
   return null;
 }
 
-// ── RECONNAISSANCE D'UNE ANNONCE RECRÉÉE (2026-08-05) ────────────────────────
-// UNE SEULE fonction, appelée des DEUX côtés — la recréation (avant de recréer,
-// pour ne pas doubler ce qui existe déjà) et la sync (avant de créer une ligne
-// pour une annonce inconnue). Deux appelants, un seul critère : ils ne peuvent
-// pas se contredire.
-//
-// Née de l'incident du 05/08 : la recréation avait ABOUTI, le canal a été coupé
-// par la redirection de succès de Vinted, l'extension a conclu à l'échec, et la
-// sync passée entre-temps a importé l'annonce recréée comme un article neuf —
-// doublon dans le stock, ancien id resté sur la ligne d'origine.
-//
-// CRITÈRE, en trois conditions CUMULATIVES :
-//   1. id INCONNU de l'inventaire — écarte d'emblée tout ce qui est déjà suivi ;
-//   2. titre STRICTEMENT égal (normalisé) au titre capturé ;
-//   3. photos POSTÉRIEURES à la suppression de l'ancienne annonce.
-// La 3e est le vrai discriminant : nos photos sont RÉUPLOADÉES à la recréation,
-// donc leur horodatage date la nouvelle annonce. Vérifié sur le cas réel —
-// photos à 09:38:20Z pour une suppression à 09:05:54Z. L'API wardrobe ne
-// fournit aucune date de mise en ligne, c'est le seul substitut et il tient.
-//
-// ⛔ TITRE + PRIX NE SUFFISENT PAS, et c'est pour ça qu'on ne s'en contente
-// pas : un revendeur a couramment deux articles identiques en ligne. Sans les
-// conditions 1 et 3, on rattacherait le mauvais — un filet trop lâche est PIRE
-// que pas de filet, il déplace la perte au lieu de l'éviter.
-// ⛔ PLUSIEURS CANDIDATS ⇒ ON N'ATTACHE RIEN. L'abstention est un résultat
-// légitime, pas un échec : mieux vaut laisser l'utilisateur trancher qu'un
-// rattachement au hasard, irréversible côté inventaire.
-function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
-  const norm = (s) => String(s ?? "").toLowerCase().normalize("NFKC")
-    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const cible = norm(titre);
-  if (!cible) return { item: null, raison: "titre de référence vide" };
-  const seuil = Date.parse(deletedAt ?? "");
-  if (!Number.isFinite(seuil)) return { item: null, raison: "date de suppression illisible" };
+// ── IDENTITÉ EXACTE DE LA RECRÉATION VINTED (2026-09-29) ─────────────────────
+// Le titre, le prix, les photos et leur date ne prouvent jamais l'exemplaire.
+// La seule identité admise vient de NOTRE tentative : id de la réponse serveur
+// du POST item_upload/items, ou id vu dans la redirection de NOTRE onglet entre
+// l'ouverture du formulaire et sa conclusion. Toute autre ressemblance devient
+// un doute ; elle ne rattache rien et ne déclenche jamais un second dépôt.
+function suivreRedirectionsAnnonce(tabId) {
+  const ids = [];
+  const chemins = [];
+  const noter = (brut) => {
+    let u;
+    try { u = new URL(String(brut ?? "")); } catch { return; }
+    if (!/(^|\.)vinted\.[a-z.]+$/i.test(u.hostname)) return;
+    const chemin = u.pathname.replace(/\/$/, "") || "/";
+    if (!chemins.includes(chemin)) chemins.push(chemin);
+    const id = chemin.match(/^\/items\/(\d+)(?:-|$)/)?.[1] ?? null;
+    if (id && !ids.includes(id)) ids.push(id);
+  };
+  const ecoute = (idOnglet, info, tab) => {
+    if (idOnglet === tabId) noter(info?.url ?? tab?.url);
+  };
+  chrome.tabs.onUpdated.addListener(ecoute);
+  return {
+    async arreter({ attendreMs = 0 } = {}) {
+      if (Number(attendreMs) > 0) await sleep(Math.min(Number(attendreMs), 15_000));
+      chrome.tabs.onUpdated.removeListener(ecoute);
+      noter((await chrome.tabs.get(tabId).catch(() => null))?.url);
+      return { ids: [...ids], chemins: [...chemins] };
+    },
+  };
+}
+
+function idsRecreationExacts(pf, result = null) {
+  const ids = [
+    ...(Array.isArray(result?.idsRedirection) ? result.idsRedirection : []),
+    ...(Array.isArray(result?.idsSonde) ? result.idsSonde : []),
+    ...(Array.isArray(pf?.recreation_redirection?.ids) ? pf.recreation_redirection.ids : []),
+    result?.listingUrl?.match?.(/\/items\/(\d+)/)?.[1],
+    pf?.new_vinted_item_id,
+  ].map((id) => String(id ?? "").trim()).filter((id) => /^\d+$/.test(id));
+  return [...new Set(ids)].filter((id) => id !== String(pf?.vinted_item_id ?? ""));
+}
+
+// Confirme un id exact dans une collection déjà lue, sans aucun repli par
+// titre. Un seul id de notre tentative, nouveau pour l'inventaire, doit être
+// présent ; plusieurs ids ou un id déjà attribué => abstention.
+function annonceDeNotreDepot(idsRedirection, ancienId, articles, idsConnus) {
+  const ids = [...new Set((Array.isArray(idsRedirection) ? idsRedirection : [])
+    .map((id) => String(id ?? "").trim())
+    .filter((id) => /^\d+$/.test(id) && id !== String(ancienId ?? "")))];
   const connus = idsConnus instanceof Set ? idsConnus : new Set(idsConnus ?? []);
-  const candidats = (articles ?? []).filter((a) => {
-    if (!a?.vinted_item_id || connus.has(String(a.vinted_item_id))) return false;
-    if (norm(a.titre) !== cible) return false;
-    // Comparaison à la SECONDE, inclusive (2026-09-11) : photo_ts et
-    // deleted_at sont désormais tous deux à l'heure Vinted (en-tête Date de
-    // la suppression, ou recalage serveur), la seconde est leur grain commun.
-    const ts = Number(a.photo_ts);
-    return Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000;
-  });
-  if (candidats.length === 1) return { item: candidats[0], raison: null };
-  if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond" };
-  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire` };
+  if (ids.length !== 1 || connus.has(ids[0])) return null;
+  return (articles ?? []).find((a) => String(a?.vinted_item_id ?? "") === ids[0]) ?? null;
+}
+
+async function verifierAnnonceRecreationExacte(tabId, itemId, boutiqueAttendue) {
+  const id = String(itemId ?? "").trim();
+  const attendue = String(boutiqueAttendue ?? "").trim();
+  if (!/^\d+$/.test(id)) return { ok: false, motif: "identifiant_annonce_absent" };
+  if (!/^\d+$/.test(attendue)) return { ok: false, motif: "boutique_origine_absente" };
+
+  const session = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
+  const ouverte = String(session?.userId ?? "").trim();
+  if (!/^\d+$/.test(ouverte)) return { ok: false, motif: "session_illisible" };
+  if (ouverte !== attendue) {
+    return { ok: false, motif: "boutique_etrangere", boutiqueOuverte: ouverte, boutiqueAttendue: attendue };
+  }
+
+  const detail = await sendMessageToTab(tabId, {
+    type: "VINTED_ITEM_OWNER_CHECK", vintedItemId: id,
+  }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+  if (!detail?.success || String(detail.vintedItemId ?? "") !== id) {
+    return {
+      ok: false,
+      motif: detail?.httpStatus === 401 ? "session_absente"
+        : detail?.httpStatus === 403 ? "anti_robot"
+          : /404/.test(String(detail?.error ?? "")) ? "annonce_absente" : "verification_impossible",
+      error: String(detail?.error ?? "vérification vide").slice(0, 300),
+    };
+  }
+  const proprietaire = String(detail.vintedAccountId ?? "").trim();
+  if (proprietaire && proprietaire !== attendue) {
+    return { ok: false, motif: "boutique_etrangere", boutiqueAnnonce: proprietaire, boutiqueAttendue: attendue };
+  }
+  return { ok: true, itemId: id, boutique: attendue };
 }
 
 // Clôt un job republish en SUCCÈS sur une annonce déjà en ligne (reconnue par
@@ -18929,6 +18966,8 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
   delete pf.recaptures_perimees;
   delete pf.recapture_le;
   delete pf.recreation_retries;
+  delete pf.recreation_echec_prouve;
+  delete pf.recreation_identite_en_attente;
   if (job.inventaire_id != null) {
     await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
       method: "PATCH",
@@ -18939,8 +18978,9 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
       }),
     }).catch((e) => console.error("[republish] rattachement inventaire échoué:", e?.message ?? e));
   }
+  const pfSucces = await preuveBoutiqueVintedApresDepot(pf);
   await updateJobStatus(accessToken, job.id, "published", {
-    platform_fields: pf, error: null, listing_url: url,
+    platform_fields: pfSucces, error: null, listing_url: url,
   });
   await recordRecentResult(job, "published").catch(() => {});
   console.log(`[republish] job ${job.id} clos en succès par réconciliation (${motif}) → ${url}`);
@@ -18996,6 +19036,7 @@ function construireSnapshotRepublish(pf, cap) {
     capture_id: pf.capture_id ?? null,
     captured_at: cap?.captured_at ?? null,
     vinted_item_id: pf.vinted_item_id ?? null,
+    boutique_preuve: cap?.payload?.boutique_preuve ?? null,
     titre: cap?.payload?.titre ?? null,
     description: cap?.payload?.description ?? null,
     prix: cap?.payload?.prix ?? null,
@@ -19086,6 +19127,12 @@ function construireJobRecreation(job, pf, cap, prix) {
     photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
     inventaire_id: job.inventaire_id ?? null,
     platform_fields: {
+      // Origine exacte acquise sur la page de l'annonce lors de la capture.
+      // Absente = aucune clé : la porte du retrait refusera d'envoyer le POST.
+      ...(() => {
+        const id = String(pf.vinted_account_id ?? cap?.payload?.boutique_preuve?.vendeur ?? "").trim();
+        return id ? { vinted_account_id: id } : {};
+      })(),
       categoryPath: cap.libelles?.categoryPath ?? null,
       etat: cap.libelles?.etat ?? null,
       taille: cap.libelles?.taille ?? null,
@@ -19213,6 +19260,7 @@ function nettoyerVerdictSuppression(v) {
     conclusion: s(v.conclusion, 40) ?? "inconnue",
     ...(v.corps != null ? { corps: s(v.corps, 160) } : {}),
     ...(v.session != null ? { session: s(v.session, 40) } : {}),
+    ...(v.preuve_manquante != null ? { preuve_manquante: s(v.preuve_manquante, 40) } : {}),
     // Heure VINTED de la suppression (en-tête Date de la réponse, 2026-09-11).
     ...(v.date_serveur != null ? { date_serveur: s(v.date_serveur, 40) } : {}),
   };
@@ -19220,14 +19268,10 @@ function nettoyerVerdictSuppression(v) {
 async function marquerRepublishSupprime(jobId, verdictBrut) {
   const verdict = nettoyerVerdictSuppression(verdictBrut);
   // ── HORLOGE VINTED, JAMAIS CELLE DU PC (2026-09-11, doublons CASH34/Adam) ──
-  // deleted_at est le SEUIL de reconnaitreAnnonceRecreee, comparé à photo_ts
-  // (horloge Vinted). Sur un PC en avance (+146 s chez CASH34, +135 s chez
-  // Adam), la recréation paraissait ANTÉRIEURE à la suppression : jamais
-  // reconnue, retentée, doublée — 12 annonces en double sur 30 j. La
-  // suppression est donc datée par l'en-tête Date de la réponse Vinted au
-  // /delete (verdict.date_serveur). Sans en-tête, l'horloge locale reste le
-  // repli — et update-job-status recale de toute façon la valeur sur la
-  // sienne (deleted_at_serveur), relue ci-dessous pour ce cycle-ci.
+  // deleted_at reste daté par l'horloge Vinted : il décrit fidèlement le temps
+  // hors ligne et évite qu'une horloge PC fausse décale les reprises. L'identité
+  // de la recréation, elle, ne dépend plus jamais de cette date ni des photos :
+  // seuls les identifiants exacts de notre dépôt font foi.
   const localeIso = new Date().toISOString();
   const dateVinted = Date.parse(verdict?.date_serveur ?? "");
   let deletedAt = Number.isFinite(dateVinted) ? new Date(dateVinted).toISOString() : localeIso;
@@ -19272,7 +19316,7 @@ async function marquerRepublishSupprime(jobId, verdictBrut) {
 }
 
 // ── APRÈS SUPPRESSION : jamais un arrêt sec (2026-08-12) ─────────────────────
-// Une recréation qui échoue se RETENTE automatiquement deux fois, espacées
+// Une recréation dont l'ÉCHEC EST PROUVÉ se retente deux fois, espacées
 // (5 puis 10 min) — par la machinerie déjà cadencée par chrome.alarms : le job
 // repart 'pending' avec next_action_after, et le poll (alarme ~2 min) le
 // reprend à l'échéance, rang 0 de la file (étape 'deleted'). JAMAIS de
@@ -19283,6 +19327,16 @@ async function marquerRepublishSupprime(jobId, verdictBrut) {
 async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
   if (result?.serverRequired?.length) pf.server_required_fields = result.serverRequired;
+  if (!result?.preuveEchec) {
+    pf.needs_user_source = "recreation_identite_impossible";
+    const message = "La recréation Vinted n'a rendu ni identifiant exact ni refus certain. Elle a peut-être abouti : aucun nouvel envoi ne part tant que sa présence n'est pas confirmée dans l'app.";
+    await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: message });
+    return { status: "needsUser", error: message };
+  }
+  pf.recreation_echec_prouve = {
+    at: new Date().toISOString(),
+    preuve: String(result.preuveEchec).slice(0, 80),
+  };
   const retries = Number(pf.recreation_retries) || 0;
   if (retries < 2) {
     pf.recreation_retries = retries + 1;
@@ -19408,63 +19462,91 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
       ...(result.serverRequired ?? []).map((f) => ({ ...f, required: true, source: "server_400" })),
     ]).catch(() => {});
   }
-  // ── VOLET (a) : le canal coupé peut être la SIGNATURE D'UN SUCCÈS ─────────
-  // Vinted REDIRIGE vers la nouvelle annonce dès qu'elle est créée : la
-  // redirection détruit le content script AVANT sa réponse. La publication
-  // normale interroge la sonde dans ce cas depuis le 13/07 (job ba84ebb0) ;
-  // la recréation, elle, concluait à l'échec — c'est exactement ce qui a
-  // laissé l'annonce de Nico en ligne avec un job en needs_user le 05/08.
-  // Les captures de la sonde SURVIVENT à la mort de la page.
-  if (!result?.success) {
-    const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
-    if (urlSonde) {
-      const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
-      if (idSonde) {
-        await cloreRepublishSurAnnonceExistante(
-          accessToken, job, pf, idSonde, urlSonde,
-          "canal coupé par la redirection de succès — création confirmée par la réponse serveur",
-        );
-        return { status: "published", listingUrl: urlSonde };
-      }
-    }
+  // La sonde a été vidée juste avant CE dépôt. Ses ids sont donc des preuves
+  // exactes de cette tentative ; on les confronte aux ids vus dans la
+  // redirection de CE même onglet. Un désaccord ne se « résout » jamais en
+  // choisissant le dernier : il révèle déjà deux annonces possibles.
+  result = result && typeof result === "object" ? result : { success: false, error: "réponse illisible" };
+  result.idsSonde = await vintedUploadIdsExact(tabId).catch(() => []);
+  const idsExacts = idsRecreationExacts(pf, result);
+  if (Array.isArray(result.idsRedirection) || Array.isArray(result.cheminsRedirection)) {
+    pf.recreation_redirection = {
+      ids: Array.isArray(result.idsRedirection) ? result.idsRedirection.slice(0, 5).map(String) : [],
+      chemins: Array.isArray(result.cheminsRedirection) ? result.cheminsRedirection.slice(0, 12).map(String) : [],
+      at: new Date().toISOString(),
+      ...(result?.error ? { erreur: String(result.error).slice(0, 300) } : {}),
+    };
+  }
+  if (idsExacts.length || pf.recreation_redirection) {
+    // Écrit AVANT toute autre vérification : si le worker meurt maintenant, le
+    // prochain passage connaît l'id exact et ne renvoie jamais le formulaire.
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf }).catch((e) =>
+      console.warn(`[republish] job ${job.id} : preuve exacte non persistée — ${String(e?.message ?? e)}`));
+  }
 
-    // ── CEINTURE : le dressing, TOUT DE SUITE ─────────────────────────────
-    // Ne dépend d'AUCUNE sonde — donc rattrape même ce que la sonde rate.
-    // Le 05/08, la recherche du dressing n'existait qu'AVANT la recréation :
-    // elle protégeait la relance, pas la tentative en cours, et le job se
-    // clôturait en needs_user avant que quiconque puisse vérifier. Deux
-    // annonces recréées ont été perdues comme ça. On regarde donc
-    // maintenant, pendant qu'on tient encore l'onglet.
-    try {
-      const ident2 = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
-      if (ident2?.userId) {
-        const page2 = await sendMessageToTab(tabId, {
-          type: "SYNC_DRESSING_PAGE", page: 1, userId: ident2.userId,
-        }).catch(() => null);
-        if (page2?.success) {
-          const connus2 = await restRequest(
-            `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
-            accessToken,
-          ).catch(() => []);
-          const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
-            titre: jobRecreation.title,
-            deletedAt: pf.deleted_at,
-            idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
-          });
-          if (trouve) {
-            await cloreRepublishSurAnnonceExistante(
-              accessToken, job, pf, trouve.vinted_item_id,
-              trouve.url ?? `https://www.vinted.fr/items/${trouve.vinted_item_id}`,
-              "recréation confirmée dans le dressing après coupure du canal",
-            );
-            return { status: "published", listingUrl: trouve.url ?? null };
-          }
-          console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
-        }
+  if (idsExacts.length > 1) {
+    pf.needs_user_source = "recreation_identite_impossible";
+    pf.recreation_identite = { at: new Date().toISOString(), verdict: "plusieurs_ids", ids: idsExacts.slice(0, 5) };
+    const msg = "La republication Vinted a produit plusieurs identifiants différents. Aucun nouvel envoi ne part : vérifie tes annonces et confirme dans l'app laquelle correspond à cet exemplaire.";
+    await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+    return { status: "needsUser", error: msg };
+  }
+
+  if (idsExacts.length === 1) {
+    const nouvelIdExact = idsExacts[0];
+    const preuve = await verifierAnnonceRecreationExacte(
+      tabId, nouvelIdExact, pf.vinted_account_id ?? jobRecreation?.platform_fields?.vinted_account_id,
+    );
+    pf.recreation_identite = { at: new Date().toISOString(), id: nouvelIdExact, verdict: preuve.ok ? "prouvee" : preuve.motif };
+    if (preuve.ok) {
+      // Si le relevé a déjà importé CET id dans une autre fiche pendant la
+      // coupure, ne jamais l'écraser ni créer une troisième annonce : la preuve
+      // exacte est conservée et l'app demandera de rattacher les deux lignes.
+      const deja = await restRequest(
+        `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=eq.${nouvelIdExact}&select=id,vinted_item_id`,
+        accessToken,
+      ).catch(() => []);
+      const autre = (deja ?? []).find((r) => job.inventaire_id == null || String(r.id) !== String(job.inventaire_id));
+      if (autre) {
+        pf.needs_user_source = "recreation_deja_importee";
+        pf.recreation_deja_importee = { at: new Date().toISOString(), vinted_item_id: nouvelIdExact };
+        const msg = "La nouvelle annonce Vinted est bien identifiée, mais le relevé l'a déjà ajoutée comme une autre fiche. Aucun redépôt ne part : confirme dans l'app qu'il s'agit du même exemplaire.";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        return { status: "needsUser", error: msg };
       }
-    } catch (e) {
-      console.warn("[republish] vérification du dressing après coupure impossible:", e?.message ?? e);
+      result.success = true;
+      result.listingUrl = `https://www.vinted.fr/items/${nouvelIdExact}`;
+    } else if (preuve.motif === "boutique_etrangere") {
+      const attendue = String(pf.vinted_account_id ?? jobRecreation?.platform_fields?.vinted_account_id ?? "");
+      pf.needs_user_source = "boutique_etrangere";
+      pf.attente_boutique = { user_id: attendue, depuis: new Date().toISOString() };
+      pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+      const msg = "La boutique Vinted ouverte n'est pas celle de cette republication. Aucun nouveau dépôt ne part : ouvre la bonne boutique dans Chrome, puis la vérification reprendra seule.";
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+      return { status: "skipped", error: msg };
+    } else if (preuve.motif === "boutique_origine_absente") {
+      pf.needs_user_source = "boutique_inconnue";
+      const msg = "La boutique d'origine de cette republication n'est pas prouvée. Aucun nouveau dépôt ne part tant que FillSell ne peut pas vérifier la bonne boutique.";
+      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+      return { status: "needsUser", error: msg };
+    } else {
+      // L'id exact existe, mais sa propriété n'est pas encore lisible (retard de
+      // propagation, session, 403). Attendre et re-sonder CET id est sans risque ;
+      // renvoyer le formulaire créerait potentiellement un doublon.
+      pf.next_action_after = new Date(Date.now() + 5 * 60_000).toISOString();
+      pf.recreation_identite_en_attente = { at: new Date().toISOString(), id: nouvelIdExact, motif: preuve.motif };
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      return { status: "retry", error: `vérification de l'annonce exacte différée (${preuve.motif})` };
     }
+  } else if (!result?.preuveEchec) {
+    // Aucun id exact ET aucune preuve positive de refus : le dépôt a pu aboutir.
+    // Le titre ne tranche jamais. On arrête toute reprise automatique avant
+    // qu'elle ne puisse créer une deuxième annonce.
+    pf.needs_user_source = "recreation_identite_impossible";
+    pf.recreation_identite = { at: new Date().toISOString(), verdict: "aucun_id_exact", erreur: String(result?.error ?? "").slice(0, 300) };
+    const msg = "Vinted n'a pas rendu l'identifiant de la nouvelle annonce. Elle a peut-être été créée : FillSell n'envoie rien une seconde fois. Vérifie tes annonces et confirme dans l'app si elle est présente.";
+    await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+    return { status: "needsUser", error: msg };
   }
 
   if (result?.success && result.listingUrl) {
@@ -19487,6 +19569,8 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     delete pf.recaptures_perimees;
     delete pf.recapture_le;
     delete pf.recreation_retries;
+    delete pf.recreation_echec_prouve;
+    delete pf.recreation_identite_en_attente;
     if (nouvelId && job.inventaire_id != null) {
       await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
         method: "PATCH",
@@ -19513,8 +19597,9 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     if (result.isbnCaptureTelQuel) {
       pf.isbn_capture_tel_quel = { valeur: String(result.isbnCaptureTelQuel), le: new Date().toISOString() };
     }
+    const pfSucces = await preuveBoutiqueVintedApresDepot(pf);
     await updateJobStatus(accessToken, job.id, "published", {
-      listing_url: result.listingUrl, platform_fields: pf, error: null,
+      listing_url: result.listingUrl, platform_fields: pfSucces, error: null,
     });
     console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl} (id ${ancienId ?? "?"} → ${nouvelId ?? "?"})`);
     return { status: "published", listingUrl: result.listingUrl };
@@ -19646,52 +19731,91 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
 // un retrait et une republication ne concluent pas pareil. Rend { result,
 // tabId } ; lève comme avant (canal coupé, onglet indisponible) — l'appelant
 // attrape.
-// ── BEEBS : L'IDENTIFIANT EXACT AVANT LE TITRE (2026-09-19) ────────────────
-// Le retrait Beebs vise `/p/<id>` quand le job porte un lien exploitable, et
-// retombe sinon sur « Mes annonces » filtrée par titre — un repli FRAGILE :
-// homonymes, titres tronqués, et la page qui ne rend qu'une fraction du
-// dressing (60 sur 197 chez josephinecerni). C'est ce repli qui a produit les
-// 6 retraits morts de Joe0410 le 11/09, rangs 66 à 175 introuvables.
-// Depuis aujourd'hui l'index public donne l'objectID de CHAQUE annonce, page
-// comprise ou non : `annonces_plateforme` porte donc l'identifiant exact même
-// pour celles que « Mes annonces » ne montre pas. On le relit ICI, juste avant
-// de choisir la cible, et le repli par titre redevient ce qu'il aurait dû
-// rester : un repli.
-// ⛔ LECTURE SEULE, ET JAMAIS UNE DEVINETTE : on ne prend QUE la ligne
-//    rattachée au MÊME article, sur la MÊME plateforme, non disparue. Aucun
-//    rapprochement par titre, aucun « plus proche ». Rien trouvé → on ne
-//    change rien, le comportement d'avant à l'identique.
+// ── BEEBS : L'IDENTIFIANT EXACT, JAMAIS LA FICHE NI LE TITRE (29/09) ───────
+// Un retrait porte l'id exact du dépôt qui l'a armé (`arme_par.depot`) ; une
+// republication porte `republish_source_job_id` et la capture de l'annonce.
+// Ces preuves survivent à la suppression de la fiche. On ne cherche donc QUE
+// l'identifiant déjà embarqué, le dépôt exact ou la ligne de relevé dont
+// `job_id` est exactement ce dépôt. `inventaire_id`, titre, prix, photo et date
+// ne sont jamais des preuves : deux exemplaires peuvent les partager.
 async function enrichirCibleBeebs(job, accessToken) {
   if (job.platform !== "beebs") return job;
-  if (/\/p\/\d+(?:[-/?#]|$)/.test(String(job.listing_url ?? ""))) return job; // déjà exact
-  if (job.inventaire_id == null) return job;
+  const idDirect = String(job.platform_listing_id ?? "").trim()
+    || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "")
+    || String(job.platform_fields?.republish_snapshot?.platform_listing_id ?? "").trim();
+  if (/^\d+$/.test(idDirect)) {
+    return { ...job, platform_listing_id: idDirect, listing_url: `https://www.beebs.app/fr/p/${idDirect}` };
+  }
   try {
-    const lignes = await restRequest(
-      `annonces_plateforme?select=listing_id,url&platform=eq.beebs&disparu_le=is.null` +
-      `&inventaire_id=eq.${encodeURIComponent(String(job.inventaire_id))}&limit=2`,
+    const sourceId = String(job.platform_fields?.arme_par?.depot ?? "").trim()
+      || String(job.platform_fields?.republish_source_job_id ?? "").trim()
+      || String(job.platform_fields?.republish_snapshot?.source_job_id ?? "").trim()
+      || String(job.platform_fields?.preuve_retrait_beebs?.source_job_id ?? "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(sourceId)) return job;
+    const depots = await restRequest(
+      `cross_post_jobs?select=id,platform_listing_id,listing_url&platform=eq.beebs` +
+      `&action=in.(publish,republish)&id=eq.${encodeURIComponent(sourceId)}&limit=1`,
       accessToken,
     );
-    const ligne = (lignes ?? []).find((l) => /^\d+$/.test(String(l?.listing_id ?? "")));
-    if (!ligne) return job;
-    // Une seule ligne attendue : deux annonces Beebs vivantes pour un même
-    // article, c'est un doublon qu'on ne tranche pas ici.
-    if ((lignes ?? []).length > 1) {
-      console.warn(`[retrait][beebs] job ${job.id} : ${lignes.length} annonces vivantes pour l'article ${job.inventaire_id} — identifiant non retenu, repli inchangé`);
+    const ids = new Set();
+    for (const depot of depots ?? []) {
+      const direct = String(depot?.platform_listing_id ?? "").trim()
+        || (String(depot?.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+      if (/^\d+$/.test(direct)) ids.add(direct);
+    }
+    const lignes = await restRequest(
+      `annonces_plateforme?select=job_id,listing_id,url&platform=eq.beebs&disparu_le=is.null` +
+      `&job_id=eq.${encodeURIComponent(sourceId)}&limit=2`,
+      accessToken,
+    );
+    for (const ligne of lignes ?? []) {
+      const id = String(ligne?.listing_id ?? "").trim();
+      if (/^\d+$/.test(id)) ids.add(id);
+    }
+    if (ids.size !== 1) {
+      if (ids.size > 1) {
+        console.warn(`[retrait][beebs] job ${job.id} : le dépôt exact ${sourceId} porte ${ids.size} identifiants — abstention`);
+      }
       return job;
     }
-    const url = `https://www.beebs.app/fr/p/${ligne.listing_id}`;
-    console.log(`[retrait][beebs] job ${job.id} : cible par IDENTIFIANT ${ligne.listing_id} (au lieu du repli par titre)`);
-    return { ...job, listing_url: url, platform_listing_id: String(ligne.listing_id) };
+    const [id] = [...ids];
+    const url = `https://www.beebs.app/fr/p/${id}`;
+    console.log(`[retrait][beebs] job ${job.id} : cible ${id} prouvée par le dépôt exact ${sourceId}`);
+    return {
+      ...job,
+      listing_url: url,
+      platform_listing_id: String(id),
+      platform_fields: {
+        ...(job.platform_fields ?? {}),
+        preuve_retrait_beebs: { source_job_id: sourceId, listing_id: String(id), le: new Date().toISOString() },
+      },
+    };
   } catch (e) {
-    // Lecture ratée = on ne sait pas = comportement d'avant. Jamais un retrait
-    // empêché par cet enrichissement.
-    console.warn("[retrait][beebs] identifiant non relu (repli inchangé) :", e?.message ?? e);
+    // Lecture ratée = on ne sait pas = aucun retrait. Le caller garde le job en
+    // attente ; un titre ne prend jamais le relais.
+    console.warn("[retrait][beebs] identifiant exact non relu :", e?.message ?? e);
     return job;
   }
 }
 
 async function executerRetraitViaHandler(job, accessToken) {
   job = await enrichirCibleBeebs(job, accessToken);
+  if (job.platform === "beebs") {
+    const idExact = String(job.platform_listing_id ?? "").trim()
+      || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+    if (!/^\d+$/.test(idExact)) {
+      return {
+        tabId: null,
+        result: {
+          success: false,
+          needsUser: false,
+          attenteIdentifiantBeebs: true,
+          error: "Retrait Beebs retenu : l'identifiant exact de cette annonce n'est pas encore rattaché par le relevé. Rien n'a été touché.",
+          trace: [],
+        },
+      };
+    }
+  }
   const target = DELETE_TARGETS[job.platform]?.(job);
   if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
@@ -19729,25 +19853,10 @@ async function executerRetraitViaHandler(job, accessToken) {
   // lien /p/<id>-). Le titre filtre, l'identifiant décide ; sans carte
   // portant l'identifiant, « introuvable » → attente (règle du 11/09), jamais
   // une autre carte. Sans titre, la liste non filtrée (première page).
-  if (job.platform === "beebs" && result && !result.success && result.pageAnnonceSansControle) {
-    const titre = String(job.title ?? "").trim();
-    const urlRepli = "https://www.beebs.app/fr/account/my-adverts" + (titre ? `?searchText=${encodeURIComponent(titre)}` : "");
-    console.log(
-      `[background] Job ${job.id} : page de l'annonce sans bouton propriétaire — repli « Mes annonces »` +
-      `${titre ? " filtrée par le titre" : ""}, carte par identifiant`,
-    );
-    const tracePage = Array.isArray(result.trace) ? result.trace : [];
-    const tabRepli = await getOrCreateWorkTab("beebs", urlRepli);
-    const restoreRepli = await paintTab(tabRepli);
-    try {
-      result = await sendMessageToTab(tabRepli, { type: "DELETE_LISTING", job });
-    } finally {
-      await restoreRepli();
-    }
-    if (result && typeof result === "object") {
-      result.trace = [...tracePage, "— repli « Mes annonces » —", ...(Array.isArray(result.trace) ? result.trace : [])];
-    }
-  }
+  // Beebs : pas de repli par `searchText=<titre>`. Même si la carte finale
+  // était ensuite contrôlée par id, ce détour a déjà croisé des exemplaires
+  // homonymes. La page exacte + l'identifiant exact doivent suffire ; sinon le
+  // retrait attend le prochain relevé/rendu, sans toucher une autre annonce.
 
   // ── LE RELEVÉ SURVIT À L'ÉCHEC (2026-09-14) ──────────────────────────────
   // Le chemin de PUBLICATION range depuis toujours result.diagnostic dans
@@ -19975,6 +20084,7 @@ function prevolCaptureRepublication(job, snapExterne = null) {
       return Number(pf.capture_id) > 0 ? [] : ["la copie de ton annonce"];
     }
     if (!String(snap.titre ?? "").trim()) manquants.push("le titre");
+    if (!String(snap.description ?? "").trim()) manquants.push("la description");
     if (!Array.isArray(snap.photos) || !snap.photos.length) manquants.push("les photos");
     if (!(Number(snap.prix) > 0)) manquants.push("le prix");
     if (!Number(snap.catalog_id)) manquants.push("la catégorie");
@@ -19988,17 +20098,16 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     // demander à personne.
     if (!String(job.title ?? "").trim() && !String(snap?.titre ?? "").trim()) manquants.push("le titre");
     if (!(Number(job.price) > 0) && !(Number(snap?.prix) > 0)) manquants.push("le prix");
-    // Photos et catégorie : un LIEN D'ANNONCE suffit à les retrouver — le
-    // serveur lit la catégorie dans l'adresse de l'annonce (cheminLbcDepuisUrl)
-    // et les photos viennent de l'article ou de la capture. Mesuré le 22/09 :
-    // les 338 imports du relevé n'ont ni photo ni catégorie SUR LE JOB, et
-    // leurs republications aboutissent — exiger ces champs du seul job les
-    // aurait toutes bloquées.
-    const aLien = !!(job.listing_url || pf.old_listing_url || snap?.listing_url);
+    // Un lien ou un compteur ne sont pas la copie. Au moment de ce pré-vol,
+    // get-pending-jobs a déjà resservi les photos et le chemin de catégorie
+    // exacts depuis la fiche/capture quand ils existent. S'ils ne sont pas
+    // présents ici, les retrouver plus tard n'est qu'une hypothèse : on ne
+    // retire pas l'annonce pour la vérifier.
     const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
-    if (!nPhotos && !(Number(snap?.photos) > 0) && !aLien) manquants.push("les photos");
+    const nPhotosCopie = Array.isArray(snap?.photos) ? snap.photos.length : 0;
+    if (!nPhotos && !nPhotosCopie) manquants.push("les photos");
     const aCategorie = Array.isArray(pf.lbcCategoryPath) && pf.lbcCategoryPath.length;
-    if (!aCategorie && !aLien) manquants.push("la catégorie");
+    if (!aCategorie) manquants.push("la catégorie");
     // ── LA LOCALISATION (le job af34f609, 22/09) ─────────────────────────
     // C'est CE champ qui a laissé une annonce hors ligne 11 minutes : la
     // capture n'avait pas de localisation, les Réglages étaient vides, et on
@@ -20109,6 +20218,30 @@ async function prevolPageDeDepot(platform) {
   }
   if (!dernier) return { lisible: false };
   return { lisible: true, mur: dernier.mur ?? null, manquants: Array.isArray(dernier.manquants) ? dernier.manquants : [] };
+}
+
+// Beebs construit ses champs obligatoires APRÈS la sélection de catégorie.
+// Regarder la page vide ne peut donc jamais prouver que le redépôt est prêt
+// (Bottines LPB, 29/09 : « Pointure » découverte six minutes après le retrait).
+// On fait tourner le VRAI remplisseur avec un drapeau sans soumission : mêmes
+// listes, mêmes validations, aucun upload et aucun clic « Mettre en vente ».
+async function prevolFormulaireRecreationBeebs(job) {
+  const spec = PREVOL_DEPOT.beebs;
+  const tabId = await getOrCreateWorkTab("beebs", spec.url);
+  await waitForTabComplete(tabId, spec.url + WORK_TAB_FRAGMENT, 45_000).catch(() => {});
+  const jobPrevol = {
+    ...job,
+    action: "publish",
+    listing_url: null,
+    platform_listing_id: null,
+    platform_fields: {
+      ...(job.platform_fields ?? {}),
+      republish_recreation: true,
+      republish_prevol_only: true,
+    },
+  };
+  const result = await envoyerFillListing(tabId, jobPrevol);
+  return { tabId, result };
 }
 
 // L'identifiant d'annonce dans une URL, par plateforme — la seule partie
@@ -20241,6 +20374,51 @@ async function processRepublishJobPlateforme(job, accessToken) {
         return { status: "needsUser", error: msg };
       }
     }
+
+    // ── BEEBS : LE VRAI FORMULAIRE DOIT ÊTRE REMPLISSABLE AVANT LE RETRAIT ──
+    if (job.platform === "beebs") {
+      let resultatPrevol = null;
+      try {
+        ({ result: resultatPrevol } = await prevolFormulaireRecreationBeebs({ ...job, platform_fields: pf }));
+      } catch (e) {
+        console.warn(`[republish] job ${job.id} : pré-vol complet Beebs injoignable — ${String(e?.message ?? e)}`);
+      }
+      if (resultatPrevol?.discoveredRequired?.length) {
+        persistDiscoveredAspects(accessToken, job, resultatPrevol.discoveredRequired).catch(() => {});
+      }
+      const champs = Array.isArray(resultatPrevol?.unfilledRequired)
+        ? resultatPrevol.unfilledRequired.map((x) => String(x)).filter(Boolean) : [];
+      const ok = resultatPrevol?.success === true && resultatPrevol?.republishPreflight === true && champs.length === 0;
+      tracerGarde(pf, "prevol_formulaire_beebs", {
+        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : "illisible",
+        plateforme: "beebs", etape: "avant_retrait",
+        champs_verifies: ["categorie", "champs_dynamiques", "adresse", "prix"],
+        ...(champs.length ? { manquants: champs } : {}),
+      });
+      job.platform_fields = pf;
+      if (!ok && resultatPrevol?.needsUserField?.field_key && resultatPrevol?.needsUserField?.field_label) {
+        const libelle = String(resultatPrevol.needsUserField.field_label);
+        resultatPrevol.error = `Republication Beebs mise en pause AVANT tout retrait : Beebs exige « ${libelle} » pour ce rayon et aucune valeur certaine n'a pu être posée. `
+          + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Choisis la valeur dans l'app : la republication repartira seule.";
+        await markNeedsUser(accessToken, job, resultatPrevol);
+        console.warn(`[republish] job ${job.id} : retrait Beebs REFUSÉ — champ dynamique « ${libelle} » manquant`);
+        return { status: "needsUser", error: resultatPrevol.error };
+      }
+      if (!ok) {
+        // Une absence de preuve n'est jamais une permission de retirer. Ce qui
+        // n'exige pas de choix utilisateur se resonde seul, sans tentative.
+        pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
+        pf.republish_prevol_formulaire = {
+          at: new Date().toISOString(), verdict: "illisible",
+          detail: String(resultatPrevol?.error ?? "aucune preuve positive du formulaire").slice(0, 300),
+        };
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+        console.warn(`[republish] job ${job.id} : retrait Beebs reporté — le formulaire complet n'est pas prouvé remplissable`);
+        return { status: "skipped", error: "pré-vol complet Beebs non concluant — rien retiré" };
+      }
+      delete pf.next_action_after;
+      pf.republish_prevol_formulaire = { at: new Date().toISOString(), verdict: "ok" };
+    }
     void snapshot;
 
     // ══════════════════════════════════════════════════════════════════════
@@ -20261,7 +20439,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     //    qui se trompe empêcherait des republications qui marchent.
     // ⛔ Et il ne consomme JAMAIS de tentative : mur de connexion ou
     //    anti-robot → attente, exactement comme un retrait.
-    if (PREVOL_DEPOT[job.platform]) {
+    if (PREVOL_DEPOT[job.platform] && job.platform !== "beebs") {
       const vol = await prevolPageDeDepot(job.platform).catch((e) => {
         console.warn(`[republish] job ${job.id} : pré-vol injoignable (${e?.message ?? e}) — le retrait suit son chemin`);
         return { lisible: false };
@@ -20362,7 +20540,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
           await traiterMurDeConnexion(accessToken, job, result, result.error);
         }
         return { status: "needsUser", error: result.error };
-      } else if (/^CHALLENGE /i.test(String(result.error ?? ""))) {
+      } else if (estBlocageAntiRobotExact(job, result)) {
         const { borne } = await marquerBlocageAntiRobot(accessToken, job, String(result.error));
         if (!borne) return { status: "retry", error: String(result.error) };
         await rearmBounded(accessToken, job, String(result.error));
@@ -20690,6 +20868,7 @@ async function processRepublishJob(job, accessToken) {
         etape: "a_capturer",
         motif: String(cap.error ?? "").slice(0, 300),
         ...(Number.isFinite(Number(cap.httpStatus)) ? { http: Number(cap.httpStatus) } : {}),
+        ...(Number(cap.httpStatus) === 403 ? { motif_code: MOTIF_ANTIROBOT_VINTED_403 } : {}),
       };
 
       // ── ANTI-ROBOT : ON SE CALME, ON N'ACCUSE PERSONNE (2026-09-23) ──────
@@ -20702,7 +20881,7 @@ async function processRepublishJob(job, accessToken) {
       // Le bon geste, c'est d'ESPACER : 45 minutes, comme le fait déjà
       // pas-de-rouge pour l'anti-robot. Rien à faire côté utilisateur, et on
       // le dit — ici c'est vrai, la reprise aboutira.
-      if (/protection anti-robot|CHALLENGE|anti-?robot/i.test(String(cap.error ?? ""))) {
+      if (estBlocageAntiRobotExact(job, cap)) {
         pf.next_action_after = new Date(Date.now() + 45 * 60_000).toISOString();
         delete pf.needs_user_source;
         const msg =
@@ -20915,6 +21094,50 @@ async function processRepublishJob(job, accessToken) {
         return { status: "needsUser", error: "capture invalide avant suppression" };
       }
 
+      // ── PREUVE DE BOUTIQUE AVANT TOUT RETRAIT (29/09) ────────────────────
+      // La capture a été faite sur /items/<id> et porte vendeur + session.
+      // Les trois identifiants doivent coïncider. Une ancienne capture sans
+      // cette preuve est simplement refaite : jamais classée « étrangère »,
+      // jamais autorisée par un titre, jamais suivie d'un POST de suppression.
+      const preuveBoutique = capMeta?.payload?.boutique_preuve;
+      const vendeurPreuve = String(preuveBoutique?.vendeur ?? "").trim();
+      const sessionPreuve = String(preuveBoutique?.session ?? "").trim();
+      const itemPreuve = String(preuveBoutique?.item_id ?? "").trim();
+      const itemAttendu = String(pf.vinted_item_id ?? "").trim();
+      if (!vendeurPreuve || !sessionPreuve || !itemPreuve || itemPreuve !== itemAttendu) {
+        const pfReprise = { ...pf };
+        delete pfReprise.capture_id;
+        delete pfReprise.republish_snapshot;
+        pfReprise.republish_step = "a_capturer";
+        pfReprise.verification_boutique_vinted = {
+          motif: "preuve_absente_ou_incomplete",
+          item_attendu: itemAttendu || null,
+          item_lu: itemPreuve || null,
+          le: new Date().toISOString(),
+        };
+        pfReprise.next_action_after = new Date(Date.now() + 2 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pfReprise, error: null });
+        return { status: "skipped", error: "preuve de boutique absente — capture exacte redemandée" };
+      }
+      if (vendeurPreuve !== sessionPreuve) {
+        pf.needs_user_source = "boutique_etrangere";
+        pf.boutique_etrangere = {
+          motif: "boutique_etrangere",
+          article: vendeurPreuve,
+          session: sessionPreuve,
+          login_session: preuveBoutique?.login_session ?? null,
+          le: new Date().toISOString(),
+          pose_par: "extension (page exacte de l'annonce avant republication)",
+        };
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Rien n'a été retiré.",
+        });
+        return { status: "needsUser", error: "boutique Vinted réellement différente" };
+      }
+      pf.vinted_account_id = vendeurPreuve;
+      delete pf.verification_boutique_vinted;
+
       // ── RÈGLE D'OR, ÉPROUVÉE DU BON CÔTÉ (2026-08-05) ────────────────────
       // « On ne supprime jamais tant que tout ce qu'il faut pour recréer n'est
       // pas écrit en base. » Le 05/08, tout ÉTAIT en base — mais le prix était
@@ -21119,7 +21342,10 @@ async function processRepublishJob(job, accessToken) {
       // puis découvrir le refus à la recréation » est exactement ce qui a
       // perdu les annonces de lowvaucher.)
       const jobRecreation = construireJobRecreation(job, pf, capMeta, prixPrevu);
-      jobRecreation.platform_fields.republish_delete_then_submit = { item_id: String(pf.vinted_item_id ?? "") };
+      jobRecreation.platform_fields.republish_delete_then_submit = {
+        item_id: String(pf.vinted_item_id ?? ""),
+        vinted_account_id: vendeurPreuve,
+      };
       // Fix Couleur (2026-08-26) : capture SANS couleur seulement — cf. bandeau
       // de couleursDePublicationOrigine. Une capture avec couleur n'est pas touchée.
       if (!jobRecreation.platform_fields.colors?.length) {
@@ -21132,12 +21358,24 @@ async function processRepublishJob(job, accessToken) {
       const tabId = await getOrCreateWorkTab("vinted", urlDepot);
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
+      delete pf.recreation_echec_prouve;
+      pf.recreation_tentee = {
+        at: new Date().toISOString(),
+        n: (Number(pf.recreation_tentee?.n) || 0) + 1,
+        une_passe: true,
+      };
       let result;
+      const suiviRedirection = suivreRedirectionsAnnonce(tabId);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
       }
+      if (!result || typeof result !== "object") result = { success: false, error: "réponse de republication illisible" };
+      const aAttendre = !result?.success && (result?.deleted === true || republishSupprimes.has(job.id));
+      const suivi = await suiviRedirection.arreter({ attendreMs: aAttendre ? 15_000 : 0 });
+      result.idsRedirection = suivi.ids;
+      result.cheminsRedirection = suivi.chemins;
       dernierGesteRepublishAt = Date.now();
 
       // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
@@ -21462,109 +21700,79 @@ async function processRepublishJob(job, accessToken) {
       // un onglet détruit ou navigué. Au passage suivant on ne vérifiait donc
       // rien, et on recréait par-dessus une annonce déjà créée.
       //
-      // RÈGLE : tant qu'aucune recréation n'a été tentée, l'abstention reste
-      // (elle ne coûte qu'un filet best-effort sur un chemin sain). DÈS QU'UNE
-      // TENTATIVE A EU LIEU, on ne recrée plus sans avoir LU le dressing :
-      // s'il est illisible, on repasse plus tard. Une annonce qui attend 2 min
-      // de plus, ça se rattrape ; un doublon, non.
-      const dejaTentee = pf.recreation_tentee && typeof pf.recreation_tentee === "object";
-      let tabVerif = await findExistingWorkTabId("vinted");
-      if (tabVerif == null && dejaTentee) {
-        // Obligatoire : on s'offre l'onglet que le chemin best-effort refusait.
-        tabVerif = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/").catch(() => null);
-        if (tabVerif != null) console.log(`[republish] job ${job.id} : recréation déjà tentée — onglet ouvert exprès pour vérifier le dressing`);
+      // Une tentative antérieure ne se résout jamais par un titre ressemblant.
+      // Si elle a rendu un id exact, on sonde CET id et seulement lui. Si elle
+      // n'a rendu aucun id et aucun refus prouvé, l'utilisateur tranche : aucun
+      // second dépôt automatique n'est permis.
+      const idsPrecedents = idsRecreationExacts(pf);
+      const echecProuve = pf.recreation_echec_prouve && typeof pf.recreation_echec_prouve === "object";
+      const dejaTentee = ((pf.recreation_tentee && typeof pf.recreation_tentee === "object") || !!pf.recreation_doublon) && !echecProuve;
+      if (idsPrecedents.length > 1) {
+        pf.needs_user_source = "recreation_identite_impossible";
+        const msg = "Plusieurs identifiants Vinted sont liés à cette tentative de republication. Aucun nouveau dépôt ne part : confirme dans l'app lequel correspond à cet exemplaire.";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        return { status: "needsUser", error: msg };
       }
-      if (tabVerif != null) {
-        const t = await chrome.tabs.get(tabVerif).catch(() => null);
-        const scriptable = t && !t.discarded && /^https:\/\/([^/]*\.)?vinted\./i.test(t.url || "");
-        if (!scriptable) {
-          console.log(
-            `[republish] onglet de travail ${tabVerif} non interrogeable ` +
-            `(${!t ? "disparu" : t.discarded ? "déchargé" : "hors vinted.fr"}) — ` +
-            "vérification du dressing sautée, on recrée",
-          );
-          tabVerif = null;
-        }
-      }
-      let dressingLu = false;
-      let raisonNonLu = "onglet de travail non interrogeable";
-      try {
-        // tabVerif null = abstention décidée juste au-dessus : on ne parle à
-        // personne et on enchaîne sur la recréation.
-        const ident = tabVerif == null
-          ? null
-          : await sendMessageToTab(tabVerif, { type: "VINTED_CURRENT_USER" }).catch(() => null);
-        if (ident?.userId) {
-          const page = await sendMessageToTab(tabVerif, {
-            type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,
-          }).catch(() => null);
-          if (page?.success) {
-            dressingLu = true;
-            const connus = await restRequest(
-              `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
-              accessToken,
-            ).catch(() => []);
-            const { item, raison } = reconnaitreAnnonceRecreee(page.articles, {
-              titre: jobRecreation.title,
-              deletedAt: pf.deleted_at,
-              idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
-            });
-            tracerGarde(pf, "prevol_recreation", {
-              verdict: item ? "deja_recreee" : "a_recreer",
-              champs_verifies: ["dressing_page_1", "titre", "deleted_at"],
-              deja_tentee: dejaTentee === true,
-              detail: item ? String(item.vinted_item_id) : (raison ?? null),
-            });
-            if (item) {
-              await cloreRepublishSurAnnonceExistante(
-                accessToken, job, pf, item.vinted_item_id,
-                item.url ?? `https://www.vinted.fr/items/${item.vinted_item_id}`,
-                "annonce retrouvée dans le dressing avant recréation",
-              );
-              return { status: "published", listingUrl: item.url ?? null };
-            }
-            // ⛔ PLUSIEURS CANDIDATES = ON NE RECRÉE SURTOUT PAS. C'est le cas
-            //    de Déborah : deux annonces identiques nées de la même
-            //    republication. En recréer une troisième serait la seule chose
-            //    à ne pas faire. reconnaitreAnnonceRecreee s'abstient déjà de
-            //    CHOISIR ; on s'abstient aussi de RECRÉER, et on le dit.
-            if (/annonces correspondent/.test(String(raison ?? ""))) {
-              const msg = "Republication en pause : plusieurs annonces identiques sont en ligne sur Vinted "
-                + "(une republication a abouti deux fois). Garde l'annonce que tu veux, supprime l'autre, "
-                + "puis relance depuis la fiche de l'article. Rien n'a été recréé.";
-              pf.recreation_doublon = { at: new Date().toISOString(), raison: String(raison) };
-              await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-              console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);
-              return { status: "needsUser", error: msg };
-            }
-            console.log(`[republish] pas de recréation à éviter (${raison}) — on recrée`);
-          } else raisonNonLu = "le dressing n'a pas répondu";
-        } else if (tabVerif != null) raisonNonLu = "identité Vinted illisible";
-      } catch (e) {
-        raisonNonLu = String(e?.message ?? e);
-        console.warn("[republish] vérification du dressing impossible:", raisonNonLu);
-      }
-
-      // ⛔ DÉJÀ TENTÉE + DRESSING ILLISIBLE = ON NE RECRÉE PAS. Sans cette
-      //    porte, une coupure de canal (= onglet détruit = dressing illisible)
-      //    menait tout droit au doublon, passage après passage.
-      if (dejaTentee && !dressingLu) {
+      if (idsPrecedents.length === 1) {
+        const idExact = idsPrecedents[0];
+        const tabVerif = await getOrCreateWorkTab("vinted", `https://www.vinted.fr/items/${idExact}`).catch(() => null);
+        const preuve = tabVerif == null
+          ? { ok: false, motif: "onglet_indisponible" }
+          : await verifierAnnonceRecreationExacte(tabVerif, idExact, pf.vinted_account_id);
         tracerGarde(pf, "prevol_recreation", {
-          verdict: "report", champs_verifies: ["dressing_page_1"],
-          deja_tentee: true, detail: raisonNonLu,
+          verdict: preuve.ok ? "deja_recreee_exacte" : "report",
+          champs_verifies: ["vinted_item_id", "boutique", "endpoint_edition"],
+          deja_tentee: true,
+          detail: preuve.ok ? idExact : preuve.motif,
         });
+        if (preuve.ok) {
+          const deja = await restRequest(
+            `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=eq.${idExact}&select=id,vinted_item_id`,
+            accessToken,
+          ).catch(() => []);
+          const autre = (deja ?? []).find((r) => job.inventaire_id == null || String(r.id) !== String(job.inventaire_id));
+          if (autre) {
+            pf.needs_user_source = "recreation_deja_importee";
+            const msg = "La nouvelle annonce Vinted est identifiée, mais le relevé l'a déjà ajoutée comme une autre fiche. Aucun redépôt ne part : confirme dans l'app qu'il s'agit du même exemplaire.";
+            await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+            return { status: "needsUser", error: msg };
+          }
+          await cloreRepublishSurAnnonceExistante(
+            accessToken, job, pf, idExact, `https://www.vinted.fr/items/${idExact}`,
+            "identifiant exact de notre tentative, éditable par la boutique attendue",
+          );
+          return { status: "published", listingUrl: `https://www.vinted.fr/items/${idExact}` };
+        }
+        if (preuve.motif === "boutique_etrangere") {
+          pf.needs_user_source = "boutique_etrangere";
+          pf.attente_boutique = { user_id: String(pf.vinted_account_id ?? ""), depuis: new Date().toISOString() };
+          pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+          const msg = "La boutique Vinted ouverte n'est pas celle de cette republication. Ouvre la bonne boutique dans Chrome : la vérification reprendra seule, sans nouveau dépôt.";
+          await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+          return { status: "skipped", error: msg };
+        }
+        if (preuve.motif === "boutique_origine_absente") {
+          pf.needs_user_source = "boutique_inconnue";
+          const msg = "La boutique d'origine de cette republication n'est pas prouvée. Aucun nouveau dépôt ne part tant que cette identité n'est pas confirmée.";
+          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+          return { status: "needsUser", error: msg };
+        }
         pf.next_action_after = new Date(Date.now() + 5 * 60_000).toISOString();
+        pf.recreation_identite_en_attente = { at: new Date().toISOString(), id: idExact, motif: preuve.motif };
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
-        console.warn(
-          `[republish] job ${job.id} : recréation DÉJÀ tentée et dressing illisible (${raisonNonLu}) — ` +
-          "on ne recrée pas, nouvel essai dans 5 min (garde anti-doublon)",
-        );
-        return { status: "skipped", error: "dressing illisible après une tentative — recréation reportée" };
+        return { status: "skipped", error: `identifiant exact encore invérifiable (${preuve.motif})` };
+      }
+      if (dejaTentee) {
+        pf.needs_user_source = "recreation_identite_impossible";
+        const msg = "Une recréation Vinted a déjà été tentée sans rendre d'identifiant exact. Elle a peut-être abouti : aucun nouveau dépôt ne part. Vérifie tes annonces et confirme dans l'app.";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        return { status: "needsUser", error: msg };
       }
 
       // La tentative est MARQUÉE AVANT d'être faite : c'est elle qui rend la
       // vérification obligatoire au passage suivant. Écrite en base tout de
       // suite — une coupure ne doit pas l'emporter avec elle.
+      delete pf.recreation_echec_prouve;
       pf.recreation_tentee = {
         at: new Date().toISOString(),
         n: (Number(pf.recreation_tentee?.n) || 0) + 1,
@@ -21586,11 +21794,16 @@ async function processRepublishJob(job, accessToken) {
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
+      const suiviRedirection = suivreRedirectionsAnnonce(tabId);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
+      if (!result || typeof result !== "object") result = { success: false, error: "réponse de recréation illisible" };
+      const suivi = await suiviRedirection.arreter({ attendreMs: result?.success ? 0 : 15_000 });
+      result.idsRedirection = suivi.ids;
+      result.cheminsRedirection = suivi.chemins;
       dernierGesteRepublishAt = Date.now();
 
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
@@ -22118,6 +22331,25 @@ async function autoCaptureEtRepublier(cand, token, userId) {
 async function processDeleteJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
 
+  if (job.platform === "beebs") {
+    job = await enrichirCibleBeebs(job, accessToken);
+    const idExact = String(job.platform_listing_id ?? "").trim()
+      || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+    if (!/^\d+$/.test(idExact)) {
+      const pf = {
+        ...(job.platform_fields ?? {}),
+        attente_identifiant_beebs: {
+          depuis: job.platform_fields?.attente_identifiant_beebs?.depuis ?? new Date().toISOString(),
+          preuve_attendue: "identifiant exact du relevé Beebs rattaché au dépôt",
+          pose_par: "extension 0.6.80 (porte avant retrait)",
+        },
+      };
+      delete pf.processing_since;
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      return { status: "skipped", error: "retrait Beebs retenu : identifiant exact absent" };
+    }
+  }
+
   // ── Ce qu'il faut pour cibler, PAR PLATEFORME (2026-07-22) ────────────────
   // AVANT : `if (!job.listing_url) → failed`, sans distinction. Un verrou
   // trop large, qui a fait échouer le retrait de la montre G-Shock (job
@@ -22127,35 +22359,44 @@ async function processDeleteJob(job, accessToken) {
   // Or DELETE_TARGETS (juste au-dessus) dit exactement de quoi chacun a besoin :
   //   vinted    → job.listing_url : on navigue SUR l'annonce, sans URL il n'y
   //               a littéralement nulle part où aller ;
-  //   leboncoin → job.listing_url quand il existe (chemin nominal depuis le
-  //               2026-07-22 : la page de l'annonce porte son propre panneau de
-  //               suppression), SINON « Mes annonces » et ciblage par titre —
+  //   leboncoin → job.listing_url exacte : la page de l'annonce porte son
+  //               propre panneau de suppression ; jamais « Mes annonces » ;
   //               d'où un titre non vide exigé dans ce seul cas ;
   //   ebay      → une CONSTANTE (Hub vendeur). L'URL n'y sert à rien pour
-  //               naviguer : c'est le content script qui localise la carte
-  //               dans la liste, par TITRE (garde d'identité à l'appui) ;
+  //               naviguer, mais l'identifiant exact de l'offre reste
+  //               obligatoire pour localiser sa ligne ; jamais le titre ;
   //   beebs     → job.listing_url (page de l'annonce, 2026-09-11) ; sans
   //               identifiant, « Mes annonces » où le handler refuse tout
   //               retrait sans identifiant — jamais par titre.
-  // On exige donc la bonne preuve pour chacun : l'URL là où elle est
-  // indispensable, un titre non vide partout ailleurs — sans titre, le content
-  // script ne peut rien identifier, et le refus reste le bon comportement.
-  const cibleParUrl = job.platform === "vinted";
+  // On exige donc la bonne preuve pour chacun : URL/identifiant durable, jamais
+  // un titre. Une information descriptive peut contredire la cible, pas la
+  // désigner.
+  const cibleParUrl = ["vinted", "leboncoin", "beebs"].includes(job.platform);
   if (cibleParUrl && !job.listing_url) {
-    const msg = "Job delete Vinted sans listing_url : la suppression Vinted navigue sur l'annonce elle-même, il n'y a aucune page de repli.";
+    const msg = `Retrait ${job.platform} retenu : le lien exact de l'annonce manque. Rien n'a été touché et aucune recherche par titre n'est autorisée.`;
+    const pf = {
+      ...(job.platform_fields ?? {}),
+      retrait_attend_lien: {
+        ...(job.platform_fields?.retrait_attend_lien ?? {}),
+        depuis: job.platform_fields?.retrait_attend_lien?.depuis ?? new Date().toISOString(),
+        derniere: new Date().toISOString(),
+        motif: "sans_lien_jamais_par_titre",
+        pose_par: "extension 0.6.80 (porte avant retrait)",
+      },
+    };
+    delete pf.processing_since;
+    await updateJobStatus(accessToken, job.id, "pending", { error: msg, platform_fields: pf });
+    return { status: "skipped", error: msg };
+  }
+  const idEbayColonne = String(job.platform_listing_id ?? "").trim();
+  const idEbayUrl = String(job.listing_url ?? "").match(/\/itm\/(?:[^/]*\/)?(\d{9,})|itemId=(\d{9,})/i)?.slice(1).find(Boolean) ?? "";
+  const idEbayExact = idEbayColonne && idEbayUrl && idEbayColonne !== idEbayUrl ? "" : (idEbayColonne || idEbayUrl);
+  if (job.platform === "ebay" && !/^\d{9,}$/.test(idEbayExact)) {
+    const msg = idEbayColonne && idEbayUrl
+      ? `Job delete eBay avec deux identifiants contradictoires (${idEbayColonne} / ${idEbayUrl}) : retrait interdit.`
+      : "Job delete eBay sans identifiant durable : retrait interdit, aucune recherche par titre.";
     await updateJobStatus(accessToken, job.id, "failed", { error: msg });
     return { status: "failed", error: msg };
-  }
-  if (!cibleParUrl && !job.listing_url && !String(job.title ?? "").trim()) {
-    const msg = `Job delete ${job.platform} sans listing_url NI titre : impossible d'identifier l'annonce dans « Mes annonces ».`;
-    await updateJobStatus(accessToken, job.id, "failed", { error: msg });
-    return { status: "failed", error: msg };
-  }
-  if (!job.listing_url) {
-    console.log(
-      `[background] Job ${job.id} (${job.platform}) : suppression SANS listing_url — ` +
-      `ciblage par titre « ${job.title} » dans la liste, la garde d'identité du handler tranchera`
-    );
   }
 
   try {
@@ -22189,6 +22430,44 @@ async function processDeleteJob(job, accessToken) {
     // Le ré-armement, lui, reste réservé aux non-needsUser (le cas needsUser a
     // sa propre branche plus bas, avec son message d'origine).
     if (result && !result.success && !result.dryRun) {
+      // Boutique inconnue ≠ boutique étrangère. Si une des deux identités
+      // manque, aucune requête n'est partie et le job revient en file : le
+      // serveur peut retrouver la preuve exacte du dépôt (même fiche supprimée)
+      // et la prochaine sonde relira la session. On n'accuse personne d'être
+      // sur la mauvaise boutique.
+      if (job.platform === "vinted" && result.verificationBoutiqueImpossible) {
+        const verdict = nettoyerVerdictSuppression(result.verdict ?? null);
+        const pfV = { ...(job.platform_fields ?? {}) };
+        delete pfV.processing_since;
+        pfV.verification_boutique_vinted = {
+          motif: verdict?.preuve_manquante === "session" ? "session_inconnue" : "origine_inconnue",
+          le: new Date().toISOString(),
+          pose_par: "extension (garde avant retrait)",
+        };
+        if (verdict) pfV.suppression_verdict = verdict;
+        pfV.next_action_after = new Date(Date.now() + 2 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { error: null, platform_fields: pfV });
+        return { status: "skipped", error: "identité de boutique encore invérifiable — retrait non envoyé" };
+      }
+      if (job.platform === "vinted" && result.boutiqueEtrangere) {
+        const b = result.boutiqueEtrangere;
+        const pfB = { ...(job.platform_fields ?? {}) };
+        delete pfB.processing_since;
+        delete pfB.blocage_antirobot;
+        pfB.vinted_account_id = String(b.article);
+        pfB.needs_user_source = "boutique_etrangere";
+        pfB.boutique_etrangere = {
+          motif: "boutique_etrangere",
+          article: String(b.article), session: b.session != null ? String(b.session) : null,
+          login_session: b.login_session ?? null, le: new Date().toISOString(),
+          pose_par: "extension (propriétaire lu sur la page exacte)",
+        };
+        const verdict = nettoyerVerdictSuppression(result.verdict ?? null);
+        if (verdict) pfB.suppression_verdict = verdict;
+        pfB.delete_trace = result.trace ?? [];
+        await updateJobStatus(accessToken, job.id, "needs_user", { error: result.error, platform_fields: pfB });
+        return { status: "needsUser", error: result.error };
+      }
       const lecture = await checkListingState(job.listing_url, job.platform)
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       const { state, raison } = lecture;
@@ -22262,10 +22541,10 @@ async function processDeleteJob(job, accessToken) {
       // retrait tant qu'il vérifie l'annonce (c1c8a6b5 : 5 tentatives brûlées
       // en 8 h). On attend la fin de la vérification, sans tentative ni borne.
       if (result.enVerification) {
-        await attendreFinVerificationVinted(accessToken, job, verdictBrut);
+        await attendreFinVerificationVinted(accessToken, job);
         return { status: "retry", error: verdictBrut };
       }
-      if (!result.needsUser && /^CHALLENGE /i.test(verdictBrut)) {
+      if (!result.needsUser && estBlocageAntiRobotExact(job, result)) {
         const { borne } = await marquerBlocageAntiRobot(accessToken, job, verdictBrut);
         if (!borne) return { status: "retry", error: verdictBrut };
         await rearmBounded(accessToken, job, verdictBrut);
@@ -22291,30 +22570,6 @@ async function processDeleteJob(job, accessToken) {
         await rearmBounded(accessToken, job, verdictBrut);
         return { status: "retry", error: verdictBrut };
       }
-    }
-
-    // ── L'ANNONCE D'UNE AUTRE BOUTIQUE (2026-09-24, remialbertholl) ─────────
-    // vinted.js a lu, sur la page même de l'annonce, qu'elle appartient à un
-    // autre compte Vinted que celui ouvert dans Chrome : le 403 access_denied
-    // n'était pas l'anti-robot. Même sortie que la garde serveur (needs_user
-    // boutique_etrangere), et la boutique est posée SUR LE JOB : au prochain
-    // passage, get-pending-jobs le retient tant que Chrome n'est pas sur la
-    // bonne boutique — plus aucune requête envoyée à Vinted pour rien.
-    if (result?.boutiqueEtrangere && job.platform === "vinted") {
-      const b = result.boutiqueEtrangere;
-      const pfB = { ...(job.platform_fields ?? {}) };
-      delete pfB.processing_since;
-      delete pfB.blocage_antirobot;
-      pfB.vinted_account_id = String(b.article);
-      pfB.needs_user_source = "boutique_etrangere";
-      pfB.boutique_etrangere = {
-        article: String(b.article), session: b.session != null ? String(b.session) : null,
-        login_session: b.login_session ?? null, le: new Date().toISOString(),
-        pose_par: "extension (propriétaire lu sur la page de l'annonce, 24/09)",
-      };
-      pfB.delete_trace = result.trace ?? [];
-      await updateJobStatus(accessToken, job.id, "needs_user", { error: result.error, platform_fields: pfB });
-      return { status: "needsUser", error: result.error };
     }
 
     if (result?.dryRun) {

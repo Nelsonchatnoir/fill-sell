@@ -21,6 +21,7 @@
 // ⛔ CE MODULE NE DÉCIDE RIEN : il lit, et il porte le geste « je ne vends pas
 //    sur X » (`plateforme_ecarter`, réversible, qui ne supprime rien).
 import { supabase } from '../lib/supabase';
+import { preuveIdentiteLeboncoin } from './lbcIdentite';
 
 export const ETATS = Object.freeze({
   CONNECTEE: 'connectee',
@@ -41,31 +42,47 @@ export const PLATEFORMES_VERITE = ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla
 // une réponse de moins de 10 s resservie telle quelle. `frais` passe outre
 // (après un geste : écarter une plateforme, revenir de l'extension).
 const CACHE_MS = 10 * 1000;
-let cache = { le: 0, valeur: null, enVol: null };
+let cache = { le: 0, userId: null, valeur: null, enVol: null };
 
 /** { ok, calcule_le, extension_vue_le, plateformes: { [pf]: { etat, action, … } } } ou null. */
-export async function lireVeritePlateformes({ frais = false } = {}) {
-  if (!frais && cache.valeur && Date.now() - cache.le < CACHE_MS) return cache.valeur;
-  if (cache.enVol) return cache.enVol;
+export async function lireVeritePlateformes({ frais = false, userId = null } = {}) {
+  if (!frais && cache.userId === userId && cache.valeur && Date.now() - cache.le < CACHE_MS) return cache.valeur;
+  if (cache.userId === userId && cache.enVol) return cache.enVol;
   const enVol = (async () => {
     try {
-      const { data, error } = await supabase.rpc('plateformes_verite');
+      const [verite, profil] = await Promise.all([
+        supabase.rpc('plateformes_verite'),
+        userId
+          ? supabase.from('profiles').select('extension_sessions, extension_version').eq('id', userId).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      const { data, error } = verite;
       if (error) throw error;
-      const v = data?.ok === true ? data : null;
-      cache = { le: Date.now(), valeur: v, enVol: null };
+      const base = data?.ok === true ? data : null;
+      const preuveLbc = profil?.error
+        ? { supportee: false, presente: null, verifie_le: null }
+        : preuveIdentiteLeboncoin(profil?.data?.extension_sessions, profil?.data?.extension_version);
+      const v = base ? {
+        ...base,
+        preuves_compte: {
+          ...(base.preuves_compte ?? {}),
+          leboncoin_identite: preuveLbc,
+        },
+      } : null;
+      cache = { le: Date.now(), userId, valeur: v, enVol: null };
       return v;
     } catch (e) {
       cache = { ...cache, enVol: null };
       throw e;
     }
   })();
-  cache = { ...cache, enVol };
+  cache = { ...cache, userId, enVol };
   return enVol;
 }
 
 /** Vide la lecture partagée (changement de compte). */
 export function oublierVeritePlateformes() {
-  cache = { le: 0, valeur: null, enVol: null };
+  cache = { le: 0, userId: null, valeur: null, enVol: null };
 }
 
 /** « Je ne vends pas sur X » (true) / « Finalement, si » (false). Réversible. */

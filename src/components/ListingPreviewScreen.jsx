@@ -20,6 +20,7 @@ import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee, MIN_PHOTOS, MAX
 import GaleriePhotos, { DragHandle, CoverBadge } from "./GaleriePhotos";
 import { usePhotoDrag, moveItem, IS_ANDROID, pickPhotosAndroid } from "../utils/photosGalerie";
 import { texteComparable } from "../utils/texteComparable";
+import { valeurAttributFiche, formatBeebsDepuisFiche, valeurFichePourChampRequis } from "../utils/champsFiche";
 import { sortirDuBrouillon } from "../utils/brouillon";
 import { sessionsDepuisVerite } from "../utils/veritePlateformes";
 import { useVeritePlateformes } from "../reglages/useVeritePlateformes";
@@ -58,7 +59,7 @@ import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimi
 import { messageDecodage } from "../utils/imageDecode";
 import { televerserPhotos } from "../utils/photosUpload";
 import EbayCompteSection from "./EbayCompteSection";
-import { ebayCompteUtilisable, motifEbayInutilisable, repartirParVoie } from "../utils/ebayCompte";
+import { repartirParVoie, portePublicationEbay } from "../utils/ebayCompte";
 import { resumeEbay } from "../utils/ebayParcours";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
@@ -312,6 +313,18 @@ const messagePause = (tpl, pausedReasons, p, platformLabel) =>
 // Repli : si l'état n'a pas été lu, on garde la phrase générique d'avant —
 // on ne nomme jamais une étape qu'on n'a pas relevée.
 const messageCompteEbay = (motif, lang, etat = null) => {
+  if (motif === "verification") return lang === "en"
+    ? "eBay: checking that this account can sell before creating the listing."
+    : "eBay : je vérifie que ce compte peut vendre avant de créer l'annonce.";
+  if (motif === "vendeur_inactif") return lang === "en"
+    ? "eBay: your seller account still needs to be activated before listing."
+    : "eBay : ton compte vendeur doit encore être activé avant de publier.";
+  if (motif === "a_verifier") return lang === "en"
+    ? "eBay: open your seller area so FillSell can verify that selling is ready."
+    : "eBay : ouvre ton espace vendeur pour que FillSell vérifie que la vente est prête.";
+  if (motif === "ecartee") return lang === "en"
+    ? "eBay is marked as a platform you do not use. You can enable it again in settings."
+    : "eBay est indiquée comme plateforme que tu n'utilises pas. Tu peux la réactiver dans les réglages.";
   if (etat) {
     const r = resumeEbay(etat, lang === "en" ? "en" : "fr");
     if (r.phrase && !r.pret) return r.phrase;
@@ -1229,32 +1242,6 @@ function defaultConditionFor(field) {
   return findMatchingOption(DEFAULT_CONDITION, field.options ?? []) || DEFAULT_CONDITION;
 }
 
-// ── LES ATTRIBUTS DE LA FICHE, ET LA SOURCE NE DÉCIDE JAMAIS ───────────────
-// `inventaire.attributs` porte { v, at, source } — écrit par le relevé de
-// CHAQUE plateforme (releve_ebay, releve_leboncoin, releve_beebs, releve_opla)
-// comme par la synchro Vinted (vinted_liste, vinted_detail) et par la capture.
-// ⛔ ON LIT LA VALEUR, QUELLE QUE SOIT SON ORIGINE. Une taille est une taille :
-//    le système sait déjà reprendre une fiche Vinted et l'adapter ailleurs, il
-//    doit faire PAREIL depuis eBay, Leboncoin, Beebs ou Opla. `source` sert à
-//    tracer et à arbitrer un conflit — jamais à décider si on lit.
-// (La chaîne nue est acceptée aussi : les lignes anciennes n'ont pas d'objet.)
-const CLES_FICHE = {
-  etat: "etat", condition: "etat",
-  taille: "taille", size: "taille",
-  couleur: "couleur", color: "couleur",
-  matiere: "matiere", material: "matiere",
-  genre: "genre",
-  marque: "marque", brand: "marque",
-};
-function valeurAttributFiche(attributs, fieldKey) {
-  const cle = CLES_FICHE[fieldKey];
-  if (!cle || !attributs || typeof attributs !== "object" || Array.isArray(attributs)) return null;
-  const e = attributs[cle];
-  const v = e && typeof e === "object" && !Array.isArray(e) ? e.v : e;
-  const t = String(v ?? "").trim();
-  return t || null;
-}
-
 // ── L'ADAPTATION PAR PLATEFORME, POUR LA TAILLE ────────────────────────────
 // findMatchingOption EST l'adaptateur par plateforme, et il est déjà branché
 // sur chaque champ `select` : c'est lui qui transforme une valeur en l'option
@@ -1292,6 +1279,20 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs, attributs
     const adapter = (brut) => (estTaille
       ? optionTaillePlateforme(brut, field.options)
       : findMatchingOption(brut, field.options, { sizeField: false }));
+    const ficheVal = valeurAttributFiche(attributsFiche, field.key, { certaine: true });
+    // Une valeur explicitement relevée sur la fiche prime sur une valeur
+    // rédigée par l'IA. On la traduit seulement si la correspondance est
+    // exacte ; sinon on garde son libellé, afin que la grille dynamique pose
+    // la question au lieu de la remplacer par une estimation.
+    if (ficheVal) {
+      const adaptee = field.type === "select" ? adapter(ficheVal) : ficheVal;
+      // Si la grille statique ne connaît pas encore ce libellé, on conserve
+      // la valeur explicite telle quelle : le contrôle dynamique du rayon la
+      // validera ou posera la question. Retomber sur la proposition IA ici
+      // convertirait silencieusement une taille ou un format.
+      result[field.key] = adaptee || ficheVal;
+      continue;
+    }
     const fromApi = platformFields?.[field.key];
     if (fromApi && fromApi !== "null") {
       result[field.key] = field.type === "select"
@@ -1300,12 +1301,11 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs, attributs
       continue;
     }
     // ── L'ORDRE, ET IL EST DÉFINITIF (2026-09-18) ─────────────────────────
-    //   saisie/IA (ci-dessus) > ATTRIBUT DE LA FICHE > estimation Lens > défaut
+    //   ATTRIBUT EXPLICITE DE LA FICHE > saisie/IA > estimation Lens > défaut
     // Une ESTIMATION n'écrase jamais une valeur relevée. Avant aujourd'hui la
     // fiche n'était pas lue du tout : `taille` interrogeait l'estimation Lens
     // (`taille_estimee`), et genre/matière/couleur n'avaient AUCUN cas — d'où
     // quatre tirets à l'écran pendant que la base portait les valeurs.
-    const ficheVal = valeurAttributFiche(attributsFiche, field.key);
     let lensVal = null;
     switch (field.key) {
       case "etat":
@@ -1583,13 +1583,13 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   oplaVerdict = null,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
-  // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
-  // true UNIQUEMENT pour un compte en voie API (profiles.ebay_voie_api) dont
-  // le compte eBay n'est pas relié / pas fini de paramétrer. eBay est alors
-  // GRISÉ — jamais masqué : la personne doit savoir que la plateforme existe
-  // et ce qu'il lui reste à faire. Aucune autre plateforme n'est touchée, et
-  // un compte en voie extension ne voit rien changer (ebayBloque false).
-  ebayBloque = false, ebayMotif = null, ebayEtatCompte = null, onParametrerEbay = null,
+  // Compte eBay pas encore utilisable : la preuve dépend de la voie réelle
+  // (API ou extension). eBay reste visible mais grisée, avec le geste direct.
+  ebayBloque = false, ebayMotif = null, ebayEtatCompte = null, ebayGeste = null,
+  onParametrerEbay = null, onVerifierEbay = null,
+  // Leboncoin : la Transaction sécurisée exige nom + prénom. Seul le booléen
+  // combiné et daté est lu ; aucune valeur personnelle n'entre dans l'app.
+  lbcIdentiteBloque = false, lbcIdentiteAbsente = false, onVerifierLbc = null,
   // Plateforme EN PAUSE (platform_health, 2026-09-09) : grisée comme une
   // catégorie non supportée, motif sous la rangée = message_fr/message_en
   // écrit en base. Lecture tolérante en amont : drapeau illisible ou absent
@@ -2004,6 +2004,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           // pour un compte en voie API. Grisé comme une catégorie non
           // supportée — même traitement visuel, motif dit sous la rangée.
           const compteAbsent = p === "ebay" && ebayBloque;
+          const identiteLbcAbsente = p === "leboncoin" && lbcIdentiteBloque;
           // Plateforme en pause (platform_health) : verrouillée, motif = le
           // texte écrit en base. La sélection est aussi purgée en amont (effet
           // sur pausedPlatforms) et le RPC refuse platform_paused en dernier
@@ -2023,7 +2024,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           // produit INTERDIT ferme la case. Un trou de mapping par icône ne
           // ferme plus rien — le mot et l'arbitrage ont le droit d'essayer.
           const fermeeCategorie = categorieFermee(support);
-          const disabled = pasEncoreOuverte || fermeeCategorie || dejaEnLigne || enCours || compteAbsent || enPause;
+          const disabled = pasEncoreOuverte || fermeeCategorie || dejaEnLigne || enCours || compteAbsent || identiteLbcAbsente || enPause;
           return (
             <button
               key={p}
@@ -2036,6 +2037,10 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
                 : compteAbsent
                 ? messageCompteEbay(ebayMotif, lang, ebayEtatCompte)
+                : identiteLbcAbsente
+                ? (lbcIdentiteAbsente
+                  ? (lang === 'en' ? 'Add your first and last name on Leboncoin first' : "Ajoute d'abord ton nom et ton prénom sur Leboncoin")
+                  : (lang === 'en' ? 'Leboncoin account information must be checked first' : "Les informations du compte Leboncoin doivent d'abord être vérifiées"))
                 : fermeeCategorie
                 ? (motifSupport ? motifSupport(p, support) : supportMessage(t, support, PLATFORM_LABELS[p]))
                 : enPause
@@ -2155,7 +2160,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
             {messageCompteEbay(ebayMotif, lang, ebayEtatCompte)}
           </p>
-          {onParametrerEbay && (
+          {(ebayGeste === "reglages" || ebayGeste === "ecartee") && onParametrerEbay && (
             <button
               type="button"
               onClick={onParametrerEbay}
@@ -2169,6 +2174,40 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                 ?? (lang === "en" ? "Set up eBay" : "Paramétrer eBay")}
             </button>
           )}
+          {ebayGeste && !["reglages", "ecartee"].includes(ebayGeste) && (
+            <BoutonMeConnecter
+              userId={userId}
+              platform="ebay"
+              motif={ebayGeste === "connexion" ? MOTIFS.CONNEXION
+                : ebayGeste === "reauth" ? MOTIFS.REAUTH_EBAY
+                  : MOTIFS.VENDEUR_EBAY}
+              lang={lang}
+              variante="bouton"
+              onOuverte={onVerifierEbay}
+            />
+          )}
+        </div>
+      )}
+      {lbcIdentiteBloque && !categorieFermee(platformSupport?.leboncoin) && !publishedSet?.has('leboncoin') && !queuedSet?.has('leboncoin') && (
+        <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
+          <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+            {lbcIdentiteAbsente
+              ? (lang === 'en'
+                ? 'Leboncoin needs your first and last name for secure payments. No listing has been queued.'
+                : "Leboncoin demande ton nom et ton prénom pour la Transaction sécurisée. Aucune annonce n'a été mise en file.")
+              : (lang === 'en'
+                ? 'FillSell must first check that both required account fields are present. No listing has been queued.'
+                : "FillSell doit d'abord vérifier que les deux champs requis du compte sont présents. Aucune annonce n'a été mise en file.")}
+          </p>
+          <BoutonMeConnecter
+            userId={userId}
+            platform="leboncoin"
+            motif={MOTIFS.IDENTITE_LBC}
+            lang={lang}
+            variante="bouton"
+            libelleForce={lbcIdentiteAbsente ? null : (lang === 'en' ? 'Check on Leboncoin' : 'Vérifier sur Leboncoin')}
+            onOuverte={onVerifierLbc}
+          />
         </div>
       )}
       {/* Compte en voie EXTENSION (2026-09-08, ouverture du parcours à tous) :
@@ -3113,7 +3152,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null }) {
+function StepPublish({ selected, setSelected, userId = null, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, plateformesVerrouillees = [], motifsVerrouillage = {}, lbcPhotoCap = null, lbcAdresseManquante = null, lbcIdentiteBloque = false, lbcIdentiteAbsente = false, onVerifierLbc = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null, jumeauxEnLigne = [], oplaVerdict = null, attentes = {}, onCompleter = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -3895,14 +3934,19 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
         {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
           .filter(p => !pausedPlatforms.includes(p))
           .map(p => {
-            const verrouillee = plateformesVerrouillees.includes(p);
+            const compteLbcVerrouille = p === "leboncoin" && lbcIdentiteBloque;
+            const verrouillee = plateformesVerrouillees.includes(p) || compteLbcVerrouille;
             const cochee = !verrouillee && chips.includes(p);
             return (
               <button
                 key={p}
                 type="button"
                 disabled={verrouillee}
-                title={verrouillee ? (motifsVerrouillage?.[p] ?? undefined) : undefined}
+                title={verrouillee ? (compteLbcVerrouille
+                  ? (lbcIdentiteAbsente
+                    ? (lang === "en" ? "First and last name required on Leboncoin" : "Nom et prénom requis sur Leboncoin")
+                    : (lang === "en" ? "Leboncoin account information must be checked" : "Informations du compte Leboncoin à vérifier"))
+                  : (motifsVerrouillage?.[p] ?? undefined)) : undefined}
                 onClick={verrouillee ? undefined : () => setSelected(prev => {
                   const s = new Set(prev);
                   if (s.has(p)) s.delete(p); else s.add(p);
@@ -3933,7 +3977,7 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           éteinte — pas un bandeau, pas une modale : la phrase se lit là où
           l'on vient de chercher la case à cocher. */}
       {[...new Set([...chips, ...Object.keys(platformListings?.platforms ?? {})])]
-        .filter(p => plateformesVerrouillees.includes(p) && !pausedPlatforms.includes(p) && motifsVerrouillage?.[p])
+        .filter(p => (plateformesVerrouillees.includes(p) || (p === "leboncoin" && lbcIdentiteBloque)) && !pausedPlatforms.includes(p))
         .map(p => {
           // ── LE GESTE QUI DÉBLOQUE, À CÔTÉ DE L'ATTENTE (2026-09-23) ──────
           // Une attente n'est ni « retire » ni « décoche » : un champ se
@@ -3941,14 +3985,25 @@ function StepPublish({ selected, setSelected, userId = null, platformSessions = 
           // autorisation ou une connexion s'accorde (le même bouton que la
           // carte et les Réglages). Le geste fait, le dépôt repart seul.
           const a = attentes?.[p];
+          const compteLbcVerrouille = p === "leboncoin" && lbcIdentiteBloque;
+          const motifAffiche = compteLbcVerrouille
+            ? (lbcIdentiteAbsente
+              ? (lang === "en" ? "add your first and last name for secure payments" : "ajoute ton nom et ton prénom pour la Transaction sécurisée")
+              : (lang === "en" ? "check the two required account fields" : "vérifie les deux champs requis du compte"))
+            : motifsVerrouillage[p];
           const motifBouton = a?.kind === "attente_autorisation" ? MOTIFS.AUTORISER_OPLA
-            : a?.kind === "attente_connexion" ? (a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION)
+            : a?.kind === "attente_connexion" ? (a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : a.motif === "identite_lbc" ? MOTIFS.IDENTITE_LBC : a.motif === "vendeur_ebay" ? MOTIFS.VENDEUR_EBAY : MOTIFS.CONNEXION)
             : null;
           return (
             <div key={`mv:${p}`} style={{ padding:"0 4px 6px" }}>
               <div style={{ fontSize:11.5, lineHeight:1.5, color:T.mute }}>
-                {PLATFORM_LABELS[p] ?? p} — {motifsVerrouillage[p]}
+                {PLATFORM_LABELS[p] ?? p} — {motifAffiche}
               </div>
+              {compteLbcVerrouille && userId && (
+                <div style={{ marginTop:6 }}>
+                  <BoutonMeConnecter userId={userId} platform="leboncoin" motif={MOTIFS.IDENTITE_LBC} lang={lang} variante="bouton" libelleForce={lbcIdentiteAbsente ? null : (lang === "en" ? "Check on Leboncoin" : "Vérifier sur Leboncoin")} onOuverte={onVerifierLbc} />
+                </div>
+              )}
               {a?.bloque && motifBouton && userId && (
                 <div style={{ marginTop:6 }}>
                   <BoutonMeConnecter userId={userId} platform={p} motif={motifBouton} lang={lang} variante="bouton" />
@@ -4877,30 +4932,31 @@ export default function ListingPreviewScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alreadyPublishedKey, queuedKey, attentesKey, lang]);
 
-  // ── Compte eBay pas paramétré → eBay grisé (07/09/2026, demande Joséphine) ─
-  // « Utilisable » = exactement ce que le trigger cross_post_jobs_voie_ebay
-  // exige pour basculer un job en voie 'api' : compte relié et non révoqué,
-  // les 3 politiques choisies, et la checklist vendeur verte
-  // (seller_state.bloque_par_etat_ebay = false). Le prédicat vit dans
-  // utils/ebayCompte, en un seul exemplaire.
-  //
-  // ⛔ GARDE : rien de tout ceci ne concerne la VOIE EXTENSION. Un compte sans
-  // profiles.ebay_voie_api publie eBay par le formulaire (l'extension remplit
-  // ebay.fr avec la session eBay du navigateur) : ni les conditions de vente,
-  // ni la checklist Account API n'y jouent le moindre rôle. Pour lui, l'effet
-  // ci-dessous rend la main immédiatement — aucun appel réseau, aucun état,
-  // ebayBloque reste false, l'écran est celui d'hier au pixel près.
-  //
-  // La lecture est faite UNE fois par l'hôte (App.jsx) et descendue ici :
-  // `ebayCompte` porte le drapeau, l'état brut du compte, le fait qu'on ait
-  // lu, la VOIE RÉELLE, et de quoi relire. Aucun écran ne recalcule la voie
-  // dans son coin.
+  // ── eBay : aucune création de job sans compte réellement prêt ────────────
+  // La voie API lit l'état OAuth/politiques/checklist ; la voie extension lit
+  // plateformes_verite, dont une preuve du Hub, d'un relevé ou d'un dépôt.
+  // Les preuves ne se remplacent pas : un OAuth relié ne prouve pas la session
+  // Chrome, et une session Chrome ne complète pas les politiques API.
   const [ebayPanneauOuvert, setEbayPanneauOuvert] = useState(false);
   const ebayEtatCompte = ebayCompte?.etat ?? null;
   const ebayEtatLu = Boolean(ebayCompte?.lu);
-  // Tri-état : true = grisé, false = cochable, jamais grisé tant qu'on ne sait pas.
-  const ebayBloque = Boolean(ebayCompte?.voieApi) && ebayEtatLu && ebayCompteUtilisable(ebayEtatCompte) === false;
-  const ebayMotif = ebayBloque ? motifEbayInutilisable(ebayEtatCompte) : null;
+  const ebayPorte = portePublicationEbay({
+    voieApi: Boolean(ebayCompte?.voieApi),
+    etatApi: ebayEtatCompte,
+    etatApiLu: ebayEtatLu,
+    verite: veriteStepper.verite?.plateformes?.ebay ?? null,
+  });
+  const ebayBloque = ebayPorte.bloque;
+  const ebayMotif = ebayPorte.motif;
+  const preuveIdentiteLbc = veriteStepper.verite?.preuves_compte?.leboncoin_identite ?? null;
+  // La porte ne s'active qu'à partir de l'extension qui sait produire cette
+  // preuve (0.6.80). Les versions antérieures ne sont pas condamnées sur une
+  // clé qu'elles ne pouvaient pas écrire ; la 0.6.80, elle, bloque sur
+  // absence OU preuve périmée avant qu'un job ne naisse.
+  const lbcIdentiteBloque = preuveIdentiteLbc?.supportee === true
+    && preuveIdentiteLbc?.presente !== true;
+  const lbcIdentiteAbsente = preuveIdentiteLbc?.supportee === true
+    && preuveIdentiteLbc?.presente === false;
   // ── LA VOIE RÉELLE d'eBay pour CE compte (07/09/2026) ─────────────────────
   // Tout ce qui parle d'extension à l'écran se règle là-dessus, JAMAIS sur le
   // drapeau seul : un compte basculé dont la checklist est rouge repart en
@@ -5137,14 +5193,45 @@ export default function ListingPreviewScreen({
       return next.size === prev.size ? prev : next;
     });
   }, [lockedSet]);
-  // Même filet pour eBay quand le compte n'est pas utilisable : la case est
-  // grisée, elle ne doit pas rester COCHÉE derrière (elle l'est par défaut,
-  // PLATFORMS_DEFAULT contient "ebay", et un brouillon repris la remet). Le
-  // décochage se fait dès que la lecture a tranché — jamais avant.
+  // Même filet pour eBay quand le compte n'est pas utilisable : aucun job ne
+  // naît. On mémorise toutefois la case qui était cochée ; dès que le retour
+  // d'eBay rend une preuve positive, elle se recoche seule. Le geste reprend
+  // donc le parcours sans relance manuelle, tant que l'article lui-même n'est
+  // ni déjà en ligne, ni en file, ni interdit sur eBay.
+  const ebayARemettreRef = useRef(false);
   useEffect(() => {
-    if (!ebayBloque) return;
-    setSelected(prev => (prev.has("ebay") ? new Set([...prev].filter(p => p !== "ebay")) : prev));
-  }, [ebayBloque]);
+    if (ebayBloque) {
+      setSelected(prev => {
+        if (!prev.has("ebay")) return prev;
+        ebayARemettreRef.current = true;
+        return new Set([...prev].filter(p => p !== "ebay"));
+      });
+      return;
+    }
+    if (!ebayARemettreRef.current) return;
+    ebayARemettreRef.current = false;
+    if (lockedSet.has("ebay") || pausedKey.split(",").includes("ebay") || categorieFermee(platformSupport.ebay)) return;
+    setSelected(prev => (prev.has("ebay") ? prev : new Set([...prev, "ebay"])));
+  }, [ebayBloque, lockedSet, pausedKey, platformSupport]);
+
+  // Même règle de reprise pour Leboncoin : on conserve l'intention de la
+  // personne, on retire la plateforme tant que la preuve manque, puis on la
+  // recoche dès que l'endpoint du compte confirme les deux champs.
+  const lbcARemettreRef = useRef(false);
+  useEffect(() => {
+    if (lbcIdentiteBloque) {
+      setSelected(prev => {
+        if (!prev.has("leboncoin")) return prev;
+        lbcARemettreRef.current = true;
+        return new Set([...prev].filter(p => p !== "leboncoin"));
+      });
+      return;
+    }
+    if (!lbcARemettreRef.current) return;
+    lbcARemettreRef.current = false;
+    if (lockedSet.has("leboncoin") || pausedKey.split(",").includes("leboncoin") || categorieFermee(platformSupport.leboncoin)) return;
+    setSelected(prev => (prev.has("leboncoin") ? prev : new Set([...prev, "leboncoin"])));
+  }, [lbcIdentiteBloque, lockedSet, pausedKey, platformSupport]);
 
   // Modale de conversion (solde d'unités insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -5893,7 +5980,7 @@ export default function ListingPreviewScreen({
             // confondues. C'est le chaînon qui manquait : sans lui, taille,
             // genre, matière et couleur restaient en base et l'écran affichait
             // quatre tirets (mesuré sur 1789676224963 et 1789676272841).
-            initialListing?.attributs ?? null
+            attributsBase ?? initialListing?.attributs ?? null
           ),
           price: data.price ?? price ?? null,
         };
@@ -5956,6 +6043,57 @@ export default function ListingPreviewScreen({
       setEdited(initialEdited);
       setPlatformListings(data);
   }
+
+  // La ligne inventaire et la génération arrivent par deux requêtes
+  // indépendantes. Si la génération gagne la course, `appliquerGeneration`
+  // ne pouvait pas encore voir les attributs certains et les cartes restaient
+  // sur l'estimation IA jusqu'à poser une question inutile. Dès que les deux
+  // réponses sont là, on rejoue uniquement le merge local — aucun appel
+  // réseau, aucune catégorie recalculée — et on conserve toutes les clés hors
+  // formulaire (rayon, aspects, preuves). Une fiche/brouillon déjà repris est
+  // exclu : ses champs sont les derniers choix explicites de la personne.
+  const attributsAppliquesRef = useRef({ listings: null, attributs: null });
+  useEffect(() => {
+    if (!platformListings?.platforms || !attributsBase || draft || ficheReprise) return;
+    const deja = attributsAppliquesRef.current;
+    if (deja.listings === platformListings && deja.attributs === attributsBase) return;
+    attributsAppliquesRef.current = { listings: platformListings, attributs: attributsBase };
+    setEdited(prev => {
+      const next = { ...prev };
+      for (const [p, copie] of Object.entries(prev)) {
+        const pf = copie?.platform_fields ?? {};
+        const pfGenere = platformListings.platforms?.[p]?.platform_fields ?? {};
+        const config = platformFieldsConfig[p] ?? [];
+        const certains = mergeFieldsWithLens(
+          pf,
+          lensPourChamps,
+          config,
+          attributsBase,
+        );
+        // Une frappe intervenue pendant les deux requêtes asynchrones est la
+        // dernière valeur explicite. La comparaison avec la copie générée
+        // repère aussi les champs non partagés (État, Genre…) que
+        // sharedOverrides ne suit pas.
+        for (const champ of config) {
+          const cle = champ.key;
+          if (sharedOverrides[p]?.has(cle) || JSON.stringify(pf[cle]) !== JSON.stringify(pfGenere[cle])) {
+            certains[cle] = pf[cle];
+          }
+        }
+        next[p] = { ...copie, platform_fields: { ...pf, ...certains } };
+      }
+      return next;
+    });
+    setSharedFields(prev => {
+      const next = { ...prev };
+      for (const key of SHARED_FIELD_KEYS) {
+        const v = valeurAttributFiche(attributsBase, key, { certaine: true });
+        if (v && !Object.values(sharedOverrides).some(s => s?.has?.(key))) next[key] = v;
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platformListings, attributsBase, draft, ficheReprise]);
 
   // ══ LA RÉSOLUTION PART DÈS LA GÉNÉRATION (2026-09-20) ═════════════════════
   // Jusqu'ici, catégorie et champs plateforme se calculaient au CLIC Publier.
@@ -6529,8 +6667,12 @@ export default function ListingPreviewScreen({
   // (refonte 24/09) La règle vit dans src/publication/moteur/regles.js — même
   // filtre, dans le même ordre ; cet écran l'appelle.
   const plateformesPubliables = useMemo(
-    () => calculerPlateformesPubliables({ selected, platformListings, lbcAdresseManquante, platformSupport }),
-    [selected, platformListings, lbcAdresseManquante, platformSupport]);
+    () => {
+      const lot = calculerPlateformesPubliables({ selected, platformListings, lbcAdresseManquante, platformSupport });
+      if (lbcIdentiteBloque) lot.delete("leboncoin");
+      return lot;
+    },
+    [selected, platformListings, lbcAdresseManquante, platformSupport, lbcIdentiteBloque]);
 
   // ── UN JUMEAU DÉJÀ EN LIGNE SUR LA PLATEFORME VISÉE (2026-09-21) ─────────
   // Le verrou `publishedSet` ne voit que les jobs de CET article. Quand le
@@ -7418,6 +7560,9 @@ export default function ListingPreviewScreen({
   // réellement (clés Vinted = codes serveur, LBC = attribut for= des labels,
   // Beebs = libellés exacts).
   const genericKnownSource = (platform, key, pf) => {
+    const base = (attributsBase && typeof attributsBase === "object") ? attributsBase
+      : (initialListing?.attributs && typeof initialListing.attributs === "object" ? initialListing.attributs : null);
+    const ficheRequise = valeurFichePourChampRequis(platform, key, base);
     if (platform === "vinted") {
       if (key === "brand") return pf.marque;
       if (key === "model") return pf.modele;
@@ -7434,16 +7579,19 @@ export default function ListingPreviewScreen({
       return null;
     }
     if (platform === "leboncoin") {
-      if (/_brand$/.test(key)) return pf.marque;
-      if (key === "condition" || /_condition$/.test(key)) return pf.etat;
-      if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return pf.taille;
-      if (/_material$/.test(key)) return pf.matiere;
+      if (/_brand$/.test(key)) return pf.marque || ficheRequise;
+      if (key === "condition" || /_condition$/.test(key)) return pf.etat || ficheRequise;
+      if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return pf.taille || ficheRequise;
+      if (/_material$/.test(key)) return pf.matiere || ficheRequise;
       // ⚠️ Naming LBC trompeur (relevé DOM 2026-07-17) : clothing_type et
       // shoe_type sont le champ « Univers* » (Femme/Homme/Enfant) — le « Type »
       // réel est clothing_category/shoe_category. Sans ces cas, le pattern
       // générique /_type$/ les routait sur lbcProduit (jamais posé pour la
       // mode) → fausse saisie manuelle de l'Univers à chaque vêtement.
-      if (key === "clothing_type" || key === "shoe_type") return pf.univers || pf.genre;
+      if (key === "clothing_type" || key === "shoe_type") {
+        const genre = String(pf.univers || pf.genre || ficheRequise || "").trim();
+        return ({ Fille: "Enfant", Garçon: "Enfant", Bébé: "Enfant", Enfant: "Enfant" })[genre] ?? genre;
+      }
       // house_and_garden_type = « Univers* » de Maison & Jardin > Décoration
       // (Éclairage/Décoration murale/Objet décoratif…) — ni un genre ni un
       // produit. Du 17/07 au 07/09 cette clé renvoyait `null` EXPLICITE
@@ -7505,15 +7653,15 @@ export default function ListingPreviewScreen({
       return null;
     }
     if (platform === "beebs") {
-      if (key === "Marque") return pf.marque;
-      if (key === "Pointure" || key === "Taille") return pf.taille;
-      if (key === "État") return pf.etat;
-      if (key === "Matière") return pf.matiere;
-      if (key === "Couleur") return pf.colors?.[0] || pf.couleur;
+      if (key === "Marque") return pf.marque || ficheRequise;
+      if (key === "Pointure" || key === "Taille") return pf.taille || ficheRequise;
+      if (key === "État") return pf.etat || ficheRequise;
+      if (key === "Matière") return pf.matiere || ficheRequise;
+      if (key === "Couleur") return pf.colors?.[0] || pf.couleur || ficheRequise;
       if (key === "Âge") return pf.age;
       // Format canonique partagé avec LBC (Lettre/Petit colis/…) — beebs.js le
       // mappe sur les paliers de poids Beebs à la pose (2026-07-19).
-      if (key === "Format du colis") return pf.format_colis;
+      if (key === "Format du colis") return pf.format_colis || ficheRequise;
       return null;
     }
     return null;
@@ -7603,8 +7751,21 @@ export default function ListingPreviewScreen({
       // `plateformesPubliables` couvre déjà « sélectionnée ET générée », plus
       // l'adresse de remise et l'interdiction produit qui manquaient ici.
       if (!plateformesPubliables.has(platform) || !edited[platform]) continue;
-      const pf = edited[platform].platform_fields ?? {};
-      const aspects = pf[GENERIC_ASPECTS_PF_KEY[platform]] ?? {};
+      const pfEdite = edited[platform].platform_fields ?? {};
+      // Le pré-vol produit exactement les champs qui partiront au clic. Pour
+      // LBC/Beebs, certaines traductions sûres (paire Univers/Produit, format
+      // propagé) n'existent que dans ce résultat ; l'écran lisait encore la
+      // copie d'avant et demandait donc un champ que le job savait déjà poser.
+      // La copie éditée reste prioritaire, et aucune valeur n'est créée ici.
+      const pfResolu = (platform === "leboncoin" || platform === "beebs")
+        ? (resolutionAffichee?.pfParPlateforme?.[platform] ?? {})
+        : {};
+      const pfKeyAspects = GENERIC_ASPECTS_PF_KEY[platform];
+      const aspects = {
+        ...((pfResolu?.[pfKeyAspects] && typeof pfResolu[pfKeyAspects] === "object") ? pfResolu[pfKeyAspects] : {}),
+        ...((pfEdite?.[pfKeyAspects] && typeof pfEdite[pfKeyAspects] === "object") ? pfEdite[pfKeyAspects] : {}),
+      };
+      const pf = { ...pfResolu, ...pfEdite, ...(pfKeyAspects ? { [pfKeyAspects]: aspects } : {}) };
       const status = rows.map((r) => {
         const key = r.field_key;
         const label = r.field_label || key;
@@ -7861,7 +8022,7 @@ export default function ListingPreviewScreen({
     // premier rendu après une photo ajoutée ou retirée au step Photos.
     // attributsBase (24/09) : la taille Opla se juge sur la fiche quand la
     // copie n'en porte pas — la fiche arrive après le premier calcul.
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length, attributsBase, initialListing?.attributs, activeAiObjet, resolutionAffichee]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── L'OPTION LUE DANS L'ANNONCE EST POSÉE (2026-09-24) ─────────────────────
   // Pose ce que genericRequiredStatus a déduit du titre / de l'objet IA / de
@@ -8061,10 +8222,11 @@ export default function ListingPreviewScreen({
       //    (sa tête : Levi's, H&M ; son début d'alphabet : Agnès b) au lieu
       //    de la marque réelle absente du relevé.
       const KNOWN_BY_TARGET = {
-        marque:  src.platform_fields?.marque  || sharedFields.marque  || initialListing?.marque  || null,
-        matiere: src.platform_fields?.matiere || sharedFields.matiere || initialListing?.matiere || null,
-        couleur: src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || sharedFields.couleur || initialListing?.couleur || null,
-        taille:  src.platform_fields?.taille  || sharedFields.taille  || null,
+        marque:  src.platform_fields?.marque  || sharedFields.marque  || attributV("marque") || initialListing?.marque  || null,
+        matiere: src.platform_fields?.matiere || sharedFields.matiere || attributV("matiere") || initialListing?.matiere || null,
+        couleur: src.platform_fields?.colors?.[0] || src.platform_fields?.couleur || sharedFields.couleur || attributV("couleur") || initialListing?.couleur || null,
+        taille:  src.platform_fields?.taille  || sharedFields.taille  || attributV("taille") || null,
+        format_colis: src.platform_fields?.format_colis || (gp === "beebs" ? formatBeebsDepuisFiche(attributsBase, { certaine: true }) : null),
         modele:  src.platform_fields?.modele  || lensPourChamps?.modele || null,
       };
       // ── Univers LBC pré-rempli depuis le GENRE (2026-09-02, cas Delavier) ──
@@ -8078,7 +8240,7 @@ export default function ListingPreviewScreen({
       const UNIVERS_PAR_GENRE = { "Femme": "Femme", "Homme": "Homme", "Fille": "Enfant", "Garçon": "Enfant", "Bébé": "Enfant", "Enfant": "Enfant" };
       const genreArticle = String(
         src.platform_fields?.genre || src.platform_fields?.univers
-        || edited.vinted?.platform_fields?.genre || edited.beebs?.platform_fields?.genre || ""
+        || edited.vinted?.platform_fields?.genre || edited.beebs?.platform_fields?.genre || attributV("genre") || ""
       ).trim();
       const missing = [];
       for (const a of missingAll) {
@@ -9986,8 +10148,13 @@ export default function ListingPreviewScreen({
             ebayBloque={ebayBloque}
             ebayMotif={ebayMotif}
             ebayEtatCompte={ebayEtatCompte}
+            ebayGeste={ebayPorte.geste}
             ebayVoieApi={Boolean(ebayCompte?.voieApi)}
             onParametrerEbay={() => setEbayPanneauOuvert(true)}
+            onVerifierEbay={veriteStepper.relire}
+            lbcIdentiteBloque={lbcIdentiteBloque}
+            lbcIdentiteAbsente={lbcIdentiteAbsente}
+            onVerifierLbc={veriteStepper.relire}
             pausedPlatforms={pausedPlatforms}
             pausedReasons={pausedReasons}
             lang={lang}
@@ -10100,6 +10267,9 @@ export default function ListingPreviewScreen({
             onCompleter={onCompleter}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
+            lbcIdentiteBloque={lbcIdentiteBloque}
+            lbcIdentiteAbsente={lbcIdentiteAbsente}
+            onVerifierLbc={veriteStepper.relire}
             jumeauxEnLigne={jumeaux}
             descriptionMentions={descriptionMentions}
             ebayVoieApiReelle={ebayVoieApiReelle}

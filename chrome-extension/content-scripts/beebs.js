@@ -940,6 +940,11 @@ async function fillListingForm(job) {
   }
 
   const fields = job.platform_fields || {};
+  // Pré-vol de republication : même formulaire, même catégorie, mêmes champs
+  // dynamiques et mêmes listes que le futur redépôt, mais aucun upload ni clic
+  // de publication. Le background ne retire l'ancienne annonce que si ce
+  // passage complet rend une preuve positive.
+  const republishPreflightOnly = fields.republish_prevol_only === true;
 
   // Interstitiel à l'arrivée (2026-07-26) : la modale promo peut être déjà
   // posée au chargement du formulaire — la fermer avant TOUTE interaction
@@ -990,7 +995,7 @@ async function fillListingForm(job) {
     };
   }
 
-  const photoNote = job.photos?.length ? await uploadPhotos(job.photos) : null;
+  const photoNote = !republishPreflightOnly && job.photos?.length ? await uploadPhotos(job.photos) : null;
   if (job.title) await fillTextField("#title", job.title);
   if (job.description) await fillTextField("#description", job.description);
 
@@ -1235,46 +1240,6 @@ async function fillListingForm(job) {
   // les présente en saisie manuelle. Avant ce gate, le job partait en
   // « COMPLÉTÉ AVEC CHAMPS MANQUANTS » : publié quand Beebs tolérait, refus
   // opaque sinon.
-  // ── UN OBJET SANS TAILLE PREND LA NEUTRE, IL NE POSE PAS DE QUESTION ──────
-  // (2026-09-21) Les barrettes de meminiandmove : Beebs exige « Taille » sur
-  // « Accessoires (fille) » et n'offre que trois valeurs — « Bébé 0-36 mois »,
-  // « Enfant 3 ans et plus », « Taille Unique ». Une barrette n'a pas d'âge :
-  // la seule réponse juste est la neutre, et la demander serait demander à
-  // quelqu'un de recopier une évidence.
-  // ⛔ SEULEMENT QUAND LA COPIE N'EN PORTE AUCUNE. Si elle porte une taille qui
-  //    n'a pas pu être posée (« panne de remplissage », cas (b) du message
-  //    ci-dessous), on ne la remplace SURTOUT pas par « Unique » : c'est une
-  //    vraie taille, et l'écraser publierait un vêtement sans sa taille.
-  // ⛔ ET SEULEMENT SI BEEBS L'OFFRE : la valeur vient de SA liste, relevée sur
-  //    la page — jamais d'un libellé écrit par nous.
-  if (unfilledRequired.length) {
-    for (const cle of [...unfilledRequired]) {
-      if (!/^(taille|pointure)$/i.test(String(libelleHumainDeCle(cle) ?? ""))) continue;
-      const dejaLa = String(fields.beebsAspects?.[cle] ?? "").trim() || String(fields.taille ?? "").trim();
-      if (dejaLa) continue;
-      const meta = enumerated.find((e) => e.key === cle);
-      const options = (Array.isArray(meta?.options) && meta.options.length ? meta.options : beebsObservedOptions[cle]) ?? [];
-      const neutre = options.map((o) => String(o ?? "").trim())
-        .find((o) => /^(taille\s+)?(unique|universelle)$/i.test(o));
-      if (!neutre) continue;
-      const champ = resoudreChamps(cle)[0] ?? null;
-      if (!champ?.trigger) continue;
-      const echecs = [];
-      try {
-        await poserValeurSurChamp(champ, neutre, warnings, echecs, { sizeField: true }, { cle });
-      } catch (e) {
-        console.warn(`[beebs] valeur neutre « ${neutre} » pour « ${cle} » : ${String(e?.message ?? e)}`);
-        continue;
-      }
-      if (echecs.length) continue;
-      const i = unfilledRequired.indexOf(cle);
-      if (i >= 0) unfilledRequired.splice(i, 1);
-      const note = `${cle}: la copie ne porte aucune taille — valeur neutre « ${neutre} » prise dans la liste de Beebs`;
-      console.log(`[beebs] ${note}`);
-      warnings.push(note);
-    }
-  }
-
   if (unfilledRequired.length) {
     // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
     // identifié. Premier requis vide, un champ à la fois (le suivant re-passera
@@ -1541,6 +1506,17 @@ async function fillListingForm(job) {
         error: `Prix absent ou nul dans le formulaire Beebs au moment du dépôt (#price = "${priceEl?.value ?? "introuvable"}") — dépôt annulé pour éviter une annonce sans prix.`,
       };
     }
+  }
+
+  if (republishPreflightOnly) {
+    console.log("[beebs] pré-vol de republication complet : formulaire remplissable, aucun clic de mise en vente");
+    return {
+      success: true,
+      republishPreflight: true,
+      warnings,
+      unfilledRequired,
+      discoveredRequired: enumerated,
+    };
   }
 
   const publishBtn = document.querySelector('button[type="submit"]');

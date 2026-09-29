@@ -33,7 +33,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
-import { PLATFORM_LOGIN_URLS, EBAY_VENDEUR_URL } from './shared';
+import { PLATFORM_LOGIN_URLS, EBAY_VENDEUR_URL, LBC_IDENTITE_URL } from './shared';
 
 /** Le `kind` de nos lignes dans la file. Inerte pour les autres lecteurs. */
 export const KIND_CONNEXION = 'connexion';
@@ -45,6 +45,7 @@ export const KIND_CONNEXION = 'connexion';
  *    page que l'ordinateur n'ouvrira jamais.
  */
 export const VERSION_MINIMALE = '0.6.53';
+export const VERSION_MINIMALE_ANTIROBOT_VINTED = '0.6.80';
 
 /** « 0.6.53 » ≥ « 0.6.53 » — comparaison numérique, segment par segment. */
 export function versionAuMoins(version, minimum) {
@@ -125,7 +126,9 @@ export function estWeb() {
  */
 export function lienWeb(platform, motif = MOTIFS.CONNEXION) {
   if (motif === MOTIFS.AUTORISER_OPLA || platform === 'opla') return null;
+  if (motif === MOTIFS.ANTIROBOT_VINTED) return null;
   if (motif === MOTIFS.VENDEUR_EBAY) return EBAY_VENDEUR_URL;
+  if (motif === MOTIFS.IDENTITE_LBC) return LBC_IDENTITE_URL;
   return PLATFORM_LOGIN_URLS[platform] ?? null;
 }
 
@@ -138,6 +141,8 @@ export const MOTIFS = Object.freeze({
   CONNEXION: 'connexion',
   REAUTH_EBAY: 'reauth_ebay',
   VENDEUR_EBAY: 'vendeur_ebay',
+  IDENTITE_LBC: 'identite_lbc',
+  ANTIROBOT_VINTED: 'antirobot_vinted',
   // ⛔ OPLA N'EST PAS UNE CONNEXION. Son mur est une permission d'hôte Chrome,
   //    et `chrome.permissions.request` n'accepte de s'exécuter que dans un
   //    geste de la personne, sur une page d'extension. L'extension ouvre donc
@@ -148,6 +153,7 @@ export const MOTIFS = Object.freeze({
 /** L'adresse à ouvrir pour un motif donné (informative : c'est l'extension qui ouvre). */
 export function adressePour(platform, motif = MOTIFS.CONNEXION) {
   if (motif === MOTIFS.VENDEUR_EBAY || motif === MOTIFS.REAUTH_EBAY) return 'https://www.ebay.fr/sl/sell';
+  if (motif === MOTIFS.IDENTITE_LBC) return LBC_IDENTITE_URL;
   if (motif === MOTIFS.AUTORISER_OPLA) return null; // c'est le popup, pas une page web
   return ADRESSE_CONNEXION[platform] ?? null;
 }
@@ -218,6 +224,36 @@ export function demanderAutorisationOplaSurLeWeb() {
   });
 }
 
+// Vinted sur le web : un lien target=_blank ouvrirait bien la page, mais ne
+// dirait pas à l'extension que cette ouverture est LE geste attendu. Ce pont
+// arme pendant 10 minutes l'onglet créé par l'extension ; chaque navigation de
+// cet onglet provoque alors une unique sonde /users/current.
+export const VERIFICATION_VINTED_ATTENTE_MS = 4000;
+export function demanderVerificationVintedSurLeWeb() {
+  return new Promise((resolve) => {
+    let fini = false;
+    const finir = (r) => {
+      if (fini) return;
+      fini = true;
+      window.removeEventListener('message', onMessage);
+      clearTimeout(minuteur);
+      resolve(r);
+    };
+    const onMessage = (e) => {
+      if (e.source !== window || !e.data?.__fillsellVintedAntirobotOuverture) return;
+      const rep = e.data.__fillsellVintedAntirobotOuverture;
+      finir({ ok: rep?.ok === true, ouverte: rep?.ouverte === true, motif: rep?.ok ? null : 'refusee' });
+    };
+    const minuteur = setTimeout(
+      () => finir({ ok: false, ouverte: false, motif: 'extension_absente' }),
+      VERIFICATION_VINTED_ATTENTE_MS,
+    );
+    window.addEventListener('message', onMessage);
+    try { window.postMessage({ __fillsellCmd: 'VINTED_ANTIROBOT_OUVRIR' }, window.location.origin); }
+    catch { finir({ ok: false, ouverte: false, motif: 'extension_absente' }); }
+  });
+}
+
 /** Marque périmées les demandes de connexion trop vieilles de ce compte. */
 export async function purgerMesDemandes(userId) {
   if (!userId) return;
@@ -264,7 +300,10 @@ export function useDemandeConnexion({ userId }) {
       // ⚠️ MIROIR du garde-fou serveur : get-pending-jobs ne sert les demandes
       //    de connexion qu'aux extensions ≥ VERSION_MINIMALE. En deçà, la
       //    demande partirait dans le vide et l'écran attendrait pour rien.
-      tropVieille = !muette && !versionAuMoins(data?.extension_version, VERSION_MINIMALE);
+      const minimum = motif === MOTIFS.ANTIROBOT_VINTED
+        ? VERSION_MINIMALE_ANTIROBOT_VINTED
+        : VERSION_MINIMALE;
+      tropVieille = !muette && !versionAuMoins(data?.extension_version, minimum);
     } catch { /* illisible : on ne conclut rien, on tente */ }
 
     if (tropVieille) { setEtat('trop_vieille'); return { ok: false, motif: 'extension_trop_vieille' }; }

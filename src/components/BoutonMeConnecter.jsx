@@ -18,7 +18,10 @@
 import { useState } from 'react';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { UI } from './ui';
-import { MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion, demanderAutorisationOplaSurLeWeb } from '../utils/connexionPlateformes';
+import {
+  MOTIFS, NOMS_PLATEFORME, estWeb, lienWeb, useDemandeConnexion,
+  demanderAutorisationOplaSurLeWeb, demanderVerificationVintedSurLeWeb,
+} from '../utils/connexionPlateformes';
 import { demarrerConnexionEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
 
 // ⟦opla-autorisation-app:début⟧
@@ -40,16 +43,23 @@ const T = {
     pasConnecte: (n) => `Tu n'es pas connecté à ${n} sur ton ordinateur.`,
     reauth: 'eBay te demande une reconnexion de sécurité pour vendre.',
     vendeur: "Ton compte eBay n'est pas encore prêt pour vendre.",
+    identiteLbc: 'Leboncoin demande ton nom et ton prénom pour la Transaction sécurisée.',
+    completerIdentite: 'Compléter sur Leboncoin',
+    antirobotVinted: 'Vinted demande une vérification sur ton compte. Ouvre la page : FillSell vérifie aussitôt, puis toute ta file repart seule.',
+    verifierVinted: 'Vérifier sur Vinted',
     oplaAcces: MESSAGE_AUTORISATION_OPLA,
     enCours: 'On ouvre…',
     ouverte: (n) => `La page de connexion ${n} s'est ouverte sur ton ordinateur.`,
     ouvertePopup: 'La fenêtre FillSell s\'est ouverte sur ton ordinateur : appuie sur « Autoriser Opla ».',
     ouverteEbayVendeur: "La page d'inscription vendeur eBay s'est ouverte sur ton ordinateur.",
+    ouverteIdentiteLbc: 'La page Informations personnelles Leboncoin s’est ouverte sur ton ordinateur.',
+    ouverteAntirobotVinted: 'La page Vinted s’est ouverte sur ton ordinateur. Termine la vérification si elle s’affiche : toute ta file repart ensuite seule.',
     muette: 'Ton ordinateur ne répond pas. Ouvre Chrome, puis réessaie.',
     tropVieille: 'Ton ordinateur met FillSell à jour. Réessaie dans un moment.',
     refusee: "On n'a pas pu envoyer la demande. Réessaie dans un instant.",
     // Sur le web, quand l'extension ne répond pas : elle n'est pas là.
     oplaExtensionAbsente: "L'extension FillSell n'est pas installée sur cet ordinateur : c'est elle qui publie sur Opla.",
+    vintedExtensionAbsente: "L'extension FillSell ne répond pas encore à cette vérification sur cet ordinateur. Mets-la à jour, puis réessaie.",
     oplaExtensionLien: "Installer l'extension",
     oplaDejaAccordee: "C'est déjà autorisé : l'annonce repart toute seule.",
     reessayer: 'Réessayer',
@@ -74,15 +84,22 @@ const T = {
     pasConnecte: (n) => `You're not signed in to ${n} on your computer.`,
     reauth: 'eBay is asking you to sign in again to sell.',
     vendeur: 'Your eBay account is not ready to sell yet.',
+    identiteLbc: 'Leboncoin needs your first and last name for secure payments.',
+    completerIdentite: 'Complete on Leboncoin',
+    antirobotVinted: 'Vinted is asking for an account check. Open the page: FillSell checks again immediately, then your whole queue resumes automatically.',
+    verifierVinted: 'Check on Vinted',
     oplaAcces: 'Opla is waiting for your permission so FillSell can list there. Tap “Autoriser Opla”: once is enough, and the listing goes out on its own.',
     enCours: 'Opening…',
     ouverte: (n) => `The ${n} sign-in page opened on your computer.`,
     ouvertePopup: 'The FillSell window opened on your computer: tap “Autoriser Opla”.',
     ouverteEbayVendeur: 'The eBay seller registration page opened on your computer.',
+    ouverteIdentiteLbc: 'The Leboncoin personal information page opened on your computer.',
+    ouverteAntirobotVinted: 'The Vinted page opened on your computer. Complete the check if it appears; your whole queue then resumes automatically.',
     muette: 'Your computer is not responding. Open Chrome, then try again.',
     tropVieille: 'Your computer is updating FillSell. Try again shortly.',
     refusee: "We couldn't send the request. Try again in a moment.",
     oplaExtensionAbsente: 'The FillSell extension is not installed on this computer: it is what publishes on Opla.',
+    vintedExtensionAbsente: 'The FillSell extension cannot handle this check on this computer yet. Update it, then try again.',
     oplaExtensionLien: 'Install the extension',
     oplaDejaAccordee: 'Already allowed: the listing goes out on its own.',
     reessayer: 'Try again',
@@ -102,6 +119,8 @@ function libelle(t, platform, motif) {
   if (motif === MOTIFS.AUTORISER_OPLA) return t.autoriser;
   if (motif === MOTIFS.VENDEUR_EBAY) return t.ouvrirEbay;
   if (motif === MOTIFS.REAUTH_EBAY) return t.meReconnecter;
+  if (motif === MOTIFS.IDENTITE_LBC) return t.completerIdentite;
+  if (motif === MOTIFS.ANTIROBOT_VINTED) return t.verifierVinted;
   return t.meConnecter;
 }
 
@@ -111,6 +130,8 @@ function phraseMur(lang, platform, motif) {
   if (motif === MOTIFS.AUTORISER_OPLA) return t.oplaAcces;
   if (motif === MOTIFS.VENDEUR_EBAY) return t.vendeur;
   if (motif === MOTIFS.REAUTH_EBAY) return t.reauth;
+  if (motif === MOTIFS.IDENTITE_LBC) return t.identiteLbc;
+  if (motif === MOTIFS.ANTIROBOT_VINTED) return t.antirobotVinted;
   return t.pasConnecte(NOMS_PLATEFORME[platform] ?? platform);
 }
 
@@ -121,7 +142,7 @@ function phraseMur(lang, platform, motif) {
  */
 export default function BoutonMeConnecter({
   userId, platform, motif = MOTIFS.CONNEXION, lang = 'fr',
-  variante = 'ligne', onOuverte, style,
+  variante = 'ligne', onOuverte, style, libelleForce = null,
 }) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
   const { etat: etatDemande, demander, reinitialiser: reinitialiserDemande } = useDemandeConnexion({ userId });
@@ -129,9 +150,9 @@ export default function BoutonMeConnecter({
   const [busyApi, setBusyApi] = useState(false);
   // Opla sur le WEB (2026-09-23) : le bouton demande à l'extension d'ouvrir sa
   // page, où le geste se fait. États propres, hors de la file mobile.
-  const [etatOplaWeb, setEtatOplaWeb] = useState('repos'); // repos | demande | ouverte | deja | absente | refusee
-  const etat = etatOplaWeb !== 'repos' ? etatOplaWeb : etatDemande;
-  const reinitialiser = () => { setEtatOplaWeb('repos'); reinitialiserDemande(); };
+  const [etatPontWeb, setEtatPontWeb] = useState('repos'); // repos | demande | ouverte | deja | absente | refusee
+  const etat = etatPontWeb !== 'repos' ? etatPontWeb : etatDemande;
+  const reinitialiser = () => { setEtatPontWeb('repos'); reinitialiserDemande(); };
 
   const nom = NOMS_PLATEFORME[platform] ?? platform;
   const enVol = etat === 'demande';
@@ -155,6 +176,7 @@ export default function BoutonMeConnecter({
   // bouton demande donc à l'extension d'OUVRIR cette page (pont
   // fillsell-auth.js) ; la personne y appuie sur « Autoriser Opla ».
   const oplaSurWeb = web && motif === MOTIFS.AUTORISER_OPLA;
+  const antirobotVintedSurWeb = web && motif === MOTIFS.ANTIROBOT_VINTED;
 
   const lancer = async (motifEffectif = motif) => {
     const r = await demander(platform, motifEffectif);
@@ -162,11 +184,18 @@ export default function BoutonMeConnecter({
   };
 
   const lancerOplaSurLeWeb = async () => {
-    setEtatOplaWeb('demande');
+    setEtatPontWeb('demande');
     const r = await demanderAutorisationOplaSurLeWeb();
-    if (r.dejaAccordee) { setEtatOplaWeb('deja'); if (onOuverte) onOuverte(); return; }
-    if (r.ok && r.ouverte) { setEtatOplaWeb('ouverte'); if (onOuverte) onOuverte(); return; }
-    setEtatOplaWeb(r.motif === 'extension_absente' ? 'absente' : 'refusee');
+    if (r.dejaAccordee) { setEtatPontWeb('deja'); if (onOuverte) onOuverte(); return; }
+    if (r.ok && r.ouverte) { setEtatPontWeb('ouverte'); if (onOuverte) onOuverte(); return; }
+    setEtatPontWeb(r.motif === 'extension_absente' ? 'absente' : 'refusee');
+  };
+
+  const lancerAntirobotVintedSurLeWeb = async () => {
+    setEtatPontWeb('demande');
+    const r = await demanderVerificationVintedSurLeWeb();
+    if (r.ok && r.ouverte) { setEtatPontWeb('ouverte'); if (onOuverte) onOuverte(); return; }
+    setEtatPontWeb(r.motif === 'extension_absente' ? 'absente' : 'refusee');
   };
 
   const auClic = () => {
@@ -174,6 +203,7 @@ export default function BoutonMeConnecter({
     // sécurité, elle, passe TOUJOURS par le site : l'API n'y peut rien.
     if (platform === 'ebay' && motif === MOTIFS.CONNEXION) { setModaleEbay(true); return; }
     if (oplaSurWeb) { lancerOplaSurLeWeb(); return; }
+    if (antirobotVintedSurWeb) { lancerAntirobotVintedSurLeWeb(); return; }
     lancer();
   };
 
@@ -195,9 +225,11 @@ export default function BoutonMeConnecter({
     etat === 'ouverte'
       ? (motif === MOTIFS.AUTORISER_OPLA ? t.ouvertePopup
         : motif === MOTIFS.VENDEUR_EBAY ? t.ouverteEbayVendeur
+        : motif === MOTIFS.IDENTITE_LBC ? t.ouverteIdentiteLbc
+        : motif === MOTIFS.ANTIROBOT_VINTED ? t.ouverteAntirobotVinted
         : t.ouverte(nom))
       : etat === 'deja' ? t.oplaDejaAccordee
-      : etat === 'absente' ? t.oplaExtensionAbsente
+      : etat === 'absente' ? (motif === MOTIFS.ANTIROBOT_VINTED ? t.vintedExtensionAbsente : t.oplaExtensionAbsente)
       : etat === 'muette' ? t.muette
       : etat === 'trop_vieille' ? t.tropVieille
       : etat === 'refusee' ? t.refusee
@@ -230,7 +262,7 @@ export default function BoutonMeConnecter({
       onClick={() => { if (onOuverte) setTimeout(onOuverte, 1500); }}
       style={habit(false)}
     >
-      {dedans(libelle(t, platform, motif))}
+      {dedans(libelleForce ?? libelle(t, platform, motif))}
     </a>
   ) : (
     <button
@@ -242,7 +274,7 @@ export default function BoutonMeConnecter({
     >
       {dedans(enVol ? t.enCours
         : etat === 'muette' || etat === 'refusee' || etat === 'trop_vieille' || etat === 'absente' ? t.reessayer
-        : libelle(t, platform, motif))}
+        : (libelleForce ?? libelle(t, platform, motif)))}
     </button>
   );
 

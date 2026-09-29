@@ -21,7 +21,7 @@ export function useVeritePlateformes({ userId, plateformes, actif = true }) {
   const lire = useCallback(async (frais = false) => {
     if (!userId) return;
     try {
-      const v = await lireVeritePlateformes({ frais });
+      const v = await lireVeritePlateformes({ frais, userId });
       setVerite(v);
     } catch (e) {
       console.warn('[verite] vérité des plateformes illisible :', e?.message ?? e);

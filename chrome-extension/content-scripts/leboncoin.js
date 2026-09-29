@@ -60,6 +60,29 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       if (e.data.envoi) chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_ENVOI", envoi: e.data.envoi }).catch(() => {});
     } catch { /* extension rechargée : sans conséquence */ }
   });
+
+  // ── TRANSACTION SÉCURISÉE : RELECTURE APRÈS LE GESTE, SANS DONNÉE ───────
+  // Sur la page officielle des informations personnelles, un enregistrement
+  // demande au background de relire l'endpoint du compte. Le content script
+  // ne lit aucun nom et ne transmet aucune valeur : seulement « relis ». Deux
+  // lectures bornées couvrent l'enregistrement asynchrone de la page.
+  let derniereVerificationIdentite = 0;
+  const demanderVerificationIdentite = () => {
+    if (location.pathname !== "/account/private-details/informations") return;
+    const maintenant = Date.now();
+    if (maintenant - derniereVerificationIdentite < 1200) return;
+    derniereVerificationIdentite = maintenant;
+    for (const delai of [1800, 7000]) {
+      setTimeout(() => {
+        try { chrome.runtime.sendMessage({ type: "LBC_IDENTITE_VERIFIER" }).catch(() => {}); }
+        catch { /* extension rechargée */ }
+      }, delai);
+    }
+  };
+  document.addEventListener("submit", demanderVerificationIdentite, true);
+  document.addEventListener("click", (e) => {
+    if (e.target?.closest?.("button, input[type='submit']")) demanderVerificationIdentite();
+  }, true);
 }
 
 // ── Relevé d'étape et diagnostic de page (2026-09-05, cas geronimo) ──────────
@@ -344,7 +367,14 @@ async function deleteListing(job) {
   const adId = idMatch?.[1] ?? null;
 
   if (/^\/ad\//.test(location.pathname)) return deleteDepuisPageAnnonce(job, adId, trace, t);
-  if (/mes-annonces/.test(location.pathname)) return deleteDepuisListe(job, adId, trace, t);
+  if (/mes-annonces/.test(location.pathname)) {
+    t("ABANDON : page de liste — une carte ou un titre ne prouve jamais l'exemplaire à retirer");
+    return {
+      success: false,
+      error: "Retrait Leboncoin reporté : le lien exact de l'annonce est requis. Rien n'a été touché.",
+      trace,
+    };
+  }
   return { success: false, error: `Page inattendue pour une suppression LBC : ${location.href}`, trace };
 }
 

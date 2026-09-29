@@ -65,7 +65,7 @@ console.log('2. Le relevé ne lit rien hors liste');
     'jamais « compte vide » conclu sur une page hors liste');
   const appels = bg.match(/findListingLinkInPage\([^)]*requireTitle: true[^)]*\)/g) ?? [];
   const surListe = appels.filter((a) => /listeDuCompte/.test(a)).length;
-  ok(surListe === 4, `recherche d'URL par titre sur « Mes annonces » : 4 appels bornés à la liste (${surListe})`);
+  ok(surListe === 0, `aucune recherche d'URL par titre sur « Mes annonces » (${surListe})`);
 }
 
 console.log('3. Les libellés lus par le serveur sont ceux que l\'extension écrit');

@@ -98,12 +98,21 @@ export default function SousPagePlateformes({ c, T }) {
             const nom = NOMS[pf] ?? pf;
             const v = verite?.plateformes?.[pf] ?? depuisAncienEtat(etats?.[pf] ?? null);
             const etat = pf === 'opla' ? etatOplaAffiche(v.etat, verdictOpla) : v.etat;
+            const preuveIdentiteLbc = pf === 'leboncoin' ? verite?.preuves_compte?.leboncoin_identite : null;
+            const identiteLbcBloquee = pf === 'leboncoin'
+              && etat === ETATS.CONNECTEE
+              && preuveIdentiteLbc?.supportee === true
+              && preuveIdentiteLbc?.presente !== true;
+            const identiteLbcACompleter = identiteLbcBloquee && preuveIdentiteLbc?.presente === false;
+            const identiteLbcAVerifier = identiteLbcBloquee && preuveIdentiteLbc?.presente == null;
             // Opla sans AUCUNE preuve d'accès, et pas écartée : le bouton reste.
             const oplaSansPreuve = pf === 'opla' && verdictOpla === 'inconnu' && etat !== ETATS.ECARTEE && etat !== ETATS.A_AUTORISER;
             const quand = v.depuis ? ilYA(v.depuis, fr) : null;
-            const ton = etat === ETATS.CONNECTEE ? 'ok'
+            const ton = identiteLbcACompleter ? 'ko' : identiteLbcAVerifier ? 'inconnu' : etat === ETATS.CONNECTEE ? 'ok'
               : (etat === ETATS.A_CONNECTER || etat === ETATS.A_AUTORISER) ? 'ko' : 'inconnu';
-            const libelle = etat === ETATS.CONNECTEE ? T.veriteConnecte
+            const libelle = identiteLbcACompleter ? (fr ? 'À compléter' : 'To complete')
+              : identiteLbcAVerifier ? (fr ? 'À vérifier' : 'To check')
+              : etat === ETATS.CONNECTEE ? T.veriteConnecte
               : etat === ETATS.A_CONNECTER ? T.pasConnecte
               : etat === ETATS.A_AUTORISER ? T.veriteAAutoriser
               : etat === ETATS.ECARTEE ? T.veriteEcartee
@@ -133,6 +142,26 @@ export default function SousPagePlateformes({ c, T }) {
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <span style={{ fontSize: 14, color: R.ink }}>{T.veriteConnecteToi(nom)}</span>
                     <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.CONNEXION} lang={c.lang} onOuverte={relire} />
+                  </div>
+                )}
+                {identiteLbcACompleter && (
+                  <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 14, color: R.ink }}>
+                      {fr
+                        ? 'Ajoute ton nom et ton prénom sur Leboncoin pour activer la Transaction sécurisée.'
+                        : 'Add your first and last name on Leboncoin to enable secure payments.'}
+                    </span>
+                    <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.IDENTITE_LBC} lang={c.lang} onOuverte={relire} />
+                  </div>
+                )}
+                {identiteLbcAVerifier && (
+                  <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <span style={{ fontSize: 14, color: R.ink }}>
+                      {fr
+                        ? 'FillSell doit vérifier que les deux champs requis sont présents, sans lire ni conserver leur contenu.'
+                        : 'FillSell must check that both required fields are present, without reading or storing their contents.'}
+                    </span>
+                    <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.IDENTITE_LBC} lang={c.lang} libelleForce={fr ? 'Vérifier sur Leboncoin' : 'Check on Leboncoin'} onOuverte={relire} />
                   </div>
                 )}
                 {etat === ETATS.A_CONNECTER && pf === 'ebay' && (

@@ -122,26 +122,30 @@ console.log("\n3. Sans preuve, rien ne part — et la preuve manquante est nomm�
   ok("origine absente → identite_non_prouvee/boutique_article, aucune requête",
     sans.posts.length === 0 && sans.r.verdict?.conclusion === "identite_non_prouvee" && sans.r.verdict?.preuve_manquante === "boutique_article");
   ok("une preuve absente n'accuse aucune boutique (pas de boutiqueEtrangere)", !("boutiqueEtrangere" in sans.r));
-  ok("le site d'appel de la une-passe lit job.platform_fields?.vinted_account_id",
-    /deleteVintedItemViaApi\(String\(onePass\.item_id\), tDel, traceDel, \{ preuveRequise: true, boutiqueAttendue: job\.platform_fields\?\.vinted_account_id \}\)/.test(sourceVinted));
+  ok("le site d'appel de la une-passe transmet l'origine exacte du job",
+    /boutiqueAttendue: onePass\.vinted_account_id \?\? job\.platform_fields\?\.vinted_account_id/.test(sourceVinted));
 }
 
 console.log("\n4. Le message nomme le mur");
 {
   const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
-  const bloc = bgSrc.slice(bgSrc.indexOf("const murBoutique ="), bgSrc.indexOf("const murBoutique =") + 1400);
-  ok("les trois murs de boutique ont leur phrase", /boutique_etrangere[\s\S]*identite_non_prouvee[\s\S]*preuve_manquante === "session"[\s\S]*Actualiser mon dressing/.test(bloc));
-  ok("aucune ne dit « quand tu veux »", !/quand tu veux/.test(bloc.slice(0, bloc.indexOf("// Formulation (2026-09-11)"))));
-  ok("le mur passe AVANT le message générique", /error: state === "active" && murBoutique/.test(bgSrc));
+  const debut = bgSrc.indexOf('if (job.platform === "vinted" && result.verificationBoutiqueImpossible)');
+  const bloc = bgSrc.slice(debut, debut + 3200);
+  ok("identité inconnue : pending, jamais boutique étrangère",
+    /verificationBoutiqueImpossible[\s\S]*origine_inconnue[\s\S]*"pending"/.test(bloc));
+  ok("boutique réellement différente : motif séparé et needs_user",
+    /result\.boutiqueEtrangere[\s\S]*motif: "boutique_etrangere"[\s\S]*"needs_user"/.test(bloc));
+  ok("aucune ne dit « quand tu veux »", !/quand tu veux/.test(bloc));
+  ok("les deux gardes passent avant toute lecture d'état ou message générique",
+    debut > 0 && debut < bgSrc.indexOf("const lecture = await checkListingState", debut));
   ok("preuve_manquante survit au nettoyage du verdict",
     bg.nettoyerVerdictSuppression({ conclusion: "identite_non_prouvee", preuve_manquante: "boutique_article" }).preuve_manquante === "boutique_article");
 }
 
 // ── 5. LA RECRÉATION SE RATTACHE PAR L'IDENTIFIANT DE NOTRE DÉPÔT ──────────
 // Test réel du 28/09 (poste Nico, job 221274a6, T-shirt Adidas) : suppression
-// 9974779287 HTTP 200, recréation 10173633450 en ligne, mais rattachement
-// refusé (titre = soupçon, point A) → question, puis doublon au relevé de
-// 21:42. La redirection de l'onglet vers /items/10173633450 est la preuve.
+// 9974779287 HTTP 200, recréation 10173633450 en ligne, mais aucun id rattaché.
+// Le titre ne prouve rien ; la redirection de NOTRE onglet, elle, porte l'id.
 console.log("\n5. Rattachement de la recréation par la redirection de notre dépôt");
 {
   const ecouteurs = new Set();
@@ -173,41 +177,40 @@ console.log("\n5. Rattachement de la recréation par la redirection de notre dé
 
   const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
   ok("les deux dépôts de recréation suivent la redirection",
-    (bgSrc.match(/const suiviRedirection = suivreRedirectionsAnnonce\(tabId\);\n      try \{\n        result = await envoyerFillListing\(tabId, jobRecreation\);/g) ?? []).length === 2);
-  ok("après coupure : l'identifiant de notre dépôt passe AVANT le titre",
-    bgSrc.indexOf("annonceDeNotreDepot(result?.idsRedirection") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page2.articles"));
-  ok("avant une nouvelle tentative : la redirection précédente passe AVANT le titre",
-    bgSrc.indexOf("annonceDeNotreDepot(pf.recreation_redirection?.ids") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page.articles"));
+    (bgSrc.match(/const suiviRedirection = suivreRedirectionsAnnonce\(tabId\);/g) ?? []).length === 2);
+  ok("le titre n'est plus une fonction d'identité",
+    !bgSrc.includes("reconnaitreAnnonceRecreee") && !bgSrc.includes("vintedUploadSucceededForTitle"));
+  ok("la réponse serveur et la redirection sont confrontées",
+    /result\.idsSonde = await vintedUploadIdsExact/.test(bgSrc) && /const idsExacts = idsRecreationExacts\(pf, result\)/.test(bgSrc));
   ok("l'écoute continue après une coupure quand l'annonce d'origine est partie",
     /const aAttendre = !result\?\.success && \(result\?\.deleted === true \|\| republishSupprimes\.has\(job\.id\)\);/.test(bgSrc)
     && /suiviRedirection\.arreter\(\{ attendreMs: result\?\.success \? 0 : 15_000 \}\)/.test(bgSrc));
   ok("les chemins vus et l'erreur restent sur le job (diagnostic)", /chemins: Array\.isArray\(result\.cheminsRedirection\)/.test(bgSrc));
 }
 
-// ── 6. RÈGLE 0.6.75 RÉTABLIE POUR LA RECRÉATION (décision Nico, 28/09) ─────
-// Sweat Tommy (job 4bd5c671) : supprimé 19:57:31Z, recréé 10173856703.
-console.log("\n6. Recréation après notre suppression : candidate unique rattachée, plusieurs = question");
+// ── 6. AUCUN SECOND DÉPÔT SANS PREUVE D'ÉCHEC ──────────────────────────────
+// Deux exemplaires peuvent partager titre, prix et photos. Même une candidate
+// unique après la date de retrait n'est donc pas une preuve d'identité.
+console.log("\n6. Recréation après notre suppression : identifiant exact ou abstention");
 {
-  const supprimeLe = "2026-09-28T19:57:31.000Z";
-  const photo = Math.floor(Date.parse("2026-09-28T19:57:36Z") / 1000);
-  const sweat = { vinted_item_id: "10173856703", titre: "Sweat Tommy Jeans bleu marine – Taille M", photo_ts: photo };
-  const r1 = bg.reconnaitreAnnonceRecreee([sweat], { titre: "Sweat Tommy Jeans bleu marine – Taille M", deletedAt: supprimeLe, idsConnus: new Set(["10061791333"]) });
-  ok("cas réel : 10173856703 rattachée (comme en 0.6.75)", r1.item?.vinted_item_id === "10173856703");
-  const jumeau = { ...sweat, vinted_item_id: "10173856999" };
-  const r2 = bg.reconnaitreAnnonceRecreee([sweat, jumeau], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() });
-  ok("deux candidates : rien rattaché, la question reste", r2.item === null && r2.candidats?.length === 2);
-  const avant = { ...sweat, photo_ts: photo - 3600 };
-  ok("photos antérieures à notre suppression : rien", bg.reconnaitreAnnonceRecreee([avant], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() }).item === null);
-  ok("déjà connue de l'inventaire : rien", bg.reconnaitreAnnonceRecreee([sweat], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set(["10173856703"]) }).item === null);
+  ok("un id de réponse serveur est conservé", JSON.stringify(bg.idsRecreationExacts({}, { idsSonde: ["10173856703"] })) === '["10173856703"]');
+  ok("réponse et redirection identiques donnent un seul id", JSON.stringify(bg.idsRecreationExacts({}, { idsSonde: ["10173856703"], idsRedirection: ["10173856703"] })) === '["10173856703"]');
+  ok("deux ids contradictoires restent deux — aucun choix implicite", bg.idsRecreationExacts({}, { idsSonde: ["10173856703"], idsRedirection: ["10173856999"] }).length === 2);
+  ok("l'ancien id ne peut jamais devenir la recréation", bg.idsRecreationExacts({ vinted_item_id: "9974779287" }, { idsRedirection: ["9974779287"] }).length === 0);
 
   const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
   ok("la une-passe marque sa soumission comme tentative de recréation",
-    /pf\.republish_step = "deleted";[\s\S]{0,700}?pf\.recreation_tentee = \{[\s\S]{0,120}?une_passe: true,/.test(bgSrc));
-  ok("une candidate déjà vue impose la lecture du dressing avant tout dépôt",
-    /const dejaTentee = \(pf\.recreation_tentee && typeof pf\.recreation_tentee === "object"\) \|\| !!pf\.recreation_doublon;/.test(bgSrc));
-  ok("T-shirt : recréation déjà importée en fiche séparée → aucune 3e annonce, fusion demandée",
-    bgSrc.indexOf("const dejaImportees =") > 0
-    && bgSrc.indexOf("const dejaImportees =") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page.articles"));
+    /pf\.recreation_tentee = \{[\s\S]{0,120}?une_passe: true,/.test(bgSrc));
+  ok("une tentative sans id exact ni refus prouvé devient une question, jamais un renvoi",
+    /else if \(!result\?\.preuveEchec\)[\s\S]{0,900}?recreation_identite_impossible/.test(bgSrc));
+  ok("seul un refus nommé autorise une retentative",
+    /if \(!result\?\.preuveEchec\)[\s\S]{0,600}?aucun nouvel envoi/.test(bgSrc)
+    && /pf\.recreation_echec_prouve = \{/.test(bgSrc));
+  ok("id déjà importé ailleurs : aucune troisième annonce, rattachement demandé",
+    /needs_user_source = "recreation_deja_importee"/.test(bgSrc));
+  ok("la reprise sonde l'id exact via l'endpoint d'édition, jamais le dressing par titre",
+    /verifierAnnonceRecreationExacte\(tabVerif, idExact/.test(bgSrc)
+    && !/SYNC_DRESSING_PAGE[\s\S]{0,700}?recreation_tentee/.test(bgSrc.slice(bgSrc.indexOf('if (step === "deleted")'))));
 }
 
 console.log(ko ? `\n${ko} échec(s).` : "\nUne-passe Vinted : origine transmise, preuve exacte ou aucune requête ; recréation rattachée par son identifiant.");
