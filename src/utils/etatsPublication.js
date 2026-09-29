@@ -60,10 +60,6 @@ export function natureAttente(job) {
   // attente d'un champ ni d'une connexion. Elle repart seule si X est réactivée.
   if (source === "plateforme_ecartee") return { kind: "attente_plateforme_ecartee" };
   if (job?.platform === "opla" && source === "opla_acces") return { kind: "attente_autorisation", motif: "autoriser_opla" };
-  if (job?.platform === "leboncoin" && (source === "lbc_escrow_identite" || pf.last_diagnostic?.quoi === "lbc_escrow_identite")) {
-    return { kind: "attente_connexion", motif: "identite_lbc" };
-  }
-  if (source === "ebay_compte_vendeur_inactif") return { kind: "attente_connexion", motif: "vendeur_ebay" };
   if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
   if (job?.platform === "ebay" && REAUTH_RE.test(err)) return { kind: "attente_connexion", motif: "reauth_ebay" };
   if (source === "connexion" || CONNEXION_RE.test(err)) return { kind: "attente_connexion", motif: "connexion" };
@@ -114,8 +110,6 @@ export function phraseEtat(platform, etat, lang = "fr") {
     case "attente_autorisation":
       return en ? "waiting for your Opla permission" : "en attente de ton autorisation Opla";
     case "attente_connexion":
-      if (etat.motif === "identite_lbc") return en ? "waiting for your Leboncoin personal information" : "en attente de ton nom et de ton prénom sur Leboncoin";
-      if (etat.motif === "vendeur_ebay") return en ? "waiting for your eBay seller account" : "en attente de l'activation de ton compte vendeur eBay";
       return en ? `waiting for you to sign in to ${nom}` : `en attente de ta connexion à ${nom}`;
     case "attente_plateforme_ecartee":
       return en ? `paused: you said you don't sell on ${nom}` : `en pause : tu as indiqué ne pas vendre sur ${nom}`;

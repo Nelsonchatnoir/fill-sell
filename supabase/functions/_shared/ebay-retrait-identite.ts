@@ -24,8 +24,6 @@ function texte(v: unknown): string {
 export function idAnnonceEbay(v: Pick<SourceRetraitEbay, "listing_url" | "platform_listing_id">): string {
   const depuisLien = idDepuisLienEbay(v.listing_url);
   const colonne = texte(v.platform_listing_id);
-  // Le job 8ce613d3 a fini avec deux identifiants différents. Choisir l'un des
-  // deux transformerait une contradiction en permission de retrait.
   if (depuisLien && colonne && depuisLien !== colonne) return "";
   return depuisLien || colonne;
 }
@@ -38,12 +36,6 @@ export type VerdictIdentiteRetraitEbay =
   | { ok: true; cible: string; source_job_id: string; offer_id: string; sku: string }
   | { ok: false; motif: string; cible: string; detail?: string };
 
-/**
- * Un retrait API n'est autorisé que par une publication API FillSell portant
- * exactement le même listingId dans toutes ses traces durables. Un relevé,
- * un SKU voisin ou une colonne contredite par `ebay_api.listing_id` ne sont
- * jamais une preuve d'identité.
- */
 export function verifierSourceRetraitEbay(
   cibleBrute: unknown,
   source: SourceRetraitEbay | null,
@@ -66,7 +58,7 @@ export function verifierSourceRetraitEbay(
   const offerId = texte(api.offer_id);
   const sku = texte(api.sku);
 
-  if (!['publish', 'republish'].includes(texte(source.action)) || texte(source.voie) !== 'api'
+  if (!["publish", "republish"].includes(texte(source.action)) || texte(source.voie) !== "api"
       || /sync-dressing|releve-annonces/i.test(handler)) {
     return { ok: false, motif: "source_non_depot_fillsell_api", cible, detail: handler || "handler absent" };
   }
@@ -119,7 +111,6 @@ function preuveCycleRetraitEbay(
   return { cible, offer_id: offerId, sku, source_job_id: sourceJobId, at, methode: texte(trace.methode) || undefined };
 }
 
-/** Intention durable écrite AVANT le POST /withdraw d'une republication. */
 export function preuveIntentionRetraitRepublicationEbayMemorisee(
   job: Pick<SourceRetraitEbay, "listing_url" | "platform_listing_id" | "platform_fields">,
   maintenant = Date.now(),
@@ -140,7 +131,6 @@ export function preuveIntentionRetraitRepublicationEbayMemorisee(
   };
 }
 
-/** Relecture de l'offre eBay juste avant le POST /withdraw. */
 export function verifierOffreRetraitEbay(
   preuve: Extract<VerdictIdentiteRetraitEbay, { ok: true }>,
   offre: OffreRetraitEbay | null,
@@ -158,18 +148,12 @@ export function verifierOffreRetraitEbay(
     if (!listingId) return { ok: false, motif: "listing_id_absent" };
     return { ok: true, listing_id: listingId, deja_retiree: false };
   }
-  // eBay conserve l'offre après /withdraw et la remet à l'état UNPUBLISHED.
-  // C'est précisément l'état attendu après un retrait acquis mais avant la
-  // recréation du cycle suivant. Offre + SKU restent relus sur la source
-  // FillSell exacte ; `listing` peut disparaître de la réponse une fois
-  // l'offre hors ligne, mais s'il est encore présent il doit rester cohérent.
   if (accepterDejaRetiree && statut === "UNPUBLISHED") {
     return { ok: true, listing_id: listingId || preuve.cible, deja_retiree: true };
   }
   return { ok: false, motif: "offre_non_publiee", detail: statut };
 }
 
-/** Preuve persistée immédiatement après le withdraw d'une republication. */
 export function preuveRetraitRepublicationEbayMemorisee(
   job: Pick<SourceRetraitEbay, "listing_url" | "platform_listing_id" | "platform_fields">,
   maintenant = Date.now(),

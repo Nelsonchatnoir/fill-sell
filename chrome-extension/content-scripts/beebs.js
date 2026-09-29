@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -1240,6 +1240,46 @@ async function fillListingForm(job) {
   // les présente en saisie manuelle. Avant ce gate, le job partait en
   // « COMPLÉTÉ AVEC CHAMPS MANQUANTS » : publié quand Beebs tolérait, refus
   // opaque sinon.
+  // ── UN OBJET SANS TAILLE PREND LA NEUTRE, IL NE POSE PAS DE QUESTION ──────
+  // (2026-09-21) Les barrettes de meminiandmove : Beebs exige « Taille » sur
+  // « Accessoires (fille) » et n'offre que trois valeurs — « Bébé 0-36 mois »,
+  // « Enfant 3 ans et plus », « Taille Unique ». Une barrette n'a pas d'âge :
+  // la seule réponse juste est la neutre, et la demander serait demander à
+  // quelqu'un de recopier une évidence.
+  // ⛔ SEULEMENT QUAND LA COPIE N'EN PORTE AUCUNE. Si elle porte une taille qui
+  //    n'a pas pu être posée (« panne de remplissage », cas (b) du message
+  //    ci-dessous), on ne la remplace SURTOUT pas par « Unique » : c'est une
+  //    vraie taille, et l'écraser publierait un vêtement sans sa taille.
+  // ⛔ ET SEULEMENT SI BEEBS L'OFFRE : la valeur vient de SA liste, relevée sur
+  //    la page — jamais d'un libellé écrit par nous.
+  if (unfilledRequired.length) {
+    for (const cle of [...unfilledRequired]) {
+      if (!/^(taille|pointure)$/i.test(String(libelleHumainDeCle(cle) ?? ""))) continue;
+      const dejaLa = String(fields.beebsAspects?.[cle] ?? "").trim() || String(fields.taille ?? "").trim();
+      if (dejaLa) continue;
+      const meta = enumerated.find((e) => e.key === cle);
+      const options = (Array.isArray(meta?.options) && meta.options.length ? meta.options : beebsObservedOptions[cle]) ?? [];
+      const neutre = options.map((o) => String(o ?? "").trim())
+        .find((o) => /^(taille\s+)?(unique|universelle)$/i.test(o));
+      if (!neutre) continue;
+      const champ = resoudreChamps(cle)[0] ?? null;
+      if (!champ?.trigger) continue;
+      const echecs = [];
+      try {
+        await poserValeurSurChamp(champ, neutre, warnings, echecs, { sizeField: true }, { cle });
+      } catch (e) {
+        console.warn(`[beebs] valeur neutre « ${neutre} » pour « ${cle} » : ${String(e?.message ?? e)}`);
+        continue;
+      }
+      if (echecs.length) continue;
+      const i = unfilledRequired.indexOf(cle);
+      if (i >= 0) unfilledRequired.splice(i, 1);
+      const note = `${cle}: la copie ne porte aucune taille — valeur neutre « ${neutre} » prise dans la liste de Beebs`;
+      console.log(`[beebs] ${note}`);
+      warnings.push(note);
+    }
+  }
+
   if (unfilledRequired.length) {
     // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
     // identifié. Premier requis vide, un champ à la fois (le suivant re-passera

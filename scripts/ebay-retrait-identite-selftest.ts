@@ -32,6 +32,15 @@ const preuve = verifierSourceRetraitEbay("377506248476", source("377506248476", 
 assert.equal(preuve.ok, true);
 if (!preuve.ok) throw new Error("preuve cohérente attendue");
 
+const sourceFicheSupprimee = { ...source("377506248476", "377506248476"), status: "cancelled" };
+assert.equal(
+  verifierSourceRetraitEbay("377506248476", sourceFicheSupprimee, { statutsAutorises: ["published", "cancelled"] }).ok,
+  true,
+  "la source exacte survit à la suppression de la fiche ; l'offre sera encore relue avant tout retrait",
+);
+assert.equal(verifierSourceRetraitEbay("377506248476", sourceFicheSupprimee).ok, false,
+  "un appelant qui n'autorise pas explicitement une source annulée reste fermé");
+
 assert.deepEqual(verifierOffreRetraitEbay(preuve, {
   offerId: preuve.offer_id,
   sku: preuve.sku,

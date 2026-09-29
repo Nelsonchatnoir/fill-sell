@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import fs from "node:fs";
+import vm from "node:vm";
 import {
   choisirIdentifiantBeebsExact,
   type ReleveBeebsExact,
@@ -61,6 +62,23 @@ assert.equal(
 );
 
 const background = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
+const debutIdentifiants = background.indexOf("function identifiantsBeebsPortes");
+const finIdentifiants = background.indexOf("async function enrichirCibleBeebs", debutIdentifiants);
+assert.ok(debutIdentifiants > 0 && finIdentifiants > debutIdentifiants, "la preuve directe Beebs est isolée");
+const contexte = vm.createContext({});
+vm.runInContext(background.slice(debutIdentifiants, finIdentifiants), contexte);
+assert.equal(contexte.identifiantsBeebsPortes({
+  platform_listing_id: "34015033",
+  listing_url: "https://www.beebs.app/fr/p/34015033-bottines",
+}).ids.size, 1, "colonne et lien concordants donnent un seul identifiant");
+assert.equal(contexte.identifiantsBeebsPortes({
+  platform_listing_id: "34015033",
+  listing_url: "https://www.beebs.app/fr/p/34015034-autre",
+}).ids.size, 2, "deux identifiants contradictoires ne sont jamais départagés");
+assert.equal(contexte.identifiantsBeebsPortes({
+  platform_listing_id: "titre",
+  listing_url: null,
+}).invalide, true, "une colonne non durable ferme la porte");
 const debut = background.indexOf("async function enrichirCibleBeebs");
 const fin = background.indexOf("async function executerRetraitViaHandler", debut);
 const enrichissement = background.slice(debut, fin);
@@ -78,6 +96,14 @@ assert.match(sourceExacte, /\.eq\("id", depotProuve\)/,
   "le serveur relit le dépôt exact porté par le retrait");
 assert.doesNotMatch(sourceExacte, /\.eq\("inventaire_id"/,
   "la preuve survit à inventaire_id = NULL");
+
+const statutServeur = fs.readFileSync(new URL("../supabase/functions/update-job-status/index.ts", import.meta.url), "utf8");
+assert.match(background, /platform_listing_id: beebsProductId \?\? undefined/,
+  "l'extension transmet l'identifiant Beebs avec son verdict de dépôt");
+assert.match(statutServeur, /if \(idBeebsFourni\) patch\.platform_listing_id = idBeebsFourni/,
+  "le serveur écrit l'identifiant dans la même transition atomique que published");
+assert.match(statutServeur, /jobRow\?\.platform === "beebs" && !\/\^\\d\+\$\/\.test\(idConnu\)/,
+  "sans identifiant durable, le serveur refuse le statut published");
 
 const lienServeur = fs.readFileSync(new URL("../supabase/functions/beebs-lien/index.ts", import.meta.url), "utf8");
 const selectionLien = lienServeur.slice(lienServeur.indexOf("const selection ="), lienServeur.indexOf("const { data: relevesDirectsBruts"));

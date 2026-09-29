@@ -129,7 +129,7 @@ export default function EcranConfirmer({ m }) {
                 sous = en ? "Opla is allowed: this listing goes out on its own" : "Opla est autorisée : cette annonce repart toute seule"; ton = "ok";
               }
               else if (a?.bloque && m.userId && a.kind === "attente_autorisation") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
-              else if (a?.bloque && m.userId && a.kind === "attente_connexion") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : a.motif === "identite_lbc" ? MOTIFS.IDENTITE_LBC : a.motif === "vendeur_ebay" ? MOTIFS.VENDEUR_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
+              else if (a?.bloque && m.userId && a.kind === "attente_connexion") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
               else if (a?.bloque && a.kind === "attente_champ" && m.onCompleter) geste = (
                 <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => m.onCompleter(a.job)}>
                   {en ? `Complete “${a.champ}”` : `Compléter « ${a.champ} »`}

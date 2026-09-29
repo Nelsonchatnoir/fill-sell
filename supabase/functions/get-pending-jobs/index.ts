@@ -23,13 +23,6 @@ import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
-import { estJobPlateformeEcartee, messagePlateformeEcartee } from "../_shared/plateforme-ecartee.ts";
-import {
-  MOTIF_ANTIROBOT_VINTED_403,
-  episodeAntirobotVinted403,
-  observation403Vinted,
-  preuveSonde403Vinted,
-} from "../_shared/vinted-antirobot.ts";
 
 /** Taille d'article en NOMBRE NU (« 36 », « 42 ») : le seul périmètre de la
  *  conversion nombre → lettre à la publication. Une forme préfixée (« EU 36 »)
@@ -640,6 +633,7 @@ serve(async (req) => {
     const capacites: string[] = Array.isArray(body?.capacites)
       ? body.capacites.map((c: unknown) => String(c)).slice(0, 20) : [];
     const tailleParId = capacites.includes("taille_par_id");
+    const preuvesRetraitsPoint1 = capacites.includes("preuves_retraits_point1_v1");
     // ── LE POSTE (2026-09-24, cf. _shared/poste-extension.ts) ───────────────
     // « opla_acces » / « sans_opla » : déclaré par la 0.6.64 à chaque poll. Un
     // build plus ancien ne dit rien : on s'en remet à ce qu'update-job-status a
@@ -1139,9 +1133,6 @@ serve(async (req) => {
         const r = await userClient.from("cross_post_jobs")
           .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields")
           .eq("user_id", user.id).eq("platform", "vinted")
-          // L'id exact peut vivre dans la colonne OU dans l'URL des anciens
-          // jobs. Le helper revalide l'égalité complète : aucun préfixe ni
-          // titre ne peut devenir une preuve.
           .or(`platform_listing_id.eq.${listingId},listing_url.like.%/items/${listingId}%`)
           .in("action", ["publish", "republish"])
           .order("created_at", { ascending: false }).limit(10);
@@ -1183,9 +1174,6 @@ serve(async (req) => {
         const { data: profil, error: erreurProfil } = await userClient.from("profiles")
           .select("extension_sessions,vinted_sync_pin").eq("id", user.id).maybeSingle();
         const identite = !erreurProfil && identiteBoutiqueFraiche(profil?.extension_sessions);
-        // Les preuves de plusieurs retraits sont indépendantes. Les relire en
-        // parallèle évite d'ajouter N allers-retours séquentiels au poll des
-        // comptes historiques (xxewwer en porte deux au même instant).
         const historiquesAttentes = new Map<string, PreuveHistoriqueVinted>();
         if (!erreurProfil && profil) await Promise.all(attentes.map(async (attente) => {
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
@@ -1259,26 +1247,6 @@ serve(async (req) => {
 
     if (jobsErr) return json({ error: jobsErr.message }, 500);
 
-    // Une plateforme écartée ne doit jamais être servie, même si un ancien
-    // veilleur a remis le job en `pending`. Le marqueur officiel survit au
-    // réveil erroné : on s'en sert pour le reparquer automatiquement, avant
-    // toute distribution. Seul le geste inverse dans Réglages enlèvera ce
-    // marqueur et restaurera le statut antérieur.
-    const reveillesEcartes = (jobs ?? []).filter((j) => j.status === "pending" && estJobPlateformeEcartee(j));
-    for (const j of reveillesEcartes) {
-      const { error: reparcageErr } = await userClient.from("cross_post_jobs")
-        .update({ status: "needs_user", error: messagePlateformeEcartee(j.platform) })
-        .eq("id", j.id)
-        .eq("status", "pending")
-        .eq("platform_fields->>needs_user_source", "plateforme_ecartee");
-      if (reparcageErr) console.warn(`[get-pending-jobs] job ${j.id} : reparcage plateforme écartée refusé — ${reparcageErr.message}`);
-    }
-    if (reveillesEcartes.length) {
-      const ids = new Set(reveillesEcartes.map((j) => j.id));
-      jobs = (jobs ?? []).filter((j) => !ids.has(j.id));
-      console.log(`[get-pending-jobs] ${reveillesEcartes.length} job(s) réveillé(s) à tort sur une plateforme écartée : reparqués, aucun servi`);
-    }
-
     // Mode dégradé (Phase B) : une plateforme EN PAUSE (platform_health.paused)
     // ne se voit plus distribuer ses jobs — ils RESTENT 'pending' (rien perdu,
     // repris dès que paused repasse à false). L'app affiche le message de
@@ -1296,22 +1264,31 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
-    // ══ BEEBS : AUCUN DÉPÔT/RETRAIT SANS IDENTIFIANT DURABLE (29/09) ═══════
-    // Un titre n'identifie pas un exemplaire. Les dépôts confirmés sans id
-    // attendent le relevé exact (`attente_identifiant_beebs`) et ne sont jamais
-    // resoumis. Les retraits sans lien sont traités plus bas par leur
-    // `arme_par.depot` exact : jamais par la fiche ni par un titre.
+    // Les opérations Vinted et les retraits/republications Beebs exigent les
+    // preuves locales livrées ensemble : estampille de boutique après dépôt,
+    // vérification juste avant le DELETE Vinted, identifiant Beebs durable et
+    // pré-vol complet Beebs. Les anciens builds restent simplement en attente :
+    // aucun changement d'état, aucune boucle, aucun relèvement du minimum.
+    let heldPreuvesRetraitsPoint1 = 0;
+    if (!preuvesRetraitsPoint1) {
+      const avant = out.length;
+      out = out.filter((j) => !(
+        j.platform === "vinted" ||
+        (j.platform === "beebs" && (j.action === "delete" || j.action === "republish"))
+      ));
+      heldPreuvesRetraitsPoint1 = avant - out.length;
+    }
+
+    // Un dépôt Beebs confirmé sans identifiant durable ne doit jamais être
+    // soumis une seconde fois. Il attend le relevé exact, qui seul peut le
+    // clôturer et autoriser ensuite un retrait ciblé.
     let heldBeebsSansIdentifiant = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const aRetenir = new Set<string>();
       for (const j of out) {
         if (j.platform !== "beebs") continue;
         const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-        if (pf["attente_identifiant_beebs"]) {
-          // Même si un id a été écrit juste avant ce poll, la clôture est faite
-          // par beebs-lien/update-job-status ; jamais de nouvelle soumission.
-          aRetenir.add(String(j.id));
-        }
+        if (pf["attente_identifiant_beebs"]) aRetenir.add(String(j.id));
       }
       heldBeebsSansIdentifiant = aRetenir.size;
       if (aRetenir.size) out = out.filter((j) => !aRetenir.has(String(j.id)));
@@ -3286,31 +3263,6 @@ serve(async (req) => {
               `) → ${heldRepublish} republish retenu(s) en pending jusqu'à ${p.reprise} (étape 'deleted' exemptée)`,
             );
           }
-        } else {
-          // Une retenue est un état courant, pas un historique éternel. Dès
-          // que la pause/le plafond ne retient plus la file, son marqueur doit
-          // disparaître des jobs — sinon l'app continue d'annoncer une reprise
-          // future déjà passée (nadegemarcelin78, six jobs le 28/09).
-          const aNettoyer = (jobs ?? [])
-            .filter((j) => j.action === "republish"
-              && Boolean(((j.platform_fields ?? {}) as Record<string, unknown>).retenue_republication))
-            .slice(0, 40);
-          let nettoyes = 0;
-          for (const j of aNettoyer) {
-            const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
-            delete pf.retenue_republication;
-            const { error: nErr } = await userClient.from("cross_post_jobs")
-              .update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
-            if (!nErr) {
-              j.platform_fields = pf;
-              const rendu = out.find((x) => x.id === j.id);
-              if (rendu) rendu.platform_fields = pf;
-              nettoyes++;
-            }
-          }
-          if (nettoyes) {
-            console.log(`[get-pending-jobs] userId=${user.id} : pause de republication levée — ${nettoyes} marqueur(s) périmé(s) retiré(s)`);
-          }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
     }
@@ -4093,8 +4045,6 @@ serve(async (req) => {
                 pose_par: "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
               };
               if (!pfProuve.vinted_account_id && historique.vinted_account_id) pfProuve.vinted_account_id = historique.vinted_account_id;
-              // La preuve doit survivre au SET NULL et voyager AVEC le retrait,
-              // pas seulement exister dans cette réponse en mémoire.
               await userClient.from("cross_post_jobs").update({ platform_fields: pfProuve })
                 .eq("id", j.id).eq("status", "pending");
             }
@@ -5900,7 +5850,7 @@ serve(async (req) => {
     let beebsDescriptions = 0; let beebsValeurs = 0;
     try {
       const depotsBeebs = (out as unknown as Array<Record<string, unknown>>)
-        .filter((j) => j.platform === "beebs" && ["publish", "republish"].includes(String(j.action)));
+        .filter((j) => j.platform === "beebs" && j.action === "publish");
       if (depotsBeebs.length) {
         const ids = [...new Set(depotsBeebs.map((j) => j.inventaire_id).filter((x) => x != null))];
         const attrsParArticle = new Map<string, Record<string, unknown>>();
@@ -5912,29 +5862,12 @@ serve(async (req) => {
           }
         }
         const valeurCertaine = (attrs: Record<string, unknown> | undefined, cle: string): { v: string; source: string } | null => {
-          const e = attrs?.[cle];
-          // Les anciennes chaînes nues sont une valeur explicite de fiche,
-          // antérieure à la trace de provenance. Elles restent certaines.
-          if (typeof e === "string") return e.trim() ? { v: e.trim(), source: "fiche (forme ancienne)" } : null;
+          const e = attrs?.[cle] as Record<string, unknown> | undefined;
           if (!e || typeof e !== "object") return null;
-          const o = e as Record<string, unknown>;
-          const v = typeof o.v === "string" ? o.v.trim() : "";
-          const source = typeof o.source === "string" ? o.source : "";
-          if (!v || !/^(manuel|capture|vinted|releve_)/.test(source)) return null;
+          const v = typeof e.v === "string" ? e.v.trim() : "";
+          const source = typeof e.source === "string" ? e.source : "";
+          if (!v || !/^(capture|vinted)/.test(source)) return null;
           return { v, source };
-        };
-        const formatDepuisFiche = (attrs: Record<string, unknown> | undefined): { v: string; source: string } | null => {
-          const brut = valeurCertaine(attrs, "colis") ?? valeurCertaine(attrs, "format_colis");
-          if (!brut) return null;
-          const cle = brut.v.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
-          const formats: Record<string, string> = {
-            "lettre": "Lettre", "500g": "Lettre", "500 g": "Lettre", "poids jusqu'a 500g max": "Lettre",
-            "petit": "Petit colis", "petit colis": "Petit colis", "1 kg": "Petit colis", "poids jusqu'a 1 kg max": "Petit colis",
-            "moyen": "Moyen colis", "moyen colis": "Moyen colis", "2 kg": "Moyen colis", "poids jusqu'a 2 kg max": "Moyen colis",
-            "grand": "Grand colis", "grand colis": "Grand colis", "5 kg": "Grand colis", "poids jusqu'a 5 kg max": "Grand colis",
-            "tres grand": "Très grand colis", "tres grand colis": "Très grand colis", "10 kg": "Très grand colis", "poids jusqu'a 10 kg max": "Très grand colis",
-          };
-          return formats[cle] ? { v: formats[cle], source: brut.source } : null;
         };
         for (const j of depotsBeebs) {
           const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
@@ -5952,15 +5885,12 @@ serve(async (req) => {
             beebsDescriptions++;
             console.log(`[get-pending-jobs] description Beebs ${String(j.id).slice(0, 8)} : vide ou < 5 car. → ${r.texte.length} car. depuis les faits du job (${r.ajouts.join(" + ")})`);
           }
-          // 2. Valeurs explicites déjà sur la fiche. Taille et format du colis
-          // sont servis AUSSI aux republications : le cas Bottines LPB portait
-          // bien « 40 » dans attributs.taille (capture), mais le redépôt ne le
-          // recevait pas et ne le découvrait qu'après le retrait.
+          // 2. Couleur / Matière depuis l'annonce Vinted de la vendeuse.
           const attrs = attrsParArticle.get(String(j.inventaire_id));
           const colors = Array.isArray(pfJ["colors"]) ? (pfJ["colors"] as unknown[]).filter((c) => typeof c === "string" && c.trim()) : [];
           const pfSuite: Record<string, unknown> = { ...pfJ };
           let touche = false;
-          for (const [cle, libelle] of [["couleur", "Couleur"], ["matiere", "Matière"], ["taille", "Taille"]] as const) {
+          for (const [cle, libelle] of [["couleur", "Couleur"], ["matiere", "Matière"]] as const) {
             const deja = typeof pfJ[cle] === "string" && (pfJ[cle] as string).trim();
             if (deja || (cle === "couleur" && colors.length)) continue;
             const val = valeurCertaine(attrs, cle);
@@ -5970,20 +5900,11 @@ serve(async (req) => {
             touche = true;
             console.log(`[get-pending-jobs] ${libelle} Beebs ${String(j.id).slice(0, 8)} : servie depuis l'annonce Vinted (« ${val.v} », ${val.source})`);
           }
-          if (!String(pfJ["format_colis"] ?? "").trim()) {
-            const format = formatDepuisFiche(attrs);
-            if (format) {
-              pfSuite["format_colis"] = format.v;
-              complements["format_colis"] = { valeur: format.v, source: `inventaire.attributs.colis (${format.source}), traduction exacte` };
-              touche = true;
-              console.log(`[get-pending-jobs] Format du colis Beebs ${String(j.id).slice(0, 8)} : « ${format.v} » servi depuis la fiche (${format.source})`);
-            }
-          }
           if (touche) { j.platform_fields = pfSuite; beebsValeurs++; }
           if (Object.keys(complements).length) j.beebs_complements_serveur = complements;
         }
       }
-      if (beebsDescriptions || beebsValeurs) console.log(`[get-pending-jobs] user=${user.id} dépôts/republications Beebs complétés : ${beebsDescriptions} description(s), ${beebsValeurs} fiche(s) enrichie(s)`);
+      if (beebsDescriptions || beebsValeurs) console.log(`[get-pending-jobs] user=${user.id} dépôts Beebs complétés : ${beebsDescriptions} description(s), ${beebsValeurs} couleur/matière`);
     } catch (e) {
       console.warn(`[get-pending-jobs] complément Beebs : ${String((e as Error)?.message ?? e)} — dépôts servis tels quels`);
     }
@@ -7395,30 +7316,51 @@ serve(async (req) => {
     }
 
 
-    // ══ ANTI-ROBOT SUR LE COMPTE VINTED : TOUT VINTED EN PAUSE (2026-09-29) ══
-    // Carla (ltouze) : 24 republications retenues pendant que Chrome était
-    // vivant. La pause acceptait deux indices trop larges : le simple mot
-    // « anti-robot » sur un job et un ancien 403 de sonde sans date limite.
-    // Une preuve pouvait donc durer indéfiniment et un 401 risquait de finir
-    // dans la même famille.
-    //
-    // RÈGLE UNIQUE : anti-robot Vinted = HTTP 403, jamais un texte et jamais un
-    // 401. Pour OUVRIR l'épisode, il faut deux articles distincts avec un 403
-    // daté de moins de 6 h, après le dernier succès ou la dernière levée, PLUS
-    // une sonde users/current à 403 datée de moins de 20 min. Pour MAINTENIR
-    // l'épisode, son marqueur canonique + une nouvelle sonde 403 fraîche
-    // suffisent. La preuve expire donc même si Chrome disparaît.
-    //
-    // Aucune « annonce-sonde » n'est envoyée pendant la pause : elle
-    // entretiendrait précisément le mur. Le bouton de l'app ouvre Vinted ; la
-    // page fait alors une sonde users/current immédiate. 200 lève la pause et
-    // reprend toute la file, 401 devient le mur de session, 403 maintient la
-    // pause. Une recréation déjà retirée reste prioritaire : elle doit revenir
-    // en ligne, comme avant.
+    // ══ ANTI-ROBOT SUR LE COMPTE VINTED : TOUT VINTED EN PAUSE (2026-09-25) ══
+    // (Point 4 du GO de Nico.) Carla (ltouze) : 7 republications, 7 annonces
+    // différentes, toutes refusées par la protection anti-robot de Vinted —
+    // et chacune réessayée toutes les 45 min, pendant que la sonde du compte
+    // répondait 403 et que le dernier succès Vinted datait du 13/09. Sept
+    // lectures refusées toutes les 45 minutes : exactement ce qui entretient
+    // le mur.
+    // RÈGLE (Nico) : quand Vinted montre l'anti-robot sur un COMPTE, toutes
+    // ses actions Vinted s'arrêtent jusqu'à la vérification passée, puis
+    // repartent seules. Une pause n'est pas un échec : aucun job ne passe au
+    // rouge, aucune tentative n'est consommée, les autres plateformes
+    // continuent.
+    // LE SIGNAL — deux preuves ensemble, jamais une seule :
+    //   a) au moins DEUX annonces distinctes refusées par l'anti-robot DANS
+    //      L'ONGLET (capture_echec « anti-robot », blocage_antirobot), après
+    //      le dernier succès Vinted du compte ;
+    //   b) la sonde du compte (users/current) répond 403 — à ce relevé ou au
+    //      précédent, pour ne pas clignoter — et ne voit pas Vinted vivant.
+    //   Un 403 de sonde seul ne prouve rien (36 comptes à 403 cette semaine,
+    //   35 sans aucun refus ; 35 republications publiées pendant un 403). Des
+    //   refus seuls non plus (remialbertholl, 24/09 : annonces d'une AUTRE
+    //   boutique, compte sain).
+    // LA SORTIE, sans rien attendre de personne : un succès Vinted postérieur
+    //   aux refus (a tombe) ou la sonde qui revoit Vinted (b tombe). Le message
+    //   de pause est alors retiré, le reste suit.
+    // CE QUI RESTE SERVI : une republication dont l'annonce est DÉJÀ retirée
+    //   (étape 'deleted' : elle doit revenir en ligne), et UNE sonde au plus,
+    //   quand le dernier refus a 45 min — un job jamais refusé d'abord (les
+    //   retraits en tête), sinon le refus le plus ancien.
+    // LES CRÉNEAUX : un job retenu reste pending et dû ; le balayage le compte
+    //   « en vol » (garde par plateforme) et ne crée plus rien sur Vinted pour
+    //   ce compte — Leboncoin, Beebs et Opla continuent. ⛔ Aucune échéance
+    //   (next_action_after) n'est posée sur un job retenu : elle le sortirait
+    //   du compte « en vol ».
+    // Périmètre : poll d'exécution. Best-effort : illisible → servi comme avant.
+    // (27/09, ltouze : 46 jobs en pause depuis le 25/09, sonde 403 sans
+    // interruption) La sonde à 403 ne distingue pas une vérification
+    // anti-robot d'une session Vinted fermée dans ce Chrome (vinted.js :
+    // « connexion NON vérifiée »). Le message dit les DEUX gestes possibles —
+    // pas seulement « passe la vérification », qui ne s'affiche pas à
+    // quelqu'un de déconnecté.
     const ANTIROBOT_COMPTE_MSG =
       "Vinted demande une vérification anti-robot sur ton compte : tes actions Vinted sont en pause, rien n'a été touché. " +
-      "Ouvre Vinted avec le bouton et passe la vérification si elle s'affiche : FillSell vérifie aussitôt, puis toute ta file repart seule. " +
-      "Tes autres plateformes continuent normalement.";
+      "Ouvre vinted.fr dans Chrome : connecte-toi à ton compte si Vinted te le demande, et passe la vérification si elle s'affiche — " +
+      "tout repartira seul. Tes autres plateformes continuent normalement.";
     const idsAntirobot = new Set<string>();
     let antirobotPause: Record<string, unknown> | null = null;
     if (!includeProcessing && !includeNeedsUser) {
@@ -7429,95 +7371,83 @@ serve(async (req) => {
         type ObsAr = { id: string; article: string; at: number };
         const obsAr: ObsAr[] = [];
         for (const j of fileVinted) {
-          const obs = observation403Vinted(j);
-          if (!obs) continue;
-          obsAr.push({ id: String(j.id), article: String(j.inventaire_id ?? j.listing_url ?? j.id), at: obs.atMs });
+          const pf = pfAr(j);
+          const ce = (pf.capture_echec && typeof pf.capture_echec === "object") ? pf.capture_echec as Record<string, unknown> : null;
+          const ba = (pf.blocage_antirobot && typeof pf.blocage_antirobot === "object") ? pf.blocage_antirobot as Record<string, unknown> : null;
+          const tCe = ce && /anti-?robot/i.test(String(ce.motif ?? "")) ? Date.parse(String(ce.at ?? "")) : NaN;
+          const tBa = ba ? Date.parse(String(ba.derniere ?? ba.depuis ?? "")) : NaN;
+          const at = Math.max(Number.isFinite(tCe) ? tCe : -Infinity, Number.isFinite(tBa) ? tBa : -Infinity);
+          if (!Number.isFinite(at)) continue;
+          obsAr.push({ id: String(j.id), article: String(j.inventaire_id ?? j.listing_url ?? j.id), at });
         }
         const nbArticles = (l: ObsAr[]) => new Set(l.map((o) => o.article)).size;
         let enPause = false;
-        const episodeOuvert = fileVinted.some((j) => episodeAntirobotVinted403(j));
-        if (episodeOuvert || nbArticles(obsAr) >= 2) {
+        if (nbArticles(obsAr) >= 2) {
           const { data: profAr } = await userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
-          const preuve403 = preuveSonde403Vinted(profAr?.extension_sessions ?? null);
-          if (preuve403) {
+          const s = (profAr?.extension_sessions ?? null) as Record<string, unknown> | null;
+          const vu403 = (x: unknown) => Boolean(x && typeof x === "object")
+            && Number(((x as Record<string, unknown>)["http"] as Record<string, unknown> | undefined)?.["vinted"]) === 403;
+          if (s && s["vinted"] !== true && (vu403(s) || vu403(s["previous"]))) {
             // Le DERNIER SUCCÈS Vinted du compte : un dépôt ou une republication
-            // aboutis par l'extension, un retrait fait, une annonce relue — ou
-            // la dernière levée explicite. Les observations d'un ancien
-            // épisode ne peuvent ainsi jamais en ouvrir un nouveau.
-            let dernierSucces = -Infinity;
-            let apres = obsAr;
-            if (!episodeOuvert) {
-              const [pubAr, delAr, capAr] = await Promise.all([
-                userClient.from("cross_post_jobs").select("published_at")
-                  .eq("user_id", user.id).eq("platform", "vinted").in("action", ["publish", "republish"])
-                  .in("status", ["published", "sold"]).not("handler_build", "is", null).not("published_at", "is", null)
-                  .order("published_at", { ascending: false }).limit(1),
-                userClient.from("cross_post_jobs").select("platform_fields")
-                  .eq("user_id", user.id).eq("platform", "vinted").eq("action", "delete").eq("status", "deleted")
-                  .order("created_at", { ascending: false }).limit(10),
-                userClient.from("vinted_republish_captures").select("captured_at")
-                  .eq("user_id", user.id).order("captured_at", { ascending: false }).limit(1),
-              ]);
-              if (pubAr.error || delAr.error || capAr.error) {
-                throw new Error(`dernier succès illisible (${(pubAr.error ?? delAr.error ?? capAr.error)?.message})`);
-              }
-              const temps = [
-                ...((pubAr.data ?? []) as Array<{ published_at: string | null }>).map((r) => Date.parse(String(r.published_at ?? ""))),
-                ...((delAr.data ?? []) as Array<{ platform_fields: unknown }>).map((r) => Date.parse(String(pfAr(r).processing_since ?? ""))),
-                ...((capAr.data ?? []) as Array<{ captured_at: string | null }>).map((r) => Date.parse(String(r.captured_at ?? ""))),
-                ...fileVinted.map((j) => Date.parse(String(pfAr(j).antirobot_pause_levee_le ?? ""))),
-              ].filter((t) => Number.isFinite(t));
-              dernierSucces = temps.length ? Math.max(...temps) : -Infinity;
-              apres = obsAr.filter((o) => o.at > dernierSucces);
+            // aboutis par l'extension, un retrait fait, une annonce relue.
+            const [pubAr, delAr, capAr] = await Promise.all([
+              userClient.from("cross_post_jobs").select("published_at")
+                .eq("user_id", user.id).eq("platform", "vinted").in("action", ["publish", "republish"])
+                .in("status", ["published", "sold"]).not("handler_build", "is", null).not("published_at", "is", null)
+                .order("published_at", { ascending: false }).limit(1),
+              userClient.from("cross_post_jobs").select("platform_fields")
+                .eq("user_id", user.id).eq("platform", "vinted").eq("action", "delete").eq("status", "deleted")
+                .order("created_at", { ascending: false }).limit(10),
+              userClient.from("vinted_republish_captures").select("captured_at")
+                .eq("user_id", user.id).order("captured_at", { ascending: false }).limit(1),
+            ]);
+            if (pubAr.error || delAr.error || capAr.error) {
+              throw new Error(`dernier succès illisible (${(pubAr.error ?? delAr.error ?? capAr.error)?.message})`);
             }
-            if (episodeOuvert || nbArticles(apres) >= 2) {
+            const temps = [
+              ...((pubAr.data ?? []) as Array<{ published_at: string | null }>).map((r) => Date.parse(String(r.published_at ?? ""))),
+              ...((delAr.data ?? []) as Array<{ platform_fields: unknown }>).map((r) => Date.parse(String(pfAr(r).processing_since ?? ""))),
+              ...((capAr.data ?? []) as Array<{ captured_at: string | null }>).map((r) => Date.parse(String(r.captured_at ?? ""))),
+            ].filter((t) => Number.isFinite(t));
+            const dernierSucces = temps.length ? Math.max(...temps) : -Infinity;
+            const apres = obsAr.filter((o) => o.at > dernierSucces);
+            if (nbArticles(apres) >= 2) {
               enPause = true;
               const vintedOut = out.filter((j) => j.platform === "vinted");
               const garder = new Set<string>(vintedOut
                 .filter((j) => j.action === "republish" && String(pfAr(j).republish_step ?? "") === "deleted")
                 .map((j) => String(j.id)));
+              const dernierRefus = Math.max(...apres.map((o) => o.at));
+              let sondeAr: string | null = null;
+              if (!garder.size && Date.now() - dernierRefus >= 45 * 60_000) {
+                const du = (j: { platform_fields: unknown }) => {
+                  const t = Date.parse(String(pfAr(j).next_action_after ?? ""));
+                  return !Number.isFinite(t) || t <= Date.now();
+                };
+                const refusDe = new Map(obsAr.map((o) => [o.id, o.at]));
+                const dus = vintedOut.filter(du);
+                const jamais = dus.filter((j) => !refusDe.has(String(j.id)))
+                  .sort((a, b) => (a.action === "delete" ? 0 : 1) - (b.action === "delete" ? 0 : 1));
+                const choisi = jamais[0] ?? dus.filter((j) => refusDe.has(String(j.id)))
+                  .sort((a, b) => (refusDe.get(String(a.id)) ?? 0) - (refusDe.get(String(b.id)) ?? 0))[0];
+                if (choisi) { sondeAr = String(choisi.id); garder.add(sondeAr); }
+              }
               for (const j of vintedOut) if (!garder.has(String(j.id))) idsAntirobot.add(String(j.id));
               if (idsAntirobot.size) out = out.filter((j) => !idsAntirobot.has(String(j.id)));
               // Le message de pause, sur chaque job Vinted en file (sauf ce qui
-              // reste servi) — posé une fois, ≤ 40 écritures par poll. Une
-              // nouvelle sonde 403 maintient l'épisode sans réécrire 24 lignes.
-              const datesDepuis = [
-                ...apres.map((o) => o.at),
-                ...fileVinted.map((j) => Date.parse(String((pfAr(j).attente_antirobot_compte as Record<string, unknown> | undefined)?.depuis ?? ""))),
-              ].filter((t) => Number.isFinite(t));
-              const datesRefus = [
-                ...apres.map((o) => o.at),
-                ...fileVinted.map((j) => Date.parse(String((pfAr(j).attente_antirobot_compte as Record<string, unknown> | undefined)?.derniere_obs ?? ""))),
-              ].filter((t) => Number.isFinite(t));
-              const depuisAr = new Date(datesDepuis.length ? Math.min(...datesDepuis) : preuve403.atMs).toISOString();
-              const dernierRefus = datesRefus.length ? Math.max(...datesRefus) : preuve403.atMs;
-              const articlesAr = Math.max(
-                nbArticles(apres),
-                ...fileVinted.map((j) => Number((pfAr(j).attente_antirobot_compte as Record<string, unknown> | undefined)?.articles) || 0),
-                episodeOuvert ? 2 : 0,
-              );
+              // reste servi) — posé une fois, ≤ 40 écritures par poll.
+              const depuisAr = new Date(Math.min(...apres.map((o) => o.at))).toISOString();
               let ecritures = 0;
               for (const j of fileVinted) {
                 if (garder.has(String(j.id)) || ecritures >= 40) continue;
                 const pf = pfAr(j);
-                if (episodeAntirobotVinted403(j) && j.error === ANTIROBOT_COMPTE_MSG) continue;
+                if (pf.attente_antirobot_compte && j.error === ANTIROBOT_COMPTE_MSG) continue;
                 ecritures++;
-                const obsDuJob = observation403Vinted(j);
                 const pfNeuf: Record<string, unknown> = {
                   ...pf,
-                  attente_antirobot_compte: {
-                    motif: MOTIF_ANTIROBOT_VINTED_403,
-                    depuis: depuisAr,
-                    derniere_obs: new Date(dernierRefus).toISOString(),
-                    articles: articlesAr,
-                    http: 403,
-                    preuve_403_le: preuve403.at,
-                    preuve_403_source: preuve403.source,
-                    pose_le: new Date().toISOString(),
-                    // Une échéance propre au 403 doit disparaître à la levée ;
-                    // une échéance d'une autre garde est restaurée exactement.
-                    next_action_after_avant: obsDuJob ? null : (pf.next_action_after ?? null),
-                  },
+                  // pose_le (2026-09-25) : le début de la pause POUR CE JOB — c'est
+                  // de là que la levée compte le temps passé en pause.
+                  attente_antirobot_compte: { depuis: depuisAr, derniere_obs: new Date(dernierRefus).toISOString(), articles: nbArticles(apres), http: 403, pose_le: new Date().toISOString() },
                 };
                 if (j.error && j.error !== ANTIROBOT_COMPTE_MSG) {
                   pfNeuf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "pending", "get-pending-jobs (pause anti-robot du compte)");
@@ -7528,13 +7458,11 @@ serve(async (req) => {
                 if (wErr) console.warn(`[get-pending-jobs] pause anti-robot : message non posé sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
               }
               antirobotPause = {
-                motif: MOTIF_ANTIROBOT_VINTED_403,
-                retenus: idsAntirobot.size, articles: articlesAr,
+                retenus: idsAntirobot.size, sonde: sondeAr, articles: nbArticles(apres),
                 depuis: depuisAr, dernier_refus: new Date(dernierRefus).toISOString(),
                 dernier_succes: Number.isFinite(dernierSucces) ? new Date(dernierSucces).toISOString() : null,
-                preuve_403_le: preuve403.at,
               };
-              console.log(`[get-pending-jobs] userId=${user.id} : ${MOTIF_ANTIROBOT_VINTED_403} (${articlesAr} annonces, preuve 403 ${preuve403.source} ${preuve403.at}) — ${idsAntirobot.size} job(s) Vinted en pause${garder.size ? `, ${garder.size} recréation(s) déjà retirée(s) servie(s)` : ""} ; aucune annonce-sonde, aucune tentative consommée`);
+              console.log(`[get-pending-jobs] userId=${user.id} : anti-robot sur le compte Vinted (${nbArticles(apres)} annonces refusées depuis le dernier succès, sonde 403) — ${idsAntirobot.size} job(s) Vinted en pause${sondeAr ? `, sonde = job ${sondeAr.slice(0, 8)}` : ""}${garder.size && !sondeAr ? `, ${garder.size} recréation(s) servie(s)` : ""} ; aucune tentative consommée`);
             }
           }
         }
@@ -7558,17 +7486,6 @@ serve(async (req) => {
             const debutPause = Math.max(Number.isFinite(poseMs) ? poseMs : Date.now(), Number.isFinite(neMs) ? neMs : -Infinity);
             pfNeuf.antirobot_pause_cumul_ms = Math.max(0, Number(pf.antirobot_pause_cumul_ms) || 0) + Math.max(0, Date.now() - debutPause);
             pfNeuf.antirobot_pause_levee_le = new Date().toISOString();
-            if (Object.prototype.hasOwnProperty.call(marq, "next_action_after_avant")) {
-              if (typeof marq.next_action_after_avant === "string" && marq.next_action_after_avant) {
-                pfNeuf.next_action_after = marq.next_action_after_avant;
-              } else {
-                delete pfNeuf.next_action_after;
-              }
-            } else if (observation403Vinted(j)) {
-              // Transition des marqueurs 0.6.79 : leur échéance venait du 403,
-              // mais ils ne mémorisaient pas encore la valeur antérieure.
-              delete pfNeuf.next_action_after;
-            }
             delete pfNeuf.attente_antirobot_compte;
             const { error: wErr } = await userClient.from("cross_post_jobs")
               .update({ ...(j.error === ANTIROBOT_COMPTE_MSG ? { error: null } : {}), platform_fields: pfNeuf })
@@ -7817,6 +7734,7 @@ serve(async (req) => {
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
       beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,
+      retraits_point1_retenus: heldPreuvesRetraitsPoint1,
       // Retraits/republications Vinted retenus : l'article appartient a une autre
       // boutique que celle ouverte dans Chrome (incident du 22/09).
       boutique_etrangere_retenus: heldBoutiqueEtrangere,

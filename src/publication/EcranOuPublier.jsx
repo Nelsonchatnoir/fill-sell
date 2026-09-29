@@ -74,7 +74,7 @@ export default function EcranOuPublier({ m }) {
         </button>
       );
       else if (attente.kind === "attente_autorisation" && m.userId) geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
-      else if (attente.kind === "attente_connexion" && m.userId) geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={attente.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : attente.motif === "identite_lbc" ? MOTIFS.IDENTITE_LBC : attente.motif === "vendeur_ebay" ? MOTIFS.VENDEUR_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
+      else if (attente.kind === "attente_connexion" && m.userId) geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={attente.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
     }
     else if (compteAbsent) {
       etat = m.motifEbay; ton = "geste";

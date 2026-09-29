@@ -124,41 +124,6 @@ export function motifEbayInutilisable(etat) {
   return 'a_finir';
 }
 
-// ── PORTE AVANT CRÉATION DU JOB eBAY ──────────────────────────────────────
-// Deux voies, deux preuves qui ne se remplacent jamais :
-//   · API : compte OAuth + politiques + checklist vendeur verte ;
-//   · extension : preuve récente que le navigateur a réellement atteint le
-//     Hub vendeur, un relevé réussi ou un dépôt réussi. Un compte API relié ne
-//     prouve pas que Chrome est prêt à vendre par le formulaire.
-// `verite` est l'entrée ebay de plateformes_verite(), déjà expirée à 7 jours.
-export function portePublicationEbay({ voieApi = false, etatApi = null, etatApiLu = false, verite = null } = {}) {
-  if (voieApi) {
-    if (!etatApiLu) return { bloque: true, pret: false, voie: 'api', motif: 'verification' };
-    const pret = ebayCompteUtilisable(etatApi) === true;
-    return { bloque: !pret, pret, voie: 'api', motif: pret ? null : motifEbayInutilisable(etatApi), geste: 'reglages' };
-  }
-
-  if (!verite) return { bloque: true, pret: false, voie: 'extension', motif: 'verification', geste: 'verifier_vendeur' };
-  // `source=api` ne vaut que pour la voie serveur. Sur la voie extension il
-  // faut une preuve du navigateur, même si un ancien OAuth existe en base.
-  if (verite.etat === 'connectee' && verite.source !== 'api') {
-    return { bloque: false, pret: true, voie: 'extension', motif: null, geste: null };
-  }
-  if (verite.etat === 'ecartee') {
-    return { bloque: true, pret: false, voie: 'extension', motif: 'ecartee', geste: 'reglages' };
-  }
-  if (verite.mur === 'upgrade') {
-    return { bloque: true, pret: false, voie: 'extension', motif: 'vendeur_inactif', geste: 'vendeur' };
-  }
-  if (verite.mur === 'reauth') {
-    return { bloque: true, pret: false, voie: 'extension', motif: 'a_reconnecter', geste: 'reauth' };
-  }
-  if (verite.etat === 'a_connecter') {
-    return { bloque: true, pret: false, voie: 'extension', motif: 'non_connecte', geste: 'connexion' };
-  }
-  return { bloque: true, pret: false, voie: 'extension', motif: 'a_verifier', geste: 'verifier_vendeur' };
-}
-
 // ── Répartition d'un lot par VOIE — source unique de la question « qui a ────
 // ── besoin de l'extension ? » (07/09/2026) ─────────────────────────────────
 // AUCUN écran ne redécide la voie dans son coin : la décision vit dans le

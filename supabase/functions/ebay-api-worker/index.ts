@@ -1724,10 +1724,17 @@ async function publicationApiExacte(
   const { data } = await admin.from("cross_post_jobs")
     .select("id, inventaire_id, action, status, voie, handler_build, listing_url, platform_listing_id, platform_fields")
     .eq("user_id", userId).eq("platform", "ebay").eq("voie", "api")
-    .in("action", ["publish", "republish"]).eq("status", "published")
+    .in("action", ["publish", "republish"]).in("status", ["published", "cancelled"])
     .eq("platform_listing_id", listingId)
-    .order("created_at", { ascending: false }).limit(1).maybeSingle();
-  return (data as JobPublicationApi | null) ?? null;
+    .order("created_at", { ascending: false }).limit(10);
+  // Une fiche supprimée peut avoir passé son dépôt en `cancelled` tout en
+  // laissant expressément l'annonce en ligne. Le statut ne choisit donc pas
+  // la source : seule la preuve interne listing/offer/SKU cohérente le fait.
+  // Deux sources cohérentes différentes restent ambiguës, donc abstention.
+  const coherentes = ((data ?? []) as JobPublicationApi[]).filter((source) =>
+    verifierSourceRetraitEbay(listingId, source, { statutsAutorises: ["published", "cancelled"] }).ok
+  );
+  return coherentes.length === 1 ? coherentes[0] : null;
 }
 
 async function publicationApiParId(
@@ -1853,7 +1860,7 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   // ciblait 377506248476, mais sa source a5d466df portait en interne
   // 377512032291 : l'ancien repli par source/SKU a retiré cette AUTRE offre.
   // Un import de relevé (89afc218) n'est pas davantage un dépôt API FillSell.
-  const preuve = verifierSourceRetraitEbay(idAnnonce, precedent);
+  const preuve = verifierSourceRetraitEbay(idAnnonce, precedent, { statutsAutorises: ["published", "cancelled"] });
   if (!preuve.ok) {
     const message = idAnnonce
       ? `Retrait eBay arrêté par FillSell avant tout appel : aucune publication API cohérente ne prouve exactement l'annonce ${idAnnonce}. L'annonce n'a pas été touchée.`
@@ -1988,7 +1995,7 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
   const precedent = intentionMemorisee
     ? await publicationApiParId(admin, job.user_id, intentionMemorisee.source_job_id)
     : (idAnnonce ? await publicationApiExacte(admin, job.user_id, idAnnonce) : null);
-  const preuve = verifierSourceRetraitEbay(idAnnonce, precedent);
+  const preuve = verifierSourceRetraitEbay(idAnnonce, precedent, { statutsAutorises: ["published", "cancelled"] });
   const intentionConforme = !intentionMemorisee || (preuve.ok
     && intentionMemorisee.cible === preuve.cible
     && intentionMemorisee.source_job_id === preuve.source_job_id

@@ -31,7 +31,7 @@ import { questionEnFrancais } from "../_shared/question-francais.js";
 // L'option que l'annonce nomme déjà (24/09) — module JS sans import, le même
 // que l'app (stepper, modale « Compléter »).
 import { optionDepuisTextes, champDeductibleDuTexte, textesDeLAnnonce, listeCandidatsDabord } from "../_shared/option-du-texte.js";
-import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAccesOpla, posteCourt } from "../_shared/poste-extension.ts";
+import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteAvecAccesOpla, posteCourt, type Poste } from "../_shared/poste-extension.ts";
 import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
@@ -1545,8 +1545,7 @@ serve(async (req) => {
     // rien — le classement (pas-de-rouge, règle « compte_restreint ») attend
     // la date, et c'est lui qui parle.
     if (statutEffectif === "needs_user" && !pfCanalCoupe && !pfRetraitVerif && typeof body.error === "string" &&
-        /CHALLENGE Vinted a refusé la suppression/i.test(body.error) && /\bHTTP\s*403\b/i.test(body.error) &&
-        !restrictionVinted(pfIn ?? {})) {
+        /CHALLENGE Vinted a refusé la suppression/i.test(body.error) && !restrictionVinted(pfIn ?? {})) {
       try {
         const { data: jrow } = await userClient
           .from("cross_post_jobs").select("action, platform, platform_fields").eq("id", jobId).maybeSingle();
@@ -1569,8 +1568,7 @@ serve(async (req) => {
               antirobot_repub_reprises: deja + 1,
               next_action_after: new Date(Date.now() + ANTIROBOT_REPUB_MIN * 60_000).toISOString(),
               antirobot_repub_derniere: {
-                le: new Date().toISOString(), motif: body.error.slice(0, 300), http: 403,
-                motif_code: "antirobot_vinted_403",
+                le: new Date().toISOString(), motif: body.error.slice(0, 300),
                 pose_par: "update-job-status (refus anti-robot avant retrait = pause)",
               },
             };
@@ -3788,10 +3786,10 @@ serve(async (req) => {
         .maybeSingle();
 
       // La boutique qui vient de publier est connue par /users/current, relu
-      // par l'extension APRÈS la confirmation du dépôt. On n'accepte que cette
-      // preuve structurée, récente et concordante ; jamais un titre, jamais un
-      // pseudo isolé. L'écriture sur l'article se fera seulement après le CAS
-      // terminal réussi, afin qu'un statut refusé n'estampille rien.
+      // par l'extension APRES la confirmation du depot. On n'accepte que cette
+      // preuve structuree, recente et concordante ; jamais un titre, jamais un
+      // pseudo isole. L'ecriture sur l'article se fera seulement apres le CAS
+      // terminal reussi, afin qu'un statut refuse n'estampille rien.
       if (jobRow?.platform === "vinted" && ["publish", "republish"].includes(String(jobRow.action ?? ""))
           && jobRow.inventaire_id != null) {
         const pfPublication = ((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>);
@@ -3820,6 +3818,12 @@ serve(async (req) => {
         } catch (e) { console.warn("[update-job-status] publication du poste :", (e as Error)?.message ?? e); }
       }
       const lienFourni = typeof body.listing_url === "string" && body.listing_url ? body.listing_url : null;
+      const idBeebsFourni = jobRow?.platform === "beebs"
+        && typeof body.platform_listing_id === "string"
+        && /^\d+$/.test(body.platform_listing_id.trim())
+        ? body.platform_listing_id.trim()
+        : null;
+      if (idBeebsFourni) patch.platform_listing_id = idBeebsFourni;
       if (lienFourni) {
         patch.listing_url = lienFourni;
         // L'id d'annonce accompagne TOUJOURS l'URL dont il est extrait — les
@@ -3840,20 +3844,15 @@ serve(async (req) => {
       // eux seuls, qui produisent des retraits qui ne pourront jamais agir
       // (10 sur les 500 retraits du parc, 9 Beebs + 1 Leboncoin).
       //
-      // Beebs peut accepter un dépôt avant que son identifiant soit visible.
-      // Il est alors déjà parti : surtout pas de nouvelle soumission. Mais il
-      // n'est pas encore « publié » au sens FillSell, car aucun retrait exact
+      // Beebs peut accepter un depot avant que son identifiant soit visible.
+      // Il est alors deja parti : surtout pas de nouvelle soumission. Mais il
+      // n'est pas encore « publie » au sens FillSell, car aucun retrait exact
       // ne serait possible. On le retient donc en pending avec un marqueur
-      // dédié ; get-pending-jobs ne le redistribue pas et beebs-lien ne le
-      // clôt que lorsque le relevé rattache un identifiant au job exact.
+      // dedie ; get-pending-jobs ne le redistribue pas et beebs-lien ne le
+      // clot que lorsque le releve rattache un identifiant au job exact.
       const idConnu = String(patch.platform_listing_id ?? jobRow?.platform_listing_id ?? "").trim();
       const pfBase = ((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>);
       if (jobRow?.platform === "beebs" && !/^\d+$/.test(idConnu)) {
-        // Beebs peut confirmer le dépôt avant de rendre son annonce visible,
-        // mais un retrait n'est sûr qu'avec son identifiant durable. Le dépôt
-        // attend donc le relevé exact au lieu d'être déclaré publié puis
-        // recherché par titre. Le marqueur le sort de la distribution dans
-        // get-pending-jobs ; beebs-lien le clôt uniquement sur job_id exact.
         statutEffectif = "pending";
         patch.status = "pending";
         delete patch.published_at;
@@ -3865,12 +3864,12 @@ serve(async (req) => {
           attente_identifiant_beebs: {
             depuis: new Date().toISOString(),
             depot_confirme_le: new Date().toISOString(),
-            preuve_attendue: "identifiant exact du relevé Beebs rattaché à ce job",
+            preuve_attendue: "identifiant exact du releve Beebs rattache a ce job",
             pose_par: "update-job-status",
           },
         };
-        raisonRequalif = "Beebs : dépôt confirmé sans identifiant durable, attente du relevé exact";
-        console.log(`[update-job-status] job=${jobId} Beebs sans identifiant durable → pending retenu, jamais published`);
+        raisonRequalif = "Beebs : depot confirme sans identifiant durable, attente du releve exact";
+        console.log(`[update-job-status] job=${jobId} Beebs sans identifiant durable -> pending retenu, jamais published`);
       } else if (!lienFourni && !idConnu) {
         // Même échéance que la re-capture, par plateforme (7 j Beebs pour la
         // modération, 48 h ailleurs) — la valeur vit aussi dans
@@ -4049,13 +4048,13 @@ serve(async (req) => {
         .is("vinted_account_id", null);
       if (stampErr) {
         console.warn(
-          `[update-job-status] job=${jobId} : boutique Vinted prouvée mais non estampillée sur l'article ` +
+          `[update-job-status] job=${jobId} : boutique Vinted prouvee mais non estampillee sur l'article ` +
           `${inventaireVintedAEstampiller} (${stampErr.message})`,
         );
       } else {
         console.log(
-          `[update-job-status] job=${jobId} : boutique Vinted ${boutiqueVintedProuvee} estampillée à la source ` +
-          `sur l'article ${inventaireVintedAEstampiller} si elle était encore absente`,
+          `[update-job-status] job=${jobId} : boutique Vinted ${boutiqueVintedProuvee} estampillee a la source ` +
+          `sur l'article ${inventaireVintedAEstampiller} si elle etait encore absente`,
         );
       }
     }

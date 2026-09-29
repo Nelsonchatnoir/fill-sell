@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -555,26 +555,6 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
       if (e.data.envoi) chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_ENVOI", envoi: e.data.envoi }).catch(() => {});
     } catch { /* extension rechargée : sans conséquence */ }
   });
-
-  // Le bouton FillSell arme UN onglet Vinted visible pendant 10 minutes. La
-  // page ne sonde rien elle-même ici : elle signale seulement qu'elle est
-  // prête ; le background vérifie que cet onglet précis est armé avant de lui
-  // demander /users/current. Une navigation/recharge après le challenge donne
-  // donc immédiatement le verdict 200/401/403, sans poll agressif ailleurs.
-  let dernierSignalAntirobot = 0;
-  const signalerPageVintedPrete = () => {
-    if (Date.now() - dernierSignalAntirobot < 1500) return;
-    dernierSignalAntirobot = Date.now();
-    try {
-      chrome.runtime.sendMessage({ type: "VINTED_ANTIROBOT_PAGE_PRETE" }).catch(() => {});
-    } catch { /* extension rechargée : sans conséquence */ }
-  };
-  setTimeout(signalerPageVintedPrete, 0);
-  window.addEventListener("pageshow", signalerPageVintedPrete);
-  window.addEventListener("focus", signalerPageVintedPrete);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") signalerPageVintedPrete();
-  });
 }
 
 // ── Armement de la pose d'ISBN dans le corps du POST (2026-08-31) ────────────
@@ -700,11 +680,9 @@ async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS) {
 
 // fait foi, et lui seul sait sur quel compte il est connecté.
 async function vintedUtilisateurCourant() {
-  // La page de vérification ne suffit pas à nommer la cause, mais elle ne doit
-  // pas empêcher la SONDE : /users/current peut, lui, rendre le 403 exact.
-  // Un 200 alors que le mur est encore peint reste toutefois indéterminé ; on
-  // attend la navigation qui suit la vérification avant de reprendre la file.
-  const pageVerification = estPageBotShieldVinted();
+  if (estPageBotShieldVinted()) {
+    return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield)" };
+  }
   try {
     const r = await fetchBorne("/api/v2/users/current", {
       headers: entetesApiVinted(), credentials: "include",
@@ -736,12 +714,6 @@ async function vintedUtilisateurCourant() {
       return {
         success: false, verdictInconnu: true, accesRefuse: true, httpStatus: 403,
         error: "accès refusé par Vinted (HTTP 403) — protection anti-robot, connexion NON vérifiée",
-      };
-    }
-    if (pageVerification) {
-      return {
-        success: false, verdictInconnu: true, httpStatus: r.status,
-        error: `page Vinted de vérification encore affichée (sonde HTTP ${r.status}, reprise non autorisée)`,
       };
     }
     const brut = await r.text();
@@ -805,7 +777,7 @@ async function lirePageDressing(page, userId) {
   // Un challenge DataDome rend du HTML : on le dit au lieu de faire planter le
   // JSON.parse sur une page de blocage (cf. bot-shield des 4 plateformes).
   if (estPageBotShieldVinted()) {
-    return { success: false, verdictInconnu: true, error: "page Vinted de vérification affichée (code HTTP inconnu) — relevé interrompu" };
+    return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield) — sync interrompue" };
   }
 
   const url = `/api/v2/wardrobe/${encodeURIComponent(userId)}/items?page=${page}&per_page=96`;
@@ -893,7 +865,7 @@ async function lireDetailArticle(vintedItemId) {
   const id = String(vintedItemId ?? "").trim();
   if (!id || !/^\d+$/.test(id)) return { success: false, error: "id d'article Vinted manquant ou illisible" };
   if (estPageBotShieldVinted()) {
-    return { success: false, verdictInconnu: true, error: "page Vinted de vérification affichée (code HTTP inconnu)" };
+    return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield)" };
   }
   let resp;
   try {
@@ -1130,15 +1102,9 @@ async function catalogueDeLaPagePublique(vintedItemId, catalogIdEdition, diag) {
     // Le flux de la page (React Server Components) échappe ses guillemets.
     const page = brut.replace(/\\+"/g, '"');
     const vus = new Set();
-    // Vinted rend plusieurs formes du même flux RSC, selon le compte : nombres
-    // JSON ou chaînes, et `catalog_id` avant OU après l'identifiant. On exige
-    // toujours que les deux clés vivent dans le même objet plat : jamais un
-    // catalog_id voisin, jamais une recherche globale par titre.
     const lectures = [
-      new RegExp(`"item"\\s*:\\s*\\{[^{}]{0,1200}?"id"\\s*:\\s*"?${itemId}"?[^{}]{0,1200}?"catalog_id"\\s*:\\s*"?(\\d+)"?`, "g"),
-      new RegExp(`"item"\\s*:\\s*\\{[^{}]{0,1200}?"catalog_id"\\s*:\\s*"?(\\d+)"?[^{}]{0,1200}?"id"\\s*:\\s*"?${itemId}"?`, "g"),
-      new RegExp(`"item_id"\\s*:\\s*"?${itemId}"?[^{}]{0,800}?"catalog_id"\\s*:\\s*"?(\\d+)"?`, "g"),
-      new RegExp(`"catalog_id"\\s*:\\s*"?(\\d+)"?[^{}]{0,800}?"item_id"\\s*:\\s*"?${itemId}"?`, "g"),
+      new RegExp(`"item":\\{"id":${itemId},[^{}]{0,800}?"catalog_id":(\\d+)`, "g"),
+      new RegExp(`"item_id":${itemId},[^{}]{0,200}?"catalog_id":(\\d+)`, "g"),
     ];
     for (const re of lectures) for (const m of page.matchAll(re)) vus.add(Number(m[1]));
     trace.catalog_ids_page = [...vus];
@@ -1438,11 +1404,12 @@ async function capturerAnnonceVinted(vintedItemId) {
       location.pathname.match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] === String(vintedItemId)) {
     const lignesBoutique = [];
     const p = await proprietaireAnnonceVinted((ligne) => lignesBoutique.push(ligne));
-    if (p?.vendeur && p?.session && String(p.vendeur) === String(p.session)) {
+    if (p?.vendeur && p?.session) {
       boutiquePreuve = {
         item_id: String(vintedItemId),
         vendeur: String(p.vendeur),
         session: String(p.session),
+        concordante: String(p.vendeur) === String(p.session),
         login_session: p.login_session ?? null,
         source: "page_annonce_exacte",
         lu_le: new Date().toISOString(),
@@ -1453,7 +1420,8 @@ async function capturerAnnonceVinted(vintedItemId) {
       item_id: String(vintedItemId),
       vendeur: p?.vendeur != null ? String(p.vendeur) : null,
       session: p?.session != null ? String(p.session) : null,
-      verdict: boutiquePreuve ? "prouvee" : (p?.vendeur && p?.session ? "differente" : "illisible"),
+      verdict: boutiquePreuve?.concordante === true ? "prouvee"
+        : boutiquePreuve ? "differente" : "illisible",
       trace: lignesBoutique.slice(0, 4),
     });
   } else {
@@ -1956,18 +1924,19 @@ async function deleteListing(job) {
     // ⇒ Préfixe `CHALLENGE ` : background.js route vers
     //   marquerBlocageAntiRobot — reprise toutes les 20 min, bornée à 6 h par
     //   épisode, AUCUNE tentative consommée, et RIEN n'est supprimé.
-    // Une redirection vers l'accueil ne prouve PAS un 403 : elle peut venir
-    // d'une URL périmée, d'une session en transition ou d'une navigation de
-    // l'onglet partagé. Sans page exacte, le propriétaire est illisible : on
-    // nomme l'impossibilité de vérifier, jamais une boutique étrangère ni un
-    // anti-robot inventé, et surtout aucune requête de retrait ne part.
-    return {
-      success: false,
-      needsUser: false,
-      verificationBoutiqueImpossible: true,
-      error: "FillSell n'a pas pu ouvrir la page exacte de l'annonce pour vérifier sa boutique. Rien n'a été retiré ; la vérification sera reprise.",
-      trace,
-    };
+    const racineVinted = /^\/(fr\/?)?$/.test(location.pathname);
+    if (racineVinted) {
+      return {
+        success: false,
+        needsUser: false,
+        error:
+          "CHALLENGE Vinted n'a pas servi la page de ton annonce et nous a renvoyés à son accueil : "
+          + "c'est sa protection anti-robot. Rien n'a été supprimé et ton annonce est intacte. "
+          + "On réessaie tout seul dans quelques minutes.",
+        trace,
+      };
+    }
+    return { success: false, error: `Page inattendue pour une suppression Vinted : ${location.href}`, trace };
   }
   const itemId = location.pathname.match(/\/items\/(\d+)/)?.[1];
   if (!itemId) {
@@ -2029,8 +1998,7 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
   // GARDE AVANT LE POST. La preuve de la boutique de l'annonce vient soit de
   // sa page exacte (retrait ordinaire), soit de l'origine exacte capturée sur
   // cette page avant le pré-vol de republication. La session est toujours
-  // relue maintenant. Un 403 n'est plus utilisé après coup comme test de
-  // propriété : au moindre inconnu ou contradiction, aucune requête ne part.
+  // relue maintenant. Au moindre inconnu ou contradiction, rien ne part.
   const attendue = String(opts.boutiqueAttendue ?? "").trim();
   const surAnnonce = location.pathname.match(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] === String(itemId);
   let proprio = surAnnonce ? await proprietaireAnnonceVinted(t) : null;
@@ -2272,7 +2240,6 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
             success: false,
             needsUser: false,
             enVerification: true,
-            httpStatus: 403,
             error:
               "CHALLENGE Vinted a refusé la suppression : l'annonce est encore en vérification chez Vinted " +
               "(masquée aux acheteurs). Rien n'a été supprimé ; le retrait repart dès la fin de la vérification.",
@@ -2285,8 +2252,6 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
         return {
           success: false,
           needsUser: false,
-          httpStatus: 403,
-          motifCode: "antirobot_vinted_403",
           error:
             `CHALLENGE Vinted a refusé la suppression : protection anti-robot (HTTP 403` +
             `${codeVinted ? `, ${codeVinted}` : ""}), ta session est valide. ` +
@@ -2298,7 +2263,6 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
       return {
         success: false,
         needsUser: true,
-        httpStatus: resp.status,
         error:
           session === "expiree"
             ? `Suppression Vinted refusée (HTTP ${resp.status}) : session Vinted expirée. Se reconnecter à Vinted.`
@@ -2308,9 +2272,45 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
         verdict,
       };
     }
-    // Les autres 4xx ne sont PAS assimilés à un anti-robot. Un 400 peut être
-    // notre requête ; un 401 est le mur de session ; seul le 403 ci-dessus a
-    // le motif canonique. Le background relit l'état réel avant tout verdict.
+    // ── UN 4xx AVEC UNE SESSION VALIDE EST DE LA MÊME FAMILLE QUE LE 403 ──
+    // 🚨 LE CAS, compte ornellaracano, job 0df4e6a2 (« Jouet VTech –
+    //    Trompette »), 19/09 23:16 → FAILED sur « l'API a répondu HTTP 400 ».
+    //    Le même job porte `blocage_antirobot` avec deux observations
+    //    (05:58 et 11:31) : « HTTP 403, access_denied, ta session est
+    //    valide ». Ses archives disent, dans l'ordre : reprise gratuite →
+    //    tentative 1/5 → tentative 2/5 → puis ce 400, qui l'a tué SEC.
+    //    Le message promettait « Reprise automatique dans ~15 min » sur un
+    //    job passé en `failed` : un failed n'est jamais reservi.
+    // LE RAISONNEMENT : sur cet endpoint, une vraie requête malformée
+    // échouerait pour TOUT LE MONDE, tout le temps. Ce n'est pas le cas —
+    // le même compte supprime très bien le reste du temps. Un 4xx rendu
+    // pendant que la session est VALIDE vient de la couche qui filtre les
+    // robots, comme le 403 juste au-dessus. On le nomme pareil.
+    // ⛔ CE QUE ÇA NE CHANGE PAS : rien n'est supprimé, rien n'est conclu,
+    //    aucune tentative n'est consommée. Le pire que ça produise est un
+    //    réessai de plus — au lieu d'un job mort avec une annonce en ligne.
+    // ⚠️ Le 401 garde son chemin : là, la session est vraiment morte.
+    // ⚠️ `session` est déclarée dans la branche 401/403 au-dessus : hors de
+    //    portée ici. On la relit — c'est un appel de plus, sur un chemin
+    //    d'échec seulement, et il vaut mieux qu'une variable devinée.
+    if (resp.status >= 400 && resp.status < 500) {
+      const sessionIci = await vintedSessionEtat(t);
+      verdict.session = String(sessionIci);
+      if (sessionIci !== "expiree") {
+        verdict.conclusion = "refus_anti_robot";
+        t(`HTTP ${resp.status} avec session ${sessionIci} — même famille que le 403 anti-robot, reprise espacée`);
+        return {
+          success: false,
+          needsUser: false,
+          error:
+            `CHALLENGE Vinted a refusé la suppression (HTTP ${resp.status}) alors que ta session est valide : `
+            + "c'est sa protection anti-robot. Rien n'a été supprimé et ton annonce est intacte. "
+            + "On réessaie tout seul dans quelques minutes.",
+          trace,
+          verdict,
+        };
+      }
+    }
     // Autre code : le background revérifie l'état réel (jamais de faux « deleted »).
     verdict.conclusion = "http_autre";
     return {
@@ -2482,8 +2482,8 @@ async function fillListingForm(job) {
       success: false,
       needsUser: true,
       error:
-        "Vinted affiche une page de vérification à la place du formulaire de dépôt " +
-        "(code HTTP inconnu). Ouvrir vinted.fr dans Chrome et terminer cette vérification " +
+        "CHALLENGE DATADOME : Vinted affiche une vérification anti-robot à la place du " +
+        "formulaire de dépôt. Ouvrir vinted.fr dans Chrome et résoudre la vérification " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
     };
   }
@@ -5841,12 +5841,6 @@ function candidatsTailleVinted(libelle) {
   const out = [];
   const push = (v) => { const t = String(v ?? "").trim(); if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t); };
   push(l);
-  // Traduction littérale du vocabulaire de la grille enfant, sans conversion :
-  // « 10 years » et « 10 ans » désignent le même âge. C'est la seule
-  // équivalence prouvée par le cas Beganton et par la grille Vinted : on
-  // n'élargit pas cette règle à d'autres unités sans cas réel rejoué.
-  const ageAnglais = l.match(/^(\d{1,2}(?:\s*[-/]\s*\d{1,2})?)\s*(years?|yrs?)$/i);
-  if (ageAnglais) push(`${ageAnglais[1]} ans`);
   const jean = l.match(/^\s*W?\s*(\d{2})\s*(?:[xX\/\-\s]\s*L?|L)\s*(\d{2})\s*$/i);
   if (jean) { push(`W${jean[1]}`); push(jean[1]); }
   const w = l.match(/^\s*W\s+(\d{2})\s*$/i);
@@ -5863,10 +5857,11 @@ function candidatsTailleVinted(libelle) {
   // l'exact, exactement comme avant. C'est une traduction de vocabulaire
   // (même nombre), jamais une conversion de système : jamais « FR N » ni
   // « UK N » — ceux-là désignent d'autres tailles.
-  // Le système fait partie de la taille : « UK 12 » ou « EU 42 » ne deviennent
-  // jamais un nombre nu, qui pourrait appartenir à une autre grille.
+  // Sens inverse (« EU 42 » capturé, grille qui écrit « 42 ») : déjà couvert
+  // par le retrait de préfixe ci-dessous, inchangé.
   const nu = l.match(/^\s*(\d{1,3}(?:[.,]\d)?)\s*$/);
   if (nu) push(`EU ${nu[1]}`);
+  push(l.replace(/^(EU|UK|FR|IT|US)\s+/i, ""));
   return out;
 }
 // Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par

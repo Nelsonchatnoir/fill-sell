@@ -197,14 +197,6 @@ function jobWarningsTexte(job, lang = 'fr') {
 const PLATEFORMES_RECUP_LIEN = new Set(['leboncoin', 'beebs', 'ebay']);
 const RECUP_LIEN_FENETRE_MS = 48 * 60 * 60 * 1000;
 function etatLienJob(job) {
-  // Beebs : le dépôt est confirmé mais l'annonce ne devient « publiée »
-  // qu'une fois son identifiant durable relu. Ce pending est donc un état de
-  // modération, pas un dépôt encore à exécuter ni une erreur.
-  if (job?.platform === 'beebs'
-    && (job?.action === 'publish' || job?.action === 'republish')
-    && job?.status === 'pending'
-    && job?.platform_fields?.attente_identifiant_beebs
-    && !job?.listing_url) return 'en_cours';
   if (job?.status !== 'published' || job?.action !== 'publish') return null;
   if (job?.listing_url) return null;
   // Sonde de modération Leboncoin (2026-08-11) : l'unité a déjà été rendue,
@@ -272,32 +264,13 @@ function attenteDeConnexion(job) {
     && !!job?.platform_fields?.attente_session
     && /^En attente de ta connexion à /i.test(String(job?.error ?? ''));
 }
-function attenteAntirobotVinted(job) {
-  const marqueur = job?.platform_fields?.attente_antirobot_compte;
-  return job?.status === 'pending'
-    && job?.platform === 'vinted'
-    && Number(marqueur?.http) === 403
-    && (marqueur?.motif === 'antirobot_vinted_403'
-      // Transition des 24 jobs ltouze déjà marqués par 0.6.79 : le prochain
-      // poll serveur leur pose le motif canonique, mais le bouton ne doit pas
-      // attendre ce poll pour apparaître.
-      || /^Vinted demande une vérification anti-robot sur ton compte/i.test(String(job?.error ?? '')));
-}
-function attenteAvecGesteDirect(job) {
-  return attenteDeConnexion(job) || attenteAntirobotVinted(job);
-}
 function murDeConnexion(job) {
   const err = String(job?.error ?? '');
-  if (attenteAntirobotVinted(job)) return MOTIFS.ANTIROBOT_VINTED;
   if (attenteDeConnexion(job)) return MOTIFS.CONNEXION;
   const pf = job?.platform;
   // Opla : ce n'est pas une connexion mais la permission d'hôte, et le serveur
   // la NOMME (needs_user_source='opla_acces'). Aucune heuristique de texte.
   if (pf === 'opla' && job?.platform_fields?.needs_user_source === 'opla_acces') return MOTIFS.AUTORISER_OPLA;
-  if (pf === 'leboncoin' && (
-    job?.platform_fields?.needs_user_source === 'lbc_escrow_identite'
-    || job?.platform_fields?.last_diagnostic?.quoi === 'lbc_escrow_identite'
-  )) return MOTIFS.IDENTITE_LBC;
   // eBay « Connecte ton compte eBay » (nouvel inscrit sans connexion API, parqué
   // par update-job-status le 2026-09-23) : le bouton ouvre le parcours eBay à
   // deux voies (API recommandée), pas une simple reconnexion — le serveur le
@@ -305,7 +278,6 @@ function murDeConnexion(job) {
   // (2026-09-27) « ebay_compte_a_finir » : relié mais pas prêt à vendre — le
   // même parcours eBay le mène à l'étape qui manque.
   if (pf === 'ebay' && ['ebay_connexion_requise', 'ebay_compte_a_finir'].includes(job?.platform_fields?.needs_user_source)) return MOTIFS.CONNEXION;
-  if (pf === 'ebay' && job?.platform_fields?.needs_user_source === 'ebay_compte_vendeur_inactif') return MOTIFS.VENDEUR_EBAY;
   if (pf === 'ebay' && /^REAUTH VENTE eBay/i.test(err)) return MOTIFS.REAUTH_EBAY;
   if (!MUR_CONNEXION_ANCRE[pf]?.test(err)) return null;
   return MOTIFS.CONNEXION;
@@ -2095,12 +2067,6 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             const label = PLATFORM_LABELS[p] || p;
             const isPublished = published.includes(p);
             const state = removalState[p];
-            const beebsEnVerification = p === "beebs" && jobsAll.some(j =>
-              j.platform === "beebs"
-              && (j.action === "publish" || j.action === "republish")
-              && j.status === "pending"
-              && j.platform_fields?.attente_identifiant_beebs
-              && !j.listing_url);
             const noUrl = isPublished && !state && !latestPubByPlatform[p]?.listing_url;
             // Transitoire vs définitif : tant que l'extension retente la
             // re-capture (fenêtre 48 h), pas de consigne manuelle — l'annonce
@@ -2158,10 +2124,7 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                       : `${label} never confirmed it went live`}</span>}
                     {/* « Pas publiée ici » se tait quand on a mieux à dire :
                         un motif de blocage est plus utile qu'une absence. */}
-                    {beebsEnVerification && <span style={{ color:"#5A6B66", fontWeight:600 }}>⏳ {fr
-                      ? "Déposée — vérification Beebs en cours"
-                      : "Submitted — Beebs is reviewing it"}</span>}
-                    {!isPublished && !beebsEnVerification && !aCompleterPar.has(p) && !enEchecPar.has(p) && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
+                    {!isPublished && !aCompleterPar.has(p) && !enEchecPar.has(p) && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
                     {aCompleterPar.has(p) && (
                       <><span style={{ width:5, height:5, borderRadius:"50%", background:"#E8B54D", flex:"0 0 auto" }}/>
                       <span style={{ color:"#8A6100", fontWeight:600 }}>
@@ -9899,7 +9862,7 @@ const StockTab = memo(function StockTab({
                   // (27/09) Tout ce qui « attend » n'attend en fait qu'une
                   // connexion : pas un travail, un mur (attenteDeConnexion).
                   const pendingJobs=jobs.filter(j=>j.status==="pending"||j.status==="processing");
-                  const pendingSurConnexion=pendingJobs.length>0&&pendingJobs.every(attenteAvecGesteDirect);
+                  const pendingSurConnexion=pendingJobs.length>0&&pendingJobs.every(attenteDeConnexion);
                   // Job en attente sur une plateforme EN PAUSE (maintenance) :
                   // badge dédié « reprise auto » plutôt que le simple « En cours ».
                   const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
@@ -10136,15 +10099,13 @@ const StockTab = memo(function StockTab({
                           }else if(hasPausedPending){
                             dot="#64748B";txt=fr?'En pause':'Paused';titre=t("stockJobPausedBadge");
                           }else if(hasPending&&pendingSurConnexion){
-                            // Session fermée OU 403 Vinted prouvé : rien ne
-                            // tourne, on attend le geste nommé — pastille « ✋ »
-                            // orange (jamais « En cours… »), bouton sous la photo.
+                            // (27/09) Session de la plateforme fermée : rien ne
+                            // tourne, on attend la personne — pastille « ✋ »
+                            // orange (jamais « En cours… »), le bouton est sous
+                            // la photo (murDirect).
                             const j=pendingJobs[0];
-                            const motifMur=murDeConnexion(j);
                             dot="#E8956D";fg="#8A6100";
-                            txt=motifMur===MOTIFS.ANTIROBOT_VINTED
-                              ?(fr?'✋ Vérification Vinted':'✋ Check Vinted')
-                              :(fr?`✋ Connexion ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Sign in ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                            txt=fr?`✋ Connexion ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Sign in ${PLATFORM_LABELS[j.platform]||j.platform}`;
                             titre=j.error?humanizeJobError(j,lang):undefined;
                             onTap=()=>setJobStatusItem(item);
                           }else if(hasPending){

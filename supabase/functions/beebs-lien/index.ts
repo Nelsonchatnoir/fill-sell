@@ -82,13 +82,13 @@ serve(async (req) => {
     if (confirmesSansId.error) throw new Error(`sélection des dépôts confirmés : ${confirmesSansId.error.message}`);
 
     const tousLesCandidats = ([...(historiques.data ?? []), ...(confirmesSansId.data ?? [])] as Job[])
-      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+      .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
     const selectionExhaustive = (historiques.data?.length ?? 0) <= JOBS_MAX
       && (confirmesSansId.data?.length ?? 0) <= JOBS_MAX
       && tousLesCandidats.length <= JOBS_MAX;
     const jobs = tousLesCandidats.slice(0, JOBS_MAX);
     if (!jobs.length) {
-      return new Response(JSON.stringify({ ok: true, depots: 0, rattaches: 0, mis_en_attente: 0 }), {
+      return new Response(JSON.stringify({ ok: true, depots: 0, rattaches: 0 }), {
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -133,7 +133,6 @@ serve(async (req) => {
     }
 
     let rattaches = 0;
-    let misEnAttente = 0;
     let ambigus = 0;
     let confirmesParUtilisateur = 0;
 
@@ -194,38 +193,16 @@ serve(async (req) => {
         continue;
       }
 
-      // Historique : un ancien build a pu écrire `published` sans id. Il est
-      // reclassé par le moteur normal (pas par une réparation SQL) et attend le
-      // relevé exact. Aucune conclusion sur la modération n'est tirée.
-      if (job.status === "published") {
-        pf["attente_identifiant_beebs"] = {
-          depuis: new Date().toISOString(),
-          depot_confirme_le: job.published_at,
-          preuve_attendue: "identifiant exact du relevé Beebs rattaché à ce job",
-          pose_par: "beebs-lien (audit historique)",
-        };
-        delete pf["processing_since"];
-        const { data: maj, error: majErr } = await supabase
-          .from("cross_post_jobs")
-          // `published_at` est l'historique du dépôt confirmé. Le statut cesse
-          // d'affirmer « publiée », mais on ne détruit pas cette date : elle
-          // redeviendra la date de publication si un relevé exact apporte l'id.
-          .update({ status: "pending", error: null, platform_fields: pf })
-          .eq("id", job.id)
-          .eq("status", "published")
-          .is("platform_listing_id", null)
-          .is("listing_url", null)
-          .select("id");
-        if (majErr) throw new Error(`mise en attente ${job.id}: ${majErr.message}`);
-        if ((maj ?? []).length) misEnAttente++;
-      }
+      // Un ancien dépôt `published` sans identifiant reste historiquement tel
+      // quel. Le corriger en masse ici allongerait le cron et serait une
+      // migration de données déguisée. Les retraits sont retenus ailleurs ; ce
+      // moteur n'écrit que lorsqu'une preuve exacte apporte enfin l'identifiant.
     }
 
     return new Response(JSON.stringify({
       ok: true,
       depots: jobs.length,
       rattaches,
-      mis_en_attente: misEnAttente,
       ambigus,
       confirmes_par_utilisateur: confirmesParUtilisateur,
       selection_exhaustive: selectionExhaustive,
