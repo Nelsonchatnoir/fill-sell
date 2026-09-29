@@ -17,6 +17,47 @@ export type VerdictLienBeebs =
   | { ok: true; id: string; preuve: "job_id_exact" | "inventaire_confirme_par_utilisateur" }
   | { ok: false; raison: "absent" | "ambigu" | "inventaire_ambigu" };
 
+export type PublicationBeebsConfirmee = {
+  publishedAt: string;
+  platformFields: Record<string, unknown>;
+};
+
+/**
+ * Revient au comportement sûr d'avant le lot 1 quand Beebs a confirmé le
+ * dépôt mais n'a rendu aucun identifiant : le dépôt est terminal (il ne doit
+ * surtout pas être resoumis), tandis que son lien reste explicitement en
+ * attente. Ce marqueur n'est posé qu'après la redirection de succès.
+ */
+export function restaurerPublicationBeebsConfirmee(
+  platformFields: Record<string, unknown> | null | undefined,
+): PublicationBeebsConfirmee | null {
+  const pf = { ...(platformFields ?? {}) };
+  const attente = pf["attente_identifiant_beebs"];
+  if (!attente || typeof attente !== "object" || Array.isArray(attente)) return null;
+  const brut = String((attente as Record<string, unknown>)["depot_confirme_le"] ?? "").trim();
+  const timestamp = Date.parse(brut);
+  if (!Number.isFinite(timestamp)) return null;
+
+  const publishedAt = new Date(timestamp).toISOString();
+  const depuisBrut = String((attente as Record<string, unknown>)["depuis"] ?? brut).trim();
+  const depuisTimestamp = Date.parse(depuisBrut);
+  const depuis = Number.isFinite(depuisTimestamp) ? new Date(depuisTimestamp).toISOString() : publishedAt;
+  delete pf["attente_identifiant_beebs"];
+  delete pf["processing_since"];
+  pf["lien_en_attente"] = {
+    depuis,
+    echeance: new Date(timestamp + 7 * 86_400_000).toISOString(),
+    plateforme: "beebs",
+    motif: "dépôt confirmé par Beebs sans lien ni identifiant — annonce non retirable en l'état",
+  };
+  pf["retour_arriere_attente_identifiant_beebs"] = {
+    at: new Date().toISOString(),
+    depot_confirme_le: publishedAt,
+    motif: "l'identifiant exact n'est pas rendu par le dépôt ni rattaché par le relevé",
+  };
+  return { publishedAt, platformFields: pf };
+}
+
 function idsUniques(lignes: ReleveBeebsExact[]): string[] {
   return [...new Set(
     lignes

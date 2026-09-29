@@ -3,6 +3,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import {
   choisirIdentifiantBeebsExact,
+  restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
 } from "../supabase/functions/_shared/beebs-lien-exact.ts";
 
@@ -61,6 +62,25 @@ assert.equal(
   "une annonce disparue ne peut pas débloquer un retrait",
 );
 
+const restauration = restaurerPublicationBeebsConfirmee({
+  processing_since: "2026-09-29T18:21:00Z",
+  attente_identifiant_beebs: {
+    depuis: "2026-09-29T18:22:00Z",
+    depot_confirme_le: "2026-09-29T18:22:00Z",
+    pose_par: "update-job-status",
+  },
+});
+assert.equal(restauration?.publishedAt, "2026-09-29T18:22:00.000Z",
+  "la date de publication reste celle de la confirmation Beebs");
+assert.equal(restauration?.platformFields.processing_since, undefined,
+  "un dépôt confirmé ne garde pas de verrou de traitement");
+assert.equal(restauration?.platformFields.attente_identifiant_beebs, undefined,
+  "le marqueur à l'origine de l'impasse disparaît");
+assert.equal((restauration?.platformFields.lien_en_attente as Record<string, unknown>)?.plateforme, "beebs",
+  "le lien manquant reste explicite sans permettre une resoumission");
+assert.equal(restaurerPublicationBeebsConfirmee({ attente_identifiant_beebs: {} }), null,
+  "un pending ordinaire sans confirmation datée n'est jamais restauré");
+
 const background = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
 const debutIdentifiants = background.indexOf("function identifiantsBeebsPortes");
 const finIdentifiants = background.indexOf("async function enrichirCibleBeebs", debutIdentifiants);
@@ -102,8 +122,10 @@ assert.match(background, /platform_listing_id: beebsProductId \?\? undefined/,
   "l'extension transmet l'identifiant Beebs avec son verdict de dépôt");
 assert.match(statutServeur, /if \(idBeebsFourni\) patch\.platform_listing_id = idBeebsFourni/,
   "le serveur écrit l'identifiant dans la même transition atomique que published");
-assert.match(statutServeur, /jobRow\?\.platform === "beebs" && !\/\^\\d\+\$\/\.test\(idConnu\)/,
-  "sans identifiant durable, le serveur refuse le statut published");
+assert.doesNotMatch(statutServeur, /jobRow\?\.platform === "beebs" && !\/\^\\d\+\$\/\.test\(idConnu\)/,
+  "le retour arrière ne remet plus un dépôt Beebs confirmé en pending");
+assert.match(statutServeur, /restaurerPublicationBeebsConfirmee[\s\S]*statutEffectif = "published"/,
+  "le serveur couvre aussi la 0.6.80 qui envoie elle-même l'attente après succès");
 
 const lienServeur = fs.readFileSync(new URL("../supabase/functions/beebs-lien/index.ts", import.meta.url), "utf8");
 const selectionLien = lienServeur.slice(lienServeur.indexOf("const selection ="), lienServeur.indexOf("const { data: relevesDirectsBruts"));
@@ -115,7 +137,9 @@ assert.match(lienServeur, /const selectionExhaustive = [\s\S]*?tousLesCandidats\
   "la voie manuelle sait si tous les dépôts sans identité ont été comptés");
 assert.match(lienServeur, /!selectionExhaustive[\s\S]*?\? 2/,
   "une sélection bornée non exhaustive ferme le rattachement manuel");
+assert.match(lienServeur, /job\.status === "pending"[\s\S]*?publicationsRestaurees\+\+/,
+  "les dépôts déjà confirmés sont restaurés sans être redistribués");
 assert.doesNotMatch(lienServeur, /status: "pending", error: null, published_at: null/,
   "la reclassification conserve la date historique du dépôt");
 
-console.log("OK — rattachement Beebs : identifiant exact ou geste utilisateur, jamais titre/prix/date/photo");
+console.log("OK — Beebs : preuve exacte si disponible, sinon dépôt confirmé terminal sans resoumission");

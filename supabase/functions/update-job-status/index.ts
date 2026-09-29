@@ -36,6 +36,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
+import { restaurerPublicationBeebsConfirmee } from "../_shared/beebs-lien-exact.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -3774,8 +3775,37 @@ serve(async (req) => {
       };
     }
 
+    // 0.6.80 retient elle-même un dépôt Beebs après la redirection de succès
+    // quand aucun id n'est capté. Le serveur revient provisoirement au contrat
+    // d'avant 20:22 : confirmation = dépôt terminal, jamais redistribué ; le
+    // lien demeure explicitement en attente. Les 0.6.75/0.6.79 arrivent déjà
+    // avec status=published et passent par le même bloc juste après.
+    if (statutEffectif === "pending") {
+      const restauration = restaurerPublicationBeebsConfirmee(
+        (patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>,
+      );
+      if (restauration) {
+        const { data: jobBeebs } = await userClient
+          .from("cross_post_jobs")
+          .select("platform,action,platform_listing_id,listing_url")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (jobBeebs?.platform === "beebs"
+          && ["publish", "republish"].includes(String(jobBeebs.action ?? ""))
+          && !/^\d+$/.test(String(jobBeebs.platform_listing_id ?? "").trim())
+          && !String(jobBeebs.listing_url ?? "").trim()) {
+          statutEffectif = "published";
+          patch.status = "published";
+          patch.published_at = restauration.publishedAt;
+          patch.error = null;
+          patch.platform_fields = restauration.platformFields;
+          raisonRequalif = "Beebs : dépôt confirmé sans identifiant, retour au contrat d'avant 20:22 (aucune resoumission)";
+        }
+      }
+    }
+
     if (statutEffectif === "published") {
-      patch.published_at = new Date().toISOString();
+      patch.published_at = typeof patch.published_at === "string" ? patch.published_at : new Date().toISOString();
       patch.error = null;
       // UNE seule lecture du job : la plateforme (le motif d'extraction en
       // dépend, et le body n'est pas de confiance) et l'identifiant déjà posé.
@@ -3844,33 +3874,14 @@ serve(async (req) => {
       // eux seuls, qui produisent des retraits qui ne pourront jamais agir
       // (10 sur les 500 retraits du parc, 9 Beebs + 1 Leboncoin).
       //
-      // Beebs peut accepter un depot avant que son identifiant soit visible.
-      // Il est alors deja parti : surtout pas de nouvelle soumission. Mais il
-      // n'est pas encore « publie » au sens FillSell, car aucun retrait exact
-      // ne serait possible. On le retient donc en pending avec un marqueur
-      // dedie ; get-pending-jobs ne le redistribue pas et beebs-lien ne le
-      // clot que lorsque le releve rattache un identifiant au job exact.
+      // Beebs peut accepter un dépôt avant que son identifiant soit visible.
+      // Retour arrière d'urgence du 29/09 : il est déjà parti, donc il reste
+      // published et n'est jamais redistribué. `lien_en_attente` dit clairement
+      // qu'aucun retrait exact n'est encore possible. Le rattachement exact par
+      // relevé reste prioritaire dès qu'une preuve existe.
       const idConnu = String(patch.platform_listing_id ?? jobRow?.platform_listing_id ?? "").trim();
       const pfBase = ((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>);
-      if (jobRow?.platform === "beebs" && !/^\d+$/.test(idConnu)) {
-        statutEffectif = "pending";
-        patch.status = "pending";
-        delete patch.published_at;
-        patch.error = null;
-        const pfSansTraitement = { ...pfBase };
-        delete pfSansTraitement["processing_since"];
-        patch.platform_fields = {
-          ...pfSansTraitement,
-          attente_identifiant_beebs: {
-            depuis: new Date().toISOString(),
-            depot_confirme_le: new Date().toISOString(),
-            preuve_attendue: "identifiant exact du releve Beebs rattache a ce job",
-            pose_par: "update-job-status",
-          },
-        };
-        raisonRequalif = "Beebs : depot confirme sans identifiant durable, attente du releve exact";
-        console.log(`[update-job-status] job=${jobId} Beebs sans identifiant durable -> pending retenu, jamais published`);
-      } else if (!lienFourni && !idConnu) {
+      if (!lienFourni && !idConnu) {
         // Même échéance que la re-capture, par plateforme (7 j Beebs pour la
         // modération, 48 h ailleurs) — la valeur vit aussi dans
         // LISTING_URL_RECOVERY_MAX_AGE_MS (extension) et dans

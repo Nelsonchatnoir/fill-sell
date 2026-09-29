@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import {
   choisirIdentifiantBeebsExact,
+  restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
 } from "../_shared/beebs-lien-exact.ts";
 
@@ -135,6 +136,7 @@ serve(async (req) => {
     let rattaches = 0;
     let ambigus = 0;
     let confirmesParUtilisateur = 0;
+    let publicationsRestaurees = 0;
 
     for (const job of jobs) {
       const nbSurInventaire = !selectionExhaustive
@@ -190,13 +192,33 @@ serve(async (req) => {
 
       if (verdict.raison === "ambigu" || verdict.raison === "inventaire_ambigu") {
         ambigus++;
-        continue;
       }
 
-      // Un ancien dépôt `published` sans identifiant reste historiquement tel
-      // quel. Le corriger en masse ici allongerait le cron et serait une
-      // migration de données déguisée. Les retraits sont retenus ailleurs ; ce
-      // moteur n'écrit que lorsqu'une preuve exacte apporte enfin l'identifiant.
+      // Retour arrière d'urgence : ces pending portent la preuve que Beebs a
+      // déjà confirmé le dépôt. Ils ne doivent ni rester « en cours » à vie,
+      // ni être redistribués (ce qui créerait un doublon). On restaure donc le
+      // statut terminal d'avant 20:22, sans inventer d'identifiant. Les retraits
+      // restent fermés tant qu'un relevé ou un geste utilisateur n'apporte pas
+      // la preuve exacte traitée au-dessus.
+      if (job.status === "pending") {
+        const restauration = restaurerPublicationBeebsConfirmee(pf);
+        if (!restauration) continue;
+        const { data: maj, error: majErr } = await supabase
+          .from("cross_post_jobs")
+          .update({
+            status: "published",
+            error: null,
+            published_at: restauration.publishedAt,
+            platform_fields: restauration.platformFields,
+          })
+          .eq("id", job.id)
+          .eq("status", "pending")
+          .is("platform_listing_id", null)
+          .is("listing_url", null)
+          .select("id");
+        if (majErr) throw new Error(`restauration ${job.id}: ${majErr.message}`);
+        if ((maj ?? []).length) publicationsRestaurees++;
+      }
     }
 
     return new Response(JSON.stringify({
@@ -205,6 +227,7 @@ serve(async (req) => {
       rattaches,
       ambigus,
       confirmes_par_utilisateur: confirmesParUtilisateur,
+      publications_restaurees: publicationsRestaurees,
       selection_exhaustive: selectionExhaustive,
       regle: "identifiant de relevé exact ; jamais titre/prix/date/photo",
     }), { headers: { "Content-Type": "application/json" } });
