@@ -3,6 +3,7 @@ import fs from "node:fs";
 import vm from "node:vm";
 import {
   choisirIdentifiantBeebsExact,
+  mettreLienBeebsRecupereEnAttenteConfirmation,
   restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
 } from "../supabase/functions/_shared/beebs-lien-exact.ts";
@@ -80,6 +81,39 @@ assert.equal((restauration?.platformFields.lien_en_attente as Record<string, unk
   "le lien manquant reste explicite sans permettre une resoumission");
 assert.equal(restaurerPublicationBeebsConfirmee({ attente_identifiant_beebs: {} }), null,
   "un pending ordinaire sans confirmation datée n'est jamais restauré");
+
+const lienTitre = mettreLienBeebsRecupereEnAttenteConfirmation({
+  created_at: "2026-09-29T20:15:00Z",
+  listing_url: "https://www.beebs.app/fr/p/34077577-un-titre",
+  platform_listing_id: null,
+  platform_fields: {
+    lien_en_attente: { depuis: "2026-09-29T20:18:00Z" },
+    listing_url_recovery: { at: "2026-09-29T20:23:00Z", page: "beebs.app/fr/account/my-adverts" },
+  },
+}, "2026-09-29T20:30:00Z");
+assert.equal(lienTitre?.idCandidat, "34077577",
+  "le numéro récupéré par titre reste une piste, pas une preuve");
+assert.equal((lienTitre?.platformFields.candidat_identifiant_beebs as Record<string, unknown>)?.source,
+  "listing_url_recovery_par_titre_non_probante",
+  "la piste attend la confirmation de la personne");
+assert.equal(mettreLienBeebsRecupereEnAttenteConfirmation({
+  created_at: "2026-09-28T20:15:00Z",
+  listing_url: "https://www.beebs.app/fr/p/34077577-un-titre",
+  platform_listing_id: null,
+  platform_fields: {
+    lien_en_attente: { depuis: "2026-09-28T20:18:00Z" },
+    listing_url_recovery: { at: "2026-09-28T20:23:00Z" },
+  },
+}), null, "les liens historiques ne sont pas réécrits sans audit séparé");
+assert.equal(mettreLienBeebsRecupereEnAttenteConfirmation({
+  created_at: "2026-09-29T20:15:00Z",
+  listing_url: "https://www.beebs.app/fr/p/34077577-un-titre",
+  platform_listing_id: "34077577",
+  platform_fields: {
+    lien_en_attente: { depuis: "2026-09-29T20:18:00Z" },
+    listing_url_recovery: { at: "2026-09-29T20:23:00Z" },
+  },
+}), null, "un identifiant déjà prouvé n'est jamais rétrogradé");
 
 const background = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
 const debutIdentifiants = background.indexOf("function identifiantsBeebsPortes");

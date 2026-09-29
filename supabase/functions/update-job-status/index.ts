@@ -3887,14 +3887,21 @@ serve(async (req) => {
         // LISTING_URL_RECOVERY_MAX_AGE_MS (extension) et dans
         // fail_publish_without_listing_url (SQL) : les trois bougent ensemble.
         const jours = jobRow?.platform === "beebs" ? 7 : 2;
+        const maintenantLien = new Date().toISOString();
         patch.platform_fields = {
           ...pfBase,
           lien_en_attente: {
-            depuis: new Date().toISOString(),
+            depuis: maintenantLien,
             echeance: new Date(Date.now() + jours * 86_400_000).toISOString(),
             plateforme: jobRow?.platform ?? null,
             motif: "publication déclarée sans lien NI identifiant d'annonce — annonce non retirable en l'état",
           },
+          ...(jobRow?.platform === "beebs" ? {
+            identifiant_beebs_non_prouve: {
+              depuis: maintenantLien,
+              preuve_attendue: "identifiant du relevé confirmé par la personne",
+            },
+          } : {}),
         };
         console.log(
           `[update-job-status] job=${jobId} (${jobRow?.platform ?? "?"}) publié SANS identifiant — ` +
@@ -3903,6 +3910,8 @@ serve(async (req) => {
       } else if (pfBase["lien_en_attente"]) {
         const pfN = { ...pfBase };
         delete pfN["lien_en_attente"];
+        delete pfN["identifiant_beebs_non_prouve"];
+        delete pfN["candidat_identifiant_beebs"];
         patch.platform_fields = pfN;
       }
     } else if (statutEffectif === "failed") {

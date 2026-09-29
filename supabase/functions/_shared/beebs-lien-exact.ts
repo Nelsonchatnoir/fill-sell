@@ -22,6 +22,65 @@ export type PublicationBeebsConfirmee = {
   platformFields: Record<string, unknown>;
 };
 
+export const BEEBS_PREUVE_STRICTE_DEPUIS = "2026-09-29T20:13:00.000Z";
+
+export type LienBeebsAConfirmer = {
+  idCandidat: string;
+  urlCandidate: string;
+  platformFields: Record<string, unknown>;
+};
+
+type DepotBeebsAvecLienRecupere = {
+  created_at: string;
+  listing_url: string | null;
+  platform_listing_id: string | null;
+  platform_fields: Record<string, unknown> | null;
+};
+
+/**
+ * `listing_url_recovery` vient d'une recherche par titre dans les anciennes
+ * extensions : c'est une piste, jamais une identité. Depuis l'incident du
+ * 29/09, on la remet en attente de la réponse « Est-ce cette annonce ? ».
+ * Les lignes historiques antérieures restent hors de ce correctif d'urgence.
+ */
+export function mettreLienBeebsRecupereEnAttenteConfirmation(
+  depot: DepotBeebsAvecLienRecupere,
+  maintenant = new Date().toISOString(),
+): LienBeebsAConfirmer | null {
+  if (/^\d+$/.test(String(depot.platform_listing_id ?? "").trim())) return null;
+  const url = String(depot.listing_url ?? "").trim();
+  const id = url.match(/^https:\/\/(?:www\.)?beebs\.app\/fr\/p\/(\d+)(?:[-/?#]|$)/i)?.[1] ?? null;
+  if (!id) return null;
+  const pf = { ...(depot.platform_fields ?? {}) };
+  const recovery = pf["listing_url_recovery"];
+  const attente = pf["lien_en_attente"];
+  if (!recovery || typeof recovery !== "object" || Array.isArray(recovery)) return null;
+  if (!attente || typeof attente !== "object" || Array.isArray(attente)) return null;
+  if (pf["lien_par_releve_exact"]) return null;
+  const rattachement = pf["rattachement"];
+  if (rattachement && typeof rattachement === "object" && !Array.isArray(rattachement)
+      && (rattachement as Record<string, unknown>)["par"] === "utilisateur") return null;
+  const creation = Date.parse(depot.created_at);
+  const marqueurNouveau = pf["identifiant_beebs_non_prouve"];
+  if (!(Number.isFinite(creation) && creation >= Date.parse(BEEBS_PREUVE_STRICTE_DEPUIS))
+      && !(marqueurNouveau && typeof marqueurNouveau === "object" && !Array.isArray(marqueurNouveau))) return null;
+
+  const attenteObjet = attente as Record<string, unknown>;
+  pf["identifiant_beebs_non_prouve"] = {
+    depuis: String((marqueurNouveau as Record<string, unknown> | undefined)?.["depuis"]
+      ?? attenteObjet["depuis"] ?? maintenant),
+    preuve_attendue: "identifiant du relevé confirmé par la personne",
+  };
+  pf["candidat_identifiant_beebs"] = {
+    id, url, vu_le: maintenant, source: "listing_url_recovery_par_titre_non_probante",
+  };
+  pf["lien_en_attente"] = {
+    ...attenteObjet,
+    motif: "annonce candidate trouvée — confirmation « Est-ce cette annonce ? » requise avant tout retrait",
+  };
+  return { idCandidat: id, urlCandidate: url, platformFields: pf };
+}
+
 /**
  * Revient au comportement sûr d'avant le lot 1 quand Beebs a confirmé le
  * dépôt mais n'a rendu aucun identifiant : le dépôt est terminal (il ne doit
@@ -49,6 +108,10 @@ export function restaurerPublicationBeebsConfirmee(
     echeance: new Date(timestamp + 7 * 86_400_000).toISOString(),
     plateforme: "beebs",
     motif: "dépôt confirmé par Beebs sans lien ni identifiant — annonce non retirable en l'état",
+  };
+  pf["identifiant_beebs_non_prouve"] = {
+    depuis: publishedAt,
+    preuve_attendue: "identifiant du relevé confirmé par la personne",
   };
   pf["retour_arriere_attente_identifiant_beebs"] = {
     at: new Date().toISOString(),

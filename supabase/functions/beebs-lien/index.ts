@@ -2,7 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import {
+  BEEBS_PREUVE_STRICTE_DEPUIS,
   choisirIdentifiantBeebsExact,
+  mettreLienBeebsRecupereEnAttenteConfirmation,
   restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
 } from "../_shared/beebs-lien-exact.ts";
@@ -20,6 +22,7 @@ import {
 // dépôt reste en vérification, sans re-soumission et sans retrait possible.
 
 const JOBS_MAX = 200;
+const LIENS_A_CONFIRMER_MAX = 10;
 
 type Job = {
   id: string;
@@ -28,6 +31,8 @@ type Job = {
   created_at: string;
   published_at: string | null;
   inventaire_id: number | null;
+  listing_url: string | null;
+  platform_listing_id: string | null;
   platform_fields: Record<string, unknown> | null;
 };
 
@@ -49,8 +54,8 @@ serve(async (req) => {
   );
 
   try {
-    const selection = "id,user_id,status,created_at,published_at,inventaire_id,platform_fields";
-    const [historiques, confirmesSansId] = await Promise.all([
+    const selection = "id,user_id,status,created_at,published_at,inventaire_id,listing_url,platform_listing_id,platform_fields";
+    const [historiques, confirmesSansId, liensRecuperesSansPreuve] = await Promise.all([
       supabase
         .from("cross_post_jobs")
         .select(selection)
@@ -78,14 +83,49 @@ serve(async (req) => {
         .is("listing_url", null)
         .order("created_at", { ascending: true })
         .limit(JOBS_MAX + 1),
+      supabase
+        .from("cross_post_jobs")
+        .select(selection)
+        .eq("platform", "beebs")
+        .in("action", ["publish", "republish"])
+        .eq("status", "published")
+        .gte("created_at", BEEBS_PREUVE_STRICTE_DEPUIS)
+        .is("platform_listing_id", null)
+        .not("listing_url", "is", null)
+        .not("platform_fields->listing_url_recovery", "is", null)
+        .not("platform_fields->lien_en_attente", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(LIENS_A_CONFIRMER_MAX + 1),
     ]);
     if (historiques.error) throw new Error(`sélection des dépôts historiques : ${historiques.error.message}`);
     if (confirmesSansId.error) throw new Error(`sélection des dépôts confirmés : ${confirmesSansId.error.message}`);
+    if (liensRecuperesSansPreuve.error) throw new Error(`sélection des liens Beebs non prouvés : ${liensRecuperesSansPreuve.error.message}`);
 
-    const tousLesCandidats = ([...(historiques.data ?? []), ...(confirmesSansId.data ?? [])] as Job[])
+    // Les anciennes extensions récupèrent ces liens par titre unique. On les
+    // garde comme candidats, mais jamais comme preuve : le relevé proposera
+    // « Est-ce cette annonce ? », et seul le oui posera l'identifiant exact.
+    const quarantaines = (await Promise.all(
+      ((liensRecuperesSansPreuve.data ?? []) as Job[]).slice(0, LIENS_A_CONFIRMER_MAX).map(async (job) => {
+        const attente = mettreLienBeebsRecupereEnAttenteConfirmation(job);
+        if (!attente) return null;
+        const { data: maj, error: majErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ listing_url: null, platform_fields: attente.platformFields })
+          .eq("id", job.id)
+          .is("platform_listing_id", null)
+          .eq("listing_url", attente.urlCandidate)
+          .select(selection);
+        if (majErr) throw new Error(`mise en attente de confirmation ${job.id}: ${majErr.message}`);
+        return (maj ?? []).length === 1 ? (maj as Job[])[0] : null;
+      }),
+    )).filter((job): job is Job => job != null);
+    const liensAConfirmer = quarantaines.length;
+
+    const tousLesCandidats = ([...(historiques.data ?? []), ...(confirmesSansId.data ?? []), ...quarantaines] as Job[])
       .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
     const selectionExhaustive = (historiques.data?.length ?? 0) <= JOBS_MAX
       && (confirmesSansId.data?.length ?? 0) <= JOBS_MAX
+      && (liensRecuperesSansPreuve.data?.length ?? 0) <= LIENS_A_CONFIRMER_MAX
       && tousLesCandidats.length <= JOBS_MAX;
     const jobs = tousLesCandidats.slice(0, JOBS_MAX);
     if (!jobs.length) {
@@ -228,6 +268,7 @@ serve(async (req) => {
       ambigus,
       confirmes_par_utilisateur: confirmesParUtilisateur,
       publications_restaurees: publicationsRestaurees,
+      liens_a_confirmer: liensAConfirmer,
       selection_exhaustive: selectionExhaustive,
       regle: "identifiant de relevé exact ; jamais titre/prix/date/photo",
     }), { headers: { "Content-Type": "application/json" } });
