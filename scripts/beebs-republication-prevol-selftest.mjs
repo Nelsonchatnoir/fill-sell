@@ -27,8 +27,12 @@ assert.match(serveur, /const preuvesRetraitsPoint1 = capacites\.includes\("preuv
   "le serveur reconnaît la capacité sans relever le minimum général");
 assert.match(serveur, /j\.platform === "beebs" && \(j\.action === "delete" \|\| j\.action === "republish"\)/,
   "un ancien build ne reçoit aucun retrait ni republication Beebs");
-assert.match(serveur, /exigePreuveBoutiqueVinted\(j\)/,
-  "la garde de compatibilité ne retient que retrait/republication Vinted, jamais une publication neuve");
+assert.match(serveur, /j\.platform === "vinted" && j\.action === "delete"/,
+  "la garde de compatibilité retient le retrait Vinted direct");
+assert.doesNotMatch(serveur, /const exigeExtensionPoint1[\s\S]{0,220}exigePreuveBoutiqueVinted\(j\)/,
+  "une republication Vinted reste compatible avec la 0.6.79");
+assert.match(serveur, /!exigeExtensionPoint1\(j\)/,
+  "le motif posé à tort sur une republication Vinted est nettoyé automatiquement");
 assert.match(serveur, /retraits_point1_motif: heldPreuvesRetraitsPoint1 \? MOTIF_ATTENTE_PREUVES_POINT1 : null/,
   "tout job retenu par la compatibilité reçoit un motif lisible");
 

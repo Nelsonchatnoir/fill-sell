@@ -1,6 +1,6 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
-import { verifierBoutiqueOperation, exigePreuveBoutiqueVinted, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
+import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -1264,22 +1264,44 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
-    // Les opérations DESTRUCTIVES Vinted et les retraits/republications Beebs
-    // exigent les preuves locales livrées ensemble : estampille de boutique
-    // après dépôt, vérification juste avant le DELETE Vinted, identifiant Beebs
-    // durable et pré-vol complet Beebs. Une publication Vinted NEUVE part sur
-    // la boutique ouverte dans Chrome, quelle qu'elle soit : elle reste hors
-    // de cette garde. Les anciens builds attendent avec un motif explicite,
-    // sans boucle et sans relèvement du minimum général.
+    // Les retraits Vinted directs et les retraits/republications Beebs exigent
+    // les preuves locales livrées ensemble : vérification juste avant le DELETE
+    // Vinted, identifiant Beebs durable et pré-vol complet Beebs. Une
+    // republication Vinted reste compatible avec les anciens builds : elle
+    // porte déjà ses gardes historiques et ne doit pas immobiliser tout le parc
+    // avant la diffusion CWS de la 0.6.80. Une publication Vinted NEUVE part
+    // elle aussi sur la boutique ouverte dans Chrome. Les opérations réellement
+    // incompatibles attendent avec un motif explicite, sans boucle et sans
+    // relèvement du minimum général.
     const MOTIF_ATTENTE_PREUVES_POINT1 =
       "Cette opération attend l’extension FillSell 0.6.80, qui vérifie l’annonce avant de la retirer. L’annonce reste intacte ; les nouvelles publications continuent normalement.";
     let heldPreuvesRetraitsPoint1 = 0;
     if (!includeProcessing && !includeNeedsUser) {
-      const exigePreuvesPoint1 = (j: { platform: string; action: string }) =>
-        exigePreuveBoutiqueVinted(j) ||
+      const exigeExtensionPoint1 = (j: { platform: string; action: string }) =>
+        (j.platform === "vinted" && j.action === "delete") ||
         (j.platform === "beebs" && (j.action === "delete" || j.action === "republish"));
+
+      // Nettoie aussi les republications Vinted qui avaient été retenues par
+      // erreur : elles sont désormais servies aux 0.6.79 sans remise en file.
+      const aNettoyer = out.filter((j) =>
+        j.error === MOTIF_ATTENTE_PREUVES_POINT1 &&
+        (preuvesRetraitsPoint1 || !exigeExtensionPoint1(j))
+      );
+      if (aNettoyer.length) {
+        const ids = aNettoyer.map((j) => String(j.id));
+        const { data: nettoyes, error: erreurNettoyage } = await userClient.from("cross_post_jobs")
+          .update({ error: null }).in("id", ids).eq("status", "pending")
+          .eq("error", MOTIF_ATTENTE_PREUVES_POINT1).select("id");
+        if (erreurNettoyage) {
+          console.warn(`[get-pending-jobs] motif d’attente Point 1 non retiré : ${erreurNettoyage.message}`);
+        } else {
+          const nettoyesIds = new Set((nettoyes ?? []).map((m) => String(m.id)));
+          for (const j of aNettoyer) if (nettoyesIds.has(String(j.id))) j.error = null;
+        }
+      }
+
       if (!preuvesRetraitsPoint1) {
-        const retenus = out.filter(exigePreuvesPoint1);
+        const retenus = out.filter(exigeExtensionPoint1);
         heldPreuvesRetraitsPoint1 = retenus.length;
         if (retenus.length) {
           const sansMotif = retenus.filter((j) => !String(j.error ?? "").trim());
@@ -1297,22 +1319,6 @@ serve(async (req) => {
           }
           const idsRetenus = new Set(retenus.map((j) => String(j.id)));
           out = out.filter((j) => !idsRetenus.has(String(j.id)));
-        }
-      } else {
-        // Le motif de compatibilité n'est pas un échec métier. Il disparaît
-        // dès qu'un poste capable reprend le job, avant sa distribution.
-        const aNettoyer = out.filter((j) => exigePreuvesPoint1(j) && j.error === MOTIF_ATTENTE_PREUVES_POINT1);
-        if (aNettoyer.length) {
-          const ids = aNettoyer.map((j) => String(j.id));
-          const { data: nettoyes, error: erreurNettoyage } = await userClient.from("cross_post_jobs")
-            .update({ error: null }).in("id", ids).eq("status", "pending")
-            .eq("error", MOTIF_ATTENTE_PREUVES_POINT1).select("id");
-          if (erreurNettoyage) {
-            console.warn(`[get-pending-jobs] motif d’attente Point 1 non retiré : ${erreurNettoyage.message}`);
-          } else {
-            const nettoyesIds = new Set((nettoyes ?? []).map((m) => String(m.id)));
-            for (const j of aNettoyer) if (nettoyesIds.has(String(j.id))) j.error = null;
-          }
         }
       }
     }
