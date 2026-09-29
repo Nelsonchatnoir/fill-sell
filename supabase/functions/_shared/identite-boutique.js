@@ -1,11 +1,17 @@
-// Une boutique non confirmée ne peut pas fournir d'article à une opération.
-// Le transport reste compatible avec les extensions déjà installées.
+// Seules les opérations qui touchent une annonce Vinted EXISTANTE ont une
+// boutique d'origine à respecter. Une publication neuve part toujours sur la
+// boutique ouverte dans Chrome : elle ne doit jamais passer par cette garde.
+export function exigePreuveBoutiqueVinted({ action, platform }) {
+  return platform === 'vinted' && ['delete', 'republish'].includes(action);
+}
+
+// Une boutique non confirmée ne peut pas fournir d'article à une opération
+// destructive. Le transport reste compatible avec les extensions installées.
 export function verifierBoutiqueOperation({ action, platform, boutiqueArticle, boutiqueSession, boutiques, lectureFiable, sessionRequise = true, historiqueListingProuve = false }) {
   const origine = String(boutiqueArticle ?? '').trim();
   const session = String(boutiqueSession ?? '').trim();
-  const destructive = platform === 'vinted' && ['delete', 'republish'].includes(action);
-  const importe = !!origine && ['publish', 'republish', 'delete'].includes(action);
-  if (!destructive && !importe) return null;
+  const destructive = exigePreuveBoutiqueVinted({ action, platform });
+  if (!destructive) return null;
   if (!lectureFiable) return 'lecture_indisponible';
   const confirmees = new Set((Array.isArray(boutiques) ? boutiques : []).map(b => String(b?.user_id ?? '').trim()).filter(Boolean));
   if (!origine) return destructive && !sessionRequise && historiqueListingProuve ? null : 'origine_inconnue';

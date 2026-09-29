@@ -27,5 +27,9 @@ assert.match(serveur, /const preuvesRetraitsPoint1 = capacites\.includes\("preuv
   "le serveur reconnaît la capacité sans relever le minimum général");
 assert.match(serveur, /j\.platform === "beebs" && \(j\.action === "delete" \|\| j\.action === "republish"\)/,
   "un ancien build ne reçoit aucun retrait ni republication Beebs");
+assert.match(serveur, /exigePreuveBoutiqueVinted\(j\)/,
+  "la garde de compatibilité ne retient que retrait/republication Vinted, jamais une publication neuve");
+assert.match(serveur, /retraits_point1_motif: heldPreuvesRetraitsPoint1 \? MOTIF_ATTENTE_PREUVES_POINT1 : null/,
+  "tout job retenu par la compatibilité reçoit un motif lisible");
 
 console.log("✓ Beebs : formulaire réel validé avant retrait, sans soumission ; anciens builds retenus");

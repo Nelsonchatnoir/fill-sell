@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { verifierBoutiqueOperation as verifier, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
+import { verifierBoutiqueOperation as verifier, exigePreuveBoutiqueVinted, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
 const base={action:'delete',platform:'vinted',boutiqueArticle:'nadege',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
 assert.equal(verifier(base),'boutique_non_confirmee');
 assert.equal(verifier({...base,boutiqueSession:'nadege'}),'boutique_non_confirmee');
-assert.equal(verifier({...base,action:'publish',platform:'opla'}),'boutique_non_confirmee');
+assert.equal(verifier({...base,action:'publish',platform:'opla'}),null);
 assert.equal(verifier({...base,boutiques:[{user_id:'nadege'}]}),'boutique_etrangere');
 assert.equal(verifier({...base,boutiqueArticle:'albert'}),null);
 assert.equal(verifier({...base,boutiqueArticle:'albert',boutiqueSession:null}),'session_inconnue');
@@ -13,7 +13,12 @@ assert.equal(verifier({...base,boutiques:[{user_id:'nadege'}],sessionRequise:fal
 assert.equal(verifier({...base,boutiqueArticle:null}),'origine_inconnue');
 assert.equal(verifier({...base,lectureFiable:false}),'lecture_indisponible');
 assert.equal(verifier({...base,action:'publish',boutiqueArticle:null}),null);
+assert.equal(verifier({...base,action:'publish',boutiqueArticle:'nadege',boutiqueSession:'albert'}),null);
 assert.equal(verifier({...base,action:'publish',platform:'opla',boutiqueArticle:'albert'}),null);
+assert.equal(exigePreuveBoutiqueVinted({action:'publish',platform:'vinted'}),false);
+assert.equal(exigePreuveBoutiqueVinted({action:'delete',platform:'vinted'}),true);
+assert.equal(exigePreuveBoutiqueVinted({action:'republish',platform:'vinted'}),true);
+assert.equal(exigePreuveBoutiqueVinted({action:'delete',platform:'beebs'}),false);
 const maintenant=Date.parse('2026-09-28T10:00:00Z');
 assert.equal(identiteBoutiqueFraiche({vinted_identite:{user_id:'a'}},maintenant),null);
 assert.equal(identiteBoutiqueFraiche({checked_at:'2026-09-28T09:29:59Z',vinted_identite:{user_id:'a'}},maintenant),null);
@@ -32,4 +37,4 @@ assert.equal(depotVintedExactParAnnonce({...job,inventaire_id:null},[{...depot,h
 assert.equal(idAnnonceVintedExact({listing_url:'https://www.vinted.fr/items/9991856071',platform_listing_id:'9991856072'}),'');
 assert.equal(verifier({...base,boutiqueArticle:null,sessionRequise:false,historiqueListingProuve:true}),null);
 assert.equal(verifier({...base,boutiqueArticle:null,historiqueListingProuve:true}),'origine_inconnue');
-console.log('28 contrôles de cloisonnement des boutiques et de compatibilité réussis.');
+console.log('33 contrôles de cloisonnement des boutiques et de compatibilité réussis.');
