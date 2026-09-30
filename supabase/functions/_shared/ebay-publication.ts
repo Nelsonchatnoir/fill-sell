@@ -54,6 +54,37 @@ export function lireErreurEbay(json: unknown, texte: string): ErreurEbay {
   return { errorId: null, message: texte.slice(0, 300), brut: brutEbay(texte, json) };
 }
 
+/** L'aspect et la valeur d'un refus 25129 (« no longer support custom values
+ *  for <aspect> »), lus SANS se fier à la position des paramètres.
+ *  30/09, patrick.giry07 : eBay rend 0 = « Saisissez une valeur valide pour
+ *  Taille. », 1 = « 38 n'est pas une valeur valide pour Taille. […] »,
+ *  2 = « 500 », 3 = « Taille », 4 = « 38 ». Le worker lisait l'aspect en « 2 »
+ *  (format relevé le 06/09) : il cherchait « 500 », ne trouvait rien, et
+ *  rendait le refus brut au lieu de la liste d'eBay — trois relances, trois
+ *  refus identiques. On retient donc le premier candidat qui est un VRAI nom
+ *  d'aspect de la catégorie ; la valeur refusée se lit d'abord dans la phrase
+ *  « X n'est pas une valeur valide pour <aspect> », puis dans les paramètres
+ *  restants — jamais le nom de l'aspect lui-même. */
+export function lireRefus25129(e: ErreurEbay, nomsAspects: string[]): { nomAspect: string; valeurRefusee: string } {
+  const val = (n: string) => String((e.params ?? []).find((p) => p.name === n)?.value ?? "").trim();
+  const noms = new Set(nomsAspects);
+  const pour = (s: string) => (s.match(/pour\s+(.+?)\.?$/)?.[1] ?? "").trim();
+  const candidatsNom = [
+    val("3"), val("2"),
+    pour(val("0")),
+    pour(val("1").split(".")[0] ?? ""),
+    (String(e.message ?? "").match(/custom values for\s+(.+?)\./)?.[1] ?? "").trim(),
+  ].filter(Boolean);
+  const nomAspect = candidatsNom.find((c) => noms.has(c)) ?? "";
+  if (!nomAspect) return { nomAspect: "", valeurRefusee: "" };
+  // Sinon : le paramètre qui SUIT celui qui porte le nom (06/09 : 2 → 3 ;
+  // 30/09 : 3 → 4).
+  const phrase = (val("1").match(/^(.+?) n'est pas une valeur valide pour /)?.[1] ?? "").trim();
+  const cle = ["3", "2"].find((k) => val(k) === nomAspect);
+  const suivant = cle ? val(String(Number(cle) + 1)) : "";
+  return { nomAspect, valeurRefusee: phrase || (suivant !== nomAspect ? suivant : "") };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // LE VRAI MOTIF D'UN REFUS eBAY — 2026-09-10, costume Hugo Boss de Victor
 // ══════════════════════════════════════════════════════════════════════════

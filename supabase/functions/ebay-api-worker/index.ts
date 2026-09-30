@@ -46,7 +46,7 @@ import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuve
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
-  lireErreurEbay, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
+  lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
   type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 
@@ -613,9 +613,9 @@ async function publier(
     if (e.errorId === 25129) {
       const dejaRafraichi = Boolean(((pf.ebay_api as Record<string, unknown>) ?? {}).aspects_rafraichis);
       const frais = await aspectsCategorie(admin, env, token, categoryId, { rafraichir: true });
-      const nomAspect = (e.params ?? []).find((p) => p.name === "2")?.value?.trim()
-        || (String((e.params ?? []).find((p) => p.name === "0")?.value ?? "").match(/pour\s+(.+?)\.?$/)?.[1] ?? "").trim();
-      const valeurRefusee = (e.params ?? []).find((p) => p.name === "3")?.value?.trim() ?? "";
+      // (30/09) Aspect et valeur lus par leur SENS, plus par leur position :
+      // eBay a décalé ses paramètres (« 2 » = « 500 »), cf. lireRefus25129.
+      const { nomAspect, valeurRefusee } = lireRefus25129(e, "erreur" in frais ? [] : frais.aspects.map((a) => a.name));
       const catAspect = !("erreur" in frais) && nomAspect ? frais.aspects.find((a) => a.name === nomAspect) : undefined;
       if (catAspect) {
         const ferme = await marquerAspectFerme(admin, categoryId, nomAspect);
