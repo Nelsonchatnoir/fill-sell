@@ -7918,7 +7918,14 @@ async function beebsCapturedProductId(tabId, accessToken, job) {
 //     les 21 de Joséphine) : une annonce déjà numérotée sous ce plancher
 //     existait avant le clic — elle réapparaît, elle n'est pas NOTRE dépôt ;
 //   · exactement UN nouveau = le numéro de CE dépôt. Zéro ou plusieurs =
-//     aucun numéro : le dépôt sort « publié » sans numéro, comme avant.
+//     aucun numéro : le dépôt sort « publié » sans numéro, comme avant ;
+//   · LISTE TRONQUÉE (gros comptes) : « Actuellement en ligne » s'arrête à 60
+//     annonces (relevés réels de Joséphine, 320 → 60, et de Louis, 88 → 60) ;
+//     « En vérification » n'a jamais été mesurée sur une longue file. Sur une
+//     liste tronquée, une annonce ancienne cachée peut entrer dans le champ.
+//     Le numéro doit donc être la PREMIÈRE carte d'« En vérification » après
+//     le dépôt, et cette liste être rangée du plus récent au plus ancien
+//     (numéros strictement décroissants) — sinon : aucun numéro.
 // ⛔ Jamais le titre, jamais un nouveau dépôt. Le serveur (update-job-status)
 //    refait ce calcul sur la trace avant d'accepter le numéro.
 function verdictIdentifiantBeebs(avant, apres) {
@@ -7934,6 +7941,11 @@ function verdictIdentifiantBeebs(avant, apres) {
   const base = { nouveaux, reapparus, plancher: String(plancher) };
   if (nouveaux.length === 0) return { ok: false, motif: "aucun_nouvel_identifiant", ...base };
   if (nouveaux.length > 1) return { ok: false, motif: "plusieurs_nouveaux_identifiants", ...base };
+  const enVerification = (Array.isArray(apres.pages) ? apres.pages : [])
+    .find((p) => p?.page === "en_verification");
+  const ordre = (Array.isArray(enVerification?.ids) ? enVerification.ids : []).map(String);
+  const decroissante = ordre.every((x, i) => i === 0 || BigInt(ordre[i - 1]) > BigInt(x));
+  if (ordre[0] !== nouveaux[0] || !decroissante) return { ok: false, motif: "ordre_non_prouve", ...base };
   return { ok: true, id: nouveaux[0], ...base };
 }
 
@@ -7979,7 +7991,9 @@ function tracePreuveIdentifiantBeebs(avant, apres, verdict, essais, depotConfirm
     ok: l.ok === true,
     lu_le: l.lu_le ?? null,
     ids: Array.isArray(l.ids) ? l.ids.map(String).slice(0, 4000) : [],
-    pages: Array.isArray(l.pages) ? l.pages.slice(0, 4) : [],
+    pages: Array.isArray(l.pages)
+      ? l.pages.slice(0, 4).map((p) => ({ ...p, ids: Array.isArray(p?.ids) ? p.ids.map(String).slice(0, 2000) : [] }))
+      : [],
     ...(l.motif ? { motif: String(l.motif).slice(0, 160) } : {}),
   } : null;
   return {

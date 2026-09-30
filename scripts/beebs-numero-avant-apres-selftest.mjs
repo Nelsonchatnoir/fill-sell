@@ -32,7 +32,17 @@ function charger({ lectures = [], sleeps = [] } = {}) {
   )(sendMessageToTab, sleep, chrome);
 }
 
-const lecture = (ids, ok = true) => ({ ok, lu_le: new Date().toISOString(), ids, pages: [] });
+// Par défaut, toutes les annonces sont « en vérification », rangées du plus
+// récent au plus ancien (ce que montre le seul relevé réel : 34076509 puis
+// 33640171). `verif` force l'ordre ou le contenu de cette page.
+const decroissant = (ids) => [...ids].filter((x) => /^\d{6,}$/.test(x)).sort((a, b) => (BigInt(b) > BigInt(a) ? 1 : -1));
+const lecture = (ids, ok = true, verif = null) => ({
+  ok, lu_le: new Date().toISOString(), ids,
+  pages: [
+    { page: "en_verification", ok, ids: verif ?? decroissant(ids) },
+    { page: "en_ligne", ok, ids: [] },
+  ],
+});
 const AVANT = lecture(["34076808", "34076827", "33901948"]);
 
 // ── 1. Le verdict ────────────────────────────────────────────────────────────
@@ -74,10 +84,36 @@ const AVANT = lecture(["34076808", "34076827", "33901948"]);
   assert.equal(v(AVANT, lecture([...AVANT.ids, "34080001"], false)).motif, "lecture_apres_illisible");
   assert.equal(v(AVANT, null).motif, "lecture_apres_illisible");
 
+  // LISTE TRONQUÉE : le numéro doit être la PREMIÈRE carte « en vérification »
+  // d'une liste rangée du plus récent au plus ancien.
+  const tronquee = v(AVANT, lecture([...AVANT.ids, "34080001"], true, ["34076827", "34080001"]));
+  assert.equal(tronquee.ok, false, "une liste rangée du plus ancien au plus récent ne prouve rien");
+  assert.equal(tronquee.motif, "ordre_non_prouve");
+  assert.equal(v(AVANT, lecture([...AVANT.ids, "34080001"], true, ["34076827", "34080001", "34076808"])).motif, "ordre_non_prouve",
+    "le nouveau numéro doit être en tête");
+  assert.equal(v(AVANT, lecture([...AVANT.ids, "34080001"], true, ["34080001", "34076808", "34076827"])).motif, "ordre_non_prouve",
+    "une liste non décroissante ne prouve rien");
+  assert.equal(v(AVANT, lecture([...AVANT.ids, "34080001"], true, ["34076827"])).motif, "ordre_non_prouve",
+    "un numéro vu seulement « en ligne » (validé aussitôt) n'est pas pris");
+  assert.equal(v(AVANT, lecture([...AVANT.ids, "34080001"], true, ["34080001", "34076827", "34076808"])).id, "34080001",
+    "en tête d'une liste décroissante : c'est le numéro");
+  // Le cas qui a motivé la règle : file de 140 en vérification, Beebs n'en
+  // montre qu'une partie, rangée du plus ancien au plus récent. Une annonce
+  // plus récente, cachée avant, entre dans le champ quand une ancienne est
+  // validée ; notre dépôt, lui, reste caché. Sans la règle d'ordre, ce serait
+  // le « seul nouveau ».
+  {
+    const avantVisibles = ["34070001", "34070002", "34070003"];
+    const apresVisibles = ["34070002", "34070003", "34070004"]; // 34070001 validée, 34070004 (cachée) entre
+    const r = v(lecture(avantVisibles, true, avantVisibles), lecture(apresVisibles, true, apresVisibles));
+    assert.equal(r.ok, false, "file tronquée rangée à l'envers : jamais de numéro");
+    assert.equal(r.motif, "ordre_non_prouve");
+  }
+
   // compte vide avant : le premier dépôt se reconnaît aussi
   assert.equal(v(lecture([]), lecture(["34080001"])).id, "34080001");
   // identifiants mal formés ignorés
-  assert.equal(v(lecture(["abc"]), lecture(["abc", "12", "34080001"])).id, "34080001");
+  assert.equal(v(lecture(["abc"]), lecture(["abc", "12", "34080001"], true, ["34080001"])).id, "34080001");
 }
 
 // ── 2. La relecture après confirmation ───────────────────────────────────────
@@ -111,6 +147,7 @@ const AVANT = lecture(["34076808", "34076827", "33901948"]);
   const r = await lireIdsApresDepotBeebs(7, AVANT);
   assert.equal(r.verdict.ok, false);
   assert.equal(r.verdict.motif, "seconde_lecture_differente");
+  assert.deepEqual(r.verdict.nouveaux, ["34080003"]);
   assert.equal(r.verdict.id, undefined);
 }
 {
@@ -156,6 +193,7 @@ const AVANT = lecture(["34076808", "34076827", "33901948"]);
   assert.equal(t.id, "34080001");
   assert.deepEqual(t.avant.ids, AVANT.ids);
   assert.deepEqual(t.apres.ids, apres.ids);
+  assert.deepEqual(t.apres.pages[0].ids, ["34080001", "34076827", "34076808", "33901948"], "l'ordre de la page part dans la trace");
   assert.equal(t.depot_confirme_le, "2026-09-30T10:00:00.000Z");
   assert.equal(t.extension, "0.6.80");
   const t0 = tracePreuveIdentifiantBeebs(AVANT, lecture(AVANT.ids), verdictIdentifiantBeebs(AVANT, lecture(AVANT.ids)), [], null);
@@ -176,6 +214,7 @@ const lecteur = beebs.slice(beebs.indexOf("function lirePageIdentifiantsBeebs(")
 assert.doesNotMatch(lecteur, /job\.title|titre|prix|price/i, "la lecture des identifiants n'utilise ni titre ni prix");
 assert.match(lecteur, /finale\.pathname\.replace\(\/\\\/\$\/, ""\) !== chemin/, "une page renvoyée ailleurs (connexion) est illisible");
 assert.match(lecteur, /ids\.length !== cartes\.size/, "en vérification : autant de clés exactes que de cartes, sinon illisible");
+assert.match(beebs, /pages: pages\.map\(\(p\) => \(\{ \.\.\.p, n: p\.ids\.length \}\)\)/, "chaque page garde ses identifiants, dans l'ordre");
 // Même forme de clé RSC que le relevé de modération.
 const cleReleve = background.match(/const cleCarteRsc = \/(.+)\/g;/)?.[1];
 const cleDepot = beebs.match(/const BEEBS_CLE_CARTE_RSC_SRC = String\.raw`(.+)`;/)?.[1];

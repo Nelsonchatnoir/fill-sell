@@ -433,6 +433,13 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
     return out;
   }
   if (!(http >= 200 && http < 300)) { out.motif = `HTTP ${http}`; return out; }
+  // Ce que la page contenait, quand elle est illisible : 300 caractères autour
+  // de la première carte (ou du flux Next.js), pour que l'échec se lise en base
+  // au lieu de se deviner. Des numéros et des classes, pas de compte.
+  const extrait = () => {
+    const i = [html.indexOf("px-section w-section"), html.indexOf("__next_f")].find((x) => x >= 0) ?? 0;
+    return html.slice(Math.max(0, i - 60), i + 240).replace(/\s+/g, " ");
+  };
   const doc = new DOMParser().parseFromString(html, "text/html");
   const texte = Array.from(doc.body?.querySelectorAll("*") ?? [])
     .filter((el) => !el.closest("script, style, noscript, template") && !el.children.length)
@@ -441,7 +448,7 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
     .map((a) => { try { return new URL(a.getAttribute("href"), finale.origin).pathname.replace(/\/$/, ""); } catch { return ""; } }));
   const ongletsParLiens = chemins.has("/fr/account/my-adverts") && chemins.has("/fr/account/my-adverts/creating");
   const ongletsParTexte = /en cours de v[ée]rification/i.test(texte) && /actuellement en ligne/i.test(texte);
-  if (!ongletsParLiens && !ongletsParTexte) { out.motif = "onglets de « Mes annonces » absents"; return out; }
+  if (!ongletsParLiens && !ongletsParTexte) { out.motif = "onglets de « Mes annonces » absents"; out.extrait = extrait(); return out; }
   const ids = [];
   const vus = new Set();
   const ajouter = (id) => { if (/^\d{6,}$/.test(id) && !vus.has(id)) { vus.add(id); ids.push(id); } };
@@ -455,6 +462,7 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
     out.cartes = cartes.size;
     if (ids.length !== cartes.size) {
       out.motif = `${ids.length} clé(s) exacte(s) pour ${cartes.size} carte(s)`;
+      out.extrait = extrait();
       return out;
     }
   } else {
@@ -485,11 +493,14 @@ async function lireIdsMesAnnoncesBeebs() {
     }
   }
   const ids = [...new Set(pages.flatMap((p) => p.ok ? p.ids : []))];
+  // Chaque page garde SES identifiants, dans l'ordre où Beebs les rend : c'est
+  // cet ordre qui prouve, sur une liste tronquée, que le nouveau numéro est
+  // bien le plus récent (cf. verdictIdentifiantBeebs).
   return {
     ok: pages.length === BEEBS_PAGES_IDENTIFIANTS.length && pages.every((p) => p.ok),
     lu_le: new Date().toISOString(),
     ids,
-    pages: pages.map(({ ids: idsPage, ...reste }) => ({ ...reste, n: idsPage.length })),
+    pages: pages.map((p) => ({ ...p, n: p.ids.length })),
   };
 }
 
