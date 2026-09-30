@@ -287,6 +287,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         .catch((err) => sendResponse({ ok: false, motif: String(err?.message ?? err) }));
       return true;
     }
+    if (msg?.type === "BEEBS_IDS_MES_ANNONCES") {
+      lireIdsMesAnnoncesBeebs()
+        .then((r) => sendResponse(r))
+        .catch((err) => sendResponse({ ok: false, ids: [], pages: [], motif: String(err?.message ?? err) }));
+      return true;
+    }
     if (msg?.type === "DELETE_LISTING") {
       deleteListing(msg.job)
         .then((result) => sendResponse(result))
@@ -387,6 +393,104 @@ const DELETE_DRY_RUN = false;
 function idAnnonceBeebs(url) {
   const m = String(url ?? "").match(/\/p\/(\d+)(?:[-/?#]|$)/);
   return m ? m[1] : null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LE NUMÉRO D'UN DÉPÔT : « MES ANNONCES » AVANT ET APRÈS LE CLIC (0.6.80, 30/09)
+// ══════════════════════════════════════════════════════════════════════════════
+// Incident du 29/09 : Beebs confirme le dépôt (/fr/listing/success) sans rendre
+// le numéro de l'annonce, et le lien retrouvé ensuite par le TITRE s'est révélé
+// faux (Louis et Joséphine dupliquent leurs articles : mêmes titres, annonces
+// différentes). La preuve qui reste : les identifiants du compte lus JUSTE
+// AVANT le clic « Mettre en vente », relus JUSTE APRÈS la confirmation. Le
+// verdict (un seul nouveau = le numéro) se rend dans le background
+// (verdictIdentifiantBeebs) ; ici on ne fait que LIRE.
+// ⛔ Ni le titre, ni le prix, ni la photo ne sont lus : ils ne peuvent donc
+//    rien décider.
+// Lecture par fetch de même origine (la session de la page) : l'onglet ne
+// navigue pas, le formulaire rempli reste en place.
+// Une page n'est « lue » que si elle est PROUVÉE être la liste du compte :
+// bonne adresse finale (pas de renvoi vers la connexion), onglets de « Mes
+// annonces » présents, et — en vérification — autant de clés exactes que de
+// cartes (même garde que le relevé de modération, ea283c2). Sinon elle est
+// illisible, et un dépôt dont une lecture est illisible n'a pas de numéro.
+const BEEBS_PAGES_IDENTIFIANTS = [
+  { page: "en_verification", chemin: "/fr/account/my-adverts/creating" },
+  { page: "en_ligne", chemin: "/fr/account/my-adverts" },
+];
+const BEEBS_IDS_MAX_PAR_PAGE = 2000;
+const BEEBS_LECTURE_DELAI_MS = 10_000;
+// Forme EXACTE de la clé React d'une carte « Vérification en cours » dans le
+// flux RSC (relevé réel du 29/09) — identique à celle du relevé (background).
+const BEEBS_CLE_CARTE_RSC_SRC = String.raw`\\?"div\\?",\\?"(\d{6,})\\?",\{\\?"className\\?":\\?"px-section w-section border-grey-metal flex flex-wrap items-center gap-x-10 gap-y-2 border-b border-solid py-5\\?"`;
+
+function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
+  const out = { page, ok: false, http, ids: [] };
+  let finale;
+  try { finale = new URL(reponseUrl); } catch { out.motif = "adresse finale illisible"; return out; }
+  if (!/(^|\.)beebs\.app$/.test(finale.hostname) || finale.pathname.replace(/\/$/, "") !== chemin) {
+    out.motif = `renvoyée vers ${finale.hostname}${finale.pathname}`;
+    return out;
+  }
+  if (!(http >= 200 && http < 300)) { out.motif = `HTTP ${http}`; return out; }
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const texte = Array.from(doc.body?.querySelectorAll("*") ?? [])
+    .filter((el) => !el.closest("script, style, noscript, template") && !el.children.length)
+    .map((el) => el.textContent ?? "").join(" ").replace(/\s+/g, " ");
+  const chemins = new Set(Array.from(doc.querySelectorAll("a[href]"))
+    .map((a) => { try { return new URL(a.getAttribute("href"), finale.origin).pathname.replace(/\/$/, ""); } catch { return ""; } }));
+  const ongletsParLiens = chemins.has("/fr/account/my-adverts") && chemins.has("/fr/account/my-adverts/creating");
+  const ongletsParTexte = /en cours de v[ée]rification/i.test(texte) && /actuellement en ligne/i.test(texte);
+  if (!ongletsParLiens && !ongletsParTexte) { out.motif = "onglets de « Mes annonces » absents"; return out; }
+  const ids = [];
+  const vus = new Set();
+  const ajouter = (id) => { if (/^\d{6,}$/.test(id) && !vus.has(id)) { vus.add(id); ids.push(id); } };
+  if (page === "en_verification") {
+    const re = new RegExp(BEEBS_CLE_CARTE_RSC_SRC, "g");
+    let m;
+    while ((m = re.exec(html))) ajouter(m[1]);
+    const cartes = new Set(Array.from(doc.querySelectorAll("main img[alt]"))
+      .map((img) => img.closest("div.px-section.w-section.border-grey-metal.border-b"))
+      .filter((el) => el && /Vérification en cours/i.test(el.textContent || "")));
+    out.cartes = cartes.size;
+    if (ids.length !== cartes.size) {
+      out.motif = `${ids.length} clé(s) exacte(s) pour ${cartes.size} carte(s)`;
+      return out;
+    }
+  } else {
+    for (const a of doc.querySelectorAll("a[href]")) {
+      const id = idAnnonceBeebs(a.getAttribute("href"));
+      if (id) ajouter(id);
+    }
+  }
+  if (ids.length > BEEBS_IDS_MAX_PAR_PAGE) { out.motif = `plus de ${BEEBS_IDS_MAX_PAR_PAGE} identifiants`; return out; }
+  out.ok = true;
+  out.ids = ids;
+  return out;
+}
+
+async function lireIdsMesAnnoncesBeebs() {
+  const pages = [];
+  for (const { page, chemin } of BEEBS_PAGES_IDENTIFIANTS) {
+    const ctrl = new AbortController();
+    const garde = setTimeout(() => ctrl.abort(), BEEBS_LECTURE_DELAI_MS);
+    try {
+      const r = await fetch(chemin, { credentials: "include", cache: "no-store", redirect: "follow", signal: ctrl.signal });
+      const html = await r.text();
+      pages.push(lirePageIdentifiantsBeebs(page, chemin, r.url, r.status, html));
+    } catch (e) {
+      pages.push({ page, ok: false, ids: [], motif: `lecture impossible : ${String(e?.message ?? e).slice(0, 80)}` });
+    } finally {
+      clearTimeout(garde);
+    }
+  }
+  const ids = [...new Set(pages.flatMap((p) => p.ok ? p.ids : []))];
+  return {
+    ok: pages.length === BEEBS_PAGES_IDENTIFIANTS.length && pages.every((p) => p.ok),
+    lu_le: new Date().toISOString(),
+    ids,
+    pages: pages.map(({ ids: idsPage, ...reste }) => ({ ...reste, n: idsPage.length })),
+  };
 }
 
 // ── Dialogue « Supprimer mon annonce » : motif CERTAIN ou rien ───────────────
@@ -1559,6 +1663,12 @@ async function fillListingForm(job) {
     };
   }
 
+  // Numéro exact du dépôt (0.6.80) : les identifiants du compte JUSTE AVANT le
+  // clic. Une lecture ratée ne bloque jamais le dépôt — il sortira alors sans
+  // numéro, comme avant (cf. lireIdsMesAnnoncesBeebs).
+  const beebsIdsAvant = await lireIdsMesAnnoncesBeebs()
+    .catch((e) => ({ ok: false, ids: [], pages: [], motif: String(e?.message ?? e).slice(0, 120) }));
+
   const publishBtn = document.querySelector('button[type="submit"]');
   publishBtn?.click();
 
@@ -1589,7 +1699,7 @@ async function fillListingForm(job) {
   // console.log la portait, et aucune enquête en base ne pouvait dire par quoi
   // un dépôt avait été « confirmé ».
   warnings.push(`observabilité: dépôt confirmé par ${proof.preuve} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`);
-  return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
+  return { success: true, listingUrl: null, beebsIdsAvant, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
 // Relevé de TOUS les champs dynamiques affichés pour la catégorie courante —

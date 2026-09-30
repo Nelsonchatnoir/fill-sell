@@ -3091,12 +3091,19 @@ async function processJob(rawJob, accessToken) {
           `[background] Job ${job.id} (${job.platform}) repris par le serveur MAIS l'annonce existe déjà ` +
           `(${dejaEnLigne}) — published direct, aucune re-soumission (doublon évité)`
         );
+        // Beebs (0.6.80, 30/09) : ce filet trouve l'annonce par son TITRE. Il
+        // suffit à ne pas déposer une seconde fois, jamais à nommer l'annonce :
+        // publié SANS lien, le numéro reste à prouver (lien_en_attente).
         await updateJobStatus(accessToken, job.id, "published", {
-          error: null, listing_url: dejaEnLigne, platform_fields: pfSansMarqueur,
+          error: null,
+          listing_url: job.platform === "beebs" ? undefined : dejaEnLigne,
+          platform_fields: job.platform === "beebs"
+            ? { ...pfSansMarqueur, existence_par_titre_sans_lien: { at: new Date().toISOString(), motif: "reprise d'un job interrompu : aucun second dépôt, aucun numéro tiré du titre" } }
+            : pfSansMarqueur,
         });
         stampVintedItemId(accessToken, job, dejaEnLigne);
         await recordRecentResult(job, "published").catch(() => {});
-        return { status: "published", listingUrl: dejaEnLigne };
+        return { status: "published", listingUrl: job.platform === "beebs" ? null : dejaEnLigne };
       }
     }
 
@@ -3893,12 +3900,38 @@ async function processJob(rawJob, accessToken) {
       if (job.platform === "beebs" && !beebsProductId) {
         beebsProductId = extractListingId(listingUrl, "beebs");
       }
+      // ── NUMÉRO EXACT : « MES ANNONCES » AVANT / APRÈS (0.6.80, 30/09) ────────
+      // La lecture d'avant est faite par beebs.js juste avant le clic ; on relit
+      // ici. Un seul nouvel identifiant = le numéro de ce dépôt (cf.
+      // verdictIdentifiantBeebs). Si la sonde a capté un id ET que la relecture
+      // en désigne un autre, on ne choisit pas : aucun numéro. La trace part
+      // avec le job, que le numéro soit trouvé ou non.
+      let beebsConfirmeLe = null;
+      if (job.platform === "beebs") {
+        beebsConfirmeLe = new Date().toISOString();
+        const avant = result?.beebsIdsAvant ?? null;
+        const { lecture: apres, verdict, essais } = await lireIdsApresDepotBeebs(tabId, avant)
+          .catch((e) => ({ lecture: null, verdict: { ok: false, motif: `relecture impossible : ${String(e?.message ?? e).slice(0, 100)}` }, essais: [] }));
+        const sonde = /^\d+$/.test(String(beebsProductId ?? "")) ? String(beebsProductId) : null;
+        let v = verdict;
+        if (sonde && v.ok && v.id !== sonde) v = { ...v, ok: false, id: undefined, motif: "desaccord_avec_la_sonde" };
+        const trace = tracePreuveIdentifiantBeebs(avant, apres, v, essais, beebsConfirmeLe);
+        if (sonde) trace.sonde = sonde;
+        job.platform_fields = { ...(job.platform_fields ?? {}), preuve_identifiant_beebs: trace };
+        if (v.ok) beebsProductId = v.id;
+        else if (v.motif === "desaccord_avec_la_sonde") beebsProductId = null;
+        console.log(
+          `[background] Job ${job.id} (beebs) : « Mes annonces » avant/après — ` +
+          (v.ok ? `numéro ${v.id} (seul nouvel identifiant)` : `aucun numéro (${v.motif})`) +
+          (sonde ? ` ; sonde : ${sonde}` : ""),
+        );
+      }
       if (job.platform === "beebs" && !/^\d+$/.test(String(beebsProductId ?? ""))) {
         const pfAttente = {
           ...(job.platform_fields ?? {}),
           attente_identifiant_beebs: {
-            depuis: new Date().toISOString(),
-            depot_confirme_le: new Date().toISOString(),
+            depuis: beebsConfirmeLe ?? new Date().toISOString(),
+            depot_confirme_le: beebsConfirmeLe ?? new Date().toISOString(),
             preuve_attendue: "identifiant exact du relevé Beebs rattaché à ce job",
             pose_par: "extension 0.6.80",
           },
@@ -7871,6 +7904,97 @@ async function beebsCapturedProductId(tabId, accessToken, job) {
     console.log("[background] Beebs : sonde réseau sans aucune capture — rien à apprendre sur ce dépôt");
   }
   return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LE NUMÉRO D'UN DÉPÔT BEEBS : « MES ANNONCES » AVANT / APRÈS (0.6.80, 30/09)
+// ══════════════════════════════════════════════════════════════════════════════
+// beebs.js lit les identifiants du compte JUSTE AVANT le clic (result.
+// beebsIdsAvant) ; on les relit ici JUSTE APRÈS la confirmation. Règle :
+//   · les deux lectures sont prouvées être « Mes annonces » (sinon : rien) ;
+//   · nouveaux = identifiants apparus ET plus grands que le plus grand
+//     d'avant. Beebs numérote ses annonces dans l'ordre de leur création
+//     (mesuré sur les 32 dépôts à identifiant exact du 05/09 au 29/09, dont
+//     les 21 de Joséphine) : une annonce déjà numérotée sous ce plancher
+//     existait avant le clic — elle réapparaît, elle n'est pas NOTRE dépôt ;
+//   · exactement UN nouveau = le numéro de CE dépôt. Zéro ou plusieurs =
+//     aucun numéro : le dépôt sort « publié » sans numéro, comme avant.
+// ⛔ Jamais le titre, jamais un nouveau dépôt. Le serveur (update-job-status)
+//    refait ce calcul sur la trace avant d'accepter le numéro.
+function verdictIdentifiantBeebs(avant, apres) {
+  const idsDe = (l) => [...new Set((Array.isArray(l?.ids) ? l.ids : []).map(String).filter((x) => /^\d{6,}$/.test(x)))];
+  if (!avant?.ok) return { ok: false, motif: "lecture_avant_illisible" };
+  if (!apres?.ok) return { ok: false, motif: "lecture_apres_illisible" };
+  const a = idsDe(avant);
+  const dejaVus = new Set(a);
+  const plancher = a.reduce((m, x) => (BigInt(x) > m ? BigInt(x) : m), 0n);
+  const apparus = idsDe(apres).filter((x) => !dejaVus.has(x));
+  const nouveaux = apparus.filter((x) => BigInt(x) > plancher);
+  const reapparus = apparus.filter((x) => BigInt(x) <= plancher);
+  const base = { nouveaux, reapparus, plancher: String(plancher) };
+  if (nouveaux.length === 0) return { ok: false, motif: "aucun_nouvel_identifiant", ...base };
+  if (nouveaux.length > 1) return { ok: false, motif: "plusieurs_nouveaux_identifiants", ...base };
+  return { ok: true, id: nouveaux[0], ...base };
+}
+
+// Relit « Mes annonces » après la confirmation, le temps que Beebs y range le
+// dépôt (quelques secondes). Un seul nouveau est RELU une seconde fois, 3 s
+// plus tard, et doit rester le même : un dépôt fait à la main au même instant
+// ne se fait pas passer pour le nôtre sur une seule lecture.
+const BEEBS_APRES_DELAIS_MS = [1500, 4000, 8000, 12000];
+const BEEBS_APRES_CONFIRMATION_MS = 3000;
+async function lireIdsApresDepotBeebs(tabId, avant) {
+  const essais = [];
+  const lire = async () => {
+    const r = await sendMessageToTab(tabId, { type: "BEEBS_IDS_MES_ANNONCES" }, 30_000)
+      .catch((e) => ({ ok: false, ids: [], pages: [], motif: String(e?.message ?? e).slice(0, 120) }));
+    const v = verdictIdentifiantBeebs(avant, r);
+    essais.push({ a: new Date().toISOString(), lecture: r?.ok === true, verdict: v.ok ? `id ${v.id}` : v.motif });
+    return { r, v };
+  };
+  if (!avant?.ok) return { lecture: null, verdict: verdictIdentifiantBeebs(avant, null), essais };
+  let dernier = null;
+  for (const delai of BEEBS_APRES_DELAIS_MS) {
+    await sleep(delai);
+    dernier = await lire();
+    if (dernier.v.motif === "plusieurs_nouveaux_identifiants") break;
+    if (dernier.v.ok) {
+      await sleep(BEEBS_APRES_CONFIRMATION_MS);
+      const second = await lire();
+      if (second.v.ok && second.v.id === dernier.v.id) return { lecture: second.r, verdict: second.v, essais };
+      return {
+        lecture: second.r,
+        verdict: { ...second.v, ok: false, motif: second.v.ok ? "seconde_lecture_differente" : second.v.motif, id: undefined },
+        essais,
+      };
+    }
+  }
+  return { lecture: dernier?.r ?? null, verdict: dernier?.v ?? verdictIdentifiantBeebs(avant, null), essais };
+}
+
+// La trace qui part avec le job : ce qui a été lu, quand, et ce qui en a été
+// conclu — c'est elle que le serveur relit. Rien de personnel : des numéros.
+function tracePreuveIdentifiantBeebs(avant, apres, verdict, essais, depotConfirmeLe) {
+  const lecture = (l) => l ? {
+    ok: l.ok === true,
+    lu_le: l.lu_le ?? null,
+    ids: Array.isArray(l.ids) ? l.ids.map(String).slice(0, 4000) : [],
+    pages: Array.isArray(l.pages) ? l.pages.slice(0, 4) : [],
+    ...(l.motif ? { motif: String(l.motif).slice(0, 160) } : {}),
+  } : null;
+  return {
+    methode: "mes_annonces_avant_apres",
+    extension: chrome.runtime.getManifest?.().version ?? null,
+    ok: verdict?.ok === true,
+    ...(verdict?.ok ? { id: verdict.id } : { motif: verdict?.motif ?? "inconnu" }),
+    plancher: verdict?.plancher ?? null,
+    nouveaux: verdict?.nouveaux ?? [],
+    reapparus: verdict?.reapparus ?? [],
+    depot_confirme_le: depotConfirmeLe,
+    avant: lecture(avant),
+    apres: lecture(apres),
+    essais: (essais ?? []).slice(0, 12),
+  };
 }
 
 // ── IDENTITÉ BEEBS DU VENDEUR (2026-09-10) ───────────────────────────────────
