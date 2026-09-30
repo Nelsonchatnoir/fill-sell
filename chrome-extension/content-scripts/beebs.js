@@ -456,9 +456,20 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
     const re = new RegExp(BEEBS_CLE_CARTE_RSC_SRC, "g");
     let m;
     while ((m = re.exec(html))) ajouter(m[1]);
-    const cartes = new Set(Array.from(doc.querySelectorAll("main img[alt]"))
-      .map((img) => img.closest("div.px-section.w-section.border-grey-metal.border-b"))
-      .filter((el) => el && /Vérification en cours/i.test(el.textContent || "")));
+    // ⛔ 30/09 soir : la liste « En vérification » est streamée dans une
+    // frontière Suspense. Dans la page vivante, le script de Next.js la
+    // déplace dans <main> ; dans un document lu par fetch + DOMParser, aucun
+    // script ne tourne : les cartes restent dans <div hidden id="S:0">,
+    // enfant direct de <body>, et <main> ne contient que le squelette.
+    // Le comptage limité aux images de <main> rendait donc 0 carte dès qu’il y en avait une
+    // (« 1 clé(s) exacte(s) pour 0 carte(s) ») : aucun dépôt Beebs n'a eu son
+    // numéro depuis la 0.6.80. On compte les cartes dans <main> ET dans les
+    // segments streamés, sans exiger d'image (une photo pas encore traitée
+    // par Beebs ne doit pas faire disparaître la carte).
+    const zones = Array.from(doc.querySelectorAll('main, div[hidden][id^="S:"]'));
+    const cartes = new Set(zones
+      .flatMap((z) => Array.from(z.querySelectorAll("div.px-section.w-section.border-grey-metal.border-b")))
+      .filter((el) => /Vérification en cours/i.test(el.textContent || "")));
     out.cartes = cartes.size;
     if (ids.length !== cartes.size) {
       out.motif = `${ids.length} clé(s) exacte(s) pour ${cartes.size} carte(s)`;
@@ -466,9 +477,30 @@ function lirePageIdentifiantsBeebs(page, chemin, reponseUrl, http, html) {
       return out;
     }
   } else {
+    // « Actuellement en ligne » (relevé réel du 30/09 soir, compte de Nico,
+    // 9 annonces) : les cartes sont un composant client (AdvertsProductCard)
+    // que le serveur ne rend PAS en HTML — le document lu par fetch n'a aucun
+    // lien /p/, seulement le flux RSC : ["$","$L105","34083630",{"id":"34083630",…}].
+    // Sans ce flux, « en ligne » était lue « complète » avec 0 identifiant :
+    // le plancher ne voyait pas les annonces en ligne. On lit la clé ET la
+    // propriété id, identiques, et les liens s'il y en a.
+    const reCarte = /\\?"\$\\?",\\?"\$L[0-9a-z]+\\?",\\?"(\d{6,})\\?",\{\\?"id\\?":\\?"(\d{6,})\\?"/g;
+    let m;
+    while ((m = reCarte.exec(html))) if (m[1] === m[2]) ajouter(m[1]);
     for (const a of doc.querySelectorAll("a[href]")) {
       const id = idAnnonceBeebs(a.getAttribute("href"));
       if (id) ajouter(id);
+    }
+    // Le compteur que Beebs envoie avec la page (« see_my_adverts ») : des
+    // annonces annoncées et aucune lue = page illisible, jamais « vide ».
+    const nb = html.match(/\\?"event\\?":\\?"see_my_adverts\\?",\\?"data\\?":\{\\?"nb_products\\?":(\d+)/);
+    if (nb) {
+      out.annoncees = Number(nb[1]);
+      if (out.annoncees > 0 && ids.length === 0) {
+        out.motif = `${out.annoncees} annonce(s) annoncée(s), aucune lue`;
+        out.extrait = extrait();
+        return out;
+      }
     }
   }
   if (ids.length > BEEBS_IDS_MAX_PAR_PAGE) { out.motif = `plus de ${BEEBS_IDS_MAX_PAR_PAGE} identifiants`; return out; }

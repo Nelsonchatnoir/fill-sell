@@ -214,6 +214,14 @@ const lecteur = beebs.slice(beebs.indexOf("function lirePageIdentifiantsBeebs(")
 assert.doesNotMatch(lecteur, /job\.title|titre|prix|price/i, "la lecture des identifiants n'utilise ni titre ni prix");
 assert.match(lecteur, /finale\.pathname\.replace\(\/\\\/\$\/, ""\) !== chemin/, "une page renvoyée ailleurs (connexion) est illisible");
 assert.match(lecteur, /ids\.length !== cartes\.size/, "en vérification : autant de clés exactes que de cartes, sinon illisible");
+// 0.6.81 (30/09 soir) : lu par fetch + DOMParser, aucun script ne tourne — les cartes streamées restent
+// dans <div hidden id="S:0">, hors de <main>. Les compter là aussi, sans exiger d'image.
+assert.match(lecteur, /querySelectorAll\('main, div\[hidden\]\[id\^="S:"\]'\)/, "en vérification : les cartes des segments streamés comptent");
+assert.doesNotMatch(lecteur, /main img\[alt\]/, "en vérification : plus de comptage limité à <main> ni aux images");
+// « en ligne » : composant client, sans lien /p/ dans le HTML — lu dans le flux RSC (clé = id).
+assert.match(lecteur, /const reCarte = /, "en ligne : cartes lues dans le flux RSC");
+assert.match(lecteur, /if \(m\[1\] === m\[2\]\) ajouter\(m\[1\]\)/, "en ligne : la clé React et la propriété id doivent être identiques");
+assert.match(lecteur, /see_my_adverts/, "en ligne : des annonces annoncées et aucune lue = illisible");
 assert.match(beebs, /pages: pages\.map\(\(p\) => \(\{ \.\.\.p, n: p\.ids\.length \}\)\)/, "chaque page garde ses identifiants, dans l'ordre");
 // Même forme de clé RSC que le relevé de modération.
 const cleReleve = background.match(/const cleCarteRsc = \/(.+)\/g;/)?.[1];

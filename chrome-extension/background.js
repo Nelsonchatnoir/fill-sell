@@ -17,6 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-09-30-beebs-numero-lecture-streamee (0.6.81 : « Mes annonces » Beebs lue par fetch — cartes « En vérification » comptées aussi dans les segments streamés <div hidden id=S:…>, « en ligne » lue dans le flux RSC AdvertsProductCard ; aucun dépôt n'avait son numéro depuis la 0.6.80) — précédent : " +
   "2026-09-29-point1-preuves-retraits (0.6.80 : boutique Vinted prouvée avant DELETE et estampillée après dépôt ; " +
   "identifiant Beebs durable obligatoire ; formulaire Beebs complet éprouvé avant retrait de republication) — précédent : " +
   "2026-09-14-retrait-lbc-challenge-et-releve (suppression Leboncoin, 2 points : [1] un CHALLENGE anti-robot ne consomme " +
@@ -3933,7 +3934,7 @@ async function processJob(rawJob, accessToken) {
             depuis: beebsConfirmeLe ?? new Date().toISOString(),
             depot_confirme_le: beebsConfirmeLe ?? new Date().toISOString(),
             preuve_attendue: "identifiant exact du relevé Beebs rattaché à ce job",
-            pose_par: "extension 0.6.80",
+            pose_par: "extension 0.6.81",
           },
         };
         delete pfAttente.processing_since;

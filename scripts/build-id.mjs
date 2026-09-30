@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-30T08:39:19Z'; // 0.6.80 = 0.6.79 + lot 1 + numéro Beebs par « Mes annonces » avant/après, avec preuve d'ordre (30/09).
+export const EXTENSION_LAST_COMMIT = '2026-09-30T18:26:52Z'; // 0.6.81 = 0.6.80 + numéro Beebs : cartes des segments streamés et « en ligne » lue dans le flux RSC (30/09 soir).
+// Historique de la valeur precedente : '2026-09-30T08:39:19Z' — 752308e, 0.6.80 (zip 13:21:09Z+4f5662a, en CWS publication différée).
 // Historique de la valeur precedente : '2026-09-30T07:58:12Z' — 8f396eb, 0.6.80 numéro Beebs avant/après (sans preuve d'ordre), jamais packagée.
 // Historique de la valeur precedente : '2026-09-29T17:40:00Z' — ea283c2, 0.6.80 lot 1 (identifiant Beebs exact lu dans le relevé de modération), jamais soumise au CWS.
 // Historique de la valeur precedente : '2026-09-28T20:46:09Z' — a86e0d2, 0.6.78 (zip 2701d9a, en test chez Nico, intact). UTC VRAI lu par EPOCH (%ct 1790631858 pour ffbcb27).
