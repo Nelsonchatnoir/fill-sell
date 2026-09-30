@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-09-30-beebs-numero-lecture-streamee (0.6.81 : « Mes annonces » Beebs lue par fetch — cartes « En vérification » comptées aussi dans les segments streamés <div hidden id=S:…>, « en ligne » lue dans le flux RSC AdvertsProductCard ; aucun dépôt n'avait son numéro depuis la 0.6.80) — précédent : " +
+  "2026-09-30-beebs-numero-lecture-streamee (0.6.81 : « Mes annonces » Beebs lue par fetch — cartes « En vérification » comptées aussi dans les segments streamés <div hidden id=S:…>, « en ligne » lue dans le flux RSC AdvertsProductCard ; aucun dépôt n'avait son numéro depuis la 0.6.80 ; URGENCE republication Vinted : la capture s'ouvre sur /items/<id>, seule page où la preuve de boutique se lit — sous 0.6.80 elle s'ouvrait sur l'accueil et aucune republication n'aboutissait) — précédent : " +
   "2026-09-29-point1-preuves-retraits (0.6.80 : boutique Vinted prouvée avant DELETE et estampillée après dépôt ; " +
   "identifiant Beebs durable obligatoire ; formulaire Beebs complet éprouvé avant retrait de republication) — précédent : " +
   "2026-09-14-retrait-lbc-challenge-et-releve (suppression Leboncoin, 2 points : [1] un CHALLENGE anti-robot ne consomme " +
@@ -12697,7 +12697,12 @@ async function captureVintedItemUnlocked(vintedItemId) {
     try {
       // Rappelé À CHAQUE tentative : navigateWorkTab re-décharge et re-navigue
       // l'onglet — c'est la navigation fraîche qui répare, pas l'attente.
-      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      // ⛔ 0.6.81 (30/09 soir, urgence) : la page EXACTE de l'annonce, jamais
+      // l'accueil. La preuve de boutique exigée avant tout retrait (0.6.80) ne
+      // se lit que sur /items/<id> : ouverte sur l'accueil, la capture sortait
+      // sans preuve (471 captures en 30 h, 0 preuve), la republication
+      // repartait en « a_capturer » toutes les 2 min et ne finissait jamais.
+      tabId = await getOrCreateWorkTab("vinted", `https://www.vinted.fr/items/${encodeURIComponent(id)}`);
     } catch (e) {
       return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
     }
