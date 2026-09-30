@@ -1,0 +1,11 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CRON « fusion-photo-1min » — le passage de 20260930160000 (GO Nico 30/09)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Posé le 30/09 à 13:35 (jobid 19), COUPÉ à 13:41 (seuil de latence de Nico
+-- franchi sur 3 appels, sans lien avec le cron), RELANCÉ à 13:50 (jobid 20)
+-- avec le seuil : moyenne get-pending-jobs sur 15 min > 2 s (≥ 10 appels),
+-- ou p90 sur 15 min > 4 s, ou premier 5xx → on coupe.
+-- ⚠️ La fonction appelée porte le secret de cron en clair (chantier rotation,
+-- CLAUDE.md) : fusion_photo_tick() appelle empreintes-urls avec x-cron-secret.
+-- Retour arrière : supabase/rollbacks/20260930160000_fusion_photo_apres_synchro.sql
+SELECT cron.schedule('fusion-photo-1min', '* * * * *', $$SELECT public.fusion_photo_tick()$$);
