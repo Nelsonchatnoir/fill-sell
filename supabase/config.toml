@@ -166,6 +166,12 @@ verify_jwt = false
 [functions.doublons-balayage]
 verify_jwt = false
 
+# empreintes-urls (30/09, incident Beebs) — appelée par la base (pg_net,
+# x-cron-secret vérifié dans le code), jamais par l'app ni l'extension.
+# Ne fait QUE remplir le cache photo_empreintes pour une liste d'URL.
+[functions.empreintes-urls]
+verify_jwt = false
+
 # Recalage de l'abonnement de XEWER sur le 1er du mois (2026-09-26) : appelée
 # par pg_cron (« recalage-xewer-1er-oct », 01/10 de 00:00 à 03:55 UTC, via
 # recalage_xewer_tick), x-cron-secret vérifié dans le code. Un seul client,
