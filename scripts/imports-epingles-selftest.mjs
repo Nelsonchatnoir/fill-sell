@@ -37,6 +37,7 @@ const RACINE = join(ROOT, "supabase", "functions");
 // ici doit porter exactement cette version.
 const VERSIONS_ATTENDUES = {
   "@supabase/supabase-js": "2.117.0",
+  "@jsquash/webp": "1.4.0",
 };
 
 /** Tout ce qui ressemble à une importation distante versionnable. */

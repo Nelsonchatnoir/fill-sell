@@ -69,14 +69,57 @@ export async function telecharger(url: string): Promise<Uint8Array> {
   }
 }
 
+// ── WEBP (2026-09-30) ─────────────────────────────────────────────────────
+// imagescript ne lit pas le WebP : « Unsupported image type » sur 1 569 photos
+// Opla (CloudFront, toutes en .webp) et 119 Beebs. Une fiche importée d'Opla
+// n'avait donc JAMAIS d'empreinte, et aucune fusion par la photo ne pouvait la
+// voir. Le WebP passe par le décodeur de libwebp (WASM, @jsquash/webp 1.4.0,
+// épinglé). Mesuré : la photo Opla d'un article et sa photo Vinted donnent
+// dHash 0 / pHash 0.
+const WEBP_WASM = "https://cdn.jsdelivr.net/npm/@jsquash/webp@1.4.0/codec/dec/webp_dec.wasm";
+// deno-lint-ignore no-explicit-any
+let webpPret: Promise<(b: ArrayBuffer) => Promise<any>> | null = null;
+function decodeurWebp() {
+  if (!webpPret) {
+    webpPret = (async () => {
+      // Le décodeur rend un ImageData, absent du runtime edge.
+      // deno-lint-ignore no-explicit-any
+      const g = globalThis as any;
+      if (!g.ImageData) {
+        g.ImageData = class { data: Uint8ClampedArray; width: number; height: number;
+          constructor(d: Uint8ClampedArray, w: number, h: number) { this.data = d; this.width = w; this.height = h; } };
+      }
+      const mod = await import("https://esm.sh/@jsquash/webp@1.4.0/decode.js");
+      const r = await fetch(WEBP_WASM);
+      if (!r.ok) throw new Error(`décodeur WebP : HTTP ${r.status}`);
+      await mod.init(await WebAssembly.compile(await r.arrayBuffer()));
+      return mod.default;
+    })().catch((e) => { webpPret = null; throw e; });
+  }
+  return webpPret;
+}
+/** « RIFF????WEBP » : les 12 premiers octets d'un fichier WebP. */
+export function estWebp(buf: Uint8Array): boolean {
+  return buf.byteLength > 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+    && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
+}
+
 export async function decoderEmpreinte(buf: Uint8Array): Promise<Empreinte & { largeur: number; hauteur: number }> {
-  const { decode } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
   // deno-lint-ignore no-explicit-any
-  const img: any = await decode(buf);
-  const width = Number(img?.width), height = Number(img?.height);
-  if (!width || !height) throw new Error("image illisible");
+  let data: any, width: number, height: number;
+  if (estWebp(buf)) {
+    const decode = await decodeurWebp();
+    const img = await decode(buf.slice().buffer);
+    width = Number(img?.width); height = Number(img?.height); data = img?.data;
+  } else {
+    const { decode } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
+    // deno-lint-ignore no-explicit-any
+    const img: any = await decode(buf);
+    width = Number(img?.width); height = Number(img?.height); data = img?.bitmap;
+  }
+  if (!width || !height || !data) throw new Error("image illisible");
   if (width * height > MAX_PIXELS) throw new Error(`trop de pixels (${width}×${height})`);
-  const e = empreinteDepuisRgba({ data: img.bitmap as Uint8ClampedArray, width, height });
+  const e = empreinteDepuisRgba({ data: data as Uint8ClampedArray, width, height });
   return { ...e, largeur: width, hauteur: height };
 }
 
