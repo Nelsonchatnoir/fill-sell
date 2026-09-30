@@ -346,56 +346,29 @@ tranche à la livraison, et la CLI n'a pas de `--dry-run`). Un import map non
 
 ## Trigger handle_new_user
 
-Le trigger pg_net appelle email-tunnel via le header `x-cron-secret: fs-cron-2026-tunnel`.
+Le trigger pg_net appelle email-tunnel via le header `x-cron-secret`, dont la valeur se lit par `public.cron_secret()` (vault, secret `cron_secret`) — jamais écrite dans le dépôt.
 Ne pas utiliser de query param ni de header `Authorization` dans pg_net — seul le header custom fonctionne.
 
-## Chantier « rotation du secret de cron » — À FAIRE, jamais en passant
+## Secret de cron — dans le vault et l'environnement, jamais dans le dépôt (30/09)
 
-`fs-cron-2026-tunnel` est **la** clé de toutes les fonctions en
-`verify_jwt = false` appelées par pg_cron : qui l'a peut déclencher n'importe
-lequel de nos crons. Elle est écrite **en clair** dans le dépôt (donc dans tout
-l'historique git, et elle y restera après rotation).
+Le secret `x-cron-secret` protège toutes les fonctions en `verify_jwt = false`
+appelées par pg_cron / pg_net. Depuis le 30/09 il n'est écrit NULLE PART dans le
+dépôt (l'ancienne valeur, sur GitHub depuis juin, a été changée le 30/09) :
 
-⛔ On ne la change **jamais** au fil d'un autre lot : le jour où elle tourne,
-**tout part ensemble** — la variable `CRON_SECRET` des fonctions ET chaque
-`cron.job` en base, sinon les jobs tombent en 401 **en silence** et personne ne
-le voit avant que la file s'empile. Prévoir : lire `cron.job` d'abord, tout
-réécrire, relire, et vérifier qu'un job passe juste après.
+- côté base : vault, secret `cron_secret`, lu par `public.cron_secret()` (SECURITY
+  DEFINER, fermée à anon/authenticated). Les commandes `cron.job` et les
+  fonctions pg_net construisent l'en-tête par
+  `jsonb_build_object('x-cron-secret', public.cron_secret())` ;
+- côté fonctions : variable `CRON_SECRET` (`supabase secrets set`), y compris
+  `_shared/payment-notify.ts` ;
+- dans les migrations historiques, la valeur est remplacée par
+  `__CRON_SECRET_DU_VAULT__` : ces fichiers ne se rejouent jamais tels quels.
 
-Les endroits à reprendre, tenus à jour (relevé du 21/09 —
-`grep -rl fs-cron-2026-tunnel` hors node_modules/dist/build/android/ios) :
-
-- `CLAUDE.md` (ce fichier, deux fois) ;
-- `supabase/functions/_shared/payment-notify.ts` — **le seul dans du code**, les
-  autres sont des migrations ;
-- les migrations qui portent un `cron.schedule` ou un trigger pg_net :
-  `20260612100000_email_tunnel_cron.sql` ·
-  `20260617000000_welcome_immediate.sql` ·
-  `20260712100000_ops_digest_cron.sql` ·
-  `20260716110000_handler_watch_cron.sql` ·
-  `20260728220000_grant_de_bienvenue_a_l_inscription.sql` ·
-  `20260805060000_republish_job_et_purge.sql` ·
-  `20260906120000_ebay_api_voie_emplacement_cron.sql` ·
-  `20260908090000_republish_auto_sweep_serveur.sql` ·
-  `20260916082000_lens_temp_purge.sql` ·
-  `20260919162000_ebay_ventes_cron.sql` ·
-  `20260919180000_objets_sans_trace_reconstruits.sql` ·
-  **`20260921090000_beebs_lien_cron.sql`** (ajouté le 21/09, cron
-  `beebs-lien-5min`, jobid 16) ·
-  **`20260925152000_doublons_balayage_cron.sql`** (ajouté le 25/09, cron
-  `doublons-balayage-2min`, jobid 17) ·
-  **`20260926192110_recalage_xewer_1er_octobre.sql`** (ajouté le 26/09, tâche
-  UNIQUE `recalage-xewer-1er-oct`, jobid 18, qui se désinscrit le 01/10 ;
-  la fonction `stripe-recalage-1er-du-mois` est à supprimer ensuite) ·
-  **`20260930160000_fusion_photo_apres_synchro.sql`** (ajouté le 30/09 :
-  `fusion_photo_tick()` appelle `empreintes-urls` avec le secret ; lancée par
-  le cron `fusion-photo-1min`, jobid 20, posé par `20260930160500`) ·
-  **`20260930203000_photo_avant_import.sql`**, **`20260930211500_fusion_photo_par_lots.sql`**,
-  **`20260930215000_fusion_photo_sans_balayage.sql`** (30/09 soir : chaque
-  réécriture de `fusion_photo_tick()` porte le secret ; cron
-  `fusion-photo-lot-10min`, jobid 22, n'appelle aucune fonction HTTP) ;
-- et, hors dépôt, **la commande de chaque ligne de `cron.job` en prod** : c'est
-  elle qui fait foi, pas les fichiers.
+⛔ Une rotation change les DEUX au même moment (vault + `CRON_SECRET`), puis
+on relit `cron.job_run_details` ET les codes HTTP (`net._http_response`) des
+crons suivants : un cron « succeeded » peut cacher un 401. Procédure :
+`docs/ROTATION_CRON_SECRET.md`. Un nouveau cron ou trigger pg_net n'écrit
+JAMAIS la valeur : il appelle `public.cron_secret()`.
 
 ## Premium detection
 

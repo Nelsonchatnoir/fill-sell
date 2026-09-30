@@ -1,6 +1,6 @@
 # Rotation du `x-cron-secret` — runbook
 
-**État au 19/09/2026 : NON FAIT.** Ce document existe pour que la bascule ne
+**30/09/2026 soir : FAIT** — voir « Ce qui a été fait le 30/09 » en fin de document. **État au 19/09/2026 : NON FAIT.** Ce document existe pour que la bascule ne
 dépende plus d'un rapport de session. Il ne contient aucune valeur de secret,
 ni l'ancienne ni la future — et il ne doit jamais en contenir.
 
@@ -173,3 +173,19 @@ Retirer le littéral de `CLAUDE.md` et des commentaires.
 
 Revenir corriger ce fichier : passer l'état à « FAIT le … », et garder
 l'inventaire, qui reste la carte utile du jour où il faudra recommencer.
+
+## Ce qui a été fait le 30/09 (Claude, GO Nico)
+
+L'ancienne valeur était sur GitHub depuis le 12/06 (783a8e1) : rotation obligatoire.
+
+1. `20260930230000_secret_cron_dans_le_vault` : la valeur du jour copiée dans le vault
+   (`cron_secret`), lue par `public.cron_secret()` ; les 11 commandes `cron.job` et
+   `handle_new_user`, `recalage_xewer_tick`, `fusion_photo_tick` construisent
+   l'en-tête avec `public.cron_secret()` (rejeu annulé : 11 en-têtes identiques).
+2. `_shared/payment-notify.ts` lit `CRON_SECRET` ; les 5 fonctions qui l'embarquent
+   redéployées avant la bascule (verify_jwt relu avant/après).
+3. Bascule : nouvelle valeur générée hors dépôt, posée dans `CRON_SECRET` (fonctions)
+   et dans le vault à quelques secondes d'intervalle, entre deux passages de cron.
+4. Vérification : `cron.job_run_details` ET `net._http_response` des passages suivants.
+La valeur n'est écrite dans aucun fichier ; les migrations historiques portent
+`__CRON_SECRET_DU_VAULT__` à sa place.
