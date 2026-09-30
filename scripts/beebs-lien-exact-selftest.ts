@@ -4,6 +4,7 @@ import vm from "node:vm";
 import {
   choisirIdentifiantBeebsExact,
   controlerNumeroBeebsEnBase,
+  depotALienParTitre,
   verifierPreuveAvantApresBeebs,
   mettreLienBeebsRecupereEnAttenteConfirmation,
   restaurerPublicationBeebsConfirmee,
@@ -178,6 +179,35 @@ assert.match(lienServeur, /job\.status === "pending"[\s\S]*?publicationsRestaure
 assert.doesNotMatch(lienServeur, /status: "pending", error: null, published_at: null/,
   "la reclassification conserve la date historique du dépôt");
 
+// ── Un lien trouvé par le titre ne devient jamais un numéro (30/09) ─────────
+{
+  const titre = { ...depot, lien_par_titre: true };
+  assert.deepEqual(
+    choisirIdentifiantBeebsExact(titre, [ligne({ source_rapprochement: "job" })], 1),
+    { ok: false, raison: "absent" },
+    "un rattachement automatique par le lien d'un dépôt trouvé par titre ne prouve rien",
+  );
+  assert.deepEqual(
+    choisirIdentifiantBeebsExact(titre, [ligne({ source_rapprochement: "manuel" })], 1),
+    { ok: true, id: "34015033", preuve: "job_id_exact" },
+    "le geste de la personne reste une preuve",
+  );
+  assert.deepEqual(
+    choisirIdentifiantBeebsExact(titre, [ligne({ job_id: "suivi", source_rapprochement: "manuel" })], 1),
+    { ok: true, id: "34015033", preuve: "inventaire_confirme_par_utilisateur" },
+    "la confirmation « même article » sur la fiche reste une preuve",
+  );
+  assert.equal(choisirIdentifiantBeebsExact(depot, [ligne({ source_rapprochement: "job" })], 1).ok, true,
+    "sans lien trouvé par titre, le job_id exact du relevé reste une preuve");
+  assert.equal(depotALienParTitre({ listing_url_recovery: { at: "x" } }), true);
+  assert.equal(depotALienParTitre({ candidat_identifiant_beebs: { id: "1" } }), true);
+  assert.equal(depotALienParTitre({ lien_en_attente: {} }), false);
+  assert.equal(depotALienParTitre(null), false);
+  const lienSrc = fs.readFileSync(new URL("../supabase/functions/beebs-lien/index.ts", import.meta.url), "utf8");
+  assert.match(lienSrc, /choisirIdentifiantBeebsExact\(\s*\{ \.\.\.job, lien_par_titre: depotALienParTitre\(job\.platform_fields\) \}/,
+    "beebs-lien transmet la trace du lien trouvé par titre");
+}
+
 // ── Numéro d'un dépôt par « Mes annonces » avant / après (0.6.80, 30/09) ─────
 {
   const maintenant = Date.parse("2026-09-30T10:05:00.000Z");
@@ -186,8 +216,14 @@ assert.doesNotMatch(lienServeur, /status: "pending", error: null, published_at: 
     ok: true,
     id: "34080001",
     avant: { ok: true, lu_le: "2026-09-30T10:00:00.000Z", ids: ["34076808", "34076827"] },
-    apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34076827", "34080001"] },
+    apres: {
+      ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34076827", "34080001"],
+      pages: [{ page: "en_verification", ids: ["34080001", "34076827"] }, { page: "en_ligne", ids: ["34076808"] }],
+    },
     ...patch,
+  });
+  const apresAvec = (ids: string[], verif: string[]) => ({
+    ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids, pages: [{ page: "en_verification", ids: verif }],
   });
   const ok = verifierPreuveAvantApresBeebs(trace(), "34080001", maintenant);
   assert.equal(ok.ok, true, "un seul nouveau, le numéro envoyé : accepté");
@@ -209,7 +245,7 @@ assert.doesNotMatch(lienServeur, /status: "pending", error: null, published_at: 
   assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34080009"] } })),
     "nouvel_identifiant_different");
   // une ancienne annonce qui réapparaît ne compte pas
-  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "33000000", "34080001"] } })), "ok");
+  assert.equal(motif(trace({ apres: apresAvec(["34076808", "33000000", "34080001"], ["34080001", "33000000"]) })), "ok");
   assert.equal(motif(trace({ id: "33000000" }), "33000000"), "nouvel_identifiant_different");
   assert.equal(motif({ ...trace({ id: "33000000" }), apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "33000000"] } }, "33000000"),
     "aucun_nouvel_identifiant", "un numéro sous le plancher n'est jamais un dépôt neuf");
@@ -220,6 +256,17 @@ assert.doesNotMatch(lienServeur, /status: "pending", error: null, published_at: 
   assert.equal(verifierPreuveAvantApresBeebs(trace(), "34080001", Date.parse("2026-09-30T11:00:00.000Z")).ok, false,
     "une trace de plus de 30 min ne prouve plus rien");
   assert.equal(motif(trace({ avant: { ok: true, lu_le: "pas une date", ids: [] } })), "horodatage_illisible");
+  // ordre : première carte d'« En vérification », liste décroissante
+  const ids3 = ["34076808", "34076827", "34080001"];
+  assert.equal(motif(trace({ apres: apresAvec(ids3, ["34076827", "34080001"]) })), "ordre_non_prouve",
+    "liste rangée du plus ancien au plus récent : refusé");
+  assert.equal(motif(trace({ apres: apresAvec(ids3, ["34076827"]) })), "ordre_non_prouve",
+    "numéro absent d'« En vérification » : refusé");
+  assert.equal(motif(trace({ apres: apresAvec(ids3, ["34080001", "34076808", "34076827"]) })), "ordre_non_prouve",
+    "liste non décroissante : refusé");
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ids3 } })), "ordre_non_prouve",
+    "trace sans l'ordre des pages : refusé");
+  assert.equal(motif(trace({ apres: apresAvec(ids3, ["34080001"]) })), "ok", "seule carte en vérification : accepté");
 
   // contrôles en base, sur une doublure du client
   const client = (reponses: Record<string, unknown[] | "erreur">) => {

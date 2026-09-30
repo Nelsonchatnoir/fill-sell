@@ -2,6 +2,9 @@ export type DepotBeebsSansIdentite = {
   id: string;
   user_id: string;
   inventaire_id: number | string | null;
+  /** Le dépôt a porté un lien retrouvé par le TITRE (listing_url_recovery /
+   *  candidat_identifiant_beebs). Voir choisirIdentifiantBeebsExact. */
+  lien_par_titre?: boolean;
 };
 
 export type ReleveBeebsExact = {
@@ -121,6 +124,12 @@ export function restaurerPublicationBeebsConfirmee(
   return { publishedAt, platformFields: pf };
 }
 
+/** Le dépôt porte-t-il la trace d'un lien retrouvé par le titre ? */
+export function depotALienParTitre(platformFields: Record<string, unknown> | null | undefined): boolean {
+  const pf = platformFields ?? {};
+  return pf["listing_url_recovery"] != null || pf["candidat_identifiant_beebs"] != null;
+}
+
 function idsUniques(lignes: ReleveBeebsExact[]): string[] {
   return [...new Set(
     lignes
@@ -148,7 +157,16 @@ export function choisirIdentifiantBeebsExact(
   depotsSansIdentiteSurInventaire: number,
 ): VerdictLienBeebs {
   const memesUtilisateur = releves.filter((ligne) => ligne.user_id === depot.user_id);
-  const directs = idsUniques(memesUtilisateur.filter((ligne) => ligne.job_id === depot.id));
+  // ⛔ UN LIEN TROUVÉ PAR LE TITRE NE DEVIENT JAMAIS UN NUMÉRO (30/09). Le
+  //    relevé rattache une annonce à un dépôt par le lien que porte le dépôt
+  //    (bande « job » de rapprocher_classer). Si ce lien venait d'une
+  //    recherche par titre (0.6.79 et avant), le job_id du relevé n'est que
+  //    le titre, recopié. Pour un tel dépôt, seul le geste de la personne
+  //    (source_rapprochement = 'manuel') vaut preuve — jamais un
+  //    rattachement automatique.
+  const directs = idsUniques(memesUtilisateur.filter((ligne) =>
+    ligne.job_id === depot.id && (!depot.lien_par_titre || ligne.source_rapprochement === "manuel")
+  ));
   if (directs.length > 1) return { ok: false, raison: "ambigu" };
   if (directs.length === 1) return { ok: true, id: directs[0], preuve: "job_id_exact" };
 
@@ -181,7 +199,12 @@ export function choisirIdentifiantBeebsExact(
 //   · les deux lectures sont complètes ;
 //   · nouveaux = identifiants apparus ET plus grands que le plus grand d'avant
 //     (Beebs numérote dans l'ordre de création) ;
-//   · exactement un nouveau, et c'est le numéro envoyé.
+//   · exactement un nouveau, et c'est le numéro envoyé ;
+//   · c'est la PREMIÈRE carte d'« En vérification » après le dépôt, et cette
+//     liste est rangée du plus récent au plus ancien (numéros strictement
+//     décroissants) : sur une liste tronquée (« en ligne » s'arrête à 60),
+//     c'est ce qui prouve qu'aucune annonce plus ancienne, cachée avant, ne
+//     se fait passer pour le dépôt.
 // Plus des bornes de temps : la lecture d'après suit celle d'avant de moins de
 // 15 min, et date de moins de 30 min à la réception.
 // Les contrôles en base (numéro déjà porté, annonce déjà connue, dépôt
@@ -191,6 +214,7 @@ export type LectureMesAnnoncesBeebs = {
   ok?: unknown;
   lu_le?: unknown;
   ids?: unknown;
+  pages?: unknown;
 };
 
 export type PreuveAvantApresBeebs = {
@@ -240,6 +264,13 @@ export function verifierPreuveAvantApresBeebs(
   if (nouveaux.length === 0) return { ok: false, motif: "aucun_nouvel_identifiant" };
   if (nouveaux.length > 1) return { ok: false, motif: "plusieurs_nouveaux_identifiants" };
   if (nouveaux[0] !== idFourni) return { ok: false, motif: "nouvel_identifiant_different" };
+  const pagesApres = Array.isArray(apres.pages) ? apres.pages as Array<Record<string, unknown>> : [];
+  const enVerification = pagesApres.find((p) => p?.["page"] === "en_verification");
+  const ordre = (Array.isArray(enVerification?.["ids"]) ? enVerification!["ids"] as unknown[] : [])
+    .map((x) => String(x ?? "").trim());
+  if (!ordre.every((x) => /^\d{6,}$/.test(x))) return { ok: false, motif: "ordre_non_prouve" };
+  const decroissante = ordre.every((x, i) => i === 0 || BigInt(ordre[i - 1]) > BigInt(x));
+  if (ordre[0] !== idFourni || !decroissante) return { ok: false, motif: "ordre_non_prouve" };
   return { ok: true, id: idFourni, avantLe: new Date(avantLe).toISOString(), apresLe: new Date(apresLe).toISOString() };
 }
 

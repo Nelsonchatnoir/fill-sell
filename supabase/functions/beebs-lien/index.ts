@@ -4,6 +4,7 @@ import { lienDepuisId } from "../_shared/annonce-lien.ts";
 import {
   BEEBS_PREUVE_STRICTE_DEPUIS,
   choisirIdentifiantBeebsExact,
+  depotALienParTitre,
   mettreLienBeebsRecupereEnAttenteConfirmation,
   restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
@@ -184,8 +185,11 @@ serve(async (req) => {
         : job.inventaire_id == null
         ? 0
         : (depotsParInventaire.get(`${job.user_id}|${job.inventaire_id}`) ?? 0);
+      // Un dépôt qui a porté un lien retrouvé par le titre n'est jamais
+      // numéroté par un rattachement automatique du relevé (cf.
+      // choisirIdentifiantBeebsExact) : seul le geste de la personne compte.
       const verdict = choisirIdentifiantBeebsExact(
-        job,
+        { ...job, lien_par_titre: depotALienParTitre(job.platform_fields) },
         relevesParUtilisateur.get(job.user_id) ?? [],
         nbSurInventaire,
       );
