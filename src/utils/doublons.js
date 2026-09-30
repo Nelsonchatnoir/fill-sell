@@ -22,9 +22,16 @@ export async function lireDoublonsProposes(userId) {
   return data ?? [];
 }
 
-/** « oui » | « non ». Rend { ok, reason?, fusion_id? }. */
-export async function deciderDoublon(id, decision) {
-  const { data, error } = await supabase.rpc('inventaire_doublon_decider', { p_id: id, p_decision: decision });
+/**
+ * « oui » | « non ». Rend { ok, reason?, fusion_id?, plateformes? }.
+ * (2026-09-30) annonceMontree : l'annonce que l'écran a montrée avant un
+ * « oui » à « Déjà vendu ? » — ce geste vaut preuve de vente pour CE
+ * retrait-là seulement (décision Nico). Jamais envoyée sans avoir été montrée.
+ */
+export async function deciderDoublon(id, decision, annonceMontree = null) {
+  const params = { p_id: id, p_decision: decision };
+  if (annonceMontree) params.p_annonce_montree = annonceMontree;
+  const { data, error } = await supabase.rpc('inventaire_doublon_decider', params);
   if (error) return { ok: false, reason: 'erreur', message: error.message };
   return data ?? { ok: false, reason: 'erreur' };
 }
@@ -50,6 +57,25 @@ export function estQuestionDejaVendu(d) {
   return d?.motif === 'homonyme_vendu' && d?.a?.statut === 'vendu';
 }
 
+const NOMS_PLATEFORMES = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla' };
+
+/** Nom lisible d'une plateforme (« leboncoin » → « Leboncoin »). */
+export function nomPlateforme(code) {
+  const c = String(code ?? '');
+  return NOMS_PLATEFORMES[c] ?? c;
+}
+
+/**
+ * L'annonce qu'un « oui » à « Déjà vendu ? » retirera, telle que le relevé
+ * l'a posée dans la question : { id, plateforme, url } — ou null si la
+ * question ne la désigne pas (alors rien n'est montré, rien n'est envoyé).
+ */
+export function annonceARetirer(d) {
+  const p = d?.preuves ?? {};
+  if (!estQuestionDejaVendu(d) || !p.annonce_id || !p.platform) return null;
+  return { id: String(p.annonce_id), plateforme: String(p.platform), url: typeof p.url === 'string' && p.url ? p.url : null };
+}
+
 /** Ce qui rapproche les deux fiches, en mots simples (les preuves du serveur). */
 export function raisonsDoublon(preuves, fr = true) {
   const s = preuves?.signaux ?? {};
@@ -68,10 +94,9 @@ export function raisonsDoublon(preuves, fr = true) {
 /** D'où vient une fiche, en une étiquette courte. */
 export function origineFiche(item, fr = true) {
   const o = String(item?.origine ?? '');
-  const pf = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla' };
   if (o === 'vinted_sync') return fr ? 'Dressing Vinted' : 'Vinted wardrobe';
   if (o.startsWith('releve_')) {
-    const p = pf[o.slice(7)] ?? o.slice(7);
+    const p = nomPlateforme(o.slice(7));
     return fr ? `Relevé ${p}` : `${p} scan`;
   }
   return fr ? "Créée dans l'app" : 'Created in the app';

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { premierePhoto } from '../components/GalleryPhoto';
 import { track } from '../analytics/analytics';
-import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu } from '../utils/doublons';
+import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, annonceARetirer, nomPlateforme } from '../utils/doublons';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v))
@@ -56,6 +56,7 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [fait, setFait] = useState(null);
+  const [info, setInfo] = useState(null);
   const [traitees, setTraitees] = useState(() => new Set());
 
   useEffect(() => {
@@ -73,12 +74,28 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
   // objet VENDU. « Oui » réunit les deux fiches ET retire l'annonce encore en
   // ligne (le serveur arme le retrait) ; « Non » : deux articles différents.
   const dejaVendu = estQuestionDejaVendu(paire);
+  // (2026-09-30) L'annonce qu'un « oui » retirera est montrée AVANT le geste :
+  // c'est ce geste qui vaut preuve de vente pour CE retrait-là (décision Nico).
+  const aRetirer = dejaVendu ? annonceARetirer(paire) : null;
 
   const repondre = async (decision) => {
     if (!paire || busy) return;
-    setBusy(true); setErreur(null);
-    const r = await deciderDoublon(paire.id, decision).catch((e) => ({ ok: false, message: String(e?.message ?? e) }));
+    setBusy(true); setErreur(null); setInfo(null); setFait(null);
+    const r = await deciderDoublon(paire.id, decision, decision === 'oui' && aRetirer ? aRetirer.id : null)
+      .catch((e) => ({ ok: false, message: String(e?.message ?? e) }));
     setBusy(false);
+    // Le serveur n'a pas pu retirer l'annonce : rien n'a été réuni, la
+    // personne la retire elle-même ; le relevé suivant la verra disparaître.
+    if (!r?.ok && r?.reason === 'retrait_impossible') {
+      const codes = Array.isArray(r?.plateformes) && r.plateformes.length ? r.plateformes : (aRetirer ? [aRetirer.plateforme] : []);
+      const noms = codes.map(nomPlateforme).join(fr ? ' et ' : ' and ');
+      setInfo(fr
+        ? `On ne peut pas retirer cette annonce automatiquement. Retirez-la vous-même sur ${noms || 'la plateforme'}, elle disparaîtra à la prochaine synchronisation.`
+        : `We can't remove this listing automatically. Remove it yourself on ${noms || 'the platform'}; it will disappear at the next sync.`);
+      track('doublon_decision', { decision, resultat: 'retrait_impossible' });
+      setTraitees((v) => new Set([...v, paire.id]));
+      return;
+    }
     if (!r?.ok && r?.reason !== 'deja_tranchee') {
       setErreur(fr ? "Réponse non enregistrée — réessaie dans un instant." : 'Answer not saved — try again in a moment.');
       return;
@@ -124,6 +141,9 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
             <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.45, color: A.ink }}>{fait}</span>
           </div>
         )}
+        {info && (
+          <div role="status" style={{ margin: '6px 0 12px', padding: '10px 12px', borderRadius: 12, background: A.paper, border: `1px solid ${A.border}`, fontSize: 12, lineHeight: 1.45, color: A.ink }}>{info}</div>
+        )}
         {erreur && (
           <div style={{ margin: '6px 0 12px', padding: '10px 12px', borderRadius: 12, background: '#FDECEA', border: '1px solid #F3C7C2', fontSize: 12, lineHeight: 1.45, color: A.rougeTexte }}>{erreur}</div>
         )}
@@ -155,6 +175,20 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
               <CarteFiche item={paire.a} fr={fr} garde etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : undefined} />
               <CarteFiche item={paire.b} fr={fr} />
             </div>
+            {aRetirer && (
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: A.paper, border: `1px solid ${A.border}`, fontSize: 12, lineHeight: 1.45, color: A.ink }}>
+                {fr ? 'Si tu réponds oui, cette annonce sera retirée : ' : 'If you answer yes, this listing will be removed: '}
+                <strong>{nomPlateforme(aRetirer.plateforme)}</strong>
+                {aRetirer.url && (
+                  <>
+                    {' — '}
+                    <a href={aRetirer.url} target="_blank" rel="noopener noreferrer" style={{ color: A.tealDeep, fontWeight: 600 }}>
+                      {fr ? "voir l'annonce" : 'see the listing'}
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
               <button type="button" disabled={busy} onClick={() => repondre('oui')} className="rv-cta rv-focus"
                 style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
