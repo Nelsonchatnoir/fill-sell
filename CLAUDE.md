@@ -389,7 +389,11 @@ Les endroits à reprendre, tenus à jour (relevé du 21/09 —
   la fonction `stripe-recalage-1er-du-mois` est à supprimer ensuite) ·
   **`20260930160000_fusion_photo_apres_synchro.sql`** (ajouté le 30/09 :
   `fusion_photo_tick()` appelle `empreintes-urls` avec le secret ; lancée par
-  le cron `fusion-photo-1min`, jobid 20, posé par `20260930160500`) ;
+  le cron `fusion-photo-1min`, jobid 20, posé par `20260930160500`) ·
+  **`20260930203000_photo_avant_import.sql`**, **`20260930211500_fusion_photo_par_lots.sql`**,
+  **`20260930215000_fusion_photo_sans_balayage.sql`** (30/09 soir : chaque
+  réécriture de `fusion_photo_tick()` porte le secret ; cron
+  `fusion-photo-lot-10min`, jobid 22, n'appelle aucune fonction HTTP) ;
 - et, hors dépôt, **la commande de chaque ligne de `cron.job` en prod** : c'est
   elle qui fait foi, pas les fichiers.
 
