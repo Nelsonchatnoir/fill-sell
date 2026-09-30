@@ -386,7 +386,10 @@ Les endroits à reprendre, tenus à jour (relevé du 21/09 —
   `doublons-balayage-2min`, jobid 17) ·
   **`20260926192110_recalage_xewer_1er_octobre.sql`** (ajouté le 26/09, tâche
   UNIQUE `recalage-xewer-1er-oct`, jobid 18, qui se désinscrit le 01/10 ;
-  la fonction `stripe-recalage-1er-du-mois` est à supprimer ensuite) ;
+  la fonction `stripe-recalage-1er-du-mois` est à supprimer ensuite) ·
+  **`20260930160000_fusion_photo_apres_synchro.sql`** (ajouté le 30/09 :
+  `fusion_photo_tick()` appelle `empreintes-urls` avec le secret ; lancée par
+  le cron `fusion-photo-1min`, jobid 20, posé par `20260930160500`) ;
 - et, hors dépôt, **la commande de chaque ligne de `cron.job` en prod** : c'est
   elle qui fait foi, pas les fichiers.
 

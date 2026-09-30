@@ -170,8 +170,9 @@ UTC+2 l'été). Relevé du 27/09, 15 jobs actifs ; `cron.job` en prod fait foi.
 | 14 | lens-temp-purge-daily | `50 3 * * *` | fonction `lens-temp-purge` |
 | 15 | ebay-ventes-sync-daily | `40 4 * * *` | fonction `ebay-ventes-sync` |
 | 16 | beebs-lien-5min | `*/5` | fonction `beebs-lien` (index public Beebs : trace seulement, ne clôt rien) |
-| 17 | doublons-balayage-2min | `*/2` | fonction `doublons-balayage` → RPC `rapprochement_urls_a_empreinter` (3 s), `rapprochement_photos_decider` (annonces, 4 s), puis `doublons_reserver_fiches` / `doublons_examiner_fiche` (une fiche par appel) / `doublons_liberer_fiches` — chaque appel sous les 8 s de l'appelant (migration 20260927190000) |
+| 17 | doublons-balayage-2min | `*/2` — **inactif depuis le 28/09** | fonction `doublons-balayage` → RPC `rapprochement_urls_a_empreinter` (3 s), `rapprochement_photos_decider` (annonces, 4 s), puis `doublons_reserver_fiches` / `doublons_examiner_fiche` (une fiche par appel) / `doublons_liberer_fiches` — chaque appel sous les 8 s de l'appelant (migration 20260927190000) |
 | 18 | recalage-xewer-1er-oct | `*/5 0-3 1 10 *` | SQL `recalage_xewer_tick()` — tâche unique du 01/10, se désinscrit seule |
+| 20 | fusion-photo-1min | `* * * * *` | SQL `fusion_photo_tick()` (30/09) — file `fusion_photo_file` par compte après chaque synchro Vinted terminée ; empreintes via la fonction `empreintes-urls` (≤ 4 URL par appel), puis `fusion_photo_compte` bornée à 1,5 s. Coupure : moyenne `get-pending-jobs` > 2 s sur 15 min (≥ 10 appels), p90 > 4 s, ou premier 5xx. Inverse : `supabase/rollbacks/20260930160000_fusion_photo_apres_synchro.sql` |
 
 Tous les appels HTTP passent par `net.http_post` avec le header
 `x-cron-secret` (valeur jamais recopiée). Un cron « succeeded » dans
