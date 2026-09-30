@@ -13,7 +13,7 @@ SELECT cron.schedule(
   $cron_body$
   SELECT net.http_post(
     url     := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/handler-watch',
-    headers := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb,
+    headers := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb,
     body    := '{"trigger":"handler_watch_cron"}'::jsonb
   );
   $cron_body$

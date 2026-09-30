@@ -283,7 +283,7 @@ DECLARE
   f fusion_photo_file%ROWTYPE; v_urls text[]; n_appels integer := 0; r jsonb; n_lot integer;
   c_url constant text := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/empreintes-urls';
   -- ⚠️ secret de cron en clair : même clé que les autres crons (chantier rotation, CLAUDE.md)
-  c_headers constant jsonb := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb;
+  c_headers constant jsonb := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb;
 BEGIN
   -- Les demandes déposées par les synchros entrent dans la file (une ligne
   -- par compte ; « depuis » garde la plus ancienne tant que le travail n'est pas fini).

@@ -27,7 +27,7 @@ SELECT cron.schedule(
   $cron$
   SELECT net.http_post(
     url     := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/ebay-ventes-sync',
-    headers := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb,
+    headers := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb,
     body    := '{"mode":"sync","trigger":"ebay_ventes_cron"}'::jsonb
   );
   $cron$

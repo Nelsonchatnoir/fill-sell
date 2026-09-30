@@ -106,7 +106,7 @@ SELECT cron.schedule(
   $CRON$
   SELECT net.http_post(
     url     := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/lens-temp-purge',
-    headers := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb,
+    headers := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb,
     body    := '{}'::jsonb
   );
   $CRON$

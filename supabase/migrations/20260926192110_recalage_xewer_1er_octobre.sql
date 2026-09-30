@@ -81,7 +81,7 @@ BEGIN
 
   PERFORM net.http_post(
     url     := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/stripe-recalage-1er-du-mois',
-    headers := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb,
+    headers := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb,
     body    := '{"mode":"execution"}'::jsonb,
     timeout_milliseconds := 60000
   );

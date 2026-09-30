@@ -17,7 +17,7 @@
 -- Elle appelle la fonction edge `envoi-ponctuel` par pg_net, avec la clé de
 -- service LUE DANS LE VAULT (`vault.decrypted_secrets`, secret
 -- « service_role_key »). Elle n'est JAMAIS écrite en clair : ni ici, ni dans
--- un cron, ni dans le dépôt. C'est toute la différence avec `fs-cron-2026-tunnel`,
+-- un cron, ni dans le dépôt. C'est toute la différence avec `__CRON_SECRET_DU_VAULT__`,
 -- qui est en clair dans l'historique git et le restera après rotation.
 --
 -- ⛔ AUCUN JETON EN DUR. C'est la règle qui a fait naître ce fichier.

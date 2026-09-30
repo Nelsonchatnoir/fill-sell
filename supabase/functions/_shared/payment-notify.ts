@@ -23,7 +23,9 @@
 //    mails valent mieux qu'un silence.
 
 const TUNNEL_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel`;
-const CRON_SECRET = "fs-cron-2026-tunnel";
+// Le secret se lit dans l'environnement des fonctions (CRON_SECRET), jamais en
+// clair dans le dépôt (30/09 : la valeur était sur GitHub depuis juin).
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 
 export type AlertePaiement = {
   ok: boolean;                 // true = crédité, false = à créditer à la main

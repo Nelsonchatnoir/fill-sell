@@ -140,7 +140,7 @@ DECLARE
   f fusion_photo_file%ROWTYPE; v_urls text[]; n_appels integer := 0; r jsonb; n_lot integer;
   c_url constant text := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/empreintes-urls';
   -- ⚠️ secret de cron en clair : même clé que les autres crons (chantier rotation, CLAUDE.md)
-  c_headers constant jsonb := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb;
+  c_headers constant jsonb := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb;
   t0 timestamptz := clock_timestamp();
   v_user uuid; v_ids uuid[]; v_pass integer; d record; a annonces_plateforme%ROWTYPE; v_job uuid;
   v_vus text[]; v_res text; v_import boolean; v_dette boolean;

@@ -62,7 +62,7 @@ BEGIN
   IF new.email IS NOT NULL THEN
     PERFORM net.http_post(
       url     := 'https://tojihnuawsoohlolangc.supabase.co/functions/v1/email-tunnel',
-      headers := '{"Content-Type":"application/json","x-cron-secret":"fs-cron-2026-tunnel"}'::jsonb,
+      headers := '{"Content-Type":"application/json","x-cron-secret":"__CRON_SECRET_DU_VAULT__"}'::jsonb,
       body    := json_build_object(
         'welcome_now',  true,
         'user_id',      new.id::text,
