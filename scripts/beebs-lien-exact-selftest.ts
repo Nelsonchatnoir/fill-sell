@@ -3,6 +3,8 @@ import fs from "node:fs";
 import vm from "node:vm";
 import {
   choisirIdentifiantBeebsExact,
+  controlerNumeroBeebsEnBase,
+  verifierPreuveAvantApresBeebs,
   mettreLienBeebsRecupereEnAttenteConfirmation,
   restaurerPublicationBeebsConfirmee,
   type ReleveBeebsExact,
@@ -175,5 +177,94 @@ assert.match(lienServeur, /job\.status === "pending"[\s\S]*?publicationsRestaure
   "les dépôts déjà confirmés sont restaurés sans être redistribués");
 assert.doesNotMatch(lienServeur, /status: "pending", error: null, published_at: null/,
   "la reclassification conserve la date historique du dépôt");
+
+// ── Numéro d'un dépôt par « Mes annonces » avant / après (0.6.80, 30/09) ─────
+{
+  const maintenant = Date.parse("2026-09-30T10:05:00.000Z");
+  const trace = (patch: Record<string, unknown> = {}) => ({
+    methode: "mes_annonces_avant_apres",
+    ok: true,
+    id: "34080001",
+    avant: { ok: true, lu_le: "2026-09-30T10:00:00.000Z", ids: ["34076808", "34076827"] },
+    apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34076827", "34080001"] },
+    ...patch,
+  });
+  const ok = verifierPreuveAvantApresBeebs(trace(), "34080001", maintenant);
+  assert.equal(ok.ok, true, "un seul nouveau, le numéro envoyé : accepté");
+  const motif = (t: unknown, id = "34080001") => {
+    const v = verifierPreuveAvantApresBeebs(t, id, maintenant);
+    return v.ok ? "ok" : v.motif;
+  };
+  assert.equal(motif(null), "trace_absente");
+  assert.equal(motif(trace({ methode: "titre" })), "methode_inconnue");
+  assert.equal(motif(trace(), "34080002"), "numero_different_de_la_trace", "le numéro envoyé doit être celui de la trace");
+  assert.equal(motif(trace({ ok: false })), "numero_different_de_la_trace");
+  assert.equal(motif(trace({ avant: { ok: false, lu_le: "2026-09-30T10:00:00.000Z", ids: [] } })), "lecture_avant_illisible");
+  assert.equal(motif(trace({ apres: { ok: false, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34080001"] } })), "lecture_apres_illisible");
+  // le serveur refait le calcul : il ne croit pas l'extension sur parole
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34076827"] } })),
+    "aucun_nouvel_identifiant");
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34080001", "34080002"] } })),
+    "plusieurs_nouveaux_identifiants");
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "34080009"] } })),
+    "nouvel_identifiant_different");
+  // une ancienne annonce qui réapparaît ne compte pas
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "33000000", "34080001"] } })), "ok");
+  assert.equal(motif(trace({ id: "33000000" }), "33000000"), "nouvel_identifiant_different");
+  assert.equal(motif({ ...trace({ id: "33000000" }), apres: { ok: true, lu_le: "2026-09-30T10:01:10.000Z", ids: ["34076808", "33000000"] } }, "33000000"),
+    "aucun_nouvel_identifiant", "un numéro sous le plancher n'est jamais un dépôt neuf");
+  // bornes de temps
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T09:59:00.000Z", ids: ["34080001"] } })), "lectures_trop_eloignees");
+  assert.equal(motif(trace({ apres: { ok: true, lu_le: "2026-09-30T10:20:00.000Z", ids: ["34080001"] } })), "lectures_trop_eloignees");
+  assert.equal(motif(trace(), "34080001") , "ok");
+  assert.equal(verifierPreuveAvantApresBeebs(trace(), "34080001", Date.parse("2026-09-30T11:00:00.000Z")).ok, false,
+    "une trace de plus de 30 min ne prouve plus rien");
+  assert.equal(motif(trace({ avant: { ok: true, lu_le: "pas une date", ids: [] } })), "horodatage_illisible");
+
+  // contrôles en base, sur une doublure du client
+  const client = (reponses: Record<string, unknown[] | "erreur">) => {
+    const vus: string[] = [];
+    return {
+      vus,
+      from(table: string) {
+        const filtres: string[] = [table];
+        const q: Record<string, unknown> = {};
+        for (const m of ["select", "eq", "neq", "lt", "gte", "lte", "in"]) {
+          q[m] = (...a: unknown[]) => { filtres.push(`${m}:${a.map(String).join("=")}`); return q; };
+        }
+        q.limit = () => {
+          const cle = filtres.join("|");
+          vus.push(cle);
+          const nom = table === "annonces_plateforme" ? "connue"
+            : cle.includes("eq:platform_listing_id") ? "porte"
+            : cle.includes("eq:status=processing") ? "enCours" : "concurrents";
+          const r = reponses[nom] ?? [];
+          return Promise.resolve(r === "erreur" ? { data: null, error: { message: "x" } } : { data: r, error: null });
+        };
+        return q;
+      },
+    };
+  };
+  const p = { id: "34080001", jobId: "job-a", userId: "u1", avantLe: "2026-09-30T10:00:00.000Z", apresLe: "2026-09-30T10:01:10.000Z" };
+  assert.equal(await controlerNumeroBeebsEnBase(client({}), p), null, "rien ne s'y oppose");
+  assert.equal(await controlerNumeroBeebsEnBase(client({ porte: [{ id: "job-b" }] }), p), "numero_deja_porte_par_un_autre_depot");
+  assert.equal(await controlerNumeroBeebsEnBase(client({ connue: [{ id: 1 }] }), p), "annonce_connue_avant_le_depot");
+  assert.equal(await controlerNumeroBeebsEnBase(client({ concurrents: [{ id: "job-c" }] }), p), "autre_depot_beebs_pendant_la_fenetre");
+  assert.equal(await controlerNumeroBeebsEnBase(client({ enCours: [{ id: "job-d" }] }), p), "autre_depot_beebs_pendant_la_fenetre");
+  assert.equal(await controlerNumeroBeebsEnBase(client({ connue: "erreur" }), p), "verification_impossible", "une lecture en échec refuse");
+  const c = client({});
+  await controlerNumeroBeebsEnBase(c, p);
+  assert.ok(c.vus.some((v) => v.includes("eq:platform_listing_id=34080001") && v.includes("neq:id=job-a")), "le dépôt lui-même est exclu");
+  assert.ok(c.vus.some((v) => v.startsWith("annonces_plateforme") && v.includes("lt:created_at=2026-09-30T10:00:00.000Z")),
+    "seule une annonce relevée AVANT la lecture d'avant bloque");
+
+  // câblage dans update-job-status
+  const ujs = fs.readFileSync(new URL("../supabase/functions/update-job-status/index.ts", import.meta.url), "utf8");
+  const iVerif = ujs.indexOf("verifierPreuveAvantApresBeebs(tracePreuve, idBeebsFourni)");
+  const iPose = ujs.indexOf("if (idBeebsFourni) patch.platform_listing_id = idBeebsFourni;");
+  assert.ok(iVerif > 0 && iPose > iVerif, "le numéro n'est posé qu'après la vérification");
+  assert.match(ujs.slice(iVerif, iPose), /controlerNumeroBeebsEnBase\(adminP/, "les contrôles en base suivent le calcul");
+  assert.match(ujs.slice(iVerif, iPose), /idBeebsFourni = null;/, "un refus retire le numéro");
+}
 
 console.log("OK — Beebs : preuve exacte si disponible, sinon dépôt confirmé terminal sans resoumission");

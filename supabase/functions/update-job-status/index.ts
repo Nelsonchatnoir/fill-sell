@@ -36,7 +36,11 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
-import { restaurerPublicationBeebsConfirmee } from "../_shared/beebs-lien-exact.ts";
+import {
+  controlerNumeroBeebsEnBase,
+  restaurerPublicationBeebsConfirmee,
+  verifierPreuveAvantApresBeebs,
+} from "../_shared/beebs-lien-exact.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -3848,11 +3852,51 @@ serve(async (req) => {
         } catch (e) { console.warn("[update-job-status] publication du poste :", (e as Error)?.message ?? e); }
       }
       const lienFourni = typeof body.listing_url === "string" && body.listing_url ? body.listing_url : null;
-      const idBeebsFourni = jobRow?.platform === "beebs"
+      let idBeebsFourni = jobRow?.platform === "beebs"
         && typeof body.platform_listing_id === "string"
         && /^\d+$/.test(body.platform_listing_id.trim())
         ? body.platform_listing_id.trim()
         : null;
+      // ── NUMÉRO BEEBS PROUVÉ PAR « MES ANNONCES » AVANT / APRÈS (30/09) ──────
+      // L'extension 0.6.80 envoie le numéro avec sa trace. On refait le calcul
+      // sur les listes transmises (verifierPreuveAvantApresBeebs), puis trois
+      // contrôles en base : le numéro n'est porté par aucun autre dépôt,
+      // l'annonce n'était pas déjà connue avant la lecture d'avant, et aucun
+      // autre dépôt Beebs du même compte n'est parti pendant la fenêtre. Un
+      // doute → le numéro est écarté, le dépôt reste publié sans numéro
+      // (lien_en_attente, plus bas), rien n'est montré. L'id capté par la sonde
+      // (trace.sonde identique) et les anciens builds sans trace : inchangés.
+      const idBeebsRecu = idBeebsFourni;
+      const pfPreuve = (patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>;
+      const tracePreuve = pfPreuve["preuve_identifiant_beebs"];
+      if (idBeebsFourni && tracePreuve && typeof tracePreuve === "object" && !Array.isArray(tracePreuve)
+          && String((tracePreuve as Record<string, unknown>)["sonde"] ?? "") !== idBeebsFourni) {
+        let motifRefus: string | null = null;
+        const verdict = verifierPreuveAvantApresBeebs(tracePreuve, idBeebsFourni);
+        if (!verdict.ok) {
+          motifRefus = verdict.motif;
+        } else {
+          const adminP = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          motifRefus = await controlerNumeroBeebsEnBase(adminP, {
+            id: idBeebsFourni, jobId: String(jobId), userId: user.id, avantLe: verdict.avantLe, apresLe: verdict.apresLe,
+          });
+        }
+        const maintenantP = new Date().toISOString();
+        if (motifRefus) {
+          console.warn(`[update-job-status] job=${jobId} (beebs) numéro ${idBeebsFourni} écarté : ${motifRefus}`);
+          idBeebsFourni = null;
+          patch.platform_fields = {
+            ...pfPreuve,
+            preuve_identifiant_beebs_refusee: { at: maintenantP, numero: idBeebsRecu, motif: motifRefus },
+          };
+        } else {
+          console.log(`[update-job-status] job=${jobId} (beebs) numéro ${idBeebsFourni} prouvé par « Mes annonces » avant/après`);
+          patch.platform_fields = {
+            ...pfPreuve,
+            preuve_identifiant_beebs_acceptee: { at: maintenantP, numero: idBeebsFourni, par: "update-job-status" },
+          };
+        }
+      }
       if (idBeebsFourni) patch.platform_listing_id = idBeebsFourni;
       if (lienFourni) {
         patch.listing_url = lienFourni;
