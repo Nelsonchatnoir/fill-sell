@@ -4,8 +4,7 @@
 // Le bandeau du Stock tient sur UNE ligne : l'article qui tourne, la
 // plateforme, le compteur. Ce qu'une ligne ne peut pas dire vit ici :
 //
-//   · FeuilleFile    — TOUTE la file, dans l'ordre réel de traitement, avec
-//                      l'état de chaque annonce et le bouton d'arrêt au pied ;
+//   · (FeuilleFile, remplacée le 01/10 par components/FileDesJobs.jsx) ;
 //   · FeuilleAttente — ce qui attend un geste : les annonces à compléter ET
 //                      celles qui ne sont pas parties, chacune avec SON geste.
 //
@@ -18,7 +17,7 @@
 //    (utils/modale.js) : une feuille rendue dans .app-root est invisible
 //    par-dessus une page portalisée, quel que soit son z-index.
 import { createPortal } from 'react-dom';
-import { X, Pause, ChevronRight } from 'lucide-react';
+import { X, ChevronRight } from 'lucide-react';
 import { useFondFige, useEchap, useRetourAndroid } from '../utils/modale';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import GalleryPhoto, { premierePhoto } from './GalleryPhoto';
@@ -39,7 +38,7 @@ const Z = 600;
 const TOUCHE = 44;
 
 // ── La coque : portail, fond cliquable, en-tête figé, corps qui défile ──────
-function Coque({ titre, sousTitre, onFermer, lang, enTete = null, pied = null, children }) {
+export function Coque({ titre, sousTitre, onFermer, lang, enTete = null, pied = null, children }) {
   useFondFige(true);
   useEchap(onFermer);
   useRetourAndroid(onFermer);
@@ -138,7 +137,7 @@ function Ligne({ item, job, etat, kind, detail, estompee = false, action = null,
   );
 }
 
-function Groupe({ children }) {
+export function Groupe({ children }) {
   return (
     <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase', color: T.faint, padding: '8px 2px 0' }}>
       {children}
@@ -146,70 +145,8 @@ function Groupe({ children }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FEUILLE 1 — « Ce qui tourne »
-// ═══════════════════════════════════════════════════════════════════════════
-// Trois groupes, et c'est l'ORDRE RÉEL de traitement qui les sépare : ce qui
-// tourne maintenant, ce qui passe ensuite, ce qui est fini. Le compteur du
-// bandeau et le nombre du bouton d'arrêt se lisent enfin ensemble : « 0 sur 8 »
-// compte les huit lignes, « arrêter les 4 » ne vise que celles qui portent
-// encore « En file » — la feuille le MONTRE au lieu de le faire deviner.
-export function FeuilleFile({ lang, lignes, total, faites, estimation, annulables, onArreter, fiche, etatDe, onFermer }) {
-  const fr = lang !== 'en';
-  const pct = total > 0 ? Math.round((100 * faites) / total) : 0;
-  const groupes = [
-    { cle: 'live', titre: fr ? 'En cours' : 'Running', items: lignes.filter((l) => l.live) },
-    { cle: 'suite', titre: fr ? 'Ensuite' : 'Next up', items: lignes.filter((l) => !l.live && !l.fini) },
-    { cle: 'fait', titre: fr ? 'Terminé' : 'Done', items: lignes.filter((l) => l.fini) },
-  ].filter((g) => g.items.length > 0);
-
-  return (
-    <Coque
-      lang={lang}
-      titre={fr ? 'Ce qui tourne' : 'What is running'}
-      sousTitre={fr
-        ? `${faites} sur ${total}${estimation ? ` · il reste ${estimation}` : ''}`
-        : `${faites} of ${total}${estimation ? ` · ${estimation} left` : ''}`}
-      onFermer={onFermer}
-      enTete={(
-        <div role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={faites}
-          style={{ height: 4, borderRadius: 999, background: T.track, marginTop: 10, overflow: 'hidden' }}>
-          <div style={{ width: `${pct}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg,${T.teal},${T.tealDeep})`, transition: 'width .6s ease' }} />
-        </div>
-      )}
-      pied={annulables?.length > 0 ? (
-        <>
-          <button type="button" onClick={onArreter}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', border: `1px solid ${T.line}`, background: 'transparent', color: T.mute, borderRadius: 12, padding: '11px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.45 }}>
-            <Pause size={14} style={{ flexShrink: 0 }} />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              {fr
-                ? (annulables.length > 1
-                  ? `Arrêter les ${annulables.length} republications en attente`
-                  : 'Arrêter la republication en attente')
-                : (annulables.length > 1
-                  ? `Stop the ${annulables.length} queued reposts`
-                  : 'Stop the queued repost')}
-            </span>
-          </button>
-          <div style={{ fontSize: 11.5, color: T.faint, textAlign: 'center', lineHeight: 1.45 }}>
-            {fr ? 'Tes annonces restent en ligne, rien n’est supprimé.' : 'Your listings stay online, nothing is deleted.'}
-          </div>
-        </>
-      ) : null}
-    >
-      {groupes.map((g) => (
-        <div key={g.cle} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Groupe>{g.cle === 'suite' ? `${g.titre} · ${g.items.length}` : g.titre}</Groupe>
-          {g.items.map((l) => (
-            <Ligne key={l.cle} job={l.job} item={fiche(l.job)} live={l.live}
-              estompee={l.fini} etat={etatDe(l.job)} kind={l.kind} detail={l.detail} />
-          ))}
-        </div>
-      ))}
-    </Coque>
-  );
-}
+// (FEUILLE 1 « Ce qui tourne » remplacée le 01/10 par la file complète des
+// jobs, components/FileDesJobs.jsx — elle en réutilise la coque et les groupes.)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FEUILLE 2 — « Ce qui attend une action de ta part »

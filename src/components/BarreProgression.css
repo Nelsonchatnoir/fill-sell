@@ -16,6 +16,8 @@
   --fsb-amber: #E0A53C; --fsb-amber-ink: #8A6100; --fsb-amber-fond: #FFF6E3; --fsb-amber-bord: #EED9A6;
   --fsb-bad: #B0645A; --fsb-bad-ink: #9B5148; --fsb-bad-fond: #FBEFEC; --fsb-bad-bord: #EBC9C2;
   --fsb-pause: #9DB8B2;
+  --fsb-neutre: #B9B4A8; --fsb-neutre-ink: #5C6560;
+  --fsb-vignette-fond: #F7F5EF; --fsb-bord-doux: #EFECE3;
   --fsb-h: 10px;
   font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: var(--fsb-ink);
@@ -24,6 +26,15 @@
 .fsb *, .fsb *::before, .fsb *::after { box-sizing: border-box; }
 
 .fsb-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; min-height: 22px; }
+.fsb-droite { flex: none; display: inline-flex; align-items: center; gap: 2px; }
+.fsb-tete-article { align-items: center; gap: 12px; margin-bottom: 12px; }
+.fsb-vignette { flex: none; width: 48px; height: 48px; border-radius: 12px; overflow: hidden; background: var(--fsb-vignette-fond); border: 1px solid var(--fsb-bord-doux); display: grid; place-items: center; }
+.fsb-vignette-repli { width: 100%; height: 100%; display: grid; place-items: center; color: #B9B4A8; }
+.fsb-article-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fsb-article-titre { font-size: 14.5px; font-weight: 700; letter-spacing: -.01em; line-height: 1.3; color: var(--fsb-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Le sous-titre (prix · ce qui se passe) peut prendre deux lignes : jamais
+   coupé au milieu d'un mot sur un téléphone. */
+.fsb-article-sous { font-size: 12.5px; line-height: 1.35; color: var(--fsb-mute); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .fsb-titre { font-size: 14.5px; font-weight: 700; letter-spacing: -.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fsb-pct { flex: none; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fsb-teal-deep); letter-spacing: -.01em; min-width: 3.4em; text-align: right; }
 
@@ -58,6 +69,14 @@
 }
 @keyframes fsb-reflet { 0% { transform: translateX(-110%); } 70%, 100% { transform: translateX(270%); } }
 
+.fsb-haut { min-width: 0; }
+.fsb-ouvrable .fsb-haut { cursor: pointer; border-radius: 12px; -webkit-tap-highlight-color: transparent; outline: none; }
+.fsb-ouvrable .fsb-haut:focus-visible { box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px var(--fsb-teal); }
+.fsb-ouvrable .fsb-haut:active { opacity: .82; }
+.fsb-chevron { flex: none; color: var(--fsb-mute); }
+.fsb-lien-file { align-self: flex-end; display: inline-flex; align-items: center; gap: 1px; font-size: 12.5px; font-weight: 700; color: var(--fsb-teal-deep); }
+.fsb-lien-file .fsb-chevron { color: currentColor; }
+@media (hover: hover) { .fsb-ouvrable .fsb-haut:hover .fsb-lien-file { text-decoration: underline; text-underline-offset: 2px; } }
 .fsb-bas { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
 .fsb-phrase { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--fsb-ink2); min-height: 1.45em; text-wrap: pretty; }
 .fsb-sous { margin: 0; display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.45; color: var(--fsb-mute); animation: fsb-paraitre .4s ease both; }
@@ -79,37 +98,51 @@
 .fsb[data-ton="erreur"][data-etat="echec"] .fsb-rempli, .fsb[data-ton="erreur"][data-etat="partiel"] .fsb-rempli { background: var(--fsb-bad); }
 .fsb[data-etat="echec"] .fsb-phrase, .fsb[data-etat="partiel"] .fsb-phrase { color: var(--fsb-amber-ink); font-weight: 600; }
 .fsb[data-ton="erreur"][data-etat="echec"] .fsb-phrase, .fsb[data-ton="erreur"][data-etat="partiel"] .fsb-phrase { color: var(--fsb-bad-ink); }
+.fsb[data-ton="neutre"][data-etat="echec"] .fsb-rempli { background: var(--fsb-neutre); }
+.fsb[data-ton="neutre"][data-etat="echec"] .fsb-phrase { color: var(--fsb-neutre-ink); }
+.fsb[data-ton="neutre"] .fsb-badge-stop { color: var(--fsb-neutre-ink); }
 .fsb[data-etat="pause"] .fsb-rempli, .fsb[data-etat="attente"] .fsb-rempli { background: var(--fsb-pause); }
 /* Le reflet ne passe que sur ce qui avance vraiment. */
 .fsb:not([data-etat="en_cours"]) .fsb-reflet { animation: none; opacity: 0; }
 
 /* ── Lignes par plateforme ────────────────────────────────────────────────── */
 .fsb-lignes { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid #EFECE3; }
-.fsb-ligne { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EFECE3; min-width: 0; }
+.fsb-ligne { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EFECE3; min-width: 0; }
 .fsb-ligne:last-child { border-bottom: none; padding-bottom: 0; }
-.fsb-ligne-icone { flex: none; display: flex; line-height: 0; }
+.fsb-ligne-icone { flex: none; display: flex; line-height: 0; margin-top: 1px; }
 .fsb-ligne-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fsb-ligne-nom { font-size: 13.5px; font-weight: 700; color: var(--fsb-ink); }
 .fsb-ligne-etape { font-size: 12.5px; line-height: 1.4; color: var(--fsb-mute); }
 .fsb-ligne[data-etat="attente"] .fsb-ligne-nom, .fsb-ligne[data-etat="attente"] .fsb-ligne-icone { opacity: .55; }
 .fsb-ligne[data-etat="termine"] .fsb-ligne-etape { color: var(--fsb-teal-deep); }
 .fsb-ligne[data-etat="echec"] .fsb-ligne-etape { color: var(--fsb-amber-ink); font-weight: 600; }
-.fsb[data-ton="erreur"] .fsb-ligne[data-etat="echec"] .fsb-ligne-etape { color: var(--fsb-bad-ink); }
-.fsb-ligne-etat { flex: none; width: 22px; height: 22px; display: grid; place-items: center; color: var(--fsb-mute); }
+.fsb-ligne[data-etat="echec"][data-ton="erreur"] .fsb-ligne-etape { color: var(--fsb-bad-ink); }
+.fsb-ligne[data-etat="echec"][data-ton="neutre"] .fsb-ligne-etape { color: var(--fsb-neutre-ink); font-weight: 500; }
+.fsb-ligne-detail { font-size: 12.5px; line-height: 1.4; color: var(--fsb-mute); overflow-wrap: anywhere; }
+.fsb-ligne-detail a { color: var(--fsb-teal-deep); font-weight: 600; }
+.fsb-ligne-geste { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.fsb-ligne-etat { flex: none; width: 22px; height: 22px; margin-top: 2px; display: grid; place-items: center; color: var(--fsb-mute); }
 .fsb-ligne[data-etat="echec"] .fsb-ligne-etat { color: var(--fsb-amber); }
-.fsb[data-ton="erreur"] .fsb-ligne[data-etat="echec"] .fsb-ligne-etat { color: var(--fsb-bad); }
+.fsb-ligne[data-etat="echec"][data-ton="erreur"] .fsb-ligne-etat { color: var(--fsb-bad); }
+.fsb-ligne[data-etat="echec"][data-ton="neutre"] .fsb-ligne-etat { color: var(--fsb-neutre); }
 .fsb-anneau { transform: rotate(-90deg); }
 .fsb-anneau-fond { fill: none; stroke: var(--fsb-piste); stroke-width: 3; }
 .fsb-anneau-plein { fill: none; stroke: var(--fsb-teal); stroke-width: 3; stroke-linecap: round; }
 .fsb-ligne[data-etat="attente"] .fsb-anneau-plein { stroke: transparent; }
 
+/* ── La piste seule (bandeau « En cours » du Stock) ─────────────────────── */
+.fsb-seule { --fsb-h: 4px; --fsb-piste: #F1EEE6; }
+
 /* ── Variante compacte (carte du Stock) ───────────────────────────────────── */
 .fsb-compact { --fsb-h: 5px; }
-.fsb-compact .fsb-tete { margin-bottom: 5px; min-height: 0; gap: 8px; }
-.fsb-compact .fsb-phrase { font-size: 11.5px; font-weight: 600; color: var(--fsb-teal-deep); min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsb-compact .fsb-phrase { margin: 0 0 4px; font-size: 11.5px; line-height: 1.35; font-weight: 600; color: var(--fsb-teal-deep); min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsb-compact .fsb-rang { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fsb-compact .fsb-rang .fsb-piste { flex: 1; min-width: 0; }
 .fsb-compact .fsb-pct { font-size: 11.5px; min-width: 2.8em; }
 .fsb-compact .fsb-badge { font-size: 11.5px; gap: 4px; }
 .fsb-compact .fsb-coche { width: 15px; height: 15px; }
+.fsb-compact .fsb-droite { gap: 0; }
+.fsb-compact.fsb-ouvrable .fsb-haut { border-radius: 8px; }
 
 /* ── Réduire les animations ───────────────────────────────────────────────
    Réglage du téléphone OU prop animationsReduites (data-reduit) : plus de
