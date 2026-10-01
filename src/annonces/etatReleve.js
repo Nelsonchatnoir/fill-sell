@@ -334,6 +334,10 @@ export function motifProposition(prop, T, fr) {
   // qui a DÉJÀ son annonce sur cette plateforme (« 36 papas ») — deux
   // exemplaires, ou la même annonce en double : la personne tranche.
   if (m === 'homonyme_en_stock') return T.motifHomonymeEnStock;
+  // 'depot_beebs_photo_proche' (01/10) : la photo de l'annonce ressemble à
+  // celle d'un dépôt Beebs de l'article, sans être la même. Le numéro n'est
+  // posé sur le dépôt que si la personne répond oui.
+  if (m === 'depot_beebs_photo_proche') return T.motifDepotPhotoProche;
   if (m !== 'faisceau') return '';
   const s = prop.signaux && typeof prop.signaux === 'object' ? prop.signaux : {};
   const preuves = [];
