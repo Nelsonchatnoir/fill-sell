@@ -13,6 +13,8 @@ import { rearmerJobsEbayConnexionSiUtilisable, SOURCES_EBAY_REARMABLES } from ".
 // Opla : UN message pour l'attente d'autorisation (2026-09-23), partagé.
 import { autorisationOplaRequise } from "../_shared/textes-jobs.ts";
 import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_shared/poste-extension.ts";
+// (02/10) Reprise des « en cours » figés, jugée sur le poste qui tient le job.
+import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } from "../_shared/reprise-processing.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -352,7 +354,10 @@ serve(async (req) => {
   // compris : la recréation n'a AUCUNE limite d'âge, on détient la capture).
   // L'unité n'est PAS rendue : le job va aboutir. Aucun trigger de solde ne
   // tire sur pending/needs_user (ils ne tirent que sur un statut terminal).
-  // Conditions du balayage, inchangées :
+  // ⚠️ (02/10) Les conditions ci-dessous (24 h, compte muet, publish/republish
+  // seulement) sont REMPLACÉES par la règle du poste détenteur, tous types —
+  // cf. le bloc daté du 02/10 juste après et _shared/reprise-processing.js.
+  // Historique, conditions d'avant :
   //   - processing depuis ≥ 24 h (processing_since, sinon created_at) ;
   //   - ET extension muette depuis ≥ 24 h (profiles.extension_last_seen_at).
   //     Une extension vue il y a < 24 h = « simplement hors ligne » (veille,
@@ -390,76 +395,63 @@ serve(async (req) => {
   // sur le job ré-armé : la 0.6.21 fait la vérification AVANT de re-publier ;
   // les versions antérieures ignorent le marqueur et se comportent comme
   // aujourd'hui à 24 h.
-  const SEUIL_ABANDON_RAPIDE_MS = 45 * 60_000;
-  const SEUIL_MUET_RAPIDE_MS = 30 * 60_000;
+  // ── (2026-10-02) UN « EN COURS » NE RESTE JAMAIS FIGÉ, QUEL QUE SOIT SON TYPE ──
+  // Cas ornellaracano : retrait Vinted fb9cd238, 22 h en 'processing' sur un
+  // poste mort, pendant que ses trois autres postes interrogeaient la file —
+  // ce filet ne regardait que publish/republish ET un COMPTE muet, et la
+  // réservation par poste (point C) refusait la reprise aux autres postes.
+  // Règle et seuils : _shared/reprise-processing.js (autotest
+  // `node scripts/reprise-processing-selftest.mjs`). Le silence se mesure sur
+  // le poste qui TIENT le job (jobs_reservations_extension → extension_postes).
+  // Les reprises à 30/45 min des étapes 'captured'/'deleted' (capture valide)
+  // restent plus bas, inchangées.
   let processingRearmes = 0;
   let processingNeedsUser = 0;
   try {
-    const SEUIL_ABANDON_MS = 24 * 3600_000;
     const { data: bloques } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, platform, action, created_at, platform_fields")
+      .select("id, user_id, platform, action, created_at, platform_fields, voie")
       .eq("status", "processing")
-      .in("action", ["publish", "republish"]);
+      .limit(500);
     // deno-lint-ignore no-explicit-any
-    // processing_since ILLISIBLE (vide, malformé) → created_at, jamais NaN
-    // (2026-09-10) : un NaN sortait le job des DEUX filets pour toujours —
-    // celui-ci ET recoverStaleProcessingJobs côté extension font le même test
-    // Number.isFinite et « continue » dessus. C'est le seul chemin trouvé par
-    // lequel un 'processing' survit aux deux reprises avec une extension
-    // vivante ; il est fermé des deux côtés.
-    const ageProcessing = (j: { platform_fields?: Record<string, unknown> | null; created_at?: string }) => {
-      const t = Date.parse(String(j.platform_fields?.processing_since ?? ""));
-      const c = Date.parse(String(j.created_at ?? ""));
-      return now - (Number.isFinite(t) ? t : c);
-    };
-    // Étape d'une republication — miroir de repubStepDe (background.js) :
-    // absente ou inconnue = a_capturer, le défaut qui ne touche à rien.
-    const etapeRepublish = (j: { platform_fields?: Record<string, unknown> | null }) => {
-      const s = String(j.platform_fields?.republish_step ?? "");
-      return s === "captured" || s === "deleted" ? s : "a_capturer";
-    };
-    // Reprise RAPIDE (45 min) : les publications, ET (2026-09-10) les
-    // republications encore à l'étape 'a_capturer' — rien n'a été touché sur
-    // Vinted (au pire une capture en lecture seule) ; les 24 h restent réservées
-    // aux étapes qui SUPPRIMENT ('captured') ou ont supprimé ('deleted', qui a
-    // par ailleurs sa reprise à 30 min plus bas).
-    const repriseRapideApplicable = (j: { action?: string; platform_fields?: Record<string, unknown> | null }) =>
-      j.action === "publish" || (j.action === "republish" && etapeRepublish(j) === "a_capturer");
-    const seuilDe = (j: { action?: string; platform_fields?: Record<string, unknown> | null }) =>
-      repriseRapideApplicable(j) ? SEUIL_ABANDON_RAPIDE_MS : SEUIL_ABANDON_MS;
-    // deno-lint-ignore no-explicit-any
-    const candidats = ((bloques ?? []) as any[]).filter((j) => {
-      const age = ageProcessing(j);
-      return Number.isFinite(age) && age >= seuilDe(j);
-    });
-    if (candidats.length) {
-      const userIds = [...new Set(candidats.map((j) => j.user_id as string))];
-      const { data: profs } = await supabase
-        .from("profiles").select("id, extension_last_seen_at").in("id", userIds);
+    const enCours = ((bloques ?? []) as any[]).filter((j) => j.voie !== "api");
+    // Premier tri sans lecture : rien n'est repris avant 45 min de prise.
+    const murs = enCours.filter((j) => ageProcessing(j, now) >= REPRISE_AGE_MIN_MS);
+    if (murs.length) {
+      const { data: resas } = await supabase
+        .from("jobs_reservations_extension").select("job_id, poste").in("job_id", murs.map((j) => j.id));
       // deno-lint-ignore no-explicit-any
-      const lastSeen = new Map(((profs ?? []) as any[]).map((p) => [p.id, Date.parse(p.extension_last_seen_at ?? "")]));
-      for (const j of candidats) {
-        const seen = lastSeen.get(j.user_id);
-        // Silence exigé de l'extension : 30 min sur la reprise rapide (une
-        // extension vivante aurait repris le job à 15 min), 24 h sinon.
-        const seuilMuet = repriseRapideApplicable(j) ? SEUIL_MUET_RAPIDE_MS : SEUIL_ABANDON_MS;
-        if (Number.isFinite(seen as number) && now - (seen as number) < seuilMuet) continue;
-        const repriseRapide = repriseRapideApplicable(j) && ageProcessing(j) < SEUIL_ABANDON_MS;
+      const posteDe = new Map(((resas ?? []) as any[]).map((r) => [String(r.job_id), String(r.poste ?? "")]));
+      const userIds = [...new Set(murs.map((j) => j.user_id as string))];
+      const { data: profs } = await supabase
+        .from("profiles").select("id, extension_last_seen_at, extension_postes").in("id", userIds);
+      // deno-lint-ignore no-explicit-any
+      const profDe = new Map(((profs ?? []) as any[]).map((p) => [String(p.id), p]));
+      for (const j of murs) {
+        const prof = profDe.get(String(j.user_id));
+        const silence = silenceDuDetenteur({
+          reservationPoste: posteDe.get(String(j.id)) ?? null,
+          postes: prof?.extension_postes ?? {}, compteVuLe: prof?.extension_last_seen_at ?? null, now,
+        });
+        const motif = motifReprise(j, { silenceMs: silence.ms, now });
+        if (!motif) continue;
+        const ageMin = Math.round(ageProcessing(j, now) / 60_000);
+        const qui = silence.session
+          ? `poste ${silence.session.slice(0, 8)} ${Number.isFinite(silence.ms) ? `muet depuis ${Math.round(silence.ms / 60_000)} min` : "jamais revu"}`
+          : `compte ${Number.isFinite(silence.ms) ? `muet depuis ${Math.round(silence.ms / 60_000)} min` : "jamais vu"}`;
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.processing_since;
         delete pf.stale_recoveries;
         // Le serveur ne sait pas demander à la plateforme si l'annonce existe
-        // déjà (le worker est mort peut-être APRÈS l'acceptation du dépôt) :
-        // on le demande à l'extension, qui a ce filet depuis le 19/07.
-        // Publication seule : une republication 'a_capturer' n'a rien déposé.
-        if (repriseRapide && j.action === "publish") pf.verifier_doublon_avant_publication = true;
+        // déjà (le poste est peut-être mort APRÈS l'acceptation du dépôt) : on
+        // le demande à l'extension, qui a ce filet depuis le 19/07.
+        if (j.action === "publish") pf.verifier_doublon_avant_publication = true;
+        pf.reprise_processing = { le: new Date(now).toISOString(), motif, age_min: ageMin, detenteur: qui, par: "handler-watch" };
 
         // Vinted seul (2026-09-17) : hors Vinted la « capture » est la copie du
         // dépôt d'origine sur le job, elle ne périme pas — ré-armement simple.
-        if (j.action === "republish" && pf.republish_step === "captured" && j.platform === "vinted") {
-          // Capture à vérifier EN BASE (platform_fields ne porte que capture_id).
-          // Extension muette ≥ 24 h = aucune recapture possible entre-temps :
+        if (motif === "destructive_24h" && pf.republish_step === "captured" && j.platform === "vinted") {
+          // Capture à vérifier EN BASE (platform_fields ne porte que capture_id) :
           // une capture illisible ou sans horodatage est traitée comme périmée.
           let capturePerimee = true;
           const capId = Number(pf.capture_id);
@@ -478,41 +470,49 @@ serve(async (req) => {
               "plus de 24 h et la photographie de ton annonce est périmée. Ton annonce est toujours en " +
               "ligne sur Vinted, rien n'a été supprimé. Relance la republication depuis la fiche de " +
               "l'article : une nouvelle capture sera prise avant tout retrait.";
-            const { error: nErr } = await supabase
+            const { data: maj } = await supabase
               .from("cross_post_jobs")
               .update({ status: "needs_user", error: msg, platform_fields: pf })
               .eq("id", j.id)
-              .eq("status", "processing");
-            if (!nErr) {
+              .eq("status", "processing")
+              .select("id");
+            if (maj?.length) {
               processingNeedsUser++;
-              console.log(`[handler-watch] job ${j.id} (${j.platform}/republish) processing abandonné, capture périmée → needs_user (annonce encore en ligne)`);
+              console.log(`[handler-watch] job ${j.id} (${j.platform}/republish) processing ${ageMin} min, capture périmée → needs_user (annonce encore en ligne)`);
             }
             continue;
           }
         }
 
-        // Le message dit la VRAIE durée : promettre « 24 h » sur une reprise
-        // déclenchée à 45 min ferait mentir l'écran dans l'autre sens.
-        const msg = repriseRapide && j.action === "republish"
+        // Le message dit ce qui s'est passé, avec la vraie durée.
+        const quoi = j.action === "delete" ? "ce retrait"
+          : j.action === "republish" ? "cette republication"
+          : j.action === "publish" ? "cette publication" : "ce traitement";
+        const feminin = j.action === "republish" || j.action === "publish";
+        const msg = motif === "plafond"
+          ? `Reprise après blocage : ${quoi} est resté${feminin ? "e" : ""} « en cours » plus de 2 h sans aboutir. ` +
+            "Le job est remis en file et repartira tout seul — rien à faire de ton côté."
+          : motif === "destructive_24h"
+          ? "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté " +
+            "depuis plus de 24 h. Le job est remis en file et repartira automatiquement dès qu'une " +
+            "extension connectée se réveille — rien à faire de ton côté."
+          : j.action === "republish"
           ? "Reprise après interruption : l'ordinateur qui portait cette republication ne s'est plus " +
             `manifesté depuis une demi-heure. Rien n'a été touché sur ${libellePlateforme(j.platform)} (ton annonce est en ligne) ; ` +
             "la republication est remise en file et repartira automatiquement dès qu'une extension " +
             "connectée se réveille — rien à faire de ton côté."
-          : repriseRapide
-          ? "Reprise après interruption : l'ordinateur qui portait cette publication ne s'est plus " +
-            "manifesté depuis une demi-heure. La publication est remise en file et repartira " +
-            "automatiquement dès qu'une extension connectée se réveille — rien à faire de ton côté."
-          : "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté " +
-            "depuis plus de 24 h. Le job est remis en file et repartira automatiquement dès qu'une " +
+          : `Reprise après interruption : l'ordinateur qui portait ${quoi} ne s'est plus manifesté ` +
+            "depuis une demi-heure. Le job est remis en file et repartira automatiquement dès qu'une " +
             "extension connectée se réveille — rien à faire de ton côté.";
-        const { error: uErr } = await supabase
+        const { data: maj } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: msg, platform_fields: pf })
           .eq("id", j.id)
-          .eq("status", "processing");
-        if (!uErr) {
+          .eq("status", "processing")
+          .select("id");
+        if (maj?.length) {
           processingRearmes++;
-          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing abandonné → pending (reprenable, unité conservée)`);
+          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing figé ${ageMin} min (${qui}, motif ${motif}) → pending (reprenable par tout poste à jour, unité conservée)`);
         }
       }
     }

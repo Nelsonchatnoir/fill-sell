@@ -17,6 +17,7 @@
     "selftest:support-non-livre": "node scripts/support-non-livre-selftest.mjs",
     "selftest:attente-boutique": "node scripts/attente-boutique-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
+    "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
     "selftest:beebs-refus-formulaire": "node scripts/beebs-refus-formulaire-selftest.mjs",
     "selftest:progression": "node scripts/progression-selftest.mjs",
     "selftest:file-des-jobs": "node scripts/file-des-jobs-selftest.mjs",
