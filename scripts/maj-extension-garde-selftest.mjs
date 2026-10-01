@@ -29,11 +29,12 @@ const check = (nom, ok, extra = "") => {
 // Le corps des deux fonctions qui décident.
 const raisons = SRC.slice(
   SRC.indexOf("async function raisonsDeNePasRecharger"),
-  SRC.indexOf("/** Applique la mise à jour en attente"),
+  // (01/10) jusqu'aux aides de la mise à jour active, qui ne décident pas.
+  SRC.indexOf("// ── LA MISE À JOUR NE DOIT PLUS ATTENDRE QUE CHROME Y PENSE"),
 );
 const appliquer = SRC.slice(
   SRC.indexOf("async function appliquerMajSiSansRisque"),
-  SRC.indexOf("async function appliquerMajSiSansRisque") + 1600,
+  SRC.indexOf("async function appliquerMajSiSansRisque") + 4000,
 );
 if (!raisons || !appliquer) throw new Error("fonctions de garde introuvables dans background.js");
 
@@ -55,8 +56,15 @@ console.log("\n▸ Les quatre familles d'état qui INTERDISENT le rechargement")
   check("① une suppression actée non conclue (mémoire)",
     /republishSupprimes\.size/.test(raisons),
     "— entre suppression et recréation, un reload perd l'annonce");
-  check("② une fenêtre de travail ouverte",
-    /fenetresCreeesVivantes\(\)/.test(raisons));
+  // (01/10, décision Nico) Une file chargée garde la fenêtre de travail
+  // ouverte en permanence : elle ne bloque plus, elle est FERMÉE sous le
+  // verrou juste avant le rechargement (aucun job n'y tourne).
+  check("② la fenêtre de travail n'est plus un blocage, elle est fermée avant le reload",
+    !/fenetresCreeesVivantes\(\)/.test(raisons)
+      && appliquer.indexOf("fermerFenetresAvantMaj()") > -1
+      && appliquer.indexOf("fermerFenetresAvantMaj()") < appliquer.indexOf("chrome.runtime.reload()"));
+  check("⑤ un relevé EN COURS bloque (annonces ou dressing)",
+    /vinted_sync_runs\?status=eq\.running/.test(raisons));
   check("③ un job 'processing' EN BASE (la mémoire ment après un redémarrage du worker)",
     /status=eq\.processing/.test(raisons));
   check("④ une republication à l'étape 'deleted' (annonce HORS LIGNE), EN BASE",
@@ -74,8 +82,6 @@ console.log("\n▸ Les quatre familles d'état qui INTERDISENT le rechargement")
 
 console.log("\n▸ LE DOUTE VAUT REFUS — toute lecture ratée bloque");
 {
-  check("fenêtres illisibles → raison de refus",
-    /catch[\s\S]{0,120}?raisons\.push\(`fenêtres de travail illisibles/.test(raisons));
   check("session absente → raison de refus",
     /raisons\.push\("session FillSell absente/.test(raisons));
   check("état des jobs illisible → raison de refus",
@@ -112,6 +118,27 @@ console.log("\n▸ Le marqueur de version en attente");
   check("la version en attente part au serveur (mesure)", /maj_en_attente: await lireMajEnAttente\(\)/.test(SRC));
   const n = (SRC.match(/maj_en_attente: await lireMajEnAttente\(\)/g) ?? []).length;
   check("dans LES DEUX corps de poll", n === 2, `→ ${n}`);
+}
+
+console.log("\n▸ (01/10) La mise à jour passe ENTRE DEUX JOBS, et Chrome est relancé");
+{
+  const i0 = SRC.indexOf("── LA MISE À JOUR PASSE ENTRE DEUX JOBS");
+  const boucle = SRC.slice(i0, i0 + 2200);
+  check("la boucle de jobs s'arrête quand une version attend ET que rien ne s'y oppose",
+    /if \(!etapeDeleted && \(await majPrete\(\)\)\) \{[\s\S]{0,200}?majPlanifiee = true;[\s\S]{0,300}?break;/.test(boucle));
+  check("une republication à l'étape 'deleted' passe toujours",
+    /republish_step === "deleted"/.test(boucle));
+  check("majPrete = version en attente ET aucune raison de refus",
+    /async function majPrete\(\) \{[\s\S]{0,200}?lireMajEnAttente\(\)[\s\S]{0,200}?raisonsDeNePasRecharger\(\)\)\.length === 0/.test(SRC));
+  check("aucun travail ne démarre après l'arrêt (re-captures, veilleur, republication auto)",
+    /if \(majPlanifiee\) \{[\s\S]{0,120}?return;/.test(SRC));
+  check("ni relevé ni sync après l'arrêt", /if \(planifiee\) return;/.test(SRC));
+  check("chaque cycle repart sans rechargement prévu", /majPlanifiee = false;/.test(SRC));
+  check("Chrome est interrogé (requestUpdateCheck), 2 h au plus",
+    /chrome\.runtime\.requestUpdateCheck\(\)/.test(SRC) && /MAJ_VERIF_PERIODE_MS = 2 \* 3600_000/.test(SRC));
+  check("trace usage_logs maj_extension (ancien build, nouveau build, jobs en attente)",
+    /ancien_build: FILLSELL_BUILD_ID/.test(SRC) && /nouveau_build: FILLSELL_BUILD_ID/.test(SRC)
+      && /jobs_en_attente: enAttente/.test(SRC) && /feature: "maj_extension"/.test(SRC));
 }
 
 console.log("\n▸ Rien de tout ça ne peut faire échouer un job");

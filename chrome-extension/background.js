@@ -586,6 +586,18 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details?.reason !== "update" && details?.reason !== "install") return;
   chrome.storage.session.remove(MAJ_ATTENTE_KEY).catch(() => {});
   console.log(`[background] installée en ${chrome.runtime.getManifest().version} (${details.reason}) — plus aucune mise à jour en attente.`);
+  // (01/10) La trace du passage de version, quel que soit le chemin (notre
+  // rechargement, ou Chrome tout seul) : complétée et envoyée au prochain poll.
+  if (details?.reason === "update") {
+    chrome.storage.local.get(MAJ_TRACE_KEY).then((s) => {
+      const t = s?.[MAJ_TRACE_KEY] ?? {};
+      return chrome.storage.local.set({ [MAJ_TRACE_KEY]: {
+        declencheur: "chrome", ...t,
+        ancienne_version: t.ancienne_version ?? String(details.previousVersion ?? ""),
+        installee_le: new Date().toISOString(),
+      } });
+    }).catch(() => {});
+  }
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -664,13 +676,10 @@ async function raisonsDeNePasRecharger() {
   if (republishSupprimes.size) {
     raisons.push(`${republishSupprimes.size} republication(s) supprimée(s) dont la recréation n'est pas conclue`);
   }
-  // Fenêtres de travail : illisibles = doute, donc refus.
-  try {
-    const fen = await fenetresCreeesVivantes();
-    if (fen.length) raisons.push(`${fen.length} fenêtre(s) de travail ouverte(s)`);
-  } catch (e) {
-    raisons.push(`fenêtres de travail illisibles (${String(e?.message ?? e).slice(0, 60)})`);
-  }
+  // (01/10) Les fenêtres de travail ne bloquent plus : une file chargée les
+  // garde ouvertes en permanence, et la mise à jour attendait la fin de
+  // plusieurs heures de travail. Sous le verrou de flux, aucun job ne s'y
+  // déroule : on les ferme juste avant le rechargement (fermerFenetresAvantMaj).
   // La base : seule source qui survit à un redémarrage du service worker.
   try {
     const session = await getValidSession();
@@ -706,10 +715,86 @@ async function raisonsDeNePasRecharger() {
     if (Array.isArray(repub) && repub.length) {
       raisons.push(`${repub.length} republication(s) à l'étape 'deleted' (annonce hors ligne, recréation non conclue)`);
     }
+    // (3) (01/10) un relevé EN COURS (annonces ou dressing) : jamais coupé en
+    // route. Borné aux runs vivants depuis 30 min — un run figé ne doit pas
+    // bloquer la mise à jour pour toujours (le chien de garde serveur le clôt).
+    const depuis = new Date(Date.now() - 30 * 60_000).toISOString();
+    const releves = await restRequest(
+      `vinted_sync_runs?status=eq.running&updated_at=gte.${encodeURIComponent(depuis)}&select=id,kind,platform&limit=3`,
+      token
+    );
+    if (Array.isArray(releves) && releves.length) {
+      raisons.push(`${releves.length} relevé(s) en cours (${releves.map((r) => r.platform ?? r.kind).join(", ")})`);
+    }
   } catch (e) {
     raisons.push(`état des jobs illisible (${String(e?.message ?? e).slice(0, 60)})`);
   }
   return raisons;
+}
+
+// ── LA MISE À JOUR NE DOIT PLUS ATTENDRE QUE CHROME Y PENSE (2026-10-01) ────
+// Mesuré le 01/10 : 28 postes en 0.6.80 / 0.6.79 deux jours après la sortie
+// de la 0.6.81, et AUCUN ne déclarait de mise à jour en attente — Chrome ne la
+// leur avait pas encore proposée. On le lui demande, toutes les 2 h au plus
+// (au-delà, Chrome répond « throttled »).
+const MAJ_VERIF_KEY = "fillsell_maj_verif_le";
+const MAJ_VERIF_PERIODE_MS = 2 * 3600_000;
+// La trace d'un passage de version, envoyée en usage_logs après le
+// rechargement (ancien build, nouveau build, jobs en attente).
+const MAJ_TRACE_KEY = "fillsell_maj_trace";
+
+async function verifierMiseAJourSiDue() {
+  try {
+    const s = await chrome.storage.local.get(MAJ_VERIF_KEY);
+    const dernier = Date.parse(String(s?.[MAJ_VERIF_KEY] ?? ""));
+    if (Number.isFinite(dernier) && Date.now() - dernier < MAJ_VERIF_PERIODE_MS) return;
+    await chrome.storage.local.set({ [MAJ_VERIF_KEY]: new Date().toISOString() });
+    const r = await chrome.runtime.requestUpdateCheck();
+    const statut = String(r?.status ?? (Array.isArray(r) ? r[0] : "") ?? "");
+    const version = String(r?.version ?? r?.details?.version ?? (Array.isArray(r) ? r[1]?.version : "") ?? "");
+    if (statut === "update_available" && version) {
+      await chrome.storage.session.set({ [MAJ_ATTENTE_KEY]: version.slice(0, 20) }).catch(() => {});
+      console.warn(`[background] vérification : la ${version} est disponible — elle sera prise au premier moment sûr.`);
+    }
+  } catch (e) {
+    console.log("[background] vérification de mise à jour impossible (sans conséquence) :", String(e?.message ?? e));
+  }
+}
+
+/** Envoie la trace du dernier passage de version, une seule fois. */
+async function envoyerTraceMajSiBesoin() {
+  try {
+    const s = await chrome.storage.local.get(MAJ_TRACE_KEY);
+    const t = s?.[MAJ_TRACE_KEY];
+    if (!t || !t.installee_le) return;   // pas encore installée : on attend
+    const session = await getValidSession();
+    if (!session?.access_token) return;
+    const userId = decodeJwtSub(session.access_token);
+    if (!userId) return;
+    await restRequest("usage_logs", session.access_token, {
+      method: "POST",
+      body: JSON.stringify({ user_id: userId, feature: "maj_extension", metadata: {
+        ...t, nouvelle_version: chrome.runtime.getManifest().version, nouveau_build: FILLSELL_BUILD_ID,
+      } }),
+    });
+    await chrome.storage.local.remove(MAJ_TRACE_KEY);
+  } catch { /* retentée au prochain poll */ }
+}
+
+/** Une mise à jour attend, et rien ne s'oppose à la prendre MAINTENANT. */
+async function majPrete() {
+  if (!(await lireMajEnAttente())) return false;
+  return (await raisonsDeNePasRecharger()).length === 0;
+}
+
+// Posé quand la boucle de jobs s'arrête pour laisser passer la mise à jour :
+// plus aucun travail ne démarre jusqu'au rechargement.
+let majPlanifiee = false;
+
+async function fermerFenetresAvantMaj() {
+  try {
+    for (const id of await fenetresCreeesVivantes()) await chrome.windows.remove(id).catch(() => {});
+  } catch { /* la nouvelle version balaie de toute façon les fenêtres de l'ancienne */ }
 }
 
 /** Applique la mise à jour en attente si — et seulement si — plus rien ne
@@ -727,7 +812,23 @@ async function appliquerMajSiSansRisque(declencheur) {
       );
       return false;
     }
-    console.warn(`[background] mise à jour ${version} APPLIQUÉE (${declencheur}) — aucun job en vol, aucune fenêtre de travail. Rechargement.`);
+    console.warn(`[background] mise à jour ${version} APPLIQUÉE (${declencheur}) — aucun job en vol, aucun relevé en cours. Rechargement.`);
+    // (01/10) La trace : ancien build, version visée, jobs en attente. Elle
+    // part en usage_logs depuis la NOUVELLE version (envoyerTraceMajSiBesoin).
+    let enAttente = null;
+    try {
+      const session = await getValidSession();
+      if (session?.access_token) {
+        const pend = await restRequest("cross_post_jobs?status=eq.pending&select=id&limit=500", session.access_token);
+        if (Array.isArray(pend)) enAttente = pend.length;
+      }
+    } catch { /* trace sans le compte */ }
+    await chrome.storage.local.set({ [MAJ_TRACE_KEY]: {
+      declencheur: `rechargement:${declencheur}`, ancien_build: FILLSELL_BUILD_ID,
+      ancienne_version: chrome.runtime.getManifest().version, version_visee: version,
+      jobs_en_attente: enAttente, recharge_le: new Date().toISOString(),
+    } }).catch(() => {});
+    await fermerFenetresAvantMaj();
     // Dernier geste : après reload(), plus rien de ce worker ne s'exécute.
     chrome.runtime.reload();
     return true;
@@ -2047,7 +2148,16 @@ function pollAndProcessJobs() {
     // un job ne serait jamais reprise — onUpdateAvailable ne se répète pas.
     // Fire-and-forget, et lui-même reprend le verrou : il ne peut pas
     // s'exécuter pendant la sync distante lancée juste après.
-    appliquerMajSiSansRisque("fin de cycle").catch(() => {});
+    const planifiee = majPlanifiee;
+    if (planifiee) appliquerMajSiSansRisque("entre deux jobs").catch(() => {});
+    else appliquerMajSiSansRisque("fin de cycle").catch(() => {});
+    // (01/10) La trace du dernier passage de version, et une demande de mise
+    // à jour à Chrome (toutes les 2 h au plus) — sans verrou, rien n'y bouge.
+    envoyerTraceMajSiBesoin().then(() => verifierMiseAJourSiDue()).catch(() => {});
+    // La boucle s'est arrêtée pour la mise à jour : aucun relevé, aucune sync
+    // ne démarre avant le rechargement (leurs demandes restent en file en base
+    // et la nouvelle version les reprend).
+    if (planifiee) return;
     // Relevés d'annonces (2026-09-17) : commandes de l'app et demandes du
     // veilleur, SOUS le verrou de flux (jamais en même temps qu'un job ou
     // qu'une sync) — fire-and-forget, le run rend compte en base.
@@ -2506,6 +2616,9 @@ async function cleanupOrphanWorkTabs() {
 }
 
 async function pollAndProcessJobsUnlocked() {
+  // (01/10) Chaque cycle repart sans rechargement prévu : la décision se
+  // reprend job par job (majPrete), jamais héritée d'un cycle précédent.
+  majPlanifiee = false;
   const session = await getValidSession();
   if (!session) {
     console.log("[background] Pas de session valide, poll ignoré");
@@ -2745,6 +2858,22 @@ async function pollAndProcessJobsUnlocked() {
   // onglets trop vite.
   for (let i = 0; i < jobs.length; i++) {
     const job = jobs[i];
+    // ── LA MISE À JOUR PASSE ENTRE DEUX JOBS (2026-10-01) ──────────────────
+    // Une file chargée (remialbertholl : 60 republications) ne laissait jamais
+    // l'extension au repos : la mise à jour attendait des heures. Quand une
+    // version attend et que RIEN ne s'y oppose (aucun job en vol, aucune
+    // republication à l'étape 'deleted', aucun relevé en cours), on ne prend
+    // plus de nouveau job : la boucle s'arrête, la fin de cycle recharge. Les
+    // jobs non pris restent en file (réservés à CE poste 10 min) et la nouvelle
+    // version les reprend — rien de perdu, rien en double.
+    // ⛔ Une republication à l'étape 'deleted' (annonce hors ligne) passe
+    //    TOUJOURS : c'est elle qui lève le blocage, jamais elle qu'on retient.
+    const etapeDeleted = job.action === "republish" && job.platform_fields?.republish_step === "deleted";
+    if (!etapeDeleted && (await majPrete())) {
+      majPlanifiee = true;
+      console.warn(`[background] mise à jour en attente : ${jobs.length - i} job(s) laissé(s) en file pour la nouvelle version.`);
+      break;
+    }
     emitProgress({ jobId: job.id, platform: job.platform, phase: "processing" });
     const outcome = await processJob(job, session.access_token);
     // Même persistance des échecs que le flux popup (cf. recordRecentResult) :
@@ -2760,6 +2889,14 @@ async function pollAndProcessJobsUnlocked() {
       listingUrl: outcome?.listingUrl,
     });
     if (i < jobs.length - 1) await sleep(jobDelayMs());
+  }
+
+  // (01/10) Une mise à jour va être prise : aucun autre travail ne démarre
+  // (re-captures, veilleur, republication automatique) — la nouvelle version
+  // s'en chargera au cycle suivant.
+  if (majPlanifiee) {
+    await cleanupOrphanWorkTabs().catch(() => {});
+    return;
   }
 
   // Re-capture différée des listing_url manquants (2026-07-12) : LBC/Beebs
