@@ -105,6 +105,13 @@ import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-int
 // ISBN : même table de vérité que le content script (normalisation, filtre du
 // remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
+// La preuve qu'un ISBN capturé non standard repasse chez Vinted, lue sur les
+// faits (2026-10-01, carhoa) — module JS, le même que son autotest.
+import { estIsbnCaptureNonStandard, valeurIsbnCapturee, valeursProuvees } from "../_shared/isbn-capture-preuve.js";
+import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
+// Valeurs d'ISBN capturé non standard déjà prouvées chez Vinted : une preuve
+// ne se perd pas, on ne la relit pas en base à chaque poll de l'isolat.
+const PREUVES_ISBN_CAPTURE = new Set<string>();
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -4145,7 +4152,8 @@ serve(async (req) => {
           // Une lecture manquée n'autorise aucune opération sur une fiche dont
           // on n'a pas pu vérifier l'origine. Le prochain poll relit la preuve.
           if (!motif && (fiable || j.inventaire_id == null)) {
-            const pfProuve: Record<string, unknown> = { ...pf };
+            let pfProuve: Record<string, unknown> = { ...pf };
+            let aEcrire = false;
             if (origine) pfProuve.vinted_account_id = origine;
             if (historique.prouve) {
               pfProuve.preuve_retrait_vinted = {
@@ -4156,6 +4164,15 @@ serve(async (req) => {
                 pose_par: "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
               };
               if (!pfProuve.vinted_account_id && historique.vinted_account_id) pfProuve.vinted_account_id = historique.vinted_account_id;
+              aEcrire = true;
+            }
+            // (2026-10-01) La retenue « boutique d'origine inconnue » posée
+            // plus bas se lève dès que l'origine est prouvée.
+            if (retenueServeurDe(pfProuve)?.motif === RETENUE_BOUTIQUE_INCONNUE) {
+              const leve = leverRetenueServeur(pfProuve, new Date().toISOString(), "origine_prouvee");
+              if (leve) { pfProuve = leve; aEcrire = true; }
+            }
+            if (aEcrire) {
               await userClient.from("cross_post_jobs").update({ platform_fields: pfProuve })
                 .eq("id", j.id).eq("status", "pending");
             }
@@ -4166,7 +4183,19 @@ serve(async (req) => {
           if (!fiable) continue;
           // Une vérification impossible reste une attente serveur. La garde
           // retient ce job à chaque poll sans inventer une boutique étrangère.
-          if (motif === "session_inconnue" || motif === "origine_inconnue") continue;
+          // (2026-10-01) Plus jamais en silence pour une republication : la
+          // carte dit « en attente, ton annonce est intacte » et l'ops-digest
+          // la compte (src/utils/retenueServeur.js). Daté une fois.
+          if (motif === "session_inconnue" || motif === "origine_inconnue") {
+            if (j.action === "republish") {
+              const pfPose = poserRetenueServeur(pf, RETENUE_BOUTIQUE_INCONNUE, new Date().toISOString(), { garde: motif });
+              if (pfPose) {
+                await userClient.from("cross_post_jobs").update({ platform_fields: pfPose })
+                  .eq("id", j.id).eq("status", "pending");
+              }
+            }
+            continue;
+          }
           const message = motif === "boutique_etrangere"
             ? "Cette annonce appartient à une autre boutique Vinted que celle ouverte dans Chrome. Connecte-toi à la boutique qui porte cette annonce, puis relance."
             : motif === "boutique_non_confirmee"
@@ -4315,7 +4344,27 @@ serve(async (req) => {
     //    republication valide ne partait derrière (3 livres de carhoa, v140).
     // L'annonce reste EN LIGNE. Seule écriture : le marqueur de retenue (daté
     // une fois, lu par l'app), conditionné à status = 'pending'.
+    //
+    // ── LA PREUVE SE LIT SUR LES FAITS, VALEUR PAR VALEUR (2026-10-01) ───────
+    // Du 27/09 au 01/10, six livres de carhoa (« L'art roman », « Lot de 2
+    // livres sur l'Inde »…) sont restés ici sans fin, et sans un mot à
+    // l'écran : la preuve attendue (marqueur isbn_capture_tel_quel) n'est
+    // écrite que si le canal du formulaire survit au dépôt — ce que la
+    // redirection de succès de Vinted empêche presque toujours. La preuve
+    // existait pourtant depuis le 28/09 : « gobelins » (279c046f), recréé par
+    // la 0.6.75 avec « 0000000000000 » tel quel, constaté dans le dressing
+    // (annonce 10164728230, en ligne). Désormais (_shared/isbn-capture-preuve.js) :
+    //   · une valeur est prouvée par le marqueur OU par une recréation publiée
+    //     d'un build qui remet la capture telle quelle, sans réponse de la
+    //     personne — et pour CETTE valeur seulement ;
+    //   · le banc d'essai (profiles.beta_flags.banc_isbn_capture) laisse
+    //     passer une valeur jamais prouvée : c'est là qu'une première preuve
+    //     se fait, sur une annonce dont le propriétaire a accepté le risque ;
+    //   · une retenue s'écrit `retenue_serveur` (src/utils/retenueServeur.js) :
+    //     l'app dit « en attente, ton annonce est intacte sur Vinted »,
+    //     l'ops-digest la compte ; elle se lève d'elle-même avec la preuve.
     let heldIsbnCapture = 0;
+    let isbnCaptureLeves = 0;
     try {
       const pfDe = (j: { platform_fields: unknown }) => ((j.platform_fields as Record<string, unknown> | null) ?? {});
       const aVoir = out.filter((j) => j.platform === "vinted" && j.action === "republish"
@@ -4332,36 +4381,78 @@ serve(async (req) => {
           const v = String(lib["isbn"] ?? natif["isbn"] ?? "").trim();
           if (v) isbnParCapture.set(Number(c["id"]), v);
         }
-        const exposes = aVoir.filter((j) => {
-          const v = isbnParCapture.get(Number(pfDe(j)["capture_id"]));
-          return !!v && !normalizeIsbn(v).ok;
-        });
+        const valeurDe = (j: { platform_fields: unknown }) => isbnParCapture.get(Number(pfDe(j)["capture_id"]));
+        const exposes = aVoir.filter((j) => estIsbnCaptureNonStandard(valeurDe(j)));
         if (exposes.length) {
           const posteCorrige = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_ISBN_CAPTURE_TEL_QUEL);
-          let prouve = false;
+          let prouvees = new Set<string>();
+          let banc = false;
           if (posteCorrige) {
-            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-            const { data: preuve } = await admin.from("cross_post_jobs").select("id")
-              .eq("platform", "vinted").eq("action", "republish").eq("status", "published")
-              .not("platform_fields->isbn_capture_tel_quel", "is", null).limit(1);
-            prouve = (preuve ?? []).length > 0;
+            const aProuver = [...new Set(exposes.map((j) => valeurIsbnCapturee(valeurDe(j))))];
+            prouvees = new Set(aProuver.filter((v) => PREUVES_ISBN_CAPTURE.has(v)));
+            const inconnues = aProuver.filter((v) => !prouvees.has(v) && /^[0-9A-Z]{1,20}$/.test(v));
+            if (inconnues.length) {
+              const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+              const liste = inconnues.join(",");
+              const { data: preuves } = await admin.from("cross_post_jobs")
+                .select("platform, action, status, handler_build, platform_fields->republish_step, platform_fields->isbn_capture_tel_quel, isbn_copie:platform_fields->republish_snapshot->>isbn, isbn_reponse:platform_fields->vintedAspects->>isbn")
+                .eq("platform", "vinted").eq("action", "republish").eq("status", "published")
+                .or(`platform_fields->republish_snapshot->>isbn.in.(${liste}),platform_fields->isbn_capture_tel_quel->>valeur.in.(${liste})`)
+                .limit(50);
+              const faits = ((preuves ?? []) as Array<Record<string, unknown>>).map((p) => ({
+                platform: String(p.platform), action: String(p.action), status: String(p.status),
+                handler_build: (p.handler_build as string | null) ?? null,
+                platform_fields: {
+                  republish_step: p.republish_step, isbn_capture_tel_quel: p.isbn_capture_tel_quel,
+                  republish_snapshot: { isbn: p.isbn_copie }, vintedAspects: { isbn: p.isbn_reponse },
+                },
+              }));
+              for (const v of valeursProuvees(faits)) {
+                PREUVES_ISBN_CAPTURE.add(v); // une preuve ne se perd pas : gardée tant que l'isolat vit
+                prouvees.add(v);
+              }
+            }
+            if (exposes.some((j) => !prouvees.has(valeurIsbnCapturee(valeurDe(j))))) {
+              const { data: prof } = await userClient.from("profiles").select("beta_flags").eq("id", user.id).maybeSingle();
+              banc = ((prof?.beta_flags ?? {}) as Record<string, unknown>)["banc_isbn_capture"] === true;
+            }
           }
-          if (!posteCorrige || !prouve) {
-            const retenus = new Set(exposes.map((j) => String(j.id)));
+          const retenus = new Set<string>();
+          const maintenant = new Date().toISOString();
+          for (const j of exposes) {
+            const pf = pfDe(j);
+            const v = valeurIsbnCapturee(valeurDe(j));
+            const passe = posteCorrige && (prouvees.has(v) || banc);
+            if (passe) {
+              // Retenue levée : le marqueur part AVANT de servir, sinon l'app
+              // dirait « en attente » d'un job qui file (article par article).
+              const pfLeve = retenueServeurDe(pf)?.motif === RETENUE_ISBN_CAPTURE
+                ? leverRetenueServeur(pf, maintenant, prouvees.has(v) ? "preuve" : "banc_isbn_capture") : null;
+              if (pfLeve) {
+                const { data: maj } = await userClient.from("cross_post_jobs")
+                  .update({ platform_fields: pfLeve }).eq("id", String(j.id)).eq("status", "pending").select("id");
+                if (!(maj ?? []).length) { retenus.add(String(j.id)); continue; } // sorti de pending entre-temps
+                (j as { platform_fields: unknown }).platform_fields = pfLeve;
+                isbnCaptureLeves++;
+              }
+              continue;
+            }
+            retenus.add(String(j.id));
+            const pfPose = poserRetenueServeur(pf, RETENUE_ISBN_CAPTURE, maintenant, {
+              isbn_capture: v, attente: posteCorrige ? "preuve_recreation" : "correctif_extension",
+            });
+            if (pfPose) {
+              await userClient.from("cross_post_jobs")
+                .update({ platform_fields: pfPose }).eq("id", String(j.id)).eq("status", "pending");
+            }
+          }
+          if (retenus.size) {
             out = out.filter((j) => !retenus.has(String(j.id)));
             heldIsbnCapture = retenus.size;
-            const maintenant = new Date().toISOString();
-            for (const j of exposes) {
-              const pf = pfDe(j);
-              if (pf["retenue_isbn_capture"]) continue; // daté une fois
-              await userClient.from("cross_post_jobs")
-                .update({ platform_fields: { ...pf, retenue_isbn_capture: {
-                  depuis: maintenant, isbn_capture: isbnParCapture.get(Number(pf["capture_id"])),
-                  motif: posteCorrige ? "attente_preuve_recreation" : "attente_correctif_extension",
-                } } })
-                .eq("id", String(j.id)).eq("status", "pending");
-            }
-            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${posteCorrige ? "attente de la première recréation prouvée" : "poste sans le correctif"}), ANNONCE INTACTE`);
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${posteCorrige ? "valeur jamais prouvée chez Vinted" : "poste sans le correctif"}), ANNONCE INTACTE, retenue visible`);
+          }
+          if (isbnCaptureLeves) {
+            console.log(`[get-pending-jobs] userId=${user.id} : ${isbnCaptureLeves} retenue(s) ISBN levée(s) — valeur prouvée chez Vinted (${[...prouvees].join(", ")})${banc ? " ou banc d'essai" : ""}`);
           }
         }
       }
