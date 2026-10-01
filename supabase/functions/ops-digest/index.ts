@@ -634,7 +634,76 @@ serve(async (req) => {
     sansMotif.push(`Relevé des needs_user sans motif illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // 0. FOURNISSEURS D'IA — EN TÊTE DU RÉCAPITULATIF (01/10/2026) ─────────────
+  // Le crédit OpenAI s'est épuisé le 28/09 (429 credit_balance_exhausted) : 0
+  // retouche livrée sur 25 pendant trois jours, et rien ne l'a dit — l'erreur
+  // ne vivait que dans les journaux des fonctions. Deux signaux sur 24 h :
+  //   · les refus notés par les fonctions (usage_logs 'echec_fournisseur_ia',
+  //     _shared/echecs-fournisseurs.ts) : « crédit épuisé » = alerte dès le
+  //     premier ; autre refus = alerte à partir de 3 pour un même fournisseur ;
+  //   · les retouches NON LIVRÉES (usage_logs 'photo_retouche', delivered =
+  //     false) : le geste payant qui échoue à répétition, alerte à partir de 3,
+  //     même si la cause n'a pas été notée.
+  const NOM_FOURNISSEUR: Record<string, string> = { openai: "OpenAI", anthropic: "Anthropic (Claude)" };
+  const iaAlertes: string[] = [];
+  const iaSujet: string[] = [];
+  try {
+    const { data: refus, error: eIa } = await supabase
+      .from("usage_logs")
+      .select("metadata, created_at")
+      .eq("feature", "echec_fournisseur_ia")
+      .gte("created_at", iso24h)
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (eIa) throw new Error(eIa.message);
+    const parFournisseur = new Map<string, { total: number; credit: number; fonctions: Map<string, number>; codes: Set<string>; dernier: string }>();
+    for (const r of (refus ?? []) as Array<{ metadata: Record<string, unknown> | null; created_at: string }>) {
+      const m = r.metadata ?? {};
+      const f = String(m.fournisseur ?? "?");
+      const s = parFournisseur.get(f) ?? { total: 0, credit: 0, fonctions: new Map(), codes: new Set(), dernier: r.created_at };
+      s.total += 1;
+      if (m.credit_epuise === true) s.credit += 1;
+      const fn = String(m.fonction ?? "?").split(":")[0];
+      s.fonctions.set(fn, (s.fonctions.get(fn) ?? 0) + 1);
+      if (m.code) s.codes.add(String(m.code));
+      parFournisseur.set(f, s);
+    }
+    for (const [f, s] of parFournisseur) {
+      const nom = NOM_FOURNISSEUR[f] ?? f;
+      const fonctions = [...s.fonctions].map(([k, v]) => `${k} ×${v}`).join(", ");
+      const codes = [...s.codes].join(", ") || "sans code";
+      if (s.credit > 0) {
+        iaAlertes.push(`${nom} : CRÉDIT ÉPUISÉ — ${s.credit} refus « crédit » sur ${s.total} échec${s.total > 1 ? "s" : ""} en 24 h (${fonctions} ; dernier ${String(s.dernier).slice(0, 16)}). Recharger le compte ${nom}.`);
+        iaSujet.push(`${nom} crédit épuisé ×${s.credit}`);
+      } else if (s.total >= 3) {
+        iaAlertes.push(`${nom} : ${s.total} échecs en 24 h (${fonctions} ; codes ${codes} ; dernier ${String(s.dernier).slice(0, 16)}).`);
+        iaSujet.push(`${nom} ${s.total} échecs`);
+      }
+    }
+  } catch (e) {
+    iaAlertes.push(`Journal des échecs des fournisseurs d'IA illisible (${String((e as Error)?.message ?? e)}) — crédit et pannes non vérifiables aujourd'hui.`);
+  }
+  try {
+    const { data: retouches, error: eRet } = await supabase
+      .from("usage_logs")
+      .select("user_id, metadata")
+      .eq("feature", "photo_retouche")
+      .gte("created_at", iso24h)
+      .limit(5000);
+    if (eRet) throw new Error(eRet.message);
+    const toutes = (retouches ?? []) as Array<{ user_id: string | null; metadata: Record<string, unknown> | null }>;
+    const ratees = toutes.filter((x) => x.metadata?.delivered === false);
+    if (ratees.length >= 3) {
+      const comptes = new Set(ratees.map((x) => x.user_id)).size;
+      iaAlertes.push(`Retouche photo (OpenAI) : ${ratees.length} retouche${ratees.length > 1 ? "s" : ""} non livrée${ratees.length > 1 ? "s" : ""} sur ${toutes.length} en 24 h, ${comptes} compte${comptes > 1 ? "s" : ""} touché${comptes > 1 ? "s" : ""} — geste payant en échec répété (non décomptées du quota depuis le 01/10).`);
+      iaSujet.push(`retouches ratées ${ratees.length}/${toutes.length}`);
+    }
+  } catch (e) {
+    iaAlertes.push(`Relevé des retouches illisible (${String((e as Error)?.message ?? e)}).`);
+  }
+
   const counts = {
+    ia_alertes: iaAlertes.length,
     needs_user_sans_motif_24h: sansMotif.length,
     tentatives_en_cours: tentativesEnCours.length,
     failed_24h: (failed ?? []).length,
@@ -671,6 +740,15 @@ serve(async (req) => {
     <p style="margin:0 0 12px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       cross_post_jobs, relevé du ${new Date().toISOString()}
     </p>
+    ${
+    iaAlertes.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 Fournisseurs d'IA — crédit épuisé ou échecs répétés (${iaAlertes.length})
+    </h2>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${iaAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
     ${section("Jobs en échec (24 h)", (failed ?? []) as Job[])}
     ${section("Bloqués en processing > 15 min (repêchage inopérant)", stuck)}
     ${
@@ -872,7 +950,8 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
+      subject: `${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });

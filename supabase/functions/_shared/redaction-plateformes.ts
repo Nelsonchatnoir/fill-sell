@@ -311,6 +311,8 @@ import { familleJeuVideo, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVide
 import {
   ETAT_PAR_PLATEFORME, tierEtat, DEFAUT_ETAT, retirerEtatContredit,
 } from "./etat-plateformes.js";
+// Refus du fournisseur d'IA → journal lu par l'ops-digest (01/10).
+import { noterEchecFournisseur } from "./echecs-fournisseurs.ts";
 // Le module partagé est en .js — la seule forme que Deno ET Vite savent lire
 // sans transpilation. TypeScript en infère des types littéraux très étroits,
 // alors que ce fichier-ci indexe la table avec un nom de plateforme
@@ -576,7 +578,10 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
               }
             }
           } else {
-            console.error(`[redaction] claude ${platform}:`, await claudeRes.text());
+            const corpsErreur = await claudeRes.text().catch(() => "");
+            console.error(`[redaction] claude ${platform}:`, corpsErreur);
+            // (01/10) Noté pour l'ops-digest (crédit épuisé, panne répétée).
+            await noterEchecFournisseur({ fournisseur: "anthropic", fonction: `redaction:${platform}`, http: claudeRes.status, corps: corpsErreur });
           }
         } catch (e) {
           console.error(`[redaction] claude exception ${platform}:`, e);

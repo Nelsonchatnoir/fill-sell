@@ -4,6 +4,8 @@ import {
   WHISPER_BIAS_PROMPT,
   detecterHallucinationWhisper,
 } from "../_shared/whisper-hallucinations.ts";
+// Refus du fournisseur d'IA → journal lu par l'ops-digest (01/10).
+import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -236,6 +238,9 @@ serve(async (req) => {
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
       marquerIssue("whisper_ko", { detail: "http", statut: response.status, mime: mimeType || null, octets: audioFile.size, duree_ms: dureeMs });
+      // (01/10) Noté pour l'ops-digest : crédit OpenAI épuisé ou panne répétée
+      // en tête du récapitulatif de 8h50.
+      await noterEchecFournisseur({ fournisseur: "openai", fonction: "voice-transcribe", http: response.status, corps: JSON.stringify(errData ?? {}), user_id: user.id });
       return new Response(
         JSON.stringify({ error: errData?.error?.message ?? "OpenAI API error" }),
         { status: 500, headers: { "Content-Type": "application/json", ...CORS } }

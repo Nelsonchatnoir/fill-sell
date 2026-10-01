@@ -25,6 +25,8 @@ import { retirerConseilsContredits } from "../_shared/conseils-coherents.ts";
 // `urls` (cinq au plus, côté app), la fiche garde `photos_fiche`. Détail
 // et règle d'acceptation dans le module.
 import { photosDeLaFiche } from "./photos-fiche.js";
+// Refus du fournisseur d'IA → journal lu par l'ops-digest (01/10).
+import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
@@ -1749,6 +1751,10 @@ async function callClaude(apiKey: string, payload: object, beta?: string): Promi
   });
   if (!r.ok) {
     const t = await r.text().catch(() => `HTTP ${r.status}`);
+    // (01/10) Noté pour l'ops-digest : crédit épuisé ou panne répétée en tête
+    // du récapitulatif de 8h50 (le crédit OpenAI épuisé du 28/09 est resté
+    // invisible trois jours).
+    await noterEchecFournisseur({ fournisseur: "anthropic", fonction: "lens-analysis", http: r.status, corps: t });
     // Statut et corps ATTACHÉS à l'erreur (2026-09-05) : sans eux, l'appelant
     // ne pouvait que relire un message concaténé et ne savait pas distinguer un
     // refus portant sur UNE image d'une panne générale. C'est cette

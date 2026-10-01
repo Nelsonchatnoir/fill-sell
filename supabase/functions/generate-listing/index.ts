@@ -45,6 +45,7 @@ import {
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
 import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
+import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -950,7 +951,11 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           console.log(`[gpt-image] photo ${idx} (${photo_option}) status: ${res.status}`);
 
           if (!res.ok) {
-            console.error(`[gpt-image] photo ${idx} error:`, await res.text());
+            const corpsErreur = await res.text().catch(() => "");
+            console.error(`[gpt-image] photo ${idx} error:`, corpsErreur);
+            // (01/10) Noté pour l'ops-digest : le crédit épuisé du 28/09 n'est
+            // resté visible que dans ces journaux, trois jours.
+            await noterEchecFournisseur({ fournisseur: "openai", fonction: "generate-listing:retouche", http: res.status, corps: corpsErreur, user_id: user.id });
             return { type: idx === 0 ? "original" : `photo_${idx}`, url: photoUrl };
           }
 
