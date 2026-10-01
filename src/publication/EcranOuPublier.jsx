@@ -18,6 +18,8 @@ import { MOTIFS } from "../utils/connexionPlateformes";
 import { phraseAccesOpla, parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
+import { etatPlateforme } from "./plateformes";
+import { formaterRemiseAZero } from "../reglages/quotas";
 
 export default function EcranOuPublier({ m }) {
   const en = m.lang === "en";
@@ -32,6 +34,45 @@ export default function EcranOuPublier({ m }) {
     ? { onAdd: m.addFiles, onRemove: m.removeFile, onReorder: m.handleReorderPreviews, removable: true }
     : { onAdd: m.handleAddMorePhotos, onRemove: m.handleRemovePhoto, onReorder: m.handleReorderPhotos, removable: true };
 
+  // ── Les photos face au texte déjà rédigé, et le quota de retouches (01/10) ──
+  const retouches = m.quotas?.retouches ?? null;
+  const photosRetouchees = m.reuseRetouched || (aUneFiche && m.retoucheLivree);
+  // Le texte en main a été rédigé AVEC retouche demandée, et aucune n'a été
+  // livrée : on ne propose pas de recommencer en boucle, on dit ce qui part.
+  const retoucheRateePourCeTexte = aUneFiche && !photosRetouchees && Boolean(m.optionRedaction) && m.optionRedaction !== "original";
+  const dateRemise = formaterRemiseAZero(m.remiseAZero, m.lang);
+  const MAXR = m.MAX_RETOUCHED;
+  const lignesPhotos = [];
+  if (photosRetouchees) {
+    // rien à ajouter : « déjà retouchées ✓ » dit tout
+  } else if (retoucheRateePourCeTexte) {
+    lignesPhotos.push(en ? "The touch-up didn't come through for this text: your photos go out as they are." : "La retouche n'a pas abouti pour ce texte : tes photos partent telles quelles.");
+  } else if (m.retouchesEpuisees) {
+    if (!retouches?.plafond) {
+      lignesPhotos.push(en ? "AI touch-up isn't included in your plan: your photos go out as they are." : "La retouche IA n'est pas incluse dans ta formule : tes photos partent telles quelles.");
+    } else {
+      lignesPhotos.push(en
+        ? `No touch-ups left this month (${retouches.consommes ?? retouches.plafond} of ${retouches.plafond} used): your photos go out as they are.`
+        : `Plus de retouche ce mois-ci (${retouches.consommes ?? retouches.plafond} sur ${retouches.plafond} utilisées) : tes photos partent telles quelles.`);
+      lignesPhotos.push(dateRemise
+        ? (en ? `Your touch-ups come back on ${dateRemise}.` : `Tes retouches reviennent le ${dateRemise}.`)
+        : (en ? "They come back at your next renewal." : "Elles reviennent à ton prochain renouvellement."));
+    }
+  } else if (m.photoOption !== "original") {
+    lignesPhotos.push(en ? "Light, sharpness and colours improved; the item and the background don't change." : "Lumière, netteté et couleurs améliorées ; l'objet et le fond ne changent pas.");
+    if (m.retoucheNewCount > 0) {
+      lignesPhotos.push(en ? `Only your ${m.retoucheNewCount} new photo(s) are retouched; the others stay as they are.` : `Seules tes ${m.retoucheNewCount} nouvelle(s) photo(s) sont retouchées ; les autres restent telles quelles.`);
+    } else if (nb > MAXR) {
+      lignesPhotos.push(en
+        ? `Photos 1 to ${MAXR} are retouched; photo${nb - MAXR > 1 ? "s" : ""} ${MAXR + 1}${nb - MAXR > 1 ? ` to ${nb}` : ""} stay${nb - MAXR > 1 ? "" : "s"} as ${nb - MAXR > 1 ? "they are" : "it is"}.`
+        : `Photos 1 à ${MAXR} retouchées ; ${nb - MAXR > 1 ? `photos ${MAXR + 1} à ${nb} telles quelles` : `photo ${MAXR + 1} telle quelle`}.`);
+    }
+    // Ce que ça compte, seulement si une rédaction va vraiment partir.
+    if (!aUneFiche || m.retoucheARefaire) {
+      lignesPhotos.push(en ? "Counts 1 touch-up for this listing." : "Compte 1 retouche pour cette annonce.");
+    }
+  }
+
   const titre = m.titreArticle;
   const sousTitre = [
     m.etatArticle,
@@ -39,18 +80,10 @@ export default function EcranOuPublier({ m }) {
   ].filter(Boolean).join(" · ");
 
   // ── L'état de chaque plateforme, en une ligne ─────────────────────────────
-  const lignes = m.plateformesAffichees.map(p => {
-    const support = m.platformSupport?.[p] ?? "supported";
-    const dejaEnLigne = m.publishedSet.has(p);
-    const enCours = !dejaEnLigne && m.queuedSet.has(p);
-    const attente = m.attentes?.[p];
-    const enAttente = !dejaEnLigne && !enCours && Boolean(attente?.bloque);
-    const compteAbsent = p === "ebay" && m.ebayBloque;
-    const enPause = m.pausedPlatforms.includes(p);
-    const pasEncoreOuverte = m.plateformesAVenir.includes(p) && !m.plateformesOuvertes.includes(p);
-    const fermeeCategorie = m.categorieFermee(support);
-    const disabled = pasEncoreOuverte || fermeeCategorie || dejaEnLigne || enCours || enAttente || compteAbsent || enPause;
-    const cochee = !disabled && m.selected.has(p);
+  // La décision (grisée ou non, et pourquoi) vit dans ./plateformes — le
+  // bouton du pied lit la même (01/10). Ici, seulement les mots et le geste.
+  const lignes = (m.bilan?.etats ?? m.plateformesAffichees.map(p => etatPlateforme(p, m))).map(e => {
+    const { p, support, disabled, cochee, dejaEnLigne, enCours, enAttente, attente, compteAbsent, enPause, pasEncoreOuverte, fermeeCategorie } = e;
     const session = m.platformSessions?.[p];
     const parApi = p === "ebay" && m.ebayVoieApiReelle;
 
@@ -119,6 +152,14 @@ export default function EcranOuPublier({ m }) {
         <p className="fsn-eyebrow">{en ? "Step 1 of 3" : "Étape 1 sur 3"}</p>
         <h1 className="fsn-h" style={{ marginTop: 4 }}>{en ? "Where to publish?" : "Où publier ?"}</h1>
       </div>
+
+      {/* (01/10) Rien ne peut partir : dit D'ENTRÉE, une ligne par cas — le
+          bouton du pied devient « Retour au stock ». */}
+      {m.rien && (
+        <Carte gravite={m.rien.attendGeste ? "geste" : "info"} titre={m.rien.titre}>
+          {m.rien.lignes.map((l, i) => <div key={i} className="fsn-card-p">{l}</div>)}
+        </Carte>
+      )}
 
       <CarteArticle
         photo={photos[0] ?? null}
@@ -225,45 +266,66 @@ export default function EcranOuPublier({ m }) {
         )}
       </div>
 
-      {/* Photos : retouche IA ou telles quelles — un réglage, plus une étape. */}
-      <Carte gravite="flat" style={{ gap: 8 }}>
-        <div className="fsn-row fsn-row--between fsn-row--wrap">
-          <span className="fsn-small">{en ? "Photos" : "Photos"}</span>
-          {m.reuseRetouched ? (
-            <b className="fsn-small fsn-strong">{en ? "already retouched ✓" : "déjà retouchées ✓"}</b>
-          ) : (
-            <div className="fsn-seg" style={{ minWidth: 220 }}>
-              <button type="button" className={m.photoOption !== "original" ? "on" : ""} onClick={() => m.setPhotoOption("ia_light")}>{en ? "AI touch-up" : "Retouche IA"}</button>
-              <button type="button" className={m.photoOption === "original" ? "on" : ""} onClick={() => m.setPhotoOption("original")}>{en ? "As they are" : "Telles quelles"}</button>
+      {/* Photos : retouche IA ou telles quelles — un réglage, plus une étape.
+          (01/10) Le choix dit ce qui sera VRAIMENT fait, avec le quota de
+          retouches à côté de celui des annonces. Plus de retouche ce mois-ci :
+          « Telles quelles » de lui-même, la raison et la date de remise à
+          zéro — la retouche reste visible, les offres s'ouvrent sur demande. */}
+      {!m.rien && (
+        <Carte gravite="flat" style={{ gap: 8 }}>
+          <div className="fsn-row fsn-row--between fsn-row--wrap">
+            <span className="fsn-small">{en ? "Photos" : "Photos"}</span>
+            {photosRetouchees ? (
+              <b className="fsn-small fsn-strong">{en ? "already retouched ✓" : "déjà retouchées ✓"}</b>
+            ) : retoucheRateePourCeTexte ? (
+              <b className="fsn-small fsn-strong">{en ? "as they are" : "telles quelles"}</b>
+            ) : (
+              <div className="fsn-seg" style={{ minWidth: 220 }}>
+                <button type="button" className={m.photoOption !== "original" ? "on" : ""}
+                  disabled={m.retouchesEpuisees} aria-disabled={m.retouchesEpuisees}
+                  style={m.retouchesEpuisees ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+                  onClick={m.retouchesEpuisees ? undefined : () => m.setPhotoOption("ia_light")}>{en ? "AI touch-up" : "Retouche IA"}</button>
+                <button type="button" className={m.photoOption === "original" ? "on" : ""} onClick={() => m.setPhotoOption("original")}>{en ? "As they are" : "Telles quelles"}</button>
+              </div>
+            )}
+          </div>
+          {/* Le compteur de retouches juste sous le choix qu'il concerne. */}
+          {retouches && retouches.plafond > 0 && !photosRetouchees && (
+            <div className="fsn-row fsn-row--between">
+              <span className="fsn-small">{en ? "Touch-ups this month" : "Retouches ce mois-ci"}</span>
+              <b className="fsn-small fsn-strong num">
+                {en ? `${retouches.restantes ?? 0} left` : `${retouches.restantes ?? 0} restante${(retouches.restantes ?? 0) > 1 ? "s" : ""}`}
+                {" "}<span style={{ color: "var(--fs-mute)", fontWeight: 600 }}>/ {retouches.plafond}</span>
+              </b>
             </div>
           )}
-        </div>
-        {!m.reuseRetouched && m.photoOption !== "original" && (
-          <p className="fsn-small">
-            {en
-              ? `Improves light, sharpness and colours; the item and background stay as they are. Only the first ${m.MAX_RETOUCHED} photos are retouched.`
-              : `Améliore la lumière, la netteté et les couleurs ; l'objet et le fond restent tels quels. Seules les ${m.MAX_RETOUCHED} premières photos sont retouchées.`}
-            {m.retoucheNewCount > 0 ? (en ? ` Your ${m.retoucheNewCount} new photo(s) only — the others are kept.` : ` Tes ${m.retoucheNewCount} nouvelle(s) photo(s) seulement — les autres sont gardées.`) : ""}
-          </p>
-        )}
-        {m.quotas?.annonces?.plafond != null && (
-          <div className="fsn-row fsn-row--between">
-            <span className="fsn-small">{en ? "Listings this month" : "Annonces ce mois-ci"}</span>
-            <b className="fsn-small fsn-strong num">
-              {en ? `${m.quotas.annonces.restantes ?? 0} left` : `${m.quotas.annonces.restantes ?? 0} restante${(m.quotas.annonces.restantes ?? 0) > 1 ? "s" : ""}`}
-              {" "}<span style={{ color: "var(--fs-mute)", fontWeight: 600 }}>/ {m.quotas.annonces.plafond}</span>
-            </b>
-          </div>
-        )}
-        {!aUneFiche && (
-          <p className="fsn-small">
-            {en ? "Writing the listing counts one listing on your quota, once — publishing on several platforms costs nothing more." : "La rédaction compte une annonce sur ton quota, une seule fois — publier sur plusieurs plateformes ne coûte rien de plus."}
-          </p>
-        )}
-      </Carte>
+          {lignesPhotos.map((l, i) => <p key={i} className="fsn-small">{l}</p>)}
+          {m.retouchesEpuisees && !photosRetouchees && (
+            <div>
+              <button type="button" className="fsn-lien" onClick={() => m.voirOffres("retouches", retouches ?? {})}>
+                {en ? "More touch-ups: see the plans" : "Plus de retouches : voir les offres"}
+              </button>
+            </div>
+          )}
+          {m.quotas?.annonces?.plafond != null && (
+            <div className="fsn-row fsn-row--between">
+              <span className="fsn-small">{en ? "Listings this month" : "Annonces ce mois-ci"}</span>
+              <b className="fsn-small fsn-strong num">
+                {en ? `${m.quotas.annonces.restantes ?? 0} left` : `${m.quotas.annonces.restantes ?? 0} restante${(m.quotas.annonces.restantes ?? 0) > 1 ? "s" : ""}`}
+                {" "}<span style={{ color: "var(--fs-mute)", fontWeight: 600 }}>/ {m.quotas.annonces.plafond}</span>
+              </b>
+            </div>
+          )}
+          {!aUneFiche && (
+            <p className="fsn-small">
+              {en ? "Writing counts 1 listing, once. Publishing on several platforms costs nothing more." : "La rédaction compte 1 annonce, une seule fois. Publier sur plusieurs plateformes ne coûte rien de plus."}
+            </p>
+          )}
+        </Carte>
+      )}
 
       {/* Analyse des photos par l'IA (même moteur que Lens) — conservée. */}
-      {nb > 0 && !m.analysisHidden && !aUneFiche && (
+      {nb > 0 && !m.analysisHidden && !aUneFiche && !m.rien && (
         <Carte gravite="flat" style={{ gap: 8 }}>
           {m.photoAnalysis ? (
             <div className="fsn-small">
@@ -288,7 +350,7 @@ export default function EcranOuPublier({ m }) {
       )}
 
       {/* Une précision pour la rédaction (l'ancien champ « notes » + micro). */}
-      {!aUneFiche && (
+      {!aUneFiche && !m.rien && (
         <div className="fsn-field">
           <label className="fsn-label" htmlFor="fsn-notes">{en ? "A note for the writing (optional)" : "Une précision pour la rédaction (facultatif)"}</label>
           <div className="fsn-row">

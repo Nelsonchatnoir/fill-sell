@@ -97,6 +97,7 @@ import {
 // scripts/publication-moteur-selftest.mjs). Les tables de champs partagés ont
 // déménagé de la même façon (champsPartages.js).
 import StepperNouveau from "../publication/StepperNouveau";
+import { lireProchaineRemiseAZero } from "../reglages/quotas";
 import {
   aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
   champsBloquantsParPlateforme, plateformesBloqueesChamps as calculerPlateformesBloqueesChamps,
@@ -2422,8 +2423,8 @@ export function StepGeneration({ generating, generateError, platformListings, pr
       {ficheReprise && (
         <div style={{ marginBottom:16, padding:"9px 12px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}`, fontSize:12, color:T.mute2, lineHeight:1.45 }}>
           {lang === "en"
-            ? "Saved listing reopened — nothing was regenerated, no listing counted."
-            : "Fiche enregistrée, rouverte telle quelle — rien n'a été regénéré, aucune annonce décomptée."}
+            ? "Listing already written, reopened as it was: nothing was counted."
+            : "Annonce déjà rédigée, reprise telle quelle : rien n'a été décompté."}
         </div>
       )}
 
@@ -4708,6 +4709,30 @@ export default function ListingPreviewScreen({
   const [platformListings, setPlatformListings]       = useState(draft?.platformListings ?? null);
   const [processedPhotos, setProcessedPhotos]         = useState(draft?.processedPhotos ?? []);
   const [edited, setEdited]                           = useState(draft?.edited ?? {});
+  // ── L'OPTION PHOTOS AVEC LAQUELLE LE TEXTE EN MAIN A ÉTÉ RÉDIGÉ (01/10) ────
+  // « Publier » rouvre désormais TOUJOURS l'écran « Où publier ? », fiche
+  // enregistrée comprise : le choix Retouche IA / Telles quelles y est donc
+  // visible alors qu'une rédaction existe déjà. Il doit dire la vérité — ce
+  // qui a été fait — et un changement de choix doit avoir un effet réel :
+  // demander la retouche sur une rédaction faite « telles quelles » relance la
+  // rédaction (seul chemin qui retouche, generate-listing). null = inconnu
+  // (brouillon d'avant le 01/10) : on ne relance rien sur un inconnu.
+  // ⚠️ `platformErrorCode` qualifie platformError quand le bouton du pied doit
+  //    proposer autre chose que « Réessayer » (quota d'annonces atteint).
+  const [optionRedaction, setOptionRedaction]         = useState(draft?.platformListings ? (draft?.photoOption ?? null) : null);
+  const [platformErrorCode, setPlatformErrorCode]     = useState(null);
+  // La retouche a été refusée par le serveur (quota du mois atteint pendant la
+  // rédaction) : la rédaction est repartie « telles quelles », et l'écran le dit.
+  const [avisRetouche, setAvisRetouche]               = useState(null);
+  // Quand les quotas du mois repartent : la MÊME source que les Réglages
+  // (coin_wallets.next_grant_at, cf. reglages/quotas.js). Illisible → null, et
+  // l'écran n'affirme aucune date.
+  const [remiseAZero, setRemiseAZero]                 = useState(null);
+  useEffect(() => {
+    let vivant = true;
+    lireProchaineRemiseAZero(userId).then(d => { if (vivant) setRemiseAZero(d); }).catch(() => {});
+    return () => { vivant = false; };
+  }, [userId]);
 
   // ── Lens unifié : application des annonces pré-rédigées (02/09 soir) ──────
   // Ouverture FRAÎCHE (pas de brouillon) avec des annonces déjà rédigées par
@@ -4732,6 +4757,7 @@ export default function ListingPreviewScreen({
     // generate-listing rend des objets { type, url } — et les handlers de
     // l'extension lisent `p.url`. Même forme que la génération, à l'octet près.
     appliquerGeneration({ ...annoncesDuScan, lens_unifie: true, photos: entreesPhotos(initialPhotos) }, dispo);
+    setOptionRedaction("original");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -5303,11 +5329,22 @@ export default function ListingPreviewScreen({
     // On rouvre là où il en était, jamais avant l'étape des annonces : le
     // renvoyer au viseur lui ferait croire que son travail est perdu.
     const etape = Number(f.step);
-    // (refonte 24/09, nouvelle peau seulement) Plus rien à cocher parmi les
-    // copies de la fiche (tout est déjà en ligne, ou fermé) : on ouvre sur
-    // « Où publier ? », où les plateformes se choisissent — pas sur un écran
-    // de rédaction vide. L'ancienne peau garde son arrivée, à l'identique.
-    if (variante === "nouvelle" && !selectionFinale.length) setStep(1);
+    // ── NOUVELLE PEAU : « PUBLIER » OUVRE TOUJOURS « OÙ PUBLIER ? » (01/10) ──
+    // La fiche PRÉ-REMPLIT l'écran 1, elle ne le saute plus. Constat Nico du
+    // 01/10 (aspirateur iLife) : l'arrivée directe sur « Vérifier » affichait
+    // « Aucune plateforme cochée — reviens à l'écran précédent » — la sélection
+    // était calculée AVANT la relecture des jobs, qui l'a vidée une seconde
+    // plus tard (tout était déjà en ligne). Et pour choisir les plateformes,
+    // toucher aux photos ou à la retouche, il fallait revenir en arrière.
+    // L'ancienne peau garde son arrivée, à l'identique.
+    if (variante === "nouvelle") {
+      setStep(1);
+      // Le choix photos dit ce qui a été FAIT pour ce texte : « Telles
+      // quelles », sauf photos déjà retouchées (affichées comme telles).
+      // Choisir la retouche ensuite relance la rédaction (cf. optionRedaction).
+      setPhotoOption("original");
+      setOptionRedaction((photosGeneration ?? []).some(isRetouchedPhotoEntry) ? "ia_light" : "original");
+    }
     else setStep(Number.isFinite(etape) ? Math.min(Math.max(etape, 2), 3) : 2);
     setFicheReprise(true);
     return true;
@@ -5427,6 +5464,37 @@ export default function ListingPreviewScreen({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+  // ── FILET : L'ÉTAPE 2 NE TOURNE JAMAIS À VIDE (01/10) ─────────────────────
+  // Sur l'étape 2, sans rédaction en cours, sans texte et sans erreur, l'écran
+  // affichait « Rédaction en cours… » pour toujours (cas Nadia, 01/10 : un
+  // refus rendait la main sans rien poser). Tous les chemins connus posent
+  // désormais un état ; ce filet couvre ceux qu'on ne connaît pas encore.
+  useEffect(() => {
+    if (step !== 2 || generatingPlatforms || platformListings || platformError) return undefined;
+    const minuteur = setTimeout(() => setPlatformError(lang === "en"
+      ? "Writing didn't start. Tap “Try writing again”."
+      : "La rédaction ne s'est pas lancée. Touche « Réessayer la rédaction »."), 2500);
+    return () => clearTimeout(minuteur);
+  }, [step, generatingPlatforms, platformListings, platformError, lang]);
+
+  // ── NOUVELLE PEAU : JAMAIS L'ÉTAPE 2 SANS PLATEFORME COCHÉE (01/10) ──────
+  // Une relecture qui arrive après coup (job passé « en ligne » pendant que
+  // l'écran est ouvert) peut vider la sélection : on revient sur « Où
+  // publier ? », qui dit plateforme par plateforme ce qui reste possible.
+  // ⚠️ Opla n'a sa copie qu'un rendu APRÈS la rédaction (dérivée d'une autre) :
+  //    une copie source suffit. Et le constat doit TENIR (400 ms) — un état
+  //    de passage entre deux rendus ne renvoie personne en arrière.
+  useEffect(() => {
+    if (variante !== "nouvelle" || step !== 2 || done || publishing || generatingPlatforms) return undefined;
+    const sourceOpla = Boolean(edited?.vinted || edited?.leboncoin || edited?.ebay || edited?.beebs);
+    const aUneCopie = (p) => Boolean(platformListings?.platforms?.[p]) || (p === "opla" && sourceOpla);
+    const avecCopie = platformListings ? [...selected].some(aUneCopie) : selected.size > 0;
+    if (avecCopie) return undefined;
+    const minuteur = setTimeout(() => setStep(1), 400);
+    return () => clearTimeout(minuteur);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variante, step, selected, platformListings, generatingPlatforms, edited]);
 
   // ── Mic ───────────────────────────────────────────────────────────────────
   // (2026-09-25, Romain sur Chrome/Mac : « Stop » et le champ restait vide.)
@@ -5612,6 +5680,8 @@ export default function ListingPreviewScreen({
             trigger: "quota_geste", targetTiers: ["premium","pro"],
             quotaInfo: { geste: "annonces", plafond: err.plafond, consommes: err.consommes },
           });
+          // (01/10) La modale fermée, l'écran dit encore ce qui bloque.
+          setAnalysisError(lang === "en" ? "No listings left this month: the analysis didn't run, nothing was counted." : "Plus d'annonce ce mois-ci : l'analyse n'a pas tourné, rien n'a été décompté.");
           return;
         }
         throw new Error(err?.error || fnErr.message || t("genericError"));
@@ -5687,7 +5757,12 @@ export default function ListingPreviewScreen({
   }
 
   // ── Génération plateformes ────────────────────────────────────────────────
-  async function handleGeneratePlatforms() {
+  // `opts.optionPhotos` (01/10) : force l'option photos de CET appel — c'est la
+  // reprise « telles quelles » quand le serveur refuse la retouche. Appelée
+  // aussi en onClick (un événement en premier argument) : on ne lit la clé que
+  // si c'est une chaîne.
+  async function handleGeneratePlatforms(opts) {
+    const option = typeof opts?.optionPhotos === "string" ? opts.optionPhotos : photoOption;
     // Garde d'identité (2026-08-08, même doctrine que requireTitle posé après
     // les contaminations de listing_url des 13 et 19/07) : générer avec le
     // contexte d'un AUTRE article est pire qu'un refus. Normalement
@@ -5705,8 +5780,15 @@ export default function ListingPreviewScreen({
     }
     setGeneratingPlatforms(true);
     setPlatformError("");
+    setPlatformErrorCode(null);
     try {
-      const platforms = [...selected];
+      // (01/10) Opla n'est JAMAIS rédigée par generate-listing : sa copie dérive
+      // d'une autre (effet « COPIE OPLA DÉRIVÉE »). Opla cochée seule, le
+      // serveur ne rendait rien (500 generation_failed) et la rédaction
+      // échouait sans raison lisible. On lui demande alors la copie source de
+      // la dérivation ; elle n'est pas cochée pour autant, rien d'autre ne part.
+      const cochees = [...selected];
+      const platforms = cochees.length && cochees.every(p => p === "opla") ? [...cochees, "vinted"] : cochees;
       // Source des champs : l'analyse photo (si elle a eu lieu) complète
       // initialListing. Elle ne l'ÉCRASE que là où l'article n'avait rien —
       // une valeur venant de Lens ou saisie par l'utilisateur reste prioritaire.
@@ -5795,15 +5877,15 @@ export default function ListingPreviewScreen({
           // de ligne au publish » (2026-09-15). Sans ce drapeau le serveur ne
           // crée rien : l'app native garde l'ancien client jusqu'à l'OTA.
           fiche_serveur: true,
-          photo_option: photoOption,
+          photo_option: option,
           // Fond pris en compte uniquement en ia_advanced (le backend l'ignore
           // sinon, mais on n'envoie même pas une valeur trompeuse hors avancé).
-          background: photoOption === "ia_advanced" ? background : "original",
+          background: option === "ia_advanced" ? background : "original",
           price,
           // Option A (2026-08-05) : photos déjà retouchées CONSERVÉES telles
           // quelles — l'IA ne retraite que les nouvelles, au tarif plein de
           // l'option. Les verrouillées ne consomment pas le budget retouche.
-          ...(alreadyRetouched && photoOption !== "original"
+          ...(alreadyRetouched && option !== "original"
             ? { locked_photos: photos.filter(u => initialPhotos.includes(u)) }
             : {}),
           ...(notes ? { notes } : {}),
@@ -5818,11 +5900,26 @@ export default function ListingPreviewScreen({
       const dejaPayee = lireGenerationCache(signature);
       if (dejaPayee) {
         appliquerGeneration(dejaPayee, platforms);
+        setOptionRedaction(option);
         return; // aucun appel, aucun débit — le `finally` rend la main
       }
-      const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
-        body: corps,
+      // ── JAMAIS UN CHARGEMENT SANS FIN (01/10) ────────────────────────────
+      // Un appel qui ne répond pas laissait « Rédaction en cours… » à vie.
+      // Passé ce délai (au-delà du plafond d'exécution d'une fonction edge),
+      // l'écran le dit et propose de réessayer.
+      let minuteurDelai;
+      const delaiDepasse = new Promise((_, rejeter) => {
+        minuteurDelai = setTimeout(() => rejeter(new Error(lang === "en"
+          ? "Writing is taking much longer than expected. Try again in a moment."
+          : "La rédaction prend beaucoup plus de temps que prévu. Réessaie dans un instant.")), 180_000);
       });
+      let reponse;
+      try {
+        reponse = await Promise.race([supabase.functions.invoke("generate-listing", { body: corps }), delaiDepasse]);
+      } finally {
+        clearTimeout(minuteurDelai);
+      }
+      const { data, error: fnErr } = reponse;
       if (fnErr) {
         // 402 insufficient_coins (course : solde consommé entre le pré-check
         // client du step 1 et cet appel) : functions.invoke ne lit pas le
@@ -5833,19 +5930,30 @@ export default function ListingPreviewScreen({
         try { errBody = await fnErr.context?.json(); } catch { /* body non-JSON → chemin générique */ }
         // Bascule quotas (02/09) : les refus sont les quotas du cycle —
         // insufficient_coins est mort (prix à 0). Deux codes, deux modales.
+        // ⛔ (01/10) Chaque refus pose AUSSI un état d'erreur lisible : avant,
+        //    il rendait la main sans rien poser, et l'étape 2 tournait à vide
+        //    pour toujours une fois la modale fermée.
         if (errBody?.error === "quota_annonces_atteint") {
           ouvrirQuotaModal("quota_annonces", {
             trigger: "quota_geste", targetTiers: ["premium","pro"],
             quotaInfo: { geste: "annonces", plafond: errBody.plafond, consommes: errBody.consommes },
           });
-          return;
+          setPlatformErrorCode("quota_annonces");
+          const n = errBody.plafond != null ? `${errBody.plafond} ` : "";
+          throw new Error(lang === "en"
+            ? `You've used your ${n}listings for this month. Nothing was counted for this attempt.`
+            : `Tu as utilisé tes ${n}annonces de ce mois-ci. Rien n'a été décompté pour cette tentative.`);
         }
-        if (errBody?.error === "quota_retouche_atteint") {
-          ouvrirQuotaModal("quota_retouche", {
-            trigger: "quota_geste", targetTiers: ["premium","pro"],
-            quotaInfo: { geste: "retouches", plafond: errBody.plafond, consommes: errBody.consommes },
-          });
-          return;
+        // ── QUOTA DE RETOUCHE ATTEINT : LA RÉDACTION PART QUAND MÊME (01/10) ──
+        // Cas Nadia (Premium, 01/10 12:55 → 13:21) : l'écran des offres s'est
+        // ouvert TOUT SEUL trois fois au milieu du parcours, puis « Génération
+        // des annonces… » a tourné dans le vide — il lui restait 35 annonces.
+        // Le refus ne porte que sur la retouche : on rédige « telles quelles »,
+        // et l'écran dit pourquoi. Les offres ne s'ouvrent que sur demande.
+        if (errBody?.error === "quota_retouche_atteint" && option !== "original") {
+          setAvisRetouche({ plafond: errBody.plafond ?? null, consommes: errBody.consommes ?? null });
+          setPhotoOption("original");
+          return await handleGeneratePlatforms({ optionPhotos: "original" });
         }
         // Plafond de générations (2026-08-04) : le serveur explique déjà tout
         // (quota, fenêtre 24 h) dans sa langue — le message s'affiche tel quel
@@ -5853,7 +5961,11 @@ export default function ListingPreviewScreen({
         if (errBody?.error === "generation_limit" && errBody?.message) {
           throw new Error(errBody.message);
         }
-        throw new Error(fnErr.message || t("stepGenErrorTitle"));
+        // Jamais le message technique du client (« Edge Function returned a
+        // non-2xx status code », « Failed to send a request… ») à l'écran.
+        throw new Error(fnErr.name === "FunctionsFetchError"
+          ? (lang === "en" ? "Couldn't reach our servers. Check your internet connection, then try again." : "Impossible de joindre nos serveurs. Vérifie ta connexion internet, puis réessaie.")
+          : (lang === "en" ? "Writing didn't go through on our side. Try again in a moment." : "La rédaction n'a pas abouti de notre côté. Réessaie dans un instant."));
       }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
@@ -5861,6 +5973,7 @@ export default function ListingPreviewScreen({
       // dans la seconde qui suit, la génération est déjà payée et déjà sauvée.
       ecrireGenerationCache(signature, data);
       appliquerGeneration(data, platforms);
+      setOptionRedaction(option);
     } catch (e) {
       setPlatformError(e.message);
     } finally {
@@ -9586,14 +9699,22 @@ export default function ListingPreviewScreen({
   // « Générer les annonces », et au même prix (une annonce sur le quota).
   const copieManquante = Boolean(platformListings)
     && [...selected].some(p => !platformListings.platforms?.[p]);
+  // La retouche est demandée sur un texte rédigé « telles quelles » (fiche
+  // rouverte, scan unifié) : seule une nouvelle rédaction retouche. Inconnu
+  // (null) = on ne relance rien.
+  const retoucheARefaire = Boolean(platformListings) && photoOption !== "original"
+    && !reuseRetouched && optionRedaction === "original";
   function handleNextNouveau() {
     if (step <= 1) {
+      // (01/10) Jamais l'étape 2 sans une plateforme cochée : le bouton est
+      // gris dans ce cas, ceci tient même si on l'appelle d'ailleurs.
+      if (!selected.size) return;
       // Photos choisies mais pas encore montées : on les monte et on arrive
       // directement à la rédaction (l'étape « Photos » n'existe plus ici).
       if (pickedFiles.length) { handleUpload(2); return; }
       // Même garde qu'à l'étape 1 de l'ancien parcours (Lens unifié + retouche
       // choisie : la rédaction pré-générée est abandonnée, l'étape 2 regénère).
-      if ((platformListings?.lens_unifie && photoOption !== "original") || copieManquante) {
+      if ((platformListings?.lens_unifie && photoOption !== "original") || copieManquante || retoucheARefaire) {
         setPlatformListings(null);
         setProcessedPhotos([]);
         setEdited({});
@@ -9601,6 +9722,9 @@ export default function ListingPreviewScreen({
         setGenerales({ titre: "", description: "", etat: "" });
         setFicheReprise(false);
       }
+      // Une erreur d'une tentative précédente ne doit pas empêcher la
+      // rédaction de repartir (l'étape 2 ne la lance que sur un état vide).
+      if (!platformListings || copieManquante || retoucheARefaire) { setPlatformError(""); setPlatformErrorCode(null); setAvisRetouche(null); }
       setStep(2);
       return;
     }
@@ -9730,6 +9854,16 @@ export default function ListingPreviewScreen({
     photoOption, setPhotoOption, reuseRetouched,
     retoucheNewCount: alreadyRetouched && addedNewPhotos ? photos.filter(u => !initialPhotos.includes(u)).length : 0,
     retoucheNonLivree, retoucheAvisLu, setRetoucheAvisLu, coinPrices,
+    // (01/10) Le choix photos face à un texte déjà rédigé, et le refus de
+    // retouche survenu pendant la rédaction.
+    retoucheLivree, optionRedaction, retoucheARefaire, avisRetouche, remiseAZero,
+    // Les offres, UNIQUEMENT sur demande (« Voir les offres ») — jamais
+    // ouvertes toutes seules au milieu du parcours pour une retouche.
+    voirOffres: (geste, info = {}) => ouvrirQuotaModal(geste === "annonces" ? "quota_annonces" : "quota_retouche", {
+      trigger: "quota_geste", targetTiers: ["premium", "pro"],
+      quotaInfo: { geste: geste === "annonces" ? "annonces" : "retouches", plafond: info.plafond ?? null, consommes: info.consommes ?? null },
+    }, "clic"),
+    isPremium, isPro, isBusiness,
     modeleAConfirmer, modelePropose: initialListing?.modele ?? null, modeleSource: initialListing?.modele_source ?? null, setModeleConfirme,
     identifyFailed,
     analysisHidden: initialListing?.prix_vente_suggere != null || initialListing?.taille_estimee != null,
@@ -9757,7 +9891,7 @@ export default function ListingPreviewScreen({
     plateformesPubliables, plateformesBloqueesChamps, publishChips, publishTotalFor,
     // La rédaction
     propsStepGeneration, etatsParPlateforme, nbQuestions, copieManquante,
-    generatingPlatforms, platformError, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
+    generatingPlatforms, platformError, platformErrorCode, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
     modifierCarte, platformFieldsConfig,
     // Les questions et le geste
     redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
@@ -10129,8 +10263,8 @@ export default function ListingPreviewScreen({
           <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FCD34D", fontSize:12, lineHeight:1.45, color:"#92400E", fontWeight:600, display:"flex", alignItems:"flex-start", gap:8 }}>
             <span style={{ flex:1, minWidth:0 }}>
               {lang === "en"
-                ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are."
-                : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}
+                ? "The photo touch-up didn't come through. Your original photos go out as they are."
+                : "La retouche des photos n'a pas abouti. Tes photos d'origine partent telles quelles."}
             </span>
             <button
               type="button"

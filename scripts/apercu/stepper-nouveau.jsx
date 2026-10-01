@@ -24,8 +24,21 @@ import { calculerExclusions, champsBloquantsParPlateforme, aspectBloquant } from
 import { MIN_PHOTOS, MAX_PHOTOS } from '../../src/utils/photos.js';
 
 const params = new URLSearchParams(location.search);
-const ECRAN = Number(params.get('ecran') || '1');
-const FICHE = params.get('fiche') === '1';
+// ?cas=… (01/10, chantier clarté du parcours « Publier ») :
+//   rien            l'aspirateur de Nico : en ligne sur 4 plateformes, Beebs sans catégorie
+//   retouche0       Premium, 5 retouches sur 5 utilisées (Nadia), remise le 30/10
+//   retouche-free   palier sans retouche (plafond 0)
+//   fiche           fiche déjà rédigée « telles quelles », 3 retouches restantes
+//   8photos         8 photos, Retouche IA : lesquelles sont retouchées
+//   quota-annonces  écran 2 : quota d'annonces atteint (pied « Voir les offres »)
+//   avis-retouche   écran 2 : retouche refusée pendant la rédaction, partie telles quelles
+const CAS = params.get('cas') || '';
+const ECRAN = Number(params.get('ecran') || (['quota-annonces', 'avis-retouche'].includes(CAS) ? '2' : '1'));
+const FICHE = params.get('fiche') === '1' || ['rien', 'fiche'].includes(CAS);
+const QUOTA_RETOUCHES = CAS === 'retouche0' ? { plafond: 5, consommes: 5, restantes: 0 }
+  : CAS === 'retouche-free' ? { plafond: 0, consommes: 0, restantes: 0 }
+  : CAS === 'fiche' ? { plafond: 5, consommes: 2, restantes: 3 }
+  : { plafond: 20, consommes: 18, restantes: 2 };
 // ?rayon=1 (25/09) : le rayon Vinted envisagé a été refusé et aucun rayon sûr
 // ne l'a remplacé — la question « Rayon à choisir », candidats en tête.
 const RAYON = params.get('rayon') === '1';
@@ -43,7 +56,9 @@ const CANDIDATS_RAYON = [
 // Trois photos en dur (SVG), pas de réseau.
 const photoSvg = (couleur, texte) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="${couleur}"/><text x="300" y="330" font-family="sans-serif" font-size="120" text-anchor="middle" fill="#ffffff">${texte}</text></svg>`);
-const PHOTOS = [photoSvg('#2F4F4F', '👟'), photoSvg('#4A6B6B', '👟'), photoSvg('#6B8E8E', '👟')];
+const PHOTOS = CAS === '8photos'
+  ? Array.from({ length: 8 }, (_, i) => photoSvg(['#2F4F4F', '#4A6B6B', '#6B8E8E'][i % 3], String(i + 1)))
+  : [photoSvg('#2F4F4F', '👟'), photoSvg('#4A6B6B', '👟'), photoSvg('#6B8E8E', '👟')];
 
 const TITRE = 'Baskets New Balance 990 noir';
 const DESC = "New Balance 990 noires, portées quelques fois, semelle intacte.\nBoîte d'origine.";
@@ -69,7 +84,7 @@ const JOBS_FOURNEE = [
 ];
 const supabaseFactice = {
   from: (table) => faux(table, table === 'cross_post_jobs' ? JOBS_FOURNEE : []),
-  rpc: () => Promise.resolve({ data: { annonces: { plafond: 100, consommes: 11, restantes: 89 } }, error: null }),
+  rpc: () => Promise.resolve({ data: { annonces: CAS === 'quota-annonces' ? { plafond: 40, consommes: 40, restantes: 0 } : { plafond: 40, consommes: 5, restantes: 35 }, retouches: QUOTA_RETOUCHES }, error: null }),
 };
 
 const pointures = Array.from({ length: 12 }, (_, i) => ({ value: `EU ${36 + i}`, label: `EU ${36 + i}` }));
@@ -88,9 +103,11 @@ const copies = () => ({
 
 function Apercu() {
   const { t, tpl } = useTranslation('fr');
-  const [selected, setSelected] = useState(() => new Set(ECRAN === 3 ? ['vinted', 'leboncoin', 'beebs', 'opla'] : ['vinted', 'leboncoin', 'beebs']));
+  const [selected, setSelected] = useState(() => new Set(CAS === 'rien' ? [] : ECRAN === 3 ? ['vinted', 'leboncoin', 'beebs', 'opla'] : ['vinted', 'leboncoin', 'beebs']));
   const [edited, setEdited] = useState(copies);
-  const [photoOption, setPhotoOption] = useState('original');
+  // Retouche IA par défaut là où l'app la met par défaut (Premium/Pro sans
+  // fiche) : c'est ce qui prouve le passage AUTOMATIQUE sur « Telles quelles ».
+  const [photoOption, setPhotoOption] = useState(['retouche0', 'retouche-free', '8photos'].includes(CAS) ? 'ia_light' : 'original');
   const [sharedFields, setSharedFields] = useState({ taille: '', couleur: 'Noir', matiere: '', marque: 'New Balance' });
   const [prixAchatSaisi, setPrixAchatSaisi] = useState('');
   const [prixAchatInconnu, setPrixAchatInconnu] = useState(false);
@@ -98,7 +115,8 @@ function Apercu() {
   const [notes, setNotes] = useState('');
   const [retoucheAvisLu, setRetoucheAvisLu] = useState(false);
 
-  const platformListings = ECRAN >= 2 || FICHE ? { platforms: { vinted: {}, leboncoin: {}, beebs: {}, opla: {} } } : null;
+  const platformListings = CAS === 'quota-annonces' ? null : ECRAN >= 2 || FICHE ? { platforms: { vinted: {}, leboncoin: {}, beebs: {}, opla: {} } } : null;
+  const enLigne = CAS === 'rien' ? ['vinted', 'leboncoin', 'ebay', 'opla'] : ECRAN === 3 ? ['ebay'] : [];
   // Écran 3 : un « Produit » Leboncoin manquant (comme avant) + le cas Primark
   // du 24/09 — une valeur PRÉSENTE mais refusée par la grille Beebs (bloquante,
   // liste qui fait foi) et un format de colis traduit en palier (ok).
@@ -156,6 +174,10 @@ function Apercu() {
     uploading: false, uploadError: '', setLightboxUrl: noop,
     notes, setNotes, micActive: false, toggleMic: noop, micDisponible: false,
     photoOption, setPhotoOption, reuseRetouched: false, retoucheNewCount: 0, retoucheNonLivree: false, retoucheAvisLu, setRetoucheAvisLu, coinPrices: null,
+    retoucheLivree: false, optionRedaction: FICHE ? 'original' : null,
+    retoucheARefaire: Boolean(platformListings) && photoOption !== 'original' && FICHE,
+    avisRetouche: CAS === 'avis-retouche' ? { plafond: 5, consommes: 5 } : null,
+    remiseAZero: '2026-10-30T11:36:11Z', voirOffres: (g) => console.log('[apercu] voirOffres', g),
     modeleAConfirmer: false, modelePropose: null, modeleSource: null, setModeleConfirme: noop, identifyFailed: false,
     analysisHidden: true, photoAnalysis: null, analyzing: false, analysisError: '', handleAnalyzePhotos: noop,
     texteDuVendeur: true,
@@ -163,8 +185,9 @@ function Apercu() {
     oplaMotifGrise: 'fermee', oplaExtensionMin: null, oplaAcces: false,
     motifAVenir: () => 'Opla est en préparation — visible ici, pas encore ouverte à la publication.',
     basculer: (p) => setSelected((prev) => { const s = new Set(prev); if (s.has(p)) s.delete(p); else s.add(p); return s; }),
-    platformSupport: {}, categorieFermee: (s) => ['unavailable', 'prohibited'].includes(s ?? 'supported'), motifSupport: () => '',
-    publishedSet: new Set(ECRAN === 3 ? ['ebay'] : []), queuedSet: new Set(), lockedSet: new Set(ECRAN === 3 ? ['ebay'] : []),
+    platformSupport: CAS === 'rien' ? { beebs: 'unavailable' } : {}, categorieFermee: (s) => ['unavailable', 'prohibited'].includes(s ?? 'supported'),
+    motifSupport: () => 'Non vendable sur Beebs : catégorie non disponible sur cette plateforme.',
+    publishedSet: new Set(enLigne), queuedSet: new Set(), lockedSet: new Set(enLigne),
     attentes: {}, motifsVerrouillage: ECRAN === 3 ? { ebay: 'déjà en ligne pour cet article' } : {},
     phraseEtat: () => '', pausedPlatforms: [], pausedReasons: {}, motifPause: () => '',
     ebayBloque: false, motifEbay: '', boutonEbay: 'Paramétrer eBay', ebayVoieApi: true, ebayVoieApiReelle: true, ouvrirPanneauEbay: noop,
@@ -176,7 +199,9 @@ function Apercu() {
     propsStepGeneration,
     etatsParPlateforme: { vinted: rayonsAChoisir.vinted ? { ton: 'geste', libelle: '1 question' } : { ton: 'ok', libelle: 'Prêt' }, leboncoin: { ton: 'geste', libelle: '1 question' }, beebs: { ton: 'ok', libelle: 'Prêt' }, opla: { ton: 'ok', libelle: 'Prêt' } },
     nbQuestions,
-    generatingPlatforms: false, platformError: '', platformListings, processedPhotos: PHOTOS, handleGeneratePlatforms: noop, ficheReprise: FICHE,
+    generatingPlatforms: false, platformListings, processedPhotos: PHOTOS, handleGeneratePlatforms: noop, ficheReprise: FICHE,
+    platformError: CAS === 'quota-annonces' ? "Tu as utilisé tes 40 annonces de ce mois-ci. Rien n'a été décompté pour cette tentative." : '',
+    platformErrorCode: CAS === 'quota-annonces' ? 'quota_annonces' : null,
     modifierCarte: propsStepGeneration.onModifierCarte, platformFieldsConfig,
     redSharedFields, redSharedFieldPlatforms: { taille: 'Vinted, Leboncoin, eBay' }, sharedFields,
     setSharedField: (k, v) => setSharedFields((s) => ({ ...s, [k]: v })), sharedChildAxes: null, missingSharedFieldsDetailed,

@@ -23,39 +23,87 @@ import EcranConfirmer from "./EcranConfirmer";
 import EcranSuivi from "./EcranSuivi";
 import { Bouton, Carte } from "./composants";
 import { NOM } from "./texte";
+import { bilanPlateformes, rienAPublier } from "./plateformes";
 
 export default function StepperNouveau({ m }) {
   const en = m.lang === "en";
   const ecran = m.done ? 4 : (m.step <= 1 ? 1 : m.step);
+  // ── LES QUOTAS DU MOIS, RELUS À CHAQUE RÉDACTION (01/10) ──────────────────
+  // Lus une fois à l'ouverture jusqu'ici : revenir sur « Où publier ? » après
+  // une rédaction montrait l'ancien compte. La date de remise à zéro
+  // (m.remiseAZero) est lue par le moteur, à la même source que les Réglages.
   const [quotas, setQuotas] = useState(null);
+  const redactionKey = m.platformListings ? 1 : 0;
   useEffect(() => {
     if (!m.supabase) return undefined;
     let vivant = true;
     m.supabase.rpc("quotas_etat").then(({ data }) => { if (vivant && data && !data.error) setQuotas(data); }).catch(() => {});
     return () => { vivant = false; };
-  }, [m.supabase]);
-  const mq = { ...m, quotas };
+  }, [m.supabase, redactionKey]);
+
+  // ── PLUS DE RETOUCHE CE MOIS-CI : « TELLES QUELLES », DE LUI-MÊME (01/10) ─
+  // Le serveur refusait alors TOUTE la rédaction (quota_retouche_atteint), et
+  // l'écran des offres s'ouvrait tout seul. On ne propose plus ce qui ne peut
+  // pas partir : le choix passe sur « Telles quelles » et l'écran dit pourquoi.
+  const retouches = quotas?.retouches ?? null;
+  const retouchesEpuisees = Boolean(retouches && retouches.plafond != null && (retouches.restantes ?? 0) <= 0);
+  const { photoOption, setPhotoOption } = m;
+  useEffect(() => {
+    if (retouchesEpuisees && photoOption !== "original") setPhotoOption("original");
+  }, [retouchesEpuisees, photoOption, setPhotoOption]);
+
+  const bilan = bilanPlateformes(m);
+  const rien = ecran === 1 && m.publishedStateLoaded ? rienAPublier(bilan, m.lang) : null;
+  const mq = { ...m, quotas, retouchesEpuisees, bilan, rien };
 
   // ── Le pied de page : le bouton, et ce qui l'explique ─────────────────────
+  // `sous` : une ligne, ou une liste de lignes — une information par ligne.
   let cta = null; let disabled = false; let sous = null; let secondaire = null; let avant = null;
+  let action = null;
   if (ecran === 1) {
-    const n = m.selected.size;
+    // Le compte qui fait foi : les cases COCHÉES ET cochables, jamais
+    // `selected` brut (une case grisée peut y traîner).
+    const n = bilan.cochees.length;
     const enTeleversement = m.uploading;
     const photosManquent = m.photoCount < m.MIN_PHOTOS && !m.platformListings;
-    disabled = enTeleversement || photosManquent || n === 0;
-    cta = enTeleversement ? (en ? "Uploading photos…" : "Envoi des photos…")
-      : photosManquent ? (en ? `Add at least ${m.MIN_PHOTOS} photos` : `Ajoute au moins ${m.MIN_PHOTOS} photos`)
-      : n === 0 ? (en ? "Pick at least one platform" : "Choisis au moins une plateforme")
-      : (m.platformListings && !m.copieManquante
-          ? (en ? `Continue · ${n} platform${n > 1 ? "s" : ""}` : `Continuer · ${n} plateforme${n > 1 ? "s" : ""}`)
-          : (en ? `Write the listing · ${n} platform${n > 1 ? "s" : ""}` : `Rédiger l'annonce · ${n} plateforme${n > 1 ? "s" : ""}`));
-    sous = m.platformListings && !m.copieManquante
-      ? (en ? "Nothing goes out yet. You check at the next screen." : "Rien ne part encore. Tu vérifies à l'écran suivant.")
-      : m.platformListings && m.copieManquante
-      ? (en ? "A ticked platform has no text yet: the listing is written again (one listing on your quota), then you check it." : "Une plateforme cochée n'a pas encore de texte : l'annonce est rédigée à nouveau (une annonce sur ton quota), puis tu la vérifies.")
-      : (en ? "Nothing goes out yet: the text is written, then you check it." : "Rien ne part encore : le texte est rédigé, puis tu le vérifies.");
+    const pl = (k) => (en ? `${k} platform${k > 1 ? "s" : ""}` : `${k} plateforme${k > 1 ? "s" : ""}`);
+    if (!m.publishedStateLoaded) {
+      cta = en ? "Reading this item…" : "Lecture de l'article…"; disabled = true;
+    } else if (rien) {
+      // Rien ne peut partir : on ne laisse pas croire qu'on peut continuer.
+      cta = en ? "Back to stock" : "Retour au stock";
+      action = () => m.quitter();
+    } else {
+      const reecrire = !m.platformListings || m.copieManquante || m.retoucheARefaire;
+      disabled = enTeleversement || photosManquent || n === 0;
+      cta = enTeleversement ? (en ? "Uploading photos…" : "Envoi des photos…")
+        : photosManquent ? (en ? `Add at least ${m.MIN_PHOTOS} photos` : `Ajoute au moins ${m.MIN_PHOTOS} photos`)
+        : n === 0 ? (en ? "Tick at least one platform" : "Coche au moins une plateforme")
+        : reecrire
+          ? (en ? `Write the listing · ${pl(n)}` : `Rédiger l'annonce · ${pl(n)}`)
+          : (en ? `Continue · ${pl(n)}` : `Continuer · ${pl(n)}`);
+      if (!m.platformListings) {
+        sous = en ? "Nothing goes out yet: the text is written, then you check it." : "Rien ne part encore : le texte est rédigé, puis tu le vérifies.";
+      } else if (m.retoucheARefaire) {
+        sous = en
+          ? ["To retouch the photos, the listing is written again: 1 touch-up and 1 listing on your quota.", "Your text edits will be replaced."]
+          : ["Pour retoucher les photos, l'annonce est rédigée à nouveau : 1 retouche et 1 annonce sur ton quota.", "Tes modifications de texte seront remplacées."];
+      } else if (m.copieManquante) {
+        sous = en
+          ? ["A ticked platform has no text yet: the listing is written again (1 listing on your quota).", "Nothing goes out yet."]
+          : ["Une plateforme cochée n'a pas encore de texte : l'annonce est rédigée à nouveau (1 annonce sur ton quota).", "Rien ne part encore."];
+      } else {
+        sous = en ? "Nothing goes out yet. You check at the next screen." : "Rien ne part encore. Tu vérifies à l'écran suivant.";
+      }
+    }
   } else if (ecran === 2) {
     if (m.generatingPlatforms || (!m.platformListings && !m.platformError)) { cta = en ? "Writing…" : "Rédaction en cours…"; disabled = true; }
+    else if (!m.platformListings && m.platformError && m.platformErrorCode === "quota_annonces") {
+      // Réessayer ne servirait à rien : on dit ce qui débloque, sur demande.
+      cta = en ? "See the plans" : "Voir les offres";
+      action = () => m.voirOffres("annonces", quotas?.annonces ?? {});
+      secondaire = <button type="button" className="fsn-btn fsn-btn--ghost" onClick={() => m.quitter()}>{en ? "Back to stock" : "Retour au stock"}</button>;
+    }
     else if (!m.platformListings && m.platformError) { cta = en ? "Try writing again" : "Réessayer la rédaction"; }
     else {
       const q = m.nbQuestions;
@@ -91,7 +139,10 @@ export default function StepperNouveau({ m }) {
       // n'est pas restaurée avec la fiche, l'ancien calcul le croyait).
       avant = (
         <Carte gravite="info" style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
-          <div className="fsn-card-p fsn-grow">{en ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are." : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}</div>
+          {/* (01/10) Plus de « elle ne te sera pas facturée » : une retouche
+              ratée est aujourd'hui comptée dans le quota du mois (correctif
+              serveur en attente de validation) — on ne dit que ce qui part. */}
+          <div className="fsn-card-p fsn-grow">{en ? "The photo touch-up didn't come through. Your original photos go out as they are." : "La retouche des photos n'a pas abouti. Tes photos d'origine partent telles quelles."}</div>
           <button type="button" className="fsn-lien" onClick={() => m.setRetoucheAvisLu(true)}>{en ? "OK" : "OK"}</button>
         </Carte>
       );
@@ -117,6 +168,7 @@ export default function StepperNouveau({ m }) {
   }
 
   const onCta = () => {
+    if (action) { action(); return; }
     if (ecran === 4) { m.onClose(true); return; }
     if (ecran === 2 && !m.platformListings && m.platformError) { m.handleGeneratePlatforms(); return; }
     m.suivant();
@@ -157,7 +209,7 @@ export default function StepperNouveau({ m }) {
           {avant}
           <Bouton disabled={disabled} onClick={onCta}>{cta}</Bouton>
           {secondaire}
-          {sous ? <p className="fsn-hint">{sous}</p> : null}
+          {(Array.isArray(sous) ? sous : sous ? [sous] : []).map((ligne, i) => <p key={i} className="fsn-hint">{ligne}</p>)}
         </div>
       </div>
 
