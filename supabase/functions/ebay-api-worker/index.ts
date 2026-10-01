@@ -2185,10 +2185,10 @@ const VEILLE_CANDIDATS_MAX = 500;        // borne de lecture, les plus anciennes
 // ⛔ BUDGET DE TEMPS (01/10, après retour arrière de v64) : 25 lectures Browse
 // à la suite = 12 à 19 s par passe (~0,6 s chacune), et la réponse au cron
 // (pg_net, 5 s) tombait en délai dépassé. Les lectures partent par 4 et la
-// veille s'arrête à 2 s : une annonce non lue n'est pas horodatée, elle
+// veille s'arrête à 1,2 s (passe totale ~3 s ; 4,1 s mesuré à 2 s) : une annonce non lue n'est pas horodatée, elle
 // passe au tour suivant (même règle que le 429).
 const VEILLE_PARALLELE = 4;
-const VEILLE_BUDGET_MS = 2_000;
+const VEILLE_BUDGET_MS = 1_200;
 
 // ── LA QUANTITÉ VIENT DE LA PLATEFORME, À L'IMPORT (01/10) ──────────────────
 // xxewwer : « Bravely Default II » importé d'eBay le 19/09 à 1 exemplaire —
