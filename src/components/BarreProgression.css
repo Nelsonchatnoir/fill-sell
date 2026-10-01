@@ -1,0 +1,125 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LA BARRE DE PROGRESSION — styles (01/10/2026). Composant : BarreProgression.jsx
+   ═══════════════════════════════════════════════════════════════════════════
+   Identité FillSell : Space Grotesk, sarcelle #2F9E90 → #1B6E62. Une couleur
+   par gravité (comme le stepper) : sarcelle = ça avance / fini, ambre = un
+   geste à faire ou une attente, rouge = notre faute. Toutes les couleurs sont
+   des variables posées sur .fsb.
+   Ce qui bouge à chaque image : DEUX transform (le remplissage glisse, le
+   calque des reflets s'étire) — composées par la carte graphique, aucune mise
+   en page recalculée. Le reflet est une animation CSS, coupée en « réduire
+   les animations » et hors de l'état « en cours ». */
+.fsb {
+  --fsb-piste: #ECE8DE;
+  --fsb-teal: #2F9E90; --fsb-teal-deep: #1B6E62; --fsb-teal-fond: #EFF4F2;
+  --fsb-ink: #10201B; --fsb-ink2: #3A4742; --fsb-mute: #5C6560;
+  --fsb-amber: #E0A53C; --fsb-amber-ink: #8A6100; --fsb-amber-fond: #FFF6E3; --fsb-amber-bord: #EED9A6;
+  --fsb-bad: #B0645A; --fsb-bad-ink: #9B5148; --fsb-bad-fond: #FBEFEC; --fsb-bad-bord: #EBC9C2;
+  --fsb-pause: #9DB8B2;
+  --fsb-h: 10px;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--fsb-ink);
+  min-width: 0;
+}
+.fsb *, .fsb *::before, .fsb *::after { box-sizing: border-box; }
+
+.fsb-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; min-height: 22px; }
+.fsb-titre { font-size: 14.5px; font-weight: 700; letter-spacing: -.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fsb-pct { flex: none; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fsb-teal-deep); letter-spacing: -.01em; min-width: 3.4em; text-align: right; }
+
+.fsb-badge { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.fsb-badge-ok { color: var(--fsb-teal-deep); }
+.fsb-badge-stop { color: var(--fsb-amber-ink); }
+.fsb[data-ton="erreur"] .fsb-badge-stop { color: var(--fsb-bad-ink); }
+.fsb-badge-pause { color: var(--fsb-mute); }
+.fsb-coche { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--fsb-teal-deep); color: #fff; flex: none; }
+.fsb-badge-ok .fsb-coche, .fsb-ligne[data-etat="termine"] .fsb-coche { animation: fsb-coche .42s cubic-bezier(.2, .9, .3, 1.25) both; }
+.fsb-ligne .fsb-coche { width: 18px; height: 18px; }
+@keyframes fsb-coche { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* La piste et son remplissage. Le remplissage fait toute la largeur et
+   GLISSE (translateX) : son bout arrondi reste rond à toute valeur. */
+.fsb-piste { position: relative; height: var(--fsb-h); border-radius: 999px; background: var(--fsb-piste); overflow: hidden; isolation: isolate; contain: layout paint; }
+.fsb-rempli {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: linear-gradient(90deg, var(--fsb-teal) 0%, var(--fsb-teal-deep) 100%);
+  transform: translateX(-100%); will-change: transform;
+  transition: background-color .3s ease;
+}
+/* Les reflets : un calque étiré à la longueur du remplissage (scaleX), dans
+   lequel une lueur passe de gauche à droite — elle balaie toujours la partie
+   remplie, jamais le vide. */
+.fsb-reflets { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); will-change: transform; overflow: hidden; border-radius: 999px; pointer-events: none; }
+.fsb-reflet {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 38%;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.42) 50%, rgba(255,255,255,0) 100%);
+  transform: translateX(-110%);
+  animation: fsb-reflet 2.4s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+@keyframes fsb-reflet { 0% { transform: translateX(-110%); } 70%, 100% { transform: translateX(270%); } }
+
+.fsb-bas { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
+.fsb-phrase { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--fsb-ink2); min-height: 1.45em; text-wrap: pretty; }
+.fsb-sous { margin: 0; display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.45; color: var(--fsb-mute); animation: fsb-paraitre .4s ease both; }
+.fsb-sous svg { flex: none; margin-top: 2px; }
+@keyframes fsb-paraitre { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+.fsb-action {
+  align-self: flex-start; margin-top: 4px; font: inherit; font-size: 13.5px; font-weight: 700;
+  padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  background: var(--fsb-amber-fond); color: var(--fsb-amber-ink); border: 1px solid var(--fsb-amber-bord);
+}
+.fsb[data-ton="erreur"] .fsb-action { background: var(--fsb-bad-fond); color: var(--fsb-bad-ink); border-color: var(--fsb-bad-bord); }
+.fsb-action:focus-visible { outline: 2px solid var(--fsb-teal); outline-offset: 2px; }
+
+/* ── États ────────────────────────────────────────────────────────────────── */
+.fsb[data-etat="termine"] .fsb-rempli { background: var(--fsb-teal-deep); }
+.fsb[data-etat="termine"] .fsb-phrase { color: var(--fsb-teal-deep); font-weight: 600; }
+.fsb[data-etat="echec"] .fsb-rempli, .fsb[data-etat="partiel"] .fsb-rempli { background: var(--fsb-amber); }
+.fsb[data-ton="erreur"][data-etat="echec"] .fsb-rempli, .fsb[data-ton="erreur"][data-etat="partiel"] .fsb-rempli { background: var(--fsb-bad); }
+.fsb[data-etat="echec"] .fsb-phrase, .fsb[data-etat="partiel"] .fsb-phrase { color: var(--fsb-amber-ink); font-weight: 600; }
+.fsb[data-ton="erreur"][data-etat="echec"] .fsb-phrase, .fsb[data-ton="erreur"][data-etat="partiel"] .fsb-phrase { color: var(--fsb-bad-ink); }
+.fsb[data-etat="pause"] .fsb-rempli, .fsb[data-etat="attente"] .fsb-rempli { background: var(--fsb-pause); }
+/* Le reflet ne passe que sur ce qui avance vraiment. */
+.fsb:not([data-etat="en_cours"]) .fsb-reflet { animation: none; opacity: 0; }
+
+/* ── Lignes par plateforme ────────────────────────────────────────────────── */
+.fsb-lignes { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid #EFECE3; }
+.fsb-ligne { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EFECE3; min-width: 0; }
+.fsb-ligne:last-child { border-bottom: none; padding-bottom: 0; }
+.fsb-ligne-icone { flex: none; display: flex; line-height: 0; }
+.fsb-ligne-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.fsb-ligne-nom { font-size: 13.5px; font-weight: 700; color: var(--fsb-ink); }
+.fsb-ligne-etape { font-size: 12.5px; line-height: 1.4; color: var(--fsb-mute); }
+.fsb-ligne[data-etat="attente"] .fsb-ligne-nom, .fsb-ligne[data-etat="attente"] .fsb-ligne-icone { opacity: .55; }
+.fsb-ligne[data-etat="termine"] .fsb-ligne-etape { color: var(--fsb-teal-deep); }
+.fsb-ligne[data-etat="echec"] .fsb-ligne-etape { color: var(--fsb-amber-ink); font-weight: 600; }
+.fsb[data-ton="erreur"] .fsb-ligne[data-etat="echec"] .fsb-ligne-etape { color: var(--fsb-bad-ink); }
+.fsb-ligne-etat { flex: none; width: 22px; height: 22px; display: grid; place-items: center; color: var(--fsb-mute); }
+.fsb-ligne[data-etat="echec"] .fsb-ligne-etat { color: var(--fsb-amber); }
+.fsb[data-ton="erreur"] .fsb-ligne[data-etat="echec"] .fsb-ligne-etat { color: var(--fsb-bad); }
+.fsb-anneau { transform: rotate(-90deg); }
+.fsb-anneau-fond { fill: none; stroke: var(--fsb-piste); stroke-width: 3; }
+.fsb-anneau-plein { fill: none; stroke: var(--fsb-teal); stroke-width: 3; stroke-linecap: round; }
+.fsb-ligne[data-etat="attente"] .fsb-anneau-plein { stroke: transparent; }
+
+/* ── Variante compacte (carte du Stock) ───────────────────────────────────── */
+.fsb-compact { --fsb-h: 5px; }
+.fsb-compact .fsb-tete { margin-bottom: 5px; min-height: 0; gap: 8px; }
+.fsb-compact .fsb-phrase { font-size: 11.5px; font-weight: 600; color: var(--fsb-teal-deep); min-height: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsb-compact .fsb-pct { font-size: 11.5px; min-width: 2.8em; }
+.fsb-compact .fsb-badge { font-size: 11.5px; gap: 4px; }
+.fsb-compact .fsb-coche { width: 15px; height: 15px; }
+
+/* ── Réduire les animations ───────────────────────────────────────────────
+   Réglage du téléphone OU prop animationsReduites (data-reduit) : plus de
+   reflet, plus d'apparition animée ; la barre se met à jour une fois par
+   seconde (côté JS) et reste lisible. */
+.fsb[data-reduit="1"] .fsb-reflet, .fsb[data-reduit="1"] .fsb-coche, .fsb[data-reduit="1"] .fsb-sous { animation: none !important; }
+.fsb[data-reduit="1"] .fsb-reflet { opacity: 0; }
+.fsb[data-reduit="1"] .fsb-rempli { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .fsb-reflet, .fsb-coche, .fsb-sous { animation: none !important; }
+  .fsb-reflet { opacity: 0; }
+  .fsb-rempli { transition: none; }
+}
