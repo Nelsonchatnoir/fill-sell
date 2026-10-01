@@ -25,7 +25,8 @@
 //     correctif (`build_min_requis`) : un autre profil Chrome resté en 0.6.63
 //     ne le brûle pas ;
 //   · le BUILD_ID fait foi (préfixe horodaté), jamais le numéro de version.
-// ES module SANS import (Deno + Node).
+// ES module, un seul import relatif lui-même sans import (Deno + Node).
+import { lectureRefusBeebs } from "./beebs-refus-formulaire.js";
 
 /** Le préfixe horodaté d'un BUILD_ID (« 2026-09-24T14:34:46Z+aa459a7 · v0.6.66 ») en ms, NaN sinon. */
 export function buildMsDe(build) {
@@ -53,7 +54,29 @@ export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID d
 // écriture) ; elle part dès qu'un poste porte ce build.
 export const BUILD_OPLA_REPUBLICATION_SUR_ANNONCE = "2026-09-27T18:22:27Z"; // BUILD_ID de la 0.6.74, zip build/CWS-0.6.74-A-TELEVERSER
 
+// ── L'ADRESSE BEEBS VALIDÉE SUR UNE VRAIE SUGGESTION (2026-10-01, Marie) ────
+// Horodatage du commit du correctif (50a2c27, 0.6.83) : tout build produit
+// depuis porte un BUILD_ID plus récent. Avant lui, le sélecteur d'adresse
+// pouvait cliquer un bouton de taille (« 8XL » pour « 8 Mai ») — le dépôt
+// restait sur le formulaire, sans fin (cf. _shared/beebs-refus-formulaire.js).
+export const BUILD_BEEBS_ADRESSE_STRICTE = "2026-10-01T15:29:31Z";
+
 export const CORRECTIFS_EXTENSION = [
+  {
+    // (2026-10-01, mariecreativedigital, chemise Hilfiger 0f457c57) : six
+    // dépôts restés sur le formulaire, l'adresse « validée » sur « 8XL ».
+    // Rien n'a jamais été soumis (sonde réseau vide) : le réarmement ne peut
+    // pas créer de doublon. Le job repart sur un poste ≥ 0.6.83.
+    cle: "beebs_adresse_suggestion_stricte",
+    platform: "beebs",
+    actions: ["publish", "republish"],
+    signature: /Dépôt Beebs non confirmé/,
+    buildMin: BUILD_BEEBS_ADRESSE_STRICTE,
+    version: "0.6.83",
+    motif: "adresse Beebs validée sur un bouton qui n'était pas une adresse (option de taille)",
+    condition: (job) => !!lectureRefusBeebs(job?.platform_fields, "").adresseSurAutreChose,
+    clesARetirer: ["needsUserField", "needsUserFields", "needs_user_source", "pas_de_rouge", "pas_de_rouge_reprises", "needsUserAttempts"],
+  },
   {
     cle: "vinted_navigation_annonce_exacte",
     platform: "vinted", actions: ["delete", "republish"],
