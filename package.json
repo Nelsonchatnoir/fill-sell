@@ -18,6 +18,7 @@
     "selftest:attente-boutique": "node scripts/attente-boutique-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
     "selftest:beebs-refus-formulaire": "node scripts/beebs-refus-formulaire-selftest.mjs",
+    "selftest:progression": "node scripts/progression-selftest.mjs",
     "preview": "vite preview",
     "selftest:categorie-garde-fou": "node scripts/categorie-garde-fou-selftest.mjs",
     "selftest:mot-objet-pluriel": "node scripts/mot-objet-pluriel-selftest.mjs",
