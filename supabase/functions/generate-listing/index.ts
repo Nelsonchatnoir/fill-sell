@@ -593,9 +593,15 @@ serve(async (req) => {
         const depuisEpoch = typeof parCle["quotas_retouche_depuis"] === "number" ? parCle["quotas_retouche_depuis"] as number : 0;
         const cycleIso = cycleDebut ?? new Date(Date.now() - 31 * 864e5).toISOString();
         const borne = new Date(Math.max(Date.parse(cycleIso), depuisEpoch * 1000)).toISOString();
+        // (01/10, GO Nico) Seules les retouches LIVRÉES comptent — même règle
+        // que quotas_etat (migration 20261001160000) : une ligne
+        // delivered = false (fournisseur en panne, crédit OpenAI épuisé du 28/09
+        // au 01/10) ne vide plus le quota ; une ligne sans la clé (avant le
+        // 08/08) compte comme avant. = « IS DISTINCT FROM 'false' ».
         const { count: retouchesFaites } = await adminClient.from("usage_logs")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id).eq("feature", "photo_retouche")
+          .or("metadata->>delivered.is.null,metadata->>delivered.neq.false")
           .gte("created_at", borne);
         if ((retouchesFaites ?? 0) >= quotaRetouche) {
           await refundGenerateFn?.("quota_retouche"); // prix 0 → no-op ; ancien monde → rendu
