@@ -7,6 +7,8 @@
 // Format : horodatage ISO UTC + hash git court. Le PRÉFIXE ISO est triable —
 // c'est LUI qui sert aux comparaisons d'obsolescence, jamais le hash.
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 
@@ -1746,13 +1748,87 @@ export function assertExtensionMinBuildCurrent(cwd = process.cwd()) {
   }
 }
 
+// ── CE QUI REND L'ARBRE « SALE » (01/10) ─────────────────────────────────────
+// Les lignes de `git status --porcelain` (fichiers non suivis compris) — ce
+// que le suffixe `-dirty` résume, et ce que le message de refus nomme.
+// null = git illisible (pas de binaire, pas un dépôt).
+export function fichiersSales(cwd = process.cwd()) {
+  try {
+    return execSync('git status --porcelain', { cwd }).toString().split('\n').map(l => l.trimEnd()).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+// ── UN BUILD SERVI SORT D'UN ARBRE PROPRE, SINON IL NE SORT PAS (01/10) ──────
+// Constat du 01/10 : fillsell.app/build.json rendait « de91e49-dirty », et le
+// build d'avant (42a55c9) aussi — l'empreinte, première étape imposée du
+// diagnostic d'écran blanc, ne désignait plus exactement un commit. Côté
+// Vercel, la cause était `.vercel/` (posé par la plateforme, non ignoré) ;
+// côté OTA, un fichier modifié ou non suivi sur le poste. Les deux se règlent
+// à la racine : `npm run build` (Vercel ET OTA Capgo) s'ARRÊTE, en nommant
+// les fichiers. Appelé par vite.config.js pour la commande `build` seulement
+// (le serveur de dev et les aperçus n'y passent pas).
+//
+// ⛔ Le contournement « GIT_DIR=… VERCEL_GIT_COMMIT_SHA=… npm run build »
+//    (mémoire du 25/09) est FERMÉ : hors Vercel, un git illisible ne prouve
+//    rien — refus aussi.
+// Essai local sur un arbre en cours (vérifier que ça compile) :
+//    npm run build:essai — l'empreinte porte alors « -dirty », et ce dist ne
+//    part JAMAIS en OTA.
+export function assertArbrePropre(cwd = process.cwd()) {
+  if (process.env.FILLSELL_BUILD_ESSAI === '1') {
+    console.warn('\n⚠️  build:essai — arbre non vérifié, empreinte « -dirty » si sale. Ce dist ne se sert pas (ni Vercel, ni OTA).\n');
+    return;
+  }
+  // ⛔ LA CAUSE VERCEL DU 01/10 : package.json monté en 2.9.32, package-lock.json
+  //    resté en 2.9.31. Sur un poste, rien ne bouge ; sur Vercel, `npm install`
+  //    réécrit le lockfile AVANT le build — arbre sale à chaque déploiement.
+  //    Vérifié ici pour que l'oubli casse le build LOCAL, avant le push.
+  let versionPaquet = null; let versionLock = null;
+  try {
+    versionPaquet = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')).version ?? null;
+    const lock = JSON.parse(readFileSync(join(cwd, 'package-lock.json'), 'utf8'));
+    versionLock = lock.packages?.['']?.version ?? lock.version ?? null;
+  } catch { /* fichier absent : rien à comparer */ }
+  if (versionPaquet && versionLock && versionPaquet !== versionLock) {
+    throw new Error(
+      `\n⛔ BUILD REFUSÉ — package.json est en ${versionPaquet}, package-lock.json en ${versionLock}.\n` +
+      '   Sur Vercel, `npm install` réécrirait le lockfile avant le build : arbre sale, empreinte « -dirty ».\n' +
+      '   → npm install --package-lock-only, puis commite package-lock.json avec package.json.\n'
+    );
+  }
+  const sales = fichiersSales(cwd);
+  if (sales === null) {
+    // Sur Vercel sans git, le code EST le commit cloné (VERCEL_GIT_COMMIT_SHA) :
+    // rien ne peut l'avoir modifié. Partout ailleurs, on ne sait pas : refus.
+    if (process.env.VERCEL) return;
+    throw new Error(
+      '\n⛔ BUILD REFUSÉ — git illisible : impossible de prouver que l\'arbre est propre.\n' +
+      '   Un build servi (web ou OTA) doit désigner un commit exact. Lance le build depuis le dépôt.\n'
+    );
+  }
+  if (sales.length) {
+    throw new Error(
+      '\n⛔ BUILD REFUSÉ — l\'arbre de travail n\'est pas propre (empreinte « -dirty »).\n' +
+      '   Ce qui serait servi ne correspondrait pas exactement à un commit. Fichiers en cause :\n' +
+      sales.map(l => `     ${l}`).join('\n') + '\n' +
+      '   → commite ce qui fait partie du produit ; ignore (.gitignore) ou mets de côté hors du dépôt ce qui est local.\n' +
+      '   → simple vérification de compilation : npm run build:essai (jamais servi).\n'
+    );
+  }
+}
+
 export function computeBuildId(cwd = process.cwd()) {
   const ts = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   let git = 'nogit';
   try {
     const hash = execSync('git rev-parse --short HEAD', { cwd }).toString().trim();
-    const dirty = execSync('git status --porcelain', { cwd }).toString().trim() ? '-dirty' : '';
-    git = hash + dirty;
+    const sales = fichiersSales(cwd) ?? [];
+    // Le suffixe dit CE QUI est sale dans le journal du build — c'est ce qui
+    // manquait le 19/09 pour trouver `.vercel/` sans deviner.
+    if (sales.length) console.warn(`[build-id] arbre sale (${sales.length}) :\n${sales.map(l => `  ${l}`).join('\n')}`);
+    git = hash + (sales.length ? '-dirty' : '');
   } catch {
     // Pas de binaire git (ou pas un repo) : sur Vercel le SHA du commit est
     // fourni en variable d'environnement — on le prend en repli, sinon

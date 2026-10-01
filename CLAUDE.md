@@ -124,7 +124,10 @@ autre le 18/09 pour avoir cherché dans les fichiers d'abord :
 
 1. **l'empreinte du build** — en bas de la page Réglages, ou
    `curl https://fillsell.app/build.json` : elle dit quel commit tourne
-   vraiment chez la personne ;
+   vraiment chez la personne (jamais `-dirty` depuis le 01/10 : `npm run
+   build` REFUSE un arbre sale — Vercel comme OTA — et nomme les fichiers ;
+   `package.json` et `package-lock.json` montent ENSEMBLE ; simple
+   vérification de compilation : `npm run build:essai`, jamais servi) ;
 2. **un rechargement forcé** — si l'écran revient, c'était un chunk périmé et
    il n'y a rien à corriger dans le code ;
 3. **l'état du déploiement Vercel** (READY ou ERROR) ;

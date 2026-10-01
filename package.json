@@ -9,6 +9,7 @@
     "check:legal-permissions": "node scripts/check-legal-permissions.mjs",
     "prebuild": "node scripts/check-legal-permissions.mjs",
     "build": "vite build",
+    "build:essai": "node -e \"process.env.FILLSELL_BUILD_ESSAI='1';require('child_process').execSync('npx vite build',{stdio:'inherit',env:process.env})\"",
     "build:extension": "node scripts/build-extension.mjs",
     "package:extension": "node scripts/package-extension.mjs",
     "lint": "eslint .",

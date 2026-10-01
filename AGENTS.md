@@ -190,11 +190,9 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - Captures d'écran sans session : `scripts/apercu/` (vite + playwright).
 - **OTA Capgo** (aucun script npm, geste manuel) :
   1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
-  2. monter `"version"` dans `package.json` au-dessus du canal (le numéro de
-     bundle = cette version ; 2.9.28 au 27/09) ;
-  3. **commiter** (avant le build : sinon l'empreinte embarquée est `-dirty`
-     et désigne le commit précédent) ; aucun fichier non suivi dans l'arbre
-     (un seul suffit à faire `-dirty`) ;
+  2. monter `"version"` dans `package.json` ET `package-lock.json` au-dessus
+     du canal (numéro de bundle = cette version) ;
+  3. **commiter** : `npm run build` REFUSE un arbre sale (01/10) ;
   4. `npm run build` ;
   5. `npx @capgo/cli bundle upload --channel production --bundle <version> --path dist` ;
   6. relire le canal. Un numéro consommé ne se réutilise jamais (même si
@@ -287,8 +285,7 @@ Détail complet : `supabase/AGENTS.md`. L'essentiel :
 Ordre de diagnostic non négociable :
 1. **l'empreinte du build** — en bas de la page Réglages, ou
    `curl https://fillsell.app/build.json` : quel commit tourne vraiment
-   (côté web, le suffixe `-dirty` est permanent et ne veut rien dire : le
-   hash court fait foi ; côté OTA, `-dirty` est significatif) ;
+   (jamais `-dirty` depuis le 01/10 : le build refuse un arbre sale) ;
 2. **un rechargement forcé** — si l'écran revient, c'était un chunk périmé,
    rien à corriger ;
 3. **l'état du déploiement Vercel** (READY ou ERROR) ;
