@@ -1019,6 +1019,30 @@ serve(async (req) => {
       }
     }
 
+    // ══ UN RELEVÉ TOMBÉ SUR « PAS CONNECTÉ » SE REFAIT TOUT SEUL (01/10) ══════
+    // mariecreativedigital : premier relevé Leboncoin « absente » (page de
+    // connexion) le 30/09 14:41, puis plus rien — l'alarme quotidienne ne
+    // relève qu'une plateforme qui a déjà des annonces, et la reprise de
+    // handler-watch attend une sonde que Leboncoin refuse (403 chez 59 comptes
+    // actifs sur 62). Le relevé EST la sonde : au poll (extension vivante, par
+    // définition), reprendre_releves_absents repose le relevé d'une plateforme
+    // déclarée ou déjà garnie dont le DERNIER relevé dit « absente » — 8 h
+    // d'écart, 3 par 24 h au plus, jamais une plateforme écartée. La demande
+    // posée part dans CE poll (lecture juste en dessous). Best-effort.
+    if (versionAuMoins(version, "0.6.42") && !includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: repris } = await admin.rpc("reprendre_releves_absents", { p_user: user.id });
+        const poses = Object.entries(((repris as { plateformes?: Record<string, string> } | null)?.plateformes) ?? {})
+          .filter(([, v]) => v === "queued").map(([pf]) => pf);
+        if (poses.length) {
+          console.log(`[get-pending-jobs] userId=${user.id} relevé(s) « absente » repris : ${poses.join(", ")}`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] reprise des relevés absents : ${String((e as Error)?.message ?? e)} — rien de posé`);
+      }
+    }
+
     // ── Relevés multiplateforme (2026-09-17, sync lot 1) : les demandes
     // kind='annonces' en file (une par plateforme), servies aux extensions
     // ≥ 0.6.42 seulement — une plus ancienne ne sait pas relever. Même TTL de
