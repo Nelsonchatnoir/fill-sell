@@ -1676,6 +1676,17 @@ export const PUBLISHED_BUILD_IDS = {
   '2026-09-25T21:40:31Z': '0.6.69',
   // Publication confirmée par Nico et usage réel du parc le 28/09.
   '2026-09-27T20:16:30Z': '0.6.75',
+  // 0.6.79 à 0.6.82 : inscrites le 02/10, RELEVÉES EN BASE (profiles
+  // .extension_build × extension_version, 01/10 à 23:30) :
+  //   0.6.79 → 26 comptes · 0.6.80 → 7 · 0.6.81 → 26 (tous vus dans les
+  //   24 h) · 0.6.82 → 21 (tous vus dans les 24 h).
+  // (0.6.76 n'y est pas : retirée en examen le 28/09, ses 2 comptes du 28/09
+  // ne prouvent pas une diffusion par le Store. 0.6.77 = build de la 0.6.75.)
+  // La 0.6.81 devient EXTENSION_MIN_BUILD (cf. version-min-extension.js).
+  '2026-09-28T21:44:46Z': '0.6.79',
+  '2026-09-30T13:21:09Z': '0.6.80',
+  '2026-09-30T20:16:41Z': '0.6.81',
+  '2026-10-01T10:50:14Z': '0.6.82',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────

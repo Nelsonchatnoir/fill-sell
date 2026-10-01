@@ -522,11 +522,18 @@ serve(async (req) => {
 
     // Point F : une ancienne file locale ne contourne pas la garde du poll.
     // Un travail déjà commencé peut finir et transmettre son résultat.
+    // (02/10) Une republication à l'étape 'deleted' (annonce DÉJÀ retirée) est
+    // un travail commencé : sa recréation peut partir d'un poste sous le seuil
+    // — get-pending-jobs ne sert que celles-là à un tel poste. Sans ça,
+    // l'annonce resterait hors ligne et la mise à jour de l'extension, qui
+    // attend qu'aucune republication ne soit à 'deleted', ne passerait jamais.
     if (status === "processing" && !posteExtensionCompatible(body.handler_build)) {
       const { data: enCours, error: lecture } = await userClient.from("cross_post_jobs")
-        .select("status").eq("id", jobId).maybeSingle();
+        .select("status, action, platform_fields").eq("id", jobId).maybeSingle();
       if (lecture) return json({ error: "Le début du travail ne peut pas être vérifié. Réessaie au prochain passage." }, 503);
-      if (enCours?.status !== "processing") return json({
+      const recreationCommencee = enCours?.status === "pending" && enCours?.action === "republish"
+        && String(((enCours?.platform_fields ?? {}) as Record<string, unknown>)["republish_step"] ?? "") === "deleted";
+      if (enCours?.status !== "processing" && !recreationCommencee) return json({
         error: "Mets l’extension FillSell à jour dans Chrome avant de démarrer cette tâche. Aucun retrait n’est autorisé.",
         extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
       }, 409);

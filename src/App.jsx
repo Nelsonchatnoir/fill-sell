@@ -7954,8 +7954,8 @@ export default function App({ loginOnly = false }){
           <div style={{flex:1,lineHeight:1.45,minWidth:0}}>
             <div style={{fontWeight:600}}>
               {lang==='fr'
-                ?"Mets à jour l’extension FillSell sur ton ordinateur. Tes annonces restent en attente et repartiront après la mise à jour."
-                :"Update the FillSell extension on your computer. Your listings are queued and will resume after the update."}
+                ?"Mets à jour l’extension FillSell sur ton ordinateur : ta file reprendra toute seule après la mise à jour."
+                :"Update the FillSell extension on your computer: your queue will resume on its own after the update."}
             </div>
             <div style={{marginTop:4,fontWeight:500,opacity:0.85,fontSize:12.5}}>
               {lang==='fr'

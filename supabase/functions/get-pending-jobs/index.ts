@@ -1,5 +1,9 @@
 import { recreationRetientFile } from "../_shared/file-republication.js";
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
+// (02/10) Le message d'un poste sous le seuil : simple, et vrai — la file
+// attend, rien n'est perdu, elle repart seule après la mise à jour.
+const MESSAGE_MISE_A_JOUR_EXTENSION =
+  "Mets l’extension FillSell à jour dans Chrome : ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
 import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
@@ -776,11 +780,34 @@ serve(async (req) => {
     // Point F : contrôler CE poste avant toute distribution ou réservation.
     // Le profil est une télémétrie partagée, pas l'identité du demandeur.
     // Les lectures du popup restent compatibles avec toutes les versions.
+    // ── (02/10) SOUS LE SEUIL, UNE SEULE EXCEPTION : LE TRAVAIL DÉJÀ COMMENCÉ ──
+    // Une republication à l'étape 'deleted' a DÉJÀ retiré l'annonce : sa
+    // recréation est un travail commencé (même règle qu'update-job-status, « un
+    // travail déjà commencé peut finir »). La refuser bloquerait deux choses :
+    // l'annonce resterait hors ligne, ET la mise à jour de l'extension, qui
+    // n'est prise au repos que si aucune republication n'est à 'deleted'
+    // (raisonsDeNePasRecharger, de la 0.6.66 à la 0.6.81). Relevé le 01/10 au
+    // soir : nivake03 (0b54edbc, 0.6.80) et ltouze (61a5de40, 0.6.79).
+    // Rien d'autre n'est servi à un poste sous le seuil ; sans recréation en
+    // attente, la réponse reste celle d'avant, sans aucune autre lecture.
+    let posteSousMinimum = false;
     if (!includeProcessing && !includeNeedsUser && !posteExtensionCompatible(buildDuPoll)) {
-      return json({ jobs: [], sync_commands: [], connexion_commands: [],
-        extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
-        message: "Mets l’extension FillSell à jour dans Chrome. Tes annonces restent en ligne et tes tâches attendent la mise à jour.",
-      });
+      let recreationsEnAttente = 0;
+      try {
+        const { count } = await userClient.from("cross_post_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending").eq("voie", "extension").eq("action", "republish")
+          .eq("platform_fields->>republish_step", "deleted");
+        recreationsEnAttente = count ?? 0;
+      } catch (_e) { /* lecture manquée : rien n'est servi, comme avant */ }
+      if (!recreationsEnAttente) {
+        return json({ jobs: [], sync_commands: [], connexion_commands: [],
+          extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
+          message: MESSAGE_MISE_A_JOUR_EXTENSION,
+        });
+      }
+      posteSousMinimum = true;
+      console.log(`[get-pending-jobs] userId=${user.id} : poste sous le seuil (${buildDuPoll || "build absent"}) — ${recreationsEnAttente} recréation(s) à l'étape 'deleted' servie(s) SEULES (annonce déjà retirée), rien d'autre`);
     }
 
     // ══ UN DÉFAUT D'EXTENSION CORRIGÉ : LE JOB REPART QUAND LE POSTE EST À JOUR ══
@@ -1297,6 +1324,12 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+    // (02/10) Poste sous le seuil : seules les recréations à 'deleted' (cf.
+    // l'exception plus haut). Toutes les gardes qui suivent s'y appliquent.
+    if (posteSousMinimum) {
+      out = out.filter((j) => j.action === "republish"
+        && String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "") === "deleted");
+    }
 
     // Les retraits Vinted directs et les retraits/republications Beebs exigent
     // les preuves locales livrées ensemble : vérification juste avant le DELETE
@@ -8016,6 +8049,11 @@ serve(async (req) => {
 
     return json({
       jobs: out,
+      // (02/10) Poste sous le seuil servi de ses seules recréations à 'deleted'.
+      ...(posteSousMinimum ? {
+        extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
+        message: MESSAGE_MISE_A_JOUR_EXTENSION,
+      } : {}),
       annonces_en_attente: annoncesAttente,
       sync_command: syncCommand,
       sync_commands_annonces: syncCommandsAnnonces,
