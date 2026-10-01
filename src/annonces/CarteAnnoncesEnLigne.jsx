@@ -152,6 +152,10 @@ export default function CarteAnnoncesEnLigne({
           ? T.signalTechnique(t.nom)
           : T.signalEchec(t.nom, String((r.runs[t.p]?.erreur) ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || null),
       })),
+    // (01/10) eBay : Chrome sur un autre compte que celui relié — on le dit,
+    // avec le bon compte, sans que personne ait à le lui écrire.
+    ...tuiles.filter((t) => t.e.phase === 'hors_compte')
+      .map((t) => ({ cle: `hors-compte-${t.p}`, texte: T.signalHorsCompteEbay(t.e.horsCompte?.chrome ?? null, t.e.horsCompte?.relie ?? null) })),
     // (27/09) Un relevé incomplet : ce qui a été lu, sur ce qui est annoncé.
     ...tuiles.filter((t) => t.e.phase === 'incomplet' && !murDe.has(t.p))
       .map((t) => ({ cle: `incomplet-${t.p}`, texte: T.signalIncomplet(t.nom, t.e.lus ?? 0, t.e.annonce ?? null) })),

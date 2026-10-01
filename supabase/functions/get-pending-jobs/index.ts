@@ -7820,6 +7820,38 @@ serve(async (req) => {
     // finirait un homonyme. Copie servie avec un titre-étiquette que nul Hub ne
     // porte ; sans numéro lisible, le retrait n'est pas servi. Rien n'est écrit
     // en base. Cf. _shared/retrait-ebay-par-numero.js.
+    // ══ COMPTE eBAY RELIÉ ≠ COMPTE eBAY OUVERT DANS CHROME (2026-10-01) ══════
+    // Une action eBay par l'extension agit sur le compte ouvert dans CHROME.
+    // Pour un compte relié par l'API, si le dernier relevé tranché dit que
+    // Chrome est sur un AUTRE compte, on n'agit pas : le job passe en attente
+    // de la personne, avec le nom du bon compte. Un relevé qui prouve ensuite
+    // le même compte le relance seul (trigger releve_ebay_compte_libere_jobs).
+    // ⛔ Jamais un retrait clos « fait » sur la foi du mauvais compte : il
+    //    n'est simplement pas servi. Best-effort : illisible → comportement
+    //    d'avant (le retrait vise de toute façon le numéro exact).
+    if (out.some((j) => j.platform === "ebay")) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: idEbay } = await admin.rpc("ebay_compte_chrome", { p_user: user.id });
+        const ident = (idEbay ?? {}) as { relie?: string | null; verdict?: string | null; chrome?: string | null };
+        if (ident.relie && ident.verdict === "autre_compte") {
+          const retenus = out.filter((j) => j.platform === "ebay");
+          const message = `Connecte-toi à eBay sur ton ordinateur avec le compte ${ident.relie}.`;
+          for (const j of retenus) {
+            const pf = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+            pf.needs_user_source = "ebay_compte_chrome";
+            pf.ebay_compte_chrome = { relie: ident.relie, chrome: ident.chrome ?? null, le: new Date().toISOString() };
+            await admin.from("cross_post_jobs")
+              .update({ status: "needs_user", error: message, platform_fields: pf })
+              .eq("id", j.id).eq("status", "pending");
+          }
+          out = out.filter((j) => j.platform !== "ebay");
+          console.log(`[get-pending-jobs] userId=${user.id} : Chrome sur le compte eBay « ${ident.chrome ?? "?"} », relié « ${ident.relie} » — ${retenus.length} job(s) eBay retenu(s) en attente de la personne`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] garde compte eBay de Chrome : ${String((e as Error)?.message ?? e)} — comportement d'avant`);
+      }
+    }
     {
       const { servis, retenus } = servirRetraitsEbayParNumero(out);
       if (retenus.length) {

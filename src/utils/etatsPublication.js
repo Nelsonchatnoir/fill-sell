@@ -61,6 +61,9 @@ export function natureAttente(job) {
   if (source === "plateforme_ecartee") return { kind: "attente_plateforme_ecartee" };
   if (job?.platform === "opla" && source === "opla_acces") return { kind: "attente_autorisation", motif: "autoriser_opla" };
   if (source === "ebay_connexion_requise" || source === "ebay_compte_a_finir") return { kind: "attente_connexion", motif: "connexion" };
+  // (01/10) Chrome connecté à un AUTRE compte eBay que celui relié à FillSell :
+  // l'erreur du job nomme le bon compte (« Connecte-toi … avec le compte X »).
+  if (source === "ebay_compte_chrome") return { kind: "attente_connexion", motif: "connexion" };
   if (job?.platform === "ebay" && REAUTH_RE.test(err)) return { kind: "attente_connexion", motif: "reauth_ebay" };
   if (source === "connexion" || CONNEXION_RE.test(err)) return { kind: "attente_connexion", motif: "connexion" };
   // Tous les champs demandés, nommés ensemble (« Hauteur, Largeur, Longueur ») :

@@ -40,6 +40,7 @@ const FR = {
   motEnAttente: 'en attente',
   motEchec: 'échec',
   motIncomplet: 'lues',
+  motAutreCompte: 'autre compte',
   motExpire: 'expiré',
   motJamais: 'jamais',
   tuileAria: (nom, mot) => `${nom} — ${mot}`,
@@ -75,6 +76,11 @@ const FR = {
   // Un arrêt TECHNIQUE (la page n'a pas répondu à temps) : ce n'est ni un
   // échec de la personne ni un verdict sur ses annonces. On dit ce qu'on fait.
   signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer le relevé d'ici.`,
+  // (01/10) Chrome est connecté à un autre compte eBay que celui relié à
+  // FillSell : rien n'est importé de cet autre compte, et on nomme le bon.
+  signalHorsCompteEbay: (chrome, relie) => (chrome
+    ? `eBay : ton ordinateur est connecté au compte « ${chrome} », pas à « ${relie ?? 'ton compte relié'} » relié à FillSell. Rien n'est importé de « ${chrome} ». Connecte-toi à eBay sur ton ordinateur avec le compte ${relie ?? 'relié à FillSell'}.`
+    : `eBay : on n'a pas encore pu vérifier que ton ordinateur est connecté au compte « ${relie ?? 'relié à FillSell'} ». Rien n'est importé en attendant. Si tu utilises un autre compte eBay sur cet ordinateur, connecte-toi avec ${relie ?? 'le compte relié'}.`),
   // (27/09) Un relevé incomplet dit ce qu'il a lu SUR ce qui est annoncé.
   signalIncomplet: (nom, lus, annonce) => (annonce != null
     ? `${nom} : relevé incomplet — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''} sur ${annonce}. On relit tout seuls ; rien n'est conclu sur les autres.`
@@ -166,6 +172,7 @@ const EN = {
   motEnAttente: 'waiting',
   motEchec: 'failed',
   motIncomplet: 'read',
+  motAutreCompte: 'other account',
   motExpire: 'expired',
   motJamais: 'never',
   tuileAria: (nom, mot) => `${nom} — ${mot}`,
@@ -189,6 +196,9 @@ const EN = {
   signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
   signalEchec: (nom, motif) => `The ${nom} scan stopped${motif ? ` — ${motif}` : ''}. The other platforms were scanned.`,
   signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the scan again from here.`,
+  signalHorsCompteEbay: (chrome, relie) => (chrome
+    ? `eBay: your computer is signed in to the account “${chrome}”, not “${relie ?? 'your linked account'}” linked to FillSell. Nothing is imported from “${chrome}”. Sign in to eBay on your computer with the account ${relie ?? 'linked to FillSell'}.`
+    : `eBay: we could not yet check that your computer is signed in to “${relie ?? 'the linked account'}”. Nothing is imported meanwhile. If you use another eBay account on this computer, sign in with ${relie ?? 'the linked account'}.`),
   signalIncomplet: (nom, lus, annonce) => (annonce != null
     ? `${nom}: incomplete scan — ${lus} listing${lus > 1 ? 's' : ''} read out of ${annonce}. We read again on our own; nothing is concluded about the others.`
     : `${nom}: incomplete scan — ${lus} listing${lus > 1 ? 's' : ''} read, the total could not be read. We read again on our own; nothing is concluded about the others.`),

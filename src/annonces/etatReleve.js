@@ -153,6 +153,24 @@ const instant = (...iso) => {
   return null;
 };
 
+// ── LE COMPTE eBAY DE CHROME N'EST PAS CELUI RELIÉ (2026-10-01) ─────────────
+// Lu dans la note que le serveur pose sur le run (releve_ebay_noter_run) :
+//   « [hors-compte-ebay] Chrome est connecté au compte eBay « X », pas au
+//     compte relié « Y » … »            → { chrome: X, relie: Y }
+//   « [hors-compte-ebay] compte eBay de Chrome non prouvé (…) au compte
+//     relié « Y » … »                   → { chrome: null, relie: Y }
+// null si le run ne porte pas cette note.
+export function compteEbayHorsCompte(run) {
+  const e = String(run?.erreur ?? '');
+  const i = e.indexOf('[hors-compte-ebay]');
+  if (run?.platform !== 'ebay' || i < 0) return null;
+  const note = e.slice(i);
+  const autre = note.match(/connecté au compte eBay « ([^»]+) », pas au compte relié « ([^»]+) »/);
+  if (autre) return { chrome: autre[1].trim(), relie: autre[2].trim() };
+  const nonProuve = note.match(/au compte relié « ([^»]+) »/);
+  return { chrome: null, relie: nonProuve ? nonProuve[1].trim() : null };
+}
+
 // ── L'ÉTAT D'UNE TUILE ──────────────────────────────────────────────────────
 // Trois choses, pas une de plus : combien d'annonces, l'état en UN mot, la
 // couleur de la pastille. Le nombre affiché est celui du DERNIER RELEVÉ
@@ -168,6 +186,21 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
   // jocabroc8 : « 30 annonces », pastille verte, alors que le relevé avait lu
   // 30 annonces sur 176. On dit ce qui a été lu SUR ce que la plateforme
   // annonce, en ambre ; le serveur relance la lecture tout seul.
+  // ── eBAY : CHROME SUR UN AUTRE COMPTE QUE CELUI RELIÉ (2026-10-01) ────────
+  // Le serveur n'importe rien d'un autre compte et le note dans le run
+  // (« [hors-compte-ebay] … »). La tuile ne dit donc pas « 36 annonces » :
+  // elle dit l'écart, et la bande plus bas nomme le bon compte.
+  const horsCompte = fini && !vinted ? compteEbayHorsCompte(run) : null;
+  if (horsCompte) {
+    return {
+      n: '—',
+      mot: T.motAutreCompte ?? 'autre compte',
+      depuis: depuisCourt(fini, fr),
+      pip: pip.pipWarn,
+      phase: 'hors_compte',
+      horsCompte,
+    };
+  }
   if (fini && !vinted && String(run.erreur ?? '').startsWith('[incomplet]')) {
     const lus = Number(run.items_vus ?? 0);
     const annonce = totalAnnonceDuRun(run);
