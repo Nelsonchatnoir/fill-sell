@@ -211,7 +211,7 @@ export default function ExtensionPitchScreen({
                 <>
                   {envoi.etat === 'echec' && (
                     <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 14, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
-                      {messageEchecLien(envoi.raison, fr, !!envoi.email)}
+                      {messageEchecLien(envoi.raison, fr, !!envoi.email, envoi.retryDans)}
                     </div>
                   )}
                   {envoi.raison !== 'no_email' && (

@@ -56,7 +56,7 @@ export default function InstallExtensionCta({
         <>
           {envoi.etat === 'echec' && (
             <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px', fontSize: 12, lineHeight: 1.5, color: '#92400E' }}>
-              {messageEchecLien(envoi.raison, fr, !!envoi.email)}
+              {messageEchecLien(envoi.raison, fr, !!envoi.email, envoi.retryDans)}
             </div>
           )}
           {envoi.etat === 'envoye' ? (

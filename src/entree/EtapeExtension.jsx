@@ -94,7 +94,7 @@ export default function EtapeExtension({ c, T, onSuivant }) {
 
       {envoi.etat === 'echec' && (
         <div style={{ marginBottom: 10 }}>
-          <Bande ton="alerte">{messageEchecLien(envoi.raison, c.fr, !!envoi.email)}</Bande>
+          <Bande ton="alerte">{messageEchecLien(envoi.raison, c.fr, !!envoi.email, envoi.retryDans)}</Bande>
           <LienDiscret onClick={() => setPitch(true)} style={{ marginTop: 6, fontSize: 12.5, textDecoration: 'underline' }}>
             {T.extAutrement}
           </LienDiscret>

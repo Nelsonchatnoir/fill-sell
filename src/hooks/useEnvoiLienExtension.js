@@ -24,7 +24,7 @@ export const RENVOI_LOCK_MS = 60_000;
 // semaines plus tard lit « Lien envoyé à … » comme si ça venait de se produire.
 const FENETRE_AFFICHAGE_MS = 24 * 60 * 60 * 1000;
 
-const VIDE = { etat: 'idle', email: null, envoyeA: 0, raison: null };
+const VIDE = { etat: 'idle', email: null, envoyeA: 0, raison: null, retryDans: null };
 
 const lireInitial = () => {
   try {
@@ -56,24 +56,22 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
     return () => clearInterval(id);
   }, [debloqueA]);
 
-  // UN TAP = l'e-mail part à l'adresse du compte. 'throttle' n'est PAS un
-  // échec : le mail précédent est en route vers la même adresse — on affiche la
-  // confirmation et le décompte restant, jamais une erreur.
+  // UN TAP = l'e-mail part à l'adresse du compte. (01/10) « Lien envoyé » ne
+  // s'affiche QUE si le serveur dit qu'il est parti : du 25/09 au 01/10, un
+  // « throttle » (rien d'envoyé) s'affichait comme une confirmation. Une
+  // « rafale » (un lien parti il y a moins d'une minute) se dit telle quelle.
   // Rend le résultat serveur ({ ok, reason, email… }) pour que l'appelant
   // puisse JOURNALISER un envoi réellement parti (usage_logs install_extension
   // · mail_envoye, 05/09) — l'état React n'est pas relisible dans le même tour.
-  // `r.ok` seul vaut « parti » : un throttle est un envoi précédent, pas un
-  // nouveau.
+  // `r.ok` seul vaut « parti ».
   const envoyer = async () => {
     if (envoi.etat === 'en_cours') return { ok: false, reason: 'en_cours' };
     setEnvoi((v) => ({ ...v, etat: 'en_cours', raison: null }));
     const r = await envoyerLienExtension(lang === 'en' ? 'en' : 'fr');
-    if (r.ok || r.reason === 'throttle') {
+    if (r.ok) {
       const email = r.email || emailDeSecours || null;
-      const envoyeA = r.ok
-        ? Date.now()
-        : Date.now() - Math.max(0, RENVOI_LOCK_MS - Math.max(1, r.retryDans || 1) * 1000);
-      setEnvoi({ etat: 'envoye', email, envoyeA, raison: null });
+      const envoyeA = Date.now();
+      setEnvoi({ etat: 'envoye', email, envoyeA, raison: null, retryDans: null });
       setMaintenant(Date.now());   // recale l'horloge du décompte
       try { localStorage.setItem(LIEN_ENVOYE_KEY, JSON.stringify({ email, envoyeA })); }
       catch { /* cache d'affichage seul */ }
@@ -82,7 +80,7 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
     // Rien n'est parti : on le dit, et le bouton reste actif. L'adresse d'un
     // envoi précédent réussi est conservée pour distinguer « le renvoi a
     // échoué » d'un premier envoi raté.
-    setEnvoi((v) => ({ etat: 'echec', email: v.email, envoyeA: 0, raison: r.reason }));
+    setEnvoi((v) => ({ etat: 'echec', email: r.email || v.email, envoyeA: 0, raison: r.reason, retryDans: r.retryDans ?? null }));
     return r;
   };
 
@@ -91,7 +89,14 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
 
 // Le texte de l'échec vit ici aussi : deux écrans qui disent la même panne avec
 // deux formulations différentes, c'est déjà deux comportements.
-export function messageEchecLien(raison, fr, dejaEnvoye = false) {
+export function messageEchecLien(raison, fr, dejaEnvoye = false, retryDans = null) {
+  // (01/10) Un lien est parti il y a moins d'une minute : rien n'est reparti.
+  if (raison === 'rafale') {
+    const n = Number(retryDans) > 0 ? Math.ceil(Number(retryDans)) : 60;
+    return fr
+      ? `Un lien t'a été envoyé il y a moins d'une minute : regarde ta boîte mail (et les indésirables). Tu pourras en redemander un dans ${n} s.`
+      : `A link was sent to you less than a minute ago: check your inbox (and spam). You can ask for another one in ${n}s.`;
+  }
   if (raison === 'no_email') {
     return fr
       ? "Aucune adresse e-mail n'est rattachée à ton compte : on ne peut pas t'envoyer le lien. Ouvre fillsell.app/extension depuis ton ordinateur."
