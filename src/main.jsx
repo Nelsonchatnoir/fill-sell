@@ -30,6 +30,14 @@ CapacitorUpdater.notifyAppReady().catch((e) => {
   console.error('[capgo] notifyAppReady a échoué :', e?.message ?? e)
 })
 
+// L'entrée s'est lancée. Repère pour le diagnostic d'écran blanc : si
+// `window.__fillsellEntree` est absent dans la console, le script d'entrée n'a
+// jamais tourné — c'est le CDN, pas le code. Le 01/10 à 22:22, un 404 sur
+// l'entrée (demandée une seconde avant d'être servie, au déploiement) a été
+// gardé une heure par Cloudflare : page blanche pour tout le monde, aucune
+// erreur de code. Ajouter ce repère a aussi renommé l'entrée.
+window.__fillsellEntree = true
+
 // ═══════════════════════════════════════════════════════════════════════════
 // UN DÉPLOIEMENT PENDANT QU'UN ONGLET EST OUVERT = ÉCRAN BLANC. PLUS MAINTENANT.
 // ═══════════════════════════════════════════════════════════════════════════
