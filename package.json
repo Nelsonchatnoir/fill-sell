@@ -107,7 +107,8 @@
     "selftest:lbc-saisie-longue": "node scripts/lbc-saisie-longue-selftest.mjs",
     "selftest:lbc-poids-tranche": "node scripts/lbc-poids-tranche-selftest.mjs",
     "selftest:releve-ebay-compte-api": "node scripts/releve-ebay-compte-api-selftest.mjs",
-    "selftest:retrait-ebay-par-numero": "node scripts/retrait-ebay-par-numero-selftest.mjs"
+    "selftest:retrait-ebay-par-numero": "node scripts/retrait-ebay-par-numero-selftest.mjs",
+    "selftest:lbc-voie-des-reglages": "node scripts/lbc-voie-des-reglages-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

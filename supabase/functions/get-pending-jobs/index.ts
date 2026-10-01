@@ -20,6 +20,7 @@ import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_T
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
+import { decisionAdresseRepublicationLbc, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -5419,6 +5420,54 @@ serve(async (req) => {
           }
           if (rafraichies) {
             console.log(`[get-pending-jobs] userId=${user.id} → adresse de remise rafraîchie depuis les Réglages sur ${rafraichies} job(s)`);
+          }
+        }
+        // ── UNE COMMUNE DÉJÀ REFUSÉE SE RETAPE AVEC LA RUE DES RÉGLAGES (01/10) ──
+        // josephinecerni (Chantemerle-lès-Grignan) et nicolas.menar
+        // (Roost-Warendin) : la commune seule refusée par le dépôt APRÈS le
+        // retrait, annonces restées hors ligne. Seulement quand ce refus est
+        // déjà connu pour ce compte : rue des Réglages si elle est dans la même
+        // commune, sinon une republication pas encore commencée n'est pas
+        // servie. Cf. _shared/lbc-voie-des-reglages.js.
+        const reglagesLbc = ((prof?.platform_settings as Record<string, Record<string, unknown>> | null)?.leboncoin ?? null);
+        const candidats = besoinAdresse.filter((j) => {
+          if (j.platform !== "leboncoin" || String(j.action ?? "") !== "republish") return false;
+          const lo = ((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"] as Record<string, unknown> | undefined;
+          return Boolean(lo && typeof lo === "object" && !String(lo["voie"] ?? "").trim() && String(lo["ville"] ?? "").trim());
+        });
+        if (candidats.length) {
+          const villeDe = (j: Record<string, unknown>) =>
+            String((((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"] as Record<string, unknown>)["ville"] ?? "");
+          let refusCompte: string[] = [];
+          const sansRefusPropre = candidats.filter((j) =>
+            !textesErreurJob(j).some((t) => texteRefuseCommune(t, villeDe(j))));
+          if (sansRefusPropre.length) {
+            const [a, b] = await Promise.all([
+              userClient.from("cross_post_jobs").select("error").eq("platform", "leboncoin")
+                .ilike("error", "%aucune suggestion Leboncoin ne la couvre%").limit(20),
+              userClient.from("cross_post_jobs").select("error").eq("platform", "leboncoin")
+                .ilike("error", "%sans suggestion dans l'autocomplete Leboncoin%").limit(20),
+            ]);
+            refusCompte = [...(a.data ?? []), ...(b.data ?? [])].map((r) => String((r as { error?: string }).error ?? ""));
+          }
+          const retenusAdresse = new Set<string>();
+          let rues = 0;
+          for (const j of candidats) {
+            const ville = villeDe(j);
+            const refusConnu = textesErreurJob(j).some((t) => texteRefuseCommune(t, ville))
+              || refusCompte.some((t) => texteRefuseCommune(t, ville));
+            const d = decisionAdresseRepublicationLbc(j, reglagesLbc, refusConnu);
+            if (d.action === "rue") {
+              j.platform_fields = (d.job as Record<string, unknown>)["platform_fields"] as typeof j.platform_fields;
+              rues++;
+            } else if (d.action === "retenir") {
+              retenusAdresse.add(String(j.id));
+            }
+          }
+          if (rues) console.log(`[get-pending-jobs] userId=${user.id} : ${rues} republication(s) Leboncoin servie(s) avec la rue des Réglages (commune seule déjà refusée, même commune)`);
+          if (retenusAdresse.size) {
+            out = out.filter((j) => !retenusAdresse.has(String(j.id)));
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenusAdresse.size} republication(s) Leboncoin NON servie(s) avant retrait — commune déjà refusée, aucune rue des Réglages dans cette commune`);
           }
         }
       }
