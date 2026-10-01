@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { verifierBoutiqueOperation as verifier, exigePreuveBoutiqueVinted, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact } from '../supabase/functions/_shared/identite-boutique.js';
+import { verifierBoutiqueOperation as verifier, exigePreuveBoutiqueVinted, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExact, depotVintedExactParAnnonce, idAnnonceVintedExact, importVintedExactParAnnonce } from '../supabase/functions/_shared/identite-boutique.js';
 const base={action:'delete',platform:'vinted',boutiqueArticle:'nadege',boutiqueSession:'albert',boutiques:[{user_id:'albert'}],lectureFiable:true};
 assert.equal(verifier(base),'boutique_non_confirmee');
 assert.equal(verifier({...base,boutiqueSession:'nadege'}),'boutique_non_confirmee');
@@ -37,4 +37,20 @@ assert.equal(depotVintedExactParAnnonce({...job,inventaire_id:null},[{...depot,h
 assert.equal(idAnnonceVintedExact({listing_url:'https://www.vinted.fr/items/9991856071',platform_listing_id:'9991856072'}),'');
 assert.equal(verifier({...base,boutiqueArticle:null,sessionRequise:false,historiqueListingProuve:true}),null);
 assert.equal(verifier({...base,boutiqueArticle:null,historiqueListingProuve:true}),'origine_inconnue');
-console.log('33 contrôles de cloisonnement des boutiques et de compatibilité réussis.');
+// (02/10) jocabroc8 : retraits demandés par la personne, annonces IMPORTÉES par
+// le relevé (sync-dressing), fiche supprimée — formes réelles des jobs.
+const pin=[{ajoute_le:'2026-09-20T12:49:11.380Z',login:'lookyvintage',source:'premiere_sync',user_id:'137708392'}];
+const retraitSauciere={id:'8fc4b131',inventaire_id:null,platform:'vinted',action:'delete',listing_url:'https://www.vinted.fr/items/9655441807-sauciere-ancienne-inspiration-luneville-avec-son-dormant-bleu-decor-romantique'};
+const importSauciere={id:'700cf4a3',inventaire_id:null,platform:'vinted',action:'publish',status:'published',created_at:'2026-09-20 12:49:18.93044+00',handler_build:'2026-09-19T18:50:24Z+a3d49f9 · sync-dressing',platform_listing_id:'9655441807',listing_url:retraitSauciere.listing_url,platform_fields:{check_unknown_count:1}};
+assert.equal(depotVintedExactParAnnonce(retraitSauciere,[importSauciere]),null);
+assert.deepEqual(importVintedExactParAnnonce(retraitSauciere,[importSauciere],pin)?.boutique,'137708392');
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[{...importSauciere,platform_listing_id:'9655441808',listing_url:null}],pin),null);
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[{...importSauciere,handler_build:'2026-09-19T18:50:24Z+a3d49f9 · v0.6.47'}],pin),null);
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[importSauciere],[...pin,{user_id:'999',ajoute_le:'2026-09-21T00:00:00Z'}]),null);
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[importSauciere],[]),null);
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[{...importSauciere,created_at:'2026-09-19T10:00:00Z'}],pin),null);
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[{...importSauciere,platform_fields:{vinted_account_id:'137708392'}}],[...pin,{user_id:'999'}])?.boutique,'137708392');
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[{...importSauciere,platform_fields:{vinted_account_id:'16040413'}}],pin),null);
+assert.equal(importVintedExactParAnnonce({...retraitSauciere,listing_url:'https://www.vinted.fr/items/9655441807',platform_listing_id:'1'},[importSauciere],pin),null);
+assert.equal(importVintedExactParAnnonce(retraitSauciere,[{...importSauciere,id:'8fc4b131'}],pin),null);
+console.log('44 contrôles de cloisonnement des boutiques et de compatibilité réussis.');

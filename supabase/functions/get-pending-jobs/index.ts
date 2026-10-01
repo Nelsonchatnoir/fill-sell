@@ -4,7 +4,7 @@ import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/versio
 // attend, rien n'est perdu, elle repart seule après la mise à jour.
 const MESSAGE_MISE_A_JOUR_EXTENSION =
   "Mets l’extension FillSell à jour dans Chrome : ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
-import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
+import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, importVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
@@ -1168,9 +1168,13 @@ serve(async (req) => {
       source_job_id?: string;
       listing_id?: string;
       vinted_account_id?: string;
+      par_import?: boolean;
     };
     const historiquesBoutique = new Map<string, PreuveHistoriqueVinted>();
-    const historiqueListingProuve = async (job: Record<string, unknown>) => {
+    // (02/10) `boutiques` = profiles.vinted_sync_pin.boutiques : sans dépôt
+    // FillSell, l'IMPORT exact de l'annonce par le relevé de ce compte prouve,
+    // avec sa boutique (_shared/identite-boutique.js, importVintedExactParAnnonce).
+    const historiqueListingProuve = async (job: Record<string, unknown>, boutiques?: unknown) => {
       const aucune: PreuveHistoriqueVinted = { prouve: false };
       if (job.platform !== "vinted") return aucune;
       const cle = String(job.id);
@@ -1190,19 +1194,24 @@ serve(async (req) => {
       let error: { message?: string } | null = null;
       if (sourceEmbarquee) {
         const r = await userClient.from("cross_post_jobs")
-          .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields")
+          .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields,created_at")
           .eq("user_id", user.id).eq("id", sourceEmbarquee).eq("platform", "vinted").limit(1);
         data = (r.data ?? []) as Array<Record<string, unknown>>; error = r.error;
       } else {
         const r = await userClient.from("cross_post_jobs")
-          .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields")
+          .select("id,inventaire_id,platform,action,status,handler_build,listing_url,platform_listing_id,platform_fields,created_at")
           .eq("user_id", user.id).eq("platform", "vinted")
           .or(`platform_listing_id.eq.${listingId},listing_url.like.%/items/${listingId}%`)
           .in("action", ["publish", "republish"])
           .order("created_at", { ascending: false }).limit(10);
         data = (r.data ?? []) as Array<Record<string, unknown>>; error = r.error;
       }
-      const depot = !error ? depotVintedExactParAnnonce(job, data ?? []) as Record<string, unknown> | null : null;
+      const depotFillSell = !error ? depotVintedExactParAnnonce(job, data ?? []) as Record<string, unknown> | null : null;
+      // Sans dépôt FillSell : l'import exact par le relevé de ce compte, avec
+      // une boutique nommée (cas jocabroc8, 02/10).
+      const parImport = !error && !depotFillSell
+        ? importVintedExactParAnnonce(job, data ?? [], boutiques) as { import: Record<string, unknown>; boutique: string } | null : null;
+      const depot = depotFillSell ?? parImport?.import ?? null;
       let preuve = false;
       if (depot) {
         // Un job déplacé par une ancienne fusion automatique ne constitue pas
@@ -1217,7 +1226,8 @@ serve(async (req) => {
         prouve: true,
         source_job_id: String(depot!.id),
         listing_id: listingId,
-        ...(String(pfDepot.vinted_account_id ?? "").trim()
+        ...(parImport ? { vinted_account_id: parImport.boutique, par_import: true }
+          : String(pfDepot.vinted_account_id ?? "").trim()
           ? { vinted_account_id: String(pfDepot.vinted_account_id).trim() } : {}),
       } : aucune;
       historiquesBoutique.set(cle, detail);
@@ -1242,7 +1252,7 @@ serve(async (req) => {
         if (!erreurProfil && profil) await Promise.all(attentes.map(async (attente) => {
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
           const origine = origineBoutiqueProuvee(article?.vinted_account_id, attente.platform_fields?.vinted_account_id).origine;
-          if (!origine) historiquesAttentes.set(String(attente.id), await historiqueListingProuve(attente));
+          if (!origine) historiquesAttentes.set(String(attente.id), await historiqueListingProuve(attente, profil?.vinted_sync_pin?.boutiques));
         }));
         if (!erreurProfil && profil) for (const attente of attentes) {
           const pf = attente.platform_fields ?? {};
@@ -1263,7 +1273,9 @@ serve(async (req) => {
               listing_id: historique.listing_id,
               retrait_job_prouve: true,
               le: new Date().toISOString(),
-              pose_par: "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
+              pose_par: historique.par_import
+                ? "get-pending-jobs (import exact de l'annonce par le relevé de ce compte, boutique confirmée)"
+                : "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
             };
             if (!suite.vinted_account_id && historique.vinted_account_id) suite.vinted_account_id = historique.vinted_account_id;
           }
@@ -4175,7 +4187,7 @@ serve(async (req) => {
         if (fiable) await Promise.all(operations.map(async (j) => {
           const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
           const origine = origineBoutiqueProuvee(origines.get(String(j.inventaire_id)), pf.vinted_account_id).origine;
-          if (!origine) historiquesOperations.set(String(j.id), await historiqueListingProuve(j));
+          if (!origine) historiquesOperations.set(String(j.id), await historiqueListingProuve(j, profil?.vinted_sync_pin?.boutiques));
         }));
         for (const j of operations) {
           const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
@@ -4197,7 +4209,9 @@ serve(async (req) => {
                 listing_id: historique.listing_id,
                 retrait_job_prouve: true,
                 le: new Date().toISOString(),
-                pose_par: "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
+                pose_par: historique.par_import
+                ? "get-pending-jobs (import exact de l'annonce par le relevé de ce compte, boutique confirmée)"
+                : "get-pending-jobs (dépôt FillSell exact, indépendant de la fiche)",
               };
               if (!pfProuve.vinted_account_id && historique.vinted_account_id) pfProuve.vinted_account_id = historique.vinted_account_id;
               aEcrire = true;
@@ -4944,6 +4958,8 @@ serve(async (req) => {
       (heldSync ? `, ${heldSync} retenu(s) (la sync passe devant)` : "") +
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
       (heldBoutique ? `, ${heldBoutique} job(s) retenu(s) (boutique Vinted non connectée)` : "") +
+      // (02/10) Elle retenait en silence (jocabroc8, 2 retraits du 29/09 au 01/10).
+      (heldBoutiqueEtrangere ? `, ${heldBoutiqueEtrangere} retrait(s)/republication(s) Vinted retenu(s) (boutique d'origine non prouvée)` : "") +
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : "") +
       (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : "") +
       (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
