@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
-import { Check, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
+import { Check, ChevronRight, Hand, AlertTriangle, Pause } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -36,7 +36,13 @@ import { deduireOptionDuTexte, listeCandidatsDabord, textesDeLAnnonce } from '..
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
-import { FeuilleFile, FeuilleAttente } from '../components/FeuilleActivite';
+import { FeuilleAttente } from '../components/FeuilleActivite';
+// Chantier clarté (01/10) : UNE barre de progression pour toute l'app, et la
+// file complète des jobs au tap sur n'importe quelle barre de job.
+import FileDesJobs from '../components/FileDesJobs';
+import BarreJobCarte from '../components/BarreJobCarte';
+import BarreProgression from '../components/BarreProgression';
+import { articleDeJob, pisteJob, etapesJob } from '../utils/barresJobs';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
@@ -621,15 +627,12 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .repub-track.sur-teinte{background:rgba(13,148,136,0.14);}
 .stock-v2 .repub-fill{height:100%;border-radius:999px;background:#1B6E62;transition:width 0.6s ease;min-width:0;}
 /* ── Barre de progression PAR CARTE (Lot B, 03/09 soir) ─────────────────────
-   Indéterminée par construction : la progression réelle d'un job n'est pas
-   connue au grain de la carte, on ne fabrique pas de pourcentage. Animation
-   CSS pure — AUCUN tick React, la liste ne se re-rend jamais pour elle. */
-.stock-v2 .gjobbar{padding:0 10px 8px;display:flex;flex-direction:column;gap:4px;}
-.stock-v2 .gjobbar-txt{font-size:10.5px;font-weight:700;color:#1B6E62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.stock-v2 .gjobbar-track{height:4px;border-radius:999px;background:rgba(13,148,136,0.14);overflow:hidden;position:relative;}
-.stock-v2 .gjobbar-fill{position:absolute;top:0;bottom:0;left:0;width:40%;border-radius:999px;background:#1B6E62;animation:gjobslide 1.6s ease-in-out infinite;}
-@keyframes gjobslide{0%{left:-40%;}100%{left:100%;}}
-@media (prefers-reduced-motion: reduce){.stock-v2 .gjobbar-fill{animation:none;left:0;width:100%;opacity:0.35;}}
+   Depuis le 01/10 : LA barre compacte (components/BarreJobCarte), étapes
+   réelles et pourcentage, une seule boucle d'animation pour tout l'écran —
+   la liste ne se re-rend jamais pour elle. Ici, seulement sa place sur la
+   carte ; ses couleurs vivent dans BarreProgression.css. */
+.stock-v2 .gjobbar{padding:0 10px 8px;}
+.stock-v2 .gjobbar .fsb-compact{--fsb-piste:rgba(13,148,136,0.14);}
 `;
 
 // (GalleryPhoto / premierePhoto vivent dans components/GalleryPhoto.jsx depuis
@@ -2031,7 +2034,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
 // Bénéfice décisif : elle liste les QUATRE plateformes même quand l'annonce n'y
 // est pas publiée. Un blocage Beebs y apparaît donc toujours — là où le logo
 // sur la photo, lui, n'existe que pour les plateformes en ligne.
-function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, onOublier, onRepublier, plateformes = [] }) {
+export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, onOublier, onRepublier, plateformes = [], ctxBarres = null, onOuvrirFile = null }) {
   useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
@@ -2098,7 +2101,21 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                       ? (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#E8B54D", flex:"0 0 auto" }}/><span style={{ color:"#8A6100", fontWeight:600 }}>{item.vinted_status === "draft" ? (fr ? "Brouillon sur Vinted" : "Draft on Vinted") : (fr ? "Masquée sur Vinted" : "Hidden on Vinted")}</span></>)
                       : (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#2F9E90", flex:"0 0 auto" }}/><span style={{ color:"#1B6E62", fontWeight:600 }}>{fr ? "En ligne" : "Live"}</span></>))}
                     {online && armed && <span style={{ color:"#8C2F28", fontWeight:600 }}>{fr ? `Retirer de ${label} ?` : `Remove from ${label}?`}</span>}
-                    {state === "removing" && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Retrait en cours…" : "Removing…"}</span>}
+                    {/* (01/10) Le retrait en cours a SA barre (compacte : la
+                        ligne porte déjà la plateforme) — file d'attente puis
+                        retrait, un tap ouvre la file complète. */}
+                    {state === "removing" && (() => {
+                      const jobRetrait = (jobsAll ?? [])
+                        .filter((j) => j.action === "delete" && j.platform === p && (j.status === "pending" || j.status === "processing"))
+                        .sort((a, b) => Date.parse(b.created_at ?? 0) - Date.parse(a.created_at ?? 0))[0];
+                      if (!jobRetrait) return <span style={{ color:"#8A6100", fontWeight:600 }}>{fr ? "Retrait en cours…" : "Removing…"}</span>;
+                      return (
+                        <span style={{ flex:1, minWidth:0, display:"block" }}>
+                          <BarreProgression compact lang={lang} {...pisteJob(jobRetrait, { ...(ctxBarres ?? {}), lang })}
+                            onOuvrir={onOuvrirFile ?? undefined} />
+                        </span>
+                      );
+                    })()}
                     {state === "removed" && <span>{fr ? "Retirée" : "Removed"}</span>}
                     {/* Beebs (2026-08-13) : sans lien, l'annonce n'est PAS en
                         ligne — elle est en vérification côté Beebs. Il n'y a
@@ -4394,16 +4411,19 @@ const estimationRepub = (n) => n * 5 >= 60 ? `~${Math.ceil(n * 5 / 60)} h` : `~$
 // l'annonce. Désormais : si l'article est passé (`item`), on lit disparu_le /
 // statut vendu / vinted_status sold ; sans article, on ne parle que du job.
 const ANNONCE_DISPARUE = (item) => Boolean(item && (item.disparu_le || item.statut === 'vendu' || item.vinted_status === 'sold'));
-const phraseRienRetire = (item, fr) => {
-  if (ANNONCE_DISPARUE(item)) {
+// (01/10) La plateforme du job, plus « Vinted » en dur : une republication
+// Leboncoin arrêtée disait « n'a rien retiré sur Vinted ». La disparition
+// (ANNONCE_DISPARUE) reste une lecture Vinted : elle ne se dit que pour Vinted.
+const phraseRienRetire = (item, fr, nom = 'Vinted') => {
+  if (nom === 'Vinted' && ANNONCE_DISPARUE(item)) {
     return fr ? "L'annonce n'est plus en ligne sur Vinted (retirée ou vendue) : cette republication n'a plus d'objet."
               : 'The listing is no longer on Vinted (removed or sold): this repost no longer applies.';
   }
   if (item) {
-    return fr ? "Cette republication n'a rien retiré : ton annonce est toujours en ligne sur Vinted."
-              : 'This repost removed nothing: your listing is still live on Vinted.';
+    return fr ? `Cette republication n'a rien retiré : ton annonce est toujours en ligne sur ${nom}.`
+              : `This repost removed nothing: your listing is still live on ${nom}.`;
   }
-  return fr ? "Cette republication n'a rien retiré sur Vinted." : 'This repost removed nothing on Vinted.';
+  return fr ? `Cette republication n'a rien retiré sur ${nom}.` : `This repost removed nothing on ${nom}.`;
 };
 
 function etapeRepublication(job, fr, reprise = null, attente = null, item = null) {
@@ -4537,7 +4557,7 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
       detail: apres
         ? (fr ? "Rien n'est perdu : ton annonce a été lue et sauvegardée avant d'être retirée. La reprise repart directement à la recréation."
               : 'Nothing is lost: your listing was read and saved before removal. Retrying resumes straight at recreation.')
-        : phraseRienRetire(item, fr),
+        : phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted'),
     };
   }
   if (st === 'needs_user') {
@@ -4576,7 +4596,7 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
       detail: apres
         ? (fr ? "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement. Rien n'est perdu : toutes ses données (photos comprises) sont sauvegardées. Clique « Republier maintenant » — si un champ manque, il te sera demandé."
               : 'Your listing was removed from Vinted and could not be recreated automatically. Nothing is lost: all its data (photos included) is saved. Tap "Republish now" — if a field is missing, you will be asked for it.')
-        : `${phraseRienRetire(item, fr)} ${fr ? 'Tu peux relancer.' : 'You can relaunch.'}`,
+        : `${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')} ${fr ? 'Tu peux relancer.' : 'You can relaunch.'}`,
     };
   }
   if (!encours) return null;
@@ -4616,11 +4636,11 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
       : (fr ? `Republication étalée — reprend ${reprise.quand}` : `Repost paced — resumes ${reprise.quand}`),
     detail: reprise.motif === 'pause'
       ? (fr
-        ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr)}`
-        : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr)}`)
+        ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`
+        : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`)
       : (fr
-        ? `FillSell étale tes republications sur plusieurs jours pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr)}`
-        : `FillSell spreads your reposts over several days to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr)}`),
+        ? `FillSell étale tes republications sur plusieurs jours pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`
+        : `FillSell spreads your reposts over several days to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted')}`),
   };
 
   if (step === 'deleted') return {
@@ -4755,7 +4775,7 @@ const repubCleSaisie = (c) => String(c ?? '').toLowerCase().normalize('NFD').rep
 
 // Feuille « où ça en est » — même patron que RepublishSheet (portail, feuille
 // basse, canvas). Ouverte au tap sur la pastille de la carte.
-function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise = null }) {
+export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise = null, item = null, ctxBarres = null, formaterPrix = null, onOuvrirFile = null }) {
   const fr = lang !== 'en';
   // ⚠️ Hooks AVANT le retour anticipé (règle des hooks) : la feuille peut
   // rendre null quand l'étape est illisible, la saisie n'existe alors pas.
@@ -4796,10 +4816,22 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise =
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(16,32,27,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#EDEAE0', borderRadius: '26px 26px 0 0', maxHeight: '92vh', overflowY: 'auto', padding: '18px 18px calc(env(safe-area-inset-bottom,0px) + 24px)', fontFamily: "'Space Grotesk', sans-serif" }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 }}>
-          {!et.fini && <Loader size={16} thickness={2} />}
-          <div style={{ fontSize: 17, fontWeight: 700, color: '#10201B' }}>{et.titre}</div>
-        </div>
+        {/* (01/10) LA barre de la republication : l'article (photo, titre,
+            prix), les étapes RÉELLES (republish_step), le pourcentage ; un
+            tap ouvre la file complète. Elle remplace le sablier et le titre
+            d'étape — l'explication (et.detail) et la frise restent dessous.
+            Arrêtée : la barre dit l'état court, le motif détaillé est dans
+            l'encart d'erreur plus bas (jamais deux fois le même texte). */}
+        {(() => {
+          const piste = pisteJob(job, { ...(ctxBarres ?? {}), lang });
+          return (
+            <div style={{ background: '#fff', border: '1px solid #E7E3D8', borderRadius: 16, padding: '14px 14px 12px', marginBottom: 12 }}>
+              <BarreProgression lang={lang} article={articleDeJob(job, item, { lang, formaterPrix })}
+                {...piste} {...(piste.etat === 'echec' ? { phraseEchec: et.titre } : {})}
+                onOuvrir={onOuvrirFile ?? undefined} />
+            </div>
+          );
+        })()}
         <div style={{ fontSize: 12.5, color: '#5C6560', lineHeight: 1.5, marginBottom: 14 }}>{et.detail}</div>
 
         <div style={{ background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
@@ -6449,6 +6481,11 @@ const StockTab = memo(function StockTab({
   // lisent ICI, sur les photos DÉJÀ en base (aucun téléversement, aucune
   // recompression, aucun nouveau format d'image).
   const fichesParId = useMemo(() => new Map((stock ?? []).map((i) => [String(i.id), i])), [stock]);
+  // La file complète des jobs (01/10) : TOUS les articles — un retrait vise
+  // le plus souvent un article VENDU, absent du stock — et tous les jobs
+  // déjà lus par le poll (aucune requête de plus).
+  const fichesToutes = useMemo(() => new Map((items ?? []).map((i) => [String(i.id), i])), [items]);
+  const tousLesJobs = useMemo(() => Object.values(jobsByInventaire).flat(), [jobsByInventaire]);
   // ── LA FOURNÉE, FIGÉE (2026-09-19) ────────────────────────────────────────
   // POURQUOI un état et pas un simple calcul : le périmètre du lot de
   // republications était RE-DÉDUIT à chaque poll (le bulk_batch_id du vivant le
@@ -6556,36 +6593,6 @@ const StockTab = memo(function StockTab({
       actif, annulables, encoreEnVol, hbMuet,
     };
   }, [fourneeCles, activiteParCle, extensionStatus?.lastSeenAt, repubPlafondReprise, lang]);
-  // L'état d'une ligne, pour la pastille de la feuille. Une republication a
-  // déjà son vocabulaire et ses couleurs (etapeRepublication, partagés avec la
-  // pastille de carte) — on ne les redéfinit pas ici. Un dépôt n'en avait
-  // aucun : il en reçoit un, dans la même grammaire.
-  const etatLigneActivite = useCallback((j) => {
-    if (!j) return null;
-    const fr = lang !== 'en';
-    if (j.action === 'republish') {
-      const e = etapeRepublication(j, fr, repubPlafondReprise, null, fichesParId.get(String(j.inventaire_id)));
-      if (e) return e;
-    }
-    const bleu = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
-    const vert = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
-    const ambre = { fond: '#FFF6E3', bord: '#EED9A6', encre: '#8A6100' };
-    const gris = { fond: '#F7F5EF', bord: '#E7E3D8', encre: '#5C6560' };
-    if (j.status === 'published' || j.status === 'sold') return { ...vert, court: fr ? 'En ligne' : 'Live' };
-    // ⛔ PLUS AUCUNE LIGNE ROUGE (2026-09-22, demande de Nico). Un `failed`
-    //    s'affichait en rouge — la couleur de la panne — alors que dans les 20
-    //    lignes relevées ce matin l'annonce était intacte et le job relançable
-    //    d'un clic. Le rouge disait « c'est cassé » là où il fallait lire « il
-    //    te reste un geste ». Depuis ce jour le serveur ne produit plus de
-    //    `failed` nommé (_shared/pas-de-rouge.js) ; ce qui passe encore ici
-    //    vient du parc ancien et mérite le même traitement.
-    if (j.status === 'failed') return { ...ambre, court: fr ? 'À relancer' : 'To relaunch' };
-    if (j.status === 'needs_user') return { ...ambre, court: fr ? 'À compléter' : 'To complete' };
-    if (j.status === 'cancelled') return { ...gris, court: fr ? 'Arrêtée' : 'Stopped' };
-    if (j.status === 'dry_run_completed') return { ...gris, court: fr ? 'Test à blanc' : 'Dry run' };
-    if (j.status === 'processing') return { ...bleu, court: fr ? 'Dépôt…' : 'Posting…' };
-    return { ...gris, court: fr ? 'En file' : 'Queued' };
-  }, [lang, repubPlafondReprise, fichesParId]);
   // ── CE QUI ATTEND UNE ACTION DE TA PART (2026-09-19) ──────────────────────
   // UN seul endroit pour les DEUX causes qui demandent un geste : l'annonce à
   // COMPLÉTER (il manque une information) et celle qui N'EST PAS PARTIE. Le
@@ -7469,6 +7476,11 @@ const StockTab = memo(function StockTab({
     return () => { alive = false; clearInterval(timer); };
   }, [user?.id, lang]);
   const pausedSet = new Set(pausedPlatforms);
+  // ── Ce que les barres de job SAVENT du poste et du serveur (01/10) ──────
+  // Les MÊMES lectures que les pastilles des cartes : fraîcheur de
+  // l'extension, plateformes en pause de notre côté, retenue serveur des
+  // republications. Rien de nouveau n'est lu pour les barres.
+  const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, texteErreur: (j) => humanizeJobError(j, lang) };
   // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
   // republication — même gating que l'interrupteur coin_config
   // .republish_maintenance : le trigger republish_maintenance_guard refuse
@@ -8146,7 +8158,11 @@ const StockTab = memo(function StockTab({
               // plus visible de l'écran.
               const estimation=!repubPlafondEtat?.retenue&&!activite.hbMuet
                 ?estimationRepub(activite.restantes):null;
-              const pct=Math.round(100*activite.faites/activite.total);
+              // (01/10) La barre du lot : « N sur M » réel, puis un glissement
+              // doux vers le suivant pendant que l'actif travaille — jamais au
+              // delà. Ordinateur muet : elle s'immobilise (le compteur dit le
+              // reste). Le pas attendu est la durée réelle d'un job de ce type.
+              const dureeUnJob=etapesJob(activite.actif,lang).reduce((s,e)=>s+(e.duree||0),0)||120;
               const typeMot=activite.actif.action==='republish'
                 ?(lang==='fr'?'republication':'repost')
                 :(lang==='fr'?'dépôt':'listing');
@@ -8187,9 +8203,10 @@ const StockTab = memo(function StockTab({
                     </div>
                     <ChevronRight size={16} style={{flexShrink:0,color:"#8A8578"}}/>
                   </div>
-                  <div role="progressbar" aria-valuemin={0} aria-valuemax={activite.total} aria-valuenow={activite.faites}
-                    style={{height:4,borderRadius:999,background:"#F1EEE6",marginTop:11,overflow:"hidden"}}>
-                    <div style={{width:`${pct}%`,height:"100%",borderRadius:999,background:"linear-gradient(90deg,#2F9E90,#1B6E62)",transition:"width .6s ease"}}/>
+                  <div style={{marginTop:11}}>
+                    <BarreProgression seulePiste lang={lang}
+                      fraction={activite.faites/activite.total} pas={1/activite.total} dureePas={dureeUnJob}
+                      etat={activite.hbMuet?'pause':'en_cours'}/>
                   </div>
                 </button>
               );
@@ -11135,20 +11152,20 @@ const StockTab = memo(function StockTab({
                       </div>
                       {/* ── Lot B1 (03/09 soir) : barre de progression EN BAS de
                           carte, pleine largeur, pour un job réellement EN
-                          TRAVAIL. Indéterminée (CSS pur, aucun tick React) : la
-                          progression au grain du job n'est pas connue ici, on
-                          n'invente pas de pourcentage. Libellés RÉUTILISÉS :
-                          l'étape de la feuille de republication
-                          (etapeRepublication.court) et le « En cours… » de la
-                          pastille — rien d'inventé. PAS de barre pour ce qui
-                          ATTEND (autre boutique, plateforme en pause,
-                          ordinateur éteint, recréation orpheline) : une barre
-                          qui bouge sur un travail à l'arrêt serait un
-                          mensonge — mêmes conditions que le pulse de la
-                          pastille. Disparaît d'elle-même au job terminé
-                          (le job sort de pending/processing → plus de barre). */}
+                          TRAVAIL. PAS de barre pour ce qui ATTEND (autre
+                          boutique, plateforme en pause, ordinateur éteint,
+                          recréation orpheline) : une barre qui bouge sur un
+                          travail à l'arrêt serait un mensonge — mêmes
+                          conditions que le pulse de la pastille.
+                          ── Chantier clarté (01/10) : c'est désormais LA barre
+                          compacte (BarreJobCarte) — elle suit les étapes
+                          réelles du job (republish_step, processing_since),
+                          avance en continu avec un pourcentage, finit en douceur
+                          sur la coche puis s'efface ; un tap ouvre la file
+                          complète. Les retraits en cours y entrent (même
+                          règle : un vrai travail, jamais une attente). UNE
+                          barre par job : la carte porte déjà photo et titre. */}
                       {(()=>{
-                        const frB=lang==='fr';
                         // Republication : barre animée UNIQUEMENT sur un travail
                         // réel — processing (relevé/retrait en cours) ou étape
                         // 'deleted' (annonce hors ligne, recréation imminente).
@@ -11162,15 +11179,14 @@ const StockTab = memo(function StockTab({
                             ||((repubLatest?.status==='pending')&&repubStepDe(repubLatest)==='deleted'));
                         const extFraiche=!(extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree");
                         const pubEnTravail=!repubEnTravail&&hasPending&&!pendingSurConnexion&&!hasPausedPending&&extFraiche;
-                        if(!repubEnTravail&&!pubEnTravail)return null;
-                        const txt=repubEnTravail
-                          ?`${frB?'Republication':'Repost'} · ${repubEtape.court}`
-                          :(frB?'Publication · En cours…':'Publishing · Posting…');
+                        const retraitsEnTravail=(!repubEnTravail&&!pubEnTravail)
+                          ?jobsAll.filter(j=>j.action==='delete'&&(j.status==='processing'
+                            ||(j.status==='pending'&&extFraiche&&!attenteDeConnexion(j)&&!pausedSet.has(j.platform))))
+                          :[];
+                        const enTravail=repubEnTravail?[repubLatest]:pubEnTravail?pendingJobs:retraitsEnTravail;
                         return(
-                          <div className="gjobbar">
-                            <div className="gjobbar-txt">{txt}</div>
-                            <div className="gjobbar-track" role="progressbar" aria-label={txt}><div className="gjobbar-fill"/></div>
-                          </div>
+                          <BarreJobCarte jobs={enTravail} tous={jobsAll} lang={lang} ctx={ctxBarres}
+                            onOuvrir={()=>setFileOuverte(true)}/>
                         );
                       })()}
                     </div>
@@ -11397,7 +11413,9 @@ const StockTab = memo(function StockTab({
         const frais=(jobsByInventaire[repubProgress.inventaire_id]??[])
           .find(j=>j.id===repubProgress.id)??repubProgress;
         return(
-          <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
+          <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}
+            item={fichesToutes.get(String(frais.inventaire_id))??null} ctxBarres={ctxBarres} formaterPrix={(n)=>fmt(n)}
+            onOuvrirFile={()=>{setRepubProgress(null);setFileOuverte(true);}}/>
         );
       })()}
       {/* Détail des vues / favoris par plateforme (18/09) — ouvert par la
@@ -11448,17 +11466,53 @@ const StockTab = memo(function StockTab({
           AFFICHAGE SEUL : chaque geste rouvre une porte qui existe déjà —
           la confirmation d'arrêt, le mini-éditeur « À compléter », la modale
           d'échec, le filtre de liste. */}
-      {fileOuverte&&activite&&(
-        <FeuilleFile
+      {/* ── LA FILE COMPLÈTE DES JOBS (chantier clarté, 01/10) ─────────────
+          Remplace la feuille « Ce qui tourne » : TOUS les jobs vivants
+          (publications, republications, retraits), le job en cours avec sa
+          barre, puis ce qui attend dans l'ordre de départ, chaque attente
+          avec sa raison. Ouverte par le bandeau ET par toute barre de job.
+          LECTURE SEULE, sauf deux portes qui existaient déjà : le geste
+          d'une ligne « à faire » (mini-éditeur, modale, connexion) et, en
+          pied, l'arrêt des republications en attente (décision Nico 01/10). */}
+      {fileOuverte&&(
+        <FileDesJobs
           lang={lang}
-          lignes={activite.lignes}
-          total={activite.total}
-          faites={activite.faites}
-          estimation={!repubPlafondEtat?.retenue&&!activite.hbMuet?estimationRepub(activite.restantes):null}
-          annulables={activite.annulables}
-          fiche={(j)=>fichesParId.get(String(j?.inventaire_id))??null}
-          etatDe={etatLigneActivite}
-          onArreter={()=>{setFileOuverte(false);setRepubArretBilan(null);setRepubArret({annulables:activite.annulables,encoreEnVol:activite.encoreEnVol});}}
+          supabase={supabase}
+          userId={user?.id}
+          jobs={tousLesJobs}
+          fiches={fichesToutes}
+          contexte={ctxBarres}
+          texteErreur={ctxBarres.texteErreur}
+          formaterPrix={(n)=>fmt(n)}
+          renderGeste={(job)=>{
+            const fermer=()=>setFileOuverte(false);
+            const fr=lang!=='en';
+            const mur=murDeConnexion(job);
+            if(mur)return <BoutonMeConnecter userId={user.id} platform={job.platform} motif={mur} lang={lang} variante="bouton"/>;
+            if(natureNeedsUser(job)==='en_cours')return null;
+            const style={border:'none',borderRadius:999,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:700,color:'#fff',background:'linear-gradient(120deg,#2F9E90,#1B6E62)'};
+            if(job.action==='republish')return <button type="button" style={style} onClick={()=>{fermer();setRepubProgress(job);}}>{fr?'Voir':'See'}</button>;
+            if(needsUserOuvrable(job))return <button type="button" style={style} onClick={()=>{fermer();setNeedsUserJob(job);}}>{fr?'Compléter':'Complete'}</button>;
+            if(job.error)return <button type="button" style={style} onClick={()=>{fermer();setFailJobModal(job);}}>{fr?'Voir':'See'}</button>;
+            return null;
+          }}
+          pied={activite?.annulables?.length>0?(
+            <>
+              <button type="button"
+                onClick={()=>{setFileOuverte(false);setRepubArretBilan(null);setRepubArret({annulables:activite.annulables,encoreEnVol:activite.encoreEnVol});}}
+                style={{display:'flex',alignItems:'center',gap:8,width:'100%',textAlign:'left',border:'1px solid #E7E3D8',background:'transparent',color:'#5C6560',borderRadius:12,padding:'11px 12px',fontSize:12.5,fontWeight:700,cursor:'pointer',fontFamily:'inherit',lineHeight:1.45}}>
+                <Pause size={14} style={{flexShrink:0}}/>
+                <span style={{flex:1,minWidth:0}}>
+                  {lang==='fr'
+                    ?(activite.annulables.length>1?`Arrêter les ${activite.annulables.length} republications en attente`:'Arrêter la republication en attente')
+                    :(activite.annulables.length>1?`Stop the ${activite.annulables.length} queued reposts`:'Stop the queued repost')}
+                </span>
+              </button>
+              <div style={{fontSize:11.5,color:'#8A8578',textAlign:'center',lineHeight:1.45}}>
+                {lang==='fr'?'Tes annonces restent en ligne, rien n’est supprimé.':'Your listings stay online, nothing is deleted.'}
+              </div>
+            </>
+          ):null}
           onFermer={()=>setFileOuverte(false)}
         />
       )}
@@ -11683,6 +11737,8 @@ const StockTab = memo(function StockTab({
           onRepublier={republierSansConfirmation}
           onRemove={armRemoveJob}
           plateformes={plateformesDeLArticle(jobsByInventaire[removeModalItem.id]||[],plateformesOuvertes)}
+          ctxBarres={ctxBarres}
+          onOuvrirFile={()=>{setRemoveModalItem(null);setFileOuverte(true);}}
         />
       )}
       {jobStatusItem&&(
