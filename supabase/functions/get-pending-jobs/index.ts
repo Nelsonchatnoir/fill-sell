@@ -19,6 +19,7 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
+import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -7693,6 +7694,20 @@ serve(async (req) => {
     // le plafond de 4 h côté extension reste le garde-fou absolu. `jobs` est la
     // file pending déjà en mémoire, `out` son sous-ensemble distribué : aucun
     // appel de plus.
+    // ══ RETRAIT eBay : LE NUMÉRO, JAMAIS LE TITRE (2026-10-01) ═══════════════
+    // Le content script eBay se rabat sur le TITRE EXACT quand le numéro n'est
+    // pas dans le Hub (autre compte dans Chrome, annonce déjà finie) : il
+    // finirait un homonyme. Copie servie avec un titre-étiquette que nul Hub ne
+    // porte ; sans numéro lisible, le retrait n'est pas servi. Rien n'est écrit
+    // en base. Cf. _shared/retrait-ebay-par-numero.js.
+    {
+      const { servis, retenus } = servirRetraitsEbayParNumero(out);
+      if (retenus.length) {
+        console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.length} retrait(s) eBay sans numéro d'annonce NON servi(s) — jamais de ciblage par titre`);
+      }
+      out = servis;
+    }
+
     // Point C : seule la file d'exécution réserve. Le popup reste une lecture.
     // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
     if (!includeProcessing && !includeNeedsUser && out.length) {
