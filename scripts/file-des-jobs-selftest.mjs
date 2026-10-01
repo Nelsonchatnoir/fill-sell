@@ -129,6 +129,7 @@ console.log("6. LA BARRE D'UN JOB");
   ok(p(repub("deleted", "needs_user")).ton === "erreur", "arrêtée HORS LIGNE → rouge (l'annonce n'est plus en ligne)");
   ok(p(job({ action: "delete", status: "deleted" })).etat === "termine", "retrait fait → terminé");
   ok(p(job({ action: "delete", status: "processing" })).etape === "action", "retrait en cours");
+  ok(/nos serveurs/.test(etapesJob(job({ action: "delete", platform: "ebay", voie: "api" }))[0].texte), "retrait eBay par nos serveurs : jamais « ton ordinateur »");
   ok(p(job({ platform: "beebs", error: "En attente de ta connexion à Beebs", platform_fields: { attente_session: {} } })).etat === "echec", "session fermée → un geste (barre arrêtée, orange)");
   // Une étape d'attente ne déborde pas : un job en file depuis 2 h ne remplit pas la barre.
   const plages = plagesDe(etapesJob(job({})));

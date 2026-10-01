@@ -43,6 +43,7 @@ const TEXTES = {
     depotServeurs: (p) => `Publication sur ${p} depuis nos serveurs…`,
     depotCourt: "Dépôt en cours…",
     retrait: (p) => `Retrait de l'annonce sur ${p}…`,
+    retraitServeurs: (p) => `Retrait de l'annonce sur ${p} depuis nos serveurs…`,
     retraitCourt: "Retrait en cours…",
     releve: "Copie complète de ton annonce : photos, texte, prix…",
     releveCourt: "Copie en cours…",
@@ -72,6 +73,7 @@ const TEXTES = {
     depotServeurs: (p) => `Listing on ${p} from our servers…`,
     depotCourt: "Posting…",
     retrait: (p) => `Removing the listing from ${p}…`,
+    retraitServeurs: (p) => `Removing the listing from ${p} from our servers…`,
     retraitCourt: "Removing…",
     releve: "Full copy of your listing: photos, text, price…",
     releveCourt: "Copying…",
@@ -117,13 +119,14 @@ export function etapesJob(job, lang = "fr") {
       { cle: "remise", texte: T.remise(nom), court: T.remiseCourt, duree: remise, poids: 50 },
     ];
   }
+  const api = parNosServeurs(job);
   if (job?.action === "delete") {
+    // Un retrait eBay part de nos serveurs (voie « api »), comme la publication.
     return [
-      { cle: "file", texte: T.fileRetrait, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
-      { cle: "action", texte: T.retrait(nom), court: T.retraitCourt, duree: RETRAIT, poids: 85 },
+      { cle: "file", texte: api ? T.fileServeurs : T.fileRetrait, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
+      { cle: "action", texte: api ? T.retraitServeurs(nom) : T.retrait(nom), court: T.retraitCourt, duree: api ? (DEPOT_SERVEURS[p] ?? 78) : RETRAIT, poids: 85 },
     ];
   }
-  const api = parNosServeurs(job);
   return [
     { cle: "file", texte: api ? T.fileServeurs : T.fileOrdi, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 15, debord: false, texteLong: T.fileLong },
     {
