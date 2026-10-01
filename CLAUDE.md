@@ -6,8 +6,8 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.81** (minimum serveur inchangé, 0.6.75) ;
-  OTA **2.9.31** ; `get-pending-jobs` v173 (`true`), `update-job-status` v110
-  (`false`), `ebay-api-worker` v63 (`false`), `handler-watch` v66 (`false`),
+  OTA **2.9.31** ; `get-pending-jobs` v174 (`true`), `update-job-status` v110
+  (`false`), `ebay-api-worker` v68 (`false`), `handler-watch` v66 (`false`),
   `check-listing-status` v35 (`false`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
