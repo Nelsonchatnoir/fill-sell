@@ -8217,6 +8217,20 @@ export default function ListingPreviewScreen({
             continue;
           }
         }
+        // ── UNE TAILLE NE SE DEMANDE JAMAIS À L'IA (2026-10-01, Marie) ────────
+        // Un homonyme Beebs (« Taille [attributes.size_men_shirt] », « Taille
+        // [#2] ») n'a pas de champ dédié : il partait en resolve_aspects SANS
+        // la taille de l'article (item_data n'en porte pas) et l'IA retenait
+        // « une taille plausible » de la liste — c'est le « complété » 3 s
+        // après l'apparition du champ bloquant. Règle : la taille connue de la
+        // fiche si elle figure EXACTEMENT dans la liste de ce champ ; sinon le
+        // champ reste à choisir par la personne. Jamais de présélection.
+        if (!a.dedicatedTarget && /^(taille|pointure)\b/i.test(String(a.label ?? a.key ?? ""))) {
+          const t = String(KNOWN_BY_TARGET.taille ?? "").trim();
+          const exacte = t ? (a.allowedValues ?? []).find(v => normAspectVal(v) === normAspectVal(t)) : null;
+          if (exacte) setPlatformAspect(gp, a.key, String(exacte));
+          continue;
+        }
         const known = a.dedicatedTarget ? String(KNOWN_BY_TARGET[a.dedicatedTarget] ?? "").trim() : "";
         if (known) setPlatformDedicatedField(gp, a.dedicatedTarget, known);
         else missing.push(a);
