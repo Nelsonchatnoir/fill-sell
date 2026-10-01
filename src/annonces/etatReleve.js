@@ -338,6 +338,9 @@ export function motifProposition(prop, T, fr) {
   // celle d'un dépôt Beebs de l'article, sans être la même. Le numéro n'est
   // posé sur le dépôt que si la personne répond oui.
   if (m === 'depot_beebs_photo_proche') return T.motifDepotPhotoProche;
+  // 'depot_beebs_a_confirmer' (01/10) : même titre, même place dans l'ordre
+  // des dépôts Beebs, mais la photo ne permet pas de trancher.
+  if (m === 'depot_beebs_a_confirmer') return T.motifDepotAConfirmer;
   if (m !== 'faisceau') return '';
   const s = prop.signaux && typeof prop.signaux === 'object' ? prop.signaux : {};
   const preuves = [];
