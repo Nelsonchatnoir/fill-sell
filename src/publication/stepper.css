@@ -40,7 +40,12 @@
   font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
 }
 .fsn *, .fsn *::before, .fsn *::after { box-sizing: border-box; }
-.fsn button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; padding: 0; }
+/* (01/10) Remise à zéro SANS poids (:where) : écrite `.fsn button` (0,1,1),
+   elle battait toutes les classes de bouton (0,1,0) — le bouton principal
+   ACTIF s'affichait sans son fond sarcelle, plus pâle que le bouton grisé
+   (`:disabled`, 0,2,0, lui, passait), et les lignes de plateforme, « Quitter »
+   et « ‹ » perdaient leur carte. */
+:where(.fsn) button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; padding: 0; }
 .fsn button:disabled { cursor: not-allowed; }
 .fsn button:focus-visible, .fsn a:focus-visible, .fsn input:focus-visible, .fsn select:focus-visible, .fsn textarea:focus-visible { outline: 2px solid var(--fs-teal); outline-offset: 2px; }
 .fsn a { color: var(--fs-teal-ink); font-weight: 600; }
@@ -168,7 +173,7 @@
 .fsn-choice { border: 1px solid var(--fs-border); background: var(--fs-card); border-radius: var(--fs-r-pill); padding: 8px 13px; font-size: 13.5px; font-weight: 600; color: var(--fs-ink2); min-height: 38px; }
 .fsn-choice--on { border-color: var(--fs-teal); background: var(--fs-teal-fond); color: var(--fs-teal-ink); }
 .fsn-seg { display: flex; gap: 6px; background: var(--fs-chip); border-radius: var(--fs-r-pill); padding: 4px; }
-.fsn-seg button { flex: 1; min-height: 36px; border-radius: var(--fs-r-pill); font-size: 13.5px; font-weight: 600; color: var(--fs-mute); padding: 0 10px; }
+.fsn-seg button { flex: 1; white-space: nowrap; min-height: 36px; border-radius: var(--fs-r-pill); font-size: 13.5px; font-weight: 600; color: var(--fs-mute); padding: 0 10px; }
 .fsn-seg button.on { background: var(--fs-card); color: var(--fs-teal-ink); box-shadow: var(--fs-shadow); }
 .fsn-q { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--fs-border); border-radius: var(--fs-r-s); background: var(--fs-card); }
 .fsn-q--bloque { border-color: var(--fs-amber-bord); }
