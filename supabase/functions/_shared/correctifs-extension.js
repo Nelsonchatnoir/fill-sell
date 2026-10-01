@@ -40,7 +40,8 @@ export function buildMsDe(build) {
 // recréation partait avec "isbn": null (400). Tant qu'un poste est plus ancien
 // que lui, get-pending-jobs ne lui sert AUCUNE republication Vinted à l'étape
 // qui supprime quand sa capture porte un tel ISBN — et, même à jour, pas avant
-// qu'une première recréation l'ait prouvé (marqueur isbn_capture_tel_quel).
+// qu'une première recréation l'ait prouvé (marqueur isbn_capture_tel_quel, ou
+// les faits d'une recréation publiée — _shared/isbn-capture-preuve.js, 01/10).
 export const BUILD_ISBN_CAPTURE_TEL_QUEL = "2026-09-27T09:42:56Z"; // BUILD_ID de la 0.6.70 (61cbced), zip build/CWS-0.6.70-A-TELEVERSER
 
 // ── LA REPUBLICATION OPLA JUGÉE SUR L'ANNONCE (2026-09-27, doriane-henri) ───
