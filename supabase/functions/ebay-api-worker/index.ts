@@ -2579,7 +2579,7 @@ async function reviserQuantiteAnnonce(admin: SupabaseClient, env: EbayEnv, body:
   const id = String(body.listing_id ?? "");
   const cible = Number(body.quantite);
   const attendu = Number(body.attendu_disponible);
-  if (!/^[0-9a-f-]{36}$/i.test(userId) || !/^d{9,15}$/.test(id) || !Number.isInteger(cible) || cible < 1
+  if (!/^[0-9a-f-]{36}$/i.test(userId) || !/^\d{9,15}$/.test(id) || !Number.isInteger(cible) || cible < 1
       || !Number.isInteger(attendu) || cible >= attendu) return { ok: false, motif: "parametres" };
   const { data: compte } = await admin.from("ebay_accounts").select("ebay_user_id").eq("user_id", userId).maybeSingle();
   const pseudo = String((compte as { ebay_user_id?: string } | null)?.ebay_user_id ?? "");
