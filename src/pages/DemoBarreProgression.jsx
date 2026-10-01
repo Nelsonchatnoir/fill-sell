@@ -75,7 +75,7 @@ const CAS = [
   {
     id: "repub",
     nom: "Republication",
-    montre: "Les vraies étapes de la republication. Chaque phrase dit ce qui est en sécurité. En dessous : la même barre, en version compacte, telle qu'elle apparaîtra sur une carte du Stock.",
+    montre: "Les vraies étapes de la republication. Chaque phrase dit ce qui est en sécurité. Dans l'app : cette grande barre dans la feuille de la republication, la compacte sur la carte du Stock — jamais les deux pour le même job sur le même écran.",
     barre: {
       titre: "Republication sur Vinted",
       etapes: [
@@ -87,7 +87,6 @@ const CAS = [
       ],
       phraseFin: "Ton annonce est de retour en tête sur Vinted.",
     },
-    compacte: true,
     initial: { etape: "capture", etat: "en_cours" },
     script: [
       { t: 3.6, set: { etape: "retrait" } }, { t: 6.9, set: { etape: "photos" } }, { t: 12.4, set: { etape: "depot" } },
@@ -112,21 +111,6 @@ const CAS = [
     script: [
       { t: 1.7, set: { etape: "recherche" } }, { t: 5.1, set: { etape: "suppression" } },
       { t: 7.0, set: { etape: "verif" } }, { t: 9.2, set: { etat: "termine" } },
-    ],
-  },
-  {
-    id: "releve",
-    nom: "Relevé (synchronisation)",
-    montre: "Quand on connaît le vrai compte (« 19 sur 48 »), la barre se pose dessus et glisse vers le compte suivant, sans jamais le dépasser.",
-    barre: { titre: "Relevé de ta boutique Vinted", phraseFin: "48 annonces relevées : 2 nouvelles ajoutées à ton Stock, 1 vente repérée." },
-    initial: { fraction: 0, pas: 0.05, dureePas: 1.8, phrase: "Ouverture de ta boutique Vinted…", etat: "en_cours" },
-    script: [
-      ...[0, 6, 13, 19, 26, 31, 38, 44, 48].map((n, i) => ({
-        t: 1.8 + i * 1.4,
-        set: { fraction: 0.9 * n / 48, pas: 0.9 * 7 / 48, dureePas: 1.4, phrase: `Lecture de tes annonces : ${n} sur 48…` },
-      })),
-      { t: 1.8 + 9 * 1.4, set: { fraction: 0.9, pas: 0.1, dureePas: 2, phrase: "Comparaison avec ton Stock…" } },
-      { t: 1.8 + 9 * 1.4 + 2.2, set: { etat: "termine" } },
     ],
   },
   {
@@ -319,8 +303,12 @@ function Cas({ sc, numero, reduit }) {
   }, [tour, fini]);
 
   const v = sc.variantes?.find((x) => x.cle === variante) ?? null;
+  // (01/10) Chaque barre montre l'article : ici une vignette neutre (aucune
+  // photo dans la démo), le titre, et ce qui se passe.
+  const { titre: quoi, ...barre } = sc.barre;
   const commun = {
-    ...sc.barre,
+    ...barre,
+    article: { photo: null, titre: sc.objet ?? "Robe Sézane Gaby, taille 38", sousTitre: `42 € · ${quoi}` },
     ...(v ? { ton: v.ton, phraseEchec: v.phraseEchec } : {}),
     action: (v?.action ?? sc.barre.action) ? { libelle: v?.action ?? sc.barre.action, onClick: () => {} } : undefined,
     animationsReduites: reduit ? true : undefined,
@@ -348,16 +336,6 @@ function Cas({ sc, numero, reduit }) {
       )}
       <div className="dbp-ecran">
         {tour > 0 ? <BarreProgression key={tour} {...props} /> : <div className="dbp-attente">La démonstration démarre quand la carte est à l'écran.</div>}
-        {sc.compacte && tour > 0 && (
-          <div className="dbp-carte-stock">
-            <div className="dbp-carte-photo" aria-hidden="true" />
-            <div className="dbp-carte-corps">
-              <div className="dbp-carte-titre">Robe Sézane Gaby, taille 38</div>
-              <div className="dbp-carte-prix">42 €</div>
-              <BarreProgression key={`c${tour}`} {...props} titre={undefined} compact />
-            </div>
-          </div>
-        )}
       </div>
       <footer className="dbp-cas-pied">
         <span className="dbp-chrono">
@@ -386,7 +364,7 @@ export default function DemoBarreProgression() {
         <p className="dbp-sur">FillSell · démonstration non listée</p>
         <h1>La nouvelle barre de progression</h1>
         <p className="dbp-intro">
-          Une seule barre pour toute l'app — publication, republication, retrait, relevé, génération d'annonce, Lens, retouche photo.
+          Une seule barre pour toute l'app — publication, republication, retrait, génération d'annonce, Lens, retouche photo. (Les relevés et la synchronisation gardent leur propre chargement.)
           Elle bouge dès la première seconde, glisse en continu dans l'étape en cours, ralentit sans jamais s'arrêter quand une
           étape traîne, et n'atteint 100&nbsp;% qu'à la vraie fin.
         </p>
