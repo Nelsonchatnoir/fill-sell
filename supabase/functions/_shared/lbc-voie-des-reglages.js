@@ -85,13 +85,24 @@ export function rueDesReglagesMemeCommune(locOrigine, reglagesLbc) {
 // Décision pour UN job servi. `refusConnu` : un refus de cette commune existe
 // déjà pour ce compte (ce job ou un autre). Rend :
 //   { action: "tel_quel" } | { action: "rue", job } | { action: "retenir" }
+// ⚠️ ÉLARGIE LE 01/10 À 09:55 — LA CAUSE EST CONNUE. Le formulaire de dépôt
+// Leboncoin interroge son service d'adresses avec `use_precise_address=true`
+// sur certains comptes (relevé sur celui de Nico, cat 41) : les COMMUNES y
+// sont exclues, seules les adresses avec rue sont proposées. Mesuré :
+// « Chantemerle-lès-Grignan 26230 » → [] en mode précis, la commune sinon ;
+// « 4 Rue Du Hameau 26230 Chantemerle-lès-Grignan » → la rue dans les DEUX
+// modes. Le mode varie d'un compte à l'autre (déploiement Leboncoin) : on ne
+// peut pas le lire avant le dépôt. La rue des Réglages de la même commune est
+// donc servie TOUJOURS (plus seulement après un refus) : 0 échec d'adresse sur
+// 841 publications des 7 comptes concernés, qui tapent déjà cette chaîne.
+// Le refus connu ne sert plus qu'à RETENIR une republication sans rue de repli.
 export function decisionAdresseRepublicationLbc(job, reglagesLbc, refusConnu) {
   if (job?.platform !== "leboncoin" || String(job?.action ?? "") !== "republish") return { action: "tel_quel" };
   const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
   const lo = (pf.localisation_origine && typeof pf.localisation_origine === "object") ? pf.localisation_origine : null;
   if (!lo || propre(lo.voie) || !propre(lo.ville)) return { action: "tel_quel" };
-  if (!refusConnu) return { action: "tel_quel" };
   const rue = rueDesReglagesMemeCommune(lo, reglagesLbc);
+  if (!rue && !refusConnu) return { action: "tel_quel" };
   if (rue) {
     return {
       action: "rue",
@@ -103,7 +114,7 @@ export function decisionAdresseRepublicationLbc(job, reglagesLbc, refusConnu) {
             ...lo,
             voie: rue,
             voie_des_reglages: {
-              motif: "commune seule déjà refusée par Leboncoin — rue des Réglages, même commune",
+              motif: "rue des Réglages, même commune (Leboncoin exige une rue en mode précis)",
               pose_par: "get-pending-jobs (lbc-voie-des-reglages)",
             },
           },

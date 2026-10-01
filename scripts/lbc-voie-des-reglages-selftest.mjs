@@ -61,12 +61,15 @@ ok("nicolas.menar : rue des Réglages servie avant même le premier essai (refus
 
 // Ce qui passe aujourd'hui ne change pas.
 const jocabroc = { id: "x", platform: "leboncoin", action: "republish", platform_fields: { localisation_origine: { voie: null, ville: "Sarreguemines", code_postal: "57200", libelle: "Sarreguemines 57200" } } };
-assert.equal(decisionAdresseRepublicationLbc(jocabroc, { rue: "1 rue X", ville: "Sarreguemines", code_postal: "57200" }, false).action, "tel_quel");
+// Élargie le 01/10 (mode précis Leboncoin) : même commune → la rue, même sans refus connu.
+assert.equal(decisionAdresseRepublicationLbc(jocabroc, { rue: "1 rue X", ville: "Sarreguemines", code_postal: "57200" }, false).action, "rue");
+// Autre commune, sans refus connu : tel quel (rien ne change).
+assert.equal(decisionAdresseRepublicationLbc(jocabroc, { rue: "1 rue X", ville: "Metz", code_postal: "57000" }, false).action, "tel_quel");
 const avecVoie = { ...jobJosephine, platform_fields: { localisation_origine: { ...locJosephine, voie: "4 Rue Du Hameau" } } };
 assert.equal(decisionAdresseRepublicationLbc(avecVoie, reglagesJosephine, true).action, "tel_quel");
 assert.equal(decisionAdresseRepublicationLbc({ ...jobNicolas2, action: "publish" }, reglagesNicolas, true).action, "tel_quel");
 assert.equal(decisionAdresseRepublicationLbc({ ...jobNicolas2, platform: "beebs" }, reglagesNicolas, true).action, "tel_quel");
-ok("sans refus connu, avec une rue d'origine, publication neuve, autre plateforme : tel quel");
+ok("même commune → rue même sans refus ; autre commune sans refus, rue d'origine, publication neuve, autre plateforme : tel quel");
 
 // Refus connu, pas de rue dans la même commune.
 assert.equal(decisionAdresseRepublicationLbc(jobNicolas2, reglagesJosephine, true).action, "retenir", "pas encore retirée : retenue");

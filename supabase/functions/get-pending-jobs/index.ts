@@ -20,7 +20,7 @@ import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_T
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
-import { decisionAdresseRepublicationLbc, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
+import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -5464,7 +5464,9 @@ serve(async (req) => {
             console.log(`[get-pending-jobs] userId=${user.id} → adresse de remise rafraîchie depuis les Réglages sur ${rafraichies} job(s)`);
           }
         }
-        // ── UNE COMMUNE DÉJÀ REFUSÉE SE RETAPE AVEC LA RUE DES RÉGLAGES (01/10) ──
+        // ── LA RUE DES RÉGLAGES DE LA MÊME COMMUNE, TOUJOURS (01/10, élargie 09:55) ──
+        // Cause relevée sur le vrai formulaire : use_precise_address=true exclut
+        // les communes (cf. _shared/lbc-voie-des-reglages.js).
         // josephinecerni (Chantemerle-lès-Grignan) et nicolas.menar
         // (Roost-Warendin) : la commune seule refusée par le dépôt APRÈS le
         // retrait, annonces restées hors ligne. Seulement quand ce refus est
@@ -5481,8 +5483,11 @@ serve(async (req) => {
           const villeDe = (j: Record<string, unknown>) =>
             String((((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"] as Record<string, unknown>)["ville"] ?? "");
           let refusCompte: string[] = [];
+          // Le refus du compte n'est lu que pour un job SANS rue de repli (le
+          // seul que ce refus peut retenir) et sans refus déjà sur lui-même.
           const sansRefusPropre = candidats.filter((j) =>
-            !textesErreurJob(j).some((t) => texteRefuseCommune(t, villeDe(j))));
+            !rueDesReglagesMemeCommune(((j.platform_fields as Record<string, unknown> | null) ?? {})["localisation_origine"], reglagesLbc)
+            && !textesErreurJob(j).some((t) => texteRefuseCommune(t, villeDe(j))));
           if (sansRefusPropre.length) {
             const [a, b] = await Promise.all([
               userClient.from("cross_post_jobs").select("error").eq("platform", "leboncoin")
@@ -5506,7 +5511,7 @@ serve(async (req) => {
               retenusAdresse.add(String(j.id));
             }
           }
-          if (rues) console.log(`[get-pending-jobs] userId=${user.id} : ${rues} republication(s) Leboncoin servie(s) avec la rue des Réglages (commune seule déjà refusée, même commune)`);
+          if (rues) console.log(`[get-pending-jobs] userId=${user.id} : ${rues} republication(s) Leboncoin servie(s) avec la rue des Réglages (même commune — Leboncoin exige une rue en mode précis)`);
           if (retenusAdresse.size) {
             out = out.filter((j) => !retenusAdresse.has(String(j.id)));
             console.log(`[get-pending-jobs] userId=${user.id} : ${retenusAdresse.size} republication(s) Leboncoin NON servie(s) avant retrait — commune déjà refusée, aucune rue des Réglages dans cette commune`);
