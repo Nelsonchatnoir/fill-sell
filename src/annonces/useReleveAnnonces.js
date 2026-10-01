@@ -21,13 +21,16 @@ import { useOplaAcces } from '../utils/oplaAcces';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
   lireAnnoncesARattacher, compterAnnoncesParPlateforme, texteRefusReleve, lireDernierRunVinted,
-  lireRelevesVides,
+  lireRelevesVides, lireAnnoncesEnRangement,
 } from '../utils/syncPlateformes';
 import { avecDernierReleveVide } from './releveVide';
 import { lireDoublonsProposes } from '../utils/doublons';
 
 // Le poll : la base rend compte, jamais l'extension. 30 s — inchangé.
 const POLL_MS = 30000;
+// (01/10) Pendant un rangement (empreinte photo, quelques minutes), on relit
+// plus souvent : le stock doit se remplir sous les yeux, pas au tour suivant.
+const POLL_RANGEMENT_MS = 10000;
 
 export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted }) {
   const fr = lang !== 'en';
@@ -48,6 +51,10 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   // (25/09) Les paires de fiches PROBABLES : la question « Est-ce le même
   // article ? » (inventaire_doublons). [] tant que rien n'est proposé.
   const [doublons, setDoublons] = useState([]);
+  // (01/10) Annonces relevées en attente de l'empreinte de leur photo :
+  // « X annonces trouvées, rangement en cours ». Jamais « à rattacher ».
+  const [rangement, setRangement] = useState({ total: 0, parPlateforme: {}, ids: new Set() });
+  const enRangement = rangement.total > 0;
   const [busy, setBusy] = useState(null);        // plateforme en cours de demande
   const [toutBusy, setToutBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -66,16 +73,19 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     if (!ouvert || !userId) return undefined;
     let annule = false;
     const charger = async () => {
-      const [r, c, a, v, vv, dd] = await Promise.all([
+      const [r, c, a, v, vv, dd, rg] = await Promise.all([
         lireDerniersRunsReleve(userId), compterAnnoncesParPlateforme(userId),
         lireAnnoncesARattacher(userId), lireDernierRunVinted(userId), lireRelevesVides(userId),
         lireDoublonsProposes(userId).catch(() => []),
+        lireAnnoncesEnRangement(userId),
       ]);
       if (annule) return;
       // Une plateforme signalée affiche son relevé vide le plus récent : la
       // tuile ne peut pas dire « 528 » sous une bande qui dit « aucune annonce ».
       setRuns(avecDernierReleveVide(r, vv)); setVides(vv);
-      setCompte(c); setARattacher(a); setRunVinted(v); setDoublons(dd);
+      // Une annonce en rangement n'est pas « à rattacher » : elle arrive seule.
+      setCompte(c); setARattacher(a.filter((x) => !rg.ids.has(x.id))); setRunVinted(v); setDoublons(dd);
+      setRangement(rg);
     };
     let enLecture = false;
     const actualiser = async () => {
@@ -86,9 +96,9 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       finally { enLecture = false; }
     };
     const t0 = setTimeout(actualiser, 0);
-    const t = setInterval(actualiser, POLL_MS);
+    const t = setInterval(actualiser, enRangement ? POLL_RANGEMENT_MS : POLL_MS);
     return () => { annule = true; clearTimeout(t0); clearInterval(t); };
-  }, [ouvert, userId, tick]);
+  }, [ouvert, userId, tick, enRangement]);
 
   // ── OPLA : la question au moment du clic (18/09/2026) ─────────────────────
   // Relever Opla sans l'autorisation d'hôte ne rend RIEN (la sonde ne part même
@@ -140,7 +150,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     fr, lang, userId,
     // Vinted en tête : c'est l'ordre des tuiles, et celui du reste du Stock.
     plateformes: ['vinted', ...(cle ? cle.split(',') : [])],
-    runs, runVinted, compte, aRattacher, vides, doublons,
+    runs, runVinted, compte, aRattacher, vides, doublons, rangement,
     busy, toutBusy, message, setMessage,
     etatVinted,
     lancer, toutRelever, recharger,

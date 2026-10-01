@@ -79,6 +79,26 @@ export async function lireRelevesVides(userId) {
   }
 }
 
+// ── LE RANGEMENT EN COURS (2026-10-01) ───────────────────────────────────────
+// Une annonce relevée que rien ne reconnaît par identifiant attend l'empreinte
+// de sa photo avant d'être importée (serveur, chaque minute, quelques minutes
+// en pratique). Sans cette lecture, l'app montrait un stock vide et proposait
+// de « rattacher » des annonces qui allaient arriver seules.
+// Serveur sans la RPC, ou lecture ratée → rangement vide : l'écran d'avant.
+export async function lireAnnoncesEnRangement(userId) {
+  const vide = { total: 0, parPlateforme: {}, ids: new Set() };
+  if (!userId) return vide;
+  try {
+    const { data, error } = await supabase.rpc('annonces_en_rangement');
+    if (error || !Array.isArray(data)) return vide;
+    const parPlateforme = {};
+    for (const r of data) parPlateforme[r.platform] = (parPlateforme[r.platform] ?? 0) + 1;
+    return { total: data.length, parPlateforme, ids: new Set(data.map((r) => r.annonce_id)) };
+  } catch {
+    return vide;
+  }
+}
+
 // ── LE DERNIER RELEVÉ VINTED (2026-09-18) ────────────────────────────────────
 // Le bloc « Mes annonces en ligne » ne montre plus qu'UNE ligne d'état, toutes
 // plateformes confondues. Vinted y pèse le plus lourd — l'omettre donnerait un

@@ -18,7 +18,7 @@
 // ⛔ Le repli « détail par plateforme » est SUPPRIMÉ avec l'ancien bloc : ce
 //    qu'il cachait (le motif d'une plateforme qui ne remonte rien) est
 //    maintenant sur la carte, en ambre, sans rien à déplier.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
@@ -68,10 +68,20 @@ export default function CarteAnnoncesEnLigne({
     return { p, nom: LABEL_RELEVE[p] ?? p, e: vide ? { ...e, pip: A.pipWarn } : e, vide };
   }), [r.plateformes, r.runs, r.runVinted, r.vides, etatVinted, T, fr]);
 
+  // (01/10) Le rangement avance (des annonces viennent d'entrer au stock, ou
+  // la dernière vient d'arriver) : le stock se relit, sans attendre un geste.
+  const nbRangement = r.rangement?.total ?? 0;
+  const rangementAvant = useRef(nbRangement);
+  useEffect(() => {
+    if (nbRangement < rangementAvant.current && typeof onRattache === 'function') onRattache();
+    rangementAvant.current = nbRangement;
+  }, [nbRangement, onRattache]);
+
   if (!ouvert || !r.userId) return null;
 
   const extVue = Number.isFinite(Date.parse(extensionStatus?.lastSeenAt ?? ''));
   const nbARattacher = r.aRattacher.length;
+  const nomsRangement = Object.keys(r.rangement?.parPlateforme ?? {}).map((p) => LABEL_RELEVE[p] ?? p).join(', ');
   // (25/09) Les paires de fiches PROBABLES dont les deux fiches sont encore au stock.
   const nbDoublons = pairesAffichables(r.doublons, items).length;
   const enCours = vague.active;
@@ -157,7 +167,9 @@ export default function CarteAnnoncesEnLigne({
   // c'est la plateforme de tout le monde, et celle du premier relevé.
   const reussite = (() => {
     if (!murs.length) return null;
-    const faites = tuiles.filter((t) => t.e.phase === 'fait');
+    // Une plateforme dont des annonces sont encore en rangement n'est pas
+    // « rangée dans ton stock » : sa bande de rangement le dit à la place.
+    const faites = tuiles.filter((t) => t.e.phase === 'fait' && !r.rangement?.parPlateforme?.[t.p]);
     if (!faites.length) return null;
     const t = faites.find((x) => x.p === 'vinted') ?? faites[0];
     return T.reussiteReleve(t.nom, Number(t.e.n) || 0);
@@ -287,6 +299,20 @@ export default function CarteAnnoncesEnLigne({
                 {T.enCoursSous}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* (01/10) Le rangement en cours : des annonces trouvées attendent la
+            lecture de leur photo avant d'entrer au stock. On le dit tout de
+            suite — jamais un stock vide sans un mot. */}
+        {!enCours && nbRangement > 0 && (
+          <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${A.borderSoft}` }}>
+            <span aria-hidden="true" style={{
+              width: 26, height: 26, borderRadius: 9, flexShrink: 0, background: A.paper,
+              border: `1px solid ${A.borderSoft}`, color: A.tealDeep, fontSize: 12, fontWeight: 700, lineHeight: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>{nbRangement > 99 ? '99+' : nbRangement}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.45, color: A.ink }}>{T.rangement(nbRangement, nomsRangement)}</span>
           </div>
         )}
 

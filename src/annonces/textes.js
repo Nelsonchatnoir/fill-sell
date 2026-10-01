@@ -63,6 +63,10 @@ const FR = {
     ? `${n} paires de fiches désignent peut-être le même article.`
     : 'Deux fiches de ton stock désignent peut-être le même article.'),
   doublonsCta: 'Vérifier',
+  // (01/10) Annonces trouvées dont la photo est en cours de lecture avant
+  // l'import : on le dit tout de suite, sans délai promis au-delà de « quelques
+  // minutes » (mesuré : 4 min en moyenne).
+  rangement: (n, noms) => `${n} annonce${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}${noms ? ` sur ${noms}` : ''}, rangement en cours — ${n > 1 ? 'elles arrivent' : 'elle arrive'} dans ton stock d'ici quelques minutes.`,
 
   // ── Les empêchements, dits sans accuser personne ─────────────────────────
   signalNonConnecte: (nom) => `Pas connecté à ${nom} : connecte-toi sur ton ordinateur, le prochain relevé la prendra.`,
@@ -177,6 +181,7 @@ const EN = {
     ? `${n} pairs of items may be the same object.`
     : 'Two items in your stock may be the same object.'),
   doublonsCta: 'Check',
+  rangement: (n, noms) => `${n} listing${n > 1 ? 's' : ''} found${noms ? ` on ${noms}` : ''}, filing in progress — ${n > 1 ? 'they' : 'it'} will appear in your stock within a few minutes.`,
 
   signalNonConnecte: (nom) => `Not signed in to ${nom}: sign in on your computer, the next scan will pick it up.`,
   signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
