@@ -1752,9 +1752,16 @@ export function assertExtensionMinBuildCurrent(cwd = process.cwd()) {
 // Les lignes de `git status --porcelain` (fichiers non suivis compris) — ce
 // que le suffixe `-dirty` résume, et ce que le message de refus nomme.
 // null = git illisible (pas de binaire, pas un dépôt).
+// ⚠️ SUR VERCEL SEULEMENT, `vercel.json` modifié est toléré : la plateforme
+//    le RÉÉCRIT dans son arbre avant `npm run build` (relevé par cette garde
+//    même, déploiement dpl_ZMoeanE5 du 01/10 : « M vercel.json » et rien
+//    d'autre). C'est SA configuration de service, pas notre code ; le fichier
+//    du dépôt reste celui du commit. Rien d'autre n'est toléré, nulle part.
+const RECRITS_PAR_VERCEL = new Set([' M vercel.json', 'M  vercel.json', 'MM vercel.json']);
 export function fichiersSales(cwd = process.cwd()) {
   try {
-    return execSync('git status --porcelain', { cwd }).toString().split('\n').map(l => l.trimEnd()).filter(Boolean);
+    const lignes = execSync('git status --porcelain', { cwd }).toString().split('\n').map(l => l.trimEnd()).filter(Boolean);
+    return process.env.VERCEL ? lignes.filter(l => !RECRITS_PAR_VERCEL.has(l)) : lignes;
   } catch {
     return null;
   }
@@ -1764,7 +1771,8 @@ export function fichiersSales(cwd = process.cwd()) {
 // Constat du 01/10 : fillsell.app/build.json rendait « de91e49-dirty », et le
 // build d'avant (42a55c9) aussi — l'empreinte, première étape imposée du
 // diagnostic d'écran blanc, ne désignait plus exactement un commit. Côté
-// Vercel, la cause était `.vercel/` (posé par la plateforme, non ignoré) ;
+// Vercel : le lockfile en retard sur package.json (réécrit par npm install),
+// et `vercel.json` réécrit par la plateforme (toléré, cf. fichiersSales) ;
 // côté OTA, un fichier modifié ou non suivi sur le poste. Les deux se règlent
 // à la racine : `npm run build` (Vercel ET OTA Capgo) s'ARRÊTE, en nommant
 // les fichiers. Appelé par vite.config.js pour la commande `build` seulement

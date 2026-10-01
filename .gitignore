@@ -13,9 +13,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-# Dossier que Vercel pose dans l'arbre de build (project.json, output/) : non
-# ignoré, il rendait CHAQUE build servi « -dirty » (build.json du 01/10). Cf.
-# assertArbrePropre (scripts/build-id.mjs), qui refuse désormais un arbre sale.
+# Dossier de travail de la CLI Vercel (project.json, output/) : jamais du code.
+# Ignoré pour qu'il ne puisse pas salir l'arbre de build — assertArbrePropre
+# (scripts/build-id.mjs) refuse désormais tout build servi « -dirty ».
 .vercel
 # Cache de version de la CLI Supabase : réécrit à chaque commande (vérification
 # de mise à jour), il salissait l'arbre du poste. Les autres fichiers de
