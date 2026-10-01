@@ -40,6 +40,7 @@
     "selftest:vinted-ids-publication": "deno run --allow-read scripts/vinted-ids-publication-selftest.ts",
     "selftest:titre-du-job": "node scripts/titre-du-job-selftest.mjs",
     "selftest:rien-a-publier": "node --import ./scripts/loader-ext.mjs scripts/publication-rien-a-publier-selftest.mjs",
+    "selftest:paiement-stripe": "node scripts/paiement-stripe-selftest.mjs",
     "selftest:lens-photos-fiche": "node scripts/lens-photos-fiche-selftest.mjs",
     "selftest:ebay-hub-rendu": "node scripts/ebay-hub-rendu-selftest.mjs",
     "selftest:ebay-categorie-message": "node scripts/ebay-categorie-message-selftest.mjs",

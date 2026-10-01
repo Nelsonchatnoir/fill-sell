@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec } from "../_shared/paiement-stripe.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -142,6 +143,100 @@ async function pageDeLaMonteeEnAttente(sub: Stripe.Subscription, planType: strin
   }
 }
 
+// ── UN SEUL CLIENT STRIPE PAR COMPTE FILLSELL (01/10/2026) ────────────────────
+// Avant : sans stripe_customer_id au profil (il n'est écrit qu'au premier
+// paiement RÉUSSI, par le webhook), chaque clic ouvrait un Checkout en
+// customer_email — donc un NOUVEAU client Stripe à chaque essai. 6 adresses en
+// double relevées le 01/10 ; chez 9cdr9rm4rn et nicolas.menar, la même carte
+// réapparue sur un 2e client deux minutes après un refus a été bloquée par
+// Radar (« highest »). Désormais : l'identifiant du profil s'il est valide,
+// sinon le client existant de l'adresse, sinon UN client créé une fois (clé
+// d'idempotence par compte et par adresse : un double clic ne fait pas deux
+// clients).
+// ⚠️ On n'écrit PAS ce client dans profiles avant un paiement réussi : un
+//    profil porteur d'un stripe_customer_id passe par recomputeStripeFlags
+//    (stripe-webhook) à chaque événement d'abonnement — l'expiration d'un
+//    essai raté y remettrait is_premium à false, y compris chez quelqu'un
+//    qui a payé ensuite par Apple (9cdr9rm4rn : Premium Apple à 14:05).
+//    Le webhook continue d'écrire l'identifiant au premier paiement réussi.
+async function resoudreClient(stocke: string | null, userId: string, email: string | null): Promise<string> {
+  const valide = await validCustomerIdOrNull(stocke, userId);
+  if (valide) return valide;
+  if (email) {
+    const { data } = await stripe.customers.list({ email, limit: 10 });
+    const existant = choisirClientExistant(data, userId);
+    if (existant) return existant;
+  }
+  const cree = await stripe.customers.create(
+    { ...(email ? { email } : {}), metadata: { fillsell_user_id: userId } },
+    { idempotencyKey: `fillsell-client-${userId}-${email ?? ""}`.slice(0, 255) },
+  );
+  console.log(`[checkout] client Stripe créé pour ${userId} : ${cree.id}`);
+  return cree.id;
+}
+
+// ── UNE SESSION OUVERTE SE ROUVRE, LES AUTRES SONT REMPLACÉES (01/10/2026) ────
+// Revenir dans l'app et recliquer rouvre la MÊME page de paiement (même
+// abonnement en attente, aucun doublon). Une demande différente (autre palier,
+// ou « payer par carte » après un refus) expire les sessions ouvertes du client
+// et annule leurs abonnements « incomplete » — jamais un autre statut
+// (abonnementRemplacable : rien d'actif, rien en cours de paiement).
+async function remplacerSessions(sessions: Stripe.Checkout.Session[], customerId: string): Promise<void> {
+  for (const s of sessions) {
+    try { await stripe.checkout.sessions.expire(s.id); }
+    catch (e) { console.warn(`[checkout] session ${s.id} non expirée : ${(e as Error)?.message ?? e}`); }
+  }
+  try {
+    const { data: enAttente } = await stripe.subscriptions.list({
+      customer: customerId, status: "incomplete", limit: 10, expand: ["data.latest_invoice.payment_intent"],
+    });
+    for (const sub of enAttente ?? []) {
+      if (!abonnementRemplacable(sub)) continue;
+      await stripe.subscriptions.cancel(sub.id);
+      console.log(`[checkout] abonnement en attente ${sub.id} (${customerId}) annulé : remplacé par une nouvelle tentative`);
+    }
+  } catch (e) {
+    console.warn(`[checkout] abonnements en attente de ${customerId} non relus : ${(e as Error)?.message ?? e}`);
+  }
+}
+
+// ── LE RETOUR DE LA PAGE DE PAIEMENT DIT CE QUI S'EST PASSÉ (01/10/2026) ──────
+// /cancel?session_id=… appelle ce diagnostic : la cause de la DERNIÈRE
+// tentative (banque qui demande une validation, Klarna, Radar, refus de la
+// banque, rien tenté), pour que l'app la dise sans jargon et propose un autre
+// moyen. Lecture seule ; seule la personne de la session peut la lire.
+async function diagnostiquerSession(sessionId: unknown, user: { id: string; email?: string }, CORS: Record<string, string>): Promise<Response> {
+  const repondre = (o: unknown, status = 200) => new Response(JSON.stringify(o), {
+    status, headers: { "Content-Type": "application/json", ...CORS },
+  });
+  if (typeof sessionId !== "string" || !/^cs_(live|test)_[A-Za-z0-9]+$/.test(sessionId)) return repondre({ cause: "inconnue" });
+  try {
+    const s = await stripe.checkout.sessions.retrieve(sessionId);
+    const adresse = (user.email ?? "").toLowerCase();
+    const aLui = s.metadata?.fillsell_user_id === user.id
+      || (!!adresse && [s.customer_details?.email, s.customer_email].some((e) => (e ?? "").toLowerCase() === adresse));
+    if (!aLui) return repondre({ cause: "inconnue" }, 403);
+    const plan = s.metadata?.plan_type ?? null;
+    if (s.status === "complete") return repondre({ cause: "payee", plan });
+    const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id ?? null;
+    if (!customerId) return repondre({ cause: "aucune_tentative", plan });
+    // Les tentatives faites DEPUIS l'ouverture de cette session, la plus récente d'abord.
+    const { data: intents } = await stripe.paymentIntents.list({ customer: customerId, created: { gte: s.created - 5 }, limit: 5 });
+    const pi = intents?.[0] ?? null;
+    let charge: Stripe.Charge | null = null;
+    const chargeId = typeof pi?.latest_charge === "string" ? pi.latest_charge : null;
+    if (chargeId && (!pi?.last_payment_error || pi.last_payment_error.charge === chargeId)) {
+      try { charge = await stripe.charges.retrieve(chargeId); } catch { /* cause sans le détail du paiement */ }
+    }
+    const cause = causeEchec(pi, charge);
+    console.log(`[checkout] diagnostic ${sessionId} (${user.id}) : ${cause}`);
+    return repondre({ cause, plan });
+  } catch (e) {
+    console.warn(`[checkout] diagnostic ${String(sessionId)} illisible : ${(e as Error)?.message ?? e}`);
+    return repondre({ cause: "inconnue" });
+  }
+}
+
 // Le client ne lit JAMAIS l'erreur Stripe brute : un code stable pour le front,
 // et la phrase, en français et en anglais, que l'app peut afficher telle quelle.
 function reponseErreurPaiement(CORS: Record<string, string>): Response {
@@ -189,8 +284,12 @@ serve(async (req) => {
     // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
     // promo (2026-09-26) : code arrivé par un lien d'e-mail (?offre=, cf.
     // src/lib/offreMail.js) — appliqué au Checkout d'abonnement plus bas.
-    const { email, product, promo } = await req.json();
+    // carte_3ds (01/10) : « Payer par carte » après un refus — la session
+    // demande le 3D Secure sur la carte tapée. lang : la phrase de la page de
+    // paiement. action "diagnostic" + session_id : le retour de /cancel.
+    const { email, product, promo, carte_3ds, lang, action, session_id } = await req.json();
     produitDemande = typeof product === "string" ? product : null;
+    if (action === "diagnostic") return await diagnostiquerSession(session_id, authUser, CORS);
 
     if (email && authUser.email && email !== authUser.email) {
       return new Response(JSON.stringify({ error: "Email mismatch" }), {
@@ -277,9 +376,12 @@ serve(async (req) => {
       .single();
     // Validation live AVANT usage : un ID de test ferait aussi échouer
     // stripe.subscriptions.list du chemin upgrade Premium→Pro ci-dessous.
-    const existingCustomerId = await validCustomerIdOrNull(
+    // (01/10) Plus jamais « pas de client » : celui du profil, sinon celui de
+    // l'adresse, sinon un seul créé (cf. resoudreClient).
+    const existingCustomerId = await resoudreClient(
       profile?.stripe_customer_id ?? null,
-      authUser.id
+      authUser.id,
+      verifiedEmail ?? null,
     );
 
     // ── Upgrade Premium→Pro in situ (2026-07-23) ─────────────────────────────
@@ -444,6 +546,7 @@ serve(async (req) => {
       // d'un abonnement résilié) : checkout Pro classique ci-dessous.
     }
 
+    const carte3ds = carte_3ds === true;
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
@@ -452,12 +555,28 @@ serve(async (req) => {
       // session Checkout (une remise là-bas passerait par `discounts`).
       allow_promotion_codes: true,
       success_url: "https://fillsell.app/success",
-      cancel_url: "https://fillsell.app/cancel",
-      ...(existingCustomerId
-        ? { customer: existingCustomerId }
-        : { customer_email: verifiedEmail || undefined }),
-      subscription_data: { metadata: { plan_type: planType } },
-      metadata: { plan_type: planType },
+      // (01/10) Le retour porte la session : /cancel en lit la cause
+      // (action "diagnostic") et propose un autre moyen de paiement.
+      cancel_url: "https://fillsell.app/cancel?session_id={CHECKOUT_SESSION_ID}",
+      customer: existingCustomerId,
+      subscription_data: { metadata: { plan_type: planType, fillsell_user_id: authUser.id } },
+      metadata: { plan_type: planType, fillsell_user_id: authUser.id, ...(carte3ds ? { fillsell_carte_3ds: "1" } : {}) },
+      // ── 3D SECURE : LA SORTIE DITE SUR LA PAGE MÊME (01/10) ──────────────
+      // Un portefeuille (Apple Pay) refusé par la banque faute
+      // d'authentification (authentication_required, 1A) ne peut pas passer
+      // par le 3D Secure : la carte tapée, elle, le peut — c'est ainsi que
+      // nicolas.menar a payé le 30/09. Une phrase, sous le bouton de paiement.
+      custom_text: {
+        submit: {
+          message: lang === "en"
+            ? "Payment declined? Choose “Card” and type its number: your bank will ask you to confirm (3D Secure)."
+            : "Paiement refusé ? Choisis « Carte » et tape son numéro : ta banque te demandera de valider (3D Secure).",
+        },
+      },
+      // « Payer par carte » après un refus : le 3D Secure est demandé d'office
+      // sur la carte tapée (le premier paiement est fait en présence de la
+      // personne, sur la page Stripe — jamais un prélèvement automatique).
+      ...(carte3ds ? { payment_method_options: { card: { request_three_d_secure: "any" } } } : {}),
     };
 
     // ── Code promo APPLIQUÉ d'office (2026-09-26, blast FILLSELL50) ─────────
@@ -482,6 +601,27 @@ serve(async (req) => {
         console.error(`[checkout] code promo « ${codePromo} » illisible — code=${se?.code ?? "?"} message=${se?.message ?? e}`);
       }
     }
+
+    // ── LA MÊME DEMANDE ROUVRE LA MÊME PAGE ; UNE AUTRE LA REMPLACE (01/10) ──
+    // Revenir dans l'app et recliquer ne crée plus ni client, ni session, ni
+    // abonnement en attente de plus (cf. trierSessionsOuvertes).
+    let ouvertes: Stripe.Checkout.Session[] = [];
+    try {
+      const { data } = await stripe.checkout.sessions.list({ customer: existingCustomerId, status: "open", limit: 10 });
+      ouvertes = data ?? [];
+    } catch (e) {
+      console.warn(`[checkout] sessions ouvertes de ${existingCustomerId} non relues : ${(e as Error)?.message ?? e}`);
+    }
+    const { aReprendre, aRemplacer } = trierSessionsOuvertes(ouvertes, {
+      planType, carte3ds, codePromo: promotionCodeId ? codePromo : "",
+    });
+    if (aReprendre) {
+      console.log(`[checkout] session ouverte ${aReprendre.id} rouverte pour ${authUser.id} (${planType}${carte3ds ? ", carte + 3D Secure" : ""})`);
+      return new Response(JSON.stringify({ url: aReprendre.url, reprise: true }), {
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+    await remplacerSessions(aRemplacer, existingCustomerId);
 
     let session: Stripe.Checkout.Session;
     if (promotionCodeId) {
