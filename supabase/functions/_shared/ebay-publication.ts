@@ -520,6 +520,21 @@ const CHAMP_PAR_ASPECT: Record<string, string> = {
   "Capacité de stockage": "stockage", "ISBN": "isbn",
   ...Object.fromEntries(ALIAS_MATIERE.map((n) => [n, "matiere"])),
 };
+// ── TAILLE « EU 42 » / « FR 42 » : LE PRÉFIXE QUE LA LISTE eBay N'ÉCRIT PAS
+// (2026-10-01, tessy.galy d07f4c9e, robe D&G, catégorie 63861) ─────────────
+// La liste eBay.fr relevée écrit les tailles françaises SANS préfixe (« 32 » …
+// « 62 ») et les autres pays AVEC (« IT 42 », « UK 10 », « US 8 ») : « EU 42 »
+// a été refusée (25129), alors que « 42 » y est. Seuls EU et FR se retirent :
+// c'est l'écriture nue de la liste. UK/US/IT ne se retirent JAMAIS (« UK 10 »
+// sans préfixe deviendrait le 10 français : une autre taille) — ils passent
+// déjà tels quels quand la liste les porte. Appelée seulement quand la valeur
+// ne correspond PAS telle quelle : une taille acceptée aujourd'hui ne change pas.
+const PREFIXE_EU_FR_RE = /^(?:EU|FR) ?(\d{1,3}(?:[.,]\d)?)$/i;
+export function tailleSansPrefixeEuFr(nomAspect: string, brut: string, liste: string[]): string | null {
+  if (!/taille|pointure/i.test(nomAspect)) return null;
+  const m = PREFIXE_EU_FR_RE.exec(String(brut ?? "").replace(/\s+/g, " ").trim());
+  return m ? valeurDeListeCorrespondante(m[1], liste) : null;
+}
 export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
   const manquants: string[] = [];
@@ -569,7 +584,13 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     if (a.name === "Marque" && marqueGenerique) { const g = entreeGenerique(a.allowedValues); if (g) { brut = g; source = "defaut"; } }
     if (a.name === "Modèle" && !brut && a.mode !== "SELECTION_ONLY" && (marqueGenerique || estLivre(pf))) { brut = VALEUR_NE_S_APPLIQUE_PAS; source = "defaut"; }
     if (!brut) { if (a.required) manquants.push(a.name); continue; }
-    const recale = a.allowedValues.length ? valeurDeListeCorrespondante(brut, a.allowedValues) : null;
+    // Préfixe EU/FR retiré SEULEMENT sur une liste fermée (SELECTION_ONLY, ou
+    // fermée après un refus 25129) : en saisie libre, « EU 39 » passe déjà
+    // (rejeu du 01/10 : 1fba4dbf publiée ainsi) et ne doit pas changer.
+    const recale = a.allowedValues.length
+      ? (valeurDeListeCorrespondante(brut, a.allowedValues)
+        ?? (a.mode === "SELECTION_ONLY" ? tailleSansPrefixeEuFr(a.name, brut, a.allowedValues) : null))
+      : null;
     if (recale) {
       if (recale !== brut) recalages.push(`${a.name}: « ${brut} » → « ${recale} »`);
       aspects[a.name] = [recale]; sources[a.name] = source;
