@@ -2758,6 +2758,10 @@ export default function App({ loginOnly = false }){
   const [lensBuy,setLensBuy]=useState("");
   const [lensResult,setLensResult]=useState(null); // {analysis, itemData}
   const [lensLoading,setLensLoading]=useState(false);
+  // (01/10) Où en est le scan, pour LA barre de progression de Lens : les
+  // photos montées une à une, puis l'analyse. AFFICHAGE SEUL — posé aux mêmes
+  // endroits que le marqueur de reprise, il ne décide de rien.
+  const [lensProgres,setLensProgres]=useState(null);
   // Vrai pendant la REPRISE d'un scan interrompu (2026-09-13) : cette attente
   // n'est pas un scan qui démarre, c'est un scan qu'on retrouve — et ça se dit
   // à l'écran, sinon l'utilisateur croit qu'il repaie.
@@ -7554,6 +7558,7 @@ export default function App({ loginOnly = false }){
     // rembourse si l'analyse n'est pas livrée. Seul le 402 insufficient_coins
     // remonte ici — plus aucun quota mensuel.
     setLensLoading(true);setLensResult(null);setLensAdded(false);setLensInventaireId(null);
+    setLensProgres({etape:'envoi',faites:0,total:lensPhotos.length});
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
     // topCategories SUPPRIMÉ (2026-08-11) : les 3 catégories les plus rentables
@@ -7595,17 +7600,20 @@ export default function App({ loginOnly = false }){
         // au lieu de tout jeter. Écriture localStorage, synchrone, gratuite —
         // elle n'ajoute aucune attente réseau au cas normal.
         ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:[...uploadedPaths],etape:'preparation'});
+        setLensProgres(p=>p?{...p,faites:i+1}:p);
       }
       // La liste complète rejoint la réservation côté serveur. Non attendue :
       // le marqueur local fait déjà foi pour la reprise, cette écriture-ci sert
       // l'audit et le cas où le localStorage aurait été vidé.
       supabase.rpc('reserver_scan_lens',{p_scan_id:scanId,p_photos:urls}).then(()=>{},()=>{});
       ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:[...uploadedPaths],etape:'envoye'});
+      setLensProgres(p=>p?{...p,etape:'analyse'}:p);
       await envoyerAnalyseLens({scanId,urls,avgMargin,onRendu:marquerRendu});
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
       setLensLoading(false);
+      setLensProgres(null);
       // ⚠️ Les photos lens-temp NE SONT PLUS supprimées ici (2026-09-13).
       // Deux raisons, la seconde étant la vraie :
       //   · ce `finally` ne tourne pas quand la webview est tuée — c'est
@@ -8525,7 +8533,7 @@ export default function App({ loginOnly = false }){
             lensAdded={lensAdded} setLensAdded={setLensAdded}
             lensDesc={lensDesc} setLensDesc={setLensDesc}
             lensBuy={lensBuy} setLensBuy={setLensBuy}
-            lensLoading={lensLoading} lensReprise={lensReprise} infoRepriseLens={infoRepriseLens} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
+            lensLoading={lensLoading} lensProgres={lensProgres} lensReprise={lensReprise} infoRepriseLens={infoRepriseLens} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}

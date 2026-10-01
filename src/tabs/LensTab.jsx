@@ -18,7 +18,10 @@ import { MAX_PHOTOS, LENS_PHOTOS_LUES } from '../utils/photos';
 import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
 import LensIdentite from '../components/LensIdentite';
 import { useTranslation } from '../i18n/useTranslation';
-import { UI, Loader, PrimaryButton, PremiumButton } from '../components/ui';
+import { UI, PrimaryButton, PremiumButton } from '../components/ui';
+// (01/10) LA barre de progression : le scan, la lecture des photos et la
+// préparation de l'annonce l'utilisent à la place du sablier.
+import BarreProgression from '../components/BarreProgression';
 import { PLATEFORMES_STOCK_OUVERTES } from "../utils/stockFiltres";
 
 const CANVAS    = '#F6F5F1';
@@ -125,7 +128,7 @@ function PlatformMarquee({ plateformes = LENS_PLATFORMS }) {
   );
 }
 
-function LensScanHome({
+export function LensScanHome({
   lang, currency, isPremium, isNative, isPro,
   plateformesOuvertes = [],
   lensPhotos, setLensPhotos, setLensResult, setLensAdded,
@@ -133,6 +136,7 @@ function LensScanHome({
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
   analyzeLens, lensLoading, lensReprise, infoRepriseLens,
+  lensProgres = null, finScan = false, onFinScan = null,
   // (lensPrice retiré au nettoyage unités du 02/09 soir ;
   // onCreateListing/creatingListing retirés à la fusion des CTA du même
   // soir — le viseur n'a plus qu'UN bouton, le scan unifié.)
@@ -278,6 +282,48 @@ function LensScanHome({
               <HelpCircle size={20} color={TEAL_DEEP} strokeWidth={2} />
             </button>
           </div>
+
+          {/* ── LA BARRE DU SCAN (01/10) ──────────────────────────────────
+              L'article (la première photo, la description s'il y en a une),
+              les photos montées UNE À UNE (étapes réelles, relevées pendant la
+              montée), puis l'analyse (~20 s mesurées). 100 % et la coche
+              seulement quand le résultat est là — il s'affiche juste après. */}
+          {(lensLoading || finScan) && (() => {
+            const fr = lang !== 'en';
+            const n = Math.max(1, lensProgres?.total ?? lensPhotos.length);
+            const etapes = [
+              ...Array.from({ length: n }, (_, i) => ({
+                cle: `photo${i + 1}`,
+                texte: fr ? `Envoi des photos (${i + 1} sur ${n})…` : `Sending photos (${i + 1} of ${n})…`,
+                duree: i < LENS_PHOTOS_LUES ? 3 : 1,
+              })),
+              {
+                cle: 'analyse',
+                texte: fr ? "Analyse de l'article : identification, prix de revente, annonce…" : 'Analysing the item: identification, resale prices, listing…',
+                duree: 20,
+              },
+            ];
+            const etape = !lensProgres || lensProgres.etape === 'analyse'
+              ? 'analyse'
+              : `photo${Math.min(n, (lensProgres.faites ?? 0) + 1)}`;
+            return (
+              <div style={{ marginTop:12, background:'#FFFFFF', border:'1px solid #E7E3D8', borderRadius:16, padding:'14px 14px 12px' }}>
+                <BarreProgression
+                  lang={lang}
+                  article={{
+                    photo: lensPhotos[0]?.preview ?? null,
+                    titre: (lensDesc ?? '').trim() || (fr ? 'Ton article' : 'Your item'),
+                    sousTitre: fr ? 'Scan Lens' : 'Lens scan',
+                  }}
+                  etapes={etapes}
+                  etape={etape}
+                  etat={lensLoading ? 'en_cours' : 'termine'}
+                  phraseFin={fr ? 'Analyse terminée : voici ton résultat.' : 'Analysis done: here is your result.'}
+                  onFini={onFinScan ?? undefined}
+                />
+              </div>
+            );
+          })()}
 
           {/* ── REPRISE D'UN SCAN INTERROMPU (2026-09-13) ──────────────────
               Quitter l'app pendant l'analyse ne la perd plus : elle va au bout
@@ -593,11 +639,31 @@ export function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded,
   );
 }
 
+// ── L'écran d'attente de la préparation de l'annonce (01/10) ────────────────
+// Plein écran comme avant (le stepper s'ouvre juste après), avec LA barre :
+// l'article, la montée des photos puis la lecture ou l'ouverture — étapes
+// réelles, relevées pendant le geste. Le stepper s'ouvre dès que c'est prêt.
+export function EcranPreparation({ lang, photo, titre, etape, etapes, sousTitre }) {
+  return (
+    <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 16px"}}>
+      <div style={{width:"100%",maxWidth:440,background:"#FFFFFF",border:"1px solid #E7E3D8",borderRadius:16,padding:"14px 14px 12px",boxSizing:"border-box"}}>
+        <BarreProgression
+          lang={lang}
+          article={{ photo, titre:String(titre??"").trim()||(lang==="en"?"Your item":"Ton article"), sousTitre }}
+          etapes={etapes}
+          etape={etape}
+          etat="en_cours"
+        />
+      </div>
+    </div>
+  );
+}
+
 const LensTab = memo(function LensTab({
   lang, currency, userCountry, isPremium, isPro, isBusiness, isNative, user,
   lensPhotos, setLensPhotos, lensResult, setLensResult,
   lensAdded, setLensAdded, lensDesc, setLensDesc,
-  lensBuy, setLensBuy, lensLoading, lensReprise, infoRepriseLens, lensMicActive, lensMicLoading,
+  lensBuy, setLensBuy, lensLoading, lensProgres = null, lensReprise, infoRepriseLens, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative, analyzeLens, addLensItem, openLensEditModal,
   openUpgradeModal,
@@ -622,6 +688,17 @@ const LensTab = memo(function LensTab({
   extensionLastSeenAt = null,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
+  // (01/10) L'étape RÉELLE de la préparation de l'annonce (montée des photos
+  // puis lecture ou ouverture), pour LA barre de progression de l'écran
+  // d'attente. Affichage seul.
+  const [etapeCreation,setEtapeCreation]=useState('envoi');
+  // La fin du scan se MONTRE (01/10) : la barre glisse jusqu'à 100 % et la
+  // coche paraît avant le résultat. Seulement pour un scan vu en cours ici.
+  const [scanVu,setScanVu]=useState(false);
+  const [finScanVue,setFinScanVue]=useState(false);
+  if(lensLoading&&!scanVu)setScanVu(true);
+  if(lensLoading&&finScanVue)setFinScanVue(false);
+  const finScan=scanVu&&!lensLoading&&Boolean(lensResult)&&!lensResult?.error&&!finScanVue;
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
   const [showListingPreview,setShowListingPreview]=useState(false);
   const nouveauStepper=useNouveauStepper(supabase,user?.id);
@@ -721,12 +798,14 @@ const LensTab = memo(function LensTab({
   // generate-listing invente et l'utilisateur croit lire une analyse de ses
   // photos — exactement ce que ce chantier supprime.
   async function handleIdentifyAndCreate(){
+    setEtapeCreation('envoi');
     setGeneratingListing(true);
     setListingError('');
     setIdentifyEchec(false);
     try{
       const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+      setEtapeCreation('lecture');
       // Parcours GRATUIT : il n'y a pas encore de ligne (aucun débit n'a eu
       // lieu). L'appel est sans effet tant que effectiveInvId est absent — il
       // sert la reprise d'un parcours dont la ligne existe déjà.
@@ -775,6 +854,7 @@ const LensTab = memo(function LensTab({
   }
 
   async function handleCreateListing(){
+    setEtapeCreation('envoi');
     setGeneratingListing(true);
     setListingError('');
     try{
@@ -784,6 +864,7 @@ const LensTab = memo(function LensTab({
       // exister, ni pour avoir ses photos.
       const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+      setEtapeCreation('ouverture');
       await rattacherPhotosDurables(uploadedUrls);
 
       // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
@@ -855,17 +936,18 @@ const LensTab = memo(function LensTab({
     );
   }
 
-  if (!lensResult) {
+  if (!lensResult || finScan) {
     return (
       <>
         <LensScanHome
+          finScan={finScan} onFinScan={()=>setFinScanVue(true)}
           lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
           plateformesOuvertes={plateformesOuvertes}
           lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
           lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
           lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
-          analyzeLens={analyzeLens} lensLoading={lensLoading} lensReprise={lensReprise} infoRepriseLens={infoRepriseLens}
+          analyzeLens={analyzeLens} lensLoading={lensLoading} lensProgres={lensProgres} lensReprise={lensReprise} infoRepriseLens={infoRepriseLens}
         />
         {/* (onCreateListing/creatingListing retirés à la fusion des CTA du
             02/09 soir : le viseur n'a plus qu'UN bouton — le scan unifié —
@@ -901,15 +983,13 @@ const LensTab = memo(function LensTab({
           />
         )}
         {generatingListing&&(
-          <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,padding:"0 40px"}}>
-            <Loader size={40} thickness={3} />
-            <div style={{color:UI.ink,fontWeight:600,fontSize:17,textAlign:"center"}}>
-              {lang==="en"?"Reading your photos...":"Lecture de tes photos..."}
-            </div>
-            <div style={{color:UI.mute2,fontSize:13,textAlign:"center",lineHeight:1.6}}>
-              {lang==="en"?"Brand, size, material, condition\n~10 sec · free":"Marque, taille, matière, état\n~10 s · gratuit"}
-            </div>
-          </div>
+          <EcranPreparation lang={lang} photo={lensPhotos[0]?.preview??null} titre={lensDesc}
+            etape={etapeCreation}
+            etapes={[
+              {cle:'envoi',texte:lang==="en"?"Sending your photos…":"Envoi de tes photos…",duree:Math.max(3,lensPhotos.length*1.5)},
+              {cle:'lecture',texte:lang==="en"?"Reading your photos: brand, size, material, condition…":"Lecture de tes photos : marque, taille, matière, état…",duree:10},
+            ]}
+            sousTitre={lang==="en"?"Reading your photos · free":"Lecture de tes photos · gratuit"}/>
         )}
       </>
     );
@@ -1176,15 +1256,13 @@ const LensTab = memo(function LensTab({
       )}
 
       {generatingListing&&(
-        <div style={{position:"fixed",inset:0,background:UI.canvas,zIndex:9998,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:18,padding:"0 40px"}}>
-          <Loader size={40} thickness={3} />
-          <div style={{color:UI.ink,fontWeight:600,fontSize:17,textAlign:"center"}}>
-            {lang==="en"?"Generating your listing...":"Génération de ton annonce..."}
-          </div>
-          <div style={{color:UI.mute2,fontSize:13,textAlign:"center",lineHeight:1.6}}>
-            {lang==="en"?"Uploading photos · generating listing\n~10-20 sec":"Upload photos · génération annonce\n~10-20 sec"}
-          </div>
-        </div>
+        <EcranPreparation lang={lang} photo={lensPhotos[0]?.preview??null} titre={lensResult?.titre??lensDesc}
+          etape={etapeCreation}
+          etapes={[
+            {cle:'envoi',texte:lang==="en"?"Sending your photos…":"Envoi de tes photos…",duree:Math.max(3,lensPhotos.length*1.5)},
+            {cle:'ouverture',texte:lang==="en"?"Opening your listing…":"Ouverture de ton annonce…",duree:3},
+          ]}
+          sousTitre={lang==="en"?"Preparing your listing":"Préparation de ton annonce"}/>
       )}
 
     </div>
