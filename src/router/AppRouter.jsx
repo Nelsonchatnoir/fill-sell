@@ -33,6 +33,7 @@ const BlogPost = lazy(() => import("../pages/BlogPost"));
 const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
 const EbayRetour = lazy(() => import("../pages/EbayRetour"));
 const Desinscription = lazy(() => import("../pages/Desinscription"));
+const DemoBarreProgression = lazy(() => import("../pages/DemoBarreProgression"));
 
 // ── Un jeton d'authentification n'atterrit JAMAIS sur la landing (16/09) ─────
 // Le lien de confirmation d'inscription part avec redirect_to = SITE_URL, donc
@@ -148,6 +149,10 @@ export default function AppRouter() {
             ?etat=ok|refus|erreur. PUBLIQUE : sur natif la page s'ouvre dans le
             navigateur système, sans session FillSell. */}
         <Route path="/ebay/retour" element={<EbayRetour />} />
+        {/* Démonstration de la barre de progression (01/10) : NON LISTÉE —
+            liée de nulle part, noindex, aucune donnée lue. Sert à faire
+            valider le composant avant de remplacer les barres de l'app. */}
+        <Route path="/demo/barre-progression" element={<DemoBarreProgression />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
