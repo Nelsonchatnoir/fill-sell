@@ -17,7 +17,7 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt. Celles
   du 30/09 faites sans trace y sont reconstituées (1 090 fusions par photo).
-- **Ouvert** : 0.6.82 (3f3ff91) PROUVÉE le 01/10, à téléverser par Nico (`build/CWS-0.6.82-A-TELEVERSER/`) ; 0.6.83 (50a2c27, Beebs) committée, NON empaquetée ;
+- **Ouvert** : 0.6.83 (contient la 0.6.82) PROUVÉE le 01/10 (republication Beebs 34090327), à téléverser par Nico (`build/CWS-0.6.83-A-TELEVERSER/`) à la place de la 0.6.82 ;
   ornellaracano 307204072564 — retrait en file (cf. l'état du 01/10).
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :

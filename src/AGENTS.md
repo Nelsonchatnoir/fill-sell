@@ -48,3 +48,11 @@
    connecter à fillsell.app dans un navigateur automatisé partagé avec Nico.
 10. Sur téléphone, `/extension` dit « ouvre ce lien sur ton ordinateur »
     (l'extension ne s'installe que sur un Chrome d'ordinateur).
+11. **Barres de progression (01/10)** : UN composant, `components/BarreProgression`
+    (moteur `utils/progression.js`, étapes réelles des jobs `utils/barresJobs.js`).
+    Grande barre dans le parcours où l'on attend, compacte sur la carte du Stock
+    (`BarreJobCarte`), jamais les deux pour le même job sur le même écran. Tap sur
+    une barre de job = `FileDesJobs` (lecture seule, raisons `utils/fileDesJobs.js`).
+    Jamais 100 % ni « Terminé » avant la vraie fin. Relevés et synchronisation :
+    hors périmètre, leur chargement reste le leur. Preuves : `npm run
+    selftest:progression`, `selftest:file-des-jobs`, `scripts/apercu/capture-barres.mjs`.
