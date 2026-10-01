@@ -5473,8 +5473,8 @@ export default function ListingPreviewScreen({
   useEffect(() => {
     if (step !== 2 || generatingPlatforms || platformListings || platformError) return undefined;
     const minuteur = setTimeout(() => setPlatformError(lang === "en"
-      ? "Writing didn't start. Tap “Try writing again”."
-      : "La rédaction ne s'est pas lancée. Touche « Réessayer la rédaction »."), 2500);
+      ? "Nothing was sent to our servers."
+      : "Rien n'est parti vers nos serveurs."), 2500);
     return () => clearTimeout(minuteur);
   }, [step, generatingPlatforms, platformListings, platformError, lang]);
 
@@ -5910,8 +5910,8 @@ export default function ListingPreviewScreen({
       let minuteurDelai;
       const delaiDepasse = new Promise((_, rejeter) => {
         minuteurDelai = setTimeout(() => rejeter(new Error(lang === "en"
-          ? "Writing is taking much longer than expected. Try again in a moment."
-          : "La rédaction prend beaucoup plus de temps que prévu. Réessaie dans un instant.")), 180_000);
+          ? "Writing is taking much longer than expected."
+          : "La rédaction prend beaucoup plus de temps que prévu.")), 180_000);
       });
       let reponse;
       try {
@@ -5963,9 +5963,11 @@ export default function ListingPreviewScreen({
         }
         // Jamais le message technique du client (« Edge Function returned a
         // non-2xx status code », « Failed to send a request… ») à l'écran.
+        // Une seule information : la cause. La carte dit déjà « La rédaction
+        // n'a pas abouti » et « Réessaie ci-dessous » (relu en réel le 01/10).
         throw new Error(fnErr.name === "FunctionsFetchError"
-          ? (lang === "en" ? "Couldn't reach our servers. Check your internet connection, then try again." : "Impossible de joindre nos serveurs. Vérifie ta connexion internet, puis réessaie.")
-          : (lang === "en" ? "Writing didn't go through on our side. Try again in a moment." : "La rédaction n'a pas abouti de notre côté. Réessaie dans un instant."));
+          ? (lang === "en" ? "Couldn't reach our servers: check your internet connection." : "Impossible de joindre nos serveurs : vérifie ta connexion internet.")
+          : (lang === "en" ? "The problem is on our side." : "Le souci vient de nos serveurs."));
       }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
