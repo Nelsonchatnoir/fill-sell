@@ -2565,6 +2565,61 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BAISSER LA QUANTITÉ D'UNE ANNONCE eBAY, SUR DÉCISION (01/10, lot point 4)
+// ═══════════════════════════════════════════════════════════════════════════
+// Appelée à la main (x-cron-secret), jamais par le cron. xxewwer : l'annonce
+// 377462623400 affiche « 2 disponibles » alors qu'un exemplaire est parti sur
+// Vinted — décision de Nico : la baisser à 1, sans rien retirer.
+// Gardes, toutes avant d'écrire : le compte eBay relié est bien le vendeur de
+// l'annonce (Browse), l'annonce est en vente, eBay affiche EXACTEMENT la
+// quantité attendue et 0 vendu (sinon la quantité totale à écrire serait
+// ambiguë) ; la nouvelle quantité est plus petite et ≥ 1. Relu après.
+async function reviserQuantiteAnnonce(admin: SupabaseClient, env: EbayEnv, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const userId = String(body.user_id ?? "");
+  const id = String(body.listing_id ?? "");
+  const cible = Number(body.quantite);
+  const attendu = Number(body.attendu_disponible);
+  if (!/^[0-9a-f-]{36}$/i.test(userId) || !/^d{9,15}$/.test(id) || !Number.isInteger(cible) || cible < 1
+      || !Number.isInteger(attendu) || cible >= attendu) return { ok: false, motif: "parametres" };
+  const { data: compte } = await admin.from("ebay_accounts").select("ebay_user_id").eq("user_id", userId).maybeSingle();
+  const pseudo = String((compte as { ebay_user_id?: string } | null)?.ebay_user_id ?? "");
+  if (!pseudo) return { ok: false, motif: "compte_ebay_non_relie" };
+  const appToken = await obtenirJetonApplicatif(env);
+  const lire = async () => {
+    const r = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${id}`, {
+      headers: { Authorization: `Bearer ${appToken}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+    });
+    const j = await r.json().catch(() => ({})) as Record<string, unknown>;
+    const d = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
+    return { http: r.status, vendeur: String((j.seller as Record<string, unknown> | undefined)?.username ?? ""),
+      fin: j.itemEndDate ?? null, q: lireQuantiteEbay(d) };
+  };
+  const avant = await lire();
+  if (avant.http !== 200) return { ok: false, motif: `browse_http_${avant.http}` };
+  if (avant.vendeur.toLowerCase() !== pseudo.toLowerCase()) return { ok: false, motif: "vendeur_different", vendeur: avant.vendeur };
+  if (avant.fin) return { ok: false, motif: "annonce_terminee" };
+  if (!avant.q.exacte || avant.q.disponible !== attendu || avant.q.vendus !== 0) return { ok: false, motif: "etat_inattendu", avant: avant.q };
+  const jeton = await obtenirAccessToken(admin, userId);
+  if (!jeton.ok) return { ok: false, motif: `jeton_${jeton.motif}` };
+  const r = await fetch(`${hotes(env).api}/ws/api.dll`, {
+    method: "POST",
+    headers: {
+      "X-EBAY-API-IAF-TOKEN": jeton.token as string,
+      "X-EBAY-API-CALL-NAME": "ReviseInventoryStatus",
+      "X-EBAY-API-SITEID": "71",
+      "X-EBAY-API-COMPATIBILITY-LEVEL": "1193",
+      "Content-Type": "text/xml",
+    },
+    body: `<?xml version="1.0" encoding="utf-8"?><ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents"><InventoryStatus><ItemID>${id}</ItemID><Quantity>${cible}</Quantity></InventoryStatus></ReviseInventoryStatusRequest>`,
+  });
+  const xml = await r.text();
+  const ack = xml.match(/<Ack>([^<]+)<[/]Ack>/)?.[1] ?? null;
+  const erreur = xml.match(/<LongMessage>([^<]{1,300})<[/]LongMessage>/)?.[1] ?? null;
+  const apres = await lire();
+  return { ok: ack === "Success" || ack === "Warning", ack, erreur, avant: avant.q, apres: apres.q };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // LE VENDEUR DES ANNONCES LUES AU HUB (2026-09-26, relevé eBay aligné sur l'API)
 // ═══════════════════════════════════════════════════════════════════════════
 // Un compte relié par l'API ne voit plus son relevé eBay traité que si le Hub
@@ -2708,6 +2763,7 @@ Deno.serve(async (req) => {
   if (body.action === "mots_sans_mot_objet") return json(await motsSansMotObjet(admin, body));
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
+  if (body.action === "reviser_quantite_annonce") return json(await reviserQuantiteAnnonce(admin, env, body as Record<string, unknown>));
   if (body.action === "rejeu_rayon_refuse") return json(await rejeuRayonRefuse(admin, env, body as { ids?: string[] }));
   if (body.action === "rayon_aveugle") {
     return json(await recategoriserRayonsAveugles(admin, env, { job_id: body.job_id, dry_run: (body as { dry_run?: boolean }).dry_run === true }));
