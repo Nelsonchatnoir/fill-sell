@@ -29,6 +29,9 @@ import PlatformLogo from "./platform-logos/PlatformLogo";
 import { lireFile, phraseCompteurs, libelleAction } from "../utils/fileDesJobs";
 import { pisteJob, articleDeJob } from "../utils/barresJobs";
 import { fraicheurExtension } from "../utils/shared";
+import { useOplaAcces } from "../utils/oplaAcces";
+import { MOTIFS } from "../utils/connexionPlateformes";
+import BoutonMeConnecter from "./BoutonMeConnecter";
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
@@ -148,6 +151,9 @@ export default function FileDesJobs({
   const lesFiches = fiches ?? autonome?.fiches ?? new Map();
   const aRepublicationEnAttente = (listeJobs ?? []).some((j) => j.action === "republish" && j.status === "pending");
   const retenues = useRetenuesRepublication({ supabase, actif: aRepublicationEnAttente });
+  // L'autorisation Opla : la MÊME lecture partagée que le Stock et le parcours.
+  const aOplaEnAttente = (listeJobs ?? []).some((j) => j.platform === "opla" && j.status === "pending");
+  const opla = useOplaAcces({ userId, actif: aOplaEnAttente });
   // Une horloge qui avance toutes les 30 s : une pause dont l'heure est passée
   // cesse d'en afficher une, sans attendre la prochaine lecture.
   const [maintenant, setMaintenant] = useState(() => Date.now());
@@ -162,8 +168,9 @@ export default function FileDesJobs({
     plateformesEnPause: contexte?.plateformesEnPause ?? autonome?.plateformesEnPause ?? new Set(),
     plafond: retenues?.plafond ?? contexte?.plafond ?? null,
     creneaux: retenues?.creneaux ?? null,
+    oplaAAutoriser: contexte?.oplaAAutoriser ?? (opla.verdict === "a_autoriser"),
     texteErreur,
-  }), [lang, maintenant, contexte, autonome, retenues, texteErreur]);
+  }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict]);
 
   const file = useMemo(() => (listeJobs ? lireFile(listeJobs, ctx) : null), [listeJobs, ctx]);
   const ficheDe = (j) => lesFiches.get?.(String(j?.inventaire_id)) ?? null;
@@ -209,7 +216,10 @@ export default function FileDesJobs({
               item={ficheDe(job)}
               situation={situation}
               lang={lang}
-              geste={s.cle === "geste" && renderGeste ? renderGeste(job) : null}
+              geste={s.cle !== "geste" ? null
+                : situation.motif === "opla" && userId
+                  ? <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />
+                  : (renderGeste ? renderGeste(job) : null)}
             />
           )))}
         </div>

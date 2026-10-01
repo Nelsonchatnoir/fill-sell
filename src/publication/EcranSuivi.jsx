@@ -107,7 +107,10 @@ export default function EcranSuivi({ m }) {
   // L'état vient de la MÊME lecture que les lignes (etatsFournee) ; la piste
   // (étapes réelles, état, couleur) vient de barresJobs. Les lignes gardent
   // leurs textes, leurs liens et leurs gestes d'avant, mot pour mot.
-  const ctxBarre = { lang: m.lang, extension: ext ?? null, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr") };
+  // Opla sans autorisation connue (verdict serveur) : le serveur ne la sert
+  // pas — sa ligne attend le geste, jamais « son tour ».
+  const oplaAAutoriser = m.oplaVerdict === "a_autoriser";
+  const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr") };
   const piste = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
     const parApi = p === "ebay" && m.ebayVoieApiReelle;
@@ -127,7 +130,7 @@ export default function EcranSuivi({ m }) {
       case "refusee": return { ...base, ...extra, etat: "echec", ton: "action" };
       case "annulee": return { ...base, ...extra, etat: "echec", ton: "neutre" };
       case "publiee": return { ...base, ...extra, etat: "termine" };
-      default: return { ...base, ...extra };
+      default: return p === "opla" && oplaAAutoriser ? { ...base, ...extra, etat: "echec", ton: "action" } : { ...base, ...extra };
     }
   };
 
@@ -156,7 +159,11 @@ export default function EcranSuivi({ m }) {
       // Pas de rang annoncé (« 1er », « 2e ») : c'est le serveur qui ordonne la
       // file, et l'ordre observé en réel (Vinted avant Opla) n'était pas
       // celui de la fournée — on ne promet que ce qu'on sait.
-      default: return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> };
+      // (01/10) Opla en file SANS autorisation connue : elle ne partira pas à
+      // son tour — elle attend le geste, et le bouton est là.
+      default: if (p === "opla" && oplaAAutoriser) return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
+        geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
+        return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> };
     }
   };
 

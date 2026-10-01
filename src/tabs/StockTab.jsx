@@ -7480,7 +7480,7 @@ const StockTab = memo(function StockTab({
   // Les MÊMES lectures que les pastilles des cartes : fraîcheur de
   // l'extension, plateformes en pause de notre côté, retenue serveur des
   // republications. Rien de nouveau n'est lu pour les barres.
-  const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, texteErreur: (j) => humanizeJobError(j, lang) };
+  const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, oplaAAutoriser: oplaVerdictRepub === 'a_autoriser', texteErreur: (j) => humanizeJobError(j, lang) };
   // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
   // republication — même gating que l'interrupteur coin_config
   // .republish_maintenance : le trigger republish_maintenance_guard refuse

@@ -89,6 +89,8 @@ console.log("4. CHAQUE ATTENTE DIT POURQUOI");
   ok(s(horsLigne).groupe === "en_cours" && s(horsLigne).raison === "Hors ligne quelques minutes : remise en ligne vers 15:03", "hors ligne entre retrait et remise en ligne : en cours, avec l'heure prévue");
   ok(s(horsLigne, { ...ctx, plafond }).groupe === "en_cours", "la limite du jour ne retient jamais une annonce hors ligne");
   ok(s(job({ action: "republish", platform_fields: { republish_step: "captured", attente_boutique: { login: "louis" } } })).raison === "En attente de ta boutique @louis dans Chrome", "attente de la bonne boutique Vinted");
+  ok(s(job({ platform: "opla" }), { ...ctx, oplaAAutoriser: true }).groupe === "geste", "Opla sans autorisation connue : un geste, jamais « son tour »");
+  ok(s(job({ platform: "opla" }), ctx).raison === "En attente de son tour", "Opla autorisée (ou verdict inconnu) : à son tour");
 }
 
 console.log("5. COMPTEURS ET LIBELLÉS");

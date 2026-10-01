@@ -107,6 +107,7 @@ const TEXTE = {
     boutique: (login) => (login ? `En attente de ta boutique @${login} dans Chrome` : "En attente de la bonne boutique dans Chrome"),
     geste: "Un geste à faire",
     connexion: (p) => `Un geste à faire : connecte-toi à ${p} sur ton ordinateur`,
+    opla: "Un geste à faire : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
     horsLigne: (h) => (h ? `Hors ligne quelques minutes : remise en ligne vers ${h}` : "Hors ligne quelques minutes : remise en ligne en cours"),
     enCours: "En cours sur ton ordinateur",
     enCoursServeurs: "En cours sur nos serveurs",
@@ -128,6 +129,7 @@ const TEXTE = {
     boutique: (login) => (login ? `Waiting for your @${login} shop in Chrome` : "Waiting for the right shop in Chrome"),
     geste: "Something to do",
     connexion: (p) => `Something to do: sign in to ${p} on your computer`,
+    opla: "Something to do: allow Opla in the extension — the listing then goes out on its own",
     horsLigne: (h) => (h ? `Offline for a few minutes: back online around ${h}` : "Offline for a few minutes: going back online"),
     enCours: "In progress on your computer",
     enCoursServeurs: "In progress on our servers",
@@ -141,7 +143,8 @@ const extensionFraiche = (ext) => !ext || !["eteinte", "inactive", "session_expi
 /**
  * Où en est UN job vivant, et pourquoi.
  * ctx = { maintenant, lang, extension: {etat}|null, plateformesEnPause: Set,
- *         plafond: {retenue, reprise, motif}|null, creneaux: {pf: {dans_creneau, reprise}}|null }
+ *         plafond: {retenue, reprise, motif}|null, creneaux: {pf: {dans_creneau, reprise}}|null,
+ *         oplaAAutoriser: bool (verdict serveur « a_autoriser ») }
  * → { groupe: 'en_cours'|'a_venir'|'pause'|'geste', raison, heure|null, motif }
  */
 export function situationJob(j, ctx = {}) {
@@ -154,6 +157,11 @@ export function situationJob(j, ctx = {}) {
 
   if (j.status === "needs_user") return { groupe: "geste", raison: T.geste, heure: null, motif: "geste" };
   if (attendConnexion(j)) return { groupe: "geste", raison: T.connexion(nom), heure: null, motif: "connexion" };
+  // Opla sans autorisation CONNUE (verdict serveur « a_autoriser ») : le
+  // serveur ne la sert pas, elle attend le geste — jamais « son tour ».
+  if (j.status === "pending" && j.platform === "opla" && ctx.oplaAAutoriser) {
+    return { groupe: "geste", raison: T.opla, heure: null, motif: "opla" };
+  }
 
   // Hors ligne entre retrait et remise en ligne : c'est EN COURS, toujours.
   if (etape === "deleted") {
