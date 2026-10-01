@@ -2220,6 +2220,92 @@ async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Pro
   return { verdict: "terminee_sans_vente", fin };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LA QUANTITÉ D'UNE FICHE IMPORTÉE VIENT D'eBAY (01/10, lot point 7)
+// ═══════════════════════════════════════════════════════════════════════════
+// xxewwer : « Bravely Default II » importé d'eBay le 19/09 à 1 exemplaire — le
+// relevé du Hub ne lit pas la quantité, l'import écrit 1 par défaut — alors
+// qu'eBay affiche « 2 disponibles ». Vendu une fois sur Vinted, la fiche tombe
+// à 0 et un retrait eBay est armé sur l'exemplaire qui lui reste (refusé par
+// la garde, à raison).
+// LA RÈGLE : une fiche NÉE d'un import eBay (rattachement.import, origine
+// releve_ebay, créée avec le job, depuis la mise en service, moins de 7 j),
+// toujours en stock à 1, sans vente, prend la quantité EXACTE affichée par eBay
+// (Browse : estimatedAvailableQuantity sans seuil « plus de N ») si elle est
+// ≥ 2. Jamais un seuil, jamais une estimation. Les fiches existantes ne sont
+// pas touchées ici (liste et correction sur décision).
+// ⛔ LATENCE (01/10) : deux essais de veille élargie ont porté la passe du cron
+//    de ~1 s à 4-19 s ; retirés. Ici : seulement les imports NEUFS, 2 lectures
+//    au plus par passe, en parallèle, abandonnées à 1,5 s. Sans import neuf :
+//    une seule lecture de base, aucun appel eBay.
+const QUANTITE_IMPORT_DEPUIS = "2026-10-01T09:00:00Z";
+const QUANTITE_IMPORT_PAR_PASSE = 2;
+const QUANTITE_IMPORT_DELAI_MS = 1_500;
+
+async function quantitesImportsEbay(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
+  const depuis = new Date(Math.max(Date.parse(QUANTITE_IMPORT_DEPUIS), Date.now() - 7 * 24 * 3600_000)).toISOString();
+  const { data: jobs, error } = await admin.from("cross_post_jobs")
+    .select("id, inventaire_id, platform_listing_id, platform_fields, created_at")
+    .eq("platform", "ebay").eq("status", "published").eq("action", "publish")
+    .eq("platform_fields->rattachement->>import", "true")
+    .is("platform_fields->quantite_ebay", null)
+    .gte("created_at", depuis)
+    .not("platform_listing_id", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(QUANTITE_IMPORT_PAR_PASSE);
+  if (error) return { erreur: error.message };
+  const lot = ((jobs ?? []) as Array<{ id: string; inventaire_id: number | null; platform_listing_id: string; platform_fields: Record<string, unknown> | null; created_at: string }>)
+    .filter((j) => /^\d{9,15}$/.test(String(j.platform_listing_id)) && j.inventaire_id != null);
+  if (!lot.length) return { lues: 0 };
+  const token = await obtenirJetonApplicatif(env);
+  const lire = async (id: string): Promise<{ disponible: number | null; vendus: number | null; exacte: boolean } | null> => {
+    const ctl = new AbortController();
+    const minuteur = setTimeout(() => ctl.abort(), QUANTITE_IMPORT_DELAI_MS);
+    try {
+      const r = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+        signal: ctl.signal,
+      });
+      if (r.status !== 200) return null;
+      const j = await r.json().catch(() => null) as Record<string, unknown> | null;
+      if (!j || (typeof j.itemEndDate === "string" && j.itemEndDate)) return null;   // terminée : rien
+      const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
+      const brut = dispo.estimatedAvailableQuantity;
+      const seuil = dispo.availabilityThresholdType != null || dispo.availabilityThreshold != null;
+      const exacte = typeof brut === "number" && Number.isInteger(brut) && brut >= 0 && !seuil;
+      const vendus = Number(dispo.estimatedSoldQuantity ?? Number.NaN);
+      return { disponible: exacte ? (brut as number) : null, vendus: Number.isFinite(vendus) ? vendus : null, exacte };
+    } catch { return null; } finally { clearTimeout(minuteur); }
+  };
+  const lus = await Promise.all(lot.map((j) => lire(String(j.platform_listing_id))));
+  const { data: fiches } = await admin.from("inventaire")
+    .select("id, statut, quantite, origine, created_at, fusionne_dans").in("id", lot.map((j) => j.inventaire_id as number));
+  const ficheDe = new Map(((fiches ?? []) as Array<{ id: number; statut: string; quantite: number; origine: string | null; created_at: string; fusionne_dans: number | null }>).map((f) => [f.id, f]));
+  const { data: vts } = await admin.from("ventes").select("inventaire_id").in("inventaire_id", lot.map((j) => j.inventaire_id as number));
+  const vendues = new Set(((vts ?? []) as Array<{ inventaire_id: number }>).map((v) => v.inventaire_id));
+  let posees = 0;
+  await Promise.all(lot.map(async (job, k) => {
+    const q = lus[k];
+    if (!q) return;   // illisible ou délai : on repassera (quantite_ebay toujours vide)
+    const pf: Record<string, unknown> = { ...(job.platform_fields ?? {}), quantite_ebay: { ...q, vu_le: new Date().toISOString() } };
+    const f = ficheDe.get(job.inventaire_id as number);
+    const nee = Date.parse(String(f?.created_at ?? ""));
+    if (f && q.exacte && q.disponible != null && q.disponible >= 2 && f.origine === "releve_ebay" && f.statut === "stock"
+        && Number(f.quantite) === 1 && f.fusionne_dans == null && !vendues.has(f.id)
+        && Number.isFinite(nee) && Math.abs(nee - Date.parse(job.created_at)) <= 10 * 60_000) {
+      const { data: maj } = await admin.from("inventaire")
+        .update({ quantite: q.disponible }).eq("id", f.id).eq("quantite", 1).eq("statut", "stock").select("id");
+      if (maj?.length) {
+        posees++;
+        pf.quantite_ebay = { ...(pf.quantite_ebay as Record<string, unknown>), posee_sur_fiche: f.id };
+        console.log(`[ebay-api-worker] import ${job.platform_listing_id} : eBay affiche ${q.disponible} disponibles → fiche ${f.id} à ${q.disponible} (au lieu de 1 par défaut)`);
+      }
+    }
+    await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id).eq("status", "published");
+  }));
+  return { lues: lus.filter(Boolean).length, posees };
+}
+
 async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
   const { data: bruts, error } = await admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform_listing_id, price, platform_fields")
@@ -2546,6 +2632,11 @@ Deno.serve(async (req) => {
 
   // ── Vendeurs des annonces lues au Hub (relevé eBay aligné sur l'API) :
   // même règle que la veille — avant la sortie anticipée, jamais bloquant.
+  // ── Quantité des imports eBay neufs (01/10) : bornée, jamais bloquante.
+  let quantites: Record<string, unknown> = {};
+  try { quantites = await quantitesImportsEbay(admin, env); }
+  catch (e) { quantites = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
+
   let vendeurs: Record<string, unknown> = {};
   try { vendeurs = await verifierVendeursAnnonces(admin, env); }
   catch (e) { vendeurs = { erreur: String((e as Error)?.message ?? e).slice(0, 200) }; }
@@ -2571,7 +2662,7 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0, reprises, veille, vendeurs, aveugles, reroutees });
+  if (!jobs?.length) return json({ traites: 0, reprises, veille, quantites, vendeurs, aveugles, reroutees });
 
   const resultats: Record<string, unknown>[] = [];
   // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
@@ -2636,5 +2727,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, scans_lens: passe.scans, veille, vendeurs, aveugles, reroutees, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, veille, quantites, vendeurs, aveugles, reroutees, resultats });
 });
