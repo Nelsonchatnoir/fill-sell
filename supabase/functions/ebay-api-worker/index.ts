@@ -2185,7 +2185,7 @@ const VEILLE_CANDIDATS_MAX = 500;        // borne de lecture, les plus anciennes
 // ⛔ BUDGET DE TEMPS (01/10, après retour arrière de v64) : 25 lectures Browse
 // à la suite = 12 à 19 s par passe (~0,6 s chacune), et la réponse au cron
 // (pg_net, 5 s) tombait en délai dépassé. Les lectures partent par 4 et la
-// veille s'arrête à 2,5 s : une annonce non lue n'est pas horodatée, elle
+// veille s'arrête à 2 s : une annonce non lue n'est pas horodatée, elle
 // passe au tour suivant (même règle que le 429).
 const VEILLE_PARALLELE = 4;
 const VEILLE_BUDGET_MS = 2_000;
