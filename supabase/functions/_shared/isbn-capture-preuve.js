@@ -34,6 +34,22 @@
 import { normalizeIsbn } from "./isbn.js";
 import { buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL } from "./correctifs-extension.js";
 
+// ── LES PREUVES DÉJÀ FAITES NE SE RELISENT PLUS (2026-10-02, carhoa) ─────────
+// Le 01/10 à 22:28, get-pending-jobs lève les 6 retenues de Carole (valeur
+// prouvée) ; à 22:31, il les repose sur 5 livres — « valeur jamais prouvée ».
+// La preuve n'avait pas disparu : la requête qui la relit en base (balayage de
+// cross_post_jobs, ~80 000 lignes, aucun index utilisable) a dépassé les 8 s
+// de PostgREST (erreur 57014, 8,65 s ; 0,47 s à 22:28), et l'erreur était lue
+// comme « aucune preuve ». La mémoire de l'isolat n'y pouvait rien : un isolat
+// vit quelques secondes. Une preuve ÉTABLIE est donc écrite ici, avec ses
+// faits ; la base n'est plus relue que pour une valeur nouvelle, et une
+// lecture en échec n'est plus jamais un verdict.
+export const PREUVES_ISBN_ETABLIES = Object.freeze({
+  // 279c046f (carhoa, 0.6.75) → annonce 10164728230 en ligne le 28/09 ;
+  // da12dfa5 (cobaye Nico, 0.6.82) → 10204579653 en ligne le 01/10 16:30.
+  "0000000000000": "279c046f (10164728230, 28/09) · da12dfa5 (10204579653, 01/10)",
+});
+
 /** La forme comparable d'une valeur capturée : sans espaces ni tirets, en majuscules. */
 export function valeurIsbnCapturee(brut) {
   return String(brut ?? "").replace(/[\s-]/g, "").toUpperCase();

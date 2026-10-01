@@ -13,7 +13,7 @@
 //      levée laisse une trace, et l'app ne la lit que sur une republication
 //      pending encore en ligne.
 //   node scripts/isbn-capture-preuve-selftest.mjs
-import { valeurProuveeParJob, valeursProuvees, estIsbnCaptureNonStandard, valeurIsbnCapturee } from "../supabase/functions/_shared/isbn-capture-preuve.js";
+import { valeurProuveeParJob, valeursProuvees, estIsbnCaptureNonStandard, valeurIsbnCapturee, PREUVES_ISBN_ETABLIES } from "../supabase/functions/_shared/isbn-capture-preuve.js";
 import { retenueServeurDuJob, retenueServeurDe, poserRetenueServeur, leverRetenueServeur, RETENUE_ISBN_CAPTURE, phraseRetenueServeur } from "../src/utils/retenueServeur.js";
 
 let ko = 0;
@@ -86,6 +86,16 @@ console.log("\n6. La retenue serveur : posée, convertie, levée, lue");
   ok(retenueServeurDe({}) === null, "aucun marqueur : null");
   const ph = phraseRetenueServeur(true);
   ok(/intacte sur Vinted/.test(ph.detail) && ph.court === "En attente", `phrase : « ${ph.court} » — ${ph.titre}`);
+}
+
+// 7. (02/10) Les preuves ÉTABLIES ne se relisent plus en base : une lecture
+//    en échec (57014 le 01/10 à 22:31) ne peut plus faire « jamais prouvée ».
+{
+  const etablies = Object.keys(PREUVES_ISBN_ETABLIES);
+  ok(etablies.includes("0000000000000"), "0000000000000 est une preuve établie (279c046f, da12dfa5)");
+  ok(etablies.every((v) => v === valeurIsbnCapturee(v) && estIsbnCaptureNonStandard(v)), "chaque preuve établie est une valeur non standard sous sa forme comparable");
+  ok(valeurProuveeParJob(gobelins()) === "0000000000000" && etablies.includes(valeurProuveeParJob(gobelins())), "la preuve établie est bien celle que les faits de gobelins prouvent");
+  ok(Object.isFrozen(PREUVES_ISBN_ETABLIES), "le registre ne se modifie pas à l'exécution");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ tout passe");

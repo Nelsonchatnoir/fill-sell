@@ -111,11 +111,14 @@ import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-int
 import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
 // La preuve qu'un ISBN capturé non standard repasse chez Vinted, lue sur les
 // faits (2026-10-01, carhoa) — module JS, le même que son autotest.
-import { estIsbnCaptureNonStandard, valeurIsbnCapturee, valeursProuvees } from "../_shared/isbn-capture-preuve.js";
+import { estIsbnCaptureNonStandard, valeurIsbnCapturee, valeursProuvees, PREUVES_ISBN_ETABLIES } from "../_shared/isbn-capture-preuve.js";
 import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
 // Valeurs d'ISBN capturé non standard déjà prouvées chez Vinted : une preuve
 // ne se perd pas, on ne la relit pas en base à chaque poll de l'isolat.
-const PREUVES_ISBN_CAPTURE = new Set<string>();
+// (02/10) Amorcé par les preuves ÉTABLIES (isbn-capture-preuve.js) : un isolat
+// vit quelques secondes, et une relecture en base qui échoue ne doit plus
+// jamais défaire une preuve déjà faite (carhoa, 01/10 22:31).
+const PREUVES_ISBN_CAPTURE = new Set<string>(Object.keys(PREUVES_ISBN_ETABLIES));
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -4396,9 +4399,20 @@ serve(async (req) => {
     //   · une retenue s'écrit `retenue_serveur` (src/utils/retenueServeur.js) :
     //     l'app dit « en attente, ton annonce est intacte sur Vinted »,
     //     l'ops-digest la compte ; elle se lève d'elle-même avec la preuve.
+    // ── (02/10) DEUX DÉFAUTS QUI DÉFAISAIENT LA PREUVE (carhoa, 01/10) ──────
+    //   · le popup de l'extension appelle cette fonction SANS build : la garde
+    //     tournait aussi pour lui, concluait « poste sans le correctif » et
+    //     reposait la retenue (22:26, 22:27). Comme les autres retenues, elle
+    //     ne vaut plus que pour le poll d'EXÉCUTION ;
+    //   · la relecture des preuves en base a dépassé 8 s (57014, 22:31:19) et
+    //     l'erreur valait « jamais prouvée ». Désormais : preuves établies en
+    //     dur, relecture bornée aux republications publiées depuis le build qui
+    //     sait remettre la capture, et une lecture en échec retient le job CE
+    //     passage seulement, sans rien écrire ni rien conclure.
     let heldIsbnCapture = 0;
     let isbnCaptureLeves = 0;
-    try {
+    let preuveIsbnIllisible = "";
+    if (!includeProcessing && !includeNeedsUser) try {
       const pfDe = (j: { platform_fields: unknown }) => ((j.platform_fields as Record<string, unknown> | null) ?? {});
       const aVoir = out.filter((j) => j.platform === "vinted" && j.action === "republish"
         && String(pfDe(j)["republish_step"] ?? "") === "captured"
@@ -4427,11 +4441,16 @@ serve(async (req) => {
             if (inconnues.length) {
               const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
               const liste = inconnues.join(",");
-              const { data: preuves } = await admin.from("cross_post_jobs")
+              const isoBuild = String(BUILD_ISBN_CAPTURE_TEL_QUEL).match(/^d{4}-d{2}-d{2}Td{2}:d{2}:d{2}Z/)?.[0];
+              let requete = admin.from("cross_post_jobs")
                 .select("platform, action, status, handler_build, platform_fields->republish_step, platform_fields->isbn_capture_tel_quel, isbn_copie:platform_fields->republish_snapshot->>isbn, isbn_reponse:platform_fields->vintedAspects->>isbn")
                 .eq("platform", "vinted").eq("action", "republish").eq("status", "published")
-                .or(`platform_fields->republish_snapshot->>isbn.in.(${liste}),platform_fields->isbn_capture_tel_quel->>valeur.in.(${liste})`)
-                .limit(50);
+                .or(`platform_fields->republish_snapshot->>isbn.in.(${liste}),platform_fields->isbn_capture_tel_quel->>valeur.in.(${liste})`);
+              // Une recréation qui prouve vient d'un build ≥ BUILD_ISBN_CAPTURE_TEL_QUEL :
+              // elle a été publiée après lui. Moitié moins de lignes à lire.
+              if (isoBuild) requete = requete.gte("published_at", isoBuild);
+              const { data: preuves, error: erreurPreuves } = await requete.limit(50);
+              if (erreurPreuves) preuveIsbnIllisible = String(erreurPreuves.code ?? erreurPreuves.message ?? "erreur").slice(0, 60);
               const faits = ((preuves ?? []) as Array<Record<string, unknown>>).map((p) => ({
                 platform: String(p.platform), action: String(p.action), status: String(p.status),
                 handler_build: (p.handler_build as string | null) ?? null,
@@ -4456,6 +4475,10 @@ serve(async (req) => {
             const pf = pfDe(j);
             const v = valeurIsbnCapturee(valeurDe(j));
             const passe = posteCorrige && (prouvees.has(v) || banc);
+            // Preuve illisible CE passage : le job n'est pas servi (l'étape
+            // 'captured' retire l'annonce), mais rien n'est écrit — ni retenue,
+            // ni motif « jamais prouvée ». Le passage suivant relit.
+            if (!passe && posteCorrige && preuveIsbnIllisible) { retenus.add(String(j.id)); continue; }
             if (passe) {
               // Retenue levée : le marqueur part AVANT de servir, sinon l'app
               // dirait « en attente » d'un job qui file (article par article).
@@ -4482,7 +4505,7 @@ serve(async (req) => {
           if (retenus.size) {
             out = out.filter((j) => !retenus.has(String(j.id)));
             heldIsbnCapture = retenus.size;
-            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${posteCorrige ? "valeur jamais prouvée chez Vinted" : "poste sans le correctif"}), ANNONCE INTACTE, retenue visible`);
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted NON servie(s) à l'étape 'captured' — ISBN capturé non standard (${preuveIsbnIllisible ? `preuve illisible ce passage (${preuveIsbnIllisible}) — rien écrit, relue au prochain passage` : posteCorrige ? "valeur jamais prouvée chez Vinted" : "poste sans le correctif"}), ANNONCE INTACTE, retenue visible`);
           }
           if (isbnCaptureLeves) {
             console.log(`[get-pending-jobs] userId=${user.id} : ${isbnCaptureLeves} retenue(s) ISBN levée(s) — valeur prouvée chez Vinted (${[...prouvees].join(", ")})${banc ? " ou banc d'essai" : ""}`);
