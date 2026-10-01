@@ -21,6 +21,7 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
+import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -2760,6 +2761,38 @@ serve(async (req) => {
           ["etat", "etat"], ["marque", "marque"], ["taille", "taille"],
           ["couleur", "couleur"], ["matiere", "matiere"],
         ];
+        // ── LA TAILLE DE LA FICHE, QUAND LE RELEVÉ NE LA PORTE PAS (01/10) ──
+        // Bottines LPB de misscat801 : relevé sans pointure, fiche « 40 ».
+        // Seulement si la valeur de la fiche est TELLE QUELLE dans la liste
+        // Beebs relevée pour CE rayon (Taille / Pointure). Cf.
+        // _shared/beebs-taille-de-la-fiche.js.
+        const tailleFiche = new Map<number, string>();
+        const listesBeebs = new Map<string, Array<{ field_key: string; allowed_values: unknown }>>();
+        const cheminDuJob = (j: Record<string, unknown>): string[] | null => {
+          const p = pfB(j)["beebsCategoryPath"];
+          return Array.isArray(p) && p.length >= 2 ? (p as unknown[]).map(String) : (cheminDe.get(Number(j.inventaire_id)) ?? null);
+        };
+        const sansTaille = beebsACombler.filter((j) => !String(pfB(j)["taille"] ?? "").trim()
+          && !String((captureDeB.get(Number(j.inventaire_id)) ?? {})["taille"] ?? "").trim());
+        if (sansTaille.length) {
+          const { data: invsT } = await userClient.from("inventaire").select("id, attributs")
+            .in("id", [...new Set(sansTaille.map((j) => Number(j.inventaire_id)))]);
+          for (const i of (invsT ?? []) as Array<Record<string, unknown>>) {
+            const t = ((i.attributs ?? {}) as Record<string, unknown>)["taille"];
+            const v = (t && typeof t === "object") ? String((t as Record<string, unknown>)["v"] ?? "").trim() : "";
+            if (v) tailleFiche.set(Number(i.id), v);
+          }
+          const chemins = [...new Set(sansTaille.map((j) => (cheminDuJob(j) ?? []).join(" > ")).filter(Boolean))];
+          if (chemins.length && tailleFiche.size) {
+            const { data: rowsT } = await userClient.from("platform_category_aspects")
+              .select("category_key, field_key, allowed_values").eq("platform", "beebs")
+              .in("field_key", ["Taille", "Pointure"]).in("category_key", chemins);
+            for (const r of (rowsT ?? []) as Array<Record<string, unknown>>) {
+              const cle = String(r.category_key);
+              listesBeebs.set(cle, [...(listesBeebs.get(cle) ?? []), { field_key: String(r.field_key), allowed_values: r.allowed_values }]);
+            }
+          }
+        }
         // Beebs est genré jusqu'aux accessoires. Le genre n'est pas inventé :
         // il est LU dans le chemin qu'on vient de poser (« Mode > Femme > … »).
         const GENRES_BEEBS = new Set(["Femme", "Homme", "Fille", "Garçon", "Bébé"]);
@@ -2782,6 +2815,14 @@ serve(async (req) => {
             if (!v) continue;
             pf[cle] = v;
             repris[cle] = v;
+          }
+          if (!String(pf["taille"] ?? "").trim()) {
+            const vf = tailleFiche.get(Number(j.inventaire_id));
+            const t = vf ? tailleBeebsDeLaFiche(vf, listesBeebs.get(chemin.join(" > ")) ?? []) : null;
+            if (t) {
+              pf["taille"] = t.valeur;
+              repris["taille"] = `${t.valeur} (fiche ; ${t.champ} de la liste Beebs)`;
+            }
           }
           if (!String(pf["genre"] ?? "").trim() && GENRES_BEEBS.has(chemin[1] ?? "")) {
             pf["genre"] = chemin[1];

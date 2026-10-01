@@ -109,7 +109,8 @@
     "selftest:releve-ebay-compte-api": "node scripts/releve-ebay-compte-api-selftest.mjs",
     "selftest:retrait-ebay-par-numero": "node scripts/retrait-ebay-par-numero-selftest.mjs",
     "selftest:lbc-voie-des-reglages": "node scripts/lbc-voie-des-reglages-selftest.mjs",
-    "selftest:tailles-prefixe-age": "deno run --allow-read --allow-env --allow-net scripts/tailles-prefixe-age-selftest.ts"
+    "selftest:tailles-prefixe-age": "deno run --allow-read --allow-env --allow-net scripts/tailles-prefixe-age-selftest.ts",
+    "selftest:beebs-taille-de-la-fiche": "node scripts/beebs-taille-de-la-fiche-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
