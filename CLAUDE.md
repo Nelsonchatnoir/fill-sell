@@ -1,13 +1,15 @@
-## État de production au 01/10 matin — lire avant toute action
+## État de production au 02/10 nuit — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout
 historique contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.81** (minimum serveur inchangé, 0.6.75) ;
-  OTA **2.9.37** (barres, web 61697f9) ; `get-pending-jobs` v177 (`true`), `update-job-status` v111
-  (`false`), `ebay-api-worker` v71 (`false`), `handler-watch` v66 (`false`),
+- **Servi** : extension **0.6.82** au CWS (21 postes le 01/10 23:30) ; **minimum
+  serveur 0.6.81** depuis le 02/10 (sous le seuil : bandeau « mise à jour », seules
+  les recréations à l'étape 'deleted' sont servies) ;
+  OTA **2.9.37** (barres, web 61697f9) ; `get-pending-jobs` v178 (`true`), `update-job-status` v112
+  (`false`), `ebay-api-worker` v71 (`false`), `handler-watch` v67 (`false`),
   `check-listing-status` v35 (`false`), `ops-digest` v28 (`false`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
@@ -18,7 +20,8 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt. Celles
   du 30/09 faites sans trace y sont reconstituées (1 090 fusions par photo).
 - **Ouvert** : 0.6.83 (contient la 0.6.82) PROUVÉE le 01/10 (republication Beebs 34090327), à téléverser par Nico (`build/CWS-0.6.83-A-TELEVERSER/`) à la place de la 0.6.82 ;
-  ornellaracano 307204072564 — retrait en file (cf. l'état du 01/10).
+  ornellaracano 307204072564 — retrait en file ; 02/10 : jocabroc8 (2 retraits Vinted) et
+  carhoa (5 livres) partent à leur retour en ≥ 0.6.81 (cf. l'état du 01/10, section 02/10).
 
 # FillSell — Instructions Claude
 
