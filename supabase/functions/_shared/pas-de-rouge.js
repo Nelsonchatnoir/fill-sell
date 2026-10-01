@@ -43,6 +43,7 @@
  */
 
 import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
+import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
@@ -633,6 +634,42 @@ export function classerEchec(arg) {
     if (essais < 3 && reprisesFaites < 3) return reprise("beebs_formulaire_photos", message + "Un nouvel essai est prévu automatiquement.", 15);
     return { verdict: "a_toi", statut: "needs_user", motif: "beebs_formulaire_photos", source: "relancer",
       message: message + "Tu peux relancer après la mise à jour de l’extension." };
+  }
+
+  // ── BEEBS RESTE SUR LE FORMULAIRE APRÈS « PUBLIER » (2026-10-01, Marie) ───
+  // mariecreativedigital, chemise Hilfiger (0f457c57) : six essais, six fois
+  // « Taille 8XL » sur le formulaire, rien soumis — et chaque fois « on refait
+  // un essai tout seuls ». Le refus se lit dans ce que l'essai a laissé :
+  //   · l'adresse a été « validée » sur un bouton qui n'est pas une adresse
+  //     (sans le code postal) : c'est NOTRE sélecteur (« 8 » de « 8 Mai » ⊂
+  //     « 8XL »), corrigé dans l'extension (BUILD_BEEBS_ADRESSE_STRICTE) ;
+  //     relancer sur le même build refait le même mur → needs_user tout de
+  //     suite, et le correctif d'extension réarme le job sur un poste à jour ;
+  //   · une taille affichée qui n'est pas celle de la fiche : la question de
+  //     la taille, tout de suite.
+  if (platform === "beebs" && /Dépôt Beebs non confirmé/i.test(t)) {
+    const lecture = lectureRefusBeebs(pf, String(arg.brut ?? t));
+    if (lecture.adresseSurAutreChose) {
+      const autre = lecture.adresseSurAutreChose;
+      const taille = lecture.tailleAffichee && lecture.tailleVoulue && lecture.tailleAffichee !== lecture.tailleVoulue
+        ? ` (la taille affichée est devenue « ${lecture.tailleAffichee} » au lieu de « ${lecture.tailleVoulue} »)` : "";
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "beebs_adresse_mal_choisie", source: "relancer",
+        message:
+          `Beebs n'a pas validé ton adresse d'envoi : FillSell a cliqué « ${autre} » dans la page au lieu de ton adresse${taille}. ` +
+          "Rien n'a été publié sur Beebs. C'est un défaut de FillSell, corrigé dans la prochaine version de l'extension : " +
+          "la publication repartira toute seule dès que ton ordinateur l'aura.",
+      };
+    }
+    if (lecture.tailleAffichee && lecture.tailleVoulue && !taillesCompatibles(lecture.tailleAffichee, lecture.tailleVoulue)) {
+      return {
+        verdict: "a_toi", statut: "needs_user", motif: "beebs_taille_refusee", source: "champ_a_choisir",
+        champ: { field_key: "Taille", field_label: "Taille", platform: "beebs", target: { root: null, key: "taille" }, input_type: "dropdown" },
+        message:
+          `Beebs refuse la taille « ${lecture.tailleAffichee} » pour cet article (la fiche dit « ${lecture.tailleVoulue} ») : ` +
+          "rien n'a été publié. Choisis la bonne taille ci-dessous et la publication repart.",
+      };
+    }
   }
 
   // ── 6. MOTIF INCONNU — TOUJOURS PAS DE ROUGE ──────────────────────────────
