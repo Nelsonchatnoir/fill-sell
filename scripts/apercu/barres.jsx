@@ -75,10 +75,10 @@ const Titre = ({ children }) => (
 );
 
 // ── 1. Les cartes du Stock (réplique de .gcard, CSS réel) ──────────────────
-function Carte({ article, jobs, tous, pastille }) {
+function Carte({ article, jobs, tous, pastille, marque }) {
   const photo = article.photos?.[0]?.url ?? article.photos?.[0] ?? null;
   return (
-    <div className="gcard" data-carte={article.id}>
+    <div className="gcard" data-carte={marque ?? article.id}>
       <div className="gphoto">
         {photo ? <GalleryPhoto url={photo} alt="" fallback={<span />} /> : <div style={{ width: '100%', height: '100%', background: '#F2F0E9' }} />}
         {pastille && <div className="gstatus"><i className="dot" style={{ width: 6, height: 6, borderRadius: 3, background: '#2F9E90', display: 'inline-block' }} />{pastille}</div>}
@@ -98,6 +98,19 @@ function SceneCartes() {
   const enTravail = job(A.robe, { status: 'processing', platform: 'leboncoin', platform_fields: { processing_since: il(40) } });
   const [fin, setFin] = useState(null);
   useEffect(() => { const t = setTimeout(() => setFin({ ...enTravail, status: 'published', published_at: new Date().toISOString() }), 3000); return () => clearTimeout(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // La séance : Vinted finit avant Leboncoin — la barre d'ensemble ne doit
+  // JAMAIS reculer quand Vinted sort du travail.
+  const v0 = job(A.bobines, { status: 'processing', platform: 'vinted', created_at: il(60), platform_fields: { processing_since: il(30) } });
+  const l0 = job(A.bobines, { platform: 'leboncoin', created_at: il(60) });
+  const [seance, setSeance] = useState({ jobs: [v0, l0], tous: [v0, l0] });
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const v1 = { ...v0, status: 'published', published_at: new Date().toISOString() };
+      const l1 = { ...l0, status: 'processing', platform_fields: { processing_since: new Date().toISOString() } };
+      setSeance({ jobs: [l1], tous: [v1, l1] });
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pub3 = [
     job(A.tshirt, { status: 'processing', platform: 'vinted', platform_fields: { processing_since: il(25) } }),
     job(A.tshirt, { platform: 'leboncoin' }),
@@ -112,6 +125,7 @@ function SceneCartes() {
       <Carte article={A.montre} pastille="Retrait…" jobs={[job(A.montre, { action: 'delete', platform: 'leboncoin', status: 'processing', platform_fields: { processing_since: il(10) } })]} />
       <Carte article={A.robe} pastille={fin ? 'En ligne' : 'En cours…'} jobs={fin ? [] : [enTravail]} tous={fin ? [fin] : [enTravail]} />
       <Carte article={A.long} pastille="En cours…" jobs={[job(A.long, { platform: 'opla' })]} />
+      <Carte article={A.bobines} marque="seance" pastille="En cours…" jobs={seance.jobs} tous={seance.tous} />
       <Carte article={A.sansphoto} pastille="En cours…" jobs={[job(A.sansphoto, { status: 'processing', platform: 'ebay', voie: 'api', platform_fields: { processing_since: il(30) } })]} />
     </div>
   );

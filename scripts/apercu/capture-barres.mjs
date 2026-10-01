@@ -120,14 +120,21 @@ try {
 
       // ── Vérifications propres à la scène ──
       if (sc.nom === 'cartes') {
-        verifier(b.barres.length === 8, `8 barres compactes (${b.barres.length})`);
-        await page.waitForTimeout(2600);
+        verifier(b.barres.length === 9, `9 barres compactes (${b.barres.length})`);
+        // La séance : Vinted sort du travail à 2,5 s, la barre ne recule pas.
+        const vals = [];
+        for (let i = 0; i < 12; i++) {
+          vals.push(await page.evaluate(() => { const r = document.querySelector('[data-carte="seance"] .fsb-rempli'); return 100 + Number(((r?.style.transform ?? '').match(/-?[\d.]+/) ?? ['-100'])[0]); }));
+          await page.waitForTimeout(200);
+        }
+        verifier(vals.every((x, i) => i === 0 || x >= vals[i - 1] - 0.01), `une plateforme finit avant l'autre : la barre ne recule jamais (${vals.map((x) => x.toFixed(0)).join('→')})`);
+        await page.waitForTimeout(300);
         const fin = await page.evaluate(RELEVE);
         verifier(fin.barres.some((x) => x.etat === 'termine' && /Terminé/.test(x.badge ?? '')), 'la carte qui finit : 100 % et « Terminé » avec la coche');
         await page.screenshot({ path: path.join(SORTIE, `cartes-fin-${largeur}.png`), fullPage: true });
         await page.waitForTimeout(5500);
         const apres = await page.evaluate(RELEVE);
-        verifier(apres.barres.length === 7, `puis sa barre s'efface (${apres.barres.length} barres)`);
+        verifier(apres.barres.length === 8, `puis sa barre s'efface (${apres.barres.length} barres)`);
         await page.click('[data-carte] .fsb-haut');
         verifier(await page.evaluate(() => window.__fileOuverte === 1), 'un tap sur la barre ouvre la file (et ne remonte pas à la carte)');
       }
