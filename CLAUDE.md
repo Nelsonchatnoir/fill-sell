@@ -1,41 +1,24 @@
-## Passe Astra du 28/09 — état de production pour la reprise
+## État de production au 01/10 matin — lire avant toute action
 
-Avant toute action, lire
-`C:\Users\nicol\fill-and-sell\docs\agents\passe-astra-2026-09-28.md`,
-`C:\Users\nicol\fill-and-sell\docs\INCIDENT_ASTRA_2026-09-28_LATENCE.md` et
-`C:\Users\nicol\fill-and-sell\docs\agents\consignes-2026-09-28.md`, qui
-remplace tout historique contraire.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert) et
+`docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout
+historique contraire. Il se périme : `functions list`, `cron.job` et
+`profiles.extension_build` font foi.
 
-**Production au 28/09 :**
-
-- **A** : preuves exactes, boutiques, questions et gardes de retrait actives
-  (085904, 101812, 102522, 103046, 104620, 105655, 135541,
-  135758, 142419).
-- **B** : vente/reçu/stock atomiques (111221, 133204). La fonction
-  140738/143457 existe sans appel périodique. 144357, inutile à l'app 2.9.31,
-  a été retirée sans application.
-- **C** : réservation compatible active (130523) ; essais 114322/114721
-  annulés par 115314/115330.
-- **E** : aucun verdict sur relevé incomplet (133555).
-- **F** : app 2.9.31 ; minimum 0.6.75. 0.6.76 retirée (rollback = 0.6.77).
-  0.6.78 = 0.6.75 + garde cosmétiques LBC, en test Nico ; 0.6.79 = .78 +
-  rayon Vinted déplacé, zip prêt hors CWS. `docs/INCIDENT_2026-09-28_*`.
-
-Fonctions relues : `get-pending-jobs` v160 (`verify_jwt=true`),
-`update-job-status` v100 (`false`), `handler-watch` v65 (`false`),
-`check-listing-status` v34 (`false`), `generate-listing` v108 (`true`),
-`lens-analysis` v102 (`true`), `doublons-balayage` v2 (`false`). Réglages à
-conserver exactement.
-
-**Suspendu :** ventes automatiques à chaque demande de jobs, cause de la hausse
-vers 16:42, à refaire en version légère/bornée/mesurée ; cron
-`doublons-balayage-2min` inactif, car sa recherche globale avant limite prenait
-8–13 s. Au moindre écart de latence ou de verrou : retour arrière immédiat,
-arrêt, plus rien ne part. Aucune règle serveur sans rejeu sur cas réels.
-
-**Suite :** « zéro orange » (autorisation Opla avant job, eBay prêt avant
-publication, nom/prénom Leboncoin au branchement), puis catégories, seulement
-après étude complète du système de résolution.
+- **Servi** : extension **0.6.81** (minimum serveur inchangé, 0.6.75) ;
+  OTA **2.9.31** ; `get-pending-jobs` v171 (`true`), `update-job-status` v110
+  (`false`), `ebay-api-worker` v63 (`false`), `handler-watch` v66 (`false`),
+  `check-listing-status` v35 (`false`). ⚠️ Le 30/09 22:52, le changement de
+  `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
+- **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
+  `migration repair --linked --status applied <version>`, relecture de
+  l'effet. Les 15 du 29-30/09 sont inscrites (01/10).
+- **Données** : toute correction = requête dans `scripts/reparations/`
+  (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt. Celles
+  du 30/09 faites sans trace y sont reconstituées (1 090 fusions par photo).
+- **Ouvert, urgent** : 3 articles vendus encore achetables sur eBay
+  (ornellaracano, nicolas.menar, xxewwer) — cf. l'état du 01/10.
 
 # FillSell — Instructions Claude
 
@@ -117,7 +100,7 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
 Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ```) pour faciliter le copier-coller. Diagnostics, rapports, récapitulatifs, listes de changements — tout doit être dans un bloc.
 
 ## Git
-- **Migrations Supabase** : toujours appliquées directement en prod (comportement normal et irréversible).
+- **Migrations Supabase** : appliquées en prod une par une (comportement normal et irréversible), et TOUJOURS inscrites dans l'historique : `db query --linked -f <fichier>` puis `migration repair --linked --status applied <version>` (règle du 01/10).
 - **Code applicatif** (React, Edge Functions, extension Chrome) : commit et push **directement sur `main`**, plus de branche feature ni de PR (consigne 2026-07-21). Toujours build/vérifier avant de push — le push tient lieu de validation.
 - Déployer les Edge Functions concernées quand elles changent (cf. section dédiée).
 
@@ -194,18 +177,20 @@ Commande : `supabase functions deploy <nom> --no-verify-jwt`
 Relevé par `functions list`, pas recopié. Il se périme : le geste ci-dessus
 fait foi, pas ce tableau.
 
-⚠️ **Relevé du 27/09/2026 : 48 fonctions actives, 23 en `false`.**
-`send-batch-notifications` et `send-chantier-zip`, citées plus bas comme
-restantes, **n'existent plus en prod**. Liste à jour :
-`docs/agents/architecture.md`.
+⚠️ **Relevé du 01/10/2026 : 49 fonctions actives, 24 en `false`.**
+`send-batch-notifications` et `send-chantier-zip` **n'existent plus en
+prod**. Liste à jour : `docs/agents/architecture.md`.
 
-**Appelées par pg_cron (`x-cron-secret`)** — `cron.job` le prouve :
+**Appelées par pg_cron / pg_net (`x-cron-secret`)** — `cron.job` le prouve :
 `ebay-api-worker` (*/2) · `republish-auto-sweep` (*/3) · `handler-watch` (*/3)
-· `email-tunnel` (9h + horaire, **et** le trigger `handle_new_user`) ·
-`ops-digest` (8h50) · `republish-purge` (3h40) · `lens-temp-purge` (3h50 —
-jamais de purge côté client : un client ne voit que SON scan, c'est ce qui
-effaçait les photos d'articles avant le 15/09) · `doublons-balayage` (*/2,
-ajoutée le 25/09 — empreintes photo puis décisions de doublons ; déclarée
+· `beebs-lien` (*/5) · `email-tunnel` (9h + horaire, **et** le trigger
+`handle_new_user`) · `ops-digest` (8h50) · `republish-purge` (3h40) ·
+`lens-temp-purge` (3h50 — jamais de purge côté client : un client ne voit que
+SON scan, c'est ce qui effaçait les photos d'articles avant le 15/09) ·
+`empreintes-urls` (appelée par `fusion_photo_tick`, cron 20 chaque minute) ·
+`stripe-recalage-1er-du-mois` (cron 18 via `recalage_xewer_tick`, le 01/10
+de 00:00 à 03:55 seulement) ·
+`doublons-balayage` (cron 17, **INACTIF depuis le 28/09** ; déclarée
 `verify_jwt = false` dans `config.toml`).
 
 **Webhooks externes** (l'émetteur n'a pas de session) : `stripe-webhook` ·
@@ -221,8 +206,8 @@ JWT, le worker eBay avec `x-cron-secret`) · `voice-intent` (Bearer + getUser
 maison, pour maîtriser sa réponse 401/CORS) · `update-job-status` ·
 `check-listing-status`.
 
-**One-shots déployés à la main** : `send-batch-notifications`, et les
-`send-<prénom>-<date>`. (`send-chantier-zip` et `check-early-adopter` —
+**One-shots déployés à la main** : aucun en prod au 01/10 (les
+`send-<prénom>-<date>` sont interdits, cf. plus bas). (`send-chantier-zip` et `check-early-adopter` —
 stubs 410 — ont été SUPPRIMÉES de la prod le 26/09/2026 : 0 appel en 30 jours
 de journaux, 0 cron, 0 fonction SQL, 0 ligne de code.)
 (`send-relance` a été SUPPRIMÉE de la prod le 20/09/2026 — jeton en clair dans
@@ -289,10 +274,9 @@ doublon sans que rien ne le signale (bug du welcome, 03/08). Cf. la section
 `email_logs` plus bas.
 
 Les fonctions `send-*` qui RESTENT, et pourquoi : `send-extension-link`
-(appelée par l'app, `verify_jwt` true), `send-bug-report` (idem),
-`send-batch-notifications` (v20, déclarée dans `config.toml`, **sans source** —
-gardée par précaution le 23/09 faute de preuve qu'elle ne sert plus ; à
-trancher). Le compte vivant se lit par le geste, jamais ici :
+(appelée par l'app, `verify_jwt` true), `send-bug-report` (idem). Plus rien
+d'autre au 01/10 (`send-batch-notifications` n'existe plus en prod). Le
+compte vivant se lit par le geste, jamais ici :
 `npx supabase functions list | grep -o '"slug":"send-[^"]*"' | wc -l`.
 
 ⚠️ **DEUX ÉCARTS CONNUS, NON CORRIGÉS — à trancher, pas à patcher en passant :**

@@ -1,41 +1,24 @@
-## Passe Astra du 28/09 — état de production pour la reprise
+## État de production au 01/10 matin — lire avant toute action
 
-Avant toute action, lire
-`C:\Users\nicol\fill-and-sell\docs\agents\passe-astra-2026-09-28.md`,
-`C:\Users\nicol\fill-and-sell\docs\INCIDENT_ASTRA_2026-09-28_LATENCE.md` et
-`C:\Users\nicol\fill-and-sell\docs\agents\consignes-2026-09-28.md`, qui
-remplace tout historique contraire.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert) et
+`docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout
+historique contraire. Il se périme : `functions list`, `cron.job` et
+`profiles.extension_build` font foi.
 
-**Production au 28/09 :**
-
-- **A** : preuves exactes, boutiques, questions et gardes de retrait actives
-  (085904, 101812, 102522, 103046, 104620, 105655, 135541,
-  135758, 142419).
-- **B** : vente/reçu/stock atomiques (111221, 133204). La fonction
-  140738/143457 existe sans appel périodique. 144357, inutile à l'app 2.9.31,
-  a été retirée sans application.
-- **C** : réservation compatible active (130523) ; essais 114322/114721
-  annulés par 115314/115330.
-- **E** : aucun verdict sur relevé incomplet (133555).
-- **F** : app 2.9.31 ; minimum 0.6.75. 0.6.76 retirée (rollback = 0.6.77).
-  0.6.78 = 0.6.75 + garde cosmétiques LBC, en test Nico ; 0.6.79 = .78 +
-  rayon Vinted déplacé, zip prêt hors CWS. `docs/INCIDENT_2026-09-28_*`.
-
-Fonctions relues : `get-pending-jobs` v160 (`verify_jwt=true`),
-`update-job-status` v100 (`false`), `handler-watch` v65 (`false`),
-`check-listing-status` v34 (`false`), `generate-listing` v108 (`true`),
-`lens-analysis` v102 (`true`), `doublons-balayage` v2 (`false`). Réglages à
-conserver exactement.
-
-**Suspendu :** ventes automatiques à chaque demande de jobs, cause de la hausse
-vers 16:42, à refaire en version légère/bornée/mesurée ; cron
-`doublons-balayage-2min` inactif, car sa recherche globale avant limite prenait
-8–13 s. Au moindre écart de latence ou de verrou : retour arrière immédiat,
-arrêt, plus rien ne part. Aucune règle serveur sans rejeu sur cas réels.
-
-**Suite :** « zéro orange » (autorisation Opla avant job, eBay prêt avant
-publication, nom/prénom Leboncoin au branchement), puis catégories, seulement
-après étude complète du système de résolution.
+- **Servi** : extension **0.6.81** (minimum serveur inchangé, 0.6.75) ;
+  OTA **2.9.31** ; `get-pending-jobs` v171 (`true`), `update-job-status` v110
+  (`false`), `ebay-api-worker` v63 (`false`), `handler-watch` v66 (`false`),
+  `check-listing-status` v35 (`false`). ⚠️ Le 30/09 22:52, le changement de
+  `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
+- **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
+  `migration repair --linked --status applied <version>`, relecture de
+  l'effet. Les 15 du 29-30/09 sont inscrites (01/10).
+- **Données** : toute correction = requête dans `scripts/reparations/`
+  (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt. Celles
+  du 30/09 faites sans trace y sont reconstituées (1 090 fusions par photo).
+- **Ouvert, urgent** : 3 articles vendus encore achetables sur eBay
+  (ornellaracano, nicolas.menar, xxewwer) — cf. l'état du 01/10.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
@@ -265,7 +248,8 @@ Détail complet : `supabase/AGENTS.md`. L'essentiel :
   irréversible), après : lecture du corps réel en prod → fichier
   `AAAAMMJJHHMMSS_nom.sql` idempotent → **rejeu en transaction annulée,
   MONTRÉ** → **GO de Nico qui nomme la migration** → application → relecture
-  de l'effet → commit avec « APPLIQUÉE le … (GO …) ».
+  de l'effet → commit avec « APPLIQUÉE le … (GO …) ». Toujours inscrite dans
+  l'historique : `migration repair --linked --status applied <version>` (01/10).
 - Fonctions edge : **le geste, avant ET après tout déploiement** :
   ```
   npx supabase functions list | grep -o '"slug":"<nom>"[^}]*' | grep -o '"version":[0-9]*\|"verify_jwt":[a-z]*'
@@ -525,7 +509,7 @@ qui survit à ça, c'est du code.
   Jamais présenter FillSell comme centré sur Vinted (5 plateformes).
 - **Jamais de mail tout en images** (Gmail iOS en sombre, images bloquées :
   le mail paraît blanc). Texte HTML réel, images en appoint.
-- Fonctions `send-*` en prod au 27/09 : `send-extension-link` et
+- Fonctions `send-*` en prod au 01/10 : `send-extension-link` et
   `send-bug-report` seulement (`send-batch-notifications` et
   `send-chantier-zip`, citées par `CLAUDE.md`, n'existent plus en prod).
 
