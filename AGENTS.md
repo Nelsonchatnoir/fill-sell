@@ -287,7 +287,8 @@ Ordre de diagnostic non négociable :
    `curl https://fillsell.app/build.json` : quel commit tourne vraiment
    (jamais `-dirty` depuis le 01/10 : le build refuse un arbre sale) ;
 2. **un rechargement forcé** — si l'écran revient, c'était un chunk périmé,
-   rien à corriger ;
+   rien à corriger ; blanc pour tout le monde malgré ça = 404 gardé par
+   Cloudflare (01/10), cf. `docs/agents/pieges.md` ;
 3. **l'état du déploiement Vercel** (READY ou ERROR) ;
 4. **alors seulement**, ouvrir un fichier.
 

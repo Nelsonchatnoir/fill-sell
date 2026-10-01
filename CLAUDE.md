@@ -130,6 +130,14 @@ autre le 18/09 pour avoir cherché dans les fichiers d'abord :
    vérification de compilation : `npm run build:essai`, jamais servi) ;
 2. **un rechargement forcé** — si l'écran revient, c'était un chunk périmé et
    il n'y a rien à corriger dans le code ;
+   ⛔ **blanc MÊME après rechargement, pour tout le monde : le CDN** (01/10,
+   22:22). Demander l'entrée COMME un navigateur, avec `Origin` :
+   `e=$(curl -s https://fillsell.app/app | grep -o 'assets/index-[^"]*.js'); curl -s -o /dev/null -w '%{http_code}
+' -H 'Origin: https://fillsell.app' https://fillsell.app/$e`
+   — 404 ici et 200 sans `Origin` = Cloudflare garde un 404 pris au
+   déploiement (une heure). Aucun code en cause ; remède : renommer l'entrée
+   (toute modification exécutée de `src/main.jsx`), UN push, puis relire.
+   Cause du 01/10 : deux pushs à deux minutes (code, puis docs) ;
 3. **l'état du déploiement Vercel** (READY ou ERROR) ;
 4. **alors seulement**, ouvrir un fichier.
 

@@ -11,6 +11,14 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
 ## Déploiement
 - **Écran blanc** = d'abord l'empreinte du build (`AGENTS.md` § 3.6). Six pushs en dix
   minutes = prod à l'écran blanc (18/09).
+- **Écran blanc pour TOUT LE MONDE, même après rechargement** (01/10, 22:22 →
+  23:05) : Cloudflare gardait un 404 sur le script d'entrée, pris au
+  déploiement (deux pushs à deux minutes). Le 404 ne se voit qu'avec l'en-tête
+  `Origin` (variante CORS, celle des navigateurs) : `curl` sans `Origin`
+  rend 200 et ment. Contrôle et remède : `CLAUDE.md`, section écran blanc.
+  Dans la console, `window.__fillsellEntree` absent = l'entrée n'a pas tourné.
+  ⚠️ Pas de « relance de l'entrée avec ?r= » dans index.html : 14 morceaux
+  importent l'entrée par son nom exact, l'app tournerait deux fois.
 - **OTA** : ordre bump version → **commit** → build → upload. Builder avant de
   commiter embarque une empreinte `-dirty` du commit précédent (irrattrapable :
   Capgo refuse un numéro déjà consommé). Un simple fichier non suivi suffit à
