@@ -22,7 +22,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
-import { NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
+import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
 
@@ -5157,7 +5157,8 @@ serve(async (req) => {
         // (9a3da3d5), « 42 » (d6ec3d42) : trois essais sur le même mur.
         const aTraiter = republishTaille.filter((j) => {
           const t = normaliserTaille(derniereCapture.get(String(j.inventaire_id))?.["taille"]);
-          return TAILLE_PREFIXEE_RE.test(t) || NOMBRE_NU_RE.test(t);
+          // (01/10) L'âge en anglais aussi : « 10 years » → « 10 ans / 140 cm ».
+          return TAILLE_PREFIXEE_RE.test(t) || NOMBRE_NU_RE.test(t) || AGE_ANGLAIS_RE.test(t);
         });
         if (aTraiter.length) {
           const { data: invs } = await userClient

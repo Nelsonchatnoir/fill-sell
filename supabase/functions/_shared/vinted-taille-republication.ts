@@ -75,6 +75,8 @@
 
 /** Forme préfixée rendue par le référentiel pour les ids 1943→1965 (après normalisation). */
 export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3})$/i;
+/** Âge en anglais tel que la capture peut le rendre : « 10 years », « 10Y », « 1 year ». */
+export const AGE_ANGLAIS_RE = /^(\d{1,2}) ?(?:YEARS?|YRS?|Y)$/i;
 /** Les lettres de la grille Femme/Homme Vinted : XXXS…S, M, L…XXXL, 4XL…9XL. */
 const LETTRE_RE = /^(?:X{0,3}S|X{0,3}L|M|\dXL)$/i;
 const NOMBRE_RE = /^\d{1,3}$/;
@@ -267,6 +269,29 @@ export function tailleAServir(args: {
   options: string[] | null | undefined;
 }, opts: { ordrePrefixe?: ReadonlyArray<Etape>; euCoupe?: boolean } = {}): TailleServie | TailleRefusee {
   const nt = normaliserTaille(args.captureTaille);
+  // ── ÂGE EN ANGLAIS (2026-10-01, begantonmatheo f3ba2985) ─────────────────
+  // La capture d'un lot de t-shirts fille rend « 10 years » ; le formulaire
+  // Vinted écrit « 10 ans / 140 cm » et a refusé « 10 years » (pause AVANT
+  // toute suppression). Règle du 28/09 : « 10 years » se traduit « 10 ans ».
+  // On sert l'option de la grille qui porte « N ans » — exacte, ou SEULE à le
+  // contenir en jeton complet. Jamais les mois (« 12 months » tomberait dans
+  // une tranche « 9-12 mois » : approchée). Avant ce correctif, une capture
+  // en âge anglais sortait « hors périmètre » : 1 republication en 30 jours,
+  // aucune réussie — rien de ce qui passe ne change.
+  const age = AGE_ANGLAIS_RE.exec(nt);
+  if (age) {
+    const fr = Number(age[1]) === 1 ? "1 AN" : `${Number(age[1])} ANS`;
+    const grilleA = (Array.isArray(args.options) ? args.options : [])
+      .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
+      .filter((o) => o.norm);
+    const ordreA = "âge anglais→français";
+    if (!grilleA.length) return { valeur: null, etape: null, ordre: ordreA, motif: `« ${nt} » = « ${fr} » : grille non relevée` };
+    const exactA = grilleA.find((o) => o.norm === fr);
+    if (exactA) return { valeur: exactA.brut, etape: 1, ordre: ordreA, detail: `« ${nt} » = « ${fr} », libellé exact de la grille` };
+    const candsA = grilleA.filter((o) => contientJeton(o.norm, fr));
+    if (candsA.length === 1) return { valeur: candsA[0].brut, etape: 2, ordre: ordreA, detail: `« ${nt} » = « ${fr} », seule option qui le contient` };
+    return { valeur: null, etape: null, ordre: ordreA, motif: candsA.length ? `« ${fr} » ambigu (${candsA.length} options)` : `aucune option « ${fr} » dans la grille` };
+  }
   const m = TAILLE_PREFIXEE_RE.exec(nt);
   // euCoupe = le client retire encore le préfixe « EU » (builds sans la
   // capacité « taille_par_id ») : un libellé « EU … » servi serait perdu.
