@@ -34,6 +34,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
+import { orchestrateSale } from "../_shared/sale-orchestration.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
@@ -2172,9 +2173,20 @@ async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<
 // ⚠️ LE CHIFFRE À SURVEILLER : le total quotidien croît LINÉAIREMENT avec le
 // parc (N × 12). Au-delà d'environ 400 annonces sous veille, allonger
 // VEILLE_CADENCE_MS avant d'ajouter des comptes — pas après.
-const VEILLE_CADENCE_MS = 2 * 3600_000;  // une visite par annonce toutes les 2 h
-const VEILLE_LOT_MAX = 25;               // appels Browse par passe du cron
-const VEILLE_CANDIDATS_MAX = 500;        // borne de lecture (parc : 210 le 19/09)
+// ⚠️ 01/10 (lot point 1) : 1 594 annonces sous veille. La lecture était bornée à
+// 500 lignes SANS ORDRE : toujours à peu près les mêmes, visitées par paquets
+// de 25 lectures à la suite (passes de 12 à 20 s, 17 % des passes > 5 s
+// mesurées sur 350 passes du 30/09–01/10), et 457 annonces JAMAIS visitées.
+// Désormais : les annonces « Plus en ligne ? » d'abord, puis jamais visitées,
+// puis les plus anciennes ; lectures en parallèle (6), BUDGET DE TEMPS (1 s)
+// et écritures en parallèle : une passe ne dépend plus du nombre d'annonces.
+const VEILLE_CADENCE_MS = 6 * 3600_000;  // une visite par annonce toutes les 6 h
+const VEILLE_LOT_MAX = 12;               // annonces préparées par passe
+const VEILLE_CANDIDATS_MAX = 500;        // borne de lecture, les plus anciennes d'abord
+const VEILLE_PARALLELE = 6;
+const VEILLE_BUDGET_MS = 1_000;
+// Ventes enregistrées par la voie normale (orchestrateSale) au plus par passe.
+const VENTES_AUTO_PAR_PASSE = 3;
 
 type JobVeille = {
   id: string; user_id: string; inventaire_id: number | null;
@@ -2184,10 +2196,21 @@ type JobVeille = {
 
 /** L'état d'une annonce chez eBay. `indetermine` n'écrit JAMAIS rien. */
 type EtatAnnonce =
-  | { verdict: "vendue"; fin: string; vendus: number; prix: number | null }
+  | { verdict: "vendue"; fin: string | null; vendus: number; prix: number | null; sans_fin?: boolean }
   | { verdict: "terminee_sans_vente"; fin: string }
-  | { verdict: "vivante" }
+  | { verdict: "vivante"; quantite: QuantiteEbay }
   | { verdict: "indetermine"; motif: string; limite: boolean };
+
+/** La quantité affichée par eBay. `exacte` = un nombre, pas un seuil « plus de N ». */
+type QuantiteEbay = { disponible: number | null; vendus: number | null; exacte: boolean };
+
+function lireQuantiteEbay(dispo: Record<string, unknown>): QuantiteEbay {
+  const brut = dispo.estimatedAvailableQuantity;
+  const seuil = dispo.availabilityThresholdType != null || dispo.availabilityThreshold != null;
+  const exacte = typeof brut === "number" && Number.isInteger(brut) && brut >= 0 && !seuil;
+  const vendus = Number(dispo.estimatedSoldQuantity ?? Number.NaN);
+  return { disponible: exacte ? (brut as number) : null, vendus: Number.isFinite(vendus) ? vendus : null, exacte };
+}
 
 async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Promise<EtatAnnonce> {
   let r: Response;
@@ -2210,13 +2233,21 @@ async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Pro
   const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
   const vendus = Number(dispo.estimatedSoldQuantity ?? 0);
   const statut = String(dispo.estimatedAvailabilityStatus ?? "");
-  if (!fin) return { verdict: "vivante" };
-  // LA PREUVE POSITIVE, et ses TROIS conditions réunies. Une seule manque, on
-  // ne parle pas de vente.
-  if (vendus >= 1 && statut === "OUT_OF_STOCK") {
+  // ── 0 DISPONIBLE + AU MOINS 1 VENDU = VENDU (01/10, décision Nico) ──────
+  // Avec ou sans date de fin : une annonce « à durée illimitée » épuisée reste
+  // en ligne à 0 disponible, sans fin. Les deux conditions, toujours réunies :
+  //   · au moins un exemplaire VENDU sur eBay (estimatedSoldQuantity ≥ 1) ;
+  //   · plus RIEN de disponible (OUT_OF_STOCK, ou quantité exacte 0).
+  // ⛔ 0 disponible SANS aucune vente n'est pas une vente (rupture posée par la
+  //    personne) ; une annonce multi-quantité dont il reste des pièces n'est
+  //    pas vendue en entier.
+  const q = lireQuantiteEbay(dispo);
+  const epuisee = statut === "OUT_OF_STOCK" || (q.exacte && q.disponible === 0);
+  if (vendus >= 1 && epuisee) {
     const prixBrut = Number((j.price as Record<string, unknown> | undefined)?.value ?? NaN);
-    return { verdict: "vendue", fin, vendus, prix: Number.isFinite(prixBrut) && prixBrut > 0 ? prixBrut : null };
+    return { verdict: "vendue", fin, vendus, prix: Number.isFinite(prixBrut) && prixBrut > 0 ? prixBrut : null, sans_fin: !fin };
   }
+  if (!fin) return { verdict: "vivante", quantite: q };
   return { verdict: "terminee_sans_vente", fin };
 }
 
@@ -2307,42 +2338,41 @@ async function quantitesImportsEbay(admin: SupabaseClient, env: EbayEnv): Promis
 }
 
 async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
-  const { data: bruts, error } = await admin.from("cross_post_jobs")
-    .select("id, user_id, inventaire_id, platform_listing_id, price, platform_fields")
+  const sel = "id, user_id, inventaire_id, platform_listing_id, price, platform_fields";
+  const base = () => admin.from("cross_post_jobs").select(sel)
     .eq("platform", "ebay").eq("status", "published")
     .in("action", ["publish", "republish"])
-    .not("platform_listing_id", "is", null)
-    .limit(VEILLE_CANDIDATS_MAX);
+    .not("platform_listing_id", "is", null);
+  // (01/10) D'abord les annonces que l'extension a vues partir (« Plus en
+  // ligne ? ») ou déjà dites vendues par eBay mais pas encore enregistrées :
+  // c'est là qu'une vente attend. Puis jamais visitées, puis les plus anciennes.
+  const [{ data: signalees }, { data: bruts, error }] = await Promise.all([
+    base().in("platform_fields->>sale_signal", ["unavailable", "sold"]).limit(100),
+    base().order("platform_fields->>veille_ebay_le", { ascending: true, nullsFirst: true }).limit(VEILLE_CANDIDATS_MAX),
+  ]);
   if (error) return { erreur: error.message };
-  const candidats = (bruts ?? []) as JobVeille[];
+  const vus = new Set<string>();
+  const candidats = ([...(signalees ?? []), ...(bruts ?? [])] as JobVeille[]).filter((j) => {
+    if (vus.has(j.id)) return false;
+    vus.add(j.id);
+    return true;
+  });
   const maintenant = Date.now();
   // Les verrous d'idempotence, AVANT le moindre appel réseau.
-  //
-  // ⚠️ CORRIGÉ APRÈS VÉRIFICATION EN PROD (19/09, premier passage) : le verrou
-  // portait sur la PRÉSENCE de `sale_signal`, pas sur sa VALEUR. Or ce champ a
-  // deux valeurs, et une seule est une vente (background.js) :
-  //     sale_signal = "sold"        → bandeau affirmatif « Vendue »
-  //     sale_signal = "unavailable" → bandeau INTERROGATIF « Plus en ligne ? »
-  // Résultat au premier passage : le « Lot de 24 DVD » (307173381042), qui EST
-  // vendu et qui portait déjà un « unavailable » posé le matin même, a été
-  // SAUTÉ — c'est-à-dire exactement l'article qu'il fallait trouver. Même
-  // chose pour `unavailable_since`, qui ne dit rien d'une vente.
-  //
-  // La règle juste : on ne re-signale jamais une vente DÉJÀ PROUVÉE, mais on
-  // a le droit — et le devoir — de faire PASSER une question à une certitude.
-  // C'est tout l'intérêt d'une preuve positive : elle tranche ce que
-  // l'absence laissait en suspens.
+  // ⚠️ 19/09 : `sale_signal="unavailable"` est une QUESTION, pas une vente —
+  //    on a le droit de la faire passer à une certitude.
+  // (01/10) Un job déjà « sold » par eBay mais dont la vente n'est pas
+  //    enregistrée (le drapeau seul ne faisait qu'un bandeau : jocabroc8 depuis
+  //    le 29/09, annonces Leboncoin et Vinted encore en ligne) est revisité :
+  //    eBay est RELU juste avant d'enregistrer. Un refus d'enregistrement est
+  //    noté (vente_auto) et n'est pas retenté avant 24 h.
   const eligibles = candidats.filter((j) => {
     const pf = j.platform_fields ?? {};
-    if (pf.sale_signal === "sold") return false;   // vente déjà prouvée : rien à ajouter
+    const refus = Date.parse(String((pf.vente_auto as Record<string, unknown> | undefined)?.refus_le ?? ""));
+    if (Number.isFinite(refus) && maintenant - refus < 24 * 3600_000) return false;
+    if (pf.sale_signal === "sold") return true;
     const vu = Date.parse(String(pf.veille_ebay_le ?? ""));
     return !Number.isFinite(vu) || maintenant - vu >= VEILLE_CADENCE_MS;
-  });
-  // Les plus anciennement visités d'abord — jamais visité passe en tête.
-  eligibles.sort((a, b) => {
-    const va = Date.parse(String((a.platform_fields ?? {}).veille_ebay_le ?? "")) || 0;
-    const vb = Date.parse(String((b.platform_fields ?? {}).veille_ebay_le ?? "")) || 0;
-    return va - vb;
   });
   const lot = eligibles.slice(0, VEILLE_LOT_MAX);
   if (!lot.length) return { candidats: candidats.length, visites: 0, ventes: 0, orphelines: 0 };
@@ -2363,19 +2393,45 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
   try { token = await obtenirJetonApplicatif(env); }
   catch (e) { return { erreur: `jeton_applicatif:${String((e as Error)?.message ?? e).slice(0, 120)}` }; }
 
-  let visites = 0, ventes = 0, terminees = 0, indeterminees = 0, coupe = false;
-  for (const job of lot) {
-    if (job.inventaire_id != null && vendus.has(job.inventaire_id)) continue;
-    const etat = await lireEtatAnnonceEbay(env, token, String(job.platform_listing_id));
-    if (etat.verdict === "indetermine" && etat.limite) {
+  // Les lectures, par tranches parallèles, sous le budget de temps. Une
+  // annonce non lue n'est pas horodatée : elle passe au tour suivant.
+  const debutVeille = Date.now();
+  const aLire = lot.filter((j) => !(j.inventaire_id != null && vendus.has(j.inventaire_id)));
+  const etats = new Map<string, EtatAnnonce>();
+  let coupe = false;
+  for (let i = 0; i < aLire.length && !coupe; i += VEILLE_PARALLELE) {
+    if (Date.now() - debutVeille > VEILLE_BUDGET_MS) break;
+    const tranche = aLire.slice(i, i + VEILLE_PARALLELE);
+    const lus = await Promise.all(tranche.map((j) => lireEtatAnnonceEbay(env, token, String(j.platform_listing_id))));
+    tranche.forEach((j, k) => etats.set(j.id, lus[k]));
+    if (lus.some((e) => e.verdict === "indetermine" && e.limite)) {
       // eBay nous coupe : on se TAIT. Les jobs restants ne sont même pas
       // horodatés — ils repasseront au tick suivant, intacts.
-      console.warn(`[ebay-api-worker] veille interrompue (${etat.motif}) après ${visites} visite(s) — rien conclu sur le reste`);
+      console.warn(`[ebay-api-worker] veille interrompue (eBay limite) — rien conclu sur le reste`);
       coupe = true;
-      break;
     }
+  }
+
+  let visites = 0, ventes = 0, terminees = 0, indeterminees = 0;
+  const ecritures: PromiseLike<unknown>[] = [];
+  // Un drapeau « sold » sur une fiche DÉJÀ vendue : rien à enregistrer, et il
+  // ne doit pas occuper la file à chaque passe (24 h de repos, tracé).
+  for (const job of lot) {
+    if (job.inventaire_id == null || !vendus.has(job.inventaire_id) || (job.platform_fields ?? {}).sale_signal !== "sold") continue;
+    const pf = { ...(job.platform_fields ?? {}), vente_auto: { refus_le: new Date().toISOString(), raison: "fiche_deja_vendue" } };
+    ecritures.push(admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id).eq("status", "published"));
+  }
+  const aEnregistrer: Array<{ job: JobVeille; prix: number | null }> = [];
+  for (const job of aLire) {
+    const etat = etats.get(job.id);
+    if (!etat || (etat.verdict === "indetermine" && etat.limite)) continue;
     visites++;
     const pf: Record<string, unknown> = { ...(job.platform_fields ?? {}), veille_ebay_le: new Date().toISOString() };
+    // Un ancien drapeau « sold » qu'eBay ne confirme plus (annonce remise en
+    // vente) : on n'enregistre rien, et on ne relit pas avant 24 h.
+    if ((job.platform_fields ?? {}).sale_signal === "sold" && etat.verdict !== "vendue") {
+      pf.vente_auto = { refus_le: new Date().toISOString(), raison: "ebay_ne_dit_plus_vendu" };
+    }
     if (etat.verdict === "vendue") {
       // On n'écrase JAMAIS un horodatage déjà posé : si le job était déjà « en
       // question », la date d'origine est la bonne — on ne fait que remplacer
@@ -2383,15 +2439,23 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       if (!pf.unavailable_since) pf.unavailable_since = new Date().toISOString();
       pf.sale_signal = "sold";
       if (etat.prix != null) pf.detected_price = etat.prix;
-      // La date RÉELLE de fin rendue par eBay, gardée telle quelle : c'est la
-      // seule trace de QUAND la vente a eu lieu (on n'écrit pas sold_at).
-      pf.vente_ebay = { fin: etat.fin, vendus: etat.vendus, prix: etat.prix, vu_le: new Date().toISOString() };
+      // La date RÉELLE de fin rendue par eBay, gardée telle quelle (nulle pour
+      // une annonce à durée illimitée épuisée).
+      pf.vente_ebay = { fin: etat.fin, vendus: etat.vendus, prix: etat.prix, sans_fin: etat.sans_fin === true, vu_le: new Date().toISOString() };
+      // (01/10) La preuve EXACTE, lue à l'instant, par l'identifiant : c'est
+      // elle que l'enregistrement automatique des ventes sûres exige.
+      pf.sale_evidence = {
+        platform: "ebay", listing_id: String(job.platform_listing_id), state: "sold", exact: true,
+        source: "browse_api", vendus: etat.vendus, fin: etat.fin, lu_le: new Date().toISOString(),
+      };
       ventes++;
-      console.log(`[ebay-api-worker] VENTE eBay sur ${job.platform_listing_id} (fin ${etat.fin}, ${etat.vendus} vendu(s)) → drapeau posé sur le job ${job.id}`);
+      if (aEnregistrer.length < VENTES_AUTO_PAR_PASSE && job.inventaire_id != null) {
+        aEnregistrer.push({ job: { ...job, platform_fields: pf }, prix: etat.prix ?? (Number(job.price) || null) });
+      }
+      console.log(`[ebay-api-worker] VENTE eBay sur ${job.platform_listing_id} (fin ${etat.fin ?? "aucune"}, ${etat.vendus} vendu(s), plus rien de disponible) → job ${job.id}`);
     } else if (etat.verdict === "terminee_sans_vente") {
       // Bandeau INTERROGATIF, jamais affirmatif : l'annonce est terminée, on
       // ne sait pas pourquoi, et eBay dit explicitement 0 vendu.
-      // Idem : on ne réécrit pas une date déjà posée par un autre mécanisme.
       if (!pf.unavailable_since) pf.unavailable_since = new Date().toISOString();
       pf.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
       terminees++;
@@ -2400,31 +2464,65 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       pf.veille_ebay_indetermine = etat.motif;
     } else {
       delete pf.veille_ebay_indetermine;
+      pf.quantite_ebay = { ...etat.quantite, vu_le: new Date().toISOString() };
     }
     // Compare-and-swap sur le statut : un job qui a changé d'état entre la
-    // lecture et l'écriture n'est jamais écrasé.
-    const { error: uErr } = await admin.from("cross_post_jobs")
-      .update({ platform_fields: pf }).eq("id", job.id).eq("status", "published");
-    if (uErr) console.warn(`[ebay-api-worker] veille : écriture refusée sur ${job.id} — ${uErr.message}`);
+    // lecture et l'écriture n'est jamais écrasé. Écritures en parallèle.
+    ecritures.push(
+      admin.from("cross_post_jobs")
+        .update({ platform_fields: pf }).eq("id", job.id).eq("status", "published")
+        .then(({ error: uErr }: { error: { message: string } | null }) => {
+          if (uErr) console.warn(`[ebay-api-worker] veille : écriture refusée sur ${job.id} — ${uErr.message}`);
+        }),
+    );
   }
+  await Promise.all(ecritures);
+
+  // ── LA VENTE S'ENREGISTRE PAR LA VOIE NORMALE (01/10, décision Nico) ────
+  // Une vente lue sur l'identifiant exact est une vente sûre (consigne du
+  // 28/09) : orchestrateSale → enregistrer_vente_atomique, le même chemin que
+  // le bouton « Vendue » de l'app. Stock, ligne de vente et retraits des
+  // copies PROUVÉES des autres plateformes dans la même transaction ; la
+  // fonction refuse d'elle-même un article déjà vendu ou une vente déjà liée
+  // (jamais de seconde vente). Les retraits partent ensuite par l'extension.
+  // ⛔ Jamais de retrait sur une annonce IMPORTÉE sans numéro exact : si une
+  //    copie vivante de la fiche est un import sans identifiant ni lien, la
+  //    vente n'est pas enregistrée ici — le bandeau « Vendue » reste, la
+  //    personne tranche.
+  let enregistrees = 0;
+  for (const { job, prix } of aEnregistrer) {
+    try {
+      const { data: copies } = await admin.from("cross_post_jobs")
+        .select("id, platform, platform_listing_id, listing_url, handler_build")
+        .eq("inventaire_id", job.inventaire_id as number).neq("id", job.id).neq("platform", "ebay")
+        .in("action", ["publish", "republish"]).in("status", ["published", "pending", "processing", "needs_user"]);
+      const importSansNumero = ((copies ?? []) as Array<{ platform_listing_id: string | null; listing_url: string | null; handler_build: string | null }>)
+        .some((c) => !String(c.platform_listing_id ?? "").trim() && !String(c.listing_url ?? "").trim()
+          && String(c.handler_build ?? "").includes("releve-annonces"));
+      const pf = { ...(job.platform_fields ?? {}) };
+      if (importSansNumero) {
+        pf.vente_auto = { refus_le: new Date().toISOString(), raison: "copie_importee_sans_numero" };
+      } else {
+        const r = await orchestrateSale(admin, job.user_id, job.id, { priceOverride: prix ?? undefined });
+        if (r.ok) {
+          enregistrees++;
+          console.log(`[ebay-api-worker] vente eBay ${job.platform_listing_id} ENREGISTRÉE (job ${job.id}) : ${r.retraitsArmes} retrait(s) armé(s), ${r.siblingsCancelled} publication(s) arrêtée(s)`);
+          continue;   // le job est maintenant « sold » : plus rien à écrire dessus
+        }
+        pf.vente_auto = { refus_le: new Date().toISOString(), raison: String(r.reason ?? "refus").slice(0, 200) };
+      }
+      await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id).eq("status", "published");
+    } catch (e) {
+      console.warn(`[ebay-api-worker] vente eBay ${job.platform_listing_id} non enregistrée : ${(e as Error)?.message ?? e}`);
+    }
+  }
+
   // ── LES ANNONCES IMPORTÉES SONT VEILLÉES AUSSI (2026-09-19) ──────────────
-  // Le veilleur ci-dessus ne voit que ce qui porte un JOB. Or le relevé du Hub
-  // remplit `annonces_plateforme` avec des annonces eBay que nous n'avons pas
-  // publiées — elles ne sont rattachées à aucun job tant que le moteur ne les
-  // a pas appariées, et elles n'étaient donc surveillées par PERSONNE. Une
-  // vente dessus passait totalement inaperçue.
-  // Ici on les visite avec la MÊME preuve positive et les MÊMES règles, et on
-  // écrit sur la LIGNE D'ANNONCE (jamais sur un job, il n'y en a pas) :
-  //   vendue            → `vendue_le` + le détail eBay dans `capture`
-  //   terminée sans vente → rien d'affirmé, juste la trace de la visite
-  // ⛔ ON N'ÉCRIT PAS `disparu_le` : ce champ est le verdict du RELEVÉ, et la
-  //    doctrine est constante — une absence ne prouve rien, et ici on ne
-  //    constate même pas une absence, on lit un état. Les deux ne se marchent
-  //    pas dessus.
-  // ⛔ Même budget : ce qui reste du lot après les jobs, jamais davantage.
+  // Annonces relevées sans job : même preuve, même règle, écrite sur la LIGNE
+  // D'ANNONCE (jamais sur un job, jamais `disparu_le`). Même budget de temps.
   let orphelines = 0;
   const resteLot = VEILLE_LOT_MAX - visites;
-  if (!coupe && resteLot > 0) {
+  if (!coupe && resteLot > 0 && Date.now() - debutVeille < VEILLE_BUDGET_MS) {
     try {
       const { data: sansJob } = await admin.from("annonces_plateforme")
         .select("id, listing_id, capture")
@@ -2439,28 +2537,31 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
           const vu = Date.parse(String(cap.veille_ebay_le ?? ""));
           return !Number.isFinite(vu) || Date.now() - vu >= VEILLE_CADENCE_MS;
         })
-        .slice(0, resteLot);
-      for (const a of aVoir) {
-        const etat = await lireEtatAnnonceEbay(env, token, String(a.listing_id));
-        if (etat.verdict === "indetermine" && etat.limite) break; // coupé : on se tait
+        .slice(0, Math.min(resteLot, VEILLE_PARALLELE));
+      const lus = await Promise.all(aVoir.map((a) => lireEtatAnnonceEbay(env, token, String(a.listing_id))));
+      await Promise.all(aVoir.map((a, k) => {
+        const etat = lus[k];
+        if (etat.verdict === "indetermine" && etat.limite) return null;
         orphelines++;
         const cap: Record<string, unknown> = { ...(a.capture ?? {}), veille_ebay_le: new Date().toISOString() };
         if (etat.verdict === "vendue") {
-          cap.vendue_le = etat.fin;
-          cap.vente_ebay = { fin: etat.fin, vendus: etat.vendus, prix: etat.prix, vu_le: new Date().toISOString() };
-          console.log(`[ebay-api-worker] VENTE eBay sur l'annonce importée ${a.listing_id} (fin ${etat.fin}) — aucun job, trace posée sur la ligne d'annonce`);
+          cap.vendue_le = etat.fin ?? new Date().toISOString();
+          cap.vente_ebay = { fin: etat.fin, vendus: etat.vendus, prix: etat.prix, sans_fin: etat.sans_fin === true, vu_le: new Date().toISOString() };
+          console.log(`[ebay-api-worker] VENTE eBay sur l'annonce importée ${a.listing_id} (fin ${etat.fin ?? "aucune"}) — aucun job, trace posée sur la ligne d'annonce`);
         } else if (etat.verdict === "terminee_sans_vente") {
           cap.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
+        } else if (etat.verdict === "vivante") {
+          cap.quantite_ebay = { ...etat.quantite, vu_le: new Date().toISOString() };
         }
-        await admin.from("annonces_plateforme")
+        return admin.from("annonces_plateforme")
           .update({ capture: cap, updated_at: new Date().toISOString() })
           .eq("id", a.id).is("disparu_le", null);
-      }
+      }));
     } catch (e) {
       console.warn("[ebay-api-worker] veille des annonces importées :", (e as Error)?.message ?? e);
     }
   }
-  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, terminees, indeterminees, orphelines, coupe };
+  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, enregistrees, terminees, indeterminees, orphelines, coupe, duree_ms: Date.now() - debutVeille };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
