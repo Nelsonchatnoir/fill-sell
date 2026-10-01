@@ -28,6 +28,7 @@ import InstallExtensionCta from '../components/InstallExtensionCta';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
 import { RepublicationPlanifieeBloc } from '../components/RepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
+import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
@@ -4350,6 +4351,9 @@ const activiteEnCours = (j) => !activiteFinie(j) && j.status !== 'needs_user'
 const rangActivite = (j) => {
   if (j.status === 'processing') return 0;
   if (j.platform_fields?.attente_boutique) return 4;
+  // Retenue serveur (2026-10-01) : rien ne bouge avant que le serveur la lève
+  // — même rang que l'attente d'une boutique.
+  if (retenueServeurDuJob(j)) return 4;
   if (j.action === 'republish') {
     const step = repubStepDe(j);
     if (step === 'deleted') return 1;
@@ -4576,6 +4580,18 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
     };
   }
   if (!encours) return null;
+
+  // ── RETENUE SERVEUR NOMMÉE (2026-10-01, carhoa) ──────────────────────────
+  // get-pending-jobs ne sert pas ce job tant qu'une garde le retient (ISBN
+  // capturé jamais prouvé chez Vinted…) et l'a écrit sur le job
+  // (src/utils/retenueServeur.js). Sans cette branche, la carte disait
+  // « Relevée, en attente de republication — elle attend son tour » pendant
+  // des jours : six livres de Carole, du 27/09 au 01/10. Une attente, jamais
+  // un échec, et la seule chose qui compte : l'annonce est intacte.
+  if (retenueServeurDuJob(job)) {
+    const ph = phraseRetenueServeur(fr);
+    return { cle: 'retenue_serveur', court: ph.court, ...bleu, enFile: true, titre: ph.titre, detail: ph.detail };
+  }
 
   // ── Retenue serveur en cours (2026-09-04) ─────────────────────────────────
   // Ce job ne bougera pas avant l'heure annoncée : get-pending-jobs ne sert
@@ -6740,6 +6756,7 @@ const StockTab = memo(function StockTab({
         if (j.action === "delete") continue;
         if (j.status !== "pending" && j.status !== "processing") continue;
         if (j.platform_fields?.attente_boutique) continue;
+        if (retenueServeurDuJob(j)) continue; // même raison : une attente qui peut durer
         if (j.action === "republish" && repubStepDe(j) === "recreated") continue; // fini (pastille « En ligne »)
         const r = rangActivite(j);
         if (!(invId in rang) || r < rang[invId]) rang[invId] = r;
