@@ -2868,7 +2868,7 @@ export default function App({ loginOnly = false }){
       // Le serveur le revérifie auprès de Stripe et l'applique au Checkout ;
       // absent ou refusé, le champ « code promo » reste disponible comme avant.
       const promo=offreEnCours();
-      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product?{product}:{}),...(promo?{promo}:{})})});
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,lang,...(product?{product}:{}),...(promo?{promo}:{})})});
       const body=await res.json();
       const{url,error,upgraded,already_pro,tier}=body;
       // Le serveur rend, depuis le 24/09, sa propre phrase (message_fr /
