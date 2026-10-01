@@ -6,7 +6,7 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.81** (minimum serveur inchangé, 0.6.75) ;
-  OTA **2.9.32** ; `get-pending-jobs` v174 (`true`), `update-job-status` v110
+  OTA **2.9.32** ; `get-pending-jobs` v175 (`true`), `update-job-status` v110
   (`false`), `ebay-api-worker` v71 (`false`), `handler-watch` v66 (`false`),
   `check-listing-status` v35 (`false`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
@@ -17,7 +17,7 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt. Celles
   du 30/09 faites sans trace y sont reconstituées (1 090 fusions par photo).
-- **Ouvert** : 0.6.82 empaquetée, preuves à faire au retour de Nico ;
+- **Ouvert** : 0.6.82 (3f3ff91) en preuve, non téléversée ;
   ornellaracano 307204072564 — retrait en file (cf. l'état du 01/10).
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
