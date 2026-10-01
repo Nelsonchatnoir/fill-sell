@@ -9442,7 +9442,13 @@ function detectLeboncoinState(html, adId) {
 // vente eBay sur le compte) : tant qu'on ne l'a pas relevée, eBay ne conclut
 // JAMAIS "sold" tout seul → "unavailable" → bandeau.
 function detectEbayState(html, finalUrl, adId) {
-  if (!/\/itm\//.test(finalUrl)) return "unavailable";
+  // ⛔ (0.6.82, 01/10) Une page qui n'est PLUS celle de l'annonce (vérification
+  //    anti-robot, connexion, redirection) ne prouve RIEN : « unknown », plus
+  //    « unavailable ». Un retrait eBay ne se clôt que sur listingStatus lu
+  //    sur la page de l'annonce exacte (recensement du 01/10 : 113 annonces
+  //    clôturées relues ENDED sur leur page, aucune clôture n'a eu besoin de
+  //    la redirection).
+  if (!/\/itm\//.test(finalUrl)) return "unknown";
   const st = (jsonFieldForAd(html, "listingStatus", adId) || "").toUpperCase();
   if (!st) return "unknown";
   if (st === "ACTIVE") return "active";
@@ -20451,6 +20457,111 @@ async function prevolFormulaireRecreationBeebs(job) {
   return { tabId, result };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LEBONCOIN : L'ADRESSE PROUVÉE AVANT LE RETRAIT (0.6.82, 01/10)
+// ══════════════════════════════════════════════════════════════════════════
+// Le Lucky Luke de josephinecerni (« Chantemerle-lès-Grignan 26230 ») et le
+// Doudou Simba de nicolas.menar (« Roost-Warendin 59286 ») : annonces RETIRÉES,
+// puis le redépôt a buté sur « aucune suggestion » — hors ligne.
+// LA CAUSE, relevée sur le vrai formulaire le 01/10 : il interroge
+// api/ad-geoloc/v2/autocomplete avec `use_precise_address=true` sur certains
+// comptes ; les COMMUNES y sont exclues, seules les adresses avec rue sont
+// proposées. « Chantemerle-lès-Grignan 26230 » → [] en mode précis ; la même
+// commune EST proposée en mode simple. Le mode dépend du compte, pas de la
+// catégorie (cat 2, 22, 41 : même réponse), et ne se lit pas avant le dépôt.
+// LE CONTRÔLE : on pose la question au service, dans les deux modes, AVANT
+// de retirer, pour l'adresse EXACTE que leboncoin.js tapera :
+//   · le mode précis la couvre → on retire (elle passe partout) ;
+//   · une adresse AVEC rue que le mode précis ne couvre pas → pause avant
+//     retrait, l'annonce reste en ligne ;
+//   · une commune seule couverte seulement en mode simple → on suit le chemin
+//     d'avant (le serveur sert déjà la rue des Réglages de la même commune et
+//     retient la republication d'un compte où la commune a déjà été refusée) ;
+//   · couverte dans AUCUN mode → pause avant retrait.
+// ⛔ FAIL-OPEN sur une lecture impossible (onglet, réseau, 403) : comme le
+//    pré-vol de page, un contrôle qui se trompe empêcherait des
+//    republications qui marchent — la trace dit qu'il n'a pas pu lire.
+const ADRESSE_LBC_VOIE_RE = /(^|[^a-z])(rue|avenue|av|bd|boulevard|chemin|allee|allees|impasse|route|place|square|quai|cours|lotissement|residence|hameau|voie|passage|sentier|faubourg|esplanade|traverse|montee|villa|clos|parc|lieu dit|lieudit)([^a-z]|$)/;
+function adresseLbcComparable(s) {
+  return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[‘’ʼ′`´]/g, "'").toLowerCase().replace(/['".-]/g, "").replace(/\s+/g, " ").trim();
+}
+function jetonsAdresseLbc(s) {
+  return adresseLbcComparable(s).split(/[^a-z0-9]+/).filter((t) => t.length >= 3 || /^\d+$/.test(t));
+}
+// La même adresse que leboncoin.js (fillAddress) tapera sur une republication.
+function adresseRepublicationLbc(pf) {
+  const lo = pf?.localisation_origine && typeof pf.localisation_origine === "object" ? pf.localisation_origine : null;
+  const ville = String(lo?.ville ?? "").replace(/\s+/g, " ").trim();
+  const cp = String(lo?.code_postal ?? "").trim();
+  const commune = (ville && /^\d{5}$/.test(cp)) ? { cp, ville } : null;
+  const origine = lo
+    ? String(lo.voie
+        ? `${lo.voie} ${lo.code_postal ?? ""} ${lo.ville ?? ""}`
+        : (commune ? `${commune.ville} ${commune.cp}` : (lo.libelle || `${lo.code_postal ?? ""} ${lo.ville ?? ""}`))).replace(/\s+/g, " ").trim()
+    : "";
+  const adresse = origine || String(pf?.adresse ?? "").replace(/\s+/g, " ").trim();
+  const cpTape = adresse.match(/\b\d{5}\b/)?.[0] ?? null;
+  const avecRue = origine ? !!String(lo?.voie ?? "").trim() : (ADRESSE_LBC_VOIE_RE.test(adresseLbcComparable(adresse)) || /^\s*\d/.test(adresse));
+  return { adresse, avecRue, commune: commune ?? (cpTape ? { cp: cpTape, ville: null } : null) };
+}
+// Une suggestion couvre l'adresse : tous ses jetons, ou tous sauf le numéro
+// de voie si le code postal et la ville y sont (barreaux 1 et 2 de fillAddress).
+function suggestionCouvreAdresseLbc(suggestion, cible) {
+  const s = adresseLbcComparable(suggestion);
+  const manquants = jetonsAdresseLbc(cible.adresse).filter((t) => !s.includes(t));
+  if (!manquants.length) return true;
+  if (!manquants.every((t) => /^(?:\d+(?:bis|ter|quater|[a-z])?|bis|ter|quater)$/.test(t))) return false;
+  const cp = cible.commune?.cp ?? null;
+  const villeOk = cible.commune?.ville ? jetonsAdresseLbc(cible.commune.ville).every((t) => s.includes(t)) : true;
+  return !!cp && s.includes(cp) && villeOk;
+}
+async function verifierAdresseLbcAvantRetrait(pf) {
+  const cible = adresseRepublicationLbc(pf);
+  if (!cible.adresse) return { verdict: "sans_adresse", cible };
+  const tabId = await workTabForFetch("leboncoin").catch(() => null);
+  if (tabId == null) return { verdict: "illisible", raison: "onglet", cible };
+  let res = null;
+  try {
+    const inject = chrome.scripting.executeScript({
+      target: { tabId }, world: "MAIN", args: [cible.adresse],
+      func: async (adresse) => {
+        const lire = async (precis) => {
+          const u = new URL("https://api.leboncoin.fr/api/ad-geoloc/v2/autocomplete");
+          u.searchParams.set("address", adresse);
+          u.searchParams.set("type", "sell");
+          u.searchParams.set("use_precise_address", precis ? "true" : "false");
+          const r = await fetch(u.toString(), { credentials: "include" });
+          if (!r.ok) return { http: r.status, liste: null };
+          const j = await r.json().catch(() => null);
+          return { http: r.status, liste: Array.isArray(j) ? j.map((x) => String(x)) : null };
+        };
+        try { return { precis: await lire(true), simple: await lire(false) }; }
+        catch (e) { return { erreur: String(e?.message ?? e) }; }
+      },
+    });
+    let timer;
+    const garde = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("BLOCKED_TAB")), 20_000); });
+    try { [res] = await Promise.race([inject, garde]); } finally { clearTimeout(timer); }
+  } catch (e) {
+    return { verdict: "illisible", raison: String(e?.message ?? e).slice(0, 80), cible };
+  }
+  const r = res?.result;
+  if (!r || r.erreur || !Array.isArray(r.precis?.liste) || !Array.isArray(r.simple?.liste)) {
+    return { verdict: "illisible", raison: r?.erreur ?? `http ${r?.precis?.http ?? "?"}/${r?.simple?.http ?? "?"}`, cible };
+  }
+  return decisionAdresseLbc(cible, r.precis.liste, r.simple.liste);
+}
+// Décision pure (testée par scripts/lbc-adresse-avant-retrait-selftest.mjs).
+function decisionAdresseLbc(cible, listePrecis, listeSimple) {
+  const precis = (listePrecis ?? []).filter((s) => suggestionCouvreAdresseLbc(s, cible));
+  const simple = (listeSimple ?? []).filter((s) => suggestionCouvreAdresseLbc(s, cible));
+  const trace = { cible, propositions_precis: (listePrecis ?? []).slice(0, 5), propositions_simple: (listeSimple ?? []).slice(0, 5) };
+  if (precis.length) return { verdict: "ok", retenue: precis[0], ...trace };
+  if (!cible.avecRue && simple.length) return { verdict: "commune_mode_simple", retenue: simple[0], ...trace };
+  return { verdict: "introuvable", ...trace };
+}
+
 // L'identifiant d'annonce dans une URL, par plateforme — la seule partie
 // stable d'un lien (slug ou non, paramètres ou non). null = pas d'identifiant
 // lisible : l'appelant retombe sur l'égalité d'URL, jamais sur une devinette.
@@ -20626,6 +20737,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
       delete pf.next_action_after;
       pf.republish_prevol_formulaire = { at: new Date().toISOString(), verdict: "ok" };
     }
+
     void snapshot;
 
     // ══════════════════════════════════════════════════════════════════════
@@ -20685,6 +20797,33 @@ async function processRepublishJobPlateforme(job, accessToken) {
       }
     }
 
+    // ── LEBONCOIN : L'ADRESSE DOIT EXISTER CHEZ LEBONCOIN AVANT LE RETRAIT ───
+    // (0.6.82, 01/10 — cf. verifierAdresseLbcAvantRetrait.) Placé APRÈS le
+    // pré-vol de page : l'onglet de travail est alors sur leboncoin.fr. Une adresse que
+    // le formulaire ne pourra pas proposer = annonce retirée puis bloquée.
+    if (job.platform === "leboncoin") {
+      const v = await verifierAdresseLbcAvantRetrait(pf).catch((e) => ({ verdict: "illisible", raison: String(e?.message ?? e).slice(0, 80) }));
+      tracerGarde(pf, "prevol_adresse_lbc", {
+        verdict: v.verdict, plateforme: "leboncoin", etape: "avant_retrait",
+        champs_verifies: ["adresse"], adresse: v.cible?.adresse ?? null,
+        ...(v.retenue ? { retenue: v.retenue } : {}), ...(v.raison ? { raison: v.raison } : {}),
+      });
+      pf.republish_prevol_adresse = {
+        at: new Date().toISOString(), verdict: v.verdict, adresse: v.cible?.adresse ?? null,
+        ...(v.propositions_precis ? { propositions_precis: v.propositions_precis, propositions_simple: v.propositions_simple } : {}),
+      };
+      if (v.verdict === "introuvable" || v.verdict === "sans_adresse") {
+        const msg = v.verdict === "sans_adresse"
+          ? "Republication Leboncoin mise en pause AVANT tout retrait : aucune adresse connue pour cette annonce. "
+            + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. Renseigne l'« Adresse de remise Leboncoin » dans tes Réglages, puis relance la republication."
+          : `Republication Leboncoin mise en pause AVANT tout retrait : Leboncoin ne propose aucune adresse pour « ${v.cible.adresse} »`
+            + (v.cible.avecRue ? "" : " (Leboncoin peut demander le numéro et la rue)")
+            + ". Ton annonce est TOUJOURS en ligne, rien n'a été touché. Vérifie l'« Adresse de remise Leboncoin » dans tes Réglages (numéro, rue, code postal, ville), puis relance la republication.";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait Leboncoin REFUSÉ — adresse « ${v.cible?.adresse ?? "?"} » introuvable chez Leboncoin`);
+        return { status: "needsUser", error: msg };
+      }
+    }
     // Invariant « une seule annonce hors ligne à la fois », par plateforme
     // (même échec fermé que Vinted : lecture impossible → on ne retire pas).
     try {
