@@ -136,6 +136,7 @@ console.log("6. LA BARRE D'UN JOB");
   const file = plages.find((x) => x.cle === "file");
   ok(valeurDansPlage(file, 0, M - 2 * 3600000, M) < file.fin, `en file depuis 2 h : sous la fin de l'étape « file » (${valeurDansPlage(file, 0, M - 2 * 3600000, M).toFixed(1)} % < ${file.fin.toFixed(1)} %)`);
   ok(etapesJob(job({ platform: "leboncoin", action: "republish" })).find((e) => e.cle === "remise").duree === 330, "remise en ligne Leboncoin : ~6 min mesurées");
+  ok(etapesJob(job({ platform: "vinted", action: "republish" })).find((e) => e.cle === "retrait").duree === 51, "retrait Vinted : 51 s mesurées (vu en vrai : 73 s ne doit pas dire « plus de temps que d'habitude » trop tôt)");
   ok(etapesJob(job({ platform: "ebay", voie: "api" })).find((e) => e.cle === "action").duree === 78, "eBay par nos serveurs : 78 s mesurées");
 }
 

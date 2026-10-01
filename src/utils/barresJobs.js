@@ -15,8 +15,9 @@
 // Durées attendues : médianes de la prod sur 14 jours (01/10/2026).
 //   dépôt par l'extension (processing → published) : Vinted 62 s, Leboncoin
 //   67 s, Beebs 68 s, eBay 238 s, Opla 10 s ; eBay par nos serveurs (création
-//   → en ligne) 78 s ; remise en ligne après retrait : Vinted 17 s, Leboncoin
-//   et Beebs ~6 min (attente voulue de 2 à 5 min).
+//   → en ligne) 78 s ; republication Vinted : retrait 51 s puis remise en
+//   ligne 17 s ; Leboncoin et Beebs : remise en ligne ~6 min (attente voulue
+//   de 2 à 5 min).
 // Une étape d'ATTENTE (en file, copie faite en attente de son tour) ne déborde
 // jamais sur la suite : un job qui n'a pas commencé ne remplit pas la barre.
 // ⛔ AFFICHAGE PUR : aucune logique de job ne change ici.
@@ -26,7 +27,11 @@ import { urlsPhotos } from "./photos.js";
 
 const DEPOT_EXTENSION = { vinted: 62, leboncoin: 67, beebs: 68, ebay: 238, opla: 10 };
 const DEPOT_SERVEURS = { ebay: 78 };
-const REMISE_EN_LIGNE = { vinted: 25 };
+// Vinted fait retrait et recréation EN UNE PASSE : le « retrait » (formulaire
+// rempli puis ancienne annonce supprimée) dure 51 s médianes (p90 65 s),
+// la remise en ligne qui suit 17 s (p90 23 s) — 3 500 republications, 14 j.
+const RETRAIT_REPUBLICATION = { vinted: 51 };
+const REMISE_EN_LIGNE = { vinted: 17 };
 const REMISE_EN_LIGNE_DEFAUT = 330;
 const PRISE_EN_CHARGE = 90;
 const RETRAIT = 45;
@@ -115,7 +120,7 @@ export function etapesJob(job, lang = "fr") {
       { cle: "file", texte: T.fileRepub, court: T.fileCourt, duree: PRISE_EN_CHARGE, poids: 6, debord: false, texteLong: T.fileLong },
       { cle: "releve", texte: T.releve, court: T.releveCourt, duree: 35, poids: 22 },
       { cle: "attente", texte: T.copieFaite, court: T.copieFaiteCourt, duree: 120, poids: 6, debord: false, texteLong: T.fileLong },
-      { cle: "retrait", texte: T.retraitAncienne, court: T.retraitAncienneCourt, duree: 25, poids: 16 },
+      { cle: "retrait", texte: T.retraitAncienne, court: T.retraitAncienneCourt, duree: RETRAIT_REPUBLICATION[p] ?? 25, poids: 16 },
       { cle: "remise", texte: T.remise(nom), court: T.remiseCourt, duree: remise, poids: 50 },
     ];
   }
