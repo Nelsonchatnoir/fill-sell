@@ -2172,69 +2172,22 @@ async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<
 // ⚠️ LE CHIFFRE À SURVEILLER : le total quotidien croît LINÉAIREMENT avec le
 // parc (N × 12). Au-delà d'environ 400 annonces sous veille, allonger
 // VEILLE_CADENCE_MS avant d'ajouter des comptes — pas après.
-// ⚠️ 01/10 : 1 594 annonces sous veille. La lecture était bornée à 500 lignes
-// SANS ORDRE : toujours à peu près les mêmes 500, visitées toutes les 2 h, et
-// 457 jamais visitées (dont presque toutes les annonces importées depuis le
-// 27/09 — une vente sur elles passait inaperçue). Désormais : les jamais
-// visitées d'abord, puis les plus anciennement visitées ; et, comme prévu
-// ci-dessus, la cadence s'allonge (6 h) pour garder le MÊME volume d'appels
-// (~6 000 par jour, celui mesuré le 01/10) sur tout le parc.
-const VEILLE_CADENCE_MS = 6 * 3600_000;  // une visite par annonce toutes les 6 h
+const VEILLE_CADENCE_MS = 2 * 3600_000;  // une visite par annonce toutes les 2 h
 const VEILLE_LOT_MAX = 25;               // appels Browse par passe du cron
-const VEILLE_CANDIDATS_MAX = 500;        // borne de lecture, les plus anciennes d'abord
-// ⛔ BUDGET DE TEMPS (01/10, après retour arrière de v64) : 25 lectures Browse
-// à la suite = 12 à 19 s par passe (~0,6 s chacune), et la réponse au cron
-// (pg_net, 5 s) tombait en délai dépassé. Les lectures partent par 4 et la
-// veille s'arrête à 1,2 s (passe totale ~3 s ; 4,1 s mesuré à 2 s) : une annonce non lue n'est pas horodatée, elle
-// passe au tour suivant (même règle que le 429).
-const VEILLE_PARALLELE = 4;
-const VEILLE_BUDGET_MS = 1_200;
-
-// ── LA QUANTITÉ VIENT DE LA PLATEFORME, À L'IMPORT (01/10) ──────────────────
-// xxewwer : « Bravely Default II » importé d'eBay le 19/09 à 1 exemplaire —
-// le relevé du Hub ne lit pas la quantité, l'import écrivait 1 par défaut —
-// alors qu'eBay affiche « 2 disponibles ». Vendu une fois sur Vinted, la fiche
-// tombe à 0 et un retrait eBay est armé : il aurait retiré l'exemplaire qui
-// lui reste (la garde l'a refusé, à raison).
-// LA RÈGLE : quand eBay rend une quantité EXACTE (estimatedAvailableQuantity,
-// sans seuil « plus de N »), la fiche CRÉÉE PAR L'IMPORT de cette annonce
-// prend cette quantité — au premier passage du veilleur, qui sert les jamais
-// visitées en tête (quelques minutes après l'import). Conditions, toutes à la
-// fois : job d'import (rattachement.import), fiche née de cet import (origine
-// releve_ebay, créée avec le job), toujours en stock à 1 exemplaire, aucune
-// vente enregistrée sur elle, créée après la mise en service de la règle.
-// ⛔ Les fiches existantes ne sont PAS touchées ici : leur liste se relit
-//    (platform_fields.quantite_ebay, posé à chaque visite) et se corrige sur
-//    décision.
-// ⛔ Jamais sur un seuil (« plus de 10 disponibles ») : on ne devine pas.
-const QUANTITE_IMPORT_DEPUIS = Date.parse("2026-10-01T09:00:00Z");
-const QUANTITE_IMPORT_FENETRE_MS = 7 * 24 * 3600_000; // fiche née il y a moins de 7 j
+const VEILLE_CANDIDATS_MAX = 500;        // borne de lecture (parc : 210 le 19/09)
 
 type JobVeille = {
   id: string; user_id: string; inventaire_id: number | null;
   platform_listing_id: string | null; price: number | null;
   platform_fields: Record<string, unknown> | null;
-  created_at?: string | null;
 };
-
-/** La quantité affichée par eBay. `exacte` = un nombre, pas un seuil. */
-type QuantiteEbay = { disponible: number | null; vendus: number | null; exacte: boolean };
 
 /** L'état d'une annonce chez eBay. `indetermine` n'écrit JAMAIS rien. */
 type EtatAnnonce =
   | { verdict: "vendue"; fin: string; vendus: number; prix: number | null }
   | { verdict: "terminee_sans_vente"; fin: string }
-  | { verdict: "vivante"; quantite: QuantiteEbay }
+  | { verdict: "vivante" }
   | { verdict: "indetermine"; motif: string; limite: boolean };
-
-function lireQuantiteEbay(dispo: Record<string, unknown>): QuantiteEbay {
-  const brut = dispo.estimatedAvailableQuantity;
-  const n = typeof brut === "number" ? brut : Number.NaN;
-  const vendusBrut = Number(dispo.estimatedSoldQuantity ?? Number.NaN);
-  const seuil = dispo.availabilityThresholdType != null || dispo.availabilityThreshold != null;
-  const exacte = Number.isInteger(n) && n >= 0 && !seuil;
-  return { disponible: exacte ? n : null, vendus: Number.isFinite(vendusBrut) ? vendusBrut : null, exacte };
-}
 
 async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Promise<EtatAnnonce> {
   let r: Response;
@@ -2257,7 +2210,7 @@ async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Pro
   const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
   const vendus = Number(dispo.estimatedSoldQuantity ?? 0);
   const statut = String(dispo.estimatedAvailabilityStatus ?? "");
-  if (!fin) return { verdict: "vivante", quantite: lireQuantiteEbay(dispo) };
+  if (!fin) return { verdict: "vivante" };
   // LA PREUVE POSITIVE, et ses TROIS conditions réunies. Une seule manque, on
   // ne parle pas de vente.
   if (vendus >= 1 && statut === "OUT_OF_STOCK") {
@@ -2269,13 +2222,10 @@ async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Pro
 
 async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<Record<string, unknown>> {
   const { data: bruts, error } = await admin.from("cross_post_jobs")
-    .select("id, user_id, inventaire_id, platform_listing_id, price, platform_fields, created_at")
+    .select("id, user_id, inventaire_id, platform_listing_id, price, platform_fields")
     .eq("platform", "ebay").eq("status", "published")
     .in("action", ["publish", "republish"])
     .not("platform_listing_id", "is", null)
-    // (01/10) Jamais visitées d'abord, puis les plus anciennes : la borne de
-    // lecture ne choisit plus un sous-ensemble au hasard du stockage.
-    .order("platform_fields->>veille_ebay_le", { ascending: true, nullsFirst: true })
     .limit(VEILLE_CANDIDATS_MAX);
   if (error) return { erreur: error.message };
   const candidats = (bruts ?? []) as JobVeille[];
@@ -2316,57 +2266,21 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
   // sync Vinted).
   const invIds = [...new Set(lot.map((j) => j.inventaire_id).filter((x): x is number => x != null))];
   const vendus = new Set<number>();
-  type FicheVeille = { id: number; statut: string | null; quantite: number | null; origine: string | null; created_at: string | null; fusionne_dans: number | null };
-  const fiches = new Map<number, FicheVeille>();
   if (invIds.length) {
-    const { data: arts } = await admin.from("inventaire").select("id, statut, quantite, origine, created_at, fusionne_dans").in("id", invIds);
-    for (const a of (arts ?? []) as FicheVeille[]) {
-      fiches.set(a.id, a);
+    const { data: arts } = await admin.from("inventaire").select("id, statut").in("id", invIds);
+    for (const a of (arts ?? []) as Array<{ id: number; statut: string | null }>) {
       if (String(a.statut ?? "").toLowerCase() === "vendu") vendus.add(a.id);
     }
   }
-  // (01/10) La quantité à l'import : la fiche est-elle née de CET import, et
-  // encore intacte ? Lu une fois pour le lot, avant tout appel réseau.
-  const neeDeLImport = (job: JobVeille): FicheVeille | null => {
-    const f = job.inventaire_id != null ? fiches.get(job.inventaire_id) : undefined;
-    const ratt = (job.platform_fields ?? {}).rattachement as Record<string, unknown> | undefined;
-    if (!f || String(ratt?.import ?? "") !== "true") return null;
-    if (f.origine !== "releve_ebay" || f.statut !== "stock" || Number(f.quantite) !== 1 || f.fusionne_dans != null) return null;
-    const nee = Date.parse(String(f.created_at ?? ""));
-    const job0 = Date.parse(String(job.created_at ?? ""));
-    if (!Number.isFinite(nee) || nee < QUANTITE_IMPORT_DEPUIS || Date.now() - nee > QUANTITE_IMPORT_FENETRE_MS) return null;
-    if (!Number.isFinite(job0) || Math.abs(job0 - nee) > 10 * 60_000) return null;
-    return f;
-  };
-  const ficheAvecVente = new Set<number>();
-  const aVerifier = lot.map((j) => neeDeLImport(j)?.id).filter((x): x is number => x != null);
-  if (aVerifier.length) {
-    const { data: vts } = await admin.from("ventes").select("inventaire_id").in("inventaire_id", aVerifier);
-    for (const v of (vts ?? []) as Array<{ inventaire_id: number | null }>) if (v.inventaire_id != null) ficheAvecVente.add(v.inventaire_id);
-  }
-  let quantitesPosees = 0;
 
   let token: string;
   try { token = await obtenirJetonApplicatif(env); }
   catch (e) { return { erreur: `jeton_applicatif:${String((e as Error)?.message ?? e).slice(0, 120)}` }; }
 
-  // Les lectures, par tranches parallèles, sous le budget de temps.
-  const debutVeille = Date.now();
-  const etats = new Map<string, EtatAnnonce>();
-  const aLire = lot.filter((j) => !(j.inventaire_id != null && vendus.has(j.inventaire_id)));
-  for (let i = 0; i < aLire.length; i += VEILLE_PARALLELE) {
-    if (Date.now() - debutVeille > VEILLE_BUDGET_MS) break;
-    const tranche = aLire.slice(i, i + VEILLE_PARALLELE);
-    const lus = await Promise.all(tranche.map((j) => lireEtatAnnonceEbay(env, token, String(j.platform_listing_id))));
-    tranche.forEach((j, k) => etats.set(j.id, lus[k]));
-    if (lus.some((e) => e.verdict === "indetermine" && e.limite)) break;   // eBay nous coupe
-  }
-
   let visites = 0, ventes = 0, terminees = 0, indeterminees = 0, coupe = false;
   for (const job of lot) {
     if (job.inventaire_id != null && vendus.has(job.inventaire_id)) continue;
-    const etat = etats.get(job.id);
-    if (!etat) continue;   // pas lue dans le budget : intacte, au tour suivant
+    const etat = await lireEtatAnnonceEbay(env, token, String(job.platform_listing_id));
     if (etat.verdict === "indetermine" && etat.limite) {
       // eBay nous coupe : on se TAIT. Les jobs restants ne sont même pas
       // horodatés — ils repasseront au tick suivant, intacts.
@@ -2400,21 +2314,6 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       pf.veille_ebay_indetermine = etat.motif;
     } else {
       delete pf.veille_ebay_indetermine;
-      // (01/10) Ce qu'eBay affiche, gardé à chaque visite : c'est la liste
-      // des écarts de quantité qu'on relit, jamais une estimation.
-      pf.quantite_ebay = { ...etat.quantite, vu_le: new Date().toISOString() };
-      const f = neeDeLImport(job);
-      const n = etat.quantite.disponible;
-      if (f && etat.quantite.exacte && n != null && n >= 2 && !ficheAvecVente.has(f.id)) {
-        // Compare-and-swap : la fiche n'a pas bougé depuis la lecture.
-        const { data: maj } = await admin.from("inventaire")
-          .update({ quantite: n }).eq("id", f.id).eq("quantite", 1).eq("statut", "stock").select("id");
-        if (maj?.length) {
-          quantitesPosees++;
-          pf.quantite_ebay = { ...(pf.quantite_ebay as Record<string, unknown>), posee_sur_fiche: f.id, posee_le: new Date().toISOString() };
-          console.log(`[ebay-api-worker] import ${job.platform_listing_id} : eBay affiche ${n} disponibles → fiche ${f.id} à ${n} exemplaires (au lieu de 1 par défaut)`);
-        }
-      }
     }
     // Compare-and-swap sur le statut : un job qui a changé d'état entre la
     // lecture et l'écriture n'est jamais écrasé.
@@ -2456,7 +2355,6 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
         })
         .slice(0, resteLot);
       for (const a of aVoir) {
-        if (Date.now() - debutVeille > VEILLE_BUDGET_MS) break;   // même budget que les jobs
         const etat = await lireEtatAnnonceEbay(env, token, String(a.listing_id));
         if (etat.verdict === "indetermine" && etat.limite) break; // coupé : on se tait
         orphelines++;
@@ -2467,8 +2365,6 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
           console.log(`[ebay-api-worker] VENTE eBay sur l'annonce importée ${a.listing_id} (fin ${etat.fin}) — aucun job, trace posée sur la ligne d'annonce`);
         } else if (etat.verdict === "terminee_sans_vente") {
           cap.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
-        } else if (etat.verdict === "vivante") {
-          cap.quantite_ebay = { ...etat.quantite, vu_le: new Date().toISOString() };
         }
         await admin.from("annonces_plateforme")
           .update({ capture: cap, updated_at: new Date().toISOString() })
@@ -2478,7 +2374,7 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       console.warn("[ebay-api-worker] veille des annonces importées :", (e as Error)?.message ?? e);
     }
   }
-  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, terminees, indeterminees, orphelines, quantites_posees: quantitesPosees, coupe };
+  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, terminees, indeterminees, orphelines, coupe };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
