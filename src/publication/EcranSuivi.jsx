@@ -11,6 +11,14 @@
 // est dit une fois, en clair.
 import { useEffect, useState } from "react";
 import { etatsFournee } from "./moteur/regles";
+// (01/10) LA barre de progression et la file complète des jobs : la fournée
+// se lit d'un coup d'œil (article, pourcentage, une ligne par plateforme),
+// et un tap sur la barre ouvre toute la file.
+import BarreProgression from "../components/BarreProgression";
+import FileDesJobs from "../components/FileDesJobs";
+import { pisteJob, etapesJob } from "../utils/barresJobs";
+import { urlPhoto } from "../utils/photos";
+import { needsUserOuvrable } from "../utils/shared";
 // Le texte d'un job passe TOUJOURS par humanizeJobError (24/09) — jamais le
 // brut de l'extension ou du worker (« LIVE : aspect(s) … button.fake-link »).
 import { humanizeJobError } from "../utils/shared";
@@ -35,6 +43,7 @@ export default function EcranSuivi({ m }) {
   // « Chrome vu il y a … » suit la file : relu à chaque lecture, pas figé sur
   // la valeur du montage pendant que l'extension travaille justement.
   const [vueLe, setVueLe] = useState(null);
+  const [fileOuverte, setFileOuverte] = useState(false);
 
   useEffect(() => {
     if (!f?.inventaireId || !plateformes.length || !m.supabase) return undefined;
@@ -94,6 +103,34 @@ export default function EcranSuivi({ m }) {
     return <><br /><span style={{ color: "#92400E" }}>{quoi}</span></>;
   };
 
+  // ── Une piste de barre par plateforme (01/10) ────────────────────────────
+  // L'état vient de la MÊME lecture que les lignes (etatsFournee) ; la piste
+  // (étapes réelles, état, couleur) vient de barresJobs. Les lignes gardent
+  // leurs textes, leurs liens et leurs gestes d'avant, mot pour mot.
+  const ctxBarre = { lang: m.lang, extension: ext ?? null, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr") };
+  const piste = (p) => {
+    const e = etats[p] ?? { kind: "en_file" };
+    const parApi = p === "ebay" && m.ebayVoieApiReelle;
+    const voie = parApi ? "api" : "extension";
+    const base = e.job
+      ? pisteJob({ ...e.job, voie: e.job.voie ?? voie }, ctxBarre)
+      : { etapes: etapesJob({ platform: p, action: "publish", voie }, m.lang), etape: "file", etat: "en_cours" };
+    const l = ligne(p);
+    const extra = { cle: p, libelle: NOM(p), icone: <Logo platform={p} size={24} />, phraseLigne: l.texte, geste: l.geste ?? null };
+    switch (e.kind) {
+      case "attente_champ": return { ...base, ...extra, etat: "echec", ton: "action" };
+      case "attente_autorisation": return parcageDepasse(e.job, m.oplaAccesDetail)
+        ? { ...base, ...extra, etat: "en_cours", etape: "file" }
+        : { ...base, ...extra, etat: "echec", ton: "action" };
+      case "attente_connexion": return { ...base, ...extra, etat: "echec", ton: "action" };
+      case "attente": return { ...base, ...extra, etat: "pause", phrasePause: typeof l.texte === "string" ? l.texte : base.phrasePause };
+      case "refusee": return { ...base, ...extra, etat: "echec", ton: "action" };
+      case "annulee": return { ...base, ...extra, etat: "echec", ton: "neutre" };
+      case "publiee": return { ...base, ...extra, etat: "termine" };
+      default: return { ...base, ...extra };
+    }
+  };
+
   const ligne = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
     const parApi = p === "ebay" && m.ebayVoieApiReelle;
@@ -123,40 +160,82 @@ export default function EcranSuivi({ m }) {
     }
   };
 
+  // (01/10) Jamais « Terminé » quand une plateforme bloque : la barre dit
+  // « 3 sur 4 », le titre dit la même chose en mots.
   const titre = tousFinis
-    ? (nbRefus === 0 && nbAttente === 0 ? (en ? "Published" : "Publié") : (en ? "Done, with a follow-up" : "Terminé, avec une suite"))
+    ? (nbRefus === 0 && nbAttente === 0
+      ? (en ? "Published" : "Publié")
+      : (nbEnLigne > 0 ? (en ? "Partly published" : "Publié en partie") : (en ? "Not published yet" : "Pas encore publié")))
     : (en ? "Publication started" : "Publication lancée");
+
+  // L'article en tête de barre : la photo retenue, le titre, le prix (même
+  // écriture que la carte de l'étape 3) et ce qui se passe.
+  const photoArticle = urlPhoto((m.processedPhotos?.[0] ?? m.photos?.[0]) ?? null);
+  const prixArticle = m.price != null && m.price !== "" && Number.isFinite(Number(m.price)) ? `${Number(m.price)} €` : null;
+  const quoi = plateformes.length > 1
+    ? (en ? `Listing on ${plateformes.length} platforms` : `Publication sur ${plateformes.length} plateformes`)
+    : (en ? `Listing on ${NOM(plateformes[0])}` : `Publication sur ${NOM(plateformes[0])}`);
+  const enLigneSur = plateformes.filter(p => etats[p]?.kind === "publiee").map(NOM);
+  const pistes = plateformes.map(piste);
+  // Une seule plateforme : une seule piste, sans ligne répétée sous la barre ;
+  // son geste ou son lien passent sous la phrase.
+  const seule = pistes.length === 1 ? pistes[0] : null;
+  const urlSeule = seule && etats[plateformes[0]]?.kind === "publiee" ? etats[plateformes[0]]?.url : null;
 
   return (
     <>
       <div className="fsn-centre" style={{ padding: "6px 0 2px" }}>
-        <div className="fsn-ok-rond" aria-hidden="true">{tousFinis && nbRefus === 0 && nbAttente === 0 ? "✓" : (tousFinis ? "!" : "✓")}</div>
-        <h1 className="fsn-h" style={{ marginTop: 10, fontSize: 20 }}>{titre}</h1>
+        <h1 className="fsn-h" style={{ fontSize: 20 }}>{titre}</h1>
         <p className="fsn-lead" style={{ marginTop: 4 }}>
-          {m.titreArticle ? <b style={{ color: "var(--fs-ink)" }}>{m.titreArticle}</b> : null}
-          {m.titreArticle ? " · " : ""}
           {tousFinis
             ? (en ? `${nbEnLigne} online` : `${nbEnLigne} en ligne`) + (nbAttente ? (en ? ` · ${nbAttente} waiting` : ` · ${nbAttente} en attente`) : "") + (nbRefus ? (en ? ` · ${nbRefus} refused` : ` · ${nbRefus} refusée${nbRefus > 1 ? "s" : ""}`) : "")
             : (en ? `${plateformes.length} listing${plateformes.length > 1 ? "s" : ""} on their way. You can close this, it continues.` : `${plateformes.length} annonce${plateformes.length > 1 ? "s" : ""} en route. Tu peux fermer, ça continue.`)}
         </p>
       </div>
 
-      <div className="fsn-card" style={{ gap: 0 }}>
-        {plateformes.map(p => {
-          const l = ligne(p);
-          return (
-            <div key={p} className="fsn-pfrow" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-              <div className="fsn-row">
-                <Logo platform={p} size={24} />
-                <span className="fsn-pf-t"><b>{NOM(p)}</b><small>{l.texte}</small></span>
-                {l.droite}
-              </div>
-              {l.geste ? <div className="fsn-pf-geste" style={{ marginTop: 0, paddingLeft: 34 }}>{l.geste}</div> : null}
+      {plateformes.length > 0 && (
+        <div className="fsn-card" style={{ gap: 0 }}>
+          <BarreProgression
+            lang={m.lang}
+            article={{ photo: photoArticle, titre: m.titreArticle || (en ? "Your item" : "Ton article"), sousTitre: [prixArticle, quoi].filter(Boolean).join(" · ") }}
+            {...(seule ?? { pistes })}
+            phraseFin={enLigneSur.length
+              ? (en ? `Online on ${enLigneSur.join(", ")}.` : `En ligne sur ${enLigneSur.join(", ")}.`)
+              : undefined}
+            phrasePartielle={en
+              ? `Online on ${nbEnLigne} platform${nbEnLigne > 1 ? "s" : ""} of ${plateformes.length} — the lines below say what is missing.`
+              : `En ligne sur ${nbEnLigne} plateforme${nbEnLigne > 1 ? "s" : ""} sur ${plateformes.length} — les lignes ci-dessous disent ce qui manque.`}
+            phraseEchec={seule
+              ? (typeof seule.phraseLigne === "string" ? seule.phraseLigne : seule.phraseEchec)
+              : (en ? "Nothing went out yet — each line says why." : "Rien n'est parti pour l'instant — chaque ligne dit pourquoi.")}
+            onOuvrir={() => setFileOuverte(true)}
+          />
+          {seule && (seule.geste || urlSeule) && (
+            <div className="fsn-pf-geste" style={{ marginTop: 10 }}>
+              {seule.geste ?? <a href={urlSeule} target="_blank" rel="noopener noreferrer">{en ? "See the listing ↗" : "Voir l'annonce ↗"}</a>}
             </div>
-          );
-        })}
-        {!lu && plateformes.length > 0 && <div className="fsn-small" style={{ paddingTop: 8 }}>{en ? "Reading the queue…" : "Lecture de la file…"}</div>}
-      </div>
+          )}
+          {!lu && <div className="fsn-small" style={{ paddingTop: 8 }}>{en ? "Reading the queue…" : "Lecture de la file…"}</div>}
+        </div>
+      )}
+      {fileOuverte && (
+        <FileDesJobs
+          lang={m.lang}
+          supabase={m.supabase}
+          userId={m.userId}
+          texteErreur={(j) => humanizeJobError(j, en ? "en" : "fr")}
+          renderGeste={(job) => {
+            if (job?.platform_fields?.needs_user_source === "opla_acces" && m.userId) {
+              return <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
+            }
+            if (m.onCompleter && job?.status === "needs_user" && job?.action === "publish" && needsUserOuvrable(job)) {
+              return <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => { setFileOuverte(false); m.onCompleter(job); }}>{en ? "Complete" : "Compléter"}</button>;
+            }
+            return null;
+          }}
+          onFermer={() => setFileOuverte(false)}
+        />
+      )}
 
       {(m.exclusionsDuClic?.length > 0 || m.publieesSansPf?.length > 0) && (
         <Carte gravite="geste" titre={en ? "Not sent this time" : "Pas parties cette fois"}>

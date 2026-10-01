@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import { createPortal } from "react-dom";
-import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, ImageOff, GripVertical, MapPin, Lock, LogOut } from "lucide-react";
+import { Camera, Check, ChevronLeft, Mic, Plus, X, Pencil, Clock, ImageOff, GripVertical, MapPin, Lock, LogOut } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
@@ -26,6 +26,9 @@ import { useVeritePlateformes } from "../reglages/useVeritePlateformes";
 import { useOplaAcces, carteAccesOpla } from "../utils/oplaAcces";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
+// (01/10) LA barre de progression — la rédaction des annonces (et la retouche
+// des photos qu'elle porte) l'utilise à la place du sablier.
+import BarreProgression from "./BarreProgression";
 import BoutonMeConnecter from "./BoutonMeConnecter";
 import { MOTIFS } from "../utils/connexionPlateformes";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
@@ -2222,6 +2225,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
 // Exporté (refonte 24/09) : le nouvel écran « Ce qui va partir » rend CE
 // composant — même corps de cartes, même bloc général, mêmes gestes.
 export function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
+  // (01/10) L'article en tête de la barre de rédaction : la première photo
+  // (avant retouche) et le titre déjà connus.
+  photoArticle = null, titreArticle = null,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
   prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false,
@@ -2261,6 +2267,12 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
+  // La fin de la rédaction se MONTRE (01/10) : la barre glisse jusqu'à 100 %
+  // et la coche paraît avant que les annonces ne remplacent l'écran. Seulement
+  // si la rédaction a été vue en cours ici — une rédaction déjà faite
+  // (reprise, cache) s'affiche directement.
+  const [redactionVue, setRedactionVue] = useState(false);
+  const [finRedactionVue, setFinRedactionVue] = useState(false);
   const [openCards, setOpenCards] = useState(new Set());
   // Ouverture DEMANDÉE par le step Publier (garde « description Vinted
   // vide », 2026-09-12) : la carte de cette copie s'ouvre, une fois.
@@ -2336,21 +2348,42 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   // mutation idempotente au rendu, pas de re-render déclenché).
   const shownFieldsRef = useRef({});
 
-  // Phase A — loading
-  if (generating || (!platformListings && !generateError)) {
+  // Phase A — loading. (01/10) LA barre de progression : l'article en tête,
+  // la retouche puis la rédaction (mêmes phrases, même bascule à 20 s
+  // qu'avant : le serveur ne renvoie aucune étape intermédiaire), un
+  // pourcentage qui avance tout de suite, 100 % seulement quand les annonces
+  // sont là — avec la coche, avant de les afficher.
+  const redactionEnCours = generating || (!platformListings && !generateError);
+  if (redactionEnCours && !redactionVue) setRedactionVue(true);
+  if (redactionEnCours && finRedactionVue) setFinRedactionVue(false);
+  const finRedaction = redactionVue && !redactionEnCours && Boolean(platformListings) && !generateError && !finRedactionVue;
+  if (redactionEnCours || finRedaction) {
     // « Photos originales » : aucune retouche IA ne tourne — ni « Retouche des
     // photos en cours… » ni la promesse des ~1-2 minutes n'ont de sens.
     const noRetouch = photoOption === "original";
-    const msg = noRetouch
-      ? t("stepGenLoadingMsg2")
-      : (elapsed < 20 ? t("stepGenLoadingMsg1") : t("stepGenLoadingMsg2"));
+    const etapesRedaction = noRetouch
+      ? [{ cle: "redaction", texte: t("stepGenLoadingMsg2"), duree: 15 }]
+      : [{ cle: "retouche", texte: t("stepGenLoadingMsg1"), duree: 20 }, { cle: "redaction", texte: t("stepGenLoadingMsg2"), duree: 50 }];
+    const etapeRedaction = noRetouch || elapsed >= 20 ? "redaction" : "retouche";
+    const prixLu = price != null && price !== "" && Number.isFinite(Number(price)) ? `${Number(price)} €` : null;
     return (
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 24px", textAlign:"center" }}>
-        <Loader size={80} thickness={2} icon={Sparkles} iconSize={28} style={{ marginBottom:24 }} />
-        <h1 style={{ margin:"0 0 8px", fontSize:19, fontWeight:600, color:T.ink }}>
-          {msg}
-        </h1>
-        <p style={{ margin:0, fontSize:13, lineHeight:1.5, color:T.mute2 }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", padding:"24px 0" }}>
+        <div style={{ width:"100%", maxWidth:520, margin:"0 auto", background:"#FFFFFF", border:"1px solid #E7E3D8", borderRadius:16, padding:"14px 14px 12px", boxSizing:"border-box" }}>
+          <BarreProgression
+            lang={lang}
+            article={{
+              photo: urlPhoto(processedPhotos?.[0] ?? photoArticle ?? null),
+              titre: (titreArticle ?? "").trim() || (lang === "en" ? "Your item" : "Ton article"),
+              sousTitre: [prixLu, lang === "en" ? "Writing your listings" : "Rédaction de tes annonces"].filter(Boolean).join(" · "),
+            }}
+            etapes={etapesRedaction}
+            etape={etapeRedaction}
+            etat={redactionEnCours ? "en_cours" : "termine"}
+            phraseFin={lang === "en" ? "Your listings are ready." : "Tes annonces sont prêtes."}
+            onFini={() => setFinRedactionVue(true)}
+          />
+        </div>
+        <p style={{ margin:"12px auto 0", maxWidth:520, fontSize:13, lineHeight:1.5, color:T.mute2, textAlign:"center" }}>
           {noRetouch ? t("stepGenLoadingNoRetouchSubtitle") : t("stepGenLoadingSubtitle")}
         </p>
       </div>
@@ -9840,6 +9873,7 @@ export default function ListingPreviewScreen({
   // Les props de l'écran de rédaction, les MÊMES que dans l'ancienne coque.
   const propsStepGeneration = {
     generating: generatingPlatforms, generateError: platformError, platformListings, processedPhotos,
+    photoArticle: photos?.[0] ?? null, titreArticle,
     selected, edited, setEdited, onPhotoClick: setLightboxUrl, onRetry: handleGeneratePlatforms,
     generatePrice: coinPrices?.generate ?? null, noteOverride: noteSharedOverride, ficheReprise,
     ebayVoieApiReelle, rayonsParPf, suggestionsParPf, questionsRayonParPf: rayonsAChoisir, supabase, onChoisirRayon: choisirRayon,
@@ -10161,6 +10195,8 @@ export default function ListingPreviewScreen({
             generateError={platformError}
             platformListings={platformListings}
             processedPhotos={processedPhotos}
+            photoArticle={photos?.[0] ?? null}
+            titreArticle={titreArticle}
             selected={selected}
             edited={edited}
             setEdited={setEdited}
