@@ -251,7 +251,7 @@ function lignesDiff(fr, palier, K) {
     {
       ok: retouches > 0,
       texte: retouches > 0
-        ? (fr ? `Retouche IA — ${retouches} photos embellies par mois` : `AI touch-up — ${retouches} enhanced photos a month`)
+        ? (fr ? `Retouche IA — ${retouches} annonces retouchées par mois (jusqu'à 5 photos chacune)` : `AI touch-up — ${retouches} listings retouched a month (up to 5 photos each)`)
         : (fr ? 'Retouche IA' : 'AI touch-up'),
     },
     {
@@ -867,15 +867,15 @@ export default function ConversionModal({
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
             {quotaCas.geste === 'retouches'
-              ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? 0} retouches IA par mois — elles sont toutes utilisées. Rien n'a été décompté.</>
-                    : <>Your plan includes {quotaCas.plafond ?? 0} AI touch-ups a month — they are all used. Nothing was deducted.</>)
+              ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? 0} annonces retouchées par mois (jusqu'à 5 photos chacune) — elles sont toutes utilisées. Rien n'a été décompté.</>
+                    : <>Your plan includes {quotaCas.plafond ?? 0} retouched listings a month (up to 5 photos each) — they are all used. Nothing was deducted.</>)
               : (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_annonces_free} annonces créées par mois — elles le sont toutes. Rien n'a été décompté.</>
                     : <>Your plan includes {quotaCas.plafond ?? K.quota_annonces_free} created listings a month — they are all used. Nothing was deducted.</>)}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {quotaCas.geste === 'retouches'
-              ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} retouches IA par mois.</>
-                    : <>On Premium you get {K.quota_retouche_premium} AI touch-ups a month.</>)
+              ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} annonces retouchées par mois.</>
+                    : <>On Premium you get {K.quota_retouche_premium} retouched listings a month.</>)
               : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 5 plateformes.</>
                     : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 5 platforms.</>)}
           </div>

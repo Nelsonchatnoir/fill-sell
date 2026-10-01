@@ -118,7 +118,7 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
             : 'Automatic reposting — your listings bump themselves, without you touching anything']
       : []),
     ...(qRetouches > 0
-      ? [fr ? `Retouche IA — ${qRetouches} photos embellies par mois` : `AI touch-up — ${qRetouches} enhanced photos a month`]
+      ? [fr ? `Retouche IA — ${qRetouches} annonces retouchées par mois (jusqu'à 5 photos chacune)` : `AI touch-up — ${qRetouches} listings retouched a month (up to 5 photos each)`]
       : []),
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
     fr ? 'Commandes vocales' : 'Voice commands',

@@ -269,7 +269,7 @@ const EN = {
   "12,99 €": "€12.99",
   "{ADS_PREMIUM} annonces publiées / mois": "{ADS_PREMIUM} listings published / mo",
   "{REPUB_PREMIUM} republications par mois": "{REPUB_PREMIUM} repostings a month",
-  "Retouche IA — {RETOUCHE_PREMIUM} photos par mois": "AI touch-up — {RETOUCHE_PREMIUM} photos a month",
+  "Retouche IA — {RETOUCHE_PREMIUM} annonces retouchées par mois (jusqu'à 5 photos chacune)": "AI touch-up — {RETOUCHE_PREMIUM} listings retouched a month (up to 5 photos each)",
   "Import & export Excel de ton stock": "Excel import & export of your stock",
   "Support par email": "Email support",
   "Passer Premium": "Go Premium",
@@ -278,7 +278,7 @@ const EN = {
   "{ADS_PRO} annonces publiées / mois": "{ADS_PRO} listings published / mo",
   "{REPUB_PRO} republications par mois": "{REPUB_PRO} repostings a month",
   "Republication automatique — tes annonces remontent toutes seules": "Automatic reposting — your listings bump themselves",
-  "Retouche IA — {RETOUCHE_PRO} photos par mois": "AI touch-up — {RETOUCHE_PRO} photos a month",
+  "Retouche IA — {RETOUCHE_PRO} annonces retouchées par mois (jusqu'à 5 photos chacune)": "AI touch-up — {RETOUCHE_PRO} listings retouched a month (up to 5 photos each)",
   "Support prioritaire": "Priority support",
   "Passer Pro": "Go Pro",
   "Business": "Business",
@@ -286,7 +286,7 @@ const EN = {
   "59,99 €": "€59.99",
   "{ADS_BUSINESS} annonces publiées / mois": "{ADS_BUSINESS} listings published / mo",
   "Republications illimitées — autant que tu veux": "Unlimited repostings — as many as you want",
-  "Retouche IA — {RETOUCHE_BUSINESS} photos par mois": "AI touch-up — {RETOUCHE_BUSINESS} photos a month",
+  "Retouche IA — {RETOUCHE_BUSINESS} annonces retouchées par mois (jusqu'à 5 photos chacune)": "AI touch-up — {RETOUCHE_BUSINESS} listings retouched a month (up to 5 photos each)",
   "Passer Business": "Go Business",
   "Les questions qu'on nous pose.": "The questions we get asked.",
   "Comment fonctionnent les forfaits ?": "How do the plans work?",
@@ -1441,7 +1441,7 @@ export default function LandingPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
-                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t("Retouche IA — {RETOUCHE_PREMIUM} photos par mois")}</span>
+                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t("Retouche IA — {RETOUCHE_PREMIUM} annonces retouchées par mois (jusqu'à 5 photos chacune)")}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "9px" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
@@ -1489,7 +1489,7 @@ export default function LandingPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E7B84C" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
-                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4", color: "#F6F5F1" }}>{t("Retouche IA — {RETOUCHE_PRO} photos par mois")}</span>
+                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4", color: "#F6F5F1" }}>{t("Retouche IA — {RETOUCHE_PRO} annonces retouchées par mois (jusqu'à 5 photos chacune)")}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "9px" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E7B84C" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
@@ -1532,7 +1532,7 @@ export default function LandingPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9BE8DC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
-                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4", color: "#F6F5F1" }}>{t("Retouche IA — {RETOUCHE_BUSINESS} photos par mois")}</span>
+                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4", color: "#F6F5F1" }}>{t("Retouche IA — {RETOUCHE_BUSINESS} annonces retouchées par mois (jusqu'à 5 photos chacune)")}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "9px" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9BE8DC" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
