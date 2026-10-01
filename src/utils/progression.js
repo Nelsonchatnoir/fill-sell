@@ -118,11 +118,15 @@ export function attenteLongue(plage, debutMs, maintenant) {
 // plafonnée (VITESSE_MAX %/s) : une étape sautée ou la fin se rattrapent en
 // glissant, jamais d'un bond. Elle ne recule jamais.
 export const VITESSE_MAX = 30;
-export function lisser(affichee, visee, dtMs, tau = 0.3) {
+// La FIN (état « termine ») se pose plus vite : quelle que soit la distance
+// qui reste, la barre rejoint 100 % en moins d'une seconde, en ralentissant —
+// l'écran suivant (les annonces rédigées, le résultat Lens) n'attend pas.
+export const VITESSE_FIN = 120;
+export function lisser(affichee, visee, dtMs, tau = 0.3, vitesseMax = VITESSE_MAX) {
   if (!(visee > affichee)) return affichee;
   if (!(dtMs > 0)) return affichee;
   const k = 1 - Math.exp(-dtMs / 1000 / tau);
-  const pas = Math.min((visee - affichee) * k, VITESSE_MAX * dtMs / 1000);
+  const pas = Math.min((visee - affichee) * k, vitesseMax * dtMs / 1000);
   const v = affichee + pas;
   // La fin se pose franchement à 100 (pas de traîne à 99,98) ; ailleurs on
   // colle à la cible quand l'écart n'est plus visible.

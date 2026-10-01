@@ -12,7 +12,7 @@
 //   · plusieurs plateformes : jamais « terminé » si l'une a échoué.
 import {
   PLAFOND, courbe, plagesDe, plageFraction, plageAncree, valeurDansPlage, attenteLongue,
-  lisser, etatGlobal, moyenne, pourcentageEcrit,
+  lisser, etatGlobal, moyenne, pourcentageEcrit, VITESSE_FIN,
 } from "../src/utils/progression.js";
 
 let echecs = 0;
@@ -43,7 +43,7 @@ function derouler({ etapes, evenements, fin, pas = 100 }) {
     } else if (etat === "termine") {
       visee = 100;
     }
-    affichee = etat === "echec" ? affichee : Math.max(affichee, lisser(affichee, visee, pas));
+    affichee = etat === "echec" ? affichee : Math.max(affichee, etat === "termine" ? lisser(affichee, visee, pas, 0.18, VITESSE_FIN) : lisser(affichee, visee, pas));
     releve.push({ t, visee, affichee, etat, index, longue: index >= 0 && attenteLongue(plage, debut, t) });
   }
   return { releve, plages };
@@ -89,8 +89,11 @@ console.log("3. UNE PUBLICATION QUI SE DÉROULE");
   ok(a(1000).affichee > 2, `encore plus à 1 s (${a(1000).affichee.toFixed(2)} %)`);
   ok(releve.every((r, i) => i === 0 || r.affichee >= releve[i - 1].affichee), "jamais de recul");
   ok(releve.filter((r) => r.t < 18600).every((r) => r.affichee <= PLAFOND && pourcentageEcrit(r.affichee, false) < 100), "jamais 100 % avant la vraie fin");
-  const sauts = releve.slice(1).map((r, i) => r.affichee - releve[i].affichee);
-  ok(Math.max(...sauts) < 3, `aucun à-coup : au plus ${Math.max(...sauts).toFixed(2)} % en 0,1 s`);
+  const pendant = releve.filter((r) => r.t <= 18600);
+  const sauts = pendant.slice(1).map((r, i) => r.affichee - pendant[i].affichee);
+  ok(Math.max(...sauts) < 3, `aucun à-coup pendant le travail : au plus ${Math.max(...sauts).toFixed(2)} % en 0,1 s`);
+  const fin = releve.find((r) => r.t >= 18600 && r.affichee === 100);
+  ok(fin && fin.t - 18600 <= 1000, `la fin se pose en douceur en moins d'une seconde (${fin ? fin.t - 18600 : '∞'} ms)`);
   const enCours = releve.filter((r) => r.t > 0 && r.t < 18600);
   ok(enCours.every((r, i) => i === 0 || r.affichee > enCours[i - 1].affichee), "avance à chaque dixième de seconde, sans arrêt");
   ok(a(20000).affichee === 100, "100 % une fois terminé");
