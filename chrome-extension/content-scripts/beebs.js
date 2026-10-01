@@ -1730,6 +1730,22 @@ async function fillListingForm(job) {
   // côté background ira le chercher plus tard.
   const proof = await waitForBeebsDeposit();
   if (!proof.ok) {
+    // ── CE QUE BEEBS REFUSE, LU SUR LE FORMULAIRE (2026-10-01, Marie) ──────
+    // Un champ refusé ne se relance pas en boucle : six essais de la chemise
+    // de Marie sont repartis sur le même mur (« Taille 8XL » au lieu de M).
+    // Refus lisible → needs_user tout de suite, avec la phrase et la question.
+    const refus = lireRefusFormulaireBeebs({ tailleVoulue: fields.taille, titre: job.title });
+    if (refus) {
+      warnings.push(`refus Beebs lu sur le formulaire (${refus.code}) : ${refus.message}`);
+      return {
+        success: false,
+        needsUser: true,
+        ...(refus.attenteUtilisateur ? { attenteUtilisateur: true } : {}),
+        ...(refus.needsUserField ? { needsUserField: refus.needsUserField } : {}),
+        error: refus.message,
+        warnings, unfilledRequired, discoveredRequired: enumerated,
+      };
+    }
     return {
       success: false,
       error: `${proof.error} — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`,
@@ -1880,6 +1896,54 @@ function erreursFormulaireVisibles() {
     if (textes.size >= 5) break;
   }
   return [...textes];
+}
+
+// ── BEEBS RESTE SUR LE FORMULAIRE : CE QU'IL REFUSE, NOMMÉ (2026-10-01) ─────
+// Deux refus lisibles, chacun avec un geste — le reste repart comme avant :
+//   · l'adresse : Beebs affiche « Renseigner votre adresse » ;
+//   · une TAILLE/POINTURE affichée qui n'est pas celle de la fiche (« 8XL »
+//     pour une chemise en M) : la question de la taille, valeurs de Beebs.
+// Un champ vide est déjà retenu AVANT le clic (unfilledRequired).
+function lireRefusFormulaireBeebs({ tailleVoulue = "", titre = "" } = {}) {
+  const court = String(titre ?? "").trim().slice(0, 60);
+  const pour = court ? ` pour « ${court} »` : "";
+  if (/Renseigner votre adresse/i.test(texteRenduHorsScripts())) {
+    return {
+      code: "adresse", attenteUtilisateur: true,
+      message: `Beebs n'a pas accepté l'adresse d'envoi${pour} : rien n'a été publié. ` +
+        "Vérifie ton adresse dans les Réglages FillSell (numéro, rue, code postal, ville), puis relance.",
+    };
+  }
+  const voulue = normalizeFuzzy(tailleVoulue);
+  if (!voulue) return null;
+  const jetons = (s) => s.split(/[^a-z0-9]+/).filter(Boolean);
+  const tous = champsFormulaire();
+  for (const c of tous) {
+    if (!/^(taille|pointure)$/i.test(c.label)) continue;
+    const affiche = String(c.trigger.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!affiche || /^sélectionner/i.test(affiche)) continue;
+    const a = normalizeFuzzy(affiche);
+    // « 38 / M » porte M, « EU 42 » porte 42 : compatibles ; « 8XL » ≠ « M ».
+    if (a === voulue || jetons(a).includes(voulue) || jetons(voulue).includes(a)) continue;
+    const cle = cleDeChamp(c, tous);
+    // Même cible que le needsUserField des requis vides (BEEBS_DEDICATED_TARGETS,
+    // local à fillForm) : le libellé nu va au champ racine `taille`.
+    const dedie = cleADiscriminant(cle) ? null : ({ Taille: "taille", Pointure: "taille" })[cle] ?? null;
+    const valeurs = c.valuesFiber ?? beebsObservedOptions[cle] ?? null;
+    return {
+      code: "taille",
+      needsUserField: {
+        field_key: cle,
+        field_label: libelleAffichable(c, tous),
+        target: dedie ? { root: null, key: dedie } : { root: "beebsAspects", key: cle },
+        input_type: "dropdown",
+        ...(Array.isArray(valeurs) && valeurs.length ? { allowed_values: valeurs } : {}),
+      },
+      message: `Beebs refuse la ${c.label.toLowerCase()} « ${affiche} »${pour} (la fiche dit « ${tailleVoulue} ») : ` +
+        `rien n'a été publié. Choisis la bonne ${c.label.toLowerCase()} ci-dessous et la publication repart.`,
+    };
+  }
+  return null;
 }
 
 async function waitForBeebsDeposit(timeoutMs = 45_000) {
@@ -3270,7 +3334,12 @@ async function poserValeurSurChamp(
   //    une liste périmée est exactement ce qui produit les refus d'aujourd'hui.
   // ⛔ Sans session, au-delà de 6 s, sur erreur ou sur « aucune » : on retombe
   //    EXACTEMENT sur le comportement d'avant (champ vide + warning).
-  if (!match) {
+  // ⛔ (2026-10-01) JAMAIS POUR UNE TAILLE OU UNE POINTURE, même posée par la
+  //    clé d'un homonyme (« Taille [attributes.size_men_shirt] » arrive ici
+  //    sans sizeField) : une taille vient de la fiche, exactement, ou de la
+  //    personne — le champ reste vide et la question est posée.
+  const champTaille = sizeField || /^(taille|pointure)\b/i.test(String(champ.label ?? cle ?? ""));
+  if (!match && !champTaille) {
     const libelles = options.map(optionLabel).filter(Boolean).slice(0, 60);
     if (libelles.length) {
       try {
@@ -4167,7 +4236,41 @@ async function fillAddress(adresse, warnings) {
     console.log(`[beebs] ≈ ${note}`);
     warnings.push(note);
   }
+  // Ce que le champ porte APRÈS le clic (2026-10-01) : pure observabilité, le
+  // balisage de l'adresse retenue par Beebs n'a pas été relevé — un champ qui
+  // ne porte ni le code postal ni la commune est noté, jamais bloquant ici
+  // (le refus éventuel est lu après « Publier », cf. lireRefusFormulaireBeebs).
+  const apres = String(document.querySelector('input[name="address"]')?.value ?? "").trim();
+  if (!estSuggestionAdresse(apres, jetonsAdresse(adresse))) {
+    warnings.push(`adresse: après le clic, le champ porte « ${apres.slice(0, 80) || "(vide)"} »`);
+  }
   return { ok: true };
+}
+
+// ── UNE SUGGESTION D'ADRESSE EST UNE ADRESSE (2026-10-01, Marie) ─────────────
+// mariecreativedigital, « Chemise Overshirt à carreaux Homme Hilfiger Denim »
+// (0f457c57) : l'adresse « 9 Rue du 8 Mai 1945 08000 Villers-Semeuse » a fait
+// cliquer « 8XL » — le bouton d'une option de TAILLE de la même page. L'ancien
+// filtre prenait n'importe quel bouton du document contenant UN jeton de
+// l'adresse, chiffres isolés compris (« 8 » ⊂ « 8XL ») : six essais, six fois
+// « 8XL » dans la taille, l'adresse jamais validée, rien soumis par Beebs.
+// Mesuré sur 22 dépôts du parc (08/08 → 30/09) : TOUTES les vraies
+// suggestions portent le code postal et la commune (« … 08000 Villers-
+// Semeuse, France »). Règle : le CODE POSTAL de l'adresse, ou à défaut deux
+// mots de la rue ou de la commune (3 lettres et plus) ; un chiffre seul ou un
+// numéro de rue ne compte jamais.
+function jetonsAdresse(adresse) {
+  const jetons = normalizeFuzzy(adresse).split(/[^a-z0-9]+/).filter(Boolean);
+  return {
+    codePostal: jetons.find((t) => /^\d{5}$/.test(t)) ?? null,
+    mots: jetons.filter((t) => /[a-z]/.test(t) && t.length >= 3 && !/^(rue|avenue|boulevard|bd|chemin|route|allee|impasse|place|quai|bis|ter|lieu|dit|des|les|du|de|la)$/.test(t)),
+  };
+}
+function estSuggestionAdresse(texte, { codePostal, mots }) {
+  const n = normalizeFuzzy(texte);
+  if (!n) return false;
+  if (codePostal) return n.includes(codePostal);
+  return mots.filter((m) => n.includes(m)).length >= Math.min(2, mots.length || 2);
 }
 
 // Choix de la suggestion la plus PERTINENTE (partage de tokens avec l'adresse
@@ -4185,13 +4288,16 @@ async function waitForAddressSuggestion(adresse, timeoutMs = 8000) {
     const n = normalizeFuzzy(el.textContent);
     return tokens.reduce((sum, t) => sum + (n.includes(t) ? 1 : 0), 0);
   };
+  // (2026-10-01) Seul un bouton qui EST une adresse est candidat : code postal,
+  // ou deux mots de la rue/commune — jamais « 8XL » pour « 8 Mai ».
+  const jetons = jetonsAdresse(adresse);
   const start = Date.now();
   // Polling via sleep() (timer Web Worker) et non setTimeout : voir
   // waitForValueCascade. C'est aussi ce qui rend le timeout de 8 s réellement
   // égal à 8 s de temps réel dans un onglet caché.
   while (Date.now() - start < timeoutMs) {
     const candidates = Array.from(document.querySelectorAll('button'))
-      .filter((b) => b.offsetParent !== null && tokens.some((t) => normalizeFuzzy(b.textContent).includes(t)));
+      .filter((b) => b.offsetParent !== null && estSuggestionAdresse(b.textContent, jetons));
     if (candidates.length) {
       const best = candidates.sort((a, b) => relevance(b) - relevance(a))[0];
       if (relevance(best) > 0) return { el: best };
