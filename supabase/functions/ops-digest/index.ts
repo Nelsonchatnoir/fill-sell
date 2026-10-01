@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+// Le contrat de la retenue serveur, le même que l'app et get-pending-jobs.
+import { retenueServeurDuJob } from "../../../src/utils/retenueServeur.js";
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -634,6 +636,57 @@ serve(async (req) => {
     sansMotif.push(`Relevé des needs_user sans motif illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // 15. REPUBLICATIONS RETENUES PAR LE SERVEUR (2026-10-01, carhoa) ─────────
+  // Six livres de Carole sont restés du 27/09 au 01/10 hors de la file, sans
+  // un mot ni chez elle ni ici : get-pending-jobs les retenait (ISBN capturé
+  // non standard). Toute retenue d'une republication encore en ligne s'écrit
+  // désormais `retenue_serveur` (src/utils/retenueServeur.js) — on la compte
+  // chaque matin, par compte, avec son ancienneté et la dernière trace du poste.
+  const retenuesServeur: string[] = [];
+  let retenuesServeurJobs = 0;
+  try {
+    const { data: retenus, error: e15 } = await supabase
+      .from("cross_post_jobs")
+      .select("user_id, platform, action, status, platform_fields->republish_step, platform_fields->retenue_serveur, platform_fields->retenue_isbn_capture")
+      .eq("status", "pending")
+      .or("platform_fields->retenue_serveur.not.is.null,platform_fields->retenue_isbn_capture.not.is.null")
+      .range(0, 999);
+    if (e15) throw new Error(e15.message);
+    const parCompte = new Map<string, { n: number; depuis: string; motifs: Map<string, number> }>();
+    for (const j of (retenus ?? []) as Array<Record<string, unknown>>) {
+      const r = retenueServeurDuJob({
+        action: j.action, status: j.status,
+        platform_fields: { republish_step: j.republish_step, retenue_serveur: j.retenue_serveur, retenue_isbn_capture: j.retenue_isbn_capture },
+      });
+      if (!r) continue;
+      retenuesServeurJobs += 1;
+      const uid = String(j.user_id);
+      const e = parCompte.get(uid) ?? { n: 0, depuis: r.depuis ?? "", motifs: new Map() };
+      e.n += 1;
+      if (r.depuis && (!e.depuis || r.depuis < e.depuis)) e.depuis = r.depuis;
+      e.motifs.set(r.motif, (e.motifs.get(r.motif) ?? 0) + 1);
+      parCompte.set(uid, e);
+    }
+    if (parCompte.size) {
+      const { data: profs } = await supabase
+        .from("profiles").select("id, email, extension_last_seen_at").in("id", [...parCompte.keys()]);
+      const parId = new Map((profs ?? []).map((p: Record<string, unknown>) => [String(p.id), p]));
+      for (const [uid, e] of parCompte) {
+        const p = parId.get(uid);
+        const jours = e.depuis ? Math.floor((now - Date.parse(e.depuis)) / 86_400_000) : null;
+        const motifs = [...e.motifs].map(([m, n]) => `${m} ×${n}`).join(", ");
+        const vue = p?.extension_last_seen_at ? String(p.extension_last_seen_at).slice(0, 16) : "jamais";
+        retenuesServeur.push(
+          `${p?.email ?? uid} — ${e.n} republication${e.n > 1 ? "s" : ""} retenue${e.n > 1 ? "s" : ""} ` +
+          `depuis le ${e.depuis ? e.depuis.slice(0, 10) : "?"}${jours !== null ? ` (${jours} j)` : ""} — ${motifs} — poste vu : ${vue}`,
+        );
+      }
+      retenuesServeur.sort();
+    }
+  } catch (e) {
+    retenuesServeur.push(`Relevé des retenues serveur illisible (${String((e as Error)?.message ?? e)}).`);
+  }
+
   // 0. FOURNISSEURS D'IA — EN TÊTE DU RÉCAPITULATIF (01/10/2026) ─────────────
   // Le crédit OpenAI s'est épuisé le 28/09 (429 credit_balance_exhausted) : 0
   // retouche livrée sur 25 pendant trois jours, et rien ne l'a dit — l'erreur
@@ -721,6 +774,7 @@ serve(async (req) => {
     stockage_au_dessus_du_seuil: stockageAlertes.length,
     dressings_croises: dressingsCroises.length,
     pending_bloques: pendingBloques.length,
+    retenues_serveur: retenuesServeur.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -747,6 +801,19 @@ serve(async (req) => {
     </h2>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${iaAlertes.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    retenuesServeur.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      ✋ Republications retenues par le serveur — ${retenuesServeurJobs} job${retenuesServeurJobs > 1 ? "s" : ""}, ${retenuesServeur.length} compte${retenuesServeur.length > 1 ? "s" : ""}
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      get-pending-jobs ne les sert pas : l'annonce est intacte, la personne lit « en attente ».
+      Une retenue qui vieillit est une garde qui attend une condition qui n'arrive pas — à lever à la racine.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${retenuesServeur.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
     </ul>`
   }
     ${section("Jobs en échec (24 h)", (failed ?? []) as Job[])}
@@ -951,7 +1018,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });
