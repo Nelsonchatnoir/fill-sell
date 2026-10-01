@@ -1389,8 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-30T20:16:27Z'; // 0.6.81 = 0.6.80 + numéro Beebs (segments streamés, flux RSC) + URGENCE capture Vinted sur /items/<id> (30/09 soir).
-// Historique de la valeur precedente : '2026-09-30T18:26:52Z' — f0ebfe7, 0.6.81 sans le correctif capture Vinted, zip jamais téléversé.
+export const EXTENSION_LAST_COMMIT = '2026-10-01T07:30:37Z'; // 0.6.82 = 0.6.81 + adresse Leboncoin prouvée avant retrait (mode précis) + redirection eBay jamais lue comme fin (01/10).
+// Historique de la valeur precedente : '2026-09-30T20:16:27Z' — 73c4929, 0.6.81 (publiée et servie le 01/10).
 // Historique de la valeur precedente : '2026-09-30T08:39:19Z' — 752308e, 0.6.80 (zip 13:21:09Z+4f5662a, en CWS publication différée).
 // Historique de la valeur precedente : '2026-09-30T07:58:12Z' — 8f396eb, 0.6.80 numéro Beebs avant/après (sans preuve d'ordre), jamais packagée.
 // Historique de la valeur precedente : '2026-09-29T17:40:00Z' — ea283c2, 0.6.80 lot 1 (identifiant Beebs exact lu dans le relevé de modération), jamais soumise au CWS.
