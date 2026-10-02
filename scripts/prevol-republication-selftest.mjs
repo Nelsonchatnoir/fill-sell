@@ -80,12 +80,16 @@ console.log("\n1bis. VINTED — la copie CONSTRUITE (passage « copie_construite
 // que `construireSnapshotRepublish` vient de la fabriquer depuis la capture.
 const copie = { titre: "Pull", description: "Pull en bon état", photos: ["a"], prix: 12, catalog_id: 221, package_size_id: 2 };
 attendu("copie complète", jobVintedReel, [], copie);
-attendu("format du colis manquant (cas XEWER, job 6aabc550)", jobVintedReel, ["le format du colis"], { ...copie, package_size_id: null });
+// (0.6.85, 02/10 — décision Nico) Le format de colis inconnu n'est plus un
+// manquant de COPIE : la une-passe le DEMANDE avant tout retrait (question
+// fermée sur les formats offerts), ou refuse de retirer — cf.
+// selftest:vinted-colis-envoi. La copie laisse donc passer.
+attendu("format du colis manquant (cas XEWER) → demandé par la une-passe, plus par la copie", jobVintedReel, [], { ...copie, package_size_id: null });
 attendu("catégorie manquante", jobVintedReel, ["la catégorie"], { ...copie, catalog_id: null });
 attendu("photos et prix manquants", jobVintedReel, ["les photos", "le prix"], { ...copie, photos: [], prix: 0 });
 // La copie passée fait foi : même avec une capture_id, une copie construite
 // incomplète bloque — c'est tout l'intérêt du second passage.
-attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "la description", "les photos", "le prix", "la catégorie", "le format du colis"], {});
+attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "la description", "les photos", "le prix", "la catégorie"], {});
 
 console.log("\n2. LEBONCOIN — le cas af34f609 (nicolas.menar, 22/09)");
 const lbcComplet = {

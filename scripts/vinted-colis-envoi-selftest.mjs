@@ -92,5 +92,17 @@ ok(/armerColisPourPost\(null\);/.test(vt), "vinted.js désarme à chaque remplis
 ok(/armerColisPourPost\(colisIdPourPost\)/.test(vt), "vinted.js arme le format connu du job");
 ok(/colisNonPropose: true,/.test(vt) && /colis_injection_prouvee === true/.test(vt), "garde avant retrait : section absente et envoi non prouvé → rien retiré");
 
+console.log("\n4. FORMAT INCONNU HORS MODE : DEMANDÉ AVANT TOUT RETRAIT (décision Nico, 02/10)");
+const iQ = vt.indexOf("if (onePass?.item_id && (!colisVoulu || colisFormatNonOffert)) {");
+const iSuppr = vt.indexOf("const del = await deleteVintedItemViaApi(String(onePass.item_id)");
+ok(iQ > 0 && iSuppr > iQ, "la question est posée AVANT la suppression");
+const blocQ = vt.slice(iQ, vt.indexOf("if (onePass?.item_id && colisVoulu && colisSectionAbsente) {"));
+ok(blocQ.includes("needsUserField: {") && blocQ.includes('field_key: "package_size_id"') && blocQ.includes("options_completes: true") && blocQ.includes('target: { root: "colis_choisi", key: "libelle" }'), "question fermée sur les formats offerts, réponse dans colis_choisi.libelle");
+ok(blocQ.includes("colisNonPropose: true"), "aucun format offert → rien retiré, rien soumis");
+ok(!vt.includes('manquants.push("colis (package_size_id absent du payload)")') && vt.includes("libelles.colis_inconnu = true"), "capture : format absent → plus un manquant de copie, demandé au formulaire");
+ok(vt.includes('return "defaut_vinted";'), "« Recommandé » de Vinted conservé = nommé (jamais un retrait sur un format qui n'est pas celui d'origine)");
+ok(bg.includes('packageSize: String(pf.colis_choisi?.libelle ?? "").trim() || (cap.libelles?.colis ?? null)'), "la réponse de la personne prime à la recréation");
+ok(bg.includes("options_completes: true } : {})"), "la liste est transmise fermée à l'app (options_completes)");
+
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ format de colis : posé quand la page l'oublie, jamais écrasé, jamais inventé");

@@ -19621,12 +19621,16 @@ function construireJobRecreation(job, pf, cap, prix) {
       ...(tailleIds.length ? { taille_ids: tailleIds } : {}),
       marque: cap.libelles?.marque ?? null,
       colors: cap.libelles?.couleurs ?? null,
-      packageSize: cap.libelles?.colis ?? null,
+      // (0.6.85) Le format CHOISI par la personne (question posée avant le
+      // retrait, colis_choisi) prime : c'est la seule source quand l'annonce
+      // d'origine n'en portait pas, ou que Vinted ne l'offre pas pour ce rayon.
+      packageSize: String(pf.colis_choisi?.libelle ?? "").trim() || (cap.libelles?.colis ?? null),
       // Id de colis CAPTURÉ (2026-08-16, point 3) : il fait foi au formulaire
       // de recréation — le libellé seul est ambigu hors Mode (« 5 kg » existe
       // sous les ids 8 ET 11 selon le groupe de catégories, relevé DOM du
       // 16/08). selectPackageSize clique package_type_selector_{id}.
       ...(() => {
+        if (String(pf.colis_choisi?.libelle ?? "").trim()) return {}; // réponse de la personne : son libellé fait foi
         const pkgId = Number(natifCap.package_size_id);
         return Number.isFinite(pkgId) && pkgId > 0 ? { packageSizeId: pkgId } : {};
       })(),
@@ -20630,7 +20634,10 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     if (!Array.isArray(snap.photos) || !snap.photos.length) manquants.push("les photos");
     if (!(Number(snap.prix) > 0)) manquants.push("le prix");
     if (!Number(snap.catalog_id)) manquants.push("la catégorie");
-    if (!Number(snap.package_size_id)) manquants.push("le format du colis");
+    // (0.6.85, 02/10 — décision Nico) Le format de colis inconnu n'est plus un
+    // manquant de COPIE : la une-passe (vinted.js) le DEMANDE avant tout retrait,
+    // sur les formats que le formulaire offre pour ce rayon (question fermée),
+    // ou refuse de retirer si aucun n'est offert. Jamais un retrait sans lui.
     return manquants;
   }
 
@@ -22238,6 +22245,7 @@ async function processRepublishJob(job, accessToken) {
               ...(Array.isArray(f.allowed_values) && f.allowed_values.length
                 ? { allowed_values: f.allowed_values.slice(0, 200).map((v) => String(v)) } : {}),
               ...(f.input_type ? { input_type: String(f.input_type).slice(0, 40) } : {}),
+              ...(f.options_completes === true ? { options_completes: true } : {}),
             };
           }
           const releves = pf.champs_a_completer

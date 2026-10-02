@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -1655,7 +1655,12 @@ async function capturerAnnonceVinted(vintedItemId) {
       manquants.push(`colis (package_size_id=${packageId} hors table connue 1..3/8..14)`);
     }
   } else {
-    manquants.push("colis (package_size_id absent du payload)");
+    // (0.6.85, 02/10 — décision Nico) Format inconnu sur l'annonce d'origine :
+    // plus un manquant de CAPTURE (le message renvoyait vers « la prochaine
+    // mise à jour »). Il est DEMANDÉ à la personne, au formulaire, avant tout
+    // retrait (une-passe : question fermée sur les formats que Vinted offre
+    // pour ce rayon) — jamais choisi à sa place, jamais un retrait sans lui.
+    libelles.colis_inconnu = true;
   }
 
   // ── ISBN — Livres et médias (2026-08-15, Rose « Juris'Pénal », annonce
@@ -3673,8 +3678,10 @@ async function fillListingForm(job) {
   // Section colis non rendue à cet instant (cf. selectPackageSize) : mémorisé
   // pour la DERNIÈRE PASSE, juste avant le dépôt.
   let colisSectionAbsente = false;
+  let colisFormatNonOffert = false;
   if (colisVoulu) {
     const verdictColis = await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+    if (verdictColis === "defaut_vinted") colisFormatNonOffert = true;
     if (verdictColis === "section_absente") {
       colisSectionAbsente = true;
       warnings.push(
@@ -3863,6 +3870,52 @@ async function fillListingForm(job) {
   // direct du format (sonde, id connu) a déjà été PROUVÉ chez Vinted
   // (colis_injection_prouvee, servi par le serveur sur preuve). Sinon : rien
   // n'est retiré, rien n'est soumis, l'annonce reste en ligne.
+  // ── FORMAT DE L'ANNONCE D'ORIGINE INCONNU : ON LE DEMANDE (0.6.85, 02/10) ──
+  // Décision Nico : hors rayon Mode, AUCUN format par défaut. On reprend celui
+  // de l'annonce d'origine (capture) ; s'il est inconnu — ou si le formulaire
+  // ne l'offre pas pour ce rayon et ne laisse que son « Recommandé » — on le
+  // DEMANDE avant tout retrait : question fermée sur les formats que Vinted
+  // affiche ici, l'annonce reste en ligne. La réponse revient dans
+  // platform_fields.colis_choisi.libelle (mini-éditeur de l'app) et la passe
+  // suivante la pose. Jamais un retrait avec un format inconnu.
+  if (onePass?.item_id && (!colisVoulu || colisFormatNonOffert)) {
+    const RADIOS_COLIS_Q = 'input[type="radio"][id^="package_type_selector_"]';
+    const radiosQ = await waitFor(() => {
+      const r = document.querySelectorAll(RADIOS_COLIS_Q);
+      return r.length ? r : null;
+    }, 8000);
+    const titreQ = (r) => (r.closest('[id^="package-size-"]')
+      ?.querySelector('[data-testid$="--cell--title"]')?.textContent ?? "")
+      .replace(/Recommandé/gi, "").replace(/\s+/g, " ").trim();
+    const formats = [...new Set([...(radiosQ ?? [])].map(titreQ).filter(Boolean))];
+    if (formats.length) {
+      return {
+        success: false,
+        error: colisFormatNonOffert
+          ? `Le format du colis de ton annonce d'origine (« ${wantedPackage ?? wantedPackageId} ») n'est pas proposé par Vinted pour ce rayon : choisis-en un, on ne le choisit jamais à ta place.`
+          : "Le format du colis de ton annonce d'origine est inconnu : choisis-le, on ne le choisit jamais à ta place.",
+        warnings,
+        unfilledRequired: ["Format du colis"],
+        needsUserField: {
+          field_key: "package_size_id",
+          field_label: "Format du colis",
+          allowed_values: formats,
+          input_type: "radio",
+          options_completes: true,
+          target: { root: "colis_choisi", key: "libelle" },
+        },
+        diagnostic: `format de colis à choisir avant le retrait — offerts : ${formats.join(" · ")}${colisFormatNonOffert ? ` (voulu non offert : ${wantedPackage ?? wantedPackageId})` : " (inconnu sur l'annonce d'origine)"}`,
+      };
+    }
+    return {
+      success: false,
+      colisNonPropose: true,
+      error: "Le format du colis de ton annonce d'origine est inconnu et le formulaire de Vinted ne propose aucun format pour ce rayon : rien n'a été retiré, rien n'a été soumis.",
+      warnings,
+      diagnostic: "format de colis inconnu et section « Format du colis » absente après 8 s — retrait refusé",
+    };
+  }
+
   if (onePass?.item_id && colisVoulu && colisSectionAbsente) {
     const radiosColis = await waitFor(() => {
       const r = document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]');
@@ -7306,7 +7359,9 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
         `[vinted] ⚠️ format de colis: ni l'id ${n} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
         `choix Vinted pré-coché « ${titreDe(precoche) || "recommandé"} » conservé`
       );
-      return;
+      // (0.6.85) Nommé : la une-passe ne retire jamais sur un format qui n'est
+      // pas celui de l'annonce d'origine (elle demande alors à la personne).
+      return "defaut_vinted";
     }
   }
   // ══════════════════════════════════════════════════════════════════════
