@@ -1,5 +1,8 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SORTIE D'OPLA — QUOTAS ET REPUBLICATION (02/10/2026, décision de Nico, lot A)
+-- APPLIQUÉE le 02/10 à 14:05 (GO Nico : « GO 20261002120000 ») par db query
+-- puis migration repair ; effet relu (garde de l'interrupteur présente, deux
+-- exclusions opla_sortie dans chaque fonction, droits inchangés).
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DÉCISION : plus aucune publication ni republication Opla ; les jobs Opla en
 -- cours, clos par la sortie (platform_fields.opla_sortie, handler-watch v68 /
