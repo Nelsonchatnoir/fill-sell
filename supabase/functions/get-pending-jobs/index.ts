@@ -22,6 +22,9 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
+// synchronisation continue pour les seuls comptes déjà reliés.
+import { estPublicationOpla, oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE } from "../_shared/opla-sortie.js";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
@@ -323,10 +326,14 @@ function copieRepublishDepuisCapture(
 // posait l'extension : même trace, lisible en SQL.
 // deno-lint-ignore no-explicit-any
 async function rearmerJobsOplaParques(admin: any, userId: string, sessionId: string): Promise<number> {
+  // (02/10, sortie d'Opla) Seuls les RETRAITS repartent : une publication ou
+  // republication Opla parquée n'est plus jamais relancée, elle est close
+  // (handler-watch, et la file plus bas).
   const { data: rows } = await admin
     .from("cross_post_jobs")
     .select("id, error, platform_fields")
     .eq("user_id", userId).eq("platform", "opla").eq("status", "needs_user")
+    .eq("action", "delete")
     .eq("platform_fields->>needs_user_source", "opla_acces")
     .limit(200);
   let n = 0;
@@ -346,6 +353,27 @@ async function rearmerJobsOplaParques(admin: any, userId: string, sessionId: str
     if (!error) n++;
   }
   return n;
+}
+
+// ── « OPLA RELIÉ » (02/10, sortie d'Opla, _shared/opla-sortie.js) ──────────
+// Un dressing Opla DÉJÀ synchronisé : un relevé Opla terminé, ou une annonce
+// Opla connue. Deux lectures indexées, faites seulement quand il y a quelque
+// chose d'Opla à servir. Rend null si la base ne répond pas : l'appelant ne
+// retient alors RIEN (un filtre qui échoue ne retient rien).
+// deno-lint-ignore no-explicit-any
+async function oplaRelieDuCompte(admin: any, userId: string): Promise<boolean | null> {
+  try {
+    const { data: releve, error: e1 } = await admin.from("vinted_sync_runs").select("id")
+      .eq("user_id", userId).eq("platform", "opla").eq("kind", "annonces").eq("status", "done").limit(1);
+    if (e1) return null;
+    if ((releve ?? []).length) return true;
+    const { data: annonce, error: e2 } = await admin.from("cross_post_jobs").select("id")
+      .eq("user_id", userId).eq("platform", "opla").in("status", ["published", "sold"]).limit(1);
+    if (e2) return null;
+    return oplaRelie({ releveOplaFait: false, annonceOplaConnue: (annonce ?? []).length > 0 });
+  } catch (_e) {
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -1482,6 +1510,31 @@ serve(async (req) => {
       syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
       console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : relevé Opla laissé en file pour le poste autorisé`);
     }
+    // ══ SORTIE D'OPLA : PAS DE RELEVÉ OPLA POUR UN COMPTE NON RELIÉ (02/10) ══
+    // A2 : pour un compte qui n'a jamais synchronisé de dressing Opla, Opla
+    // n'existe plus — ni relevé, ni connexion. Les demandes (premier relevé
+    // planifié par le serveur, ancienne app) sont closes 'cancelled' avec le
+    // motif, sans ouvrir aucun onglet. A3 : un compte DÉJÀ relié garde ses
+    // relevés (ventes vues sur Opla, retraits des copies ailleurs).
+    // Lecture impossible → on sert comme avant (un filtre qui échoue ne retient rien).
+    const relevesOplaDemandes = syncCommandsAnnonces.filter((c) => c.platform === "opla").map((c) => c.id);
+    let oplaRelieCompte: boolean | null = null;
+    if (relevesOplaDemandes.length) {
+      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      oplaRelieCompte = await oplaRelieDuCompte(admin, user.id);
+      if (oplaRelieCompte === false) {
+        syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
+        try {
+          await admin.from("vinted_sync_runs")
+            .update({ status: "cancelled", finished_at: new Date().toISOString(),
+              erreur: `${MESSAGE_OPLA_INDISPONIBLE} Relevé non fait : aucun dressing Opla synchronisé sur ce compte (sortie d'Opla du 02/10).` })
+            .in("id", relevesOplaDemandes).eq("status", "queued");
+          console.log(`[get-pending-jobs] userId=${user.id} : ${relevesOplaDemandes.length} relevé(s) Opla clos — compte sans dressing Opla synchronisé (sortie d'Opla)`);
+        } catch (e) {
+          console.warn(`[get-pending-jobs] sortie Opla, relevés non clos : ${String((e as Error)?.message ?? e)} — retirés de ce poll seulement`);
+        }
+      }
+    }
 
     // ══ « ME CONNECTER » — LE TÉLÉPHONE DEMANDE, L'ORDINATEUR OUVRE ════════
     // (2026-09-22) C'est le mur nº1 des nouveaux inscrits. L'app ne peut pas
@@ -1713,6 +1766,34 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+    // ══ SORTIE D'OPLA : AUCUNE PUBLICATION NI REPUBLICATION OPLA (02/10) ═══
+    // Décision de Nico (_shared/opla-sortie.js). Une publication/republication
+    // Opla n'est JAMAIS servie, quel que soit le build du poste ; celles qui
+    // attendent encore (pending, needs_user lus par le popup) sont closes ici,
+    // tout de suite, avec le message vrai — handler-watch fait de même sur
+    // tout le parc toutes les 3 min. Rien n'est envoyé à Opla, aucune annonce
+    // n'y est retirée ni modifiée. Les RETRAITS Opla restent servis (A4 :
+    // protection contre la double vente). Un job 'processing' (pris avant la
+    // sortie) reste visible et finit son cours.
+    {
+      const aClore = out.filter((j) => oplaACloreJob(j));
+      out = out.filter((j) => !(estPublicationOpla(j) && String(j.status) !== "processing"));
+      if (aClore.length) {
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          let clos = 0;
+          for (const j of aClore) {
+            const cl = clotureOpla(j as Record<string, unknown>, { par: "get-pending-jobs", archiver: archiverErreur });
+            const { data: maj } = await admin.from("cross_post_jobs").update(cl)
+              .eq("id", j.id as string).eq("status", String(j.status)).select("id");
+            clos += (maj ?? []).length;
+          }
+          if (clos) console.log(`[get-pending-jobs] userId=${user.id} : ${clos} publication(s)/republication(s) Opla close(s) — sortie d'Opla, rien envoyé à Opla`);
+        } catch (e) {
+          console.warn(`[get-pending-jobs] sortie Opla : clôture différée à handler-watch — ${String((e as Error)?.message ?? e)}`);
+        }
+      }
+    }
     // (02/10) Poste sous le seuil : seules les recréations à 'deleted' (cf.
     // l'exception plus haut). Toutes les gardes qui suivent s'y appliquent.
     if (posteSousMinimum) {
@@ -5514,9 +5595,16 @@ serve(async (req) => {
     // l'utilisateur et tient un client scopé RLS — c'est zéro aller-retour de
     // plus. Derrière un flag : le BACKGROUND, qui poll toutes les 2 minutes,
     // ne paie rien de tout ça.
-    let contexte: { sync: unknown; sessions: unknown; verite: unknown } | null = null;
+    let contexte: { sync: unknown; sessions: unknown; verite: unknown; opla?: { relie: boolean | null } } | null = null;
     if (body?.include_context === true) {
       contexte = { sync: null, sessions: null, verite: null };
+      // (02/10, sortie d'Opla) Le popup ≥ 0.6.86 n'affiche la ligne Opla (et
+      // « Autoriser Opla ») qu'à un compte au dressing Opla déjà synchronisé.
+      // null = illisible : le popup garde alors son affichage d'avant.
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        contexte.opla = { relie: oplaRelieCompte ?? await oplaRelieDuCompte(admin, user.id) };
+      } catch (_e) { /* le contexte ne doit JAMAIS empêcher de publier */ }
       try {
         const { data: runs } = await userClient
           .from("vinted_sync_runs")
