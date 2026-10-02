@@ -52,10 +52,10 @@ article est préparé par le VRAI moteur du stepper (`ListingPreviewScreen`, mod
 mêmes gardes, même RPC. Le lot n'ajoute que l'orchestration, les questions de tout le
 lot au même endroit, le résumé avant l'envoi et le suivi.
 
-1. **Choisir** (Stock) — deux portes : « À traiter » › « Publier plusieurs articles », et,
-   sous un filtre « Pas encore sur X » / « Nulle part », « Publier ces N articles ».
-   Cases sur les cartes, « Tout sélectionner (N affichés) », barre collante
-   « N sélectionnés · Continuer ». 20 articles au plus par lot.
+1. **Choisir** (Stock) — deux portes : la ligne « Publier plusieurs articles d'un coup »
+   sous « À traiter », et, sous un filtre « Pas encore sur X » / « Nulle part »,
+   « Publier ces N articles (sur X) ». La carte entière se touche (case en coin),
+   « Tout (N) », barre collante « N sélectionnés · Continuer ». 20 articles au plus par lot.
 2. **Où les publier ?** — une ligne par plateforme pour tout le lot (Vinted, Leboncoin,
    eBay, Beebs — jamais Opla) : combien partiront, ceux qui y sont déjà, session fermée
    (« elles attendront ta connexion » + Me connecter), eBay à paramétrer, plateforme en
@@ -78,15 +78,39 @@ lot au même endroit, le résumé avant l'envoi et le suivi.
 
 - Texte du vendeur : titre ET description du vendeur = l'article part sans relecture ;
   sinon le texte proposé est montré, à valider (« rien ne part faux »).
-- Description d'un article du dressing restée sur Vinted : capture fraîche d'abord ;
-  sinon « Lire ma description sur Vinted », article par article (un geste = une
-  lecture, la règle du chantier sync tient) — jamais une lecture en série.
+- Description d'un article du dressing restée sur Vinted : **le lot ne la lit PAS
+  encore** (décision de Nico attendue, rapport du 03/10). Aujourd'hui le texte écrit
+  par FillSell est montré « à relire » (« Ta description n'est pas dans FillSell… ») et
+  ne part qu'après « C'est bon ». Prévu : capture fraîche d'abord, puis lecture sur
+  Vinted — article par article (règle du chantier sync), ou en série cadencée si Nico
+  l'ouvre.
 - Quota : une préparation = une annonce du quota (comme à l'unité) ; une fiche déjà
   rédigée ne recompte pas. Le lot ne prépare jamais au-delà de ce qui reste : les
-  suivants attendent le prochain mois, gardés dans le lot.
+  suivants attendent le prochain mois — ils restent dans le Stock, non publiés (le
+  filtre « Pas encore sur X » les retrouve). Aucune relance automatique : la liste
+  écrite dans le navigateur (`fs_lot_plus_tard_<uid>`) n'est encore lue par rien.
 - Doublons : un article qui ressemble, en ligne sur la plateforme visée, devient la
   question « Est-ce le même article ? » ; deux articles du lot aux titres voisins ne
   sont jamais comparés entre eux (un titre ne prouve rien).
 - Identifiant du lot : `platform_fields.lot_publication = { id, le }` posé à la
   création (porté par la RPC sans migration) + `bulk_batch_id` posé après coup, comme
   la republication en lot.
+
+## 4. Essais réels (compte de Nico, nuit du 02 au 03/10) — tout retiré
+
+- Lot `958bde13` (23:12, 3 articles, 4 plateformes) : CoD PS4 → Vinted 10220020617,
+  Leboncoin 3280994548, eBay 820197309197, Beebs 34096402 ; bobines Super 8 → Vinted
+  10220045701, eBay 820197309384 (Leboncoin écarté par « Pas sur Leboncoin ») ;
+  statue → eBay 820197309578 (Beebs écarté : taille « Unique » refusée), Vinted et
+  Leboncoin ARRÊTÉS avant dépôt. Quota : 2 annonces décomptées (la fiche du CoD existait).
+- Lot `71604a7e` (23:37, quota simulé à 0 en développement, eBay seul) : deux livres déjà
+  rédigés → eBay 820197352196, 820197352270 ; le tableau, sans fiche, attend le mois suivant.
+- Les 9 annonces ont été retirées par l'app et vérifiées sur chaque plateforme
+  (Vinted introuvable, Leboncoin désactivée, Beebs 404, eBay « Terminé »).
+- Trou serveur vu en vrai : un dépôt arrêté que l'extension tenait déjà revient en
+  « à faire » (processing refusé → failed → reprise de pas-de-rouge). Parade de l'app
+  (`arretLot.js` : 99 essais + nouvel arrêt) ; correction : migration
+  `20261003010000_arret_utilisateur_definitif.sql`, écrite, NON appliquée.
+
+Non éprouvé en vrai (harnais seulement) : session fermée, extension absente, lot de 20
+(le compte de Nico n'a que 10 articles publiables).
