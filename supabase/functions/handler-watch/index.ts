@@ -16,7 +16,7 @@ import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_share
 // (02/10) Reprise des « en cours » figés, jugée sur le poste qui tient le job.
 import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } from "../_shared/reprise-processing.js";
 // (02/10) Sortie d'Opla : les publications/republications Opla en attente se closent.
-import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE } from "../_shared/opla-sortie.js";
+import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1135,8 +1135,24 @@ serve(async (req) => {
   // vente). Placé AVANT la reprise des parcages « Autoriser Opla » : un job
   // clos ici n'est plus jamais relancé. Compare-and-swap sur le statut lu,
   // 100 par passage, une erreur n'arrête pas les autres.
+  // ⛔ L'INTERRUPTEUR (consigne de Nico, 02/10) : rien de tout ceci avant
+  //    l'instant de bascule (coin_config `opla_sortie_le`, défaut le 10/10 à
+  //    00:00 Paris ; 0 = sortie désactivée). Lecture ratée = date par défaut.
+  //    Tant que la sortie s'applique, ce même passage garde la republication
+  //    PLANIFIÉE d'Opla coupée (coin_config `republish_planifiee_pf_opla`
+  //    1 → 0). Rouvrir Opla = poser `opla_sortie_le` à 0, PUIS remettre 1.
   let oplaSortieClos = 0;
+  let sortieOpla = false;
   try {
+    const { data: cfg, error: cfgErr } = await supabase.from("coin_config").select("value").eq("key", OPLA_SORTIE.CLE_CONFIG).maybeSingle();
+    sortieOpla = sortieOplaActive(now, cfgErr ? null : (cfg as { value?: unknown } | null)?.value);
+  } catch (_e) {
+    sortieOpla = sortieOplaActive(now, null);
+  }
+  if (sortieOpla) try {
+    const { data: coupe } = await supabase.from("coin_config").update({ value: 0 })
+      .eq("key", "republish_planifiee_pf_opla").eq("value", 1).select("key");
+    if ((coupe ?? []).length) console.log("[handler-watch] sortie Opla : republication planifiée Opla coupée (republish_planifiee_pf_opla 1 → 0)");
     const { data: aClore } = await supabase
       .from("cross_post_jobs")
       .select("id, user_id, platform, action, status, error, platform_fields")

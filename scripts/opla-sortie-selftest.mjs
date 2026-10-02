@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import {
   OPLA_SORTIE, MESSAGE_OPLA_INDISPONIBLE, messageClotureOpla, estPublicationOpla,
-  oplaACloreJob, clotureOpla, oplaRelie, STATUTS_OPLA_A_CLORE,
+  oplaACloreJob, clotureOpla, oplaRelie, STATUTS_OPLA_A_CLORE, sortieOplaActive, debutSortieOpla,
 } from "../supabase/functions/_shared/opla-sortie.js";
 import { archiverErreur } from "../supabase/functions/_shared/erreurs-archivees.js";
 
@@ -50,6 +50,20 @@ assert.equal(oplaRelie({ releveOplaFait: true }), true);
 assert.equal(oplaRelie({ annonceOplaConnue: true }), true);
 assert.equal(oplaRelie({ releveOplaFait: false, annonceOplaConnue: false }), false);
 assert.equal(oplaRelie({}), false);
-assert.equal(OPLA_SORTIE.DATE_TEXTE, "2 octobre");
+assert.equal(OPLA_SORTIE.DATE_TEXTE, "10 octobre");
+
+// L'interrupteur : rien avant le 10/10 00:00 Paris, tout après ; 0 = désactivée.
+const veille = Date.parse("2026-10-09T23:59:59+02:00");
+const jourJ = Date.parse("2026-10-10T00:00:00+02:00");
+assert.equal(sortieOplaActive(Date.parse("2026-10-02T13:00:00+02:00"), 1791583200), false, "le 02/10 : Opla fonctionne comme avant");
+assert.equal(sortieOplaActive(veille, 1791583200), false, "la veille à 23:59:59 : toujours ouverte");
+assert.equal(sortieOplaActive(jourJ, 1791583200), true, "le 10/10 à 00:00 Paris : la sortie s'applique");
+assert.equal(sortieOplaActive(jourJ, null), true, "clé absente : la date par défaut, le 10/10");
+assert.equal(sortieOplaActive(veille, undefined), false);
+assert.equal(sortieOplaActive(jourJ, "illisible"), true, "lecture illisible : la date par défaut, jamais déplacée");
+assert.equal(sortieOplaActive(jourJ + 86400000 * 30, 0), false, "0 = sortie désactivée, Opla reste ouverte");
+assert.equal(sortieOplaActive(Date.parse("2026-10-08T00:00:00Z"), 1791410400), true, "avancer la bascule = une valeur plus tôt");
+assert.equal(debutSortieOpla(null), Date.parse(OPLA_SORTIE.DEBUT_DEFAUT_ISO));
+assert.equal(debutSortieOpla(0), null);
 
 console.log("opla-sortie : tous les contrôles passent");

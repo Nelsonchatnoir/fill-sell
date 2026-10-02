@@ -20,13 +20,45 @@
 // ⛔ Les RETRAITS (action 'delete') ne sont JAMAIS concernés : c'est la
 //    protection contre la double vente (A4).
 
+// ══ L'INTERRUPTEUR : LA SORTIE DÉMARRE LE 10/10 (consigne de Nico, 02/10) ══
+// Jusqu'au 10 octobre 2026 à 00:00 (Paris), Opla fonctionne exactement comme
+// avant : publication, republication, relevés. À partir de cet instant, et
+// sans aucun geste ni déploiement, toute la sortie s'applique (serveur, app,
+// popup). L'interrupteur vit dans coin_config, comme les autres :
+//   · clé `opla_sortie_le` = l'instant de bascule, en secondes epoch (UTC) ;
+//     posée à 1791583200 = 2026-10-10T00:00:00+02:00 ;
+//   · 0 = sortie DÉSACTIVÉE (Opla reste ouverte, rien n'est clos) ;
+//   · clé absente ou illisible = la date par défaut ci-dessous (le 10/10) :
+//     une lecture ratée ne déplace jamais la bascule.
+// Avancer, repousser ou annuler la sortie = UNE ligne SQL sur coin_config,
+// sans déploiement.
 export const OPLA_SORTIE = Object.freeze({
-  // Le jour où le serveur a cessé de publier sur Opla (déploiement).
-  LE: "2026-10-02",
-  DATE_TEXTE: "2 octobre",
+  CLE_CONFIG: "opla_sortie_le",
+  DEBUT_DEFAUT_ISO: "2026-10-10T00:00:00+02:00",
+  DEBUT_DEFAUT_EPOCH: 1791583200,
+  LE: "2026-10-10",
+  DATE_TEXTE: "10 octobre",
   // usage_logs : « J'ai compris » du bandeau, une ligne par compte.
   FEATURE_BANDEAU: "opla_bandeau",
 });
+
+/**
+ * L'instant de bascule (ms epoch), ou null si la sortie est désactivée (0).
+ * `valeurConfig` : la valeur lue dans coin_config (nombre, chaîne, ou rien).
+ */
+export function debutSortieOpla(valeurConfig) {
+  const v = valeurConfig == null || valeurConfig === "" ? NaN : Number(valeurConfig);
+  if (v === 0) return null;
+  if (Number.isFinite(v) && v > 0) return v * 1000;
+  return OPLA_SORTIE.DEBUT_DEFAUT_EPOCH * 1000;
+}
+
+/** La sortie d'Opla s'applique-t-elle à `maintenant` (ms) ? */
+export function sortieOplaActive(maintenant, valeurConfig) {
+  const debut = debutSortieOpla(valeurConfig);
+  const t = Number.isFinite(maintenant) ? maintenant : Date.now();
+  return debut != null && t >= debut;
+}
 
 // La phrase exigée par Nico, puis ce qui est vrai pour la personne.
 export const MESSAGE_OPLA_INDISPONIBLE = "Opla n'est plus disponible dans FillSell.";
