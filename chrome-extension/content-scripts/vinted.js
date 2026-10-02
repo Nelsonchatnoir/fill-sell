@@ -1870,14 +1870,23 @@ async function proprietaireAnnonceVinted(t) {
     const ids = [...new Set([...document.querySelectorAll('a[href*="/member/"]')]
       .map((a) => (a.getAttribute("href") || "").match(/\/member\/(\d+)(?:[-/?#]|$)/)?.[1])
       .filter(Boolean))];
-    if (ids.length !== 1) { t(`propriétaire de l'annonce illisible (${ids.length} profils sur la page)`); return null; }
+    // (0.6.84, 02/10 — ornellaracano fb9cd238) Vue d'une AUTRE boutique, la
+    // page porte DEUX profils : le vendeur, et le lien vers le compte connecté.
+    // « Exactement un profil » rendait alors « illisible », et le retrait
+    // bouclait toutes les 2 min sur « boutique invérifiable » (Chrome sur
+    // @luciatrendyshop, l'annonce sur @ornella-vend). Le compte connecté est
+    // CONNU (users/current) : on l'écarte ; le profil qui reste est le vendeur.
+    if (!ids.length) { t("propriétaire de l'annonce illisible (aucun profil sur la page)"); return null; }
     const r = await fetchBorne("/api/v2/users/current", { headers: { Accept: "application/json" }, credentials: "include" });
     if (!r.ok) return null;
     const moi = await r.json().catch(() => null);
     const idMoi = String(moi?.user?.id ?? "").trim();
     if (!idMoi) return null;
-    t(`propriétaire de l'annonce : ${ids[0]} ; compte connecté : ${idMoi}`);
-    return { vendeur: ids[0], session: idMoi, login_session: moi?.user?.login ?? null };
+    const autres = ids.filter((id) => id !== idMoi);
+    const vendeur = autres.length === 1 ? autres[0] : (autres.length === 0 ? idMoi : null);
+    if (!vendeur) { t(`propriétaire de l'annonce illisible (${autres.length} profils autres que le compte connecté)`); return null; }
+    t(`propriétaire de l'annonce : ${vendeur} ; compte connecté : ${idMoi}`);
+    return { vendeur, session: idMoi, login_session: moi?.user?.login ?? null };
   } catch (e) {
     t(`propriétaire de l'annonce : lecture impossible (${String(e?.message ?? e)})`);
     return null;
@@ -2098,7 +2107,8 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
         login_session: proprio.login_session ?? null,
         contradictoire: Boolean(attendue && vendeur !== attendue),
       },
-      error: "Le retrait n'a pas été lancé : cette annonce n'appartient pas à la boutique Vinted ouverte dans Chrome. Rien n'a été touché.",
+      error: "Le retrait n'a pas été lancé : cette annonce est sur une autre de tes boutiques Vinted que celle ouverte dans Chrome. " +
+        "Connecte Chrome à la boutique qui porte cette annonce, sur vinted.fr : le retrait repartira tout seul. Rien n'a été touché.",
       trace,
       verdict,
     };
