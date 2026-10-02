@@ -51,8 +51,8 @@ import { gardeFouCategorie, categorieIncertaine } from "./categorieGardeFou";
 import { chaussureMalgreLeMot } from "./chaussureMalgreLeMot";
 import { resoudreParMot, candidatsParMot, niveauSousChemin, estFeuilleDeLArbre } from "./categorieParMot";
 import { maisonDesLivres, feuillesDuNoeud, sortDeLaMaison } from "./motObjetOuSujet";
-import { familleJeuVideo, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme,
-         VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT } from "./jeuxVideo";
+import { jeuVideoDeLArticle, cheminJeuVideo, classementAgeEcrit, classementPourPlateforme, plateformeEbayDuJeu,
+         VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, EBAY_ASPECT_CLASSEMENT, EBAY_ASPECT_PLATEFORME } from "./jeuxVideo";
 import { familleDeLObjet, plausibiliteDuChemin } from "./familleCategorie";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "./ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "./beebsCategories";
@@ -127,6 +127,21 @@ function retenirRayonParDefaut(row, pf, motif, journal = []) {
   pf.rayon_a_reessayer = { motif, le: new Date().toISOString(), paliers: journal };
   pf.categorie_verification = { ...(pf.categorie_verification ?? {}), verdict: "attente_resolution", motif_attente: motif };
   console.warn(`[publish] ${row.platform} — rayon par défaut RETENU (${motif}) : la plateforme attend, jamais le fourre-tout`);
+}
+
+/**
+ * Le texte FR de l'article tel que la publication le lit — titre, puis
+ * description (filet, 400 car.). Jamais la copie eBay, traduite en anglais.
+ * Une seule définition (02/10 soir, point 6) : l'insert ET l'encart eBay de
+ * l'écran (ListingPreviewScreen) jugent la famille jeu vidéo sur LE MÊME texte,
+ * donc sur la même catégorie.
+ */
+export function textesFrDeLaPublication({ initialListing, edited }) {
+  const titre = initialListing?.titre ?? edited?.leboncoin?.title ?? edited?.vinted?.title ?? edited?.beebs?.title ?? "";
+  const description = String(
+    initialListing?.description ?? edited?.leboncoin?.description ?? edited?.vinted?.description ?? ""
+  ).slice(0, 400);
+  return { titre, description };
 }
 
 /** La résolution porte-t-elle une panne passagère à retenter (rayon par défaut retenu) ? */
@@ -354,13 +369,11 @@ export async function resoudrePublication({
   // Mesuré le 10/09 sur 60 j : 2 articles sur 12 sans mot IA auraient été
   // retenus (combinaison → Téléviseurs, dessous de plat → Assiettes) ;
   // avec la v90 de lens-analysis (objet joint), quelques-uns par mois.
-  const frTitrePublication = initialListing?.titre ?? edited?.leboncoin?.title ?? edited?.vinted?.title ?? edited?.beebs?.title ?? "";
   // Le texte FR de l'article — jamais la copie eBay, traduite en anglais.
   // Sert de FILET à la reconnaissance jeu/console/accessoire (le titre
   // reste prioritaire), comme la passe 2 de detectObjectKeywordDetail.
-  const frDescriptionPublication = String(
-    initialListing?.description ?? edited?.leboncoin?.description ?? edited?.vinted?.description ?? ""
-  ).slice(0, 400);
+  const { titre: frTitrePublication, description: frDescriptionPublication } =
+    textesFrDeLaPublication({ initialListing, edited });
   // ── LE CLASSEMENT PAR ÂGE : ON LE REPREND AVANT DE LE REDEMANDER ──────
   // Trois sources, dans cet ordre, la première qui répond gagne :
   //   1. la RÉPONSE de l'utilisateur, déjà dans la copie Vinted — c'est le
@@ -734,9 +747,8 @@ export async function resoudrePublication({
     //    catégorie choisie par les vendeurs eux-mêmes sur 147 d'entre eux :
     //    141/141 jeux, 4/4 consoles, 1/1 accessoire, AUCUNE bascule à tort.
     // ⛔ Doute → familleJeuVideo rend null → rien ne change.
-    const jeuVideo = iconeArticle === "🎮"
-      ? familleJeuVideo(frTitrePublication, frDescriptionPublication)
-      : null;
+    // (02/10 soir) La même fonction que l'encart eBay de l'écran.
+    const jeuVideo = jeuVideoDeLArticle(iconeArticle, frTitrePublication, frDescriptionPublication);
     const feuilleJeuVideo = jeuVideo ? cheminJeuVideo(platform, jeuVideo) : null;
     // Elle PRIME sur l'arbitrage par le mot : « Xbox » ou « PS5 » dans un
     // titre ne dit pas si l'objet est un jeu ou la machine — c'est
@@ -1021,6 +1033,16 @@ export async function resoudrePublication({
         const aspectsEbay = { ...(pf.ebayAspects && typeof pf.ebayAspects === "object" ? pf.ebayAspects : {}) };
         if (classementEbay && !String(aspectsEbay[EBAY_ASPECT_CLASSEMENT] ?? "").trim()) {
           aspectsEbay[EBAY_ASPECT_CLASSEMENT] = classementEbay;
+          pf.ebayAspects = aspectsEbay;
+        }
+        // « Plateforme » (02/10 soir, point 6) : OBLIGATOIRE sur « Jeux »
+        // (139973), lue sur la machine nommée — valeur exacte de la liste
+        // relevée (jeuxVideo.js, colonne `ebay`), jamais par-dessus une saisie.
+        // Doute (« xbox » seul, Switch 2…) → rien : l'encart pose la question.
+        const plateformeEbay = parMotEbay?.id && String(parMotEbay.id) === String(feuilleJeuVideo?.id ?? "")
+          ? plateformeEbayDuJeu(jeuVideo, frTitrePublication) : null;
+        if (plateformeEbay && !String(aspectsEbay[EBAY_ASPECT_PLATEFORME] ?? "").trim()) {
+          aspectsEbay[EBAY_ASPECT_PLATEFORME] = plateformeEbay;
           pf.ebayAspects = aspectsEbay;
         }
       }

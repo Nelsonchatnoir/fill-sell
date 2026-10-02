@@ -186,40 +186,46 @@ function machineNue(t) {
 // video_game_platform, 48 valeurs) ; celles de `beebs` viennent de sa liste
 // « Console » (18 valeurs) ; `lbc` est la marque (console_brand, 10 valeurs) ;
 // `opla` est le code de la feuille « Jeux <marque> ».
+// `ebay` (02/10 soir, point 6) : valeur EXACTE de l'aspect « Plateforme » de la
+// feuille « Jeux » (139973), relevée en base (ebay_item_aspects, 153 valeurs) —
+// vérifiée valeur par valeur par scripts/jeux-video-selftest.mjs. null = doute
+// (« xbox » ou « playstation » seuls, Switch 2 absente de la liste, Mega Drive
+// éclatée en Genesis/32X/Mini chez eBay, marques nues) : rien n'est posé, la
+// question part.
 const MACHINES = [
-  [/\bxbox\s?(series|serie)\b/,            { cle: "xbox_series", vinted: "Xbox Series S et X", beebs: "Xbox Series", lbc: "Microsoft", opla: "xbox", salon: true }],
-  [/\bxbox\s?360\b/,                       { cle: "xbox360",     vinted: "Xbox 360",           beebs: "Xbox 360",    lbc: "Microsoft", opla: "xbox", salon: true }],
-  [/\bxbox\s?one\b/,                       { cle: "xboxone",     vinted: "Xbox One",           beebs: "Xbox One",    lbc: "Microsoft", opla: "xbox", salon: true }],
-  [/\bxbox\b/,                             { cle: "xbox",        vinted: "Xbox (originale)",   beebs: "Xbox Series", lbc: "Microsoft", opla: "xbox", salon: true }],
-  [/\bps\s?5\s?pro\b/,                     { cle: "ps5pro",      vinted: "PlayStation 5 Pro",  beebs: "PS5",         lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bps\s?vita\b|\bpsvita\b/,             { cle: "psvita",      vinted: "PlayStation Vita",   beebs: "PS Vita",     lbc: "Sony",      opla: "playstation", portable: true }],
-  [/\bpsp\b/,                              { cle: "psp",         vinted: "PlayStation Portable", beebs: "PSP",       lbc: "Sony",      opla: "playstation", portable: true }],
-  [/\bps\s?one\b|\bpsone\b|\bps\s?1\b/,    { cle: "ps1",         vinted: "PlayStation 1",      beebs: "Retrogaming", lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bps\s?2\b/,                           { cle: "ps2",         vinted: "PlayStation 2",      beebs: "PS2",         lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bps\s?3\b/,                           { cle: "ps3",         vinted: "PlayStation 3",      beebs: "PS3",         lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bps\s?4\b/,                           { cle: "ps4",         vinted: "PlayStation 4",      beebs: "PS4",         lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bps\s?5\b/,                           { cle: "ps5",         vinted: "PlayStation 5",      beebs: "PS5",         lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bplaystation\b/,                      { cle: "playstation", vinted: "PlayStation 1",      beebs: "Retrogaming", lbc: "Sony",      opla: "playstation", salon: true }],
-  [/\bswitch\s?2\b/,                       { cle: "switch2",     vinted: "Nintendo Switch 2",  beebs: "Nintendo Switch", lbc: "Nintendo", opla: "nintendo" }],
-  [/\bswitch\b/,                           { cle: "switch",      vinted: "Nintendo Switch",    beebs: "Nintendo Switch", lbc: "Nintendo", opla: "nintendo" }],
-  [/\bwii\s?u\b/,                          { cle: "wiiu",        vinted: "Nintendo Wii U",     beebs: "Nintendo Wii U", lbc: "Nintendo", opla: "nintendo", salon: true }],
-  [/\bwii\b/,                              { cle: "wii",         vinted: "Nintendo Wii",       beebs: "Nintendo Wii", lbc: "Nintendo", opla: "nintendo", salon: true }],
-  [/\b3\s?ds\b/,                           { cle: "3ds",         vinted: "Nintendo 3DS",       beebs: "Nintendo 3DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
-  [/\b2\s?ds\b/,                           { cle: "2ds",         vinted: "Nintendo 2DS",       beebs: "Nintendo 3DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
-  [/\bgame\s?boy\s?advance\b|\bgba\b/,     { cle: "gba",         vinted: "Nintendo Game Boy Advance", beebs: "Retrogaming", lbc: "Nintendo", opla: "nintendo", portable: true }],
-  [/\bgame\s?boy\b|\bgameboy\b/,           { cle: "gameboy",     vinted: "Nintendo Game Boy",  beebs: "Retrogaming", lbc: "Nintendo", opla: "nintendo", portable: true }],
-  [/\bgame\s?cube\b|\bgamecube\b/,         { cle: "gamecube",    vinted: "Nintendo GameCube",  beebs: "Nintendo GameCube", lbc: "Nintendo", opla: "nintendo", salon: true }],
-  [/\bn64\b|\bnintendo\s?64\b/,            { cle: "n64",         vinted: "Nintendo 64",        beebs: "Retrogaming", lbc: "Nintendo", opla: "nintendo", salon: true }],
-  [/\bsuper\s?famicom\b|\bsnes\b|\bsuper\s?nintendo\b/, { cle: "snes", vinted: "Super Nintendo", beebs: "Retrogaming", lbc: "Nintendo", opla: "retro", salon: true }],
-  [/\bfamicom\b|\bnes\b/,                  { cle: "nes",         vinted: "Nintendo Entertainment System", beebs: "Retrogaming", lbc: "Nintendo", opla: "retro", salon: true }],
-  [/\bnds\b|\bds\b/,                       { cle: "ds",          vinted: "Nintendo DS",        beebs: "Nintendo DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
-  [/\bdreamcast\b/,                        { cle: "dreamcast",   vinted: "Sega Dreamcast",     beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
-  [/\bmega\s?drive\b|\bmegadrive\b/,       { cle: "megadrive",   vinted: "Sega Mega Drive",    beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
-  [/\bsaturn\b/,                           { cle: "saturn",      vinted: "Sega Saturn",        beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
-  [/\bsteam\s?deck\b/,                     { cle: "steamdeck",   vinted: "Steam Deck",         beebs: "PC",          lbc: "Autre",    opla: "pc", portable: true }],
-  [/\batari\b/,                            { cle: "atari",       vinted: "Atari",              beebs: "Retrogaming", lbc: "Atari",    opla: "retro", salon: true }],
-  [/\bnintendo\b/,                         { cle: "nintendo",    vinted: null,                 beebs: null,          lbc: "Nintendo", opla: "nintendo" }],
-  [/\bsega\b/,                             { cle: "sega",        vinted: null,                 beebs: "Retrogaming", lbc: "Sega",     opla: "retro" }],
+  [/\bxbox\s?(series|serie)\b/,            { cle: "xbox_series", ebay: "Microsoft Xbox Series X|S", vinted: "Xbox Series S et X", beebs: "Xbox Series", lbc: "Microsoft", opla: "xbox", salon: true }],
+  [/\bxbox\s?360\b/,                       { cle: "xbox360",     ebay: "Microsoft Xbox 360", vinted: "Xbox 360",           beebs: "Xbox 360",    lbc: "Microsoft", opla: "xbox", salon: true }],
+  [/\bxbox\s?one\b/,                       { cle: "xboxone",     ebay: "Microsoft Xbox One", vinted: "Xbox One",           beebs: "Xbox One",    lbc: "Microsoft", opla: "xbox", salon: true }],
+  [/\bxbox\b/,                             { cle: "xbox",        ebay: null, vinted: "Xbox (originale)",   beebs: "Xbox Series", lbc: "Microsoft", opla: "xbox", salon: true }],
+  [/\bps\s?5\s?pro\b/,                     { cle: "ps5pro",      ebay: "Sony PlayStation 5", vinted: "PlayStation 5 Pro",  beebs: "PS5",         lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bps\s?vita\b|\bpsvita\b/,             { cle: "psvita",      ebay: "Sony PlayStation Vita", vinted: "PlayStation Vita",   beebs: "PS Vita",     lbc: "Sony",      opla: "playstation", portable: true }],
+  [/\bpsp\b/,                              { cle: "psp",         ebay: "Sony PSP", vinted: "PlayStation Portable", beebs: "PSP",       lbc: "Sony",      opla: "playstation", portable: true }],
+  [/\bps\s?one\b|\bpsone\b|\bps\s?1\b/,    { cle: "ps1",         ebay: "Sony PlayStation 1", vinted: "PlayStation 1",      beebs: "Retrogaming", lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bps\s?2\b/,                           { cle: "ps2",         ebay: "Sony PlayStation 2", vinted: "PlayStation 2",      beebs: "PS2",         lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bps\s?3\b/,                           { cle: "ps3",         ebay: "Sony PlayStation 3", vinted: "PlayStation 3",      beebs: "PS3",         lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bps\s?4\b/,                           { cle: "ps4",         ebay: "Sony PlayStation 4", vinted: "PlayStation 4",      beebs: "PS4",         lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bps\s?5\b/,                           { cle: "ps5",         ebay: "Sony PlayStation 5", vinted: "PlayStation 5",      beebs: "PS5",         lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bplaystation\b/,                      { cle: "playstation", ebay: null, vinted: "PlayStation 1",      beebs: "Retrogaming", lbc: "Sony",      opla: "playstation", salon: true }],
+  [/\bswitch\s?2\b/,                       { cle: "switch2",     ebay: null, vinted: "Nintendo Switch 2",  beebs: "Nintendo Switch", lbc: "Nintendo", opla: "nintendo" }],
+  [/\bswitch\b/,                           { cle: "switch",      ebay: "Nintendo Switch", vinted: "Nintendo Switch",    beebs: "Nintendo Switch", lbc: "Nintendo", opla: "nintendo" }],
+  [/\bwii\s?u\b/,                          { cle: "wiiu",        ebay: "Nintendo Wii U", vinted: "Nintendo Wii U",     beebs: "Nintendo Wii U", lbc: "Nintendo", opla: "nintendo", salon: true }],
+  [/\bwii\b/,                              { cle: "wii",         ebay: "Nintendo Wii", vinted: "Nintendo Wii",       beebs: "Nintendo Wii", lbc: "Nintendo", opla: "nintendo", salon: true }],
+  [/\b3\s?ds\b/,                           { cle: "3ds",         ebay: "Nintendo 3DS", vinted: "Nintendo 3DS",       beebs: "Nintendo 3DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
+  [/\b2\s?ds\b/,                           { cle: "2ds",         ebay: "Nintendo 2DS", vinted: "Nintendo 2DS",       beebs: "Nintendo 3DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
+  [/\bgame\s?boy\s?advance\b|\bgba\b/,     { cle: "gba",         ebay: "Nintendo Game Boy Advance", vinted: "Nintendo Game Boy Advance", beebs: "Retrogaming", lbc: "Nintendo", opla: "nintendo", portable: true }],
+  [/\bgame\s?boy\b|\bgameboy\b/,           { cle: "gameboy",     ebay: "Nintendo Game Boy", vinted: "Nintendo Game Boy",  beebs: "Retrogaming", lbc: "Nintendo", opla: "nintendo", portable: true }],
+  [/\bgame\s?cube\b|\bgamecube\b/,         { cle: "gamecube",    ebay: "Nintendo GameCube", vinted: "Nintendo GameCube",  beebs: "Nintendo GameCube", lbc: "Nintendo", opla: "nintendo", salon: true }],
+  [/\bn64\b|\bnintendo\s?64\b/,            { cle: "n64",         ebay: "Nintendo 64", vinted: "Nintendo 64",        beebs: "Retrogaming", lbc: "Nintendo", opla: "nintendo", salon: true }],
+  [/\bsuper\s?famicom\b|\bsnes\b|\bsuper\s?nintendo\b/, { cle: "snes", ebay: "Nintendo SNES", vinted: "Super Nintendo", beebs: "Retrogaming", lbc: "Nintendo", opla: "retro", salon: true }],
+  [/\bfamicom\b|\bnes\b/,                  { cle: "nes",         ebay: "Nintendo NES", vinted: "Nintendo Entertainment System", beebs: "Retrogaming", lbc: "Nintendo", opla: "retro", salon: true }],
+  [/\bnds\b|\bds\b/,                       { cle: "ds",          ebay: "Nintendo DS", vinted: "Nintendo DS",        beebs: "Nintendo DS", lbc: "Nintendo", opla: "nintendo", portable: true }],
+  [/\bdreamcast\b/,                        { cle: "dreamcast",   ebay: "Sega Dreamcast", vinted: "Sega Dreamcast",     beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
+  [/\bmega\s?drive\b|\bmegadrive\b/,       { cle: "megadrive",   ebay: null, vinted: "Sega Mega Drive",    beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
+  [/\bsaturn\b/,                           { cle: "saturn",      ebay: "Sega Saturn", vinted: "Sega Saturn",        beebs: "Retrogaming", lbc: "Sega",     opla: "retro", salon: true }],
+  [/\bsteam\s?deck\b/,                     { cle: "steamdeck",   ebay: null, vinted: "Steam Deck",         beebs: "PC",          lbc: "Autre",    opla: "pc", portable: true }],
+  [/\batari\b/,                            { cle: "atari",       ebay: "Atari", vinted: "Atari",              beebs: "Retrogaming", lbc: "Atari",    opla: "retro", salon: true }],
+  [/\bnintendo\b/,                         { cle: "nintendo",    ebay: null, vinted: null,                 beebs: null,          lbc: "Nintendo", opla: "nintendo" }],
+  [/\bsega\b/,                             { cle: "sega",        ebay: null, vinted: null,                 beebs: "Retrogaming", lbc: "Sega",     opla: "retro" }],
 ];
 
 /** La machine nommée dans le texte, ou null. Le plus précis gagne. */
@@ -424,4 +430,44 @@ export function ageBeebsJeuVideoLu(titre, description = "") {
   const classement = classementAgeEcrit(titre, description);
   const valeur = ageBeebsDuClassement(classement);
   return valeur ? { valeur, classement } : null;
+}
+
+// ── eBAY « JEUX » (139973) : LES DEUX CARACTÉRISTIQUES OBLIGATOIRES ────────
+// (02/10 soir, point 6 — XEWER : plus aucun jeu publié sur eBay depuis le
+// 29/09.) La feuille « Jeux » exige « Plateforme » et « Nom du jeu vidéo »
+// (relevé du 12/09, rien n'a changé chez eBay). Jusqu'au 28/09 le worker API
+// les remplissait côté serveur ; depuis 6f85001 l'app les exige AVANT le
+// dépôt — mais l'encart eBay était monté sur la catégorie de l'ICÔNE 🎮
+// (139971 « Consoles », requis Marque/Modèle) alors que le job part en 139973 :
+// rien n'était demandé, et le clic bloquait.
+//   · la PLATEFORME se lit sur la machine nommée (« PS4 » → « Sony
+//     PlayStation 4 »), jamais devinée ;
+//   · le NOM DU JEU passe par l'extraction de l'encart (resolve_aspects),
+//     sinon il est demandé — jamais recopié du titre brut.
+export const EBAY_ASPECT_PLATEFORME = "Plateforme";
+export const EBAY_ASPECT_NOM_DU_JEU = "Nom du jeu vidéo";
+
+/**
+ * La famille jeu vidéo d'un article — seulement sous l'icône 🎮, comme à
+ * l'insert (resolutionPublication) : la MÊME règle pour l'écran et le job.
+ * @returns {ReturnType<typeof familleJeuVideo>}
+ */
+export function jeuVideoDeLArticle(icone, titre, description = "") {
+  return icone === "🎮" ? familleJeuVideo(titre, description) : null;
+}
+
+/**
+ * La valeur eBay de « Plateforme » pour un JEU (famille "jeu"), ou null.
+ * Deux précisions lues dans le TITRE, jamais devinées : « Game Boy Color »
+ * (valeur distincte chez eBay) et « Super Famicom » ; un « Famicom » nu (sans
+ * « Super ») n'a pas d'équivalent sûr → null.
+ */
+export function plateformeEbayDuJeu(detail, titre = "") {
+  if (!detail || detail.famille !== "jeu" || !detail.machine) return null;
+  const m = detail.machine;
+  const t = norm(titre);
+  if (m.cle === "gameboy" && /\bgame\s?boy\s?colou?r\b|\bgbc\b/.test(t)) return "Nintendo Game Boy Color";
+  if (m.cle === "snes" && /\bsuper\s?famicom\b/.test(t)) return "Nintendo Super Famicom";
+  if (m.cle === "nes" && /\bfamicom\b/.test(t)) return null;
+  return m.ebay ?? null;
 }

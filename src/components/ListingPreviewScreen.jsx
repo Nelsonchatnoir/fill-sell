@@ -41,7 +41,7 @@ import { gardeFouCategorie } from "../utils/categorieGardeFou";
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
 import { valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
-import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, familleJeuVideo } from "../utils/jeuxVideo";
+import { VINTED_CHAMP_PLATEFORME, VINTED_CHAMP_CLASSEMENT, familleJeuVideo, jeuVideoDeLArticle, cheminJeuVideo, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME } from "../utils/jeuxVideo";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
@@ -71,7 +71,7 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
 // mêmes messages : un déménagement, pas une réécriture (en-tête du module).
-import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFourreToutLbc } from "../utils/resolutionPublication";
+import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFourreToutLbc, textesFrDeLaPublication } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
 import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi } from "../utils/rayonPublication";
@@ -1180,11 +1180,20 @@ const MARQUE_GENERIQUE_RE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*bra
  * par le filtre de resolve_aspects — sinon « Modèle » partirait quand même à
  * l'IA, qui ne peut rien en dire de plus.
  * @param {{name:string, mode?:string}} aspect
- * @param {{marque?:string}} ctx — marque telle qu'elle partira sur eBay
+ * @param {{marque?:string, famille?:string|null, plateformeJeu?:string|null}} ctx — marque telle qu'elle
+ *   partira sur eBay ; plateformeJeu = « Plateforme » lue sur un jeu vidéo (02/10 soir)
  */
 function defautAspectEbay(aspect, ctx = {}) {
   const fixe = EBAY_ASPECT_DEFAULTS[aspect?.name];
   if (fixe) return fixe;
+  // « Plateforme » d'un JEU vidéo (02/10 soir, point 6) : lue sur la machine
+  // nommée (jeuxVideo.plateformeEbayDuJeu), valeur exacte de la liste. Une
+  // valeur absente de la liste de CETTE catégorie n'est jamais posée.
+  if (aspect?.name === EBAY_ASPECT_PLATEFORME && ctx.plateformeJeu) {
+    const liste = Array.isArray(aspect.allowedValues) ? aspect.allowedValues : [];
+    if (!liste.length || liste.includes(ctx.plateformeJeu)) return ctx.plateformeJeu;
+    return undefined;
+  }
   if (aspect?.name !== "Modèle") return undefined;
   // Liste FERMÉE : on ne peut rien y écrire qui n'y figure pas. On laisse la
   // ligne « manquante » plutôt que d'envoyer une valeur qu'eBay refusera.
@@ -6757,6 +6766,15 @@ export default function ListingPreviewScreen({
   // la catégorie résolue (ebay_item_aspects) ; genericAspectsCatalog = requis
   // APPRIS Vinted/LBC/Beebs (platform_category_aspects, relevés cumulés).
   const [ebayRequiredPreview, setEbayRequiredPreview] = useState(null);
+  // (02/10 soir, point 6) La catégorie eBay que l'insert a réellement posée,
+  // quand elle diffère de celle de l'encart : le clic l'apprend, l'encart s'y
+  // remonte pour poser LES questions du job (plus jamais un blocage sur des
+  // champs que l'écran n'a jamais montrés).
+  const [ebayCategorieDuClic, setEbayCategorieDuClic] = useState(null);
+  // La passe d'extraction IA des aspects eBay est terminée pour cette
+  // catégorie : la trace « champ requis bloquant » eBay attend ce moment (un
+  // champ que l'IA va remplir n'est pas un blocage).
+  const [ebayIaFiniePour, setEbayIaFiniePour] = useState(null);
   const [genericAspectsCatalog, setGenericAspectsCatalog] = useState({});
 
   // Détaillé : [{ key, platforms:[ids] }] — expose les plateformes gardées de
@@ -6967,6 +6985,21 @@ export default function ListingPreviewScreen({
   const ebayPreviewCategoryId = useMemo(() => {
     if (!selected.has("ebay") || !edited.ebay) return null;
     const pf = edited.ebay.platform_fields ?? {};
+    // ── LE CLIC A PARLÉ (02/10 soir, point 6) : la catégorie que l'insert a
+    // posée sur le job prime — c'est elle qui décide des questions.
+    if (ebayCategorieDuClic) return String(ebayCategorieDuClic);
+    // ── UN JEU VIDÉO PART EN « JEUX », PAS EN « CONSOLES » (02/10 soir) ──
+    // XEWER : l'encart se montait sur la catégorie de l'icône 🎮 (139971
+    // « Consoles », requis Marque/Modèle) alors que l'insert pose la feuille de
+    // la famille (139973 « Jeux », requis Plateforme et Nom du jeu vidéo) : rien
+    // n'était demandé, le clic refusait. MÊME règle et MÊME texte que l'insert
+    // (jeuVideoDeLArticle, textesFrDeLaPublication) ; doute → comme avant.
+    {
+      const { titre, description } = textesFrDeLaPublication({ initialListing, edited });
+      const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const feuilleJv = cheminJeuVideo("ebay", jeuVideoDeLArticle(iconJv, titre, description));
+      if (feuilleJv?.id) return String(feuilleJv.id);
+    }
     // ── LA CATÉGORIE QUI PARTIRA, PAS CELLE DE L'ICÔNE (24/09, jocabroc8) ──
     // Panier décoratif (job 80d0704f) : icône 📦 sans rayon eBay → preview
     // null → encart jamais monté ; la résolution par mot (IA parmi candidats)
@@ -6990,7 +7023,17 @@ export default function ListingPreviewScreen({
     // aura réellement.
     const secours = ebayGenreFallback();
     return secours ? (getEbayCategoryId(icon, secours) ?? null) : null;
-  }, [selected, edited, initialListing, activeAiIcon]);
+  }, [selected, edited, initialListing, activeAiIcon, ebayCategorieDuClic]); // eslint-disable-line react-hooks/exhaustive-deps
+  // « Plateforme » d'un jeu vidéo, lue sur la machine nommée (02/10 soir,
+  // point 6) — même texte et même icône que la catégorie ci-dessus ; posée
+  // par défaut dans l'encart (modifiable), jamais envoyée à l'IA.
+  const plateformeJeuEbay = useMemo(() => {
+    if (!edited.ebay) return null;
+    const pf = edited.ebay.platform_fields ?? {};
+    const { titre, description } = textesFrDeLaPublication({ initialListing, edited });
+    const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+    return plateformeEbayDuJeu(jeuVideoDeLArticle(iconJv, titre, description), titre);
+  }, [edited, initialListing, activeAiIcon]);
   useEffect(() => {
     if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); return; }
     let alive = true;
@@ -7179,7 +7222,7 @@ export default function ListingPreviewScreen({
     }
     const toSet = {};
     for (const a of ebayRequiredStatus) {
-      const def = defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null });
+      const def = defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay });
       if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()
           && !aspectDefaultsPoses.current.has(a.name)) {
         toSet[a.name] = def;
@@ -7219,7 +7262,7 @@ export default function ListingPreviewScreen({
         },
       },
     } : prev);
-  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited]);
+  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, plateformeJeuEbay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pré-sélection auto (2026-07-18) : au step Publier, une valeur dédiée hors
   // liste avec un rapprochement sûr est remplacée d'office par le libellé eBay
@@ -7274,8 +7317,11 @@ export default function ListingPreviewScreen({
       ?? edited.ebay?.platform_fields?.ebayAspects?.["Marque"] ?? ""
     ).trim();
     const missing = (ebayRequiredStatus ?? [])
-      .filter(a => a.state === "missing" && !defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null }))
+      .filter(a => a.state === "missing" && !defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null, plateformeJeu: plateformeJeuEbay }))
       .map(a => a.name);
+    if (!missing.length && ebayPreviewCategoryId && ebayRequiredStatus && ebayIaFiniePour !== ebayPreviewCategoryId) {
+      setEbayIaFiniePour(ebayPreviewCategoryId);
+    }
     if (!missing.length || !ebayPreviewCategoryId) return;
     if (aspectsResolvedFor.current === ebayPreviewCategoryId) return;
     aspectsResolvedFor.current = ebayPreviewCategoryId;
@@ -7335,19 +7381,26 @@ export default function ListingPreviewScreen({
         const clean = Object.fromEntries(Object.entries(values).filter(([k, v]) =>
           missing.includes(k) && typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null"));
         if (!Object.keys(clean).length) return;
-        setEdited(prev => prev.ebay ? {
-          ...prev,
-          ebay: {
-            ...prev.ebay,
-            platform_fields: {
-              ...prev.ebay.platform_fields,
-              ebayAspects: { ...(prev.ebay.platform_fields?.ebayAspects ?? {}), ...clean },
+        // (02/10 soir) La réponse de l'IA COMBLE, elle n'écrase jamais : une
+        // valeur posée entre-temps (défaut déterministe, saisie de la personne)
+        // garde la main.
+        setEdited(prev => {
+          if (!prev.ebay) return prev;
+          const avant = prev.ebay.platform_fields?.ebayAspects ?? {};
+          const comble = Object.fromEntries(Object.entries(clean).filter(([k]) => !String(avant[k] ?? "").trim()));
+          if (!Object.keys(comble).length) return prev;
+          return {
+            ...prev,
+            ebay: {
+              ...prev.ebay,
+              platform_fields: { ...prev.ebay.platform_fields, ebayAspects: { ...avant, ...comble } },
             },
-          },
-        } : prev);
+          };
+        });
       } catch { /* micro-appel de secours : jamais bloquant */ }
+      finally { setEbayIaFiniePour(ebayPreviewCategoryId); }
     })();
-  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, initialListing]);
+  }, [ebayRequiredStatus, ebayPreviewCategoryId, edited, initialListing, plateformeJeuEbay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Requis Vinted/LBC/Beebs AVANT publication (chantier 1.A, 2026-07-16) ──
   // Même philosophie que le bloc eBay ci-dessus, mais la source est le
@@ -8165,6 +8218,19 @@ export default function ListingPreviewScreen({
         }
       }
     }
+    // (02/10 soir, point 6) eBay n'était jamais tracé : ses blocages naissaient
+    // avant tout job et ne laissaient AUCUNE ligne (XEWER, jeux vidéo, 29/09 →
+    // 02/10). Un aspect manquant n'est compté qu'une fois l'extraction IA de la
+    // catégorie terminée — un champ qu'elle va remplir n'est pas un blocage.
+    for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) {
+      if (a.state === "missing" && ebayIaFiniePour !== ebayPreviewCategoryId) continue;
+      const k = `ebay:${a.name}`;
+      actifs.add(k);
+      if (!champBloquantVus.current[k]) {
+        champBloquantVus.current[k] = { platform: "ebay", champs: [a.name], categorie: ebayPreviewCategoryId ?? null };
+        logChampBloquant("affiche", champBloquantVus.current[k]);
+      }
+    }
     for (const k of champBloquantRestants.current) {
       const vu = champBloquantVus.current[k];
       if (!actifs.has(k) && vu && !vu.complete) {
@@ -8173,7 +8239,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, genericRequiredStatus]);
+  }, [step, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;
@@ -8999,7 +9065,28 @@ export default function ListingPreviewScreen({
           guardMessages.push(tpl("stepPublishEbayRequiredMissing", { fields: verdict.missingEmpty.join(", ") }));
         }
         guardMessages.push(...invalidMessages);
-        if (guardMessages.length) throw new Error(guardMessages.join(" "));
+        if (guardMessages.length) {
+          const catJob = String(pfE.ebayCategoryId ?? "");
+          // Trace « bloque_au_clic », comme Leboncoin (02/10 soir, point 6).
+          logChampBloquant("bloque_au_clic", {
+            platform: "ebay",
+            champs: [...verdict.missingEmpty, ...verdict.invalides.map(v => v.name)],
+            categorie: catJob || null,
+            ...(catJob && String(ebayPreviewCategoryId ?? "") !== catJob ? { categorie_encart: ebayPreviewCategoryId ?? null } : {}),
+          });
+          // ── RÈGLE GÉNÉRALE (02/10 soir, point 6) : jamais un refus sur des
+          // champs que l'écran n'a pas montrés. Si l'encart portait une autre
+          // catégorie que le job, il se REMONTE sur celle du job : les champs
+          // manquants y apparaissent (déduits quand on peut, sinon demandés une
+          // fois), et le message le dit. Rien n'est décompté.
+          if (catJob && verdict.missingEmpty.length && String(ebayPreviewCategoryId ?? "") !== catJob) {
+            setEbayCategorieDuClic(catJob);
+            guardMessages.push(lang === "en"
+              ? "The eBay box above now shows these fields — answer there, then publish again. Nothing was counted."
+              : "L'encart eBay ci-dessus les affiche maintenant — réponds-y, puis republie. Rien n'a été décompté.");
+          }
+          throw new Error(guardMessages.join(" "));
+        }
       }
       // ── LA CATÉGORIE RÉSOLUE REVIENT DANS LA FICHE (2026-09-15) ──────────
       // Tout ce qui vient d'être calculé pour partir — chemin de catégorie par

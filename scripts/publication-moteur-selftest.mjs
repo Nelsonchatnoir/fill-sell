@@ -198,6 +198,19 @@ console.log("\n[10] gardeAspectsEbay — manquant, rapprochement, suggestion, re
   const pf3 = { couleur: "Rouge", colors: ["Rouge"] };
   R.gardeAspectsEbay({ pfE: pf3, ebayRequiredFull: [{ name: "Couleur", allowedValues: ["Rouge foncé"], mode: "FREE_TEXT" }], outils: { nearestAllowedValue: () => "Rouge foncé", listeFaitFoi } });
   ok("couleur rapprochée : couleur ET colors[0] réécrits (gates et handlers lisent colors[0])", pf3.couleur === "Rouge foncé" && pf3.colors[0] === "Rouge foncé");
+  // (02/10 soir, point 6) eBay « Jeux » (139973) : Plateforme et Nom du jeu
+  // vidéo, tous deux REQUIS et FREE_TEXT (relevé du 12/09).
+  const reqJeux = [
+    { name: "Plateforme", allowedValues: ["Sony PlayStation 4", "Sony PlayStation 5", "Nintendo Switch"], mode: "FREE_TEXT" },
+    { name: "Nom du jeu vidéo", allowedValues: ["Call of Duty: Modern Warfare", "FIFA 23"], mode: "FREE_TEXT" },
+  ];
+  const pfJ = { marque: "", ebayAspects: { "Plateforme": "Sony PlayStation 4", "Nom du jeu vidéo": "Call of Duty: Modern Warfare" } };
+  const vJ = R.gardeAspectsEbay({ pfE: pfJ, ebayRequiredFull: reqJeux, outils: { nearestAllowedValue: nearest, listeFaitFoi } });
+  ok("🎮 PS4 (139973) : Plateforme et Nom du jeu posés → rien ne bloque", vJ.missingEmpty.length === 0 && vJ.invalides.length === 0, JSON.stringify(vJ));
+  const vJ2 = R.gardeAspectsEbay({ pfE: { ebayAspects: { "Plateforme": "Sony PlayStation 4" } }, ebayRequiredFull: reqJeux, outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("🎮 PS4 sans Nom du jeu : demandé (une question), jamais inventé", eq(vJ2.missingEmpty, ["Nom du jeu vidéo"]), vJ2.missingEmpty.join(","));
+  const vJ3 = R.gardeAspectsEbay({ pfE: { ebayAspects: { "Plateforme": "Sony PlayStation 4", "Nom du jeu vidéo": "MX vs. ATV Supercross Encore" } }, ebayRequiredFull: reqJeux, outils: { nearestAllowedValue: () => null, listeFaitFoi } });
+  ok("Nom du jeu hors liste FREE_TEXT → part tel quel (la liste n'est qu'une suggestion)", vJ3.missingEmpty.length === 0 && vJ3.invalides.length === 0 && vJ3.horsListe.some(h => h.name === "Nom du jeu vidéo"));
 }
 
 console.log("\n[11] questionsAPoser — un seul endroit de saisie, déduplication par champ partagé");

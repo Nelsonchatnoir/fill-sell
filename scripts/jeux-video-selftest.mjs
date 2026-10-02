@@ -13,7 +13,8 @@
 // Le corpus contient tous les cas qui ont fait échouer une version
 // intermédiaire des règles — ils sont là pour qu'ils ne reviennent pas.
 // ═══════════════════════════════════════════════════════════════════════════
-import { familleJeuVideo, cheminJeuVideo, machineDuTexte, classementAgeEcrit, classementPourPlateforme, ageBeebsDuClassement, ageBeebsJeuVideoLu, BEEBS_AGES } from "../src/utils/jeuxVideo.js";
+import { familleJeuVideo, cheminJeuVideo, machineDuTexte, classementAgeEcrit, classementPourPlateforme, ageBeebsDuClassement, ageBeebsJeuVideoLu, BEEBS_AGES,
+  jeuVideoDeLArticle, plateformeEbayDuJeu, EBAY_ASPECT_PLATEFORME, EBAY_ASPECT_NOM_DU_JEU } from "../src/utils/jeuxVideo.js";
 import { FEUILLES as VINTED } from "../src/utils/arbres/vintedFeuilles.js";
 import { FEUILLES as LBC } from "../src/utils/arbres/leboncoinFeuilles.js";
 import { FEUILLES as BEEBS } from "../src/utils/arbres/beebsFeuilles.js";
@@ -252,6 +253,64 @@ for (const [titre, description, attendu] of [
 ]) {
   const lu = ageBeebsJeuVideoLu(titre, description);
   if ((lu?.valeur ?? null) !== attendu) ko(`« ${titre} » → ${lu?.valeur ?? "null"} (attendu ${attendu ?? "null"})`);
+}
+
+// ── 7. eBay « Jeux » (139973) : la Plateforme, lue, jamais devinée ─────────
+// (02/10 soir, point 6 — XEWER, plus aucun jeu publié sur eBay depuis le 29/09.)
+// Liste RELEVÉE en base le 02/10 (ebay_item_aspects, catégorie 139973, aspect
+// « Plateforme », required, FREE_TEXT, 153 valeurs). Chaque libellé que nous
+// posons doit y être AU CARACTÈRE PRÈS.
+console.log("7. eBay « Jeux » : Plateforme lue sur la machine");
+const EBAY_PLATEFORMES_139973 = ["3DO","Acorn BBC Micro","Amstrad","Amstrad GX4000","Android","Apple Bandai Pippin","Apple II","Apple IIGS","Atari","Atari 2600","Atari 400","Atari 5200","Atari 7800","Atari Jaguar","Atari Jaguar CD","Atari Lynx","Atari ST","Atari XEGS","Bally Astrocade","Bandai Playdia","Bandai WonderSwan","Bandai WonderSwan Color","Casio Loopy","Coleco Telstar","ColecoVision","Commodore-16","Commodore 64","Commodore Amiga CD32","Commodore Amiga CDTV","Commodore VIC-20","Didj","digiBLAST","Emerson Arcadia 2001","Fairchild Channel F (VES)","Famicom Disk System","FM Towns Marty","Game.com","Game & Watch","Game Wave","Gizmondo","GP2X","GP32","HyperScan","Intellivision","Interton VC 4000","Leapster","Leapster Explorer","Magnavox Odyssey","Magnavox Odyssey 2","Mattel Aquarius","Mattel Intellivision","Microsoft Xbox","Microsoft Xbox 360","Microsoft Xbox One","Microsoft Xbox Series X|S","Microvision","Milton Bradley/GCE Vectrex","Milton Bradley Microvision","MSX Turbo-R","NEC PC-8801","NEC PC-9801","NEC PC-FX","NEC SuperGrafx","Neo Geo","Neo Geo AES","Neo Geo CD","Neo Geo Pocket","Neo Geo Pocket Color","Nes Classic","N-Gage","Nintendo 2DS","Nintendo 3DS","Nintendo 64","Nintendo DS","Nintendo Famicom Disk System","Nintendo Game Boy","Nintendo Game Boy Advance","Nintendo Game Boy Color","Nintendo GameCube","Nintendo iQue Player","Nintendo NES","Nintendo SNES","Nintendo Super Famicom","Nintendo Switch","Nintendo Virtual Boy","Nintendo Wii","Nintendo Wii U","Nokia N-Gage","Nuon","OUYA","Panasonic 3DO","Panasonic M2","Panasonic Q","PC","Philips CD-i","Philips Videopac G7000","Pioneer LaserActive","Pokemon Mini","RCA Studio II","RDI Halcyon","Satellaview","Sega CD","Sega Dreamcast","Sega Game Gear","Sega Genesis","Sega Genesis 32X","Sega Master System","Sega Mega-CD","Sega Mega Drive 32X","Sega Mega Drive Mini","Sega Pico","Sega Saturn","Sega SC-3000","Sega SG-1000","Sfc","Sharp X1","Sharp X68000","Sinclair ZX Spectrum","SNK Neo Geo AES","SNK Neo Geo CD","SNK Neo Geo Pocket","SNK Neo Geo Pocket Color","Sony MSX","Sony MSX2","Sony PlayStation 1","Sony PlayStation 2","Sony PlayStation 3","Sony PlayStation 4","Sony PlayStation 5","Sony PlayStation TV","Sony PlayStation Vita","Sony PlayStation VR","Sony PSP","Super A'can","Tandy TRS-80","Tapwave Zodiac","TI-99/4a","Tiger R-Zone","TurboExpress","TurboGrafx-16 (PC Engine)","TurboGrafx-CD","TurboGrafx-CD/TurboDuo","Vectrex","V-Tech CreatiVision","Vtech V.Flash","Vtech V.Smile","Vtech V.Smile Baby","Watara SuperVision","Windows 98","WonderSwan","WonderSwan Color","WOW Action Max","Zeebo"];
+if (EBAY_PLATEFORMES_139973.length !== 153) ko(`liste eBay relevée : ${EBAY_PLATEFORMES_139973.length} valeurs (153 attendues)`);
+if (EBAY_ASPECT_PLATEFORME !== "Plateforme" || EBAY_ASPECT_NOM_DU_JEU !== "Nom du jeu vidéo") ko("noms d'aspects eBay altérés");
+// Toutes les machines connues (une formulation par entrée de MACHINES).
+for (const mot of ["xbox series x", "xbox 360", "xbox one", "xbox", "ps5 pro", "ps vita", "psp", "ps1", "ps2", "ps3", "ps4", "ps5",
+  "playstation", "switch 2", "switch", "wii u", "wii", "3ds", "2ds", "gba", "game boy", "gamecube", "n64", "snes", "nes", "ds",
+  "dreamcast", "megadrive", "saturn", "steam deck", "atari", "nintendo", "sega"]) {
+  const m = machineDuTexte(mot);
+  if (!m) { ko(`« ${mot} » : machine non reconnue`); continue; }
+  if (!("ebay" in m)) ko(`« ${mot} » (${m.cle}) : colonne ebay absente`);
+  else if (m.ebay !== null && !EBAY_PLATEFORMES_139973.includes(m.ebay)) ko(`« ${mot} » → « ${m.ebay} » ABSENT de la liste eBay relevée`);
+}
+for (const [titre, attendu] of [
+  // XEWER, 02/10 18:15 et 18:20 — publiés partout sauf sur eBay.
+  ["MX vs. ATV Supercross Encore – PS4", "Sony PlayStation 4"],
+  ["Call of Duty: Modern Warfare – PS4", "Sony PlayStation 4"],
+  ["🎮 EA Sports FC 25 – PS5 – Neuf sous blister", "Sony PlayStation 5"],
+  ["Mario Kart 8 Nintendo Wii U PAL EUR avec guide et documents", "Nintendo Wii U"],
+  ["Pokémon Jaune Game Boy Color", "Nintendo Game Boy Color"],
+  ["Tetris Game Boy", "Nintendo Game Boy"],
+  ["Super Mario World Super Famicom", "Nintendo Super Famicom"],
+  ["Halo 3 Xbox 360", "Microsoft Xbox 360"],
+  ["NBA 2K25 – Xbox Series X / Xbox One – Neuf sous blister", "Microsoft Xbox Series X|S"],
+  // Doute → rien : la question part.
+  ["Halo Xbox", null],
+  ["Zelda Tears of the Kingdom Switch 2", null],
+  ["Sonic Mega Drive", null],
+  ["Zelda Famicom", null],
+]) {
+  const d = jeuVideoDeLArticle("🎮", titre);
+  const v = plateformeEbayDuJeu(d, titre);
+  if (v !== attendu) ko(`« ${titre} » → ${v ?? "null"} (attendu ${attendu ?? "null"})`);
+  if (v && !EBAY_PLATEFORMES_139973.includes(v)) ko(`« ${v} » hors liste`);
+}
+// « 🎮 PS4 » : la catégorie de l'encart = celle de l'insert = 139973.
+{
+  const d = jeuVideoDeLArticle("🎮", "Call of Duty: Modern Warfare – PS4");
+  const f = cheminJeuVideo("ebay", d);
+  if (d?.famille !== "jeu" || String(f?.id) !== "139973") ko(`🎮 PS4 : famille ${d?.famille}, catégorie eBay ${f?.id} (attendu jeu / 139973)`);
+  if (plateformeEbayDuJeu(d, "Call of Duty: Modern Warfare – PS4") !== "Sony PlayStation 4") ko("🎮 PS4 : Plateforme ≠ « Sony PlayStation 4 »");
+}
+// Non-régression : hors 🎮 rien ; une CONSOLE (139971) n'a pas de Plateforme.
+if (jeuVideoDeLArticle("👕", "T-shirt PS4 gamer taille M") !== null) ko("hors 🎮 : la règle ne doit pas parler");
+if (jeuVideoDeLArticle("📚", "Guide officiel Zelda Switch") !== null) ko("livre : la règle ne doit pas parler");
+{
+  const c = jeuVideoDeLArticle("🎮", "Console PS4 slim 500 Go");
+  if (c?.famille !== "console" || String(cheminJeuVideo("ebay", c)?.id) !== "139971") ko("console PS4 : doit rester en 139971");
+  if (plateformeEbayDuJeu(c, "Console PS4 slim 500 Go") !== null) ko("console : aucune Plateforme posée (aspect des jeux seulement)");
+  const a = jeuVideoDeLArticle("🎮", "Manette PS4 DualShock 4 noire");
+  if (plateformeEbayDuJeu(a, "Manette PS4 DualShock 4 noire") !== null) ko("accessoire : aucune Plateforme posée");
 }
 
 if (echecs) { console.error(`\n❌ ${echecs} échec(s)`); process.exit(1); }
