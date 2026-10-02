@@ -1338,10 +1338,9 @@ serve(async (req) => {
     //    (« message channel is closed », bloc dédié ci-dessus) : pas ce bloc.
     // ⛔ needsUserAttempts : REMIS à sa valeur en base — ce n'est pas un refus
     //    plateforme, aucune tentative consommée.
-    // ⛔ Borné : MAX_CANAL_COUPE_REPRISES reprises, compteur
-    //    platform_fields.canal_coupe_rejoue porté par le job (relu au poll,
-    //    renvoyé par l'extension) ; à la suivante, le needs_user de
-    //    l'extension passe TEL QUEL (message, platform_fields, compteur figé).
+    // ⛔ Compté (platform_fields.canal_coupe_rejoue, relu au poll, renvoyé
+    //    par l'extension) et ESPACÉ — plus de plafond qui rendait la main à la
+    //    personne pour une panne de chez nous (02/10, cf. plus bas).
     // Rien ne change au chemin suppression/recréation ni aux gardes « pause
     // AVANT toute suppression » : elles interceptent l'écriture processing, en
     // amont ; ce bloc ne relit qu'un needs_user déjà rendu par l'extension.
@@ -1359,14 +1358,12 @@ serve(async (req) => {
     // n'avait été touché, et on lui demandait pourtant « relance quand tu
     // veux ». Même verdict que le canal coupé — un accident de l'ordinateur,
     // pas de l'annonce — avec UNE différence : un script muet peut encore
-    // tourner. D'où la reprise ESPACÉE (TIMEOUT_REPRISE_MIN) plutôt
+    // tourner. D'où la reprise ESPACÉE (30 min au moins) plutôt
     // qu'immédiate ; la reprise rejoue le pré-vol entier (état réel relu,
     // capture re-vérifiée) avant tout retrait, et le garde anti-doublon de la
     // recréation Vinted (recreation_tentee, dressing relu) reste en place.
-    // Même compteur, même plafond : au-delà, le needs_user passe tel quel.
+    // Même compteur, mêmes reprises espacées (02/10 : plus de plafond).
     const CANAL_COUPE_TIMEOUT_RE = /Timeout: pas de réponse du content script/i;
-    const TIMEOUT_REPRISE_MIN = 30;
-    const MAX_CANAL_COUPE_REPRISES = 3;
     let pfCanalCoupe: Record<string, unknown> | null = null;
     const canalCoupeParTimeout = typeof body.error === "string" && CANAL_COUPE_TIMEOUT_RE.test(body.error);
     if (statutEffectif === "needs_user" && typeof body.error === "string" &&
@@ -1394,8 +1391,16 @@ serve(async (req) => {
             Number(pfBase.canal_coupe_rejoue ?? 0) || 0,
             Number(pfBody.canal_coupe_rejoue ?? 0) || 0,
           );
-          if (deja < MAX_CANAL_COUPE_REPRISES) {
+          // (02/10, lesforcesdelaudela) Plus de plafond : au-delà de trois,
+          // l'ancien chemin rendait un needs_user « relance depuis la fiche »
+          // — un geste demandé pour une panne de chez nous, sur une annonce
+          // intacte. Les reprises s'ESPACENT à la place (0, 10, 30 min, 2 h,
+          // puis 6 h ; muet : 30 min, 1 h, 2 h, puis 6 h), avec le vrai motif.
+          {
             const reprise = deja + 1;
+            const delaiReprise = canalCoupeParTimeout
+              ? ([30, 60, 120][reprise - 1] ?? 360)
+              : ([0, 10, 30, 120][reprise - 1] ?? 360);
             const { next_action_after: _nao, ...pfSans } = pfBody;
             pfCanalCoupe = {
               ...pfSans,
@@ -1408,28 +1413,32 @@ serve(async (req) => {
                 motif: body.error.slice(0, 300),
                 pose_par: "update-job-status (canal coupé à l'étape captured = reprise)",
               },
-              // Script muet : il peut encore tourner — on le laisse finir.
-              ...(canalCoupeParTimeout
-                ? { next_action_after: new Date(Date.now() + TIMEOUT_REPRISE_MIN * 60_000).toISOString() }
+              // Script muet : il peut encore tourner — on le laisse finir ;
+              // canal fermé répété : on s'espace.
+              ...(delaiReprise
+                ? { next_action_after: new Date(Date.now() + delaiReprise * 60_000).toISOString() }
                 : {}),
             };
             statutEffectif = "pending";
             // Formulation (2026-09-11, audit des messages) : sans « pont »,
             // sans compteur, et sans affirmer « intacte » — la reprise
             // re-vérifie l'annonce avant tout geste, c'est ça qu'on dit.
+            // (02/10) Un onglet MUET peut encore agir : « avant tout retrait »
+            // était faux chez 9cdr9rm4rn (retrait 43 s après ce message). On ne
+            // l'affirme plus ; la reprise relit l'état réel avant tout geste.
+            const dansTxt = delaiReprise >= 60 ? `${Math.round(delaiReprise / 60)} h` : `${delaiReprise} minutes`;
             messageEffectif = canalCoupeParTimeout
-              ? "L'onglet Vinted n'a plus répondu pendant la republication, avant tout retrait. " +
-                `Elle reprend toute seule dans ${TIMEOUT_REPRISE_MIN} minutes, après vérification de l'état de ton annonce — ` +
+              ? "L'onglet Vinted n'a plus répondu pendant la republication. " +
+                `Elle reprend toute seule dans ${dansTxt} : l'état de ton annonce sera vérifié avant tout geste — ` +
                 "rien à faire de ton côté."
-              : "La communication avec l'onglet Vinted s'est interrompue pendant la republication. " +
-                "Elle reprend toute seule au prochain passage de l'extension, après vérification de l'état de ton annonce — " +
-                "rien à faire de ton côté.";
-            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet (timeout)" : "canal coupé"} à l'étape captured, reprise ${reprise}/${MAX_CANAL_COUPE_REPRISES}`;
-          } else {
-            console.log(
-              `[update-job-status] userId=${user.id} job=${jobId} — canal coupé à l'étape captured : ` +
-              `${MAX_CANAL_COUPE_REPRISES} reprises épuisées, needs_user de l'extension conservé`,
-            );
+              : reprise >= 4
+                ? "La republication s'interrompt chaque fois au même moment sur ton ordinateur (l'onglet Vinted se ferme), " +
+                  "avant tout retrait : ton annonce est intacte. C'est de notre côté, rien à faire : " +
+                  `nouvel essai automatique dans ${dansTxt}.`
+                : "La communication avec l'onglet Vinted s'est interrompue pendant la republication, avant tout retrait. " +
+                  `Elle reprend toute seule ${delaiReprise ? `dans ${dansTxt}` : "au prochain passage de l'extension"}, après vérification de l'état de ton annonce — ` +
+                  "rien à faire de ton côté.";
+            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet (timeout)" : "canal coupé"} à l'étape captured, reprise ${reprise} (dans ${delaiReprise} min)`;
           }
         }
       } catch (e) {
@@ -3690,7 +3699,7 @@ serve(async (req) => {
         try {
           const { data: jrowH } = await userClient
             .from("cross_post_jobs")
-            .select("action, platform_fields")
+            .select("action, platform, platform_fields")
             .eq("id", jobId)
             .maybeSingle();
           if (jrowH?.action === "republish") {
@@ -3722,6 +3731,22 @@ serve(async (req) => {
               pfW.deleted_at_client = brutClient;
               if (ecartS != null) pfW.horloge_client_ecart_s = ecartS;
               touche = true;
+              // ── LA UNE-PASSE SOUMET DANS LA FOULÉE : C'EST UNE TENTATIVE (02/10) ──
+              // 9cdr9rm4rn, job 6afed5b9 : l'arrière-plan avait abandonné
+              // (timeout) quand le content script, toujours vivant, a retiré
+              // l'annonce PUIS soumis le formulaire. Au passage suivant, aucune
+              // tentative n'était marquée : la recréation est repartie à
+              // l'aveugle — deux copies en ligne. Une suppression faite par la
+              // une-passe (verdict « supprimee » sans état relu) est toujours
+              // suivie d'une soumission : on la marque comme tentative, et le
+              // passage suivant relit OBLIGATOIREMENT le dressing avant de
+              // recréer (garde existante de toutes les extensions).
+              const verdictSup = (pfW.suppression_verdict && typeof pfW.suppression_verdict === "object")
+                ? pfW.suppression_verdict as Record<string, unknown> : null;
+              if (jrowH.platform === "vinted" && verdictSup?.conclusion === "supprimee" && !verdictSup.etat_annonce
+                  && !(pfW.recreation_tentee && typeof pfW.recreation_tentee === "object")) {
+                pfW.recreation_tentee = { at: serveurIso, n: 1, via: "une_passe" };
+              }
               if (ecartS != null && Math.abs(ecartS) > 10) {
                 console.warn(
                   `[update-job-status] userId=${user.id} job=${jobId} — horloge du client à ${ecartS > 0 ? "+" : ""}${ecartS} s ` +

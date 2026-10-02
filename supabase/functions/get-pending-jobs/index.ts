@@ -28,6 +28,7 @@ import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuse
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
+import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
@@ -967,6 +968,98 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] pauses page de dépôt Leboncoin : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
+    // ══ CANAL COUPÉ AVANT TOUT RETRAIT : PLUS DE GESTE DEMANDÉ (02/10) ═══════
+    // (lesforcesdelaudela, 3 republications Vinted « Neuvaines ») L'ancien
+    // plafond de 3 reprises rendait un needs_user « relance depuis la fiche »
+    // pour une panne de chez nous, annonce intacte (étape captured, aucun
+    // retrait). update-job-status (v114+) ne plafonne plus ; ici, les jobs
+    // déjà arrêtés repartent seuls, espacés, avec le vrai motif. Jamais à
+    // l'étape 'deleted', jamais avec une question en attente.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: coupes } = await admin.from("cross_post_jobs")
+          .select("id, error, platform_fields")
+          .eq("user_id", user.id).eq("status", "needs_user").eq("platform", "vinted").eq("action", "republish")
+          .eq("platform_fields->>republish_step", "captured")
+          .not("platform_fields->canal_coupe_rejoue", "is", null)
+          .limit(30);
+        let repris = 0;
+        for (const j of (coupes ?? []) as Array<{ id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+          const pfC = { ...(j.platform_fields ?? {}) };
+          if (pfC.deleted_at || pfC.suppression_verdict || pfC.needsUserField || pfC.needsUserFields) continue;
+          const n = (Number(pfC.canal_coupe_rejoue) || 0) + 1;
+          const delai = ([0, 10, 30, 120][n - 1] ?? 360);
+          for (const k of ["needs_user_source", "needsUserBoucle", "needsUserResolved", "needs_user_vu_le", "needs_user_vu_erreur",
+            "needs_user_tick_le", "needs_user_actif_ms", "error_technique", "processing_since", "pas_de_rouge", "pas_de_rouge_reprises"]) delete pfC[k];
+          pfC.canal_coupe_rejoue = n;
+          pfC.canal_coupe_derniere = { le: new Date().toISOString(), motif: String(j.error ?? "").slice(0, 300), pose_par: "get-pending-jobs (canal coupé avant retrait : reprise sans geste)" };
+          if (delai) pfC.next_action_after = new Date(Date.now() + delai * 60_000).toISOString();
+          else delete pfC.next_action_after;
+          pfC.erreurs_archivees = archiverErreur(pfC.erreurs_archivees, j.error, "needs_user", "get-pending-jobs (canal coupé avant retrait)");
+          const dansTxt = delai >= 60 ? `${Math.round(delai / 60)} h` : `${delai} minutes`;
+          const { data: maj } = await admin.from("cross_post_jobs").update({
+            status: "pending", platform_fields: pfC,
+            error: "La republication s'interrompt sur ton ordinateur au même moment (l'onglet Vinted se ferme), avant tout retrait : " +
+              `ton annonce est intacte. C'est de notre côté, rien à faire : nouvel essai automatique ${delai ? `dans ${dansTxt}` : "au prochain passage"}.`,
+          }).eq("id", j.id).eq("status", "needs_user").select("id");
+          if ((maj ?? []).length) repris++;
+        }
+        if (repris) console.log(`[get-pending-jobs] userId=${user.id} : ${repris} republication(s) Vinted arrêtée(s) sur canal coupé AVANT retrait — reprises sans geste`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] canal coupé avant retrait : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
+    // ══ « PLUSIEURS ANNONCES IDENTIQUES » : LES FAITS TRANCHENT, PAS LE TITRE ══
+    // (02/10, nivake03 0b54edbc / 9cdr9rm4rn 6afed5b9 —
+    // _shared/recreation-impasse-vinted.js) Dès qu'un relevé COMPLET du dressing
+    // a tourné après l'impasse : aucune annonce apparue pendant un de NOS envois
+    // → la recréation repart (une fois) ; sinon → message vrai, liens, rien de
+    // recréé. Best-effort.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: impasses } = await admin.from("cross_post_jobs")
+          .select("id, platform, action, status, error, inventaire_id, platform_fields")
+          .eq("user_id", user.id).eq("status", "needs_user").eq("platform", "vinted").eq("action", "republish")
+          .eq("platform_fields->>republish_step", "deleted")
+          .limit(20);
+        const aJuger = ((impasses ?? []) as Array<Record<string, unknown>>).filter((j) => impasseRecreationVinted(j));
+        if (aJuger.length) {
+          const plusAncien = Math.min(...aJuger.map((j) => impasseRecreationVinted(j)!.deletedAt || Date.now()));
+          const [{ data: relevesV }, { data: fichesV }] = await Promise.all([
+            admin.from("vinted_sync_runs").select("kind, status, started_at, items_vus, total_entries")
+              .eq("user_id", user.id).eq("platform", "vinted").eq("kind", "dressing").eq("status", "done")
+              .order("started_at", { ascending: false }).limit(5),
+            admin.from("inventaire").select("vinted_item_id, listed_at_guess")
+              .eq("user_id", user.id).not("vinted_item_id", "is", null)
+              .gte("listed_at_guess", new Date(plusAncien - 10 * 60_000).toISOString())
+              .limit(500),
+          ]);
+          const compte: Record<string, number> = {};
+          for (const j of aJuger) {
+            const d = decisionImpasseRecreation(j, { releves: relevesV ?? [], fiches: fichesV ?? [], maintenant: Date.now() });
+            if (!d) continue;
+            if (d.action === "relancer" && j.inventaire_id != null) {
+              const { data: vendu } = await admin.rpc("article_vendu", { p_inventaire_id: j.inventaire_id });
+              if (vendu === true) continue;
+            }
+            const pfD = d.platform_fields as Record<string, unknown>;
+            if (d.status !== "needs_user") pfD.erreurs_archivees = archiverErreur(pfD.erreurs_archivees, j.error as string, "needs_user", "get-pending-jobs (impasse « identiques » jugée sur relevé complet)");
+            if (d.status === "needs_user" && d.error === j.error) continue;
+            const { data: maj } = await admin.from("cross_post_jobs")
+              .update({ status: d.status, error: d.error, platform_fields: pfD })
+              .eq("id", j.id as string).eq("status", "needs_user").select("id");
+            if ((maj ?? []).length) compte[d.action] = (compte[d.action] ?? 0) + 1;
+          }
+          if (Object.keys(compte).length) console.log(`[get-pending-jobs] userId=${user.id} : impasses « annonces identiques » jugées sur relevé complet — ${JSON.stringify(compte)}`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] impasses « identiques » : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
     }
 
