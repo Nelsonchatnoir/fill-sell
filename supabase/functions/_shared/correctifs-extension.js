@@ -61,6 +61,12 @@ export const BUILD_OPLA_REPUBLICATION_SUR_ANNONCE = "2026-09-27T18:22:27Z"; // B
 // restait sur le formulaire, sans fin (cf. _shared/beebs-refus-formulaire.js).
 export const BUILD_BEEBS_ADRESSE_STRICTE = "2026-10-01T15:29:31Z";
 
+// ── LA FIN D'ANNONCE eBay PAR LE NUMÉRO DE LA LIGNE (2026-10-02, xxewwer) ──
+// Commit 57e2667 (0.6.84) : le dialogue de fin d'annonce n'exige plus le titre
+// du job (eBay ne l'y porte plus en entier). Les retraits arrêtés sur « ne nomme
+// pas l'annonce du job » attendent un poste qui porte ce build.
+export const BUILD_EBAY_FIN_PAR_NUMERO = "2026-10-02T08:01:46Z";
+
 export const CORRECTIFS_EXTENSION = [
   {
     // (2026-10-01, mariecreativedigital, chemise Hilfiger 0f457c57) : six

@@ -36,6 +36,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
+import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import {
   controlerNumeroBeebsEnBase,
   restaurerPublicationBeebsConfirmee,
@@ -1178,6 +1179,71 @@ serve(async (req) => {
         // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
         console.error("[update-job-status] eBay connexion requise :", (e as Error)?.message ?? e);
         pfEbayConnexionRequise = null;
+      }
+    }
+
+    // ── COMPTE VINTED BLOQUÉ PAR VINTED (02/10, _shared/vinted-compte-bloque.js) ──
+    // La fenêtre de travail a fini sur vinted.fr/main/banned : un mur de
+    // Vinted, pas une page de notre fait. needs_user tout de suite, motif vrai,
+    // geste réel nommé — jamais « notre onglet », jamais « relance d'un clic ».
+    let pfCompteVintedBloque: Record<string, unknown> | null = null;
+    if (statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user") {
+      try {
+        const pfBodyB = (body.platform_fields && typeof body.platform_fields === "object"
+          ? body.platform_fields : null) as Record<string, unknown> | null;
+        const brutB = typeof body.error === "string" ? body.error : "";
+        if ((pfBodyB && pageCompteVintedBloque(pfBodyB)) || /^COMPTE VINTED BLOQUÉ/.test(brutB)) {
+          const { data: jB } = await userClient.from("cross_post_jobs")
+            .select("action, platform, title, platform_fields").eq("id", jobId).maybeSingle();
+          if (jB?.platform === "vinted") {
+            const pfBaseB = (jB.platform_fields ?? {}) as Record<string, unknown>;
+            const { next_action_after: _naoB, ...pfSansB } = (pfBodyB ?? pfBaseB);
+            pfCompteVintedBloque = {
+              ...pfSansB,
+              needsUserAttempts: Number(pfBaseB.needsUserAttempts ?? 0) || 0,
+              needs_user_source: SOURCE_COMPTE_VINTED_BLOQUE,
+              compte_vinted_bloque: { le: new Date().toISOString(), verdict_extension: (typeof body.error === "string" ? body.error : "").slice(0, 300) },
+            };
+            statutEffectif = "needs_user";
+            messageEffectif = messageCompteVintedBloque(String(jB.action ?? "publish"), jB.title as string | null);
+            raisonRequalif = "Vinted : page « compte bloqué » (/main/banned) → mur de Vinted, needs_user motif vrai";
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] compte Vinted bloqué :", (e as Error)?.message ?? e);
+        pfCompteVintedBloque = null;
+      }
+    }
+
+    // ── « BOUTIQUE INVÉRIFIABLE » : PLUS DE BOUCLE DE 2 MINUTES (02/10) ─────
+    // (ornellaracano fb9cd238) Les extensions ≤ 0.6.83 remettent ce retrait
+    // en file toutes les 2 min, sans compteur et sans message, quand elles ne
+    // lisent pas le vendeur sur la page (deux boutiques). Ici : chaque
+    // observation compte, l'attente s'espace (2, 10, 30 min, 2 h, puis 6 h) et
+    // le message dit ce qu'on attend. Rien n'est jamais retiré sans la preuve.
+    if (statutEffectif === "pending" && body.platform_fields && typeof body.platform_fields === "object") {
+      try {
+        const pfV = body.platform_fields as Record<string, unknown>;
+        const v = (pfV.verification_boutique_vinted && typeof pfV.verification_boutique_vinted === "object")
+          ? pfV.verification_boutique_vinted as Record<string, unknown> : null;
+        if (v && typeof v.le === "string") {
+          const { data: jV } = await userClient.from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
+          const avant = ((jV?.platform_fields ?? {}) as Record<string, unknown>).verification_boutique_vinted as Record<string, unknown> | undefined;
+          if (jV?.platform === "vinted" && avant?.le !== v.le) {
+            const n = (Number(avant?.n) || 0) + 1;
+            const delai = [2, 10, 30, 120][n - 1] ?? 360;
+            pfV.verification_boutique_vinted = { ...v, n, depuis: avant?.depuis ?? v.le };
+            pfV.next_action_after = new Date(Date.now() + delai * 60_000).toISOString();
+            const dans = delai >= 60 ? `${Math.round(delai / 60)} h` : `${delai} min`;
+            messageEffectif = (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
+              "nous n'arrivons pas encore à prouver que cette annonce appartient à la boutique Vinted ouverte dans Chrome " +
+              "(ton compte a peut-être plusieurs boutiques) — on ne touche à rien sans cette preuve. Si l'annonce est sur une autre " +
+              `de tes boutiques, connecte Chrome à celle-ci sur vinted.fr. Nouvel essai automatique dans ${dans}.`;
+            raisonRequalif = `boutique invérifiable, observation ${n} — reprise dans ${dans}`;
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] boutique invérifiable :", (e as Error)?.message ?? e);
       }
     }
 
@@ -2604,7 +2670,7 @@ serve(async (req) => {
       const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
         && bfcacheRearms == null && !pfCanalCoupe && !pfRetraitVerif && !pfAntirobotRepub && !pfDisparue && !pfPhotoReprise
         && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
-        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise
+        && !pfDepotOptions && !pfDepotNonFinalise && !pfEbayVendeurInactif && !pfEbayConnexionRequise && !pfCompteVintedBloque
         && !pfOplaRelache;
       const surface = statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user";
       const brut = typeof body.error === "string" ? body.error : "";
@@ -3471,6 +3537,7 @@ serve(async (req) => {
     // tombe pas tout seul), AVEC le marqueur nommé ebay_connexion_requise. Le
     // ré-armement vers la voie API se fait ailleurs, quand le compte est prêt.
     if (pfEbayConnexionRequise) patch.platform_fields = pfEbayConnexionRequise;
+    if (pfCompteVintedBloque) patch.platform_fields = pfCompteVintedBloque;
     // Refus de capture alors que la sonde voit Vinted vivant : plus de
     // needs_user_source 'session_vinted', échéance à 45 min, trace nommée.
     if (pfSessionBonne) patch.platform_fields = pfSessionBonne;

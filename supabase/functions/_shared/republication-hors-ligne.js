@@ -45,7 +45,7 @@ export const REPRISE_MAX_MIN = 240;
 /** Murs qui rendent la main à un geste précis ET relancent seuls à la levée. */
 const SOURCES_MUR = new Set([
   "connexion", "session_vinted", "attente_session", "opla_acces", "opla_cookies",
-  "ebay_connexion_requise", "ebay_compte_vendeur_inactif",
+  "ebay_connexion_requise", "ebay_compte_vendeur_inactif", "compte_vinted_bloque",
 ]);
 /** Questions : une valeur à choisir, jamais devinée. */
 const SOURCES_QUESTION = new Set(["capture_incomplete", "champ_a_choisir"]);

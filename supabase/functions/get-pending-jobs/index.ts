@@ -29,6 +29,8 @@ import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
+import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
+import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
@@ -1021,6 +1023,55 @@ serve(async (req) => {
       }
     }
 
+    // ══ RETRAITS ARRÊTÉS SUR UN MOTIF FAUX : LE VRAI MOTIF, ET LA BONNE SUITE (02/10) ══
+    //   · Vinted, fenêtre de travail finie sur /main/banned (recrutementgroupezk704,
+    //     a7dd76cd) : « relance d'un clic » → le vrai motif (compte bloqué par
+    //     Vinted, retire-la depuis l'appli) — _shared/vinted-compte-bloque.js ;
+    //   · eBay, « le dialogue ne nomme pas l'annonce du job » (xxewwer 3c646e26,
+    //     d1a86bc2) : défaut de notre garde (titre), corrigé dans la 0.6.84 →
+    //     pending, servi seulement à un poste qui porte le correctif
+    //     (build_min_requis), message vrai — l'annonce est encore en vente.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: arretes } = await admin.from("cross_post_jobs")
+          .select("id, platform, action, title, error, platform_fields")
+          .eq("user_id", user.id).in("status", ["needs_user", "failed"]).in("platform", ["vinted", "ebay"])
+          .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+          .limit(60);
+        let n = 0;
+        for (const j of (arretes ?? []) as Array<{ id: string; platform: string; action: string; title: string | null; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+          const pfA = { ...(j.platform_fields ?? {}) };
+          if (j.platform === "vinted" && pageCompteVintedBloque(pfA) && pfA.needs_user_source !== SOURCE_COMPTE_VINTED_BLOQUE) {
+            pfA.needs_user_source = SOURCE_COMPTE_VINTED_BLOQUE;
+            pfA.compte_vinted_bloque = { le: new Date().toISOString(), pose_par: "get-pending-jobs (fenêtre de travail sur /main/banned)" };
+            pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, j.error, "needs_user", "get-pending-jobs (compte Vinted bloqué)");
+            const { data: maj } = await admin.from("cross_post_jobs").update({ status: "needs_user", error: messageCompteVintedBloque(j.action, j.title), platform_fields: pfA })
+              .eq("id", j.id).in("status", ["needs_user", "failed"]).select("id");
+            n += (maj ?? []).length;
+            continue;
+          }
+          const tech = `${String((pfA.error_technique as Record<string, unknown> | undefined)?.brut ?? "")} ${String(pfA.last_diagnostic ?? "")} ${String(j.error ?? "")}`;
+          if (j.platform === "ebay" && j.action === "delete" && /ne nomme pas l'annonce du job/i.test(tech) && !pfA.build_min_requis) {
+            for (const k of ["needs_user_source", "needsUserAttempts", "needsUserBoucle", "needsUserResolved", "needs_user_vu_le", "needs_user_vu_erreur",
+              "needs_user_tick_le", "needs_user_actif_ms", "processing_since", "pas_de_rouge", "pas_de_rouge_reprises", "next_action_after"]) delete pfA[k];
+            pfA.build_min_requis = BUILD_EBAY_FIN_PAR_NUMERO;
+            pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, j.error, "needs_user", "get-pending-jobs (fin d'annonce eBay : garde de titre corrigée en 0.6.84)");
+            const { data: maj } = await admin.from("cross_post_jobs").update({
+              status: "pending", platform_fields: pfA,
+              error: "Retrait eBay en attente de la mise à jour de l'extension : la fenêtre de confirmation d'eBay ne se lit plus comme avant, " +
+                "et notre contrôle refusait de confirmer — c'est de notre côté, rien n'a été touché. La nouvelle version de l'extension " +
+                "le fait repartir tout seul (Chrome l'installe tout seul). D'ici là l'annonce est toujours en vente sur eBay : tu peux la retirer toi-même pour éviter une double vente.",
+            }).eq("id", j.id).in("status", ["needs_user", "failed"]).select("id");
+            n += (maj ?? []).length;
+          }
+        }
+        if (n) console.log(`[get-pending-jobs] userId=${user.id} : ${n} retrait(s) arrêté(s) sur un motif faux — motif vrai posé`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retraits à motif faux : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
     // ══ « PLUSIEURS ANNONCES IDENTIQUES » : LES FAITS TRANCHENT, PAS LE TITRE ══
     // (02/10, nivake03 0b54edbc / 9cdr9rm4rn 6afed5b9 —
     // _shared/recreation-impasse-vinted.js) Dès qu'un relevé COMPLET du dressing
@@ -1448,7 +1499,7 @@ serve(async (req) => {
         .select("id,action,platform,platform_fields,inventaire_id,listing_url,platform_listing_id,inventaire:inventaire_id(vinted_account_id)")
         .eq("user_id", user.id).eq("status", "needs_user").eq("voie", "extension")
         .eq("platform_fields->>needs_user_source", "boutique_etrangere")
-        .in("platform_fields->boutique_etrangere->>motif", ["session_inconnue", "origine_inconnue"])
+        .in("platform_fields->boutique_etrangere->>motif", ["session_inconnue", "origine_inconnue", "boutique_etrangere"])
         .order("created_at", { ascending: true }).limit(10);
       if (!erreurAttentes && attentes?.length) {
         const { data: profil, error: erreurProfil } = await userClient.from("profiles")
@@ -1463,7 +1514,14 @@ serve(async (req) => {
         if (!erreurProfil && profil) for (const attente of attentes) {
           const pf = attente.platform_fields ?? {};
           const garde = pf.boutique_etrangere;
-          if (garde?.pose_par !== "get-pending-jobs (identité prouvée)") continue;
+          // (02/10, ornellaracano) La boutique de l'annonce LUE SUR SA PAGE par
+          // l'extension (numéro du vendeur) : le retrait repart tout seul dès
+          // que la sonde voit CETTE boutique connectée — jamais avant, jamais
+          // sur une autre. Plus de « puis relance ».
+          const etrangerePage = garde?.motif === "boutique_etrangere" && garde?.pose_par === "extension (propriétaire lu sur la page exacte)"
+            && String(garde?.article ?? "") !== "" && String(identite?.user_id ?? "") === String(garde.article);
+          if (garde?.pose_par !== "get-pending-jobs (identité prouvée)" && !etrangerePage) continue;
+          if (garde?.motif === "boutique_etrangere" && !etrangerePage) continue;
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
           const { origine, contradictoire } = origineBoutiqueProuvee(article?.vinted_account_id, pf.vinted_account_id);
           const historique = !origine ? (historiquesAttentes.get(String(attente.id)) ?? { prouve: false }) : { prouve: false };
