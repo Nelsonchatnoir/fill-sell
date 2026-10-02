@@ -56,6 +56,15 @@ const TEXTES_BANDEAU = [
   'Vinted, Leboncoin, eBay et Beebs continuent normalement.',
   "J'ai compris",
 ];
+// Variante « générale » : tous les comptes sans Opla relié (décision du 02/10).
+const TEXTES_BANDEAU_GENERAL = [
+  'Changement de plateforme',
+  'Opla quitte FillSell',
+  "Opla demande 1 000 € par mois pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
+  'Vinted, Leboncoin, eBay et Beebs continuent normalement',
+  'De nouvelles plateformes arrivent',
+  "J'ai compris",
+];
 const TEXTES_AVIS = ['10 actions, zéro accroc', 'Si FillSell te fait gagner du temps, ton avis nous aide énormément.', 'Laisser un avis', 'Plus tard', "C'est déjà fait"];
 
 // Tout ce que la page doit mesurer, d'un coup, dans le navigateur.
@@ -147,6 +156,9 @@ try {
     // Téléphone : le bandeau seul (sur iOS/Android, l'avis passe par la fenêtre
     // officielle du store, il n'y a pas de carte).
     { scene: 'app', largeur: 390, hauteur: 900, nom: 'tableau-de-bord-mobile', avis: false },
+    // La variante des comptes SANS Opla relié, téléphone et ordinateur.
+    { scene: 'app', largeur: 390, hauteur: 900, nom: 'bandeau-general-mobile', avis: false, variante: 'general' },
+    { scene: 'app', largeur: 1280, hauteur: 900, nom: 'bandeau-general-ordinateur', avis: false, variante: 'general' },
     { scene: 'app', largeur: 1280, hauteur: 900, nom: 'tableau-de-bord-ordinateur', avis: true },
     { scene: 'popup', largeur: 380, hauteur: 700, nom: 'popup-extension', avis: true },
   ];
@@ -158,7 +170,7 @@ try {
       const erreurs = [];
       page.on('pageerror', (e) => erreurs.push(String(e)));
       page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
-      await page.goto(`${BASE}#scene=${c.scene}&theme=${theme}${c.avis ? '' : '&avis=0'}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${BASE}#scene=${c.scene}&theme=${theme}${c.avis ? '' : '&avis=0'}${c.variante ? `&variante=${c.variante}` : ''}`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('.fsc', { timeout: 180000 });
       await page.waitForTimeout(900);
       verifier(erreurs.length === 0, 'aucune erreur de page', erreurs.join(' | ').slice(0, 300));
@@ -168,9 +180,12 @@ try {
       if (c.scene === 'app') {
         verifier(mesures.length === (c.avis ? 2 : 1), c.avis ? 'bandeau puis carte d’avis en tête du tableau de bord' : 'téléphone : le bandeau seul, en tête', String(mesures.length));
         const [bandeau, avis] = mesures;
-        controlerCarte(bandeau, 'bandeau Opla', TEXTES_BANDEAU);
+        const general = c.variante === 'general';
+        controlerCarte(bandeau, general ? 'bandeau Opla (général)' : 'bandeau Opla (relié)', general ? TEXTES_BANDEAU_GENERAL : TEXTES_BANDEAU);
         verifier(bandeau.pastille?.premier && bandeau.pastille.contraste >= 4.5, `bandeau Opla : pastille en tête, ${bandeau.pastille?.contraste.toFixed(1)}:1`);
-        verifier(bandeau.icos.length === 3 && bandeau.icos.every(([w, h]) => w === 28 && h === 28), 'bandeau Opla : 3 icônes en carré de 28 px', JSON.stringify(bandeau.icos));
+        const nbIcos = general ? 2 : 3;
+        verifier(bandeau.icos.length === nbIcos && bandeau.icos.every(([w, h]) => w === 28 && h === 28), `bandeau Opla : ${nbIcos} icônes en carré de 28 px`, JSON.stringify(bandeau.icos));
+        verifier(general ? !bandeau.textes.some((t) => /continuent normalement.$/.test(t)) : true, 'variante générale : pas de pied (la ligne le dit déjà)');
         verifier(bandeau.separateurs, 'bandeau Opla : séparateurs fins entre les lignes');
         verifier(bandeau.animation === 'fsc-entree', 'bandeau : entrée animée (fondu + montée)', bandeau.animation);
       }

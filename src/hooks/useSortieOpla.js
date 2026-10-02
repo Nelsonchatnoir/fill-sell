@@ -8,9 +8,11 @@
 //   · relie   — ce compte a-t-il un dressing Opla synchronisé (oplaRelie) ?
 //     Après la bascule, seul ce cas garde la synchronisation (relevé, ventes,
 //     retraits) ;
-//   · bandeau — compte relié qui n'a pas encore touché « J'ai compris »
-//     (usage_logs, feature 'opla_bandeau' : côté serveur, par compte). Il
-//     s'affiche dès maintenant : il ANNONCE la date.
+//   · bandeau — TOUT compte qui n'a pas encore touché « J'ai compris »
+//     (usage_logs, feature 'opla_bandeau' : côté serveur, par compte), dès
+//     maintenant ; variante 'relie' (dressing Opla synchronisé : ce qui
+//     continue, ce qui s'arrête le 10/10) ou 'general' (tous les autres).
+//     Décision de Nico du 02/10.
 // Une lecture ratée : relie/bandeau inconnus → rien ne s'affiche ; active
 // retombe sur la date par défaut (jamais une bascule déplacée par une panne).
 import { useCallback, useEffect, useState } from 'react';
@@ -80,5 +82,6 @@ export function useSortieOpla(userId) {
   // il n'a plus rien à annoncer.
   const active = sortieOplaActive(maintenant, valeurInterrupteur);
   const desactivee = valeurInterrupteur === 0;
-  return { active, relie, bandeau: !desactivee && relie === true && bandeauVu === false, compris };
+  const bandeau = !desactivee && (relie === true || relie === false) && bandeauVu === false;
+  return { active, relie, bandeau, variante: relie === true ? 'relie' : 'general', compris };
 }

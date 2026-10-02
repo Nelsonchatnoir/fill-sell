@@ -32,6 +32,8 @@ const sombre = params.get('theme') === 'sombre';
 // avis=0 : le téléphone (iOS/Android) n'a PAS de carte d'avis — c'est la
 // fenêtre officielle du store ; seul le bandeau y est montré.
 const avecAvis = params.get('avis') !== '0';
+// variante=general : le bandeau des comptes SANS Opla relié (décision du 02/10).
+const variante = params.get('variante') === 'general' ? 'general' : 'relie';
 window.__journal = [];
 
 function SceneApp() {
@@ -49,7 +51,7 @@ function SceneApp() {
   ];
   const entete = (bandeau || carte) ? (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {bandeau && <BandeauSortieOpla onCompris={() => { window.__journal.push('compris'); setBandeau(false); }} />}
+      {bandeau && <BandeauSortieOpla variante={variante} onCompris={() => { window.__journal.push('compris'); setBandeau(false); }} />}
       {carte && <CarteAvis url={AVIS.URL_AVIS_EXTENSION} onChoix={(c) => { window.__journal.push(c); setCarte(false); }} />}
     </div>
   ) : null;

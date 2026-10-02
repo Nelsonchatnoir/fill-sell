@@ -1313,7 +1313,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
       // que la landing. Icône cloche : FillSell PRÉVIENT, l'utilisateur agit.
       icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
       titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
-      descFr:"FillSell repère l'annonce disparue, sur n'importe laquelle des quatre — tu confirmes, et tu retires les autres en un tap.", descEn:"FillSell spots the listing that is gone, on any of the four — you confirm, and remove the others in one tap.",
+      descFr:"FillSell repère l'annonce disparue, sur n'importe laquelle de tes plateformes — tu confirmes, et tu retires les autres en un tap.", descEn:"FillSell spots the listing that is gone, on any of your marketplaces — you confirm, and remove the others in one tap.",
     },
     {
       icon:<MicSvg size={20} stroke="currentColor"/>,
@@ -1389,7 +1389,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           geste : elle ne garde que la suite (la vente confirmée met tout à
           jour). */}
       <div style={{textAlign:"center",padding:"2px 4px 0"}}>
-        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE SUR LES QUATRE":"ONE LISTING PREPARED ONCE, POSTED TO ALL FOUR"}</p>
+        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE PARTOUT":"ONE LISTING PREPARED ONCE, POSTED EVERYWHERE"}</p>
         <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
           {/* Ordre canonique du stock (utils/stockFiltres.PLATEFORMES_STOCK) :
               la même suite partout, jamais une liste réécrite à la main. */}
@@ -1447,8 +1447,8 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Photographie, l'annonce est écrite":"Photograph it, the listing is written"}</h2>
           <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
             {fr
-              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour les quatre plateformes. L'extension la publie depuis ton ordinateur.</>
-              : <>The AI recognises your item, estimates its price and <span style={{color:UI.tealDeep,fontWeight:600}}>writes the listing</span> for all four marketplaces. The extension publishes it from your computer.</>
+              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour chacune de tes plateformes. L'extension la publie depuis ton ordinateur.</>
+              : <>The AI recognises your item, estimates its price and <span style={{color:UI.tealDeep,fontWeight:600}}>writes the listing</span> for each of your marketplaces. The extension publishes it from your computer.</>
             }
           </p>
           <button
@@ -1516,7 +1516,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
         : `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('fr-FR')} republications par mois`);
   const PERKS = lang === 'en'
     ? [
-        { icon: '📝', label: `${annonces} listings created and published on all 4 platforms a month` },
+        { icon: '📝', label: `${annonces} listings created and published on all your platforms a month` },
         { icon: '🔁', label: repub },
         ...(pro || business ? [{ icon: '🤖', label: 'Automatic reposting' }] : []),
         { icon: '✨', label: `AI touch-up — ${retouches} listings retouched a month (up to 5 photos each)` },
@@ -1525,7 +1525,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
         { icon: '📤', label: 'Import / Export Excel' },
       ]
     : [
-        { icon: '📝', label: `${annonces} annonces créées et publiées sur les 4 plateformes par mois` },
+        { icon: '📝', label: `${annonces} annonces créées et publiées sur toutes tes plateformes par mois` },
         { icon: '🔁', label: repub },
         ...(pro || business ? [{ icon: '🤖', label: 'Republication automatique' }] : []),
         { icon: '✨', label: `Retouche IA — ${retouches} annonces retouchées par mois (jusqu'à 5 photos chacune)` },
@@ -2574,15 +2574,19 @@ export default function App({ loginOnly = false }){
   // tableau de bord, données chargées, entrée finie, jamais à l'ouverture
   // (45 s après le lancement), jamais au milieu d'une action.
   const avis=useDemandeAvis({userId:user?.id,actif:tab===0&&!loading&&!showOnboardingFlow&&!loginOnly});
+  // Le bandeau Opla : pour TOUT le monde (deux variantes), jamais pendant
+  // l'inscription ni l'entrée — il apparaît au premier passage sur le tableau
+  // de bord après (décision de Nico, 02/10).
+  const bandeauOpla=sortieOpla.bandeau&&!showOnboardingFlow&&!loginOnly;
   const enteteTableauDeBord=useMemo(()=>{
-    if(!sortieOpla.bandeau&&!avis.carte) return null;
+    if(!bandeauOpla&&!avis.carte) return null;
     return(
       <div style={{display:'flex',flexDirection:'column',gap:16}}>
-        {sortieOpla.bandeau&&<BandeauSortieOpla onCompris={sortieOpla.compris}/>}
+        {bandeauOpla&&<BandeauSortieOpla variante={sortieOpla.variante} onCompris={sortieOpla.compris}/>}
         {avis.carte&&<CarteAvis url={avis.carte.url} onChoix={avis.choisir}/>}
       </div>
     );
-  },[sortieOpla.bandeau,sortieOpla.compris,avis.carte,avis.choisir]);
+  },[bandeauOpla,sortieOpla.variante,sortieOpla.compris,avis.carte,avis.choisir]);
   // Plus aucune case n'est grisée pour Opla : le motif reste pour les
   // appelants qui le lisent encore, il ne sert plus à rien de visible.
   const oplaMotifGrise='fermee';

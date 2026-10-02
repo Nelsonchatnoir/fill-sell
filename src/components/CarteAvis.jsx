@@ -12,7 +12,7 @@ import { Sparkles, Star } from 'lucide-react';
 import { toucherLeger } from '../utils/retourHaptique';
 import './CarteInfo.css';
 
-export const TEXTES_CARTE_AVIS = Object.freeze({
+const TEXTES_CARTE_AVIS = Object.freeze({
   titre: '10 actions, zéro accroc',
   texte: 'Si FillSell te fait gagner du temps, ton avis nous aide énormément.',
   principal: 'Laisser un avis',
