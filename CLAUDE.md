@@ -1,27 +1,29 @@
-## État de production au 02/10 matin — lire avant toute action
+## État de production au 02/10 après-midi — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout
 historique contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.82** au CWS (21 postes le 01/10 23:30) ; **minimum
-  serveur 0.6.81** depuis le 02/10 (sous le seuil : bandeau « mise à jour », seules
-  les recréations à l'étape 'deleted' sont servies) ;
-  OTA **2.9.37** (barres, web 61697f9) ; `get-pending-jobs` v186 (`true`), `update-job-status` v116
-  (`false`), `ebay-api-worker` v71 (`false`), `handler-watch` v67 (`false`),
-  `check-listing-status` v35 (`false`), `ops-digest` v28 (`false`). ⚠️ Le 30/09 22:52, le changement de
+- **Servi** : extension **0.6.82** au CWS ; **minimum serveur 0.6.81** (sous le
+  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.37** ;
+  `get-pending-jobs` v187 (`true`), `update-job-status` v116 (`false`),
+  `ebay-api-worker` v71, `handler-watch` v68, `email-tunnel` v68 (`false`),
+  `avis-demande` v1 (`true`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Sortie d'Opla (02/10, Nico)** : plus aucune publication ni republication
+  Opla (`_shared/opla-sortie.js`, clôture serveur) ; synchro gardée pour les
+  comptes au dressing Opla synchronisé. Migration 20261002120000 (quotas) :
+  EN ATTENTE DU GO de Nico.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
-  `migration repair --linked --status applied <version>`, relecture de
-  l'effet. Les 15 du 29-30/09 sont inscrites (01/10).
+  `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
-  (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt. Celles
-  du 30/09 faites sans trace y sont reconstituées (1 090 fusions par photo).
-- **Ouvert** : **0.6.85** (= 0.6.83 + lot et décisions du 02/10, cf. l'état) à téléverser par Nico : `build/CWS-0.6.85-A-TELEVERSER/` (0.6.83 et 0.6.84 brûlées, jamais téléversées) ;
-  ornellaracano 307204072564 — retrait en file ; 02/10 : jocabroc8 (2 retraits Vinted) et
-  carhoa (5 livres) partent à leur retour en ≥ 0.6.81 (cf. l'état du 01/10, section 02/10).
+  (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
+- **Ouvert** : **0.6.86** à téléverser : `build/CWS-0.6.86-A-TELEVERSER/`
+  (0.6.83→0.6.85 brûlées) ; binaires **2.9.38** (AAB
+  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic après push) ;
+  ornellaracano 307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
 # FillSell — Instructions Claude
 

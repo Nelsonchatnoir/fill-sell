@@ -40,7 +40,9 @@
    utilisateur, blanc = plateforme.
 6. **L'écran Plateformes lit la vérité serveur** (`plateformes_verite`),
    jamais une déduction locale ; l'accès Opla se lit par une règle unique
-   (`useOplaAcces` / `_shared/acces-opla.js`).
+   (`useOplaAcces` / `_shared/acces-opla.js`). **Sortie d'Opla (02/10)** : Opla n'est plus
+   proposée nulle part ; seul un compte « Opla relié » (`_shared/opla-sortie.js`,
+   `useSortieOpla`) garde la synchro (relevé, ventes, retraits).
 7. **Lazy + Suspense** : un chunk 404 rend un écran vide sans erreur ; en cas
    d'écran blanc, diagnostic « le build avant le code » (racine § 3.6).
 8. **Un seul push par lot** (chaque push renomme tous les chunks).
