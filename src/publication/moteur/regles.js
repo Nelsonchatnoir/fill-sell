@@ -18,6 +18,7 @@
 
 import { natureAttente } from "../../utils/etatsPublication.js";
 import { titreVide, couperTitre, titrePourJob } from "../../../supabase/functions/_shared/titre-du-job.js";
+import { tailleDansGrille, diagnosticTaille, candidatsTaille } from "../../../supabase/functions/_shared/tailles.js";
 
 // ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
 // Règle unique (2026-07-29) partagée par la garde du CTA, la liste des motifs
@@ -271,7 +272,13 @@ export function gardeAspectsEbay({ pfE, ebayRequiredFull, outils }) {
     if (!allowed.length) continue;
     if (allowed.some(v => normFuzzy(v) === normFuzzy(val))) continue;
     const faitFoi = listeFaitFoi("ebay", aspect.mode);
-    const nearest = nearestAllowedValue(val, allowed);
+    // Taille (02/10, point 11) : le vocabulaire des tailles (« W34 | FR 44 » →
+    // « 44 », « XXL » → « 2XL »), jamais un rapprochement par mots sur un
+    // nombre — il lisait « 44.5 » comme « 44 ».
+    const estTaille = known?.labels?.includes("Taille");
+    const nearest = estTaille
+      ? (tailleDansGrille(val, allowed)?.valeur ?? (/\d/.test(val) ? null : nearestAllowedValue(val, allowed)))
+      : nearestAllowedValue(val, allowed);
     if (nearest) {
       if (known?.set) known.set(nearest);
       else pfE.ebayAspects = { ...(pfE.ebayAspects ?? {}), [aspect.name]: nearest };
@@ -315,10 +322,10 @@ export function questionsAPoser({
   const sharedRendered = new Set(sharedFieldsToRender);
   const ebayDansRouge = (a) => aspectBloquant(a) || stickyEbay.has(a.name);
   const genericDansRouge = (gp, a) => aspectBloquant(a) || Boolean(stickyGeneric[gp]?.has(a.key));
-  const redEbayAspects = canEbay
+  let redEbayAspects = canEbay
     ? (ebayRequiredStatus ?? []).filter(a => ebayDansRouge(a) && !(a.sharedKey && sharedRendered.has(a.sharedKey)))
     : [];
-  const redGenericAspects = canGeneric
+  let redGenericAspects = canGeneric
     ? Object.entries(genericRequiredStatus ?? {}).flatMap(([gp, list]) =>
         (list ?? []).filter(a => {
           const sk = genericFieldToSharedKey(gp, a.key);
@@ -326,17 +333,107 @@ export function questionsAPoser({
           return genericDansRouge(gp, a);
         }).map(a => ({ gp, a })))
     : [];
-  const redTotal = sharedFieldsToRender.length + redGenericAspects.length + redEbayAspects.length;
+  // ── LA TAILLE : UNE QUESTION, PAS UNE PAR PLATEFORME (02/10, point 11) ────
+  // Patrick Giry, jean « 34 » : « Taille » demandée pour Vinted à 17:42:09,
+  // puis pour Opla à 17:42:29, puis encore par le job Opla en attente. Deux
+  // plateformes ou plus qui ne savent pas écrire la taille de l'article
+  // forment UNE question (questionTaille) : une seule réponse quand une valeur
+  // vaut dans toutes leurs grilles, sinon un choix par grille — dans la même
+  // question, la grille de chacune sous les yeux.
+  const tailleG = redGenericAspects.filter(({ gp, a }) => genericFieldToSharedKey(gp, a.key) === "taille" && !a.neufSeulement);
+  const tailleE = redEbayAspects.filter(a => a.sharedKey === "taille");
+  const questionTaille = tailleG.length + tailleE.length >= 2
+    ? composerQuestionTaille([...tailleG, ...tailleE.map(a => ({ gp: "ebay", a }))])
+    : null;
+  if (questionTaille) {
+    redGenericAspects = redGenericAspects.filter(x => !tailleG.includes(x));
+    redEbayAspects = redEbayAspects.filter(x => !tailleE.includes(x));
+  }
+  const tailleBloque = Boolean(questionTaille?.lignes.some(({ a }) => aspectBloquant(a)));
+  const redTotal = sharedFieldsToRender.length + redGenericAspects.length + redEbayAspects.length + (questionTaille ? 1 : 0);
   // Restants = ce qui BLOQUE encore (les champs déjà complétés restent affichés
   // par le sticky mais ne comptent plus).
   const redRestants = missingSharedFields.filter(k => sharedFieldCfg[k]).length
     + redGenericAspects.filter(({ a }) => aspectBloquant(a)).length
-    + redEbayAspects.filter(aspectBloquant).length;
+    + redEbayAspects.filter(aspectBloquant).length
+    + (tailleBloque ? 1 : 0);
   // Valeur catalogue UNIQUE (2026-07-19, cas Medik8) : confirmation explicite,
   // pleine largeur ; « Non » décoche la plateforme.
   const genSeule = ({ a }) => aspectBloquant(a)
     && Array.isArray(a.allowedValues) && a.allowedValues.length === 1 && Boolean(peutDecocher);
-  return { sharedFieldsToRender, redGenericAspects, redEbayAspects, redTotal, redRestants, genSeule };
+  return { sharedFieldsToRender, redGenericAspects, redEbayAspects, redTotal, redRestants, genSeule, questionTaille };
+}
+
+/**
+ * La question « Taille » commune à plusieurs plateformes (02/10, point 11).
+ * `lignes` : [{ gp, a }] — a = la ligne d'aspect (value, allowedValues…).
+ * Rend { lignes, communes, mode } :
+ *   · mode "une" : les valeurs qui s'écrivent dans TOUTES les grilles en jeu
+ *     (« XL » vaut chez Opla et chez eBay, « 2XL » ≡ « XXL ») — un seul choix,
+ *     écrit dans le vocabulaire de chacune ;
+ *   · mode "par_plateforme" : aucune valeur commune, ou une grille où la taille
+ *     de l'article a plusieurs lectures possibles (« 44 » chez Vinted homme :
+ *     « W34 | FR 44 » ou « W35 | FR 44 ») — un choix par grille, ses
+ *     candidates en tête (`candidats`), jamais choisies à la place de la
+ *     personne.
+ * ⛔ Aucune valeur commune n'est fabriquée : une option n'y entre que si
+ *    tailleDansGrille la trouve dans chaque grille (traduction, jamais
+ *    conversion — « 44 » n'y devient jamais « XL »).
+ */
+export function composerQuestionTaille(lignes) {
+  const avecCandidats = (lignes ?? []).map(({ gp, a }) => {
+    const brut = String(a?.value ?? "").trim();
+    const liste = Array.isArray(a?.allowedValues) ? a.allowedValues : [];
+    const candidats = brut && liste.length ? candidatsTaille(brut, liste) : [];
+    return { gp, a, candidats: candidats.length > 1 ? candidats : [] };
+  });
+  const listes = avecCandidats.map(({ a }) => (Array.isArray(a?.allowedValues) ? a.allowedValues : [])).filter(l => l.length);
+  const base = listes.length ? [...listes].sort((x, y) => x.length - y.length)[0] : [];
+  const communes = listes.length === avecCandidats.length
+    ? base.filter(v => !/^autre$/i.test(String(v).trim())
+        && listes.every(l => l === base || tailleDansGrille(v, l)))
+    : [];
+  const une = communes.length > 0 && avecCandidats.every(l => !l.candidats.length);
+  return { lignes: avecCandidats, communes: une ? communes : [], mode: une ? "une" : "par_plateforme" };
+}
+
+/**
+ * Une réponse « taille » donnée pour UNE plateforme, écrite partout où elle
+ * vaut (02/10, point 11). `lignes` : toutes les plateformes cochées qui
+ * portent une taille — { gp, valeur, allowedValues, enQuestion, repondue }.
+ * `avant` : la valeur de la plateforme répondue AVANT la réponse ; `ambigu` :
+ * cette valeur avait plusieurs lectures dans sa grille (diagnosticTaille).
+ * Rend [{ gp, valeur }] — la plateforme répondue d'abord, puis chaque autre :
+ *   · encore en question, pas encore répondue, dont la grille sait ÉCRIRE la
+ *     réponse (traduite : « XL » → « XL », « W34 | FR 44 » → « 44 » chez eBay) ;
+ *   · ou portant la MÊME valeur d'origine qu'une taille AMBIGUË (jean de
+ *     Patrick : « 34 » — un W34 pour lui, un FR 34 pour eBay qui l'acceptait
+ *     sans broncher) : la réponse lève l'ambiguïté de la source, elle vaut
+ *     partout où cette source avait été recopiée.
+ * ⛔ Une réponse forcée par une grille pauvre (« XL » choisi pour Opla, qui
+ *    n'a que des lettres) ne remplace JAMAIS une taille qu'une autre
+ *    plateforme sait écrire : seule une ambiguïté se propage.
+ */
+export function propagerReponseTaille({ gp, valeur, avant = "", ambigu = false, lignes = [] }) {
+  const v = String(valeur ?? "").trim();
+  const out = [{ gp, valeur }];
+  if (!v) return out;
+  const source = String(avant ?? "").trim();
+  for (const l of lignes ?? []) {
+    if (!l || l.gp === gp || l.repondue) continue;
+    const memeSource = Boolean(source) && String(l.valeur ?? "").trim() === source;
+    if (!l.enQuestion && !(ambigu && memeSource)) continue;
+    const liste = Array.isArray(l.allowedValues) ? l.allowedValues : [];
+    const t = liste.length ? tailleDansGrille(v, liste)?.valeur : null;
+    if (t && t !== String(l.valeur ?? "").trim()) out.push({ gp: l.gp, valeur: t });
+  }
+  return out;
+}
+
+/** La taille d'origine a-t-elle plusieurs lectures dans cette grille ? */
+export function tailleAmbigue(valeur, allowedValues) {
+  const liste = Array.isArray(allowedValues) ? allowedValues : [];
+  return Boolean(String(valeur ?? "").trim()) && liste.length > 0 && diagnosticTaille(valeur, liste) === "ambigu";
 }
 
 // ── LES QUESTIONS QUI RETIENNENT CHAQUE PLATEFORME (écran « Confirmer ») ────

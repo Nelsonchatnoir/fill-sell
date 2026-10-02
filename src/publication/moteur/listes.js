@@ -213,7 +213,7 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     // Leboncoin) : un de ses composants EST la valeur, exactement — c'est le
     // « match composants-exacts » de leboncoin.js, et une seule candidate.
     const nv2 = normAspectVal(v);
-    const parComposant = vals.filter(a => a.split(/s*[-–—|/·•]s*/).some(c => normAspectVal(c) === nv2));
+    const parComposant = vals.filter(a => a.split(/\s*[-–—|/·•]\s*/).some(c => normAspectVal(c) === nv2));
     if (parComposant.length === 1) return { dans: true, valeurListe: parComposant[0], suggested: null };
     // ⛔ PAS DE RAPPROCHEMENT PAR MOTS SUR UNE TAILLE. Le rapprochement par
     //    jetons lit « 44.5 » comme « 44 » + « 5 » et proposerait « 44 » sur une
@@ -223,6 +223,43 @@ export function jugerValeurContreListe({ platform, key, value, allowedValues, ch
     return { dans: false, valeurListe: null, suggested: null };
   }
   return { dans: false, valeurListe: null, suggested: nearestAllowedValue(v, vals) };
+}
+
+/**
+ * LA TAILLE QUE LE JOB PORTE — l'écriture EXACTE de la grille (02/10, point 11,
+ * jeans de Patrick Giry). Le jugement ci-dessus TRADUIT (« 46 » est
+ * « W36 | FR 46 » chez Vinted homme, « W34 | FR 44 » est « 44 - XXL » chez
+ * Leboncoin) ; tant que le job partait avec « 46 », l'extension cherchait
+ * « 46 » sur le formulaire, ne le trouvait pas (garde anti-nombre-nu, et
+ * c'est juste) et reposait la question — une taille connue, redemandée.
+ * Rend la valeur de la grille à poser à la place, ou null (rien à changer :
+ * déjà exacte, hors liste, pas de grille relevée, ou Opla — son serveur la
+ * traduit au service du job). La fiche, elle, garde la saisie de la personne.
+ */
+export function tailleDuJob({ platform, taille, lignes, cheminCategorie = null }) {
+  const brut = String(taille ?? "").trim();
+  if (!brut || platform === "opla") return null;
+  const ligne = (Array.isArray(lignes) ? lignes : [])
+    .find(a => estChampTaille(platform, a?.key) && Array.isArray(a.allowedValues) && a.allowedValues.length);
+  if (!ligne) return null;
+  const v = jugerValeurContreListe({ platform, key: ligne.key, value: brut, allowedValues: ligne.allowedValues, cheminCategorie });
+  return v.dans && v.valeurListe && v.valeurListe !== brut ? v.valeurListe : null;
+}
+
+/**
+ * eBay : la valeur de SA liste pour une TAILLE (02/10, point 11). Le
+ * vocabulaire des tailles d'abord (« W34 | FR 44 » → « 44 », « XXL » →
+ * « 2XL ») ; le rapprochement par mots seulement pour une taille sans chiffre
+ * (« Unique ») — jamais sur un nombre : il lisait « 44.5 » comme « 44 », et
+ * « 34 » d'un « W34 » comme le 34 français.
+ */
+export function tailleDansListeEbay(valeur, liste) {
+  const v = String(valeur ?? "").trim();
+  const vals = Array.isArray(liste) ? liste : [];
+  if (!v || !vals.length) return null;
+  const t = tailleDansGrille(v, vals);
+  if (t) return t.valeur;
+  return /\d/.test(v) ? null : nearestAllowedValue(v, vals);
 }
 
 /**

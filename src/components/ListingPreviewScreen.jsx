@@ -119,6 +119,7 @@ import {
   normAspectVal, nearestAllowedValue, jugerValeurContreListe, horsListeBloque, vintedExigeUneMarque,
   vintedExigeUneCouleur, valeurUneLettre, rayonNeufSeulement, messageRayonNeuf,
   deduireOptionDuTexte, estFourreTout, listeCandidatsDabord, textesDeLAnnonce,
+  tailleDuJob, tailleDansListeEbay,
 } from "../publication/moteur/listes";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
@@ -4690,6 +4691,13 @@ export default function ListingPreviewScreen({
     const v = champ && typeof champ === "object" ? champ.v : null;
     return v == null || v === "" ? null : v;
   };
+  // La taille de la fiche quand quelqu'un l'a DITE (saisie « manuel », capture,
+  // synchro Vinted, relevé d'une plateforme) — jamais une estimation (« lens »).
+  const tailleDiteSurLaFiche = () => {
+    const champ = attributsBase && typeof attributsBase === "object" ? attributsBase.taille : null;
+    const v = champ && typeof champ === "object" ? String(champ.v ?? "").trim() : "";
+    return v && /^(capture|vinted|releve|manuel)/.test(String(champ.source ?? "")) ? v : null;
+  };
 
   // ── Modèle à confirmer (2026-07-28) ───────────────────────────────────────
   // Tri-état : null = pas encore tranché (la carte s'affiche, le modèle est
@@ -5844,7 +5852,10 @@ export default function ListingPreviewScreen({
         categorie:   initialListing?.categorie   ?? photoAnalysis?.categorie   ?? null,
         // Repli sur inventaire.attributs (2026-09-06) : ce que la sync, le clic
         // Publier ou un Lens précédent ont déjà posé sur l'article.
-        taille:      initialListing?.taille_estimee ?? initialListing?.taille ?? photoAnalysis?.taille_estimee ?? attributV("taille") ?? null,
+        // (02/10, point 11) Une taille DITE — saisie par la personne, lue sur
+        // une plateforme — passe devant l'estimation du Lens : même règle de
+        // source que la taille Opla (genericKnownSource).
+        taille:      tailleDiteSurLaFiche() ?? initialListing?.taille_estimee ?? initialListing?.taille ?? photoAnalysis?.taille_estimee ?? attributV("taille") ?? null,
         couleur:     initialListing?.couleur     ?? photoAnalysis?.couleur     ?? attributV("couleur") ?? null,
         matiere:     initialListing?.matiere     ?? photoAnalysis?.matiere     ?? attributV("matiere") ?? null,
         // État LU par le Lens (2026-07-29). Seule source : etat_estime — la
@@ -7134,7 +7145,9 @@ export default function ListingPreviewScreen({
             !allowedValues.some(v => normAspectVal(v) === normAspectVal(sendVal))) {
           return {
             name, state: "invalid", sharedKey: src.key, value: srcVal,
-            suggested: nearestAllowedValue(sendVal, allowedValues),
+            // Taille (02/10, point 11) : le vocabulaire des tailles, jamais un
+            // rapprochement par mots sur un nombre (« W34 | FR 44 » → « 44 »).
+            suggested: src.key === "taille" ? tailleDansListeEbay(sendVal, allowedValues) : nearestAllowedValue(sendVal, allowedValues),
             // `blocking` (2026-07-29, doctrine « liste = suggestion ») : seule
             // une liste QUI FAIT FOI grise le CTA. eBay SELECTION_ONLY = eBay
             // déclare le champ fermé → on bloque. FREE_TEXT = eBay déclare le
@@ -8861,6 +8874,20 @@ export default function ListingPreviewScreen({
       }
       for (const ligne of construction.journal) console.log(ligne);
       let rows = construction.rows;
+      // ── LA TAILLE PART ÉCRITE COMME LA GRILLE L'ÉCRIT (02/10, point 11) ────
+      // Patrick Giry, jean « 46 » : l'écran ne trouvait pas « W36 | FR 46 »
+      // dans la grille Vinted homme et Vinted est parti… sans le jean. Le
+      // vocabulaire des tailles le trouve désormais ; encore faut-il que le JOB
+      // porte « W36 | FR 46 » — l'extension ne cherche que ce qu'on lui donne,
+      // et un nombre nu ne se pose jamais par contenance. Même jugement que
+      // l'écran (moteur/listes.tailleDuJob), sur la valeur du job. La saisie
+      // de la personne reste dans `taille_saisie` (et sur la fiche).
+      rows = rows.map(r => {
+        const t = tailleDuJob({ platform: r.platform, taille: r.platform_fields?.taille, lignes: genericRequiredStatus?.[r.platform] });
+        if (!t) return r;
+        console.log(`[publish] ${r.platform} — taille « ${r.platform_fields.taille} » → « ${t} » (écriture de la grille)`);
+        return { ...r, platform_fields: { ...r.platform_fields, taille: t, taille_saisie: r.platform_fields.taille } };
+      });
       // ══ LA CONTREPARTIE DE LA PORTE — AUCUN JOB SANS CATÉGORIE (2026-09-19) ══
       // La case n'est plus grisée sur un simple trou de mapping par icône : le
       // mot et l'arbitrage ont le droit d'essayer. Mais s'ils échouent AUSSI,

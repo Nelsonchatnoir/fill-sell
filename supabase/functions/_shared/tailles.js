@@ -124,21 +124,68 @@ const memeAge = (x, y) => !!x && !!y && x.unite === y.unite && x.de === y.de && 
 
 // ── Nombre : pointure, taille FR, tour de poitrine ──────────────────────────
 // « 44.5 » et « 44,5 » sont égaux ; « 44 » et « 44.5 » ne le sont JAMAIS.
-function canonNombre(v) {
+// ── LE PAYS D'UN NOMBRE (02/10, jeans de Patrick Giry) ──────────────────────
+// Vinted écrit les bas homme « W36 | FR 46 » et les bas femme « FR 46 » /
+// « EU 46 » (deux onglets : pour Vinted, FR 40 = EU 38 — deux tailles).
+// « 46 » saisi dans l'app ne trouvait AUCUNE des deux : le nombre nu ne savait
+// pas qu'il est français. Règle :
+//   · « 46 », « T46 », « taille 46 » : nombre nu, c'est le français de l'app ;
+//   · « FR 46 » ≡ « 46 » (même pays, écrit ou sous-entendu) ;
+//   · « EU 46 » ≢ « 46 » ≢ « FR 46 » : on garde le pays (point G du 28/09,
+//     « EU 42 garde son pays »). Le seul passage admis, « 46 » nu vers l'option
+//     « EU 46 » d'une grille qui n'a ni « 46 » ni « FR 46 », est le dernier
+//     recours de tailleDansGrille — la règle du 23/09 (Joséphine), à sens unique.
+// UK, US, IT, DE ne se lisent JAMAIS ici : ce sont d'autres tailles.
+function lireNombre(v) {
   const s = plier(v);
-  if (!/^\d{1,3}(\.\d)?$/.test(s)) return null;
-  return String(Number(s)); // « 44.0 » → « 44 », « 44.5 » → « 44.5 »
+  const m = /^(?:(fr|eu|t|taille)\s*)?(\d{1,3}(?:\.\d)?)(?:\s*(fr|eu))?$/.exec(s);
+  if (!m || (m[1] && m[3])) return null;
+  const pays = (m[1] === "fr" || m[3] === "fr") ? "fr" : (m[1] === "eu" || m[3] === "eu") ? "eu" : "";
+  return { pays, n: String(Number(m[2])) }; // « 44.0 » → « 44 », « 44.5 » → « 44.5 »
+}
+
+// ── Tour de taille d'un bas : « W34 », « W34 L32 », « 34W », « 32x34 », « 35/34 »
+// Le W est le tour de taille en pouces, le L la longueur de jambe. Vinted ne
+// prend que le W (« W34 | FR 44 ») ; aucune autre grille ne l'écrit. Rend
+// { w, l } — ou { ambigu: true } quand la même écriture peut être une
+// fourchette française (« 34/36 » : W34 L36 ou « entre le 34 et le 36 ») —
+// ou null si ce n'est pas un tour de taille.
+// ⛔ Le L ne sert JAMAIS à choisir une taille : « 33/32 » n'est pas un FR 32.
+// ⛔ Un W ne devient jamais un nombre nu, un US, un UK ni une lettre : seule
+//    une grille qui écrit elle-même « W.. » le reçoit.
+function lireTourDeTaille(v) {
+  const s = plier(v);
+  const plausible = (w, l) => w >= 23 && w <= 54 && (l === null || (l >= 26 && l <= 38));
+  let m = /^w\s*(\d{2})(?:\s*(?:\/|x)?\s*l\s*(\d{2}))?$/.exec(s)
+    || /^(\d{2})\s*w(?:\s*(?:\/|x)?\s*(\d{2})\s*l)?$/.exec(s);
+  if (m) {
+    const w = Number(m[1]), l = m[2] === undefined ? null : Number(m[2]);
+    return plausible(w, l) ? { w, l } : null;
+  }
+  m = /^(\d{2})\s*x\s*(\d{2})$/.exec(s);
+  if (m && plausible(Number(m[1]), Number(m[2]))) return { w: Number(m[1]), l: Number(m[2]) };
+  m = /^(\d{2})\s*\/\s*(\d{2})$/.exec(s);
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2]);
+    // « 34/36 », « 38/40 » : deux tailles françaises qui se suivent — une
+    // fourchette, pas UNE taille. Si la lecture W/L est possible aussi, c'est
+    // l'une OU l'autre : on ne tranche pas.
+    if (a % 2 === 0 && b === a + 2) return { ambigu: true };
+    if (plausible(a, b)) return { w: a, l: b };
+  }
+  return null;
 }
 
 // ── Étiquette composite : « M / 38 / 10 », « 12 ans / 152 cm », « W30 | FR 40 »
 // Les plateformes écrivent souvent PLUSIEURS écritures d'une même taille dans
 // une seule étiquette. Chaque morceau désigne alors LA MÊME taille : croiser
 // les morceaux n'est pas une conversion, c'est lire leur table.
-// ⚠️ On ne coupe QUE sur / | · — jamais sur le tiret, qui appartient aux
+// ⚠️ On ne coupe QUE sur / | · et sur le tiret ENTOURÉ D'ESPACES (« 44 - XXL »,
+// la grille Leboncoin) — jamais sur le tiret collé, qui appartient aux
 // intervalles d'âge (« 0-3M », « 12-18 mois »).
 function jetons(v) {
   return String(v ?? "")
-    .split(/[/|·•]+/)
+    .split(/\s+[-–—]\s+|[/|·•]+/)
     .map((t) => t.trim())
     .filter(Boolean);
 }
@@ -153,13 +200,28 @@ export function memeTaille(a, b) {
   if (plier(a) === plier(b)) return true;
   if (serrer(a) === serrer(b)) return true;
   if (estUnique(a) && estUnique(b)) return true;
+  // Un tour de taille ne vaut QU'un tour de taille (« W34 » ≢ « 34 »).
+  // Deux longueurs écrites doivent aussi s'accorder (« W34 L32 » ≢ « W34 L30 »).
+  const tA = lireTourDeTaille(a), tB = lireTourDeTaille(b);
+  if (tA?.w || tB?.w) return Boolean(tA?.w && tB?.w) && tA.w === tB.w && (tA.l == null || tB.l == null || tA.l === tB.l);
   const ageA = canonAge(a), ageB = canonAge(b);
   if (ageA || ageB) return memeAge(ageA, ageB);   // un âge ne vaut QUE un âge
   const litA = canonLettre(a), litB = canonLettre(b);
   if (litA && litB) return litA === litB;
-  const nA = canonNombre(a), nB = canonNombre(b);
-  if (nA && nB) return nA === nB;
+  const nA = lireNombre(a), nB = lireNombre(b);
+  if (nA && nB) return nA.n === nB.n && (nA.pays === nB.pays || (nA.pays !== "eu" && nB.pays !== "eu"));
   return false;
+}
+
+// Plusieurs options désignent la même taille (« FR 38 » face à « 38 » et à
+// « FR 38 ») : le même pays d'abord. Sinon la première — le comportement
+// d'avant, inchangé pour les lettres (« XXL » et « 2XL »).
+function meilleureEgale(valeur, options) {
+  const egales = options.filter((o) => memeTaille(o, valeur));
+  if (egales.length <= 1) return egales[0] ?? null;
+  const nv = lireNombre(valeur);
+  const memePays = nv ? egales.find((o) => lireNombre(o)?.pays === nv.pays) : null;
+  return memePays ?? egales[0];
 }
 
 // Registre historique conservé pour compatibilité des imports, jamais utilisé
@@ -194,9 +256,25 @@ export function tailleDansGrille(brut, grille, opts) {
   const exact = options.find((o) => o === valeur);
   if (exact) return { valeur: exact, motif: "exacte" };
 
-  // 2. La même écriture à la casse / aux accents / au séparateur près.
-  const plie = options.find((o) => memeTaille(o, valeur));
+  // 2. La même écriture à la casse / aux accents / au séparateur près — et,
+  //    pour un nombre, au pays près (« 46 » ≡ « FR 46 », cf. lireNombre).
+  const plie = meilleureEgale(valeur, options);
   if (plie) return { valeur: plie, motif: "orthographe" };
+
+  // 2 bis. UN BAS ÉCRIT EN TOUR DE TAILLE (« W34 L32 », « 35/34 », « 32x34 »).
+  //    Seul le W compte, et seulement dans une grille qui écrit des W (Vinted
+  //    homme : « W35 | FR 44 ») — la table de la plateforme, lue chez elle.
+  //    Ailleurs : refus, la personne choisit (jamais W34 → « 34 », qui serait
+  //    le 34 FRANÇAIS, ni → « US 34 », ni → une lettre). Une écriture qui
+  //    peut aussi être une fourchette française (« 34/36 ») : refus aussi.
+  //    ⛔ On ne laisse JAMAIS « 35/34 » tomber dans les jetons ci-dessous : le
+  //    34 de la longueur y deviendrait un FR 34.
+  const bas = lireTourDeTaille(valeur);
+  if (bas) {
+    if (bas.ambigu) return null;
+    const parW = options.filter((o) => jetons(o).some((j) => lireTourDeTaille(j)?.w === bas.w && lireTourDeTaille(j)?.l == null));
+    return parW.length === 1 ? { valeur: parW[0], motif: `tour de taille W${bas.w} lu dans la grille` } : null;
+  }
 
   // 3. La taille de l'article est COMPOSITE (« 12 ans / 152 cm ») : chacun de
   //    ses morceaux désigne la même taille, on cherche celui que la grille
@@ -204,7 +282,7 @@ export function tailleDansGrille(brut, grille, opts) {
   const morceaux = jetons(valeur);
   if (morceaux.length > 1) {
     for (const m of morceaux) {
-      const trouve = options.find((o) => memeTaille(o, m));
+      const trouve = meilleureEgale(m, options);
       if (trouve) return { valeur: trouve, motif: `jeton « ${m} »` };
     }
   }
@@ -213,11 +291,29 @@ export function tailleDansGrille(brut, grille, opts) {
   //    98 cm ») : on cherche l'option dont l'un des morceaux désigne notre
   //    taille. Une seule candidate acceptée — deux options qui matchent, c'est
   //    une ambiguïté, et une ambiguïté ne se tranche pas toute seule.
-  const parMorceau = options.filter((o) =>
-    jetons(o).length > 1 && jetons(o).some((m) => morceaux.some((x) => memeTaille(m, x))));
+  //    SAUF si une seule porte TOUS les morceaux de la taille de l'article
+  //    (« FR 44 / W35 » face à « W34 | FR 44 » et « W35 | FR 44 ») : ce n'est
+  //    plus un choix, c'est la ligne de la table.
+  const couverture = (o) => morceaux.filter((x) => jetons(o).some((m) => memeTaille(m, x))).length;
+  const parMorceau = options.filter((o) => jetons(o).length > 1 && couverture(o) > 0);
   if (parMorceau.length === 1) return { valeur: parMorceau[0], motif: "étiquette composite de la grille" };
+  if (parMorceau.length > 1 && morceaux.length > 1) {
+    const completes = parMorceau.filter((o) => couverture(o) === morceaux.length);
+    if (completes.length === 1) return { valeur: completes[0], motif: "étiquette composite de la grille (tous les morceaux)" };
+  }
 
   // Un nombre ne devient jamais une lettre sur la table d’une autre grille.
+
+  // 5. DERNIER RECOURS, À SENS UNIQUE (règle du 23/09, Joséphine ; point G du
+  //    28/09) : un nombre NU face à une grille qui ne l'écrit qu'avec « EU »
+  //    (« EU 42 » des vestes homme Vinted) — ni « 42 », ni « FR 42 » n'y sont.
+  //    C'est le candidat que l'extension essaie déjà en dernier ; le juger ici
+  //    évite de redemander une taille que le dépôt saurait poser.
+  const nu = lireNombre(valeur);
+  if (nu && nu.pays === "" && !options.some((o) => memeTaille(o, valeur))) {
+    const enEu = options.filter((o) => { const x = lireNombre(o); return x && x.pays === "eu" && x.n === nu.n; });
+    if (enEu.length === 1) return { valeur: enEu[0], motif: `nombre nu → « ${enEu[0]} » (la grille n'écrit que l'EU)` };
+  }
 
   // 6. TAILLE ENFANT EN CENTIMÈTRES (27/09, doriane-henri : « Pantalon taille
   //    86 » refusé par Opla, qui écrit « 18 mois »). Deux lectures, dans cet
@@ -290,6 +386,30 @@ export function libelleTaille(v) {
 }
 
 /**
+ * Les options de la grille qui PEUVENT désigner cette taille quand elle ne s'y
+ * écrit pas d'une seule façon (02/10, point 11) : « 44 » face à « W34 | FR 44 »
+ * et « W35 | FR 44 », « 34 » face à « W24 | FR 34 », « W25 | FR 34 » et
+ * « W34 | FR 44 », « 34/36 » face à ses deux lectures. On les montre EN
+ * TÊTE de la question — sans en choisir une : c'est la personne qui sait.
+ * Vide quand rien dans la grille ne ressemble à la taille.
+ */
+export function candidatsTaille(brut, grille) {
+  const options = (Array.isArray(grille) ? grille : []).map((o) =>
+    String(typeof o === "string" ? o : (o?.code ?? o?.title ?? "")).trim()).filter(Boolean);
+  const valeur = String(brut ?? "").trim();
+  if (!valeur || !options.length) return [];
+  const bas = lireTourDeTaille(valeur);
+  // Un nombre nu de jean (« 34 ») se dit aussi en W : sa lecture W est montrée
+  // parmi les candidates — jamais choisie (le nombre nu reste français).
+  const nu = !bas ? lireNombre(valeur) : null;
+  const nuW = nu && nu.pays === "" && /^\d{2}$/.test(nu.n) && Number(nu.n) >= 23 && Number(nu.n) <= 54 ? Number(nu.n) : null;
+  const tours = bas?.w ? [bas.w] : bas?.ambigu ? [Number(valeur.split("/")[0])] : nuW ? [nuW] : [];
+  const morceaux = bas?.w ? [] : bas?.ambigu ? valeur.split("/").map((x) => x.trim()) : jetons(valeur);
+  return options.filter((o) => jetons(o).some((j) =>
+    tours.includes(lireTourDeTaille(j)?.w) || morceaux.some((x) => memeTaille(j, x))));
+}
+
+/**
  * Pourquoi ça n'a pas marché — pour écrire un message honnête plutôt que le
  * même texte dans deux situations qui n'ont rien à voir.
  *   'hors_vocabulaire' : la grille ne porte tout simplement pas cette taille
@@ -298,6 +418,7 @@ export function libelleTaille(v) {
  */
 export function diagnosticTaille(brut, grille, opts) {
   if (tailleDansGrille(brut, grille, opts)) return null;
+  if (lireTourDeTaille(String(brut ?? "").trim())?.ambigu) return "ambigu";
   const options = (Array.isArray(grille) ? grille : []).map((o) =>
     String(typeof o === "string" ? o : (o?.code ?? o?.title ?? "")).trim()).filter(Boolean);
   const morceaux = jetons(String(brut ?? "").trim());

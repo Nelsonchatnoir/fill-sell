@@ -1,7 +1,7 @@
 // Autotest du vocabulaire des tailles (_shared/tailles.js).
 // Bâti sur les cas RÉELS relevés en base le 18/09, et sur les refus qui
 // doivent le rester. `node scripts/tailles-selftest.mjs`
-import { tailleDansGrille, memeTaille, diagnosticTaille, libelleTaille } from '../supabase/functions/_shared/tailles.js'
+import { tailleDansGrille, memeTaille, diagnosticTaille, libelleTaille, candidatsTaille } from '../supabase/functions/_shared/tailles.js'
 
 // Grilles Opla réelles (docs/opla/grilles-tailles.tsv)
 const G1 = ['TAILLE_UNIQUE','XXS','XS','S','M','L','XL','XXL','3XL','4XL','5XL','6XL','7XL','8XL']
@@ -97,6 +97,109 @@ console.log('\n── AMBIGUÏTÉ : on ne tranche pas tout seul ─────�
 doitDonner('M', ['M / 38 / 10','M / 40 / 12'], null, 'deux lignes portent « M » → refus')
 console.log(`  diagnostic « 44.5 » sur G3       : ${diagnosticTaille('44.5', G3)}`)
 console.log(`  diagnostic « M » sur deux lignes : ${diagnosticTaille('M', ['M / 38 / 10','M / 40 / 12'])}`)
+
+// ── LES BAS (02/10, point 11 — jeans et chino de Patrick Giry) ─────────────
+// Grilles RÉELLES relevées en base le 02/10 (platform_category_aspects,
+// ebay_item_aspects) — jamais des grilles imaginées.
+const FRW = [[23,32],[24,34],[25,34],[26,36],[27,36],[28,38],[29,38],[30,40],[31,40],[32,42],[33,42],[34,44],[35,44],
+  [36,46],[38,48],[40,50],[42,52],[44,54],[46,56],[48,58],[50,60],[52,62],[54,64]].map(([w, f]) => `W${w} | FR ${f}`)
+// Vinted « Hommes > Vêtements > Jeans > Jeans coupe droite » ET « Hommes > … > Pantalons > Chinos » (même grille)
+const VINTED_H_JEANS = ['XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','7XL','8XL','Taille unique', ...FRW]
+// Vinted « Femmes > Vêtements > Jeans > Jeans droits » : SIX onglets, et pour Vinted FR 40 = EU 38
+const n = (p, de, a, pas = 2) => Array.from({ length: (a - de) / pas + 1 }, (_, i) => `${p} ${de + i * pas}`)
+const VINTED_F_JEANS = ['XXXS','XXS','XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','7XL','8XL','9XL','Autre','Taille unique',
+  ...n('EU', 30, 58), ...n('UK', 2, 30), ...n('FR', 30, 60), ...n('IT', 34, 62), 'US 00', ...n('US', 0, 26)]
+// Opla MEN_STRAIGHTFIT_JEANS et MEN_CHINOS (titres, tels que l'écran les montre)
+const OPLA_H_BAS = ['Taille unique','XXS','XS','S','M','L','XL','XXL','3XL','4XL','5XL','6XL','7XL','8XL']
+// Leboncoin « Mode > Vêtements », clothing_st (sa propre table nombre - lettre)
+const LBC_VET = ['Taille unique','30 - XXXS','32 - XXS','34 - XS','36 - S','38 - M','40 - L','42 - XL','44 - XXL','46 - XXXL',
+  '48 - 4XL','50 - 5XL','52 - 6XL','54 - 7XL','56 - 8XL et plus']
+// Beebs « Homme > Pantalons » et « Femme > Jeans »
+const BEEBS_H_BAS = [...n('', 32, 64).map(s => s.trim()), 'XS','S','M','L','XL','XXL','XXXL','4XL','5XL','6XL','7XL','8XL']
+const BEEBS_F_JEANS = ['XXXS / 30','XXS / 32','XS / 34','S / 36','M / 38','L / 40','XL / 42','XXL / 44','XXXL / 46','4XL / 48',
+  '5XL / 50','6XL / 52','7XL / 54','8XL / 56','9XL / 58','Taille unique','Autre']
+// eBay 11483 « Homme : vêtements > Jeans » (fermée après le refus 25129) et 11554 « Femme > Jeans »
+const EBAY_11483 = ['2XS','XS','S','M','L','XL','2XL','3XL','4XL','5XL','6XL','7XL','8XL','32','34','36','37','38','39','40',
+  ...n('', 42, 70).map(s => s.trim()),'Taille unique', ...n('UK', 26, 44), ...n('US', 26, 44)]
+const EBAY_11554 = ['3XS','2XS','XS','S','M','L','XL','2XL','3XL','4XL','5XL','6XL', ...n('', 32, 60).map(s => s.trim()),'Taille unique',
+  ...n('IT', 36, 54), ...n('UK', 4, 22), ...n('US', 0, 18)]
+
+console.log('\n── BAS HOMME — Vinted « W.. | FR .. » : la table de Vinted, lue chez lui ──')
+doitDonner('W34 | FR 44', VINTED_H_JEANS, 'W34 | FR 44', 'la réponse de Patrick, telle quelle')
+doitDonner('35/34', VINTED_H_JEANS, 'W35 | FR 44', 'Patrick, « Jean bleu denim taille 35/34 » : W35 L34, le L ne compte pas')
+doitDonner('W32 L34', VINTED_H_JEANS, 'W32 | FR 42')
+doitDonner('W32/L34', VINTED_H_JEANS, 'W32 | FR 42')
+doitDonner('32x34', VINTED_H_JEANS, 'W32 | FR 42')
+doitDonner('W28', VINTED_H_JEANS, 'W28 | FR 38')
+doitDonner('33/32', VINTED_H_JEANS, 'W33 | FR 42', 'Patrick, « Jean Skinny 33/32 » — jamais le FR 32 de la longueur')
+doitDonner('46', VINTED_H_JEANS, 'W36 | FR 46', 'Patrick, « Jean bleu délavé » 46 : parti SANS Vinted le 02/10')
+doitDonner('FR 46', VINTED_H_JEANS, 'W36 | FR 46')
+doitDonner('T46', VINTED_H_JEANS, 'W36 | FR 46')
+doitDonner('44', VINTED_H_JEANS, null, 'FR 44 = W34 OU W35 chez Vinted : deux options, on demande')
+doitDonner('FR 40', VINTED_H_JEANS, null, 'W30 | FR 40 ou W31 | FR 40 : on demande')
+doitDonner('EU 42', VINTED_H_JEANS, null, 'EU ≠ FR : on garde le pays (point G)')
+doitDonner('34/36', VINTED_H_JEANS, null, 'W34 L36 ou fourchette FR 34/36 : on demande')
+doitDonner('XL', VINTED_H_JEANS, 'XL', 'une lettre reste une lettre')
+console.log(`  candidates de « 44 »  : ${JSON.stringify(candidatsTaille('44', VINTED_H_JEANS))}`)
+console.log(`  candidates de « 34 »  : ${JSON.stringify(candidatsTaille('34', VINTED_H_JEANS))}`)
+{
+  const c = candidatsTaille('44', VINTED_H_JEANS); const ok = c.length === 3 && c.includes('W34 | FR 44') && c.includes('W35 | FR 44') && c.includes('W44 | FR 54'); if (!ok) ko++
+  console.log(`${ok ? '  ok  ' : '  KO  '} « 44 » : FR 44 (W34, W35) et sa lecture W44, en tête de la question`)
+  const d = candidatsTaille('34', VINTED_H_JEANS); const ok2 = d.includes('W34 | FR 44') && d.includes('W24 | FR 34'); if (!ok2) ko++
+  console.log(`${ok2 ? '  ok  ' : '  KO  '} « 34 » d'un jean : FR 34 ET W34 proposés, aucun choisi`)
+}
+
+console.log('\n── BAS FEMME — Vinted à onglets (EU, UK, FR, IT, US) : le pays se garde ──')
+doitDonner('38', VINTED_F_JEANS, 'FR 38', 'un nombre nu est français ; jamais EU 38 (= FR 40 chez Vinted)')
+doitDonner('EU 42', VINTED_F_JEANS, 'EU 42')
+doitDonner('FR 40', VINTED_F_JEANS, 'FR 40')
+doitDonner('W34 | FR 44', VINTED_F_JEANS, 'FR 44', 'le morceau FR de l\'étiquette composite')
+doitDonner('W28', VINTED_F_JEANS, null, 'aucun W dans cette grille : on demande, jamais « 28 »')
+doitDonner('35/34', VINTED_F_JEANS, null)
+doitDonner('M', VINTED_F_JEANS, 'M')
+
+console.log('\n── Opla MEN_STRAIGHTFIT_JEANS / MEN_CHINOS : des lettres, et rien ne s\'y convertit ──')
+for (const c of ['W34 | FR 44', '35/34', 'W32 L34', 'FR 40', 'EU 42', '38', 'W28', '46']) doitDonner(c, OPLA_H_BAS, null, 'W/FR → lettre serait une conversion')
+doitDonner('XL', OPLA_H_BAS, 'XL')
+doitDonner('2XL', OPLA_H_BAS, 'XXL')
+
+console.log('\n── Leboncoin « 44 - XXL » : sa propre table nombre - lettre ──')
+doitDonner('W34 | FR 44', LBC_VET, '44 - XXL')
+doitDonner('FR 40', LBC_VET, '40 - L')
+doitDonner('38', LBC_VET, '38 - M')
+doitDonner('M', LBC_VET, '38 - M')
+doitDonner('35/34', LBC_VET, null, 'un W ne devient pas un nombre français')
+doitDonner('EU 42', LBC_VET, null)
+
+console.log('\n── Beebs ──')
+doitDonner('W34 | FR 44', BEEBS_H_BAS, '44')
+doitDonner('FR 40', BEEBS_H_BAS, '40')
+doitDonner('46', BEEBS_H_BAS, '46')
+doitDonner('W28', BEEBS_H_BAS, null)
+doitDonner('38/40', BEEBS_H_BAS, null, 'une fourchette n\'est pas UNE taille')
+doitDonner('38', BEEBS_F_JEANS, 'M / 38')
+doitDonner('W34 | FR 44', BEEBS_F_JEANS, 'XXL / 44', 'la table de Beebs, lue chez Beebs')
+
+console.log('\n── eBay (11483 homme fermée, 11554 femme) ──')
+doitDonner('W34 | FR 44', EBAY_11483, '44', 'le FR de l\'étiquette, jamais le 34 du W')
+doitDonner('35/34', EBAY_11483, null, 'ni « 35 », ni « US 34 » : on demande')
+doitDonner('W32 L34', EBAY_11483, null)
+doitDonner('FR 40', EBAY_11483, '40')
+doitDonner('46', EBAY_11483, '46')
+doitDonner('XXL', EBAY_11483, '2XL')
+doitDonner('38', EBAY_11554, '38')
+doitDonner('W28', EBAY_11554, null)
+
+console.log('\n── NON-RÉGRESSION : hauts, pointures, enfants ──')
+doitDonner('S/M', VINTED_FEMME, 'S', 'double taille en lettres : comportement d\'avant, inchangé')
+doitDonner('42', ['40','41','42','43','44','44,5'], '42', 'pointure')
+doitDonner('44,5', ['44','44,5','45'], '44,5', 'demi-pointure, écrite avec une virgule par la grille')
+doitDonner('EU 42', ['41','42','43'], null, 'point G : « EU 42 » garde son pays')
+doitDonner('42', ['EU 41','EU 42','EU 43','XS','S'], 'EU 42', 'règle du 23/09 (vestes de Joséphine) : nu → EU N, en dernier recours')
+doitDonner('42', ['FR 42','EU 42'], 'FR 42', 'mais le pays de l\'app d\'abord')
+doitDonner('12 ans', G2, '12Y')
+doitDonner('10/12', G2, null, 'enfant sans unité : jamais lu comme un jean')
+doitDonner('M', VINTED_COMBINE, 'M / 38 / 10')
 
 console.log('\n── memeTaille, symétrie ─────────────────────────────────────────────')
 for (const [a, b, att] of [['12 ans','12Y',true],['12 ans','12M',false],['44,5','44.5',true],

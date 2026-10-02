@@ -13,9 +13,10 @@
 // dès que plus rien ne bloque.
 import { useState } from "react";
 import { AspectValueInput } from "../components/ListingPreviewScreen";
-import { questionsAPoser, aspectBloquant } from "./moteur/regles";
+import { questionsAPoser, aspectBloquant, propagerReponseTaille, tailleAmbigue } from "./moteur/regles";
 import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
-import { listeFaitFoiRelevee } from "./moteur/listes";
+import { listeFaitFoiRelevee, listeCandidatsDabord } from "./moteur/listes";
+import { tailleDansGrille } from "../../supabase/functions/_shared/tailles.js";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { Carte, Puce } from "./composants";
 import { NOM } from "./texte";
@@ -50,6 +51,46 @@ export default function BlocQuestions({ m }) {
   // La description Vinted saisie ici reste sous les yeux (comme les autres
   // réponses) : elle ne disparaît plus au premier caractère tapé.
   const [descriptionTouchee, setDescriptionTouchee] = useState(false);
+
+  // ── LA TAILLE, RÉPONDUE UNE FOIS (02/10, point 11) ──────────────────────
+  // Toutes les plateformes cochées qui portent une taille, avec leur grille :
+  // une réponse donnée pour l'une s'écrit chez les autres là où elle vaut
+  // (moteur/regles.propagerReponseTaille) — jamais par-dessus une réponse.
+  const lignesTaille = () => {
+    const out = [];
+    for (const [gp, list] of Object.entries(m.genericRequiredStatus ?? {})) {
+      const a = (list ?? []).find(x => genericFieldToSharedKey(gp, x.key) === "taille");
+      if (a) out.push({ gp, a, valeur: a.value ?? "", allowedValues: a.allowedValues, enQuestion: a.state === "invalid" || a.state === "missing", repondue: Boolean(stickyGeneric[gp]?.has(a.key)) });
+    }
+    const e = (m.ebayRequiredStatus ?? []).find(x => x.sharedKey === "taille" || x.name === "Taille");
+    if (e) out.push({ gp: "ebay", a: e, valeur: e.value ?? "", allowedValues: e.allowedValues, enQuestion: e.state === "invalid" || e.state === "missing", repondue: stickyEbay.has(e.name) });
+    return out;
+  };
+  // Écrit une taille sur UNE plateforme, par le canal de sa ligne (le champ
+  // DÉDIÉ d'abord — leçon RoCotCot), et la garde sous les yeux.
+  const ecrireTaille = (gp, a, v) => {
+    if (gp === "ebay") {
+      toucherEbay(a?.name ?? "Taille");
+      if (m.setPlatformDedicatedField) m.setPlatformDedicatedField("ebay", "taille", v);
+      else if (m.setEbaySharedField) m.setEbaySharedField("taille", v);
+      return;
+    }
+    if (!a) return;
+    toucherGeneric(gp, a.key);
+    if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
+    else m.setPlatformAspect(gp, a.key, v);
+  };
+  const repondreTaille = (gp, a, v) => {
+    const lignes = lignesTaille();
+    // Seul un CHOIX dans la grille se propage — jamais une frappe en cours
+    // (« Autre valeur… » écrit à chaque touche : « S » de « S/M » partirait).
+    const choisie = Array.isArray(a?.allowedValues) && a.allowedValues.includes(v);
+    const ecritures = choisie
+      ? propagerReponseTaille({ gp, valeur: v, avant: a?.value ?? "", ambigu: tailleAmbigue(a?.value, a?.allowedValues), lignes })
+      : [{ gp, valeur: v }];
+    for (const { gp: p, valeur } of ecritures) ecrireTaille(p, p === gp ? a : lignes.find(l => l.gp === p)?.a, valeur);
+    m.noterReponseFicheValeur?.("taille", v);
+  };
 
   const q = questionsAPoser({
     missingSharedFields: m.redSharedFields, sharedFieldCfg, stickyShared,
@@ -169,6 +210,69 @@ export default function BlocQuestions({ m }) {
           );
         })}
 
+        {/* La taille, UNE question pour les plateformes qui ne savent pas
+            l'écrire (02/10, point 11) : une seule réponse quand une valeur
+            vaut dans toutes leurs grilles, sinon la grille de chacune — dans
+            la même question, ses candidates en tête. */}
+        {q.questionTaille && (() => {
+          const qt = q.questionTaille;
+          const bloque = qt.lignes.some(({ a }) => aspectBloquant(a));
+          const noms = qt.lignes.map(({ gp }) => NOM(gp)).join(" · ");
+          const brut = qt.lignes.map(({ a }) => String(a.value ?? "").trim()).find(Boolean) ?? "";
+          if (qt.mode === "une") {
+            const valeurs = qt.lignes.map(({ a }) => String(a.value ?? "").trim());
+            const commune = qt.communes.find(c => valeurs.every((v, i) => v && tailleDansGrille(c, qt.lignes[i].a.allowedValues)?.valeur === v)) ?? "";
+            return (
+              <div key="taille-unique" className={`fsn-q${bloque ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }}>
+                <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{en ? "Size" : "Taille"}</div><Puce ton={bloque ? "geste" : "ok"}>{noms}</Puce></div>
+                <div className="fsn-q-why">
+                  {brut
+                    ? (en ? `“${brut}” can't be written as is on ${noms}: choose once, it's written for each.` : `« ${brut} » ne s'écrit pas tel quel sur ${noms} : choisis une fois, on l'écrit pour chacune.`)
+                    : (en ? `Required on ${noms}: choose once, it's written for each.` : `Exigée sur ${noms} : choisis une fois, on l'écrit pour chacune.`)}
+                </div>
+                <AspectValueInput
+                  value={commune}
+                  allowedValues={qt.communes}
+                  strict
+                  closedMax={m.EBAY_CLOSED_LIST_MAX}
+                  onChange={v => {
+                    for (const { gp, a } of qt.lignes) ecrireTaille(gp, a, tailleDansGrille(v, a.allowedValues)?.valeur ?? v);
+                    m.noterReponseFicheValeur?.("taille", v);
+                  }}
+                  T={TN}
+                  tailleTexte={16}
+                  idBase="fsn-taille-commune"
+                />
+              </div>
+            );
+          }
+          return (
+            <div key="taille-par-grille" className={`fsn-q${bloque ? " fsn-q--bloque" : ""}`} style={{ gridColumn: "1 / -1" }}>
+              <div className="fsn-row fsn-row--between"><div className="fsn-q-t">{en ? "Size" : "Taille"}</div><Puce ton={bloque ? "geste" : "ok"}>{noms}</Puce></div>
+              <div className="fsn-q-why">
+                {en
+                  ? `${brut ? `“${brut}”` : "This size"} has no single equivalent in these grids: choose it in each one (likely options first). An answer is reused wherever it fits.`
+                  : `${brut ? `« ${brut} »` : "Cette taille"} n'a pas d'équivalent unique dans ces grilles : choisis-la dans chacune (les options probables en tête). Une réponse resservira partout où elle vaut.`}
+              </div>
+              {qt.lignes.map(({ gp, a, candidats }) => (
+                <div key={`t:${gp}`} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div className="fsn-row fsn-row--between"><span className="fsn-q-why">{NOM(gp)}</span><Puce ton={aspectBloquant(a) ? "geste" : "ok"}>{aspectBloquant(a) ? (en ? "to choose" : "à choisir") : "✓"}</Puce></div>
+                  <AspectValueInput
+                    value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
+                    allowedValues={candidats.length ? listeCandidatsDabord(a.allowedValues, candidats) : a.allowedValues}
+                    strict={gp === "ebay" ? a.mode === "SELECTION_ONLY" : false}
+                    closedMax={m.EBAY_CLOSED_LIST_MAX}
+                    onChange={v => repondreTaille(gp, a, v)}
+                    T={TN}
+                    tailleTexte={16}
+                    idBase={`fsn-taille-${gp}`}
+                  />
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
         {q.redGenericAspects.map(({ gp, a }) => {
           // (25/09) Rayon Vinted « neuf seulement » face à un article d'occasion :
           // aucune valeur à choisir (la seule serait « Neuf », un mensonge) —
@@ -194,6 +298,8 @@ export default function BlocQuestions({ m }) {
           // ne porte encore rien (jamais par-dessus le texte du vendeur).
           const sk = genericFieldToSharedKey(gp, a.key);
           const ecrire = (v) => {
+            // Une taille répondue ici vaut aussi ailleurs (02/10, point 11).
+            if (sk === "taille") { repondreTaille(gp, a, v); return; }
             toucherGeneric(gp, a.key);
             if (a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(gp, a.dedicatedTarget, v);
             else m.setPlatformAspect(gp, a.key, v);
@@ -257,6 +363,7 @@ export default function BlocQuestions({ m }) {
               strict={a.mode === "SELECTION_ONLY"}
               closedMax={m.EBAY_CLOSED_LIST_MAX}
               onChange={v => {
+                if (a.sharedKey === "taille") { repondreTaille("ebay", a, v); return; }
                 toucherEbay(a.name);
                 if (a.sharedKey && m.setEbaySharedField) { m.noterReponseFiche?.(a.sharedKey); m.setEbaySharedField(a.sharedKey, v); }
                 else m.setEbayAspect(a.name, v);

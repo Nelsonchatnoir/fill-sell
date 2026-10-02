@@ -479,5 +479,96 @@ console.log("\n[RN] Rayon Vinted « neuf seulement » (25/09) — jamais « Neuf
   ok("« Publier » emmène Leboncoin, Vinted nommée avec son motif", eq(ex.aPublier, ["leboncoin"]), JSON.stringify(ex));
 }
 
+// ── LES BAS DE PATRICK GIRY (02/10, point 11) : une taille connue n'est plus
+//    redemandée, le job porte l'écriture de la grille, et ce qui ne se traduit
+//    pas devient UNE question ─────────────────────────────────────────────────
+console.log("\n[taille des bas] Patrick Giry, 02/10 — Vinted, Opla, Leboncoin, Beebs, eBay");
+{
+  const FRW = [[23,32],[24,34],[25,34],[26,36],[27,36],[28,38],[29,38],[30,40],[31,40],[32,42],[33,42],[34,44],[35,44],
+    [36,46],[38,48],[40,50],[42,52],[44,54],[46,56],[48,58],[50,60],[52,62],[54,64]].map(([w, f]) => `W${w} | FR ${f}`);
+  const VINTED_H = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "4XL", "5XL", "6XL", "7XL", "8XL", "Taille unique", ...FRW];
+  const OPLA_H = ["Taille unique", "XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL", "6XL", "7XL", "8XL"];
+  const BEEBS_H = ["32", "34", "36", "38", "40", "42", "44", "46", "48", "50", "XS", "S", "M", "L", "XL", "XXL"];
+  const EBAY_H = ["2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "5XL", "6XL", "7XL", "8XL", "32", "34", "36", "37", "38", "39", "40",
+    "42", "44", "46", "48", "50", "Taille unique", "UK 34", "US 34"];
+  const g = C.genericFieldToSharedKey;
+  const juge = (platform, key, value, allowedValues) => L.jugerValeurContreListe({ platform, key, value, allowedValues });
+
+  // 1. La cause : « 46 » ne trouvait pas « W36 | FR 46 » → Vinted demandée, puis abandonnée.
+  const j46 = juge("vinted", "size", "46", VINTED_H);
+  ok("Vinted : « 46 » EST « W36 | FR 46 » → plus de question, Vinted ne part plus sans le jean", j46.dans === true && j46.valeurListe === "W36 | FR 46", JSON.stringify(j46));
+  ok("Vinted : « 35/34 » EST « W35 | FR 44 »", juge("vinted", "size", "35/34", VINTED_H).valeurListe === "W35 | FR 44");
+  ok("Vinted : « 44 » (W34 ou W35) reste une question — on ne tranche pas", juge("vinted", "size", "44", VINTED_H).dans === false);
+  ok("Leboncoin : « W34 | FR 44 » EST « 44 - XXL »", juge("leboncoin", "clothing_st", "W34 | FR 44", ["38 - M", "40 - L", "42 - XL", "44 - XXL"]).valeurListe === "44 - XXL");
+  ok("Beebs : « W34 | FR 44 » EST « 44 »", juge("beebs", "Taille", "W34 | FR 44", BEEBS_H).valeurListe === "44");
+
+  // 2. Le job porte l'écriture de la grille (l'extension ne cherche que ce qu'on lui donne).
+  const lignesV = [{ key: "size", allowedValues: VINTED_H }];
+  ok("job Vinted : « 46 » part en « W36 | FR 46 »", L.tailleDuJob({ platform: "vinted", taille: "46", lignes: lignesV }) === "W36 | FR 46");
+  ok("job Vinted : une valeur déjà exacte ne bouge pas", L.tailleDuJob({ platform: "vinted", taille: "W34 | FR 44", lignes: lignesV }) === null);
+  ok("job Vinted : « 44 » ambigu ne part pas en devinette", L.tailleDuJob({ platform: "vinted", taille: "44", lignes: lignesV }) === null);
+  ok("job Beebs : « W34 | FR 44 » part en « 44 »", L.tailleDuJob({ platform: "beebs", taille: "W34 | FR 44", lignes: [{ key: "Taille", allowedValues: BEEBS_H }] }) === "44");
+  ok("job Opla : jamais touché ici (son serveur traduit)", L.tailleDuJob({ platform: "opla", taille: "46", lignes: [{ key: "size", allowedValues: OPLA_H }] }) === null);
+  ok("job sans grille relevée : rien", L.tailleDuJob({ platform: "vinted", taille: "46", lignes: [] }) === null);
+
+  // 3. eBay : le vocabulaire des tailles, plus de rapprochement par mots sur un nombre.
+  ok("eBay : « W34 | FR 44 » → « 44 » (jamais le 34 du W)", L.tailleDansListeEbay("W34 | FR 44", EBAY_H) === "44");
+  ok("eBay : « 44.5 » sur une liste d'entiers → rien (jamais 44)", L.tailleDansListeEbay("44.5", ["44", "45"]) === null);
+  ok("eBay : « Unique » → « Taille unique » (mot, sans chiffre)", L.tailleDansListeEbay("Unique", EBAY_H) === "Taille unique");
+  const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECTION_ONLY";
+  const pfE = { taille: "W34 | FR 44", ebayAspects: {} };
+  const vE = R.gardeAspectsEbay({ pfE, ebayRequiredFull: [{ name: "Taille", allowedValues: EBAY_H, mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: L.nearestAllowedValue, listeFaitFoi } });
+  ok("garde eBay au clic : « W34 | FR 44 » rapprochée en « 44 », valeur du job corrigée", pfE.taille === "44" && !vE.invalides.length, JSON.stringify({ pfE, vE }));
+  const pfE2 = { taille: "35/34", ebayAspects: {} };
+  const vE2 = R.gardeAspectsEbay({ pfE: pfE2, ebayRequiredFull: [{ name: "Taille", allowedValues: EBAY_H, mode: "SELECTION_ONLY" }], outils: { nearestAllowedValue: L.nearestAllowedValue, listeFaitFoi } });
+  ok("garde eBay au clic : « 35/34 » refusée (liste fermée), jamais « 34 »", pfE2.taille === "35/34" && vE2.invalides.length === 1, JSON.stringify(vE2));
+
+  // 4. UNE question pour toutes les plateformes qui ne savent pas l'écrire.
+  const inv = (key, value, allowedValues) => ({ key, label: "Taille", state: "invalid", value, allowedValues, blocking: true, dedicatedTarget: "taille" });
+  const q1 = R.questionsAPoser({
+    genericRequiredStatus: { vinted: [{ key: "size", label: "Taille", state: "ok", value: "W35 | FR 44", allowedValues: VINTED_H }], opla: [inv("size", "35/34", OPLA_H)] },
+    ebayRequiredStatus: [{ name: "Taille", state: "invalid", sharedKey: "taille", value: "35/34", allowedValues: EBAY_H, mode: "SELECTION_ONLY", blocking: true }],
+    genericFieldToSharedKey: g, SHARED_PROPAGATION: C.SHARED_PROPAGATION,
+  });
+  ok("« 35/34 » : Opla + eBay = UNE question, une seule réponse (lettres communes)",
+    q1.questionTaille?.mode === "une" && q1.redRestants === 1 && q1.redGenericAspects.length === 0 && q1.redEbayAspects.length === 0
+      && q1.questionTaille.communes.includes("XL") && q1.questionTaille.communes.includes("XXL") && !q1.questionTaille.communes.some(c => /\d{2}/.test(c)),
+    JSON.stringify(q1.questionTaille));
+  ok("la réponse commune « XXL » s'écrit dans la grille de chacune (Opla XXL, eBay 2XL)",
+    juge("opla", "size", "XXL", OPLA_H).valeurListe === "XXL" && L.tailleDansListeEbay("XXL", EBAY_H) === "2XL");
+  const q2 = R.questionsAPoser({
+    genericRequiredStatus: { vinted: [inv("size", "44", VINTED_H)], opla: [inv("size", "44", OPLA_H)] },
+    genericFieldToSharedKey: g, SHARED_PROPAGATION: C.SHARED_PROPAGATION,
+  });
+  const lv = q2.questionTaille?.lignes.find(l => l.gp === "vinted");
+  ok("« 44 » : Vinted (W34 ou W35) + Opla = UNE question, la grille de chacune, candidates Vinted en tête",
+    q2.questionTaille?.mode === "par_plateforme" && q2.redRestants === 1 && lv?.candidats.includes("W34 | FR 44") && lv?.candidats.includes("W35 | FR 44"),
+    JSON.stringify(q2.questionTaille));
+  const q3 = R.questionsAPoser({ genericRequiredStatus: { vinted: [inv("size", "44", VINTED_H)] }, genericFieldToSharedKey: g, SHARED_PROPAGATION: C.SHARED_PROPAGATION });
+  ok("une seule plateforme en question : la question d'avant, inchangée", !q3.questionTaille && q3.redGenericAspects.length === 1);
+
+  // 5. La réponse sert partout où elle vaut — jamais par-dessus une autre.
+  const ecr1 = R.propagerReponseTaille({ gp: "vinted", valeur: "W34 | FR 44", avant: "34", ambigu: R.tailleAmbigue("34", VINTED_H), lignes: [
+    { gp: "ebay", valeur: "34", allowedValues: EBAY_H, enQuestion: false },
+    { gp: "opla", valeur: "34", allowedValues: OPLA_H, enQuestion: true },
+  ] });
+  ok("jean « 34 » : la réponse Vinted « W34 | FR 44 » corrige eBay (« 34 » = FR 34 !) en « 44 », Opla reste à choisir",
+    eq(ecr1, [{ gp: "vinted", valeur: "W34 | FR 44" }, { gp: "ebay", valeur: "44" }]), JSON.stringify(ecr1));
+  const ecr2 = R.propagerReponseTaille({ gp: "opla", valeur: "L", avant: "44", ambigu: R.tailleAmbigue("44", OPLA_H), lignes: [
+    { gp: "ebay", valeur: "44", allowedValues: EBAY_H, enQuestion: false },
+    { gp: "vinted", valeur: "W34 | FR 44", allowedValues: VINTED_H, enQuestion: false, repondue: true },
+  ] });
+  ok("chino « 44 » : « L » choisi pour Opla ne remplace ni eBay « 44 » ni la réponse Vinted", eq(ecr2, [{ gp: "opla", valeur: "L" }]), JSON.stringify(ecr2));
+  const ecr3 = R.propagerReponseTaille({ gp: "opla", valeur: "XL", avant: "35/34", ambigu: false, lignes: [
+    { gp: "ebay", valeur: "35/34", allowedValues: EBAY_H, enQuestion: true },
+  ] });
+  ok("« 35/34 » : « XL » pour Opla vaut aussi pour eBay, encore en question", eq(ecr3, [{ gp: "opla", valeur: "XL" }, { gp: "ebay", valeur: "XL" }]), JSON.stringify(ecr3));
+
+  // 6. Non-régression : hauts, pointures, enfants passent comme avant.
+  ok("haut : « M » sur la grille combinée Vinted", juge("vinted", "size", "M", ["S / 36 / 8", "M / 38 / 10"]).valeurListe === "M / 38 / 10");
+  ok("pointure : « 42 » sur Beebs", juge("beebs", "Pointure", "42", ["41", "42", "43"]).valeurListe === "42");
+  ok("enfant : « 12 ans » sur Opla", juge("opla", "size", "12 ans", ["10 ans", "12 ans"]).valeurListe === "12 ans");
+}
+
 console.log(ko ? `\n${ko} KO` : "\nTout est vert.");
 process.exit(ko ? 1 : 0);
