@@ -31,7 +31,9 @@ const CLASSES_REQUISES = ['AppleSignInPlugin', 'CameraPlugin'];
 // Plugins sans lesquels le binaire est cassé de façon invisible au build.
 // La vérification vit ici plutôt que dans un grep du YAML : elle porte sur le
 // fichier réellement embarqué, après patch.
-const CLASSES_CRITIQUES = ['CapacitorUpdaterPlugin', 'NativePurchasesPlugin', 'AppleSignInPlugin'];
+// (02/10) CapgoInAppReviewPlugin : sans lui, la demande d'avis officielle
+// (StoreKit requestReview) ne part jamais — et rien ne le dirait.
+const CLASSES_CRITIQUES = ['CapacitorUpdaterPlugin', 'NativePurchasesPlugin', 'AppleSignInPlugin', 'CapgoInAppReviewPlugin'];
 
 if (!existsSync(CIBLE)) {
   console.error(`ERREUR : ${CIBLE} introuvable — \`npx cap sync ios\` n'a pas tourné ?`);

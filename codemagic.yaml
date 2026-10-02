@@ -81,9 +81,16 @@ workflows:
           #    prochaine OTA doit donc être numérotée 2.8.1 ou au-dessus —
           #    jamais 2.7.28. Elle sera servie aux deux parcs : > 2.7.27 pour
           #    qui est resté sur le binaire 2.7, > 2.8 pour qui a pris le neuf.
+          #
+          # 2.9.38 (02/10) : la DEMANDE D'AVIS officielle (StoreKit
+          # requestReview, @capgo/capacitor-in-app-review) et le retour
+          # haptique (@capacitor/haptics) — natifs, une OTA ne les apporte pas.
+          # Aligné sur package.json 2.9.38 (OTA servie à 2.9.37 le 02/10) et
+          # Android versionName 2.9.38 / versionCode 32. Plancher des OTA :
+          # la suivante sera 2.9.39 ou au-dessus.
           BUILD_NUMBER=$(date +%y%m%d%H%M)
           echo "Build number (timestamp): $BUILD_NUMBER"
-          cd ios/App && agvtool new-marketing-version 2.8 && agvtool new-version -all $BUILD_NUMBER
+          cd ios/App && agvtool new-marketing-version 2.9.38 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles

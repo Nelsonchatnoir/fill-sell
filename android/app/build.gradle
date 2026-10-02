@@ -97,9 +97,13 @@ android {
         // versionCode 31 / versionName 2.9.10 (24/09) : binaire du main servi en
         // OTA 2.9.10 (canal production). Même plancher que le canal : la
         // prochaine OTA doit être 2.9.11 ou au-dessus. autoUpdate atInstall inchangé.
+        // versionCode 32 / versionName 2.9.38 (02/10) : la demande d'avis
+        // OFFICIELLE (Play In-App Review, @capgo/capacitor-in-app-review) et le
+        // retour haptique (@capacitor/haptics) — natifs. Même numéro que le
+        // bundle embarqué (package.json 2.9.38) ; prochaine OTA ≥ 2.9.39.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 31
-        versionName "2.9.10"
+        versionCode 32
+        versionName "2.9.38"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
