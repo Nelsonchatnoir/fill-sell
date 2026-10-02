@@ -4,14 +4,14 @@ description: "Publier la même annonce sur Vinted, Leboncoin, eBay et Beebs sans
 date: "2026-07-30"
 lang: "fr"
 og_image: "/og-image-fillsell.png"
-faq: [{"q":"Sur quelles plateformes FillSell publie-t-il ?","a":"Sur Vinted, Leboncoin, eBay et Beebs. Vous choisissez, annonce par annonce, lesquelles activer — de une à quatre."},{"q":"Faut-il laisser son ordinateur allumé ?","a":"Pour que les publications partent, oui : l'extension travaille quand Chrome est ouvert. Si l'ordinateur est éteint, les annonces restent en file d'attente et partent à la prochaine ouverture de Chrome."},{"q":"L'extension connaît-elle mes mots de passe ?","a":"Non. Elle utilise les sessions déjà ouvertes dans votre navigateur : c'est vous qui vous connectez à chaque plateforme, comme d'habitude. FillSell ne demande ni ne stocke aucun identifiant de plateforme."},{"q":"Puis-je relire et modifier l'annonce avant publication ?","a":"Oui. Chaque plateforme a sa propre version de l'annonce (titre, description, prix, champs), que vous pouvez éditer avant de cliquer sur Publier. Rien ne part sans votre clic."},{"q":"Que se passe-t-il si je ne suis pas connecté à une plateforme ?","a":"L'annonce attend. L'application vous signale la connexion manquante, et la publication repart d'elle-même une fois que vous êtes reconnecté sur le site concerné."},{"q":"Comment retirer une annonce publiée ?","a":"Depuis l'application : un clic sur le logo d'une plateforme retire l'annonce de ce site uniquement, et un article marqué vendu peut être retiré des autres plateformes. C'est l'extension qui exécute la suppression sur les sites."}]
+faq: [{"q":"Sur quelles plateformes FillSell publie-t-il ?","a":"Sur Vinted, Leboncoin, eBay et Beebs. Vous choisissez, annonce par annonce, lesquelles activer — une ou plusieurs."},{"q":"Faut-il laisser son ordinateur allumé ?","a":"Pour que les publications partent, oui : l'extension travaille quand Chrome est ouvert. Si l'ordinateur est éteint, les annonces restent en file d'attente et partent à la prochaine ouverture de Chrome."},{"q":"L'extension connaît-elle mes mots de passe ?","a":"Non. Elle utilise les sessions déjà ouvertes dans votre navigateur : c'est vous qui vous connectez à chaque plateforme, comme d'habitude. FillSell ne demande ni ne stocke aucun identifiant de plateforme."},{"q":"Puis-je relire et modifier l'annonce avant publication ?","a":"Oui. Chaque plateforme a sa propre version de l'annonce (titre, description, prix, champs), que vous pouvez éditer avant de cliquer sur Publier. Rien ne part sans votre clic."},{"q":"Que se passe-t-il si je ne suis pas connecté à une plateforme ?","a":"L'annonce attend. L'application vous signale la connexion manquante, et la publication repart d'elle-même une fois que vous êtes reconnecté sur le site concerné."},{"q":"Comment retirer une annonce publiée ?","a":"Depuis l'application : un clic sur le logo d'une plateforme retire l'annonce de ce site uniquement, et un article marqué vendu peut être retiré des autres plateformes. C'est l'extension qui exécute la suppression sur les sites."}]
 ---
 
 Vous vendez un blouson. Pour lui donner toutes ses chances, il faudrait le publier sur Vinted, sur Leboncoin, peut-être aussi sur eBay et sur Beebs. Quatre sites, quatre formulaires, quatre fois les mêmes photos à téléverser, le même titre à retaper, la même description à recoller, les mêmes menus de catégorie, d'état et de couleur à dérouler. C'est exactement le problème que résout FillSell : publier ses annonces sur plusieurs plateformes en une seule fois, en ne rédigeant l'annonce qu'une seule fois.
 
 Cet article décrit précisément ce que fait l'extension Chrome de FillSell, ce qu'elle ne fait pas, et ce qui reste entre vos mains.
 
-![Une annonce rédigée une fois dans FillSell, publiée sur quatre plateformes de seconde main](/og-image-fillsell.png)
+![Une annonce rédigée une fois dans FillSell, publiée sur plusieurs plateformes de seconde main](/og-image-fillsell.png)
 
 ## Pourquoi vendre sur plusieurs plateformes en même temps ?
 
@@ -28,7 +28,7 @@ Concrètement, le parcours ressemble à ceci :
 1. **Vous ajoutez les photos** de l'article (elles servent à toutes les plateformes).
 2. **L'application rédige un brouillon d'annonce par plateforme** : titre, description, et les champs propres à chaque site — catégorie, état, taille, couleur, matière, marque…
 3. **Vous relisez, corrigez, fixez le prix.** Chaque version reste éditable individuellement ; rien n'est publié sans votre validation.
-4. **Vous choisissez les plateformes** (de une à quatre) et cliquez sur Publier.
+4. **Vous choisissez les plateformes** (une ou plusieurs) et cliquez sur Publier.
 5. **L'extension Chrome publie pour vous**, plateforme par plateforme, et l'application affiche l'avancement puis le lien de chaque annonce en ligne.
 
 ## Que fait l'extension Chrome à votre place, concrètement ?
@@ -83,7 +83,7 @@ Envie d'essayer ? [Créez votre première annonce sur FillSell](https://fillsell
 
 ### Sur quelles plateformes FillSell publie-t-il ?
 
-Sur Vinted, Leboncoin, eBay et Beebs. Vous choisissez, annonce par annonce, lesquelles activer — de une à quatre.
+Sur Vinted, Leboncoin, eBay et Beebs. Vous choisissez, annonce par annonce, lesquelles activer — une ou plusieurs.
 
 ### Faut-il laisser son ordinateur allumé ?
 

@@ -56,7 +56,7 @@ export default function ExtensionPage() {
     path: "/extension",
     title: "Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay, Beebs",
     description: "Installez l'extension Chrome FillSell : une annonce publiée en une fois sur Vinted, Leboncoin, eBay et Beebs, et retirée des autres plateformes en un tap après la vente.",
-    ogTitle: "Extension Chrome FillSell — une annonce, 4 plateformes",
+    ogTitle: "Extension Chrome FillSell — une annonce, toutes tes plateformes",
     ogType: "website",
   });
 

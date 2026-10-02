@@ -176,8 +176,8 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
       lang,
       titre: lang === "fr" ? "Bienvenue sur FillSell" : "Welcome to FillSell",
       preheader: lang === "fr"
-        ? "Ton stock sur quatre plateformes, depuis ton téléphone."
-        : "Your stock on four marketplaces, from your phone.",
+        ? "Ton stock sur toutes tes plateformes, depuis ton téléphone."
+        : "Your stock on all your marketplaces, from your phone.",
       corps,
       lienDesinscription,
     }),

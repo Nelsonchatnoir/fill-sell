@@ -237,8 +237,8 @@ function lignesDiff(fr, palier, K) {
     {
       ok: true,
       texte: fr
-        ? `${annonces} annonces créées et publiées sur les 4 plateformes par mois`
-        : `${annonces} listings created and published on all 4 platforms a month`,
+        ? `${annonces} annonces créées et publiées sur toutes tes plateformes par mois`
+        : `${annonces} listings created and published on all your platforms a month`,
     },
     { ok: true, texte: repubTexte },
     {
@@ -876,8 +876,8 @@ export default function ConversionModal({
             {quotaCas.geste === 'retouches'
               ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} annonces retouchées par mois.</>
                     : <>On Premium you get {K.quota_retouche_premium} retouched listings a month.</>)
-              : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 4 plateformes.</>
-                    : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 4 platforms.</>)}
+              : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur toutes tes plateformes.</>
+                    : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all your platforms.</>)}
           </div>
         </div>
       )}

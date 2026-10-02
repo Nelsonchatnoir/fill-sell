@@ -145,7 +145,7 @@ const EN = {
   "Commencer": "Get started",
   "Tes annonces,": "Your listings,",
   "publiées partout : Vinted, Leboncoin, eBay et Beebs.": "published everywhere: Vinted, Leboncoin, eBay and Beebs.",
-  "Tu synchronises tes comptes en un clic. L'IA écrit les annonces. FillSell les publie sur les 4 plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.": "Sync your accounts in one click. The AI writes the listings. FillSell publishes them to all 4 marketplaces with your own accounts, and reposts your listings so they climb back up.",
+  "Tu synchronises tes comptes en un clic. L'IA écrit les annonces. FillSell les publie sur toutes tes plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.": "Sync your accounts in one click. The AI writes the listings. FillSell publishes them to all your marketplaces with your own accounts, and reposts your listings so they climb back up.",
   "Commencer gratuitement": "Start free",
   "Installer l'extension Chrome": "Install the Chrome extension",
   "Gratuite · installée une seule fois · aucun mot de passe": "Free · installed once · no passwords",
@@ -157,7 +157,7 @@ const EN = {
   "Patagonia": "Patagonia",
   "Taille unique": "One size",
   "Casquette beige Volcom, coton, taille unique": "Beige Volcom cap, cotton, one size",
-  "4 plateformes, tes comptes": "4 marketplaces, your accounts",
+  "Toutes tes plateformes, tes comptes": "All your marketplaces, your accounts",
   "Sur l'App Store et Google Play": "On the App Store and Google Play",
   "Jamais tes mots de passe": "Never your passwords",
   "Tu synchronises. On publie partout.": "You sync. We publish everywhere.",
@@ -166,7 +166,7 @@ const EN = {
   "Ton ordinateur exécute.": "Your computer executes.",
   "Tu ne les refais pas.": "You won't redo them.",
   "Une annonce.": "One listing.",
-  "Quatre plateformes.": "Four marketplaces.",
+  "Toutes tes plateformes.": "All your marketplaces.",
   "Tes annonces qui dorment": "Your sleeping listings",
   "remontent toutes seules.": "climb back up on their own.",
   "Vendu sur une plateforme ? Tu retires les autres": "Sold on one marketplace? Remove the others",
@@ -183,8 +183,8 @@ const EN = {
   "Tu synchronises. On publie partout. On republie tes annonces.": "You sync. We publish everywhere. We repost your listings.",
   "Ton dressing Vinted entre en un clic": "Your Vinted wardrobe comes in with one click",
   "200 annonces déjà en ligne sur Vinted, Leboncoin, eBay ou Beebs ? Titres, prix, photos : tout arrive dans ton stock. On lit, on ne publie ni ne supprime rien.": "Already 200 listings live on Vinted, Leboncoin, eBay or Beebs? Titles, prices, photos: everything lands in your stock. We read; we never publish or delete anything.",
-  "Publié sur les 4 plateformes": "Published on all 4 marketplaces",
-  "Un seul ajout part sur Vinted, Leboncoin, eBay et Beebs — avec tes comptes. Quatre fois plus d'acheteurs, pas quatre fois le travail.": "One single add goes to Vinted, Leboncoin, eBay and Beebs — with your accounts. Four times more buyers, not four times the work.",
+  "Publié sur toutes tes plateformes": "Published on all your marketplaces",
+  "Un seul ajout part sur Vinted, Leboncoin, eBay et Beebs — avec tes comptes. Plus d'acheteurs, pas plus de travail.": "One single add goes to Vinted, Leboncoin, eBay and Beebs — with your accounts. More buyers, not more work.",
   "Republiées toutes seules": "Reposted, all by themselves",
   "Une annonce de trois semaines n'est plus vue. FillSell la remet en haut des résultats : en un tap sur tous les plans, toute seule avec le plan Pro.": "A three-week-old listing is seen by no one. FillSell puts it back on top of the results: in one tap on every plan, all by itself with the Pro plan.",
   "Ton téléphone pilote. Ton ordinateur exécute.": "Your phone drives. Your computer executes.",
@@ -202,8 +202,8 @@ const EN = {
   "214 annonces à jour": "214 listings up to date",
   "en 40 secondes": "in 40 seconds",
   "Importer mon dressing": "Import my wardrobe",
-  "Une annonce. Quatre plateformes.": "One listing. Four marketplaces.",
-  "Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Quatre fois plus d'acheteurs devant le même article, sans quatre fois le travail.": "You fill it in once. FillSell publishes on Vinted, Leboncoin, eBay and Beebs with your accounts. Four times more buyers on the same item — without four times the work.",
+  "Une annonce. Toutes tes plateformes.": "One listing. All your marketplaces.",
+  "Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Plus d'acheteurs devant le même article, sans plus de travail.": "You fill it in once. FillSell publishes on Vinted, Leboncoin, eBay and Beebs with your accounts. More buyers in front of the same item, without more work.",
   "1 seul ajout": "1 single add",
   "Automatique": "Automatic",
   "Republication": "Reposting",
@@ -219,7 +219,7 @@ const EN = {
   "1re": "1st",
   "Après la vente": "After the sale",
   "Vendu sur une plateforme ? Tu retires les autres en un tap.": "Sold on one marketplace? Remove the others in one tap.",
-  "FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des trois autres plateformes. Fini les acheteurs à qui tu dois expliquer que l'article est déjà parti.": "FillSell detects the sale and lets you know. You confirm, it removes the listings from the three other marketplaces. No more buyers you have to tell the item is already gone.",
+  "FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des autres plateformes. Fini les acheteurs à qui tu dois expliquer que l'article est déjà parti.": "FillSell detects the sale and lets you know. You confirm, it removes the listings from the other marketplaces. No more buyers you have to tell the item is already gone.",
   "Vendu sur Vinted — 21 €": "Sold on Vinted — €18",
   "Retiré des 4 autres": "Removed from the 4 others",
   "Annonce retirée": "Listing removed",
@@ -285,9 +285,9 @@ const EN = {
   "Passer Business": "Go Business",
   "Les questions qu'on nous pose.": "The questions we get asked.",
   "Comment fonctionnent les forfaits ?": "How do the plans work?",
-  "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur les 4 plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle.": "Each plan includes monthly volumes of actions: AI-created listings — from a photo or from your stock — published to all 4 marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro, {ADS_BUSINESS} on Business), AI photo touch-ups and repostings ({REPUB_FREE} included for life on Free, {REPUB_PREMIUM} a month on Premium, {REPUB_PRO} on Pro, unlimited on Business). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.",
+  "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur toutes tes plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle.": "Each plan includes monthly volumes of actions: AI-created listings — from a photo or from your stock — published to all your marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro, {ADS_BUSINESS} on Business), AI photo touch-ups and repostings ({REPUB_FREE} included for life on Free, {REPUB_PREMIUM} a month on Premium, {REPUB_PRO} on Pro, unlimited on Business). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.",
   "Sur quelles plateformes je publie ?": "Which marketplaces can I publish to?",
-  "Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.": "Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.",
+  "Vinted, Leboncoin, eBay et Beebs — les places de marché qui comptent en France, et les prochaines dès qu'elles arrivent. Un seul ajout, publié partout en même temps.": "Vinted, Leboncoin, eBay and Beebs — the marketplaces that matter in France, and the next ones as soon as they arrive. One add, posted everywhere at once.",
   "Comment FillSell publie-t-il mes annonces ?": "How does FillSell publish my listings?",
   "Par une extension Chrome installée une seule fois sur ton ordinateur. Elle remplit les formulaires avec tes comptes déjà connectés. FillSell ne connaît jamais tes mots de passe.": "Through a Chrome extension installed once on your computer. It fills in the forms with your already-signed-in accounts. FillSell never knows your passwords.",
   "Faut-il laisser mon ordinateur allumé ?": "Do I need to leave my computer on?",
@@ -301,7 +301,7 @@ const EN = {
   "Je peux annuler quand je veux ?": "Can I cancel anytime?",
   "Oui. Premium et Pro sont sans engagement : tu changes d'offre ou tu arrêtes en un clic depuis l'app.": "Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.",
   "Prêt à publier partout, sans effort ?": "Ready to list everywhere, effortlessly?",
-  "Synchronise tes comptes, laisse l'IA écrire, et vends sur les 4 plateformes. Gratuit pour commencer — sans carte bancaire.": "Sync your accounts, let the AI write, and sell on all 4 marketplaces. Free to start — no credit card required.",
+  "Synchronise tes comptes, laisse l'IA écrire, et vends sur toutes tes plateformes. Gratuit pour commencer — sans carte bancaire.": "Sync your accounts, let the AI write, and sell on all your marketplaces. Free to start — no credit card required.",
   "Revente automatisée · © 2026": "Automated reselling · © 2026",
   "Mentions légales": "Legal notice",
   "Confidentialité": "Privacy",
@@ -322,9 +322,9 @@ const EN = {
    corrigé le 2026-08-02, ne pas l'y remettre. */
 const FAQ = [
   ["Comment fonctionnent les forfaits ?",
-   "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur les 4 plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle."],
+   "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur toutes tes plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle."],
   ["Sur quelles plateformes je publie ?",
-   "Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps."],
+   "Vinted, Leboncoin, eBay et Beebs — les places de marché qui comptent en France, et les prochaines dès qu'elles arrivent. Un seul ajout, publié partout en même temps."],
   ["Comment FillSell publie-t-il mes annonces ?",
    "Par une extension Chrome installée une seule fois sur ton ordinateur. Elle remplit les formulaires avec tes comptes déjà connectés. FillSell ne connaît jamais tes mots de passe."],
   ["Faut-il laisser mon ordinateur allumé ?",
@@ -559,7 +559,7 @@ export default function LandingPage() {
                 <span style={{ backgroundImage: "linear-gradient(90deg,#2F9E90 0%,#2F9E90 40%,#6FDFD3 50%,#2F9E90 60%,#2F9E90 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("publiées partout : Vinted, Leboncoin, eBay et Beebs.")}</span>
               </h1>
               <p style={{ fontWeight: "500", fontSize: "clamp(16px,1.5vw,19px)", lineHeight: "1.55", color: "#5C6560", maxWidth: "520px", margin: "0 0 30px", textWrap: "pretty" }}>
-                {t("Tu synchronises tes comptes en un clic. L'IA écrit les annonces. FillSell les publie sur les 4 plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.")}
+                {t("Tu synchronises tes comptes en un clic. L'IA écrit les annonces. FillSell les publie sur toutes tes plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.")}
               </p>
               <div style={{ display: "flex", gap: "13px", flexWrap: "wrap", alignItems: "center" }}>
                 <a href="/login?mode=signup" onClick={onSignup("hero")} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15.5px", color: "#fff", padding: "15px 26px", borderRadius: "14px", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", boxShadow: "0 12px 26px -10px rgba(27,110,98,.55)", whiteSpace: "nowrap" }}>
@@ -748,7 +748,7 @@ export default function LandingPage() {
                 <PlatformLogo platform="ebay" size={22} />
                 <PlatformLogo platform="beebs" size={22} />
               </div>
-              <span style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", whiteSpace: "nowrap" }}>{t("4 plateformes, tes comptes")}</span>
+              <span style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", whiteSpace: "nowrap" }}>{t("Toutes tes plateformes, tes comptes")}</span>
             </div>
             <span data-proof-3="1" data-proof-sep="1" style={{ width: "1px", height: "20px", background: "#D8D3C6", flexShrink: "0" }} />
             <div data-proof-3="1" style={{ display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto" }}>
@@ -790,9 +790,9 @@ export default function LandingPage() {
                   </div>
                   <div style={{ fontWeight: "700", fontSize: "32px", letterSpacing: "-.04em", color: "#4ECDC4", lineHeight: "1" }}>{t("2")}</div>
                 </div>
-                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Publié sur les 4 plateformes")}</div>
+                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Publié sur toutes tes plateformes")}</div>
                 <div style={{ fontWeight: "500", fontSize: "14.5px", lineHeight: "1.55", color: "rgba(246,245,241,.72)" }}>
-                  {t("Un seul ajout part sur Vinted, Leboncoin, eBay et Beebs — avec tes comptes. Quatre fois plus d'acheteurs, pas quatre fois le travail.")}
+                  {t("Un seul ajout part sur Vinted, Leboncoin, eBay et Beebs — avec tes comptes. Plus d'acheteurs, pas plus de travail.")}
                 </div>
               </div>
               <div data-r="1" style={{ background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "22px", padding: "28px" }}>
@@ -973,10 +973,10 @@ export default function LandingPage() {
               <div style={{ fontWeight: "700", fontSize: "12px", textTransform: "uppercase", letterSpacing: ".12em", color: "#2F9E90", marginBottom: "14px" }}>{t("Publication")}</div>
               <h2 style={{ fontWeight: "700", fontSize: "clamp(28px,3.6vw,44px)", lineHeight: "1.06", letterSpacing: "-.03em", margin: "0 0 16px", textWrap: "pretty" }}>
                 {t("Une annonce.")}{" "}
-                <span style={{ backgroundImage: "linear-gradient(90deg,#2F9E90 0%,#2F9E90 40%,#6FDFD3 50%,#2F9E90 60%,#2F9E90 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("Quatre plateformes.")}</span>
+                <span style={{ backgroundImage: "linear-gradient(90deg,#2F9E90 0%,#2F9E90 40%,#6FDFD3 50%,#2F9E90 60%,#2F9E90 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("Toutes tes plateformes.")}</span>
               </h2>
               <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.55", color: "#5C6560", margin: "0", textWrap: "pretty" }}>
-                {t("Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Quatre fois plus d'acheteurs devant le même article, sans quatre fois le travail.")}
+                {t("Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Plus d'acheteurs devant le même article, sans plus de travail.")}
               </p>
             </div>
             <div data-r="1" style={{ background: "#F6F5F1", border: "1px solid #E7E3D8", borderRadius: "26px", padding: "clamp(28px,4vw,52px) clamp(20px,3vw,44px)" }}>
@@ -1139,7 +1139,7 @@ export default function LandingPage() {
                 <span style={{ backgroundImage: "linear-gradient(90deg,#2F9E90 0%,#2F9E90 40%,#6FDFD3 50%,#2F9E90 60%,#2F9E90 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("en un tap.")}</span>
               </h2>
               <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.55", color: "#5C6560", margin: "0", textWrap: "pretty" }}>
-                {t("FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des trois autres plateformes. Fini les acheteurs à qui tu dois expliquer que l'article est déjà parti.")}
+                {t("FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des autres plateformes. Fini les acheteurs à qui tu dois expliquer que l'article est déjà parti.")}
               </p>
             </div>
             <div data-r="1" style={{ maxWidth: "560px", margin: "0 auto", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "24px", padding: "26px", boxShadow: "0 18px 44px -24px rgba(16,32,27,.28)" }}>
@@ -1543,7 +1543,7 @@ export default function LandingPage() {
               <span style={{ backgroundImage: "linear-gradient(90deg,#4ECDC4 0%,#4ECDC4 40%,#C6F5EF 50%,#4ECDC4 60%,#4ECDC4 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("sans effort ?")}</span>
             </h2>
             <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.5", color: "rgba(246,245,241,.78)", margin: "0 auto 30px", maxWidth: "520px" }}>
-              {t("Synchronise tes comptes, laisse l'IA écrire, et vends sur les 4 plateformes. Gratuit pour commencer — sans carte bancaire.")}
+              {t("Synchronise tes comptes, laisse l'IA écrire, et vends sur toutes tes plateformes. Gratuit pour commencer — sans carte bancaire.")}
             </p>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", flexWrap: "wrap" }}>
               <a href="/login?mode=signup" onClick={onSignup("final")} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "16px", color: "#10201B", background: "#F6F5F1", padding: "16px 30px", borderRadius: "14px", boxShadow: "0 16px 34px -14px rgba(0,0,0,.5)" }}>

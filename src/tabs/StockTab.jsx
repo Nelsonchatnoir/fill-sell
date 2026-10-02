@@ -9587,8 +9587,8 @@ const StockTab = memo(function StockTab({
                       // Vinted, lui, remonte EN ENTIER (vues et favoris) : la
                       // capacité n’est pas la même partout, on l’écrit plutôt
                       // que de l’aplatir.
-                      fr:["Relève tes annonces en ligne","Les quatre plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
-                      en:["Scan your live listings","All four marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
+                      fr:["Relève tes annonces en ligne","Tes plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
+                      en:["Scan your live listings","Your marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
                       logos:["vinted","leboncoin","beebs","ebay"],
                     },
                     {
@@ -9596,8 +9596,8 @@ const StockTab = memo(function StockTab({
                       // vide (App.jsx, 2026-09-01) : un seul discours pour un
                       // seul geste — « préparée une fois, déposée sur les
                       // quatre ».
-                      fr:["Publie sur 4 plateformes","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, Beebs et eBay."],
-                      en:["Publish on 4 marketplaces","One listing prepared once, posted to Vinted, Leboncoin, Beebs and eBay."],
+                      fr:["Publie partout","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, Beebs et eBay."],
+                      en:["Publish everywhere","One listing prepared once, posted to Vinted, Leboncoin, Beebs and eBay."],
                       logos:["vinted","leboncoin","beebs","ebay"],
                     },
                     {
@@ -9615,8 +9615,8 @@ const StockTab = memo(function StockTab({
                       logos:[],
                     },
                     {
-                      fr:["Vendu quelque part ?","FillSell repère l'annonce disparue, sur n'importe laquelle des quatre — tu confirmes, et tu retires les autres en un tap."],
-                      en:["Sold somewhere?","FillSell spots the listing that is gone, on any of the four — you confirm, and remove the others in one tap."],
+                      fr:["Vendu quelque part ?","FillSell repère l'annonce disparue, sur n'importe laquelle de tes plateformes — tu confirmes, et tu retires les autres en un tap."],
+                      en:["Sold somewhere?","FillSell spots the listing that is gone, on any of your marketplaces — you confirm, and remove the others in one tap."],
                       logos:[],
                     },
                   ].map((et,i)=>{
