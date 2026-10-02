@@ -1545,9 +1545,16 @@ serve(async (req) => {
         .map((t) => String(t ?? "")).join(" ");
       return ANTIROBOT_RECREATION_RE.test(textes);
     };
+    // (02/10 soir, point 4 — _shared/mur-geste.js) Une vérification anti-robot
+    // à résoudre, passée à la personne : relancée quand la sonde revoit la
+    // plateforme répondre APRÈS la mise en attente (jamais sur une sonde
+    // d'avant), trois fois au plus sur le même mur (borne ci-dessous).
+    // deno-lint-ignore no-explicit-any
+    const verificationAFaire = (j: any) => j.status === "needs_user"
+      && String(((j.platform_fields ?? {}) as Record<string, unknown>).needs_user_source ?? "") === "verification_antirobot";
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) =>
-      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")) || antirobotApresRetrait(j));
+      murOplaLeve(j) || MUR_CONNEXION[j.platform]?.test(String(j.error ?? "")) || antirobotApresRetrait(j) || verificationAFaire(j));
     if (candidats.length) {
       const ids = [...new Set(candidats.map((j) => String(j.user_id)))];
       const sessionsPar = new Map<string, Record<string, unknown>>();
@@ -1599,10 +1606,24 @@ serve(async (req) => {
         }
         const dejaRepris = Date.parse(String(pf.reprise_apres_connexion_le ?? ""));
         if (Number.isFinite(dejaRepris) && vu <= dejaRepris) continue; // rien de neuf depuis
+        if (verificationAFaire(j)) {
+          const mis = Date.parse(String(((pf.mur_geste ?? {}) as Record<string, unknown>).le ?? ""));
+          if (!Number.isFinite(mis) || vu <= mis) continue; // la sonde doit être postérieure au geste demandé
+        }
         delete pf.needs_user_source; delete pf.needs_user_actif_ms; delete pf.needs_user_tick_le;
         delete pf.needs_user_vu_le; delete pf.needs_user_vu_erreur; delete pf.needsUserAttempts;
         delete pf.needsUserBoucle; delete pf.needsUserResolved; delete pf.next_action_after;
         delete pf.error_technique; delete pf.processing_since;
+        // (02/10 soir, point 4) Le compteur du mur repart de zéro : une nouvelle
+        // observation sera nécessaire (jamais un retour immédiat en needs_user
+        // sur l'ancien pré-vol).
+        if (verificationAFaire(j)) {
+          delete pf.mur_antirobot; delete pf.mur_geste;
+          const pv = pf.republish_prevol_formulaire as Record<string, unknown> | undefined;
+          if (pv && pv.verdict !== "ok") delete pf.republish_prevol_formulaire;
+          const pp = pf.republish_prevol_page as Record<string, unknown> | undefined;
+          if (pp && pp.mur) delete pf.republish_prevol_page;
+        }
         // ⛔ `republish_step` et `erreurs_archivees` SURVIVENT : le premier dit
         //    où en est l'annonce d'origine (une republication reprise à
         //    'deleted' ne doit pas recapturer), le second est la mémoire.

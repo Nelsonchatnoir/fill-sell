@@ -34,6 +34,7 @@ import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pau
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
 import { messageRetenueCreneau } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
+import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS } from "../_shared/mur-geste.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
@@ -2630,6 +2631,45 @@ serve(async (req) => {
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
+    // ══ UN MUR QUI DEMANDE UN GESTE SE MONTRE (02/10 soir, point 4) ══════════
+    // (_shared/mur-geste.js) Connexion fermée vue 3 fois par la page, ou
+    // vérification anti-robot à résoudre vue à 2 essais distants de 25 min :
+    // needs_user, message court (« Connexion X requise » — relancé seul par
+    // relancer_jobs_connexion ; « X te demande une vérification » — relancé
+    // par handler-watch quand la sonde revoit X répondre). Un mur vu une seule
+    // fois, ou qui se lève au second essai, reste une attente sans alarme.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const aMontrer = new Set<string>();
+        let ecritures = 0;
+        for (const j of out) {
+          if (ecritures >= 40) break;
+          const v = jugerMurGeste(j as Record<string, unknown>);
+          if (!v.change) continue;
+          ecritures++;
+          if (v.geste) {
+            const pfG = { ...v.pf };
+            pfG.erreurs_archivees = archiverErreur(pfG.erreurs_archivees, (j as { error?: string | null }).error ?? null, "pending", `get-pending-jobs (mur qui demande un geste : ${v.geste})`);
+            delete pfG.next_action_after; delete pfG.processing_since;
+            const { data: maj } = await userClient.from("cross_post_jobs")
+              .update({ status: "needs_user", error: v.message, platform_fields: pfG })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((maj ?? []).length) {
+              aMontrer.add(String(j.id));
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (${j.platform}) : ${v.geste} — un geste est nécessaire → needs_user`);
+            }
+          } else {
+            await userClient.from("cross_post_jobs").update({ platform_fields: v.pf })
+              .eq("id", String(j.id)).eq("status", "pending");
+            (j as { platform_fields: unknown }).platform_fields = v.pf;
+          }
+        }
+        if (aMontrer.size) out = out.filter((j) => !aMontrer.has(String(j.id)));
+      } catch (e) {
+        console.warn(`[get-pending-jobs] mur qui demande un geste : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
     }
 
     // ── L'ATTENTE DE SESSION S'ESPACE, POUR TOUS LES BUILDS (2026-09-24) ─────
@@ -8623,6 +8663,27 @@ serve(async (req) => {
                   .update({ error: ANTIROBOT_COMPTE_MSG, platform_fields: pfNeuf })
                   .eq("id", j.id as string).eq("status", "pending");
                 if (wErr) console.warn(`[get-pending-jobs] pause anti-robot : message non posé sur ${String(j.id).slice(0, 8)} (${wErr.message})`);
+              }
+              // (02/10 soir, point 4 — _shared/mur-geste.js) Une pause qui ne se
+              // lève pas en 6 h n'est plus un retard : les jobs retenus passent
+              // à la personne (needs_user « verification_antirobot »). Le job
+              // sonde, lui, continue de tester ; handler-watch relance les autres
+              // quand la sonde de sessions revoit Vinted répondre.
+              if (Date.now() - Date.parse(depuisAr) > PAUSE_VINTED_GESTE_MS) {
+                let n = 0;
+                for (const j of fileVinted) {
+                  if (garder.has(String(j.id)) || n >= 40) continue;
+                  const pf = pfAr(j);
+                  if (j.action === "republish" && String(pf.republish_step ?? "") === "deleted") continue;
+                  const pfG: Record<string, unknown> = { ...pf, needs_user_source: "verification_antirobot",
+                    mur_geste: { type: "verification_antirobot", le: new Date().toISOString(), depuis: depuisAr, pause_compte: true } };
+                  delete pfG.next_action_after; delete pfG.processing_since;
+                  const { data: maj } = await userClient.from("cross_post_jobs")
+                    .update({ status: "needs_user", error: messagePauseVintedGeste(), platform_fields: pfG })
+                    .eq("id", j.id as string).eq("status", "pending").select("id");
+                  n += (maj ?? []).length;
+                }
+                if (n) console.log(`[get-pending-jobs] userId=${user.id} : pause anti-robot Vinted depuis ${depuisAr} (> 6 h) — ${n} job(s) passés à la personne (needs_user)`);
               }
               antirobotPause = {
                 retenus: idsAntirobot.size, sonde: sondeAr, articles: nbArticles(apres),
