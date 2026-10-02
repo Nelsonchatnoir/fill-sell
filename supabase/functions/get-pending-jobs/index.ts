@@ -7963,37 +7963,35 @@ serve(async (req) => {
         if (oplaCompletes) console.log(`[get-pending-jobs] user=${user.id} jobs Opla complétés depuis la fiche : ${oplaCompletes}`);
 
         // ── ON RANGE CE QU'IL VIENT DE TRANCHER ───────────────────────────
-        // ⛔ RELECTURE JUSTE AVANT L'ÉCRITURE : `platform_settings` porte
-        //    l'adresse Leboncoin, les réglages eBay, les créneaux… Écrire
-        //    depuis la copie lue en haut du bloc écraserait ce qu'un autre
-        //    onglet y aurait posé entre-temps. La fenêtre reste non nulle (un
-        //    second poll simultané peut perdre l'écriture) : le pire est que
-        //    la question se repose UNE fois de plus. Jamais une valeur fausse.
-        // ⛔ `.select()` OBLIGATOIRE : un UPDATE filtré par RLS rend 0 ligne
-        //    SANS erreur — sans lui, on journaliserait un enregistrement qui
-        //    n'a pas eu lieu (le faux « ✅ » de SousPagePreferences).
+        // ⛔ (02/10) JAMAIS l'objet entier : seules les réponses nouvelles
+        //    partent, le serveur les fusionne dans opla.categories sous verrou
+        //    (platform_settings_fusionner). L'ancienne réécriture de tout
+        //    `platform_settings` effaçait l'adresse Leboncoin sur une lecture
+        //    ratée. La relecture ne sert plus qu'au plafond : illisible → on
+        //    n'élague rien, on ajoute seulement.
         if (oplaARetenir.size) {
           try {
-            const { data: prof } = await userClient
+            const { data: prof, error: errLecture } = await userClient
               .from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
-            const reglages = ((prof?.platform_settings && typeof prof.platform_settings === "object")
-              ? prof.platform_settings : {}) as Record<string, unknown>;
-            const opla = ((reglages.opla && typeof reglages.opla === "object") ? reglages.opla : {}) as Record<string, unknown>;
-            const cats = ((opla.categories && typeof opla.categories === "object") ? { ...(opla.categories as Record<string, unknown>) } : {}) as Record<string, unknown>;
+            const lues = (!errLecture && prof)
+              ? (((prof.platform_settings as Record<string, unknown> | null)?.opla as Record<string, unknown> | undefined)?.categories ?? null)
+              : null;
+            const cats = (lues && typeof lues === "object") ? { ...(lues as Record<string, unknown>) } : {};
             for (const [cle, e] of oplaARetenir) cats[cle] = e;
             // Plafond : au-delà, on jette les plus ANCIENNES réponses. Une
             // question oubliée se repose ; une colonne JSON qui enfle, non.
             const triees = Object.entries(cats)
-              .sort((a, b) => String((b[1] as Record<string, unknown>)?.le ?? "").localeCompare(String((a[1] as Record<string, unknown>)?.le ?? "")))
-              .slice(0, OPLA_MEM_MAX);
-            const { data: ecrit, error: errEcrit } = await userClient
-              .from("profiles")
-              .update({ platform_settings: { ...reglages, opla: { ...opla, categories: Object.fromEntries(triees) } } })
-              .eq("id", user.id).select("id");
-            if (errEcrit || !ecrit?.length) {
-              console.warn(`[get-pending-jobs] mémoire catégories Opla : rien d'enregistré (${errEcrit?.message ?? "0 ligne"}) — la question se reposera`);
+              .sort((a, b) => String((b[1] as Record<string, unknown>)?.le ?? "").localeCompare(String((a[1] as Record<string, unknown>)?.le ?? "")));
+            const aJeter = lues ? triees.slice(OPLA_MEM_MAX).map(([cle]) => cle).filter((cle) => !oplaARetenir.has(cle)) : [];
+            const { data: ecrit, error: errEcrit } = await userClient.rpc("platform_settings_fusionner", {
+              p_chemin: ["opla", "categories"],
+              p_patch: Object.fromEntries(oplaARetenir),
+              p_supprimer: aJeter,
+            });
+            if (errEcrit || !ecrit) {
+              console.warn(`[get-pending-jobs] mémoire catégories Opla : rien d'enregistré (${errEcrit?.message ?? "aucune réponse"}) — la question se reposera`);
             } else {
-              console.log(`[get-pending-jobs] mémoire catégories Opla user=${user.id} : ${oplaARetenir.size} réponse(s) enregistrée(s), ${triees.length} en mémoire`);
+              console.log(`[get-pending-jobs] mémoire catégories Opla user=${user.id} : ${oplaARetenir.size} réponse(s) enregistrée(s), ${aJeter.length} oubliée(s) (plafond ${OPLA_MEM_MAX})`);
             }
           } catch (e) {
             console.warn(`[get-pending-jobs] mémoire catégories Opla : écriture impossible (${String((e as Error)?.message ?? e)}) — la question se reposera`);
