@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-02T11:21:32Z'; // 0.6.86 = 0.6.85 + carte d'avis du popup (avis-demande) + sortie d'Opla du popup (Opla seulement aux comptes reliés) (d7139a0) — a5bdbec. Paquet build/CWS-0.6.86-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-02T11:44:50Z'; // 0.6.86 = 0.6.85 + carte d'avis du popup (avis-demande) + sortie d'Opla du popup, suivant l'interrupteur du 10/10 (d7139a0, 8da8f90). Paquet build/CWS-0.6.86-A-TELEVERSER.
+// Historique de la valeur precedente : '2026-10-02T11:21:32Z' — a5bdbec, 0.6.86 première forme (zip 11:21:51Z+0d0a729, jamais livré : remplacé avant toute remise, sortie d'Opla reportée au 10/10).
 // Historique de la valeur precedente : '2026-10-02T09:28:23Z' — bcff357, 0.6.85 (zip 09:28:31Z+6060632, livré, jamais vu servi, numéro brûlé).
 // Historique de la valeur precedente : '2026-10-02T08:10:38Z' — 65da661, 0.6.84 (zip 08:10:57Z+8096642, livré, jamais téléversé, numéro brûlé).
 // Historique de la valeur precedente : '2026-10-01T15:29:31Z' — 50a2c27, 0.6.83 (zip 17:33:08Z+9411980, livré, jamais téléversé, numéro brûlé).
