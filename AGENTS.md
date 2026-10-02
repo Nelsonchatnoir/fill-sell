@@ -1,32 +1,32 @@
-## État de production au 02/10 après-midi — lire avant toute action
+## État de production au 02/10 soir — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert) et
-`docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout
-historique contraire. Il se périme : `functions list`, `cron.job` et
-`profiles.extension_build` font foi.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; section
+« 02/10 soir » en fin) et `docs/agents/consignes-2026-09-28.md` (règles), qui
+remplacent tout historique contraire. Il se périme : `functions list`,
+`cron.job` et `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.85** au CWS ; **minimum serveur 0.6.81** (sous le
-  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.37** ;
-  `get-pending-jobs` v189 (`true`), `update-job-status` v116 (`false`),
-  `ebay-api-worker` v71, `handler-watch` v69, `email-tunnel` v69 (`false`),
-  `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
+  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.39** ;
+  `get-pending-jobs` v192 (`true`), `update-job-status` v117 (`false`),
+  `handler-watch` v71 (`false`), `ebay-api-worker` v71, `email-tunnel` v69
+  (`false`), `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
   coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
   après, plus aucune publication ni republication Opla, synchro gardée pour
-  les comptes reliés (`_shared/opla-sortie.js`). Migration 20261002120000
-  (quotas) appliquée et inscrite (GO du 02/10).
+  les comptes reliés (`_shared/opla-sortie.js`).
 - **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
+- **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée dans la saisie.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
-- **Ouvert** : **0.6.87** à téléverser : `build/CWS-0.6.87-A-TELEVERSER/`
-  (0.6.86 brûlée) ; binaires **2.9.38** (AAB
-  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic après push) ;
-  ornellaracano 307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
+- **Ouvert** : **0.6.88** à téléverser : `build/CWS-0.6.88-A-TELEVERSER/`
+  (0.6.86/0.6.87 brûlées) ; binaires **2.9.38** (AAB
+  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
+  307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
