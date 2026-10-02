@@ -164,9 +164,16 @@ async function rayonsVintedSansColis(admin: AdminClient): Promise<Set<string>> {
   const { data, error } = await admin.from("cross_post_jobs")
     .select("inventaire_id, snap_cat:platform_fields->republish_snapshot->>catalog_id")
     .eq("platform", "vinted").gte("created_at", depuis).in("status", ["pending", "needs_user", "failed"])
-    .contains("platform_fields->server_required_fields", [{ key: "package_size" }])
+    // Le JSON en TEXTE : un tableau JS part en littéral Postgres « {…} » et le
+    // contenu jsonb le refuse (22P02, relevé en prod le 02/10 à 07:52Z).
+    .filter("platform_fields->server_required_fields", "cs", JSON.stringify([{ key: "package_size" }]))
     .limit(500);
-  if (error) throw new Error(`rayons sans colis : ${error.message}`);
+  if (error) {
+    // Lecture ratée : la dernière liste connue, même périmée ; sinon rien de
+    // retenu (une panne de lecture ne doit pas arrêter la republication du parc).
+    if (cacheRayonsSansColis) return cacheRayonsSansColis.rayons;
+    throw new Error(`rayons sans colis : ${error.message}`);
+  }
   const rayons = new Set<string>();
   const invIds: number[] = [];
   for (const r of (data ?? []) as Array<{ inventaire_id: number | null; snap_cat: string | null }>) {
@@ -1956,11 +1963,12 @@ serve(async (req) => {
             }
           }
         } catch (e) {
-          console.warn(`[get-pending-jobs] format de colis Vinted : ${String((e as Error)?.message ?? e)}`);
-          if (!posteAJourColis) {
-            out = out.filter((j) => !republiablesVinted.includes(j));
-            console.log(`[get-pending-jobs] userId=${user.id} : lecture impossible — aucune republication Vinted servie à un poste < ${VERSION_COLIS_DANS_ENVOI} sur ce passage`);
-          }
+          // ⛔ 02/10 07:52Z → 08:0xZ : ce filet retenait TOUTES les
+          // republications Vinted des postes anciens sur une lecture ratée —
+          // il a arrêté la file du parc dix minutes. Une lecture ratée ne
+          // retient plus rien (la « Swatch » est de toute façon retenue tant
+          // que la « gousset » est hors ligne : un seul retrait en vol).
+          console.warn(`[get-pending-jobs] format de colis Vinted : ${String((e as Error)?.message ?? e)} — distribution normale`);
         }
       }
     }
