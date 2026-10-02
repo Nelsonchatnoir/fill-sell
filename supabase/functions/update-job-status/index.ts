@@ -3399,7 +3399,53 @@ serve(async (req) => {
     // datée : le classement attend la date, quel que soit le statut posé.
     const restrictionVintedAPoser = (statutEffectif === "needs_user" || statutEffectif === "failed")
       && Boolean(restrictionVinted(pfIn ?? {}));
-    if (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser) {
+    // ══ UNE EXCEPTION DE NOTRE CODE EST UN DÉFAUT DE CHEZ NOUS (02/10 soir, point 3) ══
+    // (_shared/defaut-fillsell.js) Jamais « illisible », jamais « plateforme » :
+    // le job porte defaut_fillsell {build} et attend un poste plus récent
+    // (get-pending-jobs) ; à l'étape 'deleted', la recréation continue d'être
+    // tentée. Le classement pas-de-rouge ne passe pas dessus.
+    let pfDefautFillsell: Record<string, unknown> | null = null;
+    if (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user") {
+      const d = defautFillsell({ erreur: typeof body.error === "string" ? body.error : null, pf: pfIn ?? null });
+      if (d) {
+        try {
+          const { data: jDf } = await userClient
+            .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
+          const pfBaseDf = { ...((pfIn ?? (jDf?.platform_fields ?? {})) as Record<string, unknown>) };
+          const etapeRetiree = String(jDf?.action ?? "") === "republish" && pfBaseDf["republish_step"] === "deleted";
+          const precedent = (pfBaseDf["defaut_fillsell"] ?? {}) as Record<string, unknown>;
+          pfBaseDf["defaut_fillsell"] = {
+            le: new Date().toISOString(), signature: d.signature, ou: d.ou,
+            build: typeof body.handler_build === "string" ? body.handler_build.slice(0, 80) : null,
+            occurrences: (Number(precedent["occurrences"]) || 0) + 1,
+            ...(precedent["premier_le"] || precedent["le"] ? { premier_le: precedent["premier_le"] ?? precedent["le"] } : {}),
+            // À l'étape 'deleted' l'annonce est hors ligne : on ne la fait pas
+            // attendre une mise à jour, la recréation reste tentée (espacée).
+            ...(etapeRetiree ? { reprise_libre: true } : {}),
+          };
+          const pvDf = pfBaseDf["republish_prevol_formulaire"] as Record<string, unknown> | undefined;
+          if (pvDf && typeof pvDf === "object" && d.ou === "prevol_formulaire") pfBaseDf["republish_prevol_formulaire"] = { ...pvDf, verdict: "defaut_fillsell" };
+          const gDf = pfBaseDf["gardes"] as Record<string, Record<string, unknown>> | undefined;
+          if (gDf && typeof gDf === "object") {
+            for (const k of Object.keys(gDf)) {
+              if (k.startsWith("prevol_formulaire") && gDf[k]?.["verdict"] === "illisible") gDf[k] = { ...gDf[k], verdict: "defaut_fillsell" };
+            }
+          }
+          delete pfBaseDf["processing_since"];
+          delete pfBaseDf["needs_user_source"];
+          pfBaseDf["next_action_after"] = new Date(Date.now() + (etapeRetiree ? 10 : 30) * 60_000).toISOString();
+          statutEffectif = "pending";
+          messageEffectif = messageDefautFillsell({ platform: String(jDf?.platform ?? ""), action: String(jDf?.action ?? ""), etapeRetiree });
+          raisonRequalif = `défaut FillSell (${d.signature.slice(0, 60)})`;
+          pfDefautFillsell = pfBaseDf;
+          console.error(`[update-job-status] [DEFAUT-FILLSELL] userId=${user.id} job=${jobId} build=${String(body.handler_build ?? "?").slice(0, 40)} — ${d.signature}`);
+        } catch (e) {
+          console.error("[update-job-status] défaut FillSell :", (e as Error)?.message ?? e);
+          pfDefautFillsell = null;
+        }
+      }
+    }
+    if (!pfDefautFillsell && (statutEffectif === "failed" || oplaMurCookies || oplaCategorieAPoser || tailleHorsGrilleAPoser || restrictionVintedAPoser)) {
       try {
         const { data: jPdr } = await userClient
           .from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
@@ -3602,6 +3648,8 @@ serve(async (req) => {
     //    repartirait `pending` avec l'échéance d'un autre bloc, ou
     //    `needs_user` sans le marqueur qui porte son bouton.
     if (pfPasDeRouge) patch.platform_fields = pfPasDeRouge;
+    // Défaut FillSell (02/10 soir) : il a écarté pas-de-rouge, il passe en dernier.
+    if (pfDefautFillsell) patch.platform_fields = pfDefautFillsell;
     // Parcage « Autoriser Opla » venu d'un poste sans accès alors qu'un autre
     // poste l'a (2026-09-24) : relâché en pending, marqueur retiré, trace posée.
     if (pfOplaRelache) patch.platform_fields = pfOplaRelache;
@@ -4256,3 +4304,4 @@ serve(async (req) => {
 });
 import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/version-min-extension.js";
 import { questionOplaFinale } from "../_shared/opla-questions.js";
+import { defautFillsell, messageDefautFillsell } from "../_shared/defaut-fillsell.js";

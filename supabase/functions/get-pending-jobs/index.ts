@@ -32,6 +32,8 @@ import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
+import { messageRetenueCreneau } from "../_shared/retenue-creneau.js";
+import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
@@ -2286,6 +2288,14 @@ serve(async (req) => {
       if (out.length !== avantCorrectif) {
         console.log(`[get-pending-jobs] userId=${user.id} : ${avantCorrectif - out.length} job(s) réarmé(s) par un correctif retenu(s) — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » plus ancien que le correctif`);
       }
+      // (02/10 soir, point 3 — _shared/defaut-fillsell.js) Un job arrêté par une
+      // exception de NOTRE code n'est rendu qu'à un poste PLUS RÉCENT que le
+      // build qui a planté : le même code replanterait à l'identique.
+      const avantDefaut = out.length;
+      out = out.filter((j) => posteApresDefaut((j.platform_fields ?? {}) as Record<string, unknown>, buildDuPoll));
+      if (out.length !== avantDefaut) {
+        console.log(`[get-pending-jobs] userId=${user.id} : ${avantDefaut - out.length} job(s) arrêté(s) par un défaut FillSell retenu(s) — ils attendent un poste plus récent que « ${buildDuPoll.slice(0, 40) || "build inconnu"} »`);
+      }
     }
 
     // ══ LE FORMAT DE COLIS QUE VINTED NE PROPOSE PLUS (02/10, lohanobert59) ══
@@ -4184,6 +4194,7 @@ serve(async (req) => {
           creneauRepublish = fenetres["vinted"] ?? null;
           const retenus: Record<string, number> = {};
           const avant = out.length;
+          const avantFiltreCreneau = [...out];
           out = out.filter((j) => {
             if (!autoHorsDeleted(j)) return true;
             const f = fenetres[String((j as { platform?: string }).platform ?? "")];
@@ -4193,6 +4204,29 @@ serve(async (req) => {
             return false;
           });
           heldCreneau = avant - out.length;
+          // ── UNE RETENUE DE CRÉNEAU SE DIT (02/10 soir, point 2) ─────────────
+          // jocabroc8 520ece42 : republication auto créée à 19:00 (créneau
+          // 19:00–22:00), capture refusée par Vinted (403) à 19:01, « on
+          // réessaie dans trois quarts d'heure » — mais son poste s'est tu à
+          // 19:24, et le lendemain il ne tournait que HORS du créneau : retenue
+          // à chaque poll (« hors créneau ») pendant 24 h, sans que le job le
+          // dise. Le message restait celui de la veille. La règle du créneau ne
+          // bouge pas (décision de Nico : aucune republication auto hors du
+          // créneau) ; le job dit désormais ce qu'il attend et ce qu'il faut.
+          if (heldCreneau) {
+            const heldIds = new Set(avantFiltreCreneau.filter((j) => !out.includes(j)).map((j) => String(j.id)));
+            for (const j of avantFiltreCreneau) {
+              if (!heldIds.has(String(j.id))) continue;
+              const plat = String((j as { platform?: string }).platform ?? "");
+              const reprise = String(fenetres[plat]?.reprise ?? "");
+              const msg = messageRetenueCreneau(plat, reprise);
+              if (!msg || String((j as { error?: string | null }).error ?? "") === msg) continue;
+              try {
+                await userClient.from("cross_post_jobs").update({ error: msg })
+                  .eq("id", String(j.id)).eq("status", "pending");
+              } catch (_e) { /* message seulement : jamais un point de panne */ }
+            }
+          }
           if (heldCreneau) {
             console.log(
               `[get-pending-jobs] userId=${user.id} : hors créneau de republication planifiée — ` +
