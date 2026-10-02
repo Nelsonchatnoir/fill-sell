@@ -13,7 +13,9 @@
   garde `vite:preloadError` (recharge une fois sur chunk manquant).
 - `tabs/StockTab.jsx` : le Stock (cartes, pastilles de plateforme,
   `warningsAffichables`, `WARN_FAMILLES`).
-- `publication/` : le stepper ; `annonces/` : relevés, doublons,
+- `publication/` : le stepper ; `publication/lot/` : la publication en lot
+  (un moteur de stepper par article, `ListingPreviewScreen` en mode `pilote`,
+  sans écran — jamais une réécriture du moteur) ; `annonces/` : relevés, doublons,
   rattachement ; `reglages/` : Réglages (empreinte du build affichée en bas).
 - `utils/comptabilite.js` : SEULE source des calculs de marge / investi.
 - Des modules de `supabase/functions/_shared/` sont importés ici (règle

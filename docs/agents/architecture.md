@@ -12,6 +12,7 @@
 | `src/main.jsx` | Entrée ; `notifyAppReady` Capgo ; garde `vite:preloadError`. |
 | `src/tabs/` | Onglets Dashboard, Lens, Stock, Ventes, Stats. |
 | `src/publication/` | Le stepper de publication (+ `moteur/`). |
+| `src/publication/lot/` | La publication en lot (02/10, branche locale) : sélection dans le Stock, « Où les publier ? », préparation par le VRAI moteur (LPS `pilote`), questions du lot, envoi une RPC par article, suivi et arrêt. Conception : `docs/publication-en-lot.md`. |
 | `src/annonces/` | « Mes annonces en ligne », relevés, doublons, rattachement. |
 | `src/reglages/` | Page Réglages (empreinte du build en bas). |
 | `src/entree/` | Onboarding. `src/pages/` : landing, légal, blog, auth, /extension… |
