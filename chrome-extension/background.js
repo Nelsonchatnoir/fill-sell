@@ -22726,34 +22726,32 @@ function compterEchecAuto(essais, userId, itemId, motif) {
 // (derniere_erreur, derniere_erreur_le) sous platform_settings.vinted
 // .republish_auto, que le RPC efface déjà au premier succès auto — et qu'on
 // efface aussi ici, ceinture et bretelles, dès qu'une republication repart.
-// Lecture-fusion-écriture obligatoire : platform_settings porte aussi
-// l'adresse Leboncoin, jamais d'écrasement global.
-// Ré-écriture évitée quand le code n'a pas bougé : sinon c'est un PATCH du
-// profil toutes les 2 minutes pour redire la même chose.
+// ⛔ (02/10) Plus JAMAIS d'objet entier réécrit : ces deux écritures
+// renvoyaient tout `platform_settings` lu au DÉBUT du passage — plusieurs
+// minutes plus tôt — et effaçaient ce que la personne avait posé entre-temps
+// (adresse Leboncoin comprise). Seules les deux clés du marqueur partent ; le
+// serveur fusionne dans vinted.republish_auto (platform_settings_fusionner).
+// Ré-écriture évitée quand le code n'a pas bougé : sinon c'est une écriture
+// du profil toutes les 2 minutes pour redire la même chose.
+async function fusionnerReglagesExt(token, chemin, patch, supprimer = []) {
+  return restRequest("rpc/platform_settings_fusionner", token, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ p_chemin: chemin, p_patch: patch ?? null, p_supprimer: supprimer }),
+  });
+}
+
 async function marquerErreurAuto(token, userId, ps, cfg, code) {
   if (!code || cfg?.derniere_erreur === code) return;
-  const base = ps ?? {};
-  const next = {
-    ...base,
-    vinted: { ...(base.vinted ?? {}), republish_auto: {
-      ...(cfg ?? {}), derniere_erreur: code, derniere_erreur_le: new Date().toISOString(),
-    } },
-  };
-  await restRequest(`profiles?id=eq.${userId}`, token, {
-    method: "PATCH", body: JSON.stringify({ platform_settings: next }),
+  await fusionnerReglagesExt(token, ["vinted", "republish_auto"], {
+    derniere_erreur: code, derniere_erreur_le: new Date().toISOString(),
   }).catch((e) => console.warn("[republish-auto] cause non écrite dans le réglage :", String(e?.message ?? e)));
 }
 
 async function effacerErreurAuto(token, userId, ps, cfg) {
   if (!cfg || !("derniere_erreur" in cfg)) return;
-  const reste = { ...cfg };
-  delete reste.derniere_erreur;
-  delete reste.derniere_erreur_le;
-  const base = ps ?? {};
-  const next = { ...base, vinted: { ...(base.vinted ?? {}), republish_auto: reste } };
-  await restRequest(`profiles?id=eq.${userId}`, token, {
-    method: "PATCH", body: JSON.stringify({ platform_settings: next }),
-  }).catch((e) => console.warn("[republish-auto] marqueur non effacé :", String(e?.message ?? e)));
+  await fusionnerReglagesExt(token, ["vinted", "republish_auto"], null, ["derniere_erreur", "derniere_erreur_le"])
+    .catch((e) => console.warn("[republish-auto] marqueur non effacé :", String(e?.message ?? e)));
 }
 
 // Appel du RPC AVEC son motif. restRequest lève sans le corps, or c'est
@@ -22800,17 +22798,10 @@ async function maybeAutoRepublish(session) {
     if (!cfg?.actif) return;
 
     if (prof?.is_pro !== true) {
-      // Arrêt PROPRE : lecture-fusion-écriture (platform_settings porte aussi
-      // l'adresse Leboncoin — jamais d'écrasement global).
-      const ps = prof?.platform_settings ?? {};
-      const next = {
-        ...ps,
-        vinted: { ...(ps.vinted ?? {}), republish_auto: {
-          ...cfg, actif: false, arrete_le: new Date().toISOString(), arret_motif: "plan_non_pro",
-        } },
-      };
-      await restRequest(`profiles?id=eq.${userId}`, token, {
-        method: "PATCH", body: JSON.stringify({ platform_settings: next }),
+      // Arrêt PROPRE : seuls les trois champs de l'arrêt partent, le serveur
+      // fusionne (02/10 — jamais l'objet entier, cf. fusionnerReglagesExt).
+      await fusionnerReglagesExt(token, ["vinted", "republish_auto"], {
+        actif: false, arrete_le: new Date().toISOString(), arret_motif: "plan_non_pro",
       }).catch(() => {});
       console.log("[republish-auto] compte plus Pro — automatisation coupée proprement (motif visible dans l'app)");
       return;
