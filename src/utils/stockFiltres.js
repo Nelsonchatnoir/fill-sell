@@ -69,8 +69,27 @@ export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'
 //    Chrome (opla.co, permission d'hôte optionnelle). Elle se demande SUR
 //    PLACE, au clic — components/OplaAutorisationModal — jamais par un
 //    masquage, et jamais dans les réglages.
-export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'];
+//
+// ══ SORTIE D'OPLA (02/10/2026, décision Nico) — CE QUI PRÉCÈDE EST CADUC ════
+// Opla a exigé 1 000 €/mois ; FillSell ne publie ni ne republie plus sur Opla,
+// pour PERSONNE (le serveur clôt tout job publish/republish Opla). Opla sort
+// donc des plateformes OUVERTES : plus de case dans la publication, la
+// republication, la republication planifiée ni les chips « Pas encore sur ».
+// Elle RESTE dans PLATEFORMES_STOCK (données) : une annonce Opla existante se
+// voit toujours sur sa carte et se retire toujours (plateformesDeLArticle), et
+// les comptes au dressing Opla synchronisé gardent leur relevé
+// (plateformesDeReleve) — ventes vues sur Opla, copies retirées ailleurs.
+export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
 export const PLATEFORMES_STOCK_A_VENIR = [];
+// Synchronisées seulement (relevé, ventes, retraits), jamais proposées.
+export const PLATEFORMES_SUIVIES_SEULEMENT = ['opla'];
+
+/** Les plateformes dont le bloc de relevé s'occupe : celles du compte, plus
+ *  Opla si le dressing Opla de ce compte est synchronisé (useSortieOpla). */
+export function plateformesDeReleve(plateformesOuvertes = [], oplaRelie = false) {
+  const base = plateformesDuCompte(plateformesOuvertes);
+  return oplaRelie === true ? [...base, ...PLATEFORMES_SUIVIES_SEULEMENT.filter((p) => !base.includes(p))] : base;
+}
 
 // ─── UNE SEULE RÉPONSE À « QUELLES PLATEFORMES ? » (2026-09-17 soir) ─────────
 // Manque relevé par Nico : Opla absente des cartes du stock (pastilles, bouton

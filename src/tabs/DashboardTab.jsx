@@ -338,6 +338,10 @@ const DashboardTab = memo(function DashboardTab({
   // Vignettes d'activité récente (03/09) : la table `ventes` ne porte aucune
   // photo — lookup inventaire déjà construit par App.jsx pour l'onglet Ventes.
   photosParInventaire = {},
+  // (02/10) Cartes du haut du tableau de bord, préparées par App.jsx : le
+  // bandeau « sortie d'Opla » (comptes reliés) et la carte d'avis (web sur
+  // ordinateur). null = rien.
+  entete = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -417,6 +421,7 @@ const DashboardTab = memo(function DashboardTab({
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18,width:"100%",overflow:"hidden"}}>
       <style>{CHART_CSS}</style>
+      {entete}
 
       {!isPremium&&!loading&&freeActive>0&&freeActive<FREE_STOCK_LIMIT_FALLBACK-2&&(
         <div style={{background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 18px",textAlign:"center",overflow:"hidden"}}>

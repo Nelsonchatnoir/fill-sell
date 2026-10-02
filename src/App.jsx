@@ -139,6 +139,11 @@ import FileAnnoncesADepiler from './components/FileAnnoncesADepiler';
 import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 import { apresNouvellesPhotos } from './utils/parcoursLens';
+// (02/10) Sortie d'Opla (bandeau, comptes reliés) et demande d'avis (store / carte).
+import BandeauSortieOpla from './components/BandeauSortieOpla';
+import CarteAvis from './components/CarteAvis';
+import { useSortieOpla } from './hooks/useSortieOpla';
+import { useDemandeAvis } from './hooks/useDemandeAvis';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -1308,7 +1313,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
       // que la landing. Icône cloche : FillSell PRÉVIENT, l'utilisateur agit.
       icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
       titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
-      descFr:"FillSell repère l'annonce disparue, sur n'importe laquelle des cinq — tu confirmes, et tu retires les autres en un tap.", descEn:"FillSell spots the listing that is gone, on any of the five — you confirm, and remove the others in one tap.",
+      descFr:"FillSell repère l'annonce disparue, sur n'importe laquelle des quatre — tu confirmes, et tu retires les autres en un tap.", descEn:"FillSell spots the listing that is gone, on any of the four — you confirm, and remove the others in one tap.",
     },
     {
       icon:<MicSvg size={20} stroke="currentColor"/>,
@@ -1355,7 +1360,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
               et de là elles partent sur les trois autres plateformes. C'est
               aussi exactement ce que fait le bouton juste dessous. */}
           <h1 style={{margin:0,fontWeight:700,fontSize:25,lineHeight:1.2,letterSpacing:"-0.02em",color:UI.ink}}>
-            {fr?"Tes annonces Vinted remontent ici — et repartent sur Leboncoin, Beebs, eBay et Opla.":"Your Vinted listings land here — and go out to Leboncoin, Beebs, eBay and Opla."}
+            {fr?"Tes annonces Vinted remontent ici — et repartent sur Leboncoin, Beebs et eBay.":"Your Vinted listings land here — and go out to Leboncoin, Beebs and eBay."}
           </h1>
           <button
             onClick={onImport}
@@ -1384,11 +1389,11 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           geste : elle ne garde que la suite (la vente confirmée met tout à
           jour). */}
       <div style={{textAlign:"center",padding:"2px 4px 0"}}>
-        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE SUR LES CINQ":"ONE LISTING PREPARED ONCE, POSTED TO ALL FIVE"}</p>
+        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE SUR LES QUATRE":"ONE LISTING PREPARED ONCE, POSTED TO ALL FOUR"}</p>
         <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
           {/* Ordre canonique du stock (utils/stockFiltres.PLATEFORMES_STOCK) :
               la même suite partout, jamais une liste réécrite à la main. */}
-          {["vinted","leboncoin","beebs","ebay","opla"].map(p=>(
+          {["vinted","leboncoin","beebs","ebay"].map(p=>(
             <span key={p} style={{display:"inline-flex",borderRadius:10,boxShadow:"0 2px 6px rgba(16,32,27,0.09)"}}>
               <PlatformLogo platform={p} size={36}/>
             </span>
@@ -1442,7 +1447,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Photographie, l'annonce est écrite":"Photograph it, the listing is written"}</h2>
           <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
             {fr
-              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour les cinq plateformes. L'extension la publie depuis ton ordinateur.</>
+              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour les quatre plateformes. L'extension la publie depuis ton ordinateur.</>
               : <>The AI recognises your item, estimates its price and <span style={{color:UI.tealDeep,fontWeight:600}}>writes the listing</span> for all four marketplaces. The extension publishes it from your computer.</>
             }
           </p>
@@ -1511,7 +1516,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
         : `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('fr-FR')} republications par mois`);
   const PERKS = lang === 'en'
     ? [
-        { icon: '📝', label: `${annonces} listings created and published on all 5 platforms a month` },
+        { icon: '📝', label: `${annonces} listings created and published on all 4 platforms a month` },
         { icon: '🔁', label: repub },
         ...(pro || business ? [{ icon: '🤖', label: 'Automatic reposting' }] : []),
         { icon: '✨', label: `AI touch-up — ${retouches} listings retouched a month (up to 5 photos each)` },
@@ -1520,7 +1525,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
         { icon: '📤', label: 'Import / Export Excel' },
       ]
     : [
-        { icon: '📝', label: `${annonces} annonces créées et publiées sur les 5 plateformes par mois` },
+        { icon: '📝', label: `${annonces} annonces créées et publiées sur les 4 plateformes par mois` },
         { icon: '🔁', label: repub },
         ...(pro || business ? [{ icon: '🤖', label: 'Republication automatique' }] : []),
         { icon: '✨', label: `Retouche IA — ${retouches} annonces retouchées par mois (jusqu'à 5 photos chacune)` },
@@ -2547,12 +2552,32 @@ export default function App({ loginOnly = false }){
   // Les deux clés coin_config restent lues et passées : elles ne commandent
   // plus la visibilité, et `plateformesOuvertes` reste servi à qui l'attend —
   // plateformesDuCompte rend désormais les cinq quel que soit son argument.
-  const oplaActivable=true;
+  // ── SORTIE D'OPLA (02/10/2026, décision Nico) ─────────────────────────────
+  // Opla n'est plus proposée, pour personne : plus de case dans la
+  // publication ni la republication (utils/stockFiltres sort Opla des
+  // plateformes ouvertes), plus rien d'« ouvert » ici. Seuls les comptes au
+  // dressing Opla DÉJÀ synchronisé (sortieOpla.relie) gardent la
+  // synchronisation : relevé, ventes vues sur Opla, retraits des copies.
   const plateformesVisiblesEffectives=useMemo(
-    ()=>plateformesVisibles.includes('opla')?plateformesVisibles:[...plateformesVisibles,'opla'],
+    ()=>plateformesVisibles.filter(p=>p!=='opla'),
     [plateformesVisibles],
   );
-  const plateformesOuvertes=useMemo(()=>oplaActivable?['opla']:[],[oplaActivable]);
+  const plateformesOuvertes=useMemo(()=>[],[]);
+  const sortieOpla=useSortieOpla(user?.id);
+  // ── DEMANDE D'AVIS (02/10, lot B) ──────────────────────────────────────────
+  // Le serveur décide (avis-demande) ; on ne lui pose la question que sur le
+  // tableau de bord, données chargées, entrée finie, jamais à l'ouverture
+  // (45 s après le lancement), jamais au milieu d'une action.
+  const avis=useDemandeAvis({userId:user?.id,actif:tab===0&&!loading&&!showOnboardingFlow&&!loginOnly});
+  const enteteTableauDeBord=useMemo(()=>{
+    if(!sortieOpla.bandeau&&!avis.carte) return null;
+    return(
+      <div style={{display:'flex',flexDirection:'column',gap:16}}>
+        {sortieOpla.bandeau&&<BandeauSortieOpla onCompris={sortieOpla.compris}/>}
+        {avis.carte&&<CarteAvis url={avis.carte.url} onChoix={avis.choisir}/>}
+      </div>
+    );
+  },[sortieOpla.bandeau,sortieOpla.compris,avis.carte,avis.choisir]);
   // Plus aucune case n'est grisée pour Opla : le motif reste pour les
   // appelants qui le lisent encore, il ne sert plus à rien de visible.
   const oplaMotifGrise='fermee';
@@ -8426,6 +8451,7 @@ export default function App({ loginOnly = false }){
             extensionAbsente={extensionNeverSeen===true}
             onExtensionInfo={()=>setShowExtensionInfo(true)}
             photosParInventaire={photosParInventaire}
+            entete={enteteTableauDeBord}
           />
         )}
 
@@ -8443,6 +8469,7 @@ export default function App({ loginOnly = false }){
             plateformesOuvertes={plateformesOuvertes}
             oplaMotifGrise={oplaMotifGrise}
             oplaExtensionMin={oplaConfig.min}
+            oplaRelie={sortieOpla.relie===true}
             iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
@@ -8968,7 +8995,9 @@ export default function App({ loginOnly = false }){
                   🏪 {lang==='fr'?'Vendu sur':'Sold on'} <span style={{color:C.red}}>*</span>
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {PLATEFORMES_VENTE.map(pv=>{
+                  {/* (02/10) Opla ne se propose qu'aux comptes au dressing Opla
+                      synchronisé — ou si la vente est déjà posée sur Opla. */}
+                  {PLATEFORMES_VENTE.filter(pv=>pv.valeur!=='Opla'||sortieOpla.relie===true||sellModal.plateforme==='Opla').map(pv=>{
                     const actif=sellModal.plateforme===pv.valeur;
                     return(
                       <button key={pv.valeur} type="button" onClick={()=>setSellModal(p=>({...p,plateforme:pv.valeur}))}
@@ -9176,6 +9205,7 @@ export default function App({ loginOnly = false }){
           adresseLbc={{rue:settingsLbcRue,cp:settingsLbcCp,ville:settingsLbcVille}}
           setAdresseLbc={({rue,cp,ville})=>{setSettingsLbcRue(rue);setSettingsLbcCp(cp);setSettingsLbcVille(ville);}}
           plateformesOuvertes={plateformesOuvertes}
+          oplaRelie={sortieOpla.relie===true}
           onToast={(message)=>{setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),3000);}}
           ouvrirOffres={(origine)=>openUpgradeModal(null,origine??'reglages')}
           ouvrirSignalementBug={()=>{setShowBugReport(true);setBugMessage("");}}

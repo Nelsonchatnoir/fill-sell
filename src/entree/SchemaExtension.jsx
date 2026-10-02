@@ -8,7 +8,8 @@
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { E } from './theme';
 
-const PF = ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla'];
+// (02/10) Opla n'est plus proposée : sortie d'Opla, décision de Nico.
+const PF = ['vinted', 'leboncoin', 'ebay', 'beebs'];
 
 export default function SchemaExtension({ T }) {
   return (

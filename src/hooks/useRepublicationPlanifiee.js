@@ -27,7 +27,9 @@ import { supabase } from '../lib/supabase';
 
 // L'ordre d'affichage, et la seule liste : eBay n'y est pas et n'y sera pas
 // (voie API, on ne republie pas — garde-fou du 17/09).
-export const PLATEFORMES_PLANIFIEES = ['vinted', 'leboncoin', 'beebs', 'opla'];
+// (02/10, sortie d'Opla) Opla n'est plus republiée, ni à la main ni en
+// planifié (coin_config republish_planifiee_pf_opla = 0) : elle sort de la liste.
+export const PLATEFORMES_PLANIFIEES = ['vinted', 'leboncoin', 'beebs'];
 
 // Fuseau de l'appareil : envoyé à chaque écriture, validé par le serveur. La
 // voie planifiée compte à MINUIT LOCAL dans ce fuseau.

@@ -1,5 +1,7 @@
 import { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { questionOplaFinale } from '../../supabase/functions/_shared/opla-questions.js';
+// (02/10) Sortie d'Opla : une publication/republication Opla ne se relance plus.
+import { estPublicationOpla, MESSAGE_OPLA_INDISPONIBLE } from '../../supabase/functions/_shared/opla-sortie.js';
 import { createPortal } from 'react-dom';
 // RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
@@ -72,7 +74,7 @@ import { murConnexionReleve } from '../annonces/etatReleve';
 import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
-  plateformesDuCompte, plateformesDeLArticle,
+  plateformesDuCompte, plateformesDeLArticle, plateformesDeReleve,
   LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
   filtrerStock, trierStock, TRIS_STOCK, libelleTri, libelleTriCourt, pastillesEtat, etatPlateformes,
 } from '../utils/stockFiltres';
@@ -5198,6 +5200,9 @@ const StockTab = memo(function StockTab({
   // calculé par App.jsx) : plateformes réellement SÉLECTIONNABLES, motif de
   // la case grisée, borne affichée. Transmis au stepper tels quels.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
+  // (02/10) Dressing Opla déjà synchronisé (useSortieOpla) : seul cas où Opla
+  // garde sa ligne dans le bloc de relevé. Jamais proposée à la publication.
+  oplaRelie = false,
   // (iapProduct retiré le 2026-08-09 : son seul lecteur était le sous-titre
   // d'IAPUpgradeBlock, qui annonçait le prix Premium sous un bouton menant à
   // trois tarifs.)
@@ -7025,6 +7030,7 @@ const StockTab = memo(function StockTab({
   // encore la mettre en ligne et on ferait un doublon.
   async function republierSansConfirmation(job) {
     if (relanceBusy || !user?.id) return;
+    if (estPublicationOpla(job)) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
     if (job?.status !== 'published' || job?.listing_url) {
       setRelanceMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
                                   : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
@@ -7142,6 +7148,9 @@ const StockTab = memo(function StockTab({
   }
   async function relancerJobEchoue(job, mode = 'repend') {
     if (relanceBusy) return;
+    // (02/10, sortie d'Opla) Ni « relancer », ni « relancer par copie » : le
+    // serveur la refermerait aussitôt. La phrase vraie, rien d'autre.
+    if (estPublicationOpla(job)) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
     setRelanceBusy(true); setRelanceMsg(null);
     try {
       if (mode === 'copie') {
@@ -8322,7 +8331,7 @@ const StockTab = memo(function StockTab({
              l'enveloppe plus dans une boîte blanche (elle en faisait deux). */
           <CarteAnnoncesEnLigne
             lang={lang} user={user} isNative={isNative} items={items} ouvert={syncMultiOuverte}
-            plateformes={plateformesCompte.filter(p=>p!=='vinted')}
+            plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie).filter(p=>p!=='vinted')}
             extensionStatus={extensionStatus}
             onRattache={rafraichirApresSync}
             lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
@@ -9578,18 +9587,18 @@ const StockTab = memo(function StockTab({
                       // Vinted, lui, remonte EN ENTIER (vues et favoris) : la
                       // capacité n’est pas la même partout, on l’écrit plutôt
                       // que de l’aplatir.
-                      fr:["Relève tes annonces en ligne","Les cinq plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
-                      en:["Scan your live listings","All five marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
-                      logos:["vinted","leboncoin","beebs","ebay","opla"],
+                      fr:["Relève tes annonces en ligne","Les quatre plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
+                      en:["Scan your live listings","All four marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
+                      logos:["vinted","leboncoin","beebs","ebay"],
                     },
                     {
                       // Même formulation que l'eyebrow des logos du Tableau
                       // vide (App.jsx, 2026-09-01) : un seul discours pour un
                       // seul geste — « préparée une fois, déposée sur les
                       // quatre ».
-                      fr:["Publie sur 5 plateformes","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, Beebs, eBay et Opla."],
-                      en:["Publish on 5 marketplaces","One listing prepared once, posted to Vinted, Leboncoin, Beebs, eBay and Opla."],
-                      logos:["vinted","leboncoin","beebs","ebay","opla"],
+                      fr:["Publie sur 4 plateformes","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, Beebs et eBay."],
+                      en:["Publish on 4 marketplaces","One listing prepared once, posted to Vinted, Leboncoin, Beebs and eBay."],
+                      logos:["vinted","leboncoin","beebs","ebay"],
                     },
                     {
                       // Même phrase que la carte republication du Tableau vide
@@ -9606,8 +9615,8 @@ const StockTab = memo(function StockTab({
                       logos:[],
                     },
                     {
-                      fr:["Vendu quelque part ?","FillSell repère l'annonce disparue, sur n'importe laquelle des cinq — tu confirmes, et tu retires les autres en un tap."],
-                      en:["Sold somewhere?","FillSell spots the listing that is gone, on any of the five — you confirm, and remove the others in one tap."],
+                      fr:["Vendu quelque part ?","FillSell repère l'annonce disparue, sur n'importe laquelle des quatre — tu confirmes, et tu retires les autres en un tap."],
+                      en:["Sold somewhere?","FillSell spots the listing that is gone, on any of the four — you confirm, and remove the others in one tap."],
                       logos:[],
                     },
                   ].map((et,i)=>{

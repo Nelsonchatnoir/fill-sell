@@ -4985,6 +4985,9 @@ export default function ListingPreviewScreen({
   //    endroits où Opla n'a rien à faire aujourd'hui.
   const [selected, setSelected]         = useState(() => new Set(
     (draft?.selected ?? [...PLATFORMS_DEFAULT, ...PLATFORMS_A_VENIR.filter(p => plateformesOuvertes.includes(p))])
+      // (02/10, sortie d'Opla) Un brouillon d'avant peut encore porter une
+      // plateforme qui n'est plus proposée (Opla) : on ne la recoche jamais.
+      .filter(p => PLATFORMS_DEFAULT.includes(p) || plateformesOuvertes.includes(p))
       .filter(p => !lockedSet.has(p)),
   ));
   const [publishing, setPublishing]     = useState(false);

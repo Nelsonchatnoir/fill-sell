@@ -23,7 +23,7 @@ const PLATEFORMES = [
   { id: 'leboncoin', nom: 'Leboncoin' },
   { id: 'ebay', nom: 'eBay' },
   { id: 'beebs', nom: 'Beebs' },
-  { id: 'opla', nom: 'Opla' },
+  // (02/10) Opla n'est plus proposée : sortie d'Opla, décision de Nico.
 ];
 
 function Coche({ actif }) {

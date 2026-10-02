@@ -23,7 +23,6 @@ import { useCallback } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import EbayCompteSection from '../components/EbayCompteSection';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
-import OplaCategoriesMemorisees from './OplaCategoriesMemorisees';
 import { MOTIFS } from '../utils/connexionPlateformes';
 import { ETATS, etatOplaAffiche } from '../utils/veritePlateformes';
 import { useOplaAcces } from '../utils/oplaAcces';
@@ -194,10 +193,9 @@ export default function SousPagePlateformes({ c, T }) {
         <Note>{T.sessionsNote}</Note>
       </Groupe>
 
-      {/* Les questions de catégorie Opla déjà tranchées — le bloc ne s'affiche
-          que s'il y en a. C'est le droit de changer d'avis : sans lui, une
-          réponse mémorisée ne serait plus jamais redemandée. */}
-      <OplaCategoriesMemorisees c={c} T={T} />
+      {/* (02/10, sortie d'Opla) Les catégories Opla mémorisées ne servaient
+          qu'à PUBLIER sur Opla : le bloc n'est plus monté. Les réponses
+          restent en base (platform_settings.opla.categories), rien n'est effacé. */}
 
       {/* Compte vendeur eBay — la section existante, montée telle quelle :
           connexion OAuth, checklist vendeur, lieu d'expédition. C'est ELLE

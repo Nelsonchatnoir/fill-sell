@@ -29,7 +29,7 @@ import {
   RepublicationPlanifieePlateformes, RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique,
 } from '../components/RepublicationPlanifiee';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
-import { plateformesDuCompte } from '../utils/stockFiltres';
+import { plateformesDeReleve } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
@@ -74,6 +74,9 @@ export default function ReglagesPage({
   currency, saveCurrency, devises,
   adresseLbc, setAdresseLbc,
   plateformesOuvertes,
+  // (02/10) Dressing Opla synchronisé : Opla garde sa ligne (session,
+  // autorisation) pour que la synchronisation continue. Sinon, plus d'Opla.
+  oplaRelie = false,
   onToast, ouvrirOffres, ouvrirSignalementBug,
   // Écran ouvert D'EMBLÉE à l'arrivée (20/09) : le module de republication
   // automatique, en pied du Stock, mène ICI plutôt que de remonter une
@@ -97,7 +100,7 @@ export default function ReglagesPage({
   // UNE SEULE RÉPONSE À « QUELLES PLATEFORMES ? » : celle du Stock
   // (utils/stockFiltres.plateformesDuCompte), jamais une liste recopiée ici —
   // c'est exactement la divergence corrigée le 17/09 (Opla absente des cartes).
-  const plateformesSession = useMemo(() => plateformesDuCompte(plateformesOuvertes), [plateformesOuvertes]);
+  const plateformesSession = useMemo(() => plateformesDeReleve(plateformesOuvertes, oplaRelie), [plateformesOuvertes, oplaRelie]);
   const sessionsLocales = useSessionsPlateformes({ userId: user?.id, plateformes: plateformesSession });
   // La vérité serveur (2026-09-23) : c'est elle que l'écran Plateformes et le
   // compteur du hub affichent. Le calcul local reste le repli.
