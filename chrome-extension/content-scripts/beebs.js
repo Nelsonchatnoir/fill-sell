@@ -1629,7 +1629,18 @@ async function fillListingForm(job) {
       ? voisinesDemiPointure(valeurJobPour(firstKey), optionsChamp)
       : null;
     const optionsFinales = demiPointure ? demiPointure.options : optionsChamp;
-    const detailVidesFinal = demiPointure
+    // (02/10 soir) La valeur de la fiche n'EST PAS dans la liste du rayon (ceinture
+    // « L » face à des longueurs en mm, nivake03 8d487ebb) : ce n'est pas une panne
+    // de remplissage, c'est une valeur que Beebs ne propose pas ici — on le dit.
+    const vFiche = valeurJobPour(firstKey);
+    const norm = (x) => String(x ?? "").trim().toLowerCase();
+    const horsListe = !demiPointure && vFiche && Array.isArray(optionsChamp) && optionsChamp.length
+      && !optionsChamp.some((o) => norm(typeof o === "string" ? o : (o?.title ?? o?.label ?? o?.value)) === norm(vFiche));
+    const detailVidesFinal = horsListe
+      ? detailVides.replace(
+          /« [^»]+ » : la fiche porte « [^»]+ » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante (relancer, ou attendre le correctif)/,
+          `« ${nomLisible(firstKey)} » : la fiche porte « ${vFiche} », une valeur que Beebs ne propose pas dans ce rayon — choisis la bonne ci-dessous et la publication repart`)
+      : demiPointure
       ? detailVides.replace(
           /« [^»]+ » : la fiche porte « [^»]+ » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante \(relancer, ou attendre le correctif\)/,
           `« ${nomLisible(firstKey)} » : Beebs n'accepte pas les demi-pointures dans ce rayon — la fiche porte « ${demiPointure.valeur} », choisis ${demiPointure.options[0]} ou ${demiPointure.options[1]} ci-dessous et la publication repart`)
