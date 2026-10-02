@@ -27,6 +27,7 @@ import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
+import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
@@ -861,6 +862,59 @@ serve(async (req) => {
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] correctifs d'extension : ${String((e as Error)?.message ?? e)} — rien de relancé`);
+      }
+    }
+
+    // ══ LA PAUSE « PAGE DE DÉPÔT LEBONCOIN » NE DEMANDE AUCUN GESTE (02/10) ══
+    // (xxewwer, 0.6.82 — _shared/lbc-pause-page-depot.js) Les postes ≤ 0.6.83
+    // prennent le mur de connexion de /deposer-une-annonce pour un formulaire
+    // illisible : needs_user « le titre n'est plus au rendez-vous … repartira
+    // toute seule », que rien ne relançait. Ici, au poll d'exécution :
+    //   · relevé Leboncoin réussi après la pause → le job repart (annonce
+    //     re-vérifiée avant tout retrait) ;
+    //   · session du compte connue fermée → attente de session nommée
+    //     (« En attente de ta connexion à Leboncoin »), levée seule ;
+    //   · sinon → pending, nouvel essai espacé, « de notre côté ».
+    // La garde du poste repasse à CHAQUE reprise : rien n'est jamais retiré
+    // tant que la page de dépôt ne se lit pas. Jamais un article vendu.
+    // Best-effort : une lecture ratée laisse tout en l'état.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: pausesLbc } = await admin.from("cross_post_jobs")
+          .select("id, platform, action, status, error, inventaire_id, platform_fields")
+          .eq("user_id", user.id).eq("status", "needs_user").eq("platform", "leboncoin").eq("action", "republish")
+          .eq("platform_fields->gardes->prevol_page->>verdict", "bloque")
+          .limit(30);
+        const aTraiter = ((pausesLbc ?? []) as Array<Record<string, unknown>>).filter((j) => pausePageDepotLbc(j));
+        if (aTraiter.length) {
+          const [{ data: relevesLbc }, { data: profPause }] = await Promise.all([
+            admin.from("vinted_sync_runs").select("status, started_at, erreur")
+              .eq("user_id", user.id).eq("platform", "leboncoin")
+              .order("started_at", { ascending: false }).limit(10),
+            admin.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle(),
+          ]);
+          const compte: Record<string, number> = {};
+          for (const j of aTraiter) {
+            const d = decisionPausePageDepotLbc(j, { releves: relevesLbc ?? [], sessions: profPause?.extension_sessions ?? null, maintenant: Date.now() });
+            if (!d) continue;
+            if (j.inventaire_id != null) {
+              const { data: vendu } = await admin.rpc("article_vendu", { p_inventaire_id: j.inventaire_id });
+              if (vendu === true) continue;
+            }
+            const pfD = d.platform_fields as Record<string, unknown>;
+            pfD.erreurs_archivees = archiverErreur(pfD.erreurs_archivees, j.error, "needs_user", `get-pending-jobs (pause page de dépôt Leboncoin : ${d.action})`);
+            const { data: maj } = await admin.from("cross_post_jobs")
+              .update({ status: d.status, error: d.error, platform_fields: pfD })
+              .eq("id", j.id as string).eq("status", "needs_user").select("id");
+            if ((maj ?? []).length) compte[d.action] = (compte[d.action] ?? 0) + 1;
+          }
+          if (Object.keys(compte).length) {
+            console.log(`[get-pending-jobs] userId=${user.id} : pauses « page de dépôt Leboncoin » (postes ≤ 0.6.83) reprises sans geste — ${JSON.stringify(compte)}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] pauses page de dépôt Leboncoin : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
     }
 
