@@ -8,7 +8,8 @@
 //     la seule annonce (34080027) est reliée à un autre dépôt, et vendue ;
 //   · ornellaracano 52c13161 : 34084113 en ligne, reliée à rien ;
 //   · nicolas.menar be0395a6 (eBay 377453677328) : EN LIGNE au relevé du 01/10.
-import { jugerRetraitIntrouvable, releveComplet } from "../supabase/functions/_shared/retrait-introuvable.js";
+import { jugerRetraitIntrouvable, releveComplet, neeApresLeDepot, messageRetraitSansNumeroAToi,
+  RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS } from "../supabase/functions/_shared/retrait-introuvable.js";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
@@ -70,6 +71,51 @@ ok(jugerRetraitIntrouvable(doudou, { releves: relevesEbay, annonces: [{ listing_
 const absente = jugerRetraitIntrouvable(doudou, { releves: relevesEbay, annonces: [{ listing_id: "377453677328", vu_le: "2026-09-29T20:00:00Z", statut_plateforme: "en_ligne" }] });
 ok(absente?.verdict === "deja_retire" && absente.numero === "377453677328" && /n° 377453677328/.test(absente.message), "absente des deux relevés → déjà retirée, par son numéro");
 ok(jugerRetraitIntrouvable({ ...doudou, platform: "vinted" }, { releves: relevesEbay, annonces: [] }) === null, "Vinted : hors de cette règle (son propre circuit)");
+
+console.log("\n4. NÉE APRÈS LE DÉPÔT — ORNELLA, RELEVÉS RÉELS DU 02/10 (point 1)");
+// Robes déposées le 20/09 (e643e13d publié 17:32:01Z, bcc3b32a 09:20:17Z) ;
+// 34084113 vue pour la première fois au relevé du 01/10 17:33Z ; relevés
+// complets avant elle : 30/09 07:30Z et 18:12Z (29/29) ; 29/09 20:20Z incomplet.
+const relevesOrn = [
+  R("2026-10-02T07:15:24Z", 29, 29), R("2026-10-01T17:33:17Z", 29, 29), R("2026-09-30T18:12:10Z", 29, 29),
+  R("2026-09-30T07:30:05Z", 29, 29), { status: "expired", started_at: "2026-09-29T20:51:01Z", items_vus: 0, total_entries: null },
+  R("2026-09-29T20:20:58Z", 29, 29, { erreur: "[incomplet] relevé interrompu" }), R("2026-09-29T05:48:00Z", 29, 29),
+];
+const annoncesOrn = [
+  { listing_id: "34066073", job_id: "j1", inventaire_id: 1, vu_le: "2026-10-02T07:15:40Z", statut_plateforme: "en_ligne", created_at: "2026-09-28T13:39:00Z" },
+  { listing_id: "34084113", job_id: null, inventaire_id: null, vu_le: "2026-10-02T07:15:40Z", statut_plateforme: "en_ligne", created_at: "2026-10-01T17:33:25Z" },
+];
+const robe = jugerRetraitIntrouvable(retraitBeebs("52c13161", "2026-09-30T20:25:16Z"), {
+  releves: relevesOrn, annonces: annoncesOrn, depotId: "e643e13d-2165-4c04-a418-8f6f791df996", depotLe: "2026-09-20T17:32:01Z",
+});
+ok(robe?.verdict === "deja_retire" && robe.neesApresDepot?.[0] === "34084113",
+  "robe PROMOD (déposée le 20/09) : 34084113 apparue le 01/10 après 2 relevés complets sans elle → pas la robe, rien à retirer", JSON.stringify(robe));
+ok(/apparue que bien après ce dépôt \(n° 34084113\)/.test(robe.message) && /ne compte pas dans tes limites/.test(robe.message), "message vrai : l'annonce écartée est nommée");
+const mango = jugerRetraitIntrouvable(retraitBeebs("d4c69bcc", "2026-10-01T15:10:09Z"), {
+  releves: relevesOrn, annonces: annoncesOrn, depotId: "bcc3b32a-d90c-48f1-a094-2725874c27ff", depotLe: "2026-09-20T09:20:17Z",
+});
+ok(mango?.verdict === "deja_retire", "robe Mango (déposée le 20/09) : même preuve, même conclusion", JSON.stringify(mango));
+// Le pull Zara déposé le 30/09 18:35Z : un seul relevé complet entre son dépôt
+// et 34084113 ? Aucun (30/09 18:12Z est AVANT le dépôt) → jamais écartée.
+const pull = jugerRetraitIntrouvable(retraitBeebs("pull", "2026-10-02T10:00:00Z"), {
+  releves: [R("2026-10-02T12:00:00Z", 29, 29), R("2026-10-02T11:00:00Z", 29, 29), ...relevesOrn],
+  annonces: annoncesOrn.map((a) => ({ ...a, vu_le: "2026-10-02T12:00:30Z" })), depotId: "dba189b3-96ae-4a47-acc3-fd45ab2ddae8", depotLe: "2026-09-30T18:35:43Z",
+});
+ok(pull?.verdict === "non_reliee" && pull.nonReliees?.[0] === "34084113", "pull Zara (déposé le 30/09) : 34084113 PEUT être lui → jamais écartée, on ne conclut rien");
+ok(!neeApresLeDepot({ created_at: "2026-10-01T17:33:25Z" }, { releves: [R("2026-09-30T18:12:10Z", 29, 29)], depotLe: "2026-09-20T17:32:01Z" }),
+  "un seul relevé complet sans elle : pas une preuve");
+ok(!neeApresLeDepot({ created_at: "2026-10-01T17:33:25Z" }, {
+  releves: [R("2026-09-30T18:12:10Z", 29, 29, { erreur: "[incomplet] x" }), R("2026-09-30T07:30:05Z", 20, 29)], depotLe: "2026-09-20T17:32:01Z" }),
+  "relevés incomplets : ne comptent pas");
+ok(!neeApresLeDepot({ created_at: "2026-10-01T17:33:25Z" }, { releves: relevesOrn, depotLe: null }), "heure du dépôt inconnue : jamais écartée");
+
+console.log("\n5. ATTENTE BORNÉE — LE MESSAGE À LA PERSONNE");
+ok(RETRAIT_SANS_NUMERO_GESTE_MS === 48 * 3600_000 && RETRAIT_SANS_NUMERO_RELEVE_MS === 6 * 3600_000, "48 h puis needs_user ; relevé redemandé toutes les 6 h");
+const mNr = messageRetraitSansNumeroAToi({ platform: "beebs", title: "Robe noire plissée PROMOD" }, { verdict: "non_reliee", nonReliees: ["34084113"] });
+ok(/« Robe noire plissée PROMOD »/.test(mNr) && /n° 34084113/.test(mNr) && /retire-la toi-même sur Beebs/.test(mNr) && /seul titre/.test(mNr),
+  "annonce non reliée : nommée par son numéro, le geste, jamais par le titre", mNr);
+const mAt = messageRetraitSansNumeroAToi({ platform: "beebs", title: "Wii Sports" }, { verdict: "attente" });
+ok(/n'ont pas pu être relues en entier/.test(mAt) && /se conclura tout seul/.test(mAt), "relevés manquants : dit ce qui manque et l'issue", mAt);
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ retraits introuvables : deux relevés complets, par numéro, message vrai");

@@ -32,7 +32,7 @@ import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
-import { PLATEFORMES_RELEVE, jugerRetraitIntrouvable } from "../_shared/retrait-introuvable.js";
+import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -1159,8 +1159,132 @@ serve(async (req) => {
           clos += (maj ?? []).length;
         }
         if (clos) console.log(`[get-pending-jobs] userId=${user.id} : ${clos} retrait(s) arrêté(s) clos — annonce absente de deux relevés complets (par numéro)`);
+
+        // (02/10 soir, point 1) Les retraits SANS numéro passés à la personne
+        // après 48 h (needs_user_source = retrait_sans_numero) restent jugés :
+        // le lien du dépôt est arrivé → remis en file avec ce lien ; deux
+        // relevés complets sans annonce possible → clos, dépôt rendu. Rien
+        // d'autre ne bouge (la personne garde la main).
+        const sansNumero = ((arretes ?? []) as Array<Record<string, unknown>>).filter((j) =>
+          j.status === "needs_user"
+          && ((j.platform_fields ?? {}) as Record<string, unknown>).needs_user_source === "retrait_sans_numero"
+          && !String(j.platform_listing_id ?? "").trim() && !String(j.listing_url ?? "").trim());
+        let n2 = 0;
+        for (const j of sansNumero) {
+          const plat = String(j.platform);
+          const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          const depotId = String(((pfJ.arme_par ?? {}) as Record<string, unknown>).depot ?? "");
+          let dep: Record<string, unknown> | null = null;
+          if (/^[0-9a-f-]{36}$/i.test(depotId)) {
+            const { data } = await admin.from("cross_post_jobs")
+              .select("id, status, listing_url, platform_listing_id, platform_fields, published_at, created_at")
+              .eq("id", depotId).eq("user_id", user.id).maybeSingle();
+            dep = (data ?? null) as Record<string, unknown> | null;
+          }
+          const lienDep = String(dep?.listing_url ?? "").trim()
+            || lienDepuisId(plat, String(dep?.platform_listing_id ?? "").trim()) || "";
+          if (lienDep) {
+            const pfN: Record<string, unknown> = { ...pfJ, retrait_attend_lien: { ...((pfJ.retrait_attend_lien ?? {}) as Record<string, unknown>),
+              resolu_le: new Date().toISOString(), url: lienDep, provenance: "lien_du_depot_apres_geste" } };
+            delete pfN.needs_user_source; delete pfN.removal_url_missing;
+            pfN.erreurs_archivees = archiverErreur(pfN.erreurs_archivees, j.error as string, "needs_user", "get-pending-jobs (lien du dépôt retrouvé)");
+            const { data: maj } = await admin.from("cross_post_jobs")
+              .update({ status: "pending", error: null, listing_url: lienDep,
+                ...(String(dep?.platform_listing_id ?? "").trim() ? { platform_listing_id: String(dep?.platform_listing_id) } : {}),
+                platform_fields: pfN })
+              .eq("id", j.id as string).eq("status", "needs_user").select("id");
+            n2 += (maj ?? []).length;
+            continue;
+          }
+          if (!lectures.has(plat)) {
+            const [rR, rA] = await Promise.all([
+              admin.from("vinted_sync_runs").select("status, started_at, items_vus, total_entries, erreur")
+                .eq("user_id", user.id).eq("platform", plat).eq("kind", "annonces")
+                .order("started_at", { ascending: false }).limit(12),
+              admin.from("annonces_plateforme").select("listing_id, url, job_id, inventaire_id, vu_le, disparu_le, retiree_le, statut_plateforme, created_at")
+                .eq("user_id", user.id).eq("platform", plat).limit(3000),
+            ]);
+            lectures.set(plat, (!rR.error && !rA.error) ? { releves: rR.data ?? [], annonces: rA.data ?? [] } : null);
+          }
+          const lecture = lectures.get(plat);
+          if (!lecture) continue;
+          const v = jugerRetraitIntrouvable(j, { releves: lecture.releves, annonces: lecture.annonces,
+            depotId: dep ? String(dep.id) : null, depotLe: (dep?.published_at ?? dep?.created_at ?? null) as string | null, maintenant: Date.now() });
+          if (v?.verdict !== "deja_retire") continue;
+          pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, "needs_user", "get-pending-jobs (retrait sans numéro : deux relevés complets)");
+          pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets", releves: v.releves, numero: null,
+            ...(v.neesApresDepot ? { nees_apres_depot: v.neesApresDepot } : {}) };
+          delete pfJ.needs_user_source;
+          const { data: maj } = await admin.from("cross_post_jobs")
+            .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
+            .eq("id", j.id as string).eq("status", "needs_user").select("id");
+          if ((maj ?? []).length && dep && dep.status === "published" && !String(dep.listing_url ?? "").trim() && !String(dep.platform_listing_id ?? "").trim()) {
+            const { data: ref } = await admin.rpc("refund_publish_unconfirmed", { p_job: dep.id });
+            await admin.from("cross_post_jobs").update({
+              status: "failed",
+              error: `Publication jamais vue en ligne sur ${plat === "beebs" ? "Beebs" : plat} : deux relevés complets de ton compte ne l'ont pas trouvée, ` +
+                "et nous n'avons jamais eu son numéro. Cette publication ne compte pas dans tes limites.",
+              platform_fields: { ...((dep.platform_fields ?? {}) as Record<string, unknown>),
+                listing_url_abandon: { at: new Date().toISOString(), motif: "deux_releves_complets", releves: v.releves, refund: ref ?? null } },
+            }).eq("id", dep.id as string).eq("status", "published");
+          }
+          n2 += (maj ?? []).length;
+        }
+        if (n2) console.log(`[get-pending-jobs] userId=${user.id} : ${n2} retrait(s) sans numéro (à toi) tranché(s) — lien retrouvé ou deux relevés complets`);
       } catch (e) {
         console.warn(`[get-pending-jobs] retraits introuvables : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
+    // ══ DÉPÔT BEEBS SANS NUMÉRO : LA MÉTHODE DU MOMENT DU DÉPÔT À CHAQUE RELEVÉ (02/10 soir) ══
+    // (point 1, ornellaracano dba189b3) La retenue silencieuse Beebs (29/09)
+    // ignore, à chaque relevé, toute annonce non reliée tant qu'un dépôt n'a pas
+    // de numéro — « jusqu'à ce que l'identifiant exact soit connu ». Mais rien ne
+    // le cherchait plus : beebs_numeros_par_sequence (rang + titre + photo,
+    // méthode de Nico du 01/10) n'avait tourné qu'une fois, à la main. Le dépôt
+    // restait sans numéro, son annonce ignorée, sans question, pour toujours —
+    // et elle bloquait d'autres retraits (« annonce non reliée »).
+    // Désormais, après chaque NOUVEAU relevé Beebs complet, la méthode tourne
+    // pour ce compte : numéro posé si tout concorde (photo comprise), sinon la
+    // question « Est-ce cette annonce ? ». Jamais d'accroche au titre seul.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: dettes } = await admin.from("cross_post_jobs")
+          .select("id, platform_fields")
+          .eq("user_id", user.id).eq("platform", "beebs").in("action", ["publish", "republish"]).eq("status", "published")
+          .is("platform_listing_id", null).is("listing_url", null)
+          .not("platform_fields->lien_en_attente", "is", null)
+          .limit(50);
+        const liste = (dettes ?? []) as Array<{ id: string; platform_fields: Record<string, unknown> | null }>;
+        if (liste.length) {
+          const { data: rel } = await admin.from("vinted_sync_runs")
+            .select("id, status, started_at, items_vus, total_entries, erreur")
+            .eq("user_id", user.id).eq("platform", "beebs").eq("kind", "annonces").eq("status", "done")
+            .order("started_at", { ascending: false }).limit(3);
+          const complet = ((rel ?? []) as Array<Record<string, unknown>>).find((r) =>
+            Number(r.total_entries) >= 0 && r.total_entries != null && Number(r.items_vus) >= Number(r.total_entries)
+            && !/\[incomplet\]/i.test(String(r.erreur ?? "")));
+          const dejaVu = liste.every((j) => String((j.platform_fields ?? {})["sequence_releve"] ?? "") === String(complet?.id ?? ""));
+          if (complet && !dejaVu) {
+            const { data: res, error: errSeq } = await admin.rpc("beebs_numeros_par_sequence", { p_user: user.id, p_simulation: false });
+            if (!errSeq) {
+              for (const j of liste) {
+                // Marque le relevé examiné (une passe par relevé), sans réécrire
+                // un dépôt que la méthode vient de numéroter.
+                await admin.from("cross_post_jobs")
+                  .update({ platform_fields: { ...(j.platform_fields ?? {}), sequence_releve: String(complet.id), sequence_le: new Date().toISOString() } })
+                  .eq("id", j.id).is("platform_listing_id", null).is("listing_url", null);
+              }
+              const r = (res ?? {}) as Record<string, unknown>;
+              console.log(`[get-pending-jobs] userId=${user.id} : méthode du moment du dépôt Beebs (relevé ${String(complet.id).slice(0, 8)}) — ${r.poses ?? 0} numéro(s) posé(s), ${r.questions ?? 0} question(s), ${r.sans_preuve ?? 0} sans preuve`);
+            } else {
+              console.warn(`[get-pending-jobs] méthode du moment du dépôt Beebs : ${errSeq.message} — rien de modifié`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] méthode du moment du dépôt Beebs : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
     }
 
@@ -4458,10 +4582,12 @@ serve(async (req) => {
           let v: { releves: unknown[]; annonces: unknown[] } | null = null;
           try {
             const [rR, rA] = await Promise.all([
+              // 12 relevés (02/10 soir) : assez pour juger qu'une annonce est née
+              // APRÈS le dépôt (deux relevés complets sans elle, neeApresLeDepot).
               userClient.from("vinted_sync_runs").select("status, started_at, items_vus, total_entries, erreur")
                 .eq("user_id", user.id).eq("platform", plat).eq("kind", "annonces")
-                .order("started_at", { ascending: false }).limit(6),
-              userClient.from("annonces_plateforme").select("listing_id, url, job_id, inventaire_id, vu_le, disparu_le, retiree_le, statut_plateforme")
+                .order("started_at", { ascending: false }).limit(12),
+              userClient.from("annonces_plateforme").select("listing_id, url, job_id, inventaire_id, vu_le, disparu_le, retiree_le, statut_plateforme, created_at")
                 .eq("user_id", user.id).eq("platform", plat).limit(3000),
             ]);
             if (!rR.error && !rA.error) v = { releves: rR.data ?? [], annonces: rA.data ?? [] };
@@ -4495,6 +4621,9 @@ serve(async (req) => {
             // qu'il l'est, le retrait n'expire pas — sinon il tombait AVANT
             // son dépôt, en faux « retire-la à la main » (Memini, 24/09).
             let depotEncoreSurveille = false;
+            // Heure de confirmation du dépôt (02/10 soir) : écarte les annonces
+            // nées après lui (_shared/retrait-introuvable.js, neeApresLeDepot).
+            let depotLe: string | null = null;
             // L'identifiant que le retrait porte LUI-MÊME (armRemovals le
             // recopie depuis le dépôt depuis le 21/09). Indispensable quand
             // inventaire_id a été NULLifié par la suppression de l'article
@@ -4507,7 +4636,7 @@ serve(async (req) => {
             if (/^[0-9a-f-]{36}$/i.test(depotProuve)) {
               const { data: depots } = await userClient
                 .from("cross_post_jobs")
-                .select("id, status, listing_url, platform_listing_id, platform_fields")
+                .select("id, status, listing_url, platform_listing_id, platform_fields, published_at, created_at")
                 .eq("platform", d.platform)
                 .eq("id", depotProuve)
                 .in("action", ["publish", "republish"])
@@ -4515,7 +4644,9 @@ serve(async (req) => {
                 .limit(5);
               const liste = (depots ?? []) as Array<{
                 status: string; listing_url: string | null; platform_listing_id: string | null; platform_fields: unknown;
+                published_at: string | null; created_at: string | null;
               }>;
+              depotLe = liste[0]?.published_at ?? liste[0]?.created_at ?? null;
               // 1. le lien du dépôt.
               for (const p of liste) {
                 if (String(p.listing_url ?? "").trim()) {
@@ -4608,7 +4739,7 @@ serve(async (req) => {
               const lecture = await lectureRelevePlateforme(String(d.platform));
               const verdict = lecture ? jugerRetraitIntrouvable(d as Record<string, unknown>, {
                 releves: lecture.releves, annonces: lecture.annonces,
-                depotId: /^[0-9a-f-]{36}$/i.test(depotProuve) ? depotProuve : null, maintenant: Date.now(),
+                depotId: /^[0-9a-f-]{36}$/i.test(depotProuve) ? depotProuve : null, depotLe, maintenant: Date.now(),
               }) : null;
               if (verdict?.verdict === "deja_retire") {
                 const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -4638,6 +4769,43 @@ serve(async (req) => {
                 continue;
               }
               if (verdict && (verdict.verdict === "attente" || verdict.verdict === "non_reliee")) {
+                // ── ATTENTE BORNÉE (02/10 soir, point 1, règle de Nico) ──────────
+                // Au-delà de 48 h, plus d'attente muette : needs_user, message
+                // clair (_shared/retrait-introuvable.js). Le job reste jugé au
+                // poll (bloc « retrait arrêté ») : deux relevés complets sans
+                // elle le closent, un lien retrouvé le remet en file.
+                if (Date.now() - depuisMs > RETRAIT_SANS_NUMERO_GESTE_MS) {
+                  const msgGeste = messageRetraitSansNumeroAToi(d as Record<string, unknown>, verdict);
+                  await userClient.from("cross_post_jobs").update({
+                    status: "needs_user", error: msgGeste,
+                    platform_fields: { ...pf, needs_user_source: "retrait_sans_numero", retrait_attend_lien: {
+                      ...attente, depuis: new Date(depuisMs).toISOString(), derniere: nowIso,
+                      motif: verdict.verdict === "non_reliee" ? "annonce_non_reliee" : "attend_deux_releves_complets",
+                      ...(verdict.nonReliees ? { non_reliees: verdict.nonReliees } : {}), a_toi_le: nowIso,
+                    } },
+                  }).eq("id", d.id).eq("status", "pending");
+                  console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : sans numéro depuis ${Math.round((Date.now() - depuisMs) / 3600_000)} h (${verdict.verdict}) → needs_user`);
+                  aRetenir.add(String(d.id));
+                  continue;
+                }
+                // Un relevé redemandé toutes les 6 h au plus pendant l'attente :
+                // c'est lui qui tranche (xxewwer 435df0a2 : aucun relevé Beebs
+                // depuis sa création, 21 h plus tard).
+                const derniersReleves = (lecture?.releves ?? []) as Array<{ status?: string; started_at?: string | null }>;
+                const enCoursReleve = derniersReleves.some((r) => r.status === "queued" || r.status === "running" || r.status === "claimed");
+                const dernierDebut = Math.max(0, ...derniersReleves.map((r) => Date.parse(String(r.started_at ?? "")) || 0));
+                const dejaRedemande = Date.parse(String(attente["releve_redemande_le"] ?? "")) || 0;
+                let releveRedemandeLe: string | null = null;
+                if (!enCoursReleve && Date.now() - dernierDebut > RETRAIT_SANS_NUMERO_RELEVE_MS
+                    && Date.now() - dejaRedemande > RETRAIT_SANS_NUMERO_RELEVE_MS) {
+                  const { error: qErr } = await userClient.from("vinted_sync_runs").insert({
+                    user_id: user.id, kind: "annonces", platform: d.platform, status: "queued",
+                    declencheur: "serveur:retrait_sans_numero", queued_at: nowIso,
+                  });
+                  if (!qErr) releveRedemandeLe = nowIso;
+                  console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : relevé ${d.platform} redemandé${qErr ? ` (refusé : ${qErr.message})` : ""}`);
+                }
+                const redemandeLe = releveRedemandeLe ?? attente["releve_redemande_le"] ?? null;
                 await userClient.from("cross_post_jobs").update({
                   error: verdict.message,
                   platform_fields: { ...pf, retrait_attend_lien: {
@@ -4645,6 +4813,7 @@ serve(async (req) => {
                     observations: (Number(attente["observations"]) || 0) + 1,
                     motif: verdict.verdict === "non_reliee" ? "annonce_non_reliee" : "attend_deux_releves_complets",
                     ...(verdict.nonReliees ? { non_reliees: verdict.nonReliees } : {}),
+                    ...(redemandeLe ? { releve_redemande_le: redemandeLe } : {}),
                   } },
                 }).eq("id", d.id).eq("status", "pending");
                 aRetenir.add(String(d.id));
