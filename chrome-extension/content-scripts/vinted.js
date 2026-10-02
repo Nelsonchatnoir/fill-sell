@@ -351,6 +351,8 @@ async function readItemsProbeOutcome() {
         // dans le corps ? Sans lui, un 400 sur la langue qui persiste ne dirait
         // pas si la pose a eu lieu — exactement le trou qu'avait l'ISBN.
         languePosee: c?.languePosee ?? null,
+        // colisPose (0.6.84) : même question pour package_size_id.
+        colisPose: c?.colisPose ?? null,
       };
     }
     if (last && refus) break;
@@ -578,6 +580,28 @@ function armerLangueLivrePourPost(ids) {
     const propres = Array.isArray(ids) ? ids.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
     window.postMessage({ __fillsellArmeLangueLivre: true, ids: propres }, window.location.origin);
   } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+
+// ── Format de colis : armement de la pose au POST (0.6.84, 02/10) ───────────
+// Même canal, même règle que l'ISBN : la sonde ne pose `package_size_id` que si
+// la page l'a laissé nul — le formulaire de Vinted ne rend plus la section
+// « Format du colis » sur certains rayons (montres, catalog_id 97) alors que
+// son serveur l'exige (400 `package_size`). L'id armé est CONNU (annonce
+// d'origine, ou format que le remplissage voulait cliquer), jamais inventé.
+// Passer null DÉSARME.
+function armerColisPourPost(id) {
+  try {
+    const n = Number(id);
+    window.postMessage({ __fillsellArmeColis: true, id: Number.isInteger(n) && n > 0 ? n : null }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+// L'id à poser : celui de l'annonce d'origine s'il est dans la table relevée,
+// sinon le libellé Petit/Moyen/Grand (uniques dans la table, contrairement
+// aux « 5 kg » qui existent sous deux ids). Rien d'autre.
+function idColisConnu(packageSizeId, libelle) {
+  const id = Number(packageSizeId);
+  if (Number.isInteger(id) && id > 0 && VINTED_PACKAGE_SIZES_PAR_ID[id]) return id;
+  return { Petit: 1, Moyen: 2, Grand: 3 }[String(libelle ?? "").trim()] ?? null;
 }
 
 // ── LANGUE PAR DÉFAUT DES LIVRES — id 6436 « Français » ─────────────────────
@@ -2776,6 +2800,8 @@ async function fillListingForm(job) {
   // Langue du livre : même raison, même geste — un armement qui traîne poserait
   // la langue d'un livre sur l'article suivant, y compris hors Livres.
   armerLangueLivrePourPost(null);
+  // Format de colis : même raison (0.6.84).
+  armerColisPourPost(null);
 
   // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
   // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
@@ -3633,6 +3659,10 @@ async function fillListingForm(job) {
       );
     }
   }
+  // (0.6.84) Le format CONNU part dans le corps du POST si la page ne l'y a pas
+  // mis — montres (97) : la section n'est plus rendue, le serveur l'exige.
+  const colisIdPourPost = colisVoulu ? idColisConnu(wantedPackageId, wantedPackage) : null;
+  armerColisPourPost(colisIdPourPost);
 
   // ── Constat des REQUIS avant tout verdict (chantier 2026-07-16, 1.C) ───────
   // Fini le `unfilledRequired: []` de constat : la config attributes capturée
@@ -3799,6 +3829,44 @@ async function fillListingForm(job) {
   // re-commit si besoin ; si le prix est définitivement perdu, ensurePriceCommitted
   // throw → job failed honnête, AUCUN clic avec price: null.
   if (job.price != null) await ensurePriceCommitted(job.price);
+
+  // ── LE FORMAT DE COLIS EST EN MAIN AVANT LE RETRAIT (0.6.84, 02/10) ──────
+  // La « Montre à gousset » de lohanobert59 : section « Format du colis » non
+  // rendue (montres, 97), suppression faite quand même, puis 400 `package_size`
+  // — annonce hors ligne. On ne retire plus une annonce tant que le format
+  // n'est pas posable : la section est attendue (8 s, les jupes la montrent
+  // après un attribut) ; toujours absente, le retrait n'a lieu que si l'envoi
+  // direct du format (sonde, id connu) a déjà été PROUVÉ chez Vinted
+  // (colis_injection_prouvee, servi par le serveur sur preuve). Sinon : rien
+  // n'est retiré, rien n'est soumis, l'annonce reste en ligne.
+  if (onePass?.item_id && colisVoulu && colisSectionAbsente) {
+    const radiosColis = await waitFor(() => {
+      const r = document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]');
+      return r.length ? r : null;
+    }, 8000);
+    if (radiosColis) {
+      try {
+        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+        colisSectionAbsente = false;
+        if (job.price != null) await ensurePriceCommitted(job.price);
+        warnings.push("format de colis : section apparue avant le retrait — format posé");
+      } catch (e) {
+        warnings.push(`format de colis : section apparue avant le retrait mais format non posé (${String(e?.message ?? e).slice(0, 120)})`);
+      }
+    }
+    const envoiDirectProuve = job.platform_fields?.colis_injection_prouvee === true && colisIdPourPost != null;
+    if (colisSectionAbsente && !envoiDirectProuve) {
+      return {
+        success: false,
+        colisNonPropose: true,
+        error: "Le formulaire de Vinted ne propose pas le format du colis pour ce rayon, alors que Vinted l'exige : " +
+          "rien n'a été retiré, rien n'a été soumis.",
+        warnings,
+        diagnostic: `section « Format du colis » absente après 8 s d'attente — retrait refusé (format connu : ${colisIdPourPost ?? "aucun"}, envoi direct prouvé : non)`,
+      };
+    }
+    if (colisSectionAbsente) warnings.push(`format de colis : section absente — format ${colisIdPourPost} envoyé directement (envoi prouvé)`);
+  }
 
   // ── UNE-PASSE : suppression de l'annonce d'origine JUSTE avant le clic ────
   // On n'arrive ici qu'avec toutes les gates strictes franchies : requis de la
@@ -4075,6 +4143,10 @@ async function fillListingForm(job) {
         // le message : elles faisaient dépasser 300 car. et l'app masquait tout.
         return `renseigne « ${f.label} » dans la copie Vinted de l'app`;
       }).join(" ; ");
+      // (0.6.84) Le format de colis ne se renseigne nulle part dans l'app : le
+      // formulaire de Vinted ne le propose pas (montres, 97). Le dire, sans
+      // envoyer la personne chercher un champ qui n'existe pas.
+      const seulColis = serverRequired.length > 0 && serverRequired.every((f) => /^package_size(_id)?$/.test(String(f.key)));
       // Diagnostic PERSISTÉ (2026-08-28, mur ISBN « Fairy tail » : sur un
       // refus serveur, last_diagnostic restait VIDE — impossible de trancher
       // après coup). URL + statut du refus, ISBN vu dans le CORPS du POST par
@@ -4086,6 +4158,7 @@ async function fillListingForm(job) {
         sonde.refus?.isbnEnvoye != null ? `isbn dans le corps du POST : ${sonde.refus.isbnEnvoye}` : null,
         sonde.refus?.isbnPose ? `isbn POSÉ dans le corps par la sonde (${sonde.refus.isbnPose}) — la page l'avait laissé vide` : null,
         sonde.refus?.languePosee ? `language_book POSÉ dans le corps par la sonde (ids ${sonde.refus.languePosee}) — la page l'avait laissé vide` : null,
+        sonde.refus?.colisPose ? `package_size_id POSÉ dans le corps par la sonde (${sonde.refus.colisPose}) — la page l'avait laissé vide` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
         `champs exigés : ${details}`,
         serverRequired.map((f) => {
@@ -4097,7 +4170,11 @@ async function fillListingForm(job) {
       ].filter(Boolean).join(" || ").slice(0, 2000);
       return {
         success: false,
-        error: `${messageEchec} Champ${serverRequired.length > 1 ? "s" : ""} exigé${serverRequired.length > 1 ? "s" : ""} par Vinted : ${serverRequired.map((f) => f.label).join(", ")}. À faire : ${conseils}, puis relance la publication.`,
+        error: seulColis
+          ? `${messageEchec} Vinted exige le format du colis, que son formulaire ne propose pas pour ce rayon` +
+            `${sonde.refus?.colisPose ? ` (format ${sonde.refus.colisPose} envoyé directement, refusé quand même)` : ""}.`
+          : `${messageEchec} Champ${serverRequired.length > 1 ? "s" : ""} exigé${serverRequired.length > 1 ? "s" : ""} par Vinted : ${serverRequired.map((f) => f.label).join(", ")}. À faire : ${conseils}, puis relance la publication.`,
+        ...(seulColis ? { colisNonPropose: true } : {}),
         warnings,
         serverRequired,
         // Preuve d'échec NOMMÉE (2026-09-11) : Vinted a répondu un refus,

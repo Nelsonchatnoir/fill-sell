@@ -4120,6 +4120,8 @@ async function processJob(rawJob, accessToken) {
       const extrasPublie = completionExtras(job, result);
       if (job.platform === "vinted") {
         extrasPublie.platform_fields = await preuveBoutiqueVintedApresDepot(extrasPublie.platform_fields);
+        const colisEnvoi = await preuveColisEnvoi(tabId).catch(() => null);
+        if (colisEnvoi) extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), colis_pose_envoi: colisEnvoi };
       }
       if (job.platform === "leboncoin" && result.lbcDepot) {
         extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), lbc_depot: result.lbcDepot };
@@ -4390,6 +4392,8 @@ async function processJob(rawJob, accessToken) {
           `l'annonce EXISTE (${publishedUrl}), publication confirmée par la réponse serveur`
         );
         const pfSucces = await preuveBoutiqueVintedApresDepot(job.platform_fields);
+        const colisEnvoiCc = await preuveColisEnvoi(tabId).catch(() => null);
+        if (colisEnvoiCc) pfSucces.colis_pose_envoi = colisEnvoiCc;
         await updateJobStatus(accessToken, job.id, "published", {
           error: null,
           listing_url: publishedUrl,
@@ -7852,13 +7856,60 @@ async function installNetworkProbe(tabId, platform) {
             return corrige;
           } catch { return null; }
         };
-        // Les deux poses s'enchaînent sur le MÊME corps : l'ISBN d'abord
-        // (chemin éprouvé, inchangé), la langue ensuite sur son résultat.
+        // ══ POSE DU FORMAT DE COLIS DANS LE CORPS DU POST (0.6.84, 02/10) ══
+        // lohanobert59, montres (catalog_id 97) : depuis fin septembre, le
+        // formulaire de Vinted ne REND PLUS la section « Format du colis »
+        // pour ce rayon, et son serveur exige pourtant le champ — POST
+        // /api/v2/item_upload/items → 400 `package_size` « Sélectionne le
+        // format de ton colis ». La « Montre à gousset » est restée hors
+        // ligne, retirée puis jamais recréée : le format était CONNU (capturé,
+        // package_size_id = 1), seul le radio manquait pour le poser.
+        // La clé est RELEVÉE dans le code du formulaire de Vinted (02/10) :
+        // `package_size_id`, dans l'objet de l'article, à côté de catalog_id,
+        // isbn et is_unisex. Même règle que l'ISBN : on ne remplit QUE si la
+        // page l'a laissé nul/absent, jamais d'écrasement, et seulement sur la
+        // création ; l'id armé est celui de l'annonce d'origine ou celui que
+        // le remplissage voulait cliquer — jamais un format inventé.
+        window.__fsColisAPoser = null;
+        const colisArme = () => {
+          const a = window.__fsColisAPoser;
+          if (!(Number(a?.id) > 0)) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? Number(a.id) : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeColis) return;
+          const id = Number(e.data.id);
+          window.__fsColisAPoser = Number.isInteger(id) && id > 0 ? { id, armeeA: Date.now() } : null;
+        });
+        let dernierePoseColis = null;
+        const corpsAvecColis = (url, body) => {
+          dernierePoseColis = null;
+          const id = colisArme();
+          if (!id) return null;
+          if (!/item_upload\/items(?:[?#]|$)/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          if (!("catalog_id" in cible)) return null; // pas le corps d'un article
+          if (Number(cible.package_size_id) > 0) return null; // la page l'a posé
+          cible.package_size_id = id;
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseColis = id;
+            return corrige;
+          } catch { return null; }
+        };
+        // Les poses s'enchaînent sur le MÊME corps : l'ISBN d'abord (chemin
+        // éprouvé, inchangé), la langue ensuite, le format de colis enfin.
         // Rend le corps final, ou null s'il n'y avait rien à faire.
         const corpsPourDepot = (url, body) => {
           const avecIsbn = corpsAvecIsbn(url, body);
           const avecLangue = corpsAvecLangueLivre(url, avecIsbn ?? body);
-          return avecLangue ?? avecIsbn;
+          const avant = avecLangue ?? avecIsbn;
+          const avecColis = corpsAvecColis(url, avant ?? body);
+          return avecColis ?? avant;
         };
 
         const origFetch = window.fetch;
@@ -7868,6 +7919,7 @@ async function installNetworkProbe(tabId, platform) {
           let corpsEnvoye = init?.body;
           let isbnPose = null;
           let languePosee = null;
+          let colisPose = null;
           try {
             // Corps lisible uniquement : un Request porteur d'un flux n'est pas
             // réécrit (angle mort assumé, jamais une publication cassée).
@@ -7876,6 +7928,7 @@ async function installNetworkProbe(tabId, platform) {
               if (corrige != null) {
                 isbnPose = dernierePoseIsbn;
                 languePosee = dernierePoseLangue;
+                colisPose = dernierePoseColis;
                 corpsEnvoye = corrige;
                 args = [input, { ...init, body: corrige }];
               }
@@ -7898,6 +7951,7 @@ async function installNetworkProbe(tabId, platform) {
                 isbnEnvoye: isbnEnvoyeOf(url, corpsEnvoye),
                 isbnPose,
                 languePosee,
+                colisPose,
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -7914,10 +7968,11 @@ async function installNetworkProbe(tabId, platform) {
           let corpsEnvoye = body;
           let isbnPose = null;
           let languePosee = null;
+          let colisPose = null;
           try {
             if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
               const corrige = corpsPourDepot(this.__u ?? "", body);
-              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; }
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; colisPose = dernierePoseColis; }
             }
           } catch { /* idem */ }
           try {
@@ -7934,6 +7989,7 @@ async function installNetworkProbe(tabId, platform) {
                   isbnEnvoye: isbnEnvoyeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   isbnPose,
                   languePosee,
+                  colisPose,
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),
@@ -8717,6 +8773,23 @@ function clearProbeCaptures(tabId) {
 // 05/08. Le repli sur l'extrait tronqué reste, pour les captures posées par une
 // sonde antérieure au correctif : il n'aboutira pas sur Vinted, mais il ne
 // coûte rien et ne ment pas.
+// ── LA PREUVE QUE LE FORMAT DE COLIS ENVOYÉ DIRECTEMENT PASSE (0.6.84) ──────
+// Le POST de création dont la sonde a dû poser package_size_id (la page ne
+// l'avait pas mis) : sa réponse est la preuve, dans un sens ou dans l'autre.
+// Écrite sur le job (platform_fields.colis_pose_envoi) : le serveur s'en sert
+// pour autoriser, ou non, un retrait sur un rayon où Vinted ne montre plus la
+// section « Format du colis » (colis_injection_prouvee). null sinon.
+async function preuveColisEnvoi(tabId) {
+  if (tabId == null) return null;
+  const { captures } = await readProbeCaptures(tabId).catch(() => ({ captures: [] }));
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    if (!/item_upload\/items/i.test(String(c?.url ?? "")) || !c?.colisPose) continue;
+    return { id: Number(c.colisPose), http: Number(c.status) || null, le: new Date().toISOString(), build: FILLSELL_BUILD_ID };
+  }
+  return null;
+}
+
 async function vintedUploadSucceeded(tabId) {
   const { captures } = await readProbeCaptures(tabId);
   for (let i = captures.length - 1; i >= 0; i--) {
@@ -19726,6 +19799,24 @@ async function marquerRepublishSupprime(jobId, verdictBrut) {
 async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
   if (result?.serverRequired?.length) pf.server_required_fields = result.serverRequired;
+  // ── FORMAT DE COLIS REFUSÉ À LA RECRÉATION (0.6.84) ─────────────────────
+  // Le format était connu et envoyé directement (ou rien à envoyer) : Vinted
+  // l'a refusé quand même. Rien à demander à la personne (le champ n'existe
+  // ni dans l'app ni dans le formulaire) : pending, un essai toutes les 6 h,
+  // message vrai. Jamais « Republier maintenant » ni « renseigne ».
+  if (result?.colisNonPropose) {
+    pf.recreation_colis_refus = { n: (Number(pf.recreation_colis_refus?.n) || 0) + 1, le: new Date().toISOString() };
+    pf.next_action_after = new Date(Date.now() + 6 * 3_600_000).toISOString();
+    delete pf.needs_user_source;
+    await updateJobStatus(accessToken, job.id, "pending", {
+      platform_fields: pf,
+      error: "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : Vinted exige le format du colis, " +
+        "que son formulaire ne propose pas pour ce rayon" +
+        (/package_size_id POSÉ/.test(String(result?.diagnostic ?? "")) ? ", et a refusé celui que nous lui avons envoyé" : "") +
+        ". Rien n'est perdu : toutes ses données sont sauvegardées. C'est de notre côté, rien à faire : nouvel essai automatique dans 6 h.",
+    });
+    return { status: "retry", error: "format de colis refusé par Vinted — nouvel essai dans 6 h" };
+  }
   const retries = Number(pf.recreation_retries) || 0;
   if (retries < 2) {
     pf.recreation_retries = retries + 1;
@@ -19839,6 +19930,10 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
 // peuvent pas diverger : mêmes filets (sonde réseau, ceinture dressing), même
 // rattachement, mêmes retentatives.
 async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result) {
+  // (0.6.84) Le format de colis envoyé directement par la sonde : sa réponse
+  // (200 ou 400) part avec le job, dans tous les cas (cf. preuveColisEnvoi).
+  const colisEnvoi = await preuveColisEnvoi(tabId).catch(() => null);
+  if (colisEnvoi) pf.colis_pose_envoi = colisEnvoi;
   // ── Catalogue des requis : les RECRÉATIONS écrivent aussi (2026-09-10) ──
   // Mesuré : 0 job republish ne porte categoryPath au niveau du job, donc
   // ~1 600 recréations/45 j n'alimentaient JAMAIS platform_category_aspects
@@ -22002,6 +22097,31 @@ async function processRepublishJob(job, accessToken) {
         // arrivées, canal coupé…) gardent leur chemin inchangé.
         if (result?.listingRestriction) {
           return await replanifierRestrictionVinted(accessToken, job, pf, result);
+        }
+        // ── FORMAT DE COLIS NON PROPOSÉ PAR LE FORMULAIRE (0.6.84) ─────────
+        // vinted.js a refusé de retirer : la section « Format du colis » est
+        // absente et l'envoi direct n'est pas encore prouvé. Annonce intacte,
+        // rien soumis. C'est de notre fait : pending, aucune tentative
+        // consommée, nouvel essai espacé (1 h, 3 h, puis 6 h) — il passera
+        // dès que la section revient ou que l'envoi direct est prouvé.
+        if (result?.colisNonPropose) {
+          const prec = pf.pause_colis && typeof pf.pause_colis === "object" ? pf.pause_colis : null;
+          const n = (Number(prec?.n) || 0) + 1;
+          const delaiMin = n <= 1 ? 60 : n === 2 ? 180 : 360;
+          const maintenant = new Date().toISOString();
+          pf.pause_colis = { depuis: prec?.depuis ?? maintenant, derniere: maintenant, n };
+          pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          delete pf.needs_user_source;
+          const dans = delaiMin < 60 ? `${delaiMin} min` : `${Math.round(delaiMin / 60)} h`;
+          await updateJobStatus(accessToken, job.id, "pending", {
+            platform_fields: pf,
+            error: "Republication en pause AVANT tout retrait : le formulaire de Vinted ne propose pas le format du colis pour ce rayon, " +
+              "alors que Vinted l'exige. Ton annonce est toujours en ligne, rien n'a été touché. C'est de notre côté, rien à faire : " +
+              `nouvel essai automatique dans ~${dans}.`,
+          });
+          console.warn(`[republish] job ${job.id} : retrait refusé — format de colis non proposé par Vinted (pause n°${n}, ${dans})`);
+          return { status: "skipped", error: "format de colis non proposé — rien retiré" };
         }
         if (result?.deleteFailed) {
           // Pré-vol OK mais l'API de suppression a refusé. L'état réel tranche

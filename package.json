@@ -121,7 +121,8 @@
     "selftest:beebs-taille-de-la-fiche": "node scripts/beebs-taille-de-la-fiche-selftest.mjs",
     "selftest:lbc-adresse-avant-retrait": "node scripts/lbc-adresse-avant-retrait-selftest.mjs",
     "selftest:lbc-mur-connexion": "node scripts/lbc-mur-connexion-selftest.mjs",
-    "selftest:lbc-pause-page-depot": "node scripts/lbc-pause-page-depot-selftest.mjs"
+    "selftest:lbc-pause-page-depot": "node scripts/lbc-pause-page-depot-selftest.mjs",
+    "selftest:vinted-colis-envoi": "node scripts/vinted-colis-envoi-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
