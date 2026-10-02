@@ -56,7 +56,7 @@ export function impasseRecreationVinted(job) {
  *   started_at, items_vus, total_entries } ;
  * fiches : fiches du compte portant un numéro Vinted, { vinted_item_id,
  *   listed_at_guess, titre }.
- * Rend { action: 'relancer'|'en_double', status, error, platform_fields,
+ * Rend { action: 'relancer'|'garder_recente'|'en_double', status, error, platform_fields,
  *   apparues } ou null (rien à décider pour l'instant).
  * @param {any} job
  * @param {{ releves?: Array<any>, fiches?: Array<any>, maintenant?: number }} [ctx]
@@ -77,7 +77,7 @@ export function decisionImpasseRecreation(job, { releves = [], fiches = [], main
       const t = ms(f.listed_at_guess);
       return Number.isFinite(t) && imp.envois.some((e) => t >= e - AVANT_MS && t <= e + APRES_MS);
     })
-    .map((f) => ({ id: String(f.vinted_item_id), le: String(f.listed_at_guess) }));
+    .map((f) => ({ id: String(f.vinted_item_id), le: String(f.listed_at_guess), ...(f.id != null ? { fiche: f.id } : {}), ...(f.titre ? { titre: String(f.titre).slice(0, 120) } : {}) }));
   for (const k of ["needs_user_source", "needsUserBoucle", "needsUserResolved", "needs_user_vu_le", "needs_user_vu_erreur",
     "needs_user_tick_le", "needs_user_actif_ms", "error_technique", "processing_since"]) delete pf[k];
   if (!apparues.length) {
@@ -93,6 +93,23 @@ export function decisionImpasseRecreation(job, { releves = [], fiches = [], main
   }
   pf.recreation_doublon = { ...(objet(pf0.recreation_doublon) ?? {}), at: iso(imp.at), apparues, juge_le: iso(maintenant), par: "releve_complet" };
   const liens = apparues.slice(0, 4).map((a) => `https://www.vinted.fr/items/${a.id}`).join(" , ");
+  // ── DEUX COPIES OU PLUS, PROUVÉES PAR LEUR NUMÉRO (02/10, décision Nico) ──
+  // On garde la PLUS RÉCENTE (la remise en ligne) ; les autres sont retirées
+  // par leur numéro, par le circuit normal de retrait (un job 'delete' sur
+  // leur fiche, comme le bouton de l'app). Exige que CHAQUE copie soit une
+  // fiche du relevé complet (numéro + fiche) — sinon rien n'est retiré.
+  if (apparues.length >= 2 && apparues.every((a) => a.fiche != null)) {
+    const triees = [...apparues].sort((a, b) => ms(b.le) - ms(a.le));
+    const garder = triees[0];
+    const retirer = triees.slice(1);
+    pf.recreation_doublon = { ...pf.recreation_doublon, garder: garder.id, retirer: retirer.map((a) => a.id) };
+    return {
+      action: "garder_recente", status: "cancelled", platform_fields: pf, apparues, garder, retirer,
+      error: `Ta republication est en ligne : n° ${garder.id} (https://www.vinted.fr/items/${garder.id}). ` +
+        `Elle avait été mise en ligne ${retirer.length + 1} fois par nos envois : ${retirer.length > 1 ? "les copies en double" : "la copie en double"} ` +
+        `(n° ${retirer.map((a) => a.id).join(", n° ")}) ${retirer.length > 1 ? "sont retirées" : "est retirée"} par FillSell, par ${retirer.length > 1 ? "leur" : "son"} numéro. Rien à faire de ton côté.`,
+    };
+  }
   return {
     action: "en_double", status: "needs_user", platform_fields: pf, apparues,
     error: (apparues.length > 1

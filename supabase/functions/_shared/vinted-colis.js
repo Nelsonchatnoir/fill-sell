@@ -28,7 +28,10 @@
 // Horodatage du commit du correctif (a078d73) : tout build produit depuis
 // porte un BUILD_ID plus récent (même règle que BUILD_BEEBS_ADRESSE_STRICTE).
 export const BUILD_COLIS_DANS_ENVOI = "2026-10-02T07:47:43Z";
-export const VERSION_COLIS_DANS_ENVOI = "0.6.84";
+export const VERSION_COLIS_DANS_ENVOI = "0.6.85"; // paquet qui le livre (la 0.6.84, jamais téléversée, est brûlée)
+// (02/10, décision Nico) Le format de colis INCONNU est demandé à la personne,
+// au formulaire, avant tout retrait — commit b69f2cd (0.6.85).
+export const BUILD_COLIS_DEMANDE = "2026-10-02T09:21:38Z";
 export const RETENUE_COLIS_ANCIEN_POSTE = "colis_non_propose_ancien_poste";
 
 /** Le texte porte-t-il un refus Vinted sur le format de colis ? */

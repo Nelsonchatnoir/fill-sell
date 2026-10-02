@@ -37,6 +37,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
+import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
 import {
   controlerNumeroBeebsEnBase,
   restaurerPublicationBeebsConfirmee,
@@ -839,6 +840,8 @@ serve(async (req) => {
     let statutEffectif = status;
     let messageEffectif: string | null = null;
     let champsACompleter: string[] | null = null;
+    // (02/10) Format de colis inconnu : le job attend un poste qui sait le demander.
+    let pfColisADemander: Record<string, unknown> | null = null;
     let pfDuJob: Record<string, unknown> | null = null;
     let raisonRequalif: string | null = null;
 
@@ -932,13 +935,27 @@ serve(async (req) => {
               )];
               statutEffectif = "needs_user";
               champsACompleter = cles;
-              // Colis hors table = défaut de NOTRE table de formats, corrigé
-              // dans le paquet extension suivant : rien à corriger sur Vinted,
-              // le message ne doit pas envoyer l'utilisateur chercher un champ.
-              messageEffectif = cles.length && cles.every((c) => c === "colis")
-                ? "Republication en pause avant toute suppression — ton annonce est toujours en ligne sur Vinted. " +
-                  "Le blocage vient de chez nous et sera corrigé par la prochaine mise à jour de l'extension : " +
-                  "rien à corriger de ton côté, relance la republication depuis l'app d'ici quelques jours."
+              const seulColis = cles.length > 0 && cles.every((c) => c === "colis");
+              const colisAbsent = actionnables.some((m) => /package_size_id absent/i.test(m));
+              // (02/10, décision Nico) Format de colis INCONNU sur l'annonce
+              // d'origine : la 0.6.85 le demande à la personne, au formulaire,
+              // avant tout retrait (question fermée). Un poste plus ancien ne
+              // sait pas poser la question : le job attend un poste qui la
+              // porte (build_min_requis), annonce intacte, aucun geste avant.
+              if (seulColis && colisAbsent) {
+                statutEffectif = "pending";
+                champsACompleter = null;
+                pfColisADemander = { build_min_requis: BUILD_COLIS_DEMANDE };
+              }
+              // Colis HORS de notre table de formats (id connu, libellé inconnu) :
+              // on ne le devine jamais ; le message ne promet plus de correctif.
+              messageEffectif = seulColis && colisAbsent
+                ? "Republication en pause AVANT tout retrait — ton annonce est intacte sur Vinted. Le format du colis de ton " +
+                  "annonce d'origine est inconnu, et on ne le choisit jamais à ta place : la nouvelle version de l'extension " +
+                  "te le demandera (un choix dans l'app, avant tout retrait). Rien à faire d'ici là."
+                : seulColis
+                ? "Republication en pause AVANT tout retrait — ton annonce est intacte sur Vinted. Le format du colis de ton " +
+                  "annonce d'origine n'est pas encore connu de FillSell, et on ne le devine jamais : c'est de notre côté."
                 : "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
                   `Il manque : ${cles.length ? cles.map((c) => LIBELLES[c]).join(", ") : "des informations"} — ` +
                   "complète ton annonce sur Vinted, puis relance la republication depuis l'app.";
@@ -3479,6 +3496,12 @@ serve(async (req) => {
         champs_a_completer: champsACompleter,
         needs_user_source: "capture_incomplete",
       };
+    }
+    if (pfColisADemander) {
+      const pfC = { ...((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>), ...pfColisADemander };
+      delete pfC.needs_user_source;
+      delete pfC.champs_a_completer;
+      patch.platform_fields = pfC;
     }
 
     // Compteur de reprises bfcache : porté par platform_fields, donc relu par

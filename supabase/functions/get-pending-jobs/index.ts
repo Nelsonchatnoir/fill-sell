@@ -29,6 +29,7 @@ import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
+import { PLATEFORMES_RELEVE, jugerRetraitIntrouvable } from "../_shared/retrait-introuvable.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
@@ -1072,6 +1073,57 @@ serve(async (req) => {
       }
     }
 
+    // ══ RETRAIT ARRÊTÉ DONT L'ANNONCE N'EXISTE PLUS : CLOS SUR DEUX RELEVÉS (02/10) ══
+    // (décision Nico — _shared/retrait-introuvable.js) Un retrait arrêté
+    // (needs_user / failed) qui porte un NUMÉRO : si les deux derniers relevés
+    // complets du compte ne voient plus ce numéro, l'annonce est déjà retirée —
+    // le job se clôt avec ce motif. Présente → rien ne change (ex. le Doudou
+    // Nala de nicolas.menar, en ligne au relevé du 01/10 : la question « Déjà
+    // vendu ? » de sa fiche décide). Jamais par le titre. Best-effort.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: arretes } = await admin.from("cross_post_jobs")
+          .select("id, platform, action, status, created_at, error, listing_url, platform_listing_id, platform_fields")
+          .eq("user_id", user.id).eq("action", "delete").in("status", ["needs_user", "failed"])
+          .in("platform", [...PLATEFORMES_RELEVE])
+          .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+          .limit(20);
+        const avecNumero = ((arretes ?? []) as Array<Record<string, unknown>>)
+          .filter((j) => String(j.platform_listing_id ?? "").trim() || String(j.listing_url ?? "").trim());
+        const lectures = new Map<string, { releves: unknown[]; annonces: unknown[] } | null>();
+        let clos = 0;
+        for (const j of avecNumero) {
+          const plat = String(j.platform);
+          if (!lectures.has(plat)) {
+            const [rR, rA] = await Promise.all([
+              admin.from("vinted_sync_runs").select("status, started_at, items_vus, total_entries, erreur")
+                .eq("user_id", user.id).eq("platform", plat).eq("kind", "annonces")
+                .order("started_at", { ascending: false }).limit(6),
+              admin.from("annonces_plateforme").select("listing_id, url, job_id, inventaire_id, vu_le, disparu_le, retiree_le, statut_plateforme")
+                .eq("user_id", user.id).eq("platform", plat).limit(3000),
+            ]);
+            lectures.set(plat, (!rR.error && !rA.error) ? { releves: rR.data ?? [], annonces: rA.data ?? [] } : null);
+          }
+          const lecture = lectures.get(plat);
+          if (!lecture) continue;
+          const v = jugerRetraitIntrouvable(j, { releves: lecture.releves, annonces: lecture.annonces, maintenant: Date.now() });
+          if (v?.verdict !== "deja_retire" || !v.numero) continue;
+          const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status), "get-pending-jobs (retrait introuvable : deux relevés complets)");
+          pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets", releves: v.releves, numero: v.numero };
+          delete pfJ.needs_user_source;
+          const { data: maj } = await admin.from("cross_post_jobs")
+            .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
+            .eq("id", j.id as string).in("status", ["needs_user", "failed"]).select("id");
+          clos += (maj ?? []).length;
+        }
+        if (clos) console.log(`[get-pending-jobs] userId=${user.id} : ${clos} retrait(s) arrêté(s) clos — annonce absente de deux relevés complets (par numéro)`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retraits introuvables : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
     // ══ REFUS « FORMAT DE COLIS » DÉJÀ EN FILE : PLUS D'ESSAI SANS ISSUE (02/10) ══
     // (lohanobert59, « Montre à gousset » 21a71cc8) Un job déjà remis en file
     // par l'ancienne règle (« on réessaie tout seuls vers 10:59 ») referait le
@@ -1111,7 +1163,7 @@ serve(async (req) => {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: impasses } = await admin.from("cross_post_jobs")
-          .select("id, platform, action, status, error, inventaire_id, platform_fields")
+          .select("id, platform, action, status, title, error, inventaire_id, platform_fields")
           .eq("user_id", user.id).eq("status", "needs_user").eq("platform", "vinted").eq("action", "republish")
           .eq("platform_fields->>republish_step", "deleted")
           .limit(20);
@@ -1122,7 +1174,7 @@ serve(async (req) => {
             admin.from("vinted_sync_runs").select("kind, status, started_at, items_vus, total_entries")
               .eq("user_id", user.id).eq("platform", "vinted").eq("kind", "dressing").eq("status", "done")
               .order("started_at", { ascending: false }).limit(5),
-            admin.from("inventaire").select("vinted_item_id, listed_at_guess")
+            admin.from("inventaire").select("id, titre, vinted_item_id, listed_at_guess, vinted_account_id")
               .eq("user_id", user.id).not("vinted_item_id", "is", null)
               .gte("listed_at_guess", new Date(plusAncien - 10 * 60_000).toISOString())
               .limit(500),
@@ -1136,6 +1188,35 @@ serve(async (req) => {
               if (vendu === true) continue;
             }
             const pfD = d.platform_fields as Record<string, unknown>;
+            // (02/10, décision Nico — 9cdr9rm4rn) Deux copies prouvées par leur
+            // numéro : la plus récente reste, les autres partent par le circuit
+            // normal de retrait (un job 'delete' sur LEUR fiche, numéro exact).
+            // Si un retrait ne peut pas être armé, on ne clôt rien.
+            if (d.action === "garder_recente") {
+              const fichesParId = new Map(((fichesV ?? []) as Array<Record<string, unknown>>).map((f) => [String(f.vinted_item_id), f]));
+              let armes = 0;
+              for (const c of (d.retirer ?? []) as Array<{ id: string; fiche: number | string }>) {
+                const { data: deja } = await admin.from("cross_post_jobs").select("id")
+                  .eq("user_id", user.id).eq("platform", "vinted").eq("action", "delete")
+                  .not("status", "in", "(cancelled,failed)")
+                  .eq("platform_listing_id", c.id).limit(1);
+                if ((deja ?? []).length) { armes++; continue; }
+                const fiche = fichesParId.get(c.id) ?? {};
+                const { error: eIns } = await admin.from("cross_post_jobs").insert({
+                  user_id: user.id, inventaire_id: c.fiche, platform: "vinted", action: "delete", status: "pending",
+                  photo_option: "original", voie: "extension",
+                  title: String((fiche as Record<string, unknown>).titre ?? j.title ?? "").slice(0, 200),
+                  listing_url: `https://www.vinted.fr/items/${c.id}`, platform_listing_id: c.id,
+                  platform_fields: {
+                    arme_par: { chemin: "doublon_de_republication", republication: String(j.id), garde: d.garder?.id ?? null, le: new Date().toISOString(), pose_par: "get-pending-jobs (impasse jugée sur relevé complet)" },
+                    ...((fiche as Record<string, unknown>).vinted_account_id ? { vinted_account_id: String((fiche as Record<string, unknown>).vinted_account_id) } : {}),
+                  },
+                });
+                if (!eIns) armes++;
+                else console.warn(`[get-pending-jobs] doublon ${c.id} : retrait non armé (${eIns.message}) — la republication n'est pas close`);
+              }
+              if (armes !== ((d.retirer ?? []) as unknown[]).length) continue;
+            }
             if (d.status !== "needs_user") pfD.erreurs_archivees = archiverErreur(pfD.erreurs_archivees, j.error as string, "needs_user", "get-pending-jobs (impasse « identiques » jugée sur relevé complet)");
             if (d.status === "needs_user" && d.error === j.error) continue;
             const { data: maj } = await admin.from("cross_post_jobs")
@@ -4273,6 +4354,26 @@ serve(async (req) => {
           beebs: "Beebs", leboncoin: "Leboncoin", vinted: "Vinted", ebay: "eBay", opla: "Opla",
         };
         const labelDe = (p: string) => LABEL[p] ?? p;
+        // (02/10) Lecture du relevé de la plateforme, une fois par poll : les
+        // deux derniers relevés et les annonces du compte. Illisible = null =
+        // le chemin d'avant, rien de plus n'est retenu.
+        const lecturesReleve = new Map<string, { releves: unknown[]; annonces: unknown[] } | null>();
+        const lectureRelevePlateforme = async (plat: string) => {
+          if (lecturesReleve.has(plat)) return lecturesReleve.get(plat) ?? null;
+          let v: { releves: unknown[]; annonces: unknown[] } | null = null;
+          try {
+            const [rR, rA] = await Promise.all([
+              userClient.from("vinted_sync_runs").select("status, started_at, items_vus, total_entries, erreur")
+                .eq("user_id", user.id).eq("platform", plat).eq("kind", "annonces")
+                .order("started_at", { ascending: false }).limit(6),
+              userClient.from("annonces_plateforme").select("listing_id, url, job_id, inventaire_id, vu_le, disparu_le, retiree_le, statut_plateforme")
+                .eq("user_id", user.id).eq("platform", plat).limit(3000),
+            ]);
+            if (!rR.error && !rA.error) v = { releves: rR.data ?? [], annonces: rA.data ?? [] };
+          } catch (_e) { v = null; }
+          lecturesReleve.set(plat, v);
+          return v;
+        };
         for (const d of retraitsSansLien) {
           const pf = ((d.platform_fields as Record<string, unknown> | null) ?? {});
           const attente = (pf["retrait_attend_lien"] as Record<string, unknown> | undefined) ?? {};
@@ -4400,6 +4501,60 @@ serve(async (req) => {
                 .eq("id", d.id).eq("status", "pending");
               aRetenir.add(String(d.id));
               continue;
+            }
+            // ── DEUX RELEVÉS COMPLETS TRANCHENT (02/10, décision Nico) ─────────
+            // (_shared/retrait-introuvable.js) Sans numéro, on ne retire rien ;
+            // on CONCLUT sur deux relevés complets consécutifs du compte où
+            // aucune annonce ne peut être la nôtre (chacune reliée par son
+            // numéro à un autre article) : retrait clos, dépôt rendu (« ne
+            // compte pas dans tes limites »). Sinon : attente avec un message
+            // vrai (combien de relevés manquent, ou quelle annonce est libre).
+            if (PLATEFORMES_RELEVE.has(String(d.platform))) {
+              const lecture = await lectureRelevePlateforme(String(d.platform));
+              const verdict = lecture ? jugerRetraitIntrouvable(d as Record<string, unknown>, {
+                releves: lecture.releves, annonces: lecture.annonces,
+                depotId: /^[0-9a-f-]{36}$/i.test(depotProuve) ? depotProuve : null, maintenant: Date.now(),
+              }) : null;
+              if (verdict?.verdict === "deja_retire") {
+                const adminR = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                await adminR.from("cross_post_jobs").update({
+                  status: "cancelled", error: verdict.message,
+                  platform_fields: { ...pf, retrait_attend_lien: { ...attente, conclu_le: nowIso, motif: "releves_complets" },
+                    retrait_conclu: { le: nowIso, par: "deux_releves_complets", releves: verdict.releves, numero: verdict.numero } },
+                }).eq("id", d.id).eq("status", "pending");
+                // Le dépôt jamais vu en ligne (published sans lien NI numéro) :
+                // il ne compte plus dans les limites, l'unité est rendue s'il en a pris une.
+                if (/^[0-9a-f-]{36}$/i.test(depotProuve)) {
+                  const { data: dep } = await adminR.from("cross_post_jobs")
+                    .select("id, status, listing_url, platform_listing_id, platform_fields").eq("id", depotProuve).maybeSingle();
+                  if (dep && dep.status === "published" && !String(dep.listing_url ?? "").trim() && !String(dep.platform_listing_id ?? "").trim()) {
+                    const { data: ref } = await adminR.rpc("refund_publish_unconfirmed", { p_job: dep.id });
+                    await adminR.from("cross_post_jobs").update({
+                      status: "failed",
+                      error: `Publication jamais vue en ligne sur ${labelDe(d.platform)} : deux relevés complets de ton compte ne l'ont pas trouvée, ` +
+                        "et nous n'avons jamais eu son numéro. Cette publication ne compte pas dans tes limites.",
+                      platform_fields: { ...((dep.platform_fields ?? {}) as Record<string, unknown>),
+                        listing_url_abandon: { at: nowIso, motif: "deux_releves_complets", releves: verdict.releves, refund: ref ?? null } },
+                    }).eq("id", dep.id).eq("status", "published");
+                  }
+                }
+                console.log(`[get-pending-jobs] retrait ${d.platform} ${String(d.id).slice(0, 8)} : rien à retirer (deux relevés complets : ${verdict.releves.join(" / ")}) — clos, dépôt rendu`);
+                aRetenir.add(String(d.id));
+                continue;
+              }
+              if (verdict && (verdict.verdict === "attente" || verdict.verdict === "non_reliee")) {
+                await userClient.from("cross_post_jobs").update({
+                  error: verdict.message,
+                  platform_fields: { ...pf, retrait_attend_lien: {
+                    depuis: new Date(depuisMs).toISOString(), derniere: nowIso,
+                    observations: (Number(attente["observations"]) || 0) + 1,
+                    motif: verdict.verdict === "non_reliee" ? "annonce_non_reliee" : "attend_deux_releves_complets",
+                    ...(verdict.nonReliees ? { non_reliees: verdict.nonReliees } : {}),
+                  } },
+                }).eq("id", d.id).eq("status", "pending");
+                aRetenir.add(String(d.id));
+                continue;
+              }
             }
             // (2026-09-25) Un retrait Vinted d'un compte en pause anti-robot
             // n'expire jamais pendant la pause, et le temps passé en pause ne

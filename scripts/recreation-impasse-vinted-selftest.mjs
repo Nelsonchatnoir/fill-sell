@@ -64,5 +64,16 @@ ok(dp.apparues.length === 2 && !dp.apparues.some((a) => a.id === "7742925895"), 
 ok(/en ligne 2 fois/.test(dp.error) && /items\/10205000001/.test(dp.error) && !/Rien n'a été recréé\.$/.test(dp.error), "message vrai : en ligne deux fois, avec les liens");
 ok(decisionImpasseRecreation({ ...pantalon, error: dp.error, platform_fields: dp.platform_fields }, { releves: [releveComplet("2026-10-02T08:30:00Z")], fiches: fiches9, maintenant: MAINTENANT })?.error === dp.error, "rejoué : même message (aucune réécriture inutile)");
 
+console.log("\n5. DÉCISION NICO (02/10) : ON GARDE LA PLUS RÉCENTE, L'AUTRE PART PAR SON NUMÉRO");
+const fiches9AvecFiche = fiches9.map((f, i) => ({ ...f, id: 1790900000000 + i, titre: "Pantalon 24 mois" }));
+const dk = decisionImpasseRecreation(pantalon, { releves: [releveComplet("2026-10-02T08:30:00Z")], fiches: fiches9AvecFiche, maintenant: MAINTENANT });
+ok(dk?.action === "garder_recente" && dk.status === "cancelled", "deux copies, chacune une fiche du relevé complet → on garde la plus récente", JSON.stringify(dk?.action));
+ok(dk.garder?.id === "10205900002" && dk.retirer?.length === 1 && dk.retirer[0].id === "10205000001" && dk.retirer[0].fiche === 1790900000001, "garde la remise en ligne (06:08Z), retire la copie orpheline (02:13Z) par son numéro et sa fiche");
+ok(/en ligne : n° 10205900002/.test(dk.error) && /n° 10205000001\) est retirée/.test(dk.error) && /Rien à faire/.test(dk.error), "message vrai : laquelle reste, laquelle part");
+ok(!dk.retirer.some((a) => a.id === "7742925895"), "l'autre vraie annonce homonyme n'est jamais touchée");
+const sansFiche = decisionImpasseRecreation(pantalon, { releves: [releveComplet("2026-10-02T08:30:00Z")], fiches: [fiches9AvecFiche[1], fiches9[2]], maintenant: MAINTENANT });
+ok(sansFiche?.action === "en_double", "une copie sans fiche du relevé (non prouvée) → on ne retire RIEN, on le dit");
+ok(decisionImpasseRecreation(pantalon, { releves: [], fiches: fiches9AvecFiche, maintenant: MAINTENANT }) === null, "sans relevé complet → rien");
+
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ « annonces identiques » : jugé sur numéros et heures, jamais sur un titre");
