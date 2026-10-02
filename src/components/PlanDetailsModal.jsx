@@ -106,7 +106,7 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
   // cartes de ConversionModal : gestes réels, volumes lus dans coin_config,
   // le mot « plafond » banni, la cadence 45/j de l'auto jamais affichée.
   const features = [
-    fr ? `${qAnnonces} annonces créées et publiées sur les 5 plateformes par mois`
+    fr ? `${qAnnonces} annonces créées et publiées sur les 4 plateformes par mois`
        : `${qAnnonces} listings created and published on all 4 platforms a month`,
     isBusiness
       ? (fr ? 'Republications illimitées — tu republies quand tu veux, autant que tu veux'
