@@ -22,6 +22,7 @@
 import { useCallback } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import EbayCompteSection from '../components/EbayCompteSection';
+import OplaCategoriesMemorisees from './OplaCategoriesMemorisees';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { MOTIFS } from '../utils/connexionPlateformes';
 import { ETATS, etatOplaAffiche } from '../utils/veritePlateformes';
@@ -160,7 +161,7 @@ export default function SousPagePlateformes({ c, T }) {
                 {etat === ETATS.A_AUTORISER && (
                   <div style={{ padding: '0 16px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <span style={{ fontSize: 14, color: R.ink }}>{T.veriteAutoriseOpla}</span>
-                    <span style={{ fontSize: 13, color: R.texteSecondaire }}>{T.veriteAutoriseOplaComment}</span>
+                    <span style={{ fontSize: 13, color: R.texteSecondaire }}>{c.oplaOuverte ? T.veriteAutoriseOplaComment : T.veriteAutoriseOplaCommentSortie}</span>
                     <BoutonMeConnecter userId={userId} platform={pf} motif={MOTIFS.AUTORISER_OPLA} lang={c.lang} onOuverte={relire} />
                   </div>
                 )}
@@ -193,9 +194,11 @@ export default function SousPagePlateformes({ c, T }) {
         <Note>{T.sessionsNote}</Note>
       </Groupe>
 
-      {/* (02/10, sortie d'Opla) Les catégories Opla mémorisées ne servaient
-          qu'à PUBLIER sur Opla : le bloc n'est plus monté. Les réponses
-          restent en base (platform_settings.opla.categories), rien n'est effacé. */}
+      {/* Les questions de catégorie Opla déjà tranchées — le bloc ne s'affiche
+          que s'il y en a. (02/10, sortie d'Opla) Elles ne servent qu'à PUBLIER
+          sur Opla : le bloc disparaît à la bascule du 10/10 ; les réponses
+          restent en base (platform_settings.opla.categories). */}
+      {c.oplaOuverte && <OplaCategoriesMemorisees c={c} T={T} />}
 
       {/* Compte vendeur eBay — la section existante, montée telle quelle :
           connexion OAuth, checklist vendeur, lieu d'expédition. C'est ELLE

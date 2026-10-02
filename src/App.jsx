@@ -2552,18 +2552,23 @@ export default function App({ loginOnly = false }){
   // Les deux clés coin_config restent lues et passées : elles ne commandent
   // plus la visibilité, et `plateformesOuvertes` reste servi à qui l'attend —
   // plateformesDuCompte rend désormais les cinq quel que soit son argument.
-  // ── SORTIE D'OPLA (02/10/2026, décision Nico) ─────────────────────────────
-  // Opla n'est plus proposée, pour personne : plus de case dans la
-  // publication ni la republication (utils/stockFiltres sort Opla des
-  // plateformes ouvertes), plus rien d'« ouvert » ici. Seuls les comptes au
-  // dressing Opla DÉJÀ synchronisé (sortieOpla.relie) gardent la
-  // synchronisation : relevé, ventes vues sur Opla, retraits des copies.
-  const plateformesVisiblesEffectives=useMemo(
-    ()=>plateformesVisibles.filter(p=>p!=='opla'),
-    [plateformesVisibles],
-  );
-  const plateformesOuvertes=useMemo(()=>[],[]);
+  // ── SORTIE D'OPLA (décision Nico, bascule le 10/10/2026) ──────────────────
+  // JUSQU'À la bascule (interrupteur coin_config `opla_sortie_le`, lu par
+  // useSortieOpla, défaut le 10/10 à 00:00 Paris), Opla est ouverte comme
+  // avant. À la bascule, plus rien d'« ouvert » : plus de case Opla dans la
+  // publication ni la republication (utils/stockFiltres : Opla est « à venir »,
+  // donc proposée seulement si ouverte ici). Seuls les comptes au dressing Opla
+  // DÉJÀ synchronisé (sortieOpla.relie) gardent la synchronisation : relevé,
+  // ventes vues sur Opla, retraits des copies.
   const sortieOpla=useSortieOpla(user?.id);
+  const oplaFermee=sortieOpla.active;
+  const plateformesVisiblesEffectives=useMemo(
+    ()=>oplaFermee
+      ?plateformesVisibles.filter(p=>p!=='opla')
+      :(plateformesVisibles.includes('opla')?plateformesVisibles:[...plateformesVisibles,'opla']),
+    [plateformesVisibles,oplaFermee],
+  );
+  const plateformesOuvertes=useMemo(()=>oplaFermee?[]:['opla'],[oplaFermee]);
   // ── DEMANDE D'AVIS (02/10, lot B) ──────────────────────────────────────────
   // Le serveur décide (avis-demande) ; on ne lui pose la question que sur le
   // tableau de bord, données chargées, entrée finie, jamais à l'ouverture
@@ -8995,9 +9000,10 @@ export default function App({ loginOnly = false }){
                   🏪 {lang==='fr'?'Vendu sur':'Sold on'} <span style={{color:C.red}}>*</span>
                 </div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {/* (02/10) Opla ne se propose qu'aux comptes au dressing Opla
-                      synchronisé — ou si la vente est déjà posée sur Opla. */}
-                  {PLATEFORMES_VENTE.filter(pv=>pv.valeur!=='Opla'||sortieOpla.relie===true||sellModal.plateforme==='Opla').map(pv=>{
+                  {/* (02/10) Après la sortie d'Opla (10/10), Opla ne se propose
+                      qu'aux comptes au dressing Opla synchronisé — ou si la
+                      vente est déjà posée sur Opla. */}
+                  {PLATEFORMES_VENTE.filter(pv=>pv.valeur!=='Opla'||!oplaFermee||sortieOpla.relie===true||sellModal.plateforme==='Opla').map(pv=>{
                     const actif=sellModal.plateforme===pv.valeur;
                     return(
                       <button key={pv.valeur} type="button" onClick={()=>setSellModal(p=>({...p,plateforme:pv.valeur}))}

@@ -1,23 +1,47 @@
-// ── Sortie d'Opla côté app (02/10/2026, décision de Nico) ───────────────────
-// UNE lecture de « ce compte a-t-il un dressing Opla synchronisé ? » (règle
-// unique : _shared/opla-sortie.js, oplaRelie) et de « a-t-il déjà touché
-// J'ai compris ? » (usage_logs, feature 'opla_bandeau' — côté serveur, par
-// compte, donc valable sur tous ses appareils).
-//   · relie === true  : la synchronisation Opla continue d'apparaître (relevé,
-//     ventes, retraits) et le bandeau s'affiche tant qu'il n'est pas compris ;
-//   · relie === false : Opla n'existe plus pour ce compte ;
-//   · relie === null  : pas encore lu, ou lecture impossible — rien ne
-//     s'affiche (ni bandeau, ni Opla) ; le serveur, lui, continue sa règle.
+// ── Sortie d'Opla côté app (décision de Nico, bascule le 10/10/2026) ────────
+// TROIS lectures, une seule règle (_shared/opla-sortie.js) :
+//   · active  — la sortie s'applique-t-elle MAINTENANT ? L'interrupteur
+//     coin_config `opla_sortie_le` (défaut : le 10/10 à 00:00 Paris ; 0 =
+//     désactivée), relu au montage et toutes les 10 min, l'heure recalculée
+//     chaque minute : la bascule a lieu d'elle-même dans une app ouverte.
+//     Avant la bascule, Opla fonctionne comme avant ;
+//   · relie   — ce compte a-t-il un dressing Opla synchronisé (oplaRelie) ?
+//     Après la bascule, seul ce cas garde la synchronisation (relevé, ventes,
+//     retraits) ;
+//   · bandeau — compte relié qui n'a pas encore touché « J'ai compris »
+//     (usage_logs, feature 'opla_bandeau' : côté serveur, par compte). Il
+//     s'affiche dès maintenant : il ANNONCE la date.
+// Une lecture ratée : relie/bandeau inconnus → rien ne s'affiche ; active
+// retombe sur la date par défaut (jamais une bascule déplacée par une panne).
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { OPLA_SORTIE, oplaRelie } from '../../supabase/functions/_shared/opla-sortie.js';
+import { OPLA_SORTIE, oplaRelie, sortieOplaActive } from '../../supabase/functions/_shared/opla-sortie.js';
 
 export function useSortieOpla(userId) {
   const [relie, setRelie] = useState(null);
   const [bandeauVu, setBandeauVu] = useState(null);
+  const [valeurInterrupteur, setValeurInterrupteur] = useState(null);
+  const [maintenant, setMaintenant] = useState(() => Date.now());
+
+  // L'heure, chaque minute : la bascule de minuit se voit sans recharger.
+  useEffect(() => {
+    const t = setInterval(() => setMaintenant(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // L'interrupteur, au montage puis toutes les 10 min.
+  useEffect(() => {
+    let vivant = true;
+    const lire = () => supabase.from('coin_config').select('value').eq('key', OPLA_SORTIE.CLE_CONFIG).maybeSingle()
+      .then(({ data, error }) => { if (vivant && !error) setValeurInterrupteur(data?.value ?? null); })
+      .catch(() => {});
+    lire();
+    const t = setInterval(lire, 10 * 60_000);
+    return () => { vivant = false; clearInterval(t); };
+  }, []);
 
   useEffect(() => {
-    if (!userId) { setRelie(null); setBandeauVu(null); return undefined; }
+    if (!userId) return undefined;
     let vivant = true;
     (async () => {
       try {
@@ -51,5 +75,10 @@ export function useSortieOpla(userId) {
       .then(({ error }) => { if (error) console.warn('[sortie-opla] « J\'ai compris » non enregistré :', error.message); });
   }, [userId]);
 
-  return { relie, bandeau: relie === true && bandeauVu === false, compris };
+  // La bascule (désactivée par l'interrupteur à 0) : avant, et sans
+  // interrupteur désactivé, le bandeau ANNONCE ; une fois Opla rouverte (0),
+  // il n'a plus rien à annoncer.
+  const active = sortieOplaActive(maintenant, valeurInterrupteur);
+  const desactivee = valeurInterrupteur === 0;
+  return { active, relie, bandeau: !desactivee && relie === true && bandeauVu === false, compris };
 }

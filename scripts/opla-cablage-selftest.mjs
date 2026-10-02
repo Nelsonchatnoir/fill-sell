@@ -85,43 +85,44 @@ console.log('\n1. Opla est vraiment branchée côté DONNÉES');
   ok('le retrait sait viser l’annonce Opla', rm.published.includes('opla'), rm.published);
 }
 
-console.log('\n2. ✅ Opla est une plateforme comme les quatre autres (18/09/2026)');
+console.log('\n2. ✅ Opla ouverte jusqu’à la sortie du 10/10/2026, fermée ensuite (décision Nico du 02/10)');
 {
-  // ── LA RÈGLE A CHANGÉ, ET C’EST UNE DÉCISION, PAS UNE DÉRIVE ────────────
-  // Ici vivait le contrôle inverse : « PLATEFORMES_STOCK_OUVERTES reste à
-  // QUATRE », « Opla vit dans la liste à venir », « aucun chip Opla ». Ce
-  // garde-fou datait du lot C, quand Opla n’avait tourné que sur un compte.
-  // Décision Nico du 18/09, prise deux fois : Opla est ouverte à TOUT LE
-  // MONDE, sans condition — ni palier, ni version d’extension. Le test suit
-  // la décision ; ce qu’il protège désormais, c’est que les QUATRE autres ne
-  // bougent pas d’un cran au passage.
-  ok('PLATEFORMES_STOCK_OUVERTES porte les CINQ',
-    PLATEFORMES_STOCK_OUVERTES.length === 5 && PLATEFORMES_STOCK_OUVERTES.includes('opla'),
+  // ── LA RÈGLE A CHANGÉ DEUX FOIS, ET CE SONT DES DÉCISIONS ───────────────
+  // 18/09 : Opla ouverte à TOUT LE MONDE (elle était dans la liste ouverte).
+  // 02/10 : sortie d’Opla, bascule le 10/10 (interrupteur coin_config
+  // `opla_sortie_le`). Opla repasse par le mécanisme « à venir » : proposée
+  // SEULEMENT quand App.jsx la déclare ouverte (['opla'] avant la bascule,
+  // [] après). Ce que le test protège : les QUATRE autres ne bougent pas, et
+  // Opla suit exactement l’interrupteur.
+  ok('PLATEFORMES_STOCK_OUVERTES porte les QUATRE, sans Opla',
+    PLATEFORMES_STOCK_OUVERTES.length === 4 && !PLATEFORMES_STOCK_OUVERTES.includes('opla'),
     PLATEFORMES_STOCK_OUVERTES);
-  ok('la liste « à venir » est VIDE',
-    PLATEFORMES_STOCK_A_VENIR.length === 0, PLATEFORMES_STOCK_A_VENIR);
+  ok('Opla est « à venir » — ouverte par App.jsx tant que la sortie n’a pas basculé',
+    PLATEFORMES_STOCK_A_VENIR.length === 1 && PLATEFORMES_STOCK_A_VENIR[0] === 'opla', PLATEFORMES_STOCK_A_VENIR);
 
-  // La conséquence assumée, mesurée plutôt que supposée : trois articles
-  // publiés sur les quatre historiques, aucun sur Opla.
+  // Les données suivent toujours Opla : un article sans annonce Opla compte
+  // dans « pas encore sur Opla » (la chip ne s'affiche que si Opla est ouverte).
   const arts = [article('1', [job('vinted')]), article('2', [job('leboncoin')]), article('3', [job('ebay')])];
   const index = indexEtatStock(arts.map((a) => a.item), Object.fromEntries(arts.map((a) => [a.item.id, a.jobs])), 'fr');
   const c = compteursStock(arts.map((a) => a.item), index);
-  ok('pasEncore.opla vaut encore tout le stock — la chip le dira, et c’est vrai',
-    c.pasEncore.opla === 3, c.pasEncore.opla);
+  ok('pasEncore.opla est toujours calculé (données)', c.pasEncore.opla === 3, c.pasEncore.opla);
 
-  // La rangée de chips et la modale de retrait : cinq, pour tout le monde,
-  // quel que soit l’argument — il ne commande plus rien.
-  ok('chips : cinq sans drapeau',
-    stock.plateformesDuCompte([]).length === 5 && stock.plateformesDuCompte([]).includes('opla'),
-    stock.plateformesDuCompte([]));
-  ok('chips : cinq avec le drapeau, sans doublon',
-    stock.plateformesDuCompte(['opla']).length === 5, stock.plateformesDuCompte(['opla']));
-  ok('chips : un drapeau inconnu n’ajoute rien',
-    stock.plateformesDuCompte(['vestiaire']).length === 5, stock.plateformesDuCompte(['vestiaire']));
-  ok('Opla est en DERNIER — l’ordre des quatre historiques ne bouge pas',
-    stock.plateformesDuCompte([])[4] === 'opla'
-    && stock.plateformesDuCompte([]).slice(0, 4).join(',') === 'vinted,leboncoin,beebs,ebay',
-    stock.plateformesDuCompte([]));
+  // AVANT la bascule (App.jsx : ['opla']) : cinq, Opla en dernier.
+  ok('avant la bascule : cinq, Opla en DERNIER, l’ordre des quatre ne bouge pas',
+    stock.plateformesDuCompte(['opla']).length === 5 && stock.plateformesDuCompte(['opla'])[4] === 'opla'
+    && stock.plateformesDuCompte(['opla']).slice(0, 4).join(',') === 'vinted,leboncoin,beebs,ebay',
+    stock.plateformesDuCompte(['opla']));
+  // APRÈS la bascule (App.jsx : []) : les quatre, rien d'autre.
+  ok('après la bascule : les quatre, sans Opla',
+    stock.plateformesDuCompte([]).join(',') === 'vinted,leboncoin,beebs,ebay', stock.plateformesDuCompte([]));
+  ok('un drapeau inconnu n’ajoute rien',
+    stock.plateformesDuCompte(['vestiaire']).length === 4, stock.plateformesDuCompte(['vestiaire']));
+  // Le relevé : après la bascule, Opla seulement pour un compte relié.
+  ok('relevé après la bascule : Opla seulement si le dressing Opla est synchronisé',
+    stock.plateformesDeReleve([], true).includes('opla') && !stock.plateformesDeReleve([], false).includes('opla'),
+    [stock.plateformesDeReleve([], true), stock.plateformesDeReleve([], false)]);
+  ok('relevé avant la bascule : Opla pour tout le monde, comme avant',
+    stock.plateformesDeReleve(['opla'], false).includes('opla'), stock.plateformesDeReleve(['opla'], false));
 }
 
 console.log('\n3. Les quatre en service, avant/après, à l’identique');

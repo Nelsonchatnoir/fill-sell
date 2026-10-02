@@ -27,9 +27,15 @@ import { supabase } from '../lib/supabase';
 
 // L'ordre d'affichage, et la seule liste : eBay n'y est pas et n'y sera pas
 // (voie API, on ne republie pas — garde-fou du 17/09).
-// (02/10, sortie d'Opla) Opla n'est plus republiée, ni à la main ni en
-// planifié (coin_config republish_planifiee_pf_opla = 0) : elle sort de la liste.
-export const PLATEFORMES_PLANIFIEES = ['vinted', 'leboncoin', 'beebs'];
+export const PLATEFORMES_PLANIFIEES = ['vinted', 'leboncoin', 'beebs', 'opla'];
+
+// (02/10, sortie d'Opla) Les plateformes à MONTRER : une plateforme que le
+// serveur dit fermée (`ouverte: false`, coin_config republish_planifiee_pf_<pf>
+// à 0) disparaît de l'écran. C'est ainsi qu'Opla en sort le 10/10 : à la
+// bascule, handler-watch coupe sa clé, et la ligne s'efface d'elle-même.
+export function plateformesPlanifieesVisibles(parPlateforme) {
+  return PLATEFORMES_PLANIFIEES.filter((pf) => parPlateforme?.[pf]?.ouverte !== false);
+}
 
 // Fuseau de l'appareil : envoyé à chaque écriture, validé par le serveur. La
 // voie planifiée compte à MINUIT LOCAL dans ce fuseau.

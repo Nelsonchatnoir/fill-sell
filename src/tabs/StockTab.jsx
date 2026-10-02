@@ -27,7 +27,7 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import InstallExtensionCta from '../components/InstallExtensionCta';
-import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
 import { RepublicationPlanifieeBloc } from '../components/RepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
@@ -5619,7 +5619,7 @@ const StockTab = memo(function StockTab({
   // module les NOMME (« Active sur Vinted et Beebs »), c'est la première
   // question qu'on se pose en lisant « active ».
   const planifieeActives = useMemo(
-    () => PLATEFORMES_PLANIFIEES.filter((pf) => planifiee.parPlateforme?.[pf]?.actif === true),
+    () => plateformesPlanifieesVisibles(planifiee.parPlateforme).filter((pf) => planifiee.parPlateforme?.[pf]?.actif === true),
     [planifiee.parPlateforme],
   );
   // Palier sans le droit : le tap ouvre la modale d'offres EXISTANTE, sur le
@@ -7030,7 +7030,7 @@ const StockTab = memo(function StockTab({
   // encore la mettre en ligne et on ferait un doublon.
   async function republierSansConfirmation(job) {
     if (relanceBusy || !user?.id) return;
-    if (estPublicationOpla(job)) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
+    if (estPublicationOpla(job) && !plateformesOuvertes.includes('opla')) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
     if (job?.status !== 'published' || job?.listing_url) {
       setRelanceMsg(lang === 'en' ? 'This listing already changed state — close and check its status.'
                                   : "Cette publication a déjà changé d'état — ferme et regarde son statut.");
@@ -7148,9 +7148,9 @@ const StockTab = memo(function StockTab({
   }
   async function relancerJobEchoue(job, mode = 'repend') {
     if (relanceBusy) return;
-    // (02/10, sortie d'Opla) Ni « relancer », ni « relancer par copie » : le
+    // (02/10, sortie d'Opla) Après la bascule (Opla plus « ouverte »), ni « relancer », ni « relancer par copie » : le
     // serveur la refermerait aussitôt. La phrase vraie, rien d'autre.
-    if (estPublicationOpla(job)) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
+    if (estPublicationOpla(job) && !plateformesOuvertes.includes('opla')) { setRelanceMsg(lang === 'en' ? 'Opla is no longer available in FillSell.' : MESSAGE_OPLA_INDISPONIBLE); return; }
     setRelanceBusy(true); setRelanceMsg(null);
     try {
       if (mode === 'copie') {

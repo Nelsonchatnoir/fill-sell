@@ -50,7 +50,7 @@ import { supabase } from '../lib/supabase';
 import { track } from '../analytics/analytics';
 import { useFondFige } from '../utils/modale';
 import PlatformLogo from './platform-logos/PlatformLogo';
-import { fuseauLocal, extensionRefuse, nombreAttendu, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
+import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
 
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
@@ -670,6 +670,9 @@ export function RepublicationPlanifieePlateformes({
   const autorise = etatMulti?.autorise === true;
   const actives = Number(etatMulti?.actives) || 0;
   const enveloppe = etatMulti?.enveloppe ?? null;
+  // (02/10) Les plateformes montrées : une plateforme fermée côté serveur
+  // (Opla après la sortie du 10/10) n'a plus de ligne.
+  const pfsVisibles = useMemo(() => plateformesPlanifieesVisibles(parPlateforme), [parPlateforme]);
   const vinted = parPlateforme?.vinted ?? null;
   const quota = Number(vinted?.quota_mensuel);
   const faits = Number(vinted?.faits_mois);
@@ -680,7 +683,7 @@ export function RepublicationPlanifieePlateformes({
   // « — » plutôt qu'une promesse.
   const total = useMemo(() => {
     let somme = 0; let connu = false;
-    for (const pf of PLATEFORMES_PLANIFIEES) {
+    for (const pf of pfsVisibles) {
       const e = parPlateforme?.[pf];
       if (!e?.actif) continue;
       const n = nombreAttendu(e, { enService, extensionStatus });
@@ -690,10 +693,10 @@ export function RepublicationPlanifieePlateformes({
     if (!connu) return 0;
     const reste = Number(enveloppe?.restants_compte);
     return Number.isFinite(reste) ? Math.min(somme, reste) : somme;
-  }, [parPlateforme, enService, extensionStatus, enveloppe]);
+  }, [parPlateforme, pfsVisibles, enService, extensionStatus, enveloppe]);
 
   // Une seule plateforme est-elle DANS son créneau en ce moment ?
-  const enCours = PLATEFORMES_PLANIFIEES.some((pf) => parPlateforme?.[pf]?.fenetre?.dans_creneau === true
+  const enCours = pfsVisibles.some((pf) => parPlateforme?.[pf]?.fenetre?.dans_creneau === true
     && parPlateforme?.[pf]?.actif === true);
 
   const ligneEtat = (() => {
@@ -708,7 +711,7 @@ export function RepublicationPlanifieePlateformes({
 
   // « Tout mettre en pause » : visible dès qu'il y a quelque chose à couper, ou
   // quelque chose à reprendre (une pause générale est mémorisée).
-  const enPauseGenerale = PLATEFORMES_PLANIFIEES.some((pf) => parPlateforme?.[pf]?.reglage?.pause_generale === true);
+  const enPauseGenerale = pfsVisibles.some((pf) => parPlateforme?.[pf]?.reglage?.pause_generale === true);
   const interrupteurHaut = (actives > 0 || enPauseGenerale) ? (
     <Interrupteur on={actives > 0} disabled={busy || !autorise}
       onChange={() => { track('republication_planifiee', { action: actives > 0 ? 'pause_generale' : 'reprise_generale' }); onPauseGenerale?.(actives === 0); }}
@@ -735,7 +738,7 @@ export function RepublicationPlanifieePlateformes({
         {/* Les trois chiffres du compte, communs aux quatre plateformes. */}
         {autorise && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 1, background: P.border, borderTop: `1px solid ${P.border}` }}>
-            <Cellule label={fr ? 'Plateformes' : 'Platforms'} valeur={`${actives}/${PLATEFORMES_PLANIFIEES.length}`} sous={fr ? 'actives' : 'on'} />
+            <Cellule label={fr ? 'Plateformes' : 'Platforms'} valeur={`${actives}/${pfsVisibles.length}`} sous={fr ? 'actives' : 'on'} />
             <Cellule label={enCours ? (fr ? 'En cours' : 'Running') : (fr ? 'Prochain créneau' : 'Next slot')}
               valeur={total == null ? '—' : nf(total, fr)}
               sous={fr ? plur(total ?? 0, 'annonce', 'annonces') : plur(total ?? 0, 'listing', 'listings')} />
@@ -770,7 +773,7 @@ export function RepublicationPlanifieePlateformes({
           </div>
         )}
 
-        {PLATEFORMES_PLANIFIEES.map((pf) => (
+        {pfsVisibles.map((pf) => (
           <LignePlateforme key={pf} pf={pf} etat={parPlateforme?.[pf] ?? null} session={sessions?.[pf] ?? null}
             fr={fr} enService={enService} extensionStatus={extensionStatus}
             onOuvrir={() => { track('republication_planifiee', { action: 'ouvrir_plateforme', platform: pf }); onOuvrirPlateforme?.(pf); }} />

@@ -28,7 +28,7 @@ import PlanBadge from '../components/PlanBadge';
 import {
   RepublicationPlanifieePlateformes, RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique,
 } from '../components/RepublicationPlanifiee';
-import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
 import { plateformesDeReleve } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
@@ -156,7 +156,7 @@ export default function ReglagesPage({
   // Les plateformes ACTIVES, dans l'ordre d'affichage. Sert la ligne du hub :
   // une seule → son nom et son créneau ; plusieurs → combien.
   const repubActives = useMemo(
-    () => PLATEFORMES_PLANIFIEES
+    () => plateformesPlanifieesVisibles(planifiee.parPlateforme)
       .map((pf) => planifiee.parPlateforme?.[pf])
       .filter((e) => e?.actif === true),
     [planifiee.parPlateforme],
@@ -214,6 +214,8 @@ export default function ReglagesPage({
     },
     setAdresseLbc,
     sessions, plateformesSession, verite,
+    // (02/10) Opla encore proposée à la publication (avant la sortie du 10/10).
+    oplaOuverte: (plateformesOuvertes ?? []).includes('opla'),
     republication: {
       exposee: planifieeExposee,
       // ⚠️ 18/09 : le module porte QUATRE plateformes. « actif » veut donc dire

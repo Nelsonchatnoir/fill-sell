@@ -70,17 +70,20 @@ export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'
 //    PLACE, au clic — components/OplaAutorisationModal — jamais par un
 //    masquage, et jamais dans les réglages.
 //
-// ══ SORTIE D'OPLA (02/10/2026, décision Nico) — CE QUI PRÉCÈDE EST CADUC ════
-// Opla a exigé 1 000 €/mois ; FillSell ne publie ni ne republie plus sur Opla,
-// pour PERSONNE (le serveur clôt tout job publish/republish Opla). Opla sort
-// donc des plateformes OUVERTES : plus de case dans la publication, la
-// republication, la republication planifiée ni les chips « Pas encore sur ».
+// ══ SORTIE D'OPLA (décision Nico, bascule le 10/10/2026) — CE QUI PRÉCÈDE
+//    N'EST VRAI QUE JUSQU'À LA BASCULE ══════════════════════════════════════
+// Opla a exigé 1 000 €/mois ; à partir du 10/10 (interrupteur coin_config
+// `opla_sortie_le`, _shared/opla-sortie.js), FillSell ne publie ni ne republie
+// plus sur Opla, pour PERSONNE. Opla repasse donc par le mécanisme « à venir » :
+// elle n'est proposée QUE quand App.jsx la déclare ouverte (plateformesOuvertes
+// = ['opla'] jusqu'à la bascule, [] ensuite). Après la bascule : plus de case
+// dans la publication, la republication ni les chips « Pas encore sur ».
 // Elle RESTE dans PLATEFORMES_STOCK (données) : une annonce Opla existante se
 // voit toujours sur sa carte et se retire toujours (plateformesDeLArticle), et
 // les comptes au dressing Opla synchronisé gardent leur relevé
 // (plateformesDeReleve) — ventes vues sur Opla, copies retirées ailleurs.
 export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
-export const PLATEFORMES_STOCK_A_VENIR = [];
+export const PLATEFORMES_STOCK_A_VENIR = ['opla'];
 // Synchronisées seulement (relevé, ventes, retraits), jamais proposées.
 export const PLATEFORMES_SUIVIES_SEULEMENT = ['opla'];
 
