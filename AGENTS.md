@@ -7,7 +7,7 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
 
 - **Servi** : extension **0.6.85** au CWS ; **minimum serveur 0.6.81** (sous le
   seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.37** ;
-  `get-pending-jobs` v188 (`true`), `update-job-status` v116 (`false`),
+  `get-pending-jobs` v189 (`true`), `update-job-status` v116 (`false`),
   `ebay-api-worker` v71, `handler-watch` v69, `email-tunnel` v69 (`false`),
   `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
@@ -16,13 +16,15 @@ historique contraire. Il se périme : `functions list`, `cron.job` et
   après, plus aucune publication ni republication Opla, synchro gardée pour
   les comptes reliés (`_shared/opla-sortie.js`). Migration 20261002120000
   (quotas) appliquée et inscrite (GO du 02/10).
+- **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
+  toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
-- **Ouvert** : **0.6.86** à téléverser : `build/CWS-0.6.86-A-TELEVERSER/`
-  (nouvelle soumission) ; binaires **2.9.38** (AAB
+- **Ouvert** : **0.6.87** à téléverser : `build/CWS-0.6.87-A-TELEVERSER/`
+  (0.6.86 brûlée) ; binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic après push) ;
   ornellaracano 307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
