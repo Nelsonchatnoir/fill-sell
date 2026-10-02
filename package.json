@@ -125,7 +125,8 @@
     "selftest:vinted-colis-envoi": "node scripts/vinted-colis-envoi-selftest.mjs",
     "selftest:vinted-colis-serveur": "node scripts/vinted-colis-serveur-selftest.mjs",
     "selftest:recreation-impasse-vinted": "node scripts/recreation-impasse-vinted-selftest.mjs",
-    "selftest:retraits-motifs-vrais": "node scripts/retraits-motifs-vrais-selftest.mjs"
+    "selftest:retraits-motifs-vrais": "node scripts/retraits-motifs-vrais-selftest.mjs",
+    "selftest:une-passe-feu-vert": "node scripts/une-passe-feu-vert-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

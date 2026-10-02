@@ -1146,6 +1146,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // SUPPRIMER l'annonce d'origine par l'API et va soumettre le formulaire —
   // il nous demande d'acter l'étape 'deleted' en base AVANT la soumission
   // (la redirection de succès peut couper le canal juste après).
+  // ── LE FEU VERT DE LA UNE-PASSE (0.6.84, 02/10 — 9cdr9rm4rn 6afed5b9) ────
+  // Le content script le demande JUSTE AVANT de retirer l'annonce. Vert tant
+  // que ce service worker attend encore le résultat de CE remplissage. Il avait
+  // abandonné (timeout de 300 s, redémarrage) : rouge — rien n'est retiré, rien
+  // n'est soumis. Le 02/10, un remplissage orphelin a retiré puis soumis 43 s
+  // après l'abandon : deux copies en ligne.
+  if (msg?.type === "UNE_PASSE_FEU_VERT" && typeof msg.jobId === "string") {
+    sendResponse({ ok: remplissagesUnePasseAttendus.has(msg.jobId) });
+    return; // réponse synchrone
+  }
   if (msg?.type === "REPUBLISH_MARK_DELETED" && typeof msg.jobId === "string") {
     marquerRepublishSupprime(msg.jobId, msg.verdict).then(
       (r) => sendResponse(r),
@@ -19719,6 +19729,9 @@ function construireJobRecreation(job, pf, cap, prix) {
 // le résultat de FILL_LISTING qui le porte (suppression_verdict) et le flux
 // 'captured' l'écrit avec le needs_user / la reprise.
 const republishSupprimes = new Map(); // jobId → { deletedAt, verdict }
+// Remplissages une-passe dont ce service worker attend ENCORE le résultat
+// (cf. UNE_PASSE_FEU_VERT). Mémoire seule : un redémarrage = plus aucun feu vert.
+const remplissagesUnePasseAttendus = new Set();
 function nettoyerVerdictSuppression(v) {
   if (!v || typeof v !== "object") return null;
   const s = (x, n) => (x == null ? null : String(x).slice(0, n));
@@ -19954,6 +19967,22 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
   // laissé l'annonce de Nico en ligne avec un job en needs_user le 05/08.
   // Les captures de la sonde SURVIVENT à la mort de la page.
   if (!result?.success) {
+    // ── LA PREUVE PAR LE NUMÉRO D'ABORD (0.6.84, 02/10) ────────────────────
+    // Vinted redirige l'onglet vers /items/<nouveau numéro> dès que l'annonce
+    // est créée — c'est la redirection qui coupe le canal. L'adresse de
+    // l'onglet survit à la mort du content script : un numéro qui n'est pas
+    // celui de l'annonce retirée, lu là, EST la recréation. Les preuves par
+    // titre (sonde, dressing) ne servent plus qu'à défaut de celle-ci.
+    const tNum = await chrome.tabs.get(tabId).catch(() => null);
+    const idNum = String(tNum?.url ?? "").match(/vinted\.[a-z.]+\/items\/(\d+)(?:[-/?#]|$)/)?.[1] ?? null;
+    if (idNum && idNum !== String(pf.vinted_item_id ?? "") && idNum !== String(pf.old_vinted_item_id ?? "")) {
+      console.log(`[republish] job ${job.id} : onglet redirigé vers /items/${idNum} — recréation prouvée par son numéro`);
+      await cloreRepublishSurAnnonceExistante(
+        accessToken, job, pf, idNum, `https://www.vinted.fr/items/${idNum}`,
+        "recréation prouvée par son numéro (onglet redirigé par Vinted vers la nouvelle annonce)",
+      );
+      return { status: "published", listingUrl: `https://www.vinted.fr/items/${idNum}` };
+    }
     const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
     if (urlSonde) {
       const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
@@ -22049,10 +22078,27 @@ async function processRepublishJob(job, accessToken) {
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
+      remplissagesUnePasseAttendus.add(job.id);
       try {
         result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
+        // (0.6.84) Ce que l'onglet était devenu au moment de la coupure : c'est
+        // ce qui nommera la cause des coupures à répétition (lesforcesdelaudela,
+        // 4 jobs sur 4 coupés ~10 s après le début, 02/10).
+        try {
+          const tCc = await chrome.tabs.get(tabId).catch(() => null);
+          pf.canal_coupe_diag = {
+            le: new Date().toISOString(),
+            url: String(tCc?.url ?? "").slice(0, 200) || null,
+            status: tCc?.status ?? null,
+            discarded: tCc?.discarded ?? null,
+            onglet_disparu: !tCc,
+            erreur: String(e?.message ?? e).slice(0, 200),
+          };
+        } catch { /* diagnostic seulement */ }
+      } finally {
+        remplissagesUnePasseAttendus.delete(job.id);
       }
       dernierGesteRepublishAt = Date.now();
 

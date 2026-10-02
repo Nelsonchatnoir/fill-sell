@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -3900,6 +3900,23 @@ async function fillListingForm(job) {
   if (onePass?.item_id) {
     const traceDel = [];
     const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
+    // ── FEU VERT DE L'ARRIÈRE-PLAN, JUSTE AVANT DE RETIRER (0.6.84, 02/10) ──
+    // 9cdr9rm4rn (6afed5b9) : l'arrière-plan avait abandonné ce remplissage
+    // (300 s) et remis le job en file ; 43 s plus tard ce script, toujours
+    // vivant, a retiré l'annonce PUIS soumis — personne n'écoutait, et la
+    // reprise suivante a recréé par-dessus : deux copies en ligne. On ne
+    // retire plus rien sans que l'arrière-plan attende encore CE remplissage.
+    const feu = await askBackground({ type: "UNE_PASSE_FEU_VERT", jobId: job.id }).catch(() => null);
+    if (feu?.ok !== true) {
+      tDel("feu vert REFUSÉ : l'arrière-plan n'attend plus ce remplissage — rien retiré, rien soumis");
+      return {
+        success: false,
+        abandonneAvantRetrait: true,
+        error: "Remplissage abandonné par l'arrière-plan avant le retrait : rien n'a été retiré, rien n'a été soumis.",
+        warnings,
+        diagnostic: traceDel.join(" | ").slice(0, 2000),
+      };
+    }
     // preuveRequise : ici, un 404 sur le POST ne vaut PAS suppression — on
     // enchaînerait une création juste derrière (cf. bandeau de la fonction).
     const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, {
