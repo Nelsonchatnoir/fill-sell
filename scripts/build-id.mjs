@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-02T13:55:50Z'; // 0.6.87 = 0.6.86 + écritures de platform_settings par platform_settings_fusionner (republication auto Vinted : marqueur d'erreur et arrêt « plan non Pro ») — d522f97, 3612fe1. Paquet build/CWS-0.6.87-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-02T17:51:01Z'; // 0.6.88 = 0.6.87 + lot du 02/10 soir : TDZ Beebs (warnings), défaut FillSell (verdict du pré-vol), éveil gardé au redémarrage du service worker, ventes Vinted second temps par paquets + arriéré en base (point 9) — 4d2b052, f0bfc00. Paquet build/CWS-0.6.88-A-TELEVERSER.
+// Historique de la valeur precedente : '2026-10-02T13:55:50Z' — 3612fe1, 0.6.87 (zip remis, jamais vu servi : brûlée).
 // Historique de la valeur precedente : '2026-10-02T11:44:50Z' — 8da8f90, 0.6.86 (zip e67282b, livré, jamais vu servi : brûlée). 
 // Historique de la valeur precedente : '2026-10-02T11:21:32Z' — a5bdbec, 0.6.86 première forme (zip 11:21:51Z+0d0a729, jamais livré : remplacé avant toute remise, sortie d'Opla reportée au 10/10).
 // Historique de la valeur precedente : '2026-10-02T09:28:23Z' — bcff357, 0.6.85 (zip 09:28:31Z+6060632, PUBLIÉE au CWS et servie le 02/10).
