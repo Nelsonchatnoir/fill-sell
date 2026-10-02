@@ -234,10 +234,28 @@ function viderTracesEveilEnAttente(accessToken) {
 // PAS effacé : s'il reste du travail, le prochain poll ré-arme la demande sans
 // rouvrir d'épisode. Une seule ligne 'relache_demarrage' par épisode, sinon un
 // lot espacé en écrirait une toutes les deux minutes.
-try { chrome.power?.releaseKeepAwake?.(); } catch { /* API absente : sans conséquence */ }
+// ⚠️ (02/10 soir, point 5) UN LOT EN COURS NE LÂCHE PAS L'ÉVEIL AU REDÉMARRAGE.
+// Un service worker MV3 meurt après ~30 s d'inactivité et repart à l'alarme
+// suivante — en plein lot, entre deux étapes d'une republication. Relâcher ici
+// à chaque redémarrage ouvrait une fenêtre où la veille système pouvait
+// tomber : nivake03, ceinture Beebs 8d487ebb, retrait à 03:19, recréation prise
+// à 03:22:04 par un service worker tout juste relancé (poll de 03:22:03), puis
+// plus aucun signe pendant 16 h — l'annonce hors ligne. La demande d'éveil
+// appartient à l'extension, pas au service worker : si l'épisode est FRAIS
+// (rafraîchi par un poll il y a moins de 10 min), on la RE-DEMANDE tout de
+// suite au lieu de la relâcher. Épisode périmé (machine revenue d'une longue
+// absence) : on repart propre comme avant, le prochain poll tranche.
+const EVEIL_EPISODE_FRAIS_MS = 10 * 60 * 1000;
 eveilArme = false;
 (async () => {
   const ep = await lireEpisodeEveil();
+  const frais = ep?.maj && Date.now() - Date.parse(ep.maj) < EVEIL_EPISODE_FRAIS_MS
+    && Date.now() - Date.parse(ep.depuis ?? ep.maj) < EVEIL_PLAFOND_MS;
+  if (frais && eveilApiDispo()) {
+    try { chrome.power.requestKeepAwake("system"); eveilArme = true; } catch { /* jamais bloquant */ }
+    return;
+  }
+  try { chrome.power?.releaseKeepAwake?.(); } catch { /* API absente : sans conséquence */ }
   if (!ep || ep.demarrage_trace) return;
   await ecrireEpisodeEveil({ ...ep, demarrage_trace: true });
   tracerEveil("relache_demarrage", 0, eveilDureeS(ep), null);
@@ -15419,8 +15437,27 @@ const VINTED_VENTES_PAGE = 100;
 //    gros compte du parc porte 1 982 ventes : un rattrapage naïf, c'est
 //    1 982 appels d'affilée sur une plateforme sous DataDome. On en fait 40 par
 //    passage, on retient ce qui est fait, et une interruption ne perd rien.
-const VINTED_DETAIL_PAR_RUN = 40;
+const VINTED_DETAIL_PAR_RUN = 64;
+// (02/10 soir) 8 détails par injection : ~20 s, sous la garde de 45 s.
+const VINTED_DETAIL_PAR_INJECTION = 8;
 const VINTED_DETAIL_MEMOIRE = 6000;          // bornes de la mémoire locale
+
+// L'ARRIÉRÉ (02/10 soir, point 9) : les ventes Vinted relevées encore sans
+// article ni numéro d'annonce, les plus récentes d'abord — ce sont elles qui
+// ont une fiche en stock. Le statut d'une vente déjà en base est « vente »
+// (le relevé n'insère que celles-là) : on le rejoue tel quel.
+// ⚠️ `annonce_id` est une colonne neuve (migration 20261002210000) : tant
+// qu'elle n'existe pas, PostgREST rend 400 sur le filtre — on relit alors sans
+// lui (même file, simplement plus large).
+async function arriereVentesVintedSansArticle(token, userId) {
+  const base = `ventes?user_id=eq.${userId}&plateforme_code=eq.vinted&source=eq.releve&inventaire_id=is.null` +
+    `&commande_ref=not.is.null&select=commande_ref&order=vendu_le.desc.nullslast&limit=200`;
+  let rows = await restRequest(`${base}&annonce_id=is.null`, token).catch(() => null);
+  if (!Array.isArray(rows)) rows = await restRequest(base, token).catch(() => null);
+  return Array.isArray(rows)
+    ? rows.map((r) => ({ ref: String(r?.commande_ref ?? ""), statut: "completed" })).filter((r) => r.ref)
+    : [];
+}
 const VENTES_PAGES_MAX = 40;                 // borne dure de pagination
 const LBC_VENTES_PAGE = 100;
 const OPLA_VENTES_PAGE = 50;
@@ -15759,17 +15796,51 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
     let bilan = await envoyerVentesRelevees(token, platform, lecture.rows ?? []);
 
     // VINTED, SECOND TEMPS : le détail, cadencé, pour l'identifiant d'annonce.
+    // ── (02/10 soir, point 9) LE SECOND TEMPS N'ABOUTISSAIT PLUS ─────────────
+    // Mesuré en base : depuis le 30/09, 0 vente relevée reliée à son article.
+    // Trois causes, corrigées ici :
+    //   1. les 40 détails partaient dans UNE injection (0,9–2,1 s de pause +
+    //      l'appel, chacun) : 60 à 100 s, au-delà de la garde de 45 s de
+    //      executerDansOngletPlateforme → BLOCKED_TAB, rien envoyé, les mêmes
+    //      refs revenaient à chaque passage. Désormais : paquets de 8 par
+    //      injection (~20 s), envoyés à la RPC paquet par paquet ;
+    //   2. seul le détail des refs lues CE passage était demandé : l'arriéré
+    //      (toutes les ventes relevées encore sans article) ne l'était jamais.
+    //      Désormais l'arriéré se LIT EN BASE, les plus récentes d'abord ;
+    //   3. une ref était notée « faite » même quand la RPC avait échoué : elle
+    //      n'est plus notée qu'après la réponse de la RPC (mémoire neuve,
+    //      `detailles_v2` — l'ancienne mentait).
     let bilanDetail = null;
     if (platform === "vinted") {
-      const deja = new Set(etat.vinted?.detailles ?? []);
-      const restants = (lecture.aDetailler ?? []).filter((r) => r?.ref && !deja.has(r.ref));
+      const deja = new Set(etat.vinted?.detailles_v2 ?? []);
+      const arriere = await arriereVentesVintedSansArticle(token, userId).catch(() => []);
+      const vus = new Set();
+      const restants = [...(lecture.aDetailler ?? []), ...arriere]
+        .filter((r) => r?.ref && !deja.has(r.ref) && !vus.has(r.ref) && vus.add(r.ref));
       const file = restants.slice(0, VINTED_DETAIL_PAR_RUN);
+      let lus = 0, echecs = 0, envoyes = 0;
+      const faitsOk = [];
+      for (let i = 0; i < file.length; i += VINTED_DETAIL_PAR_INJECTION) {
+        const paquet = file.slice(i, i + VINTED_DETAIL_PAR_INJECTION);
+        const det = await lireDetailsVentesVinted(paquet);
+        if (!det?.ok) { console.warn(`[ventes][vinted] détail : paquet interrompu (${det?.motif ?? "?"}) — repris au prochain passage`); break; }
+        lus += det.faits?.length ?? 0; echecs += det.echecs ?? 0;
+        if (det.rows?.length) {
+          try {
+            bilanDetail = await envoyerVentesRelevees(token, "vinted", det.rows);
+            envoyes += det.rows.length;
+            faitsOk.push(...(det.faits ?? []));
+          } catch (e) {
+            console.warn(`[ventes][vinted] détail : envoi refusé (${String(e?.message ?? e).slice(0, 160)}) — refs gardées pour le prochain passage`);
+            break;
+          }
+        }
+      }
+      const mem = [...deja, ...faitsOk];
+      etat.vinted = { ...(etat.vinted ?? {}), detailles_v2: mem.slice(-VINTED_DETAIL_MEMOIRE) };
       if (file.length) {
-        const det = await lireDetailsVentesVinted(file);
-        if (det?.rows?.length) bilanDetail = await envoyerVentesRelevees(token, "vinted", det.rows);
-        const mem = [...deja, ...(det?.faits ?? [])];
-        etat.vinted = { ...(etat.vinted ?? {}), detailles: mem.slice(-VINTED_DETAIL_MEMOIRE) };
-        console.log(`[ventes][vinted] détail : ${det?.faits?.length ?? 0} lu(s), ${det?.echecs ?? 0} échec(s), ${restants.length - file.length} en attente au prochain passage`);
+        console.log(`[ventes][vinted] détail : ${lus} lu(s), ${envoyes} envoyé(s), ${echecs} échec(s), ` +
+          `${Math.max(0, restants.length - file.length)} en attente (dont arriéré en base : ${arriere.length})`);
       }
     }
 
@@ -20778,6 +20849,11 @@ async function prevolPageDeDepot(platform) {
 // Regarder la page vide ne peut donc jamais prouver que le redépôt est prêt
 // (Bottines LPB, 29/09 : « Pointure » découverte après le retrait). On fait
 // tourner le vrai remplisseur sans upload ni clic de publication.
+// Exceptions du moteur JavaScript = défaut de NOTRE code (02/10 soir, point 3).
+// Même liste que supabase/functions/_shared/defaut-fillsell.js (le serveur
+// tranche de toute façon : il reconnaît aussi les anciens postes).
+const EXCEPTION_JS_RE = /Cannot access '[^']{1,40}' before initialization|\b[A-Za-z_$][\w$]{0,40} is not defined\b|\bis not a function\b|Cannot (?:read|set) propert(?:y|ies) of (?:undefined|null)|\bis not iterable\b|Assignment to constant variable|Maximum call stack size exceeded|Cannot destructure property|\bis not a constructor\b|^(?:ReferenceError|TypeError|RangeError|SyntaxError)\b/;
+
 async function prevolFormulaireRecreationBeebs(job) {
   const spec = PREVOL_DEPOT.beebs;
   const tabId = await getOrCreateWorkTab("beebs", spec.url);
@@ -21047,8 +21123,12 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const champs = Array.isArray(resultatPrevol?.unfilledRequired)
         ? resultatPrevol.unfilledRequired.map((x) => String(x)).filter(Boolean) : [];
       const ok = resultatPrevol?.success === true && resultatPrevol?.republishPreflight === true && champs.length === 0;
+      // (02/10 soir, point 3) Une exception de NOTRE code (TDZ, TypeError…)
+      // n'est jamais « illisible » : c'est un défaut FillSell, nommé comme tel.
+      // Le serveur (update-job-status) le garde pour un poste plus récent.
+      const defautNotreCode = !ok && EXCEPTION_JS_RE.test(String(resultatPrevol?.error ?? ""));
       tracerGarde(pf, "prevol_formulaire_beebs", {
-        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : "illisible",
+        verdict: ok ? "ok" : resultatPrevol?.needsUserField ? "champ_a_choisir" : defautNotreCode ? "defaut_fillsell" : "illisible",
         plateforme: "beebs", etape: "avant_retrait",
         champs_verifies: ["categorie", "champs_dynamiques", "adresse", "prix"],
         ...(champs.length ? { manquants: champs } : {}),
@@ -21067,7 +21147,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
         // n'exige pas de choix utilisateur se resonde seul, sans tentative.
         pf.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
         pf.republish_prevol_formulaire = {
-          at: new Date().toISOString(), verdict: "illisible",
+          at: new Date().toISOString(), verdict: defautNotreCode ? "defaut_fillsell" : "illisible",
           detail: String(resultatPrevol?.error ?? "aucune preuve positive du formulaire").slice(0, 300),
         };
         await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
@@ -21555,7 +21635,10 @@ async function processRepublishJob(job, accessToken) {
           // Boutique correspondante (ou identité inconnue → fail-open) : une
           // attente qui traînait est levée — le flux normal reprend.
           tracerGarde(pf, "garde_boutique", {
-            verdict: identCourante?.user_id ? "boutique_ok" : "identite_inconnue_fail_open",
+            // (02/10 soir, point 2) Identité illisible : on CAPTURE (lecture
+            // seule), jamais on ne retire — le retrait exige la preuve de
+            // boutique de la capture (vendeur = session = annonce), plus bas.
+            verdict: identCourante?.user_id ? "boutique_ok" : "identite_inconnue_capture_seule",
             boutique_article: boutiqueArticle,
             boutique_connectee: identCourante?.user_id ?? null,
             champs_verifies: ["vinted_account_id", "identite_connectee"],

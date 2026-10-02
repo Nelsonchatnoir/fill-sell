@@ -1146,6 +1146,11 @@ async function fillListingForm(job) {
   if (job.title) await fillTextField("#title", job.title);
   if (job.description) await fillTextField("#description", job.description);
 
+  // (02/10 soir, point 3) `warnings` est déclaré AVANT la catégorie : la
+  // catégorie choisie par la recherche Beebs y écrit. Déclaré plus bas, il
+  // levait « Cannot access 'o' before initialization » (nom minifié) dès que
+  // la recherche tranchait — Jonathan Rabany 6d1a1d3d, pré-vol en boucle.
+  const warnings = [];
   await selectCategory(fields.beebsCategoryPath, fields, job?.title ?? "");
   if (categorieRechercheRetenue) {
     warnings.push({
@@ -1160,7 +1165,6 @@ async function fillListingForm(job) {
   // sans elle rien n'est publiable. Les champs dynamiques qui suivent sautent
   // avec un warning en cas de libellé introuvable, et sont silencieusement
   // ignorés s'ils ne sont pas affichés pour la catégorie choisie.
-  const warnings = [];
   if (photoNote) warnings.push(photoNote);
   // Champs OBLIGATOIRES (affichés sans "(facultatif)") qu'on n'a pas su
   // remplir : remontés au background, qui refuse de laisser passer un job
