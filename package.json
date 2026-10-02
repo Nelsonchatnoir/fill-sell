@@ -20,6 +20,7 @@
     "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
     "selftest:opla-sortie": "node scripts/opla-sortie-selftest.mjs",
     "selftest:avis-demande": "node scripts/avis-demande-selftest.mjs",
+    "selftest:avis-plugin-absent": "node scripts/avis-plugin-absent-selftest.mjs",
     "selftest:beebs-refus-formulaire": "node scripts/beebs-refus-formulaire-selftest.mjs",
     "selftest:progression": "node scripts/progression-selftest.mjs",
     "selftest:file-des-jobs": "node scripts/file-des-jobs-selftest.mjs",

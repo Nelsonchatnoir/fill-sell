@@ -16,27 +16,16 @@
 // Web sur ordinateur : la carte (CarteAvis), qui mène à la page d'avis de
 // l'extension. Web sur téléphone : rien (l'extension ne s'installe pas là).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
 import { CapgoInAppReview } from '@capgo/capacitor-in-app-review';
 import { supabase } from '../lib/supabase';
+import { plateformeAvis } from '../utils/plateformeAvis';
+
+export { plateformeAvis };
 
 const LANCEMENT = Date.now();
 export const DELAI_APRES_LANCEMENT_MS = 45_000;
 export const INTERVALLE_MS = 10 * 60_000;
 let demandeeCetteSession = false;
-
-export function plateformeAvis() {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      const p = Capacitor.getPlatform();
-      if ((p === 'ios' || p === 'android') && Capacitor.isPluginAvailable('CapgoInAppReview')) return p;
-      return null;
-    }
-    if (typeof window === 'undefined' || !window.matchMedia) return null;
-    // « Ordinateur » : un pointeur fin et de la place — là où l'extension s'installe.
-    return window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 768px)').matches ? 'web' : null;
-  } catch { return null; }
-}
 
 async function appeler(body) {
   const { data, error } = await supabase.functions.invoke('avis-demande', { body });
