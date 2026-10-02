@@ -23,7 +23,7 @@ import EcranConfirmer from "./EcranConfirmer";
 import EcranSuivi from "./EcranSuivi";
 import { Bouton, Carte } from "./composants";
 import { NOM } from "./texte";
-import { bilanPlateformes, rienAPublier } from "./plateformes";
+import { bilanPlateformes, rienAPublier, verdictConfirmation } from "./plateformes";
 
 export default function StepperNouveau({ m }) {
   const en = m.lang === "en";
@@ -112,11 +112,17 @@ export default function StepperNouveau({ m }) {
   } else if (ecran === 3) {
     cta = m.ctaLabel;
     disabled = m.ctaDisabled;
+    // (02/10) Quand RIEN ne part, l'écran le dit déjà en tête, avec le geste
+    // qui débloque (verdictConfirmation) : le pied de page n'ajoute pas une
+    // seconde liste — c'était le « Avant de publier, il reste : coche Beebs »
+    // sous « Partiront : rien pour l'instant ».
+    const rienNePart = m.publishedStateLoaded && !m.inventoryFull && verdictConfirmation(m, m.lang).rienNePart;
     // Le bouton est gris à cause des QUESTIONS : elles sont posées juste
     // au-dessus, on n'en refait pas la liste (la redondance de l'ancien
-    // écran). Les autres motifs (rien de coché, relecture en cours, filet)
-    // gardent leur carte.
-    if (m.motifsCtaGris.length > 0 && m.requiredBlocking && m.nbQuestions > 0) {
+    // écran). Les autres motifs (relecture en cours, filet) gardent leur carte.
+    if (rienNePart) {
+      avant = null;
+    } else if (m.motifsCtaGris.length > 0 && m.requiredBlocking && m.nbQuestions > 0) {
       avant = (
         <Carte gravite="geste">
           <div className="fsn-card-p">

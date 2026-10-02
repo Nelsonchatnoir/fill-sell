@@ -130,7 +130,9 @@
     "selftest:recreation-impasse-vinted": "node scripts/recreation-impasse-vinted-selftest.mjs",
     "selftest:retraits-motifs-vrais": "node scripts/retraits-motifs-vrais-selftest.mjs",
     "selftest:une-passe-feu-vert": "node scripts/une-passe-feu-vert-selftest.mjs",
-    "selftest:retrait-introuvable": "node scripts/retrait-introuvable-selftest.mjs"
+    "selftest:retrait-introuvable": "node scripts/retrait-introuvable-selftest.mjs",
+    "selftest:confirmation-verdict": "node --import ./scripts/loader-ext.mjs scripts/confirmation-verdict-selftest.mjs",
+    "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

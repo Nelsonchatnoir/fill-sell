@@ -32,8 +32,10 @@ const params = new URLSearchParams(location.search);
 //   8photos         8 photos, Retouche IA : lesquelles sont retouchées
 //   quota-annonces  écran 2 : quota d'annonces atteint (pied « Voir les offres »)
 //   avis-retouche   écran 2 : retouche refusée pendant la rédaction, partie telles quelles
+//   confirmer-0210  écran 3, la capture du 02/10 : Vinted en ligne, Opla en cours,
+//                   Leboncoin cochée sans adresse de remise, Beebs libre
 const CAS = params.get('cas') || '';
-const ECRAN = Number(params.get('ecran') || (['quota-annonces', 'avis-retouche'].includes(CAS) ? '2' : '1'));
+const ECRAN = Number(params.get('ecran') || (['quota-annonces', 'avis-retouche'].includes(CAS) ? '2' : CAS === 'confirmer-0210' ? '3' : '1'));
 const FICHE = params.get('fiche') === '1' || ['rien', 'fiche'].includes(CAS);
 const QUOTA_RETOUCHES = CAS === 'retouche0' ? { plafond: 5, consommes: 5, restantes: 0 }
   : CAS === 'retouche-free' ? { plafond: 0, consommes: 0, restantes: 0 }
@@ -103,7 +105,7 @@ const copies = () => ({
 
 function Apercu() {
   const { t, tpl } = useTranslation('fr');
-  const [selected, setSelected] = useState(() => new Set(CAS === 'rien' ? [] : ECRAN === 3 ? ['vinted', 'leboncoin', 'beebs', 'opla'] : ['vinted', 'leboncoin', 'beebs']));
+  const [selected, setSelected] = useState(() => new Set(CAS === 'rien' ? [] : CAS === 'confirmer-0210' ? ['leboncoin'] : ECRAN === 3 ? ['vinted', 'leboncoin', 'beebs', 'opla'] : ['vinted', 'leboncoin', 'beebs']));
   const [edited, setEdited] = useState(copies);
   // Retouche IA par défaut là où l'app la met par défaut (Premium/Pro sans
   // fiche) : c'est ce qui prouve le passage AUTOMATIQUE sur « Telles quelles ».
@@ -221,7 +223,19 @@ function Apercu() {
     exclusionsDuClic: ECRAN === 4 ? [{ platform: 'ebay', motif: 'sans_adresse' }] : [],
     publieesSansPf: [], createdThisRun: false, parcoursCreation: false,
   };
-  return <StepperNouveau m={m} />;
+  // La capture du 02/10 : ce que le moteur tendait à l'écran ce jour-là.
+  const surcharge = CAS !== 'confirmer-0210' ? {} : {
+    publishedSet: new Set(['vinted']), queuedSet: new Set(['opla']), lockedSet: new Set(['vinted', 'opla']),
+    motifsVerrouillage: { vinted: 'déjà en ligne pour cet article', opla: 'une publication est déjà en cours' },
+    lbcAdresseManquante: { plateformes: ['leboncoin'] },
+    exclusionsPrevues: calculerExclusions({ selected, platformSupport: {}, platformListings, plateformesSansAdresse: ['leboncoin'], champsManquantsParPf: {} }),
+    genericRequiredStatus: null, redSharedFields: [], missingSharedFieldsDetailed: [], questionsParPlateforme: {}, nbQuestions: 0,
+    demanderPrixAchat: false, prixAchatManquant: false, jumeaux: [], platformSessions: { vinted: true, leboncoin: true, beebs: true },
+    voiesDuLot: { extension: ['leboncoin'], serveur: [], toutServeur: false, mixte: false },
+    publishChips: [], motifsCtaGris: ['Coche la plateforme où publier : Beebs.'],
+    ctaDisabled: true, ctaBlockingActive: true, requiredBlocking: true, ctaLabel: "Rien ne peut partir pour l'instant",
+  };
+  return <StepperNouveau m={{ ...m, ...surcharge }} />;
 }
 
 createRoot(document.getElementById('apercu')).render(<Apercu />);

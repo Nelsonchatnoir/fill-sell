@@ -9356,7 +9356,14 @@ export default function ListingPreviewScreen({
       //    présentait comme cliquable, ne faisait rien, et ne disait pas quoi
       //    faire. On dit le GESTE à la place — la rangée de plateformes est
       //    juste au-dessus depuis ce lot (défaut nº5).
-      if (n === 0) return lang === "en" ? "Pick at least one platform" : "Choisis au moins une plateforme";
+      // (02/10) Une case cochée qui ne peut pas partir (Leboncoin sans adresse
+      // de remise) : « choisis au moins une plateforme » sous une case cochée
+      // était faux. L'écran dit pourquoi, en tête (verdictConfirmation).
+      if (n === 0) {
+        const cocheeBloquee = [...selected].some(p => platformListings?.platforms?.[p] && !lockedSet.has(p));
+        if (cocheeBloquee) return lang === "en" ? "Nothing can go out yet" : "Rien ne peut partir pour l'instant";
+        return lang === "en" ? "Pick at least one platform" : "Choisis au moins une plateforme";
+      }
       // Grille 2 axes : le CTA affiche le TOTAL débité au clic, recalculé à
       // chaque plateforme cochée/décochée. Config pas encore lue → libellé
       // sans prix (jamais un total faux).

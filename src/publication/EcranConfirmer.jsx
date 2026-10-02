@@ -11,13 +11,19 @@
 //     la même pointure quatre fois ;
 //   · des cartes d'état à UNE couleur par gravité : information (sarcelle),
 //     geste ou attente (ambre), refus (rouge) ;
-//   · les EXCLUSIONS ANNONCÉES avant le clic : « Partiront : … · Ne partira
-//     pas : Beebs (adresse de remise manquante) » — plus jamais silencieuses.
+//   · les EXCLUSIONS ANNONCÉES avant le clic — plus jamais silencieuses ;
+//   · (02/10) UNE carte de verdict, en tête, lue dans verdictConfirmation
+//     (plateformes.js) : ce qui part, ce qui ne part pas et pourquoi, le geste
+//     qui débloque. Elle remplace la carte « Partiront : … » (qui pouvait
+//     dire « rien pour l'instant » puis « tu peux fermer cet écran ») et la
+//     carte d'adresse Leboncoin reléguée en bas de page. La pastille d'une
+//     plateforme verrouillée dit son état RÉEL (« En cours » ≠ « En ligne »).
 import BoutonMeConnecter from "../components/BoutonMeConnecter";
 import { MOTIFS } from "../utils/connexionPlateformes";
 import { carteAccesOpla, parcageDepasse } from "../utils/oplaAcces";
 import { Carte, Puce, Logo, CarteArticle } from "./composants";
 import { NOM } from "./texte";
+import { verdictConfirmation, puceVerrouillee } from "./plateformes";
 import BlocQuestions from "./BlocQuestions";
 import CarteRayon from "../components/CarteRayon";
 
@@ -42,8 +48,16 @@ export default function EcranConfirmer({ m }) {
   const ex = m.exclusionsPrevues;
   const partent = ex.aPublier;
   const exclues = ex.exclues;
-  const sessionsFermees = m.platformSessions ? voies.extension.filter(p => m.platformSessions[p] === false) : [];
-  const sessionsOk = m.platformSessions ? voies.extension.filter(p => m.platformSessions[p] === true) : [];
+  const voieTexte = voies.toutServeur
+    ? t("stepPublishServeurText")
+    : voies.mixte
+    ? tpl("stepPublishMixteText", { extension: voies.extension.map(NOM).join(", "), serveur: voies.serveur.map(NOM).join(", ") })
+    : (en ? "Once you tap Publish, it runs in Chrome on your computer, by itself. You can then close this screen." : "Après ton clic, la publication se fait dans Chrome sur ton ordinateur, toute seule. Tu pourras fermer cet écran.");
+  const verdict = verdictConfirmation(m, m.lang, voieTexte);
+  // Les sessions ne concernent que ce qui PART (02/10) : « Leboncoin
+  // connectée » sous « Leboncoin ne partira pas » disait deux choses.
+  const sessionsFermees = m.platformSessions ? voies.extension.filter(p => verdict.partent.includes(p) && m.platformSessions[p] === false) : [];
+  const sessionsOk = m.platformSessions ? voies.extension.filter(p => verdict.partent.includes(p) && m.platformSessions[p] === true) : [];
 
   if (m.inventoryFull) {
     const n = m.stockCount ?? m.stockLimitCfg;
@@ -73,7 +87,7 @@ export default function EcranConfirmer({ m }) {
     <>
       <div>
         <p className="fsn-eyebrow">{en ? "Step 3 of 3" : "Étape 3 sur 3"}</p>
-        <h1 className="fsn-h" style={{ marginTop: 4 }}>{m.nbQuestions > 0 ? (m.nbQuestions === 1 ? (en ? "One question, then publish" : "Une question, puis on publie") : (en ? `${m.nbQuestions} questions, then publish` : `${m.nbQuestions} questions, puis on publie`)) : (en ? "Confirm the publication" : "Confirme la publication")}</h1>
+        <h1 className="fsn-h" style={{ marginTop: 4 }}>{verdict.rienNePart ? (en ? "Before publishing" : "Avant de publier") : m.nbQuestions > 0 ? (m.nbQuestions === 1 ? (en ? "One question, then publish" : "Une question, puis on publie") : (en ? `${m.nbQuestions} questions, then publish` : `${m.nbQuestions} questions, puis on publie`)) : (en ? "Confirm the publication" : "Confirme la publication")}</h1>
       </div>
 
       <CarteArticle
@@ -87,6 +101,13 @@ export default function EcranConfirmer({ m }) {
       />
 
       {m.publishError && <Carte gravite="refus" titre={en ? "Not published" : "Pas publié"}><div className="fsn-card-p">{m.publishError}</div></Carte>}
+
+      {/* ── LE VERDICT, UNE FOIS (02/10) : ce que le clic ferait maintenant ── */}
+      {verdict && (
+        <Carte gravite={verdict.gravite} titre={verdict.titre}>
+          {verdict.lignes.map((l, i) => <div key={i} className="fsn-card-p">{l}</div>)}
+        </Carte>
+      )}
 
       <BlocQuestions m={m} />
 
@@ -121,12 +142,16 @@ export default function EcranConfirmer({ m }) {
             const a = m.attentes?.[p];
             const exclue = exclues.find(e => e.platform === p);
             let sous = null; let ton = null; let geste = null;
+            let libellePuce = null;
             if (verrouillee) {
-              sous = m.motifsVerrouillage?.[p] ?? ""; ton = a?.bloque ? "geste" : "ok";
+              // La pastille dit l'état RÉEL (02/10) : « En cours » quand une
+              // publication est en file, jamais « En ligne » sous cette phrase.
+              const pv = puceVerrouillee(p, m, m.lang);
+              sous = m.motifsVerrouillage?.[p] ?? ""; ton = pv.ton; libellePuce = pv.libelle;
               // Parcage « Autoriser Opla » plus ancien que la preuve d'accès du
               // compte (verdict serveur, 24/09) : il repart seul — pas de bouton.
               if (a?.bloque && a.kind === "attente_autorisation" && parcageDepasse(a.job, m.oplaAccesDetail)) {
-                sous = en ? "Opla is allowed: this listing goes out on its own" : "Opla est autorisée : cette annonce repart toute seule"; ton = "ok";
+                sous = en ? "Opla is allowed: this listing goes out on its own" : "Opla est autorisée : cette annonce repart toute seule"; ton = "ok"; libellePuce = en ? "Under way" : "En cours";
               }
               else if (a?.bloque && m.userId && a.kind === "attente_autorisation") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" />;
               else if (a?.bloque && m.userId && a.kind === "attente_connexion") geste = <BoutonMeConnecter userId={m.userId} platform={p} motif={a.motif === "reauth_ebay" ? MOTIFS.REAUTH_EBAY : MOTIFS.CONNEXION} lang={m.lang} variante="bouton" />;
@@ -166,7 +191,7 @@ export default function EcranConfirmer({ m }) {
                   <span className={`fsn-check${cochee ? " fsn-check--on" : ""}${verrouillee ? " fsn-check--dis" : ""}`} aria-hidden="true">{cochee ? "✓" : ""}</span>
                   <Logo platform={p} size={26} desature={verrouillee} />
                   <span className="fsn-pf-t"><b>{NOM(p)}</b>{sous ? <small>{sous}</small> : null}</span>
-                  {ton ? <Puce ton={ton}>{ton === "ok" ? (verrouillee ? (en ? "Live" : "En ligne") : "✓") : "!"}</Puce> : null}
+                  {ton ? <Puce ton={ton}>{libellePuce ?? (ton === "ok" ? "✓" : "!")}</Puce> : null}
                 </button>
                 {geste ? <div className="fsn-pf-geste" style={{ padding: "0 4px" }}>{geste}</div> : null}
               </div>
@@ -175,31 +200,7 @@ export default function EcranConfirmer({ m }) {
         </div>
       </div>
 
-      {/* ── Les exclusions, dites AVANT le clic ── */}
-      {chips.length > 0 && (
-        <Carte gravite={exclues.length ? "geste" : "info"}>
-          <div className="fsn-card-p">
-            <b>{en ? "Will go out: " : "Partiront : "}</b>{partent.length ? partent.map(NOM).join(", ") : (en ? "nothing yet" : "rien pour l'instant")}
-          </div>
-          {exclues.length > 0 && (
-            <ul>
-              {exclues.map(e => (
-                <li key={e.platform}>
-                  <b>{NOM(e.platform)}</b> — {L[e.motif]}{e.motif === "champ_manquant" && e.champs?.length ? ` : ${e.champs.join(", ")}` : ""}
-                  {e.motif === "champ_manquant" ? (en ? " (answer above and it goes out too)" : " (réponds ci-dessus et elle part aussi)") : ""}
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="fsn-small" style={{ color: "inherit" }}>
-            {voies.toutServeur
-              ? t("stepPublishServeurText")
-              : voies.mixte
-              ? tpl("stepPublishMixteText", { extension: voies.extension.map(NOM).join(", "), serveur: voies.serveur.map(NOM).join(", ") })
-              : (en ? "Publishing runs in Chrome on your computer, by itself. You can close this screen." : "La publication se fait dans Chrome sur ton ordinateur, toute seule. Tu peux fermer cet écran.")}
-          </div>
-        </Carte>
-      )}
+      {/* (02/10) La carte « Partiront : … » est remplacée par le verdict, en tête. */}
 
       {/* ── Ce qui attend un geste (ambre) ── */}
       {/* Opla cochée sans accès PROUVÉ au serveur (verdict de utils/oplaAcces,
@@ -224,17 +225,7 @@ export default function EcranConfirmer({ m }) {
           ))}
         </Carte>
       )}
-      {m.lbcAdresseManquante && (
-        <Carte gravite="geste" titre={en
-          ? `Pickup address missing — ${m.lbcAdresseManquante.plateformes.map(NOM).join(" and ")} won't be published`
-          : `Adresse de remise manquante — ${m.lbcAdresseManquante.plateformes.map(NOM).join(" et ")} ne partira pas`}>
-          <div className="fsn-card-p">
-            {en
-              ? <>These marketplaces ask for a pickup address on every listing. Open <b>Settings ⚙️ → “Leboncoin pickup address”</b>, enter your street, postal code and city, then come back and publish again.</>
-              : <>Ces plateformes réclament une adresse de remise à chaque annonce. Va dans <b>Réglages ⚙️ → « Adresse de remise Leboncoin »</b>, saisis ta rue, ton code postal et ta ville, puis reviens publier.</>}
-          </div>
-        </Carte>
-      )}
+      {/* (02/10) L'adresse de remise manquante est dite dans le verdict, en tête : plus en bas de page. */}
       {m.jumeaux.length > 0 && (
         <Carte gravite="geste" titre={en
           ? `A similar item is already online on ${m.jumeaux.map(j => NOM(j.platform)).join(", ")}`
