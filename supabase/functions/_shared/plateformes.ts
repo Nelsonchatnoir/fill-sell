@@ -32,8 +32,10 @@ export interface DescriptionPlateforme {
 }
 
 /**
- * Les CINQ plateformes, dans l'ordre d'affichage des mails.
- * Opla est la cinquième depuis le 15/09/2026.
+ * Les plateformes CONNUES des mails, dans l'ordre d'affichage. Opla y reste
+ * (une vente vue sur Opla se nomme encore « Vendu sur Opla » chez les comptes
+ * au dressing Opla synchronisé), mais elle n'est plus PROPOSÉE depuis la
+ * sortie d'Opla du 02/10/2026 : cf. SLUGS_PLATEFORMES_PROPOSEES.
  */
 export const PLATEFORMES: Readonly<Record<string, DescriptionPlateforme>> = {
   vinted: { label: "Vinted", logo: "logo-vinted.png" },
@@ -45,6 +47,13 @@ export const PLATEFORMES: Readonly<Record<string, DescriptionPlateforme>> = {
 
 /** Les slugs, dans l'ordre. */
 export const SLUGS_PLATEFORMES: readonly string[] = Object.keys(PLATEFORMES);
+
+/**
+ * Les plateformes que FillSell PROPOSE (02/10/2026, sortie d'Opla) : celles
+ * qu'un mail énumère (« il part sur … »), dont il montre les logos et qu'il
+ * cite au pied. Opla n'en fait plus partie.
+ */
+export const SLUGS_PLATEFORMES_PROPOSEES: readonly string[] = SLUGS_PLATEFORMES.filter((s) => s !== "opla");
 
 /**
  * Nom lisible d'une plateforme, ou `null` si le slug est inconnu.
@@ -89,10 +98,10 @@ export function plateformesEnClair(slugs: unknown[], lang: string): string {
   return listeNaturelle(labels, lang);
 }
 
-/** Les cinq noms, en clair, pour les phrases qui les listent toutes. */
+/** Les plateformes proposées, en clair, pour les phrases qui les listent toutes. */
 export function toutesLesPlateformes(lang: string): string {
   return listeNaturelle(
-    SLUGS_PLATEFORMES.map((s) => PLATEFORMES[s].label),
+    SLUGS_PLATEFORMES_PROPOSEES.map((s) => PLATEFORMES[s].label),
     lang,
   );
 }

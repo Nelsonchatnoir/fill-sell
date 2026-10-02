@@ -930,7 +930,7 @@ serve(async (req) => {
       // laisse jamais sortir en clair.
       const m = mailRelanceJobs(template === "relance_1" ? 1 : 2, {
         titres: ["Robe Zara verte", "Sac à main cuir"],
-        plateformes: ["vinted", "opla", "plateforme_inexistante"],
+        plateformes: ["vinted", "leboncoin", "plateforme_inexistante"],
         depuis: new Date(Date.now() - 26 * 3_600_000).toISOString(),
         extensionVueLe: template === "relance_2"
           ? new Date(Date.now() - 9 * 3_600_000).toISOString()

@@ -16,7 +16,7 @@
 // (`gras`, `lien`, `sautLigne`).
 // ============================================================================
 
-import { BASE_LOGOS, PLATEFORMES, SLUGS_PLATEFORMES } from "./plateformes.ts";
+import { BASE_LOGOS, PLATEFORMES, SLUGS_PLATEFORMES_PROPOSEES } from "./plateformes.ts";
 
 /** Fragment de HTML deja construit et sur : insere tel quel, jamais echappe. */
 export interface Html {
@@ -318,7 +318,7 @@ export function boutonSecondaire(texte: string, url: string): Html {
  * en toutes lettres.
  */
 export function logosPlateformes(): Html {
-  const cellules = SLUGS_PLATEFORMES.map((slug, i) => {
+  const cellules = SLUGS_PLATEFORMES_PROPOSEES.map((slug, i) => {
     const p = PLATEFORMES[slug];
     const gauche = i === 0 ? 0 : 7;
     return `<td valign="middle" style="padding:0 7px 0 ${gauche}px;">` +
@@ -429,7 +429,7 @@ export function renderEmail(opts: OptionsEmail): string {
 
   // Pied de carte : les plateformes, lues sur la MÊME source que la rangée de
   // logos. Écrites en dur, elles avaient oublié Opla (relevé du 19/09).
-  const ligneMarquePlateformes = SLUGS_PLATEFORMES
+  const ligneMarquePlateformes = SLUGS_PLATEFORMES_PROPOSEES
     .map((s) => echapper(PLATEFORMES[s].label))
     .join(" &middot; ");
 

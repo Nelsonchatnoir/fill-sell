@@ -13,7 +13,8 @@
 // RÈGLES ÉDITORIALES — elles valent pour TOUT texte ajouté ici :
 //   · TUTOIEMENT partout, sans exception ;
 //   · signature « Nico », partout ;
-//   · les CINQ plateformes, jamais écrites en dur : toutesLesPlateformes() ;
+//   · les plateformes PROPOSÉES (quatre depuis la sortie d'Opla du 02/10),
+//     jamais écrites en dur : toutesLesPlateformes() ;
 //   · ⛔ aucun chiffre de quota, aucun prix, aucun délai promis — la grille vit
 //     dans l'app, et un chiffre dans un mail se périme sans que personne ne le
 //     voie (« 50 republications », « illimité avec Premium »…) ;
@@ -175,8 +176,8 @@ export function mailBienvenue(lang: Langue, lienDesinscription = ""): MailPret {
       lang,
       titre: lang === "fr" ? "Bienvenue sur FillSell" : "Welcome to FillSell",
       preheader: lang === "fr"
-        ? "Ton stock sur cinq plateformes, depuis ton téléphone."
-        : "Your stock on five marketplaces, from your phone.",
+        ? "Ton stock sur quatre plateformes, depuis ton téléphone."
+        : "Your stock on four marketplaces, from your phone.",
       corps,
       lienDesinscription,
     }),
