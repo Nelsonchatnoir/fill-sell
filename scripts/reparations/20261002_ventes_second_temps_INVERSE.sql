@@ -37,4 +37,13 @@ UPDATE public.ventes v SET
    AND (v.inventaire_id IS DISTINCT FROM b.inventaire_id OR v.annonce_id IS DISTINCT FROM b.annonce_id
         OR v.commande_ref IS DISTINCT FROM b.commande_ref);
 
+-- 3. Les ventes saisies PLUS ANCIENNES complétées par le second temps (sauvegarde
+--    _backup_0210_ventes_saisies_second_temps, prise le 02/10 ~21:15).
+UPDATE public.ventes v SET
+  inventaire_id = b.inventaire_id, annonce_id = b.annonce_id, prix_achat = b.prix_achat, benefice = b.benefice,
+  commande_ref = b.commande_ref, plateforme_code = b.plateforme_code, vendu_le = b.vendu_le,
+  frais_plateforme = b.frais_plateforme, devise = b.devise, releve_le = b.releve_le
+  FROM public._backup_0210_ventes_saisies_second_temps b, _t0
+ WHERE v.id = b.id AND v.releve_le >= _t0.t0;
+
 COMMIT;
