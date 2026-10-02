@@ -17,6 +17,7 @@ import { postesVivants, posteAvecAccesOpla, posteSansAccesOpla } from "../_share
 import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } from "../_shared/reprise-processing.js";
 // (02/10) Sortie d'Opla : les publications/republications Opla en attente se closent.
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
+import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -647,6 +648,17 @@ serve(async (req) => {
   // sont pas des refus, elles ne doivent pas consommer le plafond de reprises.
   const REPRISE_DELETED_MIN = 30;
   const PRISE_EN_COURS_MIN = 12;
+  const derniersSignesDeVie = async (ids: string[]): Promise<Map<string, string | null>> => {
+    const m = new Map<string, string | null>();
+    const uniques = [...new Set(ids.filter(Boolean))];
+    for (let i = 0; i < uniques.length; i += 200) {
+      try {
+        const { data } = await supabase.from("profiles").select("id, extension_last_seen_at").in("id", uniques.slice(i, i + 200));
+        for (const p of (data ?? []) as Array<{ id: string; extension_last_seen_at: string | null }>) m.set(String(p.id), p.extension_last_seen_at ?? null);
+      } catch (_e) { /* inconnu = muet : on ne promet jamais une reprise immédiate sans preuve */ }
+    }
+    return m;
+  };
   let deletedRearmes = 0;
   try {
     const { data: coupes } = await supabase
@@ -656,6 +668,10 @@ serve(async (req) => {
       .eq("action", "republish")
       .filter("platform_fields->>republish_step", "eq", "deleted")
       .filter("platform_fields->>new_vinted_item_id", "is", "null");
+    // (02/10 soir, point 5) Le dernier signe de vie de l'extension de chaque
+    // compte : « ordinateur coupé » seulement si elle s'est tue
+    // (_shared/interruption-poste.js).
+    const vusDeleted = await derniersSignesDeVie(((coupes ?? []) as Array<{ user_id: string }>).map((c) => c.user_id));
     // deno-lint-ignore no-explicit-any
     for (const j of ((coupes ?? []) as any[])) {
       const pf0 = j.platform_fields ?? {};
@@ -718,10 +734,10 @@ serve(async (req) => {
           pose_par: "handler-watch",
         };
       }
-      const msg =
-        "Reprise après interruption : l'ordinateur a été coupé juste après le retrait de l'annonce, " +
-        "avant sa recréation. Le job est remis en file et la recréation repartira toute seule dès " +
-        "qu'une extension connectée se réveille — rien à faire de ton côté.";
+      const vuLeD = vusDeleted.get(String(j.user_id)) ?? null;
+      const vivantD = posteVivant({ vuLe: vuLeD, priseLe: pf0.processing_since ?? null, maintenant: now });
+      pf.interruption = { le: new Date(now).toISOString(), etape: "deleted", poste: vivantD ? "vivant" : "muet", extension_vue_le: vuLeD };
+      const msg = messageInterruption({ etape: "deleted", vivant: vivantD, platform: j.platform, vuLe: vuLeD });
       const { data: maj } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: msg, platform_fields: pf })
@@ -730,7 +746,7 @@ serve(async (req) => {
         .select("id");
       if (maj?.length) {
         deletedRearmes++;
-        console.log(`[handler-watch] job ${j.id} : processing coupé à l'étape 'deleted' (capture valide) → pending (annonce hors ligne, recréation relancée)`);
+        console.log(`[handler-watch] job ${j.id} : processing coupé à l'étape 'deleted' (capture valide, extension ${vivantD ? "VIVANTE — onglet/script" : "muette — ordinateur/Chrome"}) → pending (annonce hors ligne, recréation relancée)`);
       }
     }
   } catch (e) {
@@ -773,6 +789,7 @@ serve(async (req) => {
       .eq("action", "republish")
       .filter("platform_fields->>republish_step", "eq", "captured")
       .filter("platform_fields->>new_vinted_item_id", "is", "null");
+    const vusCaptured = await derniersSignesDeVie(((coupes ?? []) as Array<{ user_id: string }>).map((c) => c.user_id));
     // deno-lint-ignore no-explicit-any
     for (const j of ((coupes ?? []) as any[])) {
       const pf0 = j.platform_fields ?? {};
@@ -796,11 +813,10 @@ serve(async (req) => {
       const pf = { ...pf0 };
       delete pf.processing_since;
       delete pf.stale_recoveries;
-      const msg =
-        "Reprise après interruption : l'ordinateur a été coupé après la capture de l'annonce, " +
-        `avant tout retrait. Ton annonce est toujours en ligne sur ${libellePlateforme(j.platform)}, rien n'a été supprimé. ` +
-        "Le job est remis en file et repartira tout seul dès qu'une extension connectée se " +
-        "réveille — rien à faire de ton côté.";
+      const vuLeC = vusCaptured.get(String(j.user_id)) ?? null;
+      const vivantC = posteVivant({ vuLe: vuLeC, priseLe: pf0.processing_since ?? null, maintenant: now });
+      pf.interruption = { le: new Date(now).toISOString(), etape: "captured", poste: vivantC ? "vivant" : "muet", extension_vue_le: vuLeC };
+      const msg = messageInterruption({ etape: "captured", vivant: vivantC, platform: j.platform, vuLe: vuLeC });
       const { data: maj } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: msg, platform_fields: pf })

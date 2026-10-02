@@ -133,6 +133,7 @@
     "selftest:retrait-introuvable": "node scripts/retrait-introuvable-selftest.mjs",
     "selftest:defaut-fillsell": "node scripts/defaut-fillsell-selftest.mjs",
     "selftest:mur-geste": "node scripts/mur-geste-selftest.mjs",
+    "selftest:interruption-poste": "node scripts/interruption-poste-selftest.mjs",
     "selftest:confirmation-verdict": "node --import ./scripts/loader-ext.mjs scripts/confirmation-verdict-selftest.mjs",
     "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs"
   },
