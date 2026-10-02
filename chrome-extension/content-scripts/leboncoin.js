@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -968,6 +968,68 @@ function estPageBotShieldLbc() {
   return /geo\.captcha|captcha-delivery|\bAre you a human\b|Vérification que vous n/i.test(debut);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE MUR DE CONNEXION DE LA PAGE DE DÉPÔT (0.6.84, 02/10 — xxewwer)
+// ══════════════════════════════════════════════════════════════════════════
+// Déconnecté, Leboncoin GARDE l'adresse /deposer-une-annonce, sans champ mot
+// de passe, et affiche à la place du formulaire (relevé sur un Chrome neuf le
+// 02/10) : « Bonjour ! » / « Connectez-vous ou créez un compte pour déposer
+// votre annonce. » + boutons « Me connecter » et « Créer un compte ». Aucune
+// des deux gardes d'avant ne le voyait (adresse, champ mot de passe) : la garde
+// de republication concluait « le titre n'est plus au rendez-vous » (5 jobs de
+// xxewwer le 02/10, session fermée depuis le 01/10 au soir) et le dépôt
+// filtrait les boutons par offsetParent, nul dans la fenêtre de travail
+// minimisée — « page de dépôt non reconnue ».
+// Trois signaux, lus sans layout :
+//   · sansJeton : localStorage.luat absent (le jeton que le relevé utilise —
+//     son absence, c'est « jeton_absent » dans les relevés) ;
+//   · phrase    : la phrase du mur, visible ;
+//   · boutons   : « Me connecter » / « Se connecter » / « Créer un compte »…
+// Le formulaire présent (input[name="subject"]) l'emporte toujours : jamais un
+// mur sur une page qui porte le formulaire. `preuve` = jeton absent ET mur
+// affiché — deux faits indépendants : la session est fermée, sans sonde.
+// ⛔ MÊME CORPS, À LA LETTRE, dans background.js (sondePageDepotLbc) : la
+//    garde et le dépôt lisent la page de la même façon. Vérifié par
+//    `npm run selftest:lbc-mur-connexion` (texte identique + vrai Chrome).
+function murConnexionDepotLbc() {
+  if (document.querySelector('input[name="subject"]')) return null;
+  let sansJeton = false;
+  try { sansJeton = !window.localStorage.getItem("luat"); } catch (_e) { sansJeton = false; }
+  const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  const visible = (el) => {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n.getAttribute("aria-hidden") === "true") return false;
+      const st = getComputedStyle(n);
+      if (st.display === "none" || st.visibility === "hidden") return false;
+    }
+    return true;
+  };
+  const boutons = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+    .filter((b) => /^(me connecter|se connecter|connexion|créer un compte|creer un compte)$/.test(norm(b.textContent)) && visible(b))
+    .map((b) => norm(b.textContent));
+  const phrase = Array.from(document.querySelectorAll("h1, h2, h3, p"))
+    .some((e) => /connectez-vous ou créez un compte pour déposer/.test(norm(e.textContent)) && visible(e));
+  if (!sansJeton && !phrase && !boutons.length) return null;
+  return { sansJeton, phrase, boutons: boutons.slice(0, 5), preuve: sansJeton && (phrase || boutons.length > 0) };
+}
+
+// ── UN COMPTE LEBONCOIN CONNECTÉ, DIT AU BACKGROUND (0.6.84, 02/10) ─────────
+// Le pendant du mur : une attente de session Leboncoin (« En attente de ta
+// connexion à Leboncoin ») se lève dès que la personne se reconnecte — elle
+// est alors sur une page leboncoin.fr, et le jeton `luat` y est posé. Même
+// message que Beebs (FILLSELL_SESSION_COMPTE_VU) ; on ne parle QUE pour un
+// compte connecté, jamais pour dire « déconnecté » (c'est la garde qui le
+// voit). Cadre principal seulement, une lecture ~5 s après le chargement.
+if (window.top === window && typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+  setTimeout(() => {
+    let jeton = false;
+    try { jeton = !!window.localStorage.getItem("luat"); } catch (_e) { jeton = false; }
+    if (!jeton) return;
+    try { chrome.runtime.sendMessage({ type: "FILLSELL_SESSION_COMPTE_VU", platform: "leboncoin" }).catch(() => null); }
+    catch (_e) { /* contexte d'extension invalidé : sans conséquence */ }
+  }, 5000);
+}
+
 // ── Remplissage du wizard ────────────────────────────────────────────────────
 //
 // Architecture relevée sur le vrai formulaire (docs/leboncoin-form-survey.md,
@@ -1228,11 +1290,34 @@ async function fillListingForm(job) {
   // brouillon » est abandonné).
   const draftMarker = () =>
     document.querySelector('textarea#body, #body, #price_cents, label[for="condition"]');
+  // (0.6.84) Le mur de connexion AFFICHÉ (phrase ou boutons) se reconnaît
+  // dans la même attente : on ne l'attend plus 8 s pour ensuite le prendre
+  // pour une page inconnue. Le jeton absent SEUL n'est jugé qu'après
+  // l'attente (une page qui charge peut ne pas l'avoir encore posé).
+  const resultatMurConnexion = (mur, contexte) => {
+    const detail = `jeton ${mur?.sansJeton ? "absent" : "présent"}, phrase ${mur?.phrase ? "affichée" : "absente"}, boutons ${JSON.stringify(mur?.boutons ?? [])}`;
+    t(`mur de connexion Leboncoin sur ${location.pathname} (${contexte}) — ${detail}`);
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
+        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+      diagnostic: `mur de connexion sur /deposer-une-annonce (${contexte}) — ${detail}`,
+      // Lu par arbitrerMurDeConnexion (background) : jeton absent ET mur
+      // affiché = session fermée prouvée par la page, sans sonde.
+      sessionPage: mur?.preuve ? "morte" : null,
+      trace,
+    };
+  };
   let entryState = await waitFor(() => {
     if (draftMarker()) return "draft";
     if (document.querySelector('input[name="subject"]')) return "step1";
+    const mur = murConnexionDepotLbc();
+    if (mur && (mur.phrase || mur.boutons.length)) return "mur";
     return null;
   }, 8000);
+  if (entryState === "mur") return resultatMurConnexion(murConnexionDepotLbc(), "mur affiché");
   if (entryState === "step1") {
     // L'aperçu restauré peut rendre #subject avant #body : petit délai de
     // stabilisation puis re-vérification des marqueurs avant de taper quoi
@@ -1280,23 +1365,15 @@ async function fillListingForm(job) {
     }
   }
   if (entryState === null) {
+    // Visibilité lue SANS layout (0.6.84) : `offsetParent` est nul pour tout
+    // élément d'une fenêtre de travail minimisée — l'ancien filtre ne voyait
+    // donc jamais aucun bouton, et le mur ressortait en « page non reconnue ».
     const boutons = [...document.querySelectorAll("button, a[role='button']")]
-      .filter((b) => b.offsetParent !== null)
+      .filter((b) => estVisibleSansLayoutLbc(b))
       .map((b) => (b.textContent ?? "").replace(/\s+/g, " ").trim())
       .filter(Boolean).slice(0, 15);
-    const murDeConnexion = boutons.some((b) => /^(me connecter|se connecter|connexion|créer un compte)$/i.test(b));
-    if (murDeConnexion) {
-      t(`mur de connexion Leboncoin sur ${location.pathname} — boutons visibles: ${JSON.stringify(boutons)}`);
-      return {
-        success: false,
-        needsUser: true,
-        error:
-          "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
-          "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
-        diagnostic: `mur de connexion sur /deposer-une-annonce — boutons visibles: ${JSON.stringify(boutons)}`,
-        trace,
-      };
-    }
+    const mur = murConnexionDepotLbc();
+    if (mur) return resultatMurConnexion(mur, `après attente — boutons visibles: ${JSON.stringify(boutons)}`);
     t(`page de dépôt non reconnue (ni #subject ni marqueur de brouillon) — boutons visibles: ${JSON.stringify(boutons)}`);
     return {
       success: false,

@@ -119,7 +119,9 @@
     "selftest:lbc-voie-des-reglages": "node scripts/lbc-voie-des-reglages-selftest.mjs",
     "selftest:tailles-prefixe-age": "deno run --allow-read --allow-env --allow-net scripts/tailles-prefixe-age-selftest.ts",
     "selftest:beebs-taille-de-la-fiche": "node scripts/beebs-taille-de-la-fiche-selftest.mjs",
-    "selftest:lbc-adresse-avant-retrait": "node scripts/lbc-adresse-avant-retrait-selftest.mjs"
+    "selftest:lbc-adresse-avant-retrait": "node scripts/lbc-adresse-avant-retrait-selftest.mjs",
+    "selftest:lbc-mur-connexion": "node scripts/lbc-mur-connexion-selftest.mjs",
+    "selftest:lbc-pause-page-depot": "node scripts/lbc-pause-page-depot-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

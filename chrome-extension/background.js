@@ -1083,6 +1083,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
+  // (0.6.84, 02/10) Leboncoin : leboncoin.js signale un jeton de session
+  // `luat` posé sur une page leboncoin.fr — l'attente « En attente de ta
+  // connexion à Leboncoin » se lève sans attendre son échéance. Émetteur
+  // vérifié : un onglet leboncoin.fr, jamais un autre site.
+  if (msg?.type === "FILLSELL_SESSION_COMPTE_VU" && msg?.platform === "leboncoin") {
+    let hote = "";
+    try { hote = new URL(String(_sender?.tab?.url ?? _sender?.url ?? "")).hostname; } catch { hote = ""; }
+    if (/(^|\.)leboncoin\.fr$/.test(hote)) {
+      noterCompteVuSurLaPage("leboncoin").catch((e) =>
+        console.warn("[background] compte Leboncoin vu (sans conséquence) :", String(e?.message ?? e)));
+    }
+    sendResponse({ ok: true });
+    return; // réponse synchrone
+  }
   // Preuve réseau de la soumission eBay (2026-08-14, famille B) : le content
   // script ne décide plus de re-cliquer « Mettre en vente » sur des signaux
   // DOM (bandeau menteur mesuré en direct : notice de validation rendue ~4 s
@@ -4765,6 +4779,14 @@ async function arbitrerMurDeConnexion(accessToken, platform, result) {
   const sondePage = result?.diagnostic?.sonde ?? null;
   if (platform === "vinted" && sondePage === "morte") return { verdict: "absente", par: "page Vinted (session absente ou anonyme)" };
   if (platform === "vinted" && sondePage === "vivante") return { verdict: "bonne", par: "page Vinted (le compte répond)" };
+  // (0.6.84, 02/10) Leboncoin : la page de dépôt affiche son mur ET le jeton
+  // de session `luat` est absent — deux faits lus sur la page (cf.
+  // murConnexionDepotLbc). La sonde du service worker, elle, rend « true » sur
+  // un simple 200 de /deposer-une-annonce, que Leboncoin sert aussi à un
+  // visiteur déconnecté : elle n'arbitre pas ce cas.
+  if (platform === "leboncoin" && result?.sessionPage === "morte") {
+    return { verdict: "absente", par: "page Leboncoin (mur « Me connecter » affiché, aucun jeton de session)" };
+  }
   try {
     await reportPlatformSessions(accessToken, { plateformes: [platform], motif: "arbitrage_mur", forcer: true });
   } catch (e) {
@@ -20330,20 +20352,66 @@ const PREVOL_DEPOT = {
     // le reste du wizard n'est pas rendu avant d'avoir choisi la catégorie, et
     // réclamer ici un champ qui n'existe pas encore bloquerait des
     // republications qui marchent.
-    sonde: function () {
-      if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], script[src*="captcha-delivery"]')) {
-        return { mur: "vérification anti-robot sur la page de dépôt", manquants: [] };
-      }
-      if (!/deposer-une-annonce/.test(location.pathname)) {
-        return { mur: "page de connexion à la place du formulaire de dépôt", manquants: [] };
-      }
-      return {
-        mur: null,
-        manquants: document.querySelector('input[name="subject"]') ? [] : ["le titre"],
-      };
-    },
+    sonde: sondePageDepotLbc,
   },
 };
+
+// ── LA SONDE LEBONCOIN, ET LE MUR DE CONNEXION (0.6.84, 02/10 — xxewwer) ────
+// Le 02/10, cinq republications de xxewwer se sont arrêtées sur « le titre
+// n'est plus au rendez-vous » : le formulaire n'avait pas changé, la SESSION
+// était fermée (relevés en « jeton_absent » depuis le 01/10 22:28). Déconnecté,
+// Leboncoin garde /deposer-une-annonce, sans champ mot de passe, et affiche
+// « Connectez-vous ou créez un compte pour déposer votre annonce. » : les deux
+// tests d'avant (adresse, mot de passe) ne pouvaient pas le voir.
+// Le mur se lit par murConnexionDepotLbc — MÊME CORPS, à la lettre, que dans
+// content-scripts/leboncoin.js (`npm run selftest:lbc-mur-connexion` le
+// vérifie) : la garde et le dépôt jugent la page de la même façon.
+// `murType` dit à l'appelant quelle attente poser : « connexion » → attente de
+// session (« En attente de ta connexion à Leboncoin »), « anti_robot » → la
+// reprise de 30 min d'avant. La garde reste aussi stricte : formulaire absent
+// SANS mur reconnu = « le titre » manque, aucun retrait.
+// Sérialisée par chrome.scripting : aucune closure, tout est dedans.
+function sondePageDepotLbc() {
+  function murConnexionDepotLbc() {
+    if (document.querySelector('input[name="subject"]')) return null;
+    let sansJeton = false;
+    try { sansJeton = !window.localStorage.getItem("luat"); } catch (_e) { sansJeton = false; }
+    const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    const visible = (el) => {
+      for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+        if (n.getAttribute("aria-hidden") === "true") return false;
+        const st = getComputedStyle(n);
+        if (st.display === "none" || st.visibility === "hidden") return false;
+      }
+      return true;
+    };
+    const boutons = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+      .filter((b) => /^(me connecter|se connecter|connexion|créer un compte|creer un compte)$/.test(norm(b.textContent)) && visible(b))
+      .map((b) => norm(b.textContent));
+    const phrase = Array.from(document.querySelectorAll("h1, h2, h3, p"))
+      .some((e) => /connectez-vous ou créez un compte pour déposer/.test(norm(e.textContent)) && visible(e));
+    if (!sansJeton && !phrase && !boutons.length) return null;
+    return { sansJeton, phrase, boutons: boutons.slice(0, 5), preuve: sansJeton && (phrase || boutons.length > 0) };
+  }
+  if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"], script[src*="captcha-delivery"]')) {
+    return { mur: "vérification anti-robot sur la page de dépôt", murType: "anti_robot", manquants: [] };
+  }
+  if (!/deposer-une-annonce/.test(location.pathname) || document.querySelector('input[type="password"]')) {
+    return { mur: "page de connexion à la place du formulaire de dépôt", murType: "connexion", sessionPage: null, manquants: [] };
+  }
+  if (document.querySelector('input[name="subject"]')) return { mur: null, manquants: [] };
+  const mur = murConnexionDepotLbc();
+  if (mur) {
+    return {
+      mur: "Leboncoin demande de se connecter à la place du formulaire de dépôt",
+      murType: "connexion",
+      sessionPage: mur.preuve ? "morte" : null,
+      signaux: mur,
+      manquants: [],
+    };
+  }
+  return { mur: null, manquants: ["le titre"] };
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CE QU'IL FAUT AVOIR SOUS LA MAIN POUR REMETTRE L'ANNONCE (2026-09-22)
@@ -20568,7 +20636,11 @@ async function prevolPageDeDepot(platform) {
     await new Promise((r) => setTimeout(r, 1500));
   }
   if (!dernier) return { lisible: false };
-  return { lisible: true, mur: dernier.mur ?? null, manquants: Array.isArray(dernier.manquants) ? dernier.manquants : [] };
+  return {
+    lisible: true, mur: dernier.mur ?? null,
+    murType: dernier.murType ?? null, sessionPage: dernier.sessionPage ?? null, signaux: dernier.signaux ?? null,
+    manquants: Array.isArray(dernier.manquants) ? dernier.manquants : [],
+  };
 }
 
 // Beebs construit ses champs obligatoires APRÈS la sélection de catégorie.
@@ -20905,13 +20977,40 @@ async function processRepublishJobPlateforme(job, accessToken) {
         plateforme: job.platform,
         champs_verifies: ["page_de_depot"],
         ...(vol.manquants?.length ? { manquants: vol.manquants } : {}),
-        ...(vol.mur ? { mur: vol.mur } : {}),
+        ...(vol.mur ? { mur: vol.mur, mur_type: vol.murType ?? null, session_page: vol.sessionPage ?? null } : {}),
+        ...(vol.signaux ? { signaux: vol.signaux } : {}),
       });
       pf.republish_prevol_page = {
         at: new Date().toISOString(), lisible: vol.lisible === true,
         ...(vol.manquants?.length ? { manquants: vol.manquants } : {}),
-        ...(vol.mur ? { mur: vol.mur } : {}),
+        ...(vol.mur ? { mur: vol.mur, mur_type: vol.murType ?? null } : {}),
       };
+      if (vol.lisible && !vol.mur && !vol.manquants?.length) {
+        // La page porte le formulaire : la session est bonne et la page lisible.
+        // Les attentes posées par un passage précédent n'ont plus d'objet.
+        delete pf.attente_session;
+        delete pf.pause_page_depot;
+      }
+      if (vol.lisible && vol.mur && vol.murType === "connexion") {
+        // ── MUR DE CONNEXION : LA SESSION, PAS LE FORMULAIRE (0.6.84, 02/10) ──
+        // Rien n'est retiré. Même circuit que le dépôt (traiterMurDeConnexion) :
+        // arbitrage (la page le prouve quand le jeton manque ET que le mur est
+        // affiché), puis attente de session nommée — « En attente de ta
+        // connexion à Leboncoin dans Chrome : la republication repartira toute
+        // seule dès que tu seras reconnecté(e) » —, aucune tentative consommée,
+        // levée dès que la session revient (compte vu sur une page leboncoin.fr,
+        // sonde, relevé réussi : relancer_jobs_connexion).
+        delete pf.pause_page_depot;
+        const errMur = "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome. "
+          + "La republication repartira toute seule, ton annonce n'a pas été touchée.";
+        await traiterMurDeConnexion(accessToken, { ...job, platform_fields: pf }, {
+          error: errMur,
+          sessionPage: vol.sessionPage ?? null,
+          diagnostic: { signal: "prevol_page", url: PREVOL_DEPOT[job.platform]?.url ?? null },
+        }, errMur);
+        console.warn(`[republish] job ${job.id} : pré-vol ${label} — ${vol.mur} (session ${vol.sessionPage ?? "non prouvée"}) — aucun retrait, attente de connexion`);
+        return { status: "needsUser", error: errMur };
+      }
       if (vol.lisible && vol.mur) {
         // Session à ouvrir / vérification anti-robot : ce n'est pas un défaut
         // de formulaire, et ça ne se règle pas en retirant l'annonce.
@@ -20921,16 +21020,30 @@ async function processRepublishJobPlateforme(job, accessToken) {
         return { status: "skipped", error: `pré-vol ${label} : ${vol.mur} — rien retiré` };
       }
       if (vol.lisible && vol.manquants?.length) {
+        // ── LA PAGE NE SE LIT PLUS : C'EST DE NOTRE FAIT (0.6.84, 02/10) ──────
+        // Avant : needs_user « on s'en occupe, repartira toute seule » — faux
+        // deux fois : rien ne la relançait, et le statut demandait un geste.
+        // Désormais : pending, aucune tentative consommée, nouvel essai espacé
+        // (30 min, 1 h, 3 h, puis 6 h) — elle repart dès que la page se relit
+        // (la session revenue, ou un paquet qui sait la lire). La garde ne
+        // change pas : tant que le formulaire n'est pas lu, AUCUN retrait.
         const quoi = vol.manquants.length > 1
           ? `${vol.manquants.slice(0, -1).join(", ")} et ${vol.manquants[vol.manquants.length - 1]}`
           : vol.manquants[0];
-        const msg = `Republication ${label} mise en pause AVANT tout retrait : sur la page de vente ${label}, `
-          + `${quoi} ${vol.manquants.length > 1 ? "ne sont plus au rendez-vous" : "n'est plus au rendez-vous"}. `
-          + "Ton annonce est TOUJOURS en ligne, rien n'a été touché. C'est de notre côté, on s'en occupe ; "
-          + "la republication repartira toute seule.";
-        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-        console.warn(`[republish] job ${job.id} : retrait REFUSÉ par le pré-vol — ${vol.manquants.join(", ")}`);
-        return { status: "needsUser", error: msg };
+        const prec = pf.pause_page_depot && typeof pf.pause_page_depot === "object" ? pf.pause_page_depot : null;
+        const n = (Number(prec?.n) || 0) + 1;
+        const delaiMin = n <= 1 ? 30 : n === 2 ? 60 : n <= 4 ? 180 : 360;
+        const maintenant = new Date().toISOString();
+        pf.pause_page_depot = { depuis: prec?.depuis ?? maintenant, derniere: maintenant, n, manquants: vol.manquants };
+        pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+        delete pf.needs_user_source;
+        const dans = delaiMin < 60 ? `${delaiMin} min` : `${Math.round(delaiMin / 60)} h`;
+        const msg = `Republication ${label} en pause AVANT tout retrait : la page de dépôt ${label} ne montre pas `
+          + `${quoi} là où on l'attend. Ton annonce est TOUJOURS en ligne, rien n'a été touché. `
+          + `C'est de notre côté, rien à faire : nouvel essai automatique dans ~${dans}.`;
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: msg });
+        console.warn(`[republish] job ${job.id} : retrait REFUSÉ par le pré-vol — ${vol.manquants.join(", ")} — nouvel essai dans ${dans} (pause n°${n})`);
+        return { status: "skipped", error: msg };
       }
     }
 
