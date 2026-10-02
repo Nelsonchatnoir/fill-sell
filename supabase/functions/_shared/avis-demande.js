@@ -41,9 +41,16 @@ export const PLATEFORMES_AVIS = Object.freeze(["ios", "android", "extension", "w
 
 // affiche       : la carte (extension, web) ou la fenêtre officielle (iOS,
 //                 Android) a été ouverte — écrit par le serveur lui-même ;
-// laisser_avis  : « Laisser un avis » touché (extension, web) ;
+// laisser_avis  : « Laisser un avis » touché (extension, web) → plus jamais
+//                 sur ce canal (décision de Nico, 02/10) ;
 // plus_tard     : « Plus tard » (extension, web) → 30 jours ;
-// deja_fait     : « C'est déjà fait » (extension, web) → plus jamais.
+// deja_fait     : « C'est déjà fait » (extension, web) → plus jamais sur ce canal.
+//
+// LES CANAUX : l'extension et le web mènent à la MÊME page d'avis (Chrome Web
+// Store) — un seul canal, « chrome ». iOS et Android sont chacun leur canal :
+// un avis laissé sur le Chrome Web Store ne ferme pas la fenêtre du store
+// mobile, qui ne garde que la règle des 60 jours (Apple et Google plafonnent
+// le reste eux-mêmes).
 export const EVENEMENTS = Object.freeze(["affiche", "laisser_avis", "plus_tard", "deja_fait"]);
 
 const JOUR_MS = 24 * 3600_000;
@@ -127,9 +134,15 @@ export function serieReussites(jobs) {
   return { serie, enCours, echecVu };
 }
 
+/** Le canal d'une plateforme d'avis : 'chrome' (extension, web), 'ios', 'android'. */
+export function canalAvis(plateforme) {
+  const p = String(plateforme ?? "");
+  return p === "ios" || p === "android" ? p : "chrome";
+}
+
 function evt(l) {
   const m = l?.metadata && typeof l.metadata === "object" ? l.metadata : {};
-  return { evenement: String(m.evenement ?? ""), le: ms(l?.created_at) };
+  return { evenement: String(m.evenement ?? ""), le: ms(l?.created_at), canal: canalAvis(m.plateforme) };
 }
 
 /**
@@ -142,10 +155,12 @@ function evt(l) {
  *   evenements          lignes usage_logs 'avis_demande' du compte
  *   paiementsLes        dates des paiements récents (montée de plan, pack,
  *                       ouverture d'un paiement)
+ *   plateforme          'ios' | 'android' | 'extension' | 'web' — le canal
+ *                       qui demande (absent = 'chrome', la règle la plus stricte)
  * Rend { ouvrir, motif, serie }. `motif` ne s'affiche jamais : il sert au
  * journal et à l'autotest.
  */
-export function decisionAvis({ maintenant, compteCreeLe, entreeFinieLe, jobs, evenements, paiementsLes } = {}) {
+export function decisionAvis({ maintenant, compteCreeLe, entreeFinieLe, jobs, evenements, paiementsLes, plateforme } = {}) {
   const now = Number.isFinite(maintenant) ? maintenant : Date.now();
   const cree = ms(compteCreeLe);
   if (!Number.isFinite(cree)) return { ouvrir: false, motif: "compte_illisible", serie: 0 };
@@ -153,10 +168,14 @@ export function decisionAvis({ maintenant, compteCreeLe, entreeFinieLe, jobs, ev
   if (!Number.isFinite(ms(entreeFinieLe))) return { ouvrir: false, motif: "entree_pas_finie", serie: 0 };
 
   const evts = (Array.isArray(evenements) ? evenements : []).map(evt).filter((e) => Number.isFinite(e.le));
-  if (evts.some((e) => e.evenement === "deja_fait")) return { ouvrir: false, motif: "deja_fait", serie: 0 };
+  const canal = canalAvis(plateforme);
+  // « C'est déjà fait » / « Laisser un avis » : plus jamais sur CE canal.
+  const duCanal = evts.filter((e) => e.canal === canal);
+  if (duCanal.some((e) => e.evenement === "deja_fait")) return { ouvrir: false, motif: "deja_fait", serie: 0 };
+  if (duCanal.some((e) => e.evenement === "laisser_avis")) return { ouvrir: false, motif: "avis_laisse", serie: 0 };
   const derniereDemande = Math.max(-Infinity, ...evts.filter((e) => e.evenement === "affiche").map((e) => e.le));
   if (now - derniereDemande < AVIS.ECART_MIN_JOURS * JOUR_MS) return { ouvrir: false, motif: "demande_recente", serie: 0 };
-  const dernierPlusTard = Math.max(-Infinity, ...evts.filter((e) => e.evenement === "plus_tard").map((e) => e.le));
+  const dernierPlusTard = Math.max(-Infinity, ...duCanal.filter((e) => e.evenement === "plus_tard").map((e) => e.le));
   if (now - dernierPlusTard < AVIS.PLUS_TARD_JOURS * JOUR_MS) return { ouvrir: false, motif: "plus_tard", serie: 0 };
 
   const paiements = (Array.isArray(paiementsLes) ? paiementsLes : []).map(ms).filter(Number.isFinite);

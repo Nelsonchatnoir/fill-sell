@@ -68,6 +68,17 @@ assert.equal(decisionAvis({ ...base, jobs: [...dix, job("processing")] }).motif,
 
 const ev = (evenement, age) => ({ created_at: il_y_a(age), metadata: { evenement, plateforme: "web" } });
 assert.equal(decisionAvis({ ...base, evenements: [ev("deja_fait", 400 * J)] }).motif, "deja_fait", "déjà fait = plus jamais");
+// Décision de Nico (02/10) : « Laisser un avis » / « C'est déjà fait » sur
+// l'extension ou le web = plus jamais SUR CE CANAL (chrome) ; le mobile ne
+// garde que la règle des 60 jours.
+const evp = (evenement, age, plateforme) => ({ created_at: il_y_a(age), metadata: { evenement, plateforme } });
+assert.equal(decisionAvis({ ...base, plateforme: "web", evenements: [evp("laisser_avis", 400 * J, "extension")] }).motif, "avis_laisse", "laissé depuis l'extension : plus jamais sur le web (même page d'avis)");
+assert.equal(decisionAvis({ ...base, plateforme: "extension", evenements: [evp("laisser_avis", 400 * J, "web")] }).motif, "avis_laisse");
+assert.equal(decisionAvis({ ...base, plateforme: "ios", evenements: [evp("laisser_avis", 400 * J, "web")] }).ouvrir, true, "le mobile n'est pas concerné");
+assert.equal(decisionAvis({ ...base, plateforme: "android", evenements: [evp("deja_fait", 400 * J, "extension")] }).ouvrir, true);
+assert.equal(decisionAvis({ ...base, plateforme: "ios", evenements: [evp("affiche", 59 * J, "web")] }).motif, "demande_recente", "60 jours entre deux demandes, tous canaux");
+assert.equal(decisionAvis({ ...base, plateforme: "android", evenements: [evp("affiche", 61 * J, "android")] }).ouvrir, true, "mobile : 60 jours, puis de nouveau");
+assert.equal(decisionAvis({ ...base, plateforme: "ios", evenements: [evp("plus_tard", 10 * J, "web")] }).ouvrir, true, "« Plus tard » (web) ne ferme pas le mobile");
 assert.equal(decisionAvis({ ...base, evenements: [ev("affiche", 59 * J)] }).motif, "demande_recente", "60 jours entre deux demandes");
 assert.equal(decisionAvis({ ...base, evenements: [ev("plus_tard", 29 * J)] }).motif, "plus_tard", "plus tard = 30 jours");
 assert.equal(decisionAvis({ ...base, evenements: [ev("plus_tard", 31 * J)] }).ouvrir, true);

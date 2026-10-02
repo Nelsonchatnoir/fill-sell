@@ -128,7 +128,7 @@ serve(async (req) => {
     }));
     const d = decisionAvis({
       maintenant, compteCreeLe: prof.created_at, entreeFinieLe: prof.onboarded_at,
-      jobs, evenements: rEvts.data ?? [], paiementsLes,
+      jobs, evenements: rEvts.data ?? [], paiementsLes, plateforme,
     });
     if (action === "etat" || !d.ouvrir) return json({ ouvrir: false, motif: d.motif, serie: d.serie, ...(action === "etat" ? { ouvrirait: d.ouvrir } : {}) });
 
