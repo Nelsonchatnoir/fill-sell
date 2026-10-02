@@ -6,8 +6,8 @@ remplacent tout historique contraire. Il se périme : `functions list`,
 `cron.job` et `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.85** au CWS ; **minimum serveur 0.6.81** (sous le
-  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.39** ;
-  `get-pending-jobs` v192 (`true`), `update-job-status` v117 (`false`),
+  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.40** ;
+  `get-pending-jobs` v195 (`true`), `update-job-status` v118 (`false`),
   `handler-watch` v71 (`false`), `ebay-api-worker` v71, `email-tunnel` v69
   (`false`), `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
@@ -23,8 +23,8 @@ remplacent tout historique contraire. Il se périme : `functions list`,
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
-- **Ouvert** : **0.6.88** à téléverser : `build/CWS-0.6.88-A-TELEVERSER/`
-  (0.6.86/0.6.87 brûlées) ; binaires **2.9.38** (AAB
+- **Ouvert** : **0.6.89** à téléverser : `build/CWS-0.6.89-A-TELEVERSER/`
+  (0.6.86–0.6.88 brûlées) ; binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
   307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
