@@ -25,6 +25,7 @@
 // et sans lui on afficherait un « ✅ » qui n'a rien enregistré.
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { R } from './theme';
 import { Groupe, Carte, Bouton, Note } from './ReglagesUI';
 
@@ -60,19 +61,12 @@ export default function OplaCategoriesMemorisees({ c, T }) {
 
   const oublier = async (cle) => {
     setOubli(cle);
-    const { data } = await supabase.from('profiles').select('platform_settings').eq('id', c.user.id).maybeSingle();
-    const reglages = (data?.platform_settings && typeof data.platform_settings === 'object') ? data.platform_settings : {};
-    const opla = (reglages.opla && typeof reglages.opla === 'object') ? reglages.opla : {};
-    const cats = { ...(opla.categories ?? {}) };
-    delete cats[cle];
-    const { data: ecrit, error } = await supabase
-      .from('profiles')
-      .update({ platform_settings: { ...reglages, opla: { ...opla, categories: cats } } })
-      .eq('id', c.user.id)
-      .select('id');
+    // Suppression DEMANDÉE de cette seule réponse ; le serveur fusionne
+    // (02/10 : plus jamais d'objet entier réécrit, cf. utils/reglagesPlateformes.js).
+    const { data: ps, error } = await fusionnerReglages(['opla', 'categories'], null, [cle]);
     setOubli(null);
-    if (error || !ecrit?.length) { c.toast(T.erreurSauvegarde); return; }
-    setLignes(lignesDe(cats));
+    if (error || !ps) { c.toast(T.erreurSauvegarde); return; }
+    setLignes(lignesDe(ps.opla?.categories));
     c.toast(T.oplaMemOubliee);
   };
 

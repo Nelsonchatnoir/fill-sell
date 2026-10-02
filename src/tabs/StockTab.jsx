@@ -89,6 +89,7 @@ import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
 // ── Refonte du stepper (24/09/2026) ─────────────────────────────────────────
 // L'interrupteur choisit la peau du stepper (ancienne par défaut) ; les tables
 // de champs partagés servent à ranger une réponse « Compléter » sur la fiche.
@@ -4130,12 +4131,10 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
     if (busy) return;
     setBusy(true);
     try {
-      // Lecture-fusion-écriture + .select() de contrôle (leçon RLS profiles).
-      const { data: cur } = await supabase.from('profiles').select('platform_settings').eq('id', user.id).maybeSingle();
-      const ps = cur?.platform_settings ?? {};
-      const next = { ...ps, vinted: { ...(ps.vinted ?? {}), republish_auto: { ...(ps.vinted?.republish_auto ?? {}), ...patch } } };
-      const { data, error } = await supabase.from('profiles').update({ platform_settings: next }).eq('id', user.id).select('platform_settings');
-      if (!error && data?.length) setCfg(data[0].platform_settings?.vinted?.republish_auto ?? {});
+      // Seuls les champs changés partent ; le serveur fusionne dans
+      // vinted.republish_auto (02/10, cf. utils/reglagesPlateformes.js).
+      const { data: ps, error } = await fusionnerReglages(['vinted', 'republish_auto'], patch);
+      if (!error && ps) setCfg(ps.vinted?.republish_auto ?? {});
     } finally {
       setBusy(false);
     }

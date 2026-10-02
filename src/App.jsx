@@ -72,6 +72,7 @@ const buildIdTimestamp = (id) => {
   return m ? Date.parse(m[1]) : null;
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
+import { fusionnerReglages } from './utils/reglagesPlateformes';
 import { titreNorm } from './utils/rapprochementJumeau.js';
 import { enregistrerVenteArticle } from './utils/venteAtomique.js';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
@@ -2478,10 +2479,13 @@ export default function App({ loginOnly = false }){
   // ── LE CALENDRIER DES JOURS D'EXTENSION OUVERTE (2026-09-19) ─────────────
   // Sert UNIQUEMENT à faire revenir un « Je ne sais pas » au bon moment. Une
   // date par jour, jamais plus : la garde `dejaVu` fait qu'un compte qui ouvre
-  // l'app vingt fois dans la journée n'écrit qu'une seule fois. Lecture-fusion-
-  // écriture sur platform_settings, qui porte aussi l'adresse Leboncoin et les
-  // réglages de republication — jamais d'écrasement global. Borne à 120 jours :
-  // au-delà, aucune question ne peut plus dépendre de ces dates.
+  // l'app vingt fois dans la journée n'écrit qu'une seule fois. Borne à 120
+  // jours : au-delà, aucune question ne peut plus dépendre de ces dates.
+  // ⛔ (02/10) C'est CET écrivain qui effaçait les réglages : il réécrivait
+  //    l'objet entier depuis `cur?.platform_settings||{}` — une lecture ratée
+  //    ou vide, et l'adresse Leboncoin (comme tout le reste) partait (dossier
+  //    ornellaracano). Désormais : lecture ratée → on n'écrit rien ; écriture
+  //    de la SEULE clé extension_jours, fusionnée côté serveur.
   //
   // ⚠️ SUR MOBILE, C'EST LE JOUR D'APP OUVERTE. Il n'y a pas d'extension dans
   // l'app native : exiger sa présence gèlerait le compteur à jamais et un
@@ -2495,17 +2499,17 @@ export default function App({ loginOnly = false }){
     if(extensionJours.includes(jour))return;
     let annule=false;
     (async()=>{
-      const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
+      const{data:cur,error:errLecture}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
       if(annule)return;
-      const base=cur?.platform_settings||{};
+      if(errLecture||!cur){console.warn('[extension_jours] lecture impossible — rien écrit',errLecture?.message??'');return;}
+      const base=cur.platform_settings||{};
       const vus=Array.isArray(base.extension_jours)?base.extension_jours:[];
       if(vus.includes(jour)){setExtensionJours(vus);return;}
       const suite=[...vus,jour].sort().slice(-120);
-      const{error}=await supabase.from('profiles')
-        .update({platform_settings:{...base,extension_jours:suite}}).eq('id',user.id);
+      const{data:ps,error}=await fusionnerReglages(['extension_jours'],suite);
       if(annule)return;
       if(error){console.error('[extension_jours]',error.message);return;}
-      setExtensionJours(suite);
+      setExtensionJours(Array.isArray(ps?.extension_jours)?ps.extension_jours:suite);
     })();
     return()=>{annule=true;};
   },[user?.id,extVersionEnDirect,extensionJours]);
@@ -4659,14 +4663,11 @@ export default function App({ loginOnly = false }){
 
   async function masquerAlertesPlateforme(platform,on){
     if(!user?.id)return;
-    // Lecture-fusion-écriture : platform_settings porte aussi l'adresse
-    // Leboncoin et les réglages de republication — jamais d'écrasement global.
-    const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
-    const base=cur?.platform_settings||{};
-    const next={...base,alertes_hors_ligne_masquees:{...(base.alertes_hors_ligne_masquees||{}),[platform]:on}};
-    const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('id');
-    if(error||!upd?.length){console.error('[masquerAlertesPlateforme]',error?.message??'update refusé');return;}
-    setAlertesMasqueesPf(next.alertes_hors_ligne_masquees);
+    // Seule la clé de CETTE plateforme est envoyée ; le serveur fusionne
+    // (02/10 : plus jamais d'objet entier réécrit, cf. reglagesPlateformes.js).
+    const{data:ps,error}=await fusionnerReglages(['alertes_hors_ligne_masquees'],{[platform]:on});
+    if(error||!ps){console.error('[masquerAlertesPlateforme]',error?.message??'écriture refusée');return;}
+    setAlertesMasqueesPf(ps.alertes_hors_ligne_masquees||{});
     track(on?'alertes_plateforme_masquees':'alertes_plateforme_reaffichees',{platform});
   }
 

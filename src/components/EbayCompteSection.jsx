@@ -5,6 +5,7 @@ import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay }
 import EbayParcours from './EbayParcours';
 import { etatsEbayDepuisChecklist, LIENS_EBAY, motsEbay } from '../utils/ebayParcours';
 import { supabase } from '../lib/supabase';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Section « eBay » des Paramètres — LOT 0 (connecter) + LOT 1 (dire ce qui
@@ -434,15 +435,11 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
     if (!ville) { setStatutAdresse({ etat: 'erreur', message: t.adresseVilleRequise }); return; }
     setBusy('adresse'); setStatutAdresse(null);
     try {
-      // Lecture-fusion-écriture : platform_settings est partagé entre
-      // plateformes, ne jamais écraser les clés des autres. Le .select() est
-      // obligatoire — sans lui, un update filtré par RLS (0 ligne) ne renvoie
-      // pas d'erreur et l'écran dirait « enregistré » à tort.
-      const { data: cur } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
-      const socle = cur?.platform_settings ?? {};
-      const next = { ...socle, ebay: { ...(socle.ebay ?? {}), adresse_expedition: { code_postal: cp, ville } } };
-      const { data: upd, error } = await supabase.from('profiles').update({ platform_settings: next }).eq('id', userId).select('platform_settings');
-      if (error || !upd?.length) throw new Error(error?.message || 'aucune ligne écrite');
+      // Seul le lieu d'expédition eBay est envoyé ; le serveur fusionne et
+      // rend l'objet écrit (02/10 : plus jamais d'objet entier réécrit,
+      // cf. utils/reglagesPlateformes.js).
+      const { data: ps, error } = await fusionnerReglages(['ebay', 'adresse_expedition'], { code_postal: cp, ville });
+      if (error || !ps) throw new Error(error?.message || 'aucune ligne écrite');
       setAdresse({ cp, ville, source: 'ebay' });
       setStatutAdresse({ etat: 'ok', message: t.adresseEnregistree });
       // La ligne de checklist est calculée par le serveur (et c'est elle qui

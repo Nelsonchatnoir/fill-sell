@@ -7,10 +7,10 @@
 //     à l'enregistrement, jointe par des espaces et sans virgule :
 //     l'autocomplete Leboncoin matche mieux « 12 rue de la paix 69001 lyon »
 //     que la même chaîne ponctuée (cf. fillAddress, content-scripts) ;
-//   · écriture en LECTURE-FUSION-ÉCRITURE : platform_settings est partagé
-//     entre plateformes, on n'écrase jamais les clés des autres ;
-//   · `.select()` obligatoire : sans lui, un update filtré par RLS (0 ligne)
-//     ne renvoie PAS d'erreur → faux « ✅ » ;
+//   · écriture par platform_settings_fusionner (02/10) : seuls les champs
+//     d'adresse partent, le serveur fusionne — plus jamais l'objet entier
+//     (c'est ce geste, ailleurs, qui avait effacé des adresses) ;
+//   · la fonction rend l'objet écrit : pas de réponse = pas de « ✅ » ;
 //   · vérification BAN au clic (échec réel du 13/08 : « saint antoines du
 //     rochers » pour Saint-Antoine-du-Rocher, deux dépôts perdus). TROIS
 //     issues, aucune ne bloque : identique → enregistré ; différente →
@@ -18,7 +18,7 @@
 //     quand même ». Service en panne → enregistrement direct, pas d'alarme à
 //     tort.
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
 
@@ -38,13 +38,10 @@ export default function SousPageExpedition({ c, T }) {
 
   const enregistrer = async (r, p, v) => {
     const adresse = [r, p, v].filter(Boolean).join(' ');
-    const { data: cur } = await supabase.from('profiles').select('platform_settings').eq('id', c.user.id).maybeSingle();
-    const next = {
-      ...(cur?.platform_settings || {}),
-      leboncoin: { ...(cur?.platform_settings?.leboncoin || {}), rue: r, code_postal: p, ville: v, adresse },
-    };
-    const { data: upd, error } = await supabase.from('profiles').update({ platform_settings: next }).eq('id', c.user.id).select('platform_settings');
-    const rate = error || !upd?.length;
+    // Seuls les champs d'adresse sont envoyés ; le serveur fusionne dans
+    // `leboncoin` (02/10 : plus jamais d'objet entier réécrit).
+    const { data: ps, error } = await fusionnerReglages(['leboncoin'], { rue: r, code_postal: p, ville: v, adresse });
+    const rate = error || !ps;
     if (!rate) {
       setRue(r); setCp(p); setVille(v); setBan(null);
       c.setAdresseLbc({ rue: r, cp: p, ville: v });

@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { lireCapaciteSyncCompte, demanderSyncDressingServeur, lireDernierRunDressing } from '../utils/vintedSync';
 import { lireSyncMultiOuverte, demanderRelevePlateforme, lireDerniersRunsReleve } from '../utils/syncPlateformes';
 import { murConnexionReleve } from '../annonces/etatReleve';
@@ -245,19 +246,14 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     });
   }, []);
 
-  // UNE écriture, à la validation de l'écran — pas une par coche. Lecture,
-  // fusion, écriture : platform_settings porte aussi l'adresse Leboncoin, les
-  // jours d'extension et les réglages par plateforme, qu'on n'écrase pas.
+  // UNE écriture, à la validation de l'écran — pas une par coche. Seule la
+  // clé des plateformes choisies est envoyée, le serveur fusionne : l'adresse
+  // Leboncoin, les jours d'extension et les réglages par plateforme ne sont
+  // jamais réécrits (02/10, cf. utils/reglagesPlateformes.js).
   const enregistrerPlateformes = useCallback(async () => {
     if (!userId) return;
     try {
-      const { data: cur } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
-      const base = cur?.platform_settings || {};
-      const { error } = await supabase
-        .from('profiles')
-        .update({ platform_settings: { ...base, [CLE_PREFERENCE]: choixRef.current.plateformes } })
-        .eq('id', userId)
-        .select('id');
+      const { error } = await fusionnerReglages([CLE_PREFERENCE], choixRef.current.plateformes);
       if (error) console.warn('[entree] préférence de plateformes non écrite :', error.message);
     } catch (e) {
       console.warn('[entree] préférence de plateformes non écrite :', e?.message ?? e);
