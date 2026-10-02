@@ -148,7 +148,7 @@ import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rot
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
-import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve } from "../_shared/vinted-colis.js";
+import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour } from "../_shared/vinted-colis.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -1069,6 +1069,35 @@ serve(async (req) => {
         if (n) console.log(`[get-pending-jobs] userId=${user.id} : ${n} retrait(s) arrêté(s) sur un motif faux — motif vrai posé`);
       } catch (e) {
         console.warn(`[get-pending-jobs] retraits à motif faux : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
+    // ══ REFUS « FORMAT DE COLIS » DÉJÀ EN FILE : PLUS D'ESSAI SANS ISSUE (02/10) ══
+    // (lohanobert59, « Montre à gousset » 21a71cc8) Un job déjà remis en file
+    // par l'ancienne règle (« on réessaie tout seuls vers 10:59 ») referait le
+    // même POST sans format sur un poste < 0.6.84. Il attend désormais un poste
+    // qui porte le correctif, avec le vrai motif (_shared/vinted-colis.js).
+    if (!includeProcessing && !includeNeedsUser && buildMsDe(buildDuPoll) < buildMsDe(BUILD_COLIS_DANS_ENVOI)) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: colisEnFile } = await admin.from("cross_post_jobs")
+          .select("id, action, error, handler_build, platform_fields")
+          .eq("user_id", user.id).eq("status", "pending").eq("platform", "vinted")
+          .filter("platform_fields->server_required_fields", "cs", JSON.stringify([{ key: "package_size" }]))
+          .is("platform_fields->build_min_requis", null)
+          .limit(20);
+        let n = 0;
+        for (const j of (colisEnFile ?? []) as Array<{ id: string; action: string; error: string | null; handler_build: string | null; platform_fields: Record<string, unknown> | null }>) {
+          if (!(buildMsDe(j.handler_build) < buildMsDe(BUILD_COLIS_DANS_ENVOI))) continue;
+          const pfK = { ...(j.platform_fields ?? {}), build_min_requis: BUILD_COLIS_DANS_ENVOI };
+          const { data: maj } = await admin.from("cross_post_jobs")
+            .update({ error: messageColisAttendMiseAJour(j.action), platform_fields: pfK })
+            .eq("id", j.id).eq("status", "pending").select("id");
+          n += (maj ?? []).length;
+        }
+        if (n) console.log(`[get-pending-jobs] userId=${user.id} : ${n} job(s) Vinted refusés « format de colis » mis en attente d'un poste ≥ ${VERSION_COLIS_DANS_ENVOI}`);
+      } catch (e) {
+        console.warn(`[get-pending-jobs] refus format de colis en file : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
     }
 
