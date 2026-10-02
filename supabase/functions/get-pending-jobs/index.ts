@@ -3673,8 +3673,14 @@ serve(async (req) => {
     // retenues — le popup continue de voir la file complète.
     let heldSync = 0;
     if (syncCommand && !includeProcessing && !includeNeedsUser && out.length) {
-      heldSync = out.length;
-      out = [];
+      // (02/10, nivake03) EXEMPTION : une republication à l'étape 'deleted'
+      // n'attend jamais derrière une sync — son annonce est hors ligne. Même
+      // exemption que le plafond, la pause et le créneau.
+      const horsLigne = (j: { action: string; platform_fields: unknown }) => j.action === "republish"
+        && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "") === "deleted";
+      const avantSync = out.length;
+      out = out.filter(horsLigne);
+      heldSync = avantSync - out.length;
       console.log(
         `[get-pending-jobs] userId=${user.id} : demande de sync ${syncCommand.id} servie ` +
         `→ ${heldSync} job(s) retenu(s) en pending pour ce cycle (la sync passe devant)`,
@@ -4884,10 +4890,19 @@ serve(async (req) => {
       };
       const filePipeline = out.filter((j) => j.action === "republish" && stepOf(j) !== "deleted");
       if (filePipeline.length > 1) {
+        // (02/10, nivake03) UN CRÉNEAU PAR PLATEFORME. Le créneau était global
+        // et attribué au plus ancien du compte, AVANT les retenues par
+        // plateforme plus bas (pause anti-robot Vinted) : un job Vinted
+        // ensuite retiré confisquait le tour de Beebs et de Leboncoin — 48 min
+        // sans un seul geste Beebs le 01/10, sans aucune trace. Chaque
+        // plateforme a désormais son « 1 retrait + 1 vérification » ; la
+        // cadence de l'extension (espacement global entre gestes) ne change pas.
         const garder = new Set<string>();
-        for (const etape of ["captured", "a_capturer"]) {
-          const cand = filePipeline.find((j) => stepOf(j) === etape && !enAttenteProgrammee(j));
-          if (cand) garder.add(String(cand.id));
+        for (const pfm of new Set(filePipeline.map((j) => String(j.platform)))) {
+          for (const etape of ["captured", "a_capturer"]) {
+            const cand = filePipeline.find((j) => String(j.platform) === pfm && stepOf(j) === etape && !enAttenteProgrammee(j));
+            if (cand) garder.add(String(cand.id));
+          }
         }
         const avant = out.length;
         out = out.filter((j) =>
