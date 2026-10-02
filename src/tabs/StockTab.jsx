@@ -507,7 +507,7 @@ const RELANCE_COPIE_CLES_RETIREES = [
 // CSS partagé avec VentesTab via buildCardCss (src/utils/shared.js).
 // Les classes pa-* reprennent le langage visuel de la complétion de VentesTab
 // (invitation teal, jamais une alerte) — mêmes valeurs, scope stock-v2.
-const STOCK_CSS = buildCardCss('stock-v2') + `
+export const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .pa-call{width:100%;display:flex;align-items:center;gap:11px;text-align:left;padding:11px 14px;border-radius:14px;cursor:pointer;font-family:inherit;background:rgba(47,158,144,.08);border:1px solid rgba(47,158,144,.28);color:#10201B;margin-bottom:12px;}
 .stock-v2 .pa-call.on{background:linear-gradient(120deg,#2F9E90,#1B6E62);border-color:transparent;color:#fff;box-shadow:0 10px 22px -12px rgba(47,158,144,.55);}
 .stock-v2 .pa-call .n{display:block;font-size:13.5px;font-weight:700;line-height:1.25;}
@@ -11949,6 +11949,9 @@ const StockTab = memo(function StockTab({
           jobsByInventaire={jobsByInventaire}
           prixVinted={prixAnnonceVinted}
           choixPrefere={lotOuvert.plateformes}
+          // Multi-boutiques Vinted : un DÉPÔT part sur la boutique connectée dans
+          // Chrome (identite-boutique.js) — l'écran le dit, nommément.
+          boutiqueVinted={boutiquesVinted.length>=2&&boutiqueConnectee?.userId?(boutiqueConnectee.nom??(boutiqueConnectee.login?`@${boutiqueConnectee.login}`:null)):null}
           ctx={{
             userId:user.id, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes,
             oplaMotifGrise, oplaExtensionMin, isPremium, isPro, isBusiness,
@@ -11968,7 +11971,7 @@ const StockTab = memo(function StockTab({
               return {...prev,[invId]:cur};
             });
           }}
-          onFermer={()=>{setLotOuvert(null);quitterModeLot();}}
+          onFermer={(r)=>{setLotOuvert(null);if(r?.envoye)quitterModeLot();}}
           onEnvoye={(lot)=>{track('lot_publication_envoye',{lot:lot.id});}}
           onVoirOffres={()=>openUpgradeModal?.('pro','lot_publication')}
           onOuvrirArticle={(item)=>{setLotOuvert(null);quitterModeLot();publierAvecDetail(item);}}

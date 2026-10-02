@@ -228,8 +228,8 @@ export function suiviDuLot(jobs = []) {
     parArticle.get(k).push(j);
   }
   const lignes = [];
-  const compte = { geste: 0, en_cours: 0, file: 0, en_ligne: 0, pas_parties: 0, arretees: 0 };
-  let annonces = 0, annoncesEnLigne = 0;
+  const compte = { geste: 0, en_cours: 0, file: 0, en_ligne: 0, pas_parties: 0, retirees: 0, arretees: 0 };
+  let annonces = 0, annoncesEnLigne = 0, annoncesRetirees = 0;
   for (const [inventaireId, liste] of parArticle) {
     // Une plateforme = son job le plus récent dans le lot.
     const parPf = new Map();
@@ -241,15 +241,16 @@ export function suiviDuLot(jobs = []) {
     for (const p of pastilles) {
       annonces++;
       if (p.etat === "en_ligne") annoncesEnLigne++;
+      if (p.etat === "retiree") annoncesRetirees++;
     }
     const groupe = groupeArticle(pastilles.map((p) => p.etat));
     compte[groupe]++;
     lignes.push({ inventaireId, groupe, pastilles });
   }
-  const ordre = ["geste", "en_cours", "file", "pas_parties", "en_ligne", "arretees"];
+  const ordre = ["geste", "en_cours", "file", "pas_parties", "en_ligne", "retirees", "arretees"];
   lignes.sort((a, b) => ordre.indexOf(a.groupe) - ordre.indexOf(b.groupe));
   const enVol = compte.en_cours + compte.file;
-  return { lignes, compte, articles: lignes.length, annonces, annoncesEnLigne, fini: enVol === 0 };
+  return { lignes, compte, articles: lignes.length, annonces, annoncesEnLigne, annoncesRetirees, fini: enVol === 0 };
 }
 
 /** L'état d'UNE annonce du lot, dans le vocabulaire du suivi. */
@@ -260,6 +261,9 @@ export function etatJobLot(j) {
   if (j.status === "needs_user") return "geste";
   if (j.status === "processing") return "en_cours";
   if (j.status === "pending") return "file";
+  // Publiée PUIS retirée (retrait demandé, vente ailleurs) : le dépôt a réussi,
+  // ce n'est jamais un « pas partie ».
+  if (j.published_at || String(j.listing_url ?? "").trim()) return "retiree";
   return "pas_partie"; // failed, cancelled (hors arrêt demandé)
 }
 
@@ -270,6 +274,7 @@ export function groupeArticle(etats) {
   if (etats.includes("file")) return "file";
   if (etats.includes("pas_partie")) return "pas_parties";
   if (etats.includes("en_ligne")) return "en_ligne";
+  if (etats.includes("retiree")) return "retirees";
   return "arretees";
 }
 

@@ -37,7 +37,7 @@ import { propsStepperArticle } from "./propsArticle";
 import {
   PLATEFORMES_LOT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
-  dureeEstimeeMin, libelleDuree, bilanArticle, texteARelire, marqueLot, groupesReponseCommune,
+  dureeEstimeeMin, libelleDuree, bilanArticle, marqueLot, groupesReponseCommune,
 } from "./regles";
 
 const CLE_CHOIX = "fs_lot_plateformes";
@@ -117,7 +117,7 @@ const HoteMoteur = memo(function HoteMoteur({
  * @param onOuvrirArticle (item) => void — le stepper à l'unité, pour un article laissé de côté
  */
 export default function LotPublication({
-  articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onVoirOffres, onOuvrirArticle, choixPrefere = null,
+  articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onVoirOffres, onOuvrirArticle, choixPrefere = null, boutiqueVinted = null,
 }) {
   const { userId, supabase, lang } = ctx;
   const en = lang === "en";
@@ -165,7 +165,15 @@ export default function LotPublication({
   const ciblesAvant = useMemo(() => Object.fromEntries(donnees.map((d) => [d.id,
     plateformesLibres(d.item, d.jobs, plateformesCompte).filter((p) => choix.includes(p) && !pauses[p])])), [donnees, plateformesCompte, choix, pauses]);
   const articlesAvecCible = donnees.filter((d) => ciblesAvant[d.id].length);
-  const restantes = quotas?.annonces?.restantes ?? null;
+  // Essai en développement SEULEMENT (jamais dans un build servi) : simuler un
+  // quota presque vide (localStorage fs_lot_quota_simule = n) pour éprouver le
+  // partage « maintenant / le mois prochain » sur un compte qui a de la marge.
+  // Le serveur, lui, garde sa propre limite (generate-listing, 402).
+  const [quotaSimule] = useState(() => {
+    if (!import.meta.env?.DEV) return null;
+    try { const v = localStorage.getItem("fs_lot_quota_simule"); return v != null && Number.isFinite(Number(v)) ? Number(v) : null; } catch { return null; }
+  });
+  const restantes = quotaSimule ?? quotas?.annonces?.restantes ?? null;
   const partage = useMemo(() => partagerQuota(articlesAvecCible, {
     restantes: Number.isFinite(restantes) ? restantes : null,
     consomme: (d) => !ficheCouvre(fiches?.[d.id], ciblesAvant[d.id]),
@@ -453,7 +461,9 @@ export default function LotPublication({
     const n = partage.maintenant.length;
     disabled = !n || fiches == null || quotas == null;
     cta = fiches == null || quotas == null ? (en ? "Reading your items…" : "Lecture de tes articles…")
-      : !n ? (choix.length ? (en ? "Nothing to publish with this choice" : "Rien à publier avec ce choix") : (en ? "Tick at least one platform" : "Coche au moins une plateforme"))
+      : !n ? (!choix.length ? (en ? "Tick at least one platform" : "Coche au moins une plateforme")
+          : partage.plusTard.length ? (en ? "Everything waits for your new month" : "Tout attend ton nouveau mois")
+          : (en ? "Nothing to publish with this choice" : "Rien à publier avec ce choix"))
       : (en ? `Prepare ${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""}` : `Préparer ${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""}`);
     onCta = preparer;
     sous = [en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies."];
@@ -467,7 +477,9 @@ export default function LotPublication({
       cta = !prets.length
         ? (en ? "Answer the questions to send" : "Réponds aux questions pour envoyer")
         : aCompleter.length
-          ? (en ? `Send the ${prets.length} ready (${annoncesPretes} listings)` : `Envoyer les ${prets.length} prêts (${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""})`)
+          ? (en
+              ? `Send ${prets.length > 1 ? `the ${prets.length} ready items` : "the ready item"} (${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""})`
+              : `Envoyer ${prets.length > 1 ? `les ${prets.length} prêts` : "l'article prêt"} (${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""})`)
           : (en ? `Send ${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""}` : `Envoyer ${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""}`);
       onCta = envoyer;
       if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
@@ -479,41 +491,48 @@ export default function LotPublication({
     sous = [en ? "Keep this screen open for a few seconds." : "Garde cet écran ouvert quelques secondes."];
   } else {
     cta = en ? "Back to stock" : "Retour au stock";
-    onCta = () => onFermer?.();
+    onCta = () => onFermer?.({ envoye: true });
     sous = [en ? "You'll follow the batch at the top of your Stock." : "Tu suis le lot en haut de ton Stock."];
   }
 
-  return createPortal((
-    <div className="fsn" data-ecran={`lot-${etape}`}>
-      <div className="fsn-top">
-        <div className="fsn-col">
-          {etape === "fin" ? <span style={{ width: 38 }} /> : (
-            <button type="button" className="fsn-back" disabled={etape === "envoi"}
-              onClick={() => (etape === "avant" && !prepares ? setEtape("plateformes") : quitter())}
-              aria-label={en ? "Back" : "Retour"}>‹</button>
-          )}
-          <div className="fsn-top-title">{titre}</div>
-          <div className="fsn-top-step num">{numeroEcran} / 3</div>
-          {etape !== "fin" && (
-            <button type="button" className={`fsn-quit${quitterArme ? " fsn-quit--arme" : ""}`} onClick={quitter} disabled={etape === "envoi"}>
-              {quitterArme ? (en ? "Leave? Prepared texts are kept" : "Quitter ? Les textes préparés sont gardés") : (en ? "Leave" : "Quitter")}
-            </button>
-          )}
+  return (
+    <CoqueLot
+      en={en} ecran={`lot-${etape}`} titre={titre} numeroEcran={numeroEcran}
+      retour={etape === "fin" ? null : { desactive: etape === "envoi", onClick: () => (etape === "avant" && !prepares ? setEtape("plateformes") : quitter()) }}
+      quitter={etape === "fin" ? null : { arme: quitterArme, desactive: etape === "envoi", onClick: quitter }}
+      cta={cta} ctaDesactive={disabled} onCta={() => onCta?.()} secondaire={secondaire} sous={sous}
+      apres={(
+        /* Les moteurs du lot : un par article en préparation ou à envoyer. */
+        <div className="fsl-moteurs" aria-hidden="true">
+          {lot && [...actifs].map((id) => {
+            const d = parId.get(id);
+            if (!d) return null;
+            return (
+              <HoteMoteur
+                key={id}
+                item={d.item}
+                jobs={d.jobs}
+                prixVinted={prixVinted ? prixVinted(d.item) : null}
+                surMoteur={surMoteur}
+                marque={marque}
+                onJobsQueued={onJobsQueued}
+                userId={userId} supabase={supabase} lang={lang}
+                ebayCompte={ctx.ebayCompte} plateformesVisibles={ctx.plateformesVisibles} plateformesOuvertes={ctx.plateformesOuvertes}
+                oplaMotifGrise={ctx.oplaMotifGrise} oplaExtensionMin={ctx.oplaExtensionMin}
+                isPremium={ctx.isPremium} isPro={ctx.isPro} isBusiness={ctx.isBusiness}
+                extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
+              />
+            );
+          })}
         </div>
-      </div>
-      <div className="fsn-progress"><div className="fsn-col">
-        {[1, 2, 3].map((i) => <span key={i} className={i <= numeroEcran ? "done" : ""} />)}
-      </div></div>
-
-      <div className="fsn-scroll">
-        <div className="fsn-col">
+      )}>
           {etape === "plateformes" && (
             <EcranPlateformes
               en={en} lang={lang} userId={userId} donnees={donnees} resume={resume} choix={choix} basculer={basculer}
               sessions={sessions} pauses={pauses} ebayBloque={ebayBloque} ebayParServeur={ebayParServeur}
-              quotas={quotas} remise={remise} partage={partage} annoncesPrevues={annoncesPrevues} duree={duree}
+              quotas={quotas} restantes={restantes} remise={remise} partage={partage} annoncesPrevues={annoncesPrevues} duree={duree}
               extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
-              onVoirOffres={onVoirOffres} fichesLues={fiches != null}
+              onVoirOffres={onVoirOffres} fichesLues={fiches != null} boutiqueVinted={boutiqueVinted}
             />
           )}
           {(etape === "avant" || etape === "envoi") && lot && (
@@ -529,40 +548,44 @@ export default function LotPublication({
             <EcranFin en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId}
               extensionNeverSeen={ctx.extensionNeverSeen} ebayParServeur={ebayParServeur} onOuvrirArticle={onOuvrirArticle} remise={remise} />
           )}
+    </CoqueLot>
+  );
+}
+
+// ═══ LA COQUE DU LOT — en-tête, progression 1/3 · 2/3 · 3/3, pied ═══════════
+// La même que celle du stepper (classes de stepper.css) ; exportée pour que
+// l'aperçu (scripts/apercu/lot-publication.jsx) dessine EXACTEMENT cet écran.
+export function CoqueLot({ en, ecran, titre, numeroEcran, retour = null, quitter = null, cta, ctaDesactive = false, onCta, secondaire = null, sous = [], apres = null, children }) {
+  return createPortal((
+    <div className="fsn" data-ecran={ecran}>
+      <div className="fsn-top">
+        <div className="fsn-col">
+          {retour ? (
+            <button type="button" className="fsn-back" disabled={retour.desactive} onClick={retour.onClick} aria-label={en ? "Back" : "Retour"}>‹</button>
+          ) : <span style={{ width: 38 }} />}
+          <div className="fsn-top-title">{titre}</div>
+          <div className="fsn-top-step num">{numeroEcran} / 3</div>
+          {quitter && (
+            <button type="button" className={`fsn-quit${quitter.arme ? " fsn-quit--arme" : ""}`} onClick={quitter.onClick} disabled={quitter.desactive}>
+              {quitter.arme ? (en ? "Leave? Prepared texts are kept" : "Quitter ? Les textes préparés sont gardés") : (en ? "Leave" : "Quitter")}
+            </button>
+          )}
         </div>
       </div>
-
+      <div className="fsn-progress"><div className="fsn-col">
+        {[1, 2, 3].map((i) => <span key={i} className={i <= numeroEcran ? "done" : ""} />)}
+      </div></div>
+      <div className="fsn-scroll">
+        <div className="fsn-col">{children}</div>
+      </div>
       <div className="fsn-foot">
         <div className="fsn-col">
-          <Bouton disabled={disabled} onClick={() => onCta?.()}>{cta}</Bouton>
+          <Bouton disabled={ctaDesactive} onClick={onCta}>{cta}</Bouton>
           {secondaire}
-          {sous.map((l, i) => <p key={i} className="fsn-hint">{l}</p>)}
+          {(sous ?? []).map((l, i) => <p key={i} className="fsn-hint">{l}</p>)}
         </div>
       </div>
-
-      {/* Les moteurs du lot : un par article en préparation ou à envoyer. */}
-      <div className="fsl-moteurs" aria-hidden="true">
-        {lot && [...actifs].map((id) => {
-          const d = parId.get(id);
-          if (!d) return null;
-          return (
-            <HoteMoteur
-              key={id}
-              item={d.item}
-              jobs={d.jobs}
-              prixVinted={prixVinted ? prixVinted(d.item) : null}
-              surMoteur={surMoteur}
-              marque={marque}
-              onJobsQueued={onJobsQueued}
-              userId={userId} supabase={supabase} lang={lang}
-              ebayCompte={ctx.ebayCompte} plateformesVisibles={ctx.plateformesVisibles} plateformesOuvertes={ctx.plateformesOuvertes}
-              oplaMotifGrise={ctx.oplaMotifGrise} oplaExtensionMin={ctx.oplaExtensionMin}
-              isPremium={ctx.isPremium} isPro={ctx.isPro} isBusiness={ctx.isBusiness}
-              extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
-            />
-          );
-        })}
-      </div>
+      {apres}
     </div>
   ), document.body);
 }
@@ -570,7 +593,7 @@ export default function LotPublication({
 // ═══ ÉCRAN 1 — « OÙ LES PUBLIER ? » ═════════════════════════════════════════
 export function EcranPlateformes({
   en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur,
-  quotas, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, onVoirOffres, fichesLues,
+  quotas, restantes, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, onVoirOffres, fichesLues, boutiqueVinted = null,
 }) {
   const n = donnees.length;
   const vus = donnees.slice(0, 6);
@@ -612,7 +635,8 @@ export function EcranPlateformes({
             else {
               const a = en ? `${r.possibles} item${r.possibles > 1 ? "s" : ""}` : `${r.possibles} article${r.possibles > 1 ? "s" : ""}`;
               const d = r.dejaLa ? (en ? ` · ${r.dejaLa} already there` : ` · ${r.dejaLa} y ${r.dejaLa > 1 ? "sont" : "est"} déjà`) : "";
-              const v = p === "ebay" && ebayParServeur ? (en ? " · sent from our servers" : " · part de nos serveurs") : "";
+              const v = p === "ebay" && ebayParServeur ? (en ? " · sent from our servers" : " · part de nos serveurs")
+                : p === "vinted" && boutiqueVinted ? (en ? ` · on your shop ${boutiqueVinted}` : ` · sur ta boutique ${boutiqueVinted}`) : "";
               sousTexte = a + d + v;
             }
             return (
@@ -642,18 +666,20 @@ export function EcranPlateformes({
         {ann?.plafond != null && (
           <div className="fsn-card-p">
             {partage.aConsommer === 0
-              ? (en ? "Your texts are already written: this batch doesn't use your monthly listings." : "Tes textes sont déjà rédigés : ce lot ne prend rien sur tes annonces du mois.")
+              ? (partage.plusTard.length
+                  ? (en ? "You've used all your listings for this month." : "Tu as utilisé toutes tes annonces de ce mois-ci.")
+                  : (en ? "Your texts are already written: this batch doesn't use your monthly listings." : "Tes textes sont déjà rédigés : ce lot ne prend rien sur tes annonces du mois."))
               : (en
-                  ? `Uses ${partage.aConsommer} of your monthly listings (${Math.max(0, (ann.restantes ?? 0) - partage.aConsommer)} left after).`
-                  : `Prend ${partage.aConsommer} de tes annonces du mois (il t'en restera ${Math.max(0, (ann.restantes ?? 0) - partage.aConsommer)}).`)}
+                  ? `Uses ${partage.aConsommer} of your monthly listings (${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)} left after).`
+                  : `Prend ${partage.aConsommer} de tes annonces du mois (il t'en restera ${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)}).`)}
           </div>
         )}
         {partage.plusTard.length > 0 && (
           <>
             <div className="fsn-card-p">
               {en
-                ? `${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}: they stay ready in your stock.`
-                : `${partage.plusTard.length > 1 ? `${partage.plusTard.length} articles attendront` : "1 article attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""} : ${partage.plusTard.length > 1 ? "ils restent prêts" : "il reste prêt"} dans ton stock.`}
+                ? `${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}: nothing is lost, you'll relaunch ${partage.plusTard.length > 1 ? "them" : "it"} in one tap.`
+                : `${partage.plusTard.length > 1 ? `${partage.plusTard.length} articles attendront` : "1 article attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""} : rien n'est perdu, tu ${partage.plusTard.length > 1 ? "les relanceras" : "le relanceras"} d'un geste.`}
             </div>
             {onVoirOffres && <button type="button" className="fsn-lien" style={{ alignSelf: "flex-start" }} onClick={onVoirOffres}>{en ? "See the plans" : "Voir les offres"}</button>}
           </>
@@ -786,13 +812,14 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
   const descriptionQuiPart = String(general.description || m.edited?.[premiere]?.description || "");
   return (
     <Carte className="fsl-article" gravite={null}>
-      <div className="fsl-article-tete">
+      {/* Le titre garde toute la largeur ; ce qui manque se lit dessous. */}
+      <div className="fsl-article-tete" style={{ alignItems: "flex-start" }}>
         <Vignette item={item} />
         <div className="fsn-grow">
           <div className="fsn-article-t">{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</div>
           <div className="fsn-article-s">{plateformes.map(NOM).join(" · ")}</div>
+          <div style={{ marginTop: 6 }}><Puce ton="geste">{motifs.map((x) => x.libelle).join(" · ") || (en ? "To complete" : "À compléter")}</Puce></div>
         </div>
-        <Puce ton="geste">{motifs.map((x) => x.libelle).join(" · ") || (en ? "To complete" : "À compléter")}</Puce>
       </div>
 
       {aPrix && (

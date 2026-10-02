@@ -17,12 +17,20 @@ import { suiviDuLot, depotArretable } from "./regles";
 import { arreterDepots, reArreter } from "./arretLot";
 
 const GROUPES = {
-  fr: { geste: "À faire", en_cours: "En cours", file: "Dans la file", pas_parties: "Pas parties", en_ligne: "En ligne", arretees: "Arrêtées à ta demande" },
-  en: { geste: "To do", en_cours: "Under way", file: "In the queue", pas_parties: "Not sent", en_ligne: "Live", arretees: "Stopped by you" },
+  fr: { geste: "À faire", en_cours: "En cours", file: "Dans la file", pas_parties: "Pas parties", en_ligne: "En ligne", retirees: "Retirées depuis", arretees: "Arrêtées à ta demande" },
+  en: { geste: "To do", en_cours: "Under way", file: "In the queue", pas_parties: "Not sent", en_ligne: "Live", retirees: "Removed since", arretees: "Stopped by you" },
 };
+// « Leboncoin : Leboncoin demande… » : le message d'un job nomme souvent déjà sa
+// plateforme — on ne la répète pas. Seule la première phrase s'affiche ici (le
+// détail reste dans la carte de l'article).
+function avecPlateforme(platform, texte) {
+  const t = String(texte ?? "").split(" — ")[0].trim();
+  const nom = NOM(platform);
+  return t.toLowerCase().startsWith(String(nom).toLowerCase()) ? t : `${nom} : ${t}`;
+}
 const ETAT_PASTILLE = {
-  fr: { en_ligne: "en ligne", en_cours: "en cours", file: "dans la file", geste: "attend un geste", pas_partie: "pas partie", arretee: "arrêtée" },
-  en: { en_ligne: "live", en_cours: "under way", file: "queued", geste: "needs you", pas_partie: "not sent", arretee: "stopped" },
+  fr: { en_ligne: "en ligne", en_cours: "en cours", file: "dans la file", geste: "attend un geste", pas_partie: "pas partie", retiree: "retirée depuis", arretee: "arrêtée" },
+  en: { en_ligne: "live", en_cours: "under way", file: "queued", geste: "needs you", pas_partie: "not sent", retiree: "removed since", arretee: "stopped" },
 };
 
 /**
@@ -32,12 +40,13 @@ const ETAT_PASTILLE = {
  * @param renderGeste (job) => bouton du geste (le même que la file des jobs du Stock)
  * @param arretesIci ids arrêtés depuis cet appareil ; onArretes(ids) les ajoute
  */
-export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userId, supabase, onFermer, arretesIci, onArretes, onPatchJobs }) {
+export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userId, supabase, onFermer, arretesIci, onArretes, onPatchJobs, confirmerInitial = false }) {
   const en = lang === "en";
   const G = GROUPES[en ? "en" : "fr"];
   const E = ETAT_PASTILLE[en ? "en" : "fr"];
   const suivi = useMemo(() => suiviDuLot(jobs), [jobs]);
-  const [confirmerTout, setConfirmerTout] = useState(false);
+  // confirmerInitial : l'aperçu (scripts/apercu) montre la confirmation ouverte.
+  const [confirmerTout, setConfirmerTout] = useState(Boolean(confirmerInitial));
   const [occupe, setOccupe] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -130,7 +139,7 @@ export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userI
         groupeCourant = l.groupe;
         const arretables = l.pastilles.map((p) => p.job).filter(depotArretable);
         const gestes = l.pastilles.filter((p) => p.etat === "geste");
-        const raisons = l.pastilles.filter((p) => p.etat === "pas_partie" && p.job?.error).map((p) => `${NOM(p.platform)} : ${String(p.job.error).split(" — ")[0]}`);
+        const raisons = l.pastilles.filter((p) => p.etat === "pas_partie" && p.job?.error).map((p) => avecPlateforme(p.platform, p.job.error));
         return (
           <div key={l.inventaireId}>
             {titreGroupe && <div className="fsl-groupe-t">{titreGroupe} · {suivi.compte[l.groupe]}</div>}
@@ -156,7 +165,7 @@ export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userI
               {raisons.length > 0 && <div style={{ fontSize: 12, color: "#5C6560", lineHeight: 1.45 }}>{raisons.join(" · ")}</div>}
               {gestes.map((p) => (
                 <div key={`g:${p.platform}`} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#8A6100", lineHeight: 1.4 }}>{NOM(p.platform)} : {String(p.job?.error ?? (en ? "waiting for you" : "attend un geste de ta part")).split(" — ")[0]}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#8A6100", lineHeight: 1.4 }}>{avecPlateforme(p.platform, p.job?.error ?? (en ? "waiting for you" : "attend un geste de ta part"))}</span>
                   {renderGeste ? renderGeste(p.job) : null}
                 </div>
               ))}

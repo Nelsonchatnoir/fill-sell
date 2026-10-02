@@ -144,6 +144,12 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
   verifier(s.annonces === 7 && s.annoncesEnLigne === 2, 'annonces comptées par plateforme (le retrait n’en est pas une)', `${s.annonces}/${s.annoncesEnLigne}`);
   verifier(!s.fini && suiviDuLot([job({ inventaire_id: 1 })]).fini, 'fini = plus rien en cours ni en file');
   verifier(etatJobLot({ status: 'cancelled', platform_fields: { arret_utilisateur: 'x' } }) === 'arretee', 'un arrêt demandé n’est jamais un échec');
+  // (02/10, vu en vrai) Publiée puis retirée par la personne : le job de dépôt
+  // passe 'cancelled' — c'est une réussite retirée depuis, jamais « pas partie ».
+  const retiree = { action: 'publish', status: 'cancelled', published_at: '2026-10-02T21:14:10Z', listing_url: 'https://www.ebay.fr/itm/1', error: 'Annonce retirée par le vendeur', inventaire_id: 9, platform: 'ebay', platform_fields: {} };
+  verifier(etatJobLot(retiree) === 'retiree', 'publiée puis retirée : « retirée depuis »');
+  const sr = suiviDuLot([retiree]);
+  verifier(sr.compte.retirees === 1 && sr.compte.pas_parties === 0 && sr.annoncesRetirees === 1 && sr.annoncesEnLigne === 0, 'compté à part, jamais en échec', JSON.stringify(sr.compte));
   verifier(depotArretable({ action: 'publish', status: 'pending' }), 'un dépôt en file s’arrête');
   verifier(depotArretable({ action: 'publish', status: 'needs_user' }), 'un dépôt qui attend un geste s’arrête');
   verifier(!depotArretable({ action: 'publish', status: 'processing' }), 'un dépôt commencé ne s’arrête pas (il va au bout)');

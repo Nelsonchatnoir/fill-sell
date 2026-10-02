@@ -111,7 +111,7 @@ export function LigneLotEnCours({ lang, suivi, le, onOuvrir }) {
         </span>
         <span style={{ fontSize: 12, color: geste ? "#8A6100" : R.texteSecondaire }}>
           {fr
-            ? `${suivi.annoncesEnLigne} annonce${suivi.annoncesEnLigne > 1 ? "s" : ""} en ligne sur ${suivi.annonces}${geste ? ` · ${geste} article${geste > 1 ? "s" : ""} attend${geste > 1 ? "ent" : ""} un geste` : suivi.fini ? "" : " · ça avance"}`
+            ? `${suivi.annoncesEnLigne} annonce${suivi.annoncesEnLigne > 1 ? "s" : ""} en ligne sur ${suivi.annonces}${suivi.annoncesRetirees ? ` · ${suivi.annoncesRetirees} retirée${suivi.annoncesRetirees > 1 ? "s" : ""} depuis` : ""}${geste ? ` · ${geste} article${geste > 1 ? "s" : ""} attend${geste > 1 ? "ent" : ""} un geste` : suivi.fini ? "" : " · ça avance"}`
             : `${suivi.annoncesEnLigne} of ${suivi.annonces} listing${suivi.annonces > 1 ? "s" : ""} live${geste ? ` · ${geste} need${geste > 1 ? "" : "s"} you` : suivi.fini ? "" : " · under way"}`}
         </span>
       </span>
