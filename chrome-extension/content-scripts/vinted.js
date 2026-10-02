@@ -68,7 +68,44 @@ const VINTED_SERVER_FIELD_LABELS = {
   video_game_rating: "Classification par âge (PEGI)",
   video_game_platform: "Plateforme de jeu",
   package_size_id: "Format du colis",
+  // (02/10 soir, point 10) Ordinateurs portables — libellés du vrai formulaire.
+  computer_ram: "RAM",
+  computer_storage_capacity: "Capacité de stockage",
+  laptop_charger_included: "Chargeur inclus",
+  keyboard_layout: "Disposition du clavier",
+  computer_operating_system: "Système d'exploitation",
+  laptop_display_size: "Taille de l'écran",
+  computer_cpu_line: "Processeur",
 };
+
+// Attributs posés par leurs canaux dédiés (jamais par la garde des caractéristiques).
+const ATTRIBUTS_CANAUX_DEDIES = new Set(["condition", "size", "material", "language_book", "color", "isbn", "brand"]);
+
+// ── UNE REPUBLICATION NE RETIRE RIEN QU'ELLE NE SAIT PAS REPOSER (02/10 soir, point 10 B) ──
+// Tech-t : la config Vinted dit « facultatifs » le modèle, la RAM, le stockage
+// et le chargeur d'un ordinateur portable ; le dépôt les EXIGE (400). Le pré-vol
+// ne jugeait que la config : l'annonce a été retirée, puis refusée. Règle : sur
+// le formulaire d'une republication, chaque caractéristique de l'annonce
+// d'origine (capture) présente sur la page doit y être reposée — sinon, rien
+// n'est retiré.
+function caracteristiquesCaptureNonReposees(job) {
+  const manquantes = [];
+  const pf = job?.platform_fields ?? {};
+  const codes = new Set();
+  for (const a of Array.isArray(pf.itemAttributesCaptures) ? pf.itemAttributesCaptures : []) {
+    const c = String(a?.code ?? "").trim();
+    if (c && !ATTRIBUTS_CANAUX_DEDIES.has(c)) codes.add(c);
+  }
+  // Le modèle de l'annonce d'origine (versé par le serveur dans vintedAspects).
+  if (String(pf.vintedAspects?.model ?? "").trim()) codes.add("model");
+  for (const code of codes) {
+    const el = document.querySelector(vintedFieldSelector(code));
+    if (!el) continue; // absent de ce formulaire : Vinted ne le demandera pas
+    if (String(el.value ?? "").trim()) continue;
+    manquantes.push({ key: code, label: VINTED_SERVER_FIELD_LABELS[code] ?? code });
+  }
+  return manquantes;
+}
 
 // Format de colis : id Vinted ↔ libellé ↔ rang du radio (publish.package_type).
 // MESURÉ le 2026-08-05 sur l'annonce 8428482383 (package_size_id = 1) : le
@@ -215,6 +252,21 @@ function libelleAttributParId(meta, id, code) {
 // (platform_fields.vintedAspects = { "<code serveur>": "<libellé>" }).
 // `deja` = codes déjà servis par un canal dédié ou par une saisie utilisateur :
 // on ne les écrase jamais.
+async function libellesParOuvertureDeLaListe(code, ids) {
+  try {
+    const champ = document.querySelector(`[data-testid="category-${CSS.escape(code)}-single-list-input"], [data-testid="category-${CSS.escape(code)}-single-list_search-input"]`);
+    if (!champ) return [];
+    champ.click();
+    await new Promise((r) => setTimeout(r, 700));
+    const out = ids.map((id) => {
+      const el = document.querySelector(`[data-testid="${CSS.escape(code)}-${Number(id)}--title"]`);
+      return String(el?.textContent ?? "").trim() || null;
+    });
+    await closeAnyOpenDropdown().catch(() => {});
+    return out;
+  } catch { return []; }
+}
+
 async function resoudreAttributsCaptures(itemAttributes, deja = new Set()) {
   const resolus = {};
   const nonResolus = [];
@@ -226,9 +278,13 @@ async function resoudreAttributsCaptures(itemAttributes, deja = new Set()) {
     const code = String(at?.code ?? "").trim();
     const ids = Array.isArray(at?.ids) ? at.ids : [];
     if (!code || !ids.length || deja.has(code)) continue;
-    const libelles = ids
+    let libelles = ids
       .map((id) => libelleAttributParId(byCode.get(code), id, code))
       .filter(Boolean);
+    // (02/10 soir, point 10 B) Config non captée : on OUVRE la liste du champ —
+    // ses options portent `<code>-<id>--title` (relevé sur le vrai formulaire,
+    // Ordinateurs portables). Lire, refermer ; jamais deviner.
+    if (!libelles.length) libelles = (await libellesParOuvertureDeLaListe(code, ids)).filter(Boolean);
     // Un seul libellé attendu par ces listes fermées ; s'il y en a plusieurs on
     // prend le premier (le canal générique pose une valeur).
     if (libelles.length) resolus[code] = libelles[0];
@@ -3705,6 +3761,18 @@ async function fillListingForm(job) {
     // plus jamais un {unfilled:[]} silencieux qui laissait cliquer à l'aveugle.
     return { discovered: [], unfilled: [], hadConfig: false };
   });
+
+  // (02/10 soir, point 10 B) Une-passe (l'annonce d'origine est encore en
+  // ligne) : les caractéristiques de l'annonce d'origine non reposées comptent
+  // comme des requis vides — le gate ci-dessous refuse alors AVANT le retrait.
+  if (onePass && !recreation) {
+    for (const m of caracteristiquesCaptureNonReposees(job)) {
+      if (!requiredState.unfilled.includes(m.label)) requiredState.unfilled.push(m.label);
+      if (!requiredState.discovered.some((d) => d.label === m.label)) {
+        requiredState.discovered.push({ key: m.key, label: m.label, required: true, inputType: "list", options: null, source: "capture" });
+      }
+    }
+  }
 
   // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
   // marqué platform_fields.live_run === true (test supervisé) publie vraiment.
