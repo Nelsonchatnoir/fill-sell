@@ -1948,6 +1948,20 @@ async function deleteListing(job) {
     // ⇒ Préfixe `CHALLENGE ` : background.js route vers
     //   marquerBlocageAntiRobot — reprise toutes les 20 min, bornée à 6 h par
     //   épisode, AUCUNE tentative consommée, et RIEN n'est supprimé.
+    // ── COMPTE BLOQUÉ PAR VINTED (0.6.84, 02/10 — recrutementgroupezk704) ──
+    // /main/banned : un mur de Vinted, pas une page de notre fait. Les cinq
+    // essais d'un retrait y finissaient en « notre onglet n'était pas encore
+    // sur la page ». Le serveur le reconnaît aussi (work_window_state) et pose
+    // le vrai motif ; ici, on ne tente rien de plus et on le nomme.
+    if (/^\/main\/banned(?:\/|$)/.test(location.pathname)) {
+      return {
+        success: false,
+        needsUser: true,
+        compteBloque: true,
+        error: "COMPTE VINTED BLOQUÉ : Vinted affiche « compte bloqué » à la place de ton annonce — rien n'a pu être retiré.",
+        trace,
+      };
+    }
     const racineVinted = /^\/(fr\/?)?$/.test(location.pathname);
     if (racineVinted) {
       return {

@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
+const EBAY_BUILD = "2026-10-02-fin-annonce-par-numero (0.6.84 : le dialogue de fin d'annonce n'exige plus le titre — identité par le numéro de la ligne, refus s'il nomme une autre annonce ; plus de repli par titre) — précédent : 2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -299,12 +299,9 @@ async function deleteListing(job) {
     }, 10000);
     if (anchor) t(`annonce trouvée par itemId ${itemId}`);
   }
-  if (!anchor && job.title) {
-    const cible = job.title.trim();
-    anchor = ancreUtile(Array.from(document.querySelectorAll("a"))
-      .filter((a) => a.textContent.trim() === cible));
-    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
-  }
+  // (0.6.84, 02/10) PLUS DE REPLI PAR TITRE : l'identité d'une annonce est son
+  // numéro, jamais son titre (règle du 27/09). Sans numéro trouvé dans le Hub,
+  // on ne retire rien et on le dit.
   if (!anchor) {
     t(`annonce INTROUVABLE dans le Hub vendeur (itemId=${itemId ?? "?"}, titre="${job.title ?? "?"}")`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
@@ -388,15 +385,36 @@ async function deleteListing(job) {
     }
   };
 
-  // Garde du titre : elle reste, mais sur textContent (innerText est vide sans
-  // rendu — c'est ce qui la faisait échouer, pas un vrai désaccord de titre).
-  const titleOk = !job.title || texteDe(dialog).toLowerCase().includes(job.title.trim().toLowerCase());
-  if (!titleOk) {
-    t(`ABANDON : le dialogue ne nomme pas "${job.title}" — aucun clic`);
+  // ── LE DIALOGUE EST CELUI DE LA LIGNE TROUVÉE PAR SON NUMÉRO (0.6.84, 02/10) ──
+  // Avant : le dialogue devait contenir le TITRE du job. xxewwer (NBA 2K22,
+  // Syphon Filter 2) : ligne trouvée par numéro, menu ouvert, puis « le
+  // dialogue ne nomme pas l'annonce du job » à chaque essai, titres pourtant
+  // identiques octet pour octet — le dialogue d'eBay ne porte plus le titre en
+  // entier. Une seule fin d'annonce par ce chemin avait abouti depuis juillet.
+  // L'identité est établie par le NUMÉRO (la ligne, puis SON menu) : le
+  // dialogue ne sert qu'à s'assurer qu'on n'est pas sur une autre annonce. Il
+  // est refusé s'il nomme une AUTRE ligne du Hub (son titre, ou un autre
+  // numéro) ; accepté s'il nomme celle-ci (numéro ou titre de SA ligne) ou
+  // personne. Son texte part dans la trace, quoi qu'il arrive.
+  const texteDialogue = texteDe(dialog);
+  t(`dialogue de confirmation : « ${texteDialogue.slice(0, 220)} »`);
+  const titreDeMenu = (b) => (String(b?.getAttribute("aria-label") ?? "").match(/\((.+)\)\s*$/)?.[1] ?? "").trim();
+  const norm = (s) => String(s ?? "").toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
+  const dialogueN = norm(texteDialogue);
+  const titreLigne = titreDeMenu(menuBtn);
+  const autresTitres = Array.from(document.querySelectorAll(MENU_LIGNE_SEL))
+    .filter((b) => b !== menuBtn).map(titreDeMenu).filter((x) => x && norm(x) !== norm(titreLigne));
+  const nommeLaLigne = (itemId && texteDialogue.includes(itemId)) || (titreLigne && dialogueN.includes(norm(titreLigne)));
+  const autreNumero = (texteDialogue.match(/\b\d{12}\b/g) ?? []).find((n) => n !== itemId) ?? null;
+  const nommeUneAutre = !nommeLaLigne && (autreNumero || autresTitres.some((x) => x.length >= 8 && dialogueN.includes(norm(x))));
+  if (nommeUneAutre) {
+    t(`ABANDON : le dialogue nomme une AUTRE annonce (${autreNumero ?? "titre d'une autre ligne"}) — aucun clic`);
     await closeDialog();
-    return { success: false, error: "Le dialogue de confirmation ne nomme pas l'annonce du job — abandon", trace };
+    return { success: false, error: "Le dialogue de fin d'annonce eBay nomme une autre annonce que celle trouvée par son numéro — abandon, rien n'a été touché", trace };
   }
-  t("dialogue de confirmation : nomme bien l'annonce du job");
+  t(nommeLaLigne
+    ? "dialogue de confirmation : nomme la ligne trouvée par son numéro"
+    : "dialogue de confirmation : ne nomme aucune annonce — ouvert depuis le menu de la ligne trouvée par son numéro");
 
   const confirmBtn = Array.from(dialog.querySelectorAll("button"))
     .filter(estVisibleSansLayout)

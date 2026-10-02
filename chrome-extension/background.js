@@ -23359,6 +23359,17 @@ async function processDeleteJob(job, accessToken) {
       await rearmBounded(accessToken, job, String(result.error ?? "retrait non confirmé, à reprendre"));
       return { status: "retry", error: result.error };
     } else {
+      // (0.6.84, 02/10) La trace du handler part AVEC l'échec : sur ce chemin
+      // elle était perdue (le texte du dialogue eBay de xxewwer, introuvable
+      // après coup). Mutation de la copie mémoire, relue par les écritures du
+      // catch (rearmBounded & co).
+      if (Array.isArray(result?.trace) && result.trace.length) {
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          delete_trace: result.trace.slice(-40),
+          last_diagnostic: result.trace.join(" | ").slice(-2000),
+        };
+      }
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }
   } catch (e) {
