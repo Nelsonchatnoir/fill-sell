@@ -135,6 +135,7 @@
     "selftest:mur-geste": "node scripts/mur-geste-selftest.mjs",
     "selftest:interruption-poste": "node scripts/interruption-poste-selftest.mjs",
     "selftest:vente-modale": "node scripts/vente-modale-selftest.mjs",
+    "selftest:vinted-attributs-capture": "node scripts/vinted-attributs-capture-selftest.mjs",
     "selftest:confirmation-verdict": "node --import ./scripts/loader-ext.mjs scripts/confirmation-verdict-selftest.mjs",
     "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs"
   },

@@ -35,6 +35,10 @@ import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/r
 import { messageRetenueCreneau } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS } from "../_shared/mur-geste.js";
+// Champs exigés au dépôt par rayon Vinted, appris sur les refus 400 (cache de
+// l'isolat, 15 min : la lecture parcourt la table — ~200 ms).
+const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>();
+import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED_CANAUX_DEDIES, libelleChampVinted } from "../_shared/vinted-attributs-capture.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
@@ -1906,6 +1910,162 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // ══ LA RECRÉATION VINTED REPREND LES CARACTÉRISTIQUES CAPTURÉES (02/10 soir, point 10) ══
+    // (_shared/vinted-attributs-capture.js) Tech-t 2d37ee4a : annonce retirée,
+    // recréation refusée faute de « Modèle », RAM, stockage, chargeur — que la
+    // capture portait (natif.model, natif.item_attributes). Pour toute
+    // republication Vinted : les caractéristiques capturées sont versées dans
+    // vintedAspects (libellés relevés sur le vrai formulaire, jamais devinés ;
+    // le modèle connu de l'annonce d'origine prime sur une saisie hors liste).
+    // Un needs_user « champ à choisir » dont TOUS les champs exigés sont
+    // maintenant connus repart aussitôt (étape 'deleted' : en tête de file).
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const adminA = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: bloquesA } = await adminA.from("cross_post_jobs")
+          .select("*")
+          .eq("user_id", user.id).eq("platform", "vinted").eq("action", "republish").eq("status", "needs_user")
+          .not("platform_fields->capture_id", "is", null)
+          .not("platform_fields->server_required_fields", "is", null)
+          .limit(20);
+        const candidats = [
+          ...out.filter((j) => j.platform === "vinted" && j.action === "republish"
+            && (j.platform_fields as Record<string, unknown> | null)?.["capture_id"] != null),
+          ...((bloquesA ?? []) as typeof out),
+        ];
+        const ids = [...new Set(candidats.map((j) => Number((j.platform_fields as Record<string, unknown>)["capture_id"]))
+          .filter((n) => Number.isFinite(n)))];
+        if (ids.length) {
+          const { data: caps } = await adminA.from("vinted_republish_captures")
+            .select("id, payload").in("id", ids.slice(0, 60));
+          const natifPar = new Map<number, Record<string, unknown>>();
+          for (const c of (caps ?? []) as Array<{ id: number; payload: Record<string, unknown> | null }>) {
+            natifPar.set(Number(c.id), ((c.payload ?? {})["natif"] ?? {}) as Record<string, unknown>);
+          }
+          for (const j of candidats) {
+            const pfA = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const natif = natifPar.get(Number(pfA["capture_id"]));
+            if (!natif) continue;
+            const cap = aspectsDeLaCapture(natif);
+            const { vintedAspects, poses, remplace } = completerAspects(pfA["vintedAspects"], cap);
+            const relancer = j.status === "needs_user"
+              && String(pfA["needs_user_source"] ?? "") === "champ_a_choisir"
+              && exigencesCouvertes(pfA["server_required_fields"], vintedAspects);
+            if (!poses.length && !relancer) continue;
+            pfA["vintedAspects"] = vintedAspects;
+            pfA["aspects_capture"] = {
+              le: new Date().toISOString(), poses, ...(Object.keys(remplace).length ? { remplace } : {}),
+              ...(cap.nonResolus.length ? { non_resolus: cap.nonResolus } : {}),
+            };
+            const patchA: Record<string, unknown> = { platform_fields: pfA };
+            if (relancer) {
+              pfA["erreurs_archivees"] = archiverErreur(pfA["erreurs_archivees"], (j as { error?: string | null }).error ?? null, "needs_user", "get-pending-jobs (caractéristiques de l'annonce d'origine retrouvées dans la capture)");
+              for (const k of ["needs_user_source", "needsUserField", "needsUserFields", "needsUserBoucle", "needsUserAttempts",
+                "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after",
+                "processing_since", "needs_user_sans_motif"]) delete pfA[k];
+              patchA["status"] = "pending";
+              patchA["error"] = null;
+            }
+            const { data: majA } = await adminA.from("cross_post_jobs").update(patchA)
+              .eq("id", String(j.id)).eq("status", String(j.status)).select("id");
+            if (!(majA ?? []).length) continue;
+            (j as { platform_fields: unknown }).platform_fields = pfA;
+            if (relancer) {
+              (j as { status: string }).status = "pending";
+              (j as { error: string | null }).error = null;
+              if (!out.some((o) => String(o.id) === String(j.id))) out.push(j);
+            }
+            console.log(`[get-pending-jobs] republication Vinted ${String(j.id).slice(0, 8)} : caractéristiques de la capture reposées (${poses.join(", ") || "—"})${Object.keys(remplace).length ? ` — modèle hors liste « ${remplace.model} » remplacé par celui de l'annonce d'origine` : ""}${relancer ? " → relancée (tous les champs exigés connus)" : ""}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] caractéristiques de la capture : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
+
+    // ══ PAS DE RETRAIT SANS RECRÉATION GARANTIE (02/10 soir, point 10 B) ══════
+    // Le pré-vol de l'extension ne juge « requis » que ce que la config Vinted
+    // marque requis ; or Vinted EXIGE au dépôt des champs que sa config dit
+    // facultatifs (Ordinateurs portables : modèle, RAM, stockage, chargeur —
+    // relevé sur le 400 de Tech-t). Règle serveur, pour tous les postes : avant
+    // de servir l'étape qui RETIRE (captured), chaque champ que Vinted a déjà
+    // exigé au dépôt dans CETTE catégorie (appris sur les refus 400, tous
+    // comptes) doit avoir sa valeur — capture ou réponse de la personne.
+    // Sinon : needs_user AVANT tout retrait, tous les champs manquants en une
+    // fois, l'annonce reste en ligne.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const aRetirer = out.filter((j) => j.platform === "vinted" && j.action === "republish"
+          && String(((j.platform_fields ?? {}) as Record<string, unknown>)["republish_step"] ?? "") === "captured");
+        if (aRetirer.length) {
+          const adminG = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const exigesPar = new Map<string, Set<string>>();
+          const retenus = new Set<string>();
+          for (const j of aRetirer) {
+            const pfG = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const snap = (pfG["republish_snapshot"] ?? {}) as Record<string, unknown>;
+            const cat = String(snap["catalog_id"] ?? "").trim();
+            if (!cat) continue;
+            const enCache = CACHE_EXIGES_VINTED.get(cat);
+            if (!exigesPar.has(cat) && enCache && Date.now() - enCache.at < 15 * 60_000) exigesPar.set(cat, enCache.codes);
+            if (!exigesPar.has(cat)) {
+              const { data: refus } = await adminG.from("cross_post_jobs")
+                .select("platform_fields->server_required_fields")
+                .eq("platform", "vinted")
+                .filter("platform_fields->republish_snapshot->>catalog_id", "eq", cat)
+                .not("platform_fields->server_required_fields", "is", null)
+                .limit(40);
+              const codes = new Set<string>();
+              for (const r of (refus ?? []) as Array<{ server_required_fields?: unknown }>) {
+                for (const f of Array.isArray(r.server_required_fields) ? r.server_required_fields : []) {
+                  const k = String((f as Record<string, unknown>)?.["key"] ?? "").trim();
+                  if (k && !CHAMPS_VINTED_CANAUX_DEDIES.has(k)) codes.add(k);
+                }
+              }
+              exigesPar.set(cat, codes);
+              CACHE_EXIGES_VINTED.set(cat, { codes, at: Date.now() });
+            }
+            const exiges = [...(exigesPar.get(cat) ?? new Set<string>())];
+            if (!exiges.length) continue;
+            const aspects = (pfG["vintedAspects"] ?? {}) as Record<string, unknown>;
+            const manquants = exiges.filter((k) => !String(aspects[k] ?? "").trim());
+            if (!manquants.length) continue;
+            const chemin = Array.isArray(snap["categoryPath"]) ? (snap["categoryPath"] as unknown[]).map(String).join(" > ") : "";
+            const valeurs = new Map<string, string[]>();
+            if (chemin) {
+              const { data: asp } = await adminG.from("platform_category_aspects")
+                .select("field_key, allowed_values").eq("platform", "vinted").eq("category_key", chemin).in("field_key", manquants);
+              for (const a of (asp ?? []) as Array<{ field_key: string; allowed_values: unknown }>) {
+                if (Array.isArray(a.allowed_values) && a.allowed_values.length) valeurs.set(a.field_key, (a.allowed_values as unknown[]).map(String));
+              }
+            }
+            const champs = manquants.map((k) => ({
+              field_key: k, field_label: libelleChampVinted(k), platform: "vinted",
+              target: { key: k, root: "vintedAspects" },
+              ...(valeurs.get(k) ? { allowed_values: valeurs.get(k) } : {}),
+            }));
+            pfG["needsUserField"] = champs[0];
+            if (champs.length > 1) pfG["needsUserFields"] = champs.slice(1);
+            pfG["needs_user_source"] = "champ_a_choisir";
+            pfG["recreation_non_garantie"] = { le: new Date().toISOString(), catalogue: cat, manquants };
+            delete pfG["processing_since"];
+            const msg = `Republication Vinted en pause AVANT tout retrait : ton annonce est intacte, mais pour la remettre en ligne à l'identique ` +
+              `Vinted exigera ${champs.map((c) => `« ${c.field_label} »`).join(", ")}. Choisis-les dans l'app : la republication repartira toute seule.`;
+            const { data: majG } = await adminG.from("cross_post_jobs")
+              .update({ status: "needs_user", error: msg, platform_fields: pfG })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((majG ?? []).length) {
+              retenus.add(String(j.id));
+              console.log(`[get-pending-jobs] republication Vinted ${String(j.id).slice(0, 8)} (rayon ${cat}) : retrait REFUSÉ — recréation non garantie, il manque ${manquants.join(", ")} → needs_user, annonce intacte`);
+            }
+          }
+          if (retenus.size) out = out.filter((j) => !retenus.has(String(j.id)));
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] garde « recréation garantie » : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
     // ══ SORTIE D'OPLA : AUCUNE PUBLICATION NI REPUBLICATION OPLA (02/10) ═══
     // ⛔ À partir de la bascule seulement (sortieOpla, l'interrupteur lu en tête).
     // Décision de Nico (_shared/opla-sortie.js). Une publication/republication
