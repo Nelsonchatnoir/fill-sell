@@ -149,6 +149,12 @@ verify_jwt = false
 [functions.lot-distribute]
 verify_jwt = true
 
+# Demande d'avis (02/10) : appelée par l'app et le popup de l'extension avec
+# le JWT de la personne ; la fonction relit l'identité (auth.getUser) et
+# n'écrit que les traces usage_logs 'avis_demande' de ce compte.
+[functions.avis-demande]
+verify_jwt = true
+
 # Re-hébergement des photos d'une annonce Vinted à la capture (É1
 # republication, 2026-08-05) : JWT utilisateur obligatoire — sans lui, la
 # fonction serait un proxy de téléchargement anonyme vers notre storage.
