@@ -15,7 +15,8 @@
 --
 -- CE QUE FAIT LA MIGRATION (corps repartis de pg_get_functiondef EN PROD le
 -- 02/10, rien d'autre de changé) :
---   1. spend_coins_and_republish : 'opla' refusée AVANT toute écriture
+--   1. spend_coins_and_republish : 'opla' refusée AVANT toute écriture À PARTIR
+--      DE LA BASCULE (coin_config `opla_sortie_le`, le 10/10 ; 0 = jamais)
 --      (reason 'opla_arrete', message « Opla n'est plus disponible dans
 --      FillSell. ») — aucun job créé, rien de compté ; les deux plafonds par
 --      palier (gratuit à vie, premium/pro du cycle) ignorent les jobs marqués
@@ -76,13 +77,17 @@ BEGIN
   IF v_user IS NULL THEN
     RETURN jsonb_build_object('allowed', false, 'reason', 'unauthorized');
   END IF;
-  -- (02/10, sortie d'Opla) Plus aucune republication Opla, pour personne :
-  -- refusée ICI, avant toute écriture — aucun job, rien de compté.
-  IF v_platform = 'opla' THEN
+  -- (02/10, sortie d'Opla) À partir de la bascule (interrupteur coin_config
+  -- `opla_sortie_le`, secondes epoch ; 0 = sortie désactivée ; absente = le
+  -- 10/10/2026 à 00:00 Paris, la même règle que _shared/opla-sortie.js), plus
+  -- aucune republication Opla, pour personne : refusée ICI, avant toute
+  -- écriture — aucun job, rien de compté. Avant la bascule : comme avant.
+  IF v_platform = 'opla' AND COALESCE((SELECT value FROM coin_config WHERE key = 'opla_sortie_le'), 1791583200) > 0
+     AND now() >= to_timestamp(COALESCE((SELECT value FROM coin_config WHERE key = 'opla_sortie_le'), 1791583200)) THEN
     RETURN jsonb_build_object('allowed', false, 'reason', 'opla_arrete', 'platform', v_platform,
       'message', 'Opla n''est plus disponible dans FillSell.');
   END IF;
-  IF v_platform NOT IN ('vinted', 'leboncoin', 'beebs') THEN
+  IF v_platform NOT IN ('vinted', 'leboncoin', 'beebs', 'opla') THEN
     RETURN jsonb_build_object('allowed', false, 'reason', 'invalid_platform', 'platform', v_platform);
   END IF;
   IF v_platform = 'vinted' AND (v_item IS NULL OR v_item !~ '^\d+$') THEN
