@@ -1,0 +1,55 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LA PUBLICATION EN LOT — compléments à stepper.css (02/10/2026, nuit)
+   ═══════════════════════════════════════════════════════════════════════════
+   Mêmes jetons (--fs-*), mêmes cartes, mêmes boutons que le stepper : le lot
+   n'introduit AUCUNE couleur. Ici seulement ce qui n'existe pas à l'unité —
+   la ligne d'un article dans une liste, les pastilles de plateformes, la
+   bande de vignettes du lot. */
+.fsl-vignettes { display: flex; gap: 6px; overflow: hidden; }
+.fsl-vignettes .fsn-thumb { width: 44px; height: 44px; border-radius: 10px; font-size: 18px; }
+.fsl-plus { width: 44px; height: 44px; border-radius: 10px; background: var(--fs-chip); color: var(--fs-mute); display: grid; place-items: center; font-size: 12.5px; font-weight: 700; flex: none; }
+
+.fsl-art { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--fs-border-soft); }
+.fsl-art:first-child { border-top: none; padding-top: 0; }
+.fsl-art:last-child { padding-bottom: 0; }
+.fsl-art .fsn-thumb { width: 42px; height: 42px; border-radius: 10px; font-size: 18px; }
+.fsl-art-t { flex: 1; min-width: 0; }
+.fsl-art-t b { display: block; font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fsl-art-t small { display: block; font-size: 12px; color: var(--fs-mute); line-height: 1.4; overflow-wrap: anywhere; }
+.fsl-art .fsn-chip { font-size: 11.5px; padding: 3px 8px; }
+
+/* Pastilles de plateformes : pleine = en ligne, anneau = en file, ambre = un
+   geste, barrée = pas partie. Le logo dit la plateforme, la forme dit l'état. */
+.fsl-pastilles { display: flex; gap: 4px; flex: none; }
+.fsl-pastille { position: relative; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--fs-card); border: 1.5px solid var(--fs-border); }
+.fsl-pastille--en_ligne { border-color: var(--fs-teal); background: var(--fs-teal-fond); }
+.fsl-pastille--en_cours { border-color: var(--fs-teal); border-style: dashed; }
+.fsl-pastille--file { border-style: dotted; }
+.fsl-pastille--geste { border-color: var(--fs-amber); background: var(--fs-amber-fond); }
+.fsl-pastille--pas_partie, .fsl-pastille--arretee { opacity: .55; filter: grayscale(1); }
+
+.fsl-groupe-t { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--fs-mute); margin: 4px 2px 6px; }
+.fsl-article { gap: 10px; }
+.fsl-article-tete { display: flex; align-items: center; gap: 10px; }
+.fsl-article-tete .fsn-thumb { width: 48px; height: 48px; border-radius: 12px; }
+.fsl-retirer { font-size: 12.5px; color: var(--fs-mute); text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; font-weight: 600; }
+.fsl-compte { font-size: 28px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.fsl-tuiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fsl-tuile { background: var(--fs-card); border: 1px solid var(--fs-border); border-radius: var(--fs-r-s); padding: 10px 8px; text-align: center; }
+.fsl-tuile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.fsl-tuile small { font-size: 11.5px; color: var(--fs-mute); line-height: 1.3; display: block; }
+.fsl-tuile--ok b { color: var(--fs-teal-ink); }
+.fsl-tuile--geste b { color: var(--fs-amber-ink); }
+.fsl-tuile--mute b { color: var(--fs-mute); }
+/* Les moteurs du lot : montés, jamais vus. */
+.fsl-moteurs { display: none; }
+
+/* ── Le Stock en mode « publication en lot » ─────────────────────────────── */
+/* La carte entière se touche pour choisir ; ses boutons à elle se taisent (un
+   seul geste par mode, comme la republication en lot). */
+.stock-v2.lot-actif .gactions { display: none; }
+.stock-v2 .gcard.gcard--lot-choisi { box-shadow: 0 0 0 2.5px #2F9E90, 0 6px 18px -10px rgba(31,110,98,.5); border-color: #2F9E90; }
+.stock-v2 .lot-case { position: absolute; top: 7px; right: 7px; z-index: 3; width: 28px; height: 28px; border-radius: 9px;
+  background: rgba(255,255,255,.94); border: 1.5px solid #CFC9BA; display: grid; place-items: center;
+  color: #fff; font-weight: 800; font-size: 15px; line-height: 1; box-shadow: 0 1px 3px rgba(16,32,27,.22); pointer-events: none; }
+.stock-v2 .lot-case.on { background: #2F9E90; border-color: #2F9E90; }

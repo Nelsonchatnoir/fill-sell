@@ -1,0 +1,925 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// LA PUBLICATION EN LOT — L'ÉCRAN (nuit du 02 au 03/10/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+// Trois écrans, téléphone d'abord :
+//   1. « Où les publier ? »  — les plateformes du lot entier, ce qui partira,
+//      le quota du mois, la durée. Rien ne part encore.
+//   2. « Avant l'envoi »     — la préparation (une barre), puis, au même
+//      endroit, les seules réponses qui manquent et le compte exact.
+//   3. « C'est parti »       — ce qui est en file, ce qui reste de côté et
+//      pourquoi ; le suivi vit ensuite en haut du Stock.
+//
+// ⛔ LE MOTEUR N'EST PAS RÉÉCRIT. Chaque article est préparé par le VRAI moteur
+//    du stepper (ListingPreviewScreen, `pilote`), monté sans rien afficher :
+//    même rédaction, mêmes rayons, mêmes champs exigés, mêmes gardes, même RPC
+//    (spend_coins_and_publish, un appel par article — un article bloqué ne
+//    bloque que lui). Les questions sont posées par le MÊME bloc que le stepper
+//    (BlocQuestions), branché sur le moteur de l'article.
+// ⛔ Ce n'est jamais « on publie pour toi » : l'extension dépose, depuis
+//    l'ordinateur, une annonce après l'autre.
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import "../stepper.css";
+import "./lot.css";
+import ListingPreviewScreen from "../../components/ListingPreviewScreen";
+import BlocQuestions from "../BlocQuestions";
+import CarteRayon from "../../components/CarteRayon";
+import BoutonMeConnecter from "../../components/BoutonMeConnecter";
+import BarreProgression from "../../components/BarreProgression";
+import { Carte, Puce, Logo, Bouton } from "../composants";
+import { NOM } from "../texte";
+import { bilanPlateformes } from "../plateformes";
+import { urlPhoto, urlsPhotos } from "../../utils/photos";
+import { lireVeritePlateformes, sessionsDepuisVerite } from "../../utils/veritePlateformes";
+import { ebayCompteUtilisable } from "../../utils/ebayCompte";
+import { lireProchaineRemiseAZero } from "../../reglages/quotas";
+import { propsStepperArticle } from "./propsArticle";
+import {
+  PLATEFORMES_LOT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
+  plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
+  dureeEstimeeMin, libelleDuree, bilanArticle, texteARelire, marqueLot, groupesReponseCommune,
+} from "./regles";
+
+const CLE_CHOIX = "fs_lot_plateformes";
+const lireChoixMemorise = () => { try { const v = JSON.parse(localStorage.getItem(CLE_CHOIX) ?? "null"); return Array.isArray(v) ? v : null; } catch { return null; } };
+const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.stringify(v)); } catch { /* navigation privée : rien */ } };
+const CLE_PLUS_TARD = (uid) => `fs_lot_plus_tard_${uid}`;
+
+// Les phases d'un article : où il en est, dans les mots de l'écran.
+const PHASES_EN_PREPARATION = new Set(["montage", "redaction", "verification"]);
+const LIBELLE_PHASE = {
+  fr: { attente: "En attente", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À compléter", quota: "Mois prochain", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "Pas parti" },
+  en: { attente: "Waiting", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "To complete", quota: "Next month", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Not sent" },
+};
+const TON_PHASE = { pret: "ok", envoye: "ok", questions: "geste", quota: "geste", rien: "mute", erreur: "refus", refuse: "refus", retire: "mute" };
+
+const titreDe = (item) => String(item?.title ?? item?.titre ?? "").trim();
+const dateCourte = (iso, en) => {
+  const d = new Date(iso ?? "");
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "numeric", month: "long" });
+};
+
+function Vignette({ item, taille = null }) {
+  const url = urlsPhotos(item?.photos)[0] ?? null;
+  return (
+    <div className="fsn-thumb" style={taille ? { width: taille, height: taille } : undefined} aria-hidden="true">
+      {url ? <img src={urlPhoto(url)} alt="" loading="lazy" /> : "📦"}
+    </div>
+  );
+}
+
+// Le moteur d'UN article, monté sans rien afficher. Mémoïsé : l'écran du lot
+// se redessine souvent, le moteur seulement quand SES entrées changent.
+const HoteMoteur = memo(function HoteMoteur({
+  item, jobs, prixVinted, surMoteur, marque, onJobsQueued,
+  userId, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes, oplaMotifGrise, oplaExtensionMin,
+  isPremium, isPro, isBusiness, extensionNeverSeen, extensionLastSeenAt,
+}) {
+  const entrees = useMemo(() => propsStepperArticle(item, jobs, { prixVinted }), [item, jobs, prixVinted]);
+  const pilote = useMemo(() => ({ surMoteur, marqueJobs: marque }), [surMoteur, marque]);
+  return (
+    <ListingPreviewScreen
+      variante="nouvelle"
+      pilote={pilote}
+      inventaireId={item.id}
+      userId={userId}
+      supabase={supabase}
+      lang={lang}
+      ebayCompte={ebayCompte}
+      plateformesVisibles={plateformesVisibles}
+      plateformesOuvertes={plateformesOuvertes}
+      oplaMotifGrise={oplaMotifGrise}
+      oplaExtensionMin={oplaExtensionMin}
+      {...entrees}
+      onClose={() => {}}
+      onJobsQueued={onJobsQueued}
+      isPremium={isPremium}
+      isPro={isPro}
+      isBusiness={isBusiness}
+      extensionNeverSeen={extensionNeverSeen}
+      extensionLastSeenAt={extensionLastSeenAt}
+    />
+  );
+});
+
+/**
+ * @param articles      les articles choisis, dans l'ordre du choix (forme mapItem)
+ * @param jobsByInventaire  { [id]: jobs } — la lecture du Stock
+ * @param prixVinted    (item) => prix demandé sur Vinted, ou null
+ * @param ctx           { userId, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes,
+ *                        oplaMotifGrise, oplaExtensionMin, isPremium, isPro, isBusiness,
+ *                        extensionNeverSeen, extensionLastSeenAt, plateformesCompte }
+ * @param onJobsQueued  patch optimiste du Stock (invId, plateformes)
+ * @param onFermer      () => void
+ * @param onEnvoye      (lot) => void — le lot est parti (au moins un article)
+ * @param onVoirOffres  () => void
+ * @param onOuvrirArticle (item) => void — le stepper à l'unité, pour un article laissé de côté
+ */
+export default function LotPublication({
+  articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onVoirOffres, onOuvrirArticle, choixPrefere = null,
+}) {
+  const { userId, supabase, lang } = ctx;
+  const en = lang === "en";
+  const L = LIBELLE_PHASE[en ? "en" : "fr"];
+  const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT).filter((p) => PLATEFORMES_LOT.includes(p));
+
+  // ── Écran 1 : ce qui est sûr AVANT de préparer quoi que ce soit ─────────
+  const donnees = useMemo(() => (articles ?? []).map((item) => ({
+    id: String(item.id), item, jobs: jobsByInventaire?.[item.id] ?? [],
+  })), [articles, jobsByInventaire]);
+  const resume = useMemo(() => resumeParPlateforme(donnees, plateformesCompte), [donnees, plateformesCompte]);
+  const [verite, setVerite] = useState(null);
+  const [pauses, setPauses] = useState({});
+  const [quotas, setQuotas] = useState(null);
+  const [remise, setRemise] = useState(null);
+  const [fiches, setFiches] = useState(null);
+  useEffect(() => {
+    let vivant = true;
+    lireVeritePlateformes().then((v) => { if (vivant) setVerite(v); }).catch(() => {});
+    supabase.from("platform_health").select("platform, paused, message_fr, message_en")
+      .then(({ data }) => {
+        if (!vivant || !Array.isArray(data)) return;
+        setPauses(Object.fromEntries(data.filter((r) => r.paused).map((r) => [r.platform, (en ? r.message_en || r.message_fr : r.message_fr) || ""])));
+      }, () => {});
+    supabase.rpc("quotas_etat").then(({ data }) => { if (vivant && data && !data.error) setQuotas(data); }, () => {});
+    lireProchaineRemiseAZero(userId).then((d) => { if (vivant) setRemise(d); }, () => {});
+    const ids = (articles ?? []).map((a) => a.id);
+    if (ids.length) {
+      supabase.from("fiches_annonce").select("inventaire_id, fiche").eq("user_id", userId).in("inventaire_id", ids)
+        .then(({ data }) => { if (vivant) setFiches(Object.fromEntries((data ?? []).map((r) => [String(r.inventaire_id), r.fiche]))); },
+          () => { if (vivant) setFiches({}); });
+    } else setFiches({});
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const sessions = sessionsDepuisVerite(verite);
+  const ebayBloque = Boolean(ctx.ebayCompte?.voieApi) && Boolean(ctx.ebayCompte?.lu) && ebayCompteUtilisable(ctx.ebayCompte?.etat) === false;
+  const ebayParServeur = Boolean(ctx.ebayCompte?.voieApiReelle);
+  // Venu d'un filtre « Pas encore sur X » : X seule, cochée d'office ; sinon
+  // le dernier choix, sinon tout ce qui peut partir.
+  const [choix, setChoix] = useState(() => choixInitial(resume, { memorise: Array.isArray(choixPrefere) && choixPrefere.length ? choixPrefere : lireChoixMemorise(), enPause: [], ebayBloque }));
+  const basculer = (p) => setChoix((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : PLATEFORMES_LOT.filter((x) => x === p || prev.includes(x))));
+
+  // Ce que chaque article recevrait avec ce choix (avant toute préparation).
+  const ciblesAvant = useMemo(() => Object.fromEntries(donnees.map((d) => [d.id,
+    plateformesLibres(d.item, d.jobs, plateformesCompte).filter((p) => choix.includes(p) && !pauses[p])])), [donnees, plateformesCompte, choix, pauses]);
+  const articlesAvecCible = donnees.filter((d) => ciblesAvant[d.id].length);
+  const restantes = quotas?.annonces?.restantes ?? null;
+  const partage = useMemo(() => partagerQuota(articlesAvecCible, {
+    restantes: Number.isFinite(restantes) ? restantes : null,
+    consomme: (d) => !ficheCouvre(fiches?.[d.id], ciblesAvant[d.id]),
+  }), [articlesAvecCible, restantes, fiches, ciblesAvant]);
+  const annoncesPrevues = partage.maintenant.reduce((n, d) => n + ciblesAvant[d.id].length, 0);
+  const parPlateformePrevu = {};
+  for (const d of partage.maintenant) for (const p of ciblesAvant[d.id]) parPlateformePrevu[p] = (parPlateformePrevu[p] ?? 0) + 1;
+  const duree = libelleDuree(dureeEstimeeMin(parPlateformePrevu, { ebayParServeur }), lang);
+
+  // ── Le lot lui-même : un identifiant, les articles préparés, leurs états ─
+  const [etape, setEtape] = useState("plateformes"); // plateformes | avant | envoi | fin
+  const [lot, setLot] = useState(null); // { id, le, ids: [], plateformes: [] }
+  const [etats, setEtats] = useState({}); // id → { phase, raison?, envoyees?, exclusions? }
+  const [decisions, setDecisions] = useState({}); // id → { texteValide, jumeauxTranches: Set }
+  const [actifs, setActifs] = useState(() => new Set()); // moteurs montés
+  const moteursRef = useRef(new Map());
+  const etatsRef = useRef(etats); etatsRef.current = etats;
+  const decisionsRef = useRef(decisions); decisionsRef.current = decisions;
+  const pilotage = useRef({}); // id → { selection, suivant2, suivant3, reposDepuis, entreeVerif }
+  const [tick, setTick] = useState(0);
+  const tickPlanifie = useRef(null);
+  const planifierTick = useCallback((ms = 250) => {
+    if (tickPlanifie.current) return;
+    tickPlanifie.current = setTimeout(() => { tickPlanifie.current = null; setTick((t) => t + 1); }, ms);
+  }, []);
+  useEffect(() => () => { if (tickPlanifie.current) clearTimeout(tickPlanifie.current); }, []);
+  const surMoteur = useCallback((id, m) => {
+    if (id == null) return;
+    moteursRef.current.set(String(id), m);
+    planifierTick();
+  }, [planifierTick]);
+  const marque = useMemo(() => (lot ? marqueLot(lot.id, lot.le) : null), [lot]);
+  // Relecture en développement seulement (jamais servi en prod) : les moteurs
+  // et les états du lot, lisibles depuis la console.
+  useEffect(() => {
+    if (!import.meta.env?.DEV) return;
+    window.__lot = { moteurs: moteursRef.current, etats, decisions, lot };
+  });
+  const majEtat = (id, patch) => setEtats((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
+
+  function preparer() {
+    const ids = partage.maintenant.map((d) => d.id);
+    if (!ids.length) return;
+    ecrireChoixMemorise(choix);
+    const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const nouveauLot = { id, le: new Date().toISOString(), ids, plateformes: [...choix] };
+    // Les articles qui attendent le mois prochain : gardés sur cet appareil,
+    // proposés au prochain lot (jamais préparés, donc jamais décomptés).
+    if (partage.plusTard.length) {
+      try { localStorage.setItem(CLE_PLUS_TARD(userId), JSON.stringify({ ids: partage.plusTard.map((d) => d.id), apres: remise ?? null })); } catch { /* rien */ }
+    }
+    setLot(nouveauLot);
+    setEtats(Object.fromEntries([
+      ...ids.map((x) => [x, { phase: "attente" }]),
+      ...partage.plusTard.map((d) => [d.id, { phase: "quota" }]),
+      ...donnees.filter((d) => !ciblesAvant[d.id].length).map((d) => [d.id, { phase: "rien", raison: raisonRienAvant(d) }]),
+    ]));
+    setEtape("avant");
+  }
+  function raisonRienAvant(d) {
+    const libres = plateformesLibres(d.item, d.jobs, plateformesCompte);
+    if (!libres.length) return en ? "Already online everywhere you sell." : "Déjà en ligne partout où tu vends.";
+    const enPause = libres.filter((p) => pauses[p]);
+    if (enPause.length && enPause.length === libres.filter((p) => choix.includes(p)).length) return en ? `${enPause.map(NOM).join(", ")} paused on our side.` : `${enPause.map(NOM).join(", ")} en pause de notre côté.`;
+    return en ? `Already on ${choix.map(NOM).join(", ")}.` : `Déjà sur ${choix.map(NOM).join(", ")}.`;
+  }
+
+  // ── Les moteurs montés : trois préparations à la fois, puis on garde ceux
+  //    qu'il faudra encore lire (prêts, à compléter) jusqu'à l'envoi ────────
+  useEffect(() => {
+    if (!lot) return;
+    const enPrep = lot.ids.filter((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase)).length;
+    const places = PREPARATIONS_SIMULTANEES - enPrep;
+    const aMonter = places > 0 ? lot.ids.filter((id) => etats[id]?.phase === "attente").slice(0, places) : [];
+    const garder = (id) => !["quota", "rien", "erreur", "retire", "refuse"].includes(etats[id]?.phase);
+    const suivant = new Set([...actifs].filter(garder));
+    for (const id of aMonter) suivant.add(id);
+    if (aMonter.length) setEtats((prev) => {
+      const n = { ...prev };
+      for (const id of aMonter) n[id] = { ...n[id], phase: "montage", depuis: Date.now() };
+      return n;
+    });
+    const change = suivant.size !== actifs.size || [...suivant].some((id) => !actifs.has(id));
+    if (change) {
+      for (const id of actifs) if (!suivant.has(id)) moteursRef.current.delete(id);
+      setActifs(suivant);
+    }
+  }, [lot, etats, actifs]);
+
+  // ── LE PILOTE : faire avancer chaque moteur, sans jamais le devancer ────
+  useEffect(() => {
+    if (!lot) return;
+    const maintenant = Date.now();
+    const patchs = {};
+    for (const id of lot.ids) {
+      const st = etats[id];
+      if (!st || !actifs.has(id)) continue;
+      const m = moteursRef.current.get(id);
+      if (!m) continue;
+      const pil = pilotage.current[id] ?? (pilotage.current[id] = {});
+      const phase = st.phase;
+      if (phase === "montage") {
+        if (m.initializing || !m.publishedStateLoaded) continue;
+        if (m.step >= 2) { patchs[id] = { phase: "redaction" }; continue; }
+        const bilan = bilanPlateformes(m);
+        const cible = lot.plateformes.filter((p) => bilan.cochables.includes(p));
+        if (!cible.length) { patchs[id] = { phase: "rien", raison: raisonRien(bilan, lot.plateformes) }; continue; }
+        const memeSelection = m.selected.size === cible.length && cible.every((p) => m.selected.has(p));
+        if (!memeSelection) {
+          if (!pil.selection || maintenant - pil.selection > 3000) { pil.selection = maintenant; m.setSelected(new Set(cible)); if (m.photoOption !== "original") m.setPhotoOption("original"); }
+          continue;
+        }
+        if (!pil.suivant2 || maintenant - pil.suivant2 > 4000) { pil.suivant2 = maintenant; m.suivant(); }
+        continue;
+      }
+      if (phase === "redaction") {
+        if (m.step === 3) { patchs[id] = { phase: "verification", depuis: maintenant }; pil.entreeVerif = maintenant; continue; }
+        if (m.step <= 1) { patchs[id] = { phase: "montage" }; continue; } // le moteur a renvoyé à « Où publier ? »
+        if (m.generatingPlatforms) continue;
+        if (!m.platformListings && m.platformError) {
+          patchs[id] = m.platformErrorCode === "quota_annonces"
+            ? { phase: "quota", raison: m.platformError }
+            : { phase: "erreur", raison: m.platformError };
+          continue;
+        }
+        if (m.platformListings && (!pil.suivant3 || maintenant - pil.suivant3 > 4000)) { pil.suivant3 = maintenant; m.suivant(); }
+        continue;
+      }
+      if (phase === "verification" || phase === "pret" || phase === "questions") {
+        if (m.step !== 3) { if (m.step === 2) patchs[id] = { phase: "redaction" }; continue; }
+        // Au repos depuis assez longtemps — ou, filet, 45 s après l'arrivée :
+        // un marqueur qui ne viendrait jamais ne bloque pas le lot (le clic
+        // Publier du moteur garde ses propres gardes, qui excluent et disent).
+        if (m.preparationAuRepos) pil.reposDepuis = pil.reposDepuis ?? maintenant;
+        else pil.reposDepuis = null;
+        const assezRepose = pil.reposDepuis != null && maintenant - pil.reposDepuis >= REPOS_AVANT_LECTURE_MS;
+        const filet = pil.entreeVerif != null && maintenant - pil.entreeVerif > 45_000;
+        if (!assezRepose && !filet) {
+          if (pil.reposDepuis != null) planifierTick(REPOS_AVANT_LECTURE_MS);
+          else if (phase !== "verification") patchs[id] = { phase: "verification" };
+          else planifierTick(1500);
+          continue;
+        }
+        const b = bilanArticle({ ...m, preparationAuRepos: true }, decisions[id], lang);
+        const nouvelle = b.pret ? "pret" : "questions";
+        if (nouvelle !== phase || JSON.stringify(st.motifs ?? []) !== JSON.stringify(b.motifs)) patchs[id] = { phase: nouvelle, motifs: b.motifs };
+      }
+    }
+    if (Object.keys(patchs).length) setEtats((prev) => {
+      const n = { ...prev };
+      for (const [id, p] of Object.entries(patchs)) n[id] = { ...n[id], ...p };
+      return n;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, lot, etats, actifs, decisions]);
+
+  function raisonRien(bilan, plateformes) {
+    const lignes = [];
+    for (const p of plateformes) {
+      const e = bilan.etats.find((x) => x.p === p);
+      if (!e) continue;
+      if (e.dejaEnLigne) lignes.push(en ? `already on ${NOM(p)}` : `déjà sur ${NOM(p)}`);
+      else if (e.enCours) lignes.push(en ? `already being published on ${NOM(p)}` : `déjà en cours sur ${NOM(p)}`);
+      else if (e.enAttente) lignes.push(en ? `${NOM(p)} is waiting for you` : `${NOM(p)} attend un geste de ta part`);
+      else if (e.compteAbsent) lignes.push(en ? "eBay account to finish" : "compte eBay à finir");
+      else if (e.enPause) lignes.push(en ? `${NOM(p)} paused on our side` : `${NOM(p)} en pause de notre côté`);
+      else if (e.support === "prohibited") lignes.push(en ? `${NOM(p)} refuses this item` : `${NOM(p)} refuse cet article`);
+      else if (e.fermeeCategorie) lignes.push(en ? `no ${NOM(p)} category for it` : `pas de rayon ${NOM(p)} pour lui`);
+    }
+    const t = lignes.join(" · ");
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : (en ? "Nothing to publish." : "Rien à publier.");
+  }
+
+  // ── Les gestes de la personne sur un article ─────────────────────────────
+  const decider = (id, patch) => setDecisions((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...patch } }));
+  const trancherJumeau = (id, platform, memeArticle) => {
+    const m = moteursRef.current.get(id);
+    if (memeArticle && m) m.setSelected((prev) => { const s = new Set(prev); s.delete(platform); return s; });
+    const avant = decisionsRef.current[id]?.jumeauxTranches ?? new Set();
+    decider(id, { jumeauxTranches: new Set([...avant, platform]) });
+  };
+  const sansPlateforme = (id, platform) => {
+    const m = moteursRef.current.get(id);
+    if (m) m.setSelected((prev) => { const s = new Set(prev); s.delete(platform); return s; });
+  };
+  const retirerDuLot = (id) => { majEtat(id, { phase: "retire" }); };
+
+  // ── L'ENVOI : une RPC par article, l'un après l'autre ────────────────────
+  const [envoi, setEnvoi] = useState(null); // { fait, total }
+  const attendre = (pred, ms) => new Promise((resolve) => {
+    const fin = Date.now() + ms;
+    const boucle = () => { if (pred() || Date.now() > fin) resolve(pred()); else setTimeout(boucle, 150); };
+    boucle();
+  });
+  async function envoyer() {
+    if (!lot) return;
+    const ids = lot.ids.filter((id) => etatsRef.current[id]?.phase === "pret");
+    if (!ids.length) return;
+    setEtape("envoi");
+    setEnvoi({ fait: 0, total: ids.length });
+    let parti = 0;
+    for (const id of ids) {
+      const m = moteursRef.current.get(id);
+      const b = m ? bilanArticle({ ...m, preparationAuRepos: true }, decisionsRef.current[id], lang) : null;
+      if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
+      majEtat(id, { phase: "envoi" });
+      try { await m.publier(); } catch { /* le moteur pose publishError */ }
+      await attendre(() => { const mm = moteursRef.current.get(id); return Boolean(mm && (mm.done || (!mm.publishing && mm.publishError))); }, 10_000);
+      const mm = moteursRef.current.get(id);
+      if (mm?.done) {
+        parti++;
+        majEtat(id, {
+          phase: "envoye",
+          envoyees: mm.fournee?.plateformes ?? [...(mm.selected ?? [])],
+          exclusions: mm.exclusionsDuClic ?? [],
+        });
+        // bulk_batch_id après coup, comme la republication en lot : la RPC ne
+        // le prend pas. Le marqueur platform_fields.lot_publication, lui, est
+        // posé à la création ; l'estampille n'est qu'un raccourci de lecture.
+        supabase.from("cross_post_jobs").update({ bulk_batch_id: lot.id })
+          .eq("user_id", userId).eq("inventaire_id", Number(id)).eq("action", "publish")
+          .filter("platform_fields->lot_publication->>id", "eq", lot.id)
+          .select("id")
+          .then(({ error }) => { if (error) console.warn("[lot] estampille du lot :", error.message); }, () => {});
+      } else {
+        majEtat(id, { phase: "refuse", raison: mm?.publishError || (en ? "The server didn't confirm — nothing was created for this item." : "Le serveur n'a pas confirmé — rien n'a été créé pour cet article.") });
+      }
+      setEnvoi((e) => ({ ...e, fait: e.fait + 1 }));
+    }
+    setEtape("fin");
+    if (parti) onEnvoye?.({ id: lot.id, le: lot.le });
+  }
+
+  // ── Ce que l'écran 2 montre ──────────────────────────────────────────────
+  const lignes = lot ? [...lot.ids, ...Object.keys(etats).filter((id) => !lot.ids.includes(id))] : [];
+  const parId = useMemo(() => new Map(donnees.map((d) => [d.id, d])), [donnees]);
+  const enPrep = lot ? lot.ids.filter((id) => ["attente", ...PHASES_EN_PREPARATION].includes(etats[id]?.phase)) : [];
+  const prepares = lot ? lot.ids.length - enPrep.length : 0;
+  const prets = lot ? lot.ids.filter((id) => etats[id]?.phase === "pret") : [];
+  const aCompleter = lot ? lot.ids.filter((id) => etats[id]?.phase === "questions") : [];
+  const annoncesPretes = prets.reduce((n, id) => n + [...(moteursRef.current.get(id)?.plateformesPubliables ?? [])].length, 0);
+  const preparationFinie = Boolean(lot) && enPrep.length === 0;
+
+  // Réponses communes : un même champ fermé, même liste, sur plusieurs articles.
+  const communes = useMemo(() => {
+    if (!preparationFinie) return [];
+    const entrees = [];
+    for (const id of aCompleter) {
+      const m = moteursRef.current.get(id);
+      for (const [gp, liste] of Object.entries(m?.genericRequiredStatus ?? {})) {
+        for (const a of liste ?? []) {
+          if ((a.state === "missing" || a.state === "invalid") && Array.isArray(a.allowedValues) && a.allowedValues.length && !a.neufSeulement) {
+            entrees.push({ id, gp, key: a.key, label: a.label ?? a.key, allowedValues: a.allowedValues, a });
+          }
+        }
+      }
+    }
+    return groupesReponseCommune(entrees).map((g) => ({ ...g, entrees: entrees.filter((e) => g.ids.includes(e.id) && e.gp === g.gp && e.key === g.key) }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preparationFinie, aCompleter.join(","), tick]);
+  const repondreCommune = (g, valeur) => {
+    for (const e of g.entrees) {
+      const m = moteursRef.current.get(e.id);
+      if (!m) continue;
+      if (e.a.dedicatedTarget && m.setPlatformDedicatedField) m.setPlatformDedicatedField(e.gp, e.a.dedicatedTarget, valeur);
+      else m.setPlatformAspect?.(e.gp, e.a.key, valeur);
+    }
+  };
+
+  // ── La coque ─────────────────────────────────────────────────────────────
+  const numeroEcran = etape === "plateformes" ? 1 : etape === "fin" ? 3 : 2;
+  const titre = etape === "fin"
+    ? (en ? "It's under way" : "C'est parti")
+    : (en ? `Publish ${donnees.length} item${donnees.length > 1 ? "s" : ""}` : `Publier ${donnees.length} article${donnees.length > 1 ? "s" : ""}`);
+  const [quitterArme, setQuitterArme] = useState(false);
+  const quitter = () => {
+    // Rien n'est encore parti mais des articles sont préparés : un second tap
+    // confirme. Les fiches rédigées restent sur les articles (rien de perdu).
+    if (etape === "avant" && prepares > 0 && !quitterArme) { setQuitterArme(true); setTimeout(() => setQuitterArme(false), 4000); return; }
+    onFermer?.();
+  };
+
+  let cta = null, disabled = false, onCta = null, sous = [], secondaire = null;
+  if (etape === "plateformes") {
+    const n = partage.maintenant.length;
+    disabled = !n || fiches == null || quotas == null;
+    cta = fiches == null || quotas == null ? (en ? "Reading your items…" : "Lecture de tes articles…")
+      : !n ? (choix.length ? (en ? "Nothing to publish with this choice" : "Rien à publier avec ce choix") : (en ? "Tick at least one platform" : "Coche au moins une plateforme"))
+      : (en ? `Prepare ${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""}` : `Préparer ${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""}`);
+    onCta = preparer;
+    sous = [en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies."];
+  } else if (etape === "avant") {
+    if (!preparationFinie) {
+      cta = en ? `Preparing… ${prepares} of ${lot.ids.length}` : `Préparation… ${prepares} sur ${lot.ids.length}`;
+      disabled = true;
+      sous = [en ? "You can answer below as soon as a question shows up." : "Tu peux déjà répondre ci-dessous dès qu'une question apparaît."];
+    } else {
+      disabled = !prets.length;
+      cta = !prets.length
+        ? (en ? "Answer the questions to send" : "Réponds aux questions pour envoyer")
+        : aCompleter.length
+          ? (en ? `Send the ${prets.length} ready (${annoncesPretes} listings)` : `Envoyer les ${prets.length} prêts (${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""})`)
+          : (en ? `Send ${annoncesPretes} listing${annoncesPretes > 1 ? "s" : ""}` : `Envoyer ${annoncesPretes} annonce${annoncesPretes > 1 ? "s" : ""}`);
+      onCta = envoyer;
+      if (aCompleter.length && prets.length) sous = [en ? `The ${aCompleter.length} others stay in your stock, prepared: nothing is lost.` : `${aCompleter.length > 1 ? `Les ${aCompleter.length} autres restent` : "L'autre reste"} dans ton stock, préparé${aCompleter.length > 1 ? "s" : ""} : rien n'est perdu.`];
+      else if (prets.length) sous = [en ? "The FillSell extension then posts them from your computer, one after the other." : "L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre."];
+    }
+  } else if (etape === "envoi") {
+    cta = en ? `Queuing… ${envoi?.fait ?? 0} of ${envoi?.total ?? 0}` : `Mise en file… ${envoi?.fait ?? 0} sur ${envoi?.total ?? 0}`;
+    disabled = true;
+    sous = [en ? "Keep this screen open for a few seconds." : "Garde cet écran ouvert quelques secondes."];
+  } else {
+    cta = en ? "Back to stock" : "Retour au stock";
+    onCta = () => onFermer?.();
+    sous = [en ? "You'll follow the batch at the top of your Stock." : "Tu suis le lot en haut de ton Stock."];
+  }
+
+  return createPortal((
+    <div className="fsn" data-ecran={`lot-${etape}`}>
+      <div className="fsn-top">
+        <div className="fsn-col">
+          {etape === "fin" ? <span style={{ width: 38 }} /> : (
+            <button type="button" className="fsn-back" disabled={etape === "envoi"}
+              onClick={() => (etape === "avant" && !prepares ? setEtape("plateformes") : quitter())}
+              aria-label={en ? "Back" : "Retour"}>‹</button>
+          )}
+          <div className="fsn-top-title">{titre}</div>
+          <div className="fsn-top-step num">{numeroEcran} / 3</div>
+          {etape !== "fin" && (
+            <button type="button" className={`fsn-quit${quitterArme ? " fsn-quit--arme" : ""}`} onClick={quitter} disabled={etape === "envoi"}>
+              {quitterArme ? (en ? "Leave? Prepared texts are kept" : "Quitter ? Les textes préparés sont gardés") : (en ? "Leave" : "Quitter")}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="fsn-progress"><div className="fsn-col">
+        {[1, 2, 3].map((i) => <span key={i} className={i <= numeroEcran ? "done" : ""} />)}
+      </div></div>
+
+      <div className="fsn-scroll">
+        <div className="fsn-col">
+          {etape === "plateformes" && (
+            <EcranPlateformes
+              en={en} lang={lang} userId={userId} donnees={donnees} resume={resume} choix={choix} basculer={basculer}
+              sessions={sessions} pauses={pauses} ebayBloque={ebayBloque} ebayParServeur={ebayParServeur}
+              quotas={quotas} remise={remise} partage={partage} annoncesPrevues={annoncesPrevues} duree={duree}
+              extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
+              onVoirOffres={onVoirOffres} fichesLues={fiches != null}
+            />
+          )}
+          {(etape === "avant" || etape === "envoi") && lot && (
+            <EcranAvant
+              en={en} lang={lang} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId}
+              moteurs={moteursRef.current} decisions={decisions} prepares={prepares} preparationFinie={preparationFinie}
+              prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes}
+              repondreCommune={repondreCommune} decider={decider} trancherJumeau={trancherJumeau}
+              sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} envoi={envoi} supabase={supabase}
+            />
+          )}
+          {etape === "fin" && lot && (
+            <EcranFin en={en} L={L} lot={lot} etats={etats} lignes={lignes} parId={parId}
+              extensionNeverSeen={ctx.extensionNeverSeen} ebayParServeur={ebayParServeur} onOuvrirArticle={onOuvrirArticle} remise={remise} />
+          )}
+        </div>
+      </div>
+
+      <div className="fsn-foot">
+        <div className="fsn-col">
+          <Bouton disabled={disabled} onClick={() => onCta?.()}>{cta}</Bouton>
+          {secondaire}
+          {sous.map((l, i) => <p key={i} className="fsn-hint">{l}</p>)}
+        </div>
+      </div>
+
+      {/* Les moteurs du lot : un par article en préparation ou à envoyer. */}
+      <div className="fsl-moteurs" aria-hidden="true">
+        {lot && [...actifs].map((id) => {
+          const d = parId.get(id);
+          if (!d) return null;
+          return (
+            <HoteMoteur
+              key={id}
+              item={d.item}
+              jobs={d.jobs}
+              prixVinted={prixVinted ? prixVinted(d.item) : null}
+              surMoteur={surMoteur}
+              marque={marque}
+              onJobsQueued={onJobsQueued}
+              userId={userId} supabase={supabase} lang={lang}
+              ebayCompte={ctx.ebayCompte} plateformesVisibles={ctx.plateformesVisibles} plateformesOuvertes={ctx.plateformesOuvertes}
+              oplaMotifGrise={ctx.oplaMotifGrise} oplaExtensionMin={ctx.oplaExtensionMin}
+              isPremium={ctx.isPremium} isPro={ctx.isPro} isBusiness={ctx.isBusiness}
+              extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
+            />
+          );
+        })}
+      </div>
+    </div>
+  ), document.body);
+}
+
+// ═══ ÉCRAN 1 — « OÙ LES PUBLIER ? » ═════════════════════════════════════════
+export function EcranPlateformes({
+  en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur,
+  quotas, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, onVoirOffres, fichesLues,
+}) {
+  const n = donnees.length;
+  const vus = donnees.slice(0, 6);
+  const ann = quotas?.annonces ?? null;
+  const dateRemise = dateCourte(remise, en);
+  const extVue = Date.parse(extensionLastSeenAt ?? "");
+  const [ouvertLe] = useState(() => Date.now());
+  const extEndormie = Number.isFinite(extVue) && ouvertLe - extVue > 60 * 60 * 1000;
+  const plateformes = PLATEFORMES_LOT.filter((p) => resume[p]);
+  return (
+    <>
+      <div className="fsn-card" style={{ gap: 10 }}>
+        <div className="fsl-vignettes">
+          {vus.map((d) => <Vignette key={d.id} item={d.item} />)}
+          {n > vus.length && <div className="fsl-plus">+{n - vus.length}</div>}
+        </div>
+        <div>
+          <div className="fsn-card-t">{en ? `${n} item${n > 1 ? "s" : ""}` : `${n} article${n > 1 ? "s" : ""}`}</div>
+          <p className="fsn-small">{en
+            ? "Each one goes where it isn't yet. Your titles, prices and descriptions go out as you wrote them."
+            : "Chacun part là où il n'est pas encore. Tes titres, prix et descriptions partent tels que tu les as écrits."}</p>
+        </div>
+      </div>
+
+      <div>
+        <p className="fsn-eyebrow" style={{ marginBottom: 8 }}>{en ? "Where to publish them?" : "Où les publier ?"}</p>
+        <div className="fsn-stack">
+          {plateformes.map((p) => {
+            const r = resume[p];
+            const pause = pauses[p];
+            const eb = p === "ebay" && ebayBloque;
+            const indispo = r.possibles === 0 || Boolean(pause) || eb;
+            const on = choix.includes(p) && !indispo;
+            const sessionFermee = sessions?.[p] === false && !(p === "ebay" && ebayParServeur);
+            let sousTexte;
+            if (r.possibles === 0) sousTexte = en ? "Already there for all of them" : "Déjà en ligne pour tous";
+            else if (pause) sousTexte = pause || (en ? "Paused on our side for now" : "En pause de notre côté pour l'instant");
+            else if (eb) sousTexte = en ? "Your eBay account isn't ready to sell yet: finish it in Settings" : "Ton compte eBay n'est pas encore prêt à vendre : termine-le dans Réglages";
+            else {
+              const a = en ? `${r.possibles} item${r.possibles > 1 ? "s" : ""}` : `${r.possibles} article${r.possibles > 1 ? "s" : ""}`;
+              const d = r.dejaLa ? (en ? ` · ${r.dejaLa} already there` : ` · ${r.dejaLa} y ${r.dejaLa > 1 ? "sont" : "est"} déjà`) : "";
+              const v = p === "ebay" && ebayParServeur ? (en ? " · sent from our servers" : " · part de nos serveurs") : "";
+              sousTexte = a + d + v;
+            }
+            return (
+              <div key={p}>
+                <button type="button" className={`fsn-pf${on ? " fsn-pf--on" : ""}${indispo ? " fsn-pf--dis" : ""}`} disabled={indispo}
+                  onClick={() => basculer(p)} aria-pressed={on}>
+                  <span className={`fsn-check${on ? " fsn-check--on" : ""}${indispo ? " fsn-check--dis" : ""}`}>{on ? "✓" : ""}</span>
+                  <Logo platform={p} size={26} desature={indispo} />
+                  <span className="fsn-pf-t"><b>{NOM(p)}</b><small>{sousTexte}</small></span>
+                </button>
+                {on && sessionFermee && (
+                  <div className="fsn-pf-sous" style={{ marginTop: 6 }}>
+                    <span>{en ? `You're signed out of ${NOM(p)} on your computer: its listings will wait for you.` : `Tu n'es pas connecté à ${NOM(p)} sur ton ordinateur : ses annonces t'attendront.`}</span>
+                    <div className="fsn-pf-geste"><BoutonMeConnecter userId={userId} platform={p} lang={lang} variante="bouton" /></div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Le compte exact, avant tout geste. */}
+      <Carte gravite={partage.plusTard.length ? "geste" : null} titre={fichesLues
+        ? (en ? `${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""} to create` : `${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""} à créer`)
+        : (en ? "Counting…" : "On compte…")}>
+        {ann?.plafond != null && (
+          <div className="fsn-card-p">
+            {partage.aConsommer === 0
+              ? (en ? "Your texts are already written: this batch doesn't use your monthly listings." : "Tes textes sont déjà rédigés : ce lot ne prend rien sur tes annonces du mois.")
+              : (en
+                  ? `Uses ${partage.aConsommer} of your monthly listings (${Math.max(0, (ann.restantes ?? 0) - partage.aConsommer)} left after).`
+                  : `Prend ${partage.aConsommer} de tes annonces du mois (il t'en restera ${Math.max(0, (ann.restantes ?? 0) - partage.aConsommer)}).`)}
+          </div>
+        )}
+        {partage.plusTard.length > 0 && (
+          <>
+            <div className="fsn-card-p">
+              {en
+                ? `${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}: they stay ready in your stock.`
+                : `${partage.plusTard.length > 1 ? `${partage.plusTard.length} articles attendront` : "1 article attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""} : ${partage.plusTard.length > 1 ? "ils restent prêts" : "il reste prêt"} dans ton stock.`}
+            </div>
+            {onVoirOffres && <button type="button" className="fsn-lien" style={{ alignSelf: "flex-start" }} onClick={onVoirOffres}>{en ? "See the plans" : "Voir les offres"}</button>}
+          </>
+        )}
+        {duree && annoncesPrevues > 0 && (
+          <div className="fsn-card-p">{en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`}</div>
+        )}
+      </Carte>
+
+      {extensionNeverSeen === true && (
+        <Carte gravite="geste" titre={en ? "The FillSell extension isn't installed yet" : "L'extension FillSell n'est pas encore installée"}>
+          <div className="fsn-card-p">{en
+            ? "It's what posts your listings, from Chrome on your computer. Your listings will wait for it: nothing is lost."
+            : "C'est elle qui dépose tes annonces, depuis Chrome sur ton ordinateur. Tes annonces l'attendront : rien n'est perdu."}</div>
+        </Carte>
+      )}
+      {extensionNeverSeen !== true && extEndormie && (
+        <Carte gravite="info">
+          <div className="fsn-card-p">{en
+            ? "Your computer seems off: the listings will go out next time Chrome opens."
+            : "Ton ordinateur semble éteint : les annonces partiront à la prochaine ouverture de Chrome."}</div>
+        </Carte>
+      )}
+    </>
+  );
+}
+
+// ═══ ÉCRAN 2 — « AVANT L'ENVOI » ═════════════════════════════════════════════
+export function EcranAvant({
+  en, lang, L, lot, etats, lignes, parId, moteurs, decisions, prepares, preparationFinie,
+  prets, aCompleter, annoncesPretes, communes, repondreCommune, decider, trancherJumeau, sansPlateforme, retirerDuLot, envoi,
+}) {
+  const total = lot.ids.length;
+  const enCours = lot.ids.find((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase));
+  const itemEnCours = enCours ? parId.get(enCours)?.item : null;
+  const autres = lignes.filter((id) => !lot.ids.includes(id));
+  return (
+    <>
+      {envoi ? (
+        <BarreProgression
+          titre={en ? "Queuing your listings" : "Mise en file de tes annonces"}
+          fraction={envoi.total ? envoi.fait / envoi.total : 0}
+          pas={envoi.total ? 1 / envoi.total : 1}
+          etat="en_cours"
+          lang={lang}
+          phrase={en ? `${envoi.fait} of ${envoi.total} items` : `${envoi.fait} sur ${envoi.total} articles`}
+        />
+      ) : !preparationFinie ? (
+        <BarreProgression
+          titre={en ? "Preparing the listings" : "Préparation des annonces"}
+          fraction={total ? prepares / total : 0}
+          pas={total ? 1 / total : 1}
+          dureePas={15}
+          etat="en_cours"
+          lang={lang}
+          article={itemEnCours ? { photo: urlsPhotos(itemEnCours.photos)[0] ?? null, titre: titreDe(itemEnCours) } : undefined}
+          phrase={en ? `${prepares} of ${total} ready to check` : `${prepares} sur ${total} préparés`}
+        />
+      ) : (
+        <div className="fsl-tuiles">
+          <div className="fsl-tuile fsl-tuile--ok"><b>{prets.length}</b><small>{en ? "ready" : prets.length > 1 ? "prêts" : "prêt"}</small></div>
+          <div className={`fsl-tuile${aCompleter.length ? " fsl-tuile--geste" : " fsl-tuile--mute"}`}><b>{aCompleter.length}</b><small>{en ? "to complete" : "à compléter"}</small></div>
+          <div className="fsl-tuile fsl-tuile--mute"><b>{annoncesPretes}</b><small>{en ? "listings" : annoncesPretes > 1 ? "annonces" : "annonce"}</small></div>
+        </div>
+      )}
+
+      {/* Une réponse pour plusieurs articles : même champ, même liste. */}
+      {communes.map((g) => (
+        <Carte key={g.signature} gravite="geste" titre={`${g.label} · ${NOM(g.gp)}`}>
+          <div className="fsn-card-p">{en
+            ? `Asked for ${g.ids.length} items: one answer fills them all (you can still change one below).`
+            : `Demandé pour ${g.ids.length} articles : une réponse les remplit tous (tu peux encore en changer un plus bas).`}</div>
+          <div className="fsn-choices">
+            {g.allowedValues.slice(0, 12).map((v) => (
+              <button key={v} type="button" className="fsn-choice" onClick={() => repondreCommune(g, v)}>{v}</button>
+            ))}
+          </div>
+        </Carte>
+      ))}
+
+      {/* Les articles qui attendent une réponse, puis les autres. */}
+      {aCompleter.map((id) => (
+        <ArticleAQuestions key={id} id={id} en={en} L={L} item={parId.get(id)?.item} m={moteurs.get(id)} st={etats[id]}
+          decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} />
+      ))}
+
+      <div className="fsn-card" style={{ gap: 0 }}>
+        {lot.ids.filter((id) => !aCompleter.includes(id)).concat(autres).map((id) => {
+          const d = parId.get(id);
+          const st = etats[id] ?? { phase: "attente" };
+          const m = moteurs.get(id);
+          const pfs = st.envoyees ?? (m ? [...(m.plateformesPubliables ?? [])] : []);
+          return (
+            <div key={id} className="fsl-art">
+              <Vignette item={d?.item} />
+              <div className="fsl-art-t">
+                <b>{titreDe(d?.item) || (en ? "Untitled item" : "Article sans titre")}</b>
+                <small>
+                  {st.raison ? st.raison
+                    : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")
+                    : null}
+                </small>
+              </div>
+              {PHASES_EN_PREPARATION.has(st.phase) ? <span className="fsn-spin" aria-hidden="true" /> : null}
+              <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>
+              {st.phase === "pret" && !envoi && (
+                <button type="button" className="fsl-retirer" onClick={() => retirerDuLot(id)} aria-label={en ? "Remove from batch" : "Retirer du lot"}>✕</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+// Un article qui attend une réponse : SES questions, posées par le même bloc
+// que le stepper, plus ce que le lot ajoute (texte à relire, prix, jumeau).
+export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot }) {
+  if (!m) return null;
+  const motifs = st?.motifs ?? [];
+  const aTexte = motifs.some((x) => x.cle === "texte");
+  const aPrix = motifs.some((x) => x.cle === "prix");
+  const plateformes = [...(m.plateformesPubliables ?? [])];
+  const tranches = decision.jumeauxTranches ?? new Set();
+  const jumeaux = (m.jumeaux ?? []).filter((j) => plateformes.includes(j.platform) && !tranches.has(j.platform));
+  const general = m.generales ?? {};
+  const premiere = plateformes[0] ?? [...(m.selected ?? [])][0];
+  const titreQuiPart = String(general.titre || m.edited?.[premiere]?.title || titreDe(item) || "");
+  const descriptionQuiPart = String(general.description || m.edited?.[premiere]?.description || "");
+  return (
+    <Carte className="fsl-article" gravite={null}>
+      <div className="fsl-article-tete">
+        <Vignette item={item} />
+        <div className="fsn-grow">
+          <div className="fsn-article-t">{titreDe(item) || (en ? "Untitled item" : "Article sans titre")}</div>
+          <div className="fsn-article-s">{plateformes.map(NOM).join(" · ")}</div>
+        </div>
+        <Puce ton="geste">{motifs.map((x) => x.libelle).join(" · ") || (en ? "To complete" : "À compléter")}</Puce>
+      </div>
+
+      {aPrix && (
+        <div className="fsn-q fsn-q--bloque">
+          <div className="fsn-q-t">{en ? "Selling price" : "Prix de vente"}</div>
+          <div className="fsn-q-why">{en ? "No price on this item yet. At least €1." : "Cet article n'a pas encore de prix. 1 € au moins."}</div>
+          <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={m.price ?? ""}
+            onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }}
+            placeholder={en ? "Price in €" : "Prix en €"} />
+        </div>
+      )}
+
+      {aTexte && (
+        <div className="fsn-q fsn-q--bloque">
+          <div className="fsn-q-t">{en ? "Check the text that goes out" : "Relis le texte qui part"}</div>
+          <div className="fsn-q-why">{!String(m.texteVendeur?.description ?? "").trim()
+            ? (String(m.initialListing?.description ?? "").trim()
+                ? (en ? "This text was written by FillSell (from your photos), not by you: check it before it goes out." : "Ce texte a été écrit par FillSell (d'après tes photos), pas par toi : relis-le avant qu'il parte.")
+                : (en ? "Your description isn't in FillSell: this one was written from your photos and your title." : "Ta description n'est pas dans FillSell : celle-ci a été écrite d'après tes photos et ton titre."))
+            : (en ? "This title was written by FillSell." : "Ce titre a été écrit par FillSell.")}</div>
+          <input className="fsn-input" type="text" defaultValue={titreQuiPart}
+            onBlur={(ev) => { if (ev.target.value !== titreQuiPart) m.poserValeurGenerale?.("titre", ev.target.value); }} />
+          <textarea className="fsn-textarea" defaultValue={descriptionQuiPart}
+            onBlur={(ev) => { if (ev.target.value !== descriptionQuiPart) m.poserValeurGenerale?.("description", ev.target.value); }} />
+          <div className="fsn-btn-row">
+            <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => decider(id, { texteValide: true })}>
+              {en ? "That's right" : "C'est bon"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {jumeaux.map((j) => (
+        <div key={`${j.platform}:${j.url ?? j.titre}`} className="fsn-q fsn-q--bloque">
+          <div className="fsn-q-t">{en ? `Same item as on ${NOM(j.platform)}?` : `Le même article que sur ${NOM(j.platform)} ?`}</div>
+          <div className="fsn-q-why">
+            {en ? "A similar listing is already online: " : "Une annonce qui ressemble est déjà en ligne : "}
+            <b>{j.titre}</b>{j.prix != null ? ` — ${j.prix} €` : ""}
+            {j.url ? <> · <a href={j.url} target="_blank" rel="noopener noreferrer">{en ? "see it ↗" : "voir ↗"}</a></> : null}
+          </div>
+          <div className="fsn-btn-row">
+            <button type="button" className="fsn-btn fsn-btn--secondary fsn-btn--sm" onClick={() => trancherJumeau(id, j.platform, false)}>
+              {en ? "No, another one: publish" : "Non, un autre : publier"}
+            </button>
+            <button type="button" className="fsn-btn fsn-btn--ghost fsn-btn--sm" onClick={() => trancherJumeau(id, j.platform, true)}>
+              {en ? `Yes: not on ${NOM(j.platform)}` : `Oui : pas sur ${NOM(j.platform)}`}
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {/* Les questions du moteur : le MÊME bloc que le stepper. */}
+      <BlocQuestions m={m} />
+
+      {motifs.some((x) => x.cle === "cta") && (m.motifsCtaGris ?? []).length > 0 && (
+        <div className="fsn-q fsn-q--bloque">
+          <div className="fsn-q-t">{en ? "Before it can go out" : "Avant qu'il puisse partir"}</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>{m.motifsCtaGris.map((x, i) => <li key={i} className="fsn-q-why">{x}</li>)}</ul>
+        </div>
+      )}
+
+      {Object.entries(m.rayonsAChoisir ?? {}).map(([p, q]) => (
+        <CarteRayon key={`rayon-${p}`} platform={p} lang={m.lang} rayon={null} question={q}
+          suggestions={m.suggestionsParPf?.[p] ?? []} champs={{}} configLocale={[]} supabase={m.supabase}
+          onChoisirRayon={(choixRayon) => m.choisirRayon?.(p, choixRayon)} regle="nouvelle" />
+      ))}
+
+      {/* Une question qu'on ne veut pas trancher pour UNE plateforme : on la
+          laisse de côté pour cet article, les autres partent. */}
+      <div className="fsn-row fsn-row--wrap" style={{ gap: 12 }}>
+        {plateformes.length > 1 && plateformes.filter((p) => (m.questionsParPlateforme?.[p] ?? []).length || (m.plateformesRetirables ?? []).includes(p)).map((p) => (
+          <button key={p} type="button" className="fsl-retirer" onClick={() => sansPlateforme(id, p)}>{en ? `Not on ${NOM(p)}` : `Pas sur ${NOM(p)}`}</button>
+        ))}
+        <button type="button" className="fsl-retirer" onClick={() => retirerDuLot(id)}>{en ? "Leave it for later" : "Le garder pour plus tard"}</button>
+      </div>
+    </Carte>
+  );
+}
+
+// ═══ ÉCRAN 3 — « C'EST PARTI » ═══════════════════════════════════════════════
+export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen, ebayParServeur, onOuvrirArticle, remise }) {
+  const envoyes = lot.ids.filter((id) => etats[id]?.phase === "envoye");
+  const annonces = envoyes.reduce((n, id) => n + (etats[id]?.envoyees?.length ?? 0), 0);
+  const deCote = lignes.filter((id) => etats[id]?.phase !== "envoye");
+  const dateRemise = dateCourte(remise, en);
+  return (
+    <>
+      <div className="fsn-centre fsn-stack" style={{ gap: 10, padding: "8px 0" }}>
+        <div className="fsn-ok-rond">✓</div>
+        <h2 className="fsn-h">{annonces
+          ? (en ? `${annonces} listing${annonces > 1 ? "s" : ""} queued` : `${annonces} annonce${annonces > 1 ? "s" : ""} en file`)
+          : (en ? "Nothing was sent" : "Rien n'est parti")}</h2>
+        {annonces > 0 && (
+          <p className="fsn-lead">{extensionNeverSeen === true
+            ? (en ? "They'll go out as soon as the FillSell extension is installed on your computer." : "Elles partiront dès que l'extension FillSell sera installée sur ton ordinateur.")
+            : ebayParServeur && envoyes.every((id) => (etats[id]?.envoyees ?? []).every((p) => p === "ebay"))
+              ? (en ? "eBay listings go out from our servers, even with your computer off." : "Les annonces eBay partent de nos serveurs, même ordinateur éteint.")
+              : (en ? "The FillSell extension posts them from your computer, one after the other. You can close the app." : "L'extension FillSell les dépose depuis ton ordinateur, une après l'autre. Tu peux fermer l'app.")}</p>
+        )}
+      </div>
+
+      {deCote.length > 0 && (
+        <div>
+          <p className="fsn-eyebrow" style={{ marginBottom: 8 }}>{en ? "Left aside — nothing is lost" : "Laissés de côté — rien n'est perdu"}</p>
+          <div className="fsn-card" style={{ gap: 0 }}>
+            {deCote.map((id) => {
+              const d = parId.get(id);
+              const st = etats[id] ?? {};
+              const raison = st.raison
+                || (st.phase === "quota" ? (en ? `Waits for your new month${dateRemise ? ` (${dateRemise})` : ""}.` : `Attend ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)
+                : st.phase === "questions" ? (en ? "An answer was missing: it's prepared, finish it from its card." : "Il manquait une réponse : il est préparé, termine-le depuis sa carte.")
+                : st.phase === "retire" ? (en ? "You kept it for later." : "Tu l'as gardé pour plus tard.")
+                : null);
+              return (
+                <div key={id} className="fsl-art">
+                  <Vignette item={d?.item} />
+                  <div className="fsl-art-t"><b>{titreDe(d?.item)}</b>{raison ? <small>{raison}</small> : null}</div>
+                  <Puce ton={TON_PHASE[st.phase] ?? "mute"}>{L[st.phase] ?? st.phase}</Puce>
+                  {onOuvrirArticle && d?.item && ["questions", "retire", "refuse", "erreur"].includes(st.phase) && (
+                    <button type="button" className="fsl-retirer" onClick={() => onOuvrirArticle(d.item)}>{en ? "Open" : "Ouvrir"}</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

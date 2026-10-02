@@ -122,6 +122,8 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
   verifier(!bilanArticle({ ...base, jumeaux: [{ platform: 'beebs' }] }).motifs.some((x) => x.cle === 'jumeau'), 'jumeau sur une plateforme non visée : rien à demander');
   verifier(bilanArticle({ ...base, plateformesPubliables: new Set() }).motifs.some((x) => x.cle === 'aucune'), 'plus aucune plateforme : dit');
   verifier(!bilanArticle({ ...base, ctaDisabled: true }).pret, 'le bouton du moteur gris : jamais prêt (même règle que le stepper)');
+  verifier(bilanArticle({ ...base, ctaDisabled: true, motifsCtaGris: ['Adresse de remise manquante'] }).motifs[0]?.libelle === 'Adresse de remise manquante',
+    'bouton gris sans autre motif : ses mots à lui sont repris, jamais un « prêt » muet');
 }
 
 // ── Le suivi ──────────────────────────────────────────────────────────────

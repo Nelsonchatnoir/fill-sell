@@ -17,7 +17,7 @@ import BoutonMeConnecter from '../components/BoutonMeConnecter';
 import { MOTIFS } from '../utils/connexionPlateformes';
 import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
 import SwipeRow from '../components/SwipeRow';
-import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
+import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import { repartirParVoie } from '../utils/ebayCompte';
 import { resumeEbay } from '../utils/ebayParcours';
 import EbayCompteSection from '../components/EbayCompteSection';
@@ -55,7 +55,7 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
 import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve, photosApresRayonRetrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
-import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, estGeleLivres, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, estGeleLivres, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
@@ -94,6 +94,11 @@ import { fusionnerReglages } from '../utils/reglagesPlateformes';
 // L'interrupteur choisit la peau du stepper (ancienne par défaut) ; les tables
 // de champs partagés servent à ranger une réponse « Compléter » sur la fiche.
 import { useNouveauStepper } from '../publication/interrupteur';
+import { propsStepperArticle } from '../publication/lot/propsArticle';
+import LotPublication from '../publication/lot/LotPublication';
+import SuiviLot from '../publication/lot/SuiviLot';
+import { LignePublierPlusieurs, AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
+import { PLATEFORMES_LOT, LOT_MAX_ARTICLES, articleSelectionnable, suiviDuLot, idLotDeJob } from '../publication/lot/regles';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
@@ -6213,6 +6218,17 @@ const StockTab = memo(function StockTab({
   // documentée pour jobsByInventaire (règle É5). Un état doit vivre AVANT tout
   // ce qui le lit, y compris dans un tableau de dépendances.
   const [modeBrouillons, setModeBrouillons] = useState(false);
+  // ── PUBLICATION EN LOT (02/10, nuit) — même règle : déclarés AVANT tout
+  //    lecteur. Mode de sélection, ordre du choix (= ordre de départ), écran du
+  //    lot ouvert, suivi ouvert, et les dépôts arrêtés depuis cet appareil
+  //    (filet du trou serveur, cf. publication/lot/arretLot.js).
+  const [modeLot, setModeLot] = useState(false);
+  const [lotSel, setLotSel] = useState([]);
+  const [lotOuvert, setLotOuvert] = useState(null); // { articles, plateformes }
+  const [suiviLotOuvert, setSuiviLotOuvert] = useState(null); // { id, le }
+  const [lotArretes, setLotArretes] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem('fs_lot_arretes') || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+  });
   const rechargerBrouillons = async (uid) => {
     if (!uid) return;
     const { data, error } = await supabase
@@ -6821,11 +6837,67 @@ const StockTab = memo(function StockTab({
   // « Republier en lot » RESTE visible sous filtre, et porte sur les articles
   // FILTRÉS (décision Nico 08/09) : un bandeau qui compterait tout le stock
   // pendant qu'on regarde 14 articles annoncerait un lot qu'on ne voit pas.
-  // ⛔ C'est le SEUL lot du produit : publier passe toujours par le stepper,
-  // un article à la fois. Rien ici ne doit suggérer un envoi groupé.
+  // (02/10, nuit) Ce n'est plus le seul lot du produit : la PUBLICATION en lot
+  // existe (src/publication/lot/). Elle ne court-circuite pas le stepper :
+  // chaque article est préparé par le MÊME moteur, un moteur par article.
   const repubActionnablesVue = stockRetenu
     ? stockRetenu.filter(repubSelectionnable)
     : repubActionnables;
+
+  // ── PUBLICATION EN LOT : qui peut être choisi ─────────────────────────────
+  // En stock, avec une photo, pas encore partout — la règle unique
+  // (publication/lot/regles.articleSelectionnable), celle-là même que la RPC
+  // ferait respecter : le lot ne propose jamais ce que le serveur refuserait.
+  // Comme la republication en lot, le mode porte sur les articles FILTRÉS.
+  const plateformesLotCompte = useMemo(() => plateformesCompte.filter(p => PLATEFORMES_LOT.includes(p)), [plateformesCompte]);
+  const lotSelectionnables = useMemo(() => {
+    const ok = new Set();
+    for (const i of stockFiltre) if (articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok) ok.add(i.id);
+    return ok;
+  }, [stockFiltre, jobsByInventaire, plateformesLotCompte, lang]);
+  const lotActionnablesVue = (stockRetenu ?? stockFiltre).filter(i => lotSelectionnables.has(i.id));
+  const basculerLot = (id) => setLotSel(prev => prev.includes(id)
+    ? prev.filter(x => x !== id)
+    : (prev.length >= LOT_MAX_ARTICLES ? prev : [...prev, id]));
+  const entrerModeLot = (preselection = []) => {
+    setModeLot(true); setModeRepublish(false); setModePrixAchat(false); setModeBrouillons(false);
+    setRepubSel(new Set()); setRepubLot(null); setPaSel(new Set());
+    setLotSel(preselection.slice(0, LOT_MAX_ARTICLES));
+  };
+  const quitterModeLot = () => { setModeLot(false); setLotSel([]); };
+  const ouvrirLot = (plateformes = null) => {
+    const parId = new Map(stockFiltre.map(i => [i.id, i]));
+    const articles = lotSel.map(id => parId.get(id)).filter(Boolean).filter(i => lotSelectionnables.has(i.id));
+    if (!articles.length) return;
+    setLotOuvert({ articles, plateformes });
+    track('lot_publication_ouvert', { articles: articles.length });
+  };
+  // Le lot le plus récent (identifiant posé sur ses jobs) : tant qu'il avance,
+  // ou qu'il a fini il y a moins de 6 h, une ligne en haut du Stock le suit.
+  const lotRecent = useMemo(() => {
+    const parLot = new Map();
+    for (const list of Object.values(jobsByInventaire)) {
+      for (const j of list) {
+        const id = idLotDeJob(j);
+        if (!id || j.action !== 'publish' || !j.platform_fields?.lot_publication) continue;
+        if (!parLot.has(id)) parLot.set(id, { id, le: j.platform_fields.lot_publication.le ?? j.created_at, jobs: [] });
+        parLot.get(id).jobs.push(j);
+      }
+    }
+    let recent = null;
+    for (const l of parLot.values()) if (!recent || String(l.le) > String(recent.le)) recent = l;
+    if (!recent) return null;
+    const suivi = suiviDuLot(recent.jobs);
+    const ilYa = Date.now() - Date.parse(recent.le ?? 0);
+    if (suivi.fini && !(ilYa < 6 * 3600 * 1000) && !suivi.compte.geste) return null;
+    if (ilYa > 7 * 86400 * 1000) return null;
+    return { ...recent, suivi };
+  }, [jobsByInventaire]);
+  const noterArretes = (ids) => setLotArretes(prev => {
+    const n = [...new Set([...prev, ...ids])].slice(-500);
+    try { localStorage.setItem('fs_lot_arretes', JSON.stringify(n)); } catch { /* rien */ }
+    return n;
+  });
 
   const listeStock = useMemo(() => {
     // Les nouveaux filtres passent AVANT le chemin repubFiltre : ce sont deux
@@ -8875,7 +8947,7 @@ const StockTab = memo(function StockTab({
           )}
         </div>
 
-        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16,...(isMobile&&stock.length===0?{order:1}:{})}}>
+        <div ref={listRef} className={`stock-v2${modeLot?' lot-actif':''}`} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16,...(isMobile&&stock.length===0?{order:1}:{})}}>
           <style>{STOCK_CSS}</style>
 
           {/* ── Réordonnancement du 2026-08-27 (hiérarchie Nico) ─────────────
@@ -8983,8 +9055,23 @@ const StockTab = memo(function StockTab({
           )}
           {/* La porte des trois MODES — jamais dans la feuille de filtres : un
               mode ne se cumule pas et change ce qu'on peut FAIRE. */}
-          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&(
+          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(
             <LigneATraiter lang={lang} total={nbATraiter} onOuvrir={()=>setListeOuverte('a_traiter')}/>
+          )}
+          {/* ── PUBLICATION EN LOT (02/10, nuit) : la porte. Sous un filtre
+              « Pas encore sur X » / « Nulle part », elle devient la suite
+              naturelle du filtre (« Publier ces N articles sur X ») ; sinon une
+              ligne discrète, comme « À traiter ». Le lot en cours se suit juste
+              en dessous. */}
+          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(
+            (filtreDiffusion?.mode==='pas_encore'||filtreDiffusion?.mode==='jamais')
+              ?<AppelFiltrePublier lang={lang} nombre={lotActionnablesVue.length}
+                  plateforme={filtreDiffusion?.mode==='pas_encore'?filtreDiffusion.platform:null}
+                  onPublier={()=>{entrerModeLot(lotActionnablesVue.map(i=>i.id));}}/>
+              :<LignePublierPlusieurs lang={lang} nombre={lotSelectionnables.size} onOuvrir={()=>entrerModeLot()}/>
+          )}
+          {lotRecent&&!modeLot&&(
+            <LigneLotEnCours lang={lang} suivi={lotRecent.suivi} le={lotRecent.le} onOuvrir={()=>setSuiviLotOuvert({id:lotRecent.id,le:lotRecent.le})}/>
           )}
 
           {/* ── LES COUCHES ──────────────────────────────────────────────────
@@ -9525,6 +9612,21 @@ const StockTab = memo(function StockTab({
               </div>
             )}
 
+            {modeLot&&(
+              <>
+                <EnteteModeLot lang={lang} onQuitter={quitterModeLot}/>
+                <BarreSelectionLot lang={lang} n={lotSel.length} nVue={lotActionnablesVue.length}
+                  plein={lotSel.length>=LOT_MAX_ARTICLES}
+                  onTout={()=>setLotSel(prev=>{const vus=lotActionnablesVue.map(i=>i.id);const n=[...prev.filter(id=>lotSelectionnables.has(id))];for(const id of vus){if(n.length>=LOT_MAX_ARTICLES)break;if(!n.includes(id))n.push(id);}return n;})}
+                  onVider={()=>setLotSel([])}
+                  onContinuer={()=>ouvrirLot(filtreDiffusion?.mode==='pas_encore'?[filtreDiffusion.platform]:null)}/>
+                {lotActionnablesVue.length===0&&(
+                  <div style={{fontSize:13,color:'#5C6560',padding:'4px 2px 12px'}}>
+                    {lang==='fr'?'Aucun article de cette vue ne peut partir : ils sont déjà partout, vendus ou sans photo.':'No item in this view can go out: already everywhere, sold or without a photo.'}
+                  </div>
+                )}
+              </>
+            )}
             {stock.length===0?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
@@ -9765,7 +9867,7 @@ const StockTab = memo(function StockTab({
                   />
                 )}
                 <div className="ggrid" ref={galerieRef}>
-                {(modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:listeStock).map(item=>{
+                {(modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
                   // prix d'achat absent et 0 € sur un null — la carte annonçait
@@ -10105,8 +10207,9 @@ const StockTab = memo(function StockTab({
                     // swipe-supprimer de l'ancienne liste devient le « ✕ » du
                     // coin photo — même chemin delItem (plan + confirmation),
                     // jamais une suppression sèche.
-                    <div key={item.id} className="gcard" role="button" tabIndex={0} onClick={openEdit} data-mur={murDirect?murDirect.motif:undefined}
-                      onKeyDown={e=>{if(e.key==='Enter'){openEdit();}}}>
+                    <div key={item.id} className={`gcard${modeLot&&lotSel.includes(item.id)?' gcard--lot-choisi':''}`} role={modeLot?'checkbox':'button'} aria-checked={modeLot?lotSel.includes(item.id):undefined} tabIndex={0}
+                      onClick={modeLot?()=>basculerLot(item.id):openEdit} data-mur={murDirect?murDirect.motif:undefined}
+                      onKeyDown={e=>{if(e.key==='Enter'||(modeLot&&e.key===' ')){e.preventDefault();if(modeLot)basculerLot(item.id);else openEdit();}}}>
                       <div className="gphoto">
                         <GalleryPhoto url={photoUrl} alt={item.title}
                           fallback={<div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>}/>
@@ -10301,10 +10404,17 @@ const StockTab = memo(function StockTab({
                           const nom=b?.login?`@${b.login}`:(lang==='fr'?'autre boutique':'other shop');
                           return <span style={{fontSize:10,fontWeight:700,color:"#6B7A75",background:"#F2F0E9",borderRadius:99,padding:"2px 8px",whiteSpace:"nowrap"}}>{nom}</span>;
                         })()}
+                        {/* Publication en lot : le coin de la photo porte la case
+                            (le ✕ de suppression n'a rien à faire dans une
+                            sélection — il revient en quittant le mode). */}
+                        {modeLot?(
+                          <span className={`lot-case${lotSel.includes(item.id)?' on':''}`} aria-hidden="true">{lotSel.includes(item.id)?'✓':''}</span>
+                        ):(
                         <button className="gdel"
                           title={lang==='fr'?'Supprimer cet article':'Delete this item'}
                           aria-label={lang==='fr'?'Supprimer cet article':'Delete this item'}
                           onClick={e=>{e.stopPropagation();delItem(item.id);}}>✕</button>
+                        )}
                         {/* 2. PLATEFORMES en ligne — mêmes gestes que la liste :
                             tap logo → modal de retrait ; logo gelé pendant une
                             republication → feuille d'avancement. */}
@@ -11256,7 +11366,7 @@ const StockTab = memo(function StockTab({
                 {/* En mode republication, la liste montre déjà TOUS les
                     republiables (pas de slice) : un « Voir plus » compté sur
                     stockFiltre serait un bouton sans effet. */}
-                {!modeRepublish&&!modeBrouillons&&stockFiltre.length>10&&!showAllStock&&(
+                {!modeRepublish&&!modeBrouillons&&!modeLot&&stockFiltre.length>10&&!showAllStock&&(
                   <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F2F0E9",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7A75",cursor:"pointer",marginTop:4}}>
                     {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                   </button>
@@ -11793,96 +11903,11 @@ const StockTab = memo(function StockTab({
           plateformesOuvertes={plateformesOuvertes}
           oplaMotifGrise={oplaMotifGrise}
           oplaExtensionMin={oplaExtensionMin}
-          alreadyPublished={[...new Set([
-            ...computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive,
-            ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),
-          ])]}
-          plateformesLiberees={publishItem.disparu_le?['vinted']:[]}
-          // Deux formats coexistent en base : objets {type,url} (flux photos
-          // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync
-          // du dressing) — urlsPhotos lit les deux, le stepper reçoit des URLs.
-          initialPhotos={urlsPhotos(publishItem.photos)}
-          initialListing={{
-            // ⚠️ publishItem vient de mapItem (App.jsx), qui RENOMME les
-            // colonnes : `titre` → `title` et `prix_vente` → `sell`. Lire les
-            // noms de COLONNE ici rendait undefined, en silence.
-            //   · titre perdu → detectObjectIcon n'avait plus que la
-            //     description et le type. Les articles manuels étaient
-            //     rattrapés par leur type ; les importés du dressing, dont le
-            //     type est NULL (donc "Autre" après mapItem, donc l'icône 📦
-            //     « non catégorisable »), tombaient à 0 plateforme sur 4 :
-            //     « catégorie non disponible » sur les quatre, alors que leur
-            //     titre suffisait à les classer (mesuré : 27 titres sur 28) ;
-            //   · prix_vente perdu → le prix suggéré retombait TOUJOURS sur le
-            //     prix d'ACHAT, ce que le commentaire d'origine ne voulait pas.
-            // Les deux noms sont acceptés : un futur appelant qui passerait
-            // une ligne brute de la base marchera aussi.
-            titre:       publishItem.title  ?? publishItem.titre  ?? null,
-            description: publishItem.description ?? null,
-            categorie:   publishItem.type        ?? null,
-            // Catalogue Vinted d'origine (2026-09-07) : il FAIT AUTORITÉ sur la
-            // famille de l'article — un vêtement selon Vinted ne peut pas partir
-            // en Maison & Jardin chez Leboncoin (garde-fou categorieGardeFou.js,
-            // job c324b5ee). Rempli au clic Publier depuis le détail Vinted
-            // (cf. plus haut) ; absent, le garde-fou retombe sur les signaux de
-            // la fiche, jamais sur un blocage.
-            vinted_catalog_id: publishItem.vinted_catalog_id ?? null,
-            marque:      publishItem.marque      ?? null,
-            // ── LES ATTRIBUTS DE LA FICHE ENTRENT DANS LE STEPPER (18/09) ──
-            // Cet objet est une liste BLANCHE, et `attributs` n'y était pas :
-            // taille, genre, matière et couleur mouraient ICI, à la porte.
-            // L'écran affichait quatre tirets pendant que la base portait
-            // « 38 · Bleu · Synthétique » (1789676224963) et
-            // « XS · Vert · Coton 60% Polyester 40% » (1789676272841).
-            // ⛔ On passe l'OBJET tel qu'il est en base ({ v, at, source }) :
-            //    c'est le lecteur partagé (mergeFieldsWithLens) qui sait le
-            //    lire, et lui seul — on ne l'aplatit pas au passage, sinon on
-            //    perdrait la source, qui sert à tracer et à arbitrer.
-            // ⛔ Et la SOURCE NE FILTRE RIEN : releve_ebay, releve_leboncoin,
-            //    releve_beebs, releve_opla, vinted_liste, vinted_detail,
-            //    capture — toutes se valent. Une taille est une taille.
-            attributs:   publishItem.attributs   ?? null,
-            // ── QUI A ÉCRIT LE TEXTE DE CET ARTICLE (2026-09-21) ───────────
-            // `origine` manquait à cette liste blanche, et c'est le SEUL
-            // marqueur que portent les articles rattachés : un `releve_beebs`
-            // / `releve_leboncoin` a le texte de son annonce et AUCUN
-            // `attributs.description_source` (184 articles en base, zéro
-            // marqueur). Sans elle, l'écran ne pouvait pas savoir que le titre
-            // et la description affichés sont ceux du vendeur — et proposait
-            // dans le bloc général le texte réécrit par l'IA plutôt que le
-            // sien. C'est ce que Louis THONET a refusé de valider.
-            // MÊME LISTE que le serveur (generate-listing) : les deux doivent
-            // rester d'accord sur qui a écrit quoi.
-            origine:     publishItem.origine     ?? null,
-            // Prix connu de la ligne inventaire (2026-07-13, job 3d194668) :
-            // pré-remplissage SYNCHRONE de la carte — le fallback DB du
-            // stepper existe mais arrive en async, et surtout il ne couvre
-            // pas ce que la ligne sait déjà. prix_vente est désormais tenu à
-            // jour à chaque publication (fix bd9a516).
-            // ⚠️ LE REPLI `?? prix_achat` A ÉTÉ RETIRÉ LE 2026-08-10. Il avait
-            // déjà été condamné le 2026-07-14 sur le chemin DB (cf. l'effet
-            // d'init de ListingPreviewScreen : « Plus AUCUN repli sur
-            // prix_achat »), mais il survivait ICI — et ce chemin-ci PRIME sur
-            // l'autre. Conséquence vécue le 10/08 (job leboncoin 5229736d) :
-            // un article importé du dressing, prix_vente NULL et prix_achat 12,
-            // est parti sur Leboncoin à 12 € — son prix d'ACHAT — alors que son
-            // annonce Vinted est en ligne à 7 €. Et comme la publication
-            // PERSISTE ensuite le prix dans inventaire.prix_vente (fin de
-            // handlePublish), le prix d'achat devient la vérité de la fiche et
-            // se re-propose à chaque publication suivante : l'erreur se fige.
-            // Sources, de la plus vraie à la moins :
-            //   1. le prix DEMANDÉ sur l'annonce Vinted (dernier relevé de
-            //      vinted_listing_snapshots) — du réel constaté, et déjà l'ordre
-            //      retenu par ouvrirFeuilleRepublication ;
-            //   2. le prix de vente déclaré sur la fiche ;
-            //   3. RIEN. Champ vide plutôt que faux : la garde de publication
-            //      (≥ 1 €) interdit de toute façon toute annonce sans prix, donc
-            //      personne ne part en ligne par accident — alors qu'un prix
-            //      pré-rempli faux, lui, part sans que personne ne le voie.
-            prix_vente_suggere:
-              prixAnnonceVinted(publishItem)
-              ?? publishItem.sell ?? publishItem.prix_vente ?? null,
-          }}
+          // Les entrées « article » du moteur (déjà en ligne, Vinted libéré si
+          // disparu, photos, liste blanche initialListing, déjà retouchées) : UNE
+          // source, partagée avec la publication en lot — src/publication/lot/propsArticle.js,
+          // où vivent désormais les commentaires de chaque champ.
+          {...propsStepperArticle(publishItem, jobsByInventaire[publishItem.id]||[], { prixVinted: prixAnnonceVinted(publishItem) })}
           onClose={()=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);}}
           onJobsQueued={(invId,platforms)=>{
             // Patch optimiste (2026-07-25, S6) : la relance d'une plateforme en
@@ -11913,15 +11938,75 @@ const StockTab = memo(function StockTab({
           onUpgrade={(tier)=>openUpgradeModal(tier,'stepper_publication')}
           extensionNeverSeen={extensionNeverSeen}
           extensionLastSeenAt={extLastSeenBest}
-          // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la
-          // source UNIQUE isRetouchedPhotoEntry — la première version de ce
-          // calcul (enhanced/bg_removed seuls) ne matchait que le schéma
-          // HISTORIQUE, or le pipeline actuel écrit des {type,url} dont la
-          // photo 0 retouchée garde type:'original' : l'URL /enhanced/ fait
-          // foi. Calculé ICI, sur les photos BRUTES de la ligne — le stepper
-          // ne reçoit que des URLs aplaties.
-          alreadyRetouched={Array.isArray(publishItem.photos) &&
-            publishItem.photos.some(isRetouchedPhotoEntry)}
+        />
+      )}
+      {/* ── LA PUBLICATION EN LOT (02/10, nuit) ────────────────────────────
+          L'écran du lot héberge un moteur de stepper par article (sans
+          rien afficher) ; ses dépôts patchent le Stock comme le stepper. */}
+      {lotOuvert&&(
+        <LotPublication
+          articles={lotOuvert.articles}
+          jobsByInventaire={jobsByInventaire}
+          prixVinted={prixAnnonceVinted}
+          choixPrefere={lotOuvert.plateformes}
+          ctx={{
+            userId:user.id, supabase, lang, ebayCompte, plateformesVisibles, plateformesOuvertes,
+            oplaMotifGrise, oplaExtensionMin, isPremium, isPro, isBusiness,
+            extensionNeverSeen, extensionLastSeenAt:extLastSeenBest, plateformesCompte:plateformesLotCompte,
+          }}
+          onJobsQueued={(invId,platforms)=>{
+            // Même patch optimiste que le stepper ci-dessus (2026-07-25, S6).
+            if(!invId||!platforms?.length)return;
+            const now=new Date().toISOString();
+            setJobsByInventaire(prev=>{
+              const cur=[...(prev[invId]||[])];
+              for(const p of platforms){
+                cur.push({id:`optimistic-${invId}-${p}-${now}`,inventaire_id:invId,platform:p,
+                  status:"pending",error:null,created_at:now,platform_fields:null,
+                  action:"publish",listing_url:null,title:null});
+              }
+              return {...prev,[invId]:cur};
+            });
+          }}
+          onFermer={()=>{setLotOuvert(null);quitterModeLot();}}
+          onEnvoye={(lot)=>{track('lot_publication_envoye',{lot:lot.id});}}
+          onVoirOffres={()=>openUpgradeModal?.('pro','lot_publication')}
+          onOuvrirArticle={(item)=>{setLotOuvert(null);quitterModeLot();publierAvecDetail(item);}}
+        />
+      )}
+      {suiviLotOuvert&&(
+        <SuiviLot
+          lang={lang}
+          lot={suiviLotOuvert}
+          jobs={Object.values(jobsByInventaire).flat().filter(j=>idLotDeJob(j)===suiviLotOuvert.id&&j.action==='publish')}
+          articles={new Map(stockFiltreComplet.map(i=>[String(i.id),i]))}
+          userId={user.id}
+          supabase={supabase}
+          arretesIci={lotArretes}
+          onArretes={noterArretes}
+          onPatchJobs={(patchs)=>{
+            const parId=new Map(patchs.map(p=>[p.id,p]));
+            const le=new Date().toISOString();
+            setJobsByInventaire(prev=>{
+              const n={};
+              for(const [k,list] of Object.entries(prev)){
+                n[k]=list.map(j=>parId.has(j.id)?{...j,status:'cancelled',platform_fields:{...(j.platform_fields||{}),arret_utilisateur:le}}:j);
+              }
+              return n;
+            });
+          }}
+          renderGeste={(job)=>{
+            const fermer=()=>setSuiviLotOuvert(null);
+            const fr=lang!=='en';
+            const mur=murDeConnexion(job);
+            if(mur)return <BoutonMeConnecter userId={user.id} platform={job.platform} motif={mur} lang={lang} variante="bouton"/>;
+            if(natureNeedsUser(job)==='en_cours')return null;
+            const style={border:'none',borderRadius:999,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:12,fontWeight:700,color:'#fff',background:'linear-gradient(120deg,#2F9E90,#1B6E62)'};
+            if(needsUserOuvrable(job))return <button type="button" style={style} onClick={()=>{fermer();setNeedsUserJob(job);}}>{fr?'Compléter':'Complete'}</button>;
+            if(job.error)return <button type="button" style={style} onClick={()=>{fermer();setFailJobModal(job);}}>{fr?'Voir':'See'}</button>;
+            return null;
+          }}
+          onFermer={()=>setSuiviLotOuvert(null)}
         />
       )}
     </>
