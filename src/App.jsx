@@ -130,7 +130,8 @@ import { VOICE_KIT_CSS } from './components/voice/tokens';
 import VoiceResultCard from './components/voice/VoiceResultCard';
 // Avertissement « encore en ligne » — MÊME composant que la carte vocale
 // inventory_sell. Les deux chemins de vente disent la même chose, une seule fois.
-import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLigne';
+import ChoixVenteModale from './components/ChoixVenteModale';
+import { prixPrerempli } from './utils/venteModale.js';
 import AvertissementLotEncoreEnLigne from './components/AvertissementLotEncoreEnLigne';
 import { createPortal } from 'react-dom';
 import { useFondFige } from './utils/modale';
@@ -188,19 +189,12 @@ const C = {
   rowBg:"#F5F6F5", rowHover:"#EAEBEA",
 };
 
-// Où l'article a été vendu — choix OBLIGATOIRE de la fenêtre « Vendu » (26/09).
-// Les valeurs sont celles déjà écrites en base (ventes.plateforme, texte) ; le
-// serveur les normalise (ventes_garde_annonce_de_la_vente) pour garder
-// l'annonce de CETTE plateforme et retirer toutes les autres. « Ailleurs »
-// ne correspond à aucune plateforme : toutes les annonces en ligne partent.
-const PLATEFORMES_VENTE=[
-  {valeur:'Vinted',fr:'Vinted',en:'Vinted'},
-  {valeur:'Leboncoin',fr:'Leboncoin',en:'Leboncoin'},
-  {valeur:'Beebs',fr:'Beebs',en:'Beebs'},
-  {valeur:'eBay',fr:'eBay',en:'eBay'},
-  {valeur:'Opla',fr:'Opla',en:'Opla'},
-  {valeur:'Ailleurs',fr:'Ailleurs (main propre…)',en:'Elsewhere (in person…)'},
-];
+// Où l'article a été vendu — choix OBLIGATOIRE de la fenêtre « Vendre » (26/09).
+// (02/10 soir, point 8) Les choix ne sont plus une liste fixe : ce sont les
+// plateformes RÉELLES de l'article (ses annonces en ligne), « Ailleurs / en
+// main propre », et les autres derrière « Autre plateforme… » — cf.
+// components/ChoixVenteModale.jsx et utils/venteModale.js. La valeur envoyée
+// à la base est le CODE ('vinted', …, 'ailleurs').
 
 function useCounter(target, duration = 1200, deps = []) {
   const [val, setVal] = useState(0);
@@ -4144,7 +4138,9 @@ export default function App({ loginOnly = false }){
         if(!hasS) insertedCount++;
         setItems(prev=>[mapItem(data),...prev]);
         if(hasS){
-          const srow={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc,plateforme:item.plateforme||null};
+          // (02/10 soir, point 9) La vente porte SA fiche (inventaire_id) dès sa
+          // création : photo, prix d'achat et bénéfice se lisent sur l'article.
+          const srow={id:idBase++,user_id:user.id,inventaire_id:data.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNorm||null,type:typeAuto||null,description:item.description||null,emplacement:item.emplacement||null,date:item.date||new Date().toISOString().split('T')[0],selling_fees:sf,purchase_costs:pc,plateforme:item.plateforme||null};
           const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
           if(sd)setSales(prev=>[mapSale(sd),...prev]);
         }
@@ -4336,7 +4332,8 @@ export default function App({ loginOnly = false }){
         // La vente porte la MÊME règle que l'inventaire : prix d'achat
         // inconnu → null, et pas de bénéfice calculé. Le chiffre d'affaires
         // (prix_vente), lui, est vrai dans tous les cas et ne se filtre jamais.
-        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_vente:s,benefice:margeCalculable?mg:null,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0],plateforme:iPlateforme||null};
+        // (02/10 soir, point 9) La vente porte SA fiche dès sa création.
+        const srow={id:Date.now()+1,user_id:user.id,inventaire_id:data.id,titre:iTitle,prix_achat:prixAchat,prix_vente:s,benefice:margeCalculable?mg:null,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0],plateforme:iPlateforme||null};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd) setSales(prev=>[mapSale(sd),...prev]);
       }
@@ -4903,8 +4900,13 @@ export default function App({ loginOnly = false }){
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
     // plateforme VIDE (26/09) : choix obligatoire dans la fenêtre, jamais la
-    // plateforme d'origine de l'article par défaut (cf. PLATEFORMES_VENTE).
-    setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total',plateforme:''});
+    // plateforme d'origine de l'article par défaut (cf. ChoixVenteModale).
+    // (02/10 soir, point 8) Prix PRÉ-REMPLI avec le prix affiché de l'article,
+    // modifiable. Ce prix est celui d'UN exemplaire : pour un article en
+    // plusieurs exemplaires, la fenêtre s'ouvre en « prix par unité » — il reste
+    // juste si la personne vend plus d'un exemplaire.
+    const plusieurs=(item.quantite??1)>1;
+    setSellModal({item,sellPrice:prixPrerempli(item),sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:plusieurs?'unit':'total',feesMode:'total',plateforme:''});
   }
 
   async function confirmSell(){
@@ -5990,6 +5992,9 @@ export default function App({ loginOnly = false }){
       .filter(row=>row.statut==='vendu'&&row.prix_vente>0)
       .map(row=>({
         user_id:user.id,
+        // (02/10 soir, point 9) La vente importée porte SA fiche (id rendu par
+        // l'insert ci-dessus) : photo et prix d'achat se lisent sur l'article.
+        inventaire_id:row.id,
         titre:row.titre,
         // Même règle côté ventes : un prix d'achat inconnu reste NULL, et sa
         // marge aussi. Un `|| 0` ici écrivait un bénéfice égal au prix de
@@ -8952,7 +8957,12 @@ export default function App({ loginOnly = false }){
               <div style={{fontSize:16,fontWeight:700,color:C.text}}>💰 {t('marquerVendu')}</div>
               <IconButton onClick={()=>setSellModal(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
-            <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:16,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
+            <div style={{fontSize:13,fontWeight:600,color:C.sub,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sellModal.item.title}</div>
+            {/* (02/10 soir, point 8) Une VENTE, pas une suppression : elle compte
+                dans le stock, les statistiques et le bénéfice. */}
+            <div style={{fontSize:11.5,color:C.sub,marginBottom:16,lineHeight:1.4}}>
+              {lang==='fr'?"Enregistre une vraie vente : stock, statistiques et bénéfice. Ce n'est pas une suppression.":"Records a real sale: stock, stats and profit. This is not a deletion."}
+            </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Field label={t('prixDeVente')} value={sellModal.sellPrice} set={v=>setSellModal(p=>({...p,sellPrice:v}))} placeholder="0,00" type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               {(sellModal.item.quantite||1)>1&&(
@@ -8993,49 +9003,23 @@ export default function App({ loginOnly = false }){
                 </>
               )}
               {/* PLATEFORME DE LA VENTE : CHOIX OBLIGATOIRE, AUCUN DÉFAUT (2026-09-26,
-                  GO Nico). Le champ était libre, optionnel, et pré-rempli avec la
-                  plateforme d'ORIGINE de l'article (« vinted » pour tout import du
-                  dressing). Or c'est lui qui dit au serveur quelle annonce GARDER
-                  (trigger ventes_garde_annonce_de_la_vente) : un article vendu sur
-                  Leboncoin validé avec « vinted » laissait son annonce Vinted en
-                  vente. « Ailleurs » = main propre, vide-grenier… : toutes les
-                  annonces en ligne sont retirées. */}
-              <div>
-                <div style={{fontSize:12,fontWeight:700,color:C.sub,marginBottom:6}}>
-                  🏪 {lang==='fr'?'Vendu sur':'Sold on'} <span style={{color:C.red}}>*</span>
-                </div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {/* (02/10) Après la sortie d'Opla (10/10), Opla ne se propose
-                      qu'aux comptes au dressing Opla synchronisé — ou si la
-                      vente est déjà posée sur Opla. */}
-                  {PLATEFORMES_VENTE.filter(pv=>pv.valeur!=='Opla'||!oplaFermee||sortieOpla.relie===true||sellModal.plateforme==='Opla').map(pv=>{
-                    const actif=sellModal.plateforme===pv.valeur;
-                    return(
-                      <button key={pv.valeur} type="button" onClick={()=>setSellModal(p=>({...p,plateforme:pv.valeur}))}
-                        style={{padding:"7px 12px",borderRadius:99,fontSize:12.5,fontWeight:700,cursor:"pointer",
-                          border:`1.5px solid ${actif?C.teal:'rgba(0,0,0,0.12)'}`,background:actif?C.teal:'#fff',color:actif?'#fff':C.text}}>
-                        {lang==='fr'?pv.fr:pv.en}
-                      </button>
-                    );
-                  })}
-                </div>
-                {!sellModal.plateforme&&(
-                  <div style={{fontSize:11.5,color:C.sub,marginTop:6}}>
-                    {lang==='fr'?"Choisis où l'article a été vendu : ses annonces ailleurs seront retirées.":'Pick where it sold: its other listings will be taken down.'}
-                  </div>
-                )}
-              </div>
+                  GO Nico) — c'est lui qui dit à la base quelle annonce GARDER et
+                  lesquelles retirer. (02/10 soir, point 8) Les plateformes RÉELLES
+                  de l'article d'abord, puis « Ailleurs / en main propre » ; le
+                  verdict dit ce qui va VRAIMENT se passer (exemplaires restants
+                  compris). Après la sortie d'Opla (10/10), Opla ne se propose
+                  qu'aux comptes reliés — ou si elle est en ligne pour cet article. */}
+              <ChoixVenteModale item={sellModal.item} plateforme={sellModal.plateforme}
+                onPlateforme={code=>setSellModal(p=>({...p,plateforme:code}))}
+                quantiteVendue={sellModal.sellQty||1} lang={lang}
+                oplaVisible={!oplaFermee||sortieOpla.relie===true}
+                couleurs={{teal:C.teal,text:C.text,sub:C.sub,red:C.red}}/>
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
                 <input type="checkbox" checked={sellModal.rememberFees} onChange={e=>setSellModal(p=>({...p,rememberFees:e.target.checked}))} style={{width:16,height:16,accentColor:C.teal,cursor:"pointer",flexShrink:0}}/>
                 <span style={{fontSize:12,fontWeight:600,color:C.sub}}>{t('memoriserFrais')}</span>
               </label>
             </div>
-            {/* En ligne ? AVANT le bouton, jamais après : confirmer ici fait
-                armer par la base le retrait des autres annonces (+10 min,
-                migration article_vendu_retire_ses_copies). Même composant, même
-                texte que la carte vocale inventory_sell. */}
-            <AvertissementAnnoncesEnLigne item={sellModal.item} lang={lang} style={{marginTop:16}}/>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <PrimaryButton onClick={confirmSell} disabled={sellModal.enregistrement||!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0||!sellModal.plateforme} style={{flex:1,width:"auto"}}>
                 {t('confirmer')} ✓

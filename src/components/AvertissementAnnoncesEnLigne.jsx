@@ -1,69 +1,31 @@
 // ── « Encore en ligne » — UN avertissement pour LES DEUX chemins de vente ────
 // (2026-08-11) Deux portes mènent à la même écriture de vente :
-//   1. la modale « Marquer comme vendu » de la ligne de stock (App.jsx) ;
+//   1. la modale « Marquer comme vendu » de la ligne de stock (App.jsx) —
+//      depuis le 02/10 soir, elle montre son propre verdict, plus précis
+//      (ChoixVenteModale : plateforme choisie, exemplaires restants) ;
 //   2. la carte de confirmation de l'intent vocal inventory_sell
 //      (VoiceResultCard, « Confirmer la vente ? »).
 // Ni confirmSell ni confirmSellDirect n'arment de job delete eux-mêmes — MAIS
 // depuis le 26/09 (migration article_vendu_retire_ses_copies, dossier
 // Joséphine) la BASE le fait : dès que la fiche passe en vendu, chaque annonce
-// encore en ligne reçoit un retrait, exécuté 10 min plus tard. L'annonce de la
+// encore en ligne reçoit un retrait (sans délai pour les copies prouvées, 02/10). L'annonce de la
 // plateforme choisie comme lieu de la vente n'est pas touchée (c'est elle qui
 // est vendue). L'avertissement annonce donc ce qui VA se passer, et comment
-// l'annuler — plus « retire-la toi-même ».
+// plus « retire-la toi-même ».
 //
-// CE FICHIER EST LE SEUL ENDROIT OÙ ÇA SE DIT. Une formulation, un calcul, deux
-// points de montage : ne recopier ni le texte ni la liste dans un appelant. Le
-// calcul lui-même vit dans utils/publicationState.js (annoncesEncoreEnLigne),
-// avec le reste de l'état de publication.
+// Les PHRASES vivent dans utils/venteModale.js (texteAvertissementEnLigne,
+// verdictVente), la LECTURE dans ./annoncesEnLigneArticle, le CALCUL dans
+// utils/publicationState.js (annoncesEncoreEnLigne) : ne recopier ni le texte
+// ni la liste dans un appelant.
 //
 // Rendu volontairement muet tant que la lecture des jobs n'a pas répondu : un
 // avertissement qui clignote « rien » puis « 3 plateformes » se lit comme un
 // bug. Il n'empêche jamais de confirmer — la vente est vraie, et le retrait des
 // autres annonces suit tout seul.
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { annoncesEncoreEnLigne } from '../utils/publicationState';
+import { useAnnoncesEncoreEnLigne } from './annoncesEnLigneArticle';
 import { PLATFORM_LABELS } from '../utils/shared';
+import { texteAvertissementEnLigne } from '../utils/venteModale';
 import { V } from './voice/tokens';
-
-// null tant que la lecture n'a pas abouti, puis [{ platform, url }].
-// Non exportée : les deux appelants montent le composant, jamais le hook — et
-// un fichier qui exporte autre chose que des composants casse le fast refresh.
-function useAnnoncesEncoreEnLigne(item) {
-  const invId = item?.id ?? null;
-  // La lecture est mémorisée AVEC l'id qu'elle décrit : si l'article change
-  // (carte vocale qui bascule d'un candidat à l'autre), l'ancienne réponse ne
-  // vaut plus et le rendu repasse en « lecture en cours » sans setState de
-  // remise à zéro — donc sans rendu en cascade.
-  const [lu, setLu] = useState({ invId: null, jobs: [] });
-  useEffect(() => {
-    // Vente directe (article jamais entré en stock) : rien à lire, rien à dire.
-    if (invId == null) return;
-    let annule = false;
-    (async () => {
-      // ⛔ Colonnes vérifiées, identiques au poll du Stock : cross_post_jobs n'a
-      // PAS d'updated_at, et un select PostgREST est tout ou rien — une colonne
-      // inconnue ne dégrade pas, elle annule la requête entière.
-      // Pas de filtre user_id : la RLS « Users manage own cross_post_jobs » le
-      // fait déjà, et inventaire_id est propre à l'utilisateur.
-      const { data, error } = await supabase
-        .from('cross_post_jobs')
-        .select('id, inventaire_id, platform, status, action, created_at, listing_url, platform_fields')
-        .eq('inventaire_id', invId)
-        .in('status', ['pending', 'processing', 'published', 'deleted']);
-      if (annule) return;
-      // Lecture en échec : on n'invente pas d'annonces en ligne. La vente n'est
-      // jamais bloquée par un aléa réseau — on se tait, comme pour un article
-      // jamais publié.
-      if (error) console.error('[annoncesEncoreEnLigne]', error.message);
-      setLu({ invId, jobs: error || !data ? [] : data });
-    })();
-    return () => { annule = true; };
-  }, [invId]);
-  if (invId == null) return [];
-  if (lu.invId !== invId) return null; // lecture pas encore aboutie POUR CET article
-  return annoncesEncoreEnLigne(item, lu.jobs);
-}
 
 // Énumération lisible : « Vinted », « Vinted et eBay », « Vinted, Beebs et eBay ».
 function enumerer(noms, fr) {
@@ -86,9 +48,9 @@ export default function AvertissementAnnoncesEnLigne({ item, lang = 'fr', style 
         ⚠️ {fr ? `En ligne sur ${enumerer(noms, fr)}` : `Online on ${enumerer(noms, fr)}`}
       </div>
       <div style={{ fontSize: 12.5, fontWeight: 500, color: V.amberInk, opacity: 0.92, lineHeight: 1.45 }}>
-        {fr
-          ? "En enregistrant la vente, ces annonces seront retirées automatiquement dans 10 minutes — sauf celle de la plateforme où tu l'as vendu. Une erreur ? Supprime la vente avant : rien ne sera retiré."
-          : 'Once the sale is recorded, these listings are taken down automatically within 10 minutes — except the one on the platform where you sold it. A mistake? Delete the sale before then: nothing will be removed.'}
+        {/* (02/10 soir) Le texte vit dans utils/venteModale.js : la base arme
+            le retrait des copies prouvées sans délai (plus « dans 10 minutes »). */}
+        {texteAvertissementEnLigne(lang)}
       </div>
       {liens.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>

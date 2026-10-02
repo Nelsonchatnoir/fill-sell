@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { codePlateformeVente } from '../src/utils/venteModale.js';
 const source=fs.readFileSync('src/utils/venteAtomique.js','utf8')
- .replace(/^import .*;$/m,'').replace('export async function','async function');
+ .replace(/^import .*;[ \t]*$/gm,'').replace('export async function','async function');
 const espace=new Map();
 const stockage={getItem:k=>espace.get(k),setItem:(k,v)=>espace.set(k,v),removeItem:k=>espace.delete(k)};
-const contexte=vm.createContext({Map,Error,globalThis:{},crypto:{randomUUID:()=> 'cle-fixture'}});
+const contexte=vm.createContext({Map,Error,globalThis:{},crypto:{randomUUID:()=> 'cle-fixture'},codePlateformeVente});
 vm.runInContext(source+'\nthis.enregistrer=enregistrerVenteArticle;',contexte);
 const args={userId:'fixture',article:{id:1,quantite:3},prix:12,frais:1,quantite:1,plateforme:'opla'};
 const appels=[];let panne=true;
@@ -21,4 +22,11 @@ assert.equal(espace.size,0);
 const refus={rpc:async()=>({data:{ok:false,reason:'Quantité modifiée'}})};
 await assert.rejects(()=>contexte.enregistrer(args,{client:refus,stockage}),/Quantité modifiée/);
 assert.equal(espace.size,0);
-console.log('Vente : réponse perdue rejouée avec la même clé, quantité attendue conservée, refus affiché.');
+// (02/10 soir) Le CODE de la plateforme part au serveur, jamais le libellé.
+const appelsCode=[];
+const clientCode={rpc:async(nom,p)=>{appelsCode.push(p);return{data:{ok:true}};}};
+await contexte.enregistrer({...args,article:{id:2,quantite:1},plateforme:'Vinted'},{client:clientCode,stockage});
+await contexte.enregistrer({...args,article:{id:3,quantite:1},plateforme:''},{client:clientCode,stockage});
+assert.equal(appelsCode[0].p_plateforme,'vinted');
+assert.equal(appelsCode[1].p_plateforme,'ailleurs');
+console.log('Vente : réponse perdue rejouée avec la même clé, quantité attendue conservée, refus affiché, code de plateforme envoyé.');

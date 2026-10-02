@@ -84,7 +84,9 @@ const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue'
 // texte « vinted » en toutes lettres était le seul restant de l'app. Le libellé
 // s.plateforme est du texte libre (saisie manuelle possible) : une valeur sans
 // clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
-const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs'};
+// (02/10 soir) opla ajoutée : la fenêtre « Vendre » envoie désormais le CODE
+// de la plateforme (« opla », « ailleurs »), plus le libellé.
+const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs',opla:'opla'};
 
 // ── Constantes de volume (2026-08-11) ───────────────────────────────────────
 // Fenêtre de RENDU des ventes importées. N'a aucun effet sur la sélection ni sur
@@ -1431,7 +1433,7 @@ const VentesTab = memo(function VentesTab({
                       <div className="icons">
                         {PLATFORM_KEY[pKey]
                           ?<span className="plogo" title={s.plateforme}><PlatformLogo platform={PLATFORM_KEY[pKey]} size={18}/></span>
-                          :<div className="micon ic-plateforme">{s.plateforme}</div>}
+                          :<div className="micon ic-plateforme">{pKey==='ailleurs'?(lang==='en'?'Elsewhere':'Ailleurs'):s.plateforme}</div>}
                       </div>
                     )}
                     {/* Saisie du prix d'achat manquant, DANS la ligne.
