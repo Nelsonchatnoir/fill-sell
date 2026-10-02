@@ -4329,6 +4329,16 @@ export default function ListingPreviewScreen({
   // moteur — même état, mêmes effets, mêmes gestes, mêmes RPC. L'hôte
   // choisit par l'interrupteur (src/publication/interrupteur.js).
   variante = "classique",
+  // ── LE PILOTE DE LA PUBLICATION EN LOT (02/10/2026, nuit) ───────────────
+  // null (défaut) : rien ne change, l'écran est celui de toujours.
+  // Objet : ce moteur prépare UN article d'un lot, sans rien afficher —
+  // src/publication/lot/ héberge un moteur par article et lit `moteur` par
+  // `pilote.surMoteur(invId, moteur)` après chaque rendu. Mêmes effets, même
+  // rédaction, mêmes gardes, même RPC : le lot ne réécrit RIEN du moteur. Ce
+  // que le mode change, et rien d'autre : aucun rendu, aucun brouillon de
+  // session (un seul emplacement, partagé avec le stepper), aucune modale
+  // ouverte toute seule. À utiliser avec variante="nouvelle".
+  pilote = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -4338,7 +4348,9 @@ export default function ListingPreviewScreen({
   // props bougent ensuite). null = ouverture fraîche, sinon on reprend là où
   // l'utilisateur en était avant le remount/reload.
   const draftRef = useRef(undefined);
-  if (draftRef.current === undefined) draftRef.current = readStepperDraft(inventaireId ?? null);
+  // Pilote du lot : jamais le brouillon de session — il appartient au stepper
+  // ouvert à la main, et le lot monte plusieurs moteurs à la fois.
+  if (draftRef.current === undefined) draftRef.current = pilote ? null : readStepperDraft(inventaireId ?? null);
   const draft = draftRef.current;
   const invKeyRef = useRef(inventaireId ?? null);
 
@@ -5103,7 +5115,8 @@ export default function ListingPreviewScreen({
       .then(({ error }) => { if (error) console.warn("[stepper] fiche non sauvegardée :", error.message); })
       .catch(() => {});
     if (done) {
-      clearStepperPersistence();
+      // Pilote du lot : le brouillon de session n'est pas le sien (cf. prop).
+      if (!pilote) clearStepperPersistence();
       // La publication est PARTIE : on fige la fiche telle qu'elle a servi —
       // catégories résolues, tailles converties, aspects rapprochés compris.
       // C'est cette version-là qu'une republication doit reprendre, sans
@@ -5111,7 +5124,7 @@ export default function ListingPreviewScreen({
       if (invId && platformListings && ficheChargeeRef.current) enregistrerEnBase();
       return undefined;
     }
-    try {
+    if (!pilote) try {
       sessionStorage.setItem(STEPPER_DRAFT_KEY, JSON.stringify({
         ...charge,
         invKey: invKeyRef.current,
@@ -5141,7 +5154,7 @@ export default function ListingPreviewScreen({
       customPriced, photoAnalysis, modeleConfirme, photoOption, background, platformListings,
       processedPhotos, edited, sharedFields, sharedOverrides, selected, articleSourceMorte,
       dissociees, generales,
-      supabase, userId]);
+      supabase, userId, pilote]);
 
   // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
   // platformCompat.js) : calculée dès que l'article est connu, elle GRISE les
@@ -5239,6 +5252,9 @@ export default function ListingPreviewScreen({
   // l'utilisateur a cliqué ou s'il a buté sur un plafond. Best-effort : jamais
   // bloquer une publication pour une ligne de télémétrie.
   const ouvrirQuotaModal = (origine, etat, declencheur = "automatique") => {
+    // Pilote du lot : aucune modale (rien n'est affiché) et aucun faux clic
+    // « offres » journalisé — le lot lit platformErrorCode et le dit lui-même.
+    if (pilote) return;
     if (userId) {
       supabase.from("usage_logs")
         .insert({ user_id: userId, feature: "premium_cta_click", metadata: { origine, declencheur } })
@@ -6152,10 +6168,14 @@ export default function ListingPreviewScreen({
   const [resolutionAffichee, setResolutionAffichee] = useState(null);
   // Défaut nº8 : l'avis « retouche non aboutie » se referme une fois lu.
   const [retoucheAvisLu, setRetoucheAvisLu] = useState(false);
+  // (02/10, lot) La rédaction pour laquelle la résolution a FINI de tourner —
+  // aboutie, refusée ou injoignable. Ne change rien au parcours : le pilote du
+  // lot s'en sert pour savoir quand lire les questions d'un article.
+  const [resolutionFaitePour, setResolutionFaitePour] = useState(null);
   useEffect(() => {
     if (!platformListings?.platforms) return undefined;
     const plateformes = [...selected].filter(p => edited[p] && platformListings.platforms[p]);
-    if (!plateformes.length) return undefined;
+    if (!plateformes.length) { setResolutionFaitePour(platformListings); return undefined; }
     const contexte = {
       plateformes, selected, edited, initialListing, sharedFields, sharedOverrides,
       activeAiIcon, activeAiObjet, origineCat, lang, supabase,
@@ -6167,8 +6187,9 @@ export default function ListingPreviewScreen({
       },
     };
     const empreinte = signatureResolution(contexte);
-    if (resolutionPrevolRef.current?.empreinte === empreinte) return undefined;
+    if (resolutionPrevolRef.current?.empreinte === empreinte) { setResolutionFaitePour(platformListings); return undefined; }
     let vivant = true;
+    const listingsResolus = platformListings;
     (async () => {
       try {
         const resolution = await resoudrePublication(contexte);
@@ -6199,6 +6220,8 @@ export default function ListingPreviewScreen({
         console.log(`[prévol] catégorie et champs résolus dès la génération : ${plateformes.join(", ")}`);
       } catch (e) {
         console.warn("[prévol] résolution indisponible — le clic recalculera :", e?.message ?? e);
+      } finally {
+        if (vivant) setResolutionFaitePour(listingsResolus);
       }
     })();
     return () => { vivant = false; };
@@ -6491,6 +6514,22 @@ export default function ListingPreviewScreen({
   //    qu'une copie contient. Une copie laissée de côté ici repartirait avec
   //    le texte d'hier le jour où la case est cochée, et personne ne le
   //    verrait. Les dissociées restent sautées par `appliquerGenerale`.
+  // (02/10, lot) Le prix GÉNÉRAL posé hors de l'écran de rédaction : exactement
+  // ce que fait le champ prix du bloc général (applyCentralPrice, dans
+  // StepGeneration) — le prix, et chaque copie qui n'a pas son prix à elle.
+  const poserPrixGeneral = (raw) => {
+    const brut = raw == null ? "" : String(raw).replace(",", ".").trim();
+    const v = brut === "" ? null : Number(brut);
+    setPrice(brut === "" ? null : v);
+    setEdited(prev => {
+      const next = { ...prev };
+      for (const p of Object.keys(next)) {
+        if (customPriced.has(p)) continue;
+        next[p] = { ...next[p], price: v };
+      }
+      return next;
+    });
+  };
   const poserValeurGenerale = (champ, valeur) => {
     setGenerales(prev => ({ ...prev, [champ]: valeur }));
     setEdited(prev => appliquerGenerale(prev, {
@@ -6712,19 +6751,23 @@ export default function ListingPreviewScreen({
   // deux exemplaires du même jouet, c'est banal, et c'est la personne qui
   // sait. Règle et limites du rapprochement : utils/jumeauxEnLigne.js.
   const [jumeaux, setJumeaux] = useState([]);
+  // (02/10, lot) La recherche de jumeaux qui a RÉPONDU — même usage que
+  // resolutionFaitePour : le pilote du lot attend la réponse avant de conclure.
+  const [jumeauxPour, setJumeauxPour] = useState(null);
   const titrePourJumeaux = edited?.vinted?.title || edited?.leboncoin?.title
     || edited?.beebs?.title || edited?.ebay?.title || initialListing?.titre || "";
   const marquePourJumeaux = sharedFields?.marque || initialListing?.marque || "";
   const cleJumeaux = `${step}|${[...plateformesPubliables].sort().join(",")}|${titrePourJumeaux}|${marquePourJumeaux}|${price ?? ""}`;
   useEffect(() => {
-    if (step !== 3 || !plateformesPubliables.size || !titrePourJumeaux.trim()) { setJumeaux([]); return; }
+    if (step !== 3 || !plateformesPubliables.size || !titrePourJumeaux.trim()) { setJumeaux([]); setJumeauxPour(cleJumeaux); return; }
     let vivant = true;
     chercherJumeauxEnLigne(supabase, {
       userId, inventaireId: invId, titre: titrePourJumeaux, marque: marquePourJumeaux, prix: price,
       plateformes: [...plateformesPubliables],
       // Les photos de l'article : la PREUVE par l'image (2026-09-23).
       photos: Array.isArray(photos) ? photos : [],
-    }).then(r => { if (vivant) setJumeaux(r); });
+    }).then(r => { if (vivant) { setJumeaux(r); setJumeauxPour(cleJumeaux); } },
+      () => { if (vivant) setJumeauxPour(cleJumeaux); });
     return () => { vivant = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cleJumeaux, invId, userId]);
@@ -7045,8 +7088,10 @@ export default function ListingPreviewScreen({
     const iconJv = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
     return plateformeEbayDuJeu(jeuVideoDeLArticle(iconJv, titre, description), titre);
   }, [edited, initialListing, activeAiIcon]);
+  // (02/10, lot) La catégorie eBay dont les aspects exigés ont été LUS.
+  const [ebayAspectsLusPour, setEbayAspectsLusPour] = useState(null);
   useEffect(() => {
-    if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); return; }
+    if (!ebayPreviewCategoryId) { setEbayRequiredPreview(null); setEbayAspectsLusPour(null); return; }
     let alive = true;
     (async () => {
       try {
@@ -7068,6 +7113,7 @@ export default function ListingPreviewScreen({
           .map(a => ({ name: a.name, mode: a.mode, allowedValues: (a.allowedValues ?? []).slice(0, 1000) }));
         setEbayRequiredPreview(req.length ? req : null);
       } catch { if (alive) setEbayRequiredPreview(null); }
+      finally { if (alive) setEbayAspectsLusPour(ebayPreviewCategoryId); }
     })();
     return () => { alive = false; };
   }, [ebayPreviewCategoryId]);
@@ -7487,11 +7533,14 @@ export default function ListingPreviewScreen({
   // réellement. Le contraste avec les effets eBay (qui ne bouclaient pas) tient
   // à leur dépendance à ebayPreviewCategoryId, une valeur primitive.
   const genericCategoryKeysSig = JSON.stringify(genericCategoryKeys);
+  // (02/10, lot) Les rayons dont le catalogue des champs exigés a été LU —
+  // le pilote du lot attend cette lecture avant de compter les questions.
+  const [catalogueLuPour, setCatalogueLuPour] = useState(null);
   useEffect(() => {
     const entries = Object.entries(JSON.parse(genericCategoryKeysSig));
     // Garde d'égalité de contenu : ne jamais reposer un {} d'identité neuve si
     // déjà vide — sinon genericRequiredStatus (dérivé) churne les consommateurs.
-    if (!entries.length) { setGenericAspectsCatalog(prev => (Object.keys(prev).length ? {} : prev)); return; }
+    if (!entries.length) { setGenericAspectsCatalog(prev => (Object.keys(prev).length ? {} : prev)); setCatalogueLuPour(genericCategoryKeysSig); return; }
     let alive = true;
     (async () => {
       try {
@@ -7626,6 +7675,7 @@ export default function ListingPreviewScreen({
         setGenericAspectsCatalog(prev =>
           JSON.stringify(prev) === JSON.stringify(next) ? prev : next);
       } catch { if (alive) setGenericAspectsCatalog(prev => (Object.keys(prev).length ? {} : prev)); }
+      finally { if (alive) setCatalogueLuPour(genericCategoryKeysSig); }
     })();
     return () => { alive = false; };
   }, [genericCategoryKeysSig]);
@@ -8268,6 +8318,9 @@ export default function ListingPreviewScreen({
   // plateforme × catégorie. Cas cible : RAM/stockage d'un PC portable
   // présents dans le titre, plateforme d'une console (« Nintendo Switch »).
   const genericResolvedFor = useRef({});
+  // (02/10, lot) Micro-appels d'extraction en vol : le pilote du lot attend
+  // qu'ils aient répondu avant de compter ce qui reste à demander.
+  const [iaGeneriqueEnVol, setIaGeneriqueEnVol] = useState(0);
   useEffect(() => {
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       const catKey = genericCategoryKeys[gp];
@@ -8369,6 +8422,7 @@ export default function ListingPreviewScreen({
         (a.allowedValues?.length ?? 0) > 0
       );
       if (!askable.length) continue;
+      setIaGeneriqueEnVol(n => n + 1);
       (async () => {
         try {
           // 2. Vocabulaire OUVERT : transmettre une liste relevée (partielle)
@@ -8434,6 +8488,7 @@ export default function ListingPreviewScreen({
             else setPlatformAspect(gp, a.key, exacte);
           }
         } catch { /* micro-appel de secours : jamais bloquant */ }
+        finally { setIaGeneriqueEnVol(n => Math.max(0, n - 1)); }
       })();
     }
     // Deps par SIGNATURE (fix boucle 2026-07-16) : jamais l'objet
@@ -9144,6 +9199,11 @@ export default function ListingPreviewScreen({
       // au lieu de faire échouer tout l'appel — la refusée est dite sur
       // l'écran de suivi, avec son état. L'ancien stepper garde le refus en
       // bloc, à l'identique (un seul passage de boucle, même appel).
+      // (02/10) Pilote du lot : chaque job porte l'identifiant de son lot, posé
+      // à la CRÉATION — la RPC recopie platform_fields tel quel, sans migration.
+      if (pilote?.marqueJobs && typeof pilote.marqueJobs === "object") {
+        for (const r of rows) r.platform_fields = { ...(r.platform_fields ?? {}), ...pilote.marqueJobs };
+      }
       let rowsEnvoyees = rows;
       let refuseesServeur = [];
       // (2026-09-27) Fiche jumelle déjà en ligne : le serveur la nomme.
@@ -9987,6 +10047,23 @@ export default function ListingPreviewScreen({
     genericFieldToSharedKey,
     rayonsAChoisir: Object.keys(rayonsAChoisir), libelleRayon: lang === "en" ? "Category" : "Rayon",
   });
+  // (02/10, lot) Plus rien ne tourne en arrière-plan pour cet article : la
+  // rédaction est là, la résolution a répondu, le catalogue des champs exigés
+  // est lu, les micro-appels d'extraction sont revenus, la recherche de
+  // jumeaux a répondu. C'est alors seulement que les questions sont les
+  // bonnes. Lu par le pilote du lot ; l'écran, lui, n'en a pas besoin.
+  const preparationAuRepos = (() => {
+    if (step !== 3 || generatingPlatforms || !platformListings || !publishedStateLoaded || publishing) return false;
+    if (resolutionFaitePour !== platformListings) return false;
+    if (catalogueLuPour !== genericCategoryKeysSig) return false;
+    if (jumeauxPour !== cleJumeaux) return false;
+    if (iaGeneriqueEnVol > 0) return false;
+    if (selected.has("ebay") && ebayPreviewCategoryId) {
+      if (ebayAspectsLusPour !== ebayPreviewCategoryId) return false;
+      if (ebayRequiredPreview && ebayIaFiniePour !== ebayPreviewCategoryId) return false;
+    }
+    return true;
+  })();
   const extensionVueLe = (() => {
     const a = Date.parse(extensionLastSeenAt ?? "");
     const b = Date.parse(extSeenRelu ?? "");
@@ -10081,7 +10158,25 @@ export default function ListingPreviewScreen({
     ctaLabel: step === 3 ? ctaLabel() : null,
     // Le suivi
     fournee, exclusionsDuClic, publieesSansPf, createdThisRun, parcoursCreation,
+    // ── Le pilote de la publication en lot (02/10) ─────────────────────────
+    // Lectures de plus, et le geste d'envoi direct. Les écrans du stepper ne
+    // s'en servent pas : rien ne change pour eux.
+    pilote: Boolean(pilote),
+    // Le texte du vendeur, champ par champ ({ titre, description } : chaîne
+    // vide quand ce n'est pas le sien) — en lot, personne ne relit une carte,
+    // un texte qui n'est pas celui du vendeur se montre avant l'envoi.
+    texteVendeur: texteDuVendeurFiche(),
+    setPrice, poserPrixGeneral, poserValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
+    // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,
+    // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est
+    // la règle du 15/09 (le job part en attente, rien n'est jeté).
+    publier: handlePublish,
   };
+  // Le pilote du lot lit le moteur APRÈS chaque rendu, jamais pendant.
+  useEffect(() => { pilote?.surMoteur?.(inventaireId ?? null, moteur); });
+  // Pilote du lot : aucun rendu — ni chargement plein écran, ni étapes, ni
+  // modales. Le lot affiche ce qu'il faut, pour tous les articles à la fois.
+  if (pilote) return null;
 
   if (initializing) return createPortal((
     <div style={{
