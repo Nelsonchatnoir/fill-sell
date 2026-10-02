@@ -111,6 +111,8 @@ const state = {
   // false → Opla n'existe plus dans le popup ; null (serveur d'avant, lecture
   // ratée) → l'affichage d'avant.
   oplaRelie: null,
+  // La bascule de la sortie (interrupteur serveur, le 10/10) est-elle passée ?
+  oplaSortieActive: false,
   // ── DEMANDE D'AVIS (02/10/2026) ──────────────────────────────────────────
   // { url } quand le SERVEUR a ouvert la demande (avis-demande) ; null sinon.
   avis: null,
@@ -235,6 +237,7 @@ async function fetchPendingJobs(accessToken) {
   state.oplaEnAttente = jobs.filter((j) => j.platform === "opla");
   const relie = data?.contexte?.opla?.relie;
   state.oplaRelie = relie === true || relie === false ? relie : null;
+  state.oplaSortieActive = data?.contexte?.opla?.sortie_active === true;
   return jobs.filter((j) => j.action !== "delete");
 }
 
@@ -861,8 +864,12 @@ function renderPlateformes() {
       // Le MÊME message que l'app et le serveur (autorisationOplaRequise) —
       // ⟦opla-autorisation-popup:début⟧
       const sous = n
-        ? `Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (${n} en attente). Appuie sur « Autoriser Opla » : c'est une seule fois.`
-        : "Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois.";
+        ? (state.oplaSortieActive
+          ? `Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (${n} en attente). Appuie sur « Autoriser Opla » : c'est une seule fois.`
+          : `Opla attend ton autorisation pour que FillSell y dépose tes annonces (${n} en attente). Appuie sur « Autoriser Opla » : c'est une seule fois.`)
+        : (state.oplaSortieActive
+          ? "Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois."
+          : "Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois.");
       // ⟦opla-autorisation-popup:fin⟧
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
@@ -910,7 +917,9 @@ function renderPlateformes() {
       // Opla : ce n'est pas une session à ouvrir, c'est FillSell à autoriser.
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
-        `<div class="plat-sous"><i class="dot gris"></i>Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois.</div>${lienEcarter}</div>` +
+        `<div class="plat-sous"><i class="dot gris"></i>${state.oplaSortieActive
+          ? "Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois."
+          : "Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois."}</div>${lienEcarter}</div>` +
         `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
       );
     } else if (etat === "ecartee") {
