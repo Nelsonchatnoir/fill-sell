@@ -238,6 +238,25 @@ console.log("\n[11] questionsAPoser — un seul endroit de saisie, déduplicatio
     ebayRequiredStatus: [], genericFieldToSharedKey: C.genericFieldToSharedKey, SHARED_PROPAGATION: C.SHARED_PROPAGATION,
   });
   ok("sticky : un champ où la personne a écrit reste affiché (rempli), mais ne compte plus", q2.redTotal === 2 && q2.redRestants === 0, `${q2.redTotal}/${q2.redRestants}`);
+  // (02/10, nuit — statue de Nico) Taille partagée répondue « Unique », hors de
+  // la grille du rayon Beebs : l'aspect Beebs est SA question, avec sa grille —
+  // il ne se cache plus derrière l'input partagé (le compte disait « 1 question »,
+  // l'écran « Tout est complété »).
+  const q3 = R.questionsAPoser({
+    missingSharedFields: [], sharedFieldCfg: cfg, stickyShared: new Set(["taille"]),
+    genericRequiredStatus: { beebs: [{ key: "Taille", label: "Taille", state: "invalid", blocking: true, value: "Unique", allowedValues: ["S", "M", "L"] }] },
+    ebayRequiredStatus: [{ name: "Taille", state: "invalid", blocking: true, sharedKey: "taille", value: "Unique", allowedValues: ["Taille unique", "S"] }],
+    genericFieldToSharedKey: C.genericFieldToSharedKey, SHARED_PROPAGATION: C.SHARED_PROPAGATION,
+  });
+  ok("taille partagée répondue mais hors grille Beebs/eBay : chacune garde SA question (une seule, la taille commune)",
+    Boolean(q3.questionTaille) && q3.questionTaille.lignes.length === 2 && q3.redRestants === 1, JSON.stringify({ t: q3.redTotal, r: q3.redRestants, qt: q3.questionTaille?.lignes?.map(l => l.gp) }));
+  const q4 = R.questionsAPoser({
+    missingSharedFields: [], sharedFieldCfg: cfg, stickyShared: new Set(["taille"]),
+    genericRequiredStatus: { beebs: [{ key: "Taille", label: "Taille", state: "invalid", blocking: true, value: "Unique", allowedValues: ["S", "M", "L"] }] },
+    ebayRequiredStatus: [], genericFieldToSharedKey: C.genericFieldToSharedKey, SHARED_PROPAGATION: C.SHARED_PROPAGATION,
+  });
+  ok("une seule plateforme hors grille : son aspect s'affiche, et compte", q4.redGenericAspects.some(({ gp, a }) => gp === "beebs" && a.key === "Taille") && q4.redRestants === 1, `${q4.redTotal}/${q4.redRestants}`);
+  ok("champ partagé MANQUANT : l'aspect reste dédupliqué (la même question, posée une fois)", !q.redGenericAspects.some(({ a }) => a.key === "size" || a.key === "clothing_st"));
   ok("valeur unique → confirmation explicite, seulement si on peut décocher", q.genSeule({ a: { state: "missing", allowedValues: ["Neuf avec étiquette"] } }) === true
     && R.questionsAPoser({ genericFieldToSharedKey: C.genericFieldToSharedKey, SHARED_PROPAGATION: C.SHARED_PROPAGATION, peutDecocher: false }).genSeule({ a: { state: "missing", allowedValues: ["x"] } }) === false);
 }

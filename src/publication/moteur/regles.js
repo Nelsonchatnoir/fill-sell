@@ -323,13 +323,23 @@ export function questionsAPoser({
   const ebayDansRouge = (a) => aspectBloquant(a) || stickyEbay.has(a.name);
   const genericDansRouge = (gp, a) => aspectBloquant(a) || Boolean(stickyGeneric[gp]?.has(a.key));
   let redEbayAspects = canEbay
-    ? (ebayRequiredStatus ?? []).filter(a => ebayDansRouge(a) && !(a.sharedKey && sharedRendered.has(a.sharedKey)))
+    ? (ebayRequiredStatus ?? []).filter(a => ebayDansRouge(a)
+        && !(a.sharedKey && sharedRendered.has(a.sharedKey) && (missingSharedFields.includes(a.sharedKey) || !aspectBloquant(a))))
     : [];
+  // (02/10, nuit) La déduplication ne vaut que si le champ partagé MANQUE :
+  // c'est alors la même question, posée une fois. Quand il porte déjà une
+  // valeur qui n'entre pas dans la grille de CETTE plateforme (« Unique » sur
+  // le rayon Beebs d'une statue, « XS / 34 » sur le rayon enfant), l'aspect est
+  // SA question — même règle que le compte du moteur (clesQuestions,
+  // etatsParPlateforme). Avant, il disparaissait derrière l'input partagé
+  // (« Tout est complété ») pendant que le compte disait « 1 question » : une
+  // impasse, et une valeur hors liste qui partait quand même.
   let redGenericAspects = canGeneric
     ? Object.entries(genericRequiredStatus ?? {}).flatMap(([gp, list]) =>
         (list ?? []).filter(a => {
           const sk = genericFieldToSharedKey(gp, a.key);
-          if (sk && sharedRendered.has(sk) && (SHARED_PROPAGATION[sk] ?? []).includes(gp)) return false;
+          if (sk && sharedRendered.has(sk) && (SHARED_PROPAGATION[sk] ?? []).includes(gp)
+              && (missingSharedFields.includes(sk) || !aspectBloquant(a))) return false;
           return genericDansRouge(gp, a);
         }).map(a => ({ gp, a })))
     : [];
