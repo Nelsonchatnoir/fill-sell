@@ -1,0 +1,274 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LES CARTES D'INFORMATION — bandeau « sortie d'Opla », carte d'avis (02/10/2026)
+   ═══════════════════════════════════════════════════════════════════════════
+   Composants : BandeauSortieOpla.jsx, CarteAvis.jsx. Le popup de l'extension
+   porte la même carte d'avis, recopiée en HTML dans chrome-extension/popup.html
+   (mêmes jetons, mêmes mesures).
+
+   Identité FillSell : papier #F6F5F1, encre #10201B, sarcelle #2F9E90 /
+   #1B6E62, ambre #E8956D, Space Grotesk (700 au plus). Grille de 4 px stricte :
+   toute marge, tout espacement est un multiple de 4.
+
+   ⛔ TOUTES LES COULEURS SONT DES VARIABLES posées sur .fsc — rien en dur
+      dans les règles. Le thème SOMBRE est complet (mêmes noms, autres
+      valeurs) et s'active quand la surface qui accueille la carte est sombre :
+      [data-theme="dark"] sur un ancêtre, ou un ancêtre .fsc-theme-auto quand
+      le système est en sombre. L'app et le popup sont clairs aujourd'hui
+      (aucun thème sombre nulle part) : la carte reste donc claire chez eux,
+      plutôt que de devenir une tache noire au milieu d'un écran blanc.
+
+   Contrastes mesurés (WCAG 2.1) :
+     clair  — encre/papier 15,5:1 · texte secondaire #5C6560/papier 5,5:1 ·
+              pastille #8A4318/#FBEBE2 6,2:1 · icône sarcelle #1B6E62/#E4F1EE
+              5,3:1 · icône ambre #B4532A/#FBEBE2 4,3:1 · bouton blanc/encre 16,9:1
+     sombre — #EEF2EF/#17211E 14,6:1 · #A6B2AD/#17211E 7,5:1 · bouton
+              #10201B/#EEF2EF 14,9:1
+   Les étoiles sont décoratives (aria-hidden) : elles ne portent aucune info. */
+
+.fsc {
+  --fsc-papier: #F6F5F1;
+  --fsc-bord: rgba(16, 32, 27, 0.12);
+  --fsc-separateur: rgba(16, 32, 27, 0.08);
+  --fsc-encre: #10201B;
+  --fsc-texte2: #5C6560;
+  --fsc-teal-fond: #E4F1EE;
+  --fsc-teal-ico: #1B6E62;
+  --fsc-ambre-fond: #FBEBE2;
+  --fsc-ambre-ico: #B4532A;
+  --fsc-ambre-texte: #8A4318;
+  --fsc-etoile: #E8956D;
+  --fsc-btn-fond: #10201B;
+  --fsc-btn-texte: #FFFFFF;
+  --fsc-btn-survol: #1D332C;
+  --fsc-contour: rgba(16, 32, 27, 0.18);
+  --fsc-contour-survol: rgba(16, 32, 27, 0.05);
+  --fsc-focus: #2F9E90;
+  --fsc-ombre: 0 1px 2px rgba(16, 32, 27, 0.04), 0 8px 24px -16px rgba(16, 32, 27, 0.16);
+
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  padding: 20px;
+  border-radius: 20px;
+  background: var(--fsc-papier);
+  /* Le filet de 0,5 px : Chrome arrondit toute BORDURE sous 1 px à 1 px
+     entier ; une ombre sans flou de 0,5 px reste, elle, un vrai filet. */
+  border: none;
+  box-shadow: 0 0 0 0.5px var(--fsc-bord), var(--fsc-ombre);
+  color: var(--fsc-encre);
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  text-align: left;
+  -webkit-font-smoothing: antialiased;
+  animation: fsc-entree 240ms cubic-bezier(0.34, 1.32, 0.64, 1) both;
+}
+.fsc *, .fsc *::before, .fsc *::after { box-sizing: border-box; }
+
+/* Le sombre : mêmes noms, autres valeurs. */
+[data-theme="dark"] .fsc,
+.fsc[data-theme="dark"] {
+  --fsc-papier: #17211E;
+  --fsc-bord: rgba(255, 255, 255, 0.10);
+  --fsc-separateur: rgba(255, 255, 255, 0.08);
+  --fsc-encre: #EEF2EF;
+  --fsc-texte2: #A6B2AD;
+  --fsc-teal-fond: rgba(47, 158, 144, 0.18);
+  --fsc-teal-ico: #5CC2B4;
+  --fsc-ambre-fond: rgba(232, 149, 109, 0.16);
+  --fsc-ambre-ico: #F2A37E;
+  --fsc-ambre-texte: #F2B08F;
+  --fsc-etoile: #E8956D;
+  --fsc-btn-fond: #EEF2EF;
+  --fsc-btn-texte: #10201B;
+  --fsc-btn-survol: #FFFFFF;
+  --fsc-contour: rgba(255, 255, 255, 0.20);
+  --fsc-contour-survol: rgba(255, 255, 255, 0.06);
+  --fsc-focus: #5CC2B4;
+  --fsc-ombre: 0 1px 2px rgba(0, 0, 0, 0.30), 0 8px 24px -16px rgba(0, 0, 0, 0.50);
+}
+@media (prefers-color-scheme: dark) {
+  .fsc-theme-auto .fsc {
+    --fsc-papier: #17211E;
+    --fsc-bord: rgba(255, 255, 255, 0.10);
+    --fsc-separateur: rgba(255, 255, 255, 0.08);
+    --fsc-encre: #EEF2EF;
+    --fsc-texte2: #A6B2AD;
+    --fsc-teal-fond: rgba(47, 158, 144, 0.18);
+    --fsc-teal-ico: #5CC2B4;
+    --fsc-ambre-fond: rgba(232, 149, 109, 0.16);
+    --fsc-ambre-ico: #F2A37E;
+    --fsc-ambre-texte: #F2B08F;
+    --fsc-etoile: #E8956D;
+    --fsc-btn-fond: #EEF2EF;
+    --fsc-btn-texte: #10201B;
+    --fsc-btn-survol: #FFFFFF;
+    --fsc-contour: rgba(255, 255, 255, 0.20);
+    --fsc-contour-survol: rgba(255, 255, 255, 0.06);
+    --fsc-focus: #5CC2B4;
+    --fsc-ombre: 0 1px 2px rgba(0, 0, 0, 0.30), 0 8px 24px -16px rgba(0, 0, 0, 0.50);
+  }
+}
+
+/* ── En-tête ─────────────────────────────────────────────────────────────── */
+.fsc-pastille {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--fsc-ambre-fond);
+  color: var(--fsc-ambre-texte);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+.fsc-titre {
+  margin: 12px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--fsc-encre);
+  text-wrap: balance;
+}
+.fsc-texte {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--fsc-texte2);
+  text-wrap: pretty;
+}
+
+/* ── Lignes d'information : icône dans un carré arrondi de 28 px ────────── */
+.fsc-lignes {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+.fsc-ligne {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--fsc-encre);
+}
+.fsc-ligne { position: relative; }
+/* Séparateur fin : 1 px réduit de moitié (une bordure de 0,5 px serait
+   arrondie à 1 px entier par le navigateur). */
+.fsc-ligne + .fsc-ligne::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--fsc-separateur);
+  transform: scaleY(0.5);
+  transform-origin: top;
+}
+.fsc-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+.fsc-ico svg { width: 16px; height: 16px; display: block; }
+.fsc-ico-continue { background: var(--fsc-teal-fond); color: var(--fsc-teal-ico); }
+.fsc-ico-arret { background: var(--fsc-ambre-fond); color: var(--fsc-ambre-ico); }
+
+.fsc-pied {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fsc-texte2);
+}
+
+/* ── Boutons : UN principal, pleine largeur ; secondaires en contour ────── */
+.fsc-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.fsc-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 160ms ease, transform 120ms ease, border-color 160ms ease;
+}
+.fsc-btn:active { transform: scale(0.98); }
+.fsc-btn:focus-visible { outline: 2px solid var(--fsc-focus); outline-offset: 2px; }
+.fsc-btn-principal {
+  height: 48px;
+  border: none;
+  background: var(--fsc-btn-fond);
+  color: var(--fsc-btn-texte);
+}
+.fsc-btn-principal:hover { background: var(--fsc-btn-survol); }
+.fsc-secondaires { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fsc-btn-contour {
+  height: 44px;
+  border: 1px solid var(--fsc-contour);
+  background: transparent;
+  color: var(--fsc-encre);
+  font-size: 14px;
+}
+.fsc-btn-contour:hover { background: var(--fsc-contour-survol); }
+
+/* ── Carte d'avis : centrée ─────────────────────────────────────────────── */
+.fsc-centre { text-align: center; }
+.fsc-centre .fsc-texte { margin-left: auto; margin-right: auto; max-width: 320px; }
+.fsc-tuile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto;
+  border-radius: 16px;
+  background: var(--fsc-teal-fond);
+  color: var(--fsc-teal-ico);
+}
+.fsc-tuile svg { width: 24px; height: 24px; display: block; }
+.fsc-centre .fsc-titre { margin-top: 16px; }
+.fsc-etoiles {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 12px;
+  color: var(--fsc-etoile);
+}
+.fsc-etoiles svg { width: 20px; height: 20px; display: block; fill: currentColor; }
+
+/* ── Mouvement : fondu + légère montée, courbe ressort ──────────────────── */
+@keyframes fsc-entree {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fsc.fsc-sortie {
+  animation: fsc-sortie 200ms ease-in both;
+}
+@keyframes fsc-sortie {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fsc, .fsc.fsc-sortie { animation: none; }
+  .fsc-btn { transition: none; }
+  .fsc-btn:active { transform: none; }
+}
