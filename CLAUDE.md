@@ -5,24 +5,24 @@
 historique contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.82** au CWS ; **minimum serveur 0.6.81** (sous le
+- **Servi** : extension **0.6.85** au CWS ; **minimum serveur 0.6.81** (sous le
   seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.37** ;
   `get-pending-jobs` v188 (`true`), `update-job-status` v116 (`false`),
-  `ebay-api-worker` v71, `handler-watch` v69, `email-tunnel` v68 (`false`),
-  `avis-demande` v1 (`true`). ⚠️ Le 30/09 22:52, le changement de
+  `ebay-api-worker` v71, `handler-watch` v69, `email-tunnel` v69 (`false`),
+  `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
   coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
   après, plus aucune publication ni republication Opla, synchro gardée pour
   les comptes reliés (`_shared/opla-sortie.js`). Migration 20261002120000
-  (quotas) : EN ATTENTE DU GO de Nico.
+  (quotas) appliquée et inscrite (GO du 02/10).
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
 - **Ouvert** : **0.6.86** à téléverser : `build/CWS-0.6.86-A-TELEVERSER/`
-  (0.6.83→0.6.85 brûlées) ; binaires **2.9.38** (AAB
+  (nouvelle soumission) ; binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic après push) ;
   ornellaracano 307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
