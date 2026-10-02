@@ -59,6 +59,7 @@ const els = {
   history: document.getElementById("history"),
   openApp: document.getElementById("open-app"),
   diag: document.getElementById("diag"),
+  avis: document.getElementById("avis"),
 };
 
 const state = {
@@ -103,6 +104,17 @@ const state = {
   // jobs Opla sont dans la file — retraits compris, ils attendent le même accès.
   oplaAcces: null,
   oplaEnAttente: [],
+  // ── SORTIE D'OPLA (02/10/2026, décision Nico) ─────────────────────────────
+  // FillSell ne publie plus sur Opla. Le serveur dit si le dressing Opla de ce
+  // compte est DÉJÀ synchronisé (contexte.opla.relie) : seul ce cas garde la
+  // ligne Opla (et « Autoriser Opla », pour que la synchronisation continue).
+  // false → Opla n'existe plus dans le popup ; null (serveur d'avant, lecture
+  // ratée) → l'affichage d'avant.
+  oplaRelie: null,
+  // ── DEMANDE D'AVIS (02/10/2026) ──────────────────────────────────────────
+  // { url } quand le SERVEUR a ouvert la demande (avis-demande) ; null sinon.
+  avis: null,
+  verite: null,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -221,6 +233,8 @@ async function fetchPendingJobs(accessToken) {
   // Opla : TOUS ses jobs (retraits compris) — c'est la présence d'un job qui
   // fait apparaître la ligne « Autoriser Opla » (cf. renderPlateformes).
   state.oplaEnAttente = jobs.filter((j) => j.platform === "opla");
+  const relie = data?.contexte?.opla?.relie;
+  state.oplaRelie = relie === true || relie === false ? relie : null;
   return jobs.filter((j) => j.action !== "delete");
 }
 
@@ -341,6 +355,8 @@ async function load() {
   }
   state.status = {};
   render();
+  // Après le rendu, jamais avant : la carte d'avis ne passe pas devant l'état.
+  demanderAvisSiLeServeurLeVeut();
 }
 
 // ── Logos ────────────────────────────────────────────────────────────────────
@@ -671,6 +687,9 @@ function calculerEtats() {
   state.sondeFraiche = Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS;
   state.etats = {};
   for (const p of PLATFORMS) {
+    // (02/10, sortie d'Opla) Compte sans dressing Opla synchronisé : Opla n'a
+    // aucun état — ni « à autoriser », ni bandeau d'alerte.
+    if (p.optionnel && state.oplaRelie === false) { state.etats[p.key] = { etat: null, sous: null }; continue; }
     state.etats[p.key] = state.session ? etatPlateforme(p, sondeFraichePour(p.key)) : { etat: null, sous: null };
   }
 }
@@ -835,13 +854,15 @@ function renderPlateformes() {
     // être atteignable à tout moment. C'est le SEUL endroit où
     // chrome.permissions.request peut s'exécuter (clic, page d'extension).
     // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
+    // (02/10, sortie d'Opla) Pas de dressing Opla synchronisé : pas de ligne.
+    if (p.optionnel && state.oplaRelie === false) continue;
     if (p.optionnel && state.oplaAcces !== true) {
       const n = state.oplaEnAttente.length;
       // Le MÊME message que l'app et le serveur (autorisationOplaRequise) —
       // ⟦opla-autorisation-popup:début⟧
       const sous = n
-        ? `Opla attend ton autorisation pour que FillSell y dépose tes annonces (${n} en attente). Appuie sur « Autoriser Opla » : c'est une seule fois.`
-        : "Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois.";
+        ? `Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (${n} en attente). Appuie sur « Autoriser Opla » : c'est une seule fois.`
+        : "Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois.";
       // ⟦opla-autorisation-popup:fin⟧
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
@@ -889,7 +910,7 @@ function renderPlateformes() {
       // Opla : ce n'est pas une session à ouvrir, c'est FillSell à autoriser.
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
-        `<div class="plat-sous"><i class="dot gris"></i>Opla attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Opla » : c'est une seule fois.</div>${lienEcarter}</div>` +
+        `<div class="plat-sous"><i class="dot gris"></i>Opla attend ton autorisation pour que FillSell continue de suivre tes annonces Opla (ventes, retraits). Appuie sur « Autoriser Opla » : c'est une seule fois.</div>${lienEcarter}</div>` +
         `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
       );
     } else if (etat === "ecartee") {
@@ -1296,6 +1317,7 @@ function renderDiag() {
 
 function render() {
   calculerEtats();
+  renderAvis();
   renderAccount();
   renderBars();
   renderAwake();
@@ -1320,6 +1342,78 @@ function renderVif() {
   renderPlateformes();
   renderPrete();
   renderFooter();
+}
+
+// ── DEMANDE D'AVIS (02/10/2026, décision Nico) ──────────────────────────────
+// La RÈGLE est au serveur (fonction avis-demande) : 10 publications,
+// republications ou retraits aboutis d'affilée sans aucun échec, compte de
+// plus de 3 jours, pas de paiement dans les 24 h, 60 jours entre deux
+// demandes, « Plus tard » 30 jours, « C'est déjà fait » plus jamais. Le popup
+// ne pose la question qu'une fois par ouverture, jamais pendant qu'une action
+// tourne, et au plus toutes les 3 h quand la réponse a été non.
+const AVIS_ESSAI_KEY = "fillsell_avis_essai_le";
+const AVIS_ESPACEMENT_MS = 3 * 3600 * 1000;
+const SPARKLES_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>';
+const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>';
+let avisDemande = false;
+
+function actionEnCours() {
+  return !!state.eveil || batchRunning()
+    || state.jobs.some((j) => j.status === "processing")
+    || state.repub.some((j) => j.status === "processing")
+    || state.sync?.status === "running";
+}
+
+async function appelerAvis(body) {
+  const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/avis-demande`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${state.session.access_token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+    body: JSON.stringify({ plateforme: "extension", ...body }),
+  });
+  if (!res.ok) throw new Error(`avis-demande → HTTP ${res.status}`);
+  return res.json();
+}
+
+async function demanderAvisSiLeServeurLeVeut() {
+  if (avisDemande || !state.session?.access_token || state.lectureOk !== true || actionEnCours()) return;
+  avisDemande = true;
+  try {
+    const st = await chrome.storage.local.get(AVIS_ESSAI_KEY);
+    const dernier = Number(st?.[AVIS_ESSAI_KEY] ?? 0);
+    if (Number.isFinite(dernier) && Date.now() - dernier < AVIS_ESPACEMENT_MS) return;
+    const r = await appelerAvis({ action: "ouvrir" });
+    if (r?.ouvrir && r.url && !actionEnCours()) {
+      state.avis = { url: r.url };
+      renderAvis();
+    } else {
+      await chrome.storage.local.set({ [AVIS_ESSAI_KEY]: Date.now() });
+    }
+  } catch (e) {
+    console.warn("[popup] avis-demande :", e);
+  }
+}
+
+function renderAvis() {
+  if (!els.avis) return;
+  if (!state.avis) { els.avis.classList.add("hidden"); els.avis.innerHTML = ""; return; }
+  // Rendue UNE fois : un nouveau rendu (poll, storage) ne rejoue pas l'entrée.
+  if (els.avis.dataset.rendue === "1") { els.avis.classList.remove("hidden"); return; }
+  els.avis.dataset.rendue = "1";
+  els.avis.innerHTML =
+    `<div class="fsc">` +
+      `<div class="fsc-tuile" aria-hidden="true">${SPARKLES_SVG}</div>` +
+      `<h2 id="avis-titre" class="fsc-titre">10 actions, zéro accroc</h2>` +
+      `<p class="fsc-texte">Si FillSell te fait gagner du temps, ton avis nous aide énormément.</p>` +
+      `<div class="fsc-etoiles" aria-hidden="true">${STAR_SVG.repeat(5)}</div>` +
+      `<div class="fsc-actions">` +
+        `<button class="fsc-btn fsc-btn-principal" type="button" data-avis="laisser_avis">Laisser un avis</button>` +
+        `<div class="fsc-secondaires">` +
+          `<button class="fsc-btn fsc-btn-contour" type="button" data-avis="plus_tard">Plus tard</button>` +
+          `<button class="fsc-btn fsc-btn-contour" type="button" data-avis="deja_fait">C'est déjà fait</button>` +
+        `</div>` +
+      `</div>` +
+    `</div>`;
+  els.avis.classList.remove("hidden");
 }
 
 // ── Interactions ─────────────────────────────────────────────────────────────
@@ -1362,6 +1456,20 @@ els.openApp.addEventListener("click", openApp);
 // « Ouvrir l'appli », « Se connecter » à FillSell. Aucune de ces actions ne
 // publie quoi que ce soit — elles ouvrent un onglet.
 document.body.addEventListener("click", (e) => {
+  // ── Carte d'avis : un choix, une trace, la carte part ─────────────────────
+  const avis = e.target.closest("[data-avis]");
+  if (avis) {
+    const evenement = avis.getAttribute("data-avis");
+    const url = state.avis?.url;
+    state.avis = null;
+    if (els.avis) { els.avis.dataset.rendue = ""; renderAvis(); }
+    // La trace d'abord : ouvrir l'onglet ferme le popup, et un appel en vol
+    // mourrait avec lui. Le store s'ouvre dès la réponse (ou l'échec).
+    appelerAvis({ action: "noter", evenement })
+      .catch((err) => console.warn("[popup] avis non noté :", err))
+      .finally(() => { if (evenement === "laisser_avis" && url) chrome.tabs.create({ url }); });
+    return;
+  }
   // ── (D) « VÉRIFIER » — le seul bouton de ce popup qui déclenche du réseau ──
   // Une sonde, sur UNE plateforme, parce que l'utilisateur l'a demandé. Le
   // popup ne se ferme pas : il doit montrer le résultat, c'est tout l'objet du

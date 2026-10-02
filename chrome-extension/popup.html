@@ -342,6 +342,56 @@
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; animation: none !important; }
     }
+
+    /* ── Carte d'avis (02/10/2026) — MÊME carte que l'app web ──────────────
+       Recopie de src/components/CarteInfo.css (mêmes jetons, mêmes mesures,
+       mêmes noms de classes) : papier, encre, sarcelle, ambre FillSell,
+       grille de 4 px. Toutes les couleurs sont des variables ; la palette
+       sombre est prête ([data-theme="dark"]) — le popup, lui, est clair. */
+    .fsc {
+      --fsc-papier: #F6F5F1; --fsc-bord: rgba(16,32,27,0.12); --fsc-separateur: rgba(16,32,27,0.08);
+      --fsc-encre: #10201B; --fsc-texte2: #5C6560;
+      --fsc-teal-fond: #E4F1EE; --fsc-teal-ico: #1B6E62;
+      --fsc-etoile: #E8956D;
+      --fsc-btn-fond: #10201B; --fsc-btn-texte: #FFFFFF; --fsc-btn-survol: #1D332C;
+      --fsc-contour: rgba(16,32,27,0.18); --fsc-contour-survol: rgba(16,32,27,0.05);
+      --fsc-focus: #2F9E90;
+      --fsc-ombre: 0 1px 2px rgba(16,32,27,0.04), 0 8px 24px -16px rgba(16,32,27,0.16);
+      box-sizing: border-box; width: 100%; padding: 20px; border-radius: 20px;
+      background: var(--fsc-papier); border: none; box-shadow: 0 0 0 0.5px var(--fsc-bord), var(--fsc-ombre);
+      color: var(--fsc-encre); text-align: center;
+      animation: fsc-entree 240ms cubic-bezier(0.34, 1.32, 0.64, 1) both;
+    }
+    [data-theme="dark"] .fsc {
+      --fsc-papier: #17211E; --fsc-bord: rgba(255,255,255,0.10); --fsc-separateur: rgba(255,255,255,0.08);
+      --fsc-encre: #EEF2EF; --fsc-texte2: #A6B2AD;
+      --fsc-teal-fond: rgba(47,158,144,0.18); --fsc-teal-ico: #5CC2B4;
+      --fsc-etoile: #E8956D;
+      --fsc-btn-fond: #EEF2EF; --fsc-btn-texte: #10201B; --fsc-btn-survol: #FFFFFF;
+      --fsc-contour: rgba(255,255,255,0.20); --fsc-contour-survol: rgba(255,255,255,0.06);
+      --fsc-focus: #5CC2B4;
+      --fsc-ombre: 0 1px 2px rgba(0,0,0,0.30), 0 8px 24px -16px rgba(0,0,0,0.50);
+    }
+    .fsc-tuile { display: grid; place-items: center; width: 52px; height: 52px; margin: 0 auto; border-radius: 16px; background: var(--fsc-teal-fond); color: var(--fsc-teal-ico); }
+    .fsc-tuile svg { width: 24px; height: 24px; display: block; }
+    .fsc-titre { margin: 16px 0 0; font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; color: var(--fsc-encre); text-wrap: balance; }
+    .fsc-texte { margin: 8px auto 0; max-width: 320px; font-size: 14px; font-weight: 400; line-height: 1.55; color: var(--fsc-texte2); text-wrap: pretty; }
+    .fsc-etoiles { display: flex; justify-content: center; gap: 4px; margin-top: 12px; color: var(--fsc-etoile); }
+    .fsc-etoiles svg { width: 20px; height: 20px; display: block; fill: currentColor; stroke: none; }
+    .fsc-actions { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+    .fsc-btn {
+      appearance: none; display: flex; align-items: center; justify-content: center; width: 100%; margin: 0;
+      border-radius: 14px; font-family: inherit; font-size: 15px; font-weight: 600; letter-spacing: -0.005em;
+      line-height: 1; cursor: pointer; transition: background-color 160ms ease, transform 120ms ease;
+    }
+    .fsc-btn:active { transform: scale(0.98); }
+    .fsc-btn:focus-visible { outline: 2px solid var(--fsc-focus); outline-offset: 2px; }
+    .fsc-btn-principal { height: 48px; border: none; background: var(--fsc-btn-fond); color: var(--fsc-btn-texte); }
+    .fsc-btn-principal:hover { background: var(--fsc-btn-survol); }
+    .fsc-secondaires { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .fsc-btn-contour { height: 44px; border: 1px solid var(--fsc-contour); background: transparent; color: var(--fsc-encre); font-size: 14px; }
+    .fsc-btn-contour:hover { background: var(--fsc-contour-survol); }
+    @keyframes fsc-entree { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
@@ -367,6 +417,10 @@
   <div id="awake" class="bar bar-awake hidden"></div>
 
   <main class="corps">
+    <!-- Demande d'avis (02/10/2026) : seulement quand le SERVEUR l'a décidé
+         (avis-demande), jamais pendant qu'une action tourne. -->
+    <section id="avis" class="hidden" aria-labelledby="avis-titre"></section>
+
     <!-- Bascule de compte FillSell en attente d'une décision (2026-09-03) -->
     <section id="switch" class="hidden"></section>
 
