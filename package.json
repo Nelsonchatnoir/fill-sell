@@ -122,7 +122,8 @@
     "selftest:lbc-adresse-avant-retrait": "node scripts/lbc-adresse-avant-retrait-selftest.mjs",
     "selftest:lbc-mur-connexion": "node scripts/lbc-mur-connexion-selftest.mjs",
     "selftest:lbc-pause-page-depot": "node scripts/lbc-pause-page-depot-selftest.mjs",
-    "selftest:vinted-colis-envoi": "node scripts/vinted-colis-envoi-selftest.mjs"
+    "selftest:vinted-colis-envoi": "node scripts/vinted-colis-envoi-selftest.mjs",
+    "selftest:vinted-colis-serveur": "node scripts/vinted-colis-serveur-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

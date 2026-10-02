@@ -32,6 +32,8 @@
 //    la reprise porte `verifier_doublon_avant_publication` — l'extension relit
 //    « Mes annonces » avant de redéposer (processJob, depuis le 07/09).
 
+import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye } from "./vinted-colis.js";
+
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
 };
@@ -138,6 +140,10 @@ export function decisionRecreationHorsLigne(a) {
   if (aUneQuestion(pf)) return null;
   if (IMPASSE_RE.test(texte) || pf.recreation_doublon) return null;
   if (SOURCES_IMPASSE.has(source)) return null;
+  // (02/10, lohanobert59) Refus Vinted sur le format de colis : le même poste
+  // referait le même POST sans format — la reprise attend un poste à jour.
+  const colisVinted = a.platform === "vinted" && refusColisVinted(texte);
+  const colisRefuseEnvoye = colisVinted && colisEnvoyeEtRefuse(texte);
   const gardeCosmetique = GARDE_COSMETIQUE_RE.test(texte);
   const gardeCorrigee = gardeCosmetique && a.platform === "leboncoin"
     && categorieLbcHorsBeaute(pf.lbcCategoryPath ?? pfEnBase.lbcCategoryPath);
@@ -154,6 +160,7 @@ export function decisionRecreationHorsLigne(a) {
   const palier = PALIERS_REPRISE_MIN[n - 1] ?? REPRISE_MAX_MIN;
   // Garde corrigée : l'extension à jour arrive par Chrome, pas en 5 min.
   const dansMinutes = ANTIROBOT_RE.test(texte) ? Math.max(palier, ANTIROBOT_MIN)
+    : colisRefuseEnvoye ? Math.max(palier, 360)
     : gardeCorrigee ? Math.max(palier, 60) : palier;
   const prochain = recente && Number.isFinite(Date.parse(String(pfEnBase.next_action_after ?? "")))
     ? Date.parse(String(pfEnBase.next_action_after))
@@ -175,6 +182,7 @@ export function decisionRecreationHorsLigne(a) {
     "needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur",
   ]) delete pfNeuf[k];
   if (source === "relancer") delete pfNeuf.needs_user_source;
+  if (colisVinted && !colisRefuseEnvoye) pfNeuf.build_min_requis = BUILD_COLIS_DANS_ENVOI;
 
   // Anti-doublon : la tentative ratée avait-elle atteint l'envoi du dépôt ?
   const fin = pf.work_window_state?.at_end ?? pfEnBase.work_window_state?.at_end ?? null;
@@ -186,10 +194,13 @@ export function decisionRecreationHorsLigne(a) {
 
   return {
     statut: "pending",
-    message: gardeCorrigee ? messageGardeCorrigee(a.platform) : messageRecreationEnCours(a.platform, prochain),
+    message: colisVinted
+      ? (colisRefuseEnvoye ? messageColisRefuseMemeEnvoye("republish") : messageColisAttendMiseAJour("republish"))
+      : gardeCorrigee ? messageGardeCorrigee(a.platform) : messageRecreationEnCours(a.platform, prochain),
     pf: pfNeuf,
     n,
     dansMinutes,
-    motif: pfNeuf.verifier_doublon_avant_publication ? "recreation_reprise_verif_doublon" : "recreation_reprise",
+    motif: colisVinted ? (colisRefuseEnvoye ? "recreation_colis_refuse_meme_envoye" : "recreation_colis_attend_mise_a_jour")
+      : pfNeuf.verifier_doublon_avant_publication ? "recreation_reprise_verif_doublon" : "recreation_reprise",
   };
 }

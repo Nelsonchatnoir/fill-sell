@@ -44,6 +44,7 @@
 
 import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
 import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
+import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye } from "./vinted-colis.js";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
@@ -254,6 +255,35 @@ export function classerEchec(arg) {
           `${acte(action)} repart toute seule, l'état réel de l'annonce est revérifié avant tout geste.`,
       };
     }
+  }
+
+  // ── 0 bis. VINTED EXIGE LE FORMAT DE COLIS QUE SON FORMULAIRE NE MONTRE PAS
+  //    (02/10, lohanobert59 — _shared/vinted-colis.js) ──────────────────────
+  // Avant : « On ne sait pas encore pourquoi : on refait un essai tout seuls »
+  // — la cause était connue, et l'essai, sur le même poste, refaisait le même
+  // POST sans format. Le correctif est dans l'extension (0.6.84) :
+  //   · format envoyé directement et refusé quand même → arrêt, message vrai
+  //     (publication) ; la recréation, elle, garde sa reprise de 6 h ;
+  //   · sinon → le job attend un poste qui porte le correctif
+  //     (build_min_requis : get-pending-jobs ne le sert à aucun autre).
+  if (platform === "vinted" && refusColisVinted(t)) {
+    if (colisEnvoyeEtRefuse(t)) {
+      if (action === "republish") {
+        return {
+          verdict: "reprise", statut: "pending", motif: "colis_refuse_meme_envoye", dansMinutes: 360,
+          message: messageColisRefuseMemeEnvoye(action),
+        };
+      }
+      return {
+        verdict: "info", statut: "cancelled", motif: "colis_refuse_meme_envoye",
+        message: messageColisRefuseMemeEnvoye(action),
+      };
+    }
+    return {
+      verdict: "reprise", statut: "pending", motif: "colis_non_propose", dansMinutes: 30,
+      pf: { build_min_requis: BUILD_COLIS_DANS_ENVOI },
+      message: messageColisAttendMiseAJour(action),
+    };
   }
 
   // ⛔ Les motifs qui portent DÉJÀ un geste précis (taille à choisir, limite de

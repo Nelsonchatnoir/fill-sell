@@ -145,6 +145,58 @@ import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rot
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
+import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve } from "../_shared/vinted-colis.js";
+
+// ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
+// (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
+// est EN COURS (job de 3 j au plus, ni publié ni annulé — les refus passagers
+// des 22-27/09, résolus ou abandonnés, ne retiennent rien) ; et la preuve que
+// l'envoi direct du format passe.
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
+const COLIS_CACHE_MS = 10 * 60 * 1000;
+let cacheRayonsSansColis: { at: number; rayons: Set<string> } | null = null;
+let cacheEnvoiColisProuve: { at: number; prouve: boolean } | null = null;
+async function rayonsVintedSansColis(admin: AdminClient): Promise<Set<string>> {
+  if (cacheRayonsSansColis && Date.now() - cacheRayonsSansColis.at < COLIS_CACHE_MS) return cacheRayonsSansColis.rayons;
+  const depuis = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const { data, error } = await admin.from("cross_post_jobs")
+    .select("inventaire_id, snap_cat:platform_fields->republish_snapshot->>catalog_id")
+    .eq("platform", "vinted").gte("created_at", depuis).in("status", ["pending", "needs_user", "failed"])
+    .contains("platform_fields->server_required_fields", [{ key: "package_size" }])
+    .limit(500);
+  if (error) throw new Error(`rayons sans colis : ${error.message}`);
+  const rayons = new Set<string>();
+  const invIds: number[] = [];
+  for (const r of (data ?? []) as Array<{ inventaire_id: number | null; snap_cat: string | null }>) {
+    if (r.snap_cat) rayons.add(String(r.snap_cat));
+    else if (r.inventaire_id != null) invIds.push(r.inventaire_id);
+  }
+  if (invIds.length) {
+    const { data: invs, error: e2 } = await admin.from("inventaire").select("vinted_catalog_id").in("id", [...new Set(invIds)].slice(0, 500));
+    if (e2) throw new Error(`rayons sans colis (fiches) : ${e2.message}`);
+    for (const i of (invs ?? []) as Array<{ vinted_catalog_id: number | null }>) if (i.vinted_catalog_id != null) rayons.add(String(i.vinted_catalog_id));
+  }
+  cacheRayonsSansColis = { at: Date.now(), rayons };
+  return rayons;
+}
+async function envoiColisProuveParc(admin: AdminClient): Promise<boolean> {
+  if (cacheEnvoiColisProuve && Date.now() - cacheEnvoiColisProuve.at < COLIS_CACHE_MS) return cacheEnvoiColisProuve.prouve;
+  try {
+    const depuis = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const { data, error } = await admin.from("cross_post_jobs")
+      .select("preuve:platform_fields->colis_pose_envoi")
+      .eq("platform", "vinted").gte("created_at", depuis)
+      .not("platform_fields->colis_pose_envoi", "is", null)
+      .limit(300);
+    if (error) throw error;
+    const prouve = envoiColisProuve(((data ?? []) as Array<{ preuve: unknown }>).map((r) => r.preuve));
+    cacheEnvoiColisProuve = { at: Date.now(), prouve };
+    return prouve;
+  } catch (_e) {
+    return false; // jamais « prouvé » sur une lecture ratée
+  }
+}
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -1746,6 +1798,77 @@ serve(async (req) => {
       });
       if (out.length !== avantCorrectif) {
         console.log(`[get-pending-jobs] userId=${user.id} : ${avantCorrectif - out.length} job(s) réarmé(s) par un correctif retenu(s) — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » plus ancien que le correctif`);
+      }
+    }
+
+    // ══ LE FORMAT DE COLIS QUE VINTED NE PROPOSE PLUS (02/10, lohanobert59) ══
+    // (_shared/vinted-colis.js) Deux règles, sur les republications Vinted pas
+    // encore retirées :
+    //   · poste PLUS ANCIEN que le correctif : un rayon où un refus « faute de
+    //     format » est en cours (tout le parc) ne lui est pas servi — il
+    //     retirerait l'annonce (une-passe) sans pouvoir la remettre (la
+    //     « Swatch » de Lohan, rayon 97, attendait derrière la « gousset »).
+    //     Retenue nommée (retenue_serveur : « ton annonce est intacte ») ;
+    //   · poste À JOUR : `colis_injection_prouvee` lui est servi quand l'envoi
+    //     direct du format a été accepté par Vinted (colis_pose_envoi 200, sans
+    //     refus depuis) — la 0.6.84 retire alors même sans la section ; sinon
+    //     elle refuse de retirer et le dit (rien n'est assoupli ici).
+    // Best-effort : une lecture ratée = comportement d'avant pour le poste à
+    // jour, et AUCUN retrait servi au poste ancien dans un rayon douteux.
+    {
+      const republiablesVinted = out.filter((j) => j.platform === "vinted" && j.action === "republish"
+        && String(((j.platform_fields ?? {}) as Record<string, unknown>).republish_step ?? "a_capturer") !== "deleted");
+      if (republiablesVinted.length) {
+        const posteAJourColis = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_COLIS_DANS_ENVOI);
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          if (!posteAJourColis) {
+            const rayons = await rayonsVintedSansColis(admin);
+            const invIds = [...new Set(republiablesVinted.map((j) => j.inventaire_id).filter((v) => v != null))];
+            const catInv = new Map<string, string>();
+            if (rayons.size && invIds.length) {
+              const { data: invs } = await admin.from("inventaire").select("id, vinted_catalog_id").in("id", invIds);
+              for (const r of (invs ?? []) as Array<{ id: number; vinted_catalog_id: number | null }>) {
+                if (r.vinted_catalog_id != null) catInv.set(String(r.id), String(r.vinted_catalog_id));
+              }
+            }
+            const retenus = new Set<string>();
+            const maintenantIso = new Date().toISOString();
+            for (const j of republiablesVinted) {
+              const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+              const snapCat = String(((pfJ.republish_snapshot ?? {}) as Record<string, unknown>).catalog_id ?? "");
+              const cat = snapCat || catInv.get(String(j.inventaire_id)) || "";
+              if (!cat || !rayons.has(cat)) continue;
+              retenus.add(String(j.id));
+              const pfPose = poserRetenueServeur(pfJ, RETENUE_COLIS_ANCIEN_POSTE, maintenantIso, { rayon: cat, build_min: BUILD_COLIS_DANS_ENVOI });
+              if (pfPose) await admin.from("cross_post_jobs").update({ platform_fields: pfPose }).eq("id", j.id as string).eq("status", "pending");
+            }
+            if (retenus.size) {
+              out = out.filter((j) => !retenus.has(String(j.id)));
+              console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Vinted retenue(s) — rayon où Vinted exige un format de colis que son formulaire ne propose plus, poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » < ${VERSION_COLIS_DANS_ENVOI}`);
+            }
+          } else {
+            const prouve = await envoiColisProuveParc(admin);
+            const maintenantIso = new Date().toISOString();
+            for (const j of republiablesVinted) {
+              const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+              if (retenueServeurDe(pfJ)?.motif === RETENUE_COLIS_ANCIEN_POSTE) {
+                const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)}`);
+                if (leve) {
+                  await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
+                  j.platform_fields = leve;
+                }
+              }
+              if (prouve) j.platform_fields = { ...((j.platform_fields ?? {}) as Record<string, unknown>), colis_injection_prouvee: true };
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] format de colis Vinted : ${String((e as Error)?.message ?? e)}`);
+          if (!posteAJourColis) {
+            out = out.filter((j) => !republiablesVinted.includes(j));
+            console.log(`[get-pending-jobs] userId=${user.id} : lecture impossible — aucune republication Vinted servie à un poste < ${VERSION_COLIS_DANS_ENVOI} sur ce passage`);
+          }
+        }
       }
     }
 
