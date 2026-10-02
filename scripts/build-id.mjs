@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-01T15:29:31Z'; // 0.6.83 = 0.6.82 + Beebs : adresse validée seulement sur une vraie suggestion (code postal), jamais d'IA pour une taille, refus du formulaire lu et nommé (50a2c27, 01/10). NON empaquetée.
+export const EXTENSION_LAST_COMMIT = '2026-10-02T08:10:38Z'; // 0.6.84 = 0.6.83 (adresse Beebs) + lot du 02/10 : mur de connexion Leboncoin, format de colis Vinted, une-passe sans retrait orphelin, fin d'annonce eBay par numéro, vendeur Vinted par numéro (65da661). Paquet build/CWS-0.6.84-A-TELEVERSER.
+// Historique de la valeur precedente : '2026-10-01T15:29:31Z' — 50a2c27, 0.6.83 (zip 17:33:08Z+9411980, livré, jamais téléversé, numéro brûlé).
 // Historique de la valeur precedente : '2026-10-01T10:41:18Z' — e46cb16, 0.6.82 (zip 10:50:14Z+3f3ff91, en preuve).
 // Historique de la valeur precedente : '2026-09-30T20:16:27Z' — 73c4929, 0.6.81 (publiée et servie le 01/10).
 // Historique de la valeur precedente : '2026-09-30T08:39:19Z' — 752308e, 0.6.80 (zip 13:21:09Z+4f5662a, en CWS publication différée).
