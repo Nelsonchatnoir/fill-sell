@@ -72,7 +72,7 @@ export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'
 //
 // ══ SORTIE D'OPLA (décision Nico, bascule le 10/10/2026) — CE QUI PRÉCÈDE
 //    N'EST VRAI QUE JUSQU'À LA BASCULE ══════════════════════════════════════
-// Opla a exigé 1 000 €/mois ; à partir du 10/10 (interrupteur coin_config
+// Opla a exigé un paiement pour garder son accès ; à partir du 10/10 (interrupteur coin_config
 // `opla_sortie_le`, _shared/opla-sortie.js), FillSell ne publie ni ne republie
 // plus sur Opla, pour PERSONNE. Opla repasse donc par le mécanisme « à venir » :
 // elle n'est proposée QUE quand App.jsx la déclare ouverte (plateformesOuvertes

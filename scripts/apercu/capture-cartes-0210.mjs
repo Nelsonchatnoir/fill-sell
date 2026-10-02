@@ -49,7 +49,7 @@ const verifier = (cond, quoi, detail = '') => { console.log(`${cond ? '  ✓' : 
 const TEXTES_BANDEAU = [
   'Changement de plateforme',
   'Opla : on arrête la publication',
-  "Opla demande 1 000 € par mois pour garder son accès. On a refusé : ce n'est pas à toi de payer pour ça. À partir du 10 octobre, FillSell ne publie et ne republie plus sur Opla.",
+  "Opla demande désormais une somme importante pour garder son accès. On a refusé : ce n'est pas à toi de payer pour ça. À partir du 10 octobre, FillSell ne publie et ne republie plus sur Opla.",
   'Tes annonces Opla restent synchronisées',
   'Ventes détectées, copies retirées ailleurs',
   'Plus de publication ni de remise en avant',
@@ -60,7 +60,7 @@ const TEXTES_BANDEAU = [
 const TEXTES_BANDEAU_GENERAL = [
   'Changement de plateforme',
   'Opla quitte FillSell',
-  "Opla demande 1 000 € par mois pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
+  "Opla demande désormais une somme importante pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
   'Vinted, Leboncoin, eBay et Beebs continuent normalement',
   'De nouvelles plateformes arrivent',
   "J'ai compris",

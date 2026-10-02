@@ -20,7 +20,7 @@ const TEXTES_BANDEAU_OPLA = Object.freeze({
   relie: Object.freeze({
     pastille: 'Changement de plateforme',
     titre: 'Opla : on arrête la publication',
-    texte: `Opla demande 1 000 € par mois pour garder son accès. On a refusé : ce n'est pas à toi de payer pour ça. À partir du ${OPLA_SORTIE.DATE_TEXTE}, FillSell ne publie et ne republie plus sur Opla.`,
+    texte: `Opla demande désormais une somme importante pour garder son accès. On a refusé : ce n'est pas à toi de payer pour ça. À partir du ${OPLA_SORTIE.DATE_TEXTE}, FillSell ne publie et ne republie plus sur Opla.`,
     lignes: [
       { ton: 'continue', icone: RefreshCw, texte: 'Tes annonces Opla restent synchronisées' },
       { ton: 'continue', icone: ShieldCheck, texte: 'Ventes détectées, copies retirées ailleurs' },
@@ -32,7 +32,7 @@ const TEXTES_BANDEAU_OPLA = Object.freeze({
   general: Object.freeze({
     pastille: 'Changement de plateforme',
     titre: 'Opla quitte FillSell',
-    texte: "Opla demande 1 000 € par mois pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
+    texte: "Opla demande désormais une somme importante pour rester accessible depuis FillSell. On a refusé : ce n'est pas à toi de payer pour ça, et on ne fera pas grimper le prix de ton abonnement pour eux.",
     lignes: [
       { ton: 'continue', icone: Check, texte: 'Vinted, Leboncoin, eBay et Beebs continuent normalement' },
       { ton: 'continue', icone: Sparkles, texte: 'De nouvelles plateformes arrivent' },

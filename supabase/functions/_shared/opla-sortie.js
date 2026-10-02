@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // SORTIE D'OPLA — LA RÈGLE, UNE SEULE FOIS (02/10/2026, décision de Nico)
 // ═══════════════════════════════════════════════════════════════════════════
-// Opla a refusé tout partenariat sans paiement (1 000 €/mois) et demande que
+// Opla a refusé tout partenariat sans paiement et demande que
 // FillSell cesse de publier chez eux avant le 10/10. Nico sort d'Opla :
 //   A1. plus AUCUNE publication ni republication Opla, pour personne ;
 //   A2. compte sans Opla relié : Opla n'existe plus (ni case, ni connexion,
