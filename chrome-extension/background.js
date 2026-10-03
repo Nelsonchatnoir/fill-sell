@@ -21315,9 +21315,10 @@ async function processRepublishJobPlateforme(job, accessToken) {
       const msg = String(e?.message ?? e);
       dernierGesteRepublishAt = Date.now();
       if (/message channel closed|Receiving end does not exist/i.test(msg)) {
-        // Canal coupé PAR la navigation du retrait : l'état réel tranche.
+        // Canal coupé PAR la navigation du retrait : l'état réel tranche
+        // (sauf Beebs, 03/10 : la page publique ne prouve rien, on reprend).
         const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
-        if (state === "unavailable" || state === "sold") {
+        if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
           result = { success: true, trace: ["canal coupé par la navigation du retrait — annonce absente : retrait confirmé par l'état réel"], confirmeParEtat: true };
         } else {
           await rearmBounded(accessToken, job, `Retrait ${label} interrompu (onglet navigué ou rechargé) : ${msg}`);
@@ -21332,11 +21333,13 @@ async function processRepublishJobPlateforme(job, accessToken) {
     const pfApres = { ...pf, ...(job.platform_fields ?? {}) };
 
     let retire = result?.success === true;
-    let confirmePar = result?.confirmeParEtat ? "etat_annonce" : "handler";
+    let confirmePar = result?.confirmeParEtat ? "etat_annonce" : (result?.preuveRetrait ? "mes_annonces" : "handler");
     if (!retire && result && !result.dryRun) {
       const { state, raison } = await checkListingState(job.listing_url, job.platform)
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
-      if (state === "unavailable" || state === "sold") {
+      // (03/10) Beebs : la page publique ne prouve jamais un retrait (une
+      // annonce en vérification y est en 404) — seule « Mes annonces » tranche.
+      if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
         retire = true; confirmePar = "etat_annonce";
       } else if (motifSessionMorte(job.platform, result.error)) {
         // (27/09, point 19) arbitré : « false » seulement sur preuve.
@@ -21382,6 +21385,7 @@ async function processRepublishJobPlateforme(job, accessToken) {
     pfApres.old_listing_url = job.listing_url;
     if (job.platform_listing_id) pfApres.old_platform_listing_id = String(job.platform_listing_id);
     pfApres.republish_retrait = { at: pfApres.deleted_at, confirme_par: confirmePar, trace: (result?.trace ?? []).slice(-12).map((l) => String(l).slice(0, 200)) };
+    if (result?.preuveRetrait) pfApres.preuve_retrait = result.preuveRetrait;
     delete pfApres.processing_since;
     delete pfApres.needsUserAttempts;
     pfApres.next_action_after = new Date(Date.now() + randInt(120_000, 300_000)).toISOString();
@@ -23317,7 +23321,11 @@ async function processDeleteJob(job, accessToken) {
       const lecture = await checkListingState(job.listing_url, job.platform)
         .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       const { state, raison } = lecture;
-      if (state === "unavailable" || state === "sold") {
+      // ⛔ (03/10) BEEBS : LA PAGE PUBLIQUE NE CLÔT JAMAIS UN RETRAIT. Une annonce
+      // en vérification y est en 404, exactement comme une annonce retirée :
+      // seule la liste du propriétaire (« Mes annonces », relue par beebs.js)
+      // prouve le retrait. Le handler Beebs rend donc sa preuve lui-même.
+      if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
         console.log(
           `[background] Job ${job.id} : le content script n'a pas abouti (${result.error}), MAIS l'annonce ` +
           `${job.platform} n'est plus en ligne — suppression CONFIRMÉE par l'état réel de l'annonce`
@@ -23465,9 +23473,15 @@ async function processDeleteJob(job, accessToken) {
       return { status: "needsUser", error: result.error };
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} : annonce ${job.platform} supprimée`);
-      await updateJobStatus(accessToken, job.id, "deleted", {
-        platform_fields: { ...(job.platform_fields ?? {}), delete_trace: result.trace ?? [] },
-      });
+      // (03/10) La clôture porte SA preuve (Beebs : « Mes annonces » relue), et
+      // le diagnostic d'un essai précédent est archivé — il ne doit plus se
+      // lire comme celui de la clôture (bouilloire de Nico : « bouton ABSENT »
+      // de l'essai 1 resté sur un retrait fait à l'essai 2).
+      const pfOk = { ...(job.platform_fields ?? {}), delete_trace: result.trace ?? [] };
+      if (result.preuveRetrait) pfOk.preuve_retrait = result.preuveRetrait;
+      if (pfOk.last_diagnostic) { pfOk.diagnostic_essai_precedent = pfOk.last_diagnostic; delete pfOk.last_diagnostic; }
+      if (pfOk.error_technique) { pfOk.error_technique_essai_precedent = pfOk.error_technique; delete pfOk.error_technique; }
+      await updateJobStatus(accessToken, job.id, "deleted", { error: null, platform_fields: pfOk });
       await cancelPublishAfterDelete(accessToken, job);
       await recordRecentResult(job, "deleted");
       return { status: "deleted" };
@@ -23513,7 +23527,9 @@ async function processDeleteJob(job, accessToken) {
       // en ligne, la suppression a réussi.
       const lectureCanal = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
       const { state } = lectureCanal;
-      if (state === "unavailable" || state === "sold") {
+      // (03/10) Beebs : jamais sur la page publique (cf. plus haut) — reprise, le
+      // passage suivant relit « Mes annonces ».
+      if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
         console.log(
           `[background] Job ${job.id} : canal coupé PAR LA NAVIGATION de suppression — ` +
           `l'annonce ${job.platform} n'est PLUS en ligne : suppression CONFIRMÉE`

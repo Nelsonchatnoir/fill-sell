@@ -38,6 +38,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
 import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
+import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION } from "../_shared/beebs-preuve-retrait.js";
 import {
   controlerNumeroBeebsEnBase,
   restaurerPublicationBeebsConfirmee,
@@ -844,6 +845,32 @@ serve(async (req) => {
     let pfColisADemander: Record<string, unknown> | null = null;
     let pfDuJob: Record<string, unknown> | null = null;
     let raisonRequalif: string | null = null;
+
+    // ── RETRAIT BEEBS « SUPPRIMÉ » : LA LISTE DU PROPRIÉTAIRE FAIT FOI (03/10) ──
+    // _shared/beebs-preuve-retrait.js. Poste qui sait prouver (≥ 0.6.90) sans
+    // preuve → le job revient en vérification (pending), jamais clos ; poste
+    // ancien → accepté mais marqué, les relevés complets tranchent ensuite
+    // (handler-watch). Jamais un « supprimé » sans source.
+    if (status === "deleted") {
+      try {
+        const { data: jBp } = await userClient.from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+        if (jBp?.platform === "beebs" && jBp?.action === "delete" && body.platform_fields && typeof body.platform_fields === "object") {
+          const pfBp = body.platform_fields as Record<string, unknown>;
+          const v = verdictClotureRetraitBeebs(pfBp, body.handler_build);
+          if (v === "refuser") {
+            statutEffectif = "pending";
+            messageEffectif = MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION;
+            pfBp.retrait_en_verification = { le: new Date().toISOString(), motif: "supprime_sans_preuve_proprietaire" };
+            pfBp.next_action_after = new Date(Date.now() + 5 * 60_000).toISOString();
+            raisonRequalif = "Beebs : « supprimé » sans la liste du propriétaire relue → vérification, jamais clos sans preuve";
+          } else if (v === "marquer") {
+            pfBp.retrait_sans_preuve_proprietaire = { le: new Date().toISOString(), build: String(body.handler_build ?? "").slice(0, 80) };
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] preuve du retrait Beebs :", (e as Error)?.message ?? e);
+      }
+    }
 
     // ══════════════════════════════════════════════════════════════════════
     // LE POSTE QUI PARLE (2026-09-24, cf. _shared/poste-extension.ts)

@@ -20,6 +20,7 @@ import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOp
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
+import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1264,6 +1265,69 @@ serve(async (req) => {
       }
     } catch (e) {
       console.error("[handler-watch] retraits Vinted introuvables :", (e as Error)?.message ?? e);
+    }
+  }
+
+  // ══ BEEBS : UN RETRAIT CLOS SANS PREUVE EST VÉRIFIÉ PAR LES RELEVÉS (03/10) ══
+  // Les postes d'avant la 0.6.90 ne relisent pas « Mes annonces » après la
+  // suppression : leur « supprimé » est accepté mais marqué
+  // (retrait_sans_preuve_proprietaire, update-job-status). Ici, les relevés
+  // Beebs complets tranchent (_shared/beebs-preuve-retrait.js) : l'annonce
+  // revue en ligne après le retrait → le retrait repart (risque de double
+  // vente) ; absente de deux relevés complets → preuve écrite. ~15 min, borné.
+  if (new Date().getUTCMinutes() % 15 >= 6 && new Date().getUTCMinutes() % 15 < 9) {
+    try {
+      const { data: closSansPreuve } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, created_at, error, listing_url, platform_listing_id, platform_fields")
+        .eq("platform", "beebs").eq("action", "delete").eq("status", "deleted")
+        .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+        .not("platform_fields->retrait_sans_preuve_proprietaire", "is", null)
+        .limit(60);
+      const parCompteB = new Map<string, Array<Record<string, unknown>>>();
+      for (const j of (closSansPreuve ?? []) as Array<Record<string, unknown>>) {
+        if (!numeroRetraitBeebs(j)) continue;
+        const u = String(j.user_id);
+        if (!parCompteB.has(u)) parCompteB.set(u, []);
+        parCompteB.get(u)!.push(j);
+      }
+      let rouverts = 0, prouves = 0;
+      for (const [uid, jobsU] of parCompteB) {
+        const numeros = [...new Set(jobsU.map((j) => numeroRetraitBeebs(j)).filter(Boolean))] as string[];
+        const [rRel, rAnn] = await Promise.all([
+          supabase.from("vinted_sync_runs").select("status, started_at, items_vus, total_entries, erreur")
+            .eq("user_id", uid).eq("platform", "beebs").eq("kind", "annonces")
+            .gte("started_at", new Date(Date.now() - 15 * 86_400_000).toISOString())
+            .order("started_at", { ascending: false }).limit(30),
+          supabase.from("annonces_plateforme").select("listing_id, vu_le, disparu_le, retiree_le, statut_plateforme")
+            .eq("user_id", uid).eq("platform", "beebs").in("listing_id", numeros).limit(500),
+        ]);
+        if (rRel.error || rAnn.error) continue;
+        for (const j of jobsU) {
+          const v = jugerRetraitBeebsParReleves(j, { releves: rRel.data ?? [], annonces: rAnn.data ?? [] });
+          if (!v) continue;
+          const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          const marque = pfJ.retrait_sans_preuve_proprietaire;
+          delete pfJ.retrait_sans_preuve_proprietaire;
+          if (v.verdict === "prouve") {
+            pfJ.preuve_retrait = { source: "releves", absente: true, numero: v.numero, releves: v.releves, marque_le: (marque as Record<string, unknown> | undefined)?.le ?? null };
+            const { data: maj } = await supabase.from("cross_post_jobs").update({ platform_fields: pfJ })
+              .eq("id", j.id as string).eq("status", "deleted").select("id");
+            prouves += (maj ?? []).length;
+            continue;
+          }
+          pfJ.retrait_rouvert = { le: new Date().toISOString(), par: "releve_beebs", numero: v.numero, releves: v.releves };
+          pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, "Retrait déclaré fait sans relecture de « Mes annonces »", "deleted", "handler-watch (annonce revue en ligne)");
+          for (const k of ["processing_since", "next_action_after", "needsUserAttempts"]) delete pfJ[k];
+          const { data: maj } = await supabase.from("cross_post_jobs").update({
+            status: "pending", platform_fields: pfJ,
+            error: `Beebs affiche encore l'annonce n° ${v.numero} après notre retrait : le retrait repart tout seul. Si tu la vois sur Beebs, tu peux aussi la retirer toi-même.`,
+          }).eq("id", j.id as string).eq("status", "deleted").select("id");
+          rouverts += (maj ?? []).length;
+        }
+      }
+      if (rouverts || prouves) console.log(`[handler-watch] retraits Beebs clos sans preuve : ${rouverts} rouvert(s) (annonce revue en ligne), ${prouves} prouvé(s) par deux relevés complets`);
+    } catch (e) {
+      console.error("[handler-watch] retraits Beebs sans preuve :", (e as Error)?.message ?? e);
     }
   }
 

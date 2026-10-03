@@ -536,6 +536,59 @@ async function lireIdsMesAnnoncesBeebs() {
   };
 }
 
+// ── UN RETRAIT BEEBS NE SE CLÔT QUE SUR LA LISTE DU PROPRIÉTAIRE (03/10) ─────
+// Bouilloire de Nico (34097677, 03/10 10:12) : premier essai sur une page sans
+// bouton propriétaire, second essai qui confirme, puis « supprimé » sans que
+// rien n'ait été relu — Beebs supprime de façon asynchrone, et une page
+// publique en 404 est AUSSI celle d'une annonce en vérification. La seule
+// preuve : les deux onglets de « Mes annonces » (en ligne ET en vérification),
+// lus en entier par lireIdsMesAnnoncesBeebs (flux de la page, tout le compte,
+// compteur de Beebs). Une liste partielle ne prouve pas l'absence.
+// Rend { verdict: 'absente' | 'presente' | 'illisible', lecture }.
+async function preuveAbsenceMesAnnonces(idCible, t) {
+  const lecture = await lireIdsMesAnnoncesBeebs();
+  const pages = lecture.pages ?? [];
+  const resume = pages.map((p) => `${p.page}:${p.ok ? `${p.n}${p.annoncees != null ? `/${p.annoncees}` : ""}` : `illisible (${p.motif ?? "?"})`}`).join(", ");
+  if (lecture.ids.includes(String(idCible))) {
+    t(`preuve propriétaire : ${idCible} ENCORE dans « Mes annonces » (${resume})`);
+    return { verdict: "presente", lecture };
+  }
+  const complete = lecture.ok && pages.every((p) => p.ok && !(p.annoncees != null && p.n < p.annoncees));
+  if (!complete) {
+    t(`preuve propriétaire : lecture incomplète (${resume}) — rien n'est conclu`);
+    return { verdict: "illisible", lecture };
+  }
+  t(`preuve propriétaire : ${idCible} absente des deux onglets de « Mes annonces » (${resume})`);
+  return { verdict: "absente", lecture };
+}
+
+function preuveRetraitDepuis(lecture, idCible, moment) {
+  return {
+    source: "mes_annonces", absente: true, numero: String(idCible), moment, lu_le: lecture?.lu_le ?? new Date().toISOString(),
+    pages: (lecture?.pages ?? []).map((p) => ({ page: p.page, n: p.n ?? null, annoncees: p.annoncees ?? null })),
+  };
+}
+
+// Après la confirmation : relectures espacées (≈ 2 min au plus). Absente →
+// succès AVEC la preuve ; encore là ou illisible → reprise, la suppression
+// envoyée n'est pas rejouée à l'aveugle (le passage suivant relit d'abord).
+async function confirmerRetraitParMesAnnonces(idCible, t) {
+  let dernier = null;
+  for (const attente of [0, 10_000, 20_000, 40_000, 60_000]) {
+    if (attente) await sleep(attente);
+    dernier = await preuveAbsenceMesAnnonces(idCible, t);
+    if (dernier.verdict === "absente") {
+      return { success: true, preuveRetrait: preuveRetraitDepuis(dernier.lecture, idCible, "apres_confirmation") };
+    }
+  }
+  return {
+    success: false, reprise: true, suppressionEnvoyee: true,
+    error: dernier?.verdict === "presente"
+      ? "Suppression envoyée à Beebs, mais l'annonce est encore dans « Mes annonces » deux minutes après — vérification au prochain passage, rien d'autre n'est fait"
+      : "Suppression envoyée à Beebs, mais « Mes annonces » n'a pas pu être relue en entier — vérification au prochain passage, rien d'autre n'est fait",
+  };
+}
+
 // ── Dialogue « Supprimer mon annonce » : motif CERTAIN ou rien ───────────────
 // Relevé sur annonce réelle (11/09 20h), IDENTIQUE depuis la page de
 // l'annonce et depuis la carte de Mes annonces : role=dialog, titre
@@ -652,10 +705,22 @@ async function deleteListing(job) {
         .filter(estVisibleSansLayout)
         .find((b) => /^supprimer l['’]annonce$/i.test(texteDe(b))) ?? null, 15_000);
     if (!btn) {
-      t("bouton propriétaire « Supprimer l'annonce » ABSENT de la page (annonce déjà retirée, autre compte connecté ou page non rendue) — repli par Mes annonces");
+      t("bouton propriétaire « Supprimer l'annonce » ABSENT de la page (annonce déjà retirée, autre compte connecté ou page non rendue) — on relit « Mes annonces »");
+      // (03/10) Jamais de conclusion sur cette page : la liste du propriétaire tranche.
+      const preuve = await preuveAbsenceMesAnnonces(idCible, t);
+      if (preuve.verdict === "absente") {
+        return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, "deja_absente"), trace };
+      }
+      if (preuve.verdict === "presente") {
+        return {
+          success: false, reprise: true,
+          error: "L'annonce est toujours dans « Mes annonces » mais sa page n'a pas montré le bouton de suppression (page pas encore rendue) — rien n'a été touché, nouvel essai",
+          trace,
+        };
+      }
       return {
-        success: false, pageAnnonceSansControle: true,
-        error: "Page de l'annonce sans bouton « Supprimer l'annonce » (annonce déjà retirée, autre compte connecté ou page non rendue) — repli par Mes annonces",
+        success: false, pageAnnonceSansControle: true, reprise: true,
+        error: "Page de l'annonce sans bouton « Supprimer l'annonce », et « Mes annonces » illisible en entier — rien n'a été touché, nouvel essai",
         trace,
       };
     }
@@ -673,6 +738,8 @@ async function deleteListing(job) {
     }, 10000);
     if (!dialog) return { success: false, reprise: true, error: "Dialogue « Supprimer mon annonce » introuvable après le clic — aucune confirmation envoyée, retrait à reprendre", trace };
     const verdict = await supprimerDansLeDialogue(dialog, t);
+    // (03/10) La confirmation envoyée ne prouve rien : « Mes annonces » relue.
+    if (verdict?.success) return { ...(await confirmerRetraitParMesAnnonces(idCible, t)), trace };
     return { ...verdict, trace };
   }
 
@@ -697,9 +764,17 @@ async function deleteListing(job) {
   if (!anchor) {
     t(`annonce INTROUVABLE dans Mes annonces (identifiant ${idCible}${location.search ? ", liste filtrée par le titre" : ", première page seulement"})`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
+    // (03/10) La page rendue ne montre que la première page : seule la lecture
+    // complète des deux onglets dit si l'annonce est vraiment partie.
+    const preuve = await preuveAbsenceMesAnnonces(idCible, t);
+    if (preuve.verdict === "absente") {
+      return { success: true, dejaRetiree: true, preuveRetrait: preuveRetraitDepuis(preuve.lecture, idCible, "deja_absente"), trace };
+    }
     return {
-      success: false,
-      error: `Annonce introuvable dans Mes annonces Beebs (identifiant ${idCible}${location.search ? ", liste filtrée par le titre" : ""})`,
+      success: false, reprise: true,
+      error: preuve.verdict === "presente"
+        ? `L'annonce Beebs ${idCible} est toujours dans « Mes annonces », mais sa carte n'est pas sur la page affichée — rien n'a été touché, nouvel essai`
+        : `Annonce introuvable sur la page « Mes annonces » affichée, et la liste complète n'a pas pu être relue — rien n'a été touché, nouvel essai`,
       trace,
     };
   }
@@ -742,6 +817,7 @@ async function deleteListing(job) {
   }, 10000);
   if (!dialog) return { success: false, reprise: true, error: "Dialogue « Supprimer mon annonce » introuvable après le clic — aucune confirmation envoyée, retrait à reprendre", trace };
   const verdict = await supprimerDansLeDialogue(dialog, t);
+  if (verdict?.success) return { ...(await confirmerRetraitParMesAnnonces(idCible, t)), trace };
   return { ...verdict, trace };
 }
 
