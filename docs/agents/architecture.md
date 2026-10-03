@@ -136,8 +136,8 @@ d'une fonction à l'autre ; ne jamais en écrire un sans l'avoir lu).
   `ebay-api-worker`, `republish-auto-sweep`, `email-tunnel` (crons + trigger
   `handle_new_user`), `ops-digest`, `republish-purge`, `lens-temp-purge`
   (jamais de purge côté client : un client ne voit que SON scan),
-  `doublons-balayage`, `beebs-lien`, `ebay-ventes-sync`,
-  `stripe-recalage-1er-du-mois` (tâche unique du 01/10, à supprimer ensuite).
+  `doublons-balayage`, `beebs-lien`, `ebay-ventes-sync`
+  (`stripe-recalage-1er-du-mois`, tâche unique du 01/10 : supprimée le 03/10).
 - *Webhooks externes (vérifier la signature)* : `stripe-webhook`,
   `apple-iap-webhook`, `google-play-webhook`, `ebay-account-deletion`,
   `ebay-oauth-callback` (redirection eBay).

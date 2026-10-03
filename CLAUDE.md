@@ -231,8 +231,7 @@ prod**. Liste à jour : `docs/agents/architecture.md`.
 `lens-temp-purge` (3h50 — jamais de purge côté client : un client ne voit que
 SON scan, c'est ce qui effaçait les photos d'articles avant le 15/09) ·
 `empreintes-urls` (appelée par `fusion_photo_tick`, cron 20 chaque minute) ·
-`stripe-recalage-1er-du-mois` (cron 18 via `recalage_xewer_tick`, le 01/10
-de 00:00 à 03:55 seulement) ·
+(`stripe-recalage-1er-du-mois`, one-shot du 01/10 : SUPPRIMÉE le 03/10) ·
 `doublons-balayage` (cron 17, **INACTIF depuis le 28/09** ; déclarée
 `verify_jwt = false` dans `config.toml`).
 
