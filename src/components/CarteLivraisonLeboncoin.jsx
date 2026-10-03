@@ -34,6 +34,10 @@ const MOTS = {
     aide: 'Décoche ceux que tu ne veux pas. Sans choix, Leboncoin garde son réglage habituel.',
     horsBornes: 'Trop lourd ou trop grand pour ce transporteur',
     remettreTout: 'Tout remettre',
+    poids: 'Poids du colis',
+    poidsAide: 'Le vrai poids, en grammes, si tu le connais : Leboncoin choisit alors la bonne tranche. Sans poids, il l’estime lui-même.',
+    poidsResume: (g) => `Poids : ${g} g`,
+    poidsPlaceholder: 'ex. 650',
   },
   en: {
     titre: 'DELIVERY', ouvrir: 'Set up', fermer: 'Close',
@@ -46,6 +50,10 @@ const MOTS = {
     aide: 'Untick the ones you do not want. With no choice, Leboncoin keeps its usual setting.',
     horsBornes: 'Too heavy or too large for this carrier',
     remettreTout: 'Reset',
+    poids: 'Parcel weight',
+    poidsAide: 'The real weight, in grams, if you know it: Leboncoin then picks the right bracket. Without it, Leboncoin estimates it.',
+    poidsResume: (g) => `Weight: ${g} g`,
+    poidsPlaceholder: 'e.g. 650',
   },
 };
 
@@ -95,6 +103,7 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
           </div>
           <div style={{ ...st.petit, marginTop: 2 }}>
             {choisis ? T.nChoisis(choisis.length) : T.tousParDefaut}
+            {Number(champs.lbcPoidsGrammes) > 0 ? ` · ${T.poidsResume(Math.round(Number(champs.lbcPoidsGrammes)))}` : ''}
           </div>
         </div>
       </div>
@@ -123,6 +132,25 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
               );
             })}
           </div>
+
+          {/* (03/10, point 13) Le VRAI poids : Louis ne pouvait le donner nulle
+              part — seules ses republications le portaient (repris de l'annonce
+              en ligne), 5 annonces sur 52. Facultatif, jamais bloquant :
+              l'extension le pose dans la tranche de Leboncoin. */}
+          <div style={{ ...st.eyebrow, marginBottom: 2 }}>{T.poids}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <input type="number" inputMode="numeric" min={1} max={30000} step={1}
+              placeholder={T.poidsPlaceholder}
+              value={Number(champs.lbcPoidsGrammes) > 0 ? Math.round(Number(champs.lbcPoidsGrammes)) : ''}
+              onChange={(e) => {
+                const n = Math.round(Number(String(e.target.value).replace(',', '.')));
+                onChange?.('lbcPoidsGrammes', Number.isFinite(n) && n > 0 && n <= 30000 ? n : null);
+              }}
+              style={{ width: 110, padding: '7px 10px', borderRadius: 10, border: `1px solid ${UI.border}`,
+                       fontFamily: 'inherit', fontSize: 13, background: UI.card, color: UI.ink }} />
+            <span style={st.petit}>g</span>
+          </div>
+          <div style={{ ...st.petit, marginBottom: 10 }}>{T.poidsAide}</div>
 
           <div style={{ ...st.eyebrow, marginBottom: 2 }}>{T.transporteurs}</div>
           <div style={st.petit}>{T.aide}</div>

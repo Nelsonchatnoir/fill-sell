@@ -59,9 +59,45 @@ export function rayonModeVinted(chemin) {
 export function grilleColisVinted(chemin) {
   const cle = cheminTexte(chemin);
   if (!cle) return null;
-  const code = GRILLE_PAR_CHEMIN.get(cle) ?? (rayonModeVinted(cle) ? "PMG" : null);
-  const ids = code ? GRILLES[code] : null;
+  const genere = GRILLE_PAR_CHEMIN.get(cle);
+  if (genere && GRILLES[genere]) return GRILLES[genere].map((id) => ({ id, libelle: COLIS_VINTED[id] }));
+  // (03/10, point 13) La grille RELEVÉE par l'extension sur le formulaire de
+  // CE rayon (catalogue, chargée par chargerGrilleColisRelevee) passe avant le
+  // défaut de la Mode : c'est ce que Vinted a réellement offert.
+  const relevee = GRILLES_RELEVEES.get(cle);
+  if (relevee?.length) return relevee;
+  const ids = rayonModeVinted(cle) ? GRILLES.PMG : null;
   return ids ? ids.map((id) => ({ id, libelle: COLIS_VINTED[id] })) : null;
+}
+
+// ── LES GRILLES RELEVÉES PAR L'EXTENSION (03/10, point 13, Louis) ───────────
+// 8 des 20 publications Vinted de Louis tombaient dans des rayons inconnus de
+// la table générée (« Petits appareils de cuisine », « Autres rangements ») :
+// la carte ne proposait rien, Vinted choisissait seul. L'extension (0.6.90)
+// range les formats offerts par le formulaire au catalogue
+// (platform_category_aspects vinted / package_size, « id|libellé ») ; la carte
+// les relit ici. Cache par rayon, le temps de la session.
+const GRILLES_RELEVEES = new Map();
+
+/** « 11|5 kg » → { id: 11, libelle: "5 kg" } (le libellé seul ne suffit pas : « 5 kg » existe sous 8 et 11). */
+export function grilleReleveeDepuisOptions(options) {
+  const vus = new Set();
+  return (Array.isArray(options) ? options : [])
+    .map((o) => { const m = String(o ?? "").match(/^(\d+)\|(.+)$/); return m ? { id: Number(m[1]), libelle: m[2].trim() } : null; })
+    .filter((g) => g && g.id > 0 && g.libelle && !vus.has(g.id) && vus.add(g.id));
+}
+
+/** Charge (une fois par rayon) la grille relevée au catalogue ; rend la grille du rayon. */
+export async function chargerGrilleColisRelevee(supabase, chemin) {
+  const cle = cheminTexte(chemin);
+  if (!cle || GRILLE_PAR_CHEMIN.has(cle) || GRILLES_RELEVEES.has(cle) || !supabase) return grilleColisVinted(chemin);
+  try {
+    const { data } = await supabase.from("platform_category_aspects").select("allowed_values")
+      .eq("platform", "vinted").eq("category_key", cle).eq("field_key", "package_size").maybeSingle();
+    const g = grilleReleveeDepuisOptions(data?.allowed_values);
+    GRILLES_RELEVEES.set(cle, g);
+  } catch { /* lecture ratée : la carte garde son comportement habituel */ }
+  return grilleColisVinted(chemin);
 }
 
 /** Le choix rangé sur la fiche (attributs.colis_vinted, source manuel) : id > 0, 0 = « Vinted choisit », null = rien. */

@@ -357,6 +357,26 @@ async function computeVintedRequiredState() {
       });
     }
   }
+  // ── LA GRILLE DES FORMATS DE COLIS DU RAYON (03/10, point 13, Louis) ──────
+  // Sur 20 publications Vinted de Louis, 8 étaient dans des rayons dont la
+  // grille de formats n'avait jamais été observée (« Petits appareils de
+  // cuisine », « Autres rangements ») : la carte de l'app ne proposait rien et
+  // Vinted choisissait seul. Les formats OFFERTS par le formulaire (radios
+  // package_type_selector_<id> et leur libellé) partent au catalogue du rayon,
+  // en « id|libellé » (« 5 kg » existe sous plusieurs ids selon le groupe) ;
+  // l'app les relit quand sa table générée n'a rien. Jamais requis : un relevé.
+  {
+    const offertsColis = [...document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]')];
+    const grilleColis = offertsColis.map((r) => {
+      const id = Number(String(r.id).replace("package_type_selector_", ""));
+      const titre = (r.closest('[id^="package-size-"]')?.querySelector('[data-testid$="--cell--title"]')?.textContent ?? "")
+        .replace(/Recommandé/gi, "").trim();
+      return Number.isInteger(id) && id > 0 && titre ? `${id}|${titre}` : null;
+    }).filter(Boolean);
+    if (grilleColis.length && !discovered.some((d) => d.key === "package_size")) {
+      discovered.push({ key: "package_size", label: "Format du colis", required: false, inputType: "radio", options: grilleColis, source: "dom" });
+    }
+  }
   // hadConfig : avait-on une BASE pour juger les requis ? attrs null = la sonde
   // n'a capté AUCUNE config /attributes attribuable à cette catégorie (page
   // pré-sonde, timing, CSP, ou aucune capture portant l'id sélectionné) → on

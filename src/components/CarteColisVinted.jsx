@@ -13,10 +13,11 @@
 // Le choix fait ici se range sur la fiche au clic Publier, et revient la fois
 // suivante ; la republication, elle, reprend le format de l'annonce en ligne.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Package } from 'lucide-react';
 import { UI } from './ui';
-import { grilleColisVinted, colisVintedRetenu, rayonModeVinted } from '../utils/vintedColis';
+import { grilleColisVinted, colisVintedRetenu, rayonModeVinted, chargerGrilleColisRelevee } from '../utils/vintedColis';
+import { supabase } from '../lib/supabase';
 
 const MOTS = {
   fr: {
@@ -42,6 +43,17 @@ const MOTS = {
 export default function CarteColisVinted({ lang = 'fr', chemin = null, champs = {}, attributsFiche = null, onChange }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const [ouvert, setOuvert] = useState(false);
+  // (03/10) Un rayon inconnu de la table générée : la grille relevée par
+  // l'extension au catalogue est chargée une fois, puis la carte se redessine.
+  const [, setCharge] = useState(0);
+  const cleChemin = Array.isArray(chemin) ? chemin.join(' > ') : String(chemin ?? '');
+  useEffect(() => {
+    let vivant = true;
+    if (cleChemin && !grilleColisVinted(chemin)) {
+      chargerGrilleColisRelevee(supabase, chemin).then((g) => { if (vivant && g) setCharge((n) => n + 1); });
+    }
+    return () => { vivant = false; };
+  }, [cleChemin]); // eslint-disable-line react-hooks/exhaustive-deps
   const grille = grilleColisVinted(chemin);
   if (!grille) return null;
 
