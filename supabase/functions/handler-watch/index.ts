@@ -19,6 +19,7 @@ import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } f
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
+import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1166,6 +1167,104 @@ serve(async (req) => {
     if (nBloques) console.log(`[handler-watch] ${nBloques} job(s) Vinted sur la page « compte bloqué » : motif vrai posé (poste muet compris)`);
   } catch (e) {
     console.error("[handler-watch] compte Vinted bloqué :", (e as Error)?.message ?? e);
+  }
+
+  // ══ RETRAIT VINTED D'UNE ANNONCE QUI N'EXISTE PLUS : LE DRESSING TRANCHE (03/10) ══
+  // ornellaracano fb9cd238 (« Service à café vintage », Vinted 9921076011) :
+  // la garde d'identité de l'extension lit le vendeur sur la page de
+  // l'annonce — page qui n'existe plus — et le job bouclait depuis le 30/09
+  // sur « on ne prouve pas la boutique ». Règle partagée
+  // (_shared/retrait-introuvable.js, jugerRetraitVintedIntrouvable) : boutique
+  // prouvée par le relevé complet qui a vu l'annonce en dernier ; deux relevés
+  // complets de cette boutique depuis la demande, sans elle → « Rien à
+  // retirer ». Boutique prouvée et absente du job → rendue au job (la garde
+  // de l'extension a alors l'origine exacte). Un relevé manquant sur la
+  // boutique ouverte dans Chrome → demandé (au plus toutes les 6 h).
+  // Tout le parc, poste muet compris ; un passage sur cinq (~15 min) ; borné.
+  if (new Date().getUTCMinutes() % 15 < 3) {
+    try {
+      const { data: retraitsV } = await supabase.from("cross_post_jobs")
+        .select("id, user_id, platform, action, status, created_at, error, listing_url, platform_listing_id, platform_fields")
+        .eq("platform", "vinted").eq("action", "delete").in("status", ["pending", "needs_user", "failed"])
+        .lt("created_at", new Date(Date.now() - 2 * 3600_000).toISOString())
+        .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+        .order("created_at", { ascending: true }).limit(40);
+      const parCompte = new Map<string, Array<Record<string, unknown>>>();
+      for (const j of (retraitsV ?? []) as Array<Record<string, unknown>>) {
+        if (!numeroRetraitVinted(j)) continue;
+        const u = String(j.user_id);
+        if (!parCompte.has(u)) parCompte.set(u, []);
+        parCompte.get(u)!.push(j);
+      }
+      let closV = 0, boutiquesPosees = 0, relevesDemandes = 0;
+      for (const [uid, jobsU] of parCompte) {
+        const numeros = [...new Set(jobsU.map((j) => numeroRetraitVinted(j)).filter(Boolean))] as string[];
+        const [rRuns, rSnaps, rProf] = await Promise.all([
+          supabase.from("vinted_sync_runs")
+            .select("kind, status, started_at, finished_at, updated_at, items_vus, total_entries, erreur, vinted_user_id, vinted_login, queued_at")
+            .eq("user_id", uid).eq("kind", "dressing")
+            .gte("started_at", new Date(Date.now() - 45 * 86_400_000).toISOString())
+            .order("started_at", { ascending: false }).limit(60),
+          supabase.from("vinted_listing_snapshots").select("vinted_item_id, captured_at")
+            .eq("user_id", uid).in("vinted_item_id", numeros)
+            .order("captured_at", { ascending: false }).limit(2000),
+          supabase.from("profiles").select("extension_sessions").eq("id", uid).maybeSingle(),
+        ]);
+        if (rRuns.error || rSnaps.error) continue;
+        const derniereVue = new Map<string, string>();
+        for (const s of (rSnaps.data ?? []) as Array<{ vinted_item_id: string; captured_at: string }>) {
+          if (!derniereVue.has(String(s.vinted_item_id))) derniereVue.set(String(s.vinted_item_id), s.captured_at);
+        }
+        const boutiqueOuverte = String(((rProf.data?.extension_sessions ?? {}) as Record<string, any>)?.vinted_identite?.user_id ?? "");
+        let releveDemandePourCompte = false;
+        for (const j of jobsU) {
+          const numero = numeroRetraitVinted(j)!;
+          const v = jugerRetraitVintedIntrouvable(j, { releves: rRuns.data ?? [], derniereVue: derniereVue.get(numero) ?? null });
+          if (!v) continue;
+          const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+          if (v.verdict === "deja_retire") {
+            pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status), "handler-watch (retrait Vinted introuvable : deux relevés complets du dressing)");
+            pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets_dressing", releves: v.releves, numero: v.numero, boutiques: v.boutiques };
+            for (const k of ["needs_user_source", "next_action_after", "verification_boutique_vinted"]) delete pfJ[k];
+            const { data: maj } = await supabase.from("cross_post_jobs")
+              .update({ status: "cancelled", error: v.message, platform_fields: pfJ })
+              .eq("id", j.id as string).in("status", ["pending", "needs_user", "failed"]).select("id");
+            closV += (maj ?? []).length;
+            continue;
+          }
+          // Boutique prouvée par le relevé qui a vu l'annonce, absente du job : rendue au job.
+          if (v.boutique && !String(pfJ.vinted_account_id ?? "").trim() && derniereVue.has(numero)) {
+            pfJ.vinted_account_id = v.boutique;
+            pfJ.boutique_prouvee_par_releve = { le: new Date().toISOString(), boutique: v.boutique, login: v.login, vue_le: derniereVue.get(numero) };
+            const { data: maj } = await supabase.from("cross_post_jobs").update({ platform_fields: pfJ })
+              .eq("id", j.id as string).in("status", ["pending", "needs_user", "failed"]).select("id");
+            boutiquesPosees += (maj ?? []).length;
+          }
+          // Il manque un relevé complet de la boutique OUVERTE dans Chrome : on le demande
+          // (au plus toutes les 6 h par compte ; la cadence du dressing reste juge).
+          if (!releveDemandePourCompte && v.verdict === "attente" && v.raison === "moins_de_deux_releves"
+              && boutiqueOuverte && (v.boutiques ?? []).includes(boutiqueOuverte)) {
+            const runs = (rRuns.data ?? []) as Array<Record<string, unknown>>;
+            const actif = runs.some((r) => r.status === "queued" || r.status === "running");
+            const dernierMs = Math.max(0, ...runs.map((r) => Date.parse(String(r.queued_at ?? r.started_at ?? ""))).filter(Number.isFinite));
+            if (!actif && Date.now() - dernierMs > 6 * 3600_000) {
+              const { error: qErr } = await supabase.from("vinted_sync_runs").insert({
+                user_id: uid, kind: "dressing", platform: "vinted", status: "queued",
+                declencheur: "serveur:retrait_introuvable", queued_at: new Date().toISOString(),
+              });
+              releveDemandePourCompte = true;
+              if (!qErr) relevesDemandes++;
+              else console.log(`[handler-watch] relevé du dressing demandé pour un retrait Vinted : refusé (${qErr.message})`);
+            }
+          }
+        }
+      }
+      if (closV || boutiquesPosees || relevesDemandes) {
+        console.log(`[handler-watch] retraits Vinted : ${closV} clos (annonce absente de deux relevés complets du dressing), ${boutiquesPosees} boutique(s) prouvée(s) posée(s), ${relevesDemandes} relevé(s) demandé(s)`);
+      }
+    } catch (e) {
+      console.error("[handler-watch] retraits Vinted introuvables :", (e as Error)?.message ?? e);
+    }
   }
 
   // ══ SORTIE D'OPLA : LES PUBLICATIONS EN ATTENTE SE CLOSENT (02/10) ═══════

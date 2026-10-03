@@ -9,7 +9,9 @@
 //   · ornellaracano 52c13161 : 34084113 en ligne, reliée à rien ;
 //   · nicolas.menar be0395a6 (eBay 377453677328) : EN LIGNE au relevé du 01/10.
 import { jugerRetraitIntrouvable, releveComplet, neeApresLeDepot, messageRetraitSansNumeroAToi,
-  RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS } from "../supabase/functions/_shared/retrait-introuvable.js";
+  RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS,
+  jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../supabase/functions/_shared/retrait-introuvable.js";
+import fs from "node:fs";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
@@ -116,6 +118,53 @@ ok(/« Robe noire plissée PROMOD »/.test(mNr) && /n° 34084113/.test(mNr) && /
   "annonce non reliée : nommée par son numéro, le geste, jamais par le titre", mNr);
 const mAt = messageRetraitSansNumeroAToi({ platform: "beebs", title: "Wii Sports" }, { verdict: "attente" });
 ok(/n'ont pas pu être relues en entier/.test(mAt) && /se conclura tout seul/.test(mAt), "relevés manquants : dit ce qui manque et l'issue", mAt);
+
+console.log("\n6. VINTED — LE DRESSING DE LA BOUTIQUE FAIT FOI (03/10, ornellaracano fb9cd238)");
+// Relevés du DRESSING d'Ornella RELEVÉS en base le 03/10 (ornella-vend 472079 / luciatrendyshop 257364012).
+const D = (at, fin, vus, tot, uid, login, extra = {}) => ({ kind: "dressing", status: "done", started_at: at, finished_at: fin,
+  items_vus: vus, total_entries: tot, vinted_user_id: uid, vinted_login: login, erreur: null, ...extra });
+const relevesDressingOrn = [
+  D("2026-10-02T19:34:18Z", "2026-10-02T19:34:53Z", 145, 145, "257364012", "luciatrendyshop"),
+  D("2026-10-02T13:04:55Z", "2026-10-02T13:21:58Z", 560, 560, "472079", "ornella-vend", { erreur: "[note] reprise auto technique : tentative 2/3" }),
+  D("2026-10-02T07:14:37Z", "2026-10-02T07:15:05Z", 146, 146, "257364012", "luciatrendyshop"),
+  D("2026-10-01T17:32:30Z", "2026-10-01T17:32:52Z", 145, 145, "257364012", "luciatrendyshop"),
+  D("2026-09-30T20:14:12Z", "2026-09-30T20:17:29Z", 145, 145, "257364012", "luciatrendyshop"),
+  D("2026-09-30T18:10:58Z", "2026-09-30T18:12:01Z", 556, 556, "472079", "ornella-vend"),
+  D("2026-09-29T20:16:52Z", "2026-09-29T20:18:12Z", 554, 554, "472079", "ornella-vend"),
+  D("2026-09-23T10:59:29Z", "2026-09-23T11:00:40Z", 543, 543, "472079", "ornella-vend"),
+];
+const fb9 = { id: "fb9cd238", action: "delete", platform: "vinted", created_at: "2026-09-30T19:13:18Z", platform_listing_id: null,
+  listing_url: "https://www.vinted.fr/items/9921076011-service-a-cafe-vintage-en-porcelaine-de-france-fleuri-6-tasses", platform_fields: {} };
+ok(numeroRetraitVinted(fb9) === "9921076011", "numéro lu sur le lien (fiche supprimée, aucun identifiant)");
+// Dernière vue : instantané du 23/09 10:59:44, pendant le relevé ornella-vend du 23/09.
+const v0 = jugerRetraitVintedIntrouvable(fb9, { releves: relevesDressingOrn, derniereVue: "2026-09-23T10:59:44.21Z" });
+ok(v0?.verdict === "attente" && v0.boutique === "472079" && v0.raison === "moins_de_deux_releves",
+  "aujourd'hui : boutique prouvée ornella-vend, UN seul relevé complet depuis la demande (02/10) → on attend", JSON.stringify(v0));
+const avecUnDePlus = [D("2026-10-03T14:00:00Z", "2026-10-03T14:12:00Z", 561, 561, "472079", "ornella-vend"), ...relevesDressingOrn];
+const v1 = jugerRetraitVintedIntrouvable(fb9, { releves: avecUnDePlus, derniereVue: "2026-09-23T10:59:44.21Z" });
+ok(v1?.verdict === "deja_retire" && /n° 9921076011/.test(v1.message) && /@ornella-vend/.test(v1.message) && !/titre/i.test(v1.message),
+  "au prochain relevé complet d'ornella-vend sans elle → « Rien à retirer », boutique nommée", JSON.stringify(v1));
+const v2 = jugerRetraitVintedIntrouvable(fb9, { releves: avecUnDePlus, derniereVue: "2026-10-03T14:05:00Z" });
+ok(v2 === null, "vue PENDANT l'un des deux relevés → elle est là, rien n'est conclu");
+const relevesIncomplets = [D("2026-10-03T14:00:00Z", "2026-10-03T14:12:00Z", 300, 561, "472079", "ornella-vend"), ...relevesDressingOrn];
+ok(jugerRetraitVintedIntrouvable(fb9, { releves: relevesIncomplets, derniereVue: "2026-09-23T10:59:44.21Z" })?.verdict === "attente",
+  "relevé incomplet (300/561) : ne compte pas");
+ok(jugerRetraitVintedIntrouvable(fb9, { releves: [D("2026-10-03T14:00:00Z", "2026-10-03T14:12:00Z", 145, 145, "257364012", "luciatrendyshop"), ...relevesDressingOrn],
+  derniereVue: "2026-09-23T10:59:44.21Z" })?.verdict === "attente", "un relevé de l'AUTRE boutique ne compte pas pour ornella-vend");
+// Jamais vue, job sans boutique : elle ne doit être sur AUCUNE boutique (deux relevés de chacune depuis la demande).
+const jamais = { ...fb9, id: "4b6a8990", created_at: "2026-10-02T12:00:00Z", listing_url: "https://www.vinted.fr/items/10124142479" };
+const v3 = jugerRetraitVintedIntrouvable(jamais, { releves: avecUnDePlus, derniereVue: null });
+ok(v3?.verdict === "attente" && v3.boutiques.length === 2, "jamais vue : les DEUX boutiques doivent avoir deux relevés depuis la demande", JSON.stringify(v3));
+const toutes = [D("2026-10-03T15:00:00Z", "2026-10-03T15:01:00Z", 146, 146, "257364012", "luciatrendyshop"), ...avecUnDePlus];
+const v4 = jugerRetraitVintedIntrouvable(jamais, { releves: toutes, derniereVue: null });
+ok(v4?.verdict === "deja_retire" && /aucune de tes boutiques/.test(v4.message) && /@ornella-vend/.test(v4.message) && /@luciatrendyshop/.test(v4.message),
+  "jamais vue, absente de deux relevés complets de chaque boutique → « Rien à retirer »", v4?.message);
+ok(jugerRetraitVintedIntrouvable({ ...jamais, platform_fields: { vinted_account_id: "472079" } }, { releves: avecUnDePlus, derniereVue: null })?.verdict === "deja_retire",
+  "jamais vue mais boutique du job connue : seule cette boutique compte");
+ok(jugerRetraitVintedIntrouvable({ ...fb9, platform: "beebs" }, { releves: avecUnDePlus }) === null, "autre plateforme : pas ce circuit");
+ok(jugerRetraitVintedIntrouvable({ ...fb9, listing_url: null }, { releves: avecUnDePlus }) === null, "sans numéro : rien");
+const hwSrc = fs.readFileSync(new URL("../supabase/functions/handler-watch/index.ts", import.meta.url), "utf8");
+ok(/jugerRetraitVintedIntrouvable\(/.test(hwSrc) && /vinted_listing_snapshots/.test(hwSrc), "handler-watch juge les retraits Vinted ouverts sur tout le parc");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ retraits introuvables : deux relevés complets, par numéro, message vrai");

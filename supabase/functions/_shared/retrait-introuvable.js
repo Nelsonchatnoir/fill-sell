@@ -211,3 +211,91 @@ export function messageRetraitSansNumeroAToi(retrait, verdict) {
       : `Tes annonces ${nom} n'ont pas pu être relues en entier depuis : regarde-les, et si elle y est encore, retire-la toi-même sur ${nom}. `) +
     "Le retrait se conclura tout seul au relevé suivant — rien ne sera fait en double.";
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VINTED : LE DRESSING DE LA BOUTIQUE FAIT FOI (03/10, ornellaracano fb9cd238)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le retrait du « Service à café vintage » (Vinted 9921076011, fiche supprimée,
+// aucune boutique sur le job) bouclait depuis le 30/09 sur « nous n'arrivons
+// pas à prouver que l'annonce appartient à la boutique ouverte » : la garde
+// d'identité de l'extension lit le vendeur sur la page de l'annonce — et
+// l'annonce N'EXISTE PLUS. Les relevés complets du dressing d'ornella-vend
+// (une ligne par article, vendus, masqués et brouillons compris) l'ont vue pour
+// la dernière fois le 23/09 et plus jamais depuis (29/09, 30/09, 02/10).
+// LA RÈGLE (même décision que les autres plateformes : deux relevés COMPLETS,
+// par NUMÉRO, jamais par le titre) :
+//   · la boutique de l'annonce = celle du relevé complet qui l'a vue en dernier
+//     (instantané vinted_listing_snapshots pris pendant ce relevé) ;
+//   · les deux derniers relevés complets de CETTE boutique, tous deux commencés
+//     après la création du retrait, et commencés après la dernière vue de
+//     l'annonce → elle n'est plus sur la boutique : « Rien à retirer ».
+//   · jamais vue, boutique inconnue, ou moins de deux relevés : on ne conclut
+//     rien (attente). Une annonce vue par l'un des deux relevés retient tout.
+// Et quand la boutique est prouvée par le relevé alors que le job n'en porte
+// pas, elle est rendue au job (vinted_account_id) : la garde de l'extension
+// a alors l'origine exacte pour une annonce qui existe encore.
+
+/** Le numéro Vinted d'un retrait : identifiant, numéro gardé, ou lien /items/<n>. */
+export function numeroRetraitVinted(retrait) {
+  const pf = retrait?.platform_fields ?? {};
+  const brut = String(retrait?.platform_listing_id ?? "").trim() || String(pf.vinted_item_id ?? "").trim();
+  if (/^\d{6,}$/.test(brut)) return brut;
+  const m = String(retrait?.listing_url ?? "").match(/vinted\.[a-z.]+\/items\/(\d{6,})(?:[-/?#]|$)/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * @param {any} retrait  job Vinted action='delete' (created_at, listing_url, platform_listing_id, platform_fields)
+ * @param {{ releves?: Array<any>, derniereVue?: string|number|null }} [ctx]
+ *   releves : relevés du DRESSING du compte (vinted_sync_runs kind='dressing' :
+ *   status, started_at, finished_at, updated_at, items_vus, total_entries,
+ *   erreur, vinted_user_id, vinted_login), tout ordre ;
+ *   derniereVue : captured_at le plus récent de l'annonce dans
+ *   vinted_listing_snapshots (null si jamais vue).
+ * @returns {null | { verdict: 'deja_retire'|'attente', numero: string, boutique: string|null, login: string|null, boutiques: string[], releves: string[], message?: string, raison?: string }}
+ */
+export function jugerRetraitVintedIntrouvable(retrait, { releves = [], derniereVue = null } = {}) {
+  if (!retrait || retrait.action !== "delete" || retrait.platform !== "vinted") return null;
+  const numero = numeroRetraitVinted(retrait);
+  if (!numero) return null;
+  const tVue = ms(derniereVue);
+  const complets = (Array.isArray(releves) ? releves : [])
+    .filter((r) => r && (r.kind == null || r.kind === "dressing") && releveComplet(r) && Number.isFinite(ms(r.started_at)) && String(r.vinted_user_id ?? "").trim())
+    .sort((a, b) => ms(b.started_at) - ms(a.started_at));
+  const finDe = (r) => { const f = ms(r.finished_at); return Number.isFinite(f) ? f : ms(r.updated_at); };
+  // La boutique de l'annonce : celle du relevé complet qui l'a vue en dernier ;
+  // sinon celle du job ; sinon (jamais vue, job sans boutique) TOUTES les
+  // boutiques relevées du compte — elle ne doit être sur aucune.
+  const releveDeLaVue = Number.isFinite(tVue)
+    ? complets.find((r) => ms(r.started_at) - 60_000 <= tVue && Number.isFinite(finDe(r)) && tVue <= finDe(r) + 60_000)
+    : null;
+  const boutiqueJob = String(retrait?.platform_fields?.vinted_account_id ?? "").trim();
+  const boutiques = releveDeLaVue ? [String(releveDeLaVue.vinted_user_id)]
+    : boutiqueJob ? [boutiqueJob]
+    : [...new Set(complets.map((r) => String(r.vinted_user_id)))];
+  const loginDe = (b) => complets.find((r) => String(r.vinted_user_id) === b && r.vinted_login)?.vinted_login ?? null;
+  const boutique = boutiques.length === 1 ? boutiques[0] : null;
+  const login = boutique ? loginDe(boutique) : null;
+  if (!boutiques.length) return { verdict: "attente", numero, boutique: null, login: null, boutiques: [], releves: [], raison: "boutique_inconnue" };
+  const cree = ms(retrait.created_at);
+  let dates = [];
+  for (const b of boutiques) {
+    const deux = complets.filter((r) => String(r.vinted_user_id) === b).slice(0, 2);
+    dates = dates.concat(deux.map((r) => dateFr(ms(r.started_at))));
+    // Deux relevés complets de la boutique, tous deux commencés après la
+    // création du retrait (l'absence vaut MAINTENANT, pas avant la demande).
+    if (deux.length < 2 || deux.some((r) => Number.isFinite(cree) && !(ms(r.started_at) > cree))) {
+      return { verdict: "attente", numero, boutique, login, boutiques, releves: dates, raison: "moins_de_deux_releves" };
+    }
+    // Vue pendant, ou après le début de, l'un des deux relevés : elle est là.
+    if (Number.isFinite(tVue) && !(tVue < ms(deux[1].started_at) - 60_000)) return null;
+  }
+  const noms = boutiques.map((b) => loginDe(b) ? `@${loginDe(b)}` : `n° ${b}`);
+  const ou = boutiques.length === 1 ? `ta boutique Vinted ${noms[0]}` : `aucune de tes boutiques Vinted (${noms.join(", ")})`;
+  return {
+    verdict: "deja_retire", numero, boutique, login, boutiques, releves: dates,
+    message: boutiques.length === 1
+      ? `Rien à retirer : l'annonce Vinted n° ${numero} n'est plus sur ${ou} (relevés complets du ${dates[1]} et du ${dates[0]}). Elle est déjà retirée.`
+      : `Rien à retirer : l'annonce Vinted n° ${numero} n'est sur ${ou} (deux relevés complets de chacune depuis ta demande). Elle est déjà retirée.`,
+  };
+}
