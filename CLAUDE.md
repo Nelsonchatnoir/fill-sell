@@ -1,16 +1,17 @@
-## État de production au 03/10 (soir) — lire avant toute action
+## État de production au 03/10 (nuit) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
-« 03/10 — chantier des 31 points » et « 03/10 soir — clôture » en fin) et
+« 03/10 soir — clôture » et « 03/10 nuit — marque, Louis » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS ; **0.6.91 prête à téléverser**
-  (`build/CWS-0.6.91-A-TELEVERSER/`, BUILD_ID `2026-10-03T16:16:12Z+9fbcab9`,
-  chargée et prouvée chez Nico) ; **minimum serveur 0.6.81** (inchangé :
-  forcer la MAJ = décision de Nico) ; OTA **2.9.43** ; `get-pending-jobs`
-  v200, `avis-demande` v3, `ebay-account` v16 (`true`) ; `update-job-status`
+- **Servi** : extension **0.6.89** au CWS ; **0.6.92 prête à téléverser**
+  (`build/CWS-0.6.92-A-TELEVERSER/`, BUILD_ID `2026-10-03T19:00:15Z+4c554f2`,
+  copiée chez Nico ; la 0.6.91 n'a jamais été téléversée) ; **minimum serveur
+  0.6.81** (inchangé : forcer la MAJ = décision de Nico) ; OTA **2.9.44** ;
+  `get-pending-jobs` v202, `lens-analysis` v105, `avis-demande` v3,
+  `ebay-account` v16 (`true`) ; `update-job-status`
   v121, `handler-watch` v77, `ebay-api-worker` v76, `ebay-oauth-callback` v9,
   `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
@@ -25,7 +26,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   (`vinted_sync_runs.progres_le`, posé par la base ; « annonces » : la dernière
   ligne écrite compte ; liste encore en lecture : 10 min) ; le veilleur
   s'espace après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
-- **Selftests** : 206, 0 rouge (03/10 soir). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
+- **Marque (03/10 nuit)** : une réponse partagée atteint TOUTE plateforme qu'elle
+  nomme (`moteur/reponsesPartagees.js`) ; la marque de la fiche n'est jamais
+  redemandée ; Vinted : marque exacte du catalogue sinon marque libre, jamais
+  une autre. **Republication** : âge et prix repris de L'annonce en ligne.
+- **Selftests** : 188 + bancs, 0 rouge (03/10 nuit). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs` (un morceau ne revient qu'avec sa
   preuve réelle — son test tombe sinon).
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
