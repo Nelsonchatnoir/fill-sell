@@ -67,7 +67,26 @@ export const BUILD_BEEBS_ADRESSE_STRICTE = "2026-10-01T15:29:31Z";
 // pas l'annonce du job » attendent un poste qui porte ce build.
 export const BUILD_EBAY_FIN_PAR_NUMERO = "2026-10-02T08:01:46Z";
 
+// ── UN ASPECT eBay EN SAISIE LIBRE SE REMPLIT (2026-10-03, point 7) ───────
+// « Numéro de pièce fabricant » (geronimo0550 0692b536 et 6 autres jobs depuis
+// le 16/08) : la ligne n'a ni bouton-valeur ni puce, seulement une saisie ;
+// aucun chemin n'y écrivait. Horodatage du correctif (ebay.js,
+// inputTexteDeLaLigne, 0.6.90) : tout build produit depuis le porte.
+export const BUILD_EBAY_SAISIE_LIBRE = "2026-10-03T11:30:00Z";
+
 export const CORRECTIFS_EXTENSION = [
+  {
+    // (2026-10-03, point 7) Rien n'a été soumis (« publication NON tentée ») :
+    // le réarmement ne peut pas créer de doublon. La valeur est déjà sur le job.
+    cle: "ebay_aspect_saisie_libre",
+    platform: "ebay",
+    actions: ["publish", "republish"],
+    signature: /champ sauté — bouton-valeur introuvable pour "[^"]+"[^|]*input\.textbox__control/,
+    buildMin: BUILD_EBAY_SAISIE_LIBRE,
+    version: "0.6.90",
+    motif: "aspect eBay en saisie libre (« Numéro de pièce fabricant ») rempli et relu depuis la 0.6.90",
+    clesARetirer: ["needsUserField", "needsUserFields", "needs_user_source", "pas_de_rouge", "pas_de_rouge_reprises", "needsUserAttempts", "champs_a_completer"],
+  },
   {
     // (2026-10-01, mariecreativedigital, chemise Hilfiger 0f457c57) : six
     // dépôts restés sur le formulaire, l'adresse « validée » sur « 8XL ».

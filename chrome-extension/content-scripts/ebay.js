@@ -1482,6 +1482,35 @@ function dumpSpecificRow(labelBtn) {
   return noeuds.length ? `structure réelle de la ligne : ${noeuds.join(" ; ")}` : "ligne vide dans le DOM";
 }
 
+// ── VARIANTE « TEXTE LIBRE » (03/10, « Numéro de pièce fabricant ») ─────────
+// Relevé sur le job 0692b536 (kit Kodak de geronimo0550) et 6 autres depuis le
+// 16/08 : la ligne n'a NI bouton-valeur NI puce — « structure : button.fake-link ;
+// tooltip ; p.textual-display ; input.textbox__control ». C'est un champ de
+// SAISIE : la valeur « Ne s'applique pas » du job n'était posée par aucun
+// chemin, et le constat des obligatoires la lisait vide (« LIVE : … refus eBay
+// garanti »). On écrit dans l'input de LA ligne — un seul, hors menu —, puis
+// on relit.
+function inputTexteDeLaLigne(labelBtn) {
+  const scope =
+    labelBtn.closest('[class*="summary__attributes--field"], li, .se-field, .field, div')?.parentElement ??
+    labelBtn.parentElement;
+  if (!scope || scope.querySelectorAll(SPECIFIC_LABEL_BTN).length > 1) return null;
+  const inputs = [...scope.querySelectorAll('input.textbox__control, input[type="text"]')]
+    .filter((el) => !el.closest('.fake-menu-button__menu, [class*="list-menu"], .menu__items, [class*="tooltip"], [class*="overlay"]'));
+  return inputs.length === 1 ? inputs[0] : null;
+}
+
+async function poserTexteLibre(input, valeur) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  input.focus?.();
+  if (setter) setter.call(input, String(valeur)); else input.value = String(valeur);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  input.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+  input.blur?.();
+  return waitFor(() => (String(input.value ?? "").trim() === String(valeur).trim() ? true : null), 4000);
+}
+
 // ⚠️ VARIANTE « SUMMARY » du formulaire (autopsiée sur le vrai brouillon le
 // 2026-07-13, bug du faux « Style vide ») : certains aspects n'ont AUCUN
 // bouton-valeur — eBay les affiche en TEXTE STATIQUE (div.textual-display dans
@@ -1554,6 +1583,9 @@ function computeUnfilledRequired(fields, filledSpecifics, warnings = []) {
     // job dde03c2f venait de là).
     let current = anatomy ? anatomy.expandBtn.textContent.trim().replace(/^Tendances$/i, "") : "";
     if (!current && found) current = readAspectDisplayValue(found.btn);
+    // (03/10) Champ de saisie libre (« Numéro de pièce fabricant ») : sa valeur
+    // est dans l'input de la ligne, pas dans un bouton ni un texte statique.
+    if (!current && found && !anatomy) current = String(inputTexteDeLaLigne(found.btn)?.value ?? "").trim();
     if (current) {
       // Satisfait par un pré-rempli eBay, PAS par une de nos poses vérifiées
       // (celles-là sortent en haut de boucle via filledSpecifics). Le constat
@@ -1659,6 +1691,21 @@ async function fillSpecificSafe(labels, rawValue, warnings, { overwrite = false 
         realClick(chipSeule);
         await humanPause();
         return true;
+      }
+      // (03/10) Champ de SAISIE (texte libre) : on écrit, puis on relit.
+      const saisie = inputTexteDeLaLigne(found.btn);
+      if (saisie) {
+        const deja = String(saisie.value ?? "").trim();
+        if (deja && (normalizeFuzzy(deja) === normalizeFuzzy(String(rawValue)) || (!overwrite && prefilledMatchesTarget(deja, rawValue)))) {
+          console.log(`[ebay] ${found.label}: saisie déjà remplie ("${deja}"), conservée`);
+          return true;
+        }
+        if (deja) warnings.push(`${found.label}: saisie "${deja}" remplacée par la donnée produit "${rawValue}"`);
+        if (await poserTexteLibre(saisie, rawValue)) {
+          console.log(`[ebay] ${found.label}: valeur saisie et relue ("${rawValue}")`);
+          return true;
+        }
+        throw new Error(`la valeur "${rawValue}" ne persiste pas dans la saisie — ${dumpSpecificRow(found.btn)}`);
       }
       throw new Error(
         `bouton-valeur introuvable pour "${found.label}" (aucune chip « ${rawValue} » non plus) — ` +
