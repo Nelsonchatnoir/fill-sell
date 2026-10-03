@@ -40,6 +40,7 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-job.js";
 import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSansRefus } from "../_shared/rayon-refuse-ebay.ts";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { tailleDansGrille } from "../_shared/tailles.js";
 import { compteEbayApiUsable, MESSAGE_EBAY_COMPTE_A_FINIR, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
@@ -2620,6 +2621,160 @@ async function reviserQuantiteAnnonce(admin: SupabaseClient, env: EbayEnv, body:
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RÉVISER UNE ANNONCE EN LIGNE QU'UNE RÈGLE CORRIGÉE AURAIT FAITE AUTREMENT
+// (03/10, points 12 et 5)
+// ═══════════════════════════════════════════════════════════════════════════
+// Patrick (patrick.giry07, job b26c3d40, eBay 237102208161) : jean publié en
+// « 34 » — le 34 de la LONGUEUR de « 35/34 » lu comme un 34 français — alors
+// que la fiche dit « W34 | FR 44 ». La règle est corrigée depuis f514b52
+// (02/10 soir), mais rien ne remettait l'annonce d'accord : une republication
+// recopie le job source, et le worker ne savait que publier, retirer et
+// baisser une quantité. Décision de Nico : l'annonce en ligne doit porter 44.
+// Livres (point 5) : une annonce rangée en « Modélisme ferroviaire > Livres »
+// change de rayon pour la maison des livres.
+// LA RÈGLE DE PRUDENCE (mesurée le 03/10) : sur les 101 annonces API publiées
+// avec une taille, 16 diffèrent de ce que la règle d'aujourd'hui tirerait de
+// leur fiche, et 15 de ces écarts sont des écritures équivalentes ou des choix
+// de la personne (« S / 36 / 8 » publié « 36 »…). On ne révise donc JAMAIS
+// en masse ni en automatique : une annonce désignée, la valeur actuelle
+// attendue (sinon rien), la nouvelle valeur calculée par la règle du dépôt
+// (tailleDansGrille sur la grille eBay du rayon ; maison des livres + choix
+// parmi les suggestions d'eBay), un essai à blanc possible, puis relecture
+// de l'article ET de l'annonce publique. Même numéro d'annonce, rien n'est
+// republié ni décompté.
+async function reviserAnnonce(admin: SupabaseClient, env: EbayEnv, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const jobId = String(body.job_id ?? "");
+  const dryRun = body.dry_run === true;
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) return { ok: false, motif: "parametres" };
+  const { data: j } = await admin.from("cross_post_jobs")
+    .select("id, user_id, inventaire_id, platform, action, status, voie, title, platform_fields").eq("id", jobId).maybeSingle();
+  const job = j as (Job & { voie?: string }) | null;
+  const pf = { ...((job?.platform_fields ?? {}) as Record<string, unknown>) };
+  const api = (pf.ebay_api ?? {}) as Record<string, unknown>;
+  const sku = String(api.sku ?? ""), offerId = String(api.offer_id ?? ""), listingId = String(api.listing_id ?? "");
+  if (!job || job.platform !== "ebay" || job.voie !== "api" || job.status !== "published" || !sku || !offerId || !/^\d{9,15}$/.test(listingId)) {
+    return { ok: false, motif: "pas_une_annonce_api_publiee" };
+  }
+  const jeton = await obtenirAccessToken(admin, job.user_id);
+  if (!jeton.ok) return { ok: false, motif: `jeton_${jeton.motif}` };
+  const token = jeton.token as string;
+  const changements: Array<Record<string, unknown>> = [];
+
+  // ── La taille : la fiche passée par la règle du dépôt, sur la grille du rayon.
+  if (body.taille === true) {
+    const attendu = String(body.taille_actuelle ?? "");
+    const inv = await lireInventaire(admin, job.inventaire_id);
+    const tailleFiche = String(((inv.attributs ?? {}) as Record<string, any>)?.taille?.v ?? "").trim();
+    const cat = await aspectsCategorie(admin, env, token, String(pf.ebayCategoryId ?? ""));
+    if ("erreur" in cat) return { ok: false, motif: "aspects_illisibles", detail: cat.erreur };
+    const grille = cat.aspects.find((a) => a.name === "Taille")?.allowedValues ?? [];
+    const t = tailleFiche && grille.length ? tailleDansGrille(tailleFiche, grille) : null;
+    if (String(pf.taille ?? "") !== attendu) return { ok: false, motif: "taille_actuelle_differente", sur_le_job: pf.taille ?? null, attendu };
+    if (!t) return { ok: false, motif: "taille_non_traduisible", fiche: tailleFiche };
+    // `essai_sans_changement` : la même taille est réécrite et relue — une
+    // révision sans effet, pour prouver l'aller-retour sur une vraie annonce.
+    if (t.valeur === attendu && body.essai_sans_changement !== true) return { ok: true, motif: "deja_juste", taille: t.valeur };
+    changements.push({ quoi: "Taille", de: attendu, vers: t.valeur, fiche: tailleFiche, regle: t.motif, ...(t.valeur === attendu ? { essai_sans_changement: true } : {}) });
+  }
+  // ── Le rayon d'un livre : la maison des livres, parmi les suggestions d'eBay.
+  if (body.rayon_livre === true) {
+    const actuel = String(pf.ebayCategoryId ?? "");
+    if (actuel !== String(body.rayon_actuel ?? "")) return { ok: false, motif: "rayon_actuel_different", sur_le_job: actuel };
+    const inv = await lireInventaire(admin, job.inventaire_id);
+    const titre = (inv.titre || job.title || "").trim();
+    const appToken = await obtenirJetonApplicatif(env);
+    const suggestions = (await suggererCategories(env, appToken, titre)).filter((s) => s.chemin[0] === "Livres, BD, revues");
+    const choisi = suggestions.length ? await choisirParmiSuggestions(suggestions, { titre, userId: job.user_id }, admin) : null;
+    if (!choisi) return { ok: false, motif: "aucun_rayon_livre_sur", suggestions: suggestions.map((s) => `${s.id} ${s.chemin.join(" > ")}`) };
+    changements.push({ quoi: "rayon", de: actuel, vers: choisi.id, chemin: choisi.chemin });
+  }
+  if (!changements.length) return { ok: false, motif: "rien_demande" };
+  if (dryRun) return { ok: true, dry_run: true, job: job.id, annonce: listingId, changements };
+
+  const avant = { taille: pf.taille ?? null, ebayCategoryId: pf.ebayCategoryId ?? null, ebayCategoryPath: pf.ebayCategoryPath ?? null };
+  for (const c of changements) {
+    if (c.quoi === "Taille") {
+      const g = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`);
+      if (g.http !== 200 || !g.json) return { ok: false, motif: `lecture_article_${g.http}` };
+      const item = g.json as Record<string, any>;
+      const corps: Record<string, unknown> = {
+        availability: item.availability, condition: item.condition,
+        ...(item.conditionDescription ? { conditionDescription: item.conditionDescription } : {}),
+        ...(Array.isArray(item.conditionDescriptors) && item.conditionDescriptors.length ? { conditionDescriptors: item.conditionDescriptors } : {}),
+        ...(item.packageWeightAndSize ? { packageWeightAndSize: item.packageWeightAndSize } : {}),
+        product: { ...item.product, aspects: { ...(item.product?.aspects ?? {}), Taille: [String(c.vers)] } },
+      };
+      const p = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: corps });
+      if (![200, 201, 204].includes(p.http)) {
+        const e = lireErreurEbay(p.json, p.texte);
+        return { ok: false, motif: `refus_article_${p.http}`, ebay: e.message, errorId: e.errorId };
+      }
+      pf.taille = String(c.vers);
+    }
+    if (c.quoi === "rayon") {
+      // L'ÉTAT, DANS LE VOCABULAIRE DU NOUVEAU RAYON (03/10, refus 25021 sur le
+      // Hawking d'Ornella : « le code d'état n'est pas valide pour la catégorie »).
+      // Le même état de la fiche, traduit par la même règle que le dépôt
+      // (choisirCondition) — jamais un autre état. L'article est mis à jour
+      // AVANT l'offre ; si l'offre est refusée, l'article retrouve son état.
+      const conds = await conditionsCategorie(env, token, String(c.vers));
+      const condNouveau = choisirCondition(pf.etat as string, conds);
+      if (!condNouveau) return { ok: false, motif: "etat_sans_correspondance_dans_le_nouveau_rayon", etat: pf.etat ?? null };
+      const gi = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`);
+      if (gi.http !== 200 || !gi.json) return { ok: false, motif: `lecture_article_${gi.http}` };
+      const article = gi.json as Record<string, any>;
+      const corpsArticle = (condition: string) => ({
+        availability: article.availability, condition,
+        ...(article.conditionDescription ? { conditionDescription: article.conditionDescription } : {}),
+        ...(article.packageWeightAndSize ? { packageWeightAndSize: article.packageWeightAndSize } : {}),
+        product: article.product,
+      });
+      const conditionAvant = String(article.condition ?? "");
+      if (condNouveau.enumValue !== conditionAvant) {
+        const pc = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: corpsArticle(condNouveau.enumValue) });
+        if (![200, 201, 204].includes(pc.http)) {
+          const e = lireErreurEbay(pc.json, pc.texte);
+          return { ok: false, motif: `refus_etat_${pc.http}`, ebay: e.message, errorId: e.errorId, etat: condNouveau.libelle };
+        }
+        c.etat = { de: conditionAvant, vers: condNouveau.enumValue, libelle: condNouveau.libelle };
+      }
+      const o = await appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`);
+      if (o.http !== 200 || !o.json) return { ok: false, motif: `lecture_offre_${o.http}` };
+      const offre = o.json as Record<string, any>;
+      const corpsOffre: Record<string, unknown> = {};
+      for (const k of ["availableQuantity", "categoryId", "charity", "extendedProducerResponsibility", "format", "hideBuyerDetails", "includeCatalogProductDetails",
+        "listingDescription", "listingDuration", "listingPolicies", "listingStartDate", "lotSize", "merchantLocationKey", "pricingSummary",
+        "quantityLimitPerBuyer", "regulatory", "secondaryCategoryId", "storeCategoryNames", "tax"]) if (offre[k] !== undefined) corpsOffre[k] = offre[k];
+      corpsOffre.categoryId = String(c.vers);
+      const u = await appelEbay(env, token, `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`, { method: "PUT", body: corpsOffre });
+      if (![200, 204].includes(u.http)) {
+        const e = lireErreurEbay(u.json, u.texte);
+        // L'offre refuse : l'article retrouve son état d'avant (annonce inchangée).
+        if (c.etat) await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: corpsArticle(conditionAvant) }).catch(() => null);
+        return { ok: false, motif: `refus_offre_${u.http}`, ebay: e.message, errorId: e.errorId, etat_remis: Boolean(c.etat) };
+      }
+      pf.ebayCategoryId = String(c.vers);
+      pf.ebayCategoryPath = c.chemin;
+    }
+  }
+  // Relecture de l'annonce publique (jeton applicatif) : ce que voient les acheteurs.
+  let relu: Record<string, unknown> = {};
+  try {
+    const appToken = await obtenirJetonApplicatif(env);
+    const r = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${listingId}`, {
+      headers: { Authorization: `Bearer ${appToken}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+    });
+    const b = await r.json().catch(() => ({})) as Record<string, any>;
+    relu = { http: r.status, categoryId: b.categoryId ?? null,
+      taille: ((b.localizedAspects ?? []) as Array<{ name?: string; value?: string }>).find((a) => a.name === "Taille")?.value ?? null };
+  } catch (e) { relu = { erreur: String((e as Error)?.message ?? e).slice(0, 120) }; }
+  pf.revision_annonce = { le: new Date().toISOString(), par: "ebay-api-worker (révision : règle corrigée)", avant, changements, relu };
+  await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id).eq("status", "published");
+  console.log(`[ebay-api-worker] annonce ${listingId} révisée : ${changements.map((c) => `${c.quoi} ${c.de} → ${c.vers}`).join(", ")} — relu ${JSON.stringify(relu)}`);
+  return { ok: true, job: job.id, annonce: listingId, changements, relu };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // LE VENDEUR DES ANNONCES LUES AU HUB (2026-09-26, relevé eBay aligné sur l'API)
 // ═══════════════════════════════════════════════════════════════════════════
 // Un compte relié par l'API ne voit plus son relevé eBay traité que si le Hub
@@ -2764,6 +2919,7 @@ Deno.serve(async (req) => {
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
   if (body.action === "reviser_quantite_annonce") return json(await reviserQuantiteAnnonce(admin, env, body as Record<string, unknown>));
+  if (body.action === "reviser_annonce") return json(await reviserAnnonce(admin, env, body as Record<string, unknown>));
   if (body.action === "rejeu_rayon_refuse") return json(await rejeuRayonRefuse(admin, env, body as { ids?: string[] }));
   if (body.action === "rayon_aveugle") {
     return json(await recategoriserRayonsAveugles(admin, env, { job_id: body.job_id, dry_run: (body as { dry_run?: boolean }).dry_run === true }));
