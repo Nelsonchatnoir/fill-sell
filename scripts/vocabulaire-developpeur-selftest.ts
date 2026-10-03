@@ -17,6 +17,7 @@
 import {
   marqueurDeDeveloppeur,
   porteDuVocabulaireDeDeveloppeur,
+  sansIncisesTechniques,
 } from "../supabase/functions/_shared/vocabulaire-developpeur.ts";
 
 let ko = 0;
@@ -73,6 +74,25 @@ for (const s of surprises.slice(0, 12)) {
   console.log(`      ↳ ${s.n} job(s) · ${s.p} · marqueur « ${marqueurDeDeveloppeur(s.t)} »`);
   console.log(`        ${s.t.slice(0, 160).replace(/\s+/g, " ")}`);
 }
+
+console.log("=== 4. UN GESTE NE SE JETTE PAS AVEC SA ROUTE (03/10, point 14) ===");
+// f2rhrt5zc6 (job 618164ab) : le message vrai, jeté entier pour « (/fpa/upgrade) ».
+const UPGRADE = "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce (/fpa/upgrade). Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
+const nettoye = sansIncisesTechniques(UPGRADE);
+ok("incise retirée, message et geste gardés", nettoye ===
+  "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.",
+  String(nettoye));
+ok("le texte nettoyé est montrable", nettoye != null && !porteDuVocabulaireDeDeveloppeur(nettoye));
+ok("vocabulaire HORS parenthèses (adamchocho13) → toujours le générique",
+  sansIncisesTechniques(DOIT_PRENDRE[0][1]) === null);
+ok("sans parenthèses (« update-job-status → HTTP 520 ») → toujours le générique",
+  sansIncisesTechniques("update-job-status → HTTP 520") === null);
+ok("presque rien ne reste → le générique", sansIncisesTechniques("Échec (categoryId=12).") === null);
+ok("une incise sans jargon est gardée",
+  sansIncisesTechniques("Le dépôt a échoué (deux fois) sur la page /sl/list (route /sl/list), relance depuis la fiche de l'article.") === null &&
+  sansIncisesTechniques("Le dépôt a échoué (deux fois), eBay a refusé la page (route /sl/list). Relance depuis la fiche de l'article.") ===
+    "Le dépôt a échoué (deux fois), eBay a refusé la page. Relance depuis la fiche de l'article.");
+ok("un texte propre n'est pas touché (null : rien à nettoyer)", sansIncisesTechniques("Ton annonce est intacte.") === null);
 
 console.log(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");
 if (ko) Deno.exit(1);

@@ -67,3 +67,27 @@ export function marqueurDeDeveloppeur(texte: unknown): string | null {
   const m = partieMontree(texte).match(VOCABULAIRE_RE);
   return m ? m[0].trim().slice(0, 80) : null;
 }
+
+// ── UN GESTE NE SE JETTE PAS AVEC SA ROUTE (03/10, point 14) ────────────────
+// f2rhrt5zc6 (job 618164ab) : « eBay demande une mise à niveau de ton compte
+// vendeur avant de pouvoir déposer une annonce (/fpa/upgrade). Ouvre ebay.fr
+// dans Chrome, suis les étapes… » — un message vrai, avec son geste, jeté
+// ENTIER pour une incise entre parenthèses, et remplacé par un générique qui
+// accusait « notre côté ». Quand le vocabulaire ne vit QUE dans des
+// parenthèses, on retire ces parenthèses-là et on garde le message ; s'il en
+// reste ailleurs (cas d'adamchocho13 : chemin de fichier dans la phrase), ou
+// si presque rien ne reste, le filet fait son travail comme avant.
+const INCISE_RE = /\s*\(([^()]*)\)/g;
+const RESTE_MIN = 40;
+
+/** Le texte montré sans ses incises techniques, ou null s'il ne s'en sort pas propre. */
+export function sansIncisesTechniques(texte: unknown): string | null {
+  const montre = partieMontree(texte);
+  if (!montre || !VOCABULAIRE_RE.test(montre)) return null;
+  const nettoye = montre
+    .replace(INCISE_RE, (incise: string, dedans: string) => (VOCABULAIRE_RE.test(dedans) ? "" : incise))
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (nettoye.length < RESTE_MIN || VOCABULAIRE_RE.test(nettoye)) return null;
+  return nettoye;
+}

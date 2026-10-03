@@ -146,7 +146,8 @@
     "selftest:peinture-poids": "node --import ./scripts/loader-ext.mjs scripts/peinture-poids-selftest.mjs",
     "selftest:beebs-taille-hors-liste": "node scripts/beebs-taille-hors-liste-selftest.mjs",
     "selftest:ebay-revision": "node scripts/ebay-revision-selftest.mjs",
-    "selftest:colis-poids": "node --import ./scripts/loader-ext.mjs scripts/colis-poids-selftest.mjs"
+    "selftest:colis-poids": "node --import ./scripts/loader-ext.mjs scripts/colis-poids-selftest.mjs",
+    "selftest:ebay-mise-a-niveau": "node scripts/ebay-mise-a-niveau-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

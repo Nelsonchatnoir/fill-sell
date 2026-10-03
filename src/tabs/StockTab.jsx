@@ -298,6 +298,15 @@ function murDeConnexion(job) {
   return MOTIFS.CONNEXION;
 }
 
+// Les marqueurs de mur levés par une relance manuelle : chacun est REPOSÉ par
+// le serveur au prochain essai si le mur est toujours là (update-job-status,
+// get-pending-jobs, ebay-api-worker), jamais un oubli qui survit à un geste.
+const MURS_LEVES_A_LA_RELANCE = [
+  'connexion', 'session_vinted',
+  'ebay_connexion_requise', 'ebay_compte_a_finir', 'ebay_compte_chrome', 'ebay_compte_vendeur_inactif',
+  'compte_vinted_bloque',
+];
+
 // ── Relance MANUELLE d'un job échoué récupérable (2026-08-31) ─────────────────
 // L'utilisateur SAIT quand il vient de se reconnecter ou de passer un
 // challenge : il ne doit ni attendre la reprise espacée (5/15/30/60 min,
@@ -7171,7 +7180,14 @@ const StockTab = memo(function StockTab({
       delete pf.attente_session;
       // (27/09, point 19 — samazer59) Le parcage « connexion » est levé avec
       // elle : jamais un marqueur de mur oublié sur un job remis en file.
-      if (['connexion', 'session_vinted'].includes(String(pf.needs_user_source ?? ''))) delete pf.needs_user_source;
+      // (03/10, point 14 — f2rhrt5zc6) Tous les murs que le serveur REPOSE à
+      // chaque essai s'il sont toujours là : un « connecte ton compte eBay »
+      // resté collé affichait le mauvais bouton sous un autre mur (mise à
+      // niveau eBay). Relancer, c'est dire « j'ai fait le geste ».
+      if (MURS_LEVES_A_LA_RELANCE.includes(String(pf.needs_user_source ?? ''))) {
+        delete pf.needs_user_source;
+        delete pf.ebay_connexion_requise;
+      }
       delete pf.refus_passager;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();

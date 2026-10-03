@@ -18,12 +18,13 @@ import {
 } from "../_shared/textes-jobs.ts";
 import { compteEbayApiConnecte, SOURCE_EBAY_CONNEXION_REQUISE } from "../_shared/ebay-voie.ts";
 import { estPageInscriptionVendeurEbay } from "../_shared/ebay-page-vendeur.ts";
+import { murMiseANiveauEbay, miseANiveauVendeurEbay } from "../_shared/ebay-mise-a-niveau.js";
 import {
   derniereFinDeJob,
   estPageDeConnexionPlateforme,
   estPageDeConnexionQuelconque,
 } from "../_shared/pages-de-job.ts";
-import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur } from "../_shared/vocabulaire-developpeur.ts";
+import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, sansIncisesTechniques } from "../_shared/vocabulaire-developpeur.ts";
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec, estTailleHorsGrille, restrictionVinted } from "../_shared/pas-de-rouge.js";
@@ -1070,7 +1071,14 @@ serve(async (req) => {
             // La base ne sert que de repli pour les builds qui ne joignent pas
             // leur platform_fields — et seulement si le body n'en porte aucun.
             const atEnd = finBody ?? derniereFinDeJob(pfBase);
-            if (estPageInscriptionVendeurEbay(atEnd?.tab_url)) {
+            // (03/10, point 14 — f2rhrt5zc6) Même famille : eBay exige une
+            // MISE À NIVEAU du compte vendeur (/fpa/upgrade, pré-vol). Reconnue
+            // à sa signature, toutes versions d'extension confondues — avant,
+            // la route dans le texte faisait tomber le message dans G5.
+            const pageInscription = estPageInscriptionVendeurEbay(atEnd?.tab_url);
+            const miseANiveau = !pageInscription &&
+              murMiseANiveauEbay({ error: body.error, platform_fields: pfBody ?? pfBase });
+            if (pageInscription || miseANiveau) {
               const pfSrc = (pfBody ?? pfBase);
               const precedent = (pfSrc.compte_vendeur_inactif ?? pfBase.compte_vendeur_inactif ?? null) as
                 Record<string, unknown> | null;
@@ -1083,8 +1091,12 @@ serve(async (req) => {
                 serverRequired: _sr,
                 server_required_fields: _srf,
                 bfcache_rearms: _bfc,
-                ...pfSans
+                ...pfSansTout
               } = pfSrc;
+              // Le marqueur d'un AUTRE mur (« connecte ton compte eBay » d'un
+              // essai précédent) ne dit plus rien quand celui-ci est nommé.
+              const { ebay_connexion_requise: _ecr, ...pfSansMur } = pfSansTout;
+              const pfSans = miseANiveau ? pfSansMur : pfSansTout;
               pfEbayVendeurInactif = {
                 ...pfSans,
                 // La valeur EN BASE, jamais celle que l'extension vient
@@ -1099,14 +1111,20 @@ serve(async (req) => {
                   tab_url: String(atEnd?.tab_url ?? "").slice(0, 300),
                   fill_step: atEnd?.fill_step == null ? null : String(atEnd.fill_step).slice(0, 80),
                   verdict_extension: typeof body.error === "string" ? body.error.slice(0, 600) : null,
-                  pose_par: "update-job-status (page d'inscription vendeur eBay = mur, pas un incident Chrome)",
+                  ...(miseANiveau ? { mur: "mise_a_niveau" } : {}),
+                  pose_par: miseANiveau
+                    ? "update-job-status (eBay exige une mise à niveau du compte vendeur, /fpa/upgrade)"
+                    : "update-job-status (page d'inscription vendeur eBay = mur, pas un incident Chrome)",
                 },
               };
               statutEffectif = "needs_user";
-              messageEffectif = compteVendeurEbayInactif(String(jrow.action ?? "publish"));
-              raisonRequalif =
-                `compte eBay pas encore vendeur (page ${String(atEnd?.tab_url ?? "?")}) : ` +
-                `needs_user, reprises automatiques arrêtées`;
+              messageEffectif = miseANiveau
+                ? miseANiveauVendeurEbay(String(jrow.action ?? "publish"))
+                : compteVendeurEbayInactif(String(jrow.action ?? "publish"));
+              raisonRequalif = miseANiveau
+                ? "eBay exige une mise à niveau du compte vendeur (/fpa/upgrade) : needs_user, reprises automatiques arrêtées"
+                : `compte eBay pas encore vendeur (page ${String(atEnd?.tab_url ?? "?")}) : ` +
+                  `needs_user, reprises automatiques arrêtées`;
               console.log(
                 `[update-job-status] userId=${user.id} job=${jobId} — page d'inscription vendeur eBay ` +
                 `(${String(atEnd?.tab_url ?? "?")}, fill_step=${String(atEnd?.fill_step ?? "?")}) : ` +
@@ -2798,16 +2816,25 @@ serve(async (req) => {
           //    ailleurs (compte eBay pas encore vendeur). Un message qui
           //    aurait dit « change ton rayon » l'aurait envoyé travailler
           //    pour rien. On dit l'étape, à qui est le problème, et le geste.
-          const { data: jFuite } = await userClient
-            .from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
-          clair = fuiteDeDeveloppeur(
-            String(jFuite?.platform ?? ""),
-            String(jFuite?.action ?? "publish"),
-            statutEffectif === "pending",
-          );
+          // (03/10, point 14) D'abord SANS l'incise technique : un message
+          // vrai qui porte un geste ne se jette pas pour une route entre
+          // parenthèses (f2rhrt5zc6, « … (/fpa/upgrade). Ouvre ebay.fr … »).
+          const nettoye = sansIncisesTechniques(brut);
+          if (nettoye) {
+            clair = nettoye;
+          } else {
+            const { data: jFuite } = await userClient
+              .from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+            clair = fuiteDeDeveloppeur(
+              String(jFuite?.platform ?? ""),
+              String(jFuite?.action ?? "publish"),
+              statutEffectif === "pending",
+            );
+          }
           console.log(
             `[update-job-status] userId=${user.id} job=${jobId} — vocabulaire de développeur ` +
-            `retiré de l'affichage (marqueur « ${marqueurDeDeveloppeur(brut)} », brut conservé)`,
+            `retiré de l'affichage (marqueur « ${marqueurDeDeveloppeur(brut)} », ` +
+            `${nettoye ? "incise retirée, message gardé" : "texte générique"}, brut conservé)`,
           );
         }
         if (clair) {

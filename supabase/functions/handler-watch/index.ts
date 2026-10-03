@@ -19,6 +19,7 @@ import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } f
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
+import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
 
@@ -1168,6 +1169,32 @@ serve(async (req) => {
     if (nBloques) console.log(`[handler-watch] ${nBloques} job(s) Vinted sur la page « compte bloqué » : motif vrai posé (poste muet compris)`);
   } catch (e) {
     console.error("[handler-watch] compte Vinted bloqué :", (e as Error)?.message ?? e);
+  }
+
+  // ══ eBay EXIGE UNE MISE À NIVEAU DU COMPTE VENDEUR : LE VRAI MOTIF (03/10, point 14) ══
+  // f2rhrt5zc6 (618164ab) lisait « la cause est de notre côté » sous un mur
+  // eBay (/fpa/upgrade), avec le bouton d'un autre mur. update-job-status le
+  // reconnaît désormais au verdict ; ici, la même règle
+  // (_shared/ebay-mise-a-niveau.js) remet d'aplomb les jobs DÉJÀ arrêtés.
+  // Borné : 14 jours, 40 jobs, écriture conditionnelle au statut.
+  try {
+    const { data: murs } = await supabase.from("cross_post_jobs")
+      .select("id, platform, action, status, error, platform_fields")
+      .eq("platform", "ebay").in("status", ["needs_user", "failed"])
+      .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+      .or("error.ilike.*/fpa/upgrade*,platform_fields->>last_diagnostic.ilike.*prevol_upgrade_vendeur*,platform_fields->error_technique->>brut.ilike.*/fpa/upgrade*")
+      .limit(40);
+    let nMurs = 0;
+    for (const j of (murs ?? []) as Array<{ id: string; platform: string; action: string; status: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+      const requalif = requalificationMiseANiveauEbay(j, new Date().toISOString(), "handler-watch");
+      if (!requalif) continue;
+      const { data: maj } = await supabase.from("cross_post_jobs").update(requalif)
+        .eq("id", j.id).eq("status", j.status).select("id");
+      nMurs += (maj ?? []).length;
+    }
+    if (nMurs) console.log(`[handler-watch] ${nMurs} job(s) eBay arrêtés sur la mise à niveau du compte vendeur : motif vrai posé`);
+  } catch (e) {
+    console.error("[handler-watch] mise à niveau eBay :", (e as Error)?.message ?? e);
   }
 
   // ══ RETRAIT VINTED D'UNE ANNONCE QUI N'EXISTE PLUS : LE DRESSING TRANCHE (03/10) ══

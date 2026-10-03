@@ -3366,11 +3366,16 @@ async function processJob(rawJob, accessToken) {
         // Mise à niveau du compte vendeur : action utilisateur chez eBay —
         // needs_user direct (pas de reprises espacées : la page ne se lève
         // pas toute seule), message qui dit le geste, aucun onglet consommé.
+        // (03/10, point 14) Plus de route dans le texte : « (/fpa/upgrade) »
+        // faisait remplacer TOUT le message par le générique « la cause est
+        // de notre côté » (filet anti-jargon du serveur, f2rhrt5zc6). Le motif
+        // est nommé (needs_user_source), le chemin reste dans le diagnostic.
         const msg =
-          "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce (/fpa/upgrade). " +
+          "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. " +
           "Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
         job.platform_fields = {
           ...(job.platform_fields ?? {}),
+          needs_user_source: "ebay_compte_vendeur_inactif",
           last_diagnostic: JSON.stringify({
             quoi: "prevol_upgrade_vendeur",
             detail: "GET /sl/list redirigé vers /fpa/upgrade AVANT toute tentative de dépôt",

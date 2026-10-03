@@ -247,10 +247,14 @@ export function connexionEbayRequise(action: string): string {
 //
 // ⛔ CE TEXTE NE DONNE PAS D'ORDRE QUI NE PEUT PAS ABOUTIR. On ne sait pas ce
 //    qui a cassé — sinon un autre bloc l'aurait déjà nommé. On dit donc ce
-//    qu'on sait (l'étape n'est pas passée, c'est de notre côté), et le seul
+//    qu'on sait (l'étape n'est pas passée, le détail est gardé), et le seul
 //    geste qui existe. Jamais « change ta catégorie » sur une supposition :
 //    la ligne d'adamchocho13 disait « categoryId probablement refusé » et la
 //    vraie cause était ailleurs (son compte eBay n'était pas vendeur).
+// ⛔ ET IL N'ACCUSE PERSONNE (03/10, point 14). « La cause est de notre côté »
+//    était une supposition de plus : chez f2rhrt5zc6, c'est eBay qui exigeait
+//    une mise à niveau du compte vendeur. Le filet reconnaît du vocabulaire,
+//    pas une cause — le texte ne dit donc pas à qui est la faute.
 export function fuiteDeDeveloppeur(platform: string, action: string, reprend: boolean): string {
   const nom = ({
     vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
@@ -259,8 +263,8 @@ export function fuiteDeDeveloppeur(platform: string, action: string, reprend: bo
     : action === "republish" ? "La republication de cette annonce"
     : "La publication de cet article";
   return reprend
-    ? `${quoi} sur ${nom} s'est interrompue avant d'aboutir. Le problème vient de chez nous, ` +
-      `il est enregistré, et on reprend automatiquement — rien à faire de ton côté.`
-    : `${quoi} sur ${nom} n'a pas abouti, et la cause est de notre côté. ` +
-      `Elle est enregistrée. Tu peux relancer depuis la fiche de l'article ; si ça se reproduit, écris-nous.`;
+    ? `${quoi} sur ${nom} s'est interrompue avant d'aboutir. Le détail est gardé, ` +
+      `et on reprend automatiquement — rien à faire de ton côté.`
+    : `${quoi} sur ${nom} n'a pas abouti. Le détail est gardé pour qu'on le regarde. ` +
+      `Tu peux relancer depuis la fiche de l'article ; si ça se reproduit, écris-nous.`;
 }
