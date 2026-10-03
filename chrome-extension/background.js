@@ -22394,8 +22394,8 @@ async function processRepublishJob(job, accessToken) {
           // remis le 03/10 — point 29) ──────────────────────────────────────
           // « Relance quand tu veux » bouclait : une relance rejoue la même
           // absence de preuve. On dit ce qui manque et le seul geste qui la
-          // fournit ; la garde, elle, ne bouge pas. Louis, 03/10 (job
-          // ef38f079, deux boutiques) lisait « Motif : pré-vol OK mais
+          // fournit ; la garde, elle, ne bouge pas. ornellaracano, 03/10 (job
+          // ef38f079, deux boutiques Vinted) lisait « Motif : pré-vol OK mais
           // suppression refusée… Relance depuis l'app ».
           const verdictPreuve = pf.suppression_verdict ?? {};
           const murBoutique = verdictPreuve.conclusion === "boutique_etrangere"
