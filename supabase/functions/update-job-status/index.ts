@@ -24,7 +24,7 @@ import {
   estPageDeConnexionPlateforme,
   estPageDeConnexionQuelconque,
 } from "../_shared/pages-de-job.ts";
-import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, sansIncisesTechniques } from "../_shared/vocabulaire-developpeur.ts";
+import { marqueurDeDeveloppeur, porteDuVocabulaireDeDeveloppeur, porteUnPrefixeDeJournal, sansIncisesTechniques } from "../_shared/vocabulaire-developpeur.ts";
 // Trois sorties, jamais une quatrième : reprise (chez nous) · à toi (avec le
 // bouton ou le choix) · info neutre (job clos). Plus aucun `failed` rouge.
 import { classerEchec, estTailleHorsGrille, restrictionVinted } from "../_shared/pas-de-rouge.js";
@@ -2788,7 +2788,9 @@ serve(async (req) => {
                 ? "Ton annonce a été retirée et n'est pas encore revenue en ligne — le problème vient de chez nous, pas de ton annonce. On la reprend automatiquement ; rien à faire de ton côté, et rien n'est perdu (titre, description, photos et champs sont sauvegardés)."
                 : "Il nous manque la catégorie de cette annonce pour la redéposer. Ton annonce est toujours en ligne, rien n'a été touché — on la reprend automatiquement.")
             : "Cet article n'a pas encore de catégorie sur cette plateforme. Régénère son annonce depuis l'app, puis relance la publication.";
-        } else if (porteDuVocabulaireDeDeveloppeur(brut)) {
+        } else if (porteDuVocabulaireDeDeveloppeur(brut) || porteUnPrefixeDeJournal(brut)) {
+          // (03/10, point 15) Un préfixe de journal « LIVE : » en tête passe aussi
+          // ici : il est retiré, le reste est jugé comme le reste.
           // ══════════════════════════════════════════════════════════════
           // G5 — FUITE DE DÉVELOPPEUR, FILET FERMÉ (2026-09-21)
           // ══════════════════════════════════════════════════════════════

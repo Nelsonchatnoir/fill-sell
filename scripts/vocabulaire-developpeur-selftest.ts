@@ -16,7 +16,9 @@
 
 import {
   marqueurDeDeveloppeur,
+  partieMontree,
   porteDuVocabulaireDeDeveloppeur,
+  porteUnPrefixeDeJournal,
   sansIncisesTechniques,
 } from "../supabase/functions/_shared/vocabulaire-developpeur.ts";
 
@@ -93,6 +95,17 @@ ok("une incise sans jargon est gardée",
   sansIncisesTechniques("Le dépôt a échoué (deux fois), eBay a refusé la page (route /sl/list). Relance depuis la fiche de l'article.") ===
     "Le dépôt a échoué (deux fois), eBay a refusé la page. Relance depuis la fiche de l'article.");
 ok("un texte propre n'est pas touché (null : rien à nettoyer)", sansIncisesTechniques("Ton annonce est intacte.") === null);
+
+console.log("=== 5. « LIVE : » EN TÊTE EST UN PRÉFIXE, PAS UNE ANNEXE (03/10, point 15) ===");
+// geronimo0550 : le filet traitait « LIVE : » comme le début d'une annexe —
+// tout le message devenait « », jugé vide… et passait tel quel à l'écran.
+const LIVE = "LIVE : aspect(s) obligatoire(s) eBay vide(s) sur le formulaire : Numéro de pièce fabricant — publication NON tentée (refus eBay garanti). Compléter le champ dans l'app (badge « À compléter » du Stock) ; le job repartira ensuite automatiquement. Détail du remplissage : Numéro de pièce fabricant: champ sauté — bouton-valeur introuvable";
+ok("ce qui est montré n'est plus vide", partieMontree(LIVE).startsWith("aspect(s) obligatoire(s) eBay vide(s)"), partieMontree(LIVE).slice(0, 60));
+ok("le préfixe est reconnu", porteUnPrefixeDeJournal(LIVE) && !porteUnPrefixeDeJournal("Le LIVE : rien"));
+ok("l'annexe « Détail du remplissage » est retirée", !/D[ée]tail du remplissage|bouton-valeur/.test(partieMontree(LIVE)));
+const sansLive = sansIncisesTechniques(LIVE);
+ok("le serveur écrit le message sans préfixe ni annexe", sansLive != null && !/^LIVE/.test(sansLive) && !/Détail du remplissage/.test(sansLive), String(sansLive).slice(0, 80));
+ok("une annexe « — LIVE : … » en fin de message reste une annexe", partieMontree("Ton annonce attend. — LIVE : diag") === "Ton annonce attend.");
 
 console.log(ko ? `\n⚠ ${ko} CAS EN ECHEC` : "\n✓ TOUS LES CAS PASSENT");
 if (ko) Deno.exit(1);

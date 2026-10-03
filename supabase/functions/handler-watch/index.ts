@@ -496,21 +496,21 @@ serve(async (req) => {
           : j.action === "republish" ? "cette republication"
           : j.action === "publish" ? "cette publication" : "ce traitement";
         const feminin = j.action === "republish" || j.action === "publish";
+        // (03/10, point 15) Des mots de vendeur : plus de « job », plus
+        // d'« extension connectée qui se réveille ». Même phrase que l'app
+        // (texteSuiviLisible) pour les textes déjà écrits.
         const msg = motif === "plafond"
           ? `Reprise après blocage : ${quoi} est resté${feminin ? "e" : ""} « en cours » plus de 2 h sans aboutir. ` +
-            "Le job est remis en file et repartira tout seul — rien à faire de ton côté."
+            "C'est remis en file et ça repartira tout seul — rien à faire de ton côté."
           : motif === "destructive_24h"
           ? "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté " +
-            "depuis plus de 24 h. Le job est remis en file et repartira automatiquement dès qu'une " +
-            "extension connectée se réveille — rien à faire de ton côté."
+            "depuis plus de 24 h. C'est remis en file et ça repartira tout seul dès que Chrome sera ouvert sur ton ordinateur."
           : j.action === "republish"
           ? "Reprise après interruption : l'ordinateur qui portait cette republication ne s'est plus " +
             `manifesté depuis une demi-heure. Rien n'a été touché sur ${libellePlateforme(j.platform)} (ton annonce est en ligne) ; ` +
-            "la republication est remise en file et repartira automatiquement dès qu'une extension " +
-            "connectée se réveille — rien à faire de ton côté."
+            "la republication est remise en file et repartira toute seule dès que Chrome sera ouvert sur ton ordinateur."
           : `Reprise après interruption : l'ordinateur qui portait ${quoi} ne s'est plus manifesté ` +
-            "depuis une demi-heure. Le job est remis en file et repartira automatiquement dès qu'une " +
-            "extension connectée se réveille — rien à faire de ton côté.";
+            "depuis une demi-heure. C'est remis en file et ça repartira tout seul dès que Chrome sera ouvert sur ton ordinateur.";
         const { data: maj } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: msg, platform_fields: pf })

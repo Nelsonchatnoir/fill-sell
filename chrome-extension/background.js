@@ -18077,10 +18077,12 @@ async function checkPublishedListings(session) {
         // signaler. Posé une seule fois, jamais écrasé par les relectures.
         patchUnknown.platform_fields.check_unresolved_since =
           pf.check_unresolved_since ?? new Date().toISOString();
+        // (03/10, point 15) Des mots de vendeur — plus de « job », plus de
+        // 'published' (2 864 jobs en 14 jours) ; même phrase que l'app
+        // (texteSuiviLisible, src/utils/shared.js) pour les anciens postes.
         patchUnknown.error =
-          `Impossible de vérifier l'état de cette annonce ${job.platform} après ${echecs} tentatives ` +
-          "(page de vérification anti-bot ou format inattendu). L'annonce N'A PAS été touchée et le job " +
-          "reste 'published' : vérifier à la main sur la plateforme. Nouvelle tentative dans 24 h.";
+          `Impossible de vérifier cette annonce sur ${LABEL_PLATEFORME[job.platform] ?? job.platform} : ` +
+          "sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification dans 24 h.";
         console.warn(
           `[background] ${job.platform} ${job.id} : ABANDON après ${echecs} lectures indéterminées — ` +
           "job marqué non vérifiable (aucune conclusion, aucune écriture), prochaine tentative dans 24 h"
@@ -18239,9 +18241,10 @@ async function checkPublishedListings(session) {
           remis.superseded_listing = true;
           patch.status = "cancelled";
           patch.platform_fields = remis;
+          // (03/10, point 15) Même phrase que l'app (texteSuiviLisible) : plus de « job ».
           patch.error =
-            `Annonce ${idJob} remplacée par une republication (l'article vit désormais sur l'annonce ${idArticle}) — ` +
-            "job obsolète clos automatiquement, pas une vente.";
+            `Annonce ${idJob} remplacée par une republication (l'article vit désormais sur l'annonce ${idArticle}) : ` +
+            "l'ancienne publication est close, ce n'est pas une vente.";
           console.log(`[background] vinted ${job.id} : listing_url pointe ${idJob} mais l'article est sur ${idArticle} → job périmé CLOS (aucun bandeau)`);
         } else if (!pf.unavailable_since) {
           if (!pf.unavailable_pending_since) {

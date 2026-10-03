@@ -347,6 +347,46 @@ export function raccourcirMessageJob(texte, max = 300) {
   return out;
 }
 
+// ── Les notes de suivi de l'extension, en mots de vendeur (03/10, point 15) ──
+// Rend null pour tout autre texte. Les phrases rendues sont À L'OCTET celles
+// que l'extension 0.6.90 écrit elle-même (background.js), vérifiées par
+// scripts/textes-montres-selftest.mjs.
+export function texteSuiviLisible(raw, name, en) {
+  if (/^Impossible de vérifier l'état de cette annonce \S+ après \d+ tentatives/i.test(raw)) {
+    return en
+      ? `We could not check this listing on ${name}: its page did not answer as expected. The listing was not touched; we will check again in 24 h.`
+      : `Impossible de vérifier cette annonce sur ${name} : sa page n'a pas répondu comme prévu. L'annonce n'a pas été touchée ; nouvelle vérification dans 24 h.`;
+  }
+  const remplacee = raw.match(/^Annonce (\d+) remplacée par une republication \(l'article vit désormais sur l'annonce (\d+)\) — job obsolète clos automatiquement, pas une vente\.?$/i);
+  if (remplacee) {
+    return en
+      ? `Listing ${remplacee[1]} was replaced by a relisting (the item now lives on listing ${remplacee[2]}): the old publication is closed, it is not a sale.`
+      : `Annonce ${remplacee[1]} remplacée par une republication (l'article vit désormais sur l'annonce ${remplacee[2]}) : l'ancienne publication est close, ce n'est pas une vente.`;
+  }
+  // Remise en file par le veilleur (handler-watch, jusqu'au 03/10) : seule la
+  // fin de phrase parlait de « job » et d'« extension connectée ».
+  const remise = raw.match(/^(Reprise après (?:interruption|blocage) : .*?)Le job est remis en file et repartira (?:tout seul|automatiquement)(?: dès qu'une extension connectée se réveille)?(?: — rien à faire de ton côté)?\.?$/is);
+  if (remise) {
+    return en
+      ? "Resumed after an interruption: it is back in the queue and will start again on its own as soon as Chrome is open on your computer."
+      : `${remise[1]}C'est remis en file et ça repartira tout seul dès que Chrome sera ouvert sur ton ordinateur.`;
+  }
+  // Doublons annulés à la main (septembre) : « doublon du job … », « ce job a
+  // été créé … » — la phrase vraie, sans numéro interne ni conseil de relance.
+  if (/^(?:Annulé[^:]{0,20}:\s*doublon|Doublon de dépôt annulé)/i.test(raw)) {
+    return en
+      ? 'Cancelled: it duplicated another publication of the same item. Nothing is lost — the item only goes out once.'
+      : "Annulée : c'était le doublon d'une autre publication du même article. Rien n'est perdu — l'article ne part qu'une fois.";
+  }
+  const dejaEnLigne = raw.match(/^Annulé[^:]{0,20}:\s*cet article est DÉJÀ EN LIGNE sur (\S+)/i);
+  if (dejaEnLigne) {
+    return en
+      ? `Cancelled: this item is already live on ${dejaEnLigne[1]}. Relaunching it would have created a second listing of the same item.`
+      : `Annulée : cet article est déjà en ligne sur ${dejaEnLigne[1]}. La relancer aurait créé une seconde annonce du même objet.`;
+  }
+  return null;
+}
+
 // ── Les familles de messages eBay, en mots de vendeur (24/09) ────────────────
 // Rend null pour tout message non reconnu (circuit commun). Aucune liste
 // brute, aucun sélecteur, aucun code HTTP, aucun « job », aucun « LIVE ».
@@ -463,6 +503,15 @@ export function humanizeJobError(job, lang = 'fr') {
   // ne demande rien.
   if (natureNeedsUser(job) === 'en_cours') return texteEnCoursConfirmation(job, lang);
 
+  // ── LES NOTES QUI DISAIENT « JOB » (03/10, point 15) ──────────────────────
+  // Textes de l'extension (jusqu'à la 0.6.89), du veilleur (jusqu'au 03/10) et
+  // annulations de septembre : « humains » au sens du filtre, mais ils disent
+  // « le job reste 'published' », « job obsolète », « doublon du job … » —
+  // 2 864 jobs sur 14 jours. Réécrits ici, AVANT toute autre famille (la
+  // famille « Annulé le … » ci-dessous conseillait de relancer un doublon).
+  const suiviTexte = texteSuiviLisible(raw, name, en);
+  if (suiviTexte) return suiviTexte;
+
   // ── Challenge anti-robot (message RÉÉCRIT ICI depuis le 2026-08-10) ────────
   // Le libellé stocké commence par « CHALLENGE <nom> : » (motif SQL) suivi
   // d'une consigne rédigée côté extension. Cette consigne était affichée telle
@@ -493,9 +542,9 @@ export function humanizeJobError(job, lang = 'fr') {
     // plus aucune mention de décompte — la monnaie interne n'existe plus.)
     const acte = job?.action === 'republish' ? 'republication' : 'publication';
     return en
-      ? `${name} showed an anti-robot check instead of the listing form: nothing was published and the job has stopped.`
+      ? `${name} showed an anti-robot check instead of the listing form: nothing was published and it has stopped.`
         + ` Open ${name} on your computer, pass the check, then start the ${acte} again yourself from the item.`
-      : `${name} a affiché une vérification anti-robot à la place du formulaire : rien n'a été publié et le job est arrêté.`
+      : `${name} a affiché une vérification anti-robot à la place du formulaire : rien n'a été publié et la ${acte} est arrêtée.`
         + ` Ouvre ${name} sur ton ordinateur, passe la vérification, puis relance la ${acte} toi-même depuis la fiche de l'article.`;
   }
 
@@ -519,10 +568,10 @@ export function humanizeJobError(job, lang = 'fr') {
   if (job?.platform === 'ebay' && /page inattendue.*session eBay est valide/is.test(raw)) {
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
     const etatFr = termine
-      ? "Rien n'a été publié et le job est arrêté."
+      ? "Rien n'a été publié et la publication est arrêtée."
       : "Rien n'a été publié, et les tentatives automatiques restantes échoueront aussi tant que la reconnexion n'est pas faite.";
     const etatEn = termine
-      ? 'Nothing was published and the job has stopped.'
+      ? 'Nothing was published and the publication has stopped.'
       : 'Nothing was published, and the remaining automatic retries will fail too until you sign in again.';
     return en
       ? `eBay requires you to sign in again before it lets you list an item, even though your eBay session is still valid elsewhere. ${etatEn} In order: open eBay on your computer, click "Sell", sign in again, then restart the publication from the item in the app.`
@@ -551,8 +600,8 @@ export function humanizeJobError(job, lang = 'fr') {
     if (draftId) {
       const termine = JOB_STATUS_TERMINAL.has(job?.status);
       return en
-        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}. Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on eBay under My eBay > Selling > Drafts to finish listing it yourself.`
-        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}. Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur eBay dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
+        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the publication has stopped' : ''}. Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on eBay under My eBay > Selling > Drafts to finish listing it yourself.`
+        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et la publication est arrêtée' : ''}. Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur eBay dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
     }
   }
 
@@ -608,8 +657,8 @@ export function humanizeJobError(job, lang = 'fr') {
     const acte = job?.action === 'republish' ? (en ? 'relisting' : 'republication') : 'publication';
     if (termine) {
       return en
-        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the job has stopped. Sign in to ${name} on your computer, then restart the ${acte} from the item.`
-        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et le job est arrêté. Connecte-toi à ${name} sur ton ordinateur, puis relance la ${acte} depuis la fiche de l'article.`;
+        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the ${acte} has stopped. Sign in to ${name} on your computer, then restart the ${acte} from the item.`
+        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et la ${acte} est arrêtée. Connecte-toi à ${name} sur ton ordinateur, puis relance la ${acte} depuis la fiche de l'article.`;
     }
     return en
       ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${name} on your computer now — an automatic retry happens within minutes, otherwise relaunch the ${acte} from the item.`
@@ -638,12 +687,12 @@ export function humanizeJobError(job, lang = 'fr') {
         ? 'If needed, relaunch the relisting from the item.'
         : 'You can relaunch the publication from the app.';
       return en
-        ? `Our team cancelled this job.${intacte ? ` Your listing is untouched on ${name}.` : ''} ${relanceEn}`
-        : `Ce job a été annulé par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} ${relanceFr}`;
+        ? `Our team cancelled this operation.${intacte ? ` Your listing is untouched on ${name}.` : ''} ${relanceEn}`
+        : `Notre équipe a annulé cette opération.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} ${relanceFr}`;
     }
     return en
-      ? `Our team paused this job.${intacte ? ` Your listing is untouched on ${name}.` : ''} It can be relaunched from ${republish ? 'the item' : 'the app'}.`
-      : `Ce job a été mis en pause par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} Il pourra être relancé depuis ${republish ? "la fiche de l'article" : "l'app"}.`;
+      ? `Our team paused this operation.${intacte ? ` Your listing is untouched on ${name}.` : ''} It can be relaunched from ${republish ? 'the item' : 'the app'}.`
+      : `Notre équipe a mis cette opération en pause.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} Elle pourra être relancée depuis ${republish ? "la fiche de l'article" : "l'app"}.`;
   }
 
   // ── Compte vendeur eBay à mettre à niveau (2026-09-03) : le brut affichait
@@ -700,11 +749,11 @@ export function humanizeJobError(job, lang = 'fr') {
     // manuel est de retirer l'annonce sur la plateforme elle-même.
     const verite = job?.action === 'delete'
       ? (en
-        ? ` The job has stopped — it will not restart on its own. If the listing is still live, remove it yourself on ${name}.`
-        : ` Le job est arrêté — il ne repartira pas tout seul. Si l'annonce est encore en ligne, retire-la toi-même sur ${name}.`)
+        ? ` The removal has stopped — it will not restart on its own. If the listing is still live, remove it yourself on ${name}.`
+        : ` Le retrait est arrêté — il ne repartira pas tout seul. Si l'annonce est encore en ligne, retire-la toi-même sur ${name}.`)
       : (en
-        ? ` The job has stopped — it will not restart on its own. Relaunch it yourself from the item.`
-        : ` Le job est arrêté — il ne repartira pas tout seul. Relance-le toi-même depuis la fiche de l'article.`);
+        ? ` It has stopped — it will not restart on its own. Relaunch it yourself from the item.`
+        : ` C'est arrêté — rien ne repartira tout seul. Relance-la toi-même depuis la fiche de l'article.`);
     const corps = raw.replace(new RegExp(PROMESSE_REPRISE_RE.source, 'gi'), '')
       .replace(/\s{2,}/g, ' ').trim()
       // Ponctuation orpheline laissée par le retrait (« …resté ouvert), » ) :
@@ -718,12 +767,12 @@ export function humanizeJobError(job, lang = 'fr') {
     if (!TECH_ERR_MARKERS_RE.test(msg) && !PROMESSE_MARQUEUR_RE.test(corps) && msg.length <= 600) return msg;
     if (job?.action === 'delete') {
       return en
-        ? `Removing the listing on ${name} was interrupted by a technical issue. The job has stopped — if the listing is still live, remove it yourself on ${name}; the full detail has been recorded for support.`
-        : `Le retrait de l'annonce sur ${name} a été interrompu par un imprévu technique. Le job est arrêté — si l'annonce est encore en ligne, retire-la toi-même sur ${name} ; le détail complet est enregistré pour le support.`;
+        ? `Removing the listing on ${name} was interrupted by a technical issue. The removal has stopped — if the listing is still live, remove it yourself on ${name}; the full detail has been recorded for support.`
+        : `Le retrait de l'annonce sur ${name} a été interrompu par un imprévu technique. Le retrait est arrêté — si l'annonce est encore en ligne, retire-la toi-même sur ${name} ; le détail complet est enregistré pour le support.`;
     }
     return en
-      ? `Publishing on ${name} was interrupted by a technical issue. The job has stopped — retry from the item; the full detail has been recorded for support.`
-      : `La publication sur ${name} a été interrompue par un imprévu technique. Le job est arrêté — relance depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
+      ? `Publishing on ${name} was interrupted by a technical issue. It has stopped — retry from the item; the full detail has been recorded for support.`
+      : `La publication sur ${name} a été interrompue par un imprévu technique. Elle est arrêtée — relance-la depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
   }
 
   // ── Canal extension / onglet coupé (2026-09-17) ───────────────────────────
@@ -848,6 +897,13 @@ export function jobErrorSansFaussePromesse(job, lang = 'fr') {
   // (cas josephinecerni, job df496c00 du 03/09) — la monnaie n'existe plus.
   const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
+  // (03/10, point 15 — geronimo0550) « Brut » ne veut jamais dire « technique » :
+  // un texte qui porte un marqueur de journal ou de code (« LIVE : »,
+  // chemin, route, dump…) ou une famille réécrite passe par LA porte commune.
+  if (TECH_ERR_MARKERS_RE.test(raw) || /\bjobs?\b/i.test(raw) || texteSuiviLisible(raw, '', lang === 'en')
+      || (job?.platform === 'ebay' && texteEbayLisible(raw, job, lang === 'en'))) {
+    return humanizeJobError(job, lang);
+  }
   if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) return raw;
   return humanizeJobError(job, lang);
 }

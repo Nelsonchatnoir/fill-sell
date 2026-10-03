@@ -49,11 +49,25 @@ const VOCABULAIRE_RE = new RegExp(MOTIFS.join("|"), "i");
 // champ est pourtant redemandé à l'identique… » — utile, honnête, et suivie
 // d'une annexe qui nomme oplaCategoryChoice. On garde le message, on ignore
 // l'annexe. Même traitement pour le préfixe de log « LIVE : ».
-const ANNEXE_SUPPORT_RE = /\s*[—–-]?\s*(?:Observabilit[ée]|LIVE)\s*:.*$/is;
+// (03/10, point 15) « Détail du remplissage : » est l'annexe qu'ebay.js colle
+// à ses messages (fragments de DOM) : même traitement.
+const ANNEXE_SUPPORT_RE = /\s*[—–-]?\s*(?:Observabilit[ée]|LIVE|D[ée]tail du remplissage)\s*:.*$/is;
+// (03/10, point 15 — geronimo0550) « LIVE : » EN TÊTE n'est pas une annexe,
+// c'est un préfixe de journal : le traiter en annexe vidait tout le message
+// (« LIVE : aspect(s) obligatoire(s) eBay vide(s)… » → ""), le filet le
+// jugeait donc vide… et le laissait passer tel quel à l'écran.
+const PREFIXE_JOURNAL_RE = /^\s*LIVE\s*:\s*/i;
 
-/** Le texte tel qu'il sera MONTRÉ : sans l'annexe réservée au support. */
+/** Le texte tel qu'il sera MONTRÉ : sans préfixe de journal ni annexe réservée au support. */
 export function partieMontree(texte: unknown): string {
-  return typeof texte === "string" ? texte.replace(ANNEXE_SUPPORT_RE, "").trim() : "";
+  return typeof texte === "string"
+    ? texte.replace(PREFIXE_JOURNAL_RE, "").replace(ANNEXE_SUPPORT_RE, "").trim()
+    : "";
+}
+
+/** Le texte porte-t-il un préfixe de journal (« LIVE : ») à retirer avant l'écran ? */
+export function porteUnPrefixeDeJournal(texte: unknown): boolean {
+  return typeof texte === "string" && PREFIXE_JOURNAL_RE.test(texte);
 }
 
 /** Ce qui sera montré porte-t-il du vocabulaire de développeur ? */
@@ -83,7 +97,12 @@ const RESTE_MIN = 40;
 /** Le texte montré sans ses incises techniques, ou null s'il ne s'en sort pas propre. */
 export function sansIncisesTechniques(texte: unknown): string | null {
   const montre = partieMontree(texte);
-  if (!montre || !VOCABULAIRE_RE.test(montre)) return null;
+  if (!montre) return null;
+  // Rien de technique dans ce qui est montré : seul un préfixe de journal
+  // était à retirer (sinon, rien à nettoyer).
+  if (!VOCABULAIRE_RE.test(montre)) {
+    return porteUnPrefixeDeJournal(texte) && montre.length >= RESTE_MIN ? montre : null;
+  }
   const nettoye = montre
     .replace(INCISE_RE, (incise: string, dedans: string) => (VOCABULAIRE_RE.test(dedans) ? "" : incise))
     .replace(/\s{2,}/g, " ")

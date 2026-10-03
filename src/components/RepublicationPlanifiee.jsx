@@ -50,6 +50,7 @@ import { supabase } from '../lib/supabase';
 import { track } from '../analytics/analytics';
 import { useFondFige } from '../utils/modale';
 import PlatformLogo from './platform-logos/PlatformLogo';
+import { humanizeJobError } from '../utils/shared';
 import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
 
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
@@ -1486,7 +1487,11 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
                     ))}
                     {rates.map((j) => (
                       <LigneDetail key={j.id} ton="rouge" titre={j.title || (fr ? 'Annonce' : 'Listing')}
-                        sous={fr ? `Échec${j.error ? ` — ${String(j.error).slice(0, 140)}` : ''}. L'annonce reste telle qu'elle était.` : `Failed${j.error ? ` — ${String(j.error).slice(0, 140)}` : ''}. The listing stays as it was.`} />
+                        sous={(() => {
+                          // (03/10, point 15) Jamais le brut : la porte commune de traduction.
+                          const cause = j.error ? humanizeJobError({ ...j, platform: c.platform, action: 'republish' }, fr ? 'fr' : 'en').slice(0, 220) : '';
+                          return fr ? `Échec${cause ? ` — ${cause}` : ''}. L'annonce reste telle qu'elle était.` : `Failed${cause ? ` — ${cause}` : ''}. The listing stays as it was.`;
+                        })()} />
                     ))}
                     {sautesArticles.map(([item, n]) => (
                       <LigneDetail key={item} ton="mute" titre={n?.titre || `#${item}`} sous={`${fr ? 'Sautée — ' : 'Skipped — '}${texteMotifSaut(n?.motif, fr)}`} />

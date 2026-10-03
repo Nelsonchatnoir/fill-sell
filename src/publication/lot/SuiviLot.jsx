@@ -13,6 +13,7 @@ import GalleryPhoto, { premierePhoto } from "../../components/GalleryPhoto";
 import PlatformLogo from "../../components/platform-logos/PlatformLogo";
 import BarreProgression from "../../components/BarreProgression";
 import { NOM } from "../texte";
+import { humanizeJobError } from "../../utils/shared";
 import { suiviDuLot, depotArretable } from "./regles";
 import { arreterDepots, reArreter } from "./arretLot";
 
@@ -139,7 +140,8 @@ export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userI
         groupeCourant = l.groupe;
         const arretables = l.pastilles.map((p) => p.job).filter(depotArretable);
         const gestes = l.pastilles.filter((p) => p.etat === "geste");
-        const raisons = l.pastilles.filter((p) => p.etat === "pas_partie" && p.job?.error).map((p) => avecPlateforme(p.platform, p.job.error));
+        // (03/10, point 15) Jamais le brut : la porte commune de traduction (humanizeJobError).
+        const raisons = l.pastilles.filter((p) => p.etat === "pas_partie" && p.job?.error).map((p) => avecPlateforme(p.platform, humanizeJobError(p.job, lang)));
         return (
           <div key={l.inventaireId}>
             {titreGroupe && <div className="fsl-groupe-t">{titreGroupe} · {suivi.compte[l.groupe]}</div>}
@@ -165,7 +167,7 @@ export default function SuiviLot({ lang, lot, jobs, articles, renderGeste, userI
               {raisons.length > 0 && <div style={{ fontSize: 12, color: "#5C6560", lineHeight: 1.45 }}>{raisons.join(" · ")}</div>}
               {gestes.map((p) => (
                 <div key={`g:${p.platform}`} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#8A6100", lineHeight: 1.4 }}>{avecPlateforme(p.platform, p.job?.error ?? (en ? "waiting for you" : "attend un geste de ta part"))}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#8A6100", lineHeight: 1.4 }}>{avecPlateforme(p.platform, (p.job?.error ? humanizeJobError(p.job, lang) : "") || (en ? "waiting for you" : "attend un geste de ta part"))}</span>
                   {renderGeste ? renderGeste(p.job) : null}
                 </div>
               ))}

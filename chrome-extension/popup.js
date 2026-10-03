@@ -440,7 +440,8 @@ const MOTIFS_ANCRES = [
   { re: /^(Connexion .+ requise|Session .+ (fermée|expirée))/i, famille: "reconnexion" },
   { re: /^CHALLENGE /, famille: "challenge" },
   { re: /^Catégorie \S+ à confirmer/i, famille: "categorie" },
-  { re: /^(Aucun état|\S+ exige|LIVE : aspect)/i, famille: "fiche" },
+  // (03/10) Le serveur retire désormais le préfixe « LIVE : » : les deux formes.
+  { re: /^(Aucun état|\S+ exige|(?:LIVE : )?aspect\(s\) obligatoire)/i, famille: "fiche" },
   { re: /^Un brouillon Leboncoin non terminé/i, famille: "brouillon_lbc" },
   { re: /^Publication non confirmée/i, famille: "a_verifier" },
   // Opla en attente d'accès (2026-09-16) : le geste est en haut, sur la ligne
@@ -459,11 +460,34 @@ const MOTIFS_ANCRES = [
 const MOTIFS_DITS_AILLEURS = new Set(["reconnexion", "challenge", "opla_acces"]);
 
 const pl = (n, un, des) => (n > 1 ? des : un);
+// ── UNE SEULE PORTE POUR CE QUI EST MONTRÉ (03/10, point 15) ───────────────
+// geronimo0550 lisait « LIVE : aspect(s) obligatoire(s) eBay vide(s)… » : le
+// texte du content script arrivait tel quel dans la case de la plateforme.
+// Même vocabulaire que le filet du serveur (_shared/vocabulaire-developpeur.ts)
+// et que l'app (TECH_ERR_MARKERS_RE) : un texte qui le porte n'est JAMAIS
+// montré ici — la fiche de l'article, dans l'appli, dit ce qui bloque, avec
+// ses mots. Vérifié par scripts/textes-montres-selftest.mjs.
+const VOCABULAIRE_TECHNIQUE_RE = new RegExp([
+  "^\\s*LIVE\\s*:", "Observabilit[ée]\\s*:", "D[ée]tail du remplissage\\s*:", "\\[cause",
+  "(?:^|[^a-z])(?:src|scripts|docs|supabase|chrome-extension)/[a-z0-9._/-]+", "\\.(?:js|ts|mjs|jsx|tsx)\\b",
+  "\\b(?:update-job-status|get-pending-jobs|ebay-api-worker|handler-watch|resolve-categorie)\\b",
+  "\\b(?:categoryId|catalogId|catalog_id|size_id|leaf_id|field_key|platform_fields|needsUserFields?|valeur_inchangee)\\b",
+  "/(?:sl/list|lstng|items/new|ws/eBayISAPI|fpa)\\b",
+  "querySelector|outerHTML|innerHTML|data-testid|document\\.|window\\.",
+  "\\b(?:TypeError|ReferenceError|SyntaxError)\\b|Cannot read propert|is not defined|is not a function",
+  "\\[object Object\\]", "could not establish connection|receiving end does not exist|message (?:port|channel) closed",
+  "https?://", "[\\[{]\\s*\"", "\\bjobs?\\b",
+].join("|"), "i");
+/** Le texte s'il peut être montré tel quel, sinon null. */
+const texteMontrable = (brut) => {
+  const s = String(brut ?? "").replace(/\s+/g, " ").trim();
+  return s && !/[<>]/.test(s) && !VOCABULAIRE_TECHNIQUE_RE.test(s) ? s : null;
+};
 // Un message écrit pour être lu : on le montre tel quel s'il est propre, jamais
 // un code technique ni une URL.
 const messagePropre = (brut) => {
-  const s = String(brut ?? "").trim();
-  return s && s.length <= 220 && !/[{}<>]|https?:\/\//.test(s) ? s : null;
+  const s = texteMontrable(brut);
+  return s && s.length <= 220 ? s : null;
 };
 
 // Par famille : le libellé COURT de la liste « En attente », puis la carte
@@ -1139,7 +1163,8 @@ function renderFlow() {
       droite = `<button class="lien" data-connect="${p.key}" type="button">Se connecter</button>`;
     } else if (s === "err") {
       cls = "peach";
-      const complet = st?.msg || rec?.error || "Échec";
+      const complet = texteMontrable(st?.msg) || texteMontrable(rec?.error)
+        || "La fiche de l'article, dans l'appli, dit ce qui bloque.";
       droite = `<span class="cell-etat peach" title="${escapeHtml(complet)}">Échec</span>`;
     } else if (s === "soon") {
       droite = `<span class="cell-etat gris">Bientôt</span>`;
@@ -1565,7 +1590,7 @@ document.body.addEventListener("click", (e) => {
 const CONN_RE = /(se\s*)?connect|connexion|identifi|login|sign[-\s]?in|non connect|session (expir|invalide)/i;
 const isConnErr = (msg) => CONN_RE.test(String(msg || ""));
 const shortErr = (msg) => {
-  const s = String(msg || "Échec").replace(/\s+/g, " ").trim();
+  const s = texteMontrable(msg) ?? "À voir dans l'appli";
   return s.length > 42 ? s.slice(0, 41) + "…" : s;
 };
 
