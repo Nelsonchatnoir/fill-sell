@@ -1,6 +1,8 @@
 // Shared design tokens, constants, and pure utility functions
 // Used by tab components and App.jsx
 
+import { etatsVintedLisibles } from './etatsVinted.js';
+
 export const MONTHS_FR = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
 export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
@@ -492,7 +494,9 @@ export function texteBeebsValeurHorsListe(raw, job, en = false) {
 }
 
 export function humanizeJobError(job, lang = 'fr') {
-  const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
+  // États Vinted d'une page étrangère (« Very good »…) : affichés dans la langue
+  // de l'app (03/10, point E) — cf. utils/etatsVinted.js.
+  const raw = etatsVintedLisibles(sansMentionMonnaie(String(job?.error ?? '').trim()), job?.platform, lang);
   if (!raw) return '';
   const en = lang === 'en';
   const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
@@ -895,7 +899,7 @@ export function jobErrorSansFaussePromesse(job, lang = 'fr') {
   // sansMentionMonnaie AVANT tout : les jobs vivants passent « bruts », mais
   // le brut du parc porte encore « Ta unité reste réservée… sous 72 h »
   // (cas josephinecerni, job df496c00 du 03/09) — la monnaie n'existe plus.
-  const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
+  const raw = etatsVintedLisibles(sansMentionMonnaie(String(job?.error ?? '').trim()), job?.platform, lang);
   if (!raw) return '';
   // (03/10, point 15 — geronimo0550) « Brut » ne veut jamais dire « technique » :
   // un texte qui porte un marqueur de journal ou de code (« LIVE : »,

@@ -67,8 +67,21 @@ console.log("4. CHAQUE ATTENTE DIT POURQUOI");
   ok(s(job({})).raison === "En attente de son tour", "en file : « En attente de son tour »");
   ok(s(job({}), { ...ctx, extension: { etat: "eteinte" } }).raison.startsWith("En attente de ton ordinateur"), "Chrome fermé : « En attente de ton ordinateur »");
   ok(s(job({ voie: "api", platform: "ebay" }), { ...ctx, extension: { etat: "eteinte" } }).motif === "tour", "eBay par nos serveurs n'attend pas l'ordinateur");
-  const retenue = job({ action: "republish", platform_fields: { republish_step: "captured", retenue_serveur: { motif: "boutique_origine_inconnue", depuis: iso(-100) } } });
+  const retenue = job({ action: "republish", platform_fields: { republish_step: "captured", retenue_serveur: { motif: "isbn_capture_non_standard", depuis: iso(-100) } } });
   ok(s(retenue).raison === "En attente, ton annonce est intacte" && s(retenue).groupe === "pause", "retenue serveur : « En attente, ton annonce est intacte »");
+  // (03/10, point G) Boutique d'origine inconnue : la retenue NOMME les
+  // boutiques à ouvrir — republication comme retrait (« Alphalette » d'Ornella).
+  const sansBoutique = job({ action: "delete", platform_fields: { retenue_serveur: { motif: "boutique_origine_inconnue", depuis: iso(-100), boutiques: ["@ornella-vend"] } } });
+  ok(s(sansBoutique).raison === "En attente : ouvre @ornella-vend sur vinted.fr dans Chrome — FillSell y cherchera l'annonce, ça repartira tout seul" && s(sansBoutique).groupe === "pause",
+    "retrait sans boutique : il dit laquelle ouvrir, jamais le silence", s(sansBoutique).raison);
+  const repubSansBoutique = job({ action: "republish", platform_fields: { republish_step: "captured", retenue_serveur: { motif: "boutique_origine_inconnue", depuis: iso(-100) } } });
+  ok(/^En attente : ouvre sur vinted\.fr, dans Chrome, la boutique qui porte cette annonce/.test(s(repubSansBoutique).raison), "republication sans boutique connue : le geste, sans inventer un nom", s(repubSansBoutique).raison);
+  // (03/10, point H) Cause PROUVÉE = l'autre boutique : une attente, pas un geste.
+  const autreBoutique = job({ status: "needs_user", action: "republish", platform_fields: { needs_user_source: "boutique_etrangere",
+    boutique_etrangere: { motif: "boutique_etrangere", article: "472079", login_article: "ornella-vend", pose_par: "handler-watch (origine prouvée du job)" } } });
+  ok(s(autreBoutique).groupe === "pause" && s(autreBoutique).raison === "En attente de ta boutique @ornella-vend : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul",
+    "autre boutique prouvée : « En attente de ta boutique @ornella-vend »", s(autreBoutique).raison);
+  ok(s(job({ status: "needs_user", platform_fields: { needs_user_source: "prevol_negatif" } })).groupe === "geste", "une vraie question reste un geste");
   const repub = job({ action: "republish", platform_fields: { republish_step: "a_capturer" } });
   const plafond = { retenue: true, motif: "plafond", reprise: "2026-10-01T22:00:00Z" };
   ok(s(repub, { ...ctx, plafond }).raison === "En pause jusqu'à demain 00:00 (limite du jour)", s(repub, { ...ctx, plafond }).raison);

@@ -20,6 +20,7 @@ import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee, MIN_PHOTOS, MAX
 import GaleriePhotos, { DragHandle, CoverBadge } from "./GaleriePhotos";
 import { usePhotoDrag, moveItem, IS_ANDROID, pickPhotosAndroid } from "../utils/photosGalerie";
 import { texteComparable } from "../utils/texteComparable";
+import { libelleEtatVinted } from "../utils/etatsVinted.js";
 import { sortirDuBrouillon } from "../utils/brouillon";
 import { sessionsDepuisVerite } from "../utils/veritePlateformes";
 import { useVeritePlateformes } from "../reglages/useVeritePlateformes";
@@ -1275,6 +1276,10 @@ function valeurAttributFiche(attributs, fieldKey) {
   const e = attributs[cle];
   const v = e && typeof e === "object" && !Array.isArray(e) ? e.v : e;
   const t = String(v ?? "").trim();
+  // L'état relevé sur une page Vinted étrangère (« Very good », dew) est
+  // gardé tel quel en base — il dit la langue du compte (langue-vendeur.ts) —
+  // et se LIT sous son libellé français, celui de la fiche (03/10, point E).
+  if (cle === "etat" && t) return libelleEtatVinted(t, "fr");
   return t || null;
 }
 
@@ -3122,7 +3127,11 @@ const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECT
 // pour les petites listes : <datalist> n'est PAS supporté par Safari iOS, et
 // l'app tourne en Capacitor — on y perdrait toute suggestion sur mobile.
 const OTHER_SENTINEL = "__fs_other__";
-export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase, tailleTexte = 13 }) {
+// `libelle` (03/10, point E) : le TEXTE affiché d'une option, la valeur restant
+// celle de la plateforme — un état Vinted d'une page anglaise s'affiche
+// « Très bon état » et part « Very good ». Par défaut : la valeur elle-même.
+const libelleIdentite = (v) => v;
+export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase, tailleTexte = 13, libelle = libelleIdentite }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
   const [libre, setLibre] = useState(false);
@@ -3142,8 +3151,8 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
         }}
         style={{ ...base, background:T.chip, color: value ? T.ink : T.mute }}>
         <option value="">—</option>
-        {horsListe && <option value={value}>{value}</option>}
-        {vals.map(v => <option key={v} value={v}>{v}</option>)}
+        {horsListe && <option value={value}>{libelle(value)}</option>}
+        {vals.map(v => <option key={v} value={v}>{libelle(v)}</option>)}
         {!strict && <option value={OTHER_SENTINEL}>Autre valeur…</option>}
       </select>
     );
@@ -4710,7 +4719,9 @@ export default function ListingPreviewScreen({
   const attributV = (cle) => {
     const champ = attributsBase && typeof attributsBase === "object" ? attributsBase[cle] : null;
     const v = champ && typeof champ === "object" ? champ.v : null;
-    return v == null || v === "" ? null : v;
+    if (v == null || v === "") return null;
+    // État d'une page Vinted étrangère : lu en français (cf. valeurAttributFiche).
+    return cle === "etat" ? libelleEtatVinted(v, "fr") : v;
   };
   // La taille de la fiche quand quelqu'un l'a DITE (saisie « manuel », capture,
   // synchro Vinted, relevé d'une plateforme) — jamais une estimation (« lens »).

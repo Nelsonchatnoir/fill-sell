@@ -25,7 +25,8 @@
 // ⛔ LECTURE SEULE : rien ici n'écrit, ne relance ni n'annule un job.
 // Preuve : scripts/file-des-jobs-selftest.mjs.
 
-import { retenueServeurDuJob } from "./retenueServeur.js";
+import { retenueServeurDuJob, RETENUE_BOUTIQUE_INCONNUE } from "./retenueServeur.js";
+import { attenteBoutiqueLevable } from "../../supabase/functions/_shared/attente-autre-boutique.js";
 import { estArretUtilisateur, estGeleLivres } from "./publicationState.js";
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
 
@@ -117,6 +118,10 @@ const TEXTE = {
     boutique: (login) => (login
       ? `En attente de ta boutique @${login} : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul`
       : "En attente de ton autre boutique Vinted : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul"),
+    // (03/10, point G) Boutique d'origine inconnue : on nomme celles à ouvrir.
+    boutiquesAOuvrir: (liste) => (liste?.length
+      ? `En attente : ouvre ${liste.join(" puis ")} sur vinted.fr dans Chrome — FillSell y cherchera l'annonce, ça repartira tout seul`
+      : "En attente : ouvre sur vinted.fr, dans Chrome, la boutique qui porte cette annonce — ça repartira tout seul"),
     geste: "Un geste à faire",
     connexion: (p) => `Un geste à faire : connecte-toi à ${p} sur ton ordinateur`,
     opla: "Un geste à faire : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
@@ -142,6 +147,9 @@ const TEXTE = {
     boutique: (login) => (login
       ? `Waiting for your @${login} shop: open it on vinted.fr in Chrome, it resumes on its own`
       : "Waiting for your other Vinted shop: open it on vinted.fr in Chrome, it resumes on its own"),
+    boutiquesAOuvrir: (liste) => (liste?.length
+      ? `On hold: open ${liste.join(" then ")} on vinted.fr in Chrome — FillSell will look for the listing, it resumes on its own`
+      : "On hold: open, on vinted.fr in Chrome, the shop that holds this listing — it resumes on its own"),
     geste: "Something to do",
     connexion: (p) => `Something to do: sign in to ${p} on your computer`,
     opla: "Something to do: allow Opla in the extension — the listing then goes out on its own",
@@ -202,6 +210,14 @@ export function situationJob(j, ctx = {}) {
   const nom = nomPlateforme(j.platform);
   const etape = j.action === "republish" ? etapeRepublication(j) : null;
 
+  // (03/10, point H — chaussons d'Ornella) Une opération dont l'origine est
+  // PROUVÉE sur une autre boutique attend en silence : c'est la boutique qui
+  // manque, pas un geste à faire ici (_shared/attente-autre-boutique.js).
+  if (j.status === "needs_user" && pf.needs_user_source === "boutique_etrangere" && attenteBoutiqueLevable(pf.boutique_etrangere)) {
+    const g = objet(pf.boutique_etrangere);
+    const login = g.login_article ? String(g.login_article) : loginDe(g.article, ctx.boutiques);
+    return { groupe: "pause", raison: T.boutique(login), heure: null, motif: "boutique" };
+  }
   if (j.status === "needs_user") return { groupe: "geste", raison: T.geste, heure: null, motif: "geste" };
   if (attendConnexion(j)) return { groupe: "geste", raison: T.connexion(nom), heure: null, motif: "connexion" };
   // Opla sans autorisation CONNUE (verdict serveur « a_autoriser ») : le
@@ -240,7 +256,9 @@ export function situationJob(j, ctx = {}) {
 
   // pending — d'abord ce qui le RETIENT, avec une heure quand elle est connue.
   if (estGeleLivres(j)) return { groupe: "pause", raison: T.pauseSansHeure(null), heure: null, motif: "gel" };
-  if (retenueServeurDuJob(j)) return { groupe: "pause", raison: T.intacte, heure: null, motif: "retenue_serveur" };
+  const retenue = retenueServeurDuJob(j);
+  if (retenue?.motif === RETENUE_BOUTIQUE_INCONNUE) return { groupe: "pause", raison: T.boutiquesAOuvrir(retenue.boutiques), heure: null, motif: "boutique" };
+  if (retenue) return { groupe: "pause", raison: T.intacte, heure: null, motif: "retenue_serveur" };
   // La boutique avant le plafond : c'est le geste qui débloque (marqueur posé
   // par l'extension à la capture ; la garde du serveur est lue plus haut).
   const boutique = objet(pf.attente_boutique);

@@ -54,6 +54,7 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // que update-job-status et handler-watch — le motif de l'arrêt précédent ne
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
+import { attenteBoutiqueLevable } from '../../supabase/functions/_shared/attente-autre-boutique.js';
 import { rayonFourreToutARevoir, reResoudreRayonFourreTout, messageRayonNonTrouve, photosApresRayonRetrouve } from '../utils/rayonFourreToutRelance';
 import { abandonPossible, messageAbandon, champsApresAbandon } from '../utils/abandonPlateforme';
 import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, estGeleLivres, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
@@ -113,6 +114,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   fraicheurExtension, detecterRetardHorloge, DESC_MANUELLE_MAX,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
+import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/etatsVinted.js';
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
@@ -306,6 +308,9 @@ const MURS_LEVES_A_LA_RELANCE = [
   'connexion', 'session_vinted',
   'ebay_connexion_requise', 'ebay_compte_a_finir', 'ebay_compte_chrome', 'ebay_compte_vendeur_inactif',
   'compte_vinted_bloque',
+  // (03/10, point F) Mise de côté par le serveur (servie sans jamais
+  // démarrer) : la relance la remet en file, le compteur repart de zéro.
+  'tache_sans_demarrage',
 ];
 
 // ── Relance MANUELLE d'un job échoué récupérable (2026-08-31) ─────────────────
@@ -1067,6 +1072,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       ? (job.platform_fields.needsUserFields.find((c) => c && c.field_key && c.field_label) ?? null)
       : null);
   const [value, setValue] = useState("");
+  // État Vinted d'une page étrangère (03/10, point E — dew) : le nom du champ
+  // et chaque option s'AFFICHENT dans la langue de l'app ; la valeur choisie
+  // reste celle de la page (le sélecteur de Vinted n'accepte qu'elle).
+  const libelleChamp = (c) => (estChampEtatVinted(job.platform, c) ? nomChampEtat(lang) : c?.field_label);
+  const libelleOption = (c) => (estChampEtatVinted(job.platform, c) ? (v) => libelleEtatVinted(v, lang) : (v) => v);
   // Sortie propre offerte ici aussi (2026-09-20) : elle se demande, puis se
   // confirme — comme dans la modale d'echec, et pour la meme raison.
   const [abandonArme, setAbandonArme] = useState(false);
@@ -1459,8 +1469,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         const attributs = {};
         const maintenant = new Date().toISOString();
         const poser = (cle, valeur) => {
-          const val = String(valeur ?? "").trim();
+          const brut = String(valeur ?? "").trim();
           const k = cleFicheDepuisChamp(job.platform, cle);
+          // L'état d'une page Vinted étrangère (« Very good ») entre sur la
+          // fiche sous son libellé français, celui de la fiche (03/10, point E).
+          const val = k === "etat" && job.platform === "vinted" ? libelleEtatVinted(brut, "fr") : brut;
           if (k && val) attributs[k] = { v: val, source: "manuel", at: maintenant };
         };
         if (target) poser(target.key, v);
@@ -1493,7 +1506,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         </div>
         {f && (<>
         <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
-          {f.field_label}
+          {libelleChamp(f)}
         </div>
         <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:14 }}>
           {valeursIndisponibles
@@ -1544,7 +1557,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
                 <button key={v} type="button" disabled={saving}
                   onClick={() => { setValue(v); valider({ valeur: v }); }}
                   style={{ flex:1, padding:"14px 0", borderRadius:12, border:"1px solid #1B6E62", background: saving ? "#B9C4C0" : "#fff", color:"#1B6E62", fontSize:16, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}>
-                  {v}
+                  {libelleOption(f)(v)}
                 </button>
               ))}
             </div>
@@ -1560,13 +1573,14 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
             onChange={setValue}
             T={NU_T}
             idBase={`nu-${job.id}`}
+            libelle={libelleOption(f)}
           />
           )}
           {valeurProposee && !value && (
             <div style={{ fontSize:12, lineHeight:1.45, color:"#1B6E62", marginTop:6 }}>
               {lang === "en"
-                ? `“${valeurProposee}” is what your listing says — check it and confirm.`
-                : `« ${valeurProposee} » : c'est ce que dit ton annonce — vérifie et valide.`}
+                ? `“${libelleOption(f)(valeurProposee)}” is what your listing says — check it and confirm.`
+                : `« ${libelleOption(f)(valeurProposee)} » : c'est ce que dit ton annonce — vérifie et valide.`}
             </div>
           )}
           </>
@@ -1577,7 +1591,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           return (
             <div key={c.field_key} style={{ marginTop: 16 }}>
               <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
-                {c.field_label}
+                {libelleChamp(c)}
               </div>
               <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:8 }}>
                 {uniteSup(c)
@@ -1603,6 +1617,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
                 onChange={(v) => setValeursSup((prev) => ({ ...prev, [c.field_key]: v }))}
                 T={NU_T}
                 idBase={`nu-${job.id}-${c.field_key}`}
+                libelle={libelleOption(c)}
               />
               )}
             </div>
@@ -4590,6 +4605,20 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
         : phraseRienRetire(item, fr, LABEL_PF[job.platform] ?? 'Vinted'),
     };
   }
+  // ── UN ARTICLE D'UNE AUTRE BOUTIQUE ATTEND EN SILENCE (03/10, point H) ──
+  // Chaussons d'Ornella : la cause PROUVÉE est l'autre boutique — pas un
+  // échec, pas « relance » : la boutique à ouvrir, et que rien n'est touché.
+  if (st === 'needs_user' && pf.needs_user_source === 'boutique_etrangere' && attenteBoutiqueLevable(pf.boutique_etrangere)) {
+    const login = pf.boutique_etrangere.login_article ? String(pf.boutique_etrangere.login_article) : null;
+    const qui = login ? `@${login}` : (fr ? 'ton autre boutique' : 'your other shop');
+    return {
+      cle: 'attente_boutique', court: fr ? `Attend ${qui}` : `Waiting ${qui}`, ...bleu, fini: false,
+      titre: fr ? `En attente de ta boutique ${qui}` : `Waiting for your ${qui} shop`,
+      detail: fr
+        ? `Cette annonce vit sur ${qui}. Ouvre cette boutique sur vinted.fr dans Chrome : la republication repartira toute seule, rien à relancer. Ton annonce est toujours en ligne, rien n'a été retiré.`
+        : `This listing lives on ${qui}. Open that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch. Your listing is still online, nothing was removed.`,
+    };
+  }
   if (st === 'needs_user') {
     const apres = step === 'deleted';
     // ── DIRE LA VÉRITÉ QUAND L'APP NE PEUT RIEN OUVRIR (2026-09-04) ──────────
@@ -4639,7 +4668,8 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   // des jours : six livres de Carole, du 27/09 au 01/10. Une attente, jamais
   // un échec, et la seule chose qui compte : l'annonce est intacte.
   if (retenueServeurDuJob(job)) {
-    const ph = phraseRetenueServeur(fr, { plateforme: LABEL_PF[job.platform] ?? 'Vinted', motif: retenueServeurDuJob(job)?.motif });
+    const r = retenueServeurDuJob(job);
+    const ph = phraseRetenueServeur(fr, { plateforme: LABEL_PF[job.platform] ?? 'Vinted', motif: r?.motif, boutiques: r?.boutiques, action: job.action });
     return { cle: 'retenue_serveur', court: ph.court, ...bleu, enFile: true, titre: ph.titre, detail: ph.detail };
   }
 
@@ -7206,6 +7236,7 @@ const StockTab = memo(function StockTab({
       if (MURS_LEVES_A_LA_RELANCE.includes(String(pf.needs_user_source ?? ''))) {
         delete pf.needs_user_source;
         delete pf.ebay_connexion_requise;
+        delete pf.tache_sans_demarrage;
       }
       delete pf.refus_passager;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
