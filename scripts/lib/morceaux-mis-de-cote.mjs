@@ -19,7 +19,9 @@
 //
 // Morceaux déjà REVENUS le 03/10 (retirés de ce registre) : tailles Vinted du
 // point G (âges anglais, pays gardé), mur de boutique nommé et
-// preuve_manquante (0.6.78), relevé borné et tenu éveillé (8b6f539).
+// preuve_manquante (0.6.78), relevé borné et tenu éveillé (8b6f539), gardes
+// anti-doublon de la recréation (67d6749, décision 8 de Nico, 0.6.91 — preuve
+// par une vraie republication Vinted, cf. le message du commit de livraison).
 
 export const MORCEAUX = {
   "recreation-par-redirection": {
@@ -28,13 +30,6 @@ export const MORCEAUX = {
     quoi: "la recréation Vinted se rattache par l'identifiant vu dans la redirection de notre onglet de dépôt",
     pourquoi: "jamais prouvé en réel (2e essai du 28/09, Sweat Tommy : aucun identifiant vu) ; la règle 0.6.75 rétablie le 28/09 (décision Nico) rattache déjà la recréation unique",
     pour_revenir: "une vraie republication Vinted dont la recréation est rattachée par recreation_redirection",
-  },
-  "recreation-sans-doublon-0678": {
-    etat: "mis_de_cote",
-    origine: "67d6749 (0.6.78, 28/09)",
-    quoi: "gardes anti-doublon de la recréation : la une-passe compte comme tentative (recreation_tentee), une recréation déjà importée en fiche séparée n'en appelle pas une 3e, la question liste les candidates",
-    pourquoi: "jamais servi ; la règle 0.6.75 garde l'essentiel (dressing relu avant toute recréation quand l'onglet répond ; plusieurs candidates = pause, rien recréé)",
-    pour_revenir: "une vraie republication Vinted coupée après soumission, reprise sans seconde annonce",
   },
   "copie-avant-retrait-point-d": {
     etat: "mis_de_cote",

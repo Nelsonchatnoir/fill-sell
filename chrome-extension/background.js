@@ -19605,9 +19605,10 @@ function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
     const ts = Number(a.photo_ts);
     return Number.isFinite(ts) && ts * 1000 >= Math.floor(seuil / 1000) * 1000;
   });
-  if (candidats.length === 1) return { item: candidats[0], raison: null };
-  if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond" };
-  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire` };
+  if (candidats.length === 1) return { item: candidats[0], raison: null, candidats };
+  if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond", candidats };
+  // (0.6.78, remis le 03/10) Les candidates sont rendues : la pause les garde.
+  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire`, candidats };
 }
 
 // Clôt un job republish en SUCCÈS sur une annonce déjà en ligne (reconnue par
@@ -22406,6 +22407,27 @@ async function processRepublishJob(job, accessToken) {
             : verdictPreuve.preuve_manquante === "session"
             ? "Vinted n'a pas laissé FillSell lire la boutique ouverte dans Chrome, et rien n'est retiré sans cette vérification. Vérifie que ta session Vinted est ouverte dans Chrome, puis relance : la boutique sera vérifiée de nouveau avant tout geste."
             : "FillSell ne sait pas de quelle boutique Vinted vient cette annonce, et ne retire jamais une annonce sans cette preuve. Ouvre Vinted dans Chrome sur la boutique qui la porte, puis « Actualiser mon dressing » dans l'app : une fois l'annonce reconnue, relance la republication.";
+          // ── L'AUTRE BOUTIQUE PROUVÉE : UNE ATTENTE, PAS UNE ALARME (03/10, H) ──
+          // Chaussons d'Ornella (ef38f079) : la boutique de l'annonce est
+          // prouvée (lue sur sa page exacte avant le pré-vol) et ce n'est pas
+          // celle ouverte dans Chrome. Le job ATTEND cette boutique, comme la
+          // garde boutique_etrangere : get-pending-jobs le remet en file dès que
+          // la sonde la voit connectée (_shared/attente-autre-boutique.js).
+          const articleProuve = String(result?.suppression_verdict?.preuve_boutique?.article ?? pf.vinted_account_id ?? "").trim();
+          if (verdictPreuve.conclusion === "boutique_etrangere" && articleProuve) {
+            const sessionVue = result?.suppression_verdict?.preuve_boutique?.session;
+            pf.vinted_account_id = articleProuve;
+            pf.needs_user_source = "boutique_etrangere";
+            pf.boutique_etrangere = {
+              motif: "boutique_etrangere", article: articleProuve,
+              session: sessionVue != null ? String(sessionVue) : null,
+              le: new Date().toISOString(), pose_par: "extension (propriétaire lu sur la page exacte)",
+            };
+            const msgAttente = "En attente de ton autre boutique Vinted : ouvre-la sur vinted.fr dans Chrome, la republication repartira toute seule. "
+              + "Ton annonce est toujours en ligne, rien n'a été retiré.";
+            await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msgAttente });
+            return { status: "needsUser", error: msgAttente };
+          }
           // Formulation (2026-09-11) : « intacte » seulement si l'état réel
           // vient d'être relevé « active » ; sinon on dit qu'on n'a pas pu
           // vérifier — jamais rassurant à tort.
@@ -22525,6 +22547,17 @@ async function processRepublishJob(job, accessToken) {
       // ── SUPPRIMÉE : étape actée, puis MÊME conclusion que la reprise ───────
       pf.republish_step = "deleted";
       pf.deleted_at = pf.deleted_at ?? marqueDeletedAt ?? enBase?.deletedAt ?? new Date().toISOString();
+      // La une-passe a SOUMIS le formulaire après la suppression : c'est une
+      // tentative de recréation (0.6.78, 67d6749 — remis le 03/10, décision 8
+      // de Nico). Marquée comme telle, une relance LIT obligatoirement le
+      // dressing avant de recréer : sans elle, un onglet de travail absent
+      // laissait recréer par-dessus l'annonce déjà créée (Sweat Tommy
+      // 4bd5c671, relancé depuis l'app, 28/09).
+      pf.recreation_tentee = {
+        at: new Date().toISOString(),
+        n: (Number(pf.recreation_tentee?.n) || 0) + 1,
+        une_passe: true,
+      };
       // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — le
       // veilleur quotidien scannerait sinon l'ancienne URL, la trouverait
       // morte, et poserait le faux « plus en ligne — vendue ? ».
@@ -22680,7 +22713,9 @@ async function processRepublishJob(job, accessToken) {
       // TENTATIVE A EU LIEU, on ne recrée plus sans avoir LU le dressing :
       // s'il est illisible, on repasse plus tard. Une annonce qui attend 2 min
       // de plus, ça se rattrape ; un doublon, non.
-      const dejaTentee = pf.recreation_tentee && typeof pf.recreation_tentee === "object";
+      // (0.6.78, remis le 03/10) Plusieurs candidates déjà vues
+      // (recreation_doublon) valent tentative : le dressing se lit avant tout dépôt.
+      const dejaTentee = (pf.recreation_tentee && typeof pf.recreation_tentee === "object") || !!pf.recreation_doublon;
       let tabVerif = await findExistingWorkTabId("vinted");
       if (tabVerif == null && dejaTentee) {
         // Obligatoire : on s'offre l'onglet que le chemin best-effort refusait.
@@ -22717,10 +22752,27 @@ async function processRepublishJob(job, accessToken) {
               `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
               accessToken,
             ).catch(() => []);
-            const { item, raison } = reconnaitreAnnonceRecreee(page.articles, {
+            const idsConnus = new Set((connus ?? []).map((r) => String(r.vinted_item_id)));
+            // ── LA RECRÉATION D'AVANT A ÉTÉ IMPORTÉE EN FICHE SÉPARÉE ──────────
+            // (0.6.78, 67d6749 — remis le 03/10.) T-shirt de Nico 221274a6 : les
+            // annonces vues lors d'une pause « plusieurs annonces identiques »
+            // sont maintenant CONNUES de l'inventaire (importées par un relevé),
+            // donc exclues des candidates : sans cette garde, on en recréerait
+            // une troisième. Rien n'est déposé ; les fiches se fusionnent.
+            const dejaImportees = (Array.isArray(pf.recreation_doublon?.liens) ? pf.recreation_doublon.liens : [])
+              .map((l) => String(l).match(/(\d{6,})/)?.[1]).filter((id) => id && idsConnus.has(id));
+            if (dejaImportees.length) {
+              const msg = "Ta nouvelle annonce est déjà en ligne sur Vinted, mais elle a été ajoutée à ton stock comme une "
+                + "fiche séparée. Fusionne les deux fiches de cet article depuis l'app. Rien n'a été redéposé.";
+              pf.needs_user_source = "recreation_deja_partie";
+              pf.recreation_importee = { at: new Date().toISOString(), ids: dejaImportees.slice(0, 5) };
+              await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+              return { status: "needsUser", error: msg };
+            }
+            const { item, raison, candidats } = reconnaitreAnnonceRecreee(page.articles, {
               titre: jobRecreation.title,
               deletedAt: pf.deleted_at,
-              idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
+              idsConnus,
             });
             tracerGarde(pf, "prevol_recreation", {
               verdict: item ? "deja_recreee" : "a_recreer",
@@ -22745,7 +22797,13 @@ async function processRepublishJob(job, accessToken) {
               const msg = "Republication en pause : plusieurs annonces identiques sont en ligne sur Vinted "
                 + "(une republication a abouti deux fois). Garde l'annonce que tu veux, supprime l'autre, "
                 + "puis relance depuis la fiche de l'article. Rien n'a été recréé.";
-              pf.recreation_doublon = { at: new Date().toISOString(), raison: String(raison) };
+              // (03/10) Les candidates sont gardées : si un relevé les importe
+              // ensuite en fiches séparées, la garde ci-dessus le verra.
+              pf.recreation_doublon = {
+                at: new Date().toISOString(), raison: String(raison),
+                liens: (Array.isArray(candidats) ? candidats : []).slice(0, 5)
+                  .map((a) => String(a?.url ?? `https://www.vinted.fr/items/${a?.vinted_item_id ?? ""}`)),
+              };
               await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
               console.warn(`[republish] job ${job.id} : recréation REFUSÉE — ${raison}`);
               return { status: "needsUser", error: msg };

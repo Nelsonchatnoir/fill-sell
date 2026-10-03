@@ -3557,8 +3557,17 @@ async function fillListingForm(job) {
   // needs_user (mini-éditeur), comme avant.
   // Page non française (0.6.69) : l'état par son identifiant d'abord, sauf
   // réponse de l'utilisateur (vintedAspects.condition, qui prime toujours).
-  const etatParId = idsVinted?.status_id && !String(_va.condition ?? "").trim()
-    ? await selectEtatParId(idsVinted.status_id, warnings)
+  // (03/10, point E — dew : compte FRANÇAIS, page en ANGLAIS) Une
+  // REPUBLICATION pose l'état par l'identifiant de SON annonce même sans
+  // l'autorisation par pays : cet identifiant vient de l'annonce elle-même,
+  // seul le libellé change de langue (« Très bon état » introuvable dans une
+  // liste anglaise). Échec → le libellé prend le relais, comme avant.
+  const statusIdRepublication = !pageVintedFrancaise() && (onePass || recreation)
+    ? Number(fields.vinted_ids?.status_id) : NaN;
+  const statusIdEtat = idsVinted?.status_id
+    ?? (Number.isInteger(statusIdRepublication) && statusIdRepublication > 0 ? statusIdRepublication : null);
+  const etatParId = statusIdEtat && !String(_va.condition ?? "").trim()
+    ? await selectEtatParId(statusIdEtat, warnings)
     : false;
   if (fields.etat && !etatParId) {
     await selectClosedOptionSafe(
