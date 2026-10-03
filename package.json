@@ -54,6 +54,7 @@
     "selftest:etats-vinted-affiches": "node scripts/etats-vinted-affiches-selftest.mjs",
     "selftest:etat-repris": "node scripts/etat-repris-selftest.mjs",
     "selftest:tache-sans-demarrage": "node scripts/tache-sans-demarrage-selftest.mjs",
+    "selftest:retrait-beebs-verification": "node scripts/retrait-beebs-verification-selftest.mjs",
     "selftest:ebay-hub-rendu": "node scripts/ebay-hub-rendu-selftest.mjs",
     "selftest:ebay-categorie-message": "node scripts/ebay-categorie-message-selftest.mjs",
     "selftest:recapture-plafond": "node scripts/recapture-plafond-selftest.mjs",

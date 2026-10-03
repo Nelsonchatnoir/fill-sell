@@ -1672,6 +1672,82 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // RETRAIT BEEBS D'UNE ANNONCE EN VÉRIFICATION = ATTENTE, PAS UN ESSAI
+    // (03/10, test réel chez Nico : « Le Meilleur des mondes » 34101135,
+    // retrait 313b139f quatre minutes après le dépôt)
+    // ══════════════════════════════════════════════════════════════════════
+    // Une annonce Beebs neuve passe par « En cours de vérification » : sa page
+    // publique est un 404 et n'offre aucun bouton « Supprimer l'annonce », et
+    // « Mes annonces » ne propose aucun geste sur elle. L'extension (0.6.90+)
+    // le lit « toujours dans Mes annonces, page sans bouton » et rejoue 5 fois
+    // en ~25 min, puis s'arrête en disant de la retirer à la main — ce qui est
+    // impossible pendant la vérification. MÊME RÈGLE QUE VINTED : tant que le
+    // dernier relevé Beebs montre l'annonce EN VÉRIFICATION
+    // (annonces_plateforme.statut_plateforme = 'en_verification', même
+    // numéro), le refus est une ATTENTE : pending, retenté toutes les
+    // RETRAIT_VERIF_MIN minutes, needsUserAttempts remis à sa valeur en base.
+    // ⛔ C'est le relevé qui distingue, jamais le texte seul : sans relevé qui
+    //    la voie en vérification, le chemin d'aujourd'hui est gardé.
+    const RETRAIT_VERIF_BEEBS_RE = /toujours dans « Mes annonces » mais sa page n'a pas montré le bouton de suppression/i;
+    if (!pfRetraitVerif && (statutEffectif === "pending" || statutEffectif === "failed" || statutEffectif === "needs_user") &&
+        typeof body.error === "string" && RETRAIT_VERIF_BEEBS_RE.test(body.error) && !pfCanalCoupe) {
+      try {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs")
+          .select("action, platform, listing_url, platform_listing_id, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        const idBeebs = String(jrow?.listing_url ?? "").match(/\/p\/(\d{6,})/)?.[1]
+          ?? (String(jrow?.platform_listing_id ?? "").match(/^\s*(\d{6,})\s*$/)?.[1] ?? null);
+        if (jrow?.action === "delete" && jrow.platform === "beebs" && idBeebs) {
+          const { data: ligne } = await userClient
+            .from("annonces_plateforme")
+            .select("statut_plateforme, vu_le")
+            .eq("platform", "beebs")
+            .eq("listing_id", idBeebs)
+            .order("vu_le", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (String((ligne as { statut_plateforme?: unknown } | null)?.statut_plateforme ?? "") === "en_verification") {
+            const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+            const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
+              ? body.platform_fields : pfBase) as Record<string, unknown>;
+            const avant = (pfBase.retrait_en_attente_verification && typeof pfBase.retrait_en_attente_verification === "object")
+              ? pfBase.retrait_en_attente_verification as Record<string, unknown> : null;
+            const maintenant = new Date().toISOString();
+            const {
+              needs_user_source: _nus, pas_de_rouge: _pdr, blocage_antirobot: _ba,
+              needs_user_tick_le: _nt, needs_user_actif_ms: _na, needs_user_vu_le: _nv, needs_user_vu_erreur: _ne,
+              ...pfSans
+            } = pfBody;
+            pfRetraitVerif = {
+              ...pfSans,
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              next_action_after: new Date(Date.now() + RETRAIT_VERIF_MIN * 60_000).toISOString(),
+              retrait_en_attente_verification: {
+                depuis: avant?.depuis ?? maintenant,
+                derniere: maintenant,
+                essais: (Number(avant?.essais ?? 0) || 0) + 1,
+                signal: "annonces_plateforme.statut_plateforme = en_verification (Beebs)",
+                releve_le: (ligne as { vu_le?: unknown } | null)?.vu_le ?? null,
+                pose_par: "update-job-status (retrait Beebs pendant la vérification = attente)",
+              },
+            };
+            statutEffectif = "pending";
+            messageEffectif =
+              "Beebs vérifie encore cette annonce : elle n'est pas encore visible, et Beebs ne permet pas de la retirer " +
+              "tant que la vérification dure. Le retrait est retenté toutes les heures et part dès qu'elle se termine — " +
+              "rien à faire de ton côté.";
+            raisonRequalif = `retrait Beebs impossible, annonce en vérification — attente ${RETRAIT_VERIF_MIN} min, aucune tentative consommée`;
+          }
+        }
+      } catch (e) {
+        console.error("[update-job-status] retrait Beebs en vérification:", (e as Error)?.message ?? e);
+        pfRetraitVerif = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // REPUBLICATION VINTED : REFUS ANTI-ROBOT AVANT TOUT RETRAIT = PAUSE,
     // PAS UNE QUESTION (2026-09-25, nadegemarcelin78)
     // ══════════════════════════════════════════════════════════════════════
