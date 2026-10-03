@@ -1391,7 +1391,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-03T21:07:47Z'; // 0.6.94 = 0.6.93 + republication qui relit l'annonce avant tout retrait (tout ce qu'elle affiche ; taille affichée d'abord sur Beebs, ceinture de nivake03) + question « Marque » : vraies marques du catalogue Vinted et recherche en direct depuis l'app (CHERCHER_MARQUE) — b676d08, 4befca1. Paquet build/CWS-0.6.94-A-TELEVERSER. (0.6.93 = a0b7f3d, jamais téléversée.)
+export const EXTENSION_LAST_COMMIT = '2026-10-03T21:22:49Z'; // 0.6.94 = 0.6.93 + republication qui relit l'annonce avant tout retrait (tout ce qu'elle affiche ; taille affichée d'abord sur Beebs, ceinture de nivake03) + question « Marque » : vraies marques du catalogue Vinted et recherche en direct depuis l'app (CHERCHER_MARQUE) + raison/marque demandée transmises par la question — b676d08, 4befca1, 3165ace. Paquet build/CWS-0.6.94-A-TELEVERSER. (0.6.93 = a0b7f3d, jamais téléversée ; 0.6.94-85e7709 remplacé avant envoi.)
 // (avant : '2026-10-03T19:24:17Z' = 0.6.93, c918533, paquet CWS-0.6.93-A-TELEVERSER)
 // (avant : '2026-10-03T16:15:51Z' = 0.6.91, 612c356/edd36ff, paquet CWS-0.6.91-A-TELEVERSER)
 // Historique de la valeur precedente : '2026-10-03T13:51:13Z' — 9ba69d8, 0.6.90 (paquet CWS-0.6.90, jamais téléversé : remplacé par la 0.6.91).
