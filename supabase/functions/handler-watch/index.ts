@@ -875,6 +875,17 @@ serve(async (req) => {
   // p95 = 1 min par page). Un arrêt ne conclut RIEN : ni vente, ni
   // disparition, ni suppression — 'expired' n'est jamais lu comme un relevé.
   const SYNC_RUN_SANS_PROGRES_MIN = 5;    // 'running' sans progression → arrêté
+  // (03/10, suite du point 31) UN RELEVÉ « ANNONCES » AVANCE AUSSI SUR SES
+  // LIGNES. Leboncoin, Beebs, eBay et Opla n'écrivent rien sur le run avant
+  // leur PATCH final (extensions jusqu'à la 0.6.89) ; mais la liste, puis la
+  // capture des fiches et le rattachement, touchent les lignes
+  // d'annonces_plateforme du run (run_id, updated_at). Ces lignes sont la
+  // preuve qu'il avance : mesuré sur 14 jours au 03/10, 4 à 12 % de ces
+  // relevés dépassent 5 min EN AVANÇANT (Leboncoin p95 = 7 min). Les juger
+  // sur progres_le seul les coupait à tort. Avant que leur liste soit écrite,
+  // rien n'est visible : cette lecture garde 10 min (l'extension la borne à
+  // 3 min depuis la 0.6.90 et écrit ce qu'elle a lu dès la liste reçue).
+  const LISTE_SILENCIEUSE_MAX_MIN = 10;
   const SYNC_QUEUE_TTL_H = 6;             // 'queued' jamais réclamée → expirée
   let syncRunsExpires = 0;
   let syncQueuesExpirees = 0;
@@ -939,18 +950,40 @@ serve(async (req) => {
     // les annonces jamais évaluées passent en tête (ordre de rapprocher_releve).
     // Rien d'autre ne change : un run sans liste expire comme avant.
     const listeEcrite = new Map<string, number>();
+    const derniereLigne = new Map<string, number>();
+    const lectureIllisible = new Set<string>();
     for (const r of figesListe) {
       if (String(r.kind ?? "") !== "annonces") continue;
       try {
-        const { count } = await supabase
-          .from("annonces_plateforme").select("id", { count: "exact", head: true })
-          .eq("run_id", r.id as string);
+        const { data: lignes, count, error } = await supabase
+          .from("annonces_plateforme").select("updated_at", { count: "exact" })
+          .eq("run_id", r.id as string)
+          .order("updated_at", { ascending: false }).limit(1);
+        if (error) throw error;
         if ((count ?? 0) > 0) listeEcrite.set(String(r.id), count as number);
-      } catch { /* illisible : le run expire comme avant */ }
+        const t = Date.parse(String(lignes?.[0]?.updated_at ?? ""));
+        if (Number.isFinite(t)) derniereLigne.set(String(r.id), t);
+      } catch {
+        // Illisible : on ne sait pas s'il avance — on ne coupe pas sur une
+        // lecture ratée (le prochain passage, dans 3 min, relira).
+        lectureIllisible.add(String(r.id));
+      }
     }
+    let relevesVivants = 0;
     for (const r of figesListe) {
-      const muetDepuis = Math.round((now - Date.parse(String(r.progres_le ?? r.updated_at ?? ""))) / 60_000);
+      if (lectureIllisible.has(String(r.id))) continue;
+      // Dernier signe de progression : la base (progres_le) ou, pour un relevé
+      // « annonces », la dernière ligne qu'il a écrite ou touchée.
+      const progresRun = Date.parse(String(r.progres_le ?? r.updated_at ?? ""));
+      const ligne = derniereLigne.get(String(r.id));
+      const derniereActivite = ligne != null && (!Number.isFinite(progresRun) || ligne > progresRun) ? ligne : progresRun;
+      const muetDepuis = Math.round((now - derniereActivite) / 60_000);
       if (!Number.isFinite(muetDepuis)) continue;
+      if (muetDepuis < SYNC_RUN_SANS_PROGRES_MIN) { relevesVivants++; continue; }
+      if (String(r.kind ?? "") === "annonces" && !listeEcrite.has(String(r.id)) && muetDepuis < LISTE_SILENCIEUSE_MAX_MIN) {
+        relevesVivants++;
+        continue;
+      }
       const lues = listeEcrite.get(String(r.id));
       if (lues) {
         const sondeUser = sondeParUser.get(String(r.user_id ?? ""));
@@ -1017,6 +1050,9 @@ serve(async (req) => {
           `${sondeMin != null && sondeMin <= SONDE_VIVANTE_MIN ? " (CHROME VIVANT : gel de notre côté)" : ""}`,
         );
       }
+    }
+    if (relevesVivants) {
+      console.log(`[handler-watch] [releve-lent] ${relevesVivants} relevé(s) au-delà de ${SYNC_RUN_SANS_PROGRES_MIN} min mais qui AVANCENT (lignes écrites, ou liste en lecture depuis moins de ${LISTE_SILENCIEUSE_MAX_MIN} min) — laissés en place`);
     }
   } catch (e) {
     console.error("[handler-watch] chien de garde des runs de sync:", (e as Error)?.message ?? e);

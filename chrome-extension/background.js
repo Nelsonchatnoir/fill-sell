@@ -13260,7 +13260,11 @@ const RELEVE_CADENCE_CRON_MS = 20 * 3600_000;
 // du rôle (70 % de statement_timeout) et rend `restantes` ; on cumule.
 const RELEVE_MOTEUR_TOURS_MAX = 12;
 // (0.6.67) Et dans le temps : au-delà, on clôt le relevé proprement.
-const RELEVE_MOTEUR_DUREE_MAX_MS = 4 * 60_000;
+// (03/10, point 31 — règle de Nico : un relevé tient en 5 minutes) 4 → 2 min :
+// liste (bornée à 3 min, quelques secondes d'ordinaire) + fiches (2 min) +
+// rattachement (2 min). Ce qui reste passe en tête au relevé suivant
+// (ordre de rapprocher_releve) — rien n'est perdu, rien n'est conclu.
+const RELEVE_MOTEUR_DUREE_MAX_MS = 2 * 60_000;
 const RELEVE_BILAN_COMPTEURS = ["par_job", "auto", "proposees", "sans_candidat", "importees", "import_refusees", "ecartees_notification", "disparues", "sautees"];
 function cumulerBilanReleve(total, b) {
   const out = { ...total, ...b };
@@ -13312,7 +13316,7 @@ async function syncMultiOuverte(token, userId) {
 async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   const pattern = LISTING_URL_PATTERNS[platform];
   if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
-  const [res] = await chrome.scripting.executeScript({
+  const injection = chrome.scripting.executeScript({
     target: { tabId },
     func: async (src, plateforme, compteursEbaySrc, attenteCompteurMs, cheminListeSrc) => {
       const re = new RegExp(src, "i");
@@ -13700,6 +13704,17 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
     args: [pattern.source, platform, platform === "ebay" ? COMPTEUR_EBAY_SRC : [], platform === "ebay" ? COMPTEUR_EBAY_ATTENTE_MS : COMPTEUR_LBC_ATTENTE_MS,
       CHEMIN_LISTE_DU_COMPTE[platform]?.source ?? null],
   });
+  // ── LA LECTURE DE LA LISTE EST BORNÉE (Albert, 28/09 — 8b6f539, remis le
+  // 03/10 avec le point 31) : une page qui ne répond plus ne tient plus le
+  // relevé — ni la file — jusqu'à la mort du service worker. Au-delà de
+  // 3 minutes, le relevé échoue « [incomplet] » : il ne conclut rien.
+  let attente;
+  const borne = new Promise((_, rejet) => {
+    attente = setTimeout(() => rejet(new Error("Lecture du relevé interrompue : la page ne répond plus après 3 minutes [incomplet]")), 180_000);
+  });
+  let res;
+  try { [res] = await Promise.race([injection, borne]); }
+  finally { clearTimeout(attente); }
   return res?.result ?? { annonces: [], diag: null };
 }
 
@@ -15052,6 +15067,10 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     return { ok: false, reason: "ferme" };
   }
   releveEnCours = true;
+  // Les longues lectures injectées ne maintiennent pas le worker MV3 vivant
+  // (Albert, 28/09 — 8b6f539, remis le 03/10 avec le point 31). Ceci ne
+  // simule AUCUNE progression en base : le chien de garde reste indépendant.
+  const reveilReleve = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20_000);
   const maintenant = () => new Date().toISOString();
   let run = null;
   try {
@@ -15079,6 +15098,12 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
     const { annonces, complet, erreur, illisibles, absente, vide, defilement, annonce } = await releverAnnoncesPlateforme(platform, { token, userId });
+    // Le nombre lu s'écrit DÈS la liste reçue (8b6f539, remis le 03/10) : la
+    // base date ce progrès (progres_le) et le chien de garde voit un relevé
+    // qui avance — avant, rien jusqu'au PATCH final.
+    await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
+      method: "PATCH", body: JSON.stringify({ items_vus: annonces.length, updated_at: maintenant() }),
+    }).catch(() => {});
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -15216,6 +15241,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     return { ok: false, reason: "erreur", message: msg };
   } finally {
+    clearInterval(reveilReleve);
     releveEnCours = false;
   }
 }

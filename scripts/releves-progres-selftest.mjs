@@ -34,7 +34,14 @@ console.log("\n2. LE CHIEN DE GARDE : 5 MIN SANS PROGRESSION, ET RIEN DE CONCLU"
 const hw = lire("supabase/functions/handler-watch/index.ts");
 ok(/const SYNC_RUN_SANS_PROGRES_MIN = 5;/.test(hw), "5 minutes (avant : 30)");
 ok(/\.or\(`progres_le\.lt\.\$\{muetIso\},and\(progres_le\.is\.null,updated_at\.lt\.\$\{muetIso\}\)`\);/.test(hw), "jugé sur la progression (updated_at seulement pour une ligne d'avant la colonne)");
-ok(/const muetDepuis = Math\.round\(\(now - Date\.parse\(String\(r\.progres_le \?\? r\.updated_at \?\? ""\)\)\) \/ 60_000\);/.test(hw), "la durée dite est celle sans progression");
+ok(/const derniereActivite = ligne != null && \(!Number\.isFinite\(progresRun\) \|\| ligne > progresRun\) \? ligne : progresRun;\s+const muetDepuis = Math\.round\(\(now - derniereActivite\) \/ 60_000\);/.test(hw),
+  "la durée dite est celle sans progression (base OU dernière ligne écrite par le relevé)");
+ok(/\.from\("annonces_plateforme"\)\.select\("updated_at", \{ count: "exact" \}\)\s+\.eq\("run_id", r\.id as string\)\s+\.order\("updated_at", \{ ascending: false \}\)\.limit\(1\);/.test(hw),
+  "« annonces » : la capture des fiches et le rattachement, qui touchent les lignes du run, comptent comme progrès (toutes versions)");
+ok(/if \(muetDepuis < SYNC_RUN_SANS_PROGRES_MIN\) \{ relevesVivants\+\+; continue; \}/.test(hw), "un relevé qui avance n'est jamais coupé");
+ok(/const LISTE_SILENCIEUSE_MAX_MIN = 10;/.test(hw) && /String\(r\.kind \?\? ""\) === "annonces" && !listeEcrite\.has\(String\(r\.id\)\) && muetDepuis < LISTE_SILENCIEUSE_MAX_MIN/.test(hw),
+  "liste encore en lecture (rien d'écrit) : 10 min avant l'arrêt (avant : 30)");
+ok(/lectureIllisible\.add\(String\(r\.id\)\);/.test(hw) && /if \(lectureIllisible\.has\(String\(r\.id\)\)\) continue;/.test(hw), "lecture des lignes ratée : on ne coupe pas à l'aveugle");
 ok(/status: "expired",/.test(hw) && /\[arret-sans-progres\]/.test(hw), "arrêt = « expired » (jamais lu comme un relevé), raison lisible dans les journaux");
 ok(/status: "done",\s+finished_at: new Date\(now\)\.toISOString\(\),[\s\S]{0,200}erreur:\s+`\[incomplet\] relevé interrompu après la lecture de la liste/.test(hw),
   "liste déjà écrite : clos « [incomplet] » — le moteur ne date AUCUNE disparition sur un relevé incomplet");
@@ -46,6 +53,13 @@ ok(/sendMessageToTab\(id, \{ type: "SYNC_DRESSING_PAGE", page, userId: ident\.us
 ok(/sendMessageToTab\(tabId, \{ type: "OPLA_LISTE_ARTICLES" \}, 90_000\)/.test(bg) && /type: "OPLA_CAPTURE_ARTICLE", listingId: String\(a\.listing_id\) \}, 45_000\)/.test(bg), "liste et fiches Opla : 90 s et 45 s");
 ok(/const CAPTURE_BUDGET_MS = 120_000;/.test(bg) && /if \(!sansPage && Date\.now\(\) - debutCaptures > CAPTURE_BUDGET_MS\) \{\s+bilan\.restantes \+= 1;\s+continue;/.test(bg),
   "captures de fiches : 2 min de pages ouvertes au plus, la suite au relevé suivant (rien de perdu)");
+ok(/const RELEVE_MOTEUR_DUREE_MAX_MS = 2 \* 60_000;/.test(bg), "rattachement : 2 min par relevé (avant : 4), le reste au relevé suivant");
+ok(/Lecture du relevé interrompue : la page ne répond plus après 3 minutes \[incomplet\]/.test(bg) && /\[res\] = await Promise\.race\(\[injection, borne\]\);/.test(bg),
+  "Leboncoin / Beebs / eBay : la lecture de la liste est bornée à 3 min (« [incomplet] », rien de conclu)");
+ok(/await restRequest\(`vinted_sync_runs\?id=eq\.\$\{run\.id\}&status=eq\.running`, token, \{\s+method: "PATCH", body: JSON\.stringify\(\{ items_vus: annonces\.length, updated_at: maintenant\(\) \}\),/.test(bg),
+  "le nombre lu s'écrit dès la liste reçue : la base voit le relevé avancer");
+ok(/const reveilReleve = setInterval\(\(\) => chrome\.runtime\.getPlatformInfo\(\)\.catch\(\(\) => \{\}\), 20_000\);/.test(bg) && /clearInterval\(reveilReleve\);/.test(bg),
+  "le service worker reste éveillé pendant le relevé, sans fausse progression");
 
 console.log("\n4. LE VEILLEUR S'ESPACE APRÈS UN ÉCHEC (toutes versions)");
 ok(/EXIT WHEN r\.status = 'done';/.test(mig) && /status IN \('done', 'absente', 'failed', 'expired', 'interrupted', 'incomplete'\)/.test(mig), "série d'échecs comptée jusqu'au dernier relevé réussi");
