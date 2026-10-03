@@ -141,7 +141,8 @@
     "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs",
     "selftest:texte-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/texte-du-vendeur-selftest.mjs",
     "selftest:beebs-retrait-preuve": "node scripts/beebs-retrait-preuve-selftest.mjs",
-    "selftest:ebay-saisie-libre": "node scripts/ebay-saisie-libre-selftest.mjs"
+    "selftest:ebay-saisie-libre": "node scripts/ebay-saisie-libre-selftest.mjs",
+    "selftest:statue-rayon": "node scripts/statue-rayon-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

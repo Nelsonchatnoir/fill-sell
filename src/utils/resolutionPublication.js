@@ -1440,6 +1440,37 @@ export async function resoudrePublication({
       }
     }
   }
+  // ── VÉRIFICATION INJOIGNABLE + ICÔNE D'UN AUTRE MOT QUE L'OBJET (03/10, point 8) ──
+  // La statue de Nico (« Statue buste femme … drapé et collier », objet de
+  // l'IA « buste ») : icône 💍 tirée du mot « collier », et la vérification
+  // injoignable (essais sur localhost) → Vinted et Leboncoin partis en Bijoux,
+  // Beebs en « Bijoux (femme) » avec une taille de bague demandée. Quand la
+  // vérification ne répond pas ET que l'icône du rayon n'est pas celle de
+  // l'objet vu par l'IA, ce rayon n'est pas une réponse : il attend
+  // (rayon_a_reessayer, « republie pour réessayer »), jamais publié tel quel.
+  // Icône identique à celle de l'objet : la règle d'avant (rien ne change sur
+  // une panne). eBay par l'API : le serveur choisit son rayon, inchangé.
+  // On compare des ICÔNES, pas des mots : « statue » et « buste » rangent au
+  // même endroit (🖼️), « collier » non (💍).
+  const iconeDeLObjet = motCategorie ? (detectObjectKeywordDetail(String(motCategorie), "")?.icon ?? null) : null;
+  if (verificationInjoignable && motCategorie && motCategorieSource === "ia" && iconeDeLObjet) {
+    for (const row of rows) {
+      const pose = poseParIcone[row.platform];
+      const pf = row.platform_fields;
+      if (!pose || pose.parDefaut || pf.categorie_verification?.verdict) continue;
+      if (!pf.categorie_icone || pf.categorie_icone === iconeDeLObjet) continue;
+      if (row.platform === "ebay" && ebayVoieApi === true) continue;
+      if (row.platform === "vinted") delete pf.categoryPath;
+      else if (row.platform === "leboncoin") delete pf.lbcCategoryPath;
+      else if (row.platform === "beebs") delete pf.beebsCategoryPath;
+      else if (row.platform === "ebay") { delete pf.ebayCategoryId; delete pf.ebayCategoryPath; }
+      else continue;
+      pf.rayon_a_reessayer = { motif: "verification_injoignable", le: new Date().toISOString(), paliers: [`icône ${pf.categorie_icone} ≠ icône de l'objet « ${motCategorie} » (${iconeDeLObjet})`] };
+      pf.categorie_verification = { objet: motCategorie, chemin_icone: pose.chemin, verdict: "attente_resolution", motif_attente: "verification_injoignable" };
+      console.warn(`[publish] ${row.platform} — vérification injoignable, icône ${pf.categorie_icone} ≠ celle de l'objet « ${motCategorie} » (${iconeDeLObjet}) : rayon RETENU, on réessaie`);
+    }
+  }
+
   // Un rayon PAR DÉFAUT que la vérification n'a pas remplacé — refusé, sans
   // voisine à proposer, IA injoignable, ou sans mot pour demander — n'est pas
   // une réponse : il descend l'arbre (dernier recours, juste en dessous) au

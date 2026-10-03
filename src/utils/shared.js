@@ -1301,7 +1301,14 @@ const OBJECT_ICON_RULES = [
   // singulier (crème/panneau/montre solaire) ne route plus vers les lunettes.
   [/(?<![\p{L}\p{N}])lunettes(?![\p{L}\p{N}])|lunettes?.?de.?(?:soleil|vue)|(?<![\p{L}\p{N}])solaires(?![\p{L}\p{N}])|sunglass/iu, '🕶️'],
   // /bague/ sans frontière matchait « BAGUEtte ».
-  [/bijou|collier|bracelet|(?<![\p{L}\p{N}])bagues?(?![\p{L}\p{N}])|boucle[sx]?.?d.?oreille|pendentif|broche/iu, '💍'],
+  // (03/10, point 8) « Statue buste femme en terre cuite ancienne drapé et
+  // collier » partait en 💍 (Beebs « Bijoux (femme) », taille de bague
+  // demandée) : la règle bijoux passe avant la statuaire, et l'ordre des
+  // règles prime sur celui des mots. Un bijou nommé APRÈS une statue, un buste
+  // ou une sculpture est un détail de l'objet d'art, pas l'objet — l'inverse
+  // (« Collier pendentif buste ») reste un bijou. Mesuré le 03/10 sur les
+  // 82 000 fiches du parc : ce seul titre mêle les deux familles.
+  [/(?<!(?:statues?|statuettes?|sculptures?|(?<![\p{L}\p{N}])bustes?)(?![\p{L}\p{N}])[^]*)(?:bijou|collier|bracelet|(?<![\p{L}\p{N}])bagues?(?![\p{L}\p{N}])|boucle[sx]?.?d.?oreille|pendentif|broche)/iu, '💍'],
   // Accessoires ajoutés le 2026-07-09 (backlog T3) — feuilles Vinted réelles.
   [/ceinture(?!.{0,10}(?:lombaire|à.?outils|de.?sécurité))/i, '🪢'],
   [/parapluie|ombrelle/i, '☂️'],
