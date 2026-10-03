@@ -1,12 +1,12 @@
-## État de production au 02/10 soir — lire avant toute action
+## État de production au 03/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; section
 « 02/10 soir » en fin) et `docs/agents/consignes-2026-09-28.md` (règles), qui
 remplacent tout historique contraire. Il se périme : `functions list`,
 `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.85** au CWS ; **minimum serveur 0.6.81** (sous le
-  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.40** ;
+- **Servi** : extension **0.6.89** au CWS ; minimum serveur **0.6.81** (forcer
+  la MAJ = décision de Nico) ; OTA **2.9.41** (lot) ; `ebay-account` v16 ;
   `get-pending-jobs` v195 (`true`), `update-job-status` v118 (`false`),
   `handler-watch` v71 (`false`), `ebay-api-worker` v71, `email-tunnel` v69
   (`false`), `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
@@ -23,8 +23,8 @@ remplacent tout historique contraire. Il se périme : `functions list`,
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
-- **Ouvert** : **0.6.89** à téléverser : `build/CWS-0.6.89-A-TELEVERSER/`
-  (0.6.86–0.6.88 brûlées) ; binaires **2.9.38** (AAB
+- **Lot (03/10)** : livré, `docs/publication-en-lot.md` ; mig. 20261003010000 appliquée.
+- **Ouvert** : binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
   307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
@@ -318,17 +318,15 @@ qui survit à ça, c'est du code.
   `handler_build` contenant **`sync-dressing`** (Vinted) ou
   **`releve-annonces`** (autres plateformes), **n'importe où dans la chaîne**
   (tester avec `LIKE '%…%'`, jamais un égal ni un préfixe).
-- **Republier une annonce importée est NORMAL** (correction du 27/09, relevée
-  par Codex : ce fichier disait l'inverse). La republication reprend les
+- **Republier une annonce importée est NORMAL** (27/09). La republication reprend les
   données de l'annonce en ligne (capture : photos, texte, marque, taille,
   catégorie, état) quand la fiche ne les a pas ; un champ vraiment absent se
   DEMANDE (§ 4.5).
 - **Chaque annonce en ligne est importée.** Elle n'est **rattachée** à une
   fiche existante que sur **preuve certaine** : identifiant de l'annonce, lien
   déjà connu, dépôt FillSell, geste de la personne.
-- ⛔ **UN TITRE N'EST JAMAIS UNE PREUVE D'IDENTITÉ** (règle définitive, 27/09
-  soir, après deux annonces Beebs de Louis retirées à tort : il duplique ses
-  articles, mêmes titres, articles différents). Ni pour rattacher (bande
+- ⛔ **UN TITRE N'EST JAMAIS UNE PREUVE D'IDENTITÉ** (27/09 soir, Louis :
+  mêmes titres, articles différents). Ni pour rattacher (bande
   « certain » et `releve_fiche_vendue` supprimées : import + question), ni
   pour fusionner automatiquement (balayage), ni pour retirer. Le doute devient
   la question « Est-ce le même article ? » / « Déjà vendu ? ». (Le repli par
@@ -413,7 +411,8 @@ qui survit à ça, c'est du code.
   **convertit** pas (jamais 38 → M) ; sinon **on pose la question**.
 - Le texte du vendeur fait foi ; une liste fermée de la plateforme fait foi
   (valeur hors liste → « champ à compléter », jamais une valeur inventée).
-- Un rayon refusé par la vérification ne part pas : « Rayon à choisir ».
+- Un rayon refusé OU introuvable ne part pas et ne grise rien : « Rayon à
+  choisir » (03/10) ; seul un interdit écrit (`prohibited`) grise la case.
 - Une valeur « générale » (ex. « Autre ») n'est jamais posée comme sélection
   par défaut.
 - ⛔ **Un champ manquant se DEMANDE, il ne se relance jamais** : needs_user

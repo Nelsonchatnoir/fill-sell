@@ -78,17 +78,30 @@ lot au même endroit, le résumé avant l'envoi et le suivi.
 
 - Texte du vendeur : titre ET description du vendeur = l'article part sans relecture ;
   sinon le texte proposé est montré, à valider (« rien ne part faux »).
-- Description d'un article du dressing restée sur Vinted : **le lot ne la lit PAS
-  encore** (décision de Nico attendue, rapport du 03/10). Aujourd'hui le texte écrit
-  par FillSell est montré « à relire » (« Ta description n'est pas dans FillSell… ») et
-  ne part qu'après « C'est bon ». Prévu : capture fraîche d'abord, puis lecture sur
-  Vinted — article par article (règle du chantier sync), ou en série cadencée si Nico
-  l'ouvre.
+- **Le texte du vendeur fait foi, quelle que soit la plateforme** (décision de Nico,
+  03/10). Une fiche SANS description la reprend là où l'article est en ligne, avant
+  que son moteur ne s'ouvre — le MÊME chemin au stepper et au lot
+  (`src/publication/texteDuVendeur.js`) : (1) le relevé (`annonces_plateforme.capture`,
+  la version en ligne la plus récente, Leboncoin / Beebs / Opla) ; (2) Vinted : la
+  capture de republication fraîche, sinon le détail lu par l'extension — sur
+  l'ordinateur seulement (le pont n'existe que sur fillsell.app), une lecture à la
+  fois, 8 à 20 s entre deux dans un lot ; (3) eBay : l'API Browse, côté serveur
+  (`ebay-account`, action `lire_description`, jeton applicatif), l'extension n'ayant
+  aucune permission sur la description. La fiche est complétée si elle est vide
+  (jamais écrasée) avec son marqueur `description_source = releve_<plateforme>`.
+  Rien de lisible (téléphone pour Vinted, annonce terminée…) → comportement d'avant :
+  le texte de FillSell, « à relire », avec la raison (« se lit depuis ton ordinateur »).
 - Quota : une préparation = une annonce du quota (comme à l'unité) ; une fiche déjà
-  rédigée ne recompte pas. Le lot ne prépare jamais au-delà de ce qui reste : les
-  suivants attendent le prochain mois — ils restent dans le Stock, non publiés (le
-  filtre « Pas encore sur X » les retrouve). Aucune relance automatique : la liste
-  écrite dans le navigateur (`fs_lot_plus_tard_<uid>`) n'est encore lue par rien.
+  rédigée ne recompte pas. Le lot ne prépare jamais au-delà de ce qui reste.
+  **Le mur de conversion** (03/10) : quand le quota ne couvre pas tout le lot, une
+  carte en tête de l'écran 1 propose de passer au palier au-dessus (parcours d'achat
+  existant, `openUpgradeModal` ; un abonnement payé ailleurs que sur cet appareil est
+  renvoyé à sa boutique, jamais doublé) ; le bouton du bas devient « Continuer avec N
+  articles ». Traces : `usage_logs` `lot_mur_quota_affiche` et `lot_mur_quota_choix`
+  (palier, palier proposé, articles retenus / reportés, canal ; `simule` en essai).
+  Un paiement Stripe quitte la page : le lot est retrouvé au retour (2 h, cet appareil,
+  `fs_lot_reprise_<uid>`). Les articles reportés restent dans le Stock ; aucune relance
+  automatique (décision de Nico pour cette version).
 - Doublons : un article qui ressemble, en ligne sur la plateforme visée, devient la
   question « Est-ce le même article ? » ; deux articles du lot aux titres voisins ne
   sont jamais comparés entre eux (un titre ne prouve rien).

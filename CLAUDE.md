@@ -1,12 +1,13 @@
-## État de production au 02/10 soir — lire avant toute action
+## État de production au 03/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; section
 « 02/10 soir » en fin) et `docs/agents/consignes-2026-09-28.md` (règles), qui
 remplacent tout historique contraire. Il se périme : `functions list`,
 `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.85** au CWS ; **minimum serveur 0.6.81** (sous le
-  seuil : seules les recréations à 'deleted' sont servies) ; OTA **2.9.40** ;
+- **Servi** : extension **0.6.89** au CWS (acceptée la nuit du 02→03/10) ;
+  **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
+  OTA **2.9.41** (publication en lot) ; `ebay-account` v16 (`true`) ;
   `get-pending-jobs` v195 (`true`), `update-job-status` v118 (`false`),
   `handler-watch` v71 (`false`), `ebay-api-worker` v71, `email-tunnel` v69
   (`false`), `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
@@ -25,9 +26,9 @@ remplacent tout historique contraire. Il se périme : `functions list`,
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
   (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
-- **Ouvert** : **0.6.89** à téléverser : `build/CWS-0.6.89-A-TELEVERSER/`
-  (0.6.86 à 0.6.88 brûlées) — elle porte le second temps des ventes Vinted
-  (rattachement de l'arriéré) et le correctif Beebs ; binaires **2.9.38** (AAB
+- **Publication en lot (03/10)** : livrée ; `docs/publication-en-lot.md` ;
+  migration 20261003010000 (un arrêt ne repart jamais) appliquée.
+- **Ouvert** : binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
   307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
 
@@ -103,6 +104,12 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   relevé incomplet est repris seul.
 - **Un champ manquant se demande** (choix fermés en français), il ne se
   relance jamais en boucle.
+- **Un rayon introuvable se DEMANDE, il ne grise jamais une plateforme**
+  (03/10, Nico, cas Louis « adaptateurs Seb » grisé sur Beebs) : seul un
+  interdit écrit de la plateforme (`prohibited`) grise la case, avec sa
+  raison ; « notre résolution n'a rien trouvé » = la question « rayon à
+  choisir » (porte : `publication/plateformes.js` `categorieFermee` ; question :
+  fin de `resolutionPublication`), au stepper comme au lot.
 - **Republier une annonce importée est normal** ; « import ≠ publication » ne
   concerne que le comptage (quotas, statistiques).
 
