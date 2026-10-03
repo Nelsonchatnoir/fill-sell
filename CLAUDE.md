@@ -1,17 +1,26 @@
-## État de production au 03/10 — lire avant toute action
+## État de production au 03/10 (soir) — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; section
-« 02/10 soir » en fin) et `docs/agents/consignes-2026-09-28.md` (règles), qui
-remplacent tout historique contraire. Il se périme : `functions list`,
-`cron.job` et `profiles.extension_build` font foi.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
+« 02/10 soir » et « 03/10 — chantier des 31 points » en fin) et
+`docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
+contraire. Il se périme : `functions list`, `cron.job` et
+`profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS (acceptée la nuit du 02→03/10) ;
+- **Servi** : extension **0.6.89** au CWS ; **0.6.90 prête à téléverser**
+  (`build/CWS-0.6.90-A-TELEVERSER/`, BUILD_ID `2026-10-03T13:51:29Z+c979c15`) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  OTA **2.9.41** (publication en lot) ; `ebay-account` v16 (`true`) ;
-  `get-pending-jobs` v195 (`true`), `update-job-status` v118 (`false`),
-  `handler-watch` v71 (`false`), `ebay-api-worker` v71, `email-tunnel` v69
-  (`false`), `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
+  OTA **2.9.42** ; `get-pending-jobs` v198 (`true`), `update-job-status`
+  v121, `handler-watch` v75, `ebay-api-worker` v74, `ebay-oauth-callback`
+  v9, `email-tunnel` v69 (ces cinq en `false`), `ebay-account` v16 et
+  `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Relevés (03/10)** : 5 min sans progression = arrêt par handler-watch
+  (`vinted_sync_runs.progres_le`, posé par la base ; « annonces » : la dernière
+  ligne écrite compte ; liste encore en lecture : 10 min) ; le veilleur
+  s'espace après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
+- **Selftests** : 201, 0 rouge. Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
+  `scripts/lib/morceaux-mis-de-cote.mjs` (un morceau ne revient qu'avec sa
+  preuve réelle — son test tombe sinon).
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
   coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
   après, plus aucune publication ni republication Opla, synchro gardée pour
@@ -30,7 +39,8 @@ remplacent tout historique contraire. Il se périme : `functions list`,
   migration 20261003010000 (un arrêt ne repart jamais) appliquée.
 - **Ouvert** : binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
-  307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
+  307204072564, jocabroc8, carhoa : cf. l'état du 01/10 ; décisions du 03/10
+  en attente de Nico : fin de l'état (« 03/10 — chantier des 31 points »).
 
 # FillSell — Instructions Claude
 
@@ -112,6 +122,10 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   fin de `resolutionPublication`), au stepper comme au lot.
 - **Republier une annonce importée est normal** ; « import ≠ publication » ne
   concerne que le comptage (quotas, statistiques).
+- **Un relevé tient en 5 minutes** (03/10, Nico) : un relevé qui ne progresse
+  plus rend la place aux autres relevés et aux jobs ; un relevé lent qui
+  AVANCE n'est jamais coupé ; un arrêt ne conclut JAMAIS rien (ni vendu, ni
+  disparu, ni effacé) et laisse sa raison dans les journaux, jamais à l'écran.
 
 ## Format des réponses
 

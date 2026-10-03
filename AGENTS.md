@@ -1,16 +1,21 @@
-## État de production au 03/10 — lire avant toute action
+## État de production au 03/10 (soir) — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; section
-« 02/10 soir » en fin) et `docs/agents/consignes-2026-09-28.md` (règles), qui
-remplacent tout historique contraire. Il se périme : `functions list`,
-`cron.job` et `profiles.extension_build` font foi.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections « 02/10
+soir » et « 03/10 — chantier des 31 points » en fin) et
+`docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
+contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS ; minimum serveur **0.6.81** (forcer
-  la MAJ = décision de Nico) ; OTA **2.9.41** (lot) ; `ebay-account` v16 ;
-  `get-pending-jobs` v195 (`true`), `update-job-status` v118 (`false`),
-  `handler-watch` v71 (`false`), `ebay-api-worker` v71, `email-tunnel` v69
-  (`false`), `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
-  `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Servi** : extension **0.6.89** ; **0.6.90 à téléverser**
+  (`build/CWS-0.6.90-A-TELEVERSER/`, `2026-10-03T13:51:29Z+c979c15`) ;
+  minimum serveur **0.6.81** (décision de Nico) ; OTA **2.9.42** ;
+  `get-pending-jobs` v198 (`true`) ; `update-job-status` v121,
+  `handler-watch` v75, `ebay-api-worker` v74, `ebay-oauth-callback` v9,
+  `email-tunnel` v69 (`false`) ; `ebay-account` v16, `avis-demande` v2.
+- **Relevés (03/10)** : 5 min sans progression = arrêt (`progres_le`, lignes
+  écrites pour « annonces », 10 min pour une liste en lecture) ; veilleur
+  espacé après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
+- **Selftests** : 201, 0 rouge ; morceaux mis de côté le 28/09 :
+  `scripts/lib/morceaux-mis-de-cote.mjs`.
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
   coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
   après, plus aucune publication ni republication Opla, synchro gardée pour
@@ -19,14 +24,12 @@ remplacent tout historique contraire. Il se périme : `functions list`,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
 - **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée dans la saisie.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
-- **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
-  `migration repair --linked --status applied <version>`, relecture.
-- **Données** : toute correction = requête dans `scripts/reparations/`
-  (`git add -f`, `*.sql` est ignoré), sauvegarde avant, inverse prêt.
-- **Lot (03/10)** : livré, `docs/publication-en-lot.md` ; mig. 20261003010000 appliquée.
+- **Migrations** : § 3.4. **Données** : correction = requête dans
+  `scripts/reparations/` (`git add -f`), sauvegarde avant, inverse prêt.
+- **Lot (03/10)** : livré, `docs/publication-en-lot.md`.
 - **Ouvert** : binaires **2.9.38** (AAB
-  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
-  307204072564, jocabroc8, carhoa : cf. l'état du 01/10.
+  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; décisions du
+  03/10 en attente : fin de l'état.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
@@ -98,18 +101,11 @@ ou auto par créneaux ; **retrait des copies après vente** ; **relevés**
 (import des annonces déjà en ligne, rattachées sur preuve) ; comptabilité,
 stats, import/export Excel.
 
-**Paliers** (prix mensuels) : Gratuit, **Premium 12,99 €**, **Pro 29,99 €**,
-**Business 59,99 €**. Depuis le 02/09 : **quotas par palier** (annonces,
-republications, retouches photo). Les valeurs font foi dans la table
-`coin_config` (repli : `COIN_CONFIG_FALLBACK` dans
-`src/components/ConversionModal.jsx` — ex. annonces/mois 5 / 40 / 120 / 300).
-⛔ Vocabulaire : on dit **quotas**, JAMAIS « pépites » (l'ancienne monnaie ;
-les tables `coin_*` survivent, masquées, et ne prouvent aucun droit).
+**Paliers** : Gratuit, Premium, Pro, Business, avec des **quotas** par palier
+(table `coin_config` ; prix, valeurs et FillSell Cloud :
+`docs/agents/architecture.md` § Produit). ⛔ On dit **quotas**, JAMAIS
+« pépites » (les tables `coin_*` survivent, masquées, sans aucun droit).
 Paiement : Stripe (web), Apple IAP, Google Play.
-
-**FillSell Cloud** (en cours, prototype local hors dépôt) : faire tourner
-l'extension dans un navigateur cloud (Steel) sortant par une IP française
-(IPRoyal), pour les vendeurs sans ordinateur (§ 7).
 
 ---
 
@@ -192,9 +188,8 @@ des fonctions (projet `tojihnuawsoohlolangc`).
   Le build échoue si `EXTENSION_LAST_COMMIT` est en retard sur le dernier
   commit de `chrome-extension/`. Le déploiement web = **le push sur `main`**
   (Vercel, projet `fill-sell`, domaine `fillsell.app`).
-- Lint : `npm run lint`. Selftests : `npm run selftest:<sujet>` (~80 branchés ;
-  les lancer quand on touche leur sujet, `selftest:publication-moteur` pour le
-  stepper, `selftest:imports-epingles` pour les fonctions).
+- Lint : `npm run lint`. Selftests : `npm run selftest:<sujet>` (les lancer
+  quand on touche leur sujet ; `selftest:imports-epingles` pour les fonctions).
 - Captures d'écran sans session : `scripts/apercu/` (vite + playwright).
 - **OTA Capgo** (aucun script npm, geste manuel) :
   1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
@@ -220,13 +215,13 @@ des fonctions (projet `tojihnuawsoohlolangc`).
   `build\fillsell-extension-<version>-cws.zip` (refuse arbre sale, BUILD_ID
   douteux, version déjà publiée…).
 - **Un seul zip par version**, seul dans `build\CWS-<version>-A-TELEVERSER\` ;
-  les zips remplacés vont dans `build\anciens-zips\`. Nico téléverse et
+  les zips remplacés vont dans `build\CWS-PERIMES\`. Nico téléverse et
   clique « Envoyer pour examen ». Un push ne déploie PAS l'extension.
 - **Après acceptation** (`profiles.extension_build`) : ajouter aux registres
   `ALREADY_PUBLISHED` et `PUBLISHED_BUILD_IDS`. Minimum = geste séparé fondé
-  sur le BUILD_ID, jamais `EXTENSION_LAST_COMMIT` ; **pas de hausse pour .76**.
-- **Servie : 0.6.75** (`2026-09-27T20:16:30Z+66a8887`) ; 0.6.76 retirée,
-  0.6.77 = rollback, 0.6.78/0.6.79 en test. Rien d'enregistré sans GO.
+  sur le BUILD_ID, jamais `EXTENSION_LAST_COMMIT` (version servie : en-tête).
+- Morceaux 0.6.76/0.6.78 du retour arrière du 28/09 : un par un, chacun
+  prouvé en réel (registre `scripts/lib/morceaux-mis-de-cote.mjs`).
 
 ### 3.3 Lire la prod (sans rien écrire)
 
@@ -364,6 +359,9 @@ qui survit à ça, c'est du code.
   plateformes par la 0.6.72). Un relevé **vide** ou **incomplet** ne prouve
   AUCUNE disparition.
 - Détection de vente : délai de grâce de 4 h, identique sur toutes les plateformes.
+- ⛔ **Un relevé tient en 5 minutes** (03/10, Nico) : sans progression il rend
+  la place ; un relevé lent qui avance n'est jamais coupé ; un arrêt ne conclut
+  rien et laisse sa raison dans les journaux, jamais à l'écran.
 
 ### 4.3 Gardes et boutiques
 

@@ -3,6 +3,20 @@
 > Référence pour agents de code, appelée par `AGENTS.md` (racine). Rédigé le 27/09/2026.
 > Se périme : la base de prod, `git log` et les outils font foi, jamais ce fichier.
 
+## Produit (déplacé d'`AGENTS.md` le 03/10, pour tenir sous 32 Ko)
+
+**Paliers** (prix mensuels) : Gratuit, **Premium 12,99 €**, **Pro 29,99 €**,
+**Business 59,99 €**. Depuis le 02/09 : **quotas par palier** (annonces,
+republications, retouches photo). Les valeurs font foi dans la table
+`coin_config` (repli : `COIN_CONFIG_FALLBACK` dans
+`src/components/ConversionModal.jsx` — ex. annonces/mois 5 / 40 / 120 / 300).
+⛔ Vocabulaire : on dit **quotas**, JAMAIS « pépites » (l'ancienne monnaie ;
+les tables `coin_*` survivent, masquées, et ne prouvent aucun droit).
+
+**FillSell Cloud** (en cours, prototype local hors dépôt) : faire tourner
+l'extension dans un navigateur cloud (Steel) sortant par une IP française
+(IPRoyal), pour les vendeurs sans ordinateur.
+
 ## Arborescence
 
 | Dossier / fichier | Rôle |
