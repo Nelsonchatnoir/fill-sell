@@ -70,6 +70,8 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // components/RelevesPlateformes.jsx est SUPPRIMÉ.
 import CarteAnnoncesEnLigne from '../annonces/CarteAnnoncesEnLigne';
 import BandeauDejaVendu from '../annonces/BandeauDejaVendu';
+import QuestionMarque from '../annonces/QuestionMarque';
+import { estQuestionMarqueHorsCatalogue } from '../utils/questionMarque';
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
@@ -1368,6 +1370,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
   // « valeurs indisponibles ». Le job repart en pending avec un budget de
   // re-tentatives neuf — le prochain passage relève la liste (cf. capture des
   // panneaux à barre de recherche) et proposera enfin les vrais choix.
+  // ── LA MARQUE QUE LA PLATEFORME NE CONNAÎT PAS (03/10 nuit) ─────────────
+  // Question dédiée (src/annonces/QuestionMarque.jsx) : le pourquoi, « Sans
+  // marque » en un geste, la recherche dans le catalogue de la plateforme.
+  // Chaque choix valide d'un tap : pas de bouton « Valider » grisé.
+  const questionMarque = estQuestionMarqueHorsCatalogue(job, f) && !champsSup.length && !descriptionRequise;
   const valider = async ({ sansValeur = false, valeur = null } = {}) => {
     if (saving) return;
     // La valeur pré-choisie depuis l'annonce vaut réponse tant que la personne
@@ -1466,7 +1473,11 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       // (inventaire_attributs_fusion, migration 20260907000000) — le BEFORE
       // UPDATE fusionne, rien d'autre n'est écrasé. Best-effort : le job est
       // déjà reparti, un échec ici ne doit pas le dire.
-      if (!sansValeur && job.inventaire_id != null) {
+      // ⛔ Pas pour la question « marque hors catalogue » : « Sans marque » (ou
+      // l'orthographe d'une plateforme) vaut pour CETTE copie, jamais pour la
+      // fiche — la marque de l'article reste la sienne sur les autres
+      // plateformes.
+      if (!sansValeur && job.inventaire_id != null && !questionMarque) {
         const attributs = {};
         const maintenant = new Date().toISOString();
         const poser = (cle, valeur) => {
@@ -1505,6 +1516,10 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
         <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"#8A6100", marginBottom:6 }}>
           ✋ {lang === "en" ? "Action needed" : "À compléter"} — {platformLabel}
         </div>
+        {questionMarque ? (
+          <QuestionMarque job={job} f={f} lang={lang} saving={saving}
+            onChoisir={(v) => { setValue(v); valider({ valeur: v }); }} />
+        ) : (<>
         {f && (<>
         <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
           {libelleChamp(f)}
@@ -1587,6 +1602,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           </>
           )
         ))}
+        </>)}
         {!valeursIndisponibles && champsSup.map((c) => {
           const liste = listeDeChoixExploitable(c.allowed_values) ? [...new Set(c.allowed_values.map(String))] : [];
           return (
@@ -1694,7 +1710,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
           >
             {lang === "en" ? "Later" : "Plus tard"}
           </button>
-          <button
+          {!questionMarque && <button
             onClick={() => valider({ sansValeur: valeursIndisponibles })}
             disabled={saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants}
             style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value || valeurProposee || "").trim()) || descriptionManquante || champsSupManquants ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
@@ -1704,7 +1720,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
               : valeursIndisponibles
                 ? (lang === "en" ? "Retry publication" : "Relancer la publication")
                 : (lang === "en" ? "Confirm & resume" : "Valider et relancer")}
-          </button>
+          </button>}
         </div>
       </div>
     </div>
