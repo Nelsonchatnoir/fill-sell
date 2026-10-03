@@ -73,6 +73,15 @@ export function heureConnue(iso, maintenant, lang = "fr") {
   return fr ? `le ${date} à ${h}` : `${date} at ${h}`;
 }
 
+/** « 10:12 » (aujourd'hui), « hier 22:40 », « le 29 sept. » — heure de Paris. */
+export function depuisQuand(t, maintenant, lang = "fr") {
+  const fr = lang !== "en";
+  if (jourParis(t) === jourParis(maintenant)) return hhmmParis(t);
+  if (jourParis(t) === jourParis(maintenant - 86400000)) return fr ? `hier ${hhmmParis(t)}` : `yesterday ${hhmmParis(t)}`;
+  const date = new Date(t).toLocaleDateString(fr ? "fr-FR" : "en-GB", { timeZone: "Europe/Paris", day: "numeric", month: "short" });
+  return fr ? `le ${date}` : date;
+}
+
 // Rang de départ, la règle de l'extension (background.js, « tri des jobs »).
 function rangDepart(j) {
   if (j.action === "republish" && etapeRepublication(j) === "deleted") {
@@ -111,6 +120,7 @@ const TEXTE = {
     connexion: (p) => `Un geste à faire : connecte-toi à ${p} sur ton ordinateur`,
     opla: "Un geste à faire : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
     horsLigne: (h) => (h ? `Hors ligne quelques minutes : remise en ligne vers ${h}` : "Hors ligne quelques minutes : remise en ligne en cours"),
+    horsLigneDepuis: (d, h) => `Hors ligne depuis ${d} : ${h ? `nouvel essai de remise en ligne vers ${h}` : "remise en ligne dès que possible"}`,
     enCours: "En cours sur ton ordinateur",
     enCoursServeurs: "En cours sur nos serveurs",
   },
@@ -135,6 +145,7 @@ const TEXTE = {
     connexion: (p) => `Something to do: sign in to ${p} on your computer`,
     opla: "Something to do: allow Opla in the extension — the listing then goes out on its own",
     horsLigne: (h) => (h ? `Offline for a few minutes: back online around ${h}` : "Offline for a few minutes: going back online"),
+    horsLigneDepuis: (d, h) => `Offline since ${d}: ${h ? `next try to put it back online around ${h}` : "back online as soon as possible"}`,
     enCours: "In progress on your computer",
     enCoursServeurs: "In progress on our servers",
   },
@@ -206,9 +217,14 @@ export function situationJob(j, ctx = {}) {
   }
 
   // Hors ligne entre retrait et remise en ligne : c'est EN COURS, toujours.
+  // (03/10, point 23 — nivake03) « Quelques minutes » seulement quand c'est
+  // vrai : une annonce retirée depuis plus de 30 min dit DEPUIS QUAND (la
+  // gomme de musculation était « hors ligne quelques minutes » depuis 4 jours).
   if (etape === "deleted") {
     const h = heureConnue(pf.next_action_after, maintenant, lang);
-    return { groupe: "en_cours", raison: T.horsLigne(h), heure: h, motif: "remise_en_ligne" };
+    const retireeLe = Date.parse(pf.deleted_at ?? pf.deleted_at_serveur ?? "");
+    const longtemps = Number.isFinite(retireeLe) && maintenant - retireeLe > 30 * 60_000;
+    return { groupe: "en_cours", raison: longtemps ? T.horsLigneDepuis(depuisQuand(retireeLe, maintenant, lang), h) : T.horsLigne(h), heure: h, motif: "remise_en_ligne" };
   }
   if (j.status === "processing") {
     return { groupe: "en_cours", raison: parNosServeurs(j) ? T.enCoursServeurs : T.enCours, heure: null, motif: "en_cours" };

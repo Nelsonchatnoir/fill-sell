@@ -725,13 +725,23 @@ async function raisonsDeNePasRecharger() {
     // rien ne peut démarrer tant qu'on tient le verrou de flux.
     // À l'inverse 'deleted' est rare (8 jobs, 4 comptes sur tout le parc au
     // 10/09) : le coûter ne bloque personne en pratique.
+    // (03/10, point 23 — nivake03) Une recréation REPORTÉE à plus tard
+    // (next_action_after dans le futur) n'est pas en cours : elle reprend
+    // après le rechargement, depuis la base. La compter bloquait la mise à
+    // jour INDÉFINIMENT (0b54edbc reportée de 5 min en 5 min depuis le 29/09)
+    // — et c'est souvent la nouvelle version qui la débloque.
     const repub = await restRequest(
       "cross_post_jobs?action=eq.republish&status=in.(pending,processing)" +
-      "&platform_fields->>republish_step=eq.deleted&select=id,status&limit=3",
+      "&platform_fields->>republish_step=eq.deleted&select=id,status,nao:platform_fields->>next_action_after&limit=20",
       token
     );
-    if (Array.isArray(repub) && repub.length) {
-      raisons.push(`${repub.length} republication(s) à l'étape 'deleted' (annonce hors ligne, recréation non conclue)`);
+    const recreationsEnJeu = (Array.isArray(repub) ? repub : []).filter((j) => {
+      if (j.status === "processing") return true;
+      const nao = Date.parse(String(j.nao ?? ""));
+      return !(Number.isFinite(nao) && nao > Date.now());
+    });
+    if (recreationsEnJeu.length) {
+      raisons.push(`${recreationsEnJeu.length} republication(s) à l'étape 'deleted' (annonce hors ligne, recréation non conclue)`);
     }
     // (3) (01/10) un relevé EN COURS (annonces ou dressing) : jamais coupé en
     // route. Borné aux runs vivants depuis 30 min — un run figé ne doit pas

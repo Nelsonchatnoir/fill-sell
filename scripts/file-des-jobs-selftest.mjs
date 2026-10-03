@@ -88,6 +88,10 @@ console.log("4. CHAQUE ATTENTE DIT POURQUOI");
   const horsLigne = job({ action: "republish", platform: "leboncoin", platform_fields: { republish_step: "deleted", deleted_at: iso(-2), next_action_after: iso(3) } });
   ok(s(horsLigne).groupe === "en_cours" && s(horsLigne).raison === "Hors ligne quelques minutes : remise en ligne vers 15:03", "hors ligne entre retrait et remise en ligne : en cours, avec l'heure prévue");
   ok(s(horsLigne, { ...ctx, plafond }).groupe === "en_cours", "la limite du jour ne retient jamais une annonce hors ligne");
+  // (03/10, point 23 — nivake03) « quelques minutes » seulement quand c'est vrai.
+  const horsLigneLongtemps = job({ action: "republish", platform_fields: { republish_step: "deleted", deleted_at: iso(-4 * 24 * 60 - 30), next_action_after: iso(5) } });
+  ok(/^Hors ligne depuis le \d{1,2} \S+ : nouvel essai de remise en ligne vers \d\d:\d\d$/.test(s(horsLigneLongtemps).raison) && !/quelques minutes/.test(s(horsLigneLongtemps).raison),
+    "retirée depuis 4 jours : « Hors ligne depuis le … », plus jamais « quelques minutes »", s(horsLigneLongtemps).raison);
   ok(s(job({ action: "republish", platform_fields: { republish_step: "captured", attente_boutique: { login: "louis" } } })).raison === "En attente de ta boutique @louis : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul",
     "attente de la bonne boutique Vinted — (03/10, point 16) la phrase dit désormais quelle boutique OUVRIR");
   ok(s(job({ platform: "opla" }), { ...ctx, oplaAAutoriser: true }).groupe === "geste", "Opla sans autorisation connue : un geste, jamais « son tour »");

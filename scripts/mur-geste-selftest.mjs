@@ -43,5 +43,20 @@ ok(/vinted\.fr/.test(messagePauseVintedGeste()) && /connecte-toi/.test(messagePa
   "pause Vinted > 6 h : les deux gestes possibles (connexion ou vérification)");
 ok(/^Connexion Vinted requise/.test(messageConnexionRequise("vinted")) && /^Vinted te demande/.test(messageVerificationAntirobot("vinted")), "libellés par plateforme");
 
+console.log("\n4. VINTED — nivake03 0b54edbc : recréation reportée, Vinted muet (03/10, point 23)");
+// Le job RÉEL : annonce retirée le 29/09, recréation reportée de 5 min en
+// 5 min (« identité Vinted illisible » — sonde Vinted 403 sur ce poste).
+const recr = (at) => ({ platform: "vinted", action: "republish", error: null, platform_fields: {
+  republish_step: "deleted", deleted_at: "2026-09-29T14:58:24.000Z",
+  gardes: { prevol_recreation: { at, verdict: "report", detail: "identité Vinted illisible", deja_tentee: true, champs_verifies: ["dressing_page_1"] } } } });
+const r1 = jugerMurGeste(recr("2026-10-03T08:49:15.818Z"));
+ok(r1.geste === null && r1.pf.mur_antirobot?.observations === 1 && r1.pf.mur_antirobot.source === "prevol_recreation", "1re observation : comptée, pas encore montrée");
+const r2 = jugerMurGeste({ ...recr("2026-10-03T09:20:00.000Z"), platform_fields: { ...r1.pf, gardes: recr("2026-10-03T09:20:00.000Z").platform_fields.gardes } });
+ok(r2.geste === "verification_antirobot" && r2.pf.needs_user_source === "verification_antirobot", "2e observation 30 min plus tard : à toi (relancée seule quand Vinted répond)");
+ok(/^Vinted ne répond plus à FillSell sur ton ordinateur : ouvre vinted\.fr dans Chrome/.test(r2.message) && /retirée le 29 septembre/.test(r2.message) && /remise en ligne toute seule/.test(r2.message),
+  "le geste, et la date du retrait — jamais « quelques minutes »", r2.message);
+ok(jugerMurGeste({ ...recr("2026-10-03T09:20:00.000Z"), platform_fields: { ...recr("2026-10-03T09:20:00.000Z").platform_fields, gardes: { prevol_recreation: { at: "2026-10-03T09:20:00.000Z", verdict: "report", detail: "fenêtre de recréation non ouverte" } } } }).geste === null,
+  "un autre report (pas l'identité) reste une attente");
+
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ murs : un geste nécessaire se montre, un retard reste une attente");

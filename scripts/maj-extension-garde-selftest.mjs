@@ -75,6 +75,13 @@ console.log("\n▸ Les quatre familles d'état qui INTERDISENT le rechargement")
   // étapes l'annonce d'origine est INTACTE. Les bloquer reviendrait à ne
   // jamais recharger chez ceux qui republient, c'est-à-dire à ne pas corriger
   // le problème pour Joséphine et Ornella.
+  // (03/10, point 23 — nivake03) Une recréation REPORTÉE (next_action_after
+  // futur) n'est pas en cours : elle bloquait la mise à jour indéfiniment.
+  check("④ une recréation REPORTÉE à plus tard ne bloque pas la mise à jour (nivake03, 0.6.85 bloquée)",
+    /select=id,status,nao:platform_fields->>next_action_after/.test(raisons)
+      && /if \(j\.status === "processing"\) return true;/.test(raisons)
+      && /return !\(Number\.isFinite\(nao\) && nao > Date\.now\(\)\);/.test(raisons),
+    "— un job 'processing' bloque toujours ; une échéance future, non");
   check("④ ne bloque PAS sur 'captured' ni 'a_capturer' (annonce intacte, 98 % du parc)",
     !/republish_step[^&\n]*a_capturer/.test(raisons) && !/republish_step[^&\n]*captured,/.test(raisons),
     "— sinon un compte qui republie n'est jamais mis à jour");

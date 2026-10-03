@@ -59,7 +59,31 @@ export function observationChallenge(pf) {
     const t = ms(pp.at);
     if (Number.isFinite(t)) return { at: t, texte: String(pp.mur).slice(0, 200), source: "prevol_page" };
   }
+  // (03/10, point 23 — nivake03 0b54edbc) La RECRÉATION Vinted reportée parce
+  // que Vinted ne dit plus qui est connecté (« identité Vinted illisible ») :
+  // session à rouvrir ou vérification à passer, à l'étape où l'annonce est
+  // HORS LIGNE. Reportée de 5 min en 5 min depuis le 29/09 — quatre jours
+  // hors ligne, et l'app disait « hors ligne quelques minutes ».
+  const pr = p.gardes && typeof p.gardes === "object" ? p.gardes.prevol_recreation : null;
+  if (pr && typeof pr === "object" && pr.verdict === "report" && RECREATION_BLOQUEE_RE.test(String(pr.detail ?? ""))) {
+    const t = ms(pr.at);
+    if (Number.isFinite(t)) return { at: t, texte: String(pr.detail).slice(0, 200), source: "prevol_recreation" };
+  }
   return null;
+}
+
+/** Ce que le pré-vol de recréation écrit quand Vinted ne dit plus qui est connecté. */
+const RECREATION_BLOQUEE_RE = /identit[ée] Vinted illisible/i;
+
+/** Le message de la recréation bloquée : la date du retrait, le geste, la suite. */
+export function messageRecreationBloquee(platform, deletedAt) {
+  const nom = NOM[platform] ?? platform;
+  const t = ms(deletedAt);
+  const le = Number.isFinite(t)
+    ? new Date(t).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "long" })
+    : null;
+  return `${nom} ne répond plus à FillSell sur ton ordinateur : ouvre ${SITE[platform] ?? nom} dans Chrome, connecte-toi si ${nom} te le demande ` +
+    `et passe la vérification si elle s'affiche. Ton annonce${le ? `, retirée le ${le},` : ""} sera remise en ligne toute seule ensuite.`;
 }
 
 /** Le message « connexion » — début de phrase partagé (relancer_jobs_connexion, handler-watch, app). */
@@ -115,7 +139,10 @@ export function jugerMurGeste(job) {
   if ((Number(m.observations) || 0) >= ANTIROBOT_OBSERVATIONS_MIN && ecart >= ANTIROBOT_ECART_MIN_MS) {
     pf.mur_geste = { type: "verification_antirobot", le: new Date().toISOString(), depuis: m.depuis, observations: m.observations, texte: obs.texte };
     pf.needs_user_source = "verification_antirobot";
-    return { geste: "verification_antirobot", message: messageVerificationAntirobot(plat, { etapeRetiree }), pf, change: true };
+    const message = obs.source === "prevol_recreation"
+      ? messageRecreationBloquee(plat, pf.deleted_at ?? pf.deleted_at_serveur ?? null)
+      : messageVerificationAntirobot(plat, { etapeRetiree });
+    return { geste: "verification_antirobot", message, pf, change: true };
   }
   return { geste: null, pf, change };
 }
