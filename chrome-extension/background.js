@@ -808,10 +808,19 @@ async function verifierCopieDevSurDisque() {
     if (!r.ok) return;
     const surDisque = String((await r.json())?.version ?? "").trim();
     const enCours = chrome.runtime.getManifest().version;
-    if (!surDisque || surDisque === enCours) return;
-    if ((await lireMajEnAttente()) === surDisque) return;
-    await chrome.storage.session.set({ [MAJ_ATTENTE_KEY]: surDisque.slice(0, 20) });
-    console.warn(`[background] copie de développement : la ${surDisque} est sur le disque (la ${enCours} tourne) — rechargement au premier moment sûr.`);
+    if (!surDisque) return;
+    // Même version, autre build (un paquet refait avant téléversement) : le
+    // BUILD_ID inscrit dans background.js sur le disque le dit.
+    let cible = surDisque === enCours ? "" : surDisque;
+    if (!cible) {
+      const b = await fetch(`${chrome.runtime.getURL("background.js")}?lu=${Date.now()}`, { cache: "no-store" });
+      const build = b.ok ? ((await b.text()).match(/FILLSELL_BUILD_ID\s*=\s*"([^"]+)"/)?.[1] ?? "") : "";
+      if (!build || build.startsWith("__") || build === FILLSELL_BUILD_ID) return;
+      cible = `${surDisque}+${build.slice(-7)}`;
+    }
+    if ((await lireMajEnAttente()) === cible.slice(0, 20)) return;
+    await chrome.storage.session.set({ [MAJ_ATTENTE_KEY]: cible.slice(0, 20) });
+    console.warn(`[background] copie de développement : ${cible} est sur le disque (la ${enCours} ${FILLSELL_BUILD_ID} tourne) — rechargement au premier moment sûr.`);
   } catch (e) {
     console.log("[background] lecture de la copie de développement impossible (sans conséquence) :", String(e?.message ?? e));
   }

@@ -3349,7 +3349,15 @@ async function fillListingForm(job) {
   // refusera de toute façon un dépôt sans marque, autant échouer AVANT, avec
   // un message qui dit que c'est le handler qui n'a pas rempli le champ.
   if (fields.marque) {
-    await selectVintedBrand(fields.marque, warnings);
+    // (03/10) Une marque que Vinted ne connaît pas devient une QUESTION
+    // (« Sans marque » ou une marque de sa liste) — jamais un choix à la place.
+    const questionMarque = await selectVintedBrand(fields.marque, warnings);
+    if (questionMarque?.needsUser) {
+      return {
+        success: false, ...questionMarque, warnings,
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
   }
 
   // ── High-Tech (2026-07-13, relevé RÉEL du formulaire Téléphones portables —
@@ -5743,11 +5751,34 @@ async function selectVintedBrand(marque, warnings) {
     }
     console.warn(`[vinted] marque "${demandee}" : ouverture du choix impossible (${e.message})`);
   }
-  if (choix) {
+  if (choix?.el) {
     await humanPause(); // temps de "lecture" avant le clic, comme partout
     choix.el.click();
     await humanPause();
     await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand (création)
+  }
+  // ── VINTED NE CONNAÎT PAS CETTE MARQUE ET N'EN CRÉE PLUS (relevé du 03/10) ──
+  // Formulaire vinted.fr, compte de Nico, 03/10 ~21:20 : pour « Zorglubia »,
+  // le menu Marque n'offre QUE « Sans marque » (#empty-brand) — plus de ligne
+  // « Utiliser … comme marque » (#custom-select-brand absent), en
+  // « Encadrements » comme en « Pulls et pulls à capuche ». La 0.6.91 posait
+  // alors « Sans marque » en silence (annonce de test 10231930752). Désormais :
+  // une QUESTION, avant tout dépôt — « Sans marque » ou une marque de sa liste.
+  if (choix && (choix.type === "inconnue" || choix.type === "aucune")) {
+    await closeAnyOpenDropdown();
+    const proposees = [...new Set(["Sans marque", ...(choix.suggestions ?? [])])].slice(0, 30);
+    return {
+      needsUser: true,
+      error:
+        `Vinted ne connaît pas la marque « ${demandee} » et ne permet pas d'en créer une nouvelle. ` +
+        "Choisis « Sans marque » ou une marque de sa liste (bouton « ✋ Compléter ») : la publication repart d'elle-même. " +
+        "Rien n'a été envoyé à Vinted.",
+      diagnostic: `Marque "${demandee}" : ${choix.type === "inconnue" ? "seule la ligne « Sans marque » proposée" : "aucune ligne exacte ni de création en 10 s"} ; suggestions : ${(choix.suggestions ?? []).slice(0, 10).join(" · ") || "aucune"}`,
+      needsUserField: {
+        platform: "vinted", field_key: "brand", field_label: "Marque", input_type: "list_search",
+        allowed_values: proposees, target: { key: "marque" },
+      },
+    };
   }
   const posee = String(document.querySelector(trigger)?.value ?? "").trim();
   if (choix && texteComparable(posee) === texteComparable(demandee)) {
@@ -5780,10 +5811,13 @@ async function attendreChoixMarque(marque, timeoutMs = 10000) {
   const cible = texteComparable(marque);
   const debut = Date.now();
   let libreVueLe = null;
+  let inconnueVueLe = null;
+  let suggestions = [];
   while (Date.now() - debut < timeoutMs) {
-    const exacte = Array.from(document.querySelectorAll('[role="radio"], [role="button"]'))
-      .find((el) => /^(?:suggested-)?brand-\d/.test(el.id || "")
-        && texteComparable(el.getAttribute("aria-label") || el.textContent) === cible);
+    const lignes = Array.from(document.querySelectorAll('[role="radio"], [role="button"]'))
+      .filter((el) => /^(?:suggested-)?brand-\d/.test(el.id || ""));
+    suggestions = lignes.map((el) => String(el.getAttribute("aria-label") || el.textContent || "").trim()).filter(Boolean);
+    const exacte = lignes.find((el) => texteComparable(el.getAttribute("aria-label") || el.textContent) === cible);
     if (exacte) return { type: "catalogue", el: exacte };
     let libre = null;
     try { libre = S.resolveSelector("vinted", "publish.custom_brand_option", { reportFailure: false }).el; } catch { libre = null; }
@@ -5792,9 +5826,15 @@ async function attendreChoixMarque(marque, timeoutMs = 10000) {
       if (libreVueLe == null) libreVueLe = Date.now();
       if (Date.now() - libreVueLe >= 1500) return { type: "libre", el: libre };
     }
+    // Seule la ligne native « Sans marque » (#empty-brand), ni marque ni
+    // création, 3 s de suite : Vinted ne connaît pas cette marque.
+    if (!lignes.length && !libre && document.querySelector("#empty-brand")) {
+      if (inconnueVueLe == null) inconnueVueLe = Date.now();
+      if (Date.now() - inconnueVueLe >= 3000) return { type: "inconnue", suggestions: [] };
+    } else inconnueVueLe = null;
     await sleep(80);
   }
-  return null;
+  return { type: "aucune", suggestions };
 }
 
 // ── Modèle Vinted : champ à RECHERCHE sur liste virtualisée ────────────────────
