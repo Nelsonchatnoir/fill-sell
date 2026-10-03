@@ -100,6 +100,7 @@ import {
 // scripts/publication-moteur-selftest.mjs). Les tables de champs partagés ont
 // déménagé de la même façon (champsPartages.js).
 import StepperNouveau from "../publication/StepperNouveau";
+import { categorieFermee } from "../publication/plateformes";
 import { lireProchaineRemiseAZero } from "../reglages/quotas";
 import {
   aspectBloquant, plateformesPubliables as calculerPlateformesPubliables,
@@ -276,17 +277,23 @@ const supportMessage = (t, support, platformLabel) =>
 // n'avait reçu AUCUN appel IA — zéro ligne dans usage_logs — parce que Vinted
 // et Beebs étaient sorties de la sélection trois écrans plus tôt.
 //
-// ⛔ CE QUI RESTE FERMÉ, ET C'EST TOUT :
-//   "unavailable" — la branche N'EXISTE PAS sur la plateforme (absence
-//                   confirmée par crawl). Aucun chemin ne peut y mener : ni
-//                   le mot, ni l'IA, ni l'origine. 🎵 sur Vinted, 🎵 🏆 🌿
-//                   sur Beebs, Auto-Moto partout… On n'ouvre pas une case
-//                   vers une branche qui n'existe pas.
-//   "prohibited"  — la plateforme REFUSE ce produit. Ce n'est pas un trou de
-//                   catalogue, c'est un refus de vente.
-// Tout le reste ("no_default", "unmapped") laisse la case cliquable : la
-// branche existe, c'est NOTRE mapping par icône qui manque, et les deux
-// autres chemins ont le droit d'essayer.
+// ⛔ CE QUI RESTE FERMÉ, ET C'EST TOUT (règle de Nico, 03/10) :
+//   "prohibited"  — la plateforme REFUSE ce produit, par une règle connue et
+//                   écrite (cosmétique consommable sur Leboncoin, règles du
+//                   catalogue Beebs sur source certaine…). Un refus de vente,
+//                   dit avec sa raison.
+// « Notre résolution n'a rien trouvé » n'est JAMAIS une raison de griser.
+// "unavailable" ne ferme donc PLUS rien : c'était NOTRE table icône → rayon
+// qui disait « la branche n'existe pas », sur la foi d'une icône devinée.
+// Cas Louis (03/10) : « 12 adaptateurs … pour pots La Laitière – Seb
+// Multidélices » → icône 🔌 (le mot « adaptateur ») → Beebs grisée « catégorie
+// non disponible », alors que Beebs a Maison > Cuisine et Petit électroménager
+// > Yaourtières, où ses rangements de pots sont EN LIGNE. Recensé le 03/10 :
+// la table Beebs déclarait « absente » la branche de 76 icônes sur 164,
+// miroirs, bougies, vases et théières compris.
+// Désormais la case reste cochable ; le mot, l'IA et la descente de l'arbre
+// essaient, et s'ils ne trouvent rien la plateforme reçoit une QUESTION
+// (« rayon à choisir », resolutionPublication) — au stepper comme au lot.
 // ⛔ L'ICÔNE ELLE-MÊME N'EST PAS TOUCHÉE. Elle continue de porter le genre
 //    obligatoire, les gardes taille/couleur/marque/matière, les interdits
 //    Beebs et le quota de photos Leboncoin. On change QUI décide de la case,
@@ -297,8 +304,8 @@ const supportMessage = (t, support, platformLabel) =>
 //    (« platform_fields.categoryPath absent… compléter src/utils/… ») APRÈS
 //    le débit. La plateforme est donc écartée AVANT le débit, comme l'est
 //    déjà une plateforme sans annonce générée.
-const CATEGORIE_FERMEE = new Set(["unavailable", "prohibited"]);
-const categorieFermee = (support) => CATEGORIE_FERMEE.has(support ?? "supported");
+// La porte elle-même vit dans publication/plateformes.js (categorieFermee) :
+// un seul endroit pour le stepper et le lot.
 // Plateforme EN PAUSE (platform_health.paused, 2026-09-09) : le texte lu par
 // l'utilisateur est message_fr / message_en, écrit en base (sans
 // redéploiement) ; à défaut, repli générique i18n. Jamais `reason` (interne).
@@ -2033,9 +2040,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           // (17/09 soir) Levé par l'interrupteur serveur ET la borne de build,
           // calculés par App.jsx (plateformesOuvertes) — jamais par l'article.
           const pasEncoreOuverte = plateformesAVenir.includes(p) && !plateformesOuvertes.includes(p);
-          // La porte (cf. CATEGORIE_FERMEE) : seule une branche ABSENTE ou un
-          // produit INTERDIT ferme la case. Un trou de mapping par icône ne
-          // ferme plus rien — le mot et l'arbitrage ont le droit d'essayer.
+          // La porte (cf. CATEGORIE_FERMEE) : seul un produit INTERDIT par la
+          // plateforme ferme la case. Un rayon introuvable ne ferme plus rien
+          // — le mot et l'arbitrage essaient, sinon une question est posée.
           const fermeeCategorie = categorieFermee(support);
           const disabled = pasEncoreOuverte || fermeeCategorie || dejaEnLigne || enCours || compteAbsent || enPause;
           return (

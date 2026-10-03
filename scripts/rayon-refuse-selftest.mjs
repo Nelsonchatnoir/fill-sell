@@ -23,7 +23,7 @@ import {
 } from "../src/utils/rayonApresRefus.js";
 import { appliquerRayonChoisi } from "../src/utils/rayonPublication.js";
 import { plateformesSansChemin, questionsParPlateforme } from "../src/publication/moteur/regles.js";
-import { resolutionARetenter } from "../src/utils/resolutionPublication.js";
+import { resolutionARetenter, sansRayon, PLATEFORMES_RAYON_A_DEMANDER } from "../src/utils/resolutionPublication.js";
 
 let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
@@ -209,6 +209,22 @@ console.log("9. eBay par la voie API : la ligne part comme avant, le serveur tra
   ok(/ev: ordre\.includes\("ebay"\) \? ebayVoieApi === true : null,/.test(resolution), "l'empreinte du pré-calcul porte la voie d'eBay");
   const ecran = src("src/components/ListingPreviewScreen.jsx");
   ok((ecran.match(/ebayVoieApi: ebayVoieApiReelle,/g) ?? []).length === 2, "l'écran passe la voie réelle aux DEUX résolutions (pré-calcul et clic)");
+}
+
+console.log("Aucun rayon trouvé : on demande, on ne bloque jamais (03/10, cas Louis)");
+{
+  ok(PLATEFORMES_RAYON_A_DEMANDER.join() === "vinted,leboncoin,beebs,ebay", "les quatre plateformes dont l'app pose le rayon (Opla : son pré-vol)");
+  ok(sansRayon("vinted", {}) && sansRayon("leboncoin", { lbcCategoryPath: [] }) && sansRayon("ebay", { ebayCategoryId: null }), "sans chemin : sans rayon");
+  ok(sansRayon("beebs", { categorie_a_choisir: { objet: "adaptateur" } }), "Beebs « l'extension demandera » n'est PAS un rayon : l'app demande avant le dépôt");
+  ok(!sansRayon("beebs", { beebsCategoryPath: ["Maison", "Petit électroménager", "Yaourtières"] }) && !sansRayon("opla", {}), "un chemin (ou Opla) : rien à demander");
+  const question = { objet: "adaptateur", chemins_refuses: [], chemin_propose: null, candidats: [], motif: "aucun_rayon_trouve" };
+  const pf = { categorie_a_choisir: { objet: "adaptateur" }, rayon_a_choisir: question };
+  ok(plateformesSansChemin([{ platform: "beebs", platform_fields: pf }]).join() === "beebs", "question posée : Beebs ne part pas tant qu'on n'a pas répondu");
+  const repondu = appliquerRayonChoisi(pf, "beebs", { chemin: ["Maison", "Petit électroménager", "Yaourtières"], id: null });
+  ok(!repondu.rayon_a_choisir && !repondu.categorie_a_choisir && repondu.beebsCategoryPath?.length === 3, "le choix de la personne lève la question");
+  ok(plateformesSansChemin([{ platform: "beebs", platform_fields: repondu }]).length === 0, "…et Beebs repart avec SON rayon");
+  const res = src("src/utils/resolutionPublication.js");
+  ok(/motif: "aucun_rayon_trouve"/.test(res) && /for \(const platform of PLATEFORMES_RAYON_A_DEMANDER\)/.test(res), "la résolution pose la question en fin de calcul, une seule fois pour les quatre");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ rayon refusé : tout passe");

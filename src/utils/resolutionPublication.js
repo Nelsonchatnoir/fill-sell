@@ -144,6 +144,23 @@ export function textesFrDeLaPublication({ initialListing, edited }) {
   return { titre, description };
 }
 
+// ── LE RAYON QUI MANQUE SE DEMANDE (03/10, règle de Nico) ───────────────────
+// Les quatre plateformes dont le rayon est posé par l'app (Opla : par le
+// serveur, et son pré-vol demande déjà). Un job sans son chemin ne part pas
+// (regles.plateformesSansChemin) : il reçoit la question à la place.
+export const PLATEFORMES_RAYON_A_DEMANDER = Object.freeze(["vinted", "leboncoin", "beebs", "ebay"]);
+/** Le job de cette plateforme n'a-t-il AUCUN rayon ? (pur) — `categorie_a_choisir`
+ *  de Beebs n'en est pas un : c'était « l'extension demandera », c'est désormais
+ *  l'app qui demande, avant le dépôt. */
+export function sansRayon(platform, pf) {
+  const v = platform === "vinted" ? pf?.categoryPath
+    : platform === "leboncoin" ? pf?.lbcCategoryPath
+      : platform === "beebs" ? pf?.beebsCategoryPath
+        : platform === "ebay" ? pf?.ebayCategoryId
+          : "opla";
+  return Array.isArray(v) ? v.length === 0 : !v;
+}
+
 /** La résolution porte-t-elle une panne passagère à retenter (rayon par défaut retenu) ? */
 export function resolutionARetenter(resolution) {
   return Object.values(resolution?.pfParPlateforme ?? {}).some((pf) => Boolean(pf?.rayon_a_reessayer));
@@ -1664,6 +1681,35 @@ export async function resoudrePublication({
             : `ATTENTE (${res.motif})`)
       );
     }));
+  }
+
+  // ══ AUCUN RAYON TROUVÉ : ON DEMANDE, ON NE BLOQUE JAMAIS (03/10, Nico) ════
+  // Quand le mot, l'IA et la descente de l'arbre n'ont rien donné pour une
+  // plateforme cochée, ce n'était pas une question : Vinted, Leboncoin et
+  // eBay étaient écartées avant le débit (« nomme l'objet dans le titre »),
+  // Beebs partait SANS rayon et l'extension s'arrêtait sur « Beebs n'a pas
+  // de rayon reconnu ». C'est désormais LA question du rayon refusé (25/09) :
+  // la carte de la plateforme ouvre son sélecteur, candidats ratissés en tête,
+  // le lot la pose avec les autres ; le choix de la personne la lève (par la
+  // surcouche de rayonPublication.js, que ce module ignore toujours). Rien ne
+  // part sans rayon, rien n'est grisé.
+  // ⛔ Pas pour eBay par la voie API : le serveur choisit parmi les
+  //    suggestions d'eBay (cf. aReprendreApresRefus).
+  // ⛔ Pas pour une panne passagère (rayon_a_reessayer) : on republie.
+  for (const platform of PLATEFORMES_RAYON_A_DEMANDER) {
+    const pf = pfParPlateforme[platform];
+    if (!pf || pf.rayon_a_choisir || pf.rayon_a_reessayer) continue;
+    if (platform === "ebay" && ebayVoieApi === true) continue;
+    if (!sansRayon(platform, pf)) continue;
+    pf.rayon_a_choisir = {
+      objet: motCategorie ?? null,
+      chemins_refuses: [],
+      chemin_propose: null,
+      candidats: candidatsRatisses[platform] ?? [],
+      motif: "aucun_rayon_trouve",
+      le: new Date().toISOString(),
+    };
+    console.log(`[publish] ${platform} — aucun rayon trouvé${motCategorie ? ` pour « ${motCategorie} »` : ""} : QUESTION au vendeur (jamais grisé, jamais parti sans rayon)`);
   }
 
   return {

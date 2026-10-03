@@ -6,7 +6,7 @@
 // sur Vinted, Leboncoin, eBay et Opla ; Beebs sans catégorie pour l'article.
 // L'écran 1 doit le dire plateforme par plateforme et ne plus rien proposer de
 // cocher — le bouton du pied, qui lit le MÊME bilan, devient « Retour au stock ».
-import { bilanPlateformes, rienAPublier, etatPlateforme } from '../src/publication/plateformes.js';
+import { bilanPlateformes, rienAPublier, etatPlateforme, categorieFermee } from '../src/publication/plateformes.js';
 
 let echecs = 0;
 const ok = (cond, quoi) => { console.log(`  ${cond ? 'ok  ' : 'ÉCHEC'} ${quoi}`); if (!cond) echecs++; };
@@ -14,23 +14,38 @@ const ok = (cond, quoi) => { console.log(`  ${cond ? 'ok  ' : 'ÉCHEC'} ${quoi}`
 const base = (surcharge = {}) => ({
   plateformesAffichees: ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'],
   plateformesAVenir: ['opla'], plateformesOuvertes: ['opla'],
-  platformSupport: {}, categorieFermee: (s) => ['unavailable', 'prohibited'].includes(s ?? 'supported'),
+  // (03/10) LA porte réelle, celle du stepper et du lot : seul « prohibited » grise.
+  platformSupport: {}, categorieFermee,
   publishedSet: new Set(), queuedSet: new Set(), attentes: {}, oplaAccesDetail: null,
   ebayBloque: false, pausedPlatforms: [], selected: new Set(),
   ...surcharge,
 });
 
-console.log('Aspirateur de Nico : tout en ligne, Beebs sans catégorie');
+console.log('Aspirateur de Nico : tout en ligne, Beebs INTERDIT (règle écrite) → rien à publier');
 {
-  const m = base({ publishedSet: new Set(['vinted', 'leboncoin', 'ebay', 'opla']), platformSupport: { beebs: 'unavailable' }, selected: new Set(['vinted']) });
+  const m = base({ publishedSet: new Set(['vinted', 'leboncoin', 'ebay', 'opla']), platformSupport: { beebs: 'prohibited' }, selected: new Set(['vinted']) });
   const b = bilanPlateformes(m);
   ok(b.cochables.length === 0, 'aucune plateforme cochable');
   ok(b.cochees.length === 0, 'une case grisée restée dans `selected` ne compte pas comme cochée');
   const r = rienAPublier(b, 'fr');
   ok(r && r.titre === 'Rien à publier pour cet article', 'titre « Rien à publier pour cet article »');
   ok(r && r.lignes[0] === 'Déjà en ligne sur Vinted, Leboncoin, eBay et Opla.', 'une ligne nomme les quatre plateformes en ligne');
-  ok(r && r.lignes.includes("Beebs n'a pas de catégorie pour cet article."), 'une ligne dit pourquoi Beebs ne peut pas');
+  ok(r && r.lignes.includes('Beebs refuse cet article.'), 'une ligne dit pourquoi Beebs ne peut pas : interdit, avec sa raison');
   ok(r && !r.attendGeste, "ce n'est pas « pour l'instant » : rien à débloquer");
+}
+
+console.log('Cas Louis (03/10) : rayon introuvable par NOTRE table → cochable, jamais grisé');
+{
+  // « 12 adaptateurs … pour pots La Laitière – Seb Multidélices » : icône 🔌,
+  // table Beebs → « unavailable ». Beebs a pourtant Maison > Cuisine.
+  for (const statut of ['unavailable', 'unmapped', 'no_default']) {
+    const m = base({ platformSupport: { beebs: statut, vinted: statut, leboncoin: statut, ebay: statut }, selected: new Set(['beebs']) });
+    const b = bilanPlateformes(m);
+    ok(['vinted', 'leboncoin', 'beebs', 'ebay'].every((p) => b.cochables.includes(p)), `« ${statut} » : les quatre plateformes restent cochables`);
+    ok(etatPlateforme('beebs', m).classe === 'cochable' && !etatPlateforme('beebs', m).fermeeCategorie, `« ${statut} » : Beebs n'est ni grisée ni « refus »`);
+  }
+  ok(categorieFermee('prohibited') === true && categorieFermee('unavailable') === false && categorieFermee(undefined) === false,
+    'la porte : seul un interdit écrit de la plateforme ferme la case');
 }
 
 console.log('Une plateforme reste possible → aucun message, elle se coche');
@@ -64,9 +79,10 @@ console.log('Produit refusé, publication en cours, plateforme pas encore ouvert
 
 console.log('Anglais');
 {
-  const m = base({ publishedSet: new Set(['vinted', 'leboncoin', 'ebay', 'opla']), platformSupport: { beebs: 'unavailable' } });
+  const m = base({ publishedSet: new Set(['vinted', 'leboncoin', 'ebay', 'opla']), platformSupport: { beebs: 'prohibited' } });
   const r = rienAPublier(bilanPlateformes(m), 'en');
   ok(r && r.lignes[0] === 'Already online on Vinted, Leboncoin, eBay and Opla.', 'phrase anglaise');
+  ok(r && r.lignes.includes('Beebs refuses this item.'), 'interdit : « refuses this item »');
 }
 
 if (echecs) { console.error(`\n${echecs} échec(s).`); process.exit(1); }

@@ -20,6 +20,17 @@
 import { parcageDepasse } from "../../supabase/functions/_shared/acces-opla.js";
 import { NOM } from "./texte";
 
+// ── LA PORTE : CE QUI GRISE UNE PLATEFORME POUR UN ARTICLE (03/10, Nico) ─────
+// UN seul endroit, lu par le stepper à l'unité (ListingPreviewScreen, les deux
+// habillages) et par « Où les publier ? » du lot.
+// « Interdit par la plateforme » (prohibited, règle connue et écrite) grise la
+// case, avec sa raison. « Notre résolution n'a rien trouvé » ne grise JAMAIS :
+// la case reste cochable et le rayon se DEMANDE (resolutionPublication, la
+// question « rayon à choisir »). Les autres statuts de compat (unavailable,
+// unmapped, no_default) ne disent que ce que NOTRE table icône → rayon sait.
+export const CATEGORIE_FERMEE = Object.freeze(new Set(["prohibited"]));
+export const categorieFermee = (support) => CATEGORIE_FERMEE.has(support ?? "supported");
+
 export function etatPlateforme(p, m) {
   const support = m.platformSupport?.[p] ?? "supported";
   const dejaEnLigne = m.publishedSet.has(p);

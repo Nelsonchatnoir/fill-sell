@@ -37,10 +37,10 @@ const MOTS = {
     //      VRAIMENT écartée avant le débit. La phrase est vraie.
     //    · Opla : sa catégorie est posée côté serveur au départ du job, et
     //      son pré-vol demande s'il ne sait pas. Elle part. On le dit.
-    //    · Beebs : son formulaire pose la question au dépôt. Elle part aussi.
+    //    · Beebs (03/10) : comme Vinted, Leboncoin et eBay — l'app DEMANDE le
+    //      rayon avant le dépôt ; elle ne part plus sans lui.
     pasDeRayon: 'Aucun rayon trouvé pour cet article. Choisis-le ici — sans lui, cette plateforme ne partira pas.',
     pasDeRayonOpla: 'Opla choisit le rayon au moment de l’envoi. Tu peux le fixer ici si tu préfères décider toi-même.',
-    pasDeRayonBeebs: 'Beebs posera la question au moment du dépôt. Tu peux choisir le rayon ici pour ne pas avoir à y répondre.',
     tonChoix: 'ton choix', trouve: 'trouvé pour toi', aVerifier: 'à vérifier',
     manque: 'À COMPLÉTER', reponses: 'TES RÉPONSES', dejaLa: (n) => `Déjà rempli · ${n}`,
     obligatoire: 'demandé par la plateforme',
@@ -64,7 +64,6 @@ const MOTS = {
     chercher: 'Search a category…', aucun: 'No category matches that word.',
     pasDeRayon: 'No category found for this item. Pick one here — without it, this platform will be skipped.',
     pasDeRayonOpla: 'Opla picks the category when the listing is sent. You can set it here if you would rather decide.',
-    pasDeRayonBeebs: 'Beebs will ask at posting time. You can pick the category here so you do not have to.',
     tonChoix: 'your choice', trouve: 'found for you', aVerifier: 'worth checking',
     manque: 'TO COMPLETE', reponses: 'YOUR ANSWERS', dejaLa: (n) => `Already filled · ${n}`,
     obligatoire: 'required by the platform',
@@ -326,7 +325,7 @@ export default function CarteRayon({
               </div>
             ) : (
               <div style={{ ...st.chemin, marginTop: 0 }}>
-                {platform === 'opla' ? T.pasDeRayonOpla : platform === 'beebs' ? T.pasDeRayonBeebs : T.pasDeRayon}
+                {platform === 'opla' ? T.pasDeRayonOpla : T.pasDeRayon}
               </div>
             )}
           </div>
