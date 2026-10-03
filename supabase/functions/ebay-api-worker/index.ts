@@ -1874,6 +1874,24 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     return { job: job.id, issue: "failed", motif: preuve.motif, annonce: idAnnonce || null };
   }
 
+  // ── UNE ANNONCE D'UN AUTRE COMPTE eBay (03/10, point 21) ─────────────────
+  // Le compte relié a changé depuis la publication (« Changer de compte
+  // eBay ») : le jeton d'aujourd'hui ne peut pas retirer une annonce de
+  // l'ancien compte — l'appel finissait en « identité de l'offre illisible »,
+  // reporté en boucle, et l'annonce restait en vente sans que personne le
+  // sache. On le dit, avec le geste qui marche (retirer depuis l'ancien
+  // compte), sans appeler eBay.
+  const autreCompte = await annonceDUnAutreCompte(admin, job.user_id, preuve.cible);
+  if (autreCompte) {
+    job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: "ebay_annonce_autre_compte" };
+    await marquer(admin, job, {
+      status: "needs_user",
+      error: `Cette annonce eBay est sur ton compte @${autreCompte.vendeur}, qui n'est plus celui relié à FillSell (@${autreCompte.relie}). ` +
+        `Retire-la toi-même sur ebay.fr, connecté avec @${autreCompte.vendeur} : FillSell ne peut pas y toucher avec ton nouveau compte.`,
+    }, { etape: "controle_compte", quoi: "annonce_autre_compte_ebay", annonce: preuve.cible, vendeur: autreCompte.vendeur, relie: autreCompte.relie });
+    return { job: job.id, issue: "needs_user", motif: "annonce_autre_compte_ebay", annonce: preuve.cible };
+  }
+
   // L'Inventory API expose `listing.listingId` sur GET /offer/{offerId}.
   // C'est la dernière preuve, relue immédiatement avant le geste destructif :
   // offre, SKU et listing doivent tous désigner la même publication.
@@ -2869,6 +2887,26 @@ async function noterVendeurPublication(admin: SupabaseClient, userId: string, li
     { listing_id: id, vendeur, source: "publication_api", vu_le: new Date().toISOString() },
     { onConflict: "listing_id", ignoreDuplicates: true },
   );
+}
+
+// (03/10, point 21) Le vendeur CONNU d'une annonce (ebay_vendeurs_annonces,
+// posé à la publication API ou relevé) est-il un autre compte que celui relié
+// aujourd'hui ? Inconnu d'un côté = rien de prouvé = null (comportement d'avant).
+async function annonceDUnAutreCompte(admin: SupabaseClient, userId: string, listingId: unknown): Promise<{ vendeur: string; relie: string } | null> {
+  const id = String(listingId ?? "");
+  if (!/^\d{9,15}$/.test(id)) return null;
+  try {
+    const [{ data: v }, { data: c }] = await Promise.all([
+      admin.from("ebay_vendeurs_annonces").select("vendeur").eq("listing_id", id).maybeSingle(),
+      admin.from("ebay_accounts").select("ebay_user_id").eq("user_id", userId).maybeSingle(),
+    ]);
+    const vendeur = String((v as { vendeur?: string | null } | null)?.vendeur ?? "").trim();
+    const relie = String((c as { ebay_user_id?: string | null } | null)?.ebay_user_id ?? "").trim();
+    if (!vendeur || !relie || vendeur.toLowerCase() === relie.toLowerCase()) return null;
+    return { vendeur, relie };
+  } catch {
+    return null;
+  }
 }
 
 const PROCESSING_MAX_MS = 10 * 60_000;

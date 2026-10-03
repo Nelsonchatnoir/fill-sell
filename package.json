@@ -153,7 +153,8 @@
     "selftest:ebay-voie-affichee": "node --import ./scripts/loader-ext.mjs scripts/ebay-voie-affichee-selftest.mjs",
     "selftest:entete-business": "node scripts/entete-business-selftest.mjs",
     "selftest:phrases-interdites": "node scripts/phrases-interdites-selftest.mjs",
-    "selftest:republications-offertes": "node scripts/republications-offertes-selftest.mjs"
+    "selftest:republications-offertes": "node scripts/republications-offertes-selftest.mjs",
+    "selftest:ebay-changer-compte": "node scripts/ebay-changer-compte-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

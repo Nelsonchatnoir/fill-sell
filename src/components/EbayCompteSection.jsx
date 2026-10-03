@@ -172,6 +172,8 @@ const T = {
     adresseDepuisLbc: 'Repris de ton adresse de remise Leboncoin.',
     adresseErreur: 'Enregistrement impossible. Réessaie dans un instant.',
     adresseNote: 'Seuls la ville et le code postal partent chez eBay — jamais ta rue.',
+    changerCompte: 'Changer de compte eBay',
+    changerCompteAide: (pseudo) => `eBay te demandera de te connecter : choisis le compte à relier à FillSell${pseudo ? ` à la place de @${pseudo}` : ''}. Changer de compte dans ton navigateur ne suffit pas : c'est ici que FillSell l'apprend.`,
     deconnecter: 'Déconnecter eBay de FillSell',
     confirmerDeco: 'Confirmer la déconnexion',
     decoNote: 'FillSell oublie les jetons ; rien n\'est supprimé chez eBay.',
@@ -283,6 +285,8 @@ const T = {
     adresseDepuisLbc: 'Taken from your Leboncoin handover address.',
     adresseErreur: "Couldn't save. Try again in a moment.",
     adresseNote: 'Only the city and postal code go to eBay — never your street.',
+    changerCompte: 'Switch eBay account',
+    changerCompteAide: (pseudo) => `eBay will ask you to sign in: pick the account to link to FillSell${pseudo ? ` instead of @${pseudo}` : ''}. Switching account in your browser is not enough: this is where FillSell learns it.`,
     deconnecter: 'Disconnect eBay from FillSell',
     confirmerDeco: 'Confirm disconnection',
     decoNote: 'FillSell forgets the tokens; nothing is deleted at eBay.',
@@ -1117,6 +1121,17 @@ export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }
           <div style={{ fontSize: 12.5, color: UI.ink, fontWeight: 600 }}>
             {etat.ebay_user_id ? <>@{etat.ebay_user_id}</> : null}
             {dateConnexion && <span style={{ color: UI.mute2, fontWeight: 500 }}>{etat.ebay_user_id ? ' · ' : ''}{t.connecteLe} {dateConnexion}</span>}
+          </div>
+          {/* (03/10, point 21 — Louis) Relié à @lamiral depuis le 19/09, il
+              voulait son compte pro : rien ne permettait de relier un AUTRE
+              compte (changer de session dans Chrome ne change rien, à raison).
+              Le même consentement eBay (prompt=login : eBay redemande QUEL
+              compte), et le serveur repart de zéro pour le nouveau compte. */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" onClick={connecter} disabled={busy != null || chargement} style={{ ...boutonCreux(busy != null || chargement), alignSelf: 'flex-start' }}>
+              {busy === 'connexion' ? '…' : t.changerCompte}
+            </button>
+            <div style={{ flex: '1 1 200px', fontSize: 11.5, color: UI.mute2, lineHeight: 1.45 }}>{t.changerCompteAide(etat.ebay_user_id)}</div>
           </div>
 
           {chargement && !checklist && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.verif}</div>}

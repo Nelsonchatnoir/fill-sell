@@ -92,6 +92,30 @@ Deno.serve(async (req) => {
       revoked_at: null,
       revoked_reason: null,
     };
+    // ── UN AUTRE COMPTE eBay QUE CELUI D'AVANT (03/10, point 21 — Louis) ──────
+    // L'upsert gardait les réglages du compte précédent : ses politiques de
+    // vente, son état vendeur, son lieu d'expédition — des identifiants qui
+    // n'existent pas chez le nouveau compte (chaque publication aurait été
+    // refusée). Quand l'identité eBay CHANGE (pseudo ou EIAS prouvés des deux
+    // côtés), ces réglages repartent de zéro : le parcours eBay les redemande.
+    // Identité inconnue d'un côté = rien de prouvé = rien d'effacé.
+    try {
+      const { data: avant } = await admin.from("ebay_accounts")
+        .select("ebay_user_id, ebay_eias_token").eq("user_id", userId).maybeSingle();
+      const a = (avant ?? null) as { ebay_user_id?: string | null; ebay_eias_token?: string | null } | null;
+      const memePseudo = a?.ebay_user_id && identite.username
+        ? a.ebay_user_id.toLowerCase() === identite.username.toLowerCase() : null;
+      const memeEias = a?.ebay_eias_token && identite.eiasToken ? a.ebay_eias_token === identite.eiasToken : null;
+      if (memePseudo === false || memeEias === false) {
+        Object.assign(ligne, {
+          fulfillment_policy_id: null, payment_policy_id: null, return_policy_id: null,
+          seller_state: null, seller_state_at: null, merchant_location_key: null,
+        });
+        console.log(`[ebay-oauth-callback] user=${userId} : AUTRE compte eBay que le précédent (@${a?.ebay_user_id ?? "?"} → @${identite.username ?? "?"}) — politiques, état vendeur et lieu d'expédition remis à zéro`);
+      }
+    } catch (e) {
+      console.warn(`[ebay-oauth-callback] lecture du compte précédent impossible : ${(e as Error)?.message ?? e} — réglages gardés`);
+    }
     let { error } = await admin.from("ebay_accounts").upsert(ligne, { onConflict: "user_id" });
     // Colonne ebay_eias_token pas encore posée (migration 20260905220811 à
     // appliquer par Nico) : la connexion ne doit PAS casser pour autant.
