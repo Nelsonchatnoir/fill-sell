@@ -28,6 +28,10 @@
 //   activer_politiques  opt-in au programme SELLING_POLICY_MANAGEMENT, sur
 //                       action explicite
 //   deconnecter         supprime la ligne ebay_accounts
+//   lire_description    { inventaire_id } — la description de l'annonce eBay
+//                       RELEVÉE de cet article, lue par l'API Browse (jeton
+//                       applicatif) quand la fiche n'en a pas (03/10, « le
+//                       texte du vendeur fait foi ») ; complète la fiche VIDE
 //
 // CHECKLIST — ce qu'on affiche et ce qu'on N'AFFICHE PAS (garde-fou Nico :
 // un état indéterminable ne s'affiche pas plutôt que de s'afficher au
@@ -56,12 +60,15 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import {
   appelEbay,
   etatPublic,
+  hotes,
   lireCompte,
   lireEnvEbay,
   messageErreurEbay,
   obtenirAccessToken,
   type EbayEnv,
 } from "../_shared/ebay-oauth.ts";
+import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
+import { texteDepuisHtml } from "../_shared/texte-depuis-html.js";
 import {
   listerServicesLivraison, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON,
   grouperServicesDomestiques, resoudreCodeService, familleService, PLAFOND_SERVICES_DOMESTIQUES,
@@ -72,7 +79,9 @@ import {
 // utilisable — c'est ici qu'on le sait (statut/checklist relisent l'état).
 import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
 
-const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
+// localhost:5177 : le serveur de développement des essais réels (session déjà
+// ouverte) — même statut que 5173 ; le JWT reste exigé, CORS n'est pas la garde.
+const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173", "http://localhost:5177"];
 const MARKETPLACE = "EBAY_FR";
 
 type TypePolitique = "fulfillment" | "payment" | "return";
@@ -428,6 +437,68 @@ Deno.serve(async (req) => {
         await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
       }
       return json({ etat: etatPublic(compte) });
+    }
+
+    // ── LA DESCRIPTION D'UNE ANNONCE eBAY, PAR L'API (03/10/2026) ───────────
+    // Décision de Nico : « le texte du vendeur fait foi, quelle que soit la
+    // plateforme ». L'extension ne lit pas la description eBay (aucune
+    // permission ajoutée, décision de Nico) ; l'API Browse la rend avec le
+    // jeton APPLICATIF — lecture publique, aucun jeton vendeur, aucun
+    // consentement, même voie que la veille des ventes. Appelée par la
+    // préparation d'un article (stepper à l'unité comme lot), UNE annonce à
+    // la fois, seulement quand la fiche n'a PAS de description et qu'une
+    // annonce eBay de CET article est relevée. Écrit ce qu'écrit le relevé :
+    //   · annonces_plateforme.capture.description — la version en ligne ;
+    //   · inventaire.description si elle est VIDE, marquée releve_ebay —
+    //     jamais une description existante, jamais une retouche.
+    // ⛔ 429 / 5xx : on s'arrête net, rien n'est conclu (budget de la veille).
+    if (action === "lire_description") {
+      const invId = Number(body.inventaire_id);
+      if (!Number.isFinite(invId) || invId <= 0) return json({ error: "inventaire_id manquant" }, 400);
+      const { data: lignes, error: errL } = await admin.from("annonces_plateforme")
+        .select("listing_id, capture, vu_le")
+        .eq("user_id", user.id).eq("platform", "ebay").eq("inventaire_id", invId).is("disparu_le", null)
+        .order("vu_le", { ascending: false }).limit(3);
+      if (errL) return json({ error: `Lecture impossible : ${errL.message}` }, 500);
+      if (!lignes?.length) return json({ description: null, motif: "aucune_annonce_ebay" });
+      let texte = "";
+      let listingId: string | null = null;
+      let motif = "illisible";
+      for (const l of lignes) {
+        const capture = (l.capture && typeof l.capture === "object" ? l.capture : {}) as Record<string, unknown>;
+        const deja = String(capture.description ?? "").trim();
+        if (deja) { texte = deja; listingId = String(l.listing_id); motif = "deja_relevee"; break; }
+        const id = String(l.listing_id ?? "");
+        if (!/^\d{9,15}$/.test(id)) continue;
+        let token: string;
+        try { token = await obtenirJetonApplicatif(env); }
+        catch (e) { return json({ description: null, motif: "jeton_applicatif", detail: String((e as Error)?.message ?? e) }); }
+        const r = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${encodeURIComponent(id)}`, {
+          headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+        }).catch(() => null);
+        if (!r) { motif = "reseau"; continue; }
+        if (r.status === 429 || r.status >= 500) { motif = `ebay_${r.status}`; break; }
+        if (r.status !== 200) { motif = r.status === 404 ? "annonce_terminee" : `ebay_${r.status}`; continue; }
+        const item = await r.json().catch(() => ({})) as Record<string, unknown>;
+        const t = texteDepuisHtml(String(item.description ?? ""));
+        if (!t) { motif = "description_vide"; continue; }
+        texte = t; listingId = id; motif = "lue";
+        const lueLe = new Date().toISOString();
+        await admin.from("annonces_plateforme")
+          .update({ capture: { ...capture, description: t, description_lue_par: "api", description_lue_le: lueLe } })
+          .eq("user_id", user.id).eq("platform", "ebay").eq("listing_id", id)
+          .then(() => {}, () => {});
+        break;
+      }
+      console.log(`[ebay-account] lire_description inventaire=${invId} motif=${motif} longueur=${texte.length}`);
+      if (!texte) return json({ description: null, motif });
+      // La fiche : complétée si VIDE, jamais remplacée. Le marqueur passe par
+      // la fusion des attributs (trigger) : une saisie de la personne gagne.
+      const { data: maj } = await admin.from("inventaire")
+        .update({ description: texte, attributs: { description_source: { v: "releve_ebay", source: "releve_ebay", at: new Date().toISOString(), via: "api" } } })
+        .eq("id", invId).eq("user_id", user.id).or("description.is.null,description.eq.")
+        .select("id");
+      return json({ description: texte, listing_id: listingId, motif, fiche_completee: Boolean(maj?.length) });
     }
 
     if (action === "deconnecter") {

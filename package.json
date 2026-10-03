@@ -138,7 +138,8 @@
     "selftest:vente-modale": "node scripts/vente-modale-selftest.mjs",
     "selftest:vinted-attributs-capture": "node scripts/vinted-attributs-capture-selftest.mjs",
     "selftest:confirmation-verdict": "node --import ./scripts/loader-ext.mjs scripts/confirmation-verdict-selftest.mjs",
-    "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs"
+    "selftest:platform-settings-ecriture": "node scripts/platform-settings-ecriture-selftest.mjs",
+    "selftest:texte-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/texte-du-vendeur-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

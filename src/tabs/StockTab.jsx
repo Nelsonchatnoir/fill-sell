@@ -18,7 +18,7 @@ import { MOTIFS } from '../utils/connexionPlateformes';
 import { MIN_PHOTOS, MAX_PHOTOS } from '../utils/photos';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
-import { repartirParVoie } from '../utils/ebayCompte';
+import { repartirParVoie, agirEbay } from '../utils/ebayCompte';
 import { resumeEbay } from '../utils/ebayParcours';
 import EbayCompteSection from '../components/EbayCompteSection';
 import { logRetrait, CHEMINS_RETRAIT } from '../utils/journalRetraits';
@@ -98,7 +98,7 @@ import { propsStepperArticle } from '../publication/lot/propsArticle';
 import LotPublication from '../publication/lot/LotPublication';
 import SuiviLot from '../publication/lot/SuiviLot';
 import { LignePublierPlusieurs, AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
-import { PLATEFORMES_LOT, LOT_MAX_ARTICLES, articleSelectionnable, suiviDuLot, idLotDeJob } from '../publication/lot/regles';
+import { PLATEFORMES_LOT, LOT_MAX_ARTICLES, articleSelectionnable, suiviDuLot, idLotDeJob, CLE_REPRISE_LOT, repriseValable } from '../publication/lot/regles';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
@@ -113,7 +113,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
 import { searchMatch } from '../utils/recherche';
-import { attributsDepuisVinted } from '../utils/vintedAttributs';
+import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
@@ -124,7 +124,7 @@ import {
   SYNC_RECLAMATION_MAX_MS, EXT_SILENCE_MAX_MS,
   lireDernierRunDressing, lireDerniereSyncReussie,
   confirmerBoutiqueVinted, lireBoutiqueConnectee,
-  DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
+  DETAIL_VERSION_MIN,
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
 
@@ -5370,150 +5370,40 @@ const StockTab = memo(function StockTab({
     if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current);
     detailNoteTimer.current = setTimeout(() => setDetailNote(null), 7000);
   };
-  const DETAIL_TIMEOUT_MS = 12000;
   const publierAvecDetail = async (item) => {
-    // ⚠️ « OU catalog_id manquant » (2026-08-05) : la description servait seule
-    // de drapeau « rien à compléter ». Or elle est PERSISTÉE au premier passage
-    // — un article déjà pourvu d'une description n'aurait donc plus jamais
-    // déclenché de lecture de détail, et n'aurait JAMAIS livré son catalog_id.
-    // C'est cette lecture-ci, et la capture de republication, qui remplissent
-    // la colonne : aucune requête n'est ajoutée ailleurs (le rattrapage de
-    // masse et le goutte-à-goutte ont été abandonnés — pas de rafale sur
-    // l'endpoint le plus surveillé).
-    const doitCompleter = item.origine === 'vinted_sync' && item.vinted_item_id
-      && (!item.description || !item.vinted_catalog_id);
-    // Rien à compléter, ou pas d'extension capable (mobile, extension < 0.5.1) :
-    // ouverture directe — on n'attend JAMAIS un canal qui n'existe pas.
-    if (!doitCompleter || !extDetailOk) {
-      if (doitCompleter) {
-        montrerNoteDetail(lang === 'fr'
-          ? "La description Vinted sera récupérée quand l'extension sera à jour — tu peux la compléter à la main en attendant."
-          : "The Vinted description will be fetched once the extension is updated — you can fill it in manually meanwhile.");
-      }
-      ouvrirStepper(item);
-      return;
-    }
-    // ── LE CACHE AVANT LE RÉSEAU (2026-09-07, chantier « source de vérité ») ─
-    // Une capture de republication porte déjà, pour cet article, tout ce qu'on
-    // s'apprête à demander à Vinted : catégorie, taille, état, marque,
-    // couleurs, colis, description. Si elle est FRAÎCHE, on s'en sert et on ne
-    // fait aucun appel — le but est d'accélérer la publication, pas d'ajouter
-    // une requête.
-    // RECHERCHE PAR inventaire_id, JAMAIS par vinted_item_id : une
-    // republication réussie recrée l'annonce sous un NOUVEL identifiant (mesuré
-    // le 07/09 : 76 % des articles capturés sont dans ce cas). L'identifiant
-    // périmé ne périme pas le contenu — c'est de cette capture-là que l'annonce
-    // a été recréée à l'identique.
-    // FRAÎCHEUR (les trois conditions, sinon on recapture) : verdict valide,
-    // moins de 30 jours, et l'article n'a pas bougé depuis (titre ET prix
-    // identiques à la fiche). 48 % des captures divergent sur l'un des deux —
-    // une capture de trop coûte un appel, une capture périmée publie une
-    // fausse annonce.
-    try {
-      const ilYA30j = new Date(Date.now() - 30 * 86400000).toISOString();
-      const { data: caps } = await supabase
-        .from('vinted_republish_captures')
-        .select('captured_at, libelles, payload')
-        .eq('inventaire_id', item.id)
-        .eq('verdict', 'valide')
-        .gte('captured_at', ilYA30j)
-        .order('captured_at', { ascending: false })
-        .limit(1);
-      const cap = caps?.[0] ?? null;
-      const natif = cap?.payload?.natif ?? null;
-      const titreCapture = String(cap?.payload?.titre ?? natif?.title ?? '').trim();
-      const prixCapture = natif?.price?.amount != null ? parseFloat(String(natif.price.amount)) : null;
-      const memeArticle = cap
-        && titreCapture === String(item.title ?? item.titre ?? '').trim()
-        && (prixCapture == null || item.sell == null || Math.abs(prixCapture - Number(item.sell)) < 0.005);
-      if (memeArticle) {
-        const t = attributsDepuisVinted(cap.libelles, natif, 'capture',
-          { marqueDejaConnue: Boolean(String(item.marque ?? '').trim()) });
-        const maj = {};
-        if (Object.keys(t.attributs).length) maj.attributs = t.attributs;
-        if (t.catalogId && !item.vinted_catalog_id) maj.vinted_catalog_id = t.catalogId;
-        if (t.description && !String(item.description ?? '').trim()) maj.description = t.description;
-        if (Object.keys(maj).length) {
-          await supabase.from('inventaire').update(maj)
-            .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
-        }
-        ouvrirStepper({
-          ...item,
-          ...(maj.description ? { description: maj.description } : {}),
-          ...(maj.vinted_catalog_id ? { vinted_catalog_id: maj.vinted_catalog_id } : {}),
-        });
-        return; // zéro appel réseau : la capture faisait foi
-      }
-    } catch { /* le cache est un raccourci : son échec ne bloque jamais */ }
-
+    // ── LE TEXTE DU VENDEUR, LÀ OÙ L'ARTICLE EST EN LIGNE (03/10, Nico) ────────
+    // Le chemin du 03/08 (détail Vinted au clic, capture fraîche d'abord) vit
+    // désormais dans publication/texteDuVendeur.js — le MÊME pour le stepper
+    // et pour le lot. Il y gagne deux sources qui existaient déjà : le relevé
+    // (Leboncoin, Beebs… annonces_plateforme.capture) et eBay par l'API
+    // (ebay-account, lire_description). Une fiche qui a sa description n'est
+    // jamais touchée ; rien de lisible → exactement le comportement d'avant.
+    // ⚠️ « OU catalog_id manquant » (2026-08-05) tient toujours : un article du
+    //    dressing sans catégorie relit son détail même s'il a sa description.
+    // Rien à compléter : ouverture directe — on n'attend JAMAIS un canal qui
+    // n'existe pas.
+    if (!aCompleterTexteVendeur(item)) { ouvrirStepper(item); return; }
     if (detailFetchId) return; // une récupération à la fois — jamais de lot
     setDetailFetchId(item.id);
-    const detail = await new Promise((resolve) => {
-      const timer = setTimeout(() => { stop(); resolve(null); }, DETAIL_TIMEOUT_MS);
-      const stop = ecouterDetailArticleVinted((d) => {
-        if (String(d.vintedItemId) !== String(item.vinted_item_id)) return;
-        clearTimeout(timer); stop(); resolve(d);
+    let r = null;
+    try {
+      r = await completerTexteDuVendeur(item, {
+        supabase, userId: user.id, extensionVinted: extDetailOk,
+        lireEbay: (id) => agirEbay('lire_description', { inventaire_id: id }),
+        delaiDetailMs: DELAI_DETAIL_VINTED_MS,
       });
-      demanderDetailArticleVinted(item.vinted_item_id);
-    });
+    } catch { r = null; }
     setDetailFetchId(null);
-    // Catégorie Vinted d'origine : elle voyage dans le payload natif qu'on
-    // vient de lire, gratuitement. C'est ELLE qui rendra l'article publiable
-    // sur les 3 autres plateformes (point d'entrée du mapping de catégories) —
-    // l'affichage du type n'en est qu'un sous-produit.
-    const catalogId = Number(detail?.natif?.catalog_id);
-    const catalogAEcrire = Number.isFinite(catalogId) && catalogId > 0 && !item.vinted_catalog_id
-      ? catalogId : null;
-    // ── ON NE JETTE PLUS 90 % DE CE QU'ON VIENT DE LIRE (2026-09-07) ────────
-    // Ce chemin ne gardait que la description et le catalog_id. Le détail
-    // porte AUSSI la taille, l'état, la marque, les couleurs, le colis et les
-    // mesures — désormais résolus en libellés par l'extension (0.6.21). On les
-    // écrit dans inventaire.attributs, source 'vinted_detail' : le stepper les
-    // relit déjà pour préremplir les copies, et le worker eBay aussi. Chaque
-    // publication enrichit donc l'article, une fois pour toutes.
-    // La base arbitre les priorités (trigger de fusion) : une saisie de
-    // l'utilisateur n'est jamais écrasée. La marque n'est proposée que si
-    // l'article n'en a aucune — Vinted range sous des marques fourre-tout.
-    // Extension ≤ 0.6.20 : pas de `libelles` dans la réponse, l'objet est vide
-    // et rien n'est écrit — comportement d'avant, à l'identique.
-    let attributsDetail = null;
-    if (detail?.success && detail.libelles) {
-      try {
-        const t = attributsDepuisVinted(detail.libelles, detail.natif, "vinted_detail",
-          { marqueDejaConnue: Boolean(String(item.marque ?? "").trim()) });
-        if (Object.keys(t.attributs).length) attributsDetail = t.attributs;
-      } catch { /* enrichissement best-effort : jamais un point de panne */ }
-    }
-    if (attributsDetail) {
-      await supabase.from('inventaire')
-        .update({ attributs: attributsDetail })
-        .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
-    }
-    if (detail?.success && detail.description) {
-      // Persistée pour ne plus jamais re-demander cet article ; la sync ne
-      // réécrit pas `description` (champ à l'utilisateur), elle survivra.
-      // Le marqueur d'origine part avec elle (attributsDetail porte
-      // description_source = 'vinted') : c'est lui, et lui seul, qui autorise
-      // le verrou anti-réécriture côté generate-listing.
-      await supabase.from('inventaire')
-        .update({ description: detail.description, ...(catalogAEcrire ? { vinted_catalog_id: catalogAEcrire } : {}) })
-        .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
-      ouvrirStepper({ ...item, description: detail.description, vinted_catalog_id: catalogAEcrire ?? item.vinted_catalog_id });
-    } else if (catalogAEcrire) {
-      // Description absente mais catégorie lue : on écrit quand même ce qu'on a
-      // — la lecture a eu lieu, ne pas en tirer parti serait la gaspiller.
-      await supabase.from('inventaire').update({ vinted_catalog_id: catalogAEcrire })
-        .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
+    if (r?.note === 'vinted_sans_extension') {
+      montrerNoteDetail(lang === 'fr'
+        ? "La description Vinted sera récupérée quand l'extension sera à jour — tu peux la compléter à la main en attendant."
+        : "The Vinted description will be fetched once the extension is updated — you can fill it in manually meanwhile.");
+    } else if (r?.note === 'vinted_echec') {
       montrerNoteDetail(lang === 'fr'
         ? "La description Vinted n'a pas pu être récupérée cette fois — les photos sont là, tu peux compléter le texte à la main."
         : "The Vinted description couldn't be fetched this time — photos are in place, you can fill in the text manually.");
-      ouvrirStepper({ ...item, vinted_catalog_id: catalogAEcrire });
-    } else {
-      montrerNoteDetail(lang === 'fr'
-        ? "La description Vinted n'a pas pu être récupérée cette fois — les photos sont là, tu peux compléter le texte à la main."
-        : "The Vinted description couldn't be fetched this time — photos are in place, you can fill in the text manually.");
-      ouvrirStepper(item);
     }
+    ouvrirStepper(r?.item ?? item);
   };
 
   // ── Prix d'annonce Vinted par article (2026-08-03 soir) ────────────────────
@@ -6080,6 +5970,8 @@ const StockTab = memo(function StockTab({
     return { success: true };
   }
   const [jobsByInventaire, setJobsByInventaire] = useState({});
+  // Les jobs ont été lus une première fois (la reprise d'un lot en a besoin).
+  const [jobsLus, setJobsLus] = useState(false);
   // ── Boutique Vinted connectée dans Chrome (multi-boutiques, 2026-09-03) ───
   // Relevée par la sonde de l'extension (profiles.extension_sessions). Lue
   // UNIQUEMENT à partir de deux boutiques confirmées : le parc mono-boutique
@@ -6893,6 +6785,30 @@ const StockTab = memo(function StockTab({
     if (ilYa > 7 * 86400 * 1000) return null;
     return { ...recent, suivi };
   }, [jobsByInventaire]);
+  // ── LE LOT INTERROMPU PAR UN PAIEMENT (03/10) ────────────────────────────
+  // Le mur de conversion du lot mène au parcours d'achat existant ; sur le
+  // web, Stripe QUITTE la page. Au retour, le lot est retrouvé tel qu'il
+  // était (mêmes articles, mêmes plateformes) — une fois, sur cet appareil,
+  // dans les deux heures. Il redevient un lot ordinaire : le quota se relit,
+  // et le mur ne revient que s'il manque encore des annonces.
+  const repriseLotFaite = useRef(false);
+  useEffect(() => {
+    if (repriseLotFaite.current || !user?.id || !jobsLus || !stockFiltreComplet?.length) return;
+    repriseLotFaite.current = true;
+    let r = null;
+    try { r = JSON.parse(localStorage.getItem(CLE_REPRISE_LOT(user.id)) ?? 'null'); } catch { r = null; }
+    try { localStorage.removeItem(CLE_REPRISE_LOT(user.id)); } catch { /* rien */ }
+    if (!repriseValable(r)) return;
+    const parId = new Map(stockFiltreComplet.map(i => [String(i.id), i]));
+    const articles = r.ids.map(id => parId.get(String(id))).filter(Boolean)
+      .filter(i => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok)
+      .slice(0, LOT_MAX_ARTICLES);
+    if (!articles.length) return;
+    entrerModeLot(articles.map(i => i.id));
+    setLotOuvert({ articles, plateformes: Array.isArray(r.plateformes) ? r.plateformes : null });
+    track('lot_publication_repris', { articles: articles.length });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, jobsLus, stockFiltreComplet]);
   const noterArretes = (ids) => setLotArretes(prev => {
     const n = [...new Set([...prev, ...ids])].slice(-500);
     try { localStorage.setItem('fs_lot_arretes', JSON.stringify(n)); } catch { /* rien */ }
@@ -7506,6 +7422,7 @@ const StockTab = memo(function StockTab({
         map[job.inventaire_id].push(job);
       }
       setJobsByInventaire(map);
+      setJobsLus(true);
     };
 
     relire();
@@ -11973,7 +11890,8 @@ const StockTab = memo(function StockTab({
           }}
           onFermer={(r)=>{setLotOuvert(null);if(r?.envoye)quitterModeLot();}}
           onEnvoye={(lot)=>{track('lot_publication_envoye',{lot:lot.id});}}
-          onVoirOffres={()=>openUpgradeModal?.('pro','lot_publication')}
+          onMonterDePalier={(palier,origine)=>openUpgradeModal?.(palier,origine)}
+          extensionVinted={extDetailOk}
           onOuvrirArticle={(item)=>{setLotOuvert(null);quitterModeLot();publierAvecDetail(item);}}
         />
       )}
