@@ -83,5 +83,21 @@ console.log("\n2. Les gardes du redépôt passent avant le retrait");
   ok("refus : needs_user, annonce toujours en ligne, garde tracée", /prevol_gardes/.test(corps) && /AVANT tout retrait, ton annonce est toujours en ligne/.test(corps));
 }
 
+// ── (03/10, point 10) UN PRODUIT MÉNAGER N'EST PAS UN COSMÉTIQUE ───────────
+// « nettoyant désinfectant multi-surfaces 500 ml » (3 fiches de Nico, typées
+// « Beauté » par le Lens) était grisé sur Leboncoin : l'icône 🧴 ne venait
+// que du type, et le type seul fondait le verdict. Mesuré le 03/10 sur les 49
+// titres typés Beauté du parc : ce titre-là seul change de verdict.
+console.log("\n4. Produits ménagers typés « Beauté » : jamais interdits comme cosmétiques");
+{
+  const { estCosmetiqueInterditeLbc } = await import(new URL("../src/utils/lbcCategories.js", import.meta.url).href);
+  const interdit = (titre) => estCosmetiqueInterditeLbc("🧴", { titre, type: "Beauté" });
+  ok("« nettoyant désinfectant multi-surfaces 500 ml » : pas un cosmétique", interdit("nettoyant désinfectant multi-surfaces 500 ml") === false);
+  ok("produit d'entretien, lessive, javel, liquide vaisselle : pas des cosmétiques",
+    ["Produit d'entretien ménager", "Lessive liquide 3L", "Eau de javel 2L", "Liquide vaisselle citron"].every((t) => interdit(t) === false));
+  ok("les vrais cosmétiques restent interdits (sérum, crème solaire, nettoyant VISAGE, gel nettoyant)",
+    ["Sérum anti-rides 30ml", "Crème solaire SPF50", "Nettoyant visage doux", "Gel nettoyant purifiant"].every((t) => interdit(t) === true));
+}
+
 console.log(ko ? `\n${ko} échec(s).` : "\nGarde cosmétiques Leboncoin : catégorie d'abord, et avant le retrait.");
 process.exit(ko ? 1 : 0);

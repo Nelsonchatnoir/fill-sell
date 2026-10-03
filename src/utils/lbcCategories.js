@@ -304,6 +304,15 @@ const NON_CONSOMMABLE_TITRE = new RegExp([
   `masques?.?(?:chirurgi|ffp\\d|de.?ski|de.?plong[ée]e|de.?carnaval|de.?d[ée]guisement|[àa].?gaz|de.?soudure|de.?protection|anti.?poussi[èe]re)`,
   // Savons d'entretien
   `savons?.?(?:de.?marseille|noirs?|vaisselle|m[ée]nagers?|d[ée]tachants?)`,
+  // (03/10, point 10) Produits MÉNAGERS typés « Beauté » par erreur : « nettoyant
+  // désinfectant multi-surfaces 500 ml » (fiches 1789543962463008/09/10 de Nico)
+  // était grisé sur Leboncoin comme « cosmétique » — l'icône 🧴 ne venait que
+  // du type, et le type seul fondait le verdict. Un produit d'entretien n'est
+  // pas un cosmétique ; Leboncoin ne l'interdit pas à ce titre.
+  `${D}nettoyants?.?(?:m[ée]nagers?|multi.?surfaces?|sols?|vitres?|wc|cuisine|salle.?de.?bains?|four|plaques?|inox|canap[ée]s?)${F}`,
+  `${D}d[ée]sinfectants?${F}`, `produits?.?d.?entretien`, `${D}javel${F}`, `${D}lessives?${F}`,
+  `${D}d[ée]tergents?${F}`, `${D}d[ée]tartrants?${F}`, `${D}d[ée]graissants?${F}`, `multi.?surfaces?`,
+  `${D}liquides?.?vaisselle${F}`, `${D}assouplissants?${F}`, `${D}anti.?calcaire${F}`,
 ].join("|"), "iu");
 
 /**
