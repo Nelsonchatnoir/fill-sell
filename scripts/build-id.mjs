@@ -1391,7 +1391,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-03T18:57:20Z'; // 0.6.92 = 0.6.91 + marque Vinted telle quelle (ligne exacte du catalogue, sinon « Utiliser … comme marque », jamais une autre ni « Sans marque » à la place) + âge Beebs relevé sur la fiche — db65cd0. Paquet build/CWS-0.6.92-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-03T19:00:04Z'; // 0.6.92 = 0.6.91 + marque Vinted telle quelle (ligne exacte du catalogue, sinon « Utiliser … comme marque », jamais une autre ni « Sans marque » à la place) + âge Beebs relevé sur la fiche + rechargement seul d'une copie de développement (poste de Nico) — db65cd0, ea221b7. Paquet build/CWS-0.6.92-A-TELEVERSER.
 // (avant : '2026-10-03T16:15:51Z' = 0.6.91, 612c356/edd36ff, paquet CWS-0.6.91-A-TELEVERSER)
 // Historique de la valeur precedente : '2026-10-03T13:51:13Z' — 9ba69d8, 0.6.90 (paquet CWS-0.6.90, jamais téléversé : remplacé par la 0.6.91).
 // Historique de la valeur precedente : '2026-10-02T19:15:21Z' — 09c6b97, 0.6.89 (acceptée au CWS la nuit du 02→03/10, servie).
