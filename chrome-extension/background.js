@@ -14566,6 +14566,10 @@ function capturerFicheEnPage(plateforme) {
     out.marque = ld?.brand?.name ?? (typeof ld?.brand === "string" ? ld.brand : null) ?? ligneLibellee(["Marque"]);
     out.couleur = ld?.color ?? ligneLibellee(["Couleur"]);
     out.taille = ligneLibellee(["Taille"]); out.etat = ligneLibellee(["État", "Etat"]); out.matiere = ligneLibellee(["Matière", "Matiere"]);
+    // L'ÂGE (03/10, Louis) : la ligne « Âge » de la fiche (« 16 ans et + »).
+    // Une republication le reprend tel quel au lieu de le redemander
+    // (get-pending-jobs, _shared/beebs-age-releve.js).
+    out.age = ligneLibellee(["Âge", "Age"]);
     const fil = Array.from(document.querySelectorAll("nav a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter((t) => t && !/^accueil$/i.test(t));
     out.categorie = fil.length ? fil.join(" > ") : null;
     if (!out.photos.length) {

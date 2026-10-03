@@ -5702,102 +5702,99 @@ async function selectVintedBrand(marque, warnings) {
       throw err;
     }
   }
-  // 1er essai — marque du catalogue (comportement historique inchangé) :
-  // sections "Marques populaires" (id="brand-XXX") et "Suggestions"
-  // (id="suggested-brand-XXX"), aria-label = nom exact dans les deux
-  // (flag "i" : insensible à la casse).
+  // ── LA MARQUE TELLE QUELLE : LA LIGNE EXACTE DU CATALOGUE, SINON LA MARQUE
+  // LIBRE — JAMAIS UNE AUTRE (03/10/2026, règle de Nico) ────────────────────
+  // Sur Vinted, n'importe quelle marque se pose : une marque absente de sa
+  // liste se crée par « Utiliser "X" comme marque ». Jusqu'ici :
+  //   · la ligne du catalogue n'était reconnue qu'à l'aria-label EXACT, casse
+  //     ASCII seule — « Gerard Darel » ou « Levi’s » ne retrouvaient pas
+  //     « Gérard Darel » / « Levi's », et on créait une marque libre en double ;
+  //   · on attendait 10 s une ligne exacte avant d'envisager la création ;
+  //   · la ligne de création était prise sans vérifier QUELLE marque elle
+  //     créait, et la relecture finale ne vérifiait que « non vide » ;
+  //   · en dernier recours, l'annonce partait en « Sans marque » — une AUTRE
+  //     valeur que celle demandée, mise en ligne.
+  // Désormais UNE attente guette les deux à la fois : la ligne du catalogue
+  // dont le libellé est EXACTEMENT la marque (accents, apostrophes et casse
+  // mis à part — texteComparable), ou la ligne de création qui nomme CETTE
+  // marque (laissée 1,5 s au catalogue s'il répond en retard). Relecture :
+  // #brand doit porter la marque demandée. Sinon : échec AVANT le dépôt,
+  // rien n'est soumis, aucune autre marque n'est posée.
+  const demandee = String(marque ?? "").trim();
+  let choix = null;
   try {
-    // 26/08 : Vinted a passé les lignes du picker Marque (brand-XXX et
-    // suggested-brand-XXX) de role="button" à role="radio" — aria-label
-    // intact (relevé live 26/08 au soir : brand-12 "Zara" en role=radio). Union des
-    // deux formes, la forme button reste si Vinted revient en arrière.
-    await selectSimpleOption(
-      trigger,
-      `[role="button"][aria-label="${CSS.escape(marque)}" i], [role="radio"][aria-label="${CSS.escape(marque)}" i]`,
-      marque,
-      { searchInputSelector: "#brand-search-input" }
-    );
-    return;
+    await openDropdown(trigger);
+    const search = await waitForElement("#brand-search-input", 5000);
+    await typeHuman(search, demandee);
+    choix = await attendreChoixMarque(demandee, 10000);
   } catch (e) {
     // ── Catégorie SANS champ Marque, valeur RÉELLE (2026-08-23) : relevé DOM
-    // du jour — les formulaires Livres et médias n'ont AUCUN champ #brand.
-    // « J'ai lu », « Disney », « Dolby »… échouaient toute la cascade
-    // (catalogue → création → repli Sans marque) et le job mourait sur un
-    // champ que le formulaire ne PROPOSE pas (5 échecs sur 7 jours). Même
-    // règle et même prudence que le no-op « Sans marque » plus haut :
-    // l'absence n'est conclue qu'APRÈS l'échec de l'ouverture standard
-    // (attente des champs conditionnels comprise), jamais à froid.
+    // — les formulaires Livres et médias n'ont AUCUN champ #brand. L'absence
+    // n'est conclue qu'APRÈS l'échec de l'ouverture standard (attente des
+    // champs conditionnels comprise), jamais à froid.
     if (!document.querySelector(trigger)) {
+      await closeAnyOpenDropdown();
       const message =
-        `marque: "${marque}" non posée — cette catégorie Vinted n'a pas de champ Marque ` +
+        `marque: "${demandee}" non posée — cette catégorie Vinted n'a pas de champ Marque ` +
         "(Livres et médias notamment) ; le formulaire n'en veut pas, rien à corriger";
       console.log(`[vinted] ${message}`);
-      warnings.push({ code: "brand_field_absent", marque, message });
+      warnings.push({ code: "brand_field_absent", marque: demandee, message });
       return;
     }
-    console.warn(`[vinted] marque "${marque}" absente du catalogue (${e.message}) — repli : création de la marque`);
+    console.warn(`[vinted] marque "${demandee}" : ouverture du choix impossible (${e.message})`);
   }
-  try {
-    // selectSimpleOption vient d'échouer en laissant le panneau OUVERT avec la
-    // recherche déjà tapée : la ligne de création est en général déjà rendue —
-    // on la prend telle quelle. waitForKey porte la télémétrie observatoire.
-    let custom = null;
-    try {
-      custom = await waitForKey("publish.custom_brand_option", { timeoutMs: 3000 });
-    } catch { /* panneau refermé ou état incertain : on rejoue proprement */ }
-    if (!custom) {
-      await closeAnyOpenDropdown();
-      await openDropdown(trigger);
-      const search = await waitForElement("#brand-search-input", 5000);
-      await typeHuman(search, marque);
-      custom = await waitForKey("publish.custom_brand_option", { timeoutMs: 8000 });
-    }
+  if (choix) {
     await humanPause(); // temps de "lecture" avant le clic, comme partout
-    custom.click();
+    choix.el.click();
     await humanPause();
-    await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand
-    // Vérif post : le champ Marque ne doit JAMAIS rester vide à la soumission.
-    const input = document.querySelector(trigger);
-    if (!(input?.value ?? "").trim()) {
-      throw new Error("la ligne de création a été cliquée mais #brand est resté vide après fermeture du panneau");
-    }
-    const note = `marque: "${marque}" absente du catalogue Vinted — créée via « Utiliser "${marque}" comme marque »`;
-    console.warn(`[vinted] ${note}`);
-    warnings.push(note);
-  } catch (e) {
-    await closeAnyOpenDropdown();
-    // REPLI ULTIME (doctrine du 08/08) : catalogue ET création ont échoué —
-    // plutôt que d'avorter la publication entière sur un sélecteur fragile,
-    // on pose le « Sans marque » NATIF et on le dit dans warnings. L'annonce
-    // part en ligne ; l'utilisateur peut corriger la marque à la main.
-    try {
-      await selectVintedNoBrand(trigger);
-      const message =
-        `marque: "${marque}" impossible à poser (introuvable au catalogue ET création en échec : ${e.message}) — ` +
-        "annonce publiée en « Sans marque » (natif Vinted), marque à corriger à la main si besoin";
-      console.warn(`[vinted] ${message}`);
-      // Warning STRUCTURÉ (persisté en platform_fields.warnings par le
-      // background, badge « Publiée — à vérifier » dans le Stock) : une
-      // annonce en ligne avec une marque dégradée ne doit JAMAIS être
-      // silencieuse — sur Vinted la marque est un filtre de recherche majeur.
-      warnings.push({ code: "brand_fallback_no_brand", marque, message });
-      return;
-    } catch (e2) {
-      // Convention error court / last_diagnostic (2026-08-06, job f9861e8a) :
-      // le détail (cause exacte + annexe DOM d'openDropdown) part sur
-      // err.diagnostic, le message reste lisible dans la modale de l'app.
-      const err = new Error(
-        `Le champ Marque n'a pas pu être renseigné avec « ${marque} » ` +
-        "(introuvable au catalogue Vinted, création impossible, et même le repli « Sans marque » a échoué). " +
-        "Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, l'annonce n'a pas été soumise."
-      );
-      err.diagnostic =
-        `Marque "${marque}": introuvable au catalogue ET création via « Utiliser "${marque}" comme marque » ` +
-        `impossible (${e.message})${e.diagnostic ? ` — ${e.diagnostic}` : ""} ; ` +
-        `repli « Sans marque » natif également en échec (${e2.message})${e2.diagnostic ? ` — ${e2.diagnostic}` : ""}`;
-      throw err;
-    }
+    await confirmDropdownIfNeeded(); // « Fait » — c'est LUI qui commite #brand (création)
   }
+  const posee = String(document.querySelector(trigger)?.value ?? "").trim();
+  if (choix && texteComparable(posee) === texteComparable(demandee)) {
+    if (choix.type === "libre") {
+      const note = `marque: "${demandee}" absente du catalogue Vinted — posée telle quelle via « Utiliser "${demandee}" comme marque »`;
+      console.warn(`[vinted] ${note}`);
+      warnings.push(note);
+    }
+    return;
+  }
+  await closeAnyOpenDropdown();
+  const err = new Error(
+    `Le champ Marque n'a pas pu être posé tel quel (« ${demandee} »). ` +
+    "Publication interrompue AVANT le dépôt — rien n'a été soumis à Vinted, et aucune autre marque n'a été posée à la place."
+  );
+  err.diagnostic = choix
+    ? `Marque "${demandee}" : ligne ${choix.type === "libre" ? "« Utiliser … comme marque »" : "du catalogue"} cliquée, mais #brand porte « ${posee} »`
+    : `Marque "${demandee}" : ni ligne exacte du catalogue ni ligne de création nommant cette marque en 10 s (#brand = « ${posee} »)`;
+  throw err;
+}
+
+// La ligne à cliquer pour poser `marque` TELLE QUELLE, ou null (03/10) :
+//   · une ligne du catalogue (« brand-123 », « suggested-brand-123 », role
+//     radio ou button) dont le libellé EST la marque ;
+//   · sinon la ligne « Utiliser "X" comme marque » quand X EST la marque —
+//     après 1,5 s, pour laisser au catalogue le temps de répondre.
+// Jamais « la plus proche », jamais la première suggestion.
+async function attendreChoixMarque(marque, timeoutMs = 10000) {
+  const S = await sel();
+  const cible = texteComparable(marque);
+  const debut = Date.now();
+  let libreVueLe = null;
+  while (Date.now() - debut < timeoutMs) {
+    const exacte = Array.from(document.querySelectorAll('[role="radio"], [role="button"]'))
+      .find((el) => /^(?:suggested-)?brand-\d/.test(el.id || "")
+        && texteComparable(el.getAttribute("aria-label") || el.textContent) === cible);
+    if (exacte) return { type: "catalogue", el: exacte };
+    let libre = null;
+    try { libre = S.resolveSelector("vinted", "publish.custom_brand_option", { reportFailure: false }).el; } catch { libre = null; }
+    const nommee = libre ? texteComparable(libre.textContent).match(/^utiliser\s+"?(.+?)"?\s+comme marque$/) : null;
+    if (nommee && texteComparable(nommee[1]) === cible) {
+      if (libreVueLe == null) libreVueLe = Date.now();
+      if (Date.now() - libreVueLe >= 1500) return { type: "libre", el: libre };
+    }
+    await sleep(80);
+  }
+  return null;
 }
 
 // ── Modèle Vinted : champ à RECHERCHE sur liste virtualisée ────────────────────
