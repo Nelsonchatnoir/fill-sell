@@ -21,7 +21,7 @@ assert.ok(iDrapeau > 0 && iRetour > iDrapeau && iClic > iRetour,
 assert.match(beebs, /!republishPreflightOnly && job\.photos\?\.length \? await uploadPhotos/,
   "le pré-vol n'envoie pas les photos");
 
-assert.match(background, /const caps = \["taille_par_id", "preuves_retraits_point1_v1"\]/,
+assert.match(background, /const caps = \["taille_par_id", "preuves_retraits_point1_v1"[^\]]*\]/,
   "la 0.6.80 déclare explicitement ses gardes Point 1");
 assert.match(serveur, /const preuvesRetraitsPoint1 = capacites\.includes\("preuves_retraits_point1_v1"\)/,
   "le serveur reconnaît la capacité sans relever le minimum général");

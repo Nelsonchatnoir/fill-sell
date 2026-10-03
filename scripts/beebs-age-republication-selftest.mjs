@@ -32,6 +32,21 @@ assert.ok(gpj.includes(`pfP(j)["prix_republication"] == null`), "un prix de repu
 assert.ok(gpj.includes(`.update({ price: enLigne, platform_fields: pf })`), "le prix relevé de l'annonce est posé sur la tâche");
 assert.ok(gpj.includes(`["beebs", "leboncoin", "ebay", "opla"].includes(String(j.platform))`), "Vinted garde sa copie par capture complète");
 
+// 2ter. (03/10 nuit, nivake03) La TAILLE affichée par l'annonce l'emporte
+// sur la copie (« Ajustable » affichée, « L » copiée, grille en mm).
+assert.ok(gpj.includes(`|| (j.action === "republish" && String(pfB(j)["taille"] ?? "").trim() !== "")`), "une republication avec taille passe par la confrontation");
+assert.match(gpj, /if \(tCap && tJob && tCap\.toLowerCase\(\) !== tJob\.toLowerCase\(\)\) \{\s*pf\["taille"\] = tCap;/, "la taille de l'annonce remplace celle de la copie");
+assert.ok(gpj.includes(`pf["taille_reprise_de_l_annonce"] = { avant: tJob, apres: tCap`), "avec sa trace avant/après");
+
+// 2quater. Et les champs AFFICHÉS se relisent sur la page avant tout retrait
+// (0.6.94) : tout ce qui est lu (lus), ce qui comble la copie (repris).
+const bg0 = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
+assert.ok(bg0.includes("pf.champs_lus_sur_l_annonce = { le: new Date().toISOString(), lus, repris,"), "les valeurs lues sont toutes gardées");
+assert.match(bg0, /const caps = \[[^\]]*"champs_annonce_republication_v1"[^\]]*\]/, "le poste déclare la capacité au serveur");
+const iLecture = bg0.indexOf("const repris = await reprendreChampsDeLAnnonce(job, pf);");
+const iCaptured = bg0.indexOf('pf.republish_step = "captured";', iLecture);
+assert.ok(iLecture > 0 && iCaptured > iLecture, "la lecture de l'annonce précède l'étape captured (donc le retrait)");
+
 // 3. L'extension relève l'âge sur la fiche Beebs.
 const bg = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
 assert.match(bg, /out\.age = ligneLibellee\(\["Âge", "Age"\]\);/, "le relevé Beebs lit la ligne « Âge »");

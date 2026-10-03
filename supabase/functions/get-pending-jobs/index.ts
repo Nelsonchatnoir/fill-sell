@@ -767,6 +767,9 @@ serve(async (req) => {
       ? body.capacites.map((c: unknown) => String(c)).slice(0, 20) : [];
     const tailleParId = capacites.includes("taille_par_id");
     const preuvesRetraitsPoint1 = capacites.includes("preuves_retraits_point1_v1");
+    // (03/10, Louis) Ce poste lit les champs sur l'annonce EN LIGNE avant tout
+    // retrait (0.6.94) : on le laisse lire avant de demander quoi que ce soit.
+    const litChampsAnnonce = capacites.includes("champs_annonce_republication_v1");
     // ── LE POSTE (2026-09-24, cf. _shared/poste-extension.ts) ───────────────
     // « opla_acces » / « sans_opla » : déclaré par la 0.6.64 à chaque poll. Un
     // build plus ancien ne dit rien : on s'en remet à ce qu'update-job-status a
@@ -3738,6 +3741,9 @@ serve(async (req) => {
           && (!Array.isArray(pfB(j)["beebsCategoryPath"])
             || ["etat", "marque", "taille"].some((c) => !String(pfB(j)[c] ?? "").trim())
             || (j.action === "republish" && !String(pfB(j)["age"] ?? "").trim())
+            // (03/10 nuit, nivake03) une republication confronte aussi SA
+            // taille à celle que l'annonce affiche (ci-dessous).
+            || (j.action === "republish" && String(pfB(j)["taille"] ?? "").trim() !== "")
             || String(j["description"] ?? "").trim().length < 5));
       if (beebsACombler.length) {
         const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
@@ -3850,6 +3856,22 @@ serve(async (req) => {
               pf["age"] = ageCap;
               pf["age_lu"] = { valeur: ageCap, source: "annonce Beebs en ligne (relevé)", le: new Date().toISOString(), pose_par: "get-pending-jobs (repris, jamais deviné)" };
               repris["age"] = ageCap;
+            }
+          }
+          // ── LA TAILLE QUE L'ANNONCE AFFICHE (03/10 nuit, nivake03) ─────────
+          // Ceinture : la copie disait « L », l'annonce affichait « Ajustable »
+          // (grille Beebs en mm + « Ajustable ») — la recréation demandait
+          // « L », hors liste, APRÈS le retrait : annonce hors ligne depuis le
+          // 02/10. Une republication remet l'annonce telle qu'elle est : la
+          // taille relevée sur CETTE annonce l'emporte sur la copie, avec sa
+          // trace. Postes 0.6.94+ : l'extension la relit en plus sur la page.
+          if (j.action === "republish") {
+            const tCap = String(cap["taille"] ?? "").trim();
+            const tJob = String(pf["taille"] ?? "").trim();
+            if (tCap && tJob && tCap.toLowerCase() !== tJob.toLowerCase()) {
+              pf["taille"] = tCap;
+              pf["taille_reprise_de_l_annonce"] = { avant: tJob, apres: tCap, source: "annonce Beebs en ligne (relevé)", le: new Date().toISOString(), pose_par: "get-pending-jobs" };
+              repris["taille"] = `${tCap} (affichée sur l'annonce ; la copie disait ${tJob})`;
             }
           }
           if (!String(pf["taille"] ?? "").trim()) {
@@ -4464,9 +4486,20 @@ serve(async (req) => {
     let heldCreneau = 0;
     let creneauRepublish: Record<string, unknown> | null = null;
     let creneauxRepublish: Record<string, unknown> | null = null;
+    // (03/10 nuit, Louis) EXCEPTION DE CRÉNEAU, décidée par Nico, job par job :
+    // `creneau_exception = { par, motif, jusqu_a }` posée par une réparation
+    // (scripts/reparations/), jamais par le code. Bornée dans le temps : passé
+    // `jusqu_a`, le job retombe sous la règle du créneau. La source reste
+    // 'auto' (comptage inchangé) — seule la retenue horaire est levée.
+    const exceptionCreneau = (pf: Record<string, unknown>) => {
+      const ex = pf["creneau_exception"] as Record<string, unknown> | null | undefined;
+      const fin = Date.parse(String(ex?.["jusqu_a"] ?? ""));
+      return !!ex && Number.isFinite(fin) && fin > Date.now();
+    };
     const autoHorsDeleted = (j: { action: string; platform_fields: unknown }) => {
       const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
-      return j.action === "republish" && pf["republish_source"] === "auto" && pf["republish_step"] !== "deleted";
+      return j.action === "republish" && pf["republish_source"] === "auto" && pf["republish_step"] !== "deleted"
+        && !exceptionCreneau(pf);
     };
     if (!includeProcessing && !includeNeedsUser && out.some(autoHorsDeleted)) {
       try {
@@ -7603,7 +7636,11 @@ serve(async (req) => {
           const pf = (j.platform_fields && typeof j.platform_fields === "object") ? (j.platform_fields as Record<string, unknown>) : null;
           if (!pf) return false;
           const republicationBeebsAvantRetrait = j.action === "republish" && j.platform === "beebs"
-            && !["deleted", "recreated"].includes(String(pf.republish_step ?? ""));
+            && !["deleted", "recreated"].includes(String(pf.republish_step ?? ""))
+            // Un poste qui sait lire la fiche en ligne la lit d'abord (étape
+            // a_capturer) : la question ne vient qu'APRÈS, si la fiche elle-même
+            // n'affiche pas l'âge.
+            && !(litChampsAnnonce && String(pf.republish_step ?? "a_capturer") === "a_capturer");
           if ((j.action ?? "publish") !== "publish" && !republicationBeebsAvantRetrait) return false;
           if (j.platform === "vinted") {
             const aspects = (pf.vintedAspects && typeof pf.vintedAspects === "object") ? (pf.vintedAspects as Record<string, unknown>) : {};
@@ -7695,7 +7732,7 @@ serve(async (req) => {
                 "Choisis celui imprimé sur la jaquette ci-dessous (bouton « ✋ Compléter ») — « Non précisé » s'il n'y en a pas : " +
                 "la publication repart d'elle-même. Rien n'a été envoyé à Vinted."
               : j.action === "republish"
-                ? `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et le relevé de ton annonce ne nous l'a pas donné. ` +
+                ? `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et ${litChampsAnnonce ? "ta fiche Beebs en ligne ne l'affiche pas" : "le relevé de ton annonce ne nous l'a pas donné"}. ` +
                   "Choisis la tranche affichée sur ton annonce Beebs (bouton « ✋ Compléter ») : la republication repart d'elle-même avec cet âge. Ton annonce est restée en ligne telle quelle."
                 : `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et ton annonce ne le renseigne pas. ` +
                   "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. Rien n'a été envoyé à Beebs.";
