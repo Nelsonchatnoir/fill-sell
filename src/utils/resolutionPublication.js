@@ -42,7 +42,7 @@
 //    se contente de ne rien ranger : elle ne doit pas casser parce qu'une
 //    catégorie n'a pas été trouvée — la question se pose au clic.
 import { texteComparable } from "./texteComparable";
-import { detectObjectKeywordDetail } from "./shared";
+import { detectObjectKeywordDetail, estSupportNonLivre } from "./shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "./vintedCategories";
 import { normalizeVintedColors } from "./vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "./lbcCategories";
@@ -77,6 +77,35 @@ import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, ra
 //    publication — le lot pour rien. Prise après, elle ne bouge plus tant que
 //    personne n'édite, et bouge dès que quelqu'un édite : exactement la
 //    question posée.
+/**
+ * Cet objet est-il un LIVRE ? (03/10 — cf. le bloc « CET OBJET EST-IL UN LIVRE ? »
+ * dans resoudrePublication). Toutes les sources certaines, plus le mot qui range :
+ * famille (mémoire ou attributs.famille.v), catégorie « Livre(s) », catalogue
+ * Vinted d'origine (colonne ou attributs.categorie_vinted.v) sous la maison
+ * des livres de Vinted, catégorie d'origine dans la maison des livres de sa
+ * plateforme, ou motCategorie = « livre(s) ». Jamais pour un support (DVD,
+ * CD, jeu vidéo) : estSupportNonLivre l'emporte.
+ */
+export async function estUnLivre({ initialListing = null, motCategorie = null, origineCat = null, titre = "", description = "" } = {}) {
+  if (estSupportNonLivre(titre, description)) return false;
+  if (initialListing?.famille === "livres_medias" || initialListing?.attributs?.famille?.v === "livres_medias"
+      || /^livres?$/i.test(String(initialListing?.categorie ?? ""))) return true;
+  const catVinted = String(initialListing?.vinted_catalog_id ?? initialListing?.attributs?.categorie_vinted?.v ?? "").trim();
+  if (/^\d+$/.test(catVinted)) {
+    try {
+      const maisonV = await maisonDesLivres("vinted");
+      if (maisonV && (await feuillesDuNoeud(maisonV, "vinted")).some((f) => String(f.id) === catVinted)) return true;
+    } catch { /* arbre indisponible : source suivante */ }
+  }
+  if (origineCat?.platform && Array.isArray(origineCat?.chemin)) {
+    try {
+      const maisonO = await maisonDesLivres(origineCat.platform);
+      if (maisonO && sortDeLaMaison(origineCat.chemin, maisonO) === false) return true;
+    } catch { /* idem */ }
+  }
+  return /^livres?$/i.test(String(motCategorie ?? "").trim());
+}
+
 export function signatureResolution({ plateformes, edited, initialListing, sharedFields, sharedOverrides, activeAiIcon, activeAiObjet, origineCat, ebayVoieApi = false }) {
   const ordre = [...plateformes].sort();
   return JSON.stringify({
@@ -411,7 +440,11 @@ export async function resoudrePublication({
     || null;
   const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
   const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
-  const familleLivresFiche = initialListing?.famille === "livres_medias" || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
+  // (03/10) La famille vit AUSSI dans les attributs de la fiche (attributs.famille.v) :
+  // depuis le Stock, seule cette forme arrive (geronimo0550, « Blancheneige »).
+  const familleLivresFiche = initialListing?.famille === "livres_medias"
+    || initialListing?.attributs?.famille?.v === "livres_medias"
+    || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
   // ⛔ 5ᵉ CLÉ : la catégorie d'ORIGINE (2026-09-19). Même nature que le
   // catalogue Vinted juste à côté — une catégorie déclarée par la personne
   // sur la plateforme qui héberge déjà l'annonce. Un article importé d'un
@@ -497,6 +530,24 @@ export async function resoudrePublication({
   const familleObjet = familleObjetDetail.famille;
   if (origineCat) console.log(`[publish] catégorie d'origine (${origineCat.platform}) : ${origineCat.chemin.join(" > ")}${origineCat.genre ? ` · genre ${origineCat.genre}` : ""}`);
   if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);
+  // ══ CET OBJET EST-IL UN LIVRE ? UNE SEULE RÉPONSE, TOUTES LES SOURCES (03/10) ══
+  // geronimo0550, « Blancheneige » (eBay 307211359842) puis le lot de Nico
+  // (« Le Meilleur des mondes », 03/10 09:55) : livres partis en « Jouets et
+  // jeux > Modélisme ferroviaire > Livres et guides > Livres » (9049). La
+  // garde du 22/09 (maison des livres) ne s'armait que sur `famille` /
+  // `categorie` EN MÉMOIRE — le parcours Lens ; depuis le Stock (unité ET
+  // lot), la famille reste dans attributs.famille, le catalogue Vinted des
+  // livres (2319/2320) n'était lu par personne, et le mot « livre » de l'IA
+  // tombait seul sur la feuille 9049. objetEstUnLivre réunit les sources :
+  // famille (mémoire ou attributs), catégorie, catalogue Vinted d'origine
+  // (colonne ou relevé) sous « Livres et médias > Livres », catégorie
+  // d'origine dans la maison des livres de sa plateforme, ou le mot qui range
+  // = « livre(s) ». ⛔ Jamais pour un support (DVD, CD, jeu) : estSupportNonLivre.
+  // ⛔ Elle ne POSE aucun rayon : elle retire une certitude hors de la maison
+  //    et met les feuilles de la maison en tête des candidates — l'IA tranche.
+  const objetEstUnLivre = await estUnLivre({ initialListing, motCategorie, origineCat,
+    titre: frTitrePublication, description: frDescriptionPublication });
+  if (objetEstUnLivre) console.log("[publish] objet reconnu comme un LIVRE : maison des livres en tête, aucune feuille hors maison tenue pour certaine");
   const categorieParMotParPf = {};
   // Feuilles écartées par le garde-fou d'escamotage (2026-09-12) : une
   // correspondance exacte qui ne tenait que parce que des mots étaient
@@ -534,7 +585,7 @@ export async function resoudrePublication({
         // ⛔ On ne le fait QUE si la maison existe dans cet arbre : sur
         //    Leboncoin et eBay elle n'existe pas, et on ne conclut rien.
         let horsMaison = false;
-        if (r.certitude === "exact" && familleLivresFiche) {
+        if (r.certitude === "exact" && objetEstUnLivre) {
           const maison = await maisonDesLivres(platform);
           if (maison && sortDeLaMaison(r.chemin, maison)) {
             horsMaison = true;
@@ -606,7 +657,7 @@ export async function resoudrePublication({
         // les huit de Vinted, les douze de Beebs. Elles passent en TÊTE :
         // ce sont les seules dont on sait qu'elles sont du bon rayon.
         // ⛔ On n'en choisit AUCUNE ici : c'est l'IA qui tranche, comme avant.
-        if (familleLivresFiche) {
+        if (objetEstUnLivre) {
           const maison = await maisonDesLivres(platform);
           if (maison) {
             const dedans = (await feuillesDuNoeud(maison, platform)).map(f => ({ chemin: f.chemin, id: f.id }));

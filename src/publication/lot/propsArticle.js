@@ -49,6 +49,10 @@ export function propsStepperArticle(item, jobs, { prixVinted = null } = {}) {
       titre:       item?.title ?? item?.titre ?? null,
       description: item?.description ?? null,
       categorie:   item?.type ?? null,
+      // (03/10) La famille de la fiche (attributs.famille.v) : sans elle, un livre
+      // publié depuis le Stock n'armait pas la maison des livres (Blancheneige
+      // de geronimo0550 rangé en modélisme ferroviaire sur eBay).
+      famille:     item?.famille ?? item?.attributs?.famille?.v ?? null,
       // Catalogue Vinted d'origine (2026-09-07) : il FAIT AUTORITÉ sur la
       // famille de l'article — un vêtement selon Vinted ne peut pas partir en
       // Maison & Jardin chez Leboncoin (garde-fou categorieGardeFou.js, job

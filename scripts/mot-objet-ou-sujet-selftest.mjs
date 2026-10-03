@@ -223,5 +223,42 @@ titre('8. « livre » sur eBay — jobs 41f00503 (Hawking) et 7c22f64b (Twilight
     JSON.stringify(d.certitude?.chemin ?? null) === JSON.stringify(e.certitude?.chemin ?? null));
 }
 
+// ── 9. L'ARTICLE DU STOCK (03/10) — LA RÈGLE S'ARME AUSSI SANS LE LENS ───
+// geronimo0550 « Blancheneige » (eBay 307211359842, 03/10 08:01) et le lot de
+// Nico (« Le Meilleur des mondes », 09:55) : livres publiés DEPUIS LE STOCK,
+// partis en 9049. La garde ne lisait que `famille` en mémoire (parcours Lens).
+titre('9. Article du Stock : famille dans les attributs, catalogue Vinted, mot seul');
+{
+  const { estUnLivre } = await import('../src/utils/resolutionPublication.js');
+  // Formes RELEVÉES en base le 03/10.
+  const blancheneige = { titre: 'Blancheneige', categorie: null, vinted_catalog_id: null,
+    attributs: { categorie_vinted: { v: 2320, source: 'vinted_detail' } } };
+  const meilleurDesMondes = { titre: 'Le Meilleur des mondes', vinted_catalog_id: 2319,
+    attributs: { famille: { v: 'livres_medias', source: 'lens' } } };
+  const feuillesV = (await feuillesDuNoeud(await maisonDesLivres('vinted'), 'vinted')).map((f) => String(f.id));
+  ok('Vinted : 2319 (Fiction) et 2320 (Non-fiction) sont dans la maison des livres', feuillesV.includes('2319') && feuillesV.includes('2320'));
+  ok('Blancheneige : catalogue Vinted 2320 lu dans les attributs → livre',
+    await estUnLivre({ initialListing: blancheneige, motCategorie: 'conte', titre: 'Blancheneige' }));
+  ok('Le Meilleur des mondes : famille dans les attributs (sans famille en mémoire) → livre',
+    await estUnLivre({ initialListing: meilleurDesMondes, motCategorie: 'roman', titre: 'Le Meilleur des mondes' }));
+  ok('mot qui range = « livre », fiche muette → livre (la certitude 9049 tombe)',
+    await estUnLivre({ initialListing: { titre: 'Blancheneige' }, motCategorie: 'livre', titre: 'Blancheneige' }));
+  ok('catégorie d\'origine dans la maison des livres (Beebs) → livre',
+    await estUnLivre({ initialListing: {}, origineCat: { platform: 'beebs', chemin: ['Jeux, jouets et loisirs', 'Livres', 'Romans'] }, titre: 'Tome 2' }));
+  ok('un DVD n\'est JAMAIS un livre, même avec le mot « livre » ou la famille',
+    !(await estUnLivre({ initialListing: { attributs: { famille: { v: 'livres_medias' } } }, motCategorie: 'livre', titre: 'DVD Le Roi Lion' })));
+  ok('une montre n\'est pas un livre', !(await estUnLivre({ initialListing: { vinted_catalog_id: 97 }, motCategorie: 'montre', titre: 'Montre Casio' })));
+  // Et la règle câblée : la sortie de maison retire 9049 pour ces fiches.
+  const r = await avec('livre', 'ebay', { famille: null, estLivre: await estUnLivre({ initialListing: blancheneige, motCategorie: 'livre', titre: 'Blancheneige' }) });
+  ok('Blancheneige sur eBay : plus de certitude 9049, la maison « Livres, BD, revues » en tête',
+    r.certitude === null && r.candidats.length > 0 && r.candidats[0].chemin[0] === 'Livres, BD, revues' && !r.candidats.some((c) => c.id === '9049'));
+  const fs = await import('node:fs');
+  const res = fs.readFileSync(new URL('../src/utils/resolutionPublication.js', import.meta.url), 'utf8');
+  ok('resolutionPublication : les deux gardes lisent objetEstUnLivre',
+    /r\.certitude === "exact" && objetEstUnLivre\)/.test(res) && /if \(objetEstUnLivre\) \{\s*\n\s*const maison = await maisonDesLivres\(platform\);/.test(res.split('\r\n').join('\n')));
+  const props = fs.readFileSync(new URL('../src/publication/lot/propsArticle.js', import.meta.url), 'utf8');
+  ok('le Stock passe la famille de la fiche au moteur (unité ET lot)', /famille:\s+item\?\.famille \?\? item\?\.attributs\?\.famille\?\.v \?\? null/.test(props));
+}
+
 console.log(`\n${ko === 0 ? '✅ Le mot ne décide plus quand il décrit le sujet, et la bonne réponse est dans la liste.' : `❌ ${ko} test(s) en échec.`}`);
 process.exit(ko === 0 ? 0 : 1);
