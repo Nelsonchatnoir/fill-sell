@@ -64,7 +64,7 @@ export function deduireOptionDuTexte({ platform, key, label = "", allowedValues,
   if (!champDeductibleDuTexte(key, label)) return null;
   const vals = (Array.isArray(allowedValues) ? allowedValues : []).map(v => String(v).trim()).filter(Boolean);
   if (!vals.length || (platform !== "ebay" && vals.length >= PLAFOND_RELEVE)) return null;
-  return optionDepuisTextes({ options: vals, textes });
+  return optionDepuisTextes({ options: vals, textes, cle: key, label });
 }
 
 // Le plafond du relevé (chrome-extension/background.js, persistDiscoveredAspects

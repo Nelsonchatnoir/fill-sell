@@ -8091,7 +8091,8 @@ export default function ListingPreviewScreen({
           categorie_verification: pf.categorie_verification ?? null,
         },
       });
-      const chercher = ({ options }) => optionDepuisTextes({ options, textes });
+      // Univers / Produit : des champs d'identité — la description seule ne les décide pas (03/10).
+      const chercher = ({ options }) => optionDepuisTextes({ options, textes, identite: true });
       const feuilleMJ = platform === "leboncoin" ? lbcFeuilleDependante(genericCategoryKeys?.[platform]) : null;
       const enrichi = status.map((a) => {
         const aTrancher = a.state === "missing" || (a.state === "invalid" && !a.suggested)

@@ -77,6 +77,53 @@ import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, ra
 //    publication — le lot pour rien. Prise après, elle ne bouge plus tant que
 //    personne n'édite, et bouge dès que quelqu'un édite : exactement la
 //    question posée.
+// Une clé présente dans au moins autant de rayons est commune (condition,
+// quantity, shipping_cost, estimated_parcel_weight…) : jamais retirée.
+export const LBC_CLE_COMMUNE_RAYONS = 5;
+
+/**
+ * Les critères de lbcAspects qui appartiennent à d'autres rayons et jamais au
+ * rayon final (03/10). Pure : `lignes` = platform_category_aspects Leboncoin
+ * ({ category_key, field_key }) pour les clés en jeu ET le rayon final.
+ * Rend la liste des clés à retirer.
+ */
+export function criteresLbcDUnAutreRayon(lbcAspects, rayonFinal, lignes) {
+  const cles = Object.keys(lbcAspects && typeof lbcAspects === "object" ? lbcAspects : {});
+  const rayon = Array.isArray(rayonFinal) ? rayonFinal.join(" > ") : String(rayonFinal ?? "");
+  if (!cles.length || !rayon) return [];
+  const parCle = new Map();
+  let rayonConnu = false;
+  for (const l of Array.isArray(lignes) ? lignes : []) {
+    if (l?.category_key === rayon) rayonConnu = true;
+    if (!parCle.has(l?.field_key)) parCle.set(l?.field_key, new Set());
+    parCle.get(l?.field_key).add(l?.category_key);
+  }
+  if (!rayonConnu) return [];
+  return cles.filter((k) => {
+    const rayons = parCle.get(k);
+    if (!rayons || !rayons.size) return false;           // inconnue du catalogue : on garde
+    if (rayons.has(rayon)) return false;                  // connue pour CE rayon : on garde
+    return rayons.size < LBC_CLE_COMMUNE_RAYONS;          // propre à d'autres rayons : on retire
+  });
+}
+
+async function purgerCriteresLbcDUnAutreRayon(pf, supabase) {
+  const cles = Object.keys(pf?.lbcAspects && typeof pf.lbcAspects === "object" ? pf.lbcAspects : {});
+  const rayon = Array.isArray(pf?.lbcCategoryPath) ? pf.lbcCategoryPath.join(" > ") : "";
+  if (!cles.length || !rayon) return;
+  const [{ data: lignesCles }, { data: lignesRayon }] = await Promise.all([
+    supabase.from("platform_category_aspects").select("category_key, field_key").eq("platform", "leboncoin").in("field_key", cles).limit(500),
+    supabase.from("platform_category_aspects").select("category_key, field_key").eq("platform", "leboncoin").eq("category_key", rayon).limit(1),
+  ]);
+  const aRetirer = criteresLbcDUnAutreRayon(pf.lbcAspects, pf.lbcCategoryPath, [...(lignesCles ?? []), ...(lignesRayon ?? [])]);
+  if (!aRetirer.length) return;
+  const aspects = { ...pf.lbcAspects };
+  for (const k of aRetirer) delete aspects[k];
+  pf.lbcAspects = aspects;
+  pf.lbcAspectsEcartes = { at: new Date().toISOString(), rayon, cles: aRetirer };
+  console.log(`[publish] leboncoin — critère(s) d'un autre rayon retiré(s) avant le dépôt (rayon « ${rayon} ») : ${aRetirer.join(", ")}`);
+}
+
 /**
  * Cet objet est-il un LIVRE ? (03/10 — cf. le bloc « CET OBJET EST-IL UN LIVRE ? »
  * dans resoudrePublication). Toutes les sources certaines, plus le mot qui range :
@@ -1761,6 +1808,23 @@ export async function resoudrePublication({
       le: new Date().toISOString(),
     };
     console.log(`[publish] ${platform} — aucun rayon trouvé${motCategorie ? ` pour « ${motCategorie} »` : ""} : QUESTION au vendeur (jamais grisé, jamais parti sans rayon)`);
+  }
+
+  // ══ LES CRITÈRES D'UN AUTRE RAYON NE PARTENT PAS (03/10, point 6) ═══════
+  // Kit lumières Kodak (geronimo0550, Leboncoin 3281156961) : le rayon de
+  // l'icône (« Maison & Jardin > Décoration », mot « led ») a fait remplir
+  // ses critères obligatoires — house_and_garden_type « Accessoire de
+  // rangement » par l'IA de secours —, puis la vérification a rangé l'objet
+  // en « Loisirs > Équipements vélos »… et le critère de Décoration est parti
+  // avec le job. Avant la création des jobs, on retire de lbcAspects les
+  // critères que le catalogue connaît pour d'AUTRES rayons et jamais pour le
+  // rayon final. ⛔ Prudence : seulement si le catalogue connaît le rayon
+  // final ; une clé inconnue du catalogue reste (posée par nous, ou pas
+  // encore relevée) ; une clé commune à beaucoup de rayons (condition,
+  // quantity, poids…) n'est jamais retirée.
+  if (pfParPlateforme.leboncoin && supabase) {
+    try { await purgerCriteresLbcDUnAutreRayon(pfParPlateforme.leboncoin, supabase); }
+    catch (e) { console.warn("[publish] leboncoin — purge des critères d'un autre rayon impossible (rien retiré) :", e?.message ?? e); }
   }
 
   return {

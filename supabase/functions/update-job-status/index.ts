@@ -3353,7 +3353,7 @@ serve(async (req) => {
           const traces = ((pfL["option_du_texte"] ?? pfJ["option_du_texte"]) ?? {}) as Record<string, unknown>;
           if (jO?.platform === "leboncoin" && !traces[cle]) {
             const r = optionDepuisTextes({
-              options: liste,
+              options: liste, cle, label: libelle,
               textes: textesDeLAnnonce({ titre: jO.title, description: jO.description, platformFields: { ...pfJ, ...pfL } }),
             });
             if (r.valeur) {

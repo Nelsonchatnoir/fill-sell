@@ -155,9 +155,15 @@ export function optionsNommees(texte, options) {
  *   candidats les options nommées quand elles sont plusieurs — à mettre en
  *             tête de la question.
  */
-export function optionDepuisTextes({ options, textes }) {
+export function optionDepuisTextes({ options, textes, cle = "", label = "", identite = null }) {
   const liste = [...new Set((Array.isArray(options) ? options : []).map((o) => String(o ?? "").trim()).filter(Boolean))];
   if (!liste.length) return { valeur: null, source: null, candidats: [] };
+  // (03/10) Un champ qui dit CE QU'EST l'objet ne se décide jamais sur la seule
+  // description : elle cite des accessoires, des usages, des points de
+  // fixation (kit lumières Kodak de geronimo0550 : « à fixer sur le cadre ou
+  // la selle » → Produit « Selle » sur Leboncoin, à la place d'« Éclairage »).
+  // Elle ne fait que départager les options nommées par le titre ou l'objet.
+  const champIdentite = identite ?? champDIdentite(cle, label);
   let candidats = null;
   let sourceAmbigue = null;
   for (const { source, texte } of textes ?? []) {
@@ -165,6 +171,7 @@ export function optionDepuisTextes({ options, textes }) {
     const noms = [...new Set(optionsNommees(texte, liste).map((x) => x.option))];
     if (!noms.length) continue;
     if (!candidats) {
+      if (champIdentite && source === "description") return { valeur: null, source, candidats: noms };
       if (noms.length === 1) return { valeur: noms[0], source, candidats: noms };
       candidats = noms;
       sourceAmbigue = source;
@@ -175,6 +182,18 @@ export function optionDepuisTextes({ options, textes }) {
     if (departage.length === 1) return { valeur: departage[0], source: `${sourceAmbigue}+${source}`, candidats };
   }
   return { valeur: null, source: sourceAmbigue, candidats: candidats ?? [] };
+}
+
+/**
+ * Le champ dit-il CE QU'EST l'objet (Produit, Type, Univers, Catégorie) ? Ces
+ * champs-là ne se décident jamais sur la seule description (03/10).
+ * Leboncoin : *_product, *_type, *_category, *_univers(e), decoration_type…
+ */
+export function champDIdentite(key, label = "") {
+  const k = libelleComparable(key).replace(/ /g, "_");
+  const l = ` ${libelleComparable(label)} `;
+  if (/(^|_)(product|produit|type|types|category|categorie|univers|universe)$/.test(k)) return true;
+  return / (produit|product|type|univers|universe|categorie|category) /.test(l);
 }
 
 /**

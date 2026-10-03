@@ -21,8 +21,9 @@
 
 import {
   optionDepuisTextes, optionsNommees, champDeductibleDuTexte, textesDeLAnnonce,
-  listeCandidatsDabord, estFourreTout,
+  listeCandidatsDabord, estFourreTout, champDIdentite,
 } from "../supabase/functions/_shared/option-du-texte.js";
+import { criteresLbcDUnAutreRayon } from "../src/utils/resolutionPublication.js";
 import { LBC_MAISON_JARDIN_DEPENDANTS } from "../src/utils/lbcMaisonJardin.js";
 
 let ko = 0;
@@ -117,6 +118,63 @@ console.log("9. optionsNommees ne rend que des libellés de la liste");
   const n = optionsNommees("plateau, beurrier et sous-verre", ACCESSOIRE);
   ok(n.every((x) => ACCESSOIRE.includes(x.option)), "aucune valeur inventée");
   ok(n.length === 3, `trois options nommées (${n.map((x) => x.option).join(", ")})`);
+}
+
+console.log("10. Un champ d'IDENTITÉ ne se décide jamais sur la seule description (03/10, point 6)");
+{
+  // Liste RELEVÉE en base (platform_category_aspects, « Loisirs > Équipements vélos », 21 valeurs).
+  const VELO = ["Accessoire pour vélo", "Antivol", "Bidon et porte-bidon", "Casque", "Compteur", "Éclairage", "Garde-boue",
+    "Gonfleur et pompe", "Outil et entretien", "Panier", "Porte-bagages", "Pédale", "Rétroviseur", "Sacoche", "Selle",
+    "Siège enfant", "Sonnette", "Béquille", "Chaîne", "Pneu", "Autre"];
+  const kodak = textesDeLAnnonce({
+    titre: "Kit lumières vélo Kodak LED rechargeable",
+    description: "Lumière avant blanche et arrière rouge. À fixer facilement sur le cadre ou la selle. Recharge USB.",
+    platformFields: {},
+  });
+  ok(champDIdentite("bicycle_equipment_product", "Produit"), "bicycle_equipment_product est un champ d'identité");
+  ok(champDIdentite("house_and_garden_type", "") && champDIdentite("decoration_type", "") && champDIdentite("toy_type", ""), "*_type : identité");
+  ok(!champDIdentite("console_platform", "Plateforme") && !champDIdentite("color", "Couleur"), "plateforme, couleur : pas d'identité");
+  const r = optionDepuisTextes({ options: VELO, textes: kodak, cle: "bicycle_equipment_product", label: "Produit" });
+  ok(r.valeur !== "Selle", `Kodak : jamais « Selle » lue dans la description (rendu : ${r.valeur ?? "rien"})`);
+  ok(r.valeur === null || r.valeur === "Éclairage", "Kodak : rien, ou ce que le titre nomme");
+  const avant = optionDepuisTextes({ options: VELO, textes: kodak });
+  ok(avant.valeur === "Selle", "témoin : sans la règle (clé inconnue), la description donnait « Selle » — c'était le défaut");
+  // Menu de restaurant (jocabroc8, Leboncoin 3276170695) : « Pièce et billet » lu dans la description.
+  const COLLECTION = ["Carte postale", "Pièce et billet", "Timbre", "Affiche", "Menu", "Autre"];
+  const menu = textesDeLAnnonce({ titre: "Ancien menu de restaurant 1950", description: "Pièce de collection, à encadrer. Envoi soigné avec billet manuscrit.", platformFields: {} });
+  ok(optionDepuisTextes({ options: COLLECTION, textes: menu, cle: "leisure_collection_product", label: "Produit" }).valeur === "Menu",
+    "Menu : le titre nomme « Menu », la description ne peut rien y changer");
+  // Plateforme de jeu vidéo prise dans la description : JUSTE, et conservée (pas un champ d'identité).
+  const PLATEFORMES = ["PlayStation 4", "PlayStation 5", "Xbox One", "Nintendo Switch"];
+  const jeu = textesDeLAnnonce({ titre: "Call of Duty Modern Warfare", description: "Jeu en très bon état, version PlayStation 4.", platformFields: {} });
+  ok(optionDepuisTextes({ options: PLATEFORMES, textes: jeu, cle: "console_platform", label: "Plateforme" }).valeur === "PlayStation 4",
+    "PS4 : la plateforme lue dans la description reste posée");
+  // La description départage toujours ce que le titre a nommé.
+  const tete = textesDeLAnnonce({ titre: "Sacoche et porte-bagages vélo", description: "Sacoche étanche, se fixe sur le porte-bagages.", platformFields: {} });
+  const dp = optionDepuisTextes({ options: VELO, textes: tete, cle: "bicycle_equipment_product", label: "Produit" });
+  ok(dp.valeur === null && dp.candidats.includes("Sacoche") && dp.candidats.includes("Porte-bagages"),
+    "titre ambigu, description qui cite les deux : question, candidates en tête");
+}
+
+console.log("11. Les critères d'un autre rayon ne partent pas (purge Leboncoin, 03/10)");
+{
+  // Lignes RELEVÉES en base le 03/10 (platform_category_aspects, leboncoin).
+  const lignes = [
+    { category_key: "Loisirs > Équipements vélos", field_key: "bicycle_equipment_product" },
+    { category_key: "Divers > Autres", field_key: "house_and_garden_type" },
+    { category_key: "Maison & Jardin > Arts de la table", field_key: "house_and_garden_type" },
+    { category_key: "Maison & Jardin > Décoration", field_key: "house_and_garden_type" },
+    ...["Loisirs > Équipements vélos", "Mode > Vêtements", "Maison & Jardin > Décoration", "Divers > Autres", "Loisirs > Jeux & Jouets", "Multimédia > Jeux vidéo"]
+      .map((c) => ({ category_key: c, field_key: "condition" })),
+  ];
+  const kodakAspects = { condition: "Très bon état", house_and_garden_type: "Accessoire de rangement", bicycle_equipment_product: "Éclairage" };
+  const r = criteresLbcDUnAutreRayon(kodakAspects, ["Loisirs", "Équipements vélos"], lignes);
+  ok(r.length === 1 && r[0] === "house_and_garden_type", `Kodak : house_and_garden_type retiré, le reste gardé (${r.join(", ")})`);
+  ok(criteresLbcDUnAutreRayon({ console_brand: "Sony" }, ["Loisirs", "Équipements vélos"], lignes).length === 0, "clé inconnue du catalogue : gardée");
+  ok(criteresLbcDUnAutreRayon(kodakAspects, ["Loisirs", "Rayon jamais relevé"], lignes).length === 0, "rayon final inconnu du catalogue : rien retiré");
+  ok(criteresLbcDUnAutreRayon({ condition: "Neuf" }, ["Loisirs", "Équipements vélos"], lignes.filter((l) => !(l.field_key === "condition" && l.category_key === "Loisirs > Équipements vélos"))).length === 0,
+    "clé commune à beaucoup de rayons (condition) : jamais retirée");
+  ok(criteresLbcDUnAutreRayon(kodakAspects, ["Maison & Jardin", "Décoration"], lignes).includes("bicycle_equipment_product"), "symétrique : un critère vélo ne part pas en Décoration");
 }
 
 console.log(ko ? `\n✗ ${ko} échec(s)` : "\n✓ option du texte : tout passe");
