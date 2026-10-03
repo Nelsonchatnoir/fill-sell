@@ -23,6 +23,10 @@ export const RETENUE_ISBN_CAPTURE = "isbn_capture_non_standard";
 // La boutique Vinted d'origine de l'article n'est connue nulle part (fiche,
 // job, historique) : aucune opération ne part tant qu'elle n'est pas prouvée.
 export const RETENUE_BOUTIQUE_INCONNUE = "boutique_origine_inconnue";
+// (03/10, point 11) Le poste n'a pas encore la version qui fait ce geste sans
+// deviner (Beebs : avant la 0.6.83, le pré-vol demandait la taille à l'IA —
+// ceinture « L » de nivake03 retirée, puis bloquée à la recréation).
+export const RETENUE_EXTENSION_A_JOUR = "extension_a_mettre_a_jour";
 const ANCIENNES_CLES = { retenue_isbn_capture: RETENUE_ISBN_CAPTURE };
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
@@ -77,16 +81,30 @@ export function leverRetenueServeur(pf, maintenant, par) {
 }
 
 /** Ce que la carte dit. Jamais de diagnostic : l'attente, et que rien n'est touché. */
-export function phraseRetenueServeur(fr = true) {
+export function phraseRetenueServeur(fr = true, { plateforme = "Vinted", motif = null } = {}) {
+  // (03/10) La plateforme est nommée (la phrase disait « sur Vinted » pour toutes).
+  if (motif === RETENUE_EXTENSION_A_JOUR) {
+    return fr
+      ? {
+        court: "En attente",
+        titre: "En attente de la mise à jour de l'extension — ton annonce est intacte",
+        detail: `Cette republication attend la nouvelle version de l'extension FillSell sur ton ordinateur : ton annonce est intacte sur ${plateforme}, rien n'a été retiré. La mise à jour s'installe toute seule ; si rien ne bouge, ferme Chrome complètement puis rouvre-le.`,
+      }
+      : {
+        court: "On hold",
+        titre: "Waiting for the extension update — your listing is untouched",
+        detail: `This repost is waiting for the new FillSell extension on your computer: your listing is untouched on ${plateforme}, nothing was removed. The update installs on its own; if nothing moves, fully close Chrome and open it again.`,
+      };
+  }
   return fr
     ? {
       court: "En attente",
       titre: "En attente — ton annonce est intacte",
-      detail: "Cette republication attend chez nous avant de toucher à quoi que ce soit : ton annonce est intacte sur Vinted, rien n'a été retiré. Elle repartira toute seule, tu n'as rien à faire.",
+      detail: `Cette republication attend chez nous avant de toucher à quoi que ce soit : ton annonce est intacte sur ${plateforme}, rien n'a été retiré. Elle repartira toute seule, tu n'as rien à faire.`,
     }
     : {
       court: "On hold",
       titre: "On hold — your listing is untouched",
-      detail: "This repost is waiting on our side before touching anything: your listing is untouched on Vinted, nothing was removed. It will resume on its own, nothing to do.",
+      detail: `This repost is waiting on our side before touching anything: your listing is untouched on ${plateforme}, nothing was removed. It will resume on its own, nothing to do.`,
     };
 }

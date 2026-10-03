@@ -425,6 +425,32 @@ function texteEbayLisible(raw, job, en) {
   return null;
 }
 
+/**
+ * Beebs, champ fermé dont la valeur de la fiche n'est PAS dans la liste du
+ * rayon : le message vrai (03/10). null si le texte n'est pas ce cas, ou si la
+ * valeur est vraiment dans la liste (la panne de remplissage est alors réelle).
+ */
+export function texteBeebsValeurHorsListe(raw, job, en = false) {
+  const m = String(raw ?? '').match(/« ([^»]+) » : la fiche porte « ([^»]+) » mais la valeur n'a pas pu être posée sur la page — panne de remplissage/);
+  if (!m) return null;
+  const champ = m[1].trim();
+  const valeur = m[2].trim();
+  const pf = job?.platform_fields ?? {};
+  const champs = [pf.needsUserField, ...(Array.isArray(pf.needsUserFields) ? pf.needsUserFields : [])].filter((c) => c && typeof c === 'object');
+  const nuf = champs.find((c) => String(c.field_label ?? c.field_key ?? '').replace(/\*\s*$/, '').trim() === champ) ?? champs[0];
+  const options = (Array.isArray(nuf?.allowed_values) ? nuf.allowed_values : [])
+    .map((o) => String(typeof o === 'string' ? o : (o?.title ?? o?.label ?? o?.value ?? '')).trim()).filter(Boolean);
+  const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  if (!options.length || options.some((o) => norm(o) === norm(valeur))) return null;
+  const exemples = `${options.slice(0, 4).join(', ')}${options.length > 4 ? '…' : ''}`;
+  const retiree = job?.action === 'republish' && pf.republish_step === 'deleted';
+  return en
+    ? `Beebs does not offer “${valeur}” for “${champ}” in this category (choices: ${exemples}). Pick the right one with “✋ Complete”: ` +
+      (retiree ? 'your Beebs listing was removed to be reposted, it comes back online as soon as you choose.' : 'publishing resumes as soon as you choose.')
+    : `Beebs ne propose pas « ${valeur} » pour « ${champ} » dans ce rayon (choix possibles : ${exemples}). Choisis la bonne valeur avec « ✋ Compléter » : ` +
+      (retiree ? 'ton annonce Beebs a été retirée pour être republiée, elle revient en ligne dès ton choix.' : 'la publication repart dès ton choix.');
+}
+
 export function humanizeJobError(job, lang = 'fr') {
   const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
@@ -730,6 +756,17 @@ export function humanizeJobError(job, lang = 'fr') {
   // commun ci-dessous (débruitage, sinon générique).
   const ebayTexte = job?.platform === 'ebay' ? texteEbayLisible(raw, job, en) : null;
   if (ebayTexte) return ebayTexte;
+
+  // ── BEEBS : UNE VALEUR QUE BEEBS NE PROPOSE PAS N'EST PAS UNE PANNE (03/10) ──
+  // Ceinture de nivake03 (8d487ebb) : « la fiche porte « L » mais la valeur
+  // n'a pas pu être posée — panne de remplissage, PAS une donnée manquante
+  // (relancer…) ». FAUX : Beebs n'offre, pour ses ceintures, que des longueurs
+  // en mm et « Ajustable ». Le correctif de l'extension (0.6.89) ne
+  // s'appliquait jamais (parenthèses non échappées, réparé en 0.6.90) : le
+  // texte vrai est rédigé ICI pour tous les postes, et dit si l'annonce est
+  // déjà retirée (étape 'deleted' d'une republication).
+  const beebsTexte = job?.platform === 'beebs' ? texteBeebsValeurHorsListe(raw, job, en) : null;
+  if (beebsTexte) return beebsTexte;
 
   // Message déjà humain (court, sans marqueur technique) : tel quel.
   if (!TECH_ERR_MARKERS_RE.test(raw) && raw.length <= 300) return raw;

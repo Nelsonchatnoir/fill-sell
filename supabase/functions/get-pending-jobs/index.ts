@@ -41,7 +41,7 @@ const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>(
 import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED_CANAUX_DEDIES, libelleChampVinted } from "../_shared/vinted-attributs-capture.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
-import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
+import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
@@ -127,7 +127,7 @@ import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
 // La preuve qu'un ISBN capturé non standard repasse chez Vinted, lue sur les
 // faits (2026-10-01, carhoa) — module JS, le même que son autotest.
 import { estIsbnCaptureNonStandard, valeurIsbnCapturee, valeursProuvees, PREUVES_ISBN_ETABLIES } from "../_shared/isbn-capture-preuve.js";
-import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
+import { RETENUE_ISBN_CAPTURE, RETENUE_BOUTIQUE_INCONNUE, RETENUE_EXTENSION_A_JOUR, retenueServeurDe, poserRetenueServeur, leverRetenueServeur } from "../../../src/utils/retenueServeur.js";
 // Valeurs d'ISBN capturé non standard déjà prouvées chez Vinted : une preuve
 // ne se perd pas, on ne la relit pas en base à chaque poll de l'isolat.
 // (02/10) Amorcé par les preuves ÉTABLIES (isbn-capture-preuve.js) : un isolat
@@ -2455,6 +2455,52 @@ serve(async (req) => {
       out = out.filter((j) => posteApresDefaut((j.platform_fields ?? {}) as Record<string, unknown>, buildDuPoll));
       if (out.length !== avantDefaut) {
         console.log(`[get-pending-jobs] userId=${user.id} : ${avantDefaut - out.length} job(s) arrêté(s) par un défaut FillSell retenu(s) — ils attendent un poste plus récent que « ${buildDuPoll.slice(0, 40) || "build inconnu"} »`);
+      }
+    }
+
+    // ══ BEEBS : AUCUN RETRAIT PAR UN POSTE QUI DEVINE UNE TAILLE (03/10, point 11) ══
+    // Ceinture de nivake03 (8d487ebb) : le pré-vol a tourné sur une 0.6.82, qui
+    // demandait la taille à l'IA (« L » → « Ajustable », grille en mm), puis
+    // l'annonce a été retirée ; la recréation, faite par la 0.6.85 qui ne
+    // devine plus, a buté sur la question « Taille » — annonce hors ligne. Une
+    // republication Beebs pas encore retirée n'est servie qu'à un poste ≥ 0.6.83
+    // (jamais d'IA pour une taille, la question est posée AVANT le retrait).
+    // Plus ancien : retenue nommée, annonce intacte, levée dès un poste à jour.
+    // Exécution seulement ; une lecture ou une écriture ratée ne retient rien d'autre.
+    if (!includeProcessing && !includeNeedsUser) {
+      const avantRetrait = (j: Record<string, unknown>) => {
+        const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+        return j.platform === "beebs" && j.action === "republish" && String(pfJ.republish_step ?? "") !== "deleted" && !pfJ.deleted_at;
+      };
+      const beebsAvantRetrait = out.filter((j) => avantRetrait(j as Record<string, unknown>));
+      if (beebsAvantRetrait.length) {
+        const posteSansIaTaille = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_BEEBS_ADRESSE_STRICTE);
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const maintenantIso = new Date().toISOString();
+          if (!posteSansIaTaille) {
+            for (const j of beebsAvantRetrait) {
+              const pfPose = poserRetenueServeur((j.platform_fields ?? {}) as Record<string, unknown>, RETENUE_EXTENSION_A_JOUR, maintenantIso,
+                { build_poste: buildDuPoll.slice(0, 60) || null, build_min: BUILD_BEEBS_ADRESSE_STRICTE, version_min: "0.6.83" });
+              if (pfPose) await admin.from("cross_post_jobs").update({ platform_fields: pfPose }).eq("id", j.id as string).eq("status", "pending");
+            }
+            const ids = new Set(beebsAvantRetrait.map((j) => String(j.id)));
+            out = out.filter((j) => !ids.has(String(j.id)));
+            console.log(`[get-pending-jobs] userId=${user.id} : ${ids.size} republication(s) Beebs retenue(s) avant tout retrait — poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » < 0.6.83 (il devinerait la taille)`);
+          } else {
+            for (const j of beebsAvantRetrait) {
+              const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+              if (retenueServeurDe(pfJ)?.motif !== RETENUE_EXTENSION_A_JOUR) continue;
+              const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)}`);
+              if (leve) {
+                await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
+                j.platform_fields = leve;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] republications Beebs (poste ancien) : ${String((e as Error)?.message ?? e)} — distribution normale`);
+        }
       }
     }
 

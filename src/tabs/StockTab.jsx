@@ -4615,7 +4615,7 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   // des jours : six livres de Carole, du 27/09 au 01/10. Une attente, jamais
   // un échec, et la seule chose qui compte : l'annonce est intacte.
   if (retenueServeurDuJob(job)) {
-    const ph = phraseRetenueServeur(fr);
+    const ph = phraseRetenueServeur(fr, { plateforme: LABEL_PF[job.platform] ?? 'Vinted', motif: retenueServeurDuJob(job)?.motif });
     return { cle: 'retenue_serveur', court: ph.court, ...bleu, enFile: true, titre: ph.titre, detail: ph.detail };
   }
 

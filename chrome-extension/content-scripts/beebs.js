@@ -1714,7 +1714,10 @@ async function fillListingForm(job) {
       && !optionsChamp.some((o) => norm(typeof o === "string" ? o : (o?.title ?? o?.label ?? o?.value)) === norm(vFiche));
     const detailVidesFinal = horsListe
       ? detailVides.replace(
-          /« [^»]+ » : la fiche porte « [^»]+ » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante (relancer, ou attendre le correctif)/,
+          // (03/10) Parenthèses ÉCHAPPÉES : sans elles, la regex cherchait le
+          // texte SANS parenthèses, ne trouvait jamais rien, et le faux
+          // « panne de remplissage » restait affiché (0.6.89, ceinture nivake03).
+          /« [^»]+ » : la fiche porte « [^»]+ » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante \(relancer, ou attendre le correctif\)/,
           `« ${nomLisible(firstKey)} » : la fiche porte « ${vFiche} », une valeur que Beebs ne propose pas dans ce rayon — choisis la bonne ci-dessous et la publication repart`)
       : demiPointure
       ? detailVides.replace(
