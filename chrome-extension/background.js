@@ -792,6 +792,31 @@ async function verifierMiseAJourSiDue({ urgent = false } = {}) {
   }
 }
 
+// ── UNE COPIE DE DÉVELOPPEMENT SE RECHARGE SEULE (03/10, poste de Nico) ─────
+// Installation « non empaquetée » (installType development) : livrer une
+// version, c'est copier le build dans le dossier chargé — et Chrome ne relit
+// pas ce dossier de lui-même : il fallait cliquer « Recharger ». On lit donc
+// le manifest SUR LE DISQUE ; une version différente de celle qui tourne est
+// une mise à jour en attente, prise par le MÊME chemin sûr que celles du
+// Chrome Web Store (appliquerMajSiSansRisque : aucun job en vol, aucun relevé,
+// aucune fenêtre de travail). Une installation du Web Store ne passe jamais ici.
+async function verifierCopieDevSurDisque() {
+  try {
+    const moi = await chrome.management.getSelf();
+    if (moi?.installType !== "development") return;
+    const r = await fetch(`${chrome.runtime.getURL("manifest.json")}?lu=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) return;
+    const surDisque = String((await r.json())?.version ?? "").trim();
+    const enCours = chrome.runtime.getManifest().version;
+    if (!surDisque || surDisque === enCours) return;
+    if ((await lireMajEnAttente()) === surDisque) return;
+    await chrome.storage.session.set({ [MAJ_ATTENTE_KEY]: surDisque.slice(0, 20) });
+    console.warn(`[background] copie de développement : la ${surDisque} est sur le disque (la ${enCours} tourne) — rechargement au premier moment sûr.`);
+  } catch (e) {
+    console.log("[background] lecture de la copie de développement impossible (sans conséquence) :", String(e?.message ?? e));
+  }
+}
+
 /** Envoie la trace du dernier passage de version, une seule fois. */
 async function envoyerTraceMajSiBesoin() {
   try {
@@ -2208,7 +2233,7 @@ function pollAndProcessJobs() {
     else appliquerMajSiSansRisque("fin de cycle").catch(() => {});
     // (01/10) La trace du dernier passage de version, et une demande de mise
     // à jour à Chrome (toutes les 2 h au plus) — sans verrou, rien n'y bouge.
-    envoyerTraceMajSiBesoin().then(() => verifierMiseAJourSiDue()).catch(() => {});
+    envoyerTraceMajSiBesoin().then(() => verifierCopieDevSurDisque()).then(() => verifierMiseAJourSiDue()).catch(() => {});
     // La boucle s'est arrêtée pour la mise à jour : aucun relevé, aucune sync
     // ne démarre avant le rechargement (leurs demandes restent en file en base
     // et la nouvelle version les reprend).
