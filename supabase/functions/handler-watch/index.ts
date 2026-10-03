@@ -20,6 +20,7 @@ import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOp
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
+import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
 
@@ -1169,6 +1170,57 @@ serve(async (req) => {
     if (nBloques) console.log(`[handler-watch] ${nBloques} job(s) Vinted sur la page « compte bloqué » : motif vrai posé (poste muet compris)`);
   } catch (e) {
     console.error("[handler-watch] compte Vinted bloqué :", (e as Error)?.message ?? e);
+  }
+
+  // ══ PAUSE ANTI-ROBOT VINTED DE PLUS DE 6 H : À LA PERSONNE, TOUTES VERSIONS (03/10, point 24) ══
+  // cynthiabuterne : 8 republications Vinted « en pause anti-robot » depuis
+  // le 27/09. La règle « au-delà de 6 h, c'est un geste » (_shared/mur-geste.js)
+  // ne tournait que dans le poll de get-pending-jobs — or un poste sous le
+  // seuil de version (0.6.80) n'y arrive jamais (réponse « mets à jour »
+  // seule), et un poste éteint non plus (gabyaviat10700, pause depuis le
+  // 02/10 16:42, poste muet depuis 18:54). Même règle ici, pour tout le parc.
+  // Une sonde qui revoit Vinted répondre APRÈS le début de la pause : on ne
+  // touche à rien (la levée viendra au poll). L'annonce n'a pas été touchée
+  // (étape avant retrait) ; une recréation (étape 'deleted') n'entre jamais ici.
+  try {
+    const { data: enPause } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, action, error, platform_fields")
+      .eq("platform", "vinted").eq("status", "pending")
+      .not("platform_fields->attente_antirobot_compte", "is", null)
+      .limit(200);
+    // deno-lint-ignore no-explicit-any
+    const lignesAr = (enPause ?? []) as any[];
+    const idsAr = [...new Set(lignesAr.map((j) => String(j.user_id)))];
+    const sessionsAr = new Map<string, Record<string, unknown>>();
+    for (let i = 0; i < idsAr.length; i += 200) {
+      const { data: profs } = await supabase.from("profiles").select("id, extension_sessions").in("id", idsAr.slice(i, i + 200));
+      // deno-lint-ignore no-explicit-any
+      for (const p of (profs ?? []) as any[]) sessionsAr.set(String(p.id), p.extension_sessions ?? {});
+    }
+    let nAr = 0;
+    for (const j of lignesAr) {
+      if (nAr >= 60) break;
+      const pf = { ...(j.platform_fields ?? {}) } as Record<string, unknown>;
+      if (j.action === "republish" && String(pf.republish_step ?? "") === "deleted") continue;
+      const marq = (pf.attente_antirobot_compte && typeof pf.attente_antirobot_compte === "object")
+        ? pf.attente_antirobot_compte as Record<string, unknown> : {};
+      const depuisMs = Date.parse(String(marq.depuis ?? marq.pose_le ?? ""));
+      if (!Number.isFinite(depuisMs) || Date.now() - depuisMs <= PAUSE_VINTED_GESTE_MS) continue;
+      const s = sessionsAr.get(String(j.user_id)) ?? {};
+      const vuVinted = Date.parse(String((s.checked_at_par_plateforme as Record<string, string> | undefined)?.vinted ?? s.checked_at ?? ""));
+      if (s.vinted === true && Number.isFinite(vuVinted) && vuVinted > depuisMs) continue;
+      pf.needs_user_source = "verification_antirobot";
+      pf.mur_geste = { type: "verification_antirobot", le: new Date().toISOString(), depuis: new Date(depuisMs).toISOString(), pause_compte: true, pose_par: "handler-watch" };
+      delete pf.next_action_after; delete pf.processing_since;
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error ?? null, "pending", "handler-watch (pause anti-robot Vinted > 6 h)");
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "needs_user", error: messagePauseVintedGeste(), platform_fields: pf })
+        .eq("id", j.id).eq("status", "pending").select("id");
+      nAr += (maj ?? []).length;
+    }
+    if (nAr) console.log(`[handler-watch] ${nAr} job(s) Vinted en pause anti-robot depuis plus de 6 h : passés à la personne (toutes versions, poste éteint compris)`);
+  } catch (e) {
+    console.error("[handler-watch] pause anti-robot Vinted > 6 h :", (e as Error)?.message ?? e);
   }
 
   // ══ eBay EXIGE UNE MISE À NIVEAU DU COMPTE VENDEUR : LE VRAI MOTIF (03/10, point 14) ══

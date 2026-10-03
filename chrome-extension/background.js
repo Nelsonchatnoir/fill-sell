@@ -771,11 +771,14 @@ const MAJ_VERIF_PERIODE_MS = 2 * 3600_000;
 // rechargement (ancien build, nouveau build, jobs en attente).
 const MAJ_TRACE_KEY = "fillsell_maj_trace";
 
-async function verifierMiseAJourSiDue() {
+async function verifierMiseAJourSiDue({ urgent = false } = {}) {
   try {
     const s = await chrome.storage.local.get(MAJ_VERIF_KEY);
     const dernier = Date.parse(String(s?.[MAJ_VERIF_KEY] ?? ""));
-    if (Number.isFinite(dernier) && Date.now() - dernier < MAJ_VERIF_PERIODE_MS) return;
+    // (03/10, point 24) Mise à jour EXIGÉE par le serveur : 20 min entre deux
+    // demandes au lieu de 2 h (Chrome freine de lui-même au-delà).
+    const periode = urgent ? 20 * 60_000 : MAJ_VERIF_PERIODE_MS;
+    if (Number.isFinite(dernier) && Date.now() - dernier < periode) return;
     await chrome.storage.local.set({ [MAJ_VERIF_KEY]: new Date().toISOString() });
     const r = await chrome.runtime.requestUpdateCheck();
     const statut = String(r?.status ?? (Array.isArray(r) ? r[0] : "") ?? "");
@@ -2746,6 +2749,15 @@ async function pollAndProcessJobsUnlocked() {
       maj_en_attente: await lireMajEnAttente(),
     });
     jobs = rep.jobs;
+    // (03/10, point 24) Poste sous le seuil de version : le serveur ne sert
+    // plus rien. On le garde pour le popup (qui le dit, avec le geste), et on
+    // demande la mise à jour à Chrome sans attendre la vérification des 2 h.
+    if (rep.extension_update_required) {
+      chrome.storage.local.set({ fillsell_maj_requise: { le: new Date().toISOString(), min: String(rep.extension_min_build ?? "").slice(0, 40) } }).catch(() => {});
+      verifierMiseAJourSiDue({ urgent: true }).catch(() => {});
+    } else {
+      chrome.storage.local.remove("fillsell_maj_requise").catch(() => {});
+    }
     commandeSyncEnAttente = rep.sync_command ?? null;
     // Relevés multiplateforme (2026-09-17) : [{ id, platform }] — servis aux
     // extensions ≥ 0.6.42 seulement, traités après le poll (verrou rendu).

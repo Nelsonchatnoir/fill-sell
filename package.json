@@ -154,7 +154,8 @@
     "selftest:entete-business": "node scripts/entete-business-selftest.mjs",
     "selftest:phrases-interdites": "node scripts/phrases-interdites-selftest.mjs",
     "selftest:republications-offertes": "node scripts/republications-offertes-selftest.mjs",
-    "selftest:ebay-changer-compte": "node scripts/ebay-changer-compte-selftest.mjs"
+    "selftest:ebay-changer-compte": "node scripts/ebay-changer-compte-selftest.mjs",
+    "selftest:pause-antirobot-toutes-versions": "node scripts/pause-antirobot-toutes-versions-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

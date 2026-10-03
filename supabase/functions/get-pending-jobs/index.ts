@@ -3,7 +3,8 @@ import { EXTENSION_MIN_BUILD, posteExtensionCompatible } from "../_shared/versio
 // (02/10) Le message d'un poste sous le seuil : simple, et vrai — la file
 // attend, rien n'est perdu, elle repart seule après la mise à jour.
 const MESSAGE_MISE_A_JOUR_EXTENSION =
-  "Mets l’extension FillSell à jour dans Chrome : ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
+  // (03/10, point 24) Le geste le plus simple d'abord : fermer Chrome et le rouvrir.
+  "Mets l’extension FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule après la mise à jour. Tes annonces restent en ligne.";
 import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProuvee, depotVintedExactParAnnonce, importVintedExactParAnnonce, idAnnonceVintedExact } from "../_shared/identite-boutique.js";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";

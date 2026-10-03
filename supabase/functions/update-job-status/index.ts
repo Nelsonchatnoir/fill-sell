@@ -538,7 +538,7 @@ serve(async (req) => {
       const recreationCommencee = enCours?.status === "pending" && enCours?.action === "republish"
         && String(((enCours?.platform_fields ?? {}) as Record<string, unknown>)["republish_step"] ?? "") === "deleted";
       if (enCours?.status !== "processing" && !recreationCommencee) return json({
-        error: "Mets l’extension FillSell à jour dans Chrome avant de démarrer cette tâche. Aucun retrait n’est autorisé.",
+        error: "Mets l’extension FillSell à jour (ferme Chrome complètement puis rouvre-le) avant de démarrer cette tâche. Aucun retrait n’est autorisé.",
         extension_update_required: true, extension_min_build: EXTENSION_MIN_BUILD,
       }, 409);
     }

@@ -8009,8 +8009,8 @@ export default function App({ loginOnly = false }){
             </div>
             <div style={{marginTop:4,fontWeight:500,opacity:0.85,fontSize:12.5}}>
               {lang==='fr'
-                ?<>Pour l'avoir tout de suite : ouvre <code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontSize:12,background:"rgba(16,32,27,0.10)",borderRadius:4,padding:"1px 5px"}}>chrome://extensions</code>, active <strong>Mode développeur</strong> (en haut à droite) puis clique <strong>Actualiser les extensions</strong>. Sinon Chrome la met à jour tout seul dans les heures qui viennent.</>
-                :<>To get it now: open <code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontSize:12,background:"rgba(16,32,27,0.10)",borderRadius:4,padding:"1px 5px"}}>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right) then click <strong>Update</strong>. Otherwise Chrome will update it on its own within a few hours.</>}
+                ?<>Le plus simple : <strong>ferme Chrome complètement, puis rouvre-le</strong> — la mise à jour s'installe à l'ouverture. Si elle n'arrive pas : ouvre <code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontSize:12,background:"rgba(16,32,27,0.10)",borderRadius:4,padding:"1px 5px"}}>chrome://extensions</code>, active <strong>Mode développeur</strong> (en haut à droite) puis clique <strong>Actualiser les extensions</strong>.</>
+                :<>Simplest: <strong>quit Chrome completely, then reopen it</strong> — the update installs on start. If it doesn't: open <code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontSize:12,background:"rgba(16,32,27,0.10)",borderRadius:4,padding:"1px 5px"}}>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right) then click <strong>Update</strong>.</>}
             </div>
           </div>
           <a href="/extension" style={{fontWeight:700,fontSize:12.5,color:"#fff",background:UI.ink,borderRadius:99,padding:"7px 16px",textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>

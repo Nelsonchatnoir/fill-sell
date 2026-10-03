@@ -303,6 +303,12 @@ async function load() {
       const al = await chrome.alarms.get("fillsell-poll-jobs");
       state.prochainPoll = al?.scheduledTime ?? null;
     } catch { state.prochainPoll = null; }
+    // (03/10, point 24) Le serveur a dit « mets-toi à jour » à CE poste
+    // (posé par le background au poll) : la file ne lui est plus servie.
+    try {
+      const mr = await chrome.storage.local.get("fillsell_maj_requise");
+      state.majRequise = mr?.fillsell_maj_requise ?? null;
+    } catch { state.majRequise = null; }
     // Maintien en éveil en cours (2026-09-04) — lecture SEULE d'un marqueur
     // écrit par le background.
     try {
@@ -786,7 +792,15 @@ function renderBars() {
   // Plateformes qui ont besoin d'un geste — une phrase, en tête. « Les autres
   // continuent » n'est écrit que si une autre plateforme est MESURÉE connectée.
   const ko = plateformesKo();
-  if (state.session && ko.length) {
+  // (03/10, point 24 — cynthiabuterne, 0.6.80) Une extension trop ancienne ne
+  // reçoit plus aucune tâche : c'est LA chose à dire, avant tout le reste, avec
+  // le geste le plus simple.
+  if (state.session && state.majRequise) {
+    els.barAlerte.innerHTML =
+      `<span class="bdot"></span>` +
+      `<span>Mets FillSell à jour : ferme Chrome complètement puis rouvre-le — ta file reprendra toute seule.</span>`;
+    els.barAlerte.classList.remove("hidden");
+  } else if (state.session && ko.length) {
     const n = ko.length;
     const suite = plateformesOk().length ? " · les autres continuent" : "";
     els.barAlerte.innerHTML =
