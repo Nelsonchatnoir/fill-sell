@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-02T19:15:21Z'; // 0.6.89 = 0.6.88 + recréation Vinted garantie (caractéristiques de la capture reposées avant tout retrait, ids relus en ouvrant la liste, libellés ordinateurs) + message Beebs « valeur hors liste du rayon » — fe08857, 3543985, 09c6b97. Paquet build/CWS-0.6.89-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-03T13:37:32Z'; // 0.6.90 = 0.6.89 + chantier du 03/10 (points 4, 7, 9, 11, 13, 14, 15, 23, 24, 26, 28/31, 29 : retraits Beebs prouvés par « Mes annonces », eBay saisie libre, rayons, ceinture Beebs, colis/poids, mise à niveau eBay nommée, textes sans mot de développeur, republication hors ligne, pause anti-robot > 6 h, annonces Vinted neuves, relevés bornés en 5 min, tailles Vinted du point G, mur de boutique nommé) — e3bdc59…ca63277, ce27d11. Paquet build/CWS-0.6.90-A-TELEVERSER.
+// Historique de la valeur precedente : '2026-10-02T19:15:21Z' — 09c6b97, 0.6.89 (acceptée au CWS la nuit du 02→03/10, servie).
 // Historique de la valeur precedente : '2026-10-02T17:51:01Z' — f0bfc00, 0.6.88 (zip 17:51:19Z+1ae1383, prouvé chez Nico, jamais téléversé : brûlée).
 // Historique de la valeur precedente : '2026-10-02T13:55:50Z' — 3612fe1, 0.6.87 (zip remis, jamais vu servi : brûlée).
 // Historique de la valeur precedente : '2026-10-02T11:44:50Z' — 8da8f90, 0.6.86 (zip e67282b, livré, jamais vu servi : brûlée). 
