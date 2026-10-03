@@ -26,6 +26,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { parse } from "espree";
+import { morceauRevenu } from "./lib/morceaux-mis-de-cote.mjs";
 
 const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DOSSIER = path.join(RACINE, "chrome-extension");
@@ -122,8 +123,13 @@ console.log("\n3. Sans preuve, rien ne part — et la preuve manquante est nomm�
   ok("origine absente → identite_non_prouvee/boutique_article, aucune requête",
     sans.posts.length === 0 && sans.r.verdict?.conclusion === "identite_non_prouvee" && sans.r.verdict?.preuve_manquante === "boutique_article");
   ok("une preuve absente n'accuse aucune boutique (pas de boutiqueEtrangere)", !("boutiqueEtrangere" in sans.r));
-  ok("le site d'appel de la une-passe lit job.platform_fields?.vinted_account_id",
-    /deleteVintedItemViaApi\(String\(onePass\.item_id\), tDel, traceDel, \{ preuveRequise: true, boutiqueAttendue: job\.platform_fields\?\.vinted_account_id \}\)/.test(sourceVinted));
+  // (03/10) Forme d'aujourd'hui : la boutique lue sur la page EXACTE de
+  // l'annonce juste avant le pré-vol (republish_delete_then_submit, posée par
+  // background.js depuis vendeurPreuve) passe d'abord ; l'origine du job reste
+  // le repli. Même clé lue, preuve plus forte devant.
+  ok("le site d'appel de la une-passe lit la boutique prouvée sur la page, puis job.platform_fields?.vinted_account_id",
+    /deleteVintedItemViaApi\(String\(onePass\.item_id\), tDel, traceDel, \{\s*preuveRequise: true,\s*boutiqueAttendue: onePass\.vinted_account_id \?\? job\.platform_fields\?\.vinted_account_id,?\s*\}\)/.test(sourceVinted)
+    && /republish_delete_then_submit = \{\s*item_id: String\(pf\.vinted_item_id \?\? ""\),\s*vinted_account_id: vendeurPreuve,/.test(fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8")));
 }
 
 console.log("\n4. Le message nomme le mur");
@@ -143,7 +149,12 @@ console.log("\n4. Le message nomme le mur");
 // refusé (titre = soupçon, point A) → question, puis doublon au relevé de
 // 21:42. La redirection de l'onglet vers /items/10173633450 est la preuve.
 console.log("\n5. Rattachement de la recréation par la redirection de notre dépôt");
-{
+// (03/10) Morceau de la 0.6.78 mis de côté par le retour arrière du 28/09 :
+// cf. scripts/lib/morceaux-mis-de-cote.mjs. Ses assertions restent ici,
+// intactes ; elles reprennent le jour où il revient, prouvé.
+if (morceauRevenu("recreation-par-redirection",
+  typeof bg.suivreRedirectionsAnnonce === "function" || typeof bg.annonceDeNotreDepot === "function",
+  (c, nom, d) => ok(nom, c, d))) {
   const ecouteurs = new Set();
   bg.chrome.tabs = { ...bg.chrome.tabs,
     onUpdated: { addListener: (f) => ecouteurs.add(f), removeListener: (f) => ecouteurs.delete(f) },
@@ -195,12 +206,20 @@ console.log("\n6. Recréation après notre suppression : candidate unique rattac
   ok("cas réel : 10173856703 rattachée (comme en 0.6.75)", r1.item?.vinted_item_id === "10173856703");
   const jumeau = { ...sweat, vinted_item_id: "10173856999" };
   const r2 = bg.reconnaitreAnnonceRecreee([sweat, jumeau], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() });
-  ok("deux candidates : rien rattaché, la question reste", r2.item === null && r2.candidats?.length === 2);
+  ok("deux candidates : rien rattaché (abstention, la pause le dit — règle 0.6.75)", r2.item === null && /2 annonces correspondent/.test(String(r2.raison ?? "")), JSON.stringify(r2));
   const avant = { ...sweat, photo_ts: photo - 3600 };
   ok("photos antérieures à notre suppression : rien", bg.reconnaitreAnnonceRecreee([avant], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set() }).item === null);
   ok("déjà connue de l'inventaire : rien", bg.reconnaitreAnnonceRecreee([sweat], { titre: sweat.titre, deletedAt: supprimeLe, idsConnus: new Set(["10173856703"]) }).item === null);
 
   const bgSrc = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
+  ok("plusieurs candidates : on ne recrée SURTOUT PAS (pause nommée, rien de recréé)",
+    /if \(\/annonces correspondent\/\.test\(String\(raison \?\? ""\)\)\) \{[\s\S]{0,700}?Rien n'a été recréé\./.test(bgSrc));
+  // (03/10) Les gardes anti-doublon de la 0.6.78 (T-shirt Adidas du 28/09)
+  // sont de côté depuis le retour arrière : cf. scripts/lib/morceaux-mis-de-cote.mjs.
+  if (morceauRevenu("recreation-sans-doublon-0678",
+    /une_passe: true,/.test(bgSrc) || bgSrc.includes("const dejaImportees =") || /\|\| !!pf\.recreation_doublon;/.test(bgSrc),
+    (c, nom, d) => ok(nom, c, d))) {
+  ok("deux candidates : la question liste les candidates", r2.candidats?.length === 2);
   ok("la une-passe marque sa soumission comme tentative de recréation",
     /pf\.republish_step = "deleted";[\s\S]{0,700}?pf\.recreation_tentee = \{[\s\S]{0,120}?une_passe: true,/.test(bgSrc));
   ok("une candidate déjà vue impose la lecture du dressing avant tout dépôt",
@@ -208,6 +227,7 @@ console.log("\n6. Recréation après notre suppression : candidate unique rattac
   ok("T-shirt : recréation déjà importée en fiche séparée → aucune 3e annonce, fusion demandée",
     bgSrc.indexOf("const dejaImportees =") > 0
     && bgSrc.indexOf("const dejaImportees =") < bgSrc.indexOf("reconnaitreAnnonceRecreee(page.articles"));
+  }
 }
 
 console.log(ko ? `\n${ko} échec(s).` : "\nUne-passe Vinted : origine transmise, preuve exacte ou aucune requête ; recréation rattachée par son identifiant.");

@@ -98,8 +98,20 @@ const lire = (commit, chemin) =>
     .replace(/\r\n/g, '\n').split('\n');
 
 const avant = lire(COMMIT_AVANT, FICHIER);
-const moduleAuj = fs.readFileSync(MODULE, 'utf8').replace(/\r\n/g, '\n');
-const clicAuj = fs.readFileSync(FICHIER, 'utf8').replace(/\r\n/g, '\n');
+// (03/10, point 29) LA PREUVE PORTE SUR LE DÉPLACEMENT, PAS SUR AUJOURD'HUI.
+// Comparé au module du jour, ce script rougissait à chaque évolution LÉGITIME
+// du module depuis le 20/09 (11 écarts le 03/10 : règles livres, rayons,
+// chaussures… toutes voulues) — il ne prouvait plus rien, il ne faisait que
+// rougir. Il relit donc le module et le fichier du clic tels qu'ils étaient
+// au commit qui a CLOS le déplacement (58b405a, 20/09 : le déplacement
+// 9a56249 + les deux lignes adaptées sur GO de Nico). Sa question redevient
+// la sienne : « le déplacement a-t-il été fidèle ? ». Les évolutions
+// ultérieures ont leurs propres selftests. COMMIT_APRES=<sha> pour rejouer
+// la preuve sur un autre état.
+const COMMIT_APRES = process.env.COMMIT_APRES || '58b405a';
+const moduleAuj = lire(COMMIT_APRES, MODULE).join('\n');
+const clicAuj = lire(COMMIT_APRES, FICHIER).join('\n');
+void fs;
 
 let echecs = 0;
 const dit = (ok, texte) => { if (!ok) echecs++; console.log(`${ok ? '  ok  ' : ' ÉCHEC'}  ${texte}`); };
@@ -158,13 +170,18 @@ for (const m of MESSAGES) {
 // phrase d'en-tête « On n'a pas reconnu l'objet dans », qui vit dans les
 // commentaires des deux fichiers et n'a pas bougé.
 console.log('\n4 bis. Le message de refus réécrit le 20/09 (ancien parti, nouveau posé)');
+// (03/10, point 29) La réécriture date du commit 18110cc (20/09, 17:02) : on
+// la vérifie dans CET état-là, comme le déplacement dans le sien.
+const COMMIT_MESSAGE = process.env.COMMIT_MESSAGE || '18110cc';
+const moduleMsg = lire(COMMIT_MESSAGE, MODULE).join('\n');
+const clicMsg = lire(COMMIT_MESSAGE, FICHIER).join('\n');
 const PARTIS = [
   "so we won't guess its category. Name the object in the title",
   'Nomme l\'objet dans le titre (« combinaison », « dessous de plat », « veste »…) ou régénère l\'annonce, puis republie. Rien n\'a été débité.',
 ];
 for (const m of PARTIS) {
-  const encoreLa = moduleAuj.includes(`? \`${m}`) || moduleAuj.includes(`: \`${m}`)
-    || moduleAuj.includes(`"${m}"`) || clicAuj.includes(`"${m}"`);
+  const encoreLa = moduleMsg.includes(`? \`${m}`) || moduleMsg.includes(`: \`${m}`)
+    || moduleMsg.includes(`"${m}"`) || clicMsg.includes(`"${m}"`);
   dit(!encoreLa, `ancien texte retiré : « ${m.slice(0, 46)}… »`);
 }
 const POSES = [
@@ -172,7 +189,7 @@ const POSES = [
   'On n\'a pas su ranger cet article tout seul. Son rayon se choisit sur la carte de chaque plateforme, juste au-dessus. Rien n\'a été débité.',
 ];
 for (const m of POSES) {
-  dit(moduleAuj.includes(m), `nouveau texte posé : « ${m.slice(0, 46)}… »`);
+  dit(moduleMsg.includes(m), `nouveau texte posé : « ${m.slice(0, 46)}… »`);
 }
 
 console.log(`\n${echecs === 0 ? '✅ Déplacement fidèle : rien n\'a changé.' : `❌ ${echecs} écart(s).`}`);

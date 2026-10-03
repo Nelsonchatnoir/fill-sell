@@ -91,8 +91,12 @@ console.log("\n▸ ⚠️ ON NE FABRIQUE PAS L'URL DEPUIS L'ID (404 en vérifica
 {
   const capture = SRC.slice(SRC.indexOf("async function captureListingUrl"),
                             SRC.indexOf("// Cherche le lien de NOTRE annonce"));
-  check("aucune URL n'est construite à partir de l'id",
-    !/leboncoin\.fr\/ad\/[^`"']*\$\{\s*id/.test(SRC),
+  // (03/10) Lu dans la CAPTURE après dépôt — là où le 404 de la vérification
+  // ferait croire l'annonce morte. Le relevé de « Mes annonces » (19/09,
+  // 8c24d27) reconstruit, lui, l'adresse d'annonces que Leboncoin dit
+  // ACTIVES dans son propre tableau de bord : hors de ce contrôle.
+  check("aucune URL n'est construite à partir de l'id (capture après dépôt)",
+    !/leboncoin\.fr\/ad\/[^`"']*\$\{\s*id/.test(capture),
     "— l'annonce est en vérification, sa page rend 404, et le veilleur lit 404 = morte");
   check("on rend `null` : pas d'URL pour l'instant",
     /idSur\) \{[\s\S]{0,400}?return null;/.test(capture));

@@ -18,7 +18,9 @@ import { readFileSync } from "node:fs";
 let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
 
-const src = readFileSync(new URL("../chrome-extension/content-scripts/leboncoin.js", import.meta.url), "utf8");
+// Le poste Windows extrait le dépôt en CRLF : on normalise, sinon les repères
+// « \n  } » ne matchent rien et le contrôle tombe sur un code pourtant juste.
+const src = readFileSync(new URL("../chrome-extension/content-scripts/leboncoin.js", import.meta.url), "utf8").split("\r\n").join("\n");
 const fn = /function decouperSansCasserLesCaracteres\(str, max\) \{[\s\S]*?\n\}/.exec(src);
 if (!fn) { console.log("✗ decouperSansCasserLesCaracteres introuvable"); process.exit(1); }
 const decouper = new Function(`${fn[0]}; return decouperSansCasserLesCaracteres;`)();

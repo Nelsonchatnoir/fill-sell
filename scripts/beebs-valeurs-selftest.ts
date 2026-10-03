@@ -16,9 +16,15 @@ const ok = (nom: string, cond: boolean, detail: unknown = "") => {
 };
 
 // ── CAS 1 (500c04c6) : « 85 G » n'existe que sur le 2ᵉ champ « Taille » ──────
+// (03/10, point 29) Depuis le 11/09 (0f2b373, décision du 08/09 : jamais
+// d'écriture à l'aveugle sur un homonyme), le serveur ne fabrique ni ne sert
+// plus aucune clé POSITIONNELLE (« Taille [#2] », « Marque [#1] ») : le 2ᵉ
+// champ est servi par sa clé NOMINATIVE, le 1er par le canal dédié (racine
+// nue). Le catalogue de ce test est donc celui d'aujourd'hui (nominatif) ; une
+// ligne positionnelle y est vérifiée À PART : jamais servie.
 const pyjamas: AspectRow[] = [
   A("Taille", ["XXXS / 30","XXS / 32","XS / 34","S / 36","M / 38","L / 40","XL / 42","XXL / 44","XXXL / 46","4XL / 48","5XL / 50","6XL / 52","7XL / 54","8XL / 56","9XL / 58","Taille unique","Autre"]),
-  A("Taille [#2]", ["75A et AA","75B","80G","85F","85G","85H","95L"]),
+  A("Taille [attributes.women_bras]", ["75A et AA","75B","80G","85F","85G","85H","95L"]),
   A("État", ["Neuf, avec étiquette","Neuf, sans étiquette","Très bon état","Bon état","État moyen"]),
   A("Couleur", ["Noir","Blanc"], false),
   A("Marque", ["Kiabi","Zara"]),
@@ -29,9 +35,10 @@ const pyjamas: AspectRow[] = [
     pyjamas,
   );
   console.log("CAS 1 — soutien-gorge « 85 G » dans Pyjamas (femme)");
-  ok("routé sur Taille [#2] = 85G", r.aspects["Taille [#2]"] === "85G", r.aspects);
-  ok("1er champ NON servi (85 G n'est pas une taille de vêtement)", r.aspects["Taille [#1]"] === undefined, r.aspects);
-  ok("canal dédié COUPÉ (il frapperait les deux champs)", r.racines.taille === "", r.racines);
+  ok("routé sur l'homonyme NOMINATIF = 85G", r.aspects["Taille [attributes.women_bras]"] === "85G", r.aspects);
+  ok("1er champ NON servi (85 G n'est pas une taille de vêtement)", r.aspects["Taille"] === undefined && r.aspects["Taille [#1]"] === undefined, r.aspects);
+  ok("canal dédié vidé PARCE QUE la valeur part vers l'homonyme (canal_dedie_route_homonyme)",
+    r.racines.taille === "" && r.posees.some((p) => p.methode === "canal_dedie_route_homonyme"), r.racines);
   ok("marque Darjeeling absente du catalogue → RIEN", r.posees.every((p) => p.cle_source !== "marque"), r.posees);
   ok("état exact → rien posé", r.posees.every((p) => p.cle_source !== "etat"), r.posees);
   ok("méthode tracée", r.posees[0]?.methode === "homonyme_champ_n", r.posees);
@@ -40,13 +47,20 @@ const pyjamas: AspectRow[] = [
 // ── CAS 1 bis : la vendeuse a répondu pour le 1er champ — les DEUX partent ───
 {
   const r = rapprocherValeursBeebs(
-    { taille: "S / 36", beebsAspects: { "Taille [#2]": "85G" } },
+    { taille: "S / 36", beebsAspects: { "Taille [attributes.women_bras]": "85G" } },
     pyjamas,
   );
   console.log("CAS 1 bis — réponse du 1er champ arrivée, le 2ᵉ déjà servi");
-  ok("1er champ adressé par sa clé positionnelle", r.aspects["Taille [#1]"] === "S / 36", r.aspects);
-  ok("réponse du 2ᵉ champ JAMAIS réécrite", r.aspects["Taille [#2]"] === undefined, r.aspects);
-  ok("canal dédié coupé", r.racines.taille === "", r.racines);
+  ok("1er champ servi par le canal dédié (racine nue), jamais par une clé positionnelle", r.aspects["Taille [#1]"] === undefined && r.racines.taille === undefined, r);
+  ok("réponse du 2ᵉ champ JAMAIS réécrite", r.aspects["Taille [attributes.women_bras]"] === undefined, r.aspects);
+  ok("canal dédié INTACT (la réponse de la vendeuse n'est plus effacée — boucle du 11/09)", r.racines.taille === undefined, r.racines);
+}
+// ── CAS 1 quater : une ligne POSITIONNELLE du catalogue n'est jamais servie ──
+{
+  const positionnel = pyjamas.map((a) => a.field_key === "Taille [attributes.women_bras]" ? { ...a, field_key: "Taille [#2]" } : a);
+  const r = rapprocherValeursBeebs({ taille: "85 G" }, positionnel);
+  console.log("CAS 1 quater — ligne positionnelle du catalogue (relevé où le pont était muet)");
+  ok("rien n'est servi sur « Taille [#2] » (11/09)", r.aspects["Taille [#2]"] === undefined && r.posees.length === 0, r);
 }
 
 // ── CAS 1 ter : libellé dupliqué mais AUCUNE valeur ne tombe → on ne coupe rien
@@ -99,18 +113,18 @@ console.log("GARDE-FOUS");
 }
 {
   // Verbatim présent dans la liste : match EXACT légitime, pas une ambiguïté.
-  const e = rapprocherValeursBeebs({ taille: "M" }, [A("Taille [#2]", ["m","M"])]);
-  ok("verbatim dans la liste → match exact", e.aspects["Taille [#2]"] === "M", e.aspects);
+  const e = rapprocherValeursBeebs({ taille: "M" }, [A("Taille [attributes.x]", ["m","M"])]);
+  ok("verbatim dans la liste → match exact", e.aspects["Taille [attributes.x]"] === "M", e.aspects);
   // Verbatim ABSENT, deux candidates de même forme comparable : on ne tranche pas.
-  const r = rapprocherValeursBeebs({ taille: "M ." }, [A("Taille [#2]", ["m","M"])]);
+  const r = rapprocherValeursBeebs({ taille: "M ." }, [A("Taille [attributes.x]", ["m","M"])]);
   ok("ambiguïté à la forme comparable → rien", r.posees.length === 0, r.posees);
 }
 {
   const r = rapprocherValeursBeebs(
-    { taille: "85 G", beebsAspects: { "Taille [#2]": "80B" } },
+    { taille: "85 G", beebsAspects: { "Taille [attributes.women_bras]": "80B" } },
     pyjamas,
   );
-  ok("réponse de l'utilisateur JAMAIS écrasée", r.aspects["Taille [#2]"] === undefined, r.aspects);
+  ok("réponse de l'utilisateur JAMAIS écrasée", r.aspects["Taille [attributes.women_bras]"] === undefined, r.aspects);
   const u = rapprocherValeursBeebs({ marque: "VILA", beebsAspects: { "Marque": "Zara" } }, [A("Marque", ["Vila","Zara"])]);
   ok("champ unique : une saisie ne bloque pas la ré-épellation de la racine", u.racines.marque === "Vila", u.racines);
 }
@@ -163,7 +177,7 @@ const M60 = Array.from({ length: 60 }, (_, i) => `Marque ${i}`);
 {
   const c = champsArbitrablesBeebs({ taille: "85 G" }, pyjamas, rapprocherValeursBeebs({ taille: "85 G" }, pyjamas));
   const cles = c.map((x) => x.field_key);
-  ok("libellé dupliqué : le champ servi par le routage n'est pas re-arbitré", !cles.includes("Taille [#2]"), cles);
+  ok("libellé dupliqué : le champ servi par le routage n'est pas re-arbitré", !cles.includes("Taille [attributes.women_bras]"), cles);
   ok("Marque du même catalogue toujours exclue", !cles.includes("Marque"), cles);
 }
 
@@ -173,8 +187,7 @@ const wVila = [{ at: "x", code: "generic", message: 'Marque: "VILA" sans corresp
 {
   const cat = [A("Marque", M60), A("État", ["Bon état"])];
   const r = rapprocherValeursBeebs({ marque: "VILA", warnings: wVila }, cat);
-  ok("posé sur Marque [#1]", r.aspects["Marque [#1]"] === "Autre", r.aspects);
-  ok("canal dédié coupé", r.racines.marque === "", r.racines);
+  ok("« Autre » posé par la racine Marque (plus de « Marque [#1] » depuis le 11/09)", r.racines.marque === "Autre" && r.aspects["Marque [#1]"] === undefined, r);
   ok("méthode tracée", r.posees.some((p) => p.methode === "marque_introuvable_bac_autre"), r.posees);
 }
 {

@@ -21,7 +21,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC = readFileSync(join(ROOT, "supabase/functions/_shared/ebay-publication.ts"), "utf8");
+// (03/10) Normalisé en LF : le poste Windows extrait le dépôt en CRLF, et le
+// retrait de l'interface ci-dessous (« \n}\n ») ne mordait plus.
+const SRC = readFileSync(join(ROOT, "supabase/functions/_shared/ebay-publication.ts"), "utf8").split("\r\n").join("\n");
 
 // Le module importe Deno/esm.sh : on n'extrait que le bloc autonome du motif
 // (du marqueur CODE_MOTIF_EBAY_RE à la fin de motifReelEbay), transpilé à la

@@ -308,13 +308,20 @@ console.log('LE CAS RÉEL — job 4514680c, montre Mortima\n');
 
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  // Retrait par TITRE quand le job n'a pas d'identifiant dans son lien.
+  // (03/10, point 29) COMPORTEMENT CHANGÉ VOLONTAIREMENT en 0.6.84 : un job
+  // sans identifiant n'est PLUS retiré sur son titre — règle du 27/09, « un
+  // titre n'est jamais une preuve d'identité » (deux annonces au même titre
+  // sont deux exemplaires ; nicolas.menar, doudou Nala, point 2). Le serveur
+  // ne sert d'ailleurs plus un retrait eBay sans numéro exact
+  // (servirRetraitsEbayParNumero). Avant, ce contrôle exigeait le repli par
+  // titre : il exige désormais qu'il n'existe plus — l'annonce au même titre
+  // reste intacte.
   const r = await lancer({
     job: { listing_url: 'https://www.ebay.fr/itm/', title: MONTRE.titre },
     hub: (h) => faireHub({ annonces: [...AUTRES, MONTRE], menusApres: 400, horloge: h }),
   });
-  ok(String(r.error).startsWith('Action « Mettre fin à l\'annonce » introuvable'),
-    'job sans identifiant : le repli par titre exact marche toujours (non-régression)',
+  ok(r.error === 'Annonce introuvable dans le Hub vendeur',
+    'job sans identifiant : JAMAIS retiré sur son seul titre (0.6.84, retrait par numéro exact)',
     `rendu : ${JSON.stringify(r.error)}`);
 }
 

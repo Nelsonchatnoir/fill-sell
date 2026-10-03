@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { morceauRevenu } from "./lib/morceaux-mis-de-cote.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Le dépôt est en CRLF : on normalise avant de découper, sinon les repères
@@ -89,7 +90,8 @@ attendu("catégorie manquante", jobVintedReel, ["la catégorie"], { ...copie, ca
 attendu("photos et prix manquants", jobVintedReel, ["les photos", "le prix"], { ...copie, photos: [], prix: 0 });
 // La copie passée fait foi : même avec une capture_id, une copie construite
 // incomplète bloque — c'est tout l'intérêt du second passage.
-attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "la description", "les photos", "le prix", "la catégorie"], {});
+// (03/10) Ce cas se juge en section 3, avec les deux autres morceaux du point D
+// (mis de côté par le retour arrière du 28/09).
 
 console.log("\n2. LEBONCOIN — le cas af34f609 (nicolas.menar, 22/09)");
 const lbcComplet = {
@@ -127,15 +129,35 @@ attendu("localisation d'origine sans code postal → on ne retire PAS", {
   platform_fields: { lbcCategoryPath: ["Loisirs", "Jeux & Jouets"], localisation_origine: { ville: "Lyon", code_postal: null, voie: null, libelle: "Lyon" } },
 }, ["l'adresse où se trouve l'article"]);
 
-console.log("\n3. LEBONCOIN — un lien ou un compteur ne remplace pas la copie");
+console.log("\n3. LEBONCOIN — un lien ou un compteur ne remplace pas la copie (point D)");
 console.log("   (profil des 338 imports du relevé : rien sur le job, tout dans la capture)");
-attendu("catégorie absente mais lien d'annonce présent (elle se lit dans l'adresse)", {
+// ⏸ (03/10) Le point D (0.6.76, 078ee88) est DE CÔTÉ depuis le retour arrière
+// du 28/09 (scripts/lib/morceaux-mis-de-cote.mjs). La règle livrée est celle
+// qu'il remplaçait, écrite le 22/09 : « le pré-vol ne demande jamais ce qu'on
+// sait retrouver » — description non exigée dans la copie Vinted, catégorie
+// Leboncoin lue dans l'adresse de l'annonce, photos comptées dans la copie.
+// Les attentes du point D restent ci-dessous, intactes, pour son retour.
+const jobLienSansCategorie = {
   ...lbcComplet, platform_fields: { localisation_origine: lbcComplet.platform_fields.localisation_origine },
-}, ["la catégorie"]);
-attendu("un simple compteur de photos ne sauvegarde pas les images", {
+};
+const jobCompteurPhotos = {
   ...lbcComplet, photos: [],
   platform_fields: { ...lbcComplet.platform_fields, republish_snapshot: { photos: 3 } },
-}, ["les photos"]);
+};
+const memes = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const pointDLivre = memes(prevolCaptureRepublication(jobVintedReel, {}), ["le titre", "la description", "les photos", "le prix", "la catégorie"])
+  || memes(prevolCaptureRepublication(jobLienSansCategorie), ["la catégorie"])
+  || memes(prevolCaptureRepublication(jobCompteurPhotos), ["les photos"]);
+const okPointD = (c, nom, d) => { if (!c) { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } else console.log(`  ✓ ${nom}`); };
+if (morceauRevenu("copie-avant-retrait-point-d", pointDLivre, okPointD)) {
+  attendu("copie construite vide → bloque malgré la capture", jobVintedReel, ["le titre", "la description", "les photos", "le prix", "la catégorie"], {});
+  attendu("catégorie absente mais lien d'annonce présent (elle se lit dans l'adresse)", jobLienSansCategorie, ["la catégorie"]);
+  attendu("un simple compteur de photos ne sauvegarde pas les images", jobCompteurPhotos, ["les photos"]);
+} else {
+  attendu("copie construite vide → bloque malgré la capture (règle livrée : la description n'est pas exigée)", jobVintedReel, ["le titre", "les photos", "le prix", "la catégorie"], {});
+  attendu("catégorie absente mais lien d'annonce présent → on passe (règle livrée du 22/09 : elle se lit dans l'adresse)", jobLienSansCategorie, []);
+  attendu("photos absentes du job mais comptées dans la copie → on passe (règle livrée du 22/09)", jobCompteurPhotos, []);
+}
 attendu("titre et prix absents du job mais présents dans la copie", {
   ...lbcComplet, title: "", price: 0,
   platform_fields: { ...lbcComplet.platform_fields, republish_snapshot: { titre: "Lot 2 doudous", prix: 28 } },

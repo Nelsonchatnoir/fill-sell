@@ -4074,7 +4074,9 @@ async function fillListingForm(job) {
         success: false,
         deleteFailed: true,
         needsUser: del?.needsUser === true,
-        error: `pré-vol OK mais suppression refusée — rien n'a été soumis. ${del?.error ?? ""}`.trim(),
+        // (03/10) Ce texte est montré tel quel après « Motif : » : plus de
+        // « pré-vol », un mot de développeur.
+        error: `suppression non confirmée par Vinted — rien n'a été soumis. ${del?.error ?? ""}`.trim(),
         warnings,
         diagnostic: traceDel.join(" | ").slice(0, 2000),
         suppression_verdict: del?.verdict ?? null,
@@ -6092,14 +6094,19 @@ async function activerOngletTaille(onglet) {
 // longueur : « W32 L34 », « W32/L34 », « 32x34 », « 32/34 », « W32L34 » sont
 // cherchés tels quels d'abord (une grille combinée pourrait les porter), puis
 // sous la forme « W32 », puis « 32 » (nombre nu : la garde anti-nombre-nu de la
-// cascade reste active). Un préfixe d'onglet (EU/UK/FR/IT/US) est aussi
-// retiré en dernier recours (l'ancien filet, inchangé). L'ordre des candidats
-// EST la règle : jamais une forme réduite avant la forme entière.
+// cascade reste active). Seul « FR » se retire en dernier recours (cf. plus
+// bas). L'ordre des candidats EST la règle : jamais une forme réduite avant la
+// forme entière.
 function candidatsTailleVinted(libelle) {
   const l = String(libelle ?? "").trim();
   const out = [];
   const push = (v) => { const t = String(v ?? "").trim(); if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t); };
   push(l);
+  // Âge écrit en anglais (Beganton, job f3ba2985 : « 10 years » face à
+  // « 8 ans, 10 ans, 12 ans ») : même taille, autre langue — ajouté APRÈS le
+  // libellé tel quel (point G du 28/09, remis le 03/10 après le retour arrière).
+  const ageAnglais = l.match(/^(\d{1,2}(?:\s*[-/]\s*\d{1,2})?)\s*(years?|yrs?|months?)$/i);
+  if (ageAnglais) push(`${ageAnglais[1]} ${/^month/i.test(ageAnglais[2]) ? "mois" : "ans"}`);
   const jean = l.match(/^\s*W?\s*(\d{2})\s*(?:[xX\/\-\s]\s*L?|L)\s*(\d{2})\s*$/i);
   if (jean) { push(`W${jean[1]}`); push(jean[1]); }
   const w = l.match(/^\s*W\s+(\d{2})\s*$/i);
@@ -6116,11 +6123,15 @@ function candidatsTailleVinted(libelle) {
   // l'exact, exactement comme avant. C'est une traduction de vocabulaire
   // (même nombre), jamais une conversion de système : jamais « FR N » ni
   // « UK N » — ceux-là désignent d'autres tailles.
-  // Sens inverse (« EU 42 » capturé, grille qui écrit « 42 ») : déjà couvert
-  // par le retrait de préfixe ci-dessous, inchangé.
   const nu = l.match(/^\s*(\d{1,3}(?:[.,]\d)?)\s*$/);
   if (nu) push(`EU ${nu[1]}`);
-  push(l.replace(/^(EU|UK|FR|IT|US)\s+/i, ""));
+  // Le système fait partie de la taille (point G du 28/09, remis le 03/10) :
+  // « UK 12 », « IT 42 », « US 8 » désignent d'AUTRES tailles que « 12 »,
+  // « 42 », « 8 », et « EU 42 » reste « EU 42 » (sur le panneau des costumes,
+  // « 42 » nu irait chercher « DE 42 »). Seul « FR N » vaut « N » : les grilles
+  // nues de Vinted sont françaises — même lecture que la règle partagée
+  // (_shared/tailles.js : « FR 40 » ≡ « 40 »).
+  push(l.replace(/^FR\s+/i, ""));
   return out;
 }
 // Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par

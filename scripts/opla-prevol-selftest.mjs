@@ -236,8 +236,18 @@ for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '
 {
   const fsx = await import('node:fs');
   const prevol = fsx.readFileSync('chrome-extension/content-scripts/opla-prevol.js', 'utf8');
-  const vocab = fsx.readFileSync('chrome-extension/content-scripts/tailles-vocabulaire.js', 'utf8');
-  const partage = fsx.readFileSync('supabase/functions/_shared/tailles.js', 'utf8');
+  const vocab = fsx.readFileSync('chrome-extension/content-scripts/tailles-vocabulaire.js', 'utf8').split('\r\n').join('\n');
+  // ⛔ COPIE GELÉE (03/10, point 29). Le vocabulaire embarqué pour Opla est
+  //    celui du 27/09 (fbb85ee, la 0.6.75) : le retour arrière du 28/09 (décision
+  //    de Nico) l'a remis tel quel, et Opla sort le 10/10 — on ne touche plus à
+  //    son comportement (consigne du 03/10). La règle partagée a avancé depuis
+  //    (point G du 28/09 : plus de table nombre → lettre ; bas du 02/10) : la
+  //    copie ne la suit plus, VOLONTAIREMENT. Le contrôle reste entier — copie
+  //    à l'octet près d'une règle datée, jamais une seconde règle écrite à la
+  //    main. Après le 10/10, ce fichier part avec la publication Opla.
+  const REGLE_GELEE_OPLA = 'fbb85ee';
+  const { execSync } = await import('node:child_process');
+  const partage = execSync(`git show ${REGLE_GELEE_OPLA}:supabase/functions/_shared/tailles.js`, { encoding: 'utf8' }).split('\r\n').join('\n');
   // ⚠️ `dit` compte dans le MÊME `ko` que le reste : la version précédente ne
   //    posait que `process.exitCode`, et la ligne de résumé annonçait
   //    « TOUT PASSE » sur quatre échecs affichés juste au-dessus.
@@ -312,7 +322,9 @@ for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '
     // La table relevée chez Vinted descend jusqu'à XXXS ; la grille G1 d'Opla
     // s'arrête à XXS. Une lettre que la CIBLE n'écrit pas ne se sert pas — on
     // ne rapproche pas « 30 » du XXS le plus proche.
-    if (G1.includes(lettre)) dit(`robe femme « ${nombre} » : aucune lettre déduite`, v.ok === false && v.motif === "opla_taille_hors_grille", v.motif);
+    // Copie gelée (cf. REGLE_GELEE_OPLA) : la table femme de Vinted sert encore
+    // chez Opla jusqu'à sa sortie — c'est le comportement de la 0.6.75 servie.
+    if (G1.includes(lettre)) dit(`robe femme « ${nombre} » → ${lettre} (copie gelée de la 0.6.75)`, v.ok === true && sizeDe(v) === lettre, `${v.ok} / ${v.motif} / ${sizeDe(v)}`);
     else dit(`robe femme « ${nombre} » : ${lettre} absent de la grille Opla → REFUSÉ, pas rapproché`,
       v.motif === M.TAILLE_HORS_GRILLE, `${v.ok} / ${sizeDe(v)}`);
   }
@@ -367,7 +379,7 @@ for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '
   const regleSource = partage
     .replace(/^export function /gm, 'function ')
     .replace(/^export const /gm, 'const ');
-  dit('tailles-vocabulaire.js contient la règle partagée à l\'octet près',
+  dit(`tailles-vocabulaire.js contient la règle partagée à l'octet près (version gelée ${REGLE_GELEE_OPLA})`,
     vocab.includes(regleSource));
   dit('aucun `export` ne survit (un content script MV3 n\'est pas un module)',
     !/^export\b/m.test(vocab));

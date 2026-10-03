@@ -91,8 +91,14 @@ if (rattraper) {
     'le rattrapage sait simuler (tout exécuter, puis annuler)');
 }
 if (importer) {
-  exiger(/jumeau_probable/.test(importer.corps),
-    `rapprocher_importer (${importer.fichier}) garde la garde du jumeau (20/09)`);
+  // (27/09, décision de Nico — 20260927210000, « tout importer, la
+  // ressemblance se demande ») la garde du jumeau ne REFUSE plus l'import :
+  // la fiche entre dans le stock et la ressemblance devient la question
+  // « Est-ce le même article ? ». Le jumeau est toujours CHERCHÉ (titre
+  // inclus, 20/09) — seule sa réponse a changé : une question, jamais un refus.
+  exiger(/v_q_motif := 'titre_inclus'/.test(importer.corps)
+    && !/'reason',\s*'jumeau_probable'/.test(importer.corps),
+    `rapprocher_importer (${importer.fichier}) cherche toujours le jumeau (20/09) et le DEMANDE au lieu de refuser (27/09)`);
 }
 
 // Côté extension : la ligne du run doit DIRE combien d'annonces sont importées,
