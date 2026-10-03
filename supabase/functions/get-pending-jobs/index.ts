@@ -40,7 +40,7 @@ import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS } from ".
 const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>();
 import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED_CANAUX_DEDIES, libelleChampVinted } from "../_shared/vinted-attributs-capture.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
-import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
+import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -1090,11 +1090,10 @@ serve(async (req) => {
         let n = 0;
         for (const j of (arretes ?? []) as Array<{ id: string; platform: string; action: string; title: string | null; error: string | null; platform_fields: Record<string, unknown> | null }>) {
           const pfA = { ...(j.platform_fields ?? {}) };
-          if (j.platform === "vinted" && pageCompteVintedBloque(pfA) && pfA.needs_user_source !== SOURCE_COMPTE_VINTED_BLOQUE) {
-            pfA.needs_user_source = SOURCE_COMPTE_VINTED_BLOQUE;
-            pfA.compte_vinted_bloque = { le: new Date().toISOString(), pose_par: "get-pending-jobs (fenêtre de travail sur /main/banned)" };
-            pfA.erreurs_archivees = archiverErreur(pfA.erreurs_archivees, j.error, "needs_user", "get-pending-jobs (compte Vinted bloqué)");
-            const { data: maj } = await admin.from("cross_post_jobs").update({ status: "needs_user", error: messageCompteVintedBloque(j.action, j.title), platform_fields: pfA })
+          // (03/10) La même fonction que handler-watch (tout le parc, poste muet compris).
+          const requalif = requalificationCompteVintedBloque(j, new Date().toISOString(), "get-pending-jobs (fenêtre de travail sur /main/banned)");
+          if (requalif) {
+            const { data: maj } = await admin.from("cross_post_jobs").update(requalif)
               .eq("id", j.id).in("status", ["needs_user", "failed"]).select("id");
             n += (maj ?? []).length;
             continue;

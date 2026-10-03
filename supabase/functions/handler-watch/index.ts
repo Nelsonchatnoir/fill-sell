@@ -18,6 +18,7 @@ import { ageProcessing, motifReprise, silenceDuDetenteur, REPRISE_AGE_MIN_MS } f
 // (02/10) Sortie d'Opla : les publications/republications Opla en attente se closent.
 import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
+import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1139,6 +1140,33 @@ serve(async (req) => {
     const http = (s["http"] as Record<string, unknown> | undefined)?.["opla"];
     return http != null && http !== "" && Number.isFinite(Number(http));
   };
+
+  // ══ COMPTE VINTED BLOQUÉ : LE VRAI MOTIF, MÊME POSTE MUET (03/10) ════════
+  // La requalification « /main/banned » ne tournait qu'au poll du compte
+  // (get-pending-jobs) : le poste de Dayane (recrutementgroupezk704) s'est tu
+  // le 01/10 à 23:43, et son retrait a7dd76cd a gardé « relance-le d'un clic »
+  // — une relance refrappe le même mur, l'annonce reste achetable. Même
+  // fonction ici, sur tout le parc : needs_user, motif vrai, geste réel.
+  // Borné : 14 jours, 40 jobs par passage, écriture conditionnelle au statut.
+  try {
+    const { data: bloques } = await supabase.from("cross_post_jobs")
+      .select("id, platform, action, title, error, platform_fields")
+      .eq("platform", "vinted").in("status", ["needs_user", "failed"])
+      .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+      .ilike("platform_fields->>work_window_state", "%/main/banned%")
+      .limit(40);
+    let nBloques = 0;
+    for (const j of (bloques ?? []) as Array<{ id: string; platform: string; action: string; title: string | null; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+      const requalif = requalificationCompteVintedBloque(j, new Date().toISOString(), "handler-watch (fenêtre de travail sur /main/banned)");
+      if (!requalif) continue;
+      const { data: maj } = await supabase.from("cross_post_jobs").update(requalif)
+        .eq("id", j.id).in("status", ["needs_user", "failed"]).select("id");
+      nBloques += (maj ?? []).length;
+    }
+    if (nBloques) console.log(`[handler-watch] ${nBloques} job(s) Vinted sur la page « compte bloqué » : motif vrai posé (poste muet compris)`);
+  } catch (e) {
+    console.error("[handler-watch] compte Vinted bloqué :", (e as Error)?.message ?? e);
+  }
 
   // ══ SORTIE D'OPLA : LES PUBLICATIONS EN ATTENTE SE CLOSENT (02/10) ═══════
   // Décision de Nico (_shared/opla-sortie.js) : plus aucune publication ni

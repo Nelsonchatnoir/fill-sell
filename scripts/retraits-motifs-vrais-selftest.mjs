@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pageCompteVintedBloque, messageCompteVintedBloque } from "../supabase/functions/_shared/vinted-compte-bloque.js";
+import { pageCompteVintedBloque, messageCompteVintedBloque, requalificationCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../supabase/functions/_shared/vinted-compte-bloque.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lire = (p) => fs.readFileSync(join(ROOT, p), "utf8").split("\r\n").join("\n");
@@ -23,6 +23,28 @@ ok(!pageCompteVintedBloque({ work_window_state: { at_end: { tab_url: "https://ww
 ok(!pageCompteVintedBloque({}), "sans relevé de fenêtre : non");
 const m = messageCompteVintedBloque("delete", "Jeans Levi's 511");
 ok(/compte bloqué/.test(m) && /n'a PAS été retirée/.test(m) && /appli Vinted/.test(m) && !/relance|notre onglet/i.test(m), "message vrai, geste réel, jamais « relance »");
+ok(/tant que Vinted affiche cette page/.test(m) && /tant que Vinted affiche cette page/.test(messageCompteVintedBloque("publish", null)),
+  "le message ne présume pas un compte fermé (duport.leo3 : page bloquée, compte qui répond)");
+
+console.log("\n1 bis. LA REQUALIFICATION NE DÉPEND PLUS DU POSTE (03/10, a7dd76cd, poste muet depuis le 01/10 23:43)");
+// Forme RELEVÉE en prod sur a7dd76cd le 03/10 : needs_user « relancer » (pas-de-rouge), fenêtre finie sur /main/banned.
+const jobDayane = { platform: "vinted", action: "delete", title: "Jeans Levi's 511", status: "needs_user",
+  error: "Le retrait n'a pas abouti après plusieurs essais automatiques, et ton annonce n'a pas été retirée. Tu peux la relancer d'un clic ci-dessous.",
+  platform_fields: { needs_user_source: "relancer", ...pfReel } };
+const rq = requalificationCompteVintedBloque(jobDayane, "2026-10-03T11:00:00.000Z", "handler-watch (test)");
+ok(rq && rq.status === "needs_user" && rq.platform_fields.needs_user_source === SOURCE_COMPTE_VINTED_BLOQUE, "a7dd76cd : motif vrai posé", JSON.stringify(rq?.platform_fields?.needs_user_source));
+ok(rq && /n'a PAS été retirée/.test(rq.error) && !/relancer d'un clic/.test(rq.error), "a7dd76cd : plus de « relance d'un clic »");
+ok(rq && Array.isArray(rq.platform_fields.erreurs_archivees) && /relancer d'un clic/.test(rq.platform_fields.erreurs_archivees.at(-1)?.erreur ?? ""), "l'ancien message est archivé, pas perdu");
+ok(requalificationCompteVintedBloque({ ...jobDayane, platform_fields: rq.platform_fields }, "x", "y") === null, "idempotent : motif déjà posé → rien");
+ok(requalificationCompteVintedBloque({ ...jobDayane, platform: "leboncoin" }, "x", "y") === null, "autre plateforme → rien");
+ok(requalificationCompteVintedBloque({ ...jobDayane, platform_fields: { work_window_state: { at_end: { tab_url: "https://www.vinted.fr/items/9865454800" } } } }, "x", "y") === null, "page d'annonce → rien");
+const hw = lire("supabase/functions/handler-watch/index.ts");
+ok(/import \{ requalificationCompteVintedBloque \} from "\.\.\/_shared\/vinted-compte-bloque\.js"/.test(hw)
+  && /requalificationCompteVintedBloque\(j, new Date\(\)\.toISOString\(\), "handler-watch/.test(hw)
+  && /\.ilike\("platform_fields->>work_window_state", "%\/main\/banned%"\)/.test(hw),
+  "handler-watch requalifie sur TOUT le parc (poste muet compris)");
+const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
+ok(/requalificationCompteVintedBloque\(j, new Date\(\)\.toISOString\(\), "get-pending-jobs/.test(gpj), "get-pending-jobs appelle la MÊME fonction");
 
 console.log("\n2. FIN D'ANNONCE eBay : LE NUMÉRO, PLUS LE TITRE");
 const eb = lire("chrome-extension/content-scripts/ebay.js");
