@@ -114,6 +114,25 @@ export function ebayCompteUtilisable(etat) {
   return etat.seller_state?.bloque_par_etat_ebay === false;
 }
 
+// ── LA VOIE d'une publication eBay — miroir du trigger d'AUJOURD'HUI ────────
+// (03/10, point 17) Depuis le 27/09, cross_post_jobs_voie_ebay route en 'api'
+// toute publication d'un compte au drapeau ebay_voie_api ET relié
+// (revoked_at NULL), PRÊT OU NON : pas prêt, ebay-api-worker la parque
+// (« compte à finir ») et la relance seul. Le miroir d'avant
+// (ebayCompteUtilisable : politiques + checklist) disait « extension » à ces
+// comptes : le suivi écrivait « Chrome la prend à son tour » et comptait 238 s
+// pour une publication partie de nos serveurs (78 s mesurées).
+// ⚠️ La PRÉPARATION du compte reste ebayCompteUtilisable (griser eBay au
+// stepper) : deux questions différentes, deux prédicats.
+// Tri-état : null = pas encore lu, true/false sinon.
+export function ebayVoieApiDuCompte(etat) {
+  if (!etat) return etat === null || etat === undefined ? null : false;
+  // etatPublic (ebay-oauth.ts) : connecte = ni révoqué ni jeton de
+  // renouvellement expiré ; un jeton expiré n'est PAS une révocation — le
+  // trigger route quand même en 'api' (revoked_at seul compte).
+  return etat.connecte === true || etat.motif_reconnexion === 'refresh_expire';
+}
+
 // Motif LE PLUS EN AMONT du refus — une seule phrase à afficher, jamais un
 // diagnostic. 'non_connecte' | 'a_reconnecter' | 'a_finir' (politiques ou
 // checklist rouge : dans les deux cas le geste est le même, finir dans

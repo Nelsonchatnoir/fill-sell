@@ -121,7 +121,7 @@ import ParcoursEntree, { ONBOARD_DONE_KEY } from './entree/ParcoursEntree';
 import { RENVOI_LOCK_MS } from './hooks/useEnvoiLienExtension';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import { extensionTraceeAilleurs } from './utils/extensionTrace';
-import { lireEtatEbay, ebayCompteUtilisable } from './utils/ebayCompte';
+import { lireEtatEbay, ebayVoieApiDuCompte } from './utils/ebayCompte';
 import PlanDetailsModal from './components/PlanDetailsModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
@@ -2432,7 +2432,8 @@ export default function App({ loginOnly = false }){
     voieApi:ebayVoieApi,
     etat:ebayCompteEtat,
     lu:ebayCompteEtatLu,
-    voieApiReelle:ebayVoieApi&&ebayCompteEtatLu&&ebayCompteUtilisable(ebayCompteEtat)===true,
+    // (03/10, point 17) La voie du trigger d'aujourd'hui (relié = API, prêt ou non).
+    voieApiReelle:ebayVoieApi&&ebayCompteEtatLu&&ebayVoieApiDuCompte(ebayCompteEtat)===true,
     rafraichir:rafraichirEtatEbay,
   }),[ebayVoieApi,ebayCompteEtat,ebayCompteEtatLu,rafraichirEtatEbay]);
   // Tri-état passé aux tabs : true = jamais vue, false = déjà vue, null = inconnu.

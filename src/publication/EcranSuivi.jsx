@@ -55,7 +55,9 @@ export default function EcranSuivi({ m }) {
       try {
         const { data, error } = await m.supabase
           .from("cross_post_jobs")
-          .select("id, platform, status, action, created_at, error, listing_url, platform_fields")
+          // (03/10, point 17) La VOIE réelle du job (trigger) : c'est elle qui dit
+          // « nos serveurs » ou « ton ordinateur », et la durée — jamais un miroir.
+          .select("id, platform, status, action, created_at, error, listing_url, platform_fields, voie")
           .eq("inventaire_id", f.inventaireId)
           .in("platform", plateformes)
           .gte("created_at", new Date(Date.parse(f.depuis) - 60_000).toISOString())
@@ -113,7 +115,8 @@ export default function EcranSuivi({ m }) {
   const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr") };
   const piste = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
-    const parApi = p === "ebay" && m.ebayVoieApiReelle;
+    // (03/10, point 17) La voie du JOB d'abord (trigger), le miroir seulement avant sa création.
+    const parApi = p === "ebay" && (e.job?.voie ? e.job.voie === "api" : m.ebayVoieApiReelle);
     const voie = parApi ? "api" : "extension";
     const base = e.job
       ? pisteJob({ ...e.job, voie: e.job.voie ?? voie }, ctxBarre)
@@ -136,7 +139,8 @@ export default function EcranSuivi({ m }) {
 
   const ligne = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
-    const parApi = p === "ebay" && m.ebayVoieApiReelle;
+    // (03/10, point 17) La voie du JOB d'abord (trigger), le miroir seulement avant sa création.
+    const parApi = p === "ebay" && (e.job?.voie ? e.job.voie === "api" : m.ebayVoieApiReelle);
     switch (e.kind) {
       case "en_cours": return { texte: parApi ? (en ? "Publishing from our servers…" : "Publication depuis nos serveurs…") : (en ? "In progress in Chrome" : "En cours dans Chrome"), droite: <span className="fsn-spin" aria-label={en ? "in progress" : "en cours"} /> };
       case "publiee": return { texte: <>{en ? "Online" : "En ligne"}{e.url ? <> · <a href={e.url} target="_blank" rel="noopener noreferrer">{en ? "see the listing ↗" : "voir l'annonce ↗"}</a></> : null}{noteLivraison(e.job)}</>, droite: <Puce ton="ok" point>{en ? "Live" : "En ligne"}</Puce> };
