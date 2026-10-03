@@ -124,6 +124,7 @@ import {
 } from "../publication/moteur/listes";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
+import { sansListesEmpruntees } from "../utils/catalogueListes.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -7675,6 +7676,9 @@ export default function ListingPreviewScreen({
               );
             }
           }
+          // (03/10, point 9) Une liste copiée d'un champ « Type/Produit » sur un
+          // champ « Poids/Quantité » n'est jamais proposée (utils/catalogueListes).
+          rows = sansListesEmpruntees(rows);
           return [platform, rows];
         }));
         if (!alive) return;

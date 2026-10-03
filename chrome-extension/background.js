@@ -3662,7 +3662,13 @@ async function processJob(rawJob, accessToken) {
     // Découverte réactive (chantier champs obligatoires, 2026-07-16) : les
     // requis observés pendant CE remplissage partent au catalogue cumulatif,
     // quel que soit le verdict du job — fire-and-forget, jamais bloquant.
-    if (result?.discoveredRequired?.length || result?.serverRequired?.length) {
+    // (03/10, point 9) Leboncoin a retenu SA suggestion à la place de notre
+    // rayon : les champs observés sont ceux d'un AUTRE rayon — les ranger sous
+    // le nôtre empoisonnait le catalogue (critères obligatoires d'Arts de la
+    // table appris sous Décoration, etc.). Rien n'est appris de ce dépôt.
+    const rayonLbcHorsJob = job.platform === "leboncoin" && (result?.warnings ?? [])
+      .some((w) => typeof w === "string" && /suggestion Leboncoin « [^»]+ » retenue/.test(w));
+    if (!rayonLbcHorsJob && (result?.discoveredRequired?.length || result?.serverRequired?.length)) {
       persistDiscoveredAspects(accessToken, job, [
         ...(result.discoveredRequired ?? []),
         ...(result.serverRequired ?? []).map((f) => ({ ...f, required: true, source: "server_400" })),

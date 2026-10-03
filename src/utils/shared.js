@@ -1362,7 +1362,15 @@ const OBJECT_ICON_RULES = [
   // l'outil — cette règle précède 🖌️ dans la liste (premier match gagne).
   // « toile » seul reste hors règle (toile de tente, toile cirée) : borné aux
   // formes « toile huile/peinte », « huile sur toile/panneau/carton ».
-  [/cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|lit\b))|tableau(?!.?électrique)|poster|affiche|gravures?\b|lithographies?\b|estampes?\b|aquarelles?\b|toiles?\s+(?:huile|peinte)|huile\s+sur\s+(?:toile|panneau|carton)|peintures?\s+à\s+l['’]huile/i, '🖼️'],  // cadre de vélo/lit ≠ cadre déco (audit 2026-07-19)
+  // (03/10, point 9) « Peinture paysage verger en fleurs signée » partait en
+  // 🖌️ (Leboncoin « Bricolage », et une question « Poids » remplie des choix
+  // de « Type ») : sur les 54 titres du parc qui disent « peinture », 6
+  // ŒUVRES tombaient dans la peinture de bricolage. Une peinture SIGNÉE ou
+  // ENCADRÉE, « à huile », « sur toile/carton/bois/panneau », ou dont le titre
+  // dit le genre (paysage, florale, portrait, nature morte, abstraite) est une
+  // œuvre. ⛔ « peinture marine » reste hors règle (peinture époxy de bateau,
+  // relevée au parc) ; « peinture sur tissu » aussi (outil de batik).
+  [/cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|lit\b))|tableau(?!.?électrique)|poster|affiche|gravures?\b|lithographies?\b|estampes?\b|aquarelles?\b|toiles?\s+(?:huile|peinte)|huile\s+sur\s+(?:toile|panneau|carton)|peintures?\s+à\s+l['’]huile|peintures?\s+(?:à\s+)?huile\b|peintures?\s+sur\s+(?:toile|carton|bois|panneau)\b|peintures?\s+(?:paysages?|florale?s?|portraits?|nature\s+morte|abstraites?)\b|peintures?\b(?=[^]*\b(?:sign[ée]e?s?|encadr[ée]e?s?)(?![\p{L}\p{N}]))/iu, '🖼️'],  // cadre de vélo/lit ≠ cadre déco (audit 2026-07-19)
   [/plante|cache[sx]?.?pot|jardinière/i, '🪴'],
   [/vase\b/i, '🏺'],
   [/assiette|\bbol\b|tasse|\bmug\b|verres?\b(?!\s*tremp)|carafe|vaisselle/i, '🍽️'],  // verre trempé = protection d'écran (audit 2026-07-19)
@@ -1424,7 +1432,9 @@ const OBJECT_ICON_RULES = [
   // \b obligatoire avant l'exclusion : sans lui, « pinceaux de maquillage »
   // re-matchait par backtracking sur « pinceau » nu (le lookahead ne voyait
   // que « x de maquillage »).
-  [/peinture|rouleau[sx]?.?peinture|pinceaux?\b(?!\s*(?:de\s*|à\s*)?(?:maquillage|makeup|teint|blush|poudre))/i, '🖌️'],  // pinceau de maquillage = Beauté (audit 2026-07-19)
+  // (03/10) Un LIVRE sur la peinture (« Livre peinture vitrail ») n'est pas un
+  // pot de peinture : un livre nommé avant le mot laisse la règle 📚 parler.
+  [/(?<!\blivres?\b[^]*)(?:peinture|rouleau[sx]?.?peinture|pinceaux?\b(?!\s*(?:de\s*|à\s*)?(?:maquillage|makeup|teint|blush|poudre)))/i, '🖌️'],  // pinceau de maquillage = Beauté (audit 2026-07-19)
   [/\bvis\b|boulon|cheville|clou\b/i, '🔩'],
   [/mètre[sx]?.?ruban|niveau.?(?:laser|à.?bulle)/i, '📏'],
   // pinces? borné (audit 2026-07-19) : « pince » matchait DANS « pinceaux » —

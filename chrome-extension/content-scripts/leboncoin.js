@@ -3836,11 +3836,14 @@ async function releverOptionsCritere(labelSelector) {
     if (!input) return null;
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await sleep(700);
-    // Même périmètre que fillCriterionSafe (aria-controls, repli document) :
-    // c'est ce périmètre qui a produit les listes correctes des warnings prod.
+    // (03/10, point 9) PLUS DE REPLI SUR TOUT LE DOCUMENT : sans le menu propre
+    // du champ (aria-controls), on ramassait les options du menu ouvert à côté
+    // — c'est ainsi que « Poids » (diy_weight, furniture_weight) et
+    // « Quantité » ont appris au catalogue la liste du champ « Type ». Pas de
+    // menu propre → pas de liste.
     const menu = document.getElementById(input.getAttribute("aria-controls"));
-    const scope = menu || document;
-    const options = [...scope.querySelectorAll('li, [role="option"], button')]
+    if (!menu) { document.body.click(); return null; }
+    const options = [...menu.querySelectorAll('li, [role="option"], button')]
       .map((o) => o.textContent.trim())
       .filter(Boolean)
       .slice(0, 60);

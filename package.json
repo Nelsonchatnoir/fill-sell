@@ -142,7 +142,8 @@
     "selftest:texte-du-vendeur": "node --import ./scripts/loader-ext.mjs scripts/texte-du-vendeur-selftest.mjs",
     "selftest:beebs-retrait-preuve": "node scripts/beebs-retrait-preuve-selftest.mjs",
     "selftest:ebay-saisie-libre": "node scripts/ebay-saisie-libre-selftest.mjs",
-    "selftest:statue-rayon": "node scripts/statue-rayon-selftest.mjs"
+    "selftest:statue-rayon": "node scripts/statue-rayon-selftest.mjs",
+    "selftest:peinture-poids": "node --import ./scripts/loader-ext.mjs scripts/peinture-poids-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
