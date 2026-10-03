@@ -7544,6 +7544,56 @@ serve(async (req) => {
     // Vinted « Jeux » publié sans PEGI, aucun dépôt Beebs publié sans Âge sur
     // ces feuilles — ce filet ne retient rien qui serait passé.
     // Best-effort : une lecture ou une écriture ratée → servi comme avant.
+    // ══ UNE REPUBLICATION REMET L'ANNONCE AU PRIX OÙ ELLE EST (03/10, Louis) ══
+    // Cinq inserts Zombicide en ligne à 10 € (relevé du matin, page publique) :
+    // la republication automatique les remettait à 12 €, le prix de la tâche
+    // SOURCE du 19/09 (spend_coins_and_republish : COALESCE(prix de
+    // republication, prix de la tâche source)). Une republication reprend
+    // TOUS les champs de l'annonce existante — son prix d'abord.
+    // Règle : sans prix de republication choisi par la personne, le prix
+    // relevé sur CETTE annonce (même numéro), vu dans les 14 derniers jours,
+    // remplace le prix ancien. Vinted garde sa copie par capture complète.
+    // Best-effort : un échec ici sert le job tel quel.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const pfP = (j: Record<string, unknown>) => ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+        const numeroDe = (j: Record<string, unknown>) => {
+          const snap = pfP(j)["republish_snapshot"];
+          return String((j as { platform_listing_id?: unknown }).platform_listing_id
+            ?? ((snap && typeof snap === "object") ? (snap as Record<string, unknown>)["platform_listing_id"] : "") ?? "").trim();
+        };
+        const aRegler = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.action === "republish"
+          && ["beebs", "leboncoin", "ebay", "opla"].includes(String(j.platform))
+          && !["recreated"].includes(String(pfP(j)["republish_step"] ?? ""))
+          && pfP(j)["prix_republication"] == null && pfP(j)["prix_repris_de_l_annonce"] == null
+          && numeroDe(j));
+        if (aRegler.length) {
+          const { data: lignesP } = await userClient.from("annonces_plateforme")
+            .select("platform, listing_id, prix, vu_le")
+            .in("listing_id", [...new Set(aRegler.map(numeroDe))])
+            .gte("vu_le", new Date(Date.now() - 14 * 86_400_000).toISOString());
+          const prixEnLigne = new Map<string, number>();
+          for (const l of (lignesP ?? []) as Array<Record<string, unknown>>) {
+            const p = Number(String(l.prix ?? "").replace(",", "."));
+            if (Number.isFinite(p) && p > 0) prixEnLigne.set(`${l.platform}|${l.listing_id}`, p);
+          }
+          for (const j of aRegler) {
+            const enLigne = prixEnLigne.get(`${j.platform}|${numeroDe(j)}`);
+            const actuel = Number(j.price);
+            if (enLigne == null || (Number.isFinite(actuel) && Math.abs(actuel - enLigne) < 0.005)) continue;
+            const pf = { ...pfP(j), prix_repris_de_l_annonce: { avant: Number.isFinite(actuel) ? actuel : null, apres: enLigne, source: "relevé de l'annonce en ligne", le: new Date().toISOString(), pose_par: "get-pending-jobs" } };
+            const { error: pErr } = await userClient.from("cross_post_jobs").update({ price: enLigne, platform_fields: pf }).eq("id", j.id as string);
+            if (pErr) { console.warn(`[get-pending-jobs] prix de republication ${String(j.id).slice(0, 8)} non repris (${pErr.message})`); continue; }
+            (j as Record<string, unknown>).price = enLigne;
+            (j as Record<string, unknown>).platform_fields = pf;
+            console.log(`[get-pending-jobs] ${j.platform} ${String(j.id).slice(0, 8)} : prix ${actuel} → ${enLigne} (celui de l'annonce en ligne)`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] prix de republication : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+      }
+    }
+
     let heldClassementAge = 0;
     if (!includeProcessing && !includeNeedsUser) {
       try {

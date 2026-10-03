@@ -26,6 +26,12 @@ const iPorte = gpj.indexOf("if (j.platform === \"beebs\") return cheminDe(pf.bee
 assert.ok(iReprise > 0 && iPorte > iReprise, "la reprise passe AVANT la porte « âge exigé »");
 assert.doesNotMatch(gpj, /avait été deviné, pas lu/, "plus de message faux sur l'annonce en ligne");
 
+// 2bis. Et le PRIX de l'annonce en ligne (10 €), pas celui de la tâche du 19/09 (12 €).
+assert.match(gpj, /UNE REPUBLICATION REMET L'ANNONCE AU PRIX OÙ ELLE EST/);
+assert.ok(gpj.includes(`pfP(j)["prix_republication"] == null`), "un prix de republication choisi par la personne prime");
+assert.ok(gpj.includes(`.update({ price: enLigne, platform_fields: pf })`), "le prix relevé de l'annonce est posé sur la tâche");
+assert.ok(gpj.includes(`["beebs", "leboncoin", "ebay", "opla"].includes(String(j.platform))`), "Vinted garde sa copie par capture complète");
+
 // 3. L'extension relève l'âge sur la fiche Beebs.
 const bg = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
 assert.match(bg, /out\.age = ligneLibellee\(\["Âge", "Age"\]\);/, "le relevé Beebs lit la ligne « Âge »");
