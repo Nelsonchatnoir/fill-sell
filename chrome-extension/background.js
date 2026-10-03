@@ -5329,6 +5329,10 @@ async function markNeedsUser(accessToken, job, result) {
         // « une liste relevée est une SUGGESTION » reste la règle par défaut,
         // et ce drapeau son exception, nommée et posée par qui a fait le relevé.
         ...(f.options_completes === true && allowed ? { options_completes: true } : {}),
+        // (03/10 nuit) La question « marque hors catalogue » dit pourquoi et
+        // pour quelle marque : l'app (QuestionMarque) lit ces deux clés.
+        ...(f.raison ? { raison: String(f.raison).slice(0, 60) } : {}),
+        ...(f.demandee ? { demandee: String(f.demandee).slice(0, 120) } : {}),
       },
     },
   });
@@ -22633,6 +22637,8 @@ async function processRepublishJob(job, accessToken) {
                 ? { allowed_values: f.allowed_values.slice(0, 200).map((v) => String(v)) } : {}),
               ...(f.input_type ? { input_type: String(f.input_type).slice(0, 40) } : {}),
               ...(f.options_completes === true ? { options_completes: true } : {}),
+              ...(f.raison ? { raison: String(f.raison).slice(0, 60) } : {}),
+              ...(f.demandee ? { demandee: String(f.demandee).slice(0, 120) } : {}),
             };
           }
           const releves = pf.champs_a_completer

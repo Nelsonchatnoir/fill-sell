@@ -48,6 +48,10 @@ assert.match(relais, /__fillsellMarques: \{ q,/);
 const bg = fs.readFileSync(new URL("../chrome-extension/background.js", import.meta.url), "utf8");
 assert.match(bg, /if \(msg\?\.type === "CHERCHER_MARQUE"\) \{/);
 assert.match(bg, /async function chercherMarquesVinted\(q\)/);
+// Relevé du test réel 0.6.94 (fe223d47) : la raison et la marque demandée
+// étaient perdues en chemin — elles traversent maintenant markNeedsUser.
+assert.equal(bg.split("...(f.raison ? { raison: String(f.raison).slice(0, 60) } : {}),").length - 1, 2, "raison transmise par les deux chemins needs_user");
+assert.equal(bg.split("...(f.demandee ? { demandee: String(f.demandee).slice(0, 120) } : {}),").length - 1, 2, "marque demandée transmise");
 assert.match(bg, /if \(cree && tabId != null\) chrome\.tabs\.remove\(tabId\)/, "l'onglet ouvert pour chercher est refermé");
 
 console.log("✓ question « Marque » : le pourquoi, « Sans marque » en un geste, la recherche au catalogue ; jamais d'impasse ni de fiche réécrite");
