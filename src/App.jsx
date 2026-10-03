@@ -7867,10 +7867,17 @@ export default function App({ loginOnly = false }){
       <div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
         {quotas?.annonces?.plafond!=null&&(
+          // (03/10, point 18) Business est la formule du haut : il n'y a pas
+          // d'offre à lui montrer. Le compteur reste (il informe), mais il
+          // n'ouvre plus les offres — la pastille Business, juste à droite,
+          // ouvre sa formule.
           <button
-            onClick={()=>openUpgradeModal(null,'entete')}
-            title={lang==='fr'?"Annonces restantes ce mois-ci — voir les offres":"Listings left this month — see plans"}
-            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}
+            onClick={isBusiness?undefined:()=>openUpgradeModal(null,'entete')}
+            disabled={isBusiness}
+            title={isBusiness
+              ?(lang==='fr'?"Annonces restantes ce mois-ci":"Listings left this month")
+              :(lang==='fr'?"Annonces restantes ce mois-ci — voir les offres":"Listings left this month — see plans")}
+            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:isBusiness?"default":"pointer",flexShrink:0,fontFamily:"inherit",color:"inherit",opacity:1}}
           >
             {/* « 5 annonces » ne disait pas s'il s'agit du restant ou du
                 total (relevé Nico 02/09 soir) : le mot « restantes » est
@@ -7894,15 +7901,17 @@ export default function App({ loginOnly = false }){
           </div>
         </div>
         <div className="tb-right">
-          {!isPremium&&!isNative?(
+          {/* (03/10, point 18) Business ne voit JAMAIS d'offre dans l'en-tête, même
+              si ses autres drapeaux manquaient : sa pastille de formule à la place. */}
+          {!isPremium&&!isBusiness&&!isNative?(
             <PremiumBanner userEmail={user?.email} compact source="topbar" onOpenModal={()=>openUpgradeModal(null,'entete')}/>
-          ):!isPremium&&isNative?(
+          ):!isPremium&&!isBusiness&&isNative?(
             // Même silhouette que le PremiumBanner compact ci-dessus : pill au
             // gabarit du badge Pro, zone tactile 44 px sur le bouton transparent.
             <button onClick={()=>openUpgradeModal(null,'entete')} style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
               <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>{CTA_OFFRES(lang)}</span>
             </button>
-          ):isPremium?(
+          ):(isPremium||isBusiness)?(
             // Business devant Pro devant Premium (PlanBadge tranche dans cet
             // ordre) : les flags sont cumulatifs, isPro vient de profiles.is_pro,
             // isBusiness de profiles.is_business, isPremium de l'expression
