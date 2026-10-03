@@ -19,10 +19,16 @@ assert.ok(ebayJs.includes(reExt), "content-scripts/ebay.js lit le numéro avec l
 assert.ok(bgJs.includes(reExt), "background.js (DELETE_TARGETS.ebay) lit le numéro avec la même regex");
 ok("même lecture du numéro que l'extension (content script + DELETE_TARGETS)");
 
-// 2. Le repli par titre existe bien dans le content script (sinon ce garde-fou
-//    n'a plus d'objet et doit être relu).
-assert.ok(/a\.textContent\.trim\(\) === cible/.test(ebayJs), "repli par titre exact présent dans ebay.js");
-ok("repli par titre exact repéré dans le content script");
+// 2. (03/10) Le repli par titre a été RETIRÉ du content script par 57e2667
+//    (0.6.84, 02/10), en application de la règle du 27/09 : un titre ne prouve
+//    jamais l'identité. Le test exigeait sa PRÉSENCE (rouge depuis le 02/10) ;
+//    il exige désormais son ABSENCE — plus strict : un retour du repli dans
+//    l'extension le fait rougir. L'étiquette servie (section 3) et le rejeu de
+//    l'ancien repli (section 4) restent : les postes 0.6.81 à 0.6.83 (minimum
+//    serveur 0.6.81) embarquent encore ce repli.
+assert.ok(!/a\.textContent\.trim\(\) === cible/.test(ebayJs), "plus aucun repli par titre exact dans ebay.js (0.6.84+)");
+assert.ok(!/annonce trouvée par titre exact/.test(ebayJs), "plus de trace « trouvée par titre exact » dans ebay.js");
+ok("ebay.js (0.6.84+) : aucun repli par titre — seul le numéro identifie l'annonce");
 
 // 3. Cas réels.
 const reels = [
@@ -64,8 +70,9 @@ for (const r of reels) {
 }
 ok("retraits eBay avec numéro : copie servie, lien intact, titre = étiquette, original intact");
 
-// 4. Le repli du content script, rejoué : ancres d'un Hub où l'annonce visée
-//    n'est PAS (autre compte, ou déjà finie) mais où un homonyme EST.
+// 4. Le repli des postes ANTÉRIEURS À LA 0.6.84 (encore servis : minimum
+//    0.6.81), rejoué : ancres d'un Hub où l'annonce visée n'est PAS (autre
+//    compte, ou déjà finie) mais où un homonyme EST.
 const hub = reels.map((r) => ({ textContent: `  ${r.title}  `, href: "https://www.ebay.fr/itm/999999999999" }));
 for (const r of reels) {
   const s = servis.find((x) => x.id === r.id);
