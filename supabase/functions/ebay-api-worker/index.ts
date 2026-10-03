@@ -1636,7 +1636,7 @@ function contexteDuJob(job: Job, pf: PlatformFields) {
 // Options : ignorer_aspects_job (défaut true — on mesure l'IA, pas ce qu'un
 // job antérieur ou une main a déjà posé) ; ignorer_champs_job (défaut false —
 // true = contexte inventaire seul, sans marque/taille/couleur/genre du job).
-async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean }): Promise<Record<string, unknown>> {
+async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean; categorie_id?: string; chemin?: unknown[] }): Promise<Record<string, unknown>> {
   const ignorerAspects = body.ignorer_aspects_job !== false;
   const ignorerChamps = body.ignorer_champs_job === true;
   const { data: compte } = await admin.from("ebay_accounts").select("user_id").eq("ebay_user_id", String(body.ebay_user_id ?? "")).maybeSingle();
@@ -1657,6 +1657,13 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
     let categorie = String(pfJob.ebayCategoryId ?? "");
     let categorieSource = categorie ? "job (mapping icône)" : "";
     let chemin: string[] = Array.isArray(pfJob.ebayCategoryPath) ? pfJob.ebayCategoryPath as string[] : [];
+    // (03/10, point A) Mesure à blanc dans un AUTRE rayon (retrait +
+    // republication d'un livre rangé hors des livres) : rien n'est écrit.
+    if (/^\d+$/.test(String(body.categorie_id ?? ""))) {
+      categorie = String(body.categorie_id);
+      chemin = Array.isArray(body.chemin) ? body.chemin.map(String) : [];
+      categorieSource = "demandée (mesure à blanc)";
+    }
     if (!categorie) {
       const sugg = await suggererCategories(env, token, a.titre);
       if (sugg[0]) { categorie = sugg[0].id; chemin = sugg[0].chemin; categorieSource = "suggestion eBay n°1"; }
@@ -2119,7 +2126,11 @@ async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<
       const j = await r.json().catch(() => ({})) as Record<string, unknown>;
       if (r.status === 200) {
         const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
-        lignes.push({ id, http: 200, etat: "vivante", item_id: j.itemId ?? null, fin: j.itemEndDate ?? null, disponibilite: dispo.estimatedAvailabilityStatus ?? null, quantite_restante: dispo.estimatedAvailableQuantity ?? null, vendus: dispo.estimatedSoldQuantity ?? null, prix: (j.price as Record<string, unknown> | undefined)?.value ?? null, titre: String(j.title ?? "").slice(0, 80), vendeur: (j.seller as Record<string, unknown> | undefined)?.username ?? null });
+        // (03/10, point A) Ce qu'il faut savoir AVANT de retirer une annonce :
+        // format (enchère ?), offres possibles (BEST_OFFER), enchères en cours,
+        // rayon et état — lus chez eBay, jamais supposés.
+        lignes.push({ id, http: 200, etat: "vivante", item_id: j.itemId ?? null, fin: j.itemEndDate ?? null, disponibilite: dispo.estimatedAvailabilityStatus ?? null, quantite_restante: dispo.estimatedAvailableQuantity ?? null, vendus: dispo.estimatedSoldQuantity ?? null, prix: (j.price as Record<string, unknown> | undefined)?.value ?? null, titre: String(j.title ?? "").slice(0, 80), vendeur: (j.seller as Record<string, unknown> | undefined)?.username ?? null,
+          formats: Array.isArray(j.buyingOptions) ? j.buyingOptions : null, encheres: j.bidCount ?? null, categorie: j.categoryId ?? null, chemin: j.categoryPath ?? null, etat_article: j.condition ?? null });
       } else {
         const err = (j.errors as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
         lignes.push({ id, http: r.status, etat: r.status === 404 ? "terminee" : "indeterminee", errorId: err.errorId ?? null, message: String(err.message ?? "").slice(0, 160) });
@@ -2948,7 +2959,7 @@ Deno.serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!attendu || req.headers.get("x-cron-secret") !== attendu) return json({ error: "Non autorisé" }, 401);
 
-  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean; ids?: string[]; scan?: number };
+  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean; ids?: string[]; scan?: number; categorie_id?: string; chemin?: unknown[] };
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
