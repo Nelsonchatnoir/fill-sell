@@ -5706,9 +5706,13 @@ const StockTab = memo(function StockTab({
     });
     return true;
   };
+  // (03/10, point 20) La règle du SERVEUR depuis le 02/09 : 50 republications
+  // offertes À VIE en Free (republication_avie_free), aucune limite par jour.
+  // L'ancien texte (« 3 par jour… ça repart demain ») promettait un lendemain
+  // qui n'existe pas.
   const msgPlafondRepub = (res) => (lang === 'fr'
-    ? `Limite du jour atteinte : ${res?.plafond ?? 3} republications par jour en Free. Rien n'a été débité — ça repart demain.`
-    : `Daily limit reached: ${res?.plafond ?? 3} reposts a day on Free. Nothing was charged — it resets tomorrow.`);
+    ? `Tes ${res?.plafond ?? 50} republications offertes sont toutes utilisées. Rien n'a été débité.`
+    : `Your ${res?.plafond ?? 50} included repostings are all used. Nothing was charged.`);
 
   async function lancerRepublication(item, prixRepublication = null, plateformes = ['vinted']) {
     if (repubBusy || repubEnPause) return;
@@ -5805,9 +5809,9 @@ const StockTab = memo(function StockTab({
   // articles ACTIONNABLES sont cochables : les bornes (republish vivant,
   // cadence 24 h) rendent la case absente, jamais un échec après le clic.
   // ── Republication EN LOT réservée aux payants (2026-09-02 soir) ───────────
-  // Un Free est plafonné à 3 republications manuelles/jour (refus serveur
-  // plafond_republication_free) : lui laisser lancer un lot, c'est lui
-  // promettre le contraire du refus qu'il va prendre au premier article. La
+  // Un Free a 50 republications offertes À VIE (republication_avie_free,
+  // refus serveur plafond_republication_free une fois épuisées) — à l'unité.
+  // Lui laisser lancer un lot, c'est le contraire de ce palier. La
   // porte se ferme EN AMONT : bouton visible (levier de conversion) mais
   // inopérant — au tap, modale de conversion (origine DISTINCTE
   // republication_lot_free, trigger republish_lot), aucun job, aucun appel
@@ -9497,11 +9501,17 @@ const StockTab = memo(function StockTab({
                       ?(lang==='fr'?"Coche les annonces à faire remonter, puis lance."
                           :"Tick the listings to bump, then launch.")
                       :repubLotReserve
-                        ?(lang==='fr'?"Republier plusieurs annonces d'un geste est un avantage des forfaits payants."
-                            :"Reposting several listings in one move is a paid-plan perk.")
+                        // (03/10, point 20) Ce qu'il A, d'abord : ses republications
+                        // offertes, et comment s'en servir (une par une).
+                        ?(quotas?.republication?.mode==='avie'&&Number(quotas.republication.restantes)>0
+                          ?(lang==='fr'
+                              ?`Tu as encore ${quotas.republication.restantes} republications offertes : republie tes annonces une par une, avec le bouton « Republier » de chaque carte. En lot, c'est un avantage des forfaits payants.`
+                              :`You still have ${quotas.republication.restantes} included repostings: repost your listings one by one with each card's “Repost” button. Bulk reposting is a paid-plan perk.`)
+                          :(lang==='fr'?"Republier plusieurs annonces d'un geste est un avantage des forfaits payants."
+                              :"Reposting several listings in one move is a paid-plan perk."))
                         :(lang==='fr'
-                            ?`Supprime puis recrée chaque annonce pour la faire remonter dans le fil Vinted.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} restantes${quotas.republication.mode==='avie'?` sur ${quotas.republication.plafond} offertes`:' ce mois-ci'}.`:''}`
-                            :`Deletes then recreates each listing to bump it in the Vinted feed.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} left${quotas.republication.mode==='avie'?` of ${quotas.republication.plafond} included`:' this month'}.`:''}`)}
+                            ?`Retire puis redépose chaque annonce à l'identique pour la faire remonter.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} restantes${quotas.republication.mode==='avie'?` sur ${quotas.republication.plafond} offertes`:' ce mois-ci'}.`:''}`
+                            :`Removes then re-posts each listing identically to bump it.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} left${quotas.republication.mode==='avie'?` of ${quotas.republication.plafond} included`:' this month'}.`:''}`)}
                   </span>
                 </span>
               </button>

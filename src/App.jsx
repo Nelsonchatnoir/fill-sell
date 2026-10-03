@@ -9243,6 +9243,8 @@ export default function App({ loginOnly = false }){
         origine={conversionModal.origine??null}
         plafondRepub={conversionModal.plafondRepub??null}
         offre={isNative?null:offreEnCours()}
+        // (03/10, point 20) Free : ses republications offertes à vie, dites AVANT les offres.
+        repubOffertes={quotas?.republication?.mode==='avie'?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null}:null}
       />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}

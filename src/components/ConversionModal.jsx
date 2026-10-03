@@ -585,6 +585,10 @@ export default function ConversionModal({
   // Free, que la remise s'appliquera au paiement ; c'est le serveur qui
   // l'applique réellement (create-checkout-session).
   offre        = null,
+  // (03/10, point 20) Free UNIQUEMENT : { restantes, plafond } — ses
+  // republications offertes à vie (quotas_etat, mode 'avie'). Le mur des
+  // republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
+  repubOffertes = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -810,6 +814,31 @@ export default function ConversionModal({
                     : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
                 : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
+
+      {(repubLot || repubAuto) && Number(repubOffertes?.restantes) > 0 && (
+        /* (03/10, point 20) Ce qu'il A DÉJÀ, avant toute offre. Les 6 nouveaux
+           comptes extension du 01-03/10 ont pris ce mur (en lot / automatique)
+           et sont partis sans utiliser une seule de leurs 50 republications :
+           rien ne leur disait qu'elles existaient, ni comment s'en servir. */
+        <div style={{ background: '#E8F5F3', border: `1px solid ${C.teal}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, color: C.tealDeep }}>
+            {fr
+              ? <>Tu as encore {repubOffertes.restantes} republications offertes{repubOffertes.plafond ? <> sur {repubOffertes.plafond}</> : null} — rien à payer.</>
+              : <>You still have {repubOffertes.restantes}{repubOffertes.plafond ? <> of {repubOffertes.plafond}</> : null} included repostings — nothing to pay.</>}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 4 }}>
+            {fr
+              ? <>Republie tes annonces une par une : le bouton « Republier » est sur la carte de chaque annonce.</>
+              : <>Repost your listings one by one: the “Repost” button is on each listing's card.</>}
+          </div>
+          <button type="button"
+            onClick={() => { palierCliqueRef.current = true; logModale('offers_modal_offertes_click', { origine: origine ?? 'non_precisee', trigger, restantes: repubOffertes.restantes }); onClose(); }}
+            style={{ marginTop: 10, padding: '9px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                     background: C.tealDeep, color: '#fff', fontSize: 12.5, fontWeight: 700 }}>
+            {fr ? 'Republier une par une' : 'Repost one by one'}
+          </button>
+        </div>
+      )}
 
       {offre === 'FILLSELL50' && (
         /* Offre de rentrée (blast du 26/09) : -50 % le premier mois, code
