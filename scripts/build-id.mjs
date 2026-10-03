@@ -1697,6 +1697,10 @@ export const PUBLISHED_BUILD_IDS = {
   '2026-10-01T10:50:14Z': '0.6.82',
   // 0.6.85 (6060632) : publiée au CWS, servie le 02/10 (6 comptes à 14:10).
   '2026-10-02T09:28:31Z': '0.6.85',
+  // 0.6.89 (1a49399) : acceptée au CWS la nuit du 02→03/10, servie (38 comptes
+  // vus dans les 24 h le 03/10 à 15:50). Registre seulement : le minimum
+  // (EXTENSION_MIN_BUILD, 0.6.81) ne bouge pas — décision de Nico.
+  '2026-10-02T19:15:37Z': '0.6.89',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
