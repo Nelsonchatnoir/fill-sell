@@ -18,6 +18,7 @@ import {
   resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota, dureeEstimeeMin, libelleDuree,
   bilanArticle, texteARelire, suiviDuLot, etatJobLot, depotArretable, marqueLot, idLotDeJob,
   groupesReponseCommune,
+  palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, repriseValable, REPRISE_LOT_MAX_MS,
 } from '../src/publication/lot/regles.js';
 
 let ko = 0, ok = 0;
@@ -170,6 +171,29 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
     { id: 5, gp: 'vinted', key: 'brand', label: 'Marque', allowedValues: [] },
   ]);
   verifier(g.length === 1 && egal(g[0].ids, [1, 2]), 'même plateforme, même champ, MÊME liste : une réponse pour tous ; une liste différente reste à part', JSON.stringify(g));
+}
+
+// ── Le mur de conversion (03/10, décision de Nico) ────────────────────────
+{
+  verifier(palierCourant({}) === 'gratuit' && palierCourant({ isPremium: true }) === 'premium'
+    && palierCourant({ isPremium: true, isPro: true }) === 'pro' && palierCourant({ isPremium: true, isPro: true, isBusiness: true }) === 'business',
+    "le palier suit l'expression canonique (business > pro > premium > gratuit)");
+  verifier(palierSuivant('gratuit') === 'premium' && palierSuivant('premium') === 'pro', 'gratuit → Premium, Premium → Pro');
+  verifier(palierSuivant('pro', { businessVisible: false }) === null && palierSuivant('pro', { businessVisible: true }) === 'business',
+    "Pro → Business seulement si l'offre Business est visible");
+  verifier(palierSuivant('business', { businessVisible: true }) === null, 'Business : rien au-dessus, le mur ne propose que « continuer »');
+  verifier(canalAppareil('ios') === 'apple' && canalAppareil('android') === 'google' && canalAppareil('web') === 'stripe', "canal de l'appareil");
+  verifier(canalAbonnement({ payant: false, apple: 'x' }, 'stripe') === null, 'gratuit (ou offert) : aucun abonnement à doublonner, même avec un vieux marqueur Apple');
+  verifier(canalAbonnement({ payant: true, apple: 'x' }, 'stripe') === 'apple', "payé sur l'App Store, vu du web → apple");
+  verifier(canalAbonnement({ payant: true, apple: 'x', stripe: 'cus_1' }, 'stripe') === 'stripe', "deux marqueurs dont celui de cet appareil : c'est ici");
+  verifier(canalAbonnement({ payant: true }, 'stripe') === null, 'premium sans aucun marqueur (offert) : achat ici');
+  verifier(monteePossibleIci(null, 'stripe') && monteePossibleIci('google', 'google') && !monteePossibleIci('apple', 'stripe') && !monteePossibleIci('stripe', 'apple'),
+    'un abonnement se change là où il a été pris : jamais un second abonnement ailleurs');
+  const t = Date.parse('2026-10-03T10:00:00Z');
+  verifier(repriseValable({ ids: ['1'], le: '2026-10-03T09:30:00Z' }, t), "reprise d'un lot interrompu par le paiement : valable 2 h");
+  verifier(!repriseValable({ ids: ['1'], le: new Date(t - REPRISE_LOT_MAX_MS - 1000).toISOString() }, t)
+    && !repriseValable({ ids: [], le: '2026-10-03T09:30:00Z' }, t) && !repriseValable(null, t),
+    'reprise périmée, vide ou absente : rien ne se rouvre');
 }
 
 console.log(`\npublication-lot : ${ok} contrôles verts, ${ko} rouges`);

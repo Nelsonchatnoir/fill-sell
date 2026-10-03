@@ -316,3 +316,75 @@ export function groupesReponseCommune(entrees) {
   }
   return [...groupes.values()].filter((g) => g.ids.length >= 2);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LE MUR DE CONVERSION DU LOT (03/10/2026, décision de Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// Quand le quota du mois ne couvre pas tout le lot, deux choix clairs :
+//   · passer au palier au-dessus, par le parcours d'achat EXISTANT
+//     (openUpgradeModal → App Store, Google Play ou Stripe) ;
+//   · continuer avec ce que le quota permet — le reste attend le nouveau mois.
+// Le gratuit ne dépasse JAMAIS son quota (partagerQuota ne prépare rien
+// au-delà, et generate-listing refuse en 402 de son côté).
+// ⛔ UN ABONNEMENT SE CHANGE LÀ OÙ IL A ÉTÉ PRIS : Apple → Apple, Google →
+//    Google, carte → Stripe. Payé ailleurs que sur cet appareil : on le dit et
+//    on montre où, on ne lance JAMAIS un second abonnement.
+
+export const PALIERS = Object.freeze(["gratuit", "premium", "pro", "business"]);
+
+/** Le palier d'un compte, avec l'expression canonique du premium (pur). */
+export function palierCourant({ isPremium = false, isPro = false, isBusiness = false } = {}) {
+  if (isBusiness) return "business";
+  if (isPro) return "pro";
+  if (isPremium) return "premium";
+  return "gratuit";
+}
+
+/** Le palier juste au-dessus, ou null (Business, ou offre Business masquée). */
+export function palierSuivant(palier, { businessVisible = false } = {}) {
+  if (palier === "gratuit") return "premium";
+  if (palier === "premium") return "pro";
+  if (palier === "pro") return businessVisible ? "business" : null;
+  return null;
+}
+
+/** Le canal de CET appareil : 'apple' (iOS), 'google' (Android), 'stripe' (web). */
+export function canalAppareil(plateforme) {
+  if (plateforme === "ios") return "apple";
+  if (plateforme === "android") return "google";
+  return "stripe";
+}
+
+/**
+ * Où l'abonnement EN COURS a été pris (pur). null = aucun abonnement payant
+ * connu (gratuit, ou premium offert) : rien à doublonner, l'achat se fait
+ * sur cet appareil. Plusieurs marqueurs : on préfère celui de CET appareil
+ * s'il en fait partie (c'est là que la montée se fera), sinon le premier.
+ * ⛔ Les marqueurs Apple/Google survivent à la résiliation : ils ne disent
+ *    JAMAIS qu'on est premium (règle du 25/07) — ici seulement OÙ un
+ *    abonnement payant, déjà établi par le palier, a été pris.
+ */
+export function canalAbonnement({ payant = false, apple = null, google = null, stripe = null } = {}, canalIci = null) {
+  if (!payant) return null;
+  const canaux = [apple ? "apple" : null, google ? "google" : null, stripe ? "stripe" : null].filter(Boolean);
+  if (!canaux.length) return null;
+  if (canalIci && canaux.includes(canalIci)) return canalIci;
+  return canaux[0];
+}
+
+/** Monter de palier ICI est-il possible sans doubler un abonnement ? (pur) */
+export function monteePossibleIci(canalAbo, canalIci) {
+  return canalAbo == null || canalAbo === canalIci;
+}
+
+// Un lot interrompu par un paiement (Stripe quitte la page) : retrouvé au
+// retour, sur CET appareil seulement, pendant deux heures. Effacé dès que le
+// lot part ou se ferme.
+export const CLE_REPRISE_LOT = (uid) => `fs_lot_reprise_${uid}`;
+export const REPRISE_LOT_MAX_MS = 2 * 3600 * 1000;
+/** La reprise lue est-elle encore valable ? (pur) */
+export function repriseValable(reprise, maintenant = Date.now()) {
+  if (!reprise || !Array.isArray(reprise.ids) || !reprise.ids.length) return false;
+  const t = Date.parse(reprise.le ?? "");
+  return Number.isFinite(t) && maintenant - t >= 0 && maintenant - t <= REPRISE_LOT_MAX_MS;
+}

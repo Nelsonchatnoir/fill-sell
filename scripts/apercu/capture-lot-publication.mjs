@@ -41,14 +41,16 @@ const ECRANS = [
   ['03-stock-selection', 'stock-selection', /3 sélectionnés/, 844],
   ['04-ou-publier', 'ou-publier', /Où les publier \?/i, 844],
   ['05-ou-publier-session-fermee', 'ou-publier-session', /Tu n'es pas connecté à Leboncoin/, 844],
-  ['06-ou-publier-quota-atteint', 'ou-publier-quota', /attendront ton nouveau mois/, 844],
+  ['06-ou-publier-quota-atteint', 'ou-publier-quota', /Ton quota ne suffit pas pour tout le lot[\s\S]*Passer à Premium — 40 annonces par mois[\s\S]*Continuer avec 2 articles/, 844],
+  ['06b-mur-abonnement-app-store', 'ou-publier-quota-boutique', /payé sur l'App Store : change de formule depuis l'app FillSell sur ton iPhone/, 844],
   ['07-ou-publier-extension-absente', 'ou-publier-extension', /L'extension FillSell n'est pas encore installée/, 844],
-  ['08-preparation-en-cours', 'preparation', /préparés/, 844],
+  ['08-preparation-en-cours', 'preparation', /préparés[\s\S]*Lecture de ta description sur Vinted, au rythme de tes dépôts/, 844],
   ['09-questions-a-completer', 'questions', /Relis le texte qui part/, 844],
   ['09b-questions-a-completer-long', 'questions', /Poids du colis/, 1700],
   ['10-tout-est-pret', 'pret', /Envoyer \d+ annonces/, 844],
   ['11-envoi-en-cours', 'envoi', /Mise en file/, 844],
-  ['12-c-est-parti', 'fin', /annonces en file/, 844],
+  // (03/10) Jamais « tu peux fermer l'app » : le suivi vit dans l'app.
+  ['12-c-est-parti', 'fin', /annonces en file[\s\S]*tu suis chaque annonce ici, dans FillSell/, 844],
   ['13-erreur-rien-n-est-parti', 'fin-erreur', /Rien n'est parti/, 844],
   ['14-suivi-du-lot', 'suivi', /Lot du/, 844],
   ['15-suivi-arret-confirmation', 'suivi-arret', /Laisser continuer/, 844],
@@ -75,6 +77,9 @@ try {
     console.log(`\n${fichier} (${scene})`);
     verifier(filtre(erreurs).length === 0, 'aucune erreur de page', filtre(erreurs).join(' | ').slice(0, 300));
     verifier(attendu.test(texte), `texte attendu : ${attendu}`);
+    // (03/10, Nico) L'app n'est jamais présentée comme accessoire, et ce
+    // n'est jamais « on publie pour toi » : l'extension dépose.
+    verifier(!/fermer l['’]app|close the app|publie pour toi|publish for you/i.test(texte), "ni « tu peux fermer l'app » ni « on publie pour toi »");
     verifier(largeur <= 390, `pas de défilement horizontal (${largeur} px)`);
     verifier(petits === 0, `champs de saisie à 16 px (${petits} sous 16 px)`);
     await page.close();

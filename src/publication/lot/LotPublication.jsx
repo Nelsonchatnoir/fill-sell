@@ -16,9 +16,20 @@
 //    bloque que lui). Les questions sont posées par le MÊME bloc que le stepper
 //    (BlocQuestions), branché sur le moteur de l'article.
 // ⛔ Ce n'est jamais « on publie pour toi » : l'extension dépose, depuis
-//    l'ordinateur, une annonce après l'autre.
+//    l'ordinateur, une annonce après l'autre — et le suivi vit dans l'app.
+// (03/10, décisions de Nico)
+//   · LE TEXTE DU VENDEUR FAIT FOI, quelle que soit la plateforme : avant
+//     d'ouvrir le moteur d'un article sans description, le lot la reprend là
+//     où il est en ligne — le MÊME chemin que le stepper à l'unité
+//     (publication/texteDuVendeur.js), une lecture à la fois, au rythme des
+//     dépôts ;
+//   · LE MUR DE CONVERSION : quota insuffisant pour tout le lot → passer au
+//     palier au-dessus (parcours d'achat existant, là où l'abonnement a été
+//     pris) ou continuer avec ce que le quota permet. Chaque affichage et
+//     chaque choix sont tracés dans usage_logs.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Capacitor } from "@capacitor/core";
 import "../stepper.css";
 import "./lot.css";
 import ListingPreviewScreen from "../../components/ListingPreviewScreen";
@@ -33,11 +44,16 @@ import { urlPhoto, urlsPhotos } from "../../utils/photos";
 import { lireVeritePlateformes, sessionsDepuisVerite } from "../../utils/veritePlateformes";
 import { ebayCompteUtilisable } from "../../utils/ebayCompte";
 import { lireProchaineRemiseAZero } from "../../reglages/quotas";
+import { agirEbay } from "../../utils/ebayCompte";
+import { businessOfferVisible } from "../../config/businessOffer";
+import { COIN_CONFIG_FALLBACK } from "../../components/ConversionModal";
+import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS } from "../texteDuVendeur";
 import { propsStepperArticle } from "./propsArticle";
 import {
   PLATEFORMES_LOT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, marqueLot, groupesReponseCommune,
+  palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
 } from "./regles";
 
 const CLE_CHOIX = "fs_lot_plateformes";
@@ -46,10 +62,33 @@ const ecrireChoixMemorise = (v) => { try { localStorage.setItem(CLE_CHOIX, JSON.
 const CLE_PLUS_TARD = (uid) => `fs_lot_plus_tard_${uid}`;
 
 // Les phases d'un article : où il en est, dans les mots de l'écran.
-const PHASES_EN_PREPARATION = new Set(["montage", "redaction", "verification"]);
+// `lecture` : sa description est lue là où il est en ligne (aucun moteur
+// monté) ; les trois suivantes occupent une place de moteur.
+const PHASES_MOTEUR = new Set(["montage", "redaction", "verification"]);
+const PHASES_EN_PREPARATION = new Set(["lecture", ...PHASES_MOTEUR]);
 const LIBELLE_PHASE = {
-  fr: { attente: "En attente", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À compléter", quota: "Mois prochain", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "Pas parti" },
-  en: { attente: "Waiting", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "To complete", quota: "Next month", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Not sent" },
+  fr: { attente: "En attente", lecture: "Ta description…", montage: "Lecture…", redaction: "Rédaction…", verification: "Vérification…", pret: "Prêt", questions: "À compléter", quota: "Mois prochain", rien: "Ne part pas", erreur: "Pas préparé", retire: "Retiré du lot", envoi: "Envoi…", envoye: "En file", refuse: "Pas parti" },
+  en: { attente: "Waiting", lecture: "Your description…", montage: "Reading…", redaction: "Writing…", verification: "Checking…", pret: "Ready", questions: "To complete", quota: "Next month", rien: "Not going", erreur: "Not prepared", retire: "Removed", envoi: "Sending…", envoye: "Queued", refuse: "Not sent" },
+};
+const NOM_PALIER = { premium: "Premium", pro: "Pro", business: "Business" };
+// Un abonnement se change là où il a été pris : payé ailleurs qu'ici, on dit
+// où, et on ne lance JAMAIS un second abonnement.
+const RENVOI_BOUTIQUE = {
+  fr: {
+    apple: "Ton abonnement est payé sur l'App Store : change de formule depuis l'app FillSell sur ton iPhone.",
+    google: "Ton abonnement est payé sur Google Play : change de formule depuis l'app FillSell sur ton téléphone Android.",
+    stripe: "Ton abonnement est payé par carte : change de formule sur fillsell.app, depuis un navigateur.",
+  },
+  en: {
+    apple: "Your subscription is billed by the App Store: change your plan from the FillSell app on your iPhone.",
+    google: "Your subscription is billed by Google Play: change your plan from the FillSell app on your Android phone.",
+    stripe: "Your subscription is billed by card: change your plan on fillsell.app, from a browser.",
+  },
+};
+// Ce que fait la lecture en cours, dans la ligne de l'article.
+const TEXTE_LECTURE = {
+  fr: { vinted: "Lecture de ta description sur Vinted, au rythme de tes dépôts…", ebay: "Lecture de ta description sur eBay…", null: "Recherche de ta description là où l'article est en ligne…" },
+  en: { vinted: "Reading your description on Vinted, at your posting pace…", ebay: "Reading your description on eBay…", null: "Looking for your description where the item is online…" },
 };
 const TON_PHASE = { pret: "ok", envoye: "ok", questions: "geste", quota: "geste", rien: "mute", erreur: "refus", refuse: "refus", retire: "mute" };
 
@@ -113,16 +152,22 @@ const HoteMoteur = memo(function HoteMoteur({
  * @param onJobsQueued  patch optimiste du Stock (invId, plateformes)
  * @param onFermer      () => void
  * @param onEnvoye      (lot) => void — le lot est parti (au moins un article)
- * @param onVoirOffres  () => void
+ * @param onMonterDePalier (palier, origine) => void — le parcours d'achat existant (openUpgradeModal)
  * @param onOuvrirArticle (item) => void — le stepper à l'unité, pour un article laissé de côté
+ * @param extensionVinted l'extension de CET appareil sait lire le détail d'un article Vinted
  */
 export default function LotPublication({
-  articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onVoirOffres, onOuvrirArticle, choixPrefere = null, boutiqueVinted = null,
+  articles, jobsByInventaire, prixVinted, ctx, onJobsQueued, onFermer, onEnvoye, onMonterDePalier = null, onOuvrirArticle, choixPrefere = null, boutiqueVinted = null,
+  extensionVinted = false,
 }) {
   const { userId, supabase, lang } = ctx;
   const en = lang === "en";
   const L = LIBELLE_PHASE[en ? "en" : "fr"];
   const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT).filter((p) => PLATEFORMES_LOT.includes(p));
+  const fermer = (r) => {
+    try { localStorage.removeItem(CLE_REPRISE_LOT(userId)); } catch { /* rien */ }
+    onFermer?.(r);
+  };
 
   // ── Écran 1 : ce qui est sûr AVANT de préparer quoi que ce soit ─────────
   const donnees = useMemo(() => (articles ?? []).map((item) => ({
@@ -134,6 +179,19 @@ export default function LotPublication({
   const [quotas, setQuotas] = useState(null);
   const [remise, setRemise] = useState(null);
   const [fiches, setFiches] = useState(null);
+  const [profil, setProfil] = useState(null);
+  const [quotasPaliers, setQuotasPaliers] = useState(() => ({
+    premium: COIN_CONFIG_FALLBACK.quota_annonces_premium, pro: COIN_CONFIG_FALLBACK.quota_annonces_pro, business: COIN_CONFIG_FALLBACK.quota_annonces_business,
+  }));
+  // Le quota se relit quand le palier change : un achat fait depuis le mur
+  // (App Store, Google Play) rend la main ici, et le compte doit suivre.
+  const palier = palierCourant(ctx);
+  useEffect(() => {
+    let vivant = true;
+    supabase.rpc("quotas_etat").then(({ data }) => { if (vivant && data && !data.error) setQuotas(data); }, () => {});
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [palier]);
   useEffect(() => {
     let vivant = true;
     lireVeritePlateformes().then((v) => { if (vivant) setVerite(v); }).catch(() => {});
@@ -142,8 +200,17 @@ export default function LotPublication({
         if (!vivant || !Array.isArray(data)) return;
         setPauses(Object.fromEntries(data.filter((r) => r.paused).map((r) => [r.platform, (en ? r.message_en || r.message_fr : r.message_fr) || ""])));
       }, () => {});
-    supabase.rpc("quotas_etat").then(({ data }) => { if (vivant && data && !data.error) setQuotas(data); }, () => {});
     lireProchaineRemiseAZero(userId).then((d) => { if (vivant) setRemise(d); }, () => {});
+    // Le mur de conversion : où l'abonnement a été pris, et le quota de
+    // chaque palier (coin_config fait foi, le repli de la modale sinon).
+    supabase.from("profiles").select("is_comped, apple_original_transaction_id, google_purchase_token, stripe_customer_id")
+      .eq("id", userId).maybeSingle()
+      .then(({ data }) => { if (vivant) setProfil(data ?? {}); }, () => { if (vivant) setProfil({}); });
+    supabase.from("coin_config").select("key, value").in("key", ["quota_annonces_premium", "quota_annonces_pro", "quota_annonces_business"])
+      .then(({ data }) => {
+        if (!vivant || !Array.isArray(data)) return;
+        setQuotasPaliers((prev) => ({ ...prev, ...Object.fromEntries(data.map((r) => [String(r.key).replace("quota_annonces_", ""), Number(r.value)]).filter(([, v]) => Number.isFinite(v))) }));
+      }, () => {});
     const ids = (articles ?? []).map((a) => a.id);
     if (ids.length) {
       supabase.from("fiches_annonce").select("inventaire_id, fiche").eq("user_id", userId).in("inventaire_id", ids)
@@ -183,6 +250,53 @@ export default function LotPublication({
   for (const d of partage.maintenant) for (const p of ciblesAvant[d.id]) parPlateformePrevu[p] = (parPlateformePrevu[p] ?? 0) + 1;
   const duree = libelleDuree(dureeEstimeeMin(parPlateformePrevu, { ebayParServeur }), lang);
 
+  // ── LE MUR DE CONVERSION (03/10, décision de Nico) ──────────────────────
+  // Visible dès que le quota ne couvre pas tout le lot. Deux choix : monter
+  // d'un palier (parcours d'achat existant), ou continuer avec ce que le
+  // quota permet — c'est le bouton du bas. Chaque affichage et chaque choix
+  // laissent une ligne usage_logs (lot_mur_quota_affiche / _choix).
+  const murActif = fiches != null && quotas != null && partage.plusTard.length > 0;
+  const palierVise = palierSuivant(palier, { businessVisible: businessOfferVisible(userId) });
+  const canalIci = canalAppareil(Capacitor.getPlatform());
+  const canalAbo = canalAbonnement({
+    payant: palier !== "gratuit" && !profil?.is_comped,
+    apple: profil?.apple_original_transaction_id, google: profil?.google_purchase_token, stripe: profil?.stripe_customer_id,
+  }, canalIci);
+  const [renvoiBoutique, setRenvoiBoutique] = useState(null); // canal où changer de formule, quand ce n'est pas ici
+  const journaliser = useCallback((feature, metadata) => {
+    if (!userId) return;
+    supabase.from("usage_logs").insert({ user_id: userId, feature, metadata })
+      .then(({ error }) => { if (error) console.warn(`[lot] ${feature} non journalisé :`, error.message); }, () => {});
+  }, [supabase, userId]);
+  const metaMur = () => ({
+    palier, palier_propose: palierVise, articles_lot: articlesAvecCible.length,
+    articles_retenus: partage.maintenant.length, articles_reportes: partage.plusTard.length,
+    restantes: Number.isFinite(restantes) ? restantes : null, canal_appareil: canalIci, canal_abonnement: canalAbo,
+    ...(quotaSimule != null ? { simule: true } : {}),
+  });
+  // Essai en développement (quota simulé) : le clic « Passer à… » est tracé
+  // mais n'ouvre JAMAIS le parcours d'achat — un compte réel ne doit ni
+  // payer, ni voir son abonnement basculer, ni recevoir un client Stripe
+  // pour un essai. Jamais dans un build servi (quotaSimule y vaut null).
+  const [essaiAchat, setEssaiAchat] = useState(false);
+  const murJournalise = useRef(false);
+  useEffect(() => {
+    if (!murActif || murJournalise.current) return;
+    murJournalise.current = true;
+    journaliser("lot_mur_quota_affiche", metaMur());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [murActif]);
+  function monterDePalier() {
+    if (!palierVise) return;
+    const ici = monteePossibleIci(canalAbo, canalIci);
+    journaliser("lot_mur_quota_choix", { ...metaMur(), choix: "monter", renvoye_boutique: !ici });
+    if (!ici) { setRenvoiBoutique(canalAbo); return; }
+    if (quotaSimule != null) { setEssaiAchat(true); return; }
+    // Stripe quitte la page : le lot se retrouvera au retour (StockTab).
+    try { localStorage.setItem(CLE_REPRISE_LOT(userId), JSON.stringify({ ids: donnees.map((d) => d.id), plateformes: choix, le: new Date().toISOString() })); } catch { /* rien */ }
+    onMonterDePalier?.(palierVise, "lot_publication_mur");
+  }
+
   // ── Le lot lui-même : un identifiant, les articles préparés, leurs états ─
   const [etape, setEtape] = useState("plateformes"); // plateformes | avant | envoi | fin
   const [lot, setLot] = useState(null); // { id, le, ids: [], plateformes: [] }
@@ -217,6 +331,9 @@ export default function LotPublication({
   function preparer() {
     const ids = partage.maintenant.map((d) => d.id);
     if (!ids.length) return;
+    // Continuer malgré le mur : c'est le second choix, tracé comme le premier.
+    if (murActif) journaliser("lot_mur_quota_choix", { ...metaMur(), choix: "continuer" });
+    try { localStorage.removeItem(CLE_REPRISE_LOT(userId)); } catch { /* rien */ }
     ecrireChoixMemorise(choix);
     const id = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const nouveauLot = { id, le: new Date().toISOString(), ids, plateformes: [...choix] };
@@ -226,6 +343,9 @@ export default function LotPublication({
       try { localStorage.setItem(CLE_PLUS_TARD(userId), JSON.stringify({ ids: partage.plusTard.map((d) => d.id), apres: remise ?? null })); } catch { /* rien */ }
     }
     setLot(nouveauLot);
+    // Les articles qui ont leur description (et, du dressing, leur catégorie)
+    // vont droit au moteur ; les autres passent d'abord par la lecture.
+    lusRef.current = new Set(ids.filter((x) => !texteACompleter(donnees.find((d) => d.id === x)?.item)));
     setEtats(Object.fromEntries([
       ...ids.map((x) => [x, { phase: "attente" }]),
       ...partage.plusTard.map((d) => [d.id, { phase: "quota" }]),
@@ -241,13 +361,64 @@ export default function LotPublication({
     return en ? `Already on ${choix.map(NOM).join(", ")}.` : `Déjà sur ${choix.map(NOM).join(", ")}.`;
   }
 
+  // ── LA LECTURE DU TEXTE DU VENDEUR (03/10, décision de Nico) ────────────
+  // Un article sans description la reprend là où il est en ligne, AVANT que
+  // son moteur ne s'ouvre — le même chemin que le stepper à l'unité
+  // (publication/texteDuVendeur.js). UNE lecture à la fois ; deux lectures
+  // d'une même plateforme sont espacées au rythme des dépôts (Vinted 8 à
+  // 20 s, eBay 1,5 à 3 s) : jamais une rafale, aucun anti-robot. Pendant ce
+  // temps les autres articles se préparent.
+  const lusRef = useRef(new Set());
+  const [complets, setComplets] = useState({}); // id → l'article complété (description reprise)
+  const [lectures, setLectures] = useState({}); // id → { source, note }
+  const lecteurOccupe = useRef(false);
+  const derniereLecture = useRef({}); // plateforme → horodatage de la fin de la dernière lecture
+  useEffect(() => {
+    if (!lot || lecteurOccupe.current) return;
+    const suivant = lot.ids.find((id) => !lusRef.current.has(id) && etats[id]?.phase === "attente");
+    if (!suivant) return;
+    const d = donnees.find((x) => x.id === suivant);
+    if (!d) { lusRef.current.add(suivant); return; }
+    lecteurOccupe.current = true;
+    majEtat(suivant, { phase: "lecture", lecture: null });
+    (async () => {
+      let r = null;
+      try {
+        r = await completerTexteDuVendeur(d.item, {
+          supabase, userId, extensionVinted,
+          lireEbay: (id) => agirEbay("lire_description", { inventaire_id: id }),
+          // Une lecture de lot n'est pas pressée : le délai de l'unité (12 s)
+          // est doublé, l'extension pouvant finir un dépôt avant de répondre.
+          delaiDetailMs: 25000,
+          avantLecture: async (pf) => {
+            majEtat(suivant, { lecture: pf });
+            const [min, max] = pf === "vinted" ? RYTHME_LECTURE_VINTED_MS : RYTHME_LECTURE_EBAY_MS;
+            const der = derniereLecture.current[pf];
+            if (der) {
+              const reste = der + min + Math.random() * (max - min) - Date.now();
+              if (reste > 0) await new Promise((ok) => setTimeout(ok, reste));
+            }
+          },
+        });
+      } catch { r = null; }
+      for (const pf of r?.lectures ?? []) derniereLecture.current[pf] = Date.now();
+      if (r?.item) setComplets((prev) => ({ ...prev, [suivant]: r.item }));
+      setLectures((prev) => ({ ...prev, [suivant]: { source: r?.source ?? null, note: r?.note ?? null } }));
+      lusRef.current.add(suivant);
+      lecteurOccupe.current = false;
+      // Retiré du lot pendant la lecture : il le reste.
+      setEtats((prev) => (prev[suivant]?.phase === "lecture" ? { ...prev, [suivant]: { ...prev[suivant], phase: "attente", lecture: null } } : prev));
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot, etats]);
+
   // ── Les moteurs montés : trois préparations à la fois, puis on garde ceux
   //    qu'il faudra encore lire (prêts, à compléter) jusqu'à l'envoi ────────
   useEffect(() => {
     if (!lot) return;
-    const enPrep = lot.ids.filter((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase)).length;
+    const enPrep = lot.ids.filter((id) => PHASES_MOTEUR.has(etats[id]?.phase)).length;
     const places = PREPARATIONS_SIMULTANEES - enPrep;
-    const aMonter = places > 0 ? lot.ids.filter((id) => etats[id]?.phase === "attente").slice(0, places) : [];
+    const aMonter = places > 0 ? lot.ids.filter((id) => etats[id]?.phase === "attente" && lusRef.current.has(id)).slice(0, places) : [];
     const garder = (id) => !["quota", "rien", "erreur", "retire", "refuse"].includes(etats[id]?.phase);
     const suivant = new Set([...actifs].filter(garder));
     for (const id of aMonter) suivant.add(id);
@@ -453,7 +624,7 @@ export default function LotPublication({
     // Rien n'est encore parti mais des articles sont préparés : un second tap
     // confirme. Les fiches rédigées restent sur les articles (rien de perdu).
     if (etape === "avant" && prepares > 0 && !quitterArme) { setQuitterArme(true); setTimeout(() => setQuitterArme(false), 4000); return; }
-    onFermer?.();
+    fermer();
   };
 
   let cta = null, disabled = false, onCta = null, sous = [], secondaire = null;
@@ -464,9 +635,14 @@ export default function LotPublication({
       : !n ? (!choix.length ? (en ? "Tick at least one platform" : "Coche au moins une plateforme")
           : partage.plusTard.length ? (en ? "Everything waits for your new month" : "Tout attend ton nouveau mois")
           : (en ? "Nothing to publish with this choice" : "Rien à publier avec ce choix"))
-      : (en ? `Prepare ${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""}` : `Préparer ${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""}`);
+      : murActif
+        // Le second choix du mur : continuer avec ce que le quota permet.
+        ? (en ? `Continue with ${n} item${n > 1 ? "s" : ""}` : `Continuer avec ${n} article${n > 1 ? "s" : ""}`)
+        : (en ? `Prepare ${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""}` : `Préparer ${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""}`);
     onCta = preparer;
-    sous = [en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies."];
+    sous = [murActif && n
+      ? (en ? `The other ${partage.plusTard.length} wait for your new month: nothing is lost. Nothing goes out yet.` : `${partage.plusTard.length > 1 ? `Les ${partage.plusTard.length} autres attendent` : "L'autre attend"} ton nouveau mois : rien n'est perdu. Rien ne part encore.`)
+      : (en ? "Nothing goes out yet: we prepare, you check." : "Rien ne part encore : on prépare, tu vérifies.")];
   } else if (etape === "avant") {
     if (!preparationFinie) {
       cta = en ? `Preparing… ${prepares} of ${lot.ids.length}` : `Préparation… ${prepares} sur ${lot.ids.length}`;
@@ -491,7 +667,7 @@ export default function LotPublication({
     sous = [en ? "Keep this screen open for a few seconds." : "Garde cet écran ouvert quelques secondes."];
   } else {
     cta = en ? "Back to stock" : "Retour au stock";
-    onCta = () => onFermer?.({ envoye: true });
+    onCta = () => fermer({ envoye: true });
     sous = [en ? "You'll follow the batch at the top of your Stock." : "Tu suis le lot en haut de ton Stock."];
   }
 
@@ -510,7 +686,7 @@ export default function LotPublication({
             return (
               <HoteMoteur
                 key={id}
-                item={d.item}
+                item={complets[id] ?? d.item}
                 jobs={d.jobs}
                 prixVinted={prixVinted ? prixVinted(d.item) : null}
                 surMoteur={surMoteur}
@@ -532,7 +708,11 @@ export default function LotPublication({
               sessions={sessions} pauses={pauses} ebayBloque={ebayBloque} ebayParServeur={ebayParServeur}
               quotas={quotas} restantes={restantes} remise={remise} partage={partage} annoncesPrevues={annoncesPrevues} duree={duree}
               extensionNeverSeen={ctx.extensionNeverSeen} extensionLastSeenAt={ctx.extensionLastSeenAt}
-              onVoirOffres={onVoirOffres} fichesLues={fiches != null} boutiqueVinted={boutiqueVinted}
+              fichesLues={fiches != null} boutiqueVinted={boutiqueVinted}
+              mur={murActif ? {
+                palierVise, quotaVise: palierVise ? quotasPaliers[palierVise] ?? null : null,
+                onMonter: onMonterDePalier && palierVise ? monterDePalier : null, renvoiBoutique, essaiAchat,
+              } : null}
             />
           )}
           {(etape === "avant" || etape === "envoi") && lot && (
@@ -542,6 +722,7 @@ export default function LotPublication({
               prets={prets} aCompleter={aCompleter} annoncesPretes={annoncesPretes} communes={communes}
               repondreCommune={repondreCommune} decider={decider} trancherJumeau={trancherJumeau}
               sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} envoi={envoi} supabase={supabase}
+              lectures={lectures}
             />
           )}
           {etape === "fin" && lot && (
@@ -593,7 +774,8 @@ export function CoqueLot({ en, ecran, titre, numeroEcran, retour = null, quitter
 // ═══ ÉCRAN 1 — « OÙ LES PUBLIER ? » ═════════════════════════════════════════
 export function EcranPlateformes({
   en, lang, userId, donnees, resume, choix, basculer, sessions, pauses, ebayBloque, ebayParServeur,
-  quotas, restantes, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, onVoirOffres, fichesLues, boutiqueVinted = null,
+  quotas, restantes, remise, partage, annoncesPrevues, duree, extensionNeverSeen, extensionLastSeenAt, fichesLues, boutiqueVinted = null,
+  mur = null,
 }) {
   const n = donnees.length;
   const vus = donnees.slice(0, 6);
@@ -617,6 +799,41 @@ export function EcranPlateformes({
             : "Chacun part là où il n'est pas encore. Tes titres, prix et descriptions partent tels que tu les as écrits."}</p>
         </div>
       </div>
+
+      {/* LE MUR : le quota ne couvre pas tout le lot. Deux choix clairs —
+          monter d'un palier (ici), ou continuer avec ce qui passe (le bouton
+          du bas). Jamais au-delà du quota. */}
+      {mur && partage.plusTard.length > 0 && (
+        <Carte gravite="geste" titre={en ? "Your monthly listings don't cover the whole batch" : "Ton quota ne suffit pas pour tout le lot"}>
+          <div className="fsn-card-p">
+            {partage.maintenant.length
+              ? (en
+                  ? `${partage.maintenant.length} item${partage.maintenant.length > 1 ? "s" : ""} can go now; ${partage.plusTard.length} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}.`
+                  : `${partage.maintenant.length > 1 ? `${partage.maintenant.length} articles peuvent` : "1 article peut"} partir maintenant ; ${partage.plusTard.length > 1 ? `${partage.plusTard.length} attendront` : "1 attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)
+              : (en
+                  ? `Your ${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}.`
+                  : `${partage.plusTard.length > 1 ? `Tes ${partage.plusTard.length} articles attendront` : "Ton article attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""}.`)}
+          </div>
+          {mur.onMonter && !mur.renvoiBoutique && (
+            <Bouton onClick={mur.onMonter}>
+              {en
+                ? `Switch to ${NOM_PALIER[mur.palierVise]}${mur.quotaVise ? ` — ${mur.quotaVise} listings a month` : ""}`
+                : `Passer à ${NOM_PALIER[mur.palierVise]}${mur.quotaVise ? ` — ${mur.quotaVise} annonces par mois` : ""}`}
+            </Bouton>
+          )}
+          {mur.renvoiBoutique && (
+            <div className="fsn-card-p">{RENVOI_BOUTIQUE[en ? "en" : "fr"][mur.renvoiBoutique]}</div>
+          )}
+          {mur.essaiAchat && (
+            <div className="fsn-small">Essai (développement) : le parcours d'achat s'ouvrirait ici. Rien n'est lancé pendant un essai.</div>
+          )}
+          {partage.maintenant.length > 0 && (
+            <div className="fsn-small">{en
+              ? `Or continue with ${partage.maintenant.length} item${partage.maintenant.length > 1 ? "s" : ""}: the button below. Nothing is lost.`
+              : `Ou continue avec ${partage.maintenant.length > 1 ? `les ${partage.maintenant.length} articles` : "l'article"} que ton quota permet : le bouton du bas. Rien n'est perdu.`}</div>
+          )}
+        </Carte>
+      )}
 
       <div>
         <p className="fsn-eyebrow" style={{ marginBottom: 8 }}>{en ? "Where to publish them?" : "Où les publier ?"}</p>
@@ -660,7 +877,7 @@ export function EcranPlateformes({
       </div>
 
       {/* Le compte exact, avant tout geste. */}
-      <Carte gravite={partage.plusTard.length ? "geste" : null} titre={fichesLues
+      <Carte gravite={null} titre={fichesLues
         ? (en ? `${annoncesPrevues} listing${annoncesPrevues > 1 ? "s" : ""} to create` : `${annoncesPrevues} annonce${annoncesPrevues > 1 ? "s" : ""} à créer`)
         : (en ? "Counting…" : "On compte…")}>
         {ann?.plafond != null && (
@@ -673,16 +890,6 @@ export function EcranPlateformes({
                   ? `Uses ${partage.aConsommer} of your monthly listings (${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)} left after).`
                   : `Prend ${partage.aConsommer} de tes annonces du mois (il t'en restera ${Math.max(0, (restantes ?? ann.restantes ?? 0) - partage.aConsommer)}).`)}
           </div>
-        )}
-        {partage.plusTard.length > 0 && (
-          <>
-            <div className="fsn-card-p">
-              {en
-                ? `${partage.plusTard.length} item${partage.plusTard.length > 1 ? "s" : ""} will wait for your new month${dateRemise ? ` (${dateRemise})` : ""}: nothing is lost, you'll relaunch ${partage.plusTard.length > 1 ? "them" : "it"} in one tap.`
-                : `${partage.plusTard.length > 1 ? `${partage.plusTard.length} articles attendront` : "1 article attendra"} ton nouveau mois${dateRemise ? ` (le ${dateRemise})` : ""} : rien n'est perdu, tu ${partage.plusTard.length > 1 ? "les relanceras" : "le relanceras"} d'un geste.`}
-            </div>
-            {onVoirOffres && <button type="button" className="fsn-lien" style={{ alignSelf: "flex-start" }} onClick={onVoirOffres}>{en ? "See the plans" : "Voir les offres"}</button>}
-          </>
         )}
         {duree && annoncesPrevues > 0 && (
           <div className="fsn-card-p">{en ? `With your computer on: ${duree}, one listing after the other.` : `Avec ton ordinateur allumé : ${duree}, une annonce après l'autre.`}</div>
@@ -711,6 +918,7 @@ export function EcranPlateformes({
 export function EcranAvant({
   en, lang, L, lot, etats, lignes, parId, moteurs, decisions, prepares, preparationFinie,
   prets, aCompleter, annoncesPretes, communes, repondreCommune, decider, trancherJumeau, sansPlateforme, retirerDuLot, envoi,
+  lectures = {},
 }) {
   const total = lot.ids.length;
   const enCours = lot.ids.find((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase));
@@ -763,7 +971,8 @@ export function EcranAvant({
       {/* Les articles qui attendent une réponse, puis les autres. */}
       {aCompleter.map((id) => (
         <ArticleAQuestions key={id} id={id} en={en} L={L} item={parId.get(id)?.item} m={moteurs.get(id)} st={etats[id]}
-          decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} />
+          decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
+          lecture={lectures[id] ?? null} />
       ))}
 
       <div className="fsn-card" style={{ gap: 0 }}>
@@ -779,6 +988,7 @@ export function EcranAvant({
                 <b>{titreDe(d?.item) || (en ? "Untitled item" : "Article sans titre")}</b>
                 <small>
                   {st.raison ? st.raison
+                    : st.phase === "lecture" ? TEXTE_LECTURE[en ? "en" : "fr"][st.lecture ?? "null"]
                     : pfs.length && ["pret", "envoi", "envoye"].includes(st.phase) ? pfs.map(NOM).join(" · ")
                     : null}
                 </small>
@@ -798,7 +1008,7 @@ export function EcranAvant({
 
 // Un article qui attend une réponse : SES questions, posées par le même bloc
 // que le stepper, plus ce que le lot ajoute (texte à relire, prix, jumeau).
-export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot }) {
+export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null }) {
   if (!m) return null;
   const motifs = st?.motifs ?? [];
   const aTexte = motifs.some((x) => x.cle === "texte");
@@ -838,7 +1048,13 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
           <div className="fsn-q-why">{!String(m.texteVendeur?.description ?? "").trim()
             ? (String(m.initialListing?.description ?? "").trim()
                 ? (en ? "This text was written by FillSell (from your photos), not by you: check it before it goes out." : "Ce texte a été écrit par FillSell (d'après tes photos), pas par toi : relis-le avant qu'il parte.")
-                : (en ? "Your description isn't in FillSell: this one was written from your photos and your title." : "Ta description n'est pas dans FillSell : celle-ci a été écrite d'après tes photos et ton titre."))
+                // Ta description vit sur Vinted, et CET appareil ne peut pas la
+                // lire (pas d'extension : un téléphone) — on dit où elle se lit.
+                : lecture?.note === "vinted_sans_extension"
+                  ? (en ? "Your description is on Vinted and is read from your computer, where the FillSell extension runs. This one was written from your photos and your title: check it, or prepare this batch from your computer." : "Ta description est sur Vinted et se lit depuis ton ordinateur, là où tourne l'extension FillSell. Celle-ci a été écrite d'après tes photos et ton titre : relis-la, ou prépare ce lot depuis ton ordinateur.")
+                  : lecture?.note === "vinted_echec"
+                    ? (en ? "Your Vinted description couldn't be read this time. This one was written from your photos and your title: check it before it goes out." : "Ta description Vinted n'a pas pu être lue cette fois. Celle-ci a été écrite d'après tes photos et ton titre : relis-la avant qu'elle parte.")
+                    : (en ? "Your description isn't in FillSell: this one was written from your photos and your title." : "Ta description n'est pas dans FillSell : celle-ci a été écrite d'après tes photos et ton titre."))
             : (en ? "This title was written by FillSell." : "Ce titre a été écrit par FillSell.")}</div>
           <input className="fsn-input" type="text" defaultValue={titreQuiPart}
             onBlur={(ev) => { if (ev.target.value !== titreQuiPart) m.poserValeurGenerale?.("titre", ev.target.value); }} />
@@ -917,7 +1133,9 @@ export function EcranFin({ en, L, lot, etats, lignes, parId, extensionNeverSeen,
             ? (en ? "They'll go out as soon as the FillSell extension is installed on your computer." : "Elles partiront dès que l'extension FillSell sera installée sur ton ordinateur.")
             : ebayParServeur && envoyes.every((id) => (etats[id]?.envoyees ?? []).every((p) => p === "ebay"))
               ? (en ? "eBay listings go out from our servers, even with your computer off." : "Les annonces eBay partent de nos serveurs, même ordinateur éteint.")
-              : (en ? "The FillSell extension posts them from your computer, one after the other. You can close the app." : "L'extension FillSell les dépose depuis ton ordinateur, une après l'autre. Tu peux fermer l'app.")}</p>
+              // (03/10, Nico) Jamais « tu peux fermer l'app » : l'app n'est pas
+              // accessoire — c'est là que chaque annonce se suit.
+              : (en ? "The FillSell extension posts them from your computer, one after the other — you follow each listing here, in FillSell." : "L'extension FillSell les dépose depuis ton ordinateur, une après l'autre, et tu suis chaque annonce ici, dans FillSell.")}</p>
         )}
       </div>
 

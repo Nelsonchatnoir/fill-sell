@@ -40,7 +40,7 @@ const A = [
 ];
 const donnees = A.map((item) => ({ id: String(item.id), item, jobs: item.vinted_item_id ? [] : [] }));
 const parId = new Map(donnees.map((d) => [d.id, d]));
-const L = { attente: 'En attente', montage: 'Lecture…', redaction: 'Rédaction…', verification: 'Vérification…', pret: 'Prêt', questions: 'À compléter', quota: 'Mois prochain', rien: 'Ne part pas', erreur: 'Pas préparé', retire: 'Retiré du lot', envoi: 'Envoi…', envoye: 'En file', refuse: 'Pas parti' };
+const L = { attente: 'En attente', lecture: 'Ta description…', montage: 'Lecture…', redaction: 'Rédaction…', verification: 'Vérification…', pret: 'Prêt', questions: 'À compléter', quota: 'Mois prochain', rien: 'Ne part pas', erreur: 'Pas préparé', retire: 'Retiré du lot', envoi: 'Envoi…', envoye: 'En file', refuse: 'Pas parti' };
 
 // ── Un moteur FACTICE à la forme de celui du stepper ───────────────────────
 function moteurFactice(t, tpl, p = {}) {
@@ -69,7 +69,8 @@ function Avant({ etape }) {
   const pfs = (id) => (id === '101' ? ['leboncoin', 'ebay', 'beebs'] : ['vinted', 'leboncoin', 'ebay', 'beebs']);
   A.forEach((a, i) => {
     const id = String(a.id);
-    if (enPrep) etats[id] = { phase: i < 2 ? 'pret' : i === 2 ? 'questions' : i < 5 ? (i === 3 ? 'redaction' : 'verification') : 'attente' };
+    // (03/10) Le 6e article : sa description est lue sur Vinted, au rythme des dépôts.
+    if (enPrep) etats[id] = i === 5 ? { phase: 'lecture', lecture: 'vinted' } : { phase: i < 2 ? 'pret' : i === 2 ? 'questions' : i < 5 ? (i === 3 ? 'redaction' : 'verification') : 'attente' };
     else if (etape === 'pret' || etape === 'envoi') etats[id] = { phase: etape === 'envoi' && i < 3 ? 'envoye' : etape === 'envoi' && i === 3 ? 'envoi' : 'pret', envoyees: pfs(id) };
     else etats[id] = { phase: i === 0 || i === 2 ? 'questions' : 'pret' };
     moteurs.set(id, moteurFactice(t, tpl, { plateformes: pfs(id) }));
@@ -94,7 +95,7 @@ function Avant({ etape }) {
   }
   const prets = lot.ids.filter((id) => etats[id]?.phase === 'pret');
   const aCompleter = lot.ids.filter((id) => etats[id]?.phase === 'questions');
-  const prepares = lot.ids.filter((id) => !['attente', 'montage', 'redaction', 'verification'].includes(etats[id]?.phase)).length;
+  const prepares = lot.ids.filter((id) => !['attente', 'lecture', 'montage', 'redaction', 'verification'].includes(etats[id]?.phase)).length;
   const annoncesPretes = prets.reduce((n, id) => n + pfs(id).length, 0);
   const communes = etape === 'questions' ? [{
     signature: 'poids', gp: 'leboncoin', key: 'estimated_parcel_weight', label: 'Poids du colis', allowedValues: POIDS, ids: ['103', '106'], entrees: [],
@@ -117,24 +118,28 @@ function Avant({ etape }) {
 }
 
 function OuPublier({ variante }) {
-  const sel = donnees.slice(0, variante === 'quota' ? 5 : 3);
+  const quota = variante === 'quota' || variante === 'quota-boutique';
+  const sel = donnees.slice(0, quota ? 5 : 3);
   const resume = resumeParPlateforme(sel.map((d) => ({ ...d, jobs: d.item.vinted_item_id ? [] : [] })));
   const choix = variante === 'extension' ? ['vinted', 'leboncoin'] : ['vinted', 'leboncoin', 'ebay', 'beebs'];
   const cibles = Object.fromEntries(sel.map((d) => [d.id, choix.filter((p) => !(d.item.vinted_item_id && p === 'vinted'))]));
-  const restantes = variante === 'quota' ? 2 : 74;
+  const restantes = quota ? 2 : 74;
   const partage = partagerQuota(sel, { restantes, consomme: () => true });
   const annonces = partage.maintenant.reduce((n, d) => n + cibles[d.id].length, 0);
+  // Le mur de conversion (03/10) : monter d'un palier ici, ou — compte payé
+  // sur l'App Store, vu du web — la phrase qui dit où changer de formule.
+  const mur = quota ? { palierVise: 'premium', quotaVise: 40, onMonter: noop, renvoiBoutique: variante === 'quota-boutique' ? 'apple' : null } : null;
   return (
     <CoqueLot en={false} ecran="lot-plateformes" titre={`Publier ${sel.length} articles`} numeroEcran={1}
-      retour={{ onClick: noop }} quitter={{ onClick: noop }} cta={`Préparer ${annonces} annonces`} onCta={noop}
-      sous={['Rien ne part encore : on prépare, tu vérifies.']}>
+      retour={{ onClick: noop }} quitter={{ onClick: noop }} cta={quota ? `Continuer avec ${partage.maintenant.length} articles` : `Préparer ${annonces} annonces`} onCta={noop}
+      sous={[quota ? `Les ${partage.plusTard.length} autres attendent ton nouveau mois : rien n'est perdu. Rien ne part encore.` : 'Rien ne part encore : on prépare, tu vérifies.']}>
       <EcranPlateformes en={false} lang="fr" userId="x" donnees={sel} resume={resume} choix={choix} basculer={noop}
         sessions={variante === 'session' ? { leboncoin: false } : {}}
         pauses={variante === 'extension' ? { beebs: "Beebs a changé sa page de dépôt : on adapte l'extension, tes annonces Beebs repartiront toutes seules." } : {}}
         ebayBloque={variante === 'extension'} ebayParServeur={variante !== 'extension'}
-        quotas={{ annonces: { plafond: variante === 'quota' ? 5 : 120, restantes } }} restantes={restantes} remise="2026-11-04T00:00:00Z"
-        partage={partage} annoncesPrevues={annonces} duree={variante === 'quota' ? '≈ 10 min' : '≈ 15 min'}
-        extensionNeverSeen={variante === 'extension'} extensionLastSeenAt={new Date().toISOString()} onVoirOffres={noop} fichesLues />
+        quotas={{ annonces: { plafond: quota ? 5 : 120, restantes } }} restantes={restantes} remise="2026-11-04T00:00:00Z"
+        partage={partage} annoncesPrevues={annonces} duree={quota ? '≈ 10 min' : '≈ 15 min'}
+        extensionNeverSeen={variante === 'extension'} extensionLastSeenAt={new Date().toISOString()} mur={mur} fichesLues />
     </CoqueLot>
   );
 }
@@ -238,6 +243,7 @@ const SCENES = {
   'ou-publier': () => <OuPublier />,
   'ou-publier-session': () => <OuPublier variante="session" />,
   'ou-publier-quota': () => <OuPublier variante="quota" />,
+  'ou-publier-quota-boutique': () => <OuPublier variante="quota-boutique" />,
   'ou-publier-extension': () => <OuPublier variante="extension" />,
   preparation: () => <Avant etape="preparation" />,
   questions: () => <Avant etape="questions" />,
