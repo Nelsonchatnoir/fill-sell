@@ -1,20 +1,20 @@
 ## État de production au 03/10 (soir) — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections « 02/10
-soir » et « 03/10 — chantier des 31 points » en fin) et
+`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections « 03/10 —
+chantier des 31 points » et « 03/10 soir — clôture » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** ; **0.6.90 à téléverser**
-  (`build/CWS-0.6.90-A-TELEVERSER/`, `2026-10-03T13:51:29Z+c979c15`) ;
-  minimum serveur **0.6.81** (décision de Nico) ; OTA **2.9.42** ;
-  `get-pending-jobs` v198 (`true`) ; `update-job-status` v121,
-  `handler-watch` v75, `ebay-api-worker` v74, `ebay-oauth-callback` v9,
-  `email-tunnel` v69 (`false`) ; `ebay-account` v16, `avis-demande` v2.
+- **Servi** : extension **0.6.89** ; **0.6.91 à téléverser**
+  (`build/CWS-0.6.91-A-TELEVERSER/`, `2026-10-03T16:16:12Z+9fbcab9`, prouvée
+  chez Nico) ; minimum serveur **0.6.81** ; OTA **2.9.43** ;
+  `get-pending-jobs` v200, `avis-demande` v3, `ebay-account` v16 (`true`) ;
+  `update-job-status` v121, `handler-watch` v77, `ebay-api-worker` v76,
+  `ebay-oauth-callback` v9, `email-tunnel` v69 (`false`).
 - **Relevés (03/10)** : 5 min sans progression = arrêt (`progres_le`, lignes
   écrites pour « annonces », 10 min pour une liste en lecture) ; veilleur
   espacé après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
-- **Selftests** : 201, 0 rouge ; morceaux mis de côté le 28/09 :
+- **Selftests** : 206, 0 rouge ; morceaux mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs`.
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
   coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
@@ -28,8 +28,8 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
   `scripts/reparations/` (`git add -f`), sauvegarde avant, inverse prêt.
 - **Lot (03/10)** : livré, `docs/publication-en-lot.md`.
 - **Ouvert** : binaires **2.9.38** (AAB
-  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; décisions du
-  03/10 en attente : fin de l'état.
+  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; livre eBay de
+  geronimo0550 (offre possible, non touché) : fin de l'état.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des

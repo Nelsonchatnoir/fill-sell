@@ -1,24 +1,31 @@
 ## État de production au 03/10 (soir) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
-« 02/10 soir » et « 03/10 — chantier des 31 points » en fin) et
+« 03/10 — chantier des 31 points » et « 03/10 soir — clôture » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS ; **0.6.90 prête à téléverser**
-  (`build/CWS-0.6.90-A-TELEVERSER/`, BUILD_ID `2026-10-03T13:51:29Z+c979c15`) ;
-  **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  OTA **2.9.42** ; `get-pending-jobs` v198 (`true`), `update-job-status`
-  v121, `handler-watch` v75, `ebay-api-worker` v74, `ebay-oauth-callback`
-  v9, `email-tunnel` v69 (ces cinq en `false`), `ebay-account` v16 et
-  `avis-demande` v2 (`true`). ⚠️ Le 30/09 22:52, le changement de
+- **Servi** : extension **0.6.89** au CWS ; **0.6.91 prête à téléverser**
+  (`build/CWS-0.6.91-A-TELEVERSER/`, BUILD_ID `2026-10-03T16:16:12Z+9fbcab9`,
+  chargée et prouvée chez Nico) ; **minimum serveur 0.6.81** (inchangé :
+  forcer la MAJ = décision de Nico) ; OTA **2.9.43** ; `get-pending-jobs`
+  v200, `avis-demande` v3, `ebay-account` v16 (`true`) ; `update-job-status`
+  v121, `handler-watch` v77, `ebay-api-worker` v76, `ebay-oauth-callback` v9,
+  `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de
   `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Le dossier de l'extension de Nico se LIT dans Chrome** (03/10) :
+  `Default/Secure Preferences`, `extensions.settings.pedhgegmgjkdcbdeinjnhdpemnpafpdp.path`
+  (location 4 = non empaquetée) ; on copie le build DANS ce dossier, puis on
+  relit `profiles.extension_build` après son « Recharger ».
+- ⛔ **WebFetch n'est jamais une preuve de l'état d'une annonce Vinted** : il
+  voit « Enlevé ! » sur des annonces en ligne (03/10). Seule la page vue dans
+  le Chrome de la personne (ou un relevé) fait foi.
 - **Relevés (03/10)** : 5 min sans progression = arrêt par handler-watch
   (`vinted_sync_runs.progres_le`, posé par la base ; « annonces » : la dernière
   ligne écrite compte ; liste encore en lecture : 10 min) ; le veilleur
   s'espace après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
-- **Selftests** : 201, 0 rouge. Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
+- **Selftests** : 206, 0 rouge (03/10 soir). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs` (un morceau ne revient qu'avec sa
   preuve réelle — son test tombe sinon).
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
@@ -39,8 +46,9 @@ contraire. Il se périme : `functions list`, `cron.job` et
   migration 20261003010000 (un arrêt ne repart jamais) appliquée.
 - **Ouvert** : binaires **2.9.38** (AAB
   `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; ornellaracano
-  307204072564, jocabroc8, carhoa : cf. l'état du 01/10 ; décisions du 03/10
-  en attente de Nico : fin de l'état (« 03/10 — chantier des 31 points »).
+  307204072564, jocabroc8, carhoa : cf. l'état du 01/10 ; livre eBay de
+  geronimo0550 (« Faire une offre » activé, non touché) et le reste : fin de
+  l'état (« 03/10 soir — clôture »).
 
 # FillSell — Instructions Claude
 
