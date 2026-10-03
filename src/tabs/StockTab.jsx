@@ -6014,12 +6014,12 @@ const StockTab = memo(function StockTab({
   // connecté ailleurs, l'attente est dite (cas ornellaracano, une seule
   // boutique épinglée). Aucune écriture, aucun bouton : rien n'a échoué, ça
   // attend et ça repart seul à la reconnexion.
+  const originesBoutique = useMemo(() => new Map(stock.map(i => [String(i.id), i.vinted_account_id == null ? '' : String(i.vinted_account_id).trim()])), [stock]);
   const attenteBoutique = useMemo(() => {
     if (!boutiqueConnectee?.userId) return null;
-    const origines = new Map(stock.map(i => [String(i.id), i.vinted_account_id == null ? '' : String(i.vinted_account_id).trim()]));
     const jobs = Object.values(jobsByInventaire).flat();
-    return etatAttenteBoutique({ jobs, origines, connectee: boutiqueConnectee, boutiques: boutiquesVinted, lang });
-  }, [boutiqueConnectee, stock, jobsByInventaire, boutiquesVinted, lang]);
+    return etatAttenteBoutique({ jobs, origines: originesBoutique, connectee: boutiqueConnectee, boutiques: boutiquesVinted, lang });
+  }, [boutiqueConnectee, originesBoutique, jobsByInventaire, boutiquesVinted, lang]);
   // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
   // IMPÉRATIVEMENT APRÈS la déclaration du state ci-dessus : posées avant,
   // elles levaient une TDZ au montage (« Cannot access 'jobsByInventaire'
@@ -7493,7 +7493,11 @@ const StockTab = memo(function StockTab({
   // Les MÊMES lectures que les pastilles des cartes : fraîcheur de
   // l'extension, plateformes en pause de notre côté, retenue serveur des
   // republications. Rien de nouveau n'est lu pour les barres.
-  const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, oplaAAutoriser: oplaVerdictRepub === 'a_autoriser', texteErreur: (j) => humanizeJobError(j, lang) };
+  // (03/10, point 16) Multi-boutiques Vinted : la boutique ouverte (règle du
+  // serveur), les pseudos et l'origine de chaque article — chaque ligne dit sa
+  // boutique, et un job retenu dit laquelle ouvrir.
+  const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, oplaAAutoriser: oplaVerdictRepub === 'a_autoriser', texteErreur: (j) => humanizeJobError(j, lang),
+    boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null };
   // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
   // republication — même gating que l'interrupteur coin_config
   // .republish_maintenance : le trigger republish_maintenance_guard refuse

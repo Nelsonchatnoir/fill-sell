@@ -104,7 +104,9 @@ const TEXTE = {
     essaiA: (h) => `Nouvel essai à ${h}`,
     essaiBientot: "Nouvel essai dans un instant",
     plateformePause: (p) => `${p} est en pause de notre côté — reprise automatique`,
-    boutique: (login) => (login ? `En attente de ta boutique @${login} dans Chrome` : "En attente de la bonne boutique dans Chrome"),
+    boutique: (login) => (login
+      ? `En attente de ta boutique @${login} : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul`
+      : "En attente de ton autre boutique Vinted : ouvre-la sur vinted.fr dans Chrome, ça repartira tout seul"),
     geste: "Un geste à faire",
     connexion: (p) => `Un geste à faire : connecte-toi à ${p} sur ton ordinateur`,
     opla: "Un geste à faire : autorise Opla dans l'extension — l'annonce partira toute seule ensuite",
@@ -126,7 +128,9 @@ const TEXTE = {
     essaiA: (h) => `Next try at ${h}`,
     essaiBientot: "Next try in a moment",
     plateformePause: (p) => `${p} is paused on our side — resumes automatically`,
-    boutique: (login) => (login ? `Waiting for your @${login} shop in Chrome` : "Waiting for the right shop in Chrome"),
+    boutique: (login) => (login
+      ? `Waiting for your @${login} shop: open it on vinted.fr in Chrome, it resumes on its own`
+      : "Waiting for your other Vinted shop: open it on vinted.fr in Chrome, it resumes on its own"),
     geste: "Something to do",
     connexion: (p) => `Something to do: sign in to ${p} on your computer`,
     opla: "Something to do: allow Opla in the extension — the listing then goes out on its own",
@@ -140,11 +144,41 @@ const TEXTE = {
 // absence CONSTATÉE (même règle que la carte du Stock).
 const extensionFraiche = (ext) => !ext || !["eteinte", "inactive", "session_expiree"].includes(ext.etat);
 
+// ── LA BOUTIQUE VINTED D'UN JOB (03/10, point 16 — Ornella) ────────────────
+// ctx.boutiques = { connectee: {userId, login, fraiche}|null, liste: [{user_id,
+// login}], origines: Map(inventaire_id → vinted_account_id) }. La boutique
+// d'un article est son ORIGINE (inventaire.vinted_account_id), comme au
+// serveur ; ouverte = boutique.connectee (_shared/boutique-connectee.js).
+const origineDe = (j, b) => {
+  const o = b?.origines instanceof Map ? b.origines.get(String(j?.inventaire_id)) : b?.origines?.[String(j?.inventaire_id)];
+  return o == null ? "" : String(o).trim();
+};
+const loginDe = (id, b) => {
+  const x = (b?.liste ?? []).find((y) => String(y?.user_id ?? "") === String(id));
+  return x?.login ? String(x.login) : null;
+};
+/** La boutique qu'attend un job retenu par la garde du serveur, sinon null (mêmes fail-open). */
+export function boutiqueAttendue(j, b) {
+  if (!b?.connectee?.userId || b.connectee.fraiche === false) return null;
+  if (j?.platform !== "vinted" || !["republish", "delete"].includes(j?.action) || j?.inventaire_id == null) return null;
+  const o = origineDe(j, b);
+  if (!o || o === String(b.connectee.userId).trim()) return null;
+  return { userId: o, login: loginDe(o, b) };
+}
+/** La boutique d'un job Vinted, pour l'étiquette « @login » — seulement à partir de deux boutiques. */
+export function boutiqueDuJob(j, b) {
+  if (j?.platform !== "vinted" || (b?.liste?.length ?? 0) < 2) return null;
+  const o = origineDe(j, b) || String(pfDe(j).vinted_account_id ?? "").trim();
+  const login = o ? loginDe(o, b) : null;
+  return login ? { userId: o, login } : null;
+}
+
 /**
  * Où en est UN job vivant, et pourquoi.
  * ctx = { maintenant, lang, extension: {etat}|null, plateformesEnPause: Set,
  *         plafond: {retenue, reprise, motif}|null, creneaux: {pf: {dans_creneau, reprise}}|null,
- *         oplaAAutoriser: bool (verdict serveur « a_autoriser ») }
+ *         oplaAAutoriser: bool (verdict serveur « a_autoriser »),
+ *         boutiques: { connectee, liste, origines } | null (multi-boutiques Vinted) }
  * → { groupe: 'en_cours'|'a_venir'|'pause'|'geste', raison, heure|null, motif }
  */
 export function situationJob(j, ctx = {}) {
@@ -163,6 +197,14 @@ export function situationJob(j, ctx = {}) {
     return { groupe: "geste", raison: T.opla, heure: null, motif: "opla" };
   }
 
+  // (03/10, point 16) Retenu par la garde de boutique du SERVEUR, à toute
+  // étape (une remise en ligne se fait sur la boutique d'origine) : c'est la
+  // boutique qui manque, pas son tour — on dit laquelle ouvrir.
+  if (j.status === "pending") {
+    const attendue = boutiqueAttendue(j, ctx.boutiques);
+    if (attendue) return { groupe: "pause", raison: T.boutique(attendue.login), heure: null, motif: "boutique" };
+  }
+
   // Hors ligne entre retrait et remise en ligne : c'est EN COURS, toujours.
   if (etape === "deleted") {
     const h = heureConnue(pf.next_action_after, maintenant, lang);
@@ -175,6 +217,12 @@ export function situationJob(j, ctx = {}) {
   // pending — d'abord ce qui le RETIENT, avec une heure quand elle est connue.
   if (estGeleLivres(j)) return { groupe: "pause", raison: T.pauseSansHeure(null), heure: null, motif: "gel" };
   if (retenueServeurDuJob(j)) return { groupe: "pause", raison: T.intacte, heure: null, motif: "retenue_serveur" };
+  // La boutique avant le plafond : c'est le geste qui débloque (marqueur posé
+  // par l'extension à la capture ; la garde du serveur est lue plus haut).
+  const boutique = objet(pf.attente_boutique);
+  if (boutique.login || pf.attente_boutique === true) {
+    return { groupe: "pause", raison: T.boutique(boutique.login ?? null), heure: null, motif: "boutique" };
+  }
   if (j.action === "republish") {
     const pl = ctx.plafond;
     if (pl?.retenue) {
@@ -187,10 +235,6 @@ export function situationJob(j, ctx = {}) {
       const h = heureConnue(cr.reprise, maintenant, lang);
       return { groupe: "pause", raison: h ? T.pauseJusqua(h, T.creneau) : T.pauseSansHeure(T.creneau), heure: h, motif: "creneau" };
     }
-  }
-  const boutique = objet(pf.attente_boutique);
-  if (boutique.login || pf.attente_boutique === true) {
-    return { groupe: "pause", raison: T.boutique(boutique.login ?? null), heure: null, motif: "boutique" };
   }
   if (ctx.plateformesEnPause?.has?.(j.platform)) {
     return { groupe: "pause", raison: T.plateformePause(nom), heure: null, motif: "plateforme" };
@@ -257,10 +301,13 @@ export function phraseCompteurs(c, lang = "fr") {
 }
 
 /** Le libellé de l'action : « Publication sur Vinted », « Retrait de Leboncoin »… */
-export function libelleAction(j, lang = "fr") {
+export function libelleAction(j, lang = "fr", boutiques = null) {
   const fr = lang !== "en";
   const nom = nomPlateforme(j?.platform);
-  if (j?.action === "republish") return fr ? `Republication sur ${nom}` : `Repost on ${nom}`;
-  if (j?.action === "delete") return fr ? `Retrait de ${nom}` : `Removal from ${nom}`;
-  return fr ? `Publication sur ${nom}` : `Listing on ${nom}`;
+  // (03/10, point 16) À partir de deux boutiques Vinted : laquelle.
+  const b = boutiqueDuJob(j, boutiques);
+  const ou = b ? ` · @${b.login}` : "";
+  if (j?.action === "republish") return (fr ? `Republication sur ${nom}` : `Repost on ${nom}`) + ou;
+  if (j?.action === "delete") return (fr ? `Retrait de ${nom}` : `Removal from ${nom}`) + ou;
+  return (fr ? `Publication sur ${nom}` : `Listing on ${nom}`) + ou;
 }

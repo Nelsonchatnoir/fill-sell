@@ -83,7 +83,9 @@ export function nomBoutique(userId, boutiques = [], lang = 'fr') {
  */
 export function etatAttenteBoutique({ jobs = [], origines = new Map(), connectee = null, boutiques = [], lang = 'fr' }) {
   // Fail-open n°1 : sans identité relevée, on ne devine pas qui est connecté.
-  if (!connectee?.userId) return null;
+  // (03/10, point 16) Ni sur un relevé de plus de 30 min : le serveur ne
+  // retient alors rien (_shared/boutique-connectee.js) — l'écran non plus.
+  if (!connectee?.userId || connectee.fraiche === false) return null;
   const connecteeId = String(connectee.userId).trim();
   if (!connecteeId) return null;
 
@@ -173,6 +175,12 @@ export function phraseBoutiqueActive(etatOuConnectee, lang = 'fr') {
       : "Boutique connectée dans Chrome : pas encore relevée — elle apparaît dès que ton ordinateur se réveille.";
   }
   const nom = c.nom ?? (c.login ? `@${c.login}` : null);
+  // (03/10, point 16) Un relevé de plus de 30 min ne dit plus « actuellement ».
+  if (c.fraiche === false) {
+    return lang === 'en'
+      ? `Last shop seen in Chrome: ${nom ?? 'unknown'}.`
+      : `Dernière boutique vue dans Chrome : ${nom ?? 'inconnue'}.`;
+  }
   return lang === 'en'
     ? `You are currently on the ${nom ?? 'shop'} shop.`
     : `Tu es actuellement sur la boutique ${nom ?? 'connectée'}.`;
@@ -197,6 +205,7 @@ export function phraseRassurance(lang = 'fr') {
 export function messageFicheAttenteBoutique({ connectee, origine, boutiques = [], action = 'republish', lang = 'fr' }) {
   const o = origine == null ? '' : String(origine).trim();
   if (!connectee?.userId || !o) return null;              // les deux fail-open
+  if (connectee.fraiche === false) return null;           // relevé périmé : le serveur ne retient rien
   const connecteeId = String(connectee.userId).trim();
   if (!connecteeId || o === connecteeId) return null;
   const fr = lang !== 'en';

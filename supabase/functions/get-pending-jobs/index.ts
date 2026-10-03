@@ -41,6 +41,7 @@ const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>(
 import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED_CANAUX_DEDIES, libelleChampVinted } from "../_shared/vinted-attributs-capture.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
+import { boutiqueConnecteeVinted } from "../_shared/boutique-connectee.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -4645,7 +4646,7 @@ serve(async (req) => {
     //
     // ⛔ RIEN N'EST REFUSÉ, ici non plus : le job n'est pas servi, il reste
     // 'pending', intact, aucune tentative consommée. Il repart tout seul.
-    const BOUTIQUE_SONDE_FRAICHEUR_MS = 30 * 60 * 1000;
+    // Fraîcheur : BOUTIQUE_FRAICHEUR_MS (30 min), dans _shared/boutique-connectee.js.
     const boutiqueConcernee = (j: { action: string; platform: string; inventaire_id: unknown }) =>
       (j.action === "republish" || j.action === "delete") &&
       j.platform === "vinted" && j.inventaire_id != null;
@@ -4689,28 +4690,15 @@ serve(async (req) => {
               .limit(1),
           ]);
           const sessions = (prof?.extension_sessions ?? null) as Record<string, unknown> | null;
-          const identSonde = (sessions?.["vinted_identite"] ?? null) as { user_id?: unknown; login?: unknown } | null;
           const run = (runs?.[0] ?? null) as
             { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null;
-          const sources = [
-            {
-              source: "sonde",
-              id: identSonde?.user_id != null ? String(identSonde.user_id).trim() : "",
-              login: identSonde?.login != null ? String(identSonde.login) : null,
-              at: Date.parse(String(sessions?.["checked_at"] ?? "")),
-            },
-            {
-              source: "sync_dressing",
-              id: run?.vinted_user_id != null ? String(run.vinted_user_id).trim() : "",
-              login: run?.vinted_login != null ? String(run.vinted_login) : null,
-              at: Date.parse(String(run?.started_at ?? "")),
-            },
-          ].filter((s) => s.id && Number.isFinite(s.at));
-          sources.sort((a, b) => b.at - a.at);
-          const vu = sources[0] ?? null;
-          const fraiche = vu != null && Date.now() - vu.at <= BOUTIQUE_SONDE_FRAICHEUR_MS;
+          // (03/10, point 16) LA règle, partagée avec l'app — sonde et relevé
+          // du dressing, le plus récent tranche, fraîcheur 30 min
+          // (_shared/boutique-connectee.js). Même calcul qu'ici avant, à l'octet.
+          const vu = boutiqueConnecteeVinted({ sessions, run });
+          const fraiche = vu != null && vu.fraiche;
           if (vu && fraiche) {
-            const identId = vu.id;
+            const identId = vu.userId;
             const ids = [...new Set(candidats.map((j) => j.inventaire_id))];
             const { data: arts } = await userClient
               .from("inventaire").select("id, vinted_account_id").in("id", ids);

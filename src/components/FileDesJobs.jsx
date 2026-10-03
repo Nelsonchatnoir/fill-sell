@@ -32,6 +32,7 @@ import { fraicheurExtension } from "../utils/shared";
 import { useOplaAcces } from "../utils/oplaAcces";
 import { MOTIFS } from "../utils/connexionPlateformes";
 import BoutonMeConnecter from "./BoutonMeConnecter";
+import { boutiqueConnecteeVinted } from "../../supabase/functions/_shared/boutique-connectee.js";
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
@@ -57,20 +58,31 @@ function useLectureAutonome({ supabase, userId, actif }) {
         const ids = [...new Set(jobs.map((j) => j.inventaire_id).filter((v) => v != null))];
         let fiches = new Map();
         if (ids.length) {
-          const { data: items } = await supabase.from("inventaire").select("id, titre, photos, prix_vente").in("id", ids.slice(0, 500));
-          fiches = new Map((items ?? []).map((i) => [String(i.id), { id: i.id, title: i.titre, photos: i.photos, sell: i.prix_vente }]));
+          const { data: items } = await supabase.from("inventaire").select("id, titre, photos, prix_vente, vinted_account_id").in("id", ids.slice(0, 500));
+          fiches = new Map((items ?? []).map((i) => [String(i.id), { id: i.id, title: i.titre, photos: i.photos, sell: i.prix_vente, vinted_account_id: i.vinted_account_id ?? null }]));
         }
         let extension = null;
+        let boutiques = null;
         try {
-          const { data: prof } = await supabase.from("profiles").select("extension_last_seen_at").eq("id", userId).maybeSingle();
+          const { data: prof } = await supabase.from("profiles").select("extension_last_seen_at, extension_sessions, vinted_sync_pin").eq("id", userId).maybeSingle();
           extension = fraicheurExtension(prof?.extension_last_seen_at ?? null);
+          // (03/10, point 16) Multi-boutiques Vinted : même règle que le serveur.
+          const liste = Array.isArray(prof?.vinted_sync_pin?.boutiques) ? prof.vinted_sync_pin.boutiques : [];
+          if (liste.length) {
+            const { data: runs } = await supabase.from("vinted_sync_runs").select("vinted_user_id, vinted_login, started_at")
+              .eq("user_id", userId).eq("kind", "dressing").not("vinted_user_id", "is", null).not("started_at", "is", null)
+              .order("started_at", { ascending: false }).limit(1);
+            const vu = boutiqueConnecteeVinted({ sessions: prof?.extension_sessions ?? null, run: runs?.[0] ?? null });
+            const origines = new Map([...fiches.values()].map((i) => [String(i.id), i.vinted_account_id == null ? "" : String(i.vinted_account_id).trim()]));
+            boutiques = { connectee: vu, liste, origines };
+          }
         } catch { /* poste inconnu : on n'affirme rien */ }
         let plateformesEnPause = new Set();
         try {
           const { data: h } = await supabase.from("platform_health").select("platform").eq("paused", true);
           plateformesEnPause = new Set((h ?? []).map((x) => x.platform));
         } catch { /* rien d'affiché */ }
-        if (vivant) setDonnees({ jobs, fiches, extension, plateformesEnPause });
+        if (vivant) setDonnees({ jobs, fiches, extension, plateformesEnPause, boutiques });
       } catch { /* la prochaine lecture rattrapera */ }
     };
     lire();
@@ -106,7 +118,7 @@ const ICONES = {
   ordinateur: Monitor, geste: Hand, connexion: Hand,
 };
 
-function LigneFile({ job, item, situation, lang, geste }) {
+function LigneFile({ job, item, situation, lang, geste, boutiques = null }) {
   const photo = item ? premierePhoto(item.photos) : null;
   const titre = (item?.title ?? job?.title ?? "").trim() || (lang === "en" ? "Your item" : "Ton article");
   const Icone = ICONES[situation.motif] ?? null;
@@ -127,7 +139,7 @@ function LigneFile({ job, item, situation, lang, geste }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, fontSize: 11.5, color: T.mute, minWidth: 0 }}>
           <PlatformLogo platform={job?.platform} size={13} />
-          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{libelleAction(job, lang)}</span>
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{libelleAction(job, lang, boutiques)}</span>
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 5, marginTop: 5, fontSize: 12, lineHeight: 1.4, color: couleur, fontWeight: situation.groupe === "geste" ? 600 : 500 }}>
           {Icone && <Icone size={13} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 1.5 }} aria-hidden="true" />}
@@ -169,6 +181,7 @@ export default function FileDesJobs({
     plafond: retenues?.plafond ?? contexte?.plafond ?? null,
     creneaux: retenues?.creneaux ?? null,
     oplaAAutoriser: contexte?.oplaAAutoriser ?? (opla.verdict === "a_autoriser"),
+    boutiques: contexte?.boutiques ?? autonome?.boutiques ?? null,
     texteErreur,
   }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict]);
 
@@ -216,6 +229,7 @@ export default function FileDesJobs({
               item={ficheDe(job)}
               situation={situation}
               lang={lang}
+              boutiques={ctx.boutiques}
               geste={s.cle !== "geste" ? null
                 : situation.motif === "opla" && userId
                   ? <BoutonMeConnecter userId={userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={lang} variante="bouton" />

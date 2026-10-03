@@ -8,6 +8,7 @@
 // content script n'est pas injecté, personne ne répond au ping, et le bouton
 // reste grisé. C'est le comportement attendu, pas une régression.
 import { supabase } from '../lib/supabase';
+import { boutiqueConnecteeVinted } from '../../supabase/functions/_shared/boutique-connectee.js';
 
 // Délai avant de conclure « pas d'extension ». Le content script répond au ping
 // dans la foulée ; 1,5 s couvre une injection tardive sans faire clignoter le
@@ -544,18 +545,25 @@ export async function completerLoginsBoutiques(userId) {
 // profiles.extension_sessions.vinted_identite. null = jamais relevée (sonde
 // muette, extension d'avant la 0.6.17, 401 ambigu) — l'app le DIT, elle ne
 // devine jamais.
+// (03/10, point 16) LA règle du serveur, partagée (_shared/boutique-connectee.js) :
+// la sonde ET le dernier relevé du dressing, le plus récent tranche ; `fraiche`
+// dit s'il a moins de 30 min — sinon le serveur ne retient rien, et l'écran ne
+// doit rien affirmer non plus. Avant : la sonde seule, sans âge — « à l'envers »
+// juste après une bascule de boutique.
 export async function lireBoutiqueConnectee(userId) {
   if (!userId) return null;
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('extension_sessions')
-    .eq('id', userId)
-    .maybeSingle();
+  const [{ data, error }, runs] = await Promise.all([
+    supabase.from('profiles').select('extension_sessions').eq('id', userId).maybeSingle(),
+    supabase.from('vinted_sync_runs').select('vinted_user_id, vinted_login, started_at')
+      .eq('user_id', userId).eq('kind', 'dressing')
+      .not('vinted_user_id', 'is', null).not('started_at', 'is', null)
+      .order('started_at', { ascending: false }).limit(1)
+      .then((r) => r, () => ({ data: null })),
+  ]);
   if (error) return null;
-  const s = data?.extension_sessions;
-  const ident = s?.vinted_identite;
-  if (!ident?.user_id) return null;
-  return { userId: String(ident.user_id), login: ident.login ?? null, releveLe: s?.checked_at ?? null };
+  const vu = boutiqueConnecteeVinted({ sessions: data?.extension_sessions ?? null, run: runs?.data?.[0] ?? null });
+  if (!vu) return null;
+  return { userId: vu.userId, login: vu.login, releveLe: new Date(vu.at).toISOString(), source: vu.source, fraiche: vu.fraiche };
 }
 
 // ── Dernière synchro RÉUSSIE (2026-08-11) ───────────────────────────────────
