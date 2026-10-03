@@ -150,6 +150,9 @@ export function optionsNommees(texte, options) {
  * @param {object} d
  * @param {string[]} d.options  la liste fermée du champ (telle que la plateforme l'écrit)
  * @param {{source: string, texte: string}[]} d.textes  dans l'ordre : titre, objet IA, objet vérifié, description
+ * @param {string} [d.cle]       clé du champ (sert à reconnaître un champ d'identité)
+ * @param {string} [d.label]     libellé affiché du champ
+ * @param {boolean|null} [d.identite]  force la nature « identité » (sinon déduite de cle/label)
  * @returns {{ valeur: string|null, source: string|null, candidats: string[] }}
  *   valeur    l'option à poser (écrite comme dans la liste), ou null ;
  *   candidats les options nommées quand elles sont plusieurs — à mettre en
