@@ -151,7 +151,8 @@
     "selftest:textes-montres": "node --import ./scripts/loader-ext.mjs scripts/textes-montres-selftest.mjs",
     "selftest:boutique-connectee": "node --import ./scripts/loader-ext.mjs scripts/boutique-connectee-selftest.mjs",
     "selftest:ebay-voie-affichee": "node --import ./scripts/loader-ext.mjs scripts/ebay-voie-affichee-selftest.mjs",
-    "selftest:entete-business": "node scripts/entete-business-selftest.mjs"
+    "selftest:entete-business": "node scripts/entete-business-selftest.mjs",
+    "selftest:phrases-interdites": "node scripts/phrases-interdites-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

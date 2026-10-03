@@ -7,7 +7,7 @@
 // needs_user → la question et le bouton « Compléter », failed → le motif), lu
 // dans cross_post_jobs toutes les 5 s pendant trois minutes, puis toutes les
 // 20 s. Les EXCLUSIONS du clic sont nommées (plus jamais silencieuses). La
-// pastille d'extension dit si Chrome est vu ; « Tu peux fermer, ça continue »
+// pastille d'extension dit si Chrome est vu ; « tu suis chacune ici » (jamais « tu peux fermer », 03/10)
 // est dit une fois, en clair.
 import { useEffect, useState } from "react";
 import { etatsFournee } from "./moteur/regles";
@@ -200,7 +200,8 @@ export default function EcranSuivi({ m }) {
         <p className="fsn-lead" style={{ marginTop: 4 }}>
           {tousFinis
             ? (en ? `${nbEnLigne} online` : `${nbEnLigne} en ligne`) + (nbAttente ? (en ? ` · ${nbAttente} waiting` : ` · ${nbAttente} en attente`) : "") + (nbRefus ? (en ? ` · ${nbRefus} refused` : ` · ${nbRefus} refusée${nbRefus > 1 ? "s" : ""}`) : "")
-            : (en ? `${plateformes.length} listing${plateformes.length > 1 ? "s" : ""} on their way. You can close this, it continues.` : `${plateformes.length} annonce${plateformes.length > 1 ? "s" : ""} en route. Tu peux fermer, ça continue.`)}
+            // (03/10, point 19, Nico) Jamais « tu peux fermer » : on suit ICI.
+            : (en ? `${plateformes.length} listing${plateformes.length > 1 ? "s" : ""} on their way — you follow each one here.` : `${plateformes.length} annonce${plateformes.length > 1 ? "s" : ""} en route — tu suis chacune ici.`)}
         </p>
       </div>
 

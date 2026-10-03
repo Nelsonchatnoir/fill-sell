@@ -3725,8 +3725,9 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                     : 'Open Chrome with the FillSell extension on your computer: your request will go out right after.')
                 : reclamationTardive
                   ? (fr
-                      ? `Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer ${isNative ? "l'application" : 'cette page'}.`
-                      : `Your sync will start the next time you open Chrome on your computer. You can close ${isNative ? 'this app' : 'this page'}.`)
+                      // (03/10, point 19) Jamais « tu peux fermer l'application ».
+                      ? "Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur ; tu suis son avancée ici."
+                      : "Your sync will start the next time you open Chrome on your computer; you follow its progress here.")
                   : (fr
                       ? "Elle part au prochain passage de ton extension — 2 minutes au plus."
                       : 'It starts at your extension’s next check — 2 minutes at most.')}
@@ -3748,7 +3749,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           <div style={{minWidth:0}}>
             <div style={{fontSize:13,fontWeight:700,color:"#1B6E62"}}>{progression}</div>
             <div style={{fontSize:11,color:"#6B7A75",marginTop:2}}>
-              {fr?"Tu peux fermer cet onglet : la synchronisation continue.":"You can close this tab: the sync keeps running."}
+              {fr?"La synchronisation se poursuit sur ton ordinateur ; tu suis son avancée ici.":"The sync keeps running on your computer; you follow its progress here."}
             </div>
           </div>
         </div>

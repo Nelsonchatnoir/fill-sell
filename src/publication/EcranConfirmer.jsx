@@ -52,7 +52,9 @@ export default function EcranConfirmer({ m }) {
     ? t("stepPublishServeurText")
     : voies.mixte
     ? tpl("stepPublishMixteText", { extension: voies.extension.map(NOM).join(", "), serveur: voies.serveur.map(NOM).join(", ") })
-    : (en ? "Once you tap Publish, it runs in Chrome on your computer, by itself. You can then close this screen." : "Après ton clic, la publication se fait dans Chrome sur ton ordinateur, toute seule. Tu pourras fermer cet écran.");
+    // (03/10, point 19, Nico) Jamais « tu pourras fermer » : l'app n'est pas
+    // accessoire, c'est là que chaque annonce se suit.
+    : (en ? "Once you tap Publish, it runs in Chrome on your computer, by itself — and you follow each listing here, in FillSell." : "Après ton clic, la publication se fait dans Chrome sur ton ordinateur, toute seule, et tu suis chaque annonce ici, dans FillSell.");
   const verdict = verdictConfirmation(m, m.lang, voieTexte);
   // Les sessions ne concernent que ce qui PART (02/10) : « Leboncoin
   // connectée » sous « Leboncoin ne partira pas » disait deux choses.
