@@ -42,7 +42,7 @@ const CACHE_EXIGES_VINTED = new Map<string, { codes: Set<string>; at: number }>(
 import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED_CANAUX_DEDIES, libelleChampVinted } from "../_shared/vinted-attributs-capture.js";
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
-import { boutiqueConnecteeVinted } from "../_shared/boutique-connectee.js";
+import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE } from "../_shared/correctifs-extension.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
@@ -162,6 +162,8 @@ import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour } from "../_shared/vinted-colis.js";
+import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
+import { attenteBoutiqueLevable } from "../_shared/attente-autre-boutique.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -1826,8 +1828,10 @@ serve(async (req) => {
           // l'extension (numéro du vendeur) : le retrait repart tout seul dès
           // que la sonde voit CETTE boutique connectée — jamais avant, jamais
           // sur une autre. Plus de « puis relance ».
-          const etrangerePage = garde?.motif === "boutique_etrangere" && garde?.pose_par === "extension (propriétaire lu sur la page exacte)"
-            && String(garde?.article ?? "") !== "" && String(identite?.user_id ?? "") === String(garde.article);
+          // (03/10, point H) Même levée pour une attente posée par handler-watch
+          // sur une origine PROUVÉE (_shared/attente-autre-boutique.js).
+          const etrangerePage = attenteBoutiqueLevable(garde)
+            && String(identite?.user_id ?? "") === String(garde.article);
           if (garde?.pose_par !== "get-pending-jobs (identité prouvée)" && !etrangerePage) continue;
           if (garde?.motif === "boutique_etrangere" && !etrangerePage) continue;
           const article = Array.isArray(attente.inventaire) ? attente.inventaire[0] : attente.inventaire;
@@ -5295,8 +5299,17 @@ serve(async (req) => {
           // carte dit « en attente, ton annonce est intacte » et l'ops-digest
           // la compte (src/utils/retenueServeur.js). Daté une fois.
           if (motif === "session_inconnue" || motif === "origine_inconnue") {
-            if (j.action === "republish") {
-              const pfPose = poserRetenueServeur(pf, RETENUE_BOUTIQUE_INCONNUE, new Date().toISOString(), { garde: motif });
+            // (03/10, point G — Ornella, « Alphalette ») Un RETRAIT sans boutique
+            // ne dort plus en silence non plus : la carte nomme les boutiques à
+            // ouvrir (celles du compte autres que celle ouverte dans Chrome),
+            // handler-watch y cherche l'annonce par son numéro dans le dressing.
+            if (j.action === "republish" || j.action === "delete") {
+              const logins = loginsDesBoutiques(profil?.vinted_sync_pin);
+              const ouverte = String(identite?.user_id ?? "");
+              const aOuvrir = [...logins.entries()].filter(([id]) => id !== ouverte)
+                .map(([id, login]) => (login ? `@${login}` : `n° ${id}`));
+              const pfPose = poserRetenueServeur(pf, RETENUE_BOUTIQUE_INCONNUE, new Date().toISOString(),
+                { garde: motif, ...(aOuvrir.length ? { boutiques: aOuvrir } : {}) });
               if (pfPose) {
                 await userClient.from("cross_post_jobs").update({ platform_fields: pfPose })
                   .eq("id", j.id).eq("status", "pending");
@@ -9022,12 +9035,22 @@ serve(async (req) => {
           // la sonde (0.6.69) dit alors son pays.
           const pays = paysSonde ? [paysSonde]
             : (langue && langue !== "fr" && langue !== "en" ? paysDeLaLangue(langue) : []);
-          if (!pays.length || pays.includes("FR")) continue; // français ou inconnu : chemin d'aujourd'hui
-          if (!pays.some((cc) => ouverts.has(cc))) { fermes++; continue; }
+          // (03/10, point E — dew) Un compte FRANÇAIS (ou de pays inconnu)
+          // dont la page Vinted est dans une AUTRE langue (sonde « en-fr ») :
+          // ni identifiants ni autorisation — son chemin reste celui d'avant —
+          // MAIS l'état d'une republication lui est servi dans la langue de SA
+          // page (étape 1 ci-dessous) : c'est l'identifiant d'état de SON
+          // annonce, seul le libellé change. Une page française (langue « fr »
+          // ou inconnue) n'est jamais concernée.
+          const francaisPageEtrangere = (!pays.length || pays.includes("FR")) && !!langue && langue !== "fr";
+          if (!francaisPageEtrangere) {
+            if (!pays.length || pays.includes("FR")) continue; // français ou inconnu : chemin d'aujourd'hui
+            if (!pays.some((cc) => ouverts.has(cc))) { fermes++; continue; }
 
-          // (3) Autorisation de poser par identifiant (0.6.69, page non française).
-          pf.vinted_ids_actifs = true;
-          autorises++;
+            // (3) Autorisation de poser par identifiant (0.6.69, page non française).
+            pf.vinted_ids_actifs = true;
+            autorises++;
+          }
 
           // (1) L'état dans la langue de la page — republication avec copie.
           if (j.action !== "republish" || String(va.condition ?? "").trim() || !snap) continue;
@@ -9128,6 +9151,39 @@ serve(async (req) => {
       if (erreurReservation) return json({ error: "La réservation des jobs est indisponible. La file sera relue au prochain passage." }, 503);
       const idsPris = new Set(Array.isArray(pris) ? pris.map(String) : []);
       out = out.filter(j => idsPris.has(String(j.id)));
+      // ── UNE TÂCHE SERVIE SANS JAMAIS DÉMARRER EST MISE DE CÔTÉ (03/10, F) ──
+      // doriane-henri : deux tâches Vinted servies à chaque passage depuis le
+      // 27/09, jamais commencées — 3 à 4 min d'attente chacune, à chaque cycle.
+      // Règle : _shared/tache-sans-demarrage.js (compteur de la réservation,
+      // migration 20261003190000). Best-effort : jamais un point de panne.
+      if (out.length) {
+        try {
+          const { data: resas } = await admin.from("jobs_reservations_extension")
+            .select("job_id, servi_n, premier_service").in("job_id", out.map((j) => String(j.id)));
+          const parJob = new Map(((resas ?? []) as Array<Record<string, unknown>>).map((r) => [String(r.job_id), r]));
+          const deCote = new Set<string>();
+          for (const j of out) {
+            const resa = parJob.get(String(j.id));
+            if (!tacheAMettreDeCote(j, resa)) continue;
+            const pf = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+            pf.needs_user_source = SOURCE_TACHE_SANS_DEMARRAGE;
+            pf.tache_sans_demarrage = {
+              servie_n: Number(resa!.servi_n), depuis: String(resa!.premier_service),
+              le: new Date().toISOString(), pose_par: "get-pending-jobs",
+            };
+            const { data: maj } = await admin.from("cross_post_jobs")
+              .update({ status: "needs_user", error: messageTacheSansDemarrage(j, resa), platform_fields: pf })
+              .eq("id", j.id as string).eq("status", "pending").select("id");
+            if (maj?.length) {
+              deCote.add(String(j.id));
+              console.log(`[get-pending-jobs] userId=${user.id} : tâche ${String(j.id).slice(0, 8)} (${j.platform} ${j.action}) servie ${resa!.servi_n} fois depuis ${resa!.premier_service} sans jamais démarrer → mise de côté (needs_user), la file passe`);
+            }
+          }
+          if (deCote.size) out = out.filter((j) => !deCote.has(String(j.id)));
+        } catch (e) {
+          console.warn(`[get-pending-jobs] tâches sans démarrage : ${String((e as Error)?.message ?? e)} — file servie telle quelle`);
+        }
+      }
     }
     const _outIds = new Set(out.map((j) => String(j.id)));
     const _nowMs = Date.now();

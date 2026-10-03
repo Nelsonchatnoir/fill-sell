@@ -78,7 +78,7 @@ serve(async (req) => {
   try {
     const maintenant = Date.now();
     const depuis24h = new Date(maintenant - JOUR_MS).toISOString();
-    const [rProf, rJobs, rEvts, rLedger, rCheckout] = await Promise.all([
+    const [rProf, rJobs, rEvts, rLedger, rCheckout, rOuverts] = await Promise.all([
       admin.from("profiles").select("created_at, onboarded_at, is_premium, is_pro").eq("id", user.id).maybeSingle(),
       admin.from("cross_post_jobs")
         .select("id, action, status, created_at, published_at, handler_build, pdr:platform_fields->pas_de_rouge, rs:platform_fields->retenue_serveur, rl:platform_fields->retenue_levee, os:platform_fields->opla_sortie")
@@ -98,8 +98,18 @@ serve(async (req) => {
       admin.from("usage_logs").select("created_at")
         .eq("user_id", user.id).eq("feature", "checkout_open")
         .gte("created_at", depuis24h).limit(5),
+      // (03/10, point F) Les tâches OUVERTES, toutes dates : une tâche figée
+      // depuis le 27/09 sort des 300 derniers jobs lus ci-dessus.
+      admin.from("cross_post_jobs")
+        .select("id, action, status, created_at, handler_build, ps:platform_fields->>processing_since, naa:platform_fields->>next_action_after, os:platform_fields->opla_sortie")
+        .eq("user_id", user.id)
+        .in("action", ["publish", "republish", "delete"])
+        .in("status", ["needs_user", "failed", "processing", "pending"])
+        .or("handler_build.is.null,and(handler_build.not.ilike.*releve-annonces*,handler_build.not.ilike.*sync-dressing*)")
+        .gte("created_at", new Date(maintenant - 90 * JOUR_MS).toISOString())
+        .limit(1000),
     ]);
-    const err = rProf.error ?? rJobs.error ?? rEvts.error ?? rLedger.error ?? rCheckout.error;
+    const err = rProf.error ?? rJobs.error ?? rEvts.error ?? rLedger.error ?? rCheckout.error ?? rOuverts.error;
     if (err || !rProf.data) {
       console.warn(`[avis-demande] ${user.id.slice(0, 8)} : lecture impossible (${err?.message ?? "profil absent"}) — on n'ouvre pas`);
       return json({ ouvrir: false, motif: "lecture_impossible" });
@@ -126,9 +136,18 @@ serve(async (req) => {
         ...(j.os != null ? { opla_sortie: j.os } : {}),
       },
     }));
+    // deno-lint-ignore no-explicit-any
+    const tachesOuvertes = ((rOuverts.data ?? []) as any[]).map((j) => ({
+      id: j.id, action: j.action, status: j.status, created_at: j.created_at, handler_build: j.handler_build,
+      platform_fields: {
+        ...(j.ps != null ? { processing_since: j.ps } : {}),
+        ...(j.naa != null ? { next_action_after: j.naa } : {}),
+        ...(j.os != null ? { opla_sortie: j.os } : {}),
+      },
+    }));
     const d = decisionAvis({
       maintenant, compteCreeLe: prof.created_at, entreeFinieLe: prof.onboarded_at,
-      jobs, evenements: rEvts.data ?? [], paiementsLes, plateforme,
+      jobs, evenements: rEvts.data ?? [], paiementsLes, plateforme, tachesOuvertes,
     });
     if (action === "etat" || !d.ouvrir) return json({ ouvrir: false, motif: d.motif, serie: d.serie, ...(action === "etat" ? { ouvrirait: d.ouvrir } : {}) });
 

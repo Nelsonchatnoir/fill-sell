@@ -31,11 +31,14 @@ const ANCIENNES_CLES = { retenue_isbn_capture: RETENUE_ISBN_CAPTURE };
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
 
-/** { motif, depuis } de la retenue portée par ces platform_fields, ou null. */
+/** { motif, depuis, boutiques? } de la retenue portée par ces platform_fields, ou null. */
 export function retenueServeurDe(pf) {
   const p = objet(pf) ?? {};
   const r = objet(p[CLE_RETENUE]);
-  if (r && r.motif) return { motif: String(r.motif), depuis: r.depuis ? String(r.depuis) : null };
+  if (r && r.motif) {
+    const boutiques = Array.isArray(r.boutiques) ? r.boutiques.map(String).filter(Boolean) : [];
+    return { motif: String(r.motif), depuis: r.depuis ? String(r.depuis) : null, ...(boutiques.length ? { boutiques } : {}) };
+  }
   for (const [cle, motif] of Object.entries(ANCIENNES_CLES)) {
     const a = objet(p[cle]);
     if (a) return { motif, depuis: a.depuis ? String(a.depuis) : null };
@@ -45,8 +48,15 @@ export function retenueServeurDe(pf) {
 
 /** La retenue d'un job tant qu'elle a un sens : republication en attente, annonce encore en ligne. */
 export function retenueServeurDuJob(job) {
-  if (!job || job.action !== "republish" || job.status !== "pending") return null;
+  if (!job || job.status !== "pending") return null;
   const pf = objet(job.platform_fields) ?? {};
+  // (03/10, point G) Un RETRAIT dont la boutique n'est pas connue est retenu
+  // lui aussi (« Alphalette » d'Ornella) — et le dit, boutiques nommées.
+  if (job.action === "delete") {
+    const r = retenueServeurDe(pf);
+    return r && r.motif === RETENUE_BOUTIQUE_INCONNUE ? r : null;
+  }
+  if (job.action !== "republish") return null;
   if (String(pf.republish_step ?? "") === "deleted") return null;
   return retenueServeurDe(pf);
 }
@@ -81,7 +91,28 @@ export function leverRetenueServeur(pf, maintenant, par) {
 }
 
 /** Ce que la carte dit. Jamais de diagnostic : l'attente, et que rien n'est touché. */
-export function phraseRetenueServeur(fr = true, { plateforme = "Vinted", motif = null } = {}) {
+export function phraseRetenueServeur(fr = true, { plateforme = "Vinted", motif = null, boutiques = [], action = "republish" } = {}) {
+  // (03/10, point G) Boutique d'origine inconnue : on dit laquelle ouvrir.
+  if (motif === RETENUE_BOUTIQUE_INCONNUE) {
+    const liste = (Array.isArray(boutiques) ? boutiques : []).map(String).filter(Boolean);
+    const quoi = action === "delete"
+      ? (fr ? "Ce retrait" : "This removal")
+      : (fr ? "Cette republication" : "This repost");
+    const ouvrir = liste.length
+      ? (fr ? `Ouvre ${liste.join(" puis ")} sur vinted.fr dans Chrome` : `Open ${liste.join(" then ")} on vinted.fr in Chrome`)
+      : (fr ? "Ouvre sur vinted.fr, dans Chrome, la boutique qui porte cette annonce" : "Open, on vinted.fr in Chrome, the shop that holds this listing");
+    return fr
+      ? {
+        court: "En attente",
+        titre: "En attente de ta boutique — rien n'est touché à l'aveugle",
+        detail: `${quoi} attend de savoir sur laquelle de tes boutiques Vinted est l'annonce : FillSell n'y touche pas sans le savoir. ${ouvrir} : FillSell y cherchera l'annonce par son numéro, et ça repartira tout seul.`,
+      }
+      : {
+        court: "On hold",
+        titre: "Waiting for your shop — nothing is touched blindly",
+        detail: `${quoi} is waiting to know which of your Vinted shops holds the listing: FillSell won't touch it without knowing. ${ouvrir}: FillSell will look for the listing by its number, and it will resume on its own.`,
+      };
+  }
   // (03/10) La plateforme est nommée (la phrase disait « sur Vinted » pour toutes).
   if (motif === RETENUE_EXTENSION_A_JOUR) {
     return fr

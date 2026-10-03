@@ -134,6 +134,39 @@ export function serieReussites(jobs) {
   return { serie, enCours, echecVu };
 }
 
+/**
+ * (03/10, point F — doriane-henri) Une tâche BLOQUÉE, FIGÉE ou EN ÉCHEC, à
+ * cet instant, quelle que soit sa date : la demande d'avis ne part JAMAIS
+ * vers un compte qui en porte une. doriane-henri a reçu la demande à 17:14
+ * (« série 49 ») pendant que deux de ses tâches Vinted tournaient en rond
+ * depuis le 27 et le 28/09 — elles étaient « en file », donc neutres pour la
+ * série. Bloquée : une question en attente (needs_user). En échec : failed
+ * depuis moins de 14 jours. Figée : en cours depuis plus d'une heure, ou en
+ * file depuis plus de 24 h sans échéance future (une republication planifiée
+ * plus tard n'est pas figée). Les imports et la sortie d'Opla ne comptent pas.
+ */
+export function tacheBloqueePourAvis(job, maintenant = Date.now()) {
+  if (!job || !ACTIONS.has(String(job.action))) return false;
+  if (estImport(job)) return false;
+  const p = pf(job);
+  if (p.opla_sortie) return false;
+  const st = String(job.status ?? "");
+  const cree = ms(job.created_at);
+  if (st === "needs_user") return true;
+  if (st === "failed") return Number.isFinite(cree) && maintenant - cree < 14 * JOUR_MS;
+  if (st === "processing") {
+    const depuis = ms(p.processing_since);
+    const t = Number.isFinite(depuis) ? depuis : cree;
+    return Number.isFinite(t) && maintenant - t > 3600_000;
+  }
+  if (st === "pending") {
+    if (!Number.isFinite(cree) || maintenant - cree < JOUR_MS) return false;
+    const echeance = ms(p.next_action_after);
+    return !(Number.isFinite(echeance) && echeance > maintenant);
+  }
+  return false;
+}
+
 /** Le canal d'une plateforme d'avis : 'chrome' (extension, web), 'ios', 'android'. */
 export function canalAvis(plateforme) {
   const p = String(plateforme ?? "");
@@ -157,11 +190,19 @@ function evt(l) {
  *                       ouverture d'un paiement)
  *   plateforme          'ios' | 'android' | 'extension' | 'web' — le canal
  *                       qui demande (absent = 'chrome', la règle la plus stricte)
+ *   tachesOuvertes      (03/10) les jobs OUVERTS du compte, toutes dates
+ *                       (needs_user, failed, processing, pending) — lus à
+ *                       part : une tâche figée depuis longtemps sort des 300
+ *                       derniers jobs. Absent = illisible = on n'ouvre pas.
  * Rend { ouvrir, motif, serie }. `motif` ne s'affiche jamais : il sert au
  * journal et à l'autotest.
  */
-export function decisionAvis({ maintenant, compteCreeLe, entreeFinieLe, jobs, evenements, paiementsLes, plateforme } = {}) {
+export function decisionAvis({ maintenant, compteCreeLe, entreeFinieLe, jobs, evenements, paiementsLes, plateforme, tachesOuvertes } = {}) {
   const now = Number.isFinite(maintenant) ? maintenant : Date.now();
+  // (03/10, point F) Jamais vers un compte qui a une tâche bloquée, figée ou
+  // en échec — et jamais sans l'avoir vérifié.
+  if (!Array.isArray(tachesOuvertes)) return { ouvrir: false, motif: "taches_illisibles", serie: 0 };
+  if (tachesOuvertes.some((j) => tacheBloqueePourAvis(j, now))) return { ouvrir: false, motif: "tache_bloquee", serie: 0 };
   const cree = ms(compteCreeLe);
   if (!Number.isFinite(cree)) return { ouvrir: false, motif: "compte_illisible", serie: 0 };
   if (now - cree < AVIS.COMPTE_MIN_JOURS * JOUR_MS) return { ouvrir: false, motif: "compte_trop_recent", serie: 0 };

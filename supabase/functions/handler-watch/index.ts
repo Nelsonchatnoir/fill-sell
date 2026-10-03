@@ -23,6 +23,9 @@ import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js
 import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
+import { etatReprisPourJob } from "../_shared/etat-repris.ts";
+import { reclasserAutreBoutique } from "../_shared/attente-autre-boutique.js";
+import { loginsDesBoutiques } from "../_shared/boutique-connectee.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1390,6 +1393,79 @@ serve(async (req) => {
     } catch (e) {
       console.error("[handler-watch] retraits Vinted introuvables :", (e as Error)?.message ?? e);
     }
+  }
+
+  // ══ UNE REPUBLICATION REPREND L'ÉTAT DE SON ANNONCE (03/10, point E) ══════
+  // dew : 5 republications Vinted arrêtées au pré-vol sur « Condition » (page
+  // en anglais), alors que chaque copie porte l'état de l'annonce. Règle
+  // partagée (_shared/etat-repris.ts) : l'état d'origine, dans la langue de la
+  // page, posé là où toute extension le lit (vintedAspects.condition) ; le job
+  // repart seul, sans geste. Une fois par job ; page française jamais touchée.
+  try {
+    const { data: arretsEtat } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, platform_fields")
+      .eq("platform", "vinted").eq("action", "republish").eq("status", "needs_user")
+      .eq("platform_fields->>needs_user_source", "prevol_negatif")
+      .eq("platform_fields->needsUserField->>field_key", "condition")
+      .limit(50);
+    let etatsRepris = 0;
+    for (const j of (arretsEtat ?? []) as Array<Record<string, unknown>>) {
+      const etat = etatReprisPourJob(j);
+      if (!etat) continue;
+      const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+      pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, "needs_user", "handler-watch (état repris de l'annonce d'origine)");
+      pfJ.vintedAspects = { ...((pfJ.vintedAspects ?? {}) as Record<string, unknown>), condition: etat.valeur };
+      pfJ.etat_repris = { valeur: etat.valeur, langue: etat.langue, status_id: etat.status_id, le: new Date().toISOString(), pose_par: "handler-watch" };
+      for (const k of ["needs_user_source", "needsUserField", "champs_a_completer"]) delete pfJ[k];
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "pending", error: null, platform_fields: pfJ })
+        .eq("id", j.id as string).eq("status", "needs_user").select("id");
+      if (maj?.length) {
+        etatsRepris++;
+        console.log(`[handler-watch] [etat-repris] job ${j.id} (user ${j.user_id}) : état « ${etat.valeur} » (${etat.langue}, id ${etat.status_id}) repris de l'annonce d'origine → en file`);
+      }
+    }
+    if (etatsRepris) console.log(`[handler-watch] ${etatsRepris} republication(s) Vinted repartie(s) avec l'état de leur annonce`);
+  } catch (e) {
+    console.error("[handler-watch] état repris :", (e as Error)?.message ?? e);
+  }
+
+  // ══ UN ARTICLE D'UNE AUTRE BOUTIQUE ATTEND EN SILENCE (03/10, point H) ════
+  // ornellaracano, chaussons (ef38f079) : « Republication interrompue… Relance
+  // depuis l'app » alors que la cause était PROUVÉE — l'annonce vit sur
+  // @ornella-vend, Chrome était sur @luciatrendyshop. Règle partagée
+  // (_shared/attente-autre-boutique.js) : la même attente que la garde
+  // boutique_etrangere, levée par get-pending-jobs quand la sonde voit cette
+  // boutique. Seule une preuve reclasse (verdict boutique_etrangere + origine).
+  try {
+    const { data: arretsBoutique } = await supabase.from("cross_post_jobs")
+      .select("id, user_id, platform, action, status, error, platform_fields")
+      .eq("platform", "vinted").eq("status", "needs_user").in("action", ["republish", "delete"])
+      .eq("platform_fields->suppression_verdict->>conclusion", "boutique_etrangere")
+      .limit(50);
+    const comptes = [...new Set(((arretsBoutique ?? []) as Array<Record<string, unknown>>).map((j) => String(j.user_id)))];
+    const pins = new Map<string, Map<string, string | null>>();
+    if (comptes.length) {
+      const { data: profs } = await supabase.from("profiles").select("id, vinted_sync_pin").in("id", comptes);
+      // deno-lint-ignore no-explicit-any
+      for (const p of ((profs ?? []) as any[])) pins.set(String(p.id), loginsDesBoutiques(p.vinted_sync_pin));
+    }
+    let reclasses = 0;
+    for (const j of (arretsBoutique ?? []) as Array<Record<string, unknown>>) {
+      const r = reclasserAutreBoutique(j, pins.get(String(j.user_id)) ?? new Map(), new Date().toISOString());
+      if (!r) continue;
+      r.platform_fields.erreurs_archivees = archiverErreur(r.platform_fields.erreurs_archivees, j.error as string, "needs_user", "handler-watch (autre boutique prouvée : attente)");
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ error: r.error, platform_fields: r.platform_fields })
+        .eq("id", j.id as string).eq("status", "needs_user").select("id");
+      if (maj?.length) {
+        reclasses++;
+        console.log(`[handler-watch] [autre-boutique] job ${j.id} (user ${j.user_id}) : cause prouvée = autre boutique → attente (levée quand la sonde la voit)`);
+      }
+    }
+    if (reclasses) console.log(`[handler-watch] ${reclasses} opération(s) Vinted d'une autre boutique remise(s) en attente silencieuse`);
+  } catch (e) {
+    console.error("[handler-watch] autre boutique :", (e as Error)?.message ?? e);
   }
 
   // ══ BEEBS : UN RETRAIT CLOS SANS PREUVE EST VÉRIFIÉ PAR LES RELEVÉS (03/10) ══

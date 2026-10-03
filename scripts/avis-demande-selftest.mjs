@@ -1,7 +1,7 @@
 // Autotest de la règle de demande d'avis (02/10/2026).
 // `npm run selftest:avis-demande`
 import assert from "node:assert/strict";
-import { AVIS, issueJob, serieReussites, decisionAvis } from "../supabase/functions/_shared/avis-demande.js";
+import { AVIS, issueJob, serieReussites, decisionAvis, tacheBloqueePourAvis } from "../supabase/functions/_shared/avis-demande.js";
 
 const now = Date.parse("2026-10-02T12:00:00Z");
 const J = 24 * 3600_000;
@@ -55,6 +55,8 @@ const base = {
   jobs: dix,
   evenements: [],
   paiementsLes: [],
+  // (03/10, point F) Les tâches ouvertes du compte : aucune ici.
+  tachesOuvertes: [],
 };
 assert.deepEqual(decisionAvis(base), { ouvrir: true, motif: "serie_atteinte", serie: 10 });
 assert.equal(decisionAvis({ ...base, jobs: dix.slice(1) }).ouvrir, false, "9 ne suffit pas");
@@ -86,5 +88,22 @@ assert.equal(decisionAvis({ ...base, evenements: [ev("plus_tard", 31 * J)] }).ou
 assert.equal(decisionAvis({ ...base, evenements: [ev("affiche", 61 * J)], jobs: dix.map((j) => ({ ...j, created_at: il_y_a(62 * J) })) }).motif, "serie_insuffisante");
 assert.equal(decisionAvis({ ...base, evenements: [ev("affiche", 61 * J)] }).ouvrir, true, "10 nouvelles réussites après la demande");
 assert.equal(AVIS.URL_AVIS_EXTENSION, "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm/reviews");
+
+// ── (03/10, point F) Jamais vers un compte qui a une tâche bloquée, figée ou en échec ──
+// doriane-henri : demande ouverte à 17:14 (« série 49 ») pendant que deux tâches
+// Vinted tournaient en rond depuis le 27 et le 28/09 (en file, donc neutres).
+const ouverte = (status, ageMs, pf = {}) => ({ id: `o${++k}`, action: "publish", status, created_at: il_y_a(ageMs), handler_build: null, platform_fields: pf });
+assert.equal(decisionAvis({ ...base, tachesOuvertes: undefined }).motif, "taches_illisibles", "tâches non lues = on n'ouvre pas");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("pending", 6 * J)] }).motif, "tache_bloquee", "en file depuis 6 jours (doriane-henri) = figée");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [{ ...ouverte("pending", 6 * J), action: "republish" }] }).motif, "tache_bloquee", "republication figée aussi");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("needs_user", 40 * J)] }).motif, "tache_bloquee", "une question en attente, même ancienne");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("failed", 3 * J)] }).motif, "tache_bloquee", "un échec récent");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("processing", 2 * 3600_000, { processing_since: il_y_a(2 * 3600_000) })] }).motif, "tache_bloquee", "en cours depuis 2 h = figée");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("pending", 2 * 3600_000)] }).ouvrir, true, "en file depuis 2 h : rien de figé");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("pending", 3 * J, { next_action_after: new Date(now + 3600_000).toISOString() })] }).ouvrir, true, "planifiée plus tard : pas figée");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("failed", 20 * J)] }).ouvrir, true, "un vieil échec (20 j) ne ferme pas tout");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [{ ...ouverte("pending", 6 * J), handler_build: "releve-annonces" }] }).ouvrir, true, "un import n'est pas une tâche de la personne");
+assert.equal(decisionAvis({ ...base, tachesOuvertes: [ouverte("needs_user", 2 * J, { opla_sortie: { le: "x" } })] }).ouvrir, true, "clôture de la sortie d'Opla : ne compte pas");
+assert.equal(tacheBloqueePourAvis(ouverte("published", 6 * J), now), false, "une annonce en ligne n'est pas bloquée");
 
 console.log("avis-demande : tous les contrôles passent");
