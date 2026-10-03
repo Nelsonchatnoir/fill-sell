@@ -23,7 +23,7 @@ import { feuillesDe } from '../utils/categorieParMot';
 import { texteComparable } from '../utils/texteComparable';
 import { libelleRayon, cheminComplet, cleCategorie } from '../utils/rayonPublication';
 import { lireChampsDuRayon, classerChamps, lignesDepuisConfigLocale, CANAL_ASPECTS } from '../utils/champsDuRayon';
-import { messageRayonNeuf } from '../publication/moteur/listes.js';
+import { messageRayonNeuf, champARecherche } from '../publication/moteur/listes.js';
 import { rayonContreditLaFiche, phraseIncoherence, tailleContreditLaGrille } from '../utils/rayonIncoherent';
 
 const MOTS = {
@@ -195,16 +195,54 @@ export default function CarteRayon({
     });
     return m;
   }, [catalogue, configLocale]);
+  // Les champs corrigés dans « Déjà rempli » y restent (cf. plus bas).
+  const [connusEpingles, setConnusEpingles] = useState(() => new Set());
+  const epingler = (c) => setConnusEpingles((prec) => (prec.has(c) ? prec : new Set([...prec, c])));
   const questionsAffichees = useMemo(() => {
+    const posees = questions.filter((q) => !connusEpingles.has(q.cle));
     const restees = connus.filter((c) => questionsTouchees.has(c.cle) && !questions.some((q) => q.cle === c.cle));
-    if (!restees.length) return questions;
+    if (!restees.length) return posees;
     const rang = (e) => ordreDesLignes.get(e.cle) ?? Number.MAX_SAFE_INTEGER;
-    return [...questions, ...restees].sort((a, b) => rang(a) - rang(b));
-  }, [questions, connus, questionsTouchees, ordreDesLignes]);
-  const connusAffiches = useMemo(
-    () => connus.filter((c) => !questionsTouchees.has(c.cle)),
-    [connus, questionsTouchees],
-  );
+    return [...posees, ...restees].sort((a, b) => rang(a) - rang(b));
+  }, [questions, connus, questionsTouchees, connusEpingles, ordreDesLignes]);
+  // ── UNE VALEUR CORRIGÉE DANS « DÉJÀ REMPLI » RESTE À SA PLACE (03/10) ────
+  // Cas Ornella : « Donwood » effacé dans la carte Vinted pour écrire
+  // « Bonobo ». Dès que le champ se vidait, il passait de « Déjà rempli » à
+  // « Ce qu'il reste à donner » : l'input disparaissait sous les doigts (le
+  // clavier se fermait), et la copie gardait « B ». Un champ où la personne
+  // a écrit ici reste ici, avec sa valeur, tant que la carte est montée.
+  // Un champ facultatif vidé ne figure plus NULLE PART (ni connu, ni
+  // question) : sa dernière ligne connue le garde à l'écran, valeur relue
+  // dans la copie.
+  const connusVus = useRef(new Map());
+  const connusAffiches = useMemo(() => {
+    for (const c of connus) connusVus.current.set(c.cle, c);
+    const base = connus.filter((c) => !questionsTouchees.has(c.cle));
+    const sortis = [];
+    for (const cle of connusEpingles) {
+      if (base.some((c) => c.cle === cle)) continue;
+      const q = questions.find((x) => x.cle === cle);
+      if (q) { sortis.push(q); continue; }
+      const vu = connusVus.current.get(cle);
+      if (!vu) continue;
+      const valeur = vu.cleNotre ? champs?.[vu.cleNotre] : champs?.[CANAL_ASPECTS[platform]]?.[vu.cle];
+      sortis.push({ ...vu, valeur: String(valeur ?? '') });
+    }
+    if (!sortis.length) return base;
+    const rang = (e) => ordreDesLignes.get(e.cle) ?? Number.MAX_SAFE_INTEGER;
+    return [...base, ...sortis].sort((a, b) => rang(a) - rang(b));
+  }, [connus, questions, questionsTouchees, connusEpingles, ordreDesLignes, champs, platform]);
+  // ── LA MARQUE SE TAPE, LA LISTE SUGGÈRE (03/10) ─────────────────────────
+  // Vinted accepte N'IMPORTE QUELLE marque (« Utiliser … comme marque ») : sa
+  // Marque (et son Modèle) sont des champs à recherche dont notre relevé n'est
+  // qu'un échantillon. Un menu fermé y interdisait « Bonobo ». Leboncoin et
+  // Beebs gardent leur liste (leur extension retombe sur « Autre »).
+  // La valeur TELLE QUE TAPÉE (espaces compris) : la valeur classée est
+  // nettoyée (trim), et un champ texte contrôlé par elle mangeait l'espace
+  // entre deux mots — « Zorglub Atelier » devenait « ZorglubAtelier ».
+  const brut = (e) => String((e.cleNotre ? champs?.[e.cleNotre] : champs?.[CANAL_ASPECTS[platform]]?.[e.cle]) ?? e.valeur ?? '');
+  const saisieLibre = (e) => platform === 'vinted'
+    && (champARecherche(platform, e.cle) || e.cleNotre === 'marque' || e.cleNotre === 'modele');
   const resteAQuestionner = questionsAffichees.some((q) => q.horsGrille || !String(q.valeur ?? '').trim());
 
   // ── LE BRUIT PREND SA VALEUR TOUT SEUL ───────────────────────────────────
@@ -452,7 +490,10 @@ export default function CarteRayon({
               <div style={{ fontSize: 10.5, color: q.horsGrille ? '#92400E' : UI.mute2, marginBottom: 4 }}>
                 {q.horsGrille ? T.horsGrille(q.valeur) : T.obligatoire}
               </div>
-              {q.valeurs.length > 0 ? (
+              {saisieLibre(q) ? (
+                <ChampLibre id={`q-${platform}-${q.cle}`} valeur={brut(q)} valeurs={q.valeurs} taille={13.5} fond={UI.paper}
+                  onChange={(v) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, v, q.cle); }} />
+              ) : q.valeurs.length > 0 ? (
                 <select
                   value={q.valeur}
                   onChange={(e) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, e.target.value, q.cle); }}
@@ -464,7 +505,7 @@ export default function CarteRayon({
                 </select>
               ) : (
                 <input
-                  type="text" value={q.valeur}
+                  type="text" value={brut(q)}
                   onChange={(e) => { toucherQuestion(q.cle); onChampChange?.(q.cleNotre, e.target.value, q.cle); }}
                   style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13.5, fontFamily: 'inherit', background: UI.paper, color: UI.ink, boxSizing: 'border-box' }}
@@ -488,7 +529,7 @@ export default function CarteRayon({
           </button>
           {!connusOuverts && (
             <div style={{ ...st.chemin, marginTop: 5 }}>
-              {connusAffiches.map((c) => c.valeur).join(' · ')}
+              {connusAffiches.map((c) => c.valeur).filter((v) => String(v ?? '').trim()).join(' · ')}
             </div>
           )}
           {/* Ouverts, ils redeviennent MODIFIABLES : une valeur trouvée peut
@@ -498,10 +539,13 @@ export default function CarteRayon({
           {connusOuverts && connusAffiches.map((c) => (
             <div key={c.cle} style={{ marginTop: 9 }}>
               <div style={{ fontSize: 11.5, color: UI.mute2, fontWeight: 600, marginBottom: 3 }}>{c.libelle}</div>
-              {c.valeurs.length > 0 ? (
+              {saisieLibre(c) ? (
+                <ChampLibre id={`c-${platform}-${c.cle}`} valeur={brut(c)} valeurs={c.valeurs} taille={13} fond={UI.card}
+                  onChange={(v) => { epingler(c.cle); onChampChange?.(c.cleNotre, v, c.cle); }} />
+              ) : c.valeurs.length > 0 ? (
                 <select
                   value={c.valeurs.includes(c.valeur) ? c.valeur : ''}
-                  onChange={(ev) => onChampChange?.(c.cleNotre, ev.target.value, c.cle)}
+                  onChange={(ev) => { epingler(c.cle); onChampChange?.(c.cleNotre, ev.target.value, c.cle); }}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13, fontFamily: 'inherit', background: UI.card, color: UI.ink, boxSizing: 'border-box' }}
                 >
@@ -513,8 +557,8 @@ export default function CarteRayon({
                 </select>
               ) : (
                 <input
-                  type="text" value={c.valeur}
-                  onChange={(ev) => onChampChange?.(c.cleNotre, ev.target.value, c.cle)}
+                  type="text" value={brut(c)}
+                  onChange={(ev) => { epingler(c.cle); onChampChange?.(c.cleNotre, ev.target.value, c.cle); }}
                   style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
                            fontSize: 13, fontFamily: 'inherit', background: UI.card, color: UI.ink, boxSizing: 'border-box' }}
                 />
@@ -527,3 +571,24 @@ export default function CarteRayon({
   );
 }
 
+
+// Un champ à recherche : texte libre, la liste relevée en suggestions
+// (datalist) — jamais un menu fermé.
+function ChampLibre({ id, valeur, valeurs = [], onChange, taille = 13, fond }) {
+  const listId = `carte-dl-${id}`;
+  return (
+    <>
+      <input
+        type="text" value={valeur ?? ''} list={valeurs.length ? listId : undefined} placeholder="—"
+        onChange={(ev) => onChange(ev.target.value)}
+        style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${UI.border}`,
+                 fontSize: taille, fontFamily: 'inherit', background: fond, color: UI.ink, boxSizing: 'border-box' }}
+      />
+      {valeurs.length > 0 && (
+        <datalist id={listId}>
+          {valeurs.map((v) => <option key={v} value={v} />)}
+        </datalist>
+      )}
+    </>
+  );
+}

@@ -15,7 +15,7 @@ import { useState } from "react";
 import { AspectValueInput } from "../components/ListingPreviewScreen";
 import { questionsAPoser, aspectBloquant, propagerReponseTaille, tailleAmbigue } from "./moteur/regles";
 import { genericFieldToSharedKey, SHARED_PROPAGATION, NO_BRAND_VALUE, PLATFORM_LABELS } from "./moteur/champsPartages";
-import { listeFaitFoiRelevee, listeCandidatsDabord } from "./moteur/listes";
+import { listeFaitFoiRelevee, listeCandidatsDabord, champARecherche, valeurUneLettre } from "./moteur/listes";
 import { tailleDansGrille } from "../../supabase/functions/_shared/tailles.js";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { Carte, Puce } from "./composants";
@@ -41,6 +41,10 @@ export default function BlocQuestions({ m }) {
     setStickyShared(prev => prev.has(key) ? prev : new Set([...prev, key]));
     m.noterReponseFiche?.(key); // sa réponse ira sur la fiche au publish
   };
+  // (03/10, cas Ornella) La réponse va sur les plateformes que la question
+  // nomme, même quand leur copie a été retouchée à la main — sinon « Bonobo »
+  // restait dans le champ et la copie Vinted sur « B » (moteur/reponsesPartagees).
+  const repondre = (key, v) => (m.repondreChampPartage ?? m.setSharedField)(key, v);
   const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
   const toucherGeneric = (gp, key) => setStickyGeneric(prev => {
     const cur = prev[gp] ?? new Set();
@@ -181,13 +185,13 @@ export default function BlocQuestions({ m }) {
                   allowedValues={VINTED_COLORS}
                   strict
                   closedMax={m.EBAY_CLOSED_LIST_MAX}
-                  onChange={v => { toucherShared(key); m.setSharedField(key, v); }}
+                  onChange={v => { toucherShared(key); repondre(key, v); }}
                   T={TN}
                   tailleTexte={16}
                   idBase="fsn-shared-couleur"
                 />
               ) : field.type === "select" ? (
-                <select className="fsn-select" value={val} onChange={ev => { toucherShared(key); m.setSharedField(key, ev.target.value); }}>
+                <select className="fsn-select" value={val} onChange={ev => { toucherShared(key); repondre(key, ev.target.value); }}>
                   <option value="">—</option>
                   {fieldGroups
                     ? fieldGroups.map(g => (
@@ -198,11 +202,17 @@ export default function BlocQuestions({ m }) {
                     : field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               ) : (
-                <input className="fsn-input" type="text" value={val} placeholder="—" onChange={ev => { toucherShared(key); m.setSharedField(key, ev.target.value); }} />
+                <input className="fsn-input" type="text" value={val} placeholder="—" onChange={ev => { toucherShared(key); repondre(key, ev.target.value); }} />
+              )}
+              {/* Une lettre n'est une marque, une couleur ni une matière pour
+                  aucune plateforme : on dit pourquoi le champ reste à compléter,
+                  au lieu d'un bouton gris sans explication. */}
+              {key !== "taille" && valeurUneLettre(val) && (
+                <div className="fsn-q-why">{en ? "One letter isn't enough: type it in full." : "Une seule lettre ne suffit pas : écris-la en entier."}</div>
               )}
               {key === "marque" && (
                 <button type="button" className={`fsn-choice${val === NO_BRAND_VALUE ? " fsn-choice--on" : ""}`} style={{ alignSelf: "flex-start" }}
-                  onClick={() => { toucherShared("marque"); m.setSharedField("marque", NO_BRAND_VALUE); }}>
+                  onClick={() => { toucherShared("marque"); repondre("marque", NO_BRAND_VALUE); }}>
                   {val === NO_BRAND_VALUE ? "✓ " : ""}{t("fieldBrandNone")}
                 </button>
               )}
@@ -334,6 +344,9 @@ export default function BlocQuestions({ m }) {
                 allowedValues={a.allowedValues}
                 strict={false}
                 closedMax={faitFoi ? m.EBAY_CLOSED_LIST_MAX : undefined}
+                // (03/10) Marque (et Modèle Vinted) : le référentiel de la
+                // plateforme dépasse notre relevé — on tape, la liste suggère.
+                libre={champARecherche(gp, a.key)}
                 onChange={ecrire}
                 T={TN}
                 tailleTexte={16}

@@ -114,6 +114,11 @@ import {
   genericFieldToSharedKey, canalGeneriquePose, GENERIC_ASPECTS_PF_KEY,
   GENERIC_PLATFORM_LABELS, PLATEFORMES_ADRESSE_LBC,
 } from "../publication/moteur/champsPartages";
+// (03/10, cas Ornella) Une réponse partagée atteint les plateformes qu'elle
+// vise, verrou ou pas ; la marque de la fiche comble une copie vide.
+import {
+  marqueDeLaFiche, marqueUtilisable, comblerMarquesVides, ciblesDeLaReponse, ecrireReponsePartagee,
+} from "../publication/moteur/reponsesPartagees.js";
 // (chantier du 24/09) normAspectVal et nearestAllowedValue ont déménagé dans le
 // moteur, à l'identique : la carte (champsDuRayon) et la publication en masse
 // jugent une valeur contre une liste avec le même code que cet écran.
@@ -3131,10 +3136,26 @@ const OTHER_SENTINEL = "__fs_other__";
 // celle de la plateforme — un état Vinted d'une page anglaise s'affiche
 // « Très bon état » et part « Very good ». Par défaut : la valeur elle-même.
 const libelleIdentite = (v) => v;
-export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase, tailleTexte = 13, libelle = libelleIdentite }) {
+export function AspectValueInput({ value, allowedValues, strict = false, closedMax = 30, onChange, T, idBase, tailleTexte = 13, libre: texteLibre = false, libelle = libelleIdentite }) {
   const vals = Array.isArray(allowedValues) ? allowedValues : [];
   const n = vals.length;
   const [libre, setLibre] = useState(false);
+  // `libre` (prop, 03/10, cas Ornella) : un champ À RECHERCHE (la Marque) se
+  // TAPE toujours — la liste n'est qu'une suggestion. Sans ça, une liste
+  // relevée de moins de 30 marques devenait un menu fermé où « Bonobo »
+  // n'existait pas.
+  if (texteLibre && !strict && n > 0) {
+    const listId = `aspect-dl-${idBase}`;
+    return (
+      <>
+        <input type="text" list={listId} value={value ?? ""} onChange={ev => onChange(ev.target.value)}
+          placeholder="—" style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:tailleTexte, fontFamily:"inherit", outline:"none", boxSizing:"border-box", background:T.chip, color:T.ink }} />
+        <datalist id={listId}>
+          {vals.map(v => <option key={v} value={v} />)}
+        </datalist>
+      </>
+    );
+  }
   // `tailleTexte` (refonte 24/09) : 13 px partout comme avant ; le nouveau
   // stepper passe 16 — sous 16 px, Safari iOS zoome sur le champ.
   const base = { width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:tailleTexte, fontFamily:"inherit", outline:"none", boxSizing:"border-box" };
@@ -4790,7 +4811,14 @@ export default function ListingPreviewScreen({
   const [platformError, setPlatformError]             = useState("");
   const [platformListings, setPlatformListings]       = useState(draft?.platformListings ?? null);
   const [processedPhotos, setProcessedPhotos]         = useState(draft?.processedPhotos ?? []);
-  const [edited, setEdited]                           = useState(draft?.edited ?? {});
+  // ── LA MARQUE DE LA FICHE N'EST JAMAIS REDEMANDÉE (03/10, cas Ornella) ────
+  // À l'ARRIVÉE des copies — brouillon (ici), fiche rouverte et rédaction
+  // (appliquerFiche, appliquerGeneration) — jamais pendant une frappe : une
+  // copie dont la marque est vide ou d'une seule lettre reprend celle de la
+  // fiche (colonne `marque`, puis l'attribut). Une copie qui porte déjà une
+  // marque n'est jamais touchée (moteur/reponsesPartagees.js).
+  const comblerMarqueFiche = (copies) => comblerMarquesVides(copies, marqueDeLaFiche(initialListing)).edited;
+  const [edited, setEdited]                           = useState(() => comblerMarqueFiche(draft?.edited ?? {}));
   // ── L'OPTION PHOTOS AVEC LAQUELLE LE TEXTE EN MAIN A ÉTÉ RÉDIGÉ (01/10) ────
   // « Publier » rouvre désormais TOUJOURS l'écran « Où publier ? », fiche
   // enregistrée comprise : le choix Retouche IA / Telles quelles y est donc
@@ -5391,7 +5419,7 @@ export default function ListingPreviewScreen({
       // Reprise d'un travail déjà corrigé : ses valeurs font foi.
       setProcessedPhotos(photosGeneration);
       setPlatformListings(gen);
-      setEdited(f.edited);
+      setEdited(comblerMarqueFiche(f.edited));
       if (f.sharedFields && typeof f.sharedFields === "object") setSharedFields(f.sharedFields);
       if (f.sharedOverrides && typeof f.sharedOverrides === "object") {
         setSharedOverrides(Object.fromEntries(
@@ -6146,6 +6174,9 @@ export default function ListingPreviewScreen({
       // missingSharedFields se déclenche et l'input inline demande la vraie
       // valeur. Overrides remis à zéro : nouvelle génération = nouvelles
       // copies, plus aucune édition manuelle à protéger.
+      // La marque de la fiche comble une copie vide AVANT le calcul des
+      // valeurs communes (03/10) : la rédaction n'a rien su lire, la fiche sait.
+      Object.assign(initialEdited, comblerMarqueFiche(initialEdited));
       const shared = { taille:"", couleur:"", matiere:"", marque:"" };
       for (const key of SHARED_FIELD_KEYS) {
         const values = SHARED_PROPAGATION[key]
@@ -6272,6 +6303,21 @@ export default function ListingPreviewScreen({
       }
       return next;
     });
+  }
+  // ── LA RÉPONSE À UNE QUESTION PARTAGÉE (03/10, cas Ornella) ──────────────
+  // Même écriture que setSharedField, plus les plateformes que la question
+  // NOMME : elles reçoivent la réponse même verrouillées (leur verrou saute),
+  // et restent visées tant que l'écran est ouvert. Sans ça, « Marque ·
+  // Vinted » écrivait « Bonobo » partout sauf sur la copie Vinted verrouillée
+  // à « B » — la question ne partait jamais (cf. moteur/reponsesPartagees.js).
+  const reponsesVisees = useRef({});
+  function repondreChampPartage(key, value) {
+    const cibles = ciblesDeLaReponse(missingSharedFieldsDetailed, key, reponsesVisees.current[key], edited);
+    reponsesVisees.current = { ...reponsesVisees.current, [key]: cibles };
+    const { overrides } = ecrireReponsePartagee({ edited: {}, overrides: sharedOverrides, key, value, cibles });
+    if (overrides !== sharedOverrides) setSharedOverrides(overrides);
+    setSharedFields(prev => ({ ...prev, [key]: value }));
+    setEdited(prev => ecrireReponsePartagee({ edited: prev, overrides: sharedOverrides, key, value, cibles }).edited);
   }
   // Fallback UI générique (Phase 3, 2026-07-16) : saisie manuelle d'un
   // aspect obligatoire eBay sans source — écrit dans pf.ebayAspects de la
@@ -8295,6 +8341,12 @@ export default function ListingPreviewScreen({
   const doneRef = useRef(false);
   useEffect(() => {
     if (step !== 3) return;
+    // (03/10, Ornella 19:50:25) Pendant le clic Publier, les copies bougent
+    // (normalisations du départ) : un champ peut paraître bloquant le temps
+    // d'un rendu, et se journalisait « affiche » alors que la tâche partait
+    // 60 ms plus tard — un faux blocage dans les comptes. On ne trace pas
+    // pendant le départ.
+    if (publishing) return;
     const actifs = new Set();
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
       for (const a of list.filter(aspectBloquant)) {
@@ -8322,6 +8374,25 @@ export default function ListingPreviewScreen({
         logChampBloquant("affiche", champBloquantVus.current[k]);
       }
     }
+    // (03/10, cas Ornella) Les questions PARTAGÉES (taille, couleur, matière,
+    // marque) n'étaient jamais tracées : « Marque · Vinted » a bloqué Ornella
+    // six minutes sans laisser une ligne. Une ligne par plateforme nommée,
+    // avec l'article — la même feature, le même cycle affiche/complete/abandonne.
+    const libellesPartages = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"), matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") };
+    for (const f of missingSharedFieldsDetailed) {
+      for (const p of f.platforms ?? []) {
+        const k = `${p}:partage:${f.key}`;
+        actifs.add(k);
+        if (!champBloquantVus.current[k]) {
+          champBloquantVus.current[k] = {
+            platform: p, champs: [libellesPartages[f.key] ?? f.key], partage: f.key,
+            categorie: genericCategoryKeys?.[p] ?? initialListing?.categorie ?? null,
+            inventaire_id: invId ?? null,
+          };
+          logChampBloquant("affiche", champBloquantVus.current[k]);
+        }
+      }
+    }
     for (const k of champBloquantRestants.current) {
       const vu = champBloquantVus.current[k];
       if (!actifs.has(k) && vu && !vu.complete) {
@@ -8330,7 +8401,7 @@ export default function ListingPreviewScreen({
       }
     }
     champBloquantRestants.current = actifs;
-  }, [step, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, publishing, genericRequiredStatus, ebayRequiredStatus, ebayIaFiniePour, ebayPreviewCategoryId, missingSharedFieldsDetailed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { doneRef.current = done; }, [done]);
   useEffect(() => () => {
     if (doneRef.current) return;
@@ -8427,6 +8498,14 @@ export default function ListingPreviewScreen({
           if (exacte) setPlatformAspect(gp, a.key, String(exacte));
           continue;
         }
+        // ── UN CHAMP QUE LA PERSONNE VIENT DE VIDER N'EST PAS « MANQUANT » (03/10)
+        // Cas Ornella : « Donwood » effacé dans la carte Vinted pour écrire
+        // « Bonobo » — ce passage, qui ne tourne qu'une fois, voyait la marque
+        // vide et la REMETTAIT aussitôt (la valeur commune « Donwood ») : le
+        // champ « refusait » la saisie, la frappe suivante donnait « BDonwood ».
+        // Une copie retouchée à la main (verrou posé par la carte) appartient
+        // à la personne : ni valeur connue reposée, ni IA.
+        if (a.dedicatedTarget && sharedOverrides[gp]?.has(a.dedicatedTarget)) continue;
         const known = a.dedicatedTarget ? String(KNOWN_BY_TARGET[a.dedicatedTarget] ?? "").trim() : "";
         if (known) setPlatformDedicatedField(gp, a.dedicatedTarget, known);
         else missing.push(a);
@@ -9411,10 +9490,16 @@ export default function ListingPreviewScreen({
           const v = String(val ?? "").trim();
           if (!dejaLa && v) attributs[k] = { v, source: "manuel", at: maintenant };
         }
+        // (03/10) La marque répondue va AUSSI dans la colonne que le Stock
+        // affiche, quand la fiche n'en porte pas encore (vide ou une lettre) :
+        // c'est la « marque de la fiche » que le prochain passage reprend sans
+        // la redemander. Jamais par-dessus une marque déjà écrite.
+        const marqueRepondue = marqueUtilisable(attributs.marque?.v);
+        const colonneMarque = marqueRepondue && !marqueUtilisable(initialListing?.marque) ? { marque: marqueRepondue } : {};
         if (Object.keys(attributs).length) {
           const { error: atErr } = await supabase
             .from("inventaire")
-            .update({ attributs })
+            .update({ attributs, ...colonneMarque })
             .eq("id", currentInvId)
             .eq("user_id", userId)
             .select("id");
@@ -10062,6 +10147,10 @@ export default function ListingPreviewScreen({
     ...(beebsGenreBlocked ? ["beebs"] : []),
     // (25/09) « Continuer sans X » quand son rayon reste à choisir.
     ...Object.keys(rayonsAChoisir),
+    // (03/10, cas Ornella) Un champ partagé qui manque sur UNE plateforme
+    // grise TOUT le bouton : on dit laquelle, et on offre de partir sans elle
+    // — jamais un bouton gris dont la seule issue est « Quitter ».
+    ...missingSharedFieldsDetailed.flatMap(f => f.platforms ?? []),
   ])].filter(p => selected.has(p));
   // Par plateforme cochée, les questions qui la retiennent — pour sa ligne de
   // « Confirmer » (« Attend une réponse : Taille, Département »), au lieu de
@@ -10174,7 +10263,7 @@ export default function ListingPreviewScreen({
     generatingPlatforms, platformError, platformErrorCode, platformListings, processedPhotos, handleGeneratePlatforms, ficheReprise,
     modifierCarte, platformFieldsConfig,
     // Les questions et le geste
-    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
+    redSharedFields, redSharedFieldPlatforms, sharedFields, setSharedField, repondreChampPartage, sharedChildAxes, missingSharedFieldsDetailed, noterReponseFiche, noterReponseFicheValeur,
     vintedGenreBlocked, beebsGenreBlocked, ebayRequiredStatus, setEbayAspect, setEbaySharedField,
     genericRequiredStatus, setPlatformAspect, setPlatformDedicatedField, EBAY_CLOSED_LIST_MAX,
     demanderPrixAchat: prixAchatARenseigner, prixAchatSaisi, setPrixAchatSaisi, prixAchatInconnu, setPrixAchatInconnu, prixAchatManquant,
