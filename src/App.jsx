@@ -80,7 +80,7 @@ import { offreEnCours, offreAOuvrir } from './lib/offreMail';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
 import { televerserPhotos, menagePhotosArticle, compresserImage } from './utils/photosUpload';
-import { entreesPhotos, urlsPhotos, MAX_PHOTOS, LENS_PHOTOS_LUES } from './utils/photos';
+import { entreesPhotos, urlsPhotos, MAX_PHOTOS, LENS_PHOTOS_LUES, LENS_COTE_IA, LENS_ENVOIS_PARALLELES, envoyerEnParallele } from './utils/photos';
 import { searchMatch } from './utils/recherche';
 import { moveItem } from './utils/photosGalerie';
 import GaleriePhotos from './components/GaleriePhotos';
@@ -7612,14 +7612,32 @@ export default function App({ loginOnly = false }){
     const uploadedPaths=[];
     try{
       // Upload photos to lens-temp (converts data: URLs to blobs — works on iOS WKWebView)
-      const urls=[];
-      for(const[i,photo]of lensPhotos.entries()){
+      // ── PLUS RAPIDE, SANS RIEN PERDRE (03/10, décision 4 de Nico — XEWER :
+      // 5 photos de 1,7 à 3,3 Mo montées l'une après l'autre, 87 s) ─────────
+      //   · les photos LUES par l'IA partent à LENS_COTE_IA (2 048 px) de côté
+      //     au plus, JPEG 0,92 : le modèle ramène lui-même toute image à
+      //     1 568 px avant de la lire — il reçoit la même image, mêmes tokens,
+      //     même coût, même quota ; les copies durables de la fiche restent à
+      //     1 024 px (compresserImage) ;
+      //   · LENS_ENVOIS_PARALLELES (3) envois à la fois, chaque photo rangée à
+      //     son rang : l'ordre envoyé à l'analyse est celui de la personne.
+      //   · un envoi qui échoue ARRÊTE le lot : les envois déjà partis
+      //     finissent, mais plus rien n'est lancé ni écrit dans le marqueur —
+      //     jamais un envoi retardataire qui réécrirait le marqueur d'un scan
+      //     relancé entre-temps.
+      const n=lensPhotos.length;
+      const urlsParRang=new Array(n);
+      const cheminsParRang=new Array(n);
+      let faites=0;
+      await envoyerEnParallele(n,LENS_ENVOIS_PARALLELES,async(i,estArrete)=>{
+        const photo=lensPhotos[i];
         const brut=await fetch(photo.preview).then(r=>r.blob());
         // ⚠️ TOUTES les photos LUES du lot, jamais la seule première (2026-09-05) :
         // au-delà de 8 000 px de côté, l'API refuse l'image et fait tomber le
         // scan ENTIER avant la moindre lecture — 6 échecs muets en 20 jours.
-        // Sous le seuil, `reduite` est faux et le blob d'origine repart intact :
-        // la définition pleine reste la règle, la réduction est l'exception.
+        // Depuis le 03/10, toute photo LUE de plus de 2 048 px est ramenée à
+        // 2 048 (ce que le modèle lit ne change pas, cf. plus haut) ; sous ce
+        // côté, `reduite` est faux et le blob d'origine repart intact.
         // ── AU-DELÀ DES PHOTOS LUES (2026-09-27) : l'IA ne les voit pas, elles
         // montent compressées comme dans le stepper (compresserImage : 1024 px,
         // JPEG 0,85 — les réglages des copies qui partiront en ligne), quelques
@@ -7627,27 +7645,31 @@ export default function App({ loginOnly = false }){
         // n'allongent pas l'attente du scan. Compression impossible → la photo
         // part telle quelle, jamais perdue.
         const{blob,mime}=i<LENS_PHOTOS_LUES
-          ?await reduireSousLimiteIA(brut).then(({blob,mime:mimeReduit,reduite})=>({blob,mime:reduite?mimeReduit:(photo.mime||"image/jpeg")}))
+          ?await reduireSousLimiteIA(brut,LENS_COTE_IA,LENS_COTE_IA,0.92).then(({blob,mime:mimeReduit,reduite})=>({blob,mime:reduite?mimeReduit:(photo.mime||"image/jpeg")}))
           :await compresserImage(brut).then(b=>({blob:b,mime:"image/jpeg"}),()=>({blob:brut,mime:photo.mime||"image/jpeg"}));
         const ext=(mime||"image/jpeg").split("/")[1]||"jpg";
         const path=`lens/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
         const{error:upErr}=await supabase.storage.from('lens-temp').upload(path,blob,{contentType:mime});
         if(upErr)throw new Error(upErr.message);
         uploadedPaths.push(path);
+        if(estArrete())return;
         const{data:{publicUrl}}=supabase.storage.from('lens-temp').getPublicUrl(path);
-        urls.push(publicUrl);
+        urlsParRang[i]=publicUrl;
+        cheminsParRang[i]=path;
+        faites++;
         // Marqueur mis à jour APRÈS CHAQUE photo, pas à la fin : si l'app meurt
         // au milieu de la montée, la reprise retrouve celles qui SONT arrivées
         // au lieu de tout jeter. Écriture localStorage, synchrone, gratuite —
         // elle n'ajoute aucune attente réseau au cas normal.
-        ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:[...uploadedPaths],etape:'preparation'});
-        setLensProgres(p=>p?{...p,faites:i+1}:p);
-      }
+        ecrireMarqueurLens({...marqueurInitial,urls:urlsParRang.filter(Boolean),paths:cheminsParRang.filter(Boolean),etape:'preparation'});
+        setLensProgres(p=>p?{...p,faites}:p);
+      });
+      const urls=urlsParRang.filter(Boolean);
       // La liste complète rejoint la réservation côté serveur. Non attendue :
       // le marqueur local fait déjà foi pour la reprise, cette écriture-ci sert
       // l'audit et le cas où le localStorage aurait été vidé.
       supabase.rpc('reserver_scan_lens',{p_scan_id:scanId,p_photos:urls}).then(()=>{},()=>{});
-      ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:[...uploadedPaths],etape:'envoye'});
+      ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:cheminsParRang.filter(Boolean),etape:'envoye'});
       setLensProgres(p=>p?{...p,etape:'analyse'}:p);
       await envoyerAnalyseLens({scanId,urls,avgMargin,onRendu:marquerRendu});
     }catch(e){

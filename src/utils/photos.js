@@ -106,6 +106,47 @@ export const MAX_PHOTOS = 20;
  *  sur la fiche et partent à la publication, jamais dans l'analyse. */
 export const LENS_PHOTOS_LUES = 5;
 
+/** Côté maximal des photos LUES par l'IA d'un scan Lens, à l'envoi (03/10,
+ *  décision 4 de Nico). Le modèle de Lens (claude-haiku-4-5) ramène lui-même
+ *  toute image à 1 568 px de grand côté avant de la lire : une photo de 4 032 px
+ *  et la même à 2 048 px lui arrivent IDENTIQUES — mêmes tokens, même coût,
+ *  même quota. Ce qui change, c'est le poids à monter depuis le téléphone
+ *  (3,3 Mo → ~0,5 Mo). Les copies durables de la fiche restent à 1 024 px
+ *  (LARGEUR_MAX_UPLOAD) : 2 048 reste au-dessus de tout ce qui est publié. */
+export const LENS_COTE_IA = 2048;
+
+/** Photos d'un scan Lens montées EN MÊME TEMPS (03/10, décision 4 de Nico).
+ *  Trois : assez pour ne plus attendre chaque photo l'une après l'autre, pas
+ *  assez pour étouffer la voie montante d'un téléphone en 4G. */
+export const LENS_ENVOIS_PARALLELES = 3;
+
+/** Lance `envoyer(i, estArrete)` pour i = 0 … n-1, `parallele` à la fois au
+ *  plus, dans l'ordre des rangs. Un échec ARRÊTE le lot : plus rien n'est
+ *  lancé et la promesse rejette avec la première erreur ; les envois déjà
+ *  partis finissent seuls, et `estArrete()` leur dit de ne plus rien écrire.
+ *  @param {number} n
+ *  @param {number} parallele
+ *  @param {(i: number, estArrete: () => boolean) => Promise<void>} envoyer */
+export async function envoyerEnParallele(n, parallele, envoyer) {
+  const total = Math.max(0, Math.floor(Number(n) || 0));
+  const largeur = Math.max(1, Math.min(Math.floor(Number(parallele) || 1), total));
+  let prochaine = 0;
+  let arret = false;
+  const estArrete = () => arret;
+  if (!total) return;
+  await Promise.all(Array.from({ length: largeur }, async () => {
+    while (!arret && prochaine < total) {
+      const i = prochaine++;
+      try {
+        await envoyer(i, estArrete);
+      } catch (e) {
+        arret = true;
+        throw e;
+      }
+    }
+  }));
+}
+
 /** L'entrée est-elle une photo retouchée (flux /enhanced/) ? Les deux formes. */
 export function estPhotoRetouchee(entree) {
   if (!entree) return false;
