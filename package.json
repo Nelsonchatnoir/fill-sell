@@ -166,7 +166,9 @@
     "selftest:releves-progres": "node scripts/releves-progres-selftest.mjs",
     "selftest:reponses-partagees": "node --import ./scripts/loader-ext.mjs scripts/reponses-partagees-selftest.mjs",
     "selftest:vinted-marque-libre": "node scripts/vinted-marque-libre-selftest.mjs",
-    "selftest:beebs-age-republication": "node scripts/beebs-age-republication-selftest.mjs"
+    "selftest:beebs-age-republication": "node scripts/beebs-age-republication-selftest.mjs",
+    "selftest:beebs-taille-nivake": "node scripts/beebs-taille-nivake-selftest.mjs",
+    "selftest:question-marque": "node scripts/question-marque-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

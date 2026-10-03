@@ -1271,9 +1271,16 @@ async function fillListingForm(job) {
   // Pointure (chaussures) et Taille (autre Mode) sont deux libellés distincts
   // selon la catégorie — jamais les deux en même temps, on tente les deux et
   // le champ absent est ignoré silencieusement par selectDropdownValue.
-  if (fields.taille) {
-    await selectDropdownValue("Pointure", String(fields.taille).replace(/^EU\s*/i, ""), warnings, unfilledRequired, { sizeField: true });
-    await selectDropdownValue("Taille", fields.taille, warnings, unfilledRequired, { sizeField: true });
+  // Republication : la taille AFFICHÉE sur l'annonce d'abord, la copie en
+  // repli (taillesAPoser, 03/10 nuit — ceinture de nivake03).
+  const tailles = taillesAPoser(fields);
+  if (tailles) {
+    if (tailles.replis.length) {
+      warnings.push(`taille: l'annonce en ligne affiche « ${tailles.affichee} », la copie porte « ${tailles.copie} » — republication : la valeur affichée d'abord`);
+    }
+    const sansEu = (t) => String(t).replace(/^EU\s*/i, "");
+    await selectDropdownValue("Pointure", sansEu(tailles.primaire), warnings, unfilledRequired, { sizeField: true, fallbackTexts: tailles.replis.map(sansEu) });
+    await selectDropdownValue("Taille", tailles.primaire, warnings, unfilledRequired, { sizeField: true, fallbackTexts: tailles.replis });
   }
 
   if (fields.etat) await selectDropdownValue("État", fields.etat, warnings, unfilledRequired);
@@ -1482,7 +1489,8 @@ async function fillListingForm(job) {
   if (unfilledRequired.length) {
     for (const cle of [...unfilledRequired]) {
       if (!/^(taille|pointure)$/i.test(String(libelleHumainDeCle(cle) ?? ""))) continue;
-      const dejaLa = String(fields.beebsAspects?.[cle] ?? "").trim() || String(fields.taille ?? "").trim();
+      const dejaLa = String(fields.beebsAspects?.[cle] ?? "").trim() || String(fields.taille ?? "").trim()
+        || valeurAfficheeSurLAnnonce(fields, "taille");
       if (dejaLa) continue;
       const meta = enumerated.find((e) => e.key === cle);
       const options = (Array.isArray(meta?.options) && meta.options.length ? meta.options : beebsObservedOptions[cle]) ?? [];
@@ -1828,7 +1836,9 @@ async function fillListingForm(job) {
     // Un champ refusé ne se relance pas en boucle : six essais de la chemise
     // de Marie sont repartis sur le même mur (« Taille 8XL » au lieu de M).
     // Refus lisible → needs_user tout de suite, avec la phrase et la question.
-    const refus = lireRefusFormulaireBeebs({ tailleVoulue: fields.taille, titre: job.title });
+    // Republication : la taille affichée sur l’annonce ou celle de la copie
+    // (taillesAPoser) — l’une ou l’autre est la taille voulue, jamais un refus.
+    const refus = lireRefusFormulaireBeebs({ tailleVoulue: tailles ? [tailles.primaire, ...tailles.replis] : fields.taille, titre: job.title });
     if (refus) {
       warnings.push(`refus Beebs lu sur le formulaire (${refus.code}) : ${refus.message}`);
       return {
@@ -2008,8 +2018,10 @@ function lireRefusFormulaireBeebs({ tailleVoulue = "", titre = "" } = {}) {
         "Vérifie ton adresse dans les Réglages FillSell (numéro, rue, code postal, ville), puis relance.",
     };
   }
-  const voulue = normalizeFuzzy(tailleVoulue);
-  if (!voulue) return null;
+  // Une ou plusieurs tailles voulues (republication : affichée, puis copie).
+  const voulues = (Array.isArray(tailleVoulue) ? tailleVoulue : [tailleVoulue]).map(normalizeFuzzy).filter(Boolean);
+  if (!voulues.length) return null;
+  const laFiche = (Array.isArray(tailleVoulue) ? tailleVoulue : [tailleVoulue]).map((t) => String(t ?? "").trim()).filter(Boolean).join(" » ou « ");
   const jetons = (s) => s.split(/[^a-z0-9]+/).filter(Boolean);
   const tous = champsFormulaire();
   for (const c of tous) {
@@ -2018,7 +2030,7 @@ function lireRefusFormulaireBeebs({ tailleVoulue = "", titre = "" } = {}) {
     if (!affiche || /^sélectionner/i.test(affiche)) continue;
     const a = normalizeFuzzy(affiche);
     // « 38 / M » porte M, « EU 42 » porte 42 : compatibles ; « 8XL » ≠ « M ».
-    if (a === voulue || jetons(a).includes(voulue) || jetons(voulue).includes(a)) continue;
+    if (voulues.some((voulue) => a === voulue || jetons(a).includes(voulue) || jetons(voulue).includes(a))) continue;
     const cle = cleDeChamp(c, tous);
     // Même cible que le needsUserField des requis vides (BEEBS_DEDICATED_TARGETS,
     // local à fillForm) : le libellé nu va au champ racine `taille`.
@@ -2033,7 +2045,7 @@ function lireRefusFormulaireBeebs({ tailleVoulue = "", titre = "" } = {}) {
         input_type: "dropdown",
         ...(Array.isArray(valeurs) && valeurs.length ? { allowed_values: valeurs } : {}),
       },
-      message: `Beebs refuse la ${c.label.toLowerCase()} « ${affiche} »${pour} (la fiche dit « ${tailleVoulue} ») : ` +
+      message: `Beebs refuse la ${c.label.toLowerCase()} « ${affiche} »${pour} (la fiche dit « ${laFiche} ») : ` +
         `rien n'a été publié. Choisis la bonne ${c.label.toLowerCase()} ci-dessous et la publication repart.`,
     };
   }
@@ -2719,6 +2731,39 @@ function voisinesDemiPointure(valeur, options) {
   return { valeur: v.replace(".", ","), options: [String(oBas), String(oHaut)] };
 }
 
+// ── UNE REPUBLICATION REPOSE LA TAILLE QUE L'ANNONCE AFFICHE (03/10 nuit) ────
+// Ceinture de nivake03 (8d487ebb) : la copie portait « L » (le titre), l'annonce
+// en ligne affichait « Taille : Ajustable » (relevé du 02/10, ld+json), valeur
+// de la liste de Beebs posée au dépôt du 29/09. La republication a repris la
+// copie ; « L » n'est pas dans la grille en mm du rayon ; l'annonce était déjà
+// retirée → question, annonce hors ligne. Règle de Nico : un champ VISIBLE sur
+// l'annonce n'est jamais demandé. Pour une republication, la valeur affichée
+// (champs_lus_sur_l_annonce, posé AVANT le retrait — `lus` : tout ce que la
+// fiche en ligne affiche ; `repris` : ce qui comblait un vide) passe en
+// premier, la copie reste le repli. Même cascade stricte des tailles, jamais
+// d'approximation : ni l'une ni l'autre dans la liste → la question.
+function valeurAfficheeSurLAnnonce(fields, cle) {
+  const lus = fields?.champs_lus_sur_l_annonce;
+  if (!lus || typeof lus !== "object") return "";
+  for (const bloc of [lus.lus, lus.repris]) {
+    const v = bloc && typeof bloc === "object" ? String(bloc[cle] ?? "").trim() : "";
+    if (v) return v;
+  }
+  return "";
+}
+
+// La taille à tenter d'abord, et le repli (03/10 nuit) : la valeur affichée
+// sur l'annonce, puis la copie si elle diffère. null = rien à poser.
+function taillesAPoser(fields) {
+  const affichee = valeurAfficheeSurLAnnonce(fields, "taille");
+  const copie = String(fields?.taille ?? "").trim();
+  const primaire = affichee || copie;
+  if (!primaire) return null;
+  const memes = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  const replis = affichee && copie && !memes(affichee, copie) ? [copie] : [];
+  return { primaire, replis, affichee: affichee || null, copie: copie || null };
+}
+
 function findOptionCascade(els, text, { sizeField = false } = {}) {
   const options = Array.from(els)
     .map((el) => {
@@ -3362,6 +3407,12 @@ async function poserValeurSurChamp(
   // essaie les valeurs de repli fournies (mapping/défaut de catégorie), dans
   // l'ordre, avec la même cascade — dit en warning, jamais silencieux.
   if (!match && fallbackTexts.length) {
+    // Taille (03/10 nuit) : la liste affichée peut être celle que la frappe
+    // de la valeur primaire a filtrée — le repli se juge sur la liste ENTIÈRE.
+    if (sizeField && panelSearchInput(trigger)) {
+      const completes = await researchPanelFor(trigger, "");
+      if (completes.length) options = completes;
+    }
     for (const fb of fallbackTexts) {
       if (!fb || fb === rawText) continue;
       const m2 = findOptionCascade(options, fb, { sizeField });

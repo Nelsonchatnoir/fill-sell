@@ -67,6 +67,10 @@
     // (popup), où le geste que Chrome exige se fait. Aller-retour : la page
     // apprend si la fenêtre s'est ouverte, ou si l'accès est déjà là.
     "AUTORISER_OPLA",
+    // Question « Marque » (03/10 nuit, 0.6.94) : chercher un nom dans le
+    // catalogue des marques Vinted. Lecture seule ; la réponse repart vers la
+    // page avec le terme cherché.
+    "CHERCHER_MARQUE",
   ]);
   window.addEventListener("message", (e) => {
     if (e.source !== window) return;
@@ -79,6 +83,15 @@
           window.postMessage({ __fillsellOplaOuverture: rep ?? { ok: false, error: "extension muette" } }, window.location.origin);
         });
         console.log("[fillsell-auth] commande relayée : AUTORISER_OPLA");
+        return;
+      }
+      if (cmd === "CHERCHER_MARQUE") {
+        const q = String(e.data?.q ?? "").slice(0, 60);
+        chrome.runtime.sendMessage({ type: cmd, q }, (rep) => {
+          void chrome.runtime.lastError;
+          window.postMessage({ __fillsellMarques: { q, ...(rep ?? { success: false, error: "extension muette" }) } }, window.location.origin);
+        });
+        console.log(`[fillsell-auth] commande relayée : ${cmd} (${q})`);
         return;
       }
       // PROBE_VINTED_LISTING (2026-08-10) : aller-retour aussi, mais son argument

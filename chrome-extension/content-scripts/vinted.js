@@ -5766,17 +5766,25 @@ async function selectVintedBrand(marque, warnings) {
   // une QUESTION, avant tout dépôt — « Sans marque » ou une marque de sa liste.
   if (choix && (choix.type === "inconnue" || choix.type === "aucune")) {
     await closeAnyOpenDropdown();
-    const proposees = [...new Set(["Sans marque", ...(choix.suggestions ?? [])])].slice(0, 30);
+    // (03/10 nuit, 0.6.94) La question propose de VRAIES marques du catalogue
+    // Vinted proches du nom tapé (son propre moteur de recherche, lu ici, sur
+    // vinted.fr) — jamais une marque posée à la place : c'est la personne qui
+    // choisit, ou « Sans marque ».
+    const catalogue = await marquesDuCatalogueVinted(demandee);
+    const proposees = [...new Set(["Sans marque", ...(choix.suggestions ?? []), ...catalogue])].slice(0, 30);
     return {
       needsUser: true,
       error:
-        `Vinted ne connaît pas la marque « ${demandee} » et ne permet pas d'en créer une nouvelle. ` +
-        "Choisis « Sans marque » ou une marque de sa liste (bouton « ✋ Compléter ») : la publication repart d'elle-même. " +
+        `Vinted ne connaît pas la marque « ${demandee} » et ne permet plus d'en créer une nouvelle. ` +
+        "Choisis-la dans la liste de Vinted si elle y est sous un autre nom, ou « Sans marque » (bouton « ✋ Compléter ») : la publication repart d'elle-même. " +
         "Rien n'a été envoyé à Vinted.",
-      diagnostic: `Marque "${demandee}" : ${choix.type === "inconnue" ? "seule la ligne « Sans marque » proposée" : "aucune ligne exacte ni de création en 10 s"} ; suggestions : ${(choix.suggestions ?? []).slice(0, 10).join(" · ") || "aucune"}`,
+      diagnostic: `Marque "${demandee}" : ${choix.type === "inconnue" ? "seule la ligne « Sans marque » proposée" : "aucune ligne exacte ni de création en 10 s"} ; suggestions : ${[...(choix.suggestions ?? []), ...catalogue].slice(0, 10).join(" · ") || "aucune"}`,
       needsUserField: {
         platform: "vinted", field_key: "brand", field_label: "Marque", input_type: "list_search",
         allowed_values: proposees, target: { key: "marque" },
+        // Lu par l'app (2.9.45+) : la question dit POURQUOI, propose la
+        // recherche dans le catalogue Vinted et « Sans marque » en un geste.
+        raison: "marque_hors_catalogue", demandee,
       },
     };
   }
@@ -5798,6 +5806,37 @@ async function selectVintedBrand(marque, warnings) {
     ? `Marque "${demandee}" : ligne ${choix.type === "libre" ? "« Utiliser … comme marque »" : "du catalogue"} cliquée, mais #brand porte « ${posee} »`
     : `Marque "${demandee}" : ni ligne exacte du catalogue ni ligne de création nommant cette marque en 10 s (#brand = « ${posee} »)`;
   throw err;
+}
+
+// Marques du CATALOGUE Vinted proches d'un nom (03/10 nuit, 0.6.94) : le
+// moteur de recherche de Vinted (/api/v2/brands, celui du menu Marque, lu sur
+// vinted.fr même — cookies de la personne, lecture seule), interrogé avec le
+// nom entier, puis son premier mot, puis ses 4 premières lettres. Sert à
+// PROPOSER, jamais à choisir. Borné (3 appels, 4 s chacun) ; un échec rend [].
+async function marquesDuCatalogueVinted(nom, max = 20) {
+  const brut = String(nom ?? "").trim();
+  if (!brut) return [];
+  const premierMot = brut.split(/\s+/)[0];
+  const essais = [...new Set([brut, premierMot, premierMot.slice(0, 4)].filter((q) => q.length >= 2))];
+  const vues = new Map();
+  for (const q of essais) {
+    if (vues.size >= max) break;
+    try {
+      const ctl = new AbortController();
+      const minuteur = setTimeout(() => ctl.abort(), 4000);
+      const r = await fetch(`/api/v2/brands?keyword=${encodeURIComponent(q)}&per_page=${max}`, {
+        credentials: "include", headers: { accept: "application/json" }, signal: ctl.signal,
+      }).finally(() => clearTimeout(minuteur));
+      if (!r.ok) continue;
+      const j = await r.json();
+      for (const b of Array.isArray(j?.brands) ? j.brands : []) {
+        const t = String(b?.title ?? "").trim();
+        if (t && !vues.has(texteComparable(t))) vues.set(texteComparable(t), t);
+        if (vues.size >= max) break;
+      }
+    } catch { /* proposition seulement : jamais un point de panne */ }
+  }
+  return [...vues.values()];
 }
 
 // La ligne à cliquer pour poser `marque` TELLE QUELLE, ou null (03/10) :

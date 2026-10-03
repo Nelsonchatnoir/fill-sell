@@ -1449,7 +1449,60 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     );
     return true; // réponse asynchrone
   }
+  // Recherche dans le CATALOGUE DES MARQUES Vinted (03/10 nuit, 0.6.94),
+  // demandée par la question « Marque » de l'app (bouton « Chercher sur
+  // Vinted »). LECTURE SEULE, à l'unité, sur geste humain.
+  if (msg?.type === "CHERCHER_MARQUE") {
+    chercherMarquesVinted(msg.q).then(
+      (r) => sendResponse(r),
+      (e) => sendResponse({ success: false, error: String(e?.message ?? e) })
+    );
+    return true; // réponse asynchrone
+  }
 });
+
+// Le moteur de recherche du menu Marque de Vinted (/api/v2/brands), lu DANS
+// un onglet vinted.fr (cookies de la personne) : un onglet Vinted déjà ouvert
+// (aucune navigation : on n'y touche pas), sinon un onglet d'arrière-plan
+// ouvert puis refermé. Rend des titres EXACTS du catalogue — c'est l'un d'eux
+// que la personne choisit, et que le dépôt retrouvera à l'identique.
+async function chercherMarquesVinted(q) {
+  const terme = String(q ?? "").trim().slice(0, 60);
+  if (terme.length < 2) return { success: true, marques: [] };
+  const ouverts = await chrome.tabs.query({ url: ["https://www.vinted.fr/*"] }).catch(() => []);
+  let tabId = (ouverts.find((t) => t.status === "complete") ?? null)?.id ?? null;
+  let cree = false;
+  try {
+    if (tabId == null) {
+      const t = await chrome.tabs.create({ url: "https://www.vinted.fr/", active: false });
+      tabId = t.id; cree = true;
+      await waitForTabComplete(tabId, null, 20_000);
+    }
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: async (mot) => {
+        const ctl = new AbortController();
+        const minuteur = setTimeout(() => ctl.abort(), 6000);
+        try {
+          const r = await fetch(`/api/v2/brands?keyword=${encodeURIComponent(mot)}&per_page=30`, {
+            credentials: "include", headers: { accept: "application/json" }, signal: ctl.signal,
+          });
+          if (!r.ok) return { ok: false, statut: r.status };
+          const j = await r.json();
+          return { ok: true, marques: (Array.isArray(j?.brands) ? j.brands : [])
+            .map((b) => ({ titre: String(b?.title ?? "").trim(), annonces: Number(b?.item_count) || 0 }))
+            .filter((b) => b.titre) };
+        } catch (e) { return { ok: false, erreur: String(e?.message ?? e) }; }
+        finally { clearTimeout(minuteur); }
+      },
+      args: [terme],
+    });
+    if (!result?.ok) return { success: false, error: result?.erreur ?? `Vinted a répondu ${result?.statut ?? "?"}` };
+    return { success: true, q: terme, marques: result.marques };
+  } finally {
+    if (cree && tabId != null) chrome.tabs.remove(tabId).catch(() => {});
+  }
+}
 
 // Événement de progression poussé vers le popup (ignoré s'il est fermé).
 function emitProgress(payload) {
@@ -10464,7 +10517,7 @@ async function retirerScriptsOpla() {
 
 /** Les capacités déclarées à chaque poll — jamais déduites d'un numéro. */
 async function capacitesDeclarees() {
-  const caps = ["taille_par_id", "preuves_retraits_point1_v1"];
+  const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1"];
   caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
   return caps;
 }
@@ -21145,6 +21198,46 @@ function idAnnonceDepuisUrl(platform, url) {
   return m ? m[1] : null;
 }
 
+// Lit la fiche EN LIGNE de l'annonce à republier (onglet de travail, même
+// lecture que le relevé : capturerFicheEnPage), AVANT tout retrait :
+//   · `lus`    : TOUT ce que l'annonce affiche (âge, taille, état, marque,
+//                couleur, matière) — le remplisseur pose d'abord la valeur
+//                affichée quand la plateforme l'accepte (taille Beebs
+//                « Ajustable » quand la copie dit « L », nivake03 02/10) ;
+//   · `repris` : les champs que la copie n'avait pas, posés dans `pf`.
+// Rend { cle: valeur } repris, ou null. ⛔ Ne déduit rien d'un titre.
+const CHAMPS_LUS_SUR_L_ANNONCE = ["age", "taille", "etat", "marque", "couleur", "matiere"];
+async function reprendreChampsDeLAnnonce(job, pf) {
+  const manquants = CHAMPS_LUS_SUR_L_ANNONCE.filter((c) => !String(pf[c] ?? "").trim());
+  if (!job.listing_url) return null;
+  const tabId = await getOrCreateWorkTab(job.platform, job.listing_url);
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (String(tab?.url ?? "").split("#")[0] !== String(job.listing_url).split("#")[0]) {
+    const loaded = waitForTabComplete(tabId, job.listing_url);
+    await neutralizeBeforeUnload(tabId);
+    await chrome.tabs.update(tabId, { url: job.listing_url + WORK_TAB_FRAGMENT });
+    await loaded;
+  }
+  await sleep(randInt(1200, 2200));
+  const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [job.platform] });
+  const cap = res?.result ?? null;
+  if (!cap) return null;
+  const lus = {};
+  for (const cle of CHAMPS_LUS_SUR_L_ANNONCE) {
+    const v = String(cap[cle] ?? "").trim();
+    if (v) lus[cle] = v;
+  }
+  const repris = {};
+  for (const cle of manquants) {
+    if (!lus[cle]) continue;
+    pf[cle] = lus[cle];
+    repris[cle] = lus[cle];
+  }
+  if (!Object.keys(lus).length) return null;
+  pf.champs_lus_sur_l_annonce = { le: new Date().toISOString(), lus, repris, source: cap.source ?? null, pose_par: "extension (fiche en ligne, avant retrait)" };
+  return Object.keys(repris).length ? repris : null;
+}
+
 async function processRepublishJobPlateforme(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   const step = pf.republish_step ?? "a_capturer";
@@ -21199,6 +21292,22 @@ async function processRepublishJobPlateforme(job, accessToken) {
       return { status: "needsUser", error: msg };
     }
     delete pf.republish_etat_indetermine;
+    // ── LES CHAMPS SE LISENT SUR L'ANNONCE ELLE-MÊME, AVANT TOUT RETRAIT (03/10)
+    // Louis, inserts Zombicide : le relevé ne portait pas l'âge, le serveur le
+    // demandait — alors que la fiche Beebs l'affiche (« 16 ans et + »). Un
+    // champ visible sur l'annonce n'est JAMAIS demandé : on ouvre sa fiche et
+    // on reprend ce qu'elle montre (âge, taille, état, marque, couleur,
+    // matière), sans jamais écraser une valeur déjà posée. Best-effort : un
+    // échec de lecture ne retire rien et ne bloque rien (le serveur garde sa
+    // question pour ce qui manquerait encore).
+    if (job.platform === "beebs" || job.platform === "leboncoin") {
+      try {
+        const repris = await reprendreChampsDeLAnnonce(job, pf);
+        if (repris) console.log(`[republish] job ${job.id} : repris de l'annonce ${label} en ligne — ${Object.entries(repris).map(([k, v]) => `${k} « ${v} »`).join(", ")}`);
+      } catch (e) {
+        console.warn(`[republish] job ${job.id} : lecture des champs de l'annonce ${label} impossible (${String(e?.message ?? e).slice(0, 120)}) — rien n'est retiré pour autant`);
+      }
+    }
     pf.republish_step = "captured";
     await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
     console.log(`[background] Job ${job.id} → annonce ${label} vérifiée en ligne, retrait au prochain passage`);
