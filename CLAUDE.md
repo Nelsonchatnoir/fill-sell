@@ -6,9 +6,10 @@
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS ; **0.6.92 prête à téléverser**
-  (`build/CWS-0.6.92-A-TELEVERSER/`, BUILD_ID `2026-10-03T19:00:15Z+4c554f2`,
-  copiée chez Nico ; la 0.6.91 n'a jamais été téléversée) ; **minimum serveur
+- **Servi** : extension **0.6.89** au CWS ; **0.6.93 prête à téléverser**
+  (`build/CWS-0.6.93-A-TELEVERSER/`, BUILD_ID `2026-10-03T19:24:28Z+a0b7f3d`,
+  chargée chez Nico — sa copie se recharge seule ; 0.6.91/0.6.92 jamais
+  téléversées) ; **minimum serveur
   0.6.81** (inchangé : forcer la MAJ = décision de Nico) ; OTA **2.9.44** ;
   `get-pending-jobs` v202, `lens-analysis` v105, `avis-demande` v3,
   `ebay-account` v16 (`true`) ; `update-job-status`
@@ -28,8 +29,9 @@ contraire. Il se périme : `functions list`, `cron.job` et
   s'espace après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
 - **Marque (03/10 nuit)** : une réponse partagée atteint TOUTE plateforme qu'elle
   nomme (`moteur/reponsesPartagees.js`) ; la marque de la fiche n'est jamais
-  redemandée ; Vinted : marque exacte du catalogue sinon marque libre, jamais
-  une autre. **Republication** : âge et prix repris de L'annonce en ligne.
+  redemandée ; ⛔ Vinted ne crée PLUS de marque libre (03/10) : marque exacte
+  du catalogue, sinon une QUESTION, jamais « Sans marque » en silence.
+  ⛔ Annonce de test : 999 € ou plus, jamais le tableau de Nico. **Republication** : âge et prix repris de L'annonce en ligne.
 - **Selftests** : 188 + bancs, 0 rouge (03/10 nuit). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs` (un morceau ne revient qu'avec sa
   preuve réelle — son test tombe sinon).

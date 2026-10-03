@@ -5,8 +5,8 @@ clôture » et « 03/10 nuit — marque, Louis » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** ; **0.6.92 à téléverser**
-  (`build/CWS-0.6.92-A-TELEVERSER/`, `2026-10-03T19:00:15Z+4c554f2`) ;
+- **Servi** : extension **0.6.89** ; **0.6.93 à téléverser**
+  (`build/CWS-0.6.93-A-TELEVERSER/`, `2026-10-03T19:24:28Z+a0b7f3d`) ;
   minimum serveur **0.6.81** ; OTA **2.9.44** ; `get-pending-jobs` v202,
   `lens-analysis` v105, `avis-demande` v3, `ebay-account` v16 (`true`) ;
   `update-job-status` v121, `handler-watch` v77, `ebay-api-worker` v76,
@@ -15,8 +15,8 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
   écrites pour « annonces », 10 min pour une liste en lecture) ; veilleur
   espacé après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
 - **Marque/republication (03/10 nuit)** : réponse partagée → toutes les
-  plateformes nommées ; marque de la fiche jamais redemandée ; republication =
-  âge et prix de l'annonce en ligne.
+  plateformes nommées ; marque de la fiche jamais redemandée ; Vinted : plus de
+  marque libre → question ; annonce de test ≥ 999 €.
 - **Selftests** : 188 + bancs, 0 rouge ; morceaux mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs`.
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
