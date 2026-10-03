@@ -13844,7 +13844,8 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     const tabId = await ouvrirOngletReleve("opla", "https://www.opla.co/");
     const vivant = await assurerScriptOplaSurOnglet(tabId);
     if (!vivant.ok) return { annonces: [], complet: false, erreur: `onglet Opla injoignable : ${vivant.motif}` };
-    const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+    // (03/10, points 28/31) 90 s, plus 300 s : une liste muette ne garde plus la place.
+    const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }, 90_000).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
     if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Opla illisible" };
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
     return { annonces: [...annonces.values()], complet: r.complet !== false };
@@ -14821,6 +14822,9 @@ async function reporterCaptureSurArticle(inventaireId, capture, platform, { toke
 //      exactement la file où tombe le cas de Louis (il n'avait touché ni au
 //      titre ni au prix, seulement au corps du texte).
 const CAPTURE_MAX_PAR_RUN = 30;
+// (03/10, point 31) Temps maximal de pages ouvertes par relevé pour capturer
+// des fiches : le relevé entier doit tenir en 5 min (règle de Nico).
+const CAPTURE_BUDGET_MS = 120_000;
 const CAPTURE_FRAICHEUR_H = 24;
 // ── LE CONTINGENT DES PÉRIMÉES : UN PLANCHER *ET* UN PLAFOND (2026-09-21) ───
 // Mesuré avant de figer le chiffre. Le plafond de 30 par plateforme ne bouge
@@ -14931,7 +14935,19 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
   const aCapturer = [...(choixListe?.pris ?? []), ...choix.pris];
   bilan.restantes = choix.restantes + (choixListe?.restantes ?? 0);
   console.log(`[releve][${platform}] capture : ${aCapturer.length} fiche(s) ce run — ${choix.changees} modifiée(s), ${choix.jamais} jamais capturée(s), ${choix.perimees} périmée(s), ${bilan.restantes} au suivant`);
+  // (03/10, point 31) UN RELEVÉ TIENT EN 5 MINUTES. Mesuré sur 7 jours : les
+  // relevés longs qui avancent passent leur temps ICI, une page ouverte par
+  // fiche (Leboncoin « 20 fiches capturées » : plusieurs minutes). Au-delà de
+  // CAPTURE_BUDGET_MS de pages ouvertes, la suite attend le relevé suivant
+  // (`restantes`, déjà compté) : rien n'est perdu, le relevé rend la place.
+  // Les captures tirées de la liste elle-même (aucune page) ne comptent pas.
+  const debutCaptures = Date.now();
   for (const a of aCapturer) {
+    const sansPage = Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length > 0;
+    if (!sansPage && Date.now() - debutCaptures > CAPTURE_BUDGET_MS) {
+      bilan.restantes += 1;
+      continue;
+    }
     try {
       let capture = null;
       const deLaListe = Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length > 0;
@@ -14939,7 +14955,7 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
         capture = a.capture_liste;
       } else if (platform === "opla") {
         const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
-        const r = await sendMessageToTab(tabId, { type: "OPLA_CAPTURE_ARTICLE", listingId: String(a.listing_id) })
+        const r = await sendMessageToTab(tabId, { type: "OPLA_CAPTURE_ARTICLE", listingId: String(a.listing_id) }, 45_000)
           .catch((e) => ({ success: false, error: String(e?.message ?? e) }));
         if (!r?.success || !r.capture) throw new Error(r?.error ?? "fiche Opla illisible");
         capture = r.capture;
@@ -16369,7 +16385,11 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     const sonder = async () => {
       const r = await lireVintedAvecCanalRejoue(
         tabId,
-        (id) => sendMessageToTab(id, { type: "VINTED_CURRENT_USER" }),
+        // (03/10, points 28/31) 30 s, plus 300 s : une sonde muette tenait le
+        // relevé « en cours » page 1, 0 article, jusqu'à la mort du worker
+        // (5 min) — doriane-henri, Ornella. Muette = une reprise sur
+        // navigation neuve, puis un échec net qui rend la place.
+        (id) => sendMessageToTab(id, { type: "VINTED_CURRENT_USER" }, 30_000),
         "sonde de session",
       );
       // L'onglet a pu changer d'id pendant la reprise : l'appelant travaille
@@ -16728,7 +16748,8 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       : await (async () => {
           const r = await lireVintedAvecCanalRejoue(
             tabId,
-            (id) => sendMessageToTab(id, { type: "SYNC_DRESSING_PAGE", page, userId: ident.userId }),
+            // (03/10, points 28/31) 60 s par page (p95 réel : 1 min), plus 300 s.
+            (id) => sendMessageToTab(id, { type: "SYNC_DRESSING_PAGE", page, userId: ident.userId }, 60_000),
             `page ${page}`,
           );
           if (r?.tabId != null) tabId = r.tabId; // l'onglet a pu changer d'id

@@ -865,7 +865,16 @@ serve(async (req) => {
   // page_suivante reste en place et la prochaine sync REPREND là où celle-ci
   // s'est arrêtée. Compare-and-swap sur (status, updated_at) : si l'extension
   // se réveille pile pendant qu'on écrit, sa page gagne et on ne touche à rien.
-  const SYNC_RUN_SANS_PROGRES_MIN = 30;   // 'running' muet → expiré
+  // (03/10, points 28/31 — doriane-henri, Ornella) 30 min → 5 min, et la
+  // PROGRESSION fait foi (progres_le, posé par la base : prise, page, articles
+  // lus/créés/mis à jour), plus updated_at — la reprise automatique de
+  // l'extension ré-ouvrait la ligne et la touchait sans rien lire (doriane :
+  // « running » de 10:43 à 12:44, page 1, 0 article). Règle de Nico : un
+  // relevé qui ne progresse plus libère la place ; un relevé qui avance n'est
+  // jamais coupé (la boucle du dressing écrit à chaque tranche de 8 articles,
+  // p95 = 1 min par page). Un arrêt ne conclut RIEN : ni vente, ni
+  // disparition, ni suppression — 'expired' n'est jamais lu comme un relevé.
+  const SYNC_RUN_SANS_PROGRES_MIN = 5;    // 'running' sans progression → arrêté
   const SYNC_QUEUE_TTL_H = 6;             // 'queued' jamais réclamée → expirée
   let syncRunsExpires = 0;
   let syncQueuesExpirees = 0;
@@ -873,9 +882,9 @@ serve(async (req) => {
     const muetIso = new Date(now - SYNC_RUN_SANS_PROGRES_MIN * 60_000).toISOString();
     const { data: figes } = await supabase
       .from("vinted_sync_runs")
-      .select("id, user_id, kind, platform, page_suivante, items_vus, updated_at, started_at, erreur")
+      .select("id, user_id, kind, platform, page_suivante, items_vus, updated_at, started_at, erreur, progres_le, claimed_at, declencheur, extension_build")
       .eq("status", "running")
-      .lt("updated_at", muetIso);
+      .or(`progres_le.lt.${muetIso},and(progres_le.is.null,updated_at.lt.${muetIso})`);
     // ── LA SONDE D'EXTENSION EST CONSULTÉE AVANT DE NOMMER LA CAUSE ─────────
     // (2026-09-14) Ce bloc énonçait « L'ordinateur s'est mis en veille ou
     // Chrome a été fermé » SANS RIEN VÉRIFIER. Démenti sur pièces le 14/09
@@ -940,7 +949,7 @@ serve(async (req) => {
       } catch { /* illisible : le run expire comme avant */ }
     }
     for (const r of figesListe) {
-      const muetDepuis = Math.round((now - Date.parse(String(r.updated_at ?? ""))) / 60_000);
+      const muetDepuis = Math.round((now - Date.parse(String(r.progres_le ?? r.updated_at ?? ""))) / 60_000);
       if (!Number.isFinite(muetDepuis)) continue;
       const lues = listeEcrite.get(String(r.id));
       if (lues) {
@@ -969,7 +978,7 @@ serve(async (req) => {
           .select("id");
         if (clos?.length) {
           syncRunsExpires++;
-          console.log(`[handler-watch] relevé ${r.platform} ${r.id} (user ${r.user_id}) figé depuis ${muetDepuis} min APRÈS la lecture de ${lues} annonce(s) → clos en done [incomplet], pas expiré`);
+          console.log(`[handler-watch] [arret-sans-progres] relevé ${r.platform} ${r.id} (user ${r.user_id}, ${r.declencheur ?? "?"}, build ${String(r.extension_build ?? "?").slice(0, 32)}) sans progression depuis ${muetDepuis} min APRÈS la lecture de ${lues} annonce(s) → clos en done [incomplet], pas expiré — place libérée`);
         }
         continue;
       }
@@ -1003,7 +1012,7 @@ serve(async (req) => {
       if (maj?.length) {
         syncRunsExpires++;
         console.log(
-          `[handler-watch] run de sync ${r.id} (user ${r.user_id}) figé depuis ${muetDepuis} min à la page ${page} → expiré` +
+          `[handler-watch] [arret-sans-progres] relevé ${r.platform ?? r.kind} ${r.id} (user ${r.user_id}, ${r.declencheur ?? "?"}, build ${String(r.extension_build ?? "?").slice(0, 32)}) sans progression depuis ${muetDepuis} min à la page ${page} → arrêté (expiré), place libérée, rien de conclu` +
           ` — extension vue il y a ${sondeMin != null ? `${sondeMin} min` : "jamais / inconnu"}` +
           `${sondeMin != null && sondeMin <= SONDE_VIVANTE_MIN ? " (CHROME VIVANT : gel de notre côté)" : ""}`,
         );
