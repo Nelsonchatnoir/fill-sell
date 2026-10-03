@@ -27,6 +27,7 @@
 
 import { retenueServeurDuJob } from "./retenueServeur.js";
 import { estArretUtilisateur, estGeleLivres } from "./publicationState.js";
+import { phraseMiseAJourExtension } from "./extensionAJour.js";
 
 export const PLATEFORMES_NOM = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
 export const nomPlateforme = (p) => PLATEFORMES_NOM[p] ?? (p ? String(p) : "");
@@ -189,7 +190,8 @@ export function boutiqueDuJob(j, b) {
  * ctx = { maintenant, lang, extension: {etat}|null, plateformesEnPause: Set,
  *         plafond: {retenue, reprise, motif}|null, creneaux: {pf: {dans_creneau, reprise}}|null,
  *         oplaAAutoriser: bool (verdict serveur « a_autoriser »),
- *         boutiques: { connectee, liste, origines } | null (multi-boutiques Vinted) }
+ *         boutiques: { connectee, liste, origines } | null (multi-boutiques Vinted),
+ *         extensionAMettreAJour: bool (poste sous le seuil de version, utils/extensionAJour) }
  * → { groupe: 'en_cours'|'a_venir'|'pause'|'geste', raison, heure|null, motif }
  */
 export function situationJob(j, ctx = {}) {
@@ -228,6 +230,12 @@ export function situationJob(j, ctx = {}) {
   }
   if (j.status === "processing") {
     return { groupe: "en_cours", raison: parNosServeurs(j) ? T.enCoursServeurs : T.enCours, heure: null, motif: "en_cours" };
+  }
+  // (03/10, point 25 — geronimo0550) Extension trop ancienne : le serveur ne
+  // lui sert plus rien (sauf une remise en ligne commencée, traitée plus
+  // haut). Ni « son tour », ni une heure : la mise à jour, et son geste.
+  if (ctx.extensionAMettreAJour && !parNosServeurs(j)) {
+    return { groupe: "pause", raison: phraseMiseAJourExtension(lang), heure: null, motif: "mise_a_jour" };
   }
 
   // pending — d'abord ce qui le RETIENT, avec une heure quand elle est connue.

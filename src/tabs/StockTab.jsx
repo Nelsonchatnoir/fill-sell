@@ -30,6 +30,7 @@ import InstallExtensionCta from '../components/InstallExtensionCta';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
 import { RepublicationPlanifieeBloc } from '../components/RepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
+import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
@@ -7502,7 +7503,9 @@ const StockTab = memo(function StockTab({
   // serveur), les pseudos et l'origine de chaque article — chaque ligne dit sa
   // boutique, et un job retenu dit laquelle ouvrir.
   const ctxBarres = { lang, extension: extFraicheur, plateformesEnPause: pausedSet, plafond: repubPlafondEtat, oplaAAutoriser: oplaVerdictRepub === 'a_autoriser', texteErreur: (j) => humanizeJobError(j, lang),
-    boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null };
+    boutiques: (boutiquesVinted?.length ?? 0) >= 1 ? { connectee: boutiqueConnectee, liste: boutiquesVinted, origines: originesBoutique } : null,
+    // (03/10, point 25) Poste trop ancien : la file attend la mise à jour (même règle que le bandeau).
+    extensionAMettreAJour: extensionStatus?.outdated === true };
   // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
   // republication — même gating que l'interrupteur coin_config
   // .republish_maintenance : le trigger republish_maintenance_guard refuse
@@ -10212,6 +10215,16 @@ const StockTab = memo(function StockTab({
                               .filter(Number.isFinite));
                             const joursAttente=Number.isFinite(plusVieux)?Math.floor((Date.now()-plusVieux)/86400000):0;
                             const attenteLongue=horsFraicheur&&joursAttente>=1;
+                            // (03/10, point 25 — geronimo0550, 0.6.79) Poste trop
+                            // ancien : le serveur ne lui sert rien — jamais
+                            // « En cours… » sur une file qui ne partira pas.
+                            const majRequise=extensionStatus?.outdated===true&&pendingJobs.some(j=>j.voie!=='api');
+                            if(majRequise){
+                              dot="#E8956D";fg="#8A6100";
+                              txt=fr?'Mise à jour':'Update';
+                              titre=phraseMiseAJourExtension(lang);
+                              onTap=()=>setJobStatusItem(item);
+                            }else{
                             pulse=!horsFraicheur;dot="#E8956D";
                             txt=!horsFraicheur
                               ?(fr?'En cours…':'Posting…')
@@ -10223,6 +10236,7 @@ const StockTab = memo(function StockTab({
                                 ?(fr?`En attente depuis ${joursAttente} jour${joursAttente>1?"s":""}. Ouvre Chrome sur l'ordinateur où tu as installé l'extension.`:`Waiting for ${joursAttente} day${joursAttente>1?"s":""}. Open Chrome on the computer where you installed the extension.`)
                                 :(fr?"En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome.":"Waiting for your computer — it starts next time Chrome opens.");
                             onTap=()=>setJobStatusItem(item);
+                            }
                           }else if(failedJobs.length>0){
                             // La plateforme MONTE dans la pastille (2026-08-27) :
                             // l'ancien badge « ⚠️ Échec <plateforme> » du corps

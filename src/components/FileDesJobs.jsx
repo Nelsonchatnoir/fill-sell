@@ -33,6 +33,7 @@ import { useOplaAcces } from "../utils/oplaAcces";
 import { MOTIFS } from "../utils/connexionPlateformes";
 import BoutonMeConnecter from "./BoutonMeConnecter";
 import { boutiqueConnecteeVinted } from "../../supabase/functions/_shared/boutique-connectee.js";
+import { extensionAMettreAJour } from "../utils/extensionAJour";
 
 const T = {
   ink: "#10201B", mute: "#5C6560", faint: "#8A8578",
@@ -63,9 +64,11 @@ function useLectureAutonome({ supabase, userId, actif }) {
         }
         let extension = null;
         let boutiques = null;
+        let majExtension = false;
         try {
-          const { data: prof } = await supabase.from("profiles").select("extension_last_seen_at, extension_sessions, vinted_sync_pin").eq("id", userId).maybeSingle();
+          const { data: prof } = await supabase.from("profiles").select("extension_last_seen_at, extension_build, extension_sessions, vinted_sync_pin").eq("id", userId).maybeSingle();
           extension = fraicheurExtension(prof?.extension_last_seen_at ?? null);
+          majExtension = extensionAMettreAJour({ build: prof?.extension_build ?? null, lastSeenAt: prof?.extension_last_seen_at ?? null });
           // (03/10, point 16) Multi-boutiques Vinted : même règle que le serveur.
           const liste = Array.isArray(prof?.vinted_sync_pin?.boutiques) ? prof.vinted_sync_pin.boutiques : [];
           if (liste.length) {
@@ -82,7 +85,7 @@ function useLectureAutonome({ supabase, userId, actif }) {
           const { data: h } = await supabase.from("platform_health").select("platform").eq("paused", true);
           plateformesEnPause = new Set((h ?? []).map((x) => x.platform));
         } catch { /* rien d'affiché */ }
-        if (vivant) setDonnees({ jobs, fiches, extension, plateformesEnPause, boutiques });
+        if (vivant) setDonnees({ jobs, fiches, extension, plateformesEnPause, boutiques, majExtension });
       } catch { /* la prochaine lecture rattrapera */ }
     };
     lire();
@@ -115,7 +118,7 @@ function useRetenuesRepublication({ supabase, actif }) {
 const ICONES = {
   rythme: Clock, limite_jour: Clock, creneau: Clock, essai: Clock,
   retenue_serveur: ShieldCheck, boutique: Pause, plateforme: Pause, gel: Pause,
-  ordinateur: Monitor, geste: Hand, connexion: Hand,
+  ordinateur: Monitor, geste: Hand, connexion: Hand, mise_a_jour: Monitor,
 };
 
 function LigneFile({ job, item, situation, lang, geste, boutiques = null }) {
@@ -182,6 +185,7 @@ export default function FileDesJobs({
     creneaux: retenues?.creneaux ?? null,
     oplaAAutoriser: contexte?.oplaAAutoriser ?? (opla.verdict === "a_autoriser"),
     boutiques: contexte?.boutiques ?? autonome?.boutiques ?? null,
+    extensionAMettreAJour: contexte?.extensionAMettreAJour ?? autonome?.majExtension ?? false,
     texteErreur,
   }), [lang, maintenant, contexte, autonome, retenues, texteErreur, opla.verdict]);
 

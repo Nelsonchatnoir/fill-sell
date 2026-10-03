@@ -22,6 +22,7 @@ import { needsUserOuvrable } from "../utils/shared";
 // Le texte d'un job passe TOUJOURS par humanizeJobError (24/09) — jamais le
 // brut de l'extension ou du worker (« LIVE : aspect(s) … button.fake-link »).
 import { humanizeJobError } from "../utils/shared";
+import { phraseMiseAJourExtension } from "../utils/extensionAJour";
 import BoutonMeConnecter from "../components/BoutonMeConnecter";
 import { MOTIFS } from "../utils/connexionPlateformes";
 import { parcageDepasse } from "../utils/oplaAcces";
@@ -112,7 +113,9 @@ export default function EcranSuivi({ m }) {
   // Opla sans autorisation connue (verdict serveur) : le serveur ne la sert
   // pas — sa ligne attend le geste, jamais « son tour ».
   const oplaAAutoriser = m.oplaVerdict === "a_autoriser";
-  const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr") };
+  const ctxBarre = { lang: m.lang, extension: ext ?? null, oplaAAutoriser, texteErreur: (j) => humanizeJobError(j, en ? "en" : "fr"),
+    // (03/10, point 25) Poste trop ancien : la barre attend la mise à jour, jamais « son tour ».
+    extensionAMettreAJour: m.extensionAMettreAJour === true };
   const piste = (p) => {
     const e = etats[p] ?? { kind: "en_file" };
     // (03/10, point 17) La voie du JOB d'abord (trigger), le miroir seulement avant sa création.
@@ -167,6 +170,9 @@ export default function EcranSuivi({ m }) {
       // son tour — elle attend le geste, et le bouton est là.
       default: if (p === "opla" && oplaAAutoriser) return { texte: en ? "Waiting for your Opla permission — it goes out on its own once granted." : "Attend ton autorisation Opla — partira toute seule une fois accordée.", droite: <Puce ton="geste">{en ? "Permission" : "Autorisation"}</Puce>,
         geste: m.userId ? <BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /> : null };
+        // (03/10, point 25 — geronimo0550) Extension trop ancienne : rien ne
+        // partira « à son tour » — la mise à jour d'abord, et son geste.
+        if (!parApi && m.extensionAMettreAJour) return { texte: phraseMiseAJourExtension(m.lang) + ".", droite: <Puce ton="geste">{en ? "Update" : "Mise à jour"}</Puce> };
         return { texte: parApi ? (en ? "Queued on our servers" : "Dans la file de nos serveurs") : (en ? "Queued — Chrome takes it in turn" : "Dans la file — Chrome la prend à son tour"), droite: <Puce ton="mute">{en ? "queued" : "en file"}</Puce> };
     }
   };

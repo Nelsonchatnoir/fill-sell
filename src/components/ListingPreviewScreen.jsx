@@ -124,6 +124,7 @@ import {
 } from "../publication/moteur/listes";
 import { VINTED_COLORS } from "../utils/vintedColors";
 import { optionDepuisTextes } from "../../supabase/functions/_shared/option-du-texte.js";
+import { extensionAMettreAJour } from "../utils/extensionAJour";
 import { sansListesEmpruntees } from "../utils/catalogueListes.js";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
@@ -5049,14 +5050,18 @@ export default function ListingPreviewScreen({
   // distinguer « session expirée » (l'extension tourne mais ne peut plus
   // travailler, geste réparateur à afficher) d'« ordinateur éteint ».
   const [extSessionRejetee, setExtSessionRejetee] = useState(null);
+  // (03/10, point 25) Le build de l'extension, pour dire AVANT de publier qu'un
+  // poste trop ancien ne prendra rien (utils/extensionAJour) — même règle que
+  // le bandeau de l'app et que le serveur.
+  const [extBuildRelu, setExtBuildRelu] = useState(null);
   useEffect(() => {
     if (!userId) return;
     let alive = true;
     (async () => {
       try {
         const { data } = await supabase.from("profiles")
-          .select("extension_last_seen_at").eq("id", userId).maybeSingle();
-        if (alive && data) setExtSeenRelu(data.extension_last_seen_at ?? null);
+          .select("extension_last_seen_at, extension_build").eq("id", userId).maybeSingle();
+        if (alive && data) { setExtSeenRelu(data.extension_last_seen_at ?? null); setExtBuildRelu(data.extension_build ?? null); }
       } catch { /* best-effort : la prop reste la source */ }
       // SELECT SÉPARÉ, jamais combiné (PostgREST tout-ou-rien) : la colonne
       // vient de la migration 20260902233000 — tant qu'elle n'est pas
@@ -10151,6 +10156,7 @@ export default function ListingPreviewScreen({
     boutonEbay: (ebayEtatCompte ? resumeEbay(ebayEtatCompte, lang === "en" ? "en" : "fr").bouton : null) ?? (lang === "en" ? "Set up eBay" : "Paramétrer eBay"),
     ebayVoieApi: Boolean(ebayCompte?.voieApi), ebayVoieApiReelle, ouvrirPanneauEbay: () => setEbayPanneauOuvert(true),
     platformSessions, voiesDuLot, extFraicheurPublier, extensionVueLe, extensionBlocked,
+    extensionAMettreAJour: extensionAMettreAJour({ build: extBuildRelu, lastSeenAt: extensionVueLe }),
     plateformesPubliables, plateformesBloqueesChamps, publishChips, publishTotalFor,
     // La rédaction
     propsStepGeneration, etatsParPlateforme, nbQuestions, copieManquante,

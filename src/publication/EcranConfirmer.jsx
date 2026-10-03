@@ -216,6 +216,15 @@ export default function EcranConfirmer({ m }) {
           {m.userId && <div><BoutonMeConnecter userId={m.userId} platform="opla" motif={MOTIFS.AUTORISER_OPLA} lang={m.lang} variante="bouton" /></div>}
         </Carte>
       )}
+      {/* (03/10, point 25 — geronimo0550, 0.6.79) Une extension trop ancienne
+          ne recevra RIEN : on le dit AVANT le clic, avec le geste. */}
+      {m.extensionAMettreAJour && voies.extension.some(p => verdict.partent.includes(p)) && (
+        <Carte gravite="geste" titre={en ? "Update the FillSell extension first" : "Mets d'abord l'extension FillSell à jour"}>
+          <div className="fsn-card-p">{en
+            ? `${voies.extension.filter(p => verdict.partent.includes(p)).map(NOM).join(", ")} will only go out after the update: quit Chrome completely on your computer, then reopen it. Nothing is lost meanwhile.`
+            : `${voies.extension.filter(p => verdict.partent.includes(p)).map(NOM).join(", ")} ne partira qu'après la mise à jour : ferme Chrome complètement sur ton ordinateur, puis rouvre-le. Rien n'est perdu d'ici là.`}</div>
+        </Carte>
+      )}
       {sessionsFermees.length > 0 && (
         <Carte gravite="geste" titre={en ? "Not signed in on some platforms" : "Session fermée sur certaines plateformes"}>
           <div className="fsn-card-p">{en ? "The listing will wait until you sign in on your computer. Nothing is blocked." : "L'annonce attendra que tu te connectes sur ton ordinateur. Rien n'est bloqué."}</div>
