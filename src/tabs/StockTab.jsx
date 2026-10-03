@@ -69,6 +69,7 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // dédié, la lecture des runs séparée de l'affichage.
 // components/RelevesPlateformes.jsx est SUPPRIMÉ.
 import CarteAnnoncesEnLigne from '../annonces/CarteAnnoncesEnLigne';
+import BandeauDejaVendu from '../annonces/BandeauDejaVendu';
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
@@ -8323,6 +8324,10 @@ const StockTab = memo(function StockTab({
             )}
           </div>
         )}
+        {/* ── « DÉJÀ VENDU ? » EN TÊTE (03/10, nicolas.menar) : un article
+            vendu dont une annonce au même nom est encore en ligne — le risque
+            de double vente se voit, il ne dort plus au fond d'une carte. */}
+        <BandeauDejaVendu lang={lang} userId={user?.id} items={items} onDecision={rafraichirApresSync}/>
         {/* ── « CE QUI ATTEND UNE ACTION DE TA PART » (19/09) ────────────────
             UN bandeau pour les DEUX causes qui demandent un geste : l'annonce
             à COMPLÉTER et celle qui N'EST PAS PARTIE. Le bandeau « N annonce
