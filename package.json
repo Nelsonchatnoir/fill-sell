@@ -163,7 +163,10 @@
     "selftest:pause-antirobot-toutes-versions": "node scripts/pause-antirobot-toutes-versions-selftest.mjs",
     "selftest:extension-a-mettre-a-jour": "node --import ./scripts/loader-ext.mjs scripts/extension-a-mettre-a-jour-selftest.mjs",
     "selftest:vinted-annonces-neuves": "node scripts/vinted-annonces-neuves-selftest.mjs",
-    "selftest:releves-progres": "node scripts/releves-progres-selftest.mjs"
+    "selftest:releves-progres": "node scripts/releves-progres-selftest.mjs",
+    "selftest:reponses-partagees": "node --import ./scripts/loader-ext.mjs scripts/reponses-partagees-selftest.mjs",
+    "selftest:vinted-marque-libre": "node scripts/vinted-marque-libre-selftest.mjs",
+    "selftest:beebs-age-republication": "node scripts/beebs-age-republication-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
