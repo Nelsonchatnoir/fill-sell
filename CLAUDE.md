@@ -1,17 +1,18 @@
 ## État de production au 03/10 (nuit) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
-« 03/10 soir — clôture » et « 03/10 nuit — marque, Louis » en fin) et
+« 03/10 nuit — marque, Louis » et « 03/10 nuit — clôture Louis + marque +
+prix » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS ; **0.6.93 prête à téléverser**
-  (`build/CWS-0.6.93-A-TELEVERSER/`, BUILD_ID `2026-10-03T19:24:28Z+a0b7f3d`,
-  chargée chez Nico — sa copie se recharge seule ; 0.6.91/0.6.92 jamais
-  téléversées) ; **minimum serveur
-  0.6.81** (inchangé : forcer la MAJ = décision de Nico) ; OTA **2.9.44** ;
-  `get-pending-jobs` v202, `lens-analysis` v105, `avis-demande` v3,
+- **Servi** : extension **0.6.89** au CWS ; **0.6.94 prête à téléverser**
+  (`build/CWS-0.6.94-A-TELEVERSER/`, BUILD_ID `2026-10-03T21:23:06Z+2a088e4`,
+  chargée chez Nico — sa copie s'est rechargée seule à 23:12 ; 0.6.90→0.6.93
+  jamais téléversées) ; **minimum serveur
+  0.6.81** (inchangé : forcer la MAJ = décision de Nico) ; OTA **2.9.45** ;
+  `get-pending-jobs` v205, `lens-analysis` v105, `avis-demande` v3,
   `ebay-account` v16 (`true`) ; `update-job-status`
   v121, `handler-watch` v77, `ebay-api-worker` v76, `ebay-oauth-callback` v9,
   `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de
@@ -32,7 +33,14 @@ contraire. Il se périme : `functions list`, `cron.job` et
   redemandée ; ⛔ Vinted ne crée PLUS de marque libre (03/10) : marque exacte
   du catalogue, sinon une QUESTION, jamais « Sans marque » en silence.
   ⛔ Annonce de test : 999 € ou plus, jamais le tableau de Nico. **Republication** : âge et prix repris de L'annonce en ligne.
-- **Selftests** : 188 + bancs, 0 rouge (03/10 nuit). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
+  Question « Marque » hors catalogue (`src/annonces/QuestionMarque.jsx`) : le
+  pourquoi, « Sans marque » en un tap, recherche dans le catalogue Vinted
+  (commande `CHERCHER_MARQUE`, 0.6.94) ; « Sans marque » jamais écrit sur la
+  fiche. **Republication (0.6.94)** : l'annonce est RELUE avant tout retrait
+  (`champs_lus_sur_l_annonce.lus`), la taille affichée l'emporte sur la copie
+  (gpj v205). Exception de créneau : `creneau_exception` bornée, posée par
+  réparation sur décision de Nico seulement.
+- **Selftests** : 190 + bancs, 0 rouge (03/10 nuit). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs` (un morceau ne revient qu'avec sa
   preuve réelle — son test tombe sinon).
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
