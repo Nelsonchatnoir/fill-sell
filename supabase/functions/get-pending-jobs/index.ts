@@ -30,6 +30,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
+import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
@@ -3729,19 +3730,34 @@ serve(async (req) => {
       //    indépendamment. Mesuré : avec un filtre qui ne regardait que la
       //    catégorie et les trois champs, le job 4e5f3abe — déjà complété — ne
       //    repassait plus par ce bloc, et sa description restait vide.
+      // (03/10, Louis) Une REPUBLICATION sans âge passe aussi : l'âge de
+      // l'annonce en ligne est dans son relevé (« 16 ans et + » sur ses cinq
+      // inserts Zombicide) — on le reprend au lieu de le redemander.
       const beebsACombler = (out as unknown as Array<Record<string, unknown>>)
         .filter((j) => j.platform === "beebs" && j.inventaire_id != null
           && (!Array.isArray(pfB(j)["beebsCategoryPath"])
             || ["etat", "marque", "taille"].some((c) => !String(pfB(j)[c] ?? "").trim())
+            || (j.action === "republish" && !String(pfB(j)["age"] ?? "").trim())
             || String(j["description"] ?? "").trim().length < 5));
       if (beebsACombler.length) {
         const ids = [...new Set(beebsACombler.map((j) => Number(j.inventaire_id)))];
         const { data: annonces } = await userClient
-          .from("annonces_plateforme").select("inventaire_id, capture, vu_le")
+          .from("annonces_plateforme").select("inventaire_id, listing_id, capture, vu_le")
           .eq("platform", "beebs").in("inventaire_id", ids)
           .order("vu_le", { ascending: false });
         const cheminDe = new Map<number, string[]>();
         const captureDeB = new Map<number, Record<string, unknown>>();
+        // ── L'ANNONCE MÊME, PAS LA PLUS RÉCENTE DE L'ARTICLE (03/10) ────────
+        // Deux annonces Beebs d'un même article sont deux exemplaires (Louis
+        // duplique) : une republication reprend les champs de SON annonce —
+        // celle dont elle porte le numéro —, jamais ceux de la jumelle vue en
+        // dernier. Sans numéro, la règle d'avant (la plus récente).
+        const captureParAnnonce = new Map<string, Record<string, unknown>>();
+        for (const a of (annonces ?? [])) {
+          const lid = String((a as { listing_id?: unknown }).listing_id ?? "").trim();
+          const cap = (a as { capture?: unknown }).capture;
+          if (lid && cap && typeof cap === "object" && !captureParAnnonce.has(lid)) captureParAnnonce.set(lid, cap as Record<string, unknown>);
+        }
         for (const a of (annonces ?? [])) {
           const inv = Number((a as { inventaire_id: number }).inventaire_id);
           if (cheminDe.has(inv) || captureDeB.has(inv)) continue;
@@ -3813,13 +3829,28 @@ serve(async (req) => {
             pf["beebsCategoryPath"] = chemin;
             repris["beebsCategoryPath"] = chemin.join(" > ");
           }
-          const cap = captureDeB.get(Number(j.inventaire_id)) ?? {};
+          const snapB = (pf["republish_snapshot"] && typeof pf["republish_snapshot"] === "object") ? pf["republish_snapshot"] as Record<string, unknown> : {};
+          const numeroB = String((j as { platform_listing_id?: unknown }).platform_listing_id ?? snapB["platform_listing_id"] ?? "").trim();
+          const cap = (numeroB && captureParAnnonce.get(numeroB)) || (captureDeB.get(Number(j.inventaire_id)) ?? {});
           for (const [cle, dans] of CHAMPS_BEEBS) {
             if (String(pf[cle] ?? "").trim()) continue;
             const v = String(cap[dans] ?? "").trim();
             if (!v) continue;
             pf[cle] = v;
             repris[cle] = v;
+          }
+          // ── L'ÂGE DE L'ANNONCE EN LIGNE (03/10, Louis) ─────────────────────
+          // Une republication remet l'annonce telle qu'elle est : l'âge que
+          // Beebs affiche (relevé `age`, ou la ligne « Âge » des attributs
+          // bruts) part tel quel. Seulement pour une REPUBLICATION : une
+          // publication neuve n'a pas d'annonce dont reprendre l'âge.
+          if (j.action === "republish" && !String(pf["age"] ?? "").trim()) {
+            const ageCap = ageBeebsDuReleve(cap);
+            if (ageCap) {
+              pf["age"] = ageCap;
+              pf["age_lu"] = { valeur: ageCap, source: "annonce Beebs en ligne (relevé)", le: new Date().toISOString(), pose_par: "get-pending-jobs (repris, jamais deviné)" };
+              repris["age"] = ageCap;
+            }
           }
           if (!String(pf["taille"] ?? "").trim()) {
             const vf = tailleFiche.get(Number(j.inventaire_id));
@@ -7614,8 +7645,8 @@ serve(async (req) => {
                 "Choisis celui imprimé sur la jaquette ci-dessous (bouton « ✋ Compléter ») — « Non précisé » s'il n'y en a pas : " +
                 "la publication repart d'elle-même. Rien n'a été envoyé à Vinted."
               : j.action === "republish"
-                ? `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et nous ne le connaissons pas : l'âge de ton annonce actuelle avait été deviné, pas lu. ` +
-                  "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la republication repart d'elle-même avec cet âge. Ton annonce est restée en ligne telle quelle."
+                ? `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et le relevé de ton annonce ne nous l'a pas donné. ` +
+                  "Choisis la tranche affichée sur ton annonce Beebs (bouton « ✋ Compléter ») : la republication repart d'elle-même avec cet âge. Ton annonce est restée en ligne telle quelle."
                 : `Beebs exige l'âge de l'enfant à qui s'adresse l'article pour le rayon « ${feuille} », et ton annonce ne le renseigne pas. ` +
                   "Choisis la tranche ci-dessous (bouton « ✋ Compléter ») : la publication repart d'elle-même. Rien n'a été envoyé à Beebs.";
             const pfNu: Record<string, unknown> = {
