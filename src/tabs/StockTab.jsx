@@ -2052,6 +2052,13 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
 // Bénéfice décisif : elle liste les QUATRE plateformes même quand l'annonce n'y
 // est pas publiée. Un blocage Beebs y apparaît donc toujours — là où le logo
 // sur la photo, lui, n'existe que pour les plateformes en ligne.
+/** (03/10, point 26) Vinted vérifie l'annonce (delayed_publication), vu il y a moins de 48 h. */
+export function vintedEnVerification(job, maintenant = Date.now()) {
+  const v = job?.platform === "vinted" ? job?.platform_fields?.vinted_en_verification : null;
+  const vu = Date.parse(String(v?.vu_le ?? ""));
+  return Number.isFinite(vu) && maintenant - vu < 48 * 3600_000;
+}
+
 export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, onOublier, onRepublier, plateformes = [], ctxBarres = null, onOuvrirFile = null }) {
   useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
@@ -2104,6 +2111,10 @@ export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClos
             // supprimer une annonce masquée fonctionne, et c'est un geste
             // légitime sur un article qu'on ne veut plus voir nulle part.
             const masquee = p === "vinted" && online && vintedMasqueeMalgreJobs(item, jobsAll);
+            // (03/10, point 26 — buste de Nico) Vinted retient l'annonce neuve
+            // « en vérification » (lue par l'extension 0.6.90 au contrôle des
+            // ventes) : en ligne pour nous, masquée aux acheteurs.
+            const enVerifVinted = p === "vinted" && online && vintedEnVerification(latestPubByPlatform[p]);
             const busy = busyPlatform === p;
             const armed = confirming === p;
             const dimmed = !isPublished || state === "removed";
@@ -2115,7 +2126,9 @@ export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClos
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:dimmed ? NU_T.mute : NU_T.ink }}>{label}</div>
                   <div style={{ fontSize:11.5, lineHeight:1.35, color:NU_T.mute, display:"flex", alignItems:"center", gap:5 }}>
-                    {online && !armed && (masquee
+                    {online && !armed && (enVerifVinted
+                      ? (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#E8B54D", flex:"0 0 auto" }}/><span style={{ color:"#8A6100", fontWeight:600 }}>{fr ? "En vérification chez Vinted — masquée aux acheteurs" : "Under review at Vinted — hidden from buyers"}</span></>)
+                      : masquee
                       ? (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#E8B54D", flex:"0 0 auto" }}/><span style={{ color:"#8A6100", fontWeight:600 }}>{item.vinted_status === "draft" ? (fr ? "Brouillon sur Vinted" : "Draft on Vinted") : (fr ? "Masquée sur Vinted" : "Hidden on Vinted")}</span></>)
                       : (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#2F9E90", flex:"0 0 auto" }}/><span style={{ color:"#1B6E62", fontWeight:600 }}>{fr ? "En ligne" : "Live"}</span></>))}
                     {online && armed && <span style={{ color:"#8C2F28", fontWeight:600 }}>{fr ? `Retirer de ${label} ?` : `Remove from ${label}?`}</span>}

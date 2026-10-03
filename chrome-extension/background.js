@@ -10288,7 +10288,11 @@ async function lireEtatAnnonce(url, platform) {
     const http = res.status;
     switch (platform) {
       case "leboncoin": return { state: detectLeboncoinState(html, adId), price: null, raison: null, http };
-      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId), raison: null, http, url_finale: finalUrl };
+      // (03/10, point 26) « en_verification » : Vinted retient l'annonce neuve
+      // (item_alert_type = delayed_publication) — en ligne pour nous, masquée
+      // aux acheteurs. Même signal que le retrait (content-scripts/vinted.js).
+      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId), raison: null, http, url_finale: finalUrl,
+                                 en_verification: /\\?"item_alert_type\\?"\s*:\s*\\?"delayed_publication\\?"/.test(html) };
       case "ebay":      return { state: detectEbayState(html, finalUrl, adId), price: null, raison: null, http };
       case "beebs":     return { state: detectBeebsState(html, adId), price: null, raison: null, http };
       default:          return { state: "unknown", price: null, raison: null, http };
@@ -18059,8 +18063,8 @@ async function checkPublishedListings(session) {
   };
   for (let i = 0; i < due.length; i++) {
     const job = due[i];
-    let { state, price } = await checkListingState(job.listing_url, job.platform);
-    console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}`);
+    let { state, price, en_verification: enVerification } = await checkListingState(job.listing_url, job.platform);
+    console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}${enVerification ? " (en vérification chez Vinted)" : ""}`);
 
     // ── Repli wardrobe (Vinted seulement, cf. lireWardrobeConnecte) ─────────
     if (state === "unknown" && job.platform === "vinted") {
@@ -18177,6 +18181,18 @@ async function checkPublishedListings(session) {
         patch.platform_fields = cleaned;
         console.log(`[background] ${job.platform} ${job.id} : de nouveau EN LIGNE → drapeau levé, bandeau retiré (fausse alerte)`);
       }
+      // (03/10, point 26 — buste de Nico, 10223005469) Vinted retient l'annonce
+      // neuve « en vérification » : en ligne pour nous, masquée aux acheteurs.
+      // L'app le dit (« En vérification chez Vinted ») au lieu de « En ligne ».
+      if (job.platform === "vinted") {
+        const pfV = patch.platform_fields ?? job.platform_fields ?? {};
+        if (enVerification) {
+          patch.platform_fields = { ...pfV, vinted_en_verification: { depuis: pfV.vinted_en_verification?.depuis ?? new Date().toISOString(), vu_le: new Date().toISOString() } };
+        } else if (pfV.vinted_en_verification) {
+          const { vinted_en_verification: _v, ...sansV } = pfV;
+          patch.platform_fields = sansV;
+        }
+      }
     }
 
     if (state === "sold" || state === "unavailable") {
@@ -18254,7 +18270,15 @@ async function checkPublishedListings(session) {
           }
         }
         const idJob = extractListingId(job.listing_url, "vinted");
-        if (idArticle && idJob != null && idArticle !== String(idJob)) {
+        // (03/10, point 26 — jogging de Nico) « Remplacée » n'est vrai que si
+        // la fiche vit sur une annonce PLUS RÉCENTE (Vinted numérote dans
+        // l'ordre). Une fiche restée sur une ANCIENNE annonce (importée, finie
+        // depuis) ne prouve rien : la nouvelle annonce a peut-être été retirée
+        // par Vinted — c'est la lecture normale qui en juge (deux lectures,
+        // puis la question à la personne), jamais une clôture silencieuse.
+        const ficheSurPlusRecente = idArticle && idJob != null && /^\d+$/.test(idArticle) && /^\d+$/.test(String(idJob))
+          && BigInt(idArticle) > BigInt(String(idJob));
+        if (ficheSurPlusRecente) {
           const remis = { ...pf };
           delete remis.unavailable_since;
           delete remis.sale_signal;

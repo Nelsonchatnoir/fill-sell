@@ -3576,6 +3576,9 @@ serve(async (req) => {
 
     const patch: Record<string, unknown> = { status: statutEffectif };
     let inventaireVintedAEstampiller: number | string | null = null;
+    // (03/10, point 26) L'article dont la fiche doit porter l'id de l'annonce
+    // Vinted qui vient d'être publiée (voir après l'écriture).
+    let ficheVintedAMettreAJour: number | string | null = null;
     let boutiqueVintedProuvee: string | null = null;
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -4050,6 +4053,9 @@ serve(async (req) => {
       // preuve structuree, recente et concordante ; jamais un titre, jamais un
       // pseudo isole. L'ecriture sur l'article se fera seulement apres le CAS
       // terminal reussi, afin qu'un statut refuse n'estampille rien.
+      if (jobRow?.platform === "vinted" && jobRow.action === "publish" && jobRow.inventaire_id != null) {
+        ficheVintedAMettreAJour = jobRow.inventaire_id;
+      }
       if (jobRow?.platform === "vinted" && ["publish", "republish"].includes(String(jobRow.action ?? ""))
           && jobRow.inventaire_id != null) {
         const pfPublication = ((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>);
@@ -4346,6 +4352,36 @@ serve(async (req) => {
           `[update-job-status] job=${jobId} : boutique Vinted ${boutiqueVintedProuvee} estampillee a la source ` +
           `sur l'article ${inventaireVintedAEstampiller} si elle etait encore absente`,
         );
+      }
+    }
+
+    // ── LA FICHE SUIT L'ANNONCE VINTED LA PLUS RÉCENTE (03/10, point 26) ─────
+    // Jogging Primark de Nico : la fiche gardait l'id d'une ANCIENNE annonce
+    // (10067774305, importée puis finie) — l'extension n'écrit l'id que sur
+    // une fiche vide. Le contrôle des ventes a lu « l'article vit sur une
+    // autre annonce » et a clos la NOUVELLE (10222622571) comme « remplacée par
+    // une republication » — sans republication, et l'annonce n'était plus
+    // suivie. Vinted numérote ses annonces dans l'ordre : l'id le plus récent
+    // devient celui de la fiche (jamais l'inverse ; un doublon refusé par
+    // l'index unique laisse tout en l'état). Toutes versions d'extension.
+    if (ficheVintedAMettreAJour != null && statutEffectif === "published") {
+      try {
+        const lien = String((updated as Record<string, unknown> | null)?.["listing_url"] ?? body.listing_url ?? "");
+        const nouvelId = lien.match(/\/items\/(\d{6,})/)?.[1] ?? null;
+        if (nouvelId) {
+          const { data: fiche } = await userClient.from("inventaire")
+            .select("vinted_item_id").eq("id", ficheVintedAMettreAJour).maybeSingle();
+          const actuel = String((fiche as { vinted_item_id?: unknown } | null)?.vinted_item_id ?? "").trim();
+          if (actuel !== nouvelId && (!actuel || (/^\d+$/.test(actuel) && BigInt(actuel) < BigInt(nouvelId)))) {
+            let maj = userClient.from("inventaire").update({ vinted_item_id: nouvelId }).eq("id", ficheVintedAMettreAJour);
+            maj = actuel ? maj.eq("vinted_item_id", actuel) : maj.is("vinted_item_id", null);
+            const { error: eId } = await maj;
+            if (eId) console.warn(`[update-job-status] job=${jobId} : fiche ${ficheVintedAMettreAJour} non recalée sur l'annonce ${nouvelId} (${eId.message})`);
+            else console.log(`[update-job-status] job=${jobId} : fiche ${ficheVintedAMettreAJour} → annonce Vinted ${nouvelId} (avant : ${actuel || "aucune"})`);
+          }
+        }
+      } catch (e) {
+        console.warn("[update-job-status] fiche Vinted après publication :", (e as Error)?.message ?? e);
       }
     }
 
