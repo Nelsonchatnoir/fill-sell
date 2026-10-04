@@ -5,11 +5,14 @@
 // un composant. Tout se lit ici, fr + en, et un composant ne reçoit que `T`.
 //
 // ⛔ VOCABULAIRE NON NÉGOCIABLE :
-//   · jamais « on relève pour toi » : c'est l'EXTENSION qui exécute, sur
+//   · jamais « on synchronise pour toi » : c'est l'EXTENSION qui exécute, sur
 //     l'ORDINATEUR. La personne pilote depuis son téléphone, et l'app n'est
 //     JAMAIS présentée comme un accessoire dont on pourrait se passer.
-//   · UN SEUL VERBE : « relever ». Pas « synchroniser », pas « actualiser »,
-//     pas « scanner » — ni ici, ni dans la ligne Vinted, ni dans les refus.
+//   · UN SEUL VERBE : « synchroniser » (décision de Nico, refonte du Stock du
+//     03/10/2026 : le bouton s'appelle « Synchroniser » PARTOUT). Pas
+//     « relever », pas « actualiser », pas « scanner » — ni ici, ni dans la
+//     ligne Vinted, ni dans les refus. (Jusqu'au 03/10, cette règle imposait
+//     « relever » ; scripts/stock-refonte-selftest.mjs tient la nouvelle.)
 //   · une plateforme sans session n'est pas en ÉCHEC : elle est « à
 //     connecter ». Le dossier Leo-paul Hug (18/09) tient tout entier dans
 //     cette nuance — quatre runs `failed` pour trois comptes qui n'existaient
@@ -18,17 +21,25 @@
 //     ordinateur », et rien de plus : pas d'onglet, pas de « dans le même
 //     Chrome ». La maquette disait « Pas connecté à eBay dans Chrome » ; la
 //     consigne de Nico est plus récente et plus courte, c'est elle qui tient.
+// « de » devant un nom de plateforme, élidé devant une voyelle : « d'eBay »,
+// « d'Opla », « de Beebs » (refonte du 03/10 : le nom passe dans des phrases).
+const de = (nom) => (/^[aeiouyéèêàâîôû]/i.test(String(nom ?? '')) ? `d'${nom}` : `de ${nom}`);
+
 const FR = {
   titre: 'Mes annonces en ligne',
 
   // ── Le sous-titre : l'état RÉEL, jamais une estimation ───────────────────
-  sousJamais: 'Jamais relevé',
-  sousRepos: (quand, n) => `Relevé ${quand} · ${n} annonce${n > 1 ? 's' : ''}`,
+  sousJamais: 'Jamais synchronisé',
+  // Refonte du 03/10 : l'heure et le compte sont deux lignes.
+  synchronise: (quand) => `Synchronisé ${quand}`,
+  nAnnonces: (n) => `${n} annonce${n > 1 ? 's' : ''}`,
+  titreEnCours: 'Synchronisation',
+  sousRepos: (quand, n) => `Synchronisé ${quand} · ${n} annonce${n > 1 ? 's' : ''}`,
   sousEnCours: (faites, total) => `${faites} plateforme${faites > 1 ? 's' : ''} sur ${total}`,
 
   // ── Le geste ─────────────────────────────────────────────────────────────
-  ctaTout: 'Tout relever',
-  ctaEnCours: 'Relevé en cours',
+  ctaTout: 'Synchroniser',
+  ctaEnCours: 'En cours',
   ctaEnvoi: 'Envoi…',
   ctaExtension: 'Extension requise',
 
@@ -45,19 +56,19 @@ const FR = {
   motJamais: 'jamais',
   tuileAria: (nom, mot) => `${nom} — ${mot}`,
 
-  // ── L'écran de relevé ────────────────────────────────────────────────────
-  enCoursDe: (nom) => `Relevé de ${nom}…`,
-  enCoursAttente: 'Relevé en attente de ton ordinateur',
+  // ── L'écran de synchronisation ───────────────────────────────────────────
+  enCoursDe: (nom) => `Synchronisation ${de(nom)} en cours`,
+  enCoursAttente: 'Synchronisation en attente de ton ordinateur',
   enCoursRange: 'On range les annonces dans ton stock.',
   // ⛔ TEXTE IMPOSÉ, il remplace celui de la maquette (« Tu peux fermer
   //    l'app, ça continue ») : cette phrase-là laissait croire que l'app ne
   //    sert à rien.
   enCoursSous: 'Ton ordinateur travaille pendant ce temps.',
 
-  // ── Ce que le relevé n'a pas su trancher ─────────────────────────────────
+  // ── Ce que la synchronisation n'a pas su trancher ────────────────────────
   anomalie: (n) => (n > 1
-    ? `${n} annonces relevées ne correspondent à aucun article de ton stock.`
-    : 'Une annonce relevée ne correspond à aucun article de ton stock.'),
+    ? `${n} annonces trouvées ne correspondent à aucun article de ton stock.`
+    : 'Une annonce trouvée ne correspond à aucun article de ton stock.'),
   anomalieCta: 'Rattacher',
   // (25/09) Deux fiches qui désignent peut-être le même objet.
   doublons: (n) => (n > 1
@@ -70,41 +81,58 @@ const FR = {
   rangement: (n, noms) => `${n} annonce${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}${noms ? ` sur ${noms}` : ''}, rangement en cours — ${n > 1 ? 'elles arrivent' : 'elle arrive'} dans ton stock d'ici quelques minutes.`,
 
   // ── Les empêchements, dits sans accuser personne ─────────────────────────
-  signalNonConnecte: (nom) => `Pas connecté à ${nom} : connecte-toi sur ton ordinateur, le prochain relevé la prendra.`,
-  signalOpla: "Opla n'est pas encore autorisée dans l'extension — rien à relever pour l'instant.",
-  signalEchec: (nom, motif) => `Le relevé de ${nom} s'est arrêté${motif ? ` — ${motif}` : ''}. Les autres plateformes ont été relevées.`,
+  signalNonConnecte: (nom) => `Pas connecté à ${nom} : connecte-toi sur ton ordinateur, la prochaine synchronisation la prendra.`,
+  signalOpla: "Opla n'est pas encore autorisée dans l'extension — rien à synchroniser pour l'instant.",
+  signalEchec: (nom, motif) => `La synchronisation ${de(nom)} s'est arrêtée${motif ? ` — ${motif}` : ''}. Les autres plateformes sont synchronisées.`,
   // Un arrêt TECHNIQUE (la page n'a pas répondu à temps) : ce n'est ni un
   // échec de la personne ni un verdict sur ses annonces. On dit ce qu'on fait.
-  signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer le relevé d'ici.`,
+  signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer la synchronisation d'ici.`,
   // (01/10) Chrome est connecté à un autre compte eBay que celui relié à
   // FillSell : rien n'est importé de cet autre compte, et on nomme le bon.
   signalHorsCompteEbay: (chrome, relie) => (chrome
     ? `eBay : ton ordinateur est connecté au compte « ${chrome} », pas à « ${relie ?? 'ton compte relié'} » relié à FillSell. Rien n'est importé de « ${chrome} ». Connecte-toi à eBay sur ton ordinateur avec le compte ${relie ?? 'relié à FillSell'}.`
     : `eBay : on n'a pas encore pu vérifier que ton ordinateur est connecté au compte « ${relie ?? 'relié à FillSell'} ». Rien n'est importé en attendant. Si tu utilises un autre compte eBay sur cet ordinateur, connecte-toi avec ${relie ?? 'le compte relié'}.`),
-  // (27/09) Un relevé incomplet dit ce qu'il a lu SUR ce qui est annoncé.
+  // (27/09) Une synchronisation incomplète dit ce qu'elle a lu SUR ce qui est annoncé.
   signalIncomplet: (nom, lus, annonce) => (annonce != null
-    ? `${nom} : relevé incomplet — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''} sur ${annonce}. On relit tout seuls ; rien n'est conclu sur les autres.`
-    : `${nom} : relevé incomplet — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''}, le total n'a pas pu être lu. On relit tout seuls ; rien n'est conclu sur les autres.`),
+    ? `${nom} : synchronisation incomplète — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''} sur ${annonce}. On relit tout seuls ; rien n'est conclu sur les autres.`
+    : `${nom} : synchronisation incomplète — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''}, le total n'a pas pu être lu. On relit tout seuls ; rien n'est conclu sur les autres.`),
   // Relevés vides d'affilée sur un compte qui avait des annonces (serveur,
   // releve_vide_etat, 24/09). ⛔ On ne conclut RIEN : ni vendues, ni retirées,
   // ni « tu n'as plus d'annonce ». On dit ce qu'on a lu, et le geste possible.
-  signalVideRepete: (nom) => `${nom} : les derniers relevés n'ont trouvé aucune annonce sur le compte connecté sur ton ordinateur. On ne conclut rien sur tes annonces. Si elles sont en ligne, vérifie que tu es connecté au bon compte ${nom}, puis touche sa tuile pour la relever.`,
-  extensionAbsente: "L'extension Chrome n'est pas installée : c'est elle qui relève tes annonces depuis ton ordinateur.",
+  signalVideRepete: (nom) => `${nom} : les dernières synchronisations n'ont trouvé aucune annonce sur le compte connecté sur ton ordinateur. On ne conclut rien sur tes annonces. Si elles sont en ligne, vérifie que tu es connecté au bon compte ${nom}, puis touche sa pastille pour la synchroniser.`,
+  extensionAbsente: "L'extension Chrome n'est pas installée : c'est elle qui synchronise tes annonces depuis ton ordinateur.",
   extensionAbsenteCta: "Installer l'extension",
-  extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome, le relevé part tout seul.",
+  extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome, la synchronisation repart toute seule.",
+
+  // ── LES POINTS À RÉGLER, EN CARTES (refonte du Stock, 03/10, planche 08) ──
+  // Chaque point : un titre COURT (la plateforme et ce qui coince), puis la
+  // phrase ci-dessus, inchangée, puis le geste. Le titre ne dit rien de plus
+  // que la phrase : il la nomme.
+  titrePointVide: (nom) => `${nom} : aucune annonce trouvée`,
+  titrePointNonConnecte: (nom) => `${nom} : pas connecté`,
+  titrePointOpla: 'Opla : pas encore autorisée',
+  titrePointArret: (nom) => `${nom} : synchronisation arrêtée`,
+  titrePointTechnique: (nom) => `${nom} : synchronisation à reprendre`,
+  titrePointHorsCompte: (nom) => `${nom} : mauvais compte connecté`,
+  titrePointIncomplet: (nom) => `${nom} : synchronisation incomplète`,
+  titrePointMur: (nom) => `${nom} : à connecter`,
+  titreEndormie: "Ton ordinateur n'a pas répondu",
+  texteEndormie: (noms) => `La synchronisation ${de(noms)} s'est arrêtée. Ouvre Chrome sur ton ordinateur : elle repart toute seule.`,
+  ctaPointSynchro: (nom) => `Synchroniser ${nom}`,
+  ctaPointReessayer: 'Réessayer',
 
   // ── CE QUI A MARCHÉ, DIT EN PREMIER (2026-09-22) ─────────────────────────
   // Avant, un relevé Vinted parfait disparaissait sous trois bandes ambre pour
   // des plateformes où la personne n'a même pas de compte. On dit d'abord la
   // réussite, et on la NOMME.
   reussiteReleve: (nom, n) => (n > 0
-    ? `${nom} : ${n} annonce${n > 1 ? 's' : ''} relevée${n > 1 ? 's' : ''} et rangée${n > 1 ? 's' : ''} dans ton stock.`
-    : `${nom} : relevé terminé, aucune annonce en ligne pour l'instant.`),
+    ? `${nom} : ${n} annonce${n > 1 ? 's' : ''} synchronisée${n > 1 ? 's' : ''} et rangée${n > 1 ? 's' : ''} dans ton stock.`
+    : `${nom} : synchronisation terminée, aucune annonce en ligne pour l'instant.`),
   // La promesse que handler-watch tient désormais : la reprise est faite par
   // le serveur dès que la session est prouvée fraîche, sans nouveau clic.
-  murReprise: 'Dès que tu es connecté, le relevé de cette plateforme repart tout seul.',
+  murReprise: 'Dès que tu es connecté, la synchronisation de cette plateforme repart toute seule.',
 
-  note: "Un relevé ne publie rien : FillSell lit « Mes annonces » sur chaque plateforme et rattache ce qu'il reconnaît à ton stock.",
+  note: "Synchroniser ne publie rien : FillSell lit « Mes annonces » sur chaque plateforme et rattache ce qu'il reconnaît à ton stock.",
 
   // ── L'écran de rapprochement ─────────────────────────────────────────────
   ratTitre: 'Annonces à rattacher',
@@ -112,7 +140,7 @@ const FR = {
   ratPosition: (i, n) => `${i} sur ${n}`,
   ratFermer: 'Fermer',
   ratVideTitre: 'Tout est rattaché',
-  ratVideTexte: "Chaque annonce relevée pointe vers un article de ton stock. Rien ne t'attend ici.",
+  ratVideTexte: "Chaque annonce trouvée pointe vers un article de ton stock. Rien ne t'attend ici.",
   ratVideCta: 'Fermer',
   ratVoirAnnonce: "Voir l'annonce",
   ratEnVerification: 'en vérification',
@@ -127,7 +155,7 @@ const FR = {
   ratCtaRattacher: 'Rattacher',
   ratCtaCreer: 'Créer un article depuis cette annonce',
   ratCtaIgnorer: 'Ignorer',
-  ratIgnorerNote: "Ignorer ne supprime rien : l'annonce sort de cette file et n'y revient pas au prochain relevé.",
+  ratIgnorerNote: "Ignorer ne supprime rien : l'annonce sort de cette file et n'y revient pas à la prochaine synchronisation.",
   ratFaitAttache: (titre) => `Rattachée à « ${titre} »`,
   ratFaitImport: 'Article créé depuis cette annonce (lecture seule)',
   ratFaitIgnore: 'Ignorée',
@@ -156,12 +184,15 @@ const FR = {
 const EN = {
   titre: 'My listings online',
 
-  sousJamais: 'Never scanned',
-  sousRepos: (quand, n) => `Scanned ${quand} · ${n} listing${n > 1 ? 's' : ''}`,
+  sousJamais: 'Never synced',
+  synchronise: (quand) => `Synced ${quand}`,
+  nAnnonces: (n) => `${n} listing${n > 1 ? 's' : ''}`,
+  titreEnCours: 'Syncing',
+  sousRepos: (quand, n) => `Synced ${quand} · ${n} listing${n > 1 ? 's' : ''}`,
   sousEnCours: (faites, total) => `${faites} platform${faites > 1 ? 's' : ''} of ${total}`,
 
-  ctaTout: 'Scan all',
-  ctaEnCours: 'Scan running',
+  ctaTout: 'Sync',
+  ctaEnCours: 'Running',
   ctaEnvoi: 'Sending…',
   ctaExtension: 'Extension required',
 
@@ -177,14 +208,14 @@ const EN = {
   motJamais: 'never',
   tuileAria: (nom, mot) => `${nom} — ${mot}`,
 
-  enCoursDe: (nom) => `Scanning ${nom}…`,
+  enCoursDe: (nom) => `Syncing ${nom}`,
   enCoursAttente: 'Waiting for your computer',
   enCoursRange: 'Filing the listings into your stock.',
   enCoursSous: 'Your computer is working on it right now.',
 
   anomalie: (n) => (n > 1
-    ? `${n} scanned listings match no item in your stock.`
-    : 'One scanned listing matches no item in your stock.'),
+    ? `${n} listings found match no item in your stock.`
+    : 'One listing found matches no item in your stock.'),
   anomalieCta: 'Match',
   doublons: (n) => (n > 1
     ? `${n} pairs of items may be the same object.`
@@ -192,34 +223,47 @@ const EN = {
   doublonsCta: 'Check',
   rangement: (n, noms) => `${n} listing${n > 1 ? 's' : ''} found${noms ? ` on ${noms}` : ''}, filing in progress — ${n > 1 ? 'they' : 'it'} will appear in your stock within a few minutes.`,
 
-  signalNonConnecte: (nom) => `Not signed in to ${nom}: sign in on your computer, the next scan will pick it up.`,
-  signalOpla: 'Opla is not authorised in the extension yet — nothing to scan for now.',
-  signalEchec: (nom, motif) => `The ${nom} scan stopped${motif ? ` — ${motif}` : ''}. The other platforms were scanned.`,
-  signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the scan again from here.`,
+  signalNonConnecte: (nom) => `Not signed in to ${nom}: sign in on your computer, the next sync will pick it up.`,
+  signalOpla: 'Opla is not authorised in the extension yet — nothing to sync for now.',
+  signalEchec: (nom, motif) => `The ${nom} sync stopped${motif ? ` — ${motif}` : ''}. The other platforms are synced.`,
+  signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the sync again from here.`,
   signalHorsCompteEbay: (chrome, relie) => (chrome
     ? `eBay: your computer is signed in to the account “${chrome}”, not “${relie ?? 'your linked account'}” linked to FillSell. Nothing is imported from “${chrome}”. Sign in to eBay on your computer with the account ${relie ?? 'linked to FillSell'}.`
     : `eBay: we could not yet check that your computer is signed in to “${relie ?? 'the linked account'}”. Nothing is imported meanwhile. If you use another eBay account on this computer, sign in with ${relie ?? 'the linked account'}.`),
   signalIncomplet: (nom, lus, annonce) => (annonce != null
-    ? `${nom}: incomplete scan — ${lus} listing${lus > 1 ? 's' : ''} read out of ${annonce}. We read again on our own; nothing is concluded about the others.`
-    : `${nom}: incomplete scan — ${lus} listing${lus > 1 ? 's' : ''} read, the total could not be read. We read again on our own; nothing is concluded about the others.`),
-  signalVideRepete: (nom) => `${nom}: the latest scans found no listing on the account signed in on your computer. We draw no conclusion about your listings. If they are online, check you are signed in to the right ${nom} account, then tap its tile to scan it.`,
-  extensionAbsente: 'The Chrome extension is not installed: it is what scans your listings from your computer.',
+    ? `${nom}: incomplete sync — ${lus} listing${lus > 1 ? 's' : ''} read out of ${annonce}. We read again on our own; nothing is concluded about the others.`
+    : `${nom}: incomplete sync — ${lus} listing${lus > 1 ? 's' : ''} read, the total could not be read. We read again on our own; nothing is concluded about the others.`),
+  signalVideRepete: (nom) => `${nom}: the latest syncs found no listing on the account signed in on your computer. We draw no conclusion about your listings. If they are online, check you are signed in to the right ${nom} account, then tap its chip to sync it.`,
+  extensionAbsente: 'The Chrome extension is not installed: it is what syncs your listings from your computer.',
   extensionAbsenteCta: 'Install the extension',
-  extensionEndormie: 'Your computer did not answer: open Chrome and the scan starts on its own.',
+  extensionEndormie: 'Your computer did not answer: open Chrome and the sync starts again on its own.',
+
+  titrePointVide: (nom) => `${nom}: no listing found`,
+  titrePointNonConnecte: (nom) => `${nom}: not signed in`,
+  titrePointOpla: 'Opla: not authorised yet',
+  titrePointArret: (nom) => `${nom}: sync stopped`,
+  titrePointTechnique: (nom) => `${nom}: sync to resume`,
+  titrePointHorsCompte: (nom) => `${nom}: wrong account signed in`,
+  titrePointIncomplet: (nom) => `${nom}: incomplete sync`,
+  titrePointMur: (nom) => `${nom}: to sign in`,
+  titreEndormie: 'Your computer did not answer',
+  texteEndormie: (noms) => `The ${noms} sync stopped. Open Chrome on your computer: it starts again on its own.`,
+  ctaPointSynchro: (nom) => `Sync ${nom}`,
+  ctaPointReessayer: 'Try again',
 
   reussiteReleve: (nom, n) => (n > 0
-    ? `${nom}: ${n} listing${n > 1 ? 's' : ''} scanned and filed into your stock.`
-    : `${nom}: scan finished, nothing online for now.`),
-  murReprise: 'As soon as you are signed in, this platform is scanned again on its own.',
+    ? `${nom}: ${n} listing${n > 1 ? 's' : ''} synced and filed into your stock.`
+    : `${nom}: sync finished, nothing online for now.`),
+  murReprise: 'As soon as you are signed in, this platform syncs again on its own.',
 
-  note: 'A scan publishes nothing: FillSell reads “My listings” on each platform and matches what it recognises to your stock.',
+  note: 'Syncing publishes nothing: FillSell reads “My listings” on each platform and matches what it recognises to your stock.',
 
   ratTitre: 'Listings to match',
   ratIntro: 'What FillSell recognised for sure is already matched. Only what it could not decide on its own is left.',
   ratPosition: (i, n) => `${i} of ${n}`,
   ratFermer: 'Close',
   ratVideTitre: 'Everything is matched',
-  ratVideTexte: 'Every scanned listing points to an item in your stock. Nothing is waiting for you here.',
+  ratVideTexte: 'Every listing found points to an item in your stock. Nothing is waiting for you here.',
   ratVideCta: 'Close',
   ratVoirAnnonce: 'View listing',
   ratEnVerification: 'under review',
@@ -234,7 +278,7 @@ const EN = {
   ratCtaRattacher: 'Match',
   ratCtaCreer: 'Create an item from this listing',
   ratCtaIgnorer: 'Ignore',
-  ratIgnorerNote: 'Ignoring deletes nothing: the listing leaves this queue and will not come back on the next scan.',
+  ratIgnorerNote: 'Ignoring deletes nothing: the listing leaves this queue and will not come back on the next sync.',
   ratFaitAttache: (titre) => `Matched to “${titre}”`,
   ratFaitImport: 'Item created from this listing (read-only)',
   ratFaitIgnore: 'Ignored',
