@@ -61,6 +61,14 @@ export const BUILD_OPLA_REPUBLICATION_SUR_ANNONCE = "2026-09-27T18:22:27Z"; // B
 // restait sur le formulaire, sans fin (cf. _shared/beebs-refus-formulaire.js).
 export const BUILD_BEEBS_ADRESSE_STRICTE = "2026-10-01T15:29:31Z";
 
+// ── LE FORMAT DE COLIS BEEBS EXPLICITE (2026-10-04, Louis) ─────────────────
+// Horodatage du commit du correctif (7c03a7f, 0.6.95) : tout build produit
+// depuis porte un BUILD_ID plus récent. Avant lui, le remplisseur Beebs gardait
+// TOUJOURS le pré-remplissage du format de colis (« 1 kg » posé sur des
+// rangements de 200 g). Une republication Beebs pas encore retirée dont on
+// connaît le format à reproduire n'est servie qu'à un poste qui le porte.
+export const BUILD_BEEBS_FORMAT_EXPLICITE = "2026-10-04T09:19:39Z";
+
 // ── LA FIN D'ANNONCE eBay PAR LE NUMÉRO DE LA LIGNE (2026-10-02, xxewwer) ──
 // Commit 57e2667 (0.6.84) : le dialogue de fin d'annonce n'exige plus le titre
 // du job (eBay ne l'y porte plus en entier). Les retraits arrêtés sur « ne nomme

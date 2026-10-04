@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-03T21:22:49Z'; // 0.6.94 = 0.6.93 + republication qui relit l'annonce avant tout retrait (tout ce qu'elle affiche ; taille affichée d'abord sur Beebs, ceinture de nivake03) + question « Marque » : vraies marques du catalogue Vinted et recherche en direct depuis l'app (CHERCHER_MARQUE) + raison/marque demandée transmises par la question — b676d08, 4befca1, 3165ace. Paquet build/CWS-0.6.94-A-TELEVERSER. (0.6.93 = a0b7f3d, jamais téléversée ; 0.6.94-85e7709 remplacé avant envoi.)
+export const EXTENSION_LAST_COMMIT = '2026-10-04T09:19:39Z'; // 0.6.95 = 0.6.94 + Beebs : format de colis EXPLICITE (réponse, format relu sur l'annonce par son weight_id, poids de la fiche) devant le pré-remplissage ; formats du formulaire appris par le serveur ; prix plus suivi dans l'extension (la base fait la règle) — 7c03a7f. Paquet build/CWS-0.6.95-A-TELEVERSER.
+// (avant : '2026-10-03T21:22:49Z' = 0.6.94, 3165ace, paquet CWS-0.6.94-A-TELEVERSER, ENVOYÉE au CWS et servie le 04/10)
 // (avant : '2026-10-03T19:24:17Z' = 0.6.93, c918533, paquet CWS-0.6.93-A-TELEVERSER)
 // (avant : '2026-10-03T16:15:51Z' = 0.6.91, 612c356/edd36ff, paquet CWS-0.6.91-A-TELEVERSER)
 // Historique de la valeur precedente : '2026-10-03T13:51:13Z' — 9ba69d8, 0.6.90 (paquet CWS-0.6.90, jamais téléversé : remplacé par la 0.6.91).
@@ -1704,6 +1705,9 @@ export const PUBLISHED_BUILD_IDS = {
   // vus dans les 24 h le 03/10 à 15:50). Registre seulement : le minimum
   // (EXTENSION_MIN_BUILD, 0.6.81) ne bouge pas — décision de Nico.
   '2026-10-02T19:15:37Z': '0.6.89',
+  // 0.6.94 (2a088e4) : envoyée au CWS le 04/10 au matin, servie (29 comptes le 04/10
+  // à 11:19). Registre seulement : le minimum (0.6.81) ne bouge pas — décision de Nico.
+  '2026-10-03T21:23:06Z': '0.6.94',
 };
 
 // ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────

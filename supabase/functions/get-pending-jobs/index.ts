@@ -44,7 +44,8 @@ import { aspectsDeLaCapture, completerAspects, exigencesCouvertes, CHAMPS_VINTED
 import { PLATEFORMES_RELEVE, RETRAIT_SANS_NUMERO_GESTE_MS, RETRAIT_SANS_NUMERO_RELEVE_MS, jugerRetraitIntrouvable, messageRetraitSansNumeroAToi } from "../_shared/retrait-introuvable.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { boutiqueConnecteeVinted, loginsDesBoutiques } from "../_shared/boutique-connectee.js";
-import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE } from "../_shared/correctifs-extension.js";
+import { BUILD_EBAY_FIN_PAR_NUMERO, BUILD_BEEBS_ADRESSE_STRICTE, BUILD_BEEBS_FORMAT_EXPLICITE } from "../_shared/correctifs-extension.js";
+import { formatBeebsExplicite, formatBeebsDuChoix } from "../_shared/beebs-format-colis.js";
 import { AGE_ANGLAIS_RE, NOMBRE_NU_RE, ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, grilleDuDernierEchecTaille, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
 // Nommer une annonce par son IDENTIFIANT quand son lien manque (21/09).
 import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
@@ -2640,6 +2641,10 @@ serve(async (req) => {
             for (const j of beebsAvantRetrait) {
               const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
               if (retenueServeurDe(pfJ)?.motif !== RETENUE_EXTENSION_A_JOUR) continue;
+              // (04/10) Seulement SA retenue (0.6.83) : celle du format de colis
+              // (0.6.95, bloc suivant) se lève là-bas, sur son propre seuil.
+              const minRetenue = String(((pfJ.retenue_serveur ?? {}) as Record<string, unknown>).build_min ?? BUILD_BEEBS_ADRESSE_STRICTE);
+              if (minRetenue !== BUILD_BEEBS_ADRESSE_STRICTE) continue;
               const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)}`);
               if (leve) {
                 await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
@@ -2649,6 +2654,80 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] republications Beebs (poste ancien) : ${String((e as Error)?.message ?? e)} — distribution normale`);
+        }
+      }
+    }
+
+    // ══ BEEBS : LE FORMAT DE COLIS À POSER EST DIT À L'EXTENSION (04/10, Louis) ══
+    // Rangements de Louis : 200 g sur l'annonce, « 1 kg » à la recréation —
+    // le remplisseur gardait le pré-remplissage de Beebs. On pose
+    // `format_colis_explicite` (_shared/beebs-format-colis.js), que la 0.6.95
+    // fait passer devant ce pré-remplissage :
+    //   · republication : le format relu sur l'annonce (capture du relevé,
+    //     weight_id → formats appris du formulaire), sinon le poids de la fiche ;
+    //   · publication : le format choisi dans l'app, sinon le poids de la fiche.
+    // Un poste plus ancien que la 0.6.95 garderait le pré-remplissage : une
+    // republication Beebs pas encore retirée dont on CONNAÎT le format à
+    // reproduire ne lui est pas servie (retenue nommée, annonce intacte).
+    // Rien de connu → rien ne change. Mémoire du poll seulement, aucune écriture
+    // sur le job hors la retenue.
+    if (!includeProcessing && !includeNeedsUser) {
+      const beebsJobs = out.filter((j) => j.platform === "beebs" && (j.action === "publish" || j.action === "republish") && j.inventaire_id != null);
+      if (beebsJobs.length) {
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const ids = [...new Set(beebsJobs.map((j) => j.inventaire_id))];
+          const [{ data: fiches }, { data: annoncesB }, { data: appris }] = await Promise.all([
+            admin.from("inventaire").select("id, poids_g").in("id", ids),
+            admin.from("annonces_plateforme").select("inventaire_id, capture, vu_le").eq("platform", "beebs").in("inventaire_id", ids).order("vu_le", { ascending: false }),
+            admin.from("beebs_formats_colis").select("id, titre, poids_g").limit(50),
+          ]);
+          const poidsDe = new Map(((fiches ?? []) as Array<{ id: number; poids_g: number | null }>).map((f) => [String(f.id), f.poids_g]));
+          const formatIdDe = new Map<string, string>();
+          for (const a of (annoncesB ?? []) as Array<{ inventaire_id: number; capture: Record<string, unknown> | null }>) {
+            const k = String(a.inventaire_id);
+            const fid = String(a.capture?.["format_colis_id"] ?? "").trim();
+            if (fid && !formatIdDe.has(k)) formatIdDe.set(k, fid);
+          }
+          const posteFormatExplicite = buildMsDe(buildDuPoll) >= buildMsDe(BUILD_BEEBS_FORMAT_EXPLICITE);
+          const retenus = new Set<string>();
+          const maintenantIso = new Date().toISOString();
+          for (const j of beebsJobs) {
+            let pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            // Poste à jour : SA retenue (format de colis, 0.6.95) se lève.
+            if (posteFormatExplicite && retenueServeurDe(pfJ)?.motif === RETENUE_EXTENSION_A_JOUR
+                && String(((pfJ.retenue_serveur ?? {}) as Record<string, unknown>).build_min ?? "") === BUILD_BEEBS_FORMAT_EXPLICITE) {
+              const leve = leverRetenueServeur(pfJ, maintenantIso, `poste ${buildDuPoll.slice(0, 40)}`);
+              if (leve) {
+                await admin.from("cross_post_jobs").update({ platform_fields: leve }).eq("id", j.id as string).eq("status", "pending");
+                pfJ = { ...leve };
+                j.platform_fields = pfJ;
+              }
+            }
+            if (String(((pfJ.needsUserResolved ?? {}) as Record<string, unknown>).format_colis ?? "").trim()) continue; // la réponse de la personne prime
+            const k = String(j.inventaire_id);
+            const f = j.action === "republish"
+              ? (formatBeebsExplicite({ formatIdAnnonce: formatIdDe.get(k), appris: appris ?? [] })
+                ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }))
+              : (formatBeebsDuChoix(pfJ.format_colis) ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }));
+            if (!f) continue;
+            pfJ.format_colis_explicite = f.titre;
+            pfJ.format_colis_explicite_source = f.source;
+            j.platform_fields = pfJ;
+            const avantRetraitB = j.action === "republish" && String(pfJ.republish_step ?? "") !== "deleted" && !pfJ.deleted_at;
+            if (avantRetraitB && !posteFormatExplicite) {
+              const pfPose = poserRetenueServeur(pfJ, RETENUE_EXTENSION_A_JOUR, maintenantIso,
+                { build_poste: buildDuPoll.slice(0, 60) || null, build_min: BUILD_BEEBS_FORMAT_EXPLICITE, version_min: "0.6.95", format_a_reproduire: f.titre });
+              if (pfPose) await admin.from("cross_post_jobs").update({ platform_fields: pfPose }).eq("id", j.id as string).eq("status", "pending");
+              retenus.add(String(j.id));
+            }
+          }
+          if (retenus.size) {
+            out = out.filter((j) => !retenus.has(String(j.id)));
+            console.log(`[get-pending-jobs] userId=${user.id} : ${retenus.size} republication(s) Beebs retenue(s) avant tout retrait — format connu à reproduire, poste « ${buildDuPoll.slice(0, 40) || "build inconnu"} » < 0.6.95`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] format de colis Beebs : ${String((e as Error)?.message ?? e)} — distribution normale`);
         }
       }
     }
@@ -3607,21 +3686,40 @@ serve(async (req) => {
               courrier_suivi: "Courrier suivi", shop2shop: "Shop2Shop by Chronopost",
               mondial_relay: "Mondial Relay", colissimo: "Colissimo",
             };
+            // (04/10, Louis — point 2) Une republication reproduit l'annonce À
+            // L'IDENTIQUE : ce que l'annonce affiche l'emporte sur la copie (qui
+            // date du dépôt d'origine). Seule une RÉPONSE de la personne à une
+            // question (needsUserResolved) passe devant. Avant : on ne comblait
+            // que le vide, et un réglage changé sur Leboncoin après le dépôt
+            // était perdu à la republication.
+            const reponduL = (cle: string) => {
+              const r = (pf["needsUserResolved"] && typeof pf["needsUserResolved"] === "object") ? pf["needsUserResolved"] as Record<string, unknown> : {};
+              return r[cle] != null && String(r[cle]).trim() !== "";
+            };
             const liv: string[] = [];
             const ship = attrLbc("shipping_type");
             const vals = Array.isArray(ship?.["values"]) ? (ship!["values"] as unknown[]).map(String) : null;
-            if (vals && !Array.isArray(pf["lbcTransporteurs"])) {
+            if (vals && !reponduL("lbcTransporteurs")) {
               const noms = vals.map((v) => NOMS[v]).filter(Boolean);
-              if (noms.length) { pf["lbcTransporteurs"] = noms; liv.push(`transporteurs ← ${noms.join(", ")}`); }
+              const avantT = Array.isArray(pf["lbcTransporteurs"]) ? (pf["lbcTransporteurs"] as unknown[]).map(String) : null;
+              if (noms.length && JSON.stringify(avantT) !== JSON.stringify(noms)) {
+                pf["lbcTransporteurs"] = noms; liv.push(`transporteurs ← ${noms.join(", ")}${avantT ? " (annonce)" : ""}`);
+              }
             }
             const taille = String(attrLbc("estimated_parcel_size")?.["value"] ?? "").trim().toUpperCase();
             const FORMATS: Record<string, string> = { S: "Petit", M: "Moyen", L: "Volumineux" };
-            if (FORMATS[taille] && !String(pf["format_colis"] ?? "").trim() && !String(pf["lbcFormatColis"] ?? "").trim()) {
-              pf["format_colis"] = FORMATS[taille]; liv.push(`format ← ${FORMATS[taille]}`);
+            if (FORMATS[taille] && !reponduL("format_colis") && String(pf["format_colis"] ?? "").trim() !== FORMATS[taille]) {
+              const avantF = String(pf["format_colis"] ?? pf["lbcFormatColis"] ?? "").trim();
+              pf["format_colis"] = FORMATS[taille]; liv.push(`format ← ${FORMATS[taille]}${avantF ? ` (annonce ; copie : ${avantF})` : ""}`);
             }
             const grammes = Number(attrLbc("estimated_parcel_weight")?.["value"]);
-            if (Number.isFinite(grammes) && grammes > 0 && !(Number(pf["lbcPoidsGrammes"]) > 0)) {
-              pf["lbcPoidsGrammes"] = Math.round(grammes); liv.push(`poids ← ${Math.round(grammes)} g`);
+            if (Number.isFinite(grammes) && grammes > 0 && !reponduL("lbcPoidsGrammes") && Math.round(grammes) !== Number(pf["lbcPoidsGrammes"])) {
+              const avantP = Number(pf["lbcPoidsGrammes"]) > 0 ? Number(pf["lbcPoidsGrammes"]) : null;
+              pf["lbcPoidsGrammes"] = Math.round(grammes); liv.push(`poids ← ${Math.round(grammes)} g${avantP ? ` (annonce ; copie : ${avantP} g)` : ""}`);
+              // La tranche du formulaire PRO suit la même valeur (bloc suivant).
+              const aspectsAvant = (pf["lbcAspects"] && typeof pf["lbcAspects"] === "object") ? { ...(pf["lbcAspects"] as Record<string, unknown>) } : {};
+              delete aspectsAvant["estimated_parcel_weight"];
+              pf["lbcAspects"] = aspectsAvant;
             }
             // ── « POIDS DU COLIS* » DU FORMULAIRE PRO, RELU EN TRANCHE (25/09) ──
             // Les Petites Fioles (fb358c75) : 500 g connus depuis l'annonce
