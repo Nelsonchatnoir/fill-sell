@@ -2,11 +2,29 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
+import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, itemCloud } from "../_shared/cloud-option.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
 });
+
+// ── L'OPTION « FILLSELL CLOUD » (04/10/2026) ─────────────────────────────────
+// Chez Stripe l'option est un SECOND ARTICLE de l'abonnement du palier (prix
+// STRIPE_PRICE_CLOUD, 20 €/mois) : même facture, même date, et elle tombe avec
+// le palier — « Cloud jamais seul » tient par construction. Le parcours
+// « palier + Cloud » ouvre un essai de 3 jours sur l'abonnement entier
+// (quotas du gratuit pendant l'essai : les drapeaux de palier restent à false),
+// puis Stripe débite palier + option. Les règles sont dans
+// _shared/cloud-option.js (testé par scripts/option-cloud-selftest.mjs).
+function prixConnus() {
+  return {
+    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
+    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
+    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
+    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
+  };
+}
 
 // Recalcule is_premium/is_pro depuis les abonnements Stripe RESTANTS du
 // customer (2026-07-23) — remplace les remises à zéro aveugles : un customer
@@ -85,12 +103,6 @@ function planDuPrix(s: Stripe.Subscription): string | null {
 
 async function recomputeStripeFlags(supabase: any, customerId: string) {
   const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
-  const live = (subs ?? []).filter(
-    (s: Stripe.Subscription) =>
-      s.status === "active" || s.status === "trialing" || s.status === "past_due"
-  );
-  const hasBusiness = live.some((s: Stripe.Subscription) => portePlan(s, "business", "STRIPE_PRICE_BUSINESS"));
-  const hasPro = live.some((s: Stripe.Subscription) => portePlan(s, "pro", "STRIPE_PRICE_PRO"));
   // ⚠️ is_business RECALCULÉ ICI, et pas seulement posé à l'achat (2026-08-09).
   // Sans cette ligne, la résiliation d'un Business Stripe faisait tomber
   // is_premium et is_pro mais laissait is_business à TRUE — pour toujours, et
@@ -98,20 +110,39 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
   // renouvellement (invoice.paid lit is_business en premier) et les avantages
   // qui s'y brancheront. C'est exactement la classe du « premium fantôme »
   // corrigée le 25/07, une couche plus haut.
-  // Flags CUMULATIFS : un Business vaut aussi Pro — d'où le `|| hasBusiness`,
-  // sans quoi un abonnement Business seul laisserait is_pro à false et
-  // fermerait toutes les gates écrites en isPro.
-  const update = {
-    is_premium: live.length > 0,
-    is_pro: hasPro || hasBusiness,
-    is_business: hasBusiness,
-    subscription_cancel_at_period_end:
-      live.length > 0 && live.every((s: Stripe.Subscription) => s.cancel_at_period_end),
-  };
+  // Flags CUMULATIFS : un Business vaut aussi Pro — sans quoi un abonnement
+  // Business seul laisserait is_pro à false et fermerait toutes les gates
+  // écrites en isPro.
+  //
+  // (04/10) Le calcul vit dans drapeauxDepuisStripe : mêmes règles qu'avant
+  // pour les paliers (métadonnée plan_type d'abord, prix en repli ; vivant =
+  // active | trialing | past_due), PLUS l'option Cloud :
+  //  · l'ESSAI « palier + Cloud » (trialing + article Cloud) ne pose AUCUN
+  //    drapeau de palier — quotas du gratuit — et date cloud_essai_debut/fin ;
+  //  · is_cloud = un abonnement actif qui porte l'option ET un palier ;
+  //  · un abonnement vivant qui porte l'option SANS palier (jamais produit par
+  //    nos chemins : édition manuelle du dashboard) est RÉSILIÉ ici — « Cloud
+  //    jamais seul » ;
+  //  · les colonnes Cloud ne bougent que si Stripe porte l'option (ou personne) :
+  //    un Cloud pris dans l'App Store avec un palier Stripe n'est jamais effacé
+  //    par un événement Stripe.
+  const d = drapeauxDepuisStripe(subs ?? [], prixConnus());
+  for (const subId of d.a_resilier) {
+    try {
+      await stripe.subscriptions.cancel(subId);
+      console.warn(`[webhook] abonnement ${subId} (${customerId}) portait l'option Cloud SANS palier → résilié (Cloud jamais seul)`);
+    } catch (e) {
+      console.error(`[webhook] résiliation de ${subId} (Cloud sans palier) impossible : ${(e as Error)?.message ?? e}`);
+    }
+  }
+  const { data: prof } = await supabase
+    .from("profiles").select("cloud_canal").eq("stripe_customer_id", customerId).maybeSingle();
+  const update = miseAJourProfilDepuisStripe(d, prof?.cloud_canal ?? null);
   await supabase.from("profiles").update(update).eq("stripe_customer_id", customerId);
   console.log(
     "[webhook] recomputed flags for", customerId,
-    "live subs:", live.length, "→", JSON.stringify(update)
+    "live subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["active", "trialing", "past_due"].includes(s.status)).length,
+    "→", JSON.stringify(update)
   );
 }
 
@@ -212,6 +243,34 @@ serve(async (req) => {
       .eq("email", email)
       .limit(1);
 
+    // ── « PALIER + CLOUD » (04/10/2026) ──────────────────────────────────────
+    // Deux articles sur le même abonnement, et le plus souvent un ESSAI de 3
+    // jours. Les drapeaux se lisent chez Stripe (recomputeStripeFlags) : en
+    // essai → aucun drapeau de palier (quotas du gratuit), dates de l'essai,
+    // AUCUN grant (rien n'est payé : la facture de création est à 0 €) ; payé
+    // tout de suite (essai déjà pris) → le chemin classique ci-dessous pose le
+    // palier et crédite, l'option étant déjà posée par le recalcul.
+    if (session.metadata?.avec_cloud === "1" && users && users.length > 0) {
+      await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("id", users[0].id);
+      await recomputeStripeFlags(supabase, customerId);
+      let statut: string | null = null;
+      try {
+        if (session.subscription) {
+          const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+          statut = sub?.status ?? null;
+          if (statut === "trialing") {
+            console.log(`[webhook] palier + Cloud en ESSAI → user=${users[0].id} sub=${sub.id} fin=${sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : "?"} : quotas du gratuit, aucun grant avant le débit`);
+            return new Response(JSON.stringify({ received: true, essai_cloud: true }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[webhook] abonnement palier + Cloud illisible :", (e as Error)?.message);
+      }
+      console.log(`[webhook] palier + Cloud PAYÉ tout de suite (statut ${statut ?? "?"}) → user=${users[0].id} : chemin classique`);
+    }
+
     if (users && users.length > 0) {
       const profileUpdate: Record<string, unknown> = {
         is_premium: true,
@@ -305,6 +364,30 @@ serve(async (req) => {
   if (event.type === "invoice.paid") {
     const invoice = event.data.object as Stripe.Invoice;
     const customerId = invoice.customer as string;
+    // ── L'OPTION CLOUD ET LA FIN D'ESSAI (04/10/2026) ────────────────────────
+    // Un abonnement qui porte l'option (ou qui est né « palier + Cloud ») se
+    // relit chez Stripe à CHAQUE facture payée : c'est ainsi que la fin de
+    // l'essai pose le palier ET l'option (le statut vient de passer de
+    // trialing à active), et qu'un ajout de l'option payé sur la page Stripe
+    // (pending_if_incomplete) pose is_cloud. Une facture pendant l'essai (la
+    // facture à 0 € de la création) ne crédite RIEN : rien n'est payé.
+    const subIdFacture = abonnementDeFacture(invoice);
+    if (subIdFacture) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(subIdFacture);
+        if (itemCloud(sub, prixConnus()) || sub.metadata?.avec_cloud === "1") {
+          await recomputeStripeFlags(supabase, customerId);
+        }
+        if (sub.status === "trialing") {
+          console.log(`[webhook] facture ${invoice.id} pendant l'essai palier + Cloud (${sub.id}) : aucun grant`);
+          return new Response(JSON.stringify({ received: true, essai_cloud: true }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } catch (e) {
+        console.error(`[webhook] abonnement ${subIdFacture} de la facture ${invoice.id} illisible : ${(e as Error)?.message ?? e}`);
+      }
+    }
     // ── MONTÉE DE PALIER PAYÉE (2026-09-24) ─────────────────────────────────
     // Le paiement de la différence est CONFIRMÉ : c'est maintenant, et
     // seulement maintenant, que le palier se pose. Flags CUMULATIFS (Business ⊇
@@ -434,6 +517,16 @@ serve(async (req) => {
     // mise à jour encore en attente — rien n'est payé.
     const precedent = ((event.data as { previous_attributes?: Record<string, unknown> }).previous_attributes) ?? {};
     const prixChange = "items" in precedent || "plan" in precedent;
+    // (04/10) Fin de l'essai « palier + Cloud » : trialing → active. Les
+    // drapeaux se relisent chez Stripe (palier posé, option posée). Et un
+    // abonnement qui porte l'option se relit dès que sa résiliation programmée
+    // change (cloud_annule_fin_periode suit subscription_cancel_at_period_end).
+    const porteCloud = !!itemCloud(subscription, prixConnus()) || subscription.metadata?.avec_cloud === "1";
+    const finEssai = (precedent as { status?: string }).status === "trialing" && status !== "trialing";
+    if (finEssai || (porteCloud && "cancel_at_period_end" in precedent)) {
+      console.log(`[webhook] ${finEssai ? "fin d'essai palier + Cloud" : "option Cloud : résiliation programmée modifiée"} sur ${subscription.id} → relecture des drapeaux`);
+      await recomputeStripeFlags(supabase, customerId);
+    }
     if (prixChange && !subscription.pending_update
         && (status === "active" || status === "trialing" || status === "past_due")) {
       const plan = planDuPrix(subscription);

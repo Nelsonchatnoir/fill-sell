@@ -3,6 +3,21 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { dateSeuleParis, langue, mailResiliation } from "../_shared/emails-fillsell.ts";
+import { itemCloud } from "../_shared/cloud-option.js";
+
+// (04/10) L'option Cloud est un second article de l'abonnement du palier : la
+// retirer SEULE (`{ option: "cloud" }`) supprime cet article tout de suite,
+// avec un avoir au prorata sur la prochaine facture ; résilier le palier
+// (appel sans option, comme avant) emporte l'option avec lui. Un Cloud pris
+// dans l'App Store ou Google Play ne se résilie pas d'ici : la boutique.
+function prixConnus() {
+  return {
+    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
+    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
+    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
+    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
+  };
+}
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -120,11 +135,17 @@ serve(async (req) => {
     const { data: { user } } = await supabaseAdmin.auth.getUser(jwt);
 
     console.log("[cancel-subscription] User OK:", user.id);
+    // (04/10) Sans corps : résiliation du palier, comme toujours. `{ option: "cloud" }` : l'option seule.
+    let option: string | null = null;
+    try {
+      const corps = await req.json();
+      option = typeof corps?.option === "string" ? corps.option : null;
+    } catch { /* appel historique sans corps */ }
 
     // Récupère stripe_customer_id depuis profiles (admin = bypass RLS)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("stripe_customer_id, is_premium, is_pro, is_business")
+      .select("stripe_customer_id, is_premium, is_pro, is_business, cloud_canal")
       .eq("id", user.id)
       .single();
 
@@ -154,19 +175,51 @@ serve(async (req) => {
       );
     }
 
-    // Récupère les abonnements actifs Stripe
+    // Récupère les abonnements vivants Stripe. (04/10) « trialing » compris :
+    // l'essai « palier + Cloud » doit pouvoir être résilié avant son 3e jour
+    // (sinon le débit part), et past_due comme partout ailleurs.
     const subscriptions = await stripe.subscriptions.list({
       customer: profile.stripe_customer_id,
-      status: "active",
-      limit: 5,
+      limit: 10,
     });
+    const vivants = subscriptions.data.filter((s) =>
+      s.status === "active" || s.status === "trialing" || s.status === "past_due");
 
-    console.log("[cancel-subscription] Abonnements actifs:", subscriptions.data.length);
+    console.log("[cancel-subscription] Abonnements vivants:", vivants.length);
+
+    // ── L'OPTION CLOUD SEULE (04/10) ─────────────────────────────────────────
+    // L'article Cloud est retiré tout de suite, avec un avoir au prorata sur la
+    // prochaine facture ; le palier continue. Un Cloud porté par l'App Store ou
+    // Google Play se résilie dans la boutique, jamais d'ici.
+    if (option === "cloud") {
+      const prix = prixConnus();
+      const porteur = vivants.find((s) => itemCloud(s, prix));
+      if (!porteur) {
+        if (profile.cloud_canal === "apple" || profile.cloud_canal === "google") {
+          return new Response(JSON.stringify({ success: false, error: "resilier_dans_la_boutique", canal: profile.cloud_canal }), {
+            status: 409, headers: { ...CORS, "Content-Type": "application/json" },
+          });
+        }
+        console.log("[cancel-subscription] option Cloud : aucun article chez Stripe — rien à retirer");
+        return new Response(JSON.stringify({ success: true, option: "cloud", deja: true }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      const article = itemCloud(porteur, prix)!;
+      await stripe.subscriptionItems.del(article.id, { proration_behavior: "create_prorations" });
+      await supabaseAdmin.from("profiles")
+        .update({ is_cloud: false, cloud_fin_periode: null, cloud_annule_fin_periode: false })
+        .eq("id", user.id);
+      console.log(`[cancel-subscription] option Cloud retirée de ${porteur.id} (article ${article.id}), avoir au prorata`);
+      return new Response(JSON.stringify({ success: true, option: "cloud" }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
 
     let periodEnd: string | null = null;
 
-    if (subscriptions.data.length > 0) {
-      const canceled = await stripe.subscriptions.update(subscriptions.data[0].id, {
+    if (vivants.length > 0) {
+      const canceled = await stripe.subscriptions.update(vivants[0].id, {
         cancel_at_period_end: true,
       });
       // current_period_end = date réelle de fin de période payée.
