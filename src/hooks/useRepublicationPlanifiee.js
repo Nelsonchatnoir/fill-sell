@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { palierNormalise } from '../utils/palier';
+import { demarrerRelecture } from '../utils/relectureBornee';
 
 // L'ordre d'affichage, et la seule liste : eBay n'y est pas et n'y sera pas
 // (voie API, on ne republie pas — garde-fou du 17/09).
@@ -123,10 +124,17 @@ export function droitRepublication(etatServeur, { palierApp = null, lecture = 'o
 //   · `lecture` dit où on en est : 'en_cours' (rien de lu encore), 'ok',
 //     'echec' (rien de lu, la lecture a échoué). Un écran sans état dit
 //     « lecture » ou « illisible », JAMAIS « réservée » ni « non réglée ».
-const dernierEtat = new Map(); // `${userId}:multi|un` → { etatMulti, etat, interrupteur }
+const dernierEtat = new Map(); // `${userId}:multi|un` → { etatMulti, etat, interrupteur, le }
+// (04/10, incident CPU) Un état lu il y a moins d'une minute n'est pas relu au
+// montage : passer du Stock aux Réglages et retour ne coûte plus deux appels à
+// republish_planifiee_etat_multi (≈ 0,8 s de base chacun).
+const FRAIS_MS = 60_000;
 
 // ── LE HOOK — une lecture, un poll de 2 min onglet visible, une écriture. ───
-export function useRepublicationPlanifiee({ userId, poll = true, multi = false }) {
+// (04/10, incident CPU) `pollMs` : 2 min par défaut (Réglages, où l'on règle) ;
+// le Stock passe 5 min. Attente doublée sur erreur ou lenteur (relectureBornee),
+// jusqu'à 15 min ; onglet caché = aucune lecture.
+export function useRepublicationPlanifiee({ userId, poll = true, multi = false, pollMs = 120000 }) {
   const cle = `${userId ?? ''}:${multi ? 'multi' : 'un'}`;
   const connu = userId ? (dernierEtat.get(cle) ?? null) : null;
   const [etatMulti, setEtatMulti] = useState(connu?.etatMulti ?? null);       // republish_planifiee_etat_multi() | null
@@ -143,11 +151,11 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
   // Toute écriture d'état passe par ici : l'écran ET la mémoire du module.
   const retenir = useCallback((m, e, i) => {
     setEtatMulti(m); setEtat(e); setInterrupteur(i);
-    if (userId) dernierEtat.set(cle, { etatMulti: m, etat: e, interrupteur: i });
+    if (userId) dernierEtat.set(cle, { etatMulti: m, etat: e, interrupteur: i, le: Date.now() });
   }, [userId, cle]);
 
   const lire = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) return true;
     try {
       const [{ data, error }, cfg] = await Promise.all([
         supabase.rpc(multi ? 'republish_planifiee_etat_multi' : 'republish_planifiee_etat'),
@@ -156,7 +164,7 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
       if (error || !data || data.error) {
         // Lecture ratée : le dernier état lu RESTE (un raté n'efface rien).
         setLecture((l) => (l === 'ok' ? 'ok' : 'echec'));
-        return;
+        return false;
       }
       // Clé illisible → null : « inconnu » ne vaut jamais « allumé ».
       const inter = cfg?.error || cfg?.data == null ? null : Number(cfg.data.value);
@@ -166,8 +174,10 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
         retenir(null, data, inter);
       }
       setLecture('ok');
+      return true;
     } catch {
       setLecture((l) => (l === 'ok' ? 'ok' : 'echec'));
+      return false;
     } finally {
       setChargement(false);
     }
@@ -175,13 +185,16 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
 
   useEffect(() => {
     if (!userId) return undefined;
-    let annule = false;
-    setChargement(true);
-    lire();
-    if (!poll) return () => { annule = true; };
-    const t = setInterval(() => { if (!annule && document.visibilityState === 'visible') lire(); }, 120000);
-    return () => { annule = true; clearInterval(t); };
-  }, [userId, poll, lire]);
+    const memo = dernierEtat.get(cle);
+    const frais = Boolean(memo?.le) && Date.now() - memo.le < FRAIS_MS;
+    setChargement(!frais);
+    if (!poll) {
+      if (!frais) lire();
+      return undefined;
+    }
+    const relecture = demarrerRelecture(lire, { intervalleMs: pollMs, maxMs: 15 * 60_000, lentMs: 4000, immediat: !frais });
+    return () => relecture.arreter();
+  }, [userId, poll, pollMs, cle, lire]);
 
   // { vinted: {...}, leboncoin: {...}, … } — toujours les quatre clés en mode
   // multi, pour que l'écran n'ait jamais à deviner une absence.

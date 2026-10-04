@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { verdictAccesOpla, parcageDepasse } from '../../supabase/functions/_shared/acces-opla.js';
+import { demarrerRelecture } from './relectureBornee';
 
 export { parcageDepasse };
 
@@ -115,8 +116,9 @@ export async function lireVerdictAccesOpla(userId, { frais = false } = {}) {
 }
 
 /**
- * Le verdict d'accès Opla du compte, relu toutes les 60 s et au retour
- * d'onglet (la personne vient peut-être d'autoriser dans l'extension).
+ * Le verdict d'accès Opla du compte, relu toutes les 5 min (onglet visible,
+ * relectureBornee) et, TANT QU'IL N'EST PAS « autorise », au retour d'onglet
+ * (la personne vient peut-être d'autoriser dans l'extension).
  * Rend :
  *   verdict           'autorise' | 'a_autoriser' | 'inconnu' | null (pas encore lu)
  *   montrerAutoriser  le bouton « Autoriser Opla » est-il à montrer ? (tout sauf « autorise »)
@@ -140,15 +142,30 @@ export function useOplaAcces({ userId, actif = true }) {
     let mort = false;
     const surVerdict = (uid, v) => { if (!mort && uid === userId) setDetail(v); };
     abonnes.add(surVerdict);
-    const tick = () => { if (!mort) lireVerdictAccesOpla(userId).then((v) => { if (!mort && v) setDetail(v); }).catch(() => {}); };
-    tick();
-    const timer = setInterval(tick, 60 * 1000);
-    const surVisibilite = () => { if (document.visibilityState === 'visible') lireVerdictAccesOpla(userId, { frais: true }).catch(() => {}); };
+    // (04/10, incident CPU 99 %) Sept requêtes par lecture : toutes les 60 s,
+    // onglet caché compris, et une lecture FORCÉE à chaque retour sur l'onglet.
+    // Désormais relectureBornee : 5 min, onglet visible seulement, attente
+    // doublée sur erreur ou lenteur. Le verdict ne change qu'au geste de la
+    // personne (« Autoriser Opla »), et ce geste appelle relire() lui-même.
+    const tick = async () => {
+      if (mort) return true;
+      const v = await lireVerdictAccesOpla(userId);
+      if (!mort && v) setDetail(v);
+      return Boolean(v);
+    };
+    const relecture = demarrerRelecture(tick, { intervalleMs: 5 * 60_000, maxMs: 30 * 60_000, lentMs: 4000 });
+    // Retour d'onglet : seulement si l'accès n'est pas encore prouvé — c'est le
+    // seul cas où la personne a pu changer quelque chose ailleurs. Cache de 15 s.
+    const surVisibilite = () => {
+      if (mort || document.visibilityState !== 'visible') return;
+      if (cache.userId === userId && cache.valeur?.verdict === 'autorise') return;
+      lireVerdictAccesOpla(userId).catch(() => {});
+    };
     document.addEventListener('visibilitychange', surVisibilite);
     return () => {
       mort = true;
       abonnes.delete(surVerdict);
-      clearInterval(timer);
+      relecture.arreter();
       document.removeEventListener('visibilitychange', surVisibilite);
     };
   }, [actif, userId]);

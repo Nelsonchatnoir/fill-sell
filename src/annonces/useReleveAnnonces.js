@@ -15,8 +15,9 @@
 // ⛔ UN RELEVÉ N'EST PAS UNE PUBLICATION. Aucun quota, aucun palier, aucun
 //    coin_ledger : le chemin passe par les deux RPC de relevé et par rien
 //    d'autre (cf. utils/syncPlateformes.js).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { track } from '../analytics/analytics';
+import { demarrerRelecture } from '../utils/relectureBornee';
 import { useOplaAcces } from '../utils/oplaAcces';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
@@ -26,11 +27,17 @@ import {
 import { avecDernierReleveVide } from './releveVide';
 import { lireDoublonsProposes } from '../utils/doublons';
 
-// Le poll : la base rend compte, jamais l'extension. 30 s — inchangé.
-const POLL_MS = 30000;
-// (01/10) Pendant un rangement (empreinte photo, quelques minutes), on relit
-// plus souvent : le stock doit se remplir sous les yeux, pas au tour suivant.
-const POLL_RANGEMENT_MS = 10000;
+// Le poll : la base rend compte, jamais l'extension.
+// (04/10, incident CPU 99 %) Sept requêtes par tour, dont releves_vides_signales
+// (7 961 appels en une demi-journée) : 30 s fixes, onglet caché compris, sans
+// ralentir quand la base peinait. Désormais relectureBornee : onglet visible
+// seulement, 60 s au repos, attente doublée sur erreur ou lenteur.
+const POLL_MS = 60000;
+// (01/10) Pendant un rangement (empreinte photo, quelques minutes) ou un relevé
+// en cours, on relit plus souvent : le stock doit se remplir sous les yeux.
+// 15 s (10 s avant le 04/10).
+const POLL_ACTIF_MS = 15000;
+const actif = (runs) => Object.values(runs ?? {}).some((r) => r && (r.status === 'queued' || r.status === 'running'));
 
 export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted }) {
   const fr = lang !== 'en';
@@ -54,7 +61,6 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   // (01/10) Annonces relevées en attente de l'empreinte de leur photo :
   // « X annonces trouvées, rangement en cours ». Jamais « à rattacher ».
   const [rangement, setRangement] = useState({ total: 0, parPlateforme: {}, ids: new Set() });
-  const enRangement = rangement.total > 0;
   const [busy, setBusy] = useState(null);        // plateforme en cours de demande
   const [toutBusy, setToutBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -69,6 +75,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   // justement lui qui prouvera l'accès (ou dira « non accordé »).
   const { acces: oplaAcces, verdict: oplaVerdict, relire: relireOplaAcces } = useOplaAcces({ userId });
 
+  const relectureRef = useRef(null);
   useEffect(() => {
     if (!ouvert || !userId) return undefined;
     let annule = false;
@@ -79,26 +86,24 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
         lireDoublonsProposes(userId).catch(() => []),
         lireAnnoncesEnRangement(userId),
       ]);
-      if (annule) return;
+      if (annule) return true;
       // Une plateforme signalée affiche son relevé vide le plus récent : la
       // tuile ne peut pas dire « 528 » sous une bande qui dit « aucune annonce ».
       setRuns(avecDernierReleveVide(r, vv)); setVides(vv);
       // Une annonce en rangement n'est pas « à rattacher » : elle arrive seule.
       setCompte(c); setARattacher(a.filter((x) => !rg.ids.has(x.id))); setRunVinted(v); setDoublons(dd);
       setRangement(rg);
+      // La cadence suit ce qui se passe : un relevé en cours ou un rangement
+      // se suit de près, un compte au repos se relit à la minute.
+      relectureRef.current?.changerIntervalle(rg.total > 0 || actif(r) ? POLL_ACTIF_MS : POLL_MS);
+      return true;
     };
-    let enLecture = false;
-    const actualiser = async () => {
-      if (enLecture || annule) return;
-      enLecture = true;
-      try { await charger(); }
-      catch { /* Lecture incomplète : conserver les derniers compteurs complets. */ }
-      finally { enLecture = false; }
-    };
-    const t0 = setTimeout(actualiser, 0);
-    const t = setInterval(actualiser, enRangement ? POLL_RANGEMENT_MS : POLL_MS);
-    return () => { annule = true; clearTimeout(t0); clearInterval(t); };
-  }, [ouvert, userId, tick, enRangement]);
+    // Une lecture ratée garde les derniers compteurs complets, et ralentit le
+    // tour suivant (relectureBornee) au lieu de le répéter.
+    const relecture = demarrerRelecture(charger, { intervalleMs: POLL_MS, maxMs: 10 * 60_000, lentMs: 5000 });
+    relectureRef.current = relecture;
+    return () => { annule = true; relecture.arreter(); if (relectureRef.current === relecture) relectureRef.current = null; };
+  }, [ouvert, userId, tick]);
 
   // ── OPLA : la question au moment du clic (18/09/2026) ─────────────────────
   // Relever Opla sans l'autorisation d'hôte ne rend RIEN (la sonde ne part même
