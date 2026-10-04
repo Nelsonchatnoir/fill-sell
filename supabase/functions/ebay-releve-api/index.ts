@@ -76,7 +76,13 @@ Deno.serve(async (req) => {
       .order("queued_at", { ascending: true })
       .limit(50);
     if (errFile) throw new Error(`file des relevés : ${errFile.message}`);
-    const aTraiter = ((file ?? []) as Run[]).filter((r) => relies.has(r.user_id)).slice(0, RUNS_PAR_PASSAGE);
+    // Une DEMANDE (bouton de l'app, geste de Nico) passe avant les relevés
+    // quotidiens : au premier passage, 40 comptes reliés reçoivent leur
+    // quotidien d'un coup, et une demande attendait derrière eux (04/10, Louis).
+    const quotidien = (r: Run) => String(r.declencheur ?? "").startsWith("serveur:quotidien");
+    const aTraiter = ((file ?? []) as Run[]).filter((r) => relies.has(r.user_id))
+      .sort((a, b) => Number(quotidien(a)) - Number(quotidien(b)))
+      .slice(0, RUNS_PAR_PASSAGE);
 
     for (const r of aTraiter) {
       if (Date.now() - debut > BUDGET_MS - 20_000) break;
