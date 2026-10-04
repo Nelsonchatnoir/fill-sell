@@ -191,6 +191,41 @@ console.log("\n6. UNE CAPTURE D'AVANT CE LOT (sans ligne mémorisée) N'EST PAS 
     r.pris.length === 1 && r.perimees === 1, JSON.stringify({ pris: r.pris.length, perimees: r.perimees }));
 }
 
+console.log("\n7. LES FICHES À UNE PHOTO D'ABORD (04/10, Louis — photos Beebs)");
+{
+  // Une annonce RATTACHÉE jamais capturée = une fiche née du relevé avec la
+  // seule vignette de l'index (Beebs n'en donne qu'une). Louis : six
+  // « Rangement Rouge et … » à une photo, 69 annonces en attente de capture.
+  const fichesUnePhoto = Array.from({ length: 6 }, (_, i) => annonce(500 + i));
+  const annonces = [annonce(1, "Titre CHANGÉ"), ...Array.from({ length: 40 }, (_, i) => annonce(100 + i)), ...fichesUnePhoto];
+  const connues = [connue(1, 1), ...fichesUnePhoto.map((x) => ({ listing_id: x.listing_id, capture_le: null, inventaire_id: 9000 + Number(x.listing_id), ligne: null }))];
+  const r = choisirCapturesARefaire(annonces, connues, MAINTENANT);
+  ok("les six fiches à une photo sont prises EN TÊTE",
+    r.pris.slice(0, 6).every((x) => Number(x.listing_id) >= 500), r.pris.slice(0, 7).map((x) => x.listing_id).join(","));
+  ok("la modification connue suit, juste derrière", r.pris[6]?.listing_id === "1", r.pris[6]?.listing_id);
+  ok("le budget ne bouge pas", r.pris.length === CAPTURE_MAX_PAR_RUN, String(r.pris.length));
+  ok("le compteur les dit", r.une_photo === 6, String(r.une_photo));
+  const sansFiche = choisirCapturesARefaire([annonce(7)], [{ listing_id: "7", capture_le: null, inventaire_id: null, ligne: null }], MAINTENANT);
+  ok("une annonce non rattachée jamais capturée reste dans « jamais »",
+    sansFiche.une_photo === 0 && sansFiche.jamais === 1 && sansFiche.pris.length === 1);
+}
+
+console.log("\n8. LA PAGE BEEBS LUE SANS NAVIGUER (lecture de même origine)");
+{
+  ok("lireHtmlMemeOrigine : même origine seulement, page de CETTE annonce, données présentes",
+    /async function lireHtmlMemeOrigine\(url, identifiant\)/.test(SOURCE)
+      && SOURCE.includes("u.origin !== location.origin")
+      && SOURCE.includes("String(r.url).includes(`/${identifiant}`)")
+      && SOURCE.includes("if (!/application\\/ld\\+json/i.test(html))"));
+  ok("capturerFicheEnPage lit le HTML fourni avec les mêmes règles (doc)",
+    /function capturerFicheEnPage\(plateforme, html = null\)/.test(SOURCE)
+      && SOURCE.includes('new DOMParser().parseFromString(String(html), "text/html")'));
+  ok("l'ancien chemin (page ouverte) reste le repli",
+    SOURCE.includes('if (!capture && String(tab?.url ?? "").split("#")[0] !== String(a.url).split("#")[0])'));
+  ok("la lecture préalable ne ramène plus toute la capture (capture->ligne seulement)",
+    SOURCE.includes("select=listing_id,capture_le,inventaire_id,ligne:capture->ligne&limit=5000"));
+}
+
 console.log(echecs === 0
   ? "\n✅ selftest fraîcheur des captures : tout passe\n"
   : `\n❌ ${echecs} échec(s)\n`);

@@ -14462,8 +14462,40 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
 // (CAPTURE_MAX_PAR_RUN et les bornes de fraîcheur vivent plus bas, avec la
 //  politique de sélection qui les consomme — 2026-09-21.)
 
+// ── LA PAGE D'UNE ANNONCE LUE SANS NAVIGUER (04/10, Louis — photos Beebs) ──
+// Injectée dans l'onglet de travail DÉJÀ sur le site : une requête de même
+// origine (la session et les cookies de la personne), sans faire naviguer
+// l'onglet. Beebs ne donne qu'UNE image dans son index : toutes les photos de
+// l'annonce ne se lisent que sur sa page. Ouvrir chaque page prenait ~7 s
+// (Louis : 16 fiches capturées sur 85 dans les 2 min du relevé, des fiches à
+// une photo pendant des jours). Ici ~1 s. Tout échec (anti-robot, autre page
+// rendue, réseau) rend { ok:false } et la capture reprend l'ancien chemin.
+// ⛔ Même origine seulement ; la page rendue doit être CELLE de l'annonce
+//    (identifiant dans l'adresse finale), jamais une redirection.
+async function lireHtmlMemeOrigine(url, identifiant) {
+  try {
+    const u = new URL(String(url), location.href);
+    if (u.origin !== location.origin) return { ok: false, motif: "autre origine" };
+    const r = await fetch(u.href, { credentials: "include", headers: { Accept: "text/html" } });
+    if (!r.ok) return { ok: false, motif: `HTTP ${r.status}` };
+    if (identifiant && !String(r.url).includes(`/${identifiant}`)) return { ok: false, motif: "page rendue : une autre adresse" };
+    const html = await r.text();
+    if (!/application\/ld\+json/i.test(html)) {
+      return { ok: false, motif: /captcha-delivery|datadome/i.test(html) ? "anti-robot" : "page sans données d'annonce" };
+    }
+    return { ok: true, html };
+  } catch (e) {
+    return { ok: false, motif: String(e?.message ?? e).slice(0, 80) };
+  }
+}
+
 // Lecture EN PAGE : une fonction, un switch par plateforme, zéro requête.
-function capturerFicheEnPage(plateforme) {
+function capturerFicheEnPage(plateforme, html = null) {
+  // (04/10, Louis — photos Beebs) `html` : la page de l'annonce lue par une
+  // requête de MÊME ORIGINE depuis l'onglet de travail (lireHtmlMemeOrigine),
+  // sans le faire naviguer. On lit alors le document reconstruit, avec les
+  // MÊMES règles que la page affichée — rien n'est lu autrement.
+  const doc = html ? new DOMParser().parseFromString(String(html), "text/html") : document;
   const propre = (s) => String(s ?? "").replace(/[\s  ]+/g, " ").trim();
   const sansQuery = (u) => String(u ?? "").split("?")[0];
   const texteDeHtml = (h) => {
@@ -14471,13 +14503,13 @@ function capturerFicheEnPage(plateforme) {
     d.innerHTML = String(h ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
     return (d.textContent || "").replace(/[ \t ]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
   };
-  const ld = Array.from(document.querySelectorAll("script[type='application/ld+json']"))
+  const ld = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
     .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
     .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
     .find((x) => x && /Product/i.test(String(x["@type"]))) ?? null;
   const ldImages = () => (Array.isArray(ld?.image) ? ld.image : (ld?.image ? [ld.image] : []))
     .map((i) => (typeof i === "string" ? i : i?.url ?? i?.contentUrl ?? null)).filter((u) => /^https?:/.test(String(u)));
-  const feuilles = () => Array.from(document.querySelectorAll("body *")).filter((e) => !e.children.length && propre(e.textContent));
+  const feuilles = () => Array.from(doc.querySelectorAll("body *")).filter((e) => !e.children.length && propre(e.textContent));
   // ── UNE PHRASE D'INTERFACE N'EST PAS UNE VALEUR (2026-09-18) ──────────────
   // Les liens d'aide d'eBay (« En savoir plus à propos de l'état », « Afficher
   // toutes les définitions des états ») et le texte réservé aux lecteurs
@@ -14542,7 +14574,7 @@ function capturerFicheEnPage(plateforme) {
   const out = { photos: [], description: null, marque: null, taille: null, etat: null, couleur: null, matiere: null, categorie: null, localisation: null, source: null, attributs_bruts: null, capture_complete: false };
   if (plateforme === "leboncoin") {
     let ad = null;
-    try { ad = JSON.parse(document.getElementById("__NEXT_DATA__")?.textContent ?? "null")?.props?.pageProps?.ad ?? null; } catch { ad = null; }
+    try { ad = JSON.parse(doc.getElementById("__NEXT_DATA__")?.textContent ?? "null")?.props?.pageProps?.ad ?? null; } catch { ad = null; }
     if (ad && typeof ad === "object") {
       out.source = "next_data";
       // ad.location, relevé live le 22/09 sur l'annonce 3274909685 :
@@ -14619,9 +14651,9 @@ function capturerFicheEnPage(plateforme) {
       out.capture_complete = true;
     } else {
       out.source = "dom";
-      out.description = ld?.description ? texteDeHtml(ld.description) : (propre(document.querySelector("[data-qa-id='adview_description_container']")?.textContent) || null);
+      out.description = ld?.description ? texteDeHtml(ld.description) : (propre(doc.querySelector("[data-qa-id='adview_description_container']")?.textContent) || null);
       const crit = (re) => {
-        for (const e of document.querySelectorAll("[data-qa-id^='criteria_item_']")) {
+        for (const e of doc.querySelectorAll("[data-qa-id^='criteria_item_']")) {
           if (!re.test(String(e.getAttribute("data-qa-id")).replace("criteria_item_", ""))) continue;
           const parts = Array.from(e.querySelectorAll("*")).filter((x) => !x.children.length).map((x) => propre(x.textContent)).filter(Boolean);
           if (parts[1]) return parts[1];
@@ -14629,7 +14661,7 @@ function capturerFicheEnPage(plateforme) {
         return null;
       };
       const critLib = (labels) => {
-        for (const e of document.querySelectorAll("[data-qa-id^='criteria_item_']")) {
+        for (const e of doc.querySelectorAll("[data-qa-id^='criteria_item_']")) {
           const parts = Array.from(e.querySelectorAll("*")).filter((x) => !x.children.length).map((x) => propre(x.textContent)).filter(Boolean);
           if (parts[0] && labels.includes(parts[0].toLowerCase()) && parts[1]) return parts[1];
         }
@@ -14659,7 +14691,7 @@ function capturerFicheEnPage(plateforme) {
       // ⛔ `capture_complete` reste FALSE : cette branche rend ce que l'écran
       //    montre, pas ce que l'annonce porte. Un critère que Leboncoin
       //    n'affiche pas est invisible ici, et un lecteur doit le savoir.
-      out.attributs_bruts = Array.from(document.querySelectorAll("[data-qa-id^='criteria_item_']"))
+      out.attributs_bruts = Array.from(doc.querySelectorAll("[data-qa-id^='criteria_item_']"))
         .map((e) => {
           const parts = Array.from(e.querySelectorAll("*")).filter((x) => !x.children.length)
             .map((x) => propre(x.textContent)).filter(Boolean);
@@ -14674,10 +14706,10 @@ function capturerFicheEnPage(plateforme) {
         .filter(Boolean);
       // Galerie : les images AVANT la description (les « annonces similaires »
       // viennent après), dédoublonnées par identifiant.
-      const desc = document.querySelector("[data-qa-id='adview_description_container']");
+      const desc = doc.querySelector("[data-qa-id='adview_description_container']");
       const avant = (el) => !desc || Boolean(el.compareDocumentPosition(desc) & Node.DOCUMENT_POSITION_FOLLOWING);
       const vues = new Set();
-      for (const img of document.querySelectorAll("img")) {
+      for (const img of doc.querySelectorAll("img")) {
         const u = sansQuery(img.currentSrc || img.src);
         const m = u.match(/lbcpb1\/images\/(?:[0-9a-f]{2}\/){3}([0-9a-f]+)/);
         if (!m || !avant(img) || vues.has(m[1])) continue;
@@ -14703,7 +14735,7 @@ function capturerFicheEnPage(plateforme) {
     // qu'un format pris à une autre annonce.
     {
       const ids = new Set();
-      for (const s of document.querySelectorAll("script:not([src])")) {
+      for (const s of doc.querySelectorAll("script:not([src])")) {
         const t = s.textContent || "";
         if (t.indexOf("weight_id") < 0) continue;
         for (const m of t.matchAll(/weight_id\\*"\s*:\s*\\*"([A-Za-z0-9]{8,40})\\*"/g)) ids.add(m[1]);
@@ -14711,11 +14743,11 @@ function capturerFicheEnPage(plateforme) {
       out.format_colis_id = ids.size === 1 ? [...ids][0] : null;
       if (ids.size > 1) out.format_colis_ambigu = ids.size;
     }
-    const fil = Array.from(document.querySelectorAll("nav a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter((t) => t && !/^accueil$/i.test(t));
+    const fil = Array.from(doc.querySelectorAll("nav a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter((t) => t && !/^accueil$/i.test(t));
     out.categorie = fil.length ? fil.join(" > ") : null;
     if (!out.photos.length) {
       const vues = new Set();
-      for (const img of document.querySelectorAll("img")) {
+      for (const img of doc.querySelectorAll("img")) {
         const u = sansQuery(img.currentSrc || img.src);
         if (!/cdn\.beebs\.app\/[0-9a-f-]{20,}/i.test(u) || vues.has(u)) continue;
         vues.add(u); out.photos.push(u);
@@ -14726,7 +14758,7 @@ function capturerFicheEnPage(plateforme) {
     out.photos = ldImages().map((u) => u.replace(/s-l\d+(\.\w+)$/, "s-l1600$1"));
     if (!out.photos.length) {
       const vues = new Set();
-      for (const img of document.querySelectorAll("img")) {
+      for (const img of doc.querySelectorAll("img")) {
         const m = sansQuery(img.currentSrc || img.src).match(/i\.ebayimg\.com\/images\/g\/([^/]+)\/s-l\d+(\.\w+)?/);
         if (!m || vues.has(m[1])) continue;
         vues.add(m[1]); out.photos.push(`https://i.ebayimg.com/images/g/${m[1]}/s-l1600${m[2] ?? ".jpg"}`);
@@ -14738,7 +14770,7 @@ function capturerFicheEnPage(plateforme) {
     // sur 800423009959 le 17/09 : Marque Primark, Taille XS, État « Occasion -
     // Très bon état », Couleur Vert, Matière « Coton 60% Polyester 40% ».
     const spec = (re) => {
-      for (const lab of document.querySelectorAll(".ux-labels-values__labels, .elevated-info__item__label")) {
+      for (const lab of doc.querySelectorAll(".ux-labels-values__labels, .elevated-info__item__label")) {
         const lib = propre(lab.textContent).replace(/\s*:\s*$/, "");
         if (!re.test(lib)) continue;
         const row = lab.closest("[class*='ux-labels-values']:not([class*='__'])") ?? lab.closest(".elevated-info__item") ?? lab.parentElement;
@@ -14766,9 +14798,9 @@ function capturerFicheEnPage(plateforme) {
     // pas la valeur. Lu par feuille, comme le reste, puis le libellé de tête
     // est retiré.
     out.etat = spec(/^(état|condition)$/i)
-      || valeurDeCellule(document.querySelector(".x-item-condition-text, [data-testid='x-item-condition']")).replace(/^(état|condition)\s*:?\s*/i, "") || null;
+      || valeurDeCellule(doc.querySelector(".x-item-condition-text, [data-testid='x-item-condition']")).replace(/^(état|condition)\s*:?\s*/i, "") || null;
     out.description_absente = "itm.ebaydesc.com hors permissions";
-    out.categorie = Array.from(document.querySelectorAll("nav.breadcrumbs a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter(Boolean).join(" > ") || null;
+    out.categorie = Array.from(doc.querySelectorAll("nav.breadcrumbs a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter(Boolean).join(" > ") || null;
   }
   out.photos = [...new Set(out.photos.map(String))].slice(0, 30);
   return out;
@@ -15016,9 +15048,14 @@ const memeLigne = (x, y) => Boolean(x) && Boolean(y)
 /** Les annonces à (re)capturer, dans l'ordre, bornées au budget du run. */
 function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   const parId = new Map(connues.map((r) => [String(r.listing_id), r]));
-  const jamais = [], changees = [], perimees = [];
+  // (04/10, Louis — photos Beebs) Une annonce RATTACHÉE jamais capturée, c'est
+  // une fiche née du relevé avec la seule vignette de l'index : UNE photo
+  // dans le Stock quand l'annonce en a cinq. Elle passe AVANT TOUT, même
+  // avant une modification connue (qui garde sa place juste derrière).
+  const unePhoto = [], jamais = [], changees = [], perimees = [];
   for (const a of annonces) {
     const r = parId.get(String(a.listing_id));
+    if (r && !r.capture_le && r.inventaire_id != null) { unePhoto.push(a); continue; }
     if (!r || !r.capture_le) { jamais.push(a); continue; }
     // ⚠️ PAS DE LIGNE MÉMORISÉE = ON NE SAIT PAS, pas « ça a changé ». Les
     //    captures d'avant ce lot (1 808 au 21/09) n'en portent aucune : les
@@ -15035,23 +15072,25 @@ function choisirCapturesARefaire(annonces, connues, maintenantMs, opts = {}) {
   // (27/09) Un budget propre aux captures qui ne coûtent AUCUNE page (la
   // liste Leboncoin porte déjà tout) : `opts.budget`.
   const budget = Number.isFinite(opts.budget) ? opts.budget : CAPTURE_MAX_PAR_RUN;
+  // 0. les FICHES À UNE PHOTO (rattachées, jamais capturées) d'abord.
+  const pris = unePhoto.slice(0, budget);
   // 1. les MODIFIÉES, sans contingent : c'est de l'information, pas du confort.
-  const pris = changees.slice(0, budget);
+  pris.push(...changees.slice(0, Math.max(0, budget - pris.length)));
   // 2. les JAMAIS capturées, en laissant leur part aux périmées.
   // ── (27/09, louis) UNE ANNONCE JAMAIS CAPTURÉE EST UNE FICHE À UNE PHOTO ──
   // Quand il en reste, les périmées ne gardent que leur PLANCHER : 1 420
   // fiches du parc attendaient encore leur première capture (vignette seule,
   // sans texte) pendant que 20 slots sur 30 rafraîchissaient des captures
   // déjà complètes. Sans jamais-capturées, le contingent reste le même.
-  const partPerimees = Math.min(jamais.length ? CAPTURE_PERIMEES_PLANCHER : CAPTURE_PERIMEES_PAR_RUN,
+  const partPerimees = Math.min(jamais.length || unePhoto.length ? CAPTURE_PERIMEES_PLANCHER : CAPTURE_PERIMEES_PAR_RUN,
     perimees.length, Math.max(0, budget - pris.length));
   pris.push(...jamais.slice(0, Math.max(0, budget - pris.length - partPerimees)));
   // 3. les PÉRIMÉES, au contingent — jamais plus, jamais moins tant qu'il y en a.
   pris.push(...perimees.slice(0, Math.min(partPerimees, Math.max(0, budget - pris.length))));
   //  est calculé ICI, pas chez l'appelant : une seule définition
   // de « ce qui attend le run suivant », donc un seul endroit à relire.
-  const attendues = jamais.length + changees.length + perimees.length;
-  return { pris, jamais: jamais.length, changees: changees.length, perimees: perimees.length,
+  const attendues = unePhoto.length + jamais.length + changees.length + perimees.length;
+  return { pris, une_photo: unePhoto.length, jamais: jamais.length + unePhoto.length, changees: changees.length, perimees: perimees.length,
            restantes: Math.max(0, attendues - pris.length) };
 }
 
@@ -15066,10 +15105,13 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
     // les captures d'avant ce lot → l'annonce tombe simplement dans « périmée »,
     // ce qui est exactement le bon comportement pour elles.
     const rows = await restRequest(
-      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&select=listing_id,capture_le,capture&limit=5000`, token,
+      // (04/10, incident CPU) `capture->ligne` seulement, plus toute la capture
+      // (photos, texte, critères) de 5 000 annonces ; `inventaire_id` sert à
+      // passer les fiches à une photo en premier.
+      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&select=listing_id,capture_le,inventaire_id,ligne:capture->ligne&limit=5000`, token,
     );
     connues = (Array.isArray(rows) ? rows : []).map((r) => ({
-      listing_id: r.listing_id, capture_le: r.capture_le, ligne: r.capture?.ligne ?? null,
+      listing_id: r.listing_id, capture_le: r.capture_le, inventaire_id: r.inventaire_id ?? null, ligne: r.ligne ?? null,
     }));
   } catch (e) {
     bilan.motif = "colonne capture absente (migration non appliquée)";
@@ -15104,6 +15146,7 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
       bilan.restantes += 1;
       continue;
     }
+    let viaMemeOrigine = false;
     try {
       let capture = null;
       const deLaListe = Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length > 0;
@@ -15118,15 +15161,30 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
       } else {
         const tabId = await getOrCreateWorkTab(platform, a.url);
         const tab = await chrome.tabs.get(tabId).catch(() => null);
-        if (String(tab?.url ?? "").split("#")[0] !== String(a.url).split("#")[0]) {
+        // (04/10) Beebs : la page lue par requête de même origine, sans
+        // navigation ; l'ancien chemin reste le repli.
+        if (platform === "beebs" && /^https:\/\/www\.beebs\.app\//.test(String(tab?.url ?? ""))) {
+          const [lu] = await chrome.scripting.executeScript({ target: { tabId }, func: lireHtmlMemeOrigine, args: [a.url, String(a.listing_id)] }).catch(() => [null]);
+          if (lu?.result?.ok && lu.result.html) {
+            const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform, lu.result.html] }).catch(() => [null]);
+            const c = res?.result ?? null;
+            if (c && (c.photos?.length || c.description)) { capture = { ...c, lecture: "meme_origine" }; viaMemeOrigine = true; bilan.meme_origine = (bilan.meme_origine ?? 0) + 1; }
+          } else if (lu?.result?.motif) {
+            bilan.meme_origine_ratees = (bilan.meme_origine_ratees ?? 0) + 1;
+            console.log(`[releve][beebs] ${a.listing_id} : lecture de même origine impossible (${lu.result.motif}) — page ouverte`);
+          }
+        }
+        if (!capture && String(tab?.url ?? "").split("#")[0] !== String(a.url).split("#")[0]) {
           const loaded = waitForTabComplete(tabId, a.url);
           await neutralizeBeforeUnload(tabId);
           await chrome.tabs.update(tabId, { url: a.url + WORK_TAB_FRAGMENT });
           await loaded;
         }
-        await sleep(randInt(1200, 2200));
-        const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform] });
-        capture = res?.result ?? null;
+        if (!capture) {
+          await sleep(randInt(1200, 2200));
+          const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform] });
+          capture = res?.result ?? null;
+        }
         if (!capture || (!capture.photos?.length && !capture.description)) throw new Error("fiche illisible (ni photo ni description)");
       }
       const at = new Date().toISOString();
@@ -15163,7 +15221,11 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
       console.warn(`[releve][${platform}] capture ${a.listing_id} en échec :`, String(e?.message ?? e));
     }
     // Une capture tirée de la liste n'a ouvert aucune page : pas de pause.
-    if (!(Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length)) await sleep(randInt(1500, 3000));
+    // Une lecture de même origine n'a rien chargé d'autre que le HTML : pause
+    // courte, mais une pause quand même (rythme humain, anti-robot).
+    if (!(Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length)) {
+      await sleep(viaMemeOrigine ? randInt(800, 1600) : randInt(1500, 3000));
+    }
   }
   return bilan;
 }
