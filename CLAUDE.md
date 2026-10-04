@@ -121,6 +121,15 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   Chrome Web Store, ET cliquer « Envoyer pour examen ». Tant que ces trois
   gestes ne sont pas faits, les utilisateurs tournent sur l'ancien code —
   vérifiable par `profiles.extension_build` / `cross_post_jobs.handler_build`.
+- ⛔ **Jamais d'OTA envoyée depuis un worktree** (04/10) : `npx @capgo/cli
+  bundle upload` part du dossier principal SEULEMENT. Capgo hache octet par
+  octet les sources natives des plugins dans `node_modules` : dans un
+  worktree Windows (`core.autocrlf`), `patch-package` avait écrit des lignes
+  CRLF dans `@capgo/native-purchases` — même version, même code — et l'OTA
+  2.9.46 a déclenché une fausse alerte « native changes ». `.gitattributes`
+  force désormais `patches/*.patch` en LF. Une alerte Capgo se vérifie dans
+  `app_versions.native_packages` avant tout retour en arrière
+  (`docs/agents/pieges.md`, Déploiement).
 
 ## ⛔ RÈGLES DÉFINITIVES DU 27/09 SOIR (synchronisation) — jumelles d'AGENTS.md § 4
 

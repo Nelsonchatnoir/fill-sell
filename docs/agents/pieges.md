@@ -23,6 +23,18 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
   commiter embarque une empreinte `-dirty` du commit précédent (irrattrapable :
   Capgo refuse un numéro déjà consommé). Un simple fichier non suivi suffit à
   faire `-dirty`. Un envoi figé à 99 % consomme quand même le numéro (2.9.24).
+- **OTA jamais depuis un worktree** (04/10, 2.9.46) : le CLI Capgo (8.71)
+  compare aussi une empreinte des sources natives de chaque plugin
+  (`ios_checksum`/`android_checksum` = sha256 du chemin + contenu BRUT des
+  .java/.swift/.kt/.scala, podspec, Package.swift, build.gradle, lus dans
+  `node_modules`). Dans un worktree Windows, `core.autocrlf` (niveau système)
+  sortait `patches/@capgo+native-purchases+8.3.3.patch` en CRLF ;
+  `patch-package` a écrit 29 lignes CRLF → même version, même code, autre
+  empreinte → fausse alerte « native changes ». Remède : `.gitattributes`
+  `patches/*.patch text eol=lf`. Avant tout retour en arrière, relire
+  `app_versions.native_packages` (clé globale `C:\Users\nicol\.capgo`).
+  La première OTA envoyée ensuite du dossier principal alerte UNE fois sur
+  native-purchases (comparée à la 2.9.46) : attendu, sans effet.
   Ne jamais rebuilder un `dist/` déjà empreint pour le renvoyer sous un autre
   numéro.
 - **Extension** : un push sur `main` ne déploie PAS l'extension. Le zip du

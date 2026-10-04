@@ -194,7 +194,7 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - Lint : `npm run lint`. Selftests : `npm run selftest:<sujet>` (les lancer
   quand on touche leur sujet ; `selftest:imports-epingles` pour les fonctions).
 - Captures d'écran sans session : `scripts/apercu/` (vite + playwright).
-- **OTA Capgo** (aucun script npm, geste manuel) :
+- **OTA Capgo** (manuel ; jamais d'un worktree) :
   1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
   2. monter `"version"` dans `package.json` ET `package-lock.json` au-dessus
      du canal (numéro de bundle = cette version) ;
