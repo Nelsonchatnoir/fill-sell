@@ -1528,7 +1528,16 @@ serve(async (req) => {
         if (jrow?.action === "republish" && jrow.platform === "vinted" && etapeCaptured) {
           // max(base, body) : le body vient de la lecture du poll, qui peut
           // être antérieure au dernier incrément écrit ici.
-          const deja = Math.max(
+          // (04/10) Une relance MANUELLE postérieure au dernier échec compté
+          // ouvre une nouvelle série : « le même échec répété » se compte
+          // depuis le geste de la personne, pas depuis toujours.
+          const dernierEchec = Math.max(
+            Date.parse(String(((pfBase.canal_coupe_derniere ?? {}) as Record<string, unknown>)["le"] ?? "")) || -Infinity,
+            Date.parse(String(((pfBase.boucle_technique ?? {}) as Record<string, unknown>)["le"] ?? "")) || -Infinity,
+          );
+          const relanceLe = Date.parse(String(pfBase.derniere_relance_manuelle ?? pfBody.derniere_relance_manuelle ?? ""));
+          const nouvelleSerie = Number.isFinite(relanceLe) && (!Number.isFinite(dernierEchec) || relanceLe > dernierEchec);
+          const deja = nouvelleSerie ? 0 : Math.max(
             Number(pfBase.canal_coupe_rejoue ?? 0) || 0,
             Number(pfBody.canal_coupe_rejoue ?? 0) || 0,
           );

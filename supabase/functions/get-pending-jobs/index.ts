@@ -9530,6 +9530,18 @@ serve(async (req) => {
         .from("coin_config").select("value").eq("key", "keepalive_actif").maybeSingle();
       if (cfgKa && Number(cfgKa.value) === 0) keepaliveActif = false;
     } catch (_e) { /* allumé par défaut */ }
+    // (04/10, Ciddjy) Interrupteur général coupé depuis le 17/09 (tests réels
+    // jamais faits) : le port s'allume COMPTE PAR COMPTE
+    // (profiles.beta_flags.keepalive = true). Chez Ciddjy le remplissage Vinted
+    // prend 4 à 5 min avant le retrait : la borne de 5 min du chemin classique
+    // le coupait, la tâche bouclait. Le port borne à 10 min et ne coupe pas un
+    // remplissage qui bat (vivant toutes les 20 s).
+    if (!keepaliveActif) {
+      try {
+        const { data: pKa } = await userClient.from("profiles").select("beta_flags").eq("id", user.id).maybeSingle();
+        if (((pKa?.beta_flags ?? {}) as Record<string, unknown>)["keepalive"] === true) keepaliveActif = true;
+      } catch (_e) { /* éteint, comme l'interrupteur général */ }
+    }
     // Trace quand il est COUPÉ : la preuve, dans les logs, que l'interrupteur
     // a bien joué pour ce poll (rien n'est loggé à l'état allumé, le normal).
     if (!keepaliveActif) console.log(`[get-pending-jobs] userId=${user.id} : keepalive_actif=0 → port de remplissage ÉTEINT pour ce poll (chemin classique)`);

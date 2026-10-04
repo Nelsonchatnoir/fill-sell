@@ -2880,6 +2880,11 @@ serve(async (req) => {
       if (pf.republish_step !== "captured") continue;
       const source = String(pf.needs_user_source ?? "");
       if (source === "livres_isbn_garde" || source === "republish_couleur_garde") continue;
+      // (04/10, cielmo 638f2293) Sortie de boucle (même échec répété :
+      // boucle_technique) ou mise de côté « servie sans démarrer » : la tâche
+      // attend « Relancer » après un redémarrage de Chrome. Une capture n'y
+      // change rien — elle l'avait remise en file 2 min après sa sortie.
+      if (pf.boucle_technique || source === "tache_sans_demarrage") continue;
       if (!j.inventaire_id) continue;
       // L'article est-il encore à vendre ? On ne republie que du stock vivant.
       const { data: art } = await supabase
