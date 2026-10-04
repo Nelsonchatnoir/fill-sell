@@ -1,8 +1,22 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PROPOSITION (NON APPLIQUÉE — conception, attend le GO de Nico) — 04/10/2026
 -- L'option « FillSell Cloud » : colonnes profiles, cloud_etat, pool d'IP
--- françaises, essais (un seul par personne)
+-- françaises, essais (un seul par personne), mail de la veille
 -- ═══════════════════════════════════════════════════════════════════════════
+-- Décisions FINALES de Nico (04/10 soir), toutes portées ici :
+--   · l'option se prend SEULE sur un compte Free, ou avec une formule ;
+--     résilier la formule ne l'arrête pas (c_exige_un_palier = false) ;
+--     arrêtée pendant l'essai : tout de suite, rien facturé ; payée : jusqu'à
+--     la fin de la période (cloud_essai_arrete, cloud_periode_fin,
+--     cloud_arret_fin_periode) ;
+--   · carte OBLIGATOIRE pour l'essai : 4e verrou de l'essai unique (empreinte
+--     de carte hachée, fournie par le flux de paiement) ;
+--   · PHASE 1 = ROTATION (cloud_mode() = 'rotation', défaut) : groupes
+--     d'affinité, baux exclusifs (contrainte d'exclusion par IP et par compte),
+--     T_max, priorités, jamais un bail coupé au milieu d'un job (§ 6 bis) ;
+--     PHASE 2 = IP DÉDIÉE (cloud_param mode = 2), gardée (§ 6) ;
+--   · le mail de la veille `cloud_essai_veille` entre dans
+--     email_logs_one_shot_unique (§ 9).
 -- Extension .sql.txt EXPRÈS : ce fichier n'est jamais appliqué par erreur
 -- (précédent : PROPOSITION_20260920_fusion_ventes_doublons.sql.txt).
 -- Conception : docs/cloud/pool-ip.md. Règles pures et testées (mêmes valeurs,
@@ -28,7 +42,16 @@
 --   DROP FUNCTION IF EXISTS public.profiles_cloud_paye(), public.cloud_pool_entretien(),
 --     public.cloud_pool_etat(), public.cloud_file_servir(), public.cloud_essai_demarrer(bigint, bigint),
 --     public.cloud_essai_convertir(uuid), public.cloud_essai_noter_compte_plateforme(uuid, text, text),
---     public.cloud_essai_ouvrir_moi(text), public.cloud_essai_ouvrir(uuid, text, jsonb), public.cloud_essai_moi(),
+--     public.cloud_essai_preparer_moi(text), public.cloud_essai_ouvrir(uuid, text, jsonb), public.cloud_essai_moi(),
+--     public.cloud_essai_arreter(uuid), public.cloud_compte_placer(uuid, text, timestamptz),
+--     public.cloud_compte_sortir(uuid, text), public.cloud_rotation_etat(), public.cloud_priorite_demander(uuid, text),
+--     public.cloud_bail_prolonger(bigint, integer), public.cloud_bail_terminer(bigint, text),
+--     public.cloud_bail_bloquants(bigint), public.cloud_bail_fin_douce(bigint),
+--     public.cloud_bail_ouvrir(uuid, bigint, text, integer, text), public.cloud_compte_noter_purge(uuid, jsonb),
+--     public.cloud_rotation_quitter(uuid, text), public.cloud_rotation_rejoindre(uuid),
+--     public.cloud_duree_session(integer), public.cloud_groupe_effectif(), public.cloud_mode(),
+--     public.cloud_jobs_prioritaires(uuid),
+--     public.cloud_purge_compte_manques(jsonb, timestamptz),
 --     public.cloud_ip_remettre_en_pool(bigint, jsonb), public.cloud_ip_noter_purge(bigint, jsonb),
 --     public.cloud_ip_signaler(bigint, text, jsonb), public.cloud_ip_liberer(uuid, text),
 --     public.cloud_ip_attribuer(uuid, text, timestamptz), public.cloud_ip_renouvelee(bigint, timestamptz),
@@ -39,11 +62,19 @@
 --     public.cloud_hacher(text, text), public.cloud_sel(), public.cloud_etat_moi(),
 --     public.cloud_etat(uuid, timestamptz), public.cloud_param(text, integer),
 --     public.cloud_ts(text), public.cloud_texte_non_vide(jsonb), public.cloud_zero(jsonb);
---   DROP TABLE IF EXISTS public.cloud_pool_alertes, public.cloud_essai_empreintes, public.cloud_essais,
+--   DROP TABLE IF EXISTS public.cloud_baux, public.cloud_priorites, public.cloud_purges_comptes,
+--     public.cloud_affinites, public.cloud_pool_alertes, public.cloud_essai_empreintes,
+--     public.cloud_essai_demandes, public.cloud_essais,
 --     public.cloud_ip_evenements, public.cloud_ip_commandes, public.cloud_ips;
 --   ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_cloud_essai_coherent,
---     DROP COLUMN IF EXISTS is_cloud, DROP COLUMN IF EXISTS cloud_essai_debut, DROP COLUMN IF EXISTS cloud_essai_fin;
+--     DROP COLUMN IF EXISTS is_cloud, DROP COLUMN IF EXISTS cloud_essai_debut, DROP COLUMN IF EXISTS cloud_essai_fin,
+--     DROP COLUMN IF EXISTS cloud_essai_arrete, DROP COLUMN IF EXISTS cloud_periode_fin,
+--     DROP COLUMN IF EXISTS cloud_arret_fin_periode;
 --   DELETE FROM public.coin_config WHERE key LIKE 'cloud\_%';
+--   -- email_logs_one_shot_unique : on la REMET sans 'cloud_essai_veille' (même méthode
+--   -- que le § 9, en retirant le type au lieu de l'ajouter) — à ne faire qu'après
+--   -- avoir vérifié qu'aucun mail de la veille n'est parti (sinon on garde l'index).
+--   -- btree_gist reste installée (extension standard, sans effet par elle-même).
 --   -- vault : supprimer à la main les secrets cloud_proxy_* (après avoir coupé les
 --   -- commandes chez IPRoyal) et cloud_empreinte_sel (efface toute la mémoire anti-abus).
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -56,6 +87,13 @@ RETURNS integer LANGUAGE sql STABLE SET search_path TO 'public', 'pg_temp' AS $f
   SELECT COALESCE((SELECT value FROM public.coin_config WHERE key = 'cloud_' || p_cle), p_defaut);
 $f$;
 REVOKE ALL ON FUNCTION public.cloud_param(text, integer) FROM PUBLIC, anon, authenticated;
+
+-- La phase : 1 = rotation (phase 1, défaut), 2 = IP dédiée (phase 2). = modeCloud (cloud-pool.js).
+CREATE OR REPLACE FUNCTION public.cloud_mode()
+RETURNS text LANGUAGE sql STABLE SET search_path TO 'public', 'pg_temp' AS $f$
+  SELECT CASE WHEN public.cloud_param('mode', 1) = 2 THEN 'dediee' ELSE 'rotation' END;
+$f$;
+REVOKE ALL ON FUNCTION public.cloud_mode() FROM PUBLIC, anon, authenticated;
 
 -- Petites lectures sûres d'un jsonb (jamais d'exception sur une preuve mal formée).
 CREATE OR REPLACE FUNCTION public.cloud_ts(p text)
@@ -82,13 +120,21 @@ REVOKE ALL ON FUNCTION public.cloud_ts(text), public.cloud_texte_non_vide(jsonb)
 --                     (jamais à la main, jamais par l'app) ;
 -- cloud_essai_debut : début RÉEL de l'essai (posé quand une IP lui est donnée ;
 --                     null = jamais d'essai, ou essai encore en file) ;
--- cloud_essai_fin   : fin de l'essai (début + 7 jours ; avancée à maintenant si
---                     l'essai est refusé en cours de route).
+-- cloud_essai_fin   : fin de l'essai (début + 7 jours ; ramenée à l'instant de
+--                     l'arrêt, ou du refus, en cours de route) ;
+-- cloud_essai_arrete      : l'essai a été arrêté par la personne — effet
+--                           IMMÉDIAT, rien n'est facturé (cloud_essai_arreter) ;
+-- cloud_periode_fin       : fin de la période payée en cours (flux de paiement) ;
+-- cloud_arret_fin_periode : arrêt demandé une fois payée — l'option tourne
+--                           jusqu'à cloud_periode_fin, puis le paiement retire is_cloud.
 -- Ajout de colonnes nullables sans défaut : métadonnée seule, aucune réécriture.
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS is_cloud boolean,
   ADD COLUMN IF NOT EXISTS cloud_essai_debut timestamptz,
-  ADD COLUMN IF NOT EXISTS cloud_essai_fin timestamptz;
+  ADD COLUMN IF NOT EXISTS cloud_essai_fin timestamptz,
+  ADD COLUMN IF NOT EXISTS cloud_essai_arrete boolean,
+  ADD COLUMN IF NOT EXISTS cloud_periode_fin timestamptz,
+  ADD COLUMN IF NOT EXISTS cloud_arret_fin_periode boolean;
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_cloud_essai_coherent') THEN
@@ -98,39 +144,53 @@ BEGIN
 END $$;
 -- ⛔ Jamais modifiables par le client (auto-promotion) : la policy UPDATE de
 -- profiles n'ouvre que des colonnes nommées (20260706400000) ; on le redit.
-REVOKE UPDATE (is_cloud, cloud_essai_debut, cloud_essai_fin) ON public.profiles FROM anon, authenticated;
+REVOKE UPDATE (is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode)
+  ON public.profiles FROM anon, authenticated;
 CREATE INDEX IF NOT EXISTS profiles_is_cloud_idx ON public.profiles (id) WHERE is_cloud IS TRUE;
 
 
 -- ═══ 2. cloud_etat — MÊME RÈGLE que cloudDuProfil (src/utils/palier.js) ═══════
--- Rend { etat, actif, essaiPris, essaiFin, joursRestants } avec les mêmes noms
--- et les mêmes valeurs que l'app. Les instants sont tronqués à la milliseconde,
--- comme Date.parse côté app. Un compte inconnu rend « aucun » (comme p = undefined).
+-- Rend { etat, actif, essaiPris, essaiArrete, essaiFin, joursRestants,
+-- avecFormule, periodeFin, arretPrevuLe } avec les mêmes noms et les mêmes
+-- valeurs que l'app. Les instants sont tronqués à la milliseconde, comme
+-- Date.parse côté app. Un compte inconnu rend « aucun » (comme p = undefined).
+-- Décisions du 04/10 soir : Free + option possible (aucun « suspendu ») ;
+-- essai arrêté = terminé tout de suite ; payée avec arrêt demandé = « payé »
+-- jusqu'à ce que le paiement retire is_cloud, la date d'arrêt est rendue.
 CREATE OR REPLACE FUNCTION public.cloud_etat(p_user uuid, p_maintenant timestamptz DEFAULT now())
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
   -- ⛔ MÊME VALEUR que CLOUD_EXIGE_UN_PALIER (palier.js), changée le même jour.
-  c_exige_un_palier CONSTANT boolean := true;
+  c_exige_un_palier CONSTANT boolean := false;
   v_now timestamptz := date_trunc('milliseconds', p_maintenant);
-  v_is_cloud boolean; v_debut timestamptz; v_fin timestamptz;
+  v_is_cloud boolean; v_debut timestamptz; v_fin timestamptz; v_arrete boolean;
+  v_periode timestamptz; v_arret_fp boolean;
   v_business boolean; v_pro boolean; v_premium boolean; v_comped boolean;
-  v_essai_pris boolean; v_en_cours boolean; v_paye boolean; v_palier_ok boolean;
+  v_essai_pris boolean; v_en_cours boolean; v_paye boolean; v_avec_formule boolean; v_palier_ok boolean;
   v_base jsonb;
 BEGIN
   SELECT p.is_cloud, date_trunc('milliseconds', p.cloud_essai_debut), date_trunc('milliseconds', p.cloud_essai_fin),
+         p.cloud_essai_arrete, date_trunc('milliseconds', p.cloud_periode_fin), p.cloud_arret_fin_periode,
          p.is_business, p.is_pro, p.is_premium, p.is_comped
-    INTO v_is_cloud, v_debut, v_fin, v_business, v_pro, v_premium, v_comped
+    INTO v_is_cloud, v_debut, v_fin, v_arrete, v_periode, v_arret_fp, v_business, v_pro, v_premium, v_comped
     FROM public.profiles p WHERE p.id = p_user;
   v_essai_pris := v_debut IS NOT NULL;
-  v_en_cours := v_debut IS NOT NULL AND v_fin IS NOT NULL AND v_debut <= v_now AND v_now < v_fin;
+  -- un essai arrêté s'arrête TOUT DE SUITE, même si la fin n'a pas bougé
+  v_en_cours := v_debut IS NOT NULL AND v_fin IS NOT NULL AND v_debut <= v_now AND v_now < v_fin AND v_arrete IS NOT TRUE;
   v_paye := v_is_cloud IS TRUE;
-  v_palier_ok := NOT c_exige_un_palier
-              OR (v_business IS TRUE OR v_pro IS TRUE OR v_premium IS TRUE OR v_comped IS TRUE);
+  v_avec_formule := (v_business IS TRUE OR v_pro IS TRUE OR v_premium IS TRUE OR v_comped IS TRUE);
+  v_palier_ok := NOT c_exige_un_palier OR v_avec_formule;
   v_base := jsonb_build_object(
     'essaiPris', v_essai_pris,
+    'essaiArrete', v_essai_pris AND v_arrete IS TRUE,
     'essaiFin', CASE WHEN v_fin IS NULL THEN NULL
                      ELSE to_char(v_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
-    'joursRestants', NULL);
+    'joursRestants', NULL,
+    'avecFormule', v_avec_formule,
+    'periodeFin', CASE WHEN v_paye AND v_periode IS NOT NULL
+                       THEN to_char(v_periode AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
+    'arretPrevuLe', CASE WHEN v_paye AND v_arret_fp IS TRUE AND v_periode IS NOT NULL
+                         THEN to_char(v_periode AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END);
   IF (v_paye OR v_en_cours) AND NOT v_palier_ok THEN
     RETURN v_base || jsonb_build_object('etat', 'suspendu', 'actif', false);
   END IF;
@@ -141,7 +201,7 @@ BEGIN
     RETURN v_base || jsonb_build_object('etat', 'essai', 'actif', true,
       'joursRestants', GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_fin - v_now)) / 86400)::integer));
   END IF;
-  IF v_essai_pris AND v_fin IS NOT NULL AND v_now >= v_fin THEN
+  IF v_essai_pris AND (v_arrete IS TRUE OR (v_fin IS NOT NULL AND v_now >= v_fin)) THEN
     RETURN v_base || jsonb_build_object('etat', 'essai_termine', 'actif', false);
   END IF;
   RETURN v_base || jsonb_build_object('etat', 'aucun', 'actif', false);
@@ -164,7 +224,7 @@ GRANT EXECUTE ON FUNCTION public.cloud_etat_moi() TO authenticated;
 -- le pool est de l'infrastructure (quelle IP, à qui, quand) et les empreintes
 -- sont des données anti-abus. Aucun client ne lit ni n'écrit ces tables :
 -- RLS activée SANS policy + REVOKE explicite. L'app passe par cloud_etat_moi(),
--- cloud_essai_moi() et cloud_essai_ouvrir_moi() (SECURITY DEFINER, auth.uid()).
+-- cloud_essai_moi() et cloud_essai_preparer_moi() (SECURITY DEFINER, auth.uid()).
 
 -- 3.1 Le pool. AUCUN secret : l'URL du proxy (identifiants) est dans le vault,
 -- référencée par son NOM (secret_nom).
@@ -179,8 +239,8 @@ CREATE TABLE IF NOT EXISTS public.cloud_ips (
   asn              text,                     -- opérateur de sortie (ex. AS3320)
   secret_nom       text NOT NULL UNIQUE,     -- NOM du secret du vault ; jamais la valeur
   etat             text NOT NULL DEFAULT 'achetee'
-                   CHECK (etat IN ('achetee','disponible','attribuee_essai','attribuee_client','quarantaine','rebut','expiree')),
-  user_id          uuid,                     -- titulaire ACTUEL (états attribués seulement)
+                   CHECK (etat IN ('achetee','disponible','attribuee_essai','attribuee_client','quarantaine','rotation','rebut','expiree')),
+  user_id          uuid,                     -- titulaire ACTUEL (états attribués seulement ; jamais en rotation)
   dernier_user_id  uuid,                     -- dernier titulaire (retour du même compte ; effacé à 12 mois)
   derniere_origine text CHECK (derniere_origine IN ('essai','client')),
   attribuee_le     timestamptz,
@@ -233,7 +293,7 @@ CREATE TABLE IF NOT EXISTS public.cloud_ip_evenements (
   le      timestamptz NOT NULL DEFAULT now(),
   nature  text NOT NULL CHECK (nature IN ('achat','controle_entree','attribution','retour_meme_compte','conversion',
             'liberation','purge','sortie_quarantaine','signalement','rebut','renouvellement','identifiants_changes',
-            'expiration','incident')),
+            'expiration','incident','mise_en_rotation','rejoint','quitte','purge_compte')),
   user_id uuid,
   details jsonb NOT NULL DEFAULT '{}'::jsonb
 );
@@ -248,7 +308,7 @@ CREATE TABLE IF NOT EXISTS public.cloud_essais (
   id          bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   user_id     uuid REFERENCES auth.users (id) ON DELETE SET NULL,
   statut      text NOT NULL DEFAULT 'en_attente'
-              CHECK (statut IN ('en_attente','en_cours','termine','converti','refuse')),
+              CHECK (statut IN ('en_attente','en_cours','termine','converti','refuse','arrete')),
   demande_le  timestamptz NOT NULL DEFAULT now(),
   debut       timestamptz,
   fin         timestamptz,
@@ -263,15 +323,29 @@ CREATE INDEX IF NOT EXISTS cloud_essais_file ON public.cloud_essais (demande_le,
 ALTER TABLE public.cloud_essais ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.cloud_essais FROM anon, authenticated;
 
+-- 3.4 bis La demande d'essai PRÉPARÉE (avant la carte) : l'empreinte d'appareil
+-- hachée, posée par cloud_essai_preparer_moi ; le flux de paiement ouvre ensuite
+-- l'essai avec l'empreinte de carte (cloud_essai_ouvrir). Effacée à l'ouverture,
+-- ou au bout de 7 jours.
+CREATE TABLE IF NOT EXISTS public.cloud_essai_demandes (
+  user_id    uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
+  appareil_h text NOT NULL CHECK (appareil_h ~ '^[0-9a-f]{64}$'),
+  demande_le timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.cloud_essai_demandes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cloud_essai_demandes FROM anon, authenticated;
+
 -- 3.5 Les empreintes HACHÉES (HMAC-SHA256, sel du vault). Jamais la valeur brute.
 -- nature 'appareil' : identifiant d'installation de l'app (ou d'un navigateur) ;
+-- nature 'carte' : empreinte de la carte enregistrée pour l'essai (Stripe
+-- card.fingerprint, transmise par le flux de paiement) — 4e verrou ;
 -- nature 'compte_plateforme' : identifiant du compte Vinted / Leboncoin / eBay /
 -- Beebs vu par NOTRE navigateur (le nom de la plateforme entre dans le haché).
 -- Conservées 12 mois après la fin de l'essai (cloud_param empreintes_conservation_mois).
 CREATE TABLE IF NOT EXISTS public.cloud_essai_empreintes (
   id                 bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   essai_id           bigint NOT NULL REFERENCES public.cloud_essais (id) ON DELETE CASCADE,
-  nature             text NOT NULL CHECK (nature IN ('appareil','compte_plateforme')),
+  nature             text NOT NULL CHECK (nature IN ('appareil','carte','compte_plateforme')),
   plateforme         text CHECK ((nature = 'compte_plateforme') = (plateforme IS NOT NULL)),
   empreinte          text NOT NULL CHECK (empreinte ~ '^[0-9a-f]{64}$'),
   vu_le              timestamptz NOT NULL DEFAULT now(),
@@ -295,6 +369,83 @@ CREATE TABLE IF NOT EXISTS public.cloud_pool_alertes (
 CREATE INDEX IF NOT EXISTS cloud_pool_alertes_le ON public.cloud_pool_alertes (le DESC);
 ALTER TABLE public.cloud_pool_alertes ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.cloud_pool_alertes FROM anon, authenticated;
+
+-- ── PHASE 1 : LA ROTATION ────────────────────────────────────────────────────
+-- btree_gist : pour une contrainte d'exclusion qui mêle « = » (IP, compte) et
+-- « && » (périodes). Extension standard, disponible sur le projet (non installée
+-- au 04/10), sans effet par elle-même.
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+
+-- 3.7 Les groupes d'affinité : la « maison » d'un compte. Un compte a UNE IP
+-- maison (clé primaire) ; une IP sert au plus cloud_groupe_effectif() comptes
+-- (tenu par cloud_rotation_rejoindre sous un verrou unique).
+CREATE TABLE IF NOT EXISTS public.cloud_affinites (
+  user_id      uuid PRIMARY KEY,
+  ip_id        bigint NOT NULL REFERENCES public.cloud_ips (id),
+  rejoint_le   timestamptz NOT NULL DEFAULT now(),
+  derniere_fin timestamptz                    -- fin de sa dernière session (le tour se règle dessus)
+);
+CREATE INDEX IF NOT EXISTS cloud_affinites_ip ON public.cloud_affinites (ip_id);
+ALTER TABLE public.cloud_affinites ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cloud_affinites FROM anon, authenticated;
+
+-- 3.8 LES BAUX : qui sort par quelle IP, de quand à quand. JAMAIS DEUX COMPTES
+-- EN MÊME TEMPS SUR LA MÊME IP — garanti par la BASE, pas par l'ordonnanceur :
+--   · exclusion par IP : deux baux d'une même IP ne se chevauchent jamais, battement
+--     compris (période [début, libre_le[ ; libre_le = fin + battement ; NULL = en cours) ;
+--   · exclusion par compte : un compte n'a jamais deux baux qui se chevauchent ;
+--   · index unique : un seul bail ACTIF par compte.
+-- `poste` = la session FillSell du navigateur (claim session_id), celle que lit
+-- jobs_reservations_extension.poste : c'est par elle qu'on sait si un job tourne.
+-- Gardés 30 jours (diagnostic), puis effacés par l'entretien.
+CREATE TABLE IF NOT EXISTS public.cloud_baux (
+  id           bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  ip_id        bigint NOT NULL REFERENCES public.cloud_ips (id),
+  user_id      uuid NOT NULL,
+  poste        text,
+  motif        text NOT NULL CHECK (motif IN ('tour','premiere_connexion','priorite_retrait','priorite_vente','priorite_republication')),
+  debut        timestamptz NOT NULL DEFAULT now(),
+  fin_prevue   timestamptz NOT NULL,
+  fin_douce_le timestamptz,                   -- à partir d'ici, plus aucun job n'est pris
+  prolonge_min integer NOT NULL DEFAULT 0 CHECK (prolonge_min >= 0),
+  termine_le   timestamptz,
+  libre_le     timestamptz,
+  raison_fin   text,
+  CONSTRAINT cloud_baux_fin CHECK ((termine_le IS NULL) = (libre_le IS NULL)
+                                   AND (termine_le IS NULL OR (termine_le >= debut AND libre_le >= termine_le))),
+  CONSTRAINT cloud_baux_ip_exclusif EXCLUDE USING gist (ip_id WITH =, tstzrange(debut, libre_le, '[)') WITH &&),
+  CONSTRAINT cloud_baux_compte_exclusif EXCLUDE USING gist (user_id WITH =, tstzrange(debut, termine_le, '[)') WITH &&)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS cloud_baux_un_actif_par_compte ON public.cloud_baux (user_id) WHERE termine_le IS NULL;
+CREATE INDEX IF NOT EXISTS cloud_baux_actifs ON public.cloud_baux (ip_id) WHERE termine_le IS NULL;
+ALTER TABLE public.cloud_baux ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cloud_baux FROM anon, authenticated;
+
+-- 3.9 Les priorités EXPLICITES (une vente constatée ailleurs, ex. eBay par l'API) :
+-- consommées à l'ouverture du bail prioritaire. Les retraits en attente et les
+-- republications déjà retirées sont lus directement dans cross_post_jobs.
+CREATE TABLE IF NOT EXISTS public.cloud_priorites (
+  user_id    uuid PRIMARY KEY,
+  motif      text NOT NULL CHECK (motif IN ('retrait','vente','republication')),
+  demande_le timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.cloud_priorites ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cloud_priorites FROM anon, authenticated;
+
+-- 3.10 Les purges de COMPTE (un compte quitte la rotation : son profil de
+-- navigateur et son coffre sont effacés, l'IP continue de servir les autres).
+CREATE TABLE IF NOT EXISTS public.cloud_purges_comptes (
+  id          bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  user_id     uuid,                           -- effacé à 12 mois
+  ip_id       bigint REFERENCES public.cloud_ips (id),
+  raison      text,
+  demandee_le timestamptz NOT NULL DEFAULT now(),
+  preuve      jsonb,
+  prouvee_le  timestamptz
+);
+CREATE INDEX IF NOT EXISTS cloud_purges_comptes_attente ON public.cloud_purges_comptes (demandee_le) WHERE prouvee_le IS NULL;
+ALTER TABLE public.cloud_purges_comptes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.cloud_purges_comptes FROM anon, authenticated;
 
 
 -- ═══ 4. Secrets, hachage, journal ═════════════════════════════════════════════
@@ -399,6 +550,30 @@ BEGIN
 END;
 $f$;
 REVOKE ALL ON FUNCTION public.cloud_controle_manques(jsonb, inet, timestamptz) FROM PUBLIC, anon, authenticated;
+
+-- Preuve de purge d'un COMPTE qui quitte la rotation (version 2 ; mêmes codes,
+-- même ordre que manquesPreuvePurgeCompte) — l'IP, elle, continue de servir :
+--   { version: 2, faite_le, profil: { id, detruit: true }, profils_restants: 0,
+--     coffre_restants: 0, session_fillsell_revoquee: true }
+CREATE OR REPLACE FUNCTION public.cloud_purge_compte_manques(p_preuve jsonb, p_quitte_le timestamptz)
+RETURNS text[] LANGUAGE plpgsql STABLE SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE
+  m text[] := '{}';
+  q jsonb := CASE WHEN jsonb_typeof(p_preuve) = 'object' THEN p_preuve ELSE '{}'::jsonb END;
+  v_faite timestamptz := public.cloud_ts(q ->> 'faite_le');
+BEGIN
+  IF (q -> 'version') IS DISTINCT FROM '2'::jsonb THEN m := array_append(m, 'version'); END IF;
+  IF v_faite IS NULL OR p_quitte_le IS NULL OR v_faite < p_quitte_le THEN m := array_append(m, 'faite_apres_depart'); END IF;
+  IF NOT (public.cloud_texte_non_vide(q #> '{profil,id}') AND (q #> '{profil,detruit}') = 'true'::jsonb) THEN
+    m := array_append(m, 'profil_detruit');
+  END IF;
+  IF NOT public.cloud_zero(q -> 'profils_restants') THEN m := array_append(m, 'profils_restants'); END IF;
+  IF NOT public.cloud_zero(q -> 'coffre_restants') THEN m := array_append(m, 'coffre_restants'); END IF;
+  IF (q -> 'session_fillsell_revoquee') IS DISTINCT FROM 'true'::jsonb THEN m := array_append(m, 'session_fillsell_revoquee'); END IF;
+  RETURN m;
+END;
+$f$;
+REVOKE ALL ON FUNCTION public.cloud_purge_compte_manques(jsonb, timestamptz) FROM PUBLIC, anon, authenticated;
 
 
 -- ═══ 6. Le cycle de vie d'une IP — RPC atomiques (service role) ═══════════════
@@ -525,9 +700,11 @@ BEGIN
 END;
 $f$;
 
--- 6.5 SIGNALEMENT → REBUT, depuis n'importe quel état vivant (quarantaine comprise).
--- Jamais réattribuée, jamais renouvelée. Le titulaire n'est jamais laissé sans
--- IP : cloud_file_servir lui en donne une autre aussitôt (priorité absolue).
+-- 6.5 SIGNALEMENT → REBUT, depuis n'importe quel état vivant (quarantaine et
+-- rotation comprises). Jamais réattribuée, jamais renouvelée. Le titulaire (ou
+-- le groupe d'une IP en rotation) n'est jamais laissé sans IP : cloud_file_servir
+-- les replace aussitôt (priorité absolue). Les membres d'un groupe gardent leur
+-- profil et leur coffre : ils changent de maison, ils ne partent pas.
 -- Les critères mesurables sont dans cloud-pool.js (qualifierSignalement).
 CREATE OR REPLACE FUNCTION public.cloud_ip_signaler(p_ip bigint, p_critere text, p_details jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
@@ -547,6 +724,10 @@ BEGIN
          liberee_le = COALESCE(liberee_le, now()), maj_le = now()
    WHERE id = p_ip;
   PERFORM public.cloud_journal(p_ip, 'rebut', v.user_id, jsonb_build_object('critere', p_critere));
+  -- Rotation : le bail en cours finit dès que c'est sûr, le groupe est relogé.
+  UPDATE public.cloud_baux SET fin_douce_le = COALESCE(fin_douce_le, now()), fin_prevue = LEAST(fin_prevue, now())
+   WHERE ip_id = p_ip AND termine_le IS NULL;
+  DELETE FROM public.cloud_affinites WHERE ip_id = p_ip;
   RETURN jsonb_build_object('ok', true, 'rebut', true, 'titulaire', v.user_id, 'servis', public.cloud_file_servir());
 END;
 $f$;
@@ -623,9 +804,310 @@ END;
 $f$;
 
 
--- ═══ 7. Les essais — un seul par personne ═════════════════════════════════════
+-- ═══ 6 bis. PHASE 1 — LA ROTATION (cloud_mode() = 'rotation') ═══════════════
+-- LA RÈGLE (même texte que cloud-pool.js § 9) :
+--   1. une IP ne sert qu'UN compte à la fois (baux exclusifs, § 3.8) ;
+--   2. chaque IP a un petit groupe fixe de comptes, servis à tour de rôle ;
+--   3. chaque compte actif a une session au moins toutes les T_max minutes, et
+--      tout de suite s'il a un retrait en attente, une republication déjà
+--      retirée ou une vente constatée ailleurs ;
+--   4. un bail n'est jamais coupé au milieu d'un job (prolongation bornée) ;
+--   5. pool trop petit pour T_max : alerte, et les essais attendent en file.
+-- L'ORDONNANCEUR vit dans l'orchestrateur des navigateurs (planifierRotation,
+-- chaque minute) ; la base garde le dernier mot (exclusions, bloquants).
 
--- 7.1 Démarrage réel (interne) : une IP vient d'être donnée à un essai en file.
+-- Les jobs qui rendent une session PRIORITAIRE : un retrait en attente, ou une
+-- republication dont l'annonce est déjà retirée (étape deleted).
+CREATE OR REPLACE FUNCTION public.cloud_jobs_prioritaires(p_user uuid)
+RETURNS TABLE (action text, created_at timestamptz) LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+  SELECT j.action, j.created_at FROM public.cross_post_jobs j
+   WHERE j.user_id = p_user AND j.voie = 'extension' AND j.status = 'pending'
+     AND (j.action = 'delete' OR (j.action = 'republish' AND j.platform_fields ->> 'republish_step' = 'deleted'));
+$f$;
+
+
+-- Comptes par IP tenables à T_max — = groupeEffectif (cloud-pool.js), en entiers :
+--   (g − 1)(session + battement) ≤ (1 − marge) T_max, au plus groupe_max.
+CREATE OR REPLACE FUNCTION public.cloud_groupe_effectif()
+RETURNS integer LANGUAGE sql STABLE SET search_path TO 'public', 'pg_temp' AS $f$
+  SELECT GREATEST(1, LEAST(public.cloud_param('groupe_max', 4),
+           1 + ((100 - public.cloud_param('marge_prioritaire_pct', 20)) * public.cloud_param('t_max_min', 30))
+               / (100 * (public.cloud_param('session_min_min', 5) + public.cloud_param('battement_min', 1)))));
+$f$;
+-- Durée d'une session de tour pour un groupe de g comptes (NULL si g = 1) — = dureeSession.
+CREATE OR REPLACE FUNCTION public.cloud_duree_session(p_g integer)
+RETURNS integer LANGUAGE sql STABLE SET search_path TO 'public', 'pg_temp' AS $f$
+  SELECT CASE WHEN p_g > 1 THEN
+    ((100 - public.cloud_param('marge_prioritaire_pct', 20)) * public.cloud_param('t_max_min', 30)) / (100 * (p_g - 1))
+    - public.cloud_param('battement_min', 1) END;
+$f$;
+
+-- Entrer en rotation : la maison d'un compte — miroir de choisirIpRotation.
+--   déjà membre → la sienne ; son ancienne maison si elle a de la place ; l'IP en
+--   rotation la moins remplie ; sinon une IP disponible mise en rotation tant que
+--   le pool n'a pas atteint pool_taille ; sinon NULL (file + alerte).
+CREATE OR REPLACE FUNCTION public.cloud_rotation_rejoindre(p_user uuid)
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE
+  v_ip bigint; v_ancienne bigint;
+  v_g integer := public.cloud_groupe_effectif();
+  v_couvre timestamptz := now() + make_interval(days => public.cloud_param('renouvellement_avant_jours', 3));
+BEGIN
+  IF p_user IS NULL THEN RAISE EXCEPTION 'cloud_rotation_rejoindre : compte absent'; END IF;
+  -- Un placement à la fois : une place de groupe ne se donne jamais deux fois.
+  PERFORM pg_advisory_xact_lock(hashtextextended('cloud_rotation', 0));
+  SELECT ip_id INTO v_ip FROM public.cloud_affinites WHERE user_id = p_user;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
+  SELECT e.ip_id INTO v_ancienne FROM public.cloud_ip_evenements e
+   WHERE e.nature = 'quitte' AND e.user_id = p_user ORDER BY e.le DESC LIMIT 1;
+  IF v_ancienne IS NOT NULL THEN
+    SELECT i.id INTO v_ip FROM public.cloud_ips i
+     WHERE i.id = v_ancienne AND i.etat = 'rotation' AND i.expire_le >= v_couvre
+       AND (SELECT count(*) FROM public.cloud_affinites a WHERE a.ip_id = i.id) < v_g;
+  END IF;
+  IF v_ip IS NULL THEN
+    SELECT i.id INTO v_ip FROM public.cloud_ips i
+     WHERE i.etat = 'rotation' AND i.expire_le >= v_couvre
+       AND i.attributions < public.cloud_param('comptes_distincts_max', 8)
+       AND (SELECT count(*) FROM public.cloud_affinites a WHERE a.ip_id = i.id) < v_g
+     ORDER BY (SELECT count(*) FROM public.cloud_affinites a WHERE a.ip_id = i.id), i.expire_le DESC, i.id
+     LIMIT 1;
+  END IF;
+  IF v_ip IS NULL AND (SELECT count(*) FROM public.cloud_ips WHERE etat = 'rotation') < public.cloud_param('pool_taille', 5) THEN
+    SELECT id INTO v_ip FROM public.cloud_ips
+     WHERE etat = 'disponible' AND expire_le >= v_couvre
+       AND attributions < public.cloud_param('comptes_distincts_max', 8)
+     ORDER BY expire_le DESC, id
+     LIMIT 1 FOR UPDATE SKIP LOCKED;
+    IF v_ip IS NOT NULL THEN
+      UPDATE public.cloud_ips SET etat = 'rotation', maj_le = now() WHERE id = v_ip;
+      PERFORM public.cloud_journal(v_ip, 'mise_en_rotation', NULL, '{}'::jsonb);
+    END IF;
+  END IF;
+  IF v_ip IS NULL THEN RETURN NULL; END IF;
+  INSERT INTO public.cloud_affinites (user_id, ip_id) VALUES (p_user, v_ip);
+  UPDATE public.cloud_ips
+     SET attributions = attributions + CASE WHEN EXISTS (SELECT 1 FROM public.cloud_ip_evenements
+                                                         WHERE ip_id = v_ip AND nature = 'rejoint' AND user_id = p_user)
+                                            THEN 0 ELSE 1 END,
+         maj_le = now()
+   WHERE id = v_ip;
+  PERFORM public.cloud_journal(v_ip, 'rejoint', p_user, jsonb_build_object('groupe_max', v_g));
+  RETURN v_ip;
+END;
+$f$;
+
+-- Quitter la rotation (essai non converti, arrêté, refusé, option résiliée) :
+-- il sort de son groupe, son bail en cours finit dès que c'est sûr, et une
+-- PURGE DE COMPTE est demandée (profil de navigateur et coffre effacés, preuve
+-- exigée : cloud_compte_noter_purge). L'IP continue de servir les autres.
+CREATE OR REPLACE FUNCTION public.cloud_rotation_quitter(p_user uuid, p_raison text)
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE v_ip bigint;
+BEGIN
+  DELETE FROM public.cloud_affinites WHERE user_id = p_user RETURNING ip_id INTO v_ip;
+  IF v_ip IS NULL THEN RETURN NULL; END IF;
+  UPDATE public.cloud_baux SET fin_douce_le = COALESCE(fin_douce_le, now()), fin_prevue = LEAST(fin_prevue, now())
+   WHERE user_id = p_user AND termine_le IS NULL;
+  DELETE FROM public.cloud_priorites WHERE user_id = p_user;
+  INSERT INTO public.cloud_purges_comptes (user_id, ip_id, raison) VALUES (p_user, v_ip, p_raison);
+  PERFORM public.cloud_journal(v_ip, 'quitte', p_user, jsonb_build_object('raison', p_raison));
+  RETURN v_ip;
+END;
+$f$;
+
+CREATE OR REPLACE FUNCTION public.cloud_compte_noter_purge(p_user uuid, p_preuve jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE v public.cloud_purges_comptes%ROWTYPE; v_manques text[];
+BEGIN
+  SELECT * INTO v FROM public.cloud_purges_comptes
+   WHERE user_id = p_user AND prouvee_le IS NULL ORDER BY demandee_le DESC LIMIT 1 FOR UPDATE;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'raison', 'aucune_purge_demandee'); END IF;
+  v_manques := public.cloud_purge_compte_manques(p_preuve, v.demandee_le);
+  IF cardinality(v_manques) > 0 THEN RETURN jsonb_build_object('ok', false, 'manques', to_jsonb(v_manques)); END IF;
+  UPDATE public.cloud_purges_comptes SET preuve = p_preuve, prouvee_le = now() WHERE id = v.id;
+  IF v.ip_id IS NOT NULL THEN PERFORM public.cloud_journal(v.ip_id, 'purge_compte', p_user, '{}'::jsonb); END IF;
+  RETURN jsonb_build_object('ok', true);
+END;
+$f$;
+
+-- OUVRIR UN BAIL (l'orchestrateur, sur décision de planifierRotation). La base
+-- refuse : un compte inactif, un compte hors du groupe de l'IP, une IP hors
+-- rotation, et — par les contraintes d'exclusion — toute IP ou tout compte qui
+-- a déjà un bail en cours ou dans son battement. Jamais d'erreur : un refus.
+CREATE OR REPLACE FUNCTION public.cloud_bail_ouvrir(p_user uuid, p_ip bigint, p_motif text, p_duree_min integer, p_poste text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE v_id bigint; v_fin timestamptz;
+BEGIN
+  IF p_motif NOT IN ('tour','premiere_connexion','priorite_retrait','priorite_vente','priorite_republication') THEN
+    RAISE EXCEPTION 'cloud_bail_ouvrir : motif inconnu %', p_motif;
+  END IF;
+  IF COALESCE((public.cloud_etat(p_user) ->> 'actif')::boolean, false) IS NOT TRUE THEN
+    RETURN jsonb_build_object('ok', false, 'raison', 'compte_inactif');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.cloud_affinites WHERE user_id = p_user AND ip_id = p_ip) THEN
+    RETURN jsonb_build_object('ok', false, 'raison', 'pas_du_groupe');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.cloud_ips WHERE id = p_ip AND etat = 'rotation') THEN
+    RETURN jsonb_build_object('ok', false, 'raison', 'ip_hors_rotation');
+  END IF;
+  BEGIN
+    INSERT INTO public.cloud_baux (ip_id, user_id, poste, motif, fin_prevue)
+    VALUES (p_ip, p_user, NULLIF(btrim(p_poste), ''), p_motif,
+            now() + make_interval(mins => GREATEST(1, LEAST(COALESCE(p_duree_min, 0), public.cloud_param('session_max_min', 60)))))
+    RETURNING id, fin_prevue INTO v_id, v_fin;
+  EXCEPTION WHEN exclusion_violation OR unique_violation THEN
+    -- L'IP (ou le compte) a déjà un bail qui chevauche : JAMAIS deux comptes sur une IP.
+    RETURN jsonb_build_object('ok', false, 'raison', 'occupee');
+  END;
+  IF p_motif LIKE 'priorite\_%' THEN DELETE FROM public.cloud_priorites WHERE user_id = p_user; END IF;
+  RETURN jsonb_build_object('ok', true, 'bail', v_id, 'fin_prevue', v_fin);
+END;
+$f$;
+
+-- Fin douce : à partir d'ici, l'orchestrateur ne prend plus aucun job pour ce poste.
+CREATE OR REPLACE FUNCTION public.cloud_bail_fin_douce(p_bail bigint)
+RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+  UPDATE public.cloud_baux SET fin_douce_le = COALESCE(fin_douce_le, now())
+   WHERE id = p_bail AND termine_le IS NULL
+  RETURNING true;
+$f$;
+
+-- CE QUI EMPÊCHE UN BAIL DE FINIR — miroir de bloquantsBail (mêmes codes, même ordre).
+-- S'accorde à la réservation de job déjà en prod (jobs_reservations_extension,
+-- 20260928130523) : une réservation COMMENCÉE (commence) ne finit qu'avec son job ;
+-- une réservation distribuée et non commencée expire en 10 min, et l'extension
+-- peut encore la commencer tant qu'un passage (2 min) n'a pas suivi la fin douce.
+CREATE OR REPLACE FUNCTION public.cloud_bail_bloquants(p_bail bigint)
+RETURNS text[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE b public.cloud_baux%ROWTYPE; m text[] := '{}';
+BEGIN
+  SELECT * INTO b FROM public.cloud_baux WHERE id = p_bail;
+  IF NOT FOUND THEN RETURN m; END IF;
+  IF EXISTS (SELECT 1 FROM public.jobs_reservations_extension r
+              WHERE r.user_id = b.user_id AND (b.poste IS NULL OR r.poste = b.poste) AND r.commence) THEN
+    m := array_append(m, 'job_en_cours');
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.jobs_reservations_extension r
+              WHERE r.user_id = b.user_id AND (b.poste IS NULL OR r.poste = b.poste) AND NOT r.commence AND r.expire_le > now())
+     AND (b.fin_douce_le IS NULL OR b.fin_douce_le > now() - make_interval(mins => public.cloud_param('poll_min', 2))) THEN
+    m := array_append(m, 'job_distribue');
+  END IF;
+  IF b.prolonge_min < public.cloud_param('prolongation_max_min', 30)
+     AND EXISTS (SELECT 1 FROM public.cross_post_jobs j
+                  WHERE j.user_id = b.user_id AND j.voie = 'extension' AND j.status IN ('pending', 'processing')
+                    AND j.action = 'republish' AND j.platform_fields ->> 'republish_step' IN ('captured', 'deleted')) THEN
+    m := array_append(m, 'republication_en_vol');
+  END IF;
+  RETURN m;
+END;
+$f$;
+
+-- TERMINER UN BAIL — seulement quand rien ne le bloque. Libère les réservations
+-- distribuées jamais commencées de SON poste (le job retourne à la file), pose
+-- le battement (libre_le) et la fin de session du compte (le tour s'y règle).
+CREATE OR REPLACE FUNCTION public.cloud_bail_terminer(p_bail bigint, p_raison text DEFAULT 'fin_prevue')
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE b public.cloud_baux%ROWTYPE; v_bl text[];
+BEGIN
+  SELECT * INTO b FROM public.cloud_baux WHERE id = p_bail FOR UPDATE;
+  IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'raison', 'bail_inconnu'); END IF;
+  IF b.termine_le IS NOT NULL THEN RETURN jsonb_build_object('ok', true, 'deja', true); END IF;
+  v_bl := public.cloud_bail_bloquants(p_bail);
+  IF cardinality(v_bl) > 0 THEN RETURN jsonb_build_object('ok', false, 'bloquants', to_jsonb(v_bl)); END IF;
+  IF b.poste IS NOT NULL THEN
+    DELETE FROM public.jobs_reservations_extension r WHERE r.user_id = b.user_id AND r.poste = b.poste AND NOT r.commence;
+  END IF;
+  UPDATE public.cloud_baux
+     SET termine_le = now(), libre_le = now() + make_interval(mins => public.cloud_param('battement_min', 1)), raison_fin = p_raison
+   WHERE id = p_bail;
+  UPDATE public.cloud_affinites SET derniere_fin = now() WHERE user_id = b.user_id;
+  RETURN jsonb_build_object('ok', true);
+END;
+$f$;
+
+-- PROLONGER (un job ou une republication en vol à la fin prévue) : par pas,
+-- jamais au-delà de prolongation_max_min. Au plafond : refus → alerte ; le bail
+-- n'est pas coupé pour autant si un job tourne (la base refuse de le terminer).
+CREATE OR REPLACE FUNCTION public.cloud_bail_prolonger(p_bail bigint, p_minutes integer)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE v_max integer := public.cloud_param('prolongation_max_min', 30); v_fin timestamptz; v_pro integer;
+BEGIN
+  UPDATE public.cloud_baux
+     SET fin_prevue = fin_prevue + make_interval(mins => LEAST(GREATEST(COALESCE(p_minutes, 1), 1), v_max - prolonge_min)),
+         prolonge_min = prolonge_min + LEAST(GREATEST(COALESCE(p_minutes, 1), 1), v_max - prolonge_min)
+   WHERE id = p_bail AND termine_le IS NULL AND prolonge_min < v_max
+  RETURNING fin_prevue, prolonge_min INTO v_fin, v_pro;
+  IF v_fin IS NULL THEN RETURN jsonb_build_object('ok', false, 'raison', 'plafond_atteint'); END IF;
+  RETURN jsonb_build_object('ok', true, 'fin_prevue', v_fin, 'prolonge_min', v_pro);
+END;
+$f$;
+
+-- Une priorité EXPLICITE (vente constatée ailleurs — ex. eBay par l'API).
+CREATE OR REPLACE FUNCTION public.cloud_priorite_demander(p_user uuid, p_motif text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+BEGIN
+  IF p_motif NOT IN ('retrait', 'vente', 'republication') THEN RAISE EXCEPTION 'cloud_priorite_demander : motif inconnu %', p_motif; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.cloud_affinites WHERE user_id = p_user) THEN RETURN false; END IF;
+  INSERT INTO public.cloud_priorites (user_id, motif) VALUES (p_user, p_motif) ON CONFLICT (user_id) DO NOTHING;
+  RETURN true;
+END;
+$f$;
+
+-- TOUT CE QUE L'ORDONNANCEUR LIT, EN UN APPEL PAR MINUTE (entrée de planifierRotation).
+-- Priorité d'un membre : l'explicite d'abord, sinon un retrait en attente ou une
+-- republication déjà retirée (cross_post_jobs, index (user_id, status)).
+CREATE OR REPLACE FUNCTION public.cloud_rotation_etat()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+  SELECT jsonb_build_object(
+    'mode', public.cloud_mode(),
+    'g', public.cloud_groupe_effectif(),
+    'session_min', public.cloud_duree_session(public.cloud_groupe_effectif()),
+    't_max_min', public.cloud_param('t_max_min', 30),
+    'ips', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', i.id, 'etat', i.etat, 'expire_le', i.expire_le,
+                       'attributions', i.attributions,
+                       'libre_le', (SELECT max(b.libre_le) FROM public.cloud_baux b WHERE b.ip_id = i.id)))
+                      FROM public.cloud_ips i WHERE i.etat = 'rotation'), '[]'::jsonb),
+    'membres', COALESCE((SELECT jsonb_agg(jsonb_build_object('user_id', a.user_id, 'ip_id', a.ip_id,
+                       'rejoint_le', a.rejoint_le, 'derniere_fin', a.derniere_fin,
+                       'actif', COALESCE((public.cloud_etat(a.user_id) ->> 'actif')::boolean, false),
+                       'priorite', COALESCE(
+                          (SELECT jsonb_build_object('motif', pr.motif, 'le', pr.demande_le)
+                             FROM public.cloud_priorites pr WHERE pr.user_id = a.user_id),
+                          (SELECT jsonb_build_object('motif', CASE WHEN bool_or(j.action = 'delete') THEN 'retrait' ELSE 'republication' END,
+                                                     'le', min(j.created_at))
+                             FROM public.cloud_jobs_prioritaires(a.user_id) j HAVING count(*) > 0))))
+                      FROM public.cloud_affinites a), '[]'::jsonb),
+    'baux', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', b.id, 'ip_id', b.ip_id, 'user_id', b.user_id, 'poste', b.poste,
+                       'motif', b.motif, 'debut', b.debut, 'fin_prevue', b.fin_prevue, 'fin_douce_le', b.fin_douce_le,
+                       'prolonge_min', b.prolonge_min, 'bloquants', to_jsonb(public.cloud_bail_bloquants(b.id))))
+                      FROM public.cloud_baux b WHERE b.termine_le IS NULL), '[]'::jsonb));
+$f$;
+
+
+-- ═══ 7. Les comptes et les essais — un seul essai par personne ════════════════
+
+-- PLACER un compte selon la phase : rotation → une maison dans un groupe ;
+-- dédiée → une IP pour lui seul (cloud_ip_attribuer). NULL = pas de place (file).
+CREATE OR REPLACE FUNCTION public.cloud_compte_placer(p_user uuid, p_nature text, p_jusqua timestamptz DEFAULT NULL)
+RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+BEGIN
+  IF public.cloud_mode() = 'rotation' THEN RETURN public.cloud_rotation_rejoindre(p_user); END IF;
+  RETURN public.cloud_ip_attribuer(p_user, p_nature, p_jusqua);
+END;
+$f$;
+
+-- SORTIR un compte : il rend ce qu'il tient, quelle que soit la phase (une maison
+-- en rotation → purge de compte ; une IP dédiée → quarantaine et purge de l'IP).
+CREATE OR REPLACE FUNCTION public.cloud_compte_sortir(p_user uuid, p_raison text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+BEGIN
+  PERFORM public.cloud_rotation_quitter(p_user, p_raison);
+  PERFORM public.cloud_ip_liberer(p_user, p_raison);
+END;
+$f$;
+
+-- 7.1 Démarrage réel (interne) : une place vient d'être donnée à un essai en file.
 CREATE OR REPLACE FUNCTION public.cloud_essai_demarrer(p_essai bigint, p_ip bigint)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE v_user uuid; v_fin timestamptz;
@@ -642,13 +1124,14 @@ BEGIN
 END;
 $f$;
 
--- 7.2 SERVIR LA FILE (appelée à chaque IP rendue disponible et par le cron) :
---   1. clients payants sans IP ; 2. essais en cours qui ont perdu la leur ;
+-- 7.2 SERVIR LA FILE (à chaque place rendue et par le cron), selon la phase :
+--   1. clients payants sans place ; 2. essais en cours qui ont perdu la leur ;
 --   3. essais en file, dans l'ordre d'arrivée, sous le plafond d'essais simultanés.
+-- « Avoir une place » = une maison (rotation) ou une IP (dédiée).
 CREATE OR REPLACE FUNCTION public.cloud_file_servir()
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
-  c_exige_un_palier CONSTANT boolean := true;   -- = cloud_etat
+  c_exige_un_palier CONSTANT boolean := false;   -- = cloud_etat
   v_n integer := 0;
   v_ip bigint;
   r record;
@@ -659,8 +1142,9 @@ BEGIN
             WHERE p.is_cloud IS TRUE
               AND (NOT c_exige_un_palier OR p.is_business IS TRUE OR p.is_pro IS TRUE OR p.is_premium IS TRUE OR p.is_comped IS TRUE)
               AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)
+              AND NOT EXISTS (SELECT 1 FROM public.cloud_affinites a WHERE a.user_id = p.id)
             ORDER BY p.id LOOP
-    v_ip := public.cloud_ip_attribuer(r.id, 'client');
+    v_ip := public.cloud_compte_placer(r.id, 'client');
     IF v_ip IS NOT NULL THEN
       v_n := v_n + 1;
       UPDATE public.cloud_essais SET ip_id = v_ip WHERE user_id = r.id AND statut = 'converti';
@@ -669,8 +1153,9 @@ BEGIN
   FOR r IN SELECT e.id, e.user_id, e.fin FROM public.cloud_essais e
             WHERE e.statut = 'en_cours' AND e.user_id IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = e.user_id)
+              AND NOT EXISTS (SELECT 1 FROM public.cloud_affinites a WHERE a.user_id = e.user_id)
             ORDER BY e.debut LOOP
-    v_ip := public.cloud_ip_attribuer(r.user_id, 'essai', r.fin + make_interval(days => v_grace));
+    v_ip := public.cloud_compte_placer(r.user_id, 'essai', r.fin + make_interval(days => v_grace));
     CONTINUE WHEN v_ip IS NULL;
     UPDATE public.cloud_essais SET ip_id = v_ip WHERE id = r.id;
     v_n := v_n + 1;
@@ -680,10 +1165,9 @@ BEGIN
             ORDER BY e.demande_le, e.id
             FOR UPDATE OF e SKIP LOCKED LOOP
     EXIT WHEN v_max > 0 AND (SELECT count(*) FROM public.cloud_essais WHERE statut = 'en_cours') >= v_max;
-    -- toujours éligible ? (palier perdu entre-temps → il attend, sans rien consommer)
     CONTINUE WHEN NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = r.user_id AND p.is_cloud IS NOT TRUE
                    AND (NOT c_exige_un_palier OR p.is_business IS TRUE OR p.is_pro IS TRUE OR p.is_premium IS TRUE OR p.is_comped IS TRUE));
-    v_ip := public.cloud_ip_attribuer(r.user_id, 'essai');
+    v_ip := public.cloud_compte_placer(r.user_id, 'essai');
     EXIT WHEN v_ip IS NULL;
     PERFORM public.cloud_essai_demarrer(r.id, v_ip);
     v_n := v_n + 1;
@@ -692,16 +1176,49 @@ BEGIN
 END;
 $f$;
 
--- 7.3 OUVERTURE D'ESSAI. Refuse un 2e essai par COMPTE, par APPAREIL (empreinte
--- hachée), par COMPTE DE PLATEFORME déjà connu. Miroir de verdictOuvertureEssai
--- (même ordre des refus). Accepté → l'essai entre en file et démarre dès
--- qu'une IP est prête (souvent tout de suite) : jamais d'erreur « plus de place ».
-CREATE OR REPLACE FUNCTION public.cloud_essai_ouvrir(p_user uuid, p_appareil text, p_comptes_plateforme jsonb DEFAULT '[]'::jsonb)
+-- 7.3 PRÉPARER L'ESSAI (l'app, AVANT la carte) : mêmes refus que l'ouverture
+-- jusqu'à l'appareil — personne ne saisit sa carte pour rien. L'empreinte
+-- d'appareil est hachée ici et gardée (cloud_essai_demandes) : la valeur brute
+-- ne sort jamais de la base, ni vers Stripe.
+CREATE OR REPLACE FUNCTION public.cloud_essai_preparer_moi(p_appareil text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
-  c_exige_un_palier CONSTANT boolean := true;   -- = cloud_etat
+  c_exige_un_palier CONSTANT boolean := false;   -- = cloud_etat
+  v_user uuid := auth.uid();
+  v_trouve boolean; v_cloud boolean; v_debut timestamptz; v_palier_ok boolean; v_h text;
+BEGIN
+  SELECT true, p.is_cloud, p.cloud_essai_debut,
+         (p.is_business IS TRUE OR p.is_pro IS TRUE OR p.is_premium IS TRUE OR p.is_comped IS TRUE)
+    INTO v_trouve, v_cloud, v_debut, v_palier_ok
+    FROM public.profiles p WHERE p.id = v_user;
+  IF v_trouve IS NOT TRUE THEN RETURN jsonb_build_object('ok', false, 'raison', 'compte_inconnu'); END IF;
+  IF v_cloud IS TRUE THEN RETURN jsonb_build_object('ok', false, 'raison', 'deja_client'); END IF;
+  IF v_debut IS NOT NULL OR EXISTS (SELECT 1 FROM public.cloud_essais WHERE user_id = v_user) THEN
+    RETURN jsonb_build_object('ok', false, 'raison', 'essai_deja_pris');
+  END IF;
+  IF c_exige_un_palier AND NOT v_palier_ok THEN RETURN jsonb_build_object('ok', false, 'raison', 'palier_requis'); END IF;
+  IF COALESCE(btrim(p_appareil), '') = '' THEN RETURN jsonb_build_object('ok', false, 'raison', 'appareil_inconnu'); END IF;
+  v_h := public.cloud_hacher('appareil', p_appareil);
+  IF EXISTS (SELECT 1 FROM public.cloud_essai_empreintes WHERE nature = 'appareil' AND empreinte = v_h) THEN
+    RETURN jsonb_build_object('ok', false, 'raison', 'appareil_deja_vu');
+  END IF;
+  INSERT INTO public.cloud_essai_demandes (user_id, appareil_h) VALUES (v_user, v_h)
+  ON CONFLICT (user_id) DO UPDATE SET appareil_h = EXCLUDED.appareil_h, demande_le = now();
+  RETURN jsonb_build_object('ok', true, 'etape', 'carte');
+END;
+$f$;
+
+-- 7.4 OUVERTURE D'ESSAI (le flux de paiement, une fois la carte enregistrée sans
+-- débit — SetupIntent — avec son empreinte `card.fingerprint`). Refuse un 2e
+-- essai par COMPTE, par APPAREIL, par CARTE, par COMPTE DE PLATEFORME déjà connu.
+-- Miroir de verdictOuvertureEssai (même ordre des refus). Accepté → l'essai
+-- entre en file et démarre dès qu'une place est prête : jamais « plus de place ».
+CREATE OR REPLACE FUNCTION public.cloud_essai_ouvrir(p_user uuid, p_carte text, p_comptes_plateforme jsonb DEFAULT '[]'::jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE
+  c_exige_un_palier CONSTANT boolean := false;   -- = cloud_etat
   v_trouve boolean; v_cloud boolean; v_debut timestamptz; v_palier_ok boolean;
-  v_h_app text; v_h text; v_essai bigint; v_garde timestamptz;
+  v_h_app text; v_h_carte text; v_h text; v_essai bigint; v_garde timestamptz;
   c record;
   v_hashes jsonb := '[]'::jsonb;
 BEGIN
@@ -717,13 +1234,19 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'raison', 'essai_deja_pris');
   END IF;
   IF c_exige_un_palier AND NOT v_palier_ok THEN RETURN jsonb_build_object('ok', false, 'raison', 'palier_requis'); END IF;
-  -- 2. un essai par APPAREIL
-  IF COALESCE(btrim(p_appareil), '') = '' THEN RETURN jsonb_build_object('ok', false, 'raison', 'appareil_inconnu'); END IF;
-  v_h_app := public.cloud_hacher('appareil', p_appareil);
+  -- 2. un essai par APPAREIL (préparé par l'app, cloud_essai_preparer_moi)
+  SELECT appareil_h INTO v_h_app FROM public.cloud_essai_demandes WHERE user_id = p_user;
+  IF v_h_app IS NULL THEN RETURN jsonb_build_object('ok', false, 'raison', 'appareil_inconnu'); END IF;
   IF EXISTS (SELECT 1 FROM public.cloud_essai_empreintes WHERE nature = 'appareil' AND empreinte = v_h_app) THEN
     RETURN jsonb_build_object('ok', false, 'raison', 'appareil_deja_vu');
   END IF;
-  -- 3. un essai par COMPTE DE PLATEFORME déjà connu
+  -- 3. un essai par CARTE (carte obligatoire)
+  IF COALESCE(btrim(p_carte), '') = '' THEN RETURN jsonb_build_object('ok', false, 'raison', 'carte_absente'); END IF;
+  v_h_carte := public.cloud_hacher('carte', p_carte);
+  IF EXISTS (SELECT 1 FROM public.cloud_essai_empreintes WHERE nature = 'carte' AND empreinte = v_h_carte) THEN
+    RETURN jsonb_build_object('ok', false, 'raison', 'carte_deja_vue');
+  END IF;
+  -- 4. un essai par COMPTE DE PLATEFORME déjà connu
   FOR c IN SELECT x.plateforme, x.identifiant
              FROM jsonb_to_recordset(CASE WHEN jsonb_typeof(p_comptes_plateforme) = 'array' THEN p_comptes_plateforme ELSE '[]'::jsonb END)
                   AS x(plateforme text, identifiant text) LOOP
@@ -734,34 +1257,30 @@ BEGIN
     END IF;
     v_hashes := v_hashes || jsonb_build_object('plateforme', lower(btrim(c.plateforme)), 'h', v_h);
   END LOOP;
-  -- 4. l'essai, en file, et ses empreintes (l'index unique tranche les courses entre comptes)
+  -- 5. l'essai, en file, et ses empreintes (l'index unique tranche les courses entre comptes)
   v_garde := now() + make_interval(days => 7, months => public.cloud_param('empreintes_conservation_mois', 12));
   INSERT INTO public.cloud_essais (user_id) VALUES (p_user) RETURNING id INTO v_essai;
   BEGIN
     INSERT INTO public.cloud_essai_empreintes (essai_id, nature, plateforme, empreinte, conserver_jusqu_au)
-    VALUES (v_essai, 'appareil', NULL, v_h_app, v_garde);
+    VALUES (v_essai, 'appareil', NULL, v_h_app, v_garde), (v_essai, 'carte', NULL, v_h_carte, v_garde);
     INSERT INTO public.cloud_essai_empreintes (essai_id, nature, plateforme, empreinte, conserver_jusqu_au)
     SELECT DISTINCT ON (x ->> 'h') v_essai, 'compte_plateforme', x ->> 'plateforme', x ->> 'h', v_garde
       FROM jsonb_array_elements(v_hashes) x;
   EXCEPTION WHEN unique_violation THEN
-    -- course perdue : un autre compte vient d'enregistrer le même appareil ou le même compte de plateforme
+    -- course perdue : un autre compte vient d'enregistrer le même appareil, la même carte ou le même compte de plateforme
     DELETE FROM public.cloud_essais WHERE id = v_essai;
     RETURN jsonb_build_object('ok', false, 'raison',
-      CASE WHEN EXISTS (SELECT 1 FROM public.cloud_essai_empreintes WHERE nature = 'appareil' AND empreinte = v_h_app)
-           THEN 'appareil_deja_vu' ELSE 'compte_plateforme_deja_vu' END);
+      CASE WHEN EXISTS (SELECT 1 FROM public.cloud_essai_empreintes WHERE nature = 'appareil' AND empreinte = v_h_app) THEN 'appareil_deja_vu'
+           WHEN EXISTS (SELECT 1 FROM public.cloud_essai_empreintes WHERE nature = 'carte' AND empreinte = v_h_carte) THEN 'carte_deja_vue'
+           ELSE 'compte_plateforme_deja_vu' END);
   END;
+  DELETE FROM public.cloud_essai_demandes WHERE user_id = p_user;
   PERFORM public.cloud_file_servir();
   RETURN (SELECT jsonb_build_object('ok', true, 'essai', e.id, 'statut', e.statut, 'debut', e.debut, 'fin', e.fin)
             FROM public.cloud_essais e WHERE e.id = v_essai);
 END;
 $f$;
 
--- Pour l'app : son propre compte seulement. Les comptes de plateforme sont
--- relevés par NOTRE navigateur à la première connexion Cloud (7.4), source sûre.
-CREATE OR REPLACE FUNCTION public.cloud_essai_ouvrir_moi(p_appareil text)
-RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
-  SELECT public.cloud_essai_ouvrir(auth.uid(), p_appareil, '[]'::jsonb);
-$f$;
 -- Où en est MON essai (file d'attente comprise — cloud_etat ne connaît pas la file).
 CREATE OR REPLACE FUNCTION public.cloud_essai_moi()
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
@@ -772,9 +1291,9 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 
     FROM public.cloud_essais e WHERE e.user_id = auth.uid();
 $f$;
 
--- 7.4 Compte de plateforme vu par NOTRE navigateur (sonde de session, première
+-- 7.5 Compte de plateforme vu par NOTRE navigateur (sonde de session, première
 -- connexion Cloud, AVANT tout job). Déjà utilisé par l'essai d'un autre compte
--- FillSell → l'essai s'arrête tout de suite (refusé), l'IP part en quarantaine.
+-- FillSell → l'essai s'arrête tout de suite (refusé), le compte sort (purge).
 CREATE OR REPLACE FUNCTION public.cloud_essai_noter_compte_plateforme(p_user uuid, p_plateforme text, p_identifiant text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
@@ -795,14 +1314,14 @@ BEGIN
   UPDATE public.cloud_essais SET statut = 'refuse', raison = 'compte_plateforme_deja_vu:' || lower(btrim(p_plateforme)), clos_le = now()
    WHERE id = v_essai;
   UPDATE public.profiles SET cloud_essai_fin = GREATEST(cloud_essai_debut, now()) WHERE id = p_user;  -- cloud_etat → essai_termine
-  PERFORM public.cloud_ip_liberer(p_user, 'essai_refuse_compte_plateforme');
+  PERFORM public.cloud_compte_sortir(p_user, 'essai_refuse_compte_plateforme');
   RETURN jsonb_build_object('ok', false, 'raison', 'compte_plateforme_deja_vu', 'plateforme', lower(btrim(p_plateforme)));
 END;
 $f$;
 
--- 7.5 CONVERSION (appelée par le déclencheur quand is_cloud passe à true) :
--- l'IP de l'essai devient celle du client (mêmes connexions) ; sinon il reprend
--- la sienne en quarantaine, sinon une neuve (cloud_file_servir, clients d'abord).
+-- 7.6 CONVERSION (le déclencheur, quand is_cloud passe à true). Rotation : il
+-- garde sa maison, rien ne change pour lui. Dédiée : l'IP de l'essai devient la
+-- sienne. Sans place : il en reçoit une, avant les essais.
 CREATE OR REPLACE FUNCTION public.cloud_essai_convertir(p_user uuid)
 RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE v_ip bigint;
@@ -816,12 +1335,36 @@ BEGIN
     PERFORM public.cloud_journal(v_ip, 'conversion', p_user, '{}'::jsonb);
     RETURN v_ip;
   END IF;
+  SELECT ip_id INTO v_ip FROM public.cloud_affinites WHERE user_id = p_user;
+  IF v_ip IS NOT NULL THEN RETURN v_ip; END IF;
   PERFORM public.cloud_file_servir();
-  RETURN (SELECT id FROM public.cloud_ips WHERE user_id = p_user);
+  RETURN COALESCE((SELECT id FROM public.cloud_ips WHERE user_id = p_user),
+                  (SELECT ip_id FROM public.cloud_affinites WHERE user_id = p_user));
 END;
 $f$;
 
--- 7.6 Le pont avec les paiements : les 4 flux n'écrivent que is_cloud (comme
+-- 7.7 ARRÊT PENDANT L'ESSAI (le flux d'arrêt, qui annule aussi l'abonnement
+-- d'essai chez le payeur) : effet IMMÉDIAT, rien facturé, fin ramenée à
+-- l'instant de l'arrêt ; le compte sort (purge). Un essai encore en file est
+-- arrêté aussi (il compte comme pris : un seul essai par personne).
+CREATE OR REPLACE FUNCTION public.cloud_essai_arreter(p_user uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE v_n integer; v_essai bigint;
+BEGIN
+  UPDATE public.profiles
+     SET cloud_essai_arrete = true, cloud_essai_fin = GREATEST(cloud_essai_debut, LEAST(cloud_essai_fin, now()))
+   WHERE id = p_user AND cloud_essai_debut IS NOT NULL AND is_cloud IS NOT TRUE AND cloud_essai_arrete IS NOT TRUE;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  UPDATE public.cloud_essais SET statut = 'arrete', clos_le = now(), raison = 'arrete_par_la_personne'
+   WHERE user_id = p_user AND statut IN ('en_attente', 'en_cours', 'termine')
+  RETURNING id INTO v_essai;
+  IF v_n = 0 AND v_essai IS NULL THEN RETURN jsonb_build_object('ok', false, 'raison', 'pas_d_essai'); END IF;
+  PERFORM public.cloud_compte_sortir(p_user, 'essai_arrete');
+  RETURN jsonb_build_object('ok', true);
+END;
+$f$;
+
+-- 7.8 Le pont avec les paiements : les 4 flux n'écrivent que is_cloud (comme
 -- is_premium) ; ce déclencheur fait le reste. ⛔ Un paiement n'échoue JAMAIS à
 -- cause du pool : erreur avalée en WARNING, le cron rattrape (cloud_pool_entretien).
 CREATE OR REPLACE FUNCTION public.profiles_cloud_paye()
@@ -831,7 +1374,7 @@ BEGIN
     IF NEW.is_cloud IS TRUE THEN
       PERFORM public.cloud_essai_convertir(NEW.id);
     ELSE
-      PERFORM public.cloud_ip_liberer(NEW.id, 'option_resiliee');
+      PERFORM public.cloud_compte_sortir(NEW.id, 'option_resiliee');
     END IF;
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'profiles_cloud_paye : compte % : %', NEW.id, SQLERRM;
@@ -849,54 +1392,61 @@ CREATE TRIGGER profiles_cloud_paye
 -- ═══ 8. Entretien (cron) et état (veille, ops-digest) ═════════════════════════
 -- Ce qui ne demande PAS le réseau. La fonction edge « cloud-pool » (à écrire,
 -- verify_jwt = false + garde x-cron-secret) l'appelle chaque heure, puis fait
--- ce qui demande IPRoyal ou l'orchestrateur avec les règles de cloud-pool.js
--- (planDuJour, deciderAlerte) : renouveler, commander, contrôler, alerter.
+-- ce qui demande IPRoyal ou l'orchestrateur avec les règles de cloud-pool.js.
 CREATE OR REPLACE FUNCTION public.cloud_pool_entretien()
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
   v_grace integer := public.cloud_param('grace_jours', 2);
   v_mois integer := public.cloud_param('empreintes_conservation_mois', 12);
-  v_termines integer; v_liberes integer := 0; v_expirees integer := 0; v_incidents integer := 0;
-  v_servis integer; v_empreintes integer; r record;
+  v_termines integer; v_sortis integer := 0; v_expirees integer := 0; v_incidents integer := 0;
+  v_servis integer; v_empreintes integer; r record; v_e jsonb;
 BEGIN
-  -- a. essais arrivés au bout : terminés (l'IP reste au titulaire pendant la grâce)
+  -- a. essais arrivés au bout : terminés (la place reste pendant la grâce)
   UPDATE public.cloud_essais SET statut = 'termine', clos_le = now() WHERE statut = 'en_cours' AND fin <= now();
   GET DIAGNOSTICS v_termines = ROW_COUNT;
-  -- b. IP d'essai sans essai vivant (grâce écoulée, compte supprimé) → quarantaine
-  FOR r IN SELECT i.user_id FROM public.cloud_ips i
-            WHERE i.etat = 'attribuee_essai'
-              AND NOT EXISTS (SELECT 1 FROM public.cloud_essais e WHERE e.user_id = i.user_id
-                               AND (e.statut = 'en_cours'
-                                    OR (e.statut = 'termine' AND e.fin + make_interval(days => v_grace) > now()))) LOOP
-    PERFORM public.cloud_ip_liberer(r.user_id, 'essai_non_converti');
-    v_liberes := v_liberes + 1;
+  -- b. tout compte qui tient une place sans être actif sort — sauf un essai fini
+  --    normalement, pendant sa grâce (le temps de payer sans tout reconnecter).
+  --    Couvre : grâce écoulée, option résiliée, compte supprimé, déclencheur avalé.
+  FOR r IN SELECT user_id FROM public.cloud_affinites
+           UNION SELECT user_id FROM public.cloud_ips WHERE user_id IS NOT NULL LOOP
+    v_e := public.cloud_etat(r.user_id);
+    CONTINUE WHEN COALESCE((v_e ->> 'actif')::boolean, false);
+    CONTINUE WHEN v_e ->> 'etat' = 'essai_termine'
+              AND COALESCE((v_e ->> 'essaiArrete')::boolean, false) IS NOT TRUE
+              AND NOT EXISTS (SELECT 1 FROM public.cloud_essais e WHERE e.user_id = r.user_id AND e.statut IN ('refuse', 'arrete'))
+              AND (v_e ->> 'essaiFin')::timestamptz + make_interval(days => v_grace) > now();
+    PERFORM public.cloud_compte_sortir(r.user_id, 'inactif');
+    v_sortis := v_sortis + 1;
   END LOOP;
-  -- c. option résiliée ou compte supprimé (rattrape un déclencheur avalé)
-  FOR r IN SELECT i.user_id FROM public.cloud_ips i LEFT JOIN public.profiles p ON p.id = i.user_id
-            WHERE i.etat = 'attribuee_client' AND p.is_cloud IS NOT TRUE LOOP
-    PERFORM public.cloud_ip_liberer(r.user_id, 'option_resiliee_ou_compte_supprime');
-    v_liberes := v_liberes + 1;
-  END LOOP;
-  -- d. échéances passées. Non attribuée : fin normale. Attribuée : INCIDENT (le
-  --    renouvellement a raté) → le titulaire est resservi en (e), alerte immédiate.
-  FOR r IN SELECT id, user_id, etat, secret_nom FROM public.cloud_ips
-            WHERE etat <> 'expiree' AND expire_le <= now() FOR UPDATE LOOP
+  -- c. échéances passées. Libre : fin normale. Tenue (titulaire ou groupe en
+  --    rotation) : INCIDENT (le renouvellement a raté) → relogés en (d), alerte immédiate.
+  FOR r IN SELECT id, user_id, etat, secret_nom,
+                  (SELECT count(*) FROM public.cloud_affinites a WHERE a.ip_id = cloud_ips.id) AS membres
+             FROM public.cloud_ips WHERE etat <> 'expiree' AND expire_le <= now() FOR UPDATE LOOP
     UPDATE public.cloud_ips SET etat = 'expiree', user_id = NULL, maj_le = now() WHERE id = r.id;
+    UPDATE public.cloud_baux SET fin_douce_le = COALESCE(fin_douce_le, now()), fin_prevue = LEAST(fin_prevue, now())
+     WHERE ip_id = r.id AND termine_le IS NULL;
+    DELETE FROM public.cloud_affinites WHERE ip_id = r.id;
     DELETE FROM vault.secrets WHERE name = r.secret_nom;   -- plus d'identifiants pour une IP morte
-    PERFORM public.cloud_journal(r.id, CASE WHEN r.user_id IS NULL THEN 'expiration' ELSE 'incident' END, r.user_id,
-            jsonb_build_object('etat_avant', r.etat));
+    PERFORM public.cloud_journal(r.id, CASE WHEN r.user_id IS NULL AND r.membres = 0 THEN 'expiration' ELSE 'incident' END, r.user_id,
+            jsonb_build_object('etat_avant', r.etat, 'membres', r.membres));
     v_expirees := v_expirees + 1;
-    IF r.user_id IS NOT NULL THEN v_incidents := v_incidents + 1; END IF;
+    IF r.user_id IS NOT NULL OR r.membres > 0 THEN v_incidents := v_incidents + 1; END IF;
   END LOOP;
-  -- e. la file
+  -- d. la file
   v_servis := public.cloud_file_servir();
-  -- f. RGPD : empreintes au-delà de leur durée ; titulaires effacés du journal à 12 mois
+  -- e. RGPD et ménage : empreintes au-delà de leur durée ; identités effacées à 12 mois ;
+  --    demandes d'essai de plus de 7 jours ; baux de plus de 30 jours ; priorités orphelines.
   DELETE FROM public.cloud_essai_empreintes WHERE conserver_jusqu_au < now();
   GET DIAGNOSTICS v_empreintes = ROW_COUNT;
   UPDATE public.cloud_ip_evenements SET user_id = NULL WHERE user_id IS NOT NULL AND le < now() - make_interval(months => v_mois);
   UPDATE public.cloud_ips SET dernier_user_id = NULL
    WHERE dernier_user_id IS NOT NULL AND user_id IS NULL AND liberee_le < now() - make_interval(months => v_mois);
-  RETURN jsonb_build_object('essais_termines', v_termines, 'liberees', v_liberes, 'expirees', v_expirees,
+  UPDATE public.cloud_purges_comptes SET user_id = NULL WHERE user_id IS NOT NULL AND demandee_le < now() - make_interval(months => v_mois);
+  DELETE FROM public.cloud_essai_demandes WHERE demande_le < now() - interval '7 days';
+  DELETE FROM public.cloud_baux WHERE termine_le IS NOT NULL AND termine_le < now() - interval '30 days';
+  DELETE FROM public.cloud_priorites pr WHERE NOT EXISTS (SELECT 1 FROM public.cloud_affinites a WHERE a.user_id = pr.user_id);
+  RETURN jsonb_build_object('essais_termines', v_termines, 'sortis', v_sortis, 'expirees', v_expirees,
                             'incidents', v_incidents, 'servis', v_servis, 'empreintes_purgees', v_empreintes);
 END;
 $f$;
@@ -904,17 +1454,38 @@ $f$;
 CREATE OR REPLACE FUNCTION public.cloud_pool_etat()
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
   SELECT jsonb_build_object(
+    'mode', public.cloud_mode(),
     'par_etat', COALESCE((SELECT jsonb_object_agg(etat, n) FROM (SELECT etat, count(*) n FROM public.cloud_ips GROUP BY etat) s), '{}'::jsonb),
     'attribuables_essai', (SELECT count(*) FROM public.cloud_ips
                             WHERE etat = 'disponible' AND attributions < public.cloud_param('attributions_max', 6)
                               AND expire_le >= now() + make_interval(days => 7 + public.cloud_param('grace_jours', 2)
                                                                            + public.cloud_param('marge_expiration_jours', 1))),
+    'rotation', jsonb_build_object(
+      'g', public.cloud_groupe_effectif(),
+      'session_min', public.cloud_duree_session(public.cloud_groupe_effectif()),
+      'pool_taille', public.cloud_param('pool_taille', 5),
+      'membres', (SELECT count(*) FROM public.cloud_affinites),
+      -- = placesRotation (cloud-pool.js)
+      'places_libres', (SELECT COALESCE(sum(GREATEST(0, public.cloud_groupe_effectif()
+                                 - (SELECT count(*) FROM public.cloud_affinites a WHERE a.ip_id = i.id))), 0)
+                          FROM public.cloud_ips i
+                         WHERE i.etat = 'rotation' AND i.attributions < public.cloud_param('comptes_distincts_max', 8))
+                       + LEAST(GREATEST(0, public.cloud_param('pool_taille', 5) - (SELECT count(*) FROM public.cloud_ips WHERE etat = 'rotation')),
+                               (SELECT count(*) FROM public.cloud_ips WHERE etat = 'disponible')) * public.cloud_groupe_effectif(),
+      'baux_actifs', (SELECT count(*) FROM public.cloud_baux WHERE termine_le IS NULL),
+      'en_retard_tmax', (SELECT count(*) FROM public.cloud_affinites a
+                          WHERE COALESCE(a.derniere_fin, a.rejoint_le) < now() - make_interval(mins => public.cloud_param('t_max_min', 30))
+                            AND NOT EXISTS (SELECT 1 FROM public.cloud_baux b WHERE b.user_id = a.user_id AND b.termine_le IS NULL)
+                            AND COALESCE((public.cloud_etat(a.user_id) ->> 'actif')::boolean, false)),
+      'purges_en_retard', (SELECT count(*) FROM public.cloud_purges_comptes
+                            WHERE prouvee_le IS NULL AND demandee_le < now() - interval '1 hour')),
     'quarantaines_pretes_48h', (SELECT count(*) FROM public.cloud_ips WHERE etat = 'quarantaine'
                                   AND quarantaine_fin <= now() + interval '48 hours' AND derniere_origine = 'essai'),
     'en_attente', (SELECT count(*) FROM public.cloud_essais WHERE statut = 'en_attente'),
     'attente_max_h', (SELECT round(EXTRACT(EPOCH FROM now() - min(demande_le)) / 3600, 1) FROM public.cloud_essais WHERE statut = 'en_attente'),
-    'clients_sans_ip', (SELECT count(*) FROM public.profiles p WHERE p.is_cloud IS TRUE
-                          AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)),
+    'clients_sans_place', (SELECT count(*) FROM public.profiles p WHERE p.is_cloud IS TRUE
+                             AND NOT EXISTS (SELECT 1 FROM public.cloud_ips i WHERE i.user_id = p.id)
+                             AND NOT EXISTS (SELECT 1 FROM public.cloud_affinites a WHERE a.user_id = p.id)),
     'demandes_7j', (SELECT count(*) FROM public.cloud_essais WHERE demande_le > now() - interval '7 days'),
     'conversion_30j', (SELECT round(count(*) FILTER (WHERE statut = 'converti')::numeric / NULLIF(count(*), 0), 3)
                          FROM public.cloud_essais WHERE fin IS NOT NULL AND fin > now() - interval '30 days' AND fin <= now()),
@@ -922,16 +1493,20 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 
     'livraison_h_mediane', (SELECT round((percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM livree_le - demandee_le)::float8) / 3600)::numeric, 1)
                               FROM (SELECT livree_le, demandee_le FROM public.cloud_ip_commandes WHERE statut = 'livree'
                                     ORDER BY livree_le DESC LIMIT 10) d),
-    'echeances_3j', (SELECT count(*) FROM public.cloud_ips WHERE etat IN ('attribuee_essai', 'attribuee_client')
-                       AND expire_le <= now() + make_interval(days => public.cloud_param('renouvellement_avant_jours', 3))),
+    'echeances_3j', (SELECT count(*) FROM public.cloud_ips
+                      WHERE (etat IN ('attribuee_essai', 'attribuee_client')
+                             OR (etat = 'rotation' AND EXISTS (SELECT 1 FROM public.cloud_affinites a WHERE a.ip_id = cloud_ips.id)))
+                        AND expire_le <= now() + make_interval(days => public.cloud_param('renouvellement_avant_jours', 3))),
     'rebuts_24h', (SELECT count(*) FROM public.cloud_ips WHERE rebut_le > now() - interval '24 hours')
   );
 $f$;
 
 -- Toutes les RPC du pool : service role seulement (fonction edge, orchestrateur,
--- déclencheur). Seules cloud_etat_moi, cloud_essai_moi et cloud_essai_ouvrir_moi
--- (auth.uid(), aucun paramètre d'identité) sont ouvertes à `authenticated`.
+-- flux de paiement, déclencheur). Seules cloud_etat_moi, cloud_essai_moi et
+-- cloud_essai_preparer_moi (auth.uid(), aucun paramètre d'identité) sont
+-- ouvertes à `authenticated`.
 REVOKE ALL ON FUNCTION
+  public.cloud_mode(), public.cloud_groupe_effectif(), public.cloud_duree_session(integer),
   public.cloud_ip_ajouter(text, inet, integer, text, text, text, timestamptz),
   public.cloud_ip_controle_entree(bigint, jsonb),
   public.cloud_ip_attribuer(uuid, text, timestamptz),
@@ -941,11 +1516,25 @@ REVOKE ALL ON FUNCTION
   public.cloud_ip_remettre_en_pool(bigint, jsonb),
   public.cloud_ip_renouvelee(bigint, timestamptz),
   public.cloud_ip_identifiants_changes(bigint, text),
+  public.cloud_rotation_rejoindre(uuid),
+  public.cloud_rotation_quitter(uuid, text),
+  public.cloud_compte_noter_purge(uuid, jsonb),
+  public.cloud_bail_ouvrir(uuid, bigint, text, integer, text),
+  public.cloud_bail_fin_douce(bigint),
+  public.cloud_bail_bloquants(bigint),
+  public.cloud_bail_terminer(bigint, text),
+  public.cloud_bail_prolonger(bigint, integer),
+  public.cloud_priorite_demander(uuid, text),
+  public.cloud_rotation_etat(),
+  public.cloud_jobs_prioritaires(uuid),
+  public.cloud_compte_placer(uuid, text, timestamptz),
+  public.cloud_compte_sortir(uuid, text),
   public.cloud_essai_demarrer(bigint, bigint),
   public.cloud_file_servir(),
   public.cloud_essai_ouvrir(uuid, text, jsonb),
   public.cloud_essai_noter_compte_plateforme(uuid, text, text),
   public.cloud_essai_convertir(uuid),
+  public.cloud_essai_arreter(uuid),
   public.profiles_cloud_paye(),
   public.cloud_pool_entretien(),
   public.cloud_pool_etat()
@@ -960,19 +1549,69 @@ GRANT EXECUTE ON FUNCTION
   public.cloud_ip_remettre_en_pool(bigint, jsonb),
   public.cloud_ip_renouvelee(bigint, timestamptz),
   public.cloud_ip_identifiants_changes(bigint, text),
+  public.cloud_compte_noter_purge(uuid, jsonb),
+  public.cloud_bail_ouvrir(uuid, bigint, text, integer, text),
+  public.cloud_bail_fin_douce(bigint),
+  public.cloud_bail_bloquants(bigint),
+  public.cloud_bail_terminer(bigint, text),
+  public.cloud_bail_prolonger(bigint, integer),
+  public.cloud_priorite_demander(uuid, text),
+  public.cloud_rotation_etat(),
   public.cloud_essai_ouvrir(uuid, text, jsonb),
   public.cloud_essai_noter_compte_plateforme(uuid, text, text),
   public.cloud_essai_convertir(uuid),
+  public.cloud_essai_arreter(uuid),
   public.cloud_pool_entretien(),
   public.cloud_pool_etat()
 TO service_role;
-REVOKE ALL ON FUNCTION public.cloud_essai_ouvrir_moi(text), public.cloud_essai_moi() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.cloud_essai_ouvrir_moi(text), public.cloud_essai_moi() TO authenticated;
+REVOKE ALL ON FUNCTION public.cloud_essai_preparer_moi(text), public.cloud_essai_moi() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.cloud_essai_preparer_moi(text), public.cloud_essai_moi() TO authenticated;
 
 
--- ═══ 9. Le cron — DÉCRIT SEULEMENT (aucun cron.schedule exécutable ici) ═══════
--- À poser le jour où la fonction edge `cloud-pool` existe et a été relue
--- (`functions list` : verify_jwt = false), même forme que veille-cpu-2min :
+-- ═══ 9. Le mail de la veille : `cloud_essai_veille` entre dans l'index one-shot ═══
+-- UN par essai = un par personne à vie : sans l'index, la réservation de
+-- envoyerEmail (dedup 'reservation') ne protège de rien (CLAUDE.md, bug du
+-- welcome du 03/08). Définition EN PROD relue le 04/10/2026 (pg_indexes) — 14
+-- types : welcome, how_it_works, blast_relaunch_aout, blast_founder,
+-- founder_plan, voice_conversion, blast_sync_dressing, reactiv_1409_a,
+-- reactiv_1409_b, reactiv_1409_c, reactiv_1409_d, extension_link_rattrapage,
+-- stock_pret_2309, blast_rentree_fillsell50_2609.
+-- La liste est RELUE dans la définition vivante au moment d'appliquer (un type
+-- ajouté entre-temps est gardé), le nouveau type y est ajouté, l'index est
+-- reconstruit dans la même transaction (table de quelques milliers de lignes :
+-- quelques millisecondes). Idempotent : déjà présent → rien.
+-- Reconstruit avec « IN ('…', …) » : Postgres le rend exactement comme la
+-- définition de prod (« = ANY (ARRAY['…'::text, …]) »), donc la relecture et
+-- l'idempotence restent vraies d'une application à l'autre.
+DO $$
+DECLARE v_def text; v_types text[];
+BEGIN
+  SELECT indexdef INTO v_def FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'email_logs_one_shot_unique';
+  IF v_def IS NULL THEN RAISE EXCEPTION 'email_logs_one_shot_unique introuvable : relire la prod avant d''appliquer'; END IF;
+  IF v_def ~ '\mcloud_essai_veille\M' THEN RETURN; END IF;
+  SELECT array_agg(t.m[1] ORDER BY t.ord) INTO v_types
+    FROM regexp_matches(v_def, '''([^'']+)''::text', 'g') WITH ORDINALITY AS t(m, ord);
+  IF COALESCE(cardinality(v_types), 0) < 14 OR NOT ('welcome' = ANY (v_types)) THEN
+    RAISE EXCEPTION 'liste des types illisible (% types) : on ne touche à rien', COALESCE(cardinality(v_types), 0);
+  END IF;
+  v_types := v_types || 'cloud_essai_veille'::text;
+  DROP INDEX public.email_logs_one_shot_unique;
+  EXECUTE format('CREATE UNIQUE INDEX email_logs_one_shot_unique ON public.email_logs USING btree (user_id, email_type) '
+                 'WHERE (email_type IN (%s))', (SELECT string_agg(quote_literal(x), ', ') FROM unnest(v_types) x));
+END $$;
+
+
+-- ═══ 10. Les tâches planifiées — DÉCRITES SEULEMENT (aucun cron.schedule ici) ═══
+-- (a) L'ORDONNANCEUR DE LA ROTATION ne passe PAS par pg_cron : il vit dans
+--     l'orchestrateur des navigateurs (serveur Hetzner), chaque minute :
+--     rpc cloud_rotation_etat() → planifierRotation (cloud-pool.js) → pour
+--     chaque décision : cloud_bail_fin_douce / cloud_bail_terminer /
+--     cloud_bail_prolonger / cloud_bail_ouvrir, puis il démarre ou arrête le
+--     navigateur du compte (coffre réinjecté au démarrage, sauvegardé à
+--     l'arrêt). Un appel par minute, quelques lignes écrites.
+-- (b) Le pool (achats, renouvellements, contrôles, alertes), chaque heure, le
+--     jour où la fonction edge `cloud-pool` existe et a été relue
+--     (`functions list` : verify_jwt = false), même forme que veille-cpu-2min :
 --
 --   SELECT cron.schedule('cloud-pool-1h', '7 * * * *', $cmd$
 --     SELECT net.http_post(
@@ -983,19 +1622,22 @@ GRANT EXECUTE ON FUNCTION public.cloud_essai_ouvrir_moi(text), public.cloud_essa
 --       timeout_milliseconds := 60000);
 --   $cmd$);
 --
--- Ce que fait cloud-pool à chaque passage (détail : docs/cloud/pool-ip.md § 8) :
 --   1. rpc cloud_pool_entretien() ;
 --   2. contrôles : entrée des IP livrées (cloud_ip_controle_entree), sortie des
---      quarantaines finies (cloud_ip_remettre_en_pool) — IP de sortie, pays,
---      listes noires DNS, pages d'accueil Vinted / Leboncoin / eBay sans compte ;
---   3. planDuJour (cloud-pool.js) → POST /orders/{id}/extend des IP à renouveler,
---      échéance relue (GET /orders/{id}) puis cloud_ip_renouvelee ; POST /orders
---      pour aCommander (plafond de budget coin_config cloud_budget_ip_usd_mois) ;
---   4. deciderAlerte (APRÈS l'achat de l'étape 3 : une commande passée compte
---      comme « en route ») → mail à support@fillsell.app comme veille-cpu, ligne
---      dans cloud_pool_alertes ; tout incident de (1) → alerte immédiate ;
---      l'ops-digest de 8h50 lit cloud_pool_etat() et les alertes des 24 h.
+--      quarantaines finies (phase 2) — IP de sortie, pays, listes noires DNS,
+--      pages d'accueil Vinted / Leboncoin / eBay sans compte ;
+--   3. rotation : planDuJourRotation ; dédiée : planDuJour → POST
+--      /orders/{id}/extend des IP à renouveler, échéance relue (GET
+--      /orders/{id}) puis cloud_ip_renouvelee ; POST /orders pour aCommander
+--      (plafond de budget coin_config cloud_budget_ip_usd_mois) ;
+--   4. deciderAlerte (APRÈS l'achat : une commande passée compte comme « en
+--      route ») → mail à support@fillsell.app comme veille-cpu, ligne dans
+--      cloud_pool_alertes ; incident, T_max dépassé, client sans place → alerte
+--      immédiate ; l'ops-digest de 8h50 lit cloud_pool_etat() et les alertes des 24 h.
 --   Le jeton de l'API IPRoyal : secret de fonction IPROYAL_API_TOKEN
 --   (`supabase secrets set`), jamais dans le dépôt ni dans une table.
--- Les écritures sont légères (quelques lignes par heure) : aucune ne touche une
--- grosse table ; profiles n'est lu que par son index partiel is_cloud.
+-- (c) Le mail de la veille part dans l'appel HORAIRE existant d'email-tunnel
+--     (job_relaunch), derrière une garde qui ne fait rien tant que ces colonnes
+--     n'existent pas — aucun cron de plus.
+-- Les écritures sont légères : aucune ne touche une grosse table ; profiles
+-- n'est lu que par son index partiel is_cloud ; cross_post_jobs par (user_id, status).
