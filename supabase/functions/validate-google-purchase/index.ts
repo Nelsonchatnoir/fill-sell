@@ -252,13 +252,13 @@ serve(async (req) => {
       const lecture = lectureCloudGoogle(productId, purchase, null)
         ?? { essai: false, debut: null, fin: (ligne?.expiryTime as string | undefined) ?? null, offre: null };
       const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref").eq("id", userId).maybeSingle();
+        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
       const sens = actif ? "on" : "off";
       const { update: majCloud, motif } = ecritureCloudStore({
         canal: "google", lecture, sens, ref: purchaseToken, profil: profilCloud ?? {},
       });
       if (!majCloud) return json({ ok: true, type: "option_cloud", skipped: motif, state: etat ?? "unknown" });
-      if (sens === "on" && etat === "SUBSCRIPTION_STATE_CANCELED") majCloud.cloud_annule_fin_periode = true;
+      if (sens === "on" && etat === "SUBSCRIPTION_STATE_CANCELED") majCloud.cloud_arret_fin_periode = true;
       const { error: cloudErr } = await supabaseAdmin.from("profiles").update(majCloud).eq("id", userId);
       if (cloudErr) {
         console.error("[validate-google-purchase] écriture profil (cloud):", cloudErr.message);

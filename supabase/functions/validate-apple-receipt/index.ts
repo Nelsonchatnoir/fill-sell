@@ -158,7 +158,7 @@ serve(async (req) => {
         originalTransactionId: txCloud.original_transaction_id,
       })!;
       const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref").eq("id", userId).maybeSingle();
+        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
       const { update: majCloud, motif } = ecritureCloudStore({
         canal: "apple", lecture, sens: expiresCloud > now ? "on" : "off",
         ref: txCloud.original_transaction_id ?? null, profil: profilCloud ?? {},

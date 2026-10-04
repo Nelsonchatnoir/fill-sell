@@ -202,13 +202,29 @@ serve(async (req) => {
           headers: { ...CORS, "Content-Type": "application/json" },
         });
       }
+      // Aligné sur palier.js : arrêtée PENDANT l'essai → effet IMMÉDIAT, rien
+      // facturé ; arrêtée une fois PAYÉE → tourne jusqu'à la fin de la période.
+      if (cloudVivant.status === "trialing") {
+        await stripe.subscriptions.cancel(cloudVivant.id);
+        const maintenant = new Date().toISOString();
+        await supabaseAdmin.from("profiles").update({
+          is_cloud: false,
+          cloud_essai_arrete: true,
+          cloud_essai_fin: maintenant,
+          cloud_arret_fin_periode: false,
+        }).eq("id", user.id);
+        console.log(`[cancel-subscription] essai Cloud ${cloudVivant.id} arrêté tout de suite (rien facturé)`);
+        return new Response(JSON.stringify({ success: true, option: "cloud", essai_arrete: true }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
       const fini = await stripe.subscriptions.update(cloudVivant.id, { cancel_at_period_end: true });
-      const finCloud = fini.status === "trialing" && fini.trial_end ? fini.trial_end : fini.current_period_end;
+      const finCloud = fini.current_period_end;
       await supabaseAdmin.from("profiles").update({
-        cloud_annule_fin_periode: true,
-        cloud_fin_periode: finCloud ? new Date(finCloud * 1000).toISOString() : null,
+        cloud_arret_fin_periode: true,
+        cloud_periode_fin: finCloud ? new Date(finCloud * 1000).toISOString() : null,
       }).eq("id", user.id);
-      console.log(`[cancel-subscription] Cloud ${cloudVivant.id} résilié à l'échéance (${fini.status})`);
+      console.log(`[cancel-subscription] Cloud ${cloudVivant.id} arrêté à la fin de la période payée`);
       return new Response(JSON.stringify({ success: true, option: "cloud", period_end: finCloud ? dateSeuleParis(new Date(finCloud * 1000)) : null }), {
         headers: { ...CORS, "Content-Type": "application/json" },
       });

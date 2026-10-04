@@ -183,7 +183,7 @@ serve(async (req) => {
         // palier n'est touché ; une référence d'un autre canal est ignorée.
         if (renewalToken && renewalProductId && lectureCloudApple({ productId: renewalProductId })) {
           const { data: profilCloud } = await supabaseAdmin
-            .from("profiles").select("cloud_canal, cloud_ref").eq("id", renewalToken).maybeSingle();
+            .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", renewalToken).maybeSingle();
           const renewalDate = renewal.renewalDate as number | undefined;
           const { update, motif } = ecritureCloudStore({
             canal: "apple",
@@ -340,10 +340,13 @@ serve(async (req) => {
         });
       }
       const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref").eq("id", appAccountToken).maybeSingle();
+        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", appAccountToken).maybeSingle();
       const { update, motif } = ecritureCloudStore({
         canal: "apple", lecture: lectureCloud, sens, ref: originalTransactionId ?? null, profil: profilCloud ?? {},
       });
+      if (update && motif === "essai_deja_pris") {
+        console.warn(`[apple-iap-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);
+      }
       if (!update) {
         console.log(`[apple-iap-webhook] Cloud ${sens} ignoré (${motif}) → userId=${appAccountToken}`);
         return new Response(JSON.stringify({ ok: true, skipped: motif }), {

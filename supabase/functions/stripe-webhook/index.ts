@@ -500,6 +500,16 @@ serve(async (req) => {
     // résiliation programmée ou levée, impayé) et ne passe JAMAIS par le
     // réalignement de métadonnée de palier ci-dessous.
     if (estAbonnementCloud(subscription, prixConnus())) {
+      // Arrêt demandé PENDANT l’essai (portail Stripe, dashboard) : effet immédiat,
+      // comme le bouton de l’app (palier.js : rien facturé, l’essai s’arrête).
+      if (status === "trialing" && cancelAtPeriodEnd) {
+        try {
+          await stripe.subscriptions.cancel(subscription.id);
+          console.log(`[webhook] essai Cloud ${subscription.id} arrêté tout de suite (résiliation pendant l’essai)`);
+        } catch (e) {
+          console.error(`[webhook] arrêt immédiat de l’essai Cloud ${subscription.id} impossible : ${(e as Error)?.message ?? e}`);
+        }
+      }
       console.log(`[webhook] abonnement Cloud ${subscription.id} mis à jour (statut ${status}, annulation ${cancelAtPeriodEnd}) → relecture`);
       await recomputeStripeFlags(supabase, customerId);
       return new Response(JSON.stringify({ received: true, cloud: true }), {

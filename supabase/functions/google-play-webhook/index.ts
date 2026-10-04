@@ -299,10 +299,13 @@ serve(async (req) => {
     if (lectureCloud) {
       const sens = notificationType === CANCELED_TYPE ? "annulation" : isPremium ? "on" : "off";
       const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref").eq("id", userId).maybeSingle();
+        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
       const { update, motif } = ecritureCloudStore({
         canal: "google", lecture: lectureCloud, sens, ref: purchaseToken, profil: profilCloud ?? {},
       });
+      if (update && motif === "essai_deja_pris") {
+        console.warn(`[google-play-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);
+      }
       if (!update) {
         console.log(`[google-play-webhook] Cloud ${sens} ignoré (${motif}) → userId=${userId}`);
         return new Response(JSON.stringify({ ok: true, skipped: motif }), {
