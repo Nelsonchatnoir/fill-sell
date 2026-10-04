@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec } from "../_shared/paiement-stripe.js";
+import { estAbonnementCloud, essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, ESSAI_CLOUD_JOURS } from "../_shared/cloud-option.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -57,6 +58,8 @@ const SUB_PLANS: Record<string, { envKey: string; planType: string; grantTier: s
 // il ressort donc à 0 et sera traité comme « à faire monter », ce qui est le
 // comportement voulu : un Founder 9,99 qui achète Pro doit basculer en place).
 function rangAbonnement(s: Stripe.Subscription): number {
+  // (04/10) Un abonnement Cloud n'est pas un palier : hors de l'échelle.
+  if (estAbonnementCloud(s, prixConnus())) return -1;
   const parMeta = Object.values(SUB_PLANS).find((p) => p.planType === s.metadata?.plan_type);
   if (parMeta) return parMeta.rang;
   for (const plan of Object.values(SUB_PLANS)) {
@@ -66,6 +69,23 @@ function rangAbonnement(s: Stripe.Subscription): number {
     }
   }
   return 0;
+}
+
+// ── L'OPTION « FILLSELL CLOUD » (04/10/2026) ─────────────────────────────────
+// `product: "cloud"` → un abonnement Stripe À PART (secret STRIPE_PRICE_CLOUD,
+// 20 €/mois), ouvert à TOUS les comptes, Free compris ; carte obligatoire ;
+// essai 7 jours si ce compte n'en a jamais pris (garde serveur
+// essaiCloudPermis). Il ne touche jamais l'abonnement du palier, et les
+// chemins de palier ci-dessous ne touchent jamais un abonnement Cloud
+// (metadata.option = "cloud" : hors du rang, hors des montées, hors des
+// sessions et abonnements « en attente » remplacés).
+function prixConnus() {
+  return {
+    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
+    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
+    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
+    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
+  };
 }
 
 const supabaseAdmin = createClient(
@@ -181,7 +201,9 @@ async function resoudreClient(stocke: string | null, userId: string, email: stri
 // ou « payer par carte » après un refus) expire les sessions ouvertes du client
 // et annule leurs abonnements « incomplete » — jamais un autre statut
 // (abonnementRemplacable : rien d'actif, rien en cours de paiement).
-async function remplacerSessions(sessions: Stripe.Checkout.Session[], customerId: string): Promise<void> {
+// (04/10) `concerne` : ne remplacer que les abonnements de la même nature
+// (Cloud ou palier) — ouvrir Cloud n'annule jamais un palier en attente.
+async function remplacerSessions(sessions: Stripe.Checkout.Session[], customerId: string, concerne: (s: Stripe.Subscription) => boolean = () => true): Promise<void> {
   for (const s of sessions) {
     try { await stripe.checkout.sessions.expire(s.id); }
     catch (e) { console.warn(`[checkout] session ${s.id} non expirée : ${(e as Error)?.message ?? e}`); }
@@ -191,7 +213,7 @@ async function remplacerSessions(sessions: Stripe.Checkout.Session[], customerId
       customer: customerId, status: "incomplete", limit: 10, expand: ["data.latest_invoice.payment_intent"],
     });
     for (const sub of enAttente ?? []) {
-      if (!abonnementRemplacable(sub)) continue;
+      if (!abonnementRemplacable(sub) || !concerne(sub)) continue;
       await stripe.subscriptions.cancel(sub.id);
       console.log(`[checkout] abonnement en attente ${sub.id} (${customerId}) annulé : remplacé par une nouvelle tentative`);
     }
@@ -346,6 +368,64 @@ serve(async (req) => {
       });
     }
 
+    // ── L'ABONNEMENT CLOUD, À PART (04/10/2026) ──────────────────────────────
+    if (product === "cloud") {
+      const cloudPriceId = await activePriceOrNull(Deno.env.get("STRIPE_PRICE_CLOUD"), "STRIPE_PRICE_CLOUD");
+      if (!cloudPriceId) {
+        return new Response(JSON.stringify({ error: "payment_unavailable", option: "cloud" }), {
+          status: 503, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      const { data: profilCloud } = await supabase
+        .from("profiles").select("stripe_customer_id, is_cloud, cloud_canal, cloud_essai_debut").eq("id", authUser.id).single();
+      if (profilCloud?.is_cloud === true && profilCloud?.cloud_canal && profilCloud.cloud_canal !== "stripe") {
+        // Déjà pris dans l'App Store ou Google Play : jamais un second abonnement.
+        return new Response(JSON.stringify({ already_cloud: true, canal: profilCloud.cloud_canal }), {
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      const clientCloud = await resoudreClient(profilCloud?.stripe_customer_id ?? null, authUser.id, verifiedEmail ?? null);
+      const { data: tousLesAbos } = await stripe.subscriptions.list({ customer: clientCloud, status: "all", limit: 30 });
+      const dejaCloud = (tousLesAbos ?? []).find((x: Stripe.Subscription) =>
+        estAbonnementCloud(x, prixConnus()) && ["active", "trialing", "past_due"].includes(x.status));
+      if (dejaCloud) {
+        return new Response(JSON.stringify({ already_cloud: true, canal: "stripe", essai: dejaCloud.status === "trialing" }), {
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      // Un seul essai par compte : la ligne profiles ET l'historique Stripe.
+      const essai = essaiCloudPermis(profilCloud ?? {}, tousLesAbos ?? [], prixConnus());
+      let ouvertesCloud: Stripe.Checkout.Session[] = [];
+      try {
+        const { data } = await stripe.checkout.sessions.list({ customer: clientCloud, status: "open", limit: 10 });
+        ouvertesCloud = (data ?? []).filter((x: Stripe.Checkout.Session) => sessionEstCloud(x));
+      } catch (e) {
+        console.warn(`[checkout] sessions Cloud ouvertes de ${clientCloud} non relues : ${(e as Error)?.message ?? e}`);
+      }
+      const tri = trierSessionsOuvertes(ouvertesCloud, { planType: "cloud", carte3ds: carte_3ds === true, codePromo: "" });
+      if (tri.aReprendre && (tri.aReprendre.metadata?.essai_cloud === "1") === essai) {
+        return new Response(JSON.stringify({ url: tri.aReprendre.url, reprise: true, option: "cloud" }), {
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      await remplacerSessions(ouvertesCloud, clientCloud, (x) => estAbonnementCloud(x, prixConnus()));
+      const base = parametresCheckoutCloud({ prixCloud: cloudPriceId, essai, userId: authUser.id });
+      const sessionCloud = await stripe.checkout.sessions.create({
+        ...base,
+        customer: clientCloud,
+        success_url: "https://fillsell.app/success",
+        cancel_url: "https://fillsell.app/cancel?session_id={CHECKOUT_SESSION_ID}",
+        ...(carte_3ds === true ? {
+          payment_method_options: { card: { request_three_d_secure: "any" } },
+          metadata: { ...base.metadata, fillsell_carte_3ds: "1" },
+        } : {}),
+      } as Stripe.Checkout.SessionCreateParams);
+      console.log(`[checkout] abonnement Cloud pour ${authUser.id} : essai ${essai ? `${ESSAI_CLOUD_JOURS} jours` : "déjà pris, payé tout de suite"}`);
+      return new Response(JSON.stringify({ url: sessionCloud.url, option: "cloud", essai }), {
+        headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+
     // ── Abonnements : standard 12,99 €, Pro 29,99 € ou Business 59,99 € ──
     // Plus AUCUN essai gratuit (2026-07-22) : l'essai 7 jours Premium est
     // supprimé (il ne restait posé qu'ici, jamais sur le Price Stripe). Pro
@@ -407,7 +487,8 @@ serve(async (req) => {
         limit: 20, // par défaut Stripe exclut les canceled ; on refiltre quand même
       });
       const live = (existingSubs ?? []).filter(
-        (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing"
+        (s: Stripe.Subscription) => (s.status === "active" || s.status === "trialing")
+          && !estAbonnementCloud(s, prixConnus()) // (04/10) jamais la cible d'une montée
       );
 
       if (live.some((s: Stripe.Subscription) => rangAbonnement(s) >= plan.rang)) {
@@ -608,7 +689,7 @@ serve(async (req) => {
     let ouvertes: Stripe.Checkout.Session[] = [];
     try {
       const { data } = await stripe.checkout.sessions.list({ customer: existingCustomerId, status: "open", limit: 10 });
-      ouvertes = data ?? [];
+      ouvertes = (data ?? []).filter((x: Stripe.Checkout.Session) => !sessionEstCloud(x)); // (04/10) Cloud à part
     } catch (e) {
       console.warn(`[checkout] sessions ouvertes de ${existingCustomerId} non relues : ${(e as Error)?.message ?? e}`);
     }
@@ -621,7 +702,7 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", ...CORS },
       });
     }
-    await remplacerSessions(aRemplacer, existingCustomerId);
+    await remplacerSessions(aRemplacer, existingCustomerId, (x) => !estAbonnementCloud(x, prixConnus()));
 
     let session: Stripe.Checkout.Session;
     if (promotionCodeId) {

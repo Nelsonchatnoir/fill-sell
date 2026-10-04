@@ -3,6 +3,21 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { envoyerEmail } from "../_shared/desinscription.ts";
 import { dateSeuleParis, langue, mailResiliation } from "../_shared/emails-fillsell.ts";
+import { estAbonnementCloud } from "../_shared/cloud-option.js";
+
+// (04/10) L'option Cloud est un abonnement Stripe À PART. Sans corps (appel
+// historique) : résiliation du PALIER, jamais de l'abonnement Cloud.
+// `{ option: "cloud" }` : résiliation de Cloud à l'échéance (pendant l'essai,
+// à la fin de l'essai : aucun débit). Un Cloud pris dans l'App Store ou Google
+// Play se résilie dans la boutique.
+function prixConnus() {
+  return {
+    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
+    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
+    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
+    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
+  };
+}
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -120,11 +135,16 @@ serve(async (req) => {
     const { data: { user } } = await supabaseAdmin.auth.getUser(jwt);
 
     console.log("[cancel-subscription] User OK:", user.id);
+    let option: string | null = null;
+    try {
+      const corps = await req.json();
+      option = typeof corps?.option === "string" ? corps.option : null;
+    } catch { /* appel historique sans corps */ }
 
     // Récupère stripe_customer_id depuis profiles (admin = bypass RLS)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("stripe_customer_id, is_premium, is_pro, is_business")
+      .select("stripe_customer_id, is_premium, is_pro, is_business, cloud_canal")
       .eq("id", user.id)
       .single();
 
@@ -142,6 +162,16 @@ serve(async (req) => {
     });
 
     // Cas : pas de customer Stripe — force is_premium=false immédiatement
+    if (option === "cloud" && (profile.cloud_canal === "apple" || profile.cloud_canal === "google")) {
+      return new Response(JSON.stringify({ success: false, error: "resilier_dans_la_boutique", canal: profile.cloud_canal }), {
+        status: 409, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+    if (option === "cloud" && !profile.stripe_customer_id) {
+      return new Response(JSON.stringify({ success: true, option: "cloud", deja: true }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
     if (!profile.stripe_customer_id) {
       await supabaseAdmin
         .from("profiles")
@@ -155,18 +185,39 @@ serve(async (req) => {
     }
 
     // Récupère les abonnements actifs Stripe
+    // (04/10) Abonnements vivants (essai compris), séparés : paliers / Cloud.
     const subscriptions = await stripe.subscriptions.list({
       customer: profile.stripe_customer_id,
-      status: "active",
-      limit: 5,
+      limit: 10,
     });
+    const vivants = subscriptions.data.filter((x: Stripe.Subscription) =>
+      x.status === "active" || x.status === "trialing" || x.status === "past_due");
+    const cloudVivant = vivants.find((x: Stripe.Subscription) => estAbonnementCloud(x, prixConnus())) ?? null;
+    const paliersVivants = vivants.filter((x: Stripe.Subscription) => !estAbonnementCloud(x, prixConnus()));
+    console.log("[cancel-subscription] Abonnements vivants: paliers", paliersVivants.length, "Cloud", cloudVivant ? 1 : 0);
 
-    console.log("[cancel-subscription] Abonnements actifs:", subscriptions.data.length);
+    if (option === "cloud") {
+      if (!cloudVivant) {
+        return new Response(JSON.stringify({ success: true, option: "cloud", deja: true }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      const fini = await stripe.subscriptions.update(cloudVivant.id, { cancel_at_period_end: true });
+      const finCloud = fini.status === "trialing" && fini.trial_end ? fini.trial_end : fini.current_period_end;
+      await supabaseAdmin.from("profiles").update({
+        cloud_annule_fin_periode: true,
+        cloud_fin_periode: finCloud ? new Date(finCloud * 1000).toISOString() : null,
+      }).eq("id", user.id);
+      console.log(`[cancel-subscription] Cloud ${cloudVivant.id} résilié à l'échéance (${fini.status})`);
+      return new Response(JSON.stringify({ success: true, option: "cloud", period_end: finCloud ? dateSeuleParis(new Date(finCloud * 1000)) : null }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
 
     let periodEnd: string | null = null;
 
-    if (subscriptions.data.length > 0) {
-      const canceled = await stripe.subscriptions.update(subscriptions.data[0].id, {
+    if (paliersVivants.length > 0) {
+      const canceled = await stripe.subscriptions.update(paliersVivants[0].id, {
         cancel_at_period_end: true,
       });
       // current_period_end = date réelle de fin de période payée.
