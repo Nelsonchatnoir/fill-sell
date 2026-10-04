@@ -18,8 +18,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { cloudDuProfil } from '../utils/palier';
+import { cloudOfferVisible } from '../config/cloudOffer';
 
-export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin';
+// Les colonnes de la PROPOSITION (décisions du 04/10 soir comprises : essai
+// arrêté, fin de période payée, arrêt demandé en fin de période).
+export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode';
 
 /**
  * @returns {{ etat: 'inactif'|'lecture'|'ok'|'echec', cloud: object|null, profil: object|null, luLe: number|null, relire: () => void }}
@@ -68,3 +71,16 @@ export function useCloudProfil(userId, { actif = true } = {}) {
     relire,
   };
 }
+
+/**
+ * La lecture Cloud d'une page qui en a besoin à deux endroits (Réglages ›
+ * Abonnement : le bloc ET la mention dans la confirmation de résiliation) —
+ * UNE requête, partagée. Drapeau baissé : rien ne part, état 'inactif'.
+ * `c` = le contexte de la page ({ user }).
+ */
+export function useCloudReglages(c) {
+  const visible = cloudOfferVisible(c?.user?.id);
+  const lecture = useCloudProfil(c?.user?.id, { actif: visible });
+  return visible ? lecture : INACTIF;
+}
+const INACTIF = Object.freeze({ etat: 'inactif', cloud: null, profil: null, luLe: null, relire: () => {} });
