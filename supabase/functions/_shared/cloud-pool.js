@@ -3,13 +3,21 @@
 // (conception du 04/10/2026 — RIEN N'EST BRANCHÉ, rien n'est acheté)
 // ═══════════════════════════════════════════════════════════════════════════
 // Le Cloud fait tourner notre extension dans un navigateur sur nos serveurs,
-// sortie par une IP française dédiée (IPRoyal, « ISP / static residential »).
-// Les IP viennent d'un POOL (décisions de Nico, 04/10) :
-//   · essai non converti → l'IP retourne au pool, APRÈS quarantaine et purge
-//     complète prouvée ; essai converti → l'IP reste au client ;
+// sortie par une IP française (IPRoyal, « ISP / static residential »).
+// Décisions FINALES de Nico (04/10 soir) :
+//   · PHASE 1 = ROTATION (`mode` rotation) : pas d'IP dédiée. Chaque IP sert
+//     un petit groupe FIXE de comptes, À TOUR DE RÔLE, jamais deux en même
+//     temps (bail, contrainte d'exclusion en base) ; un compte garde son IP
+//     « maison » ; chaque compte actif a une session au moins toutes les
+//     T_max minutes, et tout de suite s'il a un retrait en attente ou une
+//     vente constatée ailleurs ; un bail n'est jamais coupé au milieu d'un job.
+//     → section 9.
+//   · PHASE 2 = IP DÉDIÉE (`mode` dediee) : la conception des sections 1 à 8
+//     (pool, quarantaine, purge prouvée de l'IP, renouvellement), gardée.
 //   · toute IP signalée (blocage, captcha répété, compte restreint, liste
 //     noire…) va au REBUT : jamais réattribuée, jamais renouvelée ;
-//   · un seul essai par personne (compte, appareil, compte de plateforme).
+//   · un seul essai par personne : compte, appareil, compte de plateforme ET
+//     carte (empreinte hachée, carte obligatoire pour l'essai).
 //
 // Conception : docs/cloud/pool-ip.md. Base : PROPOSITION non appliquée
 // supabase/migrations/PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt.
@@ -37,12 +45,33 @@ const plafond = (x) => Math.ceil(x - 1e-9);
 
 // ── Le contrat avec l'app — MÊMES VALEURS que src/utils/palier.js ─────────
 export const ESSAI_JOURS = 7;          // = CLOUD_ESSAI_JOURS
-export const EXIGE_UN_PALIER = true;   // = CLOUD_EXIGE_UN_PALIER
+export const EXIGE_UN_PALIER = false;  // = CLOUD_EXIGE_UN_PALIER (04/10 soir : l'option se prend seule sur Free)
+export const PRIX_AFFICHE = '20 €';    // = CLOUD_PRIX_AFFICHE
 
 // ── Les paramètres — chaque valeur est une PROPOSITION, nommée ────────────
 // Les « mesures à remplir » (serveur, base) restent null : un coût partiel se
 // signale (complet: false), il ne se devine jamais.
 export const PARAMETRES = Object.freeze({
+  // Phase (SQL : cloud_param('mode', 1) — 1 = rotation, 2 = dediee)
+  mode: 'rotation',
+  // ── ROTATION (phase 1) — SQL : cloud_param(...), mêmes défauts ──
+  poolTaille: 5,               // IP en rotation (réglable) : 5 × 4 = 20 comptes à T_max 30 min
+  tMaxMin: 30,                 // un compte actif n'attend jamais plus de 30 min sans session
+  sessionMinMin: 5,            // une session utile dure au moins 5 min (démarrage ~1 min, 2 passages)
+  battementMin: 1,             // l'IP reste muette 1 min entre deux comptes
+  margePrioritairePct: 20,     // part de T_max gardée pour les sessions prioritaires et les prolongations
+  groupeMax: 4,                // au plus 4 comptes par IP (un foyer, pas une ferme)
+  comptesDistinctsMax: 8,      // usure : une IP a servi au plus 8 comptes différents
+  prolongationPasMin: 5,       // un bail se prolonge par pas de 5 min…
+  prolongationMaxMin: 30,      // …30 min au plus au-delà de sa fin prévue
+  finDouceAvantMin: 2,         // plus aucun job pris 2 min avant la fin prévue
+  pollMin: 2,                  // l'extension passe toutes les 2 min (prototype du 26/09)
+  sessionConnexionMin: 15,     // 1re session d'un compte : le temps de se connecter aux plateformes
+  sessionMaxMin: 60,           // garde-fou de la base : aucun bail demandé au-delà de 60 min
+  essaisSimultanesMax: 0,      // plafond d'essais en cours (0 = aucun ; la taille du pool fait déjà la file)
+  empreintesConservationMois: 12, // RGPD : empreintes gardées 12 mois après la fin de l'essai
+  prioriteAttenteMaxMin: 10,   // une priorité qui attend plus → alerte
+  reservePct: 10,              // IP de réserve (rebut, panne) en plus du besoin
   // Cycle de l'IP (SQL : cloud_param(...) — mêmes défauts)
   graceJours: 2,               // fin d'essai → libération : le temps de payer sans tout reconnecter
   quarantaineJours: 14,        // 2 × la durée mesurée des jetons Vinted (7 j, 26/09)
@@ -69,6 +98,17 @@ export const PARAMETRES = Object.freeze({
   // Coûts — À REMPLIR avec les mesures (null = inconnu, jamais 0)
   coutServeurEurJour: null,    // part du serveur navigateur (Hetzner) pour UN compte, par jour de navigateur actif
   coutBaseEurJour: null,       // part de la base / des fonctions pour UN compte Cloud, par jour
+  // Mesures et estimations du 04/10 soir (rotation : par NAVIGATEUR ALLUMÉ = par IP occupée)
+  serveurEurMois: 15.99,       // ESTIMÉ : Hetzner CX43 HT (prix officiel depuis le 15/06/2026, non revérifié ici)
+  navigateursParServeurMin: 15, // ESTIMÉ : 15 à 25 navigateurs par CX43 (non mesuré)
+  navigateursParServeurMax: 25,
+  baseCpuPctParPosteMin: 0.10, // MESURÉ (04/10 soir) : 0,1 à 0,25 % CPU d'une instance Small par poste allumé
+  baseCpuPctParPosteMax: 0.25,
+  baseInstanceUsdMois: 15,     // Supabase Small ≈ 15 $/mois (docs Supabase « compute-and-disk », 04/10)
+  traficMoParMinActif: 2.0,    // MESURÉ (26/09, 13 sessions Steel) : 195 Mo pour 97 min
+  traficMoParMinRepos: 0.4,    // MESURÉ : 0,3 à 0,5 Mo/min presque au repos
+  traficPlafondGoMois: 100,    // IPRoyal : 100 Go par proxy et par 30 j (usage raisonnable)
+  carteEurParEssai: 0,         // SetupIntent Stripe : aucun débit, donc aucune commission (Radar des SetupIntents coupé par défaut)
   // Revenus de l'option
   prixTtcEur: 20,
   tva: 0.20,                   // ⚠️ 0 si FillSell est en franchise de TVA (question à Nico)
@@ -93,12 +133,17 @@ export const PARAMETRES = Object.freeze({
 //   signaler (tout état vivant) ──▶ rebut ──expirer──▶ expiree
 //   expirer (achetee, disponible, quarantaine) ──▶ expiree   (fin de période non renouvelée)
 //   ⛔ une IP ATTRIBUÉE n'expire jamais sous son titulaire : transition interdite.
-export const ETATS = Object.freeze(['achetee', 'disponible', 'attribuee_essai', 'attribuee_client', 'quarantaine', 'rebut', 'expiree']);
+//   ROTATION (phase 1) : disponible ──mettre_en_rotation──▶ rotation (un groupe
+//   de comptes, à tour de rôle) ; rotation ──signaler──▶ rebut ; une IP en
+//   rotation qui a encore des membres n'expire jamais (renouvelée comme celle
+//   d'un client) ; vide et en surplus, elle peut expirer.
+export const ETATS = Object.freeze(['achetee', 'disponible', 'attribuee_essai', 'attribuee_client', 'quarantaine', 'rotation', 'rebut', 'expiree']);
 export const ETATS_ATTRIBUES = Object.freeze(['attribuee_essai', 'attribuee_client']);
 
 const TRANSITIONS = Object.freeze({
   achetee:          { controle_ok: 'disponible', signaler: 'rebut', expirer: 'expiree', renouveler: 'achetee' },
-  disponible:       { attribuer_essai: 'attribuee_essai', attribuer_client: 'attribuee_client', signaler: 'rebut', expirer: 'expiree', renouveler: 'disponible' },
+  disponible:       { attribuer_essai: 'attribuee_essai', attribuer_client: 'attribuee_client', mettre_en_rotation: 'rotation', signaler: 'rebut', expirer: 'expiree', renouveler: 'disponible' },
+  rotation:         { signaler: 'rebut', expirer: 'expiree', renouveler: 'rotation' },
   attribuee_essai:  { convertir: 'attribuee_client', liberer: 'quarantaine', signaler: 'rebut', renouveler: 'attribuee_essai' },
   attribuee_client: { liberer: 'quarantaine', signaler: 'rebut', renouveler: 'attribuee_client' },
   quarantaine:      { purge_prouvee: 'quarantaine', sortir: 'disponible', reprendre: 'attribuee_client', signaler: 'rebut', expirer: 'expiree', renouveler: 'quarantaine' },
@@ -413,17 +458,23 @@ export function deciderAlerte({ niveau, derniereAlerte = null, dernierRetabli = 
 const palierPaye = (pr) => pr?.is_business === true || pr?.is_pro === true || pr?.is_premium === true || pr?.is_comped === true;
 
 /**
- * → { ok: true } (l'essai entre en file ; il démarre dès qu'une IP est prête)
+ * → { ok: true } (l'essai entre en file ; il démarre dès qu'une place est prête)
  *   | { ok: false, raison: 'compte_inconnu'|'deja_client'|'essai_deja_pris'|'palier_requis'
- *                         |'appareil_inconnu'|'appareil_deja_vu'|'compte_plateforme_deja_vu', plateforme? }
+ *                         |'appareil_inconnu'|'appareil_deja_vu'|'carte_absente'|'carte_deja_vue'
+ *                         |'compte_plateforme_deja_vu', plateforme? }
+ * L'appareil est vérifié une première fois AVANT la carte (cloud_essai_preparer_moi :
+ * personne ne saisit sa carte pour rien), puis tout est revérifié à l'ouverture
+ * (cloud_essai_ouvrir, appelée par le flux de paiement avec l'empreinte de carte).
  */
-export function verdictOuvertureEssai({ profil, essaiExistant = false, appareil, comptes = [], empreintesVues = new Set(), hacher = (espace, v) => `${espace}:${String(v ?? '').trim().toLowerCase()}`, exigePalier = EXIGE_UN_PALIER }) {
+export function verdictOuvertureEssai({ profil, essaiExistant = false, appareil, carte, comptes = [], empreintesVues = new Set(), hacher = (espace, v) => `${espace}:${String(v ?? '').trim().toLowerCase()}`, exigePalier = EXIGE_UN_PALIER }) {
   if (!profil) return { ok: false, raison: 'compte_inconnu' };
   if (profil.is_cloud === true) return { ok: false, raison: 'deja_client' };
   if (profil.cloud_essai_debut != null || essaiExistant) return { ok: false, raison: 'essai_deja_pris' };
   if (exigePalier && !palierPaye(profil)) return { ok: false, raison: 'palier_requis' };
   if (!nonVide(appareil)) return { ok: false, raison: 'appareil_inconnu' };
   if (empreintesVues.has(`appareil|${hacher('appareil', appareil)}`)) return { ok: false, raison: 'appareil_deja_vu' };
+  if (!nonVide(carte)) return { ok: false, raison: 'carte_absente' };
+  if (empreintesVues.has(`carte|${hacher('carte', carte)}`)) return { ok: false, raison: 'carte_deja_vue' };
   for (const c of Array.isArray(comptes) ? comptes : []) {
     if (!nonVide(c?.plateforme) || !nonVide(c?.identifiant)) continue;
     if (empreintesVues.has(`compte_plateforme|${hacher(c.plateforme, c.identifiant)}`)) {
@@ -506,4 +557,305 @@ export function margeParClient({ canal, memeFacture = false, p = PARAMETRES }) {
     ipEur: r2(ip), serveurEur: srv == null ? null : r2(srv), baseEur: bse == null ? null : r2(bse),
     margeEur: r2(marge), complet: srv != null && bse != null,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. PHASE 1 — LA ROTATION (décisions de Nico, 04/10 soir)
+// ═══════════════════════════════════════════════════════════════════════════
+// LA RÈGLE, EN CINQ LIGNES
+//   1. Une IP ne sert qu'UN compte à la fois : un BAIL (ip, compte, début, fin)
+//      et deux contraintes d'exclusion en base (par IP, par compte).
+//   2. Chaque IP a un petit groupe FIXE de comptes (sa « maison ») qu'elle sert
+//      à tour de rôle ; un compte garde son IP d'une session à l'autre.
+//   3. Chaque compte actif a une session au moins toutes les T_max minutes,
+//      et TOUT DE SUITE (priorité) s'il a un retrait en attente, une
+//      republication dont l'annonce est déjà retirée, ou une vente constatée ailleurs.
+//   4. Un bail n'est jamais coupé au milieu d'un job : il se prolonge (borné),
+//      et ne se termine qu'une fois sa réservation de job libérée ou finie.
+//   5. Pool trop petit pour tenir T_max : alerte, et les nouveaux essais
+//      attendent en file — jamais un trou silencieux.
+// Mêmes calculs, en entiers, que cloud_groupe_effectif() / cloud_duree_session() (SQL).
+
+/** La phase en vigueur : 'rotation' (1) ou 'dediee' (2) — SQL : cloud_mode(). */
+export function modeCloud(valeur) {
+  return Number(valeur) === 2 || valeur === 'dediee' ? 'dediee' : 'rotation';
+}
+
+/** Comptes par IP tenables à T_max : (g − 1)(session + battement) ≤ (1 − marge) T_max, au plus groupeMax. */
+export function groupeEffectif(p = PARAMETRES) {
+  const libre = Math.floor(((100 - p.margePrioritairePct) * p.tMaxMin) / (100 * (p.sessionMinMin + p.battementMin)));
+  return Math.max(1, Math.min(p.groupeMax, 1 + libre));
+}
+
+/** Durée d'une session de tour (min) pour un groupe de g comptes ; null pour g = 1 (IP pour lui seul). */
+export function dureeSession(g, p = PARAMETRES) {
+  if (!(g > 1)) return null;
+  return Math.floor(((100 - p.margePrioritairePct) * p.tMaxMin) / (100 * (g - 1))) - p.battementMin;
+}
+
+/**
+ * Taille du pool en rotation pour N comptes actifs (essais en cours + payants).
+ * IP = ⌈N / g⌉ + réserve (10 %, au moins 1). La taille plafonne aussi la charge
+ * de la base : au plus UN poste allumé par IP à un instant donné.
+ */
+export function tailleRotation({ comptes, p = PARAMETRES }) {
+  const g = groupeEffectif(p);
+  const n = Math.max(0, Math.floor(Number(comptes) || 0));
+  const ips = Math.ceil(n / g);
+  const reserve = n > 0 ? Math.max(1, Math.ceil((ips * p.reservePct) / 100)) : 0;
+  const total = ips + reserve;
+  const coutIpUsdMois = r2(total * p.prixIpUsd30j * (30 / p.periodeIpJours));
+  return {
+    g, sessionMin: dureeSession(g, p), ips, reserve, total,
+    postesSimultanesMax: total,
+    cpuBasePct: [r2(total * p.baseCpuPctParPosteMin), r2(total * p.baseCpuPctParPosteMax)],
+    serveurs: total ? [Math.ceil(total / p.navigateursParServeurMax), Math.ceil(total / p.navigateursParServeurMin)] : [0, 0],
+    coutIpUsdMois, coutIpEurMois: r2(coutIpUsdMois * p.tauxUsdEur),
+  };
+}
+
+/** Trafic d'une IP (Go décimaux / 30 j) selon sa part d'activité et son taux d'occupation. */
+export function traficIpGoMois({ partActif = 1, occupation = 1, p = PARAMETRES }) {
+  const a = borne01(partActif);
+  const moMin = a * p.traficMoParMinActif + (1 - a) * p.traficMoParMinRepos;
+  return r2((30 * 24 * 60 * borne01(occupation) * moMin) / 1000);
+}
+
+/**
+ * Où un compte entre en rotation — miroir de cloud_rotation_rejoindre :
+ *   0. déjà membre → la sienne ;
+ *   1. son ancienne maison si elle a encore de la place ;
+ *   2. l'IP en rotation la MOINS remplie (place, usure, échéance ≥ N j), la plus longue échéance à égalité ;
+ *   3. sinon une IP disponible mise en rotation, tant que le pool n'a pas atteint poolTaille ;
+ *   4. sinon null → l'essai attend en file (et l'alerte part).
+ * membres : { [ip_id]: nombre de membres } ; maisons : [{ user_id, ip_id }] ; ancienne : ip_id | null.
+ */
+export function choisirIpRotation(ips, { userId, membres = {}, maisons = [], ancienne = null, maintenant = Date.now(), p = PARAMETRES } = {}) {
+  const liste = Array.isArray(ips) ? ips : [];
+  const deja = maisons.find((m) => m.user_id === userId);
+  if (deja) return { ip: liste.find((i) => i.id === deja.ip_id) ?? null, promouvoir: false };
+  const now = instant(maintenant);
+  const g = groupeEffectif(p);
+  const couvre = (ip) => instant(ip.expire_le) >= now + p.renouvellementAvantJours * JOUR_MS;
+  const aDeLaPlace = (ip) => ip.etat === 'rotation' && couvre(ip) && (membres[ip.id] ?? 0) < g;
+  if (ancienne != null) {
+    // l'ancienne maison l'a déjà compté : pas d'usure de plus
+    const a = liste.find((i) => i.id === ancienne);
+    if (a && aDeLaPlace(a)) return { ip: a, promouvoir: false };
+  }
+  const enRotation = liste.filter((ip) => aDeLaPlace(ip) && (ip.attributions ?? 0) < p.comptesDistinctsMax)
+    .sort((a, b) => (membres[a.id] ?? 0) - (membres[b.id] ?? 0)
+      || instant(b.expire_le) - instant(a.expire_le) || Number(a.id) - Number(b.id));
+  if (enRotation.length) return { ip: enRotation[0], promouvoir: false };
+  const nbRotation = liste.filter((i) => i.etat === 'rotation').length;
+  if (nbRotation >= p.poolTaille) return null;
+  const dispo = liste.filter((i) => i.etat === 'disponible' && couvre(i) && (i.attributions ?? 0) < p.comptesDistinctsMax)
+    .sort((a, b) => instant(b.expire_le) - instant(a.expire_le) || Number(a.id) - Number(b.id));
+  return dispo.length ? { ip: dispo[0], promouvoir: true } : null;
+}
+
+/** Places libres dans la rotation (alerte, file d'attente). */
+export function placesRotation({ ips, membres = {}, p = PARAMETRES }) {
+  const g = groupeEffectif(p);
+  const liste = Array.isArray(ips) ? ips : [];
+  let places = 0;
+  for (const ip of liste) {
+    if (ip.etat !== 'rotation' || (ip.attributions ?? 0) >= p.comptesDistinctsMax) continue;
+    places += Math.max(0, g - (membres[ip.id] ?? 0));
+  }
+  const promouvables = Math.min(
+    Math.max(0, p.poolTaille - liste.filter((i) => i.etat === 'rotation').length),
+    liste.filter((i) => i.etat === 'disponible').length,
+  );
+  return places + promouvables * g;
+}
+
+/**
+ * Ce qui empêche un bail de finir — miroir de cloud_bail_bloquants (SQL) :
+ *   'job_en_cours'         — une réservation COMMENCÉE de ce poste (jobs_reservations_extension.commence) ;
+ *   'job_distribue'        — une réservation distribuée, pas commencée, non expirée, alors que la fin
+ *                            douce a moins d'un passage (2 min) : l'extension peut encore la commencer ;
+ *   'republication_en_vol' — une republication de ce compte à l'étape captured / deleted, tant que la
+ *                            prolongation n'a pas atteint son plafond.
+ */
+export function bloquantsBail({ bail, reservations = [], republications = [], maintenant = Date.now(), p = PARAMETRES }) {
+  const now = instant(maintenant);
+  const b = bail ?? {};
+  const memePoste = (r) => r.user_id === b.user_id && (b.poste == null || r.poste === b.poste);
+  const out = [];
+  if (reservations.some((r) => memePoste(r) && r.commence === true)) out.push('job_en_cours');
+  const douce = instant(b.fin_douce_le);
+  if (reservations.some((r) => memePoste(r) && r.commence !== true && instant(r.expire_le) > now)
+      && (douce == null || douce > now - p.pollMin * 60_000)) out.push('job_distribue');
+  if (republications.some((j) => j.user_id === b.user_id && ['pending', 'processing'].includes(j.status)
+      && ['captured', 'deleted'].includes(j.republish_step)) && (b.prolonge_min ?? 0) < p.prolongationMaxMin) {
+    out.push('republication_en_vol');
+  }
+  return out;
+}
+
+const MOTIFS_PRIORITE = Object.freeze({ retrait: 'priorite_retrait', vente: 'priorite_vente', republication: 'priorite_republication' });
+
+/**
+ * L'ordonnanceur (orchestrateur, chaque minute) : que faire MAINTENANT ?
+ * ips     : [{ id, etat, libre_le }]   (libre_le = fin du battement du dernier bail)
+ * membres : [{ user_id, ip_id, actif, rejoint_le, derniere_fin, priorite: null | { motif, le } }]
+ * baux    : baux ACTIFS [{ id, ip_id, user_id, motif, fin_prevue, fin_douce_le, prolonge_min, bloquants: [] }]
+ * → { finDouce: [bail], terminer: [bail], prolonger: [bail], ouvrir: [{ user_id, ip_id, motif, dureeMin }], alertes: [] }
+ * La base garde le dernier mot : un bail qui chevaucherait est refusé (exclusion), un bail
+ * bloqué n'est pas terminé (cloud_bail_terminer relit les bloquants).
+ */
+export function planifierRotation({ ips = [], membres = [], baux = [], maintenant = Date.now(), p = PARAMETRES }) {
+  const now = instant(maintenant);
+  const g = groupeEffectif(p);
+  const s = dureeSession(g, p) ?? 60;
+  const finDouce = [], terminer = [], prolonger = [], ouvrir = [], alertes = [];
+  const parIp = new Map();
+  for (const m of membres) { if (!parIp.has(m.ip_id)) parIp.set(m.ip_id, []); parIp.get(m.ip_id).push(m); }
+  const bailDeIp = new Map(baux.map((b) => [b.ip_id, b]));
+  const enSession = new Set(baux.map((b) => b.user_id));
+
+  // 1. Les baux en cours : fin douce, fin, prolongation — jamais une coupure au milieu d'un job.
+  for (const b of baux) {
+    const fin = instant(b.fin_prevue);
+    const prioritaire = String(b.motif ?? '').startsWith('priorite_');
+    const prioAutre = !prioritaire && (parIp.get(b.ip_id) ?? []).some((m) => m.user_id !== b.user_id && m.actif && m.priorite);
+    if (!b.fin_douce_le && (now >= fin - p.finDouceAvantMin * 60_000 || prioAutre)) finDouce.push(b.id);
+    if (now < fin && !prioAutre) continue;
+    const bl = Array.isArray(b.bloquants) ? b.bloquants : [];
+    if (!bl.length) { terminer.push(b.id); continue; }
+    if (now >= fin && (b.prolonge_min ?? 0) < p.prolongationMaxMin) prolonger.push(b.id);
+    else if ((b.prolonge_min ?? 0) >= p.prolongationMaxMin) {
+      alertes.push({ nature: bl.includes('job_en_cours') ? 'bail_bloque_job' : 'bail_bloque', bail: b.id, user_id: b.user_id, bloquants: bl });
+    }
+  }
+
+  // 2. Les IP libres : le prochain du groupe — la priorité d'abord, puis celui qui attend depuis le plus longtemps.
+  const ouverts = new Set();
+  for (const ip of ips) {
+    if (ip.etat !== 'rotation' || bailDeIp.has(ip.id)) continue;
+    if (ip.libre_le && instant(ip.libre_le) > now) continue;          // battement entre deux comptes
+    const cands = (parIp.get(ip.id) ?? []).filter((m) => m.actif && !enSession.has(m.user_id));
+    if (!cands.length) continue;
+    const attente = (m) => instant(m.derniere_fin) ?? instant(m.rejoint_le) ?? 0;
+    cands.sort((a, b) => (a.priorite ? 0 : 1) - (b.priorite ? 0 : 1)
+      || (a.priorite && b.priorite ? instant(a.priorite.le) - instant(b.priorite.le) : 0)
+      || attente(a) - attente(b));
+    const m = cands[0];
+    const motif = m.priorite ? (MOTIFS_PRIORITE[m.priorite.motif] ?? 'priorite_retrait')
+      : m.derniere_fin == null ? 'premiere_connexion' : 'tour';
+    ouvrir.push({ user_id: m.user_id, ip_id: ip.id, motif, dureeMin: motif === 'premiere_connexion' ? p.sessionConnexionMin : s });
+    ouverts.add(m.user_id);
+  }
+
+  // 3. Jamais un trou silencieux : T_max dépassé, priorité qui attend, groupe trop grand.
+  for (const m of membres) {
+    if (!m.actif || enSession.has(m.user_id) || ouverts.has(m.user_id)) continue;
+    const depuis = instant(m.derniere_fin) ?? instant(m.rejoint_le);
+    if (depuis != null && now - depuis > p.tMaxMin * 60_000) {
+      alertes.push({ nature: 'tmax_depasse', user_id: m.user_id, minutes: Math.floor((now - depuis) / 60_000) });
+    }
+    if (m.priorite && now - instant(m.priorite.le) > p.prioriteAttenteMaxMin * 60_000) {
+      alertes.push({ nature: 'priorite_en_attente', user_id: m.user_id, motif: m.priorite.motif });
+    }
+  }
+  for (const [ipId, ms] of parIp) if (ms.length > g) alertes.push({ nature: 'groupe_trop_grand', ip_id: ipId, membres: ms.length, g });
+  return { finDouce, terminer, prolonger, ouvrir, alertes };
+}
+
+/**
+ * Renouveler, laisser expirer, commander — en ROTATION : garder poolTaille IP utilisables.
+ *   · une IP en rotation qui a des membres est TOUJOURS renouvelée (comme celle d'un client) ;
+ *   · rebut, usée (comptesDistinctsMax) et vide, reste de quarantaine : jamais renouvelée ;
+ *   · une IP libre au-delà de poolTaille : laissée expirer ;
+ *   · il manque des IP pour atteindre poolTaille : on commande (jamais au-delà : la taille est un réglage).
+ */
+export function planDuJourRotation({ ips, membres = {}, commandesEnCours = 0, maintenant = Date.now(), p = PARAMETRES }) {
+  const now = instant(maintenant);
+  const N = p.renouvellementAvantJours * JOUR_MS;
+  const renouveler = [], laisserExpirer = [], attendre = [], candidats = [];
+  let garde = 0;
+  for (const ip of Array.isArray(ips) ? ips : []) {
+    const ech = instant(ip.expire_le) - now;
+    const n = membres[ip.id] ?? 0;
+    if (ip.etat === 'expiree') continue;
+    if (ip.etat === 'rebut') { if (ech <= N) laisserExpirer.push(ip.id); continue; }
+    if (ETATS_ATTRIBUES.includes(ip.etat)) { (ech <= N ? renouveler : attendre).push(ip.id); continue; }
+    if (ip.etat === 'rotation' && n > 0) { garde++; (ech <= N ? renouveler : attendre).push(ip.id); continue; }
+    if (ip.etat === 'quarantaine') { (ech <= N ? laisserExpirer : attendre).push(ip.id); continue; }
+    const usee = (ip.attributions ?? 0) >= p.comptesDistinctsMax;
+    if (ech > N) { if (!usee) garde++; attendre.push(ip.id); continue; }
+    if (usee) { laisserExpirer.push(ip.id); continue; }
+    candidats.push(ip);
+  }
+  candidats.sort((a, b) => (a.attributions ?? 0) - (b.attributions ?? 0) || instant(a.expire_le) - instant(b.expire_le));
+  for (const ip of candidats) { if (garde < p.poolTaille) { renouveler.push(ip.id); garde++; } else laisserExpirer.push(ip.id); }
+  const aCommander = Math.max(0, p.poolTaille - garde - Math.max(0, Math.floor(Number(commandesEnCours) || 0)));
+  return { renouveler, laisserExpirer, attendre, garde, aCommander };
+}
+
+// ── LA PURGE D'UN COMPTE QUI QUITTE LA ROTATION ──────────────────────────────
+// L'IP continue de servir les autres ; c'est le COMPTE qui est effacé : son
+// profil de navigateur détruit (aucun ne reste), son coffre vidé, sa session
+// FillSell révoquée. Preuve (version 2), relue par la base
+// (cloud_purge_compte_manques, mêmes codes, même ordre) :
+//   { version: 2, faite_le, profil: { id, detruit: true }, profils_restants: 0,
+//     coffre_restants: 0, session_fillsell_revoquee: true }
+export const CODES_PURGE_COMPTE = Object.freeze([
+  'version', 'faite_apres_depart', 'profil_detruit', 'profils_restants', 'coffre_restants', 'session_fillsell_revoquee',
+]);
+
+export function manquesPreuvePurgeCompte(preuve, quitteLe) {
+  const m = [];
+  const q = preuve && typeof preuve === 'object' ? preuve : {};
+  const dep = instant(quitteLe);
+  if (q.version !== 2) m.push('version');
+  const faite = instant(q.faite_le);
+  if (faite == null || dep == null || faite < dep) m.push('faite_apres_depart');
+  const pr = q.profil && typeof q.profil === 'object' ? q.profil : {};
+  if (!(nonVide(pr.id) && pr.detruit === true)) m.push('profil_detruit');
+  if (q.profils_restants !== 0) m.push('profils_restants');
+  if (q.coffre_restants !== 0) m.push('coffre_restants');
+  if (q.session_fillsell_revoquee !== true) m.push('session_fillsell_revoquee');
+  return m;
+}
+
+// ── LE COÛT RÉEL D'UN ESSAI EN ROTATION ──────────────────────────────────────
+// Un navigateur ne tourne que pendant un bail : à tout instant, au plus UN
+// navigateur et UN poste en base par IP. Un compte d'un groupe de g paie donc
+// 1/g de l'IP, d'une place de serveur et d'un poste en base, pendant 7 jours.
+// MESURÉ : IP (commande réelle), CPU base par poste (04/10 soir), trafic (26/09).
+// ESTIMÉ : serveur (CX43, 15 à 25 navigateurs), prix de l'instance Small.
+// À pool PLEIN : un pool à moitié vide coûte deux fois plus par essai.
+export function coutEssaiRotation({ g, jours = ESSAI_JOURS, p = PARAMETRES }) {
+  const gg = Math.max(1, Math.floor(Number(g) || 1));
+  const ip = (jours * ipEurJour(p)) / gg;
+  const placeJour = (n) => p.serveurEurMois / 30 / n;
+  const serveurMin = (jours * placeJour(p.navigateursParServeurMax)) / gg;
+  const serveurMax = (jours * placeJour(p.navigateursParServeurMin)) / gg;
+  const baseJour = (pct) => ((p.baseInstanceUsdMois * p.tauxUsdEur) / 30) * (pct / 100);
+  const baseMin = (jours * baseJour(p.baseCpuPctParPosteMin)) / gg;
+  const baseMax = (jours * baseJour(p.baseCpuPctParPosteMax)) / gg;
+  const carte = p.carteEurParEssai ?? 0;
+  return {
+    g: gg, jours,
+    ipEur: r2(ip),
+    serveurEur: [r2(serveurMin), r2(serveurMax)],
+    baseEur: [Math.round(baseMin * 1000) / 1000, Math.round(baseMax * 1000) / 1000],
+    carteEur: carte,
+    totalEur: [r2(ip + serveurMin + baseMin + carte), r2(ip + serveurMax + baseMax + carte)],
+  };
+}
+
+/** Le tableau du doc : groupes de 1 à 4 × T_max 15 / 30 / 60, coût d'un essai et par client gagné. */
+export function tableauCoutsRotation({ groupes = [1, 2, 3, 4], tMax = [15, 30, 60], conversions = [0.10, 0.25, 0.40], p = PARAMETRES } = {}) {
+  return groupes.map((g) => {
+    const cout = coutEssaiRotation({ g, p });
+    const parT = tMax.map((t) => {
+      const q = { ...p, tMaxMin: t };
+      return { tMax: t, possible: g <= groupeEffectif(q), sessionMin: dureeSession(g, q) };
+    });
+    const parClient = conversions.map((c) => ({ c, totalEur: [r2(cout.totalEur[0] / c), r2(cout.totalEur[1] / c)] }));
+    return { g, cout, parT, parClient };
+  });
 }
