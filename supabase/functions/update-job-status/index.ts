@@ -1537,7 +1537,41 @@ serve(async (req) => {
           // — un geste demandé pour une panne de chez nous, sur une annonce
           // intacte. Les reprises s'ESPACENT à la place (0, 10, 30 min, 2 h,
           // puis 6 h ; muet : 30 min, 1 h, 2 h, puis 6 h), avec le vrai motif.
-          {
+          // ── PLUS DE BOUCLE SILENCIEUSE (04/10, Nico — Ciddjy, 11 republications
+          // rejouées jusqu'à 7 fois dans la nuit, « rien à faire de ton côté »).
+          // Le même échec, répété, n'est plus une panne passagère : au 3ᵉ onglet
+          // muet (au 4ᵉ canal coupé) le job SORT de la boucle, en needs_user
+          // « relancer », avec un message vrai (ce qui se passe, le geste qui
+          // répare : relancer Chrome), et une trace pour nous (boucle_technique,
+          // remontée par l'ops-digest). L'annonce est intacte : étape captured.
+          const seuilBoucle = canalCoupeParTimeout ? 3 : 4;
+          if (deja + 1 >= seuilBoucle) {
+            const { next_action_after: _naoX, ...pfSansX } = pfBody;
+            pfCanalCoupe = {
+              ...pfSansX,
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              canal_coupe_rejoue: deja + 1,
+              needs_user_source: "relancer",
+              boucle_technique: {
+                le: new Date().toISOString(),
+                essais: deja + 1,
+                signature: canalCoupeParTimeout ? "onglet_muet" : "canal_coupe",
+                build: String(body.handler_build ?? "").slice(0, 80) || null,
+                motif: body.error.slice(0, 300),
+                depuis: (pfBase.boucle_technique as Record<string, unknown> | undefined)?.["depuis"] ?? new Date().toISOString(),
+              },
+            };
+            statutEffectif = "needs_user";
+            messageEffectif = canalCoupeParTimeout
+              ? `L'extension FillSell ne répond plus dans l'onglet Vinted de ton ordinateur (${deja + 1} essais de suite) : ` +
+                "la republication n'a pas pu se faire. Ton annonce est intacte, rien n'a été retiré. " +
+                "Ferme complètement Chrome puis rouvre-le (ça recharge l'extension), et appuie sur « Relancer ». " +
+                "Si ça bloque encore, écris-nous : c'est de notre côté, on regarde."
+              : `La republication s'interrompt chaque fois au même moment sur ton ordinateur (${deja + 1} essais de suite, l'onglet Vinted se ferme) : ` +
+                "ton annonce est intacte, rien n'a été retiré. Ferme complètement Chrome puis rouvre-le, et appuie sur « Relancer ». " +
+                "Si ça bloque encore, écris-nous : c'est de notre côté, on regarde.";
+            raisonRequalif = `${canalCoupeParTimeout ? "onglet muet" : "canal coupé"} ${deja + 1} fois de suite à l'étape captured → sortie de boucle (needs_user relancer, boucle_technique)`;
+          } else {
             const reprise = deja + 1;
             const delaiReprise = canalCoupeParTimeout
               ? ([30, 60, 120][reprise - 1] ?? 360)

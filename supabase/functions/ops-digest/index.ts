@@ -147,6 +147,19 @@ serve(async (req) => {
     .lt("created_at", iso24h)
     .order("created_at", { ascending: true });
 
+  // 3 bis. (04/10, Nico) Boucles techniques ARRÊTÉES : un job qui a refait le
+  // même échec (onglet muet, canal coupé) jusqu'au seuil sort de la boucle
+  // (update-job-status, platform_fields.boucle_technique) — c'est ICI qu'on le
+  // voit, en rouge : la personne a un message vrai, nous la cause à corriger.
+  const { data: boucles, error: e3b } = await supabase
+    .from("cross_post_jobs")
+    .select(JOB_COLUMNS)
+    .eq("status", "needs_user")
+    .not("platform_fields->boucle_technique", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (e3b) console.error("[ops-digest] boucles techniques :", e3b.message);
+
   // 4. Veille Beebs : publiés < 7 jours puis drapés unavailable.
   const { data: beebsRecent, error: e4 } = await supabase
     .from("cross_post_jobs")
@@ -762,6 +775,7 @@ serve(async (req) => {
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
     delete_overdue: (deletesOverdue ?? []).length,
+    boucles_techniques: (boucles ?? []).length,
     beebs_unavailable_7d: beebsWatch.length,
     iap_alerts: iapAlerts.length,
     awaiting_payment: awaitingRows.length,
@@ -818,6 +832,16 @@ serve(async (req) => {
   }
     ${section("Jobs en échec (24 h)", (failed ?? []) as Job[])}
     ${section("Bloqués en processing > 15 min (repêchage inopérant)", stuck)}
+    ${
+    section(
+      "🔴 Boucles techniques arrêtées — même échec répété, sorti de la boucle (à corriger chez nous)",
+      (boucles ?? []) as Job[],
+      (j) => {
+        const b = (j.platform_fields?.boucle_technique ?? {}) as Record<string, unknown>;
+        return `${esc(b.signature)} × ${esc(b.essais)} — build ${esc(b.build)} — depuis ${esc(b.depuis)}`;
+      },
+    )
+  }
     ${
     section(
       "🔴 Retraits (delete) non terminés > 24 h — risque de double vente",
