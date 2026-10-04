@@ -87,8 +87,14 @@ ok(/avantRetraitB && !posteFormatExplicite/.test(blocS) && /version_min: "0\.6\.
 ok(/build_min \?\? ""\) === BUILD_BEEBS_FORMAT_EXPLICITE/.test(blocS) && /if \(minRetenue !== BUILD_BEEBS_ADRESSE_STRICTE\) continue;/.test(gpj),
   "chaque retenue « mise à jour » ne lève que la sienne (pas de va-et-vient)");
 const corr = lire("supabase/functions/_shared/correctifs-extension.js");
-const lc = lire("scripts/build-id.mjs").match(/export const EXTENSION_LAST_COMMIT = '([^']+)'/)?.[1];
-ok(new RegExp(`BUILD_BEEBS_FORMAT_EXPLICITE = "${lc}"`).test(corr), "le seuil = le commit du correctif (EXTENSION_LAST_COMMIT de la 0.6.95)", `LAST_COMMIT ${lc}`);
+// Le commit de la 0.6.95 : EXTENSION_LAST_COMMIT tant qu'elle était la
+// dernière, puis la ligne « (avant : '…' = 0.6.95 » quand une version plus
+// récente l'a recalé (0.6.96, 04/10 soir). Le seuil, lui, ne bouge pas : toute
+// version postérieure contient le correctif.
+const buildId = lire("scripts/build-id.mjs");
+const lc = buildId.match(/export const EXTENSION_LAST_COMMIT = '([^']+)'; \/\/ 0\.6\.95 /)?.[1]
+  ?? buildId.match(/\(avant : '([^']+)' = 0\.6\.95,/)?.[1];
+ok(Boolean(lc) && new RegExp(`BUILD_BEEBS_FORMAT_EXPLICITE = "${lc}"`).test(corr), "le seuil = le commit du correctif (EXTENSION_LAST_COMMIT de la 0.6.95)", `commit 0.6.95 ${lc}`);
 
 console.log("\n5. LEBONCOIN : LA REPUBLICATION REPREND LA LIVRAISON DE L'ANNONCE");
 const blocL = gpj.slice(gpj.indexOf("LA LIVRAISON DE L'ANNONCE, REPRISE AU REDÉPÔT"), gpj.indexOf("« POIDS DU COLIS* » DU FORMULAIRE PRO, RELU EN TRANCHE"));
