@@ -21,6 +21,7 @@
     "selftest:relecture-bornee": "node --import ./scripts/loader-ext.mjs scripts/relecture-bornee-selftest.mjs",
     "selftest:veille-cpu": "node scripts/veille-cpu-selftest.mjs",
     "selftest:cloud-pool": "node scripts/cloud-pool-selftest.mjs",
+    "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
     "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
     "selftest:opla-sortie": "node scripts/opla-sortie-selftest.mjs",
