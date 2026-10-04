@@ -204,6 +204,15 @@ verify_jwt = false
 [functions.ebay-ventes-sync]
 verify_jwt = false
 
+# Relevé eBay d'un compte relié, par l'API (04/10, Louis) et lecture des
+# annonces sans ouvrir leur page (index Beebs, Browse eBay) : pg_cron seul,
+# garde x-cron-secret.
+[functions.ebay-releve-api]
+verify_jwt = false
+
+[functions.releve-completer]
+verify_jwt = false
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
 # eBay par API (lot 0-1, 05/09) : appelées par l'app avec le JWT utilisateur.
 [functions.ebay-oauth-start]

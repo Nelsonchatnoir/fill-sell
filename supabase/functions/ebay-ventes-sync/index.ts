@@ -133,8 +133,13 @@ Deno.serve(async (req) => {
   const env = lireEnvEbay();
   const bornePlancher = new Date(Date.now() - FENETRE_MAX_J * 86400_000);
 
-  const { data: comptes, error: errComptes } = await admin
-    .from("ebay_accounts").select("user_id").is("revoked_at", null).limit(200);
+  // (04/10) Un seul compte quand l'appelant le nomme : le relevé eBay par
+  // l'API (ebay-releve-api) relève les ventes du compte qu'il vient de lire.
+  // Sans user_id : tous les comptes reliés, comme le passage du matin.
+  const seul = typeof corps?.user_id === "string" && /^[0-9a-f-]{36}$/i.test(corps.user_id) ? corps.user_id : null;
+  let reqComptes = admin.from("ebay_accounts").select("user_id").is("revoked_at", null);
+  if (seul) reqComptes = reqComptes.eq("user_id", seul);
+  const { data: comptes, error: errComptes } = await reqComptes.limit(200);
   if (errComptes) return json({ error: errComptes.message }, 500);
 
   const filtreDepuis = (d: Date) => `creationdate:%5B${d.toISOString().replace(/\.\d{3}Z$/, ".000Z")}..%5D`;
