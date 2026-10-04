@@ -178,11 +178,12 @@ function Liste({ titre, lignes, ton }) {
 
 /**
  * Après la fin de l'essai, option non gardée.
- * actions : { ajouter?, voirFormules?, extension? } — un geste absent = pas de bouton.
+ * actions : { ajouter?, extension? } — un geste absent = pas de bouton. Depuis le
+ * 04/10 soir, un compte Free reprend l'option comme les autres (Free + Sans ordinateur).
  */
 export function EcranEssaiTermine({ lang = 'fr', nomPalier = null, actions = {}, onFermer }) {
   const T = textesCloud(lang);
-  const reprendre = nomPalier ? actions.ajouter : actions.voirFormules;
+  const reprendre = actions.ajouter;
   return (
     <Feuille onFermer={onFermer} etiquette={T.finTitre}>
       <div data-cloud="fin">
@@ -194,7 +195,7 @@ export function EcranEssaiTermine({ lang = 'fr', nomPalier = null, actions = {},
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {typeof reprendre === 'function' && (
-            <button type="button" onClick={reprendre} style={bouton(true)}>{nomPalier ? T.finCtaAjouter : T.voirFormules}</button>
+            <button type="button" onClick={reprendre} style={bouton(true)}>{T.finCtaAjouter}</button>
           )}
           {typeof actions.extension === 'function' && (
             <button type="button" onClick={actions.extension} style={bouton(false)}>{T.finCtaExtension}</button>
