@@ -1056,8 +1056,9 @@ const LensTab = memo(function LensTab({
             openLensEditModal={openLensEditModal}
             onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
             // ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
-            // `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL
-            // (App.jsx) — un Free comme un Premium standard ne voyaient donc
+            // `isPro && !lensResult.error`, et isPro valait alors profiles.is_pro
+            // seul (App.jsx ; « au moins Pro » depuis le 04/10, utils/palier.js) —
+            // un Free comme un Premium standard ne voyaient donc
             // jamais « Créer une annonce » depuis Lens, exactement comme dans
             // StockTab. Tout le monde cross-poste ; la différenciation se fait
             // aux unités, côté serveur.

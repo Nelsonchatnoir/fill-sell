@@ -23,6 +23,7 @@ import { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 // unité dans cette modale.)
 import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard } from './ConversionModal';
 import { businessOfferVisible } from '../config/businessOffer';
+import { palierDesDrapeaux } from '../utils/palier';
 
 const C = {
   canvas: '#EDEAE0',
@@ -93,7 +94,9 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
   const K = cfg || COIN_CONFIG_FALLBACK;
   // Bascule quotas (02/09) : le plan se décrit en GESTES RÉELS lus dans
   // coin_config — plus une unité à l'écran. Le palier courant pilote les clés.
-  const palierCourant = isBusiness ? 'business' : isPro ? 'pro' : 'premium';
+  // Le palier : le calcul unique (utils/palier.js). Cette modale ne s'ouvre
+  // que pour un abonné : au moins Premium, Pro et Business au-dessus.
+  const palierCourant = palierDesDrapeaux({ isPremium: true, isPro, isBusiness });
   const qAnnonces = K[`quota_annonces_${palierCourant}`];
   const qRetouches = K[`quota_retouche_${palierCourant}`] ?? 0;
   const qRepub = K[`quota_republication_${palierCourant}`];

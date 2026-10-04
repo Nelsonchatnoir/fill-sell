@@ -147,6 +147,7 @@ import BandeauSortieOpla from './components/BandeauSortieOpla';
 import CarteAvis from './components/CarteAvis';
 import { useSortieOpla } from './hooks/useSortieOpla';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
+import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -2201,13 +2202,16 @@ export default function App({ loginOnly = false }){
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
-  const [isPremium,setIsPremium]=useState(false);
-  const [isPro,setIsPro]=useState(false);
-  // Flags CUMULATIFS : un Business porte AUSSI is_pro et is_premium. isBusiness
-  // n'ouvre donc aucun droit de plus (les gates isPro le couvrent d'office) —
-  // il sert à NOMMER le palier, et doit être testé avant isPro partout où un
-  // libellé est choisi (badge, « ton plan actuel », modales). 2026-08-09.
-  const [isBusiness,setIsBusiness]=useState(false);
+  // LE PALIER — un seul état, un seul calcul (utils/palier.js, 04/10/2026).
+  // Les trois drapeaux passés aux écrans en DÉCOULENT et s'emboîtent :
+  // Business ⇒ Pro ⇒ Premium. Avant, `isPro` valait `profiles.is_pro` seul :
+  // un Business sans ce drapeau perdait les droits Pro. isBusiness reste testé
+  // AVANT isPro partout où un libellé est choisi (badge, « ton plan actuel »).
+  // `monterPalier` (achat, restauration) ne fait jamais DESCENDRE le palier ;
+  // seul fetchAll, qui relit la base, le pose tel quel.
+  const [palier,setPalier]=useState('gratuit');
+  const {isPremium,isPro,isBusiness}=droitsDuPalier(palier);
+  const monterPalier=(cible)=>setPalier((p)=>palierLePlusHaut(p,cible));
   const [lensInventaireId,setLensInventaireId]=useState(null);
   const [listingStepperOpen,setListingStepperOpen]=useState(false);
   const [aiCache,setAiCache]=useState({});
@@ -2941,8 +2945,7 @@ export default function App({ loginOnly = false }){
       // d'appel, qui ne dit pas ce que le serveur a réellement fait.
       if(upgraded||already_pro){
         const cible=tier??product??'standard';
-        setIsPremium(true);setIsPro(true);
-        if(cible==='business') setIsBusiness(true);
+        monterPalier(cible==='business'?'business':'pro');
         if(upgraded){
           track('purchase',{currency:'EUR',value:prixAffiche});
           setShowPremiumWelcome(true);
@@ -3101,9 +3104,7 @@ export default function App({ loginOnly = false }){
       // ci-dessus. Dans les deux cas on ne croit que le serveur.
       const confirme=await attendreConfirmationServeur(user.id,{pro:isProPurchase||isBusinessPurchase,business:isBusinessPurchase});
       if(!confirme) throw new Error('Premium not confirmed by server');
-      setIsPremium(true);
-      if(isProPurchase||isBusinessPurchase) setIsPro(true); // cumulatif : Business ⊇ Pro
-      if(isBusinessPurchase) setIsBusiness(true);
+      monterPalier(isBusinessPurchase?'business':isProPurchase?'pro':'premium'); // cumulatif : Business ⊇ Pro ⊇ Premium
       setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
@@ -3122,9 +3123,7 @@ export default function App({ loginOnly = false }){
           &&(!isBusinessPurchase||data?.is_business===true)
           &&(platform!=='android'||data?.google_product_id===productId);
         if(droitAcquis){
-          setIsPremium(true);
-          if(isProPurchase||isBusinessPurchase) setIsPro(true);
-          if(isBusinessPurchase) setIsBusiness(true);
+          monterPalier(isBusinessPurchase?'business':isProPurchase?'pro':'premium');
           setShowPremiumWelcome(true);
           return;
         }
@@ -3161,9 +3160,7 @@ export default function App({ loginOnly = false }){
         }
         const confirme=await attendreConfirmationServeur(user.id,{pro:estPro,business:estBusiness});
         if(!confirme) throw new Error('Premium not confirmed by server');
-        setIsPremium(true);
-        if(estPro) setIsPro(true);
-        if(estBusiness) setIsBusiness(true);
+        monterPalier(estBusiness?'business':estPro?'pro':'premium');
         setShowPremiumWelcome(true);
       }else{
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
@@ -3178,9 +3175,7 @@ export default function App({ loginOnly = false }){
           .select('is_premium,is_pro,is_business').eq('id',user.id).maybeSingle();
         if(error)console.warn('[IAP] relecture après échec restore:',error.message);
         if(data?.is_premium===true){
-          setIsPremium(true);
-          if(data?.is_pro===true) setIsPro(true);
-          if(data?.is_business===true) setIsBusiness(true);
+          monterPalier(palierDuProfil(data));
           setShowPremiumWelcome(true);
           return;
         }
@@ -3401,19 +3396,16 @@ export default function App({ loginOnly = false }){
       buildMarqueRef.current=true;
       supabase.rpc('set_app_build',{p_build:APP_BUILD_ID}).then(()=>{}).catch(()=>{});
     }
-    // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
-    // = source de vérité maintenue par les flux de paiement (Stripe/Apple/Google),
-    // is_comped = comptes offerts. is_founder et les ids Apple/Google résiduels
-    // ne valent PLUS statut premium — un abonnement résilié/expiré = free.
-    let premiumValue=!!(p.data?.is_premium||p.data?.is_pro||p.data?.is_comped);
-    console.log('[fetchAll] premium fields from Supabase:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_comped:p.data?.is_comped}, '→ resolved:', premiumValue, p.error?'ERROR:'+p.error.message:'');
+    // LE PALIER, un seul calcul (utils/palier.js, 04/10) : is_business, puis
+    // is_pro, puis l'expression premium canonique du 25/07 (is_premium OR
+    // is_pro OR is_comped) — le même ordre que republish_palier côté serveur.
+    // is_founder et les ids Apple/Google résiduels ne valent JAMAIS un palier :
+    // un abonnement résilié/expiré = gratuit.
+    const palierLu=palierDuProfil(p.data);
+    const premiumValue=droitsDuPalier(palierLu).isPremium;
+    console.log('[fetchAll] palier lu sur profiles:', {is_premium:p.data?.is_premium,is_pro:p.data?.is_pro,is_business:p.data?.is_business,is_comped:p.data?.is_comped}, '→', palierLu, p.error?'ERROR:'+p.error.message:'');
     if(!p.error){
-      setIsPremium(premiumValue);
-      setIsPro(p.data?.is_pro===true);
-      // is_business n'entre PAS dans premiumValue : l'expression canonique du
-      // 2026-07-25 (CLAUDE.md) est identique partout et un Business porte de
-      // toute façon is_premium ET is_pro. Il ne sert qu'à nommer le palier.
-      setIsBusiness(p.data?.is_business===true);
+      setPalier(palierLu);
       setUsername(p.data?.username||'');
       setSettingsLbcRue(p.data?.platform_settings?.leboncoin?.rue||'');
       setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
@@ -9433,7 +9425,7 @@ export default function App({ loginOnly = false }){
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
-        <PremiumWelcomeModal lang={lang} tier={isBusiness?'business':isPro?'pro':'premium'} onClose={()=>setShowPremiumWelcome(false)}/>
+        <PremiumWelcomeModal lang={lang} tier={palier==='gratuit'?'premium':palier} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
       {/* ── MODALE « MON PLAN » (badge du header) ──

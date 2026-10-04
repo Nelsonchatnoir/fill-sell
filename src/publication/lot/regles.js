@@ -9,6 +9,7 @@
 // Aucune ne lit le réseau, aucune n'écrit.
 import { computeRemovalInfo, plateformesReserveesParRepublication, estArretUtilisateur, vintedPresenceArticle } from "../../utils/publicationState.js";
 import { attentesParPlateforme } from "../../utils/etatsPublication.js";
+import { PALIERS as PALIERS_COMPTE, palierDesDrapeaux } from "../../utils/palier.js";
 
 // Opla quitte FillSell le 10/10 : jamais dans un lot, ni avant ni après.
 export const PLATEFORMES_LOT = Object.freeze(["vinted", "leboncoin", "ebay", "beebs"]);
@@ -330,14 +331,12 @@ export function groupesReponseCommune(entrees) {
 //    Google, carte → Stripe. Payé ailleurs que sur cet appareil : on le dit et
 //    on montre où, on ne lance JAMAIS un second abonnement.
 
-export const PALIERS = Object.freeze(["gratuit", "premium", "pro", "business"]);
+export const PALIERS = PALIERS_COMPTE;
 
 /** Le palier d'un compte, avec l'expression canonique du premium (pur). */
 export function palierCourant({ isPremium = false, isPro = false, isBusiness = false } = {}) {
-  if (isBusiness) return "business";
-  if (isPro) return "pro";
-  if (isPremium) return "premium";
-  return "gratuit";
+  // Le calcul unique (utils/palier.js, 04/10) : Business ⇒ Pro ⇒ Premium.
+  return palierDesDrapeaux({ isPremium, isPro, isBusiness });
 }
 
 /** Le palier juste au-dessus, ou null (Business, ou offre Business masquée). */

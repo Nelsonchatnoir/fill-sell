@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import { supabase } from '../lib/supabase';
 import { businessOfferVisible } from '../config/businessOffer';
+import { PALIERS, palierDesDrapeaux } from '../utils/palier';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -679,7 +680,7 @@ export default function ConversionModal({
   // le rang courant se lit du HAUT vers le bas, et n'est vendable que ce qui
   // est STRICTEMENT au-dessus.
   const RANG = { premium: 1, pro: 2, business: 3 };
-  const rangCourant = isBusiness ? 3 : isPro ? 2 : isPremium ? 1 : 0;
+  const rangCourant = PALIERS.indexOf(palierDesDrapeaux({ isPremium, isPro, isBusiness })); // utils/palier.js
   // 'business' n'est dans les targetTiers d'aucun appelant (ils sont tous
   // antérieurs au palier) : on l'ajoute ICI, sous drapeau, plutôt que de
   // toucher les 6 sites d'appel de ListingPreviewScreen — et le drapeau baissé
