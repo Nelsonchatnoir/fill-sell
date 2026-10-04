@@ -22,8 +22,9 @@
 // de candidats toutes les deux minutes. Seul l'écran des Réglages demande
 // `multi: true`.
 // ═══════════════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { palierNormalise } from '../utils/palier';
 
 // L'ordre d'affichage, et la seule liste : eBay n'y est pas et n'y sera pas
 // (voie API, on ne republie pas — garde-fou du 17/09).
@@ -91,14 +92,59 @@ export function republicationPlanifieeExposee({ etat, parPlateforme, interrupteu
   return etat?.reglage != null && typeof etat.reglage === 'object';
 }
 
+// ── LE DROIT, TEL QUE L'ÉCRAN PEUT L'AFFIRMER (04/10/2026, Louis) ───────────
+// `autorise` vient du serveur et fait foi — QUAND il est là. Sans état serveur
+// (lecture en cours ou ratée), on ne sait pas : l'écran ne refuse rien, il dit
+// qu'il lit. Le nom du palier vient du serveur, sinon du palier de l'app
+// (utils/palier.js, le même calcul partout) : un Business n'est jamais
+// présenté « Pro » faute de réponse.
+//   etatServeur : republish_planifiee_etat_multi() ou l'état d'une plateforme.
+//   → { connu, autorise (true|false|null), refuse, lecture, palier, nomPalier }
+export function droitRepublication(etatServeur, { palierApp = null, lecture = 'ok' } = {}) {
+  const serveur = etatServeur && typeof etatServeur === 'object' && !etatServeur.error ? etatServeur : null;
+  const palier = palierNormalise(serveur?.palier) ?? palierNormalise(palierApp);
+  const nomPalier = palier === 'business' ? 'Business' : 'Pro';
+  if (!serveur) {
+    return { connu: false, autorise: null, refuse: false, lecture: lecture === 'echec' ? 'echec' : 'en_cours', palier, nomPalier };
+  }
+  const autorise = serveur.autorise === true;
+  return { connu: true, autorise, refuse: !autorise, lecture: 'ok', palier, nomPalier };
+}
+
+// ── LE DERNIER ÉTAT CONNU (04/10/2026, Louis) ─────────────────────────────
+// Le Stock et les Réglages lisent le MÊME état, chacun par son hook. Les
+// Réglages sont montés à neuf à chaque ouverture : sans mémoire, leur écran
+// s'ouvrait VIDE le temps de la lecture (jusqu'à 75 s le 04/10, base
+// saturée), et un état vide se lisait « Réservée au plan Pro » et « Non
+// réglée » chez un compte Business réglé sur trois plateformes. Désormais :
+//   · un hook monté à neuf part du dernier état LU pour ce compte (mémoire du
+//     module, jamais un état inventé) et le relit aussitôt ;
+//   · une lecture ratée GARDE le dernier état lu — elle ne l'efface plus ;
+//   · `lecture` dit où on en est : 'en_cours' (rien de lu encore), 'ok',
+//     'echec' (rien de lu, la lecture a échoué). Un écran sans état dit
+//     « lecture » ou « illisible », JAMAIS « réservée » ni « non réglée ».
+const dernierEtat = new Map(); // `${userId}:multi|un` → { etatMulti, etat, interrupteur }
+
 // ── LE HOOK — une lecture, un poll de 2 min onglet visible, une écriture. ───
 export function useRepublicationPlanifiee({ userId, poll = true, multi = false }) {
-  const [etatMulti, setEtatMulti] = useState(null);       // republish_planifiee_etat_multi() | null
-  const [etat, setEtat] = useState(null);                 // la plateforme Vinted (compat)
-  const [interrupteur, setInterrupteur] = useState(null); // coin_config.republish_planifiee_actif | null
+  const cle = `${userId ?? ''}:${multi ? 'multi' : 'un'}`;
+  const connu = userId ? (dernierEtat.get(cle) ?? null) : null;
+  const [etatMulti, setEtatMulti] = useState(connu?.etatMulti ?? null);       // republish_planifiee_etat_multi() | null
+  const [etat, setEtat] = useState(connu?.etat ?? null);                      // la plateforme Vinted (compat)
+  const [interrupteur, setInterrupteur] = useState(connu?.interrupteur ?? null); // coin_config.republish_planifiee_actif | null
   const [chargement, setChargement] = useState(true);
+  const [lecture, setLecture] = useState(connu ? 'ok' : 'en_cours');
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState(null);
+  const etatMultiRef = useRef(etatMulti); etatMultiRef.current = etatMulti;
+  const etatRef = useRef(etat); etatRef.current = etat;
+  const interrupteurRef = useRef(interrupteur); interrupteurRef.current = interrupteur;
+
+  // Toute écriture d'état passe par ici : l'écran ET la mémoire du module.
+  const retenir = useCallback((m, e, i) => {
+    setEtatMulti(m); setEtat(e); setInterrupteur(i);
+    if (userId) dernierEtat.set(cle, { etatMulti: m, etat: e, interrupteur: i });
+  }, [userId, cle]);
 
   const lire = useCallback(async () => {
     if (!userId) return;
@@ -108,21 +154,24 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
         supabase.from('coin_config').select('value').eq('key', 'republish_planifiee_actif').maybeSingle(),
       ]);
       if (error || !data || data.error) {
-        setEtatMulti(null); setEtat(null);
-      } else if (multi) {
-        setEtatMulti(data);
-        setEtat((Array.isArray(data.plateformes) ? data.plateformes : []).find((p) => p?.platform === 'vinted') ?? null);
-      } else {
-        setEtatMulti(null); setEtat(data);
+        // Lecture ratée : le dernier état lu RESTE (un raté n'efface rien).
+        setLecture((l) => (l === 'ok' ? 'ok' : 'echec'));
+        return;
       }
       // Clé illisible → null : « inconnu » ne vaut jamais « allumé ».
-      setInterrupteur(cfg?.error || cfg?.data == null ? null : Number(cfg.data.value));
+      const inter = cfg?.error || cfg?.data == null ? null : Number(cfg.data.value);
+      if (multi) {
+        retenir(data, (Array.isArray(data.plateformes) ? data.plateformes : []).find((p) => p?.platform === 'vinted') ?? null, inter);
+      } else {
+        retenir(null, data, inter);
+      }
+      setLecture('ok');
     } catch {
-      setEtatMulti(null); setEtat(null); setInterrupteur(null);
+      setLecture((l) => (l === 'ok' ? 'ok' : 'echec'));
     } finally {
       setChargement(false);
     }
-  }, [userId, multi]);
+  }, [userId, multi, retenir]);
 
   useEffect(() => {
     if (!userId) return undefined;
@@ -155,11 +204,10 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
       if (error) { setErreur('reseau'); return { ok: false, reason: 'reseau' }; }
       if (!data?.ok) { setErreur(data?.reason ?? 'inconnu'); return data ?? { ok: false, reason: 'inconnu' }; }
       const { ok: _ok, ...reste } = data;
-      if (platform === 'vinted') setEtat(reste);
-      setEtatMulti((m) => {
-        if (!m || !Array.isArray(m.plateformes)) return m;
-        return { ...m, plateformes: m.plateformes.map((p) => (p?.platform === platform ? reste : p)) };
-      });
+      const m = etatMultiRef.current;
+      const nouveauMulti = (!m || !Array.isArray(m.plateformes)) ? m
+        : { ...m, plateformes: m.plateformes.map((p) => (p?.platform === platform ? reste : p)) };
+      retenir(nouveauMulti, platform === 'vinted' ? reste : etatRef.current, interrupteurRef.current);
       return data;
     } catch {
       setErreur('reseau');
@@ -167,7 +215,7 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [retenir]);
 
   // « Tout mettre en pause » / « Tout relancer » : le serveur mémorise quelles
   // plateformes étaient actives et ne relance QUE celles-là.
@@ -178,8 +226,7 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
       if (error) { setErreur('reseau'); return { ok: false, reason: 'reseau' }; }
       if (!data?.ok) { setErreur(data?.reason ?? 'inconnu'); return data ?? { ok: false, reason: 'inconnu' }; }
       const { ok: _ok, plateformes: _n, ...reste } = data;
-      setEtatMulti(reste);
-      setEtat((Array.isArray(reste.plateformes) ? reste.plateformes : []).find((p) => p?.platform === 'vinted') ?? null);
+      retenir(reste, (Array.isArray(reste.plateformes) ? reste.plateformes : []).find((p) => p?.platform === 'vinted') ?? null, interrupteurRef.current);
       return data;
     } catch {
       setErreur('reseau');
@@ -187,7 +234,7 @@ export function useRepublicationPlanifiee({ userId, poll = true, multi = false }
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [retenir]);
 
-  return { etat, etatMulti, parPlateforme, interrupteur, chargement, busy, erreur, recharger: lire, regler, pauseGenerale };
+  return { etat, etatMulti, parPlateforme, interrupteur, chargement, lecture, busy, erreur, recharger: lire, regler, pauseGenerale };
 }

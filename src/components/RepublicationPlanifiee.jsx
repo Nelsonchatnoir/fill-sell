@@ -51,7 +51,7 @@ import { track } from '../analytics/analytics';
 import { useFondFige } from '../utils/modale';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { humanizeJobError } from '../utils/shared';
-import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
+import { fuseauLocal, extensionRefuse, nombreAttendu, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
 
 // Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
@@ -311,13 +311,16 @@ function texteManque(manque, pf, fr) {
 // ═══════════════════════════════════════════════════════════════════════════
 // SYNTHÈSE D'ÉTAT — une seule lecture de l'état pour les trois surfaces.
 // ═══════════════════════════════════════════════════════════════════════════
-function synthese(etat, { fr, enService, extensionStatus, session = null }) {
+function synthese(etat, { fr, enService, extensionStatus, session = null, lecture = 'ok' }) {
+  // (04/10) Sans état serveur, on NE SAIT PAS : ni refus, ni « inactive ».
+  const inconnu = etat == null;
   const r = etat?.reglage ?? null;
   const pf = etat?.platform ?? 'vinted';
   const manquePf = manqueDePlateforme(etat, session);
   const fuseau = r?.fuseau ?? fuseauLocal();
   const actif = etat?.actif === true;
   const autorise = etat?.autorise === true;
+  const refuse = !inconnu && !autorise;
   const creneau = r?.creneau ?? 'matin';
   const de = r?.de ?? PRESETS[creneau]?.de ?? '08:00';
   const a = r?.a ?? PRESETS[creneau]?.a ?? '10:00';
@@ -347,8 +350,12 @@ function synthese(etat, { fr, enService, extensionStatus, session = null }) {
 
   // La ligne d'état sous le titre : UNE phrase, la plus utile.
   let etatLigne; let etatTon = 'mute';
-  if (!actif) {
-    if (!autorise) { etatLigne = fr ? 'Réservée au plan Pro' : 'Pro plan feature'; }
+  if (inconnu) {
+    etatLigne = lecture === 'echec'
+      ? (fr ? 'Réglages illisibles pour l’instant — on réessaie' : 'Settings unreadable for now — retrying')
+      : (fr ? 'Lecture de tes réglages…' : 'Reading your settings…');
+  } else if (!actif) {
+    if (refuse) { etatLigne = fr ? 'Réservée au plan Pro' : 'Pro plan feature'; }
     else if (moteurLegacy) { etatLigne = fr ? 'Mode classique en cours' : 'Classic mode running'; etatTon = 'amber'; }
     else if (invalide && invalide !== 'palier') { etatLigne = fr ? 'Réglage à corriger' : 'Setting needs fixing'; etatTon = 'amber'; }
     else { etatLigne = fr ? 'Inactive' : 'Off'; }
@@ -451,7 +458,7 @@ function synthese(etat, { fr, enService, extensionStatus, session = null }) {
                 : 'At the real pace of your reposts, pauses included. The others wait for the next slot — never a burst.' };
   }
 
-  return { r, pf, manquePf, disjoncteur, fuseau, actif, autorise, creneau, de, a, jours, fen, dans, prochain, fin,
+  return { r, pf, manquePf, disjoncteur, fuseau, actif, autorise, inconnu, refuse, creneau, de, a, jours, fen, dans, prochain, fin,
     quota, faits, quotaConnu, quotaPlein, quotaProche,
     dernier, manque, ext, nombre, moteurLegacy, invalide, etatLigne, etatTon, avis, blocage, faitesLive };
 }
@@ -610,10 +617,10 @@ function EcranPlein({ titre, sousTitre, onClose, droite = null, children, pied =
 // LE NOMBRE TOTAL est borné par l'ENVELOPPE DE COMPTE (le plafond du palier
 // vaut pour les quatre réunies) et vaut « — » dès qu'une plateforme rend un
 // nombre inconnu. Jamais une somme optimiste.
-function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, onOuvrir }) {
+function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, onOuvrir, lecture = 'ok' }) {
   const nom = NOMS[pf] ?? pf;
   const configure = etat?.configure === true;
-  const s = synthese(etat, { fr, enService, extensionStatus, session });
+  const s = synthese(etat, { fr, enService, extensionStatus, session, lecture });
   const manque = s.manquePf;
   const actif = s.actif;
   const n = s.nombre?.n;
@@ -624,12 +631,18 @@ function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, on
   const couleur = tonCouleur(ton);
 
   // La ligne de droite : ce qu'on veut savoir sans entrer.
-  const valeur = actif
-    ? `${fmtCreneau(s.de, s.a, fr)} · ${s.r?.plafond_jour ?? '—'}${fr ? '/j' : '/d'}`
-    : configure ? (fr ? 'En pause' : 'Paused') : (fr ? 'Non réglée' : 'Not set');
+  // (04/10) « Non réglée » se lit sur `configure` (platform_settings[pf].
+  // republish_planifiee, côté serveur) — et seulement quand l'état est LU.
+  // Sans état : « — », jamais « Non réglée » (Louis : trois plateformes
+  // réglées affichées « Non réglée » pendant une lecture de 75 s).
+  const valeur = s.inconnu ? '—'
+    : actif
+      ? `${fmtCreneau(s.de, s.a, fr)} · ${s.r?.plafond_jour ?? '—'}${fr ? '/j' : '/d'}`
+      : configure ? (fr ? 'En pause' : 'Paused') : (fr ? 'Non réglée' : 'Not set');
 
   // La ligne du dessous : l'état, en une phrase courte, la plus utile.
-  const sous = actif
+  const sous = s.inconnu ? ''
+    : actif
     ? (manque ? texteManque(manque, pf, fr).court
       : s.disjoncteur ? (fr ? 'Arrêtée pour aujourd’hui' : 'Stopped for today')
       : s.dans ? (fr ? `En cours jusqu'à ${fmtHHMM(s.a, fr)}` : `Running until ${fmtHHMM(s.a, fr)}`)
@@ -664,11 +677,16 @@ function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, on
 export function RepublicationPlanifieePlateformes({
   lang, etatMulti, parPlateforme, sessions, interrupteur, extensionStatus, busy, erreur,
   onOuvrirPlateforme, onOuvrirHistorique, onClose, onPauseGenerale,
+  // (04/10) Le palier de l'app (utils/palier.js) et l'état de la lecture :
+  // sans réponse du serveur, l'écran dit qu'il lit — il ne refuse rien.
+  palierApp = null, lecture = 'ok', onReessayer = null,
 }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
-  const palierNom = etatMulti?.palier === 'business' ? 'Business' : 'Pro';
-  const autorise = etatMulti?.autorise === true;
+  const droit = droitRepublication(etatMulti, { palierApp, lecture });
+  const palierNom = droit.nomPalier;
+  const autorise = droit.autorise === true;
+  const refuse = droit.refuse;
   const actives = Number(etatMulti?.actives) || 0;
   const enveloppe = etatMulti?.enveloppe ?? null;
   // (02/10) Les plateformes montrées : une plateforme fermée côté serveur
@@ -701,6 +719,11 @@ export function RepublicationPlanifieePlateformes({
     && parPlateforme?.[pf]?.actif === true);
 
   const ligneEtat = (() => {
+    if (!droit.connu) {
+      return droit.lecture === 'echec'
+        ? { txt: fr ? 'Réglages illisibles pour l’instant' : 'Settings unreadable for now', ton: 'amber' }
+        : { txt: fr ? 'Lecture de tes réglages…' : 'Reading your settings…', ton: 'mute' };
+    }
     if (!autorise) return { txt: fr ? 'Réservée au plan Pro' : 'Pro plan feature', ton: 'mute' };
     if (!actives) return { txt: fr ? 'Aucune plateforme active' : 'No platform on', ton: 'mute' };
     if (!enService) return { txt: fr ? 'Pas encore en service' : 'Not in service yet', ton: 'amber' };
@@ -763,9 +786,22 @@ export function RepublicationPlanifieePlateformes({
           </div>
         )}
 
-        {!autorise && (
+        {refuse && (
           <div style={{ padding: '12px 18px', borderTop: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
             {texteErreurReglage('auto_reserve_pro', fr)}
+          </div>
+        )}
+        {!droit.connu && droit.lecture === 'echec' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderTop: `1px solid ${P.border}`, background: P.amberBg }}>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.45, color: P.amberInk, fontWeight: 600 }}>
+              {fr ? 'Tes réglages n’ont pas pu être lus. Ils sont intacts : rien n’a été changé.' : 'Your settings could not be read. They are intact: nothing was changed.'}
+            </span>
+            {onReessayer && (
+              <button type="button" className="rp-btn" onClick={() => onReessayer?.()}
+                style={{ flexShrink: 0, minHeight: 36, padding: '0 14px', borderRadius: 999, background: '#fff', border: `1px solid ${P.border}`, fontWeight: 700, fontSize: 12.5, color: P.tealDeep }}>
+                {fr ? 'Réessayer' : 'Retry'}
+              </button>
+            )}
           </div>
         )}
         {erreur && (
@@ -776,7 +812,7 @@ export function RepublicationPlanifieePlateformes({
 
         {pfsVisibles.map((pf) => (
           <LignePlateforme key={pf} pf={pf} etat={parPlateforme?.[pf] ?? null} session={sessions?.[pf] ?? null}
-            fr={fr} enService={enService} extensionStatus={extensionStatus}
+            fr={fr} enService={enService} extensionStatus={extensionStatus} lecture={lecture}
             onOuvrir={() => { track('republication_planifiee', { action: 'ouvrir_plateforme', platform: pf }); onOuvrirPlateforme?.(pf); }} />
         ))}
 
@@ -805,13 +841,14 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
   const { actif, autorise } = s;
   const nombre = s.nombre;
   const ouvrir = () => {
-    if (!autorise) { onActiverNonPro?.(); return; }
+    if (s.refuse) { onActiverNonPro?.(); return; }
     track('republication_planifiee', { action: 'ouvrir_reglages', depuis: 'bloc_stock' });
     onOuvrirReglages?.();
   };
   const activer = (e) => {
     e.stopPropagation();
-    if (!autorise) { onActiverNonPro?.(); return; }
+    if (s.refuse) { onActiverNonPro?.(); return; }
+    if (!autorise) return; // état pas encore lu : on n'active rien à l'aveugle
     onActiver?.();
   };
 
@@ -851,7 +888,8 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
     // L'état, en une ligne. Quand c'est réglé, on NOMME les plateformes — c'est
     // la première question qu'on se pose en voyant « active ».
     let ligne;
-    if (!autorise) ligne = fr ? 'Incluse à partir du plan Pro' : 'Included from the Pro plan';
+    if (s.inconnu) ligne = s.etatLigne;
+    else if (!autorise) ligne = fr ? 'Incluse à partir du plan Pro' : 'Included from the Pro plan';
     else if (noms.length) {
       const liste = noms.length === 1 ? noms[0]
         : `${noms.slice(0, -1).join(', ')}${fr ? ' et ' : ' and '}${noms[noms.length - 1]}`;
@@ -950,10 +988,10 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. L'ÉCRAN DE RÉGLAGES
 // ═══════════════════════════════════════════════════════════════════════════
-export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', session = null, etat, interrupteur, extensionStatus, busy, erreur, regler, onClose, onOuvrirHistorique }) {
+export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', session = null, etat, interrupteur, extensionStatus, busy, erreur, regler, onClose, onOuvrirHistorique, palierApp = null, lecture = 'ok' }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
-  const s = synthese(etat, { fr, enService, extensionStatus, session });
+  const s = synthese(etat, { fr, enService, extensionStatus, session, lecture });
   const r = s.r;
   const actif = s.actif;
   // 18/09 : cet écran est celui d'UNE plateforme. Tout ce qu'il écrit porte
@@ -964,7 +1002,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
   const nomPf = NOMS[pf] ?? pf;
   const plafondPalier = Number(etat?.plafond_palier) || 0;
   const illimite = plafondPalier >= PLAFOND_ILLIMITE;
-  const palierNom = etat?.palier === 'business' ? 'Business' : 'Pro';
+  const palierNom = droitRepublication(etat, { palierApp, lecture }).nomPalier;
   // Réglages de l'ancien moteur (republish_auto) : repris comme point de départ
   // quand le module n'a pas encore de réglage — même cadence qu'avant, pas les
   // défauts serveur (30 j / plafond du palier). Le serveur borne.
@@ -1107,7 +1145,7 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
             </div>
           </div>
         )}
-        {!s.autorise && (
+        {s.refuse && (
           <div style={{ padding: '12px 18px', borderBottom: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
             {texteErreurReglage('auto_reserve_pro', fr)}
           </div>

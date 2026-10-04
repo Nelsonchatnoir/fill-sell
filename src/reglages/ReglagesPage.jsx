@@ -28,7 +28,8 @@ import PlanBadge from '../components/PlanBadge';
 import {
   RepublicationPlanifieePlateformes, RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique,
 } from '../components/RepublicationPlanifiee';
-import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
+import { palierDesDrapeaux, aAuMoins, nomDuPalier } from '../utils/palier';
 import { plateformesDeReleve } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
@@ -135,7 +136,13 @@ export default function ReglagesPage({
   // conversion, exactement comme avant — même origine, même geste, rien
   // n'écrit. Un compte autorisé ouvre désormais la LISTE DES PLATEFORMES
   // (18/09), qui ouvre elle-même l'écran de réglages de celle qu'on choisit.
-  const repubAutorisee = planifiee.etatMulti?.autorise === true || planifiee.etat?.autorise === true;
+  // (04/10) Le serveur fait foi QUAND il a répondu. Avant sa réponse (ou s'il
+  // ne répond pas), c'est le palier de l'app — le même calcul partout,
+  // Business ⇒ Pro — qui décide : un Business ne tombe jamais sur les offres
+  // parce que la lecture traîne (Louis : 75 s le 04/10).
+  const palierApp = palierDesDrapeaux({ isPremium, isPro, isBusiness });
+  const droitRepub = droitRepublication(planifiee.etatMulti ?? planifiee.etat, { palierApp, lecture: planifiee.lecture });
+  const repubAutorisee = droitRepub.connu ? droitRepub.autorise === true : aAuMoins(palierApp, 'pro');
   const ouvrirRepublication = () => {
     if (!repubAutorisee) {
       track('premium_click', { source: 'reglages_republication_planifiee' });
@@ -187,7 +194,7 @@ export default function ReglagesPage({
     () => devises?.find((d) => d.code === currency)?.label ?? currency,
     [devises, currency],
   );
-  const nomFormule = isBusiness ? 'Business' : isPro ? 'Pro' : isPremium ? 'Premium' : null;
+  const nomFormule = nomDuPalier(palierApp);
 
   // ── LE CONTEXTE ─────────────────────────────────────────────────────────
   // Tout ce que la page sait, en un objet. Les entrées du plan le LISENT ;
@@ -263,6 +270,9 @@ export default function ReglagesPage({
           onOuvrirHistorique={() => setEcranRepub('historique')}
           onPauseGenerale={(reprendre) => planifiee.pauseGenerale(reprendre)}
           onClose={() => setEcranRepub(null)}
+          palierApp={palierApp}
+          lecture={planifiee.lecture}
+          onReessayer={planifiee.recharger}
         />
       )}
       {PLATEFORMES_PLANIFIEES.includes(ecranRepub) && (
@@ -278,6 +288,8 @@ export default function ReglagesPage({
           regler={planifiee.regler}
           onClose={() => setEcranRepub('liste')}
           onOuvrirHistorique={() => setEcranRepub('historique')}
+          palierApp={palierApp}
+          lecture={planifiee.lecture}
         />
       )}
       {ecranRepub === 'historique' && (
