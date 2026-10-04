@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff } from 'lucide-react';
+import { BarChart3, Bot, Aperture, ClipboardList, LineChart, X, Eye, EyeOff, Copy, Settings } from 'lucide-react';
 const AppleSignIn = registerPlugin('AppleSignIn');
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -83,6 +83,7 @@ import { televerserPhotos, menagePhotosArticle, compresserImage } from './utils/
 import { entreesPhotos, urlsPhotos, MAX_PHOTOS, LENS_PHOTOS_LUES, LENS_COTE_IA, LENS_ENVOIS_PARALLELES, envoyerEnParallele } from './utils/photos';
 import { searchMatch } from './utils/recherche';
 import { moveItem } from './utils/photosGalerie';
+import { dupliquerArticle } from './stock/dupliquer';
 import GaleriePhotos from './components/GaleriePhotos';
 import { sonderAnnonceVinted, lireBoutiquesVinted, lireBoutiqueConnectee, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
@@ -2717,6 +2718,8 @@ export default function App({ loginOnly = false }){
   const listRef=useRef(null);
   const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
+  // « Dupliquer » en cours (id de l'original) : un second tap ne fait rien.
+  const [duplicationEnCours,setDuplicationEnCours]=useState(null);
   // ── LES PHOTOS DE LA MODALE DE MODIFICATION (2026-09-20, demande Louis) ────
   // La LISTE ne vit pas ici : elle vit dans `editItem.photos`, comme le titre
   // et la description. C'est délibéré — la modale s'ouvre depuis QUATRE
@@ -4245,6 +4248,36 @@ export default function App({ loginOnly = false }){
   // fermeture : sinon elle réapparaît sur l'article suivant, qui n'y est pour
   // rien. (2026-09-20)
   function fermerModaleEdition(){ setEditItem(null); setEditPhotosErreur(""); }
+
+  // ── DUPLIQUER UN ARTICLE (03/10/2026, refonte du Stock) ──────────────────
+  // Menu « … » d'une carte, ou fiche article : une NOUVELLE fiche en stock,
+  // copie de l'originale (photos, textes, attributs, fiche générée), SANS
+  // aucune annonce ni lien vers celles de l'original (src/stock/dupliquer.js),
+  // puis sa fiche s'ouvre en modification. Rien n'est publié.
+  // Même garde de stock que l'ajout manuel (addItem) : une copie est un ajout.
+  async function dupliquerFiche(item,depuis){
+    if(!user?.id||item?.id==null||duplicationEnCours!=null)return;
+    if(!isPremium&&quotaStockAtteint(compteArticlesQuota(items),FREE_STOCK_LIMIT_FALLBACK)){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
+    setDuplicationEnCours(item.id);
+    try{
+      const r=await dupliquerArticle(supabase,{userId:user.id,inventaireId:item.id});
+      if(!r.ok){
+        console.error('[dupliquer]',r.erreur);
+        setToast({visible:true,message:lang==='fr'?"La copie n'a pas pu être créée. Rien n'a changé dans ton stock.":'The copy could not be created. Nothing changed in your stock.'});
+        setTimeout(()=>setToast({visible:false,message:''}),5000);
+        return;
+      }
+      const copie=mapItem(r.ligne);
+      setItems(prev=>[copie,...prev]);
+      track('duplicate_item',{depuis});
+      setEditPhotosErreur("");
+      // `_copie` : la modale le DIT (bandeau), pour qu'on ne croie pas
+      // modifier l'original — les deux fiches sont identiques à l'ouverture.
+      setEditItem({...copie,_table:'inventaire',frais:copie.purchaseCosts??0,sell:copie.sell??"",_copie:true});
+    }finally{
+      setDuplicationEnCours(null);
+    }
+  }
 
   // ── LES MÊMES TROIS GESTES, DANS LA MODALE DE MODIFICATION (2026-09-20) ───
   // Demande de Louis, compte Business : « à l'ajout j'ai 500 caractères et je
@@ -7940,7 +7973,7 @@ export default function App({ loginOnly = false }){
             // complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
             <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} onClick={()=>setShowPremiumModal(true)} />
           ):null}
-          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Réglages" aria-label="Réglages" className="tb-icon-btn-light">⚙️</button>
+          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Réglages" aria-label="Réglages" className="tb-icon-btn-light"><Settings size={20} strokeWidth={1.8} aria-hidden="true"/></button>
         </div>
       </div>
 
@@ -8588,6 +8621,7 @@ export default function App({ loginOnly = false }){
             openUpgradeModal={openUpgradeModal}
             onStepperOpenChange={setListingStepperOpen}
             onAddByPhoto={()=>{setTab(2);localStorage.setItem('tab',2);}}
+            onDupliquer={(item)=>dupliquerFiche(item,'carte')}
           />
         )}
 
@@ -8699,9 +8733,17 @@ export default function App({ loginOnly = false }){
           <div onClick={()=>fermerModaleEdition()} style={{position:"fixed",inset:0,background:"rgba(16,32,27,0.45)",backdropFilter:"blur(4px)",zIndex:200}}/>
           <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:18,padding:"20px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(16,32,27,0.25)",maxHeight:"88vh",overflowY:"auto",border:"1px solid #E7E3D8"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              <div style={{fontSize:15.5,fontWeight:700,color:"#10201B"}}>{editItem._isNew?(lang==='fr'?"Ajouter au stock":"Add to stock"):(lang==='fr'?"Modifier l'article":"Edit item")}</div>
+              <div style={{fontSize:15.5,fontWeight:700,color:"#10201B"}}>{editItem._isNew?(lang==='fr'?"Ajouter au stock":"Add to stock"):editItem._copie?(lang==='fr'?"Modifier la copie":"Edit the copy"):(lang==='fr'?"Modifier l'article":"Edit item")}</div>
               <IconButton onClick={()=>fermerModaleEdition()} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
+            {/* La copie et l'original sont identiques à l'ouverture : on DIT
+                lequel est sous les yeux (03/10, « Dupliquer »). */}
+            {editItem._copie&&(
+              <div role="status" style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:12,padding:"8px 12px",borderRadius:12,background:"#EFF4F2",border:"1px solid #D6E2DE",color:"#1B6E62",fontSize:12.5,fontWeight:600,lineHeight:1.45}}>
+                <Copy size={16} strokeWidth={2} aria-hidden="true" style={{flexShrink:0,marginTop:1}}/>
+                <span>{lang==='fr'?"Copie créée et ajoutée à ton stock, sans aucune annonce. Modifie-la ici : rien n'est publié.":'Copy created and added to your stock, with no listing. Edit it here: nothing is published.'}</span>
+              </div>
+            )}
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
               {/* ── Identité : nom, marque, catégorie ── */}
@@ -8963,6 +9005,37 @@ export default function App({ loginOnly = false }){
                       </div>
                     ))}
                   </div>
+                );
+              })()}
+
+              {/* ── DUPLIQUER (03/10/2026, refonte du Stock) ──────────────────
+                  Le même geste que le menu « … » de la carte. La copie part de
+                  la fiche ENREGISTRÉE : si des modifications attendent ici, on
+                  le dit au lieu de les perdre en ouvrant la copie. Jamais sur
+                  une vente (`_table:'ventes'`) ni sur un article absorbé. */}
+              {!editItem._isNew&&editItem.id!=null&&editItem._table==='inventaire'&&editItem.fusionne_dans==null&&(()=>{
+                const orig=items.find(i=>i.id===editItem.id);
+                const empreinte=(x)=>JSON.stringify([x.title??'',x.marque??'',x.type??'',String(x.buy??''),String(x.sell??''),String(x.frais??0),String(x.quantite??1),x.description??'',x.emplacement??'',urlsPhotos(x.photos??[])]);
+                const modifie=!orig||empreinte(editItem)!==empreinte({...orig,frais:(orig.statut==='vendu'?orig.sellingFees:orig.purchaseCosts)??0,sell:orig.sell??""});
+                const occupe=duplicationEnCours!=null;
+                const inactif=modifie||occupe;
+                return (
+                  <button type="button" disabled={inactif} onClick={()=>dupliquerFiche(orig,'fiche')}
+                    style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"11px 12px",borderRadius:12,textAlign:"left",cursor:inactif?"default":"pointer",fontFamily:"inherit",border:"1px solid #E7E3D8",background:"#F6F5F1",opacity:occupe?0.6:1}}>
+                    <span style={{flexShrink:0,width:32,height:32,borderRadius:10,background:"#fff",border:"1px solid #E7E3D8",display:"flex",alignItems:"center",justifyContent:"center",color:modifie?"#8A8578":"#1B6E62"}}>
+                      <Copy size={16} strokeWidth={2} aria-hidden="true"/>
+                    </span>
+                    <span style={{flex:1,minWidth:0}}>
+                      <span style={{display:"block",fontSize:13,fontWeight:700,color:modifie?"#8A8578":"#10201B"}}>
+                        {occupe?(lang==='fr'?'Copie en cours…':'Copying…'):(lang==='fr'?'Dupliquer cet article':'Duplicate this item')}
+                      </span>
+                      <span style={{display:"block",fontSize:11.5,color:"#5C6560",marginTop:2,lineHeight:1.45}}>
+                        {modifie
+                          ?(lang==='fr'?"Enregistre d'abord tes modifications : la copie part de la fiche enregistrée.":'Save your changes first: the copy starts from the saved item.')
+                          :(lang==='fr'?"Une nouvelle fiche en stock, mêmes photos et infos, sans aucune annonce. Rien n'est publié.":'A new stock item, same photos and details, with no listing. Nothing is published.')}
+                      </span>
+                    </span>
+                  </button>
                 );
               })()}
 
