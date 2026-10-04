@@ -6,8 +6,7 @@ historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.94** ; **0.6.96 à téléverser**
-  (`build/CWS-0.6.96-A-TELEVERSER/`) ; minimum **0.6.81** ; web **84bd226** ;
-  OTA **2.9.52** ; gpj v214, ujs v127, ebay-api-worker v77.
+  (`build/CWS-0.6.96-A-TELEVERSER/`) ; minimum **0.6.81** ; web/OTA **2.9.53** ; gpj v214, ujs v127, ebay-api-worker v77.
 - **CPU (04/10)** : crons 27/28 relancés, bornés ; interdit 11.
 - **Nuit du 04/10** : vente supprimée = jamais recréée ; absence de marque →
   « Sans marque » (liste fermée) ; texte = celui de la fiche à l'envoi ;

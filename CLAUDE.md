@@ -13,7 +13,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   (`build/CWS-0.6.96-A-TELEVERSER/fillsell-extension-0.6.96-b32685f-cws.zip`,
   prouvée en réel le 04/10 ; remplace la 0.6.95 jamais téléversée) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web **84bd226** ; OTA **2.9.52** ; `get-pending-jobs` v214,
+  web et OTA **2.9.53** (lot du soir 84bd226 + aide Poids) ; `get-pending-jobs` v214,
   `generate-listing` v111, `lens-analysis` v106, `avis-demande` v3,
   `ebay-account` v16, `send-extension-link` v12 (`true`) ;
   `update-job-status` v127, `handler-watch` v80, `ops-digest` v30,
