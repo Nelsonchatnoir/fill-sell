@@ -16,6 +16,7 @@
     "selftest:texte-comparable": "node scripts/texte-comparable-selftest.mjs",
     "selftest:support-non-livre": "node scripts/support-non-livre-selftest.mjs",
     "selftest:attente-boutique": "node scripts/attente-boutique-selftest.mjs",
+    "selftest:stock-refonte": "node --import ./scripts/loader-ext.mjs scripts/stock-refonte-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
     "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
     "selftest:opla-sortie": "node scripts/opla-sortie-selftest.mjs",
