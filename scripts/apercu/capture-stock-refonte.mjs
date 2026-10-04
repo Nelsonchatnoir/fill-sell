@@ -24,7 +24,7 @@
 //   · « Voir N articles » du panneau = le compte de la liste ;
 //   · chaque geste s'ouvre sur sa sélection avec UN seul bouton de confirmation,
 //     jamais validé ici ; aucune écriture tentée de tout le parcours.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +43,9 @@ const VERSIONS = [
 fs.mkdirSync(SORTIE, { recursive: true });
 
 const serveurs = [];
-const stop = () => { for (const s of serveurs) { try { if (process.platform === 'win32') spawn('taskkill', ['/pid', String(s.pid), '/f', '/t'], { stdio: 'ignore' }); else s.kill(); } catch { /* déjà arrêté */ } } };
+// SYNCHRONE : à la sortie du script, un taskkill asynchrone n'a pas le temps de
+// partir, et le serveur Vite (petit-fils de npx) restait ouvert.
+const stop = () => { for (const s of serveurs.splice(0)) { try { if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(s.pid), '/f', '/t'], { stdio: 'ignore' }); else s.kill(); } catch { /* déjà arrêté */ } } };
 process.on('exit', stop);
 if (!DEJA) {
   for (const v of VERSIONS) {
