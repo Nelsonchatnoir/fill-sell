@@ -25,6 +25,9 @@ import PlanBadge from '../components/PlanBadge';
 import { R } from './theme';
 import { Groupe, Carte, Ligne, Jauge, JaugeRepublication, BandeInfo, Bouton, Note } from './ReglagesUI';
 import { consommationVisible } from './quotas';
+// Option « Sans ordinateur » (Cloud, conception du 04/10) — le bloc regarde
+// lui-même le drapeau (config/cloudOffer.js) : baissé, il ne rend rien.
+import { BlocCloudReglagesLu } from '../cloud/BlocCloudReglages';
 
 // Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
 // `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
@@ -135,6 +138,13 @@ export default function SousPageAbonnement({ c, T }) {
           )}
         </div>
       </Carte>
+
+      {/* ── Option « Sans ordinateur » (04/10, conception) ─────────────
+          Juste sous la formule : c'est une option DE la formule. Seul
+          « Voir les formules » est câblé ici ; les gestes d'argent
+          (essayer, ajouter, arrêter) arriveront par `c.actionsCloud` avec
+          le paiement de l'option — absents, leurs boutons n'existent pas. */}
+      <BlocCloudReglagesLu c={c} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...(c.actionsCloud ?? {}) }} />
 
       {/* ── Consommation du mois, avec le RESTE ───────────────────────── */}
       {compteurs && (
