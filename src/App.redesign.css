@@ -524,7 +524,9 @@ body.bg-dots {
    « corrigeait » l'affichage). Une seule source désormais, chargée partout :
    ne pas redéfinir cette règle ici. */
 .tb-icon-btn-light {
-  width: 38px !important; height: 38px !important;
+  /* 40 px : la grille de 8 de la refonte du Stock (03/10), icône Lucide au
+     trait à la place de l'émoji. */
+  width: 40px !important; height: 40px !important;
   background: rgba(15,23,42,0.04) !important;
   border: 1px solid rgba(15,23,42,0.04);
   transition: all 0.18s var(--ease);
