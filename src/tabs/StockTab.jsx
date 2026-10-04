@@ -27,7 +27,8 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import InstallExtensionCta from '../components/InstallExtensionCta';
-import { useRepublicationPlanifiee, republicationPlanifieeExposee, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee, plateformesPlanifieesVisibles, droitRepublication } from '../hooks/useRepublicationPlanifiee';
+import { palierDesDrapeaux, aAuMoins } from '../utils/palier';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
@@ -90,7 +91,7 @@ import { FeuilleListe, Z_FEUILLE_DESSUS } from '../components/FiltresStock';
 // filtres) reste ICI, inchangée. Règles sans écran : src/stock/regles.js.
 import { CSS_STOCK } from '../stock/css';
 import { S as SK } from '../stock/jetons';
-import { TitreStock, Gestes, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
+import { TitreStock, Gestes, LignePublierEnLot, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
 import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
 import { BarreRecherche, FiltresRapides, FiltresActifs, EnTeteListe, FeuilleTri, PanneauFiltres, VideAvecSortie } from '../stock/Liste';
 import { CarteArticle, LigneArticle } from '../stock/Carte';
@@ -4237,7 +4238,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
   }
 
   // ── ACCROCHE non-Pro (redessinée le 2026-08-31) ────────────────────────────
-  // Visible par les comptes Free ET Premium (isPro = profiles.is_pro SEUL), et
+  // Visible par les comptes Free ET Premium (isPro = « au moins Pro », utils/palier.js), et
   // désormais quelle que soit la capacité de l'extension (cf. gate du site
   // d'appel) : on ne peut pas vouloir un outil dont on ignore l'existence.
   // L'argument porteur n'est pas la promesse générique, c'est le CHIFFRE DU
@@ -5603,6 +5604,10 @@ const StockTab = memo(function StockTab({
   // bloc É6 s'affiche ou non — la seule chose qui en dépendait ici.
   const planifiee = useRepublicationPlanifiee({ userId: user?.id, multi: true });
   const planifieeExposee = republicationPlanifieeExposee(planifiee);
+  // (04/10) Le droit : le serveur quand il a répondu, sinon le palier de l'app
+  // (utils/palier.js, Business ⇒ Pro) — jamais un refus faute de réponse.
+  const droitPlanifiee = droitRepublication(planifiee.etatMulti ?? planifiee.etat, { palierApp: palierDesDrapeaux({ isPremium, isPro, isBusiness }), lecture: planifiee.lecture });
+  const planifieeAutorisee = droitPlanifiee.connu ? droitPlanifiee.autorise === true : aAuMoins(palierDesDrapeaux({ isPremium, isPro, isBusiness }), 'pro');
   // Les plateformes réellement allumées, dans l'ordre d'affichage — le
   // module les NOMME (« Active sur Vinted et Beebs »), c'est la première
   // question qu'on se pose en lisant « active ».
@@ -9033,11 +9038,19 @@ const StockTab = memo(function StockTab({
             <Gestes lang={lang} variante="tuiles" publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>
           </div>
         )}
+        {/* (04/10) La publication en lot, NOMMÉE : la porte « Publier
+            plusieurs articles d'un coup » d'avant la refonte revient sous les
+            tuiles et ouvre la même sélection que « Publier » (Louis, 04/10). */}
+        {(stock?.length??0)>0&&(
+          <div style={{marginTop:8}}>
+            <LignePublierEnLot lang={lang} n={gestePublier.n} onOuvrir={()=>{track('lot_publication_porte',{depuis:'ligne_stock',n:gestePublier.n});gestePublier.onOuvrir();}}/>
+          </div>
+        )}
         {planifieeExposee&&(
           <div style={{marginTop:8}}>
             <LigneRepublicationAuto
               lang={lang}
-              autorise={planifiee.etat ? planifiee.etat.autorise===true : (isPro||isBusiness)}
+              autorise={planifieeAutorisee}
               actif={planifieeActives.length>0}
               pauseMemorisee={plateformesPlanifieesVisibles(planifiee.parPlateforme).some((pf)=>planifiee.parPlateforme?.[pf]?.reglage?.pause_generale===true)}
               busy={planifiee.busy}
@@ -10656,7 +10669,7 @@ const StockTab = memo(function StockTab({
         const n=articles.length;
         return(
           <EcranSelection lang={lang}
-            titre={lang==='fr'?'Publier partout':'Publish everywhere'}
+            titre={lang==='fr'?'Publier plusieurs articles':'Publish several items'}
             grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} article${n>1?'s':''} pas encore partout`:`${n} item${n>1?'s':''} not everywhere yet`):(lang==='fr'?'Tout est déjà partout':'Everything is already everywhere')}
             sousTitre={n?(lang==='fr'?`Tout est déjà coché${n>LOT_MAX_ARTICLES?` (les ${LOT_MAX_ARTICLES} premiers : ${LOT_MAX_ARTICLES} au plus par lot)`:''} : décoche ceux que tu veux garder.`:`Everything is ticked${n>LOT_MAX_ARTICLES?` (the first ${LOT_MAX_ARTICLES}: ${LOT_MAX_ARTICLES} per batch at most)`:''}: untick what you want to keep.`):null}
             articles={articles} max={LOT_MAX_ARTICLES}
@@ -10692,7 +10705,7 @@ const StockTab = memo(function StockTab({
             note={repubEnPause?(lang==='fr'?'Remontée en maintenance : de retour très vite.':'Bumping under maintenance: back very soon.'):(lang==='fr'?'Ton ordinateur les republie une à une.':'Your computer reposts them one by one.')}
             apres={planifieeExposee?(
               <LigneRepublicationAuto lang={lang}
-                autorise={planifiee.etat?planifiee.etat.autorise===true:(isPro||isBusiness)}
+                autorise={planifieeAutorisee}
                 actif={planifieeActives.length>0}
                 pauseMemorisee={plateformesPlanifieesVisibles(planifiee.parPlateforme).some((pf)=>planifiee.parPlateforme?.[pf]?.reglage?.pause_generale===true)}
                 busy={planifiee.busy} nomsActifs={planifieeActives.map((pf)=>LABEL_PF[pf]??pf)}

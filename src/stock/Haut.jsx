@@ -214,6 +214,38 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
   );
 }
 
+// ── PUBLIER PLUSIEURS ARTICLES D'UN COUP — une ligne de 72 px (04/10) ──────
+// La publication en lot avait, avant la refonte, sa porte nommée « Publier
+// plusieurs articles d'un coup ». La refonte l'a rangée derrière la tuile
+// « Publier · pas encore partout » — rien n'était caché, mais plus rien ne la
+// NOMMAIT (Louis, Business, 04/10 : « je n'ai plus la possibilité de publier
+// plusieurs annonces d'un coup »). La porte revient avec ses mots, sous les
+// tuiles ; elle ouvre la MÊME sélection que la tuile (aucun autre chemin).
+// Aucun palier : la publication en lot est ouverte à tous, le quota borne.
+export function LignePublierEnLot({ lang = 'fr', n = 0, onOuvrir }) {
+  const fr = lang !== 'en';
+  const sous = n > 0
+    ? (fr ? `${nombreFr(n, lang)} ${n > 1 ? 'articles' : 'article'} pas encore partout · tu choisis, rien ne part sans toi` : `${n} ${n > 1 ? 'items' : 'item'} not everywhere yet · you choose, nothing goes out without you`)
+    : (fr ? 'Tous tes articles sont déjà en ligne partout' : 'All your items are already live everywhere');
+  return (
+    <button type="button" className="sk-btn sk-presse" onClick={onOuvrir}
+      aria-label={fr ? `Publier plusieurs articles d'un coup — ${sous}` : `Publish several items at once — ${sous}`}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 72, padding: '0 16px', boxSizing: 'border-box', borderRadius: 16, textAlign: 'left',
+        background: '#FFFFFF', border: `1px solid ${S.border}`, boxShadow: OMBRE.carte, color: S.ink,
+      }}>
+      <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: DEGRADE_TUILE, color: '#FFFFFF' }}>
+        <Upload size={20} strokeWidth={2.2} aria-hidden="true" />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 14, lineHeight: '20px', fontWeight: 700, color: S.ink }}>{fr ? "Publier plusieurs articles d'un coup" : 'Publish several items at once'}</span>
+        <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{sous}</span>
+      </span>
+      <ChevronRight size={20} color={S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
+    </button>
+  );
+}
+
 // ── REPUBLICATION AUTOMATIQUE — une ligne de 72 px ─────────────────────────
 // Pro : interrupteur (le MÊME geste que l'interrupteur des Réglages —
 // pauseGenerale), un tap sur la ligne ouvre les réglages. Sans Pro : liseré
