@@ -2,6 +2,9 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { UI } from "../components/ui";
 import useSeo from "../lib/seo";
+// 2e voie « Pas d'ordinateur ? » (Cloud, conception du 04/10) — sur téléphone,
+// derrière son drapeau (config/cloudOffer.js) : baissé, rien.
+import VoieSansOrdinateur from "../cloud/VoieSansOrdinateur";
 
 // Page d'accès à l'extension Chrome de cross-post. Depuis le 2026-07-25,
 // l'extension est PUBLIÉE sur le Chrome Web Store (« FillSell — Cross-post »,
@@ -115,6 +118,7 @@ export default function ExtensionPage() {
           /* Sur un téléphone : PAS de bouton d'installation — Chrome mobile ne
              sait pas installer d'extension, et ce bouton était une impasse
              (cf. surTelephone). On dit où ça se passe, et comment y revenir. */
+          <>
           <div style={{ background: `${UI.amber}18`, border: `1px solid ${UI.amber}66`, borderRadius: 16, padding: "14px 16px", marginBottom: 22, fontSize: 14, lineHeight: 1.55, color: "#8A5A3C" }}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
               📱 {en ? "You're on your phone" : "Tu es sur ton téléphone"}
@@ -126,6 +130,10 @@ export default function ExtensionPage() {
               🔗 fillsell.app/extension
             </div>
           </div>
+          {/* (04/10, conception) La 2e voie, SOUS la consigne : hors de l'app
+              (souvent sans session), elle garde la demande et mène à /app. */}
+          <VoieSansOrdinateur lang={en ? "en" : "fr"} variante="page" origine="page_extension" style={{ marginBottom: 22 }} />
+          </>
         ) : (
           <>
             {/* Disponible sur le Web Store (2026-07-25) */}
