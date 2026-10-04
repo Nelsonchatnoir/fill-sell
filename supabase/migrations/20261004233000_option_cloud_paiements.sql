@@ -76,7 +76,8 @@ COMMENT ON COLUMN public.profiles.cloud_essai_debut IS 'Début de l''essai Cloud
 
 -- 2. cloud_etat — MÊME RÈGLE que cloudDuProfil (src/utils/palier.js) ──────────
 -- Mêmes noms, mêmes valeurs que l'app. Instants tronqués à la milliseconde
--- (comme Date.parse). Un compte inconnu rend « aucun ».
+-- (comme Date.parse). Un compte inconnu rend « aucun ». Texte repris AU
+-- CARACTÈRE PRÈS de la proposition de la branche conception (04/10 nuit).
 CREATE OR REPLACE FUNCTION public.cloud_etat(p_user uuid, p_maintenant timestamptz DEFAULT now())
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
@@ -84,36 +85,33 @@ DECLARE
   c_exige_un_palier CONSTANT boolean := false;
   v_now timestamptz := date_trunc('milliseconds', p_maintenant);
   v_is_cloud boolean; v_debut timestamptz; v_fin timestamptz; v_arrete boolean;
-  v_periode_fin timestamptz; v_arret_fin_periode boolean;
+  v_periode timestamptz; v_arret_fp boolean;
   v_business boolean; v_pro boolean; v_premium boolean; v_comped boolean;
   v_essai_pris boolean; v_en_cours boolean; v_paye boolean; v_avec_formule boolean; v_palier_ok boolean;
-  v_iso_fin text; v_iso_periode text;
   v_base jsonb;
 BEGIN
   SELECT p.is_cloud, date_trunc('milliseconds', p.cloud_essai_debut), date_trunc('milliseconds', p.cloud_essai_fin),
          p.cloud_essai_arrete, date_trunc('milliseconds', p.cloud_periode_fin), p.cloud_arret_fin_periode,
          p.is_business, p.is_pro, p.is_premium, p.is_comped
-    INTO v_is_cloud, v_debut, v_fin, v_arrete, v_periode_fin, v_arret_fin_periode,
-         v_business, v_pro, v_premium, v_comped
+    INTO v_is_cloud, v_debut, v_fin, v_arrete, v_periode, v_arret_fp, v_business, v_pro, v_premium, v_comped
     FROM public.profiles p WHERE p.id = p_user;
   v_essai_pris := v_debut IS NOT NULL;
-  v_en_cours := v_debut IS NOT NULL AND v_fin IS NOT NULL AND v_debut <= v_now AND v_now < v_fin
-                AND v_arrete IS NOT TRUE;
+  -- un essai arrêté s'arrête TOUT DE SUITE, même si la fin n'a pas bougé
+  v_en_cours := v_debut IS NOT NULL AND v_fin IS NOT NULL AND v_debut <= v_now AND v_now < v_fin AND v_arrete IS NOT TRUE;
   v_paye := v_is_cloud IS TRUE;
   v_avec_formule := (v_business IS TRUE OR v_pro IS TRUE OR v_premium IS TRUE OR v_comped IS TRUE);
   v_palier_ok := NOT c_exige_un_palier OR v_avec_formule;
-  v_iso_fin := CASE WHEN v_fin IS NULL THEN NULL
-                    ELSE to_char(v_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END;
-  v_iso_periode := CASE WHEN v_periode_fin IS NULL THEN NULL
-                        ELSE to_char(v_periode_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END;
   v_base := jsonb_build_object(
     'essaiPris', v_essai_pris,
     'essaiArrete', v_essai_pris AND v_arrete IS TRUE,
-    'essaiFin', v_iso_fin,
+    'essaiFin', CASE WHEN v_fin IS NULL THEN NULL
+                     ELSE to_char(v_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
     'joursRestants', NULL,
     'avecFormule', v_avec_formule,
-    'periodeFin', CASE WHEN v_paye THEN v_iso_periode END,
-    'arretPrevuLe', CASE WHEN v_paye AND v_arret_fin_periode IS TRUE THEN v_iso_periode END);
+    'periodeFin', CASE WHEN v_paye AND v_periode IS NOT NULL
+                       THEN to_char(v_periode AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END,
+    'arretPrevuLe', CASE WHEN v_paye AND v_arret_fp IS TRUE AND v_periode IS NOT NULL
+                         THEN to_char(v_periode AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END);
   IF (v_paye OR v_en_cours) AND NOT v_palier_ok THEN
     RETURN v_base || jsonb_build_object('etat', 'suspendu', 'actif', false);
   END IF;
