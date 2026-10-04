@@ -94,6 +94,9 @@ import { lirePropositionsParJob, deciderRapprochement } from './utils/syncPlatef
 import Toast from './components/Toast';
 import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
 import { businessOfferVisible } from './config/businessOffer';
+// Option « Sans ordinateur » (Cloud, conception du 04/10) : UN point de montage,
+// qui regarde lui-même son drapeau (config/cloudOffer.js) — baissé, rien.
+import HoteCloud from './cloud/HoteCloud';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -9421,6 +9424,19 @@ export default function App({ loginOnly = false }){
         offre={isNative?null:offreEnCours()}
         // (03/10, point 20) Free : ses republications offertes à vie, dites AVANT les offres.
         repubOffertes={quotas?.republication?.mode==='avie'?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null}:null}
+      />
+
+      {/* ── OPTION « SANS ORDINATEUR » (Cloud, conception du 04/10) ──
+          Drapeau baissé (config/cloudOffer.js) : ne lit rien, ne rend rien.
+          Levé : la 2e voie ouvre la modale ci-dessus interrupteur coché
+          (trigger 'cloud'), et la fin d'essai a ses deux feuilles.
+          ⛔ Le paiement de l'option n'est PAS câblé : onUpgrade ci-dessus
+          ignore encore son 2e argument { cloud }, et `actions` (arrêter,
+          ajouter) manque — le drapeau ne se lève pas avant (selftest). */}
+      <HoteCloud
+        userId={user?.id??null}
+        lang={lang}
+        onOuvrirOffres={(origine)=>{logTunnel('premium_cta_click',{origine,declencheur:'clic',cloud:true});setConversionModal({open:true,trigger:'cloud',origine});}}
       />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
