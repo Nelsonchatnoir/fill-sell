@@ -1056,6 +1056,12 @@ serve(async (req) => {
         for (const j of (coupes ?? []) as Array<{ id: string; error: string | null; platform_fields: Record<string, unknown> | null }>) {
           const pfC = { ...(j.platform_fields ?? {}) };
           if (pfC.deleted_at || pfC.suppression_verdict || pfC.needsUserField || pfC.needsUserFields) continue;
+          // (04/10) Sorti de la boucle par update-job-status (même échec répété,
+          // boucle_technique) : il attend « Relancer » après un redémarrage de
+          // Chrome — jamais re-pendu ici en silence.
+          if (pfC.boucle_technique) continue;
+          // Mise de côté « servie sans démarrer » : elle attend « Relancer ».
+          if (pfC.needs_user_source === "tache_sans_demarrage") continue;
           const n = (Number(pfC.canal_coupe_rejoue) || 0) + 1;
           const delai = ([0, 10, 30, 120][n - 1] ?? 360);
           for (const k of ["needs_user_source", "needsUserBoucle", "needsUserResolved", "needs_user_vu_le", "needs_user_vu_erreur",
@@ -1247,6 +1253,138 @@ serve(async (req) => {
         if (n2) console.log(`[get-pending-jobs] userId=${user.id} : ${n2} retrait(s) sans numéro (à toi) tranché(s) — lien retrouvé ou deux relevés complets`);
       } catch (e) {
         console.warn(`[get-pending-jobs] retraits introuvables : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+      }
+    }
+
+    // ══ VINTED : UN RETRAIT DONT L'ANNONCE N'EST PLUS DANS AUCUNE BOUTIQUE (04/10) ══
+    // ornellaracano 4b6a8990 (Alphalette, n° 10124142479) : retenu « boutique
+    // d'origine non prouvée » depuis le 03/10, jamais servi — et l'annonce est
+    // absente des 24 relevés complets de ses deux boutiques depuis le 22/09.
+    // La règle des deux relevés complets (ci-dessus) ne couvrait pas Vinted.
+    // Ici, par le NUMÉRO, jamais par le titre : la boutique de l'annonce si une
+    // trace la dit (elle doit être confirmée), sinon CHAQUE boutique confirmée
+    // du compte (vinted_sync_pin) — et aucune autre jamais relevée en 90 jours ;
+    // ses deux derniers relevés du dressing COMPLETS, commencés après la mise
+    // en ligne de l'annonce, et qui ont écrit ce qu'ils ont vu ; si le numéro
+    // n'a été vu (vinted_listing_snapshots) par aucun d'eux, l'annonce n'est
+    // plus sur Vinted — le retrait se clôt « déjà retirée », sans aucun geste
+    // chez Vinted. Une boutique sans ses deux relevés : on ne conclut rien.
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: retraitsV } = await admin.from("cross_post_jobs")
+          .select("id, status, created_at, error, platform_listing_id, listing_url, platform_fields")
+          .eq("user_id", user.id).eq("platform", "vinted").eq("action", "delete")
+          .in("status", ["pending", "needs_user", "failed"])
+          .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+          .limit(20);
+        const aJuger = ((retraitsV ?? []) as Array<Record<string, unknown>>).filter((j) => {
+          const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+          return !pfJ.processing_since && !pfJ.deleted_at;
+        });
+        if (aJuger.length) {
+          const [{ data: prof }, { data: runsD }, { data: runsTous }] = await Promise.all([
+            admin.from("profiles").select("vinted_sync_pin").eq("id", user.id).maybeSingle(),
+            admin.from("vinted_sync_runs").select("vinted_user_id, vinted_login, started_at, status, items_vus, total_entries, erreur")
+              .eq("user_id", user.id).eq("kind", "dressing").eq("status", "done").not("vinted_user_id", "is", null)
+              .order("started_at", { ascending: false }).limit(80),
+            admin.from("vinted_sync_runs").select("vinted_user_id")
+              .eq("user_id", user.id).eq("kind", "dressing").not("vinted_user_id", "is", null)
+              .gte("started_at", new Date(Date.now() - 90 * 86_400_000).toISOString()).limit(2000),
+          ]);
+          const pin = ((prof as { vinted_sync_pin?: unknown } | null)?.vinted_sync_pin ?? null) as { boutiques?: unknown } | null;
+          const boutiques = (Array.isArray(pin?.boutiques) ? pin!.boutiques as Array<Record<string, unknown>> : [])
+            .map((b) => ({ id: String(b.user_id ?? "").trim(), login: b.login != null ? String(b.login) : null }))
+            .filter((b) => b.id);
+          // Toutes les boutiques relevées sur ce compte en 90 jours sont-elles
+          // confirmées ? Sinon, une annonce d'une boutique inconnue serait
+          // « absente » des boutiques jugées sans rien prouver.
+          const confirmees = new Set(boutiques.map((b) => b.id));
+          const toutesConfirmees = [...new Set(((runsTous ?? []) as Array<{ vinted_user_id?: unknown }>)
+            .map((r) => String(r.vinted_user_id ?? "")).filter(Boolean))].every((id) => confirmees.has(id));
+          const complet = (r: Record<string, unknown>) => r.status === "done" && r.total_entries != null
+            && Number(r.items_vus) >= Number(r.total_entries) && !/^\[incomplet\]/.test(String(r.erreur ?? ""));
+          // Un relevé ne vaut preuve d'absence que s'il a ÉCRIT ce qu'il a vu :
+          // l'écriture des instantanés (vinted_listing_snapshots, une ligne par
+          // article et par jour, réécrite par chaque relevé du jour) peut
+          // échouer seule, le relevé restant « complet ». Mesuré le 04/10 :
+          // 218 relevés complets sur 219 ont écrit au moins total_entries
+          // lignes (le 219ᵉ : 2 619 sur 2 620). On exige les lignes de CE
+          // relevé + celles des relevés complets des AUTRES boutiques commencés
+          // après lui, à 0,5 % près — sinon on ne conclut rien.
+          const jourParis = (t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date(t));
+          const ecritCache = new Map<string, boolean>();
+          const releveAEcrit = async (r: Record<string, unknown>, boutiqueId: string): Promise<boolean> => {
+            const cle = `${boutiqueId}|${String(r.started_at)}`;
+            if (ecritCache.has(cle)) return ecritCache.get(cle)!;
+            const debut = Date.parse(String(r.started_at));
+            const jours = [jourParis(debut), jourParis(debut + 86_400_000)];
+            const autres = new Map<string, number>();
+            for (const x of (runsD ?? []) as Array<Record<string, unknown>>) {
+              const bx = String(x.vinted_user_id ?? "");
+              const tx = Date.parse(String(x.started_at));
+              if (bx === boutiqueId || !complet(x) || !(tx >= debut) || !jours.includes(jourParis(tx))) continue;
+              autres.set(bx, Math.max(autres.get(bx) ?? 0, Number(x.total_entries) || 0));
+            }
+            const attendu = (Number(r.total_entries) || 0) + [...autres.values()].reduce((a, b) => a + b, 0);
+            const { count, error } = await admin.from("vinted_listing_snapshots").select("id", { count: "exact", head: true })
+              .eq("user_id", user.id).in("captured_on", jours).gte("captured_at", new Date(debut).toISOString());
+            const ok = !error && count != null && count >= attendu - Math.max(1, Math.ceil(attendu * 0.005));
+            ecritCache.set(cle, ok);
+            return ok;
+          };
+          let closV = 0;
+          for (const j of aJuger) {
+            if (!boutiques.length) break;
+            const numero = String(j.platform_listing_id ?? "").trim() || (String(j.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? "");
+            if (!/^\d+$/.test(numero)) continue;
+            // Mise en ligne de l'annonce : son dépôt publié par FillSell, sinon la création du retrait.
+            const { data: dep } = await admin.from("cross_post_jobs").select("published_at, platform_fields")
+              .eq("user_id", user.id).eq("platform", "vinted").eq("platform_listing_id", numero).eq("status", "published")
+              .not("published_at", "is", null).order("published_at", { ascending: true }).limit(1);
+            const dep0 = (dep?.[0] ?? null) as { published_at?: string; platform_fields?: Record<string, unknown> | null } | null;
+            const enLigneDepuis = Date.parse(String(dep0?.published_at ?? j.created_at));
+            if (!Number.isFinite(enLigneDepuis)) continue;
+            // La boutique de l'annonce, si une trace la dit (retrait, puis dépôt) :
+            // on ne juge qu'elle, et elle doit être confirmée. Inconnue : toutes
+            // les boutiques confirmées, à condition qu'aucune autre n'ait jamais
+            // été relevée sur ce compte.
+            const pfR = (j.platform_fields ?? {}) as Record<string, unknown>;
+            const pfD = (dep0?.platform_fields ?? {}) as Record<string, unknown>;
+            const sienne = String(pfR.vinted_account_id ?? "").trim() || String(pfD.vinted_account_id ?? "").trim()
+              || String(((pfD.vinted_account_proof ?? {}) as Record<string, unknown>).user_id ?? "").trim();
+            if (sienne && !confirmees.has(sienne)) continue;
+            if (!sienne && !toutesConfirmees) continue;
+            const aJugerB = sienne ? boutiques.filter((b) => b.id === sienne) : boutiques;
+            let tous = true; let debutMin = Infinity; const vus: string[] = [];
+            for (const b of aJugerB) {
+              const deux = ((runsD ?? []) as Array<Record<string, unknown>>)
+                .filter((r) => String(r.vinted_user_id) === b.id && complet(r) && Date.parse(String(r.started_at)) > enLigneDepuis)
+                .slice(0, 2);
+              if (deux.length < 2) { tous = false; break; }
+              if (!(await releveAEcrit(deux[0], b.id)) || !(await releveAEcrit(deux[1], b.id))) { tous = false; break; }
+              for (const r of deux) debutMin = Math.min(debutMin, Date.parse(String(r.started_at)));
+              vus.push(`@${b.login ?? b.id}`);
+            }
+            if (!tous || !Number.isFinite(debutMin)) continue;
+            const { data: snap } = await admin.from("vinted_listing_snapshots").select("captured_at")
+              .eq("user_id", user.id).eq("vinted_item_id", numero).order("captured_at", { ascending: false }).limit(1);
+            const vuLe = Date.parse(String((snap?.[0] as { captured_at?: string } | undefined)?.captured_at ?? ""));
+            if (Number.isFinite(vuLe) && vuLe >= debutMin) continue; // vu par l'un des relevés : présente
+            const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status), "get-pending-jobs (retrait Vinted introuvable : deux relevés complets par boutique)");
+            pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets_par_boutique", boutiques: vus, numero, vu_pour_la_derniere_fois: Number.isFinite(vuLe) ? new Date(vuLe).toISOString() : null };
+            for (const k of ["needs_user_source", "retenue_serveur", "next_action_after"]) delete pfJ[k];
+            const { data: maj } = await admin.from("cross_post_jobs").update({
+              status: "cancelled", platform_fields: pfJ,
+              error: `Annonce déjà retirée de Vinted : le n° ${numero} n'apparaît dans aucun des deux derniers relevés complets de ${vus.join(" et ")}. Rien n'a été fait sur Vinted, rien n'est à faire.`,
+            }).eq("id", j.id as string).in("status", ["pending", "needs_user", "failed"]).select("id");
+            closV += (maj ?? []).length;
+          }
+          if (closV) console.log(`[get-pending-jobs] userId=${user.id} : ${closV} retrait(s) Vinted clos — annonce absente des deux derniers relevés complets de chaque boutique (par numéro)`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] retraits Vinted introuvables : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
     }
 
@@ -2510,6 +2648,37 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] republications Beebs (poste ancien) : ${String((e as Error)?.message ?? e)} — distribution normale`);
+        }
+      }
+    }
+
+    // ══ OPLA : UN PRIX AU-DESSUS DE SON PLAFOND N'EST JAMAIS SERVI (04/10) ══
+    // Lebonzeze : sac à 1 100 €, cinq essais brûlés — le plafond d'Opla
+    // (1 000 €, écrit dans ses règles : refus serveur price_too_high) se juge
+    // AVANT l'envoi, ici, sans ouvrir aucun onglet. Le job passe en needs_user
+    // avec le motif vrai et les deux issues ; rien n'est tenté chez Opla.
+    if (!includeProcessing && !includeNeedsUser) {
+      const OPLA_PRIX_MAX = 1000;
+      const tropChers = out.filter((j) => j.platform === "opla" && (j.action === "publish" || j.action === "republish")
+        && Number((j as Record<string, unknown>).price) > OPLA_PRIX_MAX);
+      if (tropChers.length) {
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          for (const j of tropChers) {
+            const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            pfJ.needs_user_source = "relancer";
+            pfJ.garde_prix_opla = { le: new Date().toISOString(), prix: Number((j as Record<string, unknown>).price), plafond: OPLA_PRIX_MAX, pose_par: "get-pending-jobs (avant tout envoi)" };
+            await admin.from("cross_post_jobs").update({
+              status: "needs_user", platform_fields: pfJ,
+              error: `Opla n'accepte pas d'annonce au-dessus de ${OPLA_PRIX_MAX} € (celle-ci est à ${Number((j as Record<string, unknown>).price)} €) : rien n'a été envoyé. ` +
+                `Baisse le prix de la fiche sous ${OPLA_PRIX_MAX} € puis relance, ou ne publie pas cet article sur Opla.`,
+            }).eq("id", j.id as string).eq("status", "pending");
+          }
+          const ids = new Set(tropChers.map((j) => String(j.id)));
+          out = out.filter((j) => !ids.has(String(j.id)));
+          console.log(`[get-pending-jobs] userId=${user.id} : ${ids.size} job(s) Opla au-dessus du plafond de ${OPLA_PRIX_MAX} € — arrêtés avant tout envoi`);
+        } catch (e) {
+          console.warn(`[get-pending-jobs] garde du plafond Opla : ${String((e as Error)?.message ?? e)} — distribution normale`);
         }
       }
     }
@@ -9258,6 +9427,28 @@ serve(async (req) => {
       out = servis;
     }
 
+    // ══ UNE TÂCHE EN ATTENTE PROGRAMMÉE N'EST PAS SERVIE (04/10) ═════════════
+    // jennifer.cot 9923ee78 : une republication seule, next_action_after dans
+    // 6 h, servie à CHAQUE passage (le filtre des attentes ne jouait que pour
+    // une file de plus d'une republication) ; l'extension la saute exprès, la
+    // réservation comptait 61 services « sans démarrer », la tâche était mise
+    // de côté à tort toutes les 2 h. Règle : ce qui attend une heure précise
+    // n'est servi qu'à cette heure — toutes actions, toutes plateformes —, sauf
+    // l'attente de session que l'extension sait lever seule (« En attente de
+    // ta connexion à … », attente_session, cf. attenteSessionLeveeLocalement).
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      const avantAttente = out.length;
+      out = out.filter((j) => {
+        const pfA = (j.platform_fields as Record<string, unknown> | null) ?? {};
+        const t = Date.parse(String(pfA["next_action_after"] ?? ""));
+        if (!Number.isFinite(t) || t <= Date.now()) return true;
+        return Boolean(pfA["attente_session"]) && /^En attente de ta connexion à /i.test(String(j.error ?? ""));
+      });
+      if (out.length !== avantAttente) {
+        console.log(`[get-pending-jobs] userId=${user.id} : ${avantAttente - out.length} job(s) en attente programmée non servi(s) avant leur heure`);
+      }
+    }
+
     // Point C : seule la file d'exécution réserve. Le popup reste une lecture.
     // Même forme de réponse pour 0.6.69, 0.6.75 et les versions antérieures.
     if (!includeProcessing && !includeNeedsUser && out.length) {
@@ -9283,6 +9474,17 @@ serve(async (req) => {
           for (const j of out) {
             const resa = parJob.get(String(j.id));
             if (!tacheAMettreDeCote(j, resa)) continue;
+            // (04/10, Nico) UN RETRAIT N'EST JAMAIS MIS DE CÔTÉ : il laisse
+            // passer la file (attente de 30 min), mais reste vivant.
+            if (j.action === "delete") {
+              const pfD = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+              pfD.next_action_after = new Date(Date.now() + 30 * 60_000).toISOString();
+              pfD.tache_sans_demarrage = { servie_n: Number(resa!.servi_n), depuis: String(resa!.premier_service), le: new Date().toISOString(), pose_par: "get-pending-jobs (retrait espacé, jamais mis de côté)" };
+              const { data: majD } = await admin.from("cross_post_jobs").update({ platform_fields: pfD })
+                .eq("id", j.id as string).eq("status", "pending").select("id");
+              if (majD?.length) deCote.add(String(j.id));
+              continue;
+            }
             const pf = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
             pf.needs_user_source = SOURCE_TACHE_SANS_DEMARRAGE;
             pf.tache_sans_demarrage = {
