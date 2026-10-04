@@ -74,3 +74,81 @@ export function nomDuPalier(palier) {
   if (p === 'premium') return 'Premium';
   return null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// L'OPTION CLOUD — « SANS ORDINATEUR » (conception du 04/10/2026, NON LIVRÉE)
+// ═══════════════════════════════════════════════════════════════════════════
+// Décisions de Nico (04/10) : le Cloud n'est PAS un 4e palier. C'est une
+// OPTION à 20 €/mois cochée EN PLUS d'un palier payant (Premium, Pro ou
+// Business), avec un essai gratuit de 7 jours, un seul par personne.
+//
+// Les colonnes lues (PROPOSITION de migration, non appliquée :
+// supabase/migrations/PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt) :
+//   · is_cloud           — option PAYÉE, posée par les flux de paiement comme
+//                          is_premium (jamais à la main, jamais par l'app) ;
+//   · cloud_essai_debut  — début de l'essai (null = jamais d'essai) ;
+//   · cloud_essai_fin    — fin de l'essai (début + 7 jours).
+// MÊME RÈGLE QUE LE SERVEUR : `cloud_etat(p_user)` (même proposition). C'est
+// le serveur qui décide si un navigateur Cloud tourne ; ce calcul sert à
+// l'AFFICHAGE, et il ne doit jamais dire autre chose que le serveur.
+//
+// ⛔ Une option sans palier ne tourne pas : un compte redevenu gratuit (palier
+// résilié) garde son is_cloud le temps que le paiement le retire, mais son
+// état est « suspendu », jamais « payé ». (Question ouverte pour Nico : un
+// essai Cloud ouvert à un compte GRATUIT ? Si oui, CLOUD_EXIGE_UN_PALIER
+// passe à false ici ET dans cloud_etat, le même jour.)
+
+export const CLOUD_EXIGE_UN_PALIER = true;
+export const CLOUD_ESSAI_JOURS = 7;
+// Prix AFFICHÉ — le vrai vit chez Stripe / Apple / Google, comme PLAN_PRICES
+// (ConversionModal). Il n'est vrai que si les trois canaux facturent 20 €.
+export const CLOUD_PRIX_AFFICHE = '20 €';
+
+const JOUR_MS = 86_400_000;
+const instant = (v) => {
+  if (v == null || v === '') return null;
+  const t = v instanceof Date ? v.getTime() : typeof v === 'number' ? v : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+};
+
+/**
+ * L'état Cloud d'une ligne `profiles`, jamais deviné.
+ *   etat : 'aucun' | 'essai' | 'paye' | 'essai_termine' | 'suspendu'
+ *   actif : un navigateur Cloud doit-il tourner pour ce compte ?
+ *   essaiPris : l'essai a-t-il déjà été pris (un seul par compte) ?
+ *   joursRestants : jours d'essai restants, arrondis au jour entamé (essai seul).
+ */
+export function cloudDuProfil(p, maintenant = Date.now()) {
+  const now = instant(maintenant) ?? Date.now();
+  const debut = instant(p?.cloud_essai_debut);
+  const fin = instant(p?.cloud_essai_fin);
+  const essaiPris = debut != null;
+  const essaiEnCours = debut != null && fin != null && debut <= now && now < fin;
+  const paye = p?.is_cloud === true;
+  const palierOk = !CLOUD_EXIGE_UN_PALIER || aAuMoins(palierDuProfil(p), 'premium');
+  const base = {
+    essaiPris,
+    essaiFin: fin != null ? new Date(fin).toISOString() : null,
+    joursRestants: null,
+  };
+  if ((paye || essaiEnCours) && !palierOk) return { ...base, etat: 'suspendu', actif: false };
+  if (paye) return { ...base, etat: 'paye', actif: true };
+  if (essaiEnCours) {
+    return { ...base, etat: 'essai', actif: true, joursRestants: Math.max(1, Math.ceil((fin - now) / JOUR_MS)) };
+  }
+  if (essaiPris && fin != null && now >= fin) return { ...base, etat: 'essai_termine', actif: false };
+  return { ...base, etat: 'aucun', actif: false };
+}
+
+/** Peut-on PROPOSER l'essai à ce compte ? (L'appareil et les comptes de
+ *  plateforme déjà vus se vérifient côté serveur : cloud_essai_ouvrir.) */
+export function essaiCloudProposable(p, maintenant = Date.now()) {
+  const c = cloudDuProfil(p, maintenant);
+  return c.etat === 'aucun' && !c.essaiPris;
+}
+
+/** Les droits d'un compte : le palier (emboîté) + l'option Cloud. */
+export function droitsDuCompte(p, maintenant = Date.now()) {
+  const palier = palierDuProfil(p);
+  return { palier, ...droitsDuPalier(palier), cloud: cloudDuProfil(p, maintenant) };
+}
