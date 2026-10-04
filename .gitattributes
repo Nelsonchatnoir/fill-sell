@@ -1,0 +1,5 @@
+# Les patches de patch-package s'appliquent tels quels sur node_modules : une
+# fin de ligne CRLF (Windows, core.autocrlf) y passe dans les sources natives
+# des plugins, et Capgo y voit un « changement natif » (fausse alerte de
+# l'OTA 2.9.46, 04/10/2026, @capgo/native-purchases). Toujours LF, partout.
+patches/*.patch text eol=lf
