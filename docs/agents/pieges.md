@@ -19,6 +19,18 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
   Dans la console, `window.__fillsellEntree` absent = l'entrée n'a pas tourné.
   ⚠️ Pas de « relance de l'entrée avec ?r= » dans index.html : 14 morceaux
   importent l'entrée par son nom exact, l'app tournerait deux fois.
+- **OTA Capgo, pas à pas** (déplacé d'`AGENTS.md` § 3.1 le 04/10, taille) :
+  1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
+  2. monter `"version"` dans `package.json` ET `package-lock.json` au-dessus
+     du canal (numéro de bundle = cette version) ;
+  3. **commiter** : `npm run build` REFUSE un arbre sale (01/10) ;
+  4. `npm run build` ;
+  5. `npx @capgo/cli bundle upload --channel production --bundle <version> --path dist` ;
+  6. relire le canal. Un numéro consommé ne se réutilise jamais (même si
+     l'envoi s'est figé) ; **ne jamais rebuilder un `dist/` déjà empreint**
+     pour le renvoyer : nouveau numéro, nouveau commit, nouveau build.
+  Binaires natifs (rares, sur décision) : iOS par Codemagic
+  (`codemagic.yaml`), Android : AAB à la main (Gradle).
 - **OTA** : ordre bump version → **commit** → build → upload. Builder avant de
   commiter embarque une empreinte `-dirty` du commit précédent (irrattrapable :
   Capgo refuse un numéro déjà consommé). Un simple fichier non suivi suffit à

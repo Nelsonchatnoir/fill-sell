@@ -1,38 +1,34 @@
-## État de production au 03/10 (nuit) — lire avant toute action
+## État de production au 04/10 (matin) — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections « 03/10 —
-clôture » et « 03/10 nuit — marque, Louis » en fin) et
-`docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
-contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; section « 04/10
+matin — complément » en fin) et `docs/agents/consignes-2026-09-28.md`
+(règles) remplacent tout historique contraire. `functions list`, `cron.job`
+et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** ; **0.6.94 à téléverser**
-  (`build/CWS-0.6.94-A-TELEVERSER/`, `2026-10-03T21:23:06Z+2a088e4`) ;
-  minimum serveur **0.6.81** ; OTA **2.9.45** ; `get-pending-jobs` v205,
-  `lens-analysis` v105, `avis-demande` v3, `ebay-account` v16 (`true`) ;
-  `update-job-status` v121, `handler-watch` v77, `ebay-api-worker` v76,
-  `ebay-oauth-callback` v9, `email-tunnel` v69 (`false`).
-- **Relevés (03/10)** : 5 min sans progression = arrêt (`progres_le`, lignes
-  écrites pour « annonces », 10 min pour une liste en lecture) ; veilleur
-  espacé après un échec (1 h, 3 h, 6 h) — migration 20261003150000.
-- **Marque/republication (03/10 nuit)** : Vinted sans marque libre →
-  question (« Sans marque », recherche au catalogue) ; republication : annonce
-  relue avant retrait, taille affichée > copie ; test ≥ 999 €.
-- **Selftests** : 190 + bancs, 0 rouge ; morceaux mis de côté le 28/09 :
-  `scripts/lib/morceaux-mis-de-cote.mjs`.
-- **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
-  coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
-  après, plus aucune publication ni republication Opla, synchro gardée pour
-  les comptes reliés (`_shared/opla-sortie.js`).
-- **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
-  toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
+- **Servi** : extension **0.6.94** (`2026-10-03T21:23:06Z+2a088e4`) ; minimum
+  serveur **0.6.81** ; web : refonte du Stock (**35e71b0**) ; OTA **2.9.46** ;
+  gpj v208, ujs v126, handler-watch v78, ops-digest v29, send-extension-link v12.
+- **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
+  `/main/banned` (reprise 1 h/3 h/6 h) ; Vinted introuvable aux deux derniers
+  relevés complets → clos « déjà retirée » ; annonce « en vérification » =
+  achetable (essai toutes les 20 min). **Boucles** : 3ᵉ onglet muet / 4ᵉ canal
+  coupé → needs_user « relancer » (`boucle_technique`, ops-digest).
+- **Cadence** : Premium 50/jour ; `coin_config` journalisé (`coin_config_journal`).
+- **Relevés** : 5 min sans progression = arrêt ; veilleur espacé (1 h, 3 h, 6 h).
+- **Marque/republication** : Vinted sans marque libre → question ; annonce
+  relue avant retrait, taille affichée > copie ; annonce de test ≥ 999 €.
+- **Selftests** : 151 (package.json) + 37 non câblés, 0 rouge ; morceaux mis
+  de côté : `scripts/lib/morceaux-mis-de-cote.mjs`.
+- **Sortie d'Opla** : BASCULE LE 10/10 à 00:00 Paris (`opla_sortie_le`, 0 =
+  désactivée) ; après, plus de publication ni republication Opla, synchro
+  gardée (`_shared/opla-sortie.js`).
+- **⛔ `platform_settings`** : toujours `rpc platform_settings_fusionner`.
 - **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée dans la saisie.
 - **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
-- **Migrations** : § 3.4. **Données** : correction = requête dans
-  `scripts/reparations/` (`git add -f`), sauvegarde avant, inverse prêt.
-- **Lot (03/10)** : livré, `docs/publication-en-lot.md`.
-- **Ouvert** : binaires **2.9.38** (AAB
-  `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS par Codemagic) ; livre eBay de
-  geronimo0550 (offre possible, non touché) : fin de l'état.
+- **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`),
+  sauvegarde avant, inverse prêt. **Lot** : `docs/publication-en-lot.md`.
+- **Ouvert** : binaires **2.9.38** (AAB `build/AAB-A-TELEVERSER-2.9.38-vc32/`,
+  iOS par Codemagic) ; le reste : fin de l'état.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
@@ -194,18 +190,10 @@ des fonctions (projet `tojihnuawsoohlolangc`).
 - Lint : `npm run lint`. Selftests : `npm run selftest:<sujet>` (les lancer
   quand on touche leur sujet ; `selftest:imports-epingles` pour les fonctions).
 - Captures d'écran sans session : `scripts/apercu/` (vite + playwright).
-- **OTA Capgo** (manuel ; jamais d'un worktree) :
-  1. lire le canal : `npx @capgo/cli channel list` (numéro servi sur `production`) ;
-  2. monter `"version"` dans `package.json` ET `package-lock.json` au-dessus
-     du canal (numéro de bundle = cette version) ;
-  3. **commiter** : `npm run build` REFUSE un arbre sale (01/10) ;
-  4. `npm run build` ;
-  5. `npx @capgo/cli bundle upload --channel production --bundle <version> --path dist` ;
-  6. relire le canal. Un numéro consommé ne se réutilise jamais (même si
-     l'envoi s'est figé) ; **ne jamais rebuilder un `dist/` déjà empreint**
-     pour le renvoyer : nouveau numéro, nouveau commit, nouveau build.
-  Une OTA ne change que le JS. Binaires natifs (rares, sur décision) : iOS
-  par Codemagic (`codemagic.yaml`), Android : AAB à la main (Gradle).
+- **OTA Capgo** (manuel ; jamais d'un worktree) : canal lu → version montée
+  (`package.json` + lock) → **commit** → `npm run build` → `bundle upload` →
+  canal relu ; pas à pas : `docs/agents/pieges.md` (Déploiement). Une OTA ne
+  change que le JS ; binaires natifs : iOS Codemagic, Android AAB à la main.
 
 ### 3.2 Extension Chrome (procédure complète : `docs/agents/extension.md`)
 

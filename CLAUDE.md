@@ -1,22 +1,30 @@
-## État de production au 03/10 (nuit) — lire avant toute action
+## État de production au 04/10 (matin) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
-« 03/10 nuit — marque, Louis » et « 03/10 nuit — clôture Louis + marque +
-prix » en fin) et
+« 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
+complément » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.89** au CWS ; **0.6.94 prête à téléverser**
-  (`build/CWS-0.6.94-A-TELEVERSER/`, BUILD_ID `2026-10-03T21:23:06Z+2a088e4`,
-  chargée chez Nico — sa copie s'est rechargée seule à 23:12 ; 0.6.90→0.6.93
-  jamais téléversées) ; **minimum serveur
-  0.6.81** (inchangé : forcer la MAJ = décision de Nico) ; OTA **2.9.45** ;
-  `get-pending-jobs` v205, `lens-analysis` v105, `avis-demande` v3,
-  `ebay-account` v16 (`true`) ; `update-job-status`
-  v121, `handler-watch` v77, `ebay-api-worker` v76, `ebay-oauth-callback` v9,
-  `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de
-  `CRON_SECRET` a monté TOUTES les versions d'un cran sans changer le code.
+- **Servi** : extension **0.6.94** au CWS (BUILD_ID
+  `2026-10-03T21:23:06Z+2a088e4`) ; **minimum serveur 0.6.81** (inchangé :
+  forcer la MAJ = décision de Nico) ; web : refonte du Stock fusionnée
+  (**35e71b0**) ; OTA **2.9.46** ; `get-pending-jobs` v208, `lens-analysis`
+  v105, `avis-demande` v3, `ebay-account` v16, `send-extension-link` v12
+  (`true`) ; `update-job-status` v126, `handler-watch` v78, `ops-digest` v29,
+  `ebay-api-worker` v76, `ebay-oauth-callback` v9, `email-tunnel` v69
+  (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
+  les versions d'un cran sans changer le code.
+- **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
+  `/main/banned` (reprise 1 h, 3 h, 6 h jusqu'à la preuve) ; un retrait Vinted
+  dont le numéro manque aux deux derniers relevés complets de sa boutique est
+  clos « déjà retirée » (gpj) ; ⛔ une annonce Vinted « en vérification » PEUT
+  être achetée (buste de Nico, 04/10) : essai toutes les 20 min, le texte le dit.
+- **Boucles (04/10)** : 3ᵉ onglet muet / 4ᵉ canal coupé de suite →
+  needs_user « relancer », `boucle_technique` en rouge dans l'ops-digest.
+- **Cadence (04/10)** : plafond Premium **50**/jour ; tout changement de
+  `coin_config` est daté et journalisé (`coin_config_journal`).
 - **Le dossier de l'extension de Nico se LIT dans Chrome** (03/10) :
   `Default/Secure Preferences`, `extensions.settings.pedhgegmgjkdcbdeinjnhdpemnpafpdp.path`
   (location 4 = non empaquetée) ; on copie le build DANS ce dossier, puis on
@@ -40,7 +48,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   (`champs_lus_sur_l_annonce.lus`), la taille affichée l'emporte sur la copie
   (gpj v205). Exception de créneau : `creneau_exception` bornée, posée par
   réparation sur décision de Nico seulement.
-- **Selftests** : 190 + bancs, 0 rouge (03/10 nuit). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
+- **Selftests** : 151 dans package.json + 37 scripts non câblés, 0 rouge (04/10). Morceaux 0.6.76/0.6.78 mis de côté le 28/09 :
   `scripts/lib/morceaux-mis-de-cote.mjs` (un morceau ne revient qu'avec sa
   preuve réelle — son test tombe sinon).
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
