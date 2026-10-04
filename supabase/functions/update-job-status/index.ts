@@ -1545,7 +1545,31 @@ serve(async (req) => {
           // répare : relancer Chrome), et une trace pour nous (boucle_technique,
           // remontée par l'ops-digest). L'annonce est intacte : étape captured.
           const seuilBoucle = canalCoupeParTimeout ? 3 : 4;
-          if (deja + 1 >= seuilBoucle) {
+          // ── VINTED DEMANDE DE VÉRIFIER LE COMPTE (04/10, lesforcesdelaudela) ──
+          // Les coupures du 01 au 03/10 avaient TOUTES l'onglet sur
+          // vinted.fr/users/verification?ref_url=/items/new : Vinted exige une
+          // vérification du compte avant tout dépôt. Ce n'est ni une panne ni un
+          // « rien à faire » : c'est un geste, demandé tout de suite.
+          const urlCoupure = String(
+            ((pfBody.canal_coupe_diag ?? {}) as Record<string, unknown>)["url"]
+            ?? (((pfBody.work_window_state ?? {}) as Record<string, unknown>)["at_end"] as Record<string, unknown> | undefined)?.["tab_url"]
+            ?? "",
+          );
+          if (/^https?:\/\/(?:www\.)?vinted\.[a-z.]+\/users\/verification(?:[/?#]|$)/i.test(urlCoupure)) {
+            const { next_action_after: _naoV, ...pfSansV } = pfBody;
+            pfCanalCoupe = {
+              ...pfSansV,
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              canal_coupe_rejoue: deja + 1,
+              needs_user_source: "relancer",
+              mur_vinted_verification: { le: new Date().toISOString(), url: urlCoupure.slice(0, 200) },
+            };
+            statutEffectif = "needs_user";
+            messageEffectif = "Vinted te demande de vérifier ton compte avant de pouvoir publier (page « Vérification » sur vinted.fr) : " +
+              "la republication n'a pas pu se faire, ton annonce est toujours en ligne. Ouvre vinted.fr dans Chrome, " +
+              "fais la vérification que Vinted demande, puis appuie sur « Relancer ».";
+            raisonRequalif = "canal coupé sur vinted.fr/users/verification → geste (vérification du compte Vinted), needs_user";
+          } else if (deja + 1 >= seuilBoucle) {
             const { next_action_after: _naoX, ...pfSansX } = pfBody;
             pfCanalCoupe = {
               ...pfSansX,
@@ -1562,11 +1586,14 @@ serve(async (req) => {
               },
             };
             statutEffectif = "needs_user";
+            // (04/10, diagnostic Ciddjy) Le script n'est pas muet : il est LENT —
+            // remplissages de 200 à 300 s sur son ordinateur (70 s ailleurs), la
+            // borne de 5 min tombe avant la fin. On le dit tel quel.
             messageEffectif = canalCoupeParTimeout
-              ? `L'extension FillSell ne répond plus dans l'onglet Vinted de ton ordinateur (${deja + 1} essais de suite) : ` +
-                "la republication n'a pas pu se faire. Ton annonce est intacte, rien n'a été retiré. " +
-                "Ferme complètement Chrome puis rouvre-le (ça recharge l'extension), et appuie sur « Relancer ». " +
-                "Si ça bloque encore, écris-nous : c'est de notre côté, on regarde."
+              ? `Sur ton ordinateur, le remplissage du formulaire Vinted dépasse 5 minutes et s'arrête avant la fin (${deja + 1} essais de suite) : ` +
+                "la republication n'a pas pu se faire. Ton annonce est toujours en ligne, rien n'a été retiré. " +
+                "Relance-la quand ton ordinateur est branché et peu chargé (Chrome ouvert, pas en mode économie d'énergie). " +
+                "On est prévenus et on cherche à l'accélérer de notre côté."
               : `La republication s'interrompt chaque fois au même moment sur ton ordinateur (${deja + 1} essais de suite, l'onglet Vinted se ferme) : ` +
                 "ton annonce est intacte, rien n'a été retiré. Ferme complètement Chrome puis rouvre-le, et appuie sur « Relancer ». " +
                 "Si ça bloque encore, écris-nous : c'est de notre côté, on regarde.";
@@ -1791,6 +1818,46 @@ serve(async (req) => {
       } catch (e) {
         console.error("[update-job-status] retrait Beebs en vérification:", (e as Error)?.message ?? e);
         pfRetraitVerif = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // UNE ANNONCE EN VÉRIFICATION CHEZ VINTED PEUT ÊTRE ACHETÉE (04/10)
+    // ══════════════════════════════════════════════════════════════════════
+    // Nico, 04/10 : « Le buste femme a été vendu, j'ai annulé la vente. »
+    // Statue buste femme (10223005469) : retrait demandé le 03/10 à 11:16,
+    // refusé 23 fois « en vérification » (page du vendeur : delayed_publication,
+    // encore lue le 04/10 à 10:00), vendue dans la matinée. « Masquée aux
+    // acheteurs … rien à faire de ton côté » était faux : dès la fin de la
+    // vérification l'annonce est en vente, et l'essai suivant pouvait attendre
+    // une heure. Pour toutes les versions d'extension (le texte vient de
+    // l'extension OU du bloc Vinted ci-dessus) : essai toutes les
+    // RETRAIT_VERIF_VINTED_MIN minutes, et le texte dit le risque et le geste.
+    // ⛔ Jamais de platform_fields fabriqués : sans base (body ou bloc
+    //    ci-dessus), seul le texte change.
+    const RETRAIT_VERIF_VINTED_MIN = 20;
+    if (statutEffectif === "pending" && !pfCanalCoupe) {
+      const texteV = messageEffectif ?? (typeof body.error === "string" ? body.error : "");
+      if (/^Vinted vérifie encore cette annonce/.test(texteV)) {
+        const baseV = pfRetraitVerif
+          ?? ((body.platform_fields && typeof body.platform_fields === "object") ? body.platform_fields as Record<string, unknown> : null);
+        const attenteV = (baseV?.retrait_en_attente_verification ?? null) as Record<string, unknown> | null;
+        if (baseV) {
+          const pfV: Record<string, unknown> = { ...baseV };
+          const prochainV = Date.now() + RETRAIT_VERIF_VINTED_MIN * 60_000;
+          const naaV = Date.parse(String(pfV.next_action_after ?? ""));
+          if (!Number.isFinite(naaV) || naaV > prochainV) pfV.next_action_after = new Date(prochainV).toISOString();
+          pfRetraitVerif = pfV;
+        }
+        const depuisV = new Date(String(attenteV?.depuis ?? ""));
+        const quandV = Number.isFinite(depuisV.getTime())
+          ? ` (depuis le ${depuisV.toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: "Europe/Paris" })} à ` +
+            `${depuisV.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })})`
+          : "";
+        messageEffectif =
+          `Vinted vérifie encore cette annonce${quandV} et refuse de la retirer tant que la vérification dure. ` +
+          "Attention : elle peut être achetée dès la fin de la vérification. FillSell réessaie toutes les " +
+          `${RETRAIT_VERIF_VINTED_MIN} minutes ; si elle ne doit plus être vendue, essaie aussi de la supprimer toi-même dans l'appli Vinted.`;
       }
     }
 
