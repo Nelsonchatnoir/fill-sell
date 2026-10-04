@@ -94,6 +94,7 @@ import { S as SK } from '../stock/jetons';
 import { TitreStock, Gestes, LignePublierEnLot, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
 import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
 import { STATUTS_LUS, indexerJobs, fusionnerJobs, regrouperParArticle, idsVivants, plusRecent, filtreLeger } from '../stock/jobsIncrementaux';
+import BarreModifierLot from '../stock/BarreModifierLot';
 import { demarrerRelecture } from '../utils/relectureBornee';
 import { BarreRecherche, FiltresRapides, FiltresActifs, EnTeteListe, FeuilleTri, PanneauFiltres, VideAvecSortie } from '../stock/Liste';
 import { CarteArticle, LigneArticle } from '../stock/Carte';
@@ -7822,6 +7823,11 @@ const StockTab = memo(function StockTab({
   const [paBusy,setPaBusy]=useState(false);
   const [paPatchs,setPaPatchs]=useState({}); // id -> {buy} | {inconnu:true} (optimiste, en attendant le refetch)
   const [paLot,setPaLot]=useState("");
+  // (04/10, Louis) MODIFIER EN LOT le prix de vente ou la quantité des fiches
+  // (stock/BarreModifierLot.jsx). Les annonces en ligne ne suivent pas : la
+  // barre le dit. Sélection sur la liste AFFICHÉE (filtres compris).
+  const [modeModif,setModeModif]=useState(false);
+  const [modifSel,setModifSel]=useState(()=>new Set());
 
   // "" -> null (VIDE ≠ ZÉRO), virgule gérée, illisible -> NaN. Même contrat
   // que parsePrix de VentesTab.
@@ -8851,10 +8857,14 @@ const StockTab = memo(function StockTab({
     }
     return etats;
   };
+  // Le mode « Modifier en lot » : la liste affichée (filtres et tri compris),
+  // articles en stock seulement — jamais un vendu, jamais un brouillon.
+  const modifAffiches = modeModif ? ((stockRetenu && vueStock !== 'vendus') ? stockRetenu : stockFiltre).filter((i) => i.statut === 'stock') : [];
   const selectionArticle = (item) => {
     if (modeLot) return { coche: lotSel.includes(item.id), onBasculer: () => basculerLot(item.id) };
     if (modeRepublish && repubSelectionnable(item)) return { coche: repubSel.has(item.id), onBasculer: () => setRepubSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
     if (modePrixAchat && paIncomplet(item)) return { coche: paSel.has(item.id), onBasculer: () => setPaSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
+    if (modeModif && !modeLot && !modeRepublish && !modePrixAchat && item.statut === 'stock') return { coche: modifSel.has(item.id), onBasculer: () => setModifSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
     return null;
   };
   const rendreArticle = (item, enListe) => {
@@ -9633,6 +9643,14 @@ const StockTab = memo(function StockTab({
                 actif={FILTRES_RAPIDES.includes(vueStock)?vueStock:null}
                 onChoisir={(cle)=>{setVueStock(cle===vueStock&&cle!=='tous'?'tous':cle);setShowAllStock(false);}}/>
             </div>
+          )}
+          {/* (04/10, Louis) La porte du mode « Modifier en lot » : discrète,
+              une ligne, jamais dans un autre mode. */}
+          {stock.length>1&&!modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&vueStock!=='vendus'&&(
+            <button type="button" className="sk-btn" onClick={()=>{setModeModif(true);setModifSel(new Set());}}
+              style={{display:"block",marginTop:6,padding:"4px 2px",background:"none",border:"none",font:"inherit",fontSize:12.5,fontWeight:700,color:SK.tealDeep,cursor:"pointer",textAlign:"left"}}>
+              {lang==='fr'?"Modifier le prix ou la quantité de plusieurs articles":"Change the price or quantity of several items"}
+            </button>
           )}
           {pucesFiltres.length>0&&(
             <div style={{marginTop:8}}>
@@ -10530,10 +10548,17 @@ const StockTab = memo(function StockTab({
                     (lot, remontée, prix d'achat), toujours les cartes : elles
                     portent la case de sélection. Une seule lecture par article
                     (deriverArticle), une seule pastille, UNE action. */}
+                {modeModif&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(
+                  <div style={{marginTop:8}}>
+                    <BarreModifierLot lang={lang} affiches={modifAffiches} sel={modifSel} setSel={setModifSel}
+                      onQuitter={()=>{setModeModif(false);setModifSel(new Set());}}
+                      supabase={supabase} userId={user?.id} onFait={rafraichirApresSync}/>
+                  </div>
+                )}
                 {(()=>{
-                  const listeVue=modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:listeStock;
+                  const listeVue=modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:modeModif?modifAffiches:listeStock;
                   if(!listeVue.length)return null;
-                  const enListe=affichageStock==='liste'&&!modeLot&&!modeRepublish&&!modePrixAchat;
+                  const enListe=affichageStock==='liste'&&!modeLot&&!modeRepublish&&!modePrixAchat&&!modeModif;
                   return enListe?(
                     <div ref={galerieRef} role="list" style={{marginTop:8,borderRadius:16,overflow:'hidden',background:'#FFFFFF',boxShadow:`0 1px 3px rgba(16,32,27,0.04), inset 0 0 0 1px ${SK.border}`}}>
                       {listeVue.map(item=>rendreArticle(item,true))}

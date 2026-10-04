@@ -137,6 +137,7 @@
     "selftest:releve-ebay-compte-api": "node scripts/releve-ebay-compte-api-selftest.mjs",
     "selftest:retrait-ebay-par-numero": "node scripts/retrait-ebay-par-numero-selftest.mjs",
     "selftest:lbc-voie-des-reglages": "node scripts/lbc-voie-des-reglages-selftest.mjs",
+    "selftest:modifier-en-lot": "node --import ./scripts/loader-ext.mjs scripts/modifier-en-lot-selftest.mjs",
     "selftest:livraison-poids": "node --import ./scripts/loader-ext.mjs scripts/livraison-poids-selftest.mjs",
     "selftest:texte-de-la-fiche": "node --import ./scripts/loader-ext.mjs scripts/texte-de-la-fiche-selftest.mjs",
     "selftest:marque-absente": "deno run --allow-read --allow-env --allow-net scripts/marque-absente-selftest.ts",
