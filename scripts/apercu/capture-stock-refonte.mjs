@@ -34,10 +34,12 @@ const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 
 const AVANT_RACINE = process.env.APERCU_AVANT_RACINE || path.resolve(RACINE, '..', 'fill-and-sell-avant-stock');
 const SORTIE = path.join(RACINE, 'screenshots-review', 'stock-refonte');
 const DEJA = !!process.env.APERCU_DEJA_LANCE;
+// APERCU_VERSIONS=apres : seulement l'APRÈS (retest après fusion, sans worktree AVANT).
+const VOULUES = (process.env.APERCU_VERSIONS || 'apres,avant').split(',').map((v) => v.trim());
 const VERSIONS = [
   { nom: 'apres', racine: RACINE, port: 5212 },
   { nom: 'avant', racine: AVANT_RACINE, port: 5213 },
-];
+].filter((v) => VOULUES.includes(v.nom));
 fs.mkdirSync(SORTIE, { recursive: true });
 
 const serveurs = [];
