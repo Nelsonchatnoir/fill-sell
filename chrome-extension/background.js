@@ -1029,6 +1029,31 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+  // ── FORMATS DE COLIS BEEBS, APPRIS DU FORMULAIRE (04/10, 0.6.95) ──────────
+  // beebs.js envoie les options « Format du colis » vues dans le formulaire
+  // ({ id, titre }) ; le serveur les garde (noter_formats_colis_beebs,
+  // première écriture gagnante, seuls les paliers réels acceptés) pour lire
+  // le poids d'une annonce par son weight_id. Au mieux : un échec ne fait rien.
+  if (msg?.type === "BEEBS_FORMATS_COLIS") {
+    (async () => {
+      try {
+        const formats = (Array.isArray(msg.formats) ? msg.formats : [])
+          .map((f) => ({ id: String(f?.id ?? "").trim(), titre: String(f?.titre ?? "").trim() }))
+          .filter((f) => /^[A-Za-z0-9]{8,40}$/.test(f.id) && /^poids jusqu/i.test(f.titre))
+          .slice(0, 20);
+        if (!formats.length) return sendResponse({ ok: false, raison: "aucun format" });
+        const session = await getValidSession();
+        if (!session?.access_token) return sendResponse({ ok: false, raison: "pas_de_session" });
+        const n = await restRequest("rpc/noter_formats_colis_beebs", session.access_token, {
+          method: "POST", body: JSON.stringify({ p_formats: formats }),
+        }).catch(() => null);
+        sendResponse({ ok: true, nouveaux: Number(n) || 0 });
+      } catch (e) {
+        sendResponse({ ok: false, raison: String(e?.message ?? e) });
+      }
+    })();
+    return true;
+  }
   if (msg?.type === "LISTE_FERMEE_CHOISIR") {
     (async () => {
       try {
@@ -8564,19 +8589,29 @@ const BEEBS_MAIN_FONCTIONS = {
       for (const l of document.querySelectorAll(selLibelle)) {
         const btn = triggerDe(l);
         if (!btn) continue;
-        let nom = null, valeurs = null;
+        let nom = null, valeurs = null, options = null;
         const fk = Object.keys(btn).find((k) => k.indexOf("__reactFiber$") === 0);
         if (fk) {
           let f = btn[fk];
           for (let i = 0; f && i < 16; i++, f = f.return) {
             const p = f.memoizedProps;
             if (!p || typeof p !== "object") continue;
-            if (valeurs === null && Array.isArray(p.values)) valeurs = p.values.map(texte).filter(Boolean).slice(0, 300);
+            if (valeurs === null && Array.isArray(p.values)) {
+              valeurs = p.values.map(texte).filter(Boolean).slice(0, 300);
+              // (04/10, 0.6.95) Les entrées-objets portent leur identifiant
+              // (Format du colis : { sys: { id }, title, weight }) : gardé à
+              // côté du libellé, pour reprendre le format EXACT d'une annonce
+              // (weight_id relu sur sa page) et l'apprendre au serveur.
+              const avecId = p.values
+                .map((v) => (v && typeof v === "object" && v.sys && typeof v.sys.id === "string" ? { id: v.sys.id, t: texte(v) } : null))
+                .filter((o) => o && o.t);
+              if (avecId.length) options = avecId.slice(0, 50);
+            }
             if (nom === null && typeof p.name === "string" && p.name) nom = p.name;
             if (nom !== null && valeurs !== null) break;
           }
         }
-        champs.push({ ordre: champs.length, label: l.textContent.trim(), name: nom, values: valeurs });
+        champs.push({ ordre: champs.length, label: l.textContent.trim(), name: nom, values: valeurs, ...(options ? { options } : {}) });
       }
       return { ok: true, champs, canal: "executeScript" };
     } catch (e) {
@@ -14661,6 +14696,21 @@ function capturerFicheEnPage(plateforme) {
     // Une republication le reprend tel quel au lieu de le redemander
     // (get-pending-jobs, _shared/beebs-age-releve.js).
     out.age = ligneLibellee(["Âge", "Age"]);
+    // LE FORMAT DE COLIS (04/10, Louis — 0.6.95) : la page ne l'écrit pas en
+    // clair, seulement par son identifiant (`weight_id`, données de la page :
+    // « 5i5zYtqOJt3Ji8EEtKhvP0 » relevé sur 34097762). Une page qui en porte
+    // plusieurs (annonces voisines) est AMBIGUË : on ne garde rien plutôt
+    // qu'un format pris à une autre annonce.
+    {
+      const ids = new Set();
+      for (const s of document.querySelectorAll("script:not([src])")) {
+        const t = s.textContent || "";
+        if (t.indexOf("weight_id") < 0) continue;
+        for (const m of t.matchAll(/weight_id\\*"\s*:\s*\\*"([A-Za-z0-9]{8,40})\\*"/g)) ids.add(m[1]);
+      }
+      out.format_colis_id = ids.size === 1 ? [...ids][0] : null;
+      if (ids.size > 1) out.format_colis_ambigu = ids.size;
+    }
     const fil = Array.from(document.querySelectorAll("nav a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter((t) => t && !/^accueil$/i.test(t));
     out.categorie = fil.length ? fil.join(" > ") : null;
     if (!out.photos.length) {
@@ -14804,18 +14854,14 @@ async function reporterCaptureSurArticle(inventaireId, capture, platform, { toke
     if (aChangeEnLigne(champ, valeur)) divergences.push(champ);     // sa retouche ET ça a bougé en ligne → il tranche
   }
   // ── PRIX ────────────────────────────────────────────────────────────────
-  // Le prix de la LIGNE de liste est le prix réellement affiché. On ne le pose
-  // que si la fiche portait encore celui qu'on avait lu la fois d'avant —
-  // sinon c'est le vendeur qui l'a changé chez nous, et on le signale.
-  if (prixListe != null && Number.isFinite(Number(prixListe))) {
-    const ancien = avant?.ligne?.prix;
-    const fiche = art.prix_vente == null ? null : Number(art.prix_vente);
-    if (fiche == null) patch.prix_vente = Number(prixListe);
-    else if (Number(prixListe) !== fiche) {
-      if (ancien != null && Number(ancien) === fiche) patch.prix_vente = Number(prixListe);
-      else if (ancien != null) divergences.push("prix");
-    }
-  }
+  // (04/10, Louis — 0.6.95) Plus rien ici : la BASE suit le prix de
+  // l'annonce (annonce_vers_fiche, 20261004093000) — prix vide complété,
+  // changement de la plateforme repris si la fiche y était alignée et que la
+  // personne ne l'a pas changé dans FillSell depuis, conflit tranché par la
+  // date et noté au journal (inventaire_journal), jamais propagé aux autres
+  // annonces. Deux règles au même endroit se contrediraient ; `prixListe`
+  // reste lu par l'appelant (ligne de liste → annonces_plateforme.prix).
+  void prixListe;
   const photos = Array.isArray(art.photos) ? art.photos.filter(Boolean).map(String) : [];
   const aNous = (u) => /supabase\.co|fillsell\.app/i.test(u);
   // (27/09, louis) La vignette RECOPIÉE chez nous (…/rapatrie-fiche/<id>/…)
@@ -21210,7 +21256,10 @@ function idAnnonceDepuisUrl(platform, url) {
 //                « Ajustable » quand la copie dit « L », nivake03 02/10) ;
 //   · `repris` : les champs que la copie n'avait pas, posés dans `pf`.
 // Rend { cle: valeur } repris, ou null. ⛔ Ne déduit rien d'un titre.
-const CHAMPS_LUS_SUR_L_ANNONCE = ["age", "taille", "etat", "marque", "couleur", "matiere"];
+// (04/10, 0.6.95) + le format de colis Beebs, par son identifiant : la
+// republication le repose à l'identique au lieu du pré-remplissage de Beebs
+// (rangements de Louis : 200 g en ligne, « 1 kg » à la recréation).
+const CHAMPS_LUS_SUR_L_ANNONCE = ["age", "taille", "etat", "marque", "couleur", "matiere", "format_colis_id"];
 async function reprendreChampsDeLAnnonce(job, pf) {
   const manquants = CHAMPS_LUS_SUR_L_ANNONCE.filter((c) => !String(pf[c] ?? "").trim());
   if (!job.listing_url) return null;

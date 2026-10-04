@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -1259,6 +1259,15 @@ async function fillListingForm(job) {
   // libellé identique — « Taille » ×2 sur Chemises (homme) — et de leur donner
   // une clé propre. Muet ⇒ repli positionnel, jamais bloquant.
   await chargerChampsFiber();
+  // (04/10, 0.6.95) Les formats de colis de ce formulaire (identifiant →
+  // libellé), appris par le serveur pour lire le poids d'une annonce par son
+  // weight_id. Au mieux, sans attendre : jamais bloquant.
+  {
+    const champFormat = beebsFiberChamps.find((c) => /^format du colis/i.test(String(c?.label ?? "").trim()) && Array.isArray(c?.options));
+    if (champFormat?.options?.length) {
+      askBackground({ type: "BEEBS_FORMATS_COLIS", formats: champFormat.options.map((o) => ({ id: o.id, titre: o.t })) });
+    }
+  }
 
   // Couleur : même normalisation que Vinted/eBay (colors[] posé par l'app,
   // sinon split de couleur libre) — Beebs n'affiche qu'un choix simple, on
@@ -1357,9 +1366,16 @@ async function fillListingForm(job) {
     return "Poids jusqu'à 1 kg max";
   };
   const packageField = findField("Format du colis");
+  const formatExplicite = formatColisExplicite(fields, beebsFiberChamps);
   if (packageField) {
     const current = (packageField.trigger.textContent || "").trim();
-    if (/poids/i.test(current)) {
+    if (formatExplicite && normalizeFuzzy(current) !== normalizeFuzzy(formatExplicite.titre)) {
+      // (04/10, 0.6.95) Un format EXPLICITE passe devant le pré-remplissage.
+      console.log(`[beebs] Format du colis: ${formatExplicite.source} « ${formatExplicite.titre} » posé (pré-rempli : « ${current || "rien"} »)`);
+      await selectDropdownValue("Format du colis", formatExplicite.titre, warnings, unfilledRequired, { fallbackTexts: [] });
+    } else if (formatExplicite) {
+      console.log(`[beebs] Format du colis: ${formatExplicite.source} « ${formatExplicite.titre} » déjà posé`);
+    } else if (/poids/i.test(current)) {
       console.log(`[beebs] Format du colis: déjà posé par Beebs ("${current}"), conservé`);
     } else {
       const rawFormat = String(fields.format_colis ?? "").trim();
@@ -2750,6 +2766,37 @@ function valeurAfficheeSurLAnnonce(fields, cle) {
     if (v) return v;
   }
   return "";
+}
+
+// ── LE FORMAT DE COLIS EXPLICITE (04/10, Louis — 0.6.95) ───────────────────
+// Rangements de Louis : « Poids jusqu'à 200g max » sur l'annonce, « 1 kg » à
+// la recréation — le remplisseur gardait TOUJOURS le pré-remplissage de Beebs
+// (« déjà posé par Beebs, conservé »). Désormais un format EXPLICITE passe
+// devant lui, dans cet ordre :
+//   1. la réponse de la personne (needsUserResolved.format_colis) ;
+//   2. le format relu sur l'annonce à republier (champs_lus_sur_l_annonce,
+//      identifiant weight_id), traduit par les options du formulaire ;
+//   3. le poids de la fiche, traduit en palier par le serveur
+//      (format_colis_explicite : « Poids jusqu'à … »).
+// Sans rien d'explicite, rien ne change (pré-remplissage gardé, sinon
+// défaut). Pur : testé par scripts/beebs-format-colis-explicite-selftest.mjs.
+function formatColisExplicite(fields, champsFiber) {
+  const reponse = String(fields?.needsUserResolved?.format_colis ?? "").trim();
+  if (reponse) return { titre: reponse, source: "réponse" };
+  const lus = fields?.champs_lus_sur_l_annonce;
+  const idLu = String(
+    (lus && typeof lus === "object" && ((lus.lus && lus.lus.format_colis_id) || (lus.repris && lus.repris.format_colis_id)))
+    ?? fields?.format_colis_id ?? "",
+  ).trim();
+  if (idLu) {
+    const champ = (Array.isArray(champsFiber) ? champsFiber : [])
+      .find((c) => /^format du colis/i.test(String(c?.label ?? "").trim()) && Array.isArray(c?.options));
+    const opt = champ?.options?.find((o) => String(o?.id ?? "") === idLu);
+    if (opt && String(opt.t ?? "").trim()) return { titre: String(opt.t).trim(), source: "annonce" };
+  }
+  const fiche = String(fields?.format_colis_explicite ?? "").trim();
+  if (/^poids jusqu/i.test(fiche)) return { titre: fiche, source: "fiche" };
+  return null;
 }
 
 // La taille à tenter d'abord, et le repli (03/10 nuit) : la valeur affichée
