@@ -43,7 +43,12 @@ ok(situationJob(job({}), { ...ctx, extensionAMettreAJour: false }).raison === "E
 console.log("\n3. CHAQUE ÉCRAN");
 const stock = lire("src/tabs/StockTab.jsx");
 ok(/extensionAMettreAJour: extensionStatus\?\.outdated === true \};/.test(stock), "le Stock passe l'état aux barres et à la file");
-ok(/const majRequise=extensionStatus\?\.outdated===true&&pendingJobs\.some\(j=>j\.voie!=='api'\);/.test(stock) && /txt=fr\?'Mise à jour':'Update';/.test(stock),
+// (03/10, refonte du Stock) La pastille de la carte vit dans src/stock/regles.js
+// (pastilleCourte, genre « maj ») ; la CONDITION reste lue dans StockTab, au mot près.
+const { pastilleCourte } = await imp("src/stock/regles.js");
+ok(/const majRequise = extensionStatus\?\.outdated === true && d\.pendingJobs\.some\(\(j\) => j\.voie !== 'api'\);/.test(stock)
+  && /if \(majRequise\) return \{ \.\.\.pastilleCourte\(\{ genre: 'maj' \}, lang\)/.test(stock)
+  && pastilleCourte({ genre: "maj" }, "fr").texte === "Mise à jour",
   "la carte : « Mise à jour », plus « En cours… »");
 const conf = lire("src/publication/EcranConfirmer.jsx");
 ok(/\{m\.extensionAMettreAJour && voies\.extension\.some\(p => verdict\.partent\.includes\(p\)\) && \(/.test(conf) && /ne partira qu'après la mise à jour : ferme Chrome complètement sur ton ordinateur, puis rouvre-le\./.test(conf),

@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
-import { Check, ChevronRight, Hand, AlertTriangle, Pause } from 'lucide-react';
+import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -28,8 +28,7 @@ import ExtensionReminderModal, { shouldShowExtensionReminder } from '../componen
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import InstallExtensionCta from '../components/InstallExtensionCta';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee, plateformesPlanifieesVisibles } from '../hooks/useRepublicationPlanifiee';
-import { RepublicationPlanifieeBloc } from '../components/RepublicationPlanifiee';
-import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
+import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
@@ -68,7 +67,6 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // propre module, sur le modèle de src/reglages — des textes dans un fichier
 // dédié, la lecture des runs séparée de l'affichage.
 // components/RelevesPlateformes.jsx est SUPPRIMÉ.
-import CarteAnnoncesEnLigne from '../annonces/CarteAnnoncesEnLigne';
 import BandeauDejaVendu from '../annonces/BandeauDejaVendu';
 import QuestionMarque from '../annonces/QuestionMarque';
 import { estQuestionMarqueHorsCatalogue } from '../utils/questionMarque';
@@ -81,15 +79,38 @@ import { useFondFige } from '../utils/modale';
 import {
   plateformesDuCompte, plateformesDeLArticle, plateformesDeReleve,
   LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
-  filtrerStock, trierStock, TRIS_STOCK, libelleTri, libelleTriCourt, pastillesEtat, etatPlateformes,
+  filtrerStock, trierStock, pastillesEtat, etatPlateformes,
 } from '../utils/stockFiltres';
-// Le haut du Stock (2026-09-18) : barre + « Filtrer », pastilles de sortie,
-// ligne « À traiter », ligne de compte, et les deux feuilles. Ce module ne
-// filtre RIEN — il reçoit des options déjà calculées et un onTap par option.
+// Du haut du Stock de 2026-09-18, seule la feuille de liste (catégories,
+// marques) reste : le reste a cédé la place à src/stock/ (refonte du 03/10).
+// Ce module ne filtre RIEN — il reçoit des options déjà calculées.
+import { FeuilleListe, Z_FEUILLE_DESSUS } from '../components/FiltresStock';
+// ── LA REFONTE DU STOCK (03/10/2026, planche validée par Nico) ───────────────
+// Présentation dans src/stock/ ; la logique (lecture des jobs, gestes,
+// filtres) reste ICI, inchangée. Règles sans écran : src/stock/regles.js.
+import { CSS_STOCK } from '../stock/css';
+import { S as SK } from '../stock/jetons';
+import { TitreStock, Gestes, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
+import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
+import { BarreRecherche, FiltresRapides, FiltresActifs, EnTeteListe, FeuilleTri, PanneauFiltres, VideAvecSortie } from '../stock/Liste';
+import { CarteArticle, LigneArticle } from '../stock/Carte';
+import MenuArticle from '../stock/MenuArticle';
+import EcranSelection from '../stock/EcranSelection';
+import EcranARegler from '../stock/EcranARegler';
 import {
-  BarreFiltres, PastillesFiltres, LigneATraiter, LigneCompte,
-  FeuilleFiltres, FeuilleListe, Z_FEUILLE_DESSUS,
-} from '../components/FiltresStock';
+  actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
+  FILTRES_RAPIDES, libelleFiltreRapide, entreDansFiltreRapide, TRANCHES_ANCIENNETE, libelleTranche, trancheAnciennete,
+  lirePrixSaisi, dansFourchettePrix, lireAffichage, ecrireAffichage, TRIS_PLANCHE, TRI_PAR_DEFAUT, libelleTriPlanche,
+  SEUIL_ANCIENNE_JOURS,
+} from '../stock/regles';
+import EcranDoublons from '../annonces/EcranDoublons';
+import { lireDoublonsProposes, pairesAffichables, estQuestionDejaVendu } from '../utils/doublons';
+import {
+  Upload, ChevronsUp, BadgeEuro, Pencil, Copy, Trash2, Layers, ListChecks, Eye, Store, ExternalLink, Activity,
+  CircleAlert, Laptop, KeyRound, Wrench, PauseCircle, Clock, RotateCcw,
+  PenLine, Mic, Hourglass, Sparkles, Plus, BarChart3, Package, Tag, Hash, ShoppingCart, ShoppingBag,
+  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock,
+} from 'lucide-react';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
@@ -102,7 +123,7 @@ import { useNouveauStepper } from '../publication/interrupteur';
 import { propsStepperArticle } from '../publication/lot/propsArticle';
 import LotPublication from '../publication/lot/LotPublication';
 import SuiviLot from '../publication/lot/SuiviLot';
-import { LignePublierPlusieurs, AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
+import { AppelFiltrePublier, EnteteModeLot, BarreSelectionLot, LigneLotEnCours } from '../publication/lot/EntreesStock';
 import { PLATEFORMES_LOT, LOT_MAX_ARTICLES, articleSelectionnable, suiviDuLot, idLotDeJob, CLE_REPRISE_LOT, repriseValable } from '../publication/lot/regles';
 import { genericFieldToSharedKey, EBAY_ASPECT_LABELS } from '../publication/moteur/champsPartages';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
@@ -111,12 +132,12 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
-  catClass, detectObjectIcon, buildCardCss,
+  buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
   jobErrorSansFaussePromesse, jobActionRequise,
   fraicheurExtension, detecterRetardHorloge, DESC_MANUELLE_MAX,
 } from '../utils/shared';
-import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
+import { prixAchatConnu, prixAchatNum } from '../utils/comptabilite';
 import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/etatsVinted.js';
 import { searchMatch } from '../utils/recherche';
 import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DETAIL_VINTED_MS } from '../publication/texteDuVendeur';
@@ -133,6 +154,20 @@ import {
   DETAIL_VERSION_MIN,
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
+
+// ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
+// Plus aucun émoji dans l'écran Stock : une icône Lucide au trait, posée dans
+// la ligne de texte (IconeTexte) ou dans la case d'icône d'un champ (Field).
+// (`const I = icone` : sans eslint-plugin-react, une balise JSX ne compte pas
+// comme un usage — un PARAMÈTRE nommé I serait signalé « inutilisé ».)
+const IconeTexte = ({ icone, taille = 14, style = null }) => {
+  const I = icone;
+  return <I size={taille} strokeWidth={2} aria-hidden="true" style={{ display: 'inline-block', verticalAlign: '-0.15em', flexShrink: 0, ...style }} />;
+};
+const iconeChamp = (icone) => {
+  const I = icone;
+  return <I size={20} strokeWidth={1.8} aria-hidden="true" style={{ display: 'block' }} />;
+};
 
 // Plafond de la description saisie à la main : il vit désormais dans
 // utils/shared.js (2026-09-20) — l'écran d'AJOUT (ici) et la modale de
@@ -1514,7 +1549,7 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       >
         <div style={MODAL_CORPS}>
         <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"#8A6100", marginBottom:6 }}>
-          ✋ {lang === "en" ? "Action needed" : "À compléter"} — {platformLabel}
+          <IconeTexte icone={CircleAlert} taille={12} style={{ marginRight: 4 }} />{lang === "en" ? "Action needed" : "À compléter"} — {platformLabel}
         </div>
         {questionMarque ? (
           <QuestionMarque job={job} f={f} lang={lang} saving={saving}
@@ -2024,7 +2059,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                           border:`1px solid ${NU_T.mute}`, color:NU_T.mute, background:"transparent",
                           fontSize:12.5, fontWeight:700, textDecoration:"none", fontFamily:"inherit" }}
                       >
-                        {lien.libelle} ↗
+                        {lien.libelle} <IconeTexte icone={ExternalLink} taille={13} />
                       </a>
                       <div style={{ fontSize:11, lineHeight:1.35, color:NU_T.mute, marginTop:4, textAlign:"center" }}>
                         {lien.aide}
@@ -2049,7 +2084,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                         ? (fr ? "Relances épuisées pour ce job" : "No relaunch left for this job")
                         : info.attenteMin > 0
                           ? (fr ? `Relancer dans ${info.attenteMin} min` : `Relaunch in ${info.attenteMin} min`)
-                          : (fr ? "🔁 Relancer maintenant" : "🔁 Relaunch now")}
+                          : <><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{fr ? "Relancer maintenant" : "Relaunch now"}</>}
                     </button>
                   );
                 })()}
@@ -2197,7 +2232,7 @@ export function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClos
                         confirmée → « Republier » et « Oublier ». Plus jamais
                         « retire-la sur X » : une annonce qui n'a pas de lien
                         n'a rien à retirer. */}
-                    {noUrl && urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {p === "beebs"
+                    {noUrl && urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}><IconeTexte icone={Hourglass} taille={12} style={{ marginRight: 4 }} />{p === "beebs"
                       ? (fr ? "En vérification Beebs — pas encore en ligne" : "Beebs is reviewing it — not online yet")
                       : (fr ? `${label} vérifie ton annonce — pas encore en ligne` : `${label} is reviewing it — not online yet`)}</span>}
                     {noUrl && !urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>{fr
@@ -2551,8 +2586,8 @@ function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
               <div key={l.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: '#fff', border: `1px solid ${NU_T.border}` }}>
                 <PlatformLogo platform={l.platform} size={20} />
                 <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, color: NU_T.ink }}>{PLATFORM_LABELS[l.platform] ?? l.platform}</div>
-                <span style={{ fontSize: 13, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>👁️ {nb(l.vues)}</span>
-                <span style={{ fontSize: 13, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>❤️ {nb(l.favoris)}</span>
+                <span style={{ fontSize: 13, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}><IconeTexte icone={Eye} taille={13} style={{ marginRight: 4 }} />{nb(l.vues)}</span>
+                <span style={{ fontSize: 13, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}><IconeTexte icone={Heart} taille={13} style={{ marginRight: 4 }} />{nb(l.favoris)}</span>
               </div>
             ))}
             {lignes.length === 0 && (
@@ -2563,8 +2598,8 @@ function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
             {lignes.length > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px 2px', marginTop: 4, borderTop: `1px solid ${NU_T.border}` }}>
                 <div style={{ flex: 1, fontWeight: 700, fontSize: 13, color: '#5C6560' }}>{fr ? 'Total' : 'Total'}</div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>👁️ {somme('vues')}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>❤️ {somme('favoris')}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}><IconeTexte icone={Eye} taille={13} style={{ marginRight: 4 }} />{somme('vues')}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}><IconeTexte icone={Heart} taille={13} style={{ marginRight: 4 }} />{somme('favoris')}</span>
               </div>
             )}
           </div>
@@ -2985,7 +3020,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     if (!enCadence) return null;
     const dansMin = Math.max(1, Math.ceil((cadenceFinA - Date.now()) / 60000));
     return fr
-      ? `Tu pourras actualiser dans ${dansMin} min.`
+      ? `Tu pourras synchroniser dans ${dansMin} min.`
       : `You can refresh in ${dansMin} min.`;
   })();
 
@@ -3009,8 +3044,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // Le bilan et la cadence ne s'affichent que débloqué.
   const blocage = !peutLancer && (sondeFinie || capaciteConnue);
   const MESSAGE_BLOCAGE = fr
-    ? "Installe l'extension FillSell sur ton ordinateur pour relever tes annonces."
-    : 'Install the FillSell extension on your computer to scan your listings.';
+    ? "Installe l'extension FillSell sur ton ordinateur pour synchroniser tes annonces."
+    : 'Install the FillSell extension on your computer to sync your listings.';
   // Distinct de MESSAGE_BLOCAGE, et ça compte : l'extension EST installée, le
   // geste n'est pas de l'installer mais d'ouvrir Chrome. Dit AVANT l'action —
   // une demande mise en file que personne ne réclamera est le pire des retours.
@@ -3084,10 +3119,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       ? derniereReussie.vinted_login.trim() : null;
     if (login) {
       return fr
-        ? `Annonces Vinted de @${login} relevées ${quand}.`
-        : `@${login} Vinted listings scanned ${quand}.`;
+        ? `Annonces Vinted de @${login} synchronisées ${quand}.`
+        : `@${login} Vinted listings synced ${quand}.`;
     }
-    return fr ? `Annonces Vinted relevées ${quand}.` : `Vinted listings scanned ${quand}.`;
+    return fr ? `Annonces Vinted synchronisées ${quand}.` : `Vinted listings synced ${quand}.`;
   })();
   // Le rappel « c'est automatique », lui, garde ses conditions : il PROMET
   // quelque chose, contrairement à l'heure ci-dessus qui ne fait que constater.
@@ -3214,8 +3249,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       if (r?.reason === 'cadence') {
         const m = r.prochaine_dans_min ?? 15;
         return fr
-          ? `Tes annonces Vinted viennent d'être relevées — tu pourras actualiser dans ~${m} min.`
-          : `Your Vinted listings were just scanned — you can refresh in ~${m} min.`;
+          ? `Tes annonces Vinted viennent d'être synchronisées — tu pourras resynchroniser dans ~${m} min.`
+          : `Your Vinted listings were just synced — you can sync again in ~${m} min.`;
       }
       if (r?.reason === 'deja_en_attente') {
         return fr
@@ -3289,8 +3324,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         const annonce = String(run.erreur ?? '').match(/item_count=(\d+)/);
         if (annonce && Number(annonce[1]) === 0) {
           return { ton: 'vert', texte: fr
-            ? "Relevé terminé : Vinted n'a aucune annonce en ligne sur ce compte. Tes prochaines annonces remonteront ici toutes seules."
-            : "Scan finished: Vinted has no live listings on this account. Your next listings will show up here on their own." };
+            ? "Synchronisation terminée : Vinted n'a aucune annonce en ligne sur ce compte. Tes prochaines annonces remonteront ici toutes seules."
+            : "Sync finished: Vinted has no live listings on this account. Your next listings will show up here on their own." };
         }
         return { ton: 'orange', texte: fr
           ? "Synchronisation terminée : aucune annonce en ligne sur le compte Vinted connecté dans ce navigateur. Dressing vide ? Tout est normal — tes prochaines annonces remonteront ici au prochain clic. Sinon, ouvre vinted.fr dans ce navigateur, vérifie que tu es sur TON compte, puis relance."
@@ -3303,11 +3338,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // plusieurs boutiques. Reconnu sur la [note] posée par l'extension.
       if (/changement de compte Vinted/i.test(String(run.erreur ?? ''))) {
         return { ton: 'vert', texte: fr
-          ? `Annonces Vinted relevées — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour. Compte Vinted différent de la dernière synchro : rien n'a été marqué « plus en ligne » ce coup-ci.`
+          ? `Annonces Vinted synchronisées — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour. Compte Vinted différent de la dernière synchro : rien n'a été marqué « plus en ligne » ce coup-ci.`
           : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated. Different Vinted account than last sync: nothing was marked "no longer online" this time.` };
       }
       return { ton: 'vert', texte: fr
-        ? `Annonces Vinted relevées — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
+        ? `Annonces Vinted synchronisées — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
         : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated.` };
     }
     // ── RELEVÉ INCOMPLET (2026-09-13) ────────────────────────────────────────
@@ -3371,8 +3406,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       //    Un 403 qui n'est PAS nommé (bouclier anti-robot) garde son texte.
       if (murConnexionReleve(run, 'vinted')) {
         return { ton: 'orange', texte: fr
-          ? "Relevé Vinted arrêté : ta session Vinted n'a pas été trouvée sur ton ordinateur."
-          : "Vinted scan stopped: your Vinted session wasn't found on your computer." };
+          ? "Synchronisation Vinted arrêtée : ta session Vinted n'a pas été trouvée sur ton ordinateur."
+          : "Vinted sync stopped: your Vinted session wasn't found on your computer." };
       }
       if (brut.includes('403')) {
         return { ton: 'orange', texte: fr
@@ -3533,7 +3568,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
               style={{flex:1.4,padding:"10px 8px",borderRadius:10,border:"none",background:confirmBusy?"#9CB8B2":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,cursor:confirmBusy?"default":"pointer",fontFamily:"inherit"}}>
               {confirmBusy
                 ?(fr?"Ajout…":"Adding…")
-                :(fr?"✓ C'est ma boutique — l'ajouter":"✓ It's my shop — add it")}
+                :<><IconeTexte icone={Check} style={{ marginRight: 4 }} />{fr?"C'est ma boutique — l'ajouter":"It's my shop — add it"}</>}
             </button>
             <button onClick={()=>setBoutiqueRefusee(true)} disabled={confirmBusy}
               style={{flex:1,padding:"10px 8px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#5C6560",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
@@ -3608,7 +3643,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     const questionBoutiqueEnCours = !!(avis&&avis===bilan&&bilan?.decision==='boutique');
     const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee||questionBoutiqueEnCours;
     const etatLigne = (() => {
-      if (enCours) return fr ? 'Relevé en cours…' : 'Scanning…';
+      if (enCours) return fr ? 'Synchronisation en cours…' : 'Syncing…';
       if (envoi) return fr ? 'Envoi de la demande…' : 'Sending request…';
       if (enAttenteDistante) return fr ? 'Demande en attente de ton ordinateur' : 'Waiting for your computer';
       if (attenteOccupee) return fr ? 'Demande en attente — elle passe en premier' : 'Request waiting — it goes first';
@@ -3616,12 +3651,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       if (enCadence && cadenceTexte) return cadenceTexte;
       if (avisEnVue && avisEnVue.ton !== 'vert') return String(avisEnVue.texte ?? '').split('\n')[0].slice(0, 160);
       const fini = derniereReussie?.finished_at ? Date.parse(derniereReussie.finished_at) : NaN;
-      if (!Number.isFinite(fini)) return fr ? 'Jamais relevée' : 'Never scanned';
+      if (!Number.isFinite(fini)) return fr ? 'Jamais synchronisée' : 'Never synced';
       const vus = Number(derniereReussie?.items_vus ?? 0);
       const login = typeof derniereReussie?.vinted_login === 'string' && derniereReussie.vinted_login.trim() ? derniereReussie.vinted_login.trim() : null;
       return fr
-        ? `Relevé ${depuisTexte(fini)} · ${vus} annonce${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`
-        : `Scanned ${depuisTexte(fini)} · ${vus} listing${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`;
+        ? `Synchronisé ${depuisTexte(fini)} · ${vus} annonce${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`
+        : `Synced ${depuisTexte(fini)} · ${vus} listing${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`;
     })();
     return (
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -3634,7 +3669,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           {!(blocage&&source==='stock_empty')&&(
             <button type="button" disabled={boutonInactif} onClick={lancer}
               style={{padding:'7px 12px',borderRadius:999,border:'1px solid #E7E3D8',background:'#fff',color:boutonInactif?'#8A8578':'#1B6E62',fontSize:12.5,fontWeight:700,cursor:boutonInactif?'default':'pointer',fontFamily:'inherit',flexShrink:0}}>
-              {enCours ? (fr?'En cours':'Running') : envoi ? (fr?'Envoi…':'Sending…') : (fr?'Relever':'Scan')}
+              {enCours ? (fr?'En cours':'Running') : envoi ? (fr?'Envoi…':'Sending…') : (fr?'Synchroniser':'Sync')}
             </button>
           )}
         </div>
@@ -3691,8 +3726,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
               : enAttenteDistante
                 ? (fr?"Demande en attente":"Request pending")
                 : dejaSync
-                  ? (fr?"Actualiser mes annonces Vinted":"Refresh my Vinted listings")
-                  : (fr?"Relever mes annonces Vinted":"Scan my Vinted listings")}
+                  ? (fr?"Synchroniser mes annonces Vinted":"Sync my Vinted listings")
+                  : (fr?"Synchroniser mes annonces Vinted":"Sync my Vinted listings")}
       </SecondaryButton>
       )}
 
@@ -3754,7 +3789,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       {enAttenteDistante&&(
         <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
           {(reclamationTardive||horsLigne)
-            ? <div style={{fontSize:18,lineHeight:1}}>🕓</div>
+            ? <Clock size={18} strokeWidth={2} aria-hidden="true" style={{flexShrink:0,color:"#5C6560"}}/>
             : <Loader size={18} thickness={2}/>}
           <div style={{minWidth:0}}>
             <div style={{fontSize:12.5,fontWeight:700,color:"#5C6560"}}>
@@ -3878,7 +3913,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                   {fr?"Tes boutiques : ":"Your shops: "}
                   {boutiquesVinted.map(b=>`@${b.login??b.user_id}`).join(" · ")}
                   {fr
-                    ?". Pour changer de boutique, connecte-toi à l'autre compte sur vinted.fr dans Chrome, puis actualise."
+                    ?". Pour changer de boutique, connecte-toi à l'autre compte sur vinted.fr dans Chrome, puis synchronise."
                     :". To switch shops, sign in to the other account on vinted.fr in Chrome, then refresh."}
                 </div>
               )}
@@ -4086,7 +4121,7 @@ function BrouillonsListe({ lang, fmt, brouillons, onPublier, onRanger, onSupprim
             <div key={item.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 10px",borderRadius:10,background:"#fff",border:"1px solid #E7E3D8"}}>
               {photo
                 ? <img src={photo} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"#F2F0E9"}}/>
-                : <div style={{width:44,height:44,borderRadius:8,flexShrink:0,background:"#F2F0E9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
+                : <div style={{width:44,height:44,borderRadius:8,flexShrink:0,background:"#F2F0E9",display:"flex",alignItems:"center",justifyContent:"center",color:"#8A8578"}}><Package size={20} strokeWidth={1.8} aria-hidden="true"/></div>}
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12.5,fontWeight:600,color:"#10201B",lineHeight:1.35,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
                   {item.title || (fr ? "Article" : "Item")}
@@ -4223,7 +4258,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
     return (
       <div style={{ background: 'linear-gradient(150deg,#10201B,#1B3A32)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 24px -16px rgba(16,32,27,.7)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 15 }}>🔁</span>
+          <CalendarClock size={16} strokeWidth={2} aria-hidden="true" style={{ color: '#fff', flexShrink: 0 }} />
           <span style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', flex: 1 }}>
             {fr ? 'Republication automatique' : 'Automatic reposting'}
           </span>
@@ -4249,7 +4284,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {puces.map((p, i) => (
             <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, color: 'rgba(255,255,255,.82)', lineHeight: 1.45 }}>
-              <span style={{ color: '#F2B48C', flexShrink: 0 }}>✓</span>
+              <Check size={14} strokeWidth={2.5} aria-hidden="true" style={{ color: '#F2B48C', flexShrink: 0, marginTop: 2 }} />
               <span>{p}</span>
             </div>
           ))}
@@ -4276,7 +4311,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
     <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E7E3D8', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#10201B' }}>
-          🔁 {fr ? 'Republication automatique' : 'Automatic reposting'}
+          <IconeTexte icone={CalendarClock} style={{ marginRight: 6 }} />{fr ? 'Republication automatique' : 'Automatic reposting'}
         </div>
         <button disabled={busy}
           onClick={() => ecrire(actif ? { actif: false, arrete_le: new Date().toISOString(), arret_motif: 'utilisateur' } : { actif: true, age_jours: ageJours, plafond_jour: plafond, arret_motif: null })}
@@ -4758,24 +4793,6 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   };
 }
 
-// Jours entiers écoulés depuis un ISO, ou null si la date est illisible.
-// TOUJOURS en jours, jamais à l'heure près : listed_at_guess est une
-// estimation (timestamp de photo), le nom le dit — l'affichage ne doit pas
-// prétendre plus précis que la donnée.
-function joursDepuis(iso) {
-  const t = Date.parse(iso ?? '');
-  if (!Number.isFinite(t)) return null;
-  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
-}
-
-// Date courte en heure de Paris (« 4 août »), ou null. Même garde que
-// heureParis : Intl rend « Invalid Date » au lieu de lever, on filtre avant.
-function dateCourteParis(iso) {
-  const t = Date.parse(iso ?? '');
-  if (!Number.isFinite(t)) return null;
-  return new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });
-}
-
 // Heure de Paris, ou null. ⚠️ Une date invalide donne « Invalid Date » avec
 // Intl, jamais une exception : on filtre AVANT de formater.
 function heureParis(iso) {
@@ -4918,7 +4935,7 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
             const actif = idx === iCourant && !et.fini;
             return (
               <div key={l.cle} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', borderTop: i > 0 ? '1px solid #E7E3D8' : 'none' }}>
-                <span style={{ width: 17, textAlign: 'center', fontSize: 12 }}>{fait ? '✅' : actif ? '⏳' : '·'}</span>
+                <span style={{ width: 17, textAlign: 'center', fontSize: 12 }}>{fait ? <CircleCheck size={14} strokeWidth={2} aria-hidden="true" style={{ color: '#1B6E62', verticalAlign: '-2px' }} /> : actif ? <Hourglass size={14} strokeWidth={2} aria-hidden="true" style={{ color: '#8A6100', verticalAlign: '-2px' }} /> : '·'}</span>
                 <span style={{ fontSize: 12.5, fontWeight: actif ? 700 : 500, color: fait || actif ? '#10201B' : '#8A8578' }}>{l.txt}</span>
               </div>
             );
@@ -5207,7 +5224,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
           return (
             <div style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
               {fr ? `${partentMaintenant} partent maintenant sur Vinted.` : `${partentMaintenant} start now on Vinted.`}
-              {lignesAttenteBoutique(etat, lang).map((l, i) => <div key={i}>⏳ {l}</div>)}
+              {lignesAttenteBoutique(etat, lang).map((l, i) => <div key={i}><IconeTexte icone={Hourglass} taille={12} style={{ marginRight: 4 }} />{l}</div>)}
               <div style={{ marginTop: 4, color: '#8A8578' }}>{phraseRassurance(lang)}</div>
             </div>
           );
@@ -5353,6 +5370,9 @@ const StockTab = memo(function StockTab({
   // Non fournie, on retombe sur vaActions.fetchAll (déjà passé par App.jsx) —
   // les appelants existants n'ont donc rien à changer.
   onSyncDone = null,
+  // (03/10) « Dupliquer » — menu « … » de la carte : App crée la copie
+  // (src/stock/dupliquer.js) et ouvre sa fiche en modification.
+  onDupliquer = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const isMobile = useIsMobile(); // P4 : réactif (grille desktop ↔ liste mobile)
@@ -6641,32 +6661,61 @@ const StockTab = memo(function StockTab({
   // bas = zone morte temporelle = écran blanc au montage (vécu le 03/09 soir).
   // Ils vivent AU-DESSUS de la liste, jamais dans une carte : ouvrir puis
   // refermer un article ne peut donc pas les perdre.
-  const [triStock, setTriStock] = useState('defaut');
+  // (03/10, refonte) Le tri par défaut est celui de la planche : « Plus
+  // récents ». L'ordre historique ('defaut' : jamais en ligne d'abord, puis
+  // l'annonce la plus ancienne) reste un choix — « Plus anciens ».
+  const [triStock, setTriStock] = useState(TRI_PAR_DEFAUT);
   const [filtreDiffusion, setFiltreDiffusion] = useState(null); // {mode,platform}
   const [filtreProbleme, setFiltreProbleme] = useState(null);   // 'a_completer'|'en_echec'
-  // ── REPLI DES SECTIONS, MÉMORISÉ (2026-09-15 soir) ───────────────────────
-  // Sur un iPhone, les articles commençaient aux deux tiers de l'écran. Les
-  // sections se replient donc, et on RESPECTE le choix : replié d'office on
-  // oublie que les brouillons existent, ouvert d'office pour toujours ça
-  // encombre. Première visite → ouvert.
-  // ⚠️ AFFICHAGE SEUL : ne touche ni le filtrage, ni les compteurs, ni la base.
-  // localStorage (pas sessionStorage) : une préférence de présentation survit à
-  // la fermeture de l'onglet, sinon elle n'est pas une préférence.
-  const lirePref = (cle, defaut) => {
-    try { const v = localStorage.getItem(cle); return v == null ? defaut : v === '1'; }
-    catch { return defaut; }
+  // ── LES FILTRES DE LA REFONTE (03/10) ─────────────────────────────────────
+  // `vueStock` : la pastille rapide (Tous · En ligne · Pas partout · Anciennes
+  // · Vendus) OU l'état choisi dans le panneau (Hors ligne, À régler) — UNE
+  // seule valeur, donc jamais deux choix contradictoires à l'écran.
+  // `tranchesAge` / `prixMin` / `prixMax` : les sections du panneau qui
+  // n'existaient pas (ancienneté de l'annonce, prix Min/Max).
+  const [vueStock, setVueStock] = useState('tous');
+  const [tranchesAge, setTranchesAge] = useState([]);
+  const [prixMin, setPrixMin] = useState('');
+  const [prixMax, setPrixMax] = useState('');
+  // Cartes / Liste : le choix est GARDÉ (localStorage, src/stock/regles).
+  const [affichageStock, setAffichageStockEtat] = useState(() => lireAffichage(typeof localStorage !== 'undefined' ? localStorage : null));
+  const setAffichageStock = (v) => {
+    setAffichageStockEtat(v);
+    try { ecrireAffichage(localStorage, v); } catch { /* stockage indisponible : le choix vaut pour la session */ }
   };
-  const [sectionStockOuverte, setSectionStockOuverte] = useState(() => lirePref('fs_stock_en_stock_ouvert', true));
+  // Les couches de la refonte : le menu « … » d'un article (son id), l'écran
+  // d'un geste du haut (publier · remonter · a_regler), la feuille « Ajouter »,
+  // la feuille de tri, et l'écran d'arrivée après une synchronisation.
+  const [menuArticleId, setMenuArticleId] = useState(null);
+  // Le panneau : « En ligne sur » / « Pas encore sur » choisit le sens des
+  // logos de plateforme (deux questions distinctes, cf. FiltresStock 18/09).
+  const [modePlateformesPanneau, setModePlateformesPanneau] = useState('en_ligne');
+  // Publier depuis un filtre « Pas encore sur X » : la sélection s'ouvre
+  // pré-cochée sur les articles filtrés et ne vise que X.
+  const [publierContexte, setPublierContexte] = useState(null);
+  const [gesteOuvert, setGesteOuvert] = useState(null);
+  const [feuilleAjout, setFeuilleAjout] = useState(false);
+  const [feuilleTri, setFeuilleTri] = useState(false);
+  const [resumeSynchro, setResumeSynchro] = useState(false);
+  // « Déjà vendu ? » (ventes à confirmer) — les MÊMES questions que
+  // BandeauDejaVendu (lireDoublonsProposes + estQuestionDejaVendu), lues ici
+  // pour être comptées dans « À régler » et ouvertes depuis son écran.
+  const [doublonsProposes, setDoublonsProposes] = useState([]);
+  const [ecranDejaVendu, setEcranDejaVendu] = useState(false);
+  const relireDoublons = useCallback(() => {
+    if (!user?.id) return;
+    lireDoublonsProposes(user.id).then((d) => setDoublonsProposes(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [user?.id]);
+  useEffect(() => { relireDoublons(); }, [relireDoublons]);
+  const questionsDejaVendu = useMemo(
+    () => pairesAffichables(doublonsProposes, items).filter(estQuestionDejaVendu),
+    [doublonsProposes, items],
+  );
   // (Mode brouillons — MÊME mécanique que modePrixAchat et modeRepublish : une
   // pastille l'arme, un en-tête `pa-call` porte la sortie, la liste bascule.
   // Son état est déclaré plus HAUT, avec la lecture des brouillons : l'effet de
   // fermeture automatique le lit dans ses dépendances, et un état déclaré ici
   // lèverait une TDZ au rendu — c'était l'écran blanc du 15/09 au soir.)
-  const basculerSection = (cle, set) => set(v => {
-    const suivant = !v;
-    try { localStorage.setItem(cle, suivant ? '1' : '0'); } catch { /* stockage indisponible : le repli marche, il ne survit juste pas */ }
-    return suivant;
-  });
   // ── LE HAUT DU STOCK, REFONDU (2026-09-18) ────────────────────────────────
   // `menuTri` (un panneau déplié en place sous une rangée de boutons) et les
   // deux fabriques de style qui l'habillaient — btnLigneStock, chipDiffusion —
@@ -6688,6 +6737,8 @@ const StockTab = memo(function StockTab({
   const reinitialiserFiltresStock = () => {
     setFiltreDiffusion(null); setFiltreProbleme(null);
     setFilterType("Tous"); setFilterMarque([]); setFilterBoutique("Toutes");
+    // (03/10) Les dimensions de la refonte repartent aussi à zéro.
+    setVueStock('tous'); setTranchesAge([]); setPrixMin(''); setPrixMax('');
     setShowAllStock(false);
   };
   // ── LE CLIC DOIT AMENER QUELQUE PART (2026-09-04) ─────────────────────────
@@ -6792,14 +6843,56 @@ const StockTab = memo(function StockTab({
   // Quand un filtre OU un tri est actif, on repart de la liste COMPLÈTE
   // (stockFiltre) et on recoupe ici : filtrer ou trier APRÈS le slice de
   // stockVisible ne donnerait que les 10 premiers de l'ancien ordre.
-  const filtreOuTriActif = !!filtreDiffusion || !!filtreProbleme || triStock !== 'defaut';
+  // ── CE QUE LES FILTRES DE LA REFONTE LISENT D'UN ARTICLE (03/10) ─────────
+  // Une seule lecture par article, sur les MÊMES sources que la carte : l'index
+  // (computeRemovalInfo + vintedPresenceArticle), les jobs, le prix de
+  // l'annonce Vinted relevé, les vues fusionnées. Rien d'inventé.
+  const vuesArticle = (i) => {
+    const pf = statsPlateformes[String(i.id)] ?? [];
+    const vPf = pf.some((x) => x.vues != null) ? pf.reduce((t, x) => t + (x.vues ?? 0), 0) : null;
+    return (i.vinted_view_count == null && vPf == null) ? null : (i.vinted_view_count ?? 0) + (vPf ?? 0);
+  };
+  const prixArticle = (i) => {
+    const annonce = i.vinted_item_id && !i.disparu_le ? prixAnnonces[i.vinted_item_id] : null;
+    if (annonce != null) return Number(annonce);
+    const s = Number(i.sell);
+    return Number.isFinite(s) && s > 0 ? s : null;
+  };
+  const infoFiltre = (i) => {
+    const e = indexEtat.get(String(i.id));
+    const enLigne = !!e?.enLigne?.length;
+    const occupees = Array.isArray(e?.occupees) ? e.occupees : (e?.enLigne ?? []);
+    const aPublier = plateformesCompte.filter((p) => !occupees.includes(p)).length;
+    const jours = ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? []);
+    const jobsEnAttente = (jobsByInventaire[i.id] ?? []).filter((j) => j.action !== 'delete' && (j.status === 'pending' || j.status === 'processing'));
+    const surConnexion = jobsEnAttente.length > 0 && jobsEnAttente.every(attenteDeConnexion);
+    const aRegler = !!(e?.aCompleter?.length || e?.enEchec?.length) || surConnexion;
+    return { enLigne, aPublier, jours, ancienne: estAncienne(jours), aRegler, vendu: i.statut === 'vendu' };
+  };
+  const passeVue = (i, vue) => {
+    if (vue === 'tous') return true;
+    const f = infoFiltre(i);
+    if (vue === 'hors_ligne') return !f.vendu && !f.enLigne;
+    if (vue === 'a_regler') return !f.vendu && f.aRegler;
+    return entreDansFiltreRapide(vue, f);
+  };
+  const prixMinN = lirePrixSaisi(prixMin);
+  const prixMaxN = lirePrixSaisi(prixMax);
+  const filtresRefonteActifs = vueStock !== 'tous' || tranchesAge.length > 0 || prixMinN != null || prixMaxN != null;
+  const filtreOuTriActif = !!filtreDiffusion || !!filtreProbleme || triStock !== 'defaut' || filtresRefonteActifs;
   const stockRetenu = useMemo(() => {
     if (!filtreOuTriActif) return null;
-    return trierStock(
-      filtrerStock(stockFiltre, indexEtat, { diffusion: filtreDiffusion, probleme: filtreProbleme }),
-      triStock,
-    );
-  }, [filtreOuTriActif, stockFiltre, indexEtat, filtreDiffusion, filtreProbleme, triStock]);
+    // « Vendus » : la liste des articles vendus (filtrée par App : catégorie,
+    // marque, recherche) — ils ne sont pas dans le stock, ils ont leur vue.
+    let l = vueStock === 'vendus'
+      ? (soldFiltre ?? [])
+      : filtrerStock(stockFiltre, indexEtat, { diffusion: filtreDiffusion, probleme: filtreProbleme });
+    if (vueStock !== 'tous' && vueStock !== 'vendus') l = l.filter((i) => passeVue(i, vueStock));
+    if (tranchesAge.length) l = l.filter((i) => tranchesAge.includes(trancheAnciennete(infoFiltre(i).jours)));
+    if (prixMinN != null || prixMaxN != null) l = l.filter((i) => dansFourchettePrix(prixArticle(i), prixMinN, prixMaxN));
+    return trierStock(l, triStock, { vues: vuesArticle });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtreOuTriActif, stockFiltre, soldFiltre, indexEtat, filtreDiffusion, filtreProbleme, triStock, vueStock, tranchesAge, prixMinN, prixMaxN, jobsByInventaire, statsPlateformes, prixAnnonces, plateformesCompte]);
 
   // « Republier en lot » RESTE visible sous filtre, et porte sur les articles
   // FILTRÉS (décision Nico 08/09) : un bandeau qui compterait tout le stock
@@ -6898,7 +6991,9 @@ const StockTab = memo(function StockTab({
       // Les « têtes de jobs » (articles en cours de publication devant tout)
       // ne s'appliquent QUE sur l'ordre par défaut : un tri explicite demandé
       // par l'utilisatrice ne doit pas être réarrangé dans son dos.
-      if (triStock !== 'defaut' || !tetesJobs.length) return coupe;
+      // (03/10) « Plus récents » est le nouvel ordre par défaut : l'article EN
+      // TRAITEMENT y reste la première carte, comme sur l'ordre historique.
+      if ((triStock !== 'defaut' && triStock !== TRI_PAR_DEFAUT) || vueStock === 'vendus' || !tetesJobs.length) return coupe;
       const setT = new Set(tetesJobs);
       const enCours = tetesJobs.map(id => stockRetenu.find(i => String(i.id) === id)).filter(Boolean);
       if (!enCours.length) return coupe;
@@ -6944,7 +7039,7 @@ const StockTab = memo(function StockTab({
     if (!enCours.length) return base;
     return [...enCours, ...base.filter(i => !setT.has(String(i.id)))];
   }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur, attenteAction,
-      stockRetenu, showAllStock, triStock]);
+      stockRetenu, showAllStock, triStock, vueStock]);
 
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -7852,43 +7947,6 @@ const StockTab = memo(function StockTab({
     onRetirer:()=>{setFilterMarque(marquesChoisies.filter(x=>x!==m));setShowAllStock(false);},
   });
 
-  // ── « À TRAITER » — LES TROIS MODES, ET RIEN D'AUTRE ──────────────────────
-  // Un mode change ce qu'on peut FAIRE (cartes différentes, sélection
-  // multiple, en-tête de sortie) : il ne se cumule pas avec un filtre et n'a
-  // donc rien à faire dans la feuille. Il garde son point d'entrée à lui.
-  // ⛔ MÊMES CONDITIONS QU'AVANT, au mot près — aucune porte neuve, aucune
-  //    porte fermée. Le tap fait EXACTEMENT ce que faisait la pastille.
-  // ⛔ Total nul ⇒ la ligne n'existe pas (règle 1).
-  const chantiersStock=[];
-  if(brouillons.length>0) chantiersStock.push({
-    cle:'brouillons', emoji:'✏️', compte:brouillons.length,
-    libelle:lang==='fr'?(brouillons.length>1?'Brouillons à finir':'Brouillon à finir'):(brouillons.length>1?'Drafts to finish':'Draft to finish'),
-    detail:lang==='fr'?"Annonces générées, pas encore publiées — déjà décomptées de ta limite.":'Listings generated, not published yet — already counted towards your limit.',
-    onTap:()=>{setListeOuverte(null);setModeBrouillons(true);setModePrixAchat(false);setModeRepublish(false);setShowAllStock(false);},
-  });
-  if(nbSansPrix>0) chantiersStock.push({
-    cle:'sans_prix', emoji:'🏷', compte:nbSansPrix,
-    libelle:lang==='fr'?"Sans prix d'achat":'Without purchase price',
-    detail:lang==='fr'?"Sans lui, ni marge ni bénéfice ne se calculent.":'Without it, neither margin nor profit can be computed.',
-    onTap:()=>{setListeOuverte(null);setModePrixAchat(true);setModeBrouillons(false);setPaSel(new Set());setPaOpenId(null);setPaErr(null);},
-  });
-  if(republishActif&&repubActionnablesVue.length>0) chantiersStock.push({
-    cle:'republier', emoji:'🔁', compte:repubActionnablesVue.length,
-    libelle:lang==='fr'?'À republier':'To repost',
-    // Maintenance en cours : la ligne s'éteint au lieu de faire semblant de
-    // répondre — même règle que la pastille qu'elle remplace. (Le palier Free,
-    // lui, reste PLEINEMENT actif : c'est un geste réservé, pas un bouton
-    // cassé, et le tap ouvre la modale de conversion.)
-    detail:repubEnPause?(lang==='fr'?'Indisponible pour le moment.':'Unavailable right now.'):undefined,
-    desactive:repubEnPause,
-    onTap:()=>{
-      if(repubEnPause)return;
-      setListeOuverte(null);
-      if(repubLotReserve){ouvrirModaleLotReserve();return;}
-      setModeRepublish(true);setModeBrouillons(false);setRepubSel(new Set());setRepubLot(null);
-    },
-  });
-  const nbATraiter=chantiersStock.reduce((a,c)=>a+(c.compte||0),0);
 
   // ── LES GROUPES DE LA FEUILLE ─────────────────────────────────────────────
   // Ordre : État · Plateforme · Boutique · Catégorie · Marque.
@@ -7983,256 +8041,837 @@ const StockTab = memo(function StockTab({
         :(lang==='fr'?`${marquesChoisies.length} marques`:`${marquesChoisies.length} brands`),
     onOuvrir:()=>setListeOuverte('marque'),
   });
-  // Le nombre annoncé par le bouton du pied de la feuille : la MÊME liste que
-  // les cartes, recalculée à chaque choix.
-  const nbResultatFeuille=qteStock(stockRetenu??stockFiltre);
+
+  // ── LES PUCES DES FILTRES POSÉS (refonte du 03/10) ────────────────────────
+  // Celles d'avant (pastillesFiltresStock : diffusion, boutique, catégorie,
+  // marques) + celles des dimensions neuves (état du panneau, ancienneté,
+  // prix). Chacune a sa croix ; « Tout effacer » remet tout à zéro.
+  const pucesFiltres = [
+    ...((vueStock === 'hors_ligne' || vueStock === 'a_regler') ? [{
+      cle: 'vue', libelle: vueStock === 'hors_ligne' ? (lang === 'fr' ? 'Hors ligne' : 'Offline') : (lang === 'fr' ? 'À régler' : 'To fix'),
+      onRetirer: () => { setVueStock('tous'); setShowAllStock(false); },
+    }] : []),
+    ...pastillesFiltresStock,
+    ...tranchesAge.map((tr) => ({ cle: `age-${tr}`, libelle: libelleTranche(tr, lang), onRetirer: () => { setTranchesAge((prev) => prev.filter((x) => x !== tr)); setShowAllStock(false); } })),
+    ...((prixMinN != null || prixMaxN != null) ? [{
+      cle: 'prix',
+      libelle: prixMinN != null && prixMaxN != null
+        ? (lang === 'fr' ? `${nombreFr(prixMinN)} à ${nombreFr(prixMaxN)} €` : `€${prixMinN} to €${prixMaxN}`)
+        : prixMinN != null ? (lang === 'fr' ? `Dès ${nombreFr(prixMinN)} €` : `From €${prixMinN}`) : (lang === 'fr' ? `Jusqu'à ${nombreFr(prixMaxN)} €` : `Up to €${prixMaxN}`),
+      onRetirer: () => { setPrixMin(''); setPrixMax(''); setShowAllStock(false); },
+    }] : []),
+  ];
+  // Le panneau montre les 4 catégories et les 4 marques les plus présentes
+  // (plus celles déjà choisies) ; « Tout voir » ouvre la liste complète.
+  const categoriesTriees = categoriesStock.filter((tp) => tp !== 'Tous')
+    .map((tp) => [tp, stock.filter((i) => i.type === tp).length]).sort((a, b) => b[1] - a[1]).map(([tp]) => tp);
+  const categoriesPanneau = [...categoriesTriees.slice(0, 4), ...(filterType !== 'Tous' && !categoriesTriees.slice(0, 4).includes(filterType) ? [filterType] : [])];
+  const marquesListe = marquesStock.filter((m) => m !== 'Toutes');
+  const marquesPanneau = [...marquesListe.slice(0, 4), ...marquesChoisies.filter((m) => !marquesListe.slice(0, 4).includes(m))];
+
+  // ── LES TROIS GESTES DU HAUT — LEURS CHIFFRES RÉELS (03/10) ───────────────
+  // Comptés sur TOUT le stock (hors brouillons) : ce sont des portes globales,
+  // un filtre posé sur la liste ne les change pas. Chaque compte reprend la
+  // règle qui existait déjà :
+  //   · Publier  — articleSelectionnable (publication/lot/regles) : en stock,
+  //     avec une photo, pas encore partout — exactement ce que la publication
+  //     en lot accepte, rien qu'elle refuserait ;
+  //   · Remonter — repubSelectionnable (republiable MAINTENANT : en ligne, pas
+  //     de remontée en vol, pas de cadence 24 h) ET annonce ancienne (≥ 7 j,
+  //     le plancher de republication AGE_MIN) ;
+  //   · À régler — les annonces qui attendent un geste (attenteAction, même
+  //     nombre que l'ancien bandeau), les ventes « Déjà vendu ? », les prix
+  //     d'achat manquants (nbSansPrix) et les brouillons à finir.
+  const stockSansBrouillons = stock.filter((i) => !idsBrouillons.has(String(i.id)));
+  const indexEtatTout = useMemo(() => indexEtatStock(stockSansBrouillons, jobsByInventaire, lang),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stock, idsBrouillons, jobsByInventaire, lang]);
+  const aPublierTout = stockSansBrouillons.filter((i) => articleSelectionnable(i, jobsByInventaire[i.id] || [], plateformesLotCompte, lang).ok);
+  const aRemonterTout = republishActif ? stockSansBrouillons.filter((i) => {
+    if (!repubSelectionnable(i)) return false;
+    const e = indexEtatTout.get(String(i.id));
+    return estAncienne(ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? []));
+  }) : [];
+  const nbAttenteAction = attenteAction?.total ?? 0;
+  const nbARegler = nbAttenteAction + questionsDejaVendu.length + nbSansPrix + brouillons.length;
+  const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
+  const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
+  const lignesARegler = [
+    { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
+      detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
+      onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
+    { cle: 'ventes', n: questionsDejaVendu.length, titre: lang === 'fr' ? 'Déjà vendu ?' : 'Already sold?',
+      detail: lang === 'fr' ? 'Un article vendu a peut-être encore une annonce en ligne : réponds pour ne pas le vendre deux fois.' : 'A sold item may still have a listing online: answer to avoid selling it twice.',
+      onOuvrir: () => { setGesteOuvert(null); setEcranDejaVendu(true); } },
+    { cle: 'prix', n: nbSansPrix, titre: lang === 'fr' ? "Prix d'achat à compléter" : 'Purchase prices to complete',
+      detail: lang === 'fr' ? 'Sans lui, ni marge ni bénéfice ne se calculent.' : 'Without it, neither margin nor profit can be computed.', onOuvrir: ouvrirModePrixAchat },
+    { cle: 'brouillons', n: brouillons.length, titre: lang === 'fr' ? (brouillons.length > 1 ? 'Brouillons à finir' : 'Brouillon à finir') : 'Drafts to finish',
+      detail: lang === 'fr' ? 'Annonces préparées, pas encore publiées — déjà décomptées.' : 'Listings prepared, not published yet — already counted.', onOuvrir: ouvrirModeBrouillons },
+  ];
+  const gestePublier = { n: aPublierTout.length, onOuvrir: () => { setPublierContexte(null); setGesteOuvert('publier'); } };
+  const gesteRemonter = republishActif ? { n: aRemonterTout.length, onOuvrir: () => setGesteOuvert('remonter') } : null;
+  const gesteARegler = { n: nbARegler, onOuvrir: () => setGesteOuvert('a_regler') };
+  // « Fermer » l'ajout : jamais pendant une analyse en cours (le pli ne masque
+  // jamais du contenu vivant — règle du 09/08) ; un résultat ou une erreur se
+  // referment par « Recommencer », comme avant.
+  const fermerAjout = () => {
+    if (voiceStep === 'parsing' || voiceLoading) return;
+    setVoiceZoneOpen(false); setShowManualForm(false);
+    if (voiceStep === 'done' || voiceStep === 'error') resetVoiceFlow?.();
+  };
+
+  // ── LES ALERTES DE COMPTE → la feuille « points à régler » (03/10) ─────────
+  // Les anciens bandeaux du haut de page, MÊMES conditions, MÊMES phrases :
+  // extension (session expirée, inactive, ordinateur éteint, à mettre à jour —
+  // mobile seulement, stock non vide, comme avant), republication en
+  // maintenance, plateforme en pause, horloge en retard. `compte:false` = une
+  // information (rien à faire de ton côté) : dite, mais pas comptée « à régler ».
+  const alertesCompte = (() => {
+    const fr = lang === 'fr';
+    const out = [];
+    const stockVide = (stock?.length ?? 0) === 0;
+    if (isMobile && !stockVide) {
+      if (extFraicheur.etat === 'session_expiree') {
+        out.push({ cle: 'ext-session', icone: KeyRound, ton: 'regler',
+          titre: fr ? "L'extension doit se reconnecter" : 'The extension needs to sign in again',
+          texte: fr ? "Elle a perdu sa connexion à ton compte. Sur ton ordinateur, ouvre fillsell.app dans Chrome, connecte-toi, puis recharge la page (F5) — elle se reconnecte toute seule." : "It lost its connection to your account. On your computer, open fillsell.app in Chrome, sign in, then reload the page (F5) — it reconnects by itself." });
+      } else if (extFraicheur.etat === 'inactive') {
+        out.push({ cle: 'ext-inactive', icone: Laptop, ton: 'regler',
+          titre: fr ? `Extension inactive depuis ${extFraicheur.jours} j` : `Extension inactive for ${extFraicheur.jours} d`,
+          texte: fr ? "Ouvre Chrome, et reconnecte-toi sur fillsell.app si ça ne repart pas." : "Open Chrome, and sign in again on fillsell.app if it doesn't resume." });
+      } else if (extFraicheur.etat === 'eteinte') {
+        out.push({ cle: 'ext-eteinte', icone: Laptop, ton: 'info', compte: false,
+          titre: fr ? 'Ton ordinateur est éteint' : 'Your computer is off',
+          texte: fr ? "Tes publications partiront à la prochaine ouverture de Chrome." : 'Your listings will go out next time Chrome opens.' });
+      } else if (extensionStatus?.outdated) {
+        out.push({ cle: 'ext-maj', icone: Wrench, ton: 'regler',
+          titre: fr ? 'Extension à mettre à jour' : 'Extension needs updating',
+          texte: fr ? "Une version plus récente existe. Installe la dernière version depuis le Chrome Web Store (page Extension dans les réglages)." : "A newer version exists. Install the latest version from the Chrome Web Store (Extension page in settings)." });
+      }
+    }
+    if (repubMaintenance) {
+      out.push({ cle: 'maintenance', icone: Wrench, ton: 'info', compte: false,
+        titre: fr ? 'Remontée en maintenance' : 'Bumping under maintenance',
+        texte: fr ? "On corrige un problème qui pouvait empêcher la remise en ligne de certaines annonces. Tes annonces sont protégées et rien n'est décompté. On te prévient dès que c'est rétabli." : "We're fixing an issue that could prevent some listings from going back online. Your listings are safe and nothing is deducted. We'll let you know as soon as it's back." });
+    }
+    for (const p of pausedPlatforms) {
+      out.push({ cle: `pause-${p}`, icone: PauseCircle, ton: 'info', compte: false,
+        titre: fr ? `${PLATFORM_LABELS[p] || p} en pause` : `${PLATFORM_LABELS[p] || p} paused`,
+        texte: pausedReasons[p] || (fr ? `Les publications ${PLATFORM_LABELS[p] || p} sont momentanément en pause. Reprise automatique dès rétablissement — rien à faire de ton côté.` : `${PLATFORM_LABELS[p] || p} posting is temporarily paused. It will resume automatically — nothing you need to do.`) });
+    }
+    const retard = detecterRetardHorloge(Object.values(jobsByInventaire).flat());
+    if (retard.enRetard) {
+      out.push({ cle: 'horloge', icone: Clock, ton: 'regler',
+        titre: fr ? `L'horloge de ton ordinateur retarde d'environ ${retard.jours} jour${retard.jours > 1 ? 's' : ''}` : `Your computer's clock is about ${retard.jours} day${retard.jours > 1 ? 's' : ''} behind`,
+        texte: fr ? "Les sites de vente refusent des connexions quand l'heure est fausse — c'est souvent ce qui fait échouer les publications. Active la date et l'heure automatiques dans les réglages de ton ordinateur (celui où tourne l'extension), puis relance tes publications." : "Selling sites refuse connections when the clock is wrong — this is often what makes publications fail. Turn on automatic date & time on your computer (the one running the extension), then relaunch your publications." });
+    }
+    return out;
+  })();
+
+  // ── LA LECTURE D'UN ARTICLE (03/10/2026, refonte du Stock) ──────────────
+  // Le corps EXACT de l'ancienne carte — les calculs d'avant la refonte, au
+  // caractère près — sorti dans une fonction : la carte, la ligne de la vue
+  // Liste et le menu « … » lisent la MÊME chose, jamais trois vérités.
+  // ⚠️ Déclarée juste au-dessus du rendu : elle lit des états déclarés plus
+  // haut (règle TDZ de ce fichier) et n'est APPELÉE qu'au rendu.
+  const deriverArticle = (item) => {
+    const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
+    // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
+    // prix d'achat absent et 0 € sur un null — la carte annonçait
+    // « 0 € investi » sur un article dont on ignore le coût.
+    // null ici = « on ne sait pas » ; l'affichage met un tiret.
+    const invested=prixAchatConnu(item)?prixAchatNum(item)*(item.quantite||1)+(item.purchaseCosts||0):null;
+    // Prix DEMANDÉ sur l'annonce Vinted (dernier relevé) — jamais
+    // confondu avec prix_vente, qui reste ce que l'utilisateur
+    // déclare avoir reçu.
+    // Prix de l'annonce EN LIGNE — donc RIEN dès que `disparu_le`
+    // est posé (2026-08-05) : la sync ne retrouve plus l'annonce
+    // sur Vinted, et le dernier prix relevé affirmerait un prix
+    // en ligne sur une annonce qui n'existe plus. Constaté sur
+    // « Hoodie Nike – Kaki » : disparu_le au 04/08, et l'id
+    // Vinted 8428496729 rend bien 404 à la vérification. Depuis
+    // que la pastille est à l'encre, c'est l'information la plus
+    // lue de la rangée — donc le mensonge le plus visible.
+    // Filtré ICI et non au rendu : `prixAnnonce` veut dire « prix
+    // de l'annonce en ligne », et tout ce qui le lit (y compris
+    // la condition d'affichage de la rangée) hérite du bon sens.
+    // ⚠️ Ne concerne QUE la carte Stock : dans la liste des
+    // articles VENDUS, l'annonce a disparu parce qu'elle s'est
+    // vendue, et son dernier prix demandé y est un contexte
+    // légitime de la vente — cette pastille-là n'est pas touchée.
+    const prixAnnonce=item.vinted_item_id&&!item.disparu_le?prixAnnonces[item.vinted_item_id]:null;
+    const jobsAll=jobsByInventaire[item.id]||[];
+    // Défini ICI (avant repubEligible qui le lit — TDZ) ; la
+    // règle et ses raisons vivent sur le bloc logosEnLigne/
+    // enLigne plus bas, et la source unique dans le helper.
+    const vintedMasquee=vintedMasqueeMalgreJobs(item,jobsAll);
+    // Les jobs de retrait ciblé (action='delete') vivent à part :
+    // mélangés aux publish, un delete pending affichait « En
+    // cours… » (dépôt) et un delete failed un badge « Échec » de
+    // publication — deux mensonges.
+    // É5 (2026-08-05) : les jobs republish sortent AUSSI du flux
+    // générique — mêlés aux publish, un republish pending
+    // affichait « En cours… » (dépôt) et son needs_user ouvrait
+    // le mini-éditeur générique, qui re-pend SANS recapturer :
+    // exactement la boucle de péremption qu'on vient de fermer.
+    // Ils ont leur bloc dédié (badge + bouton) plus bas.
+    // ⚠️ 'cancelled' / 'dry_run_completed' sont EXCLUS ici, alors
+    // qu'ils viennent d'entrer dans le select (pour que la
+    // republication la plus récente soit toujours visible). Sans
+    // cette exclusion, un publish 'cancelled' — celui que pose
+    // justement cancelPublishAfterDelete — deviendrait « le job le
+    // plus récent de la plateforme » dans latestByPlatform et
+    // ÉTEINDRAIT un badge Échec ou « À compléter » légitime. Ces
+    // badges doivent continuer de voir exactement ce qu'ils
+    // voyaient avant : publish et delete non terminaux.
+    const jobs=jobsAll.filter(j=>j.action!=="delete"&&j.action!=="republish"
+      &&j.status!=="cancelled"&&j.status!=="dry_run_completed");
+    const repubLatest=(()=>{
+      let r=null;
+      for(const j of jobsAll){
+        if(j.action!=="republish")continue;
+        if(!r||Date.parse(j.created_at||0)>Date.parse(r.created_at||0))r=j;
+      }
+      return r;
+    })();
+    // Masquée/brouillon exclus (2026-08-28) : même règle que
+    // repubEtat ci-dessus — les deux expressions doivent rester
+    // jumelles (même helper, même garde de fraîcheur).
+    const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu"
+      &&!vintedMasquee;
+    // ── Multiplateforme (2026-09-17) : les plateformes republiables
+    // MAINTENANT (Vinted comprise) — une seule expression, celle de
+    // la feuille et du lot. Le bouton existe dès qu'il y en a une.
+    const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte,plateformesOuvertes}):[];
+    const repubEligibleTout=repubEligible||repubMaintenant.length>0;
+    // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
+    // source : etapeRepublication). null = rien à afficher.
+    // ⚠️ Volontairement décorrélé de repubEligible (2026-08-05) :
+    // l'ÉTAT d'une republication doit rester lisible même quand
+    // l'article n'est plus republiable — un article devenu
+    // 'disparu' juste après sa republication perdait sinon
+    // l'affichage du job qui venait de tourner.
+    // Attente de boutique de CET article — même calcul que
+    // l'en-tête (utils/attenteBoutique) : plus jamais un
+    // « en attente » muet sur la fiche (07/09).
+    const attenteFiche=repubLatest?messageFicheAttenteBoutique({connectee:boutiqueConnectee,origine:item.vinted_account_id,boutiques:boutiquesVinted,action:repubLatest.action==='delete'?'delete':'republish',lang}):null;
+    const repubEtape=(()=>{
+      const e=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche,item):null;
+      // Une republication Leboncoin/Beebs/Opla nomme sa plateforme
+      // sur la pastille (2026-09-17) : « LBC · Retrait… ».
+      return e&&e.court&&repubLatest&&repubLatest.platform&&repubLatest.platform!=='vinted'
+        ?{...e,court:`${LABEL_PF_COURT[repubLatest.platform]??repubLatest.platform} · ${e.court}`}
+        :e;
+    })();
+    // La pastille dit déjà l'état : le message transitoire ne le
+    // répète pas. Il ne reste affiché que quand il apporte autre
+    // chose (refus, échec de relance).
+    const repubNote=repubEligibleTout&&repubMsgs[item.id]&&!repubEtape?repubMsgs[item.id]:null;
+    // ── UN SEUL badge dans ce slot (2026-08-05, décision Nico) ──
+    // La pastille de republication et la pastille de statut
+    // plateforme s'affichaient ENSEMBLE et, à l'arrivée, disaient
+    // le même mot : etapeRepublication rend « En ligne » sur
+    // l'étape 'recreated', collé au « ● En ligne » de
+    // publishedActive. Deux fois la même information, dont une
+    // avec un chevron qui promet un détail sans intérêt.
+    // Règle : tant que la republication n'est pas conclue, c'est
+    // ELLE qui occupe le slot — l'avancement prime sur un statut
+    // qui, pendant la fenêtre suppression→recréation, est de
+    // toute façon faux (publishedActive tombe à [], cf.
+    // plateformesReserveesParRepublication). Dès qu'elle aboutit,
+    // elle s'efface et « ● En ligne » reprend sa place, seul.
+    // Ancrage sur cle==='recreated', PAS sur status : c'est la clé
+    // qui désigne exactement la pastille en doublon, et elle
+    // couvre les DEUX chemins qui la produisent (status
+    // 'published' et step 'recreated'). Tous les autres états —
+    // file, lecture, prête, recréation, à relancer, arrêtée, test
+    // à blanc — gardent le slot : aucun ne dit « En ligne ».
+    // ⚠️ Ne concerne QUE ces deux pastilles. Les logos de
+    // plateforme et le tag « Annonce Vinted · X € » sont rendus
+    // ailleurs dans la rangée et ne bougent pas.
+    const repubOccupeSlot=repubEligible&&!!repubEtape&&repubEtape.cle!=='recreated';
+    // ── Recréation ORPHELINE (07/08, 3d-a validé Nico) ────────
+    // Étape 'deleted' en cours (pending/processing) depuis plus
+    // de 20 min ET heartbeat extension muet depuis plus de
+    // 10 min : l'annonce est hors ligne et RIEN ne la recrée
+    // (extension endormie, session perdue — cas 97757a78,
+    // ~1 h hors ligne sans un signal). La pastille cesse de
+    // « tourner » et dit le vrai geste — jamais « en panne » :
+    // rien n'est cassé, l'ordinateur dort. needs_user/failed à
+    // 'deleted' ont déjà leur rouge (aujourd'hui) — ici on
+    // couvre le cas où l'app croyait que ça avançait.
+    const repubOrpheline=repubEtape?.cle==='deleted'&&(()=>{
+      const d=Date.parse(repubLatest?.platform_fields?.deleted_at??'');
+      const hb=Date.parse(extensionStatus?.lastSeenAt??'');
+      return Number.isFinite(d)&&Date.now()-d>20*60*1000
+        &&(!Number.isFinite(hb)||Date.now()-hb>10*60*1000);
+    })();
+    // "processing" = publication en cours côté extension : même
+    // affichage « En cours… » que pending (pour le vendeur, c'est
+    // le même moment ; la nuance est purement interne).
+    const hasPending=jobs.some(j=>j.status==="pending"||j.status==="processing");
+    // (27/09) Tout ce qui « attend » n'attend en fait qu'une
+    // connexion : pas un travail, un mur (attenteDeConnexion).
+    const pendingJobs=jobs.filter(j=>j.status==="pending"||j.status==="processing");
+    const pendingSurConnexion=pendingJobs.length>0&&pendingJobs.every(attenteDeConnexion);
+    // Job en attente sur une plateforme EN PAUSE (maintenance) :
+    // badge dédié « reprise auto » plutôt que le simple « En cours ».
+    const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
+    // Échec = le job LE PLUS RÉCENT de la plateforme est "failed"
+    // (2026-07-19). Pas « il existe un job failed » : après une
+    // régénération, le nouveau job pending/published de la même
+    // plateforme doit ÉTEINDRE le badge — seul l'état courant
+    // compte. À l'inverse, un échec de REPUBLICATION coexiste
+    // avec la pastille published de l'ancienne annonce toujours
+    // en ligne : les deux sont vrais, les deux s'affichent.
+    const latestByPlatform={};
+    for(const j of jobs){
+      const cur=latestByPlatform[j.platform];
+      if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestByPlatform[j.platform]=j;
+    }
+    // Un 404 « annonce disparue » à la capture n'est pas un échec
+    // (2026-09-12) : pas de rouge, la carte dit « Plus en ligne ».
+    const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed"&&!republicationAnnonceDisparue(j));
+    // « À compléter » (socle needs_user, 2026-07-19) : même règle
+    // que l'Échec — seul le job LE PLUS RÉCENT de la plateforme
+    // compte. Dès que le job repart en pending (valeur fournie)
+    // ou se conclut (published/failed), le badge s'éteint.
+    const needsUserTous=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
+    // needs_user EN COURS chez la plateforme (2026-09-10) : ni une
+    // action ni un « À compléter » — pastille grise, sans tap. Ils
+    // sortent de needsUserJobs pour ne compter dans aucun « actionable ».
+    // (24/09) Un parcage « Autoriser Opla » PLUS ANCIEN que la preuve
+    // d'accès du compte (verdict serveur, utils/oplaAcces) n'attend
+    // plus personne : get-pending-jobs le relance au prochain poll
+    // d'un poste autorisé. Il rejoint les « en cours » — gris, sans
+    // bouton « Autoriser Opla » pour un geste déjà fait.
+    const oplaRepartSeule=j=>j.platform==="opla"&&j.platform_fields?.needs_user_source==="opla_acces"&&parcageDepasse(j,oplaAccesDetail);
+    const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours"||oplaRepartSeule(j));
+    const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours"&&!oplaRepartSeule(j));
+    // ── LE MUR NOMMÉ DE LA CARTE (2026-09-23) ─────────────────
+    // Même règle que la pastille (voir l'IIFE de la photo) : quand
+    // rien de plus urgent ne parle (republication, file, échec) et
+    // que TOUT ce qui attend est un mur de connexion/autorisation
+    // nommé par le serveur, la carte porte LE bouton — sous la
+    // photo, dans .gmur, jamais dessus.
+    const murDirect=(()=>{
+      if(repubOccupeSlot||hasPausedPending||(hasPending&&!pendingSurConnexion)||failedJobs.length||!user?.id)return null;
+      const attendent=[...needsUserJobs,...(hasPending?pendingJobs:[])];
+      if(!attendent.length)return null;
+      const murs=attendent.map(x=>murDeConnexion(x));
+      return murs.every(Boolean)?{platform:attendent[0].platform,motif:murs[0]}:null;
+    })();
+    // « Publiée — à vérifier » (2026-08-08) : le job a ABOUTI
+    // mais avec un repli dégradant signalé par l'extension
+    // (platform_fields.warnings, ex. brand_fallback_no_brand :
+    // marque introuvable → annonce partie en « Sans marque »).
+    // Même règle que l'Échec : seul le job LE PLUS RÉCENT de la
+    // plateforme compte — une republication propre éteint le
+    // badge (le background efface warnings sur un run sans
+    // réserve).
+    // warningsAffichables (2026-08-10) : le bruit photo ne fait
+    // plus basculer une publication réussie en « à vérifier ».
+    // ⛔ UN SUCCÈS CONFIRMÉ N'ALERTE PLUS (2026-08-10, 3e passe).
+    // `published` + `listing_url` renseignée = l'annonce EXISTE,
+    // on a son adresse, elle est en ligne. C'est un succès, quels
+    // que soient les warnings du run. Vécu sur le job leboncoin
+    // c2c4a35a : annonce 3248104608 validée et en ligne, mail de
+    // confirmation Leboncoin reçu, et la carte affichait quand
+    // même un badge ambre pour « marque: champ sauté — option
+    // "Tommy Jeans" sans correspondance. Options: [] ». Une liste
+    // d'options VIDE : il n'y avait rien à corriger, ni dans
+    // l'app ni sur Leboncoin. Une alerte sans geste possible
+    // n'est pas une alerte, c'est du bruit — et le bruit finit
+    // par faire ignorer les vraies.
+    // Ce qui NE change pas : un `published` SANS lien porteur de
+    // warnings garde son badge ambre (on ne sait pas où est
+    // l'annonce), les `dry_run_completed` aussi (aucune annonce
+    // réelle), et les warnings restent écrits en base + rendus
+    // par la modale (mode réserve, plus bas) — on rétrograde
+    // l'alerte, on ne perd pas l'information.
+    const succesConfirme=j=>j.status==="published"&&!!j.listing_url;
+    const warnedJobs=Object.values(latestByPlatform).filter(j=>
+      (j.status==="published"||j.status==="dry_run_completed")
+      &&!succesConfirme(j)
+      &&warningsAffichables(j).length>0);
+    // ── Lien pas encore capturé (2026-08-10) ──────────────────
+    // Deux états DISTINCTS, et c'est tout l'objet du correctif :
+    // tant que la re-capture tourne, on informe (ton neutre) ;
+    // une fois la fenêtre close sans lien, on alerte. Un job déjà
+    // porteur d'un vrai warning garde son badge « à vérifier » et
+    // ne prend pas de second badge — une seule chose dite à la
+    // fois sur une carte.
+    // ⛔ PLUS DE BADGE « à vérifier » POUR UN LIEN MANQUANT
+    // (2026-08-10) : le cron publish-sans-lien-echec-daily bascule
+    // désormais ces jobs en `failed` au bout de la fenêtre, avec
+    // remboursement. Le badge « Échec » existant dit donc la
+    // vérité tout seul — en ajouter un second ici, c'était deux
+    // affichages concurrents pour le même état.
+    const sansWarn=j=>!warnedJobs.includes(j);
+    const lienEnCoursJobs=Object.values(latestByPlatform)
+      .filter(j=>etatLienJob(j)==="en_cours"&&sansWarn(j));
+    // Sonde de modération Leboncoin (2026-08-11) : unité déjà
+    // rendue, annonce toujours cherchée. Badge DISTINCT du gris
+    // « récupération en cours » — ici il y a quelque chose à
+    // faire (aller vérifier avant de republier), donc il est
+    // cliquable et de la couleur d'un avertissement.
+    const lienRembourseJobs=Object.values(latestByPlatform)
+      .filter(j=>etatLienJob(j)==="rembourse"&&sansWarn(j));
+    // État de retrait par plateforme : calcul partagé avec le
+    // modal de retrait (computeRemovalInfo, en tête de fichier) —
+    // un seul calcul, jamais deux vérités carte/modal.
+    const {removalState,publishedActive,latestPubByPlatform}=computeRemovalInfo(jobsAll);
+    // ── Article DISPARU de Vinted (2026-08-05) ────────────────
+    // `disparu_le` = la sync du dressing n'a pas retrouvé
+    // l'annonce sur Vinted (vérifié en réel : l'id Vinted rend
+    // 404). L'annonce n'existe plus, donc la carte ne montre NI
+    // logo Vinted NI « En ligne » — seulement la pastille ambre
+    // qui le dit. Une seule chose affichée, et elle est vraie.
+    // Surgical : seul Vinted sort. Un article aussi publié sur
+    // eBay ou LBC garde ces logos-là, qui restent exacts.
+    const disparuDeVinted=!!item.disparu_le;
+    // Vinted sort de la liste des plateformes en ligne — pour
+    // l'AFFICHAGE **et** pour le bouton (2026-08-05). La carte et
+    // le compteur ne peuvent pas se contredire : afficher « Plus
+    // en ligne » pendant que le bouton dit « En ligne (4/4) »,
+    // c'est reproduire à l'échelle du bouton le mensonge qu'on
+    // vient de retirer de la rangée.
+    // CONSÉQUENCE VOULUE : « Publier » redevient disponible pour
+    // Vinted. C'est le comportement juste — pour un article
+    // disparu, publier est le SEUL chemin de retour en ligne, la
+    // republication lui étant fermée (repubEligible exige
+    // !disparu_le). Ne tient que parce que disparu_le est
+    // désormais fiable : marquage sauté sur un run repris ou un
+    // relevé incomplet (gardes de syncDressing, background.js).
+    // ── GEL DE CARTE pendant un cycle (2026-08-07, validé Nico) ─
+    // La réservation de republication sort Vinted de
+    // publishedActive pendant la fenêtre suppression→recréation :
+    // avant, le logo DISPARAISSAIT, le compteur du bouton
+    // changeait, la carte respirait — le « changement d'aspect
+    // muet » remonté par ornellaracano. Désormais la carte ne
+    // perd RIEN : le logo Vinted reste, GRISÉ (opacité + titre
+    // dédié, clic → feuille d'avancement au lieu du modal de
+    // retrait), le compteur reste stable, seule la pastille du
+    // slot anime. Affichage pur : publishedActive lui-même ne
+    // change pas, les gardes métier restent intactes.
+    const vintedGeleParRepub=repubOccupeSlot&&repubLatest?.platform==='vinted'&&!!item.vinted_item_id&&!publishedActive.includes("vinted");
+    // ── Vinted lu sur l'ARTICLE (2026-09-11, signalement
+    // Joséphine) : MÊME source que le filtre Diffusion et le
+    // bandeau vente — vintedPresenceArticle (publicationState).
+    // Un import du dressing dont le job de sync n'est pas (ou
+    // plus) chargé garde son logo ; « disparue » le retire ; le
+    // gel de republication ci-dessus en est un sous-cas et
+    // garde son style grisé (vintedGeleParRepub, plus bas).
+    const vintedOccupee=vintedPresenceArticle(item,jobsAll).occupee;
+    const logosEnLigne=vintedOccupee
+      ?(publishedActive.includes("vinted")?publishedActive:[...publishedActive,"vinted"])
+      :publishedActive.filter(p=>p!=="vinted");
+    // ── vinted_status PRIME sur les jobs (2026-08-28, complément
+    // Nico) : masquée/brouillon malgré un job 'published' (44 cas
+    // au relevé) ⇒ la pastille verte ne compte plus Vinted, le
+    // LOGO reste mais GRISÉ (l'annonce EXISTE — masquée n'est pas
+    // disparue — et le tap → modal de retrait doit rester
+    // possible). Garde-fou de fraîcheur dans le helper : un job
+    // 'published' postérieur au relevé l'emporte. nbEnLigne et le
+    // bouton « En ligne (n/N) » restent sur logosEnLigne : la
+    // plateforme est occupée par une annonce EXISTANTE — la
+    // rouvrir à « Publier » créerait un doublon.
+    const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee));
+    // Compteur de plateformes réellement en ligne PARMI celles du
+    // compte (plateformesCompte, Opla comprise quand elle est
+    // ouverte) : pilote le 3e état du bouton (n/N = plus rien à
+    // publier). Une annonce sur une plateforme refermée reste dans
+    // les pastilles (logosEnLigne) mais ne compte pas ici.
+    const nbEnLigne=logosEnLigne.filter(p=>plateformesCompte.includes(p)).length;
+    const toutEnLigne=nbEnLigne>=plateformesCompte.length;
+    // Plateformes où l'article n'est PAS en ligne (2026-09-01,
+    // audit onboarding) : portées par le bouton « Publier » en
+    // logos — sur un article importé de Vinted, « Publier » nu
+    // ne disait ni où ni pourquoi (l'article est déjà en ligne).
+    // Même source que la pastille et le compteur (logosEnLigne) :
+    // le stepper n'ouvrira que ces plateformes-là, le bouton
+    // montre exactement ce qu'il fera.
+    const aPublier=plateformesCompte.filter(p=>!logosEnLigne.includes(p));
+    // _table:'inventaire' — cible d'écriture explicite de la modale
+    // d'édition (les ids ventes/inventaire se chevauchent).
+    const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
+    const photoUrl=premierePhoto(item.photos);
+    // Compteurs FUSIONNÉS (18/09) : Vinted + ce que les relevés
+    // ont vu sur les autres plateformes pour cet article. Le tap
+    // sur la ligne ouvre le détail par plateforme.
+    const statsPf=statsPlateformes[String(item.id)]??[];
+    const vuesPf=statsPf.some(x=>x.vues!=null)?statsPf.reduce((t,x)=>t+(x.vues??0),0):null;
+    const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
+    const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
+    const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
+    return { invested, prixAnnonce, jobsAll, vintedMasquee, jobs, repubLatest, repubEligible, repubMaintenant, repubEligibleTout, attenteFiche, repubEtape, repubNote, repubOccupeSlot, repubOrpheline, hasPending, pendingJobs, pendingSurConnexion, hasPausedPending, latestByPlatform, failedJobs, needsUserTous, oplaRepartSeule, enConfirmationJobs, needsUserJobs, murDirect, succesConfirme, warnedJobs, sansWarn, lienEnCoursJobs, lienRembourseJobs, removalState, publishedActive, latestPubByPlatform, disparuDeVinted, vintedGeleParRepub, vintedOccupee, logosEnLigne, enLigne, nbEnLigne, toutEnLigne, aPublier, openEdit, photoUrl, statsPf, vuesPf, favsPf, vues, favs };
+  };
+
+  // ── LA PASTILLE D'UN ARTICLE — COURTE, SANS ÉMOJI (03/10) ─────────────────
+  // Même ordre de priorité que l'ancienne pastille de la photo (republication
+  // > pause > connexion > en cours > échec > à compléter > confirmation >
+  // plus en ligne > masquée > en ligne), MÊMES destinations au tap. Le texte
+  // LONG d'avant devient le `titre` (survol, lecteur d'écran) ; la pastille ne
+  // garde que le mot, la plateforme (nom court) ou un nombre — jamais coupée.
+  const tonEtapeRepub = (e) => {
+    if (!e) return 'neutre';
+    if (e.cle === 'needs_user' || e.encre === '#8A6100') return 'regler';
+    if (String(e.encre ?? '').toUpperCase().includes('B91C1C')) return 'echec';
+    if (e.encre === '#1B6E62') return 'ok';
+    return 'neutre';
+  };
+  const pastilleArticle = (item, d) => {
+    const fr = lang === 'fr';
+    const sans = { titre: null, onTap: null, horsLigne: false };
+    if (item.statut === 'vendu') {
+      return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans };
+    }
+    if (d.repubOccupeSlot) {
+      const e = d.repubEtape;
+      if (d.repubOrpheline) {
+        return { ...pastilleCourte({ genre: 'orpheline' }, lang), titre: fr ? "Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité." : "Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.", onTap: () => setRepubProgress(d.repubLatest), horsLigne: false };
+      }
+      const travail = e.cle === 'lecture' || e.cle === 'retrait' || e.cle === 'deleted';
+      return { texte: e.court, ton: tonEtapeRepub(e), pulse: travail && !e.fini, titre: e.titre ?? (fr ? 'Voir où en est la remontée' : 'See bump progress'), onTap: () => setRepubProgress(d.repubLatest), horsLigne: false };
+    }
+    if (d.hasPausedPending) return { ...pastilleCourte({ genre: 'pause' }, lang), titre: t("stockJobPausedBadge"), onTap: null, horsLigne: false };
+    if (d.hasPending && d.pendingSurConnexion) {
+      const j = d.pendingJobs[0];
+      return { ...pastilleCourte({ genre: 'a_regler', plateforme: j.platform }, lang), titre: j.error ? humanizeJobError(j, lang) : (fr ? `Connexion ${PLATFORM_LABELS[j.platform] || j.platform} à reprendre sur ton ordinateur` : `Sign back in to ${PLATFORM_LABELS[j.platform] || j.platform} on your computer`), onTap: () => setJobStatusItem(item), horsLigne: false };
+    }
+    if (d.hasPending) {
+      const horsFraicheur = extFraicheur.etat === "eteinte" || extFraicheur.etat === "inactive" || extFraicheur.etat === "session_expiree";
+      const plusVieux = Math.min(...d.pendingJobs.map((j) => Date.parse(j.created_at)).filter(Number.isFinite));
+      const joursAttente = Number.isFinite(plusVieux) ? Math.floor((Date.now() - plusVieux) / 86400000) : 0;
+      const majRequise = extensionStatus?.outdated === true && d.pendingJobs.some((j) => j.voie !== 'api');
+      if (majRequise) return { ...pastilleCourte({ genre: 'maj' }, lang), titre: phraseMiseAJourExtension(lang), onTap: () => setJobStatusItem(item), horsLigne: false, aRegler: true };
+      if (horsFraicheur) {
+        const longue = joursAttente >= 1;
+        return {
+          ...pastilleCourte({ genre: 'attente', jours: longue ? joursAttente : 0 }, lang),
+          titre: longue
+            ? (fr ? `En attente depuis ${joursAttente} jour${joursAttente > 1 ? "s" : ""}. Ouvre Chrome sur l'ordinateur où tu as installé l'extension.` : `Waiting for ${joursAttente} day${joursAttente > 1 ? "s" : ""}. Open Chrome on the computer where you installed the extension.`)
+            : (fr ? "En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome." : "Waiting for your computer — it starts next time Chrome opens."),
+          onTap: () => setJobStatusItem(item), horsLigne: false,
+        };
+      }
+      return { ...pastilleCourte({ genre: 'en_cours' }, lang), titre: fr ? 'Voir le statut' : 'See status', onTap: () => setJobStatusItem(item), horsLigne: false };
+    }
+    if (d.failedJobs.length > 0) {
+      const j = d.failedJobs[0];
+      const actionables = d.failedJobs.length + d.needsUserJobs.length;
+      const toutAction = d.failedJobs.every((x) => jobActionRequise(x));
+      return {
+        ...pastilleCourte({ genre: toutAction ? 'a_regler' : 'echec', plateforme: j.platform, nombre: actionables }, lang),
+        titre: actionables > 1 ? (fr ? 'Voir le détail par plateforme' : 'See details per platform') : (j.error ? humanizeJobError(j, lang) : null),
+        onTap: actionables > 1 ? () => setJobStatusItem(item) : (j.error ? () => setFailJobModal(j) : () => setJobStatusItem(item)),
+        horsLigne: false,
+      };
+    }
+    if (d.needsUserJobs.length > 0) {
+      const j = d.needsUserJobs[0];
+      const n = d.needsUserJobs.length;
+      return {
+        ...pastilleCourte({ genre: 'a_regler', plateforme: j.platform, nombre: n }, lang),
+        titre: j.error ? humanizeJobError(j, lang) : (fr ? 'Une information est demandée' : 'Information is needed'),
+        onTap: n > 1 ? () => setJobStatusItem(item) : () => { if (needsUserOuvrable(j)) setNeedsUserJob(j); else if (j.error) setFailJobModal(j); else setJobStatusItem(item); },
+        horsLigne: false,
+      };
+    }
+    if (d.enConfirmationJobs.length > 0) {
+      const j = d.enConfirmationJobs[0];
+      const toutOpla = d.enConfirmationJobs.every(d.oplaRepartSeule);
+      return {
+        ...pastilleCourte(toutOpla ? { genre: 'en_file', plateforme: 'opla' } : { genre: 'confirmation', plateforme: j.platform, nombre: d.enConfirmationJobs.length }, lang),
+        titre: toutOpla ? (fr ? "Opla est autorisée : cette annonce repart toute seule." : "Opla is allowed: this listing goes out on its own.") : texteEnCoursConfirmation(j, lang),
+        onTap: null, horsLigne: false,
+      };
+    }
+    if (d.disparuDeVinted && !d.enLigne) {
+      return { ...pastilleCourte({ genre: 'hors_ligne', date: dateCourte(item.disparu_le, lang) }, lang), titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.', onTap: null, horsLigne: true };
+    }
+    if (d.vintedMasquee && !d.enLigne) {
+      return { ...pastilleCourte({ genre: item.vinted_status === 'draft' ? 'brouillon' : 'masquee', date: dateCourte(item.last_synced_at, lang) }, lang), titre: fr ? "Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas." : "Status read from Vinted at the last wardrobe sync — sync again if this has changed.", onTap: null, horsLigne: false };
+    }
+    if (d.enLigne) {
+      const jours = ancienneteJours(item, d.jobsAll, d.logosEnLigne.filter((p) => !(p === 'vinted' && d.vintedMasquee)));
+      return { ...pastilleCourte({ genre: 'en_ligne', jours }, lang), titre: jours != null ? (fr ? `En ligne depuis ${jours} j` : `Live for ${jours} d`) : null, onTap: null, horsLigne: false, jours };
+    }
+    return { ...pastilleCourte({ genre: d.disparuDeVinted ? 'hors_ligne' : 'pas_en_ligne', date: d.disparuDeVinted ? dateCourte(item.disparu_le, lang) : null }, lang), titre: null, onTap: null, horsLigne: !!d.disparuDeVinted };
+  };
+
+  // ── LES GESTES D'UN ARTICLE — UNE action sur la carte, TOUT dans « … » ────
+  // Chaque geste appelle EXACTEMENT ce que l'ancienne carte appelait (mêmes
+  // gardes : extension jamais vue, rappel extension, maintenance, gel Livres,
+  // cadence 24 h, palier). L'ordre de l'action principale est celui de Nico :
+  // Régler → Publier partout → Remonter (annonce ancienne) → Marquer vendu.
+  const publierArticle = (item, d) => {
+    if (d.toutEnLigne || detailFetchId) return;
+    const voiesLot = repartirParVoie(d.aPublier, ebayCompte?.voieApiReelle);
+    if (voiesLot.toutServeur) { publierAvecDetail(item); return; }
+    if (extensionNeverSeen === true) { setExtPitchItem(item); }
+    else if (shouldShowExtensionReminder()) { setExtReminderItem({ item, voies: voiesLot }); }
+    else { publierAvecDetail(item); }
+  };
+  const remonterArticle = (item) => {
+    if (repubEnPause) return;
+    if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
+    ouvrirFeuilleRepublication([item]);
+  };
+  const gestesArticle = (item, d, pastille) => {
+    const fr = lang === 'fr';
+    if (item.statut === 'vendu') {
+      return {
+        principale: null, element: null, mur: null, infos: [], prixAchat: null, note: null, bas: null, action: null,
+        menu: [
+          { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
+          ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),
+          { cle: 'supprimer', icone: Trash2, libelle: fr ? "Supprimer l'article" : 'Delete item', danger: true, onTap: () => delItem(item.id) },
+        ],
+      };
+    }
+    // ── La republication à reprendre (needs_user) — l'ancien bouton « ✋ Compléter »
+    //    / « 🔁 Relancer » / « Republier maintenant », mêmes branches.
+    const repubCible = republishAReprendre(d.jobsAll) ?? d.repubLatest;
+    const stRepub = repubCible?.status;
+    const repubGelee = estGeleLivres(repubCible);
+    const apresSuppr = repubCible?.platform_fields?.republish_step === 'deleted';
+    const aSaisir = (repubCible?.platform_fields?.champs_a_completer ?? []).some((c) => repubCleSaisie(c) in REPUB_SAISISSABLES);
+    const aChoisir = !aSaisir && !!repubCible?.platform_fields?.needsUserField;
+    const repubAReprendre = d.repubEligibleTout && !repubGelee && stRepub === 'needs_user';
+    const reprendreRepub = () => {
+      if (aSaisir && !apresSuppr) setRepubProgress(repubCible);
+      else if (aChoisir && !apresSuppr) setNeedsUserJob(repubCible);
+      else relancerRepublication(item, repubCible);
+    };
+    const repubVivante = stRepub === 'pending' || stRepub === 'processing' || stRepub === 'needs_user';
+    const cadence = !d.repubMaintenant.length && stRepub === 'published' && repubCible?.platform_fields?.recreated_at
+      && Date.now() - Date.parse(repubCible.platform_fields.recreated_at) < 24 * 3600 * 1000;
+    const restantCadence = cadence ? Math.max(1, Math.ceil((24 * 3600 * 1000 - (Date.now() - Date.parse(repubCible.platform_fields.recreated_at))) / 3600000)) : null;
+    const remontable = d.repubEligibleTout && !repubGelee && d.repubMaintenant.length > 0 && !repubEnPause && !modeRepublish;
+    // Les plateformes où l'article peut ENCORE partir : ni en ligne, ni déjà en
+    // route (un dépôt en file ou en attente d'une réponse n'est pas « à publier »).
+    const enRoute = new Set(d.jobs.filter((j) => j.status === 'pending' || j.status === 'processing' || j.status === 'needs_user').map((j) => j.platform));
+    const aPublierUtile = d.toutEnLigne ? [] : d.aPublier.filter((p) => !enRoute.has(p));
+    const jours = pastille.jours ?? ancienneteJours(item, d.jobsAll, d.logosEnLigne);
+    const aRegler = !!d.murDirect || repubAReprendre || pastille.aRegler === true
+      || (pastille.ton === 'regler' && !d.repubOccupeSlot && !d.vintedMasquee)
+      || (pastille.ton === 'echec' && !d.repubOccupeSlot);
+    const action = actionPrincipale({ vendu: false, aRegler, aPublier: aPublierUtile.length, ancienne: estAncienne(jours), remontable });
+    const regler = () => {
+      if (repubAReprendre) { reprendreRepub(); return; }
+      if (pastille.onTap) { pastille.onTap(); return; }
+      setJobStatusItem(item);
+    };
+    const principale = action === 'regler' ? { action, libelle: libelleAction(action, lang), onTap: regler, titre: pastille.titre }
+      : action === 'publier' ? { action, libelle: detailFetchId === item.id ? (fr ? 'Récupération…' : 'Fetching…') : libelleAction(action, lang), onTap: () => publierArticle(item, d), desactive: detailFetchId === item.id }
+      : action === 'remonter' ? { action, libelle: libelleAction(action, lang), onTap: () => remonterArticle(item) }
+      : { action, libelle: libelleAction(action, lang), onTap: () => markSold(item) };
+    // Un mur de connexion NOMMÉ : LE bouton, sur la carte, sous la photo — la
+    // règle « un seul bouton, droit vers le geste » (23/09) tient.
+    const element = d.murDirect ? (
+      <div className="gmur" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} style={{margin:0}}>
+        <BoutonMeConnecter userId={user.id} platform={d.murDirect.platform} motif={d.murDirect.motif} lang={lang} variante="bouton"/>
+      </div>
+    ) : null;
+
+    // ── « Ce qui se passe » : les puces secondaires de l'ancienne carte ───────
+    const infos = [];
+    for (const j of d.warnedJobs) {
+      const beebsEnVerif = j.platform === "beebs" && !j.listing_url;
+      infos.push({ cle: `warn-${j.platform}`, ton: 'regler', onTap: () => setFailJobModal(j),
+        texte: beebsEnVerif ? (fr ? "Déposée — vérification Beebs en cours" : "Submitted — Beebs is reviewing it") : (fr ? `Publiée — à vérifier sur ${PLATFORM_LABELS[j.platform] || j.platform}` : `Published — check it on ${PLATFORM_LABELS[j.platform] || j.platform}`),
+        titre: jobWarningsTexte(j, lang) || null });
+    }
+    for (const j of d.lienEnCoursJobs) {
+      const beebs = j.platform === "beebs";
+      const lbcEnVerif = j.platform === "leboncoin" && !j.listing_url && !!j.platform_fields?.lbc_depot_en_verification;
+      infos.push({ cle: `lien-${j.platform}`, ton: 'neutre',
+        texte: beebs ? (fr ? "Déposée — vérification Beebs en cours" : "Submitted — Beebs is reviewing it")
+          : lbcEnVerif ? (fr ? "Déposée — vérification Leboncoin en cours, ne pas republier" : "Submitted — Leboncoin is reviewing it, don't repost")
+          : (fr ? `Publiée — récupération du lien en cours sur ${PLATFORM_LABELS[j.platform] || j.platform}` : `Published — fetching the link on ${PLATFORM_LABELS[j.platform] || j.platform}`) });
+    }
+    for (const j of d.lienRembourseJobs) {
+      const nom = PLATFORM_LABELS[j.platform] || j.platform;
+      const url = PLATFORM_LISTINGS_URLS[j.platform];
+      infos.push({ cle: `rembourse-${j.platform}`, ton: 'regler', onTap: url ? () => window.open(url, '_blank', 'noopener') : null,
+        texte: fr ? `Annonce introuvable sur ${nom} — rien décompté` : `Listing not found on ${nom} — nothing counted`,
+        titre: fr ? `On ne retrouve pas ton annonce sur ${nom}. La plateforme interdit la vente de cosmétiques et parfums, c'est la cause la plus probable. Rien n'a été décompté. Vérifie tes annonces ${nom} avant de republier, pour éviter un doublon.` : `We can't find your listing on ${nom}. Nothing was counted. Check your ${nom} listings before reposting, to avoid a duplicate.` });
+    }
+    if (item.vinted_item_id && !d.disparuDeVinted && !d.repubEtape?.apresSuppression && d.vintedMasquee && d.enLigne) {
+      const vuLe = dateCourte(item.last_synced_at, lang);
+      infos.push({ cle: 'masquee', ton: 'regler', texte: `${item.vinted_status === 'hidden' ? (fr ? 'Masquée sur Vinted' : 'Hidden on Vinted') : (fr ? 'Brouillon sur Vinted' : 'Draft on Vinted')}${vuLe ? ` — ${fr ? 'vu le' : 'seen'} ${vuLe}` : ''}` });
+    }
+    // Vinted introuvable, mais l'article est en ligne AILLEURS : la pastille dit
+    // « En ligne » (c'est vrai) — l'ancienne carte disait « Plus en ligne · date »
+    // pour Vinted ; l'information reste ici, avec sa phrase d'origine.
+    if (d.disparuDeVinted && d.enLigne) {
+      const le = dateCourte(item.disparu_le, lang);
+      infos.push({ cle: 'disparu-vinted', ton: 'regler',
+        texte: fr ? `Plus en ligne sur Vinted${le ? ` · ${le}` : ''} : l'annonce n'a pas été retrouvée à la dernière synchronisation.` : `Gone from Vinted${le ? ` · ${le}` : ''}: the listing was not found at the last sync.`,
+        titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.' });
+    }
+    if (d.enLigne && jours != null) infos.push({ cle: 'age', ton: 'neutre', texte: jours === 0 ? (fr ? "En ligne depuis aujourd'hui" : 'Live since today') : (fr ? `En ligne depuis ${jours} j` : `Live for ${jours} d`) });
+    for (const p of d.logosEnLigne) {
+      if ((p === "beebs" || p === "leboncoin") && !!d.latestPubByPlatform?.[p] && !d.latestPubByPlatform[p].listing_url) {
+        infos.push({ cle: `moderation-${p}`, ton: 'neutre', texte: p === 'beebs' ? (fr ? "Beebs vérifie ton annonce avant de la mettre en ligne." : 'Beebs is reviewing your listing before putting it online.') : (fr ? "Leboncoin vérifie ton annonce : ne la republie pas, tu créerais un doublon." : "Leboncoin is reviewing your listing: don't repost it, you'd create a duplicate.") });
+      }
+    }
+    const etatArt = indexEtat.get(String(item.id));
+    for (const [k, p] of (etatArt ? pastillesEtat(etatArt, lang) : []).entries()) {
+      infos.push({ cle: `etat-${k}`, ton: p.ton === 'warn' ? 'regler' : 'echec', texte: p.texte, titre: p.detail, onTap: () => setRemoveModalItem(item) });
+    }
+    if (d.attenteFiche?.court) infos.push({ cle: 'attente-boutique', ton: 'regler', texte: d.attenteFiche.titre ?? d.attenteFiche.court });
+    if (boutiquesVinted.length >= 2 && item.vinted_account_id) {
+      const b = boutiquesVinted.find((x) => String(x.user_id) === String(item.vinted_account_id));
+      infos.push({ cle: 'boutique', ton: 'neutre', texte: fr ? `Boutique : ${b?.login ? `@${b.login}` : 'autre boutique'}` : `Shop: ${b?.login ? `@${b.login}` : 'other shop'}` });
+    }
+    if ((item.quantite || 1) > 1) infos.push({ cle: 'lot', ton: 'regler', texte: fr ? `Publier met 1 unité en ligne · ${(item.quantite || 1) - 1} restent en stock` : `Publishing lists 1 unit · ${(item.quantite || 1) - 1} stay in stock` });
+    if (item.emplacement) infos.push({ cle: 'emplacement', ton: 'neutre', texte: fr ? `Emplacement : ${item.emplacement}` : `Location: ${item.emplacement}` });
+    const ebayPasPret = !!(ebayCompte?.voieApi && ebayCompte?.lu && d.aPublier.includes('ebay') && !resumeEbay(ebayCompte.etat, lang === 'en' ? 'en' : 'fr').pret);
+    if (ebayPasPret) infos.push({ cle: 'ebay', ton: 'regler', texte: resumeEbay(ebayCompte.etat, lang === 'en' ? 'en' : 'fr').phrase, onTap: () => setEbayPanneauStock(true) });
+
+    // ── Le menu : TOUT ce que la carte proposait, dans l'ordre d'usage ─────────
+    const menu = [];
+    if (action !== 'regler' && aRegler) menu.push({ cle: 'regler', icone: CircleAlert, libelle: fr ? 'Régler' : 'Fix', detail: pastille.titre, onTap: regler });
+    if (aPublierUtile.length > 0) menu.push({ cle: 'publier', icone: Upload, libelle: libelleAction('publier', lang), detail: (fr ? 'Sur ' : 'On ') + aPublierUtile.map((p) => LABEL_PF[p] ?? p).join(', '), onTap: () => publierArticle(item, d), desactive: detailFetchId === item.id });
+    if (repubAReprendre) {
+      menu.push({ cle: 'reprendre', icone: RotateCcw, onTap: reprendreRepub, desactive: repubBusy === item.id,
+        libelle: (aSaisir || aChoisir) && !apresSuppr ? (fr ? 'Compléter la remontée' : 'Complete the bump') : apresSuppr ? (fr ? 'Remettre en ligne maintenant' : 'Put it back online now') : (fr ? 'Relancer la remontée' : 'Relaunch the bump') });
+    } else if (remontable) {
+      menu.push({ cle: 'remonter', icone: ChevronsUp, libelle: libelleAction('remonter', lang), onTap: () => remonterArticle(item),
+        detail: d.repubMaintenant.length === 1 && d.repubMaintenant[0] === 'vinted'
+          ? (fr ? "Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted." : 'Deletes then recreates the listing identically to bump it in the Vinted feed.')
+          : (fr ? `Sur ${d.repubMaintenant.map((p) => LABEL_PF[p] ?? p).join(', ')}` : `On ${d.repubMaintenant.map((p) => LABEL_PF[p] ?? p).join(', ')}`) });
+    } else if (cadence) {
+      menu.push({ cle: 'remonter', icone: ChevronsUp, libelle: fr ? `Remonter · dans ~${restantCadence} h` : `Bump · in ~${restantCadence} h`, detail: fr ? 'Une remontée par article et par 24 h.' : 'One bump per item per 24 h.', desactive: true, onTap: () => {} });
+    }
+    if (d.repubLatest && (repubVivante || d.repubEtape)) menu.push({ cle: 'suivi-remontee', icone: Activity, libelle: fr ? 'Où en est la remontée' : 'Bump progress', onTap: () => setRepubProgress(d.repubLatest) });
+    menu.push({ cle: 'vendu', icone: BadgeEuro, libelle: libelleAction('vendu', lang), onTap: () => markSold(item) });
+    menu.push({ cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit });
+    if (onDupliquer) menu.push({ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) });
+    if (d.logosEnLigne.length > 0 || d.jobsAll.some((j) => j.action !== 'delete')) {
+      menu.push({ cle: 'plateformes', icone: Layers, libelle: fr ? 'Gérer les plateformes' : 'Manage platforms', detail: fr ? 'Retirer, compléter ou relancer, plateforme par plateforme' : 'Remove, complete or relaunch, platform by platform', onTap: () => setRemoveModalItem(item) });
+    }
+    if (d.jobs.length > 0) menu.push({ cle: 'statut', icone: ListChecks, libelle: fr ? 'Voir le statut des publications' : 'See publishing status', onTap: () => setJobStatusItem(item) });
+    if (d.vues != null || d.favs != null) menu.push({ cle: 'stats', icone: Eye, libelle: fr ? 'Vues et favoris par plateforme' : 'Views and favourites per platform', onTap: () => setStatsPopup(item) });
+    if (ebayPasPret) menu.push({ cle: 'ebay', icone: Store, libelle: resumeEbay(ebayCompte.etat, lang === 'en' ? 'en' : 'fr').bouton, onTap: () => setEbayPanneauStock(true) });
+    for (const j of d.lienRembourseJobs) {
+      const url = PLATFORM_LISTINGS_URLS[j.platform];
+      if (url) menu.push({ cle: `annonces-${j.platform}`, icone: ExternalLink, libelle: fr ? `Mes annonces ${PLATFORM_LABELS[j.platform] || j.platform}` : `My ${PLATFORM_LABELS[j.platform] || j.platform} listings`, onTap: () => window.open(url, '_blank', 'noopener') });
+    }
+
+    // ── La barre du job réellement en travail (BarreJobCarte), mêmes conditions ─
+    const repubEnTravail = d.repubOccupeSlot && !d.repubEtape.fini && !d.repubOrpheline && d.repubEtape.cle !== 'attente_boutique'
+      && (d.repubLatest?.status === 'processing' || (d.repubLatest?.status === 'pending' && repubStepDe(d.repubLatest) === 'deleted'));
+    const extFraiche = !(extFraicheur.etat === "eteinte" || extFraicheur.etat === "inactive" || extFraicheur.etat === "session_expiree");
+    const pubEnTravail = !repubEnTravail && d.hasPending && !d.pendingSurConnexion && !d.hasPausedPending && extFraiche;
+    const retraitsEnTravail = (!repubEnTravail && !pubEnTravail)
+      ? d.jobsAll.filter((j) => j.action === 'delete' && (j.status === 'processing' || (j.status === 'pending' && extFraiche && !attenteDeConnexion(j) && !pausedSet.has(j.platform))))
+      : [];
+    const enTravail = repubEnTravail ? [d.repubLatest] : pubEnTravail ? d.pendingJobs : retraitsEnTravail;
+    if (enTravail.length) menu.push({ cle: 'file', icone: Activity, libelle: fr ? "Voir la file de l'ordinateur" : "See the computer's queue", onTap: () => setFileOuverte(true) });
+    menu.push({ cle: 'supprimer', icone: Trash2, libelle: fr ? "Supprimer l'article" : 'Delete item', danger: true, onTap: () => delItem(item.id) });
+    const bas = <BarreJobCarte jobs={enTravail} tous={d.jobsAll} lang={lang} ctx={ctxBarres} onOuvrir={() => setFileOuverte(true)} />;
+    const note = d.repubNote ? (
+      <button type="button" className={`cardnote ${d.repubNote.ton === 'vert' ? 'is-info' : 'is-warn'}`} onClick={(e) => { e.stopPropagation(); setRepubMsgs((m) => ({ ...m, [item.id]: null })); }}
+        style={{ cursor: 'pointer', marginTop: 8, width: '100%', textAlign: 'left', border: 'none', font: 'inherit' }}>
+        <span>{d.repubNote.texte}</span>
+      </button>
+    ) : null;
+    const prixAchat = paIncomplet(item) ? {
+      onValider: async (texte) => {
+        const pa = parsePrixStock(texte);
+        if (pa === null || Number.isNaN(pa)) return false;
+        return ecrirePrixAchatStock([item.id], pa);
+      },
+      onInconnu: () => marquerInconnuStock([item.id]),
+    } : null;
+    const mur = d.murDirect ? <BoutonMeConnecter userId={user.id} platform={d.murDirect.platform} motif={d.murDirect.motif} lang={lang} variante="ligne"/> : null;
+    return { principale, element, infos, menu, prixAchat, mur, bas, note, action };
+  };
+
+  // ── LA CARTE ET LA LIGNE, PRÊTES À RENDRE ─────────────────────────────────
+  const prixAffiche = (item, d) => {
+    const sellNum = Number(item.sell);
+    const prixVente = d.prixAnnonce != null ? d.prixAnnonce : (Number.isFinite(sellNum) && sellNum > 0 ? sellNum : null);
+    if (prixVente != null) return { prix: fmt(prixVente), detail: d.prixAnnonce != null ? (lang === 'fr' ? "Prix affiché sur l'annonce Vinted" : 'Asking price on the Vinted listing') : (lang === 'fr' ? 'Prix de vente de la fiche' : 'Asking price set on the item') };
+    if (d.invested !== null) return { prix: null, detail: `${lang === 'fr' ? 'investi' : 'invested'} ${fmt(d.invested)}` };
+    return { prix: null, detail: null };
+  };
+  const etatsLogos = (d) => {
+    const etats = {};
+    for (const p of d.logosEnLigne) {
+      const gele = d.vintedGeleParRepub && p === 'vinted';
+      const masque = d.vintedMasquee && p === 'vinted';
+      const retrait = d.removalState[p] === 'removing';
+      const moderation = (p === 'beebs' || p === 'leboncoin') && !!d.latestPubByPlatform?.[p] && !d.latestPubByPlatform[p].listing_url;
+      etats[p] = { attenue: gele || masque || retrait, desature: moderation };
+    }
+    return etats;
+  };
+  const selectionArticle = (item) => {
+    if (modeLot) return { coche: lotSel.includes(item.id), onBasculer: () => basculerLot(item.id) };
+    if (modeRepublish && repubSelectionnable(item)) return { coche: repubSel.has(item.id), onBasculer: () => setRepubSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
+    if (modePrixAchat && paIncomplet(item)) return { coche: paSel.has(item.id), onBasculer: () => setPaSel((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; }) };
+    return null;
+  };
+  const rendreArticle = (item, enListe) => {
+    const d = deriverArticle(item);
+    const pastille = pastilleArticle(item, d);
+    const g = gestesArticle(item, d, pastille);
+    const prix = prixAffiche(item, d);
+    const commun = {
+      id: item.id, lang, photo: d.photoUrl, titre: item.title, prix: prix.prix, prixDetail: prix.detail,
+      pastille, logos: { liste: d.logosEnLigne, etats: etatsLogos(d) }, horsLigne: pastille.horsLigne,
+      selection: selectionArticle(item), onMenu: () => setMenuArticleId(item.id),
+    };
+    if (enListe) return <LigneArticle key={item.id} {...commun} />;
+    // Mode prix d'achat : la saisie en ligne de l'ancienne carte reste LÀ où
+    // on la cherche (même fonction validerPaStock, même « je ne sais plus »).
+    const saisiePa = modePrixAchat && paIncomplet(item) ? (
+      <div className="pa-line" onClick={e=>e.stopPropagation()} style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:8}}>
+        {paOpenId===item.id?(
+          <>
+            <input className="pa-input" autoFocus inputMode="decimal" value={paDraft} placeholder={lang==='fr'?"12,50":"12.50"}
+              onChange={e=>setPaDraft(e.target.value)}
+              onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setPaOpenId(null);setPaDraft("");setPaErr(null);}if(e.key==='Enter'){e.preventDefault();validerPaStock(item);}}}
+              aria-label={lang==='fr'?"Prix d'achat":"Purchase price"}/>
+            <button className="pa-ok" aria-label={lang==='fr'?'Valider':'Confirm'} onMouseDown={e=>e.preventDefault()} onClick={()=>validerPaStock(item)}><Check size={14} strokeWidth={3}/></button>
+            <button className="pa-ghost" onClick={()=>{setPaOpenId(null);setPaDraft("");marquerInconnuStock([item.id]);}}>{lang==='fr'?"je ne sais plus":"I don't remember"}</button>
+          </>
+        ):(
+          <button className="pa-chip" onClick={()=>{setPaOpenId(item.id);setPaDraft("");setPaErr(null);}}>{lang==='fr'?"+ prix d'achat":"+ purchase price"}</button>
+        )}
+        {paErr?.id===item.id&&<span className="pa-err">{paErr.message}</span>}
+      </div>
+    ) : null;
+    return (
+      <CarteArticle key={item.id} {...commun}
+        marque={marqueLabel(item.marque, lang) || null} vues={d.vues} favoris={d.favs} quantite={item.quantite || 1}
+        action={g.principale} actionElement={saisiePa ?? g.element} onOuvrir={d.openEdit} bas={g.bas} note={g.note} />
+    );
+  };
 
   return (
     <>
       <style>{STOCK_TOP_CSS}</style>
       <style>{VOICE_KIT_CSS}</style>
-      <div className="stock-top-v2">
-        <div className="eyebrow-row">
-          <div className="eyebrow">{lang==='en'?'AI Stock':'Stock IA'}</div>
-        </div>
-      </div>
-      {/* Bannière déconnexion extension (2026-07-21) — avant, l'app était aveugle
-          à l'état de l'extension : le diagnostic n'existait qu'au tap sur un job
-          « En cours… » (invisible s'il n'y avait rien à tapoter). Ici : permanent,
-          en tête, dès que l'extension est INACTIVE (>15 min sans heartbeat) ou à
-          recharger. Mobile seulement — sur desktop l'utilisateur voit l'extension
-          directement (« desktop c'est ok »). « Jamais vue » n'affiche rien : ce
-          serait du bruit pour qui n'a pas encore installé l'extension. */}
-      {/* ── Gradation fraîcheur (2026-08-13, cas Carla) ─────────────────────
-          Trois états au lieu du rouge unique à 15 min :
-          · vivante (< 1 h, cf. fraicheurExtension) → RIEN ;
-          · éteinte (1 h → 7 j) → AMBRE, une ligne, informatif : rien n'est
-            cassé, le job partira — jamais les mots « erreur/échec/problème »,
-            sinon l'utilisateur annule et relance, et recrée un job fantôme ;
-          · inactive (> 7 j) → le rouge ⚠️ d'avant, désormais justifié.
-          Stock VIDE → rien : le bandeau alerterait avant qu'il y ait quoi que
-          ce soit à publier. La bannière « à mettre à jour » garde son
-          comportement d'origine, après les états de fraîcheur. */}
-      {isMobile && (() => {
-        const stockVide = (stock?.length ?? 0) === 0;
-        // « Session expirée » (02/09 soir) prime sur tout : l'extension TOURNE
-        // (elle boucle sur le 401 d'extension-session) mais ne peut plus
-        // travailler — le dire « éteinte » était un diagnostic faux qui
-        // faisait conclure au produit cassé. Geste réparateur explicite.
-        if (!stockVide && extFraicheur.etat === "session_expiree") {
-          return (
-            <div style={{
-              display:"flex", gap:10, alignItems:"flex-start",
-              background:"#FEF2F2", border:"1px solid #FECACA", borderLeft:"4px solid #DC2626",
-              borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-            }}>
-              <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>🔑</span>
-              <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
-                <div style={{fontWeight:700, marginBottom:2, color:"#B91C1C"}}>
-                  {lang==="en" ? "The extension needs to sign in again" : "L'extension doit se reconnecter"}
-                </div>
-                {lang==="en"
-                  ? "It lost its connection to your account. On your computer, open fillsell.app in Chrome, sign in, then reload the page (F5) — it reconnects by itself."
-                  : "Elle a perdu sa connexion à ton compte. Sur ton ordinateur, ouvre fillsell.app dans Chrome, connecte-toi, puis recharge la page (F5) — elle se reconnecte toute seule."}
-              </div>
-            </div>
-          );
-        }
-        if (!stockVide && extFraicheur.etat === "inactive") {
-          return (
-            <div style={{
-              display:"flex", gap:10, alignItems:"flex-start",
-              background:"#FEF2F2", border:"1px solid #FECACA", borderLeft:"4px solid #DC2626",
-              borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-            }}>
-              <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⚠️</span>
-              <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
-                <div style={{fontWeight:700, marginBottom:2, color:"#B91C1C"}}>
-                  {lang==="en" ? `Extension inactive for ${extFraicheur.jours} d` : `Extension inactive depuis ${extFraicheur.jours} j`}
-                </div>
-                {lang==="en"
-                  ? "Open Chrome, and sign in again on fillsell.app if it doesn't resume."
-                  : "Ouvre Chrome, et reconnecte-toi sur fillsell.app si ça ne repart pas."}
-              </div>
-            </div>
-          );
-        }
-        if (!stockVide && extFraicheur.etat === "eteinte") {
-          return (
-            <div style={{
-              display:"flex", gap:8, alignItems:"center",
-              background:"#FFFBEB", border:"1px solid #FDE68A", borderLeft:"4px solid #F59E0B",
-              borderRadius:12, padding:"8px 12px", marginBottom:14, width:"100%", boxSizing:"border-box",
-            }}>
-              <span style={{fontSize:14, lineHeight:1, flexShrink:0}}>💻</span>
-              <div style={{fontSize:12.5, lineHeight:1.4, color:"#78350F"}}>
-                {lang==="en"
-                  ? "Your computer is off — your listings will go out next time Chrome opens."
-                  : "Ton ordinateur est éteint — tes publications partiront à la prochaine ouverture de Chrome."}
-              </div>
-            </div>
-          );
-        }
-        if (!extensionStatus?.outdated) return null;
-        // Contenu « à mettre à jour » posé EN DUR (pas via diagnostiquerExtension,
-        // dont la branche « morte > 15 min » primerait et ressusciterait le
-        // rouge sur un stock vide). Même wording que la branche outdated.
-        return (
-          <div style={{
-            display:"flex", gap:10, alignItems:"flex-start",
-            background:"#FFF7ED", border:"1px solid #FED7AA", borderLeft:"4px solid #EA580C",
-            borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-          }}>
-            <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⚠️</span>
-            <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
-              <div style={{fontWeight:700, marginBottom:2, color:"#9A3412"}}>
-                {lang==="en" ? "Extension needs updating" : "Extension à mettre à jour"}
-              </div>
-              {lang==="en"
-                ? "A newer version exists. Install the latest version from the Chrome Web Store (Extension page in settings)."
-                : "Une version plus récente existe. Installe la dernière version depuis le Chrome Web Store (page Extension dans les réglages)."}
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Bandeau maintenance republication (2026-08-13) ──────────────────
-          coin_config.republish_maintenance = 1 : les boutons Republier (carte
-          et lot) sont grisés plus bas, ce bandeau dit pourquoi. Il s'arme
-          aussi via le FILET si un insert est rejeté REPUBLISH_MAINTENANCE
-          malgré tout (clé passée à 1 après le chargement de l'écran). */}
-      {repubMaintenance&&(
-        <div style={{
-          display:"flex", gap:10, alignItems:"flex-start",
-          background:"#FFF7ED", border:"1px solid #FED7AA", borderLeft:"4px solid #EA580C",
-          borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-        }}>
-          <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>🛠️</span>
-          <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
-            <div style={{fontWeight:700, marginBottom:2, color:"#9A3412"}}>
-              {lang==='fr'?"Republication en maintenance":"Reposting under maintenance"}
-            </div>
-            {lang==='fr'
-              ?"On corrige un problème qui pouvait empêcher la remise en ligne de certaines annonces. Vos annonces sont protégées et rien n'est décompté. On vous prévient dès que c'est rétabli."
-              :"We're fixing an issue that could prevent some listings from going back online. Your listings are safe and nothing is deducted. We'll let you know as soon as it's back."}
-          </div>
-        </div>
-      )}
-      {/* ── Bandeau plateforme en pause (2026-08-27) ─────────────────────────
-          platform_health.paused = true : un bandeau PAR plateforme en pause,
-          en tête d'onglet, dont le texte est platform_health.reason affiché
-          TEL QUEL (il s'écrit en base, incident par incident, sans
-          redéploiement). Purement informatif : rien n'est grisé, rien n'est
-          bloqué — les jobs se mettent en file et repartent à la reprise. */}
-      {pausedPlatforms.map(p=>(
-        <div key={p} style={{
-          display:"flex", gap:10, alignItems:"flex-start",
-          background:"#EFF3F8", border:"1px solid #C7D6E5", borderLeft:"4px solid #64748B",
-          borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-        }}>
-          <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⏸️</span>
-          <div style={{fontSize:13, lineHeight:1.5, color:"#334155"}}>
-            <div style={{fontWeight:700, marginBottom:2, color:"#1E293B"}}>
-              {lang==='fr'?`${PLATFORM_LABELS[p]||p} en pause`:`${PLATFORM_LABELS[p]||p} paused`}
-            </div>
-            {pausedReasons[p]||(lang==='fr'
-              ?`Les publications ${PLATFORM_LABELS[p]||p} sont momentanément en pause. Reprise automatique dès rétablissement — rien à faire de votre côté.`
-              :`${PLATFORM_LABELS[p]||p} posting is temporarily paused. It will resume automatically — nothing you need to do.`)}
-          </div>
-        </div>
-      ))}
-      {/* (La ligne verte « N republications réussies ces 7 derniers jours »
-          vivait ici — retirée le 2026-08-27 au profit de la barre de
-          progression du bandeau de lot, dans la liste plus bas.) */}
-      {/* ── Bandeau horloge machine en retard (2026-08-15, cas Carla) ────────
-          Détection detecterRetardHorloge (shared.js) sur les jobs déjà
-          chargés (jobsByInventaire, poll 20 s) : processing_since (horloge
-          machine) vs created_at (serveur), seule la ligne datée la plus
-          récente fait foi — le bandeau s'éteint tout seul au job suivant une
-          fois l'horloge corrigée. Même famille visuelle que « ordinateur
-          éteint ». INFORMATIF SEULEMENT : rien n'est grisé, rien n'est
-          bloqué, aucune garde ne lit ce signal. */}
-      {(()=>{
-        const retard=detecterRetardHorloge(Object.values(jobsByInventaire).flat());
-        if(!retard.enRetard) return null;
-        return (
-          <div style={{
-            display:"flex", gap:10, alignItems:"flex-start",
-            background:"#FFFBEB", border:"1px solid #FDE68A", borderLeft:"4px solid #D97706",
-            borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-          }}>
-            <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>🕰️</span>
-            <div style={{fontSize:13, lineHeight:1.5, color:"#78350F"}}>
-              <div style={{fontWeight:700, marginBottom:2}}>
-                {lang==='fr'
-                  ?`L'horloge de ton ordinateur retarde d'environ ${retard.jours} jour${retard.jours>1?"s":""}`
-                  :`Your computer's clock is about ${retard.jours} day${retard.jours>1?"s":""} behind`}
-              </div>
-              {lang==='fr'
-                ?"Les sites de vente refusent des connexions quand l'heure est fausse — c'est souvent ce qui fait échouer les publications. Active la date et l'heure automatiques dans les réglages de date et d'heure de ton ordinateur (celui où tourne l'extension), puis relance tes publications."
-                :"Selling sites refuse connections when the clock is wrong — this is often what makes publications fail. Turn on automatic date & time in your computer's date & time settings (the one running the extension), then relaunch your publications."}
-            </div>
-          </div>
-        );
-      })()}
-      {/* ── Hiérarchie d'écran (2026-08-27, décision Nico) ───────────────────
-          1. incident (platform_health, conditionnel) → 2. barre de
-          progression des republications (conditionnelle) → 3. Actualiser mon
-          dressing → 4. Ajouter un article → 5. galerie. Les blocs 2 et 3
-          vivent ICI, au-dessus de la grille desktop : quand les bandeaux
-          conditionnels n'existent pas, la carte dressing est le premier
-          élément du contenu, sans espace vide au-dessus. Le CSS .stock-v2
-          est monté par le <style> de la liste plus bas — les classes portent,
-          l'ordre DOM d'un <style> est sans effet. */}
-      <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-        {/* ── Republication automatique par créneaux — EN TÊTE (13/09) ─────
-            La première chose qu'un Pro voit en ouvrant l'app : l'état, le
-            créneau, le nombre qui va RÉELLEMENT partir (serveur, jamais le
-            plafond du palier). Tap → réglages ; « Activer » → activation
-            (Pro) ou modale de conversion (autres). Monté seulement si le
-            module est exposé (cf. planifieeExposee) — sinon l'ancien bloc É6
-            reste en bas de liste, intact. */}
-        {/* (Republication automatique : depuis le 17/09 soir, une ligne repliée
-            en PIED de page — voir le bas du composant. Le haut de page va droit
-            au stock : bloc de synchro, recherche, cartes.) */}
-        {/* ── Écran de progression des republications (v3 du 28/08 soir) :
-            UN actif, une file, un repli — le traitement réel est SÉQUENTIEL
-            (une republication toutes les ~3 min) ; les barres par job de
-            2.4.74 avançaient toutes ensemble, illisible et faux (capture
-            19:35 : 6 barres jumelles pour 1 seul job traité). LA seule barre
-            de l'écran vit dans RepubBlocActif (tick 1 s isolé). Visible tant
-            que le lot garde du vivant (pending/processing/needs_user) —
-            repubBandeau null sinon. Les lignes « action requise » /
-            « arrêtées » filtrent la liste ; re-tap = retire le filtre. */}
-        {/* ── UN SEUL BANDEAU « EN COURS » (2026-09-19) ────────────────────
-            Dépôts ET republications dans la MÊME file, sous le MÊME compteur.
-            Avant, le titre disait « Republications » et une publication lancée
-            n'apparaissait nulle part : l'utilisateur déposait une annonce et
-            l'écran ne lui montrait RIEN.
-            Ce qui se lit en une seconde : QUOI tourne (la miniature + le
-            titre), OÙ (la plateforme), COMBIEN il en reste. Rien d'autre.
-            Le type d'action (« dépôt » / « republication ») vit sur la ligne
-            de l'article, discret — jamais en titre de bandeau.
-            ⛔ « N annonces attendent une action » n'est PAS de la progression :
-               son encart vit EN DESSOUS, séparé, avec sa couleur d'alerte.
-            Le bandeau ne s'affiche pas du tout quand il n'y a rien à dire :
-            pas d'activité, pas d'arrêtée, pas de test à blanc, pas d'orpheline. */}
-        {/* ── UN SEUL BANDEAU « EN COURS » (2026-09-19) ────────────────────
-            Dépôts ET republications dans la MÊME file, sous le MÊME compteur.
-            Avant, le titre disait « Republications » et une publication lancée
-            n'apparaissait nulle part : l'utilisateur déposait une annonce et
-            l'écran ne lui montrait RIEN.
-            Ce qui se lit en une seconde : QUOI tourne (la miniature + le
-            titre), OÙ (la plateforme), COMBIEN il en reste. Rien d'autre.
-            Le type d'action (« dépôt » / « republication ») vit sur la ligne
-            de l'article, discret — jamais en titre de bandeau.
-            AU TAP : la feuille, qui porte TOUTE la file (l'ordre réel, l'état
-            de chaque annonce) et le bouton d'arrêt. Le bandeau reste à UNE
-            ligne ; c'est la feuille qui explique.
-            ⛔ « Ce qui attend une action » n'est PAS de la progression : son
-               bandeau vit EN DESSOUS, séparé, avec sa couleur d'alerte.
-            Rien à dire ⇒ rien à l'écran. */}
+      <style>{CSS_STOCK}</style>
+      {/* ═══ LA REFONTE DU STOCK (03/10/2026) — LE HAUT ════════════════════
+          Titre et boutique · ce qui tourne · synchronisation · trois gestes ·
+          republication automatique · « Ajouter un article ». Les anciens
+          bandeaux de compte (extension, maintenance, plateforme en pause,
+          horloge) entrent dans la feuille « points à régler » de la
+          synchronisation : plus de paragraphes sur la page, rien de perdu.
+          « Ce qui attend une action » et « Déjà vendu ? » vivent dans le geste
+          « À régler ». */}
+      <div className="sk-racine" style={{display:'flex',flexDirection:'column',width:'100%',boxSizing:'border-box'}}>
+        <TitreStock lang={lang} boutiques={boutiquesVinted} boutiqueConnectee={boutiqueConnectee}
+          filterBoutique={filterBoutique} setFilterBoutique={(v)=>{setFilterBoutique(v);setShowAllStock(false);}}
+          attenteBoutique={attenteBoutique}/>
         {(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(
-          <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:20,padding:"12px 14px"}}>
+          <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:16,padding:16,marginTop:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
             {activite&&(()=>{
               const fiche=fichesParId.get(String(activite.actif.inventaire_id))??null;
               const photo=fiche?premierePhoto(fiche.photos):null;
@@ -8340,84 +8979,38 @@ const StockTab = memo(function StockTab({
             )}
           </div>
         )}
-        {/* ── « DÉJÀ VENDU ? » EN TÊTE (03/10, nicolas.menar) : un article
-            vendu dont une annonce au même nom est encore en ligne — le risque
-            de double vente se voit, il ne dort plus au fond d'une carte. */}
-        <BandeauDejaVendu lang={lang} userId={user?.id} items={items} onDecision={rafraichirApresSync}/>
-        {/* ── « CE QUI ATTEND UNE ACTION DE TA PART » (19/09) ────────────────
-            UN bandeau pour les DEUX causes qui demandent un geste : l'annonce
-            à COMPLÉTER et celle qui N'EST PAS PARTIE. Le bandeau « N annonce
-            attend une action » ne couvrait que la première, et il vivait DANS
-            le bandeau d'activité — donc il disparaissait avec lui (le 19/09 à
-            22:33 : pastille d'onglet à 1, page muette).
-            La couleur suit le PLUS GRAVE de ce qu'il contient : ambre tant
-            qu'il n'y a que des « à compléter », ROUGE dès qu'une annonce n'est
-            pas partie. Le sous-titre compte par cause — on sait ce qui nous
-            attend avant d'ouvrir.
-            Au tap : la feuille, où chaque ligne porte SA cause et SON geste.
-            Avant, le tap filtrait la liste et il fallait encore ouvrir chaque
-            carte pour savoir ce qui manquait. */}
-        {attenteAction&&(()=>{
-          // ⛔ UN BANDEAU QUI DEMANDE UN GESTE N'EST PAS UNE ALARME
-          //    (2026-09-22). Il virait au rouge dès qu'une annonce n'était
-          //    « pas partie » — or une annonce pas partie est intacte, et le
-          //    geste attendu est le même que pour un « à compléter » : un
-          //    clic. Ambre dans les deux cas ; l'icône suffit à distinguer.
-          const rouge=false;
-          const encre="#8A6100";
-          const fond="#FFF6E3";
-          const bord="#EED9A6";
-          const {total,echecs,aCompleter}=attenteAction;
-          const sous=[
-            echecs>0?(lang==='fr'
-              ?`${echecs} n’${echecs>1?'ont':'a'} pas été publiée${echecs>1?'s':''}`
-              :`${echecs} didn’t go out`):null,
-            aCompleter>0?(lang==='fr'?`${aCompleter} à compléter`:`${aCompleter} to complete`):null,
-          ].filter(Boolean).join(' · ');
-          return(
-            <button type="button" onClick={()=>setAttenteOuverte(true)} aria-haspopup="dialog"
-              style={{display:"block",width:"100%",textAlign:"left",background:fond,border:`1px solid ${bord}`,color:encre,
-                borderRadius:20,padding:"12px 13px",font:"inherit",cursor:"pointer"}}>
-              <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}>
-                <span style={{width:30,height:30,borderRadius:9,flexShrink:0,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {rouge?<AlertTriangle size={15}/>:<Hand size={15}/>}
-                </span>
-                <span style={{flex:1,minWidth:0}}>
-                  <span style={{display:"block",fontSize:13.5,fontWeight:700,letterSpacing:"-0.1px",lineHeight:1.35}}>
-                    {lang==='fr'
-                      ?`${total} annonce${total>1?'s attendent':' attend'} une action de ta part`
-                      :`${total} listing${total>1?'s are':' is'} waiting on you`}
-                  </span>
-                  <span style={{display:"block",fontSize:11.5,marginTop:2,opacity:0.85}}>{sous}</span>
-                </span>
-                <ChevronRight size={16} style={{flexShrink:0,opacity:0.7}}/>
-              </div>
-            </button>
-          );
-        })()}
-        {/* ── Actualiser mon dressing — TOUT EN HAUT du contenu (27/08).
-            Monté UNE seule fois, hors de tout ternaire vide/rempli : le
-            composant porte l'état du run (sonde extension, poll de
-            progression) — une instance par branche serait démontée/remontée
-            au premier article importé, état perdu en plein suivi. */}
-        {/* ── UN SEUL BLOC « Mes annonces en ligne » (refonte du 17/09 soir) :
-            les CINQ plateformes en lignes identiques, Vinted comprise (même
-            format, plus aucun traitement particulier), « Tout relever » en
-            bas. GARDE-FOU : seulement quand l'interrupteur du relevé est
-            ouvert — sinon la carte Vinted seule, comme avant. GARDE-FOU : la
-            liste des plateformes est celle des cartes (plateformesDuCompte),
-            jamais une troisième liste. */}
-        {syncMultiOuverte ? (
-          /* La carte pose SON propre cadre et SA note de pied : le parent ne
-             l'enveloppe plus dans une boîte blanche (elle en faisait deux). */
-          <CarteAnnoncesEnLigne
-            lang={lang} user={user} isNative={isNative} items={items} ouvert={syncMultiOuverte}
-            plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie).filter(p=>p!=='vinted')}
-            extensionStatus={extensionStatus}
-            onRattache={rafraichirApresSync}
-            lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
-            etatVinted={etatVinted}
-            ligneVinted={
+        <div style={{marginTop:16}}>
+          {syncMultiOuverte ? (
+            <BlocSynchro
+              lang={lang} user={user} isNative={isNative} items={items} ouvert={syncMultiOuverte}
+              plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie)}
+              extensionStatus={extensionStatus}
+              onRattache={()=>{rafraichirApresSync();relireDoublons();}}
+              lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
+              etatVinted={etatVinted}
+              ligneVinted={
+                <VintedDressingSync
+                  lang={lang} user={user} isNative={isNative}
+                  extensionStatus={extensionStatus}
+                  source={stock.length===0?'stock_empty':'stock_liste'}
+                  onDone={rafraichirApresSync}
+                  repubEnVol={repubVivants}
+                  repubRepriseA={repubRepriseA}
+                  onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
+                  boutiquesVinted={boutiquesVinted}
+                  rechargerBoutiques={rechargerBoutiques}
+                  variante="ligne"
+                  registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
+                  registerEtat={noterEtatVinted}
+                />
+              }
+              alertes={alertesCompte}
+              aFaire={<Gestes lang={lang} variante="lignes" publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>}
+              onResume={setResumeSynchro}
+            />
+          ) : (
+            <>
+              {alertesCompte.map(a=>(<div key={a.cle} style={{marginBottom:8}}><CartePoint icone={a.icone} titre={a.titre} texte={a.texte} ton={a.ton} bouton={a.bouton} enfant={a.enfant}/></div>))}
               <VintedDressingSync
                 lang={lang} user={user} isNative={isNative}
                 extensionStatus={extensionStatus}
@@ -8428,25 +9021,34 @@ const StockTab = memo(function StockTab({
                 onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
                 boutiquesVinted={boutiquesVinted}
                 rechargerBoutiques={rechargerBoutiques}
-                variante="ligne"
-                registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
-                registerEtat={noterEtatVinted}
               />
-            }
-          />
-        ) : (
-          <VintedDressingSync
-            lang={lang} user={user} isNative={isNative}
-            extensionStatus={extensionStatus}
-            source={stock.length===0?'stock_empty':'stock_liste'}
-            onDone={rafraichirApresSync}
-            repubEnVol={repubVivants}
-            repubRepriseA={repubRepriseA}
-            onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
-            boutiquesVinted={boutiquesVinted}
-            rechargerBoutiques={rechargerBoutiques}
-          />
+            </>
+          )}
+        </div>
+        {!resumeSynchro&&(
+          <div style={{marginTop:24}}>
+            <Gestes lang={lang} variante="tuiles" publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>
+          </div>
         )}
+        {planifieeExposee&&(
+          <div style={{marginTop:8}}>
+            <LigneRepublicationAuto
+              lang={lang}
+              autorise={planifiee.etat ? planifiee.etat.autorise===true : (isPro||isBusiness)}
+              actif={planifieeActives.length>0}
+              pauseMemorisee={plateformesPlanifieesVisibles(planifiee.parPlateforme).some((pf)=>planifiee.parPlateforme?.[pf]?.reglage?.pause_generale===true)}
+              busy={planifiee.busy}
+              nomsActifs={planifieeActives.map((pf)=>LABEL_PF[pf]??pf)}
+              onBasculer={(reprendre)=>{ track('republication_planifiee',{action:reprendre?'reprise_generale':'pause_generale',depuis:'stock'}); planifiee.pauseGenerale(reprendre); }}
+              onOuvrirReglages={()=>ouvrirReglagesRepublication?.()}
+              onOffres={planifieeActiverNonPro}
+            />
+          </div>
+        )}
+        <div style={{marginTop:24}}>
+          <EntreeAjouter lang={lang} ouvert={ajoutDeplie} onOuvrir={()=>setFeuilleAjout(true)} onFermer={fermerAjout}/>
+        </div>
+        <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
       </div>
       {/* ── Stock VIDE, mobile : la carte d'ajout DESCEND (2026-09-01) ────────
           Quatre portes se concurrençaient au premier écran d'un compte à
@@ -8457,11 +9059,12 @@ const StockTab = memo(function StockTab({
           « Ajoute ton premier article » + « Ce que FillSell fait » (remonté
           de fait), 3. la carte d'ajout complète, repliée, en bas. Aucun
           chemin supprimé. Un compte AVEC articles garde l'ordre actuel. */}
-      <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
-        {/* La carte se resserre sur son pli : 20 px de marge autour d'une
-            ligne unique, ça faisait un pavé de 70 px avant le premier article.
-            Dépliée, elle retrouve exactement la respiration d'avant. */}
-        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:ajoutDeplie?20:"6px 14px",display:"flex",flexDirection:"column",gap:ajoutDeplie?12:0,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...(isMobile&&stock.length===0?{order:2}:{})}}>
+      {/* (03/10, refonte) UNE colonne, comme la planche. La carte d'ajout
+          n'existe que dépliée par « Ajouter un article » (Écrire, Parler, À la
+          main) ; son contenu est celui d'avant, à l'identique. */}
+      <div className="sk-racine" style={{display:"flex",flexDirection:"column",width:"100%",boxSizing:"border-box"}}>
+        {ajoutDeplie&&(
+        <div className="stock-top-v2" style={{background:"#fff",borderRadius:16,padding:16,marginTop:8,display:"flex",flexDirection:"column",gap:12,border:"1px solid #E7E3D8",boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
           {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
               Le drapeau voiceZoneOpen existait depuis toujours, mais valait
               `true` et AUCUN bouton ne le basculait (setVoiceZoneOpen était
@@ -8477,34 +9080,10 @@ const StockTab = memo(function StockTab({
               contenu vivant, la barre de repli disparaît : l'écran propose
               alors « Recommencer » / « Réessayer », qui ramènent à l'état
               replié. */}
-          {(()=>{
-            // (Le calcul de `contenuVivant` vivait ici ; il est remonté dans le
-            // corps sous le nom `ajoutContenuVivant` — la carte en a besoin
-            // AUSSI, pour son pli et pour la rangée Excel, et deux expressions
-            // jumelles auraient fini par diverger.)
-            if(ajoutContenuVivant) return null;
-            return (
-              <button type="button" onClick={()=>setVoiceZoneOpen(v=>!v)}
-                style={{display:"flex",alignItems:"center",gap:9,width:"100%",minHeight:44,padding:voiceZoneOpen?"2px 0 6px":"2px 0",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                <span style={{flexShrink:0,width:30,height:30,borderRadius:9,background:"rgba(47,158,144,0.10)",display:"flex",alignItems:"center",justifyContent:"center",color:"#1B6E62"}}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-                </span>
-                <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:C.text}}>
-                  {/* Stock vide : la bannière au-dessus porte déjà LE bouton
-                      « Ajouter un article » — cette barre repliée devient les
-                      « autres façons », plus un doublon du même libellé
-                      (2026-09-01). Stock rempli : libellé inchangé. */}
-                  {stock.length===0
-                    ?(lang==='fr'?"Autres façons d'ajouter — écrire ou dicter":"Other ways to add — write or dictate")
-                    :(lang==='fr'?"Ajouter un article — écris ou parle":"Add an item — write or speak")}
-                </span>
-                <span style={{flexShrink:0,display:"inline-flex",color:"#8A8578",transition:"transform 0.15s",transform:voiceZoneOpen?"rotate(180deg)":"none"}}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                </span>
-              </button>
-            );
-          })()}
-          {(voiceZoneOpen||showManualForm||(voiceStep==="done"&&voiceZoneResults.length>0)||voiceStep==="error"||voiceStep==="parsing"||voiceLoading)&&(<>
+          {/* (03/10) Le pli « Ajouter un article — écris ou parle » est remplacé
+              par l'entrée unique du haut ; la zone IA ne s'ouvre plus avec le
+              formulaire manuel (« Remplir à la main » ne montre que lui). */}
+          {(voiceZoneOpen||(voiceStep==="done"&&voiceZoneResults.length>0)||voiceStep==="error"||voiceStep==="parsing"||voiceLoading)&&(<>
           {voiceStep==="done"&&voiceZoneResults.length>0?(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {/* ⚠️ Ces cartes étaient dupliquées ici (~570 lignes) avec des styles
@@ -8541,15 +9120,15 @@ const StockTab = memo(function StockTab({
             <div style={{display:"flex",flexDirection:"column"}}>
               <div className="mode-toggle">
                 <button type="button" className={"mode-btn"+(voiceInputMode==="write"?" active":"")} onClick={()=>setVoiceInputMode("write")}>
-                  ✎ {lang==='fr'?"Écrire":"Write"}
+                  <IconeTexte icone={PenLine} />{lang==='fr'?"Écrire":"Write"}
                 </button>
                 <button type="button" className={"mode-btn"+(voiceInputMode==="speak"?" active":"")} onClick={()=>setVoiceInputMode("speak")}>
-                  🎙 {lang==='fr'?"Parler":"Speak"}
+                  <IconeTexte icone={Mic} />{lang==='fr'?"Parler":"Speak"}
                 </button>
               </div>
 
               {voiceInputMode==="write"?(<>
-                {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7A75",textAlign:"center",lineHeight:1.4,marginBottom:8}}>{lang==='fr'?"🧠 Analyse en cours...":"🧠 Analyzing..."}</div>}
+                {voiceStep==="parsing"&&<div style={{fontSize:12,fontWeight:700,color:"#6B7A75",textAlign:"center",lineHeight:1.4,marginBottom:8}}>{lang==='fr'?"Analyse en cours…":"Analyzing…"}</div>}
                 <textarea value={voiceText} onChange={e=>setVoiceText(e.target.value)} disabled={voiceLoading}
                   placeholder={getRotatingExamples(currency,lang)[voicePlaceholderIdx]?.text}
                   rows={3} style={{width:"100%",padding:"10px 14px",borderRadius:12,border:`1.5px solid ${voiceText?C.teal:"rgba(0,0,0,0.1)"}`,fontSize:13,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5,color:C.text}}/>
@@ -8564,7 +9143,7 @@ const StockTab = memo(function StockTab({
                       onClick={()=>fabTriggerRef?.current?.()}
                       disabled={vaStep==="thinking"}
                     >
-                      {vaStep==="thinking"?"⏳":"🎙"}
+                      {vaStep==="thinking"?<Hourglass size={24} strokeWidth={2} aria-hidden="true"/>:<Mic size={24} strokeWidth={2} aria-hidden="true"/>}
                     </button>
                   </div>
                   <div className="voice-hint">
@@ -8576,15 +9155,15 @@ const StockTab = memo(function StockTab({
               )}
 
               <div className="hint-row">
-                <span className="hint-icon">✦</span>
+                <span className="hint-icon" style={{display:"flex",paddingTop:3}}><Sparkles size={14} strokeWidth={2} aria-hidden="true"/></span>
                 <span className="hint-text">{lang==='fr'?"Plus tu détailles, plus l'IA est précise.":"The more you detail, the more accurate the AI is."}</span>
               </div>
 
-              {voiceInputMode==="write"&&!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:12}}>{r===1?(lang==='fr'?'⚠️ Dernière analyse vocale du jour !':'⚠️ Last voice analysis today!'):(lang==='fr'?`🎙️ Il vous reste ${r} analyses vocales`:`🎙️ ${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:12}}>{lang==='fr'?'🔒 Limite atteinte · Passer Premium':'🔒 Limit reached · Go Premium'}</div>):null;})()}
+              {voiceInputMode==="write"&&!isPremium&&(()=>{const r=VOICE_FREE_LIMIT-voiceUsedToday;return r<=2&&r>0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:r===1?'#FEE2E2':'#FEF3C7',color:r===1?'#DC2626':'#D97706',marginBottom:12}}>{r===1?(lang==='fr'?'Dernière analyse vocale du jour !':'Last voice analysis today!'):(lang==='fr'?`Il te reste ${r} analyses vocales`:`${r} voice analyses left`)}</div>):r===0?(<div style={{textAlign:'center',padding:'4px 10px',borderRadius:20,fontSize:12,fontWeight:700,background:'#FEE2E2',color:'#DC2626',marginBottom:12}}>{lang==='fr'?'Limite atteinte · Passer Premium':'Limit reached · Go Premium'}</div>):null;})()}
 
               {voiceInputMode==="write"&&(
                 <button className={"cta"+((!voiceText.trim()||voiceLoading)?"":" active")} onClick={()=>callVoiceParse(voiceText)} disabled={!voiceText.trim()||voiceLoading}>
-                  ✦ {lang==='fr'?"Analyser":"Analyze"}
+                  <IconeTexte icone={Sparkles} style={{ marginRight: 6 }} />{lang==='fr'?"Analyser":"Analyze"}
                 </button>
               )}
 
@@ -8596,19 +9175,19 @@ const StockTab = memo(function StockTab({
               </div>
               {examplesOpen&&(()=>{
                 const FIXED_EX=lang==='fr'?[
-                  {text:"Veste Zara M, 8€",icon:"➕"},
-                  {text:"Vendu mes Air Max 90, 45€",icon:"💰"},
-                  {text:"Mes articles les plus rentables ?",icon:"📊"},
+                  {text:"Veste Zara M, 8€",icon:Plus},
+                  {text:"Vendu mes Air Max 90, 45€",icon:BadgeEuro},
+                  {text:"Mes articles les plus rentables ?",icon:BarChart3},
                 ]:[
-                  {text:"Zara jacket M, £8",icon:"➕"},
-                  {text:"Sold my Air Max 90, £45",icon:"💰"},
-                  {text:"My most profitable items?",icon:"📊"},
+                  {text:"Zara jacket M, £8",icon:Plus},
+                  {text:"Sold my Air Max 90, £45",icon:BadgeEuro},
+                  {text:"My most profitable items?",icon:BarChart3},
                 ];
                 return(
                   <div className="examples-panel">
                     {FIXED_EX.map((ex,i)=>(
                       <button key={i} type="button" className="example-chip" onClick={()=>{setVoiceText(ex.text);setVoiceInputMode("write");setExamplesOpen(false);}}>
-                        <span>{ex.icon}</span>
+                        <span aria-hidden="true" style={{display:"flex",flexShrink:0,color:"#1B6E62"}}><ex.icon size={14} strokeWidth={2}/></span>
                         <span>{ex.text}</span>
                       </button>
                     ))}
@@ -8639,7 +9218,7 @@ const StockTab = memo(function StockTab({
           {manualMode==="single"&&(<>
           {items.length===0?(
             <div style={{textAlign:"center",padding:"6px 0 10px",animation:"fadeIn 0.4s ease"}}>
-              <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#0E7C5F,#34D399)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 12px",boxShadow:"0 4px 16px rgba(29,158,117,0.3)"}}>📦</div>
+              <div style={{width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#0E7C5F,#34D399)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:"0 4px 16px rgba(29,158,117,0.3)",color:"#fff"}}><Package size={24} strokeWidth={2} aria-hidden="true"/></div>
               <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:6}}>{lang==='en'?'Add your first item':'Ajoute ton premier article'}</div>
               <div style={{fontSize:12,color:C.sub,lineHeight:1.6,maxWidth:220,margin:"0 auto"}}>{lang==='en'?'Name + buy price is enough to start tracking your profit.':'Nom + prix d\'achat suffit pour commencer à suivre tes marges.'}</div>
             </div>
@@ -8647,38 +9226,38 @@ const StockTab = memo(function StockTab({
             <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{t('ajouterTitre')}</div>
           )}
           <div>
-            <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon="🏷️"/>
+            <Field label={t('fieldNom')} value={iTitle} set={setITitle} placeholder="Ex: Air Max 90, Jean slim, Lot vêtements..." icon={iconeChamp(Tag)}/>
             {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{t('fieldNomHint')}</div>}
           </div>
           <div>
-            <Field label={lang==='fr'?"Quantité":"Quantity"} value={String(iQuantite)} set={v=>setIQuantite(Math.max(1,parseInt(v)||1))} placeholder="1" type="number" icon="🔢"/>
+            <Field label={lang==='fr'?"Quantité":"Quantity"} value={String(iQuantite)} set={v=>setIQuantite(Math.max(1,parseInt(v)||1))} placeholder="1" type="number" icon={iconeChamp(Hash)}/>
           </div>
           <div>
-            <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={iMarque} set={setIMarque} placeholder={lang==='en'?"Ex: Nike, Zara, H&M, Unbranded...":"Ex: Nike, Zara, H&M, Sans marque..."} icon="✏️"/>
+            <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={iMarque} set={setIMarque} placeholder={lang==='en'?"Ex: Nike, Zara, H&M, Unbranded...":"Ex: Nike, Zara, H&M, Sans marque..."} icon={iconeChamp(PenLine)}/>
           </div>
           <div>
             <select value={iType} onChange={e=>setIType(e.target.value)}
               style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:iType?"#10201B":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
-              <option value="">{(iTitle||iMarque)?(lang==='fr'?`🤖 Détecté : ${detectType(iTitle,iMarque)}`:`🤖 Detected: ${typeLabel(detectType(iTitle,iMarque),lang)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
-              <option value="Mode">👗 {typeLabel('Mode',lang)}</option>
-              <option value="High-Tech">📱 High-Tech</option>
-              <option value="Maison">🏠 {typeLabel('Maison',lang)}</option>
-              <option value="Électroménager">⚡ {typeLabel('Électroménager',lang)}</option>
-              <option value="Jouets">🧸 {typeLabel('Jouets',lang)}</option>
-              <option value="Livres">📚 {typeLabel('Livres',lang)}</option>
-              <option value="Sport">⚽ Sport</option>
-              <option value="Auto-Moto">🚗 {typeLabel('Auto-Moto',lang)}</option>
-              <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
-              <option value="Musique">🎵 {typeLabel('Musique',lang)}</option>
-              <option value="Collection">🏆 Collection</option>
-              <option value="Multimédia">📺 {typeLabel('Multimédia',lang)}</option>
-              <option value="Jardin">🌿 {typeLabel('Jardin',lang)}</option>
-              <option value="Bricolage">🔧 {typeLabel('Bricolage',lang)}</option>
-              <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
+              <option value="">{(iTitle||iMarque)?(lang==='fr'?`Détecté : ${detectType(iTitle,iMarque)}`:`Detected: ${typeLabel(detectType(iTitle,iMarque),lang)}`):(lang==='fr'?'Détection automatique':'Auto-detection')}</option>
+              <option value="Mode">{typeLabel('Mode',lang)}</option>
+              <option value="High-Tech">High-Tech</option>
+              <option value="Maison">{typeLabel('Maison',lang)}</option>
+              <option value="Électroménager">{typeLabel('Électroménager',lang)}</option>
+              <option value="Jouets">{typeLabel('Jouets',lang)}</option>
+              <option value="Livres">{typeLabel('Livres',lang)}</option>
+              <option value="Sport">Sport</option>
+              <option value="Auto-Moto">{typeLabel('Auto-Moto',lang)}</option>
+              <option value="Beauté">{typeLabel('Beauté',lang)}</option>
+              <option value="Musique">{typeLabel('Musique',lang)}</option>
+              <option value="Collection">Collection</option>
+              <option value="Multimédia">{typeLabel('Multimédia',lang)}</option>
+              <option value="Jardin">{typeLabel('Jardin',lang)}</option>
+              <option value="Bricolage">{typeLabel('Bricolage',lang)}</option>
+              <option value="Autre">{typeLabel('Autre',lang)}</option>
             </select>
           </div>
           <div>
-            <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuyInconnu?"":iBuy} set={v=>{setIBuy(v);if(v)setIBuyInconnu(false);}} placeholder={iBuyInconnu?(lang==='fr'?"Je ne sais pas":"I don't know"):"0,00"} type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+            <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuyInconnu?"":iBuy} set={v=>{setIBuy(v);if(v)setIBuyInconnu(false);}} placeholder={iBuyInconnu?(lang==='fr'?"Je ne sais pas":"I don't know"):"0,00"} type="number" icon={iconeChamp(ShoppingCart)} suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
             {/* La phrase d'aide ne dépend PLUS du nombre d'articles (19/09) :
                 elle était réservée au tout premier ajout, c'est-à-dire à la
                 seule personne qui n'en a pas encore besoin. */}
@@ -8697,7 +9276,7 @@ const StockTab = memo(function StockTab({
                 background:iBuyInconnu?"#E7F3F0":"transparent",
                 color:iBuyInconnu?"#1B6E62":"#6B7A75"}}
             >
-              {iBuyInconnu?"✓ ":""}{lang==='fr'?"Je ne sais pas":"I don't know"}
+              {iBuyInconnu&&<IconeTexte icone={Check} taille={12} style={{ marginRight: 4 }} />}{lang==='fr'?"Je ne sais pas":"I don't know"}
             </button>
             {iBuyInconnu&&(
               <div style={{fontSize:11,color:C.label,marginTop:6,paddingLeft:4,lineHeight:1.5}}>
@@ -8708,7 +9287,7 @@ const StockTab = memo(function StockTab({
             )}
           </div>
           <div>
-            <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Livraison fournisseur, réparation...":"Supplier shipping, repair..."} type="number" icon="🛍️" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+            <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Livraison fournisseur, réparation...":"Supplier shipping, repair..."} type="number" icon={iconeChamp(ShoppingBag)} suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
             {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Frais liés à l'achat : livraison, réparation...":"Purchase-side costs: shipping, repair..."}</div>}
           </div>
           <div>
@@ -8722,10 +9301,10 @@ const StockTab = memo(function StockTab({
           {iAlreadySold&&(
             <>
               <div>
-                <Field label={lang==='fr'?"Prix de vente":"Sell price"} value={iSell} set={setISell} placeholder="0,00" type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+                <Field label={lang==='fr'?"Prix de vente":"Sell price"} value={iSell} set={setISell} placeholder="0,00" type="number" icon={iconeChamp(Banknote)} suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               </div>
               <div>
-                <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+                <Field label={lang==='fr'?"Frais de vente (optionnel)":"Selling fees (optional)"} value={iSellingFees} set={setISellingFees} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon={iconeChamp(Receipt)} suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
                 <label style={{display:"flex",alignItems:"center",gap:8,marginTop:8,cursor:"pointer"}}>
                   <input type="checkbox" checked={iRememberSellingFees} onChange={e=>setIRememberSellingFees(e.target.checked)} style={{width:14,height:14,accentColor:C.teal,cursor:"pointer"}}/>
                   <span style={{fontSize:12,color:"#6B7A75",userSelect:"none"}}>{lang==='fr'?'Mémoriser ces frais de vente':'Remember selling fees'}</span>
@@ -8734,7 +9313,7 @@ const StockTab = memo(function StockTab({
             </>
           )}
           <div>
-            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>{lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
             {/* ── 200 → 500 CARACTÈRES (2026-09-19) ────────────────────────
                 Le plafond était un `maxLength` d'écran, écrit à TROIS
                 endroits (slice, maxLength, compteur) — il ne venait ni de la
@@ -8766,10 +9345,10 @@ const StockTab = memo(function StockTab({
             <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{iDesc.length}/{DESC_MANUELLE_MAX}</div>
           </div>
           <div>
-            <Field label={lang==='fr'?"Emplacement (optionnel)":"Storage location (optional)"} value={iEmplacement} set={setIEmplacement} placeholder={lang==='fr'?"Ex: Tiroir 45A, Portant 3, Étagère B...":"Ex: Drawer 45A, Rack 3, Shelf B..."} icon="📦"/>
+            <Field label={lang==='fr'?"Emplacement (optionnel)":"Storage location (optional)"} value={iEmplacement} set={setIEmplacement} placeholder={lang==='fr'?"Ex: Tiroir 45A, Portant 3, Étagère B...":"Ex: Drawer 45A, Rack 3, Shelf B..."} icon={iconeChamp(Archive)}/>
           </div>
           <div>
-            <Field label={lang==='fr'?"Plateforme de vente (optionnel)":"Resale platform (optional)"} value={iPlateforme} set={setIPlateforme} placeholder={lang==='fr'?"Ex: Vinted, eBay, Depop, Leboncoin...":"Ex: Vinted, eBay, Depop, Leboncoin..."} icon="🏪"/>
+            <Field label={lang==='fr'?"Plateforme de vente (optionnel)":"Resale platform (optional)"} value={iPlateforme} set={setIPlateforme} placeholder={lang==='fr'?"Ex: Vinted, eBay, Depop, Leboncoin...":"Ex: Vinted, eBay, Depop, Leboncoin..."} icon={iconeChamp(Store)}/>
           </div>
           {/* ── PHOTOS (2026-09-19) ─────────────────────────────────────────
               La MÊME galerie que le stepper — ajouter, retirer, réordonner,
@@ -8782,7 +9361,7 @@ const StockTab = memo(function StockTab({
           {ajouterPhotosAjout&&(
             <div>
               <div style={{fontSize:11,fontWeight:600,color:C.label,marginBottom:6,display:"flex",alignItems:"center",gap:6}}>
-                <span>📸</span>
+                <Camera size={14} strokeWidth={2} aria-hidden="true"/>
                 <span>{lang==='fr'?`Photos (optionnel) — jusqu'à ${MAX_PHOTOS}`:`Photos (optional) — up to ${MAX_PHOTOS}`}</span>
                 {iPhotosBusy&&<span style={{fontWeight:500,color:C.sub}}>{lang==='fr'?"envoi…":"uploading…"}</span>}
               </div>
@@ -8814,12 +9393,12 @@ const StockTab = memo(function StockTab({
           )}
           {items.length>0&&(
             <div style={{background:C.rowBg,borderRadius:10,padding:"10px 14px",fontSize:11,color:C.sub,border:"1px solid rgba(0,0,0,0.06)",lineHeight:1.6}}>
-              💡 {t('prixHint')}
+              <IconeTexte icone={Info} taille={13} style={{ marginRight: 6 }} />{t('prixHint')}
             </div>
           )}
           {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK-2&&quotaFree<FREE_STOCK_LIMIT_FALLBACK&&(
             <div style={{background:"#FFFBEB",borderRadius:10,padding:"10px 14px",fontSize:11,color:"#92400E",border:"1px solid #FDE68A",fontWeight:600}}>
-              ⚠️ {lang==='fr'?`${FREE_STOCK_LIMIT_FALLBACK-quotaFree} article${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} restant${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} sur ton plan gratuit`:`${FREE_STOCK_LIMIT_FALLBACK-quotaFree} item${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} remaining on your free plan`}
+              <IconeTexte icone={AlertTriangle} taille={13} style={{ marginRight: 6 }} />{lang==='fr'?`${FREE_STOCK_LIMIT_FALLBACK-quotaFree} article${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} restant${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} sur ton plan gratuit`:`${FREE_STOCK_LIMIT_FALLBACK-quotaFree} item${FREE_STOCK_LIMIT_FALLBACK-quotaFree>1?"s":""} remaining on your free plan`}
             </div>
           )}
           {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&!isNative
@@ -8828,7 +9407,7 @@ const StockTab = memo(function StockTab({
             ? null
             : <button className="btn-pill-primary" onClick={addItem} disabled={champsManquantsAjout.length>0} style={{opacity:champsManquantsAjout.length?0.5:1}}
                 title={champsManquantsAjout.length?(lang==='fr'?`Il manque : ${champsManquantsAjout.join(", ")}`:`Missing: ${champsManquantsAjout.join(", ")}`):undefined}>
-                {iSaved?(lang==='fr'?"✓ Ajouté !":"✓ Added!"):items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice 🚀":"Add your first item → see your profit 🚀"):t('ajouterArticle')}
+                {iSaved?<><IconeTexte icone={Check} style={{ marginRight: 6 }} />{lang==='fr'?"Ajouté !":"Added!"}</>:items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice":"Add your first item → see your profit"):t('ajouterArticle')}
               </button>
           }
           {isNative&&!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&(
@@ -8846,28 +9425,29 @@ const StockTab = memo(function StockTab({
               {lang==='fr'
                 ?`Il manque ${champsManquantsAjout.length>1?'encore':''} : ${champsManquantsAjout.join(" · ")}`
                 :`Still missing: ${champsManquantsAjout.join(" · ")}`}
-              {items.length===0&&(lang==='fr'?' — tu es à 1 étape de voir tes premiers profits 💰':' — you are 1 step away from seeing your first profits 💰')}
+              {items.length===0&&(lang==='fr'?' — tu es à 1 étape de voir tes premiers profits':' — you are 1 step away from seeing your first profits')}
             </div>
           )}
           {!iSaved&&champsManquantsAjout.length===0&&(
             <div style={{textAlign:"center",fontSize:12,color:C.teal,fontWeight:600,marginTop:-4}}>
+              <IconeTexte icone={Check} taille={13} style={{ marginRight: 4 }} />
               {items.length===0
-                ?(lang==='fr'?'✓ Prêt ! Clique pour ajouter et voir ton bénéfice instantanément':'✓ Ready! Click to add and see your profit instantly')
-                :(lang==='fr'?'✓ Prêt — clique pour ajouter':'✓ Ready — click to add')}
+                ?(lang==='fr'?'Prêt ! Clique pour ajouter et voir ton bénéfice instantanément':'Ready! Click to add and see your profit instantly')
+                :(lang==='fr'?'Prêt — clique pour ajouter':'Ready — click to add')}
             </div>
           )}
           {firstItemAdded&&(
             <div style={{background:C.greenLight,borderRadius:10,padding:"10px 14px",fontSize:12,color:C.green,border:"1px solid #C6F6D5",fontWeight:600,textAlign:"center"}}>
-              {lang==='fr'?'✅ Article ajouté ! Tu peux maintenant enregistrer une vente.':'✅ Item added! You can now record a sale.'}
+              <IconeTexte icone={CircleCheck} style={{ marginRight: 6 }} />{lang==='fr'?'Article ajouté ! Tu peux maintenant enregistrer une vente.':'Item added! You can now record a sale.'}
             </div>
           )}
           </>)}
           {manualMode==="lot"&&(
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div>
-                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>🛍️ {lang==='fr'?"Prix total du lot (€)":"Total lot price (€)"}</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>{lang==='fr'?"Prix total du lot (€)":"Total lot price (€)"}</div>
                 <div className="inp" style={{background:"#fff",borderRadius:14,padding:"0 16px",height:58,border:lotManualTotal?`1px solid ${C.teal}55`:"1px solid rgba(0,0,0,0.08)",display:"flex",alignItems:"center",gap:12,boxShadow:lotManualTotal?`0 0 0 3px ${C.teal}11`:"0 2px 8px rgba(0,0,0,0.04)"}}>
-                  <span style={{fontSize:20,flexShrink:0,opacity:0.7}}>💰</span>
+                  <span style={{flexShrink:0,opacity:0.7,display:"flex"}}><Banknote size={20} strokeWidth={1.8} aria-hidden="true"/></span>
                   <input type="number" value={lotManualTotal} onChange={e=>setLotManualTotal(e.target.value)} placeholder="0,00" inputMode="decimal" style={{background:"transparent",border:"none",outline:"none",color:C.text,fontSize:16,fontWeight:600,flex:1,fontFamily:"inherit"}}/>
                   <span style={{color:C.label,fontSize:13,fontWeight:600}}>€</span>
                 </div>
@@ -8890,7 +9470,7 @@ const StockTab = memo(function StockTab({
                       <div style={{display:"flex",alignItems:"center",gap:8,paddingLeft:4,animation:"fadeIn 0.3s ease"}}>
                         <input type="number" value={lotDistributed.items[i].prix_estime_lot} onChange={e=>{const v=parseFloat(e.target.value)||0;setLotDistributed(prev=>({...prev,items:prev.items.map((it,idx)=>idx===i?{...it,prix_estime_lot:v}:it)}));}} style={{width:64,border:"1px solid #CBD5E0",borderRadius:6,padding:"2px 6px",fontSize:16,fontFamily:"inherit",outline:"none",fontWeight:700,color:C.green}}/>
                         <span style={{fontSize:12,color:C.label}}>€</span>
-                        {lotDistributed.items[i].categorie&&(()=>{const ts=getTypeStyle(lotDistributed.items[i].categorie);return <span style={{background:ts.bg,color:ts.color,border:`1px solid ${ts.border}`,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700}}>{ts.emoji} {typeLabel(lotDistributed.items[i].categorie,lang)}</span>;})()}
+                        {lotDistributed.items[i].categorie&&(()=>{const ts=getTypeStyle(lotDistributed.items[i].categorie);return <span style={{background:ts.bg,color:ts.color,border:`1px solid ${ts.border}`,borderRadius:99,padding:"1px 8px",fontSize:10,fontWeight:700}}>{typeLabel(lotDistributed.items[i].categorie,lang)}</span>;})()}
                         {lotDistributed.items[i].marque&&<span style={{fontSize:11,color:"#6B7A75",fontWeight:600}}>{lotDistributed.items[i].marque}</span>}
                       </div>
                     )}
@@ -8903,61 +9483,27 @@ const StockTab = memo(function StockTab({
               >+ {lang==='fr'?"Ajouter un article":"Add item"}</button>
               <button onClick={handleLotDistribute} disabled={lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())}
                 style={{width:"100%",padding:"14px",background:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#DCEEEA":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"#8FB5AE":"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"not-allowed":"pointer",boxShadow:lotDistributing||!lotManualTotal||lotManualItems.some(it=>!it.nom.trim())?"none":"0 10px 24px -8px rgba(47,158,144,0.28)",transition:"all 0.2s",fontFamily:"inherit"}}>
-                {lotDistributing?(lang==='fr'?"⏳ Répartition en cours...":"⏳ Distributing..."):(lang==='fr'?"✨ Répartir automatiquement":"✨ Auto distribute")}
+                {lotDistributing?(lang==='fr'?"Répartition en cours…":"Distributing…"):<><IconeTexte icone={Sparkles} style={{ marginRight: 6 }} />{lang==='fr'?"Répartir automatiquement":"Auto distribute"}</>}
               </button>
               {lotDistributed&&(
                 <>
                   <div style={{fontSize:12,color:"#6B7A75",textAlign:"center",fontStyle:"italic"}}>{lang==='fr'?"Répartition estimée — modifiable":"Estimated split — editable"}</div>
-                  <button onClick={addLotToInventory} style={{width:"100%",padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)",fontFamily:"inherit"}}>{lang==='fr'?"✓ Ajouter le lot à l'inventaire":"✓ Add lot to inventory"}</button>
+                  <button onClick={addLotToInventory} style={{width:"100%",padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)",fontFamily:"inherit"}}><IconeTexte icone={Check} style={{ marginRight: 6 }} />{lang==='fr'?"Ajouter le lot à l'inventaire":"Add lot to inventory"}</button>
                 </>
               )}
             </div>
           )}
           </>)}
-          {/* ── Import / Export Excel — replié DANS « Ajouter un article »
-              (2026-08-27) : le bloc autonome en bas d'écran est SUPPRIMÉ,
-              remplacé par cette rangée discrète sous « Ajouter manuellement ».
-              Mêmes gestes, mêmes gardes qu'avant (note du 2026-08-09 :
-              handleImportFile / handleExport sont 100 % client, aucun verrou
-              serveur, ouvert à tous) — déplacé et réduit, logique intacte.
-              Stock VIDE (2026-09-01) : la rangée n'apparaît qu'un des deux
-              plis ouvert — l'Excel n'a rien à faire au premier plan d'un
-              stock à zéro.
-              2026-09-18 : la MÊME règle vaut maintenant pour un stock REMPLI.
-              La rangée restait visible en permanence, et c'était la deuxième
-              chose empilée avant le premier article. Elle entre dans le pli :
-              déplier « Ajouter un article », puis « Importer » — deux taps,
-              jamais plus, pour une fonction que des Pro utilisent. */}
-          {ajoutDeplie&&(
-          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",paddingTop:2,borderTop:"1px solid rgba(0,0,0,0.05)"}}>
-            <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:600,color:"#8A8578",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t('importDesc')}>
-              {t('importExcel')}
-            </span>
-            <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
-            {/* Les deux boutons forment UN groupe : ils passent à la ligne
-                ensemble (leçon du harnais 390 px). */}
-            <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9033",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
-                onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/></svg>
-                {t('importer')}
-              </button>
-              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
-                onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 14V3"/><path d="m7.5 7 4.5-4 4.5 4"/><path d="M4 19h16"/></svg>
-                {t('exporter')}
-              </button>
-            </div>
-            {importMsg&&<div style={{width:"100%",fontSize:11.5,color:C.green,fontWeight:600,marginTop:1}}>{importMsg}</div>}
-          </div>
-          )}
+          {/* (L'Import / Export Excel a quitté la carte le 03/10 : il vit dans la
+              feuille « Ajouter un article » — mêmes gestes, handleImportFile et
+              handleExport, l'input caché est monté une fois en haut de page.) */}
         </div>
+        )}
+        {importMsg&&!feuilleAjout&&(
+          <div role="status" style={{marginTop:8,fontSize:12,lineHeight:'16px',color:SK.tealDeep,fontWeight:600}}>{importMsg}</div>
+        )}
 
-        <div ref={listRef} className={`stock-v2${modeLot?' lot-actif':''}`} style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16,...(isMobile&&stock.length===0?{order:1}:{})}}>
+        <div ref={listRef} className={`stock-v2${modeLot?' lot-actif':''}`} style={{display:"flex",flexDirection:"column",gap:0,paddingBottom:16}}>
           <style>{STOCK_CSS}</style>
 
           {/* ── Réordonnancement du 2026-08-27 (hiérarchie Nico) ─────────────
@@ -8975,15 +9521,14 @@ const StockTab = memo(function StockTab({
               a quelque chose à dire : une boutique relevée, une attente, ou
               plusieurs boutiques confirmées — un compte mono-boutique sans
               relevé ne voit rien. */}
-          {(boutiqueConnectee||attenteBoutique||boutiquesVinted.length>=2)&&(
-            <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:12,padding:"9px 12px",fontSize:11.5,lineHeight:1.5,color:"#5C6560"}}>
-              <div style={{fontWeight:700,color:"#10201B"}}>{phraseBoutiqueActive(boutiqueConnectee,lang)}</div>
-              {attenteBoutique&&(
-                <div style={{marginTop:4,color:"#8A6100"}}>
-                  {lignesAttenteBoutique(attenteBoutique,lang).map((l,i)=><div key={i}>⏳ {l}</div>)}
-                  <div style={{marginTop:2,color:"#8A8578"}}>{phraseRassurance(lang)}</div>
-                </div>
-              )}
+          {/* (03/10) La boutique active et ce qui attend une autre boutique sont
+              dits dans la feuille de la pastille « boutique » du titre (même
+              calcul : phraseBoutiqueActive, lignesAttenteBoutique). Une attente
+              RÉELLE garde sa ligne ici, sous les yeux — sans émoji. */}
+          {attenteBoutique&&(
+            <div role="status" style={{marginTop:16,background:SK.ambreFond,border:`1px solid ${SK.ambreBord}`,borderRadius:12,padding:"8px 12px",fontSize:12,lineHeight:'16px',color:SK.ambreEncre,fontWeight:600}}>
+              {lignesAttenteBoutique(attenteBoutique,lang).map((l,i)=><div key={i}>{l}</div>)}
+              <div style={{marginTop:4,color:SK.ink2,fontWeight:500}}>{phraseRassurance(lang)}</div>
             </div>
           )}
 
@@ -9009,19 +9554,28 @@ const StockTab = memo(function StockTab({
               qu'une recherche est saisie : sans elle, la barre disparaîtrait
               avec un filtre actif et plus aucun moyen de l'effacer. */}
           {(stock.length>0||search)&&(
-            <BarreFiltres
-              lang={lang}
-              search={search}
-              setSearch={setSearch}
-              nbFiltres={pastillesFiltresStock.length}
-              onOuvrir={()=>setFeuilleFiltres(true)}
-            />
+            <div style={{marginTop:24}}>
+              <BarreRecherche lang={lang} search={search} setSearch={setSearch}
+                nbFiltres={pucesFiltres.length} onFiltrer={()=>setFeuilleFiltres(true)}/>
+            </div>
           )}
-          <PastillesFiltres
-            lang={lang}
-            pastilles={pastillesFiltresStock}
-            onToutEffacer={reinitialiserFiltresStock}
-          />
+          {/* Filtres rapides : une pastille active, pleine ; « Tous » remet à
+              zéro ; la rangée défile jusqu'au bord. Masqués dans un mode (lot,
+              remontée, prix d'achat, brouillons) : un mode change ce qu'on peut
+              faire, il ne se cumule pas avec un filtre (règle du 18/09). */}
+          {(stock.length>0||sold.length>0)&&!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(
+            <div style={{marginTop:8}}>
+              <FiltresRapides lang={lang}
+                options={FILTRES_RAPIDES.map(cle=>({cle,libelle:libelleFiltreRapide(cle,lang)}))}
+                actif={FILTRES_RAPIDES.includes(vueStock)?vueStock:null}
+                onChoisir={(cle)=>{setVueStock(cle===vueStock&&cle!=='tous'?'tous':cle);setShowAllStock(false);}}/>
+            </div>
+          )}
+          {pucesFiltres.length>0&&(
+            <div style={{marginTop:8}}>
+              <FiltresActifs lang={lang} puces={pucesFiltres} onToutEffacer={reinitialiserFiltresStock}/>
+            </div>
+          )}
           {/* ── LA RECHERCHE NE PEUT PAS FAIRE SEMBLANT (2026-09-20, 4-d) ────
               « Baskets 990 noir » était dans le stock de Nico, statut `stock`,
               et la recherche ne le trouvait pas : c'est un BROUILLON (fiche
@@ -9036,52 +9590,38 @@ const StockTab = memo(function StockTab({
               ⛔ Ne s'affiche QUE si un texte est saisi ET qu'un brouillon y
                  répond : zéro pixel en plus le reste du temps. */}
           {!modeBrouillons&&String(search??"").trim()&&brouillons.some(b=>searchMatch(b.item,search))&&(
-            <button type="button" onClick={()=>setModeBrouillons(true)}
-              style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",
-                      background:"#FFF8E7",border:"1px solid #F0DCA8",borderRadius:12,
-                      padding:"9px 11px",font:"inherit",fontSize:12.5,lineHeight:1.45,
-                      color:"#6B4E00",cursor:"pointer"}}>
-              <span style={{fontSize:15,flexShrink:0}}>📝</span>
+            <button type="button" onClick={()=>setModeBrouillons(true)} className="sk-btn"
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",minHeight:40,marginTop:8,textAlign:"left",
+                      background:SK.ambreFond,border:`1px solid ${SK.ambreBord}`,borderRadius:12,
+                      padding:"8px 12px",font:"inherit",fontSize:12.5,lineHeight:1.45,
+                      color:SK.ambreEncre,cursor:"pointer"}}>
+              <Pencil size={16} aria-hidden="true" style={{flexShrink:0}}/>
               <span style={{flex:1,minWidth:0}}>
                 {lang==='fr'
                   ?"Cette liste laisse les brouillons de côté, et il y en a qui portent ce texte."
                   :"This list leaves drafts aside, and some of them match this text."}
               </span>
-              <span style={{flexShrink:0,fontWeight:600}}>
+              <span style={{flexShrink:0,fontWeight:700}}>
                 {lang==='fr'?"Les voir":"View"}
               </span>
             </button>
           )}
-          {/* Rescapé de la rangée des boutiques : le décalage avec la boutique
-              REGARDÉE. Il est dit ICI, sous la pastille qui le provoque — la
-              boutique ACTIVE, elle, reste annoncée par l'en-tête permanent
-              au-dessus de la liste (07/09). */}
-          {boutiquesVinted.length>=2&&boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!=="sans_origine"&&filterBoutique!==boutiqueConnectee.userId&&(
-            <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A6100",padding:"0 2px"}}>
-              {lang==='fr'
-                ?'Tu regardes une autre boutique : ses republications et ses retraits attendront que tu la connectes sur vinted.fr.'
-                :'You are viewing another shop: its reposts and removals will wait until you sign in to it on vinted.fr.'}
+          {/* (03/10) « À traiter » et « Publier plusieurs articles d'un coup »
+              sont devenus les gestes du haut (Publier, Remonter, À régler). Sous
+              un filtre « Pas encore sur X » / « Nulle part », la suite naturelle
+              du filtre reste là — elle ouvre LA MÊME sélection que « Publier »,
+              pré-cochée sur les articles filtrés. */}
+          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(filtreDiffusion?.mode==='pas_encore'||filtreDiffusion?.mode==='jamais')&&lotActionnablesVue.length>0&&(
+            <div style={{marginTop:8}}>
+              <AppelFiltrePublier lang={lang} nombre={lotActionnablesVue.length}
+                plateforme={filtreDiffusion?.mode==='pas_encore'?filtreDiffusion.platform:null}
+                onPublier={()=>{setPublierContexte({ids:lotActionnablesVue.map(i=>i.id),plateformes:filtreDiffusion?.mode==='pas_encore'?[filtreDiffusion.platform]:null});setGesteOuvert('publier');}}/>
             </div>
           )}
-          {/* La porte des trois MODES — jamais dans la feuille de filtres : un
-              mode ne se cumule pas et change ce qu'on peut FAIRE. */}
-          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(
-            <LigneATraiter lang={lang} total={nbATraiter} onOuvrir={()=>setListeOuverte('a_traiter')}/>
-          )}
-          {/* ── PUBLICATION EN LOT (02/10, nuit) : la porte. Sous un filtre
-              « Pas encore sur X » / « Nulle part », elle devient la suite
-              naturelle du filtre (« Publier ces N articles sur X ») ; sinon une
-              ligne discrète, comme « À traiter ». Le lot en cours se suit juste
-              en dessous. */}
-          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&!modeLot&&(
-            (filtreDiffusion?.mode==='pas_encore'||filtreDiffusion?.mode==='jamais')
-              ?<AppelFiltrePublier lang={lang} nombre={lotActionnablesVue.length}
-                  plateforme={filtreDiffusion?.mode==='pas_encore'?filtreDiffusion.platform:null}
-                  onPublier={()=>{entrerModeLot(lotActionnablesVue.map(i=>i.id));}}/>
-              :<LignePublierPlusieurs lang={lang} nombre={lotSelectionnables.size} onOuvrir={()=>entrerModeLot()}/>
-          )}
           {lotRecent&&!modeLot&&(
-            <LigneLotEnCours lang={lang} suivi={lotRecent.suivi} le={lotRecent.le} onOuvrir={()=>setSuiviLotOuvert({id:lotRecent.id,le:lotRecent.le})}/>
+            <div style={{marginTop:8}}>
+              <LigneLotEnCours lang={lang} suivi={lotRecent.suivi} le={lotRecent.le} onOuvrir={()=>setSuiviLotOuvert({id:lotRecent.id,le:lotRecent.le})}/>
+            </div>
           )}
 
           {/* ── LES COUCHES ──────────────────────────────────────────────────
@@ -9092,14 +9632,53 @@ const StockTab = memo(function StockTab({
               `actif` : la feuille passe au second plan quand la liste des
               marques s'ouvre par-dessus, sinon Échap et le retour Android
               fermeraient les deux d'un coup. */}
+          {/* ── « FILTRER ET TRIER » (refonte du 03/10, planche 07) ───────────
+              Tri en un tap, puis les filtres en sections. Chaque choix
+              s'applique à l'instant (mêmes états qu'avant : filtreProbleme
+              n'est plus montré — « À régler » le couvre —, filtreDiffusion,
+              filterType, filterMarque, plus l'ancienneté et le prix). Le bouton
+              du bas annonce le nombre RÉEL, recalculé en direct. */}
           {feuilleFiltres&&(
-            <FeuilleFiltres
+            <PanneauFiltres
               lang={lang}
               actif={!listeOuverte}
-              groupes={groupesFiltresStock}
-              nbResultat={nbResultatFeuille}
-              reinitialisable={pastillesFiltresStock.length>0}
-              onReinitialiser={reinitialiserFiltresStock}
+              tris={TRIS_PLANCHE.map(k=>({cle:k,libelle:libelleTriPlanche(k,lang),actif:triStock===k,onTap:()=>{setTriStock(k);setShowAllStock(false);}}))}
+              etats={['en_ligne','hors_ligne','vendus','a_regler'].map(v=>({
+                cle:v,
+                libelle:v==='en_ligne'?(lang==='fr'?'En ligne':'Live'):v==='hors_ligne'?(lang==='fr'?'Hors ligne':'Offline'):v==='vendus'?(lang==='fr'?'Vendu':'Sold'):(lang==='fr'?'À régler':'To fix'),
+                actif:vueStock===v,
+                onTap:()=>{setVueStock(vueStock===v?'tous':v);setShowAllStock(false);},
+              }))}
+              plateformes={plateformesCompte.length?{
+                modes:[
+                  {cle:'en_ligne',libelle:lang==='fr'?'En ligne sur':'Live on',actif:modePlateformesPanneau==='en_ligne',onTap:()=>setModePlateformesPanneau('en_ligne')},
+                  {cle:'pas_encore',libelle:lang==='fr'?'Pas encore sur':'Not yet on',actif:modePlateformesPanneau==='pas_encore',onTap:()=>setModePlateformesPanneau('pas_encore')},
+                ],
+                options:plateformesCompte.map(p=>{
+                  const actif=filtreDiffusion?.mode===modePlateformesPanneau&&filtreDiffusion.platform===p;
+                  return {cle:p,libelle:`${modePlateformesPanneau==='en_ligne'?(lang==='fr'?'En ligne sur':'Live on'):(lang==='fr'?'Pas encore sur':'Not yet on')} ${LIBELLE_PLATEFORME[p]??p}`,actif,
+                    onTap:()=>{setFiltreDiffusion(actif?null:{mode:modePlateformesPanneau,platform:p});setShowAllStock(false);}};
+                }),
+                extra:modePlateformesPanneau==='pas_encore'&&comptesStock.jamais>0?[{
+                  cle:'jamais',libelle:lang==='fr'?'Nulle part':'Nowhere',actif:filtreDiffusion?.mode==='jamais',
+                  onTap:()=>{setFiltreDiffusion(filtreDiffusion?.mode==='jamais'?null:{mode:'jamais'});setShowAllStock(false);},
+                }]:null,
+              }:null}
+              anciennete={TRANCHES_ANCIENNETE.map(tr=>({cle:tr,libelle:libelleTranche(tr,lang),actif:tranchesAge.includes(tr),
+                onTap:()=>{setTranchesAge(prev=>prev.includes(tr)?prev.filter(x=>x!==tr):[...prev,tr]);setShowAllStock(false);}}))}
+              categories={categoriesStock.length>1?{
+                options:categoriesPanneau.map(tp=>({cle:tp,libelle:typeLabel(tp,lang),actif:filterType===tp,onTap:()=>{setFilterType(filterType===tp?"Tous":tp);setShowAllStock(false);}})),
+                onToutVoir:categoriesStock.length>5?()=>setListeOuverte('categorie'):null,
+              }:null}
+              marques={marquesStock.length>1?{
+                options:marquesPanneau.map(m=>({cle:m,libelle:marqueLabel(m,lang),actif:marquesChoisies.includes(m),
+                  onTap:()=>{setFilterMarque(marquesChoisies.includes(m)?marquesChoisies.filter(x=>x!==m):[...marquesChoisies,m]);setShowAllStock(false);}})),
+                onToutVoir:marquesStock.length>5?()=>setListeOuverte('marque'):null,
+              }:null}
+              prix={{min:prixMin,max:prixMax,setMin:(v)=>{setPrixMin(v);setShowAllStock(false);},setMax:(v)=>{setPrixMax(v);setShowAllStock(false);}}}
+              nbResultat={vueStock==='vendus'?(stockRetenu?.length??0):qteStock(stockRetenu??stockFiltre)}
+              effacable={pucesFiltres.length>0||vueStock!=='tous'}
+              onToutEffacer={reinitialiserFiltresStock}
               onFermer={()=>setFeuilleFiltres(false)}
             />
           )}
@@ -9132,24 +9711,27 @@ const StockTab = memo(function StockTab({
               onFermer={()=>setListeOuverte(null)}
             />
           )}
-          {listeOuverte==='tri'&&(
+          {listeOuverte==='categorie'&&(
             <FeuilleListe
-              lang={lang}
-              titre={lang==='fr'?'Trier':'Sort'}
-              options={TRIS_STOCK.map(k=>({
-                cle:k, libelle:libelleTri(k,lang), actif:triStock===k,
-                onTap:()=>{setTriStock(k);setShowAllStock(false);setListeOuverte(null);},
+              lang={lang} recherche z={Z_FEUILLE_DESSUS}
+              titre={lang==='fr'?'Catégorie':'Category'}
+              options={categoriesStock.map(tp=>({
+                cle:tp,
+                epingle:tp==="Tous",
+                libelle:tp==="Tous"?(lang==='fr'?'Toutes les catégories':'All categories'):typeLabel(tp,lang),
+                actif:filterType===tp,
+                onTap:()=>{setFilterType(tp);setShowAllStock(false);setListeOuverte(null);},
               }))}
               onFermer={()=>setListeOuverte(null)}
             />
           )}
-          {listeOuverte==='a_traiter'&&(
-            <FeuilleListe
-              lang={lang}
-              titre={lang==='fr'?'À traiter':'To handle'}
-              options={chantiersStock}
-              onFermer={()=>setListeOuverte(null)}
-            />
+          {/* Le tri en un tap (en-tête de liste) : les cinq choix de la planche,
+              les mêmes que la section « Trier par » du panneau. */}
+          {feuilleTri&&(
+            <FeuilleTri lang={lang}
+              options={TRIS_PLANCHE.map(k=>({cle:k,libelle:libelleTriPlanche(k,lang),actif:triStock===k,
+                onTap:()=>{setTriStock(k);setShowAllStock(false);setFeuilleTri(false);}}))}
+              onFermer={()=>setFeuilleTri(false)}/>
           )}
 
           {/* ── VENDUS — masqués dans Stock IA (visibles dans Ventes) ──────────
@@ -9296,8 +9878,9 @@ const StockTab = memo(function StockTab({
               La séparation des trois états, elle, ne bouge pas : un brouillon
               reste hors de la liste du stock, cf. stockFiltre plus haut.) */}
 
-          {/* ── EN STOCK ── */}
-          <div style={{background:"#F6F5F1",borderRadius:16,padding:"6px 16px 16px",border:"1px solid #E7E3D8"}}>
+          {/* ── EN STOCK ── (03/10 : plus de boîte autour de la liste — la planche
+              pose l'en-tête de liste puis les cartes, directement sur la page) */}
+          <div>
             {/* ── L'EN-TÊTE TIENT SUR UNE LIGNE (2026-09-15 soir) ───────────
                 Ici vivaient, sur la MÊME rangée : le titre, la pastille « Plan
                 gratuit », le filtre « Toutes », « Marques (7) › », « Diffusion »
@@ -9321,32 +9904,28 @@ const StockTab = memo(function StockTab({
               // de comprendre, d'un coup d'œil, qu'on ne regarde pas tout.
               // Le total ne bouge jamais : TOUT le stock, brouillons exclus —
               // ils ne sont pas du stock, ils ont leur propre mode.
+              // (03/10, planche) La ligne dit le NOMBRE, et le dénominateur dès
+              // qu'un filtre écarte des articles (« 7 articles sur 28 ») ; la
+              // valeur investie quitte cette ligne (elle reste au Tableau de
+              // bord, totalInvesti — même règle VIDE ≠ ZÉRO).
               const _liste=stockRetenu??stockFiltre;
-              const _fQty=qteStock(_liste);
-              const _total=qteStock(stock.filter(i=>!idsBrouillons.has(String(i.id))));
-              // PIÈGE : `a+i.buy*(i.quantite||1)` sans même un `||0` — un seul
-              // article au prix d'achat undefined produisait un NaN qui
-              // contaminait TOUT le total (« NaN € »), et un null valait 0 €.
-              // totalInvesti() écarte les articles au prix inconnu ; le compteur
-              // d'articles (_fQty), lui, continue de tous les compter.
-              const _fVal=totalInvesti(_liste);
+              const _fQty=vueStock==='vendus'?(_liste?.length??0):qteStock(_liste);
+              const _total=vueStock==='vendus'?(sold?.length??0):qteStock(stock.filter(i=>!idsBrouillons.has(String(i.id))));
               const _mot=lang==='fr'?(_fQty>1?'articles':'article'):(_fQty>1?'items':'item');
               const _texte=_fQty!==_total
-                ?`${_fQty} ${_mot} ${lang==='fr'?'sur':'of'} ${_total} · ${fmt(_fVal)}`
-                :`${_fQty} ${_mot} · ${fmt(_fVal)}`;
+                ?`${nombreFr(_fQty,lang)} ${_mot} ${lang==='fr'?'sur':'of'} ${nombreFr(_total,lang)}`
+                :`${nombreFr(_fQty,lang)} ${_mot}`;
               return (
-                <LigneCompte
-                  lang={lang}
-                  texte={_texte}
-                  libelleTri={stock.length?libelleTriCourt(triStock,lang):null}
-                  onOuvrirTri={()=>setListeOuverte('tri')}
-                  ouvert={sectionStockOuverte}
-                  onToggle={()=>basculerSection('fs_stock_en_stock_ouvert',setSectionStockOuverte)}
-                />
+                <div style={{marginTop:16}}>
+                  <EnTeteListe lang={lang} texteCompte={_texte}
+                    libelleTri={(stock.length||sold.length)?libelleTriPlanche(triStock,lang):null}
+                    onTri={()=>setFeuilleTri(true)}
+                    affichage={affichageStock} setAffichage={setAffichageStock}/>
+                </div>
               );
             })()}
 
-            {!sectionStockOuverte?null:<>
+            {<>
             {/* ── LES TROIS RANGÉES SONT DANS LA FEUILLE (2026-09-18) ───────
                 Vivaient ICI, les unes sous les autres et tous les jours :
                   · la rangée [Plan gratuit][Toutes][Marques][Trier ▾] ;
@@ -9404,7 +9983,7 @@ const StockTab = memo(function StockTab({
                 ⛔ Jamais sur une carte, jamais en bandeau. */}
             {modeBrouillons&&(
               <button className="pa-call on" onClick={()=>setModeBrouillons(false)}>
-                <span style={{fontSize:17,flexShrink:0}}>↩</span>
+                <Undo2 size={18} strokeWidth={2} aria-hidden="true" style={{flexShrink:0}}/>
                 <span style={{flex:1,minWidth:0}}>
                   <span className="n">{lang==='fr'?"Revenir à tout le stock":"Back to all stock"}</span>
                   <span className="sub">
@@ -9424,7 +10003,7 @@ const StockTab = memo(function StockTab({
             {modePrixAchat&&(
               <button className={`pa-call${modePrixAchat?" on":""}`}
                 onClick={()=>{setModePrixAchat(v=>!v);setPaSel(new Set());setPaOpenId(null);setPaErr(null);}}>
-                <span style={{fontSize:17,flexShrink:0}}>{modePrixAchat?"↩":"💡"}</span>
+                {modePrixAchat?<Undo2 size={18} strokeWidth={2} aria-hidden="true" style={{flexShrink:0}}/>:<Lightbulb size={18} strokeWidth={2} aria-hidden="true" style={{flexShrink:0}}/>}
                 <span style={{flex:1,minWidth:0}}>
                   <span className="n">
                     {modePrixAchat
@@ -9435,7 +10014,7 @@ const StockTab = memo(function StockTab({
                   <span className="sub">
                     {modePrixAchat
                       ?(nbSansPrix===0
-                          ?(lang==='fr'?"Tout est complété 🎉":"All done 🎉")
+                          ?(lang==='fr'?"Tout est complété":"All done")
                           :(lang==='fr'?"Vinted ne connaît pas ce que TU as payé — toi si. Un 0 (don, lot offert) est un prix valide."
                               :"Vinted doesn't know what YOU paid — you do. 0 (gift, free lot) is a valid price."))
                       :(lang==='fr'?"Complète-les pour qu'ils comptent dans ton total investi et tes marges"
@@ -9643,7 +10222,7 @@ const StockTab = memo(function StockTab({
                 )}
               </>
             )}
-            {stock.length===0?(
+            {stock.length===0&&vueStock!=='vendus'?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
                 {/* 1. Bannière — UN SEUL geste (2026-08-09). Le bouton
@@ -9704,8 +10283,8 @@ const StockTab = memo(function StockTab({
                       // Vinted, lui, remonte EN ENTIER (vues et favoris) : la
                       // capacité n’est pas la même partout, on l’écrit plutôt
                       // que de l’aplatir.
-                      fr:["Relève tes annonces en ligne","Tes plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
-                      en:["Scan your live listings","Your marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
+                      fr:["Synchronise tes annonces en ligne","Tes plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
+                      en:["Sync your live listings","Your marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
                       logos:["vinted","leboncoin","beebs","ebay"],
                     },
                     {
@@ -9882,1461 +10461,26 @@ const StockTab = memo(function StockTab({
                     onSupprimer={(item)=>delItem(item.id)}
                   />
                 )}
-                <div className="ggrid" ref={galerieRef}>
-                {(modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:listeStock).map(item=>{
-                  const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
-                  // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
-                  // prix d'achat absent et 0 € sur un null — la carte annonçait
-                  // « 0 € investi » sur un article dont on ignore le coût.
-                  // null ici = « on ne sait pas » ; l'affichage met un tiret.
-                  const invested=prixAchatConnu(item)?prixAchatNum(item)*(item.quantite||1)+(item.purchaseCosts||0):null;
-                  // Prix DEMANDÉ sur l'annonce Vinted (dernier relevé) — jamais
-                  // confondu avec prix_vente, qui reste ce que l'utilisateur
-                  // déclare avoir reçu.
-                  // Prix de l'annonce EN LIGNE — donc RIEN dès que `disparu_le`
-                  // est posé (2026-08-05) : la sync ne retrouve plus l'annonce
-                  // sur Vinted, et le dernier prix relevé affirmerait un prix
-                  // en ligne sur une annonce qui n'existe plus. Constaté sur
-                  // « Hoodie Nike – Kaki » : disparu_le au 04/08, et l'id
-                  // Vinted 8428496729 rend bien 404 à la vérification. Depuis
-                  // que la pastille est à l'encre, c'est l'information la plus
-                  // lue de la rangée — donc le mensonge le plus visible.
-                  // Filtré ICI et non au rendu : `prixAnnonce` veut dire « prix
-                  // de l'annonce en ligne », et tout ce qui le lit (y compris
-                  // la condition d'affichage de la rangée) hérite du bon sens.
-                  // ⚠️ Ne concerne QUE la carte Stock : dans la liste des
-                  // articles VENDUS, l'annonce a disparu parce qu'elle s'est
-                  // vendue, et son dernier prix demandé y est un contexte
-                  // légitime de la vente — cette pastille-là n'est pas touchée.
-                  const prixAnnonce=item.vinted_item_id&&!item.disparu_le?prixAnnonces[item.vinted_item_id]:null;
-                  const jobsAll=jobsByInventaire[item.id]||[];
-                  // Défini ICI (avant repubEligible qui le lit — TDZ) ; la
-                  // règle et ses raisons vivent sur le bloc logosEnLigne/
-                  // enLigne plus bas, et la source unique dans le helper.
-                  const vintedMasquee=vintedMasqueeMalgreJobs(item,jobsAll);
-                  // Les jobs de retrait ciblé (action='delete') vivent à part :
-                  // mélangés aux publish, un delete pending affichait « En
-                  // cours… » (dépôt) et un delete failed un badge « Échec » de
-                  // publication — deux mensonges.
-                  // É5 (2026-08-05) : les jobs republish sortent AUSSI du flux
-                  // générique — mêlés aux publish, un republish pending
-                  // affichait « En cours… » (dépôt) et son needs_user ouvrait
-                  // le mini-éditeur générique, qui re-pend SANS recapturer :
-                  // exactement la boucle de péremption qu'on vient de fermer.
-                  // Ils ont leur bloc dédié (badge + bouton) plus bas.
-                  // ⚠️ 'cancelled' / 'dry_run_completed' sont EXCLUS ici, alors
-                  // qu'ils viennent d'entrer dans le select (pour que la
-                  // republication la plus récente soit toujours visible). Sans
-                  // cette exclusion, un publish 'cancelled' — celui que pose
-                  // justement cancelPublishAfterDelete — deviendrait « le job le
-                  // plus récent de la plateforme » dans latestByPlatform et
-                  // ÉTEINDRAIT un badge Échec ou « À compléter » légitime. Ces
-                  // badges doivent continuer de voir exactement ce qu'ils
-                  // voyaient avant : publish et delete non terminaux.
-                  const jobs=jobsAll.filter(j=>j.action!=="delete"&&j.action!=="republish"
-                    &&j.status!=="cancelled"&&j.status!=="dry_run_completed");
-                  const repubLatest=(()=>{
-                    let r=null;
-                    for(const j of jobsAll){
-                      if(j.action!=="republish")continue;
-                      if(!r||Date.parse(j.created_at||0)>Date.parse(r.created_at||0))r=j;
-                    }
-                    return r;
-                  })();
-                  // Masquée/brouillon exclus (2026-08-28) : même règle que
-                  // repubEtat ci-dessus — les deux expressions doivent rester
-                  // jumelles (même helper, même garde de fraîcheur).
-                  const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu"
-                    &&!vintedMasquee;
-                  // ── Multiplateforme (2026-09-17) : les plateformes republiables
-                  // MAINTENANT (Vinted comprise) — une seule expression, celle de
-                  // la feuille et du lot. Le bouton existe dès qu'il y en a une.
-                  const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte,plateformesOuvertes}):[];
-                  const repubEligibleTout=repubEligible||repubMaintenant.length>0;
-                  // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
-                  // source : etapeRepublication). null = rien à afficher.
-                  // ⚠️ Volontairement décorrélé de repubEligible (2026-08-05) :
-                  // l'ÉTAT d'une republication doit rester lisible même quand
-                  // l'article n'est plus republiable — un article devenu
-                  // 'disparu' juste après sa republication perdait sinon
-                  // l'affichage du job qui venait de tourner.
-                  // Attente de boutique de CET article — même calcul que
-                  // l'en-tête (utils/attenteBoutique) : plus jamais un
-                  // « en attente » muet sur la fiche (07/09).
-                  const attenteFiche=repubLatest?messageFicheAttenteBoutique({connectee:boutiqueConnectee,origine:item.vinted_account_id,boutiques:boutiquesVinted,action:repubLatest.action==='delete'?'delete':'republish',lang}):null;
-                  const repubEtape=(()=>{
-                    const e=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche,item):null;
-                    // Une republication Leboncoin/Beebs/Opla nomme sa plateforme
-                    // sur la pastille (2026-09-17) : « LBC · Retrait… ».
-                    return e&&e.court&&repubLatest&&repubLatest.platform&&repubLatest.platform!=='vinted'
-                      ?{...e,court:`${LABEL_PF_COURT[repubLatest.platform]??repubLatest.platform} · ${e.court}`}
-                      :e;
-                  })();
-                  // La pastille dit déjà l'état : le message transitoire ne le
-                  // répète pas. Il ne reste affiché que quand il apporte autre
-                  // chose (refus, échec de relance).
-                  const repubNote=repubEligibleTout&&repubMsgs[item.id]&&!repubEtape?repubMsgs[item.id]:null;
-                  // ── UN SEUL badge dans ce slot (2026-08-05, décision Nico) ──
-                  // La pastille de republication et la pastille de statut
-                  // plateforme s'affichaient ENSEMBLE et, à l'arrivée, disaient
-                  // le même mot : etapeRepublication rend « En ligne » sur
-                  // l'étape 'recreated', collé au « ● En ligne » de
-                  // publishedActive. Deux fois la même information, dont une
-                  // avec un chevron qui promet un détail sans intérêt.
-                  // Règle : tant que la republication n'est pas conclue, c'est
-                  // ELLE qui occupe le slot — l'avancement prime sur un statut
-                  // qui, pendant la fenêtre suppression→recréation, est de
-                  // toute façon faux (publishedActive tombe à [], cf.
-                  // plateformesReserveesParRepublication). Dès qu'elle aboutit,
-                  // elle s'efface et « ● En ligne » reprend sa place, seul.
-                  // Ancrage sur cle==='recreated', PAS sur status : c'est la clé
-                  // qui désigne exactement la pastille en doublon, et elle
-                  // couvre les DEUX chemins qui la produisent (status
-                  // 'published' et step 'recreated'). Tous les autres états —
-                  // file, lecture, prête, recréation, à relancer, arrêtée, test
-                  // à blanc — gardent le slot : aucun ne dit « En ligne ».
-                  // ⚠️ Ne concerne QUE ces deux pastilles. Les logos de
-                  // plateforme et le tag « Annonce Vinted · X € » sont rendus
-                  // ailleurs dans la rangée et ne bougent pas.
-                  const repubOccupeSlot=repubEligible&&!!repubEtape&&repubEtape.cle!=='recreated';
-                  // ── Recréation ORPHELINE (07/08, 3d-a validé Nico) ────────
-                  // Étape 'deleted' en cours (pending/processing) depuis plus
-                  // de 20 min ET heartbeat extension muet depuis plus de
-                  // 10 min : l'annonce est hors ligne et RIEN ne la recrée
-                  // (extension endormie, session perdue — cas 97757a78,
-                  // ~1 h hors ligne sans un signal). La pastille cesse de
-                  // « tourner » et dit le vrai geste — jamais « en panne » :
-                  // rien n'est cassé, l'ordinateur dort. needs_user/failed à
-                  // 'deleted' ont déjà leur rouge (aujourd'hui) — ici on
-                  // couvre le cas où l'app croyait que ça avançait.
-                  const repubOrpheline=repubEtape?.cle==='deleted'&&(()=>{
-                    const d=Date.parse(repubLatest?.platform_fields?.deleted_at??'');
-                    const hb=Date.parse(extensionStatus?.lastSeenAt??'');
-                    return Number.isFinite(d)&&Date.now()-d>20*60*1000
-                      &&(!Number.isFinite(hb)||Date.now()-hb>10*60*1000);
-                  })();
-                  // "processing" = publication en cours côté extension : même
-                  // affichage « En cours… » que pending (pour le vendeur, c'est
-                  // le même moment ; la nuance est purement interne).
-                  const hasPending=jobs.some(j=>j.status==="pending"||j.status==="processing");
-                  // (27/09) Tout ce qui « attend » n'attend en fait qu'une
-                  // connexion : pas un travail, un mur (attenteDeConnexion).
-                  const pendingJobs=jobs.filter(j=>j.status==="pending"||j.status==="processing");
-                  const pendingSurConnexion=pendingJobs.length>0&&pendingJobs.every(attenteDeConnexion);
-                  // Job en attente sur une plateforme EN PAUSE (maintenance) :
-                  // badge dédié « reprise auto » plutôt que le simple « En cours ».
-                  const hasPausedPending=jobs.some(j=>(j.status==="pending"||j.status==="processing")&&pausedSet.has(j.platform));
-                  // Échec = le job LE PLUS RÉCENT de la plateforme est "failed"
-                  // (2026-07-19). Pas « il existe un job failed » : après une
-                  // régénération, le nouveau job pending/published de la même
-                  // plateforme doit ÉTEINDRE le badge — seul l'état courant
-                  // compte. À l'inverse, un échec de REPUBLICATION coexiste
-                  // avec la pastille published de l'ancienne annonce toujours
-                  // en ligne : les deux sont vrais, les deux s'affichent.
-                  const latestByPlatform={};
-                  for(const j of jobs){
-                    const cur=latestByPlatform[j.platform];
-                    if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestByPlatform[j.platform]=j;
-                  }
-                  // Un 404 « annonce disparue » à la capture n'est pas un échec
-                  // (2026-09-12) : pas de rouge, la carte dit « Plus en ligne ».
-                  const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed"&&!republicationAnnonceDisparue(j));
-                  // « À compléter » (socle needs_user, 2026-07-19) : même règle
-                  // que l'Échec — seul le job LE PLUS RÉCENT de la plateforme
-                  // compte. Dès que le job repart en pending (valeur fournie)
-                  // ou se conclut (published/failed), le badge s'éteint.
-                  const needsUserTous=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
-                  // needs_user EN COURS chez la plateforme (2026-09-10) : ni une
-                  // action ni un « À compléter » — pastille grise, sans tap. Ils
-                  // sortent de needsUserJobs pour ne compter dans aucun « actionable ».
-                  // (24/09) Un parcage « Autoriser Opla » PLUS ANCIEN que la preuve
-                  // d'accès du compte (verdict serveur, utils/oplaAcces) n'attend
-                  // plus personne : get-pending-jobs le relance au prochain poll
-                  // d'un poste autorisé. Il rejoint les « en cours » — gris, sans
-                  // bouton « Autoriser Opla » pour un geste déjà fait.
-                  const oplaRepartSeule=j=>j.platform==="opla"&&j.platform_fields?.needs_user_source==="opla_acces"&&parcageDepasse(j,oplaAccesDetail);
-                  const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours"||oplaRepartSeule(j));
-                  const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours"&&!oplaRepartSeule(j));
-                  // ── LE MUR NOMMÉ DE LA CARTE (2026-09-23) ─────────────────
-                  // Même règle que la pastille (voir l'IIFE de la photo) : quand
-                  // rien de plus urgent ne parle (republication, file, échec) et
-                  // que TOUT ce qui attend est un mur de connexion/autorisation
-                  // nommé par le serveur, la carte porte LE bouton — sous la
-                  // photo, dans .gmur, jamais dessus.
-                  const murDirect=(()=>{
-                    if(repubOccupeSlot||hasPausedPending||(hasPending&&!pendingSurConnexion)||failedJobs.length||!user?.id)return null;
-                    const attendent=[...needsUserJobs,...(hasPending?pendingJobs:[])];
-                    if(!attendent.length)return null;
-                    const murs=attendent.map(x=>murDeConnexion(x));
-                    return murs.every(Boolean)?{platform:attendent[0].platform,motif:murs[0]}:null;
-                  })();
-                  // « Publiée — à vérifier » (2026-08-08) : le job a ABOUTI
-                  // mais avec un repli dégradant signalé par l'extension
-                  // (platform_fields.warnings, ex. brand_fallback_no_brand :
-                  // marque introuvable → annonce partie en « Sans marque »).
-                  // Même règle que l'Échec : seul le job LE PLUS RÉCENT de la
-                  // plateforme compte — une republication propre éteint le
-                  // badge (le background efface warnings sur un run sans
-                  // réserve).
-                  // warningsAffichables (2026-08-10) : le bruit photo ne fait
-                  // plus basculer une publication réussie en « à vérifier ».
-                  // ⛔ UN SUCCÈS CONFIRMÉ N'ALERTE PLUS (2026-08-10, 3e passe).
-                  // `published` + `listing_url` renseignée = l'annonce EXISTE,
-                  // on a son adresse, elle est en ligne. C'est un succès, quels
-                  // que soient les warnings du run. Vécu sur le job leboncoin
-                  // c2c4a35a : annonce 3248104608 validée et en ligne, mail de
-                  // confirmation Leboncoin reçu, et la carte affichait quand
-                  // même un badge ambre pour « marque: champ sauté — option
-                  // "Tommy Jeans" sans correspondance. Options: [] ». Une liste
-                  // d'options VIDE : il n'y avait rien à corriger, ni dans
-                  // l'app ni sur Leboncoin. Une alerte sans geste possible
-                  // n'est pas une alerte, c'est du bruit — et le bruit finit
-                  // par faire ignorer les vraies.
-                  // Ce qui NE change pas : un `published` SANS lien porteur de
-                  // warnings garde son badge ambre (on ne sait pas où est
-                  // l'annonce), les `dry_run_completed` aussi (aucune annonce
-                  // réelle), et les warnings restent écrits en base + rendus
-                  // par la modale (mode réserve, plus bas) — on rétrograde
-                  // l'alerte, on ne perd pas l'information.
-                  const succesConfirme=j=>j.status==="published"&&!!j.listing_url;
-                  const warnedJobs=Object.values(latestByPlatform).filter(j=>
-                    (j.status==="published"||j.status==="dry_run_completed")
-                    &&!succesConfirme(j)
-                    &&warningsAffichables(j).length>0);
-                  // ── Lien pas encore capturé (2026-08-10) ──────────────────
-                  // Deux états DISTINCTS, et c'est tout l'objet du correctif :
-                  // tant que la re-capture tourne, on informe (ton neutre) ;
-                  // une fois la fenêtre close sans lien, on alerte. Un job déjà
-                  // porteur d'un vrai warning garde son badge « à vérifier » et
-                  // ne prend pas de second badge — une seule chose dite à la
-                  // fois sur une carte.
-                  // ⛔ PLUS DE BADGE « à vérifier » POUR UN LIEN MANQUANT
-                  // (2026-08-10) : le cron publish-sans-lien-echec-daily bascule
-                  // désormais ces jobs en `failed` au bout de la fenêtre, avec
-                  // remboursement. Le badge « Échec » existant dit donc la
-                  // vérité tout seul — en ajouter un second ici, c'était deux
-                  // affichages concurrents pour le même état.
-                  const sansWarn=j=>!warnedJobs.includes(j);
-                  const lienEnCoursJobs=Object.values(latestByPlatform)
-                    .filter(j=>etatLienJob(j)==="en_cours"&&sansWarn(j));
-                  // Sonde de modération Leboncoin (2026-08-11) : unité déjà
-                  // rendue, annonce toujours cherchée. Badge DISTINCT du gris
-                  // « récupération en cours » — ici il y a quelque chose à
-                  // faire (aller vérifier avant de republier), donc il est
-                  // cliquable et de la couleur d'un avertissement.
-                  const lienRembourseJobs=Object.values(latestByPlatform)
-                    .filter(j=>etatLienJob(j)==="rembourse"&&sansWarn(j));
-                  // État de retrait par plateforme : calcul partagé avec le
-                  // modal de retrait (computeRemovalInfo, en tête de fichier) —
-                  // un seul calcul, jamais deux vérités carte/modal.
-                  const {removalState,publishedActive,latestPubByPlatform}=computeRemovalInfo(jobsAll);
-                  // ── Article DISPARU de Vinted (2026-08-05) ────────────────
-                  // `disparu_le` = la sync du dressing n'a pas retrouvé
-                  // l'annonce sur Vinted (vérifié en réel : l'id Vinted rend
-                  // 404). L'annonce n'existe plus, donc la carte ne montre NI
-                  // logo Vinted NI « En ligne » — seulement la pastille ambre
-                  // qui le dit. Une seule chose affichée, et elle est vraie.
-                  // Surgical : seul Vinted sort. Un article aussi publié sur
-                  // eBay ou LBC garde ces logos-là, qui restent exacts.
-                  const disparuDeVinted=!!item.disparu_le;
-                  // Vinted sort de la liste des plateformes en ligne — pour
-                  // l'AFFICHAGE **et** pour le bouton (2026-08-05). La carte et
-                  // le compteur ne peuvent pas se contredire : afficher « Plus
-                  // en ligne » pendant que le bouton dit « En ligne (4/4) »,
-                  // c'est reproduire à l'échelle du bouton le mensonge qu'on
-                  // vient de retirer de la rangée.
-                  // CONSÉQUENCE VOULUE : « Publier » redevient disponible pour
-                  // Vinted. C'est le comportement juste — pour un article
-                  // disparu, publier est le SEUL chemin de retour en ligne, la
-                  // republication lui étant fermée (repubEligible exige
-                  // !disparu_le). Ne tient que parce que disparu_le est
-                  // désormais fiable : marquage sauté sur un run repris ou un
-                  // relevé incomplet (gardes de syncDressing, background.js).
-                  // ── GEL DE CARTE pendant un cycle (2026-08-07, validé Nico) ─
-                  // La réservation de republication sort Vinted de
-                  // publishedActive pendant la fenêtre suppression→recréation :
-                  // avant, le logo DISPARAISSAIT, le compteur du bouton
-                  // changeait, la carte respirait — le « changement d'aspect
-                  // muet » remonté par ornellaracano. Désormais la carte ne
-                  // perd RIEN : le logo Vinted reste, GRISÉ (opacité + titre
-                  // dédié, clic → feuille d'avancement au lieu du modal de
-                  // retrait), le compteur reste stable, seule la pastille du
-                  // slot anime. Affichage pur : publishedActive lui-même ne
-                  // change pas, les gardes métier restent intactes.
-                  const vintedGeleParRepub=repubOccupeSlot&&repubLatest?.platform==='vinted'&&!!item.vinted_item_id&&!publishedActive.includes("vinted");
-                  // ── Vinted lu sur l'ARTICLE (2026-09-11, signalement
-                  // Joséphine) : MÊME source que le filtre Diffusion et le
-                  // bandeau vente — vintedPresenceArticle (publicationState).
-                  // Un import du dressing dont le job de sync n'est pas (ou
-                  // plus) chargé garde son logo ; « disparue » le retire ; le
-                  // gel de republication ci-dessus en est un sous-cas et
-                  // garde son style grisé (vintedGeleParRepub, plus bas).
-                  const vintedOccupee=vintedPresenceArticle(item,jobsAll).occupee;
-                  const logosEnLigne=vintedOccupee
-                    ?(publishedActive.includes("vinted")?publishedActive:[...publishedActive,"vinted"])
-                    :publishedActive.filter(p=>p!=="vinted");
-                  // ── vinted_status PRIME sur les jobs (2026-08-28, complément
-                  // Nico) : masquée/brouillon malgré un job 'published' (44 cas
-                  // au relevé) ⇒ la pastille verte ne compte plus Vinted, le
-                  // LOGO reste mais GRISÉ (l'annonce EXISTE — masquée n'est pas
-                  // disparue — et le tap → modal de retrait doit rester
-                  // possible). Garde-fou de fraîcheur dans le helper : un job
-                  // 'published' postérieur au relevé l'emporte. nbEnLigne et le
-                  // bouton « En ligne (n/N) » restent sur logosEnLigne : la
-                  // plateforme est occupée par une annonce EXISTANTE — la
-                  // rouvrir à « Publier » créerait un doublon.
-                  const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee));
-                  // Compteur de plateformes réellement en ligne PARMI celles du
-                  // compte (plateformesCompte, Opla comprise quand elle est
-                  // ouverte) : pilote le 3e état du bouton (n/N = plus rien à
-                  // publier). Une annonce sur une plateforme refermée reste dans
-                  // les pastilles (logosEnLigne) mais ne compte pas ici.
-                  const nbEnLigne=logosEnLigne.filter(p=>plateformesCompte.includes(p)).length;
-                  const toutEnLigne=nbEnLigne>=plateformesCompte.length;
-                  // Plateformes où l'article n'est PAS en ligne (2026-09-01,
-                  // audit onboarding) : portées par le bouton « Publier » en
-                  // logos — sur un article importé de Vinted, « Publier » nu
-                  // ne disait ni où ni pourquoi (l'article est déjà en ligne).
-                  // Même source que la pastille et le compteur (logosEnLigne) :
-                  // le stepper n'ouvrira que ces plateformes-là, le bouton
-                  // montre exactement ce qu'il fera.
-                  const aPublier=plateformesCompte.filter(p=>!logosEnLigne.includes(p));
-                  // _table:'inventaire' — cible d'écriture explicite de la modale
-                  // d'édition (les ids ventes/inventaire se chevauchent).
-                  const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
-                  const photoUrl=premierePhoto(item.photos);
-                  // Compteurs FUSIONNÉS (18/09) : Vinted + ce que les relevés
-                  // ont vu sur les autres plateformes pour cet article. Le tap
-                  // sur la ligne ouvre le détail par plateforme.
-                  const statsPf=statsPlateformes[String(item.id)]??[];
-                  const vuesPf=statsPf.some(x=>x.vues!=null)?statsPf.reduce((t,x)=>t+(x.vues??0),0):null;
-                  const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
-                  const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
-                  const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
-                  return(
-                    // ── Carte GALERIE (2026-08-27, refonte validée Nico) ─────
-                    // Hiérarchie : 1. statut (pastille sur la photo), 2. logos
-                    // de plateformes (sur la photo), 3. prix + vues/favoris,
-                    // 4. titre (2 lignes max). Tap sur la carte = éditer — Y
-                    // COMPRIS pendant un job : la carte reste consultable, la
-                    // pastille (cliquable) porte l'avancement. Le
-                    // swipe-supprimer de l'ancienne liste devient le « ✕ » du
-                    // coin photo — même chemin delItem (plan + confirmation),
-                    // jamais une suppression sèche.
-                    <div key={item.id} className={`gcard${modeLot&&lotSel.includes(item.id)?' gcard--lot-choisi':''}`} role={modeLot?'checkbox':'button'} aria-checked={modeLot?lotSel.includes(item.id):undefined} tabIndex={0}
-                      onClick={modeLot?()=>basculerLot(item.id):openEdit} data-mur={murDirect?murDirect.motif:undefined}
-                      onKeyDown={e=>{if(e.key==='Enter'||(modeLot&&e.key===' ')){e.preventDefault();if(modeLot)basculerLot(item.id);else openEdit();}}}>
-                      <div className="gphoto">
-                        <GalleryPhoto url={photoUrl} alt={item.title}
-                          fallback={<div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>}/>
-                        {/* 1. STATUT — UNE pastille, la plus urgente d'abord :
-                            republication en cours > en pause > dépôt en cours >
-                            échec > à compléter > plus en ligne > en ligne. Les
-                            détails par plateforme restent dans les badges du
-                            corps de carte ; ici, le coup d'œil. */}
-                        {(()=>{
-                          const fr=lang==='fr';
-                          let dot=null,pulse=false,txt=null,onTap=null,fg="#10201B",titre=null,discrete=false,boutonDirect=null;
-                          if(repubOccupeSlot){
-                            // POIDS VISUEL = TRAVAIL RÉEL (04/09, constat Nico :
-                            // dix cartes « En file » pulsaient comme l'unique
-                            // article en travail — l'écran entier semblait
-                            // s'agiter). Le point ne bat que sur relevé /
-                            // retrait / recréation ; « Relevée » attend, posée ;
-                            // « En file » devient une pastille DISCRÈTE (gris
-                            // léger, plus petite, cf. .gstatus.is-queued) —
-                            // conservée, parce qu'elle dit que l'article est
-                            // pris dans le lot, mais sans rivaliser avec l'actif.
-                            const travail=repubEtape.cle==='lecture'||repubEtape.cle==='retrait'||repubEtape.cle==='deleted';
-                            pulse=travail&&!repubEtape.fini&&!repubOrpheline;
-                            discrete=!!repubEtape.enFile&&!repubOrpheline;
-                            dot=repubOrpheline?"#B91C1C":discrete?"#B9B4A7":(repubEtape.encre||"#E8956D");
-                            fg=repubOrpheline?"#B91C1C":discrete?"#8A8578":(repubEtape.encre||"#10201B");
-                            txt=repubOrpheline?(fr?'Ouvre Chrome':'Open Chrome'):repubEtape.court;
-                            titre=repubOrpheline
-                              ?(fr?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité.":"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.")
-                              :(fr?'Voir où en est la republication':'See repost progress');
-                            onTap=()=>setRepubProgress(repubLatest);
-                          }else if(hasPausedPending){
-                            dot="#64748B";txt=fr?'En pause':'Paused';titre=t("stockJobPausedBadge");
-                          }else if(hasPending&&pendingSurConnexion){
-                            // (27/09) Session de la plateforme fermée : rien ne
-                            // tourne, on attend la personne — pastille « ✋ »
-                            // orange (jamais « En cours… »), le bouton est sous
-                            // la photo (murDirect).
-                            const j=pendingJobs[0];
-                            dot="#E8956D";fg="#8A6100";
-                            txt=fr?`✋ Connexion ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Sign in ${PLATFORM_LABELS[j.platform]||j.platform}`;
-                            titre=j.error?humanizeJobError(j,lang):undefined;
-                            onTap=()=>setJobStatusItem(item);
-                          }else if(hasPending){
-                            // Mêmes règles que l'ancien badge « En cours… »
-                            // (2026-08-13) : extension hors fraîcheur → on
-                            // nomme le vrai état, jamais un travail inventé.
-                            const horsFraicheur=extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree";
-                            const plusVieux=Math.min(...jobs
-                              .filter(j=>j.status==="pending"||j.status==="processing")
-                              .map(j=>Date.parse(j.created_at))
-                              .filter(Number.isFinite));
-                            const joursAttente=Number.isFinite(plusVieux)?Math.floor((Date.now()-plusVieux)/86400000):0;
-                            const attenteLongue=horsFraicheur&&joursAttente>=1;
-                            // (03/10, point 25 — geronimo0550, 0.6.79) Poste trop
-                            // ancien : le serveur ne lui sert rien — jamais
-                            // « En cours… » sur une file qui ne partira pas.
-                            const majRequise=extensionStatus?.outdated===true&&pendingJobs.some(j=>j.voie!=='api');
-                            if(majRequise){
-                              dot="#E8956D";fg="#8A6100";
-                              txt=fr?'Mise à jour':'Update';
-                              titre=phraseMiseAJourExtension(lang);
-                              onTap=()=>setJobStatusItem(item);
-                            }else{
-                            pulse=!horsFraicheur;dot="#E8956D";
-                            txt=!horsFraicheur
-                              ?(fr?'En cours…':'Posting…')
-                              :attenteLongue?(fr?`En attente ${joursAttente} j`:`Waiting ${joursAttente} d`)
-                              :(fr?'En attente':'Waiting');
-                            titre=!horsFraicheur
-                              ?(fr?'Voir le statut':'See status')
-                              :attenteLongue
-                                ?(fr?`En attente depuis ${joursAttente} jour${joursAttente>1?"s":""}. Ouvre Chrome sur l'ordinateur où tu as installé l'extension.`:`Waiting for ${joursAttente} day${joursAttente>1?"s":""}. Open Chrome on the computer where you installed the extension.`)
-                                :(fr?"En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome.":"Waiting for your computer — it starts next time Chrome opens.");
-                            onTap=()=>setJobStatusItem(item);
-                            }
-                          }else if(failedJobs.length>0){
-                            // La plateforme MONTE dans la pastille (2026-08-27) :
-                            // l'ancien badge « ⚠️ Échec <plateforme> » du corps
-                            // de carte disait la même chose deux fois — retiré.
-                            // Plusieurs plateformes concernées (échecs + à
-                            // compléter) → compte lisible, et le tap ouvre la
-                            // modale de statut (détail + erreur humanisée PAR
-                            // plateforme, failed inclus depuis ce jour) : aucun
-                            // accès perdu. Une seule → même modale d'échec
-                            // qu'avant, à l'identique.
-                            // ── « Action requise » ≠ « Échec » (2026-09-03) :
-                            // session à rouvrir, reconnexion de sécurité,
-                            // anti-robot, info de compte — rien n'est cassé,
-                            // un geste débloque. Pastille ORANGE ✋, jamais le
-                            // vocabulaire de l'échec ni le rouge. Le rouge ne
-                            // reste que pour les échecs réels.
-                            const j=failedJobs[0];
-                            const actionables=failedJobs.length+needsUserJobs.length;
-                            const toutAction=failedJobs.every(x=>jobActionRequise(x));
-                            if(toutAction){dot="#E8956D";fg="#8A6100";}
-                            else{dot="#B91C1C";fg="#B91C1C";}
-                            txt=actionables>1
-                              ?(toutAction
-                                ?(fr?`✋ À toi de jouer · ${actionables}`:`✋ Your move · ${actionables}`)
-                                :(fr?`Échec · ${actionables} plateformes`:`Failed · ${actionables} platforms`))
-                              :(toutAction
-                                ?(fr?`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`)
-                                :(fr?`Échec ${PLATFORM_LABELS[j.platform]||j.platform}`:`Failed ${PLATFORM_LABELS[j.platform]||j.platform}`));
-                            titre=actionables>1
-                              ?(fr?'Voir le détail par plateforme':'See details per platform')
-                              :(j.error?humanizeJobError(j,lang):undefined);
-                            onTap=actionables>1
-                              ?()=>setJobStatusItem(item)
-                              :(j.error?()=>setFailJobModal(j):null);
-                          }else if(needsUserJobs.length>0){
-                            // Même traitement que l'échec : plateforme nommée,
-                            // badge du bas (doublon) retiré, multi → modale de
-                            // statut.
-                            dot="#E8956D";fg="#8A6100";
-                            const j=needsUserJobs[0];
-                            // ── UN SEUL BOUTON, DROIT VERS LE GESTE (2026-09-23 soir) ──
-                            // « Autoriser Opla » et « Relier ton compte eBay » :
-                            // l'action est connue et nommée par le serveur
-                            // (needs_user_source). Une pastille « ✋ Action Opla »
-                            // qui ouvre une popup qui ouvre une modale qui porte
-                            // enfin le bouton, c'est trois portes pour un geste.
-                            // Ici, LE bouton, sur la carte. Seulement quand TOUT ce
-                            // qui attend sur cet article est de cette nature.
-                            const mursConnexion=needsUserJobs.map(x=>murDeConnexion(x));
-                            if(mursConnexion.every(Boolean)&&user?.id){
-                              boutonDirect={platform:j.platform,motif:mursConnexion[0]};
-                            }
-                            // Sans champ à remplir, la pastille dit « Action »,
-                            // jamais « À compléter » (2026-09-10).
-                            const tousChamp=needsUserJobs.every(x=>natureNeedsUser(x)==="a_completer");
-                            txt=needsUserJobs.length>1
-                              ?(tousChamp
-                                ?(fr?`✋ À compléter · ${needsUserJobs.length}`:`✋ Needed · ${needsUserJobs.length}`)
-                                :(fr?`✋ À toi de jouer · ${needsUserJobs.length}`:`✋ Your move · ${needsUserJobs.length}`))
-                              :(tousChamp
-                                ?(fr?`✋ À compléter ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ ${PLATFORM_LABELS[j.platform]||j.platform}`)
-                                :(fr?`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`));
-                            titre=j.error?humanizeJobError(j,lang):undefined;
-                            onTap=needsUserJobs.length>1
-                              ?()=>setJobStatusItem(item)
-                              :()=>{if(needsUserOuvrable(j))setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
-                          }else if(enConfirmationJobs.length>0){
-                            // EN COURS chez la plateforme : gris, sans tap, sans
-                            // action attendue — « en cours », pas « incertain ».
-                            dot="#8A938F";fg="#5A6B66";
-                            const j=enConfirmationJobs[0];
-                            // Parcage Opla dépassé par la preuve d'accès : « en file »,
-                            // jamais « en cours de confirmation » (rien n'est parti).
-                            const toutOplaEnFile=enConfirmationJobs.every(oplaRepartSeule);
-                            txt=toutOplaEnFile
-                              ?(fr?`En file ${PLATFORM_LABELS.opla||"Opla"}`:`Queued ${PLATFORM_LABELS.opla||"Opla"}`)
-                              :enConfirmationJobs.length>1
-                              ?(fr?`En cours de confirmation · ${enConfirmationJobs.length}`:`Awaiting confirmation · ${enConfirmationJobs.length}`)
-                              :(fr?`En cours de confirmation ${PLATFORM_LABELS[j.platform]||j.platform}`:`Awaiting confirmation ${PLATFORM_LABELS[j.platform]||j.platform}`);
-                            titre=toutOplaEnFile
-                              ?(fr?"Opla est autorisée : cette annonce repart toute seule.":"Opla is allowed: this listing goes out on its own.")
-                              :texteEnCoursConfirmation(j,lang);
-                            onTap=null;
-                          }else if(disparuDeVinted){
-                            dot="#8A8578";fg="#8A6100";
-                            txt=(fr?'Plus en ligne':'Gone')+(dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:'');
-                            titre=fr?"L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing.":'This Vinted listing was not found during the last wardrobe sync.';
-                          }else if(vintedMasquee&&!enLigne){
-                            // vinted_status prime sur les jobs (28/08) : jamais
-                            // « En ligne » sur une masquée/brouillon. La date =
-                            // celle du RELEVÉ (last_synced_at), pas un état
-                            // affirmé aujourd'hui.
-                            dot="#E8B54D";fg="#8A6100";
-                            const vuLe=dateCourteParis(item.last_synced_at);
-                            txt=(item.vinted_status==='draft'
-                              ?(fr?'Brouillon':'Draft')
-                              :(fr?'Masquée':'Hidden'))+(vuLe?` · ${vuLe}`:'');
-                            titre=fr
-                              ?"Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas."
-                              :"Status read from Vinted at the last wardrobe sync — sync again if this has changed.";
-                          }else if(enLigne){
-                            dot="#2F9E90";fg="#1B6E62";txt=fr?'En ligne':'Live';
-                          }
-                          // Le bouton du geste n'est PLUS posé sur la photo
-                          // (2026-09-23, capture de Louis : texte gris illisible
-                          // par-dessus l'image) — il vit SOUS la photo, dans la
-                          // bande .gmur du corps de carte (fond opaque). Ici,
-                          // la pastille courte reste : « ✋ Action Opla ».
-                          void boutonDirect;
-                          if(!txt)return null;
-                          return(
-                            <div className={`gstatus${discrete?' is-queued':''}`} style={{color:fg,cursor:onTap?"pointer":"default"}} title={titre}
-                              role={onTap?"button":undefined} tabIndex={onTap?0:undefined}
-                              onClick={e=>{e.stopPropagation();if(onTap)onTap();}}
-                              onKeyDown={onTap?e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();onTap();}}:undefined}>
-                              <span className={`gdot${pulse?' pulsing':''}`} style={{background:dot}}/>
-                              {txt}
-                            </div>
-                          );
-                        })()}
-                        {/* Boutique d'origine de l'article (multi-boutiques,
-                            2026-09-03) — pseudo de la liste confirmée, sinon
-                            « autre boutique » : jamais un identifiant. Rendue
-                            UNIQUEMENT à partir de deux boutiques. */}
-                        {boutiquesVinted.length>=2&&item.vinted_account_id&&(()=>{
-                          const b=boutiquesVinted.find(x=>String(x.user_id)===String(item.vinted_account_id));
-                          const nom=b?.login?`@${b.login}`:(lang==='fr'?'autre boutique':'other shop');
-                          return <span style={{fontSize:10,fontWeight:700,color:"#6B7A75",background:"#F2F0E9",borderRadius:99,padding:"2px 8px",whiteSpace:"nowrap"}}>{nom}</span>;
-                        })()}
-                        {/* Publication en lot : le coin de la photo porte la case
-                            (le ✕ de suppression n'a rien à faire dans une
-                            sélection — il revient en quittant le mode). */}
-                        {modeLot?(
-                          <span className={`lot-case${lotSel.includes(item.id)?' on':''}`} aria-hidden="true">{lotSel.includes(item.id)?'✓':''}</span>
-                        ):(
-                        <button className="gdel"
-                          title={lang==='fr'?'Supprimer cet article':'Delete this item'}
-                          aria-label={lang==='fr'?'Supprimer cet article':'Delete this item'}
-                          onClick={e=>{e.stopPropagation();delItem(item.id);}}>✕</button>
-                        )}
-                        {/* 2. PLATEFORMES en ligne — mêmes gestes que la liste :
-                            tap logo → modal de retrait ; logo gelé pendant une
-                            republication → feuille d'avancement. */}
-                        {logosEnLigne.length>0&&(
-                          <div className="glogos">
-                            {logosEnLigne.map(p=>{
-                              const removing=removalState[p]==="removing";
-                              const gele=vintedGeleParRepub&&p==="vinted";
-                              if(gele)return(
-                                <span key={p} className="plogo"
-                                  title={lang==="en"?"Repost in progress — the listing comes back in a few minutes":"Republication en cours — l'annonce revient dans quelques minutes"}
-                                  style={{cursor:"pointer",opacity:.45}}
-                                  onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}>
-                                  <PlatformLogo platform={p} size={20}/>
-                                </span>
-                              );
-                              // Masquée/brouillon : logo CONSERVÉ mais grisé —
-                              // l'annonce existe (masquée ≠ disparue) et le tap
-                              // vers le modal de retrait reste le bon geste.
-                              const masque=vintedMasquee&&p==="vinted";
-                              // ── EN ATTENTE DE MODÉRATION (2026-09-11) — Beebs et
-                              // Leboncoin SEULEMENT. Sur ces deux plateformes,
-                              // l'annonce est déposée puis VÉRIFIÉE avant d'être
-                              // visible, et c'est à la mise en ligne seulement
-                              // qu'on obtient son lien (Beebs : écran « il sera
-                              // mis en ligne dès qu'il aura été vérifié par notre
-                              // équipe », lien dans « Mes annonces » après
-                              // modération — médiane 7 min sur 10 cas datés).
-                              // Un job `published` SANS listing_url = pas encore
-                              // prouvée en ligne : le logo passe en NOIR ET BLANC
-                              // (prop desature), sans anneau — la grammaire du
-                              // 08/09 : couleur = en ligne, noir et blanc = pas
-                              // en ligne. Il redevient couleur dès que l'URL
-                              // arrive (recoverMissingListingUrls, à chaque poll).
-                              // Même source que la popup de retrait
-                              // (latestPubByPlatform, computeRemovalInfo) : une
-                              // seule vérité carte/popup. Vinted et eBay donnent
-                              // l'URL au dépôt : rien ne change pour eux, ni pour
-                              // logosEnLigne, la pastille et les compteurs.
-                              const attenteModeration=(p==="beebs"||p==="leboncoin")
-                                &&!!latestPubByPlatform?.[p]&&!latestPubByPlatform[p].listing_url;
-                              // ── L'ANNEAU SIGNALE, IL N'AGIT PAS (08/09) ────────
-                              // Ambre : cette plateforme réclame une information.
-                              // Rouge : sa publication a échoué. Le tap reste
-                              // celui qu'il a toujours été — il ouvre la popup
-                              // « Retirer des plateformes », qui liste les QUATRE
-                              // plateformes ligne par ligne et porte désormais
-                              // « Compléter » et « Relancer » à côté de
-                              // « Retirer ». Une seule porte, et le geste se
-                              // choisit sur la bonne ligne.
-                              const etatLogo=indexEtat.get(String(item.id));
-                              const bloqueIci=etatLogo?.aCompleter?.some(x=>x.platform===p);
-                              const echecIci=!bloqueIci&&etatLogo?.enEchec?.some(x=>x.platform===p);
-                              // ⚠️ AUCUN anneau AUTOUR de la mini-carte : c'est
-                              // ELLE qui prend la couleur du registre — fond
-                              // teinté + sa propre bordure (box-shadow INSET,
-                              // donc à l'intérieur). Deux contours empilés
-                              // alourdissaient la photo pour rien.
-                              // Lisibilité sur photo claire ET sombre : le fond
-                              // reste CLAIR (c'est lui qui détache le logo d'une
-                              // photo sombre, rôle que tenait le blanc), et
-                              // c'est la bordure SATURÉE qui le détache d'une
-                              // photo claire. Aucune teinte nouvelle : les
-                              // quatre valeurs sont celles des pastilles.
-                              const teinte=bloqueIci?{fond:"#FFF6E3",trait:"#8A6100"}
-                                :echecIci?{fond:"#FEF2F2",trait:"#B91C1C"}:null;
-                              return(
-                                <span key={p} className="plogo"
-                                  title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`)
-                                    :masque?(lang==="en"
-                                      ?`${item.vinted_status==='draft'?'Draft':'Hidden'} on Vinted — the listing exists but buyers can't see it. Tap to manage.`
-                                      :`${item.vinted_status==='draft'?'Brouillon':'Masquée'} sur Vinted — l'annonce existe mais les acheteurs ne la voient pas. Toucher pour gérer.`)
-                                    :attenteModeration?(p==="beebs"
-                                      ?(lang==="en"
-                                        ?"Beebs is reviewing your listing before putting it online. Hang tight."
-                                        :"Beebs vérifie ton annonce avant de la mettre en ligne. Patiente un peu.")
-                                      :isListingUrlRecoverable(p,latestPubByPlatform?.[p])
-                                      ?(lang==="en"
-                                        ?"Your listing went through to Leboncoin and is awaiting their review. It will show up within a few minutes. Don't repost it — you would create a duplicate."
-                                        :"Ton annonce est partie sur Leboncoin et attend leur vérification. Elle apparaîtra d'ici quelques minutes. Ne la republie pas, tu créerais un doublon.")
-                                      :(lang==="en"
-                                        ?"Leboncoin never confirmed this listing went live. Tap to republish it or forget it."
-                                        :"Leboncoin n'a jamais confirmé la mise en ligne de cette annonce. Touche pour la republier ou l'oublier."))
-                                    :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
-                                  style={{cursor:"pointer",
-                                    ...(teinte?LOGO_TEINTE(teinte):{}),
-                                    ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
-                                  onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Le logo est rendu TEL QUEL, sans rien lui
-                                      passer : il est simplement posé sur une
-                                      mini-carte devenue colorée. En attente de
-                                      modération (Beebs/Leboncoin sans lien) : noir
-                                      et blanc, cf. attenteModeration. */}
-                                  <PlatformLogo platform={p} size={20} desature={attenteModeration}/>
-                                </span>
-                              );
-                            })}
-                            {/* ── « QUELQUE CHOSE T'ATTEND ICI » (2026-09-08) ────
-                                Le logo d'une plateforme BLOQUÉE apparaît même
-                                quand l'annonce n'y est pas en ligne. Il ne dit
-                                pas « en ligne ici » — il dit qu'il y a un geste
-                                à faire de ce côté.
-                                ⚠️ DISTINCTION SANS AMBIGUÏTÉ, et c'est le point
-                                délicat : « grisé » servait DÉJÀ à deux autres
-                                choses (retrait en cours à 35 %, annonce masquée
-                                ou brouillon à 45 %) — un troisième sens porté
-                                par la seule opacité aurait été illisible. Ces
-                                logos-ci sont donc en NOIR ET BLANC
-                                (grayscale), ce qui n'existe nulle part
-                                ailleurs. La règle se lit d'un coup d'œil :
-                                COULEUR = en ligne, NOIR ET BLANC = pas en
-                                ligne mais en attente. L'anneau dit lequel des
-                                deux registres (ambre : il manque une info ;
-                                rouge : la publication a échoué).
-                                Aucune hauteur ajoutée : .glogos est une rangée
-                                à hauteur fixe, posée sur la photo. */}
-                            {(()=>{
-                              const e=indexEtat.get(String(item.id));
-                              if(!e)return null;
-                              const dejaLa=new Set(logosEnLigne);
-                              const enAttente=[
-                                ...e.aCompleter.map(x=>({p:x.platform,ton:'warn'})),
-                                ...e.enEchec.map(x=>({p:x.platform,ton:'err'})),
-                              ].filter(x=>!dejaLa.has(x.p));
-                              if(!enAttente.length)return null;
-                              return enAttente.map(x=>(
-                                <span key={`att-${x.p}`} className="plogo"
-                                  title={x.ton==='warn'
-                                    ?(lang==='en'?`${PLATFORM_LABELS[x.p]||x.p} is waiting for information — tap to complete`
-                                                 :`${PLATFORM_LABELS[x.p]||x.p} attend une information — toucher pour compléter`)
-                                    :(lang==='en'?`${PLATFORM_LABELS[x.p]||x.p}: publishing failed — tap to relaunch`
-                                                 :`${PLATFORM_LABELS[x.p]||x.p} : la publication a échoué — toucher pour relancer`)}
-                                  style={{cursor:"pointer",
-                                    ...LOGO_TEINTE(x.ton==='warn'
-                                      ?{fond:"#FFF6E3",trait:"#8A6100"}
-                                      :{fond:"#FEF2F2",trait:"#B91C1C"})}}
-                                  onClick={ev=>{ev.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Le NOIR ET BLANC porte sur le logo seul
-                                      (prop desature) — la mini-carte, elle,
-                                      garde sa couleur. Couleur = en ligne ici ;
-                                      noir et blanc = pas en ligne, mais quelque
-                                      chose t'attend. */}
-                                  <PlatformLogo platform={x.p} size={20} desature/>
-                                </span>
-                              ));
-                            })()}
-                          </div>
-                        )}
-                        {(item.quantite||1)>1&&<div className="gqty">×{item.quantite}</div>}
-                      </div>
-                      <div className="gbody">
-                        {/* ── LE GESTE, SOUS LA PHOTO, SUR FOND OPAQUE (2026-09-23) ──
-                            Quand TOUT ce qui attend sur l'article est un mur
-                            nommé (Autoriser Opla, Me connecter, Relier eBay) :
-                            la phrase et LE bouton, lisibles en clair comme en
-                            sombre — jamais un texte posé sur l'image. */}
-                        {murDirect&&(
-                          <div className="gmur" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}>
-                            <BoutonMeConnecter userId={user.id} platform={murDirect.platform} motif={murDirect.motif} lang={lang} variante="ligne"/>
-                          </div>
-                        )}
-                        {/* 3. PRIX DE VENTE en évidence (ajout 2026-08-27) —
-                            le chiffre que le revendeur cherche en premier :
-                            prix de l'annonce Vinted EN LIGNE si relevé, sinon
-                            inventaire.prix_vente (item.sell, strictement > 0 :
-                            un 0 n'est pas un prix demandé, c'est une absence).
-                            L'investi passe SOUS le prix, plus discret, avec
-                            son libellé — jamais deux nombres nus côte à côte.
-                            VIDE ≠ ZÉRO partout : prix de vente absent →
-                            investi seul comme avant ; prix d'achat inconnu →
-                            prix de vente seul, pas de tiret. Vues/favoris
-                            Vinted inchangés (affichés quand ils EXISTENT,
-                            jamais un faux zéro). */}
-                        {/* RANGÉES CONDITIONNELLES (3e passe du 27/08) : une
-                            rangée absente ne réserve AUCUNE place — les zones
-                            fixes de la 2e passe s'empilaient en trou massif
-                            sur une carte dépouillée (cas « Jean » : ni prix
-                            de vente, ni vues, ni pastille → 4 rangées de vide
-                            entre la marque et les boutons). La hauteur
-                            commune vient de la GRILLE (étirement à la plus
-                            haute) et le vide résiduel tombe à UN seul
-                            endroit : juste au-dessus des boutons
-                            (margin-top:auto de .gactions). VIDE ≠ ZÉRO
-                            inchangé : jamais un 0 à la place d'un prix
-                            absent. */}
-                        {(()=>{
-                          const sellNum=Number(item.sell);
-                          const prixVente=prixAnnonce!=null?prixAnnonce:(Number.isFinite(sellNum)&&sellNum>0?sellNum:null);
-                          return(
-                            <>
-                              {(prixVente!=null||invested!==null)&&(
-                              <div className="gpricerow">
-                                {prixVente!=null?(
-                                  <>
-                                    <span className="gprice" title={prixAnnonce!=null
-                                      ?(lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price")
-                                      :(lang==='fr'?"Prix de vente renseigné sur la fiche de l'article — pas un prix de vente réalisé":"Asking price set on the item — not a realized sale price")}>{fmt(prixVente)}</span>
-                                    <span className="gpricelbl">{prixAnnonce!=null?'Vinted':(lang==='fr'?'en vente':'asking')}</span>
-                                  </>
-                                ):(
-                                  <>
-                                    <span className="gprice">{fmt(invested)}</span>
-                                    <span className="gpricelbl">{lang==='fr'?'investi':'invested'}</span>
-                                  </>
-                                )}
-                              </div>
-                              )}
-                              {prixVente!=null&&invested!==null&&(
-                                <div className="ginvline"
-                                  title={lang==='fr'?"Prix d'achat de l'article (frais inclus)":"Purchase cost of the item (fees included)"}>
-                                  {lang==='fr'?'investi':'invested'} {fmt(invested)}
-                                </div>
-                              )}
-                              {(vues!=null||favs!=null)&&(
-                                <div className="gstatsrow" role="button" tabIndex={0}
-                                  title={lang==='fr'?'Vues et favoris — toucher pour le détail par plateforme':'Views and favourites — tap for the per-platform detail'}
-                                  style={{cursor:'pointer'}}
-                                  onClick={e=>{e.stopPropagation();setStatsPopup(item);}}
-                                  onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();setStatsPopup(item);}}}>
-                                  {vues!=null&&<span>👁️ {vues}</span>}
-                                  {favs!=null&&<span>❤️ {favs}</span>}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                        {/* 4. TITRE — 2 lignes max (CSS), puis la marque
-                            (toujours visible, décision Nico 2026-08-05). */}
-                        <div className="gtitle">{item.title}</div>
-                        {(()=>{
-                          const mq=marqueLabel(item.marque,lang);
-                          return mq?<div className="gbrand">{mq}</div>:null;
-                        })()}
-                          {/* ── Prix d'achat manquant : saisie DANS la ligne ──
-                              stopPropagation obligatoire : la carte entière
-                              ouvre l'édition au clic. Le « je ne sais plus »
-                              éteint l'invitation sans jamais écrire 0. */}
-                          {/* ⚠️ BUG FERMÉ (07/08 soir, iPhone 2.4.2) : cette
-                              ligne ne s'ouvrait QUE sur paIncomplet — la case
-                              de republication, née dedans (3b2c576), était
-                              donc INVISIBLE sur tout article AYANT un prix
-                              d'achat, alors que le compteur du bandeau
-                              (repubActionnables) comptait sur repubEtat seul.
-                              7 « articles possibles », zéro case. Le bug
-                              n'avait jamais paru : les comptes testeurs
-                              n'avaient que des articles importés (sans prix
-                              d'achat). La ligne s'ouvre désormais AUSSI pour
-                              la republication en lot ; les morceaux propres
-                              au prix d'achat restent gatés sur paIncomplet. */}
-                          {(paIncomplet(item)||(modeRepublish&&repubSelectionnable(item)))&&(
-                            <div className="pa-line" onClick={e=>e.stopPropagation()}>
-                              {modePrixAchat&&paIncomplet(item)&&(
-                                <input type="checkbox" className="pa-check" checked={paSel.has(item.id)}
-                                  onChange={()=>setPaSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
-                                  aria-label={lang==='fr'?"Sélectionner cet article":"Select this item"}/>
-                              )}
-                              {/* É5.2 : case de republication — seulement sur
-                                  les articles ACTIONNABLES (bornes = pas de
-                                  case). Libellé cliquable quand la case est
-                                  SEULE sur la ligne (article au prix déjà
-                                  renseigné) : une case nue de 17 px, sans un
-                                  mot, ne se comprend ni ne se vise à 390 px. */}
-                              {modeRepublish&&repubSelectionnable(item)&&(
-                                <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}} onClick={e=>e.stopPropagation()}>
-                                  <input type="checkbox" className="pa-check" checked={repubSel.has(item.id)}
-                                    onChange={()=>setRepubSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
-                                    aria-label={lang==='fr'?"Republier cet article":"Repost this item"}/>
-                                  {!paIncomplet(item)&&(
-                                    <span style={{fontSize:11.5,fontWeight:700,color:"#1B6E62"}}>
-                                      {lang==='fr'?"Republier":"Repost"}
-                                    </span>
-                                  )}
-                                </label>
-                              )}
-                              {paIncomplet(item)&&(paOpenId===item.id?(
-                                <>
-                                  <input className="pa-input" autoFocus inputMode="decimal" value={paDraft}
-                                    placeholder={lang==='fr'?"12,50":"12.50"}
-                                    onChange={e=>setPaDraft(e.target.value)}
-                                    onKeyDown={e=>{
-                                      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setPaOpenId(null);setPaDraft("");setPaErr(null);}
-                                      if(e.key==='Enter'){e.preventDefault();e.stopPropagation();validerPaStock(item);}
-                                    }}
-                                    aria-label={lang==='fr'?"Prix d'achat":"Purchase price"}/>
-                                  <button className="pa-ok" onMouseDown={e=>e.preventDefault()} onClick={()=>validerPaStock(item)}>✓</button>
-                                  <button className="pa-ghost" onClick={()=>{setPaOpenId(null);setPaDraft("");marquerInconnuStock([item.id]);}}>
-                                    {lang==='fr'?"je ne sais plus":"I don't remember"}
-                                  </button>
-                                </>
-                              ):(
-                                <button className="pa-chip" onClick={()=>{setPaOpenId(item.id);setPaDraft("");setPaErr(null);}}>
-                                  + {lang==='fr'?"prix d'achat":"purchase price"}
-                                </button>
-                              ))}
-                              {paErr?.id===item.id&&<span className="pa-err">{paErr.message}</span>}
-                            </div>
-                          )}
-                          {/* ── LOTS : dire ce que « Publier » fait vraiment (2026-07-22) ──
-                              Un clic « Publier » sur un article à quantite > 1 ne met en
-                              ligne QU'UNE unité : la RPC spend_coins_and_publish ne lit
-                              jamais `quantite` et cross_post_jobs n'a aucune colonne de
-                              quantité — une annonce = une pièce. Rien ne le disait, donc
-                              publier un lot de 10 donnait l'impression d'avoir tout mis en
-                              vente alors que 9 unités restaient en stock, sans compteur ni
-                              rappel. Cette ligne rend le comportement réel visible.
-                              ⚠️ AFFICHAGE SEUL — c'est le point ⑥ du plan « lots », livré
-                              isolément. La gestion complète (décrément atomique à la vente,
-                              ligne d'historique par unité vendue, republication manuelle de
-                              l'unité suivante) touche sale-orchestration.ts et arrive APRÈS
-                              la soumission : trop sensible pour la fenêtre actuelle.
-                              Aucun lot n'ayant jamais été publié (41 lots, 0 job), personne
-                              ne perd une fonction dont il se sert. */}
-                          {(item.quantite||1)>1&&(
-                            <div className="meta" style={{color:"#8A6100"}}>
-                              {lang==='fr'
-                                ? `Publier met 1 unité en ligne · ${(item.quantite||1)-1} restent en stock`
-                                : `Publishing lists 1 unit · ${(item.quantite||1)-1} stay in stock`}
-                            </div>
-                          )}
-                          {/* Badges SECONDAIRES seulement (2026-08-27, galerie) :
-                              le statut principal (En ligne / En cours / Échec /
-                              Plus en ligne / republication) vit en PASTILLE sur
-                              la photo, les logos de plateformes sur la photo
-                              aussi, et le prix d'annonce dans la rangée de
-                              prix. Restent ici les états qui portent un détail
-                              ou un geste PAR PLATEFORME.
-                              ⚠️ Les badges « Échec <pf> » et « À compléter
-                              <pf> » ont été RETIRÉS (2026-08-27 soir) : ils
-                              répétaient la pastille de la photo, qui nomme
-                              désormais la plateforme et route vers les mêmes
-                              modales (multi-plateformes → JobStatusModal,
-                              failed inclus). Ne pas les réintroduire ici.
-                              Rangée rendue SEULEMENT quand elle a du contenu
-                              (3e passe 27/08 : plus aucun bloc fantôme) ; une
-                              ligne fixe, défilement horizontal si ça déborde. */}
-                          {(warnedJobs.length>0||lienEnCoursJobs.length>0||lienRembourseJobs.length>0||item.emplacement||(item.vinted_item_id&&!disparuDeVinted))&&(
-                            <div className="icons">
-                              {/* Publiée avec réserve / lien en cours / unités
-                                  rendues : PAS des doublons — la pastille dit
-                                  « En ligne » (ou rien), le détail n'existe
-                                  qu'ici. Conservés. */}
-                              {/* Publiée AVEC RÉSERVE : même patron que l'Échec
-                                  (badge + title + tap → modale) mais AMBRE —
-                                  l'annonce est en ligne, quelque chose est à
-                                  vérifier, ce n'est pas un échec. La modale
-                                  (failJobModal) bascule d'elle-même en mode
-                                  réserve sur un job published à warnings. */}
-                              {warnedJobs.map(j=>{
-                                // Beebs sans lien (2026-08-13, vérifié en réel) :
-                                // « Publiée » serait un mensonge — pas de lien =
-                                // pas en ligne, l'annonce est en VÉRIFICATION
-                                // côté Beebs (l'onglet « En cours de
-                                // vérification » de Beebs n'expose aucun lien,
-                                // la re-capture ne peut rien voir tant que la
-                                // modération n'a pas relâché l'annonce). Le
-                                // badge reste ambre et cliquable : les réserves
-                                // du dépôt restent à lire.
-                                const beebsEnVerif=j.platform==="beebs"&&!j.listing_url;
-                                const label=beebsEnVerif
-                                  ?(lang==="en"?"Submitted — Beebs is reviewing it":"Déposée — vérification Beebs en cours")
-                                  :(lang==="en"?`Published — check it ${PLATFORM_LABELS[j.platform]||j.platform}`:`Publiée — à vérifier ${PLATFORM_LABELS[j.platform]||j.platform}`);
-                                // UNE phrase (consigne Nico 02/09 soir) — le
-                                // pavé qui suivait était du diagnostic. Les
-                                // seules lignes ajoutées sont les familles
-                                // ACTIONNABLES (3), jamais du brut.
-                                const titre=beebsEnVerif
-                                  ?((lang==="en"
-                                      ?"Beebs is reviewing your listing before putting it online. Hang tight."
-                                      :"Beebs vérifie ton annonce avant de la mettre en ligne. Patiente un peu.")
-                                    +(jobWarningsTexte(j,lang)?"\n\n"+jobWarningsTexte(j,lang):""))
-                                  :(jobWarningsTexte(j,lang)||undefined);
-                                return (
-                                  <div
-                                    key={"warn-"+j.platform}
-                                    className="micon"
-                                    title={titre}
-                                    onClick={e=>{e.stopPropagation();setFailJobModal(j);}}
-                                    style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
-                                  >
-                                    ⚠️ {label}
-                                  </div>
-                                );
-                              })}
-                              {/* Lien en cours de récupération : INFORMATIF,
-                                  jamais un avertissement. LBC/eBay : l'annonce
-                                  est en ligne, il ne manque que son lien, et
-                                  l'extension le cherche encore. Beebs : le
-                                  dépôt est confirmé mais l'annonce est en
-                                  VÉRIFICATION (pas en ligne) — texte dédié
-                                  dans le map. Pas de clic : il n'y a rien à
-                                  faire, et ouvrir une modale pour dire
-                                  « patiente » serait une fausse action. */}
-                              {lienEnCoursJobs.map(j=>{
-                                // Beebs (2026-08-13, vérifié en réel) : pas de
-                                // lien = pas en ligne. Le dépôt est confirmé
-                                // mais l'annonce est en VÉRIFICATION côté
-                                // Beebs — dire « en ligne » ici était faux.
-                                // Les autres plateformes gardent leur texte :
-                                // chez elles l'annonce est bien en ligne, seul
-                                // le lien manque encore.
-                                const beebs=j.platform==="beebs";
-                                // Leboncoin, écran /options relevé (2026-09-09,
-                                // job a2849f53 de Nico) : Leboncoin ne sert cet
-                                // écran qu'APRÈS avoir accepté le dépôt — le
-                                // serveur (update-job-status) pose le marqueur
-                                // et le job est publié SANS lien tant que la
-                                // vérification Leboncoin dure. Dire « en ligne »
-                                // serait faux ; dire « imprévu technique,
-                                // relancer » a fabriqué un DOUBLON. Le texte dit
-                                // la seule chose utile : ne pas republier.
-                                const lbcEnVerif=j.platform==="leboncoin"&&!j.listing_url&&!!j.platform_fields?.lbc_depot_en_verification;
-                                return (
-                                  <div
-                                    key={"lien-"+j.platform}
-                                    className="micon"
-                                    title={beebs
-                                      ?(lang==="en"
-                                        ?"Beebs is reviewing your listing before putting it online. Hang tight."
-                                        :"Beebs vérifie ton annonce avant de la mettre en ligne. Patiente un peu.")
-                                      :lbcEnVerif
-                                      ?(lang==="en"
-                                        ?"Your listing went through to Leboncoin and is awaiting their review. It will show up within a few minutes. Don't repost it — you would create a duplicate."
-                                        :"Ton annonce est partie sur Leboncoin et attend leur vérification. Elle apparaîtra d'ici quelques minutes. Ne la republie pas, tu créerais un doublon.")
-                                      :(lang==="en"
-                                        ?"The listing is online. We're still fetching its link from the marketplace."
-                                        :"L'annonce est en ligne. On récupère encore son lien sur la plateforme.")}
-                                    style={{background:"#F1F5F4",border:"1px solid #DCE4E2",color:"#5A6B66"}}
-                                  >
-                                    {beebs
-                                      ?(lang==="en"?"Submitted — Beebs is reviewing it":"Déposée — vérification Beebs en cours")
-                                      :lbcEnVerif
-                                      ?(lang==="en"?"Submitted — Leboncoin is reviewing it, don't repost":"Déposée — vérification Leboncoin en cours, ne pas republier")
-                                      :(lang==="en"?`Published — fetching the link ${PLATFORM_LABELS[j.platform]||j.platform}`:`Publiée — récupération du lien en cours ${PLATFORM_LABELS[j.platform]||j.platform}`)}
-                                  </div>
-                                );
-                              })}
-                              {/* Sonde de modération Leboncoin : unités déjà
-                                  rendues. Le texte ne dit JAMAIS « refusée » —
-                                  la sonde conclut sur une ABSENCE, pas sur un
-                                  refus observé. Il nomme la cause la plus
-                                  probable, et impose la vérification avant
-                                  republication : sans elle, un utilisateur qui
-                                  republie sur une annonce finalement acceptée
-                                  crée un doublon. */}
-                              {lienRembourseJobs.map(j=>{
-                                const nom=PLATFORM_LABELS[j.platform]||j.platform;
-                                const url=PLATFORM_LISTINGS_URLS[j.platform];
-                                return (
-                                  <div
-                                    key={"rembourse-"+j.platform}
-                                    className="micon"
-                                    onClick={url?()=>window.open(url,'_blank','noopener'):undefined}
-                                    title={lang==="en"
-                                      ?`We can't find your listing on ${nom}. The platform bans the sale of cosmetics and fragrances, which is the most likely cause. Nothing was counted. Check your ${nom} listings before reposting, to avoid a duplicate.`
-                                      :`On ne retrouve pas ton annonce sur ${nom}. La plateforme interdit la vente de cosmétiques et parfums, c'est la cause la plus probable. Rien n'a été décompté. Vérifie tes annonces ${nom} avant de republier, pour éviter un doublon.`}
-                                    style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:url?"pointer":"default"}}
-                                  >
-                                    ⚠️ {lang==="en"?`Listing not found — nothing counted`:`Annonce introuvable — rien décompté`} {nom}
-                                  </div>
-                                );
-                              })}
-                              {/* ⛔ NE PAS réintroduire un repli « 🏪 <plateforme> »
-                                  quand !enLigne (retiré le 2026-08-05, décision
-                                  de Nico). Il affichait le champ LIBRE
-                                  item.plateforme (d'où « vinted » en minuscules)
-                                  et affirmait une présence sur la plateforme
-                                  alors que, justement, aucune annonce n'y est en
-                                  ligne. Pas d'annonce en ligne = pas de logo, et
-                                  rien à la place. */}
-                              {/* (Le prix de l'annonce Vinted a quitté cette
-                                  rangée le 2026-08-27 : il vit dans la rangée
-                                  de prix de la carte, en tête de corps.) */}
-                              {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
-                              {/* ── Ancienneté (2026-08-07, resserrée le soir même) ──
-                                  UNE seule puce : « en ligne depuis X j » —
-                                  l'information qui motive la republication.
-                                  La puce « republié il y a X j » a été
-                                  SUPPRIMÉE : redondante par construction, la
-                                  recréation écrit listed_at_guess (vérifié en
-                                  base par Nico : Robe TRF = l'heure exacte de
-                                  sa recréation) — après republication, « en
-                                  ligne depuis 0 j » dit déjà la même chose,
-                                  et le cooldown du bouton couvre les 24 h.
-                                  Masquée quand elle n'apporte rien ou MENT :
-                                  date NULL (plus de « depuis — », le
-                                  comblement patchLeger vide ce cas), et
-                                  arrêt APRÈS suppression (pastille rouge :
-                                  l'annonce est RETIRÉE, « en ligne depuis »
-                                  serait un mensonge). */}
-                              {item.vinted_item_id&&!disparuDeVinted&&!repubEtape?.apresSuppression&&(()=>{
-                                // ── Masquée / Brouillon (2026-08-28, décision Nico) ──
-                                // vinted_status 'hidden'/'draft' → l'article n'est
-                                // JAMAIS présenté comme en ligne : cette pastille
-                                // remplace « en ligne depuis X j ». Elle porte la
-                                // DATE DU RELEVÉ (last_synced_at, dernier run de
-                                // sync qui a vu l'article) : le statut peut avoir
-                                // changé depuis, on n'affirme pas un état actuel.
-                                // Affichage seul — la donnée n'est jamais touchée,
-                                // les masquées avec photos ne sont JAMAIS supprimées.
-                                if(vintedMasquee){
-                                  // Même règle de fraîcheur que la pastille et
-                                  // les logos (vintedMasqueeMalgreJobs) : un
-                                  // job 'published' plus récent que le relevé
-                                  // rend la puce « en ligne depuis » ci-dessous.
-                                  // Pas de doublon : quand la pastille de
-                                  // STATUT dit déjà « Masquée · date » (aucune
-                                  // autre plateforme en ligne), la puce se tait.
-                                  if(!enLigne)return null;
-                                  const vuLe=dateCourteParis(item.last_synced_at);
-                                  const masquee=item.vinted_status==='hidden';
-                                  const lbl=masquee
-                                    ?(lang==='fr'?'Masquée':'Hidden')
-                                    :(lang==='fr'?'Brouillon':'Draft');
-                                  return(
-                                    <div className="micon" style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100"}}
-                                      title={lang==='fr'
-                                        ?"Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas."
-                                        :"Status read from Vinted at the last wardrobe sync — sync again if this has changed."}>
-                                      {masquee?'🙈':'📝'} {lbl}{vuLe?` — ${lang==='fr'?'vu le':'seen'} ${vuLe}`:''}
-                                    </div>
-                                  );
-                                }
-                                const j=joursDepuis(item.listed_at_guess);
-                                if(j==null)return null;
-                                return(
-                                  <div className="micon" style={{background:"#F6F5F1",border:"1px solid #E7E3D8",color:"#8A8578"}}>
-                                    🕒 {j===0
-                                      ?(lang==='fr'?"en ligne depuis aujourd'hui":'live since today')
-                                      :(lang==='fr'?`en ligne depuis ${j} j`:`live for ${j} d`)}
-                                  </div>
-                                );
-                              })()}
-                              {/* ── CE QUI COINCE, PAR PLATEFORME (2026-09-08) ──
-                                  Une pastille de plus dans CETTE rangée, et
-                                  c'est tout : .icons est déjà à hauteur figée
-                                  (21 px, nowrap, défilement horizontal). La
-                                  carte ne grandit donc JAMAIS, qu'une seule
-                                  plateforme réclame quelque chose ou que les
-                                  quatre le fassent — la contrainte non
-                                  négociable posée par Nico.
-                                  ⛔ Un nom de plateforme ne se tronque jamais :
-                                  pastillesEtat ne nomme que s'il y en a UNE, et
-                                  COMPTE dès qu'il y en a plusieurs.
-                                  Le tap est la seconde cible de l'action (la
-                                  première étant l'anneau sur le logo) : ambre →
-                                  le mini-éditeur du socle needs_user s'ouvre sur
-                                  CETTE plateforme ; rouge → la relance
-                                  existante, avec ses gardes (relanceManuelleInfo
-                                  décide du mode et refuse quand il faut).
-                                  Aucun chemin nouveau n'est créé ici. */}
-                              {(()=>{
-                                const etatArt=indexEtat.get(String(item.id));
-                                const pastilles=etatArt?pastillesEtat(etatArt,lang):[];
-                                if(!pastilles.length)return null;
-                                return pastilles.map((p,k)=>{
-                                  const amb=p.ton==='warn';
-                                  // UNE SEULE PORTE (08/09) : la pastille ouvre
-                                  // la popup « Retirer des plateformes », qui
-                                  // porte désormais l'état ET l'action de
-                                  // chaque plateforme, ligne par ligne. Plus de
-                                  // logique de déblocage ici — et donc plus de
-                                  // pastille morte : même quand aucun geste
-                                  // n'est possible, la popup dit lequel et
-                                  // pourquoi, ce qui est déjà utile.
-                                  const ouvrir=(e)=>{e.stopPropagation();setRemoveModalItem(item);};
-                                  return (
-                                    <div key={`etat-${p.ton}-${k}`} className="micon"
-                                      role="button" tabIndex={0}
-                                      onClick={ouvrir}
-                                      onKeyDown={(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ouvrir(e);}}}
-                                      title={p.detail}
-                                      style={{cursor:"pointer",
-                                        // ⛔ maxWidth:none — .micon porte
-                                        // max-width:100% + ellipsis, un filet
-                                        // pensé pour des libellés longs. Ici il
-                                        // coupait « 2 échecs » en « 2 éc… »
-                                        // (capture Nico). Ces pastilles sont
-                                        // COURTES par construction : on les
-                                        // laisse entières, la rangée .icons
-                                        // défile déjà à l'horizontale.
-                                        maxWidth:"none",
-                                        background:amb?"#FFF6E3":"#FEF2F2",
-                                        border:`1px solid ${amb?"#EED9A6":"#FECACA"}`,
-                                        color:amb?"#8A6100":"#B91C1C"}}>
-                                      {p.texte}
-                                    </div>
-                                  );
-                                });
-                              })()}
-                              {/* (La pastille de republication a quitté cette
-                                  rangée le 2026-08-27 : c'est la pastille de
-                                  STATUT sur la photo qui porte le cycle —
-                                  toujours cliquable → feuille d'avancement.) */}
-                            </div>
-                          )}
-                        {/* ── eBAY PAS PRÊT : ÇA SE VOIT SUR L'ARTICLE ───────
-                            (2026-09-22, dossier Romain) Il s'est arrêté DANS
-                            L'APP, avant qu'un seul job naisse : aucun échec,
-                            aucun « à toi de jouer », aucune trace. Un article
-                            qui doit partir sur eBay porte donc l'étape qui
-                            manque, et le bouton qui y emmène.
-                            ⛔ Ton NEUTRE, jamais de rouge : ce n'est pas une
-                               panne, c'est un geste qui reste (règle du 22/09).
-                            ⛔ ZÉRO APPEL : `ebayCompte.etat` a été lu une seule
-                               fois par l'app (action 'statut'), et rien ici
-                               n'interroge eBay. Et rien ne s'affiche tant qu'on
-                               n'a pas lu — on ne conclut pas sans savoir. */}
-                        {ebayCompte?.voieApi && ebayCompte?.lu && aPublier.includes('ebay') && (() => {
-                          const r = resumeEbay(ebayCompte.etat, lang === 'en' ? 'en' : 'fr');
-                          if (r.pret) return null;
-                          return (
-                            <div
-                              onClick={e => e.stopPropagation()}
-                              style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, margin:"8px 0 0",
-                                padding:"8px 10px", borderRadius:10, background:"#FFF6E3", border:"1px solid #EED9A6" }}
-                            >
-                              <span style={{ flex:"1 1 160px", minWidth:0, fontSize:11.5, lineHeight:1.4, fontWeight:600, color:"#8A6100" }}>
-                                {r.phrase}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={e => { e.stopPropagation(); setEbayPanneauStock(true); }}
-                                style={{ padding:"6px 11px", borderRadius:999, border:"1.5px solid #8A6100", background:"none",
-                                  color:"#8A6100", fontSize:11.5, fontWeight:700, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap" }}
-                              >
-                                {r.bouton}
-                              </button>
-                            </div>
-                          );
-                        })()}
-                        {/* Actions — mêmes gestes, mêmes gardes que la liste
-                            d'avant la galerie. margin-top:auto : les boutons
-                            s'alignent en bas de carte quelle que soit la
-                            hauteur du contenu au-dessus. */}
-                        <div className="gactions">
-                            {/* 3 états, une seule source de vérité : publishedActive
-                                (le même calcul que la pastille « En ligne » et les
-                                logos ci-dessus — une plateforme retirée/échouée/
-                                annulée en sort toute seule, le bouton redevient
-                                actif sans code dédié).
-                                  0/4   → « Publier »
-                                  1-3/4 → « Publier » AUSSI, même libellé : le stepper
-                                          n'ouvrira que les plateformes MANQUANTES.
-                                          « Republier » était un mensonge — FillSell ne
-                                          retouche jamais une annonce déjà en ligne
-                                          (relancer une plateforme published créait un
-                                          SECOND job, donc une annonce en double).
-                                  4/4   → inerte, « En ligne (4/4) » : plus rien à faire.
-
-                                ⚠️ PAS DE GATE DE TIER ICI (2026-07-21). Ce bouton
-                                était rendu sous `isPro`, or isPro = profiles.is_pro
-                                SEUL (App.jsx) — donc ni un Free ni un Premium
-                                standard ne voyaient « Publier » : le cross-post,
-                                qui est LA fonction du produit, était invisible pour
-                                tout le monde sauf le tier Pro. Ce n'était pas le
-                                packaging voulu : tout le monde cross-poste, et la
-                                différenciation se fait aux UNITÉS, côté serveur —
-                                generate-listing facture déjà les non-premium en
-                                pièces (402 + prix/solde) au lieu de refuser. */}
-                            <button
-                                className={toutEnLigne?"btn-publier is-complete":"btn-publier"}
-                                disabled={toutEnLigne||detailFetchId===item.id}
-                                onClick={e=>{
-                                  e.stopPropagation();
-                                  // Garde au niveau du HANDLER, pas seulement visuelle :
-                                  // le stepper ne doit pas pouvoir s'ouvrir sans une
-                                  // seule plateforme à publier.
-                                  if(toutEnLigne||detailFetchId)return;
-                                  // ── Le rappel extension suit la VOIE RÉELLE (07/09/2026) ──
-                                  // `aPublier` est exactement le lot que le stepper va
-                                  // pré-cocher. S'il ne reste RIEN qui passe par
-                                  // l'extension, ni le rappel ni l'accroche n'ont lieu
-                                  // d'être : on n'arrête pas quelqu'un sur un
-                                  // avertissement qui ne le concerne pas (constat du
-                                  // 07/09 : lot eBay seul en voie serveur, popup
-                                  // « L'extension FillSell est requise » — faux).
-                                  const voiesLot=repartirParVoie(aPublier,ebayCompte?.voieApiReelle);
-                                  if(voiesLot.toutServeur){publierAvecDetail(item);return;}
-                                  if(extensionNeverSeen===true){setExtPitchItem(item);}
-                                  else if(shouldShowExtensionReminder()){setExtReminderItem({item,voies:voiesLot});}
-                                  else{publierAvecDetail(item);}
-                                }}
-                              >
-                                {detailFetchId===item.id
-                                  ?(lang==='fr'?'Récupération…':'Fetching…')
-                                  :toutEnLigne
-                                  ?(lang==='fr'?`En ligne (${nbEnLigne}/${plateformesCompte.length})`:`Live (${nbEnLigne}/${plateformesCompte.length})`)
-                                  /* Le verbe + les DESTINATIONS (2026-09-01) : les logos des
-                                     plateformes manquantes remplacent le point d'interrogation
-                                     qu'était « Publier » nu sur un article déjà en ligne
-                                     Vinted. Chaque logo porte son propre socle blanc
-                                     (PlatformLogo) — lisible sur l'aplat teal. */
-                                  :(
-                                    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5,lineHeight:1}}>
-                                      {lang==='fr'?'Publier':'Publish'}
-                                      {aPublier.length>0&&(
-                                        <span style={{display:"inline-flex",alignItems:"center",gap:2}}>
-                                          {aPublier.map(p=><PlatformLogo key={p} platform={p} size={13}/>)}
-                                        </span>
-                                      )}
-                                    </span>
-                                  )}
-                              </button>
-                            <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
-                              {lang==='fr'?'Vendre':'Sell'}
-                            </button>
-                            {/* É5 : Republier — remonte l'annonce Vinted dans le
-                                fil (suppression puis recréation à l'identique).
-                                Le bouton dit POURQUOI il est inerte, il
-                                n'échoue jamais après le clic sur une borne
-                                connue (cadence 24 h, republish vivant). */}
-                            {repubEligibleTout&&(()=>{
-                              // Le job à REPRENDRE d'abord (needs_user le plus récent,
-                              // toutes plateformes), sinon le dernier : c'est lui que
-                              // « Republier maintenant / Compléter / Relancer » vise.
-                              const repubCible=republishAReprendre(jobsAll)??repubLatest;
-                              const st=repubCible?.status;
-                              // Gel Livres (2026-08-28 soir) : AUCUN bouton tant
-                              // que le job porte gel_livres_le — la pastille
-                              // « En pause » dit tout, et un Relancer/Republier
-                              // créerait un job NEUF hors gel (c'est le trou
-                              // que le passage en 'cancelled' vient de fermer).
-                              // Détection par le marqueur seul, jamais le statut.
-                              if(estGeleLivres(repubCible))return null;
-                              const vivant=st==="pending"||st==="processing"||st==="needs_user";
-                              if(st==="needs_user"){
-                                // Après suppression (étape 'deleted'), le geste n'est pas une
-                                // « relance » abstraite : c'est REMETTRE L'ANNONCE EN LIGNE
-                                // depuis le snapshot sauvegardé — le bouton le dit (2026-08-12).
-                                const apresSuppr=repubCible?.platform_fields?.republish_step==='deleted';
-                                // Capture incomplète avec champ saisissable (2026-08-21) : une
-                                // relance à vide re-échouerait en boucle — le bouton ouvre la
-                                // feuille de saisie (la même que la pastille), qui valide ET
-                                // relance en un geste.
-                                const aSaisir=(repubCible?.platform_fields?.champs_a_completer??[])
-                                  .some(c=>repubCleSaisie(c) in REPUB_SAISISSABLES);
-                                if(aSaisir&&!apresSuppr){
-                                  return(
-                                  <button className="btn-vendre" disabled={repubBusy===item.id}
-                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubCible);}}
-                                    style={{opacity:repubBusy===item.id?0.6:1}}>
-                                    {lang==='fr'?'✋ Compléter':'✋ Fill in'}
-                                  </button>);
-                                }
-                                // Pré-vol « champ à trancher » (03/09, cas Joséphine —
-                                // « Catégorie Vinted » devenue niveau intermédiaire) : le
-                                // job porte un needsUserField avec les valeurs relevées
-                                // sur le panneau Vinted. La saisie libre de la feuille ne
-                                // sait pas y répondre et la relance sèche refrappe le même
-                                // mur (vérifié 03/09 : inventaire.vinted_catalog_id n'est
-                                // pas lu par le pré-vol) — le mini-éditeur à choix fermé,
-                                // lui, écrit categoryLevelChoice/vintedAspects que la
-                                // recréation consomme désormais.
-                                const aChoisir=!aSaisir&&!!repubCible?.platform_fields?.needsUserField;
-                                if(aChoisir&&!apresSuppr){
-                                  return(
-                                  <button className="btn-vendre" disabled={repubBusy===item.id}
-                                    onClick={e=>{e.stopPropagation();setNeedsUserJob(repubCible);}}
-                                    style={{opacity:repubBusy===item.id?0.6:1}}>
-                                    {lang==='fr'?'✋ Compléter':'✋ Fill in'}
-                                  </button>);
-                                }
-                                return(
-                                <button className="btn-vendre" disabled={repubBusy===item.id}
-                                  onClick={e=>{e.stopPropagation();relancerRepublication(item,repubCible);}}
-                                  style={{opacity:repubBusy===item.id?0.6:1}}>
-                                  {repubBusy===item.id?(lang==='fr'?'Relance…':'Relaunching…')
-                                    :apresSuppr?(lang==='fr'?'🔁 Republier maintenant':'🔁 Republish now')
-                                    :(lang==='fr'?'🔁 Relancer':'🔁 Relaunch')}
-                                </button>);
-                              }
-                              // Republication vivante : AUCUN bouton ici. L'état
-                              // est porté par la seule pastille de gauche
-                              // (cliquable → feuille d'avancement) ; ce bouton
-                              // fantôme « 🔁 En cours » ne faisait que répéter
-                              // ce qu'elle disait déjà, sur la colonne qui doit
-                              // rester celle des ACTIONS.
-                              // Une republication en vol sur UNE plateforme ne prive pas les
-                              // autres du bouton (2026-09-17) : il disparaît seulement
-                              // quand plus rien n'est republiable maintenant.
-                              if(vivant&&!repubMaintenant.length)return null;
-                              if(!repubMaintenant.length&&st==="published"&&repubCible?.platform_fields?.recreated_at
-                                &&Date.now()-Date.parse(repubCible.platform_fields.recreated_at)<24*3600*1000){
-                                const restant=Math.max(1,Math.ceil((24*3600*1000-(Date.now()-Date.parse(repubCible.platform_fields.recreated_at)))/3600000));
-                                return(
-                                  <button className="btn-vendre btn-cooldown" disabled style={{opacity:0.55,cursor:"default"}}
-                                    title={lang==='fr'?`Une republication par article et par 24 h — de nouveau possible dans ~${restant} h.`:`One repost per item per 24 h — available again in ~${restant} h.`}>
-                                    {lang==='fr'?`🔁 Dans ~${restant} h`:`🔁 In ~${restant} h`}
-                                  </button>);
-                              }
-                              if(!repubMaintenant.length)return null;
-                              // UN SEUL endroit choisit les plateformes (défaut du
-                              // 17/09 21:53) : en mode lot, la carte porte sa case à
-                              // cocher et la barre « Republier les N » ouvre LA feuille
-                              // du lot — le bouton de carte, qui ouvrait une seconde
-                              // feuille avec son propre défaut, disparaît tant que le
-                              // mode est armé.
-                              if(modeRepublish)return null;
-                              return(
-                                <button className="btn-vendre" disabled={repubEnPause||repubBusy===item.id}
-                                  onClick={e=>{
-                                    e.stopPropagation();
-                                    if(repubEnPause)return;
-                                    if(extensionNeverSeen===true){setExtPitchItem(item);return;}
-                                    ouvrirFeuilleRepublication([item]);
-                                  }}
-                                  style={{opacity:repubEnPause?0.45:repubBusy===item.id?0.6:1,cursor:repubEnPause?"default":undefined}}
-                                  title={repubEnPause
-                                    ?(pausedReasons.vinted||(lang==='fr'?"Republication en maintenance — de retour très vite.":"Reposting under maintenance — back very soon."))
-                                    :(repubMaintenant.length===1&&repubMaintenant[0]==='vinted'
-                                      ?(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")
-                                      :(lang==='fr'?`Remonte l'annonce sur ${repubMaintenant.map(p=>LABEL_PF[p]??p).join(', ')} : retirée puis redéposée à l'identique (Opla : modifiée en place).`:`Bumps the listing on ${repubMaintenant.map(p=>LABEL_PF[p]??p).join(', ')}: removed then re-posted identically (Opla: updated in place).`))}>
-                                  {repubBusy===item.id
-                                    ?(lang==='fr'?'Envoi…':'Sending…')
-                                    /* Logo Vinted À LA PLACE de l'émoji 🔁 (2026-09-01, audit
-                                       onboarding) : « Publier » et « Republier » ne se
-                                       distinguaient que par deux lettres — le logo dit la
-                                       destination (Vinted seul), le coût reste affiché, la
-                                       feuille qui s'ouvre au tap titre déjà « Republier sur
-                                       Vinted ». Conteneur inline-flex : plus de repli possible
-                                       entre verbe et prix, et un logo de 12px pèse moins que
-                                       l'émoji qui faisait déborder l'ancien libellé. */
-                                    :(republishPrice!=null
-                                      ?(
-                                        <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
-                                          <span style={{display:"inline-flex",alignItems:"center",gap:2}}>
-                                            {repubMaintenant.map(p=><PlatformLogo key={p} platform={p} size={12}/>)}
-                                          </span>
-                                          {lang==='fr'?'Republier':'Repost'}
-                                          <span style={{whiteSpace:"nowrap"}}>({republishPrice})</span>
-                                        </span>
-                                      )
-                                      :(
-                                        <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
-                                          <span style={{display:"inline-flex",alignItems:"center",gap:2}}>
-                                            {repubMaintenant.map(p=><PlatformLogo key={p} platform={p} size={12}/>)}
-                                          </span>
-                                          {lang==='fr'?'Republier':'Repost'}
-                                        </span>
-                                      ))}
-                                </button>);
-                            })()}
-                        </div>
-                        {/* Message transitoire — pleine largeur de carte,
-                            sous les actions. */}
-                        {repubNote&&(
-                          <div className={`cardnote ${repubNote.ton==='vert'?'is-info':'is-warn'}`}
-                            onClick={e=>{e.stopPropagation();setRepubMsgs(m=>({...m,[item.id]:null}));}}
-                            style={{cursor:"pointer"}}>
-                            <span>{repubNote.texte}</span>
-                          </div>
-                        )}
-                      </div>
-                      {/* ── Lot B1 (03/09 soir) : barre de progression EN BAS de
-                          carte, pleine largeur, pour un job réellement EN
-                          TRAVAIL. PAS de barre pour ce qui ATTEND (autre
-                          boutique, plateforme en pause, ordinateur éteint,
-                          recréation orpheline) : une barre qui bouge sur un
-                          travail à l'arrêt serait un mensonge — mêmes
-                          conditions que le pulse de la pastille.
-                          ── Chantier clarté (01/10) : c'est désormais LA barre
-                          compacte (BarreJobCarte) — elle suit les étapes
-                          réelles du job (republish_step, processing_since),
-                          avance en continu avec un pourcentage, finit en douceur
-                          sur la coche puis s'efface ; un tap ouvre la file
-                          complète. Les retraits en cours y entrent (même
-                          règle : un vrai travail, jamais une attente). UNE
-                          barre par job : la carte porte déjà photo et titre. */}
-                      {(()=>{
-                        // Republication : barre animée UNIQUEMENT sur un travail
-                        // réel — processing (relevé/retrait en cours) ou étape
-                        // 'deleted' (annonce hors ligne, recréation imminente).
-                        // Une « Relevée — en attente » (pending @ captured) ne
-                        // fait pas semblant de travailler : la pastille et le
-                        // libellé disent l'attente (03/09 soir, article par
-                        // article).
-                        const repubEnTravail=repubOccupeSlot&&!repubEtape.fini&&!repubOrpheline
-                          &&repubEtape.cle!=='attente_boutique'
-                          &&(repubLatest?.status==='processing'
-                            ||((repubLatest?.status==='pending')&&repubStepDe(repubLatest)==='deleted'));
-                        const extFraiche=!(extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree");
-                        const pubEnTravail=!repubEnTravail&&hasPending&&!pendingSurConnexion&&!hasPausedPending&&extFraiche;
-                        const retraitsEnTravail=(!repubEnTravail&&!pubEnTravail)
-                          ?jobsAll.filter(j=>j.action==='delete'&&(j.status==='processing'
-                            ||(j.status==='pending'&&extFraiche&&!attenteDeConnexion(j)&&!pausedSet.has(j.platform))))
-                          :[];
-                        const enTravail=repubEnTravail?[repubLatest]:pubEnTravail?pendingJobs:retraitsEnTravail;
-                        return(
-                          <BarreJobCarte jobs={enTravail} tous={jobsAll} lang={lang} ctx={ctxBarres}
-                            onOuvrir={()=>setFileOuverte(true)}/>
-                        );
-                      })()}
+                {/* ── LES ARTICLES (refonte du 03/10, planche 01 et 03) ──────────
+                    Cartes : grille de 2 colonnes (3 puis 4 en largeur). Liste :
+                    des lignes denses de 72 px. Le choix est gardé. Dans un mode
+                    (lot, remontée, prix d'achat), toujours les cartes : elles
+                    portent la case de sélection. Une seule lecture par article
+                    (deriverArticle), une seule pastille, UNE action. */}
+                {(()=>{
+                  const listeVue=modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:modeLot?lotActionnablesVue:listeStock;
+                  if(!listeVue.length)return null;
+                  const enListe=affichageStock==='liste'&&!modeLot&&!modeRepublish&&!modePrixAchat;
+                  return enListe?(
+                    <div ref={galerieRef} role="list" style={{marginTop:8,borderRadius:16,overflow:'hidden',background:'#FFFFFF',boxShadow:`0 1px 3px rgba(16,32,27,0.04), inset 0 0 0 1px ${SK.border}`}}>
+                      {listeVue.map(item=>rendreArticle(item,true))}
                     </div>
-                  );})}
-                </div>
+                  ):(
+                    <div className="sk-grille" ref={galerieRef} style={{marginTop:8}}>
+                      {listeVue.map(item=>rendreArticle(item,false))}
+                    </div>
+                  );
+                })()}
                 {/* ── ÉTAT VIDE EXPLICITE (2026-08-31) ─────────────────────────
                     Un filtre qui ne ramène rien ne doit JAMAIS se traduire par
                     un écran muet : c'est ce silence qui a rendu le bug des
@@ -11371,33 +10515,37 @@ const StockTab = memo(function StockTab({
                   if(filtreDiffusion)actifs.push(filtreDiffusion.mode==='jamais'
                     ?(lang==='fr'?'Jamais publié':'Never published')
                     :`${filtreDiffusion.mode==='en_ligne'?(lang==='fr'?'En ligne sur':'Live on'):(lang==='fr'?'Pas encore sur':'Not yet on')} ${LIBELLE_PLATEFORME[filtreDiffusion.platform]}`);
+                  // (03/10) Les dimensions de la refonte sont nommées aussi.
+                  if(vueStock!=='tous')actifs.push(vueStock==='hors_ligne'?(lang==='fr'?'Hors ligne':'Offline'):vueStock==='a_regler'?(lang==='fr'?'À régler':'To fix'):libelleFiltreRapide(vueStock,lang));
+                  for(const tr of tranchesAge)actifs.push(libelleTranche(tr,lang));
+                  if(prixMinN!=null||prixMaxN!=null)actifs.push(pucesFiltres.find(p=>p.cle==='prix')?.libelle??'');
                   if(!actifs.length)return null;
                   return(
-                    <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"16px",textAlign:"center"}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:4}}>
-                        {lang==='en'?'No item matches':'Aucun article ne correspond'}
-                      </div>
-                      <div style={{fontSize:12,color:"#6B7A75",lineHeight:1.5,marginBottom:12}}>
-                        {lang==='en'
-                          ?`Nothing in your stock matches: ${actifs.join(' · ')}.`
-                          :`Rien dans ton stock ne correspond à : ${actifs.join(' · ')}.`}
-                      </div>
-                      <button
-                        onClick={()=>{setFilterType("Tous");setFilterMarque([]);setFilterBoutique("Toutes");setSearch("");aucunFiltreStock();}}
-                        style={{padding:"9px 16px",borderRadius:999,border:"1px solid #2F9E90",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        {lang==='en'?'Clear filters':'Réinitialiser les filtres'}
-                      </button>
+                    <div style={{marginTop:8}}>
+                      <VideAvecSortie lang={lang}
+                        texte={vueStock==='vendus'&&actifs.length===1
+                          ?(lang==='en'?'No sold item yet.':'Aucun article vendu pour l’instant.')
+                          :(lang==='en'?`Nothing in your stock matches: ${actifs.join(' · ')}.`:`Rien dans ton stock ne correspond à : ${actifs.join(' · ')}.`)}
+                        libelleSortie={lang==='en'?'Clear all':'Tout effacer'}
+                        onSortie={()=>{reinitialiserFiltresStock();setSearch("");aucunFiltreStock();}}/>
                     </div>
                   );
                 })()}
                 {/* En mode republication, la liste montre déjà TOUS les
                     republiables (pas de slice) : un « Voir plus » compté sur
-                    stockFiltre serait un bouton sans effet. */}
-                {!modeRepublish&&!modeBrouillons&&!modeLot&&stockFiltre.length>10&&!showAllStock&&(
-                  <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F2F0E9",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7A75",cursor:"pointer",marginTop:4}}>
-                    {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
-                  </button>
-                )}
+                    stockFiltre serait un bouton sans effet. (03/10) Sous filtre,
+                    le reste se compte sur la liste FILTRÉE — celle qu'on voit. */}
+                {(()=>{
+                  if(modeRepublish||modeBrouillons||modeLot||modePrixAchat||showAllStock)return null;
+                  const total=(stockRetenu??stockFiltre).length;
+                  if(total<=10)return null;
+                  return(
+                    <button type="button" className="sk-btn sk-presse" onClick={()=>setShowAllStock(true)}
+                      style={{width:"100%",height:48,marginTop:16,background:"#FFFFFF",border:`1px solid ${SK.border}`,borderRadius:14,fontSize:14,fontWeight:700,color:SK.ink,fontFamily:"inherit"}}>
+                      {lang==='fr'?`Voir les ${nombreFr(total-10,lang)} autres articles`:`Show the other ${total-10} items`}
+                    </button>
+                  );
+                })()}
                 <div style={{height:24}}/>
               </div>
             )}
@@ -11436,28 +10584,139 @@ const StockTab = memo(function StockTab({
                 Le tap mène à l'écran de réglages QUI EXISTE (Réglages ›
                 Automatismes) ; sans le droit, « Activer » ouvre la modale
                 d'offres. Rien ne s'ouvre jamais tout seul. */}
-            {planifieeExposee?(
-              <div style={{marginTop:12}}>
-                <RepublicationPlanifieeBloc
-                  lang={lang}
-                  variante="pied"
-                  etat={planifiee.etat}
-                  plateformesActives={planifieeActives}
-                  interrupteur={planifiee.interrupteur}
-                  extensionStatus={extensionStatus}
-                  busy={planifiee.busy}
-                  onOuvrirReglages={()=>ouvrirReglagesRepublication?.()}
-                  onActiverNonPro={planifieeActiverNonPro}
-                />
-              </div>
-            ):(republishActif||!isPro)&&(
-              <div style={{marginTop:12}}>
+            {/* (03/10) Module par créneaux EXPOSÉ → sa ligne vit EN HAUT du
+                Stock, sous les gestes (LigneRepublicationAuto : interrupteur
+                pour le Pro, badge Pro et offres sinon). Non exposé → l'ancien
+                bloc É6 reste ici, intact. */}
+            {!planifieeExposee&&(republishActif||!isPro)&&(
+              <div style={{marginTop:16}}>
                 <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
               </div>
             )}
           </div>
         </div>
       </div>
+      {/* ═══ LES COUCHES DE LA REFONTE (03/10) ════════════════════════════════
+          Toutes portalisées (src/stock/Feuille, EcranPlein). Chacune ne fait
+          que rouvrir une porte qui existait : la publication en lot, la feuille
+          de republication, la feuille d'attente, l'écran des doublons, les
+          modes prix d'achat et brouillons, la zone d'ajout. */}
+      {menuArticleId!=null&&(()=>{
+        const item=(items||[]).find(i=>String(i.id)===String(menuArticleId));
+        if(!item)return null;
+        const d=deriverArticle(item);
+        const p=pastilleArticle(item,d);
+        const g=gestesArticle(item,d,p);
+        const prix=prixAffiche(item,d);
+        const fermer=()=>setMenuArticleId(null);
+        return(
+          <MenuArticle lang={lang}
+            article={{photo:d.photoUrl,titre:item.title,prix:prix.prix,pastille:p}}
+            infos={g.infos.map(i=>i.onTap?{...i,onTap:()=>{fermer();i.onTap();}}:i)}
+            mur={g.mur}
+            actions={g.menu.map(a=>({...a,onTap:()=>{if(a.desactive)return;fermer();a.onTap?.();}}))}
+            prixAchat={g.prixAchat?{
+              onValider:async(texte)=>{const ok=await g.prixAchat.onValider(texte);if(ok)fermer();return ok;},
+              onInconnu:async()=>{await g.prixAchat.onInconnu();fermer();},
+            }:null}
+            onFermer={fermer}/>
+        );
+      })()}
+      {gesteOuvert==='publier'&&(()=>{
+        // Le contexte d'un filtre « Pas encore sur X » pré-coche SES articles ;
+        // sinon, tout ce qui peut partir (règle articleSelectionnable).
+        const parId=new Map(stockSansBrouillons.map(i=>[String(i.id),i]));
+        const candidats=publierContexte?.ids
+          ?publierContexte.ids.map(id=>parId.get(String(id))).filter(Boolean)
+          :aPublierTout;
+        const articles=candidats.map(i=>{
+          const e=indexEtatTout.get(String(i.id));
+          const occupees=Array.isArray(e?.occupees)?e.occupees:(e?.enLigne??[]);
+          const manque=plateformesLotCompte.filter(p=>!occupees.includes(p));
+          return {id:i.id,titre:i.title,photo:premierePhoto(i.photos),logos:e?.enLigne??[],
+            ligne2:manque.length?(lang==='fr'?`pas encore sur ${manque.map(p=>LABEL_PF[p]??p).join(', ')}`:`not yet on ${manque.map(p=>LABEL_PF[p]??p).join(', ')}`):null};
+        });
+        const n=articles.length;
+        return(
+          <EcranSelection lang={lang}
+            titre={lang==='fr'?'Publier partout':'Publish everywhere'}
+            grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} article${n>1?'s':''} pas encore partout`:`${n} item${n>1?'s':''} not everywhere yet`):(lang==='fr'?'Tout est déjà partout':'Everything is already everywhere')}
+            sousTitre={n?(lang==='fr'?`Tout est déjà coché${n>LOT_MAX_ARTICLES?` (les ${LOT_MAX_ARTICLES} premiers : ${LOT_MAX_ARTICLES} au plus par lot)`:''} : décoche ceux que tu veux garder.`:`Everything is ticked${n>LOT_MAX_ARTICLES?` (the first ${LOT_MAX_ARTICLES}: ${LOT_MAX_ARTICLES} per batch at most)`:''}: untick what you want to keep.`):null}
+            articles={articles} max={LOT_MAX_ARTICLES}
+            bouton={{icone:Upload,libelle:(k)=>lang==='fr'?`Publier ${nombreFr(k,lang)} article${k>1?'s':''}`:`Publish ${k} item${k>1?'s':''}`}}
+            note={lang==='fr'?'Tu choisis ensuite les plateformes : rien ne part avant ta confirmation.':'You pick the platforms next: nothing goes out before you confirm.'}
+            vide={<div style={{marginTop:16}}><VideAvecSortie lang={lang} texte={lang==='fr'?'Chaque article avec une photo est déjà en ligne sur toutes tes plateformes.':'Every item with a photo is already live on all your platforms.'} libelleSortie={lang==='fr'?'Fermer':'Close'} onSortie={()=>{setGesteOuvert(null);setPublierContexte(null);}}/></div>}
+            onConfirmer={(ids)=>{
+              const choisis=ids.map(id=>parId.get(String(id))).filter(Boolean);
+              if(!choisis.length)return;
+              setGesteOuvert(null);
+              setLotOuvert({articles:choisis,plateformes:publierContexte?.plateformes??null});
+              setPublierContexte(null);
+              track('lot_publication_ouvert',{articles:choisis.length,depuis:'geste_publier'});
+            }}
+            onFermer={()=>{setGesteOuvert(null);setPublierContexte(null);}}/>
+        );
+      })()}
+      {gesteOuvert==='remonter'&&(()=>{
+        const articles=aRemonterTout.map(i=>{
+          const e=indexEtatTout.get(String(i.id));
+          const jours=ancienneteJours(i,jobsByInventaire[i.id],e?.enLigne??[]);
+          return {id:i.id,titre:i.title,photo:premierePhoto(i.photos),logos:e?.enLigne??[],jours,
+            ligne2:jours!=null?(lang==='fr'?`en ligne depuis ${jours} j`:`live for ${jours} d`):null};
+        }).sort((a,b)=>(b.jours??0)-(a.jours??0));
+        const n=articles.length;
+        return(
+          <EcranSelection lang={lang}
+            titre={lang==='fr'?'Remonter mes annonces':'Bump my listings'}
+            grandTitre={n?(lang==='fr'?`${nombreFr(n,lang)} annonce${n>1?'s perdent':' perd'} en visibilité`:`${n} listing${n>1?'s':''} losing visibility`):(lang==='fr'?'Rien ne perd en visibilité':'Nothing is losing visibility')}
+            sousTitre={n?(lang==='fr'?'Tout est déjà coché : décoche celles que tu veux garder.':'Everything is ticked: untick the ones you want to keep.'):(lang==='fr'?`Une annonce en ligne depuis ${SEUIL_ANCIENNE_JOURS} jours ou plus apparaîtra ici.`:`A listing live for ${SEUIL_ANCIENNE_JOURS} days or more will show up here.`)}
+            articles={articles}
+            bouton={{icone:ChevronsUp,libelle:(k)=>lang==='fr'?`Remonter ${nombreFr(k,lang)} annonce${k>1?'s':''}`:`Bump ${k} listing${k>1?'s':''}`}}
+            note={repubEnPause?(lang==='fr'?'Remontée en maintenance : de retour très vite.':'Bumping under maintenance: back very soon.'):(lang==='fr'?'Ton ordinateur les republie une à une.':'Your computer reposts them one by one.')}
+            apres={planifieeExposee?(
+              <LigneRepublicationAuto lang={lang}
+                autorise={planifiee.etat?planifiee.etat.autorise===true:(isPro||isBusiness)}
+                actif={planifieeActives.length>0}
+                pauseMemorisee={plateformesPlanifieesVisibles(planifiee.parPlateforme).some((pf)=>planifiee.parPlateforme?.[pf]?.reglage?.pause_generale===true)}
+                busy={planifiee.busy} nomsActifs={planifieeActives.map((pf)=>LABEL_PF[pf]??pf)}
+                onBasculer={(reprendre)=>{track('republication_planifiee',{action:reprendre?'reprise_generale':'pause_generale',depuis:'ecran_remonter'});planifiee.pauseGenerale(reprendre);}}
+                onOuvrirReglages={()=>{setGesteOuvert(null);ouvrirReglagesRepublication?.();}}
+                onOffres={()=>{setGesteOuvert(null);planifieeActiverNonPro();}}/>
+            ):null}
+            onConfirmer={(ids)=>{
+              if(repubEnPause)return;
+              // Free : la remontée EN LOT est un avantage des forfaits payants —
+              // même porte qu'avant (modale de conversion, rien ne part).
+              if(repubLotReserve){setGesteOuvert(null);ouvrirModaleLotReserve();return;}
+              const set=new Set(ids.map(String));
+              const choisis=aRemonterTout.filter(i=>set.has(String(i.id)));
+              if(!choisis.length)return;
+              setGesteOuvert(null);
+              // LA feuille de republication existante : plateformes, prix,
+              // avertissements, puis lancerRepublicationLot — une seule logique.
+              ouvrirFeuilleRepublication(choisis);
+            }}
+            onFermer={()=>setGesteOuvert(null)}/>
+        );
+      })()}
+      {gesteOuvert==='a_regler'&&(
+        <EcranARegler lang={lang} lignes={lignesARegler} onFermer={()=>setGesteOuvert(null)}/>
+      )}
+      {ecranDejaVendu&&(
+        <EcranDoublons lang={lang} items={items} doublons={questionsDejaVendu}
+          onClose={()=>{setEcranDejaVendu(false);relireDoublons();}}
+          onDecision={()=>{relireDoublons();rafraichirApresSync();}}/>
+      )}
+      {feuilleAjout&&(
+        <FeuilleAjouter lang={lang}
+          onEcrire={()=>{setVoiceInputMode("write");setVoiceZoneOpen(true);}}
+          onParler={()=>{setVoiceInputMode("speak");setVoiceZoneOpen(true);}}
+          onManuel={()=>{setShowManualForm(true);}}
+          onImporter={()=>{importRef.current?.click();setFeuilleAjout(false);}}
+          onExporter={()=>{handleExport();setFeuilleAjout(false);}}
+          messageImport={importMsg}
+          onFermer={()=>setFeuilleAjout(false)}/>
+      )}
       {/* initialListing depuis la ligne inventaire : sans lui, platformSupport
           calculait detectObjectIcon(undefined) → 📦 → 4 plateformes "unmapped",
           chips grisées et CTA "Générer" mort (bug du 2026-07-11). Mêmes clés que
@@ -11594,7 +10853,7 @@ const StockTab = memo(function StockTab({
           il manque juste un texte que l'utilisateur peut poser à la main. */}
       {detailNote&&createPortal(
         <div style={{position:"fixed",left:"50%",bottom:24,transform:"translateX(-50%)",zIndex:12000,maxWidth:"min(92vw,420px)",background:"#fff",border:"1px solid rgba(47,158,144,0.35)",borderRadius:14,padding:"11px 16px",boxShadow:"0 12px 32px -10px rgba(16,32,27,0.35)",fontSize:12.5,lineHeight:1.5,color:"#10201B",fontFamily:"inherit"}}>
-          💬 {detailNote}
+          <IconeTexte icone={Info} style={{ marginRight: 6, color: '#1B6E62' }} />{detailNote}
         </div>,
         document.body
       )}
@@ -11752,7 +11011,7 @@ const StockTab = memo(function StockTab({
             {(()=>{const a=failJobAction(failJobModal,lang);return a?(
               <a href={a.url} target="_blank" rel="noopener noreferrer"
                 style={{display:"block",textAlign:"center",padding:"12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:14,fontWeight:700,textDecoration:"none",marginBottom:8}}>
-                {a.label} ↗
+                {a.label} <IconeTexte icone={ExternalLink} taille={14} />
               </a>
             ):null;})()}
             {/* Relance manuelle (2026-08-31) : le job repart TEL QUEL en
@@ -11779,7 +11038,7 @@ const StockTab = memo(function StockTab({
                       ?(lang==="en"?"Relaunching…":"Relance…")
                       :enAttente
                         ?(lang==="en"?`Relaunched recently — wait ~${r.attenteMin} min`:`Relancé il y a peu — patiente ~${r.attenteMin} min`)
-                        :(lang==="en"?"🔁 Relaunch now":"🔁 Relancer maintenant")}
+                        :<><IconeTexte icone={RotateCcw} style={{ marginRight: 6 }} />{lang==="en"?"Relaunch now":"Relancer maintenant"}</>}
                   </button>
                   <div style={{fontSize:11,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
                     {r.mode==='repend'

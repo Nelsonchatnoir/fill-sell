@@ -208,14 +208,14 @@ export function texteRefusReleve(res, lang = 'fr', platform = null) {
   const fr = lang !== 'en';
   const nom = LABEL_RELEVE[platform] ?? platform ?? '';
   const M = {
-    non_expose: fr ? `Le relevé ${nom} n'est pas encore ouvert sur ton compte.` : `The ${nom} listing scan is not open on your account yet.`,
-    extension_jamais_vue: fr ? "Il faut l'extension Chrome FillSell sur un ordinateur pour relever tes annonces." : 'The FillSell Chrome extension on a computer is needed to scan your listings.',
+    non_expose: fr ? `La synchronisation ${nom} n'est pas encore ouverte sur ton compte.` : `The ${nom} sync is not open on your account yet.`,
+    extension_jamais_vue: fr ? "Il faut l'extension Chrome FillSell sur un ordinateur pour synchroniser tes annonces." : 'The FillSell Chrome extension on a computer is needed to sync your listings.',
     extension_trop_ancienne: fr ? "Ton extension doit passer en 0.6.42 ou plus récente : Chrome la met à jour tout seul, réessaie un peu plus tard." : 'Your extension needs version 0.6.42 or newer: Chrome updates it on its own, try again a bit later.',
-    cadence: fr ? `Annonces ${nom} relevées il y a moins de 15 min — réessaie dans un instant.` : `${nom} listings were scanned less than 15 min ago — try again shortly.`,
-    rpc_absente: fr ? "Le relevé n'est pas encore activé côté serveur." : 'The scan is not enabled server-side yet.',
+    cadence: fr ? `Annonces ${nom} synchronisées il y a moins de 15 min — réessaie dans un instant.` : `${nom} listings were synced less than 15 min ago — try again shortly.`,
+    rpc_absente: fr ? "La synchronisation n'est pas encore activée côté serveur." : 'Sync is not enabled server-side yet.',
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
   };
-  return M[res?.reason] ?? res?.message ?? (fr ? 'Relevé impossible.' : 'Scan failed.');
+  return M[res?.reason] ?? res?.message ?? (fr ? 'Synchronisation impossible.' : 'Sync failed.');
 }
 
 // Vues / favoris relevés par plateforme, par ARTICLE rattaché (colonnes posées
