@@ -34,8 +34,14 @@ import { lireArticleTrading, lireAnnoncesActives } from "../_shared/ebay-trading
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 
-const RUNS_PAR_PASSAGE = 3;
-const QUOTIDIENS_PAR_PASSAGE = 10;
+// ── BORNÉ (04/10, incident CPU 99 % — cron 27 mis en pause) ───────────────
+// Le relevé QUOTIDIEN ne se pose plus que pour les comptes ACTIFS
+// (comptes_actifs(7) : extension ou app vues dans les 7 jours — 41 comptes
+// reliés sur 66 au 04/10) : un compte que personne n'ouvre n'a pas besoin
+// d'un relevé complet chaque jour. Un relevé DEMANDÉ (app) passe toujours.
+// 3 quotidiens posés et 2 relevés traités par passage (10 et 3 avant).
+const RUNS_PAR_PASSAGE = 2;
+const QUOTIDIENS_PAR_PASSAGE = 3;
 const QUOTIDIEN_H = 20;
 const DETAILS_PAR_RUN = 60;
 const DETAIL_FRAICHEUR_J = 7;
@@ -65,7 +71,13 @@ Deno.serve(async (req) => {
     }
 
     // ── 1. Le relevé quotidien des comptes reliés ────────────────────────
-    if (corps?.quotidien !== false) bilan.quotidiens = await poserQuotidiens(admin, [...relies.keys()]);
+    if (corps?.quotidien !== false) {
+      const { data: actifs, error: errActifs } = await admin.rpc("comptes_actifs", { p_jours: 7 });
+      // Illisible : on ne pose AUCUN quotidien (jamais « tout le monde » par défaut).
+      const actifsSet = new Set(errActifs ? [] : ((actifs ?? []) as Array<{ user_id: string }>).map((a) => a.user_id));
+      bilan.quotidiens = await poserQuotidiens(admin, [...relies.keys()].filter((u) => actifsSet.has(u)));
+      bilan.comptes_actifs = actifsSet.size;
+    }
 
     // ── 2. Les demandes en file ──────────────────────────────────────────
     const ttl = new Date(Date.now() - 6 * 3600_000).toISOString();

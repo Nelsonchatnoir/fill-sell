@@ -25,11 +25,21 @@ import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 // ⛔ Le vendeur Beebs n'est jamais deviné : il est relu, par identifiant
 //    d'annonce, sur des annonces que le relevé du compte a lui-même rendues ;
 //    plusieurs vendeurs différents → on s'abstient.
-// Appelée par pg_cron (*/10, x-cron-secret) ; verify_jwt = false.
+// Appelée par pg_cron (x-cron-secret) ; verify_jwt = false.
+// ── BORNÉE (04/10, incident CPU 99 % — cron 28 mis en pause) ───────────────
+// · comptes ACTIFS seulement (comptes_actifs(7) : extension ou app vues dans
+//   les 7 jours), 3 comptes Beebs par passage ;
+// · une annonce INCHANGÉE n'est plus jamais réécrite : chaque écriture
+//   d'annonce rattachée déclenche annonce_vers_fiche. Le passage se note PAR
+//   COMPTE (releve_index_passages), plus par annonce ;
+// · 200 écritures au plus par compte et par passage ; au-delà, le compte
+//   reste « à relire » et la suite part au passage suivant.
+// Migration 20261004191000.
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { "Content-Type": "application/json" } });
 
-const BEEBS_COMPTES_PAR_PASSAGE = 8;
+const BEEBS_COMPTES_PAR_PASSAGE = 3;
+const ECRITURES_PAR_COMPTE = 200;
 const EBAY_ANNONCES_PAR_PASSAGE = 25;
 const BUDGET_MS = 90_000;
 
@@ -91,8 +101,15 @@ function memeContenu(x: unknown, y: Record<string, unknown>): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** Le passage du relevé serveur pour CE compte — jamais une écriture par annonce. */
+async function noterPassage(admin: SupabaseClient, userId: string, platform: string, bilan: Record<string, unknown>) {
+  const { error } = await admin.from("releve_index_passages")
+    .upsert({ user_id: userId, platform, lu_le: new Date().toISOString(), bilan }, { onConflict: "user_id,platform" });
+  if (error) console.warn(`[releve-completer] passage ${platform} ${userId.slice(0, 8)} non noté : ${error.message}`);
+}
+
 async function completerBeebs(admin: SupabaseClient, debut: number) {
-  const bilan = { comptes: 0, ecrites: 0, inchangees: 0, absentes: 0, abstentions: 0 };
+  const bilan = { comptes: 0, ecrites: 0, inchangees: 0, absentes: 0, abstentions: 0, reportees: 0 };
   const { data: comptes, error } = await admin.rpc("releve_index_comptes_a_lire", { p_platform: "beebs", p_limite: BEEBS_COMPTES_PAR_PASSAGE });
   if (error) throw new Error(`comptes Beebs : ${error.message}`);
   for (const c of (comptes ?? []) as Array<{ user_id: string; listing_ids: string[] }>) {
@@ -104,9 +121,9 @@ async function completerBeebs(admin: SupabaseClient, debut: number) {
     const maintenant = new Date().toISOString();
     if (!uid) {
       bilan.abstentions++;
-      // Rien n'est conclu ; on note la tentative pour ne pas repasser à chaque tour.
-      await admin.from("annonces_plateforme").update({ donnees_index_le: maintenant })
-        .eq("user_id", c.user_id).eq("platform", "beebs").in("listing_id", ids.slice(0, 500));
+      // Rien n'est conclu ; on note la tentative (pour CE compte, une ligne)
+      // pour ne pas repasser à chaque tour.
+      await noterPassage(admin, c.user_id, "beebs", { abstention: "vendeur introuvable ou ambigu" });
       continue;
     }
     const hits: Array<Record<string, unknown>> = [];
@@ -122,22 +139,22 @@ async function completerBeebs(admin: SupabaseClient, debut: number) {
     const { data: lignes } = await admin.from("annonces_plateforme")
       .select("id, listing_id, donnees_index")
       .eq("user_id", c.user_id).eq("platform", "beebs").in("listing_id", ids.slice(0, 1000));
+    let ecritesCompte = 0, reportees = 0;
     for (const l of (lignes ?? []) as Array<{ id: string; listing_id: string; donnees_index: unknown }>) {
       const h = parId.get(String(l.listing_id));
-      if (!h) {
-        bilan.absentes++;
-        await admin.from("annonces_plateforme").update({ donnees_index_le: maintenant }).eq("id", l.id);
-        continue;
-      }
+      // Absente de l'index : rien n'est conclu, et rien n'est écrit.
+      if (!h) { bilan.absentes++; continue; }
       const d = normaliserBeebs(h);
-      if (memeContenu(l.donnees_index, d)) {
-        bilan.inchangees++;
-        await admin.from("annonces_plateforme").update({ donnees_index_le: maintenant }).eq("id", l.id);
-        continue;
-      }
+      // Inchangée : AUCUNE écriture (chaque écriture déclenche annonce_vers_fiche).
+      if (memeContenu(l.donnees_index, d)) { bilan.inchangees++; continue; }
+      if (ecritesCompte >= ECRITURES_PAR_COMPTE || Date.now() - debut > BUDGET_MS) { reportees++; continue; }
       const { error: e2 } = await admin.from("annonces_plateforme").update({ donnees_index: d, donnees_index_le: maintenant }).eq("id", l.id);
-      if (!e2) bilan.ecrites++;
+      if (!e2) { bilan.ecrites++; ecritesCompte++; }
     }
+    bilan.reportees += reportees;
+    // Un compte dont une partie attend encore n'est PAS noté lu : il revient
+    // au passage suivant, et ce qui a été écrit ne se réécrit pas (inchangé).
+    if (!reportees) await noterPassage(admin, c.user_id, "beebs", { lues: (lignes ?? []).length, ecrites: ecritesCompte });
   }
   return bilan;
 }
@@ -191,14 +208,8 @@ async function completerEbay(admin: SupabaseClient, env: EbayEnv, debut: number)
   const bilan = { lues: 0, ecrites: 0, introuvables: 0, arret: null as string | null };
   // Les annonces eBay rattachées en ligne qu'aucune lecture n'a encore servies
   // (ou il y a plus de 7 jours) — les plus récentes d'abord.
-  const vieux = new Date(Date.now() - 7 * 86400_000).toISOString();
-  const { data: file, error } = await admin.from("annonces_plateforme")
-    .select("id, listing_id, donnees_index")
-    .eq("platform", "ebay").is("disparu_le", null).not("inventaire_id", "is", null)
-    .or(`donnees_index_le.is.null,donnees_index_le.lt.${vieux}`)
-    .order("donnees_index_le", { ascending: true, nullsFirst: true })
-    .order("listing_id", { ascending: false })
-    .limit(EBAY_ANNONCES_PAR_PASSAGE);
+  // (04/10) Comptes ACTIFS seulement (releve_ebay_details_a_lire).
+  const { data: file, error } = await admin.rpc("releve_ebay_details_a_lire", { p_limite: EBAY_ANNONCES_PAR_PASSAGE });
   if (error) throw new Error(`file eBay : ${error.message}`);
   if (!(file ?? []).length) return bilan;
   const token = await obtenirJetonApplicatif(env);
