@@ -1391,7 +1391,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-04T17:37:20Z'; // 0.6.96 = 0.6.95 + Beebs : la page de l'annonce lue par requête de même origine (toutes les photos, sans naviguer ; repli : page ouverte), fiches à une photo capturées en premier, lecture préalable allégée — 93949ba. Paquet build/CWS-0.6.96-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-04T17:56:39Z'; // 0.6.96 = 0.6.95 + Beebs : la page de l'annonce lue par requête de même origine (toutes les photos, sans naviguer ; repli : page ouverte), fiches à une photo capturées en premier, lecture préalable allégée (93949ba) ; retrait d'un gros compte prouvé sur l'annonce elle-même (17c319a). Paquet build/CWS-0.6.96-A-TELEVERSER.
 // (avant : '2026-10-04T09:19:39Z' = 0.6.95, 7c03a7f, paquet CWS-0.6.95-A-TELEVERSER, JAMAIS téléversé — remplacé par 0.6.96)
 // (avant : '2026-10-03T21:22:49Z' = 0.6.94, 3165ace, paquet CWS-0.6.94-A-TELEVERSER, ENVOYÉE au CWS et servie le 04/10)
 // (avant : '2026-10-03T19:24:17Z' = 0.6.93, c918533, paquet CWS-0.6.93-A-TELEVERSER)
