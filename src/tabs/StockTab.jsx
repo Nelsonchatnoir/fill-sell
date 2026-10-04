@@ -8686,6 +8686,15 @@ const StockTab = memo(function StockTab({
       const vuLe = dateCourte(item.last_synced_at, lang);
       infos.push({ cle: 'masquee', ton: 'regler', texte: `${item.vinted_status === 'hidden' ? (fr ? 'Masquée sur Vinted' : 'Hidden on Vinted') : (fr ? 'Brouillon sur Vinted' : 'Draft on Vinted')}${vuLe ? ` — ${fr ? 'vu le' : 'seen'} ${vuLe}` : ''}` });
     }
+    // Vinted introuvable, mais l'article est en ligne AILLEURS : la pastille dit
+    // « En ligne » (c'est vrai) — l'ancienne carte disait « Plus en ligne · date »
+    // pour Vinted ; l'information reste ici, avec sa phrase d'origine.
+    if (d.disparuDeVinted && d.enLigne) {
+      const le = dateCourte(item.disparu_le, lang);
+      infos.push({ cle: 'disparu-vinted', ton: 'regler',
+        texte: fr ? `Plus en ligne sur Vinted${le ? ` · ${le}` : ''} : l'annonce n'a pas été retrouvée à la dernière synchronisation.` : `Gone from Vinted${le ? ` · ${le}` : ''}: the listing was not found at the last sync.`,
+        titre: fr ? "L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing." : 'This Vinted listing was not found during the last wardrobe sync.' });
+    }
     if (d.enLigne && jours != null) infos.push({ cle: 'age', ton: 'neutre', texte: jours === 0 ? (fr ? "En ligne depuis aujourd'hui" : 'Live since today') : (fr ? `En ligne depuis ${jours} j` : `Live for ${jours} d`) });
     for (const p of d.logosEnLigne) {
       if ((p === "beebs" || p === "leboncoin") && !!d.latestPubByPlatform?.[p] && !d.latestPubByPlatform[p].listing_url) {
