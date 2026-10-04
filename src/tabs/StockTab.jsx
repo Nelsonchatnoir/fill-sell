@@ -70,7 +70,8 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // components/RelevesPlateformes.jsx est SUPPRIMÉ.
 import BandeauDejaVendu from '../annonces/BandeauDejaVendu';
 import QuestionMarque from '../annonces/QuestionMarque';
-import { estQuestionMarqueHorsCatalogue } from '../utils/questionMarque';
+import { estQuestionMarqueHorsCatalogue, marqueDemandee } from '../utils/questionMarque';
+import { marqueComparable, estSansMarque } from '../../supabase/functions/_shared/marque-absente.js';
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
@@ -1516,6 +1517,20 @@ export function NeedsUserModal({ job, lang, onClose, onDone, onAbandonner = null
       // l'orthographe d'une plateforme) vaut pour CETTE copie, jamais pour la
       // fiche — la marque de l'article reste la sienne sur les autres
       // plateformes.
+      // ── LA MARQUE DU CATALOGUE CHOISIE EST RETENUE (04/10, Louis) ─────────
+      // Une marque que Vinted ne connaît pas, remplacée ici par une marque de
+      // son catalogue : le couple est retenu (platform_settings.vinted.
+      // marques_retenues, clé marqueComparable) et get-pending-jobs le pose
+      // sur les publications Vinted SUIVANTES de la personne — la question ne
+      // revient pas. Jamais « Sans marque » ni une absence : une vraie marque
+      // n'est jamais remplacée par une absence. Best-effort.
+      if (!sansValeur && questionMarque && job.platform === "vinted") {
+        const demandee = marqueDemandee(job, f);
+        if (demandee && v && !estSansMarque(v) && !estSansMarque(demandee) && marqueComparable(demandee) !== marqueComparable(v)) {
+          fusionnerReglages(["vinted", "marques_retenues"], { [marqueComparable(demandee)]: v })
+            .then(({ error }) => { if (error) console.warn("[marque] choix non retenu :", error.message); }, () => {});
+        }
+      }
       if (!sansValeur && job.inventaire_id != null && !questionMarque) {
         const attributs = {};
         const maintenant = new Date().toISOString();

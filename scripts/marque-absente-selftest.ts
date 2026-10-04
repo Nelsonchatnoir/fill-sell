@@ -75,5 +75,32 @@ ok(/traduireAbsenceMarqueJob\(j\)/.test(gpj) && gpj.indexOf("traduireAbsenceMarq
 const pub = Deno.readTextFileSync(new URL("../supabase/functions/_shared/ebay-publication.ts", import.meta.url));
 ok(!/MARQUE_GENERIQUE_RE/.test(pub) && /estSansMarque/.test(pub), "ebay-publication : plus de regex non ancrée, la liste fermée");
 
+console.log("5. la marque retenue (point b)");
+const { appliquerMarqueRetenue, marqueComparable } = await import("../supabase/functions/_shared/marque-absente.js");
+const retenues = { [marqueComparable("Kiabi Home")]: "Kiabi", [marqueComparable("Truc")]: "Sans marque" };
+const jr = job("vinted", { marque: "Kiabi Home", vintedAspects: { brand: "KIABI HOME" } });
+const tr = appliquerMarqueRetenue(jr, retenues, new Date("2026-10-04T23:30:00Z"));
+ok(jr.platform_fields.marque === "Kiabi" && (jr.platform_fields.vintedAspects as Record<string, unknown>).brand === "Kiabi" && tr?.vers === "Kiabi",
+  "Vinted : « Kiabi Home » déjà remplacée par « Kiabi » → appliquée (casse et accents ignorés)");
+const jx = job("vinted", { marque: "Truc" });
+ok(appliquerMarqueRetenue(jx, retenues) === null && jx.platform_fields.marque === "Truc", "⛔ jamais vers une absence de marque");
+const jb2 = job("beebs", { marque: "Kiabi Home" });
+ok(appliquerMarqueRetenue(jb2, retenues) === null && jb2.platform_fields.marque === "Kiabi Home", "Beebs : non touché (le choix portait sur le catalogue Vinted)");
+const jn = job("vinted", { marque: "Nike" });
+ok(appliquerMarqueRetenue(jn, retenues) === null && jn.platform_fields.marque === "Nike", "une marque sans remplacement retenu ne bouge pas");
+const stockTab = Deno.readTextFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url));
+ok(/fusionnerReglages\(\["vinted", "marques_retenues"\], \{ \[marqueComparable\(demandee\)\]: v \}\)/.test(stockTab) && /!estSansMarque\(v\)/.test(stockTab),
+  "Stock : la réponse à la question « Marque » est retenue (jamais une absence)");
+ok(/appliquerMarqueRetenue\(j, retenues/.test(gpj), "get-pending-jobs applique les marques retenues");
+
+console.log("6. les suggestions proches (point c)");
+const { suggestionsProches } = await import("../src/utils/questionMarque.js");
+const sugg = suggestionsProches("Kiabi Home", ["U Collection", "Z Kids", "Kiabi", "Kiaby", "Home & Co", "Hema"]);
+ok(!sugg.includes("U Collection") && !sugg.includes("Z Kids") && sugg[0] === "Kiabi" && sugg.includes("Kiaby"), "« U Collection », « Z Kids » écartées ; « Kiabi » d'abord, faute de frappe gardée");
+ok(suggestionsProches("Zodio", ["Z Kids", "U Collection", "Zara Home"]).length === 0, "rien de proche : aucune suggestion (l'écran le dit)");
+ok(suggestionsProches("Lékué", ["Lekue", "Le Creuset"]).join() === "Lekue", "accents ignorés");
+const qm = Deno.readTextFileSync(new URL("../src/annonces/QuestionMarque.jsx", import.meta.url));
+ok(/suggestionsProches\(demandee, relevees\)/.test(qm) && /Aucune marque proche de/.test(qm), "la question n'affiche que les marques proches, et dit quand il n'y en a pas");
+
 console.log(ko ? `\n${ko} échec(s)` : "\nTout est vert.");
 Deno.exit(ko ? 1 : 0);

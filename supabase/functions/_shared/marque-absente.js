@@ -88,3 +88,40 @@ export function traduireAbsenceMarqueJob(job, maintenant = new Date()) {
   };
   return pf.marque_traduite;
 }
+
+/**
+ * VINTED : LA MARQUE DÉJÀ REMPLACÉE PAR LA PERSONNE (04/10, Louis — point b).
+ * Quand elle a remplacé une marque inconnue de Vinted par une marque de son
+ * catalogue (question « Marque », StockTab), le couple est retenu dans
+ * platform_settings.vinted.marques_retenues ({ marqueComparable(demandée):
+ * choisie }). Ses publications Vinted suivantes portant la même marque
+ * reçoivent la marque choisie — la question ne revient pas.
+ * ⛔ Jamais vers une absence de marque ; la fiche n'est pas touchée (la
+ *    marque de l'article reste la sienne sur les autres plateformes).
+ * Modifie `job.platform_fields` en place ; rend la trace ou null.
+ */
+export function appliquerMarqueRetenue(job, retenues, maintenant = new Date()) {
+  if (!job || String(job.platform) !== "vinted") return null;
+  if (!["publish", "republish"].includes(String(job.action ?? "publish"))) return null;
+  if (!retenues || typeof retenues !== "object") return null;
+  const pf = (job.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : null;
+  if (!pf) return null;
+  const champs = [];
+  let de = null;
+  let vers = null;
+  const poser = (obj, cle, nom) => {
+    const v = obj[cle];
+    if (typeof v !== "string" || !v.trim()) return;
+    const r = retenues[marqueComparable(v)];
+    if (typeof r !== "string" || !r.trim() || estSansMarque(r) || marqueComparable(r) === marqueComparable(v)) return;
+    de = de ?? v;
+    vers = r.trim();
+    obj[cle] = vers;
+    champs.push(nom);
+  };
+  poser(pf, "marque", "marque");
+  if (pf.vintedAspects && typeof pf.vintedAspects === "object") poser(pf.vintedAspects, "brand", "vintedAspects.brand");
+  if (!champs.length) return null;
+  pf.marque_retenue = { de, vers, champs, le: maintenant.toISOString(), pose_par: "get-pending-jobs (marques_retenues de la personne)" };
+  return pf.marque_retenue;
+}

@@ -17,7 +17,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
-import { traduireAbsenceMarqueJob, SANS_MARQUE } from "../_shared/marque-absente.js";
+import { traduireAbsenceMarqueJob, appliquerMarqueRetenue, SANS_MARQUE } from "../_shared/marque-absente.js";
 import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
@@ -7810,6 +7810,30 @@ serve(async (req) => {
       if (marquesTraduites) console.log(`[get-pending-jobs] user=${user.id} absence de marque traduite en « ${SANS_MARQUE} » : ${marquesTraduites} job(s)`);
     } catch (e) {
       console.warn(`[get-pending-jobs] traduction de l'absence de marque : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
+    // ══ VINTED : LA MARQUE DÉJÀ REMPLACÉE PAR LA PERSONNE (04/10, Louis) ══
+    // _shared/marque-absente.js (appliquerMarqueRetenue) : une marque inconnue
+    // de Vinted que la personne a déjà remplacée par une marque du catalogue
+    // (platform_settings.vinted.marques_retenues, posé par la question
+    // « Marque ») est remplacée de même. Servi, pas persisté. Best-effort.
+    {
+      const vintedPub = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.platform === "vinted" && ["publish", "republish"].includes(String(j.action ?? "publish")));
+      if (vintedPub.length) {
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const { data: profilM } = await admin.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+          const reglagesM = ((profilM as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
+          const retenues = ((reglagesM.vinted ?? {}) as Record<string, unknown>).marques_retenues;
+          if (retenues && typeof retenues === "object") {
+            let n = 0;
+            for (const j of vintedPub) if (appliquerMarqueRetenue(j, retenues as Record<string, unknown>)) n++;
+            if (n) console.log(`[get-pending-jobs] user=${user.id} marque retenue appliquée : ${n} job(s) Vinted`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] marques retenues : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+        }
+      }
     }
 
     // ══ UN DÉPÔT VINTED SANS COULEUR OU SANS MARQUE NE PART PAS AU REFUS ════
