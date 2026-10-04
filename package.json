@@ -60,6 +60,7 @@
     "selftest:boucle-technique": "node scripts/boucle-technique-selftest.mjs",
     "selftest:beebs-format-colis-explicite": "node scripts/beebs-format-colis-explicite-selftest.mjs",
     "selftest:poids-fiche": "node scripts/poids-fiche-selftest.mjs",
+    "selftest:telephone-ebay-sans-ordinateur": "node scripts/telephone-ebay-sans-ordinateur-selftest.mjs",
     "selftest:retrait-beebs-verification": "node scripts/retrait-beebs-verification-selftest.mjs",
     "selftest:ebay-hub-rendu": "node scripts/ebay-hub-rendu-selftest.mjs",
     "selftest:ebay-categorie-message": "node scripts/ebay-categorie-message-selftest.mjs",

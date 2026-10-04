@@ -10051,6 +10051,7 @@ export default function ListingPreviewScreen({
           supabase={supabase}
           userId={userId}
           onExtensionSeen={() => { setExtSeenOverride(true); setShowExtGate(false); }}
+          ebaySansOrdinateur={{ relie: ebayVoieApiReelle, onRelier: () => { setShowExtGate(false); setEbayPanneauOuvert(true); } }}
         />
       )}
 

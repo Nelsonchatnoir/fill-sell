@@ -31,7 +31,7 @@
 // que « m'envoyer le lien » doit se comporter — d'où le hook partagé.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Puzzle, ExternalLink, Mail, Copy, Check, RefreshCw, Send } from 'lucide-react';
+import { Puzzle, ExternalLink, Mail, Copy, Check, RefreshCw, Send, Link2 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
@@ -64,6 +64,12 @@ export default function ExtensionPitchScreen({
   // Ouverte APRÈS un échec d'envoi (« Récupérer le lien autrement ») : on ne
   // repropose pas le bouton qui vient de tomber, seulement les recours.
   recoursSeulement = false,
+  // (04/10, point 6 — inscrits sur téléphone) eBay part SANS ordinateur, par
+  // la connexion officielle (OAuth, aucun mot de passe donné à FillSell).
+  // { relie: bool, onRelier: fn } : relié → on dit de garder eBay seul ;
+  // pas relié → le bouton ouvre « Réglages › Compte eBay ». Rien d'autre
+  // n'est promis. null = section absente (les six autres hôtes).
+  ebaySansOrdinateur = null,
 }) {
   const fr = lang !== 'en';
   const isMobile = useIsMobile();
@@ -283,6 +289,27 @@ export default function ExtensionPitchScreen({
             </p>
           )}
 
+          {/* ── SANS ORDINATEUR, TOUT DE SUITE : eBAY (04/10) ───────────────── */}
+          {ebaySansOrdinateur && !onComputer && (
+            <div style={{ margin: '4px 0 12px', padding: '12px 14px', borderRadius: 14, background: C.paper, border: `1px solid ${C.border}` }}>
+              <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 800, color: C.ink }}>
+                {fr ? "Sans ordinateur, dès maintenant : eBay" : "No computer needed, right now: eBay"}
+              </p>
+              <p style={{ margin: '0 0 10px', fontSize: 12.5, color: C.mute, lineHeight: 1.5 }}>
+                {ebaySansOrdinateur.relie
+                  ? (fr ? "Ton compte eBay est relié à FillSell : garde seulement eBay dans les plateformes, et ton annonce part depuis ton téléphone. Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur."
+                        : "Your eBay account is linked to FillSell: keep only eBay among the platforms and your listing goes out from your phone. Vinted, Leboncoin and Beebs need the extension on a computer.")
+                  : (fr ? "Relie ton compte eBay par la connexion officielle d'eBay (tu ne donnes aucun mot de passe à FillSell) : tes annonces eBay pourront partir depuis ton téléphone. Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur."
+                        : "Link your eBay account through eBay's official sign-in (you never give FillSell a password): your eBay listings can go out from your phone. Vinted, Leboncoin and Beebs need the extension on a computer.")}
+              </p>
+              {!ebaySansOrdinateur.relie && (
+                <button onClick={ebaySansOrdinateur.onRelier} style={{ ...btnBase, background: C.paper, border: `1px solid ${C.border}`, color: C.ink }}>
+                  <Link2 size={15} strokeWidth={2.4} />
+                  {fr ? "Relier mon compte eBay" : "Link my eBay account"}
+                </button>
+              )}
+            </div>
+          )}
           {onContinue && (
             <button
               onClick={onContinue}
