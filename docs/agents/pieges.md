@@ -65,6 +65,23 @@ Claude sont dans `C:\Users\nicol\.claude\projects\C--Users-nicol-fill-and-sell\m
   `String.replace` + `$'` a corrompu une migration générée.
 
 ## Données et base
+- **Base saturée = écran de chargement pour tous** (04/10, 12:22 et 17:40,
+  CPU 99 %) : l'app attend fetchAll, le splash (logo + rond) ne part jamais.
+  Ce n'est NI un écran blanc NI le code : mesurer d'abord. CPU : métriques de
+  l'instance `GET <projet>/customer/v1/privileged/metrics` (Basic
+  `service_role:<clé de service>`, `node_cpu_seconds_total`, rafraîchies à la
+  minute : deux relevés à 60 s d'écart), table `veille_cpu` (toutes les
+  2 min) ; requêtes : `pg_stat_statements` par `total_exec_time` ; latence :
+  `edge_logs` (`response.origin_time`). Leviers immédiats : pause des crons
+  lourds (`cron.alter_job(id, active := false)`), compute. Causes du 04/10 :
+  crons 27/28 pour tous les comptes, chaque annonce réécrite même inchangée
+  (`annonce_vers_fiche` à chaque UPDATE) ; écrans en `setInterval` (jobs du
+  Stock complets toutes les 20 s, 7 requêtes/30 s), onglet caché compris ;
+  `planifier_premiers_releves` à chaque sonde d'extension. Règle :
+  `CLAUDE.md` « tâche automatique … mesurée, bornée ».
+- **`set local` hors transaction ne fait rien** (`db query -f`) : une requête
+  de mesure lourde tourne jusqu'à la limite du rôle. Pendant une saturation,
+  AUCUNE requête d'agrégat sur les grosses tables.
 - **`updated_at` n'existe pas sur `cross_post_jobs`** : l'ajouter à un
   `.select()` a vidé toutes les cartes du Stock de tous les comptes (05/08,
   build vert). Un select PostgREST est tout-ou-rien.

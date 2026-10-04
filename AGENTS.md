@@ -1,35 +1,32 @@
-## État de production au 04/10 (fin de matinée) — lire avant toute action
+## État de production au 04/10 (soir) — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; section « 04/10
-matin — complément » en fin) et `docs/agents/consignes-2026-09-28.md`
-(règles) remplacent tout historique contraire. `functions list`, `cron.job`
-et `profiles.extension_build` font foi.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections du 04/10
+en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
+historique contraire. `functions list`, `cron.job` et
+`profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.94** ; **0.6.95 à téléverser**
-  (`build/CWS-0.6.95-A-TELEVERSER/`) ; minimum serveur **0.6.81** ; web :
-  refonte du Stock (**35e71b0**, push du 04/10 à faire) ; OTA **2.9.48** ;
-  gpj v211, ujs v127, handler-watch v80, ebay-releve-api v3, releve-completer v1.
-- **Fiches (04/10)** : champs vides complétés depuis l'annonce (journal) ;
-  prix/poids suivis si alignés, jamais propagés ; pas de poids Leboncoin estimé.
-- **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
-  `/main/banned` (reprise 1 h/3 h/6 h) ; Vinted introuvable aux deux derniers
-  relevés complets → clos « déjà retirée » ; annonce « en vérification » =
-  achetable (essai toutes les 20 min). **Boucles** : 3ᵉ onglet muet / 4ᵉ canal
-  coupé → needs_user « relancer » (`boucle_technique`, ops-digest).
-- **Cadence** : Premium 50/jour ; `coin_config` journalisé (`coin_config_journal`).
-- **Relevés** : 5 min sans progression = arrêt ; veilleur espacé (1 h, 3 h, 6 h).
+  (`build/CWS-0.6.95-A-TELEVERSER/`) ; minimum serveur **0.6.81** ; web
+  **dfade61** ; OTA **2.9.50** ; gpj v211, ujs v127, handler-watch v80,
+  ops-digest v30, ebay-releve-api v4, releve-completer v2, veille-cpu v1.
+- **⛔ Incident CPU 99 % (04/10)** : app et web bloqués pour tous. Crons **27**
+  et **28** EN PAUSE (relance = feu vert de Nico) ; règle : interdit 11.
+- **Fiches** : champs vides complétés depuis l'annonce (journal) ; prix/poids
+  suivis si alignés, jamais propagés ; pas de poids Leboncoin estimé.
+- **Retraits** : jamais arrêtés sur un raté technique ni sur `/main/banned`
+  (1 h/3 h/6 h) ; Vinted absent de deux relevés complets → « déjà retirée » ;
+  « en vérification » = achetable. **Boucles** : → needs_user « relancer ».
+- **Cadence** : Premium 50/jour ; `coin_config` journalisé.
+- **Relevés** : 5 min sans progression = arrêt ; veilleur 1 h, 3 h, 6 h.
 - **Marque/republication** : Vinted sans marque libre → question ; annonce
-  relue avant retrait, taille affichée > copie ; annonce de test ≥ 999 €.
-- **Selftests** : 151 (package.json) + 37 non câblés, 0 rouge ; morceaux mis
-  de côté : `scripts/lib/morceaux-mis-de-cote.mjs`.
-- **Sortie d'Opla** : BASCULE LE 10/10 à 00:00 Paris (`opla_sortie_le`, 0 =
-  désactivée) ; après, plus de publication ni republication Opla, synchro
-  gardée (`_shared/opla-sortie.js`).
+  relue avant retrait ; annonce de test ≥ 999 €.
+- **Selftests** : `package.json` + non câblés, 0 rouge ;
+  `scripts/lib/morceaux-mis-de-cote.mjs`.
+- **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`, `_shared/opla-sortie.js`).
 - **⛔ `platform_settings`** : toujours `rpc platform_settings_fusionner`.
-- **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée dans la saisie.
-- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
-- **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`),
-  sauvegarde avant, inverse prêt. **Lot** : `docs/publication-en-lot.md`.
+- **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée.
+- **Crons coupés** : 17, 22 ; en pause : 27, 28. **Migrations** : § 3.4.
+  **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB `build/AAB-A-TELEVERSER-2.9.38-vc32/`,
   iOS par Codemagic) ; le reste : fin de l'état.
 
@@ -51,7 +48,7 @@ utilisateur). Nico = le fondateur, seul décideur.
 
 ---
 
-## 0. Les dix interdits (à lire même si tu ne lis rien d'autre)
+## 0. Les onze interdits (à lire même si tu ne lis rien d'autre)
 
 1. **Jamais `supabase db push`**, ni `db reset`, ni `db remote commit` (§ 3.4).
 2. **Jamais de migration de données, de trigger ou d'index sans GO nommé de
@@ -72,6 +69,11 @@ utilisateur). Nico = le fondateur, seul décideur.
 10. **Jamais se connecter à fillsell.app (ni à une plateforme) dans un
     navigateur automatisé** qui partage le profil de Nico : ça tue sa session
     et celle de son extension (`docs/agents/pieges.md`, « Navigateur et sessions »).
+11. **Jamais une tâche automatique ni une relecture en boucle non mesurée** :
+    CPU mesuré avant la prod, comptes actifs seulement (`comptes_actifs(7)`),
+    lots bornés, aucune ligne inchangée réécrite ; côté client
+    `src/utils/relectureBornee.js`, jamais de `setInterval` qui relit la base
+    (incident CPU 99 % du 04/10 ; `CLAUDE.md`, `docs/agents/pieges.md`).
 
 ---
 

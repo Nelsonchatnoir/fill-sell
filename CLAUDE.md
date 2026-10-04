@@ -1,8 +1,9 @@
-## État de production au 04/10 (fin de matinée) — lire avant toute action
+## État de production au 04/10 (soir) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
-complément » et « 04/10 fin de matinée — chantier Louis » en fin) et
+complément », « 04/10 fin de matinée — chantier Louis » et « 04/10 soir —
+incident CPU » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
@@ -11,14 +12,19 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `2026-10-03T21:23:06Z+2a088e4`, 29 comptes) ; **0.6.95 à téléverser**
   (`build/CWS-0.6.95-A-TELEVERSER/`, `2026-10-04T09:23:39Z+d408890`, non
   prouvée en réel) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ =
-  décision de Nico) ; web : refonte du Stock (**35e71b0**) — ⚠️ `main` local
-  en avance, push à faire par Nico ; OTA **2.9.48** ; `get-pending-jobs` v211,
+  décision de Nico) ; web **dfade61** (relectures bornées) ; OTA **2.9.50** ;
+  `get-pending-jobs` v211,
   `lens-analysis` v105, `avis-demande` v3, `ebay-account` v16,
   `send-extension-link` v12 (`true`) ; `update-job-status` v127,
-  `handler-watch` v80, `ops-digest` v29, `ebay-api-worker` v76,
-  `ebay-releve-api` v3, `releve-completer` v1, `ebay-ventes-sync` v5,
+  `handler-watch` v80, `ops-digest` v30, `ebay-api-worker` v76,
+  `ebay-releve-api` v4, `releve-completer` v2, `veille-cpu` v1, `ebay-ventes-sync` v5,
   `ebay-oauth-callback` v9, `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
+- **⛔ Incident CPU 99 % (04/10, 12:22 et 17:40)** : app et web bloqués sur
+  le chargement pour tous. Compute Micro → Small (Nico). Crons **27**
+  `ebay-releve-api` et **28** `releve-completer` EN PAUSE (relance = feu
+  vert de Nico, un à la fois) ; règle « tâche automatique mesurée, bornée »
+  plus bas ; alerte `veille-cpu` (cron 29).
 - **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
   `/main/banned` (reprise 1 h, 3 h, 6 h jusqu'à la preuve) ; un retrait Vinted
   dont le numéro manque aux deux derniers relevés complets de sa boutique est
@@ -68,7 +74,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;
   la même cession se FUSIONNE dans la vente saisie (la saisie prime), jamais
   deux ventes, jamais sur le titre (migration 20261002210000).
-- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`.
+- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min` ;
+  en pause depuis le 04/10 : 27 `ebay-releve-api-5min`, 28 `releve-completer-10min`.
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`
@@ -174,6 +181,35 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   plus rend la place aux autres relevés et aux jobs ; un relevé lent qui
   AVANCE n'est jamais coupé ; un arrêt ne conclut JAMAIS rien (ni vendu, ni
   disparu, ni effacé) et laisse sa raison dans les journaux, jamais à l'écran.
+
+## ⛔ TÂCHE AUTOMATIQUE OU RELECTURE EN BOUCLE : MESURÉE, BORNÉE (04/10)
+
+Le 04/10, la base a saturé deux fois (12:22 et 17:40, CPU 99 %) : app et web
+bloqués sur l'écran de chargement pour TOUT LE MONDE. Causes : deux crons
+ajoutés le matin (27 `ebay-releve-api`, 28 `releve-completer`) qui
+travaillaient pour tous les comptes et réécrivaient chaque annonce, même
+inchangée (chaque écriture déclenche `annonce_vers_fiche`) ; et des écrans qui
+relisaient la base à cadence fixe, onglet caché compris, sans ralentir quand
+elle peinait (tout l'historique des jobs toutes les 20 s, 7 requêtes toutes
+les 30 s).
+
+Toute nouvelle tâche automatique (cron, trigger, boucle de fonction edge) ou
+relecture côté client (app, extension) :
+- est **mesurée en CPU AVANT la mise en prod** : un passage manuel, le CPU lu
+  avant et pendant (métriques `/customer/v1/privileged/metrics` ou table
+  `veille_cpu`) et `pg_stat_statements` ; le chiffre va dans le rapport ;
+- ne vise que les **comptes actifs** : `comptes_actifs(7)` (extension ou
+  session de l'app vues dans les 7 jours) ;
+- travaille par **lots bornés** (comptes, écritures, durée par passage) et
+  **n'écrit jamais une ligne inchangée** ;
+- côté client, passe par `src/utils/relectureBornee.js` : onglet visible
+  seulement, une lecture à la fois, attente doublée sur erreur ou lenteur.
+  **Jamais de `setInterval` qui relit la base, jamais de relecture en
+  boucle.**
+
+Alerte : `veille-cpu` (cron `veille-cpu-2min`) prévient support@fillsell.app
+au-delà de 70 % pendant 10 min, au plus une fois par heure, puis au retour
+sous 50 %. L'ops-digest affiche le maximum des 24 h.
 
 ## Format des réponses
 
