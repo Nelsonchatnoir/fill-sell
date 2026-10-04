@@ -63,9 +63,11 @@ export default function HoteCloud({ userId, lang = 'fr', onOuvrirOffres, actions
     );
   }
 
-  // 3. L'après.
+  // 3. L'après. Pas pour un essai que la personne a ARRÊTÉ elle-même (04/10
+  // soir : effet immédiat) — elle vient de lire, dans la confirmation, ce qui
+  // change ; lui remontrer une feuille au lancement suivant serait du bruit.
   const cleFin = `fs_cloud_fin_${userId}_${cleEssai}`;
-  if (cloud.etat === 'essai_termine' && ferme !== cleFin && !dejaVu(cleFin)) {
+  if (cloud.etat === 'essai_termine' && !cloud.essaiArrete && ferme !== cleFin && !dejaVu(cleFin)) {
     return (
       <EcranEssaiTermine
         lang={lang} nomPalier={nomPalier} actions={actions}
