@@ -28,6 +28,12 @@ export function tacheAMettreDeCote(job, reservation, maintenant = Date.now()) {
   if (String(job.status ?? "pending") !== "pending") return false;
   const pf = job.platform_fields && typeof job.platform_fields === "object" ? job.platform_fields : {};
   if (job.action === "republish" && String(pf.republish_step ?? "") === "deleted") return false;
+  // (04/10, jennifer.cot 9923ee78) Une tâche en ATTENTE PROGRAMMÉE
+  // (next_action_after futur) n'est pas « jamais démarrée » : l'extension la
+  // saute exprès. La compter la mettait de côté toutes les 2 h (61 services),
+  // puis le balayage « canal coupé » la remettait en file : un ping-pong.
+  const naa = Date.parse(String(pf.next_action_after ?? ""));
+  if (Number.isFinite(naa) && naa > maintenant) return false;
   const n = Number(reservation.servi_n);
   const depuis = Date.parse(String(reservation.premier_service ?? ""));
   if (!Number.isFinite(n) || n < SERVI_SANS_DEMARRER_MAX) return false;

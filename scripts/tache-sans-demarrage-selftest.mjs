@@ -29,6 +29,11 @@ ok(!M.tacheAMettreDeCote({ ...coque, platform_fields: { republish_step: "deleted
   "JAMAIS une republication déjà retirée : l'annonce est hors ligne, on insiste");
 ok(!M.tacheAMettreDeCote({ ...guitare, status: "processing" }, resa(50, 9 * H), now), "une tâche en cours n'est pas concernée");
 ok(!M.tacheAMettreDeCote(guitare, null, now), "sans réservation lue : rien");
+// (04/10, jennifer.cot 9923ee78) l'extension saute exprès une tâche en attente programmée.
+ok(!M.tacheAMettreDeCote({ ...coque, platform_fields: { republish_step: "captured", next_action_after: new Date(now + 3 * H).toISOString() } }, resa(61, 9 * H), now),
+  "attente programmée (next_action_after futur) : jamais « sans démarrage »");
+ok(M.tacheAMettreDeCote({ ...coque, platform_fields: { republish_step: "captured", next_action_after: new Date(now - H).toISOString() } }, resa(61, 9 * H), now),
+  "attente échue : la règle s'applique de nouveau");
 
 console.log("\n2. LE TEXTE : ce qui se passe, et le geste — jamais « job »");
 const t1 = M.messageTacheSansDemarrage(guitare, resa(15, 30 * 24 * H));
