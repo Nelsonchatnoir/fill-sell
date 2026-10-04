@@ -171,11 +171,50 @@ function antirobotContreditParLaSonde(pf, sessions, platform) {
   return Number.isFinite(vu) && vu > depuis && Date.now() - vu < 3_600_000;
 }
 
+// ══ UN RETRAIT N'EST JAMAIS ARRÊTÉ SUR UN RATÉ TECHNIQUE (04/10, Nico) ═════
+// recrutementgroupezk704 (a7dd76cd, Levi's 511) : cinq essais du retrait en
+// une soirée, puis « Tu peux la relancer d'un clic » — et l'annonce, vendue
+// ailleurs, restait achetable. Règle : un RETRAIT dont l'essai a raté pour une
+// raison technique (motif inconnu, attente trop longue) n'attend jamais un
+// clic : il repart tout seul, espacé (10 min, 30 min, 1 h, 2 h, puis toutes
+// les 3 h), jusqu'à ce qu'il soit fait. Le message dit la vérité : pas encore
+// retirée, donc encore en vente. Jamais « deleted » sans la preuve
+// (update-job-status), jamais une reprise sur un geste réel (connexion,
+// autorisation Opla, refus de Vinted pour CETTE annonce) : ceux-là gardent
+// leur bouton.
+const MOTIFS_TECHNIQUES_RETRAIT = new Set(["inconnu_relancer", "attente_trop_longue"]);
+const DELAIS_RETRAIT_MIN = [10, 30, 60, 120, 180];
+
+export function delaiRepriseRetrait(reprisesFaites) {
+  const n = Math.max(0, Number(reprisesFaites) || 0);
+  return DELAIS_RETRAIT_MIN[Math.min(n, DELAIS_RETRAIT_MIN.length - 1)];
+}
+
+function retraitJamaisArrete(arg, sortie) {
+  if (arg?.action !== "delete" || !sortie || sortie.statut !== "needs_user") return sortie;
+  if (!MOTIFS_TECHNIQUES_RETRAIT.has(sortie.motif)) return sortie;
+  const nom = NOM[arg.platform] ?? arg.platform;
+  return {
+    verdict: "reprise", statut: "pending", motif: `retrait_${sortie.motif}`,
+    dansMinutes: delaiRepriseRetrait(arg.reprises),
+    message:
+      "Le retrait n'est pas encore fait : l'essai n'a pas abouti de notre côté, et rien n'a été touché. " +
+      "FillSell réessaie tout seul, et continuera jusqu'à ce que l'annonce soit retirée. " +
+      `Tant que ce n'est pas fait, elle reste en vente sur ${nom} : si tu veux être sûr d'éviter une double vente, ` +
+      `retire-la toi-même depuis l'appli ${nom}.`,
+  };
+}
+
 /**
  * Classe un échec. Rend TOUJOURS une sortie : il n'existe pas de quatrième
  * issue. `essais` est le nombre de tentatives déjà consommées sur ce job.
+ * (04/10) Un retrait n'est jamais arrêté sur un raté technique (ci-dessus).
  */
 export function classerEchec(arg) {
+  return retraitJamaisArrete(arg, classerEchecSansRegleRetrait(arg));
+}
+
+function classerEchecSansRegleRetrait(arg) {
   const { platform, action } = arg;
   const nom = NOM[platform] ?? platform;
   const essais = Number(arg.essais ?? 0) || 0;

@@ -37,7 +37,7 @@ import { delaiAttenteSessionMin } from "../_shared/attente-session.js";
 // Une republication retirée ne s'arrête jamais avant sa recréation (25/09) —
 // module JS sans import, le même qu'exécute scripts/republication-hors-ligne-selftest.mjs.
 import { decisionRecreationHorsLigne } from "../_shared/republication-hors-ligne.js";
-import { pageCompteVintedBloque, messageCompteVintedBloque, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
+import { pageCompteVintedBloque, messageCompteVintedBloque, retraitCompteBloqueEnReprise, SOURCE_COMPTE_VINTED_BLOQUE } from "../_shared/vinted-compte-bloque.js";
 import { BUILD_COLIS_DEMANDE } from "../_shared/vinted-colis.js";
 import { verdictClotureRetraitBeebs, MESSAGE_RETRAIT_BEEBS_EN_VERIFICATION } from "../_shared/beebs-preuve-retrait.js";
 import {
@@ -1257,7 +1257,20 @@ serve(async (req) => {
         if ((pfBodyB && pageCompteVintedBloque(pfBodyB)) || /^COMPTE VINTED BLOQUÉ/.test(brutB)) {
           const { data: jB } = await userClient.from("cross_post_jobs")
             .select("action, platform, title, platform_fields").eq("id", jobId).maybeSingle();
-          if (jB?.platform === "vinted") {
+          if (jB?.platform === "vinted" && jB.action === "delete") {
+            // (04/10, Nico) UN RETRAIT N'EST JAMAIS ARRÊTÉ PAR CE MUR : reprise
+            // espacée (1 h, 3 h, puis 6 h), motif vrai à l'écran, jusqu'à ce
+            // qu'il soit fait — l'annonce redeviendrait achetable si Vinted
+            // levait le blocage. Jamais clos sans preuve.
+            const pfBaseB = (jB.platform_fields ?? {}) as Record<string, unknown>;
+            const pfDepart = { ...pfBaseB, ...(pfBodyB ?? {}) };
+            const r = retraitCompteBloqueEnReprise({ title: jB.title as string | null, error: null, platform_fields: pfDepart },
+              new Date().toISOString(), "update-job-status (fin de l'essai sur /main/banned)", brutB || null);
+            pfCompteVintedBloque = r.platform_fields as Record<string, unknown>;
+            statutEffectif = "pending";
+            messageEffectif = r.error;
+            raisonRequalif = "Vinted : retrait sur la page « compte bloqué » (/main/banned) → reprise espacée, motif vrai, jamais arrêté";
+          } else if (jB?.platform === "vinted") {
             const pfBaseB = (jB.platform_fields ?? {}) as Record<string, unknown>;
             const { next_action_after: _naoB, ...pfSansB } = (pfBodyB ?? pfBaseB);
             pfCompteVintedBloque = {
