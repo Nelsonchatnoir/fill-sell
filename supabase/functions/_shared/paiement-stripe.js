@@ -45,9 +45,6 @@ export function trierSessionsOuvertes(sessions, demande, maintenantS = Math.floo
   const memeDemande = (s) =>
     s.metadata?.plan_type === demande.planType
     && (s.metadata?.fillsell_carte_3ds === "1") === Boolean(demande.carte3ds)
-    // (04/10) « palier + Cloud » et « palier seul » sont deux demandes : l'une
-    // porte deux articles et l'essai, l'autre non.
-    && (s.metadata?.avec_cloud === "1") === Boolean(demande.avecCloud)
     && String(s.metadata?.code_promo ?? "") === String(demande.codePromo ?? "")
     && Boolean(s.url)
     && (s.expires_at ?? 0) > maintenantS + PLUS_TARD_S;

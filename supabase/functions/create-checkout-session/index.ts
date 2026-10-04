@@ -2,33 +2,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { choisirClientExistant, trierSessionsOuvertes, abonnementRemplacable, causeEchec } from "../_shared/paiement-stripe.js";
-import { itemPalier, itemCloud, essaiCloudPermis, parametresCheckoutAvecCloud, ESSAI_CLOUD_JOURS } from "../_shared/cloud-option.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
 });
-
-// ── L'OPTION « FILLSELL CLOUD » (04/10/2026) ─────────────────────────────────
-// 20 €/mois, prise EN PLUS d'un palier payant, jamais seule. Chez Stripe c'est
-// un SECOND ARTICLE de l'abonnement du palier (secret STRIPE_PRICE_CLOUD) :
-//  · `product: "standard"|"pro"|"business"` + `avec_cloud: true` → UN Checkout,
-//    deux lignes, carte obligatoire, ESSAI DE 3 JOURS à 0 € si ce compte n'en a
-//    jamais pris (quotas du gratuit pendant l'essai, cf. stripe-webhook), puis
-//    débit palier + option ;
-//  · `product: "cloud"` → l'option ajoutée à un abonnement de palier VIVANT,
-//    payée tout de suite au prorata (pending_if_incomplete comme une montée de
-//    palier : si la banque veut une validation, la page Stripe est renvoyée) ;
-//    sans palier vivant → `cloud_requiert_palier`, rien n'est créé.
-// Les règles pures sont dans _shared/cloud-option.js.
-function prixConnus() {
-  return {
-    standard: Deno.env.get("STRIPE_PRICE_STANDARD") ?? "",
-    pro: Deno.env.get("STRIPE_PRICE_PRO") ?? "",
-    business: Deno.env.get("STRIPE_PRICE_BUSINESS") ?? "",
-    cloud: Deno.env.get("STRIPE_PRICE_CLOUD") ?? "",
-  };
-}
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -309,9 +287,7 @@ serve(async (req) => {
     // carte_3ds (01/10) : « Payer par carte » après un refus — la session
     // demande le 3D Secure sur la carte tapée. lang : la phrase de la page de
     // paiement. action "diagnostic" + session_id : le retour de /cancel.
-    // avec_cloud (04/10) : « palier + Cloud » en un seul Checkout (essai 3 j) ;
-    // product "cloud" : l'option ajoutée à un abonnement de palier existant.
-    const { email, product, promo, carte_3ds, lang, action, session_id, avec_cloud } = await req.json();
+    const { email, product, promo, carte_3ds, lang, action, session_id } = await req.json();
     produitDemande = typeof product === "string" ? product : null;
     if (action === "diagnostic") return await diagnostiquerSession(session_id, authUser, CORS);
 
@@ -370,88 +346,6 @@ serve(async (req) => {
       });
     }
 
-    // ── L'OPTION CLOUD AJOUTÉE À UN ABONNEMENT DE PALIER EXISTANT (04/10) ──
-    // Jamais seule : sans abonnement de palier VIVANT chez Stripe, rien n'est
-    // créé (cloud_requiert_palier). L'option devient un second article du
-    // MÊME abonnement (même facture, même date, tombe avec le palier), facturé
-    // tout de suite au prorata. Pas d'essai ici : l'essai de 3 jours est celui
-    // du parcours « palier + Cloud » d'un compte qui n'a pas encore de palier.
-    if (product === "cloud") {
-      const prix = prixConnus();
-      const cloudPriceId = await activePriceOrNull(prix.cloud || undefined, "STRIPE_PRICE_CLOUD");
-      if (!cloudPriceId) {
-        return new Response(JSON.stringify({ error: "payment_unavailable", option: "cloud" }), {
-          status: 503, headers: { "Content-Type": "application/json", ...CORS },
-        });
-      }
-      const { data: profilCloud } = await supabase
-        .from("profiles").select("stripe_customer_id, cloud_canal, is_cloud").eq("id", authUser.id).single();
-      if (profilCloud?.is_cloud === true) {
-        return new Response(JSON.stringify({ already_cloud: true, canal: profilCloud.cloud_canal ?? null }), {
-          headers: { "Content-Type": "application/json", ...CORS },
-        });
-      }
-      const clientCloud = await resoudreClient(profilCloud?.stripe_customer_id ?? null, authUser.id, verifiedEmail ?? null);
-      const { data: subsCloud } = await stripe.subscriptions.list({ customer: clientCloud, limit: 20 });
-      const porteur = (subsCloud ?? []).find((s: Stripe.Subscription) =>
-        (s.status === "active" || s.status === "past_due") && !!itemPalier(s, prix));
-      if (!porteur) {
-        console.log(`[checkout] option Cloud refusée à ${authUser.id} : aucun abonnement de palier vivant chez Stripe`);
-        return new Response(JSON.stringify({
-          error: "cloud_requiert_palier",
-          message_fr: "L’option Cloud se prend avec un palier Premium, Pro ou Business. Choisis d’abord ton palier.",
-          message_en: "The Cloud option comes with a Premium, Pro or Business plan. Pick your plan first.",
-        }), { status: 409, headers: { "Content-Type": "application/json", ...CORS } });
-      }
-      if (itemCloud(porteur, prix)) {
-        return new Response(JSON.stringify({ already_cloud: true, canal: "stripe" }), {
-          headers: { "Content-Type": "application/json", ...CORS },
-        });
-      }
-      // Même geste que la montée de palier : payé d'abord, appliqué ensuite.
-      const avecOption = await stripe.subscriptions.update(porteur.id, {
-        items: [{ price: cloudPriceId, quantity: 1, metadata: { option: "cloud" } }],
-        proration_behavior: "always_invoice",
-        payment_behavior: "pending_if_incomplete",
-        expand: ["latest_invoice"],
-      });
-      const factureOption = (avecOption.latest_invoice && typeof avecOption.latest_invoice === "object")
-        ? avecOption.latest_invoice as Stripe.Invoice : null;
-      if (avecOption.pending_update) {
-        if (factureOption?.id) {
-          try {
-            await stripe.invoices.update(factureOption.id, {
-              auto_advance: false,
-              metadata: { fillsell_upgrade_vers: "cloud", fillsell_user_id: authUser.id },
-            });
-          } catch (e) {
-            const se = e as { code?: string; message?: string };
-            console.error(`[checkout] facture d'option Cloud ${factureOption.id} : auto_advance/metadata non posés — code=${se?.code ?? "?"} message=${se?.message ?? e}`);
-          }
-        }
-        const page = factureOption?.hosted_invoice_url ?? null;
-        console.log(`[checkout] option Cloud sur ${porteur.id} EN ATTENTE du paiement client (facture ${factureOption?.id ?? "?"}, ${factureOption?.amount_due ?? "?"} ${factureOption?.currency ?? ""})`);
-        if (!page) return reponseErreurPaiement(CORS);
-        return new Response(JSON.stringify({ url: page, paiement_a_valider: true, option: "cloud" }), {
-          headers: { "Content-Type": "application/json", ...CORS },
-        });
-      }
-      // Payé sur-le-champ : l'option est posée (stripe-webhook, sur invoice.paid,
-      // reposera la même chose — les deux chemins sont idempotents).
-      await supabase.from("profiles").update({
-        is_cloud: true,
-        cloud_canal: "stripe",
-        cloud_ref: porteur.id,
-        cloud_fin_periode: avecOption.current_period_end ? new Date(avecOption.current_period_end * 1000).toISOString() : null,
-        cloud_annule_fin_periode: false,
-        stripe_customer_id: clientCloud,
-      }).eq("id", authUser.id);
-      console.log(`[checkout] option Cloud ajoutée à ${porteur.id} pour ${authUser.id} (payée tout de suite)`);
-      return new Response(JSON.stringify({ cloud: true, canal: "stripe" }), {
-        headers: { "Content-Type": "application/json", ...CORS },
-      });
-    }
-
     // ── Abonnements : standard 12,99 €, Pro 29,99 € ou Business 59,99 € ──
     // Plus AUCUN essai gratuit (2026-07-22) : l'essai 7 jours Premium est
     // supprimé (il ne restait posé qu'ici, jamais sur le Price Stripe). Pro
@@ -472,24 +366,12 @@ serve(async (req) => {
       });
     }
     const planType = plan.planType;
-    // « Palier + Cloud » (04/10) : le prix de l'option doit être actif lui aussi.
-    const avecCloud = avec_cloud === true;
-    let cloudPriceId: string | null = null;
-    if (avecCloud) {
-      cloudPriceId = await activePriceOrNull(Deno.env.get("STRIPE_PRICE_CLOUD"), "STRIPE_PRICE_CLOUD");
-      if (!cloudPriceId) {
-        return new Response(JSON.stringify({ error: "payment_unavailable", option: "cloud" }), {
-          status: 503, headers: { "Content-Type": "application/json", ...CORS },
-        });
-      }
-    }
 
     // Réutilise le customer Stripe existant (historique de facturation unifié —
     // et à l'époque de l'essai 7 jours, c'était aussi la garde anti-2ème trial).
-    // cloud_essai_debut / is_cloud (04/10) : la garde « un seul essai Cloud ».
     const { data: profile } = await supabase
       .from("profiles")
-      .select("stripe_customer_id, cloud_essai_debut, is_cloud")
+      .select("stripe_customer_id")
       .eq("email", verifiedEmail)
       .single();
     // Validation live AVANT usage : un ID de test ferait aussi échouer
@@ -519,25 +401,6 @@ serve(async (req) => {
     // un Pro qui achète Business — Business n'aurait JAMAIS pu se vendre par
     // le web. On compare donc des rangs : on ne bascule que vers le HAUT, et
     // « déjà au moins ce palier » sort proprement sans rien facturer.
-    // ── « Palier + Cloud » chez quelqu'un qui a DÉJÀ un palier (04/10) ──────
-    // Ce Checkout créerait un second abonnement (double facturation) : on
-    // refuse proprement. L'app enchaîne alors montée de palier (ci-dessous) et
-    // ajout de l'option (product "cloud"), chacune sur l'abonnement existant.
-    if (avecCloud && existingCustomerId) {
-      const { data: dejaSubs } = await stripe.subscriptions.list({ customer: existingCustomerId, limit: 20 });
-      const dejaPalier = (dejaSubs ?? []).find((s: Stripe.Subscription) =>
-        (s.status === "active" || s.status === "trialing" || s.status === "past_due") && !!itemPalier(s, prixConnus()));
-      if (dejaPalier) {
-        console.log(`[checkout] palier + Cloud refusé à ${authUser.id} : abonnement ${dejaPalier.id} déjà vivant — passer par la montée et product "cloud"`);
-        return new Response(JSON.stringify({
-          error: "deja_abonne",
-          tier: planType,
-          message_fr: "Tu as déjà un palier : ajoute l’option Cloud à ton abonnement actuel.",
-          message_en: "You already have a plan: add the Cloud option to your current subscription.",
-        }), { status: 409, headers: { "Content-Type": "application/json", ...CORS } });
-      }
-    }
-
     if (plan.rang > 1 && existingCustomerId) {
       const { data: existingSubs } = await stripe.subscriptions.list({
         customer: existingCustomerId,
@@ -560,10 +423,7 @@ serve(async (req) => {
       // Cible = un abonnement vivant STRICTEMENT en dessous du palier visé.
       const target = live.find((s: Stripe.Subscription) => rangAbonnement(s) < plan.rang);
       if (target) {
-        // (04/10) L'article du PALIER, jamais celui de l'option Cloud : un
-        // abonnement « palier + Cloud » porte deux articles, et la montée ne
-        // change que le premier.
-        const item = itemPalier(target, prixConnus()) ?? target.items.data[0];
+        const item = target.items.data[0];
         // ══ PASSAGE DE PALIER : PAYÉ D'ABORD, APPLIQUÉ ENSUITE (2026-09-24) ══
         // Jocabroc (Premium payé par KLARNA via Checkout le 21/09) veut passer
         // Pro depuis le web : 5 essais, 5 HTTP 500. L'ancien appel forçait
@@ -719,33 +579,6 @@ serve(async (req) => {
       ...(carte3ds ? { payment_method_options: { card: { request_three_d_secure: "any" } } } : {}),
     };
 
-    // ── « PALIER + CLOUD » : deux lignes, carte obligatoire, essai 3 jours ───
-    // L'essai est celui de l'abonnement entier (Stripe n'a pas d'essai par
-    // article) : palier ET option à 0 € pendant 3 jours — exactement « le
-    // palier gratuit seulement quand Cloud est pris » —, puis débit des deux.
-    // Un seul essai par compte : la ligne profiles ET l'historique Stripe du
-    // client font foi (essaiCloudPermis) ; sinon même panier, payé tout de suite.
-    if (avecCloud && cloudPriceId) {
-      let historique: Stripe.Subscription[] = [];
-      try {
-        const { data } = await stripe.subscriptions.list({ customer: existingCustomerId, status: "all", limit: 20 });
-        historique = data ?? [];
-      } catch (e) {
-        console.warn(`[checkout] historique d'abonnements de ${existingCustomerId} illisible : ${(e as Error)?.message ?? e}`);
-      }
-      const essai = essaiCloudPermis(profile ?? {}, historique, prixConnus());
-      const extra = parametresCheckoutAvecCloud({ prixPalier: priceId, prixCloud: cloudPriceId, essai });
-      sessionParams.line_items = extra.line_items as Stripe.Checkout.SessionCreateParams.LineItem[];
-      sessionParams.payment_method_collection = extra.payment_method_collection as "always";
-      sessionParams.subscription_data = {
-        ...(sessionParams.subscription_data ?? {}),
-        ...extra.subscription_data,
-        metadata: { ...(sessionParams.subscription_data?.metadata ?? {}), ...extra.subscription_data.metadata },
-      } as Stripe.Checkout.SessionCreateParams.SubscriptionData;
-      sessionParams.metadata = { ...(sessionParams.metadata ?? {}), ...extra.metadata };
-      console.log(`[checkout] ${authUser.id} → ${planType} + Cloud, essai ${essai ? `${ESSAI_CLOUD_JOURS} jours` : "déjà pris : payé tout de suite"}`);
-    }
-
     // ── Code promo APPLIQUÉ d'office (2026-09-26, blast FILLSELL50) ─────────
     // Le lien du mail porte le code : la personne ne doit rien avoir à taper.
     // On le résout auprès de Stripe (code ACTIF uniquement) et on le passe en
@@ -780,7 +613,7 @@ serve(async (req) => {
       console.warn(`[checkout] sessions ouvertes de ${existingCustomerId} non relues : ${(e as Error)?.message ?? e}`);
     }
     const { aReprendre, aRemplacer } = trierSessionsOuvertes(ouvertes, {
-      planType, carte3ds, codePromo: promotionCodeId ? codePromo : "", avecCloud,
+      planType, carte3ds, codePromo: promotionCodeId ? codePromo : "",
     });
     if (aReprendre) {
       console.log(`[checkout] session ouverte ${aReprendre.id} rouverte pour ${authUser.id} (${planType}${carte3ds ? ", carte + 3D Secure" : ""})`);

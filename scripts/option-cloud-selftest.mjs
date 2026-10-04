@@ -1,16 +1,16 @@
-// Selftest — l'option « FillSell Cloud » vue par les paiements (04/10/2026),
+// Selftest — l'abonnement « FillSell Cloud » vu par les paiements (04/10/2026),
 // SANS réseau, sans Stripe, sans base.
 //
 //     node scripts/option-cloud-selftest.mjs
 //
-// Les objets reprennent la forme des événements réels (abonnement Stripe à
-// deux articles, transaction Apple décodée, purchases.subscriptionsv2 Google),
-// réduits aux champs utiles, sans donnée personnelle.
+// Modèle final (Nico, 04/10 nuit) : Cloud = abonnement SÉPARÉ, 20 €/mois, essai
+// 7 jours, ouvert à tous (Free compris), cumulable avec un palier, et qui
+// CONTINUE quand le palier tombe. Jamais premium à lui seul.
 import {
   ESSAI_CLOUD_JOURS, PRODUIT_CLOUD_APPLE, PRODUIT_CLOUD_GOOGLE, OFFRE_ESSAI_CLOUD_GOOGLE,
-  etatCloud, essaiCloudPermis, itemPalier, itemCloud, litAbonnementStripe, drapeauxDepuisStripe,
-  miseAJourProfilDepuisStripe, parametresCheckoutAvecCloud, lectureCloudApple, lectureCloudGoogle,
-  ecritureCloudStore, avertissementCloudSuspendu,
+  etatCloud, estAbonnementCloud, litAbonnementStripe, drapeauxDepuisStripe, miseAJourProfilDepuisStripe,
+  essaiCloudPermis, parametresCheckoutCloud, sessionEstCloud, lectureCloudApple, lectureCloudGoogle,
+  ecritureCloudStore,
 } from '../supabase/functions/_shared/cloud-option.js';
 
 let echecs = 0;
@@ -24,131 +24,100 @@ const sub = (id, status, prix, extra = {}) => ({
   current_period_end: Math.floor((T0 + 20 * J) / 1000),
   ...extra,
 });
+const cloud = (id, status, extra = {}) => sub(id, status, ['price_cloud'], { metadata: { option: 'cloud' }, ...extra });
 
-console.log('1. L\'état Cloud d\'un compte');
-ok(ESSAI_CLOUD_JOURS === 3, 'l\'essai dure 3 jours');
+console.log('1. L\'état Cloud — indépendant du palier');
+ok(ESSAI_CLOUD_JOURS === 7, 'l\'essai dure 7 jours');
 ok(etatCloud({}, T0).etat === 'aucun', 'rien → aucun');
 {
-  const e = etatCloud({ is_premium: false, cloud_essai_debut: new Date(T0 - J).toISOString(), cloud_essai_fin: new Date(T0 + 2 * J).toISOString() }, T0);
-  ok(e.etat === 'essai' && e.actif === true && e.quotas === 'gratuit' && e.joursRestants === 2, 'essai en cours, palier non facturé → essai ACTIF, quotas du gratuit, J-2');
+  const e = etatCloud({ cloud_essai_debut: new Date(T0 - J).toISOString(), cloud_essai_fin: new Date(T0 + 6 * J).toISOString() }, T0);
+  ok(e.etat === 'essai' && e.actif && e.joursRestants === 6, 'compte FREE en essai → actif, J-6');
 }
-ok(etatCloud({ is_cloud: true, is_premium: true }, T0).etat === 'paye', 'payé avec palier → paye');
-{
-  const e = etatCloud({ is_cloud: true, is_premium: false, is_pro: false }, T0);
-  ok(e.etat === 'suspendu' && e.actif === false, 'payé SANS palier (palier résilié chez Apple/Google) → suspendu, inactif');
-}
-ok(etatCloud({ cloud_essai_debut: new Date(T0 - 5 * J).toISOString(), cloud_essai_fin: new Date(T0 - 2 * J).toISOString() }, T0).etat === 'essai_termine', 'essai fini, pas payé → essai_termine');
-ok(etatCloud({ is_comped: true, is_cloud: true }, T0).etat === 'paye', 'un palier offert (is_comped) porte l\'option');
+ok(etatCloud({ is_cloud: true }, T0).actif === true, 'compte FREE avec Cloud payé → actif');
+ok(etatCloud({ is_cloud: true, is_premium: false, is_pro: false }, T0).etat === 'paye', 'palier tombé, Cloud payé → Cloud CONTINUE (paye)');
+ok(etatCloud({ cloud_essai_debut: new Date(T0 - 9 * J).toISOString(), cloud_essai_fin: new Date(T0 - 2 * J).toISOString() }, T0).etat === 'essai_termine', 'essai fini, pas payé → essai_termine, inactif');
 
-console.log('2. Un seul essai par compte');
-ok(essaiCloudPermis({}, []) === true, 'compte vierge → essai permis');
-ok(essaiCloudPermis({ cloud_essai_debut: '2026-09-01T00:00:00Z' }, []) === false, 'essai déjà pris (quel que soit le canal) → refusé');
-ok(essaiCloudPermis({ is_cloud: true }, []) === false, 'option déjà payée → pas d\'essai');
-ok(essaiCloudPermis({}, [{ status: 'canceled', metadata: { essai_cloud: '1' } }]) === false, 'un abonnement Stripe résilié qui a porté l\'essai → refusé');
-ok(essaiCloudPermis({}, [sub('s1', 'canceled', ['price_std', 'price_cloud'], { trial_start: 1 })], PRIX) === false, 'même sans métadonnée : un ancien abonnement Cloud avec essai → refusé');
-ok(essaiCloudPermis({}, [sub('s2', 'canceled', ['price_std'], { trial_start: 1 })], PRIX) === true, 'un vieil essai Premium sans Cloud (avant le 22/07) ne compte pas');
-
-console.log('3. Stripe — un abonnement, deux articles');
+console.log('2. Stripe — un abonnement Cloud À PART');
+ok(estAbonnementCloud(cloud('c1', 'active'), PRIX), 'metadata.option = cloud → Cloud');
+ok(estAbonnementCloud(sub('c2', 'active', ['price_cloud']), PRIX), 'sans métadonnée, uniquement le prix Cloud → Cloud');
+ok(!estAbonnementCloud(sub('p1', 'active', ['price_pro']), PRIX), 'un palier n\'est pas Cloud');
+ok(litAbonnementStripe(cloud('c1', 'active'), PRIX).rang === -1, 'un abonnement Cloud est hors de l\'échelle des paliers (rang -1)');
 {
-  const s = sub('s_essai', 'trialing', ['price_pro', 'price_cloud'], { trial_start: Math.floor(T0 / 1000), trial_end: Math.floor((T0 + 3 * J) / 1000) });
-  ok(itemPalier(s, PRIX)?.price.id === 'price_pro', 'itemPalier rend l\'article du palier, jamais celui de l\'option');
-  ok(itemCloud(s, PRIX)?.price.id === 'price_cloud', 'itemCloud rend l\'article de l\'option');
-  const l = litAbonnementStripe(s, PRIX);
-  ok(l.palier === 'pro' && l.cloud && l.essai && l.rang === 2, 'lecture : Pro + Cloud en essai');
-  const d = drapeauxDepuisStripe([s], PRIX);
-  ok(d.is_premium === false && d.is_pro === false && d.is_cloud === false, 'ESSAI palier + Cloud : aucun drapeau de palier (quotas du gratuit), option pas encore payée');
-  ok(d.essai_en_cours && d.cloud_essai_debut === new Date(T0).toISOString() && d.cloud_essai_fin === new Date(T0 + 3 * J).toISOString(), 'les dates de l\'essai viennent de trial_start / trial_end');
-  const u = miseAJourProfilDepuisStripe(d, null);
-  ok(u.is_cloud === false && u.cloud_canal === 'stripe' && u.cloud_essai_debut && u.cloud_ref === 's_essai', 'écriture : canal stripe, référence, dates d\'essai');
+  const d = drapeauxDepuisStripe([cloud('c1', 'trialing', { trial_start: Math.floor(T0 / 1000), trial_end: Math.floor((T0 + 7 * J) / 1000) })], PRIX);
+  ok(!d.is_premium && !d.is_pro && !d.is_business, 'Cloud SEUL en essai : is_premium JAMAIS vrai');
+  ok(!d.is_cloud && d.cloud_essai_debut === new Date(T0).toISOString() && d.cloud_essai_fin === new Date(T0 + 7 * J).toISOString(), 'essai daté par trial_start / trial_end, pas encore payé');
 }
 {
-  const s = sub('s_paye', 'active', ['price_pro', 'price_cloud']);
-  const d = drapeauxDepuisStripe([s], PRIX);
-  ok(d.is_premium && d.is_pro && !d.is_business && d.is_cloud, 'converti (active) : Pro + option payée');
-  ok(d.a_resilier.length === 0, 'rien à résilier');
+  const d = drapeauxDepuisStripe([cloud('c1', 'active')], PRIX);
+  ok(d.is_cloud && !d.is_premium, 'Cloud SEUL payé : is_cloud, jamais premium');
 }
 {
-  const d = drapeauxDepuisStripe([sub('s_biz', 'active', ['price_biz'])], PRIX);
-  ok(d.is_business && d.is_pro && d.is_premium && !d.is_cloud, 'Business seul : drapeaux cumulatifs, pas d\'option');
+  const d = drapeauxDepuisStripe([sub('p1', 'active', ['price_pro']), cloud('c1', 'active')], PRIX);
+  ok(d.is_premium && d.is_pro && !d.is_business && d.is_cloud, 'Pro + Cloud cumulés : deux abonnements, deux jeux de drapeaux');
 }
 {
-  const d = drapeauxDepuisStripe([sub('s_legacy', 'trialing', ['price_std'])], PRIX);
-  ok(d.is_premium === true, 'un essai historique SANS Cloud compte comme avant (premium)');
+  const d = drapeauxDepuisStripe([sub('p1', 'canceled', ['price_pro']), cloud('c1', 'active')], PRIX);
+  ok(!d.is_premium && !d.is_pro && d.is_cloud, 'palier résilié → Free, Cloud CONTINUE');
 }
 {
-  const d = drapeauxDepuisStripe([sub('s_seul', 'active', ['price_cloud'])], PRIX);
-  ok(d.is_cloud === false && d.a_resilier.join() === 's_seul', 'Cloud SANS palier (édition manuelle) : jamais actif, abonnement à résilier');
+  const d = drapeauxDepuisStripe([sub('legacy', 'active', ['price_inconnu_founder'])], PRIX);
+  ok(d.is_premium && !d.is_cloud, 'un abonnement legacy (prix inconnu) reste premium comme avant');
 }
 {
-  const d = drapeauxDepuisStripe([sub('s_fini', 'canceled', ['price_pro', 'price_cloud'])], PRIX);
-  ok(!d.is_premium && !d.is_cloud, 'abonnement résilié : palier ET option tombent ensemble');
+  const d = drapeauxDepuisStripe([sub('p1', 'active', ['price_std'], { cancel_at_period_end: false }), cloud('c1', 'active', { cancel_at_period_end: true })], PRIX);
+  ok(d.subscription_cancel_at_period_end === false && d.cloud_annule_fin_periode === true, 'résilier Cloud ne marque pas le palier comme résilié');
+}
+{
+  const d = drapeauxDepuisStripe([cloud('c1', 'canceled')], PRIX);
   const u = miseAJourProfilDepuisStripe(d, 'stripe');
-  ok(u.is_cloud === false && !('cloud_essai_debut' in u), 'écriture : option à false, l\'essai pris n\'est pas effacé');
-  const u2 = miseAJourProfilDepuisStripe(d, 'apple');
-  ok(!('is_cloud' in u2), 'un Cloud porté par Apple n\'est JAMAIS touché par un événement Stripe');
-}
-{
-  const d = drapeauxDepuisStripe([sub('s_annule', 'active', ['price_std', 'price_cloud'], { cancel_at_period_end: true })], PRIX);
-  ok(d.cloud_annule_fin_periode === true && d.subscription_cancel_at_period_end === true, 'résiliation programmée : palier et option annulés à l\'échéance');
-}
-{
-  const p = parametresCheckoutAvecCloud({ prixPalier: 'price_std', prixCloud: 'price_cloud', essai: true });
-  ok(p.line_items.length === 2 && p.payment_method_collection === 'always', 'checkout palier + Cloud : deux lignes, carte obligatoire');
-  ok(p.subscription_data.trial_period_days === 3 && p.subscription_data.trial_settings.end_behavior.missing_payment_method === 'cancel', 'essai 3 jours ; sans carte, annulé');
-  const q = parametresCheckoutAvecCloud({ prixPalier: 'price_std', prixCloud: 'price_cloud', essai: false });
-  ok(!('trial_period_days' in q.subscription_data) && q.metadata.essai_cloud === '0', 'essai déjà pris : même panier, payé tout de suite');
+  ok(u.is_cloud === false && !('cloud_essai_debut' in u), 'Cloud résilié : option à false, l\'essai pris n\'est pas effacé');
+  ok(!('is_cloud' in miseAJourProfilDepuisStripe(d, 'apple')), 'un Cloud porté par Apple n\'est JAMAIS touché par un événement Stripe');
 }
 
-console.log('4. Apple — groupe « FillSell Cloud »');
+console.log('3. Un seul essai par compte (garde serveur Stripe)');
+ok(essaiCloudPermis({}, [], PRIX) === true, 'compte vierge → essai');
+ok(essaiCloudPermis({ cloud_essai_debut: '2026-09-01T00:00:00Z' }, [], PRIX) === false, 'essai déjà pris, quel que soit le canal → refusé');
+ok(essaiCloudPermis({}, [cloud('old', 'canceled', { trial_start: 1 })], PRIX) === false, 'ancien abonnement Cloud avec essai chez Stripe → refusé');
+ok(essaiCloudPermis({}, [sub('p', 'canceled', ['price_std'], { trial_start: 1 })], PRIX) === true, 'un vieil essai Premium (avant le 22/07) ne compte pas');
 {
-  const tx = { productId: PRODUIT_CLOUD_APPLE, offerType: 1, offerDiscountType: 'FREE_TRIAL', purchaseDate: T0, expiresDate: T0 + 3 * J, originalTransactionId: '2000001' };
-  const l = lectureCloudApple(tx);
-  ok(l && l.cloud && l.essai && l.palier === null, 'offre d\'introduction sur Cloud → essai');
+  const p = parametresCheckoutCloud({ prixCloud: 'price_cloud', essai: true, userId: 'u1' });
+  ok(p.line_items.length === 1 && p.line_items[0].price === 'price_cloud', 'Checkout Cloud : une seule ligne, le prix Cloud');
+  ok(p.payment_method_collection === 'always', 'carte obligatoire, même pendant l\'essai');
+  ok(p.subscription_data.trial_period_days === 7 && p.subscription_data.trial_settings.end_behavior.missing_payment_method === 'cancel', 'essai 7 jours ; sans carte, annulé');
+  ok(p.subscription_data.metadata.option === 'cloud' && p.metadata.plan_type === 'cloud', 'metadata.option = cloud sur la session ET l\'abonnement');
+  ok(sessionEstCloud({ metadata: p.metadata }) && !sessionEstCloud({ metadata: { plan_type: 'pro' } }), 'une session Cloud ne sert jamais une demande de palier');
+  const q = parametresCheckoutCloud({ prixCloud: 'price_cloud', essai: false, userId: 'u1' });
+  ok(!('trial_period_days' in q.subscription_data), 'essai déjà pris : payé tout de suite');
+}
+
+console.log('4. Apple — app.fillsell.cloud.sub');
+{
+  const l = lectureCloudApple({ productId: PRODUIT_CLOUD_APPLE, offerType: 1, offerDiscountType: 'FREE_TRIAL', purchaseDate: T0, expiresDate: T0 + 7 * J, originalTransactionId: '2000001' });
+  ok(l && l.essai, 'offre d\'introduction → essai');
   const e = ecritureCloudStore({ canal: 'apple', lecture: l, sens: 'on', ref: '2000001', profil: {} });
-  ok(e.update.is_cloud === false && e.update.cloud_essai_debut && e.update.cloud_canal === 'apple' && e.grantPalier === null, 'essai : dates posées, option pas payée, aucun grant');
+  ok(e.update.is_cloud === false && e.update.cloud_essai_debut && e.update.cloud_canal === 'apple', 'essai : dates posées, option pas encore payée');
+  ok(!Object.keys(e.update).some((k) => /^is_(premium|pro|business)$/.test(k)), 'aucune colonne de palier écrite');
 }
 {
-  const l = lectureCloudApple({ productId: PRODUIT_CLOUD_APPLE, purchaseDate: T0 + 3 * J, expiresDate: T0 + 33 * J, originalTransactionId: '2000001' });
+  const l = lectureCloudApple({ productId: PRODUIT_CLOUD_APPLE, purchaseDate: T0 + 7 * J, expiresDate: T0 + 37 * J, originalTransactionId: '2000001' });
   ok(l && !l.essai, 'DID_RENEW sans offerType → payé');
-  const e = ecritureCloudStore({ canal: 'apple', lecture: l, sens: 'on', ref: '2000001', profil: { cloud_canal: 'apple', cloud_ref: '2000001' } });
-  ok(e.update.is_cloud === true && !('is_premium' in e.update), 'payé : is_cloud, les drapeaux de palier ne bougent pas (le palier vit ailleurs)');
+  ok(ecritureCloudStore({ canal: 'apple', lecture: l, sens: 'on', ref: '2000001', profil: { cloud_canal: 'apple', cloud_ref: '2000001' } }).update.is_cloud === true, 'payé : is_cloud');
 }
+ok(lectureCloudApple({ productId: 'app.fillsell.pro2.sub' }) === null, 'un palier n\'est pas l\'affaire de ce module');
+ok(ecritureCloudStore({ canal: 'apple', lecture: {}, sens: 'off', ref: 'x', profil: { cloud_canal: 'stripe', cloud_ref: 'sub_1' } }).update === null, 'un OFF Apple sur un Cloud porté par Stripe n\'écrit RIEN');
 {
-  const l = lectureCloudApple({ productId: 'app.fillsell.pro_cloud.sub', offerType: 1, purchaseDate: T0, expiresDate: T0 + 3 * J });
-  ok(l.palier === 'pro' && l.essai, 'produit combiné Pro + Cloud (proposé) en intro → essai, palier pro');
-  const paye = ecritureCloudStore({ canal: 'apple', lecture: { ...l, essai: false }, sens: 'on', ref: 'x', profil: {} });
-  ok(paye.update.is_pro === true && paye.update.is_premium === true && paye.update.is_cloud === true && paye.grantPalier === 'pro', 'combiné payé : palier + option + grant');
-  const off = ecritureCloudStore({ canal: 'apple', lecture: l, sens: 'off', ref: 'x', profil: { cloud_canal: 'apple', cloud_ref: 'x' } });
-  ok(off.update.is_cloud === false && off.update.is_pro === false, 'combiné expiré : palier et option tombent');
-}
-ok(lectureCloudApple({ productId: 'app.fillsell.pro2.sub' }) === null, 'un palier seul n\'est pas l\'affaire de ce module');
-{
-  const e = ecritureCloudStore({ canal: 'apple', lecture: { fin: null }, sens: 'off', ref: 'autre', profil: { cloud_canal: 'stripe', cloud_ref: 'sub_1' } });
-  ok(e.update === null, 'un OFF Apple sur une option portée par Stripe n\'écrit RIEN');
   const a = ecritureCloudStore({ canal: 'google', lecture: { fin: '2026-11-01T00:00:00Z' }, sens: 'annulation', ref: 'tok', profil: { cloud_canal: 'google', cloud_ref: 'tok' } });
   ok(a.update.cloud_annule_fin_periode === true && a.update.cloud_fin_periode === '2026-11-01T00:00:00Z', 'annulation : accès conservé jusqu\'à l\'échéance');
 }
 
-console.log('5. Google — purchases.subscriptionsv2');
+console.log('5. Google — offre cloud-trial-3d (7 jours)');
 {
-  const achat = { startTime: new Date(T0).toISOString(), lineItems: [{ productId: PRODUIT_CLOUD_GOOGLE, expiryTime: new Date(T0 + 3 * J).toISOString(), offerDetails: { basePlanId: 'cloud-monthly', offerId: OFFRE_ESSAI_CLOUD_GOOGLE } }] };
-  const l = lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, achat, 4);
-  ok(l && l.cloud && l.essai, 'PURCHASED (4) avec l\'offre cloud-trial-3d → essai');
-  const r = lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, { ...achat, lineItems: [{ ...achat.lineItems[0], expiryTime: new Date(T0 + 33 * J).toISOString() }] }, 2);
-  ok(r && !r.essai, 'RENEWED (2) après l\'essai → payé même si offerId reste sur la ligne');
-  const v = lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, achat, null);
-  ok(v && v.essai, 'validation côté app (sans type) : 3 jours d\'échéance → essai');
+  const achat = { startTime: new Date(T0).toISOString(), lineItems: [{ productId: PRODUIT_CLOUD_GOOGLE, expiryTime: new Date(T0 + 7 * J).toISOString(), offerDetails: { basePlanId: 'cloud-monthly', offerId: OFFRE_ESSAI_CLOUD_GOOGLE } }] };
+  ok(lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, achat, 4)?.essai === true, 'PURCHASED (4) avec l\'offre d\'essai → essai');
+  ok(lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, { ...achat, lineItems: [{ ...achat.lineItems[0], expiryTime: new Date(T0 + 37 * J).toISOString() }] }, 2)?.essai === false, 'RENEWED (2) → payé');
+  ok(lectureCloudGoogle(PRODUIT_CLOUD_GOOGLE, achat, null)?.essai === true, 'validation côté app : échéance à 7 jours → essai');
+  ok(lectureCloudGoogle('app.fillsell.pro.sub', achat, 4) === null, 'un palier Google n\'est pas l\'affaire de ce module');
 }
-{
-  const achat = { startTime: new Date(T0).toISOString(), lineItems: [{ productId: 'app.fillsell.pro.sub', expiryTime: new Date(T0 + 3 * J).toISOString(), offerDetails: { basePlanId: 'pro-monthly', offerId: 'pro-cloud-trial-3d' } }] };
-  const l = lectureCloudGoogle('app.fillsell.pro.sub', achat, 4, (id) => (id === 'app.fillsell.pro.sub' ? 'pro' : null));
-  ok(l && !l.cloud && l.palier === 'pro' && l.essai, 'palier Pro acheté avec l\'offre pro-cloud-trial-3d (proposée) → palier en essai, pas facturé');
-  ok(lectureCloudGoogle('app.fillsell.pro.sub', { lineItems: [{ offerDetails: { offerId: 'autre' } }] }, 4, () => 'pro') === null, 'un palier sans offre Cloud ne concerne pas ce module');
-}
-
-console.log('6. Le texte de la suspension');
-ok(avertissementCloudSuspendu('apple').includes("l'App Store") && avertissementCloudSuspendu('google').includes('Google Play'), 'le texte nomme la boutique où résilier');
-ok(avertissementCloudSuspendu('apple', 'en').startsWith('Your Cloud option is paused'), 'version anglaise');
 
 console.log(echecs === 0 ? '\nTOUT VERT' : `\n${echecs} ÉCHEC(S)`);
 process.exit(echecs === 0 ? 0 : 1);
