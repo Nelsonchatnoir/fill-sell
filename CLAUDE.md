@@ -1,30 +1,41 @@
-## État de production au 04/10 (soir) — lire avant toute action
+## État de production au 04/10 (nuit) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
-complément », « 04/10 fin de matinée — chantier Louis » et « 04/10 soir —
-incident CPU » en fin) et
+complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
+incident CPU » et « 04/10 nuit — six défauts clients » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.94** au CWS (BUILD_ID
-  `2026-10-03T21:23:06Z+2a088e4`, 29 comptes) ; **0.6.95 à téléverser**
-  (`build/CWS-0.6.95-A-TELEVERSER/`, `2026-10-04T09:23:39Z+d408890`, non
-  prouvée en réel) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ =
-  décision de Nico) ; web **dfade61** (relectures bornées) ; OTA **2.9.50** ;
-  `get-pending-jobs` v211,
-  `lens-analysis` v105, `avis-demande` v3, `ebay-account` v16,
-  `send-extension-link` v12 (`true`) ; `update-job-status` v127,
-  `handler-watch` v80, `ops-digest` v30, `ebay-api-worker` v76,
-  `ebay-releve-api` v4, `releve-completer` v2, `veille-cpu` v1, `ebay-ventes-sync` v5,
-  `ebay-oauth-callback` v9, `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
+  `2026-10-03T21:23:06Z+2a088e4`, 29 comptes) ; **0.6.96 à téléverser**
+  (`build/CWS-0.6.96-A-TELEVERSER/fillsell-extension-0.6.96-b32685f-cws.zip`,
+  prouvée en réel le 04/10 ; remplace la 0.6.95 jamais téléversée) ;
+  **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
+  web **84bd226** ; OTA **2.9.52** ; `get-pending-jobs` v214,
+  `generate-listing` v111, `lens-analysis` v106, `avis-demande` v3,
+  `ebay-account` v16, `send-extension-link` v12 (`true`) ;
+  `update-job-status` v127, `handler-watch` v80, `ops-digest` v30,
+  `ebay-api-worker` v77, `ebay-releve-api` v4, `releve-completer` v2,
+  `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v9,
+  `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
-- **⛔ Incident CPU 99 % (04/10, 12:22 et 17:40)** : app et web bloqués sur
-  le chargement pour tous. Compute Micro → Small (Nico). Crons **27**
-  `ebay-releve-api` et **28** `releve-completer` EN PAUSE (relance = feu
-  vert de Nico, un à la fois) ; règle « tâche automatique mesurée, bornée »
-  plus bas ; alerte `veille-cpu` (cron 29).
+- **⛔ Incident CPU 99 % (04/10, 12:22 et 17:40)** : compute Micro → Small
+  (Nico) ; crons **27** (`*/10`) et **28** (`7-59/15`) relancés le soir sous
+  mesure ; règle « tâche automatique mesurée, bornée » plus bas ; alerte
+  `veille-cpu` (cron 29). Cron 30 (photos eBay, 663 fiches) fini et retiré.
+- **Défauts clients (04/10 nuit)** : une vente supprimée par la personne ne
+  revient plus au relevé (`ventes_supprimees`, mig 20261004220000) ;
+  l'absence de marque part en « Sans marque » sans question
+  (`_shared/marque-absente.js`, liste FERMÉE, jamais une vraie marque) et la
+  marque du catalogue choisie est retenue (`platform_settings.vinted.
+  marques_retenues`) ; le texte qui part est celui de la FICHE au moment de
+  l'envoi (`src/publication/texteDeLaFiche.js`) ; ⛔ aucun format de colis
+  deviné (seul `format_colis_source: 'manuel'` part ; poids de la fiche et
+  transporteurs retenus `platform_settings.leboncoin.transporteurs` posés au
+  service ; lot : sans poids, LBC/Beebs « à compléter ») ; prix/quantité des
+  fiches modifiables en lot — les annonces en ligne ne suivent pas.
 - **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
   `/main/banned` (reprise 1 h, 3 h, 6 h jusqu'à la preuve) ; un retrait Vinted
   dont le numéro manque aux deux derniers relevés complets de sa boutique est
