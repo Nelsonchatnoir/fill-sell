@@ -18,13 +18,24 @@
 //
 // GARDE-FOUS :
 //  · colonnes propres à Cloud (is_cloud, cloud_essai_*, cloud_canal, cloud_ref,
-//    cloud_fin_periode, cloud_annule_fin_periode) ;
+//    cloud_periode_fin, cloud_arret_fin_periode) ;
 //  · is_premium / is_pro / is_business ne viennent JAMAIS d'un abonnement Cloud ;
 //  · côté Stripe, un abonnement Cloud porte `metadata.option = "cloud"` et
 //    n'entre jamais dans le rang des paliers (rangAbonnement, montée de palier) ;
 //  · un seul essai par compte côté Stripe (garde serveur) ; Apple (une offre
 //    d'introduction par identifiant Apple et par groupe) et Google (offre
 //    « nouveaux clients de ce produit ») le garantissent eux-mêmes.
+//
+// ALIGNÉ sur src/utils/palier.js (branche conception/cloud-option, règles
+// validées 83/83) : mêmes colonnes, même état. Arrêter l'essai = effet
+// IMMÉDIAT, rien facturé (cloud_essai_arrete, fin ramenée à l'arrêt) ; arrêter
+// une fois payée = tourne jusqu'à cloud_periode_fin (cloud_arret_fin_periode).
+//
+// UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX CONFONDUS : Apple et Google
+// donnent leur propre semaine gratuite par compte de store, sans rien savoir
+// des autres canaux. Le serveur ne l'ACTIVE pas si le compte a déjà eu un essai
+// ailleurs (verdictEssaiStore) : Cloud démarre au premier paiement réel.
+// Stripe : Checkout sans essai (essaiCloudPermis lit la même colonne).
 //
 // ⛔ Ce module ne lit ni n'écrit la base : il rend des décisions que l'appelant
 //    applique (migration 20261004233000).
@@ -60,18 +71,42 @@ const secondesIso = (s) => (typeof s === "number" && s > 0 ? new Date(s * 1000).
 // les quotas restent ceux du palier (Free compris).
 /** @param {any} p @param {number | string | Date} [maintenant] */
 export function etatCloud(p, maintenant = Date.now()) {
+  // Miroir de cloudDuProfil (palier.js) avec CLOUD_EXIGE_UN_PALIER = false :
+  // l'état « suspendu » n'existe plus, le palier n'entre pas dans le calcul.
   const now = instant(maintenant) ?? Date.now();
   const debut = instant(p?.cloud_essai_debut);
   const fin = instant(p?.cloud_essai_fin);
   const essaiPris = debut != null;
-  const essaiEnCours = debut != null && fin != null && debut <= now && now < fin;
-  const base = { essaiPris, essaiFin: iso(fin), joursRestants: null };
-  if (p?.is_cloud === true) return { ...base, etat: "paye", actif: true };
+  const essaiEnCours = debut != null && fin != null && debut <= now && now < fin && p?.cloud_essai_arrete !== true;
+  const paye = p?.is_cloud === true;
+  const periodeFin = instant(p?.cloud_periode_fin);
+  const base = {
+    essaiPris,
+    essaiArrete: essaiPris && p?.cloud_essai_arrete === true,
+    essaiFin: iso(fin),
+    joursRestants: null,
+    periodeFin: paye && periodeFin != null ? iso(periodeFin) : null,
+    arretPrevuLe: paye && p?.cloud_arret_fin_periode === true && periodeFin != null ? iso(periodeFin) : null,
+  };
+  if (paye) return { ...base, etat: "paye", actif: true };
   if (essaiEnCours) {
     return { ...base, etat: "essai", actif: true, joursRestants: Math.max(1, Math.ceil((fin - now) / JOUR_MS)) };
   }
-  if (essaiPris && fin != null && now >= fin) return { ...base, etat: "essai_termine", actif: false };
+  if (essaiPris && (p?.cloud_essai_arrete === true || (fin != null && now >= fin))) return { ...base, etat: "essai_termine", actif: false };
   return { ...base, etat: "aucun", actif: false };
+}
+
+/**
+ * UN SEUL ESSAI PAR COMPTE, TOUS CANAUX : un essai de store (Apple, Google)
+ * peut-il être ACTIVÉ ? Oui s'il n'y a jamais eu d'essai, ou si c'est le même
+ * (même canal, même référence : rejeu de l'événement). Sinon Cloud n'est PAS
+ * activé gratuitement : il démarre au premier paiement réel.
+ * @returns {{ ok: boolean, raison: string | null }}
+ */
+export function verdictEssaiStore(profil, canal, ref) {
+  if (profil?.cloud_essai_debut == null) return { ok: true, raison: null };
+  if (profil?.cloud_canal === canal && ref != null && profil?.cloud_ref === ref) return { ok: true, raison: null };
+  return { ok: false, raison: "essai_deja_pris" };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -122,6 +157,9 @@ export function litAbonnementStripe(sub, prix = {}) {
     essai: status === "trialing",
     trial_start: secondesIso(sub?.trial_start),
     trial_end: secondesIso(sub?.trial_end),
+    // Terminé AVANT la fin de son essai (1 min de marge) : l'essai a été arrêté.
+    essai_arrete_le: (typeof sub?.ended_at === "number" && typeof sub?.trial_end === "number" && sub.ended_at < sub.trial_end - 60)
+      ? secondesIso(sub.ended_at) : null,
     cancel_at_period_end: sub?.cancel_at_period_end === true,
     current_period_end: secondesIso(sub?.current_period_end),
   };
@@ -143,6 +181,9 @@ export function drapeauxDepuisStripe(subs, prix = {}) {
   const cloudPaye = clouds.find((l) => !l.essai) ?? null;
   const cloudEssai = clouds.find((l) => l.essai) ?? null;
   const porteur = cloudPaye ?? cloudEssai;
+  // Le dernier abonnement Cloud arrêté pendant son essai (s'il n'y a plus rien de vivant).
+  const arrete = porteur ? null
+    : lus.filter((l) => l.cloud && l.essai_arrete_le).sort((a, b) => (a.essai_arrete_le < b.essai_arrete_le ? 1 : -1))[0] ?? null;
   const hasBusiness = paliers.some((l) => l.palier === "business");
   const hasPro = paliers.some((l) => l.palier === "pro");
   return {
@@ -152,11 +193,13 @@ export function drapeauxDepuisStripe(subs, prix = {}) {
     subscription_cancel_at_period_end: paliers.length > 0 && paliers.every((l) => l.cancel_at_period_end),
     is_cloud: !!cloudPaye,
     cloud_ref: porteur?.id ?? null,
-    cloud_fin_periode: porteur ? (porteur.essai ? porteur.trial_end : porteur.current_period_end) : null,
-    cloud_annule_fin_periode: porteur ? porteur.cancel_at_period_end : false,
+    cloud_periode_fin: porteur ? (porteur.essai ? porteur.trial_end : porteur.current_period_end) : null,
+    cloud_arret_fin_periode: porteur ? porteur.cancel_at_period_end : false,
     cloud_essai_debut: cloudEssai?.trial_start ?? null,
     cloud_essai_fin: cloudEssai?.trial_end ?? null,
     cloud_vivant: !!porteur,
+    cloud_essai_arrete_le: arrete?.essai_arrete_le ?? null,
+    cloud_essai_debut_arrete: arrete?.trial_start ?? null,
   };
 }
 
@@ -177,14 +220,20 @@ export function miseAJourProfilDepuisStripe(d, canalActuel) {
     update.is_cloud = d.is_cloud;
     update.cloud_canal = "stripe";
     update.cloud_ref = d.cloud_ref;
-    update.cloud_fin_periode = d.cloud_fin_periode;
-    update.cloud_annule_fin_periode = d.cloud_annule_fin_periode;
+    update.cloud_periode_fin = d.cloud_periode_fin;
+    update.cloud_arret_fin_periode = d.cloud_arret_fin_periode;
     if (d.cloud_essai_debut) { update.cloud_essai_debut = d.cloud_essai_debut; update.cloud_essai_fin = d.cloud_essai_fin; }
   } else if (canalActuel == null || canalActuel === "stripe") {
     // Plus rien chez Stripe : l'option tombe. L'essai pris reste écrit (un seul par compte).
     update.is_cloud = false;
-    update.cloud_fin_periode = null;
-    update.cloud_annule_fin_periode = false;
+    update.cloud_periode_fin = null;
+    update.cloud_arret_fin_periode = false;
+    if (d.cloud_essai_arrete_le) {
+      // Essai arrêté par la personne : effet immédiat, l'essai reste « pris ».
+      update.cloud_essai_arrete = true;
+      update.cloud_essai_fin = d.cloud_essai_arrete_le;
+      if (d.cloud_essai_debut_arrete) update.cloud_essai_debut = d.cloud_essai_debut_arrete;
+    }
   }
   return update;
 }
@@ -276,34 +325,53 @@ export function lectureCloudGoogle(subscriptionId, purchase, notificationType = 
  * référence). Rend { update, motif } — update = null quand l'événement ne doit
  * RIEN écrire. Ne touche JAMAIS aux colonnes de palier.
  */
-export function ecritureCloudStore({ canal, lecture, sens, ref, profil }) {
+export function ecritureCloudStore({ canal, lecture, sens, ref, profil, maintenant = Date.now() }) {
   const sien = profil?.cloud_canal == null || profil?.cloud_canal === canal;
   const memeRef = profil?.cloud_ref == null || ref == null || profil?.cloud_ref === ref;
   if (sens !== "on" && (!sien || !memeRef)) {
     return { update: null, motif: "reference_autre_canal_ou_remplacee" };
   }
+  const now = instant(maintenant) ?? Date.now();
   /** @type {Record<string, any>} */
   const update = {};
+  let motif = null;
   if (sens === "on") {
     update.cloud_canal = canal;
     update.cloud_ref = ref ?? null;
-    update.cloud_fin_periode = lecture?.fin ?? null;
-    update.cloud_annule_fin_periode = false;
+    update.cloud_periode_fin = lecture?.fin ?? null;
+    update.cloud_arret_fin_periode = false;
     if (lecture?.essai) {
       update.is_cloud = false;
-      update.cloud_essai_debut = lecture.debut;
-      update.cloud_essai_fin = lecture.fin;
+      const v = verdictEssaiStore(profil, canal, ref);
+      if (v.ok) {
+        update.cloud_essai_debut = lecture.debut;
+        update.cloud_essai_fin = lecture.fin;
+      } else {
+        // Second essai (autre canal) : PAS activé gratuitement. Cloud démarre au
+        // premier paiement réel (DID_RENEW / RENEWED). L'essai déjà pris reste.
+        motif = v.raison;
+      }
     } else {
       update.is_cloud = true;
     }
   } else if (sens === "off") {
     update.is_cloud = false;
-    update.cloud_fin_periode = lecture?.fin ?? null;
+    update.cloud_periode_fin = lecture?.fin ?? null;
   } else if (sens === "annulation") {
-    update.cloud_annule_fin_periode = true;
-    if (lecture?.fin) update.cloud_fin_periode = lecture.fin;
+    const fin = instant(profil?.cloud_essai_fin);
+    const enEssai = profil?.is_cloud !== true && profil?.cloud_essai_debut != null && fin != null && now < fin && profil?.cloud_essai_arrete !== true;
+    if (enEssai) {
+      // Arrêt PENDANT l'essai : effet IMMÉDIAT, rien facturé (la personne vient
+      // de couper le renouvellement, le store ne débitera pas).
+      update.cloud_essai_arrete = true;
+      update.cloud_essai_fin = new Date(now).toISOString();
+    } else {
+      // Payée : tourne jusqu'à la fin de la période, puis s'arrête.
+      update.cloud_arret_fin_periode = true;
+      if (lecture?.fin) update.cloud_periode_fin = lecture.fin;
+    }
   } else if (sens === "reprise") {
-    update.cloud_annule_fin_periode = false;
+    update.cloud_arret_fin_periode = false;
   }
-  return { update, motif: null };
+  return { update, motif };
 }
