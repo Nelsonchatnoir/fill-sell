@@ -17,6 +17,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // stepper (moteur/listes.js la ré-exporte) — et sa palette de couleurs (module
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
+import { traduireAbsenceMarqueJob, SANS_MARQUE } from "../_shared/marque-absente.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
@@ -7737,6 +7738,28 @@ serve(async (req) => {
       if (vintedFiche) console.log(`[get-pending-jobs] user=${user.id} marque/couleur Vinted posées depuis la fiche : ${vintedFiche}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] marque/couleur Vinted depuis la fiche : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
+    // ══ L'ABSENCE DE MARQUE, TRADUITE POUR CHAQUE PLATEFORME (04/10, Louis) ══
+    // « Marque générique », « Générique », « Aucune », « No brand »… (liste
+    // fermée, égalité exacte : _shared/marque-absente.js) deviennent la valeur
+    // « Sans marque » de la plateforme, SANS question : Vinted la pose par sa
+    // ligne native (brand_id 1), Beebs et Leboncoin par leur option « Sans
+    // marque ». Avant : Vinted demandait à chaque article (champ_a_choisir),
+    // Beebs et Leboncoin recevaient « Autre ». eBay par l'API traduit déjà
+    // vers l'entrée générique de sa liste (ebay-publication). Opla : champ
+    // libre, « Sans marque » aussi.
+    // ⛔ Une vraie marque n'est JAMAIS remplacée (égalité exacte sur une liste
+    //    fermée). Servi, pas persisté : l'extension renvoie le pf au statut
+    //    suivant. Best-effort.
+    let marquesTraduites = 0;
+    try {
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (traduireAbsenceMarqueJob(j)) marquesTraduites++;
+      }
+      if (marquesTraduites) console.log(`[get-pending-jobs] user=${user.id} absence de marque traduite en « ${SANS_MARQUE} » : ${marquesTraduites} job(s)`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] traduction de l'absence de marque : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
     // ══ UN DÉPÔT VINTED SANS COULEUR OU SANS MARQUE NE PART PAS AU REFUS ════
