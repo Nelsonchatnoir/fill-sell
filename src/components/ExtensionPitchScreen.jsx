@@ -39,6 +39,7 @@ import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienEx
 // son drapeau (config/cloudOffer.js) : baissé, elle ne rend rien.
 import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
 import { cloudOfferVisible } from '../config/cloudOffer';
+import { textesCloud } from '../cloud/textes';
 
 const C = {
   canvas: '#EDEAE0',
@@ -265,6 +266,12 @@ export default function ExtensionPitchScreen({
           {/* Deux lignes AU PLUS sous le bouton — ce qui aide à comprendre ce
               qu'on vient de déclencher, rien de plus. */}
           <p style={{ margin: '2px 0 14px', fontSize: 12.5, color: C.mute, lineHeight: 1.5, textAlign: 'center' }}>
+            {/* (04/10 soir, conception) Option proposée : l'extension reste la
+                voie GRATUITE et SANS CARTE — dit près de son bouton, avant la
+                voie payante plus bas. Drapeau baissé : rien d'ajouté. */}
+            {!onComputer && optionSansOrdi && (
+              <span data-cloud="extension-gratuite" style={{ display: 'block', fontWeight: 700, color: C.mute2 }}>{textesCloud(lang).extensionGratuite}</span>
+            )}
             {onComputer
               ? (fr
                   ? "Gratuite, installée en une minute."
