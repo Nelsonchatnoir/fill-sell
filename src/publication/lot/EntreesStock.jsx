@@ -4,7 +4,7 @@
 // Rien de neuf à apprendre : mêmes classes que la republication en lot et la
 // saisie des prix d'achat (.pa-call, .pa-bar, .apply, .pa-ghost — StockTab),
 // même ligne discrète que « À traiter » (une porte, jamais une alarme).
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Package, Upload, Undo2, CircleCheck } from "lucide-react";
 import { R } from "../../reglages/theme";
 import { NOM } from "../texte";
 import { LOT_MAX_ARTICLES } from "./regles";
@@ -23,7 +23,7 @@ export function LignePublierPlusieurs({ lang, nombre, onOuvrir }) {
   const fr = lang !== "en";
   return (
     <button type="button" onClick={onOuvrir} className="fs-focus" style={ligneStyle}>
-      <span aria-hidden="true" style={{ fontSize: 15, flexShrink: 0 }}>📦</span>
+      <Package size={16} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: R.ink }} />
       <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
         <span style={{ fontSize: 13.5, fontWeight: 700, color: R.ink }}>{fr ? "Publier plusieurs articles d'un coup" : "Publish several items at once"}</span>
         <span style={{ fontSize: 12, color: R.texteSecondaire }}>
@@ -43,7 +43,7 @@ export function AppelFiltrePublier({ lang, nombre, plateforme, onPublier }) {
   const sur = plateforme ? (fr ? ` sur ${NOM(plateforme)}` : ` on ${NOM(plateforme)}`) : "";
   return (
     <button type="button" onClick={onPublier} className="pa-call fs-focus">
-      <span aria-hidden="true" style={{ fontSize: 17, flexShrink: 0 }}>🚀</span>
+      <Upload size={18} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="n">{fr
           ? `Publier ${nombre > 1 ? (nombre > n ? `les ${n} premiers` : `ces ${n} articles`) : "cet article"}${sur}`
@@ -62,7 +62,7 @@ export function EnteteModeLot({ lang, onQuitter }) {
   const fr = lang !== "en";
   return (
     <button type="button" className="pa-call on fs-focus" onClick={onQuitter}>
-      <span aria-hidden="true" style={{ fontSize: 17, flexShrink: 0 }}>↩</span>
+      <Undo2 size={18} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span className="n">{fr ? "Quitter la publication en lot" : "Exit batch publishing"}</span>
         <span className="sub">{fr
@@ -104,7 +104,9 @@ export function LigneLotEnCours({ lang, suivi, le, onOuvrir }) {
   return (
     <button type="button" onClick={onOuvrir} className="fs-focus"
       style={{ ...ligneStyle, background: geste ? "#FFF8E8" : "#fff", border: `1px solid ${geste ? "#EBD9A8" : R.border}` }}>
-      <span aria-hidden="true" style={{ fontSize: 15, flexShrink: 0 }}>{suivi.fini ? "✅" : "📦"}</span>
+      {suivi.fini
+        ? <CircleCheck size={16} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: "#1B6E62" }} />
+        : <Package size={16} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0, color: R.ink }} />}
       <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
         <span style={{ fontSize: 13.5, fontWeight: 700, color: R.ink }}>
           {fr ? `Ton lot${quand ? ` du ${quand}` : ""}` : `Your batch${quand ? ` of ${quand}` : ""}`}
