@@ -325,6 +325,26 @@ function classerEchecSansRegleRetrait(arg) {
     };
   }
 
+  // ── 0 ter. OPLA REFUSE CE PRIX, ÉCRIT DANS SES RÈGLES (04/10) ────────────
+  // Lebonzeze (f2rhrt5zc6), sac à 1 100 € : le pré-vol de l'extension refuse
+  // AVANT tout envoi (« Opla plafonne les annonces à 1000 € ») — et ce refus,
+  // lu comme un motif inconnu, a été repris cinq fois avant un « relance d'un
+  // clic » qui le referait à l'identique. Un prix hors des limites écrites
+  // d'Opla (plafond 1 000 €, profil vérifié au-dessus de 300 €, plancher de
+  // conversion) ne se reprend pas : on le dit tout de suite, avec les issues.
+  if (platform === "opla" && /Opla plafonne les annonces à|Opla exige un profil vérifié au-dessus de|sous notre plancher de .* — presque toujours une erreur de conversion/i.test(t)) {
+    const plafond = /plafonne les annonces à/i.test(t);
+    const verifie = /profil vérifié/i.test(t);
+    return {
+      verdict: "a_toi", statut: "needs_user", motif: "opla_prix_hors_limites", source: "relancer",
+      message: plafond
+        ? "Opla n'accepte pas d'annonce au-dessus de 1 000 € : rien n'a été envoyé. Baisse le prix de la fiche sous 1 000 € puis relance, ou ne publie pas cet article sur Opla."
+        : verifie
+          ? "Au-dessus de 300 €, Opla exige un profil vérifié : rien n'a été envoyé. Fais vérifier ton profil sur Opla (ou baisse le prix sous 300 €), puis relance."
+          : "Le prix de cette annonce est anormalement bas pour Opla (sans doute une erreur de saisie) : rien n'a été envoyé. Corrige le prix de la fiche puis relance.",
+    };
+  }
+
   // ⛔ Les motifs qui portent DÉJÀ un geste précis (taille à choisir, limite de
   //    plateforme vérifiée) gardent la main : ils sont plus spécifiques.
   if (deconnecte && !TAILLE_HORS_GRILLE_RE.test(t) && !LBC_PAYANT_RE.test(t) && !BEEBS_RAYON_RE.test(t)) {
