@@ -536,6 +536,37 @@ async function lireIdsMesAnnoncesBeebs() {
   };
 }
 
+// La page d'UNE annonce, lue en même origine (session de la personne) :
+// { http, produit } — produit = une fiche Product dans le ld+json.
+async function pageAnnonceBeebs(id) {
+  const ctrl = new AbortController();
+  const garde = setTimeout(() => ctrl.abort(), BEEBS_LECTURE_DELAI_MS);
+  try {
+    const r = await fetch(`/fr/p/${id}`, { credentials: "include", cache: "no-store", headers: { Accept: "text/html" }, signal: ctrl.signal });
+    const html = await r.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const produit = Array.from(doc.querySelectorAll("script[type='application/ld+json']"))
+      .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
+      .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
+      .some((x) => x && /Product/i.test(String(x["@type"])));
+    return { http: r.status, produit };
+  } catch {
+    return { http: null, produit: false };
+  } finally {
+    clearTimeout(garde);
+  }
+}
+
+// L'index public porte-t-il encore l'annonce ? true / false / null (illisible).
+async function presenceIndexBeebs(id) {
+  try {
+    const r = await beebsAlgolia({ filters: `objectID:${id}`, hitsPerPage: 1, attributesToRetrieve: ["objectID"] });
+    return Array.isArray(r?.hits) ? r.hits.length > 0 : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── UN RETRAIT BEEBS NE SE CLÔT QUE SUR LA LISTE DU PROPRIÉTAIRE (03/10) ─────
 // Bouilloire de Nico (34097677, 03/10 10:12) : premier essai sur une page sans
 // bouton propriétaire, second essai qui confirme, puis « supprimé » sans que
@@ -555,6 +586,40 @@ async function preuveAbsenceMesAnnonces(idCible, t) {
   }
   const complete = lecture.ok && pages.every((p) => p.ok && !(p.annoncees != null && p.n < p.annoncees));
   if (!complete) {
+    // ── UN GROS COMPTE : « EN LIGNE » NE REND QUE SES 60 PREMIÈRES (04/10) ──
+    // Joséphine (Joe0410, ~190 annonces) : « Actuellement en ligne » ne rend
+    // que 60 annonces (le reste se charge au défilement, jamais dans un onglet
+    // minimisé) — la liste n'était JAMAIS complète, et ses retraits et
+    // republications Beebs restaient bloqués (« illisible en entier »), deux
+    // annonces déjà hors ligne comprises.
+    // Quand SEULE cette liste est tronquée (« en vérification » lue en entier,
+    // l'annonce n'y est pas, ni dans les 60 lues), on prouve l'annonce
+    // ELLE-MÊME, et il faut les trois :
+    //   · sa page rend 404, sans fiche produit (une annonce en ligne rend 200
+    //     et « InStock » ; relevé réel du 04/10 sur 3 retraits prouvés) ;
+    //   · elle n'est pas dans « en vérification » (une annonce en
+    //     vérification rend aussi 404 — c'est cette liste, complète, qui les
+    //     sépare) ;
+    //   · l'index public ne la porte plus (garde contre une page 404 encore
+    //     en cache juste après une validation).
+    // Le moindre doute (page 200, index qui la porte, lecture ratée) : rien
+    // n'est conclu, nouvel essai — jamais « retirée » sur un doute.
+    const verif = pages.find((p) => p.page === "en_verification");
+    const enLigne = pages.find((p) => p.page === "en_ligne");
+    const seuleListeTronquee = verif?.ok && enLigne?.ok
+      && enLigne.annoncees != null && enLigne.n < enLigne.annoncees;
+    if (seuleListeTronquee) {
+      const page = await pageAnnonceBeebs(idCible);
+      const index = page.http === 404 && !page.produit ? await presenceIndexBeebs(idCible) : null;
+      t(`preuve propriétaire : liste « en ligne » tronquée (${resume}) → page de l'annonce HTTP ${page.http ?? "?"}${page.produit ? " (fiche produit)" : ""}, index public : ${index === null ? "non lu" : index ? "la porte encore" : "absente"}`);
+      if (page.http === 404 && !page.produit && index === false) {
+        return { verdict: "absente", lecture: { ...lecture, preuve_annonce: { page_http: 404, produit: false, index: "absente", en_verification: "complete", en_ligne: `${enLigne.n}/${enLigne.annoncees}` } } };
+      }
+      if (page.http === 200 && page.produit) {
+        t(`preuve propriétaire : ${idCible} ENCORE en vente (page 200, fiche produit) — rien n'est conclu`);
+        return { verdict: "presente", lecture };
+      }
+    }
     t(`preuve propriétaire : lecture incomplète (${resume}) — rien n'est conclu`);
     return { verdict: "illisible", lecture };
   }
@@ -566,6 +631,9 @@ function preuveRetraitDepuis(lecture, idCible, moment) {
   return {
     source: "mes_annonces", absente: true, numero: String(idCible), moment, lu_le: lecture?.lu_le ?? new Date().toISOString(),
     pages: (lecture?.pages ?? []).map((p) => ({ page: p.page, n: p.n ?? null, annoncees: p.annoncees ?? null })),
+    // (04/10) Liste « en ligne » tronquée : la preuve porte sur l'annonce
+    // elle-même (page 404, hors vérification, hors index).
+    ...(lecture?.preuve_annonce ? { annonce: lecture.preuve_annonce } : {}),
   };
 }
 

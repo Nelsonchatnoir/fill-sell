@@ -62,11 +62,16 @@ const extraire = (nom) => {
   return bj.slice(d, f + 2);
 };
 const src = [extraire("preuveAbsenceMesAnnonces"), extraire("preuveRetraitDepuis"), extraire("confirmerRetraitParMesAnnonces")].join("\n");
-const fabrique = (lectures) => {
+// (04/10) La page de l'annonce et l'index, simulés : par défaut ILLISIBLES
+// (aucune réponse), donc jamais une preuve par accident.
+const fabrique = (lectures, { pageAnnonce = { http: null, produit: false }, index = null } = {}) => {
   let i = 0;
   const lireIdsMesAnnoncesBeebs = async () => lectures[Math.min(i++, lectures.length - 1)];
   const sleep = async () => {};
-  return new Function("lireIdsMesAnnoncesBeebs", "sleep", `${src}; return { preuveAbsenceMesAnnonces, confirmerRetraitParMesAnnonces };`)(lireIdsMesAnnoncesBeebs, sleep);
+  const pageAnnonceBeebs = async () => pageAnnonce;
+  const presenceIndexBeebs = async () => index;
+  return new Function("lireIdsMesAnnoncesBeebs", "sleep", "pageAnnonceBeebs", "presenceIndexBeebs",
+    `${src}; return { preuveAbsenceMesAnnonces, confirmerRetraitParMesAnnonces };`)(lireIdsMesAnnoncesBeebs, sleep, pageAnnonceBeebs, presenceIndexBeebs);
 };
 const page = (p, ids, annoncees = null) => ({ page: p, ok: true, ids, n: ids.length, ...(annoncees != null ? { annoncees } : {}) });
 const L = (verif, ligne, annoncees) => ({ ok: true, lu_le: "2026-10-03T10:55:00Z", ids: [...verif, ...ligne], pages: [page("en_verification", verif), page("en_ligne", ligne, annoncees)] });
@@ -86,6 +91,29 @@ ok(c1.success === true && c1.preuveRetrait?.source === "mes_annonces" && c1.preu
 const c2 = await fabrique([L([], [...nico, "34097677"], 10)]).confirmerRetraitParMesAnnonces("34097677", t);
 ok(c2.success === false && c2.reprise === true && c2.suppressionEnvoyee === true && /vérification au prochain passage/.test(c2.error),
   "toujours listée après 2 min : jamais « supprimé », vérification au passage suivant");
+
+console.log("\n3 bis. UN GROS COMPTE : « EN LIGNE » TRONQUÉE À 60 (04/10, Joséphine, ~190 annonces)");
+{
+  const soixante = Array.from({ length: 60 }, (_, k) => String(34000000 + k));
+  const jo = L([], soixante, 190);
+  const r404 = await fabrique([jo], { pageAnnonce: { http: 404, produit: false }, index: false }).preuveAbsenceMesAnnonces("33909468", t);
+  ok(r404.verdict === "absente" && r404.lecture?.preuve_annonce?.page_http === 404 && r404.lecture.preuve_annonce.index === "absente",
+    "chino de golf : liste tronquée, page 404 sans fiche, hors vérification, hors index → retirée, AVEC la preuve", JSON.stringify(r404.lecture?.preuve_annonce));
+  const c = await fabrique([jo], { pageAnnonce: { http: 404, produit: false }, index: false }).confirmerRetraitParMesAnnonces("34055112", t);
+  ok(c.success === true && c.preuveRetrait?.source === "mes_annonces" && c.preuveRetrait.annonce?.page_http === 404,
+    "retrait ou republication confirmés : la preuve porte la page de l'annonce", JSON.stringify(c.preuveRetrait));
+  const idx = await fabrique([jo], { pageAnnonce: { http: 404, produit: false }, index: true }).preuveAbsenceMesAnnonces("33909468", t);
+  ok(idx.verdict === "illisible", "page 404 mais l'index la porte encore (cache) : rien n'est conclu");
+  const enVente = await fabrique([jo], { pageAnnonce: { http: 200, produit: true }, index: true }).preuveAbsenceMesAnnonces("33917715", t);
+  ok(enVente.verdict === "presente", "page 200 avec fiche produit : ENCORE en vente → présente, jamais retirée");
+  const verif = await fabrique([L(["33909468"], soixante, 190)], { pageAnnonce: { http: 404, produit: false }, index: false }).preuveAbsenceMesAnnonces("33909468", t);
+  ok(verif.verdict === "presente", "page 404 mais EN VÉRIFICATION : présente (une annonce en vérification rend aussi 404)");
+  const sansVerif = await fabrique([{ ok: false, ids: soixante, pages: [{ page: "en_verification", ok: false, ids: [], n: 0, motif: "x" }, page("en_ligne", soixante, 190)] }],
+    { pageAnnonce: { http: 404, produit: false }, index: false }).preuveAbsenceMesAnnonces("33909468", t);
+  ok(sansVerif.verdict === "illisible", "« en vérification » illisible : jamais de preuve par la page seule");
+  const pageRatee = await fabrique([jo], { pageAnnonce: { http: null, produit: false }, index: false }).preuveAbsenceMesAnnonces("33909468", t);
+  ok(pageRatee.verdict === "illisible", "page de l'annonce illisible : rien n'est conclu");
+}
 
 console.log("\n4. LES CHEMINS DE CLÔTURE");
 const dl = bj.slice(bj.indexOf("async function deleteListing(job)"), bj.indexOf("// ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER"));
