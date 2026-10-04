@@ -109,7 +109,7 @@ import {
   Upload, ChevronsUp, BadgeEuro, Pencil, Copy, Trash2, Layers, ListChecks, Eye, Store, ExternalLink, Activity,
   CircleAlert, Laptop, KeyRound, Wrench, PauseCircle, Clock, RotateCcw,
   PenLine, Mic, Hourglass, Sparkles, Plus, BarChart3, Package, Tag, Hash, ShoppingCart, ShoppingBag,
-  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock,
+  Banknote, Receipt, Archive, Camera, Info, CircleCheck, Undo2, Lightbulb, Heart, CalendarClock, Weight,
 } from 'lucide-react';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -135,7 +135,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
   jobErrorSansFaussePromesse, jobActionRequise,
-  fraicheurExtension, detecterRetardHorloge, DESC_MANUELLE_MAX,
+  fraicheurExtension, detecterRetardHorloge, DESC_MANUELLE_MAX, lirePoidsGrammes,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum } from '../utils/comptabilite';
 import { estChampEtatVinted, libelleEtatVinted, nomChampEtat } from '../utils/etatsVinted.js';
@@ -5327,6 +5327,9 @@ const StockTab = memo(function StockTab({
   iDesc, setIDesc, iEmplacement, setIEmplacement, iPlateforme, setIPlateforme, iSaved, firstItemAdded,
   iPhotos = [], iPhotosBusy = false, iPhotosErreur = "",
   ajouterPhotosAjout, retirerPhotoAjout, reordonnerPhotosAjout,
+  // Le poids à l'ajout (04/10) : facultatif. Sans setter (hôte d'avant), le
+  // champ n'est simplement pas affiché.
+  iPoids = "", setIPoids = null,
   // Lot state
   lotManualTotal, setLotManualTotal, lotManualItems, setLotManualItems,
   lotDistributed, setLotDistributed, lotDistributing,
@@ -9347,6 +9350,20 @@ const StockTab = memo(function StockTab({
           <div>
             <Field label={lang==='fr'?"Emplacement (optionnel)":"Storage location (optional)"} value={iEmplacement} set={setIEmplacement} placeholder={lang==='fr'?"Ex: Tiroir 45A, Portant 3, Étagère B...":"Ex: Drawer 45A, Rack 3, Shelf B..."} icon={iconeChamp(Archive)}/>
           </div>
+          {/* ── POIDS (04/10, Louis) ─────────────────────────────────────────
+              LE poids de l'article (inventaire.poids_g), le même champ que la
+              modale de modification et que la carte « Livraison » Leboncoin du
+              stepper. ⛔ Facultatif : il n'entre pas dans champsManquantsAjout,
+              et un poids illisible n'empêche pas l'ajout (addItem le laisse de
+              côté et le dit). */}
+          {setIPoids&&(
+            <div>
+              <Field label={t('fieldPoids')} value={iPoids} set={setIPoids} placeholder={t('fieldPoidsPlaceholder')} type="number" icon={iconeChamp(Weight)} suffix="g"/>
+              <div style={{fontSize:11,color:lirePoidsGrammes(iPoids).invalide?"#92400E":C.label,marginTop:4,paddingLeft:4,lineHeight:1.5}}>
+                {lirePoidsGrammes(iPoids).invalide?t('fieldPoidsInvalide'):t('fieldPoidsAide')}
+              </div>
+            </div>
+          )}
           <div>
             <Field label={lang==='fr'?"Plateforme de vente (optionnel)":"Resale platform (optional)"} value={iPlateforme} set={setIPlateforme} placeholder={lang==='fr'?"Ex: Vinted, eBay, Depop, Leboncoin...":"Ex: Vinted, eBay, Depop, Leboncoin..."} icon={iconeChamp(Store)}/>
           </div>

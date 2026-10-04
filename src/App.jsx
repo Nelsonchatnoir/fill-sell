@@ -102,7 +102,7 @@ import { Bar, Line } from 'react-chartjs-2';
 import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
-import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX } from './utils/shared';
+import { detectType, normalizeMarque, marqueKey, uuidV4, DESC_MANUELLE_MAX, lirePoidsGrammes } from './utils/shared';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
@@ -820,7 +820,14 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // Vinted est comparé en chaîne partout (pill, garde serveur). Aucun cast,
   // aucun trim, aucun repli — on transporte la valeur telle qu'elle est, et
   // `??` plutôt que `||` pour ne pas transformer une chaîne vide en null.
-  vinted_account_id:v.vinted_account_id??null,fusionne_dans:v.fusionne_dans??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
+  vinted_account_id:v.vinted_account_id??null,fusionne_dans:v.fusionne_dans??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null,
+  // ── poids_g : LE poids de la fiche (04/10, Louis) ─────────────────────────
+  // Grammes entiers, ou NULL = inconnu (VIDE ≠ ZÉRO). Même leçon que
+  // vinted_account_id ci-dessus : sans cette ligne, la modale de modification
+  // s'ouvrirait vide sur un article qui a un poids, et le stepper ne pourrait
+  // pas le reprendre pour Leboncoin. Transporté tel quel (la contrainte en
+  // base garantit 1..200 000 ou NULL), `??` et non `||`.
+  poids_g:v.poids_g??null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -2095,6 +2102,12 @@ export default function App({ loginOnly = false }){
   const [iSaved,setISaved]=useState(false);
   const [iEmplacement,setIEmplacement]=useState("");
   const [iPlateforme,setIPlateforme]=useState("");
+  // ── LE POIDS À L'AJOUT (04/10, Louis) ─────────────────────────────────────
+  // La SAISIE, telle quelle (chaîne) : lue par lirePoidsGrammes au moment de
+  // l'ajout. ⛔ Facultatif — vide = NULL, et le bouton d'ajout ne le regarde
+  // pas (champsManquantsAjout inchangé). Un poids illisible n'empêche pas
+  // l'ajout : l'article entre sans poids, et l'écran l'a dit sous le champ.
+  const [iPoids,setIPoids]=useState("");
   // ── PHOTOS DE L'AJOUT MANUEL (2026-09-19) ─────────────────────────────────
   // Les URLs déjà montées dans listing-photos, DANS L'ORDRE choisi : la
   // première est la couverture. ⛔ Facultatives — addItem sert aussi au vocal
@@ -4354,10 +4367,15 @@ export default function App({ loginOnly = false }){
     const cogs=b+pc;const mg=hasS&&margeCalculable?s-cogs-sf:0;const mgp=hasS&&margeCalculable?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
+    // Poids (04/10, Louis) : posé SEULEMENT s'il est lisible — sans poids,
+    // l'insert est rigoureusement celui d'avant. Illisible : l'article entre
+    // sans, et le toast le dit (le champ l'avait déjà dit, juste dessous).
+    // VIDE ≠ ZÉRO : rien n'écrit 0 pour « je ne sais pas ».
+    const poidsAjout=lirePoidsGrammes(iPoids);
     // `photos` n'est posé QUE s'il y en a : sans photo, l'insert est
     // rigoureusement celui d'avant. Forme écrite = { type, url } via
     // entreesPhotos (règle du 05/09), jamais des chaînes nues.
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null,...(iPhotos.length?{photos:entreesPhotos(iPhotos)}:{})};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null,...(iPhotos.length?{photos:entreesPhotos(iPhotos)}:{}),...(poidsAjout.valeur!=null?{poids_g:poidsAjout.valeur}:{})};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
       track('add_item', { purchase_price: prixAchat, prix_achat_inconnu: iBuyInconnu, has_sell_price: hasS });
@@ -4376,12 +4394,13 @@ export default function App({ loginOnly = false }){
     setISaved(true);setTimeout(()=>setISaved(false),1600);
     // Prix d'achat inconnu : ni bénéfice, ni « Investi » — annoncer un
     // montant serait annoncer un chiffre faux. On confirme l'ajout, point.
-    setToast({visible:true,message:!margeCalculable
+    setToast({visible:true,message:(!margeCalculable
       ? t('articleAjoute')
-      : hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
+      : hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`)
+      +(poidsAjout.invalide?` · ${t('poidsNonEnregistre')}`:'')});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
-    setITitle("");setIBuy("");setIBuyInconnu(false);setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");setIPhotos([]);setIPhotosErreur("");
+    setITitle("");setIBuy("");setIBuyInconnu(false);setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");setIPoids("");setIPhotos([]);setIPhotosErreur("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -5540,6 +5559,26 @@ export default function App({ loginOnly = false }){
     const mg=hasS&&b!=null?s-b-f:null;
     const mgp=hasS&&mg!=null?(mg/s)*100:null;
     const typeAuto=editItem.type||detectType(editItem.title,editItem.marque);
+    // ── LA CATÉGORIE INCONNUE RESTE INCONNUE (04/10, Louis) ──────────────────
+    // mapItem replie un type NULL sur « Autre » pour l'affichage, et la modale
+    // s'ouvre sur ce repli : enregistrer N'IMPORTE QUEL champ d'un article non
+    // classé écrivait donc type = 'Autre' en base. Or un type NULL est un
+    // champ VIDE, que le relevé sait combler depuis la catégorie de l'annonce
+    // (type_fillsell_depuis_categorie, migration 20261004090000) ; « Autre »
+    // écrit le figeait pour toujours. Même distinction que l'ouvreur Lens
+    // (typeConnu) : `type` ne s'écrit que s'il était connu, ou si la personne
+    // a CHOISI une catégorie dans cette modale (typeChoisi, posé par le select).
+    // Les lignes `ventes` ne portent pas typeConnu : leur chemin est inchangé.
+    const ecrireType=editItem.typeConnu!==false||editItem.typeChoisi===true;
+    // ── LE POIDS (04/10, Louis) ───────────────────────────────────────────────
+    // `poidsSaisi` n'existe que si le champ a été TOUCHÉ : un poids seulement
+    // affiché ne se réécrit pas (un relevé a pu le changer depuis le
+    // chargement du stock — la modale ne renvoie jamais une valeur qu'elle n'a
+    // fait que montrer). Vide → NULL (VIDE ≠ ZÉRO) ; illisible → rien d'écrit,
+    // le reste de la fiche part quand même, et le toast le dit.
+    const poidsLu=editItem.poidsSaisi!==undefined?lirePoidsGrammes(editItem.poidsSaisi):null;
+    const poidsMaj=poidsLu&&!poidsLu.invalide&&poidsLu.valeur!==(editItem.poids_g??null)?{poids_g:poidsLu.valeur}:{};
+    const suffixePoids=poidsLu?.invalide?` · ${t('poidsNonEnregistre')}`:'';
     const marqueNorm=editItem.marque?.trim()?editItem.marque.trim().charAt(0).toUpperCase()+editItem.marque.trim().slice(1).toLowerCase():null;
     if(editItem._isNew){
       const{data:{session:sess}}=await supabase.auth.getSession();
@@ -5552,13 +5591,15 @@ export default function App({ loginOnly = false }){
       // purchase_costs:f (2026-08-29) : le champ « Frais » de la modale est
       // actif en mode ajout aussi — un 0 en dur jetait la saisie (cas Romain).
       // Photos : même forme écrite qu'à l'ajout manuel (entreesPhotos).
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null,...(Array.isArray(editItem.photos)&&editItem.photos.length?{photos:entreesPhotos(editItem.photos)}:{})};
+      // Poids : posé seulement s'il est lisible (poidsMaj) — sinon l'insert
+      // est rigoureusement celui d'avant.
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null,...(Array.isArray(editItem.photos)&&editItem.photos.length?{photos:entreesPhotos(editItem.photos)}:{}),...poidsMaj};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
         fermerModaleEdition();
         setLensAdded(true);
-        setToast({visible:true,message:lang==='fr'?'✓ Article ajouté au stock':'✓ Item added to stock'});
+        setToast({visible:true,message:(lang==='fr'?'✓ Article ajouté au stock':'✓ Item added to stock')+suffixePoids});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
       }else{
         setToast({visible:true,message:`⚠️ ${error.message}`});
@@ -5629,11 +5670,15 @@ export default function App({ loginOnly = false }){
     const{data:updRows,error}=await supabase.from('inventaire').update({
       titre:editItem.title,
       marque:marqueNorm,
-      type:typeAuto,
+      // Catégorie inconnue et non choisie ici : la colonne n'est pas touchée,
+      // elle reste NULL (cf. ecrireType plus haut).
+      ...(ecrireType?{type:typeAuto}:{}),
       prix_achat:b,
       prix_vente:hasS?s:null,
       margin:mg,
       margin_pct:mgp,
+      // Poids : seulement touché ET lisible ET différent (cf. poidsMaj).
+      ...poidsMaj,
       // Un prix saisi lève le drapeau « je ne sais plus » — la réponse a changé.
       ...(b!=null?{prix_achat_inconnu:false}:{}),
       // Frais PERSISTÉS aussi côté inventaire (2026-08-29, cas Romain) : `f`
@@ -5695,9 +5740,9 @@ export default function App({ loginOnly = false }){
       ...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{}),
     }).eq('id',editItem.id).eq('user_id',user.id).select('id');
     if(!error&&updRows?.length){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null,...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{})}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,...(ecrireType?{type:typeAuto,typeConnu:true}:{}),buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null,...(Array.isArray(editItem.photos)?{photos:entreesPhotos(editItem.photos)}:{}),...poidsMaj}:i));
       fermerModaleEdition();
-      setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
+      setToast({visible:true,message:(lang==='fr'?'✓ Article modifié':'✓ Item updated')+suffixePoids});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }else{
       setToast({visible:true,message:`⚠️ ${error?.message||(lang==='fr'?'Article introuvable — rien n’a été modifié':'Item not found — nothing was changed')}`});
@@ -7740,6 +7785,10 @@ export default function App({ loginOnly = false }){
         title:existant.title||lensResult.titre||"",
         marque:existant.marque||lensResult.marque||"",
         type:existant.typeConnu?existant.type:(lensResult.categorie||existant.type||""),
+        // (04/10) La catégorie n'est « connue » que si la fiche OU le scan la
+        // donnent. Sans l'un ni l'autre, la modale montre le repli « Autre »
+        // et handleEditSave ne l'écrit pas (ecrireType) — sauf choix explicite.
+        typeConnu:existant.typeConnu||Boolean(lensResult.categorie),
         // VIDE ≠ ZÉRO : un prix d'achat inconnu reste un champ VIDE dans la
         // modale, jamais un 0 pré-rempli qui deviendrait « article gratuit ».
         buy:existant.buy??"",
@@ -7748,6 +7797,11 @@ export default function App({ loginOnly = false }){
         quantite:existant.quantite||1,
         description:existant.description||"",
         emplacement:existant.emplacement||"",
+        // (04/10) Le poids de la fiche — même raison que les photos ci-dessous :
+        // cet ouvreur ne recopie pas l'article, sans cette ligne la modale
+        // s'ouvrirait sans poids (sans l'effacer pour autant : un poids non
+        // touché ne s'écrit pas).
+        poids_g:existant.poids_g??null,
         // Les photos de la fiche, pour que la galerie de la modale les montre
         // (2026-09-20). Cet ouvreur construit son objet champ par champ, il ne
         // recopie pas l'article — sans cette ligne la modale croirait l'article
@@ -8578,6 +8632,7 @@ export default function App({ loginOnly = false }){
             iRememberSellingFees={iRememberSellingFees} setIRememberSellingFees={setIRememberSellingFees}
             iDesc={iDesc} setIDesc={setIDesc}
             iEmplacement={iEmplacement} setIEmplacement={setIEmplacement}
+            iPoids={iPoids} setIPoids={setIPoids}
             iPhotos={iPhotos} iPhotosBusy={iPhotosBusy} iPhotosErreur={iPhotosErreur}
             ajouterPhotosAjout={ajouterPhotosAjout} retirerPhotoAjout={retirerPhotoAjout} reordonnerPhotosAjout={reordonnerPhotosAjout}
             iPlateforme={iPlateforme} setIPlateforme={setIPlateforme}
@@ -8770,7 +8825,11 @@ export default function App({ loginOnly = false }){
                 </div>
                 <div>
                   <div style={S.label}>{lang==='fr'?"Catégorie":"Category"}</div>
-                  <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value}))}
+                  {/* typeChoisi (04/10) : le GESTE de choisir une catégorie.
+                      Lui seul autorise handleEditSave à écrire `type` sur un
+                      article dont la catégorie était inconnue (NULL en base,
+                      affichée « Autre ») — cf. ecrireType. */}
+                  <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value,typeChoisi:true}))}
                     style={{...S.input,height:42,padding:"0 12px",cursor:"pointer",appearance:"auto",color:editItem.type?"#10201B":"#8A8578"}}>
                     <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`Détecté : ${detectType(editItem.title,editItem.marque)}`:`Detected: ${typeLabel(detectType(editItem.title,editItem.marque),lang)}`):(lang==='fr'?'Détection automatique':'Auto-detection')}</option>
                     <option value="Mode">{typeLabel('Mode',lang)}</option>
@@ -8849,7 +8908,7 @@ export default function App({ loginOnly = false }){
                 </div>
               </div>
 
-              {/* ── Logistique : quantité, emplacement ── */}
+              {/* ── Logistique : quantité, emplacement, poids ── */}
               <div style={S.group}>
                 <div style={S.eyebrow}>
                   <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
@@ -8876,6 +8935,36 @@ export default function App({ loginOnly = false }){
                     placeholder={lang==='fr'?"Ex: Étagère salon, Carton 3...":"Ex: Living room shelf, Box 3..."} style={S.input}
                     onFocus={focusTeal} onBlur={blurBorder}/>
                 </div>
+                {/* ── POIDS (04/10, Louis) ─────────────────────────────────────
+                    LE poids de l'article (inventaire.poids_g), en grammes : un
+                    seul champ, que le serveur traduit pour chaque plateforme au
+                    dépôt. La carte « Livraison » Leboncoin du stepper lit et
+                    écrit le MÊME (lbcPoidsGrammes ← poids_g, et retour à la
+                    publication). Facultatif, jamais bloquant.
+                    Champ TEXTE à clavier numérique, pas `type="number"` : une
+                    saisie illisible y devient une chaîne vide, que la sauvegarde
+                    prendrait pour « effacer le poids ». Ici on voit ce qui est
+                    tapé, et on dit quand ce n'est pas lisible.
+                    Réservé aux lignes d'INVENTAIRE : `ventes` n'a pas la colonne. */}
+                {editItem._table==='inventaire'&&(()=>{
+                  const saisiePoids=editItem.poidsSaisi??(editItem.poids_g!=null?String(editItem.poids_g):"");
+                  const poidsIllisible=lirePoidsGrammes(saisiePoids).invalide;
+                  return(
+                    <div>
+                      <div style={S.label}>{t('fieldPoids')}</div>
+                      <div style={money}>
+                        <input type="text" inputMode="numeric" value={saisiePoids}
+                          onChange={e=>setEditItem(p=>({...p,poidsSaisi:e.target.value}))}
+                          placeholder={t('fieldPoidsPlaceholder')} style={S.input}
+                          onFocus={focusTeal} onBlur={blurBorder}/>
+                        <span style={{fontSize:12,fontWeight:600,color:"#8A8578",flexShrink:0}}>g</span>
+                      </div>
+                      <div style={{fontSize:11,lineHeight:1.45,marginTop:4,color:poidsIllisible?"#92400E":"#8A8578"}}>
+                        {poidsIllisible?t('fieldPoidsInvalide'):t('fieldPoidsAide')}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* ── Plateforme de vente, CORRIGEABLE (2026-09-04) ─────────────
                     Retour Romain Colson : « Uriage a été vendu sur VINTED pas
                     ebay », et sa vente portait bien le logo eBay.

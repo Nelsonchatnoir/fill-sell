@@ -138,6 +138,14 @@ export const translations = {
     fabOrbit:"APPUIE POUR PARLER · PARLE À TON IA · ",
     fieldNom:"Nom",
     fieldNomHint:"Le nom de l'article que tu veux suivre",
+    // ── LE POIDS DE L'ARTICLE (04/10, Louis) ──────────────────────────────
+    // inventaire.poids_g : un seul champ, en grammes, traduit par plateforme
+    // au dépôt. Lu par l'ajout (StockTab) et la modale de modification.
+    fieldPoids:"Poids (g)",
+    fieldPoidsAide:"Facultatif — sert au format du colis sur chaque plateforme (Beebs, Leboncoin, Vinted, eBay).",
+    fieldPoidsPlaceholder:"ex. 650",
+    fieldPoidsInvalide:"En grammes, un nombre entier de 1 à 200 000 — sinon le poids n'est pas enregistré (le reste l'est).",
+    poidsNonEnregistre:"poids non enregistré (un nombre entier de grammes, de 1 à 200 000)",
     skeletonAchat:"Achat",
     skeletonVente:"Vente",
     plateforme:"Plateforme de vente",
@@ -512,6 +520,11 @@ export const translations = {
     fabOrbit:"TAP TO TALK · TALK TO YOUR AI · ",
     fieldNom:"Name",
     fieldNomHint:"Name of the item you want to track",
+    fieldPoids:"Weight (g)",
+    fieldPoidsAide:"Optional — used for the parcel size on each platform (Beebs, Leboncoin, Vinted, eBay).",
+    fieldPoidsPlaceholder:"e.g. 650",
+    fieldPoidsInvalide:"In grams, a whole number from 1 to 200,000 — otherwise the weight isn't saved (everything else is).",
+    poidsNonEnregistre:"weight not saved (a whole number of grams, from 1 to 200,000)",
     skeletonAchat:"Bought",
     skeletonVente:"Sold for",
     plateforme:"Resale platform",

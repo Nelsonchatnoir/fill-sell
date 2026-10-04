@@ -85,6 +85,14 @@ export function propsStepperArticle(item, jobs, { prixVinted = null } = {}) {
       //      (≥ 1 €) interdit toute annonce sans prix.
       // ⚠️ Jamais de repli sur prix_achat.
       prix_vente_suggere: prixVinted ?? item?.sell ?? item?.prix_vente ?? null,
+      // ── LE POIDS DE LA FICHE (04/10, Louis) ──
+      // inventaire.poids_g (grammes, NULL = inconnu). Le stepper en pré-remplit
+      // le « Poids du colis » de la copie Leboncoin quand elle n'en a pas
+      // (ListingPreviewScreen, comblerPoidsFiche) : sans cette ligne, il
+      // mourrait ici, à la porte de la liste blanche — comme `attributs` le
+      // 18/09. Il n'entre dans AUCUNE signature de génération (`src` y est
+      // construit champ par champ) : aucune rédaction déjà payée n'est ratée.
+      poids_g:     item?.poids_g ?? null,
     },
     // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la source
     // UNIQUE isRetouchedPhotoEntry, sur les photos BRUTES de la ligne — le

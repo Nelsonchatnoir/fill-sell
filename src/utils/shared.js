@@ -19,6 +19,40 @@ export const MONTHS_EN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep",
 //    ni de plateforme : c'est un garde-fou d'écran, et rien d'autre.
 export const DESC_MANUELLE_MAX = 500;
 
+// ── LE POIDS DE L'ARTICLE (04/10, Louis) ────────────────────────────────────
+// `inventaire.poids_g` : LE champ « Poids » de la fiche, en grammes entiers,
+// facultatif. Un seul champ pour toutes les plateformes : le serveur le
+// traduit au dépôt (tranche Beebs, poids Leboncoin, format Vinted, eBay).
+// Avant lui, le poids n'existait que par plateforme, sur chaque tâche — la
+// republication Beebs de Louis a reposé « 1 kg » sur des rangements de 200 g.
+// Les bornes sont CELLES DE LA BASE (contrainte inventaire_poids_g_plausible,
+// migration 20261004091000) : un chiffre hors bornes serait refusé par
+// Postgres, on le refuse donc à l'écran, avec un mot, sans bloquer le reste.
+// Lu par les trois écrans qui le touchent — ajout (StockTab), modification
+// (App.jsx), stepper (ListingPreviewScreen) : une règle, pas trois copies.
+// ⛔ VIDE ≠ ZÉRO : un champ vide vaut NULL (« on ne sait pas »), jamais 0 —
+//    et 0 n'est pas un poids, il est refusé comme le reste.
+export const POIDS_G_MIN = 1;
+export const POIDS_G_MAX = 200000;
+/**
+ * Lit un poids saisi (ou relu) en grammes. Rien n'est deviné : seuls les
+ * espaces sont tolérés (« 1 200 »), pas de virgule, pas d'unité, pas d'arrondi.
+ * @returns {{ vide: boolean, valeur: number|null, invalide: boolean }}
+ *   vide → NULL en base ; valeur → l'entier à écrire ; invalide → rien
+ *   d'écrit, et l'écran le dit.
+ */
+export function lirePoidsGrammes(saisie) {
+  if (saisie == null) return { vide: true, valeur: null, invalide: false };
+  const brut = typeof saisie === 'number' && !Number.isFinite(saisie) ? 'x' : String(saisie);
+  // `\s` couvre aussi les espaces insécables du français (U+00A0, U+202F).
+  const s = brut.replace(/\s/g, '');
+  if (s === '') return { vide: true, valeur: null, invalide: false };
+  if (!/^\d+$/.test(s)) return { vide: false, valeur: null, invalide: true };
+  const n = Number(s);
+  if (!Number.isSafeInteger(n) || n < POIDS_G_MIN || n > POIDS_G_MAX) return { vide: false, valeur: null, invalide: true };
+  return { vide: false, valeur: n, invalide: false };
+}
+
 // Pages de connexion des plateformes (chantier onboarding 2026-07-27) —
 // badges de session de l'écran Publier + messages d'échec actionnables du
 // Stock. La cible « brouillon LBC en cours » est la page de dépôt : c'est là

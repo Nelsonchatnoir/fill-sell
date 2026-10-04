@@ -35,7 +35,10 @@ const MOTS = {
     horsBornes: 'Trop lourd ou trop grand pour ce transporteur',
     remettreTout: 'Tout remettre',
     poids: 'Poids du colis',
-    poidsAide: 'Le vrai poids, en grammes, si tu le connais : Leboncoin choisit alors la bonne tranche. Sans poids, il l’estime lui-même.',
+    // (04/10) Un seul poids par article : celui-ci EST le poids de la fiche
+    // (inventaire.poids_g) — repris d'elle quand la copie n'en a pas, et
+    // reporté sur elle au clic Publier (ListingPreviewScreen).
+    poidsAide: 'C’est le poids de l’article : il est gardé sur la fiche. En grammes, si tu le connais : Leboncoin choisit alors la bonne tranche. Sans poids, il l’estime lui-même.',
     poidsResume: (g) => `Poids : ${g} g`,
     poidsPlaceholder: 'ex. 650',
   },
@@ -51,7 +54,7 @@ const MOTS = {
     horsBornes: 'Too heavy or too large for this carrier',
     remettreTout: 'Reset',
     poids: 'Parcel weight',
-    poidsAide: 'The real weight, in grams, if you know it: Leboncoin then picks the right bracket. Without it, Leboncoin estimates it.',
+    poidsAide: 'This is the item’s weight: it is kept on the item. In grams, if you know it: Leboncoin then picks the right bracket. Without it, Leboncoin estimates it.',
     poidsResume: (g) => `Weight: ${g} g`,
     poidsPlaceholder: 'e.g. 650',
   },

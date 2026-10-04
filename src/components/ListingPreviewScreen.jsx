@@ -32,7 +32,7 @@ import { Loader } from "./ui";
 import BarreProgression from "./BarreProgression";
 import BoutonMeConnecter from "./BoutonMeConnecter";
 import { MOTIFS } from "../utils/connexionPlateformes";
-import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4, lirePoidsGrammes } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcListePlate, lbcFeuilleDependante, lbcPaireDepuisTextes } from "../utils/lbcMaisonJardin";
@@ -2287,6 +2287,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   // Les versions du texte par plateforme (2026-09-23) et le texte de la fiche.
   versionsTexte = [], ficheTexte = null,
   dissociees = null, onModifierCarte = null, onRetablirCarte = null,
+  // (04/10) Le poids TAPÉ sur la carte Livraison Leboncoin : l'hôte en garde
+  // la trace pour le reporter sur la fiche au clic Publier. Absent = rien.
+  onPoidsSaisi = null,
   // ── LA PEAU (refonte 24/09) ─────────────────────────────────────────────
   // "nouvelle" : l'en-tête et la bande de photos sont rendus par la coque du
   // nouveau stepper (ils ne le sont donc pas ici), et chaque carte porte la
@@ -2917,11 +2920,16 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                     <CarteLivraisonLeboncoin
                       lang={lang}
                       champs={e.platform_fields ?? {}}
-                      onChange={(cle, valeur) => setEdited(prev => {
-                        const pf = { ...(prev[p]?.platform_fields ?? {}) };
-                        if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
-                        return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
-                      })}
+                      onChange={(cle, valeur) => {
+                        // (04/10) Le poids tapé ici est CELUI DE L'ARTICLE :
+                        // l'hôte le reporte sur la fiche au clic Publier.
+                        if (cle === "lbcPoidsGrammes") onPoidsSaisi?.();
+                        setEdited(prev => {
+                          const pf = { ...(prev[p]?.platform_fields ?? {}) };
+                          if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+                          return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
+                        });
+                      }}
                     />
                   )}
                   {/* ── COLIS VINTED (2026-09-27, demande de Louis) ─────────
@@ -4817,7 +4825,29 @@ export default function ListingPreviewScreen({
   // copie dont la marque est vide ou d'une seule lettre reprend celle de la
   // fiche (colonne `marque`, puis l'attribut). Une copie qui porte déjà une
   // marque n'est jamais touchée (moteur/reponsesPartagees.js).
-  const comblerMarqueFiche = (copies) => comblerMarquesVides(copies, marqueDeLaFiche(initialListing)).edited;
+  // ── ET LE POIDS DE LA FICHE, REPRIS PAR LEBONCOIN (04/10, Louis) ──────────
+  // Un seul poids par article : inventaire.poids_g. La carte « Livraison »
+  // Leboncoin écrit lbcPoidsGrammes sur la copie ; elle part désormais de
+  // celui de la fiche quand la copie n'en a pas — aux MÊMES trois arrivées
+  // que la marque, jamais pendant une frappe : un poids vidé à la main n'est
+  // pas reposé sous ses doigts. Une copie qui porte déjà un poids n'est
+  // jamais touchée. Borne haute = celle de la carte (30 000 g : au-delà,
+  // Leboncoin ne livre pas) — un poids que la carte refuserait à la saisie
+  // n'y est pas posé. Le retour copie → fiche se fait au clic Publier.
+  // Il passe par `comblerMarqueFiche` pour que les trois points d'arrivée
+  // restent écrits tels quels (scripts/reponses-partagees-selftest.mjs les lit).
+  const POIDS_LBC_MAX = 30000;
+  const poidsDeLaFiche = lirePoidsGrammes(initialListing?.poids_g).valeur;
+  const comblerPoidsFiche = (copies) => {
+    const lbc = copies?.leboncoin;
+    if (!lbc || poidsDeLaFiche == null || poidsDeLaFiche > POIDS_LBC_MAX) return copies;
+    if (Number(lbc.platform_fields?.lbcPoidsGrammes) > 0) return copies;
+    return { ...copies, leboncoin: { ...lbc, platform_fields: { ...(lbc.platform_fields ?? {}), lbcPoidsGrammes: poidsDeLaFiche } } };
+  };
+  // Le poids TAPÉ sur la carte Leboncoin (un geste, pas une valeur reprise) :
+  // lui seul autorise à réécrire un poids que la fiche porte déjà.
+  const poidsSaisiAuStepperRef = useRef(false);
+  const comblerMarqueFiche = (copies) => comblerPoidsFiche(comblerMarquesVides(copies, marqueDeLaFiche(initialListing)).edited);
   const [edited, setEdited]                           = useState(() => comblerMarqueFiche(draft?.edited ?? {}));
   // ── L'OPTION PHOTOS AVEC LAQUELLE LE TEXTE EN MAIN A ÉTÉ RÉDIGÉ (01/10) ────
   // « Publier » rouvre désormais TOUJOURS l'écran « Où publier ? », fiche
@@ -6629,10 +6659,21 @@ export default function ListingPreviewScreen({
   // gardé SA retouche et rangé de quoi poser la question
   // (attributs.contenu_divergent) ; ici on la pose, en ambre, et elle tranche
   // en UN tap. Sans réponse, rien ne bouge — sa retouche reste.
+  // ── LE PRIX N'EST PLUS UNE QUESTION (04/10, règle de Nico) ────────────────
+  // Un prix qui a bougé sur une plateforme est désormais tranché par le
+  // SERVEUR, au relevé : la plateforme l'emporte si la personne ne l'a pas
+  // changé dans FillSell, sinon le plus récent gagne — et c'est noté au
+  // journal (inventaire_journal ; traces prix_vente_change_le/_par).
+  // L'entrée « prix » de `champs`, posée par les extensions d'avant, est donc
+  // IGNORÉE ici : titre et description restent une question, rien d'autre ne
+  // change. Sans autre champ que le prix, pas de carte du tout. Retirée de
+  // `champs`, elle ne peut plus non plus partir par « Prendre celui de… ».
   const divergence = useMemo(() => {
     const v = attributV("contenu_divergent");
-    if (!v || typeof v !== "object" || !Array.isArray(v.champs) || !v.champs.length) return null;
-    return v;
+    if (!v || typeof v !== "object" || !Array.isArray(v.champs)) return null;
+    const champs = v.champs.filter(c => c !== "prix");
+    if (!champs.length) return null;
+    return champs.length === v.champs.length ? v : { ...v, champs };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attributsBase]);
   const [divergenceTranchee, setDivergenceTranchee] = useState(null);
@@ -9520,6 +9561,30 @@ export default function ListingPreviewScreen({
           );
         }
       }
+      // ── LE POIDS DONNÉ À LEBONCOIN EST CELUI DE L'ARTICLE (04/10, Louis) ───
+      // Un seul poids : la carte « Livraison » Leboncoin écrit lbcPoidsGrammes
+      // sur la copie, et la fiche (inventaire.poids_g) le reçoit ICI, au même
+      // moment que le prix. Écrit SEULEMENT :
+      //   · si la copie porte un poids lisible — jamais NULL par-dessus un
+      //     poids connu : vider la carte ne vide pas la fiche ;
+      //   · s'il diffère de celui de la fiche ;
+      //   · et s'il a été TAPÉ sur la carte dans cette session — ou si la fiche
+      //     n'en a aucun (une copie rouverte ne peut alors le tenir que de la
+      //     personne). Un poids seulement repris d'une copie rouverte ne revient
+      //     jamais par-dessus celui de la fiche, qui a pu changer depuis.
+      // Requête à part, best-effort : la publication est partie, et le prix
+      // ci-dessus ne doit pas tomber avec le poids.
+      const poidsCopieLbc = lirePoidsGrammes(edited?.leboncoin?.platform_fields?.lbcPoidsGrammes).valeur;
+      if (currentInvId && poidsCopieLbc != null && poidsCopieLbc !== poidsDeLaFiche
+          && (poidsSaisiAuStepperRef.current || poidsDeLaFiche == null)) {
+        const { error: poidsErr } = await supabase
+          .from("inventaire")
+          .update({ poids_g: poidsCopieLbc })
+          .eq("id", currentInvId)
+          .eq("user_id", userId)
+          .select("id");
+        if (poidsErr) console.warn("[publish] poids non gardé sur la fiche :", poidsErr.message);
+      }
       // ── LA RÉPONSE DONNÉE À LA MAIN SE RANGE SUR L'ARTICLE (2026-09-20) ────
       // Le classement par âge est le SEUL champ du domaine que ni le titre ni
       // la catégorie ne donnent : quand la personne le tranche au stepper, sa
@@ -10205,6 +10270,7 @@ export default function ListingPreviewScreen({
     versionsTexte, ficheTexte: { titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" },
     divergence, divergenceTranchee, onTrancherDivergence: trancherDivergence,
     dissociees, onModifierCarte: modifierCarte, onRetablirCarte: retablirCarte,
+    onPoidsSaisi: () => { poidsSaisiAuStepperRef.current = true; },
   };
   const moteur = {
     // Contexte
@@ -10582,6 +10648,7 @@ export default function ListingPreviewScreen({
             dissociees={dissociees}
             onModifierCarte={modifierCarte}
             onRetablirCarte={retablirCarte}
+            onPoidsSaisi={() => { poidsSaisiAuStepperRef.current = true; }}
           />
         )}
         {step === 3 && (
