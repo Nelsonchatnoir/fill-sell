@@ -177,6 +177,7 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
 
   // ── 4. Le détail de ce qui n'a jamais été lu (ou il y a plus de 7 jours) ─
   let details = 0, detailsEchecs = 0;
+  let premierEchec: string | null = null;
   if (lignes.length) {
     const { data: connues } = await admin.from("annonces_plateforme")
       .select("listing_id, donnees_index_le")
@@ -190,8 +191,8 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
     for (const c of aLire) {
       if (Date.now() - debut > BUDGET_MS - 25_000) break;
       const d = await lireArticleTrading(env, token, c.listing_id);
-      if (!d.ok) { detailsEchecs++; continue; }
-      if (compte && d.vendeur && d.vendeur.toLowerCase() !== compte.toLowerCase()) { detailsEchecs++; continue; }
+      if (!d.ok) { detailsEchecs++; premierEchec ??= `${c.listing_id} : ${d.motif}`; continue; }
+      if (compte && d.vendeur && d.vendeur.toLowerCase() !== compte.toLowerCase()) { detailsEchecs++; premierEchec ??= `${c.listing_id} : vendeur « ${d.vendeur} », pas « ${compte} »`; continue; }
       const { error } = await admin.from("annonces_plateforme")
         .update({ donnees_index: d.donnees, donnees_index_le: maintenant() })
         .eq("user_id", r.user_id).eq("platform", "ebay").eq("listing_id", c.listing_id);
@@ -234,7 +235,7 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
   const tete = lecture.complet
     ? `[api] compte relié « ${compte} » : ${lignes.length} annonce(s) en ligne lues par l'API eBay sur ${lecture.total ?? lignes.length} annoncée(s)`
     : `[incomplet] [api] compte relié « ${compte} » : ${lignes.length} annonce(s) lue(s) sur ${lecture.total ?? "?"} — ${lecture.motif ?? "lecture interrompue"} ; rien n'est conclu sur les autres`;
-  const texte = `${tete} · [détail] ${details} annonce(s) lue(s) en détail${detailsEchecs ? `, ${detailsEchecs} illisible(s)` : ""} · ` +
+  const texte = `${tete} · [détail] ${details} annonce(s) lue(s) en détail${detailsEchecs ? `, ${detailsEchecs} illisible(s)${premierEchec ? ` (${premierEchec.slice(0, 160)})` : ""}` : ""} · ` +
     `[rattachement] par identifiant ${totaux.par_job}, automatiques ${totaux.auto}, proposées ${totaux.proposees}, ` +
     `sans candidat ${totaux.sans_candidat}, importées ${totaux.importees}, disparues ${totaux.disparues}`;
   await majRun(admin, r.id, {
