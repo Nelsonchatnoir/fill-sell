@@ -59,7 +59,7 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
   // UN TAP = l'e-mail part à l'adresse du compte. (01/10) « Lien envoyé » ne
   // s'affiche QUE si le serveur dit qu'il est parti : du 25/09 au 01/10, un
   // « throttle » (rien d'envoyé) s'affichait comme une confirmation. Une
-  // « rafale » (un lien parti il y a moins d'une minute) se dit telle quelle.
+  // « rafale » (un lien parti il y a peu : 1 toutes les 10 min, 3 par 24 h) se dit telle quelle.
   // Rend le résultat serveur ({ ok, reason, email… }) pour que l'appelant
   // puisse JOURNALISER un envoi réellement parti (usage_logs install_extension
   // · mail_envoye, 05/09) — l'état React n'est pas relisible dans le même tour.
@@ -90,12 +90,18 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
 // Le texte de l'échec vit ici aussi : deux écrans qui disent la même panne avec
 // deux formulations différentes, c'est déjà deux comportements.
 export function messageEchecLien(raison, fr, dejaEnvoye = false, retryDans = null) {
-  // (01/10) Un lien est parti il y a moins d'une minute : rien n'est reparti.
+  // (04/10) Un lien est parti il y a peu (le serveur en envoie un toutes les
+  // 10 minutes et trois par 24 h au plus) : rien n'est reparti. Le délai vient
+  // du serveur ; on le dit en minutes ou en heures, jamais en secondes.
   if (raison === 'rafale') {
-    const n = Number(retryDans) > 0 ? Math.ceil(Number(retryDans)) : 60;
+    const s = Number(retryDans) > 0 ? Math.ceil(Number(retryDans)) : 600;
+    const min = Math.max(1, Math.ceil(s / 60));
+    const quand = min >= 90
+      ? (fr ? `dans ${Math.round(min / 60)} h` : `in ${Math.round(min / 60)}h`)
+      : (fr ? `dans ${min} min` : `in ${min} min`);
     return fr
-      ? `Un lien t'a été envoyé il y a moins d'une minute : regarde ta boîte mail (et les indésirables). Tu pourras en redemander un dans ${n} s.`
-      : `A link was sent to you less than a minute ago: check your inbox (and spam). You can ask for another one in ${n}s.`;
+      ? `Le lien t'a déjà été envoyé il y a peu : regarde ta boîte mail (et les indésirables) — il peut mettre quelques minutes à arriver. Tu pourras en redemander un ${quand}.`
+      : `The link was already sent to you a moment ago: check your inbox (and spam) — it can take a few minutes to arrive. You can ask for another one ${quand}.`;
   }
   if (raison === 'no_email') {
     return fr

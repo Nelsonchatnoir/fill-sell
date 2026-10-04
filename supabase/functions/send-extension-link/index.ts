@@ -21,8 +21,9 @@
 // ENVOYER à qui avait déjà reçu un lien un jour — et l'app affichait « Lien
 // envoyé à … » (domagalajessica, 01/10 : dernier lien reçu le 13/08 ; 16
 // comptes, 25 demandes perdues). Désormais :
-//   · un envoi par MINUTE et par compte au plus (anti-rafale) ; au-delà,
-//     réponse 429 « rafale » : rien n'est parti, et l'app le dit ;
+//   · (04/10) un envoi toutes les 10 MINUTES et 3 par 24 h par compte au
+//     plus (anti-rafale) ; au-delà, réponse 429 « rafale » : rien n'est
+//     parti, et l'app le dit ;
 //   · la fonction ne répond JAMAIS « ok » quand rien n'est parti ;
 //   · chaque envoi réel écrit sa ligne email_logs (journal APRÈS l'envoi —
 //     l'index « un seul lien à vie » est supprimé, migration 20261001133000) ;
@@ -43,7 +44,16 @@ const ALLOWED_ORIGINS = [
 ];
 
 const TYPE_LOG = "extension_link";
-const FENETRE_MS = 60_000;
+// ── (04/10, Nico) UNE LIMITE SIMPLE : 1 LIEN TOUTES LES 10 MIN, 3 PAR 24 H ──
+// Yousri Youssouf (inscrit le 03/10, sur téléphone) : 10 appuis, 4 mails
+// « extension_link » en 14 minutes (00:05 → 00:19) — l'anti-rafale d'une
+// minute laissait passer chaque nouvel appui. Le lien est le même à chaque
+// fois : un second envoi n'apporte rien tant que le premier peut encore
+// arriver (10 min), et trois par jour couvrent tous les cas réels (mail perdu,
+// autre ordinateur). Au-delà : RIEN ne part, la réponse le dit (« rafale »,
+// avec l'heure du dernier envoi et le temps à attendre) — jamais un « ok ».
+const FENETRE_MS = 10 * 60_000;
+const PLAFOND_24H = 3;
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -83,28 +93,43 @@ serve(async (req) => {
     lang = profil?.lang === "en" ? "en" : "fr";
   }
 
-  // ── ANTI-RAFALE : UN ENVOI PAR MINUTE ET PAR COMPTE (2026-10-01) ─────────
+  // ── ANTI-RAFALE : 1 ENVOI / 10 MIN ET 3 / 24 H PAR COMPTE (04/10) ────────
   // Garde lue-puis-écrite : suffisante contre des taps (le bouton est
-  // verrouillé pendant l'envoi et 60 s après). Un lien plus ancien ne bloque
-  // JAMAIS une nouvelle demande.
-  const { data: dernier } = await supabaseAdmin
+  // verrouillé pendant l'envoi). Un lien de plus de 24 h ne bloque JAMAIS une
+  // nouvelle demande.
+  const depuis24h = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const { data: recents } = await supabaseAdmin
     .from("email_logs")
     .select("sent_at")
     .eq("user_id", authUser.id)
     .eq("email_type", TYPE_LOG)
+    .gte("sent_at", depuis24h)
     .order("sent_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const ecoule = dernier?.sent_at ? Date.now() - new Date(dernier.sent_at as string).getTime() : Infinity;
-  if (ecoule >= 0 && ecoule < FENETRE_MS) {
-    // Rien ne part : la personne vient d'en recevoir un il y a moins d'une
-    // minute. L'app le dit tel quel, avec le temps à attendre.
+    .limit(PLAFOND_24H);
+  const envois = ((recents ?? []) as Array<{ sent_at: string }>)
+    .map((r) => new Date(r.sent_at).getTime()).filter((t) => Number.isFinite(t));
+  const maintenant = Date.now();
+  let attenteMs = 0;
+  let plafond: "fenetre" | "jour" | null = null;
+  if (envois.length && maintenant - envois[0] < FENETRE_MS) {
+    attenteMs = FENETRE_MS - (maintenant - envois[0]);
+    plafond = "fenetre";
+  }
+  if (envois.length >= PLAFOND_24H) {
+    const libreLe = envois[PLAFOND_24H - 1] + 24 * 3_600_000;
+    if (libreLe - maintenant > attenteMs) { attenteMs = libreLe - maintenant; plafond = "jour"; }
+  }
+  if (plafond && attenteMs > 0) {
+    // Rien ne part. L'app le dit tel quel : l'heure du dernier envoi, le
+    // temps à attendre. (`reason` reste « rafale » : les versions de l'app
+    // déjà installées savent l'afficher.)
     return json({
       ok: false,
       reason: "rafale",
-      envoye_le: dernier!.sent_at,
+      plafond,
+      envoye_le: new Date(envois[0]).toISOString(),
       email: destinataire,
-      retry_dans_s: Math.ceil((FENETRE_MS - ecoule) / 1000),
+      retry_dans_s: Math.ceil(attenteMs / 1000),
     }, 429);
   }
 

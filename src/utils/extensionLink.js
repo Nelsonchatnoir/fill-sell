@@ -7,9 +7,9 @@
 // Rendu normalisé pour que l'appelant n'ait jamais à distinguer un échec
 // réseau d'un échec applicatif :
 //   { ok: true,  email }
-//   { ok: false, reason: 'rafale', email, retryDans }  ← (01/10) un lien est parti il y a
-//                                                         moins d'une minute : RIEN n'est
-//                                                         parti cette fois, l'app le dit
+//   { ok: false, reason: 'rafale', email, retryDans }  ← (04/10) un lien est parti il y a peu
+//                                                         (1 toutes les 10 min, 3 par 24 h) :
+//                                                         RIEN n'est parti, l'app le dit
 //   { ok: false, reason: 'no_email' | 'unauthorized' | 'send_failed' | 'reseau' }
 import { supabase } from '../lib/supabase';
 
