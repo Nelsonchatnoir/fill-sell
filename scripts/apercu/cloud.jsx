@@ -50,16 +50,21 @@ const PREMIUM = { is_premium: true };
 const PRO = { is_premium: true, is_pro: true };
 const BUSINESS = { is_premium: true, is_pro: true, is_business: true };
 const essaiDepuis = (debut) => ({ cloud_essai_debut: iso(debut), cloud_essai_fin: iso(debut + 7 * J) });
+// Une période payée qui finit dans 21 jours (décisions du 04/10 soir : une
+// option payée qu'on arrête tourne jusque-là).
+const PERIODE = { cloud_periode_fin: iso(now + 21 * J) };
 const PROFILS = {
   free: {},
   free_essai_pris: essaiDepuis(now - 20 * J),
+  free_essai: essaiDepuis(now - 2 * J - H),                       // Free + Sans ordinateur, en essai
+  free_actif: { is_cloud: true, ...PERIODE },                     // Free + Sans ordinateur, payée
   premium: PREMIUM,
-  premium_actif: { ...PREMIUM, is_cloud: true },
+  premium_actif: { ...PREMIUM, is_cloud: true, ...PERIODE },
   business: BUSINESS,
   essai_j5: { ...PREMIUM, ...essaiDepuis(now - 2 * J - H) },
   essai_j1: { ...PREMIUM, ...essaiDepuis(now + 23.5 * H - 7 * J) },
-  paye: { ...PRO, is_cloud: true },
-  suspendu: { is_cloud: true },
+  paye: { ...PRO, is_cloud: true, ...PERIODE },
+  paye_arret: { ...PRO, is_cloud: true, ...PERIODE, cloud_arret_fin_periode: true },
   termine: { ...PREMIUM, ...essaiDepuis(now - 10 * J) },
   gratuit: {},
   aucun_payant: PREMIUM,
@@ -73,13 +78,16 @@ const PROFIL_DE = {
   'modale-free': 'free', 'modale-free-essai-pris': 'free_essai_pris', 'modale-cloud': 'free',
   'modale-premium': 'premium', 'modale-business': 'business', 'modale-deja-actif': 'premium_actif',
   'reglages-aucun': 'aucun_payant', 'reglages-gratuit': 'gratuit', 'reglages-essai-j5': 'essai_j5',
-  'reglages-essai-j1': 'essai_j1', 'reglages-paye': 'paye', 'reglages-suspendu': 'suspendu', 'reglages-termine': 'termine',
+  'reglages-essai-j1': 'essai_j1', 'reglages-paye': 'paye', 'reglages-paye-arret': 'paye_arret',
+  'reglages-free-essai': 'free_essai', 'reglages-free-actif': 'free_actif', 'reglages-termine': 'termine',
+  'reglages-resiliation': 'premium_actif',
   veille: 'essai_j1', fin: 'termine', entree: 'free', mur: 'free', 'stock-lien': 'free', 'page-extension': 'free',
 };
 const profil = { id: UID, stripe_customer_id: null, ...PROFILS[PROFIL_DE[ecran] ?? 'free'] };
 window.__FIXTURE = {
   utilisateur: { id: UID, email: 'apercu@fillsell.app' },
-  tables: { profiles: [profil], coin_config: [] },
+  // coin_config : la valeur RÉELLE du quota Free (5), lue par la feuille comme en prod.
+  tables: { profiles: [profil], coin_config: [{ key: 'quota_annonces_free', value: 5 }] },
   rpc: {},
 };
 // Les mémoires d'affichage (rappel déjà vu, lien déjà envoyé) partent vides.
@@ -89,7 +97,7 @@ const palier = palierDuProfil(profil);
 const droits = droitsDuPalier(palier);
 const rien = () => {};
 const actionsCloud = {
-  essayer: rien, ajouter: rien, meConnecter: rien, voirFormules: rien, extension: rien,
+  essayer: rien, ajouter: rien, meConnecter: rien, voirFormules: rien, extension: rien, reprendre: rien,
   arreter: async () => ({ ok: true }),
 };
 
@@ -100,18 +108,27 @@ function Modale({ trigger = 'generic', ajout = false }) {
         isOpen onClose={rien} onUpgrade={(tier, choix) => { window.__dernierChoix = { tier, choix: choix ?? null, nbArgs: choix === undefined ? 1 : 2 }; }}
         trigger={trigger} lang="fr" userId={UID} {...droits}
         onAjouterCloud={ajout ? () => { window.__ajoutCloud = true; } : null}
+        // Ce que l'hôte passera quand Free + Sans ordinateur sera payable.
+        onCloudSeul={() => { window.__cloudSeul = true; }}
       />
     </div>
   );
 }
 
+// Les quotas du compte, tels que quotas_etat les rend (Free : 5 annonces).
+const QUOTAS = palier === 'gratuit'
+  ? { annonces: { plafond: 5, consommes: 2, restantes: 3 }, republication: { mode: 'avie', plafond: 50, faites: 4, restantes: 46 } }
+  : null;
+
 function Reglages() {
   const T = txt('fr');
+  // L'étape de la résiliation est un état, comme dans App.jsx (handleCancelSubscription).
+  const [etape, setEtape] = React.useState(0);
   const c = {
     user: { id: UID, email: 'apercu@fillsell.app' }, lang: 'fr', ...droits, nomFormule: nomDuPalier(palier),
-    natif: false, plateforme: 'web', quotas: null, remiseAZero: null, prochainPrelevement: null,
+    natif: false, plateforme: 'web', quotas: QUOTAS, remiseAZero: null, prochainPrelevement: null,
     ouvrirOffres: rien,
-    resiliation: { resilie: false, etape: 0, setEtape: rien, lancer: rien, enCours: false, finLe: null, message: null },
+    resiliation: { resilie: false, etape, setEtape, lancer: rien, enCours: false, finLe: null, message: null },
     restauration: { enCours: false, lancer: rien },
     // Ce que l'hôte passera quand le paiement de l'option existera.
     actionsCloud,
