@@ -165,6 +165,7 @@ import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } fr
 import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour } from "../_shared/vinted-colis.js";
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable } from "../_shared/attente-autre-boutique.js";
+import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -2658,9 +2659,7 @@ serve(async (req) => {
     // AVANT l'envoi, ici, sans ouvrir aucun onglet. Le job passe en needs_user
     // avec le motif vrai et les deux issues ; rien n'est tenté chez Opla.
     if (!includeProcessing && !includeNeedsUser) {
-      const OPLA_PRIX_MAX = 1000;
-      const tropChers = out.filter((j) => j.platform === "opla" && (j.action === "publish" || j.action === "republish")
-        && Number((j as Record<string, unknown>).price) > OPLA_PRIX_MAX);
+      const tropChers = out.filter((j) => prixOplaTropHaut(j));
       if (tropChers.length) {
         try {
           const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -2670,8 +2669,7 @@ serve(async (req) => {
             pfJ.garde_prix_opla = { le: new Date().toISOString(), prix: Number((j as Record<string, unknown>).price), plafond: OPLA_PRIX_MAX, pose_par: "get-pending-jobs (avant tout envoi)" };
             await admin.from("cross_post_jobs").update({
               status: "needs_user", platform_fields: pfJ,
-              error: `Opla n'accepte pas d'annonce au-dessus de ${OPLA_PRIX_MAX} € (celle-ci est à ${Number((j as Record<string, unknown>).price)} €) : rien n'a été envoyé. ` +
-                `Baisse le prix de la fiche sous ${OPLA_PRIX_MAX} € puis relance, ou ne publie pas cet article sur Opla.`,
+              error: messagePrixOplaTropHaut((j as Record<string, unknown>).price),
             }).eq("id", j.id as string).eq("status", "pending");
           }
           const ids = new Set(tropChers.map((j) => String(j.id)));

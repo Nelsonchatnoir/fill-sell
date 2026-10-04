@@ -56,6 +56,7 @@
     "selftest:etat-repris": "node scripts/etat-repris-selftest.mjs",
     "selftest:tache-sans-demarrage": "node scripts/tache-sans-demarrage-selftest.mjs",
     "selftest:retrait-vinted-verification": "node scripts/retrait-vinted-verification-achetable-selftest.mjs",
+    "selftest:opla-prix-plafond": "node scripts/opla-prix-plafond-selftest.mjs",
     "selftest:retrait-beebs-verification": "node scripts/retrait-beebs-verification-selftest.mjs",
     "selftest:ebay-hub-rendu": "node scripts/ebay-hub-rendu-selftest.mjs",
     "selftest:ebay-categorie-message": "node scripts/ebay-categorie-message-selftest.mjs",

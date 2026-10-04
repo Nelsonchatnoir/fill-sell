@@ -20,6 +20,7 @@ import { oplaACloreJob, clotureOpla, STATUTS_OPLA_A_CLORE, OPLA_SORTIE, sortieOp
 import { posteVivant, messageInterruption } from "../_shared/interruption-poste.js";
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
+import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
 import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
@@ -1295,6 +1296,37 @@ serve(async (req) => {
     if (nMurs) console.log(`[handler-watch] ${nMurs} job(s) eBay arrêtés sur la mise à niveau du compte vendeur : motif vrai posé`);
   } catch (e) {
     console.error("[handler-watch] mise à niveau eBay :", (e as Error)?.message ?? e);
+  }
+
+  // ══ OPLA : UN PRIX AU-DESSUS DU PLAFOND, LE VRAI MOTIF (04/10, Lebonzeze) ══
+  // f2rhrt5zc6 (1eecc08e, sac à 1 100 €) lisait « la publication n'a pas
+  // abouti après plusieurs essais ». get-pending-jobs arrête désormais ces
+  // tâches AVANT l'envoi ; ici, la même règle (_shared/opla-prix.js) donne le
+  // vrai motif aux tâches DÉJÀ arrêtées. Borné : 14 jours, 40 tâches, une
+  // seule fois par tâche (garde_prix_opla), écriture conditionnelle au statut.
+  try {
+    const { data: chers } = await supabase.from("cross_post_jobs")
+      .select("id, platform, action, status, price, error, platform_fields")
+      .eq("platform", "opla").in("action", ["publish", "republish"]).in("status", ["needs_user", "failed"])
+      .gt("price", OPLA_PRIX_MAX)
+      .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+      .is("platform_fields->garde_prix_opla", null)
+      .limit(40);
+    let nChers = 0;
+    for (const j of (chers ?? []) as Array<{ id: string; platform: string; action: string; status: string; price: number | null; error: string | null; platform_fields: Record<string, unknown> | null }>) {
+      if (!prixOplaTropHaut(j)) continue;
+      const pf: Record<string, unknown> = { ...(j.platform_fields ?? {}) };
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error ?? "", j.status, "handler-watch (prix Opla au-dessus du plafond)");
+      pf.needs_user_source = "relancer";
+      pf.garde_prix_opla = { le: new Date().toISOString(), prix: Number(j.price), plafond: OPLA_PRIX_MAX, pose_par: "handler-watch (tâche déjà arrêtée)" };
+      const { data: maj } = await supabase.from("cross_post_jobs")
+        .update({ status: "needs_user", error: messagePrixOplaTropHaut(j.price), platform_fields: pf })
+        .eq("id", j.id).eq("status", j.status).select("id");
+      nChers += (maj ?? []).length;
+    }
+    if (nChers) console.log(`[handler-watch] ${nChers} tâche(s) Opla au-dessus du plafond de ${OPLA_PRIX_MAX} € : motif vrai posé`);
+  } catch (e) {
+    console.error("[handler-watch] prix Opla :", (e as Error)?.message ?? e);
   }
 
   // ══ RETRAIT VINTED D'UNE ANNONCE QUI N'EXISTE PLUS : LE DRESSING TRANCHE (03/10) ══
