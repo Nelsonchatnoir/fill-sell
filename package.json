@@ -53,6 +53,7 @@
     "selftest:titre-du-job": "node scripts/titre-du-job-selftest.mjs",
     "selftest:rien-a-publier": "node --import ./scripts/loader-ext.mjs scripts/publication-rien-a-publier-selftest.mjs",
     "selftest:paiement-stripe": "node scripts/paiement-stripe-selftest.mjs",
+    "selftest:option-cloud": "node scripts/option-cloud-selftest.mjs",
     "selftest:lens-photos-fiche": "node scripts/lens-photos-fiche-selftest.mjs",
     "selftest:lens-envoi-rapide": "node scripts/lens-envoi-rapide-selftest.mjs",
     "selftest:etats-vinted-affiches": "node scripts/etats-vinted-affiches-selftest.mjs",
