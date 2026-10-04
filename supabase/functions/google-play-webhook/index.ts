@@ -288,15 +288,15 @@ serve(async (req) => {
     }
 
     // ── L'OPTION CLOUD — app.fillsell.cloud.sub (04/10/2026) ────────────────
-    // Forfait cloud-monthly, offre cloud-trial-3d (essai 3 jours). PURCHASED (4)
+    // Forfait cloud-monthly, offre cloud-trial-3d (essai 7 JOURS depuis le
+    // 04/10 nuit, l'identifiant ne se renomme pas). PURCHASED (4)
     // avec l'offre → essai (dates, option pas payée) ; RENEWED / RECOVERED /
     // RESTARTED → payée ; EXPIRED / REVOKED / ON_HOLD → retirée ; CANCELED (3)
     // → renouvellement coupé, accès conservé. Garde « référence remplacée » sur
     // cloud_ref (jamais sur google_purchase_token, qui est celui du palier).
     // Les règles sont dans _shared/cloud-option.js.
-    const lectureCloud = lectureCloudGoogle(subscriptionId, purchase, notificationType,
-      (id: string) => id === BUSINESS_PRODUCT_ID ? "business" : id === PRO_PRODUCT_ID ? "pro" : PREMIUM_PRODUCT_IDS.includes(id) ? "premium" : null);
-    if (lectureCloud?.cloud) {
+    const lectureCloud = lectureCloudGoogle(subscriptionId, purchase, notificationType);
+    if (lectureCloud) {
       const sens = notificationType === CANCELED_TYPE ? "annulation" : isPremium ? "on" : "off";
       const { data: profilCloud } = await supabaseAdmin
         .from("profiles").select("cloud_canal, cloud_ref").eq("id", userId).maybeSingle();
@@ -318,31 +318,6 @@ serve(async (req) => {
       }
       console.log(`[google-play-webhook] Cloud type=${notificationType} ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${userId}`, JSON.stringify(update));
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
-        status: 200, headers: { "Content-Type": "application/json" },
-      });
-    }
-    // Palier acheté avec une offre « palier + Cloud » (PROPOSÉE, suffixe
-    // -cloud-trial-3d, éligibilité décidée par le développeur) : 3 jours non
-    // facturés → AUCUN drapeau de palier (quotas du gratuit), dates d'essai,
-    // jeton mémorisé pour la garde « token remplacé ». La conversion arrive en
-    // RENEWED (2) et suit le chemin normal ci-dessous.
-    if (lectureCloud && !lectureCloud.cloud && lectureCloud.essai && isPremium === true) {
-      const { error: essaiErr } = await supabaseAdmin.from("profiles").update({
-        google_purchase_token: purchaseToken,
-        google_product_id: subscriptionId,
-        subscription_period_end: lectureCloud.fin ?? null,
-        subscription_cancel_at_period_end: false,
-        cloud_essai_debut: lectureCloud.debut,
-        cloud_essai_fin: lectureCloud.fin,
-      }).eq("id", userId);
-      if (essaiErr) {
-        console.error("[google-play-webhook] DB error (essai palier + Cloud):", essaiErr.message);
-        return new Response(JSON.stringify({ error: essaiErr.message }), {
-          status: 500, headers: { "Content-Type": "application/json" },
-        });
-      }
-      console.log(`[google-play-webhook] palier ${subscriptionId} en ESSAI palier + Cloud (offre ${lectureCloud.offre}) → userId=${userId} : quotas du gratuit jusqu'au ${lectureCloud.fin ?? "?"}`);
-      return new Response(JSON.stringify({ ok: true, essai_cloud: true }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
     }

@@ -143,7 +143,7 @@ serve(async (req) => {
     // ── L'OPTION CLOUD dans le même reçu (04/10) : restauration / validation ──
     // Groupe « FillSell Cloud », à part du palier. La transaction la plus
     // récente du produit fait foi ; is_trial_period du reçu historique vaut
-    // l'offre d'introduction (essai 3 jours). Une option portée par un autre
+    // l'offre d'introduction (essai 1 semaine). Une option portée par un autre
     // canal n'est pas touchée (ecritureCloudStore).
     const txCloud = inApp
       .filter((tx: any) => lectureCloudApple({ productId: tx.product_id }))

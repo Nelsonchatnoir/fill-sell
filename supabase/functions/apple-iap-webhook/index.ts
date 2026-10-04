@@ -315,13 +315,11 @@ serve(async (req) => {
     }
 
     // ── L'OPTION CLOUD — groupe « FillSell Cloud » (04/10/2026) ─────────────
-    // app.fillsell.cloud.sub (20 €/mois, offre d'introduction gratuite 3 jours)
-    // et, s'ils sont créés un jour, les produits combinés « palier + Cloud ».
-    // Le produit Cloud seul ne touche à AUCUNE colonne du palier
-    // (apple_original_transaction_id, subscription_period_end…) : le palier vit
-    // dans l'autre groupe. En essai (offerType 1) : dates d'essai, option pas
-    // payée, aucun grant ; payé : is_cloud ; expiré/remboursé : option retirée.
-    // Les règles sont dans _shared/cloud-option.js.
+    // app.fillsell.cloud.sub : 20 €/mois, offre d'introduction gratuite 1
+    // semaine, ouvert à tous (Free compris). Ne touche à AUCUNE colonne de
+    // palier ni aux quotas : essai (offerType 1) → dates d'essai ; payé →
+    // is_cloud ; expiré / remboursé → option retirée. Cloud continue si le
+    // palier tombe. Règles : _shared/cloud-option.js.
     const lectureCloud = lectureCloudApple(tx);
     if (lectureCloud) {
       let sens: "on" | "off" | "annulation" | "reprise" | null = null;
@@ -343,7 +341,7 @@ serve(async (req) => {
       }
       const { data: profilCloud } = await supabaseAdmin
         .from("profiles").select("cloud_canal, cloud_ref").eq("id", appAccountToken).maybeSingle();
-      const { update, grantPalier, motif } = ecritureCloudStore({
+      const { update, motif } = ecritureCloudStore({
         canal: "apple", lecture: lectureCloud, sens, ref: originalTransactionId ?? null, profil: profilCloud ?? {},
       });
       if (!update) {
@@ -352,39 +350,12 @@ serve(async (req) => {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
-      // Produit combiné PAYÉ : il porte aussi le palier → sa référence Apple.
-      if (sens === "on" && lectureCloud.palier && !lectureCloud.essai && originalTransactionId) {
-        update.apple_original_transaction_id = originalTransactionId;
-        update.subscription_cancel_at_period_end = false;
-      }
       const { error: cloudErr } = await supabaseAdmin.from("profiles").update(update).eq("id", appAccountToken);
       if (cloudErr) {
         console.error("[apple-iap-webhook] DB error (cloud):", cloudErr.message);
         return new Response(JSON.stringify({ error: cloudErr.message }), {
           status: 500, headers: { "Content-Type": "application/json" },
         });
-      }
-      if (grantPalier) {
-        const expiresDate = tx.expiresDate as number | undefined;
-        const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
-          p_user_id: appAccountToken,
-          p_tier: grantPalier,
-          p_period_end: expiresDate ? new Date(expiresDate).toISOString() : null,
-          p_source: "payment",
-        });
-        if (grantErr) {
-          console.error("[apple-iap-webhook] upgrade_monthly_grant (palier + Cloud):", grantErr.message);
-          await alerterPaiementNonCredite({
-            canal: "apple", type: "abonnement", user_id: appAccountToken, produit: productId,
-            ref: originalTransactionId ?? null, rpc: null, erreur: grantErr.message,
-          });
-        } else if ((grantRes as { granted?: boolean })?.granted === true) {
-          await notifierPaiement({
-            canal: "apple", type: "abonnement", user_id: appAccountToken, produit: productId,
-            pepites: (grantRes as { amount?: number })?.amount ?? null,
-            ref: originalTransactionId ?? null, rpc: grantRes,
-          });
-        }
       }
       console.log(`[apple-iap-webhook] Cloud ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${appAccountToken} product=${productId}`, JSON.stringify(update));
       return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {

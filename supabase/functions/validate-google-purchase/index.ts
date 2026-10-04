@@ -246,11 +246,11 @@ serve(async (req) => {
 
     // ── L'OPTION CLOUD (04/10) : validation / restauration côté app ─────────
     // Même lecture que google-play-webhook, sans type de notification : l'essai
-    // se reconnaît à l'offre cloud-trial-3d et à une échéance à 3 jours. Rien
+    // se reconnaît à l'offre cloud-trial-3d (7 jours) et à son échéance. Rien
     // du palier n'est touché ; une référence d'un autre canal est ignorée.
     if (estCloud) {
       const lecture = lectureCloudGoogle(productId, purchase, null)
-        ?? { cloud: true, palier: null, essai: false, debut: null, fin: (ligne?.expiryTime as string | undefined) ?? null, offre: null };
+        ?? { essai: false, debut: null, fin: (ligne?.expiryTime as string | undefined) ?? null, offre: null };
       const { data: profilCloud } = await supabaseAdmin
         .from("profiles").select("cloud_canal, cloud_ref").eq("id", userId).maybeSingle();
       const sens = actif ? "on" : "off";
