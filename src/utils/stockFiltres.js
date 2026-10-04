@@ -366,7 +366,10 @@ const nombreOuNull = (v) => {
 const lirePrix = (it) => it?.sell ?? it?.prix_vente ?? null;
 const lireAjout = (it) => it?.date_ajout ?? it?.created_at ?? null;
 
-export function trierStock(items, tri) {
+// `opts.vues(item)` (refonte du 03/10, tri « Plus vus ») : le nombre de vues
+// connu de l'article — Vinted + ce que les synchronisations ont lu ailleurs,
+// la MÊME somme que la carte. null = inconnu, classé en dernier (VIDE ≠ ZÉRO).
+export function trierStock(items, tri, opts = {}) {
   const liste = items ?? [];
   if (!tri || tri === 'defaut') return liste;
   // Copie indexée : deux valeurs égales ne permutent JAMAIS (l'acquis
@@ -388,6 +391,10 @@ export function trierStock(items, tri) {
   if (tri === 'prix_asc') return parCle((it) => nombreOuNull(lirePrix(it)), true);
   if (tri === 'ajout_desc') return parCle((it) => Date.parse(lireAjout(it) ?? '') || null, false);
   if (tri === 'ajout_asc') return parCle((it) => Date.parse(lireAjout(it) ?? '') || null, true);
+  if (tri === 'vues_desc') {
+    const vues = typeof opts.vues === 'function' ? opts.vues : (it) => it?.vinted_view_count ?? null;
+    return parCle((it) => nombreOuNull(vues(it)), false);
+  }
   return liste;
 }
 
@@ -399,6 +406,7 @@ export function libelleTri(tri, lang = 'fr') {
     prix_asc: fr ? 'Prix croissant' : 'Price low to high',
     ajout_desc: fr ? 'Ajouté récemment' : 'Recently added',
     ajout_asc: fr ? "Ajouté il y a longtemps" : 'Added long ago',
+    vues_desc: fr ? 'Plus vus' : 'Most viewed',
   }[tri] ?? (fr ? "Annonce la plus ancienne" : 'Oldest listing');
 }
 
@@ -421,6 +429,7 @@ export function libelleTriCourt(tri, lang = 'fr') {
     prix_asc: fr ? 'Prix ↑' : 'Price ↑',
     ajout_desc: fr ? 'Ajout récent' : 'Newest added',
     ajout_asc: fr ? 'Ajout ancien' : 'Oldest added',
+    vues_desc: fr ? 'Plus vus' : 'Most viewed',
   }[tri] ?? (fr ? 'Annonce ancienne' : 'Oldest listing');
 }
 
