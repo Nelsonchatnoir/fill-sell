@@ -17,6 +17,9 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 import { logInstallExtension, logCarteVueUneFois } from '../utils/installExtensionLog';
 import { SecondaryButton } from './ui';
+// 2e voie « Pas d'ordinateur ? » (Cloud, conception du 04/10) — une ligne sous
+// le bouton, derrière son drapeau (config/cloudOffer.js) : baissé, rien.
+import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
 
 export default function InstallExtensionCta({
   lang, isNative = false, userId = null, userEmail = null,
@@ -84,6 +87,7 @@ export default function InstallExtensionCta({
                 : (fr ? "M'envoyer le lien pour mon ordinateur" : 'Email me the link for my computer')}
             </SecondaryButton>
           ) : null}
+          <VoieSansOrdinateur lang={lang} userId={userId} origine={`${source}_cloud`} variante="lien" />
         </>
       ) : (
         <a href="/extension" style={{ display: 'block', width: '100%', boxSizing: 'border-box', textAlign: 'center', textDecoration: 'none', padding: '10px 14px', borderRadius: 10, border: '1px solid #E7E3D8', background: '#F6F5F1', color: '#1B6E62', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }}>
