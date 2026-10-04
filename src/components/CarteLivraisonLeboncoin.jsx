@@ -20,14 +20,16 @@
 import { useState } from 'react';
 import { Truck, Check } from 'lucide-react';
 import { UI } from './ui';
-import { LBC_TRANSPORTEURS, LBC_FORMATS, formatLbcDuJob, transporteursPlausibles } from '../utils/leboncoinColis';
+import { LBC_TRANSPORTEURS, LBC_FORMATS, formatChoisiLbc, transporteursPlausibles } from '../utils/leboncoinColis';
 
 const MOTS = {
   fr: {
     titre: 'LIVRAISON', ouvrir: 'Régler', fermer: 'Fermer',
     format: 'Format du colis',
-    formatDeduit: (f) => `${f} — déduit de ce que tu as indiqué`,
-    formatInconnu: 'Leboncoin estimera lui-même le format.',
+    // (04/10) Seul un format CHOISI s'affiche : celui que la rédaction
+    // devinait (« déduit de ce que tu as indiqué ») n'avait rien de déduit.
+    formatDeduit: (f) => `${f} — ton choix`,
+    formatInconnu: 'Format : Leboncoin l’estime d’après le rayon (le même pour des articles identiques). Choisis-le si tu le connais.',
     transporteurs: 'Transporteurs',
     tousParDefaut: 'Tous ceux que Leboncoin propose',
     nChoisis: (n) => `${n} choisi${n > 1 ? 's' : ''}`,
@@ -45,8 +47,8 @@ const MOTS = {
   en: {
     titre: 'DELIVERY', ouvrir: 'Set up', fermer: 'Close',
     format: 'Parcel size',
-    formatDeduit: (f) => `${f} — from what you already told us`,
-    formatInconnu: 'Leboncoin will estimate the size itself.',
+    formatDeduit: (f) => `${f} — your choice`,
+    formatInconnu: 'Size: Leboncoin estimates it from the category (the same for identical items). Pick it if you know it.',
     transporteurs: 'Carriers',
     tousParDefaut: 'All the ones Leboncoin offers',
     nChoisis: (n) => `${n} selected`,
@@ -66,8 +68,10 @@ export default function CarteLivraisonLeboncoin({ lang = 'fr', champs = {}, onCh
 
   // UNE seule règle (24/09) : format_colis fait foi, lbcFormatColis n'est
   // qu'un repli des jobs d'avant — la même que l'extension (formatLbcDuJob).
-  const format = formatLbcDuJob(champs);
-  const plausibles = transporteursPlausibles(format);
+  // (04/10) Le format CHOISI par la personne, jamais celui de la rédaction ;
+  // les transporteurs plausibles suivent le POIDS (relevé live du 04/10).
+  const format = formatChoisiLbc(champs);
+  const plausibles = transporteursPlausibles(format, champs.lbcPoidsGrammes);
   const choisis = Array.isArray(champs.lbcTransporteurs) ? champs.lbcTransporteurs : null;
   // Sans choix explicite, la coche suit ce que Leboncoin proposerait.
   const estCoche = (nom) => (choisis ? choisis.includes(nom) : true);

@@ -18,6 +18,7 @@ import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
 // de données sans import, comme leboncoinFeuilles.js plus bas).
 import { vintedExigeUneCouleur, vintedExigeUneMarque, valeurUneLettre } from "../_shared/vinted-exigences.js";
 import { traduireAbsenceMarqueJob, SANS_MARQUE } from "../_shared/marque-absente.js";
+import { ecarterFormatDevine, formatChoisi, livraisonLbcAuService } from "../_shared/livraison-poids.js";
 import { classementAgeEcrit, familleJeuVideo, ageBeebsDuClassement, ageBeebsJeuVideoLu } from "../../../src/utils/jeuxVideo.js";
 import { estFourreToutCatalogue } from "../../../src/utils/fourreTout.js";
 import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
@@ -2707,10 +2708,15 @@ serve(async (req) => {
             }
             if (String(((pfJ.needsUserResolved ?? {}) as Record<string, unknown>).format_colis ?? "").trim()) continue; // la réponse de la personne prime
             const k = String(j.inventaire_id);
+            // (04/10, Louis) Publication : un format que la personne n'a PAS
+            // choisi (rédaction, copie d'avant) est écarté — il passait
+            // devant le poids de la fiche, et l'extension le reprenait faute
+            // d'autre chose. Le CHOIX marqué garde la priorité sur le poids.
+            if (j.action !== "republish" && ecarterFormatDevine(pfJ)) j.platform_fields = pfJ;
             const f = j.action === "republish"
               ? (formatBeebsExplicite({ formatIdAnnonce: formatIdDe.get(k), appris: appris ?? [] })
                 ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }))
-              : (formatBeebsDuChoix(pfJ.format_colis) ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }));
+              : ((formatChoisi(pfJ) ? formatBeebsDuChoix(pfJ.format_colis) : null) ?? formatBeebsExplicite({ poidsFiche: poidsDe.get(k), appris: appris ?? [] }));
             if (!f) continue;
             pfJ.format_colis_explicite = f.titre;
             pfJ.format_colis_explicite_source = f.source;
@@ -2729,6 +2735,50 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] format de colis Beebs : ${String((e as Error)?.message ?? e)} — distribution normale`);
+        }
+      }
+    }
+
+    // ══ LEBONCOIN : AUCUN FORMAT DEVINÉ, LE POIDS DE LA FICHE (04/10, Louis) ══
+    // _shared/livraison-poids.js : à la publication, un format que la personne
+    // n'a pas choisi est écarté (l'extension garde alors l'estimation de
+    // Leboncoin, la même pour des articles identiques), le poids de la fiche
+    // part s'il manque, et les transporteurs retenus aussi (bornés au poids).
+    // Mémoire du poll seulement ; best-effort : servi comme avant si raté.
+    if (!includeProcessing && !includeNeedsUser) {
+      const lbcJobs = out.filter((j) => j.platform === "leboncoin" && (j.action ?? "publish") === "publish");
+      if (lbcJobs.length) {
+        try {
+          const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          const ids = [...new Set(lbcJobs.map((j) => j.inventaire_id).filter((v) => v != null))];
+          const [{ data: fichesL }, { data: profilL }] = await Promise.all([
+            ids.length ? admin.from("inventaire").select("id, poids_g").in("id", ids) : Promise.resolve({ data: [] }),
+            admin.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle(),
+          ]);
+          const poidsL = new Map(((fichesL ?? []) as Array<{ id: number; poids_g: number | null }>).map((f) => [String(f.id), f.poids_g]));
+          const reglagesL = ((profilL as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>;
+          const retenus = ((reglagesL.leboncoin ?? {}) as Record<string, unknown>).transporteurs;
+          let touches = 0;
+          for (const j of lbcJobs) {
+            const pfL = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+            const fait = livraisonLbcAuService(pfL, {
+              poidsFiche: j.inventaire_id != null ? poidsL.get(String(j.inventaire_id)) : null,
+              transporteursRetenus: Array.isArray(retenus) ? retenus : null,
+            });
+            // Compte PRO : le poids connu remplit SON champ « Poids du colis »
+            // (même tranche que la republication) — la mémoire par tranche,
+            // plus bas, ne sert plus qu'à défaut. Sans effet en particulier.
+            const trancheL = trancheLbcDepuisGrammes(pfL.lbcPoidsGrammes);
+            const aspectsL = (pfL.lbcAspects && typeof pfL.lbcAspects === "object") ? (pfL.lbcAspects as Record<string, unknown>) : {};
+            if (trancheL && !String(aspectsL.estimated_parcel_weight ?? "").trim()) {
+              pfL.lbcAspects = { ...aspectsL, estimated_parcel_weight: trancheL };
+              fait.push(`poids du colis (pro) ← ${trancheL}`);
+            }
+            if (fait.length) { j.platform_fields = pfL; touches++; }
+          }
+          if (touches) console.log(`[get-pending-jobs] user=${user.id} livraison Leboncoin au service : ${touches} job(s)`);
+        } catch (e) {
+          console.warn(`[get-pending-jobs] livraison Leboncoin : ${String((e as Error)?.message ?? e)} — servi tel quel`);
         }
       }
     }

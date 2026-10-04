@@ -95,6 +95,7 @@ import {
 } from "../utils/valeursGenerales";
 // (04/10, Louis) Le texte qui part est celui de la fiche au moment de l'envoi.
 import { CHAMPS_TEXTE, texteDuVendeurDe, champsAReprendreDeLaFiche, retoucheAEcrire } from "../publication/texteDeLaFiche";
+import { avecFormatChoisi } from "../utils/leboncoinColis";
 // ── LE MOTEUR ET LA NOUVELLE PEAU (refonte du 24/09/2026) ──────────────────
 // Les RÈGLES (qui part, qui est exclu, ce qui bloque, la forme d'un job, la
 // garde eBay) vivent dans src/publication/moteur/ — fonctions pures, lues par
@@ -2896,7 +2897,14 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                         // Une clé qu'on connaît va dans son champ dédié ; les
                         // autres dans le canal d'aspects de la plateforme —
                         // exactement là où l'extension va les chercher.
-                        if (cleNotre) {
+                        if (cleNotre === "format_colis") {
+                          // (04/10) Choix de la personne : marqué (avecFormatChoisi).
+                          const marque = avecFormatChoisi(pf, valeur);
+                          for (const k of Object.keys(pf)) delete pf[k];
+                          Object.assign(pf, marque);
+                          noteOverride?.(p, cleNotre);
+                        }
+                        else if (cleNotre) {
                           pf[cleNotre] = valeur;
                           // Le lien avec la source partagée CASSE pour cette copie :
                           // sans ça, la propagation réécraserait la correction que
@@ -2927,6 +2935,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                         // l'hôte le reporte sur la fiche au clic Publier.
                         if (cle === "lbcPoidsGrammes") onPoidsSaisi?.();
                         setEdited(prev => {
+                          // (04/10) Un format posé ICI est un choix de la
+                          // personne : marqué, il est le seul qui parte.
+                          if (cle === "format_colis") return { ...prev, [p]: { ...prev[p], platform_fields: avecFormatChoisi(prev[p]?.platform_fields, valeur) } };
                           const pf = { ...(prev[p]?.platform_fields ?? {}) };
                           if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
                           return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
@@ -10448,6 +10459,23 @@ export default function ListingPreviewScreen({
     // vide quand ce n'est pas le sien) — en lot, personne ne relit une carte,
     // un texte qui n'est pas celui du vendeur se montre avant l'envoi.
     texteVendeur: texteDuVendeurFiche(),
+    // (04/10) La livraison Leboncoin réglée DANS LE LOT (poids, transporteurs,
+    // format), posée sur la copie comme depuis sa carte — même clés, même
+    // marqueur de choix ; un poids posé ici est celui de l'article (reporté
+    // sur la fiche au clic Publier, comme un poids tapé sur la carte).
+    poserLivraisonLbc: (patch) => {
+      if (patch && "lbcPoidsGrammes" in patch) poidsSaisiAuStepperRef.current = true;
+      setEdited(prev => {
+        const lbc = prev.leboncoin;
+        if (!lbc || !patch) return prev;
+        let pf = { ...(lbc.platform_fields ?? {}) };
+        for (const [cle, valeur] of Object.entries(patch)) {
+          if (cle === "format_colis") { pf = avecFormatChoisi(pf, valeur); continue; }
+          if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+        }
+        return { ...prev, leboncoin: { ...lbc, platform_fields: pf } };
+      });
+    },
     setPrice, poserPrixGeneral, poserValeurGenerale: retoucherValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
     // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,
     // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est

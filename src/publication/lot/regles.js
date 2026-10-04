@@ -191,6 +191,13 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   if (jumeauxOuverts.length) {
     motifs.push({ cle: "jumeau", libelle: en ? "Same item?" : "Même article ?" });
   }
+  // (04/10, Louis) LE POIDS : Leboncoin (palier de poids) et Beebs (« Format
+  // du colis » = palier de poids) le demandent. Sans lui, la rédaction
+  // devinait un format, différent d'un article identique à l'autre. Plus
+  // jamais : sans poids, l'article est À COMPLÉTER, jamais « Prêt ».
+  if (plateformesAuPoids(plateformes).length && poidsConnu(m, decisions) == null) {
+    motifs.push({ cle: "poids", libelle: en ? "Weight" : "Poids" });
+  }
   // Plus aucune plateforme où partir (toutes exclues) : rien ne partira.
   if (!plateformes.length) {
     motifs.push({ cle: "aucune", libelle: en ? "Nowhere to publish" : "Aucune plateforme" });
@@ -202,6 +209,36 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   }
   const pret = Boolean(m.preparationAuRepos) && !motifs.length && !m.ctaDisabled;
   return { pret, motifs, plateformes, jumeauxOuverts };
+}
+
+// ── LE POIDS ET LE COLIS, PAR PLATEFORME (04/10, relevé live) ─────────────
+// Ce que chaque plateforme demande VRAIMENT, et ce que le lot en fait :
+//   · Leboncoin : un format (une TAILLE : Petit / Moyen / Volumineux) et un
+//     palier de POIDS → poids exigé ; format seulement s'il est choisi ;
+//   · Beebs : « Format du colis » = un palier de POIDS → poids exigé ;
+//   · Vinted : une TAILLE de colis, jamais un poids → pas de poids exigé ;
+//     la taille choisie sur la carte part, sinon celle que Vinted propose ;
+//   · eBay (API) : ni poids ni format dans notre publication — les frais
+//     viennent de la politique d'expédition du compte.
+export const PLATEFORMES_AU_POIDS = Object.freeze(["leboncoin", "beebs"]);
+export const plateformesAuPoids = (plateformes) => [...(plateformes ?? [])].filter((p) => PLATEFORMES_AU_POIDS.includes(p));
+
+/** Le poids connu de l'article (grammes), ou null : réglé dans le lot, sur la copie Leboncoin, ou sur la fiche. */
+export function poidsConnu(m, decisions = {}) {
+  for (const v of [decisions?.poids, m?.edited?.leboncoin?.platform_fields?.lbcPoidsGrammes, m?.initialListing?.poids_g]) {
+    const g = Number(v);
+    if (v != null && v !== "" && Number.isFinite(g) && g > 0) return Math.round(g);
+  }
+  return null;
+}
+
+/** Une saisie de poids (« 650 », « 1,2 kg », « 300 g ») en grammes, ou null. */
+export function lirePoidsSaisi(brut) {
+  const t = String(brut ?? "").trim().toLowerCase().replace(",", ".");
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*(kg|g)?$/);
+  if (!m) return null;
+  const g = m[2] === "kg" ? Number(m[1]) * 1000 : Number(m[1]);
+  return Number.isFinite(g) && g >= 1 && g <= 150000 ? Math.round(g) : null;
 }
 
 /** Le texte qui part n'est-il PAS celui du vendeur ? (titre ou description) */
