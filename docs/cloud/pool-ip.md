@@ -16,9 +16,11 @@ Fichiers liés :
 - **Pour démarrer : 8 IP**, soit **43,20 $ par mois (≈ 37 €)**. On passe une
   commande IPRoyal par IP. Au lancement, plafond de 10 essais simultanés. Le cron
   horaire achète la suite au besoin.
-  - Rythme attendu : λ ≈ 1 à 2 essais par jour. L'essai exige un palier payant :
-    50 comptes payants aujourd'hui, et 23 des 825 inscrits des 30 derniers jours
-    paient encore.
+  - Rythme attendu : λ ≈ 1 à 2 essais par jour était l'estimation quand l'essai
+    exigeait un palier payant (50 comptes payants, 23 des 825 inscrits des 30
+    derniers jours). Depuis le 04/10 soir, l'essai (7 jours) est ouvert à TOUS,
+    comptes Free compris : le § 5 l'estime à λ ≈ 10 à 16, d'où le plafond
+    d'essais simultanés.
   - Régime établi à λ = 1 et c = 25 % : **≈ 22 IP, 119 $ par mois (≈ 102 €)**.
 - **Coût IP d'un essai** :
   - 3,56 € s'il n'est pas converti (23 jours d'IP) ;
