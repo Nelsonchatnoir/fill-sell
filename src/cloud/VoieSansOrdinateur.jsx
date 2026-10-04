@@ -21,12 +21,13 @@
 // interrupteur coché (cloud/offreCloud.js), où tout est écrit avant de payer.
 // Sans lecture sûre de l'état Cloud du compte (essai déjà pris ? option déjà
 // active ?), la carte ne s'affiche pas — jamais un essai promis à tort.
+import { useState } from 'react';
 import { Cloud, ChevronRight } from 'lucide-react';
 import { C, MENTHE, BLANC } from './theme';
 import { textesCloud } from './textes';
 import { cloudOfferVisible } from '../config/cloudOffer';
 import { useCloudProfil } from './useCloudProfil';
-import { voieCloud } from './regles';
+import { voieCloud, dateLongue, finEssaiSiOnCommence } from './regles';
 import { ouvrirOffreCloud, garderDemande } from './offreCloud';
 
 function Glyphe() {
@@ -50,7 +51,10 @@ const styleBoutonCreux = {
  * La voie, sans lecture ni drapeau (rendue telle quelle par l'aperçu et le
  * test SSR). `essai` : l'essai est-il encore proposable à ce compte ?
  */
-export function CarteVoieCloud({ lang = 'fr', essai = true, variante = 'carte', onChoisir, href, sansEbay = false }) {
+export function CarteVoieCloud({ lang = 'fr', essai = true, variante = 'carte', onChoisir, href, sansEbay = false, maintenant }) {
+  // La date « rien n'est prélevé avant le … » : maintenant + 7 jours (l'essai
+  // n'est pas encore ouvert), horloge figée au montage, jamais écrite en dur.
+  const [horloge] = useState(() => Date.now());
   const T = textesCloud(lang);
   if (variante === 'lien') {
     return (
@@ -104,7 +108,7 @@ export function CarteVoieCloud({ lang = 'fr', essai = true, variante = 'carte', 
       </p>
       {action}
       <p style={{ margin: '9px 0 0', fontSize: 12, lineHeight: 1.45, fontWeight: 500, color: C.mute2, textAlign: 'center' }}>
-        {page ? T.pageNote : essai ? T.voieNote : T.voieNoteSansEssai}
+        {page ? T.pageNote : essai ? T.voieNote(dateLongue(finEssaiSiOnCommence(maintenant ?? horloge), lang)) : T.voieNoteSansEssai}
       </p>
     </div>
   );
@@ -131,7 +135,7 @@ export default function VoieSansOrdinateur({ lang = 'fr', userId = null, origine
   if (!v) return null;
   return (
     <div style={style}>
-      <CarteVoieCloud lang={lang} essai={v.essai} variante={variante} sansEbay={sansEbay} onChoisir={() => ouvrirOffreCloud(origine)} />
+      <CarteVoieCloud lang={lang} essai={v.essai} variante={variante} sansEbay={sansEbay} maintenant={lecture.luLe ?? undefined} onChoisir={() => ouvrirOffreCloud(origine)} />
     </div>
   );
 }
