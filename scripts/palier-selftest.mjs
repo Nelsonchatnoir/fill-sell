@@ -6,6 +6,8 @@
 //   1. UN calcul de palier (src/utils/palier.js), emboîté : Business ⇒ Pro ⇒
 //      Premium. Un Business sans le drapeau is_pro garde les droits Pro ;
 //      is_founder et les identifiants de store ne valent jamais un palier ;
+//   1 bis. l'option Cloud (conception du 04/10) : une option EN PLUS d'un palier
+//      payant, essai de 7 jours, un seul par compte ; sans palier, elle ne tourne pas ;
 //   2. ce calcul est le SEUL : l'app ne pose plus trois drapeaux à la main
 //      (setIsPro/setIsPremium/setIsBusiness), et aucun écran ne recalcule
 //      « business ? pro ? premium » de son côté ;
@@ -70,6 +72,42 @@ const L = await charger('src/publication/lot/regles.js');
     verifier(L.palierCourant(d) === pal && P.palierDesDrapeaux(d) === pal, `le lot et l’app lisent le même palier (${pal})`);
   }
   verifier(L.PALIERS === P.PALIERS, 'le lot n’a plus sa propre liste de paliers');
+}
+
+// ── 1 bis. L'option Cloud (conception du 04/10, non livrée) ─────────────────
+// Le Cloud n'est pas un palier : une option en plus d'un palier payant, un
+// essai de 7 jours, un seul par compte ; une option sans palier ne tourne pas.
+{
+  const t = (iso) => Date.parse(iso);
+  const n = t('2026-10-10T12:00:00Z');
+  const essai = { cloud_essai_debut: '2026-10-08T10:00:00Z', cloud_essai_fin: '2026-10-15T10:00:00Z' };
+  const cas = [
+    [{}, 'aucun', false],
+    [{ is_premium: true }, 'aucun', false],
+    [{ is_premium: true, ...essai }, 'essai', true],
+    [{ is_business: true, ...essai }, 'essai', true],
+    [{ ...essai }, 'suspendu', false],                                   // essai sans palier : ne tourne pas
+    [{ is_pro: true, is_cloud: true }, 'paye', true],
+    [{ is_cloud: true }, 'suspendu', false],                             // palier résilié, option pas encore retirée
+    [{ is_founder: true, is_cloud: true }, 'suspendu', false],           // is_founder ne vaut jamais un palier
+    [{ is_premium: true, cloud_essai_debut: '2026-09-01T00:00:00Z', cloud_essai_fin: '2026-09-08T00:00:00Z' }, 'essai_termine', false],
+    [{ is_premium: true, is_cloud: true, cloud_essai_debut: '2026-09-01T00:00:00Z', cloud_essai_fin: '2026-09-08T00:00:00Z' }, 'paye', true],
+  ];
+  for (const [profil, etat, actif] of cas) {
+    const c = P.cloudDuProfil(profil, n);
+    verifier(c.etat === etat && c.actif === actif, `cloudDuProfil(${JSON.stringify(profil)}) = ${etat}`, JSON.stringify(c));
+  }
+  verifier(P.cloudDuProfil({ is_premium: true, ...essai }, n).joursRestants === 5, 'essai : jours restants arrondis au jour entamé (J-5)');
+  verifier(P.cloudDuProfil({ is_premium: true, ...essai }, t('2026-10-15T09:59:00Z')).joursRestants === 1, 'dernière minute de l’essai : J-1, jamais J-0');
+  verifier(P.cloudDuProfil({ is_premium: true, ...essai }, t('2026-10-15T10:00:00Z')).etat === 'essai_termine', 'à l’heure de fin, l’essai est terminé');
+  verifier(P.cloudDuProfil({ is_premium: true, ...essai }, '2026-10-10T12:00:00Z').etat === 'essai', 'l’instant se lit en nombre comme en texte');
+  verifier(P.essaiCloudProposable({ is_premium: true }, n) && !P.essaiCloudProposable({ is_premium: true, ...essai }, n)
+    && !P.essaiCloudProposable({ is_premium: true, cloud_essai_debut: '2026-09-01T00:00:00Z', cloud_essai_fin: '2026-09-08T00:00:00Z' }, n),
+    'un seul essai par compte : déjà pris (en cours ou fini) → plus proposé');
+  const d = P.droitsDuCompte({ is_business: true, is_cloud: true }, n);
+  verifier(d.palier === 'business' && d.isPro === true && d.cloud.actif === true, 'droitsDuCompte : le palier emboîté ET l’option', JSON.stringify(d));
+  verifier(egal(P.PALIERS, ['gratuit', 'premium', 'pro', 'business']), 'le Cloud n’ajoute aucun palier');
+  verifier(P.CLOUD_ESSAI_JOURS === 7 && P.CLOUD_PRIX_AFFICHE === '20 €', 'essai 7 jours, 20 € affichés (décision Nico du 04/10)');
 }
 
 // ── 2. Un seul calcul, nulle part ailleurs ───────────────────────────────────
