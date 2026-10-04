@@ -93,6 +93,8 @@ import { CSS_STOCK } from '../stock/css';
 import { S as SK } from '../stock/jetons';
 import { TitreStock, Gestes, LignePublierEnLot, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
 import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
+import { STATUTS_LUS, indexerJobs, fusionnerJobs, regrouperParArticle, idsVivants, plusRecent, filtreLeger } from '../stock/jobsIncrementaux';
+import { demarrerRelecture } from '../utils/relectureBornee';
 import { BarreRecherche, FiltresRapides, FiltresActifs, EnTeteListe, FeuilleTri, PanneauFiltres, VideAvecSortie } from '../stock/Liste';
 import { CarteArticle, LigneArticle } from '../stock/Carte';
 import MenuArticle from '../stock/MenuArticle';
@@ -5602,7 +5604,7 @@ const StockTab = memo(function StockTab({
   // écrans (réglages, historique) et porte la même porte Pro. Le Stock ne
   // garde de ce hook que planifieeExposee : il décide encore si l'ancien
   // bloc É6 s'affiche ou non — la seule chose qui en dépendait ici.
-  const planifiee = useRepublicationPlanifiee({ userId: user?.id, multi: true });
+  const planifiee = useRepublicationPlanifiee({ userId: user?.id, multi: true, pollMs: 300000 });
   const planifieeExposee = republicationPlanifieeExposee(planifiee);
   // (04/10) Le droit : le serveur quand il a répondu, sinon le palier de l'app
   // (utils/palier.js, Business ⇒ Pro) — jamais un refus faute de réponse.
@@ -7529,6 +7531,40 @@ const StockTab = memo(function StockTab({
   useEffect(() => {
     if (!user?.id) return;
     let annule = false;
+    // (04/10, incident CPU 99 %) Lecture COMPLÈTE au montage, toutes les 5 min
+    // et au retour d'onglet après 2 min ; entre-temps, toutes les 20 s, une
+    // lecture LÉGÈRE (jobs en cours, ceux qui l'étaient, nés depuis) fusionnée
+    // par identifiant — stock/jobsIncrementaux.js. Attente doublée sur erreur
+    // ou lenteur (relectureBornee), jamais de lecture onglet caché.
+    let parId = null;           // Map id → job, la dernière vue complète + fusions
+    let completeLe = 0;         // horodatage de la dernière lecture complète
+    const COMPLETE_MS = 5 * 60_000;
+    const COMPLETE_RETOUR_MS = 2 * 60_000;
+    const SELECT_JOBS = "id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie";
+    const poser = (m) => {
+      parId = m;
+      setJobsByInventaire(regrouperParArticle(m));
+      setJobsLus(true);
+    };
+
+    const relireLeger = async () => {
+      const filtre = parId ? filtreLeger({ vivants: idsVivants(parId), depuis: plusRecent(parId) }) : null;
+      if (!filtre) return relire();
+      const { data: lignes, error } = await supabase
+        .from("cross_post_jobs")
+        .select(SELECT_JOBS)
+        .eq("user_id", user.id)
+        .or(filtre)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(1000);
+      if (annule) return true;
+      if (error || !lignes) return false;
+      // Une lecture légère pleine (1 000) ne prouve rien du reste : on relit tout.
+      if (lignes.length >= 1000) return relire();
+      poser(fusionnerJobs(parId, lignes));
+      return true;
+    };
 
     const relire = async () => {
       // "failed" est dans le filtre (2026-07-19, contrat « jamais d'état
@@ -7584,44 +7620,41 @@ const StockTab = memo(function StockTab({
           // information_schema). Le compteur du plafond quotidien est passé
           // côté SERVEUR le soir même (get-pending-jobs plafond_only) — la
           // colonne reste lue, prête pour tout affichage horodaté des jobs.
-          .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie")
+          .select(SELECT_JOBS)
           .eq("user_id", user.id)
           // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
           // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
           // retombait sur le job précédent — un dry run réussi à 10:01 s'affichait
           // comme l'échec de 08:01, message rouge compris. Un job terminé ne doit
           // jamais être masqué au profit d'un plus ancien.
-          .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted", "cancelled", "dry_run_completed"])
+          .in("status", [...STATUTS_LUS])
           // Le plus récent d'abord : tout ce qui lit « le dernier job » lit la
           // même chose, sans dépendre de l'ordre de retour de PostgREST.
           .order("created_at", { ascending: false })
           .order("id", { ascending: false })
           .range(from, from + PAGE_JOBS - 1);
-        if (annule) return;
-        if (error || !page) return;
+        if (annule) return true;
+        if (error || !page) return false;
         data.push(...page);
         if (page.length < PAGE_JOBS) break;
       }
-      const map = {};
-      for (const job of data) {
-        if (!map[job.inventaire_id]) map[job.inventaire_id] = [];
-        map[job.inventaire_id].push(job);
-      }
-      setJobsByInventaire(map);
-      setJobsLus(true);
+      completeLe = Date.now();
+      poser(indexerJobs(data));
+      return true;
     };
 
-    relire();
-    const onVisible = () => { if (document.visibilityState === "visible") relire(); };
+    const tour = () => (!parId || Date.now() - completeLe >= COMPLETE_MS ? relire() : relireLeger());
+    const relecture = demarrerRelecture(tour, { intervalleMs: 20_000, maxMs: 5 * 60_000, lentMs: 4000 });
+    // Retour d'onglet après une longue absence : la vue complète d'abord.
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && parId && Date.now() - completeLe >= COMPLETE_RETOUR_MS) completeLe = 0;
+    };
     document.addEventListener("visibilitychange", onVisible);
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") relire();
-    }, 20000);
 
     return () => {
       annule = true;
       document.removeEventListener("visibilitychange", onVisible);
-      clearInterval(timer);
+      relecture.arreter();
     };
   }, [user?.id]);
 
