@@ -298,3 +298,7 @@ verify_jwt = false
 # check-early-adopter et send-chantier-zip : SUPPRIMÉES de la prod le 26/09/2026
 # (stubs 410 ; 0 appel en 30 jours de journaux, 0 cron, 0 fonction SQL, 0
 # ligne de code app/extension).
+
+[functions.veille-cpu]
+# Appelée par pg_cron (veille-cpu-2min, x-cron-secret) — 04/10/2026.
+verify_jwt = false

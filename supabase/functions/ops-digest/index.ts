@@ -768,7 +768,29 @@ serve(async (req) => {
     iaAlertes.push(`Relevé des retouches illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // ── CPU DE LA BASE (04/10, incident CPU 99 %) ───────────────────────────────
+  // Échantillons de veille-cpu (toutes les 2 min). Une anomalie dès qu'un
+  // relevé des 24 dernières heures a dépassé 70 % : la veille a déjà prévenu
+  // en direct si ça a duré 10 min ; ici, on garde la trace du jour.
+  let cpuMax: number | null = null, cpuMinutesAuDessus = 0, cpuAlertes = 0;
+  try {
+    const depuis24 = new Date(Date.now() - 86400_000).toISOString();
+    const { data: ech } = await supabase.from("veille_cpu").select("pct").gte("le", depuis24).not("pct", "is", null).limit(1000);
+    for (const e of (ech ?? []) as Array<{ pct: number }>) {
+      const p = Number(e.pct);
+      if (!Number.isFinite(p)) continue;
+      if (cpuMax == null || p > cpuMax) cpuMax = p;
+      if (p > 70) cpuMinutesAuDessus += 2;
+    }
+    const { count } = await supabase.from("veille_cpu_alertes").select("id", { count: "exact", head: true })
+      .eq("nature", "alerte").gte("le", depuis24);
+    cpuAlertes = count ?? 0;
+  } catch (e) {
+    console.warn("[ops-digest] veille_cpu illisible :", String((e as Error)?.message ?? e));
+  }
+
   const counts = {
+    cpu_au_dessus_70: cpuMinutesAuDessus > 0 ? 1 : 0,
     ia_alertes: iaAlertes.length,
     needs_user_sans_motif_24h: sansMotif.length,
     tentatives_en_cours: tentativesEnCours.length,
@@ -808,6 +830,16 @@ serve(async (req) => {
     <p style="margin:0 0 12px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       cross_post_jobs, relevé du ${new Date().toISOString()}
     </p>
+    ${
+    cpuMinutesAuDessus === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 CPU de la base — ${cpuMax} % au plus sur 24 h, ≈ ${cpuMinutesAuDessus} min au-dessus de 70 %${cpuAlertes ? ` (${cpuAlertes} alerte${cpuAlertes > 1 ? "s" : ""} envoyée${cpuAlertes > 1 ? "s" : ""})` : ""}
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Échantillons de veille-cpu (toutes les 2 min). Le 04/10, une saturation a bloqué l'app et le web pour tout le monde :
+      regarder pg_stat_statements et les crons lourds avant que ça revienne.
+    </p>`
+  }
     ${
     iaAlertes.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
@@ -1042,7 +1074,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });
