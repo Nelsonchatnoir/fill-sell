@@ -14,12 +14,15 @@
 //
 // ⛔ AVANT DE PASSER À `true` — les cinq conditions, toutes, le même jour :
 //   1. la migration des colonnes (profiles.is_cloud, cloud_essai_debut,
-//      cloud_essai_fin) et `cloud_etat()` APPLIQUÉES et inscrites ;
+//      cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin,
+//      cloud_arret_fin_periode) et `cloud_etat()` APPLIQUÉES et inscrites ;
 //   2. les produits de paiement de l'option créés et alignés à 20 € sur les
 //      TROIS canaux (Stripe, Apple, Google) — le prix est affiché en dur
 //      (CLOUD_PRIX_AFFICHE, utils/palier.js), comme PLAN_PRICES ;
 //   3. l'hôte (App.jsx) lit le 2e argument d'`onUpgrade(tier, { cloud })` et
-//      ouvre l'essai / ajoute l'option au paiement ;
+//      ouvre l'essai / ajoute l'option au paiement, et sait prendre l'option
+//      SEULE sur un compte Free (`onCloudSeul`, décision du 04/10 soir) —
+//      essai de 7 jours, carte demandée ;
 //   4. la SORTIE existe : « Arrêter l'option » est câblée (HoteCloud reçoit
 //      `actions.arreter`) — on ne vend pas un essai qu'on ne sait pas arrêter.
 //      scripts/cloud-ecrans-selftest.mjs refuse le drapeau levé sans elle ;
