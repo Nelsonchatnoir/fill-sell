@@ -2,11 +2,10 @@
 -- L'option « FillSell Cloud » vue par les PAIEMENTS — 04/10/2026 (branche
 -- feat/option-cloud-paiements, NON APPLIQUÉE, NON DÉPLOYÉE)
 -- ═══════════════════════════════════════════════════════════════════════════
--- Décisions de Nico (04/10, finales) : Cloud = option 20 €/mois prise EN PLUS
--- d'un palier payant, jamais seule ; parcours « palier + Cloud » avec carte,
--- essai de 3 jours à 0 € pendant lequel Cloud tourne avec les quotas du gratuit
--- (les drapeaux de palier restent à false : c'est ce qui bride) ; au jour 3,
--- débit palier + option ; si le palier prend fin, Cloud cesse d'exécuter.
+-- Décisions FINALES de Nico (04/10 nuit) : Cloud = abonnement SÉPARÉ, 20 €/mois,
+-- essai gratuit 7 jours, carte obligatoire ; ouvert à TOUS, comptes Free compris
+-- (le compte garde les quotas de son palier) ; cumulable avec les paliers ; si
+-- le palier prend fin, le compte repasse en Free et Cloud CONTINUE.
 --
 -- Ce fichier pose les COLONNES que les flux de paiement écrivent (stripe-webhook,
 -- create-checkout-session, cancel-subscription, apple-iap-webhook,
@@ -36,7 +35,7 @@
 
 -- 1. LES COLONNES ──────────────────────────────────────────────────────────────
 -- is_cloud                 : option PAYÉE (posée par les flux de paiement, comme is_premium)
--- cloud_essai_debut / fin  : l'essai de 3 jours, tel que le store ou Stripe l'a daté
+-- cloud_essai_debut / fin  : l'essai de 7 jours, tel que le store ou Stripe l'a daté
 --                            (trial_start/trial_end, purchaseDate/expiresDate,
 --                            startTime/expiryTime). Jamais effacés : un seul essai par compte.
 -- cloud_canal              : qui porte l'option : stripe | apple | google | offert
@@ -69,20 +68,17 @@ END $$;
 REVOKE UPDATE (is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_canal, cloud_ref, cloud_fin_periode, cloud_annule_fin_periode)
   ON public.profiles FROM anon, authenticated;
 
-COMMENT ON COLUMN public.profiles.is_cloud IS 'Option FillSell Cloud PAYÉE (flux de paiement). Essai : voir cloud_essai_*. Jamais vendue sans palier payant.';
+COMMENT ON COLUMN public.profiles.is_cloud IS 'Abonnement FillSell Cloud PAYÉ (flux de paiement). Essai : voir cloud_essai_*. Ouvert à tous, indépendant du palier ; ne rend jamais premium.';
 COMMENT ON COLUMN public.profiles.cloud_canal IS 'Canal qui porte l''option Cloud : stripe | apple | google | offert. Un événement d''un autre canal n''y touche pas.';
 COMMENT ON COLUMN public.profiles.cloud_ref IS 'Référence de l''option chez son canal : id d''abonnement Stripe, originalTransactionId Apple, purchaseToken Google.';
 
 -- 2. L'ÉTAT CLOUD D'UN COMPTE, côté serveur ──────────────────────────────────
--- Miroir EXACT de etatCloud() (_shared/cloud-option.js), pour l'orchestrateur
--- des navigateurs Cloud et les RPC : il ne devine rien, il lit la ligne.
---   etat   : aucun | essai | paye | essai_termine | suspendu
---   actif  : un navigateur Cloud doit-il tourner pour ce compte ?
---   quotas : gratuit pendant l'essai (bridage) et en suspension, sinon palier
--- L'essai prime : ouvert carte en main (palier + Cloud), le palier n'est pas
--- encore facturé — ses drapeaux à false ne sont PAS une suspension.
--- Suspendu = option payée mais plus aucun palier (résilié chez Apple/Google,
--- où l'on ne peut pas résilier à la place de la personne) : l'app prévient.
+-- Miroir EXACT de etatCloud() (_shared/cloud-option.js) pour l'orchestrateur
+-- des navigateurs Cloud et les RPC.
+--   etat  : aucun | essai | paye | essai_termine
+--   actif : un navigateur Cloud doit-il tourner pour ce compte ?
+-- Le palier n'entre PAS dans le calcul : Cloud tourne avec ou sans palier ;
+-- les quotas restent ceux du palier (Free compris), calculés ailleurs.
 CREATE OR REPLACE FUNCTION public.cloud_droits(p_user uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -93,48 +89,40 @@ AS $$
 DECLARE
   p record;
   v_now timestamptz := now();
-  v_palier boolean;
   v_essai_pris boolean;
   v_essai_en_cours boolean;
   v_etat text;
   v_actif boolean;
-  v_quotas text;
   v_jours integer;
 BEGIN
-  SELECT is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_canal, cloud_fin_periode, cloud_annule_fin_periode,
-         is_premium, is_pro, is_business, is_comped
+  SELECT is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_canal, cloud_fin_periode, cloud_annule_fin_periode
     INTO p
     FROM public.profiles WHERE id = p_user;
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('etat', 'aucun', 'actif', false, 'quotas', 'gratuit', 'essai_pris', false);
+    RETURN jsonb_build_object('etat', 'aucun', 'actif', false, 'essai_pris', false);
   END IF;
-  v_palier := COALESCE(p.is_business, false) OR COALESCE(p.is_pro, false) OR COALESCE(p.is_premium, false) OR COALESCE(p.is_comped, false);
   v_essai_pris := p.cloud_essai_debut IS NOT NULL;
   v_essai_en_cours := p.cloud_essai_debut IS NOT NULL AND p.cloud_essai_fin IS NOT NULL
                       AND p.cloud_essai_debut <= v_now AND v_now < p.cloud_essai_fin;
-  IF v_essai_en_cours THEN
-    v_etat := 'essai'; v_actif := true; v_quotas := 'gratuit';
+  IF COALESCE(p.is_cloud, false) THEN
+    v_etat := 'paye'; v_actif := true;
+  ELSIF v_essai_en_cours THEN
+    v_etat := 'essai'; v_actif := true;
     v_jours := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (p.cloud_essai_fin - v_now)) / 86400.0))::integer;
-  ELSIF COALESCE(p.is_cloud, false) AND v_palier THEN
-    v_etat := 'paye'; v_actif := true; v_quotas := 'palier';
-  ELSIF COALESCE(p.is_cloud, false) THEN
-    v_etat := 'suspendu'; v_actif := false; v_quotas := 'gratuit';
   ELSIF v_essai_pris AND p.cloud_essai_fin IS NOT NULL AND v_now >= p.cloud_essai_fin THEN
-    v_etat := 'essai_termine'; v_actif := false; v_quotas := 'gratuit';
+    v_etat := 'essai_termine'; v_actif := false;
   ELSE
-    v_etat := 'aucun'; v_actif := false; v_quotas := CASE WHEN v_palier THEN 'palier' ELSE 'gratuit' END;
+    v_etat := 'aucun'; v_actif := false;
   END IF;
   RETURN jsonb_build_object(
     'etat', v_etat,
     'actif', v_actif,
-    'quotas', v_quotas,
     'essai_pris', v_essai_pris,
     'essai_fin', p.cloud_essai_fin,
     'jours_restants', v_jours,
     'canal', p.cloud_canal,
     'fin_periode', p.cloud_fin_periode,
-    'annule_fin_periode', COALESCE(p.cloud_annule_fin_periode, false),
-    'palier_payant', v_palier
+    'annule_fin_periode', COALESCE(p.cloud_annule_fin_periode, false)
   );
 END;
 $$;
