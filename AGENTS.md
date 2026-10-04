@@ -1,13 +1,16 @@
-## État de production au 04/10 (matin) — lire avant toute action
+## État de production au 04/10 (fin de matinée) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; section « 04/10
 matin — complément » en fin) et `docs/agents/consignes-2026-09-28.md`
 (règles) remplacent tout historique contraire. `functions list`, `cron.job`
 et `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** (`2026-10-03T21:23:06Z+2a088e4`) ; minimum
-  serveur **0.6.81** ; web : refonte du Stock (**35e71b0**) ; OTA **2.9.46** ;
-  gpj v208, ujs v126, handler-watch v78, ops-digest v29, send-extension-link v12.
+- **Servi** : extension **0.6.94** ; **0.6.95 à téléverser**
+  (`build/CWS-0.6.95-A-TELEVERSER/`) ; minimum serveur **0.6.81** ; web :
+  refonte du Stock (**35e71b0**, push du 04/10 à faire) ; OTA **2.9.48** ;
+  gpj v211, ujs v127, handler-watch v80, ebay-releve-api v3, releve-completer v1.
+- **Fiches (04/10)** : champs vides complétés depuis l'annonce (journal) ;
+  prix/poids suivis si alignés, jamais propagés ; pas de poids Leboncoin estimé.
 - **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
   `/main/banned` (reprise 1 h/3 h/6 h) ; Vinted introuvable aux deux derniers
   relevés complets → clos « déjà retirée » ; annonce « en vérification » =

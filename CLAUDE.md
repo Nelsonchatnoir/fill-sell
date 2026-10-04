@@ -1,20 +1,23 @@
-## État de production au 04/10 (matin) — lire avant toute action
+## État de production au 04/10 (fin de matinée) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
-complément » en fin) et
+complément » et « 04/10 fin de matinée — chantier Louis » en fin) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.94** au CWS (BUILD_ID
-  `2026-10-03T21:23:06Z+2a088e4`) ; **minimum serveur 0.6.81** (inchangé :
-  forcer la MAJ = décision de Nico) ; web : refonte du Stock fusionnée
-  (**35e71b0**) ; OTA **2.9.46** ; `get-pending-jobs` v208, `lens-analysis`
-  v105, `avis-demande` v3, `ebay-account` v16, `send-extension-link` v12
-  (`true`) ; `update-job-status` v126, `handler-watch` v78, `ops-digest` v29,
-  `ebay-api-worker` v76, `ebay-oauth-callback` v9, `email-tunnel` v69
-  (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
+  `2026-10-03T21:23:06Z+2a088e4`, 29 comptes) ; **0.6.95 à téléverser**
+  (`build/CWS-0.6.95-A-TELEVERSER/`, `2026-10-04T09:23:39Z+d408890`, non
+  prouvée en réel) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ =
+  décision de Nico) ; web : refonte du Stock (**35e71b0**) — ⚠️ `main` local
+  en avance, push à faire par Nico ; OTA **2.9.48** ; `get-pending-jobs` v211,
+  `lens-analysis` v105, `avis-demande` v3, `ebay-account` v16,
+  `send-extension-link` v12 (`true`) ; `update-job-status` v127,
+  `handler-watch` v80, `ops-digest` v29, `ebay-api-worker` v76,
+  `ebay-releve-api` v3, `releve-completer` v1, `ebay-ventes-sync` v5,
+  `ebay-oauth-callback` v9, `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
 - **Retraits (04/10)** : jamais arrêtés sur un raté technique ni sur
   `/main/banned` (reprise 1 h, 3 h, 6 h jusqu'à la preuve) ; un retrait Vinted
@@ -25,6 +28,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   needs_user « relancer », `boucle_technique` en rouge dans l'ops-digest.
 - **Cadence (04/10)** : plafond Premium **50**/jour ; tout changement de
   `coin_config` est daté et journalisé (`coin_config_journal`).
+- **Relevés et fiches (04/10, Louis)** : champs VIDES complétés depuis
+  l'annonce (journal `inventaire_journal`) ; prix/poids suivis quand la
+  plateforme change et que la fiche y était alignée, jamais propagés ;
+  ⛔ jamais de poids lu sur l'estimation Leboncoin ; un seul champ
+  `inventaire.poids_g` ; eBay relié = relevé par l'API (`ebay-releve-api`).
 - **Le dossier de l'extension de Nico se LIT dans Chrome** (03/10) :
   `Default/Secure Preferences`, `extensions.settings.pedhgegmgjkdcbdeinjnhdpemnpafpdp.path`
   (location 4 = non empaquetée) ; on copie le build DANS ce dossier, puis on
