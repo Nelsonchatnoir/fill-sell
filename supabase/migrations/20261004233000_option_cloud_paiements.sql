@@ -1,56 +1,56 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- L'option « FillSell Cloud » vue par les PAIEMENTS — 04/10/2026 (branche
+-- L'abonnement « FillSell Cloud » vu par les PAIEMENTS — 04/10/2026 (branche
 -- feat/option-cloud-paiements, NON APPLIQUÉE, NON DÉPLOYÉE)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Décisions FINALES de Nico (04/10 nuit) : Cloud = abonnement SÉPARÉ, 20 €/mois,
 -- essai gratuit 7 jours, carte obligatoire ; ouvert à TOUS, comptes Free compris
--- (le compte garde les quotas de son palier) ; cumulable avec les paliers ; si
--- le palier prend fin, le compte repasse en Free et Cloud CONTINUE.
+-- (le compte garde les quotas de son palier) ; cumulable avec les paliers ;
+-- résilier ou perdre le palier n'arrête PAS Cloud. Un seul essai par compte
+-- FillSell, tous canaux confondus.
 --
--- Ce fichier pose les COLONNES que les flux de paiement écrivent (stripe-webhook,
--- create-checkout-session, cancel-subscription, apple-iap-webhook,
--- google-play-webhook, validate-*) et UNE lecture serveur de l'état
--- (cloud_droits), miroir de etatCloud() dans _shared/cloud-option.js.
---
--- Cohabite avec la PROPOSITION de la branche conception/cloud-option
--- (PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt) : mêmes noms et mêmes
--- types pour is_cloud, cloud_essai_debut, cloud_essai_fin (IF NOT EXISTS des
--- deux côtés, l'ordre d'application est indifférent) ; les colonnes de canal et
--- de référence sont propres à ce fichier.
+-- ALIGNÉ sur src/utils/palier.js (cloudDuProfil, branche conception/cloud-option,
+-- 83/83) et sur sa PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt : mêmes
+-- colonnes, même cloud_etat (le même corps est reporté dans la proposition).
+-- Les deux fichiers posent les colonnes en IF NOT EXISTS : l'ordre
+-- d'application est indifférent ; cloud_etat est identique dans les deux.
 --
 -- ⛔ À appliquer AVANT tout déploiement des fonctions de la branche (elles
 --    écrivent ces colonnes). Une par une : db query --linked -f, puis
 --    migration repair --linked --status applied 20261004233000.
 --
 -- INVERSE (à garder prêt) :
---   DROP FUNCTION IF EXISTS public.cloud_droits_moi();
---   DROP FUNCTION IF EXISTS public.cloud_droits(uuid);
+--   DROP FUNCTION IF EXISTS public.cloud_etat_moi();
+--   DROP FUNCTION IF EXISTS public.cloud_etat(uuid, timestamptz);
 --   ALTER TABLE public.profiles
 --     DROP CONSTRAINT IF EXISTS profiles_cloud_canal_connu,
 --     DROP CONSTRAINT IF EXISTS profiles_cloud_essai_coherent,
 --     DROP COLUMN IF EXISTS cloud_canal, DROP COLUMN IF EXISTS cloud_ref,
---     DROP COLUMN IF EXISTS cloud_fin_periode, DROP COLUMN IF EXISTS cloud_annule_fin_periode;
---   -- is_cloud / cloud_essai_debut / cloud_essai_fin : partagées avec la
---   -- proposition conception ; ne les retirer que si elle n'est pas appliquée.
+--     DROP COLUMN IF EXISTS cloud_periode_fin, DROP COLUMN IF EXISTS cloud_arret_fin_periode,
+--     DROP COLUMN IF EXISTS cloud_essai_arrete,
+--     DROP COLUMN IF EXISTS is_cloud, DROP COLUMN IF EXISTS cloud_essai_debut, DROP COLUMN IF EXISTS cloud_essai_fin;
 
 -- 1. LES COLONNES ──────────────────────────────────────────────────────────────
--- is_cloud                 : option PAYÉE (posée par les flux de paiement, comme is_premium)
--- cloud_essai_debut / fin  : l'essai de 7 jours, tel que le store ou Stripe l'a daté
---                            (trial_start/trial_end, purchaseDate/expiresDate,
---                            startTime/expiryTime). Jamais effacés : un seul essai par compte.
--- cloud_canal              : qui porte l'option : stripe | apple | google | offert
--- cloud_ref                : la référence chez ce canal (abonnement Stripe,
---                            originalTransactionId Apple, purchaseToken Google)
--- cloud_fin_periode        : fin de la période payée (ou de l'essai)
--- cloud_annule_fin_periode : renouvellement coupé par la personne, accès conservé jusqu'à l'échéance
+-- is_cloud                : abonnement Cloud PAYÉ (flux de paiement, comme is_premium) ;
+--                           ne rend JAMAIS premium.
+-- cloud_essai_debut / fin : l'essai de 7 jours (null = jamais d'essai) ; un seul
+--                           par compte, tous canaux ; jamais effacés.
+-- cloud_essai_arrete      : essai arrêté par la personne — effet IMMÉDIAT, fin
+--                           ramenée à l'arrêt, rien facturé.
+-- cloud_periode_fin       : fin de la période payée en cours.
+-- cloud_arret_fin_periode : arrêt demandé une fois payée : tourne jusqu'à
+--                           cloud_periode_fin, puis s'arrête.
+-- cloud_canal / cloud_ref : qui porte l'abonnement (stripe | apple | google |
+--                           offert) et sa référence chez lui (id d'abonnement
+--                           Stripe, originalTransactionId, purchaseToken).
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS is_cloud boolean,
   ADD COLUMN IF NOT EXISTS cloud_essai_debut timestamptz,
   ADD COLUMN IF NOT EXISTS cloud_essai_fin timestamptz,
+  ADD COLUMN IF NOT EXISTS cloud_essai_arrete boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS cloud_periode_fin timestamptz,
+  ADD COLUMN IF NOT EXISTS cloud_arret_fin_periode boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS cloud_canal text,
-  ADD COLUMN IF NOT EXISTS cloud_ref text,
-  ADD COLUMN IF NOT EXISTS cloud_fin_periode timestamptz,
-  ADD COLUMN IF NOT EXISTS cloud_annule_fin_periode boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS cloud_ref text;
 
 DO $$
 BEGIN
@@ -65,85 +65,82 @@ BEGIN
 END $$;
 
 -- Comme is_premium : seul le serveur (service role) écrit ces colonnes.
-REVOKE UPDATE (is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_canal, cloud_ref, cloud_fin_periode, cloud_annule_fin_periode)
+REVOKE UPDATE (is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin,
+               cloud_arret_fin_periode, cloud_canal, cloud_ref)
   ON public.profiles FROM anon, authenticated;
+CREATE INDEX IF NOT EXISTS profiles_is_cloud_idx ON public.profiles (id) WHERE is_cloud IS TRUE;
 
-COMMENT ON COLUMN public.profiles.is_cloud IS 'Abonnement FillSell Cloud PAYÉ (flux de paiement). Essai : voir cloud_essai_*. Ouvert à tous, indépendant du palier ; ne rend jamais premium.';
-COMMENT ON COLUMN public.profiles.cloud_canal IS 'Canal qui porte l''option Cloud : stripe | apple | google | offert. Un événement d''un autre canal n''y touche pas.';
-COMMENT ON COLUMN public.profiles.cloud_ref IS 'Référence de l''option chez son canal : id d''abonnement Stripe, originalTransactionId Apple, purchaseToken Google.';
+COMMENT ON COLUMN public.profiles.is_cloud IS 'Abonnement FillSell Cloud PAYÉ (flux de paiement). Ouvert à tous, indépendant du palier ; ne rend jamais premium.';
+COMMENT ON COLUMN public.profiles.cloud_canal IS 'Canal qui porte Cloud : stripe | apple | google | offert. Un événement d''un autre canal n''y touche pas.';
+COMMENT ON COLUMN public.profiles.cloud_essai_debut IS 'Début de l''essai Cloud. Un seul essai par compte FillSell, tous canaux : non null = essai déjà pris.';
 
--- 2. L'ÉTAT CLOUD D'UN COMPTE, côté serveur ──────────────────────────────────
--- Miroir EXACT de etatCloud() (_shared/cloud-option.js) pour l'orchestrateur
--- des navigateurs Cloud et les RPC.
---   etat  : aucun | essai | paye | essai_termine
---   actif : un navigateur Cloud doit-il tourner pour ce compte ?
--- Le palier n'entre PAS dans le calcul : Cloud tourne avec ou sans palier ;
--- les quotas restent ceux du palier (Free compris), calculés ailleurs.
-CREATE OR REPLACE FUNCTION public.cloud_droits(p_user uuid)
-RETURNS jsonb
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_temp'
-AS $$
+-- 2. cloud_etat — MÊME RÈGLE que cloudDuProfil (src/utils/palier.js) ──────────
+-- Mêmes noms, mêmes valeurs que l'app. Instants tronqués à la milliseconde
+-- (comme Date.parse). Un compte inconnu rend « aucun ».
+CREATE OR REPLACE FUNCTION public.cloud_etat(p_user uuid, p_maintenant timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
 DECLARE
-  p record;
-  v_now timestamptz := now();
-  v_essai_pris boolean;
-  v_essai_en_cours boolean;
-  v_etat text;
-  v_actif boolean;
-  v_jours integer;
+  -- ⛔ MÊME VALEUR que CLOUD_EXIGE_UN_PALIER (palier.js), changée le même jour.
+  c_exige_un_palier CONSTANT boolean := false;
+  v_now timestamptz := date_trunc('milliseconds', p_maintenant);
+  v_is_cloud boolean; v_debut timestamptz; v_fin timestamptz; v_arrete boolean;
+  v_periode_fin timestamptz; v_arret_fin_periode boolean;
+  v_business boolean; v_pro boolean; v_premium boolean; v_comped boolean;
+  v_essai_pris boolean; v_en_cours boolean; v_paye boolean; v_avec_formule boolean; v_palier_ok boolean;
+  v_iso_fin text; v_iso_periode text;
+  v_base jsonb;
 BEGIN
-  SELECT is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_canal, cloud_fin_periode, cloud_annule_fin_periode
-    INTO p
-    FROM public.profiles WHERE id = p_user;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('etat', 'aucun', 'actif', false, 'essai_pris', false);
+  SELECT p.is_cloud, date_trunc('milliseconds', p.cloud_essai_debut), date_trunc('milliseconds', p.cloud_essai_fin),
+         p.cloud_essai_arrete, date_trunc('milliseconds', p.cloud_periode_fin), p.cloud_arret_fin_periode,
+         p.is_business, p.is_pro, p.is_premium, p.is_comped
+    INTO v_is_cloud, v_debut, v_fin, v_arrete, v_periode_fin, v_arret_fin_periode,
+         v_business, v_pro, v_premium, v_comped
+    FROM public.profiles p WHERE p.id = p_user;
+  v_essai_pris := v_debut IS NOT NULL;
+  v_en_cours := v_debut IS NOT NULL AND v_fin IS NOT NULL AND v_debut <= v_now AND v_now < v_fin
+                AND v_arrete IS NOT TRUE;
+  v_paye := v_is_cloud IS TRUE;
+  v_avec_formule := (v_business IS TRUE OR v_pro IS TRUE OR v_premium IS TRUE OR v_comped IS TRUE);
+  v_palier_ok := NOT c_exige_un_palier OR v_avec_formule;
+  v_iso_fin := CASE WHEN v_fin IS NULL THEN NULL
+                    ELSE to_char(v_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END;
+  v_iso_periode := CASE WHEN v_periode_fin IS NULL THEN NULL
+                        ELSE to_char(v_periode_fin AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') END;
+  v_base := jsonb_build_object(
+    'essaiPris', v_essai_pris,
+    'essaiArrete', v_essai_pris AND v_arrete IS TRUE,
+    'essaiFin', v_iso_fin,
+    'joursRestants', NULL,
+    'avecFormule', v_avec_formule,
+    'periodeFin', CASE WHEN v_paye THEN v_iso_periode END,
+    'arretPrevuLe', CASE WHEN v_paye AND v_arret_fin_periode IS TRUE THEN v_iso_periode END);
+  IF (v_paye OR v_en_cours) AND NOT v_palier_ok THEN
+    RETURN v_base || jsonb_build_object('etat', 'suspendu', 'actif', false);
   END IF;
-  v_essai_pris := p.cloud_essai_debut IS NOT NULL;
-  v_essai_en_cours := p.cloud_essai_debut IS NOT NULL AND p.cloud_essai_fin IS NOT NULL
-                      AND p.cloud_essai_debut <= v_now AND v_now < p.cloud_essai_fin;
-  IF COALESCE(p.is_cloud, false) THEN
-    v_etat := 'paye'; v_actif := true;
-  ELSIF v_essai_en_cours THEN
-    v_etat := 'essai'; v_actif := true;
-    v_jours := GREATEST(1, CEIL(EXTRACT(EPOCH FROM (p.cloud_essai_fin - v_now)) / 86400.0))::integer;
-  ELSIF v_essai_pris AND p.cloud_essai_fin IS NOT NULL AND v_now >= p.cloud_essai_fin THEN
-    v_etat := 'essai_termine'; v_actif := false;
-  ELSE
-    v_etat := 'aucun'; v_actif := false;
+  IF v_paye THEN
+    RETURN v_base || jsonb_build_object('etat', 'paye', 'actif', true);
   END IF;
-  RETURN jsonb_build_object(
-    'etat', v_etat,
-    'actif', v_actif,
-    'essai_pris', v_essai_pris,
-    'essai_fin', p.cloud_essai_fin,
-    'jours_restants', v_jours,
-    'canal', p.cloud_canal,
-    'fin_periode', p.cloud_fin_periode,
-    'annule_fin_periode', COALESCE(p.cloud_annule_fin_periode, false)
-  );
+  IF v_en_cours THEN
+    RETURN v_base || jsonb_build_object('etat', 'essai', 'actif', true,
+      'joursRestants', GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_fin - v_now)) / 86400)::integer));
+  END IF;
+  IF v_essai_pris AND (v_arrete IS TRUE OR (v_fin IS NOT NULL AND v_now >= v_fin)) THEN
+    RETURN v_base || jsonb_build_object('etat', 'essai_termine', 'actif', false);
+  END IF;
+  RETURN v_base || jsonb_build_object('etat', 'aucun', 'actif', false);
 END;
-$$;
+$f$;
+REVOKE ALL ON FUNCTION public.cloud_etat(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.cloud_etat(uuid, timestamptz) TO service_role;
 
-REVOKE ALL ON FUNCTION public.cloud_droits(uuid) FROM PUBLIC, anon, authenticated;
-
--- La même chose pour SOI, depuis l'app (JWT utilisateur).
-CREATE OR REPLACE FUNCTION public.cloud_droits_moi()
-RETURNS jsonb
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_temp'
-AS $$
-  SELECT public.cloud_droits(auth.uid());
-$$;
-
-REVOKE ALL ON FUNCTION public.cloud_droits_moi() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.cloud_droits_moi() TO authenticated;
+CREATE OR REPLACE FUNCTION public.cloud_etat_moi()
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+  SELECT public.cloud_etat(auth.uid());
+$f$;
+REVOKE ALL ON FUNCTION public.cloud_etat_moi() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.cloud_etat_moi() TO authenticated;
 
 -- 3. RELECTURE après application (à coller) ─────────────────────────────────
 -- SELECT column_name, data_type FROM information_schema.columns
---  WHERE table_name = 'profiles' AND column_name LIKE 'cloud%' OR column_name = 'is_cloud';
--- SELECT public.cloud_droits('<uuid>');
+--  WHERE table_schema = 'public' AND table_name = 'profiles' AND (column_name LIKE 'cloud%' OR column_name = 'is_cloud');
+-- SELECT public.cloud_etat('<uuid>');
