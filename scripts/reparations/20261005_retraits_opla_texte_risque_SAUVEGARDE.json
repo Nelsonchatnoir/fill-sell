@@ -1,0 +1,87 @@
+{
+ "pris_le": "2026-10-05T11:53:11.209Z",
+ "n": 9,
+ "jobs": [
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "f792051a-eef3-4c54-8738-f222e752f8b4",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Pull léger femme Primark neuf S",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "e9910c62-48fc-427d-a7b3-9815fc3dc9f4",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Lot coiffure/ maquillage fille",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "fcc9a630-2a1f-423f-b4d0-5d3961804fc4",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Legging 10 ans",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "fb0b9ee8-d35f-4063-b18f-a8b21f34e29b",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Beschrelle école",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "1459602f-2dce-4943-ac68-296aabb81d33",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Legging Pepperts 10-12 ans fille",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "7dd90016-7a59-468d-9160-4122aa641a21",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Sweat Kiabi Xs",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "d716e3db-ceb0-4130-9ee0-1bf36e28c77f",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Legging pantacourt La Halle XS",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "4ae7c096-6976-4430-803f-2f1f963604f0",
+   "q": 1,
+   "status": "needs_user",
+   "titre": "Pyjama polaire Stich Primark XXS",
+   "user_id": "afeef3c7-0b0b-408c-a25b-3823448e3eb1"
+  },
+  {
+   "error": "Connexion Opla requise : reconnecte-toi à Opla dans Chrome, sur ton ordinateur. Ton annonce est intacte ; tout repartira tout seul ensuite.",
+   "fiche": "vendu",
+   "id": "ba4c46d2-0a2c-431d-92e3-a618b02e3437",
+   "q": 0,
+   "status": "needs_user",
+   "titre": "Pull rayé noir et blanc taille L",
+   "user_id": "f8aa02a5-23cb-4325-bba8-127f61a75741"
+  }
+ ]
+}
