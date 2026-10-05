@@ -258,3 +258,29 @@ test('« Me connecter » : sans ticket valide, rien ne s\'ouvre', async () => {
   assert.equal(recus[0]?.etape, 'non_autorise');
   assert.equal(s.navigateurs.ouverts().length, 0);
 });
+
+test('« Me connecter » : jamais de boucle — 5 refus en 20 s arrêtent l’écran et le disent (05/10, Vinted /member/register)', async () => {
+  const s = monter({ comptes: [{ user_id: U, ip_id: 7, etat_cloud: 'essai', delai_sessions_min: null }] });
+  const recus = [];
+  const ws = { readyState: 1, bufferedAmount: 0, ecouteurs: {}, on(e, f) { this.ecouteurs[e] = f; },
+    send(d) { recus.push(typeof d === 'string' ? JSON.parse(d) : { binaire: d }); }, close() { this.readyState = 3; this.ecouteurs.close?.(); } };
+  s.connexions.brancher(ws, 'https://fillsell.app');
+  const ticket = signerTicket({ user: U }, config.cleTickets);
+  await ws.ecouteurs.message(Buffer.from(JSON.stringify({ t: 'ouvrir', ticket, plateforme: 'vinted', largeur: 390, hauteur: 780, dpr: 3 })), false);
+  await attendre(20);
+  const sid = s.nav.cdp.envoyes.find((e) => e.methode === 'Page.navigate').sessionId;
+  // La nouvelle adresse de connexion de Vinted passe.
+  s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: 'ok1', frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/member/register/select_type?ref_url=%2F' } } });
+  await attendre(10);
+  assert.ok(s.nav.cdp.envoyes.some((e) => e.methode === 'Fetch.continueRequest' && e.params.requestId === 'ok1'), '/member/register/select_type est permis');
+  // Une page qui renvoie sans cesse hors de la liste : arrêt au 5e refus.
+  for (let i = 1; i <= 7; i++) {
+    s.nav.cdp.emettre({ method: 'Fetch.requestPaused', sessionId: sid, params: { requestId: `b${i}`, frameId: `cadre-${sid}`, resourceType: 'Document', request: { url: 'https://www.vinted.fr/catalog?q=x' } } });
+    await attendre(5);
+  }
+  const navigations = s.nav.cdp.envoyes.filter((e) => e.methode === 'Page.navigate').length;
+  assert.equal(navigations, 1 + 4, 'la page de connexion n’est renvoyée que 4 fois, jamais au-delà');
+  const arret = recus.find((m) => m.t === 'etat' && m.etape === 'erreur');
+  assert.ok(arret && /ne s'ouvre pas comme prévu/.test(arret.message), 'la personne lit pourquoi on s’arrête');
+  assert.ok(!s.connexions.connexionsOuvertes().has(U), 'l’écran est fermé');
+});

@@ -26,6 +26,9 @@ import { lireDansExtension } from './sessionFillsell.js';
 const DUREE_MAX_MS = 15 * 60_000;
 const INACTIVITE_MS = 5 * 60_000;
 const SONDE_MS = 2000;
+// Garde anti-boucle des refus de navigation (05/10) : 5 refus en 20 s = arrêt.
+export const REFUS_MAX = 5;
+export const REFUS_FENETRE_MS = 20_000;
 const TOUCHES = {
   Backspace: { key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 },
   Enter: { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' },
@@ -47,6 +50,7 @@ export const MESSAGES = Object.freeze({
     pret: 'Connecte-toi comme d\'habitude.',
     connecte: (nom) => `C'est fait : ${nom} est connecté. FillSell publie maintenant tes annonces depuis ses serveurs.`,
     bloquee: 'Cette page n\'est pas la connexion : on y revient.',
+    boucle: (nom) => `La page de connexion de ${nom} ne s'ouvre pas comme prévu. On arrête ici et on regarde de notre côté : réessaie plus tard.`,
     refuse: (nom) => `Ce compte ${nom} a déjà servi à un essai gratuit. L'essai s'arrête ; tu peux reprendre l'option sans essai.`,
     inactif: 'L\'option Sans ordinateur n\'est pas active sur ce compte.',
     occupe: 'Une autre connexion est déjà ouverte : elle vient d\'être fermée.',
@@ -59,6 +63,7 @@ export const MESSAGES = Object.freeze({
     pret: 'Sign in as usual.',
     connecte: (nom) => `Done: ${nom} is connected. FillSell now posts your listings from its servers.`,
     bloquee: 'That page isn\'t the sign-in page: taking you back.',
+    boucle: (nom) => `The ${nom} sign-in page isn't opening as expected. We're stopping here and looking into it on our side: try again later.`,
     refuse: (nom) => `This ${nom} account was already used for a free trial. The trial stops; you can take the add-on without a trial.`,
     inactif: 'The No computer add-on isn\'t active on this account.',
     occupe: 'Another sign-in was open: it has just been closed.',
@@ -147,6 +152,7 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
     let sonde = null, arreterEcoute = null;
     let ligneJournal = null;
 
+    const refusNavigation = []; // instants des derniers refus de navigation (garde anti-boucle)
     const sessionDe = (sid) => [cible, ...fenetres].find((c) => c?.sessionId === sid) ?? null;
 
     async function preparerCible(c) {
@@ -196,6 +202,18 @@ export function creerConnexions({ config, base, postes, navigateurs, coffre, jou
         }
         journal.info('connexion_navigation_refusee', { user, plateforme, vers: urlPourJournal(p.request?.url) });
         await cdp.send('Fetch.failRequest', { requestId: p.requestId, errorReason: 'BlockedByClient' }, m.sessionId).catch(() => {});
+        // (05/10) JAMAIS DE BOUCLE : la page de connexion qui redirige elle-même
+        // hors de la liste (Vinted : /member/signup → /member/register) était
+        // renvoyée 4 à 5 fois par seconde, sans fin. Au REFUS_MAX-ième refus en
+        // REFUS_FENETRE_MS, on arrête et on le dit ; l'alerte part au journal.
+        const t = Date.now();
+        refusNavigation.push(t);
+        while (refusNavigation.length && t - refusNavigation[0] > REFUS_FENETRE_MS) refusNavigation.shift();
+        if (refusNavigation.length >= REFUS_MAX) {
+          journal.alerte('connexion_boucle', { user, plateforme, vers: urlPourJournal(p.request?.url), refus: refusNavigation.length });
+          envoyer({ t: 'etat', etape: 'erreur', message: txt.boucle(def.nom) });
+          return fermer('boucle');
+        }
         envoyer({ t: 'etat', etape: 'info', message: txt.bloquee });
         if (c === cible) await cdp.send('Page.navigate', { url: def.pageConnexion }, cible.sessionId).catch(() => {});
         else await cdp.send('Target.closeTarget', { targetId: c.targetId }).catch(() => {});

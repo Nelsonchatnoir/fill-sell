@@ -26,7 +26,9 @@ export const DEFINITIONS = Object.freeze({
     domaine: /(^|\.)vinted\.fr$/,
     // Sur vinted.fr même, seulement ce qui mène à la connexion (et l'accueil,
     // où Vinted renvoie une fois connecté).
-    cheminsPermis: [/^\/$/, /^\/member\/(signup|login|general|auth)/, /^\/oauth/, /^\/auth/, /^\/(verification|two_factor)/, /^\/session/],
+    // (05/10) Vinted redirige /member/signup/select_type → /member/register/select_type
+    // (relu par l'écran « Me connecter » du test : refus en boucle) — « register » est permis.
+    cheminsPermis: [/^\/$/, /^\/member\/(signup|register|login|general|auth)/, /^\/oauth/, /^\/auth/, /^\/(verification|two_factor)/, /^\/session/],
     hotesPermis: [/^(www\.)?vinted\.fr$/, /^accounts\.vinted\.com$/],
     cookiesDomaine: /(^|\.)vinted\.(fr|com)$/,
   },
