@@ -50,12 +50,22 @@ modifier la durée, un identifiant ne se renomme jamais.
   store n’est PAS activée (Cloud ne tourne pas), Cloud démarre au premier
   paiement réel ; Stripe ouvre alors un Checkout sans essai. Rejeu du même essai
   (même canal, même référence) toujours accepté.
-- Les 4 verrous de la branche conception (compte, appareil, carte, comptes de
-  plateforme, `cloud_essai_ouvrir`) ne voient que l’ouverture côté FillSell ; un
-  achat dans l’App Store ou Google Play ne les traverse pas. Le verrou « compte »
-  est donc REPRIS dans les webhooks Apple et Google (`verdictEssaiStore`) ; les
-  verrous appareil et comptes de plateforme restent à appeler par l’app AVANT
-  d’ouvrir la feuille d’achat du store (`cloud_essai_preparer_moi`).
+- **Les quatre verrous (05/10, socle `20261005120000`)** :
+  - l'app appelle `cloud_essai_preparer_moi(appareil)` AVANT Stripe, l'App Store
+    ou Google Play (`src/cloud/achatCloud.js`) : une PLACE est réservée (une IP
+    dédiée, 30 min ; pool vide = refus, rien ne s'ouvre), et les verrous
+    « compte », « appareil » et « comptes de plateforme » (Vinted déjà relevés)
+    répondent ; un essai refusé est DIT, l'option se prend sans essai après
+    confirmation ;
+  - `create-checkout-session` exige une préparation fraîche (`cloud_essai_permis`
+    → `fraiche`) et n'ouvre l'essai que si elle le permet ;
+  - `stripe-webhook` pose le 4e verrou, **la carte** (`card.fingerprint` hachée) :
+    déjà vue → essai annulé sur-le-champ, rien prélevé, `cloud_essai_refus` écrit ;
+  - les webhooks et validations des stores lisent le verdict de la préparation
+    (`_shared/cloud-essai-store.ts`) : un essai refusé n'est pas activé par la
+    semaine offerte de la boutique (`essai_interdit`) ;
+  - un compte de plateforme connecté depuis « Me connecter » et déjà vu sur
+    l'essai d'un autre compte arrête l'essai (`cloud_essai_noter_compte_plateforme`).
 - Un événement d'un canal ne touche jamais un Cloud porté par un autre canal.
 
 ## Ce que fait chaque fonction
@@ -65,7 +75,8 @@ modifier la durée, un identifiant ne se renomme jamais.
 - `stripe-webhook` : session, facture et mise à jour Cloud relues chez Stripe,
   sorties AVANT les chemins de palier (qui posaient `is_premium` et créditaient).
 - `cancel-subscription` : sans corps → le palier seul (jamais Cloud) ;
-  `{ option: "cloud" }` → en essai : arrêt IMMÉDIAT, rien facturé ; payé : fin de période.
+  `{ option: "cloud" }` → en essai : arrêt IMMÉDIAT, rien facturé ; payé : fin de période ;
+  `{ option: "cloud", reprendre: true }` → « Garder l'option » (arrêt prévu levé).
 - `apple-iap-webhook`, `validate-apple-receipt`, `google-play-webhook`,
   `validate-google-purchase` : produit Cloud reconnu, colonnes Cloud seulement.
 - `cloud_etat(uuid, timestamptz)` / `cloud_etat_moi()` : même état que
@@ -73,9 +84,7 @@ modifier la durée, un identifiant ne se renomme jamais.
 
 ## Avant tout déploiement
 
-1. Appliquer `20261004233000_option_cloud_paiements.sql` (`db query --linked -f`
-   puis `migration repair`).
-2. `STRIPE_PRICE_CLOUD=price_1UMuLDQZRA77vrWJZfZh2IS4`.
-3. Déployer les 7 fonctions (webhooks en `--no-verify-jwt`).
-4. La branche `conception/cloud-option` est déjà à `CLOUD_EXIGE_UN_PALIER = false`
-   et 7 jours (palier.js) ; sa proposition SQL porte le même `cloud_etat`.
+La passe complète, dans l'ordre : `docs/cloud/mise-en-ligne.md` (migrations
+`20261004233000` puis `20261005120000`, secret `STRIPE_PRICE_CLOUD`, fonctions par
+`scripts/cloud/deployer-fonctions-cloud.mjs` qui garde chaque `verify_jwt`, drapeau).
+Ce que Nico saisit chez Apple, Google et Stripe : `docs/cloud/fiche-boutiques.md`.
