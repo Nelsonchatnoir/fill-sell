@@ -16,7 +16,10 @@
 //     deux lignes sur la même carte ;
 //   · 1 article vendu dont le retrait a abouti (carte vendue ordinaire) ;
 //   · 8 annonces Vinted en ligne depuis 9 à 40 jours (« Remonter » : 8) et
-//     3 articles récents ou pas encore publiés.
+//     3 articles récents ou pas encore publiés ;
+//   · un compte RELEVÉ comme en prod : sync_multi_ouverte = 1 (carte de synchro
+//     de la refonte), un relevé fini par plateforme (Vinted 10, Leboncoin 4,
+//     Beebs 2, eBay 1, Opla 3) ;
 //   · get-pending-jobs {plafond_only} : limite 50, 45 faites, aucune en file
 //     → 8 republications = 5 aujourd'hui, 3 demain.
 
@@ -199,11 +202,22 @@ export function donneesFictives(maintenant = Date.now()) {
     job({ inventaire_id: f.id, platform: 'leboncoin', action: 'delete', status: 'published', created_at: avant(5 * J - H), listing_url: urlL, title: f.titre });
   }
 
-  // ── Les relevés déjà faits (la carte de synchronisation reste calme) ─────
-  const run = (platform, kind, il) => ({
+  // Quelques annonces Beebs et eBay, pour que le compte ressemble à un compte
+  // relevé sur ses cinq plateformes (pastilles de la carte de synchro).
+  const parTitre = (t) => inventaire.find((i) => i.titre === t);
+  [['Robe d’été fleurie', 'beebs', 'https://www.beebs.app/fr/annonce/exemple-510101'],
+    ['Pull col roulé en laine', 'beebs', 'https://www.beebs.app/fr/annonce/exemple-510102'],
+    ['Sac à main cuir camel', 'ebay', 'https://www.ebay.fr/itm/100000510103']].forEach(([t, platform, url]) => {
+    const f = parTitre(t);
+    if (f) job({ inventaire_id: f.id, platform, created_at: avant(8 * J), listing_url: url, title: t });
+  });
+
+  // ── Les relevés déjà faits : la carte « Synchronisé il y a … », une pastille
+  //    par plateforme avec son nombre d'annonces (items_vus du dernier relevé).
+  const run = (platform, kind, il, vus) => ({
     id: `run-0510-${platform}-${kind}`, user_id: UID_FICTIF, platform, kind, status: 'done', declencheur: 'auto',
     queued_at: avant(il + 60000), started_at: avant(il + 50000), finished_at: avant(il), updated_at: avant(il),
-    erreur: null, items_vus: 11, items_crees: 0, items_maj: 0, total_entries: 11, total_pages: 1, page_suivante: null,
+    erreur: null, items_vus: vus, items_crees: 0, items_maj: 0, total_entries: vus, total_pages: 1, page_suivante: null,
     vinted_login: platform === 'vinted' ? 'boutique-fictive' : null, vinted_user_id: platform === 'vinted' ? '424242' : null,
   });
 
@@ -219,8 +233,19 @@ export function donneesFictives(maintenant = Date.now()) {
       }],
       inventaire,
       cross_post_jobs: jobs,
-      vinted_sync_runs: [run('vinted', 'dressing', 3 * H), run('leboncoin', 'annonces', 3 * H)],
-      coin_config: [],
+      vinted_sync_runs: [
+        run('vinted', 'dressing', 2 * H, 10),
+        run('leboncoin', 'annonces', 2 * H + 4 * 60000, 4),
+        run('beebs', 'annonces', 2 * H + 6 * 60000, 2),
+        run('ebay', 'annonces', 2 * H + 7 * 60000, 1),
+        // Opla relevé AVANT la fermeture de sa session (les 3 vendus y sont encore).
+        run('opla', 'annonces', 5 * H, 3),
+      ],
+      // sync_multi_ouverte = 1 : la carte de synchro de la refonte (BlocSynchro),
+      // celle du Stock d'aujourd'hui — sans elle, la carte d'accueil « Tu vends
+      // déjà sur Vinted ? ». republication_multi_ouverte reste absente (fermée) :
+      // la feuille de republication vise Vinted seul.
+      coin_config: [{ key: 'sync_multi_ouverte', value: 1 }],
       fiches_annonce: [],
     },
     rpc: {
