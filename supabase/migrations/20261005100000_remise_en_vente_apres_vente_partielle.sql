@@ -157,7 +157,7 @@ AS $function$
      || 'rattrapage_|horloge_|plateforme_reprise|next_action|fige_|tache_|vinted_account_proof|gel_|'
      || 'remise_en_vente|republish|superseded|statut_reel|boucle|mur_|refus_|repare|requalif|'
      || 'reparation|titre_corrige|sonde_|compte_vendeur|build_min|correctif|verifier_doublon|'
-     || 'new_listing|vinted_item_id|item_id)');
+     || 'new_listing|vinted_item_id|item_id|marque_traduite|colis_au_service|livraison_au_service)');
 $function$;
 
 -- ── Le traitement ───────────────────────────────────────────────────────────
