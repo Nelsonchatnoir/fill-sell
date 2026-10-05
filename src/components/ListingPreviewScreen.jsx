@@ -4742,14 +4742,18 @@ export default function ListingPreviewScreen({
       try {
         const { data } = await supabase
           .from("annonces_plateforme")
-          .select("platform, capture, vu_le")
+          .select("platform, capture, donnees_index, vu_le")
           .eq("inventaire_id", inventaireId)
           .is("disparu_le", null)
           .order("vu_le", { ascending: false })
           .limit(8);
         if (!vivant || !Array.isArray(data) || !data.length) return;
         for (const ligne of data) {
-          const brut = ligne?.capture?.categorie;
+          // (05/10, Louis « Rangement Rouge et Bleu ») Une annonce Beebs relevée
+          // sans capture porte sa catégorie dans l'index (donnees_index,
+          // « Yaourtières ») : sans ce repli, ni objet ni origine → « rayon à
+          // choisir », alors que la sœur capturée partait seule en Électroménager.
+          const brut = ligne?.capture?.categorie ?? ligne?.donnees_index?.categorie;
           if (!brut || !ligne?.platform) continue;
           const feuille = await feuilleDepuisOrigine(ligne.platform, brut);
           if (!vivant) return;
