@@ -24,6 +24,7 @@
     "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
     "selftest:cloud-extension": "node scripts/cloud-extension-selftest.mjs",
     "selftest:cloud-orchestrateur": "node --test serveur-cloud/tests/orchestrateur.test.mjs",
+    "selftest:cloud-achat": "node scripts/cloud-achat-selftest.mjs",
     "selftest:ventes-supprimees": "node scripts/ventes-supprimees-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
     "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
