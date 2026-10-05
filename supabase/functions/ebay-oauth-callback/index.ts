@@ -144,6 +144,24 @@ Deno.serve(async (req) => {
     } else {
       console.warn(`[ebay-oauth-callback] connexion stockée SANS preuve GetUser pour ${userId} — drapeau ebay_voie_api inchangé`);
     }
+    // (05/10) La vente vue à la commande : le compte qui vient d'être relié
+    // s'abonne à ORDER_CONFIRMATION (ebay-notifications, action « abonner »).
+    // Borné à 8 s, jamais bloquant : un échec laisse la veille Browse, comme
+    // avant, et l'action se relance à la main pour tous les comptes.
+    try {
+      const secret = Deno.env.get("CRON_SECRET")?.trim() ?? "";
+      if (secret) {
+        const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ebay-notifications`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-cron-secret": secret },
+          body: JSON.stringify({ action: "abonner", user_id: userId }),
+          signal: AbortSignal.timeout(8000),
+        });
+        console.log(`[ebay-oauth-callback] abonnement ORDER_CONFIRMATION demandé pour ${userId} → HTTP ${r.status}`);
+      }
+    } catch (e) {
+      console.warn(`[ebay-oauth-callback] abonnement ORDER_CONFIRMATION non demandé (${(e as Error)?.message ?? e}) — la veille Browse reste`);
+    }
     return retour("ok");
   } catch (err) {
     console.error("[ebay-oauth-callback] erreur inattendue :", (err as Error)?.message ?? err);
