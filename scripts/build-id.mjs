@@ -1391,7 +1391,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-05T12:09:26Z'; // 0.6.98 (461a084) = 0.6.97 + veille des commandes Vinted et Leboncoin (10 min, comptes payants, bornée, mesurée, coupée au premier signe anti-robot, interrupteur veille_commandes_ouverte) → annonce relue en priorité ; mesures du remplissage Vinted écrites aussi quand la publication réussit ; retrait en attente de connexion : risque de double vente dit. Paquet build/CWS-0.6.98-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-05T18:20:53Z'; // 0.6.99 (4e25651) = 0.6.98 + relevés : pris au démarrage sous le verrou, worker gardé éveillé, plus aucune reprise automatique, veille sans import, lots de 24, requêtes bornées, fins nommées ([pas_connecte], [anti_robot]) — Marine 05/10. Paquet build/CWS-0.6.99-A-TELEVERSER.
 // (avant : '2026-10-04T17:56:39Z' = 0.6.96, 17c319a, paquet CWS-0.6.96-A-TELEVERSER (b32685f), à téléverser le 05/10 — 0.6.96 = 0.6.95 + Beebs : la page de l’annonce lue par requête de même origine (…)
 // (avant : '2026-10-04T09:19:39Z' = 0.6.95, 7c03a7f, paquet CWS-0.6.95-A-TELEVERSER, JAMAIS téléversé — remplacé par 0.6.96)
 // (avant : '2026-10-03T21:22:49Z' = 0.6.94, 3165ace, paquet CWS-0.6.94-A-TELEVERSER, ENVOYÉE au CWS et servie le 04/10)
