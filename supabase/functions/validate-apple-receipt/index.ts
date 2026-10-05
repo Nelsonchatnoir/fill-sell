@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
+import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -157,8 +158,7 @@ serve(async (req) => {
         expiresDate: expiresCloud || undefined,
         originalTransactionId: txCloud.original_transaction_id,
       })!;
-      const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
+      const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
       const { update: majCloud, motif } = ecritureCloudStore({
         canal: "apple", lecture, sens: expiresCloud > now ? "on" : "off",
         ref: txCloud.original_transaction_id ?? null, profil: profilCloud ?? {},

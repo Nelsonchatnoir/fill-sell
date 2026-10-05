@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
+import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
 // Validation serveur d'un achat Google Play — équivalent strict de
 // validate-apple-receipt, côté Android (2026-08-05).
@@ -251,8 +252,7 @@ serve(async (req) => {
     if (estCloud) {
       const lecture = lectureCloudGoogle(productId, purchase, null)
         ?? { essai: false, debut: null, fin: (ligne?.expiryTime as string | undefined) ?? null, offre: null };
-      const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
+      const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
       const sens = actif ? "on" : "off";
       const { update: majCloud, motif } = ecritureCloudStore({
         canal: "google", lecture, sens, ref: purchaseToken, profil: profilCloud ?? {},

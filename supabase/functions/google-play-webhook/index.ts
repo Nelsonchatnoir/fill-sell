@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
+import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -298,8 +299,7 @@ serve(async (req) => {
     const lectureCloud = lectureCloudGoogle(subscriptionId, purchase, notificationType);
     if (lectureCloud) {
       const sens = notificationType === CANCELED_TYPE ? "annulation" : isPremium ? "on" : "off";
-      const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
+      const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
       const { update, motif } = ecritureCloudStore({
         canal: "google", lecture: lectureCloud, sens, ref: purchaseToken, profil: profilCloud ?? {},
       });

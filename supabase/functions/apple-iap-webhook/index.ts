@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
 import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
+import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -182,8 +183,7 @@ serve(async (req) => {
         // résiliation / reprise de son renouvellement passe par ici. Rien du
         // palier n'est touché ; une référence d'un autre canal est ignorée.
         if (renewalToken && renewalProductId && lectureCloudApple({ productId: renewalProductId })) {
-          const { data: profilCloud } = await supabaseAdmin
-            .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", renewalToken).maybeSingle();
+          const profilCloud = await profilCloudPourStore(supabaseAdmin, renewalToken);
           const renewalDate = renewal.renewalDate as number | undefined;
           const { update, motif } = ecritureCloudStore({
             canal: "apple",
@@ -339,8 +339,7 @@ serve(async (req) => {
           status: 200, headers: { "Content-Type": "application/json" },
         });
       }
-      const { data: profilCloud } = await supabaseAdmin
-        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", appAccountToken).maybeSingle();
+      const profilCloud = await profilCloudPourStore(supabaseAdmin, appAccountToken);
       const { update, motif } = ecritureCloudStore({
         canal: "apple", lecture: lectureCloud, sens, ref: originalTransactionId ?? null, profil: profilCloud ?? {},
       });
