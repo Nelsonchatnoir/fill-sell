@@ -56,10 +56,10 @@ semaine offerte par Google à un essai refusé par nos verrous **n'est pas activ
 | Produit | `prod_VNfg9NASXvwpey` « FillSell Cloud » | actif — rien à faire |
 | Prix | `price_1UMuLDQZRA77vrWJZfZh2IS4` · 20,00 EUR / mois · essai 7 j sur le prix | actif — rien à faire (notre Checkout passe l'essai lui-même ; le prix seul ne l'applique jamais) |
 | Ancien prix 3 j | `price_1UMufsQZRA77vrWJ1YVYLml0` | archivé le 04/10 — rien à faire |
-| Webhook (endpoint de `stripe-webhook`) | événements : `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`, `invoice.payment_action_required` | **vérifier** qu'ils sont tous cochés (ce sont ceux des formules) |
+| Webhook (endpoint `we_1TNHq1QZRA77vrWJHXw51Svb` de `stripe-webhook`) | relu par l'API le 05/10 : `checkout.session.completed`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted` | **⛔ NE RIEN COCHER** (décision du 05/10) : `invoice.payment_failed` et `invoice.payment_action_required` sont ajoutés par **Claude, par l'API, à la mise en ligne**, juste après le déploiement de la nouvelle `stripe-webhook` (`mise-en-ligne.md`, étape 4 bis) |
 | Portail client (Paramètres › Facturation › Portail client) | « Changer d'offre » : **ne PAS proposer « FillSell Cloud » comme cible** d'un passage de formule (ni l'inverse) ; « Annuler l'abonnement » : autorisé, **à la fin de la période** | un arrêt demandé pendant l'essai est rendu immédiat par le webhook |
 | Reçus (Paramètres › E-mails clients › Paiements réussis) | **activés** (comme pour les formules) | les reçus du Cloud partent par Stripe |
-| Rappels de fin d'essai Stripe (Paramètres › Facturation › Abonnements et e-mails) | **coupés** (proposition) : notre mail de la veille part déjà (`cloud_essai_veille`) — deux rappels pour un essai de 7 jours, c'est un de trop | décision de Nico |
+| Rappels de fin d'essai Stripe (Paramètres › Facturation › Abonnements et e-mails) | **coupés** — décision de Nico (05/10), qu'il fait lui-même ce soir : notre mail de la veille (`cloud_essai_veille`) reste tel quel derrière sa garde et part à la mise en ligne | Nico, 05/10 au soir |
 
 Le secret `STRIPE_PRICE_CLOUD=price_1UMuLDQZRA77vrWJZfZh2IS4` est posé par Claude
 à la mise en ligne (`docs/cloud/mise-en-ligne.md`, étape 3).

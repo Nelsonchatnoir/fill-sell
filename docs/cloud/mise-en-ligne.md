@@ -54,6 +54,45 @@ google-play-webhook, validate-apple-receipt, validate-google-purchase,
 cancel-subscription, create-checkout-session) + get-pending-jobs (poste_cloud)
 + email-tunnel (le mail de la veille, inchangé, derrière sa garde).
 
+## 4 bis. Les deux événements du webhook Stripe (Claude, par l'API — JUSTE APRÈS l'étape 4)
+
+Relu le 05/10 (`GET /v1/webhook_endpoints`) : l'endpoint
+`we_1TNHq1QZRA77vrWJHXw51Svb` (→ `…/functions/v1/stripe-webhook`) ne reçoit que
+`checkout.session.completed`, `invoice.paid`, `customer.subscription.updated`,
+`customer.subscription.deleted`. Il manque `invoice.payment_failed` et
+`invoice.payment_action_required` (échec de prélèvement à la fin de l'essai,
+3D Secure attendu) : sans eux, un essai dont la carte est refusée ne se voit pas.
+
+⛔ **Jamais avant le déploiement de la nouvelle `stripe-webhook`** (décision de
+Nico du 05/10 — Nico ne les coche PAS dans le tableau de bord).
+⚠️ À savoir AVANT de les ajouter (relu le 05/10) : la `stripe-webhook` en prod
+(v56 = `main`) traite DÉJÀ ces deux événements depuis le 07/08 (« échec de
+paiement notifié », commit 2fc6662 : mail au CLIENT selon la cause via
+`email-tunnel` mode `payment_failed`, alerte à Nico, dédup par facture). Ils
+n'ont jamais été cochés, donc ce chemin n'a jamais tourné. Les ajouter l'ALLUME
+pour TOUTES les formules (Premium, Pro, Business), pas seulement le Cloud :
+le premier client dont la carte échoue recevra ce mail. → Nico le confirme
+explicitement avant ce geste.
+
+1. Relire l'endpoint (lecture) : `GET /v1/webhook_endpoints/we_1TNHq1QZRA77vrWJHXw51Svb`
+   — les 4 événements ci-dessus, `status: enabled`.
+2. Relire que la fonction déployée est la NOUVELLE (`functions list` : version
+   montée à l'étape 4, `verify_jwt: false` inchangé).
+3. Mettre la liste COMPLÈTE (Stripe remplace la liste entière, on ne « coche » pas
+   un par un) : `POST /v1/webhook_endpoints/we_1TNHq1QZRA77vrWJHXw51Svb` avec
+   `enabled_events` = `checkout.session.completed`, `invoice.paid`,
+   `customer.subscription.updated`, `customer.subscription.deleted`,
+   `invoice.payment_failed`, `invoice.payment_action_required` (connecteur Stripe
+   `stripe_api_write`, compte `acct_1TIT5gQZRA77vrWJ`, mode réel).
+4. Relire l'endpoint : les 6 événements, `status: enabled`. Puis, dans l'heure
+   et le lendemain : `GET /v1/events?type=invoice.payment_failed` et les
+   journaux de `stripe-webhook` (`[webhook] échec de paiement reçu`) — chaque
+   événement livré doit avoir rendu 200 (`pending_webhooks` à 0). Une livraison
+   en erreur répétée = retirer les deux événements (même appel, liste des 4) et
+   prévenir Nico : Stripe désactive un endpoint qui échoue plusieurs jours.
+
+Retour arrière : le même `POST` avec la liste des 4 d'origine.
+
 ## 5. Le serveur
 
 `/srv/fillsell-cloud/.env` : `COMPTES_AUTORISES=` (vide = tous), `ALERTES_MAIL=1`,
