@@ -4572,7 +4572,15 @@ serve(async (req) => {
             .select("vinted_item_id").eq("id", ficheVintedAMettreAJour).maybeSingle();
           const actuel = String((fiche as { vinted_item_id?: unknown } | null)?.vinted_item_id ?? "").trim();
           if (actuel !== nouvelId && (!actuel || (/^\d+$/.test(actuel) && BigInt(actuel) < BigInt(nouvelId)))) {
-            let maj = userClient.from("inventaire").update({ vinted_item_id: nouvelId }).eq("id", ficheVintedAMettreAJour);
+            // (05/10, Louis « 12 adaptateurs Rouge ») le statut et la
+            // disparition décrivaient l'ANCIENNE annonce (vendue, close) : la
+            // fiche qui suit l'annonce neuve, en ligne à l'instant, repart
+            // 'active'. Sinon la carte la disait hors ligne, et une vente
+            // ailleurs (quantité 0) n'armait pas son retrait (vinted_status
+            // 'sold' écarte Vinted dans inventaire_vendu_retire_ses_copies).
+            let maj = userClient.from("inventaire")
+              .update({ vinted_item_id: nouvelId, vinted_status: "active", disparu_le: null })
+              .eq("id", ficheVintedAMettreAJour);
             maj = actuel ? maj.eq("vinted_item_id", actuel) : maj.is("vinted_item_id", null);
             const { error: eId } = await maj;
             if (eId) console.warn(`[update-job-status] job=${jobId} : fiche ${ficheVintedAMettreAJour} non recalée sur l'annonce ${nouvelId} (${eId.message})`);
