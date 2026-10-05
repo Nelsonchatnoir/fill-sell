@@ -17,6 +17,10 @@
 import { readFileSync } from "node:fs";
 import { partageRepublicationsDuJour, LIMITE_HORS_D_ATTEINTE } from "../src/utils/plafondRepublication.js";
 
+// Les nombres sont collés à leur mot par une espace insécable (jamais « 5 »
+// seul en fin de ligne, relu au harnais à 360 px) : le texte se compare lisible.
+const lisible = (t) => String(t ?? "").replace(/\u00a0/g, " ");
+
 let echecs = 0;
 const ok = (titre, condition, detail) => {
   if (condition) console.log(`  ok   ${titre}`);
@@ -35,32 +39,32 @@ console.log("\n── 1. Dépassée en partie ───────────�
   const r = p(40, etat({ faits: 30 }));
   ok("30 faites + 40 nouvelles → 20 aujourd'hui, 20 plus tard", r && r.aujourdhui === 20 && r.plusTard === 20, r);
   ok("le surplus tient demain → « demain »", r?.demain === true, r);
-  ok("texte exact", r?.texte === "Ta limite du jour est de 50 republications : 20 partent aujourd'hui, les 20 autres partiront demain, toutes seules. Rien n'est perdu.", r?.texte);
+  ok("texte exact", lisible(r?.texte) === "Ta limite du jour est de 50 republications : 20 partent aujourd'hui, les 20 autres partiront demain, toutes seules. Rien n'est perdu.", r?.texte);
 }
 {
   const r = p(2, etat({ faits: 49 }));
   ok("1 place restante, 2 nouvelles → 1 part, l'autre suit", r && r.aujourdhui === 1 && r.plusTard === 1, r);
-  ok("accords au singulier", r?.texte === "Ta limite du jour est de 50 republications : 1 part aujourd'hui, l'autre partira demain, toute seule. Rien n'est perdu.", r?.texte);
+  ok("accords au singulier", lisible(r?.texte) === "Ta limite du jour est de 50 republications : 1 part aujourd'hui, l'autre partira demain, toute seule. Rien n'est perdu.", r?.texte);
 }
 {
   const r = p(140, etat({ faits: 0 }));
   ok("140 nouvelles sur 50 par jour → 50 aujourd'hui, 90 plus tard", r && r.aujourdhui === 50 && r.plusTard === 90, r);
-  ok("90 ne tiennent pas en un jour → « les jours suivants », jamais « demain »", r && !r.demain && /les jours suivants/.test(r.texte) && !/ demain/.test(r.texte), r?.texte);
+  ok("90 ne tiennent pas en un jour → « les jours suivants », jamais « demain »", r && !r.demain && /les jours suivants/.test(lisible(r.texte)) && !/ demain/.test(lisible(r.texte)), r?.texte);
 }
 
 console.log("\n── 1. Atteinte ───────────────────────────────────────────────");
 {
   const r = p(5, etat({ faits: 50, retenue: true, motif: "plafond" }));
   ok("50 faites sur 50 → 0 aujourd'hui, 5 plus tard", r && r.aujourdhui === 0 && r.plusTard === 5, r);
-  ok("texte « atteinte … dès demain »", r?.texte === "Ta limite du jour (50 republications) est atteinte : ces 5 republications partiront dès demain, toutes seules. Rien n'est perdu.", r?.texte);
+  ok("texte « atteinte … dès demain »", lisible(r?.texte) === "Ta limite du jour (50 republications) est atteinte : ces 5 republications partiront dès demain, toutes seules. Rien n'est perdu.", r?.texte);
 }
 {
   const r = p(1, etat({ faits: 62 }));
-  ok("au-delà de la limite (62/50), 1 nouvelle → singulier", r?.texte === "Ta limite du jour (50 republications) est atteinte : cette republication partira dès demain, toute seule. Rien n'est perdu.", r?.texte);
+  ok("au-delà de la limite (62/50), 1 nouvelle → singulier", lisible(r?.texte) === "Ta limite du jour (50 republications) est atteinte : cette republication partira dès demain, toute seule. Rien n'est perdu.", r?.texte);
 }
 {
   const r = p(80, etat({ faits: 50 }));
-  ok("80 de plus, limite atteinte → « à partir de demain » (pas tout demain)", r && !r.demain && /à partir de demain/.test(r.texte), r?.texte);
+  ok("80 de plus, limite atteinte → « à partir de demain » (pas tout demain)", r && !r.demain && /à partir de demain/.test(lisible(r.texte)), r?.texte);
 }
 
 console.log("\n── 2. Ce qui est déjà en file passe avant ─────────────────────");
@@ -71,7 +75,7 @@ console.log("\n── 2. Ce qui est déjà en file passe avant ─────�
 {
   const r = p(10, etat({ faits: 30 }), 25);
   ok("30 faites + 25 en file → plus de place : 0 aujourd'hui", r && r.aujourdhui === 0 && r.plusTard === 10, r);
-  ok("limite pas encore ATTEINTE : on ne le prétend pas, la file la remplit", r && /^Les republications déjà en file remplissent ta limite du jour \(50 republications\) : ces 10 republications partiront dès demain/.test(r.texte) && !/atteinte/.test(r.texte), r?.texte);
+  ok("limite pas encore ATTEINTE : on ne le prétend pas, la file la remplit", r && /^Les republications déjà en file remplissent ta limite du jour \(50 republications\) : ces 10 republications partiront dès demain/.test(lisible(r.texte)) && !/atteinte/.test(lisible(r.texte)), r?.texte);
 }
 {
   const r = p(10, etat({ faits: 0 }), 45);
@@ -95,9 +99,9 @@ ok("0 envoi (aucune plateforme cochée) → rien", p(0, etat({ faits: 50 })) ===
 console.log("\n── 4. Anglais ─────────────────────────────────────────────────");
 {
   const r = p(40, etat({ faits: 30 }), 0, "en");
-  ok("anglais, dépassement partiel", r?.texte === "Your daily limit is 50 reposts: 20 go out today, the other 20 will go out tomorrow, on their own. Nothing is lost.", r?.texte);
+  ok("anglais, dépassement partiel", lisible(r?.texte) === "Your daily limit is 50 reposts: 20 go out today, the other 20 will go out tomorrow, on their own. Nothing is lost.", r?.texte);
   const r1 = p(1, etat({ faits: 50 }), 0, "en");
-  ok("anglais, atteinte, singulier", r1?.texte === "Your daily limit (50 reposts) is reached: this repost will go out tomorrow, on its own. Nothing is lost.", r1?.texte);
+  ok("anglais, atteinte, singulier", lisible(r1?.texte) === "Your daily limit (50 reposts) is reached: this repost will go out tomorrow, on its own. Nothing is lost.", r1?.texte);
 }
 
 console.log("\n── 5. La feuille de republication ─────────────────────────────");
@@ -115,5 +119,12 @@ console.log("\n── 5. La feuille de republication ─────────
   ok("l'appel passe l'état serveur et la file vivante", /plafond=\{repubPlafondEtat\}\s*\n\s*dejaEnFile=\{repubJobsVivants\.length\}/.test(src));
 }
 
+console.log("\n── 5. Espaces insécables ──────────────────────────────────────");
+{
+  const r = partageRepublicationsDuJour({ nbEnvois: 8, etat: { limite: 50, faits: 45, palier: "premium" }, dejaEnFile: 0 });
+  ok("nombre et mot collés par une espace insécable : jamais un nombre seul en fin de ligne",
+    /5\u00a0partent/.test(r?.texte ?? "") && /3\u00a0autres/.test(r?.texte ?? "") && /50\u00a0republications/.test(r?.texte ?? ""), r?.texte);
+}
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est vert.");
 process.exit(echecs ? 1 : 0);
+

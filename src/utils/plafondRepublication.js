@@ -56,12 +56,13 @@ export function partageRepublicationsDuJour({ nbEnvois, etat, dejaEnFile = 0, la
   const surplus = Math.max(0, enFile + n - dispo);
   const demain = surplus <= limite;
   const fr = lang !== 'en';
-  const repubs = (k) => (fr ? `${k} republication${k > 1 ? 's' : ''}` : `${k} repost${k > 1 ? 's' : ''}`);
+  // Espace insécable après chaque nombre : jamais « 5 » seul en fin de ligne.
+  const repubs = (k) => (fr ? `${k}\u00a0republication${k > 1 ? 's' : ''}` : `${k}\u00a0repost${k > 1 ? 's' : ''}`);
   let texte;
   if (aujourdhui > 0) {
     texte = fr
-      ? `Ta limite du jour est de ${repubs(limite)} : ${aujourdhui} ${aujourdhui > 1 ? 'partent' : 'part'} aujourd'hui, `
-        + `${plusTard > 1 ? `les ${plusTard} autres partiront` : "l'autre partira"} ${demain ? 'demain' : 'les jours suivants'}, `
+      ? `Ta limite du jour est de ${repubs(limite)} : ${aujourdhui}\u00a0${aujourdhui > 1 ? 'partent' : 'part'} aujourd'hui, `
+        + `${plusTard > 1 ? `les ${plusTard}\u00a0autres partiront` : "l'autre partira"} ${demain ? 'demain' : 'les jours suivants'}, `
         + `${plusTard > 1 ? 'toutes seules' : 'toute seule'}. Rien n'est perdu.`
       : `Your daily limit is ${repubs(limite)}: ${aujourdhui} ${aujourdhui > 1 ? 'go' : 'goes'} out today, `
         + `${plusTard > 1 ? `the other ${plusTard} will go out` : 'the other one will go out'} ${demain ? 'tomorrow' : 'over the following days'}, `
@@ -75,7 +76,7 @@ export function partageRepublicationsDuJour({ nbEnvois, etat, dejaEnFile = 0, la
       : (faits >= limite ? `Your daily limit (${repubs(limite)}) is reached`
         : `The reposts already queued fill your daily limit (${repubs(limite)})`);
     texte = fr
-      ? `${tete} : ${n > 1 ? `ces ${n} republications partiront` : 'cette republication partira'} `
+      ? `${tete} : ${n > 1 ? `ces ${n}\u00a0republications partiront` : 'cette republication partira'} `
         + `${demain ? 'dès demain' : 'à partir de demain'}, ${n > 1 ? 'toutes seules' : 'toute seule'}. Rien n'est perdu.`
       : `${tete}: ${n > 1 ? `these ${n} reposts will go out` : 'this repost will go out'} `
         + `${demain ? 'tomorrow' : 'from tomorrow onwards'}, on ${n > 1 ? 'their' : 'its'} own. Nothing is lost.`;

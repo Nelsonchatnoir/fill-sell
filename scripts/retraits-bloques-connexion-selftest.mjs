@@ -162,7 +162,9 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   ok("bandeau : la phrase, « Me connecter » et la liste dépliable", /texteRetraitsBloques\(g,lang\)/.test(bandeau) && /<BoutonMeConnecter userId=\{user\.id\} platform=\{g\.platform\}/.test(bandeau) && /aria-expanded=\{ouvert\}/.test(bandeau));
   ok("« À régler » compte les retraits bloqués", /const nbARegler = nbRetraitsBloques \+ nbAttenteAction/.test(src));
   ok("« À régler » : ligne 'retraits' en tête", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\{ cle: 'retraits', n: nbRetraitsBloques/.test(src));
-  ok("carte vendue : la ligne et « Me connecter »", /ligneCarteRetraitBloque\(p, lang\)\}\s*<\/span>\s*<BoutonMeConnecter userId=\{user\.id\} platform=\{p\}/.test(src));
+  // (05/10, relu au harnais) Le bouton COMPACT : la variante « bouton »
+  // débordait de la carte à 360 et 390 px.
+  ok("carte vendue : la ligne et « Me connecter » (compact)", /ligneCarteRetraitBloque\(p, lang\)\}\s*<\/span>\s*<BoutonMeConnecter userId=\{user\.id\} platform=\{p\}[^>]*variante="bouton" compact\/>/.test(src));
   ok("Opla reconnue par le mur ancré (jumeau de handler-watch)", /opla: \/\^Connexion Opla requise\/i/.test(src));
   const ecran = readFileSync(new URL("../src/stock/EcranARegler.jsx", import.meta.url), "utf8");
   ok("écran « À régler » : icône de la ligne 'retraits'", /retraits: AlertTriangle/.test(ecran));
