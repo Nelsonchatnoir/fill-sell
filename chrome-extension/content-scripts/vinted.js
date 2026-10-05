@@ -8230,6 +8230,9 @@ function questionFormatColis(grille, voulu, warnings) {
   const nomVoulu = voulu ? (voulu.libelle || (voulu.id ? `n° ${voulu.id}` : null)) : null;
   return {
     success: false,
+    // (05/10, essai réel 7eadeb5b) Sans ce drapeau, le background ne lisait pas
+    // la question : « on ne sait pas pourquoi, on refait un essai » en boucle.
+    needsUser: true,
     error: nomVoulu
       ? `Le format de colis choisi (« ${nomVoulu} ») n'est pas proposé par Vinted pour ce rayon : choisis-en un parmi ceux que Vinted propose — on ne le choisit jamais à ta place. Rien n'a été envoyé à Vinted.`
       : "Vinted demande le format du colis pour ce rayon et n'en coche aucun : choisis-le — on ne le choisit jamais à ta place. Rien n'a été envoyé à Vinted.",

@@ -141,7 +141,7 @@ console.log("\n3. LA GRILLE LUE, LE CHOIX DANS LA GRILLE, LA QUESTION, LE BILAN"
 
   const q = F.questionFormatColis(grille, { id: 14, libelle: "30 kg" }, []);
   const n = q.needsUserField;
-  ok(q.success === false && n.field_key === "colis" && n.field_label === "Format du colis", "question needs_user « Format du colis » (field_key colis)");
+  ok(q.success === false && q.needsUser === true && n.field_key === "colis" && n.field_label === "Format du colis", "question needs_user « Format du colis » (field_key colis, drapeau needsUser lu par le background — essai réel 7eadeb5b)");
   ok(JSON.stringify(n.allowed_values) === JSON.stringify(["Petit", "Moyen", "Grand", "Volumineux et lourd"]) && n.options_completes === true && n.input_type === "radio",
     "liste FERMÉE des libellés offerts par CE formulaire");
   ok(n.target?.root === "colis_choisi" && n.target?.key === "libelle", "réponse dans colis_choisi.libelle — relue en premier par colisChoisiDuJob");
