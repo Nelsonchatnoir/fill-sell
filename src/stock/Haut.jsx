@@ -121,7 +121,7 @@ function definitions(lang) {
   return {
     publier: { icone: Upload, titre: fr ? 'Publier' : 'Publish', court: fr ? 'pas encore partout' : 'not everywhere yet', long: (n) => fr ? `${n > 1 ? 'articles' : 'article'} pas encore partout` : `${n > 1 ? 'items' : 'item'} not everywhere yet`, aria: (n) => fr ? `Publier : ${n} ${n > 1 ? 'articles' : 'article'} pas encore partout` : `Publish: ${n} not everywhere yet` },
     remonter: { icone: ChevronsUp, titre: fr ? 'Remonter' : 'Bump', titreLong: fr ? 'Remonter mes annonces' : 'Bump my listings', court: fr ? 'perdent en visibilité' : 'losing visibility', long: (n) => fr ? `${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `${n > 1 ? 'listings' : 'listing'} losing visibility`, aria: (n) => fr ? `Remonter mes annonces : ${n} ${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `Bump my listings: ${n} losing visibility` },
-    aRegler: { icone: CircleAlert, titre: fr ? 'À régler' : 'To fix', court: fr ? 'ventes, infos à compléter' : 'sales, info to complete', long: () => fr ? 'ventes et infos à compléter' : 'sales and info to complete', aria: (n) => fr ? `À régler : ${n} ventes et infos à compléter` : `To fix: ${n} sales and info to complete` },
+    aRegler: { icone: CircleAlert, titre: fr ? 'À régler' : 'To fix', court: fr ? 'ventes, retraits, infos à compléter' : 'sales, removals, info to complete', long: () => fr ? 'ventes, retraits et infos à compléter' : 'sales, removals and info to complete', aria: (n) => fr ? `À régler : ${n} ventes, retraits et infos à compléter` : `To fix: ${n} sales, removals and info to complete` },
   };
 }
 
