@@ -14,6 +14,7 @@ import { idExtensionDepuisCle, sessionPourExtension } from '../src/sessionFillse
 import { MESSAGES } from '../src/connexion.js';
 import { chargerRegles } from '../src/regles.js';
 import { socleAbsent, creerGardeSocle } from '../src/socle.js';
+import { verdictPage } from '../src/controle.js';
 
 const jwt = (o) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(o)).toString('base64url')}.c2lnbmF0dXJlLWZhdXNzZQ`;
 const U = '0f0e0d0c-0b0a-4908-8706-050403020100';
@@ -222,4 +223,16 @@ test('socle absent (serveur déployé avant la migration) : dit UNE fois, puis u
   assert.deepEqual(dits, ['socle_absent', 'socle_present']);
   assert.equal(g.passer(), false);
   assert.equal(g.noter(new Error('fetch failed')), false, 'autre erreur : le garde ne la cache pas');
+});
+
+test('contrôle d’une IP : le script DataDome d’une page OUVERTE n’est pas un mur (rebut à tort du 05/10)', () => {
+  // Extraits relus le 05/10 par l’IP de test 94.194.94.233 : accueils ouverts, titres et menus présents.
+  const vinted = '<html><head><title>Vinted | Toute la seconde main dans une seule application</title><script async="" src="https://static-assets.vinted.com/datadome/5.9.4/tags.js"></script></head><body>Se connecter Vends tes articles</body></html>';
+  const lbc = '<html><head><title>leboncoin, site de petites annonces gratuites</title><script id="datadome" data-nscript="beforeInteractive">!(function(){})()</script></head><body>Déposer une annonce</body></html>';
+  assert.equal(verdictPage(vinted), 'ok');
+  assert.equal(verdictPage(lbc), 'ok');
+  assert.equal(verdictPage('<html><body><iframe src="https://geo.captcha-delivery.com/captcha/?initialCid=x"></iframe></body></html>'), 'bloque', 'le cadre captcha DataDome reste un mur');
+  assert.equal(verdictPage('<html><body>Access is temporarily restricted</body></html>'), 'bloque', 'Beebs (26/09) reste un mur');
+  assert.equal(verdictPage('<title>Pardon Our Interruption</title>'), 'bloque');
+  assert.equal(verdictPage(''), 'indetermine', 'rien lu : indéterminé, jamais « ok »');
 });

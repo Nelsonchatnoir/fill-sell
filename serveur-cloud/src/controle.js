@@ -14,7 +14,20 @@ const LISTES = [
   { zone: 'bl.spamcop.net', liste: (a) => a === '127.0.0.2' },
 ];
 const PAGES = { vinted: 'https://www.vinted.fr/', leboncoin: 'https://www.leboncoin.fr/', ebay: 'https://www.ebay.fr/' };
-const MURS = /captcha-delivery|Access is temporarily restricted|datadome|Pardon Our Interruption|Access Denied/i;
+// Un MUR, c'est la page de blocage elle-même : le cadre captcha de DataDome
+// (geo.captcha-delivery.com), « Access is temporarily restricted » (Beebs, 26/09),
+// Imperva, Akamai. ⛔ JAMAIS le seul mot « datadome » : Vinted (static-assets
+// …/datadome/tags.js) et Leboncoin (<script id="datadome">) chargent ce script sur
+// TOUTES leurs pages ouvertes — le 05/10, l'IP de test 94.194.94.233 a été mise
+// au rebut à son contrôle d'entrée alors que les deux accueils s'ouvraient
+// (titres et menus lus par la même lecture).
+export const MURS = /captcha-delivery|Access is temporarily restricted|Pardon Our Interruption|Access Denied/i;
+
+/** Le verdict d'une page d'accueil lue par le contrôle : 'ok' | 'bloque' | 'indetermine' (rien lu). */
+export function verdictPage(html) {
+  if (!html) return 'indetermine';
+  return MURS.test(html) ? 'bloque' : 'ok';
+}
 
 /** Listes noires publiques : rend celles qui listent l'IP ([] = propre ; une réponse 127.255.x = indéterminé, jamais « listée »). */
 export async function listesNoires(ip) {
@@ -71,7 +84,7 @@ export function creerControles({ config, docker, journal }) {
       try { const p = JSON.parse(json); resultat.ip_sortie = p.ip ?? null; resultat.pays = p.country ?? null; } catch { /* illisible : manque nommé */ }
       for (const [pf, url] of Object.entries(PAGES)) {
         const html = await lire(url).catch(() => '');
-        resultat.plateformes[pf] = !html ? 'indetermine' : MURS.test(html) ? 'bloque' : 'ok';
+        resultat.plateformes[pf] = verdictPage(html);
       }
       resultat.listes_noires = await listesNoires(ip);
       resultat.fait_le = new Date().toISOString();
