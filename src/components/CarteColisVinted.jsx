@@ -12,11 +12,23 @@
 //
 // Le choix fait ici se range sur la fiche au clic Publier, et revient la fois
 // suivante ; la republication, elle, reprend le format de l'annonce en ligne.
+//
+// (05/10, point 3, décision de Nico) Le choix est aussi RETENU POUR LE RAYON
+// (platform_settings.vinted.colis_retenus, par la RPC platform_settings_
+// fusionner) : le prochain article de ce rayon le reprend, ici comme dans le
+// lot. Ordre de ce qui part : le choix fait ici > celui de la fiche > le
+// retenu du rayon > le format habituel. « Remettre le format habituel »
+// efface le retenu du rayon. La grille RELEVÉE sur le formulaire passe avant
+// la table générée (« Volumineux et lourd » n'était jamais montré).
 
 import { useEffect, useState } from 'react';
 import { Package } from 'lucide-react';
 import { UI } from './ui';
-import { grilleColisVinted, colisVintedRetenu, rayonModeVinted, chargerGrilleColisRelevee } from '../utils/vintedColis';
+import {
+  grilleColisVinted, colisVintedRetenu, rayonModeVinted, chargerGrilleColisRelevee,
+  chargerColisRetenus, colisRetenusEnCache, retenirColisVinted,
+} from '../utils/vintedColis';
+import { fusionnerReglages } from '../utils/reglagesPlateformes';
 import { supabase } from '../lib/supabase';
 
 const MOTS = {
@@ -26,7 +38,8 @@ const MOTS = {
     habituel: 'Celui que Vinted recommande pour ce rayon',
     choisi: (l) => `${l} — ton choix`,
     fiche: (l) => `${l} — ton choix sur cet article`,
-    aide: 'Les formats que Vinted propose pour ce rayon. Sans choix, rien ne change.',
+    retenu: (l) => `${l} — ton choix pour ce rayon`,
+    aide: 'Les formats que Vinted propose pour ce rayon. Ton choix est gardé pour tes prochaines annonces de ce rayon. Sans choix, rien ne change.',
     remettre: 'Remettre le format habituel',
   },
   en: {
@@ -35,32 +48,54 @@ const MOTS = {
     habituel: 'The one Vinted recommends for this category',
     choisi: (l) => `${l} — your choice`,
     fiche: (l) => `${l} — your choice for this item`,
-    aide: 'The sizes Vinted offers for this category. With no choice, nothing changes.',
+    retenu: (l) => `${l} — your choice for this category`,
+    aide: 'The sizes Vinted offers for this category. Your choice is kept for your next listings in this category. With no choice, nothing changes.',
     remettre: 'Back to the usual size',
   },
 };
 
-export default function CarteColisVinted({ lang = 'fr', chemin = null, champs = {}, attributsFiche = null, onChange }) {
+export default function CarteColisVinted({ lang = 'fr', chemin = null, champs = {}, attributsFiche = null, userId = null, onChange }) {
   const T = MOTS[lang === 'en' ? 'en' : 'fr'];
   const [ouvert, setOuvert] = useState(false);
-  // (03/10) Un rayon inconnu de la table générée : la grille relevée par
-  // l'extension au catalogue est chargée une fois, puis la carte se redessine.
+  // (03/10) La grille relevée par l'extension au catalogue est chargée une
+  // fois par rayon, puis la carte se redessine. (05/10) Lue même quand la
+  // table générée connaît le rayon : le relevé passe avant elle.
   const [, setCharge] = useState(0);
   const cleChemin = Array.isArray(chemin) ? chemin.join(' > ') : String(chemin ?? '');
   useEffect(() => {
     let vivant = true;
-    if (cleChemin && !grilleColisVinted(chemin)) {
+    if (cleChemin) {
       chargerGrilleColisRelevee(supabase, chemin).then((g) => { if (vivant && g) setCharge((n) => n + 1); });
     }
     return () => { vivant = false; };
   }, [cleChemin]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (05/10) Les formats retenus par rayon : une lecture par session (cache).
+  const [retenus, setRetenus] = useState(() => colisRetenusEnCache(userId));
+  useEffect(() => {
+    let vivant = true;
+    if (userId && !colisRetenusEnCache(userId)) {
+      chargerColisRetenus(supabase, userId).then((r) => { if (vivant) setRetenus(r); });
+    }
+    return () => { vivant = false; };
+  }, [userId]);
   const grille = grilleColisVinted(chemin);
   if (!grille) return null;
 
-  const retenu = colisVintedRetenu({ pf: champs, chemin, attributsFiche });
+  const retenu = colisVintedRetenu({ pf: champs, chemin, attributsFiche, retenus: retenus ?? colisRetenusEnCache(userId) });
   const resume = retenu
-    ? (retenu.origine === 'fiche' ? T.fiche(retenu.libelle) : T.choisi(retenu.libelle))
+    ? (retenu.origine === 'fiche' ? T.fiche(retenu.libelle) : retenu.origine === 'retenu' ? T.retenu(retenu.libelle) : T.choisi(retenu.libelle))
     : (rayonModeVinted(chemin) ? T.habituelMode : T.habituel);
+
+  // Le choix part sur la copie (onChange) ET se retient pour le rayon.
+  const choisir = (id) => {
+    onChange?.(id);
+    const ecriture = retenirColisVinted({ userId, chemin, id, fusionner: fusionnerReglages });
+    setRetenus(colisRetenusEnCache(userId));
+    ecriture?.then(({ error } = {}) => {
+      if (error) console.warn('[colis vinted] choix non retenu pour le rayon :', error.message);
+      setRetenus(colisRetenusEnCache(userId));
+    }, () => {});
+  };
 
   const st = {
     bloc: { border: `1px solid ${UI.border}`, borderRadius: 14, padding: 12, background: UI.paper, marginBottom: 12 },
@@ -94,7 +129,7 @@ export default function CarteColisVinted({ lang = 'fr', chemin = null, champs = 
               const actif = retenu?.id === g.id;
               return (
                 <button key={g.id} type="button"
-                  onClick={() => onChange?.(actif ? 0 : g.id)}
+                  onClick={() => choisir(actif ? 0 : g.id)}
                   style={{ padding: '7px 11px', borderRadius: 999, fontFamily: 'inherit', fontSize: 12.5, cursor: 'pointer',
                            fontWeight: actif ? 700 : 600,
                            border: `1px solid ${actif ? UI.tealDeep : UI.border}`,
@@ -105,7 +140,7 @@ export default function CarteColisVinted({ lang = 'fr', chemin = null, champs = 
             })}
           </div>
           {retenu && (
-            <button type="button" onClick={() => onChange?.(0)} style={{ ...st.lien, marginTop: 6 }}>{T.remettre}</button>
+            <button type="button" onClick={() => choisir(0)} style={{ ...st.lien, marginTop: 6 }}>{T.remettre}</button>
           )}
         </div>
       )}

@@ -217,7 +217,9 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
 //     palier de POIDS → poids exigé ; format seulement s'il est choisi ;
 //   · Beebs : « Format du colis » = un palier de POIDS → poids exigé ;
 //   · Vinted : une TAILLE de colis, jamais un poids → pas de poids exigé ;
-//     la taille choisie sur la carte part, sinon celle que Vinted propose ;
+//     (05/10) la taille choisie (carte du stepper, bloc Livraison du lot)
+//     part, sinon celle de la fiche, sinon celle retenue pour le rayon,
+//     sinon celle que Vinted recommande (utils/vintedColis.js) ;
 //   · eBay (API) : ni poids ni format dans notre publication — les frais
 //     viennent de la politique d'expédition du compte.
 export const PLATEFORMES_AU_POIDS = Object.freeze(["leboncoin", "beebs"]);

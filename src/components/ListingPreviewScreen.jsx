@@ -75,11 +75,11 @@ import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/
 import { resoudrePublication, signatureResolution, resolutionARetenter, cheminFourreToutLbc, textesFrDeLaPublication } from "../utils/resolutionPublication";
 // Le rayon : le lire pour l'afficher, et REPOSER le choix de la personne
 // par-dessus tout recalcul (garde-fou nº1 du lot B).
-import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi } from "../utils/rayonPublication";
+import { champsAvecRayonsChoisis, rayonDuChamp, libelleRayonCourt, objetDuRayonChoisi, plateformesAvecRayonChoisi, questionsRayonOuvertes } from "../utils/rayonPublication";
 import CarteRayon from "./CarteRayon";
 import CarteLivraisonLeboncoin from "./CarteLivraisonLeboncoin";
 import CarteColisVinted from "./CarteColisVinted";
-import { colisVintedPourJob } from "../utils/vintedColis";
+import { colisVintedPourJob, chargerGrilleColisRelevee, chargerColisRetenus } from "../utils/vintedColis";
 import { LBC_FORMATS } from "../utils/leboncoinColis";
 import CarteLivraisonEbay from "./CarteLivraisonEbay";
 import { CANAL_ASPECTS } from "../utils/champsDuRayon";
@@ -2270,6 +2270,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
   // (27/09) Attributs de la fiche : le format de colis Vinted qu'elle a déjà
   // reçu (attributs.colis_vinted), repris par la carte Vinted.
   attributsFiche = null,
+  // (05/10) Le compte : la carte Vinted relit le format retenu pour le rayon
+  // (platform_settings.vinted.colis_retenus) et y retient le choix fait.
+  userId = null,
   // ── LE RAYON (lot B, 20/09) ────────────────────────────────────────────
   // `rayonsParPf` : ce que le pré-calcul du lot A a trouvé, PAR plateforme,
   // déjà croisé avec le choix de la personne. La carte ne calcule rien : elle
@@ -2948,13 +2951,16 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                   {/* ── COLIS VINTED (2026-09-27, demande de Louis) ─────────
                       Les formats que Vinted propose pour le rayon publié ;
                       replié, jamais bloquant. Sans choix : le format habituel.
-                      Rayon dont la grille n'a jamais été vue : pas de bloc. */}
+                      Rayon dont la grille n'a jamais été vue : pas de bloc.
+                      (05/10) Le choix est retenu pour le rayon, et le retenu
+                      revient sur le prochain article de ce rayon. */}
                   {p === "vinted" && (
                     <CarteColisVinted
                       lang={lang}
                       chemin={rayonsParPf[p]?.chemin ?? e.platform_fields?.categoryPath ?? null}
                       champs={e.platform_fields ?? {}}
                       attributsFiche={attributsFiche}
+                      userId={userId}
                       onChange={(id) => setEdited(prev => {
                         const pf = { ...(prev[p]?.platform_fields ?? {}) };
                         pf.packageSizeId = id;
@@ -6295,6 +6301,25 @@ export default function ListingPreviewScreen({
   // aboutie, refusée ou injoignable. Ne change rien au parcours : le pilote du
   // lot s'en sert pour savoir quand lire les questions d'un article.
   const [resolutionFaitePour, setResolutionFaitePour] = useState(null);
+  // (05/10, point 6) L'objet n'a pas été reconnu (aucun mot) : la résolution
+  // a rendu la question « rayon à choisir ». Dès qu'un rayon est choisi, sa
+  // feuille nomme l'objet (activeAiObjet, qui vaut alors objetDuRayonChoisi :
+  // sans mot de l'IA, c'est son seul repli — lu ici directement, activeAiObjet
+  // étant déclaré plus bas) et la résolution REPART — une fois par choix,
+  // jamais à la frappe — pour ranger les autres plateformes avec lui. Même
+  // chose si le TITRE se met à nommer l'objet (son mot-clé, comme la
+  // résolution le lit) : la relance part quand ce mot change, pas à chaque
+  // lettre. La clé vit toute la rédaction qui a connu le refus (un choix
+  // retiré fait revenir la question). Hors de ce cas, elle reste null : rien
+  // ne change.
+  const [refusVuPour, setRefusVuPour] = useState(null);
+  const relanceApresRefus = refusVuPour && refusVuPour === platformListings
+    ? `${objetDuRayonChoisi(edited) ?? ""}|${detectObjectKeywordDetail(textesFrDeLaPublication({ initialListing, edited }).titre, "")?.mot ?? ""}`
+    : null;
+  // Le dernier refus affiché, avec son empreinte : le même état ne relance
+  // jamais une seconde résolution (elle peut appeler l'IA pour le genre), il
+  // ré-affiche ce refus.
+  const refusAfficheRef = useRef(null);
   useEffect(() => {
     if (!platformListings?.platforms) return undefined;
     const plateformes = [...selected].filter(p => edited[p] && platformListings.platforms[p]);
@@ -6310,17 +6335,42 @@ export default function ListingPreviewScreen({
       },
     };
     const empreinte = signatureResolution(contexte);
-    if (resolutionPrevolRef.current?.empreinte === empreinte) { setResolutionFaitePour(platformListings); return undefined; }
+    if (resolutionPrevolRef.current?.empreinte === empreinte) {
+      // (05/10) Revenu à un état déjà résolu (après un refus, un rayon
+      // re-choisi) : l'écran remontre CETTE résolution. Hors de ce cas c'est
+      // déjà l'objet affiché — React ne redessine rien.
+      setResolutionAffichee(resolutionPrevolRef.current.resolution);
+      setResolutionFaitePour(platformListings);
+      return undefined;
+    }
+    if (refusAfficheRef.current?.empreinte === empreinte) {
+      setResolutionAffichee(refusAfficheRef.current.resolution);
+      setResolutionFaitePour(platformListings);
+      return undefined;
+    }
     let vivant = true;
     const listingsResolus = platformListings;
+    // (05/10, point 6) Une relance après un objet non reconnu (même
+    // rédaction) : le pilote du lot attend sa réponse avant de relire les
+    // questions de l'article.
+    if (relanceApresRefus !== null) setResolutionFaitePour(null);
     (async () => {
       try {
         const resolution = await resoudrePublication(contexte);
         if (!vivant) return;
         if (resolution.refus) {
-          // Catégorie non trouvée. On ne dit RIEN ici : la question se pose au
-          // clic, avec son message, exactement comme avant le déplacement.
-          console.warn(`[prévol] résolution non concluante (${resolution.refus.code}) — le clic reposera la question`);
+          // Catégorie non trouvée. AVANT le 05/10 on ne disait RIEN ici (« la
+          // question se pose au clic ») : la carte se montrait « Prêt » et le
+          // clic finissait en « Pas publié — rien n'a été débité » (point 6,
+          // constat de Nico). Le refus porte désormais la question « rayon à
+          // choisir » de chaque plateforme (resolutionPublication,
+          // questionsRayonSansObjet) : elle s'AFFICHE, le bouton reste gris.
+          // ⛔ Affichée seulement, jamais l'autorité de la publication : le
+          //    ref n'est pas posé, et le clic recalcule toujours.
+          console.warn(`[prévol] résolution non concluante (${resolution.refus.code}) — la question du rayon est posée`);
+          refusAfficheRef.current = { empreinte, resolution };
+          setRefusVuPour(listingsResolus);
+          setResolutionAffichee(resolution);
           return;
         }
         // ⛔ LE RÉSULTAT NE SE FOND PAS DANS `edited`, ET C'EST MESURÉ.
@@ -6354,8 +6404,10 @@ export default function ListingPreviewScreen({
     //    caractère tapé dans un titre et à chaque case cochée. Ils sont relus
     //    à frais quand l'effet part ; s'ils ont bougé depuis, l'empreinte ne
     //    concorde plus au clic et c'est le filet qui recalcule, comme avant.
+    // (05/10, point 6) `relanceApresRefus` ne bouge QUE pour un objet non
+    //    reconnu, quand un rayon est choisi (cf. plus haut) : null sinon.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platformListings]);
+  }, [platformListings, relanceApresRefus]);
 
   // ── Champs partagés : setter propagateur + garde générique (Sujet 4) ──────
   // Écrit la source canonique ET la propage aux copies plateformes non
@@ -6516,16 +6568,13 @@ export default function ListingPreviewScreen({
   // l'a remplacé (utils/rayonApresRefus.js) : la plateforme ne partira pas tant
   // que la personne n'a pas choisi. Une question par plateforme COCHÉE, qui
   // tombe dès que la personne choisit (son choix passe toujours).
-  const rayonsAChoisir = useMemo(() => {
-    const pfp = resolutionAffichee?.pfParPlateforme ?? {};
-    const sortie = {};
-    for (const p of Object.keys(pfp)) {
-      if (!selected.has(p)) continue;
-      const q = pfp[p]?.rayon_a_choisir;
-      if (q && !edited?.[p]?.rayon_choisi?.chemin?.length) sortie[p] = q;
-    }
-    return sortie;
-  }, [resolutionAffichee, edited, selected]);
+  // (05/10, point 6) Le calcul vit dans rayonPublication.js
+  // (questionsRayonOuvertes), à l'identique, pour être éprouvé par
+  // scripts/pret-sans-rayon-selftest.mjs — y compris la question posée avec
+  // le refus « objet non reconnu ».
+  const rayonsAChoisir = useMemo(
+    () => questionsRayonOuvertes(resolutionAffichee?.pfParPlateforme, selected, edited),
+    [resolutionAffichee, edited, selected]);
   // Le choix (ou son retrait) vit sur la COPIE, à côté des champs : il survit
   // au brouillon et à la fiche en base, et la résolution ne le voit jamais.
   const choisirRayon = (platform, choix) => setEdited(prev => (
@@ -9081,7 +9130,17 @@ export default function ListingPreviewScreen({
       //    global n'a plus lieu d'être, et il ne se déclenche d'ailleurs plus
       //    (activeAiObjet n'est plus vide). Cette ligne reste la ceinture.
       const unRayonChoisi = plateformesAvecRayonChoisi(edited).length > 0;
-      if (resolution.refus && !unRayonChoisi) throw new Error(resolution.refus.message);
+      if (resolution.refus && !unRayonChoisi) {
+        // (05/10, point 6) Le refus porte la question « rayon à choisir » :
+        // si l'écran ne la montrait pas encore (pré-calcul absent ou périmé),
+        // elle s'affiche maintenant, sur la carte de chaque plateforme.
+        if (resolution.pfParPlateforme) {
+          refusAfficheRef.current = { empreinte: empreintePublication, resolution };
+          if (platformListings) setRefusVuPour(platformListings);
+          setResolutionAffichee(resolution);
+        }
+        throw new Error(resolution.refus.message);
+      }
       const { pfParPlateforme = {}, motCategorie } = resolution;
       // ── LE CLASSEMENT PAR ÂGE SE RELIT ICI, PAS DANS LE PRÉ-CALCUL ────────
       // Ces deux valeurs servent, après publication, à ranger la réponse de
@@ -9118,8 +9177,20 @@ export default function ListingPreviewScreen({
       // publié. Sans choix (ici ou sur la fiche), rien n'est posé — le job
       // part comme avant. utils/vintedColis.js, prouvé par
       // scripts/vinted-colis-selftest.mjs.
+      // (05/10, point 3) Puis, sans choix ici ni sur la fiche, le format
+      // RETENU pour ce rayon (platform_settings.vinted.colis_retenus). La
+      // grille relevée du rayon publié et les retenus sont lus ici (une fois
+      // par session, en cache) : en lot, aucune carte ne les a chargés.
+      // Prouvé par scripts/colis-vinted-retenu-selftest.mjs.
+      let colisRetenus = null;
+      if (champsResolus.vinted) {
+        try {
+          await chargerGrilleColisRelevee(supabase, champsResolus.vinted.categoryPath);
+          colisRetenus = await chargerColisRetenus(supabase, userId);
+        } catch { /* lecture ratée : choix de la copie et de la fiche seulement, comme avant */ }
+      }
       const colisVintedARanger = champsResolus.vinted
-        ? colisVintedPourJob(champsResolus.vinted, articleBase?.attributs ?? initialListing?.attributs ?? null).ranger
+        ? colisVintedPourJob(champsResolus.vinted, articleBase?.attributs ?? initialListing?.attributs ?? null, colisRetenus).ranger
         : null;
       // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
       // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
@@ -9878,6 +9949,13 @@ export default function ListingPreviewScreen({
   // `selected`, à l'identique.
   const descriptionVideVinted = descriptionVintedVide(variante === "nouvelle" ? plateformesPubliables : selected, edited);
 
+  // (05/10, point 6) CEINTURE : l'objet n'a pas été reconnu, aucun rayon
+  // n'est choisi, et aucune question de rayon n'est ouverte (plateforme dont
+  // l'app ne pose pas le rayon, ou questions décochées) — le clic refuserait
+  // l'article entier. Le bouton n'est donc jamais « prêt » : il dit pourquoi.
+  const refusSansQuestion = Boolean(resolutionAffichee?.refus)
+    && plateformesAvecRayonChoisi(edited).length === 0
+    && Object.keys(rayonsAChoisir).length === 0;
   const requiredBlocking =
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
     missingSharedFields.length > 0 ||
@@ -9887,8 +9965,10 @@ export default function ListingPreviewScreen({
     descriptionVideVinted ||
     // (25/09) Un rayon À CHOISIR (refusé, aucun rayon sûr à sa place) : la
     // plateforme attend la réponse, comme pour un champ obligatoire — on la
-    // choisit, ou on décoche la plateforme.
-    Object.keys(rayonsAChoisir).length > 0;
+    // choisit, ou on décoche la plateforme. (05/10) Aussi quand AUCUN mot
+    // n'a été reconnu (question posée avec le refus).
+    Object.keys(rayonsAChoisir).length > 0 ||
+    refusSansQuestion;
 
   // ── CE QUI MANQUE, RANGÉ DANS LA FICHE (2026-09-15) ──────────────────────
   // Sans ça, un brouillon rouvert trois jours plus tard ne redécouvre son champ
@@ -9970,6 +10050,7 @@ export default function ListingPreviewScreen({
         : `Rayon ${nomPlateforme(p)} à choisir — aucun rayon sûr trouvé (sur sa carte, liste prête)`);
     }
     if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
+    if (refusSansQuestion) m.push(String(resolutionAffichee?.refus?.message ?? (lang === "en" ? "Category to pick" : "Rayon à choisir")));
     // ── RIEN DE COCHÉ : ON LE DIT, ET ON DIT QUOI COCHER (2026-09-22) ───────
     // 🚨 LE DÉFAUT, mail de Romain du 22/09 à 13h48 (« Donc je ne sais pas ce
     //    que je dois compléter »), capture à l'appui. Son article Funko Star
@@ -10369,7 +10450,7 @@ export default function ListingPreviewScreen({
     selected, edited, setEdited, onPhotoClick: setLightboxUrl, onRetry: handleGeneratePlatforms,
     generatePrice: coinPrices?.generate ?? null, noteOverride: noteSharedOverride, ficheReprise,
     ebayVoieApiReelle, rayonsParPf, suggestionsParPf, questionsRayonParPf: rayonsAChoisir, supabase, onChoisirRayon: choisirRayon,
-    attributsFiche: articleBase?.attributs ?? initialListing?.attributs ?? null,
+    attributsFiche: articleBase?.attributs ?? initialListing?.attributs ?? null, userId,
     lang, price, setPrice, customPriced, setCustomPriced, articleIcon, photoOption,
     onEstimatePrice: handleAnalyzePhotos, estimating: analyzing, estimateCost: coinPrices?.lens_overflow ?? null,
     estimateError: analysisError, estimateResult: photoAnalysis,
@@ -10476,6 +10557,24 @@ export default function ListingPreviewScreen({
         return { ...prev, leboncoin: { ...lbc, platform_fields: pf } };
       });
     },
+    // (05/10, point 3) Le format du colis Vinted choisi DANS LE LOT, posé sur
+    // la copie exactement comme depuis sa carte (packageSizeId ; 0 = « Vinted
+    // choisit ») ; null retire ce que le lot avait posé (la fiche, puis le
+    // retenu du rayon, reprennent la main au clic Publier).
+    poserColisVinted: (id) => setEdited(prev => {
+      const vt = prev.vinted;
+      if (!vt) return prev;
+      const pf = { ...(vt.platform_fields ?? {}) };
+      if (id === null || id === undefined) {
+        if (!("packageSizeId" in pf)) return prev;
+        delete pf.packageSizeId;
+      } else {
+        if (pf.packageSizeId === id && !("packageSize" in pf)) return prev;
+        pf.packageSizeId = id;
+      }
+      delete pf.packageSize;
+      return { ...prev, vinted: { ...vt, platform_fields: pf } };
+    }),
     setPrice, poserPrixGeneral, poserValeurGenerale: retoucherValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
     // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,
     // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est
@@ -10736,6 +10835,7 @@ export default function ListingPreviewScreen({
             ficheReprise={ficheReprise}
             ebayVoieApiReelle={ebayVoieApiReelle}
             attributsFiche={articleBase?.attributs ?? initialListing?.attributs ?? null}
+            userId={userId}
             rayonsParPf={rayonsParPf}
             suggestionsParPf={suggestionsParPf}
             questionsRayonParPf={rayonsAChoisir}

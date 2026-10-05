@@ -11,7 +11,14 @@
 //   · les TRANSPORTEURS Leboncoin, ceux que la page propose vraiment
 //     (relevé du 04/10, utils/leboncoinColis.js), retenus pour la suite ;
 //   · le FORMAT Leboncoin : estimé par Leboncoin (par défaut, le même pour
-//     des articles identiques), ou choisi.
+//     des articles identiques), ou choisi ;
+//   · (05/10, point 3, décision de Nico) le FORMAT DU COLIS VINTED, par rayon
+//     Vinted du lot : la grille de CE rayon (relevée sur le formulaire
+//     d'abord), « Recommandé par Vinted » par défaut — aucun choix —, le
+//     format retenu pour le rayon pré-sélectionné ; le choix part sur les
+//     copies Vinted du rayon et se retient (platform_settings.vinted.
+//     colis_retenus). Un rayon sans grille connue : on le dit, rien n'est
+//     inventé.
 // Ce que chaque plateforme demande est DIT, plateforme par plateforme : rien
 // ne laisse croire qu'un choix existe là où il n'existe pas.
 import { useState } from "react";
@@ -23,6 +30,7 @@ const titreDe = (item) => String(item?.titre ?? item?.title ?? "").trim();
 
 export default function LivraisonDuLot({
   en, ids, parId, moteurs, poidsDe, poserPoids, poserPoidsDuLot, livraison, poserTransporteurs, poserFormat,
+  colisVinted = [], choisirColisVinted = () => {},
 }) {
   const [poidsLot, setPoidsLot] = useState("");
   const plateformesDe = (id) => [...(moteurs.get(id)?.plateformesPubliables ?? [])];
@@ -125,15 +133,56 @@ export default function LivraisonDuLot({
         </div>
       )}
 
-      {(avecVinted || avecEbay) && (
-        <div className="fsn-q-why" style={{ marginTop: 8 }}>
-          {avecVinted && <div>{en
-            ? "Vinted: asks for a parcel size, never a weight — the size picked on the item's card goes out, otherwise the one Vinted suggests for the category."
-            : "Vinted : demande une taille de colis, jamais un poids — celle choisie sur la carte de l'article part, sinon celle que Vinted propose pour le rayon."}</div>}
-          {avecEbay && <div>{en
-            ? "eBay: neither weight nor size here — shipping costs come from your eBay shipping policy."
-            : "eBay : ni poids ni format ici — les frais d'envoi viennent de ta politique d'expédition eBay."}</div>}
+      {avecVinted && (
+        <div className="fsn-q">
+          <div className="fsn-q-t">{en ? "Vinted parcel size" : "Format du colis Vinted"}</div>
+          <div className="fsn-q-why">{en
+            ? "A size, never a weight. Nothing is guessed: without a choice, Vinted keeps the one it recommends. Your choice is kept for your next Vinted listings in the same category."
+            : "Une taille, jamais un poids. Rien n'est deviné : sans choix, Vinted garde celle qu'il recommande. Ton choix est gardé pour tes prochaines annonces Vinted du même rayon."}</div>
+          {colisVinted.length === 0 && (
+            <div className="fsn-q-why">{en
+              ? "The size is picked here once the Vinted category is known."
+              : "Le format se choisit ici dès que le rayon Vinted est connu."}</div>
+          )}
+          {colisVinted.map((r) => (
+            <div key={r.cle} style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.cle}>
+                {(r.chemin ?? []).slice(-2).join(" › ")}
+                <small style={{ fontWeight: 400 }}>{en ? ` · ${r.nb} item${r.nb > 1 ? "s" : ""}` : ` · ${r.nb} article${r.nb > 1 ? "s" : ""}`}</small>
+              </div>
+              {r.grille ? (
+                <div className="fsn-choices">
+                  <button type="button" className={`fsn-choice${!r.choisi ? " fsn-choice--on" : ""}`} aria-pressed={!r.choisi}
+                    onClick={() => choisirColisVinted(r.cle, r.chemin, 0)}>
+                    {en ? "Recommended by Vinted" : "Recommandé par Vinted"}
+                  </button>
+                  {r.grille.map((g) => (
+                    <button key={g.id} type="button" className={`fsn-choice${r.choisi === g.id ? " fsn-choice--on" : ""}`} aria-pressed={r.choisi === g.id}
+                      onClick={() => choisirColisVinted(r.cle, r.chemin, g.id)}>{g.libelle}</button>
+                  ))}
+                </div>
+              ) : (
+                <div className="fsn-q-why">{en
+                  ? "Vinted will offer its sizes for this category: nothing to pick here."
+                  : "Vinted proposera ses tailles pour ce rayon : rien à choisir ici."}</div>
+              )}
+              {r.retenu && (
+                <small style={{ display: "block" }}>{en ? "Your choice for this category, kept from last time." : "Ton choix pour ce rayon, gardé de la dernière fois."}</small>
+              )}
+              {r.parFiche > 0 && (
+                <small style={{ display: "block" }}>{en
+                  ? `${r.parFiche} item${r.parFiche > 1 ? "s keep" : " keeps"} the size chosen on ${r.parFiche > 1 ? "their" : "its"} card — tap a size to apply it to all.`
+                  : `${r.parFiche > 1 ? `${r.parFiche} articles gardent` : "1 article garde"} le format choisi sur sa fiche — touche un format pour l'appliquer à tous.`}</small>
+              )}
+            </div>
+          ))}
         </div>
+      )}
+
+      {avecEbay && (
+        <div className="fsn-q-why" style={{ marginTop: 8 }}>{en
+          ? "eBay: neither weight nor size here — shipping costs come from your eBay shipping policy."
+          : "eBay : ni poids ni format ici — les frais d'envoi viennent de ta politique d'expédition eBay."}</div>
       )}
     </Carte>
   );

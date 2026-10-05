@@ -59,6 +59,10 @@ import {
 import LivraisonDuLot from "./LivraisonDuLot";
 import { transporteursPourPoids } from "../../utils/leboncoinColis";
 import { fusionnerReglages } from "../../utils/reglagesPlateformes";
+import {
+  cleColisRetenu, grilleColisVinted, chargerGrilleColisRelevee, colisRetenusDuProfil, colisRetenuDuRayon,
+  colisVintedDeLaFiche, semerColisRetenus, colisRetenusEnCache, retenirColisVinted,
+} from "../../utils/vintedColis";
 
 const CLE_CHOIX = "fs_lot_plateformes";
 const lireChoixMemorise = () => { try { const v = JSON.parse(localStorage.getItem(CLE_CHOIX) ?? "null"); return Array.isArray(v) ? v : null; } catch { return null; } };
@@ -209,7 +213,13 @@ export default function LotPublication({
     // chaque palier (coin_config fait foi, le repli de la modale sinon).
     supabase.from("profiles").select("is_comped, apple_original_transaction_id, google_purchase_token, stripe_customer_id, platform_settings")
       .eq("id", userId).maybeSingle()
-      .then(({ data }) => { if (vivant) setProfil(data ?? {}); }, () => { if (vivant) setProfil({}); });
+      .then(({ data, error }) => {
+        if (!vivant) return;
+        setProfil(data ?? {});
+        // (05/10) Les formats de colis Vinted retenus par rayon : déjà lus
+        // ici, ils servent aussi au clic Publier des moteurs (aucune relecture).
+        if (!error && data) semerColisRetenus(userId, colisRetenusDuProfil(data.platform_settings));
+      }, () => { if (vivant) setProfil({}); });
     supabase.from("coin_config").select("key, value").in("key", ["quota_annonces_premium", "quota_annonces_pro", "quota_annonces_business"])
       .then(({ data }) => {
         if (!vivant || !Array.isArray(data)) return;
@@ -640,6 +650,91 @@ export default function LotPublication({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lot, preparationFinie, livraison, (transporteursRetenus ?? []).join("|")]);
 
+  // ── LE FORMAT DU COLIS VINTED DU LOT (05/10, point 3, décision de Nico) ──
+  // « Ajoute-la au bloc Livraison et à l'envoi. Même principe que pour
+  // Leboncoin : rien de deviné ; le choix de la personne est retenu pour les
+  // publications suivantes. » Avant, la carte Vinted du lot n'avait qu'une
+  // phrase : aucun format ne se choisissait. Désormais, un bloc par RAYON
+  // Vinted du lot (la grille de CE rayon, relevée sur le formulaire d'abord) :
+  // « Recommandé par Vinted » par défaut (aucun choix), le retenu du rayon
+  // pré-sélectionné. Un choix fait ici part sur les copies Vinted du rayon —
+  // le même geste que la carte du stepper (packageSizeId, moteur.
+  // poserColisVinted) — et se RETIENT (platform_settings.vinted.colis_retenus,
+  // par la RPC de fusion, jamais l'objet entier). Un rayon sans grille connue :
+  // on le dit, aucun choix inventé.
+  const [colisLot, setColisLot] = useState({}); // clé du rayon → id choisi ici (0 = « Recommandé par Vinted »)
+  const [retenusColisLocaux, setRetenusColisLocaux] = useState(null);
+  const retenusColis = retenusColisLocaux ?? colisRetenusEnCache(userId) ?? colisRetenusDuProfil(profil?.platform_settings);
+  const colisPosesRef = useRef(new Map()); // id → valeur posée par le lot sur la copie Vinted
+  const grillesDemandees = useRef(new Set());
+  const cheminVintedDe = (m) => m?.rayonsParPf?.vinted?.chemin ?? m?.edited?.vinted?.platform_fields?.categoryPath ?? null;
+  const rayonsVinted = (() => {
+    if (!lot) return [];
+    const parCle = new Map();
+    for (const id of lot.ids) {
+      if (["retire", "envoye"].includes(etats[id]?.phase)) continue;
+      const m = moteursRef.current.get(id);
+      if (!m || ![...(m.plateformesPubliables ?? [])].includes("vinted")) continue;
+      const chemin = cheminVintedDe(m);
+      const cle = cleColisRetenu(chemin);
+      // Un rayon pas encore connu (sa question est posée plus bas) : son
+      // format se choisira quand il le sera.
+      if (!cle) continue;
+      if (!parCle.has(cle)) parCle.set(cle, { cle, chemin, ids: [] });
+      parCle.get(cle).ids.push(id);
+    }
+    return [...parCle.values()];
+  })();
+  const sigRayonsVinted = rayonsVinted.map((r) => `${r.cle}=${r.ids.join(",")}`).join("|");
+  // La grille RELEVÉE de chaque rayon : une lecture par rayon et par session.
+  useEffect(() => {
+    for (const r of rayonsVinted) {
+      if (grillesDemandees.current.has(r.cle)) continue;
+      grillesDemandees.current.add(r.cle);
+      chargerGrilleColisRelevee(supabase, r.chemin).then(() => planifierTick(), () => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sigRayonsVinted]);
+  // Le choix du lot atteint chaque copie Vinted de son rayon. Un article qui
+  // change de rayon perd le choix de l'ancien : sa fiche, puis le retenu de
+  // son nouveau rayon, reprennent la main au clic Publier.
+  useEffect(() => {
+    if (!lot || !preparationFinie || envoi) return;
+    for (const id of lot.ids) {
+      const m = moteursRef.current.get(id);
+      if (!m?.poserColisVinted || !m.edited?.vinted) continue;
+      const cle = cleColisRetenu(cheminVintedDe(m));
+      const voulu = cle && colisLot[cle] !== undefined ? colisLot[cle] : undefined;
+      if (voulu === colisPosesRef.current.get(id)) continue;
+      m.poserColisVinted(voulu === undefined ? null : voulu);
+      if (voulu === undefined) colisPosesRef.current.delete(id); else colisPosesRef.current.set(id, voulu);
+    }
+  }, [lot, preparationFinie, colisLot, sigRayonsVinted, envoi]);
+  const choisirColisVinted = (cle, chemin, id) => {
+    setColisLot((prev) => ({ ...prev, [cle]: id }));
+    const ecriture = retenirColisVinted({ userId, chemin, id, fusionner: fusionnerReglages });
+    setRetenusColisLocaux(colisRetenusEnCache(userId));
+    ecriture?.then(({ error } = {}) => {
+      if (error) console.warn("[lot] format de colis Vinted non retenu :", error.message);
+      setRetenusColisLocaux(colisRetenusEnCache(userId));
+    }, () => {});
+  };
+  const colisVinted = rayonsVinted.map((r) => {
+    const grille = grilleColisVinted(r.chemin);
+    const retenu = colisRetenuDuRayon(retenusColis, r.chemin);
+    const touche = colisLot[r.cle] !== undefined;
+    const choisi = touche ? colisLot[r.cle] : (retenu?.id ?? 0);
+    // Sans geste ici, le choix rangé sur la fiche d'un article passe avant le
+    // retenu du rayon (utils/vintedColis.js) : on dit combien le gardent.
+    const parFiche = touche || !grille ? 0 : r.ids.filter((id) => {
+      const m = moteursRef.current.get(id);
+      const f = colisVintedDeLaFiche(m?.initialListing?.attributs ?? parId.get(id)?.item?.attributs ?? null);
+      if (f === 0) return choisi !== 0;
+      return Boolean(f) && grille.some((g) => g.id === f) && f !== choisi;
+    }).length;
+    return { cle: r.cle, chemin: r.chemin, nb: r.ids.length, grille, choisi, retenu: !touche && Boolean(retenu), parFiche };
+  });
+
   // Réponses communes : un même champ fermé, même liste, sur plusieurs articles.
   const communes = useMemo(() => {
     if (!preparationFinie) return [];
@@ -777,6 +872,7 @@ export default function LotPublication({
               lectures={lectures}
               livraison={{ transporteurs: transporteursDuLot, format: livraison.format }} poidsDe={poidsDe} poserPoids={poserPoids}
               poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
+              colisVinted={colisVinted} choisirColisVinted={choisirColisVinted}
             />
           )}
           {etape === "fin" && lot && (
@@ -975,6 +1071,7 @@ export function EcranAvant({
   lectures = {},
   livraison = { transporteurs: null, format: "" }, poidsDe = () => null, poserPoids = () => {}, poserPoidsDuLot = () => {},
   poserTransporteurs = () => {}, poserFormat = () => {},
+  colisVinted = [], choisirColisVinted = () => {},
 }) {
   const total = lot.ids.length;
   const enCours = lot.ids.find((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase));
@@ -1014,7 +1111,8 @@ export function EcranAvant({
       {preparationFinie && !envoi && (
         <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
           poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
-          livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat} />
+          livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
+          colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} />
       )}
 
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
