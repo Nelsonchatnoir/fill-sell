@@ -1,0 +1,47 @@
+#cloud-config
+# Le serveur Hetzner de FillSell Cloud (Ubuntu 24.04). Posé à la création par
+# outils/creer-serveur.mjs ; tout le reste arrive par outils/deployer.sh.
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - iptables
+  - fail2ban
+  - unattended-upgrades
+  - rsync
+  - jq
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/90-fillsell.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+  - path: /etc/systemd/system/fillsell-pare-feu.service
+    content: |
+      [Unit]
+      Description=FillSell Cloud - les navigateurs ne sortent que par les proxys IPRoyal
+      After=docker.service
+      Requires=docker.service
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh /srv/fillsell-cloud/deploiement/pare-feu-navigateurs.sh
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/docker/daemon.json
+    content: |
+      { "log-driver": "json-file", "log-opts": { "max-size": "20m", "max-file": "3" }, "live-restore": true }
+
+runcmd:
+  - mkdir -p /srv/fillsell-cloud/profils /srv/fillsell-cloud/extension /srv/fillsell-cloud/deploiement /srv/fillsell-cloud/caddy
+  - chmod 700 /srv/fillsell-cloud
+  - systemctl restart ssh
+  - systemctl enable --now docker
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+  - systemctl enable fillsell-pare-feu.service
+  - systemctl enable --now fail2ban

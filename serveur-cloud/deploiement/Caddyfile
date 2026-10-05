@@ -1,0 +1,21 @@
+# TLS automatique (Let's Encrypt) pour l'écran « Me connecter ».
+# DOMAINE = cloud.fillsell.app (enregistrement A chez Cloudflare, nuage gris),
+# ou <ip>.sslip.io en attendant.
+{
+	admin off
+}
+
+{$DOMAINE} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	@permis path /sante /connexion /connexion/client.js /connexion/ws
+	handle @permis {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		respond 404
+	}
+}

@@ -1,0 +1,33 @@
+# FillSell Cloud — un serveur Hetzner : l'orchestrateur et Caddy (TLS).
+# Les navigateurs (un conteneur steel-browser par compte) sont créés par
+# l'orchestrateur lui-même, sur le réseau « fillsell-cloud » (pont br-fillsell),
+# dont le pare-feu de l'hôte ne laisse sortir QUE le port des proxys IPRoyal.
+services:
+  orchestrateur:
+    image: fillsell-orchestrateur:${VERSION_ORCHESTRATEUR:?}
+    restart: unless-stopped
+    # Réseau de l'hôte : il joint les navigateurs par leur adresse sur le pont,
+    # et sort vers Supabase / IPRoyal par l'hôte (pas par le pont filtré).
+    network_mode: host
+    env_file: /srv/fillsell-cloud/.env
+    environment:
+      DOSSIER_PROFILS: /srv/fillsell-cloud/profils
+      DOSSIER_EXTENSION: /srv/fillsell-cloud/extension
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/fillsell-cloud:/srv/fillsell-cloud
+    stop_grace_period: 3m
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  caddy:
+    image: caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DOMAINE: ${DOMAINE:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/fillsell-cloud/caddy/data:/data
+      - /srv/fillsell-cloud/caddy/config:/config
