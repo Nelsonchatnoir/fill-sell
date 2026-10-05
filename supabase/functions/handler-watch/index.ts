@@ -65,6 +65,11 @@ const COOLDOWN_MIN = 60;    // pas de ré-alerte d'une même signature avant 60 
 const CROSS_MIN = 3;        // S1 : nb d'échecs minimum
 const MULTI_USER_MIN = 2;   // S1 : nb de users distincts minimum
 const BROKEN_MIN = 2;       // S2 : nb d'échecs minimum pour une signature « rupture »
+// (05/10, règle de Nico) Un relevé ne démarre que sur « Synchroniser » : les
+// deux reprises « au retour de la connexion » (annonces et dressing Vinted)
+// sont coupées. La garde en base (garde_releve_sans_geste) refuse de toute
+// façon ces lignes ; on ne les pose plus du tout.
+const RELANCE_AUTOMATIQUE_RELEVE = false;
 
 // Refus LÉGITIMES (le filet qui marche) — jamais une alerte handler.
 const LEGIT_MARKERS = [
@@ -880,6 +885,15 @@ serve(async (req) => {
   // p95 = 1 min par page). Un arrêt ne conclut RIEN : ni vente, ni
   // disparition, ni suppression — 'expired' n'est jamais lu comme un relevé.
   const SYNC_RUN_SANS_PROGRES_MIN = 5;    // 'running' sans progression → arrêté
+  // ── CE QUE LE CHIEN DE GARDE ÉCRIT (05/10, Marine) ──────────────────────
+  // Il disait « Chrome tournait bien de ton côté… Le défaut est chez nous, pas
+  // chez toi » à une personne qui venait de s'inscrire et dont le relevé
+  // attendait derrière un autre — faux, et coupé à l'écran au milieu d'un mot.
+  // Désormais : une phrase vraie et simple, sans chiffres techniques, que
+  // l'app traduit par son marqueur [watchdog] ; le détail (page, articles,
+  // minutes, dernière visite de l'extension) reste entre parenthèses pour
+  // nous, et dans les journaux. Un arrêt ne conclut toujours RIEN.
+  const PHRASE_ARRET = "La synchronisation s'est arrêtée avant la fin. Rien n'a été effacé : appuie sur « Synchroniser » pour la terminer.";
   // (03/10, suite du point 31) UN RELEVÉ « ANNONCES » AVANCE AUSSI SUR SES
   // LIGNES. Leboncoin, Beebs, eBay et Opla n'écrivent rien sur le run avant
   // leur PATCH final (extensions jusqu'à la 0.6.89) ; mais la liste, puis la
@@ -994,8 +1008,8 @@ serve(async (req) => {
         const sondeUser = sondeParUser.get(String(r.user_id ?? ""));
         const sondeMinR = sondeUser != null ? Math.round((now - sondeUser) / 60_000) : null;
         const causeR = sondeMinR != null && sondeMinR <= SONDE_VIVANTE_MIN
-          ? "Chrome a coupé l'extension pendant le rattachement (défaut de notre côté, corrigé dans la 0.6.67)"
-          : "l'ordinateur s'est mis en veille ou Chrome a été fermé";
+          ? `extension vue il y a ${sondeMinR} min`
+          : "extension muette";
         const pluriel = lues > 1 ? "s" : "";
         const { data: clos } = await supabase
           .from("vinted_sync_runs")
@@ -1007,7 +1021,7 @@ serve(async (req) => {
             total_entries: lues,
             erreur:
               `[incomplet] relevé interrompu après la lecture de la liste : ${lues} annonce${pluriel} lue${pluriel} ` +
-              `et enregistrée${pluriel}, puis ${causeR} — le rattachement reprend au prochain relevé [watchdog]` +
+              `et enregistrée${pluriel} — le rattachement reprend à la prochaine synchronisation [watchdog] (${causeR})` +
               (r.erreur ? ` · ${String(r.erreur).slice(0, 300)}` : ""),
           })
           .eq("id", r.id as string)
@@ -1028,9 +1042,8 @@ serve(async (req) => {
       // texte historique : on n'invente pas un défaut de notre côté sans
       // preuve, pas plus que l'inverse.
       const cause = sondeMin != null && sondeMin <= SONDE_VIVANTE_MIN
-        ? "Chrome tournait bien de ton côté (ton extension nous a encore parlé il y a " +
-          `${sondeMin} min) : c'est la lecture qui s'est arrêtée toute seule. Le défaut est chez nous, pas chez toi. `
-        : "L'ordinateur s'est mis en veille ou Chrome a été fermé pendant la lecture. ";
+        ? `extension vue il y a ${sondeMin} min`
+        : "extension muette";
       const { data: maj } = await supabase
         .from("vinted_sync_runs")
         .update({
@@ -1038,10 +1051,8 @@ serve(async (req) => {
           finished_at: new Date(now).toISOString(),
           updated_at: new Date(now).toISOString(),
           erreur:
-            `[watchdog] synchronisation arrêtée en cours de route : aucune progression depuis ${muetDepuis} min ` +
-            `(page ${page}, ${vus} article${vus > 1 ? "s" : ""} lu${vus > 1 ? "s" : ""}). ` +
-            cause +
-            "Rien n'est perdu : relance la synchronisation, elle reprendra là où elle s'est arrêtée.",
+            `[watchdog] ${PHRASE_ARRET} ` +
+            `(arrêt sans progression depuis ${muetDepuis} min : page ${page}, ${vus} lu${vus > 1 ? "s" : ""}, ${cause})`,
         })
         .eq("id", r.id as string)
         .eq("status", "running")
@@ -2267,7 +2278,9 @@ serve(async (req) => {
   //    cadence et son index unique d'unicité ; le remettre en file demande de
   //    passer par `demander_sync_dressing`, pas par un INSERT. Chantier à part.
   let relevesRepris = 0;
-  try {
+  // (05/10, règle de Nico) Un relevé ne démarre que sur « Synchroniser » :
+  // plus de reprise automatique au retour de la connexion (cf. RELANCE_AUTOMATIQUE_RELEVE).
+  if (RELANCE_AUTOMATIQUE_RELEVE) try {
     const PF_RELEVE = ["leboncoin", "beebs", "ebay", "opla"];
     const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
     const { data: arretes } = await supabase
@@ -2478,7 +2491,7 @@ serve(async (req) => {
   //    même si la sonde est alignée. Un geste humain peut insister ; un cron,
   //    non.
   let dressingsRepris = 0;
-  try {
+  if (RELANCE_AUTOMATIQUE_RELEVE) try {
     const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
     const { data: runsDressing } = await supabase
       .from("vinted_sync_runs")
