@@ -57,6 +57,14 @@ node scripts/cloud/banc-sql-socle.mjs 80 (migrations jouées dans PGlite :
                                        npm i --no-save @electric-sql/pglite@0.3.16)
 npm run build:essai
 ```
+Toute la batterie du dépôt sur la branche : **171/171 selftests verts** (05/10).
+
+**Prise de job atomique (prérequis)** : en prod depuis le 28/09
+(`reserver_jobs_extension`, `controler_job_extension`, `ecrire_statut_job_extension`,
+définitions relues le 05/10). **Preuve en concurrence réelle faite le 05/10**
+(`scripts/cloud/preuve-reservation-concurrente.mjs`, Postgres 17 jetable,
+8 connexions, 4 postes, 200 jobs) : 0 job réservé ou démarré par deux postes,
+0 démarrage sans la réservation.
 
 ## 4. Ce qui reste (dans l'ordre)
 
