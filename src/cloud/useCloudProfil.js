@@ -18,11 +18,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { cloudDuProfil } from '../utils/palier';
-import { cloudOfferVisible } from '../config/cloudOffer';
+import { cloudOfferVisible, cloudConnexionVisible } from '../config/cloudOffer';
 
-// Les colonnes de la PROPOSITION (décisions du 04/10 soir comprises : essai
-// arrêté, fin de période payée, arrêt demandé en fin de période).
-export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode';
+// Les colonnes (20261004233000 ; décisions du 04/10 soir comprises : essai
+// arrêté, fin de période payée, arrêt demandé en fin de période) + la raison
+// d'un essai refusé après coup (20261005120000, carte ou compte de plateforme).
+export const COLONNES_CLOUD = 'is_premium, is_pro, is_comped, is_business, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete, cloud_periode_fin, cloud_arret_fin_periode, cloud_essai_refus';
 
 /**
  * @returns {{ etat: 'inactif'|'lecture'|'ok'|'echec', cloud: object|null, profil: object|null, luLe: number|null, relire: () => void }}
@@ -79,7 +80,9 @@ export function useCloudProfil(userId, { actif = true } = {}) {
  * `c` = le contexte de la page ({ user }).
  */
 export function useCloudReglages(c) {
-  const visible = cloudOfferVisible(c?.user?.id);
+  // (05/10) Un compte TÉMOIN (test réel, config/cloudOffer.js) voit l'état de
+  // son option et « Me connecter » ; l'offre, elle, reste fermée pour lui.
+  const visible = cloudOfferVisible(c?.user?.id) || cloudConnexionVisible(c?.user?.id);
   const lecture = useCloudProfil(c?.user?.id, { actif: visible });
   return visible ? lecture : INACTIF;
 }

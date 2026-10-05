@@ -41,6 +41,7 @@ import { R } from '../reglages/theme';
 import { Groupe, Carte, Bouton, Note } from '../reglages/ReglagesUI';
 import { CLOUD_ESSAI_JOURS, nomDuPalier, palierDesDrapeaux } from '../utils/palier';
 import { textesCloud } from './textes';
+import { textesConnexion } from './textesConnexion';
 import { dateLongue, heureDe, jourDEssai, finEssaiSiOnCommence } from './regles';
 import { DEGRADE_TEAL } from './theme';
 
@@ -110,9 +111,12 @@ const PLEIN = { width: '100%', background: DEGRADE_TEAL };
  */
 export default function BlocCloudReglages({
   lang = 'fr', cloud, lecture = 'ok', nomPalier = null, actions = {}, arretEnCours = false,
-  quotaFree = null, maintenant, arretDemande = 0,
+  quotaFree = null, maintenant, arretDemande = 0, refus = null,
 }) {
   const T = textesCloud(lang);
+  // (05/10) Essai refusé APRÈS coup (carte ou compte de plateforme déjà vus) : on le DIT.
+  const Tc = textesConnexion(lang);
+  const phraseRefus = refus === 'carte_deja_vue' ? Tc.refusCarte : refus === 'compte_plateforme_deja_vu' ? Tc.refusComptePlateforme : null;
   const [confirmer, setConfirmer] = useState(false);
   const [horloge] = useState(() => Date.now());
   // « Arrêter aussi l'option » (résiliation) : ouvre la confirmation, une fois
@@ -221,7 +225,7 @@ export default function BlocCloudReglages({
 
           {etat === 'essai_termine' && (
             <>
-              <p style={pTexte}>{cloud.essaiArrete ? T.arreteTexte(date) : T.termineTexte(date)}</p>
+              <p style={pTexte}>{phraseRefus ?? (cloud.essaiArrete ? T.arreteTexte(date) : T.termineTexte(date))}</p>
               <p style={pNote}>{T.termineSuite}</p>
               {actions.ajouter && <Bouton ton="plein" onClick={actions.ajouter} style={PLEIN}>{T.termineCta}</Bouton>}
             </>
@@ -279,6 +283,7 @@ export function BlocCloudReglagesLu({ c, lecture, actions, arretDemande = 0 }) {
       actions={actions}
       quotaFree={!nomPalier && Number.isFinite(plafond) ? plafond : null}
       maintenant={lecture.luLe ?? undefined}
+      refus={lecture.profil?.cloud_essai_refus ?? null}
       arretDemande={arretDemande}
     />
   );

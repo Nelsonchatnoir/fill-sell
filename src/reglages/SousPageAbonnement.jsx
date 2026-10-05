@@ -46,6 +46,16 @@ const LIEN_APPLE_ACHATS = 'https://reportaproblem.apple.com/';
 const LIEN_GOOGLE = 'https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app';
 const LIEN_GOOGLE_ACHATS = 'https://play.google.com/store/account/orderhistory';
 
+// (05/10) Les gestes d'argent de l'option Sans ordinateur relisent l'état
+// Cloud APRÈS coup (un arrêt, une reprise) : le bloc dit ce que dit le serveur.
+function avecRelecture(actions, relire) {
+  const out = {};
+  for (const [k, f] of Object.entries(actions ?? {})) {
+    out[k] = typeof f !== 'function' ? f : async (...a) => { try { return await f(...a); } finally { relire?.(); } };
+  }
+  return out;
+}
+
 export default function SousPageAbonnement({ c, T }) {
   // Client Stripe : sa présence dit qu'il y a des factures à montrer. Absent
   // (jamais payé par le web, ou payé par une boutique) → pas de ligne.
@@ -150,7 +160,7 @@ export default function SousPageAbonnement({ c, T }) {
           gestes d'argent (essayer, ajouter, arrêter, reprendre) arriveront
           par `c.actionsCloud` avec le paiement de l'option — absents, leurs
           boutons n'existent pas. */}
-      <BlocCloudReglagesLu c={c} lecture={lectureCloud} arretDemande={arretCloudDemande} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...(c.actionsCloud ?? {}) }} />
+      <BlocCloudReglagesLu c={c} lecture={lectureCloud} arretDemande={arretCloudDemande} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...avecRelecture(c.actionsCloud, lectureCloud.relire) }} />
 
       {/* ── Consommation du mois, avec le RESTE ───────────────────────── */}
       {compteurs && (

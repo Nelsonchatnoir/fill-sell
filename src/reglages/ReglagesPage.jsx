@@ -79,6 +79,9 @@ export default function ReglagesPage({
   // autorisation) pour que la synchronisation continue. Sinon, plus d'Opla.
   oplaRelie = false,
   onToast, ouvrirOffres, ouvrirSignalementBug,
+  // (05/10) Les gestes de l'option Sans ordinateur (App.jsx, actionsCloud) :
+  // un geste absent = pas de bouton (BlocCloudReglages).
+  actionsCloud = null,
   // Écran ouvert D'EMBLÉE à l'arrivée (20/09) : le module de republication
   // automatique, en pied du Stock, mène ICI plutôt que de remonter une
   // deuxième copie des trois écrans dans l'onglet Stock. Lu une seule fois,
@@ -241,6 +244,7 @@ export default function ReglagesPage({
     },
     ouvrirRepublication, ouvrirOffres, ouvrirSignalementBug, toast, ouvrir,
     resiliation, restauration, reset, suppression, deconnexion,
+    actionsCloud,
   };
 
   const SousPage = courante ? SOUS_PAGES[courante]?.Composant : null;
