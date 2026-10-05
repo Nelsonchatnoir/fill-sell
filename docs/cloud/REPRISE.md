@@ -1,6 +1,6 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-Mis à jour le **05/10/2026, après-midi** (terminal Cloud). Remplace, pour la
+Mis à jour le **05/10/2026, 13:40** (terminal Cloud). Remplace, pour la
 suite, le REPRISE du prototype (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md`,
 qui garde l'histoire du 26/09 et ses mesures).
 
@@ -12,13 +12,19 @@ avec carte, ouverte au Free) fait tourner NOTRE extension dans un navigateur
 française dédiée** (IPRoyal). Tout le code est sur la branche **`feat/cloud`**
 (poussée). **Rien n'est en prod** : drapeau `cloudOffer` à `false`, aucune
 migration appliquée, aucune fonction déployée, aucun serveur créé, aucune IP
-achetée. Nico est le SEUL témoin (écran B du test, dans l'app).
+achetée (05/10 13:40 : les trois jetons sont posés, le PLAN est vert, le `--go`
+attend que Nico le lance lui-même, § 4.2). Nico est le SEUL témoin (écran B du test, dans l'app).
 
 ## 1. Où est tout
 
-- Branche **`feat/cloud`** (worktree `C:\Users\nicol\fill-and-sell-cloud`) —
-  poussée, canonique, partie d'`origin/main` 5d6a0e9.
-- Branche LOCALE **`fusion/cloud-main`** (même worktree, NON poussée : elle
+- Branche **`feat/cloud`** (worktree **`C:\Users\nicol\fill-and-sell-feat-cloud`**,
+  créé le 05/10 à 13:20 parce que `fill-and-sell-cloud` porte `fusion/cloud-main`) —
+  poussée, canonique, partie d'`origin/main` 5d6a0e9. Ce worktree n'a PAS de
+  `npm ci` (PC à court de mémoire) : son `node_modules` ne contient que `terser`,
+  `jszip` et leurs 19 dépendances, copiés de `fill-and-sell-cloud` — de quoi
+  lancer `lancer-serveur-test.mjs` (build de l'extension Cloud compris), pas les
+  selftests ni `npm run build`.
+- Branche LOCALE **`fusion/cloud-main`** (worktree `C:\Users\nicol\fill-and-sell-cloud`, NON poussée, ⛔ on n'y touche pas : elle
   porte les commits non poussés du terminal Problèmes) = `main` local du 05/10
   (47700b1) + `feat/cloud`, conflits résolus, **179/179 selftests verts**.
   Elle se refait en une commande (§ 4.1) : c'est un brouillon de la fusion.
@@ -33,9 +39,12 @@ achetée. Nico est le SEUL témoin (écran B du test, dans l'app).
 - App : `src/cloud/` (achat, « Me connecter », écrans, **textes légaux**),
   `src/config/cloudOffer.js` (drapeau, témoins = Nico, `CLOUD_TEXTES_LEGAUX`).
 - Secrets (hors dépôt) : `C:\Users\nicol\fillsell-cloud-proto\secrets.env` —
-  `HCLOUD_TOKEN` **posé et vérifié le 05/10** (projet fillsell-cloud, lecture et
-  écriture, 0 serveur) ; `IPROYAL_API_TOKEN` **manque** ; `CLOUDFLARE_API_TOKEN`
-  facultatif. État du test (sans secret) : `cloud-test-etat.json` à côté.
+  les trois jetons **posés et vérifiés en lecture le 05/10** : `HCLOUD_TOKEN`
+  (projet fillsell-cloud, 0 serveur) ; `IPROYAL_API_TOKEN` (compte du prototype,
+  solde 20,00 $, ISP Dedicated › 30 Days › France à **4,00 $**, achat minimum 1) ;
+  `CLOUDFLARE_API_TOKEN` (valide, zone fillsell.app accessible, « DNS : Modifier »
+  sur cette zone seule, **expire le 12/10**). État du test (sans secret) :
+  `cloud-test-etat.json` à côté (absent tant que `--go` n'a pas tourné).
 
 ## 2. Décisions de Nico (05/10)
 
@@ -110,14 +119,38 @@ lot, carte « Prêt » sans rayon…). Une OTA depuis `main` maintenant les enve
    `npx @capgo/cli bundle upload --channel production --bundle <v> --path dist`,
    relecture du canal. Rien d'autre : ni fonction, ni drapeau.
 
-### 4.2 Le serveur — prêt, attend le jeton IPRoyal et le GO
+### 4.2 Le serveur — GO de Nico donné (05/10), `--go` à lancer PAR NICO
 
-`node serveur-cloud/outils/lancer-serveur-test.mjs` (PLAN, lecture seule, vert
-le 05/10 sauf `IPROYAL_API_TOKEN` absent), puis `--go` sur le GO de Nico :
-cx43 Falkenstein (19,19 € TTC/mois, à l'heure) + 1 IP France 30 j (plafond 8 $)
-+ DNS (jeton Cloudflare ou geste de Nico) + déploiement + contrôles + mesure de
-RAM → `NAVIGATEURS_MAX`. Avant le socle en base, l'orchestrateur dit
-`socle_absent` une fois et ne réessaie que toutes les 10 min.
+`node serveur-cloud/outils/lancer-serveur-test.mjs` (PLAN, lecture seule) :
+**VERT le 05/10 à 13:35**, aucun blocage — cx43 fsn1 15,99 € HT = 19,19 € TTC/mois
+(0,0307 € TTC/h) + IPv4 0,60 € TTC/mois ; IP ISP Dedicated France 30 j **4,00 $**
+(sous le plafond de 8 $), sans renouvellement automatique ; DNS
+`cloud.fillsell.app` sans enregistrement, posé par le jeton Cloudflare.
+
+- Correctif 1e78cfb : le PLAN refusait parce qu'IPRoyal liste des « questions »
+  (exigences en texte libre, accès multi-appareils, IP neuves au renouvellement).
+  Ce sont des OPTIONS : la commande du prototype #83578416 est partie sans réponse
+  (`questions_answers: []`). Laissées vides ; seule une question marquée
+  obligatoire arrête l'achat.
+- ⛔ **Le `--go` a été REFUSÉ à Claude par le classifieur** (transaction réelle :
+  serveur + achat d'IP), malgré le GO écrit de Nico. **Rien n'a été créé ni
+  acheté : coût engagé 0.** Nico le lance lui-même, dans Git Bash (20 à 40 min ;
+  reprise sans rien racheter si on relance la même commande) :
+  ```
+  cd /c/Users/nicol/fill-and-sell-feat-cloud && node serveur-cloud/outils/lancer-serveur-test.mjs --go
+  ```
+  Puis Claude relit `cloud-test-etat.json` (serveur, commande, IP, mesure) et les
+  contrôles. Si IPRoyal refuse l'achat pour l'identité non vérifiée, la commande
+  s'arrête sur « commande IPRoyal refusée (HTTP …) », serveur créé, rien acheté.
+- IP du prototype : la commande #83578416 (ISP Dedicated, France) court jusqu'au
+  **26/10** (renouvellement coupé par Nico). Le `--go` en achète une NEUVE ;
+  la reprendre (`--commande=83578416`, 0 $) serait une décision de Nico.
+- Hetzner : accord de traitement des données accepté par Nico (05/10).
+
+Ensuite : mesure de RAM → `NAVIGATEURS_MAX`. Avant le socle en base,
+l'orchestrateur dit `socle_absent` une fois et ne réessaie que toutes les 10 min
+(2 appels refusés par 10 min ; CPU de la base relevé avant : 6,5 %, max 26 % sur
+l'heure).
 
 ### 4.3 Le test complet (`test-complet.md`) — sur le GO de Nico
 
@@ -134,6 +167,23 @@ nouvelle `stripe-webhook`) : ⚠️ la `stripe-webhook` en prod (v56) traite DÉ
 ces événements depuis le 07/08 (mail au client, alerte) sans les avoir jamais
 reçus — les cocher allume ce mail pour TOUTES les formules : confirmation de
 Nico avant. Les textes légaux partent avec le drapeau (`CLOUD_TEXTES_LEGAUX`).
+
+**05/10, 13:40 — les textes montrés à Nico, EN ATTENTE DE SA VALIDATION** (rien
+n'est coché). Relus dans le code DÉPLOYÉ (`functions download` : stripe-webhook
+v56 → `_shared/payment-notify.ts` → email-tunnel v69, `mailPaiementEchoue` de
+`_shared/emails-fillsell.ts`), rendus par Deno (16 variantes) :
+- un seul mail client pour Premium, Pro, Business (et Cloud : `feat/cloud` ne
+  change que le nom du plan dans l'alerte à Nico) ; objet « Ton paiement n'a pas
+  abouti » / « Your payment didn't go through » ; il varie par cause (3ds,
+  carte refusée, carte expirée, autre), contexte (souscription / renouvellement)
+  et langue ; aucun montant ; une facture = un mail au plus (dédup
+  `payment_failed:<facture>`) ; facture de montée de palier : ni mail ni alerte ;
+- à trancher par Nico avant de cocher : le pied du mail ANGLAIS reste en
+  français (« Une question ? Écris-nous… », « Mentions légales · Confidentialité ») ;
+  une fin d'essai Cloud ratée arrive en `subscription_cycle`, donc rédigée
+  « renouvellement » (« Ton abonnement reste actif pour l'instant, le paiement
+  sera retenté automatiquement… ») ; un 3D Secure en renouvellement dit aussi
+  « retenté automatiquement » alors que seule la validation du client le débloque.
 
 ## 5. Garde-fous
 
