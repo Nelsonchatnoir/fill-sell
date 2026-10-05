@@ -46,6 +46,7 @@ import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
 import { langueRedactionVinted } from "../_shared/langue-vendeur.ts";
 import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
+import { palierDuProfil } from "../_shared/palier.js";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -250,17 +251,13 @@ serve(async (req) => {
 
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_premium, is_pro, is_comped, lang")
+      .select("lang")
       .eq("id", user.id)
       .single();
 
-    // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
-    // = source de vérité maintenue par les flux de paiement, is_comped = comptes
-    // offerts. is_founder et les ids Apple/Google résiduels ne valent PLUS
-    // statut premium — un abonnement résilié/expiré = free.
-    const isPremium = profile?.is_premium === true
-      || profile?.is_pro === true
-      || profile?.is_comped === true;
+    // (05/10) L'ancien « isPremium » calculé ici (sans is_business) n'était lu
+    // par personne : le palier qui borne la rédaction est celui de
+    // spend_coins_for_generate, et la retouche lit palierDuProfil plus bas.
 
     const body = await req.json();
     const { inventaire_id, photos, platforms } = body;
@@ -577,8 +574,9 @@ serve(async (req) => {
     if (photo_option === "ia_light") {
       const { data: tierRow } = await adminClient.from("profiles")
         .select("is_premium,is_pro,is_business,is_comped").eq("id", user.id).maybeSingle();
-      const tierRetouche = tierRow?.is_business ? "business" : tierRow?.is_pro ? "pro"
-        : (tierRow?.is_premium || tierRow?.is_comped) ? "premium" : "free";
+      // Palier unique (_shared/palier.js, 05/10) : 'gratuit' de la règle = clé 'free'.
+      const palierRetouche = palierDuProfil(tierRow);
+      const tierRetouche = palierRetouche === "gratuit" ? "free" : palierRetouche;
       const { data: qRows } = await adminClient.from("coin_config")
         .select("key, value").in("key", [`quota_retouche_${tierRetouche}`, "quotas_retouche_depuis"]);
       const parCle = Object.fromEntries((qRows ?? []).map((r) => [r.key, r.value]));

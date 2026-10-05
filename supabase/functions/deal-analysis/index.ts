@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -244,12 +245,11 @@ serve(async (req) => {
       // is_pro = source de vérité maintenue par les flux de paiement, is_comped
       // = comptes offerts. is_founder et les ids Apple/Google résiduels ne
       // valent PLUS statut premium — un abonnement résilié/expiré = free.
+      // (05/10) Palier unique (_shared/palier.js) : Business ⇒ Pro ⇒ Premium.
       const { data: prf } = await adminClient.from("profiles")
-        .select("is_premium, is_pro, is_comped")
+        .select("is_premium, is_pro, is_comped, is_business")
         .eq("id", user.id).single();
-      const isPremiumDeal = prf?.is_premium === true
-        || prf?.is_pro === true
-        || prf?.is_comped === true;
+      const isPremiumDeal = aAuMoins(palierDuProfil(prf), "premium");
       const { data: quotaDeal } = await adminClient.rpc("check_and_log_usage", {
         p_user_id: user.id,
         p_feature: "deal",

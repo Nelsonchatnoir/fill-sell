@@ -23,6 +23,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { AVIS, PLATEFORMES_AVIS, EVENEMENTS, decisionAvis } from "../_shared/avis-demande.js";
+import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const autorisee = (o: string) => ALLOWED_ORIGINS.includes(o) || o.startsWith("chrome-extension://");
@@ -79,7 +80,7 @@ serve(async (req) => {
     const maintenant = Date.now();
     const depuis24h = new Date(maintenant - JOUR_MS).toISOString();
     const [rProf, rJobs, rEvts, rLedger, rCheckout, rOuverts] = await Promise.all([
-      admin.from("profiles").select("created_at, onboarded_at, is_premium, is_pro").eq("id", user.id).maybeSingle(),
+      admin.from("profiles").select("created_at, onboarded_at, is_premium, is_pro, is_business, is_comped").eq("id", user.id).maybeSingle(),
       admin.from("cross_post_jobs")
         .select("id, action, status, created_at, published_at, handler_build, pdr:platform_fields->pas_de_rouge, rs:platform_fields->retenue_serveur, rl:platform_fields->retenue_levee, os:platform_fields->opla_sortie")
         .eq("user_id", user.id)
@@ -114,8 +115,10 @@ serve(async (req) => {
       console.warn(`[avis-demande] ${user.id.slice(0, 8)} : lecture impossible (${err?.message ?? "profil absent"}) — on n'ouvre pas`);
       return json({ ouvrir: false, motif: "lecture_impossible" });
     }
-    const prof = rProf.data as { created_at: string; onboarded_at: string | null; is_premium: boolean | null; is_pro: boolean | null };
-    const payant = prof.is_premium === true || prof.is_pro === true;
+    const prof = rProf.data as { created_at: string; onboarded_at: string | null; is_premium: boolean | null; is_pro: boolean | null; is_business: boolean | null; is_comped: boolean | null };
+    // (05/10) Palier unique : un Business qui paie est payant même sans
+    // is_pro ; un compte OFFERT (is_comped) ne l'est pas, quel que soit son palier.
+    const payant = aAuMoins(palierDuProfil(prof), "premium") && prof.is_comped !== true;
     // Paiement = montée de plan, pack acheté, renouvellement d'un abonnement
     // payé (la remise mensuelle d'un compte gratuit n'en est pas un), ou un
     // paiement ouvert dans les 24 h.

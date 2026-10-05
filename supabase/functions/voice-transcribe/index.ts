@@ -6,6 +6,7 @@ import {
 } from "../_shared/whisper-hallucinations.ts";
 // Refus du fournisseur d'IA → journal lu par l'ops-digest (01/10).
 import { noterEchecFournisseur } from "../_shared/echecs-fournisseurs.ts";
+import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -82,14 +83,11 @@ serve(async (req) => {
   // offerts. is_founder et les ids Apple/Google résiduels ne valent PLUS statut
   // premium — un abonnement résilié/expiré = free.
   const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  // (05/10) Palier unique (_shared/palier.js) : Business ⇒ Pro ⇒ Premium.
   const { data: profileData } = await adminClient.from("profiles")
-    .select("is_premium, is_pro, is_comped")
+    .select("is_premium, is_pro, is_comped, is_business")
     .eq("id", user.id).single();
-  const isPremiumUser = !!(
-    profileData?.is_premium ||
-    profileData?.is_pro ||
-    profileData?.is_comped
-  );
+  const isPremiumUser = aAuMoins(palierDuProfil(profileData), "premium");
   const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
     p_user_id: user.id,
     p_feature: "voice",

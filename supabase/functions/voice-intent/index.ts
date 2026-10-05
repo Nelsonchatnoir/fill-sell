@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { detecterHallucinationWhisper } from "../_shared/whisper-hallucinations.ts";
+import { palierDuProfil, aAuMoins } from "../_shared/palier.js";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -1075,14 +1076,12 @@ serve(async (req) => {
     // = source de vérité maintenue par les flux de paiement, is_comped = comptes
     // offerts. is_founder et les ids Apple/Google résiduels ne valent PLUS
     // statut premium — un abonnement résilié/expiré = free.
+    // (05/10) Palier unique (_shared/palier.js) : Business ⇒ Pro ⇒ Premium.
     const { data: profileData } = await adminClient.from("profiles")
-      .select("is_premium, is_pro, is_comped")
+      .select("is_premium, is_pro, is_comped, is_business")
       .eq("id", user.id).single();
-    const isPremiumUser = !!(
-      profileData?.is_premium ||
-      profileData?.is_pro ||
-      profileData?.is_comped
-    );
+    const palierVoix = palierDuProfil(profileData);
+    const isPremiumUser = aAuMoins(palierVoix, "premium");
     // ── Garde-fou voix par cycle (bascule quotas 02/09) ─────────────────────
     // INVISIBLE côté produit : jamais affiché, jamais vendu — c'est une borne
     // de coût (la voix appelle Haiku), pas un argument commercial. Les clés
@@ -1094,10 +1093,7 @@ serve(async (req) => {
     let voixMensuelFree: number | null = null;
     let voixMensuelPremium: number | null = null;
     try {
-      const { data: tierRow } = await adminClient.from("profiles")
-        .select("is_business,is_pro").eq("id", user.id).maybeSingle();
-      const tierVoix = tierRow?.is_business ? "business" : tierRow?.is_pro ? "pro"
-        : isPremiumUser ? "premium" : "free";
+      const tierVoix = palierVoix === "gratuit" ? "free" : palierVoix;
       const { data: qv } = await adminClient.from("coin_config")
         .select("value").eq("key", `quota_voix_${tierVoix}`).maybeSingle();
       if (typeof qv?.value === "number" && qv.value > 0) {
