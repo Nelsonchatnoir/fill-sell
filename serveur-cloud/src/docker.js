@@ -3,12 +3,18 @@
 // un par compte — et rien d'autre.
 import http from 'node:http';
 
+// Version d'API ÉPINGLÉE : la plus ancienne qu'accepte un Docker récent. Le
+// 05/10, le premier serveur (Ubuntu 24.04, Docker 29.1.3 : API 1.52, minimum
+// 1.44) refusait la 1.43 (« client version 1.43 is too old ») et l'orchestrateur
+// redémarrait en boucle. 1.44 = Docker 25 et plus ; champs utilisés inchangés.
+export const VERSION_API_DOCKER = '1.44';
+
 export function creerDocker({ socket = '/var/run/docker.sock' } = {}) {
   function appel(methode, chemin, corps, { attendu = [200, 201, 204, 304] } = {}) {
     return new Promise((resoudre, rejeter) => {
       const donnees = corps == null ? null : Buffer.from(JSON.stringify(corps));
       const req = http.request({
-        socketPath: socket, method: methode, path: `/v1.43${chemin}`,
+        socketPath: socket, method: methode, path: `/v${VERSION_API_DOCKER}${chemin}`,
         headers: { 'Content-Type': 'application/json', ...(donnees ? { 'Content-Length': donnees.length } : {}) },
         timeout: 120_000,
       }, (res) => {
