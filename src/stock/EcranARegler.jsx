@@ -8,12 +8,16 @@
 // est devenue « Remonter »). Chaque ligne rouvre la porte qui EXISTAIT :
 // la feuille d'attente, l'écran des doublons, le mode prix d'achat, le mode
 // brouillons. Aucun chemin neuf.
-import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine } from 'lucide-react';
+import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S } from './jetons';
 import { nombreFr } from './regles';
 
-const ICONES = { attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine };
+const ICONES = { retraits: AlertTriangle, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine };
+// (05/10) Une annonce vendue encore en ligne (retrait bloqué par une
+// connexion) : rouge, comme le bandeau du haut — un risque de double vente,
+// pas une information à compléter.
+const ROUGES = new Set(['retraits']);
 
 export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif = true }) {
   const fr = lang !== 'en';
@@ -21,6 +25,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
   // La phrase dit ce qu'il y a VRAIMENT, rien de plus.
   const present = (...cles) => lignes.some((l) => cles.includes(l.cle) && l.n > 0);
   const parts = [
+    present('retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
     present('attente') && (fr ? 'des annonces qui attendent ton geste' : 'listings waiting on you'),
     present('ventes') && (fr ? 'des ventes à confirmer' : 'sales to confirm'),
     present('prix', 'brouillons') && (fr ? 'des infos à compléter' : 'info to complete'),
@@ -48,7 +53,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
             return (
               <button key={l.cle} type="button" className="sk-btn sk-presse" onClick={l.onOuvrir}
                 style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: '8px 16px', boxSizing: 'border-box', border: 'none', background: 'transparent', boxShadow: `inset 0 -1px 0 ${S.borderSoft}`, textAlign: 'left', color: S.ink }}>
-                <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: S.ambreFond, color: S.ambreEncre }}>
+                <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: ROUGES.has(l.cle) ? S.rougeFond : S.ambreFond, color: ROUGES.has(l.cle) ? S.rouge : S.ambreEncre }}>
                   <I size={20} strokeWidth={2} aria-hidden="true" />
                 </span>
                 <span className="sk-chiffres" style={{ minWidth: 32, flexShrink: 0, fontSize: 24, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.03em' }}>{nombreFr(l.n, lang)}</span>

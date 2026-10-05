@@ -8133,7 +8133,7 @@ export default function App({ loginOnly = false }){
             (acc[k]=acc[k]||[]).push(j);return acc;
           },{})
         ).map(([k,group])=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla',vestiaire:'Vestiaire'};
           const platLabels=group.map(g=>PLAT[g.platform]||g.platform).join(', ');
           return (
             <div key={k} style={{background:UI.paper,border:`1px solid ${UI.amber}55`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>

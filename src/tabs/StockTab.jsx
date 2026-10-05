@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
-import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
+import { Check, ChevronRight, ChevronDown, AlertTriangle, Pause } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -32,6 +32,8 @@ import { palierDesDrapeaux, aAuMoins } from '../utils/palier';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
+import { partageRepublicationsDuJour } from '../utils/plafondRepublication';
+import { retraitsBloquesParConnexion, texteRetraitsBloques, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits } from '../utils/retraitsBloques';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
@@ -312,6 +314,11 @@ const MUR_CONNEXION_ANCRE = {
   vinted: /^Connexion Vinted requise|page de connexion à la place du formulaire|session Vinted refusée/i,
   leboncoin: /^Connexion Leboncoin requise|^Adresse requise pour Leboncoin/i,
   beebs: /^Connexion Beebs requise/i,
+  // (05/10) Opla, session FERMÉE (et non la permission d'hôte, nommée par
+  // needs_user_source='opla_acces' plus bas) : jumelle de MUR_CONNEXION.opla
+  // de handler-watch. Sans elle, « Connexion Opla requise » n'avait aucun
+  // bouton — 8 retraits après vente de Joséphine restaient en ligne.
+  opla: /^Connexion Opla requise/i,
 };
 /** Rend le motif MOTIFS.* quand le job bute sur un mur de connexion, sinon null. */
 // ── DÉPÔT EN ATTENTE D'UNE SESSION MORTE (2026-09-27, Beebs) ──────────────
@@ -5049,7 +5056,7 @@ export function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, re
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null, oplaVerdict = null, userId = null, plafond = null, dejaEnFile = 0 }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -5104,6 +5111,11 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
   // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
   // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
   const cout = prixUnitaire != null ? <>{nbEnvois * prixUnitaire}</> : null;
+  // ── LA LIMITE DU JOUR, DITE AVANT LE CLIC (05/10, point 11, Nico) ──────────
+  // Rien n'est bloqué : tout se crée, le serveur étale. On dit seulement
+  // combien partent aujourd'hui et que le reste suivra seul
+  // (utils/plafondRepublication). État serveur inconnu → rien.
+  const partageDuJour = partageRepublicationsDuJour({ nbEnvois, etat: plafond, dejaEnFile, lang });
   const confirmer = () => {
     if (!nbEnvois) return;
     // Le choix de plateformes remonte avec les cibles : StockTab le mémorise
@@ -5269,6 +5281,11 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
             {fr
               ? `Sur ${nomsSel.filter((p) => p === 'leboncoin' || p === 'beebs').map((p) => PLATFORM_LABELS[p] ?? p).join(' et ')}, l’annonce est recréée à partir de la copie enregistrée ici. Si tu as modifié quelque chose à la main sur le site, la modification sera perdue — reporte-la dans l’app avant de republier.`
               : `On ${nomsSel.filter((p) => p === 'leboncoin' || p === 'beebs').map((p) => PLATFORM_LABELS[p] ?? p).join(' and ')}, the listing is rebuilt from the copy stored here. Anything you edited by hand on the site will be lost — bring it back into the app before republishing.`}
+          </div>
+        )}
+        {partageDuJour && (
+          <div role="status" style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
+            <IconeTexte icone={Hourglass} taille={12} style={{ marginRight: 4 }} />{partageDuJour.texte}
           </div>
         )}
         <button onClick={confirmer} disabled={!nbEnvois}
@@ -6519,6 +6536,16 @@ const StockTab = memo(function StockTab({
   // déjà lus par le poll (aucune requête de plus).
   const fichesToutes = useMemo(() => new Map((items ?? []).map((i) => [String(i.id), i])), [items]);
   const tousLesJobs = useMemo(() => Object.values(jobsByInventaire).flat(), [jobsByInventaire]);
+  // ── LES RETRAITS QUI ATTENDENT UNE RECONNEXION (05/10, risque de double
+  // vente) : lus sur les jobs DÉJÀ chargés (la lecture du Stock prend toutes
+  // les actions et tous les articles, vendus et supprimés compris) — aucune
+  // requête de plus. Bandeau en tête, ligne « À régler », carte vendue.
+  const retraitsBloques = useMemo(
+    () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes }),
+    [tousLesJobs, fichesToutes],
+  );
+  const [retraitsBloquesOuverts, setRetraitsBloquesOuverts] = useState(null); // plateforme dépliée | null
+  const bandeauRetraitsRef = useRef(null);
   // ── LA FOURNÉE, FIGÉE (2026-09-19) ────────────────────────────────────────
   // POURQUOI un état et pas un simple calcul : le périmètre du lot de
   // republications était RE-DÉDUIT à chaque poll (le bulk_batch_id du vivant le
@@ -8155,10 +8182,18 @@ const StockTab = memo(function StockTab({
     return estAncienne(ancienneteJours(i, jobsByInventaire[i.id], e?.enLigne ?? []));
   }) : [];
   const nbAttenteAction = attenteAction?.total ?? 0;
-  const nbARegler = nbAttenteAction + questionsDejaVendu.length + nbSansPrix + brouillons.length;
+  // (05/10) Les retraits bloqués par une connexion COMPTENT : une annonce
+  // vendue encore en ligne attend un geste (se reconnecter), comme le reste.
+  const nbRetraitsBloques = retraitsBloques.total;
+  const nbARegler = nbRetraitsBloques + nbAttenteAction + questionsDejaVendu.length + nbSansPrix + brouillons.length;
+  const ligneRetraits = ligneAReglerRetraits(retraitsBloques, lang);
   const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
   const lignesARegler = [
+    // En tête : le seul point où un acheteur peut payer un article déjà parti.
+    // Le tap ramène au bandeau du haut, qui porte « Me connecter ».
+    { cle: 'retraits', n: nbRetraitsBloques, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
+      onOuvrir: () => { setGesteOuvert(null); setTimeout(() => bandeauRetraitsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 60); } },
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
@@ -8586,6 +8621,13 @@ const StockTab = memo(function StockTab({
     const fr = lang === 'fr';
     const sans = { titre: null, onTap: null, horsLigne: false };
     if (item.statut === 'vendu') {
+      // (05/10) Vendu mais ENCORE EN LIGNE ailleurs, retrait bloqué par une
+      // connexion : le mot reste « Vendu » (c'est vrai), le point passe au
+      // rouge et le survol dit pourquoi — la ligne et le bouton sont dessous.
+      const bloques = retraitsBloques.parArticle.get(String(item.id));
+      if (bloques?.length) {
+        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: 'echec', titre: bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang)).join(' · ') };
+      }
       return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans };
     }
     if (d.repubOccupeSlot) {
@@ -8683,8 +8725,34 @@ const StockTab = memo(function StockTab({
   const gestesArticle = (item, d, pastille) => {
     const fr = lang === 'fr';
     if (item.statut === 'vendu') {
+      // ── VENDU, MAIS ENCORE EN LIGNE AILLEURS (05/10, risque de double vente)
+      // Le retrait vers cette plateforme attend une reconnexion : la carte le
+      // DIT (une ligne par plateforme) et porte LE geste « Me connecter » —
+      // le même composant que partout ailleurs. Le serveur relance le retrait
+      // dès que la sonde revoit la session vivante (handler-watch).
+      const bloques = retraitsBloques.parArticle.get(String(item.id)) ?? [];
+      const pfBloquees = [...new Map(bloques.map((b) => [b.platform, b.job])).entries()];
+      const element = pfBloquees.length && user?.id ? (
+        <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
+          style={{display:'flex',flexDirection:'column',gap:10,padding:'9px 10px',borderRadius:12,background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`}}>
+          {pfBloquees.map(([p, j]) => (
+            <div key={p} style={{display:'flex',flexDirection:'column',gap:8}}>
+              <span style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:SK.rouge}}>
+                <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang)}
+              </span>
+              <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton"/>
+            </div>
+          ))}
+        </div>
+      ) : null;
+      const mur = pfBloquees.length && user?.id ? (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {pfBloquees.map(([p, j]) => <BoutonMeConnecter key={p} userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="ligne"/>)}
+        </div>
+      ) : null;
       return {
-        principale: null, element: null, mur: null, infos: [], prixAchat: null, note: null, bas: null, action: null,
+        principale: null, element, mur, prixAchat: null, note: null, bas: null, action: null,
+        infos: pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: 'echec', texte: ligneCarteRetraitBloque(p, lang) })),
         menu: [
           { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
           ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),
@@ -8936,6 +9004,55 @@ const StockTab = memo(function StockTab({
         <TitreStock lang={lang} boutiques={boutiquesVinted} boutiqueConnectee={boutiqueConnectee}
           filterBoutique={filterBoutique} setFilterBoutique={(v)=>{setFilterBoutique(v);setShowAllStock(false);}}
           attenteBoutique={attenteBoutique}/>
+        {/* ── VENDU MAIS ENCORE EN LIGNE : LE RETRAIT ATTEND UNE RECONNEXION
+            (05/10, Joséphine — 8 retraits Opla après vente, invisibles) ─────
+            Le seul point de la page où un acheteur peut payer un article déjà
+            parti : il passe AVANT tout, en rouge, jamais replié dans la
+            feuille des points de la synchronisation. Une ligne par
+            plateforme : la phrase, LE bouton « Me connecter » (le même
+            composant que partout), et la liste des articles dépliable sur
+            place. Données : les jobs déjà chargés (utils/retraitsBloques). */}
+        {retraitsBloques.total>0&&(
+          <div ref={bandeauRetraitsRef} style={{display:"flex",flexDirection:"column",gap:10,marginTop:16,scrollMarginTop:16}}>
+            {retraitsBloques.parPlateforme.map(g=>{
+              const fr=lang!=='en';
+              const ouvert=retraitsBloquesOuverts===g.platform;
+              const n=g.lignes.length;
+              const motif=murDeConnexion(g.lignes[0].job)??MOTIFS.CONNEXION;
+              return(
+                <div key={g.platform} role="alert" style={{background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`,borderLeft:`4px solid ${SK.rouge}`,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                    <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{flexShrink:0,marginTop:1,color:SK.rouge}}/>
+                    <span style={{flex:1,minWidth:0,fontSize:13,lineHeight:"19px",fontWeight:700,color:SK.rouge}}>{texteRetraitsBloques(g,lang)}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    {user?.id&&<BoutonMeConnecter userId={user.id} platform={g.platform} motif={motif} lang={lang} variante="bouton"/>}
+                    <button type="button" aria-expanded={ouvert} onClick={()=>setRetraitsBloquesOuverts(ouvert?null:g.platform)}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,minHeight:44,padding:"0 4px",border:"none",background:"transparent",color:SK.rouge,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
+                      {ouvert
+                        ?(fr?'Masquer la liste':'Hide the list')
+                        :(fr?(n>1?`Voir les ${n} articles`:"Voir l'article"):(n>1?`See the ${n} items`:'See the item'))}
+                      <ChevronDown size={16} aria-hidden="true" style={{transform:ouvert?'rotate(180deg)':'none',transition:'transform .15s ease-out'}}/>
+                    </button>
+                  </div>
+                  {ouvert&&(
+                    <ul style={{listStyle:"none",margin:0,padding:"4px 0 0",display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${SK.rougeBord}`}}>
+                      {g.lignes.map(l=>(
+                        <li key={l.job.id} style={{display:"flex",alignItems:"center",gap:8,minWidth:0,fontSize:12.5,lineHeight:"18px",color:SK.ink}}>
+                          <PlatformLogo platform={g.platform} size={14}/>
+                          <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:600}}>{l.titre??(fr?'Article':'Item')}</span>
+                          <span style={{flexShrink:0,fontSize:11.5,fontWeight:600,color:SK.ink2}}>
+                            {l.vendu?(fr?'Vendu':'Sold'):l.fiche?(fr?'En stock':'In stock'):(fr?'Fiche supprimée':'Item deleted')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(
           <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:16,padding:16,marginTop:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
             {activite&&(()=>{
@@ -10902,6 +11019,8 @@ const StockTab = memo(function StockTab({
           choixInitial={choixPlateformesRepub}
           oplaAcces={oplaAccesRepub}
           oplaVerdict={oplaVerdictRepub}
+          plafond={repubPlafondEtat}
+          dejaEnFile={repubJobsVivants.length}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
             setRepubSheet(null);
