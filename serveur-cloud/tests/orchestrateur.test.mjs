@@ -236,3 +236,16 @@ test('contrôle d’une IP : le script DataDome d’une page OUVERTE n’est pas
   assert.equal(verdictPage('<title>Pardon Our Interruption</title>'), 'bloque');
   assert.equal(verdictPage(''), 'indetermine', 'rien lu : indéterminé, jamais « ok »');
 });
+
+test('page « Me connecter » autonome : son module est servi par le serveur (05/10 : ./client.js visait /client.js, 503)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const html = await readFile(new URL('../public/connexion.html', import.meta.url), 'utf8');
+  const serveur = await readFile(new URL('../src/serveur.js', import.meta.url), 'utf8');
+  const imports = [...html.matchAll(/import\s*\{[^}]*\}\s*from\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+  assert.ok(imports.length > 0, 'la page importe son client');
+  for (const spec of imports) {
+    const chemin = new URL(spec, 'https://cloud.fillsell.app/connexion?ticket=x').pathname;
+    assert.equal(chemin, '/connexion/client.js', `import « ${spec} » → ${chemin}`);
+    assert.ok(serveur.includes(`u.pathname === '${chemin}'`), `le serveur sert ${chemin}`);
+  }
+});

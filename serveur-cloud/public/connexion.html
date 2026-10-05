@@ -37,7 +37,9 @@
   <div id="actions" hidden><button id="ecrire">⌨︎ Écrire</button><button id="fini">J'ai fini</button></div>
 </main>
 <script type="module">
-  import { ouvrirConnexion } from './client.js';
+  // Chemin ABSOLU (05/10) : depuis /connexion, './client.js' visait /client.js (503) —
+  // le module ne se chargeait pas et aucun bouton ne répondait.
+  import { ouvrirConnexion } from '/connexion/client.js';
   const q = new URLSearchParams(location.search);
   const ticket = q.get('ticket');
   const $ = (id) => document.getElementById(id);
