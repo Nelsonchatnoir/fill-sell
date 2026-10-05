@@ -17,6 +17,9 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-05-republication-apres-suppression (0.6.97 : suppression envoyée gardée sur le job, reprise à l'étape du retrait " +
+  "quand l'annonce est absente après NOTRE suppression ; mesures du remplissage et bilan du colis Vinted joints au job ; " +
+  "marques Vinted triées à la source ; transporteurs LBC capturés dès un seul ; auto « au moins Pro ») — précédent : " +
   "2026-09-30-beebs-numero-lecture-streamee (0.6.81 : « Mes annonces » Beebs lue par fetch — cartes « En vérification » comptées aussi dans les segments streamés <div hidden id=S:…>, « en ligne » lue dans le flux RSC AdvertsProductCard ; aucun dépôt n'avait son numéro depuis la 0.6.80 ; URGENCE republication Vinted : la capture s'ouvre sur /items/<id>, seule page où la preuve de boutique se lit — sous 0.6.80 elle s'ouvrait sur l'accueil et aucune republication n'aboutissait) — précédent : " +
   "2026-09-29-point1-preuves-retraits (0.6.80 : boutique Vinted prouvée avant DELETE et estampillée après dépôt ; " +
   "identifiant Beebs durable obligatoire ; formulaire Beebs complet éprouvé avant retrait de republication) — précédent : " +
@@ -1514,9 +1517,24 @@ async function chercherMarquesVinted(q) {
           });
           if (!r.ok) return { ok: false, statut: r.status };
           const j = await r.json();
-          return { ok: true, marques: (Array.isArray(j?.brands) ? j.brands : [])
+          const marques = (Array.isArray(j?.brands) ? j.brands : [])
             .map((b) => ({ titre: String(b?.title ?? "").trim(), annonces: Number(b?.item_count) || 0 }))
-            .filter((b) => b.titre) };
+            .filter((b) => b.titre);
+          // (05/10, 0.6.97) Tri À LA SOURCE, même règle que l'app (suggestionsProches,
+          // copiée dans vinted.js — monde isolé partagé) : même mot, même début,
+          // faute de frappe d'abord. Rien de proche : l'ordre de Vinted reste
+          // (la personne a tapé ce mot elle-même).
+          // Lue sur l'objet global du monde isolé (déclarée par vinted.js), jamais
+          // par son nom : ce code s'exécute DANS l'onglet, pas dans le worker.
+          const trier = globalThis["suggestionsMarqueProches"];
+          if (typeof trier === "function") {
+            const proches = trier(mot, marques.map((m) => m.titre), 30);
+            if (Array.isArray(proches) && proches.length) {
+              const parTitre = new Map(marques.map((m) => [m.titre, m]));
+              return { ok: true, trie: true, marques: proches.map((t) => parTitre.get(t)).filter(Boolean) };
+            }
+          }
+          return { ok: true, marques };
         } catch (e) { return { ok: false, erreur: String(e?.message ?? e) }; }
         finally { clearTimeout(minuteur); }
       },
@@ -4745,6 +4763,11 @@ function completionExtras(job, result) {
     // a été RELU posé sur la page, et ce qui ne l'a pas été — jamais en
     // silence. L'app le lit pour le dire à la personne.
     ...(result.livraisonLbc ? { livraison_lbc: result.livraisonLbc } : {}),
+    // (05/10, 0.6.97) Mesures du remplissage Vinted (durée par étape, réveils
+    // en retard, rattrapage du cadenceur — Carla/Ciddjy sur Mac) et bilan du
+    // format de colis posé (choix, défaut Vinted…).
+    ...(result.remplissage_mesures ? { remplissage_mesures: result.remplissage_mesures } : {}),
+    ...(result.colis_bilan ? { colis_bilan: result.colis_bilan } : {}),
   };
   // Un bilan hérité (copie de republication, tentative précédente) ne parle
   // jamais à la place du dépôt courant.
@@ -24247,6 +24270,20 @@ async function remplirAvecPort(tabId, job, deps = {}) {
 // Point d'entrée UNIQUE des quatre sites d'envoi de FILL_LISTING. Drapeau
 // éteint = chemin d'aujourd'hui, argument pour argument.
 function envoyerFillListing(tabId, job) {
+  return envoyerFillListingBrut(tabId, job).then((r) => {
+    // (05/10) Mesures et bilan du colis joints à la copie mémoire du job : TOUTE
+    // écriture qui suit (publié, reprise, échec) les emporte, sans écriture de plus.
+    if (r && typeof r === "object" && (r.remplissage_mesures || r.colis_bilan)) {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        ...(r.remplissage_mesures ? { remplissage_mesures: r.remplissage_mesures } : {}),
+        ...(r.colis_bilan ? { colis_bilan: r.colis_bilan } : {}),
+      };
+    }
+    return r;
+  });
+}
+function envoyerFillListingBrut(tabId, job) {
   if (!keepaliveActif) return sendMessageToTab(tabId, { type: "FILL_LISTING", job });
   return remplirAvecPort(tabId, job).catch((e) => {
     const msg = String(e?.message ?? e);
