@@ -1,6 +1,6 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-Mis à jour le **05/10/2026, 13:40** (terminal Cloud). Remplace, pour la
+Mis à jour le **05/10/2026, 15:15** (terminal Cloud). Remplace, pour la
 suite, le REPRISE du prototype (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md`,
 qui garde l'histoire du 26/09 et ses mesures).
 
@@ -10,20 +10,34 @@ L'option **« Sans ordinateur »** (FillSell Cloud, 20 € TTC/mois, essai 7 jou
 avec carte, ouverte au Free) fait tourner NOTRE extension dans un navigateur
 **steel-browser** hébergé chez **Hetzner**, un par compte, qui sort par une **IP
 française dédiée** (IPRoyal). Tout le code est sur la branche **`feat/cloud`**
-(poussée). **Rien n'est en prod** : drapeau `cloudOffer` à `false`, aucune
-migration appliquée, aucune fonction déployée, aucun serveur créé, aucune IP
-achetée (05/10 13:40 : les trois jetons sont posés, le PLAN est vert, le `--go`
-attend que Nico le lance lui-même, § 4.2). Nico est le SEUL témoin (écran B du test, dans l'app).
+(poussée). **Rien n'est en prod côté utilisateurs** : drapeau `cloudOffer` à
+`false`, aucune migration appliquée, aucune fonction déployée. **Le serveur de
+test tourne** depuis le 05/10 (cx43 Falkenstein, `cloud.fillsell.app`, UNE IP
+France 94.194.94.233, contrôles verts, § 4.2) mais ne sert personne tant que le
+socle n'est pas en base. Le mail « paiement échoué » est corrigé sur
+`feat/cloud`, NON déployé, événements Stripe NON cochés (§ 4.5). Nico est le
+SEUL témoin (écran B du test, dans l'app).
+
+**Pour un NOUVEAU terminal, dans l'ordre** : (1) attendre la fin du terminal
+Problèmes (§ 4.1) ; (2) sur GO de Nico : migrations 20261004233000 puis
+20261005120000 (§ 4.1, point 2) ; (3) fusion dans `main` + preuve « IDENTIQUE »
+contre l'OTA servie + OTA de l'écran B (§ 4.1) ; (4) redéployer le serveur
+depuis le dossier principal (§ 4.2) ; (5) test complet sur GO (§ 4.3) ;
+(6) déploiement `email-tunnel` puis `stripe-webhook` et cochage des deux
+événements Stripe sur GO (§ 4.5, étape 4 bis de `mise-en-ligne.md`).
 
 ## 1. Où est tout
 
 - Branche **`feat/cloud`** (worktree **`C:\Users\nicol\fill-and-sell-feat-cloud`**,
   créé le 05/10 à 13:20 parce que `fill-and-sell-cloud` porte `fusion/cloud-main`) —
   poussée, canonique, partie d'`origin/main` 5d6a0e9. Ce worktree n'a PAS de
-  `npm ci` (PC à court de mémoire) : son `node_modules` ne contient que `terser`,
-  `jszip` et leurs 19 dépendances, copiés de `fill-and-sell-cloud` — de quoi
-  lancer `lancer-serveur-test.mjs` (build de l'extension Cloud compris), pas les
-  selftests ni `npm run build`.
+  `npm ci` à la racine (PC à court de mémoire) : son `node_modules` ne contient
+  que `terser`, `jszip` et leurs 19 dépendances, copiés de `fill-and-sell-cloud`
+  — de quoi lancer `lancer-serveur-test.mjs` (build de l'extension Cloud compris)
+  et les selftests sans dépendance (paiement-echoue, option-cloud,
+  cloud-rappel-veille, paiement-stripe, imports-epingles), pas `npm run build`.
+  `serveur-cloud/node_modules` : `npm ci` léger (supabase-js, ws ; 9 Mo) pour
+  `node --test serveur-cloud/tests/*.test.mjs` (20/20).
 - Branche LOCALE **`fusion/cloud-main`** (worktree `C:\Users\nicol\fill-and-sell-cloud`, NON poussée, ⛔ on n'y touche pas : elle
   porte les commits non poussés du terminal Problèmes) = `main` local du 05/10
   (47700b1) + `feat/cloud`, conflits résolus, **179/179 selftests verts**.
@@ -44,7 +58,7 @@ attend que Nico le lance lui-même, § 4.2). Nico est le SEUL témoin (écran B 
   solde 20,00 $, ISP Dedicated › 30 Days › France à **4,00 $**, achat minimum 1) ;
   `CLOUDFLARE_API_TOKEN` (valide, zone fillsell.app accessible, « DNS : Modifier »
   sur cette zone seule, **expire le 12/10**). État du test (sans secret) :
-  `cloud-test-etat.json` à côté (absent tant que `--go` n'a pas tourné).
+  `cloud-test-etat.json` à côté (§ 4.2).
 
 ## 2. Décisions de Nico (05/10)
 
@@ -60,7 +74,15 @@ attend que Nico le lance lui-même, § 4.2). Nico est le SEUL témoin (écran B 
 6. Apple, Google, Stripe (tableau de bord) : Nico, avec `fiche-boutiques.md`.
    ⛔ Dans Stripe, NE PAS cocher `invoice.payment_failed` /
    `invoice.payment_action_required` (Claude les ajoute par l'API à la mise en
-   ligne, étape 4 bis).
+   ligne, étape 4 bis, sur GO de Nico).
+7. **Mail « paiement échoué »** (05/10 après-midi) : GO pour tout corriger
+   (pied anglais, fin d'essai à part, 3D Secure vers la page Stripe, aucun geste
+   promis qui n'existe pas) — fait sur `feat/cloud`, § 4.5. Déploiement et
+   cochage : GO de Nico.
+8. **Serveur de test** (05/10 après-midi) : transaction autorisée par Nico, UNE
+   fois — cx43 Falkenstein, UNE IP France ISP Dedicated 30 j à 4 $ sans
+   renouvellement, DNS `cloud.fillsell.app`. Rien d'autre (pas de 2ᵉ serveur,
+   pas de 2ᵉ IP, pas de reprise de #83578416).
 
 ## 3. Les tests (05/10, tout vert)
 
@@ -72,6 +94,7 @@ npm run selftest:cloud-achat         30 (témoins = Nico seul, tout autre id ref
 npm run selftest:cloud-textes-legaux 39 (nouveau : faits relus dans le code, /legal baissé puis levé)
 npm run selftest:cloud-orchestrateur 20 (dont « socle absent »)
 npm run selftest:option-cloud · cloud-rappel-veille · cloud-extension 19
+npm run selftest:paiement-echoue     315 (05/10 : mail « paiement échoué », § 4.5)
 node scripts/cloud/banc-sql-socle.mjs 80
 # AVANT toute OTA — la preuve qu'un compte ordinaire voit l'app servie à l'identique :
 node scripts/cloud/preuve-identite-compte-ordinaire.mjs --version <n° lu sur le canal Capgo>
@@ -119,38 +142,54 @@ lot, carte « Prêt » sans rayon…). Une OTA depuis `main` maintenant les enve
    `npx @capgo/cli bundle upload --channel production --bundle <v> --path dist`,
    relecture du canal. Rien d'autre : ni fonction, ni drapeau.
 
-### 4.2 Le serveur — GO de Nico donné (05/10), `--go` à lancer PAR NICO
+### 4.2 Le serveur de test — CRÉÉ, DÉPLOYÉ, PRÊT (05/10, 15:10 Paris)
 
-`node serveur-cloud/outils/lancer-serveur-test.mjs` (PLAN, lecture seule) :
-**VERT le 05/10 à 13:35**, aucun blocage — cx43 fsn1 15,99 € HT = 19,19 € TTC/mois
-(0,0307 € TTC/h) + IPv4 0,60 € TTC/mois ; IP ISP Dedicated France 30 j **4,00 $**
-(sous le plafond de 8 $), sans renouvellement automatique ; DNS
-`cloud.fillsell.app` sans enregistrement, posé par le jeton Cloudflare.
+Transaction autorisée par Nico (décision 8), lancée par Claude le 05/10 à
+14:57 (le classifieur l'avait refusée à 13:35, il l'a laissée passer après
+l'autorisation écrite). **État réel** :
 
-- Correctif 1e78cfb : le PLAN refusait parce qu'IPRoyal liste des « questions »
-  (exigences en texte libre, accès multi-appareils, IP neuves au renouvellement).
-  Ce sont des OPTIONS : la commande du prototype #83578416 est partie sans réponse
-  (`questions_answers: []`). Laissées vides ; seule une question marquée
-  obligatoire arrête l'achat.
-- ⛔ **Le `--go` a été REFUSÉ à Claude par le classifieur** (transaction réelle :
-  serveur + achat d'IP), malgré le GO écrit de Nico. **Rien n'a été créé ni
-  acheté : coût engagé 0.** Nico le lance lui-même, dans Git Bash (20 à 40 min ;
-  reprise sans rien racheter si on relance la même commande) :
-  ```
-  cd /c/Users/nicol/fill-and-sell-feat-cloud && node serveur-cloud/outils/lancer-serveur-test.mjs --go
-  ```
-  Puis Claude relit `cloud-test-etat.json` (serveur, commande, IP, mesure) et les
-  contrôles. Si IPRoyal refuse l'achat pour l'identité non vérifiée, la commande
-  s'arrête sur « commande IPRoyal refusée (HTTP …) », serveur créé, rien acheté.
-- IP du prototype : la commande #83578416 (ISP Dedicated, France) court jusqu'au
-  **26/10** (renouvellement coupé par Nico). Le `--go` en achète une NEUVE ;
-  la reprendre (`--commande=83578416`, 0 $) serait une décision de Nico.
-- Hetzner : accord de traitement des données accepté par Nico (05/10).
+| | |
+|---|---|
+| Serveur | Hetzner `fillsell-cloud-1` (id 168804683), **cx43, fsn1 (Falkenstein)**, IPv4 **178.105.24.16** (+ IPv6, les deux `auto_delete`), créé 12:57:44 UTC ; seul serveur du projet, aucun volume, pare-feu `fillsell-cloud` (22/80/443), clé SSH `~/.ssh/fillsell_cloud_ed25519` (sur le PC de Nico) |
+| IP de test | IPRoyal commande **84458881** — ISP Dedicated, France, 30 jours, quantité 1, **sans renouvellement** (passée avec `auto_extend: false`, aucune question) ; IP **94.194.94.233** (sortie vue : FR, Paris), port 12323 ; échéance **04/11/2026 12:57 UTC** ; identité IPRoyal non vérifiée : l'achat est passé quand même |
+| DNS | `cloud.fillsell.app` A → 178.105.24.16, nuage GRIS (Cloudflare, TTL 60) ; TLS obtenu par Caddy |
+| Déployé | commit **920c2fa** de `feat/cloud` (orchestrateur `fillsell-orchestrateur:920c2fa064a3`, navigateur `fillsell-navigateur:920c2fa064a3`) ; extension Cloud **0.6.96-cloud** (`chrome-extension/` de feat/cloud) |
+| Contrôles | ✓ `https://cloud.fillsell.app/sante` `{"ok":true,"serveur":"cloud-1","navigateurs":0}` · ✓ caddy + orchestrateur `running` · ✓ pare-feu FILLSELL-NAV · ✓ navigateur SANS proxy : rien (code 000) · ✓ par l'IP de test : sortie 94.194.94.233 (FR, Paris) |
+| Mesure | UN navigateur allumé (compte fictif, profil neuf détruit, accueil Vinted puis Leboncoin) : **pic 802 Mo, moyenne 679 Mo** (limite 1400m) ; hôte 15 614 Mo → **NAVIGATEURS_MAX proposé : 13** ((15 614 − 2 048) / (802 × 1,3)) ; **NON appliqué** : le `.env` du serveur garde `NAVIGATEURS_MAX=8` (le test n'en allume qu'un) |
+| Garde-fous (relus dans `/srv/fillsell-cloud/.env`, chmod 600) | `IPROYAL_ACHATS_AUTORISES=0` · `ALERTES_MAIL=0` · `COMPTES_AUTORISES=f44b5917…` (Nico seul) · `CPU_PAUSE_AU_DESSUS=50` · clés Supabase, coffre, tickets, jeton IPRoyal posés, jamais affichés |
+| Base | l'orchestrateur a dit `socle_absent` (planificateur 13:08:29, entretien 13:09:24 UTC) puis ne réessaie que toutes les 10 min : 2 appels refusés / 10 min. CPU de la base : 4,9 % avant, 5,8 % après (max 11 % sur 30 min) |
 
-Ensuite : mesure de RAM → `NAVIGATEURS_MAX`. Avant le socle en base,
-l'orchestrateur dit `socle_absent` une fois et ne réessaie que toutes les 10 min
-(2 appels refusés par 10 min ; CPU de la base relevé avant : 6,5 %, max 26 % sur
-l'heure).
+**Coût réellement engagé** : IP **4,00 $** (solde IPRoyal 20 → 16 $) ; serveur
+facturé à l'heure depuis 12:57 UTC : 0,0307 € TTC/h + IPv4 0,60 € TTC/mois
+(≈ 0,66 € TTC par jour, plafond 19,79 € TTC/mois) ; Cloudflare 0 €. Supprimer
+le serveur arrête tout (Hetzner, `DELETE /servers/168804683`) — décision de Nico.
+
+**Trois défauts trouvés au premier déploiement, corrigés et commités** (le
+`--go` a été relancé deux fois, sans rien racheter) : `COPY --chmod` exige
+BuildKit, absent du docker.io d'Ubuntu 24.04 (a32e712) ; l'orchestrateur parlait
+l'API Docker 1.43, Docker 29 exige 1.44 au minimum → redémarrage en boucle
+(88cdaa6, tests orchestrateur 20/20) ; `docker compose ps|exec` après coup sans
+`VERSION_ORCHESTRATEUR` → `deploiement/.env` écrit par deployer.sh (920c2fa).
+Plus l'affichage du lieu Hetzner (07608a4, sans effet sur le serveur).
+
+**À relire dans `C:\Users\nicol\fillsell-cloud-proto\cloud-test-etat.json`**
+(aucun secret) : `serveur` (id, ip, type ; `lieu` absent de ce fichier, c'est
+fsn1), `ip_test` (commande 84458881, ip, port, `expire_le`), `deploye` (sha,
+domaine, `controles_ok: true`), `mesure` (pic, moyenne, `navigateurs_max_propose`,
+`profil_detruit: true`). Relancer `node serveur-cloud/outils/lancer-serveur-test.mjs`
+(sans `--go`) = le PLAN en lecture : il doit dire « 1 serveur — repris » et
+« cloud.fillsell.app → 178.105.24.16 (= le serveur) ».
+
+Sur le serveur : `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16`, puis
+`cd /srv/fillsell-cloud/deploiement && docker compose logs --tail 50 orchestrateur`.
+
+**Ce qui reste pour le serveur** (nouveau terminal) : après la fusion,
+REDÉPLOYER depuis le dossier principal (même commande `--go`, rien n'est
+racheté) pour embarquer l'extension **0.6.97** et le code fusionné ; puis, au
+test complet : `docker compose exec orchestrateur node outils/ip.mjs ajouter
+84458881` (après les migrations). Décider `NAVIGATEURS_MAX` (8 ou 13) avant
+d'ouvrir à d'autres comptes. L'IP du prototype #83578416 (jusqu'au 26/10) n'est
+PAS reprise (décision de Nico).
 
 ### 4.3 Le test complet (`test-complet.md`) — sur le GO de Nico
 
@@ -165,25 +204,60 @@ Nico en pause. Session **0ba8903a** posée au coffre, révoquée juste après.
 Dont l'étape **4 bis** (les deux événements Stripe, par l'API, juste après la
 nouvelle `stripe-webhook`) : ⚠️ la `stripe-webhook` en prod (v56) traite DÉJÀ
 ces événements depuis le 07/08 (mail au client, alerte) sans les avoir jamais
-reçus — les cocher allume ce mail pour TOUTES les formules : confirmation de
-Nico avant. Les textes légaux partent avec le drapeau (`CLOUD_TEXTES_LEGAUX`).
+reçus — les cocher allume ce mail pour TOUTES les formules : GO de Nico avant.
+Les textes légaux partent avec le drapeau (`CLOUD_TEXTES_LEGAUX`).
 
-**05/10, 13:40 — les textes montrés à Nico, EN ATTENTE DE SA VALIDATION** (rien
-n'est coché). Relus dans le code DÉPLOYÉ (`functions download` : stripe-webhook
-v56 → `_shared/payment-notify.ts` → email-tunnel v69, `mailPaiementEchoue` de
-`_shared/emails-fillsell.ts`), rendus par Deno (16 variantes) :
-- un seul mail client pour Premium, Pro, Business (et Cloud : `feat/cloud` ne
-  change que le nom du plan dans l'alerte à Nico) ; objet « Ton paiement n'a pas
-  abouti » / « Your payment didn't go through » ; il varie par cause (3ds,
-  carte refusée, carte expirée, autre), contexte (souscription / renouvellement)
-  et langue ; aucun montant ; une facture = un mail au plus (dédup
-  `payment_failed:<facture>`) ; facture de montée de palier : ni mail ni alerte ;
-- à trancher par Nico avant de cocher : le pied du mail ANGLAIS reste en
-  français (« Une question ? Écris-nous… », « Mentions légales · Confidentialité ») ;
-  une fin d'essai Cloud ratée arrive en `subscription_cycle`, donc rédigée
-  « renouvellement » (« Ton abonnement reste actif pour l'instant, le paiement
-  sera retenté automatiquement… ») ; un 3D Secure en renouvellement dit aussi
-  « retenté automatiquement » alors que seule la validation du client le débloque.
+### 4.5 Le mail « paiement échoué » — CORRIGÉ sur `feat/cloud`, NON DÉPLOYÉ, événements NON cochés
+
+GO de Nico le 05/10 après-midi : « on corrige tout, texte nickel dans tous les
+cas ». Fait le 05/10 (commits 26772fa, cd069a3, acce21a, b4240ae) :
+- **pied du gabarit dans la langue du mail** (`_shared/email-template.ts`,
+  `textesPied`) : tout mail anglais finissait en français. Français octet pour
+  octet inchangé (14 rendus comparés à HEAD : bienvenue, comment ça marche, lien
+  de l'extension, relances 1 et 2, résiliation, ventes, gabarit nu) ; anglais :
+  seul le pied change. Liens du pied relus : `/legal#mentions` et
+  `/legal#confidentialite` existent (`src/pages/Legal.jsx`) ; limite connue :
+  /legal choisit sa langue par `localStorage.fs_lang` (français par défaut), un
+  lecteur anglais qui n'a jamais réglé l'app en anglais la voit en français
+  (correctif possible plus tard : `?lang=en`, dans l'app → OTA) ;
+- **règles et textes** : `_shared/paiement-echoue.js` (pur, testé), mis en page
+  par `mailPaiementEchoue` (`_shared/emails-fillsell.ts`). Trois contextes :
+  souscription, renouvellement, **fin d'essai** (Cloud : « Ton essai FillSell
+  Cloud est terminé et le paiement n'a pas abouti »). **Détection de la fin
+  d'essai sur les données de Stripe** : `facture.billing_reason ===
+  'subscription_cycle'` ET `abonnement.trial_end` non nul ET une ligne de la
+  facture dont `period.start` = `trial_end` (à 60 s près) — facture et
+  abonnement RELUS par l'API dans `stripe-webhook` ;
+- **chaque geste promis existe** : souscription → bouton vers l'app (une
+  facture réglée hors de Checkout n'ouvre PAS l'abonnement : `is_premium` et
+  `stripe_customer_id` ne se posent que sur `checkout.session.completed`) ;
+  renouvellement et fin d'essai → `hosted_invoice_url` d'une facture `open`
+  (« Régler la facture » / « Valider le paiement » pour un 3D Secure) ; pas de
+  page réglable → aucun bouton, « réponds à ce mail » ; « Stripe retentera le
+  paiement le … » seulement si `next_payment_attempt`, jamais pour un 3D Secure
+  ni une carte expirée ; « reste actif » seulement au renouvellement et si
+  l'abonnement est `active`/`past_due` ; « mets à jour ton moyen de paiement
+  depuis l'app » SUPPRIMÉ (le portail n'existe que sur le web, sous « Mes
+  factures ») ;
+- **bogue trouvé en passant** : l'événement arrive au format `2026-03-25.dahlia`
+  (relevé du 24/09), sans `payment_intent` : la cause fine (carte refusée,
+  expirée) ne se lisait JAMAIS. `stripe-webhook` relit désormais la facture par
+  le SDK (2023-10-16) ;
+- **ordre de mise en ligne** : `email-tunnel` AVANT `stripe-webhook`
+  (`deployer-fonctions-cloud.mjs`), un ancien `email-tunnel` rendrait une fin
+  d'essai en « souscription » ;
+- **preuves** : `npm run selftest:paiement-echoue` (315 : règles, 24 variantes
+  fr/en, cas sans lien, rendu par le vrai gabarit, câblage webhook → notify →
+  tunnel) ; `cloud-rappel-veille` 35, `option-cloud` 58, `paiement-stripe` 21,
+  `imports-epingles` verts ; `deno check` : email-tunnel 0 erreur (= HEAD),
+  stripe-webhook 34 (HEAD 32 : les deux nouveaux appels `stripe.invoices` /
+  `stripe.subscriptions` sur un SDK chargé en `?no-check`, même famille).
+
+⛔ Rien de déployé (email-tunnel v69 et stripe-webhook v56 tournent toujours),
+rien de coché chez Stripe. Reste, sur GO de Nico : déploiement (avec la mise en
+ligne Cloud, ou seul : `email-tunnel` puis `stripe-webhook`, même `verify_jwt`
+= false), PUIS cocher les deux événements par l'API (étape 4 bis), puis un
+« Send test event » → alerte « compte introuvable » = câblage prouvé.
 
 ## 5. Garde-fous
 
@@ -197,6 +271,11 @@ v56 → `_shared/payment-notify.ts` → email-tunnel v69, `mailPaiementEchoue` d
 - Trois verrous contre la fuite de l'IP du serveur.
 - Annonces de test à 999 € ou plus, retirées à la fin.
 - PC de Nico : rien de lourd pendant qu'un autre terminal travaille.
+- Échéances : jeton Cloudflare jusqu'au **12/10** ; IP de test 84458881 jusqu'au
+  **04/11** (sans renouvellement : elle s'éteint seule) ; serveur facturé à
+  l'heure tant qu'il existe (≈ 0,66 € TTC/jour) — le supprimer = décision de Nico.
+- Aucun 2ᵉ serveur, aucune 2ᵉ IP, aucune reprise de #83578416 sans nouvelle
+  décision de Nico (décision 8).
 
 ## 6. Points d'attention connus
 
@@ -215,5 +294,9 @@ v56 → `_shared/payment-notify.ts` → email-tunnel v69, `mailPaiementEchoue` d
   démonstration du relecteur dans `CLOUD_OFFRE_TEMOINS` le moment venu.
 - L'identifiant d'appareil est local : un verrou faible seul, fort avec les trois autres.
 - Beebs : non promis (DataDome le 26/09).
-- L'extension Cloud se construit depuis `chrome-extension/` du commit déployé
-  (0.6.97 du lot Problèmes, encore en essais réels le 05/10).
+- L'extension Cloud se construit depuis `chrome-extension/` du commit déployé :
+  le serveur porte aujourd'hui **0.6.96-cloud** (feat/cloud) ; la 0.6.97 du lot
+  Problèmes n'y sera qu'après la fusion et un redéploiement (§ 4.2).
+- Docker sur le serveur : **29.1.3** (Ubuntu 24.04, paquet docker.io), sans
+  buildx/BuildKit — pas de `COPY --chmod` ni `RUN --mount` dans les Dockerfiles ;
+  API Docker de l'orchestrateur épinglée en 1.44 (`src/docker.js`).
