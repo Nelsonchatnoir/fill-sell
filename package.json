@@ -181,9 +181,17 @@
     "selftest:releves-progres": "node scripts/releves-progres-selftest.mjs",
     "selftest:reponses-partagees": "node --import ./scripts/loader-ext.mjs scripts/reponses-partagees-selftest.mjs",
     "selftest:vinted-marque-libre": "node scripts/vinted-marque-libre-selftest.mjs",
+    "selftest:vinted-marque-parite": "node scripts/vinted-marque-parite-selftest.mjs",
+    "selftest:vinted-cadenceur": "node scripts/vinted-cadenceur-selftest.mjs",
+    "selftest:vinted-colis-choix": "node scripts/vinted-colis-choix-selftest.mjs",
     "selftest:beebs-age-republication": "node scripts/beebs-age-republication-selftest.mjs",
     "selftest:beebs-taille-nivake": "node scripts/beebs-taille-nivake-selftest.mjs",
-    "selftest:question-marque": "node scripts/question-marque-selftest.mjs"
+    "selftest:question-marque": "node scripts/question-marque-selftest.mjs",
+    "selftest:vinted-vendue-hors-ligne": "node --import ./scripts/loader-ext.mjs scripts/vinted-vendue-hors-ligne-selftest.mjs",
+    "selftest:lbc-transporteurs-exacts": "node scripts/lbc-transporteurs-exacts-selftest.mjs",
+    "selftest:colis-vinted-retenu": "node scripts/colis-vinted-retenu-selftest.mjs",
+    "selftest:pret-sans-rayon": "node --import ./scripts/loader-ext.mjs scripts/pret-sans-rayon-selftest.mjs",
+    "selftest:colis-vinted-retenu-service": "node scripts/colis-vinted-retenu-service-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
