@@ -166,11 +166,13 @@ export function vintedMasqueeMalgreJobs(item, jobsAll) {
 export function annoncesEncoreEnLigne(item, jobsAll) {
   const { publishedActive, latestPubByPlatform } = computeRemovalInfo(jobsAll ?? []);
   const masquee = vintedMasqueeMalgreJobs(item, jobsAll);
+  // Vendue, close ou disparue (05/10) : même règle que la carte.
+  const vintedVisible = vintedPresenceArticle(item, jobsAll).visible;
   const enLigne = [];
   for (const p of publishedActive) {
     // Masquée/brouillon malgré un job 'published' (relevé plus récent que le
     // job) : invisible d'un acheteur, on ne la dit pas « encore en ligne ».
-    if (p === "vinted" && masquee) continue;
+    if (p === "vinted" && (masquee || !vintedVisible)) continue;
     const pub = latestPubByPlatform[p];
     // La sonde a DÉJÀ constaté que l'annonce n'est plus atteignable
     // (platform_fields.unavailable_since) : ce cas appartient au bandeau
@@ -188,7 +190,7 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
   // ou à l'état de brouillon sur Vinted n'est PAS visible d'un acheteur — la
   // dire « encore en ligne » serait faux. Même règle de fraîcheur que
   // partout : vintedMasqueeMalgreJobs (helper ci-dessus).
-  if (item?.vinted_item_id && !item?.disparu_le && !masquee
+  if (item?.vinted_item_id && vintedVisible
     && !enLigne.some(a => a.platform === "vinted")) {
     enLigne.push({ platform: "vinted", url: `https://www.vinted.fr/items/${item.vinted_item_id}` });
   }
@@ -210,11 +212,54 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
 // Masquée/brouillon (vinted_status, garde de fraîcheur du helper) = occupée
 // mais pas visible. disparu_le = ni l'une ni l'autre (l'annonce n'existe plus).
 // Les trois autres plateformes ne changent pas : jobs 'published' seuls.
+//
+// ── UNE ANNONCE VENDUE N'EST PLUS « EN VENTE » (05/10, Louis) ───────────────
+// « 12 adaptateurs Jaune » (quantité 9998) gardait le logo Vinted alors que
+// son annonce 10238384500 était vendue (job 'sold') : la seule présence de
+// vinted_item_id suffisait. Pour Louis, ce logo veut dire « en vente sur
+// Vinted ». L'annonce PORTÉE PAR LA FICHE est morte quand : disparu_le, ou
+// vinted_status 'sold'/'closed', ou un job Vinted 'sold' pour CE numéro.
+// Un job 'published' ne la ressuscite que s'il vise une AUTRE annonce, ou s'il
+// a été mis en ligne APRÈS le constat (relevé, disparition) — cas de « 12
+// adaptateurs Rouge » : vendue le 04/10, republiée le 05/10 sous 10251765273
+// alors que la fiche disait encore 'sold'. Un job 'sold' pour un numéro tue ce
+// numéro, quelle que soit la date (une annonce vendue ne revient pas).
+const VINTED_STATUTS_MORTS = new Set(["sold", "closed"]);
+function vintedNumerosVendus(jobs) {
+  const ids = new Set();
+  for (const j of jobs) {
+    if (j.platform !== "vinted" || j.action === "delete" || j.status !== "sold") continue;
+    const id = idAnnonceDe(j);
+    if (id) ids.add(id);
+  }
+  return ids;
+}
 export function vintedPresenceArticle(item, jobsAll) {
   const jobs = jobsAll ?? [];
-  if (item?.disparu_le) return { occupee: false, visible: false };
-  const { publishedActive } = computeRemovalInfo(jobs);
-  const occupee = Boolean(item?.vinted_item_id) || publishedActive.includes("vinted");
+  const vendus = vintedNumerosVendus(jobs);
+  const idFiche = item?.vinted_item_id != null ? String(item.vinted_item_id) : "";
+  const constatStatut = VINTED_STATUTS_MORTS.has(item?.vinted_status) ? Date.parse(item?.last_synced_at ?? "") : NaN;
+  const constatDisparu = item?.disparu_le ? Date.parse(item.disparu_le) : NaN;
+  // Date du constat de mort de l'annonce de la fiche (Infinity = sans date :
+  // le constat fait foi contre tout job de ce numéro).
+  let mortLe = null;
+  if (idFiche && vendus.has(idFiche)) mortLe = Infinity;
+  else if (item?.disparu_le || VINTED_STATUTS_MORTS.has(item?.vinted_status)) {
+    const dates = [constatStatut, constatDisparu].filter(Number.isFinite);
+    mortLe = dates.length ? Math.max(...dates) : Infinity;
+  }
+  const ficheVivante = Boolean(idFiche) && mortLe == null;
+  const { publishedActive, latestPubByPlatform } = computeRemovalInfo(jobs);
+  let jobVivant = false;
+  if (publishedActive.includes("vinted")) {
+    const pub = latestPubByPlatform.vinted;
+    const idPub = idAnnonceDe(pub);
+    if (idPub && vendus.has(idPub)) jobVivant = false;
+    else if (mortLe == null) jobVivant = true;
+    else if (idPub && idFiche && idPub !== idFiche) jobVivant = true;
+    else jobVivant = mortLe !== Infinity && miseEnLigneDe(pub) > mortLe;
+  }
+  const occupee = ficheVivante || jobVivant;
   const visible = occupee && !vintedMasqueeMalgreJobs(item, jobs);
   return { occupee, visible };
 }
