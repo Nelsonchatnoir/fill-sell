@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -177,6 +178,39 @@ serve(async (req) => {
         const renewalProductId    = (renewal.productId || renewal.autoRenewProductId) as string | undefined;
         const renewalOriginalTxId = renewal.originalTransactionId as string | undefined;
 
+        // (04/10) L'option Cloud (groupe « FillSell Cloud ») : seule la
+        // résiliation / reprise de son renouvellement passe par ici. Rien du
+        // palier n'est touché ; une référence d'un autre canal est ignorée.
+        if (renewalToken && renewalProductId && lectureCloudApple({ productId: renewalProductId })) {
+          const { data: profilCloud } = await supabaseAdmin
+            .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", renewalToken).maybeSingle();
+          const renewalDate = renewal.renewalDate as number | undefined;
+          const { update, motif } = ecritureCloudStore({
+            canal: "apple",
+            lecture: { fin: renewalDate != null ? new Date(renewalDate).toISOString() : null },
+            sens: autoRenewStatus === 1 ? "reprise" : "annulation",
+            ref: renewalOriginalTxId ?? null,
+            profil: profilCloud ?? {},
+          });
+          if (!update) {
+            console.log(`[apple-iap-webhook] Cloud DID_CHANGE_RENEWAL_STATUS ignoré (${motif}) → userId=${renewalToken}`);
+            return new Response(JSON.stringify({ ok: true, skipped: motif }), {
+              status: 200, headers: { "Content-Type": "application/json" },
+            });
+          }
+          const { error: cloudErr } = await supabaseAdmin.from("profiles").update(update).eq("id", renewalToken);
+          if (cloudErr) {
+            console.error("[apple-iap-webhook] DB error (cloud renewal):", cloudErr.message);
+            return new Response(JSON.stringify({ error: cloudErr.message }), {
+              status: 500, headers: { "Content-Type": "application/json" },
+            });
+          }
+          console.log(`[apple-iap-webhook] Cloud DID_CHANGE_RENEWAL_STATUS autoRenew=${autoRenewStatus} → userId=${renewalToken}`, JSON.stringify(update));
+          return new Response(JSON.stringify({ ok: true, cloud: true }), {
+            status: 200, headers: { "Content-Type": "application/json" },
+          });
+        }
+
         if (!renewalToken || !renewalProductId || !PREMIUM_PRODUCT_IDS.includes(renewalProductId)) {
           console.warn("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS: missing token or non-premium product");
           return new Response(JSON.stringify({ ok: true, skipped: "missing_token_or_product" }), {
@@ -277,6 +311,58 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, skipped: "no appAccountToken" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // ── L'OPTION CLOUD — groupe « FillSell Cloud » (04/10/2026) ─────────────
+    // app.fillsell.cloud.sub : 20 €/mois, offre d'introduction gratuite 1
+    // semaine, ouvert à tous (Free compris). Ne touche à AUCUNE colonne de
+    // palier ni aux quotas : essai (offerType 1) → dates d'essai ; payé →
+    // is_cloud ; expiré / remboursé → option retirée. Cloud continue si le
+    // palier tombe. Règles : _shared/cloud-option.js.
+    const lectureCloud = lectureCloudApple(tx);
+    if (lectureCloud) {
+      let sens: "on" | "off" | "annulation" | "reprise" | null = null;
+      if (PREMIUM_ON.includes(notificationType)) sens = "on";
+      else if (PREMIUM_OFF.includes(notificationType)) sens = "off";
+      else if (notificationType === "DID_CHANGE_RENEWAL_STATUS" && signedRenewalInfo) {
+        try {
+          const renewal = await verifyAndDecodeJWS(signedRenewalInfo);
+          sens = renewal.autoRenewStatus === 1 ? "reprise" : "annulation";
+        } catch {
+          console.warn("[apple-iap-webhook] Cloud : signedRenewalInfo illisible");
+        }
+      }
+      if (!sens) {
+        console.log(`[apple-iap-webhook] Cloud : type ${notificationType} sans effet — skipped`);
+        return new Response(JSON.stringify({ ok: true, skipped: `cloud_${notificationType}` }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const { data: profilCloud } = await supabaseAdmin
+        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", appAccountToken).maybeSingle();
+      const { update, motif } = ecritureCloudStore({
+        canal: "apple", lecture: lectureCloud, sens, ref: originalTransactionId ?? null, profil: profilCloud ?? {},
+      });
+      if (update && motif === "essai_deja_pris") {
+        console.warn(`[apple-iap-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);
+      }
+      if (!update) {
+        console.log(`[apple-iap-webhook] Cloud ${sens} ignoré (${motif}) → userId=${appAccountToken}`);
+        return new Response(JSON.stringify({ ok: true, skipped: motif }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const { error: cloudErr } = await supabaseAdmin.from("profiles").update(update).eq("id", appAccountToken);
+      if (cloudErr) {
+        console.error("[apple-iap-webhook] DB error (cloud):", cloudErr.message);
+        return new Response(JSON.stringify({ error: cloudErr.message }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[apple-iap-webhook] Cloud ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${appAccountToken} product=${productId}`, JSON.stringify(update));
+      return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
+        status: 200, headers: { "Content-Type": "application/json" },
       });
     }
 

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -203,7 +204,8 @@ serve(async (req) => {
 
     const { notificationType, purchaseToken, subscriptionId } = sub;
 
-    if (!PREMIUM_PRODUCT_IDS.includes(subscriptionId)) {
+    // (04/10) L'option Cloud (app.fillsell.cloud.sub) passe aussi : traitée plus bas.
+    if (!PREMIUM_PRODUCT_IDS.includes(subscriptionId) && subscriptionId !== PRODUIT_CLOUD_GOOGLE) {
       return new Response(JSON.stringify({ ok: true, skipped: "non-premium product" }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
@@ -281,6 +283,44 @@ serve(async (req) => {
               + "poser le droit à la main (aucun réessai Pub/Sub n'aboutira).",
       });
       return new Response(JSON.stringify({ ok: true, skipped: "no_user_id" }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // ── L'OPTION CLOUD — app.fillsell.cloud.sub (04/10/2026) ────────────────
+    // Forfait cloud-monthly, offre cloud-trial-3d (essai 7 JOURS depuis le
+    // 04/10 nuit, l'identifiant ne se renomme pas). PURCHASED (4)
+    // avec l'offre → essai (dates, option pas payée) ; RENEWED / RECOVERED /
+    // RESTARTED → payée ; EXPIRED / REVOKED / ON_HOLD → retirée ; CANCELED (3)
+    // → renouvellement coupé, accès conservé. Garde « référence remplacée » sur
+    // cloud_ref (jamais sur google_purchase_token, qui est celui du palier).
+    // Les règles sont dans _shared/cloud-option.js.
+    const lectureCloud = lectureCloudGoogle(subscriptionId, purchase, notificationType);
+    if (lectureCloud) {
+      const sens = notificationType === CANCELED_TYPE ? "annulation" : isPremium ? "on" : "off";
+      const { data: profilCloud } = await supabaseAdmin
+        .from("profiles").select("cloud_canal, cloud_ref, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete").eq("id", userId).maybeSingle();
+      const { update, motif } = ecritureCloudStore({
+        canal: "google", lecture: lectureCloud, sens, ref: purchaseToken, profil: profilCloud ?? {},
+      });
+      if (update && motif === "essai_deja_pris") {
+        console.warn(`[google-play-webhook] essai Cloud REFUSÉ : ce compte a déjà eu son essai (autre canal) — Cloud démarrera au premier paiement`);
+      }
+      if (!update) {
+        console.log(`[google-play-webhook] Cloud ${sens} ignoré (${motif}) → userId=${userId}`);
+        return new Response(JSON.stringify({ ok: true, skipped: motif }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const { error: cloudErr } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
+      if (cloudErr) {
+        console.error("[google-play-webhook] DB error (cloud):", cloudErr.message);
+        return new Response(JSON.stringify({ error: cloudErr.message }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[google-play-webhook] Cloud type=${notificationType} ${sens}${lectureCloud.essai ? " (essai)" : ""} → userId=${userId}`, JSON.stringify(update));
+      return new Response(JSON.stringify({ ok: true, cloud: true, sens }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
     }
