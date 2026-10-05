@@ -15539,7 +15539,16 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       const reprise = await remettreEnFileReprise(run, token, `[hub] ${String(erreur)}`, maintenant);
       if (reprise) return { ok: false, reason: "reprise_technique", message: String(erreur) };
     }
-    await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: JSON.stringify(fin) }).catch(() => {});
+    // (05/10) La clôture n'a pas le droit de se perdre en silence : une seule
+    // requête perdue (connexion lente ou instable, cf. Marine) laissait la
+    // ligne « en cours » jusqu'au chien de garde. Une seconde tentative après
+    // 2 s, comme la clôture du dressing.
+    const clotureAnnonces = () => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: JSON.stringify(fin) });
+    await clotureAnnonces().catch(async (e1) => {
+      console.warn(`[releve][${platform}] clôture du run ${run.id} ratée (${String(e1?.message ?? e1)}) — nouvel essai dans 2 s`);
+      await sleep(2000);
+      await clotureAnnonces().catch((e2) => console.error(`[releve][${platform}] CLÔTURE PERDUE du run ${run.id} :`, String(e2?.message ?? e2)));
+    });
     console.log(`[releve][${platform}] run ${run.id} → ${fin.status} : ${annonces.length} annonce(s), ${ecrites} écrite(s)${fin.erreur ? ` — ${fin.erreur}` : ""}`);
     return { ok: fin.status === "done", relevees: annonces.length, bilan };
   } catch (e) {
