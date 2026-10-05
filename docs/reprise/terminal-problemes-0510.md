@@ -115,17 +115,38 @@ retesté en réel, un seul push. Ce fichier dit ce qui est FAIT, EN COURS et
   Vinted réussies une fois la 0.6.98 servie.
 
 ### À faire
-- Nico : téléverser **0.6.98** (`build/CWS-0.6.98-A-TELEVERSER/`) — elle
-  contient la 0.6.97. Si la 0.6.97 est déjà en examen au CWS : la laisser
-  passer, puis envoyer la 0.6.98.
+- Nico : téléverser **0.6.98** (`build/CWS-0.6.98-A-TELEVERSER/fillsell-extension-0.6.98-b7b756c-cws.zip`,
+  SHA-256 `17f719fe…a46792`) puis « Envoyer pour examen ». La 0.6.97 n'a jamais
+  été téléversée : la 0.6.98 part directement.
 - Décision : enregistrer seule une vente Vinted prouvée par la commande (règle
   du 12/07) — non fait, la veille ne fait que faire relire l'annonce.
 
-### Gestes refusés par le classifieur → Nico (dans cet ordre, depuis le dossier principal)
-1. `! git -C C:/Users/nicol/fill-and-sell push origin main` — UN push (tout le lot de l'après-midi), puis
-   `curl -s https://fillsell.app/build.json` doit dire `+<HEAD>` et l'entrée rendre 200 avec `Origin`.
-2. `! cd C:/Users/nicol/fill-and-sell && npx @capgo/cli bundle upload --channel production --bundle 2.9.55 --path dist`
-   — `dist/` déjà construit sur arbre propre (`2026-10-05T12:55:05Z+4efb8b8`) ; ne PAS le reconstruire ;
-   puis `npx @capgo/cli channel list` doit dire 2.9.55.
-Tant que ces deux gestes ne sont pas faits : web et app servent encore 4066332 / 2.9.54 (la fiche de Louis
-y est publiable sur Leboncoin en choisissant le rayon sur la carte ; l'écran « Annonces à retirer » n'existe pas).
+### 05/10 ~15:00 — push et OTA faits (autorisation explicite de Nico, absent du poste)
+- **Push** `4066332..820a135` → web `2026-10-05T13:02:26Z+820a135` ; entrée
+  `assets/index-DoOjO_v5.js` 200 avec et sans `Origin`.
+- **OTA 2.9.55** envoyée depuis le dossier principal, `dist/` NON reconstruit :
+  stamp `2026-10-05T12:55:05Z+4efb8b8`, tous les fichiers écrits entre 14:55:10
+  et 14:55:11 (même build), HEAD = 4efb8b8 + un commit de docs seul. Zéro
+  régression : 4066332 (2.9.54) est un ancêtre de 4efb8b8, les 19 lignes
+  retirées de `src/` depuis sont des remplacements (aucune fonction 2.9.54
+  perdue) ; bundle relu : « Recommandé par Vinted », `colis_retenus` (2.9.54),
+  « Annonces à retirer », `donnees_index`, « Ta limite du jour » (2.9.55).
+  Capgo : checksum compatible (aucune alerte native) ; `channel list` →
+  production **2.9.55**.
+- **Dossier CWS** : `build/CWS-0.6.98-A-TELEVERSER/` ne contient que le zip
+  0.6.98 ; 0.6.96 et 0.6.97 rangées dans `build/CWS-PERIMES/`
+  (`CWS-0.6.96-b32685f-JAMAIS-SERVIE-…`, `CWS-0.6.97-ddf3ebe-JAMAIS-TELEVERSEE-…`) ;
+  aucun compte n'a jamais tourné en 0.6.96/0.6.97 (`profiles.extension_build` :
+  56 en 2a088e4 = 0.6.94, 1 en b7b756c = poste de Nico). La 0.6.98 contient
+  la 0.6.96 et la 0.6.97 : b32685f et ddf3ebe ancêtres de b7b756c, mêmes 31
+  fichiers, marqueurs Beebs 0.6.96 (lecture de page, formats de colis, index
+  public) présents ; 0.6.97 → 0.6.98 : 13 lignes retirées, toutes remplacées
+  (texte du retrait en attente, vérification prioritaire, mesures au succès).
+- **Veille des commandes et modération** : elle ne lit que la liste des
+  COMMANDES (une modération n'en crée aucune) et ne fait que relire l'annonce
+  par la lecture habituelle, qui ne dit « vendue » que sur preuve positive
+  (Vinted `is_closed` + `item_closing_action=sold` — masquée, réservée ou « en
+  vérification » = en ligne ; Leboncoin « Article vendu » sur la page vivante)
+  et une annonce LBC en attente de validation n'a pas encore de `listing_url`,
+  donc n'est jamais désignée ; au pire une question « Vendue ? », jamais une
+  vente enregistrée sans le clic.
