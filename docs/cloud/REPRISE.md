@@ -2,8 +2,7 @@
 
 > ⛔ **PÉRIMÉE depuis le 05/10 16:00** : `feat/cloud` est FUSIONNÉE dans `main` (7b9771c)
 > et servie (web + OTA 2.9.56). La REPRISE à jour est dans le dossier PRINCIPAL :
-> `C:Users
-icolill-and-selldocscloudREPRISE.md` (§ 0 bis). Ne plus commiter sur cette branche.
+> `C:\Users\nicol\fill-and-sell\docs\cloud\REPRISE.md` (§ 0 bis). Ne plus commiter sur cette branche.
 
 Mis à jour le **05/10/2026, 15:15** (terminal Cloud). Remplace, pour la
 suite, le REPRISE du prototype (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md`,
