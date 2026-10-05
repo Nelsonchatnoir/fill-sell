@@ -154,12 +154,14 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   const src = readFileSync(new URL("../src/tabs/StockTab.jsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   ok("calcul sur les jobs DÉJÀ chargés (tousLesJobs, fichesToutes)", /retraitsBloquesParConnexion\(\{ jobs: tousLesJobs, fiches: fichesToutes \}\)/.test(src));
   ok("aucune lecture neuve : pas de requête dans le calcul", !/retraitsBloquesParConnexion[\s\S]{0,200}supabase/.test(src));
-  const iTitre = src.indexOf("<TitreStock ");
-  const iBandeau = src.indexOf("{retraitsBloques.total>0&&(");
-  const iActivite = src.indexOf("{(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(");
-  ok("bandeau rendu juste sous le titre, avant tout le reste", iTitre > 0 && iBandeau > iTitre && iActivite > iBandeau);
-  const bandeau = src.slice(iBandeau, iActivite);
-  ok("bandeau : la phrase, « Me connecter » et la liste dépliable", /texteRetraitsBloques\(g,lang\)/.test(bandeau) && /<BoutonMeConnecter userId=\{user\.id\} platform=\{g\.platform\}/.test(bandeau) && /aria-expanded=\{ouvert\}/.test(bandeau));
+  // (05/10, Nico) Jamais un bandeau empilé en haut du Stock (refonte du
+  // 03/10) : le signal vit dans « À régler », qui ouvre un écran dédié.
+  ok("aucun bandeau de retraits en haut du Stock", !src.includes("{retraitsBloques.total>0&&(") && !/<div ref=\{bandeauRetraitsRef\}/.test(src));
+  ok("la ligne « À régler » ouvre l'écran des retraits", /\{ cle: 'retraits', n: nbRetraitsBloques[\s\S]{0,200}onOuvrir: \(\) => setGesteOuvert\('retraits'\) \}/.test(src));
+  ok("l'écran est rendu, retour vers « À régler »", /\{gesteOuvert==='retraits'&&\(\s*<EcranRetraitsBloques [^>]*retraits=\{retraitsBloques\}[\s\S]{0,200}onFermer=\{\(\)=>setGesteOuvert\('a_regler'\)\}/.test(src));
+  const ecranRetraits = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
+  ok("l'écran : la phrase, « Me connecter » par plateforme et la liste des articles", /texteRetraitsBloques\(g, lang\)/.test(ecranRetraits) && /<BoutonMeConnecter userId=\{userId\} platform=\{g\.platform\}/.test(ecranRetraits) && /g\.lignes\.map\(\(l\) =>/.test(ecranRetraits));
+  ok("l'écran garde le gabarit de la refonte (EcranPlein)", /<EcranPlein /.test(ecranRetraits));
   ok("« À régler » compte les retraits bloqués", /const nbARegler = nbRetraitsBloques \+ nbAttenteAction/.test(src));
   ok("« À régler » : ligne 'retraits' en tête", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\{ cle: 'retraits', n: nbRetraitsBloques/.test(src));
   // (05/10, relu au harnais) Le bouton COMPACT : la variante « bouton »

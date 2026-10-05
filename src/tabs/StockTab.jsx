@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
 // varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
 // import de composant orphelin passe sous le radar — vérifié à la main.
-import { Check, ChevronRight, ChevronDown, AlertTriangle, Pause } from 'lucide-react';
+import { Check, ChevronRight, AlertTriangle, Pause } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -33,7 +33,7 @@ import { etatAttenteBoutique, lignesAttenteBoutique, phraseRassurance, messageFi
 import { phraseMiseAJourExtension } from '../utils/extensionAJour';
 import { retenueServeurDuJob, phraseRetenueServeur } from '../utils/retenueServeur';
 import { partageRepublicationsDuJour } from '../utils/plafondRepublication';
-import { retraitsBloquesParConnexion, texteRetraitsBloques, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits } from '../utils/retraitsBloques';
+import { retraitsBloquesParConnexion, ligneCarteRetraitBloque, ligneARegler as ligneAReglerRetraits } from '../utils/retraitsBloques';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import { useOplaAcces, phraseAccesOpla, parcageDepasse } from '../utils/oplaAcces';
@@ -104,6 +104,7 @@ import { CarteArticle, LigneArticle } from '../stock/Carte';
 import MenuArticle from '../stock/MenuArticle';
 import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
+import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
   FILTRES_RAPIDES, libelleFiltreRapide, entreDansFiltreRapide, TRANCHES_ANCIENNETE, libelleTranche, trancheAnciennete,
@@ -6544,8 +6545,6 @@ const StockTab = memo(function StockTab({
     () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes }),
     [tousLesJobs, fichesToutes],
   );
-  const [retraitsBloquesOuverts, setRetraitsBloquesOuverts] = useState(null); // plateforme dépliée | null
-  const bandeauRetraitsRef = useRef(null);
   // ── LA FOURNÉE, FIGÉE (2026-09-19) ────────────────────────────────────────
   // POURQUOI un état et pas un simple calcul : le périmètre du lot de
   // republications était RE-DÉDUIT à chaque poll (le bulk_batch_id du vivant le
@@ -8193,7 +8192,7 @@ const StockTab = memo(function StockTab({
     // En tête : le seul point où un acheteur peut payer un article déjà parti.
     // Le tap ramène au bandeau du haut, qui porte « Me connecter ».
     { cle: 'retraits', n: nbRetraitsBloques, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
-      onOuvrir: () => { setGesteOuvert(null); setTimeout(() => bandeauRetraitsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 60); } },
+      onOuvrir: () => setGesteOuvert('retraits') },
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
@@ -9005,55 +9004,6 @@ const StockTab = memo(function StockTab({
         <TitreStock lang={lang} boutiques={boutiquesVinted} boutiqueConnectee={boutiqueConnectee}
           filterBoutique={filterBoutique} setFilterBoutique={(v)=>{setFilterBoutique(v);setShowAllStock(false);}}
           attenteBoutique={attenteBoutique}/>
-        {/* ── VENDU MAIS ENCORE EN LIGNE : LE RETRAIT ATTEND UNE RECONNEXION
-            (05/10, Joséphine — 8 retraits Opla après vente, invisibles) ─────
-            Le seul point de la page où un acheteur peut payer un article déjà
-            parti : il passe AVANT tout, en rouge, jamais replié dans la
-            feuille des points de la synchronisation. Une ligne par
-            plateforme : la phrase, LE bouton « Me connecter » (le même
-            composant que partout), et la liste des articles dépliable sur
-            place. Données : les jobs déjà chargés (utils/retraitsBloques). */}
-        {retraitsBloques.total>0&&(
-          <div ref={bandeauRetraitsRef} style={{display:"flex",flexDirection:"column",gap:10,marginTop:16,scrollMarginTop:16}}>
-            {retraitsBloques.parPlateforme.map(g=>{
-              const fr=lang!=='en';
-              const ouvert=retraitsBloquesOuverts===g.platform;
-              const n=g.lignes.length;
-              const motif=murDeConnexion(g.lignes[0].job)??MOTIFS.CONNEXION;
-              return(
-                <div key={g.platform} role="alert" style={{background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`,borderLeft:`4px solid ${SK.rouge}`,borderRadius:16,padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                    <AlertTriangle size={18} strokeWidth={2.2} aria-hidden="true" style={{flexShrink:0,marginTop:1,color:SK.rouge}}/>
-                    <span style={{flex:1,minWidth:0,fontSize:13,lineHeight:"19px",fontWeight:700,color:SK.rouge}}>{texteRetraitsBloques(g,lang)}</span>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                    {user?.id&&<BoutonMeConnecter userId={user.id} platform={g.platform} motif={motif} lang={lang} variante="bouton"/>}
-                    <button type="button" aria-expanded={ouvert} onClick={()=>setRetraitsBloquesOuverts(ouvert?null:g.platform)}
-                      style={{display:"inline-flex",alignItems:"center",gap:6,minHeight:44,padding:"0 4px",border:"none",background:"transparent",color:SK.rouge,fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}>
-                      {ouvert
-                        ?(fr?'Masquer la liste':'Hide the list')
-                        :(fr?(n>1?`Voir les ${n} articles`:"Voir l'article"):(n>1?`See the ${n} items`:'See the item'))}
-                      <ChevronDown size={16} aria-hidden="true" style={{transform:ouvert?'rotate(180deg)':'none',transition:'transform .15s ease-out'}}/>
-                    </button>
-                  </div>
-                  {ouvert&&(
-                    <ul style={{listStyle:"none",margin:0,padding:"4px 0 0",display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${SK.rougeBord}`}}>
-                      {g.lignes.map(l=>(
-                        <li key={l.job.id} style={{display:"flex",alignItems:"center",gap:8,minWidth:0,fontSize:12.5,lineHeight:"18px",color:SK.ink}}>
-                          <PlatformLogo platform={g.platform} size={14}/>
-                          <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:600}}>{l.titre??(fr?'Article':'Item')}</span>
-                          <span style={{flexShrink:0,fontSize:11.5,fontWeight:600,color:SK.ink2}}>
-                            {l.vendu?(fr?'Vendu':'Sold'):l.fiche?(fr?'En stock':'In stock'):(fr?'Fiche supprimée':'Item deleted')}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
         {(activite||repubBandeau?.dryRuns>0||repubBandeau?.orpheline)&&(
           <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:16,padding:16,marginTop:16,boxShadow:"0 1px 3px rgba(16,32,27,0.04)"}}>
             {activite&&(()=>{
@@ -10922,6 +10872,12 @@ const StockTab = memo(function StockTab({
       })()}
       {gesteOuvert==='a_regler'&&(
         <EcranARegler lang={lang} lignes={lignesARegler} onFermer={()=>setGesteOuvert(null)}/>
+      )}
+      {/* (05/10) Retraits bloqués par une connexion : un écran, ouvert depuis
+          « À régler » — jamais un bandeau empilé en haut du Stock (Nico). */}
+      {gesteOuvert==='retraits'&&(
+        <EcranRetraitsBloques lang={lang} retraits={retraitsBloques} userId={user?.id}
+          motifDe={(j)=>murDeConnexion(j)??MOTIFS.CONNEXION} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}
       {ecranDejaVendu&&(
         <EcranDoublons lang={lang} items={items} doublons={questionsDejaVendu}
