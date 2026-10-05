@@ -403,8 +403,45 @@ export interface OptionsEmail {
   langue?: string;
 }
 
+// Le pied de page dans la langue du mail (05/10/2026). Jusque-là, tout mail
+// anglais finissait en français (« Une question ? Écris-nous… », « Mentions
+// légales · Confidentialité »). Français : octet pour octet comme avant.
+// `contact` reçoit le lien mailto déjà construit (HTML sûr).
+const PIED = {
+  fr: {
+    voirNavigateur: "Voir dans le navigateur",
+    contactEtReponse: (contact: string) => `Une question&nbsp;? Écris-nous à ${contact} ou réponds à ce mail.`,
+    contact: (contact: string) => `Une question&nbsp;? Écris-nous à ${contact}.`,
+    reponse: `Une question&nbsp;? Réponds directement à ce mail.`,
+    notifications: "Gérer mes notifications",
+    desinscription: "Me désinscrire",
+    mentions: "Mentions légales",
+    confidentialite: "Confidentialité",
+    formuleFin: "À bientôt,",
+    raisonEnvoi: "Tu reçois ce message parce que tu as un compte FillSell.",
+  },
+  en: {
+    voirNavigateur: "View in browser",
+    contactEtReponse: (contact: string) => `Questions? Write to us at ${contact} or just reply to this email.`,
+    contact: (contact: string) => `Questions? Write to us at ${contact}.`,
+    reponse: `Questions? Just reply to this email.`,
+    notifications: "Manage my notifications",
+    desinscription: "Unsubscribe",
+    mentions: "Legal notice",
+    confidentialite: "Privacy",
+    formuleFin: "See you soon,",
+    raisonEnvoi: "You're getting this message because you have a FillSell account.",
+  },
+};
+
+/** Les textes du pied pour une langue (« en… » = anglais, tout le reste = français). */
+export function textesPied(langue: string = "fr") {
+  return String(langue ?? "").toLowerCase().startsWith("en") ? PIED.en : PIED.fr;
+}
+
 /** Rend l'email complet : document HTML autonome, CSS inline. */
 export function renderEmail(opts: OptionsEmail): string {
+  const P = textesPied(opts.langue ?? "fr");
   const {
     titre,
     corps,
@@ -413,11 +450,11 @@ export function renderEmail(opts: OptionsEmail): string {
     surtitre = "",
     signatureNom = "",
     signatureRole = "",
-    formuleFin = "À bientôt,",
+    formuleFin = P.formuleFin,
     logoUrl = LOGO_URL,
     emailContact = EMAIL_SUPPORT,
     reponseAuMail = true,
-    raisonEnvoi = "Tu reçois ce message parce que tu as un compte FillSell.",
+    raisonEnvoi = P.raisonEnvoi,
     lienPreferences = "",
     lienDesinscription = "",
     mentionsLegales = "",
@@ -450,7 +487,7 @@ export function renderEmail(opts: OptionsEmail): string {
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="fs-card" style="width:600px; max-width:600px;"><tr>` +
       `<td align="left" class="fs-pad" style="padding:0 8px 10px 8px; font-family:${POLICE}; font-size:12px; line-height:18px; mso-line-height-rule:exactly; color:#9A9A94; letter-spacing:0.2px;">${echapper(ligneService)}</td>` +
       (hrefWeb
-        ? `<td align="right" class="fs-pad fs-hide-sm" style="padding:0 8px 10px 8px; font-family:${POLICE}; font-size:12px; line-height:18px; mso-line-height-rule:exactly; color:#9A9A94;"><a href="${hrefWeb}" style="color:#9A9A94; text-decoration:underline;">Voir dans le navigateur</a></td>`
+        ? `<td align="right" class="fs-pad fs-hide-sm" style="padding:0 8px 10px 8px; font-family:${POLICE}; font-size:12px; line-height:18px; mso-line-height-rule:exactly; color:#9A9A94;"><a href="${hrefWeb}" style="color:#9A9A94; text-decoration:underline;">${P.voirNavigateur}</a></td>`
         : "") +
       `</tr></table>`
     : "";
@@ -505,14 +542,13 @@ export function renderEmail(opts: OptionsEmail): string {
 
   // --- Pied de page : contact ---
   let phraseContact = "";
+  const lienContact = `<a href="${hrefContact}" style="color:#17835F; text-decoration:underline;">${echapper(emailContact)}</a>`;
   if (hrefContact && reponseAuMail) {
-    phraseContact =
-      `Une question&nbsp;? Écris-nous à <a href="${hrefContact}" style="color:#17835F; text-decoration:underline;">${echapper(emailContact)}</a> ou réponds à ce mail.`;
+    phraseContact = P.contactEtReponse(lienContact);
   } else if (hrefContact) {
-    phraseContact =
-      `Une question&nbsp;? Écris-nous à <a href="${hrefContact}" style="color:#17835F; text-decoration:underline;">${echapper(emailContact)}</a>.`;
+    phraseContact = P.contact(lienContact);
   } else if (reponseAuMail) {
-    phraseContact = `Une question&nbsp;? Réponds directement à ce mail.`;
+    phraseContact = P.reponse;
   }
   const ligneContact = phraseContact
     ? `<tr><td align="center" class="fs-pad" style="padding:26px 34px 10px 34px; background-color:#EFEDE8; font-family:${POLICE}; font-size:14px; line-height:23px; mso-line-height-rule:exactly; color:#6B7280;">${phraseContact}</td></tr>`
@@ -521,10 +557,10 @@ export function renderEmail(opts: OptionsEmail): string {
   // --- Pied de page : raison de l'envoi + preferences ---
   const liensPreferences = [
     hrefPreferences
-      ? `<a href="${hrefPreferences}" style="color:#6B7280; text-decoration:underline;">Gérer mes notifications</a>`
+      ? `<a href="${hrefPreferences}" style="color:#6B7280; text-decoration:underline;">${P.notifications}</a>`
       : "",
     hrefDesinscription
-      ? `<a href="${hrefDesinscription}" style="color:#6B7280; text-decoration:underline;">Me désinscrire</a>`
+      ? `<a href="${hrefDesinscription}" style="color:#6B7280; text-decoration:underline;">${P.desinscription}</a>`
       : "",
   ].filter(Boolean).join("&nbsp;&middot;&nbsp;");
   const ligneRaison = raisonEnvoi || liensPreferences
@@ -537,13 +573,13 @@ export function renderEmail(opts: OptionsEmail): string {
   // --- Pied de page : mentions legales ---
   const liensLegaux = [
     hrefMentions
-      ? `<a href="${hrefMentions}" style="color:#9A9A94; text-decoration:underline;">Mentions légales</a>`
+      ? `<a href="${hrefMentions}" style="color:#9A9A94; text-decoration:underline;">${P.mentions}</a>`
       : "",
     hrefConfidentialite
-      ? `<a href="${hrefConfidentialite}" style="color:#9A9A94; text-decoration:underline;">Confidentialité</a>`
+      ? `<a href="${hrefConfidentialite}" style="color:#9A9A94; text-decoration:underline;">${P.confidentialite}</a>`
       : "",
     hrefWeb
-      ? `<a href="${hrefWeb}" style="color:#9A9A94; text-decoration:underline;">Voir dans le navigateur</a>`
+      ? `<a href="${hrefWeb}" style="color:#9A9A94; text-decoration:underline;">${P.voirNavigateur}</a>`
       : "",
   ].filter(Boolean).join("&nbsp;&middot;&nbsp;");
   const ligneMentions = mentionsLegales || liensLegaux
