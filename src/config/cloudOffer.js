@@ -29,6 +29,13 @@
 //   5. le navigateur Cloud tourne vraiment (pool d'adresses, docs/cloud/).
 export const CLOUD_OFFER_ENABLED = false;
 
+// (05/10) Les textes légaux de l'option (CGV article 7, CGU 3.9, confidentialité
+// 4.7 et 4.8 — src/cloud/textesLegaux.js) : publiés sur /legal AVEC l'offre, le
+// même jour, par ce seul interrupteur. Page publique, sans compte : jamais
+// ouverts aux seuls témoins (règle du 15/09 : un service non ouvert ne
+// s'annonce pas). À lever seul, plus tôt, uniquement si la revue Apple l'exige.
+export const CLOUD_TEXTES_LEGAUX = CLOUD_OFFER_ENABLED;
+
 // (05/10) Comptes TÉMOINS de l'OFFRE (paiement compris) avant l'ouverture : le
 // compte de démonstration remis à la revue Apple (le premier abonnement d'un
 // groupe se soumet avec une version de l'app, le relecteur doit pouvoir
