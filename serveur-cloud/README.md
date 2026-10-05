@@ -19,9 +19,19 @@ le toucher). Ni Opla (sorti le 10/10) ni eBay (par l'API existante).
 
 ## Déployer
 
-Prérequis (Nico) : compte Hetzner + `HCLOUD_TOKEN` dans
-`C:\Users\nicol\fillsell-cloud-proto\secrets.env` ; la migration du socle
-appliquée (`20261004233000` puis `20261005120000`, et le sel du vault).
+Prérequis : `HCLOUD_TOKEN` (posé le 05/10, vérifié) et `IPROYAL_API_TOKEN` dans
+`C:\Users\nicol\fillsell-cloud-proto\secrets.env` (`CLOUDFLARE_API_TOKEN` facultatif).
+Le serveur se crée et se déploie AVANT la migration du socle : l'orchestrateur
+le dit une fois (`socle_absent`) et ne réessaie que toutes les 10 min (`src/socle.js`).
+
+**La commande unique (05/10)** — serveur, 1 IP de test, DNS, déploiement, contrôles, mesure :
+
+```bash
+node serveur-cloud/outils/lancer-serveur-test.mjs          # LE PLAN : tout lu (jetons, prix, solde, stock), rien créé ni acheté
+node serveur-cloud/outils/lancer-serveur-test.mjs --go     # sur le GO de Nico ; relancée, elle reprend sans rien racheter
+```
+L'état (serveur, n° de commande de l'IP, domaine, mesure — aucun secret) va dans
+`C:\Users\nicol\fillsell-cloud-proto\cloud-test-etat.json`. Le détail, pas à pas :
 
 ```bash
 node serveur-cloud/outils/creer-serveur.mjs --infos     # prix lus dans l'API, rien n'est créé
@@ -37,6 +47,7 @@ cd /srv/fillsell-cloud/deploiement
 docker compose exec orchestrateur node outils/ip.mjs ajouter <commande_iproyal>   # une IP achetée par Nico
 docker compose exec orchestrateur node outils/ip.mjs pool
 docker compose exec orchestrateur node outils/ticket.mjs <user_id>                # lien de test (30 min)
+docker compose exec -T orchestrateur node outils/mesurer-navigateur.mjs < proxy   # RAM d'un navigateur (URL du proxy sur l'entrée)
 docker compose logs -f orchestrateur
 ```
 

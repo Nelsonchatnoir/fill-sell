@@ -22,12 +22,24 @@ mais un seul exécutant rend le test lisible).
    - **B** — l'écran de l'app : Nico ajouté à `CLOUD_TEMOINS`, un push sur main
      et une OTA (l'offre, elle, reste fermée à tous).
 
-## 1. Le serveur (Claude)
+## 1. Le serveur (Claude) — UNE commande (05/10)
+
+```bash
+node serveur-cloud/outils/lancer-serveur-test.mjs          # le plan : jetons, prix, solde, stock France — rien n'est créé
+node serveur-cloud/outils/lancer-serveur-test.mjs --go     # GO de Nico : cx43 Falkenstein + 1 IP France 30 j + DNS + déploiement
+```
+Elle enchaîne `creer-serveur.mjs --go`, l'achat d'UNE IP (solde IPRoyal, sans
+renouvellement automatique, plafond 8 $), le DNS (jeton Cloudflare, sinon
+`<ip>.sslip.io` et le geste de Nico), cloud-init, `build-extension-cloud.mjs`,
+`deployer.sh`, le jeton IPRoyal au `.env` du serveur (achats 0, alertes 0, compte
+de Nico seul), puis les contrôles et la mesure ci-dessous. Relancée : reprise,
+rien n'est racheté (`cloud-test-etat.json`). Gestes de Nico : `docs/cloud/nico-telephone.md`.
+Le détail, s'il faut le refaire à la main :
 
 ```bash
 node serveur-cloud/outils/creer-serveur.mjs --infos     # prix lus dans l'API
 node serveur-cloud/outils/creer-serveur.mjs --go        # cx43, Falkenstein
-node scripts/cloud/build-extension-cloud.mjs            # copie Cloud de l'extension (commit de main du jour)
+node scripts/cloud/build-extension-cloud.mjs            # copie Cloud de l'extension (commit du jour)
 bash serveur-cloud/outils/deployer.sh <ip>              # <ip>.sslip.io tant que cloud.fillsell.app n'existe pas
 ```
 Contrôles : `/sante` répond ; `docker compose ps` ; le pare-feu

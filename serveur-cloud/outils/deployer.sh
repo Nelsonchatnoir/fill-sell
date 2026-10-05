@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Déploie FillSell Cloud sur le serveur Hetzner — depuis le dossier principal
-# (Git Bash), arbre PROPRE (comme npm run build : on ne déploie que du commité).
+# Déploie FillSell Cloud sur le serveur Hetzner — depuis le dépôt (Git Bash), arbre
+# PROPRE (comme npm run build : on ne déploie que du commité). Le dossier principal
+# une fois feat/cloud sur main ; d'ici là le worktree Cloud (la règle « jamais depuis
+# un worktree » vise l'OTA Capgo, pas ce serveur). Appelé par lancer-serveur-test.mjs.
 #
 #   bash serveur-cloud/outils/deployer.sh <ip_du_serveur> [domaine]
 #
