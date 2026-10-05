@@ -4,29 +4,32 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » en fin ; reprise : `docs/reprise/terminal-problemes-0510.md`) et
+terminal Problèmes » / « 05/10 après-midi » en fin ; reprise : `docs/reprise/terminal-problemes-0510.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** au CWS ; **0.6.96** (b32685f) puis
-  **0.6.97 à téléverser**
-  (`build/CWS-0.6.97-A-TELEVERSER/fillsell-extension-0.6.97-ddf3ebe-cws.zip`,
-  prouvée en réel le 05/10) ;
+- **Servi** : extension **0.6.94** au CWS ; **0.6.98 à téléverser**
+  (`build/CWS-0.6.98-A-TELEVERSER/fillsell-extension-0.6.98-b7b756c-cws.zip`,
+  contient la 0.6.97 et donc la 0.6.96) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web et OTA **2.9.54** (lot du 05/10) ; `get-pending-jobs` v216,
+  web et OTA **2.9.55** (05/10 après-midi) ; `get-pending-jobs` v217,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v12 (`true`) ;
-  `update-job-status` v128, `handler-watch` v81, `voice-intent` v155, `ops-digest` v30,
+  `update-job-status` v129, `handler-watch` v83, `voice-intent` v155, `ops-digest` v31,
   `ebay-api-worker` v77, `ebay-releve-api` v4, `releve-completer` v2,
-  `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v9,
+  `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
 - **05/10** : sessions de l'extension refusées depuis le 04/10 19:01 (403
   `_ts_ou_null`) → corrigé (mig 20261005090000) ; **remise en vente après
   une vente partielle** (file `remises_en_vente`, mig 20261005100000 ;
-  ⚠️ cron = mig 20261005100100 sur GO de Nico) ; **palier unique**
+  cron 31 `remises-en-vente-5min` actif, GO de Nico) ; **eBay : la voie
+  d'une annonce = sa création** (mig 20261005140000 ; un import n'est jamais
+  « api ») ; **ORDER_CONFIRMATION** (`ebay-notifications`, 66 abonnés) ;
+  **veille des commandes** Vinted/LBC (0.6.98, `veille_commandes_ouverte`) ;
+  retrait bloqué par une connexion = « À régler », jamais soldé ; **palier unique**
   (`_shared/palier.js`, `palier_de`) ; Leboncoin VERROUILLE Courrier
   suivi et Colissimo au-delà de 400 € (tout essai à 999 € les montre).
 - **⛔ Incident CPU 99 % (04/10, 12:22 et 17:40)** : compute Micro → Small
@@ -93,8 +96,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;
   la même cession se FUSIONNE dans la vente saisie (la saisie prime), jamais
   deux ventes, jamais sur le titre (migration 20261002210000).
-- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min` ;
-  en pause depuis le 04/10 : 27 `ebay-releve-api-5min`, 28 `releve-completer-10min`.
+- **Crons coupés** : 17 `doublons-balayage-2min`, 22 `fusion-photo-lot-10min`
+  (27 et 28 actifs, relancés bornés le 04/10 au soir).
 - **Migrations** : jamais à la main. `db query --linked -f <fichier>` PUIS
   `migration repair --linked --status applied <version>`, relecture.
 - **Données** : toute correction = requête dans `scripts/reparations/`

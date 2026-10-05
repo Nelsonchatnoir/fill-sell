@@ -76,3 +76,47 @@ retesté en réel, un seul push. Ce fichier dit ce qui est FAIT, EN COURS et
   ORDER_CONFIRMATION, notification Chrome / push).
 - « Petit » n'est plus forcé sur la Mode Vinted (règle du 12/07 remplacée
   par « rien de deviné », 05/10) : à confirmer.
+
+## 05/10 après-midi — reprise (mandat de Nico après /clear)
+
+### Fait
+- **Push** main (32 commits) 13:22 → web `2026-10-05T11:22:33Z+4066332`
+  (chunk App vérifié : « Recommandé par Vinted », `colis_retenus`).
+- **0.6.97 contient tout la 0.6.96** : b32685f (0.6.96) est un ancêtre de
+  ddf3ebe ; `beebs.js` identique ; dans `background.js`, seules lignes retirées :
+  tri des marques, transporteurs LBC « dès un seul », palier — rien sur photos
+  Beebs (93949ba), colis Beebs (7c03a7f), preuve de retrait Beebs (17c319a).
+- **Cron 31 remise en vente** (GO) : 10 fiches de Louis publiées sur Vinted,
+  Rouge/Gris « déjà en vente », 9 abandons quantité 0 ; 0 doublon.
+- **URGENT eBay voie de création** : mig 20261005140000 + 774 imports
+  réétiquetés (sauvegarde/inverse) ; Batman vendu sur eBay (rien à retirer) ;
+  test SQL avant/après. Retraits à relancer : aucun (12 relus sur eBay ; Nala
+  377453677328 = question « Déjà vendu ? » ouverte depuis le 03/10, voulue).
+- **Point 11** : la feuille de republication dit la limite du jour
+  (`utils/plafondRepublication.js`) ; jamais bloqué.
+- **Point 14** : eBay ORDER_CONFIRMATION (fonction `ebay-notifications`,
+  66 abonnés, test signé reçu) ; veille des commandes Vinted/LBC dans 0.6.98
+  (interrupteur `veille_commandes_ouverte`).
+- **Point 9** : mesures du remplissage aussi au succès (0.6.98).
+- **Retraits bloqués par une connexion** : textes + jamais soldés (serveur) ;
+  « À régler » → « Annonces à retirer » (app) ; 9 textes réparés.
+- **Louis 1791017762605** : « objet non reconnu » (ni objet IA, ni mot du
+  titre, annonce Beebs sans capture) → la catégorie se lit aussi dans
+  `donnees_index` (« Yaourtières » → Électroménager) ; publiable sur
+  Leboncoin sans choisir de rayon dès le web poussé et l'OTA.
+
+### En cours / à surveiller
+- 0.6.98 copiée sur le poste de Nico (copie de développement) : relire
+  `profiles.extension_build` (b7b756c) et `usage_logs` feature
+  `veille_commandes` (évènement « amorcage » = la veille tourne).
+- Première vraie commande eBay : `ebay_notification_verdicts` kind `commande`
+  verdict `valide` + `commandes_ebay` sur le job.
+- Carla / Ciddjy : `platform_fields.remplissage_mesures` sur leurs publications
+  Vinted réussies une fois la 0.6.98 servie.
+
+### À faire
+- Nico : téléverser **0.6.98** (`build/CWS-0.6.98-A-TELEVERSER/`) — elle
+  contient la 0.6.97. Si la 0.6.97 est déjà en examen au CWS : la laisser
+  passer, puis envoyer la 0.6.98.
+- Décision : enregistrer seule une vente Vinted prouvée par la commande (règle
+  du 12/07) — non fait, la veille ne fait que faire relire l'annonce.
