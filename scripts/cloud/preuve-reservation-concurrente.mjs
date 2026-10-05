@@ -24,8 +24,8 @@
 //   · un job passé en « processing » par un poste ne l'est jamais par un autre.
 import pg from 'pg';
 
-const URL = process.env.PREUVE_PG;
-if (!URL || /supabase\.co/.test(URL)) { console.error('PREUVE_PG : un Postgres JETABLE (jamais la prod).'); process.exit(2); }
+const PG_URL = process.env.PREUVE_PG;
+if (!PG_URL || /supabase\.co/.test(PG_URL)) { console.error('PREUVE_PG : un Postgres JETABLE (jamais la prod).'); process.exit(2); }
 
 const SCHEMA = `
 DROP SCHEMA IF EXISTS preuve CASCADE; CREATE SCHEMA preuve; SET search_path TO preuve, public;
@@ -121,7 +121,7 @@ BEGIN
 END;
 $function$;`;
 
-const admin = new pg.Client({ connectionString: URL });
+const admin = new pg.Client({ connectionString: PG_URL });
 await admin.connect();
 await admin.query(SCHEMA);
 const user = (await admin.query('SELECT gen_random_uuid() u')).rows[0].u;
@@ -131,7 +131,7 @@ const jobs = (await admin.query('SELECT id FROM preuve.cross_post_jobs ORDER BY 
 const POSTES = ['cloud-A', 'cloud-B', 'bureau-C', 'cloud-D'];
 const clients = [];
 for (let i = 0; i < 8; i++) {
-  const c = new pg.Client({ connectionString: URL });
+  const c = new pg.Client({ connectionString: PG_URL });
   await c.connect();
   await c.query('SET search_path TO preuve, public');
   clients.push({ c, poste: POSTES[i % POSTES.length] });
