@@ -98,3 +98,52 @@ SELECT c.user_id, c.inventaire_id, 'vinted', 'pending', 'publish', c.photo_optio
   FROM public.cross_post_jobs c
  WHERE c.id = 'c14e9826-861c-4735-8bd7-68b06cdf0dba'
 RETURNING id, status;
+
+-- ── ESSAI 5 (0.6.97) : format de colis Vinted RETENU par rayon ──
+SELECT public.platform_settings_fusionner(ARRAY['vinted', 'colis_retenus'],
+  jsonb_build_object('Maison > Décoration > Décorations murales > Photographies', jsonb_build_object('id', 9, 'libelle', '10 kg')),
+  NULL, 'f44b5917-bccc-4431-ba41-f40571a2ed18'::uuid) AS reglage;
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, photo_option,
+                                    title, description, price, photos, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'pending', 'publish', c.photo_option,
+       c.title, c.description, 999, c.photos,
+       public.remise_en_vente_champs(c.platform_fields) || jsonb_build_object('marque', 'Sans marque', 'essai_0510', 'vinted_colis_retenu')
+  FROM public.cross_post_jobs c
+ WHERE c.id = 'c14e9826-861c-4735-8bd7-68b06cdf0dba'
+RETURNING id, status;
+
+-- ── ESSAI 6 (0.6.97) : Beebs dépôt puis retrait ──
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, photo_option,
+                                    title, description, price, photos, platform_fields)
+SELECT c.user_id, 1791142468699, 'beebs', 'pending', 'publish', c.photo_option,
+       c.title, c.description, 999, c.photos,
+       public.remise_en_vente_champs(c.platform_fields) || jsonb_build_object('essai_0510', 'beebs_depot_retrait')
+  FROM public.cross_post_jobs c
+ WHERE c.id = '6e349379-6c1e-4d23-8ed6-bb7d24b0120a'
+RETURNING id, status;
+
+-- Retraits des annonces Vinted des essais 4 et 5 (colis choisi / retenu).
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, action, status, title, listing_url, platform_listing_id, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'delete', 'pending', c.title, c.listing_url, c.platform_listing_id,
+       jsonb_build_object('retrait_par', 'fillsell', 'vinted_account_id', c.platform_fields->>'vinted_account_id', 'essai_0510', 'fin_colis')
+  FROM public.cross_post_jobs c
+ WHERE c.id IN ('7eadeb5b-cada-47eb-9ccd-967f93de3122', 'c940bc5b-f63a-483d-b688-727cc39b34a4')
+   AND c.status = 'published'
+RETURNING id, platform_listing_id;
+
+-- Retrait de l'annonce Beebs de l'essai 6 (clic de suppression attendu).
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, action, status, title, listing_url, platform_listing_id, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'beebs', 'delete', 'pending', c.title, c.listing_url, c.platform_listing_id,
+       jsonb_build_object('retrait_par', 'fillsell', 'adresse', c.platform_fields->>'adresse', 'essai_0510', 'fin_beebs')
+  FROM public.cross_post_jobs c
+ WHERE c.id = '14b25a69-fc62-403e-84a4-72c15ac8def8' AND c.status = 'published'
+RETURNING id, platform_listing_id;
+
+-- Retrait de l'annonce Leboncoin republiée de l'essai (3282626762).
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, action, status, title, listing_url, platform_listing_id, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'leboncoin', 'delete', 'pending', c.title,
+       COALESCE(c.platform_fields->>'new_listing_url', c.listing_url), c.platform_listing_id,
+       jsonb_build_object('retrait_par', 'fillsell', 'adresse', c.platform_fields->>'adresse', 'essai_0510', 'fin_lbc')
+  FROM public.cross_post_jobs c
+ WHERE c.id = '468bfba2-f502-47de-a51c-aedf010fdac5' AND c.status = 'published'
+RETURNING id, platform_listing_id, listing_url;
