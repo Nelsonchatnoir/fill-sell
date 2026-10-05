@@ -1368,7 +1368,7 @@ serve(async (req) => {
           supabase.from("vinted_listing_snapshots").select("vinted_item_id, captured_at")
             .eq("user_id", uid).in("vinted_item_id", numeros)
             .order("captured_at", { ascending: false }).limit(2000),
-          supabase.from("profiles").select("extension_sessions").eq("id", uid).maybeSingle(),
+          supabase.from("profiles").select("extension_sessions, extension_last_seen_at").eq("id", uid).maybeSingle(),
         ]);
         if (rRuns.error || rSnaps.error) continue;
         const derniereVue = new Map<string, string>();
@@ -1402,7 +1402,14 @@ serve(async (req) => {
           }
           // Il manque un relevé complet de la boutique OUVERTE dans Chrome : on le demande
           // (au plus toutes les 6 h par compte ; la cadence du dressing reste juge).
-          if (!releveDemandePourCompte && v.verdict === "attente" && v.raison === "moins_de_deux_releves"
+          // (05/10) Seulement à une extension VUE depuis moins de 48 h : 32 des
+          // 38 demandes jamais prises depuis le 03/10 visaient cinq postes muets
+          // depuis des semaines (dew, contact@…, bilelbourouis45…) — quatre par
+          // jour et par compte, pour rien. Le relevé se demandera au retour du
+          // poste (même passage, même règle).
+          const posteVuMs = Date.parse(String(rProf.data?.extension_last_seen_at ?? ""));
+          const posteVivant = Number.isFinite(posteVuMs) && Date.now() - posteVuMs < 48 * 3600_000;
+          if (!releveDemandePourCompte && posteVivant && v.verdict === "attente" && v.raison === "moins_de_deux_releves"
               && boutiqueOuverte && (v.boutiques ?? []).includes(boutiqueOuverte)) {
             const runs = (rRuns.data ?? []) as Array<Record<string, unknown>>;
             const actif = runs.some((r) => r.status === "queued" || r.status === "running");
