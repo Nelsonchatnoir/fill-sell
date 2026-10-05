@@ -117,7 +117,7 @@ function Modale({ trigger = 'generic', ajout = false }) {
 
 // Les quotas du compte, tels que quotas_etat les rend (Free : 5 annonces).
 const QUOTAS = palier === 'gratuit'
-  ? { annonces: { plafond: 5, consommes: 2, restantes: 3 }, republication: { mode: 'avie', plafond: 50, faites: 4, restantes: 46 } }
+  ? { annonces: { plafond: 5, consommes: 2, restantes: 3 }, republication: { mode: 'mensuel', plafond: 50, faites: 4, restantes: 46 } }
   : null;
 
 function Reglages() {
