@@ -8190,7 +8190,7 @@ const StockTab = memo(function StockTab({
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
   const lignesARegler = [
     // En tête : le seul point où un acheteur peut payer un article déjà parti.
-    // Le tap ramène au bandeau du haut, qui porte « Me connecter ».
+    // Le tap ouvre « Annonces à retirer », qui porte « Me connecter ».
     { cle: 'retraits', n: nbRetraitsBloques, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
       onOuvrir: () => setGesteOuvert('retraits') },
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
@@ -8206,7 +8206,13 @@ const StockTab = memo(function StockTab({
   ];
   const gestePublier = { n: aPublierTout.length, onOuvrir: () => { setPublierContexte(null); setGesteOuvert('publier'); } };
   const gesteRemonter = republishActif ? { n: aRemonterTout.length, onOuvrir: () => setGesteOuvert('remonter') } : null;
-  const gesteARegler = { n: nbARegler, onOuvrir: () => setGesteOuvert('a_regler') };
+  // (05/10) Un retrait bloqué passe avant tout : la tuile le dit, en peu de mots.
+  const gesteARegler = { n: nbARegler, onOuvrir: () => setGesteOuvert('a_regler'),
+    ...(nbRetraitsBloques > 0 ? {
+      court: lang !== 'en' ? 'annonces à retirer' : 'listings to remove',
+      long: () => (lang !== 'en' ? 'dont des annonces à retirer' : 'including listings to remove'),
+      aria: (n) => (lang !== 'en' ? `À régler : ${n}, dont ${nbRetraitsBloques} annonce${nbRetraitsBloques > 1 ? 's' : ''} encore en ligne à retirer` : `To fix: ${n}, including ${nbRetraitsBloques} live listing${nbRetraitsBloques > 1 ? 's' : ''} to remove`),
+    } : {}) };
   // « Fermer » l'ajout : jamais pendant une analyse en cours (le pli ne masque
   // jamais du contenu vivant — règle du 09/08) ; un résultat ou une erreur se
   // referment par « Recommencer », comme avant.

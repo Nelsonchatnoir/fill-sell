@@ -121,7 +121,7 @@ function definitions(lang) {
   return {
     publier: { icone: Upload, titre: fr ? 'Publier' : 'Publish', court: fr ? 'pas encore partout' : 'not everywhere yet', long: (n) => fr ? `${n > 1 ? 'articles' : 'article'} pas encore partout` : `${n > 1 ? 'items' : 'item'} not everywhere yet`, aria: (n) => fr ? `Publier : ${n} ${n > 1 ? 'articles' : 'article'} pas encore partout` : `Publish: ${n} not everywhere yet` },
     remonter: { icone: ChevronsUp, titre: fr ? 'Remonter' : 'Bump', titreLong: fr ? 'Remonter mes annonces' : 'Bump my listings', court: fr ? 'perdent en visibilité' : 'losing visibility', long: (n) => fr ? `${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `${n > 1 ? 'listings' : 'listing'} losing visibility`, aria: (n) => fr ? `Remonter mes annonces : ${n} ${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `Bump my listings: ${n} losing visibility` },
-    aRegler: { icone: CircleAlert, titre: fr ? 'À régler' : 'To fix', court: fr ? 'ventes, retraits, infos à compléter' : 'sales, removals, info to complete', long: () => fr ? 'ventes, retraits et infos à compléter' : 'sales, removals and info to complete', aria: (n) => fr ? `À régler : ${n} ventes, retraits et infos à compléter` : `To fix: ${n} sales, removals and info to complete` },
+    aRegler: { icone: CircleAlert, titre: fr ? 'À régler' : 'To fix', court: fr ? 'ventes, infos à compléter' : 'sales, info to complete', long: () => fr ? 'ventes et infos à compléter' : 'sales and info to complete', aria: (n) => fr ? `À régler : ${n} ventes et infos à compléter` : `To fix: ${n} sales and info to complete` },
   };
 }
 
@@ -131,6 +131,9 @@ const PASTILLE_ICONE = {
   aRegler: { fond: S.ambreFond, encre: S.ambreEncre },
 };
 
+// (05/10) Un geste peut porter ses propres mots (court, long, aria) : « À régler »
+// dit « annonces à retirer » quand un retrait attend une reconnexion — le plus
+// urgent, et court (la tuile fait 128 px de haut, relu au harnais à 360 px).
 export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aRegler }) {
   const D = definitions(lang);
   const gestes = [['publier', publier], ['remonter', remonter], ['aRegler', aRegler]].filter(([, g]) => g);
@@ -140,7 +143,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
         {gestes.map(([cle, g], k) => {
           const d = D[cle]; const I = d.icone; const pi = PASTILLE_ICONE[cle];
           return (
-            <button key={cle} type="button" className="sk-btn" onClick={g.onOuvrir} aria-label={d.aria(g.n)}
+            <button key={cle} type="button" className="sk-btn" onClick={g.onOuvrir} aria-label={(g.aria ?? d.aria)(g.n)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: 0, border: 'none', textAlign: 'left', color: S.ink,
                 background: k < gestes.length - 1 ? `linear-gradient(${S.borderSoft},${S.borderSoft}) 52px 100% / calc(100% - 52px) 1px no-repeat` : 'transparent',
@@ -151,7 +154,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
               <span className="sk-chiffres" style={{ minWidth: 32, flexShrink: 0, fontSize: 24, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.03em' }}>{nombreFr(g.n, lang)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 15, lineHeight: '20px', fontWeight: 700 }}>{d.titreLong ?? d.titre}</span>
-                <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{d.long(g.n)}</span>
+                <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{(g.long ?? d.long)(g.n)}</span>
               </span>
               <ChevronRight size={20} color={S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
             </button>
@@ -166,7 +169,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
         {gestes.map(([cle, g]) => {
           const d = D[cle]; const I = d.icone; const pi = PASTILLE_ICONE[cle]; const plein = cle === 'publier';
           return (
-            <button key={cle} type="button" className="sk-btn sk-presse" onClick={g.onOuvrir} aria-label={d.aria(g.n)}
+            <button key={cle} type="button" className="sk-btn sk-presse" onClick={g.onOuvrir} aria-label={(g.aria ?? d.aria)(g.n)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 64, padding: '0 16px', boxSizing: 'border-box', borderRadius: 16, textAlign: 'left',
                 border: plein ? 'none' : `1px solid ${S.border}`, background: plein ? DEGRADE : '#FFFFFF', color: plein ? '#FFFFFF' : S.ink,
@@ -178,7 +181,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 15, lineHeight: '20px', fontWeight: 700 }}>{d.titreLong ?? d.titre}</span>
                 <span style={{ display: 'block', fontSize: 12.5, lineHeight: '20px', fontWeight: 500, color: plein ? 'rgba(255,255,255,0.92)' : S.ink2 }}>
-                  <strong className="sk-chiffres" style={{ fontWeight: 700, color: plein ? '#FFFFFF' : S.ink }}>{nombreFr(g.n, lang)}</strong> {d.long(g.n)}
+                  <strong className="sk-chiffres" style={{ fontWeight: 700, color: plein ? '#FFFFFF' : S.ink }}>{nombreFr(g.n, lang)}</strong> {(g.long ?? d.long)(g.n)}
                 </span>
               </span>
               <ChevronRight size={20} color={plein ? '#FFFFFF' : S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
@@ -193,7 +196,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
       {gestes.map(([cle, g]) => {
         const d = D[cle]; const I = d.icone; const pi = PASTILLE_ICONE[cle]; const plein = cle === 'publier';
         return (
-          <button key={cle} type="button" className="sk-btn sk-presse" onClick={g.onOuvrir} aria-label={d.aria(g.n)}
+          <button key={cle} type="button" className="sk-btn sk-presse" onClick={g.onOuvrir} aria-label={(g.aria ?? d.aria)(g.n)}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'stretch', minWidth: 0, height: 128, padding: 16, boxSizing: 'border-box', borderRadius: 16,
               border: 'none', textAlign: 'left', background: plein ? DEGRADE_TUILE : '#FFFFFF', color: plein ? '#FFFFFF' : S.ink,
@@ -206,7 +209,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
               </span>
             </span>
             <span style={{ marginTop: 8, fontSize: 14, lineHeight: '20px', fontWeight: 700 }}>{d.titre}</span>
-            <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: plein ? 600 : 500, color: plein ? 'rgba(255,255,255,0.92)' : S.ink2 }}>{d.court}</span>
+            <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: plein ? 600 : 500, color: plein ? 'rgba(255,255,255,0.92)' : S.ink2 }}>{g.court ?? d.court}</span>
           </button>
         );
       })}
