@@ -14645,8 +14645,10 @@ function capturerFicheEnPage(plateforme, html = null) {
           // l'annonce dans `values` (« mondial_relay, shop2shop, courrier_suivi,
           // colissimo, face_to_face »), `value` n'en montre que le premier.
           // Sans lui, un réglage fait à la main sur Leboncoin était perdu au
-          // redépôt.
-          ...(Array.isArray(a.values) && a.values.length > 1 ? { values: a.values.map(String) } : {}),
+          // redépôt. (05/10) Écrit dès UN transporteur : une annonce à un seul
+          // transporteur n'avait pas de `values`, et la republication gardait
+          // alors la copie du job au lieu de l'annonce (474 captures).
+          ...(Array.isArray(a.values) && a.values.length > 0 ? { values: a.values.map(String) } : {}),
         }));
       out.capture_complete = true;
     } else {
@@ -21353,6 +21355,25 @@ async function reprendreChampsDeLAnnonce(job, pf) {
   return Object.keys(repris).length ? repris : null;
 }
 
+// (05/10, Joséphine) Notre suppression de CETTE annonce est-elle déjà partie ?
+// Marqueur posé depuis la 0.6.97 (republish_suppression_envoyee) ; avant, seule
+// la trace écrite la disait (« Suppression envoyée à Beebs… » dans l'erreur
+// archivée) — elle compte aussi, pour les jobs déjà arrêtés à tort.
+function suppressionDejaEnvoyee(job, pf) {
+  const m = pf?.republish_suppression_envoyee;
+  if (m && typeof m === "object") {
+    const a = String(m.annonce ?? "");
+    const id = String(job.platform_listing_id ?? "");
+    if (!a || a === id || a === String(job.listing_url ?? "") || (id && a.includes(id))) return true;
+  }
+  const textes = [
+    String(job.error ?? ""),
+    String(pf?.error_technique?.brut ?? ""),
+    ...(Array.isArray(pf?.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
+  ];
+  return textes.some((t) => /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted)/.test(t));
+}
+
 async function processRepublishJobPlateforme(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   const step = pf.republish_step ?? "a_capturer";
@@ -21380,6 +21401,23 @@ async function processRepublishJobPlateforme(job, accessToken) {
     const { state, raison } = await checkListingState(job.listing_url, job.platform)
       .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
     pf.republish_etat_reel = { at: new Date().toISOString(), state: String(state), ...(raison ? { raison: String(raison).slice(0, 80) } : {}) };
+    // ── NOTRE SUPPRESSION ÉTAIT DÉJÀ PARTIE (05/10, Joséphine) ─────────────────
+    // 8 republications Beebs de Joe0410 : suppression envoyée au premier essai,
+    // jamais confirmée (liste « Mes annonces » tronquée), puis, relancées à
+    // cette étape, l'annonce absente a été lue « plus en ligne… FillSell n'a
+    // rien retiré » → arrêtées. Faux : c'est NOUS qui l'avions retirée, et le
+    // redépôt n'est jamais parti (8 articles en stock hors de Beebs).
+    // Une suppression envoyée pour CETTE annonce (marqueur, ou trace écrite par
+    // un poste plus ancien) : on reprend à l'étape du retrait, qui PROUVE
+    // l'absence (Beebs : « Mes annonces », ou page 404 + hors vérification +
+    // hors index) avant de redéposer — jamais un redépôt sur un doute.
+    if ((state === "unavailable" || state === "sold") && suppressionDejaEnvoyee(job, pf)) {
+      pf.republish_step = "captured";
+      pf.republish_reprise_apres_suppression = { at: new Date().toISOString(), state: String(state) };
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      console.log(`[republish] job ${job.id} : annonce ${label} absente APRÈS notre suppression — reprise à l'étape du retrait (preuve d'absence, puis redépôt)`);
+      return { status: "skipped", error: "suppression déjà envoyée — preuve d'absence au prochain passage" };
+    }
     if (state === "unavailable" || state === "sold") {
       const msg = `Republication impossible : cette annonce n'est plus en ligne sur ${label} (retirée, vendue ou désactivée depuis sa mise en ligne). ` +
         "FillSell n'a rien retiré. Si l'article est vendu, marque-le vendu ; sinon publie-le à nouveau depuis sa fiche.";
@@ -21741,6 +21779,16 @@ async function processRepublishJobPlateforme(job, accessToken) {
         // Refus, transitoire, « à reprendre » : reprise espacée, annonce intacte
         // — « intacte » n'est affirmé que sur un état relevé « active ».
         const motif = motifLisible(result.error ?? "retrait non abouti", 200);
+        // (05/10) Suppression ENVOYÉE mais pas encore prouvée : on le garde sur
+        // le job (l'étape suivante en dépend) et on ne dit plus « rien n'a été
+        // touché » — c'était faux chez Joséphine.
+        if (result.suppressionEnvoyee) {
+          job.platform_fields = { ...(job.platform_fields ?? {}), republish_suppression_envoyee: {
+            at: new Date().toISOString(), annonce: String(job.platform_listing_id ?? job.listing_url ?? "") } };
+          const msgEnvoyee = `Suppression envoyée à ${label} (${motif}). Elle n'est pas encore confirmée : vérification au prochain passage, puis remise en ligne.`;
+          await rearmBounded(accessToken, job, msgEnvoyee);
+          return { status: "retry", error: msgEnvoyee };
+        }
         const msg = state === "active"
           ? `Retrait ${label} non abouti (${motif}). Ton annonce est TOUJOURS en ligne (vérifié), rien n'a été touché.`
           : `Retrait ${label} non abouti (${motif}). L'état de l'annonce n'a pas pu être vérifié : ${causeLectureImpossible(raison)}.`;
@@ -23331,13 +23379,16 @@ async function maybeAutoRepublish(session) {
     const userId = decodeJwtSub(token);
     if (!userId) return;
 
-    const profs = await restRequest(`profiles?id=eq.${userId}&select=is_pro,platform_settings`, token,
+    const profs = await restRequest(`profiles?id=eq.${userId}&select=is_pro,is_business,platform_settings`, token,
       { headers: { Prefer: "return=representation" } });
     const prof = profs?.[0];
     const cfg = prof?.platform_settings?.vinted?.republish_auto;
     if (!cfg?.actif) return;
 
-    if (prof?.is_pro !== true) {
+    // (05/10) « Au moins Pro » selon le palier unique (Business ⇒ Pro) : un
+    // Business offert sans is_pro (ornellaracano) se voyait couper
+    // l'automatisation (« plan_non_pro »). Même règle que palier_au_moins.
+    if (prof?.is_pro !== true && prof?.is_business !== true) {
       // Arrêt PROPRE : seuls les trois champs de l'arrêt partent, le serveur
       // fusionne (02/10 — jamais l'objet entier, cf. fusionnerReglagesExt).
       await fusionnerReglagesExt(token, ["vinted", "republish_auto"], {
