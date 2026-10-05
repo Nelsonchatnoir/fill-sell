@@ -15,7 +15,13 @@ const PROJET = 'tojihnuawsoohlolangc';
 // L'ordre compte : les fonctions qui ÉCRIVENT les colonnes Cloud d'abord, celles
 // qui les proposent ensuite. Le verify_jwt attendu (relu le 05/10) est un garde-fou
 // de plus : un écart avec la prod arrête tout AVANT le premier déploiement.
+// (05/10) email-tunnel EN TÊTE : la nouvelle stripe-webhook lui envoie le
+// contexte « fin_essai » et le lien de la facture (_shared/paiement-echoue.js),
+// qu'un ancien email-tunnel rendrait en « souscription ». L'inverse est sûr :
+// un nouvel email-tunnel lit l'ancien signal (sans lien : aucun bouton, la
+// réponse au mail). Son rappel de la veille reste derrière sa garde.
 export const FONCTIONS = [
+  ['email-tunnel', false],
   ['stripe-webhook', false],
   ['apple-iap-webhook', false],
   ['google-play-webhook', false],
@@ -24,7 +30,6 @@ export const FONCTIONS = [
   ['cancel-subscription', true],
   ['create-checkout-session', true],
   ['get-pending-jobs', true],
-  ['email-tunnel', false],
 ];
 
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
