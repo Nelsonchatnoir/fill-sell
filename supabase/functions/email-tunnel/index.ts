@@ -744,6 +744,9 @@ serve(async (req) => {
       user_id?: string | null; email?: string | null; lang?: string | null;
       invoice_id: string; cause?: string; code?: string | null;
       contexte?: string; montant?: string | null; plan?: string | null;
+      // (05/10) Faits relus chez Stripe par stripe-webhook (_shared/paiement-echoue.js).
+      lien_facture?: string | null; relance_le?: string | null;
+      abonnement_actif?: boolean; offre?: string | null;
     };
     const cause = pf.cause ?? "autre";
     const contexte = pf.contexte ?? "souscription";
@@ -756,11 +759,15 @@ serve(async (req) => {
     // branche ne fait plus qu'établir les faits et lire le verdict.
     if (pf.user_id && pf.email) {
       const lang = langue(pf.lang);
-      const { sujet, html } = mailPaiementEchoue(
-        cause as CausePaiement,
-        contexte as ContextePaiement,
+      const { sujet, html } = mailPaiementEchoue({
         lang,
-      );
+        cause: cause as CausePaiement,
+        contexte: contexte as ContextePaiement,
+        lienFacture: pf.lien_facture ?? null,
+        relanceLe: pf.relance_le ?? null,
+        abonnementActif: pf.abonnement_actif === true,
+        offre: pf.offre ?? null,
+      });
       const r = await envoyer({
         to: pf.email,
         subject: sujet,
@@ -797,7 +804,12 @@ serve(async (req) => {
     const esc = (v: unknown) =>
       String(v ?? "—").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const lignes: Array<[string, unknown]> = [
-      ["Contexte", contexte === "renouvellement" ? "Renouvellement (l'abonnement reste actif pendant le dunning Stripe)" : "Souscription (jamais activée)"],
+      ["Contexte", contexte === "renouvellement" ? `Renouvellement (abonnement ${pf.abonnement_actif === true ? "encore actif" : "non actif ou illisible"} chez Stripe)`
+        : contexte === "fin_essai" ? `Fin d'essai${pf.offre === "cloud" ? " Cloud" : ""} (première échéance payante)`
+        : "Souscription (jamais activée)"],
+      ["Bouton du mail", contexte === "souscription" ? "l'app (la page de paiement s'y rouvre)"
+        : pf.lien_facture ? "page Stripe de la facture" : "aucun (facture non réglable en ligne : réponse au mail)"],
+      ["Prochaine tentative Stripe", pf.relance_le ?? "aucune"],
       ["Cause", `${cause}${pf.code ? ` (${pf.code})` : ""}`],
       ["Plan", pf.plan],
       ["Montant", pf.montant],
@@ -925,7 +937,14 @@ serve(async (req) => {
     if (template === "payment_failed") {
       const cause = (typeof body?.test_cause === "string" ? body.test_cause : "3ds") as CausePaiement;
       const contexte = (typeof body?.test_contexte === "string" ? body.test_contexte : "souscription") as ContextePaiement;
-      const m = mailPaiementEchoue(cause, contexte, langTest);
+      // Aperçu : une facture fictive (le lien n'ouvre rien de réel), une tentative dans 3 jours.
+      const m = mailPaiementEchoue({
+        lang: langTest, cause, contexte,
+        lienFacture: typeof body?.test_lien_facture === "string" ? body.test_lien_facture : "https://invoice.stripe.com/i/apercu",
+        relanceLe: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        abonnementActif: body?.test_abonnement_actif !== false,
+        offre: typeof body?.test_offre === "string" ? body.test_offre : null,
+      });
       const ok = await apercu("payment_failed", m.sujet, m.html);
       return new Response(
         JSON.stringify({ test: true, template, lang: langTest, cause, contexte, sent, errors, resend: resendTrace }),

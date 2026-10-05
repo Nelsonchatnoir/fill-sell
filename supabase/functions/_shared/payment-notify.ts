@@ -86,9 +86,14 @@ export type EchecPaiement = {
   invoice_id: string;
   cause: "3ds" | "carte_refusee" | "carte_expiree" | "autre";
   code?: string | null;        // decline_code / code brut — pour l'alerte ops
-  contexte: "souscription" | "renouvellement";
+  contexte: "souscription" | "renouvellement" | "fin_essai";
   montant?: string | null;     // alerte ops SEULEMENT, jamais le mail client
   plan?: string | null;
+  // (05/10) Faits relus chez Stripe (_shared/paiement-echoue.js, faitsEchec) :
+  lien_facture?: string | null;      // hosted_invoice_url, facture ouverte — jamais pour une souscription
+  relance_le?: string | null;        // next_payment_attempt (ISO)
+  abonnement_actif?: boolean;        // renouvellement : abonnement active | past_due
+  offre?: string | null;             // 'cloud' : option FillSell Cloud
 };
 
 export async function signalerPaiementEchoue(e: EchecPaiement): Promise<void> {

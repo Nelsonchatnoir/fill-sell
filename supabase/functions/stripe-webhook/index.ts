@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
 import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
+import { faitsEchec } from "../_shared/paiement-echoue.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -663,6 +664,34 @@ serve(async (req) => {
       }
     }
 
+    // ── LES FAITS, RELUS CHEZ STRIPE (05/10/2026) ───────────────────────────
+    // L'événement arrive au format d'API de l'endpoint (2026-03-25.dahlia,
+    // relevé du 24/09, cf. abonnementDeFacture) : ni `payment_intent` ni
+    // `subscription` à la racine de la facture — la cause fine ne se lisait
+    // donc jamais (« autre », ou « 3ds » sur action_required). On RELIT la
+    // facture par le SDK, épinglé au 2023-10-16 (payment_intent, subscription,
+    // status, hosted_invoice_url, next_payment_attempt, lignes et périodes),
+    // puis son abonnement (trial_end, status, option Cloud). Une lecture ratée
+    // = l'événement seul, jamais un blocage : le mail part, sans bouton de
+    // facture s'il n'y en a pas. Règles et textes : _shared/paiement-echoue.js.
+    // deno-lint-ignore no-explicit-any
+    let facture: any = invoice;
+    try {
+      if (invoice.id) facture = await stripe.invoices.retrieve(invoice.id);
+    } catch (e) {
+      console.warn(`[webhook] facture ${invoice.id} non relue, l'événement seul fait foi : ${(e as Error)?.message ?? e}`);
+    }
+    // deno-lint-ignore no-explicit-any
+    let abonnement: any = null;
+    const subEchec = abonnementDeFacture(facture) ?? abonnementDeFacture(invoice);
+    if (subEchec) {
+      try {
+        abonnement = await stripe.subscriptions.retrieve(subEchec);
+      } catch (e) {
+        console.warn(`[webhook] abonnement ${subEchec} non relu (ni fin d'essai, ni « reste actif ») : ${(e as Error)?.message ?? e}`);
+      }
+    }
+
     // Cause FINE via le PaymentIntent : authentication_required ≠ carte
     // refusée — pour le client, ça change tout (l'un se règle en revalidant,
     // l'autre en changeant de carte). Lecture best-effort : une cause
@@ -671,7 +700,9 @@ serve(async (req) => {
       event.type === "invoice.payment_action_required" ? "3ds" : "autre";
     let code: string | null = null;
     try {
-      const piId = invoice.payment_intent as string | null;
+      // deno-lint-ignore no-explicit-any
+      const piBrut = facture?.payment_intent ?? (invoice as any)?.payment_intent ?? null;
+      const piId = typeof piBrut === "string" ? piBrut : (piBrut?.id ?? null);
       if (piId) {
         const pi = await stripe.paymentIntents.retrieve(piId);
         const err = pi.last_payment_error;
@@ -695,14 +726,25 @@ serve(async (req) => {
     // coûte le plus à laisser filer).
     const portePrix = (envKey: string) => {
       const priceId = Deno.env.get(envKey) ?? "";
-      return !!priceId && (invoice.lines?.data ?? []).some(
+      return !!priceId && (facture?.lines?.data ?? invoice.lines?.data ?? []).some(
         (l: Stripe.InvoiceLineItem) => prixDeLigne(l) === priceId
       );
     };
-    const nomPlan = portePrix("STRIPE_PRICE_CLOUD") ? "Cloud"
+    const estCloud = abonnement ? estAbonnementCloud(abonnement, prixConnus()) : portePrix("STRIPE_PRICE_CLOUD");
+    const nomPlan = estCloud ? "Cloud"
       : portePrix("STRIPE_PRICE_BUSINESS") ? "Business"
       : portePrix("STRIPE_PRICE_PRO") ? "Pro"
       : "Premium";
+    // Fin d'essai = billing_reason subscription_cycle + une ligne dont
+    // period.start === abonnement.trial_end ; bouton = hosted_invoice_url d'une
+    // facture ouverte (jamais pour une souscription) ; relance =
+    // next_payment_attempt ; « reste actif » = abonnement active | past_due.
+    const faits = faitsEchec({ facture, abonnement, estCloud });
+    console.log(
+      `[webhook] échec ${invoice.id} : cause=${cause} contexte=${faits.contexte} ` +
+      `bouton=${faits.contexte === "souscription" ? "app" : faits.lien_facture ? "facture" : "aucun"} ` +
+      `relance=${faits.relance_le ?? "aucune"} actif=${faits.abonnement_actif} offre=${faits.offre ?? "-"}`
+    );
     await signalerPaiementEchoue({
       user_id: userId,
       // L'adresse de la facture d'abord (celle que la personne vient de
@@ -713,11 +755,15 @@ serve(async (req) => {
       invoice_id: invoice.id,
       cause,
       code,
-      contexte: invoice.billing_reason === "subscription_create" ? "souscription" : "renouvellement",
+      contexte: faits.contexte as "souscription" | "renouvellement" | "fin_essai",
       montant: invoice.amount_due != null
         ? `${(invoice.amount_due / 100).toFixed(2)} ${(invoice.currency ?? "eur").toUpperCase()}`
         : null,
       plan: nomPlan,
+      lien_facture: faits.lien_facture,
+      relance_le: faits.relance_le,
+      abonnement_actif: faits.abonnement_actif,
+      offre: faits.offre,
     });
   }
 
