@@ -260,7 +260,10 @@ const fill = corps("fillListingForm");
 ok(/remplissage_mesures: fin\.mesures/.test(fill) && /err\.remplissage_mesures = fin\.mesures/.test(fill), "fillListingForm rend remplissage_mesures (résultat ET erreur)");
 ok(/remplissage_mesures: err\.remplissage_mesures/.test(corps("resultatDepuisErreurRemplissage")), "le canal du port relaie les mesures d'une erreur");
 ok(/\.catch\(\(err\) => sendResponse\(\{[\s\S]{0,400}remplissage_mesures: err\.remplissage_mesures/.test(src), "le canal FILL_LISTING relaie les mesures d'une erreur");
-const fin = corps("terminerMesuresRemplissage");
+// (05/10, point 9) Les champs vivent dans instantaneMesures, partagé par la fin
+// de mesure et par l'instantané envoyé avant le clic « Publier ».
+ok(/return instantaneMesures\(m\)/.test(corps("terminerMesuresRemplissage")), "terminerMesuresRemplissage rend l'instantané");
+const fin = corps("instantaneMesures");
 for (const cle of ["total_ms", "etapes", "reveils", "retard_ms", "visibilite"]) ok(new RegExp(`${cle}:`).test(fin), `remplissage_mesures.${cle}`);
 ok(/jalonRemplissage\(libelle, debutEtape\)/.test(src) && /jalonRemplissage\(`phase:\$\{phase\}`\)/.test(corps("marquerPhase")), "chaque etape() et chaque phase sont horodatées");
 
