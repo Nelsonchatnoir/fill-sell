@@ -51,13 +51,20 @@ npm run selftest:cloud-ecrans        171
 npm run selftest:option-cloud        (paiements)
 npm run selftest:cloud-rappel-veille
 npm run selftest:cloud-extension     19
-npm run selftest:cloud-achat         26
+npm run selftest:cloud-achat         28 (dont le rendu réel de « Me connecter »)
 npm run selftest:cloud-orchestrateur 19 (15 purs + 4 simulations bout à bout)
 node scripts/cloud/banc-sql-socle.mjs 80 (migrations jouées dans PGlite :
                                        npm i --no-save @electric-sql/pglite@0.3.16)
 npm run build:essai
+# preuves en concurrence réelle (Postgres 17 jetable) :
+npm i --no-save embedded-postgres@17.10.0-beta.17 pg@8.16.3
+node scripts/cloud/pg-jetable.mjs scripts/cloud/preuve-reservation-concurrente.mjs
+node scripts/cloud/pg-jetable.mjs scripts/cloud/preuve-pool-concurrent.mjs
 ```
 Toute la batterie du dépôt sur la branche : **171/171 selftests verts** (05/10).
+« Une IP = un compte » **prouvée en concurrence** le 05/10 (10 comptes, 3 IP, au
+même instant : 3 places, 7 refus, aucune IP partagée) ; les deux migrations
+s'appliquent sur un vrai Postgres 17.
 
 **Prise de job atomique (prérequis)** : en prod depuis le 28/09
 (`reserver_jobs_extension`, `controler_job_extension`, `ecrire_statut_job_extension`,
