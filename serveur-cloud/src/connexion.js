@@ -43,27 +43,27 @@ const borne = (v, a, b) => Math.min(b, Math.max(a, Number(v) || 0));
 
 export const MESSAGES = Object.freeze({
   fr: {
-    demarrage: 'Ton ordinateur Cloud démarre…',
+    demarrage: 'On prépare ta page de connexion…',
     pret: 'Connecte-toi comme d\'habitude.',
-    connecte: (nom) => `C'est fait : ${nom} est connecté dans ton ordinateur Cloud.`,
+    connecte: (nom) => `C'est fait : ${nom} est connecté. FillSell publie maintenant tes annonces depuis ses serveurs.`,
     bloquee: 'Cette page n\'est pas la connexion : on y revient.',
     refuse: (nom) => `Ce compte ${nom} a déjà servi à un essai gratuit. L'essai s'arrête ; tu peux reprendre l'option sans essai.`,
     inactif: 'L\'option Sans ordinateur n\'est pas active sur ce compte.',
     occupe: 'Une autre connexion est déjà ouverte : elle vient d\'être fermée.',
     expire: 'Fermé après un moment sans geste. Rouvre « Me connecter » quand tu veux.',
-    erreur: 'Ton ordinateur Cloud ne répond pas. Réessaie dans un instant.',
+    erreur: 'La page de connexion ne répond pas. Réessaie dans un instant.',
     non_autorise: 'Reconnecte-toi à FillSell, puis réessaie.',
   },
   en: {
-    demarrage: 'Your Cloud computer is starting…',
+    demarrage: 'Getting your sign-in page ready…',
     pret: 'Sign in as usual.',
-    connecte: (nom) => `Done: ${nom} is signed in on your Cloud computer.`,
+    connecte: (nom) => `Done: ${nom} is connected. FillSell now posts your listings from its servers.`,
     bloquee: 'That page isn\'t the sign-in page: taking you back.',
     refuse: (nom) => `This ${nom} account was already used for a free trial. The trial stops; you can take the add-on without a trial.`,
     inactif: 'The No computer add-on isn\'t active on this account.',
     occupe: 'Another sign-in was open: it has just been closed.',
     expire: 'Closed after a while without activity. Open "Sign in" again whenever you like.',
-    erreur: 'Your Cloud computer isn\'t responding. Try again in a moment.',
+    erreur: 'The sign-in page isn\'t responding. Try again in a moment.',
     non_autorise: 'Sign in to FillSell again, then retry.',
   },
 });
