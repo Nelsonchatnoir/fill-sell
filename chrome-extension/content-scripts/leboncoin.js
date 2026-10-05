@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-10-05-transporteurs-exacts (transporteurs Leboncoin : fenêtre attendue au calme après le poids, chaque case relue à neuf et vérifiée, ensemble exact avant « Valider », relu après validation et juste avant le dépôt ; un écart qui persiste = rien ne part, needsUser nommé) · 2026-10-02-mur-connexion-depot (0.6.84 : mur de connexion de la page de dépôt reconnu — jeton luat absent, phrase « Connectez-vous ou créez un compte », boutons « Me connecter » lus sans layout ; compte connecté signalé au background) · 2026-09-24-retrait-pro-tiroir-gerer (0.6.66 : annonce PRO en fenetre etroite — panneau de gestion absent sous 971 px, le controle Supprimer est cherche dans le tiroir « Gerer ») · 2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -1663,7 +1663,8 @@ async function fillListingForm(job) {
     commune: (estRepublication && adresseOrigine) ? communeOrigine : null,
   });
   // Livraison : format du colis et transporteurs, sur la MÊME page que
-  // l'adresse (« Remise du bien »). Jamais bloquant — cf. poserLivraisonLbc.
+  // l'adresse (« Remise du bien »). Jamais bloquant — cf. poserLivraisonLbc —
+  // SAUF des transporteurs relus contre le choix de la personne (05/10).
   await poserLivraisonLbc(fields, warnings);
   if (!addressResult.ok) {
     return {
@@ -1674,6 +1675,21 @@ async function fillListingForm(job) {
       unfilledRequired,
       discoveredRequired: enumerated,
     };
+  }
+  // ── TRANSPORTEURS CONTRE LE CHOIX : RIEN NE PART (05/10, décision Nico) ──
+  // Job 9940f84d : « Courrier suivi » recoché par Leboncoin, dépôt parti avec
+  // un simple warning. Désormais, un écart qui persiste après correction
+  // arrête le dépôt AVANT le « Continuer » final (dépôt comme republication :
+  // c'est le même chemin).
+  {
+    const arret = arretTransporteursLbc();
+    if (arret) {
+      console.warn(`[leboncoin] ⛔ transporteurs contre le choix — dépôt arrêté : ${arret}`);
+      return {
+        success: false, needsUser: true, error: arret,
+        warnings, unfilledRequired, discoveredRequired: enumerated, livraisonLbc: bilanLivraisonLbc,
+      };
+    }
   }
 
   // Gate par job (2026-07-11) : DRY_RUN global reste true par défaut ; un job
@@ -1701,7 +1717,7 @@ async function fillListingForm(job) {
   // on ne clique JAMAIS un CTA qui mentionne un paiement non nul ; le chemin
   // gratuit explicite ("Déposer sans booster…") est requis, sinon needsUser.
   relayerEtape("depot");
-  const finalContinue = findButtonByExactText("Continuer");
+  let finalContinue = findButtonByExactText("Continuer");
   if (!finalContinue) {
     return { success: false, needsUser: true, error: "LIVE : Continuer final introuvable sur l'aperçu.", warnings, unfilledRequired, discoveredRequired: enumerated };
   }
@@ -1732,6 +1748,28 @@ async function fillListingForm(job) {
         error: "Prix non vérifiable au moment du dépôt (champ prix sur une étape antérieure, jamais posé/relu non nul) — dépôt annulé pour éviter une annonce sans prix.",
       };
     }
+  }
+
+  // ── LES TRANSPORTEURS, RELUS UNE DERNIÈRE FOIS (05/10) ────────────────────
+  // Juste avant le clic final : exact → on dépose ; écart corrigé → on
+  // dépose ; écart qui persiste → rien ne part (cf. verifierTransporteurs
+  // AvantDepotLbc). Aucune requête de dépôt n'est encore partie ici.
+  // Placée AVANT la relecture de la description, qui ne doit jamais rendre
+  // un échec (lbc-saisie-longue-selftest) : la description reposée vit sur
+  // le formulaire PRO d'une page, qui n'a pas de bloc « En livraison » —
+  // elle ne touche pas aux transporteurs.
+  {
+    const arret = await verifierTransporteursAvantDepotLbc(warnings);
+    if (arret) {
+      console.warn(`[leboncoin] ⛔ transporteurs contre le choix juste avant le dépôt — arrêté : ${arret}`);
+      return {
+        success: false, needsUser: true, error: arret,
+        warnings, unfilledRequired, discoveredRequired: enumerated, livraisonLbc: bilanLivraisonLbc,
+      };
+    }
+    // La fenêtre rouverte a pu re-rendre la page : le bouton final est relu
+    // (un nœud détaché avalerait le clic).
+    finalContinue = findButtonByExactText("Continuer") ?? finalContinue;
   }
 
   // ── LA DESCRIPTION, RELUE JUSTE AVANT LE DÉPÔT (0.6.68) ───────────────────
@@ -4735,6 +4773,11 @@ let bilanLivraisonLbc = null;
 //    d'expédition. MAIS RIEN NE PASSE EN SILENCE : le bilan (demandé / posé /
 //    refusé, et pourquoi) part avec le job (platform_fields.livraison_lbc) et
 //    l'app le montre. Posé = RELU sur la page après validation, pas supposé.
+// ⛔ UNE SEULE EXCEPTION (05/10, décision de Nico) : les TRANSPORTEURS CHOISIS.
+//    Un écart PROUVÉ par relecture (un transporteur non choisi resté coché, ou
+//    un choisi proposé mais décoché) qui persiste après correction arrête le
+//    dépôt — cf. « EXACTEMENT LE CHOIX » plus bas. Tout le reste (format,
+//    poids, fenêtre introuvable, transporteur non proposé) reste un warning.
 // ⛔ ON NE COCHE QUE CE QUE LA PAGE PROPOSE, et on ne touche à « Autres moyens
 //    de livraison » (frais avancés par le vendeur) sous aucun prétexte.
 // ⛔ SANS DEMANDE, ON NE TOUCHE À RIEN : ni lbcTransporteurs, ni format, ni
@@ -4800,6 +4843,231 @@ function lbcBlocLivraison() {
   return null;
 }
 
+// ── LES TRANSPORTEURS : EXACTEMENT LE CHOIX (05/10) ─────────────────────────
+// Job 9940f84d (compte de Nico, extension 0.6.96) : demandé Mondial Relay +
+// Colissimo, 350 g ; relu au dépôt : « Courrier suivi » coché EN PLUS
+// (bilan posee:false), Shop2Shop bien décoché. Le dépôt est parti quand même.
+// Cause : changer le format ou le poids fait RECALCULER les transporteurs par
+// Leboncoin, qui les RECOCHE tous (mesuré le 24/09) — et ce recalcul arrive
+// 0,3 à 1 s APRÈS « Valider » du poids. L'ancienne boucle ouvrait la fenêtre
+// 0,5 à 1 s après le poids et cliquait aussitôt, sur des cases lues une seule
+// fois, sans relire un seul clic : le recalcul tombait après le 1er clic
+// (Courrier suivi, 1er de la liste) et le défaisait ; Shop2Shop, cliqué après
+// lui, restait juste. Intermittent : 8 dépôts MR + Colissimo de Louis sont en
+// posee:true.
+// DÉCISION DE NICO (05/10) : « Les transporteurs cochés doivent être
+// exactement ceux choisis, au dépôt comme à la republication. » Donc :
+//   1. le CALME d'abord : après « Valider » du poids/format, le recalcul est
+//      attendu (LBC_RECALCUL_MIN_MS au moins, bloc « En livraison » immobile) ;
+//      dans la fenêtre, aucun clic tant que les cases bougent (LBC_CALME_MS) ;
+//   2. chaque case est relue À NEUF par son nom, cliquée seulement si elle
+//      diffère, puis attendue dans l'état voulu (≤ 2 s), 3 essais au plus ;
+//      les choisis sont cochés AVANT de décocher les autres (jamais de passage
+//      par « aucun transporteur ») ;
+//   3. avant « Valider », toutes les cases relues : l'ensemble coché doit être
+//      EXACTEMENT (choisis ∩ proposés), sinon un nouveau tour (3 au plus) ;
+//      au bout, le plus proche est validé et la relecture le juge ;
+//   4. après validation, la fenêtre est rouverte et relue ; un écart → l'étape
+//      refaite UNE fois ; puis relue encore juste avant le dépôt final ;
+//   5. un écart qui PERSISTE → RIEN NE PART (needsUser nommé, cf.
+//      arretTransporteursLbc). Un choisi que Leboncoin ne propose pas
+//      (filtré au poids) reste un simple avertissement, comme avant.
+const LBC_CALME_MS = 600;
+const LBC_RECALCUL_MIN_MS = 1500;
+// Borne d'un réglage : au-delà, plus de nouveau tour — le plus proche est
+// validé et la relecture juge. Un Leboncoin qui refuse un clic à chaque fois
+// coûterait sinon ~25 s par réglage (3 tours × 3 essais × 2 s), deux fois :
+// le remplissage entier n'a que 5 min (sendMessageToTab).
+const LBC_REGLAGE_BUDGET_MS = 15_000;
+const LBC_FENETRE_TRANSPORTEURS = /vos moyens de livraison/i;
+const lbcMemeTransporteur = (a, b) => lbcTexteNu(a) === lbcTexteNu(b);
+
+function lbcCrayonTransporteurs() {
+  return document.querySelector('button[aria-label="Modifier les transporteurs"]')
+    ?? document.querySelector('button[aria-label*="transporteur" i]');
+}
+function lbcFenetreTransporteurs() {
+  return lbcDialogue(LBC_FENETRE_TRANSPORTEURS);
+}
+/** Les lignes de la fenêtre ouverte, lues À NEUF à chaque appel : un recalcul
+ *  peut re-rendre la liste, un nœud gardé d'une lecture à l'autre ment.
+ *  Nom de la ligne = transporteur connu dont le libellé voisin COMMENCE par son
+ *  nom (« Courrier suivi\nJusqu'à 2 kg… ») ; « Autres moyens de livraison »
+ *  n'est jamais une ligne : on n'y touche pas. */
+function lbcLignesTransporteurs() {
+  const dlg = lbcFenetreTransporteurs();
+  if (!dlg) return [];
+  return [...dlg.querySelectorAll('[role="checkbox"]')]
+    .map((b) => {
+      const lib = lbcTexteNu(lbcLibelleVoisin(b));
+      return { b, nom: LBC_TRANSPORTEURS_PAGE.find((p) => lib.startsWith(lbcTexteNu(p))) ?? null };
+    })
+    .filter((l) => l.nom);
+}
+/** Ce que la fenêtre montre MAINTENANT : proposés et cochés (null si fermée). */
+function lbcLectureTransporteurs() {
+  const lignes = lbcLignesTransporteurs();
+  if (!lignes.length) return null;
+  return { proposes: lignes.map((l) => l.nom), coches: lignes.filter((l) => lbcCoche(l.b)).map((l) => l.nom) };
+}
+const lbcEmpreinteTransporteurs = () => {
+  const lu = lbcLectureTransporteurs();
+  return lu ? `${lu.proposes.join("|")}#${lu.coches.join("|")}` : "";
+};
+/** Attend que `lire()` ne change plus pendant `calmeMs` (borne `maxMs`). */
+async function lbcAttendreCalme(lire, calmeMs = LBC_CALME_MS, maxMs = 5000) {
+  const debut = Date.now();
+  let vu = lire();
+  let depuis = Date.now();
+  while (Date.now() - debut < maxMs) {
+    await sleep(100);
+    const v = lire();
+    if (v !== vu) { vu = v; depuis = Date.now(); }
+    else if (Date.now() - depuis >= calmeMs) return true;
+  }
+  return false;
+}
+/** Après « Valider » du poids (ou du format) : le recalcul des transporteurs
+ *  par Leboncoin doit être PASSÉ avant qu'on y touche (cf. 9940f84d). */
+async function lbcAttendreRecalculLivraison() {
+  const debut = Date.now();
+  await waitFor(() => !lbcDialogue(/choisissez un (format|poids)/i), 4000);
+  await lbcAttendreCalme(() => lbcBlocLivraison()?.innerText ?? "", LBC_CALME_MS, 4000);
+  const reste = LBC_RECALCUL_MIN_MS - (Date.now() - debut);
+  if (reste > 0) await sleep(reste);
+}
+/** L'écart entre une lecture et le choix — null quand l'ensemble coché est
+ *  exactement (choisis ∩ proposés). `bloquant` : au moins un choisi est
+ *  proposé (sinon Leboncoin garde les siens, simple avertissement). */
+function lbcEcartTransporteurs(lu, demandes) {
+  const voulu = (nom) => demandes.some((d) => lbcMemeTransporteur(d, nom));
+  const enTrop = lu.coches.filter((n) => !voulu(n));
+  const manquants = lu.proposes.filter((n) => voulu(n) && !lu.coches.some((c) => lbcMemeTransporteur(c, n)));
+  if (!enTrop.length && !manquants.length) return null;
+  return { enTrop, manquants, bloquant: lu.proposes.some(voulu) };
+}
+const lbcDireEcart = (e) => [
+  e.enTrop.length ? `coché(s) en trop : ${e.enTrop.join(", ")}` : "",
+  e.manquants.length ? `décoché(s) : ${e.manquants.join(", ")}` : "",
+].filter(Boolean).join(" ; ");
+/** La phrase dite à la personne quand le dépôt est arrêté (jamais technique). */
+function lbcMessageEcartTransporteurs(ecart, demandes) {
+  const et = (xs) => (xs.length <= 1 ? String(xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
+  const cites = (xs) => et(xs.map((x) => `« ${x} »`));
+  const s = (xs) => (xs.length > 1 ? "s" : "");
+  const choix = `alors que tu as choisi ${et(demandes)}`;
+  const phrase = ecart.enTrop.length && ecart.manquants.length
+    ? `Leboncoin a gardé ${cites(ecart.enTrop)} coché${s(ecart.enTrop)} et laissé ${cites(ecart.manquants)} décoché${s(ecart.manquants)} ${choix}`
+    : ecart.enTrop.length
+      ? `Leboncoin a gardé ${cites(ecart.enTrop)} coché${s(ecart.enTrop)} ${choix}`
+      : `Leboncoin a laissé ${cites(ecart.manquants)} décoché${s(ecart.manquants)} ${choix}`;
+  return `${phrase}. Rien n'a été déposé.`;
+}
+/** Met UNE case dans l'état voulu : relue à neuf par son nom, cliquée
+ *  seulement si elle diffère, puis attendue (≤ 2 s) — 3 essais. Un clic que
+ *  Leboncoin avale n'est plus pris pour un clic qui a pris. */
+async function lbcMettreTransporteur(nom, veut) {
+  const ligne = () => lbcLignesTransporteurs().find((l) => lbcMemeTransporteur(l.nom, nom)) ?? null;
+  for (let essai = 1; essai <= 3; essai++) {
+    const l = ligne();
+    if (!l) return false; // plus proposé (recalcul) : la relecture d'ensemble tranchera
+    if (lbcCoche(l.b) === veut) return true;
+    lbcClic(l.b);
+    const pris = await waitFor(() => { const x = ligne(); return !!x && lbcCoche(x.b) === veut; }, 2000);
+    await humanPause(250, 600);
+    if (pris) return true;
+    console.warn(`[leboncoin] transporteurs : clic sans effet sur « ${nom} » (essai ${essai}/3)`);
+  }
+  const l = ligne();
+  return !!l && lbcCoche(l.b) === veut;
+}
+/** Ouvre la fenêtre, pose l'ensemble choisi (3 tours au plus) et valide.
+ *  `noter` reçoit les motifs d'échec. Rend { etat, proposes, lecture } —
+ *  etat « valide » (exact avant « Valider »), « ecart » (le plus proche,
+ *  validé faute de mieux), « aucun_propose », « introuvable », « fermee »,
+ *  « non_validee » ; lecture = les cases au moment de « Valider ». */
+async function lbcReglerTransporteurs(demandes, noter) {
+  const voulu = (nom) => demandes.some((d) => lbcMemeTransporteur(d, nom));
+  const crayon = lbcCrayonTransporteurs();
+  if (!crayon) {
+    noter("le réglage des transporteurs n'a pas été trouvé sur la page — choix non appliqué");
+    return { etat: "introuvable", proposes: null };
+  }
+  lbcClic(crayon);
+  if (!(await waitFor(() => lbcLignesTransporteurs().length > 0, 6000))) {
+    noter("la fenêtre des transporteurs ne s'est pas ouverte — choix non appliqué");
+    await lbcFermerDialogue(lbcFenetreTransporteurs());
+    return { etat: "fermee", proposes: null };
+  }
+  // 1. Aucun clic tant que la fenêtre bouge (recalcul en cours).
+  await lbcAttendreCalme(lbcEmpreinteTransporteurs);
+  const debut = Date.now();
+  let proposes = null;
+  for (let tour = 1; tour <= 3; tour++) {
+    const avant = lbcLectureTransporteurs();
+    if (!avant) {
+      noter("la fenêtre des transporteurs s'est refermée pendant le réglage — choix non appliqué");
+      return { etat: "fermee", proposes };
+    }
+    proposes = avant.proposes;
+    if (!avant.proposes.some(voulu)) {
+      // Tout décocher laisserait l'annonce sans transporteur : on ne le fait
+      // pas, et on le DIT.
+      noter("aucun des transporteurs choisis n'est proposé par Leboncoin pour cet article — réglage de Leboncoin conservé");
+      await lbcFermerDialogue(lbcFenetreTransporteurs());
+      return { etat: "aucun_propose", proposes };
+    }
+    // 2. Les choisis d'abord, les autres ensuite — chaque case relue à neuf.
+    for (const nom of avant.proposes.filter(voulu)) await lbcMettreTransporteur(nom, true);
+    for (const nom of avant.proposes.filter((n) => !voulu(n))) await lbcMettreTransporteur(nom, false);
+    // 3. Avant « Valider » : toutes les cases relues, au calme. Inexact →
+    //    nouveau tour. Au 3ᵉ tour (ou le budget passé) encore inexact, le PLUS PROCHE
+    //    du choix est validé quand même : la relecture qui suit le jugera, et
+    //    l'écart qui reste arrête le dépôt — mais le message nommera alors
+    //    ce que Leboncoin a VRAIMENT refusé (« Courrier suivi »), pas ce
+    //    qu'une fenêtre refermée sans valider aurait laissé.
+    await lbcAttendreCalme(lbcEmpreinteTransporteurs);
+    const lu = lbcLectureTransporteurs();
+    if (!lu) continue; // fenêtre disparue : le tour suivant le constate
+    const ecart = lbcEcartTransporteurs(lu, demandes);
+    if (ecart && tour < 3 && Date.now() - debut < LBC_REGLAGE_BUDGET_MS) {
+      console.warn(`[leboncoin] transporteurs : tour ${tour}/3, écart avant « Valider » (${lbcDireEcart(ecart)}) — nouveau tour`);
+      continue;
+    }
+    if (ecart) console.warn(`[leboncoin] transporteurs : ensemble toujours inexact après ${tour} tour(s) (${lbcDireEcart(ecart)}) — le plus proche est validé, la relecture tranchera`);
+    const dlgV = lbcFenetreTransporteurs();
+    const valider = dlgV ? lbcBoutonTexte(dlgV, /^valider$/i) : null;
+    if (!valider || valider.disabled) {
+      noter("la fenêtre des transporteurs n'a pas pu être validée — choix non appliqué");
+      await lbcFermerDialogue(lbcFenetreTransporteurs());
+      return { etat: "non_validee", proposes: lu.proposes, lecture: lu };
+    }
+    lbcClic(valider);
+    await waitFor(() => !lbcFenetreTransporteurs(), 4000);
+    await humanPause(400, 900);
+    return { etat: ecart ? "ecart" : "valide", proposes: lu.proposes, lecture: lu };
+  }
+  noter("la fenêtre des transporteurs s'est refermée pendant le réglage — choix non appliqué");
+  return { etat: "fermee", proposes };
+}
+/** RELECTURE : la fenêtre rouverte, lue au calme, refermée par « Fermer »
+ *  (qui n'applique rien). null si elle ne s'est pas laissé relire. */
+async function lbcRelireTransporteurs() {
+  await waitFor(() => !lbcDialogue(/vos moyens de livraison|choisissez un (format|poids)/i), 3000);
+  const crayon = lbcCrayonTransporteurs();
+  if (!crayon) return null;
+  lbcClic(crayon);
+  if (!(await waitFor(() => lbcLignesTransporteurs().length > 0, 6000))) {
+    await lbcFermerDialogue(lbcFenetreTransporteurs());
+    return null;
+  }
+  await lbcAttendreCalme(lbcEmpreinteTransporteurs);
+  const lu = lbcLectureTransporteurs();
+  await lbcFermerDialogue(lbcFenetreTransporteurs());
+  await waitFor(() => !lbcFenetreTransporteurs(), 3000);
+  return lu;
+}
+
 async function poserLivraisonLbc(fields, warnings) {
   const demandes = Array.isArray(fields?.lbcTransporteurs)
     ? [...new Set(fields.lbcTransporteurs.map((s) => String(s ?? "").trim()).filter(Boolean))] : null;
@@ -4812,6 +5080,9 @@ async function poserLivraisonLbc(fields, warnings) {
     at: new Date().toISOString(),
     demandes: demandes && demandes.length ? demandes : null, format_demande: format, poids_demande: poids,
     poses: null, format_pose: null, non_poses: [], motif: null, posee: false,
+    // (05/10) Ce que la fenêtre proposait à la dernière lecture, et l'écart
+    // relu ({ en_trop, manquants, bloquant }) — bloquant = rien ne part.
+    proposes: null, ecart: null,
   };
   const echec = (motif) => {
     bilan.motif = bilan.motif ? `${bilan.motif} ; ${motif}` : motif;
@@ -4888,10 +5159,12 @@ async function poserLivraisonLbc(fields, warnings) {
                   if (!lbcCoche(palier.r)) { lbcClic(palier.r); await humanPause(300, 700); }
                   const validerP = lbcBoutonTexte(dlgP, /^valider$/i);
                   if (!validerP) { echec("le poids du colis n'a pas pu être validé"); await lbcFermerDialogue(dlgP); }
-                  else { lbcClic(validerP); await humanPause(500, 1000); }
+                  // (05/10) Le recalcul des transporteurs suit « Valider » de
+                  // 0,3 à 1 s : il est attendu ICI, jamais pendant nos clics.
+                  else { lbcClic(validerP); await lbcAttendreRecalculLivraison(); }
                 }
               } else {
-                await humanPause(400, 800);
+                await lbcAttendreRecalculLivraison();
               }
             }
           }
@@ -4901,96 +5174,68 @@ async function poserLivraisonLbc(fields, warnings) {
 
     // 3. Les transporteurs : l'ensemble demandé, exactement (la carte de
     //    l'app part de « tous » et fait décocher : la liste EST le choix).
+    //    (05/10) Pose au calme, case par case relue — cf. « EXACTEMENT LE
+    //    CHOIX » au-dessus. Les motifs d'échec de la pose ne sont retenus
+    //    qu'à la fin : une pose rattrapée par la relecture n'est pas un échec.
+    const connu = (n) => LBC_TRANSPORTEURS_PAGE.some((p) => lbcMemeTransporteur(p, n));
+    const notesPose = [];
+    let reglage = null;
     if (bilan.demandes) {
-      const connu = (n) => LBC_TRANSPORTEURS_PAGE.some((p) => lbcTexteNu(p) === lbcTexteNu(n));
       for (const n of demandes.filter((d) => !connu(d))) bilan.non_poses.push({ nom: n, motif: "inconnu de Leboncoin" });
-      const crayon = document.querySelector('button[aria-label="Modifier les transporteurs"]')
-        ?? document.querySelector('button[aria-label*="transporteur" i]');
-      if (!crayon) {
-        echec("le réglage des transporteurs n'a pas été trouvé sur la page — choix non appliqué");
-      } else {
-        lbcClic(crayon);
-        const dlg = await waitFor(() => lbcDialogue(/vos moyens de livraison/i), 6000);
-        if (!dlg) {
-          echec("la fenêtre des transporteurs ne s'est pas ouverte — choix non appliqué");
-        } else {
-          // Nom de la ligne = transporteur connu dont le libellé voisin COMMENCE
-          // par son nom (« Courrier suivi\nJusqu'à 2 kg… »). « Autres moyens »
-          // n'est jamais une ligne : on n'y touche pas.
-          const lignes = [...dlg.querySelectorAll('[role="checkbox"]')]
-            .map((b) => {
-              const lib = lbcTexteNu(lbcLibelleVoisin(b));
-              return { b, nom: LBC_TRANSPORTEURS_PAGE.find((p) => lib.startsWith(lbcTexteNu(p))) ?? null };
-            })
-            .filter((l) => l.nom);
-          const voulu = (nom) => demandes.some((d) => lbcTexteNu(d) === lbcTexteNu(nom));
-          for (const d of demandes.filter(connu)) {
-            if (!lignes.some((l) => lbcTexteNu(l.nom) === lbcTexteNu(d))) {
-              bilan.non_poses.push({ nom: d, motif: "non proposé par Leboncoin pour cet article (poids ou dimensions)" });
-            }
-          }
-          if (!lignes.some((l) => voulu(l.nom))) {
-            // Tout décocher laisserait l'annonce sans transporteur : on ne le
-            // fait pas, et on le DIT.
-            echec("aucun des transporteurs choisis n'est proposé par Leboncoin pour cet article — réglage de Leboncoin conservé");
-            await lbcFermerDialogue(dlg);
-          } else {
-            for (const l of lignes) {
-              if (lbcCoche(l.b) !== voulu(l.nom)) { lbcClic(l.b); await humanPause(250, 600); }
-            }
-            const valider = lbcBoutonTexte(dlg, /^valider$/i);
-            if (!valider || valider.disabled) {
-              echec("la fenêtre des transporteurs n'a pas pu être validée — choix non appliqué");
-              await lbcFermerDialogue(dlg);
-            } else {
-              lbcClic(valider);
-              await waitFor(() => !lbcDialogue(/vos moyens de livraison/i), 4000);
-              await humanPause(400, 900);
-            }
-          }
-        }
-      }
+      reglage = await lbcReglerTransporteurs(demandes, (m) => notesPose.push(m));
+      bilan.proposes = reglage.proposes;
     }
 
     // 4. RELECTURE : ce que la page affiche MAINTENANT. Rien n'est « posé »
     //    sur la foi d'un clic.
-    await waitFor(() => !lbcDialogue(/vos moyens de livraison|choisissez un (format|poids)/i), 3000);
-    const bloc = lbcBlocLivraison();
-    const texte = bloc?.innerText ?? "";
     // ⚠️ Le bloc affiche TOUJOURS les quatre partenaires, quel que soit le
     //    choix (mesuré le 24/09 : décochés, validés, ils y restaient). L'état
     //    réel se relit DANS la fenêtre, rouverte puis refermée par « Fermer »
     //    (qui n'applique rien).
-    let affiches = null;
+    let lu = null;
     if (bilan.demandes) {
-      const crayonR = document.querySelector('button[aria-label="Modifier les transporteurs"]');
-      if (crayonR) {
-        lbcClic(crayonR);
-        const dlgR = await waitFor(() => lbcDialogue(/vos moyens de livraison/i), 6000);
-        if (dlgR) {
-          affiches = [...dlgR.querySelectorAll('[role="checkbox"]')]
-            .filter(lbcCoche)
-            .map((b) => {
-              const lib = lbcTexteNu(lbcLibelleVoisin(b));
-              return LBC_TRANSPORTEURS_PAGE.find((p) => lib.startsWith(lbcTexteNu(p))) ?? null;
-            })
-            .filter(Boolean);
-          await lbcFermerDialogue(dlgR);
-        }
+      // Relecture impossible après un ensemble validé INEXACT : ce que la
+      // fenêtre montrait au moment de « Valider » reste la preuve de l'écart.
+      lu = (await lbcRelireTransporteurs()) ?? (reglage?.etat === "ecart" ? reglage.lecture : null);
+      // (05/10) Un écart relu APRÈS « Valider » (recalcul tardif de
+      // Leboncoin) : l'étape est refaite UNE fois, puis relue. Une relecture
+      // impossible après correction laisse l'écart PROUVÉ en place.
+      const ecart1 = lu ? lbcEcartTransporteurs(lu, demandes) : null;
+      if (ecart1?.bloquant) {
+        warnings.push(`livraison : écart relu après validation (${lbcDireEcart(ecart1)}) — réglage des transporteurs refait une fois`);
+        const reprise = await lbcReglerTransporteurs(demandes, (m) => notesPose.push(m));
+        if (reprise.proposes) bilan.proposes = reprise.proposes;
+        lu = (await lbcRelireTransporteurs()) ?? (reprise.etat === "ecart" ? reprise.lecture : lu);
       }
-      if (!affiches) echec("les transporteurs n'ont pas pu être relus après réglage");
     }
-    bilan.poses = affiches;
+    await waitFor(() => !lbcDialogue(/vos moyens de livraison|choisissez un (format|poids)/i), 3000);
+    const bloc = lbcBlocLivraison();
+    const texte = bloc?.innerText ?? "";
+    bilan.poses = lu ? lu.coches : null;
+    if (lu) bilan.proposes = lu.proposes;
     const fp = texte.match(/colis\s+(petit|moyen|volumineux)/i)?.[1] ?? null;
     bilan.format_pose = fp ? fp[0].toUpperCase() + fp.slice(1).toLowerCase() : null;
     if ((format || poids) && !bloc) echec("le format du colis n'a pas pu être relu après réglage");
-    if (bilan.demandes && affiches) {
-      const connu = (n) => LBC_TRANSPORTEURS_PAGE.some((p) => lbcTexteNu(p) === lbcTexteNu(n));
-      for (const m of demandes.filter((d) => connu(d) && !affiches.some((a) => lbcTexteNu(a) === lbcTexteNu(d)))) {
-        if (!bilan.non_poses.some((n) => lbcTexteNu(n.nom) === lbcTexteNu(m))) bilan.non_poses.push({ nom: m, motif: "absent après validation" });
+    if (bilan.demandes) {
+      const ecart = lu ? lbcEcartTransporteurs(lu, demandes) : null;
+      // La relecture montre le bon choix : les ratés de la pose sont rattrapés
+      // (dits en warning, pas en motif) ; sinon ils restent des échecs.
+      for (const m of notesPose) {
+        if (lu && !ecart) warnings.push(`livraison : ${m} (rattrapé : la relecture montre le bon choix)`);
+        else echec(m);
       }
-      const enTrop = affiches.filter((a) => !demandes.some((d) => lbcTexteNu(a) === lbcTexteNu(d)));
-      if (enTrop.length) echec(`transporteurs restés cochés contre ton choix : ${enTrop.join(", ")}`);
+      if (!lu) echec("les transporteurs n'ont pas pu être relus après réglage");
+      const proposesConnus = lu?.proposes ?? reglage?.proposes ?? null;
+      for (const d of demandes.filter(connu)) {
+        if (bilan.non_poses.some((n) => lbcMemeTransporteur(n.nom, d))) continue;
+        if (proposesConnus && !proposesConnus.some((p) => lbcMemeTransporteur(p, d))) {
+          bilan.non_poses.push({ nom: d, motif: "non proposé par Leboncoin pour cet article (poids ou dimensions)" });
+        } else if (lu && !lu.coches.some((c) => lbcMemeTransporteur(c, d))) {
+          bilan.non_poses.push({ nom: d, motif: "absent après validation" });
+        }
+      }
+      bilan.ecart = ecart ? { en_trop: ecart.enTrop, manquants: ecart.manquants, bloquant: ecart.bloquant } : null;
+      if (ecart?.enTrop.length) echec(`transporteurs restés cochés contre ton choix : ${ecart.enTrop.join(", ")}`);
     }
     if (format && bloc && bilan.format_pose !== format) echec(`format demandé « ${format} », Leboncoin affiche « ${bilan.format_pose ?? "?"} »`);
     if (bilan.non_poses.length) {
@@ -5002,6 +5247,66 @@ async function poserLivraisonLbc(fields, warnings) {
     echec(`réglages d'envoi non posés (${String(e?.message ?? e)}) — l'estimation de Leboncoin s'applique`);
   }
   bilanLivraisonLbc = bilan;
+}
+
+// ── L'ARRÊT : DES TRANSPORTEURS CONTRE LE CHOIX, RIEN NE PART (05/10) ───────
+// Le motif d'arrêt du dépôt quand la dernière relecture PROUVE un écart (un
+// transporteur non choisi coché, ou un choisi proposé mais décoché) — null
+// sinon. Le texte est celui de la personne (« Leboncoin a gardé « Courrier
+// suivi » coché alors que tu as choisi Mondial Relay et Colissimo. Rien n'a
+// été déposé. ») ; la lecture brute part en annexe « — Observabilité: »,
+// retirée à l'affichage par l'app, gardée en base. needsUser SANS
+// attenteUtilisateur : le défaut est un recalcul intermittent de Leboncoin,
+// la reprise bornée du background (5 essais espacés) a toutes les chances de
+// passer ; s'il persiste, l'arrêt final dit la même cause.
+function arretTransporteursLbc() {
+  const b = bilanLivraisonLbc;
+  if (!b?.demandes || !b.ecart?.bloquant) return null;
+  return `${lbcMessageEcartTransporteurs({ enTrop: b.ecart.en_trop ?? [], manquants: b.ecart.manquants ?? [] }, b.demandes)}` +
+    ` — Observabilité: transporteurs relus ${JSON.stringify({ coches: b.poses, proposes: b.proposes })}`;
+}
+
+// ── DERNIÈRE RELECTURE, JUSTE AVANT LE DÉPÔT FINAL (05/10) ──────────────────
+// Entre la pose et le « Continuer » final, Leboncoin peut encore recalculer
+// (la description reposée, un recalcul très tardif). On rouvre la fenêtre une
+// dernière fois : exact → on dépose ; écart → l'étape refaite UNE fois, relue ;
+// écart toujours là → le motif d'arrêt (rien ne part). Sans réglage à vérifier
+// (rien demandé, compte PRO sans bloc, aucun choisi proposé) → null, comme
+// avant. Une fenêtre qui ne se rouvre pas n'arrête rien (warning) : seul un
+// écart PROUVÉ arrête. Jamais d'exception vers le dépôt.
+async function verifierTransporteursAvantDepotLbc(warnings) {
+  const b = bilanLivraisonLbc;
+  const demandes = b?.demandes;
+  const voulu = (nom) => (demandes ?? []).some((d) => lbcMemeTransporteur(d, nom));
+  if (!demandes || !Array.isArray(b.proposes) || !b.proposes.some(voulu)) return null;
+  try {
+    let lu = await lbcRelireTransporteurs();
+    if (!lu) {
+      warnings.push("livraison : transporteurs non relus juste avant le dépôt (fenêtre non rouverte)");
+      b.verifie_avant_depot = { at: new Date().toISOString(), relu: false };
+      return null;
+    }
+    let ecart = lbcEcartTransporteurs(lu, demandes);
+    if (ecart?.bloquant) {
+      warnings.push(`livraison : écart relu juste avant le dépôt (${lbcDireEcart(ecart)}) — réglage des transporteurs refait`);
+      await lbcReglerTransporteurs(demandes, (m) => warnings.push(`livraison : ${m}`));
+      const relu = await lbcRelireTransporteurs();
+      // Relecture impossible après correction : l'écart PROUVÉ reste.
+      if (relu) { lu = relu; ecart = lbcEcartTransporteurs(lu, demandes); }
+    }
+    b.poses = lu.coches;
+    b.proposes = lu.proposes;
+    b.ecart = ecart ? { en_trop: ecart.enTrop, manquants: ecart.manquants, bloquant: ecart.bloquant } : null;
+    b.verifie_avant_depot = { at: new Date().toISOString(), relu: true, coches: lu.coches };
+    if (!ecart?.bloquant) return null;
+    b.posee = false;
+    const motif = `transporteurs contre ton choix juste avant le dépôt (${lbcDireEcart(ecart)}) — dépôt arrêté`;
+    b.motif = b.motif ? `${b.motif} ; ${motif}` : motif;
+    return arretTransporteursLbc();
+  } catch (e) {
+    warnings.push(`livraison : relecture des transporteurs avant le dépôt impossible (${String(e?.message ?? e)})`);
+    return null;
+  }
 }
 
 // Clic "réel" : certains composants React de Leboncoin ignorent un
