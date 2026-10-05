@@ -136,9 +136,13 @@ serve(async (req) => {
 
     console.log("[cancel-subscription] User OK:", user.id);
     let option: string | null = null;
+    // (05/10) { option: "cloud", reprendre: true } : « Garder l'option » — un
+    // arrêt prévu en fin de période (Stripe) est levé. Rien d'autre ne change.
+    let reprendre = false;
     try {
       const corps = await req.json();
       option = typeof corps?.option === "string" ? corps.option : null;
+      reprendre = corps?.reprendre === true;
     } catch { /* appel historique sans corps */ }
 
     // Récupère stripe_customer_id depuis profiles (admin = bypass RLS)
@@ -199,6 +203,16 @@ serve(async (req) => {
     if (option === "cloud") {
       if (!cloudVivant) {
         return new Response(JSON.stringify({ success: true, option: "cloud", deja: true }), {
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      if (reprendre) {
+        if (cloudVivant.cancel_at_period_end) {
+          await stripe.subscriptions.update(cloudVivant.id, { cancel_at_period_end: false });
+          await supabaseAdmin.from("profiles").update({ cloud_arret_fin_periode: false }).eq("id", user.id);
+          console.log(`[cancel-subscription] Cloud ${cloudVivant.id} : arrêt prévu levé (l'option continue)`);
+        }
+        return new Response(JSON.stringify({ success: true, option: "cloud", reprise: true }), {
           headers: { ...CORS, "Content-Type": "application/json" },
         });
       }
