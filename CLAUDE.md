@@ -1,26 +1,34 @@
-## État de production au 04/10 (nuit) — lire avant toute action
+## État de production au 05/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
-incident CPU » et « 04/10 nuit — six défauts clients » en fin) et
+incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
+terminal Problèmes » en fin ; reprise : `docs/reprise/terminal-problemes-0510.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** au CWS (BUILD_ID
-  `2026-10-03T21:23:06Z+2a088e4`, 29 comptes) ; **0.6.96 à téléverser**
-  (`build/CWS-0.6.96-A-TELEVERSER/fillsell-extension-0.6.96-b32685f-cws.zip`,
-  prouvée en réel le 04/10 ; remplace la 0.6.95 jamais téléversée) ;
+- **Servi** : extension **0.6.94** au CWS ; **0.6.96** (b32685f) puis
+  **0.6.97 à téléverser**
+  (`build/CWS-0.6.97-A-TELEVERSER/fillsell-extension-0.6.97-ddf3ebe-cws.zip`,
+  prouvée en réel le 05/10) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web et OTA **2.9.53** (lot du soir 84bd226 + aide Poids) ; `get-pending-jobs` v214,
-  `generate-listing` v111, `lens-analysis` v106, `avis-demande` v3,
+  web et OTA **2.9.54** (lot du 05/10) ; `get-pending-jobs` v216,
+  `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
+  `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v12 (`true`) ;
-  `update-job-status` v127, `handler-watch` v80, `ops-digest` v30,
+  `update-job-status` v128, `handler-watch` v81, `voice-intent` v155, `ops-digest` v30,
   `ebay-api-worker` v77, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v9,
   `email-tunnel` v69 (`false`). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
+- **05/10** : sessions de l'extension refusées depuis le 04/10 19:01 (403
+  `_ts_ou_null`) → corrigé (mig 20261005090000) ; **remise en vente après
+  une vente partielle** (file `remises_en_vente`, mig 20261005100000 ;
+  ⚠️ cron = mig 20261005100100 sur GO de Nico) ; **palier unique**
+  (`_shared/palier.js`, `palier_de`) ; Leboncoin VERROUILLE Courrier
+  suivi et Colissimo au-delà de 400 € (tout essai à 999 € les montre).
 - **⛔ Incident CPU 99 % (04/10, 12:22 et 17:40)** : compute Micro → Small
   (Nico) ; crons **27** (`*/10`) et **28** (`7-59/15`) relancés le soir sous
   mesure ; règle « tâche automatique mesurée, bornée » plus bas ; alerte

@@ -1,17 +1,17 @@
-## État de production au 04/10 (nuit) — lire avant toute action
+## État de production au 05/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections du 04/10
 en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
 historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** ; **0.6.96 à téléverser**
-  (`build/CWS-0.6.96-A-TELEVERSER/`) ; minimum **0.6.81** ; web/OTA **2.9.53** ; gpj v214, ujs v127, ebay-api-worker v77.
+- **Servi** : extension **0.6.94** ; 0.6.96 puis **0.6.97 à téléverser**
+  (`build/CWS-0.6.97-A-TELEVERSER/`) ; minimum **0.6.81** ; web/OTA **2.9.54** ; gpj v216, ujs v128.
+- **05/10** : remise en vente après vente partielle (cron sur GO) ; palier unique ;
+  reprise : `docs/reprise/terminal-problemes-0510.md`.
 - **CPU (04/10)** : crons 27/28 relancés, bornés ; interdit 11.
-- **Nuit du 04/10** : vente supprimée = jamais recréée ; absence de marque →
-  « Sans marque » (liste fermée) ; texte = celui de la fiche à l'envoi ;
-  aucun format de colis deviné (seul `format_colis_source: 'manuel'`) ;
-  prix/quantité en lot = fiches seules.
+- **04/10** : vente supprimée = jamais recréée ; absence de marque → « Sans
+  marque » ; texte = la fiche à l'envoi ; aucun format de colis deviné.
 - **Fiches** : champs vides complétés depuis l'annonce (journal) ; prix/poids
   suivis si alignés, jamais propagés ; pas de poids Leboncoin estimé.
 - **Retraits** : jamais arrêtés sur un raté technique (1 h/3 h/6 h) ; Vinted
