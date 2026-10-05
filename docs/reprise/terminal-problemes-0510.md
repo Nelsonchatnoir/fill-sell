@@ -198,3 +198,140 @@ retesté en réel, un seul push. Ce fichier dit ce qui est FAIT, EN COURS et
   et une annonce LBC en attente de validation n'a pas encore de `listing_url`,
   donc n'est jamais désignée ; au pire une question « Vendue ? », jamais une
   vente enregistrée sans le clic.
+
+## 05/10 soir (17:30 → 18:15) — GRATUIT = 50 REPUBLICATIONS PAR MOIS (décision de Nico, absent)
+
+### La règle (serveur, migration 20261005173000, appliquée 17:43:34 Paris et inscrite)
+- **Valeur** : `coin_config.quota_republication_free = 50`, seule clé lue
+  (`republication_avie_free` / `republication_avie_depuis` RETIRÉES, ajouts et
+  retraits écrits dans `coin_config_journal`). Plus aucun 50 en dur côté serveur.
+- **Calendrier = celui de `quota_annonces_free`, pas un deuxième** : début =
+  `debut_cycle_quotas(user)` (date du dernier `grant_monthly`/`grant_upgrade`
+  — la DATE, jamais un solde) ; remise à zéro = `coin_wallets.next_grant_at`,
+  au passage du balayage quotidien (cron 3 `coins-monthly-sweep`, 04:15 UTC) —
+  date anniversaire par compte (inscription pour le gratuit). C'est la date que
+  Réglages affiche déjà (« remise à zéro le … »).
+- **Bascule** : borne = GREATEST(début du cycle, `quotas_republication_free_depuis`
+  = 1791215014 = 05/10 17:43:34 Paris), comme `quotas_annonces_depuis` : tous
+  les gratuits repartent à 0/50 pour le mois en cours, sans geste.
+- **Compteur unique** `quota_republication_free_etat(user)` (fermé aux
+  clients) : action `republish`, `published_at` dans le cycle (exécutée —
+  annulée ou vendue ENSUITE comprise) ; une republication encore en file
+  (pending/processing/needs_user créée dans le cycle) réserve sa place, la rend
+  si elle est annulée avant d'être faite ; exclus : `handler_build`
+  sync-dressing/releve-annonces, `opla_sortie`. Rend `faites` (exécutées + en
+  cours), `executees`, `en_cours`, `restantes`, `remise_le`.
+- **Où elle s'applique** (relevé `prosrc` en prod) : `quotas_etat` (compteur de
+  l'app), `spend_coins_and_republish` (la porte : refus
+  `plafond_republication_free` + `mode`, `faites`, `remise_le`),
+  `remise_en_vente_place` (épuisé → reprise à la remise à zéro, plus jamais
+  « abandonnée »). `republish_planifiee_etat` ne sert pas le gratuit : non
+  touchée. **L'extension n'applique aucun plafond du gratuit** (elle appelle la
+  porte et rapporte) : aucune nouvelle version.
+- **Paliers payants inchangés** : 1500 / 5000 / illimité ; la migration refuse
+  de passer sinon ; `quotas_etat` et `remise_en_vente_place` identiques
+  avant/après (essai à blanc puis relu en prod) : Premium 32/1500, Pro 78/5000,
+  Business « illimite ». ⚠️ Écart assumé : Premium/Pro comptent toujours toute
+  republication CRÉÉE (annulées comprises) — harmoniser = décision de Nico.
+- CPU : base 5,6–9,2 % avant, 7,8 % après ; compteur sur les 87 gratuits actifs
+  en 166 ms au total (< 2 ms par compte).
+- Sauvegarde / inverse : `scripts/reparations/20261005_republication_free_mensuelle_{SAUVEGARDE.json,INVERSE.sql}`.
+
+### Preuve en réel (lecture seule, AUCUNE republication lancée)
+- 13 gratuits étaient à 50/50 « à vie » ; tous relus à **50 restantes**.
+- **clairetterichier** (be8e2285…) : avant `{"mode":"avie","faites":50,"restantes":0}`,
+  remise en vente refusée (`quota_a_vie`) ; après (quotas_etat vu par elle)
+  `{"mode":"mensuel","plafond":50,"faites":0,"restantes":50,"remise_le":"2026-10-28"}`,
+  remise en vente `place: true`.
+- **Olena Soulie** (o.s.soulie, 13d8b5f4…) : même chose, `remise_le` 2026-10-23.
+- « Republications en attente bloquées » : AUCUNE en base — le plafond refusait
+  à la création (aucun job créé) ; les 12 republications en file de ces comptes
+  attendent leur extension (endormie depuis le 17-19/09) ou une réponse, pas le
+  quota ; les 3 remises d'Olena sont « plus de stock ». La porte refuse bien au
+  plafond (essai à blanc annulé : `plafond_republication_free`, `remise_le` 28/10).
+
+### Textes AVANT → APRÈS (FR / EN ; l'app n'a que ces deux langues)
+1. Offres, carte Free (`ConversionModal` lignesDiff) : « 50 republications offertes,
+   à vie » / « 50 repostings included, for life » → « 50 republications par mois » /
+   « 50 repostings a month » (lu dans `quota_republication_free`).
+2. Mur du refus, titre : « Tes republications offertes sont épuisées. » / « Your
+   included repostings are used up. » → « Tes republications du mois sont
+   faites. » / « This month's repostings are done. »
+3. Mur du refus, corps : « Tes 50 republications offertes ont toutes été
+   utilisées. Rien n'a été décompté aujourd'hui. » / « Your 50 included repostings
+   have all been used. Nothing was deducted today. » → « Tes 50 republications du
+   mois sont toutes utilisées — elles reviennent le 28 octobre. Rien n'a été
+   décompté. » / « Your 50 repostings for this month are all used — they come
+   back on 28 October. Nothing was deducted. »
+4. Mur lot/auto, bloc vert : « Tu as encore N republications offertes sur 50 —
+   rien à payer. » / « You still have N of 50 included repostings — nothing to
+   pay. » → « Tu as encore N republications ce mois-ci sur 50 — rien à payer.
+   Remise à zéro le 28 octobre. » / « You still have N of 50 repostings this
+   month — nothing to pay. Resets on 28 October. »
+5. Réglages, jauge : « N restantes sur 50 offertes » / « N left of 50 included »
+   → « N republications restantes ce mois-ci » / « N reposts left this month »
+   (sous la « remise à zéro le jj/mm » de la carte).
+6. Stock, refus à la carte et en lot : « Tes 50 republications offertes sont
+   toutes utilisées. Rien n'a été débité. » / « Your 50 included repostings are
+   all used. Nothing was charged. » → « Tes 50 republications du mois sont toutes
+   utilisées — elles reviennent le 28 octobre. Rien n'a été débité. » / « Your 50
+   repostings for this month are all used — they come back on 28 October.
+   Nothing was charged. »
+7. Stock, sous « Republier en lot » (gratuit) : « Tu as encore N republications
+   offertes : republie tes annonces une par une… » / « You still have N included
+   repostings: … » → « Tu as encore N republications ce mois-ci (remise à zéro le
+   28 octobre) : republie tes annonces une par une… » / « You still have N
+   repostings this month (resets on 28 October): … »
+8. Stock, même sous-titre (autres paliers) : « N restantes sur 50 offertes » /
+   « N left of 50 included » (branche « à vie ») → « N restantes ce mois-ci » /
+   « N left this month » pour tous.
+9. Landing, carte Free : « {50} republications offertes, à vie » / « {50}
+   repostings included, for life » → « {50} republications par mois » / « {50}
+   repostings a month » (lu dans `quota_republication_free`).
+10. Landing, FAQ « Comment fonctionnent les forfaits ? » (et son JSON-LD) :
+    « (50 offertes à vie en Free, 1500 par mois en Premium, 5000 en Pro…) » /
+    « (50 included for life on Free, 1500 a month on Premium…) » → « (50 par mois
+    en Free, 1500 en Premium, 5000 en Pro, illimitées en Business) » / « (50 a
+    month on Free, 1500 on Premium, 5000 on Pro, unlimited on Business) ».
+11. CGU 3.4 FR : « Free : 5 annonces … par cycle, et une dotation unique de 50
+    republications (accordée une fois, sans renouvellement mensuel) » → « Free : 5
+    annonces … et 50 republications par cycle » ; cycle du Free = « date
+    anniversaire mensuelle de l'inscription » ; « Au 2 septembre 2026 » → « Au 5
+    octobre 2026 » ; mise à jour du 16 septembre → 5 octobre 2026.
+12. CGU 3.4 EN : « a one-time allowance of 50 repostings (granted once, no monthly
+    renewal) » → « … and 50 repostings per cycle » ; « on the Free plan, the
+    monthly anniversary of sign-up » ; « As of October 5, 2026 » ; « Last updated:
+    October 5, 2026 ».
+- Aucun texte dans les mails, les messages serveur ni l'extension (relevé
+  complet). **`email-tunnel` NON touché** (travail Cloud préservé, rien à
+  reprendre à la fusion). À savoir : `email-tunnel/index.ts:453` (blast sync)
+  dit « La republication est gratuite et illimitée avec Premium » (Premium =
+  1 500/mois) — sans rapport avec le gratuit, laissé tel quel.
+- Commentaire périmé laissé : `get-pending-jobs/index.ts:594` (« 50 à VIE »),
+  pour ne pas redéployer gpj v217 pour un commentaire.
+
+### Hors code — à faire par Nico (fiches stores)
+- **App Store, FR** : « Tu commences gratuitement : un nombre d'annonces par mois,
+  et des republications offertes à vie. » → « Tu commences gratuitement : chaque
+  mois, un nombre d'annonces et 50 republications. »
+- **App Store, EN** : « You start for free, with a monthly allowance of listings
+  and a batch of repostings included for life. » → « You start for free, with a
+  monthly allowance of listings and 50 repostings a month. »
+- **Google Play, FR** (section « LES ABONNEMENTS ») : la même phrase FR, même
+  remplacement. **Google Play, EN** (section « PLANS ») : la même phrase EN.
+- **Chrome Web Store** : rien (la description ne parle pas du quota).
+
+### Mise en ligne
+- Commits 9e83314 (serveur), 9150bae (textes), be01c9f (selftest), e74936b
+  (2.9.57) ; **UN push** `d9e25a3..e74936b` ; web `2026-10-05T15:57:42Z+e74936b`,
+  entrée `assets/index-DkaCSwhu.js` 200 avec et sans `Origin` ; chunks servis
+  relus : nouveaux textes présents, « à vie »/« for life »/`republication_avie` absents.
+- **OTA 2.9.57** (Capgo production, relu ; checksum compatible, aucune alerte
+  native), build `2026-10-05T15:56:32Z+e74936b` du dossier principal. Zéro
+  régression : 7452e23 (2.9.56) et 4efb8b8 (2.9.55) ancêtres de e74936b ; entre
+  2.9.56 et 2.9.57, `src/` ne change QUE par 9 fichiers (70 lignes retirées,
+  toutes des textes/clés remplacés) ; bundle relu : « Recommandé par Vinted »,
+  `colis_retenus`, « Annonces à retirer », `donnees_index`, « Ta limite du
+  jour », `cloudOffer` présents.
+- **Fonctions edge** : aucune touchée, aucun déploiement. Selftests 188/188 verts.
+- Refus du classifieur : aucun.

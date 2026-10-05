@@ -13,8 +13,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   (`build/CWS-0.6.98-A-TELEVERSER/fillsell-extension-0.6.98-b7b756c-cws.zip`,
   contient la 0.6.97 et donc la 0.6.96) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web et OTA **2.9.56** (05/10 16:00, fusion Cloud : drapeau baissé, Nico seul
-  témoin, identique à la 2.9.55 pour tout autre compte) ; `get-pending-jobs` v217,
+  web et OTA **2.9.57** (05/10 soir : 2.9.56 — fusion Cloud, drapeau baissé —
+  + « gratuit = 50 republications PAR MOIS ») ; `get-pending-jobs` v217,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v12 (`true`) ;
@@ -26,6 +26,10 @@ contraire. Il se périme : `functions list`, `cron.job` et
   mail « paiement échoué » part au client, TOUTES formules ; migrations Cloud
   20261004233000 + 20261005120000 appliquées (reprise : `docs/cloud/REPRISE.md` § 0 bis). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
+- **⛔ Gratuit = 50 republications PAR MOIS** (05/10 soir, Nico ; plus « à vie ») :
+  coin_config `quota_republication_free`, même cycle que `quota_annonces_free`
+  (`debut_cycle_quotas` → `coin_wallets.next_grant_at`), compteur unique
+  `quota_republication_free_etat` (exécutées + en file), mig 20261005173000.
 - **05/10** : sessions de l'extension refusées depuis le 04/10 19:01 (403
   `_ts_ou_null`) → corrigé (mig 20261005090000) ; **remise en vente après
   une vente partielle** (file `remises_en_vente`, mig 20261005100000 ;
