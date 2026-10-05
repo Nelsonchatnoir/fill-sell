@@ -112,14 +112,19 @@ tournait, 1,3 Go libres) : à faire avant l'OTA.
 
 ## 4. Ce qui reste (dans l'ordre)
 
-### 4.1 L'écran B sur l'iPhone de Nico — BLOQUÉ par le lot Problèmes
+### 4.1 L'écran B sur l'iPhone de Nico — après la fin du terminal Problèmes
 
-Le dossier principal porte le lot du terminal Problèmes, **non poussé et non
-servi** (26 commits au 05/10 12:45, dont des écrans de l'app : colis Vinted au
-lot, carte « Prêt » sans rayon…). Une OTA depuis `main` maintenant les enverrait
-à tout le monde. Ordre :
-1. le terminal Problèmes clôt son lot (push + SA propre OTA, ou décision de Nico
-   de les envoyer ensemble) ;
+**Relu le 05/10 à 15:20** : le lot Problèmes est **POUSSÉ et SERVI** —
+`origin/main` = `main` local = **b38d842** (package 2.9.55, extension
+**0.6.98**, CWS à téléverser selon sa reprise), web `build.json` =
+`2026-10-05T13:07:43Z+b38d842`, OTA 2.9.55 faite (mémoire du terminal
+Problèmes, à relire sur le canal Capgo). ⚠️ `fusion/cloud-main` (e5ee242, base
+47700b1) est donc PÉRIMÉE : la fusion se refait contre `origin/main` b38d842
+(point 3), la preuve « IDENTIQUE » se fait contre **2.9.55** (ou ce que dit le
+canal). Le terminal Problèmes travaillait encore sur le compte de Nico : la
+fin se vérifie (§ 4.3), elle ne se suppose pas. Ordre :
+1. le terminal Problèmes a clos son lot (fait côté push et OTA le 05/10 ;
+   vérifier qu'il n'écrit plus et que le compte de Nico est calme) ;
 2. **la base** (dire à Nico AVANT, GO) : l'écran B LIT les colonnes et fonctions
    Cloud — sans `20261004233000` (colonnes + `cloud_etat_moi`) et
    `20261005120000` (`cloud_essai_preparer_moi`, `cloud_coffre_etat_moi`), la
@@ -185,7 +190,7 @@ Sur le serveur : `ssh -i ~/.ssh/fillsell_cloud_ed25519 root@178.105.24.16`, puis
 
 **Ce qui reste pour le serveur** (nouveau terminal) : après la fusion,
 REDÉPLOYER depuis le dossier principal (même commande `--go`, rien n'est
-racheté) pour embarquer l'extension **0.6.97** et le code fusionné ; puis, au
+racheté) pour embarquer l'extension **0.6.98** (main b38d842) et le code fusionné ; puis, au
 test complet : `docker compose exec orchestrateur node outils/ip.mjs ajouter
 84458881` (après les migrations). Décider `NAVIGATEURS_MAX` (8 ou 13) avant
 d'ouvrir à d'autres comptes. L'IP du prototype #83578416 (jusqu'au 26/10) n'est
@@ -258,6 +263,8 @@ rien de coché chez Stripe. Reste, sur GO de Nico : déploiement (avec la mise e
 ligne Cloud, ou seul : `email-tunnel` puis `stripe-webhook`, même `verify_jwt`
 = false), PUIS cocher les deux événements par l'API (étape 4 bis), puis un
 « Send test event » → alerte « compte introuvable » = câblage prouvé.
+Fusion : `origin/main` b38d842 n'a touché AUCUN de ces fichiers (ni `serveur-cloud/`, ni
+`scripts/cloud/`) depuis la base commune 5d6a0e9 — pas de conflit attendu sur ce lot.
 
 ## 5. Garde-fous
 
@@ -295,7 +302,7 @@ ligne Cloud, ou seul : `email-tunnel` puis `stripe-webhook`, même `verify_jwt`
 - L'identifiant d'appareil est local : un verrou faible seul, fort avec les trois autres.
 - Beebs : non promis (DataDome le 26/09).
 - L'extension Cloud se construit depuis `chrome-extension/` du commit déployé :
-  le serveur porte aujourd'hui **0.6.96-cloud** (feat/cloud) ; la 0.6.97 du lot
+  le serveur porte aujourd'hui **0.6.96-cloud** (feat/cloud) ; la 0.6.98 du lot
   Problèmes n'y sera qu'après la fusion et un redéploiement (§ 4.2).
 - Docker sur le serveur : **29.1.3** (Ubuntu 24.04, paquet docker.io), sans
   buildx/BuildKit — pas de `COPY --chmod` ni `RUN --mount` dans les Dockerfiles ;
