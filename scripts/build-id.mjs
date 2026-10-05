@@ -1391,7 +1391,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-05T08:58:47Z'; // 0.6.97 = 0.6.96 + transporteurs Leboncoin exacts (relus, sinon rien déposé), Vinted : format de colis choisi/retenu sinon défaut Vinted sinon question, absence de marque et suggestions comme le serveur et l'app, cadenceur des pauses (Mac), mesures du remplissage ; republication reprise après une suppression déjà envoyée ; auto « au moins Pro » (2dafd64). Paquet build/CWS-0.6.97-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-05T10:31:12Z'; // 0.6.97 (91b257c : case de transporteur verrouillée par Leboncoin, question colis needsUser — essais réels du 05/10) = 0.6.96 + transporteurs Leboncoin exacts (relus, sinon rien déposé), Vinted : format de colis choisi/retenu sinon défaut Vinted sinon question, absence de marque et suggestions comme le serveur et l'app, cadenceur des pauses (Mac), mesures du remplissage ; republication reprise après une suppression déjà envoyée ; auto « au moins Pro » (2dafd64). Paquet build/CWS-0.6.97-A-TELEVERSER.
 // (avant : '2026-10-04T17:56:39Z' = 0.6.96, 17c319a, paquet CWS-0.6.96-A-TELEVERSER (b32685f), à téléverser le 05/10 — 0.6.96 = 0.6.95 + Beebs : la page de l’annonce lue par requête de même origine (…)
 // (avant : '2026-10-04T09:19:39Z' = 0.6.95, 7c03a7f, paquet CWS-0.6.95-A-TELEVERSER, JAMAIS téléversé — remplacé par 0.6.96)
 // (avant : '2026-10-03T21:22:49Z' = 0.6.94, 3165ace, paquet CWS-0.6.94-A-TELEVERSER, ENVOYÉE au CWS et servie le 04/10)
