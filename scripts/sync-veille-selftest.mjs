@@ -461,6 +461,64 @@ function bacNominal({ usageLogsPendJamais = false } = {}) {
   ok("les 28 traces ont bien été TENTÉES", journal.filter((l) => l.chemin.includes("usage_logs")).length >= 28);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RÈGLE DU 05/10 (Marine) : la commande n'est prise qu'au démarrage, sous le
+// verrou ; un relevé automatique n'importe RIEN.
+// ═══════════════════════════════════════════════════════════════════════════
+const CMD = "bbbbbbbb-0000-4000-8000-000000000001";
+function bacCommande(declencheurDeLaLigne, { prise = true } = {}) {
+  const ligne = { id: CMD, page_suivante: 1, items_vus: 0, items_crees: 0, items_maj: 0, erreur: null, declencheur: declencheurDeLaLigne };
+  const routes = [
+    { quand: (m, c) => m === "PATCH" && c.startsWith(`vinted_sync_runs?id=eq.${CMD}&status=eq.queued`), rend: () => (prise ? [{ ...ligne, status: "running" }] : []) },
+    { quand: (m, c) => m === "GET" && c.startsWith("vinted_sync_runs") && c.includes("status=eq.running"), rend: () => (prise ? [ligne] : []) },
+    { quand: (m, c) => m === "GET" && c.startsWith("vinted_sync_runs"), rend: () => [] },
+    { quand: (m) => m === "GET", rend: () => [] },
+    { quand: () => true, rend: () => [] },
+  ];
+  const bac = charger({ routes, repriseAutomatique: false });
+  bac.ctx.syncPauseMs = () => 0;
+  return bac;
+}
+const posts = (journal, prefixe) => journal.filter((l) => l.methode === "POST" && l.chemin.startsWith(prefixe));
+
+{
+  console.log("\n16. Commande « Synchroniser » servie : prise SOUS le verrou, puis import");
+  const { ctx, journal } = bacCommande("bouton_distant");
+  await ctx.chrome.storage.local.set({ FILLSELL_SYNC_MOCK: { actif: true, total_articles: 75 } });
+  const res = await ctx.syncDressingVinted({ declencheur: "bouton_distant", commandeId: CMD });
+  const iPrise = journal.findIndex((l) => l.methode === "PATCH" && l.chemin.startsWith(`vinted_sync_runs?id=eq.${CMD}&status=eq.queued`));
+  ok("la commande est prise une fois", iPrise >= 0 && journal.filter((l) => l.methode === "PATCH" && l.chemin.includes("status=eq.queued")).length === 1);
+  ok("aucune ligne neuve créée (pas de faux « bouton_distant »)", posts(journal, "vinted_sync_runs").length === 0);
+  ok("les 75 articles sont importés (geste)", posts(journal, "inventaire").length > 0 && posts(journal, "cross_post_jobs").length > 0);
+  ok("75 articles en 4 lots de 24 au plus", posts(journal, "inventaire").length <= 4, `${posts(journal, "inventaire").length} écriture(s)`);
+  ok("la sync rend un succès", res?.ok === true, JSON.stringify(res));
+}
+
+{
+  console.log("\n17. Relevé AUTOMATIQUE (vérification d'un retrait) : il lit tout, n'importe RIEN");
+  const { ctx, journal } = bacCommande("serveur:retrait_introuvable");
+  await ctx.chrome.storage.local.set({ FILLSELL_SYNC_MOCK: { actif: true, total_articles: 75 } });
+  const res = await ctx.syncDressingVinted({ declencheur: "bouton_distant", commandeId: CMD });
+  const clotures = journal.filter((l) => l.methode === "PATCH" && l.corps && "finished_at" in l.corps);
+  const derniere = clotures[clotures.length - 1];
+  ok("aucune fiche créée", posts(journal, "inventaire").length === 0, `${posts(journal, "inventaire").length} écriture(s)`);
+  ok("aucun job de suivi créé", posts(journal, "cross_post_jobs").length === 0);
+  ok("les relevés du jour sont écrits (la veille voit tout)", posts(journal, "vinted_listing_snapshots").length > 0);
+  ok("run clos en 'done' avec ses 75 articles lus, 0 créé",
+    derniere?.corps?.status === "done" && derniere?.corps?.items_vus === 75 && (derniere?.corps?.items_crees ?? 0) === 0,
+    JSON.stringify({ s: derniere?.corps?.status, v: derniere?.corps?.items_vus, c: derniere?.corps?.items_crees }));
+  ok("la sync rend un succès", res?.ok === true, JSON.stringify(res));
+}
+
+{
+  console.log("\n18. Commande déjà prise ailleurs : RIEN n'est lu, rien n'est créé");
+  const { ctx, journal } = bacCommande("bouton_distant", { prise: false });
+  await ctx.chrome.storage.local.set({ FILLSELL_SYNC_MOCK: { actif: true, total_articles: 75 } });
+  const res = await ctx.syncDressingVinted({ declencheur: "bouton_distant", commandeId: CMD });
+  ok("refus nommé", res?.reason === "commande_deja_reclamee", JSON.stringify(res));
+  ok("aucune ligne créée, aucune lecture écrite", posts(journal, "vinted_sync_runs").length === 0 && posts(journal, "vinted_listing_snapshots").length === 0);
+}
+
 console.log("");
 if (echecs) {
   console.error(`✗ ${echecs} vérification(s) en échec`);
