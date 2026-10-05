@@ -43,6 +43,7 @@ try {
   console.log('\n3. Les drapeaux');
   ok(C.CLOUD_OFFER_ENABLED === false && C.cloudOfferVisible('x') === false, 'offre fermée à tous');
   ok(Array.isArray(C.CLOUD_TEMOINS) && C.CLOUD_TEMOINS.length === 0, 'aucun témoin (le test réel en ajoute un, sur GO)');
+  ok(Array.isArray(C.CLOUD_OFFRE_TEMOINS) && C.CLOUD_OFFRE_TEMOINS.length === 0, 'aucun témoin de l\'offre (revue Apple, achat d\'essai : sur GO)');
   ok(C.cloudConnexionVisible('f44b5917-bccc-4431-ba41-f40571a2ed18') === false && C.cloudConnexionVisible(null) === false, '« Me connecter » fermé à tous, Nico compris, tant qu\'il n\'est pas témoin');
   ok(C.CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id).join(',') === 'vinted,leboncoin', 'plateformes proposées : Vinted, Leboncoin (seulement celles prouvées)');
   ok(C.CLOUD_DOMAINE === 'cloud.fillsell.app', 'domaine de l\'écran : cloud.fillsell.app');

@@ -29,11 +29,16 @@
 //   5. le navigateur Cloud tourne vraiment (pool d'adresses, docs/cloud/).
 export const CLOUD_OFFER_ENABLED = false;
 
+// (05/10) Comptes TÉMOINS de l'OFFRE (paiement compris) avant l'ouverture : le
+// compte de démonstration remis à la revue Apple (le premier abonnement d'un
+// groupe se soumet avec une version de l'app, le relecteur doit pouvoir
+// l'acheter), et Nico pour un achat d'essai réel. VIDE = personne.
+export const CLOUD_OFFRE_TEMOINS = Object.freeze([]);
+
 // LE point de décision. Le paramètre `userId` est gardé (même signature que
-// businessOfferVisible) : c'est lui qui permettra d'ouvrir l'option à une
-// liste de comptes témoins sans retoucher les appelants.
-// eslint-disable-next-line no-unused-vars
-export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED;
+// businessOfferVisible) : c'est lui qui ouvre l'option aux comptes témoins
+// sans retoucher les appelants.
+export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED || (userId != null && CLOUD_OFFRE_TEMOINS.includes(userId));
 
 // ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
 // Le serveur qui ouvre la page de connexion dans le navigateur Cloud du compte
@@ -50,4 +55,4 @@ export const CLOUD_PLATEFORMES_CONNEXION = Object.freeze([
 // l'état Cloud leur sont ouverts même drapeau baissé — l'OFFRE (paiement)
 // reste fermée. VIDE = personne : rien ne change pour aucun compte.
 export const CLOUD_TEMOINS = Object.freeze([]);
-export const cloudConnexionVisible = (userId) => CLOUD_OFFER_ENABLED || (userId != null && CLOUD_TEMOINS.includes(userId));
+export const cloudConnexionVisible = (userId) => cloudOfferVisible(userId) || (userId != null && CLOUD_TEMOINS.includes(userId));
