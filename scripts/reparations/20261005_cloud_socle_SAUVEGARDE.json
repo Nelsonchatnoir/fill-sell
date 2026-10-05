@@ -1,0 +1,15 @@
+{
+  "objet": "État relu en prod AVANT les migrations 20261004233000 (option Cloud, paiements) et 20261005120000 (socle Cloud) — 05/10/2026 15:48 Paris. Aucune des deux n'écrit de donnée : colonnes ajoutées à profiles (nulles / false), 10 tables cloud_* neuves, 40 fonctions cloud_*, un déclencheur sur profiles (colonnes Cloud seulement), l'index email_logs_one_shot_unique refait avec un type de plus.",
+  "releve_le": "2026-10-05T13:48:00Z",
+  "objets_cloud_avant": { "fonctions_cloud": 0, "tables_cloud": 0, "colonnes_cloud_profiles": 0, "trigger_profiles_cloud_pool": 0, "coin_config_cloud": 0, "vault_secrets_cloud": 0 },
+  "email_logs_one_shot_unique": "CREATE UNIQUE INDEX email_logs_one_shot_unique ON public.email_logs USING btree (user_id, email_type) WHERE (email_type = ANY (ARRAY['welcome'::text, 'how_it_works'::text, 'blast_relaunch_aout'::text, 'blast_founder'::text, 'founder_plan'::text, 'voice_conversion'::text, 'blast_sync_dressing'::text, 'reactiv_1409_a'::text, 'reactiv_1409_b'::text, 'reactiv_1409_c'::text, 'reactiv_1409_d'::text, 'extension_link_rattrapage'::text, 'stock_pret_2309'::text, 'blast_rentree_fillsell50_2609'::text]))",
+  "profiles": {
+    "lignes": 2890,
+    "droits_table_authenticated": "DELETE,INSERT,SELECT (aucun UPDATE de table : les colonnes Cloud ajoutées ne sont donc pas écrivables par le client)",
+    "colonnes_update_authenticated": 13,
+    "declencheurs": ["profiles_acquisition_immuable_trg", "profiles_platform_settings_garde", "profiles_premiers_releves_trg", "profiles_session_revue_bonne"]
+  },
+  "email_logs_lignes": 8976,
+  "cpu_base_30_min_avant": { "min_pct": 3.8, "max_pct": 8.8, "dernier": "15:48 Paris 4,4 %, 30 connexions" },
+  "inverse": "scripts/reparations/20261005_cloud_socle_INVERSE.sql"
+}
