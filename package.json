@@ -206,7 +206,8 @@
     "selftest:colis-vinted-retenu-service": "node scripts/colis-vinted-retenu-service-selftest.mjs",
     "selftest:republication-plafond-message": "node scripts/republication-plafond-message-selftest.mjs",
     "selftest:retraits-bloques-connexion": "node --import ./scripts/loader-ext.mjs scripts/retraits-bloques-connexion-selftest.mjs",
-    "selftest:cloud-ecrans": "node --import ./scripts/loader-ext.mjs scripts/cloud-ecrans-selftest.mjs"
+    "selftest:cloud-ecrans": "node --import ./scripts/loader-ext.mjs scripts/cloud-ecrans-selftest.mjs",
+    "selftest:legal-langue": "node scripts/legal-langue-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

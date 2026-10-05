@@ -263,9 +263,22 @@ const extensionPermissions = [
     en: "OPTIONAL access, never granted by default: it is requested inside the extension, by a click of yours (\"Allow Opla\"), only if you sell on Opla. Until 9 October 2026, it is used to post your listings, check their status and withdraw them after a confirmed sale, on Opla; from 10 October 2026, FillSell no longer publishes on Opla and this access only serves to track the listings you already have there (reading, status, withdrawal after a sale). It can be refused or revoked at any time (chrome://extensions → site access)." },
 ];
 
+// La langue de la page (05/10) : `?lang=en|fr` d'abord, puis le réglage de
+// l'app (fs_lang), sinon le français. Un lecteur réglé en anglais qui arrive
+// d'un mail (pied des mails anglais : /legal?lang=en#mentions) ou d'un autre
+// navigateur n'a pas de fs_lang sur fillsell.app : il voyait la page en
+// français. Sans paramètre, rien ne change (le crawler voit toujours le français).
+function langueDeLaPage() {
+  try {
+    const demandee = new URLSearchParams(typeof window !== 'undefined' ? window.location?.search ?? '' : '').get('lang');
+    if (demandee === 'en' || demandee === 'fr') return demandee;
+  } catch { /* adresse illisible : le réglage décide */ }
+  return localStorage.getItem('fs_lang') || 'fr';
+}
+
 export default function Legal() {
   const nav = useNavigate();
-  const [lang] = useState(() => localStorage.getItem('fs_lang') || 'fr');
+  const [lang] = useState(langueDeLaPage);
   const p = privacyTexts[lang] || privacyTexts.fr;
   const en = lang === 'en';
 

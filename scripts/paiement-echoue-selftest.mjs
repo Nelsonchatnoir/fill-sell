@@ -139,7 +139,7 @@ if (E) {
     else ok(/Une question \? Écris-nous à support@fillsell\.app ou réponds à ce mail\./.test(vu) && /Mentions légales/.test(vu) && /Confidentialité/.test(vu) && m.html.includes('<html lang="fr"'), `${nom} : pied français inchangé`);
     const hrefs = [...m.html.matchAll(/<a [^>]*href="([^"]+)"/g)].map((x) => x[1]);   // les liens cliquables (pas la feuille de police du <head>)
     ok(hrefs.includes(contexte === 'souscription' ? LIEN_APP : LIEN), `${nom} : le bouton porte le bon lien`);
-    ok(hrefs.every((h) => h === LIEN || h === LIEN_APP || h === 'mailto:support@fillsell.app' || h === 'https://fillsell.app/legal#mentions' || h === 'https://fillsell.app/legal#confidentialite'), `${nom} : aucun autre lien (app, facture, contact, mentions, confidentialité)`);
+    ok(hrefs.every((h) => h === LIEN || h === LIEN_APP || h === 'mailto:support@fillsell.app' || h === `https://fillsell.app/legal${lang === 'en' ? '?lang=en' : ''}#mentions` || h === `https://fillsell.app/legal${lang === 'en' ? '?lang=en' : ''}#confidentialite`),`${nom} : aucun autre lien (app, facture, contact, mentions, confidentialité)`);
   }
   const b = E.mailBienvenue('en', 'https://fillsell.app/desinscription?t=x');
   ok(/>Unsubscribe</.test(b.html) && !/Me désinscrire/.test(b.html), 'les autres mails anglais aussi : « Unsubscribe » au lieu de « Me désinscrire »');
@@ -152,6 +152,9 @@ titre('Les liens du pied mènent à des pages qui existent (relu dans l\'app)');
   const legal = lire('../src/pages/Legal.jsx');
   ok(/path: '\/legal'/.test(legal) && /<Section id="mentions"/.test(legal) && /<Section id="confidentialite"/.test(legal), '/legal porte les sections #mentions et #confidentialite');
   ok(/LIEN_MENTIONS = "https:\/\/fillsell\.app\/legal#mentions"/.test(lire('../supabase/functions/_shared/email-template.ts')), 'le gabarit pointe sur /legal#mentions');
+  // (05/10) Le pied anglais ajoute ?lang=en, que /legal lit avant le réglage de l'app.
+  ok(/LIEN_MENTIONS_EN = "https:\/\/fillsell\.app\/legal\?lang=en#mentions"/.test(lire('../supabase/functions/_shared/email-template.ts')), 'pied anglais : /legal?lang=en#mentions');
+  ok(/searchParams|URLSearchParams/.test(legal) && /\.get\('lang'\)/.test(legal), '/legal lit ?lang= (rendu vérifié par selftest:legal-langue)');
 }
 
 titre('Le câblage : stripe-webhook → payment-notify → email-tunnel');

@@ -39,6 +39,11 @@ export const EMAIL_SUPPORT = "support@fillsell.app";
 /** Ancres reelles de la page /legal. */
 export const LIEN_MENTIONS = "https://fillsell.app/legal#mentions";
 export const LIEN_CONFIDENTIALITE = "https://fillsell.app/legal#confidentialite";
+/** (05/10) Pied ANGLAIS : /legal lit `?lang=` avant le réglage de l'app — le
+ *  lecteur d'un mail n'a pas de fs_lang sur fillsell.app et voyait le français.
+ *  Le pied français garde ses deux liens, octet pour octet. */
+export const LIEN_MENTIONS_EN = "https://fillsell.app/legal?lang=en#mentions";
+export const LIEN_CONFIDENTIALITE_EN = "https://fillsell.app/legal?lang=en#confidentialite";
 
 /** Pastilles du bloc statut. La couleur ne porte jamais l'information seule. */
 export const COULEURS_STATUT = {
@@ -458,8 +463,8 @@ export function renderEmail(opts: OptionsEmail): string {
     lienPreferences = "",
     lienDesinscription = "",
     mentionsLegales = "",
-    lienMentions = LIEN_MENTIONS,
-    lienConfidentialite = LIEN_CONFIDENTIALITE,
+    lienMentions = P === PIED.en ? LIEN_MENTIONS_EN : LIEN_MENTIONS,
+    lienConfidentialite = P === PIED.en ? LIEN_CONFIDENTIALITE_EN : LIEN_CONFIDENTIALITE,
     lienWeb = "",
     langue = "fr",
   } = opts;
