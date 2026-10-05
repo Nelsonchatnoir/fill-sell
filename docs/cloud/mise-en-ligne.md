@@ -8,7 +8,7 @@ différence arrête la passe (retour arrière en fin de page).
 ## 0. Avant (Nico)
 
 - [ ] Saisies Apple / Google / Stripe faites (`docs/cloud/fiche-boutiques.md`).
-- [ ] Textes de confidentialité et CGV validés (`docs/cloud/confidentialite.md`).
+- [ ] Textes de confidentialité et CGV validés (`src/cloud/textesLegaux.js`, `docs/cloud/confidentialite.md`) ; accord de sous-traitance Hetzner conclu.
 - [ ] DNS `cloud.fillsell.app` → IP du serveur (nuage gris).
 - [ ] Pool : au moins 5 IP achetées et contrôlées (`outils/ip.mjs pool`).
 - [ ] Décision sur le délai entre deux sessions (sinon : en continu).
@@ -104,7 +104,11 @@ Relecture : `https://cloud.fillsell.app/sante`.
 - `src/config/cloudOffer.js` : `CLOUD_OFFER_ENABLED = true` ; `CLOUD_TEMOINS` vide.
 - `scripts/cloud-ecrans-selftest.mjs` : retirer les DEUX lignes du fil-piège
   (« le drapeau Cloud est BAISSÉ ») — et elles seules.
-- Les textes validés (confidentialité, CGV) dans `src/pages/Legal.jsx`.
+- Les textes légaux (CGV article 7, CGU 3.9, confidentialité 4.7 et 4.8) sont DÉJÀ dans
+  `src/cloud/textesLegaux.js` et `/legal` les affiche dès que le drapeau se lève
+  (`CLOUD_TEXTES_LEGAUX = CLOUD_OFFER_ENABLED`) : rien à copier. Prérequis : Nico les a
+  validés et a conclu l'accord de sous-traitance Hetzner (`confidentialite.md`, § 4).
+  `npm run selftest:cloud-textes-legaux` vert.
 - Commit, **UN push** (Vercel), puis l'OTA depuis le dossier principal
   (`npm run build`, `npx @capgo/cli bundle upload …`), relecture de `build.json`.
 

@@ -1,83 +1,76 @@
-# FillSell Cloud — ajouts à la politique de confidentialité et aux CGV (À VALIDER par Nico)
+# FillSell Cloud — politique de confidentialité et CGV de l'option (FINALES, 05/10)
 
-Rien n'est publié : ces textes entrent dans `src/pages/Legal.jsx` (articles 4.x
-et CGV) **après la validation de Nico**, dans le même push que la mise en ligne.
-Ils sont écrits pour dire exactement ce que fait le code de la branche `feat/cloud`.
+**Source unique des textes : `src/cloud/textesLegaux.js`** (français et anglais).
+Ce fichier-ci explique ce qu'ils disent, pourquoi, et comment ils partent.
 
-## 1. Politique de confidentialité — nouvel article « 4.8 L'option Sans ordinateur »
+## 1. Comment ils se publient — avec la mise en ligne, sans geste de plus
 
-> **Ce que nous gardons pour faire tourner l'option.** Quand tu prends l'option
-> Sans ordinateur, FillSell publie tes annonces depuis ses serveurs, dans un
-> navigateur qui t'est réservé. Pour cela, nous conservons :
-> - **les connexions à tes plateformes** (Vinted, Leboncoin) : les cookies de
->   session que la plateforme pose quand tu te connectes depuis l'écran « Me
->   connecter ». Nous ne voyons ni ne gardons jamais ton mot de passe : tu le
->   tapes sur la page de la plateforme. Ces cookies sont **chiffrés** (AES-256)
->   avec une clé qui ne se trouve que sur nos serveurs de navigateurs ; notre base
->   de données n'en garde qu'une version chiffrée ;
-> - **une session FillSell propre à ce navigateur**, créée par nos serveurs (aucun
->   mot de passe FillSell n'est stocké) ;
-> - **le profil du navigateur** (cookies, stockage local des pages), sur nos serveurs.
->
-> **Où.** Les navigateurs tournent chez **Hetzner Online GmbH** (Allemagne, Union
-> européenne). Ils sortent sur Internet par une **adresse IP française qui t'est
-> réservée**, fournie par **IPRoyal** (UAB « Iproyal », Lituanie, Union européenne) :
-> les plateformes voient une connexion française, toujours la même pour toi.
-> Ton compte eBay passe par la connexion officielle d'eBay (API), jamais par ce navigateur.
->
-> **Combien de temps.** Tant que l'option est active. Quand elle s'arrête (fin
-> d'essai sans abonnement, arrêt, suppression du compte), nous **effaçons** le
-> navigateur, son profil, tes connexions chiffrées et la session FillSell de ce
-> navigateur, au plus tard 3 jours après la fin (le temps d'un premier paiement
-> qui arrive en retard). L'adresse IP qui t'était réservée reste au repos 7 jours
-> avant de servir à quelqu'un d'autre.
->
-> **Un seul essai gratuit par personne.** Pour empêcher qu'un même essai soit
-> repris plusieurs fois (intérêt légitime), nous gardons, **sous forme
-> d'empreintes irréversibles** (HMAC-SHA256) et jamais en clair : un identifiant
-> de l'appareil depuis lequel l'essai est demandé, l'empreinte technique de la
-> carte enregistrée pour l'essai (fournie par Stripe, jamais le numéro), et
-> l'identifiant des comptes de plateforme connectés pendant l'essai. Ces
-> empreintes sont gardées **12 mois après la fin de l'essai**, puis effacées.
->
-> **Sous-traitants ajoutés** (article 4.7) : Hetzner Online GmbH (hébergement des
-> navigateurs, Allemagne), IPRoyal (adresses IP, Lituanie).
+- `src/pages/Legal.jsx` les affiche **seulement** quand `CLOUD_TEXTES_LEGAUX`
+  est vrai (`src/config/cloudOffer.js`), et cet interrupteur **suit le drapeau de
+  l'offre** (`= CLOUD_OFFER_ENABLED`). Le jour où l'offre s'ouvre (mise en ligne,
+  étape 6), la page `/legal` les montre dans le même push, la même OTA.
+- Drapeau baissé (aujourd'hui) : `/legal` se rend **octet pour octet** comme la
+  version servie (`scripts/cloud/preuve-identite-compte-ordinaire.mjs`, scènes `LG`).
+  Jamais ouverts aux seuls témoins : page publique, sans compte (règle du 15/09).
+- Si la revue Apple exigeait les textes AVANT l'ouverture : lever
+  `CLOUD_TEXTES_LEGAUX` seul (`= true`), un push, une OTA.
+- Contrôle : `npm run selftest:cloud-textes-legaux` (39) — chaque durée et chaque
+  fait est relu dans le code (migration du socle, règles pures, orchestrateur,
+  palier.js) ; `/legal` rendu interrupteur baissé (aucune trace) puis levé (tout
+  y est, articles 1 à 6 intacts).
 
-**English** (same article, « 4.8 The No computer add-on ») — à traduire mot pour
-mot une fois le français validé.
+## 2. Où ils vont sur `/legal`
 
-## 2. CGV — l'option Sans ordinateur (nouvel article)
+| Endroit | Ajout |
+|---|---|
+| CGU 3.9 (plateformes tierces) | une phrase : avec l'option, le navigateur est sur nos serveurs, toujours dans les sessions de l'utilisateur |
+| CGV article 2 (extension requise) | une phrase : l'exception de l'option (Vinted, Leboncoin) |
+| CGV **article 7** (nouveau) | objet, prix, essai, arrêt, rétractation (renvoi à l'article 6), responsabilité |
+| Confidentialité 4.7 (sous-traitants) | Hetzner Online GmbH ; IPRoyal Services FZE LLC |
+| Confidentialité **4.8** (nouveau) | ce qui est gardé, où, combien de temps, l'essai unique |
 
-> **Prix.** 20 € TTC par mois, sur le web (Stripe) comme dans l'App Store et
-> Google Play. L'option est indépendante de ta formule : elle se prend seule
-> (plan Free compris, avec ses quotas) ou en plus de Premium, Pro ou Business.
-> Arrêter ta formule n'arrête pas l'option.
->
-> **Essai gratuit de 7 jours, carte demandée.** La date et l'heure de la fin de
-> l'essai, et le montant prélevé ensuite (20 € par mois), te sont indiqués avant
-> que tu n'enregistres ta carte. Rien n'est prélevé pendant l'essai. Un seul
-> essai par personne (même compte, appareil, carte ou compte de plateforme).
-> La veille de la fin de l'essai, tu reçois un rappel.
->
-> **Arrêt.** Pendant l'essai : en un geste (Réglages › Abonnement), l'arrêt est
-> immédiat et rien n'est facturé. Une fois payée : l'option tourne jusqu'à la fin
-> de la période payée, puis s'arrête ; rien n'est prélevé ensuite. Une option
-> prise dans l'App Store ou Google Play s'arrête dans les réglages d'abonnements
-> de la boutique.
->
-> **Ce que fait l'option.** FillSell publie, republie, retire tes annonces Vinted
-> et Leboncoin et surveille leurs ventes depuis ses serveurs, même quand ton
-> ordinateur est éteint. Tu restes responsable de tes annonces et du respect des
-> conditions de chaque plateforme. Une plateforme peut limiter ou refuser l'accès
-> depuis nos serveurs ; dans ce cas nous te le disons et l'extension sur ton
-> ordinateur reste disponible gratuitement.
+## 3. Ce qui a changé par rapport au brouillon (relecture du 05/10)
 
-## 3. Ce qui reste à décider (Nico)
+1. **IPRoyal n'est PAS lituanien.** Le prestataire est **IPRoyal Services FZE LLC,
+   Ajman, Émirats arabes unis** (conditions et politique de confidentialité relues
+   le 05/10). C'est un **transfert hors de l'Union européenne** : le texte le dit,
+   et dit son encadrement — les **clauses contractuelles types** de la Commission
+   (module 2), incluses dans l'accord de traitement d'IPRoyal, qui fait partie de
+   ses conditions. IPRoyal garde ses journaux de trafic **au moins 6 mois** : dit.
+2. **Le mot de passe passe par nos serveurs.** Le brouillon disait « nous ne voyons
+   jamais ton mot de passe ». Faux en l'état : « Me connecter » transmet la saisie
+   du téléphone au navigateur par le serveur (`Input.insertText`). Le texte dit
+   maintenant exactement cela : transmis, **ni enregistré ni journalisé** (relu
+   dans `serveur-cloud/src/connexion.js` : aucune écriture, aucun journal de la
+   saisie, image de la page en direct jamais écrite).
+3. **Ajouts de ce que le code garde** et que le brouillon taisait : l'historique de
+   l'IP réservée (identifiant effacé à 12 mois), le journal des connexions « Me
+   connecter » (90 jours), les empreintes gardées **même si le compte est
+   supprimé** (`ON DELETE SET NULL`), les comptes de plateforme **déjà reliés à
+   FillSell** (relevés Vinted) parmi les verrous de l'essai, la base légale.
+4. **Le ton de la page** : vouvoiement en confidentialité, « l'utilisateur » en
+   CGV (le brouillon tutoyait).
+5. **Les boutiques** : l'essai App Store / Google Play est celui de la boutique, et
+   l'option s'y arrête dans ses réglages ; l'arrêt « en un geste, immédiat » est
+   celui du web.
+6. **Le rappel** : « au plus tard la veille », dans l'app et par e-mail (fenêtre
+   J-2 → J-1 du code) ; les rappels de Stripe sont coupés par Nico (05/10).
+7. **La traduction anglaise** est écrite (même forme, contrôlée).
 
-1. Validation des deux textes ci-dessus (ou corrections).
-2. La raison sociale exacte d'IPRoyal à écrire (« IPRoyal » suffit-il ?).
-3. Faut-il un consentement explicite (case à cocher) au stockage des connexions,
-   en plus de l'information ? Proposition : non (l'option ne peut pas fonctionner
-   sans ; base légale = exécution du contrat), mais une phrase sur l'écran
-   « Me connecter » (« Tes connexions sont gardées chiffrées, effacées à l'arrêt
-   de l'option ») — déjà dans l'introduction de l'écran, à compléter si tu valides.
+## 4. Ce qui reste à Nico (avant la mise en ligne, rien de technique)
+
+1. **Lire et valider** les textes (`src/cloud/textesLegaux.js`).
+2. **Hetzner : conclure l'accord de sous-traitance (AVV / DPA)** dans le compte
+   Hetzner (accounts.hetzner.com, rubrique des contrats / « Auftragsverarbeitung ») —
+   en ligne, quelques clics. Sans lui, Hetzner n'est pas un sous-traitant en règle.
+3. **IPRoyal** : son accord de traitement (avec les clauses contractuelles types)
+   est accepté avec ses conditions à l'inscription — rien à signer.
+4. **Registre des traitements** de FillSell : y ajouter l'option (finalités,
+   données, durées, sous-traitants — tout est dans les textes).
+5. **Fiches des boutiques, le jour de l'ouverture** : « Confidentialité de l'app »
+   (App Store Connect) et « Sécurité des données » (Google Play) — l'option ajoute
+   un **identifiant d'appareil** (haché, prévention de la fraude : un essai par
+   personne).
+6. Consentement : pas de case à cocher (base légale = exécution du contrat ;
+   intérêt légitime pour l'essai unique) ; l'écran « Me connecter » dit déjà que
+   les connexions sont gardées chiffrées et effacées à l'arrêt de l'option.
