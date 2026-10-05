@@ -53,6 +53,7 @@ await db.exec(`
   CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
   CREATE SCHEMA auth;
   CREATE TABLE auth.users (id uuid PRIMARY KEY);
+  CREATE TABLE auth.sessions (id uuid PRIMARY KEY, user_id uuid REFERENCES auth.users (id));
   CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
   GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
@@ -257,6 +258,11 @@ ok(await val("SELECT iv FROM public.cloud_coffre WHERE user_id = $1 AND platefor
 const etatCoffre = (await commeUser(U.A, 'SELECT public.cloud_coffre_etat_moi() r')).r;
 ok(etatCoffre.vinted?.connecte === true && !JSON.stringify(etatCoffre).includes('zzz'), 'cloud_coffre_etat_moi : « connecté », jamais le chiffré');
 ok(Number(await val('SELECT public.cloud_coffre_vider($1)', [U.A])) === 1, 'cloud_coffre_vider : effacé');
+const sCloud = await val('SELECT gen_random_uuid()'), sTel = await val('SELECT gen_random_uuid()');
+await db.query('INSERT INTO auth.sessions VALUES ($1, $3), ($2, $3)', [sCloud, sTel, U.A]);
+ok(Number(await val('SELECT public.cloud_session_revoquer($1, $2)', [U.F, sCloud])) === 0, "révocation : jamais la session d'un AUTRE compte");
+ok(Number(await val('SELECT public.cloud_session_revoquer($1, $2)', [U.A, sCloud])) === 1
+  && Number(await val('SELECT count(*) FROM auth.sessions WHERE id = $1', [sTel])) === 1, 'révocation : la session du navigateur Cloud, ELLE SEULE (celle du téléphone reste)');
 
 // ─────────────────────────────────────────────────────────────────────────────
 titre('10. Les droits');

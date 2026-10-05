@@ -55,7 +55,7 @@
 --   DROP FUNCTION IF EXISTS public.profiles_cloud_pool(), public.cloud_pool_entretien(), public.cloud_pool_etat(),
 --     public.cloud_compte_synchroniser(uuid), public.cloud_comptes_a_servir(), public.cloud_poste_noter(uuid, text, jsonb),
 --     public.cloud_coffre_ecrire(uuid, text, text, text, integer, boolean), public.cloud_coffre_lire(uuid),
---     public.cloud_coffre_vider(uuid), public.cloud_coffre_etat_moi(),
+--     public.cloud_coffre_vider(uuid), public.cloud_coffre_etat_moi(), public.cloud_session_revoquer(uuid, uuid),
 --     public.cloud_essai_preparer_moi(text), public.cloud_essai_moi(), public.cloud_essai_permis(uuid),
 --     public.cloud_essai_noter_carte(uuid, text), public.cloud_essai_noter_compte_plateforme(uuid, text, text),
 --     public.cloud_empreintes_engager(uuid),
@@ -979,6 +979,22 @@ BEGIN
 END;
 $f$;
 
+-- 7.4 bis La session FillSell posée par le serveur pour CE navigateur, et elle
+-- seule, est révoquée (purge, ou session remplacée). Les autres sessions du
+-- compte (téléphone, ordinateur) ne sont jamais touchées.
+CREATE OR REPLACE FUNCTION public.cloud_session_revoquer(p_user uuid, p_session uuid)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
+DECLARE v_n integer;
+BEGIN
+  IF p_user IS NULL OR p_session IS NULL THEN RETURN 0; END IF;
+  DELETE FROM auth.sessions WHERE id = p_session AND user_id = p_user;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  UPDATE public.cloud_postes SET session_fillsell_id = NULL, maj_le = now()
+   WHERE user_id = p_user AND session_fillsell_id = p_session;
+  RETURN v_n;
+END;
+$f$;
+
 -- 7.4 L'app : quelles plateformes sont connectées dans MON navigateur Cloud
 -- (jamais un cookie, jamais un identifiant).
 CREATE OR REPLACE FUNCTION public.cloud_coffre_etat_moi()
@@ -1104,7 +1120,7 @@ REVOKE ALL ON FUNCTION
   public.cloud_essai_noter_carte(uuid, text), public.cloud_essai_noter_compte_plateforme(uuid, text, text),
   public.cloud_comptes_a_servir(), public.cloud_poste_noter(uuid, text, jsonb),
   public.cloud_coffre_ecrire(uuid, text, text, text, integer, boolean), public.cloud_coffre_lire(uuid), public.cloud_coffre_vider(uuid),
-  public.cloud_pool_entretien(), public.cloud_pool_etat()
+  public.cloud_session_revoquer(uuid, uuid), public.cloud_pool_entretien(), public.cloud_pool_etat()
 FROM PUBLIC, anon, authenticated;
 -- Le sel ne sort jamais, même pour la clé de service.
 REVOKE ALL ON FUNCTION public.cloud_sel() FROM PUBLIC, anon, authenticated, service_role;
@@ -1119,7 +1135,7 @@ GRANT EXECUTE ON FUNCTION
   public.cloud_essai_noter_compte_plateforme(uuid, text, text),
   public.cloud_comptes_a_servir(), public.cloud_poste_noter(uuid, text, jsonb),
   public.cloud_coffre_ecrire(uuid, text, text, text, integer, boolean), public.cloud_coffre_lire(uuid), public.cloud_coffre_vider(uuid),
-  public.cloud_pool_entretien(), public.cloud_pool_etat()
+  public.cloud_session_revoquer(uuid, uuid), public.cloud_pool_entretien(), public.cloud_pool_etat()
 TO service_role;
 REVOKE ALL ON FUNCTION public.cloud_essai_preparer_moi(text), public.cloud_essai_moi(), public.cloud_coffre_etat_moi() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.cloud_essai_preparer_moi(text), public.cloud_essai_moi(), public.cloud_coffre_etat_moi() TO authenticated;
