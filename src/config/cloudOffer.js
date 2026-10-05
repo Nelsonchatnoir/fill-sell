@@ -34,3 +34,20 @@ export const CLOUD_OFFER_ENABLED = false;
 // liste de comptes témoins sans retoucher les appelants.
 // eslint-disable-next-line no-unused-vars
 export const cloudOfferVisible = (userId) => CLOUD_OFFER_ENABLED;
+
+// ── L'écran « Me connecter » (05/10) ──────────────────────────────────────
+// Le serveur qui ouvre la page de connexion dans le navigateur Cloud du compte
+// (orchestrateur, serveur-cloud/, derrière Caddy).
+export const CLOUD_DOMAINE = 'cloud.fillsell.app';
+// Les plateformes proposées : SEULEMENT celles prouvées en réel depuis le Cloud.
+// (Une plateforme qui bloque le Cloud n'est jamais promise : elle s'ajoute ici
+// après son test réel, sur décision de Nico.) eBay a sa propre ligne (API).
+export const CLOUD_PLATEFORMES_CONNEXION = Object.freeze([
+  Object.freeze({ id: 'vinted', nom: 'Vinted' }),
+  Object.freeze({ id: 'leboncoin', nom: 'Leboncoin' }),
+]);
+// Comptes TÉMOINS du test réel : l'écran « Me connecter » et la lecture de
+// l'état Cloud leur sont ouverts même drapeau baissé — l'OFFRE (paiement)
+// reste fermée. VIDE = personne : rien ne change pour aucun compte.
+export const CLOUD_TEMOINS = Object.freeze([]);
+export const cloudConnexionVisible = (userId) => CLOUD_OFFER_ENABLED || (userId != null && CLOUD_TEMOINS.includes(userId));
