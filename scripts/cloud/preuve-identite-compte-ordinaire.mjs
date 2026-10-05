@@ -60,7 +60,7 @@ const candidat = git('rev-parse', arg('--candidat') ?? 'HEAD').trim();
 const court = (c) => c.slice(0, 7);
 // La fusion Cloud : le dernier merge « merge : feat/cloud » de l'histoire du candidat.
 const fusion = arg('--fusion') ? git('rev-parse', arg('--fusion')).trim()
-  : git('log', '--merges', '--first-parent', '--format=%H %s', candidat).split('\n').find((l) => / merge : feat\/cloud/.test(` ${l.slice(41)}`) || l.slice(41).startsWith('merge : feat/cloud'))?.slice(0, 40);
+  : git('log', '--merges', '--first-parent', '--format=%H %s', candidat).split('\n').find((l) => /^merge(\([a-z]+\))? : feat\/cloud/.test(l.slice(41)))?.slice(0, 40);
 if (!fusion) { console.log('Aucune fusion « merge : feat/cloud » dans l’histoire du candidat.'); process.exit(2); }
 const baseMain = git('rev-parse', `${fusion}^1`).trim();
 console.log(`Servi    : ${court(servi)} ${git('log', '-1', '--format=%s', servi).trim().slice(0, 90)}`);
@@ -81,8 +81,36 @@ const ACCROCHES = new Set([
 console.log('\n1. Le périmètre (rien d’autre ne part avec l’OTA)');
 const changes = git('diff', '--name-status', '--no-renames', servi, candidat, '--', ...DOSSIERS).trim().split('\n').filter(Boolean)
   .map((l) => { const [st, p] = l.split('\t'); return { st, p }; });
+// (05/10) Les modules de supabase/functions/_shared que l'app importe (palier.js,
+// et ce qu'ils importent eux-mêmes), relus dans le candidat. Un fichier _shared
+// qu'aucun module de src/ n'atteint est du SERVEUR seul (mail « paiement
+// échoué », fonctions edge) : il ne part pas avec l'OTA, il part au déploiement.
+function sharedAtteintsParLApp(commit) {
+  const fichiers = git('ls-tree', '-r', '--name-only', commit, 'src').split('\n').filter((f) => /\.(m?js|jsx|tsx?)$/.test(f));
+  const atteints = new Set();
+  const aLire = [...fichiers];
+  const lus = new Set();
+  const RE = /(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)|import\s*['"]([^'"]+)['"]/g;
+  while (aLire.length) {
+    const f = aLire.pop();
+    if (lus.has(f)) continue;
+    lus.add(f);
+    let texte = '';
+    try { texte = git('show', `${commit}:${f}`); } catch { continue; }
+    for (const m of texte.matchAll(RE)) {
+      const spec = m[1] ?? m[2] ?? m[3];
+      if (!spec || !spec.startsWith('.')) continue;
+      const cible = join(dirname(f), spec).replace(/\\/g, '/');
+      if (cible.startsWith('supabase/functions/_shared/')) { atteints.add(cible); aLire.push(cible); }
+    }
+  }
+  return atteints;
+}
+const sharedApp = sharedAtteintsParLApp(candidat);
+const serveurSeul = [];
 const hors = [];
 for (const { st, p } of changes) {
+  if (p.startsWith('supabase/functions/_shared/') && !sharedApp.has(p) && !NEUF_CLOUD(p)) { serveurSeul.push(`${p} (${st})`); continue; }
   if (NEUF_CLOUD(p)) { if (st !== 'A' && p !== 'src/config/cloudOffer.js') hors.push(`${p} (${st} : un fichier Cloud existait déjà au servi ?)`); continue; }
   if (ACCROCHES.has(p)) {
     // la version servie de ce fichier = celle de main sur laquelle la fusion a été faite
@@ -95,7 +123,9 @@ for (const { st, p } of changes) {
 }
 verifier(hors.length === 0, `aucun changement hors Cloud entre le servi et le candidat (${changes.length} fichiers différents)`, hors.join('\n        '));
 const neufs = changes.filter((c) => NEUF_CLOUD(c.p)).length;
+verifier(sharedApp.has('supabase/functions/_shared/palier.js'), `les modules _shared de l’app sont bien relus (${[...sharedApp].map((p) => p.replace('supabase/functions/_shared/', '')).join(', ')})`);
 console.log(`  · ${neufs} fichiers Cloud, ${changes.filter((c) => ACCROCHES.has(c.p)).length} points d’accroche, ${hors.length} hors périmètre`);
+if (serveurSeul.length) console.log(`  · ${serveurSeul.length} fichiers _shared du SERVEUR seul (aucun module de l’app ne les atteint ; ils partent au déploiement des fonctions, jamais avec l’OTA) :\n      ${serveurSeul.join('\n      ')}`);
 
 // ── 2. Les arbres, extraits du dépôt (jamais le dossier de travail) ─────────
 const BASE = join(ROOT, 'build', 'preuve-identite');   // build/ est ignoré par git : l'arbre reste propre
