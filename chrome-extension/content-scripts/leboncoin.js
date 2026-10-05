@@ -4900,19 +4900,36 @@ function lbcLignesTransporteurs() {
   return [...dlg.querySelectorAll('[role="checkbox"]')]
     .map((b) => {
       const lib = lbcTexteNu(lbcLibelleVoisin(b));
-      return { b, nom: LBC_TRANSPORTEURS_PAGE.find((p) => lib.startsWith(lbcTexteNu(p))) ?? null };
+      return { b, nom: LBC_TRANSPORTEURS_PAGE.find((p) => lib.startsWith(lbcTexteNu(p))) ?? null, bloque: lbcCaseBloquee(b) };
     })
     .filter((l) => l.nom);
 }
-/** Ce que la fenêtre montre MAINTENANT : proposés et cochés (null si fermée). */
+// ── UNE CASE QUE LEBONCOIN VERROUILLE N'EST PAS UN CHOIX (05/10, essai réel) ──
+// Relevé dans Chrome sur le formulaire de DÉPÔT (annonce à 999 €) : « Courrier
+// suivi — Disponible pour les ventes inférieures à 400 € » est rendu coché ET
+// désactivé (disabled, data-disabled) ; aucun clic ne le change, et Leboncoin
+// peut aussi verrouiller le dernier transporteur « Domicile » restant. C'était
+// tout le « Courrier suivi resté coché » du 04/10 et du 05/10 (job 9940f84d,
+// puis 09a360aa arrêté à raison par la 0.6.97). Une case verrouillée n'est ni
+// proposée ni comptée dans l'écart : Leboncoin l'impose (ou l'écarte), elle
+// est dite à part dans le bilan (imposes_par_leboncoin).
+const lbcCaseBloquee = (b) => b?.disabled === true || b?.hasAttribute?.("data-disabled") || b?.getAttribute?.("aria-disabled") === "true";
+/** Ce que la fenêtre montre MAINTENANT : proposés et cochés (null si fermée).
+ *  « proposés » et « cochés » ne parlent que des cases MODIFIABLES. */
 function lbcLectureTransporteurs() {
   const lignes = lbcLignesTransporteurs();
   if (!lignes.length) return null;
-  return { proposes: lignes.map((l) => l.nom), coches: lignes.filter((l) => lbcCoche(l.b)).map((l) => l.nom) };
+  const libres = lignes.filter((l) => !l.bloque);
+  return {
+    proposes: libres.map((l) => l.nom),
+    coches: libres.filter((l) => lbcCoche(l.b)).map((l) => l.nom),
+    imposes: lignes.filter((l) => l.bloque && lbcCoche(l.b)).map((l) => l.nom),
+    verrouilles: lignes.filter((l) => l.bloque).map((l) => l.nom),
+  };
 }
 const lbcEmpreinteTransporteurs = () => {
   const lu = lbcLectureTransporteurs();
-  return lu ? `${lu.proposes.join("|")}#${lu.coches.join("|")}` : "";
+  return lu ? `${lu.proposes.join("|")}#${lu.coches.join("|")}#${lu.verrouilles.join("|")}#${lu.imposes.join("|")}` : "";
 };
 /** Attend que `lire()` ne change plus pendant `calmeMs` (borne `maxMs`). */
 async function lbcAttendreCalme(lire, calmeMs = LBC_CALME_MS, maxMs = 5000) {
@@ -4972,6 +4989,7 @@ async function lbcMettreTransporteur(nom, veut) {
     const l = ligne();
     if (!l) return false; // plus proposé (recalcul) : la relecture d'ensemble tranchera
     if (lbcCoche(l.b) === veut) return true;
+    if (l.bloque) return false; // verrouillée par Leboncoin : aucun clic ne la change
     lbcClic(l.b);
     const pris = await waitFor(() => { const x = ligne(); return !!x && lbcCoche(x.b) === veut; }, 2000);
     await humanPause(250, 600);
@@ -5213,6 +5231,7 @@ async function poserLivraisonLbc(fields, warnings) {
     const texte = bloc?.innerText ?? "";
     bilan.poses = lu ? lu.coches : null;
     if (lu) bilan.proposes = lu.proposes;
+    if (lu?.verrouilles?.length) bilan.imposes_par_leboncoin = { coches: lu.imposes, verrouilles: lu.verrouilles };
     const fp = texte.match(/colis\s+(petit|moyen|volumineux)/i)?.[1] ?? null;
     bilan.format_pose = fp ? fp[0].toUpperCase() + fp.slice(1).toLowerCase() : null;
     if ((format || poids) && !bloc) echec("le format du colis n'a pas pu être relu après réglage");
@@ -5296,6 +5315,7 @@ async function verifierTransporteursAvantDepotLbc(warnings) {
     }
     b.poses = lu.coches;
     b.proposes = lu.proposes;
+    if (lu.verrouilles?.length) b.imposes_par_leboncoin = { coches: lu.imposes, verrouilles: lu.verrouilles };
     b.ecart = ecart ? { en_trop: ecart.enTrop, manquants: ecart.manquants, bloquant: ecart.bloquant } : null;
     b.verifie_avant_depot = { at: new Date().toISOString(), relu: true, coches: lu.coches };
     if (!ecart?.bloquant) return null;

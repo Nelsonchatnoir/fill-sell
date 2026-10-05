@@ -164,8 +164,9 @@ function creerPage(opts = {}) {
   };
   const apresT = [...(opts.recalculsApresTransporteurs ?? [])];
   const imposer = (ens) => {
-    const b = page.bloque;
-    if (b && st.proposes.includes(b.nom)) { if (b.etat) ens.add(b.nom); else ens.delete(b.nom); }
+    for (const b of [page.bloque, opts.verrouille]) {
+      if (b && st.proposes.includes(b.nom)) { if (b.etat) ens.add(b.nom); else ens.delete(b.nom); }
+    }
     return ens;
   };
   const recalculer = () => {
@@ -188,7 +189,7 @@ function creerPage(opts = {}) {
     const d = st.dialogue;
     if (d?.type !== "transporteurs") return;
     if ((st.clicsPerdus[nom] ?? 0) > 0) { st.clicsPerdus[nom]--; journal.push(`clic-perdu:${nom}`); return; }
-    if (page.bloque?.nom === nom) { journal.push(`refus:${nom}`); return; }
+    if (page.bloque?.nom === nom || opts.verrouille?.nom === nom) { journal.push(`refus:${nom}`); return; }
     h.plusTard(opts.latenceClic ?? 40, () => {
       if (st.dialogue !== d) return;
       if (d.brouillon.has(nom)) d.brouillon.delete(nom); else d.brouillon.add(nom);
@@ -250,8 +251,15 @@ function creerPage(opts = {}) {
       enfants.push(mk("div", { attrs: { role: "dialog" } }, [
         mk("h2", { text: "Vos moyens de livraison" }),
         ...st.proposes.map((nom) => mk("div", {}, [
-          mk("button", { attrs: { role: "checkbox", "aria-checked": () => String(Boolean(st.dialogue?.brouillon?.has(nom))) },
-            onClick: (e) => actif(e) && basculer(nom) }),
+          (() => {
+            // (05/10) Case VERROUILLÉE comme sur le vrai formulaire de dépôt :
+            // disabled + data-disabled (« Courrier suivi » au-delà de 400 €).
+            const verrou = opts.verrouille?.nom === nom;
+            const e = mk("button", { attrs: { role: "checkbox", "aria-checked": () => String(Boolean(st.dialogue?.brouillon?.has(nom))), ...(verrou ? { "data-disabled": "" } : {}) },
+              onClick: (ev) => actif(ev) && basculer(nom) });
+            if (verrou) e.disabled = true;
+            return e;
+          })(),
           mk("div", { text: `${nom}\nJusqu’à ${LIMITE[nom] / 1000} kg` }),
         ])),
         mk("div", {}, [
@@ -411,6 +419,17 @@ console.log("5. Recalcul très tardif, entre la pose et le « Continuer » final
   const r = await parcours({ recalculs: [500] }, JOB_9940, { avantDernier: (page) => page.recalculer() });
   ok(r.warnings.some((w) => /écart relu juste avant le dépôt/.test(w)), "la dernière relecture voit l'écart", r.warnings);
   ok(r.depose && memes(r.env.page.st.cochesAuDepot, JOB_9940.lbcTransporteurs), "corrigé, puis déposé exact", r.env.page.st.cochesAuDepot);
+}
+
+// ── 5 bis. Case VERROUILLÉE par Leboncoin (essai réel du 05/10) ─────────────
+console.log("5 bis. « Courrier suivi » coché et VERROUILLÉ (vente > 400 €) : ce n'est pas un choix, le dépôt part");
+{
+  const r = await parcours({ recalculs: [500], verrouille: { nom: "Courrier suivi", etat: true } }, JOB_9940);
+  ok(r.depose, "déposé : une case que Leboncoin verrouille n'arrête rien", r.resultat);
+  ok(!r.env.page.journal.includes("refus:Courrier suivi"), "aucun clic sur la case verrouillée", r.env.page.journal.filter((e) => e.startsWith("refus")));
+  const b = r.resultat.livraisonLbc;
+  ok(b?.posee === true && memes(b.poses, ["Mondial Relay", "Colissimo"]) && memes(b.imposes_par_leboncoin?.coches ?? [], ["Courrier suivi"]),
+    "bilan : posés = le choix, « Courrier suivi » dit à part (imposé par Leboncoin)", b);
 }
 
 // ── 6. Écart persistant : rien ne part ──────────────────────────────────────
