@@ -93,6 +93,9 @@ import {
   appliquerGenerale, dissocier, rattacher, suitLaGenerale, valeurCommune,
   valeurPourPlateforme, ecartsDeConformite,
 } from "../utils/valeursGenerales";
+// (04/10, Louis) Le texte qui part est celui de la fiche au moment de l'envoi.
+import { CHAMPS_TEXTE, texteDuVendeurDe, champsAReprendreDeLaFiche, retoucheAEcrire } from "../publication/texteDeLaFiche";
+import { avecFormatChoisi } from "../utils/leboncoinColis";
 // ── LE MOTEUR ET LA NOUVELLE PEAU (refonte du 24/09/2026) ──────────────────
 // Les RÈGLES (qui part, qui est exclu, ce qui bloque, la forme d'un job, la
 // garde eBay) vivent dans src/publication/moteur/ — fonctions pures, lues par
@@ -2894,7 +2897,14 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                         // Une clé qu'on connaît va dans son champ dédié ; les
                         // autres dans le canal d'aspects de la plateforme —
                         // exactement là où l'extension va les chercher.
-                        if (cleNotre) {
+                        if (cleNotre === "format_colis") {
+                          // (04/10) Choix de la personne : marqué (avecFormatChoisi).
+                          const marque = avecFormatChoisi(pf, valeur);
+                          for (const k of Object.keys(pf)) delete pf[k];
+                          Object.assign(pf, marque);
+                          noteOverride?.(p, cleNotre);
+                        }
+                        else if (cleNotre) {
                           pf[cleNotre] = valeur;
                           // Le lien avec la source partagée CASSE pour cette copie :
                           // sans ça, la propagation réécraserait la correction que
@@ -2925,6 +2935,9 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                         // l'hôte le reporte sur la fiche au clic Publier.
                         if (cle === "lbcPoidsGrammes") onPoidsSaisi?.();
                         setEdited(prev => {
+                          // (04/10) Un format posé ICI est un choix de la
+                          // personne : marqué, il est le seul qui parte.
+                          if (cle === "format_colis") return { ...prev, [p]: { ...prev[p], platform_fields: avecFormatChoisi(prev[p]?.platform_fields, valeur) } };
                           const pf = { ...(prev[p]?.platform_fields ?? {}) };
                           if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
                           return { ...prev, [p]: { ...prev[p], platform_fields: pf } };
@@ -4607,6 +4620,10 @@ export default function ListingPreviewScreen({
   // survit au brouillon (sinon un rechargement ramènerait la valeur générale
   // sur une carte que la personne avait mise à part).
   const [dissociees, setDissociees] = useState(() => lireDissociations(draft?.dissociees));
+  // (04/10) Les champs de texte général RETOUCHÉS À LA MAIN pendant cette
+  // publication (stepper ou lot) : ils sont écrits sur la fiche, et la fiche
+  // relue à l'envoi ne les défait pas (src/publication/texteDeLaFiche.js).
+  const retouchesMainRef = useRef(new Set());
   // ── LES TROIS VALEURS GÉNÉRALES (2026-09-21) ──────────────────────────────
   // État EXPLICITE, pas déduit des copies. Le déduire semblait plus propre —
   // une seule source de vérité — mais la mise en conformité peut rendre deux
@@ -4927,6 +4944,7 @@ export default function ListingPreviewScreen({
     // listing_url).
     setDissociees(dissociationsVides());
     setGenerales({ titre: "", description: "", etat: "" });
+    retouchesMainRef.current = new Set();
     setModeleConfirme(null);
     setPrice(null);
     setPrixAchatSaisi("");
@@ -5526,12 +5544,32 @@ export default function ListingPreviewScreen({
             // Le prix d'achat et les attributs de la ligne restent utiles
             // (bandeau prix d'achat, garde-fous de catégorie) : on les lit
             // quand même, sans toucher à ce que la fiche vient de poser.
-            supabase.from("inventaire").select("prix_achat,prix_achat_inconnu,attributs")
+            supabase.from("inventaire").select("prix_achat,prix_achat_inconnu,attributs,titre,description,origine")
               .eq("id", invId).maybeSingle()
               .then(({ data: art }) => {
                 if (!vivant || !art) return;
                 if (art.attributs && typeof art.attributs === "object") setAttributsBase(art.attributs);
                 setPrixAchatBase({ valeur: art.prix_achat ?? null, inconnu: art.prix_achat_inconnu === true });
+                // ── LA FICHE A CHANGÉ DEPUIS CETTE COPIE (04/10, Louis) ──
+                // La copie enregistrée garde le texte de SON jour ; la fiche
+                // (relevé, Stock, autre appareil) a pu en recevoir un plus
+                // récent. Le texte du vendeur sur la fiche l'emporte : texte
+                // général ET toutes les cartes — une exception posée sur une
+                // carte portait sur l'ancien texte, elle ne tient plus.
+                const patch = champsAReprendreDeLaFiche(texteDuVendeurDe(art), data.fiche.generales ?? {});
+                const champs = Object.keys(patch);
+                if (champs.length) {
+                  setGenerales(prev => ({ ...prev, ...patch }));
+                  setDissociees(prev => {
+                    const d = { ...prev };
+                    for (const c of champs) d[c] = new Set();
+                    return d;
+                  });
+                  setEdited(prev => champs.reduce((e, c) => appliquerGenerale(e, {
+                    champ: c, valeur: patch[c], plateformes: Object.keys(e), dissociees: dissociationsVides(),
+                  }), prev));
+                  console.log(`[stepper] fiche rouverte : ${champs.join(" + ")} repris de la fiche (la copie enregistrée était plus ancienne)`);
+                }
               });
             setInit(false);
             return;
@@ -6588,6 +6626,13 @@ export default function ListingPreviewScreen({
   // plus récente — elle reste choisissable dans « Reprendre le texte de : ».
   // Une fiche retouchée par la personne ne bouge pas : c'est SON texte, et la
   // rangée lui montre les autres versions, sans rien écraser.
+  // ⛔ (04/10, Louis) PLUS JAMAIS PAR-DESSUS LE TEXTE DU VENDEUR DE LA FICHE :
+  //    règle de Nico, le texte qui part est celui de la fiche. Les 13
+  //    « Rangement » de Louis le montrent : la version « en ligne la plus
+  //    récente » peut être justement l'annonce partie avec l'ancien texte.
+  //    La fiche suit déjà ses annonces (relevé, contenu relu du 21/09) ; les
+  //    autres versions restent choisissables dans « Reprendre le texte de : ».
+  //    Seul un brouillon (Lens, vocal) que personne n'a touché garde ce repli.
   const versionsAppliquees = useRef(null);
   useEffect(() => {
     if (!versionsTexte.length || !generales?.titre && !generales?.description) return;
@@ -6596,8 +6641,13 @@ export default function ListingPreviewScreen({
     if (!enLigne.length) return;
     versionsAppliquees.current = inventaireId;
     const marqueur = (cle) => String(attributV(cle) ?? "").trim().toLowerCase();
+    const duVendeur = texteDuVendeurDe({
+      titre: initialListing?.titre, description: initialListing?.description,
+      origine: initialListing?.origine, attributs: attributsBase,
+    });
     for (const [champ, cle] of [["titre", "titre_source"], ["description", "description_source"]]) {
       if (marqueur(cle) === "manuel") continue;
+      if (duVendeur[champ]) continue; // le texte du vendeur sur la fiche fait foi
       const fiche = String(initialListing?.[champ] ?? "").trim();
       const courant = String(generales?.[champ] ?? "").trim();
       if (fiche && courant && courant !== fiche) continue; // déjà retouché dans ce stepper
@@ -6638,6 +6688,29 @@ export default function ListingPreviewScreen({
       copies: platformListings?.platforms ?? null,
     }));
   };
+  // (04/10) La même chose, quand c'est la PERSONNE qui écrit (champ général du
+  // stepper, rangée « Reprendre le texte de : », texte relu dans le lot) : le
+  // geste est noté, et le texte part sur la fiche (effet ci-dessous) — fiche
+  // et annonce disent la même chose, et rouvrir ne le défait pas.
+  const retoucherValeurGenerale = (champ, valeur) => {
+    if (CHAMPS_TEXTE.includes(champ)) retouchesMainRef.current.add(champ);
+    poserValeurGenerale(champ, valeur);
+  };
+  const ficheEcriteRef = useRef(null);
+  useEffect(() => {
+    if (!invId || !userId || !retouchesMainRef.current.size) return undefined;
+    const minuteur = setTimeout(() => {
+      const base = ficheEcriteRef.current ?? { titre: initialListing?.titre, description: initialListing?.description };
+      const aEcrire = retoucheAEcrire(base, generales, retouchesMainRef.current);
+      if (!aEcrire) return;
+      ficheEcriteRef.current = { ...base, ...Object.fromEntries(CHAMPS_TEXTE.filter(c => c in aEcrire).map(c => [c, aEcrire[c]])) };
+      supabase.from("inventaire").update(aEcrire).eq("id", invId).eq("user_id", userId)
+        .then(({ error }) => { if (error) console.warn("[stepper] texte retouché non écrit sur la fiche :", error.message); })
+        .catch(() => {});
+    }, 1500);
+    return () => clearTimeout(minuteur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generales?.titre, generales?.description, invId, userId]);
 
   // DISSOCIER — toute saisie DANS une carte est un geste explicite : la carte
   // sort du général, exactement comme le prix depuis le 14/07.
@@ -9055,9 +9128,44 @@ export default function ListingPreviewScreen({
       // (construireJobs) : photos du JOB par plateforme (plafond Leboncoin par
       // feuille, forme { type, url } garantie), adresse de remise relue au
       // clic, titre Vinted normalisé — mot pour mot le code qui vivait ici.
+      // ── LE TEXTE QUI PART EST CELUI DE LA FICHE, À CET INSTANT (04/10) ──
+      // La fiche est RELUE ici, juste avant les jobs : un texte retouché à la
+      // main pendant cette publication y est d'abord écrit ; un texte changé
+      // ailleurs depuis l'ouverture (autre appareil, relevé, lot préparé plus
+      // tôt) remplace celui des cartes qui suivent le texte général. Lecture
+      // ratée → les cartes telles qu'affichées, comme avant (la réouverture
+      // les a déjà alignées sur la fiche).
+      let editedEnvoi = edited;
+      const idFiche = currentInvId || invId;
+      if (idFiche) {
+        try {
+          const { data: ligneFiche, error: errFiche } = await supabase.from("inventaire")
+            .select("titre,description,origine,attributs").eq("id", idFiche).maybeSingle();
+          if (errFiche) throw errFiche;
+          if (ligneFiche) {
+            const aEcrire = retoucheAEcrire(ligneFiche, generales, retouchesMainRef.current);
+            if (aEcrire) {
+              const { error: errEcrit } = await supabase.from("inventaire").update(aEcrire).eq("id", idFiche).eq("user_id", userId);
+              if (errEcrit) console.warn("[stepper] texte retouché non écrit sur la fiche :", errEcrit.message);
+            }
+            const patch = champsAReprendreDeLaFiche(texteDuVendeurDe(ligneFiche), generales, retouchesMainRef.current);
+            const champsFiche = Object.keys(patch);
+            if (champsFiche.length) {
+              editedEnvoi = champsFiche.reduce((e, c) => appliquerGenerale(e, {
+                champ: c, valeur: patch[c], plateformes: Object.keys(e), dissociees,
+              }), editedEnvoi);
+              setEdited(editedEnvoi);
+              setGenerales(prev => ({ ...prev, ...patch }));
+              console.log(`[stepper] envoi : ${champsFiche.join(" + ")} repris de la fiche (changé depuis l'ouverture)`);
+            }
+          }
+        } catch (e) {
+          console.warn("[stepper] fiche non relue avant l'envoi :", e?.message ?? e);
+        }
+      }
       const construction = construireJobs({
         plateformes: plateformesAPublier, champsResolus, processedPhotos, lbcAddress,
-        userId, inventaireId: addToStock ? currentInvId : null, photoOption, edited, price, ebayVoieApiReelle,
+        userId, inventaireId: addToStock ? currentInvId : null, photoOption, edited: editedEnvoi, price, ebayVoieApiReelle,
         outils: { entreesPhotos, getLbcFreePhotoQuota, normalizeVintedTitle },
         // (25/09, patrick giry) Une carte au titre vide reprend sa copie
         // rédigée, sinon le titre de la fiche — jamais un job à title "".
@@ -10267,7 +10375,7 @@ export default function ListingPreviewScreen({
     estimateError: analysisError, estimateResult: photoAnalysis,
     prixAchat: prixAchatSaisi || initialListing?.prix_achat || null,
     carteAOuvrir, onCarteOuverte: () => setCarteAOuvrir(null),
-    generales, onValeurGenerale: poserValeurGenerale,
+    generales, onValeurGenerale: retoucherValeurGenerale,
     versionsTexte, ficheTexte: { titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" },
     divergence, divergenceTranchee, onTrancherDivergence: trancherDivergence,
     dissociees, onModifierCarte: modifierCarte, onRetablirCarte: retablirCarte,
@@ -10351,7 +10459,24 @@ export default function ListingPreviewScreen({
     // vide quand ce n'est pas le sien) — en lot, personne ne relit une carte,
     // un texte qui n'est pas celui du vendeur se montre avant l'envoi.
     texteVendeur: texteDuVendeurFiche(),
-    setPrice, poserPrixGeneral, poserValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
+    // (04/10) La livraison Leboncoin réglée DANS LE LOT (poids, transporteurs,
+    // format), posée sur la copie comme depuis sa carte — même clés, même
+    // marqueur de choix ; un poids posé ici est celui de l'article (reporté
+    // sur la fiche au clic Publier, comme un poids tapé sur la carte).
+    poserLivraisonLbc: (patch) => {
+      if (patch && "lbcPoidsGrammes" in patch) poidsSaisiAuStepperRef.current = true;
+      setEdited(prev => {
+        const lbc = prev.leboncoin;
+        if (!lbc || !patch) return prev;
+        let pf = { ...(lbc.platform_fields ?? {}) };
+        for (const [cle, valeur] of Object.entries(patch)) {
+          if (cle === "format_colis") { pf = avecFormatChoisi(pf, valeur); continue; }
+          if (valeur == null || valeur === "") delete pf[cle]; else pf[cle] = valeur;
+        }
+        return { ...prev, leboncoin: { ...lbc, platform_fields: pf } };
+      });
+    },
+    setPrice, poserPrixGeneral, poserValeurGenerale: retoucherValeurGenerale, rayonsParPf, resolutionAffichee, preparationAuRepos,
     // L'envoi, sans l'écran d'accroche de l'extension : le lot dit lui-même,
     // une fois pour tout le lot, qu'une annonce attendra l'extension — c'est
     // la règle du 15/09 (le job part en attente, rien n'est jeté).
@@ -10639,7 +10764,7 @@ export default function ListingPreviewScreen({
             onCarteOuverte={() => setCarteAOuvrir(null)}
             // ── LA VALEUR GÉNÉRALE (2026-09-21) ────────────────────────────
             generales={generales}
-            onValeurGenerale={poserValeurGenerale}
+            onValeurGenerale={retoucherValeurGenerale}
             // ── LES VERSIONS DU TEXTE (2026-09-23) : choisir, jamais deviner ──
             versionsTexte={versionsTexte}
             ficheTexte={{ titre: initialListing?.titre ?? "", description: initialListing?.description ?? "" }}

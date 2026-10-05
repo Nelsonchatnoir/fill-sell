@@ -15,7 +15,7 @@
 // Jamais une marque posée à la place de la personne.
 import { useEffect, useMemo, useState } from 'react';
 import { ecouterPresenceExtension, versionAuMoins } from '../utils/vintedSync';
-import { SANS_MARQUE_RE, comparable, VERSION_RECHERCHE_MARQUE, marqueDemandee } from '../utils/questionMarque';
+import { SANS_MARQUE_RE, comparable, VERSION_RECHERCHE_MARQUE, marqueDemandee, suggestionsProches } from '../utils/questionMarque';
 
 export default function QuestionMarque({ job, f, lang = 'fr', saving = false, onChoisir }) {
   const fr = lang !== 'en';
@@ -42,7 +42,11 @@ export default function QuestionMarque({ job, f, lang = 'fr', saving = false, on
   }, []);
 
   const terme = q.trim();
-  const filtrees = terme ? relevees.filter((v) => comparable(v).includes(comparable(terme))) : relevees;
+  // (04/10, Louis) Sans saisie, seules les marques qui RESSEMBLENT à la
+  // marque demandée sont proposées (« U Collection », « Z Kids » n'avaient
+  // rien à voir) ; la saisie de la personne garde sa recherche libre.
+  const proches = useMemo(() => suggestionsProches(demandee, relevees), [demandee, relevees]);
+  const filtrees = terme ? relevees.filter((v) => comparable(v).includes(comparable(terme))) : proches;
   const enDirect = recherche.etat === 'fait' && recherche.q === terme ? recherche.marques : [];
   const liste = [...new Set([...enDirect, ...filtrees])].slice(0, 30);
   const exacte = terme && liste.some((v) => comparable(v) === comparable(terme));
@@ -97,6 +101,11 @@ export default function QuestionMarque({ job, f, lang = 'fr', saving = false, on
       {recherche.etat === 'echec' && recherche.q === terme && (
         <div style={{ fontSize: 12, color: '#8A6100', marginBottom: 6 }}>
           {fr ? `${plateforme} n'a pas répondu à la recherche. Choisis dans la liste ci-dessous, ou « Sans marque ».` : `${plateforme} didn't answer. Pick from the list below, or “No brand”.`}
+        </div>
+      )}
+      {!terme && demandee && !proches.length && (
+        <div style={{ fontSize: 12, color: '#6B7A75', marginBottom: 6 }}>
+          {fr ? `Aucune marque proche de « ${demandee} » dans ce que ${plateforme} a proposé : cherche-la par son nom, ou choisis « Sans marque ».` : `No brand close to “${demandee}” in what ${plateforme} offered: search it by name, or pick “No brand”.`}
         </div>
       )}
       <div style={{ maxHeight: 240, overflowY: 'auto' }}>

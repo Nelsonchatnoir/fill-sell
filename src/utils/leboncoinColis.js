@@ -84,20 +84,66 @@ export const LBC_TRANSPORTEURS = [
     contrainte: 'L + l + h ≤ 150 cm, ou le côté le plus long ≤ 100 cm' },
 ];
 
+// ── RELEVÉ LIVE DU 04/10/2026 (formulaire de dépôt, compte de Nico) ─────────
+// Louis : 13 « Rangement » identiques publiés en lot, 7 en « Petit », 6 en
+// « Moyen », aucun poids. Le format venait de la RÉDACTION (prompt Leboncoin :
+// « Infère … le format colis »), tiré à chaque article — d'où l'écart. Relevé
+// sur la page, ce jour :
+//   · le format est une TAILLE, pas un poids : Petit (enveloppe, 46 cm) et
+//     Moyen (carton, 150 cm de développé) proposent les MÊMES onze paliers de
+//     poids (100 g … plus de 40 kg) ; Volumineux bascule en « Livraison colis
+//     XL » (40 à 150 kg), SANS aucun transporteur partenaire — le vendeur
+//     organise seul (« Autres moyens de livraison ») ;
+//   · les transporteurs proposés suivent le POIDS, pas le format : Courrier
+//     suivi ≤ 2 kg (et 3 cm d'épaisseur, à la charge du vendeur — il reste
+//     proposé en Moyen), Shop2Shop ≤ 20 kg, Mondial Relay et Colissimo
+//     ≤ 30 kg (relevé : Moyen 30 kg → Mondial Relay et Colissimo seuls) ;
+//   · sans réglage, Leboncoin pré-coche SON estimation d'après le rayon
+//     (« Colis moyen, de 2 kg à 5 kg » pour un rangement) — la même pour des
+//     articles identiques.
+// D'où la règle (Nico, 04/10) : AUCUN format deviné en silence. Le format part
+// seulement quand la PERSONNE l'a choisi (`format_colis_source: 'manuel'`) ;
+// sinon Leboncoin garde son estimation, et le POIDS de la fiche choisit le
+// palier. get-pending-jobs écarte tout format non choisi (jobs déjà en file,
+// copies enregistrées avant ce jour).
+/** Les onze paliers de Petit/Moyen, en grammes (valeur des boutons radio). */
+export const LBC_PALIERS_G = [100, 250, 500, 1000, 2000, 5000, 10000, 20000, 30000, 40000, 70000];
+/** Le marqueur d'un format CHOISI par la personne (carte, lot). */
+export const FORMAT_CHOISI = 'manuel';
+
+/** Le format que la PERSONNE a choisi — jamais celui de la rédaction —, ou null. */
+export function formatChoisiLbc(pf) {
+  return pf?.format_colis_source === FORMAT_CHOISI ? formatLbcDuJob(pf) : null;
+}
+
+/** platform_fields avec le format posé (ou retiré) PAR LA PERSONNE. */
+export function avecFormatChoisi(pf, valeur) {
+  const suite = { ...(pf ?? {}) };
+  delete suite.lbcFormatColis;
+  if (valeur) { suite.format_colis = valeur; suite.format_colis_source = FORMAT_CHOISI; }
+  else { delete suite.format_colis; delete suite.format_colis_source; }
+  return suite;
+}
+
+/** Les transporteurs (noms Leboncoin) qui acceptent ce poids ; tous si poids inconnu. */
+export function transporteursPourPoids(grammes) {
+  const g = Number(grammes);
+  if (!Number.isFinite(g) || g <= 0) return LBC_TRANSPORTEURS.map((t) => t.nom);
+  return LBC_TRANSPORTEURS.filter((t) => t.kgMax * 1000 >= g).map((t) => t.nom);
+}
+
 /**
- * Les transporteurs PLAUSIBLES pour ce format. Purement indicatif — on ne
- * retire jamais un choix de la personne, on éclaire seulement la liste :
- * un « Volumineux » ne rentre pas dans une enveloppe de 3 cm.
- * Rend `null` quand le format est inconnu : dans ce doute on ne dit rien.
+ * Les transporteurs PLAUSIBLES (clés) pour ce format et ce poids. Purement
+ * indicatif — on ne retire jamais un choix de la personne, on éclaire la
+ * liste. Rend `null` quand ni format ni poids ne sont connus.
  */
-export function transporteursPlausibles(format) {
-  if (!format) return null;
-  if (format === 'Petit') return LBC_TRANSPORTEURS.map((t) => t.cle);
-  if (format === 'Moyen') return LBC_TRANSPORTEURS.filter((t) => t.kgMax >= 20).map((t) => t.cle);
-  // Volumineux : plus de 150 cm de développé — aucun des quatre ne l'accepte,
-  // et Leboncoin propose alors « Autres moyens de livraison » (frais avancés
-  // par le vendeur). On ne coche rien et on ne prétend rien.
-  return [];
+export function transporteursPlausibles(format, grammes = null) {
+  // Volumineux : « Livraison colis XL », aucun partenaire (relevé 04/10).
+  if (format === 'Volumineux') return [];
+  const g = Number(grammes);
+  const poidsConnu = Number.isFinite(g) && g > 0;
+  if (!format && !poidsConnu) return null;
+  return LBC_TRANSPORTEURS.filter((t) => !poidsConnu || t.kgMax * 1000 >= g).map((t) => t.cle);
 }
 
 // ── DEUX FONCTIONS SUPPRIMÉES LE 2026-09-21, AUCUN APPELANT ────────────────

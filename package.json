@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.9.50",
+  "version": "2.9.53",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -22,6 +22,7 @@
     "selftest:veille-cpu": "node scripts/veille-cpu-selftest.mjs",
     "selftest:cloud-pool": "node scripts/cloud-pool-selftest.mjs",
     "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
+    "selftest:ventes-supprimees": "node scripts/ventes-supprimees-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
     "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
     "selftest:opla-sortie": "node scripts/opla-sortie-selftest.mjs",
@@ -138,6 +139,10 @@
     "selftest:releve-ebay-compte-api": "node scripts/releve-ebay-compte-api-selftest.mjs",
     "selftest:retrait-ebay-par-numero": "node scripts/retrait-ebay-par-numero-selftest.mjs",
     "selftest:lbc-voie-des-reglages": "node scripts/lbc-voie-des-reglages-selftest.mjs",
+    "selftest:modifier-en-lot": "node --import ./scripts/loader-ext.mjs scripts/modifier-en-lot-selftest.mjs",
+    "selftest:livraison-poids": "node --import ./scripts/loader-ext.mjs scripts/livraison-poids-selftest.mjs",
+    "selftest:texte-de-la-fiche": "node --import ./scripts/loader-ext.mjs scripts/texte-de-la-fiche-selftest.mjs",
+    "selftest:marque-absente": "deno run --allow-read --allow-env --allow-net scripts/marque-absente-selftest.ts",
     "selftest:tailles-prefixe-age": "deno run --allow-read --allow-env --allow-net scripts/tailles-prefixe-age-selftest.ts",
     "selftest:beebs-taille-de-la-fiche": "node scripts/beebs-taille-de-la-fiche-selftest.mjs",
     "selftest:lbc-adresse-avant-retrait": "node scripts/lbc-adresse-avant-retrait-selftest.mjs",

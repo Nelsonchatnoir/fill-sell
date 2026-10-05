@@ -1,31 +1,28 @@
-## État de production au 04/10 (soir) — lire avant toute action
+## État de production au 04/10 (nuit) — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections du 04/10
 en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
 historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** ; **0.6.95 à téléverser**
-  (`build/CWS-0.6.95-A-TELEVERSER/`) ; minimum serveur **0.6.81** ; web
-  **dfade61** ; OTA **2.9.50** ; gpj v211, ujs v127, handler-watch v80,
-  ops-digest v30, ebay-releve-api v4, releve-completer v2, veille-cpu v1.
-- **⛔ Incident CPU 99 % (04/10)** : app et web bloqués pour tous. Crons **27**
-  et **28** EN PAUSE (relance = feu vert de Nico) ; règle : interdit 11.
+- **Servi** : extension **0.6.94** ; **0.6.96 à téléverser**
+  (`build/CWS-0.6.96-A-TELEVERSER/`) ; minimum **0.6.81** ; web/OTA **2.9.53** ; gpj v214, ujs v127, ebay-api-worker v77.
+- **CPU (04/10)** : crons 27/28 relancés, bornés ; interdit 11.
+- **Nuit du 04/10** : vente supprimée = jamais recréée ; absence de marque →
+  « Sans marque » (liste fermée) ; texte = celui de la fiche à l'envoi ;
+  aucun format de colis deviné (seul `format_colis_source: 'manuel'`) ;
+  prix/quantité en lot = fiches seules.
 - **Fiches** : champs vides complétés depuis l'annonce (journal) ; prix/poids
   suivis si alignés, jamais propagés ; pas de poids Leboncoin estimé.
-- **Retraits** : jamais arrêtés sur un raté technique ni sur `/main/banned`
-  (1 h/3 h/6 h) ; Vinted absent de deux relevés complets → « déjà retirée » ;
-  « en vérification » = achetable. **Boucles** : → needs_user « relancer ».
-- **Cadence** : Premium 50/jour ; `coin_config` journalisé.
-- **Relevés** : 5 min sans progression = arrêt ; veilleur 1 h, 3 h, 6 h.
-- **Marque/republication** : Vinted sans marque libre → question ; annonce
-  relue avant retrait ; annonce de test ≥ 999 €.
-- **Selftests** : `package.json` + non câblés, 0 rouge ;
-  `scripts/lib/morceaux-mis-de-cote.mjs`.
+- **Retraits** : jamais arrêtés sur un raté technique (1 h/3 h/6 h) ; Vinted
+  absent de deux relevés complets → « déjà retirée ». **Boucles** →
+  needs_user. **Cadence** : Premium 50/jour. **Relevés** : 5 min sans
+  progression = arrêt. **Marque** : hors catalogue → question. Annonce de
+  test ≥ 999 €. **Selftests** : 0 rouge ; `scripts/lib/morceaux-mis-de-cote.mjs`.
 - **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`, `_shared/opla-sortie.js`).
 - **⛔ `platform_settings`** : toujours `rpc platform_settings_fusionner`.
 - **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée.
-- **Crons coupés** : 17, 22 ; en pause : 27, 28. **Migrations** : § 3.4.
+- **Crons coupés** : 17, 22. **Migrations** : § 3.4.
   **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB `build/AAB-A-TELEVERSER-2.9.38-vc32/`,
   iOS par Codemagic) ; le reste : fin de l'état.

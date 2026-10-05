@@ -54,7 +54,11 @@ import {
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
+  poidsConnu, lirePoidsSaisi,
 } from "./regles";
+import LivraisonDuLot from "./LivraisonDuLot";
+import { transporteursPourPoids } from "../../utils/leboncoinColis";
+import { fusionnerReglages } from "../../utils/reglagesPlateformes";
 
 const CLE_CHOIX = "fs_lot_plateformes";
 const lireChoixMemorise = () => { try { const v = JSON.parse(localStorage.getItem(CLE_CHOIX) ?? "null"); return Array.isArray(v) ? v : null; } catch { return null; } };
@@ -203,7 +207,7 @@ export default function LotPublication({
     lireProchaineRemiseAZero(userId).then((d) => { if (vivant) setRemise(d); }, () => {});
     // Le mur de conversion : où l'abonnement a été pris, et le quota de
     // chaque palier (coin_config fait foi, le repli de la modale sinon).
-    supabase.from("profiles").select("is_comped, apple_original_transaction_id, google_purchase_token, stripe_customer_id")
+    supabase.from("profiles").select("is_comped, apple_original_transaction_id, google_purchase_token, stripe_customer_id, platform_settings")
       .eq("id", userId).maybeSingle()
       .then(({ data }) => { if (vivant) setProfil(data ?? {}); }, () => { if (vivant) setProfil({}); });
     supabase.from("coin_config").select("key, value").in("key", ["quota_annonces_premium", "quota_annonces_pro", "quota_annonces_business"])
@@ -532,6 +536,47 @@ export default function LotPublication({
   };
   const retirerDuLot = (id) => { majEtat(id, { phase: "retire" }); };
 
+  // ── LA LIVRAISON DU LOT (04/10, Louis) : poids, transporteurs, format ────
+  // Le poids est celui de l'ARTICLE : écrit sur la fiche (inventaire.poids_g,
+  // le seul champ Poids — Beebs le lit là au service du job) et sur la copie
+  // Leboncoin. Les transporteurs : ceux que la personne garde, retenus dans
+  // platform_settings.leboncoin.transporteurs (gpj les applique aussi aux
+  // publications suivantes) ; par article, ceux que son poids autorise.
+  const [livraison, setLivraison] = useState({ transporteurs: undefined, format: "" });
+  const livraisonRef = useRef(livraison); livraisonRef.current = livraison;
+  const transporteursRetenus = Array.isArray(profil?.platform_settings?.leboncoin?.transporteurs)
+    ? profil.platform_settings.leboncoin.transporteurs : null;
+  const transporteursDuLot = livraison.transporteurs === undefined ? transporteursRetenus : livraison.transporteurs;
+  const poidsDe = (id) => poidsConnu(moteursRef.current.get(id), decisionsRef.current[id]);
+  const appliquerLivraison = (id, g = poidsDe(id)) => {
+    const m = moteursRef.current.get(id);
+    if (!m?.edited?.leboncoin || !m.poserLivraisonLbc) return;
+    const permis = transporteursPourPoids(g);
+    const voulus = transporteursDuLot ? transporteursDuLot.filter((n) => permis.includes(n)) : null;
+    m.poserLivraisonLbc({
+      ...(g != null ? { lbcPoidsGrammes: g } : {}),
+      lbcTransporteurs: voulus && voulus.length ? voulus : null,
+      format_colis: livraisonRef.current.format || "",
+    });
+  };
+  const poserPoids = (id, g) => {
+    if (!g) return;
+    decider(id, { poids: g });
+    appliquerLivraison(id, g);
+    const inv = parId.get(id)?.item?.id;
+    if (inv != null) {
+      supabase.from("inventaire").update({ poids_g: g }).eq("id", inv).eq("user_id", userId)
+        .then(({ error }) => { if (error) console.warn("[lot] poids non gardé sur la fiche :", error.message); }, () => {});
+    }
+  };
+  const poserPoidsDuLot = (ids, g) => { for (const id of ids) poserPoids(id, g); };
+  const poserTransporteurs = (liste) => {
+    setLivraison((l) => ({ ...l, transporteurs: liste }));
+    (liste ? fusionnerReglages(["leboncoin"], { transporteurs: liste }) : fusionnerReglages(["leboncoin"], null, ["transporteurs"]))
+      .then(({ error }) => { if (error) console.warn("[lot] transporteurs non retenus :", error.message); }, () => {});
+  };
+  const poserFormat = (f) => setLivraison((l) => ({ ...l, format: f }));
+
   // ── L'ENVOI : une RPC par article, l'un après l'autre ────────────────────
   const [envoi, setEnvoi] = useState(null); // { fait, total }
   const attendre = (pred, ms) => new Promise((resolve) => {
@@ -587,6 +632,13 @@ export default function LotPublication({
   const aCompleter = lot ? lot.ids.filter((id) => etats[id]?.phase === "questions") : [];
   const annoncesPretes = prets.reduce((n, id) => n + [...(moteursRef.current.get(id)?.plateformesPubliables ?? [])].length, 0);
   const preparationFinie = Boolean(lot) && enPrep.length === 0;
+  // La livraison du lot atteint chaque copie Leboncoin dès la préparation
+  // finie (transporteurs retenus compris), puis à chaque changement.
+  useEffect(() => {
+    if (!lot || !preparationFinie || envoi) return;
+    for (const id of lot.ids) appliquerLivraison(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot, preparationFinie, livraison, (transporteursRetenus ?? []).join("|")]);
 
   // Réponses communes : un même champ fermé, même liste, sur plusieurs articles.
   const communes = useMemo(() => {
@@ -723,6 +775,8 @@ export default function LotPublication({
               repondreCommune={repondreCommune} decider={decider} trancherJumeau={trancherJumeau}
               sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot} envoi={envoi} supabase={supabase}
               lectures={lectures}
+              livraison={{ transporteurs: transporteursDuLot, format: livraison.format }} poidsDe={poidsDe} poserPoids={poserPoids}
+              poserPoidsDuLot={poserPoidsDuLot} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
             />
           )}
           {etape === "fin" && lot && (
@@ -919,6 +973,8 @@ export function EcranAvant({
   en, lang, L, lot, etats, lignes, parId, moteurs, decisions, prepares, preparationFinie,
   prets, aCompleter, annoncesPretes, communes, repondreCommune, decider, trancherJumeau, sansPlateforme, retirerDuLot, envoi,
   lectures = {},
+  livraison = { transporteurs: null, format: "" }, poidsDe = () => null, poserPoids = () => {}, poserPoidsDuLot = () => {},
+  poserTransporteurs = () => {}, poserFormat = () => {},
 }) {
   const total = lot.ids.length;
   const enCours = lot.ids.find((id) => PHASES_EN_PREPARATION.has(etats[id]?.phase));
@@ -954,6 +1010,13 @@ export function EcranAvant({
         </div>
       )}
 
+      {/* (04/10) Poids, transporteurs et format : AVANT l'envoi, pour le lot. */}
+      {preparationFinie && !envoi && (
+        <LivraisonDuLot en={en} ids={lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase))} parId={parId} moteurs={moteurs}
+          poidsDe={poidsDe} poserPoids={poserPoids} poserPoidsDuLot={poserPoidsDuLot}
+          livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat} />
+      )}
+
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
       {communes.map((g) => (
         <Carte key={g.signature} gravite="geste" titre={`${g.label} · ${NOM(g.gp)}`}>
@@ -972,7 +1035,7 @@ export function EcranAvant({
       {aCompleter.map((id) => (
         <ArticleAQuestions key={id} id={id} en={en} L={L} item={parId.get(id)?.item} m={moteurs.get(id)} st={etats[id]}
           decision={decisions[id] ?? {}} decider={decider} trancherJumeau={trancherJumeau} sansPlateforme={sansPlateforme} retirerDuLot={retirerDuLot}
-          lecture={lectures[id] ?? null} />
+          lecture={lectures[id] ?? null} poserPoids={poserPoids} />
       ))}
 
       <div className="fsn-card" style={{ gap: 0 }}>
@@ -1008,9 +1071,10 @@ export function EcranAvant({
 
 // Un article qui attend une réponse : SES questions, posées par le même bloc
 // que le stepper, plus ce que le lot ajoute (texte à relire, prix, jumeau).
-export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null }) {
+export function ArticleAQuestions({ id, en, item, m, st, decision, decider, trancherJumeau, sansPlateforme, retirerDuLot, lecture = null, poserPoids = null }) {
   if (!m) return null;
   const motifs = st?.motifs ?? [];
+  const aPoids = motifs.some((x) => x.cle === "poids");
   const aTexte = motifs.some((x) => x.cle === "texte");
   const aPrix = motifs.some((x) => x.cle === "prix");
   const plateformes = [...(m.plateformesPubliables ?? [])];
@@ -1039,6 +1103,18 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
           <input className="fsn-input" type="number" inputMode="decimal" min="1" step="0.5" defaultValue={m.price ?? ""}
             onBlur={(ev) => m.poserPrixGeneral?.(ev.target.value)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }}
             placeholder={en ? "Price in €" : "Prix en €"} />
+        </div>
+      )}
+
+      {aPoids && poserPoids && (
+        <div className="fsn-q fsn-q--bloque">
+          <div className="fsn-q-t">{en ? "Weight" : "Poids"}</div>
+          <div className="fsn-q-why">{en
+            ? "Leboncoin and Beebs price the parcel by weight — nothing is guessed. Saved on the item."
+            : "Leboncoin et Beebs calculent l'envoi au poids — rien n'est deviné. Gardé sur la fiche."}</div>
+          <input className="fsn-input" type="text" inputMode="decimal" placeholder={en ? "e.g. 650 g or 1.2 kg" : "ex. 650 g ou 1,2 kg"}
+            onBlur={(ev) => { const g = lirePoidsSaisi(ev.target.value); if (g) poserPoids(id, g); }}
+            onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
         </div>
       )}
 

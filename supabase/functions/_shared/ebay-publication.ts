@@ -16,6 +16,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 import { resoudreAspectsIA, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
+import { estSansMarque } from "./marque-absente.js";
 
 export const MARKETPLACE = "EBAY_FR";
 export const ARBRE_FR = "71";
@@ -476,7 +477,9 @@ export function enrichirDepuisAttributs(pf: PlatformFields, attributs: Attributs
 //   · « Modèle » FREE_TEXT sur un objet sans marque réelle, ou sur un LIVRE
 //     (famille livres_medias, ou chemin de catégorie « Livres… ») →
 //     « Ne s'applique pas » ; SELECTION_ONLY → on laisse manquant.
-const MARQUE_GENERIQUE_RE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*brand)/i;
+// (04/10, Louis) Absence de marque = liste FERMÉE, égalité exacte
+// (_shared/marque-absente.js) : l'ancienne regex non ancrée prenait
+// « Generic Surplus » pour une absence de marque.
 const VALEUR_NE_S_APPLIQUE_PAS = "Ne s'applique pas";
 // ⚠️ 07/09/2026 : la famille Lens `livres_medias` porte AUSSI les DVD, CD,
 // vinyles et jeux vidéo — elle ne vaut « livre » que si le SUPPORT n'est pas
@@ -545,7 +548,9 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
   const ebayAspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {};
   const couleur = (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur ? String(pf.couleur) : "");
   const marqueBrute = String(pf.marque ?? "").trim();
-  const marqueGenerique = !marqueBrute || MARQUE_GENERIQUE_RE.test(marqueBrute);
+  // Une vraie marque, d'où qu'elle vienne (aspect tranché, sinon la fiche).
+  const marqueReelle = [ebayAspects["Marque"], marqueBrute].map((v) => String(v ?? "").trim()).find((v) => v && !estSansMarque(v)) ?? "";
+  const marqueGenerique = !marqueReelle;
   const entreeGenerique = (liste: string[]) => liste.find((v) => /sans\s*marque|g[ée]n[ée]rique/i.test(v)) ?? "";
   const standard: Record<string, string> = {
     "Marque": marqueBrute,
@@ -581,7 +586,9 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     }
     // Marque générique/absente → entrée générique de la liste ; Modèle sans
     // marque réelle ou sur un livre → « Ne s'applique pas » (FREE_TEXT seul).
-    if (a.name === "Marque" && marqueGenerique) { const g = entreeGenerique(a.allowedValues); if (g) { brut = g; source = "defaut"; } }
+    // ⛔ Jamais par-dessus une vraie marque : seule la valeur RETENUE compte
+    // (avant le 04/10, une fiche sans marque écrasait un aspect « Nike »).
+    if (a.name === "Marque" && (!brut || estSansMarque(brut))) { const g = entreeGenerique(a.allowedValues); if (g) { brut = g; source = "defaut"; } }
     if (a.name === "Modèle" && !brut && a.mode !== "SELECTION_ONLY" && (marqueGenerique || estLivre(pf))) { brut = VALEUR_NE_S_APPLIQUE_PAS; source = "defaut"; }
     if (!brut) { if (a.required) manquants.push(a.name); continue; }
     // Préfixe EU/FR retiré SEULEMENT sur une liste fermée (SELECTION_ONLY, ou

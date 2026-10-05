@@ -95,6 +95,19 @@ const r2 = demarrerRelecture(async () => { enVol++; maxEnVol = Math.max(maxEnVol
 await avancer(1); r2.relireMaintenant(); await avancer(5000); r2.relireMaintenant(); await avancer(5000);
 ok(maxEnVol === 1, 'jamais deux lectures en vol, même sur relireMaintenant');
 liberer?.(); r2.arreter();
+// (04/10 soir) Onglet CACHÉ au démarrage (ouvert en arrière-plan) : la
+// première lecture part quand même, les suivantes attendent le retour.
+montrer(false);
+let lecturesCache = 0;
+const r3 = demarrerRelecture(async () => { lecturesCache++; return true; }, { intervalleMs: 20_000 });
+await avancer(1);
+ok(lecturesCache === 1, 'onglet caché au démarrage : la PREMIÈRE lecture part quand même');
+await avancer(120_000);
+ok(lecturesCache === 1, '… et aucune autre tant que l’onglet reste caché');
+montrer(true);
+await avancer(1);
+ok(lecturesCache === 2, 'retour d’onglet : relecture');
+r3.arreter();
 globalThis.setTimeout = vraiSetTimeout; globalThis.clearTimeout = vraiClearTimeout; Date.now = vraiNow;
 
 // ── 3. Jobs du Stock par morceaux ──────────────────────────────────────────

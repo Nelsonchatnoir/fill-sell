@@ -9,8 +9,10 @@
 // ralentissait, plus les lectures s'empilaient.
 //
 // La règle, tenue ici et nulle part ailleurs :
-//   · on ne relit QUE si l'onglet est visible ; au retour, une lecture si la
-//     dernière est plus vieille que l'intervalle ;
+//   · la PREMIÈRE lecture part toujours, onglet caché compris (un onglet
+//     ouvert en arrière-plan doit trouver ses données au retour, comme avant
+//     le 04/10) ; ensuite on ne relit QUE si l'onglet est visible ; au retour,
+//     une lecture si la dernière est plus vieille que l'intervalle ;
 //   · une seule lecture à la fois, jamais deux en vol ;
 //   · une lecture en ERREUR, ou LENTE (au-delà de `lentMs`), DOUBLE l'attente
 //     suivante, jusqu'à `maxMs` ; une lecture saine la ramène à l'intervalle ;
@@ -43,18 +45,18 @@ export function demarrerRelecture(lire, { intervalleMs, maxMs = 10 * 60_000, len
   let derniere = 0;
   const visible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 
-  const planifier = (ms) => {
+  const planifier = (ms, premiere = false) => {
     if (arrete) return;
     if (minuterie) clearTimeout(minuterie);
-    minuterie = setTimeout(tour, ms);
+    minuterie = setTimeout(() => tour(premiere), ms);
   };
 
-  async function tour() {
+  async function tour(premiere = false) {
     minuterie = null;
     if (arrete) return;
-    // Onglet caché : on ne relit pas, et on ne se replanifie pas — le retour
-    // de visibilité relancera.
-    if (!visible()) return;
+    // Onglet caché : on ne relit pas (sauf la toute première lecture), et on
+    // ne se replanifie pas — le retour de visibilité relancera.
+    if (!premiere && !visible()) return;
     if (enVol) { planifier(attente); return; }
     enVol = true;
     const t0 = Date.now();
@@ -80,7 +82,7 @@ export function demarrerRelecture(lire, { intervalleMs, maxMs = 10 * 60_000, len
   };
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', surVisibilite);
 
-  if (immediat) planifier(0); else { derniere = Date.now(); planifier(attente); }
+  if (immediat) planifier(0, true); else { derniere = Date.now(); planifier(attente); }
 
   return {
     arreter() {
