@@ -13,6 +13,7 @@ import { lireConfig } from '../src/config.js';
 import { idExtensionDepuisCle, sessionPourExtension } from '../src/sessionFillsell.js';
 import { MESSAGES } from '../src/connexion.js';
 import { chargerRegles } from '../src/regles.js';
+import { socleAbsent, creerGardeSocle } from '../src/socle.js';
 
 const jwt = (o) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(o)).toString('base64url')}.c2lnbmF0dXJlLWZhdXNzZQ`;
 const U = '0f0e0d0c-0b0a-4908-8706-050403020100';
@@ -201,4 +202,24 @@ test('règles du pool : une seule source (cloud-pool.js)', async () => {
   const r = await chargerRegles();
   assert.equal(typeof r.planDuJour, 'function');
   assert.equal(r.PARAMETRES.reposJours, 7);
+});
+
+test('socle absent (serveur déployé avant la migration) : dit UNE fois, puis une tentative toutes les 10 min', () => {
+  assert.equal(socleAbsent(new Error('cloud_comptes_a_servir : Could not find the function public.cloud_comptes_a_servir without parameters in the schema cache')), true);
+  assert.equal(socleAbsent({ message: 'PGRST202' }), true);
+  assert.equal(socleAbsent(new Error('function public.cloud_pool_entretien() does not exist')), true);
+  assert.equal(socleAbsent(new Error('fetch failed')), false, 'une panne réseau reste une erreur ordinaire');
+  let t = 0; const dits = [];
+  const g = creerGardeSocle({ journal: { info: (e) => dits.push(e) }, maintenant: () => t, nom: 'planificateur' });
+  assert.equal(g.passer(), false);
+  assert.equal(g.noter(new Error('PGRST202')), true);
+  assert.equal(g.passer(), true, 'le tour suivant est sauté');
+  t = 9 * 60_000; assert.equal(g.passer(), true);
+  t = 10 * 60_000; assert.equal(g.passer(), false, '10 min après : on réessaie');
+  g.noter(new Error('PGRST202'));
+  assert.deepEqual(dits, ['socle_absent'], 'dit une seule fois');
+  g.present();
+  assert.deepEqual(dits, ['socle_absent', 'socle_present']);
+  assert.equal(g.passer(), false);
+  assert.equal(g.noter(new Error('fetch failed')), false, 'autre erreur : le garde ne la cache pas');
 });

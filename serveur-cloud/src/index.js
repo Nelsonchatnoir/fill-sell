@@ -20,6 +20,7 @@ import { creerIproyal } from './iproyal.js';
 import { creerControles } from './controle.js';
 import { creerEntretien } from './entretien.js';
 import { chargerRegles } from './regles.js';
+import { creerGardeSocle } from './socle.js';
 
 const config = lireConfig();
 const base = createClient(config.supabaseUrl, config.cleService, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -52,20 +53,30 @@ for (const c of await docker.lister()) {
 await serveur.ecouter();
 journal.info('demarrage', { serveur: config.serveurNom, port: config.port, comptes_autorises: config.comptesAutorises.length || 'tous' });
 
+// (05/10) Serveur déployé AVANT la migration du socle (GO de Nico) : dit une
+// fois, puis une tentative toutes les 10 min au lieu de chaque minute (socle.js).
+const gardePlanificateur = creerGardeSocle({ journal, nom: 'planificateur' });
+const gardeEntretien = creerGardeSocle({ journal, nom: 'entretien' });
+
 let enCours = false;
 async function tourPlanificateur() {
-  if (enCours) return;
+  if (enCours || gardePlanificateur.passer()) return;
   enCours = true;
   try {
     const r = await postes.tour();
+    gardePlanificateur.present();
     if (r.ouvrir.length || r.fermer.length || r.refuses.length) journal.info('planificateur', { ...r });
-  } catch (e) { journal.erreur('planificateur_echec', { erreur: e.message }); } finally { enCours = false; }
+  } catch (e) {
+    if (!gardePlanificateur.noter(e)) journal.erreur('planificateur_echec', { erreur: e.message });
+  } finally { enCours = false; }
 }
 let entretienEnCours = false;
 async function tourEntretien() {
-  if (entretienEnCours) return;
+  if (entretienEnCours || gardeEntretien.passer()) return;
   entretienEnCours = true;
-  try { await entretien.tour(); } catch (e) { journal.erreur('entretien_echec', { erreur: e.message }); } finally { entretienEnCours = false; }
+  try { await entretien.tour(); gardeEntretien.present(); } catch (e) {
+    if (!gardeEntretien.noter(e)) journal.erreur('entretien_echec', { erreur: e.message });
+  } finally { entretienEnCours = false; }
 }
 
 const t1 = setInterval(tourPlanificateur, config.tickPlanificateurS * 1000);
