@@ -4,7 +4,7 @@
 //
 // Prouve, sans réseau : la préparation dit vrai (pool vide = rien ne s'ouvre ;
 // essai refusé = on le dit et on demande) ; l'identifiant d'appareil est stable
-// et local ; le drapeau et les témoins (vides) ne montrent rien à personne ;
+// et local ; le drapeau baissé et les témoins (Nico SEUL, 05/10) ne montrent rien à personne d'autre ;
 // l'écran ne propose que des plateformes prouvées ; les mots respectent les
 // règles (tutoiement, aucune phrase technique, aucune plateforme non prouvée,
 // 20 € TTC) ; App passe par l'achat câblé, jamais par onUpgrade pour l'option.
@@ -41,10 +41,15 @@ try {
   ok(A.identifiantAppareil({ getItem: () => { throw new Error('privé'); } }) === '', 'stockage refusé → vide (la base répond « appareil_inconnu » : sans essai, jamais un faux verrou)');
 
   console.log('\n3. Les drapeaux');
-  ok(C.CLOUD_OFFER_ENABLED === false && C.cloudOfferVisible('x') === false, 'offre fermée à tous');
-  ok(Array.isArray(C.CLOUD_TEMOINS) && C.CLOUD_TEMOINS.length === 0, 'aucun témoin (le test réel en ajoute un, sur GO)');
-  ok(Array.isArray(C.CLOUD_OFFRE_TEMOINS) && C.CLOUD_OFFRE_TEMOINS.length === 0, 'aucun témoin de l\'offre (revue Apple, achat d\'essai : sur GO)');
-  ok(C.cloudConnexionVisible('f44b5917-bccc-4431-ba41-f40571a2ed18') === false && C.cloudConnexionVisible(null) === false, '« Me connecter » fermé à tous, Nico compris, tant qu\'il n\'est pas témoin');
+  ok(C.CLOUD_OFFER_ENABLED === false && C.cloudOfferVisible('x') === false, 'drapeau baissé : offre fermée à tous (hors témoins)');
+  // (05/10, écran B du test) Nico SEUL témoin, des deux listes ; personne d'autre.
+  const NICO = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
+  ok(Array.isArray(C.CLOUD_TEMOINS) && C.CLOUD_TEMOINS.length === 1 && C.CLOUD_TEMOINS[0] === NICO, 'témoins de « Me connecter » : Nico SEUL');
+  ok(Array.isArray(C.CLOUD_OFFRE_TEMOINS) && C.CLOUD_OFFRE_TEMOINS.length === 1 && C.CLOUD_OFFRE_TEMOINS[0] === NICO, 'témoins de l\'offre : Nico SEUL (achat d\'essai réel)');
+  ok(Object.isFrozen(C.CLOUD_TEMOINS) && Object.isFrozen(C.CLOUD_OFFRE_TEMOINS), 'listes figées (aucun ajout à l\'exécution)');
+  ok(C.cloudConnexionVisible(NICO) === true && C.cloudOfferVisible(NICO) === true, 'Nico voit « Me connecter » et l\'offre');
+  const autres = ['x', '', undefined, null, 0, NICO.toUpperCase(), `${NICO} `, 'f44b5917-bccc-4431-ba41-f40571a2ed19', '00000000-0000-0000-0000-000000000000'];
+  ok(autres.every((u) => C.cloudConnexionVisible(u) === false && C.cloudOfferVisible(u) === false), 'tout autre compte (casse, espace, voisin, vide, null) : NON, partout');
   ok(C.CLOUD_PLATEFORMES_CONNEXION.map((p) => p.id).join(',') === 'vinted,leboncoin', 'plateformes proposées : Vinted, Leboncoin (seulement celles prouvées)');
   ok(C.CLOUD_DOMAINE === 'cloud.fillsell.app', 'domaine de l\'écran : cloud.fillsell.app');
 

@@ -33,7 +33,11 @@ export const CLOUD_OFFER_ENABLED = false;
 // compte de démonstration remis à la revue Apple (le premier abonnement d'un
 // groupe se soumet avec une version de l'app, le relecteur doit pouvoir
 // l'acheter), et Nico pour un achat d'essai réel. VIDE = personne.
-export const CLOUD_OFFRE_TEMOINS = Object.freeze([]);
+// (05/10, décision de Nico : écran B du test, DANS l'app) Nico SEUL — aucun
+// autre compte ne voit rien, ni à l'écran ni dans le comportement
+// (scripts/cloud/preuve-identite-compte-ordinaire.mjs le prouve avant l'OTA).
+export const NICO_USER_ID = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
+export const CLOUD_OFFRE_TEMOINS = Object.freeze([NICO_USER_ID]);
 
 // LE point de décision. Le paramètre `userId` est gardé (même signature que
 // businessOfferVisible) : c'est lui qui ouvre l'option aux comptes témoins
@@ -54,5 +58,6 @@ export const CLOUD_PLATEFORMES_CONNEXION = Object.freeze([
 // Comptes TÉMOINS du test réel : l'écran « Me connecter » et la lecture de
 // l'état Cloud leur sont ouverts même drapeau baissé — l'OFFRE (paiement)
 // reste fermée. VIDE = personne : rien ne change pour aucun compte.
-export const CLOUD_TEMOINS = Object.freeze([]);
+// (05/10) Nico SEUL, pour le test réel (écran B).
+export const CLOUD_TEMOINS = Object.freeze([NICO_USER_ID]);
 export const cloudConnexionVisible = (userId) => cloudOfferVisible(userId) || (userId != null && CLOUD_TEMOINS.includes(userId));
