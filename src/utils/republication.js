@@ -19,6 +19,7 @@
 import { computeRemovalInfo, vintedMasqueeMalgreJobs, estGeleLivres } from './publicationState';
 import { republierArticleVinted } from './vintedSync';
 import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
+import { messagePlafondRepublicationGratuit } from './jourRemise';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
 // eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
@@ -124,6 +125,8 @@ export function messageRefusRepublication(res, lang = 'fr', platform = res?.plat
         : `Reposting on ${nom} needs extension 0.6.42 or newer: Chrome updates it on its own, try again a bit later.`),
     republish_en_cours: fr ? `Une republication est déjà en cours sur ${nom} pour cet article.` : `A repost is already running on ${nom} for this item.`,
     cadence_24h: fr ? `Déjà republié sur ${nom} il y a moins de 24 h — une republication par annonce et par jour.` : `Already reposted on ${nom} less than 24 h ago — one repost per listing per day.`,
+    // (05/10) Le gratuit : 50 par mois, la phrase dit le jour où elles reviennent.
+    plafond_republication_free: messagePlafondRepublicationGratuit(res, fr ? 'fr' : 'en'),
     plafond_republication_mensuel: fr
       ? `Tes ${res?.plafond ?? ''} republications du mois sont faites — ça repart au prochain cycle.`
       : `Your ${res?.plafond ?? ''} monthly repostings are done — back next cycle.`,

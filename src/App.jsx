@@ -3236,8 +3236,8 @@ export default function App({ loginOnly = false }){
   //   plafond_stock             limite d'articles du plan gratuit   (auto)
   //   plafond_pepites_lens      unités insuffisantes — scan Lens    (auto)
   //   plafond_pepites_publi     unités insuffisantes — publication  (auto)
-  //   plafond_republication_free  les 50 republications à vie du Free
-  //                             sont épuisées (bascule quotas 02/09) (auto)
+  //   plafond_republication_free  les 50 republications du mois du Free
+  //                             sont faites (par mois depuis le 05/10) (auto)
   //   republication_lot_free    tap Free sur « Republier en lot »
   //                             (geste réservé aux payants)          (auto)
   //   quota_annonces            quota d'annonces du cycle atteint    (auto)
@@ -9484,8 +9484,8 @@ export default function App({ loginOnly = false }){
         origine={conversionModal.origine??null}
         plafondRepub={conversionModal.plafondRepub??null}
         offre={isNative?null:offreEnCours()}
-        // (03/10, point 20) Free : ses republications offertes à vie, dites AVANT les offres.
-        repubOffertes={quotas?.republication?.mode==='avie'?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null}:null}
+        // (03/10, point 20) Free : ses republications du mois (50 par mois depuis le 05/10), dites AVANT les offres.
+        repubOffertes={quotas?.palier==='free'&&quotas?.republication?.plafond!=null?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null,remise_le:quotas.republication.remise_le??null}:null}
       />
 
       {/* ── OPTION « SANS ORDINATEUR » (Cloud) ──

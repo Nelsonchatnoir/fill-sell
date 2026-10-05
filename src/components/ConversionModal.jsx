@@ -14,6 +14,7 @@ import InterrupteurCloud, { LigneCloudModale, PrixAvecCloud, CarteAjoutCloud, Se
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { offreCloudPourModale } from '../cloud/regles';
 import { textesCloud } from '../cloud/textes';
+import { jourRemise } from '../utils/jourRemise';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -72,8 +73,11 @@ export const COIN_CONFIG_FALLBACK = {
   quota_annonces_pro: 120, quota_annonces_business: 300,
   // (quota_scan_* retirés le 02/09 soir — fusion scans+annonces : les clés
   // restent en base à 0 pour le retour arrière, plus rien ne les lit ici.)
+  // (05/10) Le gratuit a 50 republications PAR MOIS, réglables comme les
+  // autres (quota_republication_free) ; l'ancienne règle (50 une fois pour
+  // toutes) est retirée.
+  quota_republication_free: 50,
   quota_republication_premium: 1500, quota_republication_pro: 5000,
-  republication_avie_free: 50,
   quota_retouche_free: 0, quota_retouche_premium: 5,
   quota_retouche_pro: 20, quota_retouche_business: 50,
   // Grille du 2026-08-08 — MÊME PRIX POUR TOUS LES PALIERS : photos (par
@@ -234,10 +238,9 @@ function lignesDiff(fr, palier, K) {
   const auto = palier === 'pro' || palier === 'business';
   const annonces = K[`quota_annonces_${palier}`];
   const retouches = K[`quota_retouche_${palier}`] ?? 0;
-  const repubTexte = palier === 'free'
-    ? (fr ? `${K.republication_avie_free ?? 50} republications offertes, à vie`
-          : `${K.republication_avie_free ?? 50} repostings included, for life`)
-    : palier === 'business'
+  // (05/10) Free compris : « N republications par mois », même phrase que
+  // Premium et Pro, chiffre lu dans quota_republication_free.
+  const repubTexte = palier === 'business'
       ? (fr ? 'Republications illimitées — tu republies quand tu veux, autant que tu veux'
             : 'Unlimited repostings — repost whenever you want, as much as you want')
       : (fr ? `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('fr-FR')} republications par mois`
@@ -306,7 +309,7 @@ function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
 
 // Carte Free (2026-09-02 soir) — le POINT DE DÉPART, pas une offre : fond
 // sobre, pas de CTA d'achat. Bascule quotas : plus de bandeau de grant, les
-// cinq lignes de gestes disent tout (5 annonces, 50 republications à vie…).
+// cinq lignes de gestes disent tout (5 annonces, 50 republications par mois…).
 // (04/10 soir, option « Sans ordinateur ») SEULE exception au « pas de CTA » :
 // interrupteur coché et hôte qui sait le faire (`voieCloud`), la carte porte
 // la voie « Free + Sans ordinateur » et son prix « 0 € + 20 € ». Sinon, la
@@ -605,8 +608,9 @@ export default function ConversionModal({
   // Point d'entrée EXACT (même vocabulaire que le tunnel d'App.jsx) — sert la
   // télémétrie de la modale elle-même, jamais l'affichage.
   origine      = null,
-  // trigger 'republish_cap' UNIQUEMENT : { plafond, restantes } renvoyés par
-  // le refus serveur plafond_republication_free (50 à vie, bascule 02/09).
+  // trigger 'republish_cap' UNIQUEMENT : { plafond, faites, remise_le }
+  // renvoyés par le refus serveur plafond_republication_free (50 PAR MOIS
+  // depuis le 05/10 ; remise_le = la remise à zéro du compte).
   plafondRepub = null,
   // trigger 'quota_geste' UNIQUEMENT : { geste: 'annonces'|'retouches',
   // plafond, consommes } — le refus serveur quota_*_atteint relayé par l'hôte.
@@ -617,9 +621,9 @@ export default function ConversionModal({
   // Free, que la remise s'appliquera au paiement ; c'est le serveur qui
   // l'applique réellement (create-checkout-session).
   offre        = null,
-  // (03/10, point 20) Free UNIQUEMENT : { restantes, plafond } — ses
-  // republications offertes à vie (quotas_etat, mode 'avie'). Le mur des
-  // republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
+  // (03/10, point 20) Free UNIQUEMENT : { restantes, plafond, remise_le } — ses
+  // republications du mois (quotas_etat ; 50 par mois depuis le 05/10). Le mur
+  // des republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
   repubOffertes = null,
   // (04/10, option « Sans ordinateur », conception) Ajouter l'option à la
   // formule DÉJÀ payée, sans changer de palier. ⛔ Jamais via
@@ -869,7 +873,8 @@ export default function ConversionModal({
   // ══ CAS 3 — Free → Premium ═════════════════════════════════════════════════
   // Variante 'republish_cap' (bascule 02/09) : le serveur a refusé une
   // republication avec plafond_republication_free — en Free les 50
-  // republications OFFERTES À VIE sont épuisées. La modale dit le FAIT, puis
+  // republications DU MOIS sont faites (05/10 : par mois désormais). La
+  // modale dit le FAIT et le jour où elles reviennent, puis
   // ce que Premium change, puis les cartes. Ton informatif, aucun compte à
   // rebours ; elle s'ouvre à CHAQUE tentative refusée.
   // Variante 'republish_lot' : un Free a tapé « Republier en lot » — geste
@@ -897,6 +902,11 @@ export default function ConversionModal({
   const repubAuto = trigger === 'republish_auto';
   const quotaCas = trigger === 'quota_geste' ? (quotaInfo ?? {}) : null;
   const repubPremium = (K.quota_republication_premium ?? 1500).toLocaleString(fr ? 'fr-FR' : 'en-US');
+  // (05/10) Le jour où les republications du gratuit reviennent : la remise à
+  // zéro rendue par le refus (coin_wallets.next_grant_at, la même que les
+  // annonces). Absente, passée ou illisible → rien (jamais une date inventée).
+  const remiseRepub = jourRemise(plafondRepub?.remise_le, fr ? 'fr' : 'en');
+  const remiseOffertes = jourRemise(repubOffertes?.remise_le, fr ? 'fr' : 'en');
   return (
     <Sheet onClose={fermer}>
       <div style={{
@@ -911,7 +921,7 @@ export default function ConversionModal({
         {titreCloud ?? (trigger === 'voice'
           ? (fr ? 'Passe en vocal illimité.' : 'Go unlimited on voice.')
           : repubCap
-            ? (fr ? 'Tes republications offertes sont épuisées.' : 'Your included repostings are used up.')
+            ? (fr ? 'Tes republications du mois sont faites.' : "This month's repostings are done.")
             : repubLot
               ? (fr ? 'Republie ton stock en un geste.' : 'Repost your stock in one move.')
             : repubAuto
@@ -931,8 +941,8 @@ export default function ConversionModal({
         <div style={{ background: '#E8F5F3', border: `1px solid ${C.teal}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5, color: C.tealDeep }}>
             {fr
-              ? <>Tu as encore {repubOffertes.restantes} republications offertes{repubOffertes.plafond ? <> sur {repubOffertes.plafond}</> : null} — rien à payer.</>
-              : <>You still have {repubOffertes.restantes}{repubOffertes.plafond ? <> of {repubOffertes.plafond}</> : null} included repostings — nothing to pay.</>}
+              ? <>Tu as encore {repubOffertes.restantes} republications ce mois-ci{repubOffertes.plafond ? <> sur {repubOffertes.plafond}</> : null} — rien à payer.{remiseOffertes ? <> Remise à zéro le {remiseOffertes}.</> : null}</>
+              : <>You still have {repubOffertes.restantes}{repubOffertes.plafond ? <> of {repubOffertes.plafond}</> : null} repostings this month — nothing to pay.{remiseOffertes ? <> Resets on {remiseOffertes}.</> : null}</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 4 }}>
             {fr
@@ -965,15 +975,16 @@ export default function ConversionModal({
       )}
 
       {repubCap && (
-        /* Registre des cartes : le Free A eu quelque chose (50 offertes, à
-           vie) et le Premium change le VOLUME. Jamais le mot « plafond ».
+        /* Registre des cartes : le Free A quelque chose (50 par mois, qui
+           reviennent à sa remise à zéro) et le Premium change le VOLUME.
+           Jamais le mot « plafond ».
            Déclenchement (exclusif au code plafond_republication_free) et
            télémétrie portés par StockTab. */
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
             {fr
-              ? <>Tes {plafondRepub?.plafond ?? 50} republications offertes ont toutes été utilisées. Rien n'a été décompté aujourd'hui.</>
-              : <>Your {plafondRepub?.plafond ?? 50} included repostings have all been used. Nothing was deducted today.</>}
+              ? <>Tes {plafondRepub?.plafond ?? K.quota_republication_free} republications du mois sont toutes utilisées{remiseRepub ? <> — elles reviennent le {remiseRepub}</> : null}. Rien n'a été décompté.</>
+              : <>Your {plafondRepub?.plafond ?? K.quota_republication_free} repostings for this month are all used{remiseRepub ? <> — they come back on {remiseRepub}</> : null}. Nothing was deducted.</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {fr

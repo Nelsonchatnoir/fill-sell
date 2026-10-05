@@ -334,8 +334,9 @@ export default function Legal() {
                 réécrites le 03/09 (bascule sans monnaie interne) puis le 04/09
                 (article 3.3, fin de la limite d'articles), puis le 16/09
                 (CGU 3.9 + CGV article 3 : plateformes tierces, mandat de
-                l'utilisateur, évolution de la liste, garantie). */}
-            {en ? 'Last updated: September 16, 2026' : 'Dernière mise à jour : 16 septembre 2026'}
+                l'utilisateur, évolution de la liste, garantie), puis le 05/10
+                (CGU 3.4 : 50 republications PAR MOIS en Free). */}
+            {en ? 'Last updated: October 5, 2026' : 'Dernière mise à jour : 5 octobre 2026'}
           </p>
         </div>
 
@@ -408,24 +409,24 @@ export default function Legal() {
               web / tarif boutiques (ils peuvent différer). */}
           {en ? (
             <p className="legal-p"><span className="legal-strong">3.4 Premium, Pro and Business Subscriptions</span><br />
-              Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. An AI-generated listing may be created from a photo (Lens analysis) or from an inventory item: both count against the same single listings volume. As of September 2, 2026, these volumes are:<br />
-              — <span className="legal-strong">Free</span>: 5 AI-generated listings published to the 5 supported platforms per cycle, and a one-time allowance of 50 repostings (granted once, no monthly renewal);<br />
+              Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. An AI-generated listing may be created from a photo (Lens analysis) or from an inventory item: both count against the same single listings volume. As of October 5, 2026, these volumes are:<br />
+              — <span className="legal-strong">Free</span>: 5 AI-generated listings published to the 5 supported platforms and 50 repostings per cycle;<br />
               — <span className="legal-strong">Premium</span>: 40 AI-generated listings, 1,500 repostings and 5 AI photo touch-ups per cycle;<br />
               — <span className="legal-strong">Pro</span>: 120 AI-generated listings, 5,000 repostings (with optional automatic reposting) and 20 AI photo touch-ups per cycle;<br />
               — <span className="legal-strong">Business</span>: 300 AI-generated listings, unlimited repostings (with automatic reposting) and 50 AI photo touch-ups per cycle.<br />
-              Publishing listings to the supported platforms is included in all plans and not counted. Volumes reset at each <span className="legal-strong">subscription cycle</span> (the monthly anniversary of the subscription), not on calendar months. Counters are visible in the app; volumes may change over time, and the applicable volumes are those displayed in the app at the time of use.<br /><br />
+              Publishing listings to the supported platforms is included in all plans and not counted. Volumes reset at each <span className="legal-strong">subscription cycle</span> (the monthly anniversary of the subscription; on the Free plan, the monthly anniversary of sign-up), not on calendar months. Counters are visible in the app; volumes may change over time, and the applicable volumes are those displayed in the app at the time of use.<br /><br />
               <span className="legal-strong">Automatic reposting</span> (Pro and Business) is capped at <span className="legal-strong">45 repostings per day</span> regardless of plan. This is a safety limit designed to protect users' Vinted accounts against restrictions that Vinted may impose on high-frequency activity — not a commercial limit. Reposting effects are described in Article 4 of the Terms of Sale below.<br /><br />
               <span className="legal-strong">Prices:</span> the price in effect is the one displayed at the time of purchase, on the web (payment securely processed by <span className="legal-strong">Stripe</span>) or in the app stores. Web prices and app-store prices (Apple App Store, Google Play) may differ for the same plan.<br /><br />
               <span className="legal-strong">On iOS/Android:</span> payment is managed by the relevant store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your store account settings.
             </p>
           ) : (
             <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium, Pro et Business</span><br />
-              Les plans payants sont proposés sans engagement. Chaque plan comprend des volumes d'actions par cycle d'abonnement. Une annonce générée par IA peut être créée depuis une photo (analyse Lens) ou depuis un article du stock : les deux s'imputent sur le même volume unique d'annonces. Au 2 septembre 2026, ces volumes sont :<br />
-              — <span className="legal-strong">Free</span> : 5 annonces générées par IA et publiées sur les plateformes prises en charge par cycle, et une dotation unique de 50 republications (accordée une fois, sans renouvellement mensuel) ;<br />
+              Les plans payants sont proposés sans engagement. Chaque plan comprend des volumes d'actions par cycle d'abonnement. Une annonce générée par IA peut être créée depuis une photo (analyse Lens) ou depuis un article du stock : les deux s'imputent sur le même volume unique d'annonces. Au 5 octobre 2026, ces volumes sont :<br />
+              — <span className="legal-strong">Free</span> : 5 annonces générées par IA et publiées sur les plateformes prises en charge et 50 republications par cycle ;<br />
               — <span className="legal-strong">Premium</span> : 40 annonces générées par IA, 1 500 republications et 5 retouches photo par IA par cycle ;<br />
               — <span className="legal-strong">Pro</span> : 120 annonces générées par IA, 5 000 republications (avec republication automatique en option) et 20 retouches photo par IA par cycle ;<br />
               — <span className="legal-strong">Business</span> : 300 annonces générées par IA, republications illimitées (avec republication automatique) et 50 retouches photo par IA par cycle.<br />
-              La publication des annonces sur les plateformes prises en charge est incluse dans tous les plans et n'est pas décomptée. Les volumes se réarment à chaque <span className="legal-strong">cycle d'abonnement</span> (date anniversaire mensuelle de la souscription), et non au mois calendaire. Les compteurs sont visibles dans l'application ; les volumes peuvent évoluer, et ceux applicables sont ceux affichés dans l'application au moment de l'utilisation.<br /><br />
+              La publication des annonces sur les plateformes prises en charge est incluse dans tous les plans et n'est pas décomptée. Les volumes se réarment à chaque <span className="legal-strong">cycle d'abonnement</span> (date anniversaire mensuelle de la souscription ; pour le plan Free, date anniversaire mensuelle de l'inscription), et non au mois calendaire. Les compteurs sont visibles dans l'application ; les volumes peuvent évoluer, et ceux applicables sont ceux affichés dans l'application au moment de l'utilisation.<br /><br />
               <span className="legal-strong">La republication automatique</span> (Pro et Business) est plafonnée à <span className="legal-strong">45 republications par jour</span>, quel que soit le plan. Il s'agit d'une limite de sécurité destinée à protéger les comptes Vinted des utilisateurs contre les restrictions que Vinted peut imposer en cas d'activité à haute fréquence — et non d'une limite commerciale. Les effets de la republication sont décrits à l'article 4 des CGV ci-dessous.<br /><br />
               <span className="legal-strong">Prix :</span> le prix applicable est celui affiché au moment de l'achat, sur le web (paiement traité de manière sécurisée par <span className="legal-strong">Stripe</span>) ou dans les boutiques d'applications. Les prix web et les prix des boutiques (App Store Apple, Google Play) peuvent différer pour un même plan.<br /><br />
               <span className="legal-strong">Sur iOS/Android :</span> le paiement est géré par la boutique concernée (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte de la boutique.

@@ -222,8 +222,9 @@ export function Jauge({ libelle, consomme, plafond, reste, sous }) {
   );
 }
 
-// La republication a TROIS modes (illimité / à vie / mensuel) : une jauge n'a
-// de sens que pour les deux derniers, et « illimitées » n'est pas un chiffre.
+// La republication a DEUX modes (illimité / mensuel — le gratuit est mensuel
+// depuis le 05/10, 50 par mois) : une jauge n'a de sens que pour le second, et
+// « illimitées » n'est pas un chiffre.
 // Rendue à l'identique dans le hub et dans la sous-page Abonnement.
 export function JaugeRepublication({ repub, T }) {
   if (!repub) return null;
@@ -242,10 +243,7 @@ export function JaugeRepublication({ repub, T }) {
       consomme={repub.faites}
       plafond={repub.plafond}
       reste={repub.restantes}
-      sous={repub.restantes == null ? null
-        : repub.mode === 'avie'
-          ? T.restantesAVie(repub.restantes, repub.plafond)
-          : T.restantes(repub.restantes, T.motRepublications)}
+      sous={repub.restantes == null ? null : T.restantes(repub.restantes, T.motRepublications)}
     />
   );
 }

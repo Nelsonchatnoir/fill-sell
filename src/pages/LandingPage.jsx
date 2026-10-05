@@ -255,7 +255,7 @@ const EN = {
   "/ mois": "/ mo",
   "0 €": "€0",
   "{ADS_FREE} annonces publiées / mois": "{ADS_FREE} listings published / mo",
-  "{REPUB_FREE} republications offertes, à vie": "{REPUB_FREE} repostings included, for life",
+  "{REPUB_FREE} republications par mois": "{REPUB_FREE} repostings a month",
   "Publication auto sur Vinted, Leboncoin, eBay & Beebs": "Auto-publishing to Vinted, Leboncoin, eBay & Beebs",
   "Calcul de marge instantané": "Instant margin calculator",
   "Suivi de tes ventes": "Track your sales",
@@ -285,7 +285,7 @@ const EN = {
   "Passer Business": "Go Business",
   "Les questions qu'on nous pose.": "The questions we get asked.",
   "Comment fonctionnent les forfaits ?": "How do the plans work?",
-  "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur toutes tes plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle.": "Each plan includes monthly volumes of actions: AI-created listings — from a photo or from your stock — published to all your marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro, {ADS_BUSINESS} on Business), AI photo touch-ups and repostings ({REPUB_FREE} included for life on Free, {REPUB_PREMIUM} a month on Premium, {REPUB_PRO} on Pro, unlimited on Business). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.",
+  "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur toutes tes plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} par mois en Free, {REPUB_PREMIUM} en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle.": "Each plan includes monthly volumes of actions: AI-created listings — from a photo or from your stock — published to all your marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro, {ADS_BUSINESS} on Business), AI photo touch-ups and repostings ({REPUB_FREE} a month on Free, {REPUB_PREMIUM} on Premium, {REPUB_PRO} on Pro, unlimited on Business). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.",
   "Sur quelles plateformes je publie ?": "Which marketplaces can I publish to?",
   "Vinted, Leboncoin, eBay et Beebs — les places de marché qui comptent en France, et les prochaines dès qu'elles arrivent. Un seul ajout, publié partout en même temps.": "Vinted, Leboncoin, eBay and Beebs — the marketplaces that matter in France, and the next ones as soon as they arrive. One add, posted everywhere at once.",
   "Comment FillSell publie-t-il mes annonces ?": "How does FillSell publish my listings?",
@@ -322,7 +322,7 @@ const EN = {
    corrigé le 2026-08-02, ne pas l'y remettre. */
 const FAQ = [
   ["Comment fonctionnent les forfaits ?",
-   "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur toutes tes plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle."],
+   "Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo ou depuis ton stock — et publiées sur toutes tes plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro, {ADS_BUSINESS} en Business), des retouches photo et des republications ({REPUB_FREE} par mois en Free, {REPUB_PREMIUM} en Premium, {REPUB_PRO} en Pro, illimitées en Business). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l'app et se remettent à zéro à chaque cycle."],
   ["Sur quelles plateformes je publie ?",
    "Vinted, Leboncoin, eBay et Beebs — les places de marché qui comptent en France, et les prochaines dès qu'elles arrivent. Un seul ajout, publié partout en même temps."],
   ["Comment FillSell publie-t-il mes annonces ?",
@@ -374,7 +374,7 @@ export default function LandingPage() {
           .select('key, value')
           .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
                       'quota_annonces_business',
-                      'republication_avie_free', 'quota_republication_premium', 'quota_republication_pro',
+                      'quota_republication_free', 'quota_republication_premium', 'quota_republication_pro',
                       'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business']);
         if (error || !data?.length || !vivant) return;
         const parKey = Object.fromEntries(data.map((r) => [r.key, r.value]));
@@ -383,7 +383,7 @@ export default function LandingPage() {
           ADS_PREMIUM:       parKey.quota_annonces_premium      ?? GRANTS_FALLBACK.ADS_PREMIUM,
           ADS_PRO:           parKey.quota_annonces_pro          ?? GRANTS_FALLBACK.ADS_PRO,
           ADS_BUSINESS:      parKey.quota_annonces_business     ?? GRANTS_FALLBACK.ADS_BUSINESS,
-          REPUB_FREE:        parKey.republication_avie_free     ?? GRANTS_FALLBACK.REPUB_FREE,
+          REPUB_FREE:        parKey.quota_republication_free    ?? GRANTS_FALLBACK.REPUB_FREE,
           REPUB_PREMIUM:     parKey.quota_republication_premium ?? GRANTS_FALLBACK.REPUB_PREMIUM,
           REPUB_PRO:         parKey.quota_republication_pro     ?? GRANTS_FALLBACK.REPUB_PRO,
           RETOUCHE_PREMIUM:  parKey.quota_retouche_premium      ?? GRANTS_FALLBACK.RETOUCHE_PREMIUM,
@@ -1353,7 +1353,7 @@ export default function LandingPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
-                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t("{REPUB_FREE} republications offertes, à vie")}</span>
+                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t("{REPUB_FREE} republications par mois")}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "9px" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>

@@ -63,6 +63,7 @@ import { computeRemovalInfo, vintedMasqueeMalgreJobs, vintedPresenceArticle, rep
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
+import { jourRemise, messagePlafondRepublicationGratuit } from '../utils/jourRemise';
 // Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
 // l'annonce (lireSyncMultiOuverte, fail-closed).
@@ -5810,15 +5811,17 @@ const StockTab = memo(function StockTab({
   // s'exécutent qu'au clic, bien après l'initialisation.
 
   // ── Plafond de republication free : modale de conversion (2026-09-02) ─────
-  // Le serveur (spend_coins_and_republish) refuse la 4e republication MANUELLE
-  // du jour d'un compte free avec le code DÉDIÉ plafond_republication_free
-  // (+ plafond, faites) — rien n'est débité, aucun job créé. Sur CE code
+  // Le serveur (spend_coins_and_republish) refuse une republication MANUELLE
+  // d'un compte free dont les republications DU MOIS sont faites (50 par mois
+  // depuis le 05/10, quota_republication_free) avec le code DÉDIÉ
+  // plafond_republication_free (+ plafond, faites, remise_le) — rien n'est
+  // débité, aucun job créé. Sur CE code
   // précis, et LUI SEUL (jamais un manque d'unités, un échec technique ou
   // un autre plafond), l'app ouvre la modale de conversion (trigger
   // 'republish_cap') au lieu d'un message d'erreur.
   // 02/09 soir (décision Nico) : le verrou « 1 ouverture/jour » et son
   // localStorage sont RETIRÉS — la modale s'ouvre à CHAQUE clic refusé tant
-  // que le plafond du jour est atteint. Chaque ouverture est journalisée
+  // que les republications du mois sont faites. Chaque ouverture est journalisée
   // (ouvrirModalePlafond → premium_cta_click origine
   // plafond_republication_free, declencheur automatique) : c'est ce qui
   // mesure si ce contexte convertit. Le message inline ne subsiste que si la
@@ -5827,17 +5830,14 @@ const StockTab = memo(function StockTab({
     if (typeof ouvrirModalePlafond !== 'function') return false;
     ouvrirModalePlafond('plafond_republication_free', {
       trigger: 'republish_cap',
-      plafondRepub: { plafond: res?.plafond ?? 3, faites: res?.faites ?? null },
+      plafondRepub: { plafond: res?.plafond ?? null, faites: res?.faites ?? null, remise_le: res?.remise_le ?? null },
     });
     return true;
   };
-  // (03/10, point 20) La règle du SERVEUR depuis le 02/09 : 50 republications
-  // offertes À VIE en Free (republication_avie_free), aucune limite par jour.
-  // L'ancien texte (« 3 par jour… ça repart demain ») promettait un lendemain
-  // qui n'existe pas.
-  const msgPlafondRepub = (res) => (lang === 'fr'
-    ? `Tes ${res?.plafond ?? 50} republications offertes sont toutes utilisées. Rien n'a été débité.`
-    : `Your ${res?.plafond ?? 50} included repostings are all used. Nothing was charged.`);
+  // (05/10, décision Nico) La règle du SERVEUR : 50 republications PAR MOIS en
+  // Free (quota_republication_free), même remise à zéro que les annonces du
+  // mois ; la phrase dit le jour où elles reviennent (remise_le du refus).
+  const msgPlafondRepub = (res) => messagePlafondRepublicationGratuit(res, lang === 'fr' ? 'fr' : 'en');
 
   async function lancerRepublication(item, prixRepublication = null, plateformes = ['vinted']) {
     if (repubBusy || repubEnPause) return;
@@ -5934,15 +5934,15 @@ const StockTab = memo(function StockTab({
   // articles ACTIONNABLES sont cochables : les bornes (republish vivant,
   // cadence 24 h) rendent la case absente, jamais un échec après le clic.
   // ── Republication EN LOT réservée aux payants (2026-09-02 soir) ───────────
-  // Un Free a 50 republications offertes À VIE (republication_avie_free,
-  // refus serveur plafond_republication_free une fois épuisées) — à l'unité.
+  // Un Free a 50 republications PAR MOIS (quota_republication_free, refus
+  // serveur plafond_republication_free une fois faites) — à l'unité.
   // Lui laisser lancer un lot, c'est le contraire de ce palier. La
   // porte se ferme EN AMONT : bouton visible (levier de conversion) mais
   // inopérant — au tap, modale de conversion (origine DISTINCTE
   // republication_lot_free, trigger republish_lot), aucun job, aucun appel
   // RPC, aucune unité engagée. isPremium inclut is_comped (expression
   // canonique) ; flags cumulatifs → « est payant » = l'un des trois.
-  // La republication À L'UNITÉ reste ouverte au Free (3/jour, garde serveur).
+  // La republication À L'UNITÉ reste ouverte au Free (50 par mois, garde serveur).
   const repubLotReserve = !(isPremium || isPro || isBusiness);
   const ouvrirModaleLotReserve = () => {
     if (typeof ouvrirModalePlafond !== 'function') return;
@@ -10312,23 +10312,24 @@ const StockTab = memo(function StockTab({
                   <span className="sub">
                     {/* Bascule quotas (02/09) : plus de « 1 unité par
                         annonce » — le sous-titre porte le COMPTEUR de
-                        republications (restantes à vie en Free, restantes du
-                        mois en Premium/Pro, rien en illimité). */}
+                        republications (restantes du mois en Free, Premium
+                        et Pro — 50 par mois en Free depuis le 05/10 —, rien
+                        en illimité). */}
                     {modeRepublish
                       ?(lang==='fr'?"Coche les annonces à faire remonter, puis lance."
                           :"Tick the listings to bump, then launch.")
                       :repubLotReserve
                         // (03/10, point 20) Ce qu'il A, d'abord : ses republications
-                        // offertes, et comment s'en servir (une par une).
-                        ?(quotas?.republication?.mode==='avie'&&Number(quotas.republication.restantes)>0
+                        // du mois, leur remise à zéro, et comment s'en servir.
+                        ?(Number(quotas?.republication?.restantes)>0
                           ?(lang==='fr'
-                              ?`Tu as encore ${quotas.republication.restantes} republications offertes : republie tes annonces une par une, avec le bouton « Republier » de chaque carte. En lot, c'est un avantage des forfaits payants.`
-                              :`You still have ${quotas.republication.restantes} included repostings: repost your listings one by one with each card's “Repost” button. Bulk reposting is a paid-plan perk.`)
+                              ?`Tu as encore ${quotas.republication.restantes} republications ce mois-ci${jourRemise(quotas.republication.remise_le,'fr')?` (remise à zéro le ${jourRemise(quotas.republication.remise_le,'fr')})`:''} : republie tes annonces une par une, avec le bouton « Republier » de chaque carte. En lot, c'est un avantage des forfaits payants.`
+                              :`You still have ${quotas.republication.restantes} repostings this month${jourRemise(quotas.republication.remise_le,'en')?` (resets on ${jourRemise(quotas.republication.remise_le,'en')})`:''}: repost your listings one by one with each card's “Repost” button. Bulk reposting is a paid-plan perk.`)
                           :(lang==='fr'?"Republier plusieurs annonces d'un geste est un avantage des forfaits payants."
                               :"Reposting several listings in one move is a paid-plan perk."))
                         :(lang==='fr'
-                            ?`Retire puis redépose chaque annonce à l'identique pour la faire remonter.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} restantes${quotas.republication.mode==='avie'?` sur ${quotas.republication.plafond} offertes`:' ce mois-ci'}.`:''}`
-                            :`Removes then re-posts each listing identically to bump it.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} left${quotas.republication.mode==='avie'?` of ${quotas.republication.plafond} included`:' this month'}.`:''}`)}
+                            ?`Retire puis redépose chaque annonce à l'identique pour la faire remonter.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} restantes ce mois-ci.`:''}`
+                            :`Removes then re-posts each listing identically to bump it.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} left this month.`:''}`)}
                   </span>
                 </span>
               </button>
@@ -10550,8 +10551,8 @@ const StockTab = memo(function StockTab({
                     journalier est une protection anti-restriction Vinted,
                     temporaire, qui repart seule : texte secondaire, aucune
                     couleur d'alerte, aucun appel à l'achat, aucun bouton. Les
-                    limites commerciales (republication_avie_free,
-                    quota_republication_*) ont leur propre chemin — la modale
+                    limites commerciales (quota_republication_*, gratuit
+                    compris) ont leur propre chemin — la modale
                     de conversion — et ne doivent jamais se ressembler.
                     Affichée SEULEMENT quand la coupure est atteinte ou
                     imminente (REPUB_PLAFOND_PROCHE) ET qu'il reste des
