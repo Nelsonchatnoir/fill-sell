@@ -81,12 +81,20 @@ const FR = {
   rangement: (n, noms) => `${n} annonce${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}${noms ? ` sur ${noms}` : ''}, rangement en cours — ${n > 1 ? 'elles arrivent' : 'elle arrive'} dans ton stock d'ici quelques minutes.`,
 
   // ── Les empêchements, dits sans accuser personne ─────────────────────────
-  signalNonConnecte: (nom) => `Pas connecté à ${nom} : connecte-toi sur ton ordinateur, la prochaine synchronisation la prendra.`,
+  // (05/10, Marine) Plus aucune promesse de reprise automatique : un relevé ne
+  // démarre que sur « Synchroniser ». Chaque fin dit la vraie situation et le
+  // seul geste utile.
+  signalNonConnecte: (nom) => `Connecte-toi à ${nom} sur ton ordinateur, puis appuie sur « Synchroniser ».`,
+  finAutreCompte: (nom) => `Ton ordinateur est connecté à un autre compte ${nom} que celui suivi par FillSell. Rien n'a été importé. Connecte-toi au bon compte ${nom} dans Chrome, puis appuie sur « Synchroniser ».`,
+  finAntiRobot: (nom) => `${nom} a bloqué la lecture un moment (protection anti-robot). Rien n'a été effacé : réessaie dans quelques minutes.`,
+  finArret: (nom) => `La synchronisation ${de(nom)} s'est arrêtée avant la fin. Rien n'a été effacé : appuie sur « Synchroniser » pour la terminer.`,
+  finPasPrise: (nom) => `Ton ordinateur n'a pas pris la synchronisation ${de(nom)}. Ouvre Chrome avec l'extension FillSell, puis appuie sur « Synchroniser ».`,
+  finEchec: (nom) => `La synchronisation ${de(nom)} n'a pas abouti. Rien n'a été effacé : appuie sur « Synchroniser » pour réessayer.`,
   signalOpla: "Opla n'est pas encore autorisée dans l'extension — rien à synchroniser pour l'instant.",
   signalEchec: (nom, motif) => `La synchronisation ${de(nom)} s'est arrêtée${motif ? ` — ${motif}` : ''}. Les autres plateformes sont synchronisées.`,
   // Un arrêt TECHNIQUE (la page n'a pas répondu à temps) : ce n'est ni un
   // échec de la personne ni un verdict sur ses annonces. On dit ce qu'on fait.
-  signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. On réessaie tout seuls ; tu peux aussi relancer la synchronisation d'ici.`,
+  signalTechnique: (nom) => `${nom} n'a pas affiché la liste de tes annonces à temps. Rien n'a été effacé : appuie sur « Synchroniser » pour réessayer.`,
   // (01/10) Chrome est connecté à un autre compte eBay que celui relié à
   // FillSell : rien n'est importé de cet autre compte, et on nomme le bon.
   signalHorsCompteEbay: (chrome, relie) => (chrome
@@ -94,15 +102,15 @@ const FR = {
     : `eBay : on n'a pas encore pu vérifier que ton ordinateur est connecté au compte « ${relie ?? 'relié à FillSell'} ». Rien n'est importé en attendant. Si tu utilises un autre compte eBay sur cet ordinateur, connecte-toi avec ${relie ?? 'le compte relié'}.`),
   // (27/09) Une synchronisation incomplète dit ce qu'elle a lu SUR ce qui est annoncé.
   signalIncomplet: (nom, lus, annonce) => (annonce != null
-    ? `${nom} : synchronisation incomplète — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''} sur ${annonce}. On relit tout seuls ; rien n'est conclu sur les autres.`
-    : `${nom} : synchronisation incomplète — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''}, le total n'a pas pu être lu. On relit tout seuls ; rien n'est conclu sur les autres.`),
+    ? `${nom} : synchronisation incomplète — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''} sur ${annonce}. Appuie sur « Synchroniser » pour terminer ; rien n'est conclu sur les autres.`
+    : `${nom} : synchronisation incomplète — ${lus} annonce${lus > 1 ? 's' : ''} lue${lus > 1 ? 's' : ''}, le total n'a pas pu être lu. Appuie sur « Synchroniser » pour terminer ; rien n'est conclu sur les autres.`),
   // Relevés vides d'affilée sur un compte qui avait des annonces (serveur,
   // releve_vide_etat, 24/09). ⛔ On ne conclut RIEN : ni vendues, ni retirées,
   // ni « tu n'as plus d'annonce ». On dit ce qu'on a lu, et le geste possible.
   signalVideRepete: (nom) => `${nom} : les dernières synchronisations n'ont trouvé aucune annonce sur le compte connecté sur ton ordinateur. On ne conclut rien sur tes annonces. Si elles sont en ligne, vérifie que tu es connecté au bon compte ${nom}, puis touche sa pastille pour la synchroniser.`,
   extensionAbsente: "L'extension Chrome n'est pas installée : c'est elle qui synchronise tes annonces depuis ton ordinateur.",
   extensionAbsenteCta: "Installer l'extension",
-  extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome, la synchronisation repart toute seule.",
+  extensionEndormie: "Ton ordinateur n'a pas répondu : ouvre Chrome avec l'extension FillSell, puis appuie sur « Synchroniser ».",
 
   // ── LES POINTS À RÉGLER, EN CARTES (refonte du Stock, 03/10, planche 08) ──
   // Chaque point : un titre COURT (la plateforme et ce qui coince), puis la
@@ -117,7 +125,8 @@ const FR = {
   titrePointIncomplet: (nom) => `${nom} : synchronisation incomplète`,
   titrePointMur: (nom) => `${nom} : à connecter`,
   titreEndormie: "Ton ordinateur n'a pas répondu",
-  texteEndormie: (noms) => `La synchronisation ${de(noms)} s'est arrêtée. Ouvre Chrome sur ton ordinateur : elle repart toute seule.`,
+  texteEndormie: (noms) => `Ton ordinateur n'a pas pris la synchronisation ${de(noms)}. Ouvre Chrome avec l'extension FillSell, puis appuie sur « Synchroniser ».`,
+  titrePointArretFin: (nom) => `${nom} : synchronisation arrêtée avant la fin`,
   ctaPointSynchro: (nom) => `Synchroniser ${nom}`,
   ctaPointReessayer: 'Réessayer',
 
@@ -130,7 +139,7 @@ const FR = {
     : `${nom} : synchronisation terminée, aucune annonce en ligne pour l'instant.`),
   // La promesse que handler-watch tient désormais : la reprise est faite par
   // le serveur dès que la session est prouvée fraîche, sans nouveau clic.
-  murReprise: 'Dès que tu es connecté, la synchronisation de cette plateforme repart toute seule.',
+  murReprise: 'Une fois connecté, appuie sur « Synchroniser ».',
 
   note: "Synchroniser ne publie rien : FillSell lit « Mes annonces » sur chaque plateforme et rattache ce qu'il reconnaît à ton stock.",
 
@@ -223,20 +232,25 @@ const EN = {
   doublonsCta: 'Check',
   rangement: (n, noms) => `${n} listing${n > 1 ? 's' : ''} found${noms ? ` on ${noms}` : ''}, filing in progress — ${n > 1 ? 'they' : 'it'} will appear in your stock within a few minutes.`,
 
-  signalNonConnecte: (nom) => `Not signed in to ${nom}: sign in on your computer, the next sync will pick it up.`,
+  signalNonConnecte: (nom) => `Sign in to ${nom} on your computer, then tap “Sync”.`,
+  finAutreCompte: (nom) => `Your computer is signed in to another ${nom} account than the one FillSell follows. Nothing was imported. Sign in to the right ${nom} account in Chrome, then tap “Sync”.`,
+  finAntiRobot: (nom) => `${nom} blocked the reading for a moment (anti-bot protection). Nothing was deleted: try again in a few minutes.`,
+  finArret: (nom) => `The ${nom} sync stopped before the end. Nothing was deleted: tap “Sync” to finish it.`,
+  finPasPrise: (nom) => `Your computer did not pick up the ${nom} sync. Open Chrome with the FillSell extension, then tap “Sync”.`,
+  finEchec: (nom) => `The ${nom} sync did not complete. Nothing was deleted: tap “Sync” to try again.`,
   signalOpla: 'Opla is not authorised in the extension yet — nothing to sync for now.',
   signalEchec: (nom, motif) => `The ${nom} sync stopped${motif ? ` — ${motif}` : ''}. The other platforms are synced.`,
-  signalTechnique: (nom) => `${nom} did not show your listings in time. We retry on our own; you can also start the sync again from here.`,
+  signalTechnique: (nom) => `${nom} did not show your listings in time. Nothing was deleted: tap “Sync” to try again.`,
   signalHorsCompteEbay: (chrome, relie) => (chrome
     ? `eBay: your computer is signed in to the account “${chrome}”, not “${relie ?? 'your linked account'}” linked to FillSell. Nothing is imported from “${chrome}”. Sign in to eBay on your computer with the account ${relie ?? 'linked to FillSell'}.`
     : `eBay: we could not yet check that your computer is signed in to “${relie ?? 'the linked account'}”. Nothing is imported meanwhile. If you use another eBay account on this computer, sign in with ${relie ?? 'the linked account'}.`),
   signalIncomplet: (nom, lus, annonce) => (annonce != null
-    ? `${nom}: incomplete sync — ${lus} listing${lus > 1 ? 's' : ''} read out of ${annonce}. We read again on our own; nothing is concluded about the others.`
-    : `${nom}: incomplete sync — ${lus} listing${lus > 1 ? 's' : ''} read, the total could not be read. We read again on our own; nothing is concluded about the others.`),
+    ? `${nom}: incomplete sync — ${lus} listing${lus > 1 ? 's' : ''} read out of ${annonce}. Tap “Sync” to finish; nothing is concluded about the others.`
+    : `${nom}: incomplete sync — ${lus} listing${lus > 1 ? 's' : ''} read, the total could not be read. Tap “Sync” to finish; nothing is concluded about the others.`),
   signalVideRepete: (nom) => `${nom}: the latest syncs found no listing on the account signed in on your computer. We draw no conclusion about your listings. If they are online, check you are signed in to the right ${nom} account, then tap its chip to sync it.`,
   extensionAbsente: 'The Chrome extension is not installed: it is what syncs your listings from your computer.',
   extensionAbsenteCta: 'Install the extension',
-  extensionEndormie: 'Your computer did not answer: open Chrome and the sync starts again on its own.',
+  extensionEndormie: 'Your computer did not answer: open Chrome with the FillSell extension, then tap “Sync”.',
 
   titrePointVide: (nom) => `${nom}: no listing found`,
   titrePointNonConnecte: (nom) => `${nom}: not signed in`,
@@ -247,14 +261,15 @@ const EN = {
   titrePointIncomplet: (nom) => `${nom}: incomplete sync`,
   titrePointMur: (nom) => `${nom}: to sign in`,
   titreEndormie: 'Your computer did not answer',
-  texteEndormie: (noms) => `The ${noms} sync stopped. Open Chrome on your computer: it starts again on its own.`,
+  texteEndormie: (noms) => `Your computer did not pick up the ${noms} sync. Open Chrome with the FillSell extension, then tap “Sync”.`,
+  titrePointArretFin: (nom) => `${nom}: sync stopped before the end`,
   ctaPointSynchro: (nom) => `Sync ${nom}`,
   ctaPointReessayer: 'Try again',
 
   reussiteReleve: (nom, n) => (n > 0
     ? `${nom}: ${n} listing${n > 1 ? 's' : ''} synced and filed into your stock.`
     : `${nom}: sync finished, nothing online for now.`),
-  murReprise: 'As soon as you are signed in, this platform syncs again on its own.',
+  murReprise: 'Once signed in, tap “Sync”.',
 
   note: 'Syncing publishes nothing: FillSell reads “My listings” on each platform and matches what it recognises to your stock.',
 

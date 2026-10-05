@@ -26,7 +26,7 @@ import OplaAutorisationModal from '../components/OplaAutorisationModal';
 import InstallExtensionCta from '../components/InstallExtensionCta';
 import { LABEL_RELEVE } from '../utils/syncPlateformes';
 import { useReleveAnnonces } from '../annonces/useReleveAnnonces';
-import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve, arretTechniqueReleve } from '../annonces/etatReleve';
+import { etatTuile, lireVague, lireBilan, ilYA, murConnexionReleve, arretTechniqueReleve, texteSituation } from '../annonces/etatReleve';
 import { textesAnnonces } from '../annonces/textes';
 import { A, CSS_ANNONCES } from '../annonces/theme';
 import ConstellationReleve from '../annonces/ConstellationReleve';
@@ -170,7 +170,10 @@ export default function BlocSynchro({
   const [vagueAvant, setVagueAvant] = useState(vague.active);
   if (vague.active !== vagueAvant) {
     setVagueAvant(vague.active);
-    setResume(!vague.active);
+    // (05/10, Marine) « 0 annonce à jour · sur 0 plateforme », coche verte,
+    // après un relevé ARRÊTÉ : le résumé ne s'ouvre que si au moins une
+    // plateforme a vraiment fini. Sinon le bloc reste, avec ses points.
+    setResume(!vague.active && tuiles.some((t) => t.e.phase === 'fait' && !t.vide));
   }
   useEffect(() => { onResume?.(resume); }, [resume, onResume]);
 
@@ -204,23 +207,30 @@ export default function BlocSynchro({
   // bouton principal : une demande à la fois, jamais pendant une vague.
   const synchroDe = (t) => ({ libelle: T.ctaPointSynchro(t.nom), icone: RefreshCw, onTap: () => r.lancer(t.p), desactive: occupeLancer });
   const reessayer = (t) => ({ libelle: T.ctaPointReessayer, icone: RotateCcw, onTap: () => r.lancer(t.p), desactive: occupeLancer });
-  const expirees = tuiles.filter((t) => t.e.phase === 'expire');
+  // « Ton ordinateur n'a pas répondu » : seulement les demandes que
+  // l'ordinateur n'a JAMAIS prises (Chrome fermé). Une demande annulée par la
+  // cadence n'est pas un point à régler.
+  const expirees = tuiles.filter((t) => t.e.phase === 'expire' && t.e.situation === 'pas_prise');
   const signaux = [
     ...tuiles.filter((t) => t.vide).map((t) => ({ cle: `vide-${t.p}`, platform: t.p, titre: T.titrePointVide(t.nom), texte: T.signalVideRepete(t.nom), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
       .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : T.signalNonConnecte(t.nom) })),
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p)).map((t) => {
-      const technique = arretTechniqueReleve(r.runs[t.p] ?? null);
+      const technique = t.p !== 'vinted' && arretTechniqueReleve(r.runs[t.p] ?? null);
+      // (05/10) Plus jamais le texte brut du relevé à l'écran (codes HTTP,
+      // pages, minutes) : la situation, dite en clair, et le geste.
       return {
         cle: t.p,
         platform: t.p,
         titre: technique ? T.titrePointTechnique(t.nom) : T.titrePointArret(t.nom),
-        texte: technique
-          ? T.signalTechnique(t.nom)
-          : T.signalEchec(t.nom, String((r.runs[t.p]?.erreur) ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || null),
+        texte: technique ? T.signalTechnique(t.nom) : texteSituation(t.e.situation, t.nom, T),
         bouton: reessayer(t),
       };
     }),
+    // (05/10) Un relevé ARRÊTÉ avant la fin n'est pas « ton ordinateur n'a pas
+    // répondu » : il a commencé. On le dit tel quel, plateforme par plateforme.
+    ...tuiles.filter((t) => t.e.phase === 'expire' && t.e.situation === 'arret' && !murDe.has(t.p))
+      .map((t) => ({ cle: `arret-${t.p}`, platform: t.p, titre: T.titrePointArretFin(t.nom), texte: T.finArret(t.nom), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'hors_compte')
       .map((t) => ({ cle: `hors-compte-${t.p}`, platform: t.p, titre: T.titrePointHorsCompte(t.nom), texte: T.signalHorsCompteEbay(t.e.horsCompte?.chrome ?? null, t.e.horsCompte?.relie ?? null), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'incomplet' && !murDe.has(t.p))

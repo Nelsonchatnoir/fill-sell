@@ -288,17 +288,20 @@ export function useContexteEntree({ lang, user, demanderPseudo }) {
     setReleve({ etat: 'lance' });
   }, [extensionVue, syncMultiOuverte]);
 
-  // Comportement CONSERVÉ de l'ancien parcours : si l'extension apparaît
-  // pendant que le parcours est ouvert et que la personne a déclaré des
-  // plateformes, le relevé part tout seul — elle n'a pas à revenir cliquer.
+  // (05/10, règle de Nico) Un relevé ne démarre QUE sur le geste de la
+  // personne. Avant, l'apparition de l'extension suffisait à le lancer, sans
+  // aucun clic. Désormais l'effet ne fait que tenir la promesse d'un clic
+  // DÉJÀ fait : « Synchroniser » touché avant que l'extension soit là (état
+  // 'en_file', gardé sur l'appareil), et la demande part dès qu'elle se montre.
   // Le départ est DIFFÉRÉ d'un tick : un setState synchrone dans le corps d'un
   // effet déclenche une cascade de rendus (react-hooks/set-state-in-effect).
   useEffect(() => {
     if (!extensionVue || partiRef.current) return undefined;
+    if (releve.etat !== 'en_file') return undefined;
     if (!choix.plateformes.length) return undefined;
     const id = setTimeout(() => { lancerReleve(); }, 0);
     return () => clearTimeout(id);
-  }, [extensionVue, choix.plateformes.length, lancerReleve]);
+  }, [extensionVue, releve.etat, choix.plateformes.length, lancerReleve]);
 
   return {
     lang, fr, user, demanderPseudo, surTelephone,

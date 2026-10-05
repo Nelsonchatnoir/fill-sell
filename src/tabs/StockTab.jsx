@@ -78,7 +78,7 @@ import { marqueComparable, estSansMarque } from '../../supabase/functions/_share
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
-import { murConnexionReleve } from '../annonces/etatReleve';
+import { murConnexionReleve, situationFinReleve } from '../annonces/etatReleve';
 import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
@@ -3653,11 +3653,23 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const murVinted = (enCours || envoi || enAttenteDistante || attenteOccupee)
     ? null
     : murConnexionReleve(run, 'vinted');
+  // (05/10, Marine) La fin de la DERNIÈRE synchronisation de la personne,
+  // quand elle n'a pas abouti : le bloc la montrait « jamais », sans un mot.
+  // `run` ne porte que ses synchronisations (lireDernierRunDressing écarte la
+  // veille automatique). Rien pendant qu'une demande est en vol.
+  const finVinted = (enCours || envoi || enAttenteDistante || attenteOccupee || !run
+    || run.status === 'done' || run.status === 'queued' || run.status === 'running')
+    ? null
+    : { status: run.status, situation: situationFinReleve(run), items_vus: run.items_vus ?? null, total_entries: run.total_entries ?? null };
   const etatVintedRemonte = useMemo(() => JSON.stringify({
     enCours: !!enCours || !!envoi || !!enAttenteDistante || !!attenteOccupee,
+    // En file, rien ne tourne encore : l'écran dit « en attente de ton
+    // ordinateur », jamais « en cours ».
+    enAttente: !enCours && (!!enAttenteDistante || !!attenteOccupee),
     cadenceTexte: enCadence && cadenceTexte ? String(cadenceTexte) : null,
     murVinted: murVinted ?? null,
-  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte, murVinted]);
+    fin: finVinted,
+  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte, murVinted, finVinted?.status, finVinted?.situation, finVinted?.items_vus, finVinted?.total_entries]);
   useEffect(() => {
     const fn = registerEtatRef.current;
     if (typeof fn !== 'function') return;

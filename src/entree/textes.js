@@ -58,18 +58,20 @@ const FR = {
   // ── 4. Relevé ────────────────────────────────────────────────────────────
   relKicker: 'Ce qui est déjà en ligne',
   relTitre: 'Tu ne ressaisis rien',
-  relTexte: "Dès que l'extension tourne, elle relève tes annonces déjà publiées : titres, prix, photos. Une fiche par article dans ton stock, même article vu sur deux plateformes.",
+  // (05/10, règle de Nico) La synchronisation ne part QUE sur ce bouton :
+  // plus rien ne laisse croire qu'elle démarre toute seule.
+  relTexte: "Appuie sur « Synchroniser mes annonces » : l'extension lit tes annonces déjà publiées (titres, prix, photos) et crée une fiche par article dans ton stock, même article vu sur deux plateformes.",
   relCarte: "Ce qu'on relève",
   relLectureSeule: 'Lecture seule',
   relContrat: "On lit tes annonces. Rien n'est publié, modifié ni supprimé.",
-  relCta: 'Relever mes annonces',
-  relEnCours: 'Relevé demandé…',
-  relLance: 'Relevé lancé — il avance sur ton ordinateur',
+  relCta: 'Synchroniser mes annonces',
+  relEnCours: 'Synchronisation demandée…',
+  relLance: 'Synchronisation lancée — elle avance sur ton ordinateur',
   // ⛔ LA LIGNE SOUS LE BOUTON, MOT POUR MOT. Elle dit la seule chose que la
   //    personne a besoin de savoir : elle n'a plus rien à faire ici.
-  relSousBouton: "Le relevé part dès que l'extension tourne sur ton ordinateur",
-  relEnFile: 'Relevé en file — il partira tout seul',
-  relEnFileNote: "C'est noté. Le relevé part dès que l'extension tourne sur ton ordinateur — tu n'as pas à revenir cliquer.",
+  relSousBouton: "Ton ordinateur doit être allumé, avec Chrome et l'extension FillSell",
+  relEnFile: "Demande gardée — elle part dès que l'extension tourne",
+  relEnFileNote: "C'est noté. Ta synchronisation part dès que l'extension tourne sur ton ordinateur — tu n'as pas à revenir cliquer.",
 
   // ── 4 bis. Je débute ─────────────────────────────────────────────────────
   debKicker: "Rien en ligne pour l'instant",
@@ -183,8 +185,8 @@ const EN = {
   relCta: 'Scan my listings',
   relEnCours: 'Scan requested…',
   relLance: 'Scan started — it runs on your computer',
-  relSousBouton: 'The scan starts as soon as the extension runs on your computer',
-  relEnFile: 'Scan queued — it will start on its own',
+  relSousBouton: 'Your computer must be on, with Chrome and the FillSell extension',
+  relEnFile: 'Request kept — it starts as soon as the extension runs',
   relEnFileNote: "Noted. The scan starts as soon as the extension runs on your computer — you don't have to come back and click.",
 
   debKicker: 'Nothing online yet',

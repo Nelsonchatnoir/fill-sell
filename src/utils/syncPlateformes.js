@@ -13,6 +13,7 @@ import { PLATEFORMES_STOCK } from './stockFiltres';
 import { indexerRelevesVides } from '../annonces/releveVide';
 import { indexerRetraits, annonceRetiree } from '../annonces/retraits.js';
 import { lireToutesPages } from './lireToutesPages.js';
+import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
 
 // Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
 // Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
@@ -48,12 +49,16 @@ export async function demanderRelevePlateforme(platform) {
 }
 
 // Le dernier run PAR plateforme (kind 'annonces').
+// (05/10) Les relevés de VEILLE (automatiques, cf. declencheursReleve.js) ne
+// comptent pas : l'écran montre les synchronisations de la personne, jamais
+// un relevé qu'elle n'a pas demandé — ni « en cours », ni « échec ».
 export async function lireDerniersRunsReleve(userId) {
   if (!userId) return {};
   const { data, error } = await supabase
     .from('vinted_sync_runs')
     .select('id,platform,status,declencheur,items_vus,items_crees,items_maj,total_entries,erreur,queued_at,started_at,finished_at')
     .eq('user_id', userId).eq('kind', 'annonces')
+    .or(FILTRE_SANS_VEILLE)
     .order('queued_at', { ascending: false, nullsFirst: false })
     .order('started_at', { ascending: false, nullsFirst: false })
     .limit(60);
@@ -115,6 +120,7 @@ export async function lireDernierRunVinted(userId) {
     .from('vinted_sync_runs')
     .select('id,platform,status,items_vus,erreur,queued_at,started_at,finished_at')
     .eq('user_id', userId).eq('kind', 'dressing').eq('status', 'done')
+    .or(FILTRE_SANS_VEILLE)
     .order('finished_at', { ascending: false, nullsFirst: false })
     .limit(1);
   if (error) return null;

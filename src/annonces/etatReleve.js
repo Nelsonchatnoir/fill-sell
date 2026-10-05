@@ -64,7 +64,51 @@ const MUR_OPLA = /acc[èe]s opla non accord/i;
 // Le relevé Vinted (kind 'dressing') n'écrit pas comme les quatre autres : sa
 // sonde pose « [cause403] session_absente », « aucune session Vinted » ou un
 // 401. C'est le MÊME mur vu de l'utilisateur, et il mérite le même bouton.
-const MUR_VINTED = /cause403|aucune session vinted|session vinted.{0,40}401/i;
+const MUR_VINTED = /\[pas_connecte\]|cause403|aucune session vinted|session vinted.{0,40}401|refusé la lecture du compte/i;
+
+// ── LA FIN D'UN RELEVÉ, DITE EN CLAIR (05/10, Marine) ───────────────────────
+// Chaque relevé qui n'aboutit pas se résume à UNE situation, lue sur les
+// marqueurs que NOS relevés écrivent (extension 0.6.99, handler-watch) — et
+// sur les textes des versions précédentes, pour les lignes déjà en base. La
+// phrase montrée est choisie ici ; le texte brut de `erreur` (codes HTTP,
+// pages, minutes) reste en base pour nous, jamais à l'écran.
+//   pas_connecte  la personne n'est pas connectée à la plateforme sur son
+//                 ordinateur → « Connecte-toi à X sur ton ordinateur… »
+//   autre_compte  Chrome est sur une autre boutique que celle suivie
+//   anti_robot    la plateforme a bloqué la lecture un moment
+//   arret         la lecture s'est arrêtée avant la fin (chien de garde)
+//   pas_prise     l'ordinateur n'a jamais pris la demande (Chrome fermé)
+//   echec         tout le reste
+const RE_PAS_CONNECTE = /\[pas_connecte\]|aucune session vinted|session_absente|session vinted.{0,40}401|refusé la lecture du compte|page de connexion/i;
+const RE_AUTRE_COMPTE = /\[boutique_a_confirmer\]|\[hors-compte-ebay\]/i;
+const RE_ANTI_ROBOT = /\[anti_robot\]|anti-robot|\[retry403\]/i;
+const RE_ARRET = /\[watchdog\]/i;
+const RE_PAS_PRISE = /jamais réclamée|sans extension disponible/i;
+
+export function situationFinReleve(run) {
+  const e = String(run?.erreur ?? '');
+  if (RE_PAS_CONNECTE.test(e) || MUR_OPLA.test(e)) return 'pas_connecte';
+  if (RE_AUTRE_COMPTE.test(e)) return 'autre_compte';
+  if (RE_ANTI_ROBOT.test(e)) return 'anti_robot';
+  if (RE_ARRET.test(e)) return 'arret';
+  if (RE_PAS_PRISE.test(e)) return 'pas_prise';
+  return 'echec';
+}
+
+// La phrase d'une situation, pour une plateforme nommée. T = textesAnnonces(lang).
+export function texteSituation(situation, nom, T) {
+  if (situation === 'pas_connecte') return T.signalNonConnecte(nom);
+  if (situation === 'autre_compte') return T.finAutreCompte(nom);
+  if (situation === 'anti_robot') return T.finAntiRobot(nom);
+  if (situation === 'arret') return T.finArret(nom);
+  if (situation === 'pas_prise') return T.finPasPrise(nom);
+  return T.finEchec(nom);
+}
+
+export function texteFinReleve(run, nom, T) {
+  if (/acc[èe]s opla non accord/i.test(String(run?.erreur ?? ''))) return T.signalOpla;
+  return texteSituation(situationFinReleve(run), nom, T);
+}
 
 // Marqueurs posés par le relevé eBay (extension 0.6.54) quand il a pu NOMMER
 // le mur : reconnexion de sécurité, ou compte pas encore vendeur.
@@ -179,6 +223,25 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
   const enCours = vinted ? !!etatVinted?.enCours : !!(run && ACTIF.has(run.status));
   if (enCours) return { n: '·', mot: T.motEnCours, pip: pip.pipOk, phase: 'en_cours' };
 
+  // ── VINTED : SA DERNIÈRE SYNCHRONISATION N'A PAS ABOUTI (05/10, Marine) ───
+  // `run` (lireDernierRunVinted) ne rend que les relevés réussis : un échec
+  // Vinted n'arrivait JAMAIS jusqu'à la tuile — Marine voyait « jamais »
+  // pendant que son relevé échouait. VintedDressingSync remonte désormais la
+  // fin de SA dernière synchronisation (`etatVinted.fin`), quand elle n'a pas
+  // abouti ; la tuile la dit comme pour les autres plateformes.
+  const finVinted = vinted ? etatVinted?.fin ?? null : null;
+  if (finVinted) {
+    const situation = finVinted.situation ?? 'echec';
+    if (situation === 'pas_connecte') return { n: '—', mot: T.motAConnecter, pip: pip.pipWarn, phase: 'absente', situation };
+    if (finVinted.status === 'incomplete') {
+      const lus = Number(finVinted.items_vus ?? 0);
+      const annonce = Number.isFinite(Number(finVinted.total_entries)) && Number(finVinted.total_entries) > lus ? Number(finVinted.total_entries) : null;
+      return { n: annonce != null ? `${lus}/${annonce}` : lus, mot: T.motIncomplet ?? 'incomplet', pip: pip.pipWarn, phase: 'incomplet', lus, annonce, situation };
+    }
+    if (finVinted.status === 'expired' || finVinted.status === 'cancelled') return { n: '—', mot: T.motExpire, pip: pip.pipWarn, phase: 'expire', situation };
+    return { n: '—', mot: T.motEchec, pip: pip.pipBad, phase: 'echec', situation };
+  }
+
   // Vinted : `lireDernierRunVinted` ne rend que des runs finis, son
   // `finished_at` suffit. Les autres portent un `status`.
   const fini = vinted ? run?.finished_at : (run?.status === 'done' ? run.finished_at : null);
@@ -236,9 +299,9 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
       opla: estOpla(run),
     };
   }
-  if (run?.status === 'failed') return { n: '—', mot: T.motEchec, pip: pip.pipBad, phase: 'echec' };
+  if (run?.status === 'failed') return { n: '—', mot: T.motEchec, pip: pip.pipBad, phase: 'echec', situation: situationFinReleve(run) };
   if (run?.status === 'expired' || run?.status === 'cancelled') {
-    return { n: '—', mot: T.motExpire, pip: pip.pipWarn, phase: 'expire' };
+    return { n: '—', mot: T.motExpire, pip: pip.pipWarn, phase: 'expire', situation: situationFinReleve(run) };
   }
   return { n: '—', mot: T.motJamais, pip: pip.pipMute, phase: 'jamais' };
 }
@@ -292,6 +355,9 @@ export function lireVague({ plateformes, runs, runVinted, etatVinted }) {
     if (actives.includes(p)) {
       membres.push(p);
       if (p !== 'vinted' && runs[p]?.status === 'queued') attente.push(p);
+      // (05/10) Vinted aussi peut ATTENDRE l'ordinateur : sa demande est en
+      // file, rien ne tourne encore — on ne la dit pas « en cours ».
+      if (p === 'vinted' && etatVinted?.enAttente) attente.push(p);
       continue;
     }
     const run = p === 'vinted' ? runVinted : runs[p];
@@ -304,7 +370,7 @@ export function lireVague({ plateformes, runs, runVinted, etatVinted }) {
     faites.push(p);
   }
 
-  const enCours = cibles.find((p) => (p === 'vinted' ? !!etatVinted?.enCours : runs[p]?.status === 'running')) ?? null;
+  const enCours = cibles.find((p) => (p === 'vinted' ? !!etatVinted?.enCours && !etatVinted?.enAttente : runs[p]?.status === 'running')) ?? null;
   return {
     active: true,
     ancre,

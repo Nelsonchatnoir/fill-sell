@@ -8,6 +8,7 @@
 // content script n'est pas injecté, personne ne répond au ping, et le bouton
 // reste grisé. C'est le comportement attendu, pas une régression.
 import { supabase } from '../lib/supabase';
+import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
 import { boutiqueConnecteeVinted } from '../../supabase/functions/_shared/boutique-connectee.js';
 
 // Délai avant de conclure « pas d'extension ». Le content script répond au ping
@@ -389,10 +390,12 @@ export async function relancerRepublishVinted(supabase, { job }) {
 // vinted_user_id AUSSI (2026-09-03) : la carte de décision « boutique à
 // confirmer » écrit ce que le run a VU (id + pseudo) dans la liste des
 // boutiques confirmées — jamais une valeur devinée du texte d'erreur.
-const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at,vinted_login,vinted_user_id';
+const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at,vinted_login,vinted_user_id,declencheur';
 
 // RLS filtre déjà sur auth.uid() ; le `.eq('user_id')` explicite reste pour que
 // la requête dise ce qu'elle veut, et pour ne pas dépendre d'une policy.
+// (05/10) Le dernier relevé DE LA PERSONNE : la veille automatique (cf.
+// declencheursReleve.js) n'est ni montrée « en cours » ni comptée en échec.
 export async function lireDernierRunDressing(userId) {
   if (!userId) return null;
   const { data, error } = await supabase
@@ -400,6 +403,7 @@ export async function lireDernierRunDressing(userId) {
     .select(RUN_COLS)
     .eq('user_id', userId)
     .eq('kind', 'dressing')
+    .or(FILTRE_SANS_VEILLE)
     .order('started_at', { ascending: false })
     .limit(1);
   if (error) throw new Error(error.message);
@@ -584,6 +588,7 @@ export async function lireDerniereSyncReussie(userId) {
     .eq('user_id', userId)
     .eq('kind', 'dressing')
     .eq('status', 'done')
+    .or(FILTRE_SANS_VEILLE)
     .order('finished_at', { ascending: false })
     .limit(1);
   if (error) return null;
