@@ -237,6 +237,37 @@ export function sansRayon(platform, pf) {
   return Array.isArray(v) ? v.length === 0 : !v;
 }
 
+// ── AUCUN MOT RECONNU : LA QUESTION DU RAYON, JAMAIS UN « PRÊT » (05/10) ────
+// Constat de Nico (point 6) : un titre sans aucun mot reconnu (« Truc bidule
+// 999 ») — la carte du lot s'affichait « Prêt », aucune question de rayon
+// n'était posée, et le clic finissait en « Pas publié — rien n'a été débité ».
+// Cause : le refus « objet non reconnu » revenait AVANT la fin de la
+// résolution, sans aucun champ par plateforme — donc sans la question
+// « rayon à choisir » posée là-bas (règle du 03/10) ; le pré-calcul se taisait,
+// et une résolution VIDE se lisait comme « rien à demander ». Désormais le
+// refus porte la question, pour chaque plateforme dont l'app pose le rayon.
+// ⛔ eBay COMPRIS, même par la voie API : sans mot, le clic refuse l'article
+//    entier tant qu'aucun rayon n'est choisi quelque part — eBay ne peut pas
+//    partir seul, il faut donc pouvoir lui répondre aussi.
+/** Les questions « rayon à choisir » d'un objet non reconnu, par plateforme (pur). */
+export function questionsRayonSansObjet(plateformes, le = new Date().toISOString()) {
+  const sortie = {};
+  for (const p of plateformes ?? []) {
+    if (!PLATEFORMES_RAYON_A_DEMANDER.includes(p)) continue;
+    sortie[p] = {
+      rayon_a_choisir: {
+        objet: null,
+        chemins_refuses: [],
+        chemin_propose: null,
+        candidats: [],
+        motif: "objet_non_reconnu",
+        le,
+      },
+    };
+  }
+  return sortie;
+}
+
 /** La résolution porte-t-elle une panne passagère à retenter (rayon par défaut retenu) ? */
 export function resolutionARetenter(resolution) {
   return Object.values(resolution?.pfParPlateforme ?? {}).some((pf) => Boolean(pf?.rayon_a_reessayer));
@@ -525,6 +556,16 @@ export async function resoudrePublication({
           ? "We could not file this item on our own. Its category can be picked on each platform card, just above. Nothing was charged."
           : "On n'a pas su ranger cet article tout seul. Son rayon se choisit sur la carte de chaque plateforme, juste au-dessus. Rien n'a été débité.",
       },
+      // (05/10, point 6) LA QUESTION, AVEC LE REFUS : une résolution vide
+      // n'est jamais « rien à demander ». Chaque plateforme cochée dont l'app
+      // pose le rayon reçoit « rayon à choisir » (questionsRayonSansObjet) :
+      // l'écran la pose (carte de la plateforme, lot), le bouton reste gris
+      // tant qu'elle est ouverte. Ce ne sont QUE des questions — aucun champ
+      // résolu ne part d'ici : le choix de la personne nomme l'objet, et la
+      // résolution repart (pré-calcul relancé, puis clic).
+      pfParPlateforme: questionsRayonSansObjet(plateformesAPublier),
+      candidatsRatisses: {},
+      motCategorie: null,
     };
   }
   // ══ LE MOT DU TITRE NE GAGNE PAS CONTRE L'ARTICLE (2026-09-22) ═══════════

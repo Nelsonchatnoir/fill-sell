@@ -178,3 +178,20 @@ export function objetDuRayonChoisi(edited) {
 export function plateformesAvecRayonChoisi(edited) {
   return Object.keys(edited ?? {}).filter(p => edited[p]?.rayon_choisi?.chemin?.length);
 }
+
+/** (05/10, point 6) Les questions « rayon à choisir » encore OUVERTES, telles
+ *  que l'écran les pose (pur) : plateformes cochées dont la personne n'a pas
+ *  encore choisi le rayon — son choix lève la question. Y compris celles que
+ *  la résolution pose avec le refus « objet non reconnu »
+ *  (questionsRayonSansObjet). Lu par le stepper et, par lui, par le lot ;
+ *  éprouvé par scripts/pret-sans-rayon-selftest.mjs. Vit ici et non dans
+ *  resolutionPublication.js : la résolution ne connaît jamais le choix humain. */
+export function questionsRayonOuvertes(pfParPlateforme, selected, edited) {
+  const sortie = {};
+  for (const p of Object.keys(pfParPlateforme ?? {})) {
+    if (!selected?.has?.(p)) continue;
+    const q = pfParPlateforme[p]?.rayon_a_choisir;
+    if (q && !edited?.[p]?.rayon_choisi?.chemin?.length) sortie[p] = q;
+  }
+  return sortie;
+}
