@@ -120,3 +120,12 @@ retesté en réel, un seul push. Ce fichier dit ce qui est FAIT, EN COURS et
   passer, puis envoyer la 0.6.98.
 - Décision : enregistrer seule une vente Vinted prouvée par la commande (règle
   du 12/07) — non fait, la veille ne fait que faire relire l'annonce.
+
+### Gestes refusés par le classifieur → Nico (dans cet ordre, depuis le dossier principal)
+1. `! git -C C:/Users/nicol/fill-and-sell push origin main` — UN push (tout le lot de l'après-midi), puis
+   `curl -s https://fillsell.app/build.json` doit dire `+<HEAD>` et l'entrée rendre 200 avec `Origin`.
+2. `! cd C:/Users/nicol/fill-and-sell && npx @capgo/cli bundle upload --channel production --bundle 2.9.55 --path dist`
+   — `dist/` déjà construit sur arbre propre (`2026-10-05T12:55:05Z+4efb8b8`) ; ne PAS le reconstruire ;
+   puis `npx @capgo/cli channel list` doit dire 2.9.55.
+Tant que ces deux gestes ne sont pas faits : web et app servent encore 4066332 / 2.9.54 (la fiche de Louis
+y est publiable sur Leboncoin en choisissant le rayon sur la carte ; l'écran « Annonces à retirer » n'existe pas).
