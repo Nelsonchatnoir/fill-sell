@@ -15,5 +15,9 @@ RUN apt-get update -qq \
  && sed -i 's/^# *fr_FR.UTF-8/fr_FR.UTF-8/' /etc/locale.gen && locale-gen fr_FR.UTF-8 \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-COPY --chmod=755 avec-ecran.sh /app/avec-ecran.sh
+# (05/10) PAS de `COPY --chmod` : il exige BuildKit, absent du docker.io
+# d'Ubuntu 24.04 (pas de buildx) — le premier déploiement s'y est arrêté. Le
+# fichier arrive en 644 depuis git : le droit d'exécution se pose ici.
+COPY avec-ecran.sh /app/avec-ecran.sh
+RUN chmod 755 /app/avec-ecran.sh
 ENTRYPOINT ["/app/avec-ecran.sh"]
