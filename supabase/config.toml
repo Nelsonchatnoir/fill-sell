@@ -194,6 +194,12 @@ verify_jwt = false
 [functions.ebay-account-deletion]
 verify_jwt = false
 
+# eBay ORDER_CONFIRMATION (05/10) : eBay appelle sans JWT Supabase (défi GET,
+# notification POST signée x-ebay-signature) ; l'administration exige
+# x-cron-secret. Garde maison à trois portes, cf. en-tête de la fonction.
+[functions.ebay-notifications]
+verify_jwt = false
+
 # eBay par API, lot 2a (06/09) : worker de publication serveur, appelé par
 # pg_cron (x-cron-secret) — jamais par l'app.
 [functions.ebay-api-worker]
