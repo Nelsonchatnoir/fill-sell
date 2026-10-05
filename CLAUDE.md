@@ -493,10 +493,7 @@ JAMAIS la valeur : il appelle `public.cron_secret()`.
 
 ## Premium detection
 
-Règle métier (2026-07-25) : **résilié/expiré = plus premium, partout**. Expression canonique, identique partout (App.jsx, voice-transcribe, voice-intent, generate-listing, deal-analysis, sweep et RPC Pépites, check_inventory_limit) :
-```sql
-is_premium = true OR is_pro = true OR is_comped = true
-```
+Règle métier (2026-07-25) : **résilié/expiré = plus premium, partout**. Depuis le 05/10, UN SEUL calcul du palier : `supabase/functions/_shared/palier.js` (l'app : `src/utils/palier.js` le ré-exporte ; les fonctions edge l'importent) et, en SQL, `palier_de(uuid)` / `palier_au_moins(uuid, text)`. Ordre : business, puis pro, puis premium (`is_premium OR is_comped`), sinon free ; les paliers s'emboîtent (business ⇒ pro ⇒ premium). ⛔ Jamais un drapeau seul (`is_pro !== true`) : un Business offert sans is_pro (ornellaracano) se voyait refuser la republication auto.
 - `is_premium`/`is_pro` = source de vérité, maintenus par les 4 flux de paiement (stripe-webhook/recomputeStripeFlags, apple-iap-webhook, validate-apple-receipt, google-play-webhook).
 - `is_comped` = premium offert sans abonnement actif (décision explicite, posé à la main).
 - Ne JAMAIS traiter `is_founder` ni la présence d'`apple_original_transaction_id`/`google_purchase_token` comme signal premium : ces marqueurs survivent à la résiliation (bug « premium fantôme » corrigé le 25/07). `is_founder` reste un marqueur de prix legacy (9,99 €) pour l'affichage tarifaire uniquement.

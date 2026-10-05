@@ -429,12 +429,10 @@ qui survit à ça, c'est du code.
 
 ### 4.7 Premium, prix d'achat, chiffres
 
-- **Résilié / expiré = plus premium, partout.** Expression canonique,
-  identique partout (App.jsx, voice-transcribe, voice-intent,
-  generate-listing, deal-analysis, check_inventory_limit…) :
-  ```sql
-  is_premium = true OR is_pro = true OR is_comped = true
-  ```
+- **Résilié / expiré = plus premium, partout.** UN calcul (05/10) :
+  `_shared/palier.js` (app : `src/utils/palier.js` le ré-exporte), SQL
+  `palier_de` / `palier_au_moins` ; business ⇒ pro ⇒ premium
+  (is_premium OU is_comped). Jamais un drapeau seul (`is_pro`).
   `is_premium` / `is_pro` (et `is_business`) = source de vérité, maintenus
   par les 4 flux de paiement (stripe-webhook, apple-iap-webhook,
   validate-apple-receipt, google-play-webhook) ; `is_comped` = offert, posé à
