@@ -39,10 +39,20 @@ const lister = () => {
 };
 
 const go = process.argv.includes('--go');
+// (05/10) --seulement email-tunnel,stripe-webhook : une partie de la liste, TOUJOURS
+// dans l'ordre de FONCTIONS (jamais celui de la ligne de commande). Un nom
+// inconnu arrête tout avant le premier déploiement.
+const iSeul = process.argv.indexOf('--seulement');
+const seulement = iSeul >= 0 ? String(process.argv[iSeul + 1] ?? '').split(',').map((s) => s.trim()).filter(Boolean) : null;
+if (seulement) {
+  const inconnus = seulement.filter((n) => !FONCTIONS.some(([f]) => f === n));
+  if (!seulement.length || inconnus.length) { console.error(`⛔ --seulement : ${inconnus.length ? `inconnu(s) ${inconnus.join(', ')}` : 'liste vide'} — rien n'est déployé.`); process.exit(1); }
+}
+const CHOISIES = seulement ? FONCTIONS.filter(([f]) => seulement.includes(f)) : FONCTIONS;
 const avant = lister();
 let ecart = false;
 console.log('Fonction                     version  verify_jwt (prod)  attendu');
-for (const [nom, attendu] of FONCTIONS) {
+for (const [nom, attendu] of CHOISIES) {
   const f = avant.get(nom);
   const ok = f && f.verify_jwt === attendu;
   if (!ok) ecart = true;
@@ -51,7 +61,7 @@ for (const [nom, attendu] of FONCTIONS) {
 if (ecart) { console.error('\n⛔ verify_jwt de la prod ≠ attendu : rien n\'est déployé. Relire l\'appelant de la fonction.'); process.exit(1); }
 if (!go) { console.log('\n(plan) Rien n\'est déployé. --go pour déployer, une par une.'); process.exit(0); }
 
-for (const [nom] of FONCTIONS) {
+for (const [nom] of CHOISIES) {
   const f = lister().get(nom);
   const args = ['supabase', 'functions', 'deploy', nom, '--project-ref', PROJET];
   if (f.verify_jwt === false) args.push('--no-verify-jwt');
@@ -64,4 +74,4 @@ for (const [nom] of FONCTIONS) {
   }
   console.log(`✓ ${nom} : v${f.version} → v${apres.version}, verify_jwt ${apres.verify_jwt} (inchangé)`);
 }
-console.log('\nToutes les fonctions Cloud sont déployées, verify_jwt inchangés.');
+console.log(`\n${seulement ? `Déployées : ${CHOISIES.map(([f]) => f).join(', ')}` : 'Toutes les fonctions Cloud sont déployées'}, verify_jwt inchangés.`);
