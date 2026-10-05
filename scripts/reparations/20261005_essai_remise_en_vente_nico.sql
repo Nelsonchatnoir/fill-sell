@@ -23,3 +23,56 @@ SELECT c.user_id, c.inventaire_id, 'vinted', 'pending', 'publish', c.photo_optio
    AND NOT EXISTS (SELECT 1 FROM public.cross_post_jobs x WHERE x.inventaire_id = c.inventaire_id
                     AND x.platform = 'vinted' AND x.status IN ('pending','processing','needs_user','published'))
 RETURNING id, status;
+
+-- ── Fin de l'essai (05/10 10:45) : vente de test annulée, deux annonces retirées ──
+-- Annonce d'origine 10252130828 (job 4f5fc231, « vendue » par l'essai) et
+-- annonce remise en vente 10252167885 (job 52cd334c, créé par remises_en_vente_tick).
+CREATE TABLE IF NOT EXISTS public._essai_0510_remise_ventes AS
+  SELECT * FROM public.ventes WHERE id = 86184;
+DELETE FROM public.ventes WHERE id = 86184 AND user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18';
+DELETE FROM public.ventes_operations WHERE user_id = 'f44b5917-bccc-4431-ba41-f40571a2ed18'
+  AND cle = 'manuel:essai-0510-remise-en-vente';
+UPDATE public.cross_post_jobs SET status = 'published', sold_at = NULL,
+       platform_fields = platform_fields - 'vente_operation_cle'
+ WHERE id = '4f5fc231-05f6-4027-b975-4d72f44770e1' AND status = 'sold';
+SELECT public.armer_retrait_job('4f5fc231-05f6-4027-b975-4d72f44770e1', 'essai_0510_fin', '0 seconds') AS retrait_origine,
+       public.armer_retrait_job('52cd334c-53a9-47eb-aef9-be949c3808cf', 'essai_0510_fin', '0 seconds') AS retrait_remise;
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, action, status, title, listing_url, platform_listing_id, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'delete', 'pending', c.title, c.listing_url, c.platform_listing_id,
+       jsonb_build_object('retrait_par', 'fillsell', 'vinted_account_id', c.platform_fields->>'vinted_account_id', 'essai_0510', 'fin')
+  FROM public.cross_post_jobs c
+ WHERE c.id IN ('4f5fc231-05f6-4027-b975-4d72f44770e1', '52cd334c-53a9-47eb-aef9-be949c3808cf')
+   AND c.status = 'published'
+RETURNING id, platform_listing_id;
+
+-- ── ESSAI 2 (05/10) — point 5 b) : marque inconnue remplacée puis RETENUE ──
+-- Publication Vinted de la fiche de test avec une marque hors catalogue
+-- (« Kodak Ektachrome Super ») : la question « Marque » doit venir, la réponse
+-- (marque du catalogue) être retenue, puis appliquée seule à la suivante.
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, photo_option,
+                                    title, description, price, photos, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'pending', 'publish', c.photo_option,
+       c.title, c.description, 999, c.photos,
+       public.remise_en_vente_champs(c.platform_fields) || jsonb_build_object('marque', 'Kodak Ektachrome Super', 'essai_0510', 'marque_retenue_1')
+  FROM public.cross_post_jobs c
+ WHERE c.id = 'c14e9826-861c-4735-8bd7-68b06cdf0dba'
+RETURNING id, status;
+
+-- ── ESSAI 2 bis : marque retenue appliquée seule ──
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, photo_option,
+                                    title, description, price, photos, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'pending', 'publish', c.photo_option,
+       c.title, c.description, 999, c.photos,
+       public.remise_en_vente_champs(c.platform_fields) || jsonb_build_object('marque', 'Kodak Ektachrome Super', 'essai_0510', 'marque_retenue_2')
+  FROM public.cross_post_jobs c
+ WHERE c.id = 'c14e9826-861c-4735-8bd7-68b06cdf0dba'
+RETURNING id, status;
+
+-- Retraits des deux annonces Vinted de l'essai « marque retenue ».
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, action, status, title, listing_url, platform_listing_id, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'delete', 'pending', c.title, c.listing_url, c.platform_listing_id,
+       jsonb_build_object('retrait_par', 'fillsell', 'vinted_account_id', c.platform_fields->>'vinted_account_id', 'essai_0510', 'fin_marque')
+  FROM public.cross_post_jobs c
+ WHERE c.id IN ('c076506c-6070-41d2-ab16-bbd8ec75f162', '81f96937-562b-4d0b-8c58-2051c1fa194c')
+   AND c.status = 'published'
+RETURNING id, platform_listing_id;
