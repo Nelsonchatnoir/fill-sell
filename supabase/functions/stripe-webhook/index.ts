@@ -229,8 +229,44 @@ serve(async (req) => {
         : await supabase.from("profiles").select("id").eq("email", email ?? "").maybeSingle();
       if (qui?.id) {
         await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("id", qui.id);
+        // ── LE 4e VERROU : LA CARTE (05/10) ─────────────────────────────────
+        // Un essai Cloud = une carte. Son empreinte Stripe (card.fingerprint),
+        // hachée en base (cloud_essai_noter_carte), déjà vue sur l'essai d'un
+        // AUTRE compte → l'abonnement d'essai est annulé SUR-LE-CHAMP (rien
+        // n'est prélevé), l'essai compte comme pris, et la raison est écrite
+        // pour que l'app la dise. Best-effort sur la LECTURE de la carte (une
+        // carte illisible ne bloque pas un client), jamais sur le verdict.
+        let carteRefusee = false;
+        if (session.metadata?.essai_cloud === "1" && session.subscription) {
+          try {
+            const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
+            const sub = await stripe.subscriptions.retrieve(subId, { expand: ["default_payment_method"] });
+            let pm = sub.default_payment_method as Stripe.PaymentMethod | string | null;
+            if (!pm || typeof pm === "string") {
+              const client = await stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }) as Stripe.Customer;
+              pm = (client.invoice_settings?.default_payment_method ?? null) as Stripe.PaymentMethod | string | null;
+            }
+            const empreinte = pm && typeof pm !== "string" ? pm.card?.fingerprint ?? null : null;
+            if (!empreinte) {
+              console.warn(`[webhook] essai Cloud ${subId} : empreinte de carte illisible — verrou carte non appliqué`);
+            } else {
+              const { data: verdict, error: errCarte } = await supabase.rpc("cloud_essai_noter_carte", { p_user: qui.id, p_carte: empreinte });
+              if (errCarte) console.error(`[webhook] cloud_essai_noter_carte : ${errCarte.message}`);
+              else if (verdict?.ok === false && verdict?.raison === "carte_deja_vue") {
+                await stripe.subscriptions.cancel(subId);
+                carteRefusee = true;
+                console.log(`[webhook] essai Cloud ${subId} ANNULÉ : carte déjà utilisée pour l'essai d'un autre compte (rien prélevé)`);
+              }
+            }
+          } catch (e) {
+            console.error(`[webhook] verrou carte de l'essai Cloud : ${(e as Error)?.message ?? e}`);
+          }
+        }
         await recomputeStripeFlags(supabase, customerId);
-        console.log(`[webhook] abonnement Cloud créé → user=${qui.id} session=${session.id} essai=${session.metadata?.essai_cloud ?? "?"}`);
+        if (carteRefusee) {
+          await supabase.from("profiles").update({ cloud_essai_refus: "carte_deja_vue" }).eq("id", qui.id);
+        }
+        console.log(`[webhook] abonnement Cloud créé → user=${qui.id} session=${session.id} essai=${session.metadata?.essai_cloud ?? "?"}${carteRefusee ? " (refusé : carte déjà vue)" : ""}`);
       } else {
         console.error(`[webhook] session Cloud ${session.id} : compte introuvable (user=${cible ?? "?"}, email=${email ?? "?"})`);
         await alerterPaiementNonCredite({
