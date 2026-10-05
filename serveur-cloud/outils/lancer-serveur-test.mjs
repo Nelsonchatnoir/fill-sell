@@ -206,7 +206,8 @@ async function executer() {
   const s = (await hz(`/servers?name=${encodeURIComponent(NOM)}`)).d?.servers?.[0];
   if (!s) arret('serveur introuvable après création');
   const ip = s.public_net.ipv4.ip;
-  etat.serveur = { id: s.id, nom: NOM, ip, type: s.server_type.name, lieu: s.datacenter?.location?.name, cree_le: s.created };
+  // (05/10) Hetzner rend le lieu sous `location` (plus de `datacenter`) : « cx43, undefined » au premier lancement.
+  etat.serveur = { id: s.id, nom: NOM, ip, type: s.server_type.name, lieu: s.location?.name ?? s.datacenter?.location?.name ?? null, cree_le: s.created };
   noterEtat();
   console.log(`  ${NOM} : ${ip} (${etat.serveur.type}, ${etat.serveur.lieu})`);
 
