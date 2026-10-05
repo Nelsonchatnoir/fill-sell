@@ -11300,6 +11300,23 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
           }
         } catch { /* corps illisible : identité inconnue */ }
       }
+      // ── 401 + COOKIE DE CONNEXION = CONNECTÉ, JETON À RENOUVELER (05/10) ──
+      // Mesuré le 05/10 : le jeton d'accès Vinted vit 1 h (POST
+      // /web/api/auth/refresh → expires_in 3599) ; la page le renouvelle,
+      // jamais ce fetch de service worker. Sept comptes actifs étaient à 401
+      // ce soir alors qu'ils publiaient et republiaient sans erreur. Le
+      // cookie `v_uid` (posé par la connexion, absent des sessions anonymes,
+      // cf. classifierCause403) prouve la session : 401 + v_uid → connectée,
+      // et le code dit pourquoi au lieu d'un 401 nu. On NE renouvelle PAS le
+      // jeton d'ici : rien ne garantit que le cookie rendu à un service worker
+      // soit enregistré, et un renouvellement perdu pourrait fermer la
+      // session. Le renouvellement vit dans l'onglet (content-scripts/vinted.js).
+      if (r.status === 401) {
+        const marque = await chrome.cookies.get({ url: "https://www.vinted.fr/", name: VINTED_LOGIN_COOKIE }).catch(() => null);
+        if (String(marque?.value ?? "").trim()) {
+          return { etat: true, http: "jeton_expire_session_ouverte", identite: null };
+        }
+      }
       return { etat: r.ok ? true : null, http: r.status, identite };
     }),
     sonde("leboncoin", async () => {

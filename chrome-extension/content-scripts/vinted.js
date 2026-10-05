@@ -774,11 +774,53 @@ const ISBN_ATTENTE_MS = 15_000;
 // peut pas caler le budget sur la realite : on ne verrait que les echecs.
 let photosDelaiConfirmationMs = null;
 
-async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS) {
+// ── LE JETON VINTED VIT UNE HEURE ; LA SESSION, ELLE, RESTE (05/10) ─────────
+// Relevé le 05/10 sur la session de Nico : POST /web/api/auth/refresh rend
+// `expires_in: 3599` — le jeton d'accès (cookie) expire au bout d'une heure,
+// et c'est la PAGE Vinted qui le renouvelle, par cet appel (lu dans le code de
+// vinted.fr : `.post("/web/api/auth" + "/refresh")`, sans jeton CSRF). Nos
+// lectures d'API partaient avec le jeton expiré et prenaient un 401 : une
+// personne CONNECTÉE se voyait dire « connecte-toi ». Désormais, un 401 sur
+// l'API Vinted renouvelle le jeton EXACTEMENT comme la page (même origine,
+// mêmes cookies), puis rejoue la requête UNE fois. Un second 401 = la session
+// est vraiment fermée.
+const RENOUVELLEMENT_JETON_VINTED = "/web/api/auth/refresh";
+let renouvellementVintedEnCours = null;
+function renouvelerJetonVinted() {
+  // Une seule demande à la fois : dix lectures qui prennent un 401 ensemble
+  // ne renouvellent qu'une fois.
+  if (!renouvellementVintedEnCours) {
+    renouvellementVintedEnCours = (async () => {
+      const ctrl = new AbortController();
+      const minuteur = setTimeout(() => { try { ctrl.abort(); } catch { /* */ } }, 15_000);
+      try {
+        const r = await fetch(RENOUVELLEMENT_JETON_VINTED, {
+          method: "POST", credentials: "include", headers: { Accept: "application/json" }, signal: ctrl.signal,
+        });
+        console.log(`[FillSell Vinted] jeton d'accès renouvelé comme la page : HTTP ${r.status}`);
+        return r.ok;
+      } catch {
+        return false;
+      } finally {
+        clearTimeout(minuteur);
+        setTimeout(() => { renouvellementVintedEnCours = null; }, 2000);
+      }
+    })();
+  }
+  return renouvellementVintedEnCours;
+}
+
+async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS, apresRenouvellement = false) {
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => { try { ctrl.abort(); } catch { /* déjà abandonné */ } }, timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
+    const r = await fetch(input, { ...init, signal: ctrl.signal });
+    const cible = String(typeof input === "string" ? input : (input?.url ?? ""));
+    if (r.status === 401 && !apresRenouvellement && /\/api\/v2\//.test(cible) && (await renouvelerJetonVinted())) {
+      clearTimeout(minuteur);
+      return fetchBorne(input, init, timeoutMs, true);
+    }
+    return r;
   } catch (e) {
     if (ctrl.signal.aborted || e?.name === "AbortError") {
       const cible = String(typeof input === "string" ? input : (input?.url ?? "requête Vinted")).slice(0, 80);
