@@ -20,6 +20,12 @@
     "selftest:palier": "node --import ./scripts/loader-ext.mjs scripts/palier-selftest.mjs",
     "selftest:relecture-bornee": "node --import ./scripts/loader-ext.mjs scripts/relecture-bornee-selftest.mjs",
     "selftest:veille-cpu": "node scripts/veille-cpu-selftest.mjs",
+    "selftest:cloud-pool": "node scripts/cloud-pool-selftest.mjs",
+    "selftest:cloud-rappel-veille": "node scripts/cloud-rappel-veille-selftest.mjs",
+    "selftest:cloud-extension": "node scripts/cloud-extension-selftest.mjs",
+    "selftest:cloud-orchestrateur": "node --test serveur-cloud/tests/orchestrateur.test.mjs serveur-cloud/tests/simulation.test.mjs",
+    "selftest:cloud-achat": "node scripts/cloud-achat-selftest.mjs",
+    "selftest:cloud-textes-legaux": "node scripts/cloud-textes-legaux-selftest.mjs",
     "selftest:ventes-supprimees": "node scripts/ventes-supprimees-selftest.mjs",
     "selftest:isbn-capture-preuve": "node scripts/isbn-capture-preuve-selftest.mjs",
     "selftest:reprise-processing": "node scripts/reprise-processing-selftest.mjs",
@@ -54,6 +60,8 @@
     "selftest:titre-du-job": "node scripts/titre-du-job-selftest.mjs",
     "selftest:rien-a-publier": "node --import ./scripts/loader-ext.mjs scripts/publication-rien-a-publier-selftest.mjs",
     "selftest:paiement-stripe": "node scripts/paiement-stripe-selftest.mjs",
+    "selftest:paiement-echoue": "node scripts/paiement-echoue-selftest.mjs",
+    "selftest:option-cloud": "node scripts/option-cloud-selftest.mjs",
     "selftest:lens-photos-fiche": "node scripts/lens-photos-fiche-selftest.mjs",
     "selftest:lens-envoi-rapide": "node scripts/lens-envoi-rapide-selftest.mjs",
     "selftest:etats-vinted-affiches": "node scripts/etats-vinted-affiches-selftest.mjs",
@@ -197,7 +205,8 @@
     "selftest:pret-sans-rayon": "node --import ./scripts/loader-ext.mjs scripts/pret-sans-rayon-selftest.mjs",
     "selftest:colis-vinted-retenu-service": "node scripts/colis-vinted-retenu-service-selftest.mjs",
     "selftest:republication-plafond-message": "node scripts/republication-plafond-message-selftest.mjs",
-    "selftest:retraits-bloques-connexion": "node --import ./scripts/loader-ext.mjs scripts/retraits-bloques-connexion-selftest.mjs"
+    "selftest:retraits-bloques-connexion": "node --import ./scripts/loader-ext.mjs scripts/retraits-bloques-connexion-selftest.mjs",
+    "selftest:cloud-ecrans": "node --import ./scripts/loader-ext.mjs scripts/cloud-ecrans-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

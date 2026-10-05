@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>FillSell — Me connecter</title>
+<style>
+  :root { --fond: #EDEAE0; --carte: #FFFFFF; --encre: #1C1B19; --doux: #6B675E; --accent: #3F3BB8; --bord: #D9D4C7; }
+  @media (prefers-color-scheme: dark) { :root { --fond: #151513; --carte: #1F1E1B; --encre: #F2EFE6; --doux: #A9A49A; --accent: #8C88FF; --bord: #34322D; } }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--encre); font: 15px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; overscroll-behavior: none; }
+  main { display: flex; flex-direction: column; height: 100dvh; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+  header h1 { flex: 1; font-size: 16px; margin: 0; }
+  button { font: inherit; border-radius: 10px; border: 1px solid var(--bord); background: var(--carte); color: var(--encre); padding: 9px 14px; min-height: 40px; }
+  button.plein { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  #choix { padding: 16px; display: grid; gap: 10px; }
+  #ecran { flex: 1; min-height: 0; margin: 0 auto; width: 100%; max-width: 540px; position: relative; overflow: hidden; background: var(--carte); }
+  #etat { padding: 8px 16px; color: var(--doux); font-size: 13.5px; min-height: 38px; }
+  #actions { display: flex; gap: 8px; padding: 8px 16px 12px; }
+  #actions button { flex: 1; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1 id="titre">Me connecter</h1><button id="fermer" hidden>Fermer</button></header>
+  <section id="choix">
+    <p id="intro">Choisis la plateforme. Seule sa page de connexion s'ouvre, dans ton ordinateur Cloud.</p>
+    <button class="plein" data-p="vinted">Vinted</button>
+    <button class="plein" data-p="leboncoin">Leboncoin</button>
+    <button class="plein" data-p="beebs">Beebs</button>
+  </section>
+  <div id="ecran" hidden></div>
+  <p id="etat" role="status" aria-live="polite"></p>
+  <div id="actions" hidden><button id="ecrire">⌨︎ Écrire</button><button id="fini">J'ai fini</button></div>
+</main>
+<script type="module">
+  import { ouvrirConnexion } from './client.js';
+  const q = new URLSearchParams(location.search);
+  const ticket = q.get('ticket');
+  const $ = (id) => document.getElementById(id);
+  let session = null;
+  const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs' };
+  if (!ticket) { $('intro').textContent = 'Lien incomplet : demande un nouveau lien.'; for (const b of document.querySelectorAll('[data-p]')) b.hidden = true; }
+  for (const b of document.querySelectorAll('[data-p]')) {
+    b.addEventListener('click', () => {
+      const p = b.dataset.p;
+      $('choix').hidden = true; $('ecran').hidden = false; $('actions').hidden = false; $('fermer').hidden = false;
+      $('titre').textContent = `Connexion à ${NOMS[p]}`;
+      session = ouvrirConnexion({
+        url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/connexion/ws`,
+        ticket, plateforme: p, conteneur: $('ecran'), lang: 'fr',
+        surEtat: (etape, message) => {
+          if (etape === 'clavier') { $('ecrire').classList.toggle('plein', message === true); return; }
+          if (message) $('etat').textContent = message;
+          if (['connecte', 'refuse', 'inactif', 'non_autorise', 'expire', 'erreur', 'ferme'].includes(etape)) $('actions').hidden = true;
+        },
+      });
+    });
+  }
+  $('ecrire').addEventListener('click', () => session?.ecrire());
+  $('fini').addEventListener('click', () => session?.termine());
+  $('fermer').addEventListener('click', () => { session?.fermer(); location.reload(); });
+</script>
+</body>
+</html>

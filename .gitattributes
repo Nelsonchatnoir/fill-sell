@@ -3,3 +3,7 @@
 # des plugins, et Capgo y voit un « changement natif » (fausse alerte de
 # l'OTA 2.9.46, 04/10/2026, @capgo/native-purchases). Toujours LF, partout.
 patches/*.patch text eol=lf
+
+# FillSell Cloud (05/10) : le serveur tourne sous Linux — scripts, Dockerfiles et
+# configurations TOUJOURS en LF, même extraits sur un PC Windows (core.autocrlf).
+serveur-cloud/** text eol=lf

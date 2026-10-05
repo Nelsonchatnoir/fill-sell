@@ -805,6 +805,17 @@ serve(async (req) => {
     const sessionId = sessionIdDuJwt(authHeader);
     let posteSansOpla = capacites.includes("sans_opla");
     let posteAvecOpla = capacites.includes("opla_acces");
+    // ── LE POSTE CLOUD (05/10, FillSell Cloud) ──────────────────────────────
+    // Déclaré par la copie Cloud de l'extension (scripts/cloud/build-extension-
+    // cloud.mjs) — absent pour tout le parc, qui ne voit donc RIEN changer :
+    //   · seuls Vinted, Leboncoin et Beebs lui sont servis (eBay passe par
+    //     l'API, Opla sort le 10/10) : une tâche servie qu'il ne ferait pas
+    //     resterait réservée 10 min et serait mise de côté à tort ;
+    //   · il n'écrase ni profiles.extension_build ni la mise à jour en attente
+    //     de l'extension de l'ORDINATEUR (le seuil de version et le mail de
+    //     mise à jour parlent de celle-là).
+    const posteCloud = capacites.includes("poste_cloud");
+    const PLATEFORMES_POSTE_CLOUD = ["vinted", "leboncoin", "beebs"];
     // (25/09) Les postes vivants du compte, relus par la garde des relevés Opla.
     let postesDuCompte: Record<string, Poste> = {};
     try {
@@ -814,7 +825,7 @@ serve(async (req) => {
       );
       const patch: Record<string, unknown> = { extension_last_seen_at: new Date().toISOString() };
       const build = typeof body?.build === "string" ? body.build.slice(0, 120) : "";
-      if (build) patch.extension_build = build;
+      if (build && !posteCloud) patch.extension_build = build;
       // ── Mise à jour d'extension EN ATTENTE (2026-09-10) ───────────────────
       // Chrome télécharge la nouvelle version puis attend, pour l'installer,
       // que l'extension soit au repos. Le background nous dit ici ce que Chrome
@@ -825,7 +836,7 @@ serve(async (req) => {
       // ne touche à rien (surtout pas effacer une mesure qu'il ne sait pas
       // produire). Chaîne vide = ce build DIT qu'il n'a rien en attente.
       const majAttente = typeof body?.maj_en_attente === "string" ? body.maj_en_attente.slice(0, 20) : null;
-      if (majAttente !== null) {
+      if (majAttente !== null && !posteCloud) {
         if (majAttente) {
           patch.extension_maj_en_attente = majAttente;
           // vue_at ne se recale PAS à chaque poll : il mesure l'ANCIENNETÉ du
@@ -1838,6 +1849,11 @@ serve(async (req) => {
         && posteAvecAccesOpla(postesDuCompte, { saufSession: sessionId, depuisMs: 2 * 3600_000 })) {
       syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
       console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : relevé Opla laissé en file pour le poste autorisé`);
+    }
+    // (05/10) Poste Cloud : seuls ses relevés (Vinted, Leboncoin, Beebs) — les
+    // autres restent en file pour l'ordinateur ou l'API.
+    if (posteCloud && syncCommandsAnnonces.some((c) => !PLATEFORMES_POSTE_CLOUD.includes(c.platform))) {
+      syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => PLATEFORMES_POSTE_CLOUD.includes(c.platform));
     }
     // ══ SORTIE D'OPLA : PAS DE RELEVÉ OPLA POUR UN COMPTE NON RELIÉ (02/10) ══
     // ⛔ À partir de la bascule seulement (sortieOpla, l'interrupteur lu en tête).
@@ -9728,6 +9744,12 @@ serve(async (req) => {
       if (out.length !== avantAttente) {
         console.log(`[get-pending-jobs] userId=${user.id} : ${avantAttente - out.length} job(s) en attente programmée non servi(s) avant leur heure`);
       }
+    }
+
+    // (05/10) Poste Cloud : jamais réservé ce qu'il ne fera pas (eBay, Opla) —
+    // la tâche reste libre pour l'ordinateur ou l'API.
+    if (posteCloud && out.some((j) => !PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)))) {
+      out = out.filter((j) => PLATEFORMES_POSTE_CLOUD.includes(String(j.platform)));
     }
 
     // Point C : seule la file d'exécution réserve. Le popup reste une lecture.

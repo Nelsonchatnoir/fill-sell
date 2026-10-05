@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { lectureCloudApple, ecritureCloudStore } from "../_shared/cloud-option.js";
+import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -137,6 +139,32 @@ serve(async (req) => {
     if (isBusinessPurchase) update.is_business = true;
     if (activeSub?.original_transaction_id) {
       update.apple_original_transaction_id = activeSub.original_transaction_id;
+    }
+
+    // ── L'OPTION CLOUD dans le même reçu (04/10) : restauration / validation ──
+    // Groupe « FillSell Cloud », à part du palier. La transaction la plus
+    // récente du produit fait foi ; is_trial_period du reçu historique vaut
+    // l'offre d'introduction (essai 1 semaine). Une option portée par un autre
+    // canal n'est pas touchée (ecritureCloudStore).
+    const txCloud = inApp
+      .filter((tx: any) => lectureCloudApple({ productId: tx.product_id }))
+      .sort((a: any, b: any) => parseInt(b.expires_date_ms ?? "0") - parseInt(a.expires_date_ms ?? "0"))[0];
+    if (txCloud) {
+      const expiresCloud = parseInt(txCloud.expires_date_ms ?? "0") || 0;
+      const lecture = lectureCloudApple({
+        productId: txCloud.product_id,
+        offerType: txCloud.is_trial_period === "true" ? 1 : undefined,
+        purchaseDate: parseInt(txCloud.purchase_date_ms ?? "0") || undefined,
+        expiresDate: expiresCloud || undefined,
+        originalTransactionId: txCloud.original_transaction_id,
+      })!;
+      const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
+      const { update: majCloud, motif } = ecritureCloudStore({
+        canal: "apple", lecture, sens: expiresCloud > now ? "on" : "off",
+        ref: txCloud.original_transaction_id ?? null, profil: profilCloud ?? {},
+      });
+      if (majCloud) Object.assign(update, majCloud);
+      else console.log(`[validate-apple-receipt] option Cloud du reçu ignorée (${motif})`);
     }
     await supabaseAdmin.from("profiles").update(update).eq("id", userId);
 

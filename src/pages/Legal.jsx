@@ -1,6 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import useSeo from "../lib/seo";
+// (05/10) Option « Sans ordinateur » : ses textes n'apparaissent qu'avec
+// l'interrupteur (config/cloudOffer.js) — baissé, la page est celle d'avant.
+import { CLOUD_TEXTES_LEGAUX } from "../config/cloudOffer";
+import { textesLegauxCloud } from "../cloud/textesLegaux";
 
 const C = { teal: "#3EACA0", peach: "#E8956D", text: "#0F172A", sub: "#475569", label: "#94A3B8", border: "rgba(0,0,0,0.06)" };
 
@@ -191,6 +195,19 @@ const cgvTexts = {
     ]},
   ],
 };
+
+// (05/10) Les CGV AFFICHÉES. Interrupteur baissé (config/cloudOffer.js) : le
+// tableau d'origine lui-même, rien d'ajouté. Levé : une phrase à l'article 2
+// (« Extension Chrome requise » — sauf l'option) et l'article 7 de l'option.
+function cgvAffichees(en) {
+  const lang = en ? 'en' : 'fr';
+  if (!CLOUD_TEXTES_LEGAUX) return cgvTexts[lang];
+  const T = textesLegauxCloud(lang);
+  return [
+    ...cgvTexts[lang].map((art) => (art.t.startsWith('Article 2 ') ? { ...art, ps: [...art.ps, T.cgvArticle2] } : art)),
+    T.cgvArticle7,
+  ];
+}
 
 // Détail technique des droits de l'extension Chrome, aligné 1:1 sur
 // chrome-extension/manifest.json (permissions + host_permissions). Toute
@@ -444,6 +461,7 @@ export default function Legal() {
             {en
               ? "FillSell is a technical tool: it prepares listings and, when the user so instructs, publishes, reposts or withdraws them on third-party marketplaces, in the user's browser and within the user's own sessions. The user remains the sole holder of their marketplace accounts, the sole author of the listings and actions performed there, and solely responsible for complying with each marketplace's terms. FillSell is not affiliated with any of these marketplaces, is not a party to the sales concluded on them, and cannot be held liable for their decisions (restriction, suspension or closure of an account, removal of a listing, change of operation). The list of supported marketplaces may change at any time, including by withdrawing one. These rules are detailed in Article 3 of the Terms of Sale below, which apply to every user, free or paying."
               : "FillSell est un outil technique : il prépare des annonces et, sur instruction de l'utilisateur, les publie, les republie ou les retire sur des plateformes tierces, dans le navigateur de l'utilisateur et au sein de ses propres sessions. L'utilisateur reste seul titulaire de ses comptes sur ces plateformes, seul auteur des annonces et des actions qui y sont exécutées, et seul responsable du respect des conditions de chacune d'elles. FillSell n'est affilié à aucune de ces plateformes, n'est pas partie aux ventes qui y sont conclues, et ne saurait être tenu responsable de leurs décisions (restriction, suspension ou fermeture d'un compte, retrait d'une annonce, changement de fonctionnement). La liste des plateformes prises en charge peut évoluer à tout moment, y compris par le retrait de l'une d'elles. Ces règles sont détaillées à l'article 3 des CGV ci-dessous, qui s'appliquent à tout utilisateur, gratuit ou payant."}
+            {CLOUD_TEXTES_LEGAUX && ` ${textesLegauxCloud(en ? 'en' : 'fr').cgu39}`}
           </p>
         </Section>
 
@@ -454,8 +472,8 @@ export default function Legal() {
             version (articles 1-9, validée 05/08) vit dans l'historique
             git ; l'article 5 couvre les achats antérieurs. */}
         <Section id="cgv" icon="🧾" title={en ? 'Terms of Sale — Paid services' : 'Conditions générales de vente (CGV) — Services payants'}>
-          {cgvTexts[en ? 'en' : 'fr'].map((art, ai) => (
-            <div key={art.t} style={{ marginBottom: ai === cgvTexts[en ? 'en' : 'fr'].length - 1 ? 0 : 18 }}>
+          {cgvAffichees(en).map((art, ai) => (
+            <div key={art.t} style={{ marginBottom: ai === cgvAffichees(en).length - 1 ? 0 : 18 }}>
               <p className="legal-p"><span className="legal-strong">{art.t}</span></p>
               {art.ps.map((txt, i) => (
                 <p className="legal-p" key={i} style={txt.startsWith('–') ? { paddingLeft: 14 } : undefined}>{txt}</p>
@@ -565,7 +583,31 @@ export default function Legal() {
             <li><span className="legal-strong">Vercel</span> — {en ? 'application hosting' : "hébergement de l'application"}</li>
             <li><span className="legal-strong">Stripe</span> — {en ? 'payment processing (PCI-DSS certified)' : 'traitement des paiements (certifié PCI-DSS)'}</li>
             <li><span className="legal-strong">Google / Apple</span> — {en ? 'identity providers (optional sign-in with Google or Apple)' : 'fournisseurs d\'identité (connexion optionnelle via Google ou Apple)'}</li>
+            {CLOUD_TEXTES_LEGAUX && textesLegauxCloud(en ? 'en' : 'fr').sousTraitants.map(([nom, role]) => (
+              <li key={nom}><span className="legal-strong">{nom}</span> — {role}</li>
+            ))}
           </ul>
+          {/* (05/10) 4.8 — l'option « Sans ordinateur » : seulement interrupteur levé. */}
+          {CLOUD_TEXTES_LEGAUX && (() => {
+            const T = textesLegauxCloud(en ? 'en' : 'fr').confidentialite;
+            return (
+              <>
+                <p className="legal-p" style={{ marginTop: 12 }}>
+                  <span className="legal-strong">{T.titre}</span><br />
+                  {T.intro}
+                </p>
+                <p className="legal-p">{T.conserve}</p>
+                <ul className="legal-ul">
+                  {T.liste.map(([gras, suite]) => (
+                    <li key={gras}><span className="legal-strong">{gras}</span> {suite}</li>
+                  ))}
+                </ul>
+                <p className="legal-p">{T.ou}</p>
+                <p className="legal-p">{T.duree}</p>
+                <p className="legal-p">{T.essai}</p>
+              </>
+            );
+          })()}
         </Section>
 
         {/* 5. Cookies */}

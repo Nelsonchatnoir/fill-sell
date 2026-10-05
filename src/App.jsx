@@ -94,6 +94,16 @@ import { lirePropositionsParJob, deciderRapprochement } from './utils/syncPlatef
 import Toast from './components/Toast';
 import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
 import { businessOfferVisible } from './config/businessOffer';
+// Option « Sans ordinateur » (Cloud, conception du 04/10) : UN point de montage,
+// qui regarde lui-même son drapeau (config/cloudOffer.js) — baissé, rien.
+import HoteCloud from './cloud/HoteCloud';
+// (05/10) L'achat / l'arrêt de l'option et l'écran « Me connecter » — derrière
+// cloudOfferVisible (l'offre) et cloudConnexionVisible (l'écran) : baissés et
+// sans témoin, aucun rendu, aucune requête.
+import MeConnecterCloud from './cloud/MeConnecterCloud';
+import { creerAchatCloud } from './cloud/achatCloud';
+import { garderDemande, reprendreDemande, ouvrirOffreCloud } from './cloud/offreCloud';
+import { cloudOfferVisible, cloudConnexionVisible } from './config/cloudOffer';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -2707,6 +2717,8 @@ export default function App({ loginOnly = false }){
   },[]);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
+  // (05/10) L'écran « Me connecter » de l'option Sans ordinateur.
+  const [meConnecterOuvert,setMeConnecterOuvert]=useState(false);
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
   // le bien ?", non pré-rempli depuis le compte LBC — vérifié), saisie une fois
@@ -3255,9 +3267,11 @@ export default function App({ loginOnly = false }){
       return;
     }
     logTunnel(business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click',{origine,declencheur:'clic',tier:business?'business':pro?'pro':'premium'});
-    if(business){isNative?handleIAPPurchase('business',origine):triggerCheckout('business',origine);}
-    else if(pro){isNative?handleIAPPurchase('pro',origine):triggerCheckout('pro',origine);}
-    else{isNative?handleIAPPurchase(undefined,origine):triggerCheckout(undefined,origine);}
+    // (05/10) La promesse est RENDUE (achat de la formule fini ou abandonné) :
+    // « formule + Sans ordinateur » enchaîne ensuite la proposition de l'option.
+    if(business){return isNative?handleIAPPurchase('business',origine):triggerCheckout('business',origine);}
+    else if(pro){return isNative?handleIAPPurchase('pro',origine):triggerCheckout('pro',origine);}
+    else{return isNative?handleIAPPurchase(undefined,origine):triggerCheckout(undefined,origine);}
   }
   // Ex-UpgradeModal, fusionnée dans ConversionModal : un tier explicite part
   // directement en checkout, sans tier on ouvre la modale de conversion.
@@ -3279,6 +3293,49 @@ export default function App({ loginOnly = false }){
     logTunnel('premium_cta_click',{origine:org,declencheur:'clic'});
     setConversionModal({open:true,trigger,origine:org});
   }
+
+  // ══ L'OPTION « SANS ORDINATEUR » (05/10) — l'achat, l'arrêt, « Me connecter » ══
+  // Un abonnement À PART (20 € TTC/mois, essai 7 jours, carte demandée), ouvert
+  // à tous, Free compris. Les règles vivent dans cloud/achatCloud.js : préparer
+  // (place réservée + verrous d'essai) AVANT tout paiement, puis Stripe (web) ou
+  // la boutique (iOS / Android), et ne croire que le serveur.
+  // ⛔ Drapeau baissé (cloudOfferVisible) : aucun geste d'argent n'existe ;
+  //    « Me connecter » n'existe que pour un compte témoin (cloudConnexionVisible).
+  const toastCloud=(message)=>{if(!message)return;setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),6000);};
+  const achatCloud=user?creerAchatCloud({
+    supabase,supabaseUrl,supabaseAnonKey,user,lang,platform,purchasePremium,
+    ouvrirLien:(url)=>(isNative?Browser.open({url}):Promise.resolve(window.open(url,'_blank','noopener'))),
+    confirmer:(message)=>Promise.resolve(window.confirm(message)),
+    notifier:toastCloud,
+    paiementsAndroidCoupes:()=>paiementsAndroidCoupes(supabase),
+  }):null;
+  async function lancerAchatCloud(origine='non_precisee'){
+    if(!achatCloud||!cloudOfferVisible(user?.id))return;
+    logTunnel('cloud_cta_click',{origine,declencheur:'clic'});
+    const r=await achatCloud.acheter(origine);
+    if(r?.message)toastCloud(r.message);
+    if(r?.etat==='actif')setMeConnecterOuvert(true);
+  }
+  // « Formule + Sans ordinateur » : la formule d'abord (son parcours, inchangé),
+  // puis la feuille propose l'option à ajouter — jamais deux paiements d'un geste.
+  // Web : Stripe recharge la page, la demande est gardée une heure (offreCloud).
+  function formulePuisCloud(tier,origine){
+    garderDemande('apres_formule');
+    Promise.resolve(startTierCheckout(tier,origine)).then(()=>{
+      if(!isNative)return;   // web : la page est partie chez Stripe, la demande attend le retour
+      const g=reprendreDemande();
+      if(g)ouvrirOffreCloud(g);
+    }).catch(()=>{});
+  }
+  const actionsCloud=user?{
+    ...(cloudOfferVisible(user.id)&&achatCloud?{
+      essayer:()=>lancerAchatCloud('reglages_cloud'),
+      ajouter:()=>lancerAchatCloud('reglages_cloud'),
+      arreter:async()=>{const r=await achatCloud.arreter();if(r?.message)toastCloud(r.message);return{ok:r?.etat!=='erreur',...r};},
+      reprendre:async()=>{const r=await achatCloud.reprendre();if(r?.message)toastCloud(r.message);return{ok:r?.etat!=='erreur',...r};},
+    }:{}),
+    ...(cloudConnexionVisible(user.id)?{meConnecter:()=>setMeConnecterOuvert(true)}:{}),
+  }:{};
 
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
   // visibilité, poll sentinelle) ne doivent pas faire clignoter le spinner —
@@ -9389,6 +9446,7 @@ export default function App({ loginOnly = false }){
           oplaRelie={sortieOpla.relie===true}
           onToast={(message)=>{setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),3000);}}
           ouvrirOffres={(origine)=>openUpgradeModal(null,origine??'reglages')}
+          actionsCloud={actionsCloud}
           ouvrirSignalementBug={()=>{setShowBugReport(true);setBugMessage("");}}
           resiliation={{
             etape:cancelStep,setEtape:setCancelStep,enCours:cancelLoading,
@@ -9407,7 +9465,14 @@ export default function App({ loginOnly = false }){
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={(tier)=>{setConversionModal(m=>({...m,open:false}));startTierCheckout(tier,conversionModal.origine??'modale_plan');}}
+        onUpgrade={(tier,opts)=>{
+          setConversionModal(m=>({...m,open:false}));
+          // (05/10) 2e argument { cloud } : seulement drapeau levé (ConversionModal ne l'envoie pas sinon).
+          if(opts?.cloud===true&&cloudOfferVisible(user?.id)){formulePuisCloud(tier,conversionModal.origine??'modale_plan');return;}
+          startTierCheckout(tier,conversionModal.origine??'modale_plan');
+        }}
+        onCloudSeul={cloudOfferVisible(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_seul');}:null}
+        onAjouterCloud={cloudOfferVisible(user?.id)?()=>{setConversionModal(m=>({...m,open:false}));lancerAchatCloud(conversionModal.origine??'modale_cloud_ajout');}:null}
         trigger={conversionModal.trigger}
         lang={lang}
         isPremium={isPremium}
@@ -9422,6 +9487,24 @@ export default function App({ loginOnly = false }){
         // (03/10, point 20) Free : ses republications offertes à vie, dites AVANT les offres.
         repubOffertes={quotas?.republication?.mode==='avie'?{restantes:quotas.republication.restantes??null,plafond:quotas.republication.plafond??null}:null}
       />
+
+      {/* ── OPTION « SANS ORDINATEUR » (Cloud) ──
+          Drapeau baissé (config/cloudOffer.js) : ne lit rien, ne rend rien.
+          Levé : la 2e voie ouvre la modale ci-dessus interrupteur coché
+          (trigger 'cloud'), la fin d'essai a ses deux feuilles, et les gestes
+          d'argent (essayer, ajouter, arrêter, garder) passent par
+          actionsCloud (05/10 : préparation → Stripe ou boutique). */}
+      <HoteCloud
+        userId={user?.id??null}
+        lang={lang}
+        onOuvrirOffres={(origine)=>{logTunnel('premium_cta_click',{origine,declencheur:'clic',cloud:true});setConversionModal({open:true,trigger:'cloud',origine});}}
+        actions={actionsCloud}
+      />
+      {/* « Me connecter » : un bouton par plateforme, la SEULE page de connexion,
+          au format du téléphone (05/10). Témoin ou drapeau levé seulement. */}
+      {meConnecterOuvert&&user&&cloudConnexionVisible(user.id)&&(
+        <MeConnecterCloud userId={user.id} lang={lang} onFermer={()=>setMeConnecterOuvert(false)}/>
+      )}
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(

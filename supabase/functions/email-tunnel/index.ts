@@ -19,8 +19,16 @@ import {
   type CausePaiement,
   type ContextePaiement,
 } from "../_shared/emails-fillsell.ts";
-import { paragraphe, renderEmail } from "../_shared/email-template.ts";
+import { boutonPrincipal, paragraphe, renderEmail } from "../_shared/email-template.ts";
 import { annoncerVentes, type RapportVentes } from "../_shared/ventes-a-annoncer.ts";
+import {
+  CATEGORIE_RAPPEL,
+  DEDUP_RAPPEL,
+  decisionRappel,
+  fenetreRequete,
+  texteRappel,
+  TYPE_RAPPEL,
+} from "../_shared/cloud-rappel-veille.js";
 
 const RESEND_API = "https://api.resend.com/emails";
 // Destinataire des alertes internes — même boîte que l'ops-digest.
@@ -736,6 +744,9 @@ serve(async (req) => {
       user_id?: string | null; email?: string | null; lang?: string | null;
       invoice_id: string; cause?: string; code?: string | null;
       contexte?: string; montant?: string | null; plan?: string | null;
+      // (05/10) Faits relus chez Stripe par stripe-webhook (_shared/paiement-echoue.js).
+      lien_facture?: string | null; relance_le?: string | null;
+      abonnement_actif?: boolean; offre?: string | null;
     };
     const cause = pf.cause ?? "autre";
     const contexte = pf.contexte ?? "souscription";
@@ -748,11 +759,15 @@ serve(async (req) => {
     // branche ne fait plus qu'établir les faits et lire le verdict.
     if (pf.user_id && pf.email) {
       const lang = langue(pf.lang);
-      const { sujet, html } = mailPaiementEchoue(
-        cause as CausePaiement,
-        contexte as ContextePaiement,
+      const { sujet, html } = mailPaiementEchoue({
         lang,
-      );
+        cause: cause as CausePaiement,
+        contexte: contexte as ContextePaiement,
+        lienFacture: pf.lien_facture ?? null,
+        relanceLe: pf.relance_le ?? null,
+        abonnementActif: pf.abonnement_actif === true,
+        offre: pf.offre ?? null,
+      });
       const r = await envoyer({
         to: pf.email,
         subject: sujet,
@@ -789,7 +804,12 @@ serve(async (req) => {
     const esc = (v: unknown) =>
       String(v ?? "—").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const lignes: Array<[string, unknown]> = [
-      ["Contexte", contexte === "renouvellement" ? "Renouvellement (l'abonnement reste actif pendant le dunning Stripe)" : "Souscription (jamais activée)"],
+      ["Contexte", contexte === "renouvellement" ? `Renouvellement (abonnement ${pf.abonnement_actif === true ? "encore actif" : "non actif ou illisible"} chez Stripe)`
+        : contexte === "fin_essai" ? `Fin d'essai${pf.offre === "cloud" ? " Cloud" : ""} (première échéance payante)`
+        : "Souscription (jamais activée)"],
+      ["Bouton du mail", contexte === "souscription" ? "l'app (la page de paiement s'y rouvre)"
+        : pf.lien_facture ? "page Stripe de la facture" : "aucun (facture non réglable en ligne : réponse au mail)"],
+      ["Prochaine tentative Stripe", pf.relance_le ?? "aucune"],
       ["Cause", `${cause}${pf.code ? ` (${pf.code})` : ""}`],
       ["Plan", pf.plan],
       ["Montant", pf.montant],
@@ -917,7 +937,14 @@ serve(async (req) => {
     if (template === "payment_failed") {
       const cause = (typeof body?.test_cause === "string" ? body.test_cause : "3ds") as CausePaiement;
       const contexte = (typeof body?.test_contexte === "string" ? body.test_contexte : "souscription") as ContextePaiement;
-      const m = mailPaiementEchoue(cause, contexte, langTest);
+      // Aperçu : une facture fictive (le lien n'ouvre rien de réel), une tentative dans 3 jours.
+      const m = mailPaiementEchoue({
+        lang: langTest, cause, contexte,
+        lienFacture: typeof body?.test_lien_facture === "string" ? body.test_lien_facture : "https://invoice.stripe.com/i/apercu",
+        relanceLe: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        abonnementActif: body?.test_abonnement_actif !== false,
+        offre: typeof body?.test_offre === "string" ? body.test_offre : null,
+      });
       const ok = await apercu("payment_failed", m.sujet, m.html);
       return new Response(
         JSON.stringify({ test: true, template, lang: langTest, cause, contexte, sent, errors, resend: resendTrace }),
@@ -1426,6 +1453,74 @@ serve(async (req) => {
       console.error("ventes_du_jour_echec", erreur);
     }
 
+    // ── Mail de la VEILLE de fin d'essai « Sans ordinateur » (04/10, PROPOSITION) ──
+    // Règles : _shared/cloud-rappel-veille.js (testées, selftest:cloud-rappel-veille).
+    // Information de facturation : catégorie 'support', type one-shot
+    // cloud_essai_veille (index email_logs_one_shot_unique, PROPOSITION SQL § 9),
+    // envoi en réservation. Il COMPTE dans le plafond de 2 mails / 24 h : il
+    // attend une place libre dans son créneau, puis part au dernier créneau.
+    // ⛔ GARDE : tant que la PROPOSITION Cloud n'est pas appliquée, les colonnes
+    // cloud_* n'existent pas — cette lecture SÉPARÉE échoue et on ne fait RIEN
+    // (rendu dans la réponse, rien d'autre). Isolé comme les ventes : une panne
+    // ici n'empêche jamais la relance des jobs.
+    async function rappelsVeilleCloud(dry: boolean): Promise<Record<string, unknown>> {
+      const maintenant = Date.now();
+      const { finApres, finAvant } = fenetreRequete(maintenant);
+      const { data: profils, error: garde } = await supabase
+        .from("profiles")
+        .select("id, email, lang, is_cloud, cloud_essai_debut, cloud_essai_fin, cloud_essai_arrete")
+        .gt("cloud_essai_fin", finApres)
+        .lte("cloud_essai_fin", finAvant)
+        .not("cloud_essai_debut", "is", null)
+        .limit(200);
+      if (garde) return { garde: "colonnes_cloud_absentes_ou_illisibles", detail: String(garde.message).slice(0, 160) };
+      const h = heureParis();
+      const envoyes: string[] = [];
+      const attentes: Record<string, number> = {};
+      const rien: Record<string, number> = {};
+      const compter = (o: Record<string, number>, k: string) => { o[k] = (o[k] ?? 0) + 1; };
+      for (const p of (profils ?? []) as Array<Record<string, unknown>>) {
+        const uid = String(p.id);
+        // Déjà envoyé ? Lecture illisible → on n'envoie pas (échec fermé).
+        const { count: deja, error: eDeja } = await supabase.from("email_logs")
+          .select("id", { count: "exact", head: true }).eq("user_id", uid).eq("email_type", TYPE_RAPPEL);
+        if (eDeja) { compter(attentes, "dedup_illisible"); continue; }
+        // Mails des 24 h (tous types, comme envoi-ponctuel). Illisible → « plein » :
+        // il attendra le dernier créneau, qui part quand même.
+        const { count: n24, error: e24 } = await supabase.from("email_logs")
+          .select("id", { count: "exact", head: true }).eq("user_id", uid)
+          .gte("sent_at", new Date(maintenant - 24 * 3_600_000).toISOString());
+        const d = decisionRappel({
+          profil: p, dejaEnvoye: (deja ?? 0) > 0, mails24h: e24 ? Number.POSITIVE_INFINITY : (n24 ?? 0),
+          heureParis: h, maintenant,
+        });
+        if (d.action !== "envoyer") { compter(d.action === "rien" ? rien : attentes, d.raison); continue; }
+        if (dry) { envoyes.push(`${uid}:${d.raison}`); continue; }
+        const lang = langue(p.lang);
+        const t = texteRappel({ lang, finIso: String(p.cloud_essai_fin) });
+        const html = renderEmail({
+          titre: t.titre, surtitre: "", preheader: t.preheader,
+          corps: [...t.paragraphes.map((x: string) => paragraphe(x)), boutonPrincipal(t.bouton.texte, t.bouton.url)],
+          formuleFin: "", signatureNom: "Nico", signatureRole: "FillSell",
+          raisonEnvoi: t.raisonEnvoi, lienDesinscription: "", langue: lang,
+        });
+        const r = await envoyer({
+          to: String(p.email), subject: t.sujet, html, userId: uid,
+          type: TYPE_RAPPEL, categorie: CATEGORIE_RAPPEL as "support", dedup: DEDUP_RAPPEL as "reservation",
+        });
+        if (r.envoye) envoyes.push(`${uid}:${d.raison}`);
+        else compter(attentes, `envoi_${r.motif ?? "echec"}`);
+      }
+      return { lus: profils?.length ?? 0, envoyes, attentes, rien, dry_run: dry };
+    }
+    let veilleCloud: Record<string, unknown> | null = null;
+    try {
+      veilleCloud = await rappelsVeilleCloud(dryRun);
+    } catch (e) {
+      veilleCloud = { erreur: e instanceof Error ? e.message : String(e) };
+      console.error("cloud_veille_echec", veilleCloud.erreur);
+    }
+
     const t = Date.now();
     // ── UN JOB RETENU PAR NOTRE PROPRE RÉGULATION N'EST PAS UN JOB OUBLIÉ ────
     // (2026-09-07) Le passage de 10:00 a classé claeys59450 en
@@ -1642,6 +1737,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       relance: RELANCE_TYPE, dry_run: dryRun, heure_paris: h,
       ventes,
+      veille_cloud: veilleCloud,
       jobs_eligibles: jobs?.length ?? 0, utilisateurs: parUser.size,
       envoyes: sent.length, echecs: errors.length,
       cas3_bug_extension: cas3,

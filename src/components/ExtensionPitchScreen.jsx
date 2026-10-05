@@ -35,6 +35,11 @@ import { Puzzle, ExternalLink, Mail, Copy, Check, RefreshCw, Send, Link2 } from 
 import { Capacitor } from '@capacitor/core';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
+// 2e voie « Je n'ai pas d'ordinateur » (Cloud, conception du 04/10) — derrière
+// son drapeau (config/cloudOffer.js) : baissé, elle ne rend rien.
+import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
+import { cloudOfferVisible } from '../config/cloudOffer';
+import { textesCloud } from '../cloud/textes';
 
 const C = {
   canvas: '#EDEAE0',
@@ -72,6 +77,10 @@ export default function ExtensionPitchScreen({
   ebaySansOrdinateur = null,
 }) {
   const fr = lang !== 'en';
+  // (04/10, conception) L'option « Sans ordinateur » est-elle proposée ? —
+  // drapeau config/cloudOffer.js, baissé : la section eBay dit ce qu'elle
+  // disait, mot pour mot, et la 2e voie ne se rend pas.
+  const optionSansOrdi = cloudOfferVisible(userId);
   const isMobile = useIsMobile();
   const onComputer = !Capacitor.isNativePlatform() && !isMobile;
   const { envoi, secondesRestantes, envoyer } = useEnvoiLienExtension(lang);
@@ -257,6 +266,12 @@ export default function ExtensionPitchScreen({
           {/* Deux lignes AU PLUS sous le bouton — ce qui aide à comprendre ce
               qu'on vient de déclencher, rien de plus. */}
           <p style={{ margin: '2px 0 14px', fontSize: 12.5, color: C.mute, lineHeight: 1.5, textAlign: 'center' }}>
+            {/* (04/10 soir, conception) Option proposée : l'extension reste la
+                voie GRATUITE et SANS CARTE — dit près de son bouton, avant la
+                voie payante plus bas. Drapeau baissé : rien d'ajouté. */}
+            {!onComputer && optionSansOrdi && (
+              <span data-cloud="extension-gratuite" style={{ display: 'block', fontWeight: 700, color: C.mute2 }}>{textesCloud(lang).extensionGratuite}</span>
+            )}
             {onComputer
               ? (fr
                   ? "Gratuite, installée en une minute."
@@ -297,10 +312,20 @@ export default function ExtensionPitchScreen({
               </p>
               <p style={{ margin: '0 0 10px', fontSize: 12.5, color: C.mute, lineHeight: 1.5 }}>
                 {ebaySansOrdinateur.relie
-                  ? (fr ? "Ton compte eBay est relié à FillSell : garde seulement eBay dans les plateformes, et ton annonce part depuis ton téléphone. Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur."
-                        : "Your eBay account is linked to FillSell: keep only eBay among the platforms and your listing goes out from your phone. Vinted, Leboncoin and Beebs need the extension on a computer.")
-                  : (fr ? "Relie ton compte eBay par la connexion officielle d'eBay (tu ne donnes aucun mot de passe à FillSell) : tes annonces eBay pourront partir depuis ton téléphone. Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur."
-                        : "Link your eBay account through eBay's official sign-in (you never give FillSell a password): your eBay listings can go out from your phone. Vinted, Leboncoin and Beebs need the extension on a computer.")}
+                  ? (fr ? "Ton compte eBay est relié à FillSell : garde seulement eBay dans les plateformes, et ton annonce part depuis ton téléphone."
+                        : "Your eBay account is linked to FillSell: keep only eBay among the platforms and your listing goes out from your phone.")
+                  : (fr ? "Relie ton compte eBay par la connexion officielle d'eBay (tu ne donnes aucun mot de passe à FillSell) : tes annonces eBay pourront partir depuis ton téléphone."
+                        : "Link your eBay account through eBay's official sign-in (you never give FillSell a password): your eBay listings can go out from your phone.")}
+                {' '}
+                {/* (04/10, option « Sans ordinateur », conception) Drapeau levé,
+                    la phrase ne dit plus « l'extension, forcément » : Vinted et
+                    Leboncoin ont aussi l'option (sans nommer ce qu'elle ne fait
+                    pas). Drapeau baissé : la phrase d'avant, mot pour mot. */}
+                {optionSansOrdi
+                  ? (fr ? "Les autres plateformes passent par l'extension sur un ordinateur, ou, pour Vinted et Leboncoin, par l'option Sans ordinateur."
+                        : 'The other platforms go through the extension on a computer, or, for Vinted and Leboncoin, through the No computer add-on.')
+                  : (fr ? "Vinted, Leboncoin et Beebs demandent l'extension sur un ordinateur."
+                        : 'Vinted, Leboncoin and Beebs need the extension on a computer.')}
               </p>
               {!ebaySansOrdinateur.relie && (
                 <button onClick={ebaySansOrdinateur.onRelier} style={{ ...btnBase, background: C.paper, border: `1px solid ${C.border}`, color: C.ink }}>
@@ -309,6 +334,13 @@ export default function ExtensionPitchScreen({
                 </button>
               )}
             </div>
+          )}
+          {/* ── SANS ORDINATEUR, EN OPTION (04/10, conception) ──────────────
+              Le mur où décrochent 7 inscrits sur 9 : l'extension reste le
+              chemin (au-dessus, gratuite) ; cette carte ne parle qu'à qui n'a
+              pas d'ordinateur. Téléphone seulement, comme la section eBay. */}
+          {!onComputer && (
+            <VoieSansOrdinateur lang={lang} userId={userId} origine="mur_extension" sansEbay={Boolean(ebaySansOrdinateur)} style={{ margin: '4px 0 12px' }} />
           )}
           {onContinue && (
             <button

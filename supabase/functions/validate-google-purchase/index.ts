@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { lectureCloudGoogle, ecritureCloudStore, PRODUIT_CLOUD_GOOGLE } from "../_shared/cloud-option.js";
+import { profilCloudPourStore } from "../_shared/cloud-essai-store.ts";
 
 // Validation serveur d'un achat Google Play — équivalent strict de
 // validate-apple-receipt, côté Android (2026-08-05).
@@ -151,7 +153,9 @@ serve(async (req) => {
     // ne doit pas pouvoir faire valider un pack via l'endpoint abonnement.
     const estAbonnement = SUB_PRODUCT_IDS.includes(productId);
     const coins = COIN_PRODUCTS[productId];
-    if (!estAbonnement && coins == null) {
+    // (04/10) L'option Cloud : un abonnement elle aussi (subscriptionsv2), traitée à part plus bas.
+    const estCloud = productId === PRODUIT_CLOUD_GOOGLE;
+    if (!estAbonnement && coins == null && !estCloud) {
       return json({ error: "unknown_product", productId }, 400);
     }
 
@@ -240,6 +244,29 @@ serve(async (req) => {
 
     const etat = purchase?.subscriptionState as string | undefined;
     const actif = ETATS_ACTIFS.includes(etat ?? "");
+
+    // ── L'OPTION CLOUD (04/10) : validation / restauration côté app ─────────
+    // Même lecture que google-play-webhook, sans type de notification : l'essai
+    // se reconnaît à l'offre cloud-trial-3d (7 jours) et à son échéance. Rien
+    // du palier n'est touché ; une référence d'un autre canal est ignorée.
+    if (estCloud) {
+      const lecture = lectureCloudGoogle(productId, purchase, null)
+        ?? { essai: false, debut: null, fin: (ligne?.expiryTime as string | undefined) ?? null, offre: null };
+      const profilCloud = await profilCloudPourStore(supabaseAdmin, userId);
+      const sens = actif ? "on" : "off";
+      const { update: majCloud, motif } = ecritureCloudStore({
+        canal: "google", lecture, sens, ref: purchaseToken, profil: profilCloud ?? {},
+      });
+      if (!majCloud) return json({ ok: true, type: "option_cloud", skipped: motif, state: etat ?? "unknown" });
+      if (sens === "on" && etat === "SUBSCRIPTION_STATE_CANCELED") majCloud.cloud_arret_fin_periode = true;
+      const { error: cloudErr } = await supabaseAdmin.from("profiles").update(majCloud).eq("id", userId);
+      if (cloudErr) {
+        console.error("[validate-google-purchase] écriture profil (cloud):", cloudErr.message);
+        return json({ error: "profile_update_failed" }, 500);
+      }
+      console.log(`[validate-google-purchase] option Cloud user=${userId} état=${etat} ${sens}${lecture.essai ? " (essai)" : ""}`);
+      return json({ ok: true, type: "option_cloud", is_cloud: majCloud.is_cloud === true, essai: lecture.essai === true, state: etat ?? "unknown" });
+    }
 
     if (!actif) {
       // ── On ne RETIRE un droit que si ce token EST la source enregistrée ──

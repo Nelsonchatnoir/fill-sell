@@ -22,6 +22,9 @@ import { supabase } from '../lib/supabase';
 import { logInstallExtension } from '../utils/installExtensionLog';
 import SchemaExtension from './SchemaExtension';
 import TutoTelephonePC from './TutoTelephonePC';
+// 2e voie « Je n'ai pas d'ordinateur » (Cloud, conception du 04/10) — derrière
+// son drapeau (config/cloudOffer.js) : baissé, elle ne rend rien.
+import VoieSansOrdinateur from '../cloud/VoieSansOrdinateur';
 import { E } from './theme';
 import { Scene, Kicker, Titre, Texte, BoutonPrimaire, LienDiscret, Bande, Etat } from './EntreeUI';
 
@@ -77,6 +80,12 @@ export default function EtapeExtension({ c, T, onSuivant }) {
               </>
             )}
           </div>
+          {/* La 2e voie, SOUS le bouton de l'extension : celui-ci (gratuit)
+              reste le chemin de l'écran et ne descend pas ; la rangée ne
+              parle qu'à qui n'a pas d'ordinateur. Téléphone seulement. */}
+          {c.surTelephone && (
+            <VoieSansOrdinateur lang={c.lang} userId={c.user?.id ?? null} origine="entree_extension" variante="rangee" style={{ marginTop: 14 }} />
+          )}
         </>
       )}
     >

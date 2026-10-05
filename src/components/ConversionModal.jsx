@@ -5,7 +5,15 @@ import { createPortal } from 'react-dom';
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import { supabase } from '../lib/supabase';
 import { businessOfferVisible } from '../config/businessOffer';
-import { PALIERS, palierDesDrapeaux } from '../utils/palier';
+import { PALIERS, palierDesDrapeaux, nomDuPalier } from '../utils/palier';
+// Option « Sans ordinateur » (Cloud, conception du 04/10/2026) — derrière
+// cloudOfferVisible() : drapeau baissé, rien de ce qui suit n'est rendu et
+// onUpgrade(tier) part exactement comme avant (un seul argument).
+import { cloudOfferVisible } from '../config/cloudOffer';
+import InterrupteurCloud, { LigneCloudModale, PrixAvecCloud, CarteAjoutCloud, SectionFreeCloud } from '../cloud/InterrupteurCloud';
+import { useCloudProfil } from '../cloud/useCloudProfil';
+import { offreCloudPourModale } from '../cloud/regles';
+import { textesCloud } from '../cloud/textes';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -299,7 +307,11 @@ function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
 // Carte Free (2026-09-02 soir) — le POINT DE DÉPART, pas une offre : fond
 // sobre, pas de CTA d'achat. Bascule quotas : plus de bandeau de grant, les
 // cinq lignes de gestes disent tout (5 annonces, 50 republications à vie…).
-function FreePlanCard({ fr, estMonPlan, K }) {
+// (04/10 soir, option « Sans ordinateur ») SEULE exception au « pas de CTA » :
+// interrupteur coché et hôte qui sait le faire (`voieCloud`), la carte porte
+// la voie « Free + Sans ordinateur » et son prix « 0 € + 20 € ». Sinon, la
+// carte d'avant, au balisage près.
+function FreePlanCard({ fr, estMonPlan, K, cloud = null, voieCloud = null }) {
   return (
     <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 22, padding: '20px 18px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -316,12 +328,15 @@ function FreePlanCard({ fr, estMonPlan, K }) {
             </span>
           )}
         </span>
+        {cloud && voieCloud ? <PrixAvecCloud prix="0 €" cloud={cloud} encreClaire={C.mute2} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.mute2, lineHeight: 1 }}>0 €</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
+        )}
       </div>
       <LignesDiff fr={fr} palier="free" K={K} />
+      {voieCloud}
     </div>
   );
 }
@@ -335,7 +350,12 @@ function FreePlanCard({ fr, estMonPlan, K }) {
 // 2026-09-04 : aucun corps ne les lisait depuis la bascule du 02/09. Les hôtes
 // peuvent continuer de les passer, une prop non destructurée est ignorée.
 // Seules fr/K/onUpgrade servent.)
-function PremiumPlanCard({ fr, K, onUpgrade }) {
+// `cloud` (option « Sans ordinateur », 04/10) : null = la carte d'avant, au
+// balisage près ; { essai } = l'interrupteur commun est coché — le prix dit
+// « 12,99 € + 20 € » et le bouton nomme l'option. Même prop sur les trois cartes.
+const suffixeCloud = (fr, cloud) => (cloud ? textesCloud(fr ? 'fr' : 'en').ctaSuffixe : '');
+
+function PremiumPlanCard({ fr, K, onUpgrade, cloud = null }) {
   return (
     <div style={{
       background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
@@ -343,10 +363,12 @@ function PremiumPlanCard({ fr, K, onUpgrade }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <PremiumBadge />
+        {cloud ? <PrixAvecCloud prix={PLAN_PRICES.premium.price} cloud={cloud} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, lineHeight: 1 }}>{PLAN_PRICES.premium.price}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
+        )}
       </div>
       {/* Les cinq lignes de gestes (bascule 02/09) — cf. lignesDiff : mêmes
           lignes, même ordre sur les QUATRE cartes ; la croix « Republication
@@ -361,7 +383,7 @@ function PremiumPlanCard({ fr, K, onUpgrade }) {
           boxShadow: '0 10px 22px -8px rgba(47,158,144,0.5)',
         }}
       >
-        {fr ? 'Passer Premium' : 'Go Premium'}
+        {fr ? 'Passer Premium' : 'Go Premium'}{suffixeCloud(fr, cloud)}
       </button>
     </div>
   );
@@ -373,7 +395,7 @@ function PremiumPlanCard({ fr, K, onUpgrade }) {
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
 // Mêmes props mortes retirées qu'au-dessus (+ proFactor / showFactor).
-export function ProPlanCard({ fr, K, onUpgrade }) {
+export function ProPlanCard({ fr, K, onUpgrade, cloud = null }) {
   return (
     <div style={{
       position: 'relative',
@@ -383,10 +405,12 @@ export function ProPlanCard({ fr, K, onUpgrade }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <ProBadge />
+        {cloud ? <PrixAvecCloud prix={PLAN_PRICES.pro.price} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{PLAN_PRICES.pro.price}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
+        )}
       </div>
       {/* Bascule quotas (02/09 soir) : bandeau de grant et équivalences MORTS
           — les cinq lignes de gestes portent les volumes. La phrase de
@@ -401,7 +425,7 @@ export function ProPlanCard({ fr, K, onUpgrade }) {
           boxShadow: '0 10px 22px -8px rgba(232,149,109,0.5)',
         }}
       >
-        {fr ? 'Passer Pro' : 'Go Pro'}
+        {fr ? 'Passer Pro' : 'Go Pro'}{suffixeCloud(fr, cloud)}
       </button>
     </div>
   );
@@ -433,7 +457,7 @@ export function ProPlanCard({ fr, K, onUpgrade }) {
 // 2026-08-09, tous les paliers sont identiques sur ce point.
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
 // Mêmes props mortes retirées qu'au-dessus.
-export function BusinessPlanCard({ fr, K, onUpgrade }) {
+export function BusinessPlanCard({ fr, K, onUpgrade, cloud = null }) {
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',
@@ -444,10 +468,12 @@ export function BusinessPlanCard({ fr, K, onUpgrade }) {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <BusinessBadge />
+        {cloud ? <PrixAvecCloud prix={PLAN_PRICES.business.price} cloud={cloud} sombre taille={24} lang={fr ? 'fr' : 'en'} /> : (
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{PLAN_PRICES.business.price}</div>
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
+        )}
       </div>
       {/* Bascule quotas (02/09 soir) : bandeau de grant et équivalences MORTS
           — les cinq lignes de gestes portent les volumes, dont la
@@ -466,7 +492,7 @@ export function BusinessPlanCard({ fr, K, onUpgrade }) {
           boxShadow: '0 10px 26px -8px rgba(174,233,223,0.55)',
         }}
       >
-        {fr ? 'Passer Business' : 'Go Business'}
+        {fr ? 'Passer Business' : 'Go Business'}{suffixeCloud(fr, cloud)}
       </button>
     </div>
   );
@@ -482,19 +508,24 @@ export function BusinessPlanCard({ fr, K, onUpgrade }) {
 // `tiers` = les paliers RÉELLEMENT vendables à CET utilisateur, déjà filtrés
 // par la modale (cf. `sellable`) : plus aucun recoupement isPremium/isPro ici,
 // c'était la porte ouverte à deux vérités divergentes sur « qui voit quoi ».
-function PlansStack({ fr, tiers, K, onUpgrade, showFree = false }) {
+// (Option « Sans ordinateur », 04/10 soir) `avant` : l'interrupteur commun,
+// posé AU-DESSUS de toutes les cartes (Free comprise : l'option se prend
+// aussi seule). `cloud` passe aux cartes payantes ; `voieCloudFree` est la
+// voie « Free + Sans ordinateur » de la carte Free (null = carte d'avant).
+function PlansStack({ fr, tiers, K, onUpgrade, showFree = false, avant = null, cloud = null, voieCloudFree = null }) {
   const showPremium = tiers.includes('premium');
   const showPro = tiers.includes('pro');
   const showBusiness = tiers.includes('business');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {avant}
       {/* Le Free ouvre la pile QUAND le lecteur est en Free (02/09 soir) :
           c'est son point de départ — il voit ce qu'il a, puis ce que payer
           change, ligne à ligne. Jamais montré aux payants (rien à y lire). */}
-      {showFree && <FreePlanCard fr={fr} K={K} estMonPlan />}
-      {showPremium && <PremiumPlanCard fr={fr} K={K} onUpgrade={onUpgrade} />}
-      {showPro && <ProPlanCard fr={fr} K={K} onUpgrade={onUpgrade} />}
-      {showBusiness && <BusinessPlanCard fr={fr} K={K} onUpgrade={onUpgrade} />}
+      {showFree && <FreePlanCard fr={fr} K={K} estMonPlan cloud={cloud} voieCloud={voieCloudFree} />}
+      {showPremium && <PremiumPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={cloud} />}
+      {showPro && <ProPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={cloud} />}
+      {showBusiness && <BusinessPlanCard fr={fr} K={K} onUpgrade={onUpgrade} cloud={cloud} />}
     </div>
   );
 }
@@ -590,6 +621,16 @@ export default function ConversionModal({
   // republications offertes à vie (quotas_etat, mode 'avie'). Le mur des
   // republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
   repubOffertes = null,
+  // (04/10, option « Sans ordinateur », conception) Ajouter l'option à la
+  // formule DÉJÀ payée, sans changer de palier. ⛔ Jamais via
+  // onUpgrade(palier actuel) : les hôtes lanceraient un second abonnement.
+  // Aucun hôte ne la passe tant que le paiement de l'option n'existe pas —
+  // absente, la carte d'ajout n'est pas rendue.
+  onAjouterCloud = null,
+  // (04/10 soir) Prendre l'option SEULE sur un compte Free (« Free + Sans
+  // ordinateur », quotas Free gardés). ⛔ Jamais via onUpgrade('free'), qui
+  // partirait en paiement de formule. Absente, la carte Free n'a pas de bouton.
+  onCloudSeul = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -599,6 +640,24 @@ export default function ConversionModal({
   // sans avoir vu la carte complète du plan (bug « Découvre Pro » 2026-07-22).
   const [view, setView] = useState('entry');
   useEffect(() => { if (isOpen) setView('entry'); }, [isOpen]);
+
+  // ══ Option « Sans ordinateur » (Cloud, conception du 04/10/2026) ═══════════
+  // UN interrupteur commun aux cartes payantes (décision Nico : une option à
+  // 20 €/mois EN PLUS d'un palier, pas un 4e palier). Drapeau baissé : aucune
+  // lecture, aucun rendu, et `offreCloud` vaut null — onUpgrade(tier) part
+  // alors à l'identique. L'état du compte (essai déjà pris, option active…)
+  // se lit dans une requête À PART (useCloudProfil) : illisible = rien montré.
+  // Ouverte depuis la 2e voie (trigger 'cloud') : l'interrupteur arrive coché.
+  const cloudVisible = cloudOfferVisible(userId);
+  const lectureCloud = useCloudProfil(userId, { actif: Boolean(isOpen && cloudVisible) });
+  const offreCloud = cloudVisible ? offreCloudPourModale(lectureCloud) : null;
+  const [avecCloud, setAvecCloud] = useState(false);
+  useEffect(() => { if (isOpen) setAvecCloud(trigger === 'cloud'); }, [isOpen, trigger]);
+  // Un compte DÉJÀ payant ajoute l'option à SA formule par la carte d'ajout
+  // (si l'hôte sait le faire) ; l'interrupteur des cartes ne sert alors pas.
+  const ajoutCloudPossible = Boolean(isPremium && offreCloud?.mode === 'interrupteur' && typeof onAjouterCloud === 'function');
+  const interrupteurMontre = offreCloud?.mode === 'interrupteur' && !ajoutCloudPossible;
+  const cloudCarte = interrupteurMontre && avecCloud ? { essai: offreCloud.essai } : null;
 
   // ══ Télémétrie de la modale (2026-09-02) — le trou CTA → checkout ══════════
   // Mesuré (audit 02/09) : 617 comptes ont cliqué un CTA premium, 30 seulement
@@ -625,10 +684,28 @@ export default function ConversionModal({
   }, [isOpen]);
   // Choix d'un palier : trace posée AVANT de passer la main au checkout — le
   // canal (Stripe/IAP) et checkout_open restent journalisés par l'hôte.
+  // Option Cloud : le choix ne part QUE si l'interrupteur a été montré — sinon
+  // l'appel reste onUpgrade(tier), un seul argument, comme avant le 04/10.
   const choisirPalier = (tier) => {
     palierCliqueRef.current = true;
-    logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view });
-    onUpgrade(tier);
+    const choixCloud = interrupteurMontre;
+    logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view, ...(choixCloud ? { cloud: avecCloud } : {}) });
+    if (choixCloud) onUpgrade(tier, { cloud: avecCloud });
+    else onUpgrade(tier);
+  };
+  const basculerCloud = (v) => {
+    setAvecCloud(v);
+    logModale('offers_modal_cloud_bascule', { coche: v, origine: origine ?? 'non_precisee', trigger });
+  };
+  const choisirCloudSeul = () => {
+    palierCliqueRef.current = true;
+    logModale('offers_modal_cloud_seul', { origine: origine ?? 'non_precisee', trigger, essai: offreCloud?.essai === true });
+    onCloudSeul?.();
+  };
+  const ajouterCloud = () => {
+    palierCliqueRef.current = true;
+    logModale('offers_modal_cloud_ajout', { origine: origine ?? 'non_precisee', trigger, essai: offreCloud?.essai === true });
+    onAjouterCloud?.();
   };
   // TOUTES les sorties (backdrop, Escape, « Non merci ») passent ici : une
   // fermeture sans checkout est un abandon — avec les paliers qui étaient
@@ -693,6 +770,28 @@ export default function ConversionModal({
     .sort((a, b) => RANG[a] - RANG[b]);
   paliersRef.current = sellable; // pour l'event d'abandon (paliers affichés)
 
+  // ── Option « Sans ordinateur » : les blocs, montés selon le cas (04/10) ───
+  // Tous valent null quand le drapeau est baissé (offreCloud null).
+  const titreCloud = trigger === 'cloud' && (interrupteurMontre || ajoutCloudPossible) ? textesCloud(lang).titreModale : null;
+  // Option déjà active ou en pause : une ligne, jamais d'interrupteur.
+  const ligneCloud = offreCloud && offreCloud.mode !== 'interrupteur' ? <LigneCloudModale offre={offreCloud} lang={lang} /> : null;
+  // Free + Sans ordinateur (04/10 soir) : un compte Free prend l'option SEULE,
+  // par le bouton dédié de la carte Free — seulement si l'hôte sait le faire.
+  // Le nombre d'annonces vient de coin_config (K), jamais écrit ici.
+  const voieFree = interrupteurMontre && !isPremium && typeof onCloudSeul === 'function';
+  const voieCloudFree = voieFree && avecCloud
+    ? <SectionFreeCloud offre={offreCloud} quotaFree={K.quota_annonces_free} onCloudSeul={choisirCloudSeul} lang={lang} />
+    : null;
+  const blocCloud = interrupteurMontre
+    ? <InterrupteurCloud offre={offreCloud} coche={avecCloud} onBasculer={basculerCloud} lang={lang} freeCompris={voieFree} />
+    : ligneCloud;
+  const carteAjoutCloud = ajoutCloudPossible ? (
+    <div style={{ marginBottom: 12 }}>
+      <CarteAjoutCloud offre={offreCloud} nomPalier={nomDuPalier(palierDesDrapeaux({ isPremium, isPro, isBusiness }))} onAjouter={ajouterCloud} lang={lang} />
+    </div>
+  ) : null;
+  const blocCloudAuDessus = blocCloud ? <div style={{ marginBottom: 12 }}>{blocCloud}</div> : null;
+
   // (CAS 1/2 « unités insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
   // 02/09 soir — insufficient_coins ne peut plus exister, cf. bascule quotas.)
 
@@ -713,9 +812,11 @@ export default function ConversionModal({
             {fr ? 'ton plan actuel' : 'your current plan'}
           </span>
         </div>
-        <Title>{fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.'}</Title>
+        <Title>{titreCloud ?? (fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.')}</Title>
+        {carteAjoutCloud}
         <ToutesOffresBlock fr={fr} />
-        <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} />
+        {blocCloudAuDessus}
+        <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
         <Dismiss onClose={fermer} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
     );
@@ -738,9 +839,11 @@ export default function ConversionModal({
             {fr ? 'ton plan actuel' : 'your current plan'}
           </span>
         </div>
-        <Title>{fr ? 'Passe au volume supérieur.' : 'Move up a gear.'}</Title>
+        <Title>{titreCloud ?? (fr ? 'Passe au volume supérieur.' : 'Move up a gear.')}</Title>
+        {carteAjoutCloud}
         <ToutesOffresBlock fr={fr} />
-        <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} />
+        {blocCloudAuDessus}
+        <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
         <Dismiss onClose={fermer} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
     );
@@ -750,10 +853,14 @@ export default function ConversionModal({
   // Ne se dit QUE d'un utilisateur sans palier au-dessus — c'est-à-dire un
   // Business, ou un Pro tant que l'offre Business est masquée. (Les packs de
   // unités ne se vendent plus — bascule 02/09.)
+  // (04/10, option « Sans ordinateur ») Un compte au sommet peut encore
+  // AJOUTER l'option à sa formule — par la carte d'ajout, si l'hôte sait le
+  // faire ; sinon, rien de plus qu'avant (ou la ligne « déjà active »).
   if (sellable.length === 0) {
     return (
       <Sheet onClose={fermer}>
-        <Title>{fr ? 'Tu es déjà au maximum.' : "You're already on the top plan."}</Title>
+        <Title>{titreCloud ?? (fr ? 'Tu es déjà au maximum.' : "You're already on the top plan.")}</Title>
+        {carteAjoutCloud ?? ligneCloud}
         <Dismiss onClose={fermer} label={fr ? 'Fermer' : 'Close'} />
       </Sheet>
     );
@@ -801,7 +908,7 @@ export default function ConversionModal({
       </div>
 
       <Title>
-        {trigger === 'voice'
+        {titreCloud ?? (trigger === 'voice'
           ? (fr ? 'Passe en vocal illimité.' : 'Go unlimited on voice.')
           : repubCap
             ? (fr ? 'Tes republications offertes sont épuisées.' : 'Your included repostings are used up.')
@@ -813,7 +920,7 @@ export default function ConversionModal({
                 ? (quotaCas.geste === 'retouches'
                     ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
                     : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
-                : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
+                : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.'))}
       </Title>
 
       {(repubLot || repubAuto) && Number(repubOffertes?.restantes) > 0 && (
@@ -936,7 +1043,7 @@ export default function ConversionModal({
 
       {/* Vue comparative (2026-07-22) : les cartes d'emblée, empilées —
           ouvertes par la carte Free (le point de départ du lecteur). */}
-      <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} />
+      <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} />
 
       <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>

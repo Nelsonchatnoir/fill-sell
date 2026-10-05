@@ -25,6 +25,10 @@ import PlanBadge from '../components/PlanBadge';
 import { R } from './theme';
 import { Groupe, Carte, Ligne, Jauge, JaugeRepublication, BandeInfo, Bouton, Note } from './ReglagesUI';
 import { consommationVisible } from './quotas';
+// Option « Sans ordinateur » (Cloud, conception du 04/10) — le bloc regarde
+// lui-même le drapeau (config/cloudOffer.js) : baissé, il ne rend rien.
+import { BlocCloudReglagesLu, MentionCloudResiliation } from '../cloud/BlocCloudReglages';
+import { useCloudReglages } from '../cloud/useCloudProfil';
 
 // Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
 // `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
@@ -42,12 +46,26 @@ const LIEN_APPLE_ACHATS = 'https://reportaproblem.apple.com/';
 const LIEN_GOOGLE = 'https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app';
 const LIEN_GOOGLE_ACHATS = 'https://play.google.com/store/account/orderhistory';
 
+// (05/10) Les gestes d'argent de l'option Sans ordinateur relisent l'état
+// Cloud APRÈS coup (un arrêt, une reprise) : le bloc dit ce que dit le serveur.
+function avecRelecture(actions, relire) {
+  const out = {};
+  for (const [k, f] of Object.entries(actions ?? {})) {
+    out[k] = typeof f !== 'function' ? f : async (...a) => { try { return await f(...a); } finally { relire?.(); } };
+  }
+  return out;
+}
+
 export default function SousPageAbonnement({ c, T }) {
   // Client Stripe : sa présence dit qu'il y a des factures à montrer. Absent
   // (jamais payé par le web, ou payé par une boutique) → pas de ligne.
   const [clientStripe, setClientStripe] = useState(null);
   const [facturesEnCours, setFacturesEnCours] = useState(false);
   const [facturesRepli, setFacturesRepli] = useState(false);
+  // Option « Sans ordinateur » (04/10, conception) : UNE lecture, partagée par
+  // le bloc et par la mention de la résiliation. Drapeau baissé : rien ne part.
+  const lectureCloud = useCloudReglages(c);
+  const [arretCloudDemande, setArretCloudDemande] = useState(0);
 
   useEffect(() => {
     if (!c.user?.id || c.natif) return;
@@ -136,6 +154,14 @@ export default function SousPageAbonnement({ c, T }) {
         </div>
       </Carte>
 
+      {/* ── Option « Sans ordinateur » (04/10, conception) ─────────────
+          Juste sous la formule : l'option s'y ajoute, ou se prend seule en
+          Free (04/10 soir). Seul « Voir les formules » est câblé ici ; les
+          gestes d'argent (essayer, ajouter, arrêter, reprendre) arriveront
+          par `c.actionsCloud` avec le paiement de l'option — absents, leurs
+          boutons n'existent pas. */}
+      <BlocCloudReglagesLu c={c} lecture={lectureCloud} arretDemande={arretCloudDemande} actions={{ voirFormules: () => c.ouvrirOffres('reglages_cloud'), ...avecRelecture(c.actionsCloud, lectureCloud.relire) }} />
+
       {/* ── Consommation du mois, avec le RESTE ───────────────────────── */}
       {compteurs && (
         <Groupe intitule={T.consommation} appoint={c.remiseAZero ? T.remiseAZeroLe(c.remiseAZero) : null}>
@@ -213,6 +239,11 @@ export default function SousPageAbonnement({ c, T }) {
                 <div style={{ fontSize: 15, fontWeight: 700, color: R.ink }}>{T.confirmerResiliation}</div>
                 <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.5, color: R.texteSecondaire }}>{T.resiliationDetail}</p>
               </div>
+              {/* (04/10 soir, option « Sans ordinateur ») L'option CONTINUE quand
+                  la formule s'arrête : on le dit ICI, au moment de résilier,
+                  avec le lien pour l'arrêter aussi. Option inactive ou drapeau
+                  baissé : rien, la confirmation reste mot pour mot. */}
+              <MentionCloudResiliation lang={c.lang} lecture={lectureCloud} onArreterOption={() => setArretCloudDemande((n) => n + 1)} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Bouton ton="danger-plein" onClick={c.resiliation.lancer} enCours={c.resiliation.enCours}>
                   {c.resiliation.enCours ? '…' : T.confirmer}
