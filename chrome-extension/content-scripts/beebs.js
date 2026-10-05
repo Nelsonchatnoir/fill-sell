@@ -114,21 +114,36 @@ const BEEBS_ALGOLIA_INDEX = "prod_MARKETPLACE_mobile";
 const BEEBS_ALGOLIA_PAGE = 1000;   // rend un dressing entier en une requête
 const BEEBS_ALGOLIA_PAGES_MAX = 6; // 6 000 annonces : borne dure, jamais infinie
 
+// (05/10, Marine) Chaque requête à l'index est bornée : sans délai, une seule
+// requête lente tenait le content script muet jusqu'au délai du background
+// (« pas de réponse du content script »), et le relevé restait sans verdict.
+const BEEBS_ALGOLIA_DELAI_MS = 15_000;
+
 async function beebsAlgolia(corps) {
-  const r = await fetch(
-    `https://${BEEBS_ALGOLIA_APP.toLowerCase()}-dsn.algolia.net/1/indexes/${BEEBS_ALGOLIA_INDEX}/query`,
-    {
-      method: "POST",
-      headers: {
-        "X-Algolia-Application-Id": BEEBS_ALGOLIA_APP,
-        "X-Algolia-API-Key": BEEBS_ALGOLIA_CLE,
-        "Content-Type": "application/json",
+  const borne = new AbortController();
+  const minuterie = setTimeout(() => borne.abort(), BEEBS_ALGOLIA_DELAI_MS);
+  try {
+    const r = await fetch(
+      `https://${BEEBS_ALGOLIA_APP.toLowerCase()}-dsn.algolia.net/1/indexes/${BEEBS_ALGOLIA_INDEX}/query`,
+      {
+        method: "POST",
+        signal: borne.signal,
+        headers: {
+          "X-Algolia-Application-Id": BEEBS_ALGOLIA_APP,
+          "X-Algolia-API-Key": BEEBS_ALGOLIA_CLE,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(corps),
       },
-      body: JSON.stringify(corps),
-    },
-  );
-  if (!r.ok) throw new Error(`index Beebs HTTP ${r.status}`);
-  return r.json();
+    );
+    if (!r.ok) throw new Error(`index Beebs HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    if (borne.signal.aborted) throw new Error(`index Beebs : pas de réponse en ${BEEBS_ALGOLIA_DELAI_MS / 1000} s`);
+    throw e;
+  } finally {
+    clearTimeout(minuterie);
+  }
 }
 
 // ── LE VENDEUR CONNECTÉ, LU DANS SA SESSION (2026-09-25) ────────────────────

@@ -989,15 +989,23 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   // Reprise de sync après un 403 anti-robot (une alarme PAR user — le suffixe
   // est l'userId). Cf. reprendreSyncApresRetry403 et son bandeau.
   if (alarm.name.startsWith(SYNC_RETRY403_ALARM_PREFIX)) {
-    reprendreSyncApresRetry403(alarm.name.slice(SYNC_RETRY403_ALARM_PREFIX.length)).catch((e) =>
-      console.error("[sync-dressing][retry403]", e?.message ?? e));
+    if (!REPRISE_AUTOMATIQUE_RELEVE) {
+      console.log("[sync-dressing][retry403] alarme d'une version précédente ignorée — plus de reprise automatique (05/10)");
+    } else {
+      reprendreSyncApresRetry403(alarm.name.slice(SYNC_RETRY403_ALARM_PREFIX.length)).catch((e) =>
+        console.error("[sync-dressing][retry403]", e?.message ?? e));
+    }
   }
   // Reprise de sync après un échec TECHNIQUE (onglet de travail qui n'ouvre
   // pas, canal coupé, content script muet, réseau, expiration du chien de
   // garde). Une alarme PAR user, même convention que ci-dessus.
   if (alarm.name.startsWith(SYNC_REPRISE_AUTO_ALARM_PREFIX)) {
-    reprendreSyncApresRepriseAuto(alarm.name.slice(SYNC_REPRISE_AUTO_ALARM_PREFIX.length)).catch((e) =>
-      console.error("[sync-dressing][reprise-auto]", e?.message ?? e));
+    if (!REPRISE_AUTOMATIQUE_RELEVE) {
+      console.log("[sync-dressing][reprise-auto] alarme d'une version précédente ignorée — plus de reprise automatique (05/10)");
+    } else {
+      reprendreSyncApresRepriseAuto(alarm.name.slice(SYNC_REPRISE_AUTO_ALARM_PREFIX.length)).catch((e) =>
+        console.error("[sync-dressing][reprise-auto]", e?.message ?? e));
+    }
   }
 });
 
@@ -2357,13 +2365,18 @@ function pollAndProcessJobs() {
     // Relevés d'annonces (2026-09-17) : commandes de l'app et demandes du
     // veilleur, SOUS le verrou de flux (jamais en même temps qu'un job ou
     // qu'une sync) — fire-and-forget, le run rend compte en base.
-    if (commandesAnnoncesEnAttente.length || relevesDemandes.size) {
-      withJobFlowLock("releve-annonces", traiterRelevesEnAttente).catch((e) =>
-        console.error("[releve]", e?.message ?? e));
-    }
-    if (!cmd) return;
+    // (05/10, Marine) Le dressing Vinted PASSE D'ABORD, puis les annonces : un
+    // relevé n'est plus pris en base avant d'avoir le verrou (cf.
+    // syncDressingUnlocked), et c'est la plateforme qu'on attend le plus.
+    const lancerRelevesAnnonces = () => {
+      if (commandesAnnoncesEnAttente.length || relevesDemandes.size) {
+        withJobFlowLock("releve-annonces", traiterRelevesEnAttente).catch((e) =>
+          console.error("[releve]", e?.message ?? e));
+      }
+    };
+    if (!cmd) { lancerRelevesAnnonces(); return; }
     traiterCommandeSyncDistante(cmd).catch((e) =>
-      console.error("[sync-dressing][distant]", e?.message ?? e));
+      console.error("[sync-dressing][distant]", e?.message ?? e)).finally(lancerRelevesAnnonces);
   });
 }
 
@@ -11705,17 +11718,35 @@ async function attenteSessionLeveeLocalement(job) {
   return vu > 0 && Number.isFinite(derniere) && vu > derniere;
 }
 
+// (05/10, Marine) Une requête vers la base qui ne répond jamais ne doit plus
+// figer un relevé ou un job sans un mot : au-delà de 45 s (la base coupe
+// elle-même à 8 s), la requête est abandonnée et l'appelant reçoit une erreur
+// qu'il sait déjà traiter. Un appelant qui passe son propre `signal` garde la
+// main.
+const REST_DELAI_MAX_MS = 45_000;
+
 async function restRequest(path, accessToken, init = {}, rejeu = false) {
-  const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
-      Prefer: "return=minimal",
-      ...(init.headers ?? {}),
-    },
-  });
+  const borne = init.signal ? null : new AbortController();
+  const minuterie = borne ? setTimeout(() => borne.abort(), REST_DELAI_MAX_MS) : null;
+  let res;
+  try {
+    res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/${path}`, {
+      ...init,
+      ...(borne ? { signal: borne.signal } : {}),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
+        Prefer: "return=minimal",
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (e) {
+    if (borne?.signal.aborted) throw new Error(`REST ${path.split("?")[0]} → pas de réponse en ${REST_DELAI_MAX_MS / 1000} s`);
+    throw e;
+  } finally {
+    if (minuterie) clearTimeout(minuterie);
+  }
   // Même règle que callEdgeFunction (0.6.67) : un 401 de jeton périmé se
   // rejoue une fois avec le jeton rafraîchi du même compte. PostgREST refuse
   // un JWT expiré AVANT d'exécuter quoi que ce soit.
@@ -11834,7 +11865,10 @@ const SYNC_REPRISE_INCOMPLETE_MAX_MS = 2 * 60 * 60 * 1000;
 // page (96 max) n'affichait RIEN avant la fin. Les tranches n'écrivent que
 // vers Supabase : aucun trafic Vinted supplémentaire, les pauses anti-bot
 // (entre pages uniquement) ne bougent pas.
-const SYNC_CHUNK = 8;
+// (05/10, Marine) 8 → 24 : chaque tranche coûte 5 à 6 allers-retours vers la
+// base, en série. 75 articles, c'était 10 tranches ; c'en est 4. La
+// progression bouge toujours plusieurs fois par page.
+const SYNC_CHUNK = 24;
 // Cadence des syncs MANUELLES (2026-08-03) : un run ne dure que ~7 s — sans
 // borne, le bouton se relance en boucle et c'est le compte VINTED de
 // l'utilisateur qui présente un profil de requêtes mécanique. 15 min : re-
@@ -11878,6 +11912,23 @@ const SYNC_MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
 // donnée fausse repartirait ensuite en publication, sans personne pour la voir.
 // Si le relevé échoue encore à la dernière reprise, la sync ÉCHOUE — avec le
 // vrai motif.
+// ── PLUS AUCUNE REPRISE AUTOMATIQUE D'UN RELEVÉ (05/10, règle de Nico) ──────
+// Un relevé ne démarre QUE sur « Synchroniser ». Les quatre reprises qui le
+// relançaient seules (403 anti-robot à 5/10/20 min, échec technique à 3/7/15
+// min, rattrapage au démarrage de Chrome, run figé repris par le veilleur,
+// remise en file d'un relevé d'annonces) sont COUPÉES ici, en un seul
+// interrupteur : un relevé qui n'aboutit pas dit pourquoi, en clair, et c'est
+// la personne qui relance. Les alarmes déjà armées par une version
+// précédente tombent dans le vide (cf. leurs écouteurs).
+const REPRISE_AUTOMATIQUE_RELEVE = false;
+// Le geste de la personne : « Synchroniser » dans l'app (bouton direct, demande
+// distante, relevé d'une plateforme), et la même demande reposée au retour de
+// l'extension (« :redemande »). Tout autre déclencheur est automatique : il ne
+// fait entrer AUCUNE annonce nouvelle dans le stock (règle du 05/10).
+const DECLENCHEURS_GESTE_RE = /^(bouton|bouton_distant|app)(:redemande)?$/;
+function releveEstUnGeste(declencheur) {
+  return DECLENCHEURS_GESTE_RE.test(String(declencheur ?? ""));
+}
 const SYNC_RETRY403_DELAIS_MIN = [5, 10, 20];
 const SYNC_RETRY403_ALARM_PREFIX = "fillsell-sync-retry403:"; // + userId — un nom PAR user
 // { [userId]: { runId, tentative, prochaineA, declencheur } } — l'état qui dit
@@ -11940,6 +11991,7 @@ async function annulerRetry403(userId, motif) {
 // est déjà armée pour ce user — on ne remplace JAMAIS une alarme existante
 // (create() remettrait son délai à zéro, cf. bandeau ci-dessus).
 async function programmerRetry403(userId, { runId, tentative, declencheur }) {
+  if (!REPRISE_AUTOMATIQUE_RELEVE) return null;
   const nom = alarmeRetry403(userId);
   const delaiMin = SYNC_RETRY403_DELAIS_MIN[tentative - 1];
   if (!Number.isFinite(delaiMin)) return null;
@@ -12261,6 +12313,7 @@ async function programmerRepriseAuto(userId, { runId, tentative, declencheur, mo
 // message actuel, exactement comme avant ce chantier.
 async function armerRepriseAutoSiTechnique({ userId, runId, declencheur, message, erreurCourante }) {
   const motif = String(message ?? "");
+  if (!REPRISE_AUTOMATIQUE_RELEVE) return motif;
   try {
     if (!estEchecTechniqueSync(motif)) return motif;
     const faites = await tentativesRepriseAutoFaites(userId, runId, erreurCourante);
@@ -12343,6 +12396,7 @@ const RATTRAPAGE_REPRISE_AUTO_KEY = "fillsell_rattrapage_reprise_auto";
 const RATTRAPAGE_REPRISE_AUTO_MS = 10 * 60 * 1000;
 
 async function rattraperRepriseAuto() {
+  if (!REPRISE_AUTOMATIQUE_RELEVE) return;
   try {
     if (syncDressingEnCours) return;
     const st = await chrome.storage.session.get(RATTRAPAGE_REPRISE_AUTO_KEY).catch(() => ({}));
@@ -12567,6 +12621,7 @@ function tracerVeille(accessToken, ligne) {
 // Une ronde, appelée à chaque alarme de poll. Ne fait RIEN — pas même une
 // requête réseau — tant qu'aucune sync n'a été ouverte par cette installation.
 async function veillerRunFige() {
+  if (!REPRISE_AUTOMATIQUE_RELEVE) return;
   try {
     // Cette boucle-ci vit, dans CE worker : il n'y a rien à reprendre, et c'est
     // le cas de l'immense majorité des rondes pendant une sync saine.
@@ -14291,7 +14346,7 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       console.warn(`[releve][beebs] annonces connues illisibles (${String(e?.message ?? e)}) — graines de la page seules`);
     }
     const vusParLaPage = annonces.size;
-    const idx = await sendMessageToTab(dernierTabId, { type: "BEEBS_DRESSING_INDEX", listingIds: graines, idsConnus }, 30_000)
+    const idx = await sendMessageToTab(dernierTabId, { type: "BEEBS_DRESSING_INDEX", listingIds: graines, idsConnus }, 60_000)
       .catch((e) => ({ ok: false, motif: `canal indisponible : ${String(e?.message ?? e).slice(0, 60)}` }));
     if (idx?.ok && idx.uid) {
       // L'identité du vendeur, calculée à chaque relevé et jamais écrite
@@ -14514,11 +14569,23 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
 // rendue, réseau) rend { ok:false } et la capture reprend l'ancien chemin.
 // ⛔ Même origine seulement ; la page rendue doit être CELLE de l'annonce
 //    (identifiant dans l'adresse finale), jamais une redirection.
+// (05/10) Une promesse d'API Chrome qui ne se résout jamais (onglet figé) ne
+// tient plus un relevé : au-delà du délai, une erreur nette, que l'appelant
+// traite comme tout autre échec de capture.
+function avecDelai(promesse, ms, quoi) {
+  let minuterie;
+  return Promise.race([
+    promesse,
+    new Promise((_, rejeter) => { minuterie = setTimeout(() => rejeter(new Error(`${quoi} : pas de réponse en ${Math.round(ms / 1000)} s`)), ms); }),
+  ]).finally(() => clearTimeout(minuterie));
+}
+
 async function lireHtmlMemeOrigine(url, identifiant) {
   try {
     const u = new URL(String(url), location.href);
     if (u.origin !== location.origin) return { ok: false, motif: "autre origine" };
-    const r = await fetch(u.href, { credentials: "include", headers: { Accept: "text/html" } });
+    // (05/10) Bornée : une page qui ne répond pas ne fige plus la capture.
+    const r = await fetch(u.href, { credentials: "include", headers: { Accept: "text/html" }, signal: AbortSignal.timeout(20000) });
     if (!r.ok) return { ok: false, motif: `HTTP ${r.status}` };
     if (identifiant && !String(r.url).includes(`/${identifiant}`)) return { ok: false, motif: "page rendue : une autre adresse" };
     const html = await r.text();
@@ -15208,9 +15275,9 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
         // (04/10) Beebs : la page lue par requête de même origine, sans
         // navigation ; l'ancien chemin reste le repli.
         if (platform === "beebs" && /^https:\/\/www\.beebs\.app\//.test(String(tab?.url ?? ""))) {
-          const [lu] = await chrome.scripting.executeScript({ target: { tabId }, func: lireHtmlMemeOrigine, args: [a.url, String(a.listing_id)] }).catch(() => [null]);
+          const [lu] = await avecDelai(chrome.scripting.executeScript({ target: { tabId }, func: lireHtmlMemeOrigine, args: [a.url, String(a.listing_id)] }), 30_000, "lecture de la fiche").catch(() => [null]);
           if (lu?.result?.ok && lu.result.html) {
-            const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform, lu.result.html] }).catch(() => [null]);
+            const [res] = await avecDelai(chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform, lu.result.html] }), 20_000, "capture de la fiche").catch(() => [null]);
             const c = res?.result ?? null;
             if (c && (c.photos?.length || c.description)) { capture = { ...c, lecture: "meme_origine" }; viaMemeOrigine = true; bilan.meme_origine = (bilan.meme_origine ?? 0) + 1; }
           } else if (lu?.result?.motif) {
@@ -15226,7 +15293,7 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
         }
         if (!capture) {
           await sleep(randInt(1200, 2200));
-          const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform] });
+          const [res] = await avecDelai(chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform] }), 20_000, "capture de la fiche");
           capture = res?.result ?? null;
         }
         if (!capture || (!capture.photos?.length && !capture.description)) throw new Error("fiche illisible (ni photo ni description)");
@@ -15284,6 +15351,7 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
 // quand le compteur est épuisé ou que l'écriture n'a pas pris : l'appelant
 // clôt alors le run comme avant.
 async function remettreEnFileReprise(run, token, msg, maintenant) {
+  if (!REPRISE_AUTOMATIQUE_RELEVE) return false;
   const tentative = Number((String(run?.erreur ?? "").match(RELEVE_REPRISE_TECHNIQUE_RE) ?? [])[1]) || 0;
   if (!run?.id || tentative >= RELEVE_REPRISE_TECHNIQUE_MAX) return false;
   const requeue = await restRequest(`vinted_sync_runs?id=eq.${run.id}&status=eq.running`, token, {
@@ -16234,33 +16302,21 @@ async function traiterCommandeSyncDistante(cmd) {
     console.warn("[sync-dressing][distant] cadence illisible (on laisse passer):", e?.message ?? e);
   }
 
-  let reclamee = null;
-  try {
-    reclamee = await restRequest(`vinted_sync_runs?id=eq.${cmd.id}&status=eq.queued`, token, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        status: "running", claimed_at: maintenant(),
-        // started_at remis à MAINTENANT : sans ça, la durée affichée du run
-        // engloberait les heures d'attente entre le clic mobile et le réveil.
-        started_at: maintenant(), updated_at: maintenant(),
-        extension_build: FILLSELL_BUILD_ID,
-      }),
-    });
-  } catch (e) {
-    console.error("[sync-dressing][distant] réclamation impossible:", e?.message ?? e);
-    return;
-  }
-  if (!Array.isArray(reclamee) || !reclamee.length) {
-    console.log(`[sync-dressing][distant] commande ${cmd.id} déjà réclamée ailleurs — ignorée`);
-    return;
-  }
-
-  console.log(`[sync-dressing][distant] commande ${cmd.id} réclamée — synchronisation lancée`);
-  await syncDressingVinted({ declencheur: "bouton_distant" });
+  // ── LA COMMANDE N'EST PRISE QU'AU MOMENT OÙ ELLE DÉMARRE (05/10, Marine) ──
+  // Avant, la ligne passait en 'running' ICI, puis attendait le verrou de flux
+  // derrière les relevés d'annonces du même cycle (Beebs : 8 min chez Marine).
+  // handler-watch la voyait « en cours, 0 article » et l'arrêtait au bout de
+  // 5 min en écrivant « le défaut est chez nous » ; puis la boucle, enfin
+  // libre, ne trouvait plus de ligne 'running' et en créait une NEUVE sous le
+  // déclencheur « bouton_distant » écrit en dur — un faux clic. La prise vit
+  // désormais SOUS le verrou (syncDressingUnlocked) : une demande qui attend
+  // reste 'queued', l'app dit « en attente de ton ordinateur », et la ligne
+  // qui tourne garde son déclencheur d'origine.
+  console.log(`[sync-dressing][distant] commande ${cmd.id} reçue — prise au démarrage, sous le verrou`);
+  await syncDressingVinted({ declencheur: "bouton_distant", commandeId: cmd.id });
 }
 
-async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false, repriseAuto = false, repriseVeille = false } = {}) {
+async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false, repriseAuto = false, repriseVeille = false, commandeId = null } = {}) {
   // Garde mémoire : deux déclenchements rapprochés (double-clic, alarme qui
   // tombe pendant un clic) ne doivent pas lire le dressing deux fois. La base
   // porte la même garantie (index unique WHERE status='running'), celle-ci
@@ -16291,7 +16347,22 @@ async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = fa
   // le même que celui d'une publication en cours. Sans ce verrou on rejouerait
   // l'incident du 2026-07-12 (deux flux se disputant le même onglet).
   try {
-    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur, repriseRetry403, repriseAuto, repriseVeille));
+    return await withJobFlowLock("sync-dressing", async () => {
+      // ── LE SERVICE WORKER RESTE ÉVEILLÉ PENDANT TOUT LE RELEVÉ (05/10) ────
+      // Marine, 19:01:32 : 64 articles sur 75 écrits, puis plus rien, sans
+      // erreur. Pendant l'écriture des lots, la boucle ne fait que des fetch(),
+      // qui ne comptent pas pour Chrome : ~30 s après le dernier appel d'API
+      // d'extension, le service worker est tué — boucle, minuteries et verrou
+      // avec lui, et la ligne reste 'running' jusqu'au chien de garde. Même
+      // cause, même remède que le relevé des annonces (SPGL, 25/09) : un appel
+      // d'API toutes les 20 s, du premier au dernier geste.
+      const reveilDressing = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20_000);
+      try {
+        return await syncDressingUnlocked(declencheur, repriseRetry403, repriseAuto, repriseVeille, commandeId);
+      } finally {
+        clearInterval(reveilDressing);
+      }
+    });
   } finally {
     syncDressingEnCours = false;
   }
@@ -16329,7 +16400,7 @@ async function boutiqueEncoreAConfirmer(userId, token) {
   };
 }
 
-async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false, repriseVeille = false) {
+async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false, repriseVeille = false, commandeId = null) {
   const session = await getValidSession();
   if (!session?.access_token) {
     console.log("[sync-dressing] pas de session FillSell — abandon silencieux");
@@ -16339,13 +16410,44 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   const userId = decodeJwtSub(token);
   if (!userId) return { ok: false, reason: "no_user" };
 
+  // ── PRISE DE LA COMMANDE, SOUS LE VERROU (05/10, Marine) ─────────────────
+  // Cf. traiterCommandeSyncDistante : la ligne ne passe en 'running' qu'ici,
+  // au moment où la lecture commence vraiment. Prise ratée (déjà prise
+  // ailleurs, annulée, ou un autre relevé du dressing tourne encore) : on ne
+  // crée RIEN — la demande reste en file et repart au poll suivant.
+  if (commandeId) {
+    const maintenantIso = new Date().toISOString();
+    let prise = null;
+    try {
+      prise = await restRequest(`vinted_sync_runs?id=eq.${commandeId}&status=eq.queued`, token, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          status: "running", claimed_at: maintenantIso,
+          // started_at remis à MAINTENANT : la durée du run ne compte pas
+          // l'attente entre la demande et le réveil de l'ordinateur.
+          started_at: maintenantIso, updated_at: maintenantIso,
+          extension_build: FILLSELL_BUILD_ID,
+        }),
+      });
+    } catch (e) {
+      console.warn(`[sync-dressing][distant] commande ${commandeId} non prise (${e?.message ?? e}) — laissée en file`);
+      return { ok: false, reason: "commande_non_prise" };
+    }
+    if (!Array.isArray(prise) || !prise.length) {
+      console.log(`[sync-dressing][distant] commande ${commandeId} déjà prise ou close — ignorée`);
+      return { ok: false, reason: "commande_deja_reclamee" };
+    }
+    console.log(`[sync-dressing][distant] commande ${commandeId} prise (${prise[0].declencheur ?? "?"}) — lecture lancée`);
+  }
+
   // ── Reprise ───────────────────────────────────────────────────────────────
   // Un run laissé 'running' par une interruption (onglet fermé, PC éteint,
   // service worker tué) est REPRIS à sa page courante au lieu de tout relire.
   let run = null;
   try {
     const enCours = await restRequest(
-      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.running&select=id,page_suivante,items_vus,items_crees,items_maj,erreur&limit=1`,
+      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.running&select=id,page_suivante,items_vus,items_crees,items_maj,erreur,declencheur&limit=1`,
       token, { headers: { Prefer: "return=representation" } },
     );
     run = Array.isArray(enCours) && enCours.length ? enCours[0] : null;
@@ -16366,7 +16468,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       const incomplets = await restRequest(
         `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.incomplete` +
         `&started_at=gte.${limiteIso}&page_suivante=lte.${SYNC_MAX_PAGES}` +
-        `&order=started_at.desc&limit=1&select=id,page_suivante,items_vus,items_crees,items_maj,erreur`,
+        `&order=started_at.desc&limit=1&select=id,page_suivante,items_vus,items_crees,items_maj,erreur,declencheur`,
         token, { headers: { Prefer: "return=representation" } },
       );
       const candidat = Array.isArray(incomplets) && incomplets.length ? incomplets[0] : null;
@@ -16513,6 +16615,17 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     run = Array.isArray(cree) && cree.length ? cree[0] : null;
     if (!run) return { ok: false, reason: "run_non_cree" };
   }
+
+  // ── UN RELEVÉ AUTOMATIQUE N'IMPORTE RIEN (05/10, règle de Nico) ──────────
+  // Seul le geste de la personne (« Synchroniser » : bouton, bouton distant,
+  // app) fait entrer des annonces NOUVELLES dans le stock. Les relevés
+  // automatiques qui restent (veille quotidienne, vérification d'un retrait)
+  // ne servent qu'à voir les ventes et les disparitions : ils mettent à jour
+  // les fiches CONNUES et n'en créent aucune. Le déclencheur est celui de la
+  // LIGNE (celui de la demande servie), jamais le nom du chemin de code.
+  const declencheurDuRun = String(run.declencheur ?? declencheur ?? "");
+  const releveImporte = releveEstUnGeste(declencheurDuRun);
+  if (!releveImporte) console.log(`[sync-dressing] relevé de veille (${declencheurDuRun}) — aucune fiche nouvelle ne sera créée`);
 
   // Tout déclenchement qui n'est PAS la reprise programmée elle-même désarme
   // une reprise 403 en attente : sans ça, l'alarme ré-ouvrirait l'ancien run
@@ -16768,7 +16881,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       if (cause403 === "session_absente") {
         await annulerRetry403(userId, "403 sans session Vinted — rien à retenter avant connexion");
         return await echec(
-          "[cause403] session_absente — aucune session Vinted dans ce navigateur (HTTP 403 sur la sonde) : " +
+          "[pas_connecte] [cause403] session_absente — aucune session Vinted dans ce navigateur (HTTP 403 sur la sonde) : " +
           "connecte-toi sur vinted.fr dans ce navigateur, puis relance la synchronisation.",
         );
       }
@@ -16793,7 +16906,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // Le segment [cause403] SURVIT à l'échec définitif : c'est lui la mesure
       // en base — l'ancien code écrasait toute trace au moment de l'échec.
       return await echec(
-        `Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
+        `[anti_robot] Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
         "la connexion Vinted n'a donc pas pu être vérifiée. " +
         "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause. " +
         `| [cause403] ${cause403}`,
@@ -16803,7 +16916,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // Verdict inconnu NON-403 (théorique — la sonde ne le pose aujourd'hui
       // que sur 403) : échec direct, même message, JAMAIS de reprise armée.
       return await echec(
-        `Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
+        `[anti_robot] Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
         "la connexion Vinted n'a donc pas pu être vérifiée. " +
         "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause.",
       );
@@ -16835,9 +16948,13 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // Sur un 401 confirmé par TROIS lectures dont deux après rechargement, on
       // ne dit plus « session absente ou expirée » comme si on le savait : on
       // dit ce qu'on a fait et ce qu'on a obtenu. C'était faux chez Xouxou.
-      const motif = resondes401 && ident?.httpStatus === 401
-        ? `Vinted a refusé la lecture du compte ${resondes401 + 1} fois de suite (HTTP 401), rechargement de la page compris. `
-          + "Si tu es bien connecté(e) à Vinted dans ce navigateur, réessaie dans quelques minutes ; sinon, reconnecte-toi."
+      // (05/10, Marine) Le refus de lire le compte Vinted, c'est « pas connectée
+      // sur cet ordinateur » : il part avec le marqueur [pas_connecte] et les
+      // mots « aucune session Vinted », ceux que l'app et plateformes_verite
+      // lisent pour dire « Connecte-toi à Vinted sur ton ordinateur » et
+      // proposer « Me connecter ». Le détail technique reste après, pour nous.
+      const motif = ident?.httpStatus === 401
+        ? `[pas_connecte] aucune session Vinted dans ce navigateur — Vinted a refusé la lecture du compte ${resondes401 + 1} fois (HTTP 401), rechargement de la page compris.`
         : `sonde de session Vinted : ${ident?.error ?? "échec inconnu"}${codeHttp}`;
       return await echec(`${motif}${noteResonde401}`);
     }
@@ -17144,7 +17261,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // fausserait la comparaison vu/annoncé de la garde (b).
       for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
       const bilan = await enregistrerArticlesDressing(tranche, {
-        token, userId, reservesRepublish,
+        token, userId, reservesRepublish, importer: releveImporte,
         // Estampillage à l'OBSERVATION (multi-boutiques, 2026-09-03) : chaque
         // run marque ce qu'il voit — c'est ce qui permet le filtre par
         // boutique dans l'app et le cloisonnement des republications. Jamais
@@ -17554,7 +17671,7 @@ function attributsDepuisDetail(natif, at, catalogIdDepot = null) {
   }, "vinted_detail", at);
 }
 
-async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [], compteObserve = null }) {
+async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [], compteObserve = null, importer = true }) {
   if (!articles.length) return { crees: 0, majs: 0 };
 
   // Ce qui existe déjà, pour distinguer création et mise à jour (l'upsert seul
@@ -17821,6 +17938,9 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   const lignes = articles.filter((a) => {
     if (patchesLegers.has(a.vinted_item_id)) return false;
     if (vusDansLeLot.has(a.vinted_item_id)) return false;
+    // Relevé de veille (05/10) : une annonce que le stock ne connaît pas n'y
+    // entre pas — elle attend le prochain « Synchroniser » de la personne.
+    if (!importer && !parVintedId.has(a.vinted_item_id)) return false;
     vusDansLeLot.add(a.vinted_item_id);
     return true;
   }).map((a, i) => {
@@ -17942,7 +18062,10 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
     favourite_count: a.favoris,
     status: a.statut,
   }));
-  await restRequest("vinted_listing_snapshots?on_conflict=user_id,vinted_item_id,captured_on", token, {
+  // (05/10) Relevés du jour et jobs de suivi partent EN MÊME TEMPS : ils ne
+  // dépendent l'un de l'autre en rien, et chaque aller-retour en moins compte
+  // sur une connexion lente (Marine : 5 à 20 s entre deux requêtes).
+  const ecritureReleves = restRequest("vinted_listing_snapshots?on_conflict=user_id,vinted_item_id,captured_on", token, {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     body: JSON.stringify(releves),
@@ -17959,7 +18082,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // jobs 'published' sur le même platform_listing_id. Les échecs d'écriture
   // aussi : leur inventaire_id ne pointerait sur rien (FK cross_post_jobs).
   const nonEcrits = new Set(echecs.map((f) => f.vinted_item_id));
-  const aCreer = articles.filter((a) =>
+  const aCreer = !importer ? [] : articles.filter((a) =>
     a.statut === "active" && a.url && !parVintedId.has(a.vinted_item_id)
     && !patchesLegers.has(a.vinted_item_id) && !nonEcrits.has(a.vinted_item_id));
   if (aCreer.length) {
@@ -17981,6 +18104,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       method: "POST", body: JSON.stringify(jobs),
     }).catch((e) => console.warn("[sync-dressing] jobs de suivi:", e?.message ?? e));
   }
+  await ecritureReleves;
 
   // Un PATCH léger compte comme une mise à jour : l'article existait, la
   // sync n'a fait que lui adosser son identité Vinted et ses compteurs.
