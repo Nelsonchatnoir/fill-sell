@@ -297,6 +297,8 @@ qui survit à ça, c'est du code.
 
 ## 4. Règles métier qui ne se négocient pas
 
+⛔ **Relevé d'import = geste seul (05/10)** : jamais lancé tout seul (ni à l'inscription, ni en reprise) ; la veille gardée (cron, veilleur, retraits, eBay API) n'importe rien et ne s'affiche pas. Détail : `docs/agents/consignes-2026-09-28.md`.
+
 ### 4.1 Import, publication, republication
 
 - **Import ≠ publication, POUR LE COMPTAGE SEULEMENT.** Un import (annonce

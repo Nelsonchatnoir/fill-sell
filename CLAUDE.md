@@ -212,6 +212,23 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   AVANCE n'est jamais coupé ; un arrêt ne conclut JAMAIS rien (ni vendu, ni
   disparu, ni effacé) et laisse sa raison dans les journaux, jamais à l'écran.
 
+## ⛔ UN RELEVÉ D'IMPORT NE PART QUE SUR « SYNCHRONISER » (05/10, Nico)
+
+Cas Marine (inscrite 18:28, partie 19:13 ; `docs/enquetes/marine-0510/RAPPORT.md`) :
+trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
+« le défaut est chez nous ». Désormais :
+- relevé d'import = **geste** (`bouton`, `bouton_distant`, `app`, et leur
+  `:redemande`) ; plus de premier relevé serveur ni de reprise automatique
+  (extension 0.6.99 `REPRISE_AUTOMATIQUE_RELEVE = false`, handler-watch
+  `RELANCE_AUTOMATIQUE_RELEVE = false`, garde `garde_releve_sans_geste`) ;
+- la **veille** gardée pour les ventes et les retraits (`cron`, `veilleur`,
+  `serveur:retrait_*`, `serveur:verif_redepot`, `serveur:quotidien_api`)
+  n'importe RIEN et ne s'affiche jamais dans l'app ;
+- le relevé est pris **au démarrage, sous le verrou**, le service worker reste
+  éveillé, chaque requête est bornée ;
+- chaque fin se dit par sa **situation** (`situationFinReleve`), jamais par le
+  texte brut ; « Connecte-toi à X sur ton ordinateur » quand c'est ça.
+
 ## ⛔ TÂCHE AUTOMATIQUE OU RELECTURE EN BOUCLE : MESURÉE, BORNÉE (04/10)
 
 Le 04/10, la base a saturé deux fois (12:22 et 17:40, CPU 99 %) : app et web
