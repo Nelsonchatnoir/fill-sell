@@ -161,6 +161,10 @@ console.log("7. UN SEUL ESSAI PAR COMPTE FILLSELL, TOUS CANAUX");
   ok(r4.motif === "essai_deja_pris", "essai Apple PUIS tentative Google → NON activée");
   ok(verdictEssaiStore(apresGoogle, "google", "tokG").ok === true, "rejeu du MÊME essai (même canal, même référence) → toujours accepté");
   ok(verdictEssaiStore({}, "apple", "A1").ok === true, "premier essai, quel que soit le canal → accepté");
+  // (05/10) La préparation a refusé l'essai (appareil / compte de plateforme déjà vus) :
+  ok(verdictEssaiStore({ cloud_essai_interdit: true }, "apple", "A1").raison === "essai_interdit", "préparation refusée (appareil ou compte de plateforme déjà vus) → semaine du store NON activée");
+  const r5 = ecritureCloudStore({ canal: "apple", lecture: introApple, sens: "on", ref: "A5", profil: { cloud_essai_interdit: true }, maintenant: T0 });
+  ok(r5.motif === "essai_interdit" && r5.update.cloud_essai_debut === undefined && r5.update.is_cloud === false, "…aucune date d'essai écrite, Cloud démarre au premier paiement réel");
 }
 
 console.log(echecs === 0 ? '\nTOUT VERT' : `\n${echecs} ÉCHEC(S)`);

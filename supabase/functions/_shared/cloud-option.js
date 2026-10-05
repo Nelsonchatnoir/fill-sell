@@ -104,7 +104,12 @@ export function etatCloud(p, maintenant = Date.now()) {
  * @returns {{ ok: boolean, raison: string | null }}
  */
 export function verdictEssaiStore(profil, canal, ref) {
-  if (profil?.cloud_essai_debut == null) return { ok: true, raison: null };
+  // (05/10) La PRÉPARATION a refusé l'essai (appareil ou compte de plateforme
+  // déjà vus sur l'essai d'un autre compte — cloud_essai_permis, lu par
+  // _shared/cloud-essai-store.ts) : la semaine du store n'est pas activée.
+  if (profil?.cloud_essai_debut == null) {
+    return profil?.cloud_essai_interdit === true ? { ok: false, raison: "essai_interdit" } : { ok: true, raison: null };
+  }
   if (profil?.cloud_canal === canal && ref != null && profil?.cloud_ref === ref) return { ok: true, raison: null };
   return { ok: false, raison: "essai_deja_pris" };
 }
