@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-10-05-colis-choix-cadenceur (0.6.97 : format de colis = le choix de la personne, relu après le clic et juste avant le dépôt, sinon le pré-coché de Vinted, sinon une question — plus jamais « Petit » d'office ; absence de marque selon la liste fermée du serveur et suggestions triées comme l'app ; pauses humaines à échéances qui rattrapent le retard des réveils sur Mac, attentes et battement sur le Worker, remplissage_mesures dans le résultat) · 2026-10-02-colis-demande (0.6.85 : format de colis inconnu ou non offert → demandé avant tout retrait, jamais choisi à la place de la personne) · 2026-10-02-colis-feu-vert-vendeur (0.6.84 : format de colis posé dans l'envoi quand le formulaire l'oublie, retrait refusé tant qu'il n'est pas en main ; feu vert de l'arrière-plan avant tout retrait une-passe ; vendeur lu en écartant le compte connecté ; compte bloqué nommé) · 2026-09-29-preuve-boutique-delete (0.6.80 : vendeur de la page exacte et session relus avant chaque DELETE ; inconnue et boutique différente restent deux verdicts distincts ; boutique du dépôt estampillée après succès) · 2026-09-28-rayon-deplace-page-annonce (0.6.79 : un rayon du formulaire d édition absent de l arbre du compte — Vinted remanie ses catégories compte par compte, Casio 5570 — est relu sur la page de l annonce, vérifié feuille de l arbre et fil d Ariane ; sinon capture incomplète comme avant) · 2026-09-25-zone-euro (0.6.69 : sur une page Vinted NON française — compte italien, espagnol… servi sur vinted.fr dans sa langue — catégorie, état et couleurs posés par IDENTIFIANT Vinted, jamais par libellé ; page française inchangée) · 2026-09-24-rayon-neuf-seulement (0.6.66 : un rayon Vinted qui n accepte que du neuf face a un article porte demande le RAYON, jamais clos ni ecarte ; releve d options sans avertissement) · 2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -257,7 +257,7 @@ async function libellesParOuvertureDeLaListe(code, ids) {
     const champ = document.querySelector(`[data-testid="category-${CSS.escape(code)}-single-list-input"], [data-testid="category-${CSS.escape(code)}-single-list_search-input"]`);
     if (!champ) return [];
     champ.click();
-    await new Promise((r) => setTimeout(r, 700));
+    await sleep(700); // (05/10) minuteur du Worker, plus celui de la page (bridé dans l'onglet caché)
     const out = ids.map((id) => {
       const el = document.querySelector(`[data-testid="${CSS.escape(code)}-${Number(id)}--title"]`);
       return String(el?.textContent ?? "").trim() || null;
@@ -365,6 +365,13 @@ async function computeVintedRequiredState() {
   // package_type_selector_<id> et leur libellé) partent au catalogue du rayon,
   // en « id|libellé » (« 5 kg » existe sous plusieurs ids selon le groupe) ;
   // l'app les relit quand sa table générée n'a rien. Jamais requis : un relevé.
+  // (05/10) + L'EXEMPLE sous chaque taille (texte de la cellule, ex. « Pour
+  // les articles qui tiennent dans une grande enveloppe »), en
+  // « id|libellé|exemple », dans la clé `exemples` du MÊME relevé. ⛔ Pas dans
+  // `options` : l'app lit `options` par /^(\d+)\|(.+)$/ (grilleRelevee-
+  // DepuisOptions, src/utils/vintedColis.js) — « 1|Petit|Pour… » y deviendrait
+  // le libellé « Petit|Pour… ». `options` reste « id|libellé », octet pour
+  // octet ; `exemples` n'est rangé que si le background le lit.
   {
     const offertsColis = [...document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]')];
     const grilleColis = offertsColis.map((r) => {
@@ -373,8 +380,12 @@ async function computeVintedRequiredState() {
         .replace(/Recommandé/gi, "").trim();
       return Number.isInteger(id) && id > 0 && titre ? `${id}|${titre}` : null;
     }).filter(Boolean);
+    const exemplesColis = lireGrilleColisFormulaire()
+      .filter((g) => g.libelle)
+      .map((g) => `${g.id}|${g.libelle}|${String(g.exemple ?? "").replace(/\|/g, "/").slice(0, 160)}`);
     if (grilleColis.length && !discovered.some((d) => d.key === "package_size")) {
       discovered.push({ key: "package_size", label: "Format du colis", required: false, inputType: "radio", options: grilleColis, source: "dom" });
+      discovered[discovered.length - 1].exemples = exemplesColis;
     }
   }
   // hadConfig : avait-on une BASE pour juger les requis ? attrs null = la sonde
@@ -612,6 +623,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
         success: false,
         error: String(err?.message ?? err),
         ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
+        // (05/10) Mesures du remplissage et bilan du colis, portés par l'erreur.
+        ...(err?.remplissage_mesures ? { remplissage_mesures: err.remplissage_mesures } : {}),
+        ...(err?.colis_bilan ? { colis_bilan: err.colis_bilan } : {}),
       }));
 
     return true; // réponse asynchrone
@@ -2473,14 +2487,43 @@ async function findDeleteByText() {
 
 // waitFor local à la suppression (vinted.js n'avait que waitForElement, à
 // sélecteur fixe — ici la condition est composée).
-async function waitFor(fn, timeoutMs = 5000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const value = fn();
-    if (value) return value;
-    await sleep(150);
-  }
-  return null;
+// (05/10, lenteur Mac) Plus de boucle sleep(150) : la condition est relue à
+// chaque mutation du DOM (MutationObserver — aucun réveil de minuteur, donc
+// rien que macOS puisse retarder), plus une relecture de filet toutes les
+// 150 ms et l'échéance, toutes deux tenues par le Worker (une condition peut
+// porter sur une propriété — value, checked — qu'aucune mutation ne signale).
+// Même contrat : la valeur dès qu'elle est vraie, null à l'échéance, une
+// exception de la condition remonte.
+function waitFor(fn, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    let regle = false;
+    let observer = null;
+    let arreterFilet = null;
+    let annulerEcheance = null;
+    const finir = (rendre, v) => {
+      if (regle) return;
+      regle = true;
+      observer?.disconnect();
+      arreterFilet?.();
+      annulerEcheance?.();
+      rendre(v);
+    };
+    const lire = () => {
+      if (regle) return;
+      let v;
+      try { v = fn(); } catch (e) { finir(reject, e); return; }
+      if (v) finir(resolve, v);
+    };
+    lire();
+    if (regle) return;
+    observer = new MutationObserver(lire);
+    observer.observe(document.body ?? document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+    arreterFilet = repeterSurWorker(150, lire);
+    annulerEcheance = planifierSurWorker(timeoutMs, () => {
+      lire();
+      finir(resolve, null);
+    });
+  });
 }
 
 // ── Remplissage du formulaire ──────────────────────────────────────────────────
@@ -2532,6 +2575,8 @@ function estPageBotShieldVinted() {
 // tant qu'aucun port n'est ouvert (drapeau serveur éteint = rien ne change).
 const FILL_PORT_NOM = "fillsell-remplissage";
 function marquerPhase(phase, envoye) {
+  // (05/10) Chaque phase est aussi un jalon horodaté des mesures du remplissage.
+  if (phase) jalonRemplissage(`phase:${phase}`);
   try {
     const r = globalThis.__fillsellRemplissage;
     if (!r) return;
@@ -2549,6 +2594,9 @@ function resultatDepuisErreurRemplissage(err) {
     success: false,
     error: String(err?.message ?? err),
     ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
+    // (05/10) Mesures et bilan du colis, même quand le remplissage a levé.
+    ...(err?.remplissage_mesures ? { remplissage_mesures: err.remplissage_mesures } : {}),
+    ...(err?.colis_bilan ? { colis_bilan: err.colis_bilan } : {}),
   };
 }
 function lancerRemplissageUnique(job) {
@@ -2566,14 +2614,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
   globalThis.__fillsellPortEcouteur = true;
   chrome.runtime.onConnect.addListener((port) => {
     if (port?.name !== FILL_PORT_NOM) return;
+    // (05/10) Le battement est tenu par le Worker (repeterSurWorker), plus par
+    // un setInterval de la page : bridé dans l'onglet caché, il pouvait
+    // manquer ses 20 s et laisser croire au background que la page était
+    // morte. battement = fonction d'arrêt.
     let battement = null;
     const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
     const suivre = (jobId) => {
-      clearInterval(battement);
-      battement = setInterval(() => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }), 20_000);
+      battement?.();
+      battement = repeterSurWorker(20_000, () => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }));
       const r = globalThis.__fillsellRemplissage;
       const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
-      p.then((resultat) => { clearInterval(battement); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
+      p.then((resultat) => { battement?.(); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
     };
     port.onMessage.addListener((m) => {
       if (!m) return;
@@ -2589,12 +2641,110 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__
       }
       if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
     });
-    port.onDisconnect.addListener(() => { clearInterval(battement); /* le remplissage continue ; son résultat reste dans la page */ });
+    port.onDisconnect.addListener(() => { battement?.(); /* le remplissage continue ; son résultat reste dans la page */ });
   });
 }
 // ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
 
+// ── MESURES DU REMPLISSAGE (05/10, point 9 — Carla et Ciddjy, sur Mac) ──────
+// Remplissage Vinted : médiane 205-254 s sur Mac contre ~50 s sur Windows.
+// Pour le prouver poste par poste (et prouver le cadenceur), chaque
+// remplissage rend un relevé compact dans son RÉSULTAT, champ
+// `remplissage_mesures` :
+//   { total_ms, etapes: [{ nom, ms, a }], reveils, retard_ms, rattrapees,
+//     rattrape_ms, visibilite, systeme }
+//   · etapes : chaque etape() (ms = sa durée) et chaque jalon / phase
+//     (ms = temps depuis le jalon précédent) ; a = instant de fin depuis le
+//     début du remplissage (40 entrées au plus) ;
+//   · reveils / retard_ms : attentes à minuteur (sleep et pauses non
+//     couvertes) et leur retard cumulé (réel − demandé) ;
+//   · rattrapees / rattrape_ms : pauses humaines couvertes par le cadenceur ;
+//   · visibilite : états successifs de document.visibilityState
+//     (« hidden », « hidden→visible »…) ;
+//   · systeme : la plateforme du navigateur (MacIntel, Win32, macOS…).
+// Rien n'est écrit en base d'ici : le background range le résultat.
+let mesuresRemplissageEnCours = null;
+const maintenantMs = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+function demarrerMesuresRemplissage() {
+  const e = cadenceur.etat;
+  cadenceur.oublierDette();
+  const t0 = maintenantMs();
+  const m = {
+    t0, dernier: t0, etapes: [], colisBilan: null, ecouteur: null,
+    base: { reveils: e.reveils, retardMs: e.retardMs, rattrapees: e.rattrapees, rattrapeMs: e.rattrapeMs },
+    visibilite: [String(document.visibilityState ?? "?")],
+  };
+  m.ecouteur = () => {
+    const v = String(document.visibilityState ?? "?");
+    if (m.visibilite[m.visibilite.length - 1] !== v && m.visibilite.length < 8) m.visibilite.push(v);
+  };
+  try { document.addEventListener("visibilitychange", m.ecouteur); } catch { /* mesure seulement */ }
+  mesuresRemplissageEnCours = m;
+}
+// debut fourni = durée d'une étape ; sinon temps écoulé depuis le jalon précédent.
+function jalonRemplissage(nom, debut = null) {
+  const m = mesuresRemplissageEnCours;
+  if (!m) return;
+  const t = maintenantMs();
+  if (m.etapes.length < 40) {
+    m.etapes.push({ nom: String(nom).slice(0, 40), ms: Math.round(t - (debut ?? m.dernier)), a: Math.round(t - m.t0) });
+  }
+  m.dernier = t;
+}
+function noterColisBilan(bilan) {
+  if (mesuresRemplissageEnCours) mesuresRemplissageEnCours.colisBilan = bilan ?? null;
+}
+function terminerMesuresRemplissage() {
+  const m = mesuresRemplissageEnCours;
+  if (!m) return { mesures: null, colisBilan: null };
+  mesuresRemplissageEnCours = null;
+  try { document.removeEventListener("visibilitychange", m.ecouteur); } catch { /* mesure seulement */ }
+  const e = cadenceur.etat;
+  let systeme = null;
+  try { systeme = String(navigator.userAgentData?.platform || navigator.platform || "").slice(0, 30) || null; } catch { systeme = null; }
+  return {
+    colisBilan: m.colisBilan,
+    mesures: {
+      total_ms: Math.round(maintenantMs() - m.t0),
+      etapes: m.etapes,
+      reveils: e.reveils - m.base.reveils,
+      retard_ms: Math.round(e.retardMs - m.base.retardMs),
+      rattrapees: e.rattrapees - m.base.rattrapees,
+      rattrape_ms: Math.round(e.rattrapeMs - m.base.rattrapeMs),
+      visibilite: m.visibilite.join("→"),
+      systeme,
+    },
+  };
+}
+// L'entrée du remplissage : mesure autour du formulaire, puis rend le résultat
+// augmenté de `remplissage_mesures` (et `colis_bilan` quand l'étape colis a
+// conclu) — succès, échec rendu ou exception (portés par l'erreur, relayés
+// par resultatDepuisErreurRemplissage et le canal FILL_LISTING).
 async function fillListingForm(job) {
+  demarrerMesuresRemplissage();
+  let resultat;
+  try {
+    resultat = await remplirFormulaireVinted(job);
+  } catch (err) {
+    const fin = terminerMesuresRemplissage();
+    try {
+      if (err && typeof err === "object") {
+        err.remplissage_mesures = fin.mesures;
+        if (fin.colisBilan) err.colis_bilan = fin.colisBilan;
+      }
+    } catch { /* erreur gelée : la mesure se perd, pas le verdict */ }
+    throw err;
+  }
+  const fin = terminerMesuresRemplissage();
+  if (!resultat || typeof resultat !== "object") return resultat;
+  return {
+    ...resultat,
+    ...(fin.mesures ? { remplissage_mesures: fin.mesures } : {}),
+    ...(fin.colisBilan ? { colis_bilan: fin.colisBilan } : {}),
+  };
+}
+
+async function remplirFormulaireVinted(job) {
   console.log("[vinted] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
   // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
@@ -2932,6 +3082,8 @@ async function fillListingForm(job) {
   const onePass = job.platform_fields?.republish_delete_then_submit ?? null;
   let onePassDeleted = false;
   const etape = async (libelle, fn) => {
+    // (05/10) Durée de l'étape relevée dans remplissage_mesures.
+    const debutEtape = maintenantMs();
     try {
       return await fn();
     } catch (e) {
@@ -2945,6 +3097,8 @@ async function fillListingForm(job) {
       // Un panneau resté ouvert recouvrirait le bouton Publier.
       await closeAnyOpenDropdown().catch(() => {});
       return null;
+    } finally {
+      jalonRemplissage(libelle, debutEtape);
     }
   };
 
@@ -3359,6 +3513,7 @@ async function fillListingForm(job) {
       };
     }
   }
+  jalonRemplissage("Marque");
 
   // ── High-Tech (2026-07-13, relevé RÉEL du formulaire Téléphones portables —
   // échec 400 du job f69e319c : model / internal_memory_capacity / sim_lock
@@ -3749,32 +3904,38 @@ async function fillListingForm(job) {
     }
   }
 
+  jalonRemplissage("Attributs");
   if (job.price != null) await fillPriceField(job.price);
+  jalonRemplissage("Prix");
 
-  // Format de colis — RÈGLE PRODUIT (Nico, 2026-07-12) : sur TOUTE la branche
-  // Mode (vêtements ET chaussures), c'est TOUJOURS « Petit », sans exception.
-  // ⚠️ Ne pas se fier au "défaut pré-coché" : Vinted pré-coche selon la
-  // CATÉGORIE et met « Moyen » sur les chaussures (constaté sur l'annonce New
-  // Balance de ce soir, colis parti en Moyen). On clique donc explicitement.
-  // Hors Mode (le peu qui existe sur Vinted), aucune donnée de poids n'existe
-  // dans le projet : on laisse le défaut de Vinted plutôt que de deviner.
-  const isFashionJob =
-    (job.platform_fields?.categorie ?? "") === "Mode" ||
-    /^(femmes?|hommes?|enfants?|filles?|gar[çc]ons?)$/i.test(String(fields.categoryPath?.[0] ?? "")) ||
-    Boolean(String(job.platform_fields?.taille ?? "").trim());
-  const wantedPackage = fields.packageSize ?? (isFashionJob ? "Petit" : null);
+  // ══ FORMAT DU COLIS — RIEN DE DEVINÉ (05/10, décision de Nico) ════════════
+  // « Rien de deviné ; le choix de la personne est retenu. » Jusqu'ici, la
+  // règle du 12/07 FORÇAIT « Petit » sur toute la Mode (isFashionJob) : un
+  // format deviné, posé par-dessus ce que Vinted recommandait (« Moyen » sur
+  // les chaussures). Désormais :
+  //   · un CHOIX porté par le job (colisChoisiDuJob : réponse colis_choisi,
+  //     packageSizeId de l'app — colis_source 'manuel'/'retenu' —, ou format
+  //     de l'annonce d'origine en républication) est coché, puis RELU après
+  //     le clic (selectPackageSize) et juste avant le dépôt (plus bas) ;
+  //   · choix non proposé par ce formulaire → QUESTION « Format du colis »
+  //     (publication) — jamais un repli silencieux ;
+  //   · AUCUN choix → on ne touche à rien : Vinted garde le format qu'il
+  //     pré-coche. Rien de coché alors que la section est là → la question.
+  // Le bilan (colis_bilan) dit ce qui est parti : id, libellé, source.
+  const colisChoix = colisChoisiDuJob(fields, recreation || Boolean(onePass));
+  const wantedPackage = colisChoix?.libelle ?? null;
   // packageSizeId : posé par la recréation de republication (id RELEVÉ sur
   // l'annonce d'origine) — prime sur le libellé, qui est ambigu hors Mode
   // (« 5 kg » = id 8 ou 11 selon le groupe de catégories, cf. la table).
-  const wantedPackageId = Number(fields.packageSizeId);
-  const colisVoulu = Boolean(wantedPackage || (Number.isFinite(wantedPackageId) && wantedPackageId > 0));
+  const wantedPackageId = Number(colisChoix?.id ?? NaN);
+  const colisVoulu = Boolean(colisChoix);
   // Section colis non rendue à cet instant (cf. selectPackageSize) : mémorisé
   // pour la DERNIÈRE PASSE, juste avant le dépôt.
   let colisSectionAbsente = false;
   let colisFormatNonOffert = false;
   if (colisVoulu) {
-    const verdictColis = await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
-    if (verdictColis === "defaut_vinted") colisFormatNonOffert = true;
+    const verdictColis = await selectPackageSize(wantedPackage, wantedPackageId);
+    if (verdictColis === "defaut_vinted" || verdictColis === "non_offert") colisFormatNonOffert = true;
     if (verdictColis === "section_absente") {
       colisSectionAbsente = true;
       warnings.push(
@@ -3782,11 +3943,18 @@ async function fillListingForm(job) {
         "catégorie manque probablement, ex. « Longueur de la jupe ») — laissée à Vinted, reprise avant le dépôt"
       );
     }
+    if (verdictColis === "non_pris") {
+      warnings.push(`format de colis : « ${wantedPackage ?? wantedPackageId} » cliqué deux fois sans être retenu — relu et reposé avant le dépôt`);
+    }
   }
   // (0.6.84) Le format CONNU part dans le corps du POST si la page ne l'y a pas
   // mis — montres (97) : la section n'est plus rendue, le serveur l'exige.
   const colisIdPourPost = colisVoulu ? idColisConnu(wantedPackageId, wantedPackage) : null;
   armerColisPourPost(colisIdPourPost);
+  // Bilan provisoire (une question ou un arrêt avant le dépôt le rend aussi) ;
+  // la relecture juste avant le dépôt le remplace.
+  noterColisBilan(bilanColis(lireGrilleColisFormulaire(), colisChoix, colisIdPourPost));
+  jalonRemplissage("Colis");
 
   // ── Constat des REQUIS avant tout verdict (chantier 2026-07-16, 1.C) ───────
   // Fini le `unfilledRequired: []` de constat : la config attributes capturée
@@ -3798,6 +3966,7 @@ async function fillListingForm(job) {
     // plus jamais un {unfilled:[]} silencieux qui laissait cliquer à l'aveugle.
     return { discovered: [], unfilled: [], hadConfig: false };
   });
+  jalonRemplissage("Requis");
 
   // (02/10 soir, point 10 B) Une-passe (l'annonce d'origine est encore en
   // ligne) : les caractéristiques de l'annonce d'origine non reposées comptent
@@ -4028,7 +4197,7 @@ async function fillListingForm(job) {
     }, 8000);
     if (radiosColis) {
       try {
-        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+        await selectPackageSize(wantedPackage, wantedPackageId);
         colisSectionAbsente = false;
         if (job.price != null) await ensurePriceCommitted(job.price);
         warnings.push("format de colis : section apparue avant le retrait — format posé");
@@ -4189,11 +4358,11 @@ async function fillListingForm(job) {
     }
     if (radiosColis.length) {
       try {
-        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+        await selectPackageSize(wantedPackage, wantedPackageId);
         colisRepose = true;
         warnings.push(colisSectionAbsente
-          ? `format de colis : section apparue après les attributs — « ${wantedPackage ?? "Petit"} » reposé avant le dépôt`
-          : `format de colis : « ${wantedPackage ?? "Petit"} » reposé en dernier geste avant le dépôt (républication)`);
+          ? `format de colis : section apparue après les attributs — « ${wantedPackage ?? wantedPackageId} » reposé avant le dépôt`
+          : `format de colis : « ${wantedPackage ?? wantedPackageId} » reposé en dernier geste avant le dépôt (républication)`);
       } catch (e) {
         warnings.push(`format de colis : section apparue mais format non posé (${String(e?.message ?? e).slice(0, 120)}) — choix Vinted conservé`);
       }
@@ -4208,6 +4377,64 @@ async function fillListingForm(job) {
           : "format de colis : section toujours absente au dépôt — format laissé à Vinted"
       );
     }
+  }
+  // ══ RELECTURE DU FORMAT JUSTE AVANT LE DÉPÔT (05/10) — publication comme
+  // républication ═════════════════════════════════════════════════════════
+  // La reprise ci-dessus ne valait que pour les républications : sur une
+  // publication, le format choisi pouvait être décoché par un re-rendu de la
+  // section (attributs posés après lui) sans que personne ne le voie — la
+  // vérification après le clic n'était qu'un console.warn. On RELIT donc le
+  // radio coché, ici, juste avant le clic de dépôt :
+  //   · choix offert mais plus coché → reposé UNE fois, relu ;
+  //   · publication : choix non offert, ou rien de coché alors que la
+  //     section est là → la QUESTION « Format du colis » (rien n'est soumis) ;
+  //     choix toujours pas retenu après la reprise → arrêt AVANT le dépôt ;
+  //   · républication (annonce d'origine déjà retirée) : jamais d'arrêt ici
+  //     (même règle que la garde photos) — c'est dit dans les warnings et le
+  //     bilan, la question a été posée avant le retrait (une-passe) ;
+  //   · le format effectivement coché part aussi dans le corps du POST si la
+  //     page l'y oubliait (sonde, armerColisPourPost) : le choix, ou le
+  //     « Recommandé » que Vinted affiche — jamais un autre.
+  {
+    const publicationNeuve = !recreation && !onePass;
+    let grilleDepot = lireGrilleColisFormulaire();
+    const cibleDepot = colisVoulu ? colisDansGrille(grilleDepot, wantedPackageId, wantedPackage) : null;
+    if (cibleDepot && grilleDepot.find((g) => g.coche)?.id !== cibleDepot.id) {
+      try {
+        await selectPackageSize(cibleDepot.libelle || wantedPackage, cibleDepot.id);
+        colisRepose = true;
+        warnings.push(`format de colis : « ${cibleDepot.libelle} » n'était plus coché au moment du dépôt — reposé`);
+      } catch (e) {
+        warnings.push(`format de colis : « ${cibleDepot.libelle} » décoché et non reposé (${String(e?.message ?? e).slice(0, 120)})`);
+      }
+      grilleDepot = lireGrilleColisFormulaire();
+    }
+    const cocheDepot = grilleDepot.find((g) => g.coche) ?? null;
+    noterColisBilan(bilanColis(grilleDepot, colisChoix, colisIdPourPost));
+    if (grilleDepot.length) {
+      if (colisVoulu && !cibleDepot) {
+        if (publicationNeuve) {
+          return { ...questionFormatColis(grilleDepot, colisChoix, warnings), discoveredRequired: requiredState.discovered };
+        }
+        warnings.push(`format de colis : « ${wantedPackage ?? wantedPackageId} » non proposé par Vinted pour ce rayon — ${cocheDepot ? `« ${cocheDepot.libelle} » coché par Vinted conservé` : "aucun format coché"} (annonce d'origine déjà retirée)`);
+      } else if (colisVoulu && cocheDepot?.id !== cibleDepot.id) {
+        if (publicationNeuve) {
+          const err = new Error(
+            `Le format de colis choisi (« ${cibleDepot.libelle} ») n'a pas été retenu par le formulaire de Vinted. ` +
+            "Publication interrompue AVANT le dépôt — rien n'a été soumis à Vinted, et aucun autre format n'a été posé à la place."
+          );
+          err.diagnostic = `format de colis : choix ${cibleDepot.id}|${cibleDepot.libelle}, coché au dépôt : ${cocheDepot ? `${cocheDepot.id}|${cocheDepot.libelle}` : "aucun"} (après reprise)`;
+          throw err;
+        }
+        warnings.push(`format de colis : « ${cibleDepot.libelle} » toujours pas retenu au dépôt (coché : ${cocheDepot?.libelle ?? "aucun"}) — annonce d'origine déjà retirée, dépôt tenté`);
+      } else if (!colisVoulu && !cocheDepot) {
+        if (publicationNeuve) {
+          return { ...questionFormatColis(grilleDepot, null, warnings), discoveredRequired: requiredState.discovered };
+        }
+        warnings.push("format de colis : aucun format connu ni coché par Vinted au dépôt (annonce d'origine déjà retirée) — dépôt tenté");
+      }
+    }
+    if (cocheDepot) armerColisPourPost(cocheDepot.id);
   }
   // Un clic sur le format peut re-rendre le composant prix en onglet caché et
   // vider sa prop `value` (bug du 18/07, cf. ensurePriceCommitted) : après une
@@ -4575,22 +4802,150 @@ if (__timerWorker) {
     cb?.();
   };
 }
-function sleep(ms) {
+// (05/10) UN minuteur, tenu par le Worker (setTimeout de la page en filet,
+// premier arrivé gagne), annulable : sleep, les délais d'abandon des attentes
+// (waitForElement, waitForElementGone, waitFor) et le battement du port de
+// remplissage passent tous par lui — plus aucun délai de la page qui serait
+// bridé à 1/s dans l'onglet caché. Rend la fonction d'annulation.
+function planifierSurWorker(ms, rappel) {
+  let fait = false;
+  let filet = null;
+  const id = __timerWorker ? ++__timerSeq : null;
+  const declencher = () => {
+    if (fait) return;
+    fait = true;
+    if (id != null) __timerCallbacks.delete(id);
+    clearTimeout(filet);
+    rappel();
+  };
+  if (id != null) {
+    __timerCallbacks.set(id, declencher);
+    try { __timerWorker.postMessage({ id, ms }); } catch { /* le filet de la page prend le relais */ }
+  }
+  filet = setTimeout(declencher, ms);
+  return () => {
+    if (fait) return;
+    fait = true;
+    if (id != null) __timerCallbacks.delete(id);
+    clearTimeout(filet);
+  };
+}
+// Battement répété sur le Worker (remplace un setInterval de la page) : rend
+// la fonction d'arrêt.
+function repeterSurWorker(ms, rappel) {
+  let arrete = false;
+  let annuler = null;
+  const armer = () => {
+    annuler = planifierSurWorker(ms, () => {
+      if (arrete) return;
+      try { rappel(); } catch { /* un battement raté ne coupe pas les suivants */ }
+      armer();
+    });
+  };
+  armer();
+  return () => { arrete = true; annuler?.(); };
+}
+// Rendre la main UNE tâche (MessageChannel), sans minuteur : rien à réveiller,
+// donc rien que le système puisse retarder. Laisse la page traiter ce qu'elle
+// a en file (rendu React, écouteurs) entre deux gestes rattrapés.
+const __canalCeder = (() => { try { return new MessageChannel(); } catch { return null; } })();
+const __cederEnAttente = [];
+if (__canalCeder) {
+  __canalCeder.port1.onmessage = () => { const r = __cederEnAttente.shift(); r?.(); };
+}
+function cederLaMain() {
   return new Promise((resolve) => {
-    let done = false;
-    const id = __timerWorker ? ++__timerSeq : null;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      if (id != null) __timerCallbacks.delete(id);
-      resolve();
-    };
-    if (id != null) {
-      __timerCallbacks.set(id, finish);
-      __timerWorker.postMessage({ id, ms });
-    }
-    setTimeout(finish, ms);
+    if (!__canalCeder) { resolve(); return; }
+    __cederEnAttente.push(resolve);
+    try { __canalCeder.port2.postMessage(0); } catch { __cederEnAttente.pop(); resolve(); }
   });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CADENCEUR À ÉCHÉANCES (05/10, point 9 — Carla et Ciddjy, sur Mac)
+// ══════════════════════════════════════════════════════════════════════════
+// CE QUI SE PASSE : sur Mac, le remplissage Vinted dure 205 à 254 s en
+// médiane (p90 ~280 s) contre ~50 s sur Windows ; 23 % des remplissages Mac
+// dépassent 150 s (0,1 % sur Windows), et au-delà de 300 s le background
+// conclut « Timeout » (boucle, needs_user). La soumission, qui n'attend
+// presque pas, reste à 20 s : le surcoût est dans les ATTENTES. macOS bride
+// le processus de rendu de l'onglet caché (App Nap, regroupement des
+// minuteurs) : chaque réveil arrive en retard, et le remplissage attend plus
+// de cent fois (frappe lettre par lettre, pauses humaines, boucles
+// d'attente). Le minuteur du Worker protège du bridage de Chrome, pas de
+// celui du système.
+// LA RÈGLE : chaque pause HUMAINE vise une échéance — celle qu'elle aurait
+// eue si les pauses précédentes avaient été à l'heure. Le retard déjà subi
+// (réveil tardif d'une pause) est déduit des pauses humaines suivantes ; une
+// pause entièrement couverte par ce retard ne réarme aucun minuteur (elle
+// rend seulement la main à la page, cederLaMain).
+//   · JAMAIS plus rapide que le plan humain : on ne rattrape que le retard
+//     SUBI (dette ≥ 0) — aucune action n'arrive avant l'heure où elle serait
+//     arrivée avec des réveils à l'heure ;
+//   · en régime normal (Windows : retards de 1 à 16 ms), RIEN NE CHANGE : un
+//     retard sous la tolérance (50 ms, ou le quart de l'attente) n'est pas
+//     une dette, chaque pause dure exactement ce qu'elle tire ;
+//   · dette bornée (4 s) : un réveil très en retard ne déclenche jamais une
+//     rafale de gestes ;
+//   · les attentes FONCTIONNELLES (sleep : laisser la page réagir à un clic,
+//     espacer des reprises, 2,5 s après le dépôt, boucles de sondage) ne
+//     sont JAMAIS raccourcies — la page ne réagit pas plus vite parce qu'on
+//     a été en retard avant — et leur retard, MESURÉ, ne devient PAS une
+//     dette : dans une boucle de sondage, un réveil tardif ne fait pas
+//     forcément perdre de temps (la condition n'était peut-être pas encore
+//     vraie), et un sleep pris comme délai dans un Promise.race se réveille
+//     après coup. Les compter ferait passer le remplissage DEVANT le plan.
+//     Seul le retard d'une pause humaine (sans condition : du temps perdu,
+//     à coup sûr) se rattrape.
+// Mêmes événements, mêmes tirages de pauses qu'avant : seul le moment du
+// réveil change, et jamais vers l'avance. Banc : scripts/vinted-cadenceur-
+// selftest.mjs (réveils ×3 → durée ≈ plan ; régime normal → aucune pause
+// raccourcie).
+function creerCadenceur({ maintenant, minuterie, ceder, toleranceMs = 50, tolerancePart = 0.25, detteMaxMs = 4000 }) {
+  const etat = { dette: 0, reveils: 0, retardMs: 0, rattrapees: 0, rattrapeMs: 0 };
+  // Attente RÉELLE : jamais raccourcie. Mesure son retard ; celui d'une
+  // pause humaine (dette: true), au-delà de la tolérance, devient une dette
+  // que les pauses humaines suivantes rattraperont.
+  async function attendre(ms, { dette = false } = {}) {
+    const voulu = Math.max(0, Number(ms) || 0);
+    const t0 = maintenant();
+    await minuterie(voulu);
+    const retard = maintenant() - t0 - voulu;
+    etat.reveils++;
+    if (retard > 0) etat.retardMs += retard;
+    if (dette && retard > Math.max(toleranceMs, voulu * tolerancePart)) {
+      etat.dette = Math.min(detteMaxMs, etat.dette + retard);
+    }
+  }
+  // Pause HUMAINE : vise son échéance du plan. La dette couvre tout → aucun
+  // minuteur, la main est rendue à la page ; sinon on n'attend que le reste.
+  async function pause(ms) {
+    const voulu = Math.max(0, Number(ms) || 0);
+    if (etat.dette > 0 && etat.dette >= voulu) {
+      etat.dette -= voulu;
+      etat.rattrapees++;
+      etat.rattrapeMs += voulu;
+      await ceder();
+      return;
+    }
+    const reste = voulu - etat.dette;
+    etat.rattrapeMs += etat.dette;
+    etat.dette = 0;
+    await attendre(reste, { dette: true });
+  }
+  // Un remplissage neuf repart sans dette : le retard d'un job ne se
+  // rattrape jamais sur le suivant.
+  function oublierDette() { etat.dette = 0; }
+  return { attendre, pause, oublierDette, etat };
+}
+const cadenceur = creerCadenceur({
+  maintenant: () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now()),
+  minuterie: (ms) => new Promise((resolve) => { planifierSurWorker(ms, resolve); }),
+  ceder: cederLaMain,
+});
+// Attente fonctionnelle : jamais raccourcie (cf. cadenceur.attendre).
+function sleep(ms) {
+  return cadenceur.attendre(ms);
 }
 
 // ── Timing humain (fix blocage anti-bot 2026-07-09) ─────────────────────────
@@ -4608,6 +4963,9 @@ function sleep(ms) {
 // clampé ci-dessus. Le timing humain reste ainsi valide dans un onglet caché,
 // où setTimeout serait bridé à 1/s (et où 200 caractères à 165 ms coûteraient
 // 200 s au lieu de 33 s). Ne JAMAIS remplacer ces sleep() par des setTimeout.
+// (05/10) Les pauses HUMAINES (humanPause, la frappe de typeHuman) passent par
+// le cadenceur à échéances (cadenceur.pause) : mêmes tirages, mêmes minimums,
+// mais un retard déjà subi sur Mac est rattrapé — jamais au-delà du plan.
 const HUMAN_CHAR_MIN = 80, HUMAN_CHAR_MAX = 250;
 const HUMAN_ACTION_MIN = 300, HUMAN_ACTION_MAX = 900;
 // Au-delà de ce seuil (description générée : plusieurs centaines de
@@ -4619,7 +4977,7 @@ const HUMAN_TYPE_MAX_CHARS = 120;
 const HUMAN_CHUNK_CHARS = 40;
 
 const randInt = (min, max) => Math.round(min + Math.random() * (max - min));
-const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => sleep(randInt(min, max));
+const humanPause = (min = HUMAN_ACTION_MIN, max = HUMAN_ACTION_MAX) => cadenceur.pause(randInt(min, max));
 
 // Événements clavier synthétiques : ils n'insèrent aucun texte (c'est
 // setNativeValue/execCommand qui le fait) mais ils donnent aux écouteurs de la
@@ -4646,7 +5004,8 @@ async function typeHuman(el, text) {
       dispatchKey(el, "keypress", char);
       setNativeValue(el, el.value + char);
       dispatchKey(el, "keyup", char);
-      await sleep(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
+      // (05/10) Par le cadenceur : même tirage, retard déjà subi rattrapé.
+      await cadenceur.pause(randInt(HUMAN_CHAR_MIN, HUMAN_CHAR_MAX));
     }
     return;
   }
@@ -4662,15 +5021,21 @@ async function typeHuman(el, text) {
 // Attend qu'un élément apparaisse dans le DOM (pages SPA à rendu différé).
 // `target` : sélecteur CSS, ou fonction-sonde () => Element|null (clés du
 // registre — cf. waitForKey) ; `label` ne sert qu'au message d'erreur.
+// (05/10) Délai d'abandon tenu par le Worker (planifierSurWorker), plus par un
+// setTimeout de la page bridé dans l'onglet caché ; une dernière lecture est
+// faite à l'échéance avant de conclure « introuvable ».
 function waitForElement(target, timeoutMs = 10_000, label = undefined) {
   const probe = typeof target === "function" ? target : () => document.querySelector(target);
   const desc = label ?? (typeof target === "function" ? "sonde de clé" : target);
   return new Promise((resolve, reject) => {
     let observer = null;
-    let timer = null;
+    let annulerEcheance = null;
+    let regle = false;
     const settle = (fn, value) => {
+      if (regle) return;
+      regle = true;
       if (observer) observer.disconnect();
-      if (timer) clearTimeout(timer);
+      if (annulerEcheance) annulerEcheance();
       fn(value);
     };
     const check = () => {
@@ -4691,10 +5056,10 @@ function waitForElement(target, timeoutMs = 10_000, label = undefined) {
     observer = new MutationObserver(() => {
       check();
     });
-    timer = setTimeout(() => {
-      observer.disconnect();
-      reject(new Error(`Élément introuvable: ${desc}`));
-    }, timeoutMs);
+    annulerEcheance = planifierSurWorker(timeoutMs, () => {
+      if (check()) return;
+      settle(reject, new Error(`Élément introuvable: ${desc}`));
+    });
     observer.observe(document.body, { childList: true, subtree: true });
   });
 }
@@ -4706,16 +5071,47 @@ function waitForElement(target, timeoutMs = 10_000, label = undefined) {
 // le point d'être détaché — cliquer dessus ne produit alors aucun effet
 // visible, sans lever d'exception. On vérifie que le nœud trouvé est encore
 // le même après une courte pause avant de le considérer "stable" à cliquer.
-async function waitForStableElement(selector, timeoutMs = 5000, settleMs = 200) {
-  const start = Date.now();
-  let el = await waitForElement(selector, timeoutMs);
-  while (Date.now() - start < timeoutMs) {
-    await sleep(settleMs);
-    const again = document.querySelector(selector);
-    if (again === el) return el; // même nœud avant/après la pause : stable
-    el = again || (await waitForElement(selector, timeoutMs - (Date.now() - start)));
-  }
-  return el;
+// (05/10) Plus de boucle sleep : un MutationObserver suit le nœud (remplacé →
+// on reprend le nouveau aussitôt, et la période de calme repart), la période
+// de calme (settleMs) et l'échéance globale sont tenues par le Worker. Même
+// verdict qu'avant : le nœud resté le même pendant settleMs, ou, à
+// l'échéance, le dernier nœud vu.
+function waitForStableElement(selector, timeoutMs = 5000, settleMs = 200) {
+  return new Promise((resolve, reject) => {
+    let el = null;
+    let observer = null;
+    let annulerCalme = null;
+    let annulerEcheance = null;
+    let regle = false;
+    const finir = (fn, v) => {
+      if (regle) return;
+      regle = true;
+      observer?.disconnect();
+      annulerCalme?.();
+      annulerEcheance?.();
+      fn(v);
+    };
+    const armerCalme = () => {
+      annulerCalme?.();
+      annulerCalme = planifierSurWorker(settleMs, () => {
+        if (document.querySelector(selector) === el) finir(resolve, el); // même nœud avant/après : stable
+        else suivre();
+      });
+    };
+    const suivre = () => {
+      if (regle) return;
+      const vu = document.querySelector(selector);
+      if (vu && vu !== el) { el = vu; armerCalme(); }
+    };
+    annulerEcheance = planifierSurWorker(timeoutMs, () => {
+      const vu = document.querySelector(selector);
+      if (vu) finir(resolve, vu);
+      else finir(reject, new Error(`Élément introuvable: ${selector}`));
+    });
+    observer = new MutationObserver(suivre);
+    observer.observe(document.body, { childList: true, subtree: true });
+    suivre();
+  });
 }
 
 // Attend qu'un élément disparaisse du DOM ou devienne invisible (offsetParent
@@ -4732,17 +5128,21 @@ function waitForElementGone(target, timeoutMs = 3000) {
   };
   return new Promise((resolve) => {
     if (isGone()) return resolve(true);
+    let annulerEcheance = null;
     const observer = new MutationObserver(() => {
       if (isGone()) {
         observer.disconnect();
-        clearTimeout(timer);
+        annulerEcheance?.();
         resolve(true);
       }
     });
-    const timer = setTimeout(() => {
+    // (05/10) Échéance tenue par le Worker ; dernière lecture avant de conclure.
+    annulerEcheance = planifierSurWorker(timeoutMs, () => {
       observer.disconnect();
-      resolve(false);
-    }, timeoutMs);
+      let parti = false;
+      try { parti = isGone(); } catch { parti = false; }
+      resolve(parti);
+    });
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
   });
 }
@@ -5635,7 +6035,99 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
 //     warning dit quoi corriger à la main.
 // Échec de TOUT (natif compris) = throw (le job échoue AVANT soumission) — un
 // dépôt au champ Marque vide finit en 400 déguisé en refus plateforme.
-const SANS_MARQUE_RE = /^\s*(?:sans\s+marque|no\s+brand|aucune(?:\s+marque)?|unbranded)\s*$/i;
+// ══ L'ABSENCE DE MARQUE : LA LISTE FERMÉE DU SERVEUR (05/10, point 5) ═══════
+// Louis (Business) : « Marque générique » recopiée de ses annonces Opla.
+// Le serveur (get-pending-jobs, _shared/marque-absente.js, 04/10) traduit ces
+// absences en « Sans marque » au service du job ; l'extension, elle, ne
+// reconnaissait que « sans marque / no brand / aucune (marque) / unbranded »
+// (ancienne SANS_MARQUE_RE) — un job servi par un autre chemin (relance,
+// recréation, réponse à une question) repartait chercher « Marque générique »
+// au catalogue, et finissait en question. Désormais la MÊME liste, copiée
+// (vinted.js n'est pas un module, ADR-03) : égalité EXACTE après
+// normalisation (accents, casse, ponctuation de bord), « a / b » si les deux
+// moitiés sont des absences — jamais une sous-chaîne (« Generic Surplus »,
+// « Générique & Co » sont de vraies marques et restent). Absence → ligne
+// native « Sans marque » de Vinted ; une vraie marque n'est jamais remplacée.
+// Parité vérifiée cas par cas : scripts/vinted-marque-parite-selftest.mjs.
+const MARQUE_ABSENCES = new Set([
+  "sans marque", "marque generique", "generique", "sans marque generique", "sans marque / generique",
+  "aucune", "aucune marque", "pas de marque", "non marque", "non marquee",
+  "no brand", "unbranded", "unbranded generic", "unbranded / generic", "generic", "generic brand",
+  "nobrand",
+]);
+// Copie de marqueComparable (_shared/marque-absente.js).
+function marqueAbsenceComparable(v) {
+  return String(v ?? "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[\s\-–—_.,;:!?()[\]"'«»]+$/g, "")
+    .replace(/^[\s\-–—_.,;:!?()[\]"'«»]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+// Copie d'estSansMarque (_shared/marque-absente.js).
+function estAbsenceDeMarque(v) {
+  const c = marqueAbsenceComparable(v);
+  if (!c) return false;
+  if (MARQUE_ABSENCES.has(c)) return true;
+  const parties = c.split(/\s*\/\s*/).filter(Boolean);
+  return parties.length > 1 && parties.every((p) => MARQUE_ABSENCES.has(p));
+}
+// Le nom est gardé (lu par selectVintedBrand et ses tests) ; ce n'est plus une
+// expression régulière mais la liste fermée ci-dessus, derrière le même `.test`.
+const SANS_MARQUE_RE = Object.freeze({ test: (v) => estAbsenceDeMarque(v) });
+
+// ══ LES SUGGESTIONS DE MARQUE : CELLES QUI RESSEMBLENT (05/10, point 5) ═════
+// Louis voyait « U Collection », « Z Kids »… pour une marque sans rapport :
+// la question « Marque » hors catalogue rangeait tout ce que la liste de
+// Vinted et son moteur de recherche rendaient (nom entier, premier mot, quatre
+// premières lettres), sans tri. L'app trie depuis le 04/10
+// (suggestionsProches, src/utils/questionMarque.js) ; l'extension trie AUSSI,
+// à la source, avec la même logique, copiée : même mot (3 lettres au moins),
+// même début, ou faute de frappe (distance d'édition courte) — le plus proche
+// d'abord ; rien de proche → aucune suggestion. Parité vérifiée par
+// scripts/vinted-marque-parite-selftest.mjs.
+// Copie de `comparable` (src/utils/questionMarque.js).
+function marqueQuestionComparable(s) {
+  return String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[’`´]/g, "'").toLowerCase().replace(/\s+/g, " ").trim();
+}
+function motsDeMarque(s) {
+  return marqueQuestionComparable(s).split(/[^a-z0-9]+/).filter((m) => m.length >= 3);
+}
+function distanceDeMarques(a, b) {
+  if (Math.abs(a.length - b.length) > 3) return 99;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+  }
+  return d[a.length][b.length];
+}
+// Copie de suggestionsProches : les valeurs qui ressemblent à la marque
+// demandée, la plus proche d'abord.
+function suggestionsMarqueProches(demandee, valeurs, max = 12) {
+  const d = marqueQuestionComparable(demandee).replace(/[^a-z0-9 ]/g, "").trim();
+  if (!d) return [];
+  const md = motsDeMarque(demandee);
+  const score = (v) => {
+    const c = marqueQuestionComparable(v).replace(/[^a-z0-9 ]/g, "").trim();
+    if (!c) return 0;
+    if (c === d) return 100;
+    if (c.length >= 3 && (c.startsWith(d) || d.startsWith(c))) return 80;
+    const mv = motsDeMarque(v);
+    if (mv.some((m) => md.includes(m))) return 60;
+    if (distanceDeMarques(c, d) <= Math.max(1, Math.floor(d.length / 5))) return 50;
+    if (md.some((m) => m.length >= 4 && mv.some((x) => x.length >= 3 && distanceDeMarques(m, x) <= 1))) return 45;
+    if (md.some((m) => mv.some((x) => (x.length >= 4 && m.startsWith(x)) || (m.length >= 4 && x.startsWith(m))))) return 40;
+    return 0;
+  };
+  return [...new Set((valeurs ?? []).map(String))]
+    .map((v) => [v, score(v)]).filter(([, s]) => s > 0)
+    .sort((a, b) => b[1] - a[1]).slice(0, max).map(([v]) => v);
+}
 
 // Valeur CANONIQUE de l'absence de marque — source unique, partagée par les
 // deux bouts du chemin de republication (2026-08-12) :
@@ -5677,6 +6169,12 @@ async function selectVintedBrand(marque, warnings) {
   // chercher au catalogue (pas d'aria-label sur #empty-brand) et la création
   // ne se rend jamais sur ce terme.
   if (SANS_MARQUE_RE.test(marque)) {
+    // (05/10) « Marque générique », « Aucune », « No brand »… : une absence
+    // de marque dite autrement (liste fermée du serveur) — tracée, posée en
+    // « Sans marque » natif, sans question.
+    if (marqueAbsenceComparable(marque) !== "sans marque") {
+      warnings.push(`marque : « ${String(marque).trim()} » = absence de marque (liste fermée) — ligne native « Sans marque » de Vinted`);
+    }
     try {
       await selectVintedNoBrand(trigger);
       return;
@@ -5771,7 +6269,11 @@ async function selectVintedBrand(marque, warnings) {
     // vinted.fr) — jamais une marque posée à la place : c'est la personne qui
     // choisit, ou « Sans marque ».
     const catalogue = await marquesDuCatalogueVinted(demandee);
-    const proposees = [...new Set(["Sans marque", ...(choix.suggestions ?? []), ...catalogue])].slice(0, 30);
+    // (05/10, point 5) Triées et filtrées à la source, même logique que l'app
+    // (suggestionsMarqueProches) : seules les marques qui RESSEMBLENT à la
+    // marque demandée, la plus proche d'abord — plus de « U Collection ».
+    const proches = suggestionsMarqueProches(demandee, [...(choix.suggestions ?? []), ...catalogue], 29);
+    const proposees = [...new Set(["Sans marque", ...proches])].slice(0, 30);
     return {
       needsUser: true,
       error:
@@ -7471,7 +7973,20 @@ async function reposerCouleurRepublication(fields, titre, warnings) {
 // Décision produit Nico (2026-07-12) : sur TOUTE la branche Mode (vêtements ET
 // chaussures), c'est TOUJOURS « Petit », sans exception. On CLIQUE désormais le
 // format, on ne le suppose plus.
-async function selectPackageSize(size = "Petit", packageSizeId = null) {
+// ⛔ (05/10) DÉCISION REMPLACÉE — Nico : « rien de deviné ; le choix de la
+// personne est retenu ». Cette fonction ne pose plus QUE le format CHOISI
+// (platform_fields.packageSizeId / packageSize, réponse colis_choisi, ou le
+// format de l'annonce d'origine en républication) : plus aucun « Petit » par
+// défaut, ni en paramètre, ni en repli (l'ancien `|| 1` cliquait « Petit »
+// pour tout libellé hors table). L'id choisi est cliqué même hors de la table
+// (la table ne sert qu'à nommer) ; un libellé est cherché tel que le
+// formulaire l'affiche (« Volumineux et lourd », relevé du 04/10 sous l'id 8,
+// que la table nomme encore « 5 kg »).
+// Verdicts rendus (lus par fillListingForm) : "pose" ; "section_absente" ;
+// "defaut_vinted" (choix non offert, le « Recommandé » de Vinted reste coché) ;
+// "non_offert" (choix non offert et rien de coché — ce cas levait) ;
+// "non_pris" (radio relu NON coché après deux clics).
+async function selectPackageSize(size = null, packageSizeId = null) {
   // Table partagée avec la capture republication (VINTED_PACKAGE_SIZES_PAR_ID,
   // en tête de fichier) : le rang du radio EST le package_size_id. Une seule
   // table dans les deux sens — capturer « Petit » puis recliquer « Petit » ne
@@ -7482,12 +7997,20 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   // résolution libellé→id ne sert qu'aux appels historiques (« Petit » de la
   // branche Mode), dont les libellés sont uniques dans la table.
   const idCapture = Number(packageSizeId);
-  const n = (Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
+  const libelleVoulu = String(size ?? "").trim() || VINTED_PACKAGE_SIZES_PAR_ID[idCapture] || "";
+  const n = (Number.isInteger(idCapture) && idCapture > 0)
     ? idCapture
-    : Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
+    : (Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === libelleVoulu)?.[0]) || null);
   // publish.package_type (migré au registre) : maillon template {n}.
   let radio;
   try {
+    if (n == null) throw new Error(`format de colis « ${libelleVoulu} » : aucun id connu — cherché par son libellé sur le formulaire`);
+    // (05/10) Section rendue et id absent de SA grille : inutile d'attendre
+    // 10 s un radio qui n'existe pas, on lit tout de suite ce qu'elle offre.
+    const offertsDeja = [...document.querySelectorAll(RADIOS_COLIS_SEL)];
+    if (offertsDeja.length && !offertsDeja.some((r) => r.id === `package_type_selector_${n}`)) {
+      throw new Error(`format de colis : id ${n} absent de la grille offerte`);
+    }
     radio = await waitForKey("publish.package_type", { params: { n } });
   } catch (e) {
     // ── L'id demandé n'est PAS OFFERT par cette catégorie (2026-08-23,
@@ -7525,22 +8048,32 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
       );
       return "section_absente";
     }
-    const libelleVoulu = VINTED_PACKAGE_SIZES_PAR_ID[n] ?? String(size);
+    // (05/10) Le libellé VOULU est celui du choix (tel que l'app l'a lu sur la
+    // grille du rayon), la table seulement en repli ; comparé sous sa forme
+    // comparable (espaces insécables, casse).
     const titreDe = (r) => (r.closest('[id^="package-size-"]')
       ?.querySelector('[data-testid$="--cell--title"]')?.textContent ?? "")
       .replace(/Recommandé/gi, "").trim();
-    const parLibelle = offerts.find((r) => titreDe(r) === libelleVoulu);
+    const parLibelle = libelleVoulu
+      ? offerts.find((r) => texteComparable(titreDe(r)) === texteComparable(libelleVoulu))
+      : null;
     if (parLibelle) {
       radio = parLibelle;
       console.warn(
-        `[vinted] ≈ format de colis: id ${n} absent de cette catégorie — « ${libelleVoulu} » posé via ` +
+        `[vinted] ≈ format de colis: id ${n ?? "?"} absent de cette catégorie — « ${libelleVoulu} » posé via ` +
         `l'id ${radio.id.replace("package_type_selector_", "")} offert par le formulaire`
       );
     } else {
       const precoche = offerts.find((r) => r.checked);
-      if (!precoche) throw e;
+      // (05/10) Ni offert ni pré-coché : plus d'exception ici — la relecture
+      // juste avant le dépôt pose la QUESTION (publication) ; jamais un
+      // format pris à la place de la personne.
+      if (!precoche) {
+        console.warn(`[vinted] ⚠️ format de colis : « ${libelleVoulu || n} » non offert ici et aucun format coché par Vinted`);
+        return "non_offert";
+      }
       console.warn(
-        `[vinted] ⚠️ format de colis: ni l'id ${n} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
+        `[vinted] ⚠️ format de colis: ni l'id ${n ?? "?"} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
         `choix Vinted pré-coché « ${titreDe(precoche) || "recommandé"} » conservé`
       );
       // (0.6.85) Nommé : la une-passe ne retire jamais sur un format qui n'est
@@ -7594,7 +8127,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
       await humanPause();
       simulateFullClick(radio);
       await humanPause();
-      console.log(`[vinted] format de colis : « ${VINTED_PACKAGE_SIZES_PAR_ID[n] ?? size} » était pré-coché — reposé par un aller-retour pour que Vinted l'enregistre`);
+      console.log(`[vinted] format de colis : « ${libelleVoulu || n} » était pré-coché — reposé par un aller-retour pour que Vinted l'enregistre`);
     } else {
       simulateFullClick(radio);
       await humanPause();
@@ -7607,15 +8140,134 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   // nœud détaché entre-temps est toléré comme avant (after = null) :
   // SelectorResolutionError avalée, reportFailure:false (pas un sélecteur cassé).
   const S = await sel();
-  let after = null;
-  try {
-    after = S.resolveSelector("vinted", "publish.package_type", { params: { n: nEffectif }, reportFailure: false }).el;
-  } catch (e) {
-    if (e?.name !== "SelectorResolutionError") throw e;
-  }
+  const relireRadio = () => {
+    try {
+      return S.resolveSelector("vinted", "publish.package_type", { params: { n: nEffectif }, reportFailure: false }).el;
+    } catch (e) {
+      if (e?.name !== "SelectorResolutionError") throw e;
+      return null;
+    }
+  };
+  let after = relireRadio();
+  // (05/10) Ce n'est plus un simple avertissement : le radio relu non coché
+  // est recliqué UNE fois, puis le verdict est nommé ("non_pris") — la
+  // relecture juste avant le dépôt tranche (question ou arrêt, jamais un
+  // dépôt silencieux avec un autre format).
   if (after && !after.checked) {
-    console.warn(`[vinted] ⚠️ format de colis : "${size}" n'a pas pris (radio non coché après clic)`);
+    console.warn(`[vinted] ⚠️ format de colis : « ${libelleVoulu || nEffectif} » n'a pas pris (radio non coché après clic) — second clic`);
+    simulateFullClick(after);
+    await humanPause();
+    after = relireRadio();
+    if (after && !after.checked) {
+      console.warn(`[vinted] ⚠️ format de colis : « ${libelleVoulu || nEffectif} » toujours non coché après deux clics`);
+      return "non_pris";
+    }
   }
+  return "pose";
+}
+
+// ── LE FORMAT DU COLIS : LE CHOIX DE LA PERSONNE, SINON VINTED (05/10) ──────
+// Décision de Nico (05/10) : « rien de deviné ; le choix de la personne est
+// retenu ». Le choix porté par le job, dans l'ordre :
+//   1. platform_fields.colis_choisi.libelle — la réponse de la personne à la
+//      question « Format du colis » (républication avant retrait depuis la
+//      0.6.85, publication depuis le 05/10) ;
+//   2. platform_fields.packageSizeId (+ packageSize) — le choix fait dans
+//      l'app (carte Colis, bloc Livraison du lot, retenu du rayon :
+//      colis_source 'manuel' | 'retenu' ; l'app ne devine jamais), ou, en
+//      républication, l'id relevé sur l'annonce d'origine ;
+//   3. platform_fields.packageSize seul (libellé).
+// Rien de tout ça : AUCUN choix — Vinted garde le format qu'il pré-coche.
+// Rend { id, libelle, source } ou null ; source = "choix" (publication) ou
+// "annonce_origine" (républication : format de l'annonce en ligne, ou la
+// réponse à la question posée avant le retrait — le job ne les distingue pas).
+function colisChoisiDuJob(fields, republication = false) {
+  const source = republication ? "annonce_origine" : "choix";
+  const reponse = String(fields?.colis_choisi?.libelle ?? "").trim();
+  if (reponse) return { id: null, libelle: reponse, source: "choix" };
+  const id = Number(fields?.packageSizeId);
+  const libelle = String(fields?.packageSize ?? "").trim();
+  if (Number.isInteger(id) && id > 0) return { id, libelle: libelle || VINTED_PACKAGE_SIZES_PAR_ID[id] || null, source };
+  if (libelle) return { id: null, libelle, source };
+  return null;
+}
+
+const RADIOS_COLIS_SEL = 'input[type="radio"][id^="package_type_selector_"]';
+// La grille du formulaire telle qu'il l'affiche, à l'instant : id, libellé
+// (titre de la cellule, badge « Recommandé » ôté), exemple (le texte sous la
+// taille, « --cell--body »), coché. Lecture seule.
+function lireGrilleColisFormulaire() {
+  return [...document.querySelectorAll(RADIOS_COLIS_SEL)].map((r) => {
+    const id = Number(String(r.id).replace("package_type_selector_", ""));
+    const cellule = r.closest('[id^="package-size-"]') ?? r.closest('[data-testid$="package-size--cell"]');
+    const texte = (q) => String(cellule?.querySelector(q)?.textContent ?? "").replace(/\s+/g, " ").trim();
+    const libelle = texte('[data-testid$="--cell--title"]').replace(/Recommandé/gi, "").replace(/\s+/g, " ").trim();
+    const exemple = (texte('[data-testid$="--cell--body"]') || texte('[data-testid$="--cell--subtitle"]'))
+      .replace(/Recommandé/gi, "").replace(/\s+/g, " ").trim();
+    return { id, libelle, exemple, coche: r.checked === true };
+  }).filter((g) => Number.isInteger(g.id) && g.id > 0);
+}
+// Le format choisi DANS la grille offerte : par id d'abord, sinon par libellé
+// affiché (« 5 kg » vit sous 8 ou 11 selon le rayon). null = non offert.
+function colisDansGrille(grille, id, libelle) {
+  const n = Number(id);
+  if (Number.isInteger(n) && n > 0) {
+    const parId = grille.find((g) => g.id === n);
+    if (parId) return parId;
+  }
+  const l = texteComparable(libelle ?? "");
+  return l ? (grille.find((g) => texteComparable(g.libelle) === l) ?? null) : null;
+}
+// La QUESTION « Format du colis » (05/10) — sur le modèle de la question des
+// républications (0.6.85) : liste FERMÉE des formats que CE formulaire
+// affiche, libellés lus ; la réponse revient dans
+// platform_fields.colis_choisi.libelle, que colisChoisiDuJob lit en premier.
+// Posée quand le choix n'est pas proposé ici, ou quand rien n'est coché alors
+// que la section est là (Vinted l'exige : 400 « Sélectionne le format de ton
+// colis »). Jamais un repli silencieux sur un autre format.
+function questionFormatColis(grille, voulu, warnings) {
+  const formats = [...new Set(grille.map((g) => g.libelle).filter(Boolean))];
+  const nomVoulu = voulu ? (voulu.libelle || (voulu.id ? `n° ${voulu.id}` : null)) : null;
+  return {
+    success: false,
+    error: nomVoulu
+      ? `Le format de colis choisi (« ${nomVoulu} ») n'est pas proposé par Vinted pour ce rayon : choisis-en un parmi ceux que Vinted propose — on ne le choisit jamais à ta place. Rien n'a été envoyé à Vinted.`
+      : "Vinted demande le format du colis pour ce rayon et n'en coche aucun : choisis-le — on ne le choisit jamais à ta place. Rien n'a été envoyé à Vinted.",
+    warnings,
+    unfilledRequired: ["Format du colis"],
+    needsUserField: {
+      field_key: "colis",
+      field_label: "Format du colis",
+      allowed_values: formats,
+      input_type: "radio",
+      options_completes: true,
+      target: { root: "colis_choisi", key: "libelle" },
+    },
+    diagnostic: (
+      `format de colis à choisir avant le dépôt — offerts : ${grille.map((g) => `${g.id}|${g.libelle}${g.exemple ? `|${g.exemple}` : ""}`).join(" · ")}` +
+      (voulu ? ` ; voulu non offert : ${voulu.id ?? "?"}|${voulu.libelle ?? "?"}` : " ; aucun format coché par Vinted")
+    ).slice(0, 2000),
+  };
+}
+// Le bilan du format, rendu dans le résultat (colis_bilan) : ce qui est coché
+// au moment du dépôt (id, libellé, exemple), d'où il vient — "choix",
+// "annonce_origine", "defaut_vinted" (le pré-coché de Vinted), "envoi_direct"
+// (section absente, format connu armé dans le corps du POST) ou "aucun" —, le
+// format voulu s'il y en avait un, et la grille offerte (« id|libellé »).
+function bilanColis(grille, choix, idArme) {
+  const coche = grille.find((g) => g.coche) ?? null;
+  const cible = choix ? colisDansGrille(grille, choix.id, choix.libelle) : null;
+  const source = coche
+    ? (cible && coche.id === cible.id ? choix.source : "defaut_vinted")
+    : (!grille.length && idArme != null ? "envoi_direct" : "aucun");
+  return {
+    id: coche?.id ?? (source === "envoi_direct" ? idArme : null),
+    libelle: coche?.libelle ?? (source === "envoi_direct" ? (choix?.libelle ?? VINTED_PACKAGE_SIZES_PAR_ID[idArme] ?? null) : null),
+    ...(coche?.exemple ? { exemple: coche.exemple.slice(0, 160) } : {}),
+    source,
+    ...(choix ? { voulu: { id: Number.isInteger(Number(choix.id)) && Number(choix.id) > 0 ? Number(choix.id) : null, libelle: choix.libelle ?? null } } : {}),
+    grille: grille.map((g) => `${g.id}|${g.libelle}`),
+  };
 }
 
 // job.photos: [{ url, type }] — pas des File prêts, on fetch chaque url puis
@@ -7647,7 +8299,9 @@ async function urlToFile(url, index) {
   let res = null;
   let exception = null;
   for (let essai = 0; essai <= DELAIS_MS.length; essai++) {
-    if (essai > 0) await new Promise((r) => setTimeout(r, DELAIS_MS[essai - 1]));
+    // (05/10) Reprise espacée par le Worker (sleep), plus par un setTimeout de la
+    // page bridé dans l'onglet caché : même barème, tenu à l'heure.
+    if (essai > 0) await sleep(DELAIS_MS[essai - 1]);
     const cible = essai === 0 ? url : `${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}_${essai}`;
     try {
       exception = null;
