@@ -143,7 +143,13 @@ else {
       if (!Number.isFinite(plan.prixIp)) plan.problemes.push('prix IPRoyal illisible : on n’achète pas à l’aveugle');
       else if (plan.prixIp > PLAFOND_IP) plan.problemes.push(`prix ${plan.prixIp} $ au-dessus du plafond ${PLAFOND_IP} $ (--plafond-ip)`);
       if (Number.isFinite(plan.solde) && Number.isFinite(plan.prixIp) && plan.solde < plan.prixIp) plan.problemes.push(`solde IPRoyal ${plan.solde} $ < ${plan.prixIp} $ : recharger le solde`);
-      if (produit.questions?.length || offre.questions?.length) plan.problemes.push('IPRoyal pose des questions à la commande : acheter dans le tableau de bord, puis --commande=<n°>');
+      // (05/10) Les « questions » d'ISP Dedicated sont des OPTIONS (exigences en texte libre, accès
+      // multi-appareils, IP neuves au renouvellement) : aucune ne se dit obligatoire, et la commande du
+      // prototype (#83578416) est partie sans réponse (questions_answers: []). On n'y répond pas ;
+      // seule une question marquée obligatoire arrête l'achat.
+      const questions = [...(produit.questions ?? []), ...(offre.questions ?? [])];
+      if (questions.length) console.log(`  options de commande laissées vides : ${questions.map((q) => String(q.text).replace(/:\s*$/, '')).join(' · ')}`);
+      if (questions.some((q) => q.required === true || q.is_required === true)) plan.problemes.push('IPRoyal exige une réponse à la commande : acheter dans le tableau de bord, puis --commande=<n°>');
     }
   }
 }
