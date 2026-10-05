@@ -43,7 +43,7 @@ export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, mo
             <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>{texteRetraitsBloques(g, lang)}</span>
           </div>
           {userId && (
-            <BoutonMeConnecter userId={userId} platform={g.platform} motif={motifDe(g.lignes[0]?.job)} lang={lang} variante="bouton" />
+            <BoutonMeConnecter userId={userId} platform={g.platform} motif={motifDe(g.lignes[0]?.job)} lang={lang} variante="bouton" style={{ alignItems: 'flex-start' }} />
           )}
           <ul style={{ listStyle: 'none', margin: 0, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${S.borderSoft}` }}>
             {g.lignes.map((l) => (
