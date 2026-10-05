@@ -72,6 +72,7 @@
 --     public.cloud_pool_alertes, public.cloud_essai_empreintes, public.cloud_essai_demandes,
 --     public.cloud_ip_evenements, public.cloud_ip_commandes, public.cloud_ips;
 --   DELETE FROM public.coin_config WHERE key LIKE 'cloud\_%';
+--   ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_cloud_essai_refus_connu, DROP COLUMN IF EXISTS cloud_essai_refus;
 --   -- email_logs_one_shot_unique : on la REMET sans 'cloud_essai_veille' (même méthode que le § 9,
 --   -- en retirant le type) — seulement après avoir vérifié qu'aucun mail de la veille n'est parti.
 --   -- vault : supprimer à la main les secrets cloud_proxy_* (après avoir coupé les commandes
@@ -103,6 +104,20 @@ CREATE OR REPLACE FUNCTION public.cloud_zero(p jsonb)
 RETURNS boolean LANGUAGE sql IMMUTABLE AS $f$
   SELECT COALESCE(jsonb_typeof(p) = 'number' AND (p #>> '{}')::numeric = 0, false);
 $f$;
+
+-- La RAISON d'un essai refusé après coup (carte déjà vue sur un autre essai —
+-- stripe-webhook ; compte de plateforme déjà vu — première connexion Cloud),
+-- pour que l'app le DISE au lieu d'afficher un essai fini sans explication.
+-- Écrite par le serveur seulement (aucun GRANT UPDATE au client, comme is_cloud).
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cloud_essai_refus text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_cloud_essai_refus_connu') THEN
+    ALTER TABLE public.profiles ADD CONSTRAINT profiles_cloud_essai_refus_connu
+      CHECK (cloud_essai_refus IS NULL OR cloud_essai_refus IN ('carte_deja_vue', 'compte_plateforme_deja_vu'));
+  END IF;
+END $$;
+REVOKE UPDATE (cloud_essai_refus) ON public.profiles FROM anon, authenticated;
 
 
 -- ═══ 1. Les tables — SERVEUR SEUL ═════════════════════════════════════════════
@@ -821,16 +836,25 @@ BEGIN
 END;
 $f$;
 
--- 6.2 L'essai est-il PERMIS pour ce compte ? Lu par les paiements (create-checkout-session :
--- Checkout avec ou sans essai ; webhooks des stores : semaine activée ou non).
--- Sans préparation fraîche (< 1 h) : non (l'app prépare TOUJOURS avant d'ouvrir le paiement).
+-- 6.2 L'essai est-il PERMIS pour ce compte ? Lu par les paiements :
+--   · create-checkout-session exige `fraiche` (préparée il y a moins d'une heure ET
+--     une place tenue pour ce compte) — sinon l'app prépare de nouveau ;
+--   · les webhooks des stores lisent `permis` (une préparation de moins de 7 jours
+--     qui a refusé l'essai = la semaine du store n'est PAS activée).
 CREATE OR REPLACE FUNCTION public.cloud_essai_permis(p_user uuid)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public', 'pg_temp' AS $f$
-  SELECT CASE
-    WHEN p.id IS NULL THEN jsonb_build_object('permis', false, 'raison', 'compte_inconnu')
-    WHEN p.cloud_essai_debut IS NOT NULL THEN jsonb_build_object('permis', false, 'raison', 'essai_deja_pris')
-    WHEN d.user_id IS NULL OR d.demande_le < now() - interval '1 hour' THEN jsonb_build_object('permis', false, 'raison', 'non_prepare')
-    ELSE jsonb_build_object('permis', d.essai_permis, 'raison', d.raison) END
+  SELECT jsonb_build_object(
+    'permis', CASE WHEN p.id IS NULL OR p.cloud_essai_debut IS NOT NULL OR d.user_id IS NULL THEN false ELSE d.essai_permis END,
+    'raison', CASE WHEN p.id IS NULL THEN 'compte_inconnu'
+                   WHEN p.cloud_essai_debut IS NOT NULL THEN 'essai_deja_pris'
+                   WHEN d.user_id IS NULL THEN 'non_prepare'
+                   ELSE d.raison END,
+    'prepare', d.user_id IS NOT NULL,
+    'fraiche', d.user_id IS NOT NULL AND d.demande_le > now() - interval '1 hour'
+               AND EXISTS (SELECT 1 FROM public.cloud_ips i
+                            WHERE i.user_id = x.id
+                               OR (i.reserve_pour = x.id AND i.reserve_jusqu_au > now())
+                               OR (i.etat = 'repos' AND i.dernier_user_id = x.id)))
     FROM (SELECT p_user AS id) x
     LEFT JOIN public.profiles p ON p.id = x.id
     LEFT JOIN public.cloud_essai_demandes d ON d.user_id = x.id;
@@ -882,7 +906,8 @@ BEGIN
   IF v_vu AND v_autre IS NOT DISTINCT FROM p_user THEN RETURN jsonb_build_object('ok', true, 'deja_note', true); END IF;
   IF COALESCE(v_e ->> 'etat', '') <> 'essai' THEN RETURN jsonb_build_object('ok', true, 'essai', false); END IF;
   IF v_vu THEN
-    UPDATE public.profiles SET cloud_essai_arrete = true, cloud_essai_fin = GREATEST(cloud_essai_debut, now())
+    UPDATE public.profiles SET cloud_essai_arrete = true, cloud_essai_fin = GREATEST(cloud_essai_debut, now()),
+                               cloud_essai_refus = 'compte_plateforme_deja_vu'
      WHERE id = p_user;   -- le déclencheur met l'IP au repos
     RETURN jsonb_build_object('ok', false, 'raison', 'compte_plateforme_deja_vu', 'plateforme', lower(btrim(p_plateforme)),
                               'annuler_abonnement_essai', true);

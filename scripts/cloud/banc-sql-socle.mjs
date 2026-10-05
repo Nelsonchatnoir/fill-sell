@@ -144,6 +144,12 @@ const pA2 = (await commeUser(U.A, "SELECT public.cloud_essai_preparer_moi('appar
 ok(pA2.ok === true && Number(await val('SELECT count(*) FROM public.cloud_ips WHERE reserve_pour = $1', [U.A])) === 1, 'A prépare deux fois : toujours UNE seule réservation');
 ok((await val('SELECT public.cloud_essai_permis($1)', [U.A])).permis === true, 'cloud_essai_permis(A) = permis (lu par le paiement)');
 ok((await val('SELECT public.cloud_essai_permis($1)', [U.F])).raison === 'non_prepare', 'sans préparation → non permis (non_prepare)');
+ok((await val('SELECT public.cloud_essai_permis($1)', [U.A])).fraiche === true, "A : préparation FRAÎCHE (moins d'une heure, place tenue) — le paiement peut s'ouvrir");
+ok((await val('SELECT public.cloud_essai_permis($1)', [U.F])).fraiche === false, 'F : pas fraîche → create-checkout-session demande de préparer de nouveau');
+await db.query("UPDATE public.cloud_essai_demandes SET demande_le = now() - interval '2 hours' WHERE user_id = $1", [U.A]);
+const vieille = await val('SELECT public.cloud_essai_permis($1)', [U.A]);
+ok(vieille.fraiche === false && vieille.permis === true, "préparation de plus d'une heure : plus fraîche (paiement refusé), mais son verdict d'essai reste lu par les stores");
+await db.query("UPDATE public.cloud_essai_demandes SET demande_le = now() WHERE user_id = $1", [U.A]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 titre('3. Le paiement démarre l\'essai → l\'IP réservée devient la sienne');
@@ -189,6 +195,9 @@ const refusB = await val("SELECT public.cloud_essai_noter_compte_plateforme($1, 
 ok(refusB.ok === false && refusB.raison === 'compte_plateforme_deja_vu' && refusB.annuler_abonnement_essai === true, 'B se connecte au MÊME Leboncoin → essai refusé, abonnement d\'essai à annuler');
 ok((await val('SELECT public.cloud_etat($1)', [U.B])).etat === 'essai_termine', 'B : essai arrêté tout de suite (cloud_etat)');
 ok(await val('SELECT etat FROM public.cloud_ips WHERE id = $1', [ipB]) === 'repos', 'B : son IP part au repos AUSSITÔT (arrêté = pas de grâce)');
+ok(await val('SELECT cloud_essai_refus FROM public.profiles WHERE id = $1', [U.B]) === 'compte_plateforme_deja_vu', "B : la RAISON est écrite (l'app la dit, jamais un essai fini sans explication)");
+const refusClient = await (async () => { await db.exec('SET ROLE authenticated'); try { await db.query("UPDATE public.profiles SET cloud_essai_refus = NULL WHERE id = $1", [U.B]); return null; } catch (x) { return x.message; } finally { await db.exec('RESET ROLE'); } })();
+ok(/permission denied/.test(refusClient ?? ''), 'le client ne peut pas effacer cette raison');
 
 // ─────────────────────────────────────────────────────────────────────────────
 titre('6. Conversion, arrêt, fin d\'essai, grâce');
