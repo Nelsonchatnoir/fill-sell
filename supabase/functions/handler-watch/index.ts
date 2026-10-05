@@ -21,7 +21,8 @@ import { posteVivant, messageInterruption } from "../_shared/interruption-poste.
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
-import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, retraitBloqueParConnexion } from "../_shared/mur-geste.js";
+import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste } from "../_shared/mur-geste.js";
+import { retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
 import { etatReprisPourJob } from "../_shared/etat-repris.ts";
