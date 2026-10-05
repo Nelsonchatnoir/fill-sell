@@ -4,6 +4,54 @@ Mandat de Nico du 05/10 matin : 14 points, chacun corrigé à la racine,
 retesté en réel, un seul push. Ce fichier dit ce qui est FAIT, EN COURS et
 À FAIRE. État de prod : `docs/agents/etat-2026-10-01.md` § « 05/10 ».
 
+## ⛔ BILAN AVANT /clear (05/10 ~15:30) — LIRE D'ABORD, il remplace les listes « À faire » plus bas
+
+### Fini et prouvé (relu en prod à 15:30)
+- Web `2026-10-05T13:07:43Z+b38d842` (entrée 200 avec `Origin`) ; OTA **2.9.55**
+  sur production (`channel list`) ; dossier CWS = la seule 0.6.98.
+- **eBay, voie = création, TOUS comptes** : 774 jobs d'import (44 comptes,
+  772 annonces) réétiquetés `extension`. Sauvegarde prise AVANT l'écriture
+  (11:43:40Z) : `scripts/reparations/20261005_ebay_imports_voie_extension_SAUVEGARDE.json`,
+  inverse `…_INVERSE.sql`, commit f5d9ff7. Relu à 15:30 : 774/774 en
+  `extension`, **0** import encore en `api` sur l'ensemble des comptes. Retrait
+  Batman clos (vendu sur eBay).
+- Cron 31 `remises-en-vente-5min` actif (10 fiches Vinted de Louis publiées,
+  0 doublon) ; remise en vente, colis Vinted, transporteurs LBC, marque :
+  prouvés en réel (§ « Fait » plus bas) ; sessions extension 403 corrigées.
+- Veille des commandes : interrupteur à 1, amorcée sur le poste de Nico
+  (2 traces `amorcage` dans `usage_logs`).
+
+### Livré, pas encore prouvé en réel
+- **Louis « Rangement Rouge et Bleu » (1791017762605) et « Rouge et Jaune »
+  (1791017762018)** : publiables sur Leboncoin depuis le web b38d842 et l'OTA
+  2.9.55. Preuves : index Beebs `Yaourtières` en prod → même feuille d'origine
+  que les 10 fiches sœurs, toutes parties le 05/10 vers 10:13 en « Maison &
+  Jardin > Électroménager » ; `selftest:origine-index-beebs` vert (aucun refus,
+  aucune question de rayon). **Pas encore publiées (0 job LBC)** : au premier
+  clic, vérifier `platform_fields.lbcCategoryPath` = Électroménager.
+  ⚠️ Le selftest tourne hors ligne : il ne prouve pas le rayon exact.
+- eBay `ORDER_CONFIRMATION` : en base, seulement les 8 notifications d'essai
+  eBay (14:15–14:32, données factices → `illisible`/`invalide`, attendu).
+  Première vraie commande : verdict `valide` + `commandes_ebay` sur le job.
+- Veille des commandes : aucune commande neuve vue → relecture prioritaire
+  pas encore observée en réel.
+
+### Reste
+- **Nico** : téléverser `build/CWS-0.6.98-A-TELEVERSER/fillsell-extension-0.6.98-b7b756c-cws.zip`
+  puis « Envoyer pour examen » (0.6.96 et 0.6.97 jamais servies). Ensuite,
+  décider s'il force la MAJ (minimum serveur 0.6.81, inchangé).
+- Une fois la 0.6.98 servie : Carla / Ciddjy `remplissage_mesures` (lenteur
+  Vinted Mac, point 9) ; Joséphine, 8 retraits Beebs à revoir.
+- Joséphine, 8 retraits Opla (articles vendus encore en ligne) : elle doit se
+  reconnecter à opla.co dans Chrome.
+- Nala 377453677328 (nicolas.menar) : question « Déjà vendu ? » ouverte depuis
+  le 03/10, attend sa réponse (voulu).
+- **Décisions de Nico** : (a) enregistrer seule une vente Vinted prouvée par
+  la commande (renverse la règle du 12/07) ; (b) « Petit » n'est plus forcé
+  sur la Mode Vinted (« rien de deviné ») : à confirmer.
+- Point 11 TRANCHÉ (« jamais bloqué », la limite du jour est dite) ; GO cron
+  31 et point 14 FAITS : les mentions « À faire » plus bas sont périmées.
+
 ## Sorti
 - **Web** : un push sur `main` (Vercel) — commits du 05/10 jusqu'à l'OTA 2.9.54.
 - **OTA** : **2.9.54** (canal production relu après envoi).
