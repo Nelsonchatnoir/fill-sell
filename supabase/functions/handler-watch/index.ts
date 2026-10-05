@@ -21,7 +21,7 @@ import { posteVivant, messageInterruption } from "../_shared/interruption-poste.
 import { requalificationCompteVintedBloque } from "../_shared/vinted-compte-bloque.js";
 import { requalificationMiseANiveauEbay } from "../_shared/ebay-mise-a-niveau.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
-import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste } from "../_shared/mur-geste.js";
+import { PAUSE_VINTED_GESTE_MS, messagePauseVintedGeste, retraitBloqueParConnexion } from "../_shared/mur-geste.js";
 import { jugerRetraitVintedIntrouvable, numeroRetraitVinted } from "../_shared/retrait-introuvable.js";
 import { jugerRetraitBeebsParReleves, numeroRetraitBeebs } from "../_shared/beebs-preuve-retrait.js";
 import { etatReprisPourJob } from "../_shared/etat-repris.ts";
@@ -1676,6 +1676,14 @@ serve(async (req) => {
       // garde une issue, elle ne devient pas éternelle.
       if (j.platform === "opla" && j.platform_fields?.needs_user_source === "opla_acces" &&
           (Number(j.platform_fields?.opla_acces_reprises) || 0) < OPLA_ACCES_REPRISES_MAX) return false;
+      // ── (05/10) UN RETRAIT BLOQUÉ PAR UNE CONNEXION N'EST JAMAIS SOLDÉ ──
+      // L'article est vendu ; tant que la personne n'est pas reconnectée, son
+      // annonce reste en ligne — risque de double vente (Joséphine, 8 retraits
+      // Opla au 05/10). Le solder en `cancelled` effaçait le seul signal que
+      // l'app en garde. Il reste en attente, l'app le dit en tête du Stock, et
+      // la relance du mur (MUR_CONNEXION, plus bas) le reprend dès qu'une sonde
+      // prouve la session.
+      if (j.action === "delete" && retraitBloqueParConnexion(j)) return false;
       return true;
     });
     const lastSeen = new Map<string, number>();

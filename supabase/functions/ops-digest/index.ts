@@ -138,12 +138,14 @@ serve(async (req) => {
     return Number.isFinite(since) && now - since > 15 * 60_000;
   });
 
-  // 3. Deletes non terminés > 24 h (risque de double vente).
+  // 3. Deletes non terminés > 24 h (risque de double vente). (05/10) needs_user
+  // compris : un retrait qui attend une reconnexion laisse l'annonce en ligne
+  // (Joséphine, 8 retraits Opla) — il manquait ici.
   const { data: deletesOverdue, error: e3 } = await supabase
     .from("cross_post_jobs")
     .select(JOB_COLUMNS)
     .eq("action", "delete")
-    .in("status", ["pending", "processing", "failed"])
+    .in("status", ["pending", "processing", "needs_user", "failed"])
     .lt("created_at", iso24h)
     .order("created_at", { ascending: true });
 

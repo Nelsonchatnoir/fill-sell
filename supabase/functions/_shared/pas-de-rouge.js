@@ -57,6 +57,13 @@ function acte(action) {
   return "la publication";
 }
 
+/** (05/10) Un retrait bloqué : l'article est vendu, l'annonce encore en ligne. */
+function risqueRetrait(action, nom) {
+  return action === "delete"
+    ? ` Ton article est vendu mais son annonce est encore en ligne sur ${nom} (risque de double vente).`
+    : "";
+}
+
 // ── LES MOTIFS, DANS L'ORDRE OÙ ILS SONT ESSAYÉS ───────────────────────────
 // Le premier qui reconnaît gagne. Les plus spécifiques d'abord : un message
 // peut porter deux signatures (« Failed to fetch » DANS une republication mise
@@ -368,7 +375,7 @@ function classerEchecSansRegleRetrait(arg) {
         verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
         message:
           `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
-          `donc ${acte(action)} ne peut pas aboutir. Clique sur « Me connecter » ci-dessous : ` +
+          `donc ${acte(action)} ne peut pas aboutir.${risqueRetrait(action, nom)} Clique sur « Me connecter » ci-dessous : ` +
           "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
       };
     }
@@ -444,7 +451,7 @@ function classerEchecSansRegleRetrait(arg) {
       verdict: "a_toi", statut: "needs_user", motif: "connexion", source: "connexion",
       message:
         `Connexion ${nom} requise : ton navigateur n'est plus connecté à ${nom}, ` +
-        `donc ${acte(action)} ne peut pas aboutir. Clique sur « Me connecter » ci-dessous : ` +
+        `donc ${acte(action)} ne peut pas aboutir.${risqueRetrait(action, nom)} Clique sur « Me connecter » ci-dessous : ` +
         "dès que tu es reconnecté, on repart tout seuls. Rien n'a été touché.",
     };
   }

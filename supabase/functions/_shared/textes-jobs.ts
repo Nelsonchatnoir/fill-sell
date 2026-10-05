@@ -189,8 +189,13 @@ export function connexionOplaRequise(action: string): string {
   const quoi = action === "delete" ? "le retrait repart tout seul"
     : action === "republish" ? "la republication repart toute seule"
     : "la publication repart toute seule";
+  // (05/10) Un retrait attend : l'article est vendu, l'annonce est encore en
+  // ligne — on le dit (risque de double vente, Joséphine).
+  const risque = action === "delete"
+    ? " Ton article est vendu mais son annonce est encore en ligne sur Opla (risque de double vente)."
+    : "";
   return (
-    "Connexion Opla requise : ta session Opla est fermée sur ton ordinateur. " +
+    "Connexion Opla requise : ta session Opla est fermée sur ton ordinateur." + risque + " " +
     `Appuie sur « Me connecter » et connecte-toi à Opla — dès que c'est fait, ${quoi}.`
   );
 }

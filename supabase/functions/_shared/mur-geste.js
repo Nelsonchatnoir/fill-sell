@@ -86,18 +86,45 @@ export function messageRecreationBloquee(platform, deletedAt) {
     `et passe la vérification si elle s'affiche. Ton annonce${le ? `, retirée le ${le},` : ""} sera remise en ligne toute seule ensuite.`;
 }
 
-/** Le message « connexion » — début de phrase partagé (relancer_jobs_connexion, handler-watch, app). */
-export function messageConnexionRequise(platform, { etapeRetiree = false } = {}) {
+// (05/10) Pour un RETRAIT, « Ton annonce est intacte » était faux et
+// dangereux : l'article est vendu et son annonce reste en ligne tant que le
+// geste n'est pas fait (Joséphine, 8 retraits Opla). La fin de phrase le dit.
+function suiteDuMessage(platform, { etapeRetiree = false, retrait = false } = {}) {
   const nom = NOM[platform] ?? platform;
-  return `Connexion ${nom} requise : reconnecte-toi à ${nom} dans Chrome, sur ton ordinateur. ` +
-    (etapeRetiree ? "Ton annonce sera remise en ligne toute seule ensuite." : "Ton annonce est intacte ; tout repartira tout seul ensuite.");
+  if (retrait) {
+    return `Ton article est vendu mais son annonce est encore en ligne sur ${nom} (risque de double vente) : ` +
+      "FillSell la retire tout seul dès que c'est fait.";
+  }
+  return etapeRetiree ? "Ton annonce sera remise en ligne toute seule ensuite." : "Ton annonce est intacte ; tout repartira tout seul ensuite.";
+}
+
+/** Le message « connexion » — début de phrase partagé (relancer_jobs_connexion, handler-watch, app). */
+export function messageConnexionRequise(platform, opts = {}) {
+  const nom = NOM[platform] ?? platform;
+  return `Connexion ${nom} requise : reconnecte-toi à ${nom} dans Chrome, sur ton ordinateur. ` + suiteDuMessage(platform, opts);
 }
 
 /** Le message « vérification à résoudre ». */
-export function messageVerificationAntirobot(platform, { etapeRetiree = false } = {}) {
+export function messageVerificationAntirobot(platform, opts = {}) {
   const nom = NOM[platform] ?? platform;
   return `${nom} te demande une vérification anti-robot : ouvre ${SITE[platform] ?? nom} dans Chrome et fais la vérification. ` +
-    (etapeRetiree ? "Ton annonce sera remise en ligne toute seule ensuite." : "Ton annonce est intacte ; tout repartira tout seul ensuite.");
+    suiteDuMessage(platform, opts);
+}
+
+/**
+ * (05/10) Un retrait bloqué par une CONNEXION à la plateforme : en attente de
+ * session, ou mur « Connexion X requise » posé. handler-watch ne le solde
+ * jamais (l'annonce d'un article vendu resterait en ligne sans plus aucun
+ * signal) ; l'app le montre en tête du Stock.
+ */
+export function retraitBloqueParConnexion(job) {
+  if (job?.action !== "delete") return false;
+  const pf = (job?.platform_fields && typeof job.platform_fields === "object") ? job.platform_fields : {};
+  const err = String(job?.error ?? "");
+  if (job?.status === "pending") return Boolean(pf.attente_session) && ATTENTE_SESSION_RE.test(err);
+  if (job?.status !== "needs_user") return false;
+  return pf.needs_user_source === "connexion" || pf.mur_geste?.type === "connexion"
+    || /^(Connexion|Reconnexion) \S+ requise/.test(err) || ATTENTE_SESSION_RE.test(err);
 }
 
 /**
@@ -110,13 +137,14 @@ export function jugerMurGeste(job) {
   const pf = { ...pf0 };
   const plat = String(job?.platform ?? "");
   const etapeRetiree = job?.action === "republish" && pf.republish_step === "deleted";
+  const retrait = job?.action === "delete";
   // 1. Connexion : l'attente de session, nommée par la page, persistante.
   const att = pf.attente_session;
   if (att && typeof att === "object" && ATTENTE_SESSION_RE.test(String(job?.error ?? ""))
       && (Number(att.observations) || 0) >= CONNEXION_OBSERVATIONS_MIN) {
     pf.mur_geste = { type: "connexion", le: new Date().toISOString(), depuis: att.depuis ?? null, observations: Number(att.observations) || 0 };
     pf.needs_user_source = "connexion";
-    return { geste: "connexion", message: messageConnexionRequise(plat, { etapeRetiree }), pf, change: true };
+    return { geste: "connexion", message: messageConnexionRequise(plat, { etapeRetiree, retrait }), pf, change: true };
   }
   // 2. Challenge à résoudre : compté par observation distincte.
   const obs = observationChallenge(pf);
@@ -141,7 +169,7 @@ export function jugerMurGeste(job) {
     pf.needs_user_source = "verification_antirobot";
     const message = obs.source === "prevol_recreation"
       ? messageRecreationBloquee(plat, pf.deleted_at ?? pf.deleted_at_serveur ?? null)
-      : messageVerificationAntirobot(plat, { etapeRetiree });
+      : messageVerificationAntirobot(plat, { etapeRetiree, retrait });
     return { geste: "verification_antirobot", message, pf, change: true };
   }
   return { geste: null, pf, change };

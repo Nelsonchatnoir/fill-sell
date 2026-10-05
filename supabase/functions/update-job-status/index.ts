@@ -2423,9 +2423,14 @@ serve(async (req) => {
             statutEffectif = "pending";
             // Formulation (2026-09-11) : la cadence de vérification et la
             // « tentative consommée » sont notre mécanique, pas son affaire.
-            messageEffectif =
-              `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
-              `dès que tu seras reconnecté(e).`;
+            // (05/10) Un retrait qui attend = un article vendu dont l'annonce
+            // reste en ligne : on dit le risque (préfixe inchangé, il est lu
+            // par ATTENTE_SESSION_RE).
+            messageEffectif = jrow.action === "delete"
+              ? `En attente de ta connexion à ${label} dans Chrome : ton article est vendu mais son annonce est encore ` +
+                `en ligne sur ${label} (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).`
+              : `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
+                `dès que tu seras reconnecté(e).`;
             raisonRequalif = `session ${jrow.platform} morte : attente sans tentative (observation ${pfAttenteSession.attente_session && (pfAttenteSession.attente_session as Record<string, unknown>).observations})`;
             }
           }

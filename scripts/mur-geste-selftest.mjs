@@ -1,7 +1,7 @@
 // Autotest — un mur qui demande un geste se montre (point 4, 02/10 soir).
 // `npm run selftest:mur-geste` (_shared/mur-geste.js). Formes relevées en base.
 import { jugerMurGeste, observationChallenge, messageConnexionRequise, messageVerificationAntirobot,
-  messagePauseVintedGeste, CONNEXION_OBSERVATIONS_MIN, ANTIROBOT_ECART_MIN_MS } from "../supabase/functions/_shared/mur-geste.js";
+  messagePauseVintedGeste, retraitBloqueParConnexion, CONNEXION_OBSERVATIONS_MIN, ANTIROBOT_ECART_MIN_MS } from "../supabase/functions/_shared/mur-geste.js";
 
 let ko = 0;
 const ok = (c, nom, d = "") => { if (c) console.log(`  ✓ ${nom}`); else { console.error(`  ✗ ${nom}${d ? `\n      ${d}` : ""}`); ko++; } };
@@ -57,6 +57,21 @@ ok(/^Vinted ne répond plus à FillSell sur ton ordinateur : ouvre vinted\.fr da
   "le geste, et la date du retrait — jamais « quelques minutes »", r2.message);
 ok(jugerMurGeste({ ...recr("2026-10-03T09:20:00.000Z"), platform_fields: { ...recr("2026-10-03T09:20:00.000Z").platform_fields, gardes: { prevol_recreation: { at: "2026-10-03T09:20:00.000Z", verdict: "report", detail: "fenêtre de recréation non ouverte" } } } }).geste === null,
   "un autre report (pas l'identité) reste une attente");
+
+console.log("\n6. RETRAIT BLOQUÉ PAR UNE CONNEXION (05/10, Joséphine, 8 retraits Opla)");
+const attenteOpla = { platform: "opla", action: "delete", status: "pending",
+  error: "En attente de ta connexion à Opla dans Chrome : ton article est vendu mais son annonce est encore en ligne sur Opla (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).",
+  platform_fields: { attente_session: { platform: "opla", depuis: "2026-10-04T14:18:23.682Z", observations: CONNEXION_OBSERVATIONS_MIN } } };
+const rr = jugerMurGeste(attenteOpla);
+ok(rr.geste === "connexion" && /^Connexion Opla requise/.test(rr.message), "3 observations : « Connexion Opla requise » (préfixe lu par la relance)", rr.message);
+ok(!/intacte/.test(rr.message) && /encore en ligne sur Opla/.test(rr.message) && /double vente/.test(rr.message),
+  "un RETRAIT ne dit jamais « intacte » : article vendu, annonce encore en ligne, risque de double vente", rr.message);
+ok(/intacte/.test(messageConnexionRequise("opla")) && !/double vente/.test(messageConnexionRequise("opla")), "une publication garde « Ton annonce est intacte »");
+ok(retraitBloqueParConnexion(attenteOpla), "retrait en attente de session : bloqué par une connexion");
+ok(retraitBloqueParConnexion({ ...attenteOpla, status: "needs_user", error: rr.message, platform_fields: rr.pf }), "retrait needs_user « Connexion Opla requise » : bloqué par une connexion");
+ok(!retraitBloqueParConnexion({ ...attenteOpla, action: "publish", status: "needs_user", error: rr.message, platform_fields: rr.pf }), "une publication n'est pas un retrait bloqué");
+ok(!retraitBloqueParConnexion({ ...attenteOpla, status: "failed" }), "un retrait failed n'est pas « bloqué par une connexion »");
+ok(!retraitBloqueParConnexion({ platform: "vinted", action: "delete", status: "pending", error: null, platform_fields: {} }), "un retrait en file normale n'est pas bloqué");
 
 if (ko) { console.error(`\n✗ ${ko} échec(s)`); process.exit(1); }
 console.log("\n✓ murs : un geste nécessaire se montre, un retard reste une attente");
