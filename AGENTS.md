@@ -6,7 +6,7 @@ historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
 - **Servi** : extension **0.6.94** ; **0.6.98 à téléverser** (`build/CWS-0.6.98-A-TELEVERSER/`) ;
-  minimum **0.6.81** ; web/OTA **2.9.55** ; gpj v217, ujs v129.
+  minimum **0.6.81** ; web/OTA **2.9.56** ; gpj v217, ujs v129.
 - **05/10** : remise en vente (cron 31) ; palier unique ; eBay : voie = création,
   `ebay-notifications` ; reprise : `docs/reprise/terminal-problemes-0510.md`.
 - **CPU (04/10)** : tâche auto mesurée, bornée ; interdit 11.

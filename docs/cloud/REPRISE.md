@@ -1,30 +1,131 @@
 # FillSell Cloud — REPRISE (à lire EN ENTIER avant toute action)
 
-Mis à jour le **05/10/2026, 15:15** (terminal Cloud). Remplace, pour la
-suite, le REPRISE du prototype (`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md`,
-qui garde l'histoire du 26/09 et ses mesures).
+Mis à jour le **05/10/2026, 16:40** (terminal Cloud n° 3, Nico absent, GO
+écrit pour les six étapes). Remplace, pour la suite, le REPRISE du prototype
+(`C:\Users\nicol\fillsell-cloud-proto\REPRISE.md`, qui garde l'histoire du 26/09).
 
 ## 0. En une phrase
 
 L'option **« Sans ordinateur »** (FillSell Cloud, 20 € TTC/mois, essai 7 jours
 avec carte, ouverte au Free) fait tourner NOTRE extension dans un navigateur
 **steel-browser** hébergé chez **Hetzner**, un par compte, qui sort par une **IP
-française dédiée** (IPRoyal). Tout le code est sur la branche **`feat/cloud`**
-(poussée). **Rien n'est en prod côté utilisateurs** : drapeau `cloudOffer` à
-`false`, aucune migration appliquée, aucune fonction déployée. **Le serveur de
-test tourne** depuis le 05/10 (cx43 Falkenstein, `cloud.fillsell.app`, UNE IP
-France 94.194.94.233, contrôles verts, § 4.2) mais ne sert personne tant que le
-socle n'est pas en base. Le mail « paiement échoué » est corrigé sur
-`feat/cloud`, NON déployé, événements Stripe NON cochés (§ 4.5). Nico est le
-SEUL témoin (écran B du test, dans l'app).
+française dédiée** (IPRoyal). **Depuis le 05/10 16:00, le code est dans `main`**
+(fusion 7b9771c) et **servi** (web + OTA **2.9.56**) — drapeau `cloudOffer` à
+`false`, Nico SEUL témoin (écran B) : pour tout autre compte, l'app est
+identique à la 2.9.55 (preuve § 0 bis). Le socle est en base (deux migrations),
+le mail « paiement échoué » est en ligne pour TOUTES les formules (événements
+Stripe cochés). Le serveur de test tourne sur `main` ; le test complet s'est
+arrêté à la page de connexion Vinted : la suite exige Nico (ses identifiants).
 
-**Pour un NOUVEAU terminal, dans l'ordre** : (1) attendre la fin du terminal
-Problèmes (§ 4.1) ; (2) sur GO de Nico : migrations 20261004233000 puis
-20261005120000 (§ 4.1, point 2) ; (3) fusion dans `main` + preuve « IDENTIQUE »
-contre l'OTA servie + OTA de l'écran B (§ 4.1) ; (4) redéployer le serveur
-depuis le dossier principal (§ 4.2) ; (5) test complet sur GO (§ 4.3) ;
-(6) déploiement `email-tunnel` puis `stripe-webhook` et cochage des deux
-événements Stripe sur GO (§ 4.5, étape 4 bis de `mise-en-ligne.md`).
+**Pour un NOUVEAU terminal** : lire le § 0 bis (ce qui est fait, ce qui reste,
+les refus). Travailler dans le dossier PRINCIPAL (`main`) : la branche
+`feat/cloud` et son worktree sont PÉRIMÉS (tout est fusionné ; ne plus y
+commiter). Ce qui reste, dans l'ordre : (1) le sel des empreintes au vault
+(**Nico**, refusé au classifieur, § 0 bis) ; (2) le test complet avec Nico
+(connexions depuis l'écran B, puis publication / republication / retrait, § 0 bis
+« Pour finir le test ») ; (3) la mise en ligne (`mise-en-ligne.md`, sur GO).
+
+## 0 bis. Le 05/10, 15:35 → 16:40 — les six étapes du GO de Nico
+
+| Étape | Fait ? | Preuve |
+|---|---|---|
+| 1. Fusion `feat/cloud` → `main` b38d842 | **FAIT** | merge 7b9771c (conflits palier.js, package.json ; get-pending-jobs et App.jsx auto-fusionnés, relus : main + les 3 blocs `poste_cloud`) ; **188/188 selftests** ; preuve d'identité contre **2.9.55** (4efb8b8) : **IDENTIQUE, 32 contrôles, 708 scènes octet pour octet**, palier identique, aucune requête Cloud |
+| 2. Mail « paiement échoué » en ligne | **FAIT** | `email-tunnel` v69 → v70 → **v71**, `stripe-webhook` v56 → **v57**, `verify_jwt` false relu avant/après (`deployer-fonctions-cloud.mjs --seulement`) ; code téléchargé = dépôt ; `selftest:paiement-echoue` vert ; **14 mails FR du parc identiques octet pour octet** au code de prod d'avant (`scripts/cloud/mails-fr-identiques.mjs --avant b38d842 --apres-dossier <téléchargé>`) ; événements Stripe cochés (liste ci-dessous) |
+| 3. Migrations 20261004233000 + 20261005120000 | **FAIT** (sel : NON) | appliquées (`lock_timeout` 5 s) et inscrites (`repair`) ; 39 fonctions `cloud_*`, 10 tables (RLS, 0 droit client), 4 fonctions « _moi » ouvertes aux connectés, 0 à `anon`, index des mails 15 types, aucun cron ; 0 ligne `profiles` touchée ; sauvegarde/inverse `scripts/reparations/20261005_cloud_socle_*` ; CPU base : avant 3,8–8,8 % (≈ 5 %), après max 9,7 %, moyenne 4,9 % |
+| 4. Serveur redéployé depuis `main` | **FAIT** | 7452e23 puis 34c915e (3 correctifs, ci-dessous) ; extension **0.6.98-cloud** ; contrôles verts ; `NAVIGATEURS_MAX=8`, achats IPRoyal 0, alertes mail 0, compte de Nico seul (relus dans `.env`) ; aucun achat |
+| 5. OTA écran B + /legal en anglais | **FAIT** (relecture web : NON) | `/legal` lit `?lang=en|fr`, le pied des mails anglais y mène (2dc260c, `selftest:legal-langue` 9, rouge sur l'ancienne page) ; **UN push** `326b3a0..7452e23` ; build `2026-10-05T14:00:19Z+7452e23` ; **Capgo production = 2.9.56** (checksum compatible, aucune alerte native) |
+| 6. Test complet (compte de Nico) | **PARTIEL** | voir « Le test » ci-dessous : socle, IP, navigateur, écran « Me connecter » jusqu'à la page Vinted ; connexion et gestes = Nico |
+
+**⚠️ Le push de la fusion est parti AVANT ma preuve** : le terminal Problèmes,
+qui travaillait encore dans le dossier principal, a commité `326b3a0` (docs) à
+15:40:54 par-dessus ma fusion locale 7b9771c (15:40:25) et l'a poussée — le web
+a servi la fusion dès 13:41:11Z. La preuve (708 scènes, 15:45) est venue après,
+verte. Leçon : vérifier qu'aucun autre terminal n'écrit dans le dossier
+principal avant d'y fusionner.
+
+**Stripe, endpoint `we_1TNHq1QZRA77vrWJHXw51Svb` (relu par l'API, mode réel)** —
+AVANT : `checkout.session.completed`, `customer.subscription.deleted`,
+`customer.subscription.updated`, `invoice.paid`. APRÈS (15:55, relu à 16:35) :
+les mêmes + `invoice.payment_failed` + `invoice.payment_action_required`,
+`status: enabled`. ⚠️ Le mail client part désormais pour TOUTES les formules.
+**Aucun mail parti pour un vrai client** jusqu'à 16:34 : `email_logs`
+`payment_failed:%` = 0, `ops_paiement_echoue` = 0 (base de départ : 0, ce chemin
+n'avait jamais tourné). À relire demain : `select email_type, sent_at from
+email_logs where email_type like 'payment_failed:%'` et les journaux de
+`stripe-webhook` (`[webhook] échec …`). Retour arrière : la liste des 4.
+
+**L'ordre a été changé, et pourquoi** : `email-tunnel` a été déployé AVANT les
+migrations, mais `stripe-webhook` APRÈS : la nouvelle version lit
+`profiles.cloud_canal` et écrit `is_cloud` dans `recomputeStripeFlags` ; sans la
+colonne, le recalcul des abonnements de TOUS les clients Stripe aurait échoué.
+Pour un client sans Cloud, elle écrit `is_cloud = false` : le déclencheur
+`profiles_cloud_pool` s'éveille, `cloud_compte_synchroniser` rend « rien »
+(aucune IP), coût négligeable.
+
+**Refus du classifieur (NON contournés)** :
+- 15:5x, pose du sel au vault (`vault.create_secret(…, 'cloud_empreinte_sel', …)`,
+  valeur tirée en base, jamais affichée) : « Permission for this action was
+  denied by the Claude Code auto mode classifier. Reason: [Secret-Store Writes]. »
+  → **Nico** (une ligne SQL, éditeur Supabase) :
+  `select vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'cloud_empreinte_sel', 'sel des empreintes Cloud (HMAC)');`
+  Sans lui : `cloud_hacher` refuse, donc la préparation d'un ESSAI refuse et la
+  note du compte de plateforme à la première connexion échoue (l'option offerte
+  et la connexion elle-même fonctionnent).
+- 16:02, relecture du déploiement web après le push (`curl
+  https://fillsell.app/build.json` en boucle, puis l'entrée avec et sans
+  `Origin`) : « Permission for this action was denied by the Claude Code auto
+  mode classifier. Reason: [Out-of-Place Publication]. » → **à relire par Nico
+  ou le prochain terminal** : `curl -s https://fillsell.app/build.json` doit dire
+  `+7452e23` (ou le commit de la REPRISE si poussé après), et l'entrée
+  `assets/index-*.js` doit rendre 200 avec `Origin: https://fillsell.app`.
+
+**Le test (16:06 → 16:34, compte de Nico seulement)** :
+- IP 84458881 entrée au pool (`ip.mjs ajouter`, identifiants au vault par la
+  fonction) → **mise au REBUT à tort** par son contrôle d'entrée (Vinted et
+  Leboncoin « bloque ») : le motif des murs contenait « datadome », or les deux
+  sites chargent ce script sur leurs pages OUVERTES. Prouvé par une lecture de
+  diagnostic par la même IP (vrais titres, menus). Corrigé (91511bb,
+  `verdictPage`, test) ; réparation `20261005_cloud_ip1_rebut_a_tort.sql` (inverse
+  prêt) ; contrôle refait : Vinted ok, Leboncoin ok, eBay ok, sortie FR → disponible.
+- Nico en option OFFERTE (`20261005_cloud_test_nico_offert.sql`, 16:14:12) → IP
+  attribuée par le déclencheur → **navigateur ouvert 18 s après** (16:14:30),
+  session FillSell fabriquée (0dd913f4), extension Cloud au serveur 2 s plus
+  tard ; `profiles.extension_build` de l'ordinateur de Nico INCHANGÉ (b7b756c).
+- Écran « Me connecter » (page autonome, ticket 15-20 min, Chrome du poste) :
+  **deux défauts trouvés et corrigés** — le module de la page visait `/client.js`
+  (503) : aucun bouton ne répondait (2e029c7) ; Vinted redirige désormais
+  `/member/signup/select_type` → `/member/register/select_type`, refusé par la
+  garde, page renvoyée **4 à 5 fois par seconde sans fin** (100 refus en 15 s) →
+  « register » permis + arrêt au 5e refus en 20 s avec message et alerte
+  `connexion_boucle` (34c915e). Après correctif : page Vinted au format
+  téléphone **8 s** après le clic, gestes rejoués (pays, « Cookies requis
+  uniquement », « Se connecter » → « Bienvenue ! Continuer avec Google / Apple /
+  Facebook / e-mail »). **Arrêt ici : les identifiants sont ceux de Nico.**
+- **RAM réelle** du navigateur de Nico (extension 0.6.98-cloud qui tourne) :
+  592 Mo à l'ouverture, **650–660 Mo au repos**, **966 Mo** écran de connexion
+  ouvert ; hôte 1,4 Go utilisés sur 15,6. Mesure outil (profil neuf, accueils) :
+  pic **971 Mo** (802 avec 0.6.96) → NAVIGATEURS_MAX proposé 10 (NON appliqué : 8).
+- CPU de la base pendant le test : max 7,7 %, moyenne 4,6 %. Aucun job de Nico
+  créé ni pris ; aucun job traité par le Cloud.
+- **Fin** (16:31:34) : inverse appliqué (Nico sans option, colonnes à NULL) →
+  navigateur fermé (16:32:31), purge prouvée à l'entretien (16:33:46) : profil
+  détruit, coffre 0, cookies 0, session 0dd913f4 révoquée, identifiants du proxy
+  renouvelés chez IPRoyal ; **IP au repos jusqu'au 12/10 16:31** (Nico la
+  reprend s'il revient avant). La session 0ba8903a « gardée pour le test » n'a
+  PAS été utilisée ni révoquée (l'orchestrateur fabrique la sienne).
+
+**Pour finir le test (avec Nico, sur son iPhone)** : (a) le sel au vault (ci-dessus) ;
+(b) `npx supabase db query --linked -f scripts/reparations/20261005_cloud_test_nico_offert.sql` ;
+(c) Nico : app 2.9.56 › Réglages › Abonnement › « Connecter Vinted et
+Leboncoin » (écran B ; ou un ticket : `docker compose exec -T orchestrateur node
+outils/ticket.mjs f44b5917-bccc-4431-ba41-f40571a2ed18 20`) ; (d) gestes sur une
+annonce de test à 999 €+ (publication, republication, retrait ; `handler_build`
+en `…-cloud`), vérifiés dans le Chrome de Nico ; (e) l'inverse
+`…_nico_offert_INVERSE.sql`. Pendant (b)→(e), l'extension de bureau de Nico
+devrait être en pause : sinon les deux postes se disputent ses jobs Vinted/LBC.
+
+**Coût réellement engagé par ce terminal : 0 €** (aucun achat ; serveur déjà
+facturé à l'heure ≈ 0,66 € TTC/jour ; IPRoyal 16 $ de solde inchangé).
 
 ## 1. Où est tout
 
@@ -111,6 +212,10 @@ de l'app du lot Problèmes pas encore servis partiraient avec l'OTA (§ 4.1).
 tournait, 1,3 Go libres) : à faire avant l'OTA.
 
 ## 4. Ce qui reste (dans l'ordre)
+
+> **05/10 16:40** : § 4.1 (fusion, migrations, OTA), § 4.2 (redéploiement) et § 4.5
+> (mail en ligne, événements cochés) sont FAITS — voir § 0 bis. Le texte ci-dessous
+> est gardé pour l'histoire ; le § 4.3 (test complet) reste, avec Nico.
 
 ### 4.1 L'écran B sur l'iPhone de Nico — après la fin du terminal Problèmes
 
