@@ -2699,6 +2699,23 @@ function terminerMesuresRemplissage() {
   if (!m) return { mesures: null, colisBilan: null };
   mesuresRemplissageEnCours = null;
   try { document.removeEventListener("visibilitychange", m.ecouteur); } catch { /* mesure seulement */ }
+  return instantaneMesures(m);
+}
+// (05/10, point 9) L'instantané SANS clore la mesure : envoyé juste avant le
+// clic « Publier », il survit à la redirection de succès qui coupe le canal
+// (sans lui, une publication réussie n'emportait jamais ses mesures).
+function envoyerInstantaneMesures(jobId) {
+  const m = mesuresRemplissageEnCours;
+  if (!m || !jobId) return;
+  try {
+    const { mesures, colisBilan } = instantaneMesures(m);
+    chrome.runtime.sendMessage({
+      type: "FILLSELL_FILL_MESURES", jobId: String(jobId),
+      remplissage_mesures: { ...mesures, avant_soumission: true }, colis_bilan: colisBilan ?? null,
+    })?.catch?.(() => {});
+  } catch { /* mesure seulement */ }
+}
+function instantaneMesures(m) {
   const e = cadenceur.etat;
   let systeme = null;
   try { systeme = String(navigator.userAgentData?.platform || navigator.platform || "").slice(0, 30) || null; } catch { systeme = null; }
@@ -4447,6 +4464,7 @@ async function remplirFormulaireVinted(job) {
   // enabled — s'applique désormais avant le clic).
   marquerPhase("soumission");
   const publishBtn = await waitForKey("publish.submit");
+  envoyerInstantaneMesures(job?.id); // (05/10, point 9) avant la redirection qui coupe le canal
   publishBtn.click();
   marquerPhase("envoye", true); // à partir d'ici : dans le doute, on ne renvoie JAMAIS
   await sleep(2500);

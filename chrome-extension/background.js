@@ -17,6 +17,10 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
+  "2026-10-05-veille-commandes (0.6.98 : veille des commandes Vinted et Leboncoin toutes les 10 min, comptes payants, " +
+  "bornée, mesurée, coupée 24 h au premier signe anti-robot — une commande neuve fait relire l'annonce en priorité ; " +
+  "mesures du remplissage Vinted écrites aussi quand la publication réussit (instantané avant le clic, republication) ; " +
+  "un retrait en attente de connexion dit le risque de double vente) — précédent : " +
   "2026-10-05-republication-apres-suppression (0.6.97 : suppression envoyée gardée sur le job, reprise à l'étape du retrait " +
   "quand l'annonce est absente après NOTRE suppression ; mesures du remplissage et bilan du colis Vinted joints au job ; " +
   "marques Vinted triées à la source ; transporteurs LBC capturés dès un seul ; auto « au moins Pro ») — précédent : " +
@@ -1146,6 +1150,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // diagnostic en base (work_window_state.at_end.fill_step).
   if (msg?.type === "FILLSELL_FILL_STEP" && senderTabId != null) {
     noterEtapeRemplissage(senderTabId, msg.step);
+    sendResponse({ ok: true });
+    return; // réponse synchrone
+  }
+  // (05/10, point 9) Instantané des mesures du remplissage Vinted, envoyé juste
+  // avant le clic « Publier » : il survit à la redirection qui coupe le canal.
+  if (msg?.type === "FILLSELL_FILL_MESURES" && msg.jobId) {
+    noterMesuresAvantSoumission(String(msg.jobId), msg.remplissage_mesures, msg.colis_bilan);
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
@@ -3104,6 +3115,11 @@ async function pollAndProcessJobsUnlocked() {
   // vérifie une tranche des annonces published — depuis le NAVIGATEUR du
   // vendeur (cookies + IP + UA réels via fetch credentials:'include'), là où
   // le scraping serveur de l'ancienne check-listing-status se faisait bloquer.
+  // (05/10) La veille des commandes passe AVANT : une commande neuve désigne
+  // les annonces que checkPublishedListings relit en tête de ce même cycle.
+  await veillerCommandes(session).catch((e) =>
+    console.error("[background] veillerCommandes:", e)
+  );
   await checkPublishedListings(session).catch((e) =>
     console.error("[background] checkPublishedListings:", e)
   );
@@ -4942,10 +4958,13 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
   // Formulation : la cadence est notre mécanique, pas son affaire (même phrase
   // qu'update-job-status). Le préfixe « En attente de ta connexion à » est une
   // ANCRE lue par handler-watch et get-pending-jobs : ne pas le changer.
+  // (05/10) Un retrait qui attend = un article vendu encore en ligne : on le dit.
   await updateJobStatus(accessToken, job.id, "pending", {
-    error:
-      `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
-      `dès que tu seras reconnecté(e). Aucune tentative consommée.`,
+    error: job.action === "delete"
+      ? `En attente de ta connexion à ${label} dans Chrome : ton article est vendu mais son annonce est encore ` +
+        `en ligne sur ${label} (risque de double vente). Le retrait repartira tout seul dès que tu seras reconnecté(e).`
+      : `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
+        `dès que tu seras reconnecté(e). Aucune tentative consommée.`,
     platform_fields: pf,
   });
   // ── L'ONGLET DE TRAVAIL SE REFERME (2026-09-24) ────────────────────────────
@@ -18262,6 +18281,342 @@ function verdictWardrobe(article) {
   return { state: "active", price: prix };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// VEILLE DES COMMANDES — Vinted et Leboncoin, comptes payants (05/10, Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// Décision de Nico (point 14) : la liste des commandes de VENTE lue toutes les
+// 10 min, comptes PAYANTS seulement (palier ≥ premium, palier_de), bornée et
+// mesurée, coupée au premier signe anti-robot. Opla exclu (sortie le 10/10).
+// Ce qu'elle fait — et rien d'autre :
+//   · UNE page de la liste (20 commandes), depuis l'onglet de la plateforme ;
+//   · une commande NEUVE (jamais vue par ce poste, passée il y a moins de 48 h,
+//     non annulée) désigne les annonces à relire TOUT DE SUITE : vérification
+//     prioritaire de checkPublishedListings, la MÊME lecture qu'au rythme
+//     normal, qui pose (ou non) le drapeau. La commande n'est jamais une
+//     preuve à elle seule ; une annonce invisible n'est jamais « vendue »
+//     (deux lectures, puis une question) ; rien n'est enregistré sans le clic
+//     (règle du 12/07) ;
+//       Vinted : l'item_id EXACT (détail de la transaction, 1 appel par
+//                commande neuve, 3 au plus par passage) ;
+//       Leboncoin : la liste ne porte AUCUN identifiant d'annonce — le titre
+//                choisit seulement QUOI relire (3 annonces au plus), jamais
+//                une preuve (règle du 27/09) ;
+//   · au premier passage d'un poste, les commandes déjà là sont seulement
+//     MÉMORISÉES (amorçage) : elles ont eu leur relevé ;
+//   · rien de neuf = 0 écriture et 0 lecture de la base (palier et
+//     interrupteur relus toutes les 30 min) ;
+//   · 403, 429, page anti-robot → veille COUPÉE 24 h pour cette plateforme sur
+//     ce poste (motif gardé) ; les relevés du jour continuent comme avant ;
+//   · interrupteur serveur coin_config `veille_commandes_ouverte` (1 = ouverte,
+//     fail-closed) ;
+//   · mesures (passages, requêtes, durée, commandes neuves, relectures,
+//     coupures) envoyées une fois par jour dans usage_logs
+//     (feature 'veille_commandes').
+const VEILLE_COMMANDES_PLATEFORMES = ["vinted", "leboncoin"];
+const VEILLE_COMMANDES_MS = 10 * 60 * 1000;
+const VEILLE_COMMANDES_ALEA_MS = 90 * 1000;
+const VEILLE_COMMANDES_COUPURE_MS = 24 * 60 * 60 * 1000;
+const VEILLE_COMMANDES_FENETRE_MS = 48 * 60 * 60 * 1000;
+const VEILLE_COMMANDES_PAR_PAGE = 20;
+const VEILLE_COMMANDES_DETAILS_MAX = 3;
+const VEILLE_COMMANDES_CANDIDATS_MAX = 3;
+const VEILLE_COMMANDES_VUES_MAX = 200;
+const VEILLE_COMMANDES_DROITS_MS = 30 * 60 * 1000;
+const VEILLE_COMMANDES_ETAT_KEY = "veille_commandes_etat";
+const VERIF_PRIORITAIRE_KEY = "verif_prioritaire";
+const VERIF_PRIORITAIRE_TTL_MS = 6 * 60 * 60 * 1000;
+const PALIERS_PAYANTS = new Set(["premium", "pro", "business"]);
+
+async function lireEtatVeilleCommandes() {
+  try { return (await chrome.storage.local.get(VEILLE_COMMANDES_ETAT_KEY))?.[VEILLE_COMMANDES_ETAT_KEY] ?? {}; }
+  catch { return {}; }
+}
+async function ecrireEtatVeilleCommandes(etat) {
+  try { await chrome.storage.local.set({ [VEILLE_COMMANDES_ETAT_KEY]: etat }); } catch { /* sans conséquence */ }
+}
+
+/** Un signe anti-robot dans une réponse de la liste des commandes. */
+function signeAntiRobotCommandes(lecture) {
+  const http = Number(lecture?.http);
+  return http === 403 || http === 429 || lecture?.bot === true;
+}
+
+/** Titre réduit pour CHOISIR quoi relire (jamais une preuve d'identité). */
+function titreReduitVeille(t) {
+  return String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Les commandes de la PREMIÈRE page, lues dans l'onglet de la plateforme. */
+async function lireCommandesRecentes(platform, typeConnu = null) {
+  if (platform === "vinted") {
+    return executerDansOngletPlateforme("vinted", async (perPage) => {
+      const r = await fetch(`/api/v2/my_orders?type=sold&page=1&per_page=${perPage}`, {
+        credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
+      }).catch(() => null);
+      if (!r) return { ok: false, motif: "reseau", requetes: 1 };
+      const t = await r.text().catch(() => "");
+      const bot = /datadome|captcha-delivery|geo\.captcha|Are you a human/i.test(t.slice(0, 5000));
+      if (r.status !== 200 || !t.trim().startsWith("{")) return { ok: false, http: r.status, bot, motif: `http_${r.status}`, requetes: 1 };
+      let j = null;
+      try { j = JSON.parse(t); } catch { return { ok: false, http: r.status, motif: "json", requetes: 1 }; }
+      const cmds = (Array.isArray(j?.my_orders) ? j.my_orders : []).map((o) => ({
+        ref: String(o?.transaction_id ?? ""), titre: o?.title ?? null, date: o?.date ?? null,
+        statut: String(o?.transaction_user_status ?? ""),
+      })).filter((c) => c.ref);
+      return { ok: true, http: 200, commandes: cmds, requetes: 1 };
+    }, [VEILLE_COMMANDES_PAR_PAGE]);
+  }
+  return executerDansOngletPlateforme("leboncoin", async (perPage, typeConnu) => {
+    const tok = localStorage.getItem("luat");
+    if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };
+    const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
+    // Même règle que lireVentesLeboncoin : un compte PRO n'a pas cette liste
+    // (ses routes renvoient ailleurs) — type lu une fois par jour, jamais
+    // confondu avec un refus anti-robot.
+    let type = typeConnu, requetes = 0;
+    if (!type) {
+      requetes++;
+      const ra = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account", { headers: H }).catch(() => null);
+      if (!ra) return { ok: false, motif: "reseau", requetes };
+      if (ra.status !== 200) return { ok: false, http: ra.status, motif: `compte_http_${ra.status}`, requetes };
+      type = (await ra.json().catch(() => null))?.account?.type ?? "inconnu";
+    }
+    if (type !== "individual") return { ok: false, motif: `compte_non_individual_${type}`, typeCompte: type, requetes };
+    const u = "https://api.leboncoin.fr/api/consumergoods/proxy/v3/pages/transactions"
+      + `?created_at%5Blt%5D=${encodeURIComponent(new Date().toISOString())}&limit=${perPage}&user_kind=seller`;
+    requetes++;
+    const r = await fetch(u, { headers: H }).catch(() => null);
+    if (!r) return { ok: false, motif: "reseau", requetes, typeCompte: type };
+    const t = await r.text().catch(() => "");
+    const bot = /datadome|captcha-delivery|geo\.captcha/i.test(t.slice(0, 5000));
+    if (r.status !== 200) return { ok: false, http: r.status, bot, motif: `http_${r.status}`, requetes, typeCompte: type };
+    let lot = null;
+    try { lot = JSON.parse(t); } catch { return { ok: false, http: r.status, bot, motif: "json", requetes, typeCompte: type }; }
+    const cmds = (Array.isArray(lot) ? lot : []).map((x) => ({
+      ref: x?.id?.purchase_id != null ? String(x.id.purchase_id) : "", titre: x?.item?.title ?? null,
+      date: x?.created_at ?? null, statut: String(x?.step ?? ""), lot: String(x?.item?.type ?? "") === "bundle",
+    })).filter((c) => c.ref);
+    return { ok: true, http: 200, commandes: cmds, requetes, typeCompte: type };
+  }, [VEILLE_COMMANDES_PAR_PAGE, typeConnu ?? null]);
+}
+
+/** Vinted : l'item_id exact de chaque commande neuve (détail de la transaction). */
+async function lireArticlesCommandesVinted(refs) {
+  return executerDansOngletPlateforme("vinted", async (liste) => {
+    const out = []; let requetes = 0, http403 = false;
+    for (const ref of liste) {
+      await new Promise((r) => setTimeout(r, 900 + Math.random() * 1200));
+      requetes++;
+      const r = await fetch(`/api/v2/transactions/${encodeURIComponent(ref)}`, {
+        credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
+      }).catch(() => null);
+      if (!r) continue;
+      if (r.status === 403 || r.status === 429) { http403 = true; break; }
+      const t = await r.text().catch(() => "");
+      if (r.status !== 200 || !t.trim().startsWith("{")) continue;
+      let tr = null;
+      try { tr = JSON.parse(t)?.transaction; } catch { continue; }
+      // Un lot porte plusieurs articles : chacun est vendu, chacun se relit.
+      const ids = Array.isArray(tr?.order?.item_ids) && tr.order.item_ids.length
+        ? tr.order.item_ids : (tr?.item_id != null ? [tr.item_id] : []);
+      out.push({ ref: String(ref), item_ids: ids.map(String) });
+    }
+    return { ok: true, articles: out, requetes, bot: http403 };
+  }, [refs]);
+}
+
+/** Une commande annulée ne désigne rien. */
+function commandeAnnulee(platform, statut) {
+  const s = String(statut ?? "").toLowerCase();
+  if (platform === "vinted") return s === "failed" || s === "canceled" || s === "cancelled";
+  return /cancel|annul|refus|expired/.test(s);
+}
+
+/** Ajoute des jobs à relire en priorité (lus par checkPublishedListings). */
+async function ajouterVerifPrioritaire(jobIds, motif) {
+  if (!jobIds.length) return;
+  try {
+    const cur = (await chrome.storage.local.get(VERIF_PRIORITAIRE_KEY))?.[VERIF_PRIORITAIRE_KEY] ?? {};
+    const jusqu = Date.now() + VERIF_PRIORITAIRE_TTL_MS;
+    for (const id of jobIds) cur[id] = { motif, le: new Date().toISOString(), jusqu };
+    await chrome.storage.local.set({ [VERIF_PRIORITAIRE_KEY]: cur });
+  } catch { /* sans conséquence : le rythme normal reste */ }
+}
+
+/** Droits du compte (palier payant + interrupteur), relus toutes les 30 min. */
+async function droitsVeilleCommandes(etat, token, userId) {
+  const d = etat.droits;
+  if (d && d.user === userId && Date.now() - Number(d.le) < VEILLE_COMMANDES_DROITS_MS) return d;
+  let ouverte = false, palier = null;
+  try {
+    const cfg = await restRequest("coin_config?key=eq.veille_commandes_ouverte&select=value", token);
+    ouverte = Number(cfg?.[0]?.value) === 1;
+    if (ouverte) {
+      const p = await restRequest("rpc/palier_de", token, {
+        method: "POST", body: JSON.stringify({ p_user: userId }), headers: { Prefer: "return=representation" },
+      });
+      palier = typeof p === "string" ? p : null;
+    }
+  } catch { ouverte = false; } // fail-closed
+  etat.droits = { user: userId, le: Date.now(), ouverte, palier, payant: PALIERS_PAYANTS.has(palier) };
+  return etat.droits;
+}
+
+function compterMesureVeille(etat, platform, champ, n = 1) {
+  const jour = new Date().toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
+  if (etat.mesures?.jour !== jour) {
+    if (etat.mesures?.jour) etat.mesures_a_envoyer = etat.mesures; // la journée finie part au prochain passage
+    etat.mesures = { jour };
+  }
+  const m = (etat.mesures[platform] ??= { passages: 0, requetes: 0, ms: 0, neuves: 0, relectures: 0, coupures: 0 });
+  m[champ] = (Number(m[champ]) || 0) + n;
+}
+
+// Trace IMMÉDIATE des deux événements rares (amorçage d'une plateforme sur ce
+// poste, coupure anti-robot) : la preuve qu'une veille tourne, sans attendre
+// la ligne du lendemain.
+function tracerEvenementVeille(token, userId, metadata) {
+  restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: userId, feature: "veille_commandes", metadata: { ...metadata, build: FILLSELL_BUILD_ID } }]),
+  }).catch((e) => console.warn("[veille-commandes] trace non écrite (sans conséquence) :", String(e?.message ?? e)));
+}
+
+async function envoyerMesuresVeille(etat, token, userId) {
+  const lot = etat.mesures_a_envoyer;
+  if (!lot) return;
+  delete etat.mesures_a_envoyer;
+  await restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{ user_id: userId, feature: "veille_commandes", metadata: { ...lot, build: FILLSELL_BUILD_ID } }]),
+  }).catch((e) => console.warn("[veille-commandes] mesures non écrites (sans conséquence) :", String(e?.message ?? e)));
+}
+
+/**
+ * Un passage de la veille (appelé à chaque poll, cadencé ici : 10 min ± 90 s
+ * par plateforme). Ne lève jamais.
+ */
+async function veillerCommandes(session) {
+  const token = session?.access_token;
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId) return;
+  const etat = await lireEtatVeilleCommandes();
+  if (etat.user && etat.user !== userId) { for (const k of Object.keys(etat)) delete etat[k]; } // autre compte : on repart à zéro
+  etat.user = userId;
+  const maintenant = Date.now();
+  const dues = VEILLE_COMMANDES_PLATEFORMES.filter((pf) => {
+    const e = etat[pf] ?? {};
+    if (e.coupee && maintenant < Number(e.coupee.jusqu)) return false;
+    return !Number.isFinite(Number(e.prochain)) || maintenant >= Number(e.prochain);
+  });
+  if (!dues.length) return;
+  const droits = await droitsVeilleCommandes(etat, token, userId);
+  if (!droits.ouverte || !droits.payant) { await ecrireEtatVeilleCommandes(etat); return; }
+
+  for (const platform of dues) {
+    const e = (etat[platform] ??= {});
+    e.prochain = maintenant + VEILLE_COMMANDES_MS + Math.round(Math.random() * VEILLE_COMMANDES_ALEA_MS);
+    const debut = Date.now();
+    compterMesureVeille(etat, platform, "passages");
+    const typeFrais = e.typeCompte && Date.now() - Number(e.typeCompteLe) < 24 * 3600 * 1000 ? e.typeCompte : null;
+    const lecture = await lireCommandesRecentes(platform, typeFrais).catch(() => ({ ok: false, motif: "exception" }));
+    compterMesureVeille(etat, platform, "requetes", Number(lecture?.requetes) || 0);
+    if (lecture?.typeCompte && lecture.typeCompte !== typeFrais) { e.typeCompte = lecture.typeCompte; e.typeCompteLe = Date.now(); }
+    if (!lecture?.ok) {
+      if (signeAntiRobotCommandes(lecture)) {
+        e.coupee = { le: new Date().toISOString(), jusqu: Date.now() + VEILLE_COMMANDES_COUPURE_MS, motif: lecture?.motif ?? "anti_robot" };
+        compterMesureVeille(etat, platform, "coupures");
+        console.warn(`[veille-commandes][${platform}] signe anti-robot (${lecture?.motif}) — veille coupée 24 h sur ce poste`);
+        tracerEvenementVeille(token, userId, { evenement: "coupure", platform, motif: lecture?.motif ?? null, http: lecture?.http ?? null });
+      } else {
+        e.dernierMotif = lecture?.motif ?? null;
+      }
+      compterMesureVeille(etat, platform, "ms", Date.now() - debut);
+      continue;
+    }
+    e.coupee = null;
+    const vues = new Set(Array.isArray(e.vues) ? e.vues : []);
+    const amorcage = !e.amorcee;
+    const neuves = (lecture.commandes ?? []).filter((c) => !vues.has(c.ref));
+    for (const c of lecture.commandes ?? []) vues.add(c.ref);
+    e.vues = [...vues].slice(-VEILLE_COMMANDES_VUES_MAX);
+    e.amorcee = true;
+    if (amorcage) {
+      tracerEvenementVeille(token, userId, { evenement: "amorcage", platform, commandes_lues: (lecture.commandes ?? []).length,
+        requetes: Number(lecture?.requetes) || 0, ms: Date.now() - debut, palier: droits.palier });
+    }
+    const aSuivre = amorcage ? [] : neuves.filter((c) => {
+      const t = Date.parse(c.date ?? "");
+      return Number.isFinite(t) && maintenant - t < VEILLE_COMMANDES_FENETRE_MS && !commandeAnnulee(platform, c.statut);
+    });
+    compterMesureVeille(etat, platform, "neuves", aSuivre.length);
+    if (aSuivre.length) {
+      const ids = await jobsARelirePourCommandes(platform, aSuivre, token, etat).catch((err) => {
+        console.warn(`[veille-commandes][${platform}] désignation impossible :`, String(err?.message ?? err));
+        return [];
+      });
+      if (ids.length) {
+        await ajouterVerifPrioritaire(ids, `commande_${platform}`);
+        compterMesureVeille(etat, platform, "relectures", ids.length);
+        console.log(`[veille-commandes][${platform}] ${aSuivre.length} commande(s) neuve(s) → ${ids.length} annonce(s) relue(s) en priorité`);
+      }
+    }
+    compterMesureVeille(etat, platform, "ms", Date.now() - debut);
+  }
+  await envoyerMesuresVeille(etat, token, userId);
+  await ecrireEtatVeilleCommandes(etat);
+}
+
+/** Les jobs publiés à relire pour ces commandes neuves (bornés). */
+async function jobsARelirePourCommandes(platform, commandes, token, etat) {
+  if (platform === "vinted") {
+    const refs = commandes.slice(0, VEILLE_COMMANDES_DETAILS_MAX).map((c) => c.ref);
+    const det = await lireArticlesCommandesVinted(refs);
+    compterMesureVeille(etat, platform, "requetes", Number(det?.requetes) || 0);
+    if (det?.bot) {
+      etat[platform].coupee = { le: new Date().toISOString(), jusqu: Date.now() + VEILLE_COMMANDES_COUPURE_MS, motif: "detail_403" };
+      compterMesureVeille(etat, platform, "coupures");
+    }
+    const itemIds = [...new Set((det?.articles ?? []).flatMap((a) => a.item_ids))].filter((id) => /^\d+$/.test(id));
+    if (!itemIds.length) return [];
+    const jobs = await restRequest(
+      `cross_post_jobs?select=id&platform=eq.vinted&status=eq.published&action=in.(publish,republish)` +
+        `&platform_listing_id=in.(${itemIds.join(",")})&limit=10`, token);
+    return (jobs ?? []).map((j) => j.id);
+  }
+  // Leboncoin : le titre CHOISIT quoi relire, la relecture seule décide.
+  const titres = commandes.filter((c) => !c.lot).map((c) => titreReduitVeille(c.titre)).filter((t) => t.length >= 6);
+  if (!titres.length) return [];
+  const publies = await restRequest(
+    "cross_post_jobs?select=id,title&platform=eq.leboncoin&status=eq.published&action=in.(publish,republish)" +
+      "&listing_url=not.is.null&order=published_at.desc&limit=500", token);
+  const ids = [];
+  for (const t of titres) {
+    for (const j of publies ?? []) {
+      if (ids.length >= VEILLE_COMMANDES_CANDIDATS_MAX) break;
+      if (titreReduitVeille(j.title) === t && !ids.includes(j.id)) ids.push(j.id);
+    }
+  }
+  return ids;
+}
+
+/** Les jobs à relire en priorité, tels qu'en base (publiés seulement). */
+async function lireVerifPrioritaires(session) {
+  let cur = {};
+  try { cur = (await chrome.storage.local.get(VERIF_PRIORITAIRE_KEY))?.[VERIF_PRIORITAIRE_KEY] ?? {}; } catch { return []; }
+  const maintenant = Date.now();
+  const ids = Object.keys(cur).filter((id) => Number(cur[id]?.jusqu) > maintenant && /^[0-9a-f-]{36}$/i.test(id)).slice(0, SALE_CHECK_MAX_PER_CYCLE);
+  // Une seule tentative prioritaire par désignation : le rythme normal reprend ensuite.
+  try { await chrome.storage.local.set({ [VERIF_PRIORITAIRE_KEY]: {} }); } catch { /* sans conséquence */ }
+  if (!ids.length) return [];
+  const rows = await restRequest(
+    "cross_post_jobs?select=id,platform,action,inventaire_id,listing_url,last_checked_at,published_at,created_at,platform_fields" +
+      `&id=in.(${ids.join(",")})&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null`,
+    session.access_token).catch(() => []);
+  return rows ?? [];
+}
+
 async function checkPublishedListings(session) {
   let jobs;
   try {
@@ -18322,9 +18677,16 @@ async function checkPublishedListings(session) {
     return Math.min(SALE_CHECK_MIN_INTERVAL_MS, [0, 30 * 60 * 1000, 2 * 60 * 60 * 1000][echecs] ?? SALE_CHECK_MIN_INTERVAL_MS);
   };
 
-  const due = (jobs ?? [])
+  // (05/10) Vérification PRIORITAIRE (veillerCommandes) : en tête du cycle,
+  // sans délai de grâce ni intervalle de 2 h — une commande neuve dit « relis
+  // maintenant », et la lecture ci-dessous reste la seule à conclure.
+  const prioritaires = await lireVerifPrioritaires(session).catch(() => []);
+  const idsPrio = new Set(prioritaires.map((j) => j.id));
+  if (prioritaires.length) console.log(`[background] Détection : ${prioritaires.length} annonce(s) relue(s) en priorité (commande neuve)`);
+  const due = [...prioritaires, ...(jobs ?? [])
+    .filter((j) => !idsPrio.has(j.id))
     .filter((j) => !inGrace(j))
-    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > dueDelayMs(j))
+    .filter((j) => !j.last_checked_at || now - Date.parse(j.last_checked_at) > dueDelayMs(j))]
     .slice(0, SALE_CHECK_MAX_PER_CYCLE);
   if (!due.length) return;
 
@@ -22640,6 +23002,7 @@ async function processRepublishJob(job, accessToken) {
         remplissagesUnePasseAttendus.delete(job.id);
       }
       dernierGesteRepublishAt = Date.now();
+      reporterMesuresRemplissage(pf, jobRecreation);
 
       // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
       // résultat du content script (deleted:true) et la trace mémoire du
@@ -23198,6 +23561,7 @@ async function processRepublishJob(job, accessToken) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
       dernierGesteRepublishAt = Date.now();
+      reporterMesuresRemplissage(pf, jobRecreation);
 
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
     } catch (e) {
@@ -24267,20 +24631,57 @@ async function remplirAvecPort(tabId, job, deps = {}) {
   return attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, maintenant, rattache: false });
 }
 
+// (05/10, point 9) Republication : les mesures arrivent sur la copie de
+// recréation, alors que toutes les écritures qui suivent envoient `pf` (succès,
+// rapprochement, reprise, question) — on les y reporte, et une valeur d'un
+// essai précédent ne survit pas à un essai sans mesure.
+function reporterMesuresRemplissage(pf, jobRecreation) {
+  if (!pf || typeof pf !== "object") return;
+  const src = jobRecreation?.platform_fields ?? {};
+  for (const cle of ["remplissage_mesures", "colis_bilan"]) {
+    if (src[cle]) pf[cle] = src[cle];
+    else delete pf[cle];
+  }
+}
+
+// (05/10, point 9) Instantanés reçus avant le clic « Publier » (bornés).
+const mesuresAvantSoumission = new Map();
+function noterMesuresAvantSoumission(jobId, mesures, colisBilan) {
+  if (!mesures && !colisBilan) return;
+  mesuresAvantSoumission.set(jobId, { mesures: mesures ?? null, colisBilan: colisBilan ?? null, le: Date.now() });
+  while (mesuresAvantSoumission.size > 20) mesuresAvantSoumission.delete(mesuresAvantSoumission.keys().next().value);
+}
+
 // Point d'entrée UNIQUE des quatre sites d'envoi de FILL_LISTING. Drapeau
 // éteint = chemin d'aujourd'hui, argument pour argument.
 function envoyerFillListing(tabId, job) {
+  // (05/10, point 9) Une valeur héritée d'un essai précédent ne parle jamais
+  // pour celui-ci (même règle que livraison_lbc) : on part sans.
+  if (job?.platform_fields && (job.platform_fields.remplissage_mesures || job.platform_fields.colis_bilan)) {
+    const { remplissage_mesures: _m, colis_bilan: _c, ...reste } = job.platform_fields;
+    job.platform_fields = reste;
+  }
+  if (job?.id) mesuresAvantSoumission.delete(String(job.id));
+  const joindre = (mesures, colisBilan) => {
+    if (!mesures && !colisBilan) return;
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      ...(mesures ? { remplissage_mesures: mesures } : {}),
+      ...(colisBilan ? { colis_bilan: colisBilan } : {}),
+    };
+  };
   return envoyerFillListingBrut(tabId, job).then((r) => {
     // (05/10) Mesures et bilan du colis joints à la copie mémoire du job : TOUTE
     // écriture qui suit (publié, reprise, échec) les emporte, sans écriture de plus.
-    if (r && typeof r === "object" && (r.remplissage_mesures || r.colis_bilan)) {
-      job.platform_fields = {
-        ...(job.platform_fields ?? {}),
-        ...(r.remplissage_mesures ? { remplissage_mesures: r.remplissage_mesures } : {}),
-        ...(r.colis_bilan ? { colis_bilan: r.colis_bilan } : {}),
-      };
-    }
+    if (r && typeof r === "object") joindre(r.remplissage_mesures, r.colis_bilan);
+    if (job?.id) mesuresAvantSoumission.delete(String(job.id));
     return r;
+  }, (e) => {
+    // (05/10, point 9) Canal coupé par la redirection de succès : l'instantané
+    // envoyé avant le clic tient lieu de mesure (avant_soumission: true).
+    const inst = job?.id ? mesuresAvantSoumission.get(String(job.id)) : null;
+    if (inst) { joindre(inst.mesures, inst.colisBilan); mesuresAvantSoumission.delete(String(job.id)); }
+    throw e;
   });
 }
 function envoyerFillListingBrut(tabId, job) {
