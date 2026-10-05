@@ -84,8 +84,8 @@ export function nomDuPalier(palier) {
 // ses quotas Free) ou EN PLUS de Premium, Pro ou Business. Résilier la formule
 // ne l'arrête pas : le compte repasse en Free + Sans ordinateur.
 //
-// Les colonnes lues (PROPOSITION de migration, non appliquée :
-// supabase/migrations/PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt) :
+// Les colonnes lues (migration 20261004233000_option_cloud_paiements.sql ;
+// le pool d'IP dédiées les suit : 20261005120000_cloud_socle_ip_dediee.sql) :
 //   · is_cloud                — option PAYÉE, posée par les flux de paiement
 //                               comme is_premium (jamais par l'app) ;
 //   · cloud_essai_debut       — début de l'essai (null = jamais d'essai) ;
@@ -96,7 +96,7 @@ export function nomDuPalier(palier) {
 //   · cloud_periode_fin       — fin de la période payée en cours ;
 //   · cloud_arret_fin_periode — arrêt demandé une fois payée : l'option
 //                               tourne jusqu'à cloud_periode_fin, puis s'arrête.
-// MÊME RÈGLE QUE LE SERVEUR : `cloud_etat(p_user)` (même proposition). C'est
+// MÊME RÈGLE QUE LE SERVEUR : `cloud_etat(p_user)` (20261004233000). C'est
 // le serveur qui décide si un navigateur Cloud tourne ; ce calcul sert à
 // l'AFFICHAGE, et il ne doit jamais dire autre chose que le serveur.
 //
@@ -159,8 +159,9 @@ export function cloudDuProfil(p, maintenant = Date.now()) {
 }
 
 /** Peut-on PROPOSER l'essai à ce compte ? Free compris (04/10 soir). L'appareil,
- *  les comptes de plateforme et la carte déjà vus se vérifient côté serveur
- *  (cloud_essai_ouvrir) ; la carte est demandée avant tout essai. */
+ *  les comptes de plateforme et la place se vérifient côté serveur AVANT le
+ *  paiement (cloud_essai_preparer_moi), la carte au début de l'essai
+ *  (cloud_essai_noter_carte) ; la carte est demandée avant tout essai. */
 export function essaiCloudProposable(p, maintenant = Date.now()) {
   const c = cloudDuProfil(p, maintenant);
   return c.etat === 'aucun' && !c.essaiPris;

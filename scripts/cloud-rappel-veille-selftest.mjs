@@ -32,8 +32,8 @@ ok(PRIX_AFFICHE === CLOUD_PRIX_AFFICHE, `prix = CLOUD_PRIX_AFFICHE de l'app (${C
 ok(PARAMETRES_RAPPEL.ouvertureAvantFinH === 48 && PARAMETRES_RAPPEL.forcageAvantFinH === 24, 'créneau par défaut : J-2 → J-1 (décision de Nico)');
 ok(PRESETS.mastercard.ouvertureAvantFinH === 96 && PRESETS.mastercard.forcageAvantFinH === 72, 'préréglage Mastercard prêt : 3 à 7 jours avant la fin');
 ok(PARAMETRES_RAPPEL.plafond24h === 2, 'plafond : 2 mails par 24 h, comme envoi-ponctuel');
-const sql = readFileSync(fileURLToPath(new URL('../supabase/migrations/PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt', import.meta.url)), 'utf8');
-ok(sql.includes(`'cloud_essai_veille'::text`) && sql.includes('email_logs_one_shot_unique'), 'la PROPOSITION SQL ajoute cloud_essai_veille à l\'index one-shot');
+const sql = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261005120000_cloud_socle_ip_dediee.sql', import.meta.url)), 'utf8');
+ok(sql.includes(`'cloud_essai_veille'::text`) && sql.includes('email_logs_one_shot_unique'), 'la migration du socle (20261005120000) ajoute cloud_essai_veille à l\'index one-shot');
 const tunnel = readFileSync(fileURLToPath(new URL('../supabase/functions/email-tunnel/index.ts', import.meta.url)), 'utf8');
 ok(/from "\.\.\/_shared\/cloud-rappel-veille\.js"/.test(tunnel), 'email-tunnel utilise ce module (aucune règle recopiée)');
 ok(/categorie:\s*CATEGORIE_RAPPEL/.test(tunnel) && /dedup:\s*DEDUP_RAPPEL/.test(tunnel) && /type:\s*TYPE_RAPPEL/.test(tunnel), 'email-tunnel envoie par la porte unique avec ce type, cette catégorie, cette dédup');

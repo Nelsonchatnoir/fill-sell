@@ -9,10 +9,9 @@
 -- FillSell, tous canaux confondus.
 --
 -- ALIGNÉ sur src/utils/palier.js (cloudDuProfil, branche conception/cloud-option,
--- 83/83) et sur sa PROPOSITION_20261004_cloud_option_et_pool_ip.sql.txt : mêmes
--- colonnes, même cloud_etat (le même corps est reporté dans la proposition).
--- Les deux fichiers posent les colonnes en IF NOT EXISTS : l'ordre
--- d'application est indifférent ; cloud_etat est identique dans les deux.
+-- 83/83). Le socle du pool d'IP dédiées (20261005120000_cloud_socle_ip_dediee.sql,
+-- 05/10) DÉPEND de ce fichier : colonnes et cloud_etat sont posés ICI seulement,
+-- et ce fichier s'applique EN PREMIER.
 --
 -- ⛔ À appliquer AVANT tout déploiement des fonctions de la branche (elles
 --    écrivent ces colonnes). Une par une : db query --linked -f, puis
