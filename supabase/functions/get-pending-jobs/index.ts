@@ -165,7 +165,7 @@ import { plateformesFigees, rotationFiges, gelSansConstat } from "../_shared/rot
 import { trancheLbcDepuisGrammes } from "../_shared/lbc-poids-tranche.js";
 import { localisationLbcATaper } from "../_shared/lbc-localisation.js";
 import { candidatesDepuisRetrait, depotPeutEtrePartiDepuis, jugerCandidates } from "../_shared/recreation-deja-partie.js";
-import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour } from "../_shared/vinted-colis.js";
+import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_POSTE, envoiColisProuve, messageColisAttendMiseAJour, colisVintedRetenuAuService } from "../_shared/vinted-colis.js";
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
@@ -2772,6 +2772,37 @@ serve(async (req) => {
           }
         } catch (e) {
           console.warn(`[get-pending-jobs] format de colis Beebs : ${String((e as Error)?.message ?? e)} — distribution normale`);
+        }
+      }
+    }
+
+    // ══ VINTED : LE FORMAT DE COLIS RETENU PAR RAYON (05/10, point 3) ═══════
+    // _shared/vinted-colis.js : une publication Vinted SANS format reçoit celui
+    // que la personne a retenu pour ce rayon exact (platform_settings.vinted.
+    // colis_retenus) ; sinon rien — Vinted garde son choix, rien n'est deviné.
+    // Mémoire du poll seulement ; best-effort : servi tel quel si raté.
+    if (!includeProcessing && !includeNeedsUser) {
+      const vJobs = out.filter((j) => j.platform === "vinted" && (j.action ?? "publish") === "publish"
+        && (j.platform_fields as Record<string, unknown> | null)?.["packageSizeId"] == null);
+      if (vJobs.length) {
+        try {
+          const { data: profilV } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+          const vReglages = (((profilV as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>).vinted;
+          const retenusV = (vReglages && typeof vReglages === "object") ? (vReglages as Record<string, unknown>).colis_retenus : null;
+          if (retenusV && typeof retenusV === "object") {
+            let poses = 0;
+            for (const j of vJobs) {
+              const pfV = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+              const pose = colisVintedRetenuAuService(pfV, retenusV);
+              if (pose) {
+                pfV.colis_au_service = { ...pose, le: new Date().toISOString(), pose_par: "get-pending-jobs (_shared/vinted-colis.js)" };
+                j.platform_fields = pfV; poses++;
+              }
+            }
+            if (poses) console.log(`[get-pending-jobs] user=${user.id} format de colis Vinted retenu posé sur ${poses} job(s)`);
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] colis Vinted retenu : ${String((e as Error)?.message ?? e)} — servi tel quel`);
         }
       }
     }

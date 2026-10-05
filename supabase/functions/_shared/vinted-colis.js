@@ -80,3 +80,37 @@ export function envoiColisProuve(preuves) {
   const dernierOk = Math.max(...ok);
   return !l.some((p) => p.http >= 400 && p.le > dernierOk);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LE FORMAT DE COLIS CHOISI, RETENU PAR RAYON (05/10, point 3 — Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// « Même principe que pour Leboncoin : rien de deviné ; le choix de la personne
+// est retenu pour les publications suivantes. » Le choix est rangé par l'app
+// dans platform_settings.vinted.colis_retenus, clé = chemin du rayon Vinted en
+// texte (« Femmes > Vêtements > Robes », même règle que cheminTexte de
+// src/utils/vintedColis.js). Au service d'une PUBLICATION Vinted qui ne porte
+// aucun format, le format retenu pour CE rayon exact part (source 'retenu') ;
+// sinon rien : Vinted garde son propre choix (l'extension ne devine plus rien).
+// Un format déjà sur la copie (carte, lot, fiche) n'est jamais remplacé.
+export function cheminColisTexte(chemin) {
+  return Array.isArray(chemin)
+    ? chemin.map((s) => String(s ?? "").trim()).filter(Boolean).join(" > ")
+    : String(chemin ?? "").trim();
+}
+
+/** Modifie `pf` en place ; rend ce qui a été posé (null = rien). */
+export function colisVintedRetenuAuService(pf, colisRetenus) {
+  if (!pf || typeof pf !== "object") return null;
+  const brut = pf.packageSizeId;
+  if (brut !== undefined && brut !== null && brut !== "") return null;
+  if (!colisRetenus || typeof colisRetenus !== "object") return null;
+  const cle = cheminColisTexte(pf.categoryPath);
+  if (!cle) return null;
+  const r = colisRetenus[cle];
+  const id = Number(r?.id);
+  if (!r || !Number.isInteger(id) || id <= 0) return null;
+  pf.packageSizeId = id;
+  if (r.libelle) pf.packageSize = String(r.libelle);
+  pf.colis_source = "retenu";
+  return { id, libelle: r.libelle ?? null, rayon: cle };
+}
