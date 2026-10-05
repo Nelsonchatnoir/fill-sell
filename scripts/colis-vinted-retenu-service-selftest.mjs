@@ -26,6 +26,10 @@ ok("clé = chemin du rayon en texte", cheminColisTexte(["Femmes", " Vêtements "
   ok("un choix déjà sur la copie n'est jamais remplacé", r === null && pf.packageSizeId === 1, pf);
 }
 {
+  const pf = { categoryPath: ["Femmes", "Vêtements", "Robes"], colis_source: "manuel" };
+  ok("« Vinted choisit » fait par la personne (manuel, sans id) : rien posé", colisVintedRetenuAuService(pf, retenus) === null && !("packageSizeId" in pf), pf);
+}
+{
   const pf = { categoryPath: ["Femmes", "Vêtements", "Jupes"] };
   const r = colisVintedRetenuAuService(pf, retenus);
   ok("autre rayon : rien de deviné", r === null && !("packageSizeId" in pf), pf);

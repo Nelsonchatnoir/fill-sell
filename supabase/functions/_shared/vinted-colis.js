@@ -101,6 +101,9 @@ export function cheminColisTexte(chemin) {
 /** Modifie `pf` en place ; rend ce qui a été posé (null = rien). */
 export function colisVintedRetenuAuService(pf, colisRetenus) {
   if (!pf || typeof pf !== "object") return null;
+  // « manuel » = la personne a choisi pour CETTE publication, « Vinted
+  // choisit » compris (aucun packageSizeId) : jamais remplacé.
+  if (pf.colis_source === "manuel") return null;
   const brut = pf.packageSizeId;
   if (brut !== undefined && brut !== null && brut !== "") return null;
   if (!colisRetenus || typeof colisRetenus !== "object") return null;
