@@ -118,10 +118,13 @@ function phraseMur(lang, platform, motif) {
  * @param {string} platform  vinted | leboncoin | beebs | ebay | opla
  * @param {string} motif     MOTIFS.* — l'appelant le tient d'une détection prouvée
  * @param {'ligne'|'bouton'} variante  ligne = logo + phrase + bouton ; bouton = le bouton seul
+ * @param {boolean} compact  (05/10) pour une carte de 165 px : sans logo (la ligne au-dessus
+ *   nomme la plateforme), 12,5 px, une seule ligne, toute la largeur — la variante
+ *   « bouton » débordait de la carte vendue à 360 et 390 px (relu au harnais).
  */
 export default function BoutonMeConnecter({
   userId, platform, motif = MOTIFS.CONNEXION, lang = 'fr',
-  variante = 'ligne', onOuverte, style,
+  variante = 'ligne', onOuverte, style, compact = false,
 }) {
   const t = T[lang === 'en' ? 'en' : 'fr'];
   const { etat: etatDemande, demander, reinitialiser: reinitialiserDemande } = useDemandeConnexion({ userId });
@@ -206,13 +209,14 @@ export default function BoutonMeConnecter({
   // Le même dessin pour un <a> et un <button> : la personne voit un bouton,
   // pas une technologie.
   const habit = (inerte) => ({
-    minHeight: 44, padding: '0 16px', borderRadius: 22, border: `1px solid ${UI.border}`,
+    minHeight: 44, padding: compact ? '0 8px' : '0 16px', borderRadius: 22, border: `1px solid ${UI.border}`,
     background: UI.card, color: UI.ink, fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
     display: 'inline-flex', alignItems: 'center', gap: 9, flexShrink: 0,
     textDecoration: 'none', cursor: inerte ? 'default' : 'pointer',
     opacity: inerte ? 0.6 : 1, transition: 'opacity .15s ease',
+    ...(compact ? { fontSize: 12.5, whiteSpace: 'nowrap', justifyContent: 'center', width: '100%', boxSizing: 'border-box' } : {}),
   });
-  const dedans = (texte) => (<><PlatformLogo platform={platform} size={20} /><span>{texte}</span></>);
+  const dedans = (texte) => (compact ? <span>{texte}</span> : <><PlatformLogo platform={platform} size={20} /><span>{texte}</span></>);
 
   // L'extension n'est pas là : le seul geste utile est de l'installer. Un lien
   // vers la page d'installation, à côté du message — jamais une consigne

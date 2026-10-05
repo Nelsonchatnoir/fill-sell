@@ -8727,20 +8727,21 @@ const StockTab = memo(function StockTab({
     if (item.statut === 'vendu') {
       // ── VENDU, MAIS ENCORE EN LIGNE AILLEURS (05/10, risque de double vente)
       // Le retrait vers cette plateforme attend une reconnexion : la carte le
-      // DIT (une ligne par plateforme) et porte LE geste « Me connecter » —
-      // le même composant que partout ailleurs. Le serveur relance le retrait
-      // dès que la sonde revoit la session vivante (handler-watch).
+      // DIT (une ligne par plateforme) et porte LE geste « Me connecter »,
+      // compact (la variante « bouton » débordait de la carte à 360 et
+      // 390 px, relu au harnais le 05/10). Le serveur relance le retrait dès
+      // que la sonde revoit la session vivante (handler-watch).
       const bloques = retraitsBloques.parArticle.get(String(item.id)) ?? [];
       const pfBloquees = [...new Map(bloques.map((b) => [b.platform, b.job])).entries()];
       const element = pfBloquees.length && user?.id ? (
         <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
-          style={{display:'flex',flexDirection:'column',gap:10,padding:'9px 10px',borderRadius:12,background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`}}>
+          style={{display:'flex',flexDirection:'column',gap:8,padding:'9px 10px',borderRadius:12,background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`}}>
           {pfBloquees.map(([p, j]) => (
             <div key={p} style={{display:'flex',flexDirection:'column',gap:8}}>
               <span style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:SK.rouge}}>
                 <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang)}
               </span>
-              <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton"/>
+              <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton" compact/>
             </div>
           ))}
         </div>
