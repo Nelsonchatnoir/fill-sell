@@ -37,6 +37,7 @@ import {
   sousTitre,
 } from "./email-template.ts";
 import { plateformesEnClair, toutesLesPlateformes } from "./plateformes.ts";
+import { texteEchec } from "./paiement-echoue.js";
 
 export type Langue = "fr" | "en";
 
@@ -525,77 +526,53 @@ export function mailResiliation(ctx: ContexteResiliation, lang: Langue): MailPre
 // ---------------------------------------------------------------------------
 
 export type CausePaiement = "3ds" | "carte_refusee" | "carte_expiree" | "autre";
-export type ContextePaiement = "souscription" | "renouvellement";
+export type ContextePaiement = "souscription" | "renouvellement" | "fin_essai";
 
-const CAUSES: Record<Langue, Record<CausePaiement, string>> = {
-  fr: {
-    "3ds": "Ta banque attendait une validation qui n'est pas arrivée au bout. Rien n'a été débité.",
-    carte_refusee: "Ta banque a refusé le paiement. Rien n'a été débité.",
-    carte_expiree: "La carte enregistrée est expirée. Rien n'a été débité.",
-    autre: "Le paiement n'a pas pu aboutir. Rien n'a été débité.",
-  },
-  en: {
-    "3ds": "Your bank was waiting for a confirmation that never completed. Nothing was charged.",
-    carte_refusee: "Your bank declined the payment. Nothing was charged.",
-    carte_expiree: "The card on file has expired. Nothing was charged.",
-    autre: "The payment couldn't go through. Nothing was charged.",
-  },
-};
+/** Les faits d'un échec (stripe-webhook → payment-notify → email-tunnel). */
+export interface EchecPourMail {
+  lang: Langue;
+  cause: CausePaiement;
+  contexte: ContextePaiement;
+  /** Page Stripe de la facture (hosted_invoice_url), facture ouverte — jamais pour une souscription. */
+  lienFacture?: string | null;
+  /** Prochaine tentative de Stripe (next_payment_attempt), ISO. */
+  relanceLe?: string | null;
+  /** Renouvellement : Stripe dit l'abonnement active ou past_due. */
+  abonnementActif?: boolean;
+  /** 'cloud' : l'abonnement de l'option FillSell Cloud. */
+  offre?: string | null;
+}
 
-export function mailPaiementEchoue(
-  cause: CausePaiement,
-  contexte: ContextePaiement,
-  lang: Langue,
-): MailPret {
-  const texteCause = CAUSES[lang][cause] ?? CAUSES[lang].autre;
-  const souscription = contexte !== "renouvellement";
-
-  const corps = lang === "fr"
-    ? [
-      paragraphe("Salut,"),
-      paragraphe(
-        souscription
-          ? "Ton abonnement n'a pas pu démarrer : le paiement s'est arrêté en route."
-          : "Le renouvellement de ton abonnement n'a pas pu aboutir.",
-      ),
-      encadre("", texteCause),
-      paragraphe(
-        souscription
-          ? "Tu peux réessayer quand tu veux depuis l'app."
-          : "Ton abonnement reste actif pour l'instant, le paiement sera retenté automatiquement. Tu peux mettre à jour ton moyen de paiement depuis l'app.",
-      ),
-      boutonPrincipal("Ouvrir FillSell", URL_APP),
-      paragraphe("Si ça bloque encore, réponds à ce mail."),
-    ]
-    : [
-      paragraphe("Hi,"),
-      paragraphe(
-        souscription
-          ? "Your subscription couldn't start: the payment stopped along the way."
-          : "Your subscription renewal couldn't go through.",
-      ),
-      encadre("", texteCause),
-      paragraphe(
-        souscription
-          ? "You can try again whenever you want from the app."
-          : "Your subscription stays active for now, the payment will be retried automatically. You can update your payment method from the app.",
-      ),
-      boutonPrincipal("Open FillSell", URL_APP),
-      paragraphe("If it still fails, just reply to this email."),
-    ];
-
+// (05/10/2026) Le texte vit dans _shared/paiement-echoue.js (règles pures,
+// scripts/paiement-echoue-selftest.mjs) : fin d'essai à part, 3D Secure vers la
+// page Stripe de la facture, aucun geste promis qui n'existe pas. Ici, la mise
+// en page seulement.
+export function mailPaiementEchoue(e: EchecPourMail): MailPret {
+  const t = texteEchec({
+    lang: e.lang,
+    cause: e.cause,
+    contexte: e.contexte,
+    lienFacture: e.lienFacture ?? null,
+    relanceLe: e.relanceLe ?? null,
+    abonnementActif: e.abonnementActif === true,
+    offre: e.offre ?? null,
+  });
+  const corps: Html[] = [
+    paragraphe(t.salut),
+    paragraphe(t.intro),
+    encadre("", t.encadre),
+    ...t.suite.map((s: string) => paragraphe(s)),
+    ...(t.bouton ? [boutonPrincipal(t.bouton.texte, t.bouton.url)] : []),
+    ...(t.fin ? [paragraphe(t.fin)] : []),
+  ];
   return {
-    sujet: lang === "fr"
-      ? "Ton paiement n'a pas abouti"
-      : "Your payment didn't go through",
+    sujet: t.sujet,
     html: mail({
-      lang,
-      titre: lang === "fr" ? "Ton paiement n'a pas abouti" : "Your payment didn't go through",
-      preheader: lang === "fr" ? "Rien n'a été débité." : "Nothing was charged.",
+      lang: e.lang,
+      titre: t.titre,
+      preheader: t.preheader,
       corps,
-      raisonEnvoi: lang === "fr"
-        ? "Tu reçois ce message parce qu'un paiement a échoué sur ton compte FillSell."
-        : "You're getting this message because a payment failed on your FillSell account.",
+      raisonEnvoi: t.raisonEnvoi,
     }),
   };
 }
