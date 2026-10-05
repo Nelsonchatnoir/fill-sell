@@ -109,3 +109,38 @@ ils ne l'étaient pas vraiment).
 
 Corrections et preuves : `docs/agents/etat-2026-10-01.md`, section « 05/10
 soir — relevés sur geste (Marine) ».
+
+## 5. Les « 401 Vinted » chez des comptes connectés (05/10 soir)
+
+**Ce que la sonde interroge** : `GET https://www.vinted.fr/api/v2/users/current`
+depuis le service worker de l'extension (`probePlatformSessions`), avec les
+cookies du profil Chrome.
+
+**Ce que Vinted répond, et pourquoi** (mesuré sur la session de Nico) : le
+jeton d'accès Vinted vit **1 heure** (`POST /web/api/auth/refresh` →
+`expires_in: 3599`). C'est la PAGE Vinted qui le renouvelle, par cet appel
+(code de vinted.fr : `.post("/web/api/auth" + "/refresh")`, sans CSRF). Le
+service worker ne charge aucune page : une heure après la dernière page Vinted
+ouverte par l'extension, il lit le compte avec un jeton expiré → 401, alors
+que la session (jeton de renouvellement) est valable.
+
+**Preuves que la session n'était pas morte** :
+- XEWER (rewex16) : dernière republication 19:39 → sonde 401 à 20:50 (71 min
+  plus tard) → republications reprises à 21:42, **8 réussies sans une erreur de
+  connexion** → sonde de nouveau à 200 à 21:47 et 21:57.
+- Camille201292 : sonde 200 à 20:42, 401 à 20:54 sans aucune action ; idox_73
+  bascule de même à 20:48 : le 401 suit l'horloge, pas le compte.
+- Chez les comptes à 401 : 0 job Vinted en échec de connexion en 6 h (Deborah :
+  18 actions Vinted réussies jusqu'à 19:53).
+
+**Correction (extension 0.6.99)** :
+- dans l'onglet, un 401 sur l'API Vinted renouvelle le jeton exactement comme
+  la page, puis rejoue la requête une fois (un second 401 = session vraiment
+  fermée) ;
+- la sonde du service worker : 401 + cookie de connexion `v_uid` = **connectée**
+  (« jeton_expire_session_ouverte ») ; 401 sans `v_uid` = indéterminé, jamais
+  « déconnecté ». Le jeton n'est pas renouvelé depuis le service worker (un
+  cookie renouvelé mais non enregistré pourrait fermer la session).
+- côté app, `plateformes_verite` ne produisait déjà aucun « à connecter » sur un
+  401 de sonde ; le seul « Connecte-toi à Vinted » qui reste vient d'un relevé
+  dont la lecture du compte échoue APRÈS renouvellement dans l'onglet.
