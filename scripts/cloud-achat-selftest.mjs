@@ -66,6 +66,13 @@ try {
   const ecran = lire('src/cloud/MeConnecterCloud.jsx');
   ok(/wss:\/\/\$\{CLOUD_DOMAINE\}\/connexion\/ws/.test(ecran) && !/location\.href|window\.open/.test(ecran), 'l\'écran ouvre la seule connexion (aucune navigation, aucun lien libre)');
   ok(/ebayVoieApiDuCompte/.test(ecran) && /demarrerConnexionEbay/.test(ecran), 'eBay : la connexion officielle (API), jamais le navigateur Cloud');
+  // Rendu RÉEL de l'écran (React, rendu serveur) : aucune erreur d'exécution, les mots attendus.
+  const React = (await import('react')).default;
+  const { renderToString } = await import('react-dom/server');
+  const Ecran = (await vite.ssrLoadModule('/src/cloud/MeConnecterCloud.jsx')).default;
+  const html = renderToString(React.createElement(Ecran, { userId: 'u-test', lang: 'fr', onFermer: () => {} }));
+  ok(/Me connecter/.test(html) && /Lecture de tes connexions/.test(html) && /serveurs/.test(html), 'l\'écran se rend (titre, introduction, lecture en cours)');
+  ok(!/Beebs|Opla/.test(html) && /role="dialog"/.test(html), 'aucune plateforme non prouvée ; une fenêtre accessible (dialog)');
   const client = lire('src/cloud/connexion/clientConnexion.js');
   ok(/touchAction: 'none'/.test(client) && /gesturestart/.test(client) && /e\.touches\.length !== 1/.test(client), 'jamais de zoom : un seul doigt, gestes Safari bloqués');
 } finally {
