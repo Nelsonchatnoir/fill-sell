@@ -393,8 +393,25 @@ serve(async (req) => {
           headers: { "Content-Type": "application/json", ...CORS },
         });
       }
-      // Un seul essai par compte : la ligne profiles ET l'historique Stripe.
-      const essai = essaiCloudPermis(profilCloud ?? {}, tousLesAbos ?? [], prixConnus());
+      // (05/10) La PRÉPARATION d'abord (cloud_essai_preparer_moi, appelée par
+      // l'app juste avant) : une IP réservée pour ce compte — jamais un essai
+      // ni un paiement sans place — et les verrous appareil / compte de
+      // plateforme. Sans préparation fraîche : on demande à l'app de la refaire.
+      const { data: permisCloud, error: errPermis } = await supabase.rpc("cloud_essai_permis", { p_user: authUser.id });
+      if (errPermis) {
+        console.error(`[checkout] cloud_essai_permis illisible : ${errPermis.message} — paiement Cloud refusé (jamais sans place)`);
+        return new Response(JSON.stringify({ error: "payment_unavailable", option: "cloud" }), {
+          status: 503, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      if (permisCloud?.fraiche !== true) {
+        return new Response(JSON.stringify({ error: "preparation_requise", option: "cloud" }), {
+          status: 409, headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      // Un seul essai par compte : la ligne profiles ET l'historique Stripe ET
+      // les verrous de la préparation (appareil, compte de plateforme).
+      const essai = essaiCloudPermis(profilCloud ?? {}, tousLesAbos ?? [], prixConnus()) && permisCloud?.permis === true;
       let ouvertesCloud: Stripe.Checkout.Session[] = [];
       try {
         const { data } = await stripe.checkout.sessions.list({ customer: clientCloud, status: "open", limit: 10 });
@@ -420,7 +437,7 @@ serve(async (req) => {
           metadata: { ...base.metadata, fillsell_carte_3ds: "1" },
         } : {}),
       } as Stripe.Checkout.SessionCreateParams);
-      console.log(`[checkout] abonnement Cloud pour ${authUser.id} : essai ${essai ? `${ESSAI_CLOUD_JOURS} jours` : "déjà pris, payé tout de suite"}`);
+      console.log(`[checkout] abonnement Cloud pour ${authUser.id} : essai ${essai ? `${ESSAI_CLOUD_JOURS} jours` : `non (${permisCloud?.raison ?? "déjà pris"}), payé tout de suite`}`);
       return new Response(JSON.stringify({ url: sessionCloud.url, option: "cloud", essai }), {
         headers: { "Content-Type": "application/json", ...CORS },
       });
