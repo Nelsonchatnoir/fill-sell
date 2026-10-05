@@ -46,6 +46,12 @@ rm -rf /srv/fillsell-cloud/extension.nouvelle && cp -r "$P/extension" /srv/fills
 rm -rf /srv/fillsell-cloud/extension.ancienne && mv /srv/fillsell-cloud/extension /srv/fillsell-cloud/extension.ancienne 2>/dev/null || true
 mv /srv/fillsell-cloud/extension.nouvelle /srv/fillsell-cloud/extension
 cp "$P"/deploiement/{docker-compose.yml,Caddyfile,pare-feu-navigateurs.sh} /srv/fillsell-cloud/deploiement/
+# (05/10) Les variables du fichier compose (version déployée, domaine), lues
+# toutes seules par `docker compose` dans ce dossier : sans elles, tout
+# `docker compose ps|exec|logs` lancé après coup (contrôles, mesure,
+# `outils/ip.mjs ajouter`) s'arrêtait sur « VERSION_ORCHESTRATEUR is missing ».
+# Aucun secret ici (ceux-là sont dans /srv/fillsell-cloud/.env).
+printf 'VERSION_ORCHESTRATEUR=%s\nDOMAINE=%s\n' "$SHA" "$DOMAINE" > /srv/fillsell-cloud/deploiement/.env
 mkdir -p /srv/fillsell-cloud/caddy/data /srv/fillsell-cloud/caddy/config /srv/fillsell-cloud/profils
 ENV=/srv/fillsell-cloud/.env
 if [ ! -f "$ENV" ]; then
