@@ -35,3 +35,8 @@ RETURNING id, titre;
 
 SELECT public.platform_settings_fusionner(ARRAY['vinted', 'marques_retenues'], '{}'::jsonb,
   ARRAY['kodak ektachrome super'], 'f44b5917-bccc-4431-ba41-f40571a2ed18'::uuid) AS reglage_test_retire;
+
+-- Réglage de test de l'essai 5 (format retenu « 10 kg » pour le rayon Photographies) retiré.
+SELECT public.platform_settings_fusionner(ARRAY['vinted', 'colis_retenus'],
+  jsonb_build_object('Maison > Décoration > Décorations murales > Photographies', NULL),
+  NULL, 'f44b5917-bccc-4431-ba41-f40571a2ed18'::uuid) -> 'vinted' -> 'colis_retenus' AS colis_retenus_apres;

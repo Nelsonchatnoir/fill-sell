@@ -22,7 +22,7 @@ UPDATE public.cross_post_jobs c
    SET status = 'pending', error = NULL,
        platform_fields = (c.platform_fields - 'needsUserAttempts' - 'next_action_after' - 'processing_since')
          || jsonb_build_object('republish_step', 'a_capturer',
-              'build_min_requis', '__BUILD_0697__',
+              'build_min_requis', '2026-10-05T10:59:34Z',
               'relance_par', jsonb_build_object('le', now(), 'par', 'réparation 05/10 (suppression déjà envoyée, 0.6.97)'))
   FROM public._backup_0510_josephine_repub_beebs b
  WHERE c.id = b.id AND c.status = 'cancelled'
