@@ -11726,7 +11726,7 @@ async function attenteSessionLeveeLocalement(job) {
 const REST_DELAI_MAX_MS = 45_000;
 
 async function restRequest(path, accessToken, init = {}, rejeu = false) {
-  const borne = init.signal ? null : new AbortController();
+  const borne = init.signal || typeof AbortController !== 'function' ? null : new AbortController();
   const minuterie = borne ? setTimeout(() => borne.abort(), REST_DELAI_MAX_MS) : null;
   let res;
   try {

@@ -41,7 +41,11 @@ const ok = (titre, condition, detail = "") => {
 };
 
 // ── Le bac à sable ───────────────────────────────────────────────────────────
-function charger({ routes, alarmeArmee = false }) {
+// (05/10, règle de Nico) La reprise automatique d'un relevé est COUPÉE
+// (REPRISE_AUTOMATIQUE_RELEVE = false dans background.js). Les cas 1 à 13
+// éprouvent le mécanisme en sommeil, interrupteur forcé à true ; le cas 0
+// éprouve ce qui part en production : le veilleur ne relance RIEN.
+function charger({ routes, alarmeArmee = false, repriseAutomatique = true }) {
   const journal = [];
   const local = {};
   const sessionStore = {};
@@ -99,7 +103,10 @@ function charger({ routes, alarmeArmee = false }) {
   ctx.globalThis = ctx;
   ctx.self = ctx;
   const contexte = vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8"), contexte, { filename: "background.js" });
+  const source = fs.readFileSync(path.join(DOSSIER, "background.js"), "utf8");
+  const interrupteur = "const REPRISE_AUTOMATIQUE_RELEVE = false;";
+  if (!source.includes(interrupteur)) throw new Error("background.js : interrupteur REPRISE_AUTOMATIQUE_RELEVE introuvable ou allumé");
+  vm.runInContext(repriseAutomatique ? source.replace(interrupteur, "const REPRISE_AUTOMATIQUE_RELEVE = true;") : source, contexte, { filename: "background.js" });
   ctx.getValidSession = async () => ({ access_token: JWT });
   return { ctx, journal, local };
 }
@@ -121,6 +128,24 @@ const patchsCas = (journal) => journal.filter((l) => l.methode === "PATCH" && l.
 
 // ═══════════════════════════════════════════════════════════════════════════
 console.log("\n── VEILLEUR DE RUN FIGÉ ───────────────────────────────────────");
+
+{
+  console.log("\n0. EN PRODUCTION (05/10) : un run figé n'est JAMAIS repris tout seul");
+  const maj = ilYA(20);
+  const run = { id: RUN, status: "running", page_suivante: 2, items_vus: 96, updated_at: maj, declencheur: "bouton" };
+  const { ctx, journal } = charger({ repriseAutomatique: false, routes: [routeLectureRun(run), routeUsageLogs,
+    { quand: (m, c) => m === "PATCH" && c.includes("status=eq.running"), rend: () => [{ ...run, updated_at: new Date().toISOString() }] }] });
+  let reprises = 0;
+  ctx.syncDressingVinted = async () => { reprises += 1; return { ok: true }; };
+  await poserEtat(ctx, { runId: RUN, page_suivante: 2, items_vus: 96, updated_at: maj, vuA: maj, reprises: 0 });
+  await ctx.veillerRunFige();
+  await ctx.rattraperRepriseAuto();
+  ok("aucune requête, aucune revendication", journal.length === 0, `${journal.length} appel(s)`);
+  ok("aucune reprise déclenchée", reprises === 0);
+  const motif = "onglet de travail Vinted : le content script ne répond pas";
+  ok("un échec technique n'arme aucune reprise", (await ctx.armerRepriseAutoSiTechnique({ userId: USER, runId: RUN, declencheur: "bouton", message: motif })) === motif);
+  ok("un 403 n'arme aucune reprise", (await ctx.programmerRetry403(USER, { runId: RUN, tentative: 1, declencheur: "bouton" })) === null);
+}
 
 {
   console.log("\n1. Aucune sync ouverte ici : la ronde ne coûte pas une requête");
