@@ -169,6 +169,7 @@ import { BUILD_COLIS_DANS_ENVOI, VERSION_COLIS_DANS_ENVOI, RETENUE_COLIS_ANCIEN_
 import { tacheAMettreDeCote, messageTacheSansDemarrage, SOURCE_TACHE_SANS_DEMARRAGE } from "../_shared/tache-sans-demarrage.js";
 import { attenteBoutiqueLevable } from "../_shared/attente-autre-boutique.js";
 import { OPLA_PRIX_MAX, prixOplaTropHaut, messagePrixOplaTropHaut } from "../_shared/opla-prix.js";
+import { palierDuProfil } from "../_shared/palier.js";
 
 // ── Format de colis Vinted : deux lectures du PARC, gardées 10 min par instance
 // (02/10, _shared/vinted-colis.js). Un rayon où un refus « faute de format »
@@ -520,6 +521,25 @@ serve(async (req) => {
     // de palier absente retombe sur `republish_plafond_jour` (le réglage
     // historique) ; les clés de pause absentes = PAS DE PAUSE. Une clé
     // manquante ne doit JAMAIS créer une retenue que Nico n'a pas posée.
+    // ── LES TRANSPORTEURS LEBONCOIN CHOISIS PAR LA PERSONNE (05/10) ─────────
+    // platform_settings.leboncoin.transporteurs (retenus au lot). Lus UNE fois
+    // par requête, à la demande. null = aucun choix retenu (ou lecture ratée).
+    let retenusLbcLus: string[] | null | undefined;
+    const transporteursLbcRetenus = async (): Promise<string[] | null> => {
+      if (retenusLbcLus !== undefined) return retenusLbcLus;
+      retenusLbcLus = null;
+      try {
+        const { data } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+        const t = (((data as { platform_settings?: Record<string, unknown> } | null)?.platform_settings ?? {}) as Record<string, unknown>).leboncoin;
+        const liste = (t && typeof t === "object") ? (t as Record<string, unknown>).transporteurs : null;
+        if (Array.isArray(liste)) {
+          const noms = liste.map((n) => String(n ?? "").trim()).filter(Boolean);
+          if (noms.length) retenusLbcLus = noms;
+        }
+      } catch (_e) { /* aucun choix lu → comportement d'avant */ }
+      return retenusLbcLus;
+    };
+
     const etatPlafondRepublish = async () => {
       // Une seule lecture pour tous les réglages.
       const cfg = new Map<string, number>();
@@ -564,11 +584,9 @@ serve(async (req) => {
           .from("profiles").select("is_business, is_pro, is_premium, is_comped")
           .eq("id", user.id).maybeSingle();
         if (prof) {
-          const p = prof as Record<string, unknown>;
-          palier = p.is_business === true ? "business"
-            : p.is_pro === true ? "pro"
-            : (p.is_premium === true || p.is_comped === true) ? "premium"
-            : "free";
+          // Palier unique (_shared/palier.js, 05/10) ; 'gratuit' = 'free' ici.
+          const pal = palierDuProfil(prof);
+          palier = pal === "gratuit" ? "free" : pal;
         }
       } catch (_e) { /* palier illisible → repli */ }
 
@@ -657,6 +675,11 @@ serve(async (req) => {
       let minuitSuivant = Date.now() + (86400 - secondesParis(Date.now())) * 1000;
       if (jourParis(minuitSuivant) === aujourdhui) minuitSuivant += 3600_000;
       minuitSuivant -= secondesParis(minuitSuivant) * 1000;
+      // (05/10) À la seconde : les millisecondes de Date.now() restaient
+      // collées à « minuit », la reprise changeait à chaque poll et la trace
+      // de retenue se réécrivait sur 40 jobs à CHAQUE passage (nadegemarcelin78,
+      // 40 écritures inutiles par poll) — « jamais une ligne inchangée ».
+      minuitSuivant = Math.floor(minuitSuivant / 1000) * 1000;
 
       // Le PLAFOND prime sur la PAUSE quand les deux mordent : sa reprise est
       // la plus tardive (demain minuit vs dans 2 h), et annoncer la pause
@@ -890,12 +913,17 @@ serve(async (req) => {
           if (rpcErr) console.warn(`[get-pending-jobs] userId=${user.id} noter_poste_extension :`, rpcErr.message);
         } catch (e) { console.warn("[get-pending-jobs] postes :", (e as Error)?.message ?? e); }
       }
-      await admin.from("profiles").update(patch).eq("id", user.id);
       // Version du manifest (2026-08-05) : rangée en MAX, pas en dernière vue —
       // un compte à deux machines (portable 0.4.x, fixe 0.5.0) ne doit pas
       // faire osciller le bouton de sync. La logique du max vit dans la RPC,
       // qui n'écrit que si la version proposée est strictement supérieure.
+      // (05/10) Notée AVANT l'écriture du passage : cette écriture déclenche
+      // planifier_premiers_releves, qui lisait encore extension_version NULL au
+      // tout premier poll (« extension_trop_ancienne ») — le premier relevé
+      // n'était posé qu'au passage suivant, et jamais si Chrome se fermait
+      // entre-temps (moiz12345678912, 04/10).
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
+      await admin.from("profiles").update(patch).eq("id", user.id);
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
 
     // 28/09 16:46 : appel périodique des ventes automatiques retiré après
@@ -1772,19 +1800,25 @@ serve(async (req) => {
     // ≥ 0.6.42 seulement — une plus ancienne ne sait pas relever. Même TTL de
     // 6 h, même purge. Best-effort : jamais un point de panne.
     let syncCommandsAnnonces: Array<{ id: string; platform: string }> = [];
+    // (05/10) Demande de relevé FRAÎCHE (posée il y a moins de 30 min) : elle
+    // passe devant les jobs de ce cycle, comme la sync du dressing (plus bas).
+    const relevesFrais = new Set<string>();
     if (versionAuMoins(version, "0.6.42") && !includeProcessing) {
       try {
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const { data: cmds } = await userClient
           .from("vinted_sync_runs")
-          .select("id, platform")
+          .select("id, platform, queued_at")
           .eq("kind", "annonces")
           .eq("status", "queued")
           .gte("queued_at", ttl)
           .order("queued_at", { ascending: true })
           .limit(4);
-        syncCommandsAnnonces = ((cmds ?? []) as Array<{ id: unknown; platform: unknown }>)
-          .map((c) => ({ id: String(c.id), platform: String(c.platform) }));
+        const lues = (cmds ?? []) as Array<{ id: unknown; platform: unknown; queued_at: unknown }>;
+        syncCommandsAnnonces = lues.map((c) => ({ id: String(c.id), platform: String(c.platform) }));
+        for (const c of lues) {
+          if (Date.now() - Date.parse(String(c.queued_at ?? "")) < 30 * 60_000) relevesFrais.add(String(c.id));
+        }
       } catch (_e) { /* idem */ }
     }
     // ── UN RELEVÉ OPLA N'EST CONFIÉ QU'À UN POSTE QUI A L'ACCÈS (2026-09-25) ──
@@ -1797,8 +1831,11 @@ serve(async (req) => {
     // compte a l'accès, la demande reste en file pour lui. Un compte à un seul
     // poste sans accès ne change pas : son relevé dit « absente », utile au
     // verdict « Opla est-il autorisé ? ».
+    // (05/10, geronimo0550) « vivant » = vu depuis moins de 2 h pour un RELEVÉ :
+    // le poste autorisé était muet depuis 25 h (TTL de 48 h) et le relevé Opla
+    // l'a attendu jusqu'à expirer.
     if (posteSansOpla && syncCommandsAnnonces.some((c) => c.platform === "opla")
-        && posteAvecAccesOpla(postesDuCompte, { saufSession: sessionId, depuisMs: POSTE_TTL_MS })) {
+        && posteAvecAccesOpla(postesDuCompte, { saufSession: sessionId, depuisMs: 2 * 3600_000 })) {
       syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "opla");
       console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Opla : relevé Opla laissé en file pour le poste autorisé`);
     }
@@ -3750,7 +3787,21 @@ serve(async (req) => {
             const liv: string[] = [];
             const ship = attrLbc("shipping_type");
             const vals = Array.isArray(ship?.["values"]) ? (ship!["values"] as unknown[]).map(String) : null;
-            if (vals && !reponduL("lbcTransporteurs")) {
+            // (05/10, Nico) « Les transporteurs cochés doivent être exactement
+            // ceux choisis, au dépôt comme à la republication » : un choix
+            // RETENU par la personne passe devant ce que l'annonce affiche (un
+            // mauvais dépôt — Courrier suivi coché en trop — se reproduisait à
+            // chaque republication). Borné au poids, comme au dépôt.
+            const retenusLbc = reponduL("lbcTransporteurs") ? null : await transporteursLbcRetenus();
+            if (retenusLbc) {
+              const avantT = Array.isArray(pf["lbcTransporteurs"]) ? (pf["lbcTransporteurs"] as unknown[]).map(String) : null;
+              const pfR: Record<string, unknown> = { lbcPoidsGrammes: pf["lbcPoidsGrammes"] ?? Number(attrLbc("estimated_parcel_weight")?.["value"]) };
+              livraisonLbcAuService(pfR, { transporteursRetenus: retenusLbc });
+              const voulus = Array.isArray(pfR["lbcTransporteurs"]) ? (pfR["lbcTransporteurs"] as string[]) : null;
+              if (voulus && JSON.stringify(avantT) !== JSON.stringify(voulus)) {
+                pf["lbcTransporteurs"] = voulus; liv.push(`transporteurs ← ${voulus.join(", ")} (choix retenu)`);
+              }
+            } else if (vals && !reponduL("lbcTransporteurs")) {
               const noms = vals.map((v) => NOMS[v]).filter(Boolean);
               const avantT = Array.isArray(pf["lbcTransporteurs"]) ? (pf["lbcTransporteurs"] as unknown[]).map(String) : null;
               if (noms.length && JSON.stringify(avantT) !== JSON.stringify(noms)) {
@@ -4630,8 +4681,14 @@ serve(async (req) => {
     // donc ne retient jamais rien.
     // Périmètre : le poll d'exécution SEUL, mêmes flags opt-in que les autres
     // retenues — le popup continue de voir la file complète.
+    // (05/10, geronimo0550) Les relevés d'annonces FRAIS passent devant aussi :
+    // le 04/10, quatre relevés redemandés et servis dans la même réponse que 8
+    // jobs ont attendu derrière eux (verrou FIFO de l'extension), puis Chrome
+    // s'est fermé — jamais faits. Une demande de plus de 30 min ne retient
+    // plus rien (jamais une file gelée par un relevé que personne ne prend).
     let heldSync = 0;
-    if (syncCommand && !includeProcessing && !includeNeedsUser && out.length) {
+    const syncDevant = Boolean(syncCommand) || syncCommandsAnnonces.some((c) => relevesFrais.has(c.id));
+    if (syncDevant && !includeProcessing && !includeNeedsUser && out.length) {
       // (02/10, nivake03) EXEMPTION : une republication à l'étape 'deleted'
       // n'attend jamais derrière une sync — son annonce est hors ligne. Même
       // exemption que le plafond, la pause et le créneau.
@@ -4641,7 +4698,7 @@ serve(async (req) => {
       out = out.filter(horsLigne);
       heldSync = avantSync - out.length;
       console.log(
-        `[get-pending-jobs] userId=${user.id} : demande de sync ${syncCommand.id} servie ` +
+        `[get-pending-jobs] userId=${user.id} : demande de sync ${syncCommand?.id ?? syncCommandsAnnonces.map((c) => c.platform).join("+")} servie ` +
         `→ ${heldSync} job(s) retenu(s) en pending pour ce cycle (la sync passe devant)`,
       );
     }
