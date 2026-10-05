@@ -1,0 +1,12 @@
+heure_utc	heure_paris	niveau	composant	msg	action	auth_event_action	auth_event_log_type	methode	chemin	statut	grant_type	login_method	provider	user_id	actor_id	traits_user_id	duree_ms	referer	request_id
+2026-10-05 16:28:17.000	2026-10-05 18:28:17.000	info	api	request completed		user_confirmation_requested	user	POST	/signup	200			email		6b2057a9-ee51-4070-8732-9759d30fd521		1442.6	https://fillsell.app/auth/confirm	01a10ce4-fdc2-7634-970a-49dceccbf02f
+2026-10-05 16:28:32.000	2026-10-05 18:28:32.000	info		Login	login							otp	email	6b2057a9-ee51-4070-8732-9759d30fd521					
+2026-10-05 16:28:32.000	2026-10-05 18:28:32.000	info	api	request completed		user_signedup	team	POST	/verify	200			email		6b2057a9-ee51-4070-8732-9759d30fd521		25.6	https://fillsell.app/	01a10ce5-3cd5-73c3-bc73-4f27ed1f63d9
+2026-10-05 16:31:07.000	2026-10-05 18:31:07.000	info		Login	login							password	email	6b2057a9-ee51-4070-8732-9759d30fd521					
+2026-10-05 16:31:07.000	2026-10-05 18:31:07.000	info	api	request completed		login	account	POST	/token	200	password		email		6b2057a9-ee51-4070-8732-9759d30fd521		92.3	https://fillsell.app/	01a10ce7-9888-79a3-ae61-d075b8f9fa4b
+2026-10-05 16:31:32.000	2026-10-05 18:31:32.000	info	api	request completed		login	account	POST	/token	200	password		email		6b2057a9-ee51-4070-8732-9759d30fd521		94.7	https://fillsell.app/	01a10ce7-fd19-7acb-b943-8f8b61f65bde
+2026-10-05 16:31:32.000	2026-10-05 18:31:32.000	info		Login	login							password	email	6b2057a9-ee51-4070-8732-9759d30fd521					
+2026-10-05 16:47:13.000	2026-10-05 18:47:13.000	info	api	request completed		user_recovery_requested	user	POST	/admin/generate_link	200					6b2057a9-ee51-4070-8732-9759d30fd521		9.4	https://fillsell.app/	01a10cf6-56b0-7516-b7d7-8d1a68ee6f75
+2026-10-05 16:47:27.000	2026-10-05 18:47:27.000	info		Login	login							otp	email	6b2057a9-ee51-4070-8732-9759d30fd521					
+2026-10-05 16:47:27.000	2026-10-05 18:47:27.000	info	api	request completed		login	account	POST	/verify	200					6b2057a9-ee51-4070-8732-9759d30fd521		15.9	https://fillsell.app/	01a10cf6-8f7b-7eae-9937-2b99ad6357ad
+2026-10-05 17:14:02.000	2026-10-05 19:14:02.000	info	api	request completed		user_deleted	team	DELETE	/admin/users/6b2057a9-ee51-4070-8732-9759d30fd521	200				6b2057a9-ee51-4070-8732-9759d30fd521	00000000-0000-0000-0000-000000000000	6b2057a9-ee51-4070-8732-9759d30fd521	1612.5	https://fillsell.app/	01a10d0e-de2c-77db-964f-7e96e782826b
