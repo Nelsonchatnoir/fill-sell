@@ -76,3 +76,25 @@ SELECT c.user_id, c.inventaire_id, 'vinted', 'delete', 'pending', c.title, c.lis
  WHERE c.id IN ('c076506c-6070-41d2-ab16-bbd8ec75f162', '81f96937-562b-4d0b-8c58-2051c1fa194c')
    AND c.status = 'published'
 RETURNING id, platform_listing_id;
+
+-- ── ESSAI 3 (0.6.97) : transporteurs Leboncoin exacts ──
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, photo_option,
+                                    title, description, price, photos, platform_fields)
+SELECT c.user_id, 1791142468699, 'leboncoin', 'pending', 'publish', c.photo_option,
+       c.title, c.description, 999, c.photos,
+       public.remise_en_vente_champs(c.platform_fields) - 'livraison_lbc' || jsonb_build_object('essai_0510', 'lbc_transporteurs')
+  FROM public.cross_post_jobs c
+ WHERE c.id = '9940f84d-844f-43c0-8e2f-ba849c833ece'
+RETURNING id, status, platform_fields->'lbcTransporteurs' t;
+
+-- ── ESSAI 4 (0.6.97) : colis Vinted choisi, Marque générique, mesures ──
+INSERT INTO public.cross_post_jobs (user_id, inventaire_id, platform, status, action, photo_option,
+                                    title, description, price, photos, platform_fields)
+SELECT c.user_id, c.inventaire_id, 'vinted', 'pending', 'publish', c.photo_option,
+       c.title, c.description, 999, c.photos,
+       public.remise_en_vente_champs(c.platform_fields)
+         || jsonb_build_object('marque', 'Marque générique', 'packageSizeId', 3, 'packageSize', 'Grand',
+                               'colis_source', 'manuel', 'essai_0510', 'vinted_colis_choisi')
+  FROM public.cross_post_jobs c
+ WHERE c.id = 'c14e9826-861c-4735-8bd7-68b06cdf0dba'
+RETURNING id, status;
