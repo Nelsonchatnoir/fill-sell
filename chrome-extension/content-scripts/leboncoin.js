@@ -4912,7 +4912,9 @@ function lbcLignesTransporteurs() {
 // tout le « Courrier suivi resté coché » du 04/10 et du 05/10 (job 9940f84d,
 // puis 09a360aa arrêté à raison par la 0.6.97). Une case verrouillée n'est ni
 // proposée ni comptée dans l'écart : Leboncoin l'impose (ou l'écarte), elle
-// est dite à part dans le bilan (imposes_par_leboncoin).
+// est dite à part dans le bilan (verrouilles_par_leboncoin). Relu ensuite sur
+// l'annonce enregistrée : une case verrouillée cochée à l'écran du dépôt n'y
+// est PAS (Leboncoin la rend indisponible : « ventes inférieures à 400 € »).
 const lbcCaseBloquee = (b) => b?.disabled === true || b?.hasAttribute?.("data-disabled") || b?.getAttribute?.("aria-disabled") === "true";
 /** Ce que la fenêtre montre MAINTENANT : proposés et cochés (null si fermée).
  *  « proposés » et « cochés » ne parlent que des cases MODIFIABLES. */
@@ -5231,7 +5233,7 @@ async function poserLivraisonLbc(fields, warnings) {
     const texte = bloc?.innerText ?? "";
     bilan.poses = lu ? lu.coches : null;
     if (lu) bilan.proposes = lu.proposes;
-    if (lu?.verrouilles?.length) bilan.imposes_par_leboncoin = { coches: lu.imposes, verrouilles: lu.verrouilles };
+    if (lu?.verrouilles?.length) bilan.verrouilles_par_leboncoin = { coches_a_l_ecran: lu.imposes, verrouilles: lu.verrouilles };
     const fp = texte.match(/colis\s+(petit|moyen|volumineux)/i)?.[1] ?? null;
     bilan.format_pose = fp ? fp[0].toUpperCase() + fp.slice(1).toLowerCase() : null;
     if ((format || poids) && !bloc) echec("le format du colis n'a pas pu être relu après réglage");
@@ -5247,6 +5249,13 @@ async function poserLivraisonLbc(fields, warnings) {
       const proposesConnus = lu?.proposes ?? reglage?.proposes ?? null;
       for (const d of demandes.filter(connu)) {
         if (bilan.non_poses.some((n) => lbcMemeTransporteur(n.nom, d))) continue;
+        // (05/10, essai réel 09a360aa) Verrouillé = INDISPONIBLE pour cette
+        // annonce : coché à l'écran du dépôt, l'annonce enregistrée ne le porte
+        // pas (formulaire de modification relu : décoché, verrouillé).
+        if ((lu?.verrouilles ?? []).some((c) => lbcMemeTransporteur(c, d))) {
+          bilan.non_poses.push({ nom: d, motif: "indisponible pour cette annonce (Leboncoin le verrouille : prix, poids ou dimensions)" });
+          continue;
+        }
         if (proposesConnus && !proposesConnus.some((p) => lbcMemeTransporteur(p, d))) {
           bilan.non_poses.push({ nom: d, motif: "non proposé par Leboncoin pour cet article (poids ou dimensions)" });
         } else if (lu && !lu.coches.some((c) => lbcMemeTransporteur(c, d))) {
@@ -5315,7 +5324,7 @@ async function verifierTransporteursAvantDepotLbc(warnings) {
     }
     b.poses = lu.coches;
     b.proposes = lu.proposes;
-    if (lu.verrouilles?.length) b.imposes_par_leboncoin = { coches: lu.imposes, verrouilles: lu.verrouilles };
+    if (lu.verrouilles?.length) b.verrouilles_par_leboncoin = { coches_a_l_ecran: lu.imposes, verrouilles: lu.verrouilles };
     b.ecart = ecart ? { en_trop: ecart.enTrop, manquants: ecart.manquants, bloquant: ecart.bloquant } : null;
     b.verifie_avant_depot = { at: new Date().toISOString(), relu: true, coches: lu.coches };
     if (!ecart?.bloquant) return null;

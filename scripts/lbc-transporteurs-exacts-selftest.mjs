@@ -428,8 +428,12 @@ console.log("5 bis. « Courrier suivi » coché et VERROUILLÉ (vente > 400 €)
   ok(r.depose, "déposé : une case que Leboncoin verrouille n'arrête rien", r.resultat);
   ok(!r.env.page.journal.includes("refus:Courrier suivi"), "aucun clic sur la case verrouillée", r.env.page.journal.filter((e) => e.startsWith("refus")));
   const b = r.resultat.livraisonLbc;
-  ok(b?.posee === true && memes(b.poses, ["Mondial Relay", "Colissimo"]) && memes(b.imposes_par_leboncoin?.coches ?? [], ["Courrier suivi"]),
-    "bilan : posés = le choix, « Courrier suivi » dit à part (imposé par Leboncoin)", b);
+  ok(b?.posee === true && memes(b.poses, ["Mondial Relay", "Colissimo"]) && memes(b.verrouilles_par_leboncoin?.verrouilles ?? [], ["Courrier suivi"]),
+    "bilan : posés = le choix, « Courrier suivi » dit à part (verrouillé par Leboncoin)", b);
+  const c = await parcours({ recalculs: [500], verrouille: { nom: "Colissimo", etat: true } }, JOB_9940);
+  const nc = c.resultat.livraisonLbc?.non_poses ?? [];
+  ok(c.depose && c.resultat.livraisonLbc?.posee === false && nc.some((n) => n.nom === "Colissimo" && /indisponible/.test(n.motif)),
+    "un transporteur CHOISI mais verrouillé = indisponible pour l'annonce : déposé, dit « non posé (indisponible) » — relu sur l'annonce 3282618073 du 05/10", c.resultat.livraisonLbc);
 }
 
 // ── 6. Écart persistant : rien ne part ──────────────────────────────────────
