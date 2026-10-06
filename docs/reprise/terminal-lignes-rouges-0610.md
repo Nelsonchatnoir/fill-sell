@@ -8,7 +8,7 @@ compléments : mails de vente (règle produit) et régression dbz70 « EU 40 ».
 
 ## Livré en prod
 - **Fonctions** (verify_jwt relu avant/après) : get-pending-jobs v220
-  (`true`), handler-watch v89, push-ventes v6, email-tunnel v72 (`false`),
+  (`true`), handler-watch v89, push-ventes v7, email-tunnel v72 (`false`),
   send-extension-link v13 (`true`).
 - **Migration 20261006180000** (mails de vente) : feu vert explicite de Nico,
   appliquée 16:41, inscrite (`migration repair`).
@@ -47,8 +47,12 @@ compléments : mails de vente (règle produit) et régression dbz70 « EU 40 ».
    repartira une fois, sans geste, quand son Chrome aura la 0.6.101.
 7. **Un mail à chaque vente, jamais plafonné ; récap supprimé** — migration
    20261006180000, push-ventes, email-tunnel. Garde « vente RÉCENTE prouvée »
-   dans push-ventes v6 (Vinted : annonce vue en ligne hier/aujourd'hui ou
-   publiée < 48 h ; jamais déjà vue vendue un jour précédent).
+   dans push-ventes v6/v7 (Vinted : annonce vue en ligne hier/aujourd'hui ou
+   publiée < 48 h ; jamais déjà vue vendue un jour précédent). v7 : une note
+   datée par sa commande (< 48 h) est sa propre preuve. ⚠️ Limite connue : une
+   vente Vinted vue par la veille sans relevé de la veille, ni commande lue,
+   part SANS mail (jamais un faux) — seuls 23 à 42 comptes ont une boutique
+   relevée chaque jour. Remède : la preuve « vue en ligne » au déclencheur.
 
 ## ⚠️ Mails envoyés à tort pendant la première demi-heure (16:41 → 17:31)
 - Louis (Amiral) : 4 mails à 17:03 (notes 311-314) pour des annonces Vinted

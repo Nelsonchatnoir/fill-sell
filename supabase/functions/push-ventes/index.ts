@@ -182,11 +182,18 @@ Deno.serve(async (req) => {
     // du 06/09 — la vente peut avoir un mois. Une vente Vinted ne part que si
     // son annonce a été vue EN LIGNE par un relevé hier ou aujourd'hui, ou si
     // FillSell l'a publiée il y a moins de 48 h. Sinon : « vente_ancienne ».
+    // ⛔ Une note qui porte SA DATE DE VENTE (commande lue sur la plateforme :
+    // vendu_le, < 24 h garanti par push_trg_ventes) est sa propre preuve : elle
+    // n'attend aucun relevé de la boutique (sinon une vraie vente du jour
+    // partirait sans mail chez tout compte non relevé la veille), et une
+    // annonce à quantité vendue une 2e fois est une 2e vente.
     const anciennes = new Set<number>();
     try {
-      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id").in("id", notes.map((n) => n.id));
+      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id, vendu_le").in("id", notes.map((n) => n.id));
       const parNote = new Map<number, { user: string; items: string[]; job: string | null }>();
-      for (const l of (lignes ?? []) as Array<{ id: number; user_id: string; cles: string[] | null; job_id: string | null }>) {
+      for (const l of (lignes ?? []) as Array<{ id: number; user_id: string; cles: string[] | null; job_id: string | null; vendu_le: string | null }>) {
+        const datee = Date.parse(String(l.vendu_le ?? ""));
+        if (Number.isFinite(datee) && Date.now() - datee < 48 * 3_600_000) continue; // date de vente récente = preuve
         const items = (l.cles ?? []).map((k) => /^annonce:vinted:(\d+)$/.exec(String(k))?.[1]).filter(Boolean) as string[];
         if (items.length) parNote.set(Number(l.id), { user: l.user_id, items, job: l.job_id });
       }

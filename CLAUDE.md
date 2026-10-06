@@ -20,7 +20,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `update-job-status` v130, `handler-watch` v89, `push-ventes` v6, `voice-intent` v155, `ops-digest` v31,
+  `update-job-status` v130, `handler-watch` v89, `push-ventes` v7, `voice-intent` v155, `ops-digest` v31,
   `ebay-api-worker` v77, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) — ⚠️ depuis le 05/10 15:55,
@@ -30,7 +30,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   les versions d'un cran sans changer le code.
 - **Notifications push à chaque vente (06/10, binaire 2.9.62 / vc33)** : base
   appliquée (mig 20261006140000 + 150000, cron 34 `push-ventes-1min`),
-  `push-ventes` v6 et `check-listing-status` v36 (`false`) ; le push reste
+  `push-ventes` v7 et `check-listing-status` v36 (`false`) ; le push reste
   inerte sans téléphone (la note, elle, porte aussi le MAIL de vente). Clés et binaires : `npm run
   binaires:2.9.62` (fichiers dans Téléchargements, `docs/push/CLES-NICO.md`) ;
   ⛔ jamais d'AAB sans `google-services.json`. Tout appel natif passe par
@@ -43,7 +43,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `vente:<note>`, support, réservation, index `email_logs_vente_unique`) ;
   garde v6 « vente RÉCENTE prouvée » avant tout envoi (Vinted : annonce vue en
   ligne hier ou aujourd'hui, ou publiée < 48 h ; jamais déjà vue vendue un jour
-  précédent — 6 mails partis à tort entre 16:58 et 17:03 le 06/10). Le
+  précédent — 6 mails partis à tort entre 16:58 et 17:03 le 06/10 ; v7 : une
+  note qui porte sa date de vente < 48 h — commande lue — est sa propre preuve). Le
   récap « ventes du jour » est SUPPRIMÉ ; AUCUN mail automatique n'est retenu
   par un plafond (lien de l'extension : double appui < 60 s seulement).
   Preuves : `scripts/push/preuve-mails-ventes.mjs` (transaction annulée),

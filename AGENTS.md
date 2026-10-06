@@ -8,7 +8,7 @@ historique contraire. `functions list`, `cron.job` et
 - **Servi** : extension **0.6.100** ; **0.6.101 à téléverser** (`build/CWS-0.6.101-A-TELEVERSER/`) ;
   minimum **0.6.81** ; web/OTA **2.9.63** ; départs : `departs_compte`.
 - **Push ventes** : binaire 2.9.62, cron 34, natif via `pushDisponible()` ; `docs/push/CLES-NICO.md`.
-- **⛔ Mail à chaque vente** (`push-ventes` v6) : vente récente prouvée, jamais plafonné, sans récap.
+- **⛔ Mail à chaque vente** (`push-ventes` v7) : vente récente prouvée, jamais plafonné, sans récap.
 - **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; relance après MAJ : `_shared/relance-apres-maj.js`.
 - **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie=création.
 - **CPU (04/10)** : tâche auto mesurée, bornée ; interdit 11.
