@@ -241,7 +241,15 @@ trois relevés et deux reprises lancés tout seuls, aucun Vinted abouti, un faux
 - le relevé est pris **au démarrage, sous le verrou**, le service worker reste
   éveillé, chaque requête est bornée ;
 - chaque fin se dit par sa **situation** (`situationFinReleve`), jamais par le
-  texte brut ; « Connecte-toi à X sur ton ordinateur » quand c'est ça.
+  texte brut ; « Connecte-toi à X sur ton ordinateur » quand c'est ça ;
+- ⛔ **un refus de « Synchroniser » n'est JAMAIS un cul-de-sac** (06/10, Nico ;
+  cas nerema75, 75 appuis refusés en silence) : chaque refus mène au geste qui
+  débloque. « Boutique à confirmer » ouvre `src/stock/ConfirmationBoutique.jsx`
+  (« Ajouter @x à mes boutiques » / « Ce n'est pas ma boutique » →
+  « Connecte-toi à ta boutique Vinted sur ton ordinateur »), synchro relancée
+  sans second appui ; JAMAIS une boutique rattachée sans ce clic. Mesure :
+  `usage_logs.feature = 'confirmation_boutique'`. Aucun plafond de boutiques
+  par palier n'existe (06/10).
 
 ## ⛔ TÂCHE AUTOMATIQUE OU RELECTURE EN BOUCLE : MESURÉE, BORNÉE (04/10)
 
