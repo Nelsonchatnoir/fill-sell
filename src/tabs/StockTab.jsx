@@ -97,6 +97,8 @@ import { CSS_STOCK } from '../stock/css';
 import { S as SK } from '../stock/jetons';
 import { TitreStock, Gestes, LignePublierEnLot, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
 import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
+// (06/10) « Synchroniser » refusé pour une boutique à confirmer → cette feuille.
+import ConfirmationBoutique from '../stock/ConfirmationBoutique';
 import { STATUTS_LUS, indexerJobs, fusionnerJobs, regrouperParArticle, idsVivants, plusRecent, filtreLeger } from '../stock/jobsIncrementaux';
 import BarreModifierLot from '../stock/BarreModifierLot';
 import { demarrerRelecture } from '../utils/relectureBornee';
@@ -163,7 +165,7 @@ import {
   DETAIL_VERSION_MIN,
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
-import { decisionDemarrage, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
+import { decisionDemarrage, decisionQuestionBoutique, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
 // Plus aucun émoji dans l'écran Stock : une icône Lucide au trait, posée dans
@@ -2685,6 +2687,18 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // deux gestes relancent.
   const [rappelQuestionBoutique, setRappelQuestionBoutique] = useState(false);
   const runPoseQuestionBoutique = (r) => r?.status === 'failed' && String(r?.erreur ?? '').includes('[boutique_a_confirmer]');
+  // ── LA QUESTION S'OUVRE AU MOMENT DU REFUS (06/10, nerema75 : 75 appuis) ──
+  // Cette ligne est montée CACHÉE depuis le 20/09 (9acb19d) : la question
+  // ci-dessus n'a plus jamais été vue, et depuis le 27/09 (e4c6454) chaque
+  // appui était refusé en silence. Désormais le refus OUVRE la feuille
+  // ConfirmationBoutique (portail : visible même ligne cachée) — « Ajouter @x
+  // à mes boutiques » / « Ce n'est pas ma boutique ». { boutique, declencheur }
+  // ou null. `ecarteeRef` : le relevé dont la personne a dit « pas la mienne ».
+  const [questionOuverte, setQuestionOuverte] = useState(null);
+  const ecarteeRef = useRef(null);
+  // L'ouverture, lue par le suivi (effet) au rendu courant — déclarée ICI,
+  // avant l'effet qui l'appelle (règle TDZ du fichier) ; posée plus bas.
+  const ouvrirQuestionRef = useRef(null);
   // Repli des détails de synchro — FERMÉ PAR DÉFAUT (refonte lisibilité
   // 2026-09-04). État d'affichage pur : il ne conditionne aucun calcul.
   const [detailsOuverts, setDetailsOuverts] = useState(false);
@@ -2801,6 +2815,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
           // ça, l'heure affichée resterait celle d'avant jusqu'au prochain
           // montage de la carte.
           if (r.status === 'done') { setDejaSync(true); setDerniereReussie(r); onDone?.(); }
+          // (06/10) Le relevé que la personne vient de demander s'arrête sur
+          // une boutique inconnue : la question s'ouvre tout de suite.
+          if (attenduDepuis && runPoseQuestionBoutique(r)) ouvrirQuestionRef.current?.(r, 'fin_releve');
           return;
         }
       } else if (attenduDepuis) {
@@ -2822,8 +2839,9 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
         setSuivi(false);
         if (d === 'question') {
           // La demande n'est pas partie parce qu'une question attend réponse :
-          // on la remontre, on ne parle ni d'attente ni de republications.
+          // on l'OUVRE (06/10), on ne parle ni d'attente ni de republications.
           setRappelQuestionBoutique(true);
+          ouvrirQuestionRef.current?.(r ?? run, 'suivi');
           return;
         }
         replierSurLaFile();
@@ -3184,19 +3202,58 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
       metadata: { resultat, ...(raison ? { raison } : {}), ...(voie ? { voie } : {}), source },
     }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
   };
+  // (06/10) La confirmation de boutique, mesurée : affichée / acceptée /
+  // refusée (« pas la mienne ») / erreur — une ligne usage_logs par étape.
+  const logConfirmationBoutique = (etape, boutique, extra = {}) => {
+    if (!user?.id) return;
+    supabase.from('usage_logs').insert({
+      user_id: user.id,
+      feature: 'confirmation_boutique',
+      metadata: {
+        etape, source, app: isNative ? 'mobile' : 'web',
+        boutique_id: boutique?.userId ?? null, boutique_login: boutique?.login ?? null, ...extra,
+      },
+    }).then(({ error }) => { if (error) console.warn('[confirmation_boutique] non journalisé:', error.message); });
+  };
+  // Ouvre la feuille pour la boutique vue par le relevé refusé `r` (jamais une
+  // boutique devinée : l'identité est celle de la trace du relevé).
+  const ouvrirQuestion = (r, declencheur, rappel = false) => {
+    if (!runPoseQuestionBoutique(r)) return;
+    const boutique = { userId: r.vinted_user_id ?? null, login: r.vinted_login ?? null };
+    setQuestionOuverte({ runId: r.id ?? null, boutique, declencheur, rappel });
+    logConfirmationBoutique('affichee', boutique, { declencheur, rappel });
+  };
+  ouvrirQuestionRef.current = ouvrirQuestion;
 
   const lancer = async (opts = {}) => {
-    // (2026-09-27) Une question de boutique en attente : le relevé partirait
-    // vers un refus silencieux de l'extension. On rappelle la question.
+    // ── UNE BOUTIQUE À CONFIRMER N'EST PLUS UN CUL-DE-SAC (06/10) ──────────
+    // Avant : refus silencieux (la question vivait dans cette ligne, CACHÉE).
+    // Désormais :
+    //   · la boutique ouverte dans Chrome a CHANGÉ depuis le refus (sonde ou
+    //     relevé de moins de 30 min) → la synchro part, l'extension tranche
+    //     (lohanobert59 : revenu sur @lo160, refusé quand même) ;
+    //   · la personne a déjà dit « pas la mienne » pour ce relevé et rien ne
+    //     dit que Chrome est toujours dessus → la synchro part aussi ;
+    //   · sinon → la feuille s'ouvre : « Ajouter @x » / « Ce n'est pas ma
+    //     boutique ». Le refus reste journalisé (sync_click).
     if (runPoseQuestionBoutique(run) && !opts.apresReponse) {
+      let connectee = null;
+      try { connectee = await lireBoutiqueConnectee(user?.id); } catch { /* inconnue : on demande */ }
+      const d = decisionQuestionBoutique({ run, connectee, ecarteeRunId: ecarteeRef.current });
+      if (d === 'relancer_boutique_changee' || d === 'relancer_ecartee') {
+        logSyncClick('relancée', d === 'relancer_boutique_changee' ? 'boutique_changee' : 'boutique_ecartee');
+        return lancer({ ...opts, apresReponse: true });
+      }
       logSyncClick('refusée', 'boutique_a_confirmer');
-      setRappelQuestionBoutique(true);
+      ouvrirQuestion(run, 'clic', d === 'feuille_rappel');
       return;
     }
     // Ceinture si l'état a un tour de retard — journalisée AUSSI : un clic
     // avalé ici est exactement le genre d'échec invisible qu'on mesure.
     if (enCadence || envoi) {
       logSyncClick('refusée', envoi ? 'double_clic' : 'cadence_ui');
+      // (06/10) Plus jamais un appui sans réponse : la cadence se DIT.
+      if (!envoi && cadenceTexte) setMessage({ ton: 'vert', texte: String(cadenceTexte) });
       return;
     }
     setMessage(null);
@@ -3552,29 +3609,56 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
   // Confirmation d'une boutique (décision [boutique_a_confirmer]) : écrit la
   // boutique VUE PAR LE RUN (id + pseudo de la trace, jamais une valeur
   // devinée) dans la liste, recharge le filtre de l'app, puis RELANCE la sync.
+  // (06/10) Appelée par la feuille ConfirmationBoutique : rend { ok } pour
+  // qu'elle dise l'échec SUR PLACE ; en cas de succès, la feuille se ferme et
+  // la synchro part tout de suite — la personne a déjà appuyé, elle ne
+  // réappuie pas. Seul CE clic écrit la boutique (jamais en silence).
   const confirmerBoutique = async () => {
-    if (confirmBusy || !run?.vinted_user_id || !user?.id) return;
+    const boutique = questionOuverte?.boutique
+      ?? (run?.vinted_user_id ? { userId: run.vinted_user_id, login: run.vinted_login ?? null } : null);
+    if (confirmBusy || !boutique?.userId || !user?.id) return { ok: false, erreur: 'boutique_inconnue' };
     setConfirmBusy(true);
     let r;
     try {
       r = await confirmerBoutiqueVinted(user.id, {
-        vintedUserId: run.vinted_user_id,
-        login: run.vinted_login ?? null,
+        vintedUserId: boutique.userId,
+        login: boutique.login ?? null,
       });
     } catch (e) { r = { success: false, error: String(e?.message ?? e) }; }
     setConfirmBusy(false);
     if (!r?.success) {
+      logConfirmationBoutique('erreur', boutique, { erreur: String(r?.error ?? '').slice(0, 120) });
       setMessage({ ton: 'rouge', texte: fr
         ? "L'ajout de la boutique n'a pas pu être enregistré. Réessaie dans un instant."
         : "The shop couldn't be saved. Try again in a moment." });
-      return;
+      return { ok: false, erreur: r?.error ?? null };
     }
+    logConfirmationBoutique('acceptee', boutique, { nb_boutiques: r.boutiques?.length ?? null });
+    setQuestionOuverte(null);
+    ecarteeRef.current = null;
     setBoutiqueRefusee(false);
     setRappelQuestionBoutique(false);
     rechargerBoutiques?.();
     setMessage(null);
     lancer({ apresReponse: true });
+    return { ok: true };
   };
+  const pasMaBoutique = () => {
+    const q = questionOuverte;
+    ecarteeRef.current = q?.runId ?? run?.id ?? null;
+    logConfirmationBoutique('refusee', q?.boutique ?? null);
+  };
+  const feuilleBoutique = questionOuverte ? (
+    <ConfirmationBoutique
+      lang={lang}
+      boutique={questionOuverte.boutique}
+      suivies={(boutiquesVinted ?? []).map((b) => b?.login ?? null).filter(Boolean)}
+      rappel={!!questionOuverte.rappel}
+      onAjouter={confirmerBoutique}
+      onPasLaMienne={pasMaBoutique}
+      onFermer={() => setQuestionOuverte(null)}
+    />
+  ) : null;
   // Heure de reprise de la file différée — MÊME formateur que la ligne de
   // plafond de l'onglet Stock (repriseRepub) : les deux écrans disent la même
   // heure, dans les mêmes mots, et gèrent « demain » au même endroit. Null si
@@ -3685,7 +3769,13 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
     cadenceTexte: enCadence && cadenceTexte ? String(cadenceTexte) : null,
     murVinted: murVinted ?? null,
     fin: finVinted,
-  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte, murVinted, finVinted?.status, finVinted?.situation, finVinted?.items_vus, finVinted?.total_entries]);
+    // (06/10) Le retour d'un appui (refus, attente, ordinateur muet…) : il
+    // vivait dans cette ligne CACHÉE, donc nulle part. Le bloc l'affiche.
+    message: message ? { ton: message.ton ?? 'orange', texte: String(message.texte ?? '') } : null,
+    // (06/10) Une boutique attend sa confirmation : le point du bloc propose
+    // « Choisir ma boutique » au lieu de « Réessayer ».
+    questionBoutique: !demandeEnVol && runPoseQuestionBoutique(run) ? { login: run?.vinted_login ?? null } : null,
+  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte, murVinted, finVinted?.status, finVinted?.situation, finVinted?.items_vus, finVinted?.total_entries, message?.ton, message?.texte, demandeEnVol, run?.id, run?.status, run?.erreur, run?.vinted_login]);
   useEffect(() => {
     const fn = registerEtatRef.current;
     if (typeof fn !== 'function') return;
@@ -3737,12 +3827,15 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
           />
         )}
         {blocQuestionBoutique}
+        {/* (06/10) Portail : visible même si cette ligne est montée cachée. */}
+        {feuilleBoutique}
       </div>
     );
   }
 
   return (
     <div style={{background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+      {feuilleBoutique}
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <PlatformLogo platform="vinted" size={20}/>
         <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>

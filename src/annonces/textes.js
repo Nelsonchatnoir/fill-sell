@@ -86,6 +86,14 @@ const FR = {
   // seul geste utile.
   signalNonConnecte: (nom) => `Connecte-toi à ${nom} sur ton ordinateur, puis appuie sur « Synchroniser ».`,
   finAutreCompte: (nom) => `Ton ordinateur est connecté à un autre compte ${nom} que celui suivi par FillSell. Rien n'a été importé. Connecte-toi au bon compte ${nom} dans Chrome, puis appuie sur « Synchroniser ».`,
+  // (06/10) Vinted : la boutique ouverte n'est pas encore suivie. Le geste est
+  // « Choisir ma boutique » (feuille ConfirmationBoutique), plus « relance ».
+  finBoutiqueAConfirmer: (b) => (b
+    ? `Ton ordinateur est connecté à la boutique @${b}, que FillSell ne suit pas encore. Rien n'a été importé.`
+    : "Ton ordinateur est connecté à une boutique Vinted que FillSell ne suit pas encore. Rien n'a été importé."),
+  titrePointBoutique: 'Vinted : boutique à confirmer',
+  ctaChoisirBoutique: 'Choisir ma boutique',
+  titrePointVinted: 'Vinted',
   finAntiRobot: (nom) => `${nom} a bloqué la lecture un moment (protection anti-robot). Rien n'a été effacé : réessaie dans quelques minutes.`,
   finArret: (nom) => `La synchronisation ${de(nom)} s'est arrêtée avant la fin. Rien n'a été effacé : appuie sur « Synchroniser » pour la terminer.`,
   finPasPrise: (nom) => `Ton ordinateur n'a pas pris la synchronisation ${de(nom)}. Ouvre Chrome avec l'extension FillSell, puis appuie sur « Synchroniser ».`,
@@ -234,6 +242,12 @@ const EN = {
 
   signalNonConnecte: (nom) => `Sign in to ${nom} on your computer, then tap “Sync”.`,
   finAutreCompte: (nom) => `Your computer is signed in to another ${nom} account than the one FillSell follows. Nothing was imported. Sign in to the right ${nom} account in Chrome, then tap “Sync”.`,
+  finBoutiqueAConfirmer: (b) => (b
+    ? `Your computer is signed in to the shop @${b}, which FillSell doesn't follow yet. Nothing was imported.`
+    : "Your computer is signed in to a Vinted shop FillSell doesn't follow yet. Nothing was imported."),
+  titrePointBoutique: 'Vinted: shop to confirm',
+  ctaChoisirBoutique: 'Choose my shop',
+  titrePointVinted: 'Vinted',
   finAntiRobot: (nom) => `${nom} blocked the reading for a moment (anti-bot protection). Nothing was deleted: try again in a few minutes.`,
   finArret: (nom) => `The ${nom} sync stopped before the end. Nothing was deleted: tap “Sync” to finish it.`,
   finPasPrise: (nom) => `Your computer did not pick up the ${nom} sync. Open Chrome with the FillSell extension, then tap “Sync”.`,

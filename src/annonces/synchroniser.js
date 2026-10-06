@@ -42,6 +42,36 @@ export function decisionDemarrage({ depuisClicMs, runVu = false, questionBoutiqu
   return 'repli_file';
 }
 
+/** Le relevé Vinted s'est arrêté sur une boutique pas encore suivie. */
+export function runPoseQuestionBoutique(run) {
+  return run?.status === 'failed' && String(run?.erreur ?? '').includes('[boutique_a_confirmer]');
+}
+
+/**
+ * (06/10, nerema75 : 75 appuis refusés en silence) Un appui sur
+ * « Synchroniser » alors que le dernier relevé pose la question de boutique :
+ *   'aucune'                     → pas de question, la synchro part ;
+ *   'relancer_boutique_changee'  → Chrome est sur une AUTRE boutique depuis le
+ *                                  refus (sonde ou relevé de moins de 30 min) :
+ *                                  la synchro part, l'extension tranche ;
+ *   'relancer_ecartee'           → la personne a dit « pas la mienne » pour ce
+ *                                  relevé et rien ne dit que Chrome y est
+ *                                  encore : la synchro part ;
+ *   'feuille' / 'feuille_rappel' → la confirmation s'ouvre (« Ajouter @x » /
+ *                                  « Ce n'est pas ma boutique ») ; « rappel » :
+ *                                  déjà écartée, Chrome toujours dessus.
+ * Jamais de rattachement ici : seul le clic « Ajouter » écrit la boutique.
+ */
+export function decisionQuestionBoutique({ run, connectee = null, ecarteeRunId = null }) {
+  if (!runPoseQuestionBoutique(run)) return 'aucune';
+  const fraiche = connectee?.fraiche === true && !!connectee?.userId;
+  const meme = fraiche && String(connectee.userId) === String(run.vinted_user_id);
+  const ecartee = ecarteeRunId != null && ecarteeRunId === (run.id ?? null);
+  if (fraiche && !meme) return 'relancer_boutique_changee';
+  if (ecartee && !meme) return 'relancer_ecartee';
+  return ecartee ? 'feuille_rappel' : 'feuille';
+}
+
 /**
  * Les plateformes qu'un clic « Synchroniser » relève, dans l'ordre.
  * - `plateformes` : ce que le bloc sait relever (Vinted compris), dans l'ordre

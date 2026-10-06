@@ -216,6 +216,18 @@ export default function BlocSynchro({
     ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
       .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : T.signalNonConnecte(t.nom) })),
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p)).map((t) => {
+      // (06/10) Vinted arrêté sur une boutique pas encore suivie : le geste est
+      // « Choisir ma boutique » — il ouvre la confirmation (« Ajouter @x » /
+      // « Ce n'est pas ma boutique »), plus jamais un « Réessayer » refusé.
+      if (t.p === 'vinted' && etatVinted?.questionBoutique) {
+        return {
+          cle: 'vinted-boutique',
+          platform: 'vinted',
+          titre: T.titrePointBoutique,
+          texte: T.finBoutiqueAConfirmer(etatVinted.questionBoutique.login ?? null),
+          bouton: { libelle: T.ctaChoisirBoutique, icone: RefreshCw, onTap: () => { setFeuille(false); r.lancer('vinted'); }, desactive: occupeLancer },
+        };
+      }
       const technique = t.p !== 'vinted' && arretTechniqueReleve(r.runs[t.p] ?? null);
       // (05/10) Plus jamais le texte brut du relevé à l'écran (codes HTTP,
       // pages, minutes) : la situation, dite en clair, et le geste.
@@ -252,9 +264,19 @@ export default function BlocSynchro({
       : `${noms.join(', ')} ${noms.length > 1 ? 'are' : 'is'} up to date`;
   })();
 
+  // ── LE RETOUR D'UN APPUI SUR VINTED (06/10) ───────────────────────────────
+  // La ligne Vinted est montée cachée : tout ce qu'elle disait après un appui
+  // (ordinateur muet, demande déjà en attente, refus de la file, suivi
+  // arrêté…) n'arrivait nulle part. Il remonte (etatVinted.message) : un refus
+  // devient un point à régler, une information (cadence) s'écrit sous les
+  // pastilles. Jamais un appui sans réponse.
+  const msgVinted = etatVinted?.message?.texte ? etatVinted.message : null;
+  const msgVintedPoint = msgVinted && msgVinted.ton !== 'vert' ? msgVinted : null;
+  const msgVintedInfo = msgVinted && msgVinted.ton === 'vert' ? msgVinted : null;
+
   // ── LES POINTS À RÉGLER, COMPTÉS UNE FOIS ─────────────────────────────────
   const alertesComptees = alertes.filter((a) => a.compte !== false);
-  const nbPoints = murs.length + signaux.length + (r.message ? 1 : 0) + (nbARattacher > 0 ? 1 : 0)
+  const nbPoints = murs.length + signaux.length + (r.message ? 1 : 0) + (msgVintedPoint ? 1 : 0) + (nbARattacher > 0 ? 1 : 0)
     + (nbDoublons > 0 ? 1 : 0) + (!extVue ? 1 : 0) + alertesComptees.length;
   const infoSansPoint = nbPoints === 0
     ? (nbRangement > 0 ? T.rangement(nbRangement, nomsRangement) : (alertes[0]?.titre ?? null))
@@ -333,6 +355,11 @@ export default function BlocSynchro({
           </div>
 
           {!enCours && pastilles(false)}
+          {!enCours && msgVintedInfo && (
+            <p role="status" style={{ margin: '8px 0 0', fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ink2 }}>
+              <PlatformLogo platform="vinted" size={12} /> {msgVintedInfo.texte}
+            </p>
+          )}
 
           {enCours && (
             <div className="rv-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -398,6 +425,7 @@ export default function BlocSynchro({
               bouton={{ libelle: T.doublonsCta, onTap: () => setEcranDoublons(true) }} />
           )}
           {r.message && <CartePoint titre={fr ? 'Synchronisation refusée' : 'Sync refused'} texte={r.message.texte} />}
+          {msgVintedPoint && <CartePoint platform="vinted" titre={T.titrePointVinted} texte={msgVintedPoint.texte} />}
           {!extVue && (
             <CartePoint titre={fr ? 'Extension Chrome' : 'Chrome extension'} texte={null}
               enfant={<InstallExtensionCta lang={lang} isNative={isNative} userId={r.userId} userEmail={user?.email ?? null} source="stock_annonces" message={T.extensionAbsente} />} />
