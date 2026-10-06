@@ -1,19 +1,21 @@
-## État de production au 05/10 — lire avant toute action
+## État de production au 06/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » en fin ; reprise : `docs/reprise/terminal-problemes-0510.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » en fin ; reprise : `docs/reprise/terminal-depart-lbc-0610.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** au CWS ; **0.6.98 à téléverser**
-  (`build/CWS-0.6.98-A-TELEVERSER/fillsell-extension-0.6.98-b7b756c-cws.zip`,
-  contient la 0.6.97 et donc la 0.6.96) ;
+- **Servi** : extension **0.6.94** au CWS ; **0.6.100 à téléverser**
+  (`build/CWS-0.6.100-A-TELEVERSER/fillsell-extension-0.6.100-2b883ef-cws.zip`,
+  contient 0.6.95→0.6.99 ; après acceptation : `EXTENSION_MIN_BUILD =
+  '2026-10-06T06:11:17Z'`) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web et OTA **2.9.57** (05/10 soir : 2.9.56 — fusion Cloud, drapeau baissé —
+  web et OTA **2.9.59** (06/10 : « Pourquoi tu pars ? » → table
+  `departs_compte` ; relevé partiel = `incomplete`, jamais `done` ; 05/10 soir : 2.9.56 — fusion Cloud, drapeau baissé —
   + « gratuit = 50 republications PAR MOIS ») ; `get-pending-jobs` v217,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,

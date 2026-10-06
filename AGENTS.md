@@ -1,12 +1,12 @@
-## État de production au 05/10 — lire avant toute action
+## État de production au 06/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections du 04/10
 en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
 historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** ; **0.6.98 à téléverser** (`build/CWS-0.6.98-A-TELEVERSER/`) ;
-  minimum **0.6.81** ; web/OTA **2.9.57** ; gpj v217, ujs v129.
+- **Servi** : extension **0.6.94** ; **0.6.100 à téléverser** (`build/CWS-0.6.100-A-TELEVERSER/`) ;
+  minimum **0.6.81** ; web/OTA **2.9.59** ; départs : `departs_compte`.
 - **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie=création,
   `ebay-notifications` ; reprise : `docs/reprise/terminal-problemes-0510.md`.
 - **CPU (04/10)** : tâche auto mesurée, bornée ; interdit 11.
@@ -17,7 +17,7 @@ historique contraire. `functions list`, `cron.job` et
 - **Retraits** : jamais arrêtés sur un raté technique (1 h/3 h/6 h) ; Vinted
   absent de deux relevés complets → « déjà retirée ». **Boucles** →
   needs_user. **Cadence** : Premium 50/jour. **Relevés** : 5 min sans
-  progression = arrêt. **Marque** : hors catalogue → question. Annonce de
+  progression = arrêt ; partiel = `incomplete`. **Marque** : hors catalogue → question. Annonce de
   test ≥ 999 €. **Selftests** : 0 rouge ; `scripts/lib/morceaux-mis-de-cote.mjs`.
 - **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`, `_shared/opla-sortie.js`).
 - **⛔ `platform_settings`** : toujours `rpc platform_settings_fusionner`.
