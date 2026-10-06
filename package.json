@@ -52,6 +52,7 @@
     "gen:arbres": "node scripts/gen-arbres-feuilles.mjs",
     "selftest:vinted-couleurs": "node scripts/vinted-couleurs-selftest.mjs",
     "selftest:vinted-taille-publication": "node scripts/vinted-taille-publication-selftest.mjs",
+    "selftest:vinted-taille-eu-nu-serveur": "node scripts/vinted-taille-eu-nu-serveur-selftest.mjs",
     "selftest:content-scripts": "node scripts/content-scripts-selftest.mjs",
     "selftest:description-leboncoin": "node scripts/description-leboncoin-selftest.mjs",
     "selftest:description-beebs": "node scripts/description-beebs-selftest.mjs",

@@ -56,6 +56,7 @@ import { lienDepuisId, idDepuisLien } from "../_shared/annonce-lien.ts";
  *  conversion nombre → lettre à la publication. Une forme préfixée (« EU 36 »)
  *  est le domaine de la republication, une lettre n'a rien à convertir. */
 const NOMBRE_NU_TAILLE_RE = /^\d{1,3}$/;
+const TAILLE_EU_PUBLICATION_RE = /^EU\s?\d{1,3}(?:[.,]\d)?$/i;
 // ── L'ARBRE LEBONCOIN RELEVÉ, pour retrouver la RACINE d'une feuille ───────
 // (2026-09-19) Le relevé Leboncoin ne capture que la FEUILLE (« Livres »,
 // « Ameublement ») : le fil d'Ariane du site n'affiche pas la racine. Nos 79
@@ -7129,10 +7130,13 @@ serve(async (req) => {
     // republication, la même normalisation de libellé. Rien n'est réécrit en
     // base : on ne fait que servir la valeur.
     try {
-      const publishTaille = out.filter((j) =>
-        j.platform === "vinted" && j.action !== "republish" &&
-        NOMBRE_NU_TAILLE_RE.test(String((j.platform_fields as Record<string, unknown> | null)?.["taille"] ?? "").trim())
-      );
+      // (06/10, dbz70) « EU 40 » entre aussi : une fiche relevée sur Vinted
+      // peut porter la forme du référentiel, que la grille nue écrit « 40 ».
+      const publishTaille = out.filter((j) => {
+        if (j.platform !== "vinted" || j.action === "republish") return false;
+        const t = String((j.platform_fields as Record<string, unknown> | null)?.["taille"] ?? "").trim();
+        return NOMBRE_NU_TAILLE_RE.test(t) || TAILLE_EU_PUBLICATION_RE.test(t);
+      });
       if (publishTaille.length) {
         const cheminDe = (j: (typeof publishTaille)[number]): string => {
           const p = (j.platform_fields as Record<string, unknown> | null)?.["categoryPath"];

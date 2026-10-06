@@ -74,7 +74,8 @@
 // à SERVIR. inventaire.attributs et vinted_republish_captures restent intacts.
 
 /** Forme préfixée rendue par le référentiel pour les ids 1943→1965 (après normalisation). */
-export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3})$/i;
+// Demi-pointures comprises (06/10) : « EU 40.5 » sortait du périmètre, rien n'était servi.
+export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3}(?:[.,]\d)?)$/i;
 /** Âge en anglais tel que la capture peut le rendre : « 10 years », « 10Y », « 1 year ». */
 export const AGE_ANGLAIS_RE = /^(\d{1,2}) ?(?:YEARS?|YRS?|Y)$/i;
 /** Les lettres de la grille Femme/Homme Vinted : XXXS…S, M, L…XXXL, 4XL…9XL. */
@@ -107,6 +108,31 @@ export function optionEuPourNombreNu(nt: string, grille: Array<{ brut: string; n
   const nu = nt.replace(",", ".");
   if (grille.some((o) => o.norm.replace(",", ".") === nu)) return null; // le nu est là : l'exact fait foi
   const cands = grille.filter((o) => o.norm.replace(",", ".") === `EU ${nu}`);
+  return cands.length === 1 ? cands[0] : null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// « EU N » ≡ « N » — LE MIROIR (2026-10-06, dbz70 « Baskets Femme Lacoste »)
+// ══════════════════════════════════════════════════════════════════════════
+// La capture de l'annonce d'origine rend « EU 40 » (size_id 2037, groupe
+// « EU » du référentiel /api/v2/size_groups) ; le formulaire de la même
+// catégorie (Femmes > Chaussures > Baskets, catalog 2632) n'offre que le
+// groupe « Chaussures » : « 34 » … « 46 » nus (« 40 » = id 60). Relevé le
+// 06/10 dans le Chrome de Nico. C'est la MÊME pointure : seule l'orthographe
+// change. Jusqu'au 03/10 l'extension retirait le préfixe « EU » d'elle-même ;
+// ca63277 (0.6.90) l'a ôté (« EU 42 reste EU 42 ») et la republication de
+// dbz70 a été refusée sur une taille que son annonce porte.
+// RÈGLE : quand la grille n'écrit PAS « EU N » mais écrit « N » nu (une seule
+// option), « EU N » est servi sous la forme « N ». Jamais pour UK, US, IT, DE :
+// ce sont d'AUTRES tailles (« UK 8 » n'est pas « 8 ») — aucune conversion de
+// système, seulement le préfixe « EU » qu'une grille nue de Vinted sous-entend.
+/** L'option « N » nue d'une grille qui n'écrit pas « EU N », sinon null. */
+export function optionNuPourEu(nt: string, grille: Array<{ brut: string; norm: string }>): { brut: string; norm: string } | null {
+  const m = /^EU ?(\d{1,3}(?:[.,]\d)?)$/.exec(nt);
+  if (!m || !grille.length) return null;
+  const nu = m[1].replace(",", ".");
+  if (grille.some((o) => o.norm.replace(",", ".") === `EU ${nu}`)) return null; // « EU N » est là : l'exact fait foi
+  const cands = grille.filter((o) => o.norm.replace(",", ".") === nu);
   return cands.length === 1 ? cands[0] : null;
 }
 
@@ -191,6 +217,18 @@ export function tailleAServirPublication(args: {
   // Une grille uniquement lettrée ne prouve aucune correspondance numérique.
   if (grille.some((o) => o.norm === nt)) return refus(`« ${nt} » est déjà une option de la grille`);
   const r = refus("La grille ne prouve pas cette taille : demande le choix à la personne.");
+
+  // ── « EU N » → « N » nu (2026-10-06, miroir de la règle ci-dessous) ──────
+  // Une fiche qui porte « EU 40 » (relevée sur une annonce Vinted) face à une
+  // grille qui écrit « 40 » nu : même taille, on sert le libellé de la grille.
+  // Valable pour tout client : « N » nu se pose par l'exact.
+  const nuPourEu = optionNuPourEu(nt, grille);
+  if (nuPourEu) {
+    return {
+      valeur: nuPourEu.brut, etape: 1, ordre: "EU N→nu",
+      detail: `« ${nt} » → « ${nuPourEu.brut} » (la grille relevée écrit « ${nuPourEu.brut} » nu, pas « ${nt} » — même taille, orthographe du formulaire)`,
+    };
+  }
 
   // ── DERNIER RECOURS (2026-09-23) : « N » → « EU N » de la grille relevée ──
   // Seulement là où hier on ne servait rien, et seulement si le client garde
@@ -318,7 +356,7 @@ export function tailleAServir(args: {
   const ordre = opts.ordrePrefixe ?? ORDRE_CAPTURE_PREFIXEE;
   const ordreTexte = ordre.join("→");
   const prefixe = m[1].toUpperCase();
-  const n = Number(m[2]);
+  const n = Number(m[2].replace(",", "."));
 
   const grille = (Array.isArray(args.options) ? args.options : [])
     .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
@@ -331,7 +369,20 @@ export function tailleAServir(args: {
   const etape1 = (): TailleServie | null => {
     if (!relevee) { motifs.push("1 : grille non relevée"); return null; }
     const exact = grille.find((o) => o.norm === nt);
-    if (!exact) { motifs.push("1 : aucune option exacte"); return null; }
+    if (!exact) {
+      // « EU N » ≡ « N » (06/10, dbz70 « Baskets Femme Lacoste ») : le miroir
+      // de « N » ≡ « EU N » (optionNuPourEu, plus bas). La capture lit la
+      // taille de l'annonce d'origine dans le référentiel de Vinted (groupe
+      // « EU » : « EU 40 ») ; le formulaire de la même catégorie écrit la même
+      // pointure « 40 » nu (groupe « Chaussures »). Même taille, deux
+      // orthographes de Vinted : on sert le libellé de la grille.
+      const nu = optionNuPourEu(nt, grille);
+      if (nu) {
+        return servi(nu.brut, 1, `« ${nt} » → « ${nu.brut} » (la grille relevée écrit « ${nu.brut} » nu, pas « ${nt} » — même taille, orthographe du formulaire)`);
+      }
+      motifs.push("1 : aucune option exacte");
+      return null;
+    }
     if (euCoupe && EU_COUPE_RE.test(exact.norm)) { motifs.push(`1 : exact « ${exact.brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
     return servi(exact.brut, 1, "libellé exact de la grille");
   };
