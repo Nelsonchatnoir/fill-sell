@@ -2968,32 +2968,41 @@ serve(async (req) => {
   // republication ne doit jamais rester arrêtée sur une valeur que son annonce
   // porte : quand le serveur sait maintenant servir la taille refusée, la
   // tâche repart seule.
-  // ⛔ UNE FOIS PAR VALEUR SERVIE (marqueur `taille_servie_reveil`) : si la
-  //    valeur servie échoue à son tour, la tâche reste arrêtée — aucune boucle.
+  // ⚠️ LA VALEUR SERVIE N'ATTEINT LE FORMULAIRE QU'À UNE (RE)CAPTURE : à
+  //    l'étape `captured`, l'extension (≤ 0.6.100) relit la capture EN BASE et
+  //    ne fusionne republish_user_fields qu'en capturant (mesuré le 06/10 à
+  //    16:13 : « 40 » servi, « EU 40 » posé, même refus). On remet donc
+  //    l'étape à `a_capturer` : l'annonce, toujours en ligne, est relue et la
+  //    taille servie entre dans la nouvelle capture — rien n'est retiré.
+  // ⛔ UNE FOIS PAR VALEUR SERVIE (marqueur `taille_servie_reveil.recapture`) :
+  //    si la valeur servie échoue à son tour, la tâche suit le chemin normal
+  //    (deux reprises, puis la question) — aucune boucle.
   // ⛔ Seulement l'étape `captured` (rien n'est retiré), un refus portant sur
   //    la SEULE taille, un article encore en stock, aucune taille choisie par
-  //    la personne (republish_user_fields.taille), et une valeur DIFFÉRENTE de
-  //    celle qui a échoué.
+  //    la personne (une valeur de republish_user_fields.taille que le serveur
+  //    n'a pas servie), et une valeur DIFFÉRENTE de celle de la capture.
   // ⛔ Options par défaut de tailleAServir (client qui couperait « EU ») : on
   //    ne réveille jamais pour un libellé que le poste pourrait perdre.
   let taillesReveil = 0;
   try {
     const { data: refusTaille } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, inventaire_id, platform_fields")
-      .eq("status", "needs_user")
+      .select("id, user_id, inventaire_id, status, platform_fields")
+      .in("status", ["needs_user", "pending"])
       .eq("action", "republish")
       .eq("platform", "vinted")
-      .eq("platform_fields->>needs_user_source", "grille_incoherente")
+      .eq("platform_fields->>republish_step", "captured")
+      .not("platform_fields->taille_grille_reprise_derniere", "is", null)
       .limit(50);
     for (const j of (refusTaille ?? []) as Array<Record<string, unknown>>) {
       const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-      if (pf.republish_step !== "captured") continue;
-      const refus = (pf.taille_grille_refus ?? null) as Record<string, unknown> | null;
+      if (j.status === "needs_user" && pf.needs_user_source !== "grille_incoherente") continue;
+      const refus = (pf.taille_grille_refus ?? pf.taille_grille_reprise_derniere ?? null) as Record<string, unknown> | null;
       const champs = Array.isArray(refus?.champs) ? refus!.champs as unknown[] : [];
       if (champs.length !== 1 || champs[0] !== "taille") continue;
       const uf = (pf.republish_user_fields ?? {}) as Record<string, unknown>;
-      if (String(uf.taille ?? "").trim()) continue; // le choix de la personne fait foi
+      const servieAvant = String((pf.republish_taille_fournie as Record<string, unknown> | undefined)?.valeur ?? "");
+      if (String(uf.taille ?? "").trim() && normaliserTaille(uf.taille) !== normaliserTaille(servieAvant)) continue; // le choix de la personne fait foi
       if (!j.inventaire_id) continue;
       const { data: art } = await supabase
         .from("inventaire").select("statut, disparu_le, fusionne_dans, attributs")
@@ -3025,11 +3034,18 @@ serve(async (req) => {
         options: grille,
       });
       if (r.valeur === null) continue;
-      if (normaliserTaille(r.valeur) === normaliserTaille(captureTaille)) continue; // la valeur qui a échoué
+      if (normaliserTaille(r.valeur) === normaliserTaille(captureTaille)) continue; // la capture porte déjà cette forme
       const deja = (pf.taille_servie_reveil ?? null) as Record<string, unknown> | null;
-      if (deja && normaliserTaille(deja.valeur) === normaliserTaille(r.valeur)) continue; // déjà rejouée pour cette valeur
-      const { needs_user_source: _nus, needsUserField: _nuf, champs_a_completer: _cac, ...pfSans } = pf;
-      for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after"]) delete (pfSans as Record<string, unknown>)[k];
+      if (deja?.recapture === true && normaliserTaille(deja.valeur) === normaliserTaille(r.valeur)) continue; // déjà rejouée pour cette valeur
+      const {
+        needs_user_source: _nus, needsUserField: _nuf, champs_a_completer: _cac,
+        capture_id: _capId, republish_snapshot: _snap, republish_copie_servie: _copie, ...pfSans
+      } = pf;
+      for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after", "processing_since"]) delete (pfSans as Record<string, unknown>)[k];
+      // La garde anti-boucle de l'extension compte les questions « Taille » :
+      // une valeur NEUVE servie par le serveur repart d'un compte vierge.
+      const boucle = { ...((pf.needsUserBoucle ?? {}) as Record<string, unknown>) };
+      delete boucle["republish_user_fields.taille"];
       const { error: tErr } = await supabase
         .from("cross_post_jobs")
         .update({
@@ -3037,23 +3053,90 @@ serve(async (req) => {
           error: null,
           platform_fields: {
             ...pfSans,
+            needsUserBoucle: boucle,
+            republish_step: "a_capturer",
+            republish_user_fields: { ...uf, taille: r.valeur },
             taille_servie_reveil: {
               valeur: r.valeur, capture: captureTaille, categorie: chemin || null,
-              etape: r.etape, detail: r.detail ?? null, capture_id: capId,
+              etape: r.etape, detail: r.detail ?? null, capture_id: capId, recapture: true,
               le: new Date(now).toISOString(),
-              pose_par: "handler-watch (taille refusée que le serveur sait désormais servir)",
+              pose_par: "handler-watch (taille refusée que le serveur sait désormais servir : recapture avec la taille servie)",
             },
           },
         })
         .eq("id", String(j.id))
-        .eq("status", "needs_user");
+        .eq("status", String(j.status));
       if (!tErr) {
         taillesReveil++;
-        console.log(`[handler-watch] job ${j.id} (vinted/republish) : taille « ${captureTaille} » refusée → « ${r.valeur} » désormais servie, re-pendu une fois`);
+        console.log(`[handler-watch] job ${j.id} (vinted/republish) : taille « ${captureTaille} » refusée → « ${r.valeur} » désormais servie, recapture puis reprise (une fois)`);
       }
     }
   } catch (e) {
     console.error("[handler-watch] taille désormais servie:", (e as Error)?.message ?? e);
+  }
+
+  // ── UN ARRÊT « ONGLET MUET » REPART QUAND SA CAUSE EST LEVÉE (06/10) ──────
+  // Carla (11 nappes), Ciddjy, Jen : le remplissage coupé net à 300 s par le
+  // chemin classique, trois fois, puis `needs_user` « relancer »
+  // (boucle_technique, règle du 04/10) — et rien ne le reprenait. Depuis le
+  // 06/10, get-pending-jobs allume le port de remplissage (10 min, signe de
+  // vie toutes les 20 s) pour tout compte qui a subi cette coupure : la cause
+  // de l'arrêt est levée, la tâche repart seule, UNE fois (marqueur
+  // `reprise_port_remplissage`), compteurs remis à zéro. Si elle retombe, la
+  // règle du 04/10 la remet en « relancer » — jamais de boucle.
+  // Une republication relancée À LA MAIN sans remise à zéro (Ciddjy, 06/10
+  // après-midi) reçoit la même remise à zéro, une fois.
+  // ⛔ Rien de retiré : publication, ou republication à l'étape `captured` ;
+  //    article encore en stock. Lot borné (50), compare-and-swap.
+  let reprisesPort = 0;
+  try {
+    const { data: muets } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, status, action, platform, platform_fields")
+      .in("status", ["needs_user", "pending"])
+      .in("action", ["publish", "republish"])
+      .in("platform", ["vinted", "beebs", "leboncoin"])
+      .eq("platform_fields->boucle_technique->>signature", "onglet_muet")
+      .limit(50);
+    for (const j of (muets ?? []) as Array<Record<string, unknown>>) {
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (pf.reprise_port_remplissage) continue; // déjà rejouée une fois
+      if (j.status === "needs_user" && pf.needs_user_source !== "relancer") continue;
+      if (j.action === "republish" && String(pf.republish_step ?? "") !== "captured") continue;
+      if (j.inventaire_id) {
+        const { data: art } = await supabase
+          .from("inventaire").select("statut, disparu_le, fusionne_dans")
+          .eq("id", j.inventaire_id).maybeSingle();
+        const a = art as { statut?: string; disparu_le?: string | null; fusionne_dans?: number | null } | null;
+        if (!a || a.statut !== "stock" || a.disparu_le || a.fusionne_dans) continue;
+      }
+      const {
+        boucle_technique: bt, canal_coupe_rejoue: _ccr, needs_user_source: _nus, needsUserField: _nuf,
+        champs_a_completer: _cac, ...pfSans
+      } = pf;
+      for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur", "next_action_after", "processing_since"]) delete (pfSans as Record<string, unknown>)[k];
+      const { error: rErr } = await supabase
+        .from("cross_post_jobs")
+        .update({
+          status: "pending",
+          error: null,
+          platform_fields: {
+            ...pfSans,
+            reprise_port_remplissage: {
+              le: new Date(now).toISOString(), statut_avant: j.status, boucle_archivee: bt ?? null,
+              pose_par: "handler-watch (coupure à 5 min levée : port de remplissage allumé pour ce compte)",
+            },
+          },
+        })
+        .eq("id", String(j.id))
+        .eq("status", String(j.status));
+      if (!rErr) {
+        reprisesPort++;
+        console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) : arrêt « onglet muet » levé (port de remplissage) → repart une fois, compteurs à zéro`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise port de remplissage:", (e as Error)?.message ?? e);
   }
 
   // ── Déblocage AUTO de la garde Livres (2026-08-27 soir, décision Nico) ────
@@ -3554,7 +3637,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -3609,7 +3692,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -3663,7 +3746,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_sortie_clos: oplaSortieClos, opla_acces_messages: oplaMessages, reprises_connexion: reprisesConnexion, attentes_session_levees: attentesLevees, releves_repris: relevesRepris, dressings_repris: dressingsRepris, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees, pending_muets_clos: pendingMuetsClos, reprise_session_serveur: repriseSessionServeur, captures_reveil: capturesReveil, tailles_reveil: taillesReveil, reprises_port: reprisesPort }), {
     headers: { "Content-Type": "application/json" },
   });
 });

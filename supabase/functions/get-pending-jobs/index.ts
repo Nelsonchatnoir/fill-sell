@@ -9851,6 +9851,47 @@ serve(async (req) => {
         if (((pKa?.beta_flags ?? {}) as Record<string, unknown>)["keepalive"] === true) keepaliveActif = true;
       } catch (_e) { /* éteint, comme l'interrupteur général */ }
     }
+    // ── (06/10) LA RÈGLE, PAS LE CAS : UN REMPLISSAGE LENT MAIS VIVANT N'EST
+    // JAMAIS COUPÉ. Carla (11 nappes), Ciddjy (6 Vinted + Beebs « Lot 5
+    // pantalons »), Jen : coupés net à 300 s par le chemin classique
+    // (« Timeout: pas de réponse du content script »), puis arrêtés en
+    // « relancer » ; chez Carla les remplissages réels durent 160 à 323 s. Le
+    // port (10 min, signe de vie toutes les 20 s) s'allume SANS geste en base :
+    //   · pour un compte dont un job des 14 derniers jours porte cette coupure ;
+    //   · toujours quand ce poll sert une republication à l'étape `deleted` :
+    //     l'annonce est déjà retirée, sa remise en ligne ne doit pas être coupée.
+    // Lecture bornée (index user_id + created_at, limit 1), seulement quand le
+    // poll sert un remplissage (publication / republication Vinted, Beebs,
+    // Leboncoin) : aucun coût sur les autres polls.
+    if (!keepaliveActif) {
+      const remplissages = out.filter((j) =>
+        (j.action === "publish" || j.action === "republish") &&
+        (j.platform === "vinted" || j.platform === "beebs" || j.platform === "leboncoin")
+      );
+      if (remplissages.some((j) => j.action === "republish" &&
+        String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "") === "deleted")) {
+        keepaliveActif = true;
+        console.log(`[get-pending-jobs] userId=${user.id} : port de remplissage ALLUMÉ (remise en ligne d'une annonce déjà retirée)`);
+      } else if (remplissages.length) {
+        try {
+          const { data: coupe } = await userClient
+            .from("cross_post_jobs").select("id")
+            .eq("user_id", user.id)
+            .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+            .or([
+              "platform_fields->boucle_technique->>signature.eq.onglet_muet",
+              "platform_fields->reprise_port_remplissage.not.is.null",
+              'platform_fields->canal_coupe_diag->>erreur.like."Timeout: pas de réponse du content script*"',
+              'platform_fields->error_technique->>brut.like."Timeout: pas de réponse du content script*"',
+            ].join(","))
+            .limit(1);
+          if ((coupe ?? []).length) {
+            keepaliveActif = true;
+            console.log(`[get-pending-jobs] userId=${user.id} : port de remplissage ALLUMÉ (remplissage coupé à 5 min dans les 14 j, job ${String((coupe as Array<{ id: string }>)[0].id)})`);
+          }
+        } catch (_e) { /* éteint, comme l'interrupteur général */ }
+      }
+    }
     // Trace quand il est COUPÉ : la preuve, dans les logs, que l'interrupteur
     // a bien joué pour ce poll (rien n'est loggé à l'état allumé, le normal).
     if (!keepaliveActif) console.log(`[get-pending-jobs] userId=${user.id} : keepalive_actif=0 → port de remplissage ÉTEINT pour ce poll (chemin classique)`);
