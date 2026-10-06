@@ -694,6 +694,121 @@ function idColisConnu(packageSizeId, libelle) {
   return { Petit: 1, Moyen: 2, Grand: 3 }[String(libelle ?? "").trim()] ?? null;
 }
 
+// ══ LE RÉFÉRENTIEL DES FORMATS DE COLIS DE VINTED (06/10, patrick giry) ══════
+// CE QUI S'EST PASSÉ : patrick giry, 06/10 entre 18:29 et 18:44, quatre jobs
+// Vinted d'affilée SANS la section « Format du colis » (colis_bilan.grille
+// vide) — T-shirt Riches Paris (publication : POST parti sans format, 400
+// `package_size`), Shino, Camera sport, T-shirt manches longues
+// (républications mises en pause AVANT tout retrait). Rayons ordinaires
+// (1810, 1820, 4666) ; sur la même fenêtre, les autres comptes avaient la
+// grille, et la sienne est revenue à 18:44 (Chemise, publiée à 18:46).
+// RELEVÉ dans le code du formulaire (06/10, session de Nico) : la grille vient
+// d'UN appel, `getPackageSizes({catalogId})` → GET
+// https://api.vinted.fr/shipping-estimation/external/catalogs/{id}/package_sizes
+// (jeton de session exigé : 403 sans cookies), fait au choix du rayon ; si la
+// réponse est une erreur, le formulaire n'affiche RIEN et ne réessaie jamais
+// (`if (isResponseError(e)) return void i()`). Une grille absente sur un rayon
+// qui en a une n'est donc pas « un rayon sans format » : c'est un appel raté,
+// sur CE formulaire, à CET instant.
+// D'où, ici :
+//   · la grille du rayon lue À LA SOURCE (le même appel), pour trancher
+//     « formulaire raté » (grille au référentiel) contre « rayon sans section »
+//     (montres 97 en octobre : section absente, serveur exigeant) ;
+//   · le jeton d'accès renouvelé comme la page (POST /web/api/auth/refresh)
+//     si l'appel prend un 401 — AVANT le choix du rayon (jetonApiVintedFrais)
+//     et au constat (le prochain essai trouvera un jeton frais) ;
+//   · rien d'autre : la grille du référentiel ne coche RIEN et ne remplace
+//     JAMAIS le formulaire (le format reste celui du choix ou de l'annonce
+//     d'origine, posé sur la grille affichée) ; elle sert au verdict et au
+//     diagnostic (colis_bilan.referentiel).
+const REFERENTIEL_COLIS_VINTED = "https://api.vinted.fr/shipping-estimation/external/catalogs/";
+// Pur : la réponse du référentiel → [{ id, libelle }] (libellé = `title`,
+// celui que la grille du formulaire affiche : « Petit », « Moyen »…).
+function grilleDuReferentielColis(corps) {
+  const l = Array.isArray(corps?.package_sizes) ? corps.package_sizes : [];
+  return l
+    .map((p) => ({ id: Number(p?.id), libelle: String(p?.title ?? "").replace(/\s+/g, " ").trim() }))
+    .filter((g) => Number.isInteger(g.id) && g.id > 0 && g.libelle);
+}
+// Le rayon posé sur le formulaire, dans l'ordre : `#category` s'il porte un id
+// (cf. readLatestAttrsConfig — RELEVÉ le 06/10 : il porte souvent le LIBELLÉ,
+// « Montres ») ; le catalog_id du dernier POST /item_upload/attributes vu par
+// la sonde (envoyé par la page au choix du rayon) ; celui que le job connaît.
+async function rayonColisDuJob(job) {
+  const brut = String(document.querySelector("#category")?.value ?? "").trim();
+  if (/^\d+$/.test(brut)) return Number(brut);
+  try {
+    const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
+    const captures = Array.isArray(res?.captures) ? res.captures : [];
+    for (let i = captures.length - 1; i >= 0; i--) {
+      const id = Number(captures[i]?.attrsCatalogId);
+      if (Number.isInteger(id) && id > 0) return id;
+    }
+  } catch { /* la sonde est un renfort */ }
+  const pf = job?.platform_fields ?? {};
+  const connu = Number(pf.vinted_ids?.catalog_id ?? pf.republish_snapshot?.catalog_id ?? NaN);
+  return Number.isInteger(connu) && connu > 0 ? connu : null;
+}
+// Lit la grille du rayon au référentiel. Un 401 renouvelle le jeton puis
+// rejoue UNE fois. Ne jette jamais : { http, grille, jeton_renouvele, catalogue, motif? }.
+async function lireReferentielColisVinted(catalogId) {
+  const id = Number(catalogId);
+  if (!Number.isInteger(id) || id <= 0) return { http: null, grille: [], jeton_renouvele: false, catalogue: null, motif: "rayon inconnu" };
+  const lire = () => fetchBorne(`${REFERENTIEL_COLIS_VINTED}${id}/package_sizes`, {
+    credentials: "include", headers: { Accept: "application/json" },
+  }, 10_000);
+  try {
+    let r = await lire();
+    let renouvele = false;
+    if (r.status === 401 && (await renouvelerJetonVinted())) {
+      renouvele = true;
+      r = await lire();
+    }
+    let grille = [];
+    if (r.ok) {
+      try { grille = grilleDuReferentielColis(await r.json()); } catch { /* corps illisible : grille vide */ }
+    }
+    return { http: r.status, grille, jeton_renouvele: renouvele, catalogue: id };
+  } catch (e) {
+    return { http: null, grille: [], jeton_renouvele: false, catalogue: id, motif: String(e?.message ?? e).slice(0, 120) };
+  }
+}
+// AVANT le choix du rayon : le jeton que le formulaire va utiliser pour
+// charger la grille est-il valide ? Un 401 le renouvelle. Rayon inconnu
+// d'avance (publication par libellés) : rien à sonder, chemin inchangé.
+async function jetonApiVintedFrais(job) {
+  const pf = job?.platform_fields ?? {};
+  const connu = Number(pf.vinted_ids?.catalog_id ?? pf.republish_snapshot?.catalog_id ?? NaN);
+  if (!Number.isInteger(connu) || connu <= 0) return null;
+  const r = await lireReferentielColisVinted(connu);
+  if (r.jeton_renouvele) console.log("[vinted] format de colis : jeton d'accès renouvelé AVANT le choix du rayon (référentiel en 401)");
+  return r;
+}
+// Le verdict quand la section est absente (pur, testé) :
+//   "formulaire_rate" — le référentiel a une grille pour ce rayon : le
+//     formulaire n'a pas su la charger (appel raté) → nouvel essai rapproché ;
+//   "rayon_sans_section" — le référentiel répond sans format : rien à attendre
+//     d'un nouvel essai, le chemin d'avant s'applique ;
+//   "inconnu" — référentiel illisible (réseau, 403, rayon inconnu) : chemin d'avant.
+function verdictSectionColisAbsente(referentiel) {
+  if (!referentiel || referentiel.http == null) return "inconnu";
+  if (referentiel.http >= 200 && referentiel.http < 300) {
+    return referentiel.grille?.length ? "formulaire_rate" : "rayon_sans_section";
+  }
+  return "inconnu";
+}
+// Le bilan du référentiel, rendu dans colis_bilan.referentiel (diagnostic).
+function resumeReferentielColis(r) {
+  if (!r) return null;
+  return {
+    http: r.http ?? null,
+    catalogue: r.catalogue ?? null,
+    grille: (r.grille ?? []).map((g) => `${g.id}|${g.libelle}`),
+    ...(r.jeton_renouvele ? { jeton_renouvele: true } : {}),
+    ...(r.motif ? { motif: r.motif } : {}),
+  };
+}
+
 // ── LANGUE PAR DÉFAUT DES LIVRES — id 6436 « Français » ─────────────────────
 // RELEVÉ, pas supposé : sur les 211 annonces de livres capturées en base qui
 // portent item_attributes[language_book], 6436 en couvre 201 (95,3 %) chez 17
@@ -3197,6 +3312,12 @@ async function remplirFormulaireVinted(job) {
   // (branches existantes de l'étape 'captured', annonce intacte). En
   // RECRÉATION rien ne change : etape() avale l'erreur (non bloquant), la
   // soumission est tentée quand même — ce catch ne voit alors rien passer.
+  // (06/10, patrick giry) Le formulaire charge la grille des formats de colis
+  // AU CHOIX DU RAYON, par un appel qui exige un jeton valide et qu'il ne
+  // refait jamais : un jeton périmé à cet instant, et la section n'apparaît
+  // pas. Rayon connu d'avance (républication, ids) : le jeton est vérifié — et
+  // renouvelé sur un 401 — juste avant. Jamais bloquant.
+  const referentielAvantRayon = await jetonApiVintedFrais(job).catch(() => null);
   try {
     categorieSuggestionRetenue = null;
     categorieArbitrage = null;
@@ -4258,12 +4379,19 @@ async function remplirFormulaireVinted(job) {
         diagnostic: `format de colis à choisir avant le retrait — offerts : ${formats.join(" · ")}${colisFormatNonOffert ? ` (voulu non offert : ${wantedPackage ?? wantedPackageId})` : " (inconnu sur l'annonce d'origine)"}`,
       };
     }
+    // (06/10) Section absente : le référentiel dit si le rayon a des formats
+    // (formulaire raté → essai rapproché) ; rien n'est retiré dans aucun cas.
+    const refQ = await lireReferentielColisVinted(await rayonColisDuJob(job));
+    const verdictQ = verdictSectionColisAbsente(refQ);
+    noterColisBilan({ ...bilanColis([], colisChoix, colisIdPourPost), referentiel: resumeReferentielColis(refQ) });
     return {
       success: false,
       colisNonPropose: true,
+      ...(verdictQ === "formulaire_rate" ? { colisFormulaireRate: true } : {}),
       error: "Le format du colis de ton annonce d'origine est inconnu et le formulaire de Vinted ne propose aucun format pour ce rayon : rien n'a été retiré, rien n'a été soumis.",
       warnings,
-      diagnostic: "format de colis inconnu et section « Format du colis » absente après 8 s — retrait refusé",
+      diagnostic: "format de colis inconnu et section « Format du colis » absente après 8 s — retrait refusé" +
+        ` (référentiel du rayon ${refQ.catalogue ?? "?"} : HTTP ${refQ.http ?? "—"}, ${refQ.grille.length} format(s)${refQ.jeton_renouvele ? ", jeton renouvelé" : ""} → ${verdictQ})`,
     };
   }
 
@@ -4283,15 +4411,30 @@ async function remplirFormulaireVinted(job) {
       }
     }
     const envoiDirectProuve = job.platform_fields?.colis_injection_prouvee === true && colisIdPourPost != null;
-    if (colisSectionAbsente && !envoiDirectProuve) {
-      return {
-        success: false,
-        colisNonPropose: true,
-        error: "Le formulaire de Vinted ne propose pas le format du colis pour ce rayon, alors que Vinted l'exige : " +
-          "rien n'a été retiré, rien n'a été soumis.",
-        warnings,
-        diagnostic: `section « Format du colis » absente après 8 s d'attente — retrait refusé (format connu : ${colisIdPourPost ?? "aucun"}, envoi direct prouvé : non)`,
-      };
+    if (colisSectionAbsente) {
+      // (06/10, patrick giry) Le référentiel du rayon tranche : des formats
+      // existent → le formulaire a raté leur chargement (essai rapproché,
+      // jeton renouvelé s'il était périmé) ; et l'envoi direct n'est retenu
+      // que si le format de l'annonce d'origine y FIGURE — jamais un format
+      // que Vinted ne propose pas pour ce rayon.
+      const refR = await lireReferentielColisVinted(await rayonColisDuJob(job));
+      const verdictR = verdictSectionColisAbsente(refR);
+      noterColisBilan({ ...bilanColis([], colisChoix, colisIdPourPost), referentiel: resumeReferentielColis(refR) });
+      const formatAuReferentiel = colisIdPourPost != null && refR.grille.some((g) => g.id === colisIdPourPost);
+      const diagRef = `référentiel du rayon ${refR.catalogue ?? "?"} : HTTP ${refR.http ?? "—"}, ${refR.grille.length} format(s)` +
+        `${refR.jeton_renouvele ? ", jeton renouvelé" : ""}, format ${colisIdPourPost ?? "?"} ${formatAuReferentiel ? "présent" : "absent"} → ${verdictR}`;
+      if (!envoiDirectProuve || (verdictR !== "inconnu" && !formatAuReferentiel)) {
+        return {
+          success: false,
+          colisNonPropose: true,
+          ...(verdictR === "formulaire_rate" ? { colisFormulaireRate: true } : {}),
+          error: "Le formulaire de Vinted ne propose pas le format du colis pour ce rayon, alors que Vinted l'exige : " +
+            "rien n'a été retiré, rien n'a été soumis.",
+          warnings,
+          diagnostic: `section « Format du colis » absente après 8 s d'attente — retrait refusé (format connu : ${colisIdPourPost ?? "aucun"}, envoi direct prouvé : ${envoiDirectProuve ? "oui" : "non"} ; ${diagRef})`,
+        };
+      }
+      warnings.push(`format de colis : ${diagRef}`);
     }
     if (colisSectionAbsente) warnings.push(`format de colis : section absente — format ${colisIdPourPost} envoyé directement (envoi prouvé)`);
   }
@@ -4509,6 +4652,55 @@ async function remplirFormulaireVinted(job) {
           return { ...questionFormatColis(grilleDepot, null, warnings), discoveredRequired: requiredState.discovered };
         }
         warnings.push("format de colis : aucun format connu ni coché par Vinted au dépôt (annonce d'origine déjà retirée) — dépôt tenté");
+      }
+    } else if (publicationNeuve) {
+      // ══ SECTION ABSENTE AU DÉPÔT D'UNE PUBLICATION (06/10, patrick giry) ══
+      // Avant : le dépôt partait quand même — sans format choisi, Vinted
+      // répondait 400 « Sélectionne le format de ton colis » (T-shirt Riches
+      // Paris). Le référentiel du rayon tranche désormais :
+      //   · des formats existent (formulaire raté) → rien n'est soumis, nouvel
+      //     essai rapproché (le formulaire rechargé les affiche, jeton
+      //     renouvelé s'il était périmé) ; au 3e constat d'affilée, la QUESTION
+      //     « Format du colis » sur les formats du référentiel, si aucun choix
+      //     n'est connu (jamais un format pris à la place de la personne) ;
+      //     un choix connu part alors dans le corps du POST (armé plus haut),
+      //     s'il figure au référentiel ;
+      //   · sinon (rayon sans section, référentiel illisible) : chemin d'avant.
+      const refD = await lireReferentielColisVinted(await rayonColisDuJob(job));
+      const verdictD = verdictSectionColisAbsente(refD);
+      noterColisBilan({ ...bilanColis([], colisChoix, colisIdPourPost), referentiel: resumeReferentielColis(refD) });
+      const diagRefD = `section « Format du colis » absente au dépôt — référentiel du rayon ${refD.catalogue ?? "?"} : HTTP ${refD.http ?? "—"}, ` +
+        `${refD.grille.map((g) => `${g.id}|${g.libelle}`).join(" · ") || "aucun format"}${refD.jeton_renouvele ? ", jeton renouvelé" : ""} → ${verdictD}`;
+      if (verdictD === "formulaire_rate") {
+        const constats = (Number(job.platform_fields?.colis_formulaire_rate?.n) || 0) + 1;
+        // Un choix connu par son seul libellé (réponse à la question : « Volumineux
+        // et lourd ») prend l'id que LE RÉFÉRENTIEL de ce rayon lui donne.
+        let idPourPostD = colisIdPourPost;
+        if (idPourPostD == null && colisVoulu) {
+          const parLibelleD = colisDansGrille(refD.grille, wantedPackageId, wantedPackage);
+          if (parLibelleD) { idPourPostD = parLibelleD.id; armerColisPourPost(idPourPostD); }
+        }
+        const choixAuReferentiel = idPourPostD != null && refD.grille.some((g) => g.id === idPourPostD);
+        if (constats < 3) {
+          return {
+            success: false,
+            colisFormulaireRate: true,
+            error: "Le formulaire de Vinted n'a pas chargé les formats de colis de ce rayon : rien n'a été envoyé à Vinted, nouvel essai automatique dans quelques minutes.",
+            warnings,
+            diagnostic: `${diagRefD} — constat ${constats}, rien soumis`,
+          };
+        }
+        if (!choixAuReferentiel) {
+          if (colisVoulu) warnings.push(`format de colis : « ${wantedPackage ?? wantedPackageId} » absent du référentiel de ce rayon`);
+          return {
+            ...questionFormatColis(refD.grille, colisVoulu ? colisChoix : null, warnings),
+            discoveredRequired: requiredState.discovered,
+            diagnostic: `${diagRefD} — constat ${constats} : format demandé à la personne`.slice(0, 2000),
+          };
+        }
+        warnings.push(`format de colis : ${diagRefD} — « ${wantedPackage ?? idPourPostD} » (au référentiel) envoyé directement`);
+      } else {
+        warnings.push(`format de colis : ${diagRefD}`);
       }
     }
     if (cocheDepot) armerColisPourPost(cocheDepot.id);

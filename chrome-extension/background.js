@@ -3861,6 +3861,32 @@ async function processJob(rawJob, accessToken) {
       ]).catch(() => {});
     }
 
+    // ── LA PAGE DE VINTED N'A PAS CHARGÉ LES FORMATS DE COLIS (06/10) ────────
+    // patrick giry, « T-shirt Riches Paris » : section « Format du colis »
+    // absente, dépôt parti quand même → 400 `package_size`. vinted.js ne
+    // soumet plus rien quand le référentiel de Vinted a des formats pour ce
+    // rayon (la page a raté leur chargement) : nouvel essai rapproché, sans
+    // tentative consommée — 3 min, puis 10 min ; au 3e constat, vinted.js
+    // pose la question « Format du colis » (ou envoie le choix connu).
+    if (job.platform === "vinted" && result?.colisFormulaireRate && !result?.success && !result?.needsUser) {
+      const pfR = { ...(job.platform_fields ?? {}) };
+      const precR = pfR.colis_formulaire_rate && typeof pfR.colis_formulaire_rate === "object" ? pfR.colis_formulaire_rate : null;
+      const nR = (Number(precR?.n) || 0) + 1;
+      const delaiR = nR <= 1 ? 3 : 10;
+      const maintenantR = new Date().toISOString();
+      pfR.colis_formulaire_rate = { depuis: precR?.depuis ?? maintenantR, derniere: maintenantR, n: nR };
+      pfR.next_action_after = new Date(Date.now() + delaiR * 60_000).toISOString();
+      if (result?.diagnostic) pfR.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+      delete pfR.processing_since;
+      delete pfR.needs_user_source;
+      await updateJobStatus(accessToken, job.id, "pending", {
+        platform_fields: pfR,
+        error: `Le formulaire de Vinted n'a pas chargé les formats de colis de ce rayon : rien n'a été envoyé à Vinted. C'est un aléa de Vinted, rien à faire : nouvel essai automatique dans ~${delaiR} min.`,
+      });
+      console.warn(`[background] Job ${job.id} : formats de colis non chargés par la page Vinted (constat ${nR}) — rien soumis, nouvel essai dans ${delaiR} min`);
+      return { status: "retry", error: "formats de colis non chargés par la page — nouvel essai rapproché" };
+    }
+
     if (result?.dryRun) {
       // Dry-run réussi → statut TERMINAL, PAS de ré-armement en pending.
       // Sinon le job repartait à chaque cron de 30 min (get-pending-jobs le
@@ -23393,18 +23419,30 @@ async function processRepublishJob(job, accessToken) {
         if (result?.colisNonPropose) {
           const prec = pf.pause_colis && typeof pf.pause_colis === "object" ? pf.pause_colis : null;
           const n = (Number(prec?.n) || 0) + 1;
-          const delaiMin = n <= 1 ? 60 : n === 2 ? 180 : 360;
+          // (06/10, patrick giry) « Formulaire raté » (le référentiel de Vinted
+          // a des formats pour ce rayon, la page n'a pas su les charger) : un
+          // aléa de CET instant — essais rapprochés (3 min, 10 min) avant le
+          // barème d'avant. Rien n'est retiré dans aucun cas.
+          const rate = result?.colisFormulaireRate === true;
+          const nRate = rate ? (Number(prec?.n_formulaire_rate) || 0) + 1 : (Number(prec?.n_formulaire_rate) || 0);
+          const delaiMin = rate && nRate <= 2
+            ? (nRate === 1 ? 3 : 10)
+            : (n <= 1 ? 60 : n === 2 ? 180 : 360);
           const maintenant = new Date().toISOString();
-          pf.pause_colis = { depuis: prec?.depuis ?? maintenant, derniere: maintenant, n };
+          pf.pause_colis = { depuis: prec?.depuis ?? maintenant, derniere: maintenant, n, ...(nRate ? { n_formulaire_rate: nRate } : {}) };
           pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
           if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
           delete pf.needs_user_source;
           const dans = delaiMin < 60 ? `${delaiMin} min` : `${Math.round(delaiMin / 60)} h`;
           await updateJobStatus(accessToken, job.id, "pending", {
             platform_fields: pf,
-            error: "Republication en pause AVANT tout retrait : le formulaire de Vinted ne propose pas le format du colis pour ce rayon, " +
-              "alors que Vinted l'exige. Ton annonce est toujours en ligne, rien n'a été touché. C'est de notre côté, rien à faire : " +
-              `nouvel essai automatique dans ~${dans}.`,
+            error: rate
+              ? "Republication en pause AVANT tout retrait : la page de Vinted n'a pas chargé les formats de colis de ce rayon. " +
+                "Ton annonce est toujours en ligne, rien n'a été touché. C'est un aléa de Vinted, rien à faire : " +
+                `nouvel essai automatique dans ~${dans}.`
+              : "Republication en pause AVANT tout retrait : le formulaire de Vinted ne propose pas le format du colis pour ce rayon, " +
+                "alors que Vinted l'exige. Ton annonce est toujours en ligne, rien n'a été touché. C'est de notre côté, rien à faire : " +
+                `nouvel essai automatique dans ~${dans}.`,
           });
           console.warn(`[republish] job ${job.id} : retrait refusé — format de colis non proposé par Vinted (pause n°${n}, ${dans})`);
           return { status: "skipped", error: "format de colis non proposé — rien retiré" };
