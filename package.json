@@ -140,6 +140,8 @@
     "selftest:vinted-rayon-deplace": "node scripts/vinted-rayon-deplace-selftest.mjs",
     "selftest:dictee": "node --import ./scripts/loader-ext.mjs scripts/dictee-selftest.mjs",
     "selftest:doublons": "node --import ./scripts/loader-ext.mjs scripts/doublons-selftest.mjs",
+    "selftest:retrait-fusion-photo-identique": "node scripts/retrait-fusion-photo-identique-selftest.mjs",
+    "selftest:copie-non-prouvee-question": "node --import ./scripts/loader-ext.mjs scripts/copie-non-prouvee-question-selftest.mjs",
     "selftest:fourre-tout": "node --import ./scripts/loader-ext.mjs scripts/fourre-tout-selftest.mjs",
     "selftest:republication-hors-ligne": "node scripts/republication-hors-ligne-selftest.mjs",
     "selftest:rotation-figes": "node scripts/rotation-figes-selftest.mjs",
