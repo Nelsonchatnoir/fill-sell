@@ -73,7 +73,15 @@ Mandat de Nico du 06/10 matin, plus deux compléments dans la journée
   La 0.6.99 (jamais téléversée) est dans `build/anciens-zips/`.
 - Dossier non empaqueté de Nico (`C:\Users\nicol\FillSell-Extension-Nico`) :
   0.6.100 copiée (identique au build) ; 0.6.99 sauvegardée dans
-  `build/anciennes-extensions-nico/`. Tourne seulement après « Recharger ».
+  `build/anciennes-extensions-nico/`. Rechargée : `profiles.extension_build`
+  = `2026-10-06T06:11:17Z+2b883ef` (vu 08:16).
+- **Preuve de bout en bout (06/10 08:17-08:18, compte de Nico)** : jeton
+  `luat` retiré à 08:17:31 → pastille Leboncoin « Synchroniser » dans l'app →
+  run `done`, 10/10, `[adresse] 1 page(s), 10 en ligne lues sur 10`, build
+  0.6.100. Jeton reposé à 08:18:42, une seconde avant le relevé (08:18:43) :
+  déduit = le contrôle du jeton de la veille des commandes, dans le même
+  cycle. Le chemin de renouvellement PROPRE au relevé est prouvé par le code
+  exact exécuté dans l'onglet de Nico + selftest:lbc-jeton-releve.
 
 ### 4. Encart « FillSell Cloud — Bientôt »
 - `src/cloud/EncartCloudBientot.jsx`, interrupteur `ENCART_CLOUD_BIENTOT`,
@@ -95,14 +103,12 @@ Mandat de Nico du 06/10 matin, plus deux compléments dans la journée
      (le BUILD_ID de CE zip ; ni celui de la 0.6.99 `2026-10-05T18:52:55Z`,
      ni `EXTENSION_LAST_COMMIT`) ; puis pousser le web. Minimum serveur
      (0.6.81) : inchangé, décision de Nico.
-3. Preuve de bout en bout chez Nico : « Recharger » l'extension non
-   empaquetée (chrome://extensions), vérifier
-   `select extension_build from profiles where id = '<Nico>'` =
-   `2026-10-06T06:11:17Z+2b883ef`, puis « Synchroniser » Leboncoin (on peut
-   retirer `luat` de l'onglet Leboncoin avant) : run `leboncoin` `done`,
-   `items_vus` = `total_entries`, défilement `[adresse]` + « jeton renouvelé ».
-4. Valider l'encart Cloud (captures envoyées le 06/10) — fait avant l'OTA si
-   la ligne « OTA » ci-dessous dit « envoyée ».
+3. (Fait le 06/10 à 08:18, cf. plus haut.) Au premier vrai relevé d'un
+   gros compte en 0.6.100 (Joe0410 : 340), vérifier `items_vus` =
+   `total_entries` et le statut `done` (sinon `incomplete`, jamais `done`).
+4. (Fait) Encart Cloud validé par Nico ; OTA **2.9.59 envoyée** et servie
+   (canal production relu) ; web `2026-10-06T06:16:21Z+fda8f97` (entrée 200
+   avec `Origin`).
 5. Ventes à risque (liste du rapport du 06/10 : Ornella combinaison de ski
    vendue LBC + Vinted, 7 copies encore en ligne ailleurs) : à traiter compte
    par compte, rien n'a été modifié.
