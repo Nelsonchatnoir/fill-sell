@@ -217,7 +217,10 @@ ok(/status=in\.\(done,incomplete\)&select=finished_at/.test(BG), 'cadence de la 
 ok(/paliersMuets < 3/.test(BG) && /window\.scrollBy\(0, -Math\.max\(400/.test(BG), 'défilement : une cible connue ne s’arrête plus au premier palier muet');
 ok(/offset = ads\.length > 20 \? fin - 10 : fin;/.test(BG), 'pagination de l’adresse : 10 annonces de chevauchement');
 const manifeste = JSON.parse(fs.readFileSync(join(ROOT, 'chrome-extension/manifest.json'), 'utf8'));
-ok(manifeste.version === '0.6.100', `manifest en 0.6.100 (${manifeste.version})`);
+// Le correctif part avec la 0.6.100 ET toutes les suivantes (06/10 : la 0.6.101
+// le porte toujours) — jamais une égalité stricte, qui rougit à chaque version.
+const versionNum = (v) => String(v).split('.').map(Number).reduce((a, n) => a * 1000 + n, 0);
+ok(versionNum(manifeste.version) >= versionNum('0.6.100'), `manifest en 0.6.100 ou plus (${manifeste.version})`);
 
 // ── 6. L'app ────────────────────────────────────────────────────────────────
 console.log('6. L’app');
