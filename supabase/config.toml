@@ -68,6 +68,12 @@ verify_jwt = false
 [functions.check-listing-status]
 verify_jwt = false
 
+# Notifications push à chaque vente (06/10) : appelée par pg_net (push_noter,
+# juste après la transaction qui a vu la vente) et par le cron
+# « push-ventes-1min » — garde x-cron-secret, jamais l'app.
+[functions.push-ventes]
+verify_jwt = false
+
 # Désinscription publique : appelée depuis la page /desinscription par
 # quelqu'un qui n'est PAS connecté — c'est tout l'intérêt. L'authentification
 # est la détention du jeton, vérifiée dans le code.

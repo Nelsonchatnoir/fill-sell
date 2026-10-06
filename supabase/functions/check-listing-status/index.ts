@@ -83,7 +83,7 @@ serve(async (req) => {
     const rawPrice = Number(body.price);
     const priceOverride = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : undefined;
 
-    const result = await orchestrateSale(admin, user.id, jobId, { priceOverride });
+    const result = await orchestrateSale(admin, user.id, jobId, { priceOverride, declaree: true });
     if (!result.ok) return json({ error: result.reason ?? "Orchestration impossible" }, 409);
     return json({ success: true, sale: result });
   } catch (err: unknown) {
