@@ -4,38 +4,62 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » en fin ; reprise : `docs/reprise/terminal-depart-lbc-0610.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » en fin ; reprise : `docs/reprise/terminal-lignes-rouges-0610.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** au CWS ; **0.6.100 à téléverser**
-  (`build/CWS-0.6.100-A-TELEVERSER/fillsell-extension-0.6.100-2b883ef-cws.zip`,
-  contient 0.6.95→0.6.99 ; après acceptation : `EXTENSION_MIN_BUILD =
-  '2026-10-06T06:11:17Z'`) ;
+- **Servi** : extension **0.6.100** au CWS ; **0.6.101 à téléverser**
+  (`build/CWS-0.6.101-A-TELEVERSER/fillsell-extension-0.6.101-3e77bae-cws.zip` :
+  « EU 40 » ≡ « 40 », pages Leboncoin avant les photos, marque par son id,
+  retrait par l'API sous « compte bloqué » ; jamais d'EXTENSION_MIN_BUILD sans
+  décision de Nico) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web et OTA **2.9.59** (06/10 : « Pourquoi tu pars ? » → table
-  `departs_compte` ; relevé partiel = `incomplete`, jamais `done` ; 05/10 soir : 2.9.56 — fusion Cloud, drapeau baissé —
-  + « gratuit = 50 republications PAR MOIS ») ; `get-pending-jobs` v217,
+  web et OTA **2.9.63** (06/10 soir : retraits Vinted dans « Annonces à
+  retirer ») ; `get-pending-jobs` v220,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
-  `ebay-account` v16, `send-extension-link` v12 (`true`) ;
-  `update-job-status` v129, `handler-watch` v83, `voice-intent` v155, `ops-digest` v31,
+  `ebay-account` v16, `send-extension-link` v13 (`true`) ;
+  `update-job-status` v130, `handler-watch` v89, `push-ventes` v6, `voice-intent` v155, `ops-digest` v31,
   `ebay-api-worker` v77, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
-  `email-tunnel` v71 et `stripe-webhook` v57 (`false`) — ⚠️ depuis le 05/10 15:55,
+  `email-tunnel` v72 et `stripe-webhook` v57 (`false`) — ⚠️ depuis le 05/10 15:55,
   `invoice.payment_failed` / `payment_action_required` sont COCHÉS chez Stripe : le
   mail « paiement échoué » part au client, TOUTES formules ; migrations Cloud
   20261004233000 + 20261005120000 appliquées (reprise : `docs/cloud/REPRISE.md` § 0 bis). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
 - **Notifications push à chaque vente (06/10, binaire 2.9.62 / vc33)** : base
   appliquée (mig 20261006140000 + 150000, cron 34 `push-ventes-1min`),
-  `push-ventes` v3 et `check-listing-status` v36 (`false`) ; INERTE tant
-  qu'aucun téléphone n'est enregistré. Clés et binaires : `npm run
+  `push-ventes` v6 et `check-listing-status` v36 (`false`) ; le push reste
+  inerte sans téléphone (la note, elle, porte aussi le MAIL de vente). Clés et binaires : `npm run
   binaires:2.9.62` (fichiers dans Téléchargements, `docs/push/CLES-NICO.md`) ;
   ⛔ jamais d'AAB sans `google-services.json`. Tout appel natif passe par
   `pushDisponible()` (binaires < 2.9.62 : rien). État : fin de
   `etat-2026-10-01.md` (« 06/10 après-midi »).
+- **⛔ UN MAIL À CHAQUE VENTE, JAMAIS PLAFONNÉ (06/10 soir, Nico)** : mig
+  20261006180000 ; même note et même décision que le push (doublon, rattrapage
+  de masse, vente déclarée, vente ancienne = rien ; job : vente récente < 24 h ;
+  plateforme suivie = relevé < 24 h) ; `push-ventes` envoie le mail (type
+  `vente:<note>`, support, réservation, index `email_logs_vente_unique`) ;
+  garde v6 « vente RÉCENTE prouvée » avant tout envoi (Vinted : annonce vue en
+  ligne hier ou aujourd'hui, ou publiée < 48 h ; jamais déjà vue vendue un jour
+  précédent — 6 mails partis à tort entre 16:58 et 17:03 le 06/10). Le
+  récap « ventes du jour » est SUPPRIMÉ ; AUCUN mail automatique n'est retenu
+  par un plafond (lien de l'extension : double appui < 60 s seulement).
+  Preuves : `scripts/push/preuve-mails-ventes.mjs` (transaction annulée),
+  `scripts/push/essai-mail-vente.mjs` (boîte hoosslocal seulement).
+- **⛔ UNE REPUBLICATION NE BUTE JAMAIS SUR UNE VALEUR QUE SON ANNONCE PORTE
+  (06/10 soir, dbz70)** : « EU N » ≡ « N » (jamais UK/US/IT/DE) — régression
+  ca63277 (0.6.90) ; une valeur servie par le serveur n'atteint le formulaire
+  qu'à une (re)capture (handler-watch recapture une fois) ; un remplissage
+  lent mais vivant n'est jamais coupé (port de remplissage allumé pour un
+  compte coupé à 5 min) ; une marque d'origine se reconnaît par son id.
+- **⛔ UN ÉCHEC QU'UNE EXTENSION CORRIGE REPART SEUL DÈS QUE LE POSTE L'A (06/10
+  soir, Glowik)** : `_shared/relance-apres-maj.js` (une entrée par défaut :
+  plateforme, action, début d'`error_technique.brut`, BUILD_ID qui corrige) ;
+  handler-watch v89 relance UNE fois (geste « Relancer », marqueur
+  `relance_apres_maj`) quand `profiles.extension_build` atteint ce build. Toute
+  nouvelle extension qui corrige un arrêt « relancer » y ajoute son entrée.
 - **⛔ Gratuit = 50 republications PAR MOIS** (05/10 soir, Nico ; plus « à vie ») :
   coin_config `quota_republication_free`, même cycle que `quota_annonces_free`
   (`debut_cycle_quotas` → `coin_wallets.next_grant_at`), compteur unique

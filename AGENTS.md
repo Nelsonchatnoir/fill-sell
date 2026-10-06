@@ -5,19 +5,17 @@ en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
 historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.94** ; **0.6.100 à téléverser** (`build/CWS-0.6.100-A-TELEVERSER/`) ;
-  minimum **0.6.81** ; web/OTA **2.9.59** ; départs : `departs_compte`.
-- **Push ventes (06/10)** : binaire 2.9.62, cron 34, natif via `pushDisponible()` seul ; `docs/push/CLES-NICO.md`.
-- **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie=création,
-  `ebay-notifications` ; reprise : `docs/reprise/terminal-problemes-0510.md`.
+- **Servi** : extension **0.6.100** ; **0.6.101 à téléverser** (`build/CWS-0.6.101-A-TELEVERSER/`) ;
+  minimum **0.6.81** ; web/OTA **2.9.63** ; départs : `departs_compte`.
+- **Push ventes** : binaire 2.9.62, cron 34, natif via `pushDisponible()` ; `docs/push/CLES-NICO.md`.
+- **⛔ Mail à chaque vente** (`push-ventes` v6) : vente récente prouvée, jamais plafonné, sans récap.
+- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; relance après MAJ : `_shared/relance-apres-maj.js`.
+- **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie=création.
 - **CPU (04/10)** : tâche auto mesurée, bornée ; interdit 11.
-- **04/10** : vente supprimée = jamais recréée ; absence de marque → « Sans
-  marque » ; texte = la fiche à l'envoi ; aucun format de colis deviné.
-- **Fiches** : champs vides complétés depuis l'annonce (journal) ; prix/poids
-  suivis si alignés, jamais propagés ; pas de poids Leboncoin estimé.
-- **Retraits** : jamais arrêtés sur un raté technique (1 h/3 h/6 h) ; Vinted
-  absent de deux relevés complets → « déjà retirée ». **Boucles** →
-  needs_user. **Cadence** : Premium 50/jour. **Relevés** : 5 min sans
+- **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = la fiche ; colis jamais deviné.
+- **Fiches** : champs vides complétés (journal) ; prix/poids suivis si alignés ; pas de poids LBC estimé.
+- **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; Vinted absent de deux relevés
+  complets → « déjà retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans
   progression = arrêt ; partiel = `incomplete`. **Marque** : hors catalogue → question. Annonce de
   test ≥ 999 €. **Selftests** : 0 rouge ; `scripts/lib/morceaux-mis-de-cote.mjs`.
 - **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`, `_shared/opla-sortie.js`).
@@ -298,7 +296,7 @@ qui survit à ça, c'est du code.
 
 ## 4. Règles métier qui ne se négocient pas
 
-⛔ **Relevé d'import = geste seul (05/10)** : jamais lancé tout seul ; la veille (cron, veilleur, retraits, eBay API) n'importe rien. **Refus de « Synchroniser » = jamais un cul-de-sac (06/10)** : boutique à confirmer → `stock/ConfirmationBoutique.jsx`, jamais rattachée sans clic. Détail : `docs/agents/consignes-2026-09-28.md`.
+⛔ **Relevé d'import = geste seul (05/10)** : jamais lancé seul ; la veille n'importe rien. **Refus de « Synchroniser » = jamais un cul-de-sac (06/10)** : boutique à confirmer → `stock/ConfirmationBoutique.jsx`, jamais rattachée sans clic. Détail : `docs/agents/consignes-2026-09-28.md`.
 
 ### 4.1 Import, publication, republication
 
