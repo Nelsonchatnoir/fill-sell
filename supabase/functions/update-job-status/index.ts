@@ -1296,6 +1296,15 @@ serve(async (req) => {
     // lisent pas le vendeur sur la page (deux boutiques). Ici : chaque
     // observation compte, l'attente s'espace (2, 10, 30 min, 2 h, puis 6 h) et
     // le message dit ce qu'on attend. Rien n'est jamais retiré sans la preuve.
+    // ── PAS DE SESSION VINTED DANS CHROME : ON LE DIT (06/10, cas julien) ──
+    // 19 republications en attente sans un mot, puis tout arrêté : la cause
+    // était l'absence de session, et le message parlait de « plusieurs
+    // boutiques ». Le marqueur `attente_connexion` (lu par l'app) est reposé à
+    // chaque observation et retiré à toute autre écriture : l'extension
+    // recopie les platform_fields du job, il ne doit jamais survivre au départ.
+    if (body.platform_fields && typeof body.platform_fields === "object") {
+      delete (body.platform_fields as Record<string, unknown>).attente_connexion;
+    }
     if (statutEffectif === "pending" && body.platform_fields && typeof body.platform_fields === "object") {
       try {
         const pfV = body.platform_fields as Record<string, unknown>;
@@ -1305,16 +1314,38 @@ serve(async (req) => {
           const { data: jV } = await userClient.from("cross_post_jobs").select("platform, action, platform_fields").eq("id", jobId).maybeSingle();
           const avant = ((jV?.platform_fields ?? {}) as Record<string, unknown>).verification_boutique_vinted as Record<string, unknown> | undefined;
           if (jV?.platform === "vinted" && avant?.le !== v.le) {
+            // Sans session : la vérification de boutique (motif posé par
+            // l'extension) ou la capture elle-même (page lue sans compte
+            // connecté : vendeur lu, session vide) le prouvent.
+            let sansSession = v.motif === "session_inconnue";
+            if (!sansSession && v.motif === "preuve_absente_ou_incomplete") {
+              const capId = Number(((jV?.platform_fields ?? {}) as Record<string, unknown>).capture_id);
+              if (Number.isFinite(capId) && capId > 0) {
+                const { data: cap } = await userClient.from("vinted_republish_captures").select("payload").eq("id", capId).maybeSingle();
+                const bp = ((cap?.payload ?? null) as Record<string, unknown> | null)?.boutique_preuve as Record<string, unknown> | undefined;
+                sansSession = !!bp && typeof bp === "object" && !String(bp.session ?? "").trim();
+              }
+            }
             const n = (Number(avant?.n) || 0) + 1;
-            const delai = [2, 10, 30, 120][n - 1] ?? 360;
+            // Sans session, l'attente plafonne à 30 min : elle doit repartir
+            // peu après la connexion, pas six heures plus tard.
+            const delai = sansSession ? ([2, 10][n - 1] ?? 30) : ([2, 10, 30, 120][n - 1] ?? 360);
             pfV.verification_boutique_vinted = { ...v, n, depuis: avant?.depuis ?? v.le };
             pfV.next_action_after = new Date(Date.now() + delai * 60_000).toISOString();
             const dans = delai >= 60 ? `${Math.round(delai / 60)} h` : `${delai} min`;
-            messageEffectif = (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
-              "nous n'arrivons pas encore à prouver que cette annonce appartient à la boutique Vinted ouverte dans Chrome " +
-              "(ton compte a peut-être plusieurs boutiques) — on ne touche à rien sans cette preuve. Si l'annonce est sur une autre " +
-              `de tes boutiques, connecte Chrome à celle-ci sur vinted.fr. Nouvel essai automatique dans ${dans}.`;
-            raisonRequalif = `boutique invérifiable, observation ${n} — reprise dans ${dans}`;
+            if (sansSession) {
+              pfV.attente_connexion = { platform: "vinted", depuis: avant?.depuis ?? v.le };
+              messageEffectif = "Connecte-toi à Vinted sur ton ordinateur. Rien n'a été touché : " +
+                (jV.action === "delete" ? "le retrait repart tout seul" : "la republication repart toute seule") +
+                ` dès que tu es connecté (prochain essai dans ${dans}).`;
+              raisonRequalif = `pas de session Vinted dans Chrome, observation ${n} — reprise dans ${dans}`;
+            } else {
+              messageEffectif = (jV.action === "delete" ? "Retrait Vinted en attente : " : "Republication Vinted en attente : ") +
+                "nous n'arrivons pas encore à prouver que cette annonce appartient à la boutique Vinted ouverte dans Chrome " +
+                "(ton compte a peut-être plusieurs boutiques) — on ne touche à rien sans cette preuve. Si l'annonce est sur une autre " +
+                `de tes boutiques, connecte Chrome à celle-ci sur vinted.fr. Nouvel essai automatique dans ${dans}.`;
+              raisonRequalif = `boutique invérifiable, observation ${n} — reprise dans ${dans}`;
+            }
           }
         }
       } catch (e) {
