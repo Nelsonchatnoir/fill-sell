@@ -48,13 +48,24 @@ export function pairesAffichables(doublons, items) {
     // (2026-09-27) « Déjà vendu ? » : la fiche gardée est VENDUE par nature —
     // une annonce encore en ligne ressemble à un objet déjà vendu ; la
     // question vit tant que la fiche importée est en stock.
-    .filter((d) => d.a && d.b && d.b.statut !== 'vendu'
-      && (d.a.statut !== 'vendu' || estQuestionDejaVendu(d)));
+    .filter((d) => (estQuestionCopie(d)
+      // (06/10) une COPIE de la fiche vendue : une seule fiche, la vendue.
+      ? d.a?.statut === 'vendu'
+      : d.a && d.b && d.b.statut !== 'vendu'
+        && (d.a.statut !== 'vendu' || estQuestionDejaVendu(d))));
+}
+
+/**
+ * (06/10, Nico) La question porte sur une COPIE de la fiche vendue, liée par
+ * le seul titre : « c'est le même article ? » (une question par copie).
+ */
+export function estQuestionCopie(d) {
+  return d?.motif === 'copie_non_prouvee';
 }
 
 /** La paire demande « cette annonce est-elle l'objet déjà vendu ? ». */
 export function estQuestionDejaVendu(d) {
-  return d?.motif === 'homonyme_vendu' && d?.a?.statut === 'vendu';
+  return (d?.motif === 'homonyme_vendu' || d?.motif === 'copie_non_prouvee') && d?.a?.statut === 'vendu';
 }
 
 const NOMS_PLATEFORMES = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla' };
@@ -74,6 +85,19 @@ export function annonceARetirer(d) {
   const p = d?.preuves ?? {};
   if (!estQuestionDejaVendu(d) || !p.annonce_id || !p.platform) return null;
   return { id: String(p.annonce_id), plateforme: String(p.platform), url: typeof p.url === 'string' && p.url ? p.url : null };
+}
+
+/**
+ * Le texte de la question sur une copie : « "Syphon Filter 2" s'est vendu sur
+ * Vinted. Ton annonce Leboncoin du même nom, c'est le même article ? »
+ */
+export function texteQuestionCopie(d, fr = true) {
+  const p = d?.preuves ?? {};
+  const titre = String(d?.a?.title || p.titre || '').trim();
+  const annonce = nomPlateforme(p.platform);
+  const vendu = NOMS_PLATEFORMES[String(p.vendu_sur ?? '')] ?? null;
+  if (fr) return `« ${titre} » ${vendu ? `s'est vendu sur ${vendu}` : 'est vendu'}. Ton annonce ${annonce} du même nom, c'est le même article ?`;
+  return `“${titre}” ${vendu ? `sold on ${vendu}` : 'is sold'}. Your ${annonce} listing with the same name: is it the same item?`;
 }
 
 /** Ce qui rapproche les deux fiches, en mots simples (les preuves du serveur). */

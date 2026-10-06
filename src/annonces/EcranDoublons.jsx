@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { premierePhoto } from '../components/GalleryPhoto';
 import { track } from '../analytics/analytics';
-import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, annonceARetirer, nomPlateforme } from '../utils/doublons';
+import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, estQuestionCopie, texteQuestionCopie, annonceARetirer, nomPlateforme } from '../utils/doublons';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v))
@@ -74,6 +74,9 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
   // objet VENDU. « Oui » réunit les deux fiches ET retire l'annonce encore en
   // ligne (le serveur arme le retrait) ; « Non » : deux articles différents.
   const dejaVendu = estQuestionDejaVendu(paire);
+  // (06/10) Une COPIE de la fiche vendue, liée par le seul titre : une seule
+  // fiche, la question « c'est le même article ? » et l'annonce concernée.
+  const copie = estQuestionCopie(paire);
   // (2026-09-30) L'annonce qu'un « oui » retirera est montrée AVANT le geste :
   // c'est ce geste qui vaut preuve de vente pour CE retrait-là (décision Nico).
   const aRetirer = dejaVendu ? annonceARetirer(paire) : null;
@@ -96,12 +99,23 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
       setTraitees((v) => new Set([...v, paire.id]));
       return;
     }
+    // La copie n'est plus en ligne : il n'y a plus rien à retirer.
+    if (!r?.ok && r?.reason === 'sans_objet') {
+      setInfo(fr ? "Cette annonce n'est plus en ligne : rien à retirer." : 'This listing is no longer online: nothing to remove.');
+      setTraitees((v) => new Set([...v, paire.id]));
+      onDecision?.();
+      return;
+    }
     if (!r?.ok && r?.reason !== 'deja_tranchee') {
       setErreur(fr ? "Réponse non enregistrée — réessaie dans un instant." : 'Answer not saved — try again in a moment.');
       return;
     }
     track('doublon_decision', { decision });
-    setFait(decision === 'oui' && dejaVendu
+    setFait(copie
+      ? (decision === 'oui'
+        ? (fr ? `C'est noté : ton annonce ${nomPlateforme(aRetirer?.plateforme)} va être retirée.` : `Noted: your ${nomPlateforme(aRetirer?.plateforme)} listing will be removed.`)
+        : (fr ? "Noté : c'est un autre exemplaire. On n'y touche pas et on ne te le redemandera pas." : "Noted: it's another copy. We won't touch it or ask again."))
+      : decision === 'oui' && dejaVendu
       ? (fr ? `C'est noté : « ${paire.a?.title ?? ''} » est vendu. Son annonce encore en ligne va être retirée.` : `Noted: “${paire.a?.title ?? ''}” is sold. Its listing still online will be removed.`)
       : decision === 'oui'
       ? (fr ? `Réunies en une seule fiche : « ${paire.a?.title ?? ''} ». Tu peux défaire la fusion depuis la fiche.` : `Merged into one item: “${paire.a?.title ?? ''}”. You can undo it from the item.`)
@@ -163,7 +177,9 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: A.texteSecondaire, lineHeight: 1.5, marginBottom: 12 }}>
-              {dejaVendu
+              {copie
+                ? texteQuestionCopie(paire, fr)
+                : dejaVendu
                 ? (fr
                   ? `« ${paire.a?.title ?? ''} » est vendu. Une annonce encore en ligne lui ressemble. Si c'est le même objet, on réunit les deux fiches et on retire cette annonce, pour ne pas le vendre deux fois.`
                   : `“${paire.a?.title ?? ''}” is sold. A listing still online looks like it. If it's the same object, we merge the two items and remove that listing, so it isn't sold twice.`)
@@ -171,9 +187,9 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 ? `Ces deux fiches se ressemblent beaucoup${raisons.length ? ` (${raisons.join(', ')})` : ''}. Si c'est le même objet, on les réunit : ses annonces en ligne restent en ligne, rien n'est retiré.`
                 : `These two items look alike${raisons.length ? ` (${raisons.join(', ')})` : ''}. If they're the same object, we merge them: its online listings stay online, nothing is removed.`}
             </div>
-            <div className="rv-up" style={{ display: 'flex', gap: 10 }}>
+            <div className="rv-up" style={{ display: 'flex', gap: 10, ...(copie ? { maxWidth: 220 } : {}) }}>
               <CarteFiche item={paire.a} fr={fr} garde etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : undefined} />
-              <CarteFiche item={paire.b} fr={fr} />
+              {!copie && <CarteFiche item={paire.b} fr={fr} />}
             </div>
             {aRetirer && (
               <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: A.paper, border: `1px solid ${A.border}`, fontSize: 12, lineHeight: 1.45, color: A.ink }}>
@@ -192,17 +208,23 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
               <button type="button" disabled={busy} onClick={() => repondre('oui')} className="rv-cta rv-focus"
                 style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-                {dejaVendu
+                {copie
+                  ? (fr ? 'Oui, la retirer' : 'Yes, remove it')
+                  : dejaVendu
                   ? (fr ? "Oui, c'est le même — retirer l'annonce" : "Yes, same item — remove the listing")
                   : (fr ? "Oui, c'est le même" : "Yes, it's the same")}
               </button>
               <button type="button" disabled={busy} onClick={() => repondre('non')} className="rv-focus"
                 style={{ width: '100%', minHeight: 46, borderRadius: 999, border: `1px solid ${A.border}`, background: A.card, color: A.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>
-                {fr ? 'Non, ce sont deux articles' : "No, they're two items"}
+                {copie
+                  ? (fr ? "Non, c'est un autre exemplaire" : "No, it's another copy")
+                  : (fr ? 'Non, ce sont deux articles' : "No, they're two items")}
               </button>
-              <div style={{ fontSize: 11, lineHeight: 1.45, color: A.texteSecondaire, textAlign: 'center' }}>
-                {fr ? 'La fusion se défait depuis la fiche gardée.' : 'A merge can be undone from the kept item.'}
-              </div>
+              {!copie && (
+                <div style={{ fontSize: 11, lineHeight: 1.45, color: A.texteSecondaire, textAlign: 'center' }}>
+                  {fr ? 'La fusion se défait depuis la fiche gardée.' : 'A merge can be undone from the kept item.'}
+                </div>
+              )}
             </div>
           </>
         )}
