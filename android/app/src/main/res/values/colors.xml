@@ -8,4 +8,6 @@
      splash.png / splash-2732x2732 (iOS). -->
 <resources>
     <color name="fs_splash_background">#10201B</color>
+    <!-- Teinte des notifications de ventes (sarcelle du design system). -->
+    <color name="fs_notification">#2F9E90</color>
 </resources>

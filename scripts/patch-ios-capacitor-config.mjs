@@ -33,7 +33,8 @@ const CLASSES_REQUISES = ['AppleSignInPlugin', 'CameraPlugin'];
 // fichier réellement embarqué, après patch.
 // (02/10) CapgoInAppReviewPlugin : sans lui, la demande d'avis officielle
 // (StoreKit requestReview) ne part jamais — et rien ne le dirait.
-const CLASSES_CRITIQUES = ['CapacitorUpdaterPlugin', 'NativePurchasesPlugin', 'AppleSignInPlugin', 'CapgoInAppReviewPlugin'];
+// (06/10) PushNotificationsPlugin : sans lui, aucune notification de vente.
+const CLASSES_CRITIQUES = ['CapacitorUpdaterPlugin', 'NativePurchasesPlugin', 'AppleSignInPlugin', 'CapgoInAppReviewPlugin', 'PushNotificationsPlugin'];
 
 if (!existsSync(CIBLE)) {
   console.error(`ERREUR : ${CIBLE} introuvable — \`npx cap sync ios\` n'a pas tourné ?`);

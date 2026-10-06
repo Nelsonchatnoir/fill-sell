@@ -37,6 +37,20 @@
 
         </activity>
 
+        <!-- Notifications de ventes (06/10, @capacitor/push-notifications + FCM) :
+             icône monochrome (le sac FillSell, blanc sur transparent — Android
+             n'en lit que l'alpha), teinte sarcelle, et le canal « ventes » que
+             vise le serveur (push-ventes) quand l'app est fermée. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_fillsell" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/fs_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="ventes" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -53,4 +67,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Android 13+ : demandée au bon moment (après une synchro réussie ou une
+         vente, écran « Sois prévenu dès qu'un article se vend »), jamais au
+         premier lancement. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

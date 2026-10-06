@@ -101,9 +101,16 @@ android {
         // OFFICIELLE (Play In-App Review, @capgo/capacitor-in-app-review) et le
         // retour haptique (@capacitor/haptics) — natifs. Même numéro que le
         // bundle embarqué (package.json 2.9.38) ; prochaine OTA ≥ 2.9.39.
+        // versionCode 33 / versionName 2.9.62 (06/10) : les NOTIFICATIONS PUSH À
+        // CHAQUE VENTE (@capacitor/push-notifications, FCM) — natif, une OTA ne
+        // l'apporte pas. ⛔ Ce binaire exige android/app/google-services.json
+        // (projet Firebase FillSell, ignoré par git) : sans lui, l'enregistrement
+        // du téléphone ferait planter l'app. scripts/binaires-2.9.62.mjs refuse
+        // de le fabriquer sans ce fichier. Même numéro que le bundle embarqué
+        // (package.json 2.9.62) ; prochaine OTA ≥ 2.9.63.
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 32
-        versionName "2.9.38"
+        versionCode 33
+        versionName "2.9.62"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

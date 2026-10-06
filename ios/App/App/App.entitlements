@@ -6,6 +6,8 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>aps-environment</key>
+	<string>production</string>
 	<key>com.apple.developer.in-app-payments</key>
 	<array>
 		<string>app.fillsell.premium.monthly</string>

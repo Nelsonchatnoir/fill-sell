@@ -77,3 +77,7 @@ fillsell-backups/
 # c est exactement pour ca que son jeton en clair n a jamais pu etre relu.
 # ⛔ Un envoi ponctuel ne se remet pas dans un fichier ignore : il passe par
 #    email-tunnel, ou par une fonction dediee COMMITEE, sans adresse en dur.
+# Notifications de ventes (06/10) : configuration Firebase du binaire Android.
+# Posée par scripts/binaires-2.9.62.mjs depuis Téléchargements, jamais commitée.
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist

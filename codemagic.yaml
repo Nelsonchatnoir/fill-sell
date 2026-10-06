@@ -39,9 +39,13 @@ workflows:
               <array>
                   <string>Default</string>
               </array>
+              <key>aps-environment</key>
+              <string>production</string>
           </dict>
           </plist>
           EOF
+          # (06/10) aps-environment : les notifications de ventes. Sans cette clé,
+          # iOS ne donne JAMAIS de jeton APNs au binaire (registration muette).
       # ── capacitor.config.json : le fichier GÉNÉRÉ fait foi (2026-09-16) ──
       # AVANT, cette étape RÉÉCRIVAIT le fichier entier avec un contenu figé
       # dans ce YAML. Effet mesuré : capacitor.config.ts n'atteignait jamais le
@@ -90,7 +94,14 @@ workflows:
           # la suivante sera 2.9.39 ou au-dessus.
           BUILD_NUMBER=$(date +%y%m%d%H%M)
           echo "Build number (timestamp): $BUILD_NUMBER"
-          cd ios/App && agvtool new-marketing-version 2.9.38 && agvtool new-version -all $BUILD_NUMBER
+          #
+          # 2.9.62 (06/10) : NOTIFICATIONS PUSH À CHAQUE VENTE
+          # (@capacitor/push-notifications, APNs direct, sans Firebase côté iOS).
+          # Exige la capacité Push Notifications sur l'identifiant app.fillsell.app
+          # et le profil « FillSell AppStore » régénéré ensuite (docs/push/CLES-NICO.md,
+          # bloc B). Aligné sur package.json 2.9.62 et Android 2.9.62 / versionCode 33.
+          # Plancher des OTA : la suivante sera 2.9.63 ou au-dessus.
+          cd ios/App && agvtool new-marketing-version 2.9.62 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles
