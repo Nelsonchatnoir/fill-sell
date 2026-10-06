@@ -22,7 +22,7 @@ assert.ok(corps.includes("texteComparable(posee) === texteComparable(demandee)")
 assert.ok(corps.includes("if (choix?.el) {"), "on ne clique que sur une ligne trouvée");
 assert.match(corps, /needsUser: true,[\s\S]{0,400}Vinted ne connaît pas la marque/, "marque inconnue de Vinted → une question, pas un choix");
 assert.ok(corps.includes(`allowed_values: proposees, target: { key: "marque" }`), "la réponse s'écrit dans la marque de la copie");
-assert.match(src, /const questionMarque = await selectVintedBrand\(fields\.marque, warnings\);\s*if \(questionMarque\?\.needsUser\)/, "la question remonte jusqu'au résultat du dépôt");
+assert.match(src, /const questionMarque = await selectVintedBrand\(fields\.marque, warnings, \{ marqueId: fields\.marque_id \}\);\s*if \(questionMarque\?\.needsUser\)/, "la question remonte jusqu'au résultat du dépôt (et l'id de la marque d'origine voyage, 06/10)");
 assert.doesNotMatch(corps, /nearest|approch|includes\(cible\)|startsWith\(cible\)/i, "aucun rapprochement");
 
 // ── 2. Le comportement : la vraie fonction sur un faux panneau ─────────────
@@ -44,7 +44,7 @@ function panneau(lignes, libre = null, { sansMarque = false } = {}) {
 const dormir = (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 5)));
 async function choisir(marque, lignes, libre, timeout = 400, options = {}) {
   const p = panneau(lignes, libre, options);
-  return fabriquer(p.document, p.sel, dormir, texteComparable)(marque, timeout);
+  return fabriquer(p.document, p.sel, dormir, texteComparable)(marque, timeout, options.marqueId ?? null);
 }
 
 // a) La marque du catalogue : la ligne exacte, même aux accents/apostrophes près.
@@ -75,4 +75,19 @@ assert.deepEqual(r?.suggestions, ["Nike ACG", "Nikes"], "les marques proposées 
   assert.ok(Date.now() - t0 < 6000, "conclu en ~3 s, sans attendre 10 s");
 }
 
-console.log("✓ Vinted : la marque posée est la marque demandée — catalogue exact, sinon marque libre, sinon une question ; jamais une autre");
+// d) (06/10, Ciddjy « Kiabi », Carla « Burano ») Republication : l'id de la
+//    marque de l'annonce d'origine est connu (brand_id de la capture).
+r = await choisir("Kiabi", [["suggested-brand-60", "Kiabi"], ["brand-61", "Urban Kiabi"]], null, 400, { marqueId: 60 });
+assert.equal(r?.el?.id, "suggested-brand-60", "la ligne de la marque d'origine, par son id");
+r = await choisir("Kiabi", [["brand-61", "Urban Kiabi"], ["brand-60", "KIABI "]], null, 400, { marqueId: 60 });
+assert.equal(r?.el?.id, "brand-60", "par l'id, même si le libellé affiché diffère");
+r = await choisir("Kiabi", [["brand-61", "Urban Kiabi"]], null, 400, { marqueId: 60 });
+assert.equal(r?.el, undefined, "l'id absent de la liste : jamais une autre marque");
+{
+  const v = await choisir("Kiabi", [], null, 400, { marqueId: 60, sansMarque: true });
+  assert.equal(v?.type, "aucune", "marque d'origine connue : jamais « inconnue » sur une liste encore vide (poste lent)");
+}
+r = await choisir("Bonobo", [["brand-2", "Bonobo"]], null, 400, { marqueId: null });
+assert.equal(r?.el?.id, "brand-2", "sans id (publication) : la ligne exacte, comme avant");
+
+console.log("✓ Vinted : la marque posée est la marque demandée — catalogue exact (ou l'id de la marque d'origine), sinon marque libre, sinon une question ; jamais une autre");

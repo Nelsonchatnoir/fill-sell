@@ -59,13 +59,53 @@ for (const [taille, attendu] of [["42", "EU 42"], ["48", "EU 48"]]) {
 {
   const c = bac(COSTUMES().document).candidatsTailleVinted("42");
   ok("candidats de « 42 » : « 42 » d'abord, « EU 42 » ensuite", JSON.stringify(c) === JSON.stringify(["42", "EU 42"]), JSON.stringify(c));
+  // (06/10, dbz70) « EU 42 » d'abord ; la forme nue « 42 » vient APRÈS et ne
+  // se cherche que dans une grille sans onglet ou l'onglet EU (cf. [1bis]).
   const c2 = bac(COSTUMES().document).candidatsTailleVinted("EU 42");
-  ok("« EU 42 » garde son pays", JSON.stringify(c2) === JSON.stringify(["EU 42"]), JSON.stringify(c2));
+  ok("« EU 42 » garde son pays (« 42 » nu seulement après)", JSON.stringify(c2) === JSON.stringify(["EU 42", "42"]), JSON.stringify(c2));
   const uk = bac(COSTUMES().document).candidatsTailleVinted("UK 12");
   ok("« UK 12 » ne devient pas « 12 »", JSON.stringify(uk) === JSON.stringify(["UK 12"]), JSON.stringify(uk));
   const c3 = bac(COSTUMES().document).candidatsTailleVinted("W32 L34");
   ok("candidats de « W32 L34 » : inchangés (jamais « EU »)", JSON.stringify(c3) === JSON.stringify(["W32 L34", "W32", "32"]), JSON.stringify(c3));
   ok("jamais « FR N » ni « UK N » pour un nombre nu", !bac(COSTUMES().document).candidatsTailleVinted("42").some((x) => /^(FR|UK|IT|US)\s/i.test(x)));
+}
+
+// ── [1bis] dbz70 (06/10) : « EU 40 » face à la grille nue des chaussures ─────
+// Relevé dans le Chrome de Nico le 06/10 : catalog 2632 (Femmes > Chaussures >
+// Baskets) = groupe 7 « Chaussures », « 34 » … « 46 » nus, sans onglet ; la
+// capture de l'annonce d'origine rend « EU 40 » (size_id 2037, groupe 87 EU).
+console.log("\n[1bis] dbz70 — « EU 40 » sur la grille nue des chaussures, et les onglets interdits");
+const POINTURES_NUES = ["34", "34.5", "35", "35.5", "36", "36.5", "37", "37.5", "38", "38.5", "39", "39.5", "40", "40.5", "41", "41.5", "42", "42.5", "43", "43.5", "44", "44.5", "45", "45.5", "46", "Taille unique", "Autre"];
+for (const [taille, attendu] of [["EU 40", "40"], ["EU 40.5", "40.5"], ["EU 38", "38"]]) {
+  const { document, clics } = panneau([{ texte: "", groupe: 7, idDepart: 55, options: POINTURES_NUES }]);
+  const warnings = [];
+  const pose = await bac(document).selectTailleVinted({ taille }, warnings);
+  ok(`« ${taille} » posée sur la grille nue`, pose === true, warnings.join(" | "));
+  ok(`   → option cliquée « ${attendu} », une seule`, clics.length === 1 && clics[0] === attendu, JSON.stringify(clics));
+}
+{
+  // Panneau des costumes : « EU 43 » n'existe dans aucun onglet. La forme nue
+  // « 43 » ne doit JAMAIS être cherchée dans DE, UK/US ou S/M/L.
+  const { document, clics } = panneau([
+    { texte: "S/M/L", groupe: 80, idDepart: 1735, options: SML },
+    { texte: "DE", groupe: 91, idDepart: 2200, options: [...DE, "43"] },
+    { texte: "UK/US", groupe: 92, idDepart: 2300, options: [...UKUS, "43"] },
+    { texte: "EU", groupe: 93, idDepart: 2400, options: EU },
+  ]);
+  const pose = await bac(document).selectTailleVinted({ taille: "EU 43" }, []);
+  ok("costumes « EU 43 » absent : rien posé, jamais un « 43 » d'un autre onglet", pose === false && clics.length === 0, JSON.stringify(clics));
+  const { document: d2, clics: c2b } = COSTUMES();
+  const pose2 = await bac(d2).selectTailleVinted({ taille: "EU 42" }, []);
+  ok("costumes « EU 42 » → « EU 42 » (onglet EU), inchangé", pose2 === true && c2b[c2b.length - 1] === "EU 42", JSON.stringify(c2b));
+  const { document: d3, clics: c3b } = panneau([
+    { texte: "S/M/L", groupe: 80, idDepart: 1735, options: SML },
+    { texte: "EU", groupe: 93, idDepart: 2400, options: ["40", "42", "44"] },
+  ]);
+  const pose3 = await bac(d3).selectTailleVinted({ taille: "EU 42" }, []);
+  ok("onglet EU qui écrit « 42 » nu → « 42 » de l'onglet EU", pose3 === true && c3b[c3b.length - 1] === "42", JSON.stringify(c3b));
+  const { document: d4, clics: c4b } = panneau([{ texte: "", groupe: 7, idDepart: 55, options: POINTURES_NUES }]);
+  const pose4 = await bac(d4).selectTailleVinted({ taille: "UK 8" }, []);
+  ok("« UK 8 » sur la grille nue : rien posé (jamais une conversion de système)", pose4 === false && c4b.length === 0, JSON.stringify(c4b));
 }
 
 // ── [2] CE QUI PASSAIT PASSE PAREIL — cas relevés ────────────────────────────

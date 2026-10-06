@@ -1582,7 +1582,12 @@ async function fillListingForm(job) {
   // paginés (Divers), #price_cents vit sur sa PROPRE page et n'existe plus au
   // moment du dépôt final — la vérification se fait ICI, à la pose.
   let pricePosedVerified = false;
-  if (job.price != null) {
+  if (job.price != null && ETAPES_AVANT_PHOTOS.prix) {
+    // (06/10) Prix déjà posé ET relu sur sa page, avant les photos : la page
+    // est passée, rien à rechercher (advanceWizardTo cliquerait « Continuer »
+    // sur l'adresse vide).
+    pricePosedVerified = true;
+  } else if (job.price != null) {
     // LBC pré-remplit un prix suggéré — on impose celui du job. Flux paginé :
     // #price_cents peut être sur la page SUIVANTE (« Quel est votre prix ? »),
     // advanceWizardTo clique Continuer pour l'atteindre si besoin.
@@ -2735,7 +2740,11 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // advanceWizardTo couvre les deux mondes : trouve tout de suite sur les
   // catégories standard, avance de page en page sur les flux paginés.
   relayerEtape("photos");
-  const photoInput = await advanceWizardTo('input[type="file"]', { probeMs: 6000 });
+  ETAPES_AVANT_PHOTOS.description = false;
+  ETAPES_AVANT_PHOTOS.prix = false;
+  const photoInput = await advanceWizardTo('input[type="file"]', {
+    probeMs: 6000, avantContinuer: () => remplirEtapeAvantPhotos(job),
+  });
   if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
   if (job.photos?.length) {
     const photoNote = await uploadPhotos(photoInput, job.photos);
@@ -3095,9 +3104,18 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   continueBtn.click();
 
   // L'interstitiel peut durer plusieurs secondes : on attend l'aperçu.
+  // (06/10, Glowik) Quand la description a été posée AVANT les photos, la page
+  // suivante est « Où se situe votre bien ? » (aucun #body) : elle vaut
+  // arrivée, la description est déjà là.
   let bodyArea;
   try {
-    bodyArea = await waitForElement("textarea#body, #body", 25000);
+    if (ETAPES_AVANT_PHOTOS.description) {
+      const vu = await waitFor(() => document.querySelector("textarea#body, #body") || document.querySelector('label[for="location"]'), 25000);
+      if (!vu) throw new Error("ni aperçu ni adresse après les photos");
+      bodyArea = vu.matches?.("textarea#body, #body") ? vu : null;
+    } else {
+      bodyArea = await waitForElement("textarea#body, #body", 25000);
+    }
   } catch {
     // Le wizard n'a pas avancé : un critère obligatoire a été refusé
     // ("Veuillez choisir un univers de vêtement" — cas réel du 2026-07-06).
@@ -4322,11 +4340,16 @@ async function fillUnivers(rawValue, warnings) {
 // standard, l'élément est trouvé à la première sonde : zéro clic, zéro
 // changement de comportement. Retourne l'élément ou null (jamais de throw :
 // l'appelant garde son message d'erreur métier).
-async function advanceWizardTo(selector, { probeMs = 5000, maxSteps = 3 } = {}) {
+async function advanceWizardTo(selector, { probeMs = 5000, maxSteps = 3, avantContinuer = null } = {}) {
   for (let step = 0; step <= maxSteps; step++) {
     const el = await waitFor(() => document.querySelector(selector), probeMs);
     if (el) return el;
     if (step === maxSteps) return null;
+    // La page visible peut exiger un champ AVANT de laisser passer (06/10,
+    // Glowik) : on le remplit, puis on continue. Jamais bloquant.
+    if (avantContinuer) {
+      try { await avantContinuer(); } catch (e) { console.warn(`[leboncoin] étape intermédiaire : ${String(e?.message ?? e)}`); }
+    }
     const btn = findButtonByExactText("Continuer");
     if (!btn) return null;
     console.log(`[leboncoin] "${selector}" absent — étape intermédiaire du wizard, clic Continuer (${step + 1}/${maxSteps})`);
@@ -4335,6 +4358,40 @@ async function advanceWizardTo(selector, { probeMs = 5000, maxSteps = 3 } = {}) 
     await sleep(1500);
   }
   return null;
+}
+
+// ── LES PAGES QUI VIENNENT AVANT LES PHOTOS (06/10, Glowik) ─────────────────
+// Rayon « Matériel professionnel > Équipements pour commerces & marchés »,
+// relevé le 06/10 dans le Chrome de Nico : catégorie → « Décrivez votre bien ! »
+// (description OBLIGATOIRE) → « Quel est votre prix ? » → « Ajoutez des
+// photos » → « Où se situe votre bien ? » — aucune page d'aperçu à #body après
+// les photos. Le dépôt cherchait la page des photos en cliquant « Continuer »
+// sur une description VIDE : refus, trois clics, puis « input[type=file]
+// introuvable » (3 échecs, « relancer » en boucle). On remplit ce que la page
+// visible exige (description, prix), puis on continue. Sur les rayons
+// standard, la page des photos est trouvée sans aucun clic : rien ne change.
+const ETAPES_AVANT_PHOTOS = { description: false, prix: false };
+async function remplirEtapeAvantPhotos(job) {
+  const corps = document.querySelector("textarea#body, #body");
+  if (corps && !String(corps.value ?? "").trim() && String(job?.description ?? "").trim()) {
+    relayerEtape("description");
+    await typeInto(corps, job.description);
+    corps.blur();
+    await humanPause();
+    ETAPES_AVANT_PHOTOS.description = String(corps.value ?? "").trim().length > 0;
+    console.log("[leboncoin] description posée sur la page « Décrivez votre bien », avant les photos");
+  }
+  const prix = document.querySelector("#price_cents");
+  if (prix && job?.price != null && Number.isFinite(Number(job.price))) {
+    relayerEtape("prix");
+    await humanPause();
+    setFieldValue(prix, String(Math.round(Number(job.price))));
+    prix.dispatchEvent(new Event("blur", { bubbles: true }));
+    await humanPause();
+    const pose = Number(String(prix.value ?? "").replace(/[^\d]/g, ""));
+    ETAPES_AVANT_PHOTOS.prix = Number.isFinite(pose) && pose > 0;
+    console.log(`[leboncoin] prix posé sur la page « Quel est votre prix ? », avant les photos (${prix.value})`);
+  }
 }
 
 async function fillAddress(adresseBrute, warnings, { commune = null } = {}) {

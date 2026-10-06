@@ -20719,6 +20719,14 @@ function construireJobRecreation(job, pf, cap, prix) {
       // taille EXACTE de l'annonce d'origine ; le libellé n'est que le repli.
       ...(tailleIds.length ? { taille_ids: tailleIds } : {}),
       marque: cap.libelles?.marque ?? null,
+      // (06/10, Ciddjy « Kiabi », Carla « Burano ») L'identifiant de la marque
+      // de l'annonce d'origine (brand_id du catalogue Vinted ; 1 = « Sans
+      // marque ») : le formulaire reconnaît la ligne par son id, même quand son
+      // libellé tarde à s'afficher sur un poste lent.
+      ...(() => {
+        const id = Number(natifCap.brand_id);
+        return Number.isInteger(id) && id > 1 ? { marque_id: id } : {};
+      })(),
       colors: cap.libelles?.couleurs ?? null,
       // (0.6.85) Le format CHOISI par la personne (question posée avant le
       // retrait, colis_choisi) prime : c'est la seule source quand l'annonce

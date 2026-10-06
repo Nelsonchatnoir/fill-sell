@@ -53,6 +53,8 @@
     "selftest:vinted-couleurs": "node scripts/vinted-couleurs-selftest.mjs",
     "selftest:vinted-taille-publication": "node scripts/vinted-taille-publication-selftest.mjs",
     "selftest:vinted-taille-eu": "node scripts/vinted-taille-eu-selftest.mjs",
+    "selftest:lbc-etapes-avant-photos": "node scripts/lbc-etapes-avant-photos-selftest.mjs",
+    "selftest:vinted-retrait-mur-compte-bloque": "node scripts/vinted-retrait-mur-compte-bloque-selftest.mjs",
     "selftest:vinted-taille-eu-nu-serveur": "node scripts/vinted-taille-eu-nu-serveur-selftest.mjs",
     "selftest:content-scripts": "node scripts/content-scripts-selftest.mjs",
     "selftest:description-leboncoin": "node scripts/description-leboncoin-selftest.mjs",

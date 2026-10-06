@@ -2100,6 +2100,24 @@ async function deleteListing(job) {
     // sur la page ». Le serveur le reconnaît aussi (work_window_state) et pose
     // le vrai motif ; ici, on ne tente rien de plus et on le nomme.
     if (/^\/main\/banned(?:\/|$)/.test(location.pathname)) {
+      // ── LE MUR DES PAGES N'EST PAS CELUI DE L'API (06/10, DeadRoz) ────────
+      // Compte 127239260 (dayaneselect) : chaque essai depuis le 01/10 atterrit
+      // sur /main/banned, alors que l'API répond (sonde users/current 200, même
+      // boutique ; relevés COMPLETS des 04, 05 et 06/10 : 664/664, l'annonce
+      // 9865454800 « active »). Vinted restreint les PAGES du compte, pas son
+      // API. On tente donc le retrait PAR L'API, avec la même garde que tout
+      // retrait : boutique d'origine du job = session relue, sinon rien ne
+      // part ; seul un HTTP 2xx conclut. Sinon : le mur, comme avant (reprise
+      // espacée côté serveur, jamais arrêtée).
+      const idMur = String(job?.platform_listing_id ?? job?.listing_url?.match?.(/\/items\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "").trim();
+      const boutiqueMur = String(job?.platform_fields?.vinted_account_id ?? "").trim();
+      if (/^\d+$/.test(idMur) && boutiqueMur && !DELETE_DRY_RUN) {
+        t(`page « compte bloqué » : retrait tenté par l'API (item ${idMur}, boutique ${boutiqueMur})`);
+        const parApi = await deleteVintedItemViaApi(idMur, t, trace, { boutiqueAttendue: boutiqueMur, preuveRequise: true })
+          .catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+        if (parApi?.success) return { ...parApi, sousMurCompteBloque: true, trace };
+        t(`retrait par l'API sous le mur : non abouti (${String(parApi?.error ?? "").slice(0, 160)})`);
+      }
       return {
         success: false,
         needsUser: true,
@@ -3564,7 +3582,7 @@ async function remplirFormulaireVinted(job) {
   if (fields.marque) {
     // (03/10) Une marque que Vinted ne connaît pas devient une QUESTION
     // (« Sans marque » ou une marque de sa liste) — jamais un choix à la place.
-    const questionMarque = await selectVintedBrand(fields.marque, warnings);
+    const questionMarque = await selectVintedBrand(fields.marque, warnings, { marqueId: fields.marque_id });
     if (questionMarque?.needsUser) {
       return {
         success: false, ...questionMarque, warnings,
@@ -6223,7 +6241,7 @@ async function selectVintedNoBrand(trigger) {
   }
 }
 
-async function selectVintedBrand(marque, warnings) {
+async function selectVintedBrand(marque, warnings, { marqueId = null } = {}) {
   const trigger = '#brand, [data-testid="brand-select-dropdown-input"]';
   // « Sans marque » demandé par l'app : chemin natif direct — inutile de
   // chercher au catalogue (pas d'aria-label sur #empty-brand) et la création
@@ -6292,7 +6310,11 @@ async function selectVintedBrand(marque, warnings) {
     await openDropdown(trigger);
     const search = await waitForElement("#brand-search-input", 5000);
     await typeHuman(search, demandee);
-    choix = await attendreChoixMarque(demandee, 10000);
+    // (06/10) Marque de l'annonce d'origine connue par son id (republication) :
+    // elle EXISTE au catalogue — on lui laisse 30 s pour s'afficher (postes
+    // lents : Ciddjy, Carla), au lieu de conclure « inconnue » en 10 s.
+    const idMarque = Number.isInteger(Number(marqueId)) && Number(marqueId) > 1 ? Number(marqueId) : null;
+    choix = await attendreChoixMarque(demandee, idMarque ? 30000 : 10000, idMarque);
   } catch (e) {
     // ── Catégorie SANS champ Marque, valeur RÉELLE (2026-08-23) : relevé DOM
     // — les formulaires Livres et médias n'ont AUCUN champ #brand. L'absence
@@ -6407,7 +6429,7 @@ async function marquesDuCatalogueVinted(nom, max = 20) {
 //   · sinon la ligne « Utiliser "X" comme marque » quand X EST la marque —
 //     après 1,5 s, pour laisser au catalogue le temps de répondre.
 // Jamais « la plus proche », jamais la première suggestion.
-async function attendreChoixMarque(marque, timeoutMs = 10000) {
+async function attendreChoixMarque(marque, timeoutMs = 10000, marqueId = null) {
   const S = await sel();
   const cible = texteComparable(marque);
   const debut = Date.now();
@@ -6418,6 +6440,11 @@ async function attendreChoixMarque(marque, timeoutMs = 10000) {
     const lignes = Array.from(document.querySelectorAll('[role="radio"], [role="button"]'))
       .filter((el) => /^(?:suggested-)?brand-\d/.test(el.id || ""));
     suggestions = lignes.map((el) => String(el.getAttribute("aria-label") || el.textContent || "").trim()).filter(Boolean);
+    // (06/10) La ligne de la marque de l'annonce d'origine, par son id.
+    if (marqueId) {
+      const parId = lignes.find((el) => el.id === `brand-${marqueId}` || el.id === `suggested-brand-${marqueId}`);
+      if (parId) return { type: "catalogue", el: parId, parId: true };
+    }
     const exacte = lignes.find((el) => texteComparable(el.getAttribute("aria-label") || el.textContent) === cible);
     if (exacte) return { type: "catalogue", el: exacte };
     let libre = null;
@@ -6429,7 +6456,8 @@ async function attendreChoixMarque(marque, timeoutMs = 10000) {
     }
     // Seule la ligne native « Sans marque » (#empty-brand), ni marque ni
     // création, 3 s de suite : Vinted ne connaît pas cette marque.
-    if (!lignes.length && !libre && document.querySelector("#empty-brand")) {
+    // Marque connue par son id : jamais « inconnue » sur une liste encore vide.
+    if (!marqueId && !lignes.length && !libre && document.querySelector("#empty-brand")) {
       if (inconnueVueLe == null) inconnueVueLe = Date.now();
       if (Date.now() - inconnueVueLe >= 3000) return { type: "inconnue", suggestions: [] };
     } else inconnueVueLe = null;
@@ -6779,6 +6807,16 @@ function candidatsTailleVinted(libelle) {
   // nues de Vinted sont françaises — même lecture que la règle partagée
   // (_shared/tailles.js : « FR 40 » ≡ « 40 »).
   push(l.replace(/^FR\s+/i, ""));
+  // « EU N » ≡ « N » (06/10, dbz70 « Baskets Femme Lacoste ») : la capture lit
+  // la taille de l'annonce d'origine dans le référentiel de Vinted (« EU 40 »,
+  // groupe EU) ; le formulaire des chaussures écrit la même pointure « 40 »
+  // nu, sans onglet. ca63277 (0.6.90) avait ôté ce retrait avec ceux de UK/US/
+  // IT : la republication était refusée sur une taille que l'annonce porte.
+  // « N » ne se cherche QUE dans une grille sans onglet ou dans l'onglet
+  // « EU » (selectTailleVinted) — jamais dans DE, UK, US, IT : sur le panneau
+  // des costumes, « 42 » nu n'ira jamais chercher « DE 42 ».
+  const eu = l.match(/^EU\s*(\d{1,3}(?:[.,]\d)?)$/i);
+  if (eu) push(eu[1]);
   return out;
 }
 // Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par
@@ -6880,7 +6918,12 @@ async function selectTailleVinted(fields, warnings) {
       const options = Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL)).map((el) => el.textContent.trim()).filter(Boolean);
       if (!ongletsVus.some((o) => o.onglet === texte)) ongletsVus.push({ onglet: texte, options: options.slice(0, 40) });
     };
+    // La forme nue tirée de « EU N » : grille sans onglet ou onglet EU seulement.
+    const nuDeEu = libelle.match(/^EU\s*(\d{1,3}(?:[.,]\d)?)$/i)?.[1] ?? null;
     const ordreOnglets = (candidat) => {
+      if (nuDeEu && candidat === nuDeEu && candidat !== libelle) {
+        return onglets.length ? onglets.filter((o) => /^EU$/i.test(String(o.texte ?? "").trim())) : [null];
+      }
       if (!onglets.length) return [null];
       const m = candidat.match(TAILLE_PREFIXE_ONGLET_RE);
       const voulu = m ? m[1].toUpperCase() : (/^W\d/i.test(candidat) ? "W" : null);
