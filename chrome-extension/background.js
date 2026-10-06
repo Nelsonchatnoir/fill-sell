@@ -13713,6 +13713,11 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       let vus = compter();
       let paliers = 0;
       let arret = "cible";
+      // (0.6.100) Une cible CONNUE et pas atteinte ne s'arrête plus au premier
+      // palier muet : la page charge son lot suivant quand son repère du bas
+      // redevient visible — on remonte d'un écran, on redescend, trois fois au
+      // plus d'affilée. Toujours sous les bornes dures (paliers, durée).
+      let paliersMuets = 0;
       for (;;) {
         if (totalEnLigne !== null && vus >= totalEnLigne) { arret = "cible"; break; }
         if (paliers >= PALIERS_MAX) { arret = "paliers"; break; }
@@ -13726,7 +13731,16 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
           if (apres > vus) break;
         }
         paliers++;
-        if (apres <= vus) { arret = "sans_croissance"; break; }
+        if (apres <= vus) {
+          paliersMuets++;
+          if (totalEnLigne !== null && vus < totalEnLigne && paliersMuets < 3) {
+            window.scrollBy(0, -Math.max(400, Math.round(window.innerHeight || 600)));
+            await dormir(400);
+            continue;
+          }
+          arret = "sans_croissance"; break;
+        }
+        paliersMuets = 0;
         vus = apres;
       }
       window.scrollTo(0, 0);
@@ -14112,52 +14126,70 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
   // elle-même interroge honore `offset` et rend `list_id`, `url`, `status` et
   // le compteur « en ligne ». On l'appelle ; s'il se tait, on retombe sur le
   // défilement, inchangé à l'octet près.
-  if (platform === "leboncoin") {
-    // ── L'ADRESSE SE RELANCE AVANT DE CÉDER AU DÉFILEMENT (27/09, jocabroc8) ──
-    // 20:20 : l'adresse s'est tue une fois (motif jamais écrit), le repli par
-    // défilement — qui ne voit que 30 cartes dans une fenêtre minimisée — a
-    // rendu « 30 sur 176 », et le relevé s'est clos ainsi. Six minutes plus
-    // tard, la même adresse rendait 176 sur 176. On la relance donc jusqu'à
-    // trois fois (pause croissante) quand elle se tait pour une raison
-    // passagère, ou quand elle rend moins d'annonces en ligne que le compteur ;
-    // un jeton absent (personne connectée ?) ne se relance pas : c'est au
-    // défilement de le constater sur la page. Chaque motif est gardé et dit.
-    const motifsApi = [];
+  // ── LEBONCOIN : LE RÉSULTAT DE L'ADRESSE, MIS EN FORME UNE FOIS (0.6.100) ─
+  // Servi par la lecture d'entrée ET par la relecture après la page.
+  const resultatAdresseLbc = (api, motifsApi, apresPage = null) => {
+    for (const a of api.annonces) annonces.set(a.listing_id, a);
+    lbcTotalEnLigne = Number.isFinite(api.actives) ? api.actives : null;
+    lbcListeRendue = true;
+    if (api.motif) complet = false;
+    console.log(`[releve][leboncoin] par l'adresse${apresPage ? " (relue après la page)" : ""} : ${api.annonces.length} annonce(s) en ${api.pages} page(s), ${api.enLigne} en ligne sur ${api.actives ?? "?"} annoncée(s)${api.motif ? ` — ${api.motif}` : ""}`);
+    // Le juge de couverture compare les EN LIGNE aux EN LIGNE : on ne compte
+    // pas les annonces d'un autre statut, qui ne sont pas dans « En ligne (N) ».
+    const enLigneApi = api.enLigne;
+    const jugement = !Number.isFinite(lbcTotalEnLigne) || enLigneApi < lbcTotalEnLigne;
+    const autresStatuts = Object.entries(api.statuts ?? {}).filter(([k]) => k !== "active").map(([k, n]) => `${n} « ${k} »`).join(", ");
+    return {
+      annonces: [...annonces.values()],
+      complet: complet && !jugement,
+      illisibles,
+      annonce: Number.isFinite(lbcTotalEnLigne) ? lbcTotalEnLigne : null,
+      erreur: jugement
+        ? `couverture partielle : ${enLigneApi} annonce(s) vue(s) sur ${lbcTotalEnLigne ?? "?"} « en ligne » — le reste n'est ni relevé ni conclu disparu`
+          + (autresStatuts ? ` (autres statuts lus : ${autresStatuts})` : "")
+        : (api.motif ? `relevé par l'adresse interrompu (${api.motif})` : null),
+      defilement: `[adresse] ${api.pages} page(s), ${enLigneApi} en ligne lues sur ${lbcTotalEnLigne ?? "?"} annoncées`
+        + (motifsApi.length ? ` · relances : ${motifsApi.join(" ; ")}` : "")
+        + (apresPage ? ` · ${apresPage}` : ""),
+    };
+  };
+  // ── LEBONCOIN : LE JETON D'ABORD, PUIS L'ADRESSE (0.6.100, Joe0410 30/340) ─
+  // L'adresse se relance jusqu'à `essais` fois (27/09, jocabroc8 : une
+  // adresse muette une fois rendait tout six minutes plus tard). NOUVEAU : un
+  // jeton absent, expiré ou refusé (401) n'arrête plus rien — il est
+  // renouvelé PAR LA PAGE (renouvelerJetonLeboncoin), puis l'adresse est
+  // relue tout de suite. Seule une session fermée (redirection vers la
+  // connexion) laisse la main à la page, qui montrera son mur.
+  const lireAdresseLbc = async (motifsApi, essais = 3) => {
     let api = null;
-    for (let essai = 1; essai <= 3; essai++) {
+    for (let essai = 1; essai <= essais; essai++) {
       api = await releverLeboncoinParApi().catch((e) => ({ ok: false, motif: String(e?.message ?? e) }));
       const partiel = api?.ok && Number.isFinite(api.actives) && api.enLigne < api.actives;
       if (api?.ok && !partiel && !api.motif) break;
       motifsApi.push(api?.ok ? (partiel ? `essai ${essai} : ${api.enLigne} en ligne sur ${api.actives}` : `essai ${essai} : ${api.motif}`) : `essai ${essai} : ${api?.motif ?? "sans réponse"}`);
-      if (!api?.ok && /jeton_absent|user_id_absent/.test(String(api?.motif ?? ""))) break;
-      if (essai < 3) await sleep(randInt(3000, 6000) * essai);
+      if (LBC_JETON_A_RENOUVELER_RE.test(String(api?.motif ?? ""))) {
+        if (essai >= essais) break;
+        const ren = await renouvelerJetonLeboncoin();
+        motifsApi.push(`jeton ${ren.ok ? `renouvelé par la page en ${(ren.attente_ms / 1000).toFixed(1)} s` : `non renouvelé (${ren.motif})`}`);
+        if (!ren.ok) break;
+        continue; // relue tout de suite, avec le jeton neuf
+      }
+      // (0.6.100, Jocabroc 192/193) Une lecture qui finit juste en dessous du
+      // compteur, c'est presque toujours une annonce en train de se poser
+      // (republication, modération) : on laisse 10 à 15 s, puis 20 à 30 s.
+      const partielFin = api?.ok && Number.isFinite(api.actives) && api.enLigne < api.actives;
+      if (essai < essais) await sleep((partielFin ? randInt(10_000, 15_000) : randInt(3000, 6000)) * essai);
     }
-    if (api?.ok && Array.isArray(api.annonces)) {
-      for (const a of api.annonces) annonces.set(a.listing_id, a);
-      lbcTotalEnLigne = Number.isFinite(api.actives) ? api.actives : null;
-      lbcListeRendue = true;
-      if (api.motif) complet = false;
-      console.log(`[releve][leboncoin] par l'adresse : ${api.annonces.length} annonce(s) en ${api.pages} page(s), ${api.enLigne} en ligne sur ${api.actives ?? "?"} annoncée(s)${api.motif ? ` — ${api.motif}` : ""}`);
-      // Le juge de couverture compare les EN LIGNE aux EN LIGNE : on ne compte
-      // pas les annonces d'un autre statut, qui ne sont pas dans « En ligne (N) ».
-      const enLigneApi = api.enLigne;
-      const jugement = !Number.isFinite(lbcTotalEnLigne) || enLigneApi < lbcTotalEnLigne;
-      const autresStatuts = Object.entries(api.statuts ?? {}).filter(([k]) => k !== "active").map(([k, n]) => `${n} « ${k} »`).join(", ");
-      return {
-        annonces: [...annonces.values()],
-        complet: complet && !jugement,
-        illisibles,
-        annonce: Number.isFinite(lbcTotalEnLigne) ? lbcTotalEnLigne : null,
-        erreur: jugement
-          ? `couverture partielle : ${enLigneApi} annonce(s) vue(s) sur ${lbcTotalEnLigne ?? "?"} « en ligne » — le reste n'est ni relevé ni conclu disparu`
-            + (autresStatuts ? ` (autres statuts lus : ${autresStatuts})` : "")
-          : (api.motif ? `relevé par l'adresse interrompu (${api.motif})` : null),
-        defilement: `[adresse] ${api.pages} page(s), ${enLigneApi} en ligne lues sur ${lbcTotalEnLigne ?? "?"} annoncées`
-          + (motifsApi.length ? ` · relances : ${motifsApi.join(" ; ")}` : ""),
-      };
-    }
+    return api;
+  };
+  let motifsAdresseListe = [];
+  if (platform === "leboncoin") {
+    const motifsApi = [];
+    const api = await lireAdresseLbc(motifsApi);
+    if (api?.ok && Array.isArray(api.annonces)) return resultatAdresseLbc(api, motifsApi);
     console.warn(`[releve][leboncoin] relevé par l'adresse indisponible (${api?.motif ?? "sans motif"}) — repli sur le défilement`);
     motifsAdresse = motifsApi.length ? motifsApi.join(" ; ") : String(api?.motif ?? "sans motif");
+    motifsAdresseListe = motifsApi;
   }
 
   let dernierTabId = null; // onglet de travail de la plateforme, réutilisé après la boucle
@@ -14406,6 +14438,25 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       ajoutees += 1;
     }
     if (ajoutees) console.log(`[releve][beebs] index public : ${ajoutees} annonce(s) que la page n'avait pas rendues`);
+  }
+
+  // ── LEBONCOIN : LA PAGE A CHARGÉ, L'ADRESSE EST RELUE (0.6.100) ──────────
+  // « Mes annonces » ne s'affiche qu'avec un jeton : si la page a été rendue,
+  // elle vient d'en obtenir un, et l'adresse redevient lisible. On la relit
+  // AVANT de conclure : le repli sur la page n'est plus le dernier mot quand
+  // l'adresse peut tout dire. Elle remplace la lecture de la page seulement si
+  // elle voit au moins autant d'annonces.
+  if (platform === "leboncoin" && motifsAdresse != null) {
+    const motifsBis = [...motifsAdresseListe];
+    const vuesPage = annonces.size;
+    const api = await lireAdresseLbc(motifsBis, 2);
+    if (api?.ok && Array.isArray(api.annonces) && api.annonces.length >= vuesPage) {
+      annonces.clear();
+      complet = true;
+      illisibles.prix = 0; illisibles.titre = 0;
+      return resultatAdresseLbc(api, motifsBis, `repli sur la page (${vuesPage} vue(s)), puis adresse relue`);
+    }
+    motifsAdresse = motifsBis.length ? motifsBis.join(" ; ") : motifsAdresse;
   }
 
   // ── UN SEUL JUGE DE COUVERTURE POUR LES TROIS RELEVÉS (2026-09-19) ────────
@@ -15382,6 +15433,17 @@ async function remettreEnFileReprise(run, token, msg, maintenant) {
   return requeue;
 }
 
+// ── LE STATUT D'UN RELEVÉ D'ANNONCES TERMINÉ (0.6.100) — pur, testé ───────
+// (selftest:lbc-jeton-releve) Une plateforme absente → « absente » ; rien vu
+// sur un relevé qui n'a pas abouti → « failed » ; vu une partie seulement →
+// « incomplete », JAMAIS « done » ; tout vu (ou compte vide) → « done ».
+function statutFinReleveAnnonces({ absente = false, vues = 0, vide = null, erreur = null, complet = true } = {}) {
+  if (absente === true && vues === 0) return "absente";
+  if (vues === 0 && !vide && (erreur || !complet)) return "failed";
+  if (!vide && (erreur || !complet)) return "incomplete";
+  return "done";
+}
+
 async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null } = {}) {
   if (!RELEVE_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
   if (releveEnCours) return { ok: false, reason: "deja_en_cours" };
@@ -15416,7 +15478,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     } else {
       if (declencheur === "cron") {
         const derniers = await restRequest(
-          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.annonces&platform=eq.${platform}&status=eq.done&select=finished_at&order=finished_at.desc&limit=1`, token,
+          // (0.6.100) « incomplete » compte aussi : un relevé partiel ne rend pas
+          // la veille plus fréquente.
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.annonces&platform=eq.${platform}&status=in.(done,incomplete)&select=finished_at&order=finished_at.desc&limit=1`, token,
         ).catch(() => null);
         const t = Date.parse(derniers?.[0]?.finished_at ?? "");
         if (Number.isFinite(t) && Date.now() - t < RELEVE_CADENCE_CRON_MS) return { ok: false, reason: "cadence" };
@@ -15524,7 +15588,14 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       // ⛔ `vide` gagne sur tout : un compte sans annonce est un relevé RÉUSSI
       //    à 0 (2026-09-23, m0nc3f). Il ne porte donc ni « failed », ni le
       //    préfixe « [incomplet] » que lit rapprocher_releve.
-      status: rienARelever ? "absente" : (annonces.length === 0 && !vide && (erreur || !complet) ? "failed" : "done"),
+      // ⛔ (0.6.100, Joe0410 30/340) UN RELEVÉ QUI N'A PAS TOUT VU NE SE CLÔT
+      //    JAMAIS « done » : il sort « incomplete » (état terminal existant,
+      //    lu par l'app comme « incomplet x/y — Synchroniser pour terminer »,
+      //    jamais « synchronisé »), avec son marqueur « [incomplet] » que lit
+      //    rapprocher_releve (aucune disparition datée). Le serveur ne compte
+      //    pas un « incomplete » comme un relevé réussi (cadence, preuve
+      //    d'absence, vérité des plateformes).
+      status: statutFinReleveAnnonces({ absente: rienARelever, vues: annonces.length, vide, erreur, complet }),
       finished_at: maintenant(), updated_at: maintenant(),
       items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
       // (27/09) Le total que la PLATEFORME annonce (compteur Leboncoin / eBay,
@@ -15708,14 +15779,112 @@ async function releverQuotidien() {
 const LBC_API_PAGE = 100;
 const LBC_API_PAGES_MAX = 30;   // 3 000 annonces — très au-dessus du parc
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE JETON LEBONCOIN, RENOUVELÉ COMME LA PAGE LE RENOUVELLE (0.6.100, 06/10)
+// ══════════════════════════════════════════════════════════════════════════
+// Joe0410, 06/10 07:02 : « [adresse muette : essai 1 : jeton_absent] repli sur
+// la page · 30 annonce(s) affichée(s) sur 340 ». La veille, même build, même
+// compte : 332 sur 332 par l'adresse. Le build n'y était pour rien : le jeton
+// de la page (`localStorage.luat`) manquait, la relecture s'arrêtait net
+// (« un jeton absent ne se relance pas »), et le repli sur la page — défilement
+// infini dans une fenêtre réduite — ne voit que le premier lot de 30.
+// Même famille que le 401 Vinted de la 0.6.99 : c'est la PAGE qui renouvelle
+// son jeton, jamais un fetch du service worker.
+// CE QUE FAIT LA PAGE (observé le 06/10 dans le Chrome de Nico, jeton retiré
+// volontairement puis page rechargée) : le jeton vit 2 h (exp − iat = 7 200 s) ;
+// au chargement, une iframe cachée appelle
+// auth.leboncoin.fr/api/authorizer/v2/authorize (client lbc-front-web,
+// prompt=none, retour sur /oauth2callback) et la page repose `luat` — un jeton
+// neuf, dans la seconde. On fait donc EXACTEMENT ça : on recharge « Mes
+// annonces » dans l'onglet de travail, et on attend que la page ait reposé un
+// jeton valable (≥ 60 s de vie) avant de relire l'adresse.
+// ⛔ On ne fabrique aucun jeton, on ne rejoue aucun échange OAuth : la page
+//    fait son travail, on lit ce qu'elle a posé. Session fermée (redirection
+//    vers auth.leboncoin.fr ou /connexion) → « session_fermee », et c'est la
+//    page (mur de connexion) qui le dira à la personne.
+const LBC_PAGE_JETON = "https://www.leboncoin.fr/compte/part/mes-annonces";
+const LBC_JETON_ATTENTE_MS = 20_000;
+const LBC_JETON_A_RENOUVELER_RE = /jeton_absent|jeton_expire|user_id_absent|http_401/;
+
+function etatJetonLeboncoinDansLaPage() {
+  // Sérialisée par chrome.scripting : aucune closure, tout est dedans.
+  const tok = localStorage.getItem("luat");
+  if (!tok) return { present: false, exp: null };
+  try {
+    const charge = JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return { present: true, exp: Number.isFinite(Number(charge?.exp)) ? Number(charge.exp) : null };
+  } catch { return { present: true, exp: null }; }
+}
+
+function jetonLeboncoinValable(etat, maintenantMs = Date.now()) {
+  return !!etat?.present && (etat.exp == null || etat.exp * 1000 > maintenantMs + 60_000);
+}
+
+// Un renouvellement raté (session fermée, page muette) met les lectures de
+// FOND (ventes, commandes) en pause 30 min : jamais une page rechargée à
+// chaque cycle chez quelqu'un de déconnecté. « Synchroniser » (le relevé)
+// essaie toujours : c'est un geste.
+const LBC_RENOUVELLEMENT_PAUSE_MS = 30 * 60_000;
+let lbcRenouvellementEchecLe = 0;
+
+// Avant une lecture de fond qui exige le jeton (ventes, commandes) : jeton
+// valable → rien ; absent ou expiré → renouvelé par la page, hors pause.
+async function assurerJetonLeboncoin() {
+  // Lu par la porte de TOUTES les lectures de page (onglet de travail vivant).
+  const etat = await executerDansOngletPlateforme("leboncoin", etatJetonLeboncoinDansLaPage).catch(() => null);
+  // Onglet injoignable ou réponse d'une autre forme : on ne renouvelle rien
+  // sur un doute — la lecture qui suit dira elle-même ce qui manque.
+  if (!etat || typeof etat.present !== "boolean") return { ok: false, motif: etat?.motif ?? "etat_illisible" };
+  if (jetonLeboncoinValable(etat)) return { ok: true, deja: true };
+  if (Date.now() - lbcRenouvellementEchecLe < LBC_RENOUVELLEMENT_PAUSE_MS) return { ok: false, motif: "renouvellement_en_pause" };
+  return renouvelerJetonLeboncoin();
+}
+
+async function renouvelerJetonLeboncoin() {
+  const r = await renouvelerJetonLeboncoinPage();
+  lbcRenouvellementEchecLe = r.ok ? 0 : Date.now();
+  console.log(`[leboncoin][jeton] ${r.ok ? `renouvelé par la page en ${r.attente_ms} ms` : `non renouvelé : ${r.motif}`}`);
+  return r;
+}
+
+async function renouvelerJetonLeboncoinPage() {
+  const t0 = Date.now();
+  let tabId;
+  try { tabId = await getOrCreateWorkTab("leboncoin", LBC_PAGE_JETON); }
+  catch (e) { return { ok: false, motif: `onglet : ${String(e?.message ?? e).slice(0, 80)}`, attente_ms: Date.now() - t0 }; }
+  for (;;) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    let url = null;
+    try { url = new URL(tab?.url ?? ""); } catch { url = null; }
+    if (url && (/(^|\.)auth\.leboncoin\.fr$/.test(url.hostname) || /^\/(connexion|login)/.test(url.pathname))) {
+      return { ok: false, motif: "session_fermee", attente_ms: Date.now() - t0 };
+    }
+    const etat = await chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", func: etatJetonLeboncoinDansLaPage })
+      .then(([r]) => r?.result ?? null).catch(() => null);
+    if (jetonLeboncoinValable(etat)) return { ok: true, attente_ms: Date.now() - t0 };
+    if (Date.now() - t0 > LBC_JETON_ATTENTE_MS) {
+      return { ok: false, motif: etat?.present ? "jeton_toujours_expire" : "jeton_non_rendu", attente_ms: Date.now() - t0 };
+    }
+    await sleep(500);
+  }
+}
+
 async function releverLeboncoinParApi() {
   return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax) => {
     const tok = localStorage.getItem("luat");
     const ck = Object.fromEntries(document.cookie.split(";").map((c) => {
       const i = c.indexOf("="); return [c.slice(0, i).trim(), c.slice(i + 1)];
     }));
-    const uid = ck["lbc_user_id"];
-    if (!tok || !uid) return { ok: false, motif: tok ? "user_id_absent" : "jeton_absent" };
+    // (0.6.100) Le jeton se lit comme la page le lit : son `account_id` EST
+    // l'identifiant du compte (la page en tire elle-même le cookie
+    // lbc_user_id). Un jeton expiré se dit « jeton_expire » : l'appelant le
+    // fait renouveler par la page au lieu d'essuyer un 401.
+    let charge = null;
+    try { charge = tok ? JSON.parse(atob(tok.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) : null; } catch { charge = null; }
+    const uid = ck["lbc_user_id"] || (charge?.account_id ? String(charge.account_id) : null);
+    if (!tok) return { ok: false, motif: "jeton_absent" };
+    if (Number.isFinite(Number(charge?.exp)) && Number(charge.exp) * 1000 < Date.now() + 30_000) return { ok: false, motif: "jeton_expire" };
+    if (!uid) return { ok: false, motif: "user_id_absent" };
 
     const nombre = (v) => {
       const n = Array.isArray(v) ? Number(v[0]) : Number(v);
@@ -15811,9 +15980,15 @@ async function releverLeboncoinParApi() {
           capture_liste: captureDe(a),
         });
       }
-      offset += ads.length;
       if (!ads.length) break;
-      if (Number.isFinite(total) && offset >= total) break;
+      const fin = offset + ads.length;
+      if (Number.isFinite(total) && fin >= total) break;
+      // (0.6.100) DIX ANNONCES DE CHEVAUCHEMENT entre deux pages : la liste est
+      // triée par date, et une annonce qui disparaît en tête (vente,
+      // republication) entre deux pages fait tout remonter d'un cran — sans
+      // chevauchement, une annonce vivante sautait, le compte tombait juste,
+      // et le relevé se croyait complet. Les doublons se fondent (Map par id).
+      offset = ads.length > 20 ? fin - 10 : fin;
       await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
     }
     const liste = [...vues.values()];
@@ -16062,6 +16237,9 @@ async function lireDetailsVentesVinted(refs) {
 // ⛔ Les ventes en MAIN PROPRE n'y sont pas, et n'y seront jamais : cette page
 //    ne liste que le paiement leboncoin. Ce n'est pas un bug, c'est la limite.
 async function lireVentesLeboncoin(connues) {
+  // (0.6.100) Sans jeton, rien n'était lu — et l'échec restait local. Le jeton
+  // est d'abord renouvelé par la page s'il manque ou a expiré.
+  await assurerJetonLeboncoin().catch(() => null);
   return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax, refsConnues) => {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent" };
@@ -18517,6 +18695,8 @@ async function lireCommandesRecentes(platform, typeConnu = null) {
       return { ok: true, http: 200, commandes: cmds, requetes: 1 };
     }, [VEILLE_COMMANDES_PAR_PAGE]);
   }
+  // (0.6.100) Même règle que le relevé des ventes : le jeton d'abord.
+  await assurerJetonLeboncoin().catch(() => null);
   return executerDansOngletPlateforme("leboncoin", async (perPage, typeConnu) => {
     const tok = localStorage.getItem("luat");
     if (!tok) return { ok: false, motif: "jeton_absent", requetes: 0 };

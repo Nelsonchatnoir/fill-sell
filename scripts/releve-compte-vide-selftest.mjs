@@ -48,20 +48,26 @@ check("Leboncoin — PAS reconnue sur une liste pleine",
   !PAGE_DIT_VIDE.leboncoin.test("En ligne (24)\nTable basse\nModifier"));
 
 // ── 2. La décision de statut, relue dans le code ──────────────────────────
+// (06/10, extension 0.6.100) La décision vit dans statutFinReleveAnnonces —
+// et la règle a changé sur UN point, décision de Nico (Joe0410, 30/340) : des
+// annonces vues sur une couverture partielle → « incomplete », plus « done ».
+// Le compte vide reste un relevé RÉUSSI à 0 (« done »), comme avant.
 console.log("\n2. La ligne qui décide du statut du run");
-const ligneStatut = src.split("\n").find((l) => l.includes("status: rienARelever ?"));
+const ligneStatut = src.split("\n").find((l) => l.includes("status: statutFinReleveAnnonces("));
 check("elle existe", !!ligneStatut);
+const iFn = src.indexOf("function statutFinReleveAnnonces(");
+const corpsFn = iFn >= 0 ? src.slice(iFn, src.indexOf("\n}\n", iFn) + 2) : "";
 check("elle laisse passer `vide` avant de conclure à l'échec",
-  !!ligneStatut && /annonces\.length === 0 && !vide && \(erreur \|\| !complet\)/.test(ligneStatut),
-  `— lue : ${ligneStatut?.trim()}`);
+  /if \(vues === 0 && !vide && \(erreur \|\| !complet\)\) return "failed";/.test(corpsFn),
+  `— lue : ${corpsFn.slice(0, 200)}`);
 
 const ligneErreur = src.split("\n").find((l) => l.includes("erreur: [vide ?"));
 check("la note d'un compte vide n'est PAS préfixée « [incomplet] »",
   !!ligneErreur && ligneErreur.includes("`[vide] ${vide}`"));
 
-// Rejeu de la décision elle-même, avec la vraie expression.
-const statut = new Function("rienARelever", "annonces", "vide", "erreur", "complet",
-  `return ${ligneStatut.trim().replace(/^status:\s*/, "").replace(/,\s*$/, "")};`);
+// Rejeu de la décision elle-même, avec la vraie fonction.
+const fnStatut = new Function(`${corpsFn}\nreturn statutFinReleveAnnonces;`)();
+const statut = (rienARelever, annonces, vide, erreur, complet) => fnStatut({ absente: rienARelever, vues: annonces.length, vide, erreur, complet });
 console.log("\n3. Rejeu de la décision");
 check("compte vide (0 annonce, note « vide ») → done",
   statut(false, { length: 0 }, "aucune annonce en ligne", null, false) === "done");
@@ -69,8 +75,10 @@ check("0 annonce SANS note « vide » et couverture inconnue → failed (inchang
   statut(false, { length: 0 }, null, "compteur absent", false) === "failed");
 check("0 annonce, plateforme absente → absente (inchangé)",
   statut(true, { length: 0 }, null, "session", false) === "absente");
-check("des annonces vues et une couverture partielle → done (inchangé)",
-  statut(false, { length: 12 }, null, "couverture partielle", false) === "done");
+check("des annonces vues et une couverture partielle → incomplete (06/10 : plus jamais done)",
+  statut(false, { length: 12 }, null, "couverture partielle", false) === "incomplete");
+check("des annonces vues, tout vu → done (inchangé)",
+  statut(false, { length: 12 }, null, null, true) === "done");
 
 console.log(ko ? `\n✗ ${ko} cas en échec` : "\n✓ tous les cas passent");
 process.exit(ko ? 1 : 0);

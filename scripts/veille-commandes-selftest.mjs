@@ -96,6 +96,11 @@ ctx.executerDansOngletPlateforme = async (platform, func, args) => {
     return { ok: true, requetes: refs.length, bot: false,
       articles: refs.map((ref) => ({ ref, item_ids: monde.vinted.details[ref] ?? [] })) };
   }
+  // (0.6.100) Le contrôle du jeton avant la lecture : la page simulée en a un
+  // valable (aucun renouvellement, aucune lecture de plus).
+  if (platform === "leboncoin" && src.includes('localStorage.getItem("luat")') && src.includes("present: false")) {
+    return { present: true, exp: null };
+  }
   if (platform === "leboncoin") {
     monde.lectures.leboncoin++;
     const l = monde.leboncoin;
