@@ -1,4 +1,4 @@
--- ⛔ NON APPLIQUÉE (06/10 soir) : attend le feu vert EXPLICITE de Nico sur 20261006220000.
+-- APPLIQUÉE le 06/10 soir sur feu vert explicite de Nico (« Feu vert 20261006220000 »).
 -- Preuve en transaction annulée : scripts/reparations/20261006_preuve_remise_ebay_import.sql
 -- ════════════════════════════════════════════════════════════════════════════
 -- REMISE EN VENTE : UNE ANNONCE eBay IMPORTÉE ÉPUISÉE EST REMISE EN VENTE
