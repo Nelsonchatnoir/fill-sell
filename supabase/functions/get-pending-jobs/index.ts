@@ -1317,14 +1317,25 @@ serve(async (req) => {
       try {
         const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
         const { data: retraitsV } = await admin.from("cross_post_jobs")
-          .select("id, status, created_at, error, platform_listing_id, listing_url, platform_fields")
-          .eq("user_id", user.id).eq("platform", "vinted").eq("action", "delete")
+          .select("id, action, inventaire_id, status, created_at, error, platform_listing_id, listing_url, platform_fields")
+          .eq("user_id", user.id).eq("platform", "vinted").in("action", ["delete", "republish"])
           .in("status", ["pending", "needs_user", "failed"])
           .gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
-          .limit(20);
+          .limit(40);
+        // (06/10, Ornella « Réveil de voyage JAZ » a83330ec) LA MÊME PREUVE VAUT
+        // POUR UNE REPUBLICATION ARRÊTÉE SUR « ANNONCE INTROUVABLE » : à l'étape
+        // a_capturer (rien n'a été retiré), needs_user introuvable_indetermine /
+        // introuvable_404, le numéro absent des deux derniers relevés complets de
+        // chaque boutique = l'annonce n'est plus sur Vinted. Le message « connecte-
+        // toi à la boutique qui porte cette annonce » était une impasse : aucune
+        // boutique ne la porte. Close en neutre, fiche datée « plus en ligne »
+        // (comme un 404 confirmé à la capture) : l'app propose « Publier ».
         const aJuger = ((retraitsV ?? []) as Array<Record<string, unknown>>).filter((j) => {
           const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
-          return !pfJ.processing_since && !pfJ.deleted_at;
+          if (pfJ.processing_since || pfJ.deleted_at) return false;
+          if (j.action === "delete") return true;
+          return j.status === "needs_user" && String(pfJ.republish_step ?? "") === "a_capturer"
+            && ["introuvable_indetermine", "introuvable_404"].includes(String(pfJ.needs_user_source ?? ""));
         });
         if (aJuger.length) {
           const [{ data: prof }, { data: runsD }, { data: runsTous }] = await Promise.all([
@@ -1380,11 +1391,15 @@ serve(async (req) => {
           let closV = 0;
           for (const j of aJuger) {
             if (!boutiques.length) break;
-            const numero = String(j.platform_listing_id ?? "").trim() || (String(j.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? "");
+            const numero = j.action === "republish"
+              ? String(((j.platform_fields ?? {}) as Record<string, unknown>).vinted_item_id ?? "").trim()
+              : (String(j.platform_listing_id ?? "").trim() || (String(j.listing_url ?? "").match(/\/items\/(\d+)/)?.[1] ?? ""));
             if (!/^\d+$/.test(numero)) continue;
             // Mise en ligne de l'annonce : son dépôt publié par FillSell, sinon la création du retrait.
             const { data: dep } = await admin.from("cross_post_jobs").select("published_at, platform_fields")
-              .eq("user_id", user.id).eq("platform", "vinted").eq("platform_listing_id", numero).eq("status", "published")
+              .eq("user_id", user.id).eq("platform", "vinted").eq("platform_listing_id", numero)
+              // (06/10) Une republication juge depuis la PREMIÈRE mise en ligne connue du numéro, quel que soit le sort du dépôt.
+              .in("status", j.action === "republish" ? ["published", "cancelled", "sold", "deleted"] : ["published"])
               .not("published_at", "is", null).order("published_at", { ascending: true }).limit(1);
             const dep0 = (dep?.[0] ?? null) as { published_at?: string; platform_fields?: Record<string, unknown> | null } | null;
             const enLigneDepuis = Date.parse(String(dep0?.published_at ?? j.created_at));
@@ -1416,14 +1431,30 @@ serve(async (req) => {
             const vuLe = Date.parse(String((snap?.[0] as { captured_at?: string } | undefined)?.captured_at ?? ""));
             if (Number.isFinite(vuLe) && vuLe >= debutMin) continue; // vu par l'un des relevés : présente
             const pfJ = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
-            pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status), "get-pending-jobs (retrait Vinted introuvable : deux relevés complets par boutique)");
-            pfJ.retrait_conclu = { le: new Date().toISOString(), par: "deux_releves_complets_par_boutique", boutiques: vus, numero, vu_pour_la_derniere_fois: Number.isFinite(vuLe) ? new Date(vuLe).toISOString() : null };
+            const estRepublication = j.action === "republish";
+            pfJ.erreurs_archivees = archiverErreur(pfJ.erreurs_archivees, j.error as string, String(j.status),
+              estRepublication
+                ? "get-pending-jobs (republication Vinted, annonce introuvable : deux relevés complets par boutique)"
+                : "get-pending-jobs (retrait Vinted introuvable : deux relevés complets par boutique)");
+            const conclu = { le: new Date().toISOString(), par: "deux_releves_complets_par_boutique", boutiques: vus, numero, vu_pour_la_derniere_fois: Number.isFinite(vuLe) ? new Date(vuLe).toISOString() : null };
+            if (estRepublication) pfJ.annonce_disparue = { ...conclu, pose_par: "get-pending-jobs (republication : annonce absente de toutes les boutiques)" };
+            else pfJ.retrait_conclu = conclu;
             for (const k of ["needs_user_source", "retenue_serveur", "next_action_after"]) delete pfJ[k];
             const { data: maj } = await admin.from("cross_post_jobs").update({
               status: "cancelled", platform_fields: pfJ,
-              error: `Annonce déjà retirée de Vinted : le n° ${numero} n'apparaît dans aucun des deux derniers relevés complets de ${vus.join(" et ")}. Rien n'a été fait sur Vinted, rien n'est à faire.`,
+              error: estRepublication
+                ? `Cette annonce n'est plus sur Vinted : le n° ${numero} n'apparaît dans aucun des deux derniers relevés complets de ${vus.join(" et ")}. FillSell n'a rien retiré. Pour la remettre en vente, publie l'article sur Vinted.`
+                : `Annonce déjà retirée de Vinted : le n° ${numero} n'apparaît dans aucun des deux derniers relevés complets de ${vus.join(" et ")}. Rien n'a été fait sur Vinted, rien n'est à faire.`,
             }).eq("id", j.id as string).in("status", ["pending", "needs_user", "failed"]).select("id");
             closV += (maj ?? []).length;
+            // La fiche dont l'annonce Vinted COURANTE est ce numéro est datée
+            // « plus en ligne » (jamais une fiche passée à une autre annonce, ni
+            // une date déjà posée) : l'app propose « Publier », plus « Republier ».
+            if (estRepublication && (maj ?? []).length && j.inventaire_id != null) {
+              await admin.from("inventaire").update({ disparu_le: new Date().toISOString() })
+                .eq("id", j.inventaire_id as number).eq("user_id", user.id)
+                .eq("vinted_item_id", numero).is("disparu_le", null);
+            }
           }
           if (closV) console.log(`[get-pending-jobs] userId=${user.id} : ${closV} retrait(s) Vinted clos — annonce absente des deux derniers relevés complets de chaque boutique (par numéro)`);
         }
