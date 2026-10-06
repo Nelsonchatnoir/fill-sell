@@ -60,11 +60,13 @@ begin
     (i2, u, 'Veste preuve', 'stock', 1, 30, '990000002', 'vinted'),
     (i3, u, 'Lot de 3 bols (preuve)', 'stock', 3, 8, null, null);
 
-  -- A. Sans appareil : le système est inerte.
+  -- A. Sans appareil (06/10, mails de vente) : la note existe — elle porte le
+  --    mail ; seul le canal push sera « sans_appareil » à la décision.
   insert into ventes (user_id, titre, prix_vente, vendu_le, plateforme, plateforme_code, commande_ref, source, statut, quantite)
   values (u, 'Sans appareil', 10, now() - interval '1 hour', 'vinted', 'vinted', 'PREUVE-A', 'releve', 'vendu', 1);
-  select count(*) into v_n from push_ventes where user_id = u;
-  perform pg_temp.verif(v_n = 0, 'A. aucun appareil → aucune note (inerte)');
+  select count(*) into v_n from push_ventes where user_id = u and commande_ref = 'PREUVE-A';
+  perform pg_temp.verif(v_n = 1, 'A. aucun appareil → la vente est notée quand même (mail de vente, 06/10)');
+  delete from push_ventes where user_id = u and commande_ref = 'PREUVE-A';
 
   insert into appareils_push (user_id, plateforme, jeton) values (u, 'ios', repeat('a', 64)) returning id into v_ios;
   insert into appareils_push (user_id, plateforme, jeton) values (u, 'android', 'fcm-preuve-' || repeat('b', 40)) returning id into v_and;
@@ -92,7 +94,11 @@ begin
   insert into cross_post_jobs (user_id, inventaire_id, platform, status, action, title, price, platform_listing_id, published_at)
   values (u, i1, 'vinted', 'published', 'publish', 'Robe Mango corail (preuve)', 15, '990000001', now() - interval '2 days')
   returning id into j1;
-  update cross_post_jobs set platform_fields = coalesce(platform_fields, '{}'::jsonb) || '{"sale_signal":"sold"}' where id = j1;
+  -- (06/10) Une vente de job n'est annoncée que si elle est RÉCENTE : la veille
+  -- l'a vue disparaître il y a 2 h, comme en vrai.
+  update cross_post_jobs set platform_fields = coalesce(platform_fields, '{}'::jsonb)
+    || jsonb_build_object('sale_signal', 'sold', 'unavailable_since', to_char(now() - interval '2 hours', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))
+   where id = j1;
   update inventaire set vinted_status = 'sold', statut = 'vendu' where id = i1;
   insert into ventes (user_id, titre, prix_vente, vendu_le, plateforme, plateforme_code, commande_ref, source, statut, quantite, inventaire_id, annonce_id)
   values (u, 'Robe Mango corail (preuve)', 15, now() - interval '5 minutes', 'vinted', 'vinted', 'PREUVE-B4', 'releve', 'vendu', 1, i1, '990000001');

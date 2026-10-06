@@ -31,7 +31,7 @@ ok(TYPE_RAPPEL === 'cloud_essai_veille' && CATEGORIE_RAPPEL === 'support' && DED
 ok(PRIX_AFFICHE === CLOUD_PRIX_AFFICHE, `prix = CLOUD_PRIX_AFFICHE de l'app (${CLOUD_PRIX_AFFICHE})`);
 ok(PARAMETRES_RAPPEL.ouvertureAvantFinH === 48 && PARAMETRES_RAPPEL.forcageAvantFinH === 24, 'créneau par défaut : J-2 → J-1 (décision de Nico)');
 ok(PRESETS.mastercard.ouvertureAvantFinH === 96 && PRESETS.mastercard.forcageAvantFinH === 72, 'préréglage Mastercard prêt : 3 à 7 jours avant la fin');
-ok(PARAMETRES_RAPPEL.plafond24h === 2, 'plafond : 2 mails par 24 h, comme envoi-ponctuel');
+ok(PARAMETRES_RAPPEL.plafond24h === Number.POSITIVE_INFINITY, 'aucun plafond de mails (06/10, Nico : un mail automatique n\'est jamais retenu)');
 const sql = readFileSync(fileURLToPath(new URL('../supabase/migrations/20261005120000_cloud_socle_ip_dediee.sql', import.meta.url)), 'utf8');
 ok(sql.includes(`'cloud_essai_veille'::text`) && sql.includes('email_logs_one_shot_unique'), 'la migration du socle (20261005120000) ajoute cloud_essai_veille à l\'index one-shot');
 const tunnel = readFileSync(fileURLToPath(new URL('../supabase/functions/email-tunnel/index.ts', import.meta.url)), 'utf8');
@@ -51,7 +51,7 @@ titre('2. Quand — le créneau, la place libre, le dernier créneau');
 ok(dec({ maintenant: FIN - 49 * H }).raison === 'pas_encore', '49 h avant la fin → pas encore');
 ok(dec({ maintenant: FIN - 47 * H }).action === 'envoyer' && dec({ maintenant: FIN - 47 * H }).raison === 'place_libre', '47 h avant, aucun mail aujourd\'hui → il part (place libre)');
 ok(dec({ maintenant: FIN - 47 * H, mails24h: 1 }).action === 'envoyer', '1 mail déjà reçu dans les 24 h → il part (2e place)');
-ok(dec({ maintenant: FIN - 47 * H, mails24h: 2 }).raison === 'plafond_plein', '2 mails déjà reçus → il ATTEND une place (il compte dans le plafond)');
+ok(dec({ maintenant: FIN - 47 * H, mails24h: 2 }).action === 'envoyer' && dec({ maintenant: FIN - 47 * H, mails24h: 9 }).action === 'envoyer', '2 ou 9 mails déjà reçus → il part quand même (06/10 : aucun plafond)');
 const force = dec({ maintenant: FIN - 23 * H, mails24h: 5 });
 ok(force.action === 'envoyer' && force.force === true && force.raison === 'dernier_creneau', 'à moins de 24 h de la fin : il part QUOI QU\'IL ARRIVE (information de facturation)');
 ok(dec({ maintenant: FIN - 30 * H, heureParis: 3 }).raison === 'nuit' && dec({ maintenant: FIN - 23 * H, heureParis: 23 }).raison === 'nuit', 'la nuit (avant 8 h, à partir de 22 h) → il attend, même forcé');
@@ -64,14 +64,14 @@ ok(dec({ maintenant: FIN - 30 * H, heureParis: 8 }).action === 'envoyer' && dec(
     const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', hourCycle: 'h23' }).format(new Date(t)));
     if (decisionRappel({ profil: profil(), heureParis: h, mails24h: 9, maintenant: t }).action === 'envoyer') { premier = t; break; }
   }
-  ok(premier != null && FIN - premier >= 10 * H, `plafond toujours plein : il part au premier passage de jour du dernier créneau, ${Math.round((FIN - premier) / H)} h avant la fin`);
+  ok(premier != null && FIN - premier >= 10 * H, `beaucoup de mails reçus : il part au premier passage de jour, ${Math.round((FIN - premier) / H)} h avant la fin`);
 }
 {
   const q = fenetreRequete(FIN - 47 * H);
   ok(Date.parse(q.finApres) === FIN - 47 * H && Date.parse(q.finAvant) === FIN + H, 'requête du passage : les essais dont la fin tombe dans les 48 h');
 }
-ok(decisionRappel({ profil: profil(), heureParis: 10, mails24h: 2, maintenant: FIN - 80 * H, p: { ...PARAMETRES_RAPPEL, ...PRESETS.mastercard } }).action === 'attendre'
-  && decisionRappel({ profil: profil(), heureParis: 10, mails24h: 0, maintenant: FIN - 80 * H, p: { ...PARAMETRES_RAPPEL, ...PRESETS.mastercard } }).action === 'envoyer', 'préréglage Mastercard : le créneau s\'ouvre 4 jours avant');
+ok(decisionRappel({ profil: profil(), heureParis: 10, mails24h: 0, maintenant: FIN - 97 * H, p: { ...PARAMETRES_RAPPEL, ...PRESETS.mastercard } }).action === 'attendre'
+  && decisionRappel({ profil: profil(), heureParis: 10, mails24h: 2, maintenant: FIN - 80 * H, p: { ...PARAMETRES_RAPPEL, ...PRESETS.mastercard } }).action === 'envoyer', 'préréglage Mastercard : le créneau s\'ouvre 4 jours avant');
 
 titre('3. Le texte — fr / en, heure de Paris, aucune désinscription');
 ok(dateFin(iso(FIN), 'fr') === 'mardi 13 octobre à 18h00' && dateFin(iso(FIN), 'en') === 'Tuesday 13 October at 18:00', 'date de fin en heure de Paris (« mardi 13 octobre à 18h00 »)');

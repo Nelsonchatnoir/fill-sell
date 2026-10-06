@@ -61,7 +61,9 @@ export const PRESETS = Object.freeze({
 });
 export const PARAMETRES_RAPPEL = Object.freeze({
   ...PRESETS.veille,
-  plafond24h: 2,   // même plafond qu'envoi-ponctuel (PLAFOND_24H)
+  // (06/10, Nico) Aucun mail automatique n'est retenu par un plafond de mails :
+  // le rappel part dès l'ouverture de son créneau, de jour.
+  plafond24h: Number.POSITIVE_INFINITY,
   heureDebut: 8,   // = RELANCE_H_DEBUT d'email-tunnel
   heureFin: 22,    // = RELANCE_H_FIN
 });

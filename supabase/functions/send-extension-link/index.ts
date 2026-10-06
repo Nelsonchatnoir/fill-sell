@@ -21,9 +21,9 @@
 // ENVOYER à qui avait déjà reçu un lien un jour — et l'app affichait « Lien
 // envoyé à … » (domagalajessica, 01/10 : dernier lien reçu le 13/08 ; 16
 // comptes, 25 demandes perdues). Désormais :
-//   · (04/10) un envoi toutes les 10 MINUTES et 3 par 24 h par compte au
-//     plus (anti-rafale) ; au-delà, réponse 429 « rafale » : rien n'est
-//     parti, et l'app le dit ;
+//   · (06/10, Nico) AUCUN plafond : seul un double appui (moins de 60 s
+//     après un lien PARTI) répond 429 « rafale » — le lien est déjà en route,
+//     et l'app le dit (le « 10 min / 3 par 24 h » du 04/10 est retiré) ;
 //   · la fonction ne répond JAMAIS « ok » quand rien n'est parti ;
 //   · chaque envoi réel écrit sa ligne email_logs (journal APRÈS l'envoi —
 //     l'index « un seul lien à vie » est supprimé, migration 20261001133000) ;
@@ -52,8 +52,12 @@ const TYPE_LOG = "extension_link";
 // arriver (10 min), et trois par jour couvrent tous les cas réels (mail perdu,
 // autre ordinateur). Au-delà : RIEN ne part, la réponse le dit (« rafale »,
 // avec l'heure du dernier envoi et le temps à attendre) — jamais un « ok ».
-const FENETRE_MS = 10 * 60_000;
-const PLAFOND_24H = 3;
+// ── (06/10, Nico) PLUS AUCUN PLAFOND : « le lien de l'extension ne doit jamais
+// être bloqué par un plafond ». Les « 3 par 24 h » et la fenêtre de 10 min
+// sont retirés ; reste le double appui : une demande qui suit de moins de
+// 60 s un lien PARTI est le même geste — le mail est déjà en route, la
+// réponse le dit (« rafale », heure du dernier envoi).
+const FENETRE_MS = 60_000;
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -93,11 +97,10 @@ serve(async (req) => {
     lang = profil?.lang === "en" ? "en" : "fr";
   }
 
-  // ── ANTI-RAFALE : 1 ENVOI / 10 MIN ET 3 / 24 H PAR COMPTE (04/10) ────────
+  // ── DOUBLE APPUI SEULEMENT (06/10) : un lien parti il y a moins de 60 s ──
   // Garde lue-puis-écrite : suffisante contre des taps (le bouton est
-  // verrouillé pendant l'envoi). Un lien de plus de 24 h ne bloque JAMAIS une
-  // nouvelle demande.
-  const depuis24h = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  // verrouillé pendant l'envoi). Aucun compte par jour.
+  const depuis24h = new Date(Date.now() - FENETRE_MS).toISOString();
   const { data: recents } = await supabaseAdmin
     .from("email_logs")
     .select("sent_at")
@@ -105,19 +108,15 @@ serve(async (req) => {
     .eq("email_type", TYPE_LOG)
     .gte("sent_at", depuis24h)
     .order("sent_at", { ascending: false })
-    .limit(PLAFOND_24H);
+    .limit(1);
   const envois = ((recents ?? []) as Array<{ sent_at: string }>)
     .map((r) => new Date(r.sent_at).getTime()).filter((t) => Number.isFinite(t));
   const maintenant = Date.now();
   let attenteMs = 0;
-  let plafond: "fenetre" | "jour" | null = null;
+  let plafond: "fenetre" | null = null;
   if (envois.length && maintenant - envois[0] < FENETRE_MS) {
     attenteMs = FENETRE_MS - (maintenant - envois[0]);
     plafond = "fenetre";
-  }
-  if (envois.length >= PLAFOND_24H) {
-    const libreLe = envois[PLAFOND_24H - 1] + 24 * 3_600_000;
-    if (libreLe - maintenant > attenteMs) { attenteMs = libreLe - maintenant; plafond = "jour"; }
   }
   if (plafond && attenteMs > 0) {
     // Rien ne part. L'app le dit tel quel : l'heure du dernier envoi, le
