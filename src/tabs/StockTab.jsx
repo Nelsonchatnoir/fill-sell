@@ -75,6 +75,7 @@ import BandeauDejaVendu from '../annonces/BandeauDejaVendu';
 import QuestionMarque from '../annonces/QuestionMarque';
 import { estQuestionMarqueHorsCatalogue, marqueDemandee } from '../utils/questionMarque';
 import { marqueComparable, estSansMarque } from '../../supabase/functions/_shared/marque-absente.js';
+import { attendIdentiteLbc, attentesIdentiteLbc } from '../../supabase/functions/_shared/lbc-identite.js';
 // ⛔ UNE SEULE LECTURE DU MUR pour les trois surfaces (carte de sync du
 //    dressing, carte « Mes annonces en ligne », parcours d'entrée) : celle
 //    d'annonces/etatReleve. Une seconde signature ici aurait fini par mentir.
@@ -108,6 +109,7 @@ import MenuArticle from '../stock/MenuArticle';
 import EcranSelection from '../stock/EcranSelection';
 import EcranARegler from '../stock/EcranARegler';
 import EcranRetraitsBloques from '../stock/EcranRetraitsBloques';
+import EcranIdentiteLbc from '../stock/EcranIdentiteLbc';
 import {
   actionPrincipale, libelleAction, ancienneteJours, estAncienne, pastilleCourte, dateCourte, nombreFr,
   FILTRES_RAPIDES, libelleFiltreRapide, entreDansFiltreRapide, TRANCHES_ANCIENNETE, libelleTranche, trancheAnciennete,
@@ -6683,6 +6685,13 @@ const StockTab = memo(function StockTab({
     () => retraitsBloquesParConnexion({ jobs: tousLesJobs, fiches: fichesToutes }),
     [tousLesJobs, fichesToutes],
   );
+  // ── (06/10 soir) LEBONCOIN DEMANDE NOM ET PRÉNOM : UNE CARTE PAR COMPTE ──
+  // Motif EXACT (_shared/lbc-identite.js) : ces tâches sortent des lignes par
+  // article et deviennent UNE ligne de « À régler » (EcranIdentiteLbc).
+  const identiteLbc = useMemo(
+    () => attentesIdentiteLbc(tousLesJobs).filter((j) => fichesToutes.has(String(j.inventaire_id))),
+    [tousLesJobs, fichesToutes],
+  );
   // ── LA FOURNÉE, FIGÉE (2026-09-19) ────────────────────────────────────────
   // POURQUOI un état et pas un simple calcul : le périmètre du lot de
   // republications était RE-DÉDUIT à chaque poll (le bulk_batch_id du vivant le
@@ -6805,6 +6814,8 @@ const StockTab = memo(function StockTab({
     const lignes = [];
     for (const [cle, j] of activiteParCle) {
       if (estArretUtilisateur(j) || estGeleLivres(j)) continue;
+      // Un geste sur le COMPTE Leboncoin (nom et prénom) : une seule carte, pas une ligne par article.
+      if (attendIdentiteLbc(j)) continue;
       const cause = j.status === 'needs_user' ? 'completer'
         : j.status === 'failed' ? 'echec' : null;
       if (!cause) continue;
@@ -8322,7 +8333,8 @@ const StockTab = memo(function StockTab({
   // (05/10) Les retraits bloqués par une connexion COMPTENT : une annonce
   // vendue encore en ligne attend un geste (se reconnecter), comme le reste.
   const nbRetraitsBloques = retraitsBloques.total;
-  const nbARegler = nbRetraitsBloques + nbAttenteAction + questionsDejaVendu.length + nbSansPrix + brouillons.length;
+  const nbIdentiteLbc = identiteLbc.length ? 1 : 0; // une carte par compte, quel que soit le nombre d'annonces
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + questionsDejaVendu.length + nbSansPrix + brouillons.length;
   const ligneRetraits = ligneAReglerRetraits(retraitsBloques, lang);
   const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
@@ -8331,6 +8343,11 @@ const StockTab = memo(function StockTab({
     // Le tap ouvre « Annonces à retirer », qui porte « Me connecter ».
     { cle: 'retraits', n: nbRetraitsBloques, titre: ligneRetraits.titre, detail: ligneRetraits.detail,
       onOuvrir: () => setGesteOuvert('retraits') },
+    { cle: 'lbc_identite', n: nbIdentiteLbc, titre: lang === 'fr' ? 'Leboncoin : ton nom et ton prénom' : 'Leboncoin: your first and last name',
+      detail: lang === 'fr'
+        ? `${identiteLbc.length} annonce${identiteLbc.length > 1 ? 's' : ''} Leboncoin en attente : complète ton compte une fois, elles partent toutes seules.`
+        : `${identiteLbc.length} Leboncoin listing${identiteLbc.length > 1 ? 's' : ''} waiting: complete your account once, they go out on their own.`,
+      onOuvrir: () => setGesteOuvert('lbc_identite') },
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
@@ -11042,6 +11059,11 @@ const StockTab = memo(function StockTab({
       {gesteOuvert==='retraits'&&(
         <EcranRetraitsBloques lang={lang} retraits={retraitsBloques} userId={user?.id}
           motifDe={(j)=>murDeConnexion(j)??MOTIFS.CONNEXION} onFermer={()=>setGesteOuvert('a_regler')}/>
+      )}
+      {gesteOuvert==='lbc_identite'&&(
+        <EcranIdentiteLbc lang={lang} attentes={identiteLbc}
+          titreDe={(j)=>fichesToutes.get(String(j.inventaire_id))?.titre ?? j.title}
+          onRelance={()=>rafraichirApresSync()} onFermer={()=>setGesteOuvert('a_regler')}/>
       )}
       {ecranDejaVendu&&(
         <EcranDoublons lang={lang} items={items} doublons={questionsDejaVendu}

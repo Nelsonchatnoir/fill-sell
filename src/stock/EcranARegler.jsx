@@ -8,12 +8,12 @@
 // est devenue « Remonter »). Chaque ligne rouvre la porte qui EXISTAIT :
 // la feuille d'attente, l'écran des doublons, le mode prix d'achat, le mode
 // brouillons. Aucun chemin neuf.
-import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle } from 'lucide-react';
+import { ChevronRight, CircleAlert, BadgeEuro, Tag, PenLine, AlertTriangle, UserRound } from 'lucide-react';
 import EcranPlein from './EcranPlein';
 import { S } from './jetons';
 import { nombreFr } from './regles';
 
-const ICONES = { retraits: AlertTriangle, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine };
+const ICONES = { retraits: AlertTriangle, lbc_identite: UserRound, attente: CircleAlert, ventes: BadgeEuro, prix: Tag, brouillons: PenLine };
 // (05/10) Une annonce vendue encore en ligne (retrait bloqué par une
 // connexion) : rouge, comme le bandeau du haut — un risque de double vente,
 // pas une information à compléter.
@@ -26,6 +26,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
   const present = (...cles) => lignes.some((l) => cles.includes(l.cle) && l.n > 0);
   const parts = [
     present('retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
+    present('lbc_identite') && (fr ? 'ton compte Leboncoin à compléter' : 'your Leboncoin account to complete'),
     present('attente') && (fr ? 'des annonces qui attendent ton geste' : 'listings waiting on you'),
     present('ventes') && (fr ? 'des ventes à confirmer' : 'sales to confirm'),
     present('prix', 'brouillons') && (fr ? 'des infos à compléter' : 'info to complete'),

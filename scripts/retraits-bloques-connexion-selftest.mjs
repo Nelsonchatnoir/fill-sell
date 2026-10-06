@@ -162,7 +162,7 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   const ecranRetraits = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
   ok("l'écran : la phrase, « Me connecter » par plateforme et la liste des articles", /texteRetraitsBloques\(g, lang\)/.test(ecranRetraits) && /<BoutonMeConnecter userId=\{userId\} platform=\{g\.platform\}/.test(ecranRetraits) && /g\.lignes\.map\(\(l\) =>/.test(ecranRetraits));
   ok("l'écran garde le gabarit de la refonte (EcranPlein)", /<EcranPlein /.test(ecranRetraits));
-  ok("« À régler » compte les retraits bloqués", /const nbARegler = nbRetraitsBloques \+ nbAttenteAction/.test(src));
+  ok("« À régler » compte les retraits bloqués", /const nbARegler = nbRetraitsBloques \+ (?:nbIdentiteLbc \+ )?nbAttenteAction/.test(src));
   ok("« À régler » : ligne 'retraits' en tête", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\{ cle: 'retraits', n: nbRetraitsBloques/.test(src));
   // (05/10, relu au harnais) Le bouton COMPACT : la variante « bouton »
   // débordait de la carte à 360 et 390 px.
