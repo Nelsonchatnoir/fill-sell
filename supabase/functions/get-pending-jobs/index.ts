@@ -32,6 +32,7 @@ import { titrePourJob, titreVide, CLE_TITRE_SAISI } from "../_shared/titre-du-jo
 import { servirRetraitsEbayParNumero } from "../_shared/retrait-ebay-par-numero.js";
 import { decisionAdresseRepublicationLbc, rueDesReglagesMemeCommune, texteRefuseCommune, textesErreurJob } from "../_shared/lbc-voie-des-reglages.js";
 import { tailleBeebsDeLaFiche } from "../_shared/beebs-taille-de-la-fiche.js";
+import { tourDeTailleEnFrancais, brancheDeTaille } from "../_shared/taille-de-service.js";
 import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
@@ -4322,7 +4323,7 @@ serve(async (req) => {
           }
           if (!String(pf["taille"] ?? "").trim()) {
             const vf = tailleFiche.get(Number(j.inventaire_id));
-            const t = vf ? tailleBeebsDeLaFiche(vf, listesBeebs.get(chemin.join(" > ")) ?? []) : null;
+            const t = vf ? tailleBeebsDeLaFiche(vf, listesBeebs.get(chemin.join(" > ")) ?? [], brancheDeTaille(chemin)) : null;
             if (t) {
               pf["taille"] = t.valeur;
               repris["taille"] = `${t.valeur} (fiche ; ${t.champ} de la liste Beebs)`;
@@ -9843,6 +9844,23 @@ serve(async (req) => {
         }
       }
     }
+    // ══ LEBONCOIN : UN TOUR DE TAILLE SERVI EN TAILLE FRANÇAISE (06/10 soir) ══
+    // patrick giry, jean « W28 L32 » : la grille Leboncoin des vêtements
+    // (clothing_st, relevée le 07/09 : « 34 - XS » … « 38 - M ») n'écrit AUCUN
+    // tour de taille — la valeur ne trouvait rien et l'annonce partait SANS
+    // taille (critère non obligatoire, aucun signal). Le tour de taille est
+    // servi en français par la table que Vinted publie (« W28 | FR 38 ») :
+    // « 38 », que l'extension pose sur « 38 - M ». Copie servie seulement
+    // (jamais la fiche, jamais la base) ; tout ce qui n'est pas un tour de
+    // taille non ambigu passe inchangé (_shared/taille-de-service.js).
+    for (const j of out) {
+      if (j.platform !== "leboncoin" || !["publish", "republish"].includes(String(j.action ?? "publish"))) continue;
+      const pfT = (j.platform_fields ?? {}) as Record<string, unknown>;
+      const enFr = tourDeTailleEnFrancais(pfT.taille);
+      if (!enFr) continue;
+      j.platform_fields = { ...pfT, taille: enFr.valeur, taille_servie: { de: String(pfT.taille), vers: enFr.valeur, motif: enFr.motif, pose_par: "get-pending-jobs" } };
+    }
+
     const _outIds = new Set(out.map((j) => String(j.id)));
     const _nowMs = Date.now();
     const heldBacklog = (jobs ?? []).filter((j) => {

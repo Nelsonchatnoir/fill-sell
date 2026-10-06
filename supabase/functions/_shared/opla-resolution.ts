@@ -36,6 +36,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { oplaChemin, oplaEnfants, oplaNoeud, oplaTaillesDe } from "./opla-catalogue.ts";
 import { tailleDansGrille } from "./tailles.js";
+import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 
 // ── LE VOCABULAIRE, CALQUÉ SUR L'EXTENSION ─────────────────────────────────
 // ⚠️ Ces trois fonctions sont le JUMEAU EXACT de opla.js:389-392. Si elles
@@ -898,7 +899,7 @@ export function cleFourche(options: Array<{ code?: unknown }>): string {
 // ⛔ CONTRE LA GRILLE DE LA FEUILLE, jamais contre l'union des 150 entrées :
 //    TAILLE_UNIQUE et XS…XXL vivent en G1 ET en G4 (soutiens-gorge), et
 //    « 90C » passerait sur un t-shirt (bandeau d'opla-catalogue.ts).
-export function normaliserTailleOpla(codeFeuille: string, taille: unknown): string | null {
+export function normaliserTailleOpla(codeFeuille: string, taille: unknown, branche: string | null = null): string | null {
   const brut = String(taille ?? "").trim();
   if (!brut) return null;
   const grille = oplaTaillesDe(codeFeuille).map((t) => t.code);
@@ -914,6 +915,14 @@ export function normaliserTailleOpla(codeFeuille: string, taille: unknown): stri
   // sans jamais convertir un système en un autre.
   const t = tailleDansGrille(brut, grille);
   if (t) return t.valeur;
+
+  // ── (06/10 soir) PLUS JAMAIS BLOQUÉ PAR UNE CORRESPONDANCE ──────────────
+  // _shared/taille-de-service.js, après tailleDansGrille (inchangé) : tour de
+  // taille → FR (table Vinted), nombre français → lettre pour les FEMMES sur
+  // une grille sans chiffre (« W28 L32 » → « M », patrick giry), stature entre
+  // parenthèses, « Ajustable ». La branche vient du chemin de la feuille.
+  const service = tailleDeService(brut, grille, { branche: branche ?? brancheDeTaille(oplaChemin(codeFeuille)) });
+  if (service) return service.valeur;
 
   // Un préfixe régional est une information de taille : ne jamais le supprimer.
   return null;

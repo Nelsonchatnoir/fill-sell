@@ -93,14 +93,19 @@ const POLO = { // PASSÉ ce soir — idem
 
 for (
   const [nom, cas, feuille, taille] of [
-    ["robe rouge Oh Polly", ROBE_ROUGE, "WOM_DRE_OTHER", "38"],
-    ["robe champagne Oh Polly", ROBE_CHAMPAGNE, "WOM_DRE_OTHER", "38"],
-    ["pantalon cigarette Sandro", PANTALON, "W_REGULAR_PANTS", "38"],
+    // (06/10 soir, Nico : « plus jamais un article bloqué par une
+    // correspondance ») Le « 38 » femme face à une grille Opla SANS aucun
+    // chiffre prend « M » par la table que Vinted (« M / 38 / 10 »),
+    // Leboncoin (« 38 - M ») et Beebs publient — _shared/taille-de-service.js,
+    // R2. Avant (point G du 28/09) : « 38 » conservé, question posée.
+    ["robe rouge Oh Polly", ROBE_ROUGE, "WOM_DRE_OTHER", "M"],
+    ["robe champagne Oh Polly", ROBE_CHAMPAGNE, "WOM_DRE_OTHER", "M"],
+    ["pantalon cigarette Sandro", PANTALON, "W_REGULAR_PANTS", "M"],
   ] as const
 ) {
   const { pf } = passer(cas);
   ok(`${nom} → ${feuille}`, pf.oplaCategoryCode === feuille, pf.oplaCategoryCode ?? pf.oplaCategoryAsk);
-  ok(`${nom} → taille « ${taille} » conservée avant le choix dans la grille`, pf.taille === taille, pf.taille);
+  ok(`${nom} → taille « ${taille} » servie (table femme publiée, grille sans chiffre)`, pf.taille === taille, pf.taille);
   ok(`${nom} → aucune question posée`, !pf.oplaCategoryAsk, pf.oplaCategoryAsk);
   ok(`${nom} → genre « Femme », lu sur l'étagère Vinted`, pf.genre === "Femme", pf.genre);
 }
@@ -148,7 +153,7 @@ console.log("\n── ① la réponse donnée n'est jamais recalculée (G2) ─�
     Array.isArray(pf.oplaCategoryPath) && (pf.oplaCategoryPath as string[])[0] === "Femmes",
     pf.oplaCategoryPath,
   );
-  ok("la taille 38 n'est pas convertie en M : le choix reste nécessaire", pf.taille === "38", pf.taille);
+  ok("la taille 38 (femme, grille sans chiffre) est servie en M — table publiée, plus de question (06/10)", pf.taille === "M", pf.taille);
   ok("la question n'est pas reposée par-dessus", !(trace as Record<string, unknown>).oplaCategoryAsk, trace);
   ok("la trace nomme la source", /votre réponse/.test(JSON.stringify(trace)), trace);
   ok("la réponse est rangée pour le compte", aRetenir?.entree.code === "WOM_DRE_OTHER", aRetenir);
@@ -238,7 +243,8 @@ console.log("\n── ③ on ne force aucune taille ──");
 {
   const horsTable = { ...ROBE_ROUGE, pf: { ...ROBE_ROUGE.pf, taille: "46" } };
   const { pf } = passer(horsTable);
-  ok("un « 46 » hors de la table femme n'est pas arrondi", pf.taille === "46", pf.taille);
+  // « XXXL / 46 » est écrit par Vinted (fixture du 18/09) : ce n'est pas un arrondi.
+  ok("un « 46 » femme → « 3XL » (XXXL / 46 de la table publiée), jamais arrondi", pf.taille === "3XL", pf.taille);
 }
 {
   // La table femme ne vaut QUE la branche femme : un « 38 » d'homme reste 38.

@@ -17,6 +17,7 @@ import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 import { resoudreAspectsIA, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
 import { estSansMarque } from "./marque-absente.js";
+import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 
 export const MARKETPLACE = "EBAY_FR";
 export const ARBRE_FR = "71";
@@ -538,6 +539,19 @@ export function tailleSansPrefixeEuFr(nomAspect: string, brut: string, liste: st
   const m = PREFIXE_EU_FR_RE.exec(String(brut ?? "").replace(/\s+/g, " ").trim());
   return m ? valeurDeListeCorrespondante(m[1], liste) : null;
 }
+// ── (06/10 soir) LA TAILLE QUE LA LISTE eBay N'ÉCRIT PAS AUTREMENT ────────
+// patrick giry, jean « W28 L32 », catégorie 11554 : la liste fermée porte « 38 »
+// (Femme) — refus 25129 puis question. _shared/taille-de-service.js, APRÈS le
+// recalage d'avant (texte, préfixe EU/FR) : tour de taille → FR (table publiée
+// par Vinted), nombre français → lettre pour une femme face à une liste sans
+// chiffre, stature entre parenthèses, « Ajustable ». Sur une liste fermée
+// seulement ; la branche vient du Département, du genre ou du rayon.
+export function tailleServieEbay(nomAspect: string, brut: string, liste: string[], pf: PlatformFields, ebayAspects: Record<string, unknown>): string | null {
+  if (!/taille|pointure/i.test(nomAspect)) return null;
+  const branche = brancheDeTaille(String(ebayAspects["Département"] ?? ""), String(pf.genre ?? ""),
+    Array.isArray(pf.ebayCategoryPath) ? pf.ebayCategoryPath : []);
+  return tailleDeService(brut, liste, { branche })?.valeur ?? null;
+}
 export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
   const manquants: string[] = [];
@@ -596,7 +610,9 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     // (rejeu du 01/10 : 1fba4dbf publiée ainsi) et ne doit pas changer.
     const recale = a.allowedValues.length
       ? (valeurDeListeCorrespondante(brut, a.allowedValues)
-        ?? (a.mode === "SELECTION_ONLY" ? tailleSansPrefixeEuFr(a.name, brut, a.allowedValues) : null))
+        ?? (a.mode === "SELECTION_ONLY"
+          ? (tailleSansPrefixeEuFr(a.name, brut, a.allowedValues) ?? tailleServieEbay(a.name, brut, a.allowedValues, pf, ebayAspects as Record<string, unknown>))
+          : null))
       : null;
     if (recale) {
       if (recale !== brut) recalages.push(`${a.name}: « ${brut} » → « ${recale} »`);
