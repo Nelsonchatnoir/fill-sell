@@ -166,10 +166,47 @@ console.log("\n── 6. Le câblage du Stock ───────────�
   ok("« À régler » : ligne 'retraits' en tête", /const lignesARegler = \[\n(?:\s*\/\/.*\n)*\s*\{ cle: 'retraits', n: nbRetraitsBloques/.test(src));
   // (05/10, relu au harnais) Le bouton COMPACT : la variante « bouton »
   // débordait de la carte à 360 et 390 px.
-  ok("carte vendue : la ligne et « Me connecter » (compact)", /ligneCarteRetraitBloque\(p, lang\)\}\s*<\/span>\s*<BoutonMeConnecter userId=\{user\.id\} platform=\{p\}[^>]*variante="bouton" compact\/>/.test(src));
+  ok("carte vendue : la ligne et « Me connecter » (compact), jamais sur « compte bloqué » (06/10)", /ligneCarteRetraitBloque\(p, lang, murDe\.get\(p\)\)\}\s*<\/span>\s*\{murDe\.get\(p\) !== 'compte_bloque' && <BoutonMeConnecter userId=\{user\.id\} platform=\{p\}[^>]*variante="bouton" compact\/>\}/.test(src));
   ok("Opla reconnue par le mur ancré (jumeau de handler-watch)", /opla: \/\^Connexion Opla requise\/i/.test(src));
   const ecran = readFileSync(new URL("../src/stock/EcranARegler.jsx", import.meta.url), "utf8");
   ok("écran « À régler » : icône de la ligne 'retraits'", /retraits: AlertTriangle/.test(ecran));
+}
+
+console.log("\n── 7. (06/10) Vinted : session absente, session illisible, « compte bloqué » ──");
+{
+  // Formes RELEVÉES en base le 06/10 (geronimo 94bf96fe, pironneau 15cad160,
+  // DeadRoz a7dd76cd, Sandra 333e23d4).
+  const ger = { id: "94bf96fe", inventaire_id: 500, platform: "vinted", action: "delete", status: "pending", created_at: "2026-10-03T21:55:13Z",
+    listing_url: "https://www.vinted.fr/items/10205785002", title: "Official Overwatch 2 fleece hoodie",
+    error: "Connecte-toi à Vinted sur ton ordinateur. Rien n'a été touché : le retrait repart tout seul dès que tu es connecté (prochain essai dans 30 min).",
+    platform_fields: { attente_connexion: { platform: "vinted", depuis: "2026-10-06T08:18:58Z" }, verification_boutique_vinted: { motif: "session_inconnue", n: 7 } } };
+  const piro = { id: "15cad160", inventaire_id: 501, platform: "vinted", action: "delete", status: "pending", created_at: "2026-10-04T10:00:08Z",
+    listing_url: "https://www.vinted.fr/items/9923486901", title: "Figurine Power Rangers",
+    platform_fields: { verification_boutique_vinted: { motif: "session_inconnue", n: 5 } } };
+  const dead = { id: "a7dd76cd", inventaire_id: 502, platform: "vinted", action: "delete", status: "pending", created_at: "2026-10-01T20:09:57Z",
+    listing_url: "https://www.vinted.fr/items/9865454800", title: "Jeans Levi's homme 511",
+    platform_fields: { compte_vinted_bloque: { depuis: "2026-10-03T11:00:08Z", essais: 5 } } };
+  const sandra = { ...dead, id: "333e23d4", inventaire_id: 503, status: "needs_user", listing_url: "https://www.vinted.fr/items/9733506257",
+    platform_fields: { needs_user_source: "compte_vinted_bloque", compte_vinted_bloque: { essais: 1 } } };
+  const autreBoutique = { ...piro, id: "x1", inventaire_id: 504, listing_url: "https://www.vinted.fr/items/1", platform_fields: { verification_boutique_vinted: { motif: "origine_inconnue" } } };
+  const f7 = new Map([["500", { id: 500, title: "Hoodie", statut: "stock" }], ["501", { id: 501, title: "Figurine", statut: "vendu" }],
+    ["502", { id: 502, title: "Jeans", statut: "vendu" }], ["503", { id: 503, title: "T'choupi", statut: "stock" }], ["504", { id: 504, title: "Autre", statut: "stock" }]]);
+  ok("session Vinted absente (attente_connexion) → compté, mur « connexion »", retraitBloqueParConnexion(ger, MAINTENANT));
+  ok("session illisible avant le retrait (session_inconnue) → compté", retraitBloqueParConnexion(piro, MAINTENANT));
+  ok("boutique d'origine inconnue (pas une connexion) → pas compté", !retraitBloqueParConnexion(autreBoutique, MAINTENANT));
+  const r7 = retraitsBloquesParConnexion({ jobs: [ger, piro, dead, sandra, autreBoutique], fiches: f7, maintenant: MAINTENANT });
+  ok("4 retraits Vinted à régler (2 connexion, 2 compte bloqué)", r7.total === 4, r7.total);
+  const gCx = r7.parPlateforme.find((g) => g.platform === "vinted" && g.mur === "connexion");
+  const gCb = r7.parPlateforme.find((g) => g.platform === "vinted" && g.mur === "compte_bloque");
+  ok("deux cartes Vinted distinctes (connexion / compte bloqué)", gCx?.lignes.length === 2 && gCb?.lignes.length === 2, r7.parPlateforme.map((g) => `${g.platform}:${g.mur}:${g.lignes.length}`));
+  ok("carte « compte bloqué » : retirer depuis l'appli Vinted, jamais « reconnecte-toi »",
+    /compte bloqué/.test(texteRetraitsBloques(gCb, "fr")) && /appli Vinted/.test(texteRetraitsBloques(gCb, "fr")) && !/reconnect/i.test(texteRetraitsBloques(gCb, "fr")), texteRetraitsBloques(gCb, "fr"));
+  ok("ligne de carte vendue « compte bloqué »", /appli Vinted/.test(ligneCarteRetraitBloque("vinted", "fr", "compte_bloque")) && !/reconnecte/i.test(ligneCarteRetraitBloque("vinted", "fr", "compte_bloque")));
+  ok("ligne de carte vendue « connexion » inchangée", ligneCarteRetraitBloque("vinted", "fr") === ligneCarteRetraitBloque("vinted", "fr", "connexion"));
+  const seulCb = ligneARegler(retraitsBloquesParConnexion({ jobs: [dead], fiches: f7, maintenant: MAINTENANT }), "fr");
+  ok("« À régler » seulement « compte bloqué » : le geste est l'appli Vinted", /appli Vinted/.test(seulCb.detail), seulCb.detail);
+  const ecran = readFileSync(new URL("../src/stock/EcranRetraitsBloques.jsx", import.meta.url), "utf8");
+  ok("l'écran ne montre jamais « Me connecter » sur une carte « compte bloqué »", /\{userId && g\.mur !== 'compte_bloque' && \(/.test(ecran));
 }
 
 console.log(echecs ? `\n${echecs} échec(s)` : "\nTout est vert.");

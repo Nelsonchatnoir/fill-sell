@@ -8769,7 +8769,7 @@ const StockTab = memo(function StockTab({
       // rouge et le survol dit pourquoi — la ligne et le bouton sont dessous.
       const bloques = retraitsBloques.parArticle.get(String(item.id));
       if (bloques?.length) {
-        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: 'echec', titre: bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang)).join(' · ') };
+        return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans, ton: 'echec', titre: bloques.map((b) => ligneCarteRetraitBloque(b.platform, lang, b.mur)).join(' · ') };
       }
       return { ...pastilleCourte({ genre: 'vendu', date: dateCourte(item.date_vente ?? item.date ?? null, lang) }, lang), ...sans };
     }
@@ -8876,27 +8876,30 @@ const StockTab = memo(function StockTab({
       // que la sonde revoit la session vivante (handler-watch).
       const bloques = retraitsBloques.parArticle.get(String(item.id)) ?? [];
       const pfBloquees = [...new Map(bloques.map((b) => [b.platform, b.job])).entries()];
+      // (06/10) « Compte bloqué » chez Vinted : pas un mur de connexion — la
+      // ligne dit de retirer l'annonce dans l'appli Vinted, jamais « Me connecter ».
+      const murDe = new Map(bloques.map((b) => [b.platform, b.mur ?? 'connexion']));
       const element = pfBloquees.length && user?.id ? (
         <div onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}
           style={{display:'flex',flexDirection:'column',gap:8,padding:'9px 10px',borderRadius:12,background:SK.rougeFond,border:`1px solid ${SK.rougeBord}`}}>
           {pfBloquees.map(([p, j]) => (
             <div key={p} style={{display:'flex',flexDirection:'column',gap:8}}>
               <span style={{fontSize:12,lineHeight:'16px',fontWeight:700,color:SK.rouge}}>
-                <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang)}
+                <IconeTexte icone={AlertTriangle} taille={12} style={{marginRight:4}}/>{ligneCarteRetraitBloque(p, lang, murDe.get(p))}
               </span>
-              <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton" compact/>
+              {murDe.get(p) !== 'compte_bloque' && <BoutonMeConnecter userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="bouton" compact/>}
             </div>
           ))}
         </div>
       ) : null;
       const mur = pfBloquees.length && user?.id ? (
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
-          {pfBloquees.map(([p, j]) => <BoutonMeConnecter key={p} userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="ligne"/>)}
+          {pfBloquees.filter(([p]) => murDe.get(p) !== 'compte_bloque').map(([p, j]) => <BoutonMeConnecter key={p} userId={user.id} platform={p} motif={murDeConnexion(j) ?? MOTIFS.CONNEXION} lang={lang} variante="ligne"/>)}
         </div>
       ) : null;
       return {
         principale: null, element, mur, prixAchat: null, note: null, bas: null, action: null,
-        infos: pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: 'echec', texte: ligneCarteRetraitBloque(p, lang) })),
+        infos: pfBloquees.map(([p]) => ({ cle: `retrait-bloque-${p}`, ton: 'echec', texte: ligneCarteRetraitBloque(p, lang, murDe.get(p)) })),
         menu: [
           { cle: 'modifier', icone: Pencil, libelle: fr ? "Modifier l'article" : 'Edit item', onTap: d.openEdit },
           ...(onDupliquer ? [{ cle: 'dupliquer', icone: Copy, libelle: fr ? 'Dupliquer' : 'Duplicate', detail: fr ? 'Une nouvelle fiche en stock, sans annonce' : 'A new stock item, with no listing', onTap: () => onDupliquer(item) }] : []),

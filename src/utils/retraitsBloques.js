@@ -53,7 +53,15 @@ const ts = (v) => { const t = Date.parse(String(v ?? '')); return Number.isFinit
 export function retraitBloqueParConnexion(job, maintenant = Date.now()) {
   if (!job || job.action !== 'delete') return false;
   const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
-  if (job.status === 'pending') return !!pf.attente_session;
+  // (06/10, geronimo, wattelle, pironneau) Un retrait Vinted qui attend une
+  // session Vinted dans Chrome (« Connecte-toi à Vinted sur ton ordinateur »,
+  // attente_connexion ; ou session illisible avant le retrait,
+  // verification_boutique_vinted session_inconnue) attend AUSSI la personne :
+  // il n'apparaissait nulle part dans « À régler ».
+  if (job.status === 'pending') {
+    return !!pf.attente_session || !!pf.attente_connexion
+      || pf.verification_boutique_vinted?.motif === 'session_inconnue';
+  }
   if (job.status !== 'needs_user') return false;
   const err = String(job.error ?? '').trim();
   if (ANTIROBOT_RE.test(err) || pf.blocage_antirobot || pf.attente_antirobot_compte) return false;
@@ -63,6 +71,19 @@ export function retraitBloqueParConnexion(job, maintenant = Date.now()) {
   if (pf.mur_geste && typeof pf.mur_geste === 'object' && pf.mur_geste.type === 'connexion') return true;
   if (pf.pas_de_rouge && typeof pf.pas_de_rouge === 'object' && pf.pas_de_rouge.motif === 'connexion') return true;
   return MESSAGE_CONNEXION_RE.test(err);
+}
+
+/**
+ * (06/10, DeadRoz, Sandra) Vinted affiche « compte bloqué » (/main/banned) à la
+ * place de l'annonce : FillSell réessaie seul, mais rien ne garantit que Vinted
+ * rende l'accès — la personne peut retirer l'annonce depuis l'appli Vinted.
+ * Ce n'est PAS un mur de connexion : jamais « Me connecter » ici.
+ */
+export function retraitBloqueParCompteVinted(job) {
+  if (!job || job.action !== 'delete' || job.platform !== 'vinted') return false;
+  if (job.status !== 'pending' && job.status !== 'needs_user') return false;
+  const pf = job.platform_fields && typeof job.platform_fields === 'object' ? job.platform_fields : {};
+  return pf.needs_user_source === 'compte_vinted_bloque' || !!pf.compte_vinted_bloque;
 }
 
 /** L'annonce visée par un retrait : article (ou le job lui-même), plateforme, lien. */
@@ -99,23 +120,27 @@ export function retraitsBloquesParConnexion({ jobs = [], fiches = null, maintena
   const groupes = new Map();
   const parArticle = new Map();
   for (const j of derniers.values()) {
-    if (!retraitBloqueParConnexion(j, maintenant)) continue;
+    const mur = retraitBloqueParCompteVinted(j) ? 'compte_bloque' : (retraitBloqueParConnexion(j, maintenant) ? 'connexion' : null);
+    if (!mur) continue;
     const fiche = lireFiche(fiches, j.inventaire_id);
     const titre = String(fiche?.title ?? fiche?.titre ?? j.title ?? '').trim() || null;
-    const ligne = { job: j, titre, inventaireId: j.inventaire_id ?? null, vendu: fiche?.statut === 'vendu', fiche };
-    if (!groupes.has(j.platform)) groupes.set(j.platform, []);
-    groupes.get(j.platform).push(ligne);
+    const ligne = { job: j, titre, inventaireId: j.inventaire_id ?? null, vendu: fiche?.statut === 'vendu', fiche, mur };
+    const cle = `${j.platform}|${mur}`;
+    if (!groupes.has(cle)) groupes.set(cle, []);
+    groupes.get(cle).push(ligne);
     if (j.inventaire_id != null) {
       const k = String(j.inventaire_id);
       if (!parArticle.has(k)) parArticle.set(k, []);
-      parArticle.get(k).push({ platform: j.platform, job: j });
+      parArticle.get(k).push({ platform: j.platform, job: j, mur });
     }
   }
   const rang = (p) => { const i = ORDRE.indexOf(p); return i < 0 ? ORDRE.length : i; };
   const parPlateforme = [...groupes.entries()]
-    .sort(([a], [b]) => rang(a) - rang(b) || String(a).localeCompare(String(b)))
-    .map(([platform, lignes]) => ({
+    .map(([cle, lignes]) => [cle.split('|')[0], cle.split('|')[1], lignes])
+    .sort(([a, ma], [b, mb]) => rang(a) - rang(b) || String(a).localeCompare(String(b)) || String(ma).localeCompare(String(mb)))
+    .map(([platform, mur, lignes]) => ({
       platform,
+      mur,
       nom: nomDe(platform),
       // Le plus récent d'abord.
       lignes: lignes.sort((a, b) => ts(b.job.created_at) - ts(a.job.created_at)),
@@ -137,6 +162,12 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
   const nom = groupe.nom ?? nomDe(groupe.platform);
   const nVendus = groupe.nVendus ?? groupe.lignes.filter((l) => l.vendu).length;
   const plus = n > 1;
+  if (groupe.mur === 'compte_bloque') {
+    const risqueCb = nVendus > 0 ? (fr ? ' — risque de double vente' : ' — risk of selling twice') : '';
+    return fr
+      ? `${n} annonce${plus ? 's' : ''} encore en ligne sur ${nom} : sur ton ordinateur, ${nom} affiche « compte bloqué » à la place de ${plus ? 'tes annonces' : 'ton annonce'}. FillSell réessaie tout seul ; retire-${plus ? 'les' : 'la'} toi-même depuis l'appli ${nom} si tu peux${risqueCb}.`
+      : `${n} listing${plus ? 's' : ''} still live on ${nom}: on your computer, ${nom} shows "account blocked" instead of ${plus ? 'your listings' : 'your listing'}. FillSell keeps retrying; remove ${plus ? 'them' : 'it'} yourself from the ${nom} app if you can${risqueCb}.`;
+  }
   if (nVendus === n) {
     return fr
       ? `${n} article${plus ? 's' : ''} vendu${plus ? 's' : ''} encore en ligne sur ${nom} : FillSell ne peut pas ${plus ? 'les' : 'le'} retirer tant que tu ne te reconnectes pas à ${nom} dans Chrome, sur ton ordinateur — risque de double vente.`
@@ -151,8 +182,13 @@ export function texteRetraitsBloques(groupe, lang = 'fr') {
 }
 
 /** La ligne de la carte d'un article vendu dont le retrait attend. */
-export function ligneCarteRetraitBloque(platform, lang = 'fr') {
+export function ligneCarteRetraitBloque(platform, lang = 'fr', mur = 'connexion') {
   const nom = nomDe(platform);
+  if (mur === 'compte_bloque') {
+    return lang === 'en'
+      ? `Still live on ${nom} — "account blocked" on your computer: remove it from the ${nom} app (risk of selling twice)`
+      : `Encore en ligne sur ${nom} — « compte bloqué » sur ton ordinateur : retire-la depuis l'appli ${nom} (risque de double vente)`;
+  }
   return lang === 'en'
     ? `Still live on ${nom} — sign back in to remove it (risk of selling twice)`
     : `Encore en ligne sur ${nom} — reconnecte-toi pour le retirer (risque de double vente)`;
@@ -164,10 +200,18 @@ export function ligneARegler(bloques, lang = 'fr') {
   const n = bloques?.total ?? 0;
   const noms = (bloques?.parPlateforme ?? []).map((g) => g.nom);
   const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${noms[noms.length - 1]}` : (noms[0] ?? '');
+  // (06/10) Seulement des « compte bloqué » chez Vinted : le geste est
+  // l'appli Vinted, pas une reconnexion.
+  const seulementCompteBloque = (bloques?.parPlateforme ?? []).length > 0
+    && (bloques?.parPlateforme ?? []).every((g) => g.mur === 'compte_bloque');
   return {
     titre: fr ? (n > 1 ? 'Annonces encore en ligne à retirer' : 'Annonce encore en ligne à retirer') : (n > 1 ? 'Listings still live to remove' : 'Listing still live to remove'),
-    detail: fr
-      ? `Reconnecte-toi à ${liste} pour que FillSell ${n > 1 ? 'les' : 'la'} retire — risque de double vente.`
-      : `Sign back in to ${liste} so FillSell can remove ${n > 1 ? 'them' : 'it'} — risk of selling twice.`,
+    detail: seulementCompteBloque
+      ? (fr
+        ? `« Compte bloqué » sur ${liste} : retire-${n > 1 ? 'les' : 'la'} depuis l'appli ${liste} — risque de double vente.`
+        : `"Account blocked" on ${liste}: remove ${n > 1 ? 'them' : 'it'} from the ${liste} app — risk of selling twice.`)
+      : fr
+        ? `Reconnecte-toi à ${liste} pour que FillSell ${n > 1 ? 'les' : 'la'} retire — risque de double vente.`
+        : `Sign back in to ${liste} so FillSell can remove ${n > 1 ? 'them' : 'it'} — risk of selling twice.`,
   };
 }

@@ -35,14 +35,14 @@ export default function EcranRetraitsBloques({ lang = 'fr', retraits, userId, mo
         </div>
       </div>
       {(retraits?.parPlateforme ?? []).map((g) => (
-        <div key={g.platform} style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div key={`${g.platform}|${g.mur ?? 'connexion'}`} style={{ marginTop: 16, borderRadius: 16, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: S.rougeFond, color: S.rouge }}>
               <AlertTriangle size={20} strokeWidth={2} aria-hidden="true" />
             </span>
             <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: S.ink }}>{texteRetraitsBloques(g, lang)}</span>
           </div>
-          {userId && (
+          {userId && g.mur !== 'compte_bloque' && (
             <BoutonMeConnecter userId={userId} platform={g.platform} motif={motifDe(g.lignes[0]?.job)} lang={lang} variante="bouton" style={{ alignItems: 'flex-start' }} />
           )}
           <ul style={{ listStyle: 'none', margin: 0, padding: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${S.borderSoft}` }}>
