@@ -153,7 +153,7 @@ import { completerTexteDuVendeur, aCompleter as aCompleterTexteVendeur, DELAI_DE
 import { uniteDuChamp, valeurAvecUnite, nombreSansUnite } from '../utils/champsDimension';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
-  EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
+  EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS,
   ecouterPresenceExtension, demanderSyncDressing,
   lireCapaciteSyncCompte, demanderSyncDressingServeur,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
@@ -163,6 +163,7 @@ import {
   DETAIL_VERSION_MIN,
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
+import { decisionDemarrage, attentesDeConnexion, jobAttendConnexion, texteConnecteToi } from '../annonces/synchroniser.js';
 
 // ── UN SEUL JEU D'ICÔNES (03/10/2026, refonte du Stock) ────────────────────
 // Plus aucun émoji dans l'écran Stock : une icône Lucide au trait, posée dans
@@ -2642,7 +2643,7 @@ function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
   );
 }
 
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null, registerEtat = null }) {
+export function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null, registerEtat = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
@@ -2703,6 +2704,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const [capaciteLueA, setCapaciteLueA] = useState(0);
   const [envoi, setEnvoi] = useState(false);   // mise en file en cours
   const clicAtRef = useRef(0);
+  const repliRef = useRef(0);                  // clic déjà replié sur la file (06/10)
 
   // Relecture de la capacité du compte : renvoie la valeur FRAÎCHE (l'état
   // React n'est pas encore à jour dans le même tour) ou null si illisible.
@@ -2801,56 +2803,30 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           if (r.status === 'done') { setDejaSync(true); setDerniereReussie(r); onDone?.(); }
           return;
         }
-      } else if (attenduDepuis && Date.now() - attenduDepuis > SYNC_DEMARRAGE_MAX_MS) {
+      } else if (attenduDepuis) {
+        // ── LE CANAL DIRECT MUET N'EST PLUS UN ÉCHEC (06/10, cas Laura) ─────
+        // Avant : 30 s sans relevé → « l'extension n'a pas démarré », et rien
+        // ne partait jamais (deux clics, zéro relevé, alors que la file serveur
+        // a lu ses 61 annonces en 10 s). Désormais, passé SYNC_REPLI_FILE_MS,
+        // le MÊME geste repart par la file (demander_sync_dressing,
+        // déclencheur bouton_distant) — que l'extension soit muette, occupée
+        // par des republications (le serveur sert la sync AVANT les jobs) ou
+        // sans session (le relevé le dira : « Connecte-toi à Vinted »).
+        // Une seule fois par clic (repliRef) : le tick suivant peut tomber
+        // avant que React n'ait démonté ce suivi.
+        const d = decisionDemarrage({ depuisClicMs: Date.now() - attenduDepuis, questionBoutique: runPoseQuestionBoutique(r ?? run) });
+        if (d === 'attendre') return;
+        if (repliRef.current === attenduDepuis) return;
+        repliRef.current = attenduDepuis;
         setAttente(false);
         setSuivi(false);
-        // ── EXTENSION OCCUPÉE ≠ EXTENSION MUETTE (2026-08-07 soir) ────────
-        // Cas réel antavintage : 22 republications en vol, le verrou global
-        // de l'extension est pris en continu — la sync ATTEND son tour, elle
-        // n'est pas en panne. L'ancien message « extension muette » a
-        // provoqué 6 re-clics en 27 minutes chez un utilisateur qui croyait
-        // à une panne. Quand une republication est non terminale sur le
-        // compte, on dit la vérité : occupée, ça partira après —
-        // et la télémétrie sync_click dit 'attente' et non 'echec'.
-        // ⚠️ `repubEnVol` ne compte plus que les republications SERVABLES
-        // (2026-09-04) : celles qu'une échéance future retient ne rendent pas
-        // l'extension occupée. Une file entièrement différée (repubRepriseA)
-        // reste néanmoins une file — l'écran le dit, avec son heure de reprise,
-        // au lieu de crier « extension muette » sur une extension en bonne
-        // santé qui n'a simplement rien à faire.
-        if (runPoseQuestionBoutique(r ?? run)) {
+        if (d === 'question') {
           // La demande n'est pas partie parce qu'une question attend réponse :
           // on la remontre, on ne parle ni d'attente ni de republications.
           setRappelQuestionBoutique(true);
           return;
         }
-        if (repubEnVol > 0 || repubRepriseA) {
-          if (user?.id) {
-            supabase.from('usage_logs').insert({
-              user_id: user.id, feature: 'sync_click',
-              metadata: {
-                resultat: 'attente', raison: 'extension_occupee_republication', voie: 'directe', source,
-                repub_en_vol: repubEnVol,
-                repub_toutes_differees: repubEnVol === 0 && !!repubRepriseA,
-              },
-            }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
-          }
-          setMessage(null);
-          setAttenteOccupee(true);
-          return;
-        }
-        // Deuxième ligne du même clic (cf. logSyncClick) : « lancée » a été
-        // écrit au clic, mais RIEN n'a démarré en 30 s — c'est l'échec le
-        // plus silencieux du parcours, celui que le blast doit pouvoir voir.
-        if (user?.id) {
-          supabase.from('usage_logs').insert({
-            user_id: user.id, feature: 'sync_click',
-            metadata: { resultat: 'echec', raison: 'extension_muette_30s', voie: 'directe', source },
-          }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
-        }
-        setMessage({ ton: 'orange', texte: fr
-          ? "L'extension n'a pas démarré la synchronisation. Vérifie qu'elle est bien installée, activée et à jour dans Chrome, puis réessaie."
-          : "The extension didn't start the sync. Check that it's installed, enabled and up to date in Chrome, then try again." });
+        replierSurLaFile();
         return;
       }
       if (Date.now() - debut > SYNC_POLL_MAX_MS) {
@@ -2922,14 +2898,20 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       try { r = await lireDernierRunDressing(user.id); }
       catch { return; }
       const t = clicAtRef.current;
-      if (r && (r.status === 'running'
+      // (06/10) La demande est désormais une ligne 'queued' (repli sur la
+      // file) : elle ne lève pas l'attente, seul son départ ou sa fin le fait.
+      if (r && r.status !== 'queued' && (r.status === 'running'
         || (t && Number.isFinite(Date.parse(r.started_at)) && Date.parse(r.started_at) >= t - 5000))) {
         setAttenteOccupee(false);
         setRun(r);
         if (r.status === 'running') setSuivi(true);
+        else if (r.status === 'done') { setDejaSync(true); setDerniereReussie(r); onDone?.(); }
       }
     }, 30000);
     return () => clearInterval(id);
+  // `onDone` lu au moment de la fin : en dépendre relancerait l'attente à
+  // chaque rendu du parent.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attenteOccupee, user?.id, repubEnVol, repubRepriseA]);
 
   // ── Attente d'une réclamation (2026-08-04) ────────────────────────────────
@@ -2958,7 +2940,13 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       if (annule || !r) return;
       setRun(r);
       // Réclamé et démarré : le suivi de progression prend le relais.
-      if (r.status === 'running') { setSuivi(true); clearInterval(id); }
+      if (r.status === 'running') { setAttenteOccupee(false); setSuivi(true); clearInterval(id); }
+      // (06/10) Un relevé court (61 annonces en 10 s chez Laura) peut passer
+      // de 'queued' à 'done' entre deux lectures : sa fin est la nôtre.
+      else if (r.status !== 'queued') {
+        setAttenteOccupee(false);
+        if (r.status === 'done') { setDejaSync(true); setDerniereReussie(r); onDone?.(); }
+      }
     }, SYNC_POLL_MS);
     return () => { annule = true; clearInterval(id); };
   // `run?.id` et non `run` : la ligne est remplacée à chaque tick, dépendre de
@@ -3272,8 +3260,39 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       track('vinted_sync_dressing', { source, reprise: dejaSync, voie: 'file' });
       return;
     }
+    setMessage({ ton: r?.reason === 'deja_en_attente' ? 'vert' : 'orange', texte: texteRefusFile(r) });
+  };
 
-    const texte = (() => {
+  // ── LE REPLI DU CANAL DIRECT SUR LA FILE (06/10) ─────────────────────────
+  // Appelé par le suivi quand le relevé direct n'a pas posé sa ligne à temps.
+  // Même RPC que la voie file, même geste : rien de neuf côté serveur. Une
+  // ligne 'queued' s'affiche comme toute demande distante ; « déjà en cours »
+  // veut dire que le relevé direct vient de démarrer — on le suit.
+  const replierSurLaFile = async () => {
+    const uid = user?.id;
+    if (!uid) return;
+    let r;
+    try { r = await demanderSyncDressingServeur(); }
+    catch (e) { r = { ok: false, reason: 'erreur', message: String(e?.message ?? e) }; }
+    if (r?.ok) logSyncClick('mise_en_file', 'repli_canal_direct', 'repli_file');
+    else logSyncClick(r?.reason === 'erreur' ? 'erreur' : 'refusée', r?.reason === 'erreur' ? String(r?.message ?? '').slice(0, 120) : (r?.reason ?? 'inconnue'), 'repli_file');
+    if (r?.ok || r?.reason === 'deja_en_attente') {
+      setReclamationTardive(false);
+      let lu = null;
+      try { lu = await lireDernierRunDressing(uid); } catch { /* relu au montage */ }
+      if (lu) setRun(lu);
+      if (lu?.status === 'running') { setSuivi(true); return; }
+      // Des republications en file : la synchro passe devant, on le dit.
+      if (repubEnVol > 0 || repubRepriseA) setAttenteOccupee(true);
+      track('vinted_sync_dressing', { source, reprise: dejaSync, voie: 'repli_file' });
+      return;
+    }
+    if (r?.reason === 'sync_en_cours') { setSuivi(true); return; }
+    setMessage({ ton: 'orange', texte: texteRefusFile(r) });
+  };
+
+  function texteRefusFile(r) {
+    return (() => {
       if (r?.reason === 'cadence') {
         const m = r.prochaine_dans_min ?? 15;
         return fr
@@ -3302,8 +3321,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         ? "La demande n'a pas pu être envoyée. Réessaie dans un instant."
         : "The request couldn't be sent. Try again in a moment.";
     })();
-    setMessage({ ton: r?.reason === 'deja_en_attente' ? 'vert' : 'orange', texte });
-  };
+  }
 
   // Bilan du dernier run terminé — affiché seulement s'il n'y a pas de sync en
   // cours (sinon deux états concurrents à l'écran).
@@ -3432,10 +3450,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       //    bouton « Me connecter » rendu juste en dessous porte le geste :
       //    plus de consigne en trois étapes, plus un mot sur le navigateur.
       //    Un 403 qui n'est PAS nommé (bouclier anti-robot) garde son texte.
+      // (06/10) Même tournure pour chaque plateforme : « Connecte-toi à X sur
+      // ton ordinateur » (annonces/synchroniser.js).
       if (murConnexionReleve(run, 'vinted')) {
-        return { ton: 'orange', texte: fr
-          ? "Synchronisation Vinted arrêtée : ta session Vinted n'a pas été trouvée sur ton ordinateur."
-          : "Vinted sync stopped: your Vinted session wasn't found on your computer." };
+        return { ton: 'orange', texte: texteConnecteToi('vinted', lang) };
       }
       if (brut.includes('403')) {
         return { ton: 'orange', texte: fr
@@ -3467,9 +3485,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // Reconnu sur le texte posé par la sonde (vinted.js), qui inclut
       // « session Vinted … (HTTP 401) ».
       if (/session vinted|HTTP 401/i.test(brut)) {
-        return { ton: 'orange', texte: fr
-          ? "Tu n'es pas connecté à Vinted dans ce navigateur. Connecte-toi sur vinted.fr, puis relance la synchronisation."
-          : "You're not signed in to Vinted in this browser. Sign in on vinted.fr, then start the sync again." };
+        return { ton: 'orange', texte: texteConnecteToi('vinted', lang) };
       }
       const lisible = brut && brut.length <= 200 && !/[{}<>]|https?:\/\//.test(brut)
         ? brut
@@ -3826,7 +3842,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           arrive » reste vrai. Passé EXT_SILENCE_MAX_MS sans un seul poll, ce
           n'est plus une attente, c'est un ordinateur éteint — et l'écran le
           dit au lieu d'afficher une progression qui n'avancera pas. */}
-      {enAttenteDistante&&(
+      {enAttenteDistante&&!attenteOccupee&&(
         <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
           {(reclamationTardive||horsLigne)
             ? <Clock size={18} strokeWidth={2} aria-hidden="true" style={{flexShrink:0,color:"#5C6560"}}/>
@@ -4620,6 +4636,19 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   // que l'utilisateur s'y connecte (libération par la sonde de l'extension).
   if (encours && attente) {
     return { cle: 'attente_boutique', court: attente.court, ...ambre, fini: false, titre: attente.titre, detail: attente.detail };
+  }
+  // ── ATTENTE DE CONNEXION (06/10, cas julien) ─────────────────────────────
+  // Aucune session sur la plateforme dans Chrome : la republication attendait
+  // sans un mot. On le dit, avec la même phrase partout, et elle repart seule.
+  const pfConnexion = jobAttendConnexion(job);
+  if (encours && pfConnexion) {
+    return {
+      cle: 'attente_boutique', court: fr ? 'Connecte-toi' : 'Sign in', ...ambre, fini: false,
+      titre: texteConnecteToi(pfConnexion, fr ? 'fr' : 'en'),
+      detail: fr
+        ? `${texteConnecteToi(pfConnexion, 'fr')} Rien n'a été touché : ta republication repart toute seule dès que tu es connecté.`
+        : `${texteConnecteToi(pfConnexion, 'en')} Nothing was touched: your repost resumes on its own once you're signed in.`,
+    };
   }
   if (encours && pf.attente_boutique) {
     const qui = pf.attente_boutique.login
@@ -6162,6 +6191,10 @@ const StockTab = memo(function StockTab({
     const jobs = Object.values(jobsByInventaire).flat();
     return etatAttenteBoutique({ jobs, origines: originesBoutique, connectee: boutiqueConnectee, boutiques: boutiquesVinted, lang });
   }, [boutiqueConnectee, originesBoutique, jobsByInventaire, boutiquesVinted, lang]);
+  // (06/10, cas julien) Republications et retraits qui attendent une session
+  // absente de Chrome : { vinted: 19 }. Lu dans les jobs déjà chargés, aucune
+  // requête de plus.
+  const attenteConnexion = useMemo(() => attentesDeConnexion(Object.values(jobsByInventaire).flat()), [jobsByInventaire]);
   // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
   // IMPÉRATIVEMENT APRÈS la déclaration du state ci-dessus : posées avant,
   // elles levaient une TDZ au montage (« Cannot access 'jobsByInventaire'
@@ -9703,6 +9736,22 @@ const StockTab = memo(function StockTab({
             <div role="status" style={{marginTop:16,background:SK.ambreFond,border:`1px solid ${SK.ambreBord}`,borderRadius:12,padding:"8px 12px",fontSize:12,lineHeight:'16px',color:SK.ambreEncre,fontWeight:600}}>
               {lignesAttenteBoutique(attenteBoutique,lang).map((l,i)=><div key={i}>{l}</div>)}
               <div style={{marginTop:4,color:SK.ink2,fontWeight:500}}>{phraseRassurance(lang)}</div>
+            </div>
+          )}
+          {/* (06/10, cas julien) Une session absente se DIT : plus de pause
+              silencieuse. Même phrase pour chaque plateforme. */}
+          {Object.keys(attenteConnexion).length>0&&(
+            <div role="status" style={{marginTop:16,background:SK.ambreFond,border:`1px solid ${SK.ambreBord}`,borderRadius:12,padding:"8px 12px",fontSize:12,lineHeight:'16px',color:SK.ambreEncre,fontWeight:600}}>
+              {Object.entries(attenteConnexion).map(([pf,n])=>(
+                <div key={pf}>
+                  {texteConnecteToi(pf,lang)}{' '}
+                  <span style={{color:SK.ink2,fontWeight:500}}>
+                    {lang==='en'
+                      ?`${n} action${n>1?'s are':' is'} waiting for it and will resume on ${n>1?'their':'its'} own.`
+                      :`${n} opération${n>1?'s':''} l'attend${n>1?'ent':''} et repartir${n>1?'ont':'a'} toute${n>1?'s':''} seule${n>1?'s':''}.`}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
 

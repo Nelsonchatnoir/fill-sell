@@ -36,6 +36,18 @@ export async function lireSyncMultiOuverte(userId) {
   return false;
 }
 
+// (06/10) Au clic « Synchroniser » : les plateformes choisies (« Où tu
+// vends ? », platform_settings.plateformes_vendeur) et l'état des sessions
+// relevé par l'extension. UNE lecture, au geste — jamais en boucle.
+export async function lireChoixEtSessions(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase.from('profiles')
+    .select('platform_settings,extension_sessions').eq('id', userId).maybeSingle();
+  if (error || !data) return null;
+  const choisies = data.platform_settings?.plateformes_vendeur;
+  return { choisies: Array.isArray(choisies) ? choisies : null, sessions: data.extension_sessions ?? null };
+}
+
 // Mise en file d'un relevé. Le serveur tranche (ouverture, version, cadence).
 // Réponses : queued | deja_en_attente | sync_en_cours | non_expose |
 // extension_jamais_vue | extension_trop_ancienne | cadence | rpc_absente | erreur.

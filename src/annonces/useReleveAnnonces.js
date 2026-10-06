@@ -22,8 +22,9 @@ import { useOplaAcces } from '../utils/oplaAcces';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
   lireAnnoncesARattacher, compterAnnoncesParPlateforme, texteRefusReleve, lireDernierRunVinted,
-  lireRelevesVides, lireAnnoncesEnRangement,
+  lireRelevesVides, lireAnnoncesEnRangement, lireChoixEtSessions,
 } from '../utils/syncPlateformes';
+import { ciblesReleve } from './synchroniser.js';
 import { avecDernierReleveVide } from './releveVide';
 import { lireDoublonsProposes } from '../utils/doublons';
 
@@ -123,15 +124,33 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     recharger();
   }, [busy, toutBusy, lancerVinted, oplaAcces, lang, recharger]);
 
-  // « Tout relever » : Vinted d'abord (son propre chemin), puis chaque
-  // plateforme à la suite. Les refus (cadence, relevé déjà en cours…) sont
-  // réunis en UN message ; ce qui part, part.
+  // « Tout relever » : chaque plateforme à la suite, Vinted par son propre
+  // chemin. Les refus (cadence, relevé déjà en cours…) sont réunis en UN
+  // message ; ce qui part, part.
+  // (06/10, cas Laura) Seulement les plateformes CHOISIES (« Où tu vends ? »),
+  // connectées ou déjà relevées — les choisies d'abord. Elle n'avait choisi
+  // que Vinted : Leboncoin, Beebs et eBay partaient quand même, trois
+  // « absente » sur des plateformes qu'elle n'utilise pas.
   const toutRelever = useCallback(async () => {
     if (busy || toutBusy) return;
     setToutBusy(true); setMessage(null);
-    try { if (typeof lancerVinted === 'function') lancerVinted(); } catch { /* la ligne Vinted dit le refus */ }
+    let choix = null;
+    try { choix = await lireChoixEtSessions(userId); } catch { /* rien de connu : tout, comme avant */ }
+    const dejaRelevees = [
+      ...Object.entries(compte ?? {}).filter(([, c]) => (c?.total ?? 0) > 0).map(([p]) => p),
+      ...(runVinted ? ['vinted'] : []),
+    ];
+    const cibles = ciblesReleve({
+      plateformes: ['vinted', ...(cle ? cle.split(',') : [])],
+      choisies: choix?.choisies ?? null, sessions: choix?.sessions ?? null, dejaRelevees,
+    });
+    track('releve_tout_cibles', { cibles: cibles.join(','), choisies: (choix?.choisies ?? []).join(',') });
     const refus = [];
-    for (const p of cle ? cle.split(',') : []) {
+    for (const p of cibles) {
+      if (p === 'vinted') {
+        try { if (typeof lancerVinted === 'function') lancerVinted(); } catch { /* la ligne Vinted dit le refus */ }
+        continue;
+      }
       const run = runs[p] ?? null;
       if (run && (run.status === 'queued' || run.status === 'running')) continue;
       // Opla sans autorisation : sautée, avec son motif. Un geste GLOBAL ne
@@ -149,7 +168,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     setToutBusy(false);
     if (refus.length) setMessage({ ton: 'orange', texte: refus.join(' · ') });
     recharger();
-  }, [busy, toutBusy, lancerVinted, cle, runs, oplaAcces, fr, lang, recharger]);
+  }, [busy, toutBusy, lancerVinted, cle, runs, oplaAcces, fr, lang, recharger, userId, compte, runVinted]);
 
   return {
     fr, lang, userId,
