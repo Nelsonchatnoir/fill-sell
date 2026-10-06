@@ -199,6 +199,20 @@ const FR = {
   supprFinale: 'Confirmation finale',
   supprFinaleTexte: 'Toutes tes données seront supprimées définitivement.',
   supprDefinitif: 'Supprimer définitivement',
+  // ── « Pourquoi tu pars ? » (06/10) — facultatif, jamais bloquant ─────────
+  departTitre: 'Pourquoi tu pars ?',
+  departFacultatif: 'facultatif',
+  departTexte: "Ta réponse nous aide à corriger ce qui ne va pas. Elle n'est pas reliée à ton compte.",
+  departMotifs: {
+    installation: 'Trop compliqué à installer (extension, ordinateur)',
+    pas_marche: "Ça n'a pas marché (synchronisation, publication…)",
+    trop_cher: 'Trop cher',
+    plus_besoin: "Je n'en ai plus besoin, j'arrête de vendre",
+    autre_outil: "J'utilise un autre outil",
+    autre: 'Autre raison',
+  },
+  departPlus: 'Tu veux nous en dire plus ?',
+  departPlusAide: 'Facultatif',
 
   // ── Pied de page ────────────────────────────────────────────────────────
   extensionVersion: (v) => `Extension ${v}`,
@@ -374,6 +388,20 @@ const EN = {
   supprFinale: 'Final confirmation',
   supprFinaleTexte: 'All your data will be permanently deleted.',
   supprDefinitif: 'Delete permanently',
+  // ── "Why are you leaving?" (06/10) — optional, never blocking ────────────
+  departTitre: 'Why are you leaving?',
+  departFacultatif: 'optional',
+  departTexte: "Your answer helps us fix what went wrong. It isn't linked to your account.",
+  departMotifs: {
+    installation: 'Too complicated to set up (extension, computer)',
+    pas_marche: "It didn't work (sync, publishing…)",
+    trop_cher: 'Too expensive',
+    plus_besoin: "I don't need it anymore, I've stopped selling",
+    autre_outil: 'I use another tool',
+    autre: 'Other reason',
+  },
+  departPlus: 'Want to tell us more?',
+  departPlusAide: 'Optional',
 
   extensionVersion: (v) => `Extension ${v}`,
   appBuild: (b) => `app ${b}`,

@@ -67,11 +67,15 @@ const EXT_MIN_BUILD = typeof __FILLSELL_EXT_MIN_BUILD__ !== 'undefined' ? __FILL
 // PUBLISHED_BUILD_IDS côté build, jamais saisi ici). null = on ne sait pas, et
 // alors l'annonce de présence de l'extension ne peut RIEN éteindre.
 const EXT_MIN_VERSION = typeof __FILLSELL_EXT_MIN_VERSION__ !== 'undefined' ? __FILLSELL_EXT_MIN_VERSION__ : null;
+// Version de l'app (package.json, injectée par Vite) + empreinte du commit :
+// « 2.9.59+abc1234 ». Sert à la réponse « Pourquoi tu pars ? » (06/10).
+const VERSION_APP = [typeof __FILLSELL_APP_VERSION__ !== 'undefined' ? __FILLSELL_APP_VERSION__ : null, String(APP_BUILD_ID ?? '').split('+')[1] || null].filter(Boolean).join('+') || null;
 const buildIdTimestamp = (id) => {
   const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/.exec(String(id ?? ''));
   return m ? Date.parse(m[1]) : null;
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
+import { supprimerMonCompte } from './compte/supprimerCompte';
 import { fusionnerReglages } from './utils/reglagesPlateformes';
 import { titreNorm } from './utils/rapprochementJumeau.js';
 import { enregistrerVenteArticle } from './utils/venteAtomique.js';
@@ -6844,30 +6848,20 @@ export default function App({ loginOnly = false }){
     navigate("/");
   }
 
-  async function handleDeleteAccount(){
+  async function handleDeleteAccount(depart){
     if(!user) return;
     setDeleteLoading(true);
     try {
-      // Même RPC que handleReset (2026-09-16) : supprimer son compte ne retire
-      // rien des plateformes, le filet serveur ne doit pas s'y déclencher.
-      // (delete-account refait ce ménage sous la clé service, que le filet
-      // ignore aussi.) Ventes puis inventaire, dans l'ordre de la FK.
-      await supabase.rpc("supprimer_mon_stock_sans_retrait");
-      await supabase.from("profiles").delete().eq("id",user.id);
-      const { data: { session } } = await supabase.auth.getSession();
-      const jwt = session?.access_token;
-      const res = await fetch(
-        `${supabaseUrl}/functions/v1/delete-account`,
-        {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json",
-            "Authorization":`Bearer ${jwt}`,
-            "apikey":supabaseAnonKey,
-          },
-        }
-      );
-      if(!res.ok){ const e=await res.json(); throw new Error(e.error||(lang==='en'?"Account deletion error":"Erreur suppression compte")); }
+      // Séquence dans src/compte/supprimerCompte.js (06/10) : la réponse
+      // « Pourquoi tu pars ? » (facultative, jamais bloquante — 2,5 s au plus,
+      // un échec est avalé), puis À L'IDENTIQUE la RPC du stock sans retrait,
+      // le profil et delete-account. `depart` peut être un événement de clic
+      // (ancien appel) : reponseDepart n'en retient rien.
+      await supprimerMonCompte({
+        supabase, supabaseUrl, supabaseAnonKey, userId:user.id,
+        depart, plateformeApp:platform, versionApp:VERSION_APP,
+        messageErreur:lang==='en'?"Account deletion error":"Erreur suppression compte",
+      });
       // scope 'local' (02/09 soir, même doctrine que handleLogout) : le compte
       // vient d'être SUPPRIMÉ côté serveur — toutes ses sessions meurent avec
       // lui, le scope global n'apportait rien et la purge locale suffit.

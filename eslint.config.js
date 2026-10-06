@@ -27,6 +27,7 @@ export default defineConfig([
         __FILLSELL_APP_BUILD__: 'readonly',
         __FILLSELL_EXT_MIN_BUILD__: 'readonly',
         __FILLSELL_EXT_MIN_VERSION__: 'readonly',
+        __FILLSELL_APP_VERSION__: 'readonly',
       },
       parserOptions: {
         ecmaVersion: 'latest',
