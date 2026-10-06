@@ -3772,6 +3772,9 @@ serve(async (req) => {
           sessions: sessionsSondees,
           oplaAccesDuPoste,
           reprises: reprisesFaites,
+          // (06/10) le build qui rapporte l'échec : un poste qui porte déjà un
+          // correctif ne se fait jamais promettre « la nouvelle version ».
+          build: String(body.handler_build ?? ""),
         });
         const pfS = { ...pfBase };
         if (erreurTechniqueBrute == null && typeof body.error === "string" && body.error) {

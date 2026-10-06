@@ -57,6 +57,29 @@ export function messageColisAttendMiseAJour(action) {
     "(Chrome la met à jour tout seul). Rien n'est perdu, rien à faire de ton côté.";
 }
 
+// ── LE POSTE PORTE DÉJÀ LE CORRECTIF (06/10, patrick giry) ─────────────────
+// « T-shirt Riches Paris » (0.6.100) : 400 `package_size` sur une publication
+// SANS format choisi, la page n'ayant pas affiché la grille. Le message disait
+// « la nouvelle version de l'extension l'envoie directement… dès qu'elle sera
+// installée » — faux : le poste l'avait déjà, et il n'y avait aucun format
+// connu à envoyer. Un poste au moins aussi récent que le correctif reçoit
+// désormais le message vrai : la page n'a pas affiché les formats, nouvel
+// essai (le formulaire rechargé les affiche ; depuis le 06/10, l'extension ne
+// soumet plus dans ce cas). Pur : le préfixe horodaté du BUILD_ID fait foi.
+export function posteAvecEnvoiColis(build) {
+  const m = String(build ?? "").match(/(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)/);
+  const t = m ? Date.parse(m[1]) : NaN;
+  return Number.isFinite(t) && t >= Date.parse(BUILD_COLIS_DANS_ENVOI);
+}
+
+export function messageColisNonAfficheParLaPage(action, dansMinutes = 30) {
+  return (action === "republish"
+    ? "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : "
+    : "Ta publication Vinted n'a pas abouti, rien n'a été publié : ") +
+    "la page de Vinted n'a pas affiché les formats de colis de ce rayon, que Vinted exige. " +
+    `C'est un aléa de Vinted, rien à faire de ton côté : nouvel essai automatique dans ${dansMinutes} min.`;
+}
+
 export function messageColisRefuseMemeEnvoye(action) {
   return action === "republish"
     ? "Ton annonce a été retirée de Vinted et n'est pas encore revenue en ligne : Vinted exige le format du colis, que son " +

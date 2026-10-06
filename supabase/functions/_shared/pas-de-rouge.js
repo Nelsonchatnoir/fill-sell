@@ -44,7 +44,7 @@
 
 import { autorisationOplaRequise, connexionOplaRequise, cookiesOplaTropVolumineux } from "./textes-jobs.ts";
 import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.js";
-import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye } from "./vinted-colis.js";
+import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage } from "./vinted-colis.js";
 
 const NOM = {
   vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
@@ -323,6 +323,14 @@ function classerEchecSansRegleRetrait(arg) {
       return {
         verdict: "info", statut: "cancelled", motif: "colis_refuse_meme_envoye",
         message: messageColisRefuseMemeEnvoye(action),
+      };
+    }
+    // (06/10, patrick giry) Le poste porte DÉJÀ l'envoi direct : rien à
+    // attendre d'une mise à jour — le message le dit, sans build_min_requis.
+    if (posteAvecEnvoiColis(arg.build)) {
+      return {
+        verdict: "reprise", statut: "pending", motif: "colis_non_affiche", dansMinutes: 30,
+        message: messageColisNonAfficheParLaPage(action, 30),
       };
     }
     return {
