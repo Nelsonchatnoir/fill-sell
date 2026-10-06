@@ -204,7 +204,10 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
 
   // Vinted : `lireDernierRunVinted` ne rend que des runs finis, son
   // `finished_at` suffit. Les autres portent un `status`.
-  const fini = vinted ? run?.finished_at : (run?.status === 'done' ? run.finished_at : null);
+  // (06/10, extension 0.6.100) Un relevé partiel sort « incomplete » ; les
+  // extensions d'avant le closent « done » + « [incomplet] ». Les deux se
+  // disent pareil : « incomplet x/y », jamais « N annonces » ni « à jour ».
+  const fini = vinted ? run?.finished_at : ((run?.status === 'done' || run?.status === 'incomplete') ? run.finished_at : null);
   // ── UN RELEVÉ INCOMPLET NE SE DIT JAMAIS « N ANNONCES » (27/09) ──────────
   // jocabroc8 : « 30 annonces », pastille verte, alors que le relevé avait lu
   // 30 annonces sur 176. On dit ce qui a été lu SUR ce que la plateforme
@@ -224,7 +227,7 @@ export function etatTuile({ run, vinted = false, etatVinted = null, T, fr, pip }
       horsCompte,
     };
   }
-  if (fini && !vinted && String(run.erreur ?? '').startsWith('[incomplet]')) {
+  if (fini && !vinted && releveIncomplet(run)) {
     const lus = Number(run.items_vus ?? 0);
     const annonce = totalAnnonceDuRun(run);
     return {
@@ -347,6 +350,13 @@ export function lireVague({ plateformes, runs, runVinted, etatVinted }) {
 // Le « dernier relevé », c'est le PLUS RÉCENT des relevés réussis (Vinted
 // comprise) ; le nombre, c'est la SOMME de ce que chaque dernier relevé réussi
 // a vu. Une plateforme jamais relevée n'ajoute rien et ne retire rien.
+// Un relevé (hors Vinted) qui n'a pas tout vu : statut « incomplete »
+// (extension 0.6.100) ou « done » marqué « [incomplet] » (extensions d'avant).
+export function releveIncomplet(run) {
+  if (!run) return false;
+  return run.status === 'incomplete' || (run.status === 'done' && String(run.erreur ?? '').startsWith('[incomplet]'));
+}
+
 export function lireBilan({ plateformes, runs, runVinted }) {
   const reussis = [];
   if (runVinted?.finished_at && plateformes.includes('vinted')) {
@@ -356,6 +366,10 @@ export function lireBilan({ plateformes, runs, runVinted }) {
     if (p === 'vinted') continue;
     const r = runs[p];
     if (r?.status !== 'done' || !r.finished_at) continue;
+    // ⛔ (06/10, Joe0410 30/340) Un relevé partiel n'est PAS une
+    //    synchronisation : il ne compte ni dans « Synchronisé il y a… » ni
+    //    dans « N annonces à jour ». Il se dit dans « À faire » (incomplet).
+    if (releveIncomplet(r)) continue;
     reussis.push({ fini: Date.parse(r.finished_at), vus: Number(r.items_vus ?? 0) });
   }
   const valides = reussis.filter((r) => Number.isFinite(r.fini));
