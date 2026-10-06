@@ -340,8 +340,8 @@ qui survit à ça, c'est du code.
 - ⛔ **Une vente ne retire que les copies de CET exemplaire sur les AUTRES
   plateformes**, liées à la fiche par une preuve — `retrait_job_prouve(job)` :
   dépôt FillSell de la fiche, identifiant, annonce importée comme fiche
-  propre, geste de la personne ; JAMAIS un lien par le titre ni un job amené
-  par une fusion automatique. Une par plateforme, jamais la plateforme de la
+  propre, geste de la personne ; JAMAIS le titre ni une fusion auto (sauf
+  photo identique, 06/10) ; non prouvée = question (`copie_non_prouvee`). Une par plateforme, jamais la plateforme de la
   vente, jamais quand la fiche porte deux annonces vivantes sur la plateforme
   (`fiche_annonces_vivantes`). Les deux gardes vivent dans `armer_retrait_job`
   (tous ses appelants) et `armer_retraits_copies` (migration 20260928001000).

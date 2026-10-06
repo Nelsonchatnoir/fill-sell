@@ -196,7 +196,11 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
 - **Deux annonces sur la même plateforme sont deux exemplaires.** Une vente ne
   retire que les copies de CET exemplaire sur les AUTRES plateformes, liées
   par une preuve (`retrait_job_prouve` : dépôt FillSell, identifiant, import,
-  geste de la personne ; jamais une fusion automatique).
+  geste de la personne ; jamais une fusion automatique, SAUF par photo
+  identique — 06/10). Une copie encore en ligne non prouvée devient la
+  question « Déjà vendu ? » (`inventaire_doublons.motif = 'copie_non_prouvee'`,
+  une par copie) : « Oui, la retirer » arme le retrait par
+  `armer_retrait_job_pour`, « Non » n'est jamais reposé (06/10, Nico).
 - **Aucun verdict sur un relevé incomplet** (refusée, disparue, vendue) ; un
   relevé incomplet est repris seul.
 - **Un champ manquant se demande** (choix fermés en français), il ne se
