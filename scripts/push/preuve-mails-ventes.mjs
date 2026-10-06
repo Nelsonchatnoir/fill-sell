@@ -68,6 +68,10 @@ begin
     (i4, u, 'Robe jamais revue preuve', 'stock', 1, 25, null, '990000104', 'vinted'),
     (i5, u, 'Livre eBay preuve', 'stock', 1, 9, 2, null, 'ebay'),
     (i6, u, 'Lampe LBC preuve', 'stock', 1, 18, null, null, 'leboncoin');
+  -- (06/10 soir, migration 20261006210000) Comme un vrai relevé : les Baskets
+  -- ont été VUES EN LIGNE par le relevé d'il y a une heure — c'est cette
+  -- preuve, par annonce, que le déclencheur du relevé exige désormais.
+  update inventaire set vinted_status = 'active', last_synced_at = now() - interval '60 minutes' where id = i1;
   -- Cinq mails de support reçus aujourd'hui (comme Louis du 03 au 05/10).
   for v_n in 1..5 loop
     insert into email_logs (user_id, email_type, email, sent_at) values (u, 'support_preuve_' || v_n, 'hoosslocal@gmail.com', now() - (v_n || ' hours')::interval);

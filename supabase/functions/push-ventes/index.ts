@@ -155,6 +155,9 @@ Deno.serve(async (req) => {
     mails_envoyes: 0, mails_deja: 0, mails_a_reessayer: 0, mails_sans_adresse: 0, erreurs: [] as string[],
   };
 
+  // Une preuve illisible arrête l'appel après ce tour : la reprise attend le
+  // passage suivant (cron d'une minute), jamais trois essais en quelques secondes.
+  let finirApres = false;
   while (rapport.tours < 6 && Date.now() < fin) {
     rapport.tours++;
     const { data, error } = await admin.rpc("push_ventes_a_envoyer", { p_limite: 50 });
@@ -187,15 +190,23 @@ Deno.serve(async (req) => {
     // n'attend aucun relevé de la boutique (sinon une vraie vente du jour
     // partirait sans mail chez tout compte non relevé la veille), et une
     // annonce à quantité vendue une 2e fois est une 2e vente.
+    // ⛔ (06/10 soir, migration 20261006210000) Une note qui porte la preuve de
+    // son déclencheur (preuve_recente : la veille ou un relevé l'a vue EN LIGNE
+    // hier ou aujourd'hui, ou FillSell l'a publiée < 48 h) n'attend plus un
+    // relevé de la boutique ; « déjà vue vendue un jour précédent » reste exigé.
+    // Une lecture ratée ne laisse RIEN partir : ces notes sont reprises au
+    // passage suivant (trois essais au plus, base).
     const anciennes = new Set<number>();
+    const aReprendre = new Set<number>();
     try {
-      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id, vendu_le").in("id", notes.map((n) => n.id));
-      const parNote = new Map<number, { user: string; items: string[]; job: string | null }>();
-      for (const l of (lignes ?? []) as Array<{ id: number; user_id: string; cles: string[] | null; job_id: string | null; vendu_le: string | null }>) {
+      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id, vendu_le, preuve_recente").in("id", notes.map((n) => n.id));
+      if (!lignes) throw new Error("notes illisibles");
+      const parNote = new Map<number, { user: string; items: string[]; job: string | null; prouvee: boolean }>();
+      for (const l of lignes as Array<{ id: number; user_id: string; cles: string[] | null; job_id: string | null; vendu_le: string | null; preuve_recente: string | null }>) {
         const datee = Date.parse(String(l.vendu_le ?? ""));
         if (Number.isFinite(datee) && Date.now() - datee < 48 * 3_600_000) continue; // date de vente récente = preuve
         const items = (l.cles ?? []).map((k) => /^annonce:vinted:(\d+)$/.exec(String(k))?.[1]).filter(Boolean) as string[];
-        if (items.length) parNote.set(Number(l.id), { user: l.user_id, items, job: l.job_id });
+        if (items.length) parNote.set(Number(l.id), { user: l.user_id, items, job: l.job_id, prouvee: Boolean(l.preuve_recente) });
       }
       if (parNote.size) {
         const jourParis = (t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date(t));
@@ -203,14 +214,15 @@ Deno.serve(async (req) => {
         const hier = jourParis(Date.now() - 86_400_000);
         const users = [...new Set([...parNote.values()].map((v) => v.user))];
         const items = [...new Set([...parNote.values()].flatMap((v) => v.items))];
-        const { data: snaps } = await admin.from("vinted_listing_snapshots")
+        const { data: snaps, error: eS } = await admin.from("vinted_listing_snapshots")
           .select("user_id, vinted_item_id, status, captured_on")
           .in("user_id", users).in("vinted_item_id", items)
           .gte("captured_on", hier).limit(2000);
-        const { data: vendues } = await admin.from("vinted_listing_snapshots")
+        const { data: vendues, error: eV } = await admin.from("vinted_listing_snapshots")
           .select("user_id, vinted_item_id")
           .in("user_id", users).in("vinted_item_id", items)
           .eq("status", "sold").lt("captured_on", aujourdHui).limit(1000);
+        if (eS || eV) throw new Error(`relevés illisibles : ${(eS ?? eV)?.message}`);
         const jobs = [...new Set([...parNote.values()].map((v) => v.job).filter(Boolean))] as string[];
         const { data: pubs } = jobs.length
           ? await admin.from("cross_post_jobs").select("id, published_at").in("id", jobs)
@@ -222,12 +234,28 @@ Deno.serve(async (req) => {
           .filter((p) => p.published_at && Date.now() - Date.parse(p.published_at) < 48 * 3_600_000).map((p) => p.id));
         for (const [id, v] of parNote) {
           if (v.items.some((it) => venduAvant.has(`${v.user}|${it}`))) { anciennes.add(id); continue; }
-          const recente = v.items.some((it) => enLigneRecent.has(`${v.user}|${it}`)) || (v.job != null && publieRecent.has(v.job));
+          const recente = v.prouvee || v.items.some((it) => enLigneRecent.has(`${v.user}|${it}`)) || (v.job != null && publieRecent.has(v.job));
           if (!recente) anciennes.add(id);
         }
       }
     } catch (e) {
       rapport.erreurs.push(`ventes anciennes : ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+      // Rien n'est prouvé : aucune note Vinted sans commande lue (vente_id) ne
+      // part à ce passage.
+      for (const n of notes) {
+        if (String(n.plateforme ?? "") === "vinted" && n.vente_id == null) aReprendre.add(Number(n.id));
+      }
+    }
+    if (aReprendre.size) {
+      const { error: eR } = await admin.rpc("push_ventes_resultat", { p: { notes: notes.filter((n) => aReprendre.has(Number(n.id))).map((n) => ({
+        id: n.id,
+        ...((n.push ?? (n.appareils ?? []).length > 0) ? { statut: "a_reessayer", motif: "preuve_illisible" } : {}),
+        ...(n.mail === true ? { mail: { statut: "a_reessayer", motif: "preuve_illisible" } } : {}),
+      })) } });
+      if (eR) rapport.erreurs.push(`resultat (reprises): ${eR.message}`);
+      notes.splice(0, notes.length, ...notes.filter((n) => !aReprendre.has(Number(n.id))));
+      finirApres = true;
+      if (!notes.length) break;
     }
     if (anciennes.size) {
       const resumeAnciennes = {
@@ -286,6 +314,7 @@ Deno.serve(async (req) => {
     console.log(`[push-ventes] ${JSON.stringify(notes.map((n) => ({
       id: n.id, push: bilans.find((b) => b.id === n.id)?.statut ?? null, mail: mails.get(n.id)?.statut ?? null,
     })))}`);
+    if (finirApres) break;
   }
   return json({ ok: rapport.erreurs.length === 0, ...rapport });
 });
