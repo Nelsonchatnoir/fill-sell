@@ -28,6 +28,14 @@ contraire. Il se périme : `functions list`, `cron.job` et
   mail « paiement échoué » part au client, TOUTES formules ; migrations Cloud
   20261004233000 + 20261005120000 appliquées (reprise : `docs/cloud/REPRISE.md` § 0 bis). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
   les versions d'un cran sans changer le code.
+- **Notifications push à chaque vente (06/10, binaire 2.9.62 / vc33)** : base
+  appliquée (mig 20261006140000 + 150000, cron 34 `push-ventes-1min`),
+  `push-ventes` v3 et `check-listing-status` v36 (`false`) ; INERTE tant
+  qu'aucun téléphone n'est enregistré. Clés et binaires : `npm run
+  binaires:2.9.62` (fichiers dans Téléchargements, `docs/push/CLES-NICO.md`) ;
+  ⛔ jamais d'AAB sans `google-services.json`. Tout appel natif passe par
+  `pushDisponible()` (binaires < 2.9.62 : rien). État : fin de
+  `etat-2026-10-01.md` (« 06/10 après-midi »).
 - **⛔ Gratuit = 50 republications PAR MOIS** (05/10 soir, Nico ; plus « à vie ») :
   coin_config `quota_republication_free`, même cycle que `quota_annonces_free`
   (`debut_cycle_quotas` → `coin_wallets.next_grant_at`), compteur unique

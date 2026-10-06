@@ -7,6 +7,8 @@ historique contraire. `functions list`, `cron.job` et
 
 - **Servi** : extension **0.6.94** ; **0.6.100 à téléverser** (`build/CWS-0.6.100-A-TELEVERSER/`) ;
   minimum **0.6.81** ; web/OTA **2.9.59** ; départs : `departs_compte`.
+- **Push ventes (06/10, binaire 2.9.62)** : mig 140000+150000, cron 34, `push-ventes` ; natif
+  via `pushDisponible()` seulement ; `npm run binaires:2.9.62` (`docs/push/CLES-NICO.md`).
 - **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie=création,
   `ebay-notifications` ; reprise : `docs/reprise/terminal-problemes-0510.md`.
 - **CPU (04/10)** : tâche auto mesurée, bornée ; interdit 11.
