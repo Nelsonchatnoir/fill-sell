@@ -12,6 +12,13 @@ const config: CapacitorConfig = {
   // portrait iOS est imposé par UISupportedInterfaceOrientations dans
   // ios/App/App/Info.plist, pas ici.)
   plugins: {
+    // (06/10) Notifications de ventes (@capacitor/push-notifications, binaire
+    // 2.9.62+). Une vente reçue app OUVERTE s'affiche quand même (bannière,
+    // son, pastille) : la personne ne doit pas la rater parce qu'elle était
+    // dans l'app. Les binaires d'avant ignorent cette clé (plugin absent).
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
     SplashScreen: {
       // ⛔ launchAutoHide PASSE À false (2026-09-22) — EXIGENCE DU PLUGIN.
       // `autoSplashscreen` (CapacitorUpdater, plus bas) ne s'active QUE si le

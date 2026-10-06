@@ -159,6 +159,12 @@ import { apresNouvellesPhotos } from './utils/parcoursLens';
 // (02/10) Sortie d'Opla (bandeau, comptes reliés) et demande d'avis (store / carte).
 import BandeauSortieOpla from './components/BandeauSortieOpla';
 import CarteAvis from './components/CarteAvis';
+// (06/10) Notifications push à chaque vente. ⛔ pushVentes.js vérifie le
+// module natif AVANT tout appel (Capacitor.isPluginAvailable) et ne charge le
+// plugin qu'à ce moment-là : sur un binaire d'avant 2.9.62, rien ne se passe.
+import { initialiserPush, oublierAvantDeconnexion, oublierLocalement, surOuverturePush } from './notifications/pushVentes';
+import PropositionNotifications from './notifications/PropositionNotifications';
+import { usePropositionPush } from './notifications/usePropositionPush';
 import { useSortieOpla } from './hooks/useSortieOpla';
 import { useDemandeAvis } from './hooks/useDemandeAvis';
 import { palierDuProfil, droitsDuPalier, palierLePlusHaut } from './utils/palier';
@@ -2751,6 +2757,27 @@ export default function App({ loginOnly = false }){
   const listRef=useRef(null);
   const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
+  // ── NOTIFICATIONS DE VENTES (06/10) ────────────────────────────────────────
+  // La proposition (« Sois prévenu dès qu'un article se vend ») : jamais au
+  // premier lancement — après une synchro réussie ou une vente, l'app au repos.
+  // Rien du tout sans le module natif (pushDisponible, dans le hook).
+  const propositionPush=usePropositionPush({userId:user?.id,actif:!loading&&!showOnboardingFlow&&!loginOnly&&!listingStepperOpen&&!editItem,aVente:sales.length>0,versionApp:VERSION_APP});
+  // L'appui sur une notification ouvre l'article (sa fiche), sinon les ventes.
+  const [ouverturePush,setOuverturePush]=useState(null);
+  useEffect(()=>{ surOuverturePush((d)=>setOuverturePush({...d})); return()=>surOuverturePush(null); },[]);
+  useEffect(()=>{
+    if(!ouverturePush||!user) return;
+    const id=Number(ouverturePush.inventaire_id);
+    const it=Number.isFinite(id)&&id>0?items.find(i=>Number(i.id)===id):null;
+    if(it){
+      setTab(1);localStorage.setItem('tab','1');
+      setEditItem({...it,_table:'inventaire',frais:(it.statut==='vendu'?it.sellingFees:it.purchaseCosts)??0,sell:it.sell??''});
+      setOuverturePush(null);
+    }else if(!loading){
+      setTab(3);localStorage.setItem('tab','3');
+      setOuverturePush(null);
+    }
+  },[ouverturePush,items,loading,user]);
   // « Dupliquer » en cours (id de l'original) : un second tap ne fait rien.
   const [duplicationEnCours,setDuplicationEnCours]=useState(null);
   // ── LES PHOTOS DE LA MODALE DE MODIFICATION (2026-09-20, demande Louis) ────
@@ -3721,6 +3748,9 @@ export default function App({ loginOnly = false }){
         if(event==='SIGNED_IN'||event==='INITIAL_SESSION') poserSourceSurProfil(supabase,u.id,{createdAt:u.created_at});
         dejaConnecteRef.current=true;
         fetchAll(u.id);
+        // (06/10) Le jeton du téléphone, à la connexion et à chaque ouverture —
+        // seulement si la personne a déjà dit oui (jamais de demande ici).
+        if(event==='SIGNED_IN'||event==='INITIAL_SESSION') initialiserPush({versionApp:VERSION_APP}).catch(()=>{});
       }else{dejaConnecteRef.current=false;setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
     });
     return()=>{ mounted=false; subscription.unsubscribe(); coinRecoveryHandle?.remove?.(); };
@@ -6843,6 +6873,8 @@ export default function App({ loginOnly = false }){
     // (celle du bootstrap extension-session) — chaque déconnexion de l'app
     // mettait l'extension en panne jusqu'au prochain bootstrap. Se déconnecter
     // ICI ne concerne que CE navigateur/appareil.
+    // (06/10) Ce téléphone ne reçoit plus les ventes de ce compte (2,5 s au plus).
+    await oublierAvantDeconnexion();
     await supabase.auth.signOut({ scope: 'local' });
     setUser(null);setSales([]);setItems([]);setResetStep(0);
     navigate("/");
@@ -6862,6 +6894,9 @@ export default function App({ loginOnly = false }){
         depart, plateformeApp:platform, versionApp:VERSION_APP,
         messageErreur:lang==='en'?"Account deletion error":"Erreur suppression compte",
       });
+      // (06/10) Les appareils partent avec le compte (FK en cascade) ; on oublie
+      // aussi le jeton et l'accord gardés sur ce téléphone.
+      oublierLocalement();
       // scope 'local' (02/09 soir, même doctrine que handleLogout) : le compte
       // vient d'être SUPPRIMÉ côté serveur — toutes ses sessions meurent avec
       // lui, le scope global n'apportait rien et la purge locale suffit.
@@ -8814,6 +8849,7 @@ export default function App({ loginOnly = false }){
           }}
         />
       )}
+      {propositionPush.visible&&<PropositionNotifications lang={lang} onActiver={propositionPush.activer} onPlusTard={propositionPush.plusTard}/>}
       {editItem&&(()=>{
         const S={
           eyebrow:{display:"flex",alignItems:"center",gap:7,fontSize:10.5,fontWeight:700,color:"#8A8578",textTransform:"uppercase",letterSpacing:"0.07em"},

@@ -14,6 +14,8 @@ import { track } from '../analytics/analytics';
 import { SegmentedPills } from '../components/ui';
 import { R } from './theme';
 import { Groupe, Carte, Champ, Bouton, Note } from './ReglagesUI';
+// (06/10) Notifications de ventes : ne rend RIEN sans le module natif.
+import ReglageNotifications from '../notifications/ReglageNotifications';
 
 export default function SousPagePreferences({ c, T }) {
   const [pseudo, setPseudo] = useState(c.username ?? '');
@@ -99,6 +101,8 @@ export default function SousPagePreferences({ c, T }) {
         </Carte>
         <Note>{T.deviseNote}</Note>
       </Groupe>
+
+      <ReglageNotifications lang={c.lang} />
     </>
   );
 }
