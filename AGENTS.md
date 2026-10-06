@@ -5,8 +5,8 @@ en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
 historique contraire. `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.100** ; **0.6.101 à téléverser** (`build/CWS-0.6.101-A-TELEVERSER/`) ;
-  minimum **0.6.81** ; web/OTA **2.9.63** ; départs : `departs_compte`.
+- **Servi** : ext. **0.6.100** ; **0.6.102** à téléverser (`build/CWS-0.6.102-*`) ; min **0.6.81** ; web 2.9.64.
+- **06/10 nuit** : `_shared/taille-de-service.js`, `_shared/lbc-identite.js`.
 - **Push ventes** : binaire 2.9.62, cron 34, natif via `pushDisponible()` ; `docs/push/CLES-NICO.md`.
 - **⛔ Mail à chaque vente** (`push-ventes` v7) : vente récente prouvée, jamais plafonné, sans récap.
 - **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; relance après MAJ : `_shared/relance-apres-maj.js`.

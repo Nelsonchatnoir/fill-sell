@@ -4,24 +4,23 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » en fin ; reprise : `docs/reprise/terminal-lignes-rouges-0610.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » en fin ; reprise : `docs/reprise/terminal-six-points-0610-nuit.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.100** au CWS ; **0.6.101 à téléverser**
-  (`build/CWS-0.6.101-A-TELEVERSER/fillsell-extension-0.6.101-3e77bae-cws.zip` :
-  « EU 40 » ≡ « 40 », pages Leboncoin avant les photos, marque par son id,
-  retrait par l'API sous « compte bloqué » ; jamais d'EXTENSION_MIN_BUILD sans
-  décision de Nico) ;
+- **Servi** : extension **0.6.100** au CWS ; **0.6.102 à téléverser**
+  (`build/CWS-0.6.102-A-TELEVERSER/fillsell-extension-0.6.102-b230ebe-cws.zip` =
+  0.6.101 jamais téléversée + format de colis Vinted lu au référentiel quand la
+  page ne l'affiche pas ; jamais d'EXTENSION_MIN_BUILD sans décision de Nico) ;
   **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web et OTA **2.9.63** (06/10 soir : retraits Vinted dans « Annonces à
-  retirer ») ; `get-pending-jobs` v220,
+  web **2.9.64** servi, OTA **2.9.64 à envoyer** (`dist/`, carte unique
+  « Leboncoin : ton nom et ton prénom », le Free republie EN LOT) ; `get-pending-jobs` v221,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `update-job-status` v130, `handler-watch` v89, `push-ventes` v7, `voice-intent` v155, `ops-digest` v31,
-  `ebay-api-worker` v77, `ebay-releve-api` v4, `releve-completer` v2,
+  `update-job-status` v131, `handler-watch` v90, `push-ventes` v8, `voice-intent` v155, `ops-digest` v31,
+  `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) — ⚠️ depuis le 05/10 15:55,
   `invoice.payment_failed` / `payment_action_required` sont COCHÉS chez Stripe : le
