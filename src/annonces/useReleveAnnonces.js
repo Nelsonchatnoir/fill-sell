@@ -145,6 +145,15 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       choisies: choix?.choisies ?? null, sessions: choix?.sessions ?? null, dejaRelevees,
     });
     track('releve_tout_cibles', { cibles: cibles.join(','), choisies: (choix?.choisies ?? []).join(',') });
+    // (06/10) Aucune plateforme à synchroniser : l'appui le DIT, avec le geste
+    // (avant : rien du tout, un appui sans réponse).
+    if (!cibles.length) {
+      setToutBusy(false);
+      setMessage({ ton: 'orange', texte: fr
+        ? 'Aucune plateforme à synchroniser : choisis où tu vends dans Réglages › Mes plateformes.'
+        : 'No platform to sync: choose where you sell in Settings › My platforms.' });
+      return;
+    }
     const refus = [];
     for (const p of cibles) {
       if (p === 'vinted') {

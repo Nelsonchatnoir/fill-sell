@@ -232,8 +232,14 @@ export function texteRefusReleve(res, lang = 'fr', platform = null) {
     cadence: fr ? `Annonces ${nom} synchronisées il y a moins de 15 min — réessaie dans un instant.` : `${nom} listings were synced less than 15 min ago — try again shortly.`,
     rpc_absente: fr ? "La synchronisation n'est pas encore activée côté serveur." : 'Sync is not enabled server-side yet.',
     invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
+    // (06/10) Plus de « Synchronisation impossible. » nu : chaque refus dit son geste.
+    plateforme_ecartee: fr ? `Tu as retiré ${nom} de tes plateformes : remets-la dans Réglages › Mes plateformes pour la synchroniser.` : `You removed ${nom} from your platforms: add it back in Settings › My platforms to sync it.`,
+    unauthorized: fr ? 'Ta session FillSell a expiré : déconnecte-toi puis reconnecte-toi, et appuie à nouveau sur « Synchroniser ».' : 'Your FillSell session expired: sign out and back in, then tap “Sync” again.',
+    erreur: fr ? "La demande n'est pas partie (connexion). Réessaie dans un instant." : "The request didn't go through (connection). Try again in a moment.",
   };
-  return M[res?.reason] ?? res?.message ?? (fr ? 'Synchronisation impossible.' : 'Sync failed.');
+  // Jamais le texte brut du serveur à l'écran (05/10) : un motif inconnu reçoit
+  // la phrase générique, avec le geste.
+  return M[res?.reason] ?? (fr ? "La synchronisation n'a pas pu partir. Réessaie dans un instant." : "The sync couldn't start. Try again in a moment.");
 }
 
 // Vues / favoris relevés par plateforme, par ARTICLE rattaché (colonnes posées
