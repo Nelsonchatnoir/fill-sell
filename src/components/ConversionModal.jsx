@@ -14,6 +14,9 @@ import InterrupteurCloud, { LigneCloudModale, PrixAvecCloud, CarteAjoutCloud, Se
 import { useCloudProfil } from '../cloud/useCloudProfil';
 import { offreCloudPourModale } from '../cloud/regles';
 import { textesCloud } from '../cloud/textes';
+// (06/10) « Bientôt : FillSell Cloud » — encart informatif SOUS les cartes ;
+// à retirer à la sortie du Cloud (interrupteur ENCART_CLOUD_BIENTOT).
+import EncartCloudBientot from '../cloud/EncartCloudBientot';
 import { jourRemise } from '../utils/jourRemise';
 
 // ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
@@ -795,6 +798,10 @@ export default function ConversionModal({
     </div>
   ) : null;
   const blocCloudAuDessus = blocCloud ? <div style={{ marginBottom: 12 }}>{blocCloud}</div> : null;
+  // (06/10) L'encart « Bientôt : FillSell Cloud » : SOUS les cartes, avant la
+  // sortie — il n'éloigne aucun bouton d'abonnement. Il se masque seul (compte
+  // qui a l'option, témoin de la vraie offre, interrupteur baissé).
+  const encartCloud = <EncartCloudBientot lang={lang} userId={userId} />;
 
   // (CAS 1/2 « unités insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
   // 02/09 soir — insufficient_coins ne peut plus exister, cf. bascule quotas.)
@@ -821,6 +828,7 @@ export default function ConversionModal({
         <ToutesOffresBlock fr={fr} />
         {blocCloudAuDessus}
         <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        {encartCloud}
         <Dismiss onClose={fermer} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
     );
@@ -848,6 +856,7 @@ export default function ConversionModal({
         <ToutesOffresBlock fr={fr} />
         {blocCloudAuDessus}
         <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} cloud={cloudCarte} />
+        {encartCloud}
         <Dismiss onClose={fermer} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
     );
@@ -1055,6 +1064,7 @@ export default function ConversionModal({
       {/* Vue comparative (2026-07-22) : les cartes d'emblée, empilées —
           ouvertes par la carte Free (le point de départ du lecteur). */}
       <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} avant={blocCloud} cloud={cloudCarte} voieCloudFree={voieCloudFree} />
+      {encartCloud}
 
       <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>
