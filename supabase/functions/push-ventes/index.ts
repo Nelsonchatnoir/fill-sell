@@ -168,6 +168,75 @@ Deno.serve(async (req) => {
     }
     rapport.notes += notes.length;
 
+    // ── UNE ANNONCE VINTED DÉJÀ VUE VENDUE UN JOUR PRÉCÉDENT N'EST PAS UNE
+    // VENTE DU MOMENT (06/10 soir, Louis/Amiral) ─────────────────────────────
+    // Fiches à quantité (9997) : à chaque relevé, la fiche repasse « vendue »
+    // sur une ANCIENNE annonce (10184114204 vendue depuis le 30/09,
+    // 10152002902 depuis le 04/10…) et le déclencheur de l'inventaire la note
+    // comme une vente neuve : 4 mails à tort le 06/10 à 17:03. Ici, avant tout
+    // envoi : si une clé « annonce:vinted:<n°> » désigne une annonce déjà vue
+    // « sold » par un relevé d'un jour PRÉCÉDENT (vinted_listing_snapshots, une
+    // ligne par annonce et par jour), rien ne part (motif « vente_ancienne »).
+    // Et la preuve qu'elle est RÉCENTE (Anastasia H, 16:58) : la veille a vu
+    // « vendue » deux annonces Vinted dont le dernier relevé en ligne datait
+    // du 06/09 — la vente peut avoir un mois. Une vente Vinted ne part que si
+    // son annonce a été vue EN LIGNE par un relevé hier ou aujourd'hui, ou si
+    // FillSell l'a publiée il y a moins de 48 h. Sinon : « vente_ancienne ».
+    const anciennes = new Set<number>();
+    try {
+      const { data: lignes } = await admin.from("push_ventes").select("id, user_id, cles, job_id").in("id", notes.map((n) => n.id));
+      const parNote = new Map<number, { user: string; items: string[]; job: string | null }>();
+      for (const l of (lignes ?? []) as Array<{ id: number; user_id: string; cles: string[] | null; job_id: string | null }>) {
+        const items = (l.cles ?? []).map((k) => /^annonce:vinted:(\d+)$/.exec(String(k))?.[1]).filter(Boolean) as string[];
+        if (items.length) parNote.set(Number(l.id), { user: l.user_id, items, job: l.job_id });
+      }
+      if (parNote.size) {
+        const jourParis = (t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date(t));
+        const aujourdHui = jourParis(Date.now());
+        const hier = jourParis(Date.now() - 86_400_000);
+        const users = [...new Set([...parNote.values()].map((v) => v.user))];
+        const items = [...new Set([...parNote.values()].flatMap((v) => v.items))];
+        const { data: snaps } = await admin.from("vinted_listing_snapshots")
+          .select("user_id, vinted_item_id, status, captured_on")
+          .in("user_id", users).in("vinted_item_id", items)
+          .gte("captured_on", hier).limit(2000);
+        const { data: vendues } = await admin.from("vinted_listing_snapshots")
+          .select("user_id, vinted_item_id")
+          .in("user_id", users).in("vinted_item_id", items)
+          .eq("status", "sold").lt("captured_on", aujourdHui).limit(1000);
+        const jobs = [...new Set([...parNote.values()].map((v) => v.job).filter(Boolean))] as string[];
+        const { data: pubs } = jobs.length
+          ? await admin.from("cross_post_jobs").select("id, published_at").in("id", jobs)
+          : { data: [] };
+        const venduAvant = new Set(((vendues ?? []) as Array<{ user_id: string; vinted_item_id: string }>).map((v) => `${v.user_id}|${v.vinted_item_id}`));
+        const enLigneRecent = new Set(((snaps ?? []) as Array<{ user_id: string; vinted_item_id: string; status: string }>)
+          .filter((s) => s.status !== "sold").map((s) => `${s.user_id}|${s.vinted_item_id}`));
+        const publieRecent = new Set(((pubs ?? []) as Array<{ id: string; published_at: string | null }>)
+          .filter((p) => p.published_at && Date.now() - Date.parse(p.published_at) < 48 * 3_600_000).map((p) => p.id));
+        for (const [id, v] of parNote) {
+          if (v.items.some((it) => venduAvant.has(`${v.user}|${it}`))) { anciennes.add(id); continue; }
+          const recente = v.items.some((it) => enLigneRecent.has(`${v.user}|${it}`)) || (v.job != null && publieRecent.has(v.job));
+          if (!recente) anciennes.add(id);
+        }
+      }
+    } catch (e) {
+      rapport.erreurs.push(`ventes anciennes : ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+    }
+    if (anciennes.size) {
+      const resumeAnciennes = {
+        notes: notes.filter((n) => anciennes.has(Number(n.id))).map((n) => ({
+          id: n.id,
+          ...((n.push ?? (n.appareils ?? []).length > 0) ? { statut: "echec", motif: "vente_ancienne" } : {}),
+          ...(n.mail === true ? { mail: { statut: "echec", motif: "vente_ancienne" } } : {}),
+        })),
+      };
+      const { error: eA } = await admin.rpc("push_ventes_resultat", { p: resumeAnciennes });
+      if (eA) rapport.erreurs.push(`resultat (anciennes): ${eA.message}`);
+      console.log(`[push-ventes] ${anciennes.size} vente(s) ancienne(s) écartée(s) : ${[...anciennes].join(", ")}`);
+      notes.splice(0, notes.length, ...notes.filter((n) => !anciennes.has(Number(n.id))));
+      if (!notes.length) continue;
+    }
+
     // Le push, pour les notes qui ont un téléphone (langue servie par la base,
     // fr par défaut). `push` absent = ancienne définition : un appareil suffit.
     const aPousser = notes.filter((n) => (n.push ?? (n.appareils ?? []).length > 0) === true);
