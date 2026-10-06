@@ -123,6 +123,22 @@ class Requete {
   async executer() {
     journal().push({ table: this.table, op: this.op, filtres: this.filtres.map((f) => f.join(' ')) });
     if (this.op !== 'select') {
+      // (06/10) Option d'ESSAI : `__FIXTURE.ecritures = { profiles: true }`
+      // applique l'écriture EN MÉMOIRE (fixture) — pour prouver un geste qui
+      // écrit puis relit (confirmer une boutique, puis synchroniser). Toujours
+      // rien sur le réseau ; toute écriture reste journalisée.
+      if (fixture().ecritures?.[this.table] === true && (this.op === 'insert' || this.op === 'update')) {
+        const table = (fixture().tables[this.table] ||= []);
+        (window.__ecrituresFaites ||= []).push({ table: this.table, op: this.op, valeurs: structuredClone(this.valeurs ?? null), filtres: this.filtres.map((f) => f.join(' ')) });
+        if (this.op === 'insert') {
+          const lignes = (Array.isArray(this.valeurs) ? this.valeurs : [this.valeurs]).map((v) => ({ ...v }));
+          table.push(...lignes);
+          return { data: structuredClone(this.unique ? lignes[0] : lignes), error: null };
+        }
+        const touchees = table.filter((r) => this.filtres.every(([neg, op, c, v]) => (neg ? !tester(r, op, c, v) : tester(r, op, c, v))));
+        touchees.forEach((r) => Object.assign(r, structuredClone(this.valeurs)));
+        return { data: structuredClone(this.unique ? (touchees[0] ?? null) : touchees), error: null };
+      }
       (window.__ecrituresRefusees ||= []).push({ table: this.table, op: this.op, valeurs: this.valeurs ?? null, filtres: this.filtres.map((f) => f.join(' ')) });
       return { data: null, error: { message: 'aperçu : écriture refusée (aucune base)', code: 'APERCU' }, count: null, status: 403, statusText: 'aperçu' };
     }

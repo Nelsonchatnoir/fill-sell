@@ -36,6 +36,8 @@
     "selftest:opla-sortie": "node scripts/opla-sortie-selftest.mjs",
     "selftest:avis-demande": "node scripts/avis-demande-selftest.mjs",
     "selftest:avis-plugin-absent": "node scripts/avis-plugin-absent-selftest.mjs",
+    "selftest:boutique-a-confirmer": "node --import ./scripts/loader-ext.mjs scripts/boutique-a-confirmer-selftest.mjs",
+    "preuve:boutique-a-confirmer": "node scripts/apercu/capture-boutique-confirmer.mjs",
     "selftest:push-plugin-absent": "node --import ./scripts/loader-ext.mjs scripts/push-plugin-absent-selftest.mjs",
     "selftest:push-envoi": "deno run scripts/push-envoi-selftest.ts",
     "preuve:push-ventes": "node scripts/push/preuve-push-ventes.mjs",
