@@ -42,9 +42,12 @@ ok(iBloc > 0 && iBloc < iOffre && iBloc < iCartes, "en lot comme en automatique,
 const bloc = modale.slice(iBloc, iOffre);
 ok(/Tu as encore \{repubOffertes\.restantes\} republications ce mois-ci/.test(bloc) && /rien à payer/.test(bloc), "« Tu as encore N republications ce mois-ci — rien à payer »");
 ok(/Remise à zéro le \{remiseOffertes\}/.test(bloc) && /Resets on \{remiseOffertes\}/.test(bloc), "et la date de remise à zéro");
-ok(/une par une : le bouton « Republier » est sur la carte de chaque annonce/.test(bloc), "le geste : une par une, le bouton « Republier » de chaque carte");
-ok(/logModale\('offers_modal_offertes_click'/.test(bloc) && /\{fr \? 'Republier une par une' : 'Repost one by one'\}/.test(bloc),
+// (06/10 soir, Nico) « une par une » était FAUX : le Free republie aussi en lot.
+ok(!/une par une/.test(bloc.replace(/\/\*[\s\S]*?\*\//g, "")) && /en lot avec « Remonter mes annonces », ou une à une avec « Republier »/.test(bloc), "le geste : en lot OU une à une — plus jamais « une par une »");
+ok(/logModale\('offers_modal_offertes_click'/.test(bloc) && /\{fr \? 'Republier mes annonces' : 'Repost my listings'\}/.test(bloc),
   "un bouton qui ramène au stock, mesuré à part (pas compté comme un abandon)");
+ok(/\{!stockVide && \(\s*<button/.test(bloc) && /const stockVide = itemCount === 0;/.test(modale), "stock vide (0 article) : pas de bouton");
+ok(/'Import de tes annonces depuis toutes tes plateformes'/.test(modale) && !/'Import de ton dressing Vinted'/.test(modale), "« Dans tous les forfaits » : l'import, toutes plateformes");
 ok(/quota_republication_free: 50,/.test(modale), "repli de la modale : quota_republication_free (seul repli, comme les autres quotas)");
 ok(/const repubTexte = palier === 'business'/.test(modale), "carte Free : la même phrase « N republications par mois » que Premium et Pro");
 ok(/'Tes republications du mois sont faites\.'/.test(modale), "titre du mur : « Tes republications du mois sont faites. »");
@@ -55,6 +58,8 @@ ok(/repubOffertes=\{quotas\?\.palier==='free'&&quotas\?\.republication\?\.plafon
 
 console.log("\n3. LE STOCK : LE BOUTON « REPUBLIER EN LOT » D'UN GRATUIT");
 const stock = lire("src/tabs/StockTab.jsx");
+ok(/const repubLotReserve = false;/.test(stock), "(06/10 soir, Nico) le Free republie aussi EN LOT — la porte est levée");
+ok(/if \(res\.reason === 'plafond_republication_free'\) \{/.test(stock), "le lot s'arrête net sur le plafond du mois (refus serveur)");
 ok(/Tu as encore \$\{quotas\.republication\.restantes\} republications ce mois-ci\$\{jourRemise\(quotas\.republication\.remise_le,'fr'\)/.test(stock),
   "sous le bouton : ses republications du mois, leur remise à zéro, et comment s'en servir");
 ok(/const msgPlafondRepub = \(res\) => messagePlafondRepublicationGratuit\(res,/.test(stock), "le refus inline passe par la phrase partagée");

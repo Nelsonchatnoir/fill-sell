@@ -6079,7 +6079,12 @@ const StockTab = memo(function StockTab({
   // RPC, aucune unité engagée. isPremium inclut is_comped (expression
   // canonique) ; flags cumulatifs → « est payant » = l'un des trois.
   // La republication À L'UNITÉ reste ouverte au Free (50 par mois, garde serveur).
-  const repubLotReserve = !(isPremium || isPro || isBusiness);
+  // ⛔ (06/10 soir, décision de Nico) LEVÉ : le Free republie AUSSI EN LOT,
+  // dans ses 50 republications du mois — le serveur compte chaque republication
+  // (spend_coins_and_republish → plafond_republication_free, refus géré par le
+  // lot : message + arrêt). Quotas, plafonds, prix et achat : inchangés. La
+  // porte reste câblée (false) pour un retour arrière d'une ligne.
+  const repubLotReserve = false;
   const ouvrirModaleLotReserve = () => {
     if (typeof ouvrirModalePlafond !== 'function') return;
     ouvrirModalePlafond('republication_lot_free', { trigger: 'republish_lot' });

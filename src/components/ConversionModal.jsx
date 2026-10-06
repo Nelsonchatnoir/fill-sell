@@ -179,7 +179,8 @@ export function ToutesOffresBlock({ fr }) {
   // import du dressing, 4 plateformes, voix, retrait auto après vente.
   // Il vit AU-DESSUS des cartes : ce que fait le produit se lit avant les prix.
   const items = [
-    fr ? 'Import de ton dressing Vinted' : 'Import your Vinted wardrobe',
+    // (06/10 soir, Nico) L'import marche depuis TOUTES les plateformes, pas seulement Vinted.
+    fr ? 'Import de tes annonces depuis toutes tes plateformes' : 'Import your listings from all your platforms',
     fr ? 'Publication sur Vinted, Leboncoin, eBay & Beebs' : 'Publishing on Vinted, Leboncoin, eBay & Beebs',
     fr ? 'Commandes vocales' : 'Voice commands',
     fr ? 'Retrait automatique partout après une vente' : 'Automatic removal everywhere after a sale',
@@ -628,6 +629,10 @@ export default function ConversionModal({
   // republications du mois (quotas_etat ; 50 par mois depuis le 05/10). Le mur
   // des republications (en lot, automatique) dit d'abord ce qu'il A DÉJÀ.
   repubOffertes = null,
+  // (06/10 soir) Articles en stock (App : items non vendus) — relu pour UNE
+  // chose : le bouton « Republier mes annonces » n'a rien à proposer sur un
+  // stock vide. null (hôte qui ne le passe pas) = comportement d'avant.
+  itemCount = null,
   // (04/10, option « Sans ordinateur », conception) Ajouter l'option à la
   // formule DÉJÀ payée, sans changer de palier. ⛔ Jamais via
   // onUpgrade(palier actuel) : les hôtes lanceraient un second abonnement.
@@ -916,6 +921,8 @@ export default function ConversionModal({
   // annonces). Absente, passée ou illisible → rien (jamais une date inventée).
   const remiseRepub = jourRemise(plafondRepub?.remise_le, fr ? 'fr' : 'en');
   const remiseOffertes = jourRemise(repubOffertes?.remise_le, fr ? 'fr' : 'en');
+  // (06/10 soir) Stock vide CONNU (0 article) : pas de bouton « Republier mes annonces ».
+  const stockVide = itemCount === 0;
   return (
     <Sheet onClose={fermer}>
       <div style={{
@@ -954,16 +961,24 @@ export default function ConversionModal({
               : <>You still have {repubOffertes.restantes}{repubOffertes.plafond ? <> of {repubOffertes.plafond}</> : null} repostings this month — nothing to pay.{remiseOffertes ? <> Resets on {remiseOffertes}.</> : null}</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 4 }}>
-            {fr
-              ? <>Republie tes annonces une par une : le bouton « Republier » est sur la carte de chaque annonce.</>
-              : <>Repost your listings one by one: the “Repost” button is on each listing's card.</>}
+            {/* (06/10 soir, Nico) FAUX avant : « une par une » — en Free, on
+                republie AUSSI en lot (« Remonter mes annonces » du Stock). */}
+            {stockVide
+              ? (fr
+                ? <>Dès que ton Stock a des annonces, republie-les en lot avec « Remonter mes annonces », ou une à une avec « Republier » sur leur carte.</>
+                : <>Once your Stock has listings, repost them in bulk with “Bump my listings”, or one at a time with “Repost” on their card.</>)
+              : (fr
+                ? <>Republie-les depuis ton Stock : en lot avec « Remonter mes annonces », ou une à une avec « Republier » sur la carte d'une annonce.</>
+                : <>Repost them from your Stock: in bulk with “Bump my listings”, or one at a time with “Repost” on a listing's card.</>)}
           </div>
-          <button type="button"
-            onClick={() => { palierCliqueRef.current = true; logModale('offers_modal_offertes_click', { origine: origine ?? 'non_precisee', trigger, restantes: repubOffertes.restantes }); onClose(); }}
-            style={{ marginTop: 10, padding: '9px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                     background: C.tealDeep, color: '#fff', fontSize: 12.5, fontWeight: 700 }}>
-            {fr ? 'Republier une par une' : 'Repost one by one'}
-          </button>
+          {!stockVide && (
+            <button type="button"
+              onClick={() => { palierCliqueRef.current = true; logModale('offers_modal_offertes_click', { origine: origine ?? 'non_precisee', trigger, restantes: repubOffertes.restantes }); onClose(); }}
+              style={{ marginTop: 10, padding: '9px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                       background: C.tealDeep, color: '#fff', fontSize: 12.5, fontWeight: 700 }}>
+              {fr ? 'Republier mes annonces' : 'Repost my listings'}
+            </button>
+          )}
         </div>
       )}
 
