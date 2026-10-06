@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-05T18:50:03Z'; // 0.6.99 (e7857d9) = 0.6.98 + relevés : pris au démarrage sous le verrou, worker gardé éveillé, plus aucune reprise automatique, veille sans import, lots de 24, requêtes bornées, fins nommées ([pas_connecte], [anti_robot]), clôture des relevés d'annonces avec nouvel essai — Marine 05/10 ; Vinted : jeton d'1 h renouvelé dans l'onglet comme la page, sonde 401 + v_uid = connectée. Paquet build/CWS-0.6.99-A-TELEVERSER.
+export const EXTENSION_LAST_COMMIT = '2026-10-06T06:10:50Z'; // 0.6.100 (35ede5e) = 0.6.99 + relevé Leboncoin : jeton renouvelé comme la page (absent, expiré, 401 → « Mes annonces » rechargée, jeton reposé, adresse relue), adresse relue après le repli sur la page, pagination à chevauchement, défilement patient, relevé partiel clos « incomplete » ; ventes et commandes Leboncoin précédées du contrôle du jeton — Joe0410 30/340, 06/10. Paquet build/CWS-0.6.100-A-TELEVERSER. Remplace la 0.6.99 (jamais téléversée).
+// (avant : '2026-10-05T18:50:03Z' = 0.6.99, e7857d9, paquet CWS-0.6.99-A-TELEVERSER (a58e4bc), JAMAIS téléversé — remplacé par 0.6.100, rangé dans build/anciens-zips)
 // (avant : '2026-10-04T17:56:39Z' = 0.6.96, 17c319a, paquet CWS-0.6.96-A-TELEVERSER (b32685f), à téléverser le 05/10 — 0.6.96 = 0.6.95 + Beebs : la page de l’annonce lue par requête de même origine (…)
 // (avant : '2026-10-04T09:19:39Z' = 0.6.95, 7c03a7f, paquet CWS-0.6.95-A-TELEVERSER, JAMAIS téléversé — remplacé par 0.6.96)
 // (avant : '2026-10-03T21:22:49Z' = 0.6.94, 3165ace, paquet CWS-0.6.94-A-TELEVERSER, ENVOYÉE au CWS et servie le 04/10)
