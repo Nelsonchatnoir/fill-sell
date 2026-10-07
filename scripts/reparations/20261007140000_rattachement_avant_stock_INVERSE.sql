@@ -3,9 +3,12 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- Les sept fonctions remplacées, dans leur définition EN PROD du 07/10 (relue
 -- par pg_get_functiondef avant la migration), puis le retrait des objets neufs.
--- ⚠️ Les comptes en file (rapprochement_comptes) et les annonces classées
--- « sans candidat » (rapprochement_nouvelles) sont perdus : leurs annonces
--- reviennent au moteur d'avant au relevé suivant.
+-- ⚠️ Les comptes en file (rapprochement_comptes) et les annonces classées en
+-- attente de création (rapprochement_nouvelles, doutes compris) sont perdus :
+-- leurs annonces reviennent au moteur d'avant au relevé suivant. Les articles
+-- « à vérifier » (inventaire.a_verifier) redeviennent des articles du stock
+-- affiché ; leur question « Est-ce le même article ? » reste ouverte.
+-- ⚠️ Le rattrapage du parc se défait AVANT (20261007_rattrapage_releves_INVERSE.sql).
 -- Lancer : npx supabase db query --linked -f scripts/reparations/20261007140000_rattachement_avant_stock_INVERSE.sql
 
 BEGIN;
@@ -977,6 +980,12 @@ BEGIN
 END;
 $function$;
 
+DROP TRIGGER IF EXISTS trg_inventaire_doublons_a_verifier ON public.inventaire_doublons;
+DROP FUNCTION IF EXISTS public.inventaire_doublons_a_verifier();
+-- Les articles « à vérifier » reviennent dans le stock affiché, avec leur
+-- question « Est-ce le même article ? » (comme avant le 07/10).
+DROP INDEX IF EXISTS public.inventaire_a_verifier_idx;
+ALTER TABLE public.inventaire DROP COLUMN IF EXISTS a_verifier;
 DROP TRIGGER IF EXISTS trg_rapprochement_fin_run ON public.vinted_sync_runs;
 DO $$ BEGIN PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'rapprochement-1min'; END $$;
 DROP FUNCTION IF EXISTS public.rapprochement_fin_run();

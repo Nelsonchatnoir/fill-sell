@@ -30,24 +30,32 @@
 --          sur une autre plateforme                → rattachée (preuve du 06/10) ;
 --        · tout autre candidat (titre exact,
 --          homonyme, titre inclus, faisceau, photo
---          ambiguë)                               → PROPOSITION hors du stock
---                                                   (« Est-ce le même article ? »,
---                                                   écran de rattachement) ;
---        · aucun candidat                         → là seulement, l'article est
---                                                   créé — une fois toutes les
---                                                   annonces classées, en
---                                                   regroupant la même photo
---                                                   vue sur deux plateformes.
---   3. Le titre ne prouve toujours rien (règle du 27/09) ; un doute est une
---      proposition, jamais une fusion. Veto « type d'objet » (pantalon ≠
---      blazer) : 0 erreur sur les 1 516 paires tranchées par le parc.
+--          ambiguë)                               → « À VÉRIFIER » (voir 5) ;
+--        · aucun candidat                         → l'article est créé.
+--      Création et « à vérifier » : une fois TOUTES les annonces classées, en
+--      regroupant la même photo vue sur deux plateformes (UN article).
+--   3. Le titre ne prouve toujours rien (règle du 27/09) ; un doute n'est
+--      jamais une fusion. Veto « type d'objet » (pantalon ≠ blazer) : 0 erreur
+--      sur les 1 516 paires tranchées par le parc.
+--   5. (07/10 soir, Nico : « un article à vérifier garde TOUT ») « À vérifier »
+--      = un VRAI article (inventaire.a_verifier posé), avec la question « Est-ce
+--      le même article ? » (inventaire_doublons). L'app le montre dans
+--      « Annonces à vérifier », HORS du stock affiché. Parce que c'est un
+--      article, sa vente, le retrait de ses copies, sa republication et ses
+--      mails de vente marchent exactement comme pour tout article — une annonce
+--      sans article (inventaire_id NULL) perdait tout cela. Il entre au stock
+--      quand la question est tranchée (« oui » : réuni à l'autre ; « non » : un
+--      autre article) — déclencheur trg_inventaire_doublons_a_verifier.
+--   6. Photos : AUCUN classement avant que toutes les photos soient comparées,
+--      quel que soit le compte ; une photo qui ne se lit toujours pas après
+--      huit passages sans progrès est notée illisible (photo_empreintes_echecs).
 --   4. La fusion déplace aussi push_ventes et remises_en_vente (et les rend
 --      en défaisant) ; rattacher « oui » une annonce à un article VENDU arme
 --      le bandeau existant « Vendu — encore en ligne, retirer ? ».
 --
 -- CE QUI NE CHANGE PAS : la garde releves_sur_geste (un relevé automatique
--- n'IMPORTE rien : il rattache les preuves sûres, pose les propositions, et
--- laisse les annonces sans candidat attendre le prochain « Synchroniser ») ;
+-- n'IMPORTE rien : il rattache les preuves sûres, et laisse les doutes et les
+-- annonces sans candidat attendre le prochain « Synchroniser ») ;
 -- aucun quota consommé ; la retenue silencieuse Beebs ; les relevés hors
 -- « Mes annonces » et eBay hors compte relié ; les questions de dépôt Beebs.
 --
@@ -61,6 +69,9 @@
 -- ════════════════════════════════════════════════════════════════════════════
 
 BEGIN;
+-- Le verrou de l'ALTER TABLE sur inventaire : jamais une file d'attente
+-- derrière une longue transaction (tout s'annule, on relance).
+SET LOCAL lock_timeout = '10s';
 
 -- ── 1. LA FILE DES COMPTES À RAPPROCHER ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.rapprochement_comptes (
@@ -87,13 +98,15 @@ CREATE POLICY rapprochement_comptes_lecture ON public.rapprochement_comptes FOR 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.rapprochement_comptes TO authenticated;
 CREATE INDEX IF NOT EXISTS rapprochement_comptes_actifs_idx ON public.rapprochement_comptes (maj_le) WHERE etat <> 'termine';
 
--- Les annonces classées « aucun candidat » : elles attendent la phase de
--- création (toutes les annonces du compte classées d'abord).
+-- Les annonces classées, qui attendent la phase de création (toutes les
+-- annonces du compte classées d'abord) : « aucun candidat » (doute NULL) ou
+-- « à vérifier » (doute = les candidats, la question à poser).
 CREATE TABLE IF NOT EXISTS public.rapprochement_nouvelles (
   annonce_id uuid PRIMARY KEY REFERENCES public.annonces_plateforme(id) ON DELETE CASCADE,
   user_id uuid NOT NULL,
   platform text NOT NULL,
-  cree_le timestamptz NOT NULL DEFAULT now()
+  cree_le timestamptz NOT NULL DEFAULT now(),
+  doute jsonb
 );
 CREATE INDEX IF NOT EXISTS rapprochement_nouvelles_user_idx ON public.rapprochement_nouvelles (user_id);
 ALTER TABLE public.rapprochement_nouvelles ENABLE ROW LEVEL SECURITY;
@@ -687,7 +700,7 @@ DECLARE
   t0 timestamptz := clock_timestamp();
   v_budget interval := make_interval(secs => greatest(1000, least(p_budget_ms, 20000)) / 1000.0);
   v_cpu numeric; v_urls text[]; v_n integer; v_reste integer;
-  v_import boolean; v_dette boolean; v_grand boolean;
+  v_import boolean; v_dette boolean; v_doute jsonb; v_q_inv bigint; v_posee boolean; n_aver integer := 0;
   an annonces_plateforme%ROWTYPE; v_res text; v_cand jsonb; v_inv bigint; v_job uuid; v_imp jsonb;
   v_geste boolean; n_dec integer := 0; n_att integer := 0; n_prop integer := 0; n_nouv integer := 0; n_job integer := 0;
   n_crees integer := 0; n_groupes integer := 0; n_err integer := 0; n_ret integer := 0;
@@ -724,27 +737,27 @@ BEGIN
   END IF;
   UPDATE rapprochement_comptes SET debut_le = COALESCE(debut_le, now()), passages = passages + 1 WHERE user_id = p_user;
 
-  v_grand := (SELECT count(*) FROM inventaire i WHERE i.user_id = p_user AND i.statut = 'stock' AND i.fusionne_dans IS NULL) > 5000;
-
   -- ── B. LES EMPREINTES MANQUANTES (annonces à classer, nouvelles, couvertures
-  --    du stock), 200 par passage, TOUTES avant de classer. Seuls comptent les
-  --    passages SANS PROGRÈS (le nombre manquant n'a pas baissé : fonction
-  --    d'empreintes en panne, temps épuisé) : huit au plus, et une photo qui
-  --    ne se lit pas ne bloque jamais le compte (photo_empreintes_echecs).
-  IF NOT v_grand AND c.passages_photos < 8 THEN
-    SELECT count(*)::integer, (array_agg(z.u))[1:200] INTO v_n, v_urls FROM (
-      SELECT DISTINCT y.u FROM (
-        SELECT a.photo_url u FROM annonces_plateforme a
-         WHERE a.user_id = p_user AND a.inventaire_id IS NULL AND a.ignoree_le IS NULL AND a.disparu_le IS NULL
-           AND a.platform IN ('leboncoin', 'beebs', 'ebay', 'opla')
-        UNION ALL
-        SELECT fiche_couverture(i.photos) FROM inventaire i
-         WHERE i.user_id = p_user AND i.statut = 'stock' AND i.fusionne_dans IS NULL
-      ) y
-       WHERE y.u ~ '^https://'
-         AND NOT EXISTS (SELECT 1 FROM photo_empreintes e WHERE e.url = y.u)
-         AND NOT EXISTS (SELECT 1 FROM photo_empreintes_echecs e WHERE e.url = y.u)) z;
-    IF v_urls IS NOT NULL THEN
+  --    du stock), 200 par passage, TOUTES avant de classer — quelle que soit
+  --    la taille du compte. Seuls comptent les passages SANS PROGRÈS (le nombre
+  --    manquant n'a pas baissé : fonction d'empreintes en panne, temps épuisé).
+  --    Au huitième, les photos encore sans empreinte sont notées illisibles
+  --    (photo_empreintes_echecs) : comparées, et sans preuve. Jamais un
+  --    classement pendant que des photos se calculent.
+  SELECT count(*)::integer, (array_agg(z.u))[1:200] INTO v_n, v_urls FROM (
+    SELECT DISTINCT y.u FROM (
+      SELECT a.photo_url u FROM annonces_plateforme a
+       WHERE a.user_id = p_user AND a.inventaire_id IS NULL AND a.ignoree_le IS NULL AND a.disparu_le IS NULL
+         AND a.platform IN ('leboncoin', 'beebs', 'ebay', 'opla')
+      UNION ALL
+      SELECT fiche_couverture(i.photos) FROM inventaire i
+       WHERE i.user_id = p_user AND i.statut = 'stock' AND i.fusionne_dans IS NULL
+    ) y
+     WHERE y.u ~ '^https://'
+       AND NOT EXISTS (SELECT 1 FROM photo_empreintes e WHERE e.url = y.u)
+       AND NOT EXISTS (SELECT 1 FROM photo_empreintes_echecs e WHERE e.url = y.u)) z;
+  IF v_urls IS NOT NULL THEN
+    IF c.passages_photos < 8 THEN
       UPDATE rapprochement_comptes
          SET etat = 'empreintes', maj_le = now(),
              passages_photos = CASE WHEN c.etat = 'empreintes' AND v_n >= COALESCE(c.photos_manquantes, 0)
@@ -752,6 +765,15 @@ BEGIN
              photos_manquantes = v_n
        WHERE user_id = p_user;
       RETURN jsonb_build_object('etat', 'empreintes', 'urls', to_jsonb(v_urls));
+    END IF;
+    -- Huit passages sans progrès : ces photos ne se lisent pas (notées, puis
+    -- les 200 suivantes au prochain passage s'il en reste).
+    INSERT INTO photo_empreintes_echecs (url, motif, essais, echec_le)
+    SELECT u, 'rapprochement_sans_progres', 1, now() FROM unnest(v_urls) u
+    ON CONFLICT (url) DO NOTHING;
+    IF v_n > 200 THEN
+      UPDATE rapprochement_comptes SET etat = 'empreintes', maj_le = now(), photos_manquantes = v_n - 200 WHERE user_id = p_user;
+      RETURN jsonb_build_object('etat', 'empreintes', 'urls', '[]'::jsonb, 'illisibles', 200);
     END IF;
   END IF;
 
@@ -800,14 +822,16 @@ BEGIN
                   'regle', 'dépôt Beebs sans identifiant : ni import ni question avant preuve exacte'));
           n_ret := n_ret + 1;
         ELSE
-          UPDATE annonces_plateforme
-             SET proposition = (v_cand - 'sur') || jsonb_build_object('run_id', an.run_id, 'at', now(), 'avant_stock', true),
-                 updated_at = now()
-           WHERE id = an.id;
+          -- Un doute : l'annonce attend la phase de création, avec ses
+          -- candidats ; elle y deviendra un article « à vérifier » (ou
+          -- rejoindra, par la photo, celui d'une autre plateforme).
+          INSERT INTO rapprochement_nouvelles (annonce_id, user_id, platform, doute)
+          VALUES (an.id, p_user, an.platform, v_cand - 'sur')
+          ON CONFLICT (annonce_id) DO UPDATE SET doute = EXCLUDED.doute;
           INSERT INTO rapprochements (user_id, annonce_id, inventaire_id, decision, par, score, detail)
           VALUES (p_user, an.id, (v_cand ->> 'inventaire_id')::bigint, 'propose', 'auto', (v_cand ->> 'score')::numeric,
                   jsonb_build_object('run_id', an.run_id, 'motif', v_cand ->> 'motif', 'candidats_total', v_cand -> 'candidats_total',
-                                     'regle', 'rattachement_avant_stock'));
+                                     'regle', 'rattachement_avant_stock', 'suite', 'a_verifier'));
           n_prop := n_prop + 1;
         END IF;
       ELSE
@@ -871,28 +895,40 @@ BEGIN
       CONTINUE;
     END IF;
     BEGIN
+      SELECT n.doute INTO v_doute FROM rapprochement_nouvelles n WHERE n.annonce_id = an.id;
       -- Contre les articles créés DANS CETTE PHASE (la même robe relevée sur
-      -- Leboncoin puis sur Beebs) : même photo → rattachée ; un doute →
-      -- proposition ; sinon, l'article est créé.
+      -- Leboncoin puis sur Beebs) : même photo → rattachée à cet article ;
+      -- sinon l'article est créé — « à vérifier » s'il y a un doute (avec le
+      -- stock, classé plus haut, ou avec un article créé dans cette phase).
       v_cand := rapprochement_candidats(an.id, c.creation_le);
       IF v_cand ? 'sur' THEN
         -- Motif « photo_identique » EXACT : c'est lui que lit retrait_job_prouve
         -- (une vente retire cette copie).
         PERFORM rapprochement_attacher(an.id, (v_cand ->> 'sur')::bigint, 'photo_identique', jsonb_build_object('groupe_creation', true));
         n_groupes := n_groupes + 1;
-      ELSIF v_cand ? 'candidats' THEN
-        UPDATE annonces_plateforme
-           SET proposition = (v_cand - 'sur') || jsonb_build_object('run_id', an.run_id, 'at', now(), 'avant_stock', true),
-               updated_at = now()
-         WHERE id = an.id;
-        INSERT INTO rapprochements (user_id, annonce_id, inventaire_id, decision, par, score, detail)
-        VALUES (p_user, an.id, (v_cand ->> 'inventaire_id')::bigint, 'propose', 'auto', (v_cand ->> 'score')::numeric,
-                jsonb_build_object('run_id', an.run_id, 'motif', v_cand ->> 'motif', 'regle', 'rattachement_avant_stock', 'phase', 'creation'));
-        n_prop := n_prop + 1;
       ELSE
+        IF v_doute IS NULL AND v_cand ? 'candidats' THEN v_doute := v_cand; END IF;
         v_imp := rapprocher_importer(p_user, an.id, 'rapprochement');
         IF COALESCE((v_imp ->> 'ok')::boolean, false) THEN
           v_inv := (v_imp ->> 'inventaire_id')::bigint;
+          -- « À vérifier » : la question « Est-ce le même article ? » avec le
+          -- meilleur candidat ; l'article ne vit hors du stock affiché que si
+          -- elle est posée (une paire déjà tranchée ne l'est jamais : c'est un
+          -- autre article, il entre au stock).
+          IF v_doute IS NOT NULL AND NULLIF(v_doute ->> 'inventaire_id', '') IS NOT NULL THEN
+            v_q_inv := (v_doute ->> 'inventaire_id')::bigint;
+            v_posee := releve_poser_question(p_user, v_q_inv, v_inv, COALESCE(NULLIF(v_doute ->> 'motif', ''), 'rapprochement'),
+                         jsonb_build_object('avant_stock', true, 'annonce_id', an.id, 'platform', an.platform, 'listing_id', an.listing_id,
+                                            'url', an.url, 'prix', an.prix, 'titre_annonce', an.titre,
+                                            'candidats_total', v_doute -> 'candidats_total', 'signaux', v_doute -> 'signaux'));
+            IF v_posee THEN
+              UPDATE inventaire
+                 SET a_verifier = jsonb_build_object('depuis', now(), 'source', 'moteur', 'motif', COALESCE(NULLIF(v_doute ->> 'motif', ''), 'rapprochement'),
+                                                     'candidat', v_q_inv, 'annonce_id', an.id, 'platform', an.platform)
+               WHERE id = v_inv;
+              n_aver := n_aver + 1;
+            END IF;
+          END IF;
           -- L'article créé entre dans la lecture du passage : les annonces
           -- suivantes se comparent à lui.
           INSERT INTO _rf
@@ -917,7 +953,7 @@ BEGIN
      SET bilan = bilan || jsonb_build_object(
            'crees', COALESCE((bilan ->> 'crees')::int, 0) + n_crees,
            'groupees', COALESCE((bilan ->> 'groupees')::int, 0) + n_groupes,
-           'propositions', COALESCE((bilan ->> 'propositions')::int, 0) + n_prop,
+           'a_verifier', COALESCE((bilan ->> 'a_verifier')::int, 0) + n_aver,
            'erreurs', COALESCE((bilan ->> 'erreurs')::int, 0) + n_err),
          maj_le = now()
    WHERE user_id = p_user;
@@ -1214,9 +1250,14 @@ BEGIN
                    + v_nouvelles * 0.08;
     v_actif := true;
   END IF;
-  SELECT count(*) INTO v_a_verifier FROM annonces_plateforme a
-   WHERE a.user_id = v_user AND a.inventaire_id IS NULL AND a.ignoree_le IS NULL AND a.disparu_le IS NULL
-     AND a.proposition IS NOT NULL;
+  -- « À vérifier » : les articles qui attendent leur réponse (hors du stock
+  -- affiché), et les annonces proposées d'avant le 07/10 (écran de rattachement).
+  SELECT (SELECT count(*) FROM inventaire i
+           WHERE i.user_id = v_user AND i.a_verifier IS NOT NULL AND i.statut = 'stock' AND i.fusionne_dans IS NULL)
+       + (SELECT count(*) FROM annonces_plateforme a
+           WHERE a.user_id = v_user AND a.inventaire_id IS NULL AND a.ignoree_le IS NULL AND a.disparu_le IS NULL
+             AND a.proposition IS NOT NULL)
+    INTO v_a_verifier;
 
   RETURN jsonb_build_object(
     'ok', true, 'actif', v_actif, 'releves', v_runs,
@@ -1234,6 +1275,38 @@ REVOKE ALL ON FUNCTION public.synchro_avancement() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.synchro_avancement() TO authenticated;
 
 SELECT public.synchro_vitesses_relire();
+
+-- ── 14 bis. « À VÉRIFIER » → STOCK : DÈS QUE SA QUESTION EST TRANCHÉE ───────
+-- « Oui » (réuni à l'autre article), « Non » (un autre article), caduque (une
+-- des deux fiches n'est plus là), question supprimée : l'article n'a plus de
+-- question ouverte → il entre au stock affiché. Une seule écriture, sur une
+-- ligne qui change (règle du 04/10).
+CREATE OR REPLACE FUNCTION public.inventaire_doublons_a_verifier()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_id bigint;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.statut = 'proposee' THEN RETURN NULL; END IF;
+  FOREACH v_id IN ARRAY ARRAY[OLD.garde, OLD.absorbe] LOOP
+    UPDATE inventaire i SET a_verifier = NULL
+     WHERE i.id = v_id AND i.a_verifier IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM inventaire_doublons d
+                        WHERE d.user_id = OLD.user_id AND d.statut = 'proposee' AND d.id <> OLD.id
+                          AND (d.garde = v_id OR d.absorbe = v_id));
+  END LOOP;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.inventaire_doublons_a_verifier() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS trg_inventaire_doublons_a_verifier ON public.inventaire_doublons;
+CREATE TRIGGER trg_inventaire_doublons_a_verifier
+  AFTER UPDATE OF statut OR DELETE ON public.inventaire_doublons
+  FOR EACH ROW
+  WHEN (OLD.statut = 'proposee')
+  EXECUTE FUNCTION public.inventaire_doublons_a_verifier();
 
 -- ── 15. LA FUSION DÉPLACE TOUT (push_ventes, remises_en_vente) ──────────────
 -- Définitions EN PROD du 07/10, deux blocs ajoutés (et leur retour en
@@ -1320,5 +1393,17 @@ BEGIN
   $cron$);
 END
 $do$;
+
+-- ── 18. « À VÉRIFIER » : UN ARTICLE, HORS DU STOCK AFFICHÉ ──────────────────
+-- EN DERNIER : le verrou de l'ALTER TABLE sur inventaire n'est tenu que du
+-- dernier instant au COMMIT (les fonctions plus haut ne lisent la colonne
+-- qu'à l'exécution).
+-- NULL : un article comme les autres. Posé : l'article attend la réponse à sa
+-- question « Est-ce le même article ? » ; l'app le montre dans « Annonces à
+-- vérifier », pas dans le stock. Rien d'autre ne le lit : ventes, retraits,
+-- republication et mails ne font aucune différence.
+-- { depuis, source ('moteur' | 'rattrapage_0710'), motif, candidat, annonce_id, platform }
+ALTER TABLE public.inventaire ADD COLUMN IF NOT EXISTS a_verifier jsonb;
+CREATE INDEX IF NOT EXISTS inventaire_a_verifier_idx ON public.inventaire (user_id) WHERE a_verifier IS NOT NULL;
 
 COMMIT;
