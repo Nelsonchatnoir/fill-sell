@@ -181,8 +181,12 @@ if (args.includes('--appliquer')) {
     }
     const s0 = sim?.get(u);
     if (s0?.plan) {
-      const prevu = Object.values(s0.plan).reduce((a, b) => a + b, 0), fait = Object.values(v.faits ?? {}).reduce((a, b) => a + b, 0);
-      if (Math.abs(prevu - fait) > Math.max(5, 0.25 * prevu)) { console.error(`ARRÊT : ${u} s'écarte de la simulation (prévu ${prevu}, fait ${fait})`); process.exit(3); }
+      // (08/10 nuit) Une décision SAUTÉE par une garde de la base (double_vendu, fusionner_article_modifie, creer_refuse…)
+      // est traitée, pas perdue : l'écart se mesure sur ce qui n'a été ni fait ni sauté (0f8722f5 : 10 « en double »
+      // sur une annonce vendue, 10 sautées, 0 faite — ce n'est pas un écart).
+      const prevu = Object.values(s0.plan).reduce((a, b) => a + b, 0);
+      const fait = Object.values(v.faits ?? {}).reduce((a, b) => a + b, 0) + Object.values(v.sautes ?? {}).reduce((a, b) => a + b, 0);
+      if (prevu - fait > Math.max(5, 0.25 * prevu)) { console.error(`ARRÊT : ${u} s'écarte de la simulation (prévu ${prevu}, faites+sautées ${fait})`); process.exit(3); }
     }
     const cpu = q('SELECT pct FROM veille_cpu WHERE pct IS NOT NULL ORDER BY le DESC LIMIT 1;')[0]?.pct;
     if (cpu != null && cpu > 60) { console.log(`CPU ${cpu} % : pause 60 s`); await pause(60000); }
