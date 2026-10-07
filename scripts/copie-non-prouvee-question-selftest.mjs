@@ -56,7 +56,7 @@ const aRetirer = D.annonceARetirer(syphon);
 ok("l'annonce qu'un « oui » retirera est désignée (montrée avant le geste)",
   aRetirer?.id === "20ac68a4-db39-4481-9125-abadd701862b" && aRetirer?.plateforme === "leboncoin" && !!aRetirer?.url);
 ok("les deux boutons demandés", /'Oui, la retirer'/.test(ecran) && /"Non, c'est un autre exemplaire"/.test(ecran));
-ok("une question homonyme_vendu (deux fiches) garde son écran", /\{!copie && <CarteFiche item=\{paire\.b\}/.test(ecran));
+ok("une question homonyme_vendu (deux fiches) garde son écran", /\{!copie && \(?\s*<CarteFiche item=\{paire\.b\}/.test(ecran));
 
 console.log("\n[2] Le serveur");
 const poser = mig.match(/FUNCTION public\.poser_questions_copies_non_prouvees[\s\S]*?\$function\$;/)?.[0] ?? "";

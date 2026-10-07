@@ -51,7 +51,8 @@ const COMPTES_SQL = `SELECT DISTINCT i.user_id FROM inventaire i
 // --payants : eux seuls.
 const comptes = () => (USER ? [USER] : q(`SELECT c.user_id, palier_de(c.user_id) palier FROM (${COMPTES_SQL}) c
   ORDER BY (palier_de(c.user_id) = 'free'), c.user_id;`)
-  .filter((r) => !args.includes('--payants') || r.palier !== 'free').map((r) => r.user_id));
+  .filter((r) => (!args.includes('--payants') || r.palier !== 'free') && (!args.includes('--gratuits') || r.palier === 'free'))
+  .map((r) => r.user_id));
 
 if (args.includes('--empreintes')) {
   const filtre = USER ? `= '${USER}'::uuid` : `IN (${COMPTES_SQL})`;
@@ -126,7 +127,7 @@ if (args.includes('--simuler')) {
 }
 
 if (args.includes('--appliquer')) {
-  if (!USER && !args.includes('--tous') && !args.includes('--payants')) { console.error('--user <uuid> | --payants | --tous'); process.exit(1); }
+  if (!USER && !args.includes('--tous') && !args.includes('--payants') && !args.includes('--gratuits')) { console.error('--user <uuid> | --payants | --tous'); process.exit(1); }
   const liste = comptes();
   // La simulation de référence (même code, transaction annulée) : un compte
   // qui s'en écarte arrête tout.

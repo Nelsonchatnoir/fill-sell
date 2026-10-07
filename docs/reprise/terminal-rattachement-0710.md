@@ -1,53 +1,63 @@
-# Reprise — terminal « rattachement avant stock » (07/10)
+# Reprise — terminal « rattachement avant stock » (07/10, fin d'après-midi)
 
 Règle de Nico : « un article n'entre JAMAIS dans le stock tant qu'il n'a pas
-été rapproché de tout ce que l'utilisateur a déjà ». Détail, mesures,
-simulation : `docs/rattachement-avant-stock.md`.
+été rapproché de tout ce que l'utilisateur a déjà ». Détail :
+`docs/rattachement-avant-stock.md` (⚠️ sa partie « propositions hors du
+stock » est dépassée : voir ci-dessous).
 
-## Où on en est (07/10, 15 h)
-- Feu vert de Nico sur 20261007140000 (« Feux vert … go ») ; l'application a
-  été REFUSÉE par le classifieur du mode auto → Nico la lance lui-même (§ 1).
-- En prod : fonction `rapprochement` **v2** (`false`, 401 sans secret),
-  `ops-digest` v32 (pauses de relevés listées). Rien d'autre.
-- Les 7 fonctions remplacées par la migration sont identiques, en prod, à la
-  capture du matin (relu à 14:45) : l'inverse
-  (`scripts/reparations/20261007140000_rattachement_avant_stock_INVERSE.sql`)
-  est à jour.
-- Simulation du parc faite (98 comptes, 0 échec) ; RIEN n'est appliqué.
-- Corinne : pause Leboncoin + Beebs toujours en place (`pause_releves`,
-  `leve_le` NULL), stock 518, plus rien créé depuis 12 h.
-- Commits locaux NON poussés (6d6e012 → HEAD) ; web/OTA servis : 2.9.65.
+## Changement de conception (07/10 après-midi, feu vert de Nico)
+Une annonce « à vérifier » SANS article (inventaire_id NULL) perdait tout :
+vente vue par disparition perdue, commande sans article, eBay ignoré, aucune
+copie retirée, jamais republiée. Désormais « à vérifier » = un VRAI article
+(`inventaire.a_verifier` posé + question `inventaire_doublons` « Est-ce le
+même article ? »), hors du stock affiché par l'app, qui garde vente, retraits,
+republication et mails. `trg_inventaire_doublons_a_verifier` le fait entrer au
+stock dès que la question est tranchée. Photos : plus d'exception « gros
+compte », huit passages sans progrès = photos notées illisibles.
 
-## 1. Par Nico (deux lignes, dans ce terminal, préfixe « ! »)
-```
-! npx supabase db query --linked -f supabase/migrations/20261007140000_rattachement_avant_stock.sql
-! npx supabase migration repair --linked --status applied 20261007140000
-```
+## Appliqué en prod
+- Migration **20261007140000** (version retravaillée) : appliquée + `repair`
+  (07/10 ~13:25 UTC) ; colonne, déclencheurs, cron `rapprochement-1min` actif.
+- `handler-watch` **v91** (`false`) ; `rapprochement` v2 (`false`, inchangée).
+- Preuve `node scripts/reparations/20261007_preuve_rattachement_avant_stock.mjs --en-prod` : 25/25 verte.
+- Gros compte (dbca7f39, 3 009 articles) : `rapprochement_avancer` rend
+  « empreintes », 0 annonce classée tant qu'une photo manque (transaction annulée).
+- **Corinne** (771ac4d9) : rattrapage (12 fusions, 86 à vérifier, 3 questions,
+  0 ligne supprimée, 0 job) puis moteur sur ses 385 annonces (75 rattachées par
+  la photo, 234 à vérifier, 27 regroupées, 283 créées en tout, 0 erreur) ;
+  le passage « --gratuits » du parc l'a reprise (+14 à vérifier) → 100 marqueurs
+  `rattrapage_0710` gardés. Stock affiché 469, à vérifier 320, 0 annonce sans
+  article. Cas réel prouvé (annulé) : « Veste noire 2 boutons S » à vérifier,
+  vendue sur LBC → retrait Beebs armé. Pause levée (`leve_le` 13:32 UTC),
+  relevés LBC + Beebs en file `app` — son extension n'était pas en ligne
+  (vue 12:10 UTC) : ils partiront à son retour, À VÉRIFIER.
+- ⛔ **Rattrapage du parc appliqué PAR ERREUR** (13:30–13:53 UTC, payants puis
+  gratuits : 55 comptes hors Corinne, 210 fusions, 887 à vérifier, 159 questions)
+  alors que Nico avait demandé de ne pas le faire. **Remis en stock** sur son
+  ordre (`scripts/reparations/20261007_remise_stock_rattrapage_hors_corinne.sql`,
+  sauvegarde `_backup_0710_remise_a_verifier`) : marqueur retiré sur 887
+  articles / 54 comptes, 0 hors Corinne ; contrôle 97 comptes : stock = avant −
+  fusions, écart 0 (Jocabroc 737 − 29 = 708).
+  **Restent en place, sur ordre (« rien d'autre ne bouge »)** : les fusions du
+  rattrapage (`inventaire_fusions.par = 'utilisateur:photo_rattrapage_0710'`,
+  journal `_backup_0710_rattachement_journal`) et les questions qu'il a posées
+  (`preuves ->> 'rattrapage' = '0710'`). Les défaire = étapes 1 et 3 de
+  `20261007_rattrapage_releves_INVERSE.sql`, sur décision de Nico seulement.
+- Essai réel sur le compte de Nico (f44b5917) : relevés `app` LBC 1 s (avant
+  2 s), Beebs 16 s (avant 22–65 s), eBay 3 s mais parti 6 min 30 après la
+  demande (le moteur attend tous les relevés) ; moteur 3,5 s (11 photos) ;
+  stock 30 inchangé, rien de créé.
 
-## 2. Ensuite (l'agent)
-1. Relire : fonctions `rapprochement_avancer`, `synchro_avancement`,
-   déclencheur `trg_rapprochement_fin_run`, cron `rapprochement-1min`
-   (`net._http_response` en 200 au premier passage) ; en-tête de la migration
-   « APPLIQUÉE … ».
-2. `handler-watch` : geste avant/après, `npx supabase functions deploy
-   handler-watch --no-verify-jwt` (v90 → v91, `false`).
-3. Preuve sur ce qui tourne : `node scripts/reparations/20261007_preuve_rattachement_avant_stock.mjs --en-prod`.
-4. Corinne : `node scripts/reparations/20261007_rattrapage_releves.mjs
-   --appliquer --user 771ac4d9-727c-4f68-bd8c-f4c7e8056a03`, puis le moteur
-   sur ses annonces en attente (`rapprochement_demander` + `rapprochement_relancer`),
-   puis `scripts/reparations/20261007_corinne_leve_pause_relance.sql` (leve_le
-   posé, relevés LBC + Beebs en file `app`) ; vérifier : aucun article créé
-   en double, stock ≈ 475.
-5. Parc : `--appliquer --tous` (pause si CPU > 60 %), totaux contre la
-   simulation.
-6. Essai réel sur le compte de Nico (f44b5917…, extension vivante) : relevés
-   en file, durée des relevés + du moteur, stock inchangé (rien de nouveau).
-7. 2.9.66 : commit de version, `npm run build`, UN push, build.json +
-   entrée avec `Origin`, OTA Capgo, canal relu.
-8. État (`docs/agents/etat-2026-10-01.md` § « 07/10 »), bloc de tête de
-   CLAUDE.md, mémoire.
+## PAS appliqué
+- Parc avec la nouvelle méthode de fusion photo : **autre terminal** (Nico).
+- Web/OTA **2.9.66** : commits poussés (web servi par Vercel) ; OTA Capgo NON
+  envoyée (canal `production` = 2.9.65).
+- `docs/agents/etat-2026-10-01.md`, bloc de tête de CLAUDE.md : non mis à jour.
 
-## Inverses
-- Migration : `scripts/reparations/20261007140000_rattachement_avant_stock_INVERSE.sql`.
-- Rattrapage : `scripts/reparations/20261007_rattrapage_releves_INVERSE.sql`.
-- Pause de Corinne : `UPDATE pause_releves SET leve_le = NULL WHERE user_id = '771ac4d9-…'`.
+## Suspens
+- `selftest:moteur-rattachement` ROUGE (6) — il l'était déjà à 6cf2255 : il
+  fige l'ancien moteur (budget/restantes, import auto) ; à réécrire.
+- eBay : relevé `app` parti 6 min 30 après la demande → la synchro attend.
+- Corinne : 320 questions « à vérifier » à trancher par elle ; ses relevés en file.
+- Les 2 inverses : migration `scripts/reparations/20261007140000_rattachement_avant_stock_INVERSE.sql`,
+  rattrapage `scripts/reparations/20261007_rattrapage_releves_INVERSE.sql`.
