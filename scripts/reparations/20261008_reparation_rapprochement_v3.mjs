@@ -111,9 +111,20 @@ if (args.includes('--simuler')) {
   for (const c of l) {
     const u = c.user_id;
     try {
-      const id = appelerFonction(u, { reparer: true, simuler: true });
-      const { corps } = await attendreReponse(id);
-      const x = (corps.comptes ?? [])[0] ?? {};
+      // (08/10) Chaque appel met 600 photos en file (pg_net) et répond tout de
+      // suite ; on relit 12 s plus tard, en passant le progrès (precedent,
+      // passages) : six relectures sans progrès, la fonction classe avec ce
+      // qu'elle a. Jamais plus de 20 tours.
+      let x = {}; let precedent = null; let passages = 0;
+      for (let tour = 0; tour < 20; tour++) {
+        const id = appelerFonction(u, { reparer: true, simuler: true, ...(precedent != null ? { precedent, passages } : {}) });
+        const { corps } = await attendreReponse(id);
+        x = (corps.comptes ?? [])[0] ?? {};
+        if (x.etat !== 'empreintes' || x.erreur) break;
+        console.log(u, 'photos en file', x.photos, 'manquantes', x.manquantes, 'passages', x.passages_photos);
+        precedent = x.manquantes; passages = x.passages_photos ?? 0;
+        await pause(12000);
+      }
       const v = { u, etat: x.etat, erreur: x.erreur ?? null, decisions: x.decisions ?? 0, plan: x.passe?.plan ?? null, par_plateforme: x.passe?.par_plateforme ?? null,
         photos_calculees: x.photos ?? 0, photos_sans_empreinte: x.photos_sans_empreinte ?? null, avant: etatCompte(u) };
       res.push(v);

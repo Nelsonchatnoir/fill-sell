@@ -52,7 +52,10 @@ console.log('2. Le moteur : attendre, empreinter, classer, puis créer');
   ok(/'etat', 'empreintes', 'urls'/.test(av), 'les empreintes manquantes d’abord (annonces + couvertures)');
   ok(/passages_photos = CASE WHEN c\.etat = 'empreintes' AND v_n >= COALESCE\(c\.photos_manquantes, 0\)/.test(av), 'seuls les passages photo SANS PROGRÈS comptent (un gros compte n’est jamais classé sans ses photos)');
   // (08/10, v3) la fonction edge lit tout le compte en un appel et n'applique qu'avec toutes les photos
-  ok(/manquantes\.length && reste\(\) <= 25_000/.test(fn) && /inacheve = true/.test(fn), 'la fonction rend la main plutôt que de classer sans les photos (v3)');
+  // (08/10 nuit) les photos manquantes sont mises en file PAR LA BASE (pg_net, 100 appels d'un coup — un fetch
+  // edge → edge est limité à 60/min), la fonction répond tout de suite et se relance 12 s après ; six relectures
+  // sans progrès seulement, elle classe avec ce qu'elle a.
+  ok(/rpc\("rapprochement_v3_empreinter"/.test(fn) && /etat: "empreintes"/.test(fn) && /RELANCE_PHOTOS_MS/.test(fn) && /passages < PASSAGES_PHOTOS_MAX/.test(fn) && !/functions\/v1\/empreintes-urls/.test(fn), 'la fonction met les photos en file par la base, rend la main et se relance plutôt que de classer sans elles (v3)');
   ok(/veille_cpu[\s\S]{0,120}> 70/.test(av), 'la base qui peine passe avant (veille_cpu > 70 %)');
   ok(/rapprochement_nouvelles/.test(av) && /'creation'/.test(av), 'les « sans candidat » ne sont créées qu’une fois TOUT classé');
   ok(/releve_est_geste\(s\.declencheur\)/.test(av), 'un relevé automatique ne crée rien (releves_sur_geste)');
@@ -130,7 +133,7 @@ console.log('5. Le réveil serveur et le filet');
 ok(/\[functions\.rapprochement\]\s*\nverify_jwt = false/.test(cfg), 'rapprochement : verify_jwt = false (appelée par la base)');
 ok(/x-cron-secret/.test(fn) && /secret !== attendu/.test(fn), 'garde maison x-cron-secret');
 ok(/rpc\("rapprochement_v3_lire"/.test(fn) && /rpc\("rapprochement_v3_appliquer"/.test(fn) && /empreintes-urls/.test(fn), 'la fonction lit tout le compte, fait empreinter en parallèle et applique le plan (v3, 08/10)');
-ok(/relance: true/.test(fn) && /body\.relance !== true/.test(fn), 'une seule relance d’elle-même');
+ok(/relance: rang \+ 1/.test(fn) && /rang < RELANCES_MAX/.test(fn), 'une chaîne de relances bornée (RELANCES_MAX), un seul appel edge → edge par invocation');
 ok(/trg_rapprochement_fin_run/.test(mig) && /NEW\.status NOT IN \('queued', 'running'\)/.test(mig), 'un relevé qui finit (ou s’arrête) réveille le moteur');
 ok(/cron\.schedule\('rapprochement-1min'/.test(mig) && /maj_le < now\(\) - interval '45 seconds'/.test(mig), 'le filet ne part que s’il y a un compte en retard');
 
