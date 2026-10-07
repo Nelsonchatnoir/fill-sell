@@ -229,6 +229,7 @@
     "selftest:cloud-ecrans": "node --import ./scripts/loader-ext.mjs scripts/cloud-ecrans-selftest.mjs",
     "selftest:legal-langue": "node scripts/legal-langue-selftest.mjs",
     "selftest:releve-fin-claire": "node scripts/releve-fin-claire-selftest.mjs",
+    "selftest:rattachement-avant-stock": "node scripts/rattachement-avant-stock-selftest.mjs",
     "selftest:synchroniser-repli-file": "node scripts/synchroniser-repli-file-selftest.mjs",
     "selftest:sonde-vinted-401": "node scripts/sonde-vinted-401-selftest.mjs"
   },
