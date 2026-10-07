@@ -178,3 +178,71 @@ export function meilleurAppariement(a: Array<Empreinte | null | undefined>, b: A
   }
   return meilleur ?? { dhash: Infinity, phash: Infinity, couleur: Infinity, verdict: "differente" as Verdict };
 }
+
+// ── LES VARIANTES (08/10/2026, multi-synchro) ───────────────────────────────
+// Vinted recadre en 3:4, Leboncoin filigrane et sert une vignette, Beebs
+// encadre : deux photos IDENTIQUES ressortaient à 11-31 bits sur l'image
+// entière (mesuré le 07/10 sur Corinne), 0-4 sur un carré central. On garde
+// donc, en plus de l'image entière, cinq lectures de son centre :
+//   · c70 : le rectangle central (70 % de la largeur et de la hauteur) ;
+//   · p85 : le carré centré, côté = 85 % du PETIT côté ;
+//   · g45, g60, g35 : le carré centré, côté = 45/60/35 % du GRAND côté
+//     (borné au petit côté) — un recadrage vertical ou horizontal d'une même
+//     photo retombe sur l'une de ces fenêtres.
+// Chaque lecture = dHash + pHash. Calculées sur l'image réduite à 256 px de
+// côté au plus (box filter, même arithmétique que grisReduit) : le décodage
+// coûte, les crops ne coûtent presque rien.
+export type Variantes = Record<string, [string, string]>;
+export const VARIANTES_CLES = ["c70", "p85", "g45", "g60", "g35"] as const;
+
+/** Réduction par moyenne de zones à `max` px de côté au plus (jamais agrandie). */
+export function reduireRgba(img: Rgba, max = 256): Rgba {
+  const { data, width: w, height: h } = img;
+  const s = Math.min(1, max / Math.max(w, h));
+  if (s >= 1) return img;
+  const cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(h * s));
+  const out = new Uint8ClampedArray(cw * ch * 4);
+  for (let cy = 0; cy < ch; cy++) {
+    const y0 = Math.floor((cy * h) / ch), y1 = Math.max(y0 + 1, Math.floor(((cy + 1) * h) / ch));
+    for (let cx = 0; cx < cw; cx++) {
+      const x0 = Math.floor((cx * w) / cw), x1 = Math.max(x0 + 1, Math.floor(((cx + 1) * w) / cw));
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let y = y0; y < y1 && y < h; y++) {
+        let i = (y * w + x0) * 4;
+        for (let x = x0; x < x1 && x < w; x++, i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
+      }
+      const o = (cy * cw + cx) * 4;
+      out[o] = n ? r / n : 0; out[o + 1] = n ? g / n : 0; out[o + 2] = n ? b / n : 0; out[o + 3] = 255;
+    }
+  }
+  return { data: out, width: cw, height: ch };
+}
+
+/** Le rectangle (x, y, w, h) d'une image RGBA, copié. */
+export function recadrerRgba(img: Rgba, x: number, y: number, w: number, h: number): Rgba {
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let j = 0; j < h; j++) {
+    const src = ((y + j) * img.width + x) * 4;
+    out.set(img.data.subarray(src, src + w * 4), j * w * 4);
+  }
+  return { data: out, width: w, height: h };
+}
+
+/** Les cinq lectures du centre : { c70: [dhash, phash], p85: [...], … }. */
+export function variantesDepuisRgba(img: Rgba): Variantes {
+  const r = reduireRgba(img, 256);
+  const W = r.width, H = r.height, petit = Math.min(W, H), grand = Math.max(W, H);
+  const centre = (cw: number, ch: number): Rgba => {
+    const w = Math.max(8, Math.min(W, Math.round(cw))), h = Math.max(8, Math.min(H, Math.round(ch)));
+    return recadrerRgba(r, Math.floor((W - w) / 2), Math.floor((H - h) / 2), w, h);
+  };
+  const carre = (cote: number): Rgba => { const c = Math.min(petit, cote); return centre(c, c); };
+  const emp = (im: Rgba): [string, string] => [dhashDepuisGris(grisReduit(im, 9, 8)), phashDepuisGris(grisReduit(im, 32, 32))];
+  return {
+    c70: emp(centre(W * 0.7, H * 0.7)),
+    p85: emp(carre(petit * 0.85)),
+    g45: emp(carre(grand * 0.45)),
+    g60: emp(carre(grand * 0.6)),
+    g35: emp(carre(grand * 0.35)),
+  };
+}

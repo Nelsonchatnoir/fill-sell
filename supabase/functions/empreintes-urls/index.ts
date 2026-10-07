@@ -45,8 +45,10 @@ serve(async (req) => {
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
   const debut = Date.now();
 
+  // (08/10) Une ligne SANS variantes (calculée avant le 08/10) est recalculée :
+  // le moteur v3 compare le centre des photos, pas seulement l'image entière.
   const { data: connues } = urls.length
-    ? await admin.from("photo_empreintes").select("url").in("url", urls)
+    ? await admin.from("photo_empreintes").select("url").in("url", urls).not("variantes", "is", null)
     : { data: [] };
   const deja = new Set(((connues ?? []) as Array<{ url: string }>).map((r) => r.url));
 
@@ -61,6 +63,7 @@ serve(async (req) => {
       const e = await empreinterUrl(url, supabaseUrl);
       const { error } = await admin.from("photo_empreintes").upsert({
         url, dhash: e.dhash, phash: e.phash, couleur: e.couleur, largeur: e.largeur, hauteur: e.hauteur,
+        variantes: e.variantes ?? null,
         source: "empreintes-urls", calculee_le: new Date().toISOString(),
       }, { onConflict: "url" });
       if (error) throw new Error(`écriture : ${error.message}`);

@@ -1865,6 +1865,27 @@ serve(async (req) => {
         }
       } catch (_e) { /* idem */ }
     }
+    // ══ eBAY RELIÉ PAR L'API : JAMAIS UN RELEVÉ PAR L'EXTENSION (08/10) ═════════
+    // fmallet25 (07/10, 16:23) : compte relié à 12:10, relevé quotidien fait par
+    // l'API ; son appui sur « Synchroniser » a posé un relevé 'app' que CE poll
+    // a servi à l'extension — eBay lui a montré sa page de connexion, l'app a
+    // dit « pas connecté », et la personne a cliqué « Déconnecter eBay » à
+    // 16:28 (la ligne ebay_accounts disparaissait par SON geste). La voie API
+    // (ebay-releve-api, réveillée tout de suite par demander_sync_plateforme)
+    // prend TOUS les relevés eBay d'un compte relié ; l'extension n'en voit
+    // aucun. Lecture impossible → comme avant.
+    if (syncCommandsAnnonces.some((c) => c.platform === "ebay")) {
+      try {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data: compteApi } = await admin.rpc("compte_ebay_api", { p_user: user.id });
+        if (typeof compteApi === "string" && compteApi.trim()) {
+          syncCommandsAnnonces = syncCommandsAnnonces.filter((c) => c.platform !== "ebay");
+          console.log(`[get-pending-jobs] userId=${user.id} : relevé(s) eBay laissé(s) à l'API (compte relié « ${compteApi.trim()} »), rien pour l'extension`);
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] voie eBay du relevé : ${String((e as Error)?.message ?? e)} — servi comme avant`);
+      }
+    }
     // ── UN RELEVÉ OPLA N'EST CONFIÉ QU'À UN POSTE QUI A L'ACCÈS (2026-09-25) ──
     // Louis (Business, deux profils Chrome) : ses relevés Opla de 21:21 et
     // 22:21 (24/09) sont partis au poste SANS autorisation — premier à poller,

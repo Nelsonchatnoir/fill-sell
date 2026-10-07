@@ -8,7 +8,7 @@
 // transformation du Storage (400 px) — le décodage coûte du CPU (2 s par
 // requête au plus) et une empreinte se calcule sur 32×32 pixels : décoder
 // 12 Mpx pour en garder 1 024 ne sert à rien.
-import { empreinteDepuisRgba, type Empreinte } from "./empreinte-image.ts";
+import { empreinteDepuisRgba, variantesDepuisRgba, type Empreinte, type Variantes } from "./empreinte-image.ts";
 
 export const MAX_OCTETS = 8 * 1024 * 1024;
 export const MAX_PIXELS = 6_000_000;
@@ -104,7 +104,7 @@ export function estWebp(buf: Uint8Array): boolean {
     && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
 }
 
-export async function decoderEmpreinte(buf: Uint8Array): Promise<Empreinte & { largeur: number; hauteur: number }> {
+export async function decoderEmpreinte(buf: Uint8Array): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
   // deno-lint-ignore no-explicit-any
   let data: any, width: number, height: number;
   if (estWebp(buf)) {
@@ -119,12 +119,15 @@ export async function decoderEmpreinte(buf: Uint8Array): Promise<Empreinte & { l
   }
   if (!width || !height || !data) throw new Error("image illisible");
   if (width * height > MAX_PIXELS) throw new Error(`trop de pixels (${width}×${height})`);
-  const e = empreinteDepuisRgba({ data: data as Uint8ClampedArray, width, height });
-  return { ...e, largeur: width, hauteur: height };
+  const img = { data: data as Uint8ClampedArray, width, height };
+  const e = empreinteDepuisRgba(img);
+  // (08/10) Les lectures du centre : même image décodée, aucun téléchargement de plus.
+  const variantes = variantesDepuisRgba(img);
+  return { ...e, largeur: width, hauteur: height, variantes };
 }
 
 /** L'empreinte d'une URL : la variante la moins chère d'abord, l'originale ensuite. */
-export async function empreinterUrl(url: string, supabaseUrl: string): Promise<Empreinte & { largeur: number; hauteur: number }> {
+export async function empreinterUrl(url: string, supabaseUrl: string): Promise<Empreinte & { largeur: number; hauteur: number; variantes: Variantes }> {
   const reduite = urlTransformee(url, supabaseUrl);
   const essais = reduite ? [reduite, url] : [urlAllegee(url), url];
   let derniere: unknown = null;
