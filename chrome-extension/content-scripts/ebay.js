@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-10-02-fin-annonce-par-numero (0.6.84 : le dialogue de fin d'annonce n'exige plus le titre — identité par le numéro de la ligne, refus s'il nomme une autre annonce ; plus de repli par titre) — précédent : 2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
+const EBAY_BUILD = "2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-02-fin-annonce-par-numero (0.6.84 : le dialogue de fin d'annonce n'exige plus le titre — identité par le numéro de la ligne, refus s'il nomme une autre annonce ; plus de repli par titre) — précédent : 2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -118,6 +118,11 @@ function traceTaille() {
 // dry-run piloté (hors extension), où chrome.runtime n'existe pas.
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    // (08/10) « es-tu là ? » du background : réponse SYNCHRONE, aucun effet.
+    if (msg?.type === "FILLSELL_PING") {
+      sendResponse({ success: true, pong: true, build: EBAY_BUILD.slice(0, 40) });
+      return true;
+    }
     if (msg?.type === "GO_TO_SELL") {
       sendResponse(goToSellFromHome());
       return false; // réponse synchrone : la navigation détruirait le canal

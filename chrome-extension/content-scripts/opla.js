@@ -1623,7 +1623,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     // « es-tu là ? » — réponse SYNCHRONE, aucune lecture de page, aucun effet.
-    if (msg?.type === "OPLA_PING") {
+    if (msg?.type === "OPLA_PING" || msg?.type === "FILLSELL_PING") {
       sendResponse({ success: true, pong: true, actif: OPLA_ACTIF });
       return true;
     }

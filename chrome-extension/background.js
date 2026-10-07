@@ -3497,7 +3497,7 @@ async function processJob(rawJob, accessToken) {
     // d'ouverture d'onglet directement sur l'URL de dépôt.
     // (workTabId est déclaré HORS du try : le catch en a besoin pour demander à
     // la sonde si l'annonce a malgré tout été créée — cf. canal coupé.)
-    tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
+    tabId = await ouvrirOngletTravailJob(job.platform, handler.entryUrl ?? listingUrl);
     // Le relevé d'étape (FILLSELL_FILL_STEP) est par onglet et l'onglet de
     // travail sert de job en job : sans remise à zéro, l'étape du job PRÉCÉDENT
     // passerait pour celle de celui-ci (2026-09-05).
@@ -6163,7 +6163,13 @@ async function consolidateWorkWindows(gardee, idsConnus = new Set()) {
 async function createWorkTabInWorkWindow(url) {
   try {
     const windowId = await getOrCreateWorkWindow();
-    return await chrome.tabs.create({ url, active: false, windowId });
+    const tab = await chrome.tabs.create({ url, active: false, windowId });
+    // (08/10) Jamais déchargé par l'économiseur de mémoire de Chrome en plein
+    // travail : un onglet déchargé n'a plus de content script, le job ou la
+    // synchro le trouvaient muet. Nos propres discard (navigateWorkTab) restent
+    // possibles : ce drapeau ne vise que les déchargements automatiques.
+    try { await chrome.tabs.update(tab.id, { autoDiscardable: false }); } catch { /* ancien Chrome : sans conséquence */ }
+    return tab;
   } catch (e) {
     // Ce repli plante un onglet MARQUÉ dans la fenêtre courante de
     // l'utilisateur — c'est l'amorce du cliquet d'adoption (2026-07-30).
@@ -12952,18 +12958,119 @@ async function ouvrirOngletVintedPret() {
       return tabId;
     }
   }
-  // Message HONNÊTE sur ce qui a été tenté : « après réinjection » seulement si
-  // on a réellement réinjecté. Il part tel quel dans `erreur` — et il porte,
-  // dans les deux formes, un motif de la liste technique fermée : c'est lui qui
-  // déclenche la reprise automatique.
+  // ── UN SCRIPT CHARGÉ MAIS MUET SE RELANCE, IL NE SE CONSTATE PAS (08/10) ──
+  // titaperry543 (23:34, synchro ; 23:37, publication), vtvente48 (10:45),
+  // ornellaracano (20:19, page 2) : « le content script ne répond pas (déjà
+  // chargé sur cet onglet, donc non réinjecté) ». Le drapeau dit que
+  // vinted.js a TOURNÉ dans ce document, le PING dit qu'il ne répond plus —
+  // c'est un onglet de la fenêtre de travail (minimisée, jamais rendue) dont
+  // la page est figée ou gelée par Chrome, ou un script orphelin d'une
+  // extension mise à jour. On renonçait là : échec, reprise 3/7/15 min sur le
+  // même onglet, même verdict. Désormais on lui redonne un DOCUMENT NEUF
+  // (relancerOngletMuet : rechargement, puis onglet neuf — deux essais,
+  // pauses humaines), et c'est la réponse du content script qui tranche.
+  // ⛔ LECTURE PURE : rien n'a été envoyé à la page avant ce point.
+  const relance = await relancerOngletMuet("vinted", tabId, "https://www.vinted.fr/", contentScriptVintedRepond);
+  if (relance.ok) {
+    console.log(`[sync-dressing] content script Vinted joignable après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
+    return relance.tabId;
+  }
+  // Message HONNÊTE sur ce qui a été tenté. Il part tel quel dans `erreur` —
+  // il porte un motif de la liste technique fermée : c'est lui qui déclenche
+  // la reprise automatique, et l'app le dit en clair (situation « arrêt »).
   const finMuet = reinjecte
     ? "le content script ne répond pas, même après réinjection"
     : "le content script ne répond pas (déjà chargé sur cet onglet, donc non réinjecté)";
   throw new Error(
     erreurOuverture
-      ? `onglet de travail Vinted : ${erreurOuverture} — ${finMuet}`
-      : `onglet de travail Vinted : ${finMuet}`,
+      ? `onglet de travail Vinted : ${erreurOuverture} — ${finMuet}, ni après ${relance.geste}`
+      : `onglet de travail Vinted : ${finMuet}, ni après ${relance.geste}`,
   );
+}
+
+// ── RELANCER UN ONGLET DE TRAVAIL MUET (08/10/2026) — toutes plateformes ─────
+// Deux gestes bornés, ceux d'une personne devant un onglet qui ne répond plus :
+//   1. RECHARGER l'onglet (document neuf, content script du manifest réinjecté
+//      par Chrome, page dégelée) — après 3 s ;
+//   2. s'il reste muet : FERMER l'onglet et en ouvrir un NEUF dans la fenêtre
+//      de travail (renderer neuf) — après 10 s.
+// Chaque geste est suivi de l'attente du chargement (45 s) puis du PING de la
+// plateforme ; le premier qui répond gagne. Au-delà : { ok:false }, l'appelant
+// lève son message (liste technique fermée → reprise automatique) — jamais de
+// boucle, jamais plus de deux pages ouvertes.
+// `ping(tabId)` rend true quand le content script répond (VINTED_PING,
+// OPLA_PING, FILLSELL_PING pour Leboncoin, Beebs, eBay depuis la 0.6.103).
+// ⛔ Appelée UNIQUEMENT avant tout envoi à la page : un rechargement ne peut
+//    ni redéposer ni redoubler quoi que ce soit.
+const RELANCE_ONGLET_ATTENTES_MS = [3_000, 10_000];
+async function relancerOngletMuet(platform, tabId, url, ping) {
+  let courant = tabId;
+  let geste = "rien";
+  for (let essai = 0; essai < RELANCE_ONGLET_ATTENTES_MS.length; essai++) {
+    await sleep(RELANCE_ONGLET_ATTENTES_MS[essai]);
+    try {
+      const tab = await chrome.tabs.get(courant).catch(() => null);
+      if (essai === 0 && tab) {
+        geste = tab.discarded ? "rechargement (onglet déchargé)" : "rechargement";
+        console.warn(`[onglet][${platform}] content script muet sur l'onglet ${courant} — ${geste}`);
+        await neutralizeBeforeUnload(courant).catch(() => {});
+        const attente = waitForTabComplete(courant, null, 45_000).catch(() => null);
+        await chrome.tabs.reload(courant, { bypassCache: false });
+        await attente;
+      } else {
+        geste = "onglet neuf";
+        console.warn(`[onglet][${platform}] toujours muet — fermeture de l'onglet ${courant} et ouverture d'un onglet neuf`);
+        if (tab) { await neutralizeBeforeUnload(courant).catch(() => {}); await chrome.tabs.remove(courant).catch(() => {}); }
+        const neuf = await createWorkTabInWorkWindow(url + WORK_TAB_FRAGMENT);
+        courant = neuf.id;
+        await waitForTabComplete(courant, url + WORK_TAB_FRAGMENT, 45_000).catch(() => null);
+      }
+      try { await chrome.storage.session.set({ [workTabKey(platform)]: courant }); } catch { /* sans conséquence */ }
+      await sleep(2_000);
+      if (await ping(courant)) return { ok: true, tabId: courant, geste };
+    } catch (e) {
+      console.warn(`[onglet][${platform}] relance impossible (${geste}) :`, String(e?.message ?? e));
+    }
+  }
+  return { ok: false, tabId: courant, geste: "rechargement puis onglet neuf" };
+}
+
+// Le « es-tu là ? » de chaque plateforme (réponse synchrone, aucune lecture).
+function pingContentScript(platform, tabId) {
+  const type = platform === "vinted" ? "VINTED_PING" : platform === "opla" ? "OPLA_PING" : "FILLSELL_PING";
+  return sendMessageToTabOnce(tabId, { type }, SYNC_PING_TIMEOUT_MS).then((r) => r?.pong === true).catch(() => false);
+}
+
+// ── L'ONGLET DE TRAVAIL D'UN JOB, PRÊT (08/10/2026) ──────────────────────────
+// getOrCreateWorkTab, et quand son chargement n'est pas confirmé dans les 30 s
+// (« Timeout: la page de dépôt n'a pas fini de charger » — titaperry543,
+// publication Vinted du 07/10 23:37, coupée AVANT tout remplissage), la même
+// parade que la synchro : on retrouve l'onglet, on exige qu'il soit SUR LA
+// PAGE DEMANDÉE et que son content script réponde, sinon on le relance
+// (relancerOngletMuet). Toujours avant le premier message à la page : rien
+// n'a pu être déposé. Rien d'autre ne change : un chargement confirmé rend
+// exactement ce que rendait getOrCreateWorkTab.
+async function ouvrirOngletTravailJob(platform, url) {
+  try {
+    return await getOrCreateWorkTab(platform, url);
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    if (!/n'a pas fini de charger/i.test(msg)) throw e;
+    const tabId = await retrouverOngletTravail(platform, url);
+    if (tabId == null) throw e;
+    const ping = (id) => pingContentScript(platform, id);
+    if (await ongletReleveUtilisable(tabId, url) && await ping(tabId)) {
+      console.warn(`[onglet][${platform}] chargement non confirmé (${msg}) — la page demandée répond, on continue`);
+      try { await chrome.storage.session.set({ [workTabKey(platform)]: tabId }); } catch { /* sans conséquence */ }
+      return tabId;
+    }
+    const relance = await relancerOngletMuet(platform, tabId, url, ping);
+    if (relance.ok && await ongletReleveUtilisable(relance.tabId, url)) {
+      console.warn(`[onglet][${platform}] page prête après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
+      return relance.tabId;
+    }
+    throw new Error(`${msg} — le content script ne répond pas, ni après ${relance.geste}`);
+  }
 }
 
 // ── Une LECTURE Vinted qui survit à une coupure de canal ────────────────────
@@ -13023,7 +13130,11 @@ function tracerPageDemandee({ token, userId, runId, page, itemsVus, totalPages }
     console.warn("[sync-dressing] trace de page non écrite (sans conséquence) :", String(e?.message ?? e)));
 }
 
-async function lireVintedAvecCanalRejoue(tabIdInitial, envoyer, etiquette) {
+// (08/10) `rejouerTimeout` : pour une LECTURE PURE (une page du dressing),
+// « Timeout: pas de réponse du content script » se rejoue aussi — ornellaracano
+// (07/10 20:19, page 2, 96 lus sur 152) : relire une page ne dépose rien, et
+// ouvrirOngletVintedPret relance l'onglet muet avant le nouvel essai.
+async function lireVintedAvecCanalRejoue(tabIdInitial, envoyer, etiquette, { rejouerTimeout = false } = {}) {
   let derniere = null;
   let tabId = tabIdInitial;
   for (let tentative = 1; tentative <= SYNC_CANAL_TENTATIVES; tentative++) {
@@ -13042,7 +13153,8 @@ async function lireVintedAvecCanalRejoue(tabIdInitial, envoyer, etiquette) {
     const res = await envoyer(tabId).catch((e) => {
       const msg = String(e?.message ?? e);
       transport = true;
-      canalCoupe = CANAL_COUPE_RE.test(msg) || msg.includes("Could not establish connection");
+      canalCoupe = CANAL_COUPE_RE.test(msg) || msg.includes("Could not establish connection")
+        || (rejouerTimeout && msg.startsWith("Timeout: pas de réponse du content script"));
       return { success: false, error: msg };
     });
     // Réponse reçue (succès OU échec métier : 403, session morte…) : on rend
@@ -17371,6 +17483,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
             // (03/10, points 28/31) 60 s par page (p95 réel : 1 min), plus 300 s.
             (id) => sendMessageToTab(id, { type: "SYNC_DRESSING_PAGE", page, userId: ident.userId }, 60_000),
             `page ${page}`,
+            { rejouerTimeout: true }, // lecture pure : une page relue ne dépose rien (08/10)
           );
           if (r?.tabId != null) tabId = r.tabId; // l'onglet a pu changer d'id
           return r;
@@ -21468,7 +21581,9 @@ async function executerRetraitViaHandler(job, accessToken) {
   if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
 
   // Même onglet de travail persistant que la publication (anti-DataDome).
-  const tabId = await getOrCreateWorkTab(job.platform, target);
+  // (08/10) Chargement non confirmé → l'onglet est retrouvé, relancé s'il est
+  // muet, avant tout message : un retrait ne part jamais vers un onglet figé.
+  const tabId = await ouvrirOngletTravailJob(job.platform, target);
 
   // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
   // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
@@ -23339,7 +23454,7 @@ async function processRepublishJob(job, accessToken) {
 
       const handlerV = PLATFORM_HANDLERS.vinted;
       const urlDepot = typeof handlerV.newListingUrl === "function" ? handlerV.newListingUrl(jobRecreation) : handlerV.newListingUrl;
-      const tabId = await getOrCreateWorkTab("vinted", urlDepot);
+      const tabId = await ouvrirOngletTravailJob("vinted", urlDepot);
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
