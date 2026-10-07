@@ -112,6 +112,25 @@ fusion sûre (photo) ; doute sur un article INTACT → sorti du stock, son
 annonce redevient une proposition (sauvegardes `_backup_0710_rattachement_*`) ;
 doute sur un article touché → reste, question posée ; aucun candidat → reste.
 
+Simulation du 07/10 (transactions annulées, un compte par transaction, après
+empreinte de 11 518 photos du parc) :
+
+| | Parc (98 comptes, 64 touchés) | Corinne |
+|---|---|---|
+| Articles importés par l'ancien moteur | 3 751 | 157 |
+| Fusions sûres (même photo) | 219 (dont 49 entre deux imports) | 12 |
+| Sortis du stock → « Annonces à vérifier » | 1 035 | 90 |
+| Questions (article déjà touché) | 146 | 3 |
+| Laissés tels quels (aucun candidat) | 2 351 | 52 |
+| Stock | 23 653 → 22 399 | 518 → 416 |
+| Titres en double dans le stock | 1 574 → 1 169 | 24 → 12 |
+| Échecs | 0 | 0 |
+
+Corinne, moteur enchaîné sur ses 385 annonces en attente : 67 rattachées par
+la photo, 256 propositions hors stock, 59 créées (3 regroupées) → stock final
+475, 6 questions ouvertes ; les titres encore en double sont surtout
+Vinted–Vinted (deux annonces Vinted = deux exemplaires, hors du périmètre).
+
 ## Inverse de la migration
 
 `scripts/reparations/20261007140000_rattachement_avant_stock_INVERSE.sql` —
