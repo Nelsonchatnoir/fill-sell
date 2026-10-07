@@ -71,7 +71,16 @@ serve(async (req) => {
 
   const etat = async (user: string, champs: Record<string, unknown>) => {
     if (simuler) return;
-    await admin.from("rapprochement_comptes").update({ ...champs, maj_le: new Date().toISOString() }).eq("user_id", user).then(() => {}, () => {});
+    // (08/10 nuit) Un compte jamais demandé (réparation, premier relevé) n'a pas
+    // de ligne : l'UPDATE ne touchait rien et l'état (progrès des photos,
+    // « déjà réparé », barre de l'app) n'était jamais écrit. On crée la ligne.
+    const maj = { ...champs, maj_le: new Date().toISOString() };
+    const { data } = await admin.from("rapprochement_comptes").update(maj).eq("user_id", user).select("user_id")
+      .then((r) => r, () => ({ data: null }));
+    if (!data || (data as unknown[]).length === 0) {
+      await admin.from("rapprochement_comptes").insert({ user_id: user, etat: "decision", demande_le: new Date().toISOString(), ...maj })
+        .then(() => {}, () => {});
+    }
   };
 
   const lireEmpreintes = async (urls: string[]) => {

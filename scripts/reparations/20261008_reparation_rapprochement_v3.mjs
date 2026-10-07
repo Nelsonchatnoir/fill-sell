@@ -65,6 +65,9 @@ const comptes = () => (USER ? [{ user_id: USER }] : q(`${COMPTES_SQL} ORDER BY (
   .filter((r) => (!args.includes('--payants') || r.palier !== 'free') && (!args.includes('--gratuits') || r.palier === 'free'))
   // --part k/n (08/10 nuit) : plusieurs instances de simulation en parallèle, chacune sa part des comptes
   .filter((r) => { const p = val('--part'); if (!p) return true; const [k, n] = p.split('/').map(Number); return (parseInt(String(r.user_id).slice(0, 8), 16) % n) === k; });
+// --sauf <uuid,uuid> : des comptes déjà traités à part (Corinne, appliquée la première le 08/10)
+const SAUF = new Set(String(val('--sauf') ?? '').split(',').filter(Boolean));
+const comptesSauf = () => comptes().filter((r) => !SAUF.has(r.user_id));
 
 // Appel de la fonction edge par la base (secret du vault), réponse lue dans
 // net._http_response (qui se purge : lue tout de suite, en boucle courte).
@@ -145,7 +148,11 @@ if (args.includes('--simuler')) {
 if (args.includes('--appliquer')) {
   if (!USER && !args.includes('--tous') && !args.includes('--payants') && !args.includes('--gratuits')) { console.error('--user <uuid> | --payants | --gratuits | --tous'); process.exit(1); }
   const sim = val('--simulation') ? new Map(JSON.parse(fs.readFileSync(val('--simulation'), 'utf8')).map((x) => [x.u, x])) : null;
-  const l = comptes();
+  // (08/10 nuit) Un compte déjà réparé cette nuit (plusieurs instances, reprise après un arrêt) n'est pas repris :
+  // la passe est idempotente mais l'écart à la simulation ne se relirait plus.
+  const dejaFaits = new Set(q(`SELECT user_id FROM rapprochement_comptes WHERE etat = 'termine' AND bilan ->> 'mode' = 'reparation' AND fin_le > now() - interval '12 hours';`).map((r) => r.user_id));
+  const l = comptesSauf().filter((r) => !dejaFaits.has(r.user_id));
+  console.log(`${l.length} compte(s) à appliquer (${dejaFaits.size} déjà réparé(s) cette nuit)`);
   fs.mkdirSync(path.join(RACINE, 'build', 'rattachement'), { recursive: true });
   const sortie = path.join(RACINE, 'build', 'rattachement', `application-v3-${Date.now()}.json`);
   const res = [];
@@ -175,7 +182,9 @@ if (args.includes('--appliquer')) {
     res.push(v); fs.writeFileSync(sortie, JSON.stringify(res, null, 1));
     console.log(u, JSON.stringify({ etat: v.etat, faits: v.faits, sautes: v.sautes, erreurs: v.erreurs, stock: `${avant.stock}→${apres.stock}`, a_verifier: `${avant.a_verifier}→${apres.a_verifier}`, sans_article: `${avant.sans_article}→${apres.sans_article}` }));
     // 3. garde-fous : rien de supprimé, aucun job actif créé, aucune erreur, pas d'écart à la simulation
-    if (apres.fiches !== avant.fiches || apres.jobs_actifs > avant.jobs_actifs || v.erreur || (v.erreurs ?? 0) > 0 || v.etat !== 'termine') {
+    // (08/10 nuit) « rien de supprimé » = jamais MOINS de fiches ; une fiche créée pour une annonce sans article
+    // (creer / entrer_stock) est le travail attendu (2d596c5a : 0 → 2, deux annonces sans article rattachées).
+    if (apres.fiches < avant.fiches || apres.jobs_actifs > avant.jobs_actifs || v.erreur || (v.erreurs ?? 0) > 0 || v.etat !== 'termine') {
       console.error(`ARRÊT : ${u} — fiches ${avant.fiches}→${apres.fiches}, jobs actifs ${avant.jobs_actifs}→${apres.jobs_actifs}, erreurs ${v.erreurs}, état ${v.etat} ${v.erreur ?? ''}`);
       process.exit(2);
     }
