@@ -184,6 +184,12 @@ verify_jwt = false
 [functions.empreintes-urls]
 verify_jwt = false
 
+# rapprochement (07/10, rattachement avant stock) — appelée par la base
+# (rapprocher_releve, trg_rapprochement_fin_run, cron rapprochement-1min ;
+# pg_net, x-cron-secret vérifié dans le code), jamais par l'app ni l'extension.
+[functions.rapprochement]
+verify_jwt = false
+
 # (stripe-recalage-1er-du-mois — recalage XEWER du 01/10 — SUPPRIMÉE de la
 # prod le 03/10 : one-shot fini, plus aucun cron ni appel ; la fonction SQL
 # recalage_xewer_tick, que plus rien n'appelle, reste en base.)
