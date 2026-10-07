@@ -25,7 +25,13 @@ const val = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : nu
 const USER = val('--user');
 const SCRIPT = fs.readFileSync(path.join(RACINE, 'scripts', 'reparations', '20261007_rattrapage_releves.sql'), 'utf8');
 const MIGRATION = fs.readFileSync(path.join(RACINE, 'supabase', 'migrations', '20261007140000_rattachement_avant_stock.sql'), 'utf8')
-  .replace(/^BEGIN;\s*$/m, '').replace(/^COMMIT;\s*$/m, '');
+  .replace(/^BEGIN;\s*$/m, '').replace(/^COMMIT;\s*$/m, '')
+  // En simulation : ni le déclencheur sur vinted_sync_runs (son verrou
+  // bloquerait l'écriture des relevés de TOUS les comptes le temps de la
+  // transaction), ni le cron — inutiles au calcul.
+  .replace(/\r\n/g, '\n')
+  .replace(/^DROP TRIGGER IF EXISTS trg_rapprochement_fin_run[\s\S]*?EXECUTE FUNCTION public\.rapprochement_fin_run\(\);\n/m, '')
+  .replace(/^DO \$do\$\nBEGIN\n  PERFORM cron\.unschedule[\s\S]*?\$do\$;\n/m, '');
 
 function q(sql) {
   const f = path.join(os.tmpdir(), `rattrapage-${process.pid}-${Date.now()}.sql`);
@@ -69,9 +75,10 @@ if (args.includes('--empreintes')) {
 if (args.includes('--simuler')) {
   const liste = comptes();
   const res = [];
-  // Par paquets de comptes : une transaction annulée chacun.
-  for (let i = 0; i < liste.length; i += 10) {
-    const lot = liste.slice(i, i + 10);
+  // Un compte par transaction annulée : les verrous (lignes du compte)
+  // tiennent le moins longtemps possible ; on n'attend jamais derrière un autre.
+  for (let i = 0; i < liste.length; i += 1) {
+    const lot = liste.slice(i, i + 1);
     const moteur = USER ? `
       DO $$ DECLARE r jsonb; k int; BEGIN
         PERFORM rapprochement_demander('${USER}'::uuid, 'simulation');
@@ -84,12 +91,15 @@ if (args.includes('--simuler')) {
           'questions_ouvertes', (SELECT count(*) FROM inventaire_doublons WHERE user_id='${USER}'::uuid AND statut='proposee'),
           'bilan_moteur', (SELECT bilan FROM rapprochement_comptes WHERE user_id='${USER}'::uuid));
       END $$;` : '';
-    const sql = `BEGIN;\n${args.includes('--avec-migration') ? MIGRATION : ''}\n${SCRIPT}\nCREATE TEMP TABLE _sim (u text, v jsonb);\n`
+    const sql = `BEGIN;\nSET LOCAL lock_timeout = '5s';\n${args.includes('--avec-migration') ? MIGRATION : ''}\n${SCRIPT}\nCREATE TEMP TABLE _sim (u text, v jsonb);\n`
       + lot.map((u) => `INSERT INTO _sim SELECT '${u}', pg_temp.rattrapage_compte('${u}'::uuid, true);`).join('\n')
       + moteur + '\nSELECT u, v FROM _sim;\nROLLBACK;\n';
-    const r = q(sql);
+    let r;
+    try { r = q(sql); } catch (e) { r = [{ u: lot[0], v: { erreur: String(e.message).slice(0, 300) } }]; }
     res.push(...r);
-    process.stdout.write(`\r${Math.min(liste.length, i + 10)}/${liste.length} comptes simulés`);
+    process.stdout.write(`\r${Math.min(liste.length, i + 1)}/${liste.length} comptes simulés`);
+    const cpu = q('select pct from veille_cpu where pct is not null order by le desc limit 1;')[0]?.pct;
+    if (cpu != null && cpu > 60) { console.log(`\nCPU ${cpu} % : pause 60 s`); await new Promise((r2) => setTimeout(r2, 60000)); }
   }
   console.log();
   fs.mkdirSync(path.join(RACINE, 'build', 'rattachement'), { recursive: true });
