@@ -35,7 +35,10 @@ if (PHOTOS.length < 8) { console.error('photos de test manquantes (build/rattach
 const P = PHOTOS.map((u) => `'${u.replace(/'/g, "''")}'`);
 const U = "'00000000-0000-4000-8000-0000000a0710'::uuid";
 
-let m = fs.readFileSync(MIGRATION, 'utf8').replace(/^BEGIN;\s*$/m, '').replace(/^COMMIT;\s*$/m, '');
+// --en-prod : la migration est appliquée, on prouve ce qui tourne (sans la
+// rejouer : son déclencheur verrouillerait vinted_sync_runs le temps du test).
+let m = process.argv.includes('--en-prod') ? ''
+  : fs.readFileSync(MIGRATION, 'utf8').replace(/^BEGIN;\s*$/m, '').replace(/^COMMIT;\s*$/m, '');
 const sql = `
 BEGIN;
 ${m}

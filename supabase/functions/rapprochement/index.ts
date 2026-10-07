@@ -85,6 +85,9 @@ serve(async (req) => {
       dernier = (data ?? {}) as Record<string, unknown>;
       const etat = String(dernier.etat ?? "");
       if (etat === "empreintes") {
+        // Plus le temps de calculer : on rend la main (relance), jamais un
+        // passage « à vide » qui ferait classer le compte sans ses photos.
+        if (reste() < 20_000) { inacheve = true; break; }
         const urls = Array.isArray(dernier.urls) ? (dernier.urls as string[]) : [];
         parCompte.photos = Number(parCompte.photos) + await empreinter(urls);
         continue;

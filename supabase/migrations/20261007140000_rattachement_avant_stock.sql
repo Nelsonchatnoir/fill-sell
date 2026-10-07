@@ -727,10 +727,12 @@ BEGIN
   v_grand := (SELECT count(*) FROM inventaire i WHERE i.user_id = p_user AND i.statut = 'stock' AND i.fusionne_dans IS NULL) > 5000;
 
   -- ── B. LES EMPREINTES MANQUANTES (annonces à classer, nouvelles, couvertures
-  --    du stock). Huit passages au plus : une photo qui ne se lit pas ne
-  --    bloque jamais le compte.
+  --    du stock), 200 par passage, TOUTES avant de classer. Seuls comptent les
+  --    passages SANS PROGRÈS (le nombre manquant n'a pas baissé : fonction
+  --    d'empreintes en panne, temps épuisé) : huit au plus, et une photo qui
+  --    ne se lit pas ne bloque jamais le compte (photo_empreintes_echecs).
   IF NOT v_grand AND c.passages_photos < 8 THEN
-    SELECT array_agg(z.u) INTO v_urls FROM (
+    SELECT count(*)::integer, (array_agg(z.u))[1:200] INTO v_n, v_urls FROM (
       SELECT DISTINCT y.u FROM (
         SELECT a.photo_url u FROM annonces_plateforme a
          WHERE a.user_id = p_user AND a.inventaire_id IS NULL AND a.ignoree_le IS NULL AND a.disparu_le IS NULL
@@ -741,11 +743,13 @@ BEGIN
       ) y
        WHERE y.u ~ '^https://'
          AND NOT EXISTS (SELECT 1 FROM photo_empreintes e WHERE e.url = y.u)
-         AND NOT EXISTS (SELECT 1 FROM photo_empreintes_echecs e WHERE e.url = y.u)
-       LIMIT 200) z;
+         AND NOT EXISTS (SELECT 1 FROM photo_empreintes_echecs e WHERE e.url = y.u)) z;
     IF v_urls IS NOT NULL THEN
-      UPDATE rapprochement_comptes SET etat = 'empreintes', maj_le = now(), passages_photos = passages_photos + 1,
-             photos_manquantes = cardinality(v_urls)
+      UPDATE rapprochement_comptes
+         SET etat = 'empreintes', maj_le = now(),
+             passages_photos = CASE WHEN c.etat = 'empreintes' AND v_n >= COALESCE(c.photos_manquantes, 0)
+                                    THEN passages_photos + 1 ELSE 0 END,
+             photos_manquantes = v_n
        WHERE user_id = p_user;
       RETURN jsonb_build_object('etat', 'empreintes', 'urls', to_jsonb(v_urls));
     END IF;

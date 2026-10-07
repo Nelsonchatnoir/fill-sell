@@ -50,6 +50,8 @@ console.log('2. Le moteur : attendre, empreinter, classer, puis créer');
   ok(/pg_try_advisory_xact_lock\(hashtext\('rapprochement:'/.test(av), 'un seul passage à la fois par compte (verrou)');
   ok(/s\.kind IN \('annonces', 'dressing'\)[\s\S]{0,200}'queued'[\s\S]{0,200}'running'/.test(av), 'rien ne se tranche tant qu’un relevé du compte (Vinted compris) tourne');
   ok(/'etat', 'empreintes', 'urls'/.test(av), 'les empreintes manquantes d’abord (annonces + couvertures)');
+  ok(/passages_photos = CASE WHEN c\.etat = 'empreintes' AND v_n >= COALESCE\(c\.photos_manquantes, 0\)/.test(av), 'seuls les passages photo SANS PROGRÈS comptent (un gros compte n’est jamais classé sans ses photos)');
+  ok(/etat === "empreintes"\) \{[\s\S]{0,200}reste\(\) < 20_000\) \{ inacheve = true; break; \}/.test(fn), 'la fonction rend la main plutôt que de redemander les photos sans temps pour les calculer');
   ok(/veille_cpu[\s\S]{0,120}> 70/.test(av), 'la base qui peine passe avant (veille_cpu > 70 %)');
   ok(/rapprochement_nouvelles/.test(av) && /'creation'/.test(av), 'les « sans candidat » ne sont créées qu’une fois TOUT classé');
   ok(/releve_est_geste\(s\.declencheur\)/.test(av), 'un relevé automatique ne crée rien (releves_sur_geste)');
