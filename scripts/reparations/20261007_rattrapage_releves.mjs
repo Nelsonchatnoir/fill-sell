@@ -47,7 +47,11 @@ function q(sql) {
 const COMPTES_SQL = `SELECT DISTINCT i.user_id FROM inventaire i
   WHERE i.origine LIKE 'releve\\_%' AND i.fusionne_dans IS NULL AND i.statut = 'stock'
     AND EXISTS (SELECT 1 FROM rapprochements r WHERE r.inventaire_id = i.id AND r.decision = 'import' AND r.par = 'auto')`;
-const comptes = () => (USER ? [USER] : q(COMPTES_SQL + ';').map((r) => r.user_id));
+// Les comptes PAYANTS d'abord (contrôle de Nico avant le reste du parc) ;
+// --payants : eux seuls.
+const comptes = () => (USER ? [USER] : q(`SELECT c.user_id, palier_de(c.user_id) palier FROM (${COMPTES_SQL}) c
+  ORDER BY (palier_de(c.user_id) = 'free'), c.user_id;`)
+  .filter((r) => !args.includes('--payants') || r.palier !== 'free').map((r) => r.user_id));
 
 if (args.includes('--empreintes')) {
   const filtre = USER ? `= '${USER}'::uuid` : `IN (${COMPTES_SQL})`;
@@ -85,12 +89,16 @@ if (args.includes('--simuler')) {
         UPDATE rapprochement_comptes SET passages_photos = 99 WHERE user_id = '${USER}'::uuid;
         FOR k IN 1..60 LOOP r := rapprochement_avancer('${USER}'::uuid, 20000); EXIT WHEN r->>'etat' IN ('termine','attente_releves','occupe','cpu'); END LOOP;
         INSERT INTO _sim SELECT '${USER}', jsonb_build_object('moteur_apres_rattrapage', r - 'urls',
-          'stock_final', (SELECT count(*) FROM inventaire WHERE user_id='${USER}'::uuid AND fusionne_dans IS NULL AND statut='stock'),
-          'titres_en_double_final', (SELECT count(*) FROM (SELECT titre_norm(titre) FROM inventaire WHERE user_id='${USER}'::uuid AND fusionne_dans IS NULL AND statut='stock' GROUP BY 1 HAVING count(*)>1) d),
+          'stock_final', (SELECT count(*) FROM inventaire WHERE user_id='${USER}'::uuid AND fusionne_dans IS NULL AND statut='stock' AND a_verifier IS NULL),
+          'a_verifier_final', (SELECT count(*) FROM inventaire WHERE user_id='${USER}'::uuid AND fusionne_dans IS NULL AND statut='stock' AND a_verifier IS NOT NULL),
+          'titres_en_double_final', (SELECT count(*) FROM (SELECT titre_norm(titre) FROM inventaire WHERE user_id='${USER}'::uuid AND fusionne_dans IS NULL AND statut='stock' AND a_verifier IS NULL GROUP BY 1 HAVING count(*)>1) d),
           'propositions_hors_stock', (SELECT count(*) FROM annonces_plateforme WHERE user_id='${USER}'::uuid AND inventaire_id IS NULL AND proposition IS NOT NULL AND ignoree_le IS NULL AND disparu_le IS NULL),
           'questions_ouvertes', (SELECT count(*) FROM inventaire_doublons WHERE user_id='${USER}'::uuid AND statut='proposee'),
           'bilan_moteur', (SELECT bilan FROM rapprochement_comptes WHERE user_id='${USER}'::uuid));
       END $$;` : '';
+    // --avec-migration : la migration ajoute une colonne à inventaire (verrou
+    // exclusif tenu jusqu'à la fin de la transaction) — jamais sur le parc.
+    if (args.includes('--avec-migration') && !USER) { console.error('--avec-migration : un seul compte (--user)'); process.exit(1); }
     const sql = `BEGIN;\nSET LOCAL lock_timeout = '5s';\n${args.includes('--avec-migration') ? MIGRATION : ''}\n${SCRIPT}\nCREATE TEMP TABLE _sim (u text, v jsonb);\n`
       + lot.map((u) => `INSERT INTO _sim SELECT '${u}', pg_temp.rattrapage_compte('${u}'::uuid, true);`).join('\n')
       + moteur + '\nSELECT u, v FROM _sim;\nROLLBACK;\n';
@@ -104,11 +112,12 @@ if (args.includes('--simuler')) {
   console.log();
   fs.mkdirSync(path.join(RACINE, 'build', 'rattachement'), { recursive: true });
   fs.writeFileSync(path.join(RACINE, 'build', 'rattachement', `simulation-rattrapage${USER ? '-' + USER.slice(0, 8) : ''}.json`), JSON.stringify(res, null, 1));
-  const t = { comptes: 0, importes: 0, fusions: 0, groupees: 0, hors_stock: 0, questions: 0, gardes: 0, echecs: 0, stock_avant: 0, stock_apres: 0, doubles_avant: 0, doubles_apres: 0 };
+  const t = { comptes: 0, importes: 0, fusions: 0, groupees: 0, a_verifier: 0, paires_deja_tranchees: 0, questions: 0, gardes: 0, echecs: 0, stock_avant: 0, stock_apres: 0, doubles_avant: 0, doubles_apres: 0, fiches_disparues: 0, jobs_crees: 0, erreurs_sql: res.filter((x) => x.v?.erreur).length };
   for (const { v } of res.filter((x) => x.v?.importes_ancien_moteur != null)) {
     if (!v.importes_ancien_moteur) continue;
     t.comptes++; t.importes += v.importes_ancien_moteur; t.fusions += v.fusions_sures; t.groupees += v.dont_groupees_entre_plateformes;
-    t.hors_stock += v.hors_stock_propositions; t.questions += v.questions_articles_touches; t.gardes += v.gardes_uniques; t.echecs += v.echecs;
+    t.a_verifier += v.a_verifier; t.paires_deja_tranchees += v.doutes_paire_deja_tranchee; t.questions += v.questions_articles_touches; t.gardes += v.gardes_uniques; t.echecs += v.echecs;
+    t.fiches_disparues += v.fiches_avant - v.fiches_apres; t.jobs_crees += v.jobs_apres - v.jobs_avant;
     t.stock_avant += v.stock_avant; t.stock_apres += v.stock_apres; t.doubles_avant += v.titres_en_double_avant; t.doubles_apres += v.titres_en_double_apres ?? 0;
   }
   console.log(JSON.stringify(t, null, 1));
@@ -117,17 +126,35 @@ if (args.includes('--simuler')) {
 }
 
 if (args.includes('--appliquer')) {
-  if (!USER && !args.includes('--tous')) { console.error('--user <uuid> ou --tous'); process.exit(1); }
+  if (!USER && !args.includes('--tous') && !args.includes('--payants')) { console.error('--user <uuid> | --payants | --tous'); process.exit(1); }
   const liste = comptes();
+  // La simulation de référence (même code, transaction annulée) : un compte
+  // qui s'en écarte arrête tout.
+  const sim = val('--simulation') ? new Map(JSON.parse(fs.readFileSync(val('--simulation'), 'utf8')).map((x) => [x.u, x.v])) : null;
   const res = [];
+  fs.mkdirSync(path.join(RACINE, 'build', 'rattachement'), { recursive: true });
+  const sortie = path.join(RACINE, 'build', 'rattachement', `application-rattrapage-${Date.now()}.json`);
   for (const u of liste) {
-    const r = q(`BEGIN;\n${SCRIPT}\nCREATE TEMP TABLE _app (u text, v jsonb);\nINSERT INTO _app SELECT '${u}', pg_temp.rattrapage_compte('${u}'::uuid, true);\nSELECT u, v FROM _app;\nCOMMIT;\n`);
+    const r = q(`BEGIN;\nSET LOCAL lock_timeout = '5s';\n${SCRIPT}\nCREATE TEMP TABLE _app (u text, v jsonb);\nINSERT INTO _app SELECT '${u}', pg_temp.rattrapage_compte('${u}'::uuid, true);\nSELECT u, v FROM _app;\nCOMMIT;\n`);
     res.push(...r);
-    console.log(u, JSON.stringify(r[0]?.v));
+    fs.writeFileSync(sortie, JSON.stringify(res, null, 1));
+    const v = r[0]?.v ?? {};
+    console.log(u, JSON.stringify(v));
+    // Garde-fous : aucune ligne disparue, aucun job créé, aucun échec.
+    if (v.importes_ancien_moteur && (v.fiches_avant !== v.fiches_apres || v.jobs_avant !== v.jobs_apres || v.echecs)) {
+      console.error(`ARRÊT : ${u} — fiches ${v.fiches_avant}→${v.fiches_apres}, jobs ${v.jobs_avant}→${v.jobs_apres}, échecs ${v.echecs}`);
+      process.exit(2);
+    }
+    const s0 = sim?.get(u);
+    const ecart = (k) => Math.abs((v[k] ?? 0) - (s0[k] ?? 0)) > Math.max(2, 0.1 * (s0[k] ?? 0));
+    if (s0?.importes_ancien_moteur != null && ['fusions_sures', 'a_verifier', 'questions_articles_touches'].some(ecart)) {
+      console.error(`ARRÊT : ${u} s'écarte de la simulation`, JSON.stringify({ simulation: s0, reel: v }));
+      process.exit(3);
+    }
     const cpu = q('select pct from veille_cpu where pct is not null order by le desc limit 1;')[0]?.pct;
     if (cpu != null && cpu > 60) { console.log(`CPU ${cpu} % : pause 60 s`); await new Promise((r2) => setTimeout(r2, 60000)); }
   }
-  fs.writeFileSync(path.join(RACINE, 'build', 'rattachement', `application-rattrapage-${Date.now()}.json`), JSON.stringify(res, null, 1));
+  console.log(`${res.length} compte(s) — ${sortie}`);
   process.exit(0);
 }
 console.error('--empreintes | --simuler | --appliquer');
