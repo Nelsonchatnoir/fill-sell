@@ -18,12 +18,13 @@
 //   · lecture — le même, AVANT la réponse du serveur (l'écran de Louis le 04/10) ;
 //   · echec   — le même, lecture ratée ;
 //   · leboncoin — l'écran de la plateforme Leboncoin, état lu ;
-//   · stock   — le haut du Stock : tuiles, « Publier plusieurs articles d'un
-//               coup », ligne de la republication automatique.
+//   · stock   — le haut du Stock : tuiles, ligne de la republication
+//               automatique (la ligne « Publier plusieurs articles d'un coup »
+//               est retirée le 07/10).
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RepublicationPlanifieePlateformes, RepublicationPlanifieeReglages } from '../../src/components/RepublicationPlanifiee';
-import { Gestes, LignePublierEnLot, LigneRepublicationAuto } from '../../src/stock/Haut';
+import { Gestes, LigneRepublicationAuto } from '../../src/stock/Haut';
 import { droitRepublication, plateformesPlanifieesVisibles } from '../../src/hooks/useRepublicationPlanifiee';
 import { palierDuProfil } from '../../src/utils/palier';
 import { CSS_STOCK } from '../../src/stock/css';
@@ -61,9 +62,6 @@ function HautStock() {
           publier={{ n: n?.publier ?? 0, onOuvrir: () => {} }}
           remonter={{ n: n?.remonter ?? 0, onOuvrir: () => {} }}
           aRegler={{ n: n?.aRegler ?? 0, onOuvrir: () => {} }} />
-      </div>
-      <div data-zone="lot" style={{ marginTop: 8 }}>
-        <LignePublierEnLot lang="fr" n={n?.publier ?? 0} onOuvrir={() => {}} />
       </div>
       <div data-zone="repub" style={{ marginTop: 8 }}>
         <LigneRepublicationAuto lang="fr" autorise={droit.autorise === true} actif={pfs.length > 0}

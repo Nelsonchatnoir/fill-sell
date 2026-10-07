@@ -240,7 +240,7 @@ for (const v of VERSIONS) {
   // 6. Remonter : la sélection pré-cochée, jamais validée
   await haut(page);
   if (apres) {
-    await page.locator('[aria-label^="Remonter mes annonces :"]').first().click();
+    await page.locator('[aria-label^="Republier :"]').first().click();
     await page.waitForTimeout(900);
     f.remonter = await capture(page, v, '06-remonter');
     const boutons = await page.getByRole('button', { name: /^Remonter \d+ annonces?$/ }).count();

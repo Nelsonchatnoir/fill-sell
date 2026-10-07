@@ -13,8 +13,8 @@
 //     réglée » sur Vinted SEULEMENT (lu sur configure), 19h–22h sur Leboncoin,
 //     Beebs et Opla ;
 //   · en lecture / lecture ratée : ni refus ni « Non réglée » ;
-//   · Stock : « Publier plusieurs articles d'un coup » visible, entière, et
-//     « Active sur Leboncoin, Beebs et Opla » ;
+//   · Stock : plus de ligne « Publier plusieurs articles d'un coup » (retirée
+//     le 07/10, doublon de la tuile), et « Active sur Leboncoin, Beebs et Opla » ;
 //   · aucun débordement horizontal, aucune erreur de page.
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -83,18 +83,9 @@ try {
   verifier(/19h|Soir/.test(b), 'Leboncoin : le créneau du soir de Louis', b);
 
   const s = await ouvrir('stock');
-  verifier(/Publier plusieurs articles d’un coup|Publier plusieurs articles d'un coup/.test(s), 'Stock : « Publier plusieurs articles d’un coup » est visible', s);
+  // (07/10) La ligne « Publier plusieurs articles d'un coup » est retirée (doublon de la tuile).
+  verifier(!/Publier plusieurs articles d’un coup|Publier plusieurs articles d'un coup/.test(s), 'Stock : plus de ligne « Publier plusieurs articles d’un coup » (doublon de la tuile)', s);
   verifier(/Active sur Leboncoin, Beebs et Opla/.test(s), 'Stock : « Active sur Leboncoin, Beebs et Opla »', s);
-  const lot = await page.evaluate(() => {
-    const z = document.querySelector('[data-zone="lot"] button');
-    if (!z) return null;
-    const r = z.getBoundingClientRect();
-    const spans = [...z.querySelectorAll('span')].map((x) => ({ t: x.textContent, coupe: x.scrollWidth > x.clientWidth + 0.5 }));
-    return { gauche: r.left, droite: r.right, hauteur: r.height, spans };
-  });
-  verifier(lot && lot.gauche >= 16 - 0.5 && lot.droite <= 390 - 16 + 0.5, 'Stock : la porte du lot tient dans les marges de 16 px', JSON.stringify(lot));
-  verifier(lot && lot.hauteur >= 44, 'Stock : la porte du lot fait au moins 44 px de haut (toucher)', JSON.stringify(lot));
-  verifier(lot && lot.spans.every((x) => !x.coupe), 'Stock : aucun texte de la porte du lot n’est coupé', JSON.stringify(lot?.spans));
 
   verifier(erreurs.length === 0, 'aucune erreur de page', erreurs.join(' | '));
 } finally {

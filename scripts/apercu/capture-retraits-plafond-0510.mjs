@@ -221,7 +221,7 @@ try {
     verifier(pastilles.length === 5 && pastilles.every((a) => /: \d+ annonces?, à jour$/.test(a)), `${l} : 5 pastilles de plateforme chiffrées, à jour`, pastilles.join(' | '));
     releve(`${l} : pastilles ${pastilles.join(' · ')} ; carte « ${lignesSynchro.slice(0, 2).join(' · ')} »`);
     const tuileARegler = page.locator('[aria-label^="À régler :"]').first();
-    const tuiles = await page.locator('[aria-label^="Publier :"], [aria-label^="Remonter mes annonces :"], [aria-label^="À régler :"]').count();
+    const tuiles = await page.locator('[aria-label^="Publier :"], [aria-label^="Republier :"], [aria-label^="À régler :"]').count();
     verifier(tuiles >= 3, `${l} : les trois tuiles (Publier, Remonter, À régler)`, String(tuiles));
     const ariaARegler = await tuileARegler.getAttribute('aria-label').catch(() => null);
     verifier(ariaARegler === 'À régler : 5, dont 4 annonces encore en ligne à retirer', `${l} : la tuile « À régler » compte les 4 retraits (+1 prix d'achat) = 5 et le dit`, ariaARegler);
@@ -229,7 +229,7 @@ try {
     verifier(texteTuile.includes('annonces à retirer'), `${l} : sous-titre de la tuile « annonces à retirer » (le plus urgent, court)`, texteTuile);
     const coupesTuile = await texteCoupe(tuileARegler);
     verifier(coupesTuile.length === 0, `${l} : tuile « À régler » — aucun texte coupé en largeur`, coupesTuile.join(' | '));
-    for (const [nom, sel] of [['Publier', '[aria-label^="Publier :"]'], ['Remonter', '[aria-label^="Remonter mes annonces :"]'], ['À régler', '[aria-label^="À régler :"]']]) {
+    for (const [nom, sel] of [['Publier', '[aria-label^="Publier :"]'], ['Republier', '[aria-label^="Republier :"]'], ['À régler', '[aria-label^="À régler :"]']]) {
       const v = await texteEnHauteur(page.locator(sel).first());
       verifier(v.horsTuile === 0, `${l} : tuile « ${nom} » — le texte ne sort pas de la tuile (${v.hauteur} px)`, `${v.horsTuile} px sous le bord bas de la tuile`);
       verifier(v.dansPadding === 0, `${l} : tuile « ${nom} » — le texte tient au-dessus du padding bas`, `${v.dansPadding} px dans le padding bas (16 px)`);
@@ -374,7 +374,7 @@ try {
 
     // ── B. La feuille de republication, par le vrai geste ───────────────────
     await haut(page);
-    await page.locator('[aria-label^="Remonter mes annonces :"]').first().click();
+    await page.locator('[aria-label^="Republier :"]').first().click();
     await page.waitForTimeout(900);
     const selection = page.locator('[role="dialog"][aria-label="Remonter mes annonces"]');
     verifier(await selection.count() === 1, `${l} : « Remonter » — l'écran de sélection s'ouvre`);
