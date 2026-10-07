@@ -791,8 +791,24 @@ serve(async (req) => {
     console.warn("[ops-digest] veille_cpu illisible :", String((e as Error)?.message ?? e));
   }
 
+  // ── PAUSES DE RELEVÉS (07/10, Corinne) ───────────────────────────────────
+  // public.pause_releves coupe, compte par compte, les relevés « annonces »
+  // d'une plateforme (trigger garde_pause_releves_compte, refus silencieux).
+  // Pendant une pause, les ventes de la plateforme ne sont PAS vues par relevé :
+  // aucune pause ne doit être oubliée. Chaque pause active est listée ici, en
+  // rouge au-delà de 24 h.
+  let pausesActives: Array<{ user_id: string; platforms: string[]; motif: string | null; cree_le: string }> = [];
+  try {
+    const { data: pz } = await supabase.from("pause_releves").select("user_id, platforms, motif, cree_le").is("leve_le", null).limit(200);
+    pausesActives = (pz ?? []) as typeof pausesActives;
+  } catch (e) {
+    console.warn("[ops-digest] pause_releves illisible :", String((e as Error)?.message ?? e));
+  }
+  const pausesAnciennes = pausesActives.filter((x) => Date.now() - Date.parse(x.cree_le) > 86400_000).length;
+
   const counts = {
     cpu_au_dessus_70: cpuMinutesAuDessus > 0 ? 1 : 0,
+    pauses_releves: pausesActives.length,
     ia_alertes: iaAlertes.length,
     needs_user_sans_motif_24h: sansMotif.length,
     tentatives_en_cours: tentativesEnCours.length,
@@ -841,6 +857,18 @@ serve(async (req) => {
       Échantillons de veille-cpu (toutes les 2 min). Le 04/10, une saturation a bloqué l'app et le web pour tout le monde :
       regarder pg_stat_statements et les crons lourds avant que ça revienne.
     </p>`
+  }
+    ${
+    pausesActives.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${pausesAnciennes ? "#B91C1C" : "#111827"};">
+      ${pausesAnciennes ? "🔴" : "⏸️"} Relevés en pause — ${pausesActives.length} compte${pausesActives.length > 1 ? "s" : ""}${pausesAnciennes ? ` (dont ${pausesAnciennes} depuis plus de 24 h)` : ""}
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      public.pause_releves : leurs ventes sur ces plateformes ne sont pas vues par relevé. Lever : renseigner leve_le.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${pausesActives.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x.user_id)} — ${esc((x.platforms ?? []).join(", "))} — depuis ${esc(x.cree_le)}${x.motif ? ` — ${esc(x.motif)}` : ""}</li>`).join("")}
+    </ul>`
   }
     ${
     iaAlertes.length === 0 ? "" : `

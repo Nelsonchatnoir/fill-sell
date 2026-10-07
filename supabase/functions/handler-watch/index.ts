@@ -1027,7 +1027,7 @@ serve(async (req) => {
             total_entries: lues,
             erreur:
               `[incomplet] relevé interrompu après la lecture de la liste : ${lues} annonce${pluriel} lue${pluriel} ` +
-              `et enregistrée${pluriel} — le rattachement reprend à la prochaine synchronisation [watchdog] (${causeR})` +
+              `et enregistrée${pluriel} — le rapprochement se termine côté serveur (fonction rapprochement) [watchdog] (${causeR})` +
               (r.erreur ? ` · ${String(r.erreur).slice(0, 300)}` : ""),
           })
           .eq("id", r.id as string)
@@ -1071,6 +1071,26 @@ serve(async (req) => {
           ` — extension vue il y a ${sondeMin != null ? `${sondeMin} min` : "jamais / inconnu"}` +
           `${sondeMin != null && sondeMin <= SONDE_VIVANTE_MIN ? " (CHROME VIVANT : gel de notre côté)" : ""}`,
         );
+        // (07/10, Nico) « Si l'extension s'arrête en route, la synchro reprend
+        // là où elle en était au retour de l'extension. » Un relevé DEMANDÉ
+        // par la personne, arrêté avant d'avoir écrit sa liste, repart UNE
+        // fois en file — c'est la suite du même geste (suffixe « :redemande »,
+        // reconnu comme geste par la base, l'extension et l'app). Il part au
+        // prochain passage de l'extension ; rien n'est refait de ce qui est
+        // déjà rattaché (le moteur ne retraite jamais une annonce tranchée).
+        // Jamais deux reprises : une demande déjà « :redemande » ne repart pas.
+        // Ni pour Vinted (dressing : sa propre file), ni pour une session
+        // fermée (« absente » : l'app dit laquelle reconnecter).
+        const base = String(r.declencheur ?? "");
+        if (String(r.kind ?? "") === "annonces" && r.platform && /^(bouton|bouton_distant|app)$/.test(base)) {
+          const { error: eReprise } = await supabase.from("vinted_sync_runs").insert({
+            user_id: r.user_id, kind: "annonces", platform: r.platform, status: "queued",
+            declencheur: `${base}:redemande`, queued_at: new Date(now).toISOString(),
+          });
+          if (!eReprise) {
+            console.log(`[handler-watch] [reprise-releve] relevé ${r.platform} de ${r.user_id} remis en file UNE fois (${base}:redemande) — il partira au retour de l'extension`);
+          }
+        }
       }
     }
     if (relevesVivants) {
