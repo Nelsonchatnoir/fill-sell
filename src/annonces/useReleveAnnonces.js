@@ -22,7 +22,7 @@ import { useOplaAcces } from '../utils/oplaAcces';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
   lireAnnoncesARattacher, compterAnnoncesParPlateforme, texteRefusReleve, lireDernierRunVinted,
-  lireRelevesVides, lireAnnoncesEnRangement, lireChoixEtSessions,
+  lireRelevesVides, lireAnnoncesEnRangement, lireChoixEtSessions, lireAvancementSynchro,
 } from '../utils/syncPlateformes';
 import { ciblesReleve } from './synchroniser.js';
 import { avecDernierReleveVide } from './releveVide';
@@ -62,6 +62,9 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
   // (01/10) Annonces relevées en attente de l'empreinte de leur photo :
   // « X annonces trouvées, rangement en cours ». Jamais « à rattacher ».
   const [rangement, setRangement] = useState({ total: 0, parPlateforme: {}, ids: new Set() });
+  // (07/10) L'avancement de la synchro (relevés + rapprochement serveur) et
+  // son temps estimé ; null tant que le serveur ne le rend pas.
+  const [avancement, setAvancement] = useState(null);
   const [busy, setBusy] = useState(null);        // plateforme en cours de demande
   const [toutBusy, setToutBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -81,11 +84,12 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     if (!ouvert || !userId) return undefined;
     let annule = false;
     const charger = async () => {
-      const [r, c, a, v, vv, dd, rg] = await Promise.all([
+      const [r, c, a, v, vv, dd, rg, av] = await Promise.all([
         lireDerniersRunsReleve(userId), compterAnnoncesParPlateforme(userId),
         lireAnnoncesARattacher(userId), lireDernierRunVinted(userId), lireRelevesVides(userId),
         lireDoublonsProposes(userId).catch(() => []),
         lireAnnoncesEnRangement(userId),
+        lireAvancementSynchro(userId),
       ]);
       if (annule) return true;
       // Une plateforme signalée affiche son relevé vide le plus récent : la
@@ -94,9 +98,10 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
       // Une annonce en rangement n'est pas « à rattacher » : elle arrive seule.
       setCompte(c); setARattacher(a.filter((x) => !rg.ids.has(x.id))); setRunVinted(v); setDoublons(dd);
       setRangement(rg);
+      setAvancement(av);
       // La cadence suit ce qui se passe : un relevé en cours ou un rangement
       // se suit de près, un compte au repos se relit à la minute.
-      relectureRef.current?.changerIntervalle(rg.total > 0 || actif(r) ? POLL_ACTIF_MS : POLL_MS);
+      relectureRef.current?.changerIntervalle(rg.total > 0 || actif(r) || av?.actif ? POLL_ACTIF_MS : POLL_MS);
       return true;
     };
     // Une lecture ratée garde les derniers compteurs complets, et ralentit le
@@ -183,7 +188,7 @@ export function useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinte
     fr, lang, userId,
     // Vinted en tête : c'est l'ordre des tuiles, et celui du reste du Stock.
     plateformes: ['vinted', ...(cle ? cle.split(',') : [])],
-    runs, runVinted, compte, aRattacher, vides, doublons, rangement,
+    runs, runVinted, compte, aRattacher, vides, doublons, rangement, avancement,
     busy, toutBusy, message, setMessage,
     etatVinted,
     lancer, toutRelever, recharger,

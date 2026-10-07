@@ -6903,6 +6903,11 @@ const StockTab = memo(function StockTab({
   const [feuilleAjout, setFeuilleAjout] = useState(false);
   const [feuilleTri, setFeuilleTri] = useState(false);
   const [resumeSynchro, setResumeSynchro] = useState(false);
+  // (07/10, rattachement avant stock) Les annonces relevées dont le
+  // rapprochement doute vivent HORS du stock : BlocSynchro les compte et
+  // ouvre l'écran de rattachement ; « À régler » les nomme.
+  const [aVerifier, setAVerifier] = useState({ n: 0, ouvrir: null });
+  const noterAVerifier = useCallback((x) => setAVerifier((p) => (p.n === x.n && p.ouvrir ? p : x)), []);
   // « Déjà vendu ? » (ventes à confirmer) — les MÊMES questions que
   // BandeauDejaVendu (lireDoublonsProposes + estQuestionDejaVendu), lues ici
   // pour être comptées dans « À régler » et ouvertes depuis son écran.
@@ -8339,7 +8344,8 @@ const StockTab = memo(function StockTab({
   // vendue encore en ligne attend un geste (se reconnecter), comme le reste.
   const nbRetraitsBloques = retraitsBloques.total;
   const nbIdentiteLbc = identiteLbc.length ? 1 : 0; // une carte par compte, quel que soit le nombre d'annonces
-  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + questionsDejaVendu.length + nbSansPrix + brouillons.length;
+  const nbAVerifier = aVerifier.ouvrir ? aVerifier.n : 0;
+  const nbARegler = nbRetraitsBloques + nbIdentiteLbc + nbAttenteAction + questionsDejaVendu.length + nbAVerifier + nbSansPrix + brouillons.length;
   const ligneRetraits = ligneAReglerRetraits(retraitsBloques, lang);
   const ouvrirModePrixAchat = () => { setGesteOuvert(null); setModePrixAchat(true); setModeBrouillons(false); setModeRepublish(false); setModeLot(false); setPaSel(new Set()); setPaOpenId(null); setPaErr(null); sauterAuxArticles(); };
   const ouvrirModeBrouillons = () => { setGesteOuvert(null); setModeBrouillons(true); setModePrixAchat(false); setModeRepublish(false); setModeLot(false); setShowAllStock(false); sauterAuxArticles(); };
@@ -8356,6 +8362,9 @@ const StockTab = memo(function StockTab({
     { cle: 'attente', n: nbAttenteAction, titre: lang === 'fr' ? (nbAttenteAction > 1 ? 'Annonces qui attendent ton geste' : 'Annonce qui attend ton geste') : 'Listings waiting on you',
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
+    { cle: 'a_verifier', n: nbAVerifier, titre: lang === 'fr' ? (nbAVerifier > 1 ? 'Annonces à vérifier' : 'Annonce à vérifier') : 'Listings to check',
+      detail: lang === 'fr' ? 'Trouvées sur tes autres plateformes : est-ce le même article ? Elles n’entrent dans ton stock qu’une fois vérifiées.' : 'Found on your other platforms: is it the same item? They only enter your stock once checked.',
+      onOuvrir: () => { setGesteOuvert(null); aVerifier.ouvrir?.(); } },
     { cle: 'ventes', n: questionsDejaVendu.length, titre: lang === 'fr' ? 'Déjà vendu ?' : 'Already sold?',
       detail: lang === 'fr' ? 'Un article vendu a peut-être encore une annonce en ligne : réponds pour ne pas le vendre deux fois.' : 'A sold item may still have a listing online: answer to avoid selling it twice.',
       onOuvrir: () => { setGesteOuvert(null); setEcranDejaVendu(true); } },
@@ -9310,6 +9319,7 @@ const StockTab = memo(function StockTab({
               alertes={alertesCompte}
               aFaire={<Gestes lang={lang} variante="lignes" publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>}
               onResume={setResumeSynchro}
+              onARattacher={noterAVerifier}
             />
           ) : (
             <>

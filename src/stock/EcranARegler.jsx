@@ -28,6 +28,7 @@ export default function EcranARegler({ lang = 'fr', lignes = [], onFermer, actif
     present('retraits') && (fr ? 'des annonces encore en ligne à retirer' : 'live listings to remove'),
     present('lbc_identite') && (fr ? 'ton compte Leboncoin à compléter' : 'your Leboncoin account to complete'),
     present('attente') && (fr ? 'des annonces qui attendent ton geste' : 'listings waiting on you'),
+    present('a_verifier') && (fr ? 'des annonces à vérifier' : 'listings to check'),
     present('ventes') && (fr ? 'des ventes à confirmer' : 'sales to confirm'),
     present('prix', 'brouillons') && (fr ? 'des infos à compléter' : 'info to complete'),
   ].filter(Boolean);

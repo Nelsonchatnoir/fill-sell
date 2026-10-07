@@ -116,6 +116,23 @@ export async function lireAnnoncesEnRangement(userId) {
   }
 }
 
+// ── L'AVANCEMENT D'UNE SYNCHRO ET SON TEMPS ESTIMÉ (2026-10-07) ──────────────
+// Une seule lecture (RPC synchro_avancement) : les relevés de la vague (lu /
+// annoncé par la plateforme), le rapprochement serveur (rattachement avant
+// stock) et « environ X min », calculé en base sur le volume annoncé et les
+// vitesses mesurées. Serveur sans la RPC, ou lecture ratée → null : le bloc
+// garde sa barre d'avant.
+export async function lireAvancementSynchro(userId) {
+  if (!userId) return null;
+  try {
+    const { data, error } = await supabase.rpc('synchro_avancement');
+    if (error || !data?.ok) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // ── LE DERNIER RELEVÉ VINTED (2026-09-18) ────────────────────────────────────
 // Le bloc « Mes annonces en ligne » ne montre plus qu'UNE ligne d'état, toutes
 // plateformes confondues. Vinted y pèse le plus lourd — l'omettre donnerait un

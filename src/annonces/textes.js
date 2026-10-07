@@ -65,6 +65,25 @@ const FR = {
   //    sert à rien.
   enCoursSous: 'Ton ordinateur travaille pendant ce temps.',
 
+  // ── (07/10) Rattachement avant stock : le rapprochement, son temps, la fin ──
+  // Le serveur compare chaque annonce à TOUT le stock avant d'en faire un
+  // article : rien n'apparaît en double, à aucun moment.
+  rapprochementEnCours: 'Rapprochement de tes annonces en cours',
+  rapprochementSous: (n) => (n > 0
+    ? `${n} annonce${n > 1 ? 's' : ''} à comparer à ton stock — rien n'est créé en double.`
+    : 'Chaque annonce est comparée à ton stock — rien n’est créé en double.'),
+  tempsRestant: (s) => (!(s > 0) ? '' : s < 60 ? 'Moins d’une minute' : `Environ ${Math.max(1, Math.round(s / 60))} min`),
+  ligneLues: (lues, annoncees) => (annoncees != null && annoncees >= lues ? `${lues} sur ${annoncees}` : `${lues} annonce${lues > 1 ? 's' : ''}`),
+  ligneAttente: 'en attente',
+  ligneEnCours: 'en cours',
+  ligneFini: 'terminé',
+  ligneAConnecter: 'à reconnecter',
+  ligneRapprochement: 'Rapprochement',
+  stockPret: 'Ton stock est prêt',
+  aVerifierTitre: (n) => (n > 1 ? `${n} annonces à vérifier` : 'Une annonce à vérifier'),
+  aVerifierTexte: 'Trouvées sur tes autres plateformes : est-ce le même article ? Elles n’entrent dans ton stock qu’une fois vérifiées.',
+  aVerifierCta: 'Vérifier',
+
   // ── Ce que la synchronisation n'a pas su trancher ────────────────────────
   anomalie: (n) => (n > 1
     ? `${n} annonces trouvées ne correspondent à aucun article de ton stock.`
@@ -229,6 +248,22 @@ const EN = {
   enCoursAttente: 'Waiting for your computer',
   enCoursRange: 'Filing the listings into your stock.',
   enCoursSous: 'Your computer is working on it right now.',
+
+  rapprochementEnCours: 'Matching your listings',
+  rapprochementSous: (n) => (n > 0
+    ? `${n} listing${n > 1 ? 's' : ''} to compare with your stock — nothing is created twice.`
+    : 'Each listing is compared with your stock — nothing is created twice.'),
+  tempsRestant: (s) => (!(s > 0) ? '' : s < 60 ? 'Less than a minute' : `About ${Math.max(1, Math.round(s / 60))} min`),
+  ligneLues: (lues, annoncees) => (annoncees != null && annoncees >= lues ? `${lues} of ${annoncees}` : `${lues} listing${lues > 1 ? 's' : ''}`),
+  ligneAttente: 'waiting',
+  ligneEnCours: 'running',
+  ligneFini: 'done',
+  ligneAConnecter: 'to reconnect',
+  ligneRapprochement: 'Matching',
+  stockPret: 'Your stock is ready',
+  aVerifierTitre: (n) => (n > 1 ? `${n} listings to check` : 'One listing to check'),
+  aVerifierTexte: 'Found on your other platforms: is it the same item? They only enter your stock once checked.',
+  aVerifierCta: 'Check',
 
   anomalie: (n) => (n > 1
     ? `${n} listings found match no item in your stock.`

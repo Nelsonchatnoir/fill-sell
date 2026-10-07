@@ -130,7 +130,7 @@ export function CartePoint({ icone = null, platform = null, titre, texte = null,
 export default function BlocSynchro({
   lang, user, isNative = false, items = [], ouvert = false, extensionStatus = null, plateformes = null,
   onRattache = null, lancerVinted = null, etatVinted = null, ligneVinted = null,
-  alertes = [], aFaire = null, onResume = null,
+  alertes = [], aFaire = null, onResume = null, onARattacher = null,
 }) {
   const T = useMemo(() => textesAnnonces(lang), [lang]);
   const r = useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted });
@@ -167,15 +167,28 @@ export default function BlocSynchro({
   // Lu au rendu, sur la bascule de `vague.active` (motif « ajuster un état
   // quand une prop change » de React) : en cours → le résumé se ferme ;
   // en cours puis plus en cours → le résumé s'ouvre. Rien au montage.
-  const [vagueAvant, setVagueAvant] = useState(vague.active);
-  if (vague.active !== vagueAvant) {
-    setVagueAvant(vague.active);
+  // (07/10, rattachement avant stock) La synchro n'est finie qu'une fois le
+  // rapprochement serveur terminé : jusque-là, les annonces des autres
+  // plateformes n'entrent pas dans le stock, et le bloc reste « en cours ».
+  // Seulement après une synchro DEMANDÉE (relevés-gestes des 2 dernières
+  // heures) : un passage de veille ne s'affiche jamais (règle du 05/10).
+  const av = r.avancement ?? null;
+  const rap = av?.rapprochement ?? null;
+  const rapActif = !!rap && rap.etat !== 'termine' && Array.isArray(av?.releves) && av.releves.length > 0;
+  const actifGlobal = vague.active || rapActif;
+  const [vagueAvant, setVagueAvant] = useState(actifGlobal);
+  if (actifGlobal !== vagueAvant) {
+    setVagueAvant(actifGlobal);
     // (05/10, Marine) « 0 annonce à jour · sur 0 plateforme », coche verte,
     // après un relevé ARRÊTÉ : le résumé ne s'ouvre que si au moins une
     // plateforme a vraiment fini. Sinon le bloc reste, avec ses points.
-    setResume(!vague.active && tuiles.some((t) => t.e.phase === 'fait' && !t.vide));
+    setResume(!actifGlobal && tuiles.some((t) => t.e.phase === 'fait' && !t.vide));
   }
   useEffect(() => { onResume?.(resume); }, [resume, onResume]);
+  // « Annonces à vérifier » (propositions hors du stock) : StockTab les compte
+  // dans « À régler » et ouvre l'écran de rattachement d'ici.
+  const nbAVerifier = r.aRattacher.length;
+  useEffect(() => { onARattacher?.({ n: nbAVerifier, ouvrir: () => setEcran(true) }); }, [nbAVerifier, onARattacher]);
 
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
@@ -186,7 +199,36 @@ export default function BlocSynchro({
   // même forme que BandeauDejaVendu passe à EcranDoublons (paires hydratées).
   const pairesDoublons = pairesAffichables(r.doublons, items).filter((d) => !estQuestionDejaVendu(d));
   const nbDoublons = pairesDoublons.length;
-  const enCours = vague.active;
+  const enCours = actifGlobal;
+  // ── LA BARRE, LE TEMPS RESTANT, L'AVANCEMENT PAR PLATEFORME (07/10) ──────
+  // Calculés en base (synchro_avancement : volume annoncé par chaque
+  // plateforme, vitesses mesurées) ; sans eux, la barre d'avant (plateformes
+  // terminées sur le total de la vague).
+  const pctAvancement = Math.round(100 * Math.max(0, Math.min(1, Number.isFinite(Number(av?.avancement)) ? Number(av.avancement) : vague.avancement)));
+  const tempsRestant = enCours && av ? T.tempsRestant(Number(av.secondes_restantes)) : '';
+  const lignesAvancement = enCours && av ? [
+    ...(av.releves ?? []).map((x) => {
+      const fini = x.status === 'done' || x.status === 'incomplete';
+      const aConnecter = x.status === 'absente' || x.status === 'failed' || x.status === 'expired';
+      return {
+        cle: `pf-${x.platform}`, platform: x.platform, nom: LABEL_RELEVE[x.platform] ?? x.platform,
+        actif: x.status === 'running',
+        ton: fini ? 'fait' : aConnecter ? 'regler' : 'neutre',
+        etat: x.status === 'queued' ? T.ligneAttente
+          : x.status === 'running' ? (Number(x.lues) > 0 ? T.ligneLues(Number(x.lues), x.annoncees ?? null) : T.ligneEnCours)
+          : fini ? (Number(x.lues) > 0 ? T.ligneLues(Number(x.lues), null) : T.ligneFini)
+          : aConnecter ? T.ligneAConnecter : T.ligneFini,
+      };
+    }),
+    ...(rap && (av.releves ?? []).length ? [{
+      cle: 'rapprochement', platform: null, nom: T.ligneRapprochement,
+      actif: rapActif && !vague.active,
+      ton: rap.etat === 'termine' ? 'fait' : 'neutre',
+      etat: rap.etat === 'termine' ? T.ligneFini
+        : (rap.etat === 'attente_releves' || vague.active) ? T.ligneAttente
+        : ((rap.en_attente ?? 0) + (rap.nouvelles ?? 0) > 0 ? T.ligneLues(Number(rap.traitees ?? 0), Number(rap.traitees ?? 0) + Number(rap.en_attente ?? 0) + Number(rap.nouvelles ?? 0)) : T.ligneEnCours),
+    }] : []),
+  ] : [];
   const occupe = !!r.busy || r.toutBusy;
   const occupeLancer = occupe || enCours;
 
@@ -310,11 +352,11 @@ export default function BlocSynchro({
                 <Check size={24} strokeWidth={2.6} />
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="sk-chiffres" style={{ fontSize: 20, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.02em', color: S.ink }}>
-                  {fr ? `${nombreFr(bilan.total ?? 0, lang)} annonce${(bilan.total ?? 0) > 1 ? 's' : ''} à jour` : `${bilan.total ?? 0} listing${(bilan.total ?? 0) > 1 ? 's' : ''} up to date`}
+                <div style={{ fontSize: 20, lineHeight: '28px', fontWeight: 700, letterSpacing: '-0.02em', color: S.ink }}>
+                  {T.stockPret}
                 </div>
-                <div style={{ fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
-                  {fr ? `sur ${plateformesOk} plateforme${plateformesOk > 1 ? 's' : ''}${quand ? ` · ${quand}` : ''}` : `on ${plateformesOk} platform${plateformesOk > 1 ? 's' : ''}${quand ? ` · ${quand}` : ''}`}
+                <div className="sk-chiffres" style={{ fontSize: 13, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
+                  {fr ? `${nombreFr(bilan.total ?? 0, lang)} annonce${(bilan.total ?? 0) > 1 ? 's' : ''} à jour sur ${plateformesOk} plateforme${plateformesOk > 1 ? 's' : ''}${quand ? ` · ${quand}` : ''}` : `${bilan.total ?? 0} listing${(bilan.total ?? 0) > 1 ? 's' : ''} up to date on ${plateformesOk} platform${plateformesOk > 1 ? 's' : ''}${quand ? ` · ${quand}` : ''}`}
                 </div>
               </div>
               <button type="button" className="sk-btn" onClick={() => setResume(false)} aria-label={fr ? 'Fermer le résumé' : 'Close the summary'}
@@ -323,7 +365,17 @@ export default function BlocSynchro({
               </button>
             </div>
             {pastilles(true)}
-            {nbPoints > 0 && <LignePoints lang={lang} nombre={nbPoints} onOuvrir={() => setFeuille(true)} />}
+            {nbAVerifier > 0 && (
+              // (07/10) Les doutes vivent HORS du stock : on le dit dès la fin, avec le geste.
+              <button type="button" className="sk-btn" onClick={() => setEcran(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 40, marginTop: 8, padding: 0, border: 'none', background: 'transparent', boxShadow: `inset 0 1px 0 ${S.mentheBord}`, color: S.ambreEncre, fontSize: 13, fontWeight: 700, textAlign: 'left' }}>
+                <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: S.ambrePoint, flexShrink: 0 }} />
+                <span className="sk-une-ligne" style={{ flex: 1, minWidth: 0 }}>{T.aVerifierTitre(nbAVerifier)}</span>
+                <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
+              </button>
+            )}
+            {/* Les annonces à vérifier ont leur ligne juste au-dessus : pas deux fois. */}
+            {nbPoints - (nbAVerifier > 0 ? 1 : 0) > 0 && <LignePoints lang={lang} nombre={nbPoints - (nbAVerifier > 0 ? 1 : 0)} onOuvrir={() => setFeuille(true)} />}
           </div>
           {aFaire && (
             <div style={{ padding: '16px 16px 8px' }}>
@@ -340,7 +392,7 @@ export default function BlocSynchro({
                 {enCours ? T.titreEnCours : (etatVinted?.cadenceTexte && !quand ? etatVinted.cadenceTexte : (quand ? T.synchronise(quand) : T.sousJamais))}
               </div>
               <div className="sk-une-ligne sk-chiffres" style={{ fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2 }}>
-                {enCours ? T.sousEnCours(vague.faites.length, vague.total) : (quand ? T.nAnnonces(bilan.total ?? 0) : (etatVinted?.cadenceTexte ?? ''))}
+                {enCours ? (vague.active ? T.sousEnCours(vague.faites.length, vague.total) : T.rapprochementEnCours) : (quand ? T.nAnnonces(bilan.total ?? 0) : (etatVinted?.cadenceTexte ?? ''))}
               </div>
             </div>
             <button type="button" className="sk-btn sk-presse" onClick={() => { if (!ctaInactif) r.toutRelever(); }} disabled={ctaInactif}
@@ -370,16 +422,36 @@ export default function BlocSynchro({
                 <ConstellationReleve plateformes={r.plateformes} faites={vague.faites} enCours={vague.enCours} empechees={empechees} labels={LABEL_RELEVE} />
               </div>
               <div style={{ marginTop: 16, fontSize: 13, lineHeight: '20px', fontWeight: 700, color: S.ink, textAlign: 'center' }}>
-                {vague.enCours ? T.enCoursDe(LABEL_RELEVE[vague.enCours] ?? vague.enCours) : (vague.faites.length === vague.total ? T.enCoursRange : T.enCoursAttente)}
+                {vague.enCours ? T.enCoursDe(LABEL_RELEVE[vague.enCours] ?? vague.enCours)
+                  : rapActif ? T.rapprochementEnCours
+                  : (vague.faites.length === vague.total ? T.enCoursRange : T.enCoursAttente)}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', width: '100%', height: 8, marginTop: 8, padding: '0 16px', boxSizing: 'border-box' }}>
-                <div role="progressbar" aria-label={fr ? 'Progression de la synchronisation' : 'Sync progress'} aria-valuemin={0} aria-valuemax={vague.total} aria-valuenow={vague.faites.length}
+                <div role="progressbar" aria-label={fr ? 'Progression de la synchronisation' : 'Sync progress'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pctAvancement}
                   style={{ position: 'relative', flex: 1, height: 6, borderRadius: 999, background: S.disabled, overflow: 'hidden' }}>
-                  <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: DEGRADE, transformOrigin: 'left', transform: `scaleX(${vague.avancement})`, transition: 'transform .5s cubic-bezier(.22,.61,.36,1)' }} />
-                  {vague.enCours && <span aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, width: '28%', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent)', animation: 'rvBalaye 1.7s ease-in-out infinite' }} />}
+                  <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: DEGRADE, transformOrigin: 'left', transform: `scaleX(${pctAvancement / 100})`, transition: 'transform .5s cubic-bezier(.22,.61,.36,1)' }} />
+                  {(vague.enCours || rapActif) && <span aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, width: '28%', background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent)', animation: 'rvBalaye 1.7s ease-in-out infinite' }} />}
                 </div>
               </div>
-              <div style={{ marginTop: 8, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2, textAlign: 'center' }}>{T.enCoursSous}</div>
+              {tempsRestant && (
+                <div role="status" className="sk-chiffres" style={{ marginTop: 8, fontSize: 13, lineHeight: '20px', fontWeight: 700, color: S.tealDeep, textAlign: 'center' }}>{tempsRestant}</div>
+              )}
+              <div style={{ marginTop: tempsRestant ? 0 : 8, fontSize: 12, lineHeight: '20px', fontWeight: 500, color: S.ink2, textAlign: 'center' }}>
+                {rapActif && !vague.active ? T.rapprochementSous((rap?.en_attente ?? 0) + (rap?.nouvelles ?? 0)) : T.enCoursSous}
+              </div>
+              {lignesAvancement.length > 0 && (
+                <ul aria-label={fr ? 'Avancement par plateforme' : 'Progress by platform'} style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {lignesAvancement.map((l) => (
+                    <li key={l.cle} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28, padding: '0 8px', borderRadius: 10, background: l.actif ? S.menthe : 'transparent' }}>
+                      {l.platform ? <PlatformLogo platform={l.platform} size={16} desature={l.ton === 'hors'} /> : <RefreshCw size={14} color={S.tealDeep} aria-hidden="true" />}
+                      <span className="sk-une-ligne" style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: '16px', fontWeight: 700, color: S.ink }}>{l.nom}</span>
+                      <span className="sk-chiffres" style={{ flexShrink: 0, fontSize: 12, lineHeight: '16px', fontWeight: 600, color: l.ton === 'regler' ? S.ambreEncre : l.ton === 'fait' ? S.tealDeep : S.ink2 }}>
+                        {l.ton === 'fait' && <Check size={12} strokeWidth={2.6} aria-hidden="true" style={{ marginRight: 4, verticalAlign: '-1px' }} />}{l.etat}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -417,8 +489,8 @@ export default function BlocSynchro({
             <CartePoint key={sg.cle} platform={sg.platform ?? null} icone={sg.icone ?? null} titre={sg.titre} texte={sg.texte} bouton={sg.bouton ?? null} />
           ))}
           {nbARattacher > 0 && (
-            <CartePoint titre={fr ? 'Annonces à rattacher' : 'Listings to match'} texte={T.anomalie(nbARattacher)}
-              bouton={{ libelle: T.anomalieCta, onTap: () => setEcran(true) }} />
+            <CartePoint titre={T.aVerifierTitre(nbARattacher)} texte={T.aVerifierTexte}
+              bouton={{ libelle: T.aVerifierCta, onTap: () => setEcran(true) }} />
           )}
           {nbDoublons > 0 && (
             <CartePoint titre={fr ? 'Est-ce le même article ?' : 'Is it the same item?'} texte={T.doublons(nbDoublons)}
