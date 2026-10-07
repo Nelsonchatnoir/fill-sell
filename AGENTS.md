@@ -311,9 +311,9 @@ qui survit à ça, c'est du code.
   données de l'annonce en ligne (capture : photos, texte, marque, taille,
   catégorie, état) quand la fiche ne les a pas ; un champ vraiment absent se
   DEMANDE (§ 4.5).
-- **Chaque annonce en ligne est importée.** Elle n'est **rattachée** à une
-  fiche existante que sur **preuve certaine** : identifiant de l'annonce, lien
-  déjà connu, dépôt FillSell, geste de la personne.
+- ⛔ **Rattachement avant stock (07/10)** : rien n'entre au stock avant
+  comparaison à TOUT le stock ; identifiant ou photo d'1 article → rattachée,
+  doute → hors stock. `docs/rattachement-avant-stock.md`
 - ⛔ **UN TITRE N'EST JAMAIS UNE PREUVE D'IDENTITÉ** (27/09 soir, Louis :
   mêmes titres, articles différents). Ni pour rattacher (bande
   « certain » et `releve_fiche_vendue` supprimées : import + question), ni

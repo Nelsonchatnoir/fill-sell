@@ -250,6 +250,29 @@ mais tout correctif appliqué en direct depuis recrée l'écart.
   AVANCE n'est jamais coupé ; un arrêt ne conclut JAMAIS rien (ni vendu, ni
   disparu, ni effacé) et laisse sa raison dans les journaux, jamais à l'écran.
 
+## ⛔ RATTACHEMENT AVANT STOCK (07/10, Nico)
+
+« Un article n'entre JAMAIS dans le stock tant qu'il n'a pas été rapproché de
+tout ce que l'utilisateur a déjà. » Cas Corinne (07/10 : 449 → 551 articles
+pour ~350 réels). Détail, mesures, rattrapage : `docs/rattachement-avant-stock.md`.
+- une annonce relevée (Leboncoin, Beebs, eBay, Opla) est classée par le
+  MOTEUR SERVEUR (`rapprochement_avancer`, fonction edge `rapprochement`,
+  `verify_jwt = false` + `x-cron-secret`), jamais dans l'extension :
+  identifiant FillSell ou même photo qu'UN seul article d'une autre
+  plateforme → rattachée ; tout autre candidat (titre, homonyme, faisceau,
+  photo ambiguë) → PROPOSITION HORS du stock (écran de rattachement,
+  « Annonces à vérifier » dans À régler) ; aucun candidat → créée, une fois
+  TOUTES les annonces du compte classées (regroupement photo entre
+  plateformes) ;
+- il attend la fin de TOUS les relevés du compte (Vinted d'abord) ; un relevé
+  qui finit ou s'arrête le réveille (`trg_rapprochement_fin_run`) ; filet :
+  cron `rapprochement-1min` (ne part que s'il y a un compte en retard) ; il va
+  au bout sans nouveau geste ;
+- remplace « on crée, et on demande » (27/09) : plus jamais deux articles côte
+  à côte pour un doute. Veto « type d'objet » (`titre_types_objet`) ;
+- `pause_releves` (07/10) : pause d'un compte par plateforme ; listée dans
+  l'ops-digest (rouge au-delà de 24 h) — jamais oubliée.
+
 ## ⛔ UN RELEVÉ D'IMPORT NE PART QUE SUR « SYNCHRONISER » (05/10, Nico)
 
 Cas Marine (inscrite 18:28, partie 19:13 ; `docs/enquetes/marine-0510/RAPPORT.md`) :
