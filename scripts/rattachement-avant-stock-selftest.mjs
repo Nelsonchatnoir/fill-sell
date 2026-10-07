@@ -59,6 +59,57 @@ console.log('2. Le moteur : attendre, empreinter, classer, puis créer');
   ok(/'photo_identique', jsonb_build_object\('groupe_creation', true\)/.test(av), 'le regroupement garde le motif « photo_identique » (lu par retrait_job_prouve)');
 }
 
+console.log('2 bis. Photos : aucun classement avant qu’elles soient TOUTES comparées');
+{
+  const av = fonction(mig, 'rapprochement_avancer');
+  ok(!/v_grand/.test(av), 'plus d’exception « gros compte » : les photos d’abord, quelle que soit la taille');
+  ok(/INSERT INTO photo_empreintes_echecs \(url, motif, essais, echec_le\)[\s\S]{0,120}'rapprochement_sans_progres'/.test(av), 'huit passages sans progrès : les photos restantes sont notées illisibles (comparées, sans preuve)');
+}
+
+console.log('2 ter. « À vérifier » = un VRAI article (Nico, 07/10 soir : il garde TOUT)');
+{
+  const av = fonction(mig, 'rapprochement_avancer');
+  ok(!/SET proposition = \(v_cand - 'sur'\)/.test(av), 'un doute ne devient plus jamais une annonce sans article (vente, retraits, republication perdus)');
+  ok(/INSERT INTO rapprochement_nouvelles \(annonce_id, user_id, platform, doute\)/.test(av), 'un doute attend la phase de création avec ses candidats');
+  ok(/v_imp := rapprocher_importer\(p_user, an\.id, 'rapprochement'\)[\s\S]{0,900}releve_poser_question\(p_user, v_q_inv, v_inv/.test(av), 'à la création : l’article, puis la question « Est-ce le même article ? »');
+  ok(/IF v_posee THEN[\s\S]{0,80}UPDATE inventaire[\s\S]{0,40}SET a_verifier = jsonb_build_object/.test(av), '« à vérifier » seulement si la question est posée (une paire tranchée « non » entre au stock)');
+  ok(/ADD COLUMN IF NOT EXISTS a_verifier jsonb/.test(mig) && mig.indexOf('ADD COLUMN IF NOT EXISTS a_verifier') > mig.indexOf("cron.schedule('rapprochement-1min'"), 'la colonne arrive EN DERNIER (verrou d’inventaire tenu le moins longtemps)');
+  const trg = fonction(mig, 'inventaire_doublons_a_verifier');
+  ok(/SET a_verifier = NULL/.test(trg) && /d\.statut = 'proposee'/.test(trg), 'la question tranchée (oui, non, caduque, supprimée) fait entrer l’article au stock');
+  ok(/AFTER UPDATE OF statut OR DELETE ON public\.inventaire_doublons/.test(mig), '… par un déclencheur, quel que soit le chemin');
+  const sa = fonction(mig, 'synchro_avancement');
+  ok(/i\.a_verifier IS NOT NULL/.test(sa), '« N annonces à vérifier » compte les articles à vérifier');
+  const app = lire('src/App.jsx');
+  ok(/const estAVerifier=\(r\)=>r\.statut==='stock'&&r\.a_verifier!=null;/.test(app) && /setItemsAVerifier\(lignes\.filter\(estAVerifier\)/.test(app), 'l’app les tient HORS du stock affiché (et de ses totaux)');
+  ok(/a_verifier:v\.a_verifier\?\?null/.test(app), 'mapItem transporte a_verifier');
+  ok(/itemsAVerifier=\{itemsAVerifier\}/.test(stock) && /mode="a_verifier"/.test(bloc), 'ils sont montrés dans « Annonces à vérifier », avec leur question');
+  const ed = lire('src/annonces/EcranDoublons.jsx');
+  ok(/La mettre dans mon stock/.test(ed) && /rangerDansLeStock/.test(ed), 'un article à vérifier sans autre article : « La mettre dans mon stock » (jamais coincé)');
+  ok(/ses ventes sont suivies comme d'habitude/.test(ed), 'la phrase dit pourquoi il est là et comment le ranger');
+  const doub = lire('src/utils/doublons.js');
+  ok(/export async function lireQuestionsAVerifier/.test(doub) && !/lireQuestionsAVerifier[\s\S]{0,400}\.limit\(200\)/.test(doub), 'toutes ses questions sont lues (jamais le plafond de 200)');
+}
+
+console.log('2 quater. Le rattrapage ne supprime RIEN');
+{
+  const r = lire('scripts/reparations/20261007_rattrapage_releves.sql');
+  const sansCommentaires = r.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+  ok(!/DELETE FROM (inventaire|cross_post_jobs|annonces_plateforme)\b/.test(sansCommentaires), 'aucune suppression d’article, de job ou d’annonce');
+  ok(!/INSERT INTO cross_post_jobs/.test(sansCommentaires), 'aucun job créé');
+  ok(/v_cand \? 'sur' AND o\.eligible_fusion AND o\.intact/.test(r), 'fusion par la photo SEULEMENT sur un article jamais touché par la personne');
+  ok(/'a_verifier' ELSE 'question' END/.test(r), 'un doute sur un article intact : « à vérifier » ; touché : il reste, la question est posée');
+  for (const t of ['fiches', 'doublons', 'journal']) {
+    ok(new RegExp(`ALTER TABLE public\\._backup_0710_rattachement_${t} ENABLE ROW LEVEL SECURITY`).test(r)
+      && new RegExp(`REVOKE ALL ON public\\._backup_0710_rattachement_${t} FROM PUBLIC, anon, authenticated`).test(r), `sauvegarde ${t} : RLS, fermée à anon/authenticated`);
+  }
+  ok(/'fiches_avant'[\s\S]{0,200}'jobs_apres'/.test(r), 'chaque compte rend ses compteurs de garde (lignes, jobs)');
+  const lanceur = lire('scripts/reparations/20261007_rattrapage_releves.mjs');
+  ok(/v\.fiches_avant !== v\.fiches_apres \|\| v\.jobs_avant !== v\.jobs_apres/.test(lanceur) && /s'écarte de la simulation/.test(lanceur), 'le lanceur s’arrête net sur une ligne disparue, un job créé, un écart à la simulation');
+  ok(/ORDER BY \(palier_de\(c\.user_id\) = 'free'\)/.test(lanceur), 'les comptes payants passent d’abord');
+  const inv = lire('scripts/reparations/20261007_rattrapage_releves_INVERSE.sql');
+  ok(/SET a_verifier = NULL[\s\S]{0,80}'rattrapage_0710'/.test(inv) && /inventaire_defusionner_pour/.test(inv), 'l’inverse rend les fusions et le stock affiché');
+}
+
 console.log('3. Les candidats : un doute est une proposition, jamais une fusion');
 {
   const c = fonction(mig, 'rapprochement_candidats');
