@@ -97,6 +97,12 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
       : annonceARetirer(paire));
   // La plateforme où l'article à vérifier a été trouvé.
   const trouveeSur = nomPlateforme(paire?.b?.a_verifier?.platform ?? paire?.preuves?.platform ?? paire?.b?.plateforme ?? '');
+  // (08/10, Nico) « Annonce en double ? » : deux annonces d'une MÊME plateforme,
+  // même photo, même titre — jamais fusionnées d'office (deux exemplaires
+  // possibles). « Oui » = la même annonce publiée deux fois (une seule carte,
+  // ses deux annonces restent en ligne) ; « Non » = deux exemplaires, deux cartes.
+  const enDouble = !orphelin && paire?.motif === 'annonce_en_double';
+  const plateformeDouble = nomPlateforme(paire?.preuves?.platform ?? paire?.b?.a_verifier?.platform ?? '');
 
   const ranger = async () => {
     if (!paire || busy) return;
@@ -146,8 +152,12 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         : (fr ? "Noté : c'est un autre exemplaire. On n'y touche pas et on ne te le redemandera pas." : "Noted: it's another copy. We won't touch it or ask again."))
       : decision === 'oui' && dejaVendu
       ? (fr ? `C'est noté : « ${paire.a?.title ?? ''} » est vendu. Son annonce encore en ligne va être retirée.` : `Noted: “${paire.a?.title ?? ''}” is sold. Its listing still online will be removed.`)
+      : decision === 'oui' && enDouble
+      ? (fr ? `Une seule carte pour « ${paire.a?.title ?? ''} » : ses deux annonces restent en ligne, rien n'est retiré.` : `One card for “${paire.a?.title ?? ''}”: both listings stay online, nothing is removed.`)
       : decision === 'oui'
       ? (fr ? `Réunies en une seule fiche : « ${paire.a?.title ?? ''} ». Tu peux défaire la fusion depuis la fiche.` : `Merged into one item: “${paire.a?.title ?? ''}”. You can undo it from the item.`)
+      : enDouble
+      ? (fr ? 'Noté : deux exemplaires, deux cartes. On ne te le redemandera pas.' : "Noted: two copies, two cards. We won't ask again.")
       : aVerifier
       ? (fr ? "Noté : c'est un autre article, il est maintenant dans ton stock." : "Noted: it's another item, it's now in your stock.")
       : (fr ? 'Noté : ce sont deux articles différents. On ne te le redemandera pas.' : "Noted: they're two different items. We won't ask again."));
@@ -171,6 +181,7 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: A.ink }}>
               {dejaVendu ? (fr ? 'Déjà vendu ?' : 'Already sold?')
+                : enDouble ? (fr ? 'Annonce en double ?' : 'Duplicate listing?')
                 : aVerifier ? (fr ? 'Annonces à vérifier' : 'Listings to check')
                 : (fr ? 'Est-ce le même article ?' : 'Is it the same item?')}
             </div>
@@ -218,6 +229,10 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 ? (fr
                   ? `Trouvée sur ${trouveeSur || 'une autre plateforme'} pendant ta synchro. L'article auquel elle ressemblait n'est plus dans ton stock : tu peux l'y ranger.`
                   : `Found on ${trouveeSur || 'another platform'} during your sync. The item it looked like is no longer in your stock: you can file it there.`)
+                : enDouble
+                ? (fr
+                  ? `Deux annonces ${plateformeDouble || 'de la même plateforme'} ont la même photo et le même titre : « ${paire.a?.title ?? ''} ». Est-ce la même annonce publiée deux fois, ou deux exemplaires ? Rien n'est retiré, quelle que soit ta réponse.`
+                  : `Two ${plateformeDouble || 'same-platform'} listings share the same photo and title: “${paire.a?.title ?? ''}”. Is it the same listing published twice, or two copies? Nothing is removed either way.`)
                 : aVerifier && !dejaVendu
                 ? (fr
                   ? `Trouvée sur ${trouveeSur || 'une autre plateforme'} pendant ta synchro, elle ressemble à « ${paire.a?.title ?? ''} », déjà dans ton stock. Si c'est le même objet, on les réunit en une seule carte (ses annonces restent en ligne). Sinon, elle entre dans ton stock. En attendant, ses ventes sont suivies comme d'habitude.`
@@ -235,11 +250,11 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
             <div className="rv-up" style={{ display: 'flex', gap: 10, ...(copie || orphelin ? { maxWidth: 220 } : {}) }}>
               {!orphelin && (
                 <CarteFiche item={paire.a} fr={fr} garde
-                  etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : aVerifier ? (fr ? 'Dans ton stock' : 'In your stock') : undefined} />
+                  etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : enDouble ? (fr ? 'Annonce 1' : 'Listing 1') : aVerifier ? (fr ? 'Dans ton stock' : 'In your stock') : undefined} />
               )}
               {!copie && (
                 <CarteFiche item={paire.b} fr={fr} garde={aVerifier}
-                  etiquette={aVerifier ? (fr ? `Trouvée sur ${trouveeSur || 'une autre plateforme'}` : `Found on ${trouveeSur || 'another platform'}`) : undefined} />
+                  etiquette={enDouble ? (fr ? 'Annonce 2' : 'Listing 2') : aVerifier ? (fr ? `Trouvée sur ${trouveeSur || 'une autre plateforme'}` : `Found on ${trouveeSur || 'another platform'}`) : undefined} />
               )}
             </div>
             {aRetirer && (
@@ -271,12 +286,16 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                   ? (fr ? 'Oui, la retirer' : 'Yes, remove it')
                   : dejaVendu
                   ? (fr ? "Oui, c'est le même — retirer l'annonce" : "Yes, same item — remove the listing")
+                  : enDouble
+                  ? (fr ? "Oui, c'est la même annonce" : "Yes, it's the same listing")
                   : (fr ? "Oui, c'est le même" : "Yes, it's the same")}
               </button>
               <button type="button" disabled={busy} onClick={() => repondre('non')} className="rv-focus"
                 style={{ width: '100%', minHeight: 46, borderRadius: 999, border: `1px solid ${A.border}`, background: A.card, color: A.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>
                 {copie
                   ? (fr ? "Non, c'est un autre exemplaire" : "No, it's another copy")
+                  : enDouble
+                  ? (fr ? 'Non, deux exemplaires' : 'No, two copies')
                   : aVerifier
                   ? (fr ? "Non, c'est un autre article" : "No, it's another item")
                   : (fr ? 'Non, ce sont deux articles' : "No, they're two items")}

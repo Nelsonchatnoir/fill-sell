@@ -3253,9 +3253,17 @@ export function VintedDressingSync({ lang, user, isNative, extensionStatus, sour
     // Ceinture si l'état a un tour de retard — journalisée AUSSI : un clic
     // avalé ici est exactement le genre d'échec invisible qu'on mesure.
     if (enCadence || envoi) {
-      logSyncClick('refusée', envoi ? 'double_clic' : 'cadence_ui');
-      // (06/10) Plus jamais un appui sans réponse : la cadence se DIT.
-      if (!envoi && cadenceTexte) setMessage({ ton: 'vert', texte: String(cadenceTexte) });
+      // (08/10, Nico : « plus aucun refus en rafale ») Vinted vient d'être lu
+      // (< 15 min) : l'appui n'est pas un refus, c'est une RELANCE du
+      // rangement — le serveur reprend ce qui n'a pas encore d'article, sans
+      // rien relire sur Vinted (docherleny, 07/10 : 4 appuis « refusés »).
+      logSyncClick(envoi ? 'refusée' : 'relancée', envoi ? 'double_clic' : 'cadence_rangement');
+      if (!envoi) {
+        supabase.rpc('synchro_relancer_rangement').then(() => {}, () => {});
+        setMessage({ ton: 'vert', texte: fr
+          ? `Vinted vient d'être lu, ton stock est relu. ${String(cadenceTexte ?? '')}`.trim()
+          : `Vinted was just read, your stock is being refreshed. ${String(cadenceTexte ?? '')}`.trim() });
+      }
       return;
     }
     setMessage(null);

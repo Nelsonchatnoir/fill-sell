@@ -76,7 +76,9 @@ export function pairesAVerifier(questions, items, idsAVerifier) {
 
 /** (07/10) Les articles « à vérifier » sans question affichable (l'autre article n'est plus là). */
 export function orphelinsAVerifier(itemsAVerifier, paires) {
-  const couverts = new Set((Array.isArray(paires) ? paires : []).map((p) => String(p.b?.id)));
+  // (08/10) « Annonce en double ? » : les DEUX articles de la paire sont à
+  // vérifier ; la question les couvre tous les deux, aucun n'est orphelin.
+  const couverts = new Set((Array.isArray(paires) ? paires : []).flatMap((p) => [String(p.b?.id), String(p.a?.id)]));
   return (Array.isArray(itemsAVerifier) ? itemsAVerifier : []).filter((i) => !couverts.has(String(i.id)));
 }
 

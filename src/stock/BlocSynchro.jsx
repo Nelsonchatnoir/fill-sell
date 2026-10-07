@@ -386,6 +386,22 @@ export default function BlocSynchro({
               </button>
             </div>
             {pastilles(true)}
+            {/* (08/10) Une plateforme pas connectée se dit TOUT DE SUITE, avec son
+                geste — plus jamais une pastille « à connecter » sans rien derrière
+                (vtvente48, 07/10 : Leboncoin et Beebs « absente », aucun geste). */}
+            {murs.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                {murs.map((m) => (
+                  <div key={`resume-mur-${m.platform}`} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: '#FFFFFF', boxShadow: `inset 0 0 0 1px ${S.border}` }}>
+                    <PlatformLogo platform={m.platform} size={18} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: '16px', fontWeight: 700, color: S.ambreEncre }}>
+                      {m.motif === 'autoriser_opla' ? T.titrePointOpla : T.titrePointNonConnecte(m.nom)}
+                    </span>
+                    <BoutonMeConnecter userId={r.userId} platform={m.platform} motif={m.motif} lang={lang} variante="ligne" onOuverte={r.recharger} />
+                  </div>
+                ))}
+              </div>
+            )}
             {nbAVerifier > 0 && (
               // (07/10) Les doutes vivent HORS du stock : on le dit dès la fin, avec le geste.
               <button type="button" className="sk-btn" onClick={ouvrirAVerifier}
