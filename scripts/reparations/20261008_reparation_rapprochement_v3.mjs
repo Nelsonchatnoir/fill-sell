@@ -62,7 +62,9 @@ const COMPTES_SQL = `
    GROUP BY c.user_id`;
 
 const comptes = () => (USER ? [{ user_id: USER }] : q(`${COMPTES_SQL} ORDER BY (palier_de(c.user_id) = 'free'), c.user_id;`))
-  .filter((r) => (!args.includes('--payants') || r.palier !== 'free') && (!args.includes('--gratuits') || r.palier === 'free'));
+  .filter((r) => (!args.includes('--payants') || r.palier !== 'free') && (!args.includes('--gratuits') || r.palier === 'free'))
+  // --part k/n (08/10 nuit) : plusieurs instances de simulation en parallèle, chacune sa part des comptes
+  .filter((r) => { const p = val('--part'); if (!p) return true; const [k, n] = p.split('/').map(Number); return (parseInt(String(r.user_id).slice(0, 8), 16) % n) === k; });
 
 // Appel de la fonction edge par la base (secret du vault), réponse lue dans
 // net._http_response (qui se purge : lue tout de suite, en boucle courte).

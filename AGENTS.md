@@ -1,30 +1,27 @@
-## État de production au 06/10 — lire avant toute action
+## État de production au 08/10 — lire avant toute action
 
-`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections du 04/10
-en fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout
-historique contraire. `functions list`, `cron.job` et
-`profiles.extension_build` font foi.
+`docs/agents/etat-2026-10-01.md` (versions, crons, ouvert ; sections datées en
+fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
+contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.100** ; **0.6.102** à téléverser (`build/CWS-0.6.102-*`) ; min **0.6.81** ; web 2.9.64.
-- **06/10 nuit** : `_shared/taille-de-service.js`, `_shared/lbc-identite.js`.
-- **Push ventes** : binaire 2.9.62, cron 34, natif via `pushDisponible()` ; `docs/push/CLES-NICO.md`.
-- **⛔ Mail à chaque vente** (`push-ventes` v7) : vente récente prouvée, jamais plafonné, sans récap.
-- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; relance après MAJ : `_shared/relance-apres-maj.js`.
-- **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie=création.
-- **CPU (04/10)** : tâche auto mesurée, bornée ; interdit 11.
-- **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = la fiche ; colis jamais deviné.
-- **Fiches** : champs vides complétés (journal) ; prix/poids suivis si alignés ; pas de poids LBC estimé.
-- **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; Vinted absent de deux relevés
-  complets → « déjà retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans
-  progression = arrêt ; partiel = `incomplete`. **Marque** : hors catalogue → question. Annonce de
-  test ≥ 999 €. **Selftests** : 0 rouge ; `scripts/lib/morceaux-mis-de-cote.mjs`.
-- **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`, `_shared/opla-sortie.js`).
-- **⛔ `platform_settings`** : toujours `rpc platform_settings_fusionner`.
-- **Ventes** : preuve = `ventes.annonce_id` ; même cession fusionnée.
-- **Crons coupés** : 17, 22. **Migrations** : § 3.4.
-  **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
-- **Ouvert** : binaires **2.9.38** (AAB `build/AAB-A-TELEVERSER-2.9.38-vc32/`,
-  iOS par Codemagic) ; le reste : fin de l'état.
+- **Servi** : ext. **0.6.100** ; **0.6.103** à téléverser (`build/CWS-0.6.103-*`) ; min **0.6.81** ; web/OTA 2.9.66.
+- **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ;
+  moteur v3 `_shared/rapprochement/` ; `rapprochement` v8 : empreintes PAR LA BASE (pg_net),
+  jamais attendues (edge → edge : 60/min ; le worker pg_net ne sert rien tant que l'appelant
+  n'a pas répondu → fonction appelée par cron/trigger COURTE) ; `docs/multi-synchro.md`.
+- **Push ventes** : binaire 2.9.62, cron 34, `pushDisponible()` ; `docs/push/CLES-NICO.md`.
+- **⛔ Mail à chaque vente** (`push-ventes`) : vente récente prouvée, jamais plafonné, sans récap.
+- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js`.
+- **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie = création.
+- **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
+- **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = fiche ; colis jamais deviné.
+- **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; absent de deux relevés complets → « déjà
+  retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans progression =
+  arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €. **Selftests** : 0 rouge.
+- **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`).
+- **⛔ `platform_settings`** : `rpc platform_settings_fusionner` seulement.
+- **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
+- **Ouvert** : binaires **2.9.38** (AAB `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS Codemagic) ; le reste : fin de l'état.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
@@ -534,10 +531,9 @@ qui survit à ça, c'est du code.
 
 ---
 
-## 7. État 27/09/2026
+## 7. État
 
-Voir `docs/agents/etat-2026-09-27.md`. Italie 20260925190000 non
-appliquée/non commitée : intouchée sans GO.
+`docs/agents/etat-2026-10-01.md` (fin). Italie 20260925190000 : intouchée sans GO.
 
 ---
 

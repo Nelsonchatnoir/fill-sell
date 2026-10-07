@@ -42,9 +42,15 @@ selftest (Node) : `moteur.js` (+ `texte.js`, `photos.js`, `idf.js`, `passe.js`).
    du compte tourne (dressing Vinted compris).
 2. `rapprochement_v3_lire(user)` : tout le compte en un appel (articles,
    annonces vivantes des 4 plateformes, fusions, questions, intact).
-3. Empreintes manquantes → `empreintes-urls` en parallèle (6 photos par appel,
-   10 appels) ; 6 passages sans progrès au plus ; plus le temps → relance,
-   jamais un classement sans les photos.
+3. Empreintes manquantes → mises en file PAR LA BASE
+   (`rapprochement_v3_empreinter` : 100 appels pg_net de 6 photos à
+   `empreintes-urls`), la fonction répond `empreintes` et se relance 12 s
+   après (12 rangs au plus ; filet `rapprochement-1min`). Appris en prod le
+   08/10 : un fetch edge → edge est limité à 60 appels/min, et le worker
+   pg_net ne sert rien tant que la requête qui a appelé la fonction n'a pas sa
+   réponse. Progrès persisté (`photos_manquantes`, `passages_photos`) : six
+   relectures sans progrès → on classe avec ce qu'on a (une fusion exige la
+   photo : jamais une fusion sans elle).
 4. `passe()` → le plan (`planifier`) : `fusionner` (réparation), `attacher`,
    `groupe`, `a_verifier`, `annonce_en_double`, `creer`, `entrer_stock`,
    `question_caduque`, `ignorer`.
@@ -62,6 +68,11 @@ les paires « en double » qui en touchent une) ; une annonce décidée n'est ja
 rejugée. Mode `reparation` (Nico) = les décisions automatiques d'avant le sont.
 
 ## Mesures (08/10 nuit, transactions annulées puis prod)
+
+Plan rendu en prod par `rapprochement` v8 sur Corinne (toutes les photos
+empreintées) : 558 décisions — 172 fusions, 16 groupes, 130 à vérifier, 15
+« en double », 74 entrées au stock, 151 questions caduques ; identique au
+moteur local nourri des mêmes empreintes (0 écart).
 
 | Compte | Avant | Après (réparation) |
 |---|---|---|
@@ -83,6 +94,9 @@ Phase 1 (lecture seule, 07/10) : 0 fusion à tort sur 355 paires vues une à une
   relu »), plus de `cadence_ui` refusée ; plateforme non connectée = ligne +
   « Me connecter » dans le résumé ; « Annonce en double ? » dans l'écran des
   doutes ; les « à vérifier » hors du stock (web et mobile, OTA 2.9.66).
+- Extension 0.6.103 (zip `build/CWS-0.6.103-A-TELEVERSER/`) : un content
+  script chargé mais muet se relance avant tout envoi à la page (toutes
+  plateformes) ; serveur : relance après MAJ (`_shared/relance-apres-maj.js`).
 - Réparation du parc : `scripts/reparations/20261008_reparation_rapprochement_v3.mjs`
   (`--lister`, `--simuler`, `--appliquer`), sauvegardes `_backup_0810_v3_*`
   (RLS, fermées), inverse `20261008_reparation_rapprochement_v3_INVERSE.sql`.

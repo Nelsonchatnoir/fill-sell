@@ -1,28 +1,41 @@
-## État de production au 06/10 — lire avant toute action
+## État de production au 08/10 — lire avant toute action
 
 `docs/agents/etat-2026-10-01.md` (versions, crons, ce qui est ouvert ; sections
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » en fin ; reprise : `docs/reprise/terminal-six-points-0610-nuit.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » en fin ; reprise : `docs/reprise/terminal-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **Servi** : extension **0.6.100** au CWS ; **0.6.102 à téléverser**
-  (`build/CWS-0.6.102-A-TELEVERSER/fillsell-extension-0.6.102-b230ebe-cws.zip` =
-  0.6.101 jamais téléversée + format de colis Vinted lu au référentiel quand la
-  page ne l'affiche pas ; jamais d'EXTENSION_MIN_BUILD sans décision de Nico) ;
-  **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de Nico) ;
-  web **2.9.64** servi, OTA **2.9.64 à envoyer** (`dist/`, carte unique
-  « Leboncoin : ton nom et ton prénom », le Free republie EN LOT) ; `get-pending-jobs` v221,
+- **⛔ MULTI-SYNCHRO (08/10 nuit, règle de Nico du 07/10)** : un appui sur
+  « Synchroniser » relève TOUTES les plateformes, le stock arrive DÉJÀ fusionné ;
+  moteur v3 `_shared/rapprochement/` (jamais la photo seule, jamais le titre
+  seul, jamais deux annonces d'une même plateforme ; « Annonce en double ? »
+  hors du stock ; décisions de la personne définitives) ; fonction
+  `rapprochement` v8 : les empreintes manquantes partent PAR LA BASE
+  (`rapprochement_v3_empreinter`, pg_net) et ne sont JAMAIS attendues dans la
+  fonction — un fetch edge → edge est limité à 60/min, et le worker pg_net ne
+  sert rien tant que la requête appelante n'a pas répondu (une fonction
+  appelée par cron/trigger/script reste COURTE) ; `docs/multi-synchro.md`,
+  reprise `docs/reprise/terminal-multi-synchro-0810.md`. Extension 0.6.103 :
+  un content script chargé mais muet se relance avant tout envoi à la page.
+- **Servi** : extension **0.6.100** au CWS ; **0.6.103 à téléverser**
+  (`build/CWS-0.6.103-A-TELEVERSER/fillsell-extension-0.6.103-008995b-cws.zip`,
+  BUILD_ID `2026-10-07T22:58:10Z+008995b` = 0.6.102 jamais téléversée + onglet
+  muet relancé, toutes plateformes ; jamais d'EXTENSION_MIN_BUILD sans décision
+  de Nico) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
+  Nico) ; web **2.9.66** (à pousser avec le lot), OTA **2.9.66 servie** (08/10
+  01:19) ; `rapprochement` v8, `empreintes-urls` v4, `get-pending-jobs` v222,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `update-job-status` v131, `handler-watch` v90, `push-ventes` v8, `voice-intent` v155, `ops-digest` v31,
+  `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v31,
   `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
-  `email-tunnel` v72 et `stripe-webhook` v57 (`false`) — ⚠️ depuis le 05/10 15:55,
+  `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
+  20261008020000 / 030000 / 040000 (multi-synchro) appliquées — ⚠️ depuis le 05/10 15:55,
   `invoice.payment_failed` / `payment_action_required` sont COCHÉS chez Stripe : le
   mail « paiement échoué » part au client, TOUTES formules ; migrations Cloud
   20261004233000 + 20261005120000 appliquées (reprise : `docs/cloud/REPRISE.md` § 0 bis). ⚠️ Le 30/09 22:52, le changement de `CRON_SECRET` a monté TOUTES
