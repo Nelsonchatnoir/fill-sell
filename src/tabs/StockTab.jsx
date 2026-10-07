@@ -5456,6 +5456,9 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, isBusiness, items, user, voiceUsedToday,
+  // (07/10) Les articles « à vérifier » (hors du stock affiché) : BlocSynchro
+  // les montre dans « Annonces à vérifier », avec leur question.
+  itemsAVerifier = [],
   // Compte eBay vu par App.jsx : { voieApi, etat, lu, voieApiReelle, rafraichir }.
   // voieApiReelle = la VOIE (miroir du trigger cross_post_jobs_voie_ebay), la
   // SEULE chose sur laquelle se règlent les textes qui parlent d'extension.
@@ -8363,7 +8366,7 @@ const StockTab = memo(function StockTab({
       detail: attenteAction ? [attenteAction.echecs > 0 ? (lang === 'fr' ? `${attenteAction.echecs} pas partie${attenteAction.echecs > 1 ? 's' : ''}` : `${attenteAction.echecs} didn't go out`) : null, attenteAction.aCompleter > 0 ? (lang === 'fr' ? `${attenteAction.aCompleter} à compléter` : `${attenteAction.aCompleter} to complete`) : null].filter(Boolean).join(' · ') : null,
       onOuvrir: () => { setGesteOuvert(null); setAttenteOuverte(true); } },
     { cle: 'a_verifier', n: nbAVerifier, titre: lang === 'fr' ? (nbAVerifier > 1 ? 'Annonces à vérifier' : 'Annonce à vérifier') : 'Listings to check',
-      detail: lang === 'fr' ? 'Trouvées sur tes autres plateformes : est-ce le même article ? Elles n’entrent dans ton stock qu’une fois vérifiées.' : 'Found on your other platforms: is it the same item? They only enter your stock once checked.',
+      detail: lang === 'fr' ? 'Trouvées sur tes autres plateformes, elles ressemblent à un article de ton stock. Dis-nous si c’est le même : elles entrent alors dans ton stock. Rien n’est perdu, leurs ventes sont suivies.' : 'Found on your other platforms, they look like an item in your stock. Tell us if it’s the same: they then enter your stock. Nothing is lost, their sales are tracked.',
       onOuvrir: () => { setGesteOuvert(null); aVerifier.ouvrir?.(); } },
     { cle: 'ventes', n: questionsDejaVendu.length, titre: lang === 'fr' ? 'Déjà vendu ?' : 'Already sold?',
       detail: lang === 'fr' ? 'Un article vendu a peut-être encore une annonce en ligne : réponds pour ne pas le vendre deux fois.' : 'A sold item may still have a listing online: answer to avoid selling it twice.',
@@ -9294,7 +9297,7 @@ const StockTab = memo(function StockTab({
         <div style={{marginTop:16}}>
           {syncMultiOuverte ? (
             <BlocSynchro
-              lang={lang} user={user} isNative={isNative} items={items} ouvert={syncMultiOuverte}
+              lang={lang} user={user} isNative={isNative} items={items} itemsAVerifier={itemsAVerifier} ouvert={syncMultiOuverte}
               plateformes={plateformesDeReleve(plateformesOuvertes,oplaRelie)}
               extensionStatus={extensionStatus}
               onRattache={()=>{rafraichirApresSync();relireDoublons();}}

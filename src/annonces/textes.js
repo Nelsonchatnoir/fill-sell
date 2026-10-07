@@ -81,7 +81,7 @@ const FR = {
   ligneRapprochement: 'Rapprochement',
   stockPret: 'Ton stock est prêt',
   aVerifierTitre: (n) => (n > 1 ? `${n} annonces à vérifier` : 'Une annonce à vérifier'),
-  aVerifierTexte: 'Trouvées sur tes autres plateformes : est-ce le même article ? Elles n’entrent dans ton stock qu’une fois vérifiées.',
+  aVerifierTexte: 'Trouvées sur tes autres plateformes, elles ressemblent à un article de ton stock. Dis-nous si c’est le même : elles entrent alors dans ton stock. Rien n’est perdu, leurs ventes sont suivies.',
   aVerifierCta: 'Vérifier',
 
   // ── Ce que la synchronisation n'a pas su trancher ────────────────────────
@@ -262,7 +262,7 @@ const EN = {
   ligneRapprochement: 'Matching',
   stockPret: 'Your stock is ready',
   aVerifierTitre: (n) => (n > 1 ? `${n} listings to check` : 'One listing to check'),
-  aVerifierTexte: 'Found on your other platforms: is it the same item? They only enter your stock once checked.',
+  aVerifierTexte: 'Found on your other platforms, they look like an item in your stock. Tell us if it’s the same: they then enter your stock. Nothing is lost, their sales are tracked.',
   aVerifierCta: 'Check',
 
   anomalie: (n) => (n > 1

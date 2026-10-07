@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { premierePhoto } from '../components/GalleryPhoto';
 import { track } from '../analytics/analytics';
-import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, estQuestionCopie, texteQuestionCopie, annonceARetirer, nomPlateforme } from '../utils/doublons';
+import { deciderDoublon, pairesAffichables, raisonsDoublon, origineFiche, estQuestionDejaVendu, estQuestionCopie, texteQuestionCopie, annonceARetirer, nomPlateforme, rangerDansLeStock } from '../utils/doublons';
 import { A, DEGRADE, CSS_ANNONCES } from './theme';
 
 const prixLisible = (v, fr) => (v == null || v === '' || !Number.isFinite(Number(v))
@@ -51,8 +51,14 @@ function CarteFiche({ item, fr, garde, etiquette }) {
   );
 }
 
-export default function EcranDoublons({ lang, items, doublons, onClose, onDecision }) {
+// (07/10, rattachement avant stock) mode « a_verifier » : `paires` (b =
+// l'article à vérifier, a = celui auquel il ressemble, cf. pairesAVerifier)
+// puis `orphelins` (plus d'article auquel le comparer : « Le mettre dans mon
+// stock »). Un article à vérifier n'est PAS dans le stock affiché : chaque
+// réponse l'y fait entrer (« non »), ou le réunit à l'autre (« oui »).
+export default function EcranDoublons({ lang, items, doublons, onClose, onDecision, mode = null, paires = null, orphelins = null, userId = null }) {
   const fr = lang !== 'en';
+  const aVerifier = mode === 'a_verifier';
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState(null);
   const [fait, setFait] = useState(null);
@@ -66,20 +72,43 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
   }, [onClose]);
 
   const file = useMemo(
-    () => pairesAffichables(doublons, items).filter((d) => !traitees.has(d.id)),
-    [doublons, items, traitees],
+    () => (aVerifier
+      ? [...(paires ?? []), ...(orphelins ?? []).map((b) => ({ id: `orphelin:${b.id}`, orphelin: true, b, preuves: null }))]
+      : pairesAffichables(doublons, items)).filter((d) => !traitees.has(d.id)),
+    [aVerifier, paires, orphelins, doublons, items, traitees],
   );
   const paire = file[0] ?? null;
+  const orphelin = !!paire?.orphelin;
   // (2026-09-27) « Déjà vendu ? » : une annonce encore en ligne ressemble à un
   // objet VENDU. « Oui » réunit les deux fiches ET retire l'annonce encore en
   // ligne (le serveur arme le retrait) ; « Non » : deux articles différents.
-  const dejaVendu = estQuestionDejaVendu(paire);
+  // En mode « à vérifier », toute paire dont l'autre article est vendu.
+  const dejaVendu = aVerifier ? (!orphelin && paire?.a?.statut === 'vendu') : estQuestionDejaVendu(paire);
   // (06/10) Une COPIE de la fiche vendue, liée par le seul titre : une seule
   // fiche, la question « c'est le même article ? » et l'annonce concernée.
-  const copie = estQuestionCopie(paire);
+  const copie = !aVerifier && estQuestionCopie(paire);
   // (2026-09-30) L'annonce qu'un « oui » retirera est montrée AVANT le geste :
   // c'est ce geste qui vaut preuve de vente pour CE retrait-là (décision Nico).
-  const aRetirer = dejaVendu ? annonceARetirer(paire) : null;
+  const aRetirer = !dejaVendu ? null
+    : (aVerifier
+      ? (paire?.preuves?.annonce_id && paire?.preuves?.platform
+        ? { id: String(paire.preuves.annonce_id), plateforme: String(paire.preuves.platform), url: typeof paire.preuves.url === 'string' && paire.preuves.url ? paire.preuves.url : null }
+        : null)
+      : annonceARetirer(paire));
+  // La plateforme où l'article à vérifier a été trouvé.
+  const trouveeSur = nomPlateforme(paire?.b?.a_verifier?.platform ?? paire?.preuves?.platform ?? paire?.b?.plateforme ?? '');
+
+  const ranger = async () => {
+    if (!paire || busy) return;
+    setBusy(true); setErreur(null); setInfo(null); setFait(null);
+    const r = await rangerDansLeStock(userId, paire.b?.id).catch(() => ({ ok: false }));
+    setBusy(false);
+    if (!r?.ok) { setErreur(fr ? 'Pas enregistré — réessaie dans un instant.' : 'Not saved — try again in a moment.'); return; }
+    track('a_verifier_range', {});
+    setFait(fr ? 'Noté : il est dans ton stock.' : "Noted: it's in your stock.");
+    setTraitees((v) => new Set([...v, paire.id]));
+    onDecision?.();
+  };
 
   const repondre = async (decision) => {
     if (!paire || busy) return;
@@ -119,6 +148,8 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
       ? (fr ? `C'est noté : « ${paire.a?.title ?? ''} » est vendu. Son annonce encore en ligne va être retirée.` : `Noted: “${paire.a?.title ?? ''}” is sold. Its listing still online will be removed.`)
       : decision === 'oui'
       ? (fr ? `Réunies en une seule fiche : « ${paire.a?.title ?? ''} ». Tu peux défaire la fusion depuis la fiche.` : `Merged into one item: “${paire.a?.title ?? ''}”. You can undo it from the item.`)
+      : aVerifier
+      ? (fr ? "Noté : c'est un autre article, il est maintenant dans ton stock." : "Noted: it's another item, it's now in your stock.")
       : (fr ? 'Noté : ce sont deux articles différents. On ne te le redemandera pas.' : "Noted: they're two different items. We won't ask again."));
     setTraitees((v) => new Set([...v, paire.id]));
     onDecision?.();
@@ -138,7 +169,11 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         <style>{CSS_ANNONCES}</style>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: A.ink }}>{dejaVendu ? (fr ? 'Déjà vendu ?' : 'Already sold?') : (fr ? 'Est-ce le même article ?' : 'Is it the same item?')}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: A.ink }}>
+              {dejaVendu ? (fr ? 'Déjà vendu ?' : 'Already sold?')
+                : aVerifier ? (fr ? 'Annonces à vérifier' : 'Listings to check')
+                : (fr ? 'Est-ce le même article ?' : 'Is it the same item?')}
+            </div>
             {paire && (
               <div style={{ marginTop: 2, fontSize: 11.5, fontWeight: 500, color: A.texteSecondaire, fontVariantNumeric: 'tabular-nums' }}>
                 {fr ? `1 sur ${file.length}` : `1 of ${file.length}`}
@@ -165,9 +200,11 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         {!paire ? (
           <div className="rv-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '28px 8px 10px', textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: 28, background: DEGRADE, color: '#FFFFFF', fontSize: 24, fontWeight: 700, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: A.ink }}>{fr ? 'Plus aucune question' : 'No more questions'}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: A.ink }}>{aVerifier ? (fr ? 'Tout est rangé' : 'All sorted') : (fr ? 'Plus aucune question' : 'No more questions')}</div>
             <div style={{ fontSize: 12.5, lineHeight: 1.5, color: A.texteSecondaire, maxWidth: 340 }}>
-              {fr ? "Chaque objet de ton stock n'a plus qu'une fiche, ou tu nous as dit lesquels sont différents." : 'Every item in your stock has a single entry, or you told us which ones differ.'}
+              {aVerifier
+                ? (fr ? 'Chaque annonce trouvée sur tes plateformes est dans ton stock, une seule carte par article.' : 'Every listing found on your platforms is in your stock, one card per item.')
+                : (fr ? "Chaque objet de ton stock n'a plus qu'une fiche, ou tu nous as dit lesquels sont différents." : 'Every item in your stock has a single entry, or you told us which ones differ.')}
             </div>
             <button type="button" onClick={onClose} className="rv-cta rv-focus"
               style={{ marginTop: 4, minHeight: 44, padding: '0 22px', borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>
@@ -177,7 +214,15 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
         ) : (
           <>
             <div style={{ fontSize: 12.5, color: A.texteSecondaire, lineHeight: 1.5, marginBottom: 12 }}>
-              {copie
+              {orphelin
+                ? (fr
+                  ? `Trouvée sur ${trouveeSur || 'une autre plateforme'} pendant ta synchro. L'article auquel elle ressemblait n'est plus dans ton stock : tu peux l'y ranger.`
+                  : `Found on ${trouveeSur || 'another platform'} during your sync. The item it looked like is no longer in your stock: you can file it there.`)
+                : aVerifier && !dejaVendu
+                ? (fr
+                  ? `Trouvée sur ${trouveeSur || 'une autre plateforme'} pendant ta synchro, elle ressemble à « ${paire.a?.title ?? ''} », déjà dans ton stock. Si c'est le même objet, on les réunit en une seule carte (ses annonces restent en ligne). Sinon, elle entre dans ton stock. En attendant, ses ventes sont suivies comme d'habitude.`
+                  : `Found on ${trouveeSur || 'another platform'} during your sync, it looks like “${paire.a?.title ?? ''}”, already in your stock. If it's the same object, we merge them into one card (its listings stay online). Otherwise, it goes into your stock. Meanwhile, its sales are tracked as usual.`)
+                : copie
                 ? texteQuestionCopie(paire, fr)
                 : dejaVendu
                 ? (fr
@@ -187,9 +232,15 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 ? `Ces deux fiches se ressemblent beaucoup${raisons.length ? ` (${raisons.join(', ')})` : ''}. Si c'est le même objet, on les réunit : ses annonces en ligne restent en ligne, rien n'est retiré.`
                 : `These two items look alike${raisons.length ? ` (${raisons.join(', ')})` : ''}. If they're the same object, we merge them: its online listings stay online, nothing is removed.`}
             </div>
-            <div className="rv-up" style={{ display: 'flex', gap: 10, ...(copie ? { maxWidth: 220 } : {}) }}>
-              <CarteFiche item={paire.a} fr={fr} garde etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : undefined} />
-              {!copie && <CarteFiche item={paire.b} fr={fr} />}
+            <div className="rv-up" style={{ display: 'flex', gap: 10, ...(copie || orphelin ? { maxWidth: 220 } : {}) }}>
+              {!orphelin && (
+                <CarteFiche item={paire.a} fr={fr} garde
+                  etiquette={dejaVendu ? (fr ? 'Vendu' : 'Sold') : aVerifier ? (fr ? 'Dans ton stock' : 'In your stock') : undefined} />
+              )}
+              {!copie && (
+                <CarteFiche item={paire.b} fr={fr} garde={aVerifier}
+                  etiquette={aVerifier ? (fr ? `Trouvée sur ${trouveeSur || 'une autre plateforme'}` : `Found on ${trouveeSur || 'another platform'}`) : undefined} />
+              )}
             </div>
             {aRetirer && (
               <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: A.paper, border: `1px solid ${A.border}`, fontSize: 12, lineHeight: 1.45, color: A.ink }}>
@@ -205,6 +256,14 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 )}
               </div>
             )}
+            {orphelin ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+                <button type="button" disabled={busy} onClick={ranger} className="rv-cta rv-focus"
+                  style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+                  {fr ? 'La mettre dans mon stock' : 'Put it in my stock'}
+                </button>
+              </div>
+            ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
               <button type="button" disabled={busy} onClick={() => repondre('oui')} className="rv-cta rv-focus"
                 style={{ width: '100%', minHeight: 48, borderRadius: 999, border: 'none', background: DEGRADE, color: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
@@ -218,6 +277,8 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 style={{ width: '100%', minHeight: 46, borderRadius: 999, border: `1px solid ${A.border}`, background: A.card, color: A.ink, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>
                 {copie
                   ? (fr ? "Non, c'est un autre exemplaire" : "No, it's another copy")
+                  : aVerifier
+                  ? (fr ? "Non, c'est un autre article" : "No, it's another item")
                   : (fr ? 'Non, ce sont deux articles' : "No, they're two items")}
               </button>
               {!copie && (
@@ -226,6 +287,7 @@ export default function EcranDoublons({ lang, items, doublons, onClose, onDecisi
                 </div>
               )}
             </div>
+            )}
           </>
         )}
       </div>

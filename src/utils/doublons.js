@@ -23,6 +23,74 @@ export async function lireDoublonsProposes(userId) {
 }
 
 /**
+ * (07/10, rattachement avant stock) Les questions ouvertes qui portent sur les
+ * articles « à vérifier » — toutes, par paquets (jamais le plafond de 200 de
+ * lireDoublonsProposes : un article dont la question manquerait resterait
+ * invisible). Lève en cas d'erreur (l'appelant garde sa liste précédente).
+ */
+export async function lireQuestionsAVerifier(userId, ids) {
+  if (!userId || !Array.isArray(ids) || !ids.length) return [];
+  const parId = new Map();
+  for (let k = 0; k < ids.length; k += 100) {
+    const lot = ids.slice(k, k + 100);
+    for (const col of ['absorbe', 'garde']) {
+      const { data, error } = await supabase
+        .from('inventaire_doublons')
+        .select('id, garde, absorbe, niveau, motif, preuves, created_at')
+        .eq('user_id', userId).eq('statut', 'proposee').in(col, lot)
+        .limit(1000);
+      if (error) throw error;
+      for (const d of data ?? []) parId.set(d.id, d);
+    }
+  }
+  return [...parId.values()];
+}
+
+/**
+ * (07/10) Une question par article « à vérifier », la plus ancienne : b =
+ * l'article à vérifier, a = l'article auquel il ressemble (dans le stock, ou
+ * VENDU : la question devient « Déjà vendu ? »). Un article à vérifier sans
+ * question affichable n'apparaît pas ici : voir orphelinsAVerifier.
+ */
+export function pairesAVerifier(questions, items, idsAVerifier) {
+  const parId = new Map((Array.isArray(items) ? items : []).map((i) => [String(i.id), i]));
+  const ids = new Set((Array.isArray(idsAVerifier) ? idsAVerifier : []).map(String));
+  const vus = new Set();
+  const out = [];
+  const triees = [...(Array.isArray(questions) ? questions : [])]
+    .sort((x, y) => String(x.created_at ?? '').localeCompare(String(y.created_at ?? '')));
+  for (const d of triees) {
+    if (estQuestionCopie(d)) continue;
+    const g = String(d.garde);
+    const ab = String(d.absorbe);
+    const cible = ids.has(ab) ? ab : (ids.has(g) ? g : null);
+    if (!cible || vus.has(cible)) continue;
+    const a = parId.get(cible === ab ? g : ab);
+    const b = parId.get(cible);
+    if (!a || !b) continue;
+    vus.add(cible);
+    out.push({ ...d, a, b });
+  }
+  return out;
+}
+
+/** (07/10) Les articles « à vérifier » sans question affichable (l'autre article n'est plus là). */
+export function orphelinsAVerifier(itemsAVerifier, paires) {
+  const couverts = new Set((Array.isArray(paires) ? paires : []).map((p) => String(p.b?.id)));
+  return (Array.isArray(itemsAVerifier) ? itemsAVerifier : []).filter((i) => !couverts.has(String(i.id)));
+}
+
+/**
+ * (07/10) Ranger dans le stock un article « à vérifier » qui n'a plus de
+ * question (l'article auquel il ressemblait a disparu). Rend { ok }.
+ */
+export async function rangerDansLeStock(userId, id) {
+  if (!userId || id == null) return { ok: false };
+  const { error } = await supabase.from('inventaire').update({ a_verifier: null }).eq('id', id).eq('user_id', userId);
+  return { ok: !error, message: error?.message };
+}
+
+/**
  * « oui » | « non ». Rend { ok, reason?, fusion_id?, plateformes? }.
  * (2026-09-30) annonceMontree : l'annonce que l'écran a montrée avant un
  * « oui » à « Déjà vendu ? » — ce geste vaut preuve de vente pour CE

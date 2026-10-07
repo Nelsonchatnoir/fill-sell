@@ -19,7 +19,7 @@
 //                StockTab) ; la croix ramène au bloc.
 // ⛔ La ligne Vinted (VintedDressingSync) reste MONTÉE, cachée : c'est elle qui
 //    porte l'état du relevé Vinted et son `lancer` (cf. la carte d'origine).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, ChevronRight, X, Check, CircleAlert, CircleCheck, Info, Laptop, RotateCcw } from 'lucide-react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import OplaAutorisationModal from '../components/OplaAutorisationModal';
@@ -33,7 +33,7 @@ import ConstellationReleve from '../annonces/ConstellationReleve';
 import EcranRattachement from '../annonces/EcranRattachement';
 import EcranDoublons from '../annonces/EcranDoublons';
 import BoutonMeConnecter from '../components/BoutonMeConnecter';
-import { pairesAffichables, estQuestionDejaVendu } from '../utils/doublons';
+import { pairesAffichables, estQuestionDejaVendu, lireQuestionsAVerifier, pairesAVerifier, orphelinsAVerifier } from '../utils/doublons';
 import Feuille from './Feuille';
 import { S, OMBRE, DEGRADE, DEGRADE_TUILE } from './jetons';
 import { nombreFr } from './regles';
@@ -130,7 +130,7 @@ export function CartePoint({ icone = null, platform = null, titre, texte = null,
 export default function BlocSynchro({
   lang, user, isNative = false, items = [], ouvert = false, extensionStatus = null, plateformes = null,
   onRattache = null, lancerVinted = null, etatVinted = null, ligneVinted = null,
-  alertes = [], aFaire = null, onResume = null, onARattacher = null,
+  alertes = [], aFaire = null, onResume = null, onARattacher = null, itemsAVerifier = [],
 }) {
   const T = useMemo(() => textesAnnonces(lang), [lang]);
   const r = useReleveAnnonces({ lang, user, ouvert, plateformes, lancerVinted, etatVinted });
@@ -185,10 +185,31 @@ export default function BlocSynchro({
     setResume(!actifGlobal && tuiles.some((t) => t.e.phase === 'fait' && !t.vide));
   }
   useEffect(() => { onResume?.(resume); }, [resume, onResume]);
-  // « Annonces à vérifier » (propositions hors du stock) : StockTab les compte
-  // dans « À régler » et ouvre l'écran de rattachement d'ici.
-  const nbAVerifier = r.aRattacher.length;
-  useEffect(() => { onARattacher?.({ n: nbAVerifier, ouvrir: () => setEcran(true) }); }, [nbAVerifier, onARattacher]);
+  // « Annonces à vérifier » : les ARTICLES à vérifier (07/10 — hors du stock
+  // affiché, avec leur question « Est-ce le même article ? ») et les annonces
+  // proposées d'avant (écran de rattachement). StockTab les compte dans
+  // « À régler » et les ouvre d'ici : d'abord les articles, puis les annonces.
+  const idsAVerifier = useMemo(() => itemsAVerifier.map((i) => i.id), [itemsAVerifier]);
+  const cleAVerifier = idsAVerifier.join(',');
+  const [questionsAVerifier, setQuestionsAVerifier] = useState([]);
+  useEffect(() => {
+    if (!r.userId || !cleAVerifier) { setQuestionsAVerifier([]); return undefined; }
+    let annule = false;
+    lireQuestionsAVerifier(r.userId, cleAVerifier.split(','))
+      .then((q) => { if (!annule) setQuestionsAVerifier(q); })
+      .catch(() => { /* on garde la liste d'avant */ });
+    return () => { annule = true; };
+  }, [r.userId, cleAVerifier]);
+  const tousItems = useMemo(() => [...items, ...itemsAVerifier], [items, itemsAVerifier]);
+  const pairesAV = useMemo(() => pairesAVerifier(questionsAVerifier, tousItems, idsAVerifier), [questionsAVerifier, tousItems, idsAVerifier]);
+  const orphelinsAV = useMemo(() => orphelinsAVerifier(itemsAVerifier, pairesAV), [itemsAVerifier, pairesAV]);
+  const [ecranAVerifier, setEcranAVerifier] = useState(false);
+  const nbArticlesAVerifier = itemsAVerifier.length;
+  const nbAVerifier = nbArticlesAVerifier + r.aRattacher.length;
+  const ouvrirAVerifierRef = useRef(null);
+  ouvrirAVerifierRef.current = () => (nbArticlesAVerifier > 0 ? setEcranAVerifier(true) : setEcran(true));
+  const ouvrirAVerifier = useCallback(() => ouvrirAVerifierRef.current?.(), []);
+  useEffect(() => { onARattacher?.({ n: nbAVerifier, ouvrir: ouvrirAVerifier }); }, [nbAVerifier, onARattacher, ouvrirAVerifier]);
 
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
@@ -318,7 +339,7 @@ export default function BlocSynchro({
 
   // ── LES POINTS À RÉGLER, COMPTÉS UNE FOIS ─────────────────────────────────
   const alertesComptees = alertes.filter((a) => a.compte !== false);
-  const nbPoints = murs.length + signaux.length + (r.message ? 1 : 0) + (msgVintedPoint ? 1 : 0) + (nbARattacher > 0 ? 1 : 0)
+  const nbPoints = murs.length + signaux.length + (r.message ? 1 : 0) + (msgVintedPoint ? 1 : 0) + (nbARattacher > 0 ? 1 : 0) + (nbArticlesAVerifier > 0 ? 1 : 0)
     + (nbDoublons > 0 ? 1 : 0) + (!extVue ? 1 : 0) + alertesComptees.length;
   const infoSansPoint = nbPoints === 0
     ? (nbRangement > 0 ? T.rangement(nbRangement, nomsRangement) : (alertes[0]?.titre ?? null))
@@ -367,7 +388,7 @@ export default function BlocSynchro({
             {pastilles(true)}
             {nbAVerifier > 0 && (
               // (07/10) Les doutes vivent HORS du stock : on le dit dès la fin, avec le geste.
-              <button type="button" className="sk-btn" onClick={() => setEcran(true)}
+              <button type="button" className="sk-btn" onClick={ouvrirAVerifier}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 40, marginTop: 8, padding: 0, border: 'none', background: 'transparent', boxShadow: `inset 0 1px 0 ${S.mentheBord}`, color: S.ambreEncre, fontSize: 13, fontWeight: 700, textAlign: 'left' }}>
                 <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: S.ambrePoint, flexShrink: 0 }} />
                 <span className="sk-une-ligne" style={{ flex: 1, minWidth: 0 }}>{T.aVerifierTitre(nbAVerifier)}</span>
@@ -488,6 +509,10 @@ export default function BlocSynchro({
           {signaux.map((sg) => (
             <CartePoint key={sg.cle} platform={sg.platform ?? null} icone={sg.icone ?? null} titre={sg.titre} texte={sg.texte} bouton={sg.bouton ?? null} />
           ))}
+          {nbArticlesAVerifier > 0 && (
+            <CartePoint titre={T.aVerifierTitre(nbArticlesAVerifier)} texte={T.aVerifierTexte}
+              bouton={{ libelle: T.aVerifierCta, onTap: () => setEcranAVerifier(true) }} />
+          )}
           {nbARattacher > 0 && (
             <CartePoint titre={T.aVerifierTitre(nbARattacher)} texte={T.aVerifierTexte}
               bouton={{ libelle: T.aVerifierCta, onTap: () => setEcran(true) }} />
@@ -515,6 +540,12 @@ export default function BlocSynchro({
       {ecranDoublons && (
         <EcranDoublons lang={lang} items={items} doublons={pairesDoublons}
           onClose={() => setEcranDoublons(false)}
+          onDecision={() => { r.recharger(); if (typeof onRattache === 'function') onRattache(); }} />
+      )}
+      {ecranAVerifier && (
+        <EcranDoublons lang={lang} items={tousItems} doublons={[]} mode="a_verifier" userId={r.userId}
+          paires={pairesAV} orphelins={orphelinsAV}
+          onClose={() => setEcranAVerifier(false)}
           onDecision={() => { r.recharger(); if (typeof onRattache === 'function') onRattache(); }} />
       )}
       {r.oplaModale && <OplaAutorisationModal lang={lang} contexte="releve" userId={r.userId} onClose={r.fermerOplaModale} />}

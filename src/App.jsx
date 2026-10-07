@@ -848,7 +848,11 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // s'ouvrirait vide sur un article qui a un poids, et le stepper ne pourrait
   // pas le reprendre pour Leboncoin. Transporté tel quel (la contrainte en
   // base garantit 1..200 000 ou NULL), `??` et non `||`.
-  poids_g:v.poids_g??null};}
+  poids_g:v.poids_g??null,
+  // ── a_verifier (07/10, rattachement avant stock) ──────────────────────────
+  // Posé par le serveur : l'article attend la réponse à « Est-ce le même
+  // article ? » ; il vit dans « Annonces à vérifier », hors du stock affiché.
+  a_verifier:v.a_verifier??null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -2093,6 +2097,12 @@ export default function App({ loginOnly = false }){
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
   const [items,setItems]=useState([]);
+  // (07/10, rattachement avant stock) Les articles « à vérifier » : relevés sur
+  // une autre plateforme, ils ressemblent à un article déjà là. Ce sont de
+  // vrais articles (ventes, retraits, republication suivent comme pour tout
+  // article), mais ils restent HORS du stock affiché — et de ses totaux — tant
+  // que leur question n'est pas tranchée.
+  const [itemsAVerifier,setItemsAVerifier]=useState([]);
   // Articles en attente d'une information (jobs 'needs_user'), comptés par
   // ARTICLE. Sert la pastille de l'entrée « Stock IA » — visible sans ouvrir
   // l'écran. 0 = aucune pastille, jamais un rond vide.
@@ -3422,7 +3432,12 @@ export default function App({ loginOnly = false }){
       supabase.from('profiles').select('is_premium,is_pro,is_business,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build,onboarded_at,ebay_voie_api').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
-    if(!i.error) setItems((i.data||[]).map(mapItem));
+    if(!i.error){
+      const lignes=i.data||[];
+      const estAVerifier=(r)=>r.statut==='stock'&&r.a_verifier!=null;
+      setItems(lignes.filter(r=>!estAVerifier(r)).map(mapItem));
+      setItemsAVerifier(lignes.filter(estAVerifier).map(mapItem));
+    }
     // Les fusions vivantes, pour offrir « défaire » sur l'article gardé.
     // Lecture SÉPARÉE et best-effort, comme la pastille ci-dessous : son échec
     // ne peut pas casser l'écran, il retire seulement le bouton de retour.
@@ -3751,7 +3766,7 @@ export default function App({ loginOnly = false }){
         // (06/10) Le jeton du téléphone, à la connexion et à chaque ouverture —
         // seulement si la personne a déjà dit oui (jamais de demande ici).
         if(event==='SIGNED_IN'||event==='INITIAL_SESSION') initialiserPush({versionApp:VERSION_APP}).catch(()=>{});
-      }else{dejaConnecteRef.current=false;setSales([]);setItems([]);setLoading(false);setAppLoading(false);}
+      }else{dejaConnecteRef.current=false;setSales([]);setItems([]);setItemsAVerifier([]);setLoading(false);setAppLoading(false);}
     });
     return()=>{ mounted=false; subscription.unsubscribe(); coinRecoveryHandle?.remove?.(); };
   },[]);
@@ -5613,7 +5628,7 @@ export default function App({ loginOnly = false }){
       // Même effet qu'avant — ventes puis inventaire du compte — aucun retrait.
       const{error:rErr}=await supabase.rpc('supprimer_mon_stock_sans_retrait');
       if(rErr){console.error('[handleReset]',rErr.message);setResetStep(0);return;}
-      setSales([]);setItems([]);setResetStep(0);
+      setSales([]);setItems([]);setItemsAVerifier([]);setResetStep(0);
     }
   }
 
@@ -6876,7 +6891,7 @@ export default function App({ loginOnly = false }){
     // (06/10) Ce téléphone ne reçoit plus les ventes de ce compte (2,5 s au plus).
     await oublierAvantDeconnexion();
     await supabase.auth.signOut({ scope: 'local' });
-    setUser(null);setSales([]);setItems([]);setResetStep(0);
+    setUser(null);setSales([]);setItems([]);setItemsAVerifier([]);setResetStep(0);
     navigate("/");
   }
 
@@ -6901,7 +6916,7 @@ export default function App({ loginOnly = false }){
       // vient d'être SUPPRIMÉ côté serveur — toutes ses sessions meurent avec
       // lui, le scope global n'apportait rien et la purge locale suffit.
       await supabase.auth.signOut({ scope: 'local' });
-      setUser(null);setSales([]);setItems([]);
+      setUser(null);setSales([]);setItems([]);setItemsAVerifier([]);
       navigate("/");
     } catch(err){
       alert(lang==='fr'?`Erreur : ${err.message}`:`Error: ${err.message}`);
@@ -8673,7 +8688,7 @@ export default function App({ loginOnly = false }){
             ouvrirModalePlafond={ouvrirModalePlafond}
             ouvrirReglagesRepublication={()=>{setReglagesEcran('republication');setShowSettings(true);}}
             quotas={quotas}
-            items={items} user={user} voiceUsedToday={voiceUsedToday}
+            items={items} itemsAVerifier={itemsAVerifier} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
             ebayCompte={ebayCompte}
