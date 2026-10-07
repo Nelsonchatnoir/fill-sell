@@ -264,16 +264,17 @@ try {
   const lbcPr = reglagesPf(etatMulti('premium', false, false).plateformes[1], 'premium');
   verifier(RESERVE.test(lbcPr), 'Leboncoin d’un Premium : le refus est dit');
 
-  // ── 5. La publication en lot, nommée, sans palier ──────────────────────────
-  const lot = texte(React.createElement(H.LignePublierEnLot, { lang: 'fr', n: 12, onOuvrir: () => {} }));
-  verifier(/Publier plusieurs articles d’un coup|Publier plusieurs articles d'un coup/.test(lot) && /12 articles pas encore partout/.test(lot), 'la porte « Publier plusieurs articles d’un coup » dit combien', lot);
-  const lot0 = texte(React.createElement(H.LignePublierEnLot, { lang: 'fr', n: 0, onOuvrir: () => {} }));
-  verifier(/déjà en ligne partout/.test(lot0), 'à zéro, la porte dit pourquoi au lieu de disparaître');
+  // ── 5. La publication en lot, sans palier ──────────────────────────────────
+  // (07/10, Nico) La ligne « Publier plusieurs articles d’un coup » est retirée :
+  // doublon de la tuile « Publier », qui ouvre la même sélection, pour tous.
+  verifier(!H.LignePublierEnLot, 'la ligne « Publier plusieurs articles d’un coup » est retirée (doublon de la tuile « Publier »)');
   const stock = lignesDeCode(lire('src/tabs/StockTab.jsx')).join('\n');
-  const appel = stock.match(/<LignePublierEnLot[\s\S]*?\/>/)?.[0] ?? '';
-  verifier(appel && !/isPro|isPremium|isBusiness|palier|autorise/.test(appel), 'la porte du lot ne dépend d’aucun palier', appel);
-  verifier(/\(stock\?\.length\?\?0\)>0&&\(\s*<div style=\{\{marginTop:8\}\}>\s*<LignePublierEnLot/.test(stock), 'la porte du lot est montée sur le Stock dès qu’il y a du stock');
-  verifier(/gestePublier\.onOuvrir\(\)/.test(appel), 'la porte ouvre la MÊME sélection que la tuile « Publier »');
+  verifier(!/<LignePublierEnLot/.test(stock), 'le Stock ne monte plus la ligne du lot');
+  const tuile = texte(React.createElement(H.Gestes, { lang: 'fr', variante: 'tuiles', publier: { n: 12, onOuvrir: () => {} }, aRegler: { n: 0, onOuvrir: () => {} } }));
+  verifier(/Publier/.test(tuile) && /pas encore sur toutes les plateformes/.test(tuile), 'la tuile « Publier » dit ce qu’elle ouvre', tuile);
+  verifier(/<Gestes lang=\{lang\} variante="tuiles" publier=\{gestePublier\}/.test(stock), 'la tuile « Publier » est montée sur le Stock');
+  const geste = stock.match(/const gestePublier = [^\n]*/)?.[0] ?? '';
+  verifier(geste && !/isPro|isPremium|isBusiness|palier|autorise/.test(geste) && /setGesteOuvert\('publier'\)/.test(geste), 'la tuile « Publier » ouvre la sélection du lot sans aucun palier', geste);
   const regles = lignesDeCode(lire('src/publication/lot/regles.js')).join('\n');
   const selectionnable = regles.slice(regles.indexOf('export function articleSelectionnable'), regles.indexOf('export function resumeParPlateforme'));
   verifier(selectionnable && !/palier|isPro|isPremium|isBusiness/.test(selectionnable), 'le choix des articles du lot ne teste aucun palier');

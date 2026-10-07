@@ -96,7 +96,7 @@ import { FeuilleListe, Z_FEUILLE_DESSUS } from '../components/FiltresStock';
 // filtres) reste ICI, inchangée. Règles sans écran : src/stock/regles.js.
 import { CSS_STOCK } from '../stock/css';
 import { S as SK } from '../stock/jetons';
-import { TitreStock, Gestes, LignePublierEnLot, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
+import { TitreStock, Gestes, LigneRepublicationAuto, EntreeAjouter, FeuilleAjouter } from '../stock/Haut';
 import BlocSynchro, { CartePoint } from '../stock/BlocSynchro';
 // (06/10) « Synchroniser » refusé pour une boutique à confirmer → cette feuille.
 import ConfirmationBoutique from '../stock/ConfirmationBoutique';
@@ -9333,14 +9333,9 @@ const StockTab = memo(function StockTab({
             <Gestes lang={lang} variante="tuiles" publier={gestePublier} remonter={gesteRemonter} aRegler={gesteARegler}/>
           </div>
         )}
-        {/* (04/10) La publication en lot, NOMMÉE : la porte « Publier
-            plusieurs articles d'un coup » d'avant la refonte revient sous les
-            tuiles et ouvre la même sélection que « Publier » (Louis, 04/10). */}
-        {(stock?.length??0)>0&&(
-          <div style={{marginTop:8}}>
-            <LignePublierEnLot lang={lang} n={gestePublier.n} onOuvrir={()=>{track('lot_publication_porte',{depuis:'ligne_stock',n:gestePublier.n});gestePublier.onOuvrir();}}/>
-          </div>
-        )}
+        {/* (07/10, Nico) La ligne « Publier plusieurs articles d'un coup »
+            (04/10) est retirée : doublon de la tuile « Publier », qui ouvre
+            la même sélection. */}
         {planifieeExposee&&(
           <div style={{marginTop:8}}>
             <LigneRepublicationAuto

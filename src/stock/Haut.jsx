@@ -116,12 +116,15 @@ function FeuilleBoutique({ lang, boutiques, boutiqueConnectee, filterBoutique, a
 // ── LES TROIS GESTES ────────────────────────────────────────────────────────
 // Variante A (tuiles, la planche principale) ; B (boutons larges) ; « lignes »
 // pour l'écran d'arrivée après une synchronisation (« À faire maintenant »).
+// (07/10, Nico) Les TUILES seules ont leurs mots : `titre`, `court` et
+// `ariaTuile`. `titreLong`, `long` et `aria` restent ceux des lignes et des
+// boutons (autres écrans, inchangés).
 function definitions(lang) {
   const fr = lang !== 'en';
   return {
-    publier: { icone: Upload, titre: fr ? 'Publier' : 'Publish', court: fr ? 'pas encore partout' : 'not everywhere yet', long: (n) => fr ? `${n > 1 ? 'articles' : 'article'} pas encore partout` : `${n > 1 ? 'items' : 'item'} not everywhere yet`, aria: (n) => fr ? `Publier : ${n} ${n > 1 ? 'articles' : 'article'} pas encore partout` : `Publish: ${n} not everywhere yet` },
-    remonter: { icone: ChevronsUp, titre: fr ? 'Remonter' : 'Bump', titreLong: fr ? 'Remonter mes annonces' : 'Bump my listings', court: fr ? 'perdent en visibilité' : 'losing visibility', long: (n) => fr ? `${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `${n > 1 ? 'listings' : 'listing'} losing visibility`, aria: (n) => fr ? `Remonter mes annonces : ${n} ${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `Bump my listings: ${n} losing visibility` },
-    aRegler: { icone: CircleAlert, titre: fr ? 'À régler' : 'To fix', court: fr ? 'ventes, infos à compléter' : 'sales, info to complete', long: () => fr ? 'ventes et infos à compléter' : 'sales and info to complete', aria: (n) => fr ? `À régler : ${n} ventes et infos à compléter` : `To fix: ${n} sales and info to complete` },
+    publier: { icone: Upload, titre: fr ? 'Publier' : 'Publish', court: fr ? 'pas encore sur toutes les plateformes' : 'not on every platform yet', long: (n) => fr ? `${n > 1 ? 'articles' : 'article'} pas encore partout` : `${n > 1 ? 'items' : 'item'} not everywhere yet`, aria: (n) => fr ? `Publier : ${n} ${n > 1 ? 'articles' : 'article'} pas encore partout` : `Publish: ${n} not everywhere yet`, ariaTuile: (n) => fr ? `Publier : ${n} ${n > 1 ? 'articles' : 'article'} pas encore sur toutes les plateformes` : `Publish: ${n} not on every platform yet` },
+    remonter: { icone: ChevronsUp, titre: fr ? 'Republier' : 'Repost', titreLong: fr ? 'Remonter mes annonces' : 'Bump my listings', court: fr ? 'fais remonter tes annonces' : 'bump your listings back up', long: (n) => fr ? `${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `${n > 1 ? 'listings' : 'listing'} losing visibility`, aria: (n) => fr ? `Remonter mes annonces : ${n} ${n > 1 ? 'annonces perdent' : 'annonce perd'} en visibilité` : `Bump my listings: ${n} losing visibility`, ariaTuile: (n) => fr ? `Republier : ${n} ${n > 1 ? 'annonces' : 'annonce'} à faire remonter` : `Repost: ${n} ${n > 1 ? 'listings' : 'listing'} to bump back up` },
+    aRegler: { icone: CircleAlert, titre: fr ? 'À régler' : 'To fix', court: fr ? 'ventes à confirmer, infos manquantes, brouillons' : 'sales to confirm, missing info, drafts', long: () => fr ? 'ventes et infos à compléter' : 'sales and info to complete', aria: (n) => fr ? `À régler : ${n} ventes et infos à compléter` : `To fix: ${n} sales and info to complete`, ariaTuile: (n) => fr ? `À régler : ${n} — ventes à confirmer, infos manquantes, brouillons` : `To fix: ${n} — sales to confirm, missing info, drafts` },
   };
 }
 
@@ -133,7 +136,12 @@ const PASTILLE_ICONE = {
 
 // (05/10) Un geste peut porter ses propres mots (court, long, aria) : « À régler »
 // dit « annonces à retirer » quand un retrait attend une reconnexion — le plus
-// urgent, et court (la tuile fait 128 px de haut, relu au harnais à 360 px).
+// urgent, et court.
+// (07/10) Sous-texte des tuiles : plus petit que le titre et en italique, le
+// même sur les trois, pour qu'on ne le lise pas comme la suite du titre. La
+// tuile fait 128 px AU MOINS : sur un écran étroit, les sous-textes de Nico
+// prennent plus de lignes, la tuile grandit et la grille garde les trois à la
+// même hauteur (relu au harnais capture-tuiles-stock, de 320 à 1280 px).
 export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aRegler }) {
   const D = definitions(lang);
   const gestes = [['publier', publier], ['remonter', remonter], ['aRegler', aRegler]].filter(([, g]) => g);
@@ -196,9 +204,9 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
       {gestes.map(([cle, g]) => {
         const d = D[cle]; const I = d.icone; const pi = PASTILLE_ICONE[cle]; const plein = cle === 'publier';
         return (
-          <button key={cle} type="button" className="sk-btn sk-presse" onClick={g.onOuvrir} aria-label={(g.aria ?? d.aria)(g.n)}
+          <button key={cle} type="button" className="sk-btn sk-presse" onClick={g.onOuvrir} aria-label={(g.aria ?? d.ariaTuile)(g.n)}
             style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'stretch', minWidth: 0, height: 128, padding: 16, boxSizing: 'border-box', borderRadius: 16,
+              display: 'flex', flexDirection: 'column', alignItems: 'stretch', minWidth: 0, minHeight: 128, padding: 16, boxSizing: 'border-box', borderRadius: 16,
               border: 'none', textAlign: 'left', background: plein ? DEGRADE_TUILE : '#FFFFFF', color: plein ? '#FFFFFF' : S.ink,
               boxShadow: plein ? OMBRE.tuile : `${OMBRE.carte}, inset 0 0 0 1px ${S.border}`,
             }}>
@@ -209,7 +217,7 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
               </span>
             </span>
             <span style={{ marginTop: 8, fontSize: 14, lineHeight: '20px', fontWeight: 700 }}>{d.titre}</span>
-            <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: plein ? 600 : 500, color: plein ? 'rgba(255,255,255,0.92)' : S.ink2 }}>{g.court ?? d.court}</span>
+            <span style={{ marginTop: 2, fontSize: 11, lineHeight: '14px', fontStyle: 'italic', fontWeight: 500, color: plein ? '#FFFFFF' : S.ink2 }}>{g.court ?? d.court}</span>
           </button>
         );
       })}
@@ -217,37 +225,9 @@ export function Gestes({ lang = 'fr', variante = 'tuiles', publier, remonter, aR
   );
 }
 
-// ── PUBLIER PLUSIEURS ARTICLES D'UN COUP — une ligne de 72 px (04/10) ──────
-// La publication en lot avait, avant la refonte, sa porte nommée « Publier
-// plusieurs articles d'un coup ». La refonte l'a rangée derrière la tuile
-// « Publier · pas encore partout » — rien n'était caché, mais plus rien ne la
-// NOMMAIT (Louis, Business, 04/10 : « je n'ai plus la possibilité de publier
-// plusieurs annonces d'un coup »). La porte revient avec ses mots, sous les
-// tuiles ; elle ouvre la MÊME sélection que la tuile (aucun autre chemin).
-// Aucun palier : la publication en lot est ouverte à tous, le quota borne.
-export function LignePublierEnLot({ lang = 'fr', n = 0, onOuvrir }) {
-  const fr = lang !== 'en';
-  const sous = n > 0
-    ? (fr ? `${nombreFr(n, lang)} ${n > 1 ? 'articles' : 'article'} pas encore partout · tu choisis, rien ne part sans toi` : `${n} ${n > 1 ? 'items' : 'item'} not everywhere yet · you choose, nothing goes out without you`)
-    : (fr ? 'Tous tes articles sont déjà en ligne partout' : 'All your items are already live everywhere');
-  return (
-    <button type="button" className="sk-btn sk-presse" onClick={onOuvrir}
-      aria-label={fr ? `Publier plusieurs articles d'un coup — ${sous}` : `Publish several items at once — ${sous}`}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12, width: '100%', minHeight: 72, padding: '0 16px', boxSizing: 'border-box', borderRadius: 16, textAlign: 'left',
-        background: '#FFFFFF', border: `1px solid ${S.border}`, boxShadow: OMBRE.carte, color: S.ink,
-      }}>
-      <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: DEGRADE_TUILE, color: '#FFFFFF' }}>
-        <Upload size={20} strokeWidth={2.2} aria-hidden="true" />
-      </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 14, lineHeight: '20px', fontWeight: 700, color: S.ink }}>{fr ? "Publier plusieurs articles d'un coup" : 'Publish several items at once'}</span>
-        <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{sous}</span>
-      </span>
-      <ChevronRight size={20} color={S.chevron} aria-hidden="true" style={{ flexShrink: 0 }} />
-    </button>
-  );
-}
+// (07/10, Nico) La ligne « Publier plusieurs articles d'un coup » (04/10) est
+// RETIRÉE : elle disait la même chose que la tuile « Publier » et ouvrait la
+// même sélection. La publication en lot reste ouverte à tous par la tuile.
 
 // ── REPUBLICATION AUTOMATIQUE — une ligne de 72 px ─────────────────────────
 // Pro : interrupteur (le MÊME geste que l'interrupteur des Réglages —

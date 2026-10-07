@@ -52,8 +52,8 @@ article est préparé par le VRAI moteur du stepper (`ListingPreviewScreen`, mod
 mêmes gardes, même RPC. Le lot n'ajoute que l'orchestration, les questions de tout le
 lot au même endroit, le résumé avant l'envoi et le suivi.
 
-1. **Choisir** (Stock) — deux portes : la ligne « Publier plusieurs articles d'un coup »
-   sous « À traiter », et, sous un filtre « Pas encore sur X » / « Nulle part »,
+1. **Choisir** (Stock) — deux portes : la tuile « Publier » du haut du Stock (la ligne
+   « Publier plusieurs articles d'un coup », son doublon, est retirée le 07/10), et, sous un filtre « Pas encore sur X » / « Nulle part »,
    « Publier ces N articles (sur X) ». La carte entière se touche (case en coin),
    « Tout (N) », barre collante « N sélectionnés · Continuer ». 20 articles au plus par lot.
 2. **Où les publier ?** — une ligne par plateforme pour tout le lot (Vinted, Leboncoin,
