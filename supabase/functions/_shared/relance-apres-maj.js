@@ -31,6 +31,21 @@ export const RELANCES_APRES_MAJ = [
     buildMin: "2026-10-06T15:09:44Z", // BUILD_ID 0.6.101 (3e77bae)
     version: "0.6.101",
   },
+  // (08/10) Un content script chargé mais muet (onglet de travail gelé par
+  // l'économiseur de mémoire, script orphelin après une mise à jour) : la
+  // 0.6.102 constatait « déjà chargé sur cet onglet, donc non réinjecté » et
+  // arrêtait la publication ; la 0.6.103 recharge l'onglet puis en ouvre un
+  // neuf avant tout envoi, sur TOUTES les plateformes (titaperry543 23:37,
+  // vtvente48 10:45, ornellaracano 20:19). Même message brut partout
+  // (update-job-status) ; publication seulement.
+  ...["vinted", "leboncoin", "beebs", "ebay"].map((platform) => ({
+    cle: `${platform}_content_script_muet`,
+    platform,
+    action: "publish",
+    brut: "Publication interrompue en cours d'opération : Timeout: la page de dépôt n'a pas fini de charger",
+    buildMin: "2026-10-07T22:58:10Z", // BUILD_ID 0.6.103 (008995b)
+    version: "0.6.103",
+  })),
 ];
 
 // Les champs d'attente que « Relancer » (app) efface — plus la boucle
