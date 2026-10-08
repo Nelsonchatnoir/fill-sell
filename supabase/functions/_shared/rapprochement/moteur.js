@@ -42,6 +42,9 @@ import { idf, wjac } from './idf.js';
 export const SEUILS = Object.freeze({ multi: 9, multi3: 12, quasi: 4, une: 7, proche: 12, plausible: 7 });
 export const PLATEFORMES_RELEVE = Object.freeze(['leboncoin', 'beebs', 'ebay', 'opla']);
 let POIDS = () => 1;
+/** Pèse les mots des titres sur ces nœuds (idf) sans lancer de passe — un sous-graphe
+ *  (remises-en-ligne.js) qui appelle `evaluer` lui-même pèse comme le graphe complet. */
+export function pesee(N) { POIDS = idf(N); }
 
 // ── LES NŒUDS ───────────────────────────────────────────────────────────────
 // `donnees` = ce que rend rapprochement_v3_lire (fiches, annonces, fusions,

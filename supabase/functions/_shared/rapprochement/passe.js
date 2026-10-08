@@ -11,6 +11,7 @@
 import { photoDepuisEmpreinte } from './photos.js';
 import { construireNoeuds, forcesDe, rapprocher, planifier, resumer, candidatsDe, autoDecidee, vintedAJuger } from './moteur.js';
 import { fichesMain } from './fiches-main.js';
+import { remisesEnLigne } from './remises-en-ligne.js';
 
 export function urlsDe(donnees, { maxPhotos = 6 } = {}) {
   const out = new Set();
@@ -38,7 +39,7 @@ export function manquantesDe(urls, empreintes, illisibles = new Set()) {
 // `fichesMain` : portée de la règle « fiche à la main face à une fiche Vinted »
 // (fiches-main.js) — 'nouvelles' (défaut, inerte sans `donnees.fiches_main_actif`)
 // ou 'toutes' (le rattrapage du stock existant).
-export function passe(donnees, empreintes, { mode = 'normal', fichesMain: porteeMain = 'nouvelles' } = {}) {
+export function passe(donnees, empreintes, { mode = 'normal', fichesMain: porteeMain = 'nouvelles', remises: porteeRemises = 'nouvelles' } = {}) {
   const t0 = Date.now();
   const photosDe = (urls) => urls.map((u) => photoDepuisEmpreinte(empreintes.get(u))).filter(Boolean);
   const N = construireNoeuds(donnees, photosDe);
@@ -92,12 +93,19 @@ export function passe(donnees, empreintes, { mode = 'normal', fichesMain: portee
   // ses décisions passent après les rattachements (la fusion emporte avec elle
   // ce qui vient d'être rattaché à la fiche du dressing) et avant les créations.
   const main = fichesMain(donnees, N, { portee: porteeMain });
-  const rang = { fusionner: 0, attacher: 1, fusionner_fiche: 2, groupe: 3, a_verifier: 4, fiche_a_verifier: 5, annonce_en_double: 6, creer: 7, entrer_stock: 8, ignorer: 9, question_caduque: 10 };
-  const toutes = main.decisions.length ? decisions.concat(main.decisions).sort((p, q) => (rang[p.type] ?? 99) - (rang[q.type] ?? 99)) : decisions;
+  // (08/10 soir, Bebertdeals) la remise en ligne Vinted : deux fiches Vinted de la
+  // même boutique qui n'ont jamais été en ligne ensemble (remises-en-ligne.js) ;
+  // inerte sans `remise_en_ligne_actif` (portée « nouvelles »). Une fiche déjà prise
+  // par la règle des fiches à la main ne lui est pas soumise (la règle d'avant gagne).
+  const prisesMain = new Set(main.decisions.flatMap((x) => [String(x.garde), String(x.absorbe)]));
+  const remises = remisesEnLigne(donnees, N, { portee: porteeRemises, exclus: prisesMain });
+  const ajouts = main.decisions.concat(remises.decisions);
+  const rang = { fusionner: 0, attacher: 1, fusionner_fiche: 2, remise_en_ligne: 2.5, groupe: 3, a_verifier: 4, fiche_a_verifier: 5, remise_en_ligne_a_verifier: 5.5, annonce_en_double: 6, creer: 7, entrer_stock: 8, ignorer: 9, question_caduque: 10 };
+  const toutes = ajouts.length ? decisions.concat(ajouts).sort((p, q) => (rang[p.type] ?? 99) - (rang[q.type] ?? 99)) : decisions;
   return {
     decisions: toutes,
     bilan: { noeuds: N.length, aretes: R.aretes.length, doubles: R.doubles.length, par_plateforme: parPf, plan: resumer(toutes), vinted_a_juger: (donnees.vinted_a_juger ?? []).length,
-      ...(main.bilan ? { fiches_main: main.bilan } : {}), ms: Date.now() - t0 },
+      ...(main.bilan ? { fiches_main: main.bilan } : {}), ...(remises.bilan ? { remises_en_ligne: remises.bilan } : {}), ms: Date.now() - t0 },
     N, R,
   };
 }
