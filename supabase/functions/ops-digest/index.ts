@@ -812,8 +812,8 @@ serve(async (req) => {
   //    Un bug chez nous : corriger, puis remettre passages à 0.
   // 2. Décisions répétées sautées par la base (trigger rapprochements_jamais_repete,
   //    table rapprochements_repetes) : une boucle qui écrirait sans fin.
-  // 3. Relevés automatiques retenus par le plancher (veilleur/cron, table
-  //    releves_auto_refuses) : la cadence anti-robot qui tient.
+  // 3. Relevés du veilleur retenus parce qu'ils ne pouvaient rien apprendre
+  //    (garde_releve_veilleur_cause, table releves_auto_refuses, avec le motif).
   // Les deux tables n'existent qu'après leurs migrations : lecture tolérante.
   const depuis24Boucles = new Date(Date.now() - 86400_000).toISOString();
   let arretsRapprochement: Array<{ user_id: string; passages: number; bilan: Record<string, unknown> | null; maj_le: string }> = [];
@@ -829,9 +829,9 @@ serve(async (req) => {
       .gte("dernier_le", depuis24Boucles).order("n", { ascending: false }).limit(50);
     if (!error) decisionsRepetees = (data ?? []) as typeof decisionsRepetees;
   } catch { /* table absente avant sa migration */ }
-  let relevesRetenus: Array<{ user_id: string; platform: string; declencheur: string; n: number; dernier_le: string }> = [];
+  let relevesRetenus: Array<{ user_id: string; platform: string; declencheur: string; motif?: string; n: number; dernier_le: string }> = [];
   try {
-    const { data, error } = await supabase.from("releves_auto_refuses").select("user_id, platform, declencheur, n, dernier_le")
+    const { data, error } = await supabase.from("releves_auto_refuses").select("user_id, platform, declencheur, motif, n, dernier_le")
       .gte("dernier_le", depuis24Boucles).order("n", { ascending: false }).limit(50);
     if (!error) relevesRetenus = (data ?? []) as typeof relevesRetenus;
   } catch { /* table absente avant sa migration */ }
@@ -921,15 +921,15 @@ serve(async (req) => {
     ${
     relevesRetenus.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
-      ⏱️ Relevés automatiques retenus par le plancher — ${relevesRetenus.length} compte${relevesRetenus.length > 1 ? "s" : ""}/plateforme (24 h)
+      ⏱️ Relevés du veilleur retenus (déjà vérifiés) — ${relevesRetenus.length} compte${relevesRetenus.length > 1 ? "s" : ""}/plateforme (24 h)
     </h2>
     <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
-      Veilleur ou cron de l'extension refusés : un relevé de la même plateforme a déjà eu lieu dans le délai plancher
-      (coin_config releve_auto_plancher_min). Un compte qui revient chaque jour en tête lit des annonces « indisponibles »
-      à tort (44310spgl sur Opla, 08/10) : c'est sa veille qu'il faut corriger.
+      Le veilleur demandait un relevé que le dernier relevé complet avait déjà tranché : fausse alerte déjà démentie
+      (Opla : brouillon « draft » relevé « en ligne »), état connu, absence Beebs ou déjà constatée. Aucun plancher de
+      temps : une disparition nouvelle part toujours. Un compte qui revient chaque jour en tête : regarder sa veille.
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
-      ${relevesRetenus.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x.user_id)} — ${esc(x.platform)} (${esc(x.declencheur)}) — ${esc(x.n)} retenu${Number(x.n) > 1 ? "s" : ""}, dernier ${esc(x.dernier_le)}</li>`).join("")}
+      ${relevesRetenus.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x.user_id)} — ${esc(x.platform)} (${esc(x.motif ?? x.declencheur)}) — ${esc(x.n)} retenu${Number(x.n) > 1 ? "s" : ""}, dernier ${esc(x.dernier_le)}</li>`).join("")}
     </ul>`
   }
     ${
