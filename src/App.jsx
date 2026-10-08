@@ -90,7 +90,7 @@ import { moveItem } from './utils/photosGalerie';
 import { dupliquerArticle } from './stock/dupliquer';
 import GaleriePhotos from './components/GaleriePhotos';
 import { sonderAnnonceVinted, lireBoutiquesVinted, lireBoutiqueConnectee, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
-import { plateformesReserveesParRepublication } from './utils/publicationState';
+import { plateformesReserveesParRepublication, vintedRemplaceeParUneEnLigne } from './utils/publicationState';
 // Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
 // annonce relevée au même titre qu'un dépôt « plus en ligne » → le bandeau
 // pose la bonne question (« c'est la même ? ») au lieu de « vendue ? ».
@@ -4764,6 +4764,9 @@ export default function App({ loginOnly = false }){
     if(alertesMasqueesPf?.[job.platform]===true)return true;
     return !!pf.alerte_masquee_pour&&pf.alerte_masquee_pour===String(pf.unavailable_since??'');
   };
+  // (08/10, Louis) Une annonce Vinted remplacée par une annonce EN LIGNE de la
+  // même fiche n'est jamais une question « Vendue ? » (vintedRemplaceeParUneEnLigne).
+  const remplaceeEnLigne=(job)=>vintedRemplaceeParUneEnLigne(job,items.find(i=>String(i.id)===String(job.inventaire_id)));
   async function masquerAlerte(job,on){
     const pf={...(job.platform_fields||{})};
     if(on){pf.alerte_masquee_pour=String(pf.unavailable_since??'');pf.alerte_masquee_le=new Date().toISOString();}
@@ -4900,8 +4903,8 @@ export default function App({ loginOnly = false }){
 
   // Les articles sortis de la file faute de réponse : on ne les perd pas, on
   // les range. Leurs deux vraies réponses restent offertes dans la modale.
-  const aVerifier=useMemo(()=>unavailableListings.filter(estAVerifier),
-    [unavailableListings]); // eslint-disable-line react-hooks/exhaustive-deps
+  const aVerifier=useMemo(()=>unavailableListings.filter(j=>estAVerifier(j)&&!remplaceeEnLigne(j)),
+    [unavailableListings,items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Le compteur de tête : ce qui attend VRAIMENT une réponse, les deux files
   // réunies. Les jobs 'sold' et 'cancelled' qui portent encore le drapeau n'y
@@ -8264,7 +8267,7 @@ export default function App({ loginOnly = false }){
             veilleur ni sur la vente. */}
         {(()=>{
           const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla'};
-          const questions=unavailableListings.filter(j=>(j.platform_fields||{}).sale_signal!=='sold');
+          const questions=unavailableListings.filter(j=>(j.platform_fields||{}).sale_signal!=='sold'&&!remplaceeEnLigne(j));
           if(!questions.length)return null;
           const masquees=questions.filter(alerteEstMasquee);
           const plateformes=[...new Set(questions.map(j=>j.platform))];
@@ -8323,6 +8326,8 @@ export default function App({ loginOnly = false }){
           const pf=job.platform_fields||{};
           // Masquée (par alerte ou par plateforme) : cachée tant que
           // « afficher » n'est pas demandé — l'alerte existe toujours.
+          // (08/10, Louis) Remplacée par une annonce EN LIGNE de la même fiche : aucune question.
+          if(remplaceeEnLigne(job))return null;
           const masquee=alerteEstMasquee(job);
           if(masquee&&!montrerMasquees)return null;
           // Reporté (« Je ne sais pas ») : le bandeau se tait jusqu'à ce que
