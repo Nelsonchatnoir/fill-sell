@@ -24,6 +24,22 @@
 //   · la réparation du parc (scripts/reparations/20261008_reparation_v3.mjs) :
 //     { user_id, reparer: true, simuler?: true }.
 // Budget : 110 s ; au-delà, elle se relance elle-même (une fois).
+//
+// ⛔ UNE PASSE QUI N'ABOUTIT PAS NE REPART PAS SANS FIN (v12, 08/10 matin).
+// Le 07/10, le moteur d'avant (v2 → rapprochement_avancer) a écrit 8 954 fois
+// la même décision pour UNE annonce de Nadège (21:26 → 22:32 UTC) : il
+// rebouclait tant qu'il « restait » une annonce, sans contrôle de progrès, et
+// le filet rapprochement-1min le relançait chaque minute. La v3 ne reboucle
+// plus dans une invocation, mais une passe qui meurt toujours au même endroit
+// (2 s de CPU dépassées, erreur de lecture) laissait le compte hors de
+// « termine » : le filet l'aurait repris chaque minute, sans fin. Désormais
+// `rapprochement_comptes.passages` compte, EN NÉGATIF (-n), les passes
+// consécutives entrées dans la décision sans rien écrire (les valeurs ≥ 0
+// sont celles du moteur v2, mort : elles valent 0). Au bout de
+// PASSES_INACHEVEES_MAX, le compte est arrêté (« termine », bilan.arret) et
+// l'ops-digest le montre en rouge ; un geste de la personne (« Synchroniser »,
+// < 30 min) rouvre jusqu'à PASSES_INACHEVEES_MAX_GESTE essais, puis plus rien
+// avant notre correctif (remettre passages à 0).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { urlsDe, manquantesDe, passe } from "../_shared/rapprochement/passe.js";
@@ -35,6 +51,10 @@ const RELANCES_MAX = 12;            // 12 × 600 photos par chaîne ; au-delà, 
 const COMPTES_PAR_APPEL = 4;
 const DECISIONS_PAR_LOT = 150;
 const PASSAGES_PHOTOS_MAX = 6;      // six relectures sans progrès (546, image morte) : on classe avec ce qu'on a
+const PASSES_INACHEVEES_MAX = 3;    // passes de suite sans rien écrire : le compte s'arrête (ops-digest en rouge)
+const PASSES_INACHEVEES_MAX_GESTE = 6; // … un geste de la personne en rouvre trois de plus, pas davantage
+const GESTE_RECENT_MS = 30 * 60_000;
+const DECLENCHEURS_GESTE = ["bouton", "bouton_distant", "app", "bouton:redemande", "bouton_distant:redemande", "app:redemande"];
 
 const json = (corps: unknown, status = 200) =>
   new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
@@ -127,15 +147,33 @@ serve(async (req) => {
       const { data: cpu } = await admin.from("veille_cpu").select("pct").not("pct", "is", null).order("le", { ascending: false }).limit(1).maybeSingle();
       if (Number((cpu as { pct?: number } | null)?.pct) > 70) { parCompte.etat = "cpu"; bilan.push(parCompte); continue; }
       const compte = (await admin.from("rapprochement_comptes")
-        .select("photos_manquantes, passages_photos, bilan").eq("user_id", user).maybeSingle()
-        .then((r) => r.data, () => null)) as { photos_manquantes?: number; passages_photos?: number; bilan?: { motif?: string } } | null;
+        .select("photos_manquantes, passages_photos, passages, bilan").eq("user_id", user).maybeSingle()
+        .then((r) => r.data, () => null)) as { photos_manquantes?: number; passages_photos?: number; passages?: number; bilan?: { motif?: string } } | null;
       // ── A. Les relevés d'abord : rien ne se tranche tant qu'un relevé tourne ──
       const { data: enCours } = await admin.rpc("rapprochement_v3_releves_en_cours", { p_user: user });
       if (enCours === true && !reparer) {
         await etat(user, { etat: "attente_releves", debut_le: new Date().toISOString() });
         parCompte.etat = "attente_releves"; bilan.push(parCompte); continue;
       }
-      await etat(user, { etat: "decision", debut_le: new Date().toISOString() });
+      // ── A bis. Une passe qui n'aboutit jamais ne repart pas sans fin (v12) ──
+      const inachevees = Number(compte?.passages) < 0 ? -Number(compte?.passages) : 0;
+      parCompte.passes_inachevees = inachevees;
+      if (!reparer && !simuler && inachevees >= PASSES_INACHEVEES_MAX) {
+        const depuis = new Date(Date.now() - GESTE_RECENT_MS).toISOString();
+        const { data: gestes } = await admin.from("vinted_sync_runs").select("id").eq("user_id", user)
+          .in("declencheur", DECLENCHEURS_GESTE).or(`started_at.gte.${depuis},queued_at.gte.${depuis}`).limit(1)
+          .then((r) => r, () => ({ data: null }));
+        const geste = Array.isArray(gestes) && gestes.length > 0;
+        if (!geste || inachevees >= PASSES_INACHEVEES_MAX_GESTE) {
+          const le = new Date().toISOString();
+          await etat(user, { etat: "termine", fin_le: le, a_traiter: 0,
+            bilan: { ...((compte?.bilan ?? {}) as Record<string, unknown>), version: 3, arret: { motif: "passes_inachevees", passes: inachevees, geste, le } } });
+          parCompte.etat = "arret_passes_inachevees"; bilan.push(parCompte); continue;
+        }
+      }
+      // Compté AVANT la lecture et la passe : une invocation tuée en route
+      // (2 s de CPU, WORKER_RESOURCE_LIMIT) reste comptée.
+      await etat(user, { etat: "decision", debut_le: new Date().toISOString(), passages: -(inachevees + 1) });
       // ── B. Tout le compte, en un appel ──
       const { data: lu, error: eLu } = await admin.rpc("rapprochement_v3_lire", { p_user: user });
       if (eLu) throw new Error(`lecture : ${eLu.message}`);
@@ -153,7 +191,8 @@ serve(async (req) => {
         if (passages < PASSAGES_PHOTOS_MAX) {
           const envoyees = await empreinter(manquantes.slice(0, PHOTOS_PAR_PASSE));
           parCompte.photos = envoyees; parCompte.passages_photos = passages; parCompte.echecs_empreintes = echecsEmpreintes.slice();
-          await etat(user, { etat: "empreintes", photos_manquantes: manquantes.length, passages_photos: passages });
+          // Les photos partent : ce n'est pas une passe (le compteur reprend sa valeur).
+          await etat(user, { etat: "empreintes", photos_manquantes: manquantes.length, passages_photos: passages, passages: -inachevees });
           parCompte.etat = "empreintes"; parCompte.manquantes = manquantes.length;
           if (envoyees > 0) { inacheve = true; relanceApres = Math.max(relanceApres, RELANCE_PHOTOS_MS); }
           bilan.push(parCompte); continue;
@@ -171,6 +210,7 @@ serve(async (req) => {
       const geste = donnees.geste_recent === true || reparer || String(compte?.bilan?.motif ?? "").startsWith("recent:");
       await etat(user, { etat: "creation", creation_le: new Date().toISOString(), a_traiter: decisions.length, traitees: 0 });
       const faits: Record<string, number> = {}; const sautes: Record<string, number> = {}; let erreurs: unknown[] = [];
+      let lotsEcrits = 0;
       for (let i = 0; i < decisions.length; i += DECISIONS_PAR_LOT) {
         if (reste() < 12_000) { inacheve = true; parCompte.ecriture_interrompue = i; break; }
         const { data: r, error: eA } = await admin.rpc("rapprochement_v3_appliquer", {
@@ -182,10 +222,15 @@ serve(async (req) => {
         for (const [k, v] of Object.entries(x.faits ?? {})) faits[k] = (faits[k] ?? 0) + v;
         for (const [k, v] of Object.entries(x.sautes ?? {})) sautes[k] = (sautes[k] ?? 0) + v;
         erreurs = erreurs.concat(x.erreurs ?? []);
+        lotsEcrits += 1;
         await etat(user, { traitees: Math.min(decisions.length, i + DECISIONS_PAR_LOT), ms_decision: Date.now() - t0 });
       }
       const fini = !parCompte.ecriture_interrompue && !erreurs.some((e) => (e as { erreur?: string }).erreur === "occupe");
+      // (v12) Une passe qui a écrit (ou n'avait rien à écrire) remet le compteur à zéro.
+      const progres = decisions.length === 0 || lotsEcrits > 0;
+      parCompte.passes_inachevees = progres ? 0 : inachevees + 1;
       await etat(user, {
+        passages: progres ? 0 : -(inachevees + 1),
         etat: fini ? "termine" : "creation", fin_le: fini ? new Date().toISOString() : null, a_traiter: 0, photos_manquantes: 0,
         ms_decision: Date.now() - t0,
         bilan: { version: 3, mode, geste, faits, sautes, erreurs: erreurs.slice(0, 20), passe: b, photos: parCompte.photos, le: new Date().toISOString() },
