@@ -138,3 +138,18 @@ Phase 1 (lecture seule, 07/10) : 0 fusion à tort sur 355 paires vues une à une
 
 `npm run selftest:moteur-rattachement` (invariants du moteur sur des articles
 fabriqués + chaîne serveur) ; `npm run selftest:rattachement-avant-stock`.
+
+## Fiche créée à la main face à une fiche Vinted (08/10 soir)
+
+Décision de Nico : même règle que les imports. `_shared/rapprochement/fiches-main.js`
+(sous-graphe des seules fiches, mêmes arêtes et concurrents : les décisions des
+annonces ne bougent pas). Photo ET titre sans concurrent → la fiche Vinted se
+fond dans la fiche de la PERSONNE (gardée ; l'identité Vinted la suit) ; doute →
+UNE question par fiche jugée, la fiche Vinted hors du stock si personne ne l'a
+touchée ; refus et fusion défaite définitifs ; article vendu : rien.
+`rapprochement` v14 (inerte sans `fiches_main_actif`) ; migration
+**20261008150000 EN ATTENTE du feu vert nommé** (elle corrige aussi la garde de
+boutique qui bloquait, depuis le 28/09, toute fusion déplaçant l'identité
+Vinted). Rejeu du parc : 9 fusions vérifiées sur photo (0 à tort), 80 questions,
+0 fiche sortie du stock. Reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
+`npm run selftest:fiche-main-vinted`.
