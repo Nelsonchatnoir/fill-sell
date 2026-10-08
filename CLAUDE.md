@@ -36,21 +36,22 @@ contraire. Il se périme : `functions list`, `cron.job` et
   → UNE question par fiche jugée, fiche Vinted hors du stock si non touchée ;
   jamais la photo seule ni le titre seul ; refus / fusion défaite définitifs
   (`_shared/rapprochement/fiches-main.js`, `rapprochement` v14 inerte sans la
-  migration). Migration **20261008150000 EN ATTENTE du feu vert nommé** (corrige
-  aussi la garde de boutique : 0 fusion déplaçant l'identité Vinted depuis le
-  28/09) ; rejeu : 9 fusions (0 à tort), 80 questions ; rattrapage
-  `scripts/reparations/20261008_fiches_main_vinted.mjs --appliquer` APRÈS le
-  feu vert. Selftest `selftest:fiche-main-vinted`.
+  migration). Migration **20261008150000 APPLIQUÉE** (08/10 ~12:50 UTC, feu vert
+  nommé ; corrige aussi la garde de boutique : 0 fusion déplaçant l'identité
+  Vinted du 28/09 au 08/10, à la main comme par le moteur) ; rattrapage FAIT
+  (9 fusions vérifiées sur photo, 80 questions, 0 fiche cachée ;
+  `_backup_0810_fiches_main_*`). Selftest `selftest:fiche-main-vinted`.
 - **⛔ UNE REPUBLICATION DONT LA SUPPRESSION EST PARTIE VA AU BOUT (08/10, Louis)** :
   créneau fermé, plafond ou pause n'y changent rien (`retraitEngage`,
   `_shared/retenue-creneau.js`, `get-pending-jobs` v223) ; la remise en ligne
   n'a lieu que sur PREUVE de la suppression (extension). Migration
   **20261008140000 APPLIQUÉE** (08/10 11:20 UTC) : le balayage ne lance plus une
   republication qui ne peut pas finir dans le créneau (`republish_duree_estimee`).
-  Extension **0.6.104 CODÉE, AUCUN zip** (3f06744) : preuve Beebs relue ~6 min
-  par le background, aucun essai consommé sans preuve, relevé Beebs par le flux
-  quand « Mes annonces » est peinte vide (`selftest:beebs-preuve-relue`) ;
-  empaquetage seulement quand Nico dira la 0.6.103 acceptée.
+  Extension **0.6.104** (3f06744, zip `build/CWS-0.6.104-A-TELEVERSER/`,
+  BUILD_ID `2026-10-08T13:02:47Z+147ab9a`, à téléverser par Nico APRÈS
+  l'acceptation de la 0.6.103) : preuve Beebs relue ~6 min par le background,
+  aucun essai consommé sans preuve, relevé Beebs par le flux quand « Mes
+  annonces » est peinte vide (`selftest:beebs-preuve-relue`).
   Selftest `selftest:republication-va-au-bout`.
 - **⛔ BOUCLES (08/10 matin)** : une même décision ne s'écrit jamais en boucle
   (Nadège : 8 954 lignes, moteur v2 + job SANS article) ; `rapprochement` v12

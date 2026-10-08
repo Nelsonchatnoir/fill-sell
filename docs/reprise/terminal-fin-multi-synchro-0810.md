@@ -4,6 +4,50 @@ Suite de `docs/reprise/terminal-complement-0810.md`. Mandat de Nico : appliquer
 les deux migrations (feux verts nommés), règle « fiche créée à la main face à
 une fiche Vinted », extension 0.6.104 codée (aucun zip).
 
+## 0. Fin d'après-midi — feu vert de Nico : 150000 APPLIQUÉE, rattrapage FAIT
+
+- **Avant** : aucune dérive (md5 prod = point de départ des 4 fonctions
+  réécrites) ; rejeu à blanc de garde-fou IDENTIQUE paire par paire à la
+  référence vérifiée (9 fusions, 80 questions, 21 comptes, 0 fiche cachée —
+  `build/fiches-main/rejeu-reference-0810.json`) ; sauvegarde fermée
+  `scripts/reparations/20261008_fiches_main_vinted_sauvegarde_globale.sql`
+  (`_backup_0810_fiches_main_*`, RLS, 0 droit anon/authenticated : 118 comptes,
+  11 213 fiches, 1 377 questions, 23 777 liens) ; preuve AVANT de la fusion
+  faite à la main dans l'app (`inventaire_fusionner`, compte fictif, transaction
+  annulée) : **refusée** « [boutique_a_confirmer] … ».
+- **Application** ~12:50 UTC, inscrite ; md5 prod = fichier (seul écart :
+  `timestamptz` réécrit `timestamp with time zone`). `selftest:aucune-fiche-sans-v3 --prod`,
+  `selftest:fiche-main-vinted --prod`, `selftest:moteur-rattachement`,
+  preuve `--en-prod` : verts. Preuve APRÈS : la fusion à la main **aboutit**,
+  l'annonce Vinted suit l'objet.
+- **Rattrapage** (12:51 → 13:00 UTC, `--appliquer --attendu`, le script refuse
+  d'écrire si son rejeu diffère de la référence) : 9 fusions, 80 questions,
+  0 erreur, 11 sautées (annonce Vinted disparue). **Contrôles en base** :
+  les 9 fusions = les 9 paires vues à la main (0 à tort), l'identité Vinted a
+  suivi dans les 9 ; 80 questions sur 21 comptes (jocaille270779 : 57) ;
+  0 marqueur posé (0 fiche Vinted sortie du stock) ; 0 mail ; la seule ligne
+  push de la période est une vraie vente (la.mode.licyca, hors fusions).
+- **Avant / après (31 comptes touchés)** : stock affiché 8 798 → 8 789 (les 9
+  fiches Vinted fondues) ; fiches vivantes 11 689 → 11 680 ; « à vérifier »
+  54 → 54 ; questions ouvertes 444 → 524 (+80) ; fusions déplaçant une annonce
+  Vinted depuis le 28/09 : **0 → 9** (+ la preuve app).
+- **jocaille270779** (inactive depuis le 26/09) : ses 57 questions arrivent
+  sous UNE carte « Est-ce le même article ? » (compteur 57) puis un écran
+  « 1 sur 57 », une réponse à la fois ; rien changé (consigne). Proposition de
+  présentation groupée : dans l'écran, regrouper les questions d'un même motif
+  (« même titre, ta fiche n'a pas de photo ») avec « Tout réunir (57) » /
+  « Voir une par une » ; la réunion groupée = la même RPC par paire.
+- **Chemins qui créent encore des fiches hors du moteur v3** (donc PAS
+  « SUJET CLOS ») : (1) le dressing Vinted de l'extension
+  (`inventaire?on_conflict=user_id,vinted_item_id`) crée ses fiches puis la
+  passe v3 les juge (imports, fiches à la main) ; (2) l'app — saisie, voix,
+  lot, import de tableur (`handleImportConfirm`), duplication — et
+  `generate-listing` / `lens-analysis` (`_shared/fiche-article.ts`) créent les
+  fiches de la personne, jugées ensuite face au Vinted ; (3)
+  `consume_one_unit` / `enregistrer_vente_atomique` créent la ligne « vendu »
+  d'une vente partielle. Les relevés Leboncoin, Beebs, eBay, Opla ne créent
+  plus rien hors v3 (garde en base).
+
 ## 1. Migrations appliquées (feux verts nommés de Nico)
 
 | Migration | Appliquée | Preuve |

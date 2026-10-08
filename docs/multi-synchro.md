@@ -147,9 +147,11 @@ annonces ne bougent pas). Photo ET titre sans concurrent → la fiche Vinted se
 fond dans la fiche de la PERSONNE (gardée ; l'identité Vinted la suit) ; doute →
 UNE question par fiche jugée, la fiche Vinted hors du stock si personne ne l'a
 touchée ; refus et fusion défaite définitifs ; article vendu : rien.
-`rapprochement` v14 (inerte sans `fiches_main_actif`) ; migration
-**20261008150000 EN ATTENTE du feu vert nommé** (elle corrige aussi la garde de
-boutique qui bloquait, depuis le 28/09, toute fusion déplaçant l'identité
-Vinted). Rejeu du parc : 9 fusions vérifiées sur photo (0 à tort), 80 questions,
-0 fiche sortie du stock. Reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
+`rapprochement` v14 ; migration **20261008150000 APPLIQUÉE** le 08/10 (elle
+corrige aussi la garde de boutique qui bloquait, du 28/09 au 08/10, toute fusion
+déplaçant l'identité Vinted, à la main comme par le moteur). Rattrapage fait :
+9 fusions vérifiées sur photo (0 à tort), 80 questions, 0 fiche sortie du stock.
+Chemins qui créent encore des fiches hors v3 : le dressing Vinted (jugé après),
+les fiches de la personne (app, generate-listing, Lens), la ligne « vendu »
+d'une vente partielle. Reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
 `npm run selftest:fiche-main-vinted`.
