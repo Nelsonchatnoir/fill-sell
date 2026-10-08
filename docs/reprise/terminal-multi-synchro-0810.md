@@ -63,6 +63,16 @@ Sauvegardes `_backup_0810_v3_<user8>_*` (RLS, fermées) ; inverse
 `20261008_reparation_rapprochement_v3_INVERSE.sql`. Journaux :
 `build/rattachement/simuler-0810-nuit*.log`, `application-v3-*.json`.
 
+## Résultats (03:10)
+
+106 comptes simulés puis appliqués, 0 erreur, 0 fiche supprimée, 0 job créé :
+421 fusions, 521 rattachements, 472 créations, 456 « à vérifier » (hors du
+stock), 530 « Annonce en double ? », annonces sans article 1 051 → 29. Chiffres
+par compte : `docs/agents/etat-2026-10-01.md` (« 08/10 nuit »). Deux comptes
+trop gros pour la fonction en mode réparation (dbca7f39, 7373c96c) : passés par
+`20261008_reparation_v3_locale.mjs` ; leur synchro quotidienne (mode normal)
+tient en < 1 s depuis la v11.
+
 ## Reste à faire
 
 - Téléverser le zip 0.6.103 au CWS (Nico) ; `EXTENSION_MIN_BUILD` inchangé.

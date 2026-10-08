@@ -83,9 +83,10 @@ moteur local nourri des mêmes empreintes (0 écart).
 
 | Compte | Avant | Après (réparation) |
 |---|---|---|
-| Corinne (Vinted 353, LBC 333, Beebs 265) | 454 stock + 334 à vérifier (790 cartes) | 515 + 135 (dont 14 « en double »), 138 fusions, 0 erreur |
+| Corinne (Vinted 353, LBC 333, Beebs 265) | 454 stock + 334 à vérifier (790 cartes) | **prod 08/10 : 510 + 144** (13 « en double »), 134 fusions, 40 fusions refusées sur article modifié → question, 0 erreur |
 | videdressingtiandco (Opla 253, Beebs 46, LBC 26, eBay 6) | 289 + 276 annonces sans article | 295 + 4, 262 rattachées |
-| coronado.maeva (eBay 277) | 420 + 36 sans article | 419 + 26 (18 « en double »), 0 sans article |
+| coronado.maeva (eBay 277) | 420 + 36 sans article | **prod 08/10 : 421 + 23** (17 « en double »), 0 sans article |
+| Parc (106 comptes, 08/10 nuit) | 1 051 annonces sans article | 29 ; 421 fusions, 521 rattachements, 472 créations, 456 à vérifier, 530 « en double », 0 erreur |
 
 Phase 1 (lecture seule, 07/10) : 0 fusion à tort sur 355 paires vues une à une
 (Corinne), 42 (videdressing), 34 (coronado) ; ses 31 « Oui » : 26 retrouvés,
