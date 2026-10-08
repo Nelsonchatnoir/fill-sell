@@ -101,7 +101,7 @@ export function attentesParPlateforme(jobs) {
   return out;
 }
 
-const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 
 /** La phrase d'état, courte, sous la rangée des plateformes. */
 export function phraseEtat(platform, etat, lang = "fr") {

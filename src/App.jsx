@@ -2421,6 +2421,13 @@ export default function App({ loginOnly = false }){
   // exactement l'app d'avant. La colonne n'a PAS d'UPDATE accordé à
   // authenticated — personne ne peut s'ouvrir une plateforme depuis l'app.
   const [plateformesVisibles,setPlateformesVisibles]=useState([]);
+  // ── DEPOP (09/10/2026) : ouverte pour CE compte ? ─────────────────────────
+  // Une seule source : la base (rpc depop_autorise — coin_config depop_ouvert
+  // = 1, resté à 0, ou profiles.beta_flags.depop). FAIL-CLOSED : illisible,
+  // refusée ou absente → false, et l'app est EXACTEMENT celle d'avant. Même
+  // garde côté serveur : un job Depop d'un compte non autorisé est refusé par
+  // la base (depop_non_ouvert), quoi que l'app envoie.
+  const [depopOuverte,setDepopOuverte]=useState(false);
   // ── OPLA : UN SEUL INTERRUPTEUR SERVEUR + BORNE DE BUILD (2026-09-17 soir) ──
   // coin_config.opla_ouvert (0 = case grisée, 1 = case active) et
   // coin_config.opla_extension_min (build minimal, même encodage que
@@ -2611,12 +2618,21 @@ export default function App({ loginOnly = false }){
   const sortieOpla=useSortieOpla(user?.id);
   const oplaFermee=sortieOpla.active;
   const plateformesVisiblesEffectives=useMemo(
-    ()=>oplaFermee
-      ?plateformesVisibles.filter(p=>p!=='opla')
-      :(plateformesVisibles.includes('opla')?plateformesVisibles:[...plateformesVisibles,'opla']),
-    [plateformesVisibles,oplaFermee],
+    ()=>{
+      const base=oplaFermee
+        ?plateformesVisibles.filter(p=>p!=='opla')
+        :(plateformesVisibles.includes('opla')?plateformesVisibles:[...plateformesVisibles,'opla']);
+      // Depop (09/10) : visible SEULEMENT là où elle est ouverte — jamais par
+      // plateformes_visibles seul (la base refuserait ses jobs).
+      const sansDepop=base.filter(p=>p!=='depop');
+      return depopOuverte?[...sansDepop,'depop']:sansDepop;
+    },
+    [plateformesVisibles,oplaFermee,depopOuverte],
   );
-  const plateformesOuvertes=useMemo(()=>oplaFermee?[]:['opla'],[oplaFermee]);
+  const plateformesOuvertes=useMemo(
+    ()=>[...(oplaFermee?[]:['opla']),...(depopOuverte?['depop']:[])],
+    [oplaFermee,depopOuverte],
+  );
   // ── DEMANDE D'AVIS (02/10, lot B) ──────────────────────────────────────────
   // Le serveur décide (avis-demande) ; on ne lui pose la question que sur le
   // tableau de bord, données chargées, entrée finie, jamais à l'ouverture
@@ -3468,6 +3484,9 @@ export default function App({ loginOnly = false }){
     // tout le monde jusqu'au jour de l'application. Isolée ici, son échec ne
     // coûte QUE le drapeau : le tableau reste vide, Opla ne s'affiche pas, et
     // rien d'autre ne bouge. Même patron que le compteur juste au-dessus.
+    // Depop (09/10) : lecture isolée, fail-closed (cf. depopOuverte).
+    supabase.rpc('depop_autorise',{p_user:uid})
+      .then(({data,error})=>{setDepopOuverte(!error&&data===true);},()=>setDepopOuverte(false));
     supabase.from('profiles').select('plateformes_visibles').eq('id',uid).maybeSingle()
       .then(({data,error})=>{
         if(error){setPlateformesVisibles([]);return;}
@@ -5512,7 +5531,7 @@ export default function App({ loginOnly = false }){
 
   // Encart « ce qui va se passer », partagé par les deux modales de suppression
   // — la liste exacte des plateformes retirées et le nombre de jobs annulés.
-  const PLATEFORME_LABELS={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs',opla:'Opla'};
+  const PLATEFORME_LABELS={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs',opla:'Opla',depop:'Depop'};
   function renderCrossPostConsequences(plan){
     if(!plan||(!plan.online?.length&&!plan.aAnnuler?.length&&!plan.retraitsEnCours?.length))return null;
     const n=plan.aAnnuler?.length??0;
@@ -8243,7 +8262,7 @@ export default function App({ loginOnly = false }){
             (acc[k]=acc[k]||[]).push(j);return acc;
           },{})
         ).map(([k,group])=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla',vestiaire:'Vestiaire'};
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla',depop:'Depop',vestiaire:'Vestiaire'};
           const platLabels=group.map(g=>PLAT[g.platform]||g.platform).join(', ');
           return (
             <div key={k} style={{background:UI.paper,border:`1px solid ${UI.amber}55`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
@@ -8272,7 +8291,7 @@ export default function App({ loginOnly = false }){
             (chips) et compteur des masquées, réversible. Aucune écriture sur le
             veilleur ni sur la vente. */}
         {(()=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla'};
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla',depop:'Depop'};
           const questions=unavailableListings.filter(j=>(j.platform_fields||{}).sale_signal!=='sold'&&!remplaceeEnLigne(j));
           if(!questions.length)return null;
           const masquees=questions.filter(alerteEstMasquee);
@@ -8324,7 +8343,7 @@ export default function App({ loginOnly = false }){
         <FileAnnoncesADepiler lang={lang} nb={nbADepiler} onOuvrir={()=>setDisparusModal(true)} />
 
         {unavailableListings.map(job=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire',opla:'Opla'};
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire',opla:'Opla',depop:'Depop'};
           const plat=PLAT[job.platform]||job.platform;
           // (25/09) Inactif pendant QUELQUE vente que ce soit — cf. venteEnVolRef.
           const busy=confirmingSale!=null;
@@ -9312,6 +9331,7 @@ export default function App({ loginOnly = false }){
                 onPlateforme={code=>setSellModal(p=>({...p,plateforme:code}))}
                 quantiteVendue={sellModal.sellQty||1} lang={lang}
                 oplaVisible={!oplaFermee||sortieOpla.relie===true}
+                depopVisible={depopOuverte}
                 couleurs={{teal:C.teal,text:C.text,sub:C.sub,red:C.red}}/>
               <Field label={`${lang==='fr'?'Frais de vente':'Selling fees'} (${lang==='fr'?'optionnel':'optional'})`} value={sellModal.sellingFees} set={v=>setSellModal(p=>({...p,sellingFees:v}))} placeholder={lang==='fr'?"Commission Vinted, livraison client...":"Vinted fee, shipping to buyer..."} type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
               <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
@@ -9747,7 +9767,7 @@ export default function App({ loginOnly = false }){
                 }
               };
               // Le retrait NOMME les plateformes : « retirer aussi l'annonce de X ? »
-              const NOMS_PF={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs',opla:'Opla'};
+              const NOMS_PF={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs',opla:'Opla',depop:'Depop'};
               const pfsEnLigne=[...new Set((plan?.online??[]).map(j=>NOMS_PF[j.platform]??j.platform))];
               const nomsRetrait=pfsEnLigne.length<=1
                 ?(lang==='fr'?`l'annonce ${pfsEnLigne[0]??''}`:`the ${pfsEnLigne[0]??''} listing`)

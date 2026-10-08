@@ -59,7 +59,7 @@ const LBC_CLES_INTERDITES = ['estimated_parcel_weight', 'quantity', 'spare_parts
 
 const cle = (r) => `${r.platform}|${r.category_key}|${r.field_key}`;
 
-const NOMS_PF = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
+const NOMS_PF = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
 // ⛔ POSTGREST TRONQUE À 1000 LIGNES, SANS ERREUR NI AVERTISSEMENT — et
 //    `platform_category_aspects` en porte 1682 (relevé le 20/09). Un

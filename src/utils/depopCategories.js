@@ -1,13 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// DEPOP ↔ TAXONOMIE INTERNE — CATÉGORIES (2026-10-08, préparation INERTE)
+// DEPOP ↔ TAXONOMIE INTERNE — CATÉGORIES (2026-10-08 ; BRANCHÉ le 09/10)
 // ═══════════════════════════════════════════════════════════════════════════
-// ⛔ AUCUN FICHIER DE L'APP, DU SERVEUR NI DE L'EXTENSION N'IMPORTE CE MODULE.
-//    Depop n'est pas une plateforme de FillSell : ce module prépare le
-//    branchement, il ne branche rien (drapeau coin_config `depop_ouvert` = 0,
-//    migration 20261008230000 non appliquée). `npm run selftest:depop-mapping`
-//    refuse tout import de ce module hors des tests, et toute apparition de
-//    Depop dans une liste de plateformes visible.
-//    Branchement, le jour venu : docs/plateformes/depop/RATTACHEMENT.md.
+// ⛔ BRANCHÉ LE 09/10/2026 POUR LES SEULS COMPTES AUTORISÉS (bêta de Nico ;
+//    coin_config `depop_ouvert` = 0, migration 20261009020000 : la base
+//    refuse tout Depop d'un compte non autorisé). Importé par l'app
+//    (utils/depopPublication.js, platformCompat.js, resolutionPublication.js) :
+//    pour un compte non autorisé, rien n'y mène (selftest:depop-app).
+//    Rattachement : docs/plateformes/depop/RATTACHEMENT.md.
 //
 // MÊME PATRON QUE beebsCategories.js / vintedCategories.js, pas une deuxième
 // mécanique : clé = icône de detectObjectIcon (src/utils/shared.js), MODE

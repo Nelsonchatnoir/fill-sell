@@ -14,6 +14,7 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import GalleryPhoto from '../components/GalleryPhoto';
 import { S, OMBRE, TONS, DEGRADE } from './jetons';
 import { pileLogos } from './regles';
+import { LIBELLE_PLATEFORME } from '../utils/stockFiltres';
 
 const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
 
@@ -22,7 +23,9 @@ export function PileLogos({ lang = 'fr', plateformes = [], etats = {}, taille = 
   const { visibles, reste } = pileLogos(plateformes, max);
   if (!visibles.length) return null;
   const fr = lang !== 'en';
-  const noms = plateformes.map((p) => NOMS[p] ?? p);
+  // Une plateforme ajoutée depuis (09/10) prend son nom de la configuration
+  // (stockFiltres.LIBELLE_PLATEFORME), jamais d'une ligne écrite ici.
+  const noms = plateformes.map((p) => NOMS[p] ?? LIBELLE_PLATEFORME[p] ?? p);
   const liste = noms.length > 1 ? `${noms.slice(0, -1).join(', ')} ${fr ? 'et' : 'and'} ${noms[noms.length - 1]}` : noms[0];
   return (
     <span role="img" aria-label={`${fr ? 'En ligne sur' : 'Live on'} ${liste}`} style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>

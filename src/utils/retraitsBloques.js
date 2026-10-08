@@ -37,11 +37,11 @@
 // Pur (Node + Vite) : scripts/retraits-bloques-connexion-selftest.mjs.
 
 export const NOMS_PLATEFORME_RETRAIT = Object.freeze({
-  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla',
+  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop',
 });
-const ORDRE = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'];
+const ORDRE = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla', 'depop'];
 
-const MESSAGE_CONNEXION_RE = /^(?:Re)?connexion (?:Vinted|Leboncoin|Beebs|eBay|Opla) requise|^En attente de ta connexion à /i;
+const MESSAGE_CONNEXION_RE = /^(?:Re)?connexion (?:Vinted|Leboncoin|Beebs|eBay|Opla|Depop) requise|^En attente de ta connexion à /i;
 const ANTIROBOT_RE = /anti-?robot|datadome/i;
 /** La fenêtre de relance de relancer_jobs_connexion (created_at > now() − 30 j). */
 export const FENETRE_RELANCE_MS = 30 * 24 * 3600 * 1000;

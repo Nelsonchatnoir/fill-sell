@@ -18,7 +18,7 @@ import { V } from './voice/tokens';
 
 // `enLigneConnu` : réservé aux aperçus sans session (scripts/apercu) — la
 // fenêtre réelle lit toujours les annonces de l'article.
-export default function ChoixVenteModale({ item, plateforme, onPlateforme, quantiteVendue = 1, lang = 'fr', oplaVisible = true, couleurs = {}, enLigneConnu = undefined }) {
+export default function ChoixVenteModale({ item, plateforme, onPlateforme, quantiteVendue = 1, lang = 'fr', oplaVisible = true, depopVisible = false, couleurs = {}, enLigneConnu = undefined }) {
   const lues = useAnnoncesEncoreEnLigne(enLigneConnu === undefined ? item : null);
   const enLigne = enLigneConnu === undefined ? lues : enLigneConnu;
   const fr = lang !== 'en';
@@ -26,7 +26,7 @@ export default function ChoixVenteModale({ item, plateforme, onPlateforme, quant
   const texte = couleurs.text ?? '#10201B';
   const sub = couleurs.sub ?? '#6B7A75';
   const rouge = couleurs.red ?? '#C0392B';
-  const { principales, autres, lu } = choixPlateformesVente({ enLigne, oplaVisible, plateformeActuelle: plateforme });
+  const { principales, autres, lu } = choixPlateformesVente({ enLigne, oplaVisible, depopVisible, plateformeActuelle: plateforme });
   // « Autre plateforme… » s'ouvre seule si la personne en a déjà choisi une,
   // ou si l'article n'a AUCUNE annonce en ligne connue (rien à proposer d'autre).
   const choisieDansAutres = autres.includes(plateforme);

@@ -326,6 +326,8 @@ const MUR_CONNEXION_ANCRE = {
   // de handler-watch. Sans elle, « Connexion Opla requise » n'avait aucun
   // bouton — 8 retraits après vente de Joséphine restaient en ligne.
   opla: /^Connexion Opla requise/i,
+  // (09/10) Depop : jumelle de MUR_CONNEXION.depop de handler-watch.
+  depop: /^Connexion Depop requise/i,
 };
 /** Rend le motif MOTIFS.* quand le job bute sur un mur de connexion, sinon null. */
 // ── DÉPÔT EN ATTENTE D'UNE SESSION MORTE (2026-09-27, Beebs) ──────────────
@@ -979,7 +981,7 @@ const NU_T = { border:"#E7E3D8", chip:"#F2F0E9", ink:"#10201B", mute:"#8A8578" }
 // réponse d'un needs_user, et c'est le background qui surveille cette clé pour
 // couper les boucles. Désaligner les deux, c'est surveiller une clé que
 // personne n'écrit. `opla` ajoutée au lot C, des DEUX côtés dans le même commit.
-const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects", opla:"oplaAspects" };
+const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects", opla:"oplaAspects", depop:"depopAspects" };
 
 // ── LA MINI-CARTE D'UN LOGO QUI APPELLE UNE ACTION (2026-09-08) ──────────────
 // UNE seule forme : un carré teinté, un contour, le glyphe posé dessus. Le
@@ -2592,7 +2594,7 @@ function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
   if (item?.vinted_view_count != null || item?.vinted_favourite_count != null) {
     lignes.push({ platform: 'vinted', vues: item.vinted_view_count ?? null, favoris: item.vinted_favourite_count ?? null });
   }
-  const ordre = ['leboncoin', 'beebs', 'ebay', 'opla'];
+  const ordre = ['leboncoin', 'beebs', 'ebay', 'opla', 'depop'];
   // Une plateforme sans annonce en ligne n'a PAS de ligne : `stats` ne porte
   // que les annonces rattachées et non disparues (lireStatsAnnoncesParArticle),
   // et celles dont les deux compteurs sont nuls sont déjà écartées à la source.
@@ -5287,6 +5289,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
     leboncoin: fr ? 'Retirée puis redéposée avec la même fiche : elle repart en tête. Hors ligne quelques minutes.' : 'Removed then re-posted with the same listing: back on top. Offline for a few minutes.',
     beebs: fr ? 'Retirée puis redéposée : elle repasse par la vérification Beebs avant d’être visible.' : 'Removed then re-posted: it goes through Beebs verification again before it is visible.',
     opla: fr ? 'Modifiée en place, sans retrait : l’annonce garde son lien.' : 'Updated in place, no removal: the listing keeps its link.',
+    depop: fr ? 'Retirée puis recréée avec la même fiche : nouveau lien, elle repart en tête.' : 'Removed then recreated from the same listing: new link, back on top.',
   };
   const titre = solo
     ? (fr ? 'Republier' : 'Repost')

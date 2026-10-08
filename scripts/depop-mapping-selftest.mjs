@@ -17,9 +17,10 @@
 //      officiellement rattachée à son département ; toutes les icônes ont une
 //      décision (aucune « unmapped ») ; « Mixte » n'est jamais résolu ; un
 //      Bébé fait demander le genre ; un état ne s'améliore jamais.
-//   D. DEPOP RESTE INVISIBLE : rien n'importe les deux modules Depop, aucun
-//      fichier de l'app, du serveur ou de l'extension ne cite Depop hors de la
-//      liste connue avant le 08/10, la migration ne pose que le drapeau à 0.
+//   D. ACCÈS BORNÉ (09/10, branchement pour le seul compte bêta) : l'hôte
+//      Depop n'est jamais obligatoire dans le manifeste, la migration du
+//      drapeau ne peut ni armer ni désarmer Depop (l'accès réservé est prouvé
+//      par selftest:depop-acces et selftest:depop-app).
 //   E. LE TEST MORD : chaque contrôle est rejoué sur une copie abîmée et doit
 //      tomber.
 // ═══════════════════════════════════════════════════════════════════════════

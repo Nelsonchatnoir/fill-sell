@@ -68,7 +68,8 @@ import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   childAxesForGenre,
 } from "../utils/childSizes";
-import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/stockFiltres";
+import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR, PLATEFORMES_JAMAIS_PRECOCHEES } from "../utils/stockFiltres";
+import { deriverCopieDepop, DEPOP_DESCRIPTION_MAX, DEPOP_HASHTAGS_MAX, compterHashtagsDepop } from "../utils/depopPublication";
 // La résolution de catégorie et de champs plateforme — SORTIE de handlePublish
 // le 20/09 pour tourner à la fin de la génération. Même code, même ordre,
 // mêmes messages : un déménagement, pas une réécriture (en-tête du module).
@@ -150,7 +151,7 @@ const T = {
   chip:     "#F2F0E9",
 };
 
-export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay", opla:"Opla" };
+export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay", opla:"Opla", depop:"Depop" };
 
 // ── Une photo est-elle une retouche PAYÉE, à nous ? ──────────────────────────
 // Source UNIQUE (StockTab l'importe, le RPC spend_coins_and_publish porte la
@@ -170,7 +171,7 @@ export function isRetouchedPhotoEntry(p) {
 // platform-logos/OplaIcon) — la teinte qui occupe 20,7 % des pixels, le reste
 // étant blanc. ⚠️ Trois oranges voisins dans cette table désormais (leboncoin
 // #EA5B0C, beebs #FF6B35, opla #FE9D17) : signalé à Nico, rien décidé.
-const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2", opla:"#FE9D17" };
+const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2", opla:"#FE9D17", depop:"#FF2300" };
 // ⛔ PLATFORMS_DEFAULT reste à QUATRE, et ce n'est pas un oubli. Cette liste
 // n'est pas « les plateformes qu'on affiche » : elle initialise `selected`
 // (l. ~3975), elle filtre les annonces disponibles du scan, et tout ce qui y
@@ -925,6 +926,18 @@ function getPlatformFieldsConfig(t) {
     // marque/matière/couleur comme Vinted — le pré-vol du connecteur valide
     // la taille contre la grille de la feuille et jette couleur/matière hors
     // liste avec avertissement, jamais en silence.
+    // Depop (09/10) : même vocabulaire que Vinted (l'identifiant Depop se pose
+    // à l'insert, utils/depopPublication.js) ; ni matière (non envoyée) ni
+    // catégorie (rayon par IDENTIFIANT, carte « Rayon ») ; les frais de port
+    // sont au prix libre chez Depop — la personne les dit (vide → question).
+    depop: [
+      { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
+      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
+      { key:"genre",     label:t("fieldGenderLabel"),    type:"select", options: gender },
+      { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
+      { key:"couleur",   label:t("fieldColorLabel"),     type:"text" },
+      { key:"depopPort", label:t("fieldShippingDepopLabel"), type:"text" },
+    ],
     opla: [
       { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
       { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
@@ -2787,7 +2800,16 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                       ))}
                     </div>
                   )}
-                  <div style={{ marginBottom:10, paddingTop:12 }}>
+                  {/* Depop (09/10) : AUCUN titre chez Depop — le champ n'est pas
+                      montré, la description fait toute l'annonce. */}
+                  {p === "depop" && (
+                    <div style={{ paddingTop:12, fontSize:11.5, color:T.mute2, lineHeight:1.4 }}>
+                      {lang === "en"
+                        ? `No title on Depop: the description is the listing (${DEPOP_DESCRIPTION_MAX} characters, ${DEPOP_HASHTAGS_MAX} hashtags max).`
+                        : `Pas de titre sur Depop : la description fait l'annonce (${DEPOP_DESCRIPTION_MAX} caractères, ${DEPOP_HASHTAGS_MAX} hashtags au plus).`}
+                    </div>
+                  )}
+                  {p !== "depop" && <div style={{ marginBottom:10, paddingTop:12 }}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
                       <span style={{ fontSize:11, color:T.mute2, fontWeight:600 }}>{t("fieldTitleLabel")}</span>
                       {marqueurChamp("titre")}
@@ -2800,7 +2822,7 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                         : setEdited(prev => ({ ...prev, [p]: { ...prev[p], title: ev.target.value } })))}
                       style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13.5, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                     />
-                  </div>
+                  </div>}
 
                   <div style={{ marginBottom:12 }}>
                     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginBottom:4 }}>
@@ -2828,6 +2850,16 @@ export function StepGeneration({ generating, generateError, platformListings, pr
                         {t("generalDescriptionLines").replace("{n}", String(String(e.description ?? "").split(/\r\n|\r|\n/).length))}
                       </div>
                     )}
+                    {p === "depop" && (() => {
+                      const n = String(e.description ?? "").length;
+                      const h = compterHashtagsDepop(e.description);
+                      const trop = n > DEPOP_DESCRIPTION_MAX || h > DEPOP_HASHTAGS_MAX;
+                      return (
+                        <div style={{ fontSize:11.5, color: trop ? "#B42318" : T.mute2, marginTop:4, lineHeight:1.4 }}>
+                          {`${n} / ${DEPOP_DESCRIPTION_MAX} · ${h} / ${DEPOP_HASHTAGS_MAX} hashtags`}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* ── L'ÉTAT DE CETTE PLATEFORME (2026-09-21) ────────────
@@ -5119,7 +5151,7 @@ export default function ListingPreviewScreen({
   //    filtre aux annonces d'un scan et aux phrases sous la rangée, deux
   //    endroits où Opla n'a rien à faire aujourd'hui.
   const [selected, setSelected]         = useState(() => new Set(
-    (draft?.selected ?? [...PLATFORMS_DEFAULT, ...PLATFORMS_A_VENIR.filter(p => plateformesOuvertes.includes(p))])
+    (draft?.selected ?? [...PLATFORMS_DEFAULT, ...PLATFORMS_A_VENIR.filter(p => plateformesOuvertes.includes(p) && !PLATEFORMES_JAMAIS_PRECOCHEES.includes(p))])
       // (02/10, sortie d'Opla) Un brouillon d'avant peut encore porter une
       // plateforme qui n'est plus proposée (Opla) : on ne la recoche jamais.
       .filter(p => PLATFORMS_DEFAULT.includes(p) || plateformesOuvertes.includes(p))
@@ -5687,7 +5719,7 @@ export default function ListingPreviewScreen({
   useEffect(() => {
     if (variante !== "nouvelle" || step !== 2 || done || publishing || generatingPlatforms) return undefined;
     const sourceOpla = Boolean(edited?.vinted || edited?.leboncoin || edited?.ebay || edited?.beebs);
-    const aUneCopie = (p) => Boolean(platformListings?.platforms?.[p]) || (p === "opla" && sourceOpla);
+    const aUneCopie = (p) => Boolean(platformListings?.platforms?.[p]) || ((p === "opla" || p === "depop") && sourceOpla);
     const avecCopie = platformListings ? [...selected].some(aUneCopie) : selected.size > 0;
     if (avecCopie) return undefined;
     const minuteur = setTimeout(() => setStep(1), 400);
@@ -5987,7 +6019,14 @@ export default function ListingPreviewScreen({
       // échouait sans raison lisible. On lui demande alors la copie source de
       // la dérivation ; elle n'est pas cochée pour autant, rien d'autre ne part.
       const cochees = [...selected];
-      const platforms = cochees.length && cochees.every(p => p === "opla") ? [...cochees, "vinted"] : cochees;
+      const platformsAvantDepop = cochees.length && cochees.every(p => p === "opla") ? [...cochees, "vinted"] : cochees;
+      // (09/10) Depop non plus : sa copie dérive d'une autre (effet « COPIE
+      // DEPOP DÉRIVÉE »). Elle n'est jamais envoyée au serveur ; cochée seule
+      // (ou avec Opla seule), on lui demande la copie Vinted, source de la
+      // dérivation. Sans Depop cochée, la liste part EXACTEMENT comme avant.
+      const sansDepop = platformsAvantDepop.filter(p => p !== "depop");
+      const platforms = !platformsAvantDepop.includes("depop") ? platformsAvantDepop
+        : (sansDepop.some(p => p !== "opla") ? sansDepop : [...sansDepop, "vinted"]);
       // Source des champs : l'analyse photo (si elle a eu lieu) complète
       // initialListing. Elle ne l'ÉCRASE que là où l'article n'avait rien —
       // une valeur venant de Lens ou saisie par l'utilisateur reste prioritaire.
@@ -7037,6 +7076,22 @@ export default function ListingPreviewScreen({
       : prev);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceCopieOpla, plateformeSourceOpla, edited?.opla, plateformesVisibles]);
+  // ── COPIE DEPOP DÉRIVÉE (09/10/2026) — même effet que celui d'Opla ────────
+  // Pour les seuls comptes qui VOIENT Depop (plateformesVisibles, App.jsx :
+  // depop_autorise) — inerte pour tous les autres. Pas de titre chez Depop :
+  // la description (≤ 1 000 caractères, ≤ 5 hashtags) fait l'annonce.
+  useEffect(() => {
+    if (!plateformesVisibles.includes("depop")) return;
+    const src = sourceCopieOpla;
+    if (!src || !plateformeSourceOpla || edited?.depop) return;
+    const copie = deriverCopieDepop(src, { prixGeneral: price, generales,
+      valeur: (champ, v) => valeurPourPlateforme(champ, v, "depop").valeur });
+    setEdited(prev => (!prev?.[plateformeSourceOpla] || prev?.depop) ? prev : { ...prev, depop: copie });
+    setPlatformListings(prev => (prev?.platforms?.[plateformeSourceOpla] && !prev.platforms.depop)
+      ? { ...prev, platforms: { ...prev.platforms, depop: { title: copie.title, description: copie.description, platform_fields: { ...copie.platform_fields } } } }
+      : prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceCopieOpla, plateformeSourceOpla, edited?.depop, plateformesVisibles]);
   // ── Exemption extension « eBay seul + voie API » (2026-09-06, GO Nico) ──
   // L'écran d'accroche extension (extensionBlocked) protège une file qui
   // n'aurait PERSONNE pour l'exécuter. Quand le lot ne contient QUE eBay et

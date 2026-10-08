@@ -138,7 +138,7 @@ export function estQuestionDejaVendu(d) {
   return (d?.motif === 'homonyme_vendu' || d?.motif === 'copie_non_prouvee') && d?.a?.statut === 'vendu';
 }
 
-const NOMS_PLATEFORMES = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla' };
+const NOMS_PLATEFORMES = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
 
 /** Nom lisible d'une plateforme (« leboncoin » → « Leboncoin »). */
 export function nomPlateforme(code) {

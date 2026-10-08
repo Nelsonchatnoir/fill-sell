@@ -213,7 +213,8 @@ console.log("9. eBay par la voie API : la ligne part comme avant, le serveur tra
 
 console.log("Aucun rayon trouvé : on demande, on ne bloque jamais (03/10, cas Louis)");
 {
-  ok(PLATEFORMES_RAYON_A_DEMANDER.join() === "vinted,leboncoin,beebs,ebay", "les quatre plateformes dont l'app pose le rayon (Opla : son pré-vol)");
+  // (09/10) + Depop : son rayon se pose par identifiant, sinon la même question.
+  ok(PLATEFORMES_RAYON_A_DEMANDER.join() === "vinted,leboncoin,beebs,ebay,depop", "les plateformes dont l'app pose le rayon (Opla : son pré-vol ; Depop : par identifiant)");
   ok(sansRayon("vinted", {}) && sansRayon("leboncoin", { lbcCategoryPath: [] }) && sansRayon("ebay", { ebayCategoryId: null }), "sans chemin : sans rayon");
   ok(sansRayon("beebs", { categorie_a_choisir: { objet: "adaptateur" } }), "Beebs « l'extension demandera » n'est PAS un rayon : l'app demande avant le dépôt");
   ok(!sansRayon("beebs", { beebsCategoryPath: ["Maison", "Petit électroménager", "Yaourtières"] }) && !sansRayon("opla", {}), "un chemin (ou Opla) : rien à demander");

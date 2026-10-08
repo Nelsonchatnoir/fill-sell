@@ -20,8 +20,8 @@
 // Tout ce qui se décide ici est pur et testé (scripts/vente-modale-selftest.mjs) ;
 // la fenêtre (App.jsx) et l'avertissement de la carte vocale ne font qu'afficher.
 
-export const CODES_VENTE = ["vinted", "leboncoin", "beebs", "ebay", "opla"];
-export const LIBELLES_VENTE = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+export const CODES_VENTE = ["vinted", "leboncoin", "beebs", "ebay", "opla", "depop"];
+export const LIBELLES_VENTE = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 
 /**
  * Le CODE de plateforme envoyé à enregistrer_vente_atomique (contrat serveur du
@@ -64,14 +64,16 @@ export function prixPrerempli(item) {
 
 /**
  * Les choix de la fenêtre.
- * @param {{ enLigne?: Array<{platform: string, url?: string|null}>|null, oplaVisible?: boolean, plateformeActuelle?: string|null }} arg
+ * @param {{ enLigne?: Array<{platform: string, url?: string|null}>|null, oplaVisible?: boolean, depopVisible?: boolean, plateformeActuelle?: string|null }} arg
+ *   depopVisible (09/10) : Depop n'est proposée qu'aux comptes où elle est
+ *   ouverte (défaut : non) — ou quand l'article y est en ligne.
  *   enLigne : annoncesEncoreEnLigne(item, jobs) — null tant que la lecture n'a pas répondu.
  * @returns {{ principales: Array<{code: string, enLigne: boolean, url: string|null}>, autres: string[], lu: boolean }}
  *   principales = plateformes où l'article est en ligne (dans l'ordre du Stock) ;
  *   autres = les plateformes restantes (repliées : annonce postée hors FillSell) ;
  *   « Ailleurs » est toujours proposé à part par l'appelant.
  */
-export function choixPlateformesVente({ enLigne = null, oplaVisible = true, plateformeActuelle = null } = {}) {
+export function choixPlateformesVente({ enLigne = null, oplaVisible = true, depopVisible = false, plateformeActuelle = null } = {}) {
   const lu = Array.isArray(enLigne);
   const vues = new Set();
   const principales = [];
@@ -82,7 +84,8 @@ export function choixPlateformesVente({ enLigne = null, oplaVisible = true, plat
     principales.push({ code, enLigne: true, url: a?.url ?? null });
   }
   const autres = CODES_VENTE.filter((c) => !vues.has(c)
-    && (c !== "opla" || oplaVisible || plateformeActuelle === "opla"));
+    && (c !== "opla" || oplaVisible || plateformeActuelle === "opla")
+    && (c !== "depop" || depopVisible || plateformeActuelle === "depop"));
   return { principales, autres, lu };
 }
 

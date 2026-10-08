@@ -25,7 +25,7 @@
 //    (déclencheur `bouton_distant`, un geste pour releve_est_geste).
 import { etatSession } from '../utils/sessionsPlateformes.js';
 
-export const LABEL_PF = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
+export const LABEL_PF = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
 // Le relevé direct pose sa ligne en quelques secondes quand l'extension est
 // libre. Au-delà, on n'attend plus : la file serveur prend le relais.

@@ -38,7 +38,7 @@ const P = {
 };
 // vinted y figure depuis le 19/09 : le bloc sert aussi de liste « à vérifier »,
 // qui n'est pas Vinted-only (le report se pose sur un JOB, toutes plateformes).
-const LABEL = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', vestiaire: 'Vestiaire' };
+const LABEL = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop', vestiaire: 'Vestiaire' };
 
 export default function RevueAutresPlateformes({
   lang, jobs = [], busyId = null, devise = '€',

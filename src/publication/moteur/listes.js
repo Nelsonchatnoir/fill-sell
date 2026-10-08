@@ -80,6 +80,9 @@ export const TYPES_FERMES = {
   leboncoin: ["combobox", "dropdown"],
   beebs: ["dropdown"],
   opla: ["select", "selection_only"],
+  // depop (09/10) : les questions du connecteur portent la liste EXACTE de
+  // Depop (grille de la feuille, états, genres) en « selection_only ».
+  depop: ["selection_only"],
 };
 
 // Les champs À RECHERCHE : le référentiel de la plateforme dépasse ce qu'on

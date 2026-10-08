@@ -50,7 +50,7 @@ const listeEn = (noms) => noms.length <= 1 ? (noms[0] ?? '') : `${noms.slice(0, 
 
 export default function ExtensionReminderModal({ onClose, onContinue, lang, plateformesExtension = null, plateformesServeur = null }) {
   const fr = lang !== 'en';
-  const LABELS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay' };
+  const LABELS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', depop: 'Depop' };
   const nomsExt = (plateformesExtension ?? []).map((p) => LABELS[p] ?? p);
   const nomsSrv = (plateformesServeur ?? []).map((p) => LABELS[p] ?? p);
   const mixte = nomsExt.length > 0 && nomsSrv.length > 0;

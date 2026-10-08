@@ -81,7 +81,15 @@ const MOTS = {
   },
 };
 
-const NOM_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla' };
+const NOM_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', ebay: 'eBay', beebs: 'Beebs', opla: 'Opla', depop: 'Depop' };
+
+// Depop (09/10) : aucune recherche AUTOMATIQUE par le mot (feuillesDe('depop')
+// rend [] exprès) ; ici, c'est la PERSONNE qui choisit, dans les feuilles que
+// le formulaire de Depop propose (libellés français, doublons précisés en
+// anglais) — et c'est l'identifiant de la feuille qui part.
+const feuillesPourChoisir = (platform) => (platform === 'depop'
+  ? import('../utils/arbres/depopFeuilles.js').then((m) => m.FEUILLES)
+  : feuillesDe(platform));
 
 /** Recherche dans les feuilles relevées : tous les mots tapés doivent être
  *  dans le chemin. Comparaison sans accents ni casse (texteComparable), la
@@ -266,7 +274,7 @@ export default function CarteRayon({
   useEffect(() => {
     if (!ouvertPicker || feuilles) return undefined;
     let vivant = true;
-    feuillesDe(platform).then((f) => { if (vivant) setFeuilles(f); }).catch(() => {});
+    feuillesPourChoisir(platform).then((f) => { if (vivant) setFeuilles(f); }).catch(() => {});
     return () => { vivant = false; };
   }, [ouvertPicker, platform, feuilles]);
 

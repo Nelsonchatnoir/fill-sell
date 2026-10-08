@@ -152,7 +152,7 @@ export function plateformesReserveesParRepublication(jobsAll) {
 // Ordre d'affichage des plateformes d'un article. Opla en QUEUE (lot C) : la
 // liste ne sert qu'à trier ce qui est DÉJÀ là, elle n'ajoute jamais une ligne.
 // Un article sans annonce Opla est trié exactement comme avant.
-const ORDRE_PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay", "opla"];
+const ORDRE_PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay", "opla", "depop"];
 const rangPlateforme = (p) => {
   const i = ORDRE_PLATEFORMES.indexOf(p);
   return i === -1 ? ORDRE_PLATEFORMES.length : i;

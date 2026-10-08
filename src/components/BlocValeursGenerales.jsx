@@ -47,7 +47,7 @@ export default function BlocValeursGenerales({
 }) {
   const [descOuverte, setDescOuverte] = useState(false);
   const en = lang === "en";
-  const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+  const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
   const dateCourte = (iso) => {
     const d = new Date(iso ?? "");
     return Number.isFinite(d.getTime()) ? d.toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "2-digit", month: "2-digit" }) : "";

@@ -32,7 +32,7 @@ import { R } from './theme';
 import { Groupe, Carte, Pastille, Note } from './ReglagesUI';
 
 // Noms propres, pas du vocabulaire : ils ne se traduisent pas.
-const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
+const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 const ANCRE_EBAY = 'reglages-compte-ebay';
 
 // L'état d'AVANT (ok / ko / null) traduit dans le vocabulaire de la vérité,

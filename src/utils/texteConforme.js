@@ -42,6 +42,9 @@ export const BORNES_TEXTE = Object.freeze({
   leboncoin: { titre: 200, description: 3000 },
   ebay:      { titre: 80,  description: 2000 },
   vestiaire: { titre: 100, description: 2000 },
+  // depop (09/10) : PAS de titre chez Depop (il ne nomme que le job dans la
+  // file) ; description 1 000 caractères (MAX_CHAR_COUNT du formulaire).
+  depop:     { titre: 100, description: 1000 },
 });
 
 /** Plafond Leboncoin, lu sur leur page de correction (cf. description-leboncoin.ts). */

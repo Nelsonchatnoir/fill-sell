@@ -41,9 +41,12 @@ export const CLE_CHEMIN = {
   beebs: 'beebsCategoryPath',
   ebay: 'ebayCategoryPath',
   opla: 'oplaCategoryPath',
+  // depop (09/10) : les LIBELLÉS du rayon, pour l'afficher ; ce qui part est
+  // l'identifiant (CLE_ID) et son chemin d'identifiants, depopCategoryPath.
+  depop: 'depopCategoryLibelles',
 };
-/** Les deux plateformes qui naviguent par IDENTIFIANT, pas par libellé. */
-export const CLE_ID = { ebay: 'ebayCategoryId', opla: 'oplaCategoryCode' };
+/** Les plateformes qui naviguent par IDENTIFIANT, pas par libellé. */
+export const CLE_ID = { ebay: 'ebayCategoryId', opla: 'oplaCategoryCode', depop: 'depopCategoryId' };
 
 /** Le rayon tel qu'il partira, pour l'afficher. `choisi` dit s'il vient de
  *  la personne — c'est ce qui change le mot à l'écran (« ton rayon » vs
@@ -113,6 +116,13 @@ export function appliquerRayonChoisi(pf, platform, choix) {
     // nulle part. On retire l'ancien plutôt que de publier un libellé qui ne
     // correspond pas à la catégorie visitée — le pire des deux mondes.
     else delete suite[cleId];
+  }
+  // Depop (09/10) : le job part avec les TROIS identifiants (département,
+  // groupe, type) — jamais un libellé. Sans identifiant lisible, rien ne part.
+  if (platform === 'depop') {
+    const ids = String(choix.id ?? '').split('/');
+    if (ids.length === 3 && ids.every((x) => /^[a-z0-9-]+$/.test(x))) suite.depopCategoryPath = ids;
+    else delete suite.depopCategoryPath;
   }
   // Un choix humain est CERTAIN. Tout ce qui disait « on n'est pas sûrs » —
   // et qui ferait préférer la suggestion de la plateforme à ce choix — tombe.

@@ -3,6 +3,7 @@ import EbayLogo from "./EbayLogo";
 import BeebsIcon from "./BeebsIcon";
 import LeboncoinIcon from "./LeboncoinIcon";
 import OplaIcon from "./OplaIcon";
+import DepopIcon from "./DepopIcon";
 
 // vinted/ebay : tracé vectoriel de marque (simple-icons) posé sur un socle carré blanc,
 // pour rendre au même gabarit que les vraies icônes d'app carrées de beebs/leboncoin.
@@ -10,7 +11,8 @@ const GLYPHS = { vinted: VintedLogo, ebay: EbayLogo };
 // beebs/leboncoin/opla : icône d'app officielle (App Store), déjà carrée et pleine, aucun socle.
 // opla (2026-09-15) : son icône porte son propre liseré (elle est blanche à 77 %, cf.
 // OplaIcon) — la branche ci-dessous est donc INCHANGÉE, y compris le chemin `desature`.
-const APP_ICONS = { beebs: BeebsIcon, leboncoin: LeboncoinIcon, opla: OplaIcon };
+// depop (09/10) : le mot-symbole de Depop, rouge, sur sa tuile (DepopIcon).
+const APP_ICONS = { beebs: BeebsIcon, leboncoin: LeboncoinIcon, opla: OplaIcon, depop: DepopIcon };
 
 // `fond` / `bord` (2026-09-08) : le socle blanc de vinted/ebay est TEINTABLE.
 // Sans ça, colorer la mini-carte qui porte le logo ne colorait qu'un liseré de

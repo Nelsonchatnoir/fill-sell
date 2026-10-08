@@ -97,8 +97,10 @@ console.log('\n2. ✅ Opla ouverte jusqu’à la sortie du 10/10/2026, fermée e
   ok('PLATEFORMES_STOCK_OUVERTES porte les QUATRE, sans Opla',
     PLATEFORMES_STOCK_OUVERTES.length === 4 && !PLATEFORMES_STOCK_OUVERTES.includes('opla'),
     PLATEFORMES_STOCK_OUVERTES);
+  // (09/10) Depop la rejoint, ouverte par compte (depop_autorise) : Opla reste
+  // la première « à venir », et rien d'autre n'y entre.
   ok('Opla est « à venir » — ouverte par App.jsx tant que la sortie n’a pas basculé',
-    PLATEFORMES_STOCK_A_VENIR.length === 1 && PLATEFORMES_STOCK_A_VENIR[0] === 'opla', PLATEFORMES_STOCK_A_VENIR);
+    PLATEFORMES_STOCK_A_VENIR[0] === 'opla' && PLATEFORMES_STOCK_A_VENIR.join() === 'opla,depop', PLATEFORMES_STOCK_A_VENIR);
 
   // Les données suivent toujours Opla : un article sans annonce Opla compte
   // dans « pas encore sur Opla » (la chip ne s'affiche que si Opla est ouverte).

@@ -65,7 +65,7 @@ const SUFFIXES = [
  *  l'extension va les chercher. */
 export const CANAL_ASPECTS = {
   vinted: 'vintedAspects', leboncoin: 'lbcAspects',
-  beebs: 'beebsAspects', opla: 'oplaAspects', ebay: 'ebayAspects',
+  beebs: 'beebsAspects', opla: 'oplaAspects', ebay: 'ebayAspects', depop: 'depopAspects',
 };
 
 export function cleConnue(fieldKey) {

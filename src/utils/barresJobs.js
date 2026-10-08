@@ -25,7 +25,9 @@
 import { situationJob, nomPlateforme, etapeRepublication, parNosServeurs, heureConnue, libelleAction } from "./fileDesJobs.js";
 import { urlsPhotos } from "./photos.js";
 
-const DEPOT_EXTENSION = { vinted: 62, leboncoin: 67, beebs: 68, ebay: 238, opla: 10 };
+// depop (09/10) : dépôt par l'API depuis la page (photos + création + relecture),
+// mesuré sur le parcours réel du 09/10.
+const DEPOT_EXTENSION = { vinted: 62, leboncoin: 67, beebs: 68, ebay: 238, opla: 10, depop: 20 };
 const DEPOT_SERVEURS = { ebay: 78 };
 // Vinted fait retrait et recréation EN UNE PASSE : le « retrait » (formulaire
 // rempli puis ancienne annonce supprimée) dure 51 s médianes (p90 65 s),

@@ -12,7 +12,11 @@ import { attentesParPlateforme } from "../../utils/etatsPublication.js";
 import { PALIERS as PALIERS_COMPTE, palierDesDrapeaux } from "../../utils/palier.js";
 
 // Opla quitte FillSell le 10/10 : jamais dans un lot, ni avant ni après.
-export const PLATEFORMES_LOT = Object.freeze(["vinted", "leboncoin", "ebay", "beebs"]);
+// Depop (09/10) : dans le lot pour le SEUL compte où elle est ouverte — le lot
+// ne propose jamais que plateformesCompte (plateformesDuCompte, App.jsx). Le
+// DÉFAUT, quand un appelant n'en donne pas, reste les quatre d'avant.
+export const PLATEFORMES_LOT = Object.freeze(["vinted", "leboncoin", "ebay", "beebs", "depop"]);
+export const PLATEFORMES_LOT_DEFAUT = Object.freeze(["vinted", "leboncoin", "ebay", "beebs"]);
 // Un lot, c'est 20 articles au plus (décision à confirmer, cf. rapport) :
 // l'extension dépose une annonce après l'autre, et aucun frein serveur n'existe
 // encore pour les dépôts — au-delà, on prépare le lot suivant.
@@ -45,7 +49,7 @@ export function plateformesOccupees(item, jobs = []) {
 }
 
 /** Les plateformes du lot encore libres pour cet article, dans l'ordre du lot. */
-export function plateformesLibres(item, jobs, plateformesCompte = PLATEFORMES_LOT) {
+export function plateformesLibres(item, jobs, plateformesCompte = PLATEFORMES_LOT_DEFAUT) {
   const occ = plateformesOccupees(item, jobs);
   return PLATEFORMES_LOT.filter((p) => plateformesCompte.includes(p) && !occ.has(p));
 }
@@ -61,7 +65,7 @@ const photosDe = (item) => {
  * d'écran quand il ne peut pas. Jamais un article vendu, jamais sans photo
  * (aucune plateforme n'en veut), jamais un article déjà partout.
  */
-export function articleSelectionnable(item, jobs, plateformesCompte = PLATEFORMES_LOT, lang = "fr") {
+export function articleSelectionnable(item, jobs, plateformesCompte = PLATEFORMES_LOT_DEFAUT, lang = "fr") {
   const en = lang === "en";
   if (!item) return { ok: false, raison: "" };
   if (String(item.statut ?? "") === "vendu" || item.sold === true) return { ok: false, raison: en ? "Sold" : "Vendu" };
@@ -75,7 +79,7 @@ export function articleSelectionnable(item, jobs, plateformesCompte = PLATEFORME
  * Par plateforme : combien d'articles du lot pourraient y partir, combien y
  * sont déjà. `articles` = [{ item, jobs }].
  */
-export function resumeParPlateforme(articles, plateformesCompte = PLATEFORMES_LOT) {
+export function resumeParPlateforme(articles, plateformesCompte = PLATEFORMES_LOT_DEFAUT) {
   const out = {};
   for (const p of PLATEFORMES_LOT) {
     if (!plateformesCompte.includes(p)) continue;
@@ -135,7 +139,7 @@ export function partagerQuota(articles, { restantes = null, consomme = () => tru
 // Médianes mesurées en prod (audit 23/09, relevés du 01/10) : un dépôt Vinted,
 // Leboncoin ou Beebs ≈ 1 min à 1 min 40, eBay par l'extension ≈ 4 min, eBay par
 // nos serveurs ≈ 1 min (sans l'ordinateur). Plus 14 s de pause entre deux.
-const DUREE_DEPOT_S = { vinted: 60, leboncoin: 98, beebs: 60, ebay: 225 };
+const DUREE_DEPOT_S = { vinted: 60, leboncoin: 98, beebs: 60, ebay: 225, depop: 20 };
 const PAUSE_ENTRE_DEUX_S = 14;
 /** Minutes avec l'ordinateur allumé pour déposer `parPlateforme` = { pf: n }. */
 export function dureeEstimeeMin(parPlateforme, { ebayParServeur = false } = {}) {

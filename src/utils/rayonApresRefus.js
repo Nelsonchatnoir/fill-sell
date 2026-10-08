@@ -82,6 +82,8 @@ const CHAMPS = {
   vinted: { chemin: "categoryPath", id: null },
   leboncoin: { chemin: "lbcCategoryPath", id: null },
   beebs: { chemin: "beebsCategoryPath", id: null },
+  // depop (09/10) : le chemin AFFICHÉ (libellés) et l'identifiant qui part.
+  depop: { chemin: "depopCategoryLibelles", id: "depopCategoryId" },
   // eBay et Opla NAVIGUENT PAR IDENTIFIANT : un chemin sans lui n'y mène nulle part.
   ebay: { chemin: "ebayCategoryPath", id: "ebayCategoryId" },
   opla: { chemin: "oplaCategoryPath", id: "oplaCategoryCode" },

@@ -50,7 +50,7 @@ import { COIN_CONFIG_FALLBACK } from "../../components/ConversionModal";
 import { completerTexteDuVendeur, aCompleter as texteACompleter, RYTHME_LECTURE_VINTED_MS, RYTHME_LECTURE_EBAY_MS } from "../texteDuVendeur";
 import { propsStepperArticle } from "./propsArticle";
 import {
-  PLATEFORMES_LOT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
+  PLATEFORMES_LOT, PLATEFORMES_LOT_DEFAUT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
   dureeEstimeeMin, libelleDuree, bilanArticle, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
@@ -171,7 +171,7 @@ export default function LotPublication({
   const { userId, supabase, lang } = ctx;
   const en = lang === "en";
   const L = LIBELLE_PHASE[en ? "en" : "fr"];
-  const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT).filter((p) => PLATEFORMES_LOT.includes(p));
+  const plateformesCompte = (ctx.plateformesCompte ?? PLATEFORMES_LOT_DEFAUT).filter((p) => PLATEFORMES_LOT.includes(p));
   const fermer = (r) => {
     try { localStorage.removeItem(CLE_REPRISE_LOT(userId)); } catch { /* rien */ }
     onFermer?.(r);

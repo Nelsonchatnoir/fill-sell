@@ -21,10 +21,12 @@ export const SHARED_FIELD_KEYS = ["taille", "couleur", "matiere", "marque"];
 // réels (taille inclut leboncoin : leboncoin.js remplit la Pointure,
 // critère OBLIGATOIRE sur Mode>Chaussures, depuis fields.taille).
 export const SHARED_PROPAGATION = {
-  taille:  ["vinted", "beebs", "leboncoin", "ebay", "opla"],
-  couleur: ["vinted", "beebs", "ebay", "opla"],
+  // depop (09/10) : taille, couleur et marque comme les autres ; la matière
+  // ne part pas chez Depop (facultative, non envoyée par le connecteur).
+  taille:  ["vinted", "beebs", "leboncoin", "ebay", "opla", "depop"],
+  couleur: ["vinted", "beebs", "ebay", "opla", "depop"],
   matiere: ["vinted", "beebs", "leboncoin", "ebay", "opla"],
-  marque:  ["vinted", "beebs", "leboncoin", "ebay", "opla"],
+  marque:  ["vinted", "beebs", "leboncoin", "ebay", "opla", "depop"],
 };
 // GARDE : qui peut BLOQUER la publication si le champ manque — mémoire des
 // périmètres historiques (le repli statique est mort le 02/09, la garde est
@@ -99,4 +101,4 @@ export const GENERIC_PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin
 // Leboncoin la demande à chaque dépôt, Beebs réutilise LA MÊME valeur.
 export const PLATEFORMES_ADRESSE_LBC = ["leboncoin", "beebs"];
 
-export const PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+export const PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };

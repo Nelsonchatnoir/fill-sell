@@ -30,7 +30,7 @@ import { attenteBoutiqueLevable } from "../../supabase/functions/_shared/attente
 import { estArretUtilisateur, estGeleLivres } from "./publicationState.js";
 import { phraseMiseAJourExtension } from "./extensionAJour.js";
 
-export const PLATEFORMES_NOM = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+export const PLATEFORMES_NOM = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 export const nomPlateforme = (p) => PLATEFORMES_NOM[p] ?? (p ? String(p) : "");
 
 const objet = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});

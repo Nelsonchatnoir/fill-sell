@@ -13,7 +13,7 @@ import { pisteJob } from "../utils/barresJobs";
 import { attendConnexion } from "../utils/fileDesJobs";
 
 const DUREE_FIN_MS = 5000;
-const COURT = { vinted: "Vinted", leboncoin: "LBC", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+const COURT = { vinted: "Vinted", leboncoin: "LBC", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 
 function phrasesCourtes(piste, job, lang, ctx) {
   const fr = lang !== "en";

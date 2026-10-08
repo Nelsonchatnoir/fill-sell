@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // DEPOP ↔ TAXONOMIE INTERNE — ÉTAT, COULEURS, MATIÈRES, TAILLES ENFANT, MARQUE
-// (2026-10-08, préparation INERTE — compagnon de depopCategories.js)
+// (2026-10-08 ; BRANCHÉ le 09/10 — compagnon de depopCategories.js)
 // ═══════════════════════════════════════════════════════════════════════════
-// ⛔ AUCUN FICHIER DE L'APP, DU SERVEUR NI DE L'EXTENSION N'IMPORTE CE MODULE
-//    (cf. l'en-tête de depopCategories.js ; selftest:depop-mapping le garde).
+// ⛔ BRANCHÉ LE 09/10/2026 POUR LES SEULS COMPTES AUTORISÉS (cf. l'en-tête de
+//    depopCategories.js) : utils/depopPublication.js en tire les champs du job.
 //
 // PAS UNE DEUXIÈME MÉCANIQUE : chaque table a EXACTEMENT la forme de la
 // colonne qu'elle deviendra dans la table partagée, le jour du branchement

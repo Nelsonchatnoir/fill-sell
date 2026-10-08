@@ -119,7 +119,9 @@ console.log('4 bis. Retrait : « déjà absente » n\'est pas « retirée » tan
 
 console.log('5. Version');
 {
-  ok(/"version": "0\.6\.104"/.test(lire('chrome-extension/manifest.json')), 'manifeste en 0.6.104');
+  // (09/10) La 0.6.105 (Depop) PORTE ce correctif : on exige « 0.6.104 ou après ».
+  const v = (lire('chrome-extension/manifest.json').match(/"version": "0\.6\.(\d+)"/) ?? [])[1];
+  ok(Number(v) >= 104, 'manifeste en 0.6.104 ou après');
 }
 
 console.log(ko ? `\n${ko} contrôle(s) en échec.` : '\nTout est vert.');

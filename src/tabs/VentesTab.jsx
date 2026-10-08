@@ -86,7 +86,7 @@ const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue'
 // clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
 // (02/10 soir) opla ajoutée : la fenêtre « Vendre » envoie désormais le CODE
 // de la plateforme (« opla », « ailleurs »), plus le libellé.
-const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs',opla:'opla'};
+const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs',opla:'opla',depop:'depop'};
 
 // ── Constantes de volume (2026-08-11) ───────────────────────────────────────
 // Fenêtre de RENDU des ventes importées. N'a aucun effet sur la sélection ni sur

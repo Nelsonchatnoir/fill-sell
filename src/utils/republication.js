@@ -24,8 +24,8 @@ import { messagePlafondRepublicationGratuit } from './jourRemise';
 // Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
 // eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
 export const PLATEFORMES_REPUBLIABLES = PLATEFORMES_STOCK.filter((p) => p !== 'ebay');
-export const LABEL_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
-export const LABEL_COURT = { vinted: 'Vinted', leboncoin: 'LBC', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
+export const LABEL_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
+export const LABEL_COURT = { vinted: 'Vinted', leboncoin: 'LBC', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
 const REASON_SIGNATURE_RE = /function|signature|p_platform|schema cache|PGRST202/i;
 

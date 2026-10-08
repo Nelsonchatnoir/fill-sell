@@ -29,6 +29,7 @@
 //                   électronique refusée, consommables usagés), sur source
 //                   CERTAINE seulement — cf. _shared/beebs-interdits.js.
 import { vintedCategoryStatus } from "./vintedCategories";
+import { depopCategoryStatus } from "./depopCategories.js";
 import { lbcCategoryStatus } from "./lbcCategories";
 import { beebsCategoryStatus } from "./beebsCategories";
 import { ebayCategoryStatus } from "./ebayCategories";
@@ -52,6 +53,10 @@ import { verdictBeebsInterdit } from "../../supabase/functions/_shared/beebs-int
 export function getPlatformSupport(icon, article = null) {
   return {
     vinted: vintedCategoryStatus(icon),
+    // Depop (09/10) : la table icône → feuille par IDENTIFIANT (depopCategories.js).
+    // Comme ailleurs, seul « prohibited » grise une case (cf. categorieFermee) ;
+    // Depop n'en pose aucun : un rayon introuvable se DEMANDE.
+    depop: depopCategoryStatus(icon),
     leboncoin: lbcCategoryStatus(icon, article),
     // Beebs (2026-09-11) : "prohibited" quand une source CERTAINE (marque ou
     // état relevés sur Vinted, catalogue Vinted) tombe sous les règles du

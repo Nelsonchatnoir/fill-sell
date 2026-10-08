@@ -45,7 +45,8 @@ import { libellesChampsDemandes } from './etatsPublication';
 // invisible de tout l'écran Stock le jour de l'ouverture.
 // ⛔ Inerte pour qui n'a pas de job opla : aucun compteur ne bouge, aucune
 // ligne n'apparaît. L'AFFICHAGE, lui, passe par la liste d'en dessous.
-export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'];
+// depop (09/10) : même règle — une donnée, inerte pour qui n'a pas de job Depop.
+export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla', 'depop'];
 
 // ── OPLA EST UNE PLATEFORME COMME LES QUATRE AUTRES (2026-09-18) ────────────
 // Décision Nico, prise deux fois : ouverte à TOUT LE MONDE, sans condition —
@@ -83,7 +84,15 @@ export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'
 // les comptes au dressing Opla synchronisé gardent leur relevé
 // (plateformesDeReleve) — ventes vues sur Opla, copies retirées ailleurs.
 export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
-export const PLATEFORMES_STOCK_A_VENIR = ['opla'];
+// ── DEPOP (09/10/2026) : « à venir » comme Opla — elle n'est proposée QUE
+// quand App.jsx la déclare ouverte (rpc depop_autorise : coin_config
+// depop_ouvert = 1, resté à 0, ou bêta du compte). Pour tous les autres
+// comptes, plateformesDuCompte ne la rend jamais : aucune case, aucune chip,
+// aucun logo, aucune ligne de relevé.
+export const PLATEFORMES_STOCK_A_VENIR = ['opla', 'depop'];
+// Proposées, JAMAIS cochées d'office (le stepper les laisse décochées) : une
+// plateforme en essai ne part que sur un geste.
+export const PLATEFORMES_JAMAIS_PRECOCHEES = ['depop'];
 // Synchronisées seulement (relevé, ventes, retraits), jamais proposées.
 export const PLATEFORMES_SUIVIES_SEULEMENT = ['opla'];
 
@@ -124,7 +133,7 @@ export function plateformesDeLArticle(jobsAll, plateformesOuvertes = []) {
 }
 
 export const LIBELLE_PLATEFORME = {
-  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla',
+  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop',
 };
 
 // ── Le champ qui manque, dit en français ────────────────────────────────────

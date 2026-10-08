@@ -61,6 +61,8 @@ import { tailleAGarder } from "./tailleInventee";
 import { rayonContreditLaFiche } from "./rayonIncoherent";
 import { estFourreToutCatalogue } from "./fourreTout";
 import { VERDICTS_REFUS, aReprendreApresRefus, cheminsRefuses, familleVetoDe, rayonApresRefus, appliquerRayonApresRefus } from "./rayonApresRefus";
+import { champsDepop, tailleDepop } from "./depopPublication.js";
+import { depopGenreRequired } from "./depopCategories.js";
 
 // ── L'EMPREINTE — À QUELLES CONDITIONS UN PRÉ-CALCUL RESTE VALABLE ────────
 // Elle couvre TOUT ce que la résolution lit : les copies, leurs champs, les
@@ -224,7 +226,9 @@ export function textesFrDeLaPublication({ initialListing, edited }) {
 // Les quatre plateformes dont le rayon est posé par l'app (Opla : par le
 // serveur, et son pré-vol demande déjà). Un job sans son chemin ne part pas
 // (regles.plateformesSansChemin) : il reçoit la question à la place.
-export const PLATEFORMES_RAYON_A_DEMANDER = Object.freeze(["vinted", "leboncoin", "beebs", "ebay"]);
+// Depop (09/10) : son rayon se pose par IDENTIFIANT (icône + genre) ; sinon,
+// la même question — la personne choisit parmi les feuilles du formulaire.
+export const PLATEFORMES_RAYON_A_DEMANDER = Object.freeze(["vinted", "leboncoin", "beebs", "ebay", "depop"]);
 /** Le job de cette plateforme n'a-t-il AUCUN rayon ? (pur) — `categorie_a_choisir`
  *  de Beebs n'en est pas un : c'était « l'extension demandera », c'est désormais
  *  l'app qui demande, avant le dépôt. */
@@ -331,11 +335,13 @@ export async function resoudrePublication({
     // 🌸 + Mixte résout un vrai rayon eBay (Parfums mixtes) : pas touché.
     if (platform === "ebay") return ebayGenreRequired(icon) && !getEbayCategoryId(icon, g);
     if (platform === "beebs") return beebsGenreRequired(icon);
+    // Depop (09/10) : le DÉPARTEMENT (Homme, Femme, Enfants) vient du genre.
+    if (platform === "depop") return depopGenreRequired(icon);
     return false;
   };
   let autoGenre = null;
   let autoGenreDefaut = false; // « Femme » posé faute de mieux — jamais servi à Opla
-  if (["vinted", "ebay", "beebs", "opla"].some(genreUnresolved)) {
+  if (["vinted", "ebay", "beebs", "opla", "depop"].some(genreUnresolved)) {
     autoGenre = [
       edited.vinted?.platform_fields?.genre,
       edited.ebay?.platform_fields?.genre,
@@ -363,7 +369,9 @@ export async function resoudrePublication({
   }
   // Le genre servi à la résolution de catégorie : le défaut « Femme » vaut
   // pour Vinted/eBay/Beebs (rayon obligatoire), pas pour Opla.
-  const genrePourCategorie = (platform) => (platform === "opla" && autoGenreDefaut ? "" : autoGenre) || "";
+  // Depop (09/10) : même règle qu'Opla — un département posé sur un « Femme »
+  // par défaut serait un rayon faux ; mieux vaut la question du rayon.
+  const genrePourCategorie = (platform) => ((platform === "opla" || platform === "depop") && autoGenreDefaut ? "" : autoGenre) || "";
 
   // ── Garde-fou d'insert (2026-07-30) : aucune valeur manifestement
   // incomplète ou non voulue ne part en prod sans trace. Deux classes
@@ -1294,6 +1302,26 @@ export async function resoudrePublication({
       }
       if (pf.matiere) pf.matieres = [String(pf.matiere).trim()].filter(Boolean);
     }
+    if (platform === "depop") {
+      // ── DEPOP (09/10/2026) — les champs du connecteur (content-scripts/
+      // depop.js), posés par IDENTIFIANT (utils/depopPublication.js) : rayon
+      // [département, groupe, type] depuis l'icône + le genre — JAMAIS un
+      // libellé ni resolve-categorie (faiblesse 3) ; sans rayon sûr, la
+      // question « rayon à choisir » (fin de fonction). État, couleurs, marque
+      // (« Sans marque » → « Other » chez Depop), genre enfant, frais de port :
+      // ce qui manque n'est pas inventé, le connecteur le DEMANDE.
+      const genreDepop = (pf.genre && pf.genre !== "Mixte") ? pf.genre : genrePourCategorie("depop");
+      const { champs } = champsDepop({ icon: iconeArticle, genre: genreDepop, pf });
+      delete champs.depopTaille; // posée après la garde des tailles inventées
+      Object.assign(pf, champs);
+      if (champs.depopCategoryId) {
+        // Les libellés, pour AFFICHER le rayon (carte Rayon) — rien d'autre.
+        try {
+          const { FEUILLES } = await import("./arbres/depopFeuilles.js");
+          pf.depopCategoryLibelles = FEUILLES.find((f) => f.id === champs.depopCategoryId)?.chemin ?? champs.depopCategoryPath;
+        } catch { pf.depopCategoryLibelles = champs.depopCategoryPath; }
+      }
+    }
     // ── Tailles ENFANT (2026-07-15) : conversion canonique → libellé
     // EXACT de la plateforme (référentiel childSizes.js, relevé DOM réel
     // docs/sizes-baby-child-raw.txt). Les copies affichées gardent la
@@ -1338,6 +1366,12 @@ export async function resoudrePublication({
         pf.taille_ecartee = { valeur: pf.taille, motif: verdict.motif, le: new Date().toISOString() };
         delete pf.taille;
       }
+    }
+    // Depop (09/10) : la taille part APRÈS la garde des tailles inventées —
+    // une taille écartée ci-dessus ne part pas non plus chez Depop.
+    if (platform === "depop") {
+      const t = tailleDepop(pf.taille, pf.depopCategoryPath);
+      if (t) pf.depopTaille = t; else delete pf.depopTaille;
     }
     if (pf.taille) {
       const converted = toPlatformChildSize(pf.taille, platform, {

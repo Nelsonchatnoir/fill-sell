@@ -75,7 +75,7 @@ export const EXTENSION_MUETTE_MS = 5 * 60 * 1000;
 
 // Noms propres : ils ne se traduisent pas.
 export const NOMS_PLATEFORME = {
-  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla',
+  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop',
 };
 
 /**
@@ -91,6 +91,7 @@ export const ADRESSE_CONNEXION = {
   beebs: 'https://www.beebs.app/',
   ebay: 'https://www.ebay.fr/',
   opla: 'https://www.opla.co/',
+  depop: 'https://www.depop.com/login/',
 };
 
 // ══ SUR LE WEB, LE BOUTON EST UN LIEN. RIEN D'AUTRE. ══════════════════════

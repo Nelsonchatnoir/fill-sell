@@ -20,7 +20,7 @@ import { FILTRE_SANS_VEILLE } from './declencheursReleve.js';
 // L'AFFICHAGE par compte passe par la prop `plateformes` de CarteAnnoncesEnLigne
 // (plateformesDuCompte, calculée par StockTab) — ceci est le plafond.
 export const PLATEFORMES_RELEVE = PLATEFORMES_STOCK.filter((p) => p !== 'vinted');
-export const LABEL_RELEVE = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
+export const LABEL_RELEVE = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', depop: 'Depop' };
 
 // L'interrupteur, FAIL-CLOSED : clé absente, illisible, lecture ratée → fermé.
 export async function lireSyncMultiOuverte(userId) {

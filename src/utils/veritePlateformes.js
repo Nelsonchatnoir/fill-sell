@@ -34,7 +34,9 @@ export const ETATS = Object.freeze({
   A_VERIFIER: 'a_verifier',
 });
 
-export const PLATEFORMES_VERITE = ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla'];
+// depop (09/10) : le serveur (plateformes_verite) ne la rend qu'aux comptes
+// où elle est ouverte — absente ailleurs, elle ne s'affiche jamais.
+export const PLATEFORMES_VERITE = ['vinted', 'leboncoin', 'ebay', 'beebs', 'opla', 'depop'];
 
 // Une lecture partagée : les Réglages, le Stock et le stepper ouvert
 // par-dessus montent chacun le hook — une seule requête en vol à la fois, et
