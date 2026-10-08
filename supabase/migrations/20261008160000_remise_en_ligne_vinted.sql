@@ -74,7 +74,10 @@ $verif$;
 --     en ligne (ligne absente = 0 : rien ne fusionne sans décision) ; 1 = armée.
 --   vente_garde_remise_en_ligne : 0 = coupée ; 1 = armée ; ligne absente = armée
 --     (la garde protège : elle refuse une vente, elle n'en écrit aucune).
--- Les deux sont posés à 0 : RIEN ne change tant que Nico ne les arme pas.
+-- Les deux sont posés à 0 : la passe et la vente ne changent pas tant que Nico ne
+-- les arme pas. Seul effet immédiat de la migration (point 3) : une fusion faite
+-- À LA MAIN entre la fiche d'une annonce supprimée et celle de sa remise en ligne
+-- donne l'annonce vivante à la fiche gardée (comme pour « closed » depuis le 25/09).
 WITH ins AS (
   INSERT INTO public.coin_config (key, value, updated_at)
   VALUES ('rapprochement_remise_en_ligne', 0, now()), ('vente_garde_remise_en_ligne', 0, now())
