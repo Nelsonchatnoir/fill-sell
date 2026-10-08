@@ -188,9 +188,18 @@ function clesDe(l) {
   for (let i = 0; i < 8; i++) out.push(((8 + i) << 16) | (d[i] << 8) | p[i]);
   return out;
 }
-export function candidatsDe(N) {
+// (08/10 nuit) `actifs` : en mode normal, seules les paires qui touchent une
+// annonce encore à décider comptent (planifier ignore les autres groupes) ; on
+// ne les construit donc même pas — 7373c96c (1 603 nœuds, 8 204 photos de
+// catalogue quasi identiques, 78 991 arêtes) prenait 11 s de passe ; sa synchro
+// quotidienne n'a que ses nouvelles annonces à ranger. Le compte des concurrents
+// (ambigu_plusieurs) ne voit alors plus une annonce déjà rattachée de la même
+// plateforme : c'est la garde de la base (« deux exemplaires », une annonce par
+// plateforme et par article) qui tient cette ligne, jamais une fusion à tort.
+export function candidatsDe(N, actifs = null) {
   const paires = new Set();
   const cle = (i, j) => (i < j ? i * 100000 + j : j * 100000 + i);
+  const retenue = (i, j) => !actifs || actifs.has(i) || actifs.has(j);
   const tiroirs = new Map();
   for (let i = 0; i < N.length; i++) {
     for (const ph of N[i].emps) for (const l of ph.lectures) {
@@ -201,7 +210,7 @@ export function candidatsDe(N) {
     const n = t.length / 2;
     if (n < 2 || n > TIROIR_MAX) continue;
     for (let a = 0; a < t.length; a += 2) for (let b = a + 2; b < t.length; b += 2) {
-      if (t[a] === t[b]) continue;
+      if (t[a] === t[b] || !retenue(t[a], t[b])) continue;
       const k = cle(t[a], t[b]);
       if (paires.has(k)) continue;
       if (dLectureIdx(t[a + 1], t[b + 1]) <= COLLISION_MAX) paires.add(k);
@@ -229,6 +238,7 @@ export function candidatsDe(N) {
       let c = 0; const A = N[i].je, B = N[j].je;
       if (A.size <= B.size) { for (const m of A) if (B.has(m)) c++; } else { for (const m of B) if (A.has(m)) c++; }
       const nb = B.size, petit = Math.min(na, nb);
+      if (!retenue(i, j)) continue;
       if (c / (na + nb - c) >= 0.59 || (c >= 3 && c === petit)) paires.add(cle(i, j));
     }
   }
@@ -238,7 +248,7 @@ export function candidatsDe(N) {
 }
 
 // ── LA PASSE ────────────────────────────────────────────────────────────────
-export function rapprocher(N, { S = SEUILS, forces = [] } = {}) {
+export function rapprocher(N, { S = SEUILS, forces = [], actifs = null } = {}) {
   POIDS = idf(N);
   const parPf = new Map(); for (const n of N) { if (!parPf.has(n.pf)) parPf.set(n.pf, []); parPf.get(n.pf).push(n); }
   const aretes = [];
@@ -253,7 +263,7 @@ export function rapprocher(N, { S = SEUILS, forces = [] } = {}) {
   //      proche » (jac ≥ 0,6) ou « titre inclus » (cont = 1, ≥ 3 mots) soit possible.
   //    Les paires hors candidates sont « rien » par construction (evaluer ne
   //    rend fort/doute qu'avec une photo ≤ 12 ou un titre très proche).
-  const cand = candidatsDe(N);
+  const cand = candidatsDe(N, actifs);
   for (const [i, j] of cand) {
     const x = N[i], y = N[j];
     if (x.pf === y.pf) continue;

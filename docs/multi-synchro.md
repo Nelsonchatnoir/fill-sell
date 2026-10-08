@@ -35,6 +35,13 @@ selftest (Node) : `moteur.js` (+ `texte.js`, `photos.js`, `idf.js`, `passe.js`).
   rattrapage du 07/10 et les imports automatiques sont rejugeables (réparation).
 - **Groupes** par arêtes fortes (preuves d'abord). Un groupe sans Vinted qui
   garde un doute → « à vérifier » en entier ; sinon nouveau.
+- **Paires candidates** (`candidatsDe`) : tiroirs de pHash (4 × 16 bits) et
+  dHash+pHash joints (8 octets), plus un index des mots des titres. Depuis le
+  08/10 nuit, une collision de tiroir ne retient la paire que si les deux
+  lectures qui collisionnent sont à ≤ 16 l'une de l'autre (distance exacte) :
+  de63ca45 (5 plateformes, 785 nœuds) passait de 114 530 paires candidates et
+  3,2 s à 273 ms ; Corinne 452 → 155 ms, plan identique à un doute près (devenu
+  entrée au stock). Une fonction edge n'a que 2 s de CPU par requête.
 
 ## La passe (`rapprochement` v3, `rapprochement_v3_*`)
 

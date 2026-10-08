@@ -39,7 +39,13 @@ export function passe(donnees, empreintes, { mode = 'normal' } = {}) {
   const photosDe = (urls) => urls.map((u) => photoDepuisEmpreinte(empreintes.get(u))).filter(Boolean);
   const N = construireNoeuds(donnees, photosDe);
   const forces = forcesDe(donnees);
-  const R = rapprocher(N, { forces });
+  // mode normal : seules les annonces encore sans article (ni décidées, ni
+  // ignorées) ont une décision à prendre — les paires qui ne les touchent pas
+  // ne sont pas construites (voir candidatsDe).
+  const actifs = mode === 'normal'
+    ? new Set(N.map((n, i) => (n.id.startsWith('A') && !n.ref.inventaire_id ? i : -1)).filter((i) => i >= 0))
+    : null;
+  const R = rapprocher(N, { forces, actifs });
   const decisions = planifier(donnees, N, R, { mode });
   // les relevés non probants : ignorés, comme avant (jamais une création)
   for (const a of donnees.annonces ?? []) {
