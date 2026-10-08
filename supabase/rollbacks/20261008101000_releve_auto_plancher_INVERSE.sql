@@ -1,9 +1,8 @@
--- INVERSE de 20261008101000_releve_auto_plancher.sql (08/10/2026)
--- Retire la garde ; la table des refus et la clé de réglage sont gardées
--- (journal ; la clé à 0 coupe aussi la garde si on la remettait).
+-- INVERSE de 20261008101000_releve_auto_plancher.sql, version révisée (08/10/2026)
+-- Retire la garde du veilleur ; la table des refus est gardée (journal).
 BEGIN;
-DROP TRIGGER IF EXISTS garde_releve_auto_plancher ON public.vinted_sync_runs;
-DROP FUNCTION IF EXISTS public.garde_releve_auto_plancher();
+DROP TRIGGER IF EXISTS garde_releve_veilleur_cause ON public.vinted_sync_runs;
+DROP FUNCTION IF EXISTS public.garde_releve_veilleur_cause();
+DROP FUNCTION IF EXISTS public.releve_veilleur_decision(uuid, text);
 -- À la main si besoin : DROP TABLE public.releves_auto_refuses;
---                       DELETE FROM public.coin_config WHERE key = 'releve_auto_plancher_min';
 COMMIT;
