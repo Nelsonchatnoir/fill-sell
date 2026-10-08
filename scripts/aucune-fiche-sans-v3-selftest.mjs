@@ -33,7 +33,7 @@ let ko = 0;
 const ok = (c, quoi) => { if (!c) { ko++; console.log(`  ✗ ${quoi}`); } else console.log(`  ✓ ${quoi}`); };
 const MIGRATION = 'supabase/migrations/20261008130000_aucune_fiche_de_releve_sans_v3.sql';
 // Date d'application du correctif en prod (borne des contrôles --prod).
-const APPLIQUE_LE = '2026-10-08T13:00:00Z';
+const APPLIQUE_LE = '2026-10-08T11:15:00Z'; // 20261008130000 appliquée vers 11:18 UTC (13:18 Paris)
 
 const fichiers = (dir, ext) => {
   const out = [];
