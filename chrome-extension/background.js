@@ -24734,6 +24734,60 @@ async function autoCaptureEtRepublier(cand, token, userId) {
   };
 }
 
+// ── (0.6.104) BEEBS : « DÉJÀ ABSENTE » N'EST PAS « RETIRÉE » TANT QUE BEEBS MODÈRE ─
+// 04/10 : le retrait de 34109673 (publiée 1 h 30 plus tôt, à 999 €) a été clos
+// « déjà absente » — elle n'était ni « en ligne » ni « en vérification » — puis
+// Beebs l'a validée : en ligne du 06 au 08/10, alors que le retrait était
+// « fait ». Le 08/10, deux annonces neuves (34132220, 34132869) sont sorties de
+// « en vérification » sans être en ligne : Beebs garde les annonces qu'elle
+// examine dans un état invisible des deux onglets (toutes les annonces ≥ 500 €
+// de FillSell sur 60 jours : 7 sur 7). Une vente faite ailleurs pendant ce
+// temps laisserait l'annonce en ligne à la fin de l'examen : double vente.
+// LA RÈGLE : une annonce Beebs absente des deux onglets n'est « déjà retirée »
+// que si elle a été VUE en ligne (relevé, ou vérification d'un dépôt), ou si
+// son dépôt a plus de 72 h. Sinon le retrait reste en file, SANS essai
+// consommé, relu à 1 h, 3 h, 6 h puis toutes les 12 h : dès qu'elle apparaît,
+// le passage suivant la retire (bouton « Supprimer l'annonce » sur sa page).
+const BEEBS_MODERATION_MAX_MS = 72 * 3600_000;
+const BEEBS_MODERATION_RELECTURES_MIN = [60, 180, 360, 720];
+async function beebsAbsenteParModeration(job, accessToken) {
+  try {
+    const id = String(job.platform_listing_id ?? "").trim()
+      || (String(job.listing_url ?? "").match(/\/fr\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+    const uid = decodeJwtSub(accessToken);
+    if (!/^\d+$/.test(id) || !uid) return false;
+    const vues = await restRequest(
+      `annonces_plateforme?user_id=eq.${uid}&platform=eq.beebs&listing_id=eq.${id}&statut_plateforme=eq.en_ligne&vu_le=not.is.null&select=id&limit=1`,
+      accessToken,
+    );
+    if (Array.isArray(vues) && vues.length) return false;           // vue en ligne par un relevé
+    const depots = await restRequest(
+      `cross_post_jobs?user_id=eq.${uid}&platform=eq.beebs&platform_listing_id=eq.${id}` +
+      `&action=in.(publish,republish)&select=published_at,vu_en_ligne_le&order=published_at.desc&limit=5`,
+      accessToken,
+    );
+    if (!Array.isArray(depots) || !depots.length) return false;      // pas un dépôt FillSell : rien à attendre
+    if (depots.some((d) => d?.vu_en_ligne_le)) return false;         // vue en ligne après le dépôt
+    const publieLe = Date.parse(String(depots[0]?.published_at ?? ""));
+    if (!Number.isFinite(publieLe) || Date.now() - publieLe > BEEBS_MODERATION_MAX_MS) return false;
+    const pf = { ...(job.platform_fields ?? {}) };
+    const n = (Number(pf.beebs_en_moderation?.n) || 0) + 1;
+    const delaiMin = BEEBS_MODERATION_RELECTURES_MIN[Math.min(n - 1, BEEBS_MODERATION_RELECTURES_MIN.length - 1)];
+    pf.beebs_en_moderation = { n, depuis: pf.beebs_en_moderation?.depuis ?? new Date().toISOString(), dernier: new Date().toISOString(), publiee_le: new Date(publieLe).toISOString() };
+    pf.next_action_after = new Date(Date.now() + delaiMin * 60_000).toISOString();
+    delete pf.processing_since;
+    console.warn(`[background] Job ${job.id} : annonce Beebs ${id} absente des deux onglets mais jamais vue en ligne (dépôt du ${new Date(publieLe).toISOString()}) — Beebs l'examine encore : retrait gardé, nouvelle vérification dans ~${delaiMin} min`);
+    await updateJobStatus(accessToken, job.id, "pending", {
+      error: `L'annonce n'est pas encore visible sur Beebs (Beebs l'examine encore) : FillSell la retirera dès qu'elle apparaît. Nouvelle vérification automatique dans ~${delaiMin} min.`,
+      platform_fields: pf,
+    });
+    return true;
+  } catch (e) {
+    console.warn(`[background] Job ${job.id} : visibilité Beebs illisible (${String(e?.message ?? e)}) — verdict « déjà retirée » gardé`);
+    return false;
+  }
+}
+
 async function processDeleteJob(job, accessToken) {
   console.log(`[background] Job ${job.id} → ${job.platform} (DELETE)`);
 
@@ -25017,6 +25071,12 @@ async function processDeleteJob(job, accessToken) {
       }
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
+    } else if (result?.success && job.platform === "beebs" && result.preuveRetrait?.moment === "deja_absente"
+               && await beebsAbsenteParModeration(job, accessToken)) {
+      // (0.6.104) Jamais « déjà retirée » pour une annonce que Beebs retient
+      // encore en modération (cf. beebsAbsenteParModeration) : le retrait
+      // reste en file, sans essai consommé, et retente quand elle apparaît.
+      return { status: "retry", error: "annonce Beebs pas encore visible (modération) — retrait à la prochaine vérification" };
     } else if (result?.success) {
       console.log(`[background] Job ${job.id} : annonce ${job.platform} supprimée`);
       // (03/10) La clôture porte SA preuve (Beebs : « Mes annonces » relue), et
