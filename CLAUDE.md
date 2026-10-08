@@ -9,24 +9,23 @@ terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir �
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
-- **⛔ VENTES PROUVÉES : PAS AUTOMATIQUES EN PROD (08/10 nuit, audit)** : la
-  vente sur preuve « sold » (GO du 28/09, `enregistrer_ventes_prouvees`) n'a
-  tourné que de 16:42 à 16:46 le 28/09 (appel dans get-pending-jobs retiré par
-  précaution ; lien avec la latence jamais démontré, cause mesurée = cron 17).
-  Depuis, une vente Vinted prouvée ATTEND LE CLIC et ses copies restent en
-  vente ailleurs (90 ventes, 24 comptes, au 08/10 ; seul eBay est automatique).
-  Correctif PRÊT, NON APPLIQUÉ (feu vert) : cron SQL `ventes-prouvees-2min`
-  (`ventes_prouvees_tick` : index partiel, verrou, 25 / 4 s par passage,
-  preuves postérieures à l'armement seulement, vente par
-  `enregistrer_vente_atomique` inchangée) — migrations **20261008233000**
-  (index, CONCURRENTLY, seule) puis **20261008233100** ; veille-cpu et
-  ops-digest lisent `ventes_prouvees_veille()` (à déployer) ; arriéré :
-  `scripts/reparations/20261008_rattrapage_ventes_prouvees.mjs` (à blanc par
-  défaut ; retraits irréversibles). **Vérifier l'état réel** :
-  `select public.ventes_prouvees_veille();` (fonction absente = non branchée) et
-  `cron.job` `ventes-prouvees-2min`. Rapport
-  `docs/enquetes/ventes-prouvees-0810/RAPPORT.md` ; banc `npm run banc:ventes-prouvees`
-  (Postgres jetable), selftest `selftest:ventes-prouvees`.
+- **⛔ VENTES PROUVÉES : AUTOMATIQUES DEPUIS LE 08/10 23:40 (GO de Nico)** : la
+  vente sur preuve « sold » (GO du 28/09) n'avait tourné que de 16:42 à 16:46 le
+  28/09 (appel retiré de get-pending-jobs par précaution ; cause mesurée de la
+  latence = cron 17) ; du 28/09 au 08/10, une vente Vinted prouvée attendait le
+  clic. Rétablie : cron SQL `ventes-prouvees-2min` (job 52, minutes impaires,
+  `ventes_prouvees_tick` : index partiel, verrou, 25 / 4 s par passage, preuves
+  postérieures à l'armement `ventes_prouvees_auto_depuis` = 08/10 23:40:01,
+  vente par `enregistrer_vente_atomique` inchangée) — migrations
+  **20261008233000** + **20261008233100 APPLIQUÉES** ; veille-cpu **v2** (alerte)
+  et ops-digest **v35** lisent `ventes_prouvees_veille()`. Arriéré RATTRAPÉ le
+  08/10 23:41-23:46 : 90 ventes, 24 comptes, 27 retraits armés, 5 questions
+  Opla, **0 mail, 0 notification** (notes classées dans la transaction ;
+  journal `_rattrapage_0810_ventes_prouvees`, inverse prêt). Restent : 5 « à
+  vérifier » (rapport à blanc § 4) et les signaux « sold » sans preuve (jamais
+  une vente). Vérifier : `select public.ventes_prouvees_veille();`,
+  `ventes_prouvees_passages`. Rapport `docs/enquetes/ventes-prouvees-0810/RAPPORT.md`
+  (§ 8) ; banc `npm run banc:ventes-prouvees`, selftest `selftest:ventes-prouvees`.
 - **⛔ MULTI-SYNCHRO (08/10 nuit, règle de Nico du 07/10)** : un appui sur
   « Synchroniser » relève TOUTES les plateformes, le stock arrive DÉJÀ fusionné ;
   moteur v3 `_shared/rapprochement/` (jamais la photo seule, jamais le titre

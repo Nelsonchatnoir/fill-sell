@@ -1,5 +1,5 @@
 {
- "produit_le": "2026-10-08T21:17:29.525Z",
+ "produit_le": "2026-10-08T21:39:30.914Z",
  "mode": "a_blanc",
  "lecture_seule": true,
  "regle": "sélection lue dans supabase/migrations/20261008233100_ventes_prouvees_automatiques.sql (ventes_prouvees_a_enregistrer, sans borne d’armement)",

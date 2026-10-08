@@ -30,7 +30,13 @@ déployer, aucun mail. Rapport : `docs/enquetes/ventes-prouvees-0810/RAPPORT.md`
   reprise de clôture multi-synchro, incident Angel, état (section « 08/10 nuit —
   VENTES PROUVÉES »).
 
-## Ce qui attend le feu vert nommé de Nico, dans l'ordre
+## FAIT le 08/10 → 09/10 nuit (GO de Nico) : étapes 1 à 4 ci-dessous
+
+Index + migration appliqués (23:40), ops-digest v35 et veille-cpu v2 déployées,
+rattrapage appliqué (90 ventes, 24 comptes, 0 mail, 0 notification). Reste :
+les retraits en attente d'extension (rapport § 8) et l'étape 5.
+
+## Les gestes (historique)
 
 1. `npx supabase db query --linked -f supabase/migrations/20261008233000_ventes_prouvees_index.sql`
    puis `npx supabase migration repair --linked --status applied 20261008233000`.

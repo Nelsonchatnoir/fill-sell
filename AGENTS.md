@@ -348,7 +348,7 @@ qui survit à ça, c'est du code.
   confirmation au cycle suivant (règle Vinted du 09/08, étendue aux 5
   plateformes par la 0.6.72). Un relevé **vide** ou **incomplet** ne prouve
   AUCUNE disparition.
-- Vente : grâce 4 h ; ⛔ Auto : eBay seul ; Vinted « sold » prouvé = clic depuis le 28/09 (fix mig 20261008233100 non appliqué).
+- Vente : grâce 4 h ; ⛔ Auto : eBay + Vinted « sold » prouvé (cron `ventes-prouvees-2min`, mig 20261008233100, 08/10).
 - ⛔ **Un relevé tient en 5 minutes** (03/10, Nico) : sans progression il rend
   la place ; un relevé lent qui avance n'est jamais coupé ; un arrêt ne conclut
   rien et laisse sa raison dans les journaux, jamais à l'écran.

@@ -1,6 +1,6 @@
 # Rattrapage des ventes prouvées « sold » — À BLANC (lecture seule)
 
-Produit le 08/10/2026 23:17:29 (heure de Paris) par
+Produit le 08/10/2026 23:39:30 (heure de Paris) par
 `node scripts/reparations/20261008_rattrapage_ventes_prouvees.mjs` — **rien n'a été écrit** (`set transaction read only`).
 Règle : la sélection du cron, lue dans la migration 20261008233100 (preuve « sold » seulement). Chaîne simulée :
 retrait des copies prouvées, question « Déjà vendu ? » pour les copies non prouvées, publications en attente arrêtées.

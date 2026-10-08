@@ -203,3 +203,44 @@ exécutée pour de vrai par le banc, S1, S10, S12). Résultat du 08/10 23:13 :
    d'abord (bd380fbf, 68e350f0, 53efea05, 3424a25d) :
    `node scripts/reparations/20261008_rattrapage_ventes_prouvees.mjs --appliquer --feu-vert-nico --user <uuid>`.
 5. Les 5 « à vérifier » et les 23 « sans preuve » : à trancher (rapport § 4 et § 5).
+
+## 8. Application (GO de Nico, 08/10 → 09/10 nuit)
+
+- **23:40** : index `cross_post_jobs_signal_vendu_idx` construit (CONCURRENTLY, valide),
+  puis migration 20261008233100 appliquée ; les deux inscrites (`migration repair`).
+  Armement `ventes_prouvees_auto_depuis` = 08/10 23:40:01 (journalisé). Cron
+  `ventes-prouvees-2min` = job 52. CPU avant : 5,9 %.
+- **Déploiements** : ops-digest v34 → **v35**, veille-cpu v1 → **v2**, `verify_jwt`
+  false avant et après (relu par `functions list`). veille-cpu lit la veille :
+  `{"lue":true,"anomalies":[]}` à 23:44 et 23:46.
+- **Cron** : passages à 23:41, 23:43, 23:45, 23:47… tous « fait », 85 ms en
+  moyenne, 189 ms au plus ; 0 candidate (aucune preuve neuve depuis l'armement) ;
+  `cron.job_run_details` « succeeded » ; 0 alerte ventes, 0 alerte CPU, CPU max
+  10,3 % pendant tout le rattrapage [mesuré].
+- **Rattrapage** (`--appliquer --feu-vert-nico`), urgents d'abord :
+  1. 3424a25d seul (23:41:50) → preuve : 0 mail, 0 note « Vendu ! », 0 échec de
+     mail après 3 passages du cron push-ventes (23:42, 23:43, 23:44) [mesuré] ;
+  2. les 11 autres urgents (53efea05, 68e350f0, bd380fbf ; 23:45) → 0 mail, 0 note ;
+  3. le reste (78, 23:46) → 3 notes « Vendu ! » nées dans la transaction (signaux
+     récents) classées `ignoree` / `rattrapage_ventes_prouvees_0810` avant tout
+     envoi ; sur les 24 comptes : **0 mail**, 0 note envoyable [mesuré, 23:46].
+  Neutralisation ajoutée au script avant l'application : les notes nées dans la
+  transaction du lot, pour les fiches du lot seulement (prouvé au banc, S12, 60/60).
+- **Bilan** : **90 ventes, 24 comptes** ; **27 retraits armés** (Leboncoin 13, Opla 7,
+  eBay 6, Beebs 1) ; **5 questions « Déjà vendu ? »** Opla (copies non prouvées,
+  jamais retirées sans réponse) ; 2 publications en attente arrêtées.
+  Journal `public._rattrapage_0810_ventes_prouvees` ; sauvegardes
+  `_backup_0810_ventes_prouvees_*` ; inverse `scripts/reparations/20261008_rattrapage_ventes_prouvees_INVERSE.sql`.
+- **Non touchés** (consigne de Nico) : les signaux « sold » dont le dernier relevé
+  est « active » et tous les signaux sans preuve (23) ; les 5 « à vérifier »
+  (4cd4d9ae, 66ffd657, a208137a, b6005a59, bf85d176).
+- **Retraits à 00:05** [mesuré] : **13 faits / 27** — Leboncoin 9/13, eBay 4/6.
+  Reste : eBay 2 « reportés » par le worker API (offre déjà hors ligne, vente non
+  prouvée : non achetables) ; Leboncoin 4, Opla 6, Beebs 1 en attente de
+  l'extension de leur compte (68e350f0 vue le 08/10 05:54 ; bd380fbf le 08/10
+  18:39 ; 6f41de45 le 04/10 ; e847ef68 le 30/09) ; Opla 1 en « À régler »
+  `opla_acces` (63ad8597 : autoriser Opla). Les retraits Opla restent permis
+  après la sortie du 10/10 (règle A4). 5 questions Opla sans réponse.
+- **Contrôle à 00:05** : 24 passages du cron push-ventes depuis le début, toujours
+  0 mail et 0 note envoyée sur les 24 comptes ; cron des ventes : 13 passages,
+  tous « fait », 60 ms en moyenne ; 0 alerte ; CPU max 10,3 %.
