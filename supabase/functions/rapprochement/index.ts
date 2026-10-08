@@ -57,6 +57,19 @@
 // nées depuis la dernière passe (fiches_main_a_juger) sont datées
 // (fiches_main_juge_le) comme les fiches Vinted. Inerte tant que la lecture ne
 // rend pas `fiches_main_actif` (migration 20261008150000).
+//
+// ⛔ LA REMISE EN LIGNE VINTED (v15, 08/10 soir, cas Bebertdeals).
+// Une annonce Vinted SUPPRIMÉE puis republiée par la personne sous un nouvel
+// identifiant faisait une fiche neuve ; la fiche d'origine (copies, prix
+// d'achat) restait en stock sur une annonce morte (1 025 fiches pour 403
+// articles chez Bebertdeals ; des copies Leboncoin d'articles déjà vendus).
+// _shared/rapprochement/remises-en-ligne.js : deux fiches Vinted de la même
+// boutique jamais en ligne ensemble, mêmes photos (≥ 2 à ≤ 4) et titre en
+// accord fort, aucun rival → la nouvelle se fond dans la plus ancienne
+// (l'identité Vinted vivante la suit) ; un doute → la question. Inerte tant
+// que la lecture ne rend pas `remise_en_ligne_actif` (migration 20261008160000
+// + coin_config rapprochement_remise_en_ligne = 1). { remises: "toutes" } :
+// le rattrapage du stock existant (décision de Nico).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { urlsDe, manquantesDe, passe } from "../_shared/rapprochement/passe.js";
@@ -85,7 +98,7 @@ serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!secret || !attendu || secret !== attendu) return json({ error: "unauthorized" }, 401);
 
-  let body: { user_id?: unknown; relance?: unknown; reparer?: unknown; simuler?: unknown; precedent?: unknown; passages?: unknown; fiches_main?: unknown } = {};
+  let body: { user_id?: unknown; relance?: unknown; reparer?: unknown; simuler?: unknown; precedent?: unknown; passages?: unknown; fiches_main?: unknown; remises?: unknown } = {};
   try { body = await req.json(); } catch { /* corps vide : le filet */ }
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -96,6 +109,9 @@ serve(async (req) => {
   // (08/10 soir) « fiche à la main face à une fiche Vinted » : la passe normale
   // juge les nouvelles ; { fiches_main: "toutes" } (rattrapage, Nico) tout le stock.
   const porteeMain = body.fiches_main === "toutes" ? "toutes" : "nouvelles";
+  // (08/10 soir) la remise en ligne Vinted : la passe normale juge les nouvelles
+  // fiches du dressing ; { remises: "toutes" } (rattrapage, Nico) tout le stock.
+  const porteeRemises = body.remises === "toutes" ? "toutes" : "nouvelles";
   // Le rang de cette invocation dans sa chaîne de relances (true = 1, compat).
   const rang = body.relance === true ? 1 : Math.max(0, Number(body.relance) || 0);
 
@@ -224,7 +240,7 @@ serve(async (req) => {
       await etat(user, { etat: "decision", photos_manquantes: manquantes.length });
       const mode = reparer ? "reparation" : "normal";
       const t0 = Date.now();
-      const { decisions, bilan: b } = passe(donnees, map, { mode, fichesMain: porteeMain });
+      const { decisions, bilan: b } = passe(donnees, map, { mode, fichesMain: porteeMain, remises: porteeRemises });
       parCompte.passe = b; parCompte.decisions = decisions.length; parCompte.photos_sans_empreinte = manquantes.length;
       if (simuler) { parCompte.etat = "simule"; parCompte.plan = decisions.slice(0, 2000); bilan.push(parCompte); continue; }
       // ── E. L'écriture, par lots ──
@@ -285,7 +301,7 @@ serve(async (req) => {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-cron-secret": attendu },
       body: JSON.stringify({ ...(typeof body.user_id === "string" ? { user_id: body.user_id } : {}), ...(reparer ? { reparer: true } : {}),
-        ...(porteeMain === "toutes" ? { fiches_main: "toutes" } : {}), relance: rang + 1 }),
+        ...(porteeMain === "toutes" ? { fiches_main: "toutes" } : {}), ...(porteeRemises === "toutes" ? { remises: "toutes" } : {}), relance: rang + 1 }),
     })).catch(() => {});
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil?.(suite);
