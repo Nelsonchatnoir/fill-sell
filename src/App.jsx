@@ -13,6 +13,7 @@ import { poserSourceSurProfil } from './utils/acquisition';
 // ⚠️ PAS track() : celui-ci n'écrit que dans le dataLayer GTM. Les gestes
 // irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.
 import { logRetrait, logSuppressionArticle, CHEMINS_RETRAIT } from './utils/journalRetraits';
+import { erreurAvecRaison } from './utils/raisonRefus';
 import { pixelInscription } from './utils/metaPixel';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -4687,7 +4688,7 @@ export default function App({ loginOnly = false }){
       job.inventaire_id!=null ? j.inventaire_id!==job.inventaire_id : j.id!==job.id));
     try{
       const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id,price:prix}});
-      if(error)throw error;
+      if(error)throw await erreurAvecRaison(error);
       setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
       track('confirm_sale_banner',{platform:job.platform});
       // ⚠️ user.id OBLIGATOIRE (2026-07-13). Cet appel était `fetchAll()` — sans
@@ -4701,8 +4702,12 @@ export default function App({ loginOnly = false }){
       await fetchAll(user.id); // vente + inventaire + bandeau de retrait des frères
     }catch(e){
       console.error('[confirmSaleFromBanner]',e?.message??e);
-      setToast({visible:true,message:t('genericError')});
-      setTimeout(()=>setToast({visible:false,message:""}),3000);
+      // (08/10 soir) un refus du serveur dit pourquoi (annonce toujours en ligne,
+      // remplacée par une remise en ligne…) : on le montre, et les bandeaux
+      // retirés d'avance reviennent.
+      setToast({visible:true,message:e?.raison??t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),e?.raison?9000:3000);
+      if(e?.raison)fetchAll(user.id,{silencieux:true}).catch(()=>{});
     }finally{
       // Les bandeaux restent inactifs 0,8 s de plus : la fin d'une rafale de
       // taps tombe à vide au lieu d'enregistrer la vente du bandeau suivant.
@@ -4980,7 +4985,7 @@ export default function App({ loginOnly = false }){
         .eq('inventaire_id',item.id).eq('platform_listing_id',String(item.vinted_item_id??'')).limit(1);
       if(jobsVifs&&jobsVifs.length){
         const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:jobsVifs[0].id,price:prix}});
-        if(error)throw error;
+        if(error)throw await erreurAvecRaison(error);
       }else{
         await enregistrerVenteArticle({userId:user.id,article:art,prix,
           quantite:1,plateforme:'ailleurs'});
@@ -4989,8 +4994,9 @@ export default function App({ loginOnly = false }){
       await fetchAll(user.id,{silencieux:true});
     }catch(e){
       console.error('[confirmerVenteDisparue]',e?.message??e);
-      setToast({visible:true,message:t('genericError')});
-      setTimeout(()=>setToast({visible:false,message:""}),3000);
+      // (08/10 soir) la raison du refus (« … de nouveau en ligne sous une autre annonce »).
+      setToast({visible:true,message:e?.raison??t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),e?.raison?9000:3000);
     }finally{
       setDisparusBusy(null);
     }
@@ -5476,7 +5482,7 @@ export default function App({ loginOnly = false }){
           .eq('id',item.id).eq('user_id',user.id);
       }
       const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id,price:prix}});
-      if(error)throw error;
+      if(error)throw await erreurAvecRaison(error);
       track('confirm_sale_delete_modal',{platform:'vinted',signal:sondeSuppression?.signal??null});
       // PLAN RECONSTRUIT : après l'orchestration, le job Vinted est 'sold' et les
       // frères encore live sont 'cancelled' + pending_removal. Les uns et les
@@ -5498,7 +5504,7 @@ export default function App({ loginOnly = false }){
       // RIEN n'est supprimé si l'enregistrement échoue : l'utilisateur retente,
       // ou choisit « Retirée ». Perdre l'article ET la vente serait le pire des
       // deux mondes.
-      setVenteSuppr(v=>({...v,busy:false,err:t('genericError')}));
+      setVenteSuppr(v=>({...v,busy:false,err:e?.raison??t('genericError')}));
       return;
     }
     setVenteSuppr({prix:null,achat:null,busy:false,err:null});
