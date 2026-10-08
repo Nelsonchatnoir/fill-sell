@@ -35,7 +35,7 @@
 // retrouvés seuls, 5 à vérifier, 0 raté ; ses 18 « Non » : 0 fusionné.
 // Ce fichier tourne tel quel dans Deno (fonction edge `rapprochement`) et dans
 // Node (selftest) : aucune dépendance.
-import { comparerPhotos, dPhoto } from './photos.js';
+import { comparerPhotos, dPhoto , ham } from './photos.js';
 import * as T from './texte.js';
 import { idf, wjac } from './idf.js';
 
@@ -169,7 +169,18 @@ export function evaluer(x, y, S = SEUILS) {
 // Leur union est candidate ; le reste est « rien » par construction (evaluer ne
 // rend fort/doute qu'avec une photo ≤ 12 ou un titre très proche — les titres
 // ont leur propre index). Un tiroir trop plein (photo de catalogue) est ignoré.
+// (08/10 nuit) Un compte à cinq plateformes (de63ca45 : 785 nœuds, 3 811 photos)
+// faisait 114 530 paires candidates — 37 % de toutes les paires — et 3,2 s de
+// passe : la fonction edge mourait (546, 2 s de CPU). Désormais une collision
+// dans un tiroir ne retient la paire que si LES DEUX LECTURES qui collisionnent
+// sont à ≤ COLLISION_MAX l'une de l'autre (distance exacte, deux popcounts) :
+// la paire dont la photo est vraiment proche collisionne par cette lecture-là
+// et reste candidate ; les voisines de tiroir sans ressemblance tombent ici au
+// lieu d'être comparées photo par photo (de63ca45 : 114 530 → quelques
+// milliers, passe 3,2 s → ~0,3 s ; plans de Corinne et de63ca45 relus).
 const TIROIR_MAX = 300;
+const COLLISION_MAX = 16; // au-delà de « proche » (12) : une lecture voisine passe encore à l'évaluation complète
+const dLectureIdx = (a, b) => Math.max(ham(a.d, b.d), ham(a.p, b.p) * 0.8);
 const octets = (h) => [h[0] >>> 24, (h[0] >>> 16) & 255, (h[0] >>> 8) & 255, h[0] & 255, h[1] >>> 24, (h[1] >>> 16) & 255, (h[1] >>> 8) & 255, h[1] & 255];
 function clesDe(l) {
   const d = octets(l.d), p = octets(l.p);
@@ -182,14 +193,19 @@ export function candidatsDe(N) {
   const cle = (i, j) => (i < j ? i * 100000 + j : j * 100000 + i);
   const tiroirs = new Map();
   for (let i = 0; i < N.length; i++) {
-    const vus = new Set();
     for (const ph of N[i].emps) for (const l of ph.lectures) {
-      for (const k of clesDe(l)) { if (vus.has(k)) continue; vus.add(k); let t = tiroirs.get(k); if (!t) { t = []; tiroirs.set(k, t); } t.push(i); }
+      for (const k of clesDe(l)) { let t = tiroirs.get(k); if (!t) { t = []; tiroirs.set(k, t); } t.push(i, l); }
     }
   }
   for (const [, t] of tiroirs) {
-    if (t.length < 2 || t.length > TIROIR_MAX) continue;
-    for (let a = 0; a < t.length; a++) for (let b = a + 1; b < t.length; b++) paires.add(cle(t[a], t[b]));
+    const n = t.length / 2;
+    if (n < 2 || n > TIROIR_MAX) continue;
+    for (let a = 0; a < t.length; a += 2) for (let b = a + 2; b < t.length; b += 2) {
+      if (t[a] === t[b]) continue;
+      const k = cle(t[a], t[b]);
+      if (paires.has(k)) continue;
+      if (dLectureIdx(t[a + 1], t[b + 1]) <= COLLISION_MAX) paires.add(k);
+    }
   }
   // titres : les paires qui partagent assez de mots pour qu'un « titre très proche »
   // (jac ≥ 0,6) ou un « titre inclus » (cont = 1, ≥ 3 mots) soit possible
