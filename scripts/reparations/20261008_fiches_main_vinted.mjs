@@ -100,7 +100,7 @@ async function rejouer(user) {
   const { donnees, emp, urls, manquantes } = await lireCompte(user);
   const avec = passe(donnees, emp, { mode: 'normal', fichesMain: 'toutes' });
   const sans = passe(donnees, emp, { mode: 'normal', fichesMain: 'nouvelles' });
-  const regression = !memes(sansMain(avec.decisions), sans.decisions);
+  const regression = !memes(sansMain(avec.decisions), sansMain(sans.decisions));
   const main = avec.decisions.filter((d) => TYPES.has(d.type));
   const F = new Map((donnees.fiches ?? []).map((f) => [String(f.id), f]));
   const g = await gardes(user, main.map((d) => [d.garde, d.absorbe]));
@@ -186,6 +186,25 @@ if (APPLIQUER) {
   // ne connaît pas ces décisions (type_inconnu) et n'a pas ses gardes.
   const [m] = await q(`SELECT count(*)::int n FROM pg_proc WHERE proname = 'rapprochement_v3_fiches_fusionnables';`);
   if (!Number(m?.n)) { console.error('ARRÊT : migration 20261008150000 absente de la prod (feu vert de Nico attendu).'); process.exit(2); }
+  // ⛔ GARDE-FOU (Nico, 08/10) : on n'écrit que ce qui a été vérifié à la main —
+  // mêmes fusions (paire par paire), même nombre de questions, mêmes comptes
+  // que le rejeu de référence (--attendu <rejeu.json>) ; sinon rien.
+  const attenduF = val('--attendu');
+  if (!attenduF) { console.error('ARRÊT : --attendu <rejeu de référence> obligatoire'); process.exit(2); }
+  const RIEN_ = new Set(['introuvable', 'paire_tranchee', 'main_pas_a_la_main', 'vinted_sans_annonce', 'main_pas_en_stock', 'vinted_pas_en_stock', 'vinted_disparue']);
+  const resumeDe = (comptesR) => {
+    const c = comptesR.flatMap((x) => (x.cas ?? []).map((y) => ({ ...y, user: x.user })));
+    const f = c.filter((y) => y.type === 'fusionner_fiche' && y.garde_base == null).map((y) => `${y.main.id}>${y.vinted.id}`).sort();
+    const qq = c.filter((y) => !(y.type === 'fusionner_fiche' && y.garde_base == null) && !RIEN_.has(y.garde_base));
+    return { f, q: qq.map((y) => `${y.main.id}?${y.vinted.id}`).sort(), u: [...new Set(qq.map((y) => y.user))].sort() };
+  };
+  const ref = resumeDe(JSON.parse(fs.readFileSync(attenduF, 'utf8')).comptes), cur = resumeDe(res);
+  const pareil = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (!pareil(ref.f, cur.f) || !pareil(ref.q, cur.q) || !pareil(ref.u, cur.u)) {
+    console.error(`ARRÊT : le rejeu diffère de la référence — fusions ${cur.f.length}/${ref.f.length} (mêmes paires : ${pareil(ref.f, cur.f)}), questions ${cur.q.length}/${ref.q.length} (mêmes : ${pareil(ref.q, cur.q)}), comptes ${cur.u.length}/${ref.u.length}. Rien n'est écrit.`);
+    process.exit(3);
+  }
+  console.log(`garde-fou : ${cur.f.length} fusions, ${cur.q.length} questions, ${cur.u.length} comptes — identiques à la référence`);
   const sauvegarde = fs.readFileSync(path.join(RACINE, 'scripts', 'reparations', '20261008_fiches_main_vinted_sauvegarde.sql'), 'utf8');
   const total = { faits: {}, sautes: {}, erreurs: [] };
   for (const r of res) {
