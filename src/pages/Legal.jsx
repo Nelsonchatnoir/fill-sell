@@ -261,6 +261,11 @@ const extensionPermissions = [
   { key: 'https://www.opla.co/*', scope: 'optional_host_permissions',
     fr: "Accès OPTIONNEL, jamais accordé d'office : il est demandé dans l'extension, par un clic de votre part (« Autoriser Opla »), uniquement si vous vendez sur Opla. Jusqu'au 9 octobre 2026, il sert à déposer vos annonces, vérifier leur statut et les retirer après confirmation d'une vente, sur Opla ; à partir du 10 octobre 2026, FillSell ne publie plus sur Opla et cet accès ne sert plus qu'à suivre les annonces que vous y avez déjà (relevé, statut, retrait après une vente). Refusable et révocable à tout moment (chrome://extensions → accès aux sites).",
     en: "OPTIONAL access, never granted by default: it is requested inside the extension, by a click of yours (\"Allow Opla\"), only if you sell on Opla. Until 9 October 2026, it is used to post your listings, check their status and withdraw them after a confirmed sale, on Opla; from 10 October 2026, FillSell no longer publishes on Opla and this access only serves to track the listings you already have there (reading, status, withdrawal after a sale). It can be refused or revoked at any time (chrome://extensions → site access)." },
+  // Depop (09/10/2026) : même voie qu'Opla — exigé ici parce que l'hôte part
+  // dans le paquet (HOTES_OPTIONNELS_CWS), jamais accordé d'office.
+  { key: 'https://www.depop.com/*', scope: 'optional_host_permissions',
+    fr: "Accès OPTIONNEL, jamais accordé d'office : il est demandé dans l'extension, par un clic de votre part (« Autoriser Depop »), uniquement si Depop est disponible pour votre compte et que vous y vendez. Il sert à déposer vos annonces, vérifier leur statut et les retirer après confirmation d'une vente, sur Depop. Refusable et révocable à tout moment (chrome://extensions → accès aux sites).",
+    en: "OPTIONAL access, never granted by default: it is requested inside the extension, by a click of yours (\"Allow Depop\"), only if Depop is available for your account and you sell there. It is used to post your listings, check their status and withdraw them after a confirmed sale, on Depop. It can be refused or revoked at any time (chrome://extensions → site access)." },
 ];
 
 // La langue de la page (05/10) : `?lang=en|fr` d'abord, puis le réglage de

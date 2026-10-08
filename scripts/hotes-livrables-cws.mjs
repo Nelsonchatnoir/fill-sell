@@ -56,6 +56,10 @@ export const HOTES_LIVRABLES_CWS = [
 // autres : ils partent dans le paquet et le Web Store les lit.
 export const HOTES_OPTIONNELS_CWS = [
   'https://www.opla.co/*',
+  // Depop (09/10/2026) : même voie qu'Opla — présent dans le paquet, inerte tant
+  // que personne n'a cliqué « Autoriser Depop ». Aucun avertissement à la mise à
+  // jour, aucune désactivation du parc (un hôte optionnel n'est pas comparé).
+  'https://www.depop.com/*',
 ];
 
 export function estHoteLivrable(motif) {

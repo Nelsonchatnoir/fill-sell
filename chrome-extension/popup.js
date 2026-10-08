@@ -35,8 +35,15 @@ const PLATFORMS = [
   // demande : chrome.permissions.request exige un geste de la personne dans
   // une page d'extension, et ce popup en est une (cf. [data-autoriser-opla]).
   { key: "opla",      name: "Opla",      supported: true, loginUrl: "https://www.opla.co/", optionnel: true },
+  // ── Depop (09/10/2026) : même patron qu'Opla, MAIS sa propre ligne (jamais
+  // le drapeau « optionnel », qui porte la mécanique et les textes d'Opla).
+  // Elle n'apparaît QUE chez un compte où Depop est ouverte (contexte serveur
+  // contexte.depop.ouverte), qui a un job Depop en file, ou dont ce navigateur
+  // a déjà l'accès — pour tous les autres, elle n'existe pas.
+  { key: "depop",     name: "Depop",     supported: true, loginUrl: "https://www.depop.com/", depop: true },
 ];
 const OPLA_ORIGINE = "https://www.opla.co/*";
+const DEPOP_ORIGINE = "https://www.depop.com/*";
 
 const CHECK_SVG = '<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
@@ -113,6 +120,10 @@ const state = {
   oplaRelie: null,
   // La bascule de la sortie (interrupteur serveur, le 10/10) est-elle passée ?
   oplaSortieActive: false,
+  // Depop (09/10) : accès dans CE navigateur, jobs en file, ouverture serveur.
+  depopAcces: null,
+  depopEnAttente: [],
+  depopOuverte: false,
   // ── DEMANDE D'AVIS (02/10/2026) ──────────────────────────────────────────
   // { url } quand le SERVEUR a ouvert la demande (avis-demande) ; null sinon.
   avis: null,
@@ -238,6 +249,8 @@ async function fetchPendingJobs(accessToken) {
   const relie = data?.contexte?.opla?.relie;
   state.oplaRelie = relie === true || relie === false ? relie : null;
   state.oplaSortieActive = data?.contexte?.opla?.sortie_active === true;
+  state.depopEnAttente = jobs.filter((j) => j.platform === "depop");
+  state.depopOuverte = data?.contexte?.depop?.ouverte === true;
   return jobs.filter((j) => j.action !== "delete");
 }
 
@@ -273,6 +286,8 @@ async function load() {
   // d'un cache. Indisponible (API absente) → null, la ligne reste muette.
   try { state.oplaAcces = await chrome.permissions.contains({ origins: [OPLA_ORIGINE] }); }
   catch { state.oplaAcces = null; }
+  try { state.depopAcces = await chrome.permissions.contains({ origins: [DEPOP_ORIGINE] }); }
+  catch { state.depopAcces = null; }
 
   if (state.session) {
     try {
@@ -379,7 +394,12 @@ const PLATFORM_LOGO = {
   // Opla (16/09) : icône App Store officielle (app id 6757612150), la même
   // que l'app inline dans OplaIcon.jsx — extraite en PNG 512×512.
   opla:      { src: "assets/opla.png",      png: true },
+  depop:     { src: "assets/depop.svg",     png: false },
 };
+// La ligne Depop n'existe que là où elle a un sens (cf. PLATFORMS).
+function depopVisible() {
+  return state.depopOuverte === true || state.depopAcces === true || state.depopEnAttente.length > 0;
+}
 function logoHtml(key, size) {
   const l = PLATFORM_LOGO[key];
   if (!l) return "";
@@ -453,6 +473,7 @@ const MOTIFS_ANCRES = [
   // Opla en attente d'accès (2026-09-16) : le geste est en haut, sur la ligne
   // Opla, avec son bouton — famille dite ailleurs, comme la reconnexion.
   { re: /^Opla attend ton autorisation/i, famille: "opla_acces" },
+  { re: /^Depop attend ton autorisation/i, famille: "depop_acces" },
 ];
 
 // ⛔ DEUX FAMILLES NE SONT PAS RÉPÉTÉES ICI (2026-09-08, correction Nico) :
@@ -463,7 +484,7 @@ const MOTIFS_ANCRES = [
 // Le TOTAL, lui, ne bouge pas : il vient du serveur et reste celui du bandeau
 // de l'app (source unique posée le 04/09). Cette liste n'a jamais été une
 // décomposition du total — c'est un dessus de pile, déjà borné à 4 lignes.
-const MOTIFS_DITS_AILLEURS = new Set(["reconnexion", "challenge", "opla_acces"]);
+const MOTIFS_DITS_AILLEURS = new Set(["reconnexion", "challenge", "opla_acces", "depop_acces"]);
 
 const pl = (n, un, des) => (n > 1 ? des : un);
 // ── UNE SEULE PORTE POUR CE QUI EST MONTRÉ (03/10, point 15) ───────────────
@@ -723,6 +744,7 @@ function calculerEtats() {
     // (02/10, sortie d'Opla) Compte sans dressing Opla synchronisé : Opla n'a
     // aucun état — ni « à autoriser », ni bandeau d'alerte.
     if (p.optionnel && state.oplaRelie === false) { state.etats[p.key] = { etat: null, sous: null }; continue; }
+    if (p.depop && !depopVisible()) { state.etats[p.key] = { etat: null, sous: null }; continue; }
     state.etats[p.key] = state.session ? etatPlateforme(p, sondeFraichePour(p.key)) : { etat: null, sous: null };
   }
 }
@@ -897,6 +919,22 @@ function renderPlateformes() {
     // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
     // (02/10, sortie d'Opla) Pas de dressing Opla synchronisé : pas de ligne.
     if (p.optionnel && state.oplaRelie === false) continue;
+    // ── DEPOP (09/10) : le bouton « Autoriser Depop » tant que l'accès manque ─
+    if (p.depop && !depopVisible()) continue;
+    if (p.depop && state.depopAcces !== true) {
+      const n = state.depopEnAttente.length;
+      // ⟦depop-autorisation-popup:début⟧
+      const sous = n
+        ? `Depop attend ton autorisation pour que FillSell y dépose tes annonces (${n} en attente). Appuie sur « Autoriser Depop » : c'est une seule fois.`
+        : "Depop attend ton autorisation pour que FillSell y dépose tes annonces. Appuie sur « Autoriser Depop » : c'est une seule fois.";
+      // ⟦depop-autorisation-popup:fin⟧
+      lignes.push(
+        `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
+        `<div class="plat-sous">${sous}</div></div>` +
+        `<button class="btn-outline" data-autoriser-depop type="button">Autoriser Depop</button></div>`,
+      );
+      continue;
+    }
     if (p.optionnel && state.oplaAcces !== true) {
       const n = state.oplaEnAttente.length;
       // Le MÊME message que l'app et le serveur (autorisationOplaRequise) —
@@ -1150,6 +1188,7 @@ function renderFlow() {
     // Opla (optionnelle) : une case SEULEMENT si l'annonce affichée a un job
     // Opla — sinon la grille reste celle des quatre, pour tout le monde.
     if (p.optionnel && !state.annonce?.byPlatform?.[p.key]) continue;
+    if (p.depop && !state.annonce?.byPlatform?.[p.key]) continue;
     const s = rowState(p);
     const st = state.status[p.key];
     const rec = state.recent[p.key];
@@ -1552,6 +1591,22 @@ document.body.addEventListener("click", (e) => {
   // affiche sa propre demande ; accordé → le background enregistre les
   // scripts, relance les jobs en attente et sonde la session (OPLA_ACCES_
   // ACCORDE). Refusé → le bouton revient, rien n'est écrit nulle part.
+  // ── « AUTORISER DEPOP » (09/10) : le même geste, pour www.depop.com ────────
+  const autoriserDepop = e.target.closest("[data-autoriser-depop]");
+  if (autoriserDepop) {
+    if (autoriserDepop.disabled) return;
+    autoriserDepop.disabled = true;
+    autoriserDepop.textContent = "…";
+    chrome.permissions.request({ origins: [DEPOP_ORIGINE] })
+      .then(async (accorde) => {
+        if (!accorde) { autoriserDepop.disabled = false; autoriserDepop.textContent = "Autoriser Depop"; return; }
+        try { await chrome.runtime.sendMessage({ type: "DEPOP_ACCES_ACCORDE" }); }
+        catch { /* le background relit la permission à son prochain passage */ }
+        load();
+      })
+      .catch(() => { autoriserDepop.disabled = false; autoriserDepop.textContent = "Réessayer"; });
+    return;
+  }
   const autoriser = e.target.closest("[data-autoriser-opla]");
   if (autoriser) {
     if (autoriser.disabled) return;

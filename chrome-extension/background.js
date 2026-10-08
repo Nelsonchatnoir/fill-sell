@@ -394,6 +394,13 @@ const PLATFORM_HANDLERS = {
     // fait l'API depuis la page, la session est portée par les cookies.
     newListingUrl: "https://www.opla.co/sell/create",
   },
+  // ── depop (09/10/2026) : même patron qu'Opla — permission d'hôte optionnelle,
+  // API depuis la page (content-scripts/depop.js). La page ouverte n'est qu'un
+  // PORTE-SCRIPT : l'accueil, anodin (le dépôt se fait par l'API du formulaire).
+  depop: {
+    implemented: true,
+    newListingUrl: "https://www.depop.com/",
+  },
   vinted: {
     implemented: true,
     newListingUrl: "https://www.vinted.fr/items/new",
@@ -1332,10 +1339,38 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+  // ── DEPOP (09/10) : les deux mêmes messages, pour la même raison qu'Opla ──
+  if (msg?.type === "AUTORISER_DEPOP") {
+    (async () => {
+      if (await depopAccesAccorde()) return sendResponse({ ok: true, dejaAccordee: true, ouverte: false });
+      const ouverte = await ouvrirPopupPourOpla();
+      sendResponse({ ok: ouverte, dejaAccordee: false, ouverte });
+    })();
+    return true;
+  }
+  if (msg?.type === "DEPOP_ACCES_ACCORDE") {
+    (async () => {
+      if (!(await depopAccesAccorde())) return sendResponse({ ok: false, motif: "acces_non_accorde" });
+      await assurerScriptsDepop();
+      let relances = 0;
+      try {
+        const session = await getValidSession();
+        if (session?.access_token) {
+          relances = await rearmerJobsDepopEnAttente(session.access_token);
+          reportPlatformSessions(session.access_token, { plateformes: ["depop"], motif: "accès Depop accordé", forcer: true })
+            .catch(() => {});
+        }
+      } catch (e) {
+        console.warn("[background] depop : suite de l'octroi —", String(e?.message ?? e));
+      }
+      sendResponse({ ok: true, relances });
+    })();
+    return true;
+  }
   if (msg?.type === "SONDER_SESSION") {
     (async () => {
       const pf = String(msg.platform ?? "");
-      if (!["vinted", "leboncoin", "ebay", "beebs", "opla"].includes(pf)) {
+      if (!["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"].includes(pf)) {
         return sendResponse({ ok: false, motif: "plateforme inconnue" });
       }
       try {
@@ -2137,6 +2172,8 @@ const NU_CHANNEL_BY_PLATFORM = {
   // `opla` ajoutée au lot C, dans le MÊME commit que son miroir de StockTab.jsx :
   // ces deux tables ne se désalignent que quand on en touche une seule.
   opla: "oplaAspects",
+  // depop (09/10) : même canal générique, miroir de src/tabs/StockTab.jsx.
+  depop: "depopAspects",
 };
 
 // Cible d'écriture de la réponse, calculée comme StockTab.jsx la calcule.
@@ -3380,6 +3417,17 @@ async function processJob(rawJob, accessToken) {
     if (porteCookies) return porteCookies;
   }
 
+  // ── PORTE DEPOP (09/10) : la même que celle d'Opla, sans le pot de cookies ─
+  // Un poste sans l'accès ne prend pas le job (le serveur ne le lui sert
+  // d'ailleurs pas : capacité « sans_depop ») — rien d'écrit, il reste en file.
+  if (job.platform === "depop") {
+    if (!(await depopAccesAccorde())) {
+      console.log(`[background] Job ${job.id} → depop : accès www.depop.com non accordé sur CE poste — laissé en file, rien d'écrit`);
+      return { status: "skipped", error: "accès www.depop.com non accordé sur ce poste — job laissé en file" };
+    }
+    await assurerScriptsDepop();
+  }
+
   // ── Porte de reprise ESPACÉE (2026-08-31) ─────────────────────────────────
   // Un job ré-armé par rearmBounded porte platform_fields.next_action_after :
   // on ne le retraite pas avant l'échéance. Le job RESTE pending, aucun
@@ -3691,6 +3739,16 @@ async function processJob(rawJob, accessToken) {
             last_diagnostic: `${new Date().toISOString()} onglet Opla : ${v.motif}`,
           };
           throw new Error(`pas de réponse du content script Opla (${v.motif})`);
+        }
+      }
+      if (job.platform === "depop") {
+        const v = await assurerScriptDepopSurOnglet(tabId);
+        if (!v.ok) {
+          job.platform_fields = {
+            ...(job.platform_fields ?? {}),
+            last_diagnostic: `${new Date().toISOString()} onglet Depop : ${v.motif}`,
+          };
+          throw new Error(`pas de réponse du content script Depop (${v.motif})`);
         }
       }
       result = await envoyerFillListing(tabId, job);
@@ -4377,6 +4435,16 @@ async function processJob(rawJob, accessToken) {
           method: "PATCH",
           body: JSON.stringify({ platform_listing_id: String(result.lbcAdId) }),
         }).catch((e) => console.warn(`[background] PATCH platform_listing_id leboncoin :`, String(e?.message ?? e)));
+      }
+      // Depop (09/10) : la réponse du 201 porte le numéro ET le slug. Le slug
+      // est l'identifiant de l'annonce (il vit dans l'URL, comme pour les
+      // autres plateformes) ; le numéro sert au retrait (DELETE /products/<id>/).
+      if (job.platform === "depop") {
+        extrasPublie.platform_fields = {
+          ...(extrasPublie.platform_fields ?? {}),
+          depop_product_id: Number.isFinite(Number(result.depopProductId)) ? Number(result.depopProductId) : null,
+          depop_statut_au_depot: result.depopStatut ?? null,
+        };
       }
       await updateJobStatus(accessToken, job.id, "published", {
         ...extrasPublie,
@@ -7011,7 +7079,7 @@ function delaiAttenteSessionMin(observations) {
   if (n === 3) return 10;
   return n >= 10 ? 360 : n >= 7 ? 180 : ATTENTE_SESSION_MIN;
 }
-const LABEL_PLATEFORME = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
+const LABEL_PLATEFORME = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
 function estUrlDeConnexionPlateforme(platform, url) {
   const hostRe = REAUTH_HOSTS[platform];
   if (!hostRe) return false;
@@ -10126,7 +10194,8 @@ async function workTabForFetch(platform) {
       // déchargé ferait donc exactement la panne du 12-15/08 — 100 % de
       // vérifications « unknown », indéfiniment. eBay/LBC/Beebs restent
       // inchangés.
-      if ((platform === "vinted" || platform === "opla") && tab.discarded) {
+      // depop (09/10) : même raison qu'Opla — son API ne se lit que depuis la page.
+      if ((platform === "vinted" || platform === "opla" || platform === "depop") && tab.discarded) {
         return getOrCreateWorkTab(platform, `https://www.${host}/`);
       }
       return tab.id;
@@ -10155,6 +10224,10 @@ const PLATFORM_HOSTS = {
   // Et dans le paquet CWS, faute de permission d'hôte opla.co, tabs.query rend
   // [] : le veilleur conclut "unknown" et ne touche à rien. Dégradation sûre.
   opla: "opla.co",
+  // depop (09/10) : même rôle qu'Opla — le veilleur, les retraits et les relevés
+  // lisent l'API depuis la page. Sans la permission d'hôte optionnelle,
+  // tabs.query rend [] : aucune conclusion, rien touché.
+  depop: "depop.com",
 };
 
 // Page de vérification anti-bot (DataDome & co) : courte, sans le contenu de
@@ -10443,6 +10516,7 @@ function preuveDeLecture(lecture, url) {
 
 async function checkListingState(url, platform) {
   if (platform === "opla") return lireEtatOpla(url);
+  if (platform === "depop") return lireEtatDepop(url);
   if (platform === "vinted") return checkVintedUnanime(url);
   if (platform !== "leboncoin") return lireEtatAnnonce(url, platform);
 
@@ -10497,6 +10571,11 @@ function causeLectureImpossible(raison) {
   // L'ancien `opla_oracle_indisponible` (« on s'interdit de conclure ») a
   // disparu avec le lot B : l'oracle est désormais lu pour de bon. Ce qui reste
   // ici, ce sont les vraies causes d'indécision, nommées une par une.
+  if (r === "depop_onglet_indisponible") return "aucun onglet Depop n'était disponible pour lire l'état de l'annonce";
+  if (r === "depop_acces_non_accorde") return "Depop n'est pas autorisée sur cet ordinateur (bouton « Autoriser Depop » du popup)";
+  if (r === "depop_lecture_impossible") return "l'état de l'annonce Depop n'a pas pu être lu";
+  if (r === "depop_id_introuvable") return "le lien enregistré ne porte pas d'identifiant d'annonce Depop";
+  if (r.startsWith("depop_statut_inattendu_")) return `Depop a rendu un état que nous n'avons jamais observé (${r.replace("depop_statut_inattendu_", "")})`;
   if (r === "opla_onglet_indisponible") return "aucun onglet Opla n'était disponible pour lire l'état de l'annonce";
   if (r === "opla_onglet_fige") return "l'onglet Opla est resté figé sur une fenêtre de confirmation du navigateur";
   if (r === "opla_lecture_impossible") return "l'état de l'annonce Opla n'a pas pu être lu";
@@ -10691,6 +10770,9 @@ async function retirerScriptsOpla() {
 async function capacitesDeclarees() {
   const caps = ["taille_par_id", "preuves_retraits_point1_v1", "champs_annonce_republication_v1"];
   caps.push((await oplaAccesAccorde()) ? "opla_acces" : "sans_opla");
+  // depop (09/10) : le serveur ne sert un job Depop qu'au poste qui déclare
+  // « depop_acces » (une extension qui ne connaît pas Depop ne déclare rien).
+  caps.push((await depopAccesAccorde()) ? "depop_acces" : "sans_depop");
   return caps;
 }
 
@@ -10907,6 +10989,195 @@ async function rearmerJobsOplaEnAttente(accessToken) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// DEPOP — LE MÊME PATRON QU'OPLA, PAS UNE DEUXIÈME MÉCANIQUE (09/10/2026)
+// ══════════════════════════════════════════════════════════════════════════
+// · www.depop.com est en `optional_host_permissions` : RIEN à l'installation ni
+//   à la mise à jour (aucun avertissement, aucune désactivation du parc) ;
+//   l'accès se demande par le bouton « Autoriser Depop » du popup.
+// · Les trois scripts (consentement, vocabulaire des tailles, depop.js) sont
+//   ENREGISTRÉS à l'octroi, re-posés au démarrage et à la mise à jour.
+// · Le serveur ne sert un job Depop qu'aux comptes autorisés (garde en base,
+//   migration 20261009020000) ET qu'aux postes qui déclarent « depop_acces »
+//   (get-pending-jobs) : un poste sans l'accès, ou une extension qui ne connaît
+//   pas Depop, n'en voit jamais passer un.
+// · Tout l'accès à Depop passe par la PAGE (webapi.depop.com rend 403 hors
+//   navigateur, mesuré le 08/10) : jamais un fetch de ce service worker vers
+//   leur API.
+const DEPOP_ORIGINE = "https://www.depop.com/*";
+const DEPOP_SCRIPTS_ID = "fillsell-depop";
+// ⚠️ L'ORDRE COMPTE : depop-tailles.js publie sur globalThis et depop.js
+// l'appelle (traduction des tailles par le moteur commun). C'est la règle
+// ACTUELLE de _shared/tailles.js, recopiée à l'octet (npm run
+// gen:tailles-depop) — jamais tailles-vocabulaire.js, la copie GELÉE d'Opla.
+const DEPOP_SCRIPTS = ["content-scripts/consentement.js", "content-scripts/depop-tailles.js", "content-scripts/depop.js"];
+const DEPOP_ACCUEIL = "https://www.depop.com/";
+// ⟦depop-autorisation:début⟧
+function messageAutorisationDepop(action) {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Depop attend ton autorisation pour que FillSell y dépose tes annonces. " +
+    `Appuie sur « Autoriser Depop » : c'est une seule fois, et ${quoi}.`
+  );
+}
+// ⟦depop-autorisation:fin⟧
+
+async function depopAccesAccorde() {
+  try { return await chrome.permissions.contains({ origins: [DEPOP_ORIGINE] }); }
+  catch { return false; }
+}
+
+async function assurerScriptsDepop() {
+  try {
+    const deja = await chrome.scripting.getRegisteredContentScripts({ ids: [DEPOP_SCRIPTS_ID] });
+    if (deja?.length) return true;
+    await chrome.scripting.registerContentScripts([{
+      id: DEPOP_SCRIPTS_ID, matches: [DEPOP_ORIGINE], js: DEPOP_SCRIPTS, runAt: "document_idle", persistAcrossSessions: true,
+    }]);
+    console.log("[background] depop : content scripts enregistrés (permission d'hôte accordée)");
+    return true;
+  } catch (e) {
+    console.warn("[background] depop : enregistrement des content scripts impossible —", String(e?.message ?? e));
+    return false;
+  }
+}
+
+async function retirerScriptsDepop() {
+  try {
+    const deja = await chrome.scripting.getRegisteredContentScripts({ ids: [DEPOP_SCRIPTS_ID] });
+    if (deja?.length) await chrome.scripting.unregisterContentScripts({ ids: [DEPOP_SCRIPTS_ID] });
+  } catch (e) { console.warn("[background] depop : désenregistrement —", String(e?.message ?? e)); }
+}
+
+// Le content script Depop répond-il ? Sinon réinjection, sinon on le DIT (même
+// parade qu'Opla : un onglet n'est confié à un geste qu'avec un script vivant).
+async function assurerScriptDepopSurOnglet(tabId) {
+  const ping = () => sendMessageToTabOnce(tabId, { type: "DEPOP_PING" }, 4000).then((r) => !!r?.pong).catch(() => false);
+  if (await ping()) return { ok: true };
+  let avant = await chrome.tabs.get(tabId).catch(() => null);
+  if (avant && !avant.url) {
+    // URL illisible = l'onglet est hors de nos permissions d'hôte (aller-retour
+    // de connexion) : on lui laisse 15 s pour revenir sur www.depop.com.
+    const limite = Date.now() + 15_000;
+    while (Date.now() < limite) {
+      await sleep(1000);
+      const t = await chrome.tabs.get(tabId).catch(() => null);
+      if (!t) break;
+      if (typeof t.url === "string" && t.url.startsWith("https://www.depop.com/") && t.status === "complete") {
+        avant = t;
+        await sleep(1000);
+        if (await ping()) return { ok: true };
+        break;
+      }
+    }
+  }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: DEPOP_SCRIPTS });
+  } catch (e) {
+    return { ok: false, motif: `réinjection impossible (${String(e?.message ?? e).slice(0, 120)}) — onglet : ${decrireOnglet(avant)}` };
+  }
+  await sleep(1500);
+  if (await ping()) { console.log(`[background] depop : content script réinjecté sur l'onglet ${tabId}`); return { ok: true }; }
+  const apres = await chrome.tabs.get(tabId).catch(() => null);
+  return { ok: false, motif: `muet après réinjection — onglet : ${decrireOnglet(apres)}` };
+}
+
+// L'onglet de travail Depop, avec un script qui répond — ou null (jamais un
+// verdict tiré d'un onglet muet).
+async function ongletDepopPret() {
+  if (!(await depopAccesAccorde())) return { tabId: null, motif: "acces_non_accorde" };
+  await assurerScriptsDepop();
+  // Réutilise l'onglet de travail s'il est déjà sur depop.com (aucune navigation),
+  // sinon l'ouvre sur l'accueil — jamais une rafale de rechargements.
+  const tabId = await workTabForFetch("depop").catch(() => null);
+  if (tabId == null) return { tabId: null, motif: "onglet_indisponible" };
+  const v = await assurerScriptDepopSurOnglet(tabId);
+  return v.ok ? { tabId } : { tabId: null, motif: v.motif };
+}
+
+// À l'octroi : les jobs parqués « depop_acces » repartent seuls (un par un).
+async function rearmerJobsDepopEnAttente(accessToken) {
+  let relances = 0;
+  try {
+    const rows = await restRequest(
+      "cross_post_jobs?select=id,platform_fields&platform=eq.depop&status=eq.needs_user" +
+      "&platform_fields->>needs_user_source=eq.depop_acces&limit=200",
+      accessToken,
+    );
+    for (const j of rows ?? []) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      delete pf.needs_user_source;
+      delete pf.next_action_after;
+      pf.depop_acces_accorde_le = new Date().toISOString();
+      try {
+        await restRequest(`cross_post_jobs?id=eq.${j.id}&status=eq.needs_user`, accessToken, {
+          method: "PATCH", body: JSON.stringify({ status: "pending", error: null, platform_fields: pf }),
+        });
+        relances++;
+      } catch (e) {
+        console.warn(`[background] depop : job ${j.id} non relancé —`, String(e?.message ?? e));
+      }
+    }
+  } catch (e) {
+    console.warn("[background] depop : lecture des jobs en attente d'accès —", String(e?.message ?? e));
+  }
+  if (relances) console.log(`[background] depop : ${relances} job(s) relancé(s) après l'octroi de l'accès`);
+  return relances;
+}
+
+// ── LA SONDE DE SESSION DEPOP ───────────────────────────────────────────────
+// Sans permission : null (indéterminé, jamais false). Le cookie `access_token`
+// ABSENT prouve une session fermée (le site ne fonctionne pas sans lui) →
+// false. PRÉSENT : si un onglet de travail Depop vit déjà, la page tranche
+// (users/me : 200 → true, 401 → false) ; sinon le cookie seul → true.
+// Aucun onglet n'est OUVERT pour sonder.
+async function sonderSessionDepop() {
+  if (!(await depopAccesAccorde())) return { etat: null, http: null };
+  const jeton = await chrome.cookies.get({ url: "https://www.depop.com/", name: "access_token" }).catch(() => null);
+  if (!String(jeton?.value ?? "").trim()) return { etat: false, http: "sans_jeton" };
+  const tabId = await findExistingWorkTabId("depop").catch(() => null);
+  if (tabId != null) {
+    const r = await sendMessageToTabOnce(tabId, { type: "DEPOP_SESSION" }, 8000).catch(() => null);
+    if (r?.connecte === true) return { etat: true, http: 200, identite: r.id ? { user_id: String(r.id), login: r.username ?? null } : null };
+    if (r?.connecte === false) return { etat: false, http: r.motif ?? 401 };
+  }
+  return { etat: true, http: "jeton_present" };
+}
+
+// ── L'ÉTAT D'UNE ANNONCE DEPOP (veilleur, retraits) — sur son identifiant exact
+// GET /presentation/api/v1/products/by-slug/<slug>/ depuis la page :
+//   STATUS_ONSALE → active ; STATUS_PURCHASED → sold (preuve POSITIVE) ;
+//   404 « Product not found » → unavailable (retirée — PAS une preuve de vente) ;
+//   tout autre statut, toute erreur réseau → unknown (jamais un verdict).
+const DEPOP_STATUTS_LUS = Object.freeze({ STATUS_ONSALE: "active", STATUS_PURCHASED: "sold" });
+async function lireEtatDepop(url) {
+  const slug = String(url ?? "").match(/\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/)?.[1] ?? null;
+  if (!slug) return { state: "unknown", price: null, raison: "depop_id_introuvable" };
+  const { tabId, motif } = await ongletDepopPret();
+  if (tabId == null) {
+    console.warn(`[background] depop : aucun onglet exploitable (${motif}) — aucune conclusion`);
+    return { state: "unknown", price: null, raison: motif === "acces_non_accorde" ? "depop_acces_non_accorde" : "depop_onglet_indisponible" };
+  }
+  const lu = await sendMessageToTabOnce(tabId, { type: "DEPOP_ETAT_ANNONCE", slug }, 20_000).catch((e) => ({ erreur: String(e?.message ?? e) }));
+  if (!lu || lu.erreur) return { state: "unknown", price: null, raison: "depop_lecture_impossible" };
+  if (lu.status === 404) {
+    console.log(`[background] depop ${slug} : 404 — annonce retirée (PAS une preuve de vente)`);
+    return { state: "unavailable", price: null, raison: null };
+  }
+  if (lu.status !== 200) return { state: "unknown", price: null, raison: `http_${lu.status}` };
+  const verdict = DEPOP_STATUTS_LUS[String(lu.etat ?? "")] ?? null;
+  if (!verdict) {
+    console.warn(`[background] depop ${slug} : statut « ${lu.etat || "(absent)"} » jamais observé — aucune conclusion`);
+    return { state: "unknown", price: null, raison: `depop_statut_inattendu_${lu.etat || "absent"}` };
+  }
+  console.log(`[background] depop ${slug} : ${lu.etat} → ${verdict}${verdict === "sold" ? " — VENTE, preuve positive" : ""}`);
+  // Le prix lu est le prix AFFICHÉ de l'annonce, pas le prix payé : il ne sert
+  // qu'à pré-remplir, la personne tranche.
+  return { state: verdict, price: verdict === "sold" && Number.isFinite(lu.prix) ? lu.prix : null, raison: null, exact: { listing_id: slug, depop_id: lu.id ?? null } };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // « ME CONNECTER » — LE TÉLÉPHONE DEMANDE, CET ORDINATEUR OUVRE (2026-09-22)
 // ══════════════════════════════════════════════════════════════════════════
 // C'est le mur nº1 des nouveaux inscrits : une plateforme pas connectée, un
@@ -10932,6 +11203,7 @@ const ADRESSES_CONNEXION = {
   beebs: "https://www.beebs.app/",
   ebay: "https://www.ebay.fr/",
   opla: "https://www.opla.co/",
+  depop: "https://www.depop.com/login/",
 };
 
 /** L'adresse à ouvrir, selon la plateforme ET le motif. */
@@ -10975,7 +11247,7 @@ async function ouvrirPagesDeConnexion(accessToken, commandes) {
     if (!id || !platform) continue;
     let ouverte = false;
     try {
-      if (platform === "opla" && motif !== "connexion") {
+      if ((platform === "opla" || platform === "depop") && motif !== "connexion") {
         ouverte = await ouvrirPopupPourOpla();
       } else {
         const url = adresseDeConnexion(platform, motif);
@@ -11059,6 +11331,40 @@ if (chrome.permissions?.onRemoved) {
     if ((p?.origins ?? []).includes(OPLA_ORIGINE)) retirerScriptsOpla().catch(() => {});
   });
 }
+// ── DEPOP (09/10) : les mêmes quatre crochets qu'Opla ──────────────────────
+// Démarrage : accès déjà là → scripts posés, jobs parqués « depop_acces »
+// relancés. Mise à jour : Chrome efface les scripts enregistrés → re-posés.
+// Octroi / retrait depuis chrome://extensions : suivis.
+depopAccesAccorde().then(async (ok) => {
+  if (!ok) return;
+  await assurerScriptsDepop();
+  try {
+    const session = await getValidSession();
+    if (session?.access_token) await rearmerJobsDepopEnAttente(session.access_token);
+  } catch (e) { console.warn("[background] depop : reprise au démarrage —", String(e?.message ?? e)); }
+}).catch(() => {});
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details?.reason !== "update" && details?.reason !== "install") return;
+  depopAccesAccorde().then(async (ok) => {
+    if (!ok) return;
+    try { await chrome.scripting.unregisterContentScripts({ ids: [DEPOP_SCRIPTS_ID] }); } catch { /* jamais enregistrés */ }
+    await assurerScriptsDepop();
+  }).catch(() => {});
+});
+if (chrome.permissions?.onAdded) {
+  chrome.permissions.onAdded.addListener((p) => {
+    if (!(p?.origins ?? []).includes(DEPOP_ORIGINE)) return;
+    assurerScriptsDepop().catch(() => {});
+    getValidSession().then((s) => {
+      if (s?.access_token) return reportPlatformSessions(s.access_token, { plateformes: ["depop"], motif: "accès Depop accordé (onAdded)", forcer: true });
+    }).catch(() => {});
+  });
+}
+if (chrome.permissions?.onRemoved) {
+  chrome.permissions.onRemoved.addListener((p) => {
+    if ((p?.origins ?? []).includes(DEPOP_ORIGINE)) retirerScriptsDepop().catch(() => {});
+  });
+}
 
 const SESSION_PROBE_INTERVALS_MS = {
   vinted: 10 * 60 * 1000,
@@ -11066,6 +11372,7 @@ const SESSION_PROBE_INTERVALS_MS = {
   ebay: 60 * 60 * 1000,
   beebs: 60 * 60 * 1000,
   opla: 60 * 60 * 1000, // lot C — même cadence que les trois autres non-Vinted
+  depop: 60 * 60 * 1000, // 09/10 — même cadence
 };
 const SESSION_PROBE_INTERVAL_MS = SESSION_PROBE_INTERVALS_MS.vinted;
 const intervalleSonde = (pf) => SESSION_PROBE_INTERVALS_MS[pf] ?? SESSION_PROBE_INTERVAL_MS;
@@ -11342,7 +11649,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
   // Plateforme non demandée = NON MESURÉE : null/null, jamais une valeur
   // recopiée (2026-09-08). C'est ecrireExtensionSessions qui fusionne.
   const sonde = (pf, fn) => (plateformes.includes(pf) ? probe(fn) : Promise.resolve({ etat: null, http: null }));
-  const [vinted, leboncoin, ebay, ebayHub, beebs, opla] = await Promise.all([
+  const [vinted, leboncoin, ebay, ebayHub, beebs, opla, depop] = await Promise.all([
     sonde("vinted", async () => {
       const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
         headers: { Accept: "application/json" }, credentials: "include",
@@ -11430,6 +11737,9 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
       return { etat: /\/(login|signin|connexion)|\/auth(\/|$)/i.test(u.pathname) ? false : null, http: r.status };
     }),
     sonde("opla", sonderSessionOpla),
+    // depop (09/10) : seulement quand elle est demandée — et elle ne l'est que
+    // chez un poste qui a la permission (reportPlatformSessions).
+    sonde("depop", sonderSessionDepop),
   ]);
   const maintenant = new Date().toISOString();
   const parPlateforme = {};
@@ -11444,6 +11754,9 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     sondees: plateformes.slice(),
     checked_at_par_plateforme: parPlateforme,
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat, opla: opla.etat,
+    // Depop n'apparaît QUE chez un poste qui l'a sondée : les autres comptes
+    // gardent extension_sessions exactement comme avant (aucune clé de plus).
+    ...(plateformes.includes("depop") ? { depop: depop.etat } : {}),
     // ── LA PORTE DU RELEVÉ eBAY, À PART (2026-09-22) ────────────────────────
     // `ebay` reste la session de VENTE : c'est elle qui arbitre la garde de
     // publication et la reprise des jobs, et on n'y touche pas. `ebay_hub` dit
@@ -11462,7 +11775,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
     // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
     // 403 (challenge) ou d'un échec réseau (null).
-    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, ebay_hub: ebayHub.http, beebs: beebs.http, opla: opla.http },
+    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, ebay_hub: ebayHub.http, beebs: beebs.http, opla: opla.http, ...(plateformes.includes("depop") ? { depop: depop.http } : {}) },
   };
 }
 
@@ -11511,8 +11824,10 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
     // seule toutes les 10 min) ÉCRASAIT par null l'état Opla relevé l'heure
     // d'avant — exactement le défaut (A) ci-dessous, sur la cinquième
     // plateforme. Même liste que probePlatformSessions.
-    for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
+    for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"]) {
       if (releve.sondees.includes(pf)) continue;
+      // depop (09/10) : jamais une clé AJOUTÉE à un compte qui ne l'a jamais sondée.
+      if (pf === "depop" && !Object.prototype.hasOwnProperty.call(prev, "depop")) continue;
       // ── (A) UNE PLATEFORME NON SONDÉE GARDE SA VALEUR (2026-09-15) ────────
       // Ici vivait un verrou `conserver` qui n'acceptait que Vinted et les
       // observations de handler (reconnues à un `http` NON numérique). Une
@@ -11576,6 +11891,10 @@ function sessionPlateformeMorte(platform) {
 }
 
 async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"], motif = "poll", forcer = false } = {}) {
+  // Depop (09/10) : ajoutée à la liste PAR DÉFAUT seulement (aucune liste
+  // donnée par l'appelant), et chez un poste qui a la permission d'hôte —
+  // partout ailleurs, la sonde reste à l'identique.
+  if (!arguments[1]?.plateformes && (await depopAccesAccorde())) plateformes = [...plateformes, "depop"];
   // Throttle PERSISTÉ, par plateforme et à la cadence de CHAQUE plateforme
   // (cf. en-tête de SESSION_PROBE_INTERVALS_MS).
   // `forcer` : le bouton « Vérifier » du popup passe outre — c'est un geste
@@ -13628,6 +13947,11 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
 //     « plus en ligne » qui peut n'être qu'un remplacement.
 const SYNC_ANNONCES_ALARM = "fillsell-sync-annonces";
 const RELEVE_PLATEFORMES = ["leboncoin", "beebs", "ebay", "opla"];
+// Depop (09/10) : hôte OPTIONNEL. Relevée comme les autres, mais par le SEUL
+// poste qui a la permission www.depop.com : sans elle, chaque passage
+// automatique la saute AVANT toute requête (depopAccesAccorde) — rien ne change
+// pour un poste sans Depop. La copie Cloud n'a aucun hôte optionnel.
+RELEVE_PLATEFORMES.push("depop");
 const RELEVE_PAGES = {
   leboncoin: [{ url: "https://www.leboncoin.fr/compte/part/mes-annonces", statut: "en_ligne" }],
   beebs: [
@@ -14300,6 +14624,21 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
     // (03/10, points 28/31) 90 s, plus 300 s : une liste muette ne garde plus la place.
     const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }, 90_000).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
     if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Opla illisible" };
+    for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
+    return { annonces: [...annonces.values()], complet: r.complet !== false };
+  }
+  // ── DEPOP (09/10) : la boutique lue par l'API, depuis la page (relevé du
+  // 09/10 : GET shops/<id>/products/ par pages de 24, curseur « after », une
+  // pause humaine entre deux pages). Mêmes règles qu'Opla : « absente » sans
+  // permission (pas un échec), aucune conclusion sur une liste incomplète.
+  if (platform === "depop") {
+    if (!(await depopAccesAccorde())) return { annonces: [], complet: false, absente: true, erreur: "accès Depop non accordé" };
+    await assurerScriptsDepop();
+    const tabId = await ouvrirOngletReleve("depop", DEPOP_ACCUEIL);
+    const vivant = await assurerScriptDepopSurOnglet(tabId);
+    if (!vivant.ok) return { annonces: [], complet: false, erreur: `onglet Depop injoignable : ${vivant.motif}` };
+    const r = await sendMessageToTab(tabId, { type: "DEPOP_LISTE_ARTICLES" }, 120_000).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+    if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Depop illisible", ...(r?.needsUser ? { absente: true } : {}) };
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
     return { annonces: [...annonces.values()], complet: r.complet !== false };
   }
@@ -15544,6 +15883,14 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
       const deLaListe = Array.isArray(a?.capture_liste?.photos) && a.capture_liste.photos.length > 0;
       if (deLaListe) {
         capture = a.capture_liste;
+      } else if (platform === "depop") {
+        // Depop : la fiche par l'API (aucune navigation), sur l'onglet déjà ouvert.
+        const { tabId, motif } = await ongletDepopPret();
+        if (tabId == null) throw new Error(`onglet Depop indisponible (${motif})`);
+        const r = await sendMessageToTab(tabId, { type: "DEPOP_CAPTURE_ARTICLE", listingId: String(a.listing_id) }, 45_000)
+          .catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+        if (!r?.success || !r.capture) throw new Error(r?.error ?? "fiche Depop illisible");
+        capture = r.capture;
       } else if (platform === "opla") {
         const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
         const r = await sendMessageToTab(tabId, { type: "OPLA_CAPTURE_ARTICLE", listingId: String(a.listing_id) }, 45_000)
@@ -15659,6 +16006,7 @@ function statutFinReleveAnnonces({ absente = false, vues = 0, vide = null, erreu
 
 async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null } = {}) {
   if (!RELEVE_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
+  if (platform === "depop" && !runId && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
   if (releveEnCours) return { ok: false, reason: "deja_en_cours" };
   const session = await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
@@ -15915,6 +16263,7 @@ async function releverQuotidien() {
   } catch { /* illisible : on relève comme avant */ }
   for (const platform of RELEVE_PLATEFORMES) {
     if (ecartees.includes(platform)) continue;
+    if (platform === "depop" && !(await depopAccesAccorde())) continue;
     const jobs = await restRequest(
       `cross_post_jobs?user_id=eq.${userId}&platform=eq.${platform}&status=eq.published&action=in.(publish,republish)&select=id&limit=1`, token,
     ).catch(() => []);
@@ -16235,6 +16584,8 @@ async function releverLeboncoinParApi() {
 // UNE seule porte d'écriture pour les quatre : la RPC enregistrer_ventes_relevees.
 // ══════════════════════════════════════════════════════════════════════════════
 const VENTES_PLATEFORMES = ["vinted", "leboncoin", "opla"];
+// Depop (09/10) : même règle que RELEVE_PLATEFORMES (sautée sans la permission).
+VENTES_PLATEFORMES.push("depop");
 const VENTES_CADENCE_MS = 20 * 3600_000;     // même cadence que le relevé de stock
 const VENTES_ETAT_KEY = "ventes_releve_etat";
 // Plafond MESURÉ le 19/09 sur le compte de Nico : demander per_page=200 rend
@@ -16572,9 +16923,21 @@ async function lireVentesOpla(connues) {
   }, [OPLA_VENTES_PAGE, VENTES_PAGES_MAX, [...connues]]);
 }
 
+// ── DEPOP (09/10) : les annonces passées STATUS_PURCHASED dans la boutique du
+// compte connecté (shops/<id>/products/by-status/sold/), lues par
+// content-scripts/depop.js depuis la page. Une ligne = une annonce vendue :
+// ref = son numéro, listing_id = son slug (l'identifiant de nos jobs).
+async function lireVentesDepopOnglet() {
+  const { tabId, motif } = await ongletDepopPret();
+  if (tabId == null) return { ok: false, rows: [], motif: motif === "acces_non_accorde" ? "acces_depop_non_accorde" : `onglet_${motif}` };
+  const r = await sendMessageToTab(tabId, { type: "DEPOP_VENTES" }, 120_000).catch((e) => ({ ok: false, motif: String(e?.message ?? e).slice(0, 80) }));
+  return { ok: r?.ok === true, rows: Array.isArray(r?.rows) ? r.rows : [], pages: r?.pages ?? null, motif: r?.motif ?? null };
+}
+
 // ── L'ORCHESTRATION, UNE PLATEFORME À LA FOIS ───────────────────────────────
 async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
   if (!VENTES_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
+  if (platform === "depop" && !(await depopAccesAccorde())) return { ok: false, reason: "depop_acces" };
   if (releveVentesEnCours) return { ok: false, reason: "deja_en_cours" };
   const session = await getValidSession();
   if (!session?.access_token) return { ok: false, reason: "session" };
@@ -16593,9 +16956,13 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
       if (Number.isFinite(t) && Date.now() - t < VENTES_CADENCE_MS) return { ok: false, reason: "cadence" };
     }
     const connues = await refsVentesConnues(token, userId, platform);
+    // ⛔ Chaque plateforme NOMMÉE (09/10) : le repli était Opla — une plateforme
+    // ajoutée sans sa branche aurait lu les ventes d'Opla.
     const lecture = platform === "vinted" ? await lireVentesVinted(connues)
       : platform === "leboncoin" ? await lireVentesLeboncoin(connues)
-      : await lireVentesOpla(connues);
+      : platform === "depop" ? await lireVentesDepopOnglet()
+      : platform === "opla" ? await lireVentesOpla(connues)
+      : { ok: false, rows: [], motif: `plateforme sans lecteur de ventes : ${platform}` };
 
     if (!lecture?.ok && !(lecture?.rows?.length)) {
       console.warn(`[ventes][${platform}] rien relevé — ${lecture?.motif ?? "motif inconnu"}`);
@@ -18550,7 +18917,7 @@ function categoryKeyOf(job) {
   //    « (catégorie inconnue) », c'est-à-dire nulle part d'utile.
   //    (L'autre raison est qu'Opla ne produisait AUCUNE observation : elle ne
   //    remplit pas un formulaire, elle poste sur une API. Voir opla.js.)
-  const path = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? pf.oplaCategoryPath ?? null;
+  const path = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? pf.oplaCategoryPath ?? pf.depopCategoryPath ?? null;
   if (Array.isArray(path) && path.length) return path.join(" > ");
   if (pf.ebayCategoryId) return String(pf.ebayCategoryId);
   if (pf.oplaCategoryCode) return String(pf.oplaCategoryCode);
@@ -19244,7 +19611,7 @@ async function checkPublishedListings(session) {
   };
   for (let i = 0; i < due.length; i++) {
     const job = due[i];
-    let { state, price, en_verification: enVerification } = await checkListingState(job.listing_url, job.platform);
+    let { state, price, en_verification: enVerification, exact: lectureExacte } = await checkListingState(job.listing_url, job.platform);
     console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}${enVerification ? " (en vérification chez Vinted)" : ""}`);
 
     // ── Repli wardrobe (Vinted seulement, cf. lireWardrobeConnecte) ─────────
@@ -19520,6 +19887,17 @@ async function checkPublishedListings(session) {
             unavailable_since: new Date().toISOString(),
             sale_signal: state, // "sold" = preuve positive | "unavailable" = doute confirmé sur deux cycles
             ...(state === "sold" && price ? { detected_price: price } : {}),
+            // ── DEPOP (09/10) : la vente est lue sur l'IDENTIFIANT EXACT de
+            // l'annonce (fiche STATUS_PURCHASED, relue par son slug) — c'est la
+            // preuve « sold » exacte que ventes_prouvees_tick sait enregistrer
+            // (règle de Nico du 28/09 : une vente vue sur l'identifiant exact
+            // s'enregistre seule, puis retire les copies prouvées). Les autres
+            // plateformes ne changent pas : leur drapeau attend le clic.
+            ...(state === "sold" && job.platform === "depop" && lectureExacte?.listing_id
+              && String(lectureExacte.listing_id) === String(job.platform_listing_id ?? "")
+              ? { sale_evidence: { platform: "depop", listing_id: String(lectureExacte.listing_id), state: "sold", exact: true,
+                  depop_id: lectureExacte.depop_id ?? null, lu_le: new Date().toISOString(), par: "veilleur_extension" } }
+              : {}),
           };
           console.log(
             state === "sold"
@@ -20468,6 +20846,10 @@ const DELETE_TARGETS = {
   //    n'est JAMAIS une preuve d'existence, et rien ici ne la lit comme telle.
   opla: (job) =>
     (/\/(?:product|article)\/art_/i.test(String(job.listing_url ?? "")) ? job.listing_url : "https://www.opla.co/"),
+  // Depop (09/10) : PORTE-SCRIPT, comme Opla — le retrait est un DELETE d'API
+  // fait depuis la page (content-scripts/depop.js), qui relit la fiche en 404.
+  // L'accueil suffit : aucune page n'est lue ni cliquée.
+  depop: () => "https://www.depop.com/",
 };
 
 // ── Clôture du publish après un retrait ciblé réussi (2026-07-19) ─────────────
@@ -21674,6 +22056,15 @@ async function executerRetraitViaHandler(job, accessToken) {
   // (contrôles à 0×0, handlers React non attachés), le content script échoue
   // et le job repart en needsUser (ci-dessous) plutôt que d'imposer une
   // fenêtre à l'écran. Contrainte produit : invisible avant tout.
+  // Depop (09/10) : script injecté à la demande — on le veut VIVANT avant de
+  // lui confier un retrait (même parade qu'à la publication). Muet : erreur
+  // nommée, rien n'a été envoyé à Depop.
+  if (job.platform === "depop") {
+    if (!(await depopAccesAccorde())) throw new Error("accès www.depop.com non accordé sur ce poste — rien n'a été touché");
+    await assurerScriptsDepop();
+    const v = await assurerScriptDepopSurOnglet(tabId);
+    if (!v.ok) throw new Error(`pas de réponse du content script Depop (${v.motif}) — rien n'a été touché`);
+  }
   const restore = await paintTab(tabId);
   let result;
   try {
@@ -22018,6 +22409,20 @@ function prevolCaptureRepublication(job, snapExterne = null) {
     return manquants;
   }
 
+  // Depop (09/10) : le redépôt repart du job lui-même, par l'API — description
+  // (pas de titre chez Depop), prix, photos, rayon (3 identifiants), état,
+  // frais de port. Ce qui manque ici ne se demande pas APRÈS le retrait.
+  if (job.platform === "depop") {
+    if (!String(job.description ?? "").trim()) manquants.push("la description");
+    if (!(Number(job.price) >= 1)) manquants.push("le prix");
+    const nPhotos = Array.isArray(job.photos) ? job.photos.length : 0;
+    if (!nPhotos && !(Number(snap?.photos) > 0)) manquants.push("les photos");
+    if (!(Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.length === 3)) manquants.push("le rayon Depop");
+    if (!String(pf.depopEtat ?? "").trim()) manquants.push("l'état");
+    if (pf.depopPort == null || pf.depopPort === "") manquants.push("les frais de port");
+    return manquants;
+  }
+
   return manquants;
 }
 
@@ -22246,6 +22651,8 @@ function idAnnonceDepuisUrl(platform, url) {
     beebs: /\/p\/(\d+)(?:[-/?#]|$)/,
     ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/,
     opla: /(art_[A-Za-z0-9_-]+)/,
+    // depop (09/10) : le slug (« prefixe-mots-suffixe »), qui vit dans l'URL.
+    depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
   }[platform];
   const m = re ? u.match(re) : null;
   return m ? m[1] : null;
@@ -22310,7 +22717,7 @@ function suppressionDejaEnvoyee(job, pf) {
     String(pf?.error_technique?.brut ?? ""),
     ...(Array.isArray(pf?.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
   ];
-  return textes.some((t) => /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted)/.test(t));
+  return textes.some((t) => /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted|Depop)/.test(t));
 }
 
 // ── (0.6.104, Louis) BEEBS : LA PREUVE D'UNE SUPPRESSION RELUE JUSQU'À ~6 MIN ─
@@ -22990,7 +23397,10 @@ async function processRepublishJob(job, accessToken) {
   if (job.platform === "opla") return processOplaRepublishJob(job, accessToken);
   // Leboncoin / Beebs (2026-09-17) : retrait puis redépôt depuis la copie du
   // dépôt d'origine — processRepublishJobPlateforme, pas la machine Vinted.
-  if (job.platform === "leboncoin" || job.platform === "beebs") return processRepublishJobPlateforme(job, accessToken);
+  // depop (09/10) : republier = SUPPRIMER puis RECRÉER — la machine de
+  // Leboncoin et Beebs, avec ses gardes : rien n'est retiré sans copie complète,
+  // et une suppression partie va au bout (republish_step, retraitEngage).
+  if (job.platform === "leboncoin" || job.platform === "beebs" || job.platform === "depop") return processRepublishJobPlateforme(job, accessToken);
   const pf = { ...(job.platform_fields ?? {}) };
   // Défaut = 'a_capturer', PREMIÈRE étape de la machine (corrigé le 2026-08-05,
   // il était resté à 'captured', l'ancienne première étape d'avant la migration

@@ -95,6 +95,18 @@ function mondesDuManifest() {
   if (fs.existsSync(path.join(EXT, 'popup.js'))) {
     mondes.push({ nom: 'popup.html', fichiers: [path.join(EXT, 'config.js'), path.join(EXT, 'popup.js')], extras: {} });
   }
+  // ── Les mondes ENREGISTRÉS À LA DEMANDE (09/10) ──────────────────────────
+  // Opla et Depop ne sont pas dans `content_scripts` (hôte optionnel) : leurs
+  // scripts sont enregistrés par le background (OPLA_SCRIPTS, DEPOP_SCRIPTS),
+  // dans un MÊME monde isolé. Lus ici dans background.js, pour que leurs
+  // collisions et leurs identifiants absents soient contrôlés comme les autres.
+  const bg = fs.readFileSync(path.join(EXT, manifest.background?.service_worker ?? 'background.js'), 'utf8');
+  for (const nom of ['OPLA_SCRIPTS', 'DEPOP_SCRIPTS']) {
+    const m = bg.match(new RegExp(`const ${nom} = \\[([^\\]]*)\\]`));
+    if (!m) continue;
+    const fichiers = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => path.join(EXT, x[1]));
+    if (fichiers.length) mondes.push({ nom: `${nom} (enregistrés à la demande)`, fichiers, extras: {} });
+  }
   return mondes;
 }
 

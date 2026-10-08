@@ -16,10 +16,21 @@
 //    `selftest:tailles-content-script` refuse toute divergence.
 //
 //   node scripts/gen-tailles-content-script.mjs
+//
+// ── DEPOP (09/10/2026) : node scripts/gen-tailles-content-script.mjs --depop
+// La copie d'Opla est GELÉE (fbb85ee, cf. selftest:opla-prevol) : Opla sort le
+// 10/10, on ne touche plus à son comportement. Depop reçoit SA copie, de la
+// règle ACTUELLE (« EUR 38 » ≡ « EU 38 », pays d'un nombre…), dans un fichier
+// à part : chrome-extension/content-scripts/depop-tailles.js, injecté par
+// DEPOP_SCRIPTS dans le seul monde de www.depop.com. Même recopie à l'octet,
+// vérifiée par selftest:depop-acces.
 import fs from 'node:fs';
 
+const DEPOP = process.argv.includes('--depop');
 const SOURCE = 'supabase/functions/_shared/tailles.js';
-const CIBLE = 'chrome-extension/content-scripts/tailles-vocabulaire.js';
+const CIBLE = DEPOP
+  ? 'chrome-extension/content-scripts/depop-tailles.js'
+  : 'chrome-extension/content-scripts/tailles-vocabulaire.js';
 
 const src = fs.readFileSync(SOURCE, 'utf8');
 // Les deux seules formes exportées par le module. Tout `export` non reconnu
@@ -36,12 +47,14 @@ if (restant) {
 
 const entete = [
   '// ⚠️ FICHIER GÉNÉRÉ — ne pas éditer à la main.',
-  '//   node scripts/gen-tailles-content-script.mjs',
+  DEPOP ? '//   node scripts/gen-tailles-content-script.mjs --depop' : '//   node scripts/gen-tailles-content-script.mjs',
   `// Source : ${SOURCE} (recopiée à l'octet près, seuls les \`export\` tombent).`,
   '//',
   '// Les content scripts MV3 ne sont pas des modules ES : le vocabulaire se',
   '// publie sur globalThis, comme opla-prevol.js le fait pour ses propres',
-  '// fonctions. Injecté par OPLA_SCRIPTS (background.js), AVANT opla-prevol.js.',
+  DEPOP
+    ? '// fonctions. Injecté par DEPOP_SCRIPTS (background.js), AVANT depop.js.'
+    : '// fonctions. Injecté par OPLA_SCRIPTS (background.js), AVANT opla-prevol.js.',
   '',
 ].join('\n');
 

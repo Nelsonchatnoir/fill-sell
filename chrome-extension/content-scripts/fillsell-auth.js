@@ -67,6 +67,8 @@
     // (popup), où le geste que Chrome exige se fait. Aller-retour : la page
     // apprend si la fenêtre s'est ouverte, ou si l'accès est déjà là.
     "AUTORISER_OPLA",
+    // « Autoriser Depop » (09/10) : le même aller-retour, pour www.depop.com.
+    "AUTORISER_DEPOP",
     // Question « Marque » (03/10 nuit, 0.6.94) : chercher un nom dans le
     // catalogue des marques Vinted. Lecture seule ; la réponse repart vers la
     // page avec le terme cherché.
@@ -83,6 +85,14 @@
           window.postMessage({ __fillsellOplaOuverture: rep ?? { ok: false, error: "extension muette" } }, window.location.origin);
         });
         console.log("[fillsell-auth] commande relayée : AUTORISER_OPLA");
+        return;
+      }
+      if (cmd === "AUTORISER_DEPOP") {
+        chrome.runtime.sendMessage({ type: cmd }, (rep) => {
+          void chrome.runtime.lastError;
+          window.postMessage({ __fillsellDepopOuverture: rep ?? { ok: false, error: "extension muette" } }, window.location.origin);
+        });
+        console.log("[fillsell-auth] commande relayée : AUTORISER_DEPOP");
         return;
       }
       if (cmd === "CHERCHER_MARQUE") {

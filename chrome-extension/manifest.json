@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FillSell — Cross-post",
-  "version": "0.6.104",
+  "version": "0.6.105",
   "description": "Publie automatiquement vos annonces FillSell sur Vinted, Leboncoin, Beebs et eBay.",
   "permissions": [
     "storage",
@@ -21,7 +21,8 @@
     "https://tojihnuawsoohlolangc.supabase.co/*"
   ],
   "optional_host_permissions": [
-    "https://www.opla.co/*"
+    "https://www.opla.co/*",
+    "https://www.depop.com/*"
   ],
   "icons": {
     "16": "assets/icons/icon-16.png",
