@@ -9,8 +9,7 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
   `rapprochement` v15 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
   nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; remise en ligne Vinted (mêmes photos + titre, jamais
   en ligne ensemble → la plus ancienne ; vente sur annonce remplacée refusée) : mig 160000 NON appliquée ; `docs/multi-synchro.md`.
-- **Push ventes** : 2.9.62, cron 34, `pushDisponible()`.
-- **⛔ Mail à chaque vente** (`push-ventes`) : vente récente prouvée, jamais plafonné, sans récap.
+- **Push** (2.9.62, cron 34, `pushDisponible()`) ; **⛔ mail par vente** : récente prouvée, sans plafond ni récap.
 - **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = va au bout, même hors créneau.
 - **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie = création.
 - **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
@@ -349,7 +348,7 @@ qui survit à ça, c'est du code.
   confirmation au cycle suivant (règle Vinted du 09/08, étendue aux 5
   plateformes par la 0.6.72). Un relevé **vide** ou **incomplet** ne prouve
   AUCUNE disparition.
-- Détection de vente : délai de grâce de 4 h, identique sur toutes les plateformes.
+- Vente : grâce 4 h ; ⛔ Auto : eBay seul ; Vinted « sold » prouvé = clic depuis le 28/09 (fix mig 20261008233100 non appliqué).
 - ⛔ **Un relevé tient en 5 minutes** (03/10, Nico) : sans progression il rend
   la place ; un relevé lent qui avance n'est jamais coupé ; un arrêt ne conclut
   rien et laisse sa raison dans les journaux, jamais à l'écran.

@@ -42,6 +42,9 @@ déploiement d'ops-digest, nettoyage de Nadège ; chantier Louis.
   d'absence (deux relevés complets → question « Vendue ? ») ; l'enregistrement
   automatique exige une preuve lue sur la page (`enregistrer_ventes_prouvees`),
   l'API eBay ou une commande, et il ATTEND qu'aucun relevé ne tourne.
+  ⚠️ (correction du 08/10 nuit, recontrôlée) : `enregistrer_ventes_prouvees`
+  n'a AUCUN appelant depuis le 28/09 16:46 — hors eBay, rien n'est enregistré
+  automatiquement. Voir `docs/enquetes/ventes-prouvees-0810/RAPPORT.md`.
 - **Rejeu 7 jours** (sur ce que chaque relevé a réellement apporté) : 438 → 144 ;
   44310spgl Opla 166 → 50, dont 45 « absente » du 02 au 04/10 (sans accès à
   Opla, aucune requête) et 5 constats d'absence ; choupette06 Beebs 14 → 0.

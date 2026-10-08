@@ -4,11 +4,29 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » en fin ; reprises : `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » en fin ; reprises : `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ VENTES PROUVÉES : PAS AUTOMATIQUES EN PROD (08/10 nuit, audit)** : la
+  vente sur preuve « sold » (GO du 28/09, `enregistrer_ventes_prouvees`) n'a
+  tourné que de 16:42 à 16:46 le 28/09 (appel dans get-pending-jobs retiré par
+  précaution ; lien avec la latence jamais démontré, cause mesurée = cron 17).
+  Depuis, une vente Vinted prouvée ATTEND LE CLIC et ses copies restent en
+  vente ailleurs (90 ventes, 24 comptes, au 08/10 ; seul eBay est automatique).
+  Correctif PRÊT, NON APPLIQUÉ (feu vert) : cron SQL `ventes-prouvees-2min`
+  (`ventes_prouvees_tick` : index partiel, verrou, 25 / 4 s par passage,
+  preuves postérieures à l'armement seulement, vente par
+  `enregistrer_vente_atomique` inchangée) — migrations **20261008233000**
+  (index, CONCURRENTLY, seule) puis **20261008233100** ; veille-cpu et
+  ops-digest lisent `ventes_prouvees_veille()` (à déployer) ; arriéré :
+  `scripts/reparations/20261008_rattrapage_ventes_prouvees.mjs` (à blanc par
+  défaut ; retraits irréversibles). **Vérifier l'état réel** :
+  `select public.ventes_prouvees_veille();` (fonction absente = non branchée) et
+  `cron.job` `ventes-prouvees-2min`. Rapport
+  `docs/enquetes/ventes-prouvees-0810/RAPPORT.md` ; banc `npm run banc:ventes-prouvees`
+  (Postgres jetable), selftest `selftest:ventes-prouvees`.
 - **⛔ MULTI-SYNCHRO (08/10 nuit, règle de Nico du 07/10)** : un appui sur
   « Synchroniser » relève TOUTES les plateformes, le stock arrive DÉJÀ fusionné ;
   moteur v3 `_shared/rapprochement/` (jamais la photo seule, jamais le titre
