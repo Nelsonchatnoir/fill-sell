@@ -136,11 +136,22 @@ const memeAge = (x, y) => !!x && !!y && x.unite === y.unite && x.de === y.de && 
 //     « EU 46 » d'une grille qui n'a ni « 46 » ni « FR 46 », est le dernier
 //     recours de tailleDansGrille — la règle du 23/09 (Joséphine), à sens unique.
 // UK, US, IT, DE ne se lisent JAMAIS ici : ce sont d'autres tailles.
+// ── « EUR » ≡ « EU » (09/10, Depop) ─────────────────────────────────────────
+// Depop écrit ses pointures adultes « EUR 38 » (grilles 48 et 79 du relevé du
+// 08/10) là où l'app écrit « EU 38 » : le même système, deux orthographes —
+// une TRADUCTION, jamais une conversion. Sans « eur » ici, toute pointure
+// adulte était refusée sur Depop. « EUR » garde le pays EU : « EUR 38 » ≢ « 38 »
+// (le nombre nu reste français ; seul le dernier recours de tailleDansGrille,
+// à sens unique, le pose sur l'option EU d'une grille qui n'écrit que l'EU).
+// Mesuré avant le changement (09/10) : aucune grille relevée de Vinted,
+// Leboncoin, eBay, Beebs ou Opla, aucune taille de fiche, aucun job n'écrit
+// « EUR » — les sorties des cinq plateformes ne bougent pas (tailles-rejeu).
 function lireNombre(v) {
   const s = plier(v);
-  const m = /^(?:(fr|eu|t|taille)\s*)?(\d{1,3}(?:\.\d)?)(?:\s*(fr|eu))?$/.exec(s);
+  const m = /^(?:(fr|eur|eu|t|taille)\s*)?(\d{1,3}(?:\.\d)?)(?:\s*(fr|eur|eu))?$/.exec(s);
   if (!m || (m[1] && m[3])) return null;
-  const pays = (m[1] === "fr" || m[3] === "fr") ? "fr" : (m[1] === "eu" || m[3] === "eu") ? "eu" : "";
+  const estEu = (x) => x === "eu" || x === "eur";
+  const pays = (m[1] === "fr" || m[3] === "fr") ? "fr" : (estEu(m[1]) || estEu(m[3])) ? "eu" : "";
   return { pays, n: String(Number(m[2])) }; // « 44.0 » → « 44 », « 44.5 » → « 44.5 »
 }
 

@@ -218,7 +218,11 @@ const CHEMIN_DU_JOB = {
   leboncoin: pf => pf.lbcCategoryPath,
   beebs:     pf => pf.beebsCategoryPath ?? pf.categorie_a_choisir,
   ebay:      pf => pf.ebayCategoryId,
+  // Depop (09/10) : département, groupe, type — les TROIS identifiants, ou rien.
+  depop:     pf => (Array.isArray(pf.depopCategoryPath) && pf.depopCategoryPath.length === 3 ? pf.depopCategoryPath : null),
 };
+// Plateformes dont la catégorie est posée par le SERVEUR (aucun chemin côté app).
+const CATEGORIE_POSEE_PAR_LE_SERVEUR = new Set(["opla"]);
 export function plateformesSansChemin(rows) {
   return (rows ?? []).filter(r => {
     // (25/09) Rayon refusé par la vérification, aucun rayon sûr trouvé à sa
@@ -228,7 +232,9 @@ export function plateformesSansChemin(rows) {
     // (appliquerRayonChoisi) : la plateforme repart alors normalement.
     if (r.platform_fields?.rayon_a_choisir) return true;
     const lire = CHEMIN_DU_JOB[r.platform];
-    if (!lire) return false; // opla et tout futur handler serveur
+    // ⛔ (09/10) Une plateforme INCONNUE n'est plus réputée avoir un chemin :
+    //    seule Opla (rayon posé côté serveur) part sans chemin d'app.
+    if (!lire) return !CATEGORIE_POSEE_PAR_LE_SERVEUR.has(r.platform);
     const v = lire(r.platform_fields ?? {});
     return Array.isArray(v) ? v.length === 0 : !v;
   }).map(r => r.platform);

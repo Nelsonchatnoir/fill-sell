@@ -61,11 +61,30 @@ export const ETATS_GENERAUX = Object.freeze(
 /** Palier produit (2026-08-31) : identique à DEFAULT_CONDITION côté client. */
 export const DEFAUT_ETAT = "tres_bon";
 
+// ── « COMME NEUF » : UNE SEULE LECTURE (09/10) ──────────────────────────────
+// « Comme neuf » dit un article D'OCCASION qui paraît neuf (état eBay
+// « Comme neuf », libellé français de l'état Depop used_like_new) : c'est un
+// très bon état, jamais un neuf. Jusqu'au 09/10 il était lu DEUX fois :
+// tierEtat le rangeait en « Neuf sans étiquette » (le mot « neuf » suffisait),
+// etatAffirmeParLeTexte en « Très bon état ». Le premier EMBELLISSAIT l'état
+// envoyé aux autres plateformes (fiche « Comme neuf » relevée sur eBay →
+// « Neuf sans étiquette » sur Vinted, Beebs, Leboncoin ou Opla) et faisait
+// retirer « comme neuf » des descriptions comme une contradiction.
+// La règle vit ICI, une fois, et sert aux deux lectures. Mesuré le 09/10 avant
+// correction : 20 fiches « Comme neuf » (relevé eBay, 5 comptes), aucune
+// encore publiée ailleurs qu'eBay ; aucun job n'a jamais porté « Comme neuf ».
+// (« Presque neuf » / « Quasi neuf » — 3 fiches eBay — ne sont PAS touchés
+// ici : signalés, hors de la demande du 09/10.)
+// Exactement l'ancienne formule du texte (« comme neufs » compris, « comme
+// neuve » NON — inchangé) : seule la lecture de tierEtat change.
+const COMME_NEUF = /comme\s+neuf/i;
+
 // ── Texte libre → palier (recopié de redaction-plateformes.ts) ──────────────
 // Le Lens rend une des 5 valeurs Vinted, mais les relevés du 28/07 montrent
 // aussi « Bon », « bon », « Très bon » : on tolère.
 // ⚠️ « très bon » AVANT « bon » — le second est inclus dans le premier et
 // l'ordre des tests fait toute la différence.
+// ⚠️ « comme neuf » AVANT « neuf » : même raison (cf. COMME_NEUF).
 // Les codes de l'API Opla (« like-new », « new-with-tags »…) sont reconnus
 // aussi : ce sont des états lus en base sur des jobs réels, pas une hypothèse.
 export function tierEtat(v) {
@@ -79,6 +98,7 @@ export function tierEtat(v) {
   if (code === "fair" || code === "poor") return "satisfaisant";
   const s = code.normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   if (!s) return null;
+  if (COMME_NEUF.test(s)) return "tres_bon";
   if (/neuf/.test(s) && /avec/.test(s)) return "neuf_etiquette";
   if (/neuf/.test(s)) return "neuf_sans";
   if (/tres bon|excellent/.test(s)) return "tres_bon";
@@ -154,7 +174,8 @@ const FORMULES_ETAT = [
   { tier: "neuf_sans",      re: /neuf\s*,?\s*sans\s+étiquettes?/i },
   { tier: "neuf_sans",      re: /(?:à\s+l'|en\s+)?état\s*:?\s*neuf(?:ve)?\b/i },
   { tier: "neuf_sans",      re: /jamais\s+(?:porté|portée|utilisé|utilisée|servi|servie)/i },
-  { tier: "tres_bon",       re: /comme\s+neuf|très\s+bon\s+état|excellent\s+état|parfait\s+état|impeccable/i },
+  { tier: "tres_bon",       re: COMME_NEUF },
+  { tier: "tres_bon",       re: /très\s+bon\s+état|excellent\s+état|parfait\s+état|impeccable/i },
   { tier: "bon",            re: /bon\s+état/i },
   { tier: "satisfaisant",   re: /état\s+satisfaisant|état\s+moyen|état\s+correct|pour\s+pièces/i },
 ];

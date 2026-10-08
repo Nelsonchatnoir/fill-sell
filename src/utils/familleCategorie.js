@@ -107,7 +107,30 @@ const RACINES = {
     "Culture et Loisirs": "loisirs", "Jeux et jouets": "loisirs", "Sport": "loisirs",
     "Maison": "maison", "Fait main": "maison",
   },
+  // ── depop (09/10) : la famille de chaque GROUPE relevé (arbre du 08/10) ───
+  // Un chemin Depop est fait d'IDENTIFIANTS — [département, groupe, type] —
+  // jamais de libellés (ceux de Depop en français sont parfois faux). Les trois
+  // départements de mode (menswear, womenswear, kidswear) sont des GENRES,
+  // comme les racines Femmes / Hommes / Enfants de Vinted et d'Opla : c'est le
+  // groupe qui dit la famille, dans tous les départements. Chaque groupe porte
+  // UNE famille (vérifié contre DEPOP_TYPE_VERS_INTERNE, depopCategories.js),
+  // sauf « art », lu au type (cf. familleDeChemin). Sans cette entrée, toute
+  // feuille Depop rendait null : garde-fou de famille PERMISSIF, la classe de
+  // faute des 550 feuilles Opla du 19/09.
+  depop: {
+    "tops": "mode", "bottoms": "mode", "dresses": "mode", "coats-jackets": "mode",
+    "jumpsuit-and-playsuit": "mode", "suits": "mode", "footwear": "mode", "accessories": "mode",
+    "nightwear": "mode", "underwear": "mode", "swim-beach-wear": "mode",
+    "sleepsuits-and-bodysuits": "mode", "bundles": "mode", "face-masks": "mode", "umbrella": "mode",
+    "fancy-dress": "loisirs", "books-and-magazine": "loisirs", "music": "loisirs",
+    "sports-equipment-accesories": "loisirs", "toys": "loisirs",
+    "beauty": "beaute",
+    "home": "maison", "party-supplies": "maison",
+    "tech-accessories": "electronique", "film": "electronique",
+  },
 };
+// « art » mélange les objets de collection et les œuvres : lu au TYPE.
+const DEPOP_ART_LOISIRS = new Set(["collectibles", "stickers"]);
 
 // Ce que chaque famille TOLÈRE en face (en plus d'elle-même).
 const COMPATIBLES = {
@@ -125,7 +148,7 @@ const COMPATIBLES = {
  * La famille d'un chemin de catégorie d'une plateforme, ou null si elle est
  * inconnue / ambiguë. Ne regarde que la racine (et le 2e niveau quand la
  * racine mélange — Vinted Femmes/Hommes/Enfants, consoles sous Électronique).
- * @param {"vinted"|"ebay"|"beebs"|"leboncoin"} plateforme
+ * @param {"vinted"|"ebay"|"beebs"|"leboncoin"|"opla"|"depop"} plateforme
  * @param {string[]} chemin
  * @returns {string|null}
  */
@@ -133,6 +156,12 @@ export function familleDeChemin(plateforme, chemin) {
   const c = Array.isArray(chemin) ? chemin.map((s) => String(s ?? "").trim()) : [];
   if (!c.length) return null;
   const [racine, niveau2 = ""] = c;
+  // ── DEPOP (09/10) : [département, groupe, type] — le GROUPE dit la famille ─
+  if (plateforme === "depop") {
+    const type = c[2] ?? "";
+    if (niveau2 === "art") return type ? (DEPOP_ART_LOISIRS.has(type) ? "loisirs" : "maison") : null;
+    return RACINES.depop[niveau2] ?? null;
+  }
   // ── RACINES DE GENRE : Vinted ET OPLA (2026-09-19) ────────────────────────
   // La règle « la racine est un genre, c'est le niveau 2 qui dit la famille »
   // n'existait que pour Vinted. Opla a EXACTEMENT les mêmes racines de genre —

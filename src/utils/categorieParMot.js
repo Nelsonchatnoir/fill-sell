@@ -39,6 +39,14 @@ export async function feuillesDe(plateforme) {
     // pas un nombre — c'est lui que le POST de création attend. Chargé en
     // import() dynamique comme les quatre autres : rien au démarrage de l'app.
     case "opla": mod = await import("./arbres/oplaFeuilles.js"); break;
+    // ⛔ depop (09/10) : AUCUN arbre de libellés, exprès. La catégorie Depop se
+    // résout UNIQUEMENT par identifiant (icône + genre → [département, groupe,
+    // type], utils/depopCategories.js) — jamais par le mot contre des libellés :
+    // ceux que Depop sert en français sont faux ou en double (« Robe habillée »
+    // pour un déguisement, deux « T-shirts », trois « Vestes »), et une
+    // recherche par le mot y tomberait « exactement et seule » sur la mauvaise
+    // feuille. Le choix à la main passe par utils/depopChoix.js (identifiants).
+    case "depop": return [];
     default: return [];
   }
   const feuilles = mod?.FEUILLES ?? [];

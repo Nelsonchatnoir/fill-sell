@@ -228,12 +228,19 @@ export const PLATEFORMES_RAYON_A_DEMANDER = Object.freeze(["vinted", "leboncoin"
 /** Le job de cette plateforme n'a-t-il AUCUN rayon ? (pur) — `categorie_a_choisir`
  *  de Beebs n'en est pas un : c'était « l'extension demandera », c'est désormais
  *  l'app qui demande, avant le dépôt. */
+// ⛔ (09/10, Depop) Une plateforme INCONNUE n'a PAS de rayon : jusqu'ici tout
+//    ce qui n'était pas l'une des quatre retombait sur la chaîne "opla"
+//    (vraie), et un job Depop sans catégorie passait pour en avoir une. Seule
+//    Opla garde l'exception, nommée : son rayon est posé par le serveur.
+//    Depop : le chemin est TROIS IDENTIFIANTS (département, groupe, type).
 export function sansRayon(platform, pf) {
+  if (platform === "opla") return false;
   const v = platform === "vinted" ? pf?.categoryPath
     : platform === "leboncoin" ? pf?.lbcCategoryPath
       : platform === "beebs" ? pf?.beebsCategoryPath
         : platform === "ebay" ? pf?.ebayCategoryId
-          : "opla";
+          : platform === "depop" ? (Array.isArray(pf?.depopCategoryPath) && pf.depopCategoryPath.length === 3 ? pf.depopCategoryPath : null)
+            : null;
   return Array.isArray(v) ? v.length === 0 : !v;
 }
 

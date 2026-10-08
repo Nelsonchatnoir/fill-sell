@@ -98,6 +98,7 @@
     "gen:depop-referentiel": "node scripts/gen-depop-referentiel.mjs",
     "selftest:depop-referentiel": "node scripts/gen-depop-referentiel.mjs --verifier",
     "selftest:depop-mapping": "node --import ./scripts/loader-ext.mjs scripts/depop-mapping-selftest.mjs",
+    "selftest:moteur-faiblesses-depop": "node --import ./scripts/loader-ext.mjs scripts/moteur-faiblesses-depop-selftest.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",
     "selftest:leboncoin-vendu": "node scripts/leboncoin-vendu-selftest.mjs",

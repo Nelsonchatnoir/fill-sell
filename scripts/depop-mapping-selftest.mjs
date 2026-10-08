@@ -249,36 +249,30 @@ controleTaillesEnfant(att.DEPOP_TAILLE_ENFANT).forEach((x) => ok(false, x));
   ok(att.depopMarqueAbsente("Sans marque") && att.depopMarqueAbsente("") && !att.depopMarqueAbsente("Nike"), "absence de marque : estSansMarque (la seule liste)");
 }
 
-// ═══ D (invisibilité) ══════════════════════════════════════════════════════
-const MODULES = ["src/utils/depopCategories.js", "src/utils/depopAttributs.js"];
-// Fichiers qui citaient Depop AVANT le 08/10 (textes, prompts, blog, motif de départ) — figés.
-const CONNUS = new Set([
-  "src/blog/comment-calculer-profits-vinted.md", "src/blog/how-to-calculate-reselling-profits.md",
-  "src/i18n/translations.js", "src/stock/regles.js", "src/tabs/StockTab.jsx",
-  "supabase/functions/_shared/description-leboncoin.ts", "supabase/functions/deal-analysis/index.ts",
-  "supabase/functions/email-tunnel/index.ts", "supabase/functions/lens-analysis/index.ts",
-  "supabase/functions/stats-analysis/index.ts", "supabase/functions/voice-intent/index.ts",
-  "supabase/functions/voice-parse/index.ts", "supabase/migrations/20260919170000_emails_porte_unique.sql",
-  "supabase/migrations/20261006090000_departs_compte.sql",
-  ...MODULES, "supabase/migrations/20261008230000_depop_drapeau_inerte.sql",
-]);
-function controleInvisible(fichiersQuiCitent, imports) {
+// ═══ D (accès borné) ═══════════════════════════════════════════════════════
+// Jusqu'au 08/10 au soir, cette section exigeait que Depop reste INVISIBLE
+// (aucun fichier ne la citait, aucun module n'était importé). Le 09/10, le
+// rattachement est BRANCHÉ pour le seul compte bêta (feu vert de Nico) : la
+// garde se déplace là où elle compte — l'hôte Depop n'est jamais OBLIGATOIRE
+// (il désactiverait l'extension chez tout le parc), et la migration du
+// drapeau ne peut toujours ni armer ni désarmer Depop. L'accès réservé au
+// compte bêta est prouvé par scripts/depop-acces-selftest.mjs.
+function controleManifeste(manifeste) {
   const erreurs = [];
-  for (const f of fichiersQuiCitent) if (!CONNUS.has(f)) erreurs.push(`Depop cité dans un fichier de l'app/serveur/extension : ${f}`);
-  for (const f of imports) erreurs.push(`module Depop importé par ${f}`);
+  const obligatoires = [
+    ...(manifeste.host_permissions ?? []),
+    ...(manifeste.content_scripts ?? []).flatMap((c) => c.matches ?? []),
+    ...(manifeste.web_accessible_resources ?? []).flatMap((w) => w.matches ?? []),
+  ];
+  if (obligatoires.some((m) => /depop/i.test(m))) erreurs.push("hôte Depop OBLIGATOIRE dans le manifest");
+  const optionnels = (manifeste.optional_host_permissions ?? []).filter((m) => /depop/i.test(m));
+  if (!optionnels.every((m) => m === "https://www.depop.com/*")) erreurs.push("hôte Depop optionnel inattendu : " + optionnels.join(", "));
   return erreurs;
 }
-const gitGrep = (args) => {
-  try { return execFileSync("git", ["grep", ...args], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean); }
-  catch (e) { if (e.status === 1) return []; throw e; }
-};
-// Fichiers suivis ET fichiers neufs non encore ajoutés (--untracked).
-const citent = gitGrep(["--untracked", "-il", "depop", "--", "src", "supabase", "chrome-extension", "public", "index.html", "vite.config.js"]);
-const importent = gitGrep(["--untracked", "-l", "-E", "depop(Categories|Attributs)", "--", "src", "supabase", "chrome-extension"]).filter((f) => !MODULES.includes(f));
-controleInvisible(citent, importent).forEach((x) => ok(false, x));
 {
-  const manifeste = lire("chrome-extension/manifest.json");
-  ok(!/depop/i.test(manifeste), "manifest de l'extension : aucun hôte Depop");
+  const manifeste = JSON.parse(lire("chrome-extension/manifest.json"));
+  const e = controleManifeste(manifeste);
+  ok(e.length === 0, "manifest : Depop jamais obligatoire, seulement www.depop.com en optional_host_permissions" + (e.length ? " — " + e.join(" ; ") : ""));
   const mig = lire("supabase/migrations/20261008230000_depop_drapeau_inerte.sql");
   const code = mig.split("\n").filter((l) => !/^\s*--/.test(l)).join("\n");
   ok(/VALUES \('depop_ouvert', 0, now\(\)\)/.test(code) && /ON CONFLICT \(key\) DO NOTHING/.test(code), "migration : depop_ouvert = 0, jamais réécrit");
@@ -312,8 +306,8 @@ controleInvisible(citent, importent).forEach((x) => ok(false, x));
   mord("matière à deux sens", controleMatieres({ ...att.DEPOP_MATIERES, wool: ["Laine", "Coton"] }));
   mord("taille enfant orpheline", controleTaillesEnfant({ ...att.DEPOP_TAILLE_ENFANT, "8 ans": { grille: 101, id: 99, libelle: "8 years" } }));
   mord("taille enfant mal libellée", controleTaillesEnfant({ ...att.DEPOP_TAILLE_ENFANT, "8 ans": { grille: 101, id: 14, libelle: "9 years" } }));
-  mord("Depop cité ailleurs", controleInvisible([...citent, "src/utils/stockFiltres.js"], []));
-  mord("module Depop importé", controleInvisible(citent, ["src/App.jsx"]));
+  mord("hôte Depop obligatoire", controleManifeste({ host_permissions: ["https://www.depop.com/*"] }));
+  mord("hôte Depop optionnel trop large", controleManifeste({ optional_host_permissions: ["https://*.depop.com/*"] }));
 }
 
 // ── Bilan ───────────────────────────────────────────────────────────────────
