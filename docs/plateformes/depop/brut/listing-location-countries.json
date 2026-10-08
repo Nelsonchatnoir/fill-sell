@@ -1,0 +1,1661 @@
+[
+  {
+    "country": "Afghanistan",
+    "countryCode": "AF",
+    "address": "Afghanistan",
+    "geoLat": 33.8388058603423,
+    "geoLng": 66.0264709817607
+  },
+  {
+    "country": "Algeria",
+    "countryCode": "DZ",
+    "address": "Algeria",
+    "geoLat": 28.1632395923063,
+    "geoLng": 2.63238813336793
+  },
+  {
+    "country": "American Samoa",
+    "countryCode": "AS",
+    "address": "American Samoa",
+    "geoLat": -14.304405426733,
+    "geoLng": -170.707833250312
+  },
+  {
+    "country": "Andorra",
+    "countryCode": "AD",
+    "address": "Andorra",
+    "geoLat": 42.5486542501806,
+    "geoLng": 1.57676643468505
+  },
+  {
+    "country": "Angola",
+    "countryCode": "AO",
+    "address": "Angola",
+    "geoLat": -12.0993951347033,
+    "geoLng": 17.912292115939
+  },
+  {
+    "country": "Anguilla",
+    "countryCode": "AI",
+    "address": "Anguilla",
+    "geoLat": 18.1945854999999,
+    "geoLng": -63.0818298
+  },
+  {
+    "country": "Antarctica",
+    "countryCode": "AQ",
+    "address": "Antarctica",
+    "geoLat": -72.822042,
+    "geoLng": 0
+  },
+  {
+    "country": "Antigua & Barbuda",
+    "countryCode": "AG",
+    "address": "Antigua & Barbuda",
+    "geoLat": 17.11793422,
+    "geoLng": -61.84387674
+  },
+  {
+    "country": "Argentina",
+    "countryCode": "AR",
+    "address": "Argentina",
+    "geoLat": -36.252002,
+    "geoLng": -63.954193
+  },
+  {
+    "country": "Armenia",
+    "countryCode": "AM",
+    "address": "Armenia",
+    "geoLat": 40.6056564938472,
+    "geoLng": 44.6603948347298
+  },
+  {
+    "country": "Aruba",
+    "countryCode": "AW",
+    "address": "Aruba",
+    "geoLat": 12.5156286858793,
+    "geoLng": -69.9756409523066
+  },
+  {
+    "country": "Ascension Island",
+    "countryCode": "AC",
+    "address": "Ascension Island",
+    "geoLat": 64.9975884448459,
+    "geoLng": -18.6054668169534
+  },
+  {
+    "country": "Australia",
+    "countryCode": "AU",
+    "address": "Australia",
+    "geoLat": -25.7349684916223,
+    "geoLng": 134.489562606981
+  },
+  {
+    "country": "Austria",
+    "countryCode": "AT",
+    "address": "Austria",
+    "geoLat": 47.6077978292689,
+    "geoLng": 14.3001435907641
+  },
+  {
+    "country": "Azerbaijan",
+    "countryCode": "AZ",
+    "address": "Azerbaijan",
+    "geoLat": 40.418259613178,
+    "geoLng": 47.720341220495
+  },
+  {
+    "country": "Bahamas",
+    "countryCode": "BS",
+    "address": "Bahamas",
+    "geoLat": 25.07471,
+    "geoLng": -77.3408
+  },
+  {
+    "country": "Bahrain",
+    "countryCode": "BH",
+    "address": "Bahrain",
+    "geoLat": 26.0224069941867,
+    "geoLng": 50.5596439032492
+  },
+  {
+    "country": "Bangladesh",
+    "countryCode": "BD",
+    "address": "Bangladesh",
+    "geoLat": 24.3476077999364,
+    "geoLng": 90.0779740421191
+  },
+  {
+    "country": "Barbados",
+    "countryCode": "BB",
+    "address": "Barbados",
+    "geoLat": 13.1787146900535,
+    "geoLng": -59.5619546611369
+  },
+  {
+    "country": "Belgium",
+    "countryCode": "BE",
+    "address": "Belgium",
+    "geoLat": 50.438696,
+    "geoLng": 4.63357500000001
+  },
+  {
+    "country": "Belize",
+    "countryCode": "BZ",
+    "address": "Belize",
+    "geoLat": 17.2168536428077,
+    "geoLng": -88.686006535616
+  },
+  {
+    "country": "Benin",
+    "countryCode": "BJ",
+    "address": "Benin",
+    "geoLat": 10.3383829799812,
+    "geoLng": 2.42667424920265
+  },
+  {
+    "country": "Bermuda",
+    "countryCode": "BM",
+    "address": "Bermuda",
+    "geoLat": 32.3179203152518,
+    "geoLng": -64.7370103996652
+  },
+  {
+    "country": "Bhutan",
+    "countryCode": "BT",
+    "address": "Bhutan",
+    "geoLat": 27.415414814619,
+    "geoLng": 90.4294341148677
+  },
+  {
+    "country": "Bolivia",
+    "countryCode": "BO",
+    "address": "Bolivia",
+    "geoLat": -16.9706623441227,
+    "geoLng": -64.2696051242704
+  },
+  {
+    "country": "Bosnia & Herzegovina",
+    "countryCode": "BA",
+    "address": "Bosnia & Herzegovina",
+    "geoLat": 44.168115060358,
+    "geoLng": 17.7865310090801
+  },
+  {
+    "country": "Botswana",
+    "countryCode": "BW",
+    "address": "Botswana",
+    "geoLat": -22.2129427788611,
+    "geoLng": 24.3162647690614
+  },
+  {
+    "country": "Bouvet Island",
+    "countryCode": "BV",
+    "address": "Bouvet Island",
+    "geoLat": -54.43333,
+    "geoLng": 3.4
+  },
+  {
+    "country": "Brazil",
+    "countryCode": "BR",
+    "address": "Brazil",
+    "geoLat": -9.58890301712257,
+    "geoLng": -51.6197890205486
+  },
+  {
+    "country": "British Indian Ocean Territory",
+    "countryCode": "IO",
+    "address": "British Indian Ocean Territory",
+    "geoLat": -7.26059464,
+    "geoLng": 72.37749449
+  },
+  {
+    "country": "British Virgin Islands",
+    "countryCode": "VG",
+    "address": "British Virgin Islands",
+    "geoLat": 18.42692843,
+    "geoLng": -64.62317233
+  },
+  {
+    "country": "Brunei",
+    "countryCode": "BN",
+    "address": "Brunei",
+    "geoLat": 4.56546705389121,
+    "geoLng": 114.562410992128
+  },
+  {
+    "country": "Bulgaria",
+    "countryCode": "BG",
+    "address": "Bulgaria",
+    "geoLat": 42.7613767127692,
+    "geoLng": 25.2315070071904
+  },
+  {
+    "country": "Burkina Faso",
+    "countryCode": "BF",
+    "address": "Burkina Faso",
+    "geoLat": 12.2779295146076,
+    "geoLng": -1.57306231994955
+  },
+  {
+    "country": "Burundi",
+    "countryCode": "BI",
+    "address": "Burundi",
+    "geoLat": -3.5324543338914,
+    "geoLng": 29.8871461223835
+  },
+  {
+    "country": "Cambodia",
+    "countryCode": "KH",
+    "address": "Cambodia",
+    "geoLat": 12.4576331842438,
+    "geoLng": 104.923981338048
+  },
+  {
+    "country": "Cameroon",
+    "countryCode": "CM",
+    "address": "Cameroon",
+    "geoLat": 4.80651220617253,
+    "geoLng": 12.2137541551234
+  },
+  {
+    "country": "Canada",
+    "countryCode": "CA",
+    "address": "Canada",
+    "geoLat": 55.5859012851966,
+    "geoLng": -105.750595856519
+  },
+  {
+    "country": "Canary Islands",
+    "countryCode": "IC",
+    "address": "Canary Islands",
+    "geoLat": 64.9975884448459,
+    "geoLng": -18.6054668169534
+  },
+  {
+    "country": "Cape Verde",
+    "countryCode": "CV",
+    "address": "Cape Verde",
+    "geoLat": 14.918,
+    "geoLng": -23.509
+  },
+  {
+    "country": "Caribbean Netherlands",
+    "countryCode": "BQ",
+    "address": "Caribbean Netherlands",
+    "geoLat": 12.18333,
+    "geoLng": -68.23333
+  },
+  {
+    "country": "Cayman Islands",
+    "countryCode": "KY",
+    "address": "Cayman Islands",
+    "geoLat": 19.3086622401692,
+    "geoLng": -81.2384511989646
+  },
+  {
+    "country": "Central African Republic",
+    "countryCode": "CF",
+    "address": "Central African Republic",
+    "geoLat": 6.57134078462119,
+    "geoLng": 20.4828261100212
+  },
+  {
+    "country": "Ceuta & Melilla",
+    "countryCode": "EA",
+    "address": "Ceuta & Melilla",
+    "geoLat": 35.2711,
+    "geoLng": 2.9324
+  },
+  {
+    "country": "Chad",
+    "countryCode": "TD",
+    "address": "Chad",
+    "geoLat": 15.3611667142703,
+    "geoLng": 18.6644791159188
+  },
+  {
+    "country": "Chile",
+    "countryCode": "CL",
+    "address": "Chile",
+    "geoLat": -26.783346,
+    "geoLng": -69.761008
+  },
+  {
+    "country": "Christmas Island",
+    "countryCode": "CX",
+    "address": "Christmas Island",
+    "geoLat": -10.4878279000001,
+    "geoLng": 105.6329821
+  },
+  {
+    "country": "Clipperton Island",
+    "countryCode": "CP",
+    "address": "Clipperton Island",
+    "geoLat": 64.9975884448459,
+    "geoLng": -18.6054668169534
+  },
+  {
+    "country": "Cocos (Keeling) Islands",
+    "countryCode": "CC",
+    "address": "Cocos (Keeling) Islands",
+    "geoLat": -12.18785286,
+    "geoLng": 96.83103701
+  },
+  {
+    "country": "Colombia",
+    "countryCode": "CO",
+    "address": "Colombia",
+    "geoLat": 3.06508799999999,
+    "geoLng": -73.129056
+  },
+  {
+    "country": "Comoros",
+    "countryCode": "KM",
+    "address": "Comoros",
+    "geoLat": -11.70198978,
+    "geoLng": 43.2541677
+  },
+  {
+    "country": "Cook Islands",
+    "countryCode": "CK",
+    "address": "Cook Islands",
+    "geoLat": -21.2368447000001,
+    "geoLng": -159.7711563
+  },
+  {
+    "country": "Costa Rica",
+    "countryCode": "CR",
+    "address": "Costa Rica",
+    "geoLat": 10.2577944410312,
+    "geoLng": -84.2009147613538
+  },
+  {
+    "country": "Croatia",
+    "countryCode": "HR",
+    "address": "Croatia",
+    "geoLat": 45.6649521968376,
+    "geoLng": 16.6791068850861
+  },
+  {
+    "country": "Curaçao",
+    "countryCode": "CW",
+    "address": "Curaçao",
+    "geoLat": 12.178308183856,
+    "geoLng": -68.9817448480808
+  },
+  {
+    "country": "Cyprus",
+    "countryCode": "CY",
+    "address": "Cyprus",
+    "geoLat": 35.0458816072997,
+    "geoLng": 33.2217624140819
+  },
+  {
+    "country": "Czechia",
+    "countryCode": "CZ",
+    "address": "Czechia",
+    "geoLat": 49.8175,
+    "geoLng": 15.473
+  },
+  {
+    "country": "Denmark",
+    "countryCode": "DK",
+    "address": "Denmark",
+    "geoLat": 55.9633978748347,
+    "geoLng": 10.0462968058278
+  },
+  {
+    "country": "Diego Garcia",
+    "countryCode": "DG",
+    "address": "Diego Garcia",
+    "geoLat": -7.3195,
+    "geoLng": 72.422859
+  },
+  {
+    "country": "Djibouti",
+    "countryCode": "DJ",
+    "address": "Djibouti",
+    "geoLat": 11.7496765333164,
+    "geoLng": 42.5777653608456
+  },
+  {
+    "country": "Dominica",
+    "countryCode": "DM",
+    "address": "Dominica",
+    "geoLat": 18.6062576970524,
+    "geoLng": -70.1067224933053
+  },
+  {
+    "country": "Dominican Republic",
+    "countryCode": "DO",
+    "address": "Dominican Republic",
+    "geoLat": 18.6062576970524,
+    "geoLng": -70.1067224933053
+  },
+  {
+    "country": "Ecuador",
+    "countryCode": "EC",
+    "address": "Ecuador",
+    "geoLat": -1.16017132420716,
+    "geoLng": -78.4329147227382
+  },
+  {
+    "country": "Egypt",
+    "countryCode": "EG",
+    "address": "Egypt",
+    "geoLat": 26.4941838299718,
+    "geoLng": 29.871903452398
+  },
+  {
+    "country": "El Salvador",
+    "countryCode": "SV",
+    "address": "El Salvador",
+    "geoLat": 13.7368969076932,
+    "geoLng": -88.8665114518297
+  },
+  {
+    "country": "Equatorial Guinea",
+    "countryCode": "GQ",
+    "address": "Equatorial Guinea",
+    "geoLat": 1.61213015485833,
+    "geoLng": 10.5257705053847
+  },
+  {
+    "country": "Eritrea",
+    "countryCode": "ER",
+    "address": "Eritrea",
+    "geoLat": 15.6805129748268,
+    "geoLng": 38.584156324299
+  },
+  {
+    "country": "Estonia",
+    "countryCode": "EE",
+    "address": "Estonia",
+    "geoLat": 58.7783968568071,
+    "geoLng": 25.7615268448868
+  },
+  {
+    "country": "Ethiopia",
+    "countryCode": "ET",
+    "address": "Ethiopia",
+    "geoLat": 8.62621960079895,
+    "geoLng": 39.6160319910272
+  },
+  {
+    "country": "Falkland Islands",
+    "countryCode": "FK",
+    "address": "Falkland Islands",
+    "geoLat": -51.69302404,
+    "geoLng": -57.87147544
+  },
+  {
+    "country": "Faroe Islands",
+    "countryCode": "FO",
+    "address": "Faroe Islands",
+    "geoLat": 62.0310655277591,
+    "geoLng": -6.88410945710822
+  },
+  {
+    "country": "Fiji",
+    "countryCode": "FJ",
+    "address": "Fiji",
+    "geoLat": -18.1456,
+    "geoLng": 178.4406
+  },
+  {
+    "country": "Finland",
+    "countryCode": "FI",
+    "address": "Finland",
+    "geoLat": 62.7777539652943,
+    "geoLng": 26.199539005192
+  },
+  {
+    "country": "France",
+    "countryCode": "FR",
+    "address": "France",
+    "geoLat": 47.8249046208979,
+    "geoLng": 2.61878695312962
+  },
+  {
+    "country": "French Guiana",
+    "countryCode": "GF",
+    "address": "French Guiana",
+    "geoLat": 4.35792079157208,
+    "geoLng": -53.1743920884317
+  },
+  {
+    "country": "French Polynesia",
+    "countryCode": "PF",
+    "address": "French Polynesia",
+    "geoLat": -17.53812232,
+    "geoLng": -149.56466734
+  },
+  {
+    "country": "French Southern Territories",
+    "countryCode": "TF",
+    "address": "French Southern Territories",
+    "geoLat": -49.34904359,
+    "geoLng": 70.21919669
+  },
+  {
+    "country": "Gabon",
+    "countryCode": "GA",
+    "address": "Gabon",
+    "geoLat": -0.590945177481755,
+    "geoLng": 11.7972366735751
+  },
+  {
+    "country": "Gambia",
+    "countryCode": "GM",
+    "address": "Gambia",
+    "geoLat": 13.4445255191194,
+    "geoLng": -15.912854478675
+  },
+  {
+    "country": "Georgia",
+    "countryCode": "GE",
+    "address": "Georgia",
+    "geoLat": 42.1763109186415,
+    "geoLng": 43.5174484608787
+  },
+  {
+    "country": "Germany",
+    "countryCode": "DE",
+    "address": "Germany",
+    "geoLat": 51.1334813439932,
+    "geoLng": 10.0183432948567
+  },
+  {
+    "country": "Ghana",
+    "countryCode": "GH",
+    "address": "Ghana",
+    "geoLat": 6.88085426914622,
+    "geoLng": -1.16759442759906
+  },
+  {
+    "country": "Gibraltar",
+    "countryCode": "GI",
+    "address": "Gibraltar",
+    "geoLat": 36.14087689,
+    "geoLng": -5.35457429
+  },
+  {
+    "country": "Greece",
+    "countryCode": "GR",
+    "address": "Greece",
+    "geoLat": 38.5890212896367,
+    "geoLng": 23.8285537394706
+  },
+  {
+    "country": "Greenland",
+    "countryCode": "GL",
+    "address": "Greenland",
+    "geoLat": 74.7209117556808,
+    "geoLng": -41.3894770446402
+  },
+  {
+    "country": "Grenada",
+    "countryCode": "GD",
+    "address": "Grenada",
+    "geoLat": 12.1129258398845,
+    "geoLng": -61.6793774505556
+  },
+  {
+    "country": "Guadeloupe",
+    "countryCode": "GP",
+    "address": "Guadeloupe",
+    "geoLat": 15.99454009,
+    "geoLng": -61.72715035
+  },
+  {
+    "country": "Guam",
+    "countryCode": "GU",
+    "address": "Guam",
+    "geoLat": 13.4435651676475,
+    "geoLng": 144.775596791471
+  },
+  {
+    "country": "Guatemala",
+    "countryCode": "GT",
+    "address": "Guatemala",
+    "geoLat": 15.6055893260292,
+    "geoLng": -90.3900017126126
+  },
+  {
+    "country": "Guernsey",
+    "countryCode": "GG",
+    "address": "Guernsey",
+    "geoLat": 49.45828447,
+    "geoLng": -2.57336491
+  },
+  {
+    "country": "Guinea",
+    "countryCode": "GN",
+    "address": "Guinea",
+    "geoLat": 10.7855460398783,
+    "geoLng": -11.0298621655307
+  },
+  {
+    "country": "GuineaBissau",
+    "countryCode": "GW",
+    "address": "GuineaBissau",
+    "geoLat": 11.803749,
+    "geoLng": -15.180413
+  },
+  {
+    "country": "Guyana",
+    "countryCode": "GY",
+    "address": "Guyana",
+    "geoLat": 5.62382279034036,
+    "geoLng": -58.9747808781477
+  },
+  {
+    "country": "Haiti",
+    "countryCode": "HT",
+    "address": "Haiti",
+    "geoLat": 19.1824357256899,
+    "geoLng": -72.434514974505
+  },
+  {
+    "country": "Heard & McDonald Islands",
+    "countryCode": "HM",
+    "address": "Heard & McDonald Islands",
+    "geoLat": -53.08915,
+    "geoLng": 73.51267
+  },
+  {
+    "country": "Honduras",
+    "countryCode": "HN",
+    "address": "Honduras",
+    "geoLat": 14.7616644478253,
+    "geoLng": -86.9216408872841
+  },
+  {
+    "country": "Hong Kong (China)",
+    "countryCode": "HK",
+    "address": "Hong Kong (China)",
+    "geoLat": 22.27833,
+    "geoLng": 114.15861
+  },
+  {
+    "country": "Hungary",
+    "countryCode": "HU",
+    "address": "Hungary",
+    "geoLat": 47.0602667471763,
+    "geoLng": 19.4993490091469
+  },
+  {
+    "country": "Iceland",
+    "countryCode": "IS",
+    "address": "Iceland",
+    "geoLat": 64.9975884448459,
+    "geoLng": -18.6054668169534
+  },
+  {
+    "country": "India",
+    "countryCode": "IN",
+    "address": "India",
+    "geoLat": 22.1991660760527,
+    "geoLng": 78.476681027237
+  },
+  {
+    "country": "Indonesia",
+    "countryCode": "ID",
+    "address": "Indonesia",
+    "geoLat": -6.17555357,
+    "geoLng": 106.82721585
+  },
+  {
+    "country": "Ireland",
+    "countryCode": "IE",
+    "address": "Ireland",
+    "geoLat": 53.3054943871234,
+    "geoLng": -7.73764888796793
+  },
+  {
+    "country": "Isle of Man",
+    "countryCode": "IM",
+    "address": "Isle of Man",
+    "geoLat": 54.2290802101343,
+    "geoLng": -4.5258501593996
+  },
+  {
+    "country": "Israel",
+    "countryCode": "IL",
+    "address": "Israel",
+    "geoLat": 31.8472608144505,
+    "geoLng": 34.8419985253627
+  },
+  {
+    "country": "Italy",
+    "countryCode": "IT",
+    "address": "Italy",
+    "geoLat": 42.5041539170675,
+    "geoLng": 12.6463610364431
+  },
+  {
+    "country": "Jamaica",
+    "countryCode": "JM",
+    "address": "Jamaica",
+    "geoLat": 18.1512945138,
+    "geoLng": -77.3192220134904
+  },
+  {
+    "country": "Japan",
+    "countryCode": "JP",
+    "address": "Japan",
+    "geoLat": 36.3864928218528,
+    "geoLng": 138.592229549504
+  },
+  {
+    "country": "Jersey",
+    "countryCode": "JE",
+    "address": "Jersey",
+    "geoLat": 49.2184900496874,
+    "geoLng": -2.14197981414417
+  },
+  {
+    "country": "Jordan",
+    "countryCode": "JO",
+    "address": "Jordan",
+    "geoLat": 31.0101920713363,
+    "geoLng": 36.4358628369717
+  },
+  {
+    "country": "Kazakhstan",
+    "countryCode": "KZ",
+    "address": "Kazakhstan",
+    "geoLat": 48.160088082685,
+    "geoLng": 67.3017735657682
+  },
+  {
+    "country": "Kenya",
+    "countryCode": "KE",
+    "address": "Kenya",
+    "geoLat": 0.529862476788944,
+    "geoLng": 37.8578818658854
+  },
+  {
+    "country": "Kiribati",
+    "countryCode": "KI",
+    "address": "Kiribati",
+    "geoLat": 1.83893628591267,
+    "geoLng": -157.371021236442
+  },
+  {
+    "country": "Kosovo",
+    "countryCode": "XK",
+    "address": "Kosovo",
+    "geoLat": 42.6430165,
+    "geoLng": 20.953599
+  },
+  {
+    "country": "Kuwait",
+    "countryCode": "KW",
+    "address": "Kuwait",
+    "geoLat": 29.3412115743027,
+    "geoLng": 47.5906041080513
+  },
+  {
+    "country": "Kyrgyzstan",
+    "countryCode": "KG",
+    "address": "Kyrgyzstan",
+    "geoLat": 41.465053955426,
+    "geoLng": 74.5555962804371
+  },
+  {
+    "country": "Laos",
+    "countryCode": "LA",
+    "address": "Laos",
+    "geoLat": 19.9225890014436,
+    "geoLng": 102.593736567576
+  },
+  {
+    "country": "Latvia",
+    "countryCode": "LV",
+    "address": "Latvia",
+    "geoLat": 56.9590654127872,
+    "geoLng": 24.8625932740492
+  },
+  {
+    "country": "Lesotho",
+    "countryCode": "LS",
+    "address": "Lesotho",
+    "geoLat": -29.5809998474103,
+    "geoLng": 28.2430108685831
+  },
+  {
+    "country": "Libya",
+    "countryCode": "LY",
+    "address": "Libya",
+    "geoLat": 27.0439610747292,
+    "geoLng": 18.0232797726029
+  },
+  {
+    "country": "Liechtenstein",
+    "countryCode": "LI",
+    "address": "Liechtenstein",
+    "geoLat": 47.1518475849904,
+    "geoLng": 9.55426914739629
+  },
+  {
+    "country": "Lithuania",
+    "countryCode": "LT",
+    "address": "Lithuania",
+    "geoLat": 55.4874125822773,
+    "geoLng": 23.9315379882448
+  },
+  {
+    "country": "Luxembourg",
+    "countryCode": "LU",
+    "address": "Luxembourg",
+    "geoLat": 49.7706279766425,
+    "geoLng": 6.08781366657564
+  },
+  {
+    "country": "Macau (China)",
+    "countryCode": "MO",
+    "address": "Macau (China)",
+    "geoLat": 35.4867029846329,
+    "geoLng": 101.901875103385
+  },
+  {
+    "country": "Macedonia",
+    "countryCode": "MK",
+    "address": "Macedonia",
+    "geoLat": 41.5996826646442,
+    "geoLng": 21.6974757513494
+  },
+  {
+    "country": "Madagascar",
+    "countryCode": "MG",
+    "address": "Madagascar",
+    "geoLat": -19.3735339420708,
+    "geoLng": 46.7059842741429
+  },
+  {
+    "country": "Malawi",
+    "countryCode": "MW",
+    "address": "Malawi",
+    "geoLat": -13.2158036349607,
+    "geoLng": 33.739163883354
+  },
+  {
+    "country": "Malaysia",
+    "countryCode": "MY",
+    "address": "Malaysia",
+    "geoLat": 4.49664266041942,
+    "geoLng": 102.275719605501
+  },
+  {
+    "country": "Maldives",
+    "countryCode": "MV",
+    "address": "Maldives",
+    "geoLat": 4.17887365,
+    "geoLng": 73.51104943
+  },
+  {
+    "country": "Mali",
+    "countryCode": "ML",
+    "address": "Mali",
+    "geoLat": 17.3503352399376,
+    "geoLng": -1.25214497310038
+  },
+  {
+    "country": "Malta",
+    "countryCode": "MT",
+    "address": "Malta",
+    "geoLat": 35.890522427978,
+    "geoLng": 14.4419213796182
+  },
+  {
+    "country": "Marshall Islands",
+    "countryCode": "MH",
+    "address": "Marshall Islands",
+    "geoLat": 7.08908689,
+    "geoLng": 171.37961868
+  },
+  {
+    "country": "Martinique",
+    "countryCode": "MQ",
+    "address": "Martinique",
+    "geoLat": 14.6525485200192,
+    "geoLng": -61.0212870487474
+  },
+  {
+    "country": "Mauritania",
+    "countryCode": "MR",
+    "address": "Mauritania",
+    "geoLat": 19.7574723127526,
+    "geoLng": -10.5327926241955
+  },
+  {
+    "country": "Mauritius",
+    "countryCode": "MU",
+    "address": "Mauritius",
+    "geoLat": -20.16385665,
+    "geoLng": 57.5025125
+  },
+  {
+    "country": "Mayotte",
+    "countryCode": "YT",
+    "address": "Mayotte",
+    "geoLat": -12.8197956282959,
+    "geoLng": 45.1351604116082
+  },
+  {
+    "country": "Mexico",
+    "countryCode": "MX",
+    "address": "Mexico",
+    "geoLat": 23.9504642310912,
+    "geoLng": -102.532867448126
+  },
+  {
+    "country": "Micronesia",
+    "countryCode": "FM",
+    "address": "Micronesia",
+    "geoLat": 6.90957,
+    "geoLng": 158.16183
+  },
+  {
+    "country": "Moldova",
+    "countryCode": "MD",
+    "address": "Moldova",
+    "geoLat": 47.1938708692964,
+    "geoLng": 28.5741781104524
+  },
+  {
+    "country": "Monaco",
+    "countryCode": "MC",
+    "address": "Monaco",
+    "geoLat": 43.73248184,
+    "geoLng": 7.4189617
+  },
+  {
+    "country": "Mongolia",
+    "countryCode": "MN",
+    "address": "Mongolia",
+    "geoLat": 46.8352906606684,
+    "geoLng": 103.083217801107
+  },
+  {
+    "country": "Montenegro",
+    "countryCode": "ME",
+    "address": "Montenegro",
+    "geoLat": 42.7904432662241,
+    "geoLng": 19.2507340776716
+  },
+  {
+    "country": "Montserrat",
+    "countryCode": "MS",
+    "address": "Montserrat",
+    "geoLat": 16.7417043,
+    "geoLng": -62.1916845999998
+  },
+  {
+    "country": "Morocco",
+    "countryCode": "MA",
+    "address": "Morocco",
+    "geoLat": 32.3507513130338,
+    "geoLng": -6.01707272732872
+  },
+  {
+    "country": "Mozambique",
+    "countryCode": "MZ",
+    "address": "Mozambique",
+    "geoLat": -18.0874664869235,
+    "geoLng": 34.7501973908725
+  },
+  {
+    "country": "Namibia",
+    "countryCode": "NA",
+    "address": "Namibia",
+    "geoLat": -21.2010102346557,
+    "geoLng": 17.2887615554773
+  },
+  {
+    "country": "Nauru",
+    "countryCode": "NR",
+    "address": "Nauru",
+    "geoLat": -0.522103115219411,
+    "geoLng": 166.929376519841
+  },
+  {
+    "country": "Nepal",
+    "countryCode": "NP",
+    "address": "Nepal",
+    "geoLat": 28.2530072798101,
+    "geoLng": 83.9385480132428
+  },
+  {
+    "country": "Netherlands",
+    "countryCode": "NL",
+    "address": "Netherlands",
+    "geoLat": 51.9724664894952,
+    "geoLng": 5.61349061168593
+  },
+  {
+    "country": "New Caledonia",
+    "countryCode": "NC",
+    "address": "New Caledonia",
+    "geoLat": -21.3163377992766,
+    "geoLng": 165.715489207242
+  },
+  {
+    "country": "New Zealand",
+    "countryCode": "NZ",
+    "address": "New Zealand",
+    "geoLat": -41.8388752215127,
+    "geoLng": 171.779900195937
+  },
+  {
+    "country": "Nicaragua",
+    "countryCode": "NI",
+    "address": "Nicaragua",
+    "geoLat": 12.3355420743792,
+    "geoLng": -84.9199411471587
+  },
+  {
+    "country": "Niger",
+    "countryCode": "NE",
+    "address": "Niger",
+    "geoLat": 9.59395988695573,
+    "geoLng": 8.10530640960786
+  },
+  {
+    "country": "Nigeria",
+    "countryCode": "NG",
+    "address": "Nigeria",
+    "geoLat": 9.59395988695573,
+    "geoLng": 8.10530640960786
+  },
+  {
+    "country": "Niue",
+    "countryCode": "NU",
+    "address": "Niue",
+    "geoLat": -19.0249700000001,
+    "geoLng": -169.8666861
+  },
+  {
+    "country": "Norfolk Island",
+    "countryCode": "NF",
+    "address": "Norfolk Island",
+    "geoLat": -29.03333,
+    "geoLng": 167.94972
+  },
+  {
+    "country": "Northern Mariana Islands",
+    "countryCode": "MP",
+    "address": "Northern Mariana Islands",
+    "geoLat": 15.1884969,
+    "geoLng": 145.75323247
+  },
+  {
+    "country": "Norway",
+    "countryCode": "NO",
+    "address": "Norway",
+    "geoLat": 61.2483331493152,
+    "geoLng": 8.80482073895072
+  },
+  {
+    "country": "Oman",
+    "countryCode": "OM",
+    "address": "Oman",
+    "geoLat": 21.3836372099704,
+    "geoLng": 57.0864239443949
+  },
+  {
+    "country": "Pakistan",
+    "countryCode": "PK",
+    "address": "Pakistan",
+    "geoLat": 28.1863846711864,
+    "geoLng": 67.6952367278874
+  },
+  {
+    "country": "Palau",
+    "countryCode": "PW",
+    "address": "Palau",
+    "geoLat": 7.51507487829116,
+    "geoLng": 134.575242448648
+  },
+  {
+    "country": "Palestinian Territories",
+    "countryCode": "PS",
+    "address": "Palestinian Territories",
+    "geoLat": 31.88333,
+    "geoLng": 35.2
+  },
+  {
+    "country": "Panama",
+    "countryCode": "PA",
+    "address": "Panama",
+    "geoLat": 8.70473482400532,
+    "geoLng": -80.2681751731831
+  },
+  {
+    "country": "Papua New Guinea",
+    "countryCode": "PG",
+    "address": "Papua New Guinea",
+    "geoLat": -6.4783775316607,
+    "geoLng": 145.241749381464
+  },
+  {
+    "country": "Paraguay",
+    "countryCode": "PY",
+    "address": "Paraguay",
+    "geoLat": -23.236210654675,
+    "geoLng": -58.3910238917002
+  },
+  {
+    "country": "Peru",
+    "countryCode": "PE",
+    "address": "Peru",
+    "geoLat": -10.1510925136244,
+    "geoLng": -75.3111319559783
+  },
+  {
+    "country": "Philippines",
+    "countryCode": "PH",
+    "address": "Philippines",
+    "geoLat": 14.58678841,
+    "geoLng": 120.98177916
+  },
+  {
+    "country": "Pitcairn Islands",
+    "countryCode": "PN",
+    "address": "Pitcairn Islands",
+    "geoLat": -25.06689772,
+    "geoLng": -130.10036259
+  },
+  {
+    "country": "Poland",
+    "countryCode": "PL",
+    "address": "Poland",
+    "geoLat": 52.1246099075455,
+    "geoLng": 19.30063630556
+  },
+  {
+    "country": "Portugal",
+    "countryCode": "PT",
+    "address": "Portugal",
+    "geoLat": 39.6009946583093,
+    "geoLng": -8.56273059638958
+  },
+  {
+    "country": "Puerto Rico",
+    "countryCode": "PR",
+    "address": "Puerto Rico",
+    "geoLat": 18.2213294459009,
+    "geoLng": -66.4623392630918
+  },
+  {
+    "country": "Qatar",
+    "countryCode": "QA",
+    "address": "Qatar",
+    "geoLat": 25.3150785008825,
+    "geoLng": 51.1912009969872
+  },
+  {
+    "country": "Romania",
+    "countryCode": "RO",
+    "address": "Romania",
+    "geoLat": 45.8436147575587,
+    "geoLng": 24.9692584752492
+  },
+  {
+    "country": "Rwanda",
+    "countryCode": "RW",
+    "address": "Rwanda",
+    "geoLat": -1.86550575827486,
+    "geoLng": 29.917651661429
+  },
+  {
+    "country": "Réunion",
+    "countryCode": "RE",
+    "address": "Réunion",
+    "geoLat": -21.1216612099287,
+    "geoLng": 55.5381792270415
+  },
+  {
+    "country": "Samoa",
+    "countryCode": "WS",
+    "address": "Samoa",
+    "geoLat": -13.83932976,
+    "geoLng": -171.76374956
+  },
+  {
+    "country": "San Marino",
+    "countryCode": "SM",
+    "address": "San Marino",
+    "geoLat": 43.9429432390468,
+    "geoLng": 12.4609765471166
+  },
+  {
+    "country": "Saudi Arabia",
+    "countryCode": "SA",
+    "address": "Saudi Arabia",
+    "geoLat": 23.384784,
+    "geoLng": 44.652426
+  },
+  {
+    "country": "Senegal",
+    "countryCode": "SN",
+    "address": "Senegal",
+    "geoLat": 15.2214469730201,
+    "geoLng": -14.8208799701359
+  },
+  {
+    "country": "Serbia",
+    "countryCode": "RS",
+    "address": "Serbia",
+    "geoLat": 44.2267366369366,
+    "geoLng": 20.7952998132557
+  },
+  {
+    "country": "Seychelles",
+    "countryCode": "SC",
+    "address": "Seychelles",
+    "geoLat": -4.62309306,
+    "geoLng": 55.45306535
+  },
+  {
+    "country": "Singapore",
+    "countryCode": "SG",
+    "address": "Singapore",
+    "geoLat": 1.3516161224392,
+    "geoLng": 103.808052586332
+  },
+  {
+    "country": "Sint Maarten",
+    "countryCode": "SX",
+    "address": "Sint Maarten",
+    "geoLat": 18.0417616931319,
+    "geoLng": -63.0425714978791
+  },
+  {
+    "country": "Slovakia",
+    "countryCode": "SK",
+    "address": "Slovakia",
+    "geoLat": 48.7075308687827,
+    "geoLng": 19.4916510938648
+  },
+  {
+    "country": "Slovenia",
+    "countryCode": "SI",
+    "address": "Slovenia",
+    "geoLat": 46.1694584888026,
+    "geoLng": 14.6940763981247
+  },
+  {
+    "country": "So. Georgia & So. Sandwich Isl.",
+    "countryCode": "GS",
+    "address": "So. Georgia & So. Sandwich Isl.",
+    "geoLat": 32.5658376002324,
+    "geoLng": 54.3013740876592
+  },
+  {
+    "country": "Solomon Islands",
+    "countryCode": "SB",
+    "address": "Solomon Islands",
+    "geoLat": -9.43058362,
+    "geoLng": 159.95268507
+  },
+  {
+    "country": "Somalia",
+    "countryCode": "SO",
+    "address": "Somalia",
+    "geoLat": 5.78639625215069,
+    "geoLng": 47.3258529830799
+  },
+  {
+    "country": "South Africa",
+    "countryCode": "ZA",
+    "address": "South Africa",
+    "geoLat": -28.3782721906973,
+    "geoLng": 23.9137106762068
+  },
+  {
+    "country": "South Korea",
+    "countryCode": "KR",
+    "address": "South Korea",
+    "geoLat": 36.5362364654109,
+    "geoLng": 128.168944342317
+  },
+  {
+    "country": "South Sudan",
+    "countryCode": "SS",
+    "address": "South Sudan",
+    "geoLat": 7.2653860999999,
+    "geoLng": 30.0548899999997
+  },
+  {
+    "country": "Spain",
+    "countryCode": "ES",
+    "address": "Spain",
+    "geoLat": 41.2948556295683,
+    "geoLng": -4.05568501525488
+  },
+  {
+    "country": "Sri Lanka",
+    "countryCode": "LK",
+    "address": "Sri Lanka",
+    "geoLat": 7.60808521895433,
+    "geoLng": 80.7047272491285
+  },
+  {
+    "country": "St. Barthélemy",
+    "countryCode": "BL",
+    "address": "St. Barthélemy",
+    "geoLat": 0.33677848,
+    "geoLng": 6.73028605
+  },
+  {
+    "country": "St. Helena",
+    "countryCode": "SH",
+    "address": "St. Helena",
+    "geoLat": -15.92459139,
+    "geoLng": -5.71833264
+  },
+  {
+    "country": "St. Kitts & Nevis",
+    "countryCode": "KN",
+    "address": "St. Kitts & Nevis",
+    "geoLat": 17.3261893181251,
+    "geoLng": -62.7535176302248
+  },
+  {
+    "country": "St. Lucia",
+    "countryCode": "LC",
+    "address": "St. Lucia",
+    "geoLat": 13.897869297883,
+    "geoLng": -60.9687124495575
+  },
+  {
+    "country": "St. Martin",
+    "countryCode": "MF",
+    "address": "St. Martin",
+    "geoLat": 18.0886466717115,
+    "geoLng": -63.0507908400355
+  },
+  {
+    "country": "St. Pierre & Miquelon",
+    "countryCode": "PM",
+    "address": "St. Pierre & Miquelon",
+    "geoLat": 46.8964295999999,
+    "geoLng": -56.3222402999999
+  },
+  {
+    "country": "St. Vincent & Grenadines",
+    "countryCode": "VC",
+    "address": "St. Vincent & Grenadines",
+    "geoLat": 0.33677848,
+    "geoLng": 6.73028605
+  },
+  {
+    "country": "Suriname",
+    "countryCode": "SR",
+    "address": "Suriname",
+    "geoLat": 3.69296650830846,
+    "geoLng": -55.9118262275729
+  },
+  {
+    "country": "Svalbard & Jan Mayen",
+    "countryCode": "SJ",
+    "address": "Svalbard & Jan Mayen",
+    "geoLat": 78.715404,
+    "geoLng": 20.294606
+  },
+  {
+    "country": "Swaziland",
+    "countryCode": "SZ",
+    "address": "Swaziland",
+    "geoLat": -26.5626420959616,
+    "geoLng": 31.4975289562193
+  },
+  {
+    "country": "Sweden",
+    "countryCode": "SE",
+    "address": "Sweden",
+    "geoLat": 64.9648751621697,
+    "geoLng": 17.6754094331351
+  },
+  {
+    "country": "Switzerland",
+    "countryCode": "CH",
+    "address": "Switzerland",
+    "geoLat": 46.8024955829499,
+    "geoLng": 8.23439191387853
+  },
+  {
+    "country": "São Tomé & Príncipe",
+    "countryCode": "ST",
+    "address": "São Tomé & Príncipe",
+    "geoLat": 0.33677848,
+    "geoLng": 6.73028605
+  },
+  {
+    "country": "Taiwan",
+    "countryCode": "TW",
+    "address": "Taiwan",
+    "geoLat": 23.7779779950014,
+    "geoLng": 120.930229378541
+  },
+  {
+    "country": "Tajikistan",
+    "countryCode": "TJ",
+    "address": "Tajikistan",
+    "geoLat": 38.8385084835418,
+    "geoLng": 71.0420037711059
+  },
+  {
+    "country": "Tanzania",
+    "countryCode": "TZ",
+    "address": "Tanzania",
+    "geoLat": -6.27035338020445,
+    "geoLng": 34.8234540265851
+  },
+  {
+    "country": "Thailand",
+    "countryCode": "TH",
+    "address": "Thailand",
+    "geoLat": 15.127333464868,
+    "geoLng": 101.017437716385
+  },
+  {
+    "country": "TimorLeste",
+    "countryCode": "TL",
+    "address": "TimorLeste",
+    "geoLat": -8.556856,
+    "geoLng": 125.56031
+  },
+  {
+    "country": "Togo",
+    "countryCode": "TG",
+    "address": "Togo",
+    "geoLat": 8.76622092166324,
+    "geoLng": 1.04255291389074
+  },
+  {
+    "country": "Tokelau",
+    "countryCode": "TK",
+    "address": "Tokelau",
+    "geoLat": -9.19897526,
+    "geoLng": -171.84954066
+  },
+  {
+    "country": "Tonga",
+    "countryCode": "TO",
+    "address": "Tonga",
+    "geoLat": -21.13637335,
+    "geoLng": -175.20610125
+  },
+  {
+    "country": "Trinidad & Tobago",
+    "countryCode": "TT",
+    "address": "Trinidad & Tobago",
+    "geoLat": 10.4686430117018,
+    "geoLng": -61.2531757283896
+  },
+  {
+    "country": "Tristan da Cunha",
+    "countryCode": "TA",
+    "address": "Tristan da Cunha",
+    "geoLat": -37.116666666667,
+    "geoLng": -12.28305555555
+  },
+  {
+    "country": "Tunisia",
+    "countryCode": "TN",
+    "address": "Tunisia",
+    "geoLat": 34.1107038598115,
+    "geoLng": 9.56116835557131
+  },
+  {
+    "country": "Turkey",
+    "countryCode": "TR",
+    "address": "Turkey",
+    "geoLat": 39.0604813685019,
+    "geoLng": 35.1795933806353
+  },
+  {
+    "country": "Turkmenistan",
+    "countryCode": "TM",
+    "address": "Turkmenistan",
+    "geoLat": 39.1222850315681,
+    "geoLng": 59.3843773120436
+  },
+  {
+    "country": "Turks & Caicos Islands",
+    "countryCode": "TC",
+    "address": "Turks & Caicos Islands",
+    "geoLat": 21.7214683,
+    "geoLng": -71.6201782999998
+  },
+  {
+    "country": "Tuvalu",
+    "countryCode": "TV",
+    "address": "Tuvalu",
+    "geoLat": -8.52427147,
+    "geoLng": 179.1952237
+  },
+  {
+    "country": "U.S. Outlying Islands",
+    "countryCode": "UM",
+    "address": "U.S. Outlying Islands",
+    "geoLat": 19.305073,
+    "geoLng": 166.636881
+  },
+  {
+    "country": "U.S. Virgin Islands",
+    "countryCode": "VI",
+    "address": "U.S. Virgin Islands",
+    "geoLat": 17.7355381596591,
+    "geoLng": -64.7625859114436
+  },
+  {
+    "country": "Uganda",
+    "countryCode": "UG",
+    "address": "Uganda",
+    "geoLat": 1.27996353132461,
+    "geoLng": 32.3862178703861
+  },
+  {
+    "country": "United Arab Emirates",
+    "countryCode": "AE",
+    "address": "United Arab Emirates",
+    "geoLat": 23.8520599823879,
+    "geoLng": 54.2561723713588
+  },
+  {
+    "country": "United Kingdom",
+    "countryCode": "GB",
+    "address": "United Kingdom",
+    "geoLat": 54.2379333607472,
+    "geoLng": -2.36966957036279
+  },
+  {
+    "country": "United States",
+    "countryCode": "US",
+    "address": "United States",
+    "geoLat": 39.3812661305678,
+    "geoLng": -97.9222112121185
+  },
+  {
+    "country": "Uruguay",
+    "countryCode": "UY",
+    "address": "Uruguay",
+    "geoLat": -32.7996455126793,
+    "geoLng": -56.012396238658
+  },
+  {
+    "country": "Uzbekistan",
+    "countryCode": "UZ",
+    "address": "Uzbekistan",
+    "geoLat": 41.7504367984144,
+    "geoLng": 63.169371992914
+  },
+  {
+    "country": "Vanuatu",
+    "countryCode": "VU",
+    "address": "Vanuatu",
+    "geoLat": -17.74296727,
+    "geoLng": 168.31741541
+  },
+  {
+    "country": "Vatican City",
+    "countryCode": "VA",
+    "address": "Vatican City",
+    "geoLat": 41.904,
+    "geoLng": 12.453
+  },
+  {
+    "country": "Venezuela",
+    "countryCode": "VE",
+    "address": "Venezuela",
+    "geoLat": 7.61957014788959,
+    "geoLng": -65.801997444749
+  },
+  {
+    "country": "Vietnam",
+    "countryCode": "VN",
+    "address": "Vietnam",
+    "geoLat": 14.3154241771087,
+    "geoLng": 108.339537475899
+  },
+  {
+    "country": "Wallis & Futuna",
+    "countryCode": "WF",
+    "address": "Wallis & Futuna",
+    "geoLat": -13.28078435,
+    "geoLng": -176.18564416
+  },
+  {
+    "country": "Western Sahara",
+    "countryCode": "EH",
+    "address": "Western Sahara",
+    "geoLat": 24.6008820899188,
+    "geoLng": -13.7046095218304
+  },
+  {
+    "country": "Yemen",
+    "countryCode": "YE",
+    "address": "Yemen",
+    "geoLat": 15.9378350127516,
+    "geoLng": 47.6219307491681
+  },
+  {
+    "country": "Zambia",
+    "countryCode": "ZM",
+    "address": "Zambia",
+    "geoLat": -14.0049082837326,
+    "geoLng": 27.4306751716734
+  },
+  {
+    "country": "Åland Islands",
+    "countryCode": "AX",
+    "address": "Åland Islands",
+    "geoLat": 60.11443267,
+    "geoLng": 19.93993403
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "releve_le": "2026-10-08T20:07:47.145Z",
+  "page": "https://www.depop.com/products/create/first/",
+  "html_lang": "en",
+  "sources": {
+    "attributes": "https://webapi.depop.com/presentation/api/v1/attributes/",
+    "groups": "https://webapi.depop.com/presentation/api/v1/attributes/groups/",
+    "categories_en_US": "https://webapi.depop.com/presentation/api/v1/search/filters/category/?lang=en-US",
+    "categories_en_GB": "https://webapi.depop.com/presentation/api/v1/search/filters/category/?lang=en-GB (identique fr-FR, de-DE, it-IT)",
+    "sizes": "https://webapi.depop.com/presentation/api/v1/search/filters/size/ (identique ?lang=fr-FR)",
+    "size_mapping": "https://webapi.depop.com/presentation/api/v1/attributes/categories/size-mapping/",
+    "ui_category_options": "DOM du selecteur Category de /products/create/first/"
+  },
+  "note": "Reponses relevees telles quelles dans la page, sans identifiant ni cookie (fetch credentials:omit)."
+}

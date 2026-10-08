@@ -1,0 +1,5820 @@
+{
+ "_genere": "node scripts/gen-depop-referentiel.mjs — FICHIER GÉNÉRÉ, ne pas éditer à la main",
+ "_sources": {
+  "brut/attributes.json": "e3d7d66bb7f05666",
+  "brut/attributes-groups.json": "72b169c2f3e58785",
+  "brut/attributes-categories-size-mapping.json": "b69452d9c98c963a",
+  "brut/search-filters-size.json": "fb102b35aabbcda8",
+  "brut/search-filters-category-en-US.json": "c049a5da885a5796",
+  "brut/search-filters-category-en-GB.json": "aea023203893d74e",
+  "brut/selecteur-categorie-ui.json": "e9a23be5624e4b84",
+  "brut/releve.json": "5ce27f88ad0000aa"
+ },
+ "releve_le": "2026-10-08T20:07:47.145Z",
+ "etat": {
+  "id": "condition",
+  "libelle_fr": null,
+  "max_selection": 1,
+  "obligatoire_selon_api": false,
+  "statut": "active",
+  "obligatoire_selon_formulaire": true,
+  "neuf_seulement_pour": [
+   "bath-and-body",
+   "fragrance",
+   "hair-products",
+   "makeup",
+   "nails",
+   "skincare"
+  ],
+  "valeurs": [
+   {
+    "id": "brand_new",
+    "libelle_fr": "Nouveau",
+    "libelle_en": "Brand new",
+    "description_fr": "Non utilisé avec l'emballage ou les étiquettes d'origine",
+    "statut": "active"
+   },
+   {
+    "id": "used_like_new",
+    "libelle_fr": "Comme neuf",
+    "libelle_en": "Like new",
+    "description_fr": "État neuf ou d'occasion sans étiquette",
+    "statut": "active"
+   },
+   {
+    "id": "used_excellent",
+    "libelle_fr": "Occasion - excellent état",
+    "libelle_en": "Used - Excellent",
+    "description_fr": "Légèrement utilisé mais sans défaut notable",
+    "statut": "active"
+   },
+   {
+    "id": "used_good",
+    "libelle_fr": "Occasion - Bon état",
+    "libelle_en": "Used - Good",
+    "description_fr": "Défauts mineurs ou signes d'usure, à noter dans la description ou les photos",
+    "statut": "active"
+   },
+   {
+    "id": "used_fair",
+    "libelle_fr": "Occasion - beaucoup utilisé",
+    "libelle_en": "Used - Fair",
+    "description_fr": "Défauts évidents ou signes d'usure, à noter dans la description ou les photos",
+    "statut": "active"
+   }
+  ]
+ },
+ "couleur": {
+  "id": "colour",
+  "libelle_fr": null,
+  "max_selection": 2,
+  "obligatoire_selon_api": false,
+  "statut": "active",
+  "obligatoire_selon_formulaire": false,
+  "valeurs": [
+   {
+    "id": "black",
+    "libelle_fr": "Noir",
+    "libelle_en": "Black",
+    "hex": "000000",
+    "statut": "active"
+   },
+   {
+    "id": "grey",
+    "libelle_fr": "Gris",
+    "libelle_en": "Grey",
+    "hex": "DCDCDC",
+    "statut": "active"
+   },
+   {
+    "id": "white",
+    "libelle_fr": "Blanc",
+    "libelle_en": "White",
+    "hex": "FFFFFF",
+    "statut": "active"
+   },
+   {
+    "id": "brown",
+    "libelle_fr": "Marron",
+    "libelle_en": "Brown",
+    "hex": "5E3F32",
+    "statut": "active"
+   },
+   {
+    "id": "tan",
+    "libelle_fr": "Beige",
+    "libelle_en": "Tan",
+    "hex": "F0BB7F",
+    "statut": "active"
+   },
+   {
+    "id": "cream",
+    "libelle_fr": "Crème",
+    "libelle_en": "Cream",
+    "hex": "F1E6B2",
+    "statut": "active"
+   },
+   {
+    "id": "yellow",
+    "libelle_fr": "Jaune",
+    "libelle_en": "Yellow",
+    "hex": "FBE122",
+    "statut": "active"
+   },
+   {
+    "id": "red",
+    "libelle_fr": "Rouge",
+    "libelle_en": "Red",
+    "hex": "E10600",
+    "statut": "active"
+   },
+   {
+    "id": "burgundy",
+    "libelle_fr": "Bourgogne",
+    "libelle_en": "Burgundy",
+    "hex": "8A2B2B",
+    "statut": "active"
+   },
+   {
+    "id": "orange",
+    "libelle_fr": "Orange",
+    "libelle_en": "Orange",
+    "hex": "FA6400",
+    "statut": "active"
+   },
+   {
+    "id": "pink",
+    "libelle_fr": "Rose",
+    "libelle_en": "Pink",
+    "hex": "F564B3",
+    "statut": "active"
+   },
+   {
+    "id": "purple",
+    "libelle_fr": "Violet",
+    "libelle_en": "Purple",
+    "hex": "5F18D1",
+    "statut": "active"
+   },
+   {
+    "id": "blue",
+    "libelle_fr": "Bleu",
+    "libelle_en": "Blue",
+    "hex": "046AB7",
+    "statut": "active"
+   },
+   {
+    "id": "navy",
+    "libelle_fr": "Marin",
+    "libelle_en": "Navy",
+    "hex": "002555",
+    "statut": "active"
+   },
+   {
+    "id": "green",
+    "libelle_fr": "Vert",
+    "libelle_en": "Green",
+    "hex": "5EAF07",
+    "statut": "active"
+   },
+   {
+    "id": "khaki",
+    "libelle_fr": "Kaki",
+    "libelle_en": "Khaki",
+    "hex": "8D7F1F",
+    "statut": "active"
+   },
+   {
+    "id": "multi",
+    "libelle_fr": "Multi",
+    "libelle_en": "Multi",
+    "hex": "FFFFFF",
+    "statut": "active"
+   },
+   {
+    "id": "silver",
+    "libelle_fr": "Argent",
+    "libelle_en": "Silver",
+    "hex": "CDCDCD",
+    "statut": "active"
+   },
+   {
+    "id": "gold",
+    "libelle_fr": "Or",
+    "libelle_en": "Gold",
+    "hex": "D6C478",
+    "statut": "active"
+   }
+  ]
+ },
+ "source": {
+  "id": "source",
+  "libelle_fr": "Source",
+  "max_selection": 2,
+  "obligatoire_selon_api": false,
+  "statut": "active",
+  "obligatoire_selon_formulaire": false,
+  "valeurs": [
+   {
+    "id": "vintage",
+    "libelle_fr": "Vintage",
+    "libelle_en": "Vintage",
+    "statut": "active"
+   },
+   {
+    "id": "preloved",
+    "libelle_fr": "Preloved",
+    "libelle_en": "Preloved",
+    "statut": "active"
+   },
+   {
+    "id": "reworked",
+    "libelle_fr": "Reworked / Upcycled",
+    "libelle_en": "Reworked / Upcycled",
+    "statut": "active"
+   },
+   {
+    "id": "custom",
+    "libelle_fr": "Custom",
+    "libelle_en": "Custom",
+    "statut": "active"
+   },
+   {
+    "id": "handmade",
+    "libelle_fr": "Handmade",
+    "libelle_en": "Handmade",
+    "statut": "active"
+   },
+   {
+    "id": "deadstock",
+    "libelle_fr": "Deadstock",
+    "libelle_en": "Deadstock",
+    "statut": "active"
+   },
+   {
+    "id": "designer",
+    "libelle_fr": "Designer",
+    "libelle_en": "Designer",
+    "statut": "active"
+   },
+   {
+    "id": "repaired",
+    "libelle_fr": "Repaired",
+    "libelle_en": "Repaired",
+    "statut": "active"
+   }
+  ]
+ },
+ "age": {
+  "id": "age",
+  "libelle_fr": "Âge",
+  "max_selection": 1,
+  "obligatoire_selon_api": false,
+  "statut": "active",
+  "obligatoire_selon_formulaire": false,
+  "valeurs": [
+   {
+    "id": "modern",
+    "libelle_fr": "Modern",
+    "libelle_en": "Modern",
+    "statut": "active"
+   },
+   {
+    "id": "y2k",
+    "libelle_fr": "00s",
+    "libelle_en": "00s",
+    "statut": "active"
+   },
+   {
+    "id": "90s",
+    "libelle_fr": "90s",
+    "libelle_en": "90s",
+    "statut": "active"
+   },
+   {
+    "id": "80s",
+    "libelle_fr": "80s",
+    "libelle_en": "80s",
+    "statut": "active"
+   },
+   {
+    "id": "70s",
+    "libelle_fr": "70s",
+    "libelle_en": "70s",
+    "statut": "active"
+   },
+   {
+    "id": "60s",
+    "libelle_fr": "60s",
+    "libelle_en": "60s",
+    "statut": "active"
+   },
+   {
+    "id": "50s",
+    "libelle_fr": "50s",
+    "libelle_en": "50s",
+    "statut": "active"
+   },
+   {
+    "id": "antique",
+    "libelle_fr": "Antique",
+    "libelle_en": "Antique",
+    "statut": "active"
+   }
+  ]
+ },
+ "style": {
+  "id": "style",
+  "libelle_fr": "Style",
+  "max_selection": 3,
+  "obligatoire_selon_api": false,
+  "statut": "active",
+  "obligatoire_selon_formulaire": false,
+  "valeurs": [
+   {
+    "id": "streetwear",
+    "libelle_fr": "Streetwear",
+    "libelle_en": "Streetwear",
+    "statut": "active"
+   },
+   {
+    "id": "sportswear",
+    "libelle_fr": "Sportswear",
+    "libelle_en": "Sportswear",
+    "statut": "active"
+   },
+   {
+    "id": "loungewear",
+    "libelle_fr": "Loungewear",
+    "libelle_en": "Loungewear",
+    "statut": "active"
+   },
+   {
+    "id": "goth",
+    "libelle_fr": "Goth",
+    "libelle_en": "Goth",
+    "statut": "active"
+   },
+   {
+    "id": "retro",
+    "libelle_fr": "Retro",
+    "libelle_en": "Retro",
+    "statut": "active"
+   },
+   {
+    "id": "trap",
+    "libelle_fr": "Trap",
+    "libelle_en": "Trap",
+    "statut": "inactive"
+   },
+   {
+    "id": "boho",
+    "libelle_fr": "Boho",
+    "libelle_en": "Boho",
+    "statut": "active"
+   },
+   {
+    "id": "western",
+    "libelle_fr": "Western",
+    "libelle_en": "Western",
+    "statut": "active"
+   },
+   {
+    "id": "indie",
+    "libelle_fr": "Indie",
+    "libelle_en": "Indie",
+    "statut": "active"
+   },
+   {
+    "id": "skater",
+    "libelle_fr": "Skater",
+    "libelle_en": "Skater",
+    "statut": "active"
+   },
+   {
+    "id": "cute",
+    "libelle_fr": "Cute",
+    "libelle_en": "Cute",
+    "statut": "inactive"
+   },
+   {
+    "id": "chic",
+    "libelle_fr": "Chic",
+    "libelle_en": "Chic",
+    "statut": "inactive"
+   },
+   {
+    "id": "rave",
+    "libelle_fr": "Rave",
+    "libelle_en": "Rave",
+    "statut": "active"
+   },
+   {
+    "id": "pastel",
+    "libelle_fr": "Pastel",
+    "libelle_en": "Pastel",
+    "statut": "inactive"
+   },
+   {
+    "id": "bright",
+    "libelle_fr": "Bright",
+    "libelle_en": "Bright",
+    "statut": "inactive"
+   },
+   {
+    "id": "costume",
+    "libelle_fr": "Costume",
+    "libelle_en": "Costume",
+    "statut": "active"
+   },
+   {
+    "id": "cosplay",
+    "libelle_fr": "Cosplay",
+    "libelle_en": "Cosplay",
+    "statut": "active"
+   },
+   {
+    "id": "grunge",
+    "libelle_fr": "Grunge",
+    "libelle_en": "Grunge",
+    "statut": "active"
+   },
+   {
+    "id": "party",
+    "libelle_fr": "Party",
+    "libelle_en": "Party",
+    "statut": "inactive"
+   },
+   {
+    "id": "funky",
+    "libelle_fr": "Funky",
+    "libelle_en": "Funky",
+    "statut": "inactive"
+   },
+   {
+    "id": "emo",
+    "libelle_fr": "Emo",
+    "libelle_en": "Emo",
+    "statut": "active"
+   },
+   {
+    "id": "minimalist",
+    "libelle_fr": "Minimalist",
+    "libelle_en": "Minimalist",
+    "statut": "active"
+   },
+   {
+    "id": "preppy",
+    "libelle_fr": "Preppy",
+    "libelle_en": "Preppy",
+    "statut": "active"
+   },
+   {
+    "id": "avant_garde",
+    "libelle_fr": "Avant Garde",
+    "libelle_en": "Avant Garde",
+    "statut": "active"
+   },
+   {
+    "id": "punk",
+    "libelle_fr": "Punk",
+    "libelle_en": "Punk",
+    "statut": "active"
+   },
+   {
+    "id": "glam",
+    "libelle_fr": "Glam",
+    "libelle_en": "Glam",
+    "statut": "active"
+   },
+   {
+    "id": "regency",
+    "libelle_fr": "Regency",
+    "libelle_en": "Regency",
+    "statut": "active"
+   },
+   {
+    "id": "casual",
+    "libelle_fr": "Casual",
+    "libelle_en": "Casual",
+    "statut": "active"
+   },
+   {
+    "id": "techwear",
+    "libelle_fr": "Utility",
+    "libelle_en": "Utility",
+    "statut": "active"
+   },
+   {
+    "id": "futuristic",
+    "libelle_fr": "Futuristic",
+    "libelle_en": "Futuristic",
+    "statut": "active"
+   },
+   {
+    "id": "cottage",
+    "libelle_fr": "Cottage",
+    "libelle_en": "Cottage",
+    "statut": "active"
+   },
+   {
+    "id": "fairy",
+    "libelle_fr": "Fairy",
+    "libelle_en": "Fairy",
+    "statut": "active"
+   },
+   {
+    "id": "kidcore",
+    "libelle_fr": "Kidcore",
+    "libelle_en": "Kidcore",
+    "statut": "active"
+   },
+   {
+    "id": "y2_k",
+    "libelle_fr": "Y2K",
+    "libelle_en": "Y2K",
+    "statut": "active"
+   },
+   {
+    "id": "biker",
+    "libelle_fr": "Biker",
+    "libelle_en": "Biker",
+    "statut": "active"
+   },
+   {
+    "id": "gorpcore",
+    "libelle_fr": "Gorpcore",
+    "libelle_en": "Gorpcore",
+    "statut": "active"
+   },
+   {
+    "id": "twee",
+    "libelle_fr": "Twee",
+    "libelle_en": "Twee",
+    "statut": "active"
+   },
+   {
+    "id": "coquette",
+    "libelle_fr": "Coquette",
+    "libelle_en": "Coquette",
+    "statut": "active"
+   },
+   {
+    "id": "whimsygoth",
+    "libelle_fr": "Whimsygoth",
+    "libelle_en": "Whimsygoth",
+    "statut": "active"
+   }
+  ]
+ },
+ "genre_enfant": {
+  "id": "gender",
+  "libelle_fr": null,
+  "max_selection": 1,
+  "obligatoire_selon_api": false,
+  "statut": "active",
+  "obligatoire_selon_formulaire": "département Enfants seulement",
+  "valeurs": [
+   {
+    "id": "male",
+    "libelle_fr": "Boys",
+    "libelle_en": "Boys",
+    "statut": "active"
+   },
+   {
+    "id": "female",
+    "libelle_fr": "Girls",
+    "libelle_en": "Girls",
+    "statut": "active"
+   },
+   {
+    "id": "unisex",
+    "libelle_fr": "Unisex",
+    "libelle_en": "Unisex",
+    "statut": "active"
+   }
+  ]
+ },
+ "departements": [
+  {
+   "id": "menswear",
+   "libelle_fr": "Homme",
+   "libelle_en": "Men",
+   "statut": "active",
+   "genre": {
+    "defaut": [
+     "male"
+    ],
+    "affiche": false,
+    "obligatoire": true,
+    "options": []
+   }
+  },
+  {
+   "id": "womenswear",
+   "libelle_fr": "Femme",
+   "libelle_en": "Women",
+   "statut": "active",
+   "genre": {
+    "defaut": [
+     "female"
+    ],
+    "affiche": false,
+    "obligatoire": true,
+    "options": []
+   }
+  },
+  {
+   "id": "kidswear",
+   "libelle_fr": "Enfants",
+   "libelle_en": "Kids",
+   "statut": "active",
+   "genre": {
+    "defaut": [],
+    "affiche": true,
+    "obligatoire": true,
+    "options": [
+     "male",
+     "female",
+     "unisex"
+    ]
+   }
+  },
+  {
+   "id": "everything-else",
+   "libelle_fr": "Tout le reste",
+   "libelle_en": "Everything else",
+   "statut": "active",
+   "genre": null
+  }
+ ],
+ "attributs_par_type": [
+  {
+   "id": "bottom-fit",
+   "libelle_fr": "Type",
+   "max_selection": 3,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "bottoms/jeans",
+    "bottoms/joggers-tracksuits",
+    "bottoms/trousers",
+    "bottoms/leggings",
+    "bottoms/other-bottoms"
+   ],
+   "valeurs": [
+    {
+     "id": "acid-washed",
+     "libelle_fr": "Délavés à l'acide",
+     "libelle_en": "Acid-washed",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bleached",
+     "libelle_fr": "Blanchis",
+     "libelle_en": "Bleached",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "capris",
+     "libelle_fr": "Pantacourt",
+     "libelle_en": "Capri",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cargo",
+     "libelle_fr": "Cargo",
+     "libelle_en": "Cargo",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "chino",
+     "libelle_fr": "Chino",
+     "libelle_en": "Chino",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "distressed",
+     "libelle_fr": "Déchirés",
+     "libelle_en": "Distressed",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "embellished",
+     "libelle_fr": "Embellies",
+     "libelle_en": "Embellished",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "embroided",
+     "libelle_fr": "Broderies",
+     "libelle_en": "Embroidered",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "faded",
+     "libelle_fr": "Délavés",
+     "libelle_en": "Faded",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "painted",
+     "libelle_fr": "Peints",
+     "libelle_en": "Painted",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "patched",
+     "libelle_fr": "Patchs",
+     "libelle_en": "Patched",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "printed",
+     "libelle_fr": "Imprimés",
+     "libelle_en": "Printed",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "ripped",
+     "libelle_fr": "Déchiré",
+     "libelle_en": "Ripped",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "stone-washed",
+     "libelle_fr": "Délavés à la pierre",
+     "libelle_en": "Stone-washed",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "hair-accesories-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/hair-accessories"
+   ],
+   "valeurs": [
+    {
+     "id": "hair-accessories",
+     "libelle_fr": "Accessoires pour cheveux",
+     "libelle_en": "Hair accessories",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hair-extensions-wigs",
+     "libelle_fr": "Extensions de cheveux et perruques",
+     "libelle_en": "Hair extensions and wigs",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "dress-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "dresses/dresses"
+   ],
+   "valeurs": [
+    {
+     "id": "a-line",
+     "libelle_fr": "Patineuses",
+     "libelle_en": "A-line",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "babydoll",
+     "libelle_fr": "Babydoll",
+     "libelle_en": "Babydoll",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "blazer",
+     "libelle_fr": "Blazer",
+     "libelle_en": "Blazer",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bodycon",
+     "libelle_fr": "Moulant",
+     "libelle_en": "Bodycon",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "fishtail",
+     "libelle_fr": "Sirène",
+     "libelle_en": "Fishtail",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "pencil",
+     "libelle_fr": "Jupes crayon",
+     "libelle_en": "Pencil",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "pleated",
+     "libelle_fr": "Jupes plissées",
+     "libelle_en": "Pleated",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "shirt",
+     "libelle_fr": "T-shirt",
+     "libelle_en": "Shirt",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "slip",
+     "libelle_fr": "Jupon",
+     "libelle_en": "Slip",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "watches-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/watch"
+   ],
+   "valeurs": [
+    {
+     "id": "analogue",
+     "libelle_fr": "Analogique",
+     "libelle_en": "Analogue",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "automatic",
+     "libelle_fr": "Automatique",
+     "libelle_en": "Automatic",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "digital",
+     "libelle_fr": "Digital",
+     "libelle_en": "Digital",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "manual-winding",
+     "libelle_fr": "Remontage manuel",
+     "libelle_en": "Manual winding",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "quartz-shows-cell",
+     "libelle_fr": "Quartz (avec cellule)",
+     "libelle_en": "Quartz (shows cell)",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "smartwatch",
+     "libelle_fr": "Montre intelligente",
+     "libelle_en": "Smartwatch",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "inactive"
+    }
+   ]
+  },
+  {
+   "id": "gloves-and-mittens-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/gloves"
+   ],
+   "valeurs": [
+    {
+     "id": "gloves",
+     "libelle_fr": "Gants",
+     "libelle_en": "Gloves",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "mittens",
+     "libelle_fr": "Mitaines",
+     "libelle_en": "Mittens",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "hat-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/hat"
+   ],
+   "valeurs": [
+    {
+     "id": "beanie",
+     "libelle_fr": "Bonnets",
+     "libelle_en": "Beanies",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "beret",
+     "libelle_fr": "Bérets",
+     "libelle_en": "Berets",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bucket-hat",
+     "libelle_fr": "Bobs",
+     "libelle_en": "Bucket hats",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "caps-snapbacks",
+     "libelle_fr": "Casquettes",
+     "libelle_en": "Caps",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "panamas-straw",
+     "libelle_fr": "Chapeaux de paille",
+     "libelle_en": "Straw hats",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "jewellery-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/jewellery"
+   ],
+   "valeurs": [
+    {
+     "id": "body-jewellery",
+     "libelle_fr": "Bijoux de corps",
+     "libelle_en": "Body jewelry",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bracelet-anklets",
+     "libelle_fr": "Bracelets et chaînes de cheville",
+     "libelle_en": "Bracelets and anklets",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "brooches-pins",
+     "libelle_fr": "Broches et épingles",
+     "libelle_en": "Brooches and pins",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "earrings-and-ear-cuffs",
+     "libelle_fr": "Boucles d'oreilles et bijoux d'oreilles",
+     "libelle_en": "Earrings and ear cuffs",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "necklace",
+     "libelle_fr": "Colliers",
+     "libelle_en": "Necklaces",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "rings",
+     "libelle_fr": "Bagues",
+     "libelle_en": "Rings",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "bag-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/bag"
+   ],
+   "valeurs": [
+    {
+     "id": "backpacks-rucksacks",
+     "libelle_fr": "Sacs à dos",
+     "libelle_en": "Backpacks",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "beach-bag",
+     "libelle_fr": "Sacs de plage",
+     "libelle_en": "Beach bags",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "clutch-bag",
+     "libelle_fr": "Pochettes",
+     "libelle_en": "Clutch bags",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "crossbody-bag",
+     "libelle_fr": "Sacs à bandoulière",
+     "libelle_en": "Crossbody bags",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "diaper-bag",
+     "libelle_fr": "Sacs à langer",
+     "libelle_en": "Diaper bags",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bum-bag",
+     "libelle_fr": "Bananes et sacs ceinture",
+     "libelle_en": "Fanny packs and belt bags",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "luggage-travel",
+     "libelle_fr": "Bagages et sacs de voyages",
+     "libelle_en": "Luggage and travel",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "makeup-toiletry-bag",
+     "libelle_fr": "Sacs de maquillage et trousses de toilette",
+     "libelle_en": "Makeup and toiletry bags",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "pencil-case",
+     "libelle_fr": "Trousses à crayons",
+     "libelle_en": "Pencil cases",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "satchel",
+     "libelle_fr": "Sacoches",
+     "libelle_en": "Satchels",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "shoulder-bag",
+     "libelle_fr": "Sacs à main",
+     "libelle_en": "Shoulder bags",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tote-bag",
+     "libelle_fr": "Tote Bag",
+     "libelle_en": "Tote bags",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "coat-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "coats-jackets/coats"
+   ],
+   "valeurs": [
+    {
+     "id": "dufflecoat",
+     "libelle_fr": "Duffle",
+     "libelle_en": "Duffle",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "heavy-coat",
+     "libelle_fr": "Manteau épais",
+     "libelle_en": "Heavy coat",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "overcoat",
+     "libelle_fr": "Pardessus",
+     "libelle_en": "Overcoat",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "parka",
+     "libelle_fr": "Parka",
+     "libelle_en": "Parka",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "peacoat",
+     "libelle_fr": "Caban",
+     "libelle_en": "Peacoat",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "puffer",
+     "libelle_fr": "Doudoune",
+     "libelle_en": "Puffer",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "raincoat",
+     "libelle_fr": "Imperméable",
+     "libelle_en": "Raincoat",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "teddy",
+     "libelle_fr": "Moumoute",
+     "libelle_en": "Sherpa",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "trench",
+     "libelle_fr": "Trench",
+     "libelle_en": "Trench",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "jacket-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "coats-jackets/jackets"
+   ],
+   "valeurs": [
+    {
+     "id": "blazer",
+     "libelle_fr": "Blazer",
+     "libelle_en": "Blazer",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bomber",
+     "libelle_fr": "Bomber",
+     "libelle_en": "Bomber",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "capes",
+     "libelle_fr": "Cape",
+     "libelle_en": "Cape",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cardi",
+     "libelle_fr": "Cardigan",
+     "libelle_en": "Cardi",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "duster",
+     "libelle_fr": "Duster",
+     "libelle_en": "Duster",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lightweight",
+     "libelle_fr": "Légère",
+     "libelle_en": "Lightweight",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lightweight-jacket",
+     "libelle_fr": "Veste légère",
+     "libelle_en": "Lightweight Jacket",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "caban",
+     "libelle_fr": "Caban",
+     "libelle_en": "Pea Coat",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "ponchos",
+     "libelle_fr": "Poncho",
+     "libelle_en": "Poncho",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "puffer",
+     "libelle_fr": "Doudoune",
+     "libelle_en": "Puffer",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "shacket",
+     "libelle_fr": "Shacket",
+     "libelle_en": "Shacket",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "short-vests",
+     "libelle_fr": "Gilets courts",
+     "libelle_en": "Short vests",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "varsity",
+     "libelle_fr": "De baseball",
+     "libelle_en": "Varsity",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "windbreaker",
+     "libelle_fr": "Coupe-vents",
+     "libelle_en": "Windbreaker",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "bra-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "underwear/bras",
+    "swim-beach-wear/bikinis-and-tankini-sets",
+    "swim-beach-wear/bikini-and-tankini-tops"
+   ],
+   "valeurs": [
+    {
+     "id": "balconette",
+     "libelle_fr": "Balconet",
+     "libelle_en": "Balconette",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bralette",
+     "libelle_fr": "Bralette",
+     "libelle_en": "Bralette",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "padded",
+     "libelle_fr": "Rembourré",
+     "libelle_en": "Padded",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "racerback",
+     "libelle_fr": "Dos nu",
+     "libelle_en": "Racerback",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sports",
+     "libelle_fr": "Sports",
+     "libelle_en": "Sports",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "strapless",
+     "libelle_fr": "Sans bretelles",
+     "libelle_en": "Strapless",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "t-shirt",
+     "libelle_fr": "T-shirt",
+     "libelle_en": "T-shirt",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "wireless",
+     "libelle_fr": "Sans armature",
+     "libelle_en": "Wireless",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "panties-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "underwear/panties",
+    "swim-beach-wear/bikinis-and-tankini-sets",
+    "swim-beach-wear/bikini-and-tankini-bottoms"
+   ],
+   "valeurs": [
+    {
+     "id": "bikini",
+     "libelle_fr": "Bikini",
+     "libelle_en": "Bikini",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "boyshorts",
+     "libelle_fr": "Boxers",
+     "libelle_en": "Boyshort",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "g-string",
+     "libelle_fr": "String ficelle",
+     "libelle_en": "G-string",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "high-waisted",
+     "libelle_fr": "Taille haute",
+     "libelle_en": "High waisted",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hipster",
+     "libelle_fr": "Hipster",
+     "libelle_en": "Hipster",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "thong",
+     "libelle_fr": "String",
+     "libelle_en": "Thong",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "shapewear-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "underwear/shapewear"
+   ],
+   "valeurs": [
+    {
+     "id": "bodysuit",
+     "libelle_fr": "Body",
+     "libelle_en": "Bodysuits",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "high-waist",
+     "libelle_fr": "Taille haute",
+     "libelle_en": "High Waist",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "shorts-briefs",
+     "libelle_fr": "Shorts et culottes",
+     "libelle_en": "Shorts and panties",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "slips",
+     "libelle_fr": "Slips",
+     "libelle_en": "Slips",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tank-top",
+     "libelle_fr": "Hauts",
+     "libelle_en": "Tops",
+     "departements": [
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "boxers-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "underwear/boxers-and-briefs"
+   ],
+   "valeurs": [
+    {
+     "id": "boxers",
+     "libelle_fr": "Boxers",
+     "libelle_en": "Boxers",
+     "departements": [
+      "menswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "briefs",
+     "libelle_fr": "Slips",
+     "libelle_en": "Briefs",
+     "departements": [
+      "menswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "thongs",
+     "libelle_fr": "Strings",
+     "libelle_en": "Thongs",
+     "departements": [
+      "menswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "trunks",
+     "libelle_fr": "Boxers",
+     "libelle_en": "Trunks",
+     "departements": [
+      "menswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "vest-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "underwear/vest-undershirts"
+   ],
+   "valeurs": [
+    {
+     "id": "cami",
+     "libelle_fr": "Ensemble",
+     "libelle_en": "Cami",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cropped",
+     "libelle_fr": "Court",
+     "libelle_en": "Cropped",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tank-top",
+     "libelle_fr": "Débardeurs",
+     "libelle_en": "Tank top",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "pajamas-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "nightwear/pajamas"
+   ],
+   "valeurs": [
+    {
+     "id": "2-piece",
+     "libelle_fr": "2 pièces",
+     "libelle_en": "2 piece",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "pants",
+     "libelle_fr": "Bas",
+     "libelle_en": "Bottoms",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "button-up",
+     "libelle_fr": "Boutons",
+     "libelle_en": "Button up",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cami",
+     "libelle_fr": "Débardeurs",
+     "libelle_en": "Camis",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "chemises-slips",
+     "libelle_fr": "Chemises et slips",
+     "libelle_en": "Chemises and slips",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "shorts",
+     "libelle_fr": "Shorts",
+     "libelle_en": "Shorts",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "sleepsuit-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sleepsuits-and-bodysuits/sleepsuits-babygrows"
+   ],
+   "valeurs": [
+    {
+     "id": "babygrow",
+     "libelle_fr": "Bodies bébés",
+     "libelle_en": "Babygrow",
+     "departements": [
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "bodysuit",
+     "libelle_fr": "Body",
+     "libelle_en": "Onesies",
+     "departements": [
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sleepsuit",
+     "libelle_fr": "Pyjamas",
+     "libelle_en": "Sleepers",
+     "departements": [
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "vests",
+     "libelle_fr": "Vestes",
+     "libelle_en": "Vests",
+     "departements": [
+      "kidswear"
+     ],
+     "statut": "inactive"
+    }
+   ]
+  },
+  {
+   "id": "jumpssuit-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "jumpsuit-and-playsuit/jumpsuit"
+   ],
+   "valeurs": [
+    {
+     "id": "palazzo",
+     "libelle_fr": "Jambes larges",
+     "libelle_en": "Palazzo",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skinny",
+     "libelle_fr": "Skinny",
+     "libelle_en": "Skinny",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "straight",
+     "libelle_fr": "Coupe droite",
+     "libelle_en": "Straight leg",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "dungarees-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "jumpsuit-and-playsuit/dungarees-overalls"
+   ],
+   "valeurs": [
+    {
+     "id": "trouser",
+     "libelle_fr": "Pantalon",
+     "libelle_en": "Pants",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "shorts",
+     "libelle_fr": "Shorts",
+     "libelle_en": "Shorts",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skirt",
+     "libelle_fr": "Jupe",
+     "libelle_en": "Skirt",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "fancy-dress-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "fancy-dress/fancy-dress"
+   ],
+   "valeurs": [
+    {
+     "id": "1960s",
+     "libelle_fr": "Années 1960",
+     "libelle_en": "1960s",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "1970s",
+     "libelle_fr": "Années 1970",
+     "libelle_en": "1970s",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "2-piece",
+     "libelle_fr": "2 pièces",
+     "libelle_en": "2 piece",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "animals-and-nature",
+     "libelle_fr": "Animaux et nature",
+     "libelle_en": "Animals and nature",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "christmas",
+     "libelle_fr": "Noël",
+     "libelle_en": "Christmas",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "halloween",
+     "libelle_fr": "Halloween",
+     "libelle_en": "Halloween",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "superhero",
+     "libelle_fr": "Super-héros",
+     "libelle_en": "Superhero",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tv-book-and-film",
+     "libelle_fr": "Télévision, livres et films",
+     "libelle_en": "TV, books and film",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "luggage-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [],
+   "valeurs": [
+    {
+     "id": "carry-on",
+     "libelle_fr": "Cabine",
+     "libelle_en": "Carry On",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "passport-holder",
+     "libelle_fr": "Porte passeport",
+     "libelle_en": "Passport Holder",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "suitcase",
+     "libelle_fr": "Valise",
+     "libelle_en": "Suitcase",
+     "departements": [],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "sunglasses-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/sunglasses"
+   ],
+   "valeurs": [
+    {
+     "id": "aviator",
+     "libelle_fr": "Aviator",
+     "libelle_en": "Aviator",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cat-eye",
+     "libelle_fr": "Cat eye",
+     "libelle_en": "Cat eye",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "oversized",
+     "libelle_fr": "Imposantes",
+     "libelle_en": "Oversized",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "round",
+     "libelle_fr": "Rondes",
+     "libelle_en": "Round",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "square",
+     "libelle_fr": "Carrées",
+     "libelle_en": "Square",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "wayfarer",
+     "libelle_fr": "Wayfarer",
+     "libelle_en": "Wayfarer",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "wallet-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "accessories/wallet-purses"
+   ],
+   "valeurs": [
+    {
+     "id": "cardholder",
+     "libelle_fr": "Porte-cartes",
+     "libelle_en": "Cardholders",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "purse",
+     "libelle_fr": "Sacs et pochettes",
+     "libelle_en": "Coin purses and pouches",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "moneyclip",
+     "libelle_fr": "Portefeuille pince",
+     "libelle_en": "Money clips",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "wallet",
+     "libelle_fr": "Portefeuilles",
+     "libelle_en": "Wallets",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "boot-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "footwear/boots"
+   ],
+   "valeurs": [
+    {
+     "id": "ankle",
+     "libelle_fr": "Bottines",
+     "libelle_en": "Ankle",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "biker-military",
+     "libelle_fr": "Botte de motard",
+     "libelle_en": "Biker",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "chelsea",
+     "libelle_fr": "Chelsea",
+     "libelle_en": "Chelsea",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "combat",
+     "libelle_fr": "Militaire",
+     "libelle_en": "Combat",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "knee-high",
+     "libelle_fr": "Hautes",
+     "libelle_en": "Knee high",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lace-up",
+     "libelle_fr": "Lacets",
+     "libelle_en": "Lace up",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "mid-calf",
+     "libelle_fr": "Mi-mollet",
+     "libelle_en": "Mid calf",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "over-the-knee",
+     "libelle_fr": "Au-dessus du genou",
+     "libelle_en": "Over the knee",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "platform",
+     "libelle_fr": "Plateforme",
+     "libelle_en": "Platform",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sock",
+     "libelle_fr": "Chaussette",
+     "libelle_en": "Sock",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "shoe-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "footwear/slides",
+    "footwear/sandals",
+    "footwear/flipflops",
+    "footwear/slippers",
+    "footwear/brogues",
+    "footwear/oxfords",
+    "footwear/loafers",
+    "footwear/boat-shoes",
+    "footwear/espadrilles",
+    "footwear/ballet-shoes",
+    "footwear/clogs",
+    "footwear/courts",
+    "footwear/mules"
+   ],
+   "valeurs": [
+    {
+     "id": "buckle",
+     "libelle_fr": "Boucle",
+     "libelle_en": "Buckle",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "chunky",
+     "libelle_fr": "Chunky",
+     "libelle_en": "Chunky",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "embellished",
+     "libelle_fr": "Embellies",
+     "libelle_en": "Embellished",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "embossed",
+     "libelle_fr": "Embossage",
+     "libelle_en": "Embossed",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lace-up",
+     "libelle_fr": "Lacets",
+     "libelle_en": "Lace up",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "open-toe-peep-toe",
+     "libelle_fr": "Chaussures ouvertes et peep toes",
+     "libelle_en": "Open and peep toe",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "plain",
+     "libelle_fr": "Unie",
+     "libelle_en": "Plain",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "platform",
+     "libelle_fr": "Plateforme",
+     "libelle_en": "Platform",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "trainers-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "footwear/trainers"
+   ],
+   "valeurs": [
+    {
+     "id": "basketball",
+     "libelle_fr": "Basket-ball",
+     "libelle_en": "Basketball",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "embellished",
+     "libelle_fr": "Embellies",
+     "libelle_en": "Embellished",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "athletics",
+     "libelle_fr": "Gym",
+     "libelle_en": "Gym",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lifestyle",
+     "libelle_fr": "Mode",
+     "libelle_en": "Lifestyle",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "running",
+     "libelle_fr": "Course",
+     "libelle_en": "Running",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skateboard",
+     "libelle_fr": "Skateboard",
+     "libelle_en": "Skateboarding",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "football",
+     "libelle_fr": "Football",
+     "libelle_en": "Soccer",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tennis",
+     "libelle_fr": "Tennis",
+     "libelle_en": "Tennis",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "home",
+   "libelle_fr": "Accueil",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "home/dinnerware",
+    "home/furniture",
+    "home/decor-home-accesories",
+    "home/home-appliances",
+    "home/soft-furnishings-textiles",
+    "home/storage-and-organisation"
+   ],
+   "valeurs": [
+    {
+     "id": "bathroom",
+     "libelle_fr": "Salle de bain",
+     "libelle_en": "Bathroom",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bedroom",
+     "libelle_fr": "Chambre",
+     "libelle_en": "Bedroom",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "dining",
+     "libelle_fr": "Salle à manger",
+     "libelle_en": "Dining",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "garden",
+     "libelle_fr": "Jardin",
+     "libelle_en": "Garden",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "kitchen",
+     "libelle_fr": "Cuisine",
+     "libelle_en": "Kitchen",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "office",
+     "libelle_fr": "Bureau",
+     "libelle_en": "Office",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "bath-body-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/bath-and-body"
+   ],
+   "valeurs": [
+    {
+     "id": "bath-soak-bubbles",
+     "libelle_fr": "Bain moussant",
+     "libelle_en": "Bath salts and bubbles",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "body-wash",
+     "libelle_fr": "Gel douche",
+     "libelle_en": "Body wash",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "exfoliant-scrub",
+     "libelle_fr": "Exfoliants et gommages",
+     "libelle_en": "Exfoliants and scrubs",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hand-foot-care",
+     "libelle_fr": "Soins des mains et des pieds",
+     "libelle_en": "Hand and footcare",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hand-soap",
+     "libelle_fr": "Savon pour les mains",
+     "libelle_en": "Hand soap",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "moisturizer-body-oil",
+     "libelle_fr": "Hydratants et huiles pour le corps",
+     "libelle_en": "Moisturizers and body oils",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "suncare-tanning",
+     "libelle_fr": "Produits solaires et bronzage",
+     "libelle_en": "Suncare and tanning",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "fragrance-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/fragrance"
+   ],
+   "valeurs": [
+    {
+     "id": "body-spray",
+     "libelle_fr": "Spray pour le corps",
+     "libelle_en": "Body spray",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "deodrant",
+     "libelle_fr": "Déodorant",
+     "libelle_en": "Deodorant",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "perfume",
+     "libelle_fr": "Parfums et eaux de Cologne",
+     "libelle_en": "Perfume and cologne",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "hair-product-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/hair-products"
+   ],
+   "valeurs": [
+    {
+     "id": "color",
+     "libelle_fr": "Couleur",
+     "libelle_en": "Color",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "conditioner",
+     "libelle_fr": "Conditionneur",
+     "libelle_en": "Conditioner",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hairspray",
+     "libelle_fr": "Spray pour cheveux",
+     "libelle_en": "Hairspray",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "heat-protectant",
+     "libelle_fr": "Protecteur de chaleur",
+     "libelle_en": "Heat protection",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "shampoo",
+     "libelle_fr": "Shampooing",
+     "libelle_en": "Shampoo",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "styling",
+     "libelle_fr": "Coiffure",
+     "libelle_en": "Styling",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "treatment-mask",
+     "libelle_fr": "Traitements et masques",
+     "libelle_en": "Treatments and masks",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "makeup-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/makeup"
+   ],
+   "valeurs": [
+    {
+     "id": "blush",
+     "libelle_fr": "Fard à joues",
+     "libelle_en": "Blush",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bronzer-contour",
+     "libelle_fr": "Bronzeur et contouring",
+     "libelle_en": "Bronzer and contour",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "brushes-tools",
+     "libelle_fr": "Brosses et accessoires",
+     "libelle_en": "Brushes and tools",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "concealer",
+     "libelle_fr": "Correcteur",
+     "libelle_en": "Concealer",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "eye-primer",
+     "libelle_fr": "Primer yeux",
+     "libelle_en": "Eye primer",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "brows",
+     "libelle_fr": "Sourcils",
+     "libelle_en": "Eyebrows",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "eyeliner",
+     "libelle_fr": "Eyeliner",
+     "libelle_en": "Eyeliner",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "eyeshadow",
+     "libelle_fr": "Ombre à paupières",
+     "libelle_en": "Eyeshadow",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "foundation",
+     "libelle_fr": "Fond de teint",
+     "libelle_en": "Foundation",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lipstick",
+     "libelle_fr": "Rouge à lèvres",
+     "libelle_en": "Lipstick",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "mascara",
+     "libelle_fr": "Mascara",
+     "libelle_en": "Mascara",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "primer",
+     "libelle_fr": "Base de teint",
+     "libelle_en": "Primer",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "skincare-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/skincare"
+   ],
+   "valeurs": [
+    {
+     "id": "acne-blemish",
+     "libelle_fr": "Acné et imperfections",
+     "libelle_en": "Acne and blemish",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cleanser-exfoliant",
+     "libelle_fr": "Nettoyant et exfoliant",
+     "libelle_en": "Cleanser and exfoliant",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "eye-cream",
+     "libelle_fr": "Crème pour les yeux",
+     "libelle_en": "Eye cream",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "makeup-remover",
+     "libelle_fr": "Démaquillant",
+     "libelle_en": "Makeup remover",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "mask",
+     "libelle_fr": "Masques",
+     "libelle_en": "Masks",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "moisturizer",
+     "libelle_fr": "Crèmes hydratantes",
+     "libelle_en": "Moisturizers",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "peel",
+     "libelle_fr": "Peeling",
+     "libelle_en": "Peels",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "tools-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/tools-and-brushes"
+   ],
+   "valeurs": [
+    {
+     "id": "appliances",
+     "libelle_fr": "Appareils ménagers",
+     "libelle_en": "Appliances",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "brushes",
+     "libelle_fr": "Brosses",
+     "libelle_en": "Brushes",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tools",
+     "libelle_fr": "Outils",
+     "libelle_en": "Tools",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "grooming-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/grooming"
+   ],
+   "valeurs": [
+    {
+     "id": "grooming-products",
+     "libelle_fr": "Produits de toilettage",
+     "libelle_en": "Grooming products",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "grooming-tools",
+     "libelle_fr": "Outils de toilettage",
+     "libelle_en": "Grooming tools",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hair-removal",
+     "libelle_fr": "Épilation",
+     "libelle_en": "Hair removal",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "nails-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "beauty/nails"
+   ],
+   "valeurs": [
+    {
+     "id": "false-nails",
+     "libelle_fr": "Faux ongles",
+     "libelle_en": "False nails",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nail-art",
+     "libelle_fr": "Nail Art",
+     "libelle_en": "Nail art",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nail-brushes",
+     "libelle_fr": "Brosses à ongles",
+     "libelle_en": "Nail brushes",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nail-clippers",
+     "libelle_fr": "Coupe-ongles",
+     "libelle_en": "Nail clippers",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nail-files",
+     "libelle_fr": "Limes à ongles",
+     "libelle_en": "Nail files",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nail-polishes",
+     "libelle_fr": "Vernis à ongles",
+     "libelle_en": "Nail polish",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nail-treatments",
+     "libelle_fr": "Traitements pour les ongles",
+     "libelle_en": "Nail treatments",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "skates-skateboards-scooters-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/skates-skateboards-scooters"
+   ],
+   "valeurs": [
+    {
+     "id": "ice-skates",
+     "libelle_fr": "Patins à glace",
+     "libelle_en": "Ice skates",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "inline-roller-skating-and-equipment",
+     "libelle_fr": "Rollers",
+     "libelle_en": "Inline and roller skating",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "protective-gear",
+     "libelle_fr": "Équipements de protection",
+     "libelle_en": "Protective gear",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "scooters-equipment",
+     "libelle_fr": "Trottinettes",
+     "libelle_en": "Scooters",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skateboarding-and-equipment",
+     "libelle_fr": "Skateboard",
+     "libelle_en": "Skateboarding",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "fitness-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/fitness"
+   ],
+   "valeurs": [
+    {
+     "id": "balance-training-equipment",
+     "libelle_fr": "Entraînement pour l'équilibre",
+     "libelle_en": "Balance training",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "exercise-machine-accessories",
+     "libelle_fr": "Accessoires pour machines de sport",
+     "libelle_en": "Exercise machine accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "exercise-machines",
+     "libelle_fr": "Machines de sport",
+     "libelle_en": "Exercise machines",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "fitness-technology",
+     "libelle_fr": "Technologie du fitness",
+     "libelle_en": "Fitness technology",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "massage-belts-electric-stimulators",
+     "libelle_fr": "Ceintures de massage et stimulateurs électriques",
+     "libelle_en": "Massage belts and electric stimulators",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "pilates",
+     "libelle_fr": "Pilates",
+     "libelle_en": "Pilates",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "strength-training-equipment",
+     "libelle_fr": "Entraînement musculaire",
+     "libelle_en": "Strength training",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "trampolines-accessories",
+     "libelle_fr": "Trampolines et accessoires",
+     "libelle_en": "Trampolines and accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "cycling-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/cycling"
+   ],
+   "valeurs": [
+    {
+     "id": "bike-tools-equipment",
+     "libelle_fr": "Outils et équipements pour vélos",
+     "libelle_en": "Bike tools and equipment",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bikes",
+     "libelle_fr": "Vélos",
+     "libelle_en": "Bikes",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "components-parts",
+     "libelle_fr": "Composants et pièces détachées",
+     "libelle_en": "Components and parts",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "helmets-accessories",
+     "libelle_fr": "Casques et accessoires",
+     "libelle_en": "Helmets and accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "kids-bikes-accessories",
+     "libelle_fr": "Vélos et accessoires pour enfants",
+     "libelle_en": "Kids' bikes and accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "protective-gear",
+     "libelle_fr": "Équipements de protection",
+     "libelle_en": "Protective gear",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lights-reflectors",
+     "libelle_fr": "Réflecteurs",
+     "libelle_en": "Reflectors",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "camping-hiking-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/camping-hiking"
+   ],
+   "valeurs": [
+    {
+     "id": "bags-packs",
+     "libelle_fr": "Sacs et bagages",
+     "libelle_en": "Bags and packs",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "camping-furniture",
+     "libelle_fr": "Matériel de camping",
+     "libelle_en": "Camping furniture",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "camp-kitchen",
+     "libelle_fr": "Cuisine du camp",
+     "libelle_en": "Camping kitchens",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "camping-shelters",
+     "libelle_fr": "Abris de camping",
+     "libelle_en": "Camping shelters",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "child-carriers",
+     "libelle_fr": "Porteurs d'enfants",
+     "libelle_en": "Child carriers",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hand-foot-warmers",
+     "libelle_fr": "Chauffe-mains et chauffe-pieds",
+     "libelle_en": "Hand and foot warmers",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "gps-navigation",
+     "libelle_fr": "Navigation",
+     "libelle_en": "Navigation",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bivy-bags",
+     "libelle_fr": "Sacs de couchage",
+     "libelle_en": "Sleeping bags",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "golf-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/golf"
+   ],
+   "valeurs": [
+    {
+     "id": "golf-balls",
+     "libelle_fr": "Balles de golf",
+     "libelle_en": "Golf balls",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-cart-accessories",
+     "libelle_fr": "Accessoires pour voiturettes de golf",
+     "libelle_en": "Golf cart accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-carts",
+     "libelle_fr": "Voiturettes de golf",
+     "libelle_en": "Golf carts",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-club-bag-accessories",
+     "libelle_fr": "Accessoires pour sacs pour clubs de golf",
+     "libelle_en": "Golf club bag accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-club-bags",
+     "libelle_fr": "Sacs pour clubs de golf",
+     "libelle_en": "Golf club bags",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-club-organisers",
+     "libelle_fr": "Organisateurs de clubs de golf",
+     "libelle_en": "Golf club organizers",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-club-parts",
+     "libelle_fr": "Pièces détachées pour clubs de golf",
+     "libelle_en": "Golf club parts",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "golf-clubs",
+     "libelle_fr": "Clubs de golf",
+     "libelle_en": "Golf clubs",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "winter-sports-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/winter-sports"
+   ],
+   "valeurs": [
+    {
+     "id": "curling",
+     "libelle_fr": "Curling",
+     "libelle_en": "Curling",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "ice-hockey",
+     "libelle_fr": "Hockey sur glace",
+     "libelle_en": "Ice hockey",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "ice-skating",
+     "libelle_fr": "Patin à glace",
+     "libelle_en": "Ice skating",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skiing",
+     "libelle_fr": "Ski",
+     "libelle_en": "Skiing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sledding",
+     "libelle_fr": "Luge",
+     "libelle_en": "Sledding",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "snowboarding",
+     "libelle_fr": "Snowboard",
+     "libelle_en": "Snowboarding",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "snowshoeing",
+     "libelle_fr": "Raquettes à neige",
+     "libelle_en": "Snowshoeing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "water-sports-type",
+   "libelle_fr": "Type",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "sports-equipment-accesories/water-sports"
+   ],
+   "valeurs": [
+    {
+     "id": "boating",
+     "libelle_fr": "Navigation",
+     "libelle_en": "Boating",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "canoeing",
+     "libelle_fr": "Canoë-kayak",
+     "libelle_en": "Canoeing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "clothing",
+     "libelle_fr": "Vêtements",
+     "libelle_en": "Clothing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "diving-snorkelling",
+     "libelle_fr": "Plongée et masque et tubas",
+     "libelle_en": "Diving and snorkelling",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "kayaking",
+     "libelle_fr": "Kayak",
+     "libelle_en": "Kayaking",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "kitesurfing",
+     "libelle_fr": "Kitesurf",
+     "libelle_en": "Kitesurfing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "rowing-crew",
+     "libelle_fr": "Aviron",
+     "libelle_en": "Rowing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sailing",
+     "libelle_fr": "Voile",
+     "libelle_en": "Sailing",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "cameras-and-accessories-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "film/cameras-and-accessories"
+   ],
+   "valeurs": [
+    {
+     "id": "accessories",
+     "libelle_fr": "Accessoires",
+     "libelle_en": "Accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "action-cameras-accessories",
+     "libelle_fr": "Caméras d'action",
+     "libelle_en": "Action cameras",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "binoculars",
+     "libelle_fr": "Jumelles",
+     "libelle_en": "Binoculars",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "camcorders",
+     "libelle_fr": "Caméscopes",
+     "libelle_en": "Camcorders",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "dvd",
+     "libelle_fr": "DVD",
+     "libelle_en": "DVD",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "digital-cameras",
+     "libelle_fr": "Appareils photo numériques",
+     "libelle_en": "Digital cameras",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "digital-picture-frames",
+     "libelle_fr": "Cadres photo numériques",
+     "libelle_en": "Digital picture frames",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "dummy-cameras",
+     "libelle_fr": "Caméras factices",
+     "libelle_en": "Dummy cameras",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "film-cameras",
+     "libelle_fr": "Caméras argentiques",
+     "libelle_en": "Film cameras",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "instant-cameras",
+     "libelle_fr": "Appareils photo instantanés",
+     "libelle_en": "Instant cameras",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "telescopes-optics",
+     "libelle_fr": "Télescopes et optiques",
+     "libelle_en": "Telescopes and optics",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "vhs",
+     "libelle_fr": "VHS",
+     "libelle_en": "VHS",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "cds-and-vinyl-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "music/cds-and-vinyl"
+   ],
+   "valeurs": [
+    {
+     "id": "blues",
+     "libelle_fr": "Blues",
+     "libelle_en": "Blues",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "children-s-music",
+     "libelle_fr": "Musique pour enfants",
+     "libelle_en": "Children's music",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "classical",
+     "libelle_fr": "Classique",
+     "libelle_en": "Classical",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "country",
+     "libelle_fr": "Pays",
+     "libelle_en": "Country",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "dance-electronic",
+     "libelle_fr": "Danse et électronique",
+     "libelle_en": "Dance and electronic",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "easy-listening",
+     "libelle_fr": "Écoute facile",
+     "libelle_en": "Easy listening",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "folk",
+     "libelle_fr": "Folk",
+     "libelle_en": "Folk",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "plays-stories",
+     "libelle_fr": "Pièces de théâtre et histoires",
+     "libelle_en": "Plays and stories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "musical-instruments-and-dj-type",
+   "libelle_fr": "Type",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "music/musical-instruments-and-dj"
+   ],
+   "valeurs": [
+    {
+     "id": "bass-guitars-gear",
+     "libelle_fr": "Guitares basses et accessoires",
+     "libelle_en": "Bass guitars and accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "dj-vj-equipment",
+     "libelle_fr": "Équipement pour DJ et VJ",
+     "libelle_en": "DJ and VJ equipment",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "drums-percussion",
+     "libelle_fr": "Batteries et percussions",
+     "libelle_en": "Drums and percussion",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "guitars-gear",
+     "libelle_fr": "Guitares et accessoires",
+     "libelle_en": "Guitars and accessories",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "headphones",
+     "libelle_fr": "Casques",
+     "libelle_en": "Headphones",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "karaoke-equipment",
+     "libelle_fr": "Équipement de karaoké",
+     "libelle_en": "Karaoke equipment",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "microphones",
+     "libelle_fr": "Microphones",
+     "libelle_en": "Microphones",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "pa-stage",
+     "libelle_fr": "Équipement de sonorisation et de scène",
+     "libelle_en": "PA and stage equipment",
+     "departements": [
+      "everything-else"
+     ],
+     "statut": "inactive"
+    }
+   ]
+  },
+  {
+   "id": "heel-type",
+   "libelle_fr": "Type de chaussures à talon",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "footwear/slides",
+    "footwear/flipflops",
+    "footwear/slippers",
+    "footwear/espadrilles",
+    "footwear/ballet-shoes",
+    "footwear/clogs",
+    "footwear/courts",
+    "footwear/other-footwear"
+   ],
+   "valeurs": [
+    {
+     "id": "block-heel",
+     "libelle_fr": "Bloc",
+     "libelle_en": "Block",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "flat",
+     "libelle_fr": "Plate",
+     "libelle_en": "Flat",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "high-heel",
+     "libelle_fr": "Haut",
+     "libelle_en": "High",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "kitten-heel",
+     "libelle_fr": "Petit talon",
+     "libelle_en": "Kitten",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "mid-heel",
+     "libelle_fr": "Talon moyen",
+     "libelle_en": "Mid",
+     "departements": [
+      "menswear",
+      "womenswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "bottom-style",
+   "libelle_fr": "Moulant",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "bottoms/jeans",
+    "bottoms/joggers-tracksuits",
+    "bottoms/trousers",
+    "bottoms/leggings",
+    "bottoms/other-bottoms"
+   ],
+   "valeurs": [
+    {
+     "id": "bootcut",
+     "libelle_fr": "Pattes d'éléphant",
+     "libelle_en": "Bootcut",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "bootcut-flare",
+     "libelle_fr": "Pattes d'éléphant/Flare",
+     "libelle_en": "Bootcut/Flare",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "flare",
+     "libelle_fr": "Flare",
+     "libelle_en": "Flare",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "high-waisted",
+     "libelle_fr": "Taille haute",
+     "libelle_en": "High waisted",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "low-rise",
+     "libelle_fr": "Taille basse",
+     "libelle_en": "Low rise",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skinny",
+     "libelle_fr": "Skinny",
+     "libelle_en": "Skinny",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "skinny-slim",
+     "libelle_fr": "Skinny/Slim",
+     "libelle_en": "Skinny/Slim",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "slim",
+     "libelle_fr": "Slim",
+     "libelle_en": "Slim",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "straight-leg",
+     "libelle_fr": "Coupe droite",
+     "libelle_en": "Straight leg",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tailored",
+     "libelle_fr": "Personnalisé",
+     "libelle_en": "Tailored",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "wide-leg",
+     "libelle_fr": "Large",
+     "libelle_en": "Wide leg",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tapered",
+     "libelle_fr": null,
+     "libelle_en": null,
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "relaxed",
+     "libelle_fr": null,
+     "libelle_en": null,
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "item-length",
+   "libelle_fr": "Longueur",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "inactive",
+   "utilise_par_types": [],
+   "valeurs": [
+    {
+     "id": "long",
+     "libelle_fr": "Long",
+     "libelle_en": "Long",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "regular",
+     "libelle_fr": "Standard",
+     "libelle_en": "Regular",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "short",
+     "libelle_fr": "Court",
+     "libelle_en": "Short ",
+     "departements": [],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "shoe-width",
+   "libelle_fr": "Largeur de chaussure",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "inactive",
+   "utilise_par_types": [],
+   "valeurs": [
+    {
+     "id": "narrow",
+     "libelle_fr": "Étroite",
+     "libelle_en": "Narrow",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "regular",
+     "libelle_fr": "Standard",
+     "libelle_en": "Regular",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "wide",
+     "libelle_fr": "Large",
+     "libelle_en": "Wide",
+     "departements": [],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "dress-length",
+   "libelle_fr": "Longueur",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "bottoms/skirts",
+    "dresses/casual-dresses",
+    "dresses/formal-dresses",
+    "dresses/going-out-dresses",
+    "dresses/prom-dresses",
+    "dresses/summer-dresses",
+    "dresses/shift-dresses",
+    "dresses/shirt-dresses",
+    "dresses/wrap-dresses",
+    "dresses/babydoll-dresses",
+    "dresses/bodycon-dresses",
+    "dresses/work-dresses",
+    "dresses/wedding-dresses",
+    "dresses/other-dresses",
+    "dresses/dresses",
+    "swim-beach-wear/cover-ups"
+   ],
+   "valeurs": [
+    {
+     "id": "maxi",
+     "libelle_fr": "Maxi",
+     "libelle_en": "Maxi",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "midi",
+     "libelle_fr": "Midi",
+     "libelle_en": "Midi",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "mini",
+     "libelle_fr": "Mini",
+     "libelle_en": "Mini",
+     "departements": [
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "neckline",
+   "libelle_fr": "Encolure",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "inactive",
+   "utilise_par_types": [],
+   "valeurs": [
+    {
+     "id": "cowl",
+     "libelle_fr": "Bénitier",
+     "libelle_en": "Cowl",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "halter",
+     "libelle_fr": "Dos nu",
+     "libelle_en": "Halter",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "henley",
+     "libelle_fr": "Henley",
+     "libelle_en": "Henley",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "round",
+     "libelle_fr": "Rondes",
+     "libelle_en": "Round",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "round-scoop",
+     "libelle_fr": "Rond",
+     "libelle_en": "Round/ Scoop",
+     "departements": [],
+     "statut": "inactive"
+    },
+    {
+     "id": "scoop",
+     "libelle_fr": "Rond",
+     "libelle_en": "Scoop",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "square",
+     "libelle_fr": "Carrées",
+     "libelle_en": "Square",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "sweetheart",
+     "libelle_fr": "Cœur",
+     "libelle_en": "Sweetheart",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "sweetheart-square",
+     "libelle_fr": "Cœur/Carré",
+     "libelle_en": "Sweetheart/ Square",
+     "departements": [],
+     "statut": "inactive"
+    },
+    {
+     "id": "roll-neck",
+     "libelle_fr": "Col roulé",
+     "libelle_en": "Turtleneck",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "turtleneck-roll-high-halter",
+     "libelle_fr": "Col roulé/Haut/Licou",
+     "libelle_en": "Turtleneck/ Roll/ High Halter",
+     "departements": [],
+     "statut": "inactive"
+    },
+    {
+     "id": "v",
+     "libelle_fr": "Col V",
+     "libelle_en": "V neck",
+     "departements": [],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "sleeve-length",
+   "libelle_fr": "Longueur des manches",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "inactive",
+   "utilise_par_types": [],
+   "valeurs": [
+    {
+     "id": "3-4-sleeve",
+     "libelle_fr": "Manches 3/4",
+     "libelle_en": "3/4 sleeve",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "long",
+     "libelle_fr": "Long",
+     "libelle_en": "Long",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "short",
+     "libelle_fr": "Court",
+     "libelle_en": "Short",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "sleeveless",
+     "libelle_fr": "Sans manches",
+     "libelle_en": "Sleeveless",
+     "departements": [],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "tops-fit",
+   "libelle_fr": "Moulant",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "inactive",
+   "utilise_par_types": [],
+   "valeurs": [
+    {
+     "id": "cropped",
+     "libelle_fr": "Court",
+     "libelle_en": "Cropped",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "long",
+     "libelle_fr": "Long",
+     "libelle_en": "Long",
+     "departements": [],
+     "statut": "active"
+    },
+    {
+     "id": "oversized",
+     "libelle_fr": "Imposantes",
+     "libelle_en": "Oversized",
+     "departements": [],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "material",
+   "libelle_fr": "Matériau",
+   "max_selection": 4,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "tops/tshirts",
+    "tops/jerseys",
+    "tops/hoodies",
+    "tops/sweatshirts",
+    "tops/jumpers",
+    "tops/cardigans",
+    "tops/shirts",
+    "tops/polo-shirts",
+    "tops/blouses",
+    "tops/crop-top",
+    "tops/vests-tanks-camis",
+    "tops/corsets",
+    "tops/bodysuits",
+    "tops/other-tops",
+    "bottoms/jeans",
+    "bottoms/joggers-tracksuits",
+    "bottoms/trousers",
+    "bottoms/shorts",
+    "bottoms/leggings",
+    "bottoms/skirts",
+    "bottoms/other-bottoms",
+    "dresses/dresses",
+    "coats-jackets/coats",
+    "coats-jackets/jackets",
+    "coats-jackets/gilets",
+    "coats-jackets/other-coats-jackets",
+    "jumpsuit-and-playsuit/jumpsuit",
+    "jumpsuit-and-playsuit/playsuit-romper",
+    "jumpsuit-and-playsuit/dungarees-overalls",
+    "jumpsuit-and-playsuit/other-jumpsuit-and-playsuit",
+    "suits/suits",
+    "suits/tailored-jackets",
+    "suits/tailored-trousers",
+    "suits/waistcoats-vests",
+    "suits/tuxedos",
+    "suits/other-suits",
+    "footwear/trainers",
+    "footwear/slides",
+    "footwear/sandals",
+    "footwear/flipflops",
+    "footwear/slippers",
+    "footwear/brogues",
+    "footwear/oxfords",
+    "footwear/loafers",
+    "footwear/boots",
+    "footwear/boat-shoes",
+    "footwear/espadrilles",
+    "footwear/ballet-shoes",
+    "footwear/clogs",
+    "footwear/courts",
+    "footwear/mules",
+    "footwear/first-shoes-baby-shoes",
+    "footwear/other-footwear",
+    "accessories/bag",
+    "accessories/belt",
+    "accessories/hat",
+    "accessories/gloves",
+    "accessories/scarf-wraps",
+    "accessories/sunglasses",
+    "accessories/wallet-purses",
+    "accessories/other-accessories",
+    "nightwear/pajamas",
+    "nightwear/robes",
+    "nightwear/other-nightwear",
+    "underwear/bandeaus",
+    "underwear/bras",
+    "underwear/panties",
+    "underwear/shapewear",
+    "underwear/boxers-and-briefs",
+    "underwear/vest-undershirts",
+    "underwear/socks",
+    "underwear/hosiery-tights",
+    "underwear/other-underwear",
+    "swim-beach-wear/bikinis-and-tankini-sets",
+    "swim-beach-wear/bikini-and-tankini-tops",
+    "swim-beach-wear/bikini-and-tankini-bottoms",
+    "swim-beach-wear/swimsuit-one-piece",
+    "swim-beach-wear/swim-briefs-shorts",
+    "swim-beach-wear/cover-ups",
+    "swim-beach-wear/other-swim-beach-wear",
+    "fancy-dress/fancy-dress",
+    "sleepsuits-and-bodysuits/sleepsuits-babygrows",
+    "face-masks/face-masks",
+    "tech-accessories/laptop-cases-bag"
+   ],
+   "valeurs": [
+    {
+     "id": "acrylic",
+     "libelle_fr": "Acrylique",
+     "libelle_en": "Acrylic",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "canvas",
+     "libelle_fr": "Toile",
+     "libelle_en": "Canvas",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cashmere",
+     "libelle_fr": "Cachemire",
+     "libelle_en": "Cashmere",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "corduroy",
+     "libelle_fr": "Velours côtelé",
+     "libelle_en": "Corduroy",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cotton",
+     "libelle_fr": "Coton",
+     "libelle_en": "Cotton",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cotton-organic",
+     "libelle_fr": "Coton - Biologique",
+     "libelle_en": "Cotton - Organic",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "cotton-recycled",
+     "libelle_fr": "Coton - Recyclé",
+     "libelle_en": "Cotton - Recycled",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "crochet",
+     "libelle_fr": "Crochet",
+     "libelle_en": "Crochet",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "denim",
+     "libelle_fr": "Denim",
+     "libelle_en": "Denim",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "elastane-lycra-spandex",
+     "libelle_fr": "Elastane/ Lycra/ Spandex",
+     "libelle_en": "Elastane / Lycra / Spandex",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sequins-gems",
+     "libelle_fr": "Embellies",
+     "libelle_en": "Embellished",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "faux-fur",
+     "libelle_fr": "Fausse fourrure",
+     "libelle_en": "Faux fur",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "faux-leather",
+     "libelle_fr": "Faux cuir",
+     "libelle_en": "Faux leather",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "fleece",
+     "libelle_fr": "Polaire",
+     "libelle_en": "Fleece",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "hemp",
+     "libelle_fr": "Chanvre",
+     "libelle_en": "Hemp",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "jersey",
+     "libelle_fr": "Jersey",
+     "libelle_en": "Jersey",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "knitted",
+     "libelle_fr": "Tricot",
+     "libelle_en": "Knitted",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lace",
+     "libelle_fr": "Dentelle",
+     "libelle_en": "Lace",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "leather",
+     "libelle_fr": "Cuir",
+     "libelle_en": "Leather",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "linen",
+     "libelle_fr": "Lin",
+     "libelle_en": "Linen",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "lyocell",
+     "libelle_fr": "Lyocell",
+     "libelle_en": "Lyocell",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "modal",
+     "libelle_fr": "Modal",
+     "libelle_en": "Modal",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "nylon",
+     "libelle_fr": "Nylon",
+     "libelle_en": "Nylon",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "polyester",
+     "libelle_fr": "Polyester",
+     "libelle_en": "Polyester",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "polyester-recycled",
+     "libelle_fr": "Polyester - Recyclé",
+     "libelle_en": "Polyester - Recycled",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "rayon",
+     "libelle_fr": "Rayon",
+     "libelle_en": "Rayon",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "rubber",
+     "libelle_fr": "Caoutchouc",
+     "libelle_en": "Rubber",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "silk",
+     "libelle_fr": "Soie",
+     "libelle_en": "Silk",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "suede",
+     "libelle_fr": "Suède",
+     "libelle_en": "Suede",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tweed",
+     "libelle_fr": "Tweed",
+     "libelle_en": "Tweed",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "velvet",
+     "libelle_fr": "Velours",
+     "libelle_en": "Velvet",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "viscose",
+     "libelle_fr": "Viscose",
+     "libelle_en": "Viscose ",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "wool",
+     "libelle_fr": "Laine",
+     "libelle_en": "Wool",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "occasion",
+   "libelle_fr": "Occasion",
+   "max_selection": 3,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "tops/tshirts",
+    "tops/jerseys",
+    "tops/hoodies",
+    "tops/sweatshirts",
+    "tops/jumpers",
+    "tops/cardigans",
+    "tops/shirts",
+    "tops/polo-shirts",
+    "tops/blouses",
+    "tops/crop-top",
+    "tops/vests-tanks-camis",
+    "tops/corsets",
+    "tops/bodysuits",
+    "tops/other-tops",
+    "bottoms/jeans",
+    "bottoms/joggers-tracksuits",
+    "bottoms/trousers",
+    "bottoms/shorts",
+    "bottoms/leggings",
+    "bottoms/skirts",
+    "bottoms/other-bottoms",
+    "dresses/dresses",
+    "coats-jackets/coats",
+    "coats-jackets/jackets",
+    "coats-jackets/gilets",
+    "coats-jackets/other-coats-jackets",
+    "jumpsuit-and-playsuit/jumpsuit",
+    "jumpsuit-and-playsuit/playsuit-romper",
+    "jumpsuit-and-playsuit/dungarees-overalls",
+    "jumpsuit-and-playsuit/other-jumpsuit-and-playsuit",
+    "suits/suits",
+    "suits/tailored-jackets",
+    "suits/tailored-trousers",
+    "suits/waistcoats-vests",
+    "suits/tuxedos",
+    "suits/other-suits",
+    "footwear/trainers",
+    "footwear/slides",
+    "footwear/sandals",
+    "footwear/flipflops",
+    "footwear/slippers",
+    "footwear/brogues",
+    "footwear/oxfords",
+    "footwear/loafers",
+    "footwear/boots",
+    "footwear/boat-shoes",
+    "footwear/espadrilles",
+    "footwear/ballet-shoes",
+    "footwear/clogs",
+    "footwear/courts",
+    "footwear/mules",
+    "footwear/first-shoes-baby-shoes",
+    "footwear/other-footwear",
+    "accessories/bag",
+    "accessories/belt",
+    "accessories/hat",
+    "accessories/gloves",
+    "accessories/scarf-wraps",
+    "accessories/sunglasses",
+    "accessories/wallet-purses",
+    "accessories/jewellery",
+    "accessories/watch",
+    "accessories/hair-accessories",
+    "accessories/other-accessories",
+    "nightwear/pajamas",
+    "nightwear/robes",
+    "nightwear/other-nightwear",
+    "underwear/bandeaus",
+    "underwear/bras",
+    "underwear/panties",
+    "underwear/shapewear",
+    "underwear/boxers-and-briefs",
+    "underwear/vest-undershirts",
+    "underwear/socks",
+    "underwear/hosiery-tights",
+    "underwear/other-underwear",
+    "swim-beach-wear/bikinis-and-tankini-sets",
+    "swim-beach-wear/bikini-and-tankini-tops",
+    "swim-beach-wear/bikini-and-tankini-bottoms",
+    "swim-beach-wear/swimsuit-one-piece",
+    "swim-beach-wear/swim-briefs-shorts",
+    "swim-beach-wear/cover-ups",
+    "swim-beach-wear/other-swim-beach-wear",
+    "fancy-dress/fancy-dress",
+    "sleepsuits-and-bodysuits/sleepsuits-babygrows",
+    "face-masks/face-masks",
+    "tech-accessories/laptop-cases-bag",
+    "sports-equipment-accesories/ball-sports",
+    "sports-equipment-accesories/camping-hiking",
+    "sports-equipment-accesories/cycling",
+    "sports-equipment-accesories/fitness",
+    "sports-equipment-accesories/golf",
+    "sports-equipment-accesories/skates-skateboards-scooters",
+    "sports-equipment-accesories/raquet-sports",
+    "sports-equipment-accesories/water-sports",
+    "sports-equipment-accesories/winter-sports",
+    "umbrella/umbrella"
+   ],
+   "valeurs": [
+    {
+     "id": "daytime",
+     "libelle_fr": "Décontracté",
+     "libelle_en": "Casual",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "festival",
+     "libelle_fr": "Festival",
+     "libelle_en": "Festival",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "gifting",
+     "libelle_fr": "Cadeau",
+     "libelle_en": "Gifting",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "going-out-evening",
+     "libelle_fr": "Soirée",
+     "libelle_en": "Going out",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "outdoors",
+     "libelle_fr": "Extérieur",
+     "libelle_en": "Outdoors",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "celebration",
+     "libelle_fr": "Fête",
+     "libelle_en": "Party",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "prom",
+     "libelle_fr": "Bal de promo",
+     "libelle_en": "Prom",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "relaxation",
+     "libelle_fr": "Décontraction",
+     "libelle_en": "Relaxation",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "school",
+     "libelle_fr": "École",
+     "libelle_en": "School",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "ski",
+     "libelle_fr": "Ski",
+     "libelle_en": "Ski",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "special-occasion",
+     "libelle_fr": "Occasion spéciale",
+     "libelle_en": "Special Occasion",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "summertime",
+     "libelle_fr": "Été",
+     "libelle_en": "Summer",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "holiday",
+     "libelle_fr": "Vacances",
+     "libelle_en": "Vacation",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "wedding",
+     "libelle_fr": "Mariage",
+     "libelle_en": "Wedding",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "winter",
+     "libelle_fr": "Hiver",
+     "libelle_en": "Winter",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "work",
+     "libelle_fr": "Travail",
+     "libelle_en": "Work",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "sport-workout",
+     "libelle_fr": "Sport",
+     "libelle_en": "Workout",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear",
+      "everything-else"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "body-fit",
+   "libelle_fr": "Moulant",
+   "max_selection": 2,
+   "obligatoire_selon_api": false,
+   "statut": "active",
+   "utilise_par_types": [
+    "tops/tshirts",
+    "tops/jerseys",
+    "tops/hoodies",
+    "tops/sweatshirts",
+    "tops/jumpers",
+    "tops/cardigans",
+    "tops/shirts",
+    "tops/polo-shirts",
+    "tops/blouses",
+    "tops/crop-top",
+    "tops/vests-tanks-camis",
+    "tops/corsets",
+    "tops/bodysuits",
+    "tops/other-tops",
+    "bottoms/jeans",
+    "bottoms/joggers-tracksuits",
+    "bottoms/trousers",
+    "bottoms/shorts",
+    "bottoms/leggings",
+    "bottoms/skirts",
+    "bottoms/other-bottoms",
+    "dresses/dresses",
+    "coats-jackets/coats",
+    "coats-jackets/jackets",
+    "coats-jackets/gilets",
+    "coats-jackets/other-coats-jackets",
+    "jumpsuit-and-playsuit/jumpsuit",
+    "jumpsuit-and-playsuit/playsuit-romper",
+    "jumpsuit-and-playsuit/dungarees-overalls",
+    "jumpsuit-and-playsuit/other-jumpsuit-and-playsuit",
+    "suits/suits",
+    "suits/tailored-jackets",
+    "suits/tailored-trousers",
+    "suits/waistcoats-vests",
+    "suits/tuxedos",
+    "suits/other-suits",
+    "nightwear/pajamas",
+    "nightwear/robes",
+    "nightwear/other-nightwear",
+    "underwear/bandeaus",
+    "underwear/bras",
+    "underwear/panties",
+    "underwear/shapewear",
+    "underwear/boxers-and-briefs",
+    "underwear/vest-undershirts",
+    "underwear/socks",
+    "underwear/hosiery-tights",
+    "underwear/other-underwear",
+    "swim-beach-wear/bikinis-and-tankini-sets",
+    "swim-beach-wear/bikini-and-tankini-tops",
+    "swim-beach-wear/bikini-and-tankini-bottoms",
+    "swim-beach-wear/swimsuit-one-piece",
+    "swim-beach-wear/swim-briefs-shorts",
+    "swim-beach-wear/cover-ups",
+    "swim-beach-wear/other-swim-beach-wear",
+    "fancy-dress/fancy-dress",
+    "sleepsuits-and-bodysuits/sleepsuits-babygrows"
+   ],
+   "valeurs": [
+    {
+     "id": "maternity",
+     "libelle_fr": "Maternité",
+     "libelle_en": "Maternity",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "petite",
+     "libelle_fr": "Petite",
+     "libelle_en": "Petite",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "plus-size",
+     "libelle_fr": "Grandes tailles",
+     "libelle_en": "Plus size",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    },
+    {
+     "id": "tall",
+     "libelle_fr": "Grand",
+     "libelle_en": "Tall",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "active"
+    }
+   ]
+  },
+  {
+   "id": "size-fit",
+   "libelle_fr": "Sizing",
+   "max_selection": 1,
+   "obligatoire_selon_api": false,
+   "statut": "inactive",
+   "utilise_par_types": [
+    "tops/tshirts",
+    "tops/jerseys",
+    "tops/hoodies",
+    "tops/sweatshirts",
+    "tops/jumpers",
+    "tops/cardigans",
+    "tops/shirts",
+    "tops/polo-shirts",
+    "tops/blouses",
+    "tops/crop-top",
+    "tops/vests-tanks-camis",
+    "tops/bodysuits",
+    "tops/other-tops",
+    "bottoms/jeans",
+    "bottoms/joggers-tracksuits",
+    "bottoms/trousers",
+    "bottoms/shorts",
+    "bottoms/leggings",
+    "bottoms/skirts",
+    "bottoms/other-bottoms",
+    "dresses/casual-dresses",
+    "dresses/formal-dresses",
+    "dresses/going-out-dresses",
+    "dresses/prom-dresses",
+    "dresses/summer-dresses",
+    "dresses/shift-dresses",
+    "dresses/shirt-dresses",
+    "dresses/wrap-dresses",
+    "dresses/babydoll-dresses",
+    "dresses/bodycon-dresses",
+    "dresses/work-dresses",
+    "dresses/wedding-dresses",
+    "dresses/other-dresses",
+    "dresses/dresses",
+    "coats-jackets/coats",
+    "coats-jackets/jackets",
+    "coats-jackets/gilets",
+    "coats-jackets/other-coats-jackets",
+    "jumpsuit-and-playsuit/jumpsuit",
+    "jumpsuit-and-playsuit/playsuit-romper",
+    "jumpsuit-and-playsuit/dungarees-overalls",
+    "jumpsuit-and-playsuit/other-jumpsuit-and-playsuit",
+    "suits/suits",
+    "suits/tailored-jackets",
+    "suits/tailored-trousers",
+    "suits/waistcoats-vests",
+    "suits/tuxedos",
+    "suits/other-suits",
+    "footwear/oxfords-brogues",
+    "footwear/trainers",
+    "footwear/slides",
+    "footwear/sandals",
+    "footwear/flipflops",
+    "footwear/slippers",
+    "footwear/brogues",
+    "footwear/oxfords",
+    "footwear/loafers",
+    "footwear/boots",
+    "footwear/boat-shoes",
+    "footwear/espadrilles",
+    "footwear/ballet-shoes",
+    "footwear/clogs",
+    "footwear/courts",
+    "footwear/mules",
+    "footwear/other-footwear",
+    "nightwear/pajamas",
+    "nightwear/robes",
+    "nightwear/other-nightwear",
+    "underwear/panties",
+    "underwear/boxers-and-briefs",
+    "underwear/vest-undershirts",
+    "underwear/other-underwear",
+    "swim-beach-wear/bikinis-and-tankini-sets",
+    "swim-beach-wear/bikini-and-tankini-tops",
+    "swim-beach-wear/bikini-and-tankini-bottoms",
+    "swim-beach-wear/swimsuit-one-piece",
+    "swim-beach-wear/swim-briefs-shorts",
+    "swim-beach-wear/other-swim-beach-wear"
+   ],
+   "valeurs": [
+    {
+     "id": "runs-large",
+     "libelle_fr": "Runs large",
+     "libelle_en": "Runs large",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "runs-small",
+     "libelle_fr": "Runs small",
+     "libelle_en": "Runs small",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    },
+    {
+     "id": "true-to-size",
+     "libelle_fr": "True to size",
+     "libelle_en": "True to size",
+     "departements": [
+      "menswear",
+      "womenswear",
+      "kidswear"
+     ],
+     "statut": "inactive"
+    }
+   ]
+  }
+ ],
+ "mesures": {
+  "unite": "cm",
+  "valeurs": [
+   {
+    "id": "pit-to-pit",
+    "libelle_fr": "Pit to pit",
+    "libelle_en": "Pit to pit",
+    "statut": "active"
+   },
+   {
+    "id": "length",
+    "libelle_fr": "Length",
+    "libelle_en": "Length",
+    "statut": "active"
+   },
+   {
+    "id": "sleeve-length",
+    "libelle_fr": "Sleeve length",
+    "libelle_en": "Sleeve length",
+    "statut": "active"
+   },
+   {
+    "id": "waist",
+    "libelle_fr": "Waist",
+    "libelle_en": "Waist",
+    "statut": "active"
+   },
+   {
+    "id": "inseam",
+    "libelle_fr": "Inseam",
+    "libelle_en": "Inseam",
+    "statut": "active"
+   },
+   {
+    "id": "outseam",
+    "libelle_fr": "Outseam",
+    "libelle_en": "Outseam",
+    "statut": "active"
+   },
+   {
+    "id": "rise",
+    "libelle_fr": "Rise",
+    "libelle_en": "Rise",
+    "statut": "active"
+   },
+   {
+    "id": "leg-opening",
+    "libelle_fr": "Leg opening",
+    "libelle_en": "Leg opening",
+    "statut": "active"
+   },
+   {
+    "id": "bust",
+    "libelle_fr": "Bust",
+    "libelle_en": "Bust",
+    "statut": "active"
+   },
+   {
+    "id": "hips",
+    "libelle_fr": "Hips",
+    "libelle_en": "Hips",
+    "statut": "active"
+   },
+   {
+    "id": "shoulder-width",
+    "libelle_fr": "Shoulder width",
+    "libelle_en": "Shoulder width",
+    "statut": "active"
+   }
+  ]
+ },
+ "marque": {
+  "obligatoire_selon_formulaire": true,
+  "nombre": 21752,
+  "actives": 21697,
+  "inactives": 55,
+  "sans_marque": {
+   "id": "unbranded",
+   "libelle": "Other",
+   "note": "useBrandOptions (bundle 3wiqv4ay_2x_q.js) : l'option « Other » envoie la valeur `unbranded`"
+  },
+  "autres_absences_relevees": [
+   {
+    "id": "no-brand",
+    "libelle": "No Brand",
+    "statut": "active"
+   }
+  ],
+  "populaires": [
+   "nike",
+   "lululemon",
+   "hollister-co",
+   "brandy-melville",
+   "old-navy",
+   "adidas",
+   "american-eagle",
+   "levi-s",
+   "zara",
+   "free-people",
+   "victoria-s-secret",
+   "aerie",
+   "abercrombie-fitch",
+   "h-m",
+   "polo-ralph-lauren",
+   "aeropostale",
+   "forever-21",
+   "wild-fable",
+   "edikted",
+   "gildan",
+   "urban-outfitters",
+   "jordan",
+   "gap",
+   "pacsun",
+   "under-armour",
+   "carhartt",
+   "princess-polly",
+   "ralph-lauren",
+   "champion",
+   "disney",
+   "no-boundaries",
+   "garage",
+   "fashion-nova",
+   "harley-davidson",
+   "wrangler",
+   "jcrew",
+   "aritzia",
+   "tommy-hilfiger",
+   "target",
+   "banana-republic",
+   "express",
+   "the-north-face",
+   "cotton-on",
+   "vans",
+   "altar-d-state",
+   "athleta",
+   "columbia-sportswear",
+   "gymshark",
+   "calvin-klein",
+   "anthropologie"
+  ],
+  "liste_complete": "brut/attributes.json, clé `brand` : [{ id, name, status }]"
+ }
+}

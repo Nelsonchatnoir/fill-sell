@@ -1,0 +1,126 @@
+{
+ "_note": "Écrit à la main le 2026-10-08 à partir des sources citées pour chaque valeur. « mesure » = relevé tel quel (interface du formulaire, réponse d'API ou constante du bundle JS servi à la page) ; « a_verifier » = non prouvé. Bundles : https://static.depop.com/0bbca71/37805891563-1/_next/static/chunks/<fichier>.",
+ "compte_du_releve": {
+  "pays": "France",
+  "devise": "EUR",
+  "langue_de_l_interface": "en (html lang=en, libellés anglais affichés malgré /fr/)",
+  "statut_vendeur": "non configuré : /sellinghub/drafts/ redirige vers /products/create/first/",
+  "preuve": "mesure — champ selectLocation__countries-input = France, symbole € sur Item price et Shipping price"
+ },
+ "titre": {
+  "existe": false,
+  "preuve": "mesure — aucun champ titre dans le formulaire ; INITIAL_VALUES (bundle 14izy8jozou2r.js) n'a pas de clé title"
+ },
+ "description": {
+  "obligatoire": true,
+  "max_caracteres": 1000,
+  "max_hashtags": 5,
+  "hashtag_regex": "/#[a-zA-Z0-9_]+/g",
+  "hashtags_bannis": "liste servie par /presentation/api/v1/listing/banned-hashtags/ (401 sans jeton : NON relevée, a_verifier)",
+  "preuve": "mesure — MAX_CHAR_COUNT 1e3, MAX_HASHTAGS 5, formSchema description (bundle 14izy8jozou2r.js) ; compteurs « Hashtags: 5 » et « 1000 » à l'écran"
+ },
+ "photos": {
+  "min": 1,
+  "max": 8,
+  "formats": ["image/jpeg", "image/png"],
+  "envoi": "recadrage côté client puis JPEG 1280×1280 (preSignedUrlGenerationPayload.product = jpg 1280×1280, IMAGE_DEFAULT_COMPRESSED_SIZE_PX 1280) ; présignature POST /presentation/api/v1/pictures/ puis PUT ; validation /presentation/api/v1/pictures/validate/",
+  "emplacements_suggeres": ["Cover photo", "Front", "Back", "Side", "Label", "Detail", "Flaw"],
+  "poids_max": "a_verifier (aucune borne trouvée côté client)",
+  "video": "a_verifier (fonctions productVideoToPictureFormat présentes, aucun champ vidéo dans le formulaire web)",
+  "preuve": "mesure — « Add up to 8 photos in JPEG or PNG format », input accept=\"image/jpeg, image/png\" (bundle 2megctt62yvze.js), maxPhotos:8 (bundle 3wiqv4ay_2x_q.js), pictureIds min 1 (formSchema)"
+ },
+ "categorie": {
+  "champs_envoyes": ["group", "productType", "isKids", "gender"],
+  "regle": "productType obligatoire ; group obligatoire sauf si gender ET productType sont posés ; l'id envoyé est l'id du type sans le département (splitDepartmentFromId)",
+  "prediction": "/presentation/api/v1/attributes/categories/prediction/ (depuis la description)",
+  "preuve": "mesure — formSchema u = {group, productType} et prepareSubmissionData (bundle 14izy8jozou2r.js)"
+ },
+ "marque": {
+  "obligatoire": true,
+  "sans_marque": "unbranded",
+  "preuve": "mesure — formSchema brand = string().required ; useBrandOptions : l'option « Other » vaut `unbranded` (bundle 3wiqv4ay_2x_q.js)"
+ },
+ "etat": {
+  "obligatoire": true,
+  "valeurs": ["brand_new", "used_like_new", "used_excellent", "used_good", "used_fair"],
+  "neuf_seulement_pour": ["bath-and-body", "fragrance", "hair-products", "makeup", "nails", "skincare"],
+  "preuve": "mesure — formSchema condition required ; INVALID_USED_CONDITION_PRODUCT_TYPES + getConditionsDataForSelect (bundles 14izy8jozou2r.js, 3wiqv4ay_2x_q.js)"
+ },
+ "selections_max": {
+  "couleur": 2,
+  "source": 2,
+  "age": 1,
+  "style": 3,
+  "preuve": "mesure — SELECTION_LIMITS {colour:2} ; à l'écran « Select up to two colors », « Add up to 2 », « Add up to 1 », « Add up to 3 » ; max_selection de l'API identiques"
+ },
+ "taille_et_quantite": {
+  "avec_grille": "variants = { <id de taille>: <quantité> } + variantSetId = id de la grille ; au moins une taille, aucune quantité à 0",
+  "sans_grille": "quantity ≥ 1 obligatoire",
+  "sku_max_caracteres": 50,
+  "preuve": "mesure — formSchema quantity / variants / sku (bundle 14izy8jozou2r.js) ; à l'écran, Homme > Hauts > T-shirts montre Size + Quantity + SKU, Homme > Hauts > Blouses montre Quantity + SKU sans Size"
+ },
+ "prix": {
+  "obligatoire": true,
+  "min": 1,
+  "max_formulaire": 10000000000,
+  "max_serveur": "a_verifier",
+  "devise": "celle du compte (priceCurrency, EUR pour le compte du relevé)",
+  "preuve": "mesure — MINIMUM_PRICE 1, MAXIMUM_PRICE 1e10 (bundle 14izy8jozou2r.js) ; « € » à l'écran"
+ },
+ "localisation": {
+  "obligatoire": true,
+  "champs": ["countryCode", "address"],
+  "source": "profil du compte (« Your location is based on your profile settings ») ; liste des pays : brut/listing-location-countries.json",
+  "preuve": "mesure — formSchema countryCode/address required"
+ },
+ "expedition": {
+  "france": {
+   "mode": "manuel",
+   "prix_national": "nationalShippingCost obligatoire, < 100 (MAX_MANUAL_SHIPPING_PRICE)",
+   "prix_international": "internationalShippingCost facultatif, < 100, case « Offer worldwide shipping »",
+   "poids_ou_format_de_colis": "aucun champ dans le formulaire français",
+   "texte_affiche": "Set a shipping price when listing. When you sell, ship however you like using a tracked method.",
+   "preuve": "mesure — formulaire du compte français, formSchema (bundle 14izy8jozou2r.js)"
+  },
+  "pays_avec_expedition_depop": {
+   "US": "USPS",
+   "GB": "Evri (code MY_HERMES)",
+   "AU": "Sendle et Australia Post (AUS_POST)",
+   "forme": "shippingMethods: [{ shippingProviderId, shipFromAddressId, parcelSizeId, payer: BUYER|SELLER }]",
+   "tailles_de_colis": "servies par /api/v1/shipping-providers/ et /presentation/api/v1/shipping/providers/depop/ (authentifiés, NON relevées : a_verifier)",
+   "preuve": "mesure — enum ShippingId et isNonManualShippingOption (bundle 0lpsu_66qi80k.js), formSchema shippingMethods"
+  }
+ },
+ "langue_envoyee": {
+  "regle": "getListingServiceLanguageTag : fr → fr-FR, it → it-IT, de → de-DE, sinon en-GB",
+  "preuve": "mesure — bundle 14izy8jozou2r.js"
+ },
+ "differences_par_pays": {
+  "tailles": "une grille par région : IT (système EUR, compte français), GB (UK), US, AU — cf. tailles.json",
+  "expedition": "manuelle hors US/GB/AU ; étiquettes Depop et formats de colis aux US, au Royaume-Uni et en Australie",
+  "libelles": "name_i18n en fr, it, de, en, en-US ; le filtre de catégories rend des libellés ANGLAIS quel que soit ?lang= (fr-FR, de-DE, it-IT identiques à en-GB, seul en-US diffère)",
+  "adresse": "validation Loqate selon le pays (isCountrySupportedByLoqate)",
+  "preuve": "mesure — tailles : size_set_by_region ; libellés : 5 appels comparés le 08/10 ; expédition et Loqate : bundles"
+ },
+ "protections": {
+  "anti_robot_api": "webapi.depop.com appelé hors navigateur (curl) : 403, page « Forbidden - Depop » (3 endpoints, 08/10). Depuis la page (fetch sans identifiants) : 200. NON contourné.",
+  "fichiers_statiques": "static.depop.com et assets.depop.com : 200 hors navigateur (65 bundles JS et la liste des pays téléchargés à 0,5 s d'intervalle)",
+  "endpoints_authentifies": "banned-hashtags 401, shipping/providers/* et shipping-providers 400 sans jeton",
+  "anti_fraude": "cdn.sift.com/s.js chargé sur la page de mise en vente ; Cloudflare (cdn-cgi/rum, beacon)",
+  "captcha": "aucun rencontré pendant le relevé",
+  "limites_de_debit": "aucun 429 sur ~25 appels d'API espacés d'au moins 0,6 s ; seuil a_verifier",
+  "preuve": "mesure — 08/10/2026"
+ },
+ "cycle_de_vie_endpoints": {
+  "_note": "Chemins lus dans la table des endpoints du bundle (brut/endpoints-bundle-27evssp8b94rp.txt). AUCUN n'a été appelé en écriture : leur corps et leurs réponses sont a_verifier.",
+  "publication": ["/presentation/api/v1/listing/products/", "/api/v1/products/"],
+  "brouillons": ["/presentation/api/v1/drafts/", "/presentation/api/v1/drafts/:draftId/", "/presentation/api/v1/drafts/products/", "/api/v3/drafts/products/:id/status/"],
+  "modification": ["/presentation/api/v1/products/by-slug/:slug/edit-listing/", "/presentation/api/v1/products/:productId/"],
+  "lecture_annonce": ["/presentation/api/v1/products/by-slug/:slug/", "/presentation/api/v1/products/by-slug/:slug/extended/"],
+  "boutique": ["/presentation/api/v1/shops/:sellerId/products/", "/presentation/api/v1/shops/:sellerId/products/by-status/:status/", "/api/v1/shop/products/", "/api/v1/shop/products/actions/"],
+  "ventes": ["/presentation/api/v1/receipts/", "/presentation/api/v1/receipts/:receiptId/", "/presentation/api/v1/users/me/sales-report/", "/presentation/api/v1/products/batch/:productIds/mark-sold/"],
+  "repop_republication": ["/presentation/api/v1/products/repop/", "/presentation/api/v1/listing/:pictureId/repop/"],
+  "actions_en_lot": ["/api/v1/bulkactions/listing/", "/api/v1/bulkactions/listing/enabled/"],
+  "photos": ["/presentation/api/v1/pictures/", "/presentation/api/v1/pictures/validate/", "/presentation/api/v1/pictures/batch/:pictureIds/"]
+ }
+}
