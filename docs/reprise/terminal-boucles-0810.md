@@ -125,4 +125,13 @@ npx supabase migration repair --linked --status applied 20261008102000
 npx supabase functions deploy ops-digest --no-verify-jwt
 ```
 
-Selftest : `npm run selftest:boucles-fermees`.
+Selftest : `npm run selftest:boucles-fermees` (36 contrôles). Suite complète
+08/10 matin : **208/208 verts** — deux tests rendus indépendants d'une position
+(0.6.100 n'est plus la dernière de `ALREADY_PUBLISHED` ; l'empreinte du script
+Beebs commence par l'entrée « ping » de la 0.6.103). `npm run build:essai` vert.
+
+Non-régression en base depuis la v12 (07:19 UTC) : tous les crons « succeeded »
+et leurs appels en 200 (les délais de 5 s de pg_net existaient toute la nuit),
+rapprochements finis sans compte arrêté ni hors « termine », republications,
+relevés eBay API, notes et mails de vente qui continuent. Aucun chemin de
+publication, republication, retrait, veille ni mail n'a été modifié.
