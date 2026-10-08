@@ -153,7 +153,11 @@ ok(RATTRAPAGE.indexOf('requete(sqlSauvegarde(invs));') > 0 && RATTRAPAGE.indexOf
   ok(/public\.enregistrer_vente_prouvee\(j\.id\)/.test(codeRattrapage) && !/armer_retrait|INSERT INTO public\.ventes\b/.test(codeRattrapage), 'rattrapage : la chaîne existante, aucun second chemin');
 }
 ok(/pg_advisory_xact_lock\(hashtextextended\('ventes_prouvees_tick', 0\)\)/.test(RATTRAPAGE), 'rattrapage : sous le verrou du cron');
-ok(/cibles = lignes\.filter\(\(r\) => !r\.interne && douteDe\(r\)\.length === 0\)/.test(RATTRAPAGE), 'rattrapage : les douteux et les comptes internes ne sont jamais écrits');
+ok(/cibles = lignes\.filter\(\(r\) => !r\.interne && douteDe\(r\)\.length === 0/.test(RATTRAPAGE), 'rattrapage : les douteux et les comptes internes ne sont jamais écrits');
+ok(/update public\.push_ventes p set statut = 'ignoree', motif = 'rattrapage_ventes_prouvees_0810'/.test(RATTRAPAGE)
+  && /p\.statut = 'a_envoyer' and p\.part_le is null and p\.cree_le >= now\(\) and p\.inventaire_id in \(select inventaire_id from _r\)/.test(RATTRAPAGE)
+  && RATTRAPAGE.indexOf("update public.push_ventes p set statut = 'ignoree'") < RATTRAPAGE.indexOf('commit;\nselect j.job_id'),
+  "rattrapage : aucune notification « Vendu ! » pour l'arriéré (notes de CES fiches classées dans la MÊME transaction)");
 for (const m of ['quantite_', 'annonce_non_prouvee', 'plusieurs_annonces_vivantes', 'vente_deja_liee', 'dressing_la_revoit_en_ligne', 'remise_en_ligne_possible', 'releve_en_cours', 'compte_interne']) {
   ok(RATTRAPAGE.includes(`'${m}`) || RATTRAPAGE.includes(`\`${m}`), `rattrapage : motif « à vérifier » ${m}`);
 }

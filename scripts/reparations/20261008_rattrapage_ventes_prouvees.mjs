@@ -23,6 +23,8 @@
 //          rapport dans docs/enquetes/ventes-prouvees-0810/RATTRAPAGE-A-BLANC.md (+ .json)
 //   node scripts/reparations/20261008_rattrapage_ventes_prouvees.mjs --appliquer --feu-vert-nico --user <uuid>
 //   node scripts/reparations/20261008_rattrapage_ventes_prouvees.mjs --appliquer --feu-vert-nico --tous
+//        (+ --urgents : seulement les articles dont une copie est vue en ligne depuis 3 jours)
+//        Aucune notification pour l'arriéré : les notes « Vendu ! » nées dans la transaction du lot sont classées « ignoree ».
 //        → APRÈS la migration 20261008233100 et le feu vert NOMMÉ de Nico seulement.
 //          Sauvegarde AVANT (_backup_0810_ventes_prouvees_*), journal (_rattrapage_0810_ventes_prouvees),
 //          puis les ventes par lots de 10, sous le verrou du cron (jamais en même temps que lui).
@@ -41,6 +43,7 @@ const APPLIQUER = process.argv.includes('--appliquer');
 const FEU_VERT = process.argv.includes('--feu-vert-nico');
 const USER = arg('--user');
 const TOUS = process.argv.includes('--tous');
+const URGENTS = process.argv.includes('--urgents');   // seulement les articles dont une copie est vue en ligne depuis 3 jours
 const SORTIE = arg('--sortie') ?? path.join(RACINE, 'docs', 'enquetes', 'ventes-prouvees-0810');
 
 // Comptes internes (tests, Nico, Ornella) : listés à part, jamais comptés.
@@ -258,7 +261,8 @@ export function sqlSauvegarde(invs) {
 create table if not exists public._backup_0810_ventes_prouvees_inventaire as select now() as sauve_le, i.* from public.inventaire i where false;
 create table if not exists public._backup_0810_ventes_prouvees_jobs as select now() as sauve_le, j.* from public.cross_post_jobs j where false;
 create table if not exists public._rattrapage_0810_ventes_prouvees (le timestamptz not null default now(), job_id uuid not null, inventaire_id bigint, resultat jsonb,
-  retraits uuid[], questions uuid[], publications_arretees uuid[]);
+  retraits uuid[], questions uuid[], publications_arretees uuid[], notes_neutralisees text[]);
+alter table public._rattrapage_0810_ventes_prouvees add column if not exists notes_neutralisees text[];
 alter table public._backup_0810_ventes_prouvees_inventaire enable row level security;
 alter table public._backup_0810_ventes_prouvees_jobs enable row level security;
 alter table public._rattrapage_0810_ventes_prouvees enable row level security;
@@ -277,15 +281,22 @@ select pg_advisory_xact_lock(hashtextextended('ventes_prouvees_tick', 0));
 create temp table _avant on commit drop as select id from public.cross_post_jobs where inventaire_id in (select inventaire_id from public.cross_post_jobs where id in (${lot.join(',')}));
 create temp table _q_avant on commit drop as select id from public.inventaire_doublons where garde in (select inventaire_id from public.cross_post_jobs where id in (${lot.join(',')}));
 create temp table _r on commit drop as select j.id job_id, j.inventaire_id, public.enregistrer_vente_prouvee(j.id) resultat from public.cross_post_jobs j where j.id in (${lot.join(',')});
-insert into public._rattrapage_0810_ventes_prouvees (job_id, inventaire_id, resultat, retraits, questions, publications_arretees)
+-- AUCUNE notification pour l'arriéré (GO de Nico) : les notes « Vendu ! » (push + mail) nées dans CETTE
+-- transaction pour CES fiches (push_trg_job, push_trg_inventaire_vinted) sont classées avant que
+-- push-ventes ne puisse les voir (il ne lit que les notes « a_envoyer », après le commit).
+create temp table _n on commit drop as select p.id::text id, p.inventaire_id from public.push_ventes p
+  where p.statut = 'a_envoyer' and p.part_le is null and p.cree_le >= now() and p.inventaire_id in (select inventaire_id from _r);
+update public.push_ventes p set statut = 'ignoree', motif = 'rattrapage_ventes_prouvees_0810', traite_le = now() where p.id::text in (select id from _n);
+insert into public._rattrapage_0810_ventes_prouvees (job_id, inventaire_id, resultat, retraits, questions, publications_arretees, notes_neutralisees)
 select r.job_id, r.inventaire_id, r.resultat,
   array(select d.id from public.cross_post_jobs d where d.inventaire_id = r.inventaire_id and d.action = 'delete' and d.id not in (select id from _avant)),
   array(select q.id from public.inventaire_doublons q where q.garde = r.inventaire_id and q.id not in (select id from _q_avant)),
   array(select p.id from public.cross_post_jobs p where p.inventaire_id = r.inventaire_id and p.status = 'cancelled' and p.id in (select id from _avant)
-          and p.error = 'Cet exemplaire a été vendu ; cette publication est arrêtée.')
+          and p.error = 'Cet exemplaire a été vendu ; cette publication est arrêtée.'),
+  array(select n.id from _n n where n.inventaire_id = r.inventaire_id)
   from _r r;
 commit;
-select j.job_id, j.resultat ->> 'issue' issue, j.resultat ->> 'reason' raison, cardinality(j.retraits) retraits, cardinality(j.questions) questions
+select j.job_id, j.resultat ->> 'issue' issue, j.resultat ->> 'reason' raison, cardinality(j.retraits) retraits, cardinality(j.questions) questions, cardinality(j.notes_neutralisees) notes
   from public._rattrapage_0810_ventes_prouvees j where j.job_id in (${lot.join(',')}) order by j.le desc;`;
 }
 
@@ -298,7 +309,7 @@ function appliquer() {
   if (!Number(presente.n)) { console.error('⛔ La migration 20261008233100 n’est pas appliquée : rien n’est fait.'); process.exit(2); }
   // Le même diagnostic qu'à blanc, relu MAINTENANT : seuls les articles sans doute.
   const lignes = requete(sqlDiagnostic({ user: USER }));
-  const cibles = lignes.filter((r) => !r.interne && douteDe(r).length === 0);
+  const cibles = lignes.filter((r) => !r.interne && douteDe(r).length === 0 && (!URGENTS || (r.copies ?? []).some((c) => c.vu_3j)));
   console.log(`${cibles.length} vente(s) à enregistrer, ${lignes.length - cibles.length} écartée(s) (à vérifier / internes).`);
   if (!cibles.length) return;
   const invs = [...new Set(cibles.map((r) => r.inv))];
@@ -309,7 +320,7 @@ function appliquer() {
   for (let i = 0; i < jobs.length; i += 10) {
     const lot = jobs.slice(i, i + 10);
     const rows = requete(sqlLot(lot));
-    for (const r of rows) console.log(`${r.job_id} ${r.issue}${r.raison ? ' — ' + r.raison : ''} · retraits ${r.retraits} · questions ${r.questions}`);
+    for (const r of rows) console.log(`${r.job_id} ${r.issue}${r.raison ? ' — ' + r.raison : ''} · retraits ${r.retraits} · questions ${r.questions} · notes neutralisées ${r.notes}`);
   }
   console.log('Journal : public._rattrapage_0810_ventes_prouvees ; inverse : scripts/reparations/20261008_rattrapage_ventes_prouvees_INVERSE.sql');
 }

@@ -335,6 +335,14 @@ async function main() {
     const { sqlSauvegarde, sqlLot } = await import('./reparations/20261008_rattrapage_ventes_prouvees.mjs');
     const INVERSE = lire('scripts/reparations/20261008_rattrapage_ventes_prouvees_INVERSE.sql');
     await q('CREATE TABLE IF NOT EXISTS public.ventes_supprimees (id bigserial, user_id uuid, plateforme_code text, commande_ref text, annonce_id text, titre text, prix_vente numeric, vendu_le timestamptz, vente_id bigint)');
+    // Les notes « Vendu ! » (push + mail) : en prod, push_trg_job en crée une quand le job passe « sold ».
+    await q(`CREATE TABLE IF NOT EXISTS public.push_ventes (id bigserial PRIMARY KEY, user_id uuid, origine text, statut text NOT NULL DEFAULT 'a_envoyer',
+               motif text, traite_le timestamptz, part_le timestamptz, inventaire_id bigint, job_id uuid, cree_le timestamptz NOT NULL DEFAULT now());
+             CREATE OR REPLACE FUNCTION _push_job() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+               INSERT INTO push_ventes (user_id, origine, inventaire_id, job_id) VALUES (NEW.user_id, 'job', NEW.inventaire_id, NEW.id); RETURN NEW; END $$;
+             CREATE TRIGGER _push_job AFTER UPDATE OF status ON cross_post_jobs FOR EACH ROW
+               WHEN (NEW.status = 'sold' AND OLD.status IS DISTINCT FROM 'sold') EXECUTE FUNCTION _push_job();`);
+    await q(`INSERT INTO push_ventes (user_id, origine, inventaire_id) VALUES ('${U(99)}', 'job', 1)`);   // la note d'une autre vente, ailleurs
     const u = U(12), f = await fiche(u);
     await job(J(121), u, f, 'vinted', '1211', SOLD); await releve(u, '1211', 'sold', "now() - interval '3 days'");   // arriéré
     await job(J(122), u, f, 'leboncoin', '3000000122');                                                               // copie prouvée
@@ -348,6 +356,11 @@ async function main() {
     const jr = await un('SELECT resultat ->> \'issue\' issue, cardinality(retraits) r, cardinality(questions) qn, cardinality(publications_arretees) pa FROM _rattrapage_0810_ventes_prouvees WHERE job_id = $1', [J(121)]);
     ok(jr.issue === 'enregistree' && jr.r === 1 && jr.qn === 1 && jr.pa === 1, `S12 rattrapage : vente, 1 retrait, 1 question, 1 publication arrêtée — journalisés (${JSON.stringify(jr)})`);
     ok(await ventesDe(f) === 1 && (await un('SELECT statut FROM inventaire WHERE id = $1', [f])).statut === 'vendu', 'S12 la fiche est vendue');
+    const notes = (await q('SELECT statut, motif FROM push_ventes WHERE inventaire_id = $1', [f])).rows;
+    ok(notes.length === 1 && notes[0].statut === 'ignoree' && notes[0].motif === 'rattrapage_ventes_prouvees_0810',
+      `S12 aucune notification : la note « Vendu ! » née dans le lot est classée avant tout envoi (${JSON.stringify(notes)})`);
+    ok((await un('SELECT statut FROM push_ventes WHERE inventaire_id = 1')).statut === 'a_envoyer', "S12 la note d'une autre vente n'est pas touchée");
+    ok(Number(await val("SELECT cardinality(notes_neutralisees) FROM _rattrapage_0810_ventes_prouvees WHERE job_id = $1", [J(121)])) === 1, 'S12 la neutralisation est journalisée');
     await q(INVERSE);
     const fi = await un('SELECT statut, quantite FROM inventaire WHERE id = $1', [f]);
     ok(await ventesDe(f) === 0 && Number(await val('SELECT count(*) FROM ventes_operations')) === 0, 'S12 inverse : vente et reçu supprimés');
