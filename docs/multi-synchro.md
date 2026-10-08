@@ -119,6 +119,21 @@ Phase 1 (lecture seule, 07/10) : 0 fusion à tort sur 355 paires vues une à une
   (`--lister`, `--simuler`, `--appliquer`), sauvegardes `_backup_0810_v3_*`
   (RLS, fermées), inverse `20261008_reparation_rapprochement_v3_INVERSE.sql`.
 
+## Aucune fiche née d'un relevé sans décision v3 (08/10 après-midi)
+
+- Une fiche `releve_*` ne sort que de `rapprocher_importer` (moteur v3 ou la
+  personne) ; garde en base `inventaire_releve_par_decision` (clé
+  `fillsell.import_releve`, posée juste avant l'insert, retirée juste après).
+- Un import du moteur porte `regle: rapprochement_v3`.
+- Les fiches du dressing Vinted (écrites par l'extension) nées depuis
+  `rapprochement_comptes.vinted_juge_le` sont jugées par la passe normale contre
+  les imports automatiques au stock (`vinted_a_juger`, 200 par passe) : import
+  intact sûrement identique → fusion vers la fiche Vinted (`portee:
+  vinted_nouvelle`), doute → « à vérifier », concurrent → rien. Une annonce
+  rangée n'est rouverte que pour une de ces fiches.
+- Migration 20261008130000 (en attente du feu vert), `rapprochement` v13.
+  `npm run selftest:aucune-fiche-sans-v3` (`--prod` : la base).
+
 ## Selftests
 
 `npm run selftest:moteur-rattachement` (invariants du moteur sur des articles

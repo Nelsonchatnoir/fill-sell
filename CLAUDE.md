@@ -4,7 +4,7 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » en fin ; reprises : `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » en fin ; reprises : `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
@@ -14,13 +14,29 @@ contraire. Il se périme : `functions list`, `cron.job` et
   moteur v3 `_shared/rapprochement/` (jamais la photo seule, jamais le titre
   seul, jamais deux annonces d'une même plateforme ; « Annonce en double ? »
   hors du stock ; décisions de la personne définitives) ; fonction
-  `rapprochement` v8 : les empreintes manquantes partent PAR LA BASE
+  `rapprochement` (v13 au 08/10) : les empreintes manquantes partent PAR LA BASE
   (`rapprochement_v3_empreinter`, pg_net) et ne sont JAMAIS attendues dans la
   fonction — un fetch edge → edge est limité à 60/min, et le worker pg_net ne
   sert rien tant que la requête appelante n'a pas répondu (une fonction
   appelée par cron/trigger/script reste COURTE) ; `docs/multi-synchro.md`,
   reprise `docs/reprise/terminal-multi-synchro-0810.md`. Extension 0.6.103 :
   un content script chargé mais muet se relance avant tout envoi à la page.
+- **⛔ AUCUNE FICHE NE NAÎT D'UN RELEVÉ SANS DÉCISION v3 (08/10 après-midi)** :
+  une fiche `releve_*` ne sort que de `rapprocher_importer` (moteur v3 ou la
+  personne) — garde en base `inventaire_releve_par_decision` ; les imports du
+  moteur portent `regle: rapprochement_v3` (504 d'avant tracés,
+  `_backup_0810_regle_v3`) ; les fiches du dressing Vinted nées depuis la
+  dernière passe sont jugées contre les imports au stock (`vinted_a_juger`,
+  `rapprochement_comptes.vinted_juge_le`, 200 par passe). `rapprochement` v13
+  déployée ; migration **20261008130000 EN ATTENTE du feu vert nommé de Nico**.
+  Selftest `selftest:aucune-fiche-sans-v3` (`--prod` : la base).
+- **⛔ UNE REPUBLICATION DONT LA SUPPRESSION EST PARTIE VA AU BOUT (08/10, Louis)** :
+  créneau fermé, plafond ou pause n'y changent rien (`retraitEngage`,
+  `_shared/retenue-creneau.js`, `get-pending-jobs` v223) ; la remise en ligne
+  n'a lieu que sur PREUVE de la suppression (extension). Migration
+  **20261008140000 EN ATTENTE du feu vert** : le balayage ne lance plus une
+  republication qui ne peut pas finir dans le créneau (`republish_duree_estimee`).
+  Selftest `selftest:republication-va-au-bout`.
 - **⛔ BOUCLES (08/10 matin)** : une même décision ne s'écrit jamais en boucle
   (Nadège : 8 954 lignes, moteur v2 + job SANS article) ; `rapprochement` v12
   compte les passes qui n'écrivent rien (`rapprochement_comptes.passages`, en
@@ -42,11 +58,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   muet relancé, toutes plateformes ; jamais d'EXTENSION_MIN_BUILD sans décision
   de Nico) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v222,
+  10:50, build 9d203ac) ; `get-pending-jobs` v223,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v12, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
+  `rapprochement` v13, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
   `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations

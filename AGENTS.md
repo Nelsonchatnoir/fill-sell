@@ -4,14 +4,13 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.102** ; **0.6.103** en examen ; min **0.6.81** ; OTA 2.9.66 ; clos 08/10 : `docs/reprise/terminal-cloture-multi-synchro-0810.md`.
-- **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ;
-  moteur v3 `_shared/rapprochement/` ; `rapprochement` v8 : empreintes PAR LA BASE (pg_net),
-  jamais attendues (edge → edge : 60/min ; le worker pg_net ne sert rien tant que l'appelant
-  n'a pas répondu → fonction appelée par cron/trigger COURTE) ; `docs/multi-synchro.md`.
+- **Servi** : ext. **0.6.102** ; **0.6.103** en examen ; min **0.6.81** ; OTA 2.9.67 ; reprise 08/10 : `docs/reprise/terminal-complement-0810.md`.
+- **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
+  `rapprochement` v13 ; empreintes PAR LA BASE (fonction COURTE) ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
+  nouvelles jugées contre les imports (mig 130000) ; `docs/multi-synchro.md`.
 - **Push ventes** : binaire 2.9.62, cron 34, `pushDisponible()` ; `docs/push/CLES-NICO.md`.
 - **⛔ Mail à chaque vente** (`push-ventes`) : vente récente prouvée, jamais plafonné, sans récap.
-- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js`.
+- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = va au bout, même hors créneau.
 - **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie = création.
 - **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
 - **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = fiche ; colis jamais deviné.
