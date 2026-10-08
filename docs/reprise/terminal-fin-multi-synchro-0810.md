@@ -157,36 +157,56 @@ Commit 3f06744 (EXTENSION_LAST_COMMIT recalé par 4b54cc2). Manifeste 0.6.104.
   depuis le 07/09) est régénéré à chaque build Vercel, comme pour la 0.6.103 :
   ce n'est PAS un paquet CWS.
 
-### Quand Nico dira que la 0.6.103 est acceptée
+### Fin d'après-midi : empaquetée, chargée chez Nico, preuve Beebs NON faite — zip NON livré
 
-1. `npm run package:extension` → `build/fillsell-extension-0.6.104-cws.zip`
-   (ranger dans `build/CWS-0.6.104-A-TELEVERSER/`) ; ranger la 0.6.103 dans
-   `build/anciens-zips/` ;
-2. PREUVE RÉELLE avant téléversement (poste de Nico, dossier lu dans
-   `Secure Preferences`, une seule extension active) : une republication Beebs
-   de test à 999 € (annonce de test, jamais le tableau de Nico) — la trace doit
-   montrer « preuve relue par le background (n lecture(s)) » et l'étape
-   « deleted » dans le même passage ; un relevé Beebs fenêtre minimisée ;
-3. Nico téléverse et « Envoyer pour examen » ; `PUBLISHED_BUILD_IDS` /
-   `EXTENSION_MIN_BUILD` : seulement sur sa décision ;
-4. `_shared/relance-apres-maj.js` : ajouter une entrée si des republications
-   Beebs sont arrêtées en « failed » sur « Suppression envoyée » d'ici là (la
-   0.6.104 les aurait menées au bout).
+- Paquet : `build/CWS-0.6.104-NE-PAS-TELEVERSER-preuve-beebs-en-attente/fillsell-extension-0.6.104-147ab9a-cws.zip`
+  (BUILD_ID `2026-10-08T13:02:47Z+147ab9a`, 0.6.104, manifest à la racine, 18 .js
+  au BUILD_ID, aucun jeton restant, les trois correctifs présents). La 0.6.103
+  (déjà téléversée, en examen) est rangée dans `build/anciens-zips/`.
+- Chargée sur le poste de Nico (copie de développement `C:Users
+icolFillSell-Extension-Nico`,
+  rechargée seule à 13:07 UTC ; 0.6.102 sauvegardée dans
+  `build/anciennes-extensions-nico/0.6.102-d27ef83-avant-0.6.104/`).
+- Non-régression réelle sur la 0.6.104 : publication Beebs (34132220, 72 s) ;
+  retrait Beebs avec preuve (34109673, reste de test du 04/10 resté en ligne :
+  suppression confirmée, absente des deux onglets à la 4ᵉ lecture, page 404) ;
+  relevés Leboncoin 10/10, Beebs 9/9, eBay API 8/8, dressing Vinted 14/14 ;
+  Opla « accès non accordé » comme depuis le 05/10. 213 selftests verts.
+- **Preuve de republication Beebs : PAS FAITE.** L'annonce de test « TEST
+  FillSell ne pas acheter… » (34132220) a quitté « en vérification » à 13:44
+  UTC et n'a jamais été mise en ligne : la modération Beebs refuse le mot
+  « TEST » (Nico). Une republication exige une annonce EN LIGNE. Une version
+  neutre à 999 € (« Call of Duty Modern Warfare PS4 ») a été créée puis
+  ANNULÉE avant sa prise par l'extension : le garde-fou de Claude Code a
+  bloqué la suite (annonce réellement achetable sans la mention). Il faut
+  l'accord explicite de Nico pour une annonce neutre à 999 € (ou une autre
+  annonce de son choix), puis : publication → en ligne (mail Beebs « Votre
+  annonce est en ligne ») → `spend_coins_and_republish(…, 'manuel', NULL, 'beebs')`
+  → suivi (trace « preuve relue par le background (n lecture(s)) » si Beebs
+  tarde, étape « deleted » puis « recreated ») → retrait de l'annonce
+  republiée → renommer le dossier en `CWS-0.6.104-A-TELEVERSER`.
+- Quand la 0.6.103 sera acceptée ET la preuve faite : Nico téléverse ; ensuite
+  seulement `ALREADY_PUBLISHED` / `EXTENSION_MIN_BUILD` (sur sa décision).
+- Défaut préexistant observé (non corrigé) : un retrait Beebs conclut « déjà
+  absente » quand l'annonce, fraîchement publiée, est dans un état de
+  modération invisible des deux onglets (34109673 le 04/10 : retrait clos
+  20:12, revenue en ligne ensuite ; 1 cas sur 14 « déjà absente »). Proposé :
+  ne conclure « déjà absente » que pour une annonce déjà VUE en ligne par un
+  relevé, sinon relire plus tard.
 
-## 4. Ce qui reste
+## 4. Ce qui reste (08/10 fin d'après-midi)
 
-1. **Feu vert nommé de Nico sur 20261008150000**, puis : application
-   (`db query --linked -f`, `migration repair`), `node scripts/fiche-main-vinted-selftest.mjs --prod`,
-   preuve `node scripts/reparations/20261008_preuve_fiches_main.mjs --en-prod`,
-   puis le rattrapage `--appliquer` (9 fusions, 80 questions au 08/10 — le
-   relancer à blanc juste avant, le stock bouge).
-2. **Pas « SUJET CLOS »** : le dressing Vinted crée encore SES fiches lui-même
-   (extension) ; elles sont jugées APRÈS par la passe v3 (contre les imports
-   depuis 130000 ; contre les fiches à la main seulement après 150000). Les
-   fiches créées dans l'app (personne, `generate-listing`, Lens) sont hors
-   relevé par nature.
-3. Les 23 fiches Vinted d'avant de romain.knc / tessy.galy : jugées à la
-   prochaine fin de relevé (0 décision attendue).
-4. 0.6.104 : § 3 (attendre l'acceptation de la 0.6.103).
-5. Créneaux de republication : le 1er créneau du soir (≥ 15:00 UTC) montrera
-   les premiers `_fin_de_creneau` (`republish_creneaux.sautes`) ; à relire.
+1. **Preuve de republication Beebs** de la 0.6.104 (accord de Nico pour une
+   annonce neutre à 999 €) — puis livraison du zip (§ 3).
+2. **Pas « SUJET CLOS »** : chemins encore hors v3 au § 0 (dressing Vinted
+   jugé après, fiches de la personne, ligne « vendu » d'une vente partielle).
+3. **Ce soir — à relire** : premiers `_fin_de_creneau` de la 20261008140000
+   dans `republish_creneaux.sautes` (créneaux du soir) et qu'aucune
+   republication ne parte à moins de sa durée de la fin ; questions de la
+   règle « fiche à la main » (`inventaire_doublons.preuves->>'portee' = 'fiche_main'`)
+   posées par les passes normales ; `rapprochement_comptes.fiches_main_juge_le`
+   qui avance ; ops-digest de 8:50.
+4. jocaille270779 : présentation groupée des 57 questions (proposition au § 0).
+5. Les 23 fiches Vinted d'avant de romain.knc / tessy.galy : jugées à leur
+   prochaine fin de relevé.
+6. Défaut « déjà absente » Beebs (§ 3).

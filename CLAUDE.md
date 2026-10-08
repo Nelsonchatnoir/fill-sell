@@ -47,9 +47,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   n'a lieu que sur PREUVE de la suppression (extension). Migration
   **20261008140000 APPLIQUÉE** (08/10 11:20 UTC) : le balayage ne lance plus une
   republication qui ne peut pas finir dans le créneau (`republish_duree_estimee`).
-  Extension **0.6.104** (3f06744, zip `build/CWS-0.6.104-A-TELEVERSER/`,
-  BUILD_ID `2026-10-08T13:02:47Z+147ab9a`, à téléverser par Nico APRÈS
-  l'acceptation de la 0.6.103) : preuve Beebs relue ~6 min par le background,
+  Extension **0.6.104** (3f06744, BUILD_ID `2026-10-08T13:02:47Z+147ab9a`) :
+  zip NON LIVRÉ (`build/CWS-0.6.104-NE-PAS-TELEVERSER-preuve-beebs-en-attente/`)
+  tant que la republication Beebs réelle n'est pas prouvée (le mot « TEST » ne
+  passe pas la modération Beebs ; une annonce neutre à 999 € attend l'accord de
+  Nico) ; chargée sur le poste de Nico depuis le 08/10 13:07 UTC : preuve Beebs relue ~6 min par le background,
   aucun essai consommé sans preuve, relevé Beebs par le flux quand « Mes
   annonces » est peinte vide (`selftest:beebs-preuve-relue`).
   Selftest `selftest:republication-va-au-bout`.
