@@ -41,8 +41,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   BUILD_ID `2026-10-07T22:58:10Z+008995b` = 0.6.102 + onglet
   muet relancé, toutes plateformes ; jamais d'EXTENSION_MIN_BUILD sans décision
   de Nico) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
-  Nico) ; web **2.9.66** (à pousser avec le lot), OTA **2.9.66 servie** (08/10
-  01:19) ; `get-pending-jobs` v222,
+  Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
+  10:50, build 9d203ac) ; `get-pending-jobs` v222,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
