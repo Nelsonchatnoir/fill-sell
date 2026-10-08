@@ -137,6 +137,7 @@
     "selftest:releve-hors-liste": "node scripts/releve-hors-liste-selftest.mjs",
     "selftest:moteur-rattachement": "node scripts/moteur-rattachement-selftest.mjs",
     "selftest:boucles-fermees": "node scripts/boucles-fermees-selftest.mjs",
+    "selftest:vinted-annonce-en-ligne": "node scripts/vinted-annonce-en-ligne-selftest.mjs",
     "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs",
     "selftest:creneaux-famine": "node scripts/creneaux-famine-selftest.mjs",
     "selftest:publication-moteur": "node scripts/publication-moteur-selftest.mjs",

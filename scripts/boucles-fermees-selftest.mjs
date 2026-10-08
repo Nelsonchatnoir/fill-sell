@@ -53,16 +53,21 @@ ok("répétition sautée ET comptée (rapprochements_repetes)", /INSERT INTO rap
 ok("table des répétitions fermée (RLS, aucun accès anon/authenticated)", /ALTER TABLE public\.rapprochements_repetes ENABLE ROW LEVEL SECURITY/.test(m1) && /REVOKE ALL ON public\.rapprochements_repetes FROM PUBLIC, anon, authenticated/.test(m1));
 ok("inverse prêt", fs.existsSync(path.join(RACINE, "supabase/rollbacks/20261008100000_rapprochement_jamais_la_meme_decision_INVERSE.sql")));
 
-// ── 3. Migration 20261008101000 : cadence plancher des relevés automatiques ──
-console.log("\n[3] migration 20261008101000 : plancher des relevés automatiques");
+// ── 3. Migration 20261008101000 (version RÉVISÉE) : le veilleur vise la cause, sans plancher ──
+console.log("\n[3] migration 20261008101000 : le veilleur ne redemande pas un relevé qui ne peut rien apprendre");
 const m2 = lire("supabase/migrations/20261008101000_releve_auto_plancher.sql");
-ok("seuls veilleur et cron sont retenus", /NOT IN \('veilleur', 'cron'\)/.test(m2));
-ok("jamais un geste (bouton, bouton_distant, app)", !/'bouton'|'app'|'bouton_distant'/.test(m2.split("CREATE OR REPLACE FUNCTION")[1] ?? ""));
-ok("relevés « annonces » seulement (jamais le dressing Vinted)", /NEW\.kind IS DISTINCT FROM 'annonces'/.test(m2));
-ok("par compte ET par plateforme", /s\.user_id = NEW\.user_id/.test(m2) && /s\.platform IS NOT DISTINCT FROM NEW\.platform/.test(m2));
-ok("plancher réglable, 360 min par défaut, 0 = coupé", /'releve_auto_plancher_min', 360/.test(m2) && /COALESCE\(v_min, 0\) <= 0 THEN RETURN NEW/.test(m2));
-ok("refus silencieux compté (releves_auto_refuses), aucune exception", /RETURN NULL;/.test(m2) && !/RAISE EXCEPTION/.test(m2));
-ok("table des refus fermée (RLS, aucun accès anon/authenticated)", /ALTER TABLE public\.releves_auto_refuses ENABLE ROW LEVEL SECURITY/.test(m2) && /REVOKE ALL ON public\.releves_auto_refuses FROM PUBLIC, anon, authenticated/.test(m2));
+ok("seul le veilleur est concerné (jamais un geste, ni le cron, ni le serveur)", m2.includes("COALESCE(NEW.declencheur, '') <> 'veilleur'") && !m2.includes("'cron')"));
+ok("relevés « annonces » seulement (jamais le dressing Vinted)", m2.includes("NEW.kind IS DISTINCT FROM 'annonces'"));
+ok("AUCUN plancher de temps (ni 6 h, ni réglage)", !/make_interval|releve_auto_plancher_min|interval '6 hours'/.test(m2));
+ok("une fausse alerte déjà démentie, annonce inchangée → rien", /fausse_alerte_connue/.test(m2) && /revue_en_ligne_par_releve/.test(m2));
+ok("une disparition nouvelle → le relevé part tout de suite", /disparition_nouvelle/.test(m2));
+ok("une absence à constater (hors Beebs) → le relevé part tout de suite", /absence_a_constater/.test(m2));
+ok("Beebs : une absence ne conclut jamais rien → rien", /absence_beebs/.test(m2));
+ok("absence déjà constatée → rien", /absence_deja_constatee/.test(m2));
+ok("aucun relevé complet ou aucune annonce signalée → le relevé part (jamais à l'aveugle)", /aucun_releve_complet/.test(m2) && /sans_annonce_signalee/.test(m2));
+ok("refus silencieux compté (releves_auto_refuses), aucune exception levée", /RETURN NULL;/.test(m2) && !/RAISE EXCEPTION/.test(m2));
+ok("une erreur de la décision laisse partir le relevé", /relevé laissé partir/.test(m2));
+ok("table des refus fermée (RLS, aucun accès anon/authenticated)", m2.includes("ALTER TABLE public.releves_auto_refuses ENABLE ROW LEVEL SECURITY") && m2.includes("REVOKE ALL ON public.releves_auto_refuses FROM PUBLIC, anon, authenticated"));
 ok("inverse prêt", fs.existsSync(path.join(RACINE, "supabase/rollbacks/20261008101000_releve_auto_plancher_INVERSE.sql")));
 // L'extension crée le run AVANT de toucher la plateforme : un refus ne coûte aucune requête chez elle.
 const bg = lire("chrome-extension/background.js");
