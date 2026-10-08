@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 // Le contrat de la retenue serveur, le même que l'app et get-pending-jobs.
 import { retenueServeurDuJob } from "../../../src/utils/retenueServeur.js";
+// Ventes prouvées (08/10) : les règles de la veille, les mêmes que veille-cpu.
+import { anomaliesVentesProuvees, lignesVentesProuvees } from "../_shared/ventes-prouvees.js";
 
 // ops-digest — digest quotidien des anomalies cross_post_jobs, envoyé à
 // support@fillsell.app UNIQUEMENT s'il y a au moins une ligne (silence = sain).
@@ -836,7 +838,30 @@ serve(async (req) => {
     if (!error) relevesRetenus = (data ?? []) as typeof relevesRetenus;
   } catch { /* table absente avant sa migration */ }
 
+  // ── VENTES PROUVÉES (08/10, audit de fiabilisation) ─────────────────────
+  // Du 28/09 16:46 au 08/10, la vente automatique sur preuve « sold » n'avait
+  // plus aucun appelant, et rien ne le disait. Section lue dans
+  // ventes_prouvees_veille() (migration 20261008233100) : cron qui ne tourne
+  // plus, passage en erreur, vente prouvée en retard, arriéré à rattraper.
+  // Fonction absente (migration non appliquée) = l'anomalie elle-même.
+  let ventesVeille: Record<string, unknown> | null = null;
+  let ventesAnomalies: Array<{ code: string; grave: boolean; texte: string }> = [];
+  try {
+    const { data, error } = await supabase.rpc("ventes_prouvees_veille");
+    if (error && (error.code === "PGRST202" || /could not find the function/i.test(error.message ?? ""))) {
+      ventesAnomalies = [{ code: "non_branchee", grave: true, texte: "Vente automatique sur preuve « sold » NON branchée (migration 20261008233100 non appliquée) : chaque vente Vinted prouvée attend le clic de la personne." }];
+    } else {
+      ventesVeille = error ? null : (data as Record<string, unknown>);
+      ventesAnomalies = anomaliesVentesProuvees(ventesVeille);
+    }
+  } catch (e) {
+    ventesAnomalies = anomaliesVentesProuvees(null);
+    console.warn("[ops-digest] ventes_prouvees_veille illisible :", String((e as Error)?.message ?? e));
+  }
+  const ventesArriere = Number(ventesVeille?.anterieures ?? 0) || 0;
+
   const counts = {
+    ventes_prouvees: ventesAnomalies.length + (ventesArriere > 0 ? 1 : 0),
     cpu_au_dessus_70: cpuMinutesAuDessus > 0 ? 1 : 0,
     pauses_releves: pausesActives.length,
     rapprochements_arretes: arretsRapprochement.length,
@@ -881,6 +906,20 @@ serve(async (req) => {
     <p style="margin:0 0 12px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       cross_post_jobs, relevé du ${new Date().toISOString()}
     </p>
+    ${
+    counts.ventes_prouvees === 0 && !(Number(ventesVeille?.enregistrees_24h ?? 0) > 0) ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:${ventesAnomalies.length ? "#B91C1C" : "#111827"};">
+      ${ventesAnomalies.length ? "🔴" : "🧾"} Ventes prouvées « sold »${ventesAnomalies.length ? ` — ${ventesAnomalies.length} anomalie${ventesAnomalies.length > 1 ? "s" : ""}` : ""}${ventesArriere ? ` — arriéré ${ventesArriere}` : ""}
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Une vente vue « sold » sur l'identifiant exact s'enregistre seule (cron ventes-prouvees-2min) et retire ses copies prouvées
+      ailleurs. Une anomalie ici = une vente qui attend et des copies qui restent en vente (double vente possible).
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${ventesAnomalies.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a.texte)}</li>`).join("")}
+      ${lignesVentesProuvees(ventesVeille).map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x)}</li>`).join("")}
+    </ul>`
+  }
     ${
     cpuMinutesAuDessus === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
@@ -1166,7 +1205,7 @@ serve(async (req) => {
       from: FROM,
       to: [TO],
       // (01/10) Les fournisseurs d'IA en tête, jusque dans l'objet du mail.
-      subject: `${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
+      subject: `${ventesAnomalies.length ? `🔴 Ventes prouvées : ${ventesAnomalies.map((a) => a.code).join(", ")} — ` : ""}${cpuMinutesAuDessus ? `🔴 CPU base ${cpuMax} % — ` : ""}${iaSujet.length ? `🔴 IA : ${iaSujet.join(" · ")} — ` : ""}⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · retenues ${retenuesServeurJobs} · tentatives ${counts.tentatives_en_cours} · stockage ${counts.stockage_au_dessus_du_seuil})`,
       html,
     }),
   });

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { lireCompteursCpu, pctEntre, decider, SEUIL_PCT, FENETRE_MIN } from "../_shared/veille-cpu.js";
+import { deciderAlerteVentesProuvees, VENTES_PROUVEES } from "../_shared/ventes-prouvees.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // veille-cpu — LE CPU DE LA BASE, TOUTES LES 2 MINUTES (04/10/2026)
@@ -18,6 +19,48 @@ const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: 
 const FROM = "FillSell <support@fillsell.app>";
 const TO = "support@fillsell.app";
 
+// ── Ventes prouvées (08/10) : le cron `ventes-prouvees-2min` tourne-t-il, et
+// une vente prouvée attend-elle ? Indépendant des métriques CPU (lu même quand
+// elles sont illisibles). Avant la migration 20261008233100, la fonction
+// n'existe pas (PGRST202) : rien à dire. Une alerte par heure au plus.
+// deno-lint-ignore no-explicit-any
+async function veillerVentesProuvees(admin: any, maintenant: Date): Promise<Record<string, unknown>> {
+  try {
+    const { data: veille, error } = await admin.rpc("ventes_prouvees_veille");
+    if (error && (error.code === "PGRST202" || /could not find the function/i.test(error.message ?? ""))) {
+      return { lue: false, motif: "migration 20261008233100 non appliquée" };
+    }
+    const { data: al } = await admin.from("ventes_prouvees_alertes").select("le").order("le", { ascending: false }).limit(1);
+    // Une veille qui répond une erreur (fonction présente) est elle-même une anomalie.
+    const d = deciderAlerteVentesProuvees({ veille: error ? null : veille, derniereAlerte: al?.[0]?.le ?? null, maintenant: maintenant.getTime() });
+    if (!d.action) return { lue: !error, anomalies: d.anomalies.map((a: { code: string }) => a.code), retenue: d.retenue ?? null };
+    const sujet = `🔴 FillSell : ventes prouvées — ${d.anomalies.map((a: { texte: string }) => a.texte).join(" · ").slice(0, 150)}`;
+    const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.5">
+<p><b>Ventes prouvées « sold » : la vente automatique ne fait plus son travail.</b></p>
+<ul>${d.anomalies.map((a: { texte: string }) => `<li>${a.texte}</li>`).join("")}</ul>
+<p>Tant que ce n'est pas réglé, une vente Vinted prouvée attend le clic de la personne et ses copies restent en vente ailleurs (double vente possible).
+Lire : <code>select public.ventes_prouvees_veille();</code> · <code>select * from ventes_prouvees_passages order by debut desc limit 5;</code> ·
+<code>select * from cron.job_run_details where jobid = (select jobid from cron.job where jobname = '${VENTES_PROUVEES.CRON}') order by start_time desc limit 5;</code></p>
+<p style="color:#888">veille-cpu — une alerte par heure au plus.</p></div>`;
+    let envoi: unknown = { erreur: "RESEND_API_KEY absente" };
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    if (resendKey) {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({ from: FROM, to: [TO], subject: sujet, html }),
+      }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) } as unknown as Response));
+      envoi = { http: r.status, ok: r.ok };
+    }
+    // Noté même si l'envoi échoue : le prochain essai attend l'heure suivante.
+    await admin.from("ventes_prouvees_alertes").insert({ le: maintenant.toISOString(), nature: "alerte",
+      detail: { anomalies: d.anomalies, veille: error ? { erreur: error.message } : veille }, envoi });
+    return { lue: !error, alerte: true, anomalies: d.anomalies.map((a: { code: string }) => a.code), envoi };
+  } catch (e) {
+    return { lue: false, erreur: String((e as Error)?.message ?? e).slice(0, 120) };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
   const attendu = Deno.env.get("CRON_SECRET");
@@ -26,6 +69,9 @@ Deno.serve(async (req) => {
   const cle = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(url, cle);
   const maintenant = new Date();
+
+  // 0. Les ventes prouvées (08/10), avant le CPU : lues même si les métriques manquent.
+  const ventes = await veillerVentesProuvees(admin, maintenant);
 
   // 1. Les compteurs de l'instance.
   let compteurs: { total: number; inactif: number } | null = null;
@@ -37,15 +83,15 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Basic ${btoa(`service_role:${cle}`)}` }, signal: ctl.signal,
     });
     clearTimeout(t);
-    if (!r.ok) return json({ ok: false, metriques: `HTTP ${r.status}` });
+    if (!r.ok) return json({ ok: false, metriques: `HTTP ${r.status}`, ventes });
     const texte = await r.text();
     compteurs = lireCompteursCpu(texte);
     const m = texte.match(/^pg_stat_database_num_backends\{[^}]*\}\s+([0-9.eE+]+)/m);
     connexions = m ? Math.round(Number(m[1])) : null;
   } catch (e) {
-    return json({ ok: false, metriques: String((e as Error)?.message ?? e).slice(0, 120) });
+    return json({ ok: false, metriques: String((e as Error)?.message ?? e).slice(0, 120), ventes });
   }
-  if (!compteurs) return json({ ok: false, metriques: "compteurs CPU absents" });
+  if (!compteurs) return json({ ok: false, metriques: "compteurs CPU absents", ventes });
 
   // 2. Le pourcentage depuis l'échantillon précédent (moins de 15 min).
   const { data: prec } = await admin.from("veille_cpu").select("le, total, inactif")
@@ -96,5 +142,5 @@ mettre en pause les crons les plus lourds (<code>cron.alter_job(&lt;id&gt;, acti
       envoi = { erreur: "RESEND_API_KEY absente" };
     }
   }
-  return json({ ok: true, pct, connexions, decision: d, envoi });
+  return json({ ok: true, pct, connexions, decision: d, envoi, ventes });
 });
