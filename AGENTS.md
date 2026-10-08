@@ -4,7 +4,7 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.102** (b230ebe, CWS 06/10 soir) ; **0.6.103** en examen (`build/CWS-0.6.103-*`) ; min **0.6.81** ; web/OTA 2.9.66.
+- **Servi** : ext. **0.6.102** ; **0.6.103** en examen ; min **0.6.81** ; OTA 2.9.66 ; boucles 08/10 : `docs/reprise/terminal-boucles-0810.md`.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ;
   moteur v3 `_shared/rapprochement/` ; `rapprochement` v8 : empreintes PAR LA BASE (pg_net),
   jamais attendues (edge → edge : 60/min ; le worker pg_net ne sert rien tant que l'appelant

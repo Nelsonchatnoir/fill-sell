@@ -74,6 +74,16 @@ selftest (Node) : `moteur.js` (+ `texte.js`, `photos.js`, `idf.js`, `passe.js`).
 les paires « en double » qui en touchent une) ; une annonce décidée n'est jamais
 rejugée. Mode `reparation` (Nico) = les décisions automatiques d'avant le sont.
 
+**Passe bornée (v12, 08/10 matin)** : `rapprochement_comptes.passages` compte,
+en négatif, les passes consécutives entrées dans la décision sans rien écrire
+(écrit avant la lecture : une invocation tuée par les 2 s de CPU reste
+comptée). À 3, le compte s'arrête (« termine », `bilan.arret`, ops-digest en
+rouge) ; un geste « Synchroniser » en rouvre 3 ; au-delà, correctif puis
+remise à 0 par nous. Les « 189 créations refusées » de la réparation ne
+venaient d'aucun quota (aucun sur ce chemin) : fiches supprimées par la
+personne, annonces vendues ou non actives, retenue Beebs.
+`docs/reprise/terminal-boucles-0810.md`.
+
 ## Mesures (08/10 nuit, transactions annulées puis prod)
 
 Plan rendu en prod par `rapprochement` v8 sur Corinne (toutes les photos

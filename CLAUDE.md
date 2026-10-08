@@ -4,7 +4,7 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » en fin ; reprise : `docs/reprise/terminal-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » en fin ; reprises : `docs/reprise/terminal-multi-synchro-0810.md`, `docs/reprise/terminal-boucles-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
@@ -21,6 +21,13 @@ contraire. Il se périme : `functions list`, `cron.job` et
   appelée par cron/trigger/script reste COURTE) ; `docs/multi-synchro.md`,
   reprise `docs/reprise/terminal-multi-synchro-0810.md`. Extension 0.6.103 :
   un content script chargé mais muet se relance avant tout envoi à la page.
+- **⛔ BOUCLES (08/10 matin)** : une même décision ne s'écrit jamais en boucle
+  (Nadège : 8 954 lignes, moteur v2 + job SANS article) ; `rapprochement` v12
+  compte les passes qui n'écrivent rien (`rapprochement_comptes.passages`, en
+  négatif) et s'arrête à 3 (ops-digest) ; un relevé automatique (veilleur,
+  cron) a une cadence plancher par compte et plateforme ; une synchro ne vide
+  jamais une marque. Migrations 20261008100000 / 101000 / 102000 PRÊTES, en
+  attente du feu vert de Nico. Aucun quota sur le chemin d'import.
 - **Servi** : extension **0.6.102** au CWS (b230ebe, téléversée le 06/10 au
   soir, 51 postes le 08/10 — le rapport du 08/10 nuit la disait « jamais
   téléversée » : faux) ; **0.6.103 en examen au CWS**
@@ -29,11 +36,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   muet relancé, toutes plateformes ; jamais d'EXTENSION_MIN_BUILD sans décision
   de Nico) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.66** (à pousser avec le lot), OTA **2.9.66 servie** (08/10
-  01:19) ; `rapprochement` v8, `empreintes-urls` v4, `get-pending-jobs` v222,
+  01:19) ; `get-pending-jobs` v222,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v31,
+  `rapprochement` v12, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v32,
   `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
