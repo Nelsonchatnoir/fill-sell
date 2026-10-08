@@ -6434,7 +6434,53 @@ function stampEtatFenetre(job, phase, releve) {
   job.platform_fields = { ...(job.platform_fields ?? {}), work_window_state: wws };
 }
 
+// ── (0.6.104) UN ONGLET DE TRAVAIL N'EST RENDU QU'AVEC UN CONTENT SCRIPT QUI RÉPOND
+// Jonathan Rabany, Carla (08/10) : « tâche sans démarrage » — republications
+// Vinted servies 61 fois sans jamais commencer, puis mises de côté. La 0.6.103
+// ne relançait l'onglet muet qu'à DEUX endroits (lecture du dressing Vinted ;
+// onglet de job dont le CHARGEMENT n'était pas confirmé). Partout ailleurs —
+// capture de l'annonce avant republication, pré-vol de dépôt, publication,
+// retrait, relevés, vérifications — l'onglet était rendu « chargé » et le
+// premier message attendait 300 s un script muet (onglet gelé par Chrome dans
+// la fenêtre minimisée, script orphelin d'une version précédente), sans rien
+// écrire : la tâche repassait au cycle suivant, encore et encore.
+// Désormais CHAQUE onglet de travail est vérifié ici, avant d'être rendu : le
+// PING de la plateforme (réponse synchrone, aucun effet sur la page) ; pas
+// encore injecté (document_idle) → on patiente 10 s ; muet → relancerOngletMuet
+// (rechargement, puis onglet neuf — rien n'a été envoyé à la page, rien ne
+// peut être doublé) ; toujours muet → erreur explicite de la liste technique
+// (reprise automatique), jamais 300 s d'attente silencieuse.
+// Opla : pas de content script du manifest (injection à la demande) — inchangé.
+const PLATEFORMES_SCRIPT_DU_MANIFESTE = new Set(["vinted", "leboncoin", "ebay", "beebs"]);
+const PATIENCE_INJECTION_MS = 10_000;
+async function contentScriptRepondSurOnglet(platform, tabId) {
+  const type = platform === "vinted" ? "VINTED_PING" : "FILLSELL_PING";
+  const fin = Date.now() + PATIENCE_INJECTION_MS;
+  for (;;) {
+    let absent = false;
+    try {
+      if ((await sendMessageToTabOnce(tabId, { type }, SYNC_PING_TIMEOUT_MS))?.pong === true) return true;
+    } catch (e) {
+      absent = /Receiving end does not exist|Could not establish connection/i.test(String(e?.message ?? e));
+    }
+    // Une réponse sans « pong » ou un délai dépassé : le script est là mais muet.
+    if (!absent || Date.now() >= fin) return false;
+    await sleep(1_000);
+  }
+}
 async function getOrCreateWorkTab(platform, url) {
+  const tabId = await getOrCreateWorkTabBrut(platform, url);
+  if (!PLATEFORMES_SCRIPT_DU_MANIFESTE.has(platform)) return tabId;
+  if (await contentScriptRepondSurOnglet(platform, tabId)) return tabId;
+  const relance = await relancerOngletMuet(platform, tabId, url, (id) => contentScriptRepondSurOnglet(platform, id));
+  if (relance.ok) {
+    console.warn(`[onglet][${platform}] content script joignable après ${relance.geste} (onglet ${relance.tabId}) — on continue`);
+    return relance.tabId;
+  }
+  throw new Error(`onglet de travail ${platform} : le content script ne répond pas, ni après ${relance.geste}`);
+}
+
+async function getOrCreateWorkTabBrut(platform, url) {
   const key = workTabKey(platform);
   const target = url + WORK_TAB_FRAGMENT;
 
