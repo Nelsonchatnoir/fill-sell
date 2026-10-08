@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») · 2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
+const BEEBS_BUILD = "2026-10-08-preuve-relue (0.6.104 : BEEBS_PREUVE_RETRAIT, la preuve d'une suppression envoyée relue sans geste ; l'heure d'envoi remonte au background) · 2026-10-08-ping (0.6.103 : FILLSELL_PING, réponse synchrone « je suis là ») ·2026-10-04-format-colis-explicite (0.6.95 : un format de colis EXPLICITE — réponse de la personne, format relu sur l annonce par son identifiant, poids de la fiche — passe devant le pré-remplissage de Beebs ; les formats du formulaire sont appris par le serveur) · 2026-09-29-prevol-republication-complet (0.6.80 : le vrai formulaire, catégorie et champs dynamiques compris, doit être entièrement remplissable avant tout retrait ; aucun upload ni clic pendant ce pré-vol ; identifiant durable obligatoire) · 2026-09-24-compte-vu-sur-la-page (0.6.66 : un compte Beebs connecte vu sur n importe quelle page beebs.app leve l attente de session, desormais espacee 1 h/3 h/6 h) · 2026-09-22-page-de-depot-refaite (0.6.55 : Beebs a refait sa page de depot entre 13h26 et 15h24 le 22/09 — plus aucune classe ne nomme un role. Photos: input[type=file] ANONYME (#input-pictures mort, cause du blocage total). Champs: label.group/field-label + bouton frere a aria-haspopup. Panneaux: popovers RADIX portalises sur body, designes par aria-controls — plus aucune heuristique de panneau unique. Options: button.group/popover-item. Anciennes classes gardees en dernier maillon. Depot verifie de bout en bout sur la page du jour.)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -311,6 +311,26 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       lireIdsMesAnnoncesBeebs()
         .then((r) => sendResponse(r))
         .catch((err) => sendResponse({ ok: false, ids: [], pages: [], motif: String(err?.message ?? err) }));
+      return true;
+    }
+    // (0.6.104) La preuve d'une suppression déjà envoyée, relue sans aucun
+    // geste : les deux onglets de « Mes annonces » (flux de la page), ou, liste
+    // « en ligne » tronquée, l'annonce elle-même (404 + hors vérification +
+    // hors index). Le background l'appelle à intervalles jusqu'à ~6 min.
+    if (msg?.type === "BEEBS_PREUVE_RETRAIT") {
+      const idCible = String(msg.idCible ?? "");
+      const trace = [];
+      const t = (line) => { trace.push(line); console.log(`[beebs][preuve] ${line}`); };
+      if (!/^\d{6,}$/.test(idCible)) {
+        sendResponse({ verdict: "illisible", trace, error: "numéro d'annonce absent" });
+        return true;
+      }
+      preuveAbsenceMesAnnonces(idCible, t)
+        .then((p) => sendResponse({
+          verdict: p.verdict, trace,
+          preuveRetrait: p.verdict === "absente" ? preuveRetraitDepuis(p.lecture, idCible, "apres_confirmation_relue") : null,
+        }))
+        .catch((err) => sendResponse({ verdict: "illisible", trace, error: String(err?.message ?? err) }));
       return true;
     }
     if (msg?.type === "DELETE_LISTING") {
@@ -660,7 +680,12 @@ function preuveRetraitDepuis(lecture, idCible, moment) {
 // Après la confirmation : relectures espacées (≈ 2 min au plus). Absente →
 // succès AVEC la preuve ; encore là ou illisible → reprise, la suppression
 // envoyée n'est pas rejouée à l'aveugle (le passage suivant relit d'abord).
+// (0.6.104) La réponse porte l'heure d'envoi de la suppression : le background
+// continue de relire (BEEBS_PREUVE_RETRAIT, appels courts) jusqu'à ~6 min
+// après elle — un seul message ne peut pas durer 6 min (borne de 300 s, et
+// Chrome arrête un service worker sur un appel de 5 min).
 async function confirmerRetraitParMesAnnonces(idCible, t) {
+  const suppressionEnvoyeeLe = new Date().toISOString();
   let dernier = null;
   for (const attente of [0, 10_000, 20_000, 40_000, 60_000]) {
     if (attente) await sleep(attente);
@@ -670,7 +695,7 @@ async function confirmerRetraitParMesAnnonces(idCible, t) {
     }
   }
   return {
-    success: false, reprise: true, suppressionEnvoyee: true,
+    success: false, reprise: true, suppressionEnvoyee: true, suppressionEnvoyeeLe,
     error: dernier?.verdict === "presente"
       ? "Suppression envoyée à Beebs, mais l'annonce est encore dans « Mes annonces » deux minutes après — vérification au prochain passage, rien d'autre n'est fait"
       : "Suppression envoyée à Beebs, mais « Mes annonces » n'a pas pu être relue en entier — vérification au prochain passage, rien d'autre n'est fait",

@@ -14576,6 +14576,35 @@ async function releverAnnoncesPlateforme(platform, { token = null, userId = null
       ajoutees += 1;
     }
     if (ajoutees) console.log(`[releve][beebs] index public : ${ajoutees} annonce(s) que la page n'avait pas rendues`);
+
+    // ── (0.6.104, Louis) « MES ANNONCES » PEINTE VIDE : LE FLUX DE LA PAGE TRANCHE
+    // louis (3 relevés sur 23), ornellaracano (2/24), b.halbot (1/7), 8 comptes
+    // en 14 jours, tous builds : l'onglet de travail vit dans une fenêtre
+    // minimisée et la liste « Actuellement en ligne » (composant client) n'y est
+    // pas toujours peinte. Le relevé se repliait sur l'index et se disait
+    // incomplet (rien conclu, ventes et disparitions en attente). Le flux de la
+    // page — lu par fetch dans la session de la personne, comme les preuves de
+    // retrait (BEEBS_IDS_MES_ANNONCES) — porte le compteur de Beebs
+    // (« nb_products ») et les identifiants des deux onglets. La liste vaut
+    // « rendue » seulement si TOUT concorde :
+    //   · les deux onglets lus (« en vérification » en entier) ;
+    //   · le compteur « en ligne » de Beebs = le total exact de l'index ;
+    //   · chaque identifiant « en ligne » du flux est dans l'index, chaque
+    //     identifiant « en vérification » est déjà relevé.
+    // Le moindre écart : la page reste muette, rien n'est conclu (comme avant).
+    if (beebsPageMuette != null && idx?.ok && idx.exhaustif && Number.isFinite(idx.total)) {
+      const flux = await sendMessageToTab(dernierTabId, { type: "BEEBS_IDS_MES_ANNONCES" }, 60_000).catch(() => null);
+      const pEnLigne = (flux?.pages ?? []).find((p) => p.page === "en_ligne");
+      const pVerif = (flux?.pages ?? []).find((p) => p.page === "en_verification");
+      const idsIndex = new Set((idx.articles ?? []).map((a) => String(a?.listing_id ?? "")).filter(Boolean));
+      const concordent = flux?.ok === true && pEnLigne?.ok === true && pVerif?.ok === true
+        && Number(pEnLigne.annoncees) === Number(idx.total)
+        && (pEnLigne.ids ?? []).length > 0
+        && (pEnLigne.ids ?? []).every((id) => idsIndex.has(String(id)))
+        && (pVerif.ids ?? []).every((id) => annonces.has(String(id)));
+      console.log(`[releve][beebs] page peinte vide — flux de « Mes annonces » : ${flux?.ok ? `en ligne ${pEnLigne?.n ?? "?"}/${pEnLigne?.annoncees ?? "?"}, en vérification ${pVerif?.n ?? "?"}` : "illisible"}, index ${idx.total} → ${concordent ? "liste lue par le flux" : "rien n'est conclu"}`);
+      if (concordent) beebsPageMuette = null;
+    }
   }
 
   // ── LEBONCOIN : LA PAGE A CHARGÉ, L'ADRESSE EST RELUE (0.6.100) ──────────
@@ -22238,6 +22267,70 @@ function suppressionDejaEnvoyee(job, pf) {
   return textes.some((t) => /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted)/.test(t));
 }
 
+// ── (0.6.104, Louis) BEEBS : LA PREUVE D'UNE SUPPRESSION RELUE JUSQU'À ~6 MIN ─
+// Le 06/10, les 8 republications Beebs de Louis ont toutes échoué au premier
+// contrôle et prouvé l'absence au second : Beebs garde « Mes annonces », la
+// page et l'index public plusieurs minutes après une suppression. Le content
+// script relit 2 min (un seul message ne peut pas durer plus : borne de 300 s,
+// et Chrome arrête un service worker sur un appel de 5 min), puis le job
+// attendait 5 min et repassait par tout le retrait — ≈ 20 min par article.
+// Désormais le background relit la preuve (BEEBS_PREUVE_RETRAIT : lecture
+// pure, appels courts) toutes les 45 s jusqu'à 6 min après l'envoi ; le
+// service worker reste éveillé (getPlatformInfo toutes les 20 s, comme les
+// relevés). Rien n'est conclu sans la preuve (les deux onglets de « Mes
+// annonces », ou l'annonce elle-même : 404 + hors vérification + hors index).
+const BEEBS_PREUVE_FENETRE_MS = 6 * 60_000;
+const BEEBS_PREUVE_INTERVALLE_MS = 45_000;
+async function relirePreuveRetraitBeebs(tabId, idCible, envoyeeLe) {
+  const fin = (Date.parse(String(envoyeeLe ?? "")) || Date.now()) + BEEBS_PREUVE_FENETRE_MS;
+  const reveil = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20_000);
+  let dernier = null;
+  let lectures = 0;
+  try {
+    while (Date.now() + 5_000 < fin) {
+      await sleep(Math.min(BEEBS_PREUVE_INTERVALLE_MS, Math.max(0, fin - Date.now() - 5_000)));
+      lectures += 1;
+      dernier = await sendMessageToTab(tabId, { type: "BEEBS_PREUVE_RETRAIT", idCible }, 60_000)
+        .catch((e) => ({ verdict: "illisible", error: String(e?.message ?? e).slice(0, 120) }));
+      console.log(`[republish][beebs] preuve relue (${lectures}) pour ${idCible} : ${dernier?.verdict ?? "?"}`);
+      if (dernier?.verdict === "absente" && dernier.preuveRetrait) break;
+    }
+  } finally {
+    clearInterval(reveil);
+  }
+  return { ...(dernier ?? { verdict: "illisible" }), lectures };
+}
+
+// ── (0.6.104, Louis) UNE SUPPRESSION ENVOYÉE NON PROUVÉE NE CONSOMME PAS D'ESSAI
+// Avant : chaque passage sans preuve passait par rearmBounded (un essai de
+// plus) ; au bout des essais, « failed » — l'annonce déjà retirée, jamais
+// redéposée. Le serveur mène désormais une republication dont la suppression
+// est partie au bout (get-pending-jobs v223, retraitEngage) ; ici le job
+// repart en attente SANS essai consommé, à intervalles qui s'espacent, jusqu'à
+// la preuve. Le passage suivant relit d'abord (« déjà absente ») et ne renvoie
+// la suppression que si l'annonce est encore là avec son bouton.
+const SUPPRESSION_NON_PROUVEE_DELAIS_MIN = [5, 10, 20, 30, 60];
+async function rearmerSuppressionNonProuvee(accessToken, job, errorMsg) {
+  // Même garde que rearmBounded : jamais par-dessus une annulation.
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[background] Job ${job.id} : statut devenu "${actuel}" pendant le traitement — ré-armement ABANDONNÉ. Cause : ${errorMsg}`);
+    return;
+  }
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  const pf = { ...(job.platform_fields ?? {}) };
+  const n = (Number(pf.suppression_non_prouvee?.n) || 0) + 1;
+  const delaiMin = SUPPRESSION_NON_PROUVEE_DELAIS_MIN[Math.min(n - 1, SUPPRESSION_NON_PROUVEE_DELAIS_MIN.length - 1)];
+  pf.suppression_non_prouvee = { n, depuis: pf.suppression_non_prouvee?.depuis ?? new Date().toISOString(), dernier: new Date().toISOString() };
+  pf.next_action_after = new Date(Date.now() + delaiMin * 60000).toISOString();
+  const base = String(errorMsg ?? "").trim();
+  console.warn(`[background] Job ${job.id} : suppression envoyée, pas encore prouvée (${n}) — nouvelle vérification dans ~${delaiMin} min, aucun essai consommé`);
+  await updateJobStatus(accessToken, job.id, "pending", {
+    error: base + (/[.!?…]$/.test(base) ? "" : ".") + ` Nouvelle vérification automatique dans ~${delaiMin} min.`,
+    platform_fields: pf,
+  });
+}
+
 async function processRepublishJobPlateforme(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   const step = pf.republish_step ?? "a_capturer";
@@ -22585,8 +22678,14 @@ async function processRepublishJobPlateforme(job, accessToken) {
     await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
 
     let result = null;
+    let tabRetrait = null;
+    // (0.6.104) Une suppression déjà envoyée pour CETTE annonce : aucune reprise
+    // de cette étape ne consomme d'essai (rearmerSuppressionNonProuvee).
+    const rearmRetrait = (msg) => (suppressionDejaEnvoyee(job, job.platform_fields)
+      ? rearmerSuppressionNonProuvee(accessToken, job, msg)
+      : rearmBounded(accessToken, job, msg));
     try {
-      ({ result } = await executerRetraitViaHandler(job, accessToken));
+      ({ result, tabId: tabRetrait } = await executerRetraitViaHandler(job, accessToken));
     } catch (e) {
       const msg = String(e?.message ?? e);
       dernierGesteRepublishAt = Date.now();
@@ -22597,17 +22696,32 @@ async function processRepublishJobPlateforme(job, accessToken) {
         if ((state === "unavailable" || state === "sold") && job.platform !== "beebs") {
           result = { success: true, trace: ["canal coupé par la navigation du retrait — annonce absente : retrait confirmé par l'état réel"], confirmeParEtat: true };
         } else {
-          await rearmBounded(accessToken, job, `Retrait ${label} interrompu (onglet navigué ou rechargé) : ${msg}`);
+          await rearmRetrait(`Retrait ${label} interrompu (onglet navigué ou rechargé) : ${msg}`);
           return { status: "retry", error: msg };
         }
       } else {
-        await rearmBounded(accessToken, job, `Retrait ${label} interrompu : ${msg}`);
+        await rearmRetrait(`Retrait ${label} interrompu : ${msg}`);
         return { status: "retry", error: msg };
       }
     }
     dernierGesteRepublishAt = Date.now();
     const pfApres = { ...pf, ...(job.platform_fields ?? {}) };
 
+    // (0.6.104, Louis) Beebs : suppression envoyée, pas encore prouvée — on
+    // relit la preuve ici jusqu'à ~6 min après l'envoi, sans repasser par tout
+    // le retrait ni attendre 5 min (relirePreuveRetraitBeebs).
+    if (result && result.success !== true && result.suppressionEnvoyee && job.platform === "beebs" && tabRetrait != null) {
+      const idCible = String(job.platform_listing_id ?? "").trim()
+        || (String(job.listing_url ?? "").match(/\/p\/(\d+)(?:[-/?#]|$)/)?.[1] ?? "");
+      const relue = await relirePreuveRetraitBeebs(tabRetrait, idCible, result.suppressionEnvoyeeLe);
+      dernierGesteRepublishAt = Date.now();
+      if (relue.verdict === "absente" && relue.preuveRetrait) {
+        result = { ...result, success: true, reprise: false, suppressionEnvoyee: false, preuveRetrait: relue.preuveRetrait,
+          trace: [...(result.trace ?? []), ...(relue.trace ?? []).slice(-3), `preuve relue par le background (${relue.lectures} lecture(s))`] };
+      } else {
+        result = { ...result, trace: [...(result.trace ?? []), `preuve relue ${relue.lectures} fois jusqu'à ~6 min après l'envoi : ${relue.verdict}`] };
+      }
+    }
     let retire = result?.success === true;
     let confirmePar = result?.confirmeParEtat ? "etat_annonce" : (result?.preuveRetrait ? "mes_annonces" : "handler");
     if (!retire && result && !result.dryRun) {
@@ -22629,15 +22743,15 @@ async function processRepublishJobPlateforme(job, accessToken) {
       } else if (/^CHALLENGE /i.test(String(result.error ?? ""))) {
         const { borne } = await marquerBlocageAntiRobot(accessToken, job, String(result.error));
         if (!borne) return { status: "retry", error: String(result.error) };
-        await rearmBounded(accessToken, job, String(result.error));
+        await rearmRetrait(String(result.error));
         return { status: "retry", error: String(result.error) };
       } else if (result.needsUser) {
-        await rearmBounded(accessToken, job, String(result.error ?? "retrait non abouti"));
+        await rearmRetrait(String(result.error ?? "retrait non abouti"));
         return { status: "needsUser", error: result.error };
       } else if (estPageInattendueDeNotreFait(job.platform, result.error)) {
         // Même verdict que le retrait simple : notre onglet, pas son annonce.
         const msg = messagePageInattendue();
-        await rearmBounded(accessToken, job, msg);
+        await rearmRetrait(msg);
         return { status: "retry", error: msg };
       } else {
         // Refus, transitoire, « à reprendre » : reprise espacée, annonce intacte
@@ -22650,18 +22764,22 @@ async function processRepublishJobPlateforme(job, accessToken) {
           job.platform_fields = { ...(job.platform_fields ?? {}), republish_suppression_envoyee: {
             at: new Date().toISOString(), annonce: String(job.platform_listing_id ?? job.listing_url ?? "") } };
           const msgEnvoyee = `Suppression envoyée à ${label} (${motif}). Elle n'est pas encore confirmée : vérification au prochain passage, puis remise en ligne.`;
-          await rearmBounded(accessToken, job, msgEnvoyee);
+          await rearmerSuppressionNonProuvee(accessToken, job, msgEnvoyee);
           return { status: "retry", error: msgEnvoyee };
         }
-        const msg = state === "active"
-          ? `Retrait ${label} non abouti (${motif}). Ton annonce est TOUJOURS en ligne (vérifié), rien n'a été touché.`
-          : `Retrait ${label} non abouti (${motif}). L'état de l'annonce n'a pas pu être vérifié : ${causeLectureImpossible(raison)}.`;
-        await rearmBounded(accessToken, job, msg);
+        // (0.6.104) Notre suppression était déjà partie à un passage précédent :
+        // jamais « rien n'a été touché » (c'était faux chez Louis, 06/10).
+        const msg = suppressionDejaEnvoyee(job, job.platform_fields)
+          ? `Suppression déjà envoyée à ${label}, pas encore confirmée (${motif}) : vérification au prochain passage, puis remise en ligne.`
+          : state === "active"
+            ? `Retrait ${label} non abouti (${motif}). Ton annonce est TOUJOURS en ligne (vérifié), rien n'a été touché.`
+            : `Retrait ${label} non abouti (${motif}). L'état de l'annonce n'a pas pu être vérifié : ${causeLectureImpossible(raison)}.`;
+        await rearmRetrait(msg);
         return { status: "retry", error: msg };
       }
     }
     if (!retire) {
-      await rearmBounded(accessToken, job, `Le retrait ${label} n'a rendu aucun résultat exploitable.`);
+      await rearmRetrait(`Le retrait ${label} n'a rendu aucun résultat exploitable.`);
       return { status: "retry", error: "retrait sans résultat" };
     }
 
