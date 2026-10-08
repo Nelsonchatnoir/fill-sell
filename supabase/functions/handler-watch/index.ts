@@ -7,7 +7,7 @@ import { grilleDuDernierEchecTaille, normaliserTaille, tailleAServir } from "../
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // (06/10, Glowik) Un échec qu'une extension corrige repart dès que le poste l'a.
-import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance } from "../_shared/relance-apres-maj.js";
+import { RELANCES_APRES_MAJ, regleDeRelance, posteALeBuild, champsRelance, sourceDeRegle } from "../_shared/relance-apres-maj.js";
 import { reponseTailleAuto, champsApresReponseTaille } from "../_shared/taille-question-auto.js";
 import { MOTIF_LBC_IDENTITE, FENETRE_IDENTITE_MS, ECLAIREUR_INTERVALLE_MS, attendIdentiteLbc, attentesIdentiteLbc, eclaireurIdentiteLbc, champsEclaireur, champsReprise } from "../_shared/lbc-identite.js";
 // Liste FERMÉE des CDN des plateformes dont on importe des annonces — UNE
@@ -3187,7 +3187,9 @@ serve(async (req) => {
         .eq("status", "needs_user")
         .eq("platform", regle.platform)
         .eq("action", regle.action)
-        .eq("platform_fields->>needs_user_source", "relancer")
+        // (08/10 soir) « relancer », ou le motif de mise de côté visé par la règle
+        // (tâche sans démarrage : Jonathan Rabany, Carla — 0.6.104)
+        .eq("platform_fields->>needs_user_source", sourceDeRegle(regle))
         .gte("created_at", new Date(now - 30 * 86_400_000).toISOString())
         .limit(200);
       const cands = ((arretees ?? []) as Array<Record<string, unknown>>)

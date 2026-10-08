@@ -95,5 +95,36 @@ console.log("\n[4] Rien d'autre ne bouge");
   ok("quelque chose a été retiré (deleted_at) : non", regleDeRelance(retire) === null);
 }
 
+console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jonathan Rabany, Carla) : repart avec la 0.6.104");
+{
+  // La tâche RÉELLE de Jonathan (3363b2d2, relue en prod le 08/10, champs utiles).
+  const JONATHAN = {
+    id: "3363b2d2-b754-474a-9006-82aba4e795d9", status: "needs_user", action: "republish", platform: "vinted",
+    error: "Cette republication n'arrive pas à démarrer sur ton ordinateur depuis le 8 octobre : FillSell la met de côté pour laisser passer le reste de ta file.",
+    platform_fields: {
+      needs_user_source: "tache_sans_demarrage",
+      tache_sans_demarrage: { depuis: "2026-10-08T10:47:36.81177+00:00", le: "2026-10-08T12:47:36.821Z", pose_par: "get-pending-jobs", servie_n: 61 },
+      republish_step: "captured", republish_copie_servie: { capture_id: 12159, etape: "captured" },
+    },
+  };
+  const r = regleDeRelance(JONATHAN);
+  ok("règle trouvée (vinted / republication / tache_sans_demarrage)", r?.cle === "vinted_republish_tache_sans_demarrage", JSON.stringify(r));
+  ok("   build correctif = BUILD_ID 0.6.104 (4a0a096)", r?.buildMin === "2026-10-08T14:25:38Z" && r?.version === "0.6.104", JSON.stringify(r));
+  ok("poste en 0.6.102 (b230ebe, le sien) : pas encore", posteALeBuild("2026-10-06T18:38:36Z+b230ebe", r) === false);
+  ok("poste en 0.6.103 (jamais téléversée) : pas encore", posteALeBuild("2026-10-07T22:58:10Z+008995b", r) === false);
+  ok("poste en 0.6.104 : oui", posteALeBuild("2026-10-08T14:25:38Z+4a0a096", r) === true);
+  const pf = champsRelance(JONATHAN, r, { maintenant: "2026-10-08T15:00:00Z", extensionBuild: "2026-10-08T14:25:38Z+4a0a096" });
+  ok("relancée : le motif de mise de côté levé, marquée une fois", !pf.needs_user_source && pf.relance_apres_maj?.cle === r.cle && pf.needsUserAttempts === 0);
+  ok("   la copie servie et l'étape sont gardées (republication reprise là où elle était)", pf.republish_step === "captured" && pf.republish_copie_servie?.capture_id === 12159);
+  ok("déjà relancée une fois : jamais une seconde", regleDeRelance({ ...JONATHAN, platform_fields: { ...JONATHAN.platform_fields, relance_apres_maj: { le: "x" } } }) === null);
+  ok("republication déjà retirée (étape deleted) : non", regleDeRelance({ ...JONATHAN, platform_fields: { ...JONATHAN.platform_fields, republish_step: "deleted" } }) === null);
+  ok("publication Leboncoin sans démarrage : couverte aussi", regleDeRelance({ ...JONATHAN, platform: "leboncoin", action: "publish" })?.cle === "leboncoin_publish_tache_sans_demarrage");
+  ok("retrait (jamais mis de côté) : non", regleDeRelance({ ...JONATHAN, action: "delete" }) === null);
+  ok("Opla : non (pas de script du manifeste)", regleDeRelance({ ...JONATHAN, platform: "opla" }) === null);
+  ok("« relancer » sans motif technique : toujours rien", regleDeRelance({ ...JONATHAN, platform_fields: { needs_user_source: "relancer" } }) === null);
+  const muet = RELANCES_APRES_MAJ.filter((x) => /content_script_muet$/.test(x.cle));
+  ok("content script muet : 4 plateformes, build 0.6.104 (la 0.6.103 n'a jamais été téléversée)", muet.length === 4 && muet.every((x) => x.buildMin === "2026-10-08T14:25:38Z"));
+}
+
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");
 process.exit(ko ? 1 : 0);
