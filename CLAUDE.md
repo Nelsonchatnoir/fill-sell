@@ -4,7 +4,7 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » en fin ; reprises : `docs/reprise/terminal-multi-synchro-0810.md`, `docs/reprise/terminal-boucles-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » en fin ; reprises : `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
@@ -26,8 +26,14 @@ contraire. Il se périme : `functions list`, `cron.job` et
   compte les passes qui n'écrivent rien (`rapprochement_comptes.passages`, en
   négatif) et s'arrête à 3 (ops-digest) ; un relevé automatique (veilleur,
   cron) a une cadence plancher par compte et plateforme ; une synchro ne vide
-  jamais une marque. Migrations 20261008100000 / 101000 / 102000 PRÊTES, en
-  attente du feu vert de Nico. Aucun quota sur le chemin d'import.
+  jamais une marque. Migrations 20261008100000 / 101000 (RÉVISÉE : le veilleur
+  vise la cause, aucun plancher) / 102000 APPLIQUÉES. Aucun quota sur l'import.
+- **⛔ VINTED : LA FICHE ET LE SIGNAL SUIVENT L'ANNONCE EN LIGNE (08/10, Louis)** :
+  la synchro du dressing de l'extension collait la vente d'une ancienne annonce
+  au job de la neuve et faisait reculer la fiche → « 🎉 Vendue » sur une annonce
+  en ligne, vente et remise en double. Migrations 20261008110000 / 111000 /
+  112000 : démenti par le dressing, recul seulement sur preuve, vente refusée sur
+  une annonce en ligne ou remplacée, remise retenue, note de vente ignorée.
 - **Servi** : extension **0.6.102** au CWS (b230ebe, téléversée le 06/10 au
   soir, 51 postes le 08/10 — le rapport du 08/10 nuit la disait « jamais
   téléversée » : faux) ; **0.6.103 en examen au CWS**
@@ -40,7 +46,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v12, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v32,
+  `rapprochement` v12, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
   `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
