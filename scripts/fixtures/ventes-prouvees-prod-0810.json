@@ -1,0 +1,1484 @@
+{
+ "capture_le": "2026-10-08T21:00:55.558Z",
+ "source": "prod (lecture seule) — pg_get_functiondef, information_schema.columns, pg_indexes, pg_get_triggerdef",
+ "colonnes": {
+  "annonces_plateforme": [
+   {
+    "n": "id",
+    "type": "uuid",
+    "defaut": "gen_random_uuid()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "platform",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "listing_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "url",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "titre",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "photo_url",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "statut_plateforme",
+    "type": "text",
+    "defaut": "'inconnu'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "inventaire_id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "job_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "source_rapprochement",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "proposition",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "ignoree_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "run_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vu_le",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "disparu_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "updated_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "capture",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "capture_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vues",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "favoris",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "fiche_supprimee_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "retiree_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "retrait_job_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "donnees_index",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "donnees_index_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ],
+  "coin_config": [
+   {
+    "n": "key",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "value",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "updated_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   }
+  ],
+  "coin_config_journal": [
+   {
+    "n": "id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": true
+   },
+   {
+    "n": "key",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "avant",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "apres",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "par",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "le",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   }
+  ],
+  "cross_post_jobs": [
+   {
+    "n": "id",
+    "type": "uuid",
+    "defaut": "gen_random_uuid()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "inventaire_id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "platform",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "status",
+    "type": "text",
+    "defaut": "'pending'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "photo_option",
+    "type": "text",
+    "defaut": "'standard'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "bulk_batch_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "title",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "description",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "price",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "photos",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "platform_listing_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "generated_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "published_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "error",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "listing_url",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "last_checked_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "sold_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "platform_fields",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "action",
+    "type": "text",
+    "defaut": "'publish'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "handler_build",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "reservation_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "reservation_settled_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "voie",
+    "type": "text",
+    "defaut": "'extension'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "vu_en_ligne_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ],
+  "inventaire": [
+   {
+    "n": "id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "titre",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_achat",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_vente",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "margin",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "margin_pct",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "statut",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "date",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "marque",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "description",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "type",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "purchase_costs",
+    "type": "numeric",
+    "defaut": "0",
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "selling_fees",
+    "type": "numeric",
+    "defaut": "0",
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "quantite",
+    "type": "integer",
+    "defaut": "1",
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "emplacement",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "plateforme",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "photos",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_item_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "origine",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_achat_inconnu",
+    "type": "boolean",
+    "defaut": "false",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "listed_at_guess",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "first_seen_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "last_synced_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "disparu_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_view_count",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_favourite_count",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_status",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_catalog_id",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_account_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "attributs",
+    "type": "jsonb",
+    "defaut": "'{}'::jsonb",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "fusionne_dans",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "fusionne_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "photos_a_rapatrier",
+    "type": "boolean",
+    "defaut": "false",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "poids_g",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "poids_change_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "poids_change_par",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_vente_change_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_vente_change_par",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "a_verifier",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ],
+  "inventaire_doublons": [
+   {
+    "n": "id",
+    "type": "uuid",
+    "defaut": "gen_random_uuid()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "garde",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "absorbe",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "niveau",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "statut",
+    "type": "text",
+    "defaut": "'proposee'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "motif",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "preuves",
+    "type": "jsonb",
+    "defaut": "'{}'::jsonb",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "source",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "fusion_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "decide_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "decide_par",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   }
+  ],
+  "inventaire_fusions": [
+   {
+    "n": "id",
+    "type": "uuid",
+    "defaut": "gen_random_uuid()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "garde",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "absorbe",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "deplacements",
+    "type": "jsonb",
+    "defaut": "'{}'::jsonb",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "champs_repris",
+    "type": "jsonb",
+    "defaut": "'{}'::jsonb",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "par",
+    "type": "text",
+    "defaut": "'utilisateur'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "defait_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   }
+  ],
+  "usage_logs": [
+   {
+    "n": "id",
+    "type": "uuid",
+    "defaut": "gen_random_uuid()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "feature",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "metadata",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ],
+  "ventes": [
+   {
+    "n": "id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": true,
+    "identite": true
+   },
+   {
+    "n": "created_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "titre",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_achat",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "prix_vente",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "benefice",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "date",
+    "type": "date",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "marque",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "type",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "description",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "emplacement",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "plateforme",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "quantite",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "inventaire_id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "statut",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "selling_fees",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "plateforme_code",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "plateforme_origine",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vendu_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "commande_ref",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "source",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "releve_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "devise",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "frais_plateforme",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "annonce_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ],
+  "ventes_operations": [
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "cle",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "inventaire_id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "job_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "resultat",
+    "type": "jsonb",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "cree_le",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   }
+  ],
+  "vinted_listing_snapshots": [
+   {
+    "n": "id",
+    "type": "bigint",
+    "defaut": "nextval('vinted_listing_snapshots_id_seq'::regclass)",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "vinted_item_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "inventaire_id",
+    "type": "bigint",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "captured_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "captured_on",
+    "type": "date",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "price",
+    "type": "numeric",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "view_count",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "favourite_count",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "status",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ],
+  "vinted_sync_runs": [
+   {
+    "n": "id",
+    "type": "uuid",
+    "defaut": "gen_random_uuid()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "user_id",
+    "type": "uuid",
+    "defaut": null,
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "kind",
+    "type": "text",
+    "defaut": "'dressing'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "status",
+    "type": "text",
+    "defaut": "'running'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "declencheur",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "page_suivante",
+    "type": "integer",
+    "defaut": "1",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "total_pages",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "total_entries",
+    "type": "integer",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "items_vus",
+    "type": "integer",
+    "defaut": "0",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "items_crees",
+    "type": "integer",
+    "defaut": "0",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "items_maj",
+    "type": "integer",
+    "defaut": "0",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "erreur",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "extension_build",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "started_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "updated_at",
+    "type": "timestamp with time zone",
+    "defaut": "now()",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "finished_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "queued_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "claimed_at",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_user_id",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "vinted_login",
+    "type": "text",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   },
+   {
+    "n": "platform",
+    "type": "text",
+    "defaut": "'vinted'::text",
+    "non_nul": true,
+    "identite": false
+   },
+   {
+    "n": "progres_le",
+    "type": "timestamp with time zone",
+    "defaut": null,
+    "non_nul": false,
+    "identite": false
+   }
+  ]
+ },
+ "index": [
+  "CREATE UNIQUE INDEX annonces_plateforme_pkey ON public.annonces_plateforme USING btree (id)",
+  "CREATE UNIQUE INDEX annonces_plateforme_unique ON public.annonces_plateforme USING btree (user_id, platform, listing_id)",
+  "CREATE UNIQUE INDEX cross_post_jobs_pkey ON public.cross_post_jobs USING btree (id)",
+  "CREATE UNIQUE INDEX cross_post_jobs_un_seul_publish_actif_par_article_plateforme ON public.cross_post_jobs USING btree (inventaire_id, platform) WHERE ((action = 'publish'::text) AND (status = ANY (ARRAY['pending'::text, 'processing'::text, 'needs_user'::text])) AND (inventaire_id IS NOT NULL))",
+  "CREATE UNIQUE INDEX inventaire_doublons_pkey ON public.inventaire_doublons USING btree (id)",
+  "CREATE UNIQUE INDEX inventaire_doublons_paire ON public.inventaire_doublons USING btree (user_id, LEAST(garde, absorbe), GREATEST(garde, absorbe)) WHERE (motif IS DISTINCT FROM 'copie_non_prouvee'::text)",
+  "CREATE UNIQUE INDEX inventaire_doublons_copie ON public.inventaire_doublons USING btree (user_id, ((preuves ->> 'job'::text))) WHERE (motif = 'copie_non_prouvee'::text)",
+  "CREATE UNIQUE INDEX ventes_pkey ON public.ventes USING btree (id)",
+  "CREATE UNIQUE INDEX ventes_commande_unique ON public.ventes USING btree (user_id, plateforme_code, commande_ref) WHERE ((commande_ref IS NOT NULL) AND (plateforme_code IS NOT NULL))",
+  "CREATE UNIQUE INDEX ventes_operations_pkey ON public.ventes_operations USING btree (user_id, cle)",
+  "CREATE UNIQUE INDEX vinted_listing_snapshots_pkey ON public.vinted_listing_snapshots USING btree (id)",
+  "CREATE UNIQUE INDEX vinted_snapshots_jour_unique ON public.vinted_listing_snapshots USING btree (user_id, vinted_item_id, captured_on)"
+ ],
+ "fonctions": [
+  {
+   "nom": "_ts_ou_null",
+   "args": "p text",
+   "def": "CREATE OR REPLACE FUNCTION public._ts_ou_null(p text)\n RETURNS timestamp with time zone\n LANGUAGE plpgsql\n IMMUTABLE\nAS $function$\nBEGIN\n  IF p IS NULL OR btrim(p) = '' THEN RETURN NULL; END IF;\n  RETURN p::timestamptz;\nEXCEPTION WHEN OTHERS THEN\n  RETURN NULL;\nEND\n$function$\n"
+  },
+  {
+   "nom": "armer_retrait_job",
+   "args": "p_job_id uuid, p_chemin text, p_delai interval",
+   "def": "CREATE OR REPLACE FUNCTION public.armer_retrait_job(p_job_id uuid, p_chemin text, p_delai interval DEFAULT '00:00:00'::interval)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\nbegin\n  -- (2026-09-30) corps dans armer_retrait_job_pour ; ici, jamais de preuve par le geste.\n  return public.armer_retrait_job_pour(p_job_id, p_chemin, p_delai, false);\nend;\n$function$\n"
+  },
+  {
+   "nom": "armer_retrait_job_pour",
+   "args": "p_job_id uuid, p_chemin text, p_delai interval, p_preuve_geste boolean",
+   "def": "CREATE OR REPLACE FUNCTION public.armer_retrait_job_pour(p_job_id uuid, p_chemin text, p_delai interval, p_preuve_geste boolean)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  j        public.cross_post_jobs%rowtype;\n  v_item   text;\n  v_url    text;\n  v_ident  text;\n  v_sans_lien boolean;\n  v_pf     jsonb;\n  v_del    uuid;\n  v_compte text;\nbegin\n  select * into j from public.cross_post_jobs where id = p_job_id for update;\n  if not found or j.inventaire_id is null\n     or coalesce(j.action, 'publish') not in ('publish', 'republish')\n     or j.status is distinct from 'published' then\n    return null;\n  end if;\n\n  -- Point A, incident Angel : le dépôt prouve l'annonce, pas une vente.\n  -- Lecture indexée ventes_user_inventaire_idx ; aucune réécriture de données.\n  if not exists (\n    select 1 from public.ventes v\n    join public.inventaire i on i.id = v.inventaire_id and i.user_id = v.user_id\n    where v.user_id = j.user_id and v.inventaire_id = j.inventaire_id\n      and i.statut = 'vendu'\n      and lower(coalesce(v.statut, '')) not in ('annule', 'annulée', 'cancelled', 'canceled')\n      and coalesce(nullif(v.plateforme_code, ''), nullif(v.plateforme, '')) is not null\n      and lower(coalesce(nullif(i.plateforme, ''), nullif(v.plateforme_code, ''), v.plateforme)) <> lower(j.platform)\n    limit 1\n  ) then\n    -- (2026-09-30, règle Louis partie 2 — décision Nico) Le geste de la\n    -- personne vaut preuve de vente pour CE retrait-là seulement : « oui » à\n    -- « Déjà vendu ? » sur l'annonce que l'app lui a montrée (preuve déjà\n    -- reconnue le 27/09). La fiche doit être vendue, et jamais sur la\n    -- plateforme de l'annonce retirée. Toutes les autres gardes restent.\n    if not coalesce(p_preuve_geste, false) or not exists (\n      select 1 from public.inventaire i\n       where i.id = j.inventaire_id and i.user_id = j.user_id and i.statut = 'vendu'\n         and lower(coalesce(nullif(i.plateforme, ''), '')) <> lower(j.platform)\n    ) then\n      return null;\n    end if;\n  end if;\n  -- (27/09 soir) UN TITRE N'EST JAMAIS UNE PREUVE : l'annonce doit être liée à\n  -- SA fiche par une preuve, et la fiche ne doit pas porter deux annonces\n  -- vivantes sur cette plateforme (deux annonces = deux exemplaires).\n  if not public.retrait_job_prouve(j.id) then\n    return null;\n  end if;\n  if public.fiche_annonces_vivantes(j.inventaire_id, j.platform) >= 2 then\n    return null;\n  end if;\n  if coalesce(j.platform_fields ->> 'sale_signal', '') = 'sold' then\n    return null;\n  end if;\n  v_url := nullif(btrim(coalesce(j.listing_url, '')), '');\n  if j.platform = 'vinted' then\n    v_item := coalesce(case when j.platform_listing_id ~ '^\\d+$' then j.platform_listing_id end,\n                       substring(v_url from '/items/(\\d+)'));\n    if v_item is not null and public.vinted_annonce_vendue(j.user_id, v_item) then\n      return null;\n    end if;\n  end if;\n  v_sans_lien := v_url is null and nullif(btrim(coalesce(j.platform_listing_id, '')), '') is null;\n  if exists (\n    select 1 from public.cross_post_jobs d\n     where d.user_id = j.user_id and d.inventaire_id = j.inventaire_id\n       and d.platform = j.platform and d.action = 'delete'\n       and (d.status in ('pending', 'processing', 'needs_user')\n            or (d.status = 'deleted' and d.created_at >= coalesce(j.published_at, j.created_at)))\n       and (v_sans_lien\n            or public.listing_designe(coalesce(j.platform_listing_id, v_item, v_url), d.listing_url, d.platform_listing_id)\n            or (v_url is not null and d.listing_url = v_url)\n            or (j.platform_listing_id is not null and d.platform_listing_id = j.platform_listing_id))\n  ) then\n    return null;\n  end if;\n  v_pf := jsonb_build_object('arme_par', jsonb_build_object(\n            'chemin', p_chemin, 'le', now(), 'depot', j.id,\n            'pose_par', 'armer_retrait_job (serveur)'));\n  if coalesce(p_preuve_geste, false) then\n    v_pf := v_pf || jsonb_build_object('preuve', 'geste_deja_vendu');   -- MODIF 2026-09-30\n  end if;\n  if v_url is null then\n    v_pf := v_pf || jsonb_build_object('removal_url_missing', true);\n  end if;\n  if j.platform = 'beebs' and v_sans_lien then\n    v_pf := v_pf || jsonb_build_object('retrait_attend_lien', jsonb_build_object(\n              'depuis', now(), 'motif', 'depot_beebs_en_verification_a_la_vente'));\n  end if;\n  if j.platform = 'vinted' then\n    select nullif(btrim(i.vinted_account_id::text), '') into v_compte\n      from public.inventaire i where i.id = j.inventaire_id;\n    if v_compte is not null then\n      v_pf := v_pf || jsonb_build_object('vinted_account_id', v_compte);\n    end if;\n  end if;\n  if p_delai is not null and p_delai > interval '0' then\n    v_pf := v_pf || jsonb_build_object('next_action_after', to_jsonb(now() + p_delai));\n  end if;\n  insert into public.cross_post_jobs\n    (user_id, inventaire_id, platform, action, status, photo_option, title, listing_url, platform_listing_id, platform_fields)\n  values\n    (j.user_id, j.inventaire_id, j.platform, 'delete', 'pending', 'original',\n     j.title, v_url, nullif(btrim(coalesce(j.platform_listing_id, '')), ''), v_pf)\n  returning id into v_del;\n  update public.cross_post_jobs\n     set platform_fields = coalesce(platform_fields, '{}'::jsonb) || jsonb_build_object(\n           'pending_removal', false,\n           'retrait_arme', jsonb_build_object('job', v_del, 'le', now(), 'chemin', p_chemin))\n   where id = j.id;\n  return v_del;\nend;\n$function$\n"
+  },
+  {
+   "nom": "armer_retraits_copies",
+   "args": "p_inventaire_id bigint, p_chemin text, p_sauf_job uuid, p_sauf_plateforme text, p_delai interval",
+   "def": "CREATE OR REPLACE FUNCTION public.armer_retraits_copies(p_inventaire_id bigint, p_chemin text, p_sauf_job uuid DEFAULT NULL::uuid, p_sauf_plateforme text DEFAULT NULL::text, p_delai interval DEFAULT '00:00:00'::interval)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\ndeclare\n  v_inv   public.inventaire%rowtype;\n  v_pub   record;\n  v_del   uuid;\n  v_n     integer := 0;\n  v_pl    text[] := '{}';\n  v_url   text;\n  v_pf    jsonb;\n  v_q     integer := 0;\nbegin\n  select * into v_inv from public.inventaire where id = p_inventaire_id;\n  if not found or v_inv.fusionne_dans is not null then\n    return jsonb_build_object('armes', 0);\n  end if;\n  -- (2026-09-27, audit synchro) une fiche peut porter PLUSIEURS annonces\n  -- vivantes sur la même plateforme (rattachement de la personne, deux\n  -- dépôts) : la plus récente par plateforme ET toute autre dont un relevé\n  -- atteste qu'elle vit encore sur cette fiche. Avant : une seule par\n  -- plateforme — la seconde restait en vente après la vente (Louis, Beebs,\n  -- 27/09). armer_retrait_job ne double jamais un retrait de la même annonce.\n  for v_pub in\n    -- (27/09 soir) UNE annonce par plateforme, la plus récente PROUVÉE ;\n    -- jamais la plateforme de la vente ; jamais une plateforme où la fiche\n    -- porte deux annonces vivantes (deux exemplaires) — armer_retrait_job\n    -- le vérifie aussi, pour tous ses appelants.\n    select x.id, x.platform from (\n      (select distinct on (j.platform) j.id, j.platform\n         from public.cross_post_jobs j\n        where j.user_id = v_inv.user_id and j.inventaire_id = p_inventaire_id\n          and coalesce(j.action, 'publish') in ('publish', 'republish')\n          and j.status = 'published'\n          and (p_sauf_job is null or j.id <> p_sauf_job)\n          and (p_sauf_plateforme is null or j.platform <> p_sauf_plateforme)\n          and public.retrait_job_prouve(j.id)\n          and public.fiche_annonces_vivantes(p_inventaire_id, j.platform) < 2\n        order by j.platform, coalesce(j.published_at, j.created_at) desc, j.created_at desc)\n    ) x\n  loop\n    v_del := public.armer_retrait_job(v_pub.id, p_chemin, p_delai);\n    if v_del is not null then\n      v_n := v_n + 1;\n      v_pl := v_pl || v_pub.platform;\n    end if;\n  end loop;\n  -- Point A : sans dépôt prouvé, ne pas déduire un retrait de la seule fiche.\n  if v_n > 0 then\n    insert into public.usage_logs (user_id, feature, metadata)\n    values (v_inv.user_id, 'retrait_annonces', jsonb_build_object(\n      'chemin', p_chemin,\n      'plateformes', (select coalesce(jsonb_agg(p order by p), '[]'::jsonb) from unnest(v_pl) as p),\n      'n_annonces', v_n,\n      'n_articles', 1,\n      'article_id', v_inv.id::text));\n  end if;\n  -- (06/10, Nico) une copie encore en ligne qu'aucune preuve ne lie à CET\n  -- article ne reste plus en silence : elle devient la question « Déjà vendu ? »\n  -- (inventaire_doublons, motif 'copie_non_prouvee'), une par copie. Jamais un\n  -- retrait sans preuve ni sans le oui de la personne ; une erreur ici\n  -- n'empêche jamais les retraits prouvés armés ci-dessus.\n  begin\n    v_q := public.poser_questions_copies_non_prouvees(p_inventaire_id, p_sauf_job, p_sauf_plateforme, 'vente:' || coalesce(p_chemin, ''));\n  exception when others then\n    raise warning 'armer_retraits_copies (article %) : question copie non posée : %', p_inventaire_id, sqlerrm;\n    v_q := 0;\n  end;\n  return jsonb_build_object('armes', v_n, 'plateformes', to_jsonb(v_pl), 'questions', v_q);\nend;\n$function$\n"
+  },
+  {
+   "nom": "enregistrer_vente_atomique",
+   "args": "p_user uuid, p_cle text, p_inventaire bigint, p_job uuid, p_prix numeric, p_frais numeric, p_quantite integer, p_quantite_attendue integer, p_plateforme text",
+   "def": "CREATE OR REPLACE FUNCTION public.enregistrer_vente_atomique(p_user uuid, p_cle text, p_inventaire bigint DEFAULT NULL::bigint, p_job uuid DEFAULT NULL::uuid, p_prix numeric DEFAULT NULL::numeric, p_frais numeric DEFAULT 0, p_quantite integer DEFAULT 1, p_quantite_attendue integer DEFAULT NULL::integer, p_plateforme text DEFAULT NULL::text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\n SET lock_timeout TO '1500ms'\n SET statement_timeout TO '5s'\nAS $function$\nDECLARE\n j cross_post_jobs%ROWTYPE; i inventaire%ROWTYPE; copie record;\n v_inv bigint:=p_inventaire; v_cle text; precedent jsonb; v_resultat jsonb;\n v_prix numeric; v_pa numeric; v_benef numeric; v_pct numeric; v_frais numeric:=coalesce(p_frais,0);\n v_pf text:=p_plateforme; v_code text; v_libelle text; v_q integer:=coalesce(p_quantite,1); v_restant integer;\n v_vente bigint; v_ids bigint[]:='{}'; v_historique bigint; v_n integer;\n v_retraits integer:=0; v_annules integer:=0; v_proof boolean:=false;\n v_snap record;\n v_none jsonb:=jsonb_build_object('ok',false,'venteCreated',false,'inventaireUpdated',false,\n  'siblingsCancelled',0,'pendingRemoval',0,'retraitsArmes',0,'emailSent',false,'venteNotee',false);\nBEGIN\n IF p_user IS NULL OR (auth.uid() IS NOT NULL AND auth.uid()<>p_user) THEN\n  RAISE EXCEPTION 'Compte non autorisé' USING ERRCODE='42501'; END IF;\n IF p_job IS NOT NULL THEN\n  SELECT * INTO j FROM cross_post_jobs WHERE id=p_job AND user_id=p_user;\n  IF j.id IS NULL OR coalesce(j.action,'publish') NOT IN ('publish','republish') THEN\n   RETURN v_none||jsonb_build_object('reason','Annonce introuvable pour cette vente.'); END IF;\n  v_inv:=j.inventaire_id;\n  v_cle:=CASE WHEN nullif(btrim(j.platform_listing_id),'') IS NOT NULL\n    THEN 'annonce:'||j.platform||':'||btrim(j.platform_listing_id) ELSE 'job:'||j.id::text END;\n  v_q:=1;\n ELSE\n  IF nullif(btrim(p_cle),'') IS NULL OR length(p_cle)>150 OR v_inv IS NULL THEN\n   RETURN v_none||jsonb_build_object('reason','La référence de cette confirmation de vente manque.'); END IF;\n  v_cle:='manuel:'||p_cle;\n END IF;\n -- Tous les chemins prennent d'abord le verrou de la fiche, puis des jobs.\n -- Deux plateformes de la même fiche ne peuvent pas consommer en parallèle.\n PERFORM pg_advisory_xact_lock(hashtextextended(p_user::text||':'||coalesce(v_inv::text,v_cle),0));\n SELECT o.resultat INTO precedent FROM ventes_operations o WHERE o.user_id=p_user AND o.cle=v_cle;\n IF FOUND THEN RETURN precedent||jsonb_build_object('rejouee',true,'venteCreated',false,'inventaireUpdated',false); END IF;\n IF v_inv IS NOT NULL THEN\n  SELECT * INTO i FROM inventaire WHERE id=v_inv AND user_id=p_user FOR UPDATE;\n  IF i.id IS NULL OR i.fusionne_dans IS NOT NULL THEN\n   RETURN v_none||jsonb_build_object('reason','La fiche de cet exemplaire doit être confirmée avant d’enregistrer la vente.'); END IF;\n END IF;\n IF p_job IS NOT NULL THEN\n  SELECT * INTO j FROM cross_post_jobs WHERE id=p_job AND user_id=p_user FOR UPDATE;\n  IF j.inventaire_id IS DISTINCT FROM v_inv THEN RAISE EXCEPTION 'La fiche a changé ; réessaie.'; END IF;\n  IF nullif(j.platform_fields->>'vente_operation_cle','') IS NOT NULL THEN\n   SELECT o.resultat INTO precedent FROM ventes_operations o\n    WHERE o.user_id=p_user AND o.cle=j.platform_fields->>'vente_operation_cle';\n   IF FOUND THEN RETURN precedent||jsonb_build_object('rejouee',true,'venteCreated',false,'inventaireUpdated',false); END IF;\n  END IF;\n  IF j.status='sold' THEN\n   -- Ancienne vente sans reçu : ne jamais reconsommer ni inventer son lien.\n   RETURN v_none||jsonb_build_object('reason','Cette ancienne vente doit être vérifiée dans tes ventes avant toute nouvelle confirmation. Aucun stock n’a été recompté.'); END IF;\n  IF j.status<>'published' THEN RETURN v_none||jsonb_build_object('reason','Cette annonce n’est plus à confirmer comme vendue.'); END IF;\n  -- (08/10, Louis) VINTED : une annonce que la synchro du dressing a revue EN\n  -- LIGNE après son signal n'est pas vendue ; une annonce remplacée par une\n  -- autre annonce EN LIGNE de la même fiche non plus (« Vendue ? » sur une\n  -- copie disparue : 14 ventes déclarées le 06/10, 4 annonces toujours en ligne).\n  IF j.platform='vinted' AND nullif(btrim(j.platform_listing_id),'') IS NOT NULL THEN\n   SELECT s.status, s.captured_at INTO v_snap FROM vinted_listing_snapshots s\n    WHERE s.user_id=p_user AND s.vinted_item_id=btrim(j.platform_listing_id) ORDER BY s.captured_at DESC LIMIT 1;\n   IF v_snap.status='active' AND (v_snap.captured_at>=coalesce(_ts_ou_null(j.platform_fields->>'unavailable_since'),j.published_at,j.created_at)\n      -- (08/10) ou relevé de la MÊME synchro du dressing que le signal (horodaté juste avant lui)\n      OR EXISTS(SELECT 1 FROM vinted_sync_runs r WHERE r.user_id=p_user AND r.kind='dressing'\n        AND r.started_at<=LEAST(v_snap.captured_at,_ts_ou_null(j.platform_fields->>'unavailable_since'))\n        AND coalesce(r.finished_at,now())>=GREATEST(v_snap.captured_at,_ts_ou_null(j.platform_fields->>'unavailable_since')))) THEN\n    RETURN v_none||jsonb_build_object('reason','Cette annonce est toujours en ligne sur Vinted (relevé du dressing du '\n      ||to_char(v_snap.captured_at AT TIME ZONE 'Europe/Paris','DD/MM à HH24:MI')||') : aucune vente n’est enregistrée.');\n   END IF;\n   IF coalesce(j.platform_fields->>'sale_signal','')<>'sold' AND i.id IS NOT NULL\n      AND nullif(btrim(i.vinted_item_id),'') IS NOT NULL AND btrim(i.vinted_item_id)<>btrim(j.platform_listing_id)\n      AND coalesce(i.vinted_status,'')='active' AND i.disparu_le IS NULL\n      AND EXISTS(SELECT 1 FROM vinted_listing_snapshots s WHERE s.user_id=p_user AND s.vinted_item_id=btrim(i.vinted_item_id)\n                  AND s.status='active' AND s.captured_at>now()-interval '26 hours') THEN\n    RETURN v_none||jsonb_build_object('reason','Cet article est en ligne sur Vinted sous une autre annonce ('||btrim(i.vinted_item_id)\n      ||') : celle-ci a été remplacée, ce n’est pas une vente.');\n   END IF;\n  END IF;\n  IF NOT retrait_job_prouve(j.id) OR (v_inv IS NOT NULL AND fiche_annonces_vivantes(v_inv,j.platform)>1) THEN\n   RETURN v_none||jsonb_build_object('reason','Plusieurs exemplaires sont possibles. Confirme la fiche de cette annonce avant d’enregistrer sa vente.'); END IF;\n  v_proof:=coalesce(j.platform_fields->>'sale_signal','')='sold';\n  IF NOT v_proof AND j.platform='vinted' AND nullif(j.platform_listing_id,'') IS NOT NULL THEN\n   SELECT s.status='sold' INTO v_proof FROM vinted_listing_snapshots s\n    WHERE s.user_id=p_user AND s.vinted_item_id=j.platform_listing_id ORDER BY s.captured_at DESC LIMIT 1;\n  END IF;\n  v_pf:=CASE WHEN coalesce(v_proof,false) THEN j.platform ELSE 'ailleurs' END;\n  v_prix:=coalesce(p_prix,j.price); v_frais:=0;\n ELSE\n  v_prix:=p_prix;\n END IF;\n -- (02/10 soir, point 8) La plateforme de la vente se compare par son CODE\n -- (« vinted »), jamais par son libellé (« Vinted ») : l'annonce de la\n -- plateforme vendue n'était jamais passée « vendue », et les ventes n'avaient\n -- pas de plateforme_code. Le libellé reste celui de l'écran.\n v_code:=coalesce(plateforme_normalisee(v_pf),'ailleurs');\n IF v_code='autre' THEN v_code:='ailleurs'; END IF;\n v_libelle:=CASE WHEN p_job IS NOT NULL OR v_pf IS NULL OR v_pf=v_code THEN\n   CASE v_code WHEN 'vinted' THEN 'Vinted' WHEN 'ebay' THEN 'eBay' WHEN 'leboncoin' THEN 'Leboncoin'\n     WHEN 'beebs' THEN 'Beebs' WHEN 'opla' THEN 'Opla' ELSE 'Ailleurs' END ELSE v_pf END;\n IF v_prix IS NULL OR v_prix<=0 OR v_prix::text IN ('NaN','Infinity','-Infinity') OR v_frais<0 OR v_frais::text IN ('NaN','Infinity','-Infinity')\n    OR v_q<1 OR v_q>1000 THEN RETURN v_none||jsonb_build_object('reason','Vérifie le prix, les frais et la quantité vendue.'); END IF;\n IF v_inv IS NOT NULL THEN\n  IF i.statut='vendu' OR coalesce(i.quantite,1)<v_q THEN\n   RETURN v_none||jsonb_build_object('reason','Ce stock a déjà été vendu ou modifié. Actualise-le avant de confirmer.'); END IF;\n  IF p_job IS NULL AND (p_quantite_attendue IS NULL OR coalesce(i.quantite,1) IS DISTINCT FROM p_quantite_attendue) THEN\n   RETURN v_none||jsonb_build_object('reason','La quantité en stock a changé. Actualise-la avant de confirmer la vente.'); END IF;\n  -- Une vente historique potentiellement identique n'est jamais recomptée.\n  -- Les ventes des opérations précédentes sont distinguées par leur reçu.\n  IF EXISTS(SELECT 1 FROM ventes v WHERE v.user_id=p_user AND v.inventaire_id=v_inv\n    AND (p_job IS NULL OR v.created_at>=coalesce(j.published_at,j.created_at))\n    AND NOT EXISTS(SELECT 1 FROM ventes_operations o WHERE o.user_id=p_user AND o.inventaire_id=v_inv\n      AND o.resultat->'ventes_ids' @> to_jsonb(ARRAY[v.id])) LIMIT 1) THEN\n   RETURN v_none||jsonb_build_object('reason','Une vente est déjà liée à cette fiche. Vérifie-la dans tes ventes pour éviter de la compter deux fois.'); END IF;\n  v_pa:=CASE WHEN i.prix_achat_inconnu THEN NULL ELSE i.prix_achat END;\n  v_benef:=CASE WHEN v_pa IS NOT NULL THEN v_prix-v_pa-coalesce(i.purchase_costs,0)-v_frais END;\n  v_pct:=v_benef/v_prix*100; v_restant:=coalesce(i.quantite,1)-v_q;\n END IF;\n -- Le reçu et toutes les écritures suivantes disparaissent ensemble en cas d'erreur.\n INSERT INTO ventes_operations(user_id,cle,inventaire_id,job_id,resultat) VALUES(p_user,v_cle,v_inv,p_job,'{}');\n IF p_job IS NOT NULL THEN\n  UPDATE cross_post_jobs SET status='sold',sold_at=now(),last_checked_at=now(),\n   platform_fields=coalesce(platform_fields,'{}')||jsonb_build_object('vente_operation_cle',v_cle)\n   WHERE id=j.id;\n END IF;\n FOR v_n IN 1..v_q LOOP\n  INSERT INTO ventes(user_id,inventaire_id,titre,prix_achat,prix_vente,benefice,marque,type,description,\n    emplacement,date,plateforme,plateforme_code,annonce_id,quantite,statut,selling_fees)\n   VALUES(p_user,v_inv,coalesce(j.title,i.titre),v_pa,v_prix,v_benef,i.marque,i.type,i.description,\n    i.emplacement,(now() AT TIME ZONE 'Europe/Paris')::date,v_libelle,v_code,\n    CASE WHEN p_job IS NOT NULL THEN nullif(btrim(j.platform_listing_id),'') END,1,'vendu',v_frais) RETURNING id INTO v_vente;\n  v_ids:=array_append(v_ids,v_vente);\n END LOOP;\n IF v_inv IS NOT NULL THEN\n  IF v_restant>0 THEN\n   UPDATE inventaire SET quantite=v_restant WHERE id=v_inv;\n   LOOP\n    v_historique:=(extract(epoch FROM clock_timestamp())*1000)::bigint+(random()*9999)::int;\n    EXIT WHEN NOT EXISTS(SELECT 1 FROM inventaire WHERE id=v_historique);\n   END LOOP;\n   INSERT INTO inventaire(id,user_id,titre,prix_achat,prix_achat_inconnu,purchase_costs,prix_vente,margin,margin_pct,\n    selling_fees,statut,quantite,marque,type,description,emplacement,plateforme,date)\n   VALUES(v_historique,p_user,i.titre,v_pa,v_pa IS NULL,0,v_prix,v_benef,v_pct,v_frais,'vendu',v_q,\n    i.marque,i.type,i.description,i.emplacement,v_libelle,to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'));\n  ELSE\n   UPDATE inventaire SET quantite=CASE WHEN p_job IS NULL THEN v_q ELSE 0 END,\n    statut='vendu',prix_vente=v_prix,margin=v_benef,margin_pct=v_pct,\n    selling_fees=v_frais,plateforme=v_libelle,date=to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') WHERE id=v_inv;\n  END IF;\n  FOR copie IN SELECT c.id,c.status,c.platform FROM cross_post_jobs c\n    WHERE c.user_id=p_user AND c.inventaire_id=v_inv AND c.id IS DISTINCT FROM p_job\n      AND c.action IN ('publish','republish') AND c.status IN ('pending','processing','needs_user','published')\n      AND (p_job IS NULL OR c.platform IS DISTINCT FROM j.platform)\n      -- Une vente partielle ne clôt que l'annonce explicitement vendue.\n      -- Les autres annonces gardent leur stock et leur propre futur reçu.\n      AND (v_restant=0 OR (p_job IS NULL AND c.platform=v_code AND c.status='published'))\n      AND retrait_job_prouve(c.id) AND fiche_annonces_vivantes(v_inv,c.platform)<2\n    ORDER BY c.id LIMIT 25 FOR UPDATE OF c\n  LOOP\n   UPDATE cross_post_jobs SET platform_fields=coalesce(platform_fields,'{}')||jsonb_build_object('vente_operation_cle',v_cle) WHERE id=copie.id;\n   IF p_job IS NULL AND copie.platform=v_code AND copie.status='published' THEN\n    -- La personne a nommé la plateforme de cette vente. La seule annonce\n    -- prouvée de cet exemplaire y est soldée, jamais retirée.\n    UPDATE cross_post_jobs SET status='sold',sold_at=now() WHERE id=copie.id;\n   ELSIF copie.status='published' THEN\n    IF armer_retrait_job(copie.id,'vente_copie_prouvee','0 seconds') IS NOT NULL THEN v_retraits:=v_retraits+1; END IF;\n   ELSE\n    UPDATE cross_post_jobs SET status='cancelled',error='Cet exemplaire a été vendu ; cette publication est arrêtée.' WHERE id=copie.id;\n    v_annules:=v_annules+1;\n   END IF;\n  END LOOP;\n END IF;\n IF p_job IS NOT NULL THEN\n  INSERT INTO usage_logs(user_id,feature,metadata) VALUES(p_user,'vente_a_annoncer',\n   jsonb_build_object('job_id',j.id,'inventaire_id',v_inv::text,'plateforme',v_code,'plateforme_annonce',j.platform,\n    'titre',coalesce(j.title,i.titre),'prix_vente',v_prix,'benefice',v_benef,'retraits_a_cliquer',0,\n    'retrait_beebs_auto',v_retraits,'vendu_le',now()));\n END IF;\n v_resultat:=v_none||jsonb_build_object('ok',true,'venteCreated',true,'inventaireUpdated',v_inv IS NOT NULL,\n  'siblingsCancelled',v_annules,'retraitsArmes',v_retraits,'venteNotee',p_job IS NOT NULL,\n  'ventes_ids',to_jsonb(v_ids),'restant',v_restant,'rejouee',false);\n UPDATE ventes_operations SET resultat=v_resultat WHERE user_id=p_user AND cle=v_cle;\n RETURN v_resultat;\nEND;\n$function$\n"
+  },
+  {
+   "nom": "enregistrer_ventes_prouvees",
+   "args": "p_user uuid",
+   "def": "CREATE OR REPLACE FUNCTION public.enregistrer_ventes_prouvees(p_user uuid)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\n SET statement_timeout TO '4s'\nAS $function$\nDECLARE j record; r jsonb; n integer:=0;\nBEGIN\n IF p_user IS NULL OR (auth.uid() IS NOT NULL AND auth.uid()<>p_user) THEN\n  RAISE EXCEPTION 'Compte non autorisé' USING ERRCODE='42501';\n END IF;\n -- Un ancien relevé peut encore écrire son inventaire : attendre sa clôture.\n IF EXISTS(SELECT 1 FROM vinted_sync_runs WHERE user_id=p_user AND status='running' LIMIT 1) THEN\n  RETURN jsonb_build_object('enregistrees',0,'releve_en_cours',true);\n END IF;\n FOR j IN\n  SELECT c.id,coalesce(\n    CASE WHEN c.platform_fields->>'detected_price' ~ '^[0-9]+([.][0-9]+)?$'\n      THEN (c.platform_fields->>'detected_price')::numeric END,c.price) prix\n  FROM cross_post_jobs c JOIN inventaire i ON i.id=c.inventaire_id AND i.user_id=c.user_id\n  WHERE c.user_id=p_user AND c.status='published' AND c.action IN('publish','republish')\n    AND c.platform_fields->>'sale_signal'='sold'\n    AND i.statut='stock' AND coalesce(i.quantite,1)>0 AND i.fusionne_dans IS NULL\n    AND nullif(c.platform_listing_id,'') IS NOT NULL\n    AND coalesce(CASE WHEN c.platform_fields->>'detected_price' ~ '^[0-9]+([.][0-9]+)?$'\n      THEN (c.platform_fields->>'detected_price')::numeric END,c.price)>0\n    AND NOT EXISTS(SELECT 1 FROM ventes_operations o\n      WHERE o.user_id=p_user AND o.cle='annonce:'||c.platform||':'||c.platform_listing_id LIMIT 1)\n    AND NOT EXISTS(SELECT 1 FROM ventes_operations o\n      WHERE o.user_id=p_user AND o.cle=c.platform_fields->>'vente_operation_cle' LIMIT 1)\n    AND (\n      (c.platform='vinted' AND (\n        SELECT s.status='sold' AND s.captured_at>=coalesce(c.published_at,c.created_at)\n        FROM vinted_listing_snapshots s\n        WHERE s.user_id=p_user AND s.vinted_item_id=c.platform_listing_id\n        ORDER BY s.captured_at DESC LIMIT 1\n      ))\n      OR (c.platform_fields#>>'{sale_evidence,listing_id}'=c.platform_listing_id\n        AND c.platform_fields#>>'{sale_evidence,platform}'=c.platform\n        AND c.platform_fields#>>'{sale_evidence,state}'='sold'\n        AND c.platform_fields#>>'{sale_evidence,exact}'='true')\n    )\n    AND retrait_job_prouve(c.id) AND fiche_annonces_vivantes(c.inventaire_id,c.platform)<2\n  ORDER BY c.last_checked_at NULLS FIRST,c.id LIMIT 5\n LOOP\n  BEGIN\n   r:=enregistrer_vente_atomique(p_user,null,p_job:=j.id,p_prix:=j.prix);\n   IF r->>'ok'='true' THEN n:=n+1; END IF;\n  EXCEPTION WHEN OTHERS THEN\n   RAISE WARNING 'Vente automatique annulée, job % : %',j.id,SQLERRM;\n  END;\n END LOOP;\n RETURN jsonb_build_object('enregistrees',n);\nEND;\n$function$\n"
+  },
+  {
+   "nom": "fiche_annonces_vivantes",
+   "args": "p_inv bigint",
+   "def": "CREATE OR REPLACE FUNCTION public.fiche_annonces_vivantes(p_inv bigint)\n RETURNS TABLE(platform text, listing_id text)\n LANGUAGE sql\n STABLE\n SET search_path TO 'public'\nAS $function$\n  SELECT ap.platform, ap.listing_id FROM annonces_plateforme ap\n   WHERE ap.inventaire_id = p_inv AND ap.disparu_le IS NULL\n  UNION\n  SELECT j.platform, COALESCE(NULLIF(j.platform_listing_id, ''), 'job:' || j.id::text) FROM cross_post_jobs j\n   WHERE j.inventaire_id = p_inv AND j.action IN ('publish', 'republish') AND j.status = 'published'\n  UNION\n  SELECT 'vinted', i.vinted_item_id FROM inventaire i\n   WHERE i.id = p_inv AND i.vinted_item_id IS NOT NULL AND i.disparu_le IS NULL;\n$function$\n"
+  },
+  {
+   "nom": "fiche_annonces_vivantes",
+   "args": "p_inventaire bigint, p_platform text",
+   "def": "CREATE OR REPLACE FUNCTION public.fiche_annonces_vivantes(p_inventaire bigint, p_platform text)\n RETURNS integer\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  SELECT count(DISTINCT ap.listing_id)::int FROM annonces_plateforme ap\n   WHERE ap.inventaire_id = p_inventaire AND ap.platform = p_platform\n     AND ap.disparu_le IS NULL AND ap.retiree_le IS NULL AND ap.ignoree_le IS NULL\n     AND ap.statut_plateforme IN ('en_ligne', 'en_verification');\n$function$\n"
+  },
+  {
+   "nom": "inventaire_vendu_retire_ses_copies",
+   "args": "",
+   "def": "CREATE OR REPLACE FUNCTION public.inventaire_vendu_retire_ses_copies()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\nbegin\n  if coalesce(current_setting('fillsell.sans_retrait', true), '') = '1' then\n    return new;\n  end if;\n  if new.fusionne_dans is not null then\n    return new;\n  end if;\n  if old.statut = 'vendu' or (old.quantite is not null and old.quantite <= 0) then\n    return new;\n  end if;\n  if not (new.statut = 'vendu' or (new.quantite is not null and new.quantite <= 0)) then\n    return new;\n  end if;\n  begin\n    perform public.armer_retraits_copies(\n      new.id, 'vente_article_serveur', null,\n      case when new.vinted_status = 'sold' then 'vinted' end,\n      interval '10 minutes');\n  exception when others then\n    raise warning 'inventaire_vendu_retire_ses_copies (article %) : % — vente poursuivie', new.id, sqlerrm;\n  end;\n  return new;\nend;\n$function$\n"
+  },
+  {
+   "nom": "listing_designe",
+   "args": "p_listing text, p_url text, p_pid text",
+   "def": "CREATE OR REPLACE FUNCTION public.listing_designe(p_listing text, p_url text, p_pid text)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE\nAS $function$\n  -- Un identifiant explicite contradictoire interdit le repli sur l'URL.\n  -- On lit le segment d'annonce, jamais un nombre dans le titre ou la requête.\n  SELECT length(btrim(coalesce(p_listing,''))) >= 4 AND\n    CASE WHEN nullif(btrim(p_pid),'') IS NOT NULL THEN btrim(p_listing)=btrim(p_pid)\n    ELSE btrim(p_listing)=coalesce(\n      substring(split_part(split_part(p_url,'?',1),'#',1) FROM '/items/([0-9]+)(?:-|/|$)'),\n      substring(split_part(split_part(p_url,'?',1),'#',1) FROM '/ad/[^/]+/([0-9]+)(?:-|/|$)'),\n      substring(split_part(split_part(p_url,'?',1),'#',1) FROM '/itm/(?:[^/]+/)?([0-9]+)(?:/|$)'),\n      substring(split_part(split_part(p_url,'?',1),'#',1) FROM '/p/([0-9]+)(?:-|/|$)'),\n      substring(split_part(split_part(p_url,'?',1),'#',1) FROM '/(?:product|article)/(art_[A-Za-z0-9_-]+)(?:/|$)'), '') END;\n$function$\n"
+  },
+  {
+   "nom": "plateforme_normalisee",
+   "args": "p text",
+   "def": "CREATE OR REPLACE FUNCTION public.plateforme_normalisee(p text)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  select case\n    when p is null or btrim(p) = '' then null\n    when lower(p) like '%vinted%' then 'vinted'\n    when lower(p) like '%leboncoin%' or lower(btrim(p)) in ('lbc', 'le bon coin') then 'leboncoin'\n    when lower(p) like '%beebs%' then 'beebs'\n    when lower(p) like '%ebay%' then 'ebay'\n    when lower(p) like '%opla%' then 'opla'\n    when lower(p) like '%ailleurs%' or lower(p) like '%main propre%' then 'ailleurs'\n    else 'autre'\n  end;\n$function$\n"
+  },
+  {
+   "nom": "poser_questions_copies_non_prouvees",
+   "args": "p_inventaire_id bigint, p_sauf_job uuid, p_sauf_plateforme text, p_source text",
+   "def": "CREATE OR REPLACE FUNCTION public.poser_questions_copies_non_prouvees(p_inventaire_id bigint, p_sauf_job uuid DEFAULT NULL::uuid, p_sauf_plateforme text DEFAULT NULL::text, p_source text DEFAULT 'vente'::text)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\nDECLARE\n  v_inv inventaire%ROWTYPE;\n  v_vendu_sur text;\n  n integer := 0;\nBEGIN\n  SELECT * INTO v_inv FROM inventaire WHERE id = p_inventaire_id;\n  IF NOT FOUND OR v_inv.fusionne_dans IS NOT NULL OR v_inv.statut IS DISTINCT FROM 'vendu' THEN\n    RETURN 0;\n  END IF;\n  -- La plateforme de la vente, pour le texte : la vente enregistrée, sinon la fiche.\n  SELECT lower(COALESCE(NULLIF(v.plateforme_code, ''), NULLIF(v.plateforme, ''))) INTO v_vendu_sur\n    FROM ventes v\n   WHERE v.user_id = v_inv.user_id AND v.inventaire_id = v_inv.id\n     AND lower(COALESCE(v.statut, '')) NOT IN ('annule', 'annulée', 'cancelled', 'canceled')\n   ORDER BY v.created_at DESC LIMIT 1;\n  v_vendu_sur := COALESCE(v_vendu_sur, lower(NULLIF(btrim(COALESCE(v_inv.plateforme, '')), '')));\n\n  INSERT INTO inventaire_doublons (user_id, garde, absorbe, niveau, statut, motif, preuves, source)\n  SELECT v_inv.user_id, v_inv.id, v_inv.id, 'probable', 'proposee', 'copie_non_prouvee',\n         jsonb_build_object(\n           'job', j.id, 'annonce_id', ap.id, 'platform', j.platform,\n           'url', COALESCE(NULLIF(btrim(COALESCE(ap.url, '')), ''), NULLIF(btrim(COALESCE(j.listing_url, '')), '')),\n           'titre', COALESCE(NULLIF(btrim(COALESCE(ap.titre, '')), ''), NULLIF(btrim(COALESCE(j.title, '')), ''), v_inv.titre),\n           'vendu_sur', v_vendu_sur,\n           'rattachement', j.platform_fields -> 'rattachement'),\n         left(COALESCE(p_source, 'vente'), 80)\n    FROM cross_post_jobs j\n    JOIN LATERAL (\n      SELECT a.id, a.url, a.titre FROM annonces_plateforme a\n       WHERE a.job_id = j.id AND a.user_id = j.user_id AND a.disparu_le IS NULL AND a.retiree_le IS NULL\n       ORDER BY a.vu_le DESC NULLS LAST LIMIT 1) ap ON true\n   WHERE j.user_id = v_inv.user_id AND j.inventaire_id = v_inv.id\n     AND COALESCE(j.action, 'publish') IN ('publish', 'republish') AND j.status = 'published'\n     AND (p_sauf_job IS NULL OR j.id <> p_sauf_job)\n     AND (p_sauf_plateforme IS NULL OR j.platform <> p_sauf_plateforme)\n     AND lower(COALESCE(NULLIF(v_inv.plateforme, ''), '')) <> lower(j.platform)\n     AND (v_vendu_sur IS NULL OR v_vendu_sur <> lower(j.platform))\n     AND COALESCE(j.platform_fields ->> 'sale_signal', '') <> 'sold'\n     AND NOT public.retrait_job_prouve(j.id)\n     AND public.fiche_annonces_vivantes(v_inv.id, j.platform) < 2\n     AND NOT EXISTS (SELECT 1 FROM cross_post_jobs d\n                      WHERE d.user_id = j.user_id AND d.inventaire_id = j.inventaire_id AND d.platform = j.platform\n                        AND d.action = 'delete' AND d.status IN ('pending', 'processing', 'needs_user'))\n  ON CONFLICT DO NOTHING;\n  GET DIAGNOSTICS n = ROW_COUNT;\n  RETURN n;\nEND;\n$function$\n"
+  },
+  {
+   "nom": "retrait_job_prouve",
+   "args": "p_job uuid",
+   "def": "CREATE OR REPLACE FUNCTION public.retrait_job_prouve(p_job uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  SELECT COALESCE((\n    SELECT (COALESCE(j.platform_fields #>> '{rattachement,par}', '') = 'utilisateur'\n            AND COALESCE(j.platform_fields #>> '{rattachement,motif}', '') = 'meme_article_confirme')   -- (06/10) geste « même article »\n        OR (NOT EXISTS (\n             SELECT 1 FROM inventaire_fusions f\n              WHERE f.defait_le IS NULL AND COALESCE(f.par, '') NOT LIKE 'utilisateur%'\n                AND COALESCE(f.par, '') NOT LIKE '%photo\\_identique)'   -- (06/10) photo identique = preuve\n                AND jsonb_typeof(f.deplacements -> 'cross_post_jobs') = 'array'\n                AND (f.deplacements -> 'cross_post_jobs') ? j.id::text)\n       AND (COALESCE(j.platform_fields #>> '{rattachement,par}', '') IN ('', 'utilisateur')\n            OR COALESCE(j.platform_fields #>> '{rattachement,motif}', '') IN ('identifiant_depot_clos', 'photo_identique')\n            OR COALESCE(j.platform_fields #>> '{rattachement,import}', '') = 'true')\n       AND (COALESCE(j.platform_fields ->> 'source', '') <> 'releve'\n            OR COALESCE(j.platform_fields #>> '{rattachement,par}', '') = 'utilisateur'\n            OR COALESCE(j.platform_fields #>> '{rattachement,motif}', '') IN ('identifiant_depot_clos', 'photo_identique')\n            OR COALESCE(j.platform_fields #>> '{rattachement,import}', '') = 'true'))\n      FROM cross_post_jobs j WHERE j.id = p_job), false);\n$function$\n"
+  },
+  {
+   "nom": "vinted_annonce_vendue",
+   "args": "p_user uuid, p_item text",
+   "def": "CREATE OR REPLACE FUNCTION public.vinted_annonce_vendue(p_user uuid, p_item text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\n  select coalesce((\n    select s.status = 'sold'\n    from public.vinted_listing_snapshots s\n    where s.user_id = p_user and s.vinted_item_id = p_item\n    order by s.captured_at desc\n    limit 1\n  ), false);\n$function$\n"
+  }
+ ],
+ "declencheurs": [
+  "CREATE TRIGGER inventaire_vendu_retire_ses_copies AFTER UPDATE OF statut, quantite ON public.inventaire FOR EACH ROW EXECUTE FUNCTION inventaire_vendu_retire_ses_copies()"
+ ]
+}
