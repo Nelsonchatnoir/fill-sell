@@ -40,6 +40,14 @@
 // l'ops-digest le montre en rouge ; un geste de la personne (« Synchroniser »,
 // < 30 min) rouvre jusqu'à PASSES_INACHEVEES_MAX_GESTE essais, puis plus rien
 // avant notre correctif (remettre passages à 0).
+//
+// ⛔ AUCUNE FICHE NE NAÎT D'UN RELEVÉ SANS DÉCISION v3 (v13, 08/10 après-midi).
+// Leboncoin, Beebs, eBay, Opla : la base refuse toute fiche « releve_* » qui ne
+// sort pas de rapprocher_importer (déclencheur inventaire_releve_par_decision),
+// appelé par cette passe ou par la personne. Vinted : le dressing écrit ses
+// fiches lui-même (extension) ; celles nées depuis la dernière passe
+// (rapprochement_v3_lire.vinted_a_juger) sont jugées ici contre les imports
+// déjà au stock, puis datées (rapprochement_comptes.vinted_juge_le).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { urlsDe, manquantesDe, passe } from "../_shared/rapprochement/passe.js";
@@ -59,7 +67,7 @@ const DECLENCHEURS_GESTE = ["bouton", "bouton_distant", "app", "bouton:redemande
 const json = (corps: unknown, status = 200) =>
   new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
-type Donnees = { fiches: unknown[]; annonces: unknown[]; geste_recent?: boolean };
+type Donnees = { fiches: unknown[]; annonces: unknown[]; geste_recent?: boolean; vinted_a_juger?: unknown[]; vinted_juge_jusqu_a?: string | null; vinted_reste?: boolean };
 type Empreinte = { url: string; dhash: string; phash: string; variantes: unknown };
 
 serve(async (req) => {
@@ -229,9 +237,19 @@ serve(async (req) => {
       // (v12) Une passe qui a écrit (ou n'avait rien à écrire) remet le compteur à zéro.
       const progres = decisions.length === 0 || lotsEcrits > 0;
       parCompte.passes_inachevees = progres ? 0 : inachevees + 1;
+      // (08/10, complément) Les fiches du dressing Vinted lues par cette passe
+      // sont jugées : seulement une passe allée au bout, sans aucune erreur
+      // (sinon elles restent à juger et la passe suivante les reprend).
+      const vintedJuge = fini && erreurs.length === 0 && donnees.vinted_juge_jusqu_a ? { vinted_juge_le: donnees.vinted_juge_jusqu_a } : {};
+      parCompte.vinted_a_juger = (donnees.vinted_a_juger ?? []).length;
+      // 200 fiches Vinted par passe : s'il en reste, le compte reste « à faire »
+      // et le filet (rapprochement-1min) reprend la suite dans la minute.
+      const vintedReste = fini && erreurs.length === 0 && donnees.vinted_reste === true;
+      if (vintedReste) { inacheve = true; parCompte.vinted_reste = true; }
       await etat(user, {
+        ...vintedJuge,
         passages: progres ? 0 : -(inachevees + 1),
-        etat: fini ? "termine" : "creation", fin_le: fini ? new Date().toISOString() : null, a_traiter: 0, photos_manquantes: 0,
+        etat: vintedReste ? "a_faire" : fini ? "termine" : "creation", fin_le: fini && !vintedReste ? new Date().toISOString() : null, a_traiter: 0, photos_manquantes: 0,
         ms_decision: Date.now() - t0,
         bilan: { version: 3, mode, geste, faits, sautes, erreurs: erreurs.slice(0, 20), passe: b, photos: parCompte.photos, le: new Date().toISOString() },
       });

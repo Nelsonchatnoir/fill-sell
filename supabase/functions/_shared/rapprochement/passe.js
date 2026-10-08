@@ -9,7 +9,7 @@
 // une photo sans empreinte est simplement absente de la comparaison (jamais
 // une preuve avec une photo manquante : moins de photos = moins de paires).
 import { photoDepuisEmpreinte } from './photos.js';
-import { construireNoeuds, forcesDe, rapprocher, planifier, resumer } from './moteur.js';
+import { construireNoeuds, forcesDe, rapprocher, planifier, resumer, candidatsDe, autoDecidee, vintedAJuger } from './moteur.js';
 
 export function urlsDe(donnees, { maxPhotos = 6 } = {}) {
   const out = new Set();
@@ -42,9 +42,19 @@ export function passe(donnees, empreintes, { mode = 'normal' } = {}) {
   // mode normal : seules les annonces encore sans article (ni décidées, ni
   // ignorées) ont une décision à prendre — les paires qui ne les touchent pas
   // ne sont pas construites (voir candidatsDe).
-  const actifs = mode === 'normal'
-    ? new Set(N.map((n, i) => (n.id.startsWith('A') && !n.ref.inventaire_id ? i : -1)).filter((i) => i >= 0))
-    : null;
+  // (08/10, complément) … et les fiches du dressing Vinted nées depuis la
+  // dernière passe ; les annonces déjà rangées qu'elles touchent deviennent
+  // actives à leur tour, pour que TOUS leurs concurrents comptent (jamais une
+  // fusion sur une paire dont on n'aurait pas vu le rival).
+  let actifs = null;
+  if (mode === 'normal') {
+    const aJuger = vintedAJuger(donnees);
+    actifs = new Set(N.map((n, i) => ((n.id.startsWith('A') && !n.ref.inventaire_id) || aJuger.has(n.id) ? i : -1)).filter((i) => i >= 0));
+    if (aJuger.size) {
+      const vinted = new Set(N.map((n, i) => (aJuger.has(n.id) ? i : -1)).filter((i) => i >= 0));
+      for (const [i, j] of candidatsDe(N, vinted)) for (const k of [i, j]) if (N[k].id.startsWith('A') && autoDecidee(N[k].ref)) actifs.add(k);
+    }
+  }
   const R = rapprocher(N, { forces, actifs });
   const decisions = planifier(donnees, N, R, { mode });
   // les relevés non probants : ignorés, comme avant (jamais une création)
@@ -75,7 +85,7 @@ export function passe(donnees, empreintes, { mode = 'normal' } = {}) {
   }
   return {
     decisions,
-    bilan: { noeuds: N.length, aretes: R.aretes.length, doubles: R.doubles.length, par_plateforme: parPf, plan: resumer(decisions), ms: Date.now() - t0 },
+    bilan: { noeuds: N.length, aretes: R.aretes.length, doubles: R.doubles.length, par_plateforme: parPf, plan: resumer(decisions), vinted_a_juger: (donnees.vinted_a_juger ?? []).length, ms: Date.now() - t0 },
     N, R,
   };
 }

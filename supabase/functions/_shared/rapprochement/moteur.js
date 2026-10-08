@@ -365,19 +365,35 @@ export function rapprocher(N, { S = SEUILS, forces = [], actifs = null } = {}) {
 //                    sûre, question, ou retour au stock. Jamais une décision de
 //                    la personne (forces), jamais un article qu'elle a modifié
 //                    (intact=false → question, pas de fusion).
+// (08/10, complément) mode 'normal', aussi : les FICHES DU DRESSING VINTED nées
+// depuis la dernière passe (`donnees.vinted_a_juger`, écrites par l'extension)
+// sont jugées contre les imports automatiques déjà au stock — un import intact
+// sûrement identique rejoint la fiche Vinted (fusion, la base garde ses gardes),
+// un doute devient la question, hors du stock. Une annonce déjà rangée n'est
+// rouverte que pour une de CES fiches, jamais pour une autre paire.
 const idAnnonce = (n) => n.id.slice(1);
 const idFiche = (n) => n.id.slice(1);
 const estAnnonce = (n) => n.id.startsWith('A');
+export const autoDecidee = (a) => !!a.inventaire_id && a.source !== 'manuel' && a.source !== 'job' && a.derniere_par !== 'utilisateur' && a.derniere_par !== 'job';
+export const vintedAJuger = (donnees) => new Set((donnees.vinted_a_juger ?? []).map((id) => 'F' + id));
 export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
   const parId = new Map(N.map((n) => [n.id, n]));
   const F = new Map((donnees.fiches ?? []).map((f) => [String(f.id), f]));
-  const autoDecidee = (a) => !!a.inventaire_id && a.source !== 'manuel' && a.source !== 'job' && a.derniere_par !== 'utilisateur' && a.derniere_par !== 'job';
   const ficheDe = (a) => (a.inventaire_id ? F.get(String(a.inventaire_id)) ?? null : null);
+  const importAuto = (a) => { const f = ficheDe(a); return autoDecidee(a) && !!f && String(f.origine ?? '').startsWith('releve_'); };
+  // les annonces rangées automatiquement qu'une fiche Vinted nouvelle touche (fort ou doute)
+  const aJuger = mode === 'normal' ? vintedAJuger(donnees) : new Set();
+  const rouvertes = new Set();
+  for (const e of aJuger.size ? R.aretes : []) {
+    if (e.niveau !== 'fort' && e.niveau !== 'doute') continue;
+    for (const [x, y] of [[e.x, e.y], [e.y, e.x]]) if (aJuger.has(x.id) && estAnnonce(y) && importAuto(y.ref)) rouvertes.add(y.id);
+  }
   // une annonce « ouverte » : sans article (normale) ; en réparation, aussi une
   // annonce décidée automatiquement dont l'article est un import intact ou à vérifier
   const ouverte = (n) => {
     if (!estAnnonce(n)) return false;
     const a = n.ref; if (!a.inventaire_id) return true;
+    if (rouvertes.has(n.id)) return true;
     if (mode !== 'reparation') return false;
     const f = ficheDe(a); if (!f) return false;
     // (la base vérifie l'« intact » à l'écriture : fusion d'un article intact, question sinon)
@@ -400,10 +416,14 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
       for (const a of annonces) {
         if (String(a.inventaire_id ?? '') === String(fiche)) continue;       // déjà là
         if (!a.inventaire_id) { out.push({ type: 'attacher', annonce: a.id, fiche, motif: 'photo_identique', preuve: { regle: 'rapprochement_v3', groupe: g.map((m) => m.id) } }); continue; }
-        if (mode === 'reparation' && autoDecidee(a)) {
+        // (normal) seulement vers la fiche Vinted nouvelle qui a rouvert l'annonce
+        const versVintedNouvelle = mode === 'normal' && aJuger.has(d0.base) && rouvertes.has('A' + a.id);
+        if ((mode === 'reparation' || versVintedNouvelle) && autoDecidee(a)) {
           const f = ficheDe(a);
           if (f && String(f.origine ?? '').startsWith('releve_')) {
-            out.push({ type: 'fusionner', annonce: a.id, absorbe: f.id, garde: fiche, preuve: { regle: 'rapprochement_v3', groupe: g.map((m) => m.id) } });
+            out.push({ type: 'fusionner', annonce: a.id, absorbe: f.id, garde: fiche,
+              ...(versVintedNouvelle ? { portee: 'vinted_nouvelle' } : {}),
+              preuve: { regle: 'rapprochement_v3', groupe: g.map((m) => m.id), ...(versVintedNouvelle ? { vinted_nouvelle: fiche } : {}) } });
             fichesPlanifiees.add(String(f.id));
           }
         }
@@ -411,7 +431,8 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
       continue;
     }
     if (d0.decision === 'fusion_autre') {
-      const ouvertes = annonces.filter((a) => ouverte(parId.get('A' + a.id)));
+      // (une annonce rouverte par une fiche Vinted ne refait pas un groupe sans elle)
+      const ouvertes = annonces.filter((a) => ouverte(parId.get('A' + a.id)) && !rouvertes.has('A' + a.id));
       if (!ouvertes.length) continue;
       out.push({ type: 'groupe', annonces: annonces.map((a) => a.id), preuve: { regle: 'rapprochement_v3' } });
       for (const a of annonces) if (a.inventaire_id) fichesPlanifiees.add(String(a.inventaire_id));
@@ -420,7 +441,10 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
     if (d0.decision === 'a_verifier') {
       const ouvertes = annonces.filter((a) => ouverte(parId.get('A' + a.id)));
       if (!ouvertes.length) continue;
-      const d = d0.doutes[0];
+      // (normal) un import rouvert ne l'est que pour son doute avec une fiche Vinted nouvelle
+      const seulementRouvertes = ouvertes.every((a) => rouvertes.has('A' + a.id));
+      const d = seulementRouvertes ? d0.doutes.find((x) => aJuger.has(x.autre.id)) : d0.doutes[0];
+      if (!d) continue;
       // l'article du groupe = la première annonce (les autres s'y rattachent)
       out.push({ type: 'a_verifier', annonces: annonces.map((a) => a.id), candidat: cible(d.autre), motif: d.e.motif,
         preuves: { ...preuvesDe(d), candidats_total: d0.doutes.length, autre: d.autre.id } });
@@ -440,7 +464,7 @@ export function planifier(donnees, N, R, { mode = 'normal' } = {}) {
   // (b) « Annonce en double ? »
   for (const { x, y, ph, t } of R.doubles) {
     const ax = estAnnonce(x) ? x.ref : null, ay = estAnnonce(y) ? y.ref : null;
-    const touche = [x, y].some((n) => estAnnonce(n) && ouverte(n));
+    const touche = [x, y].some((n) => estAnnonce(n) && ouverte(n) && !rouvertes.has(n.id));
     if (mode === 'normal' && !touche) continue;
     const k = [x.id, y.id].sort().join('|'); if (vus.has(k)) continue; vus.add(k);
     out.push({ type: 'annonce_en_double', a: cible(x), b: cible(y), platform: x.pf,
