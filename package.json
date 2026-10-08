@@ -141,6 +141,7 @@
     "selftest:republication-va-au-bout": "node scripts/republication-va-au-bout-selftest.mjs",
     "selftest:fiche-main-vinted": "node scripts/fiche-main-vinted-selftest.mjs",
     "selftest:beebs-preuve-relue": "node scripts/beebs-preuve-relue-selftest.mjs",
+    "selftest:onglet-muet-partout": "node scripts/onglet-muet-partout-selftest.mjs",
     "selftest:vinted-annonce-en-ligne": "node scripts/vinted-annonce-en-ligne-selftest.mjs",
     "selftest:creneaux-va-au-bout": "node scripts/creneaux-va-au-bout-selftest.mjs",
     "selftest:creneaux-famine": "node scripts/creneaux-famine-selftest.mjs",
