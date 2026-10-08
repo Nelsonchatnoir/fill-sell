@@ -1,4 +1,17 @@
-# Depop — rattachement au moteur de FillSell (08/10/2026) — PRÉPARÉ, INERTE
+# Depop — rattachement au moteur de FillSell (08/10/2026) — BRANCHÉ le 09/10 pour le SEUL compte bêta
+
+> **09/10/2026 (nuit) — ce document décrit la préparation du 08/10 ; le branchement est FAIT,
+> pour le seul compte autorisé** (bêta de Nico, `profiles.beta_flags.depop` ;
+> `coin_config.depop_ouvert` reste à 0) :
+> - base : migration `20261009020000` (garde `depop_autorise`, CHECK, 29 fonctions) — un compte
+>   non autorisé ne peut créer aucune ligne Depop (exception `depop_non_ouvert`) ;
+> - moteur commun : les 6 faiblesses du § 5 corrigées à la racine (`9eab08f`, preuves dans le commit) ;
+> - serveur (`0773ae1`), extension 0.6.105 (`f59c1c2`, hôte www.depop.com OPTIONNEL), app (`8f88cdd`) ;
+> - l'état part par identifiant (`utils/depopPublication.js`) : `ETAT_PAR_PLATEFORME` porte des
+>   libellés français écrits dans les textes, Depop n'y a pas de colonne ;
+> - selftests : `depop-acces`, `depop-app`, `depop-partout` (aucune liste de plateformes n'oublie
+>   Depop sans raison écrite), `moteur-faiblesses-depop`, `depop-mapping`.
+> Cycle de vie réel : `CARTOGRAPHIE.md` § 8. Ouvrir à tous = `depop_ouvert = 1`, décision de Nico.
 
 **[mesuré]** = vérifié par un test ou un relevé ; **« à vérifier »** = non prouvé.
 

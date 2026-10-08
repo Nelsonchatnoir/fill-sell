@@ -4,14 +4,15 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.102** ; 0.6.104 zip prêt ; min **0.6.81** ; OTA 2.9.67 ; reprise : `docs/reprise/terminal-bebertdeals-0810.md`.
+- **Servi** : ext. **0.6.104** ; **0.6.105** zip prêt ; min **0.6.81** ; OTA 2.9.67 ; reprise : `docs/reprise/terminal-depop-0910.md`.
+- **⛔ DEPOP (09/10)** : Nico seul (`depop_autorise`, drapeau à 0) ; hôte optionnel ; rayon par id ; `selftest:depop-partout`.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
-  `rapprochement` v15 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
+  `rapprochement` v16 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
   nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; remise en ligne Vinted (mêmes photos + titre, jamais
   en ligne ensemble → la plus ancienne ; vente sur annonce remplacée refusée) : mig 160000 NON appliquée ; `docs/multi-synchro.md`.
-- **Push** (2.9.62, cron 34, `pushDisponible()`) ; **⛔ mail par vente** : récente prouvée, sans plafond ni récap.
+- **Push** (cron 34, `pushDisponible()`) ; **⛔ mail par vente** : récente prouvée, sans plafond ni récap.
 - **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = va au bout, même hors créneau.
-- **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie = création.
+- **05/10** : Free 50 repub./mois ; palier unique ; eBay voie = création.
 - **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
 - **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = fiche ; colis jamais deviné.
 - **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; absent de deux relevés complets → « déjà
@@ -22,7 +23,7 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 - **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB, iOS Codemagic) ; le reste : fin de l'état.
 
-> **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
+> **Jumeau de `CLAUDE.md`** (Claude Code) ; celui-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
 > chantiers et le glossaire. Une règle ajoutée à l'un se reporte dans l'autre, le
 > même jour. Complètent celui-ci : `supabase/AGENTS.md`, `src/AGENTS.md`, et
@@ -31,7 +32,7 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 # FillSell — passation pour agent de code
 
 Tout ce qu'il faut pour travailler sur FillSell **sans casser la production** et
-sans l'historique des conversations. Rédigé le 27/09/2026. Les sections 7
+sans l'historique des conversations. Les sections 7
 (état) et les chiffres se périment : **la base de prod et `git log` font foi,
 jamais ce fichier**. Heures : toujours Europe/Paris.
 
@@ -516,8 +517,7 @@ qui survit à ça, c'est du code.
   (il ne voit pas les messages intermédiaires, souvent depuis son iPhone).
 - **Sur le PC, Nico ne fait QUE zipper et téléverser.** Ne jamais lui
   demander d'inspecter un fichier, une version, une console : livrer un
-  fichier prêt, **chemin exact en clair** (ex.
-  `C:\Users\nicol\fill-and-sell\build\CWS-0.6.75-A-TELEVERSER\fillsell-extension-0.6.75-cws.zip`).
+  fichier prêt, **chemin exact en clair** (`C:\Users\nicol\fill-and-sell\build\…`).
 - **Aucun achat** (serveur, IP, abonnement, crédit) sans GO avec le montant.
 - **Un GO se lit, il ne se déduit pas** : une migration, un envoi de mail, une
   action en prod attend une phrase qui la nomme.

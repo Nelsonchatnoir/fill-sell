@@ -170,3 +170,30 @@ utilisateur connecté) ; quels attributs propres au type s'affichent vraiment à
 - l'interface en **français** (le compte du relevé affiche l'anglais) : si les
   libellés à l'écran sont ceux de `name_i18n.fr`, les erreurs du § 5 seront visibles
   des vendeurs.
+
+## 8. Cycle de vie RELEVÉ EN RÉEL (08/10 nuit → 09/10, compte de Nico)
+Tout depuis une page `www.depop.com`, avec le jeton de la session (cookie
+`access_token` → `Authorization: Bearer`, `credentials: 'omit'`) — exactement ce que
+fait le site. Hors navigateur : 403, jamais contourné. Code : `chrome-extension/
+content-scripts/depop.js` (connecteur), contrats détaillés en tête du fichier.
+
+| Geste | Appel | Réponse mesurée |
+|---|---|---|
+| Statut vendeur | `GET /api/v1/sellerOnboarding/sellerStatus/` | `canSell` — false tant que PayPal ou Stripe n'est pas relié : Depop **enregistre en brouillon** et exige « Add payment info » (mesuré le 08/10, brouillon effacé) |
+| Photo | `POST /presentation/api/v1/pictures/` `{type, extension, dimensions}` → `PUT` S3 présigné → `POST …/pictures/validate/` `{picture_ids}` jusqu'à `complete` | 201 `{id, url}` ; une photo NON carrée (960×1280) est acceptée |
+| Mise en ligne | `POST /presentation/api/v1/listing/products/` (corps : `description`, `price_amount`, `price_currency`, `picture_ids`, `condition`, `brand`, `gender`, `product_type`, `variant_set` + `variants`, `national_shipping_cost`, `country`, `geo_position_*`, `listing_lifecycle_id`, `persistent_id`) | 201 `{id, slug}` (annonce de test 945715025 à 999 €) |
+| Lecture | `GET /presentation/api/v1/products/<id>/` ou `…/by-slug/<slug>/` (publique) | `status` STATUS_ONSALE / STATUS_PURCHASED ; 404 « Product not found » |
+| Retrait | `DELETE /presentation/api/v1/products/<id>/` | 204 ; relu → 404 |
+| Boutique | `GET /presentation/api/v1/shops/<id>/products/` (24 par page, `?after=<last>`) ; `…/by-status/sold/` | annonces en vente ; vendues |
+| Lien public | `https://www.depop.com/products/<slug>/` | le slug EST l'identifiant de nos jobs |
+
+- Prix 999 € accepté (aucun plafond rencontré) ; pas de titre (Depop en génère un pour
+  l'affichage, « Men's White and Grey T-shirt »).
+- Une erreur réseau (« Failed to fetch » : CORS sur un jeton invalide, coupure) n'est
+  JAMAIS un verdict — ni déconnecté, ni retirée, ni vendue.
+- Vente réelle : **non prouvée de bout en bout** (on ne vend pas) ; la structure d'une
+  annonce vendue (STATUS_PURCHASED, `variants_all[].status`) est lue sur une annonce
+  publique vendue (936331996).
+- État du compte au 09/10 : l'annonce « Scotch » (945704866, 80 €) est **celle de Nico**,
+  créée par lui — jamais touchée. Deux images orphelines (sans annonce) restent chez
+  Depop, invisibles.

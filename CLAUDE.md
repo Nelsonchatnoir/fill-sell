@@ -4,11 +4,21 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » en fin ; reprises : `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
 
+- **⛔ DEPOP POUR LE SEUL COMPTE DE NICO (09/10 nuit)** : base (mig 20261009020000,
+  garde `depop_autorise` : drapeau `depop_ouvert` RESTÉ À 0 ou `beta_flags.depop` —
+  Nico seul), moteur commun corrigé (9eab08f : « EUR » ≡ « EU », « Comme neuf » = très
+  bon), serveur (gpj v224 : un job Depop ne va QU'au poste qui déclare `depop_acces`),
+  extension **0.6.105** (hôte www.depop.com OPTIONNEL, « Autoriser Depop » ; zip
+  `build/CWS-0.6.105-A-TELEVERSER/`), app (Depop « à venir », ouverte par
+  `rpc depop_autorise`, fail-closed). ⛔ Toute liste de plateformes nomme Depop ou
+  dit pourquoi (`selftest:depop-partout`) ; jamais de rayon Depop par libellé ;
+  l'annonce « Scotch » 945704866 est CELLE DE NICO. Reprise :
+  `docs/reprise/terminal-depop-0910.md` ; contrats réels : `docs/plateformes/depop/CARTOGRAPHIE.md` § 8.
 - **⛔ VENTES PROUVÉES : AUTOMATIQUES DEPUIS LE 08/10 23:40 (GO de Nico)** : la
   vente sur preuve « sold » (GO du 28/09) n'avait tourné que de 16:42 à 16:46 le
   28/09 (appel retiré de get-pending-jobs par précaution ; cause mesurée de la
@@ -101,21 +111,20 @@ contraire. Il se périme : `functions list`, `cron.job` et
   en ligne, vente et remise en double. Migrations 20261008110000 / 111000 /
   112000 : démenti par le dressing, recul seulement sur preuve, vente refusée sur
   une annonce en ligne ou remplacée, remise retenue, note de vente ignorée.
-- **Servi** : extension **0.6.102** au CWS (b230ebe, téléversée le 06/10 au
-  soir, 51 postes le 08/10 — le rapport du 08/10 nuit la disait « jamais
-  téléversée » : faux) ; **0.6.103 JAMAIS téléversée** (Nico, 08/10 —
-  `build/anciens-zips/`) ; **0.6.104 `0cec9e6` À TÉLÉVERSER** :
-  `build/CWS-0.6.104-A-TELEVERSER/` (zip seul ; preuve de republication Beebs
-  levée par Nico le 08/10 — Beebs examine à la main les annonces ≥ 500 €) ; jamais
+- **Servi** : extension **0.6.104 `0cec9e6` SERVIE** par le CWS (23 comptes le 09/10
+  vers 01:00 ; zip rangé dans `build/anciens-zips/`, ajoutée à ALREADY_PUBLISHED) ;
+  **0.6.105 (Depop) À TÉLÉVERSER** : `build/CWS-0.6.105-A-TELEVERSER/` (zip seul,
+  BUILD_ID 2026-10-08T23:39:13Z+8f88cdd) ; 0.6.102 servie avant (b230ebe) ;
+  **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v223,
-  `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
+  10:50, build 9d203ac) ; `get-pending-jobs` v224, `photo-empreinte` v3,
+  `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v15, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v94, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
-  `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
-  `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
+  `rapprochement` v16, `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v9, `voice-intent` v155, `ops-digest` v35,
+  `ebay-api-worker` v79, `ebay-releve-api` v4, `releve-completer` v2,
+  `veille-cpu` v2, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
   20261008020000 / 030000 / 040000 (multi-synchro) appliquées — ⚠️ depuis le 05/10 15:55,
   `invoice.payment_failed` / `payment_action_required` sont COCHÉS chez Stripe : le
