@@ -806,9 +806,42 @@ serve(async (req) => {
   }
   const pausesAnciennes = pausesActives.filter((x) => Date.now() - Date.parse(x.cree_le) > 86400_000).length;
 
+  // ── BOUCLES SERVEUR ARRÊTÉES (08/10, Nadège : 8 954 fois la même décision) ──
+  // 1. Comptes dont le rapprochement est ARRÊTÉ : trois passes de suite entrées
+  //    dans la décision sans rien écrire (rapprochement v12, passages ≤ -3).
+  //    Un bug chez nous : corriger, puis remettre passages à 0.
+  // 2. Décisions répétées sautées par la base (trigger rapprochements_jamais_repete,
+  //    table rapprochements_repetes) : une boucle qui écrirait sans fin.
+  // 3. Relevés automatiques retenus par le plancher (veilleur/cron, table
+  //    releves_auto_refuses) : la cadence anti-robot qui tient.
+  // Les deux tables n'existent qu'après leurs migrations : lecture tolérante.
+  const depuis24Boucles = new Date(Date.now() - 86400_000).toISOString();
+  let arretsRapprochement: Array<{ user_id: string; passages: number; bilan: Record<string, unknown> | null; maj_le: string }> = [];
+  try {
+    const { data } = await supabase.from("rapprochement_comptes").select("user_id, passages, bilan, maj_le").lte("passages", -3).limit(100);
+    arretsRapprochement = (data ?? []) as typeof arretsRapprochement;
+  } catch (e) {
+    console.warn("[ops-digest] rapprochement_comptes illisible :", String((e as Error)?.message ?? e));
+  }
+  let decisionsRepetees: Array<{ annonce_id: string; user_id: string; decision: string; par: string; n: number; dernier_le: string }> = [];
+  try {
+    const { data, error } = await supabase.from("rapprochements_repetes").select("annonce_id, user_id, decision, par, n, dernier_le")
+      .gte("dernier_le", depuis24Boucles).order("n", { ascending: false }).limit(50);
+    if (!error) decisionsRepetees = (data ?? []) as typeof decisionsRepetees;
+  } catch { /* table absente avant sa migration */ }
+  let relevesRetenus: Array<{ user_id: string; platform: string; declencheur: string; n: number; dernier_le: string }> = [];
+  try {
+    const { data, error } = await supabase.from("releves_auto_refuses").select("user_id, platform, declencheur, n, dernier_le")
+      .gte("dernier_le", depuis24Boucles).order("n", { ascending: false }).limit(50);
+    if (!error) relevesRetenus = (data ?? []) as typeof relevesRetenus;
+  } catch { /* table absente avant sa migration */ }
+
   const counts = {
     cpu_au_dessus_70: cpuMinutesAuDessus > 0 ? 1 : 0,
     pauses_releves: pausesActives.length,
+    rapprochements_arretes: arretsRapprochement.length,
+    decisions_repetees: decisionsRepetees.length,
+    releves_auto_retenus: relevesRetenus.length,
     ia_alertes: iaAlertes.length,
     needs_user_sans_motif_24h: sansMotif.length,
     tentatives_en_cours: tentativesEnCours.length,
@@ -868,6 +901,35 @@ serve(async (req) => {
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${pausesActives.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x.user_id)} — ${esc((x.platforms ?? []).join(", "))} — depuis ${esc(x.cree_le)}${x.motif ? ` — ${esc(x.motif)}` : ""}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    arretsRapprochement.length === 0 && decisionsRepetees.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#B91C1C;">
+      🔴 Boucles serveur arrêtées — ${arretsRapprochement.length} rapprochement${arretsRapprochement.length > 1 ? "s" : ""} arrêté${arretsRapprochement.length > 1 ? "s" : ""}, ${decisionsRepetees.length} décision${decisionsRepetees.length > 1 ? "s" : ""} répétée${decisionsRepetees.length > 1 ? "s" : ""} (24 h)
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Arrêté : trois passes de suite sans rien écrire (rapprochement v12), un défaut chez nous ; corriger, puis remettre
+      rapprochement_comptes.passages à 0. Répétée : la base a refusé d'écrire une décision identique à la précédente
+      (rapprochements_repetes), un chemin qui boucle, à fermer à la racine (Nadège, 07/10 : 8 954 fois).
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${arretsRapprochement.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">rapprochement ${esc(x.user_id)} — ${esc(-x.passages)} passes sans écriture — ${esc(JSON.stringify((x.bilan ?? {}).arret ?? (x.bilan ?? {}).erreur ?? null))} — ${esc(x.maj_le)}</li>`).join("")}
+      ${decisionsRepetees.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">annonce ${esc(x.annonce_id)} (compte ${esc(x.user_id)}) — « ${esc(x.decision)} » par ${esc(x.par)} répétée ${esc(x.n)} fois — dernière ${esc(x.dernier_le)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    relevesRetenus.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      ⏱️ Relevés automatiques retenus par le plancher — ${relevesRetenus.length} compte${relevesRetenus.length > 1 ? "s" : ""}/plateforme (24 h)
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Veilleur ou cron de l'extension refusés : un relevé de la même plateforme a déjà eu lieu dans le délai plancher
+      (coin_config releve_auto_plancher_min). Un compte qui revient chaque jour en tête lit des annonces « indisponibles »
+      à tort (44310spgl sur Opla, 08/10) : c'est sa veille qu'il faut corriger.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${relevesRetenus.map((x) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#374151;">${esc(x.user_id)} — ${esc(x.platform)} (${esc(x.declencheur)}) — ${esc(x.n)} retenu${Number(x.n) > 1 ? "s" : ""}, dernier ${esc(x.dernier_le)}</li>`).join("")}
     </ul>`
   }
     ${
