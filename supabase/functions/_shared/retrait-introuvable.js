@@ -29,8 +29,8 @@
 // eBay, Beebs, Opla). Vinted a son propre circuit (404, dressing par boutique).
 // Pur, sans import réseau (Deno + Node).
 
-export const PLATEFORMES_RELEVE = new Set(["leboncoin", "ebay", "beebs", "opla"]);
-const NOM = { leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
+export const PLATEFORMES_RELEVE = new Set(["leboncoin", "ebay", "beebs", "opla", "depop"]);
+const NOM = { leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
 const ms = (v) => { if (typeof v === "number") return Number.isFinite(v) ? v : NaN; const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : NaN; };
 const STATUTS_JAMAIS_TOURNES = new Set(["queued", "expired", "cancelled", "running", "claimed"]);
 
@@ -46,7 +46,7 @@ export function releveComplet(r) {
 /** Le numéro d'annonce d'un lien (même forme que _shared/annonce-lien.ts). */
 export function numeroDepuisLien(platform, url) {
   const u = String(url ?? "");
-  const re = { leboncoin: /\/(\d{6,})(?:[/?#]|$)/, beebs: /\/p\/(\d+)(?:[-/?#]|$)/, ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/, opla: /(art_[A-Za-z0-9_-]+)/ }[platform];
+  const re = { leboncoin: /\/(\d{6,})(?:[/?#]|$)/, beebs: /\/p\/(\d+)(?:[-/?#]|$)/, ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/, opla: /(art_[A-Za-z0-9_-]+)/, depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/ }[platform];
   const m = re ? u.match(re) : null;
   return m ? m[1] : null;
 }

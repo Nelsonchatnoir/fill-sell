@@ -118,7 +118,8 @@ export async function rapatrierPhotosPublication(admin: SupabaseClient, urls: st
 // Sa valeur est la même qu'`OPLA_CDN_IMAGES` (chrome-extension/content-scripts/opla.js).
 // ═══════════════════════════════════════════════════════════════════════════
 const CDN_DOMAINES_PLATEFORMES = ["vinted.net", "vinted.fr", "vinted.com", "leboncoin.fr", "beebs.app", "ebayimg.com"];
-const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net"];
+// Depop (09/10, relevé réel : toutes les photos d'annonce sur media-photos.depop.com) — hôte EXACT.
+const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net", "media-photos.depop.com"];
 
 export function estCdnPlateforme(u: unknown): u is string {
   if (typeof u !== "string") return false;

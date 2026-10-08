@@ -63,7 +63,7 @@ export function defautFillsell({ erreur = null, pf = null } = {}) {
   return null;
 }
 
-const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
+const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
 const ACTE = { republish: "la republication", delete: "le retrait", publish: "la publication" };
 
 /**

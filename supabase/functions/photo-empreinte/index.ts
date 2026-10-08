@@ -32,7 +32,7 @@ const TIMEOUT_MS = 15_000;
 const BUDGET_MS = 20_000;
 
 const CDN_DOMAINES = ["vinted.net", "vinted.fr", "vinted.com", "leboncoin.fr", "beebs.app", "ebayimg.com"];
-const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net"];
+const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net", "media-photos.depop.com"];
 
 const cors = {
   "Access-Control-Allow-Origin": "*",

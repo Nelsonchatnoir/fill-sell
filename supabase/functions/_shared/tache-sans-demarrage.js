@@ -20,7 +20,7 @@ export const SERVI_SANS_DEMARRER_MAX = 12;
 export const SERVI_SANS_DEMARRER_DEPUIS_MS = 2 * 3600_000;
 export const SOURCE_TACHE_SANS_DEMARRAGE = "tache_sans_demarrage";
 
-const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
+const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
 
 /** La réservation dit-elle qu'il faut mettre cette tâche de côté ? */
 export function tacheAMettreDeCote(job, reservation, maintenant = Date.now()) {

@@ -43,6 +43,9 @@ export const PLATEFORMES: Readonly<Record<string, DescriptionPlateforme>> = {
   ebay: { label: "eBay", logo: "logo-ebay.png" },
   beebs: { label: "Beebs", logo: "logo-beebs.png" },
   opla: { label: "Opla", logo: "logo-opla.png" },
+  // Depop (09/10/2026) : nommée pour les comptes où elle est ouverte (« Vendu
+  // sur Depop »), JAMAIS proposée dans un mail (cf. SLUGS_PLATEFORMES_PROPOSEES).
+  depop: { label: "Depop", logo: "logo-depop.png" },
 };
 
 /** Les slugs, dans l'ordre. */
@@ -53,7 +56,7 @@ export const SLUGS_PLATEFORMES: readonly string[] = Object.keys(PLATEFORMES);
  * qu'un mail énumère (« il part sur … »), dont il montre les logos et qu'il
  * cite au pied. Opla n'en fait plus partie.
  */
-export const SLUGS_PLATEFORMES_PROPOSEES: readonly string[] = SLUGS_PLATEFORMES.filter((s) => s !== "opla");
+export const SLUGS_PLATEFORMES_PROPOSEES: readonly string[] = SLUGS_PLATEFORMES.filter((s) => s !== "opla" && s !== "depop");
 
 /**
  * Nom lisible d'une plateforme, ou `null` si le slug est inconnu.

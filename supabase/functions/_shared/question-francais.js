@@ -16,7 +16,7 @@
 // (selftest), même contrat que tailles.js.
 import { libelleTaille } from "./tailles.js";
 
-const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+const NOMS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
 const CHAMPS_TAILLE = new Set(["oplaSizeChoice", "size", "taille"]);
 // Un code de catégorie Opla (« KID_SLEEPSACK_BOYS_NEW ») : majuscules et
 // soulignés, au moins un souligné. Jamais montré.

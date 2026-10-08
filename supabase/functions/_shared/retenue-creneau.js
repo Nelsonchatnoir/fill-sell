@@ -12,7 +12,7 @@
 // republish_planifiee_fenetres_courantes) et la condition : Chrome ouvert à ce
 // moment-là. Pur (Deno + Node).
 
-const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
+const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
 
 function quand(reprise) {
   const t = Date.parse(String(reprise ?? ""));
@@ -49,7 +49,7 @@ export function messageRetenueCreneau(platform, reprise) {
 // de la suppression (jamais deux annonces). Marqueur posé depuis la 0.6.97
 // (republish_suppression_envoyee) ; avant, sa trace écrite (même lecture que
 // suppressionDejaEnvoyee dans l'extension).
-const SUPPRESSION_ENVOYEE_RE = /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted)/;
+const SUPPRESSION_ENVOYEE_RE = /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted|Depop)/;
 
 /** Le retrait de l'annonce est-il engagé (supprimée, ou suppression envoyée) ? */
 export function retraitEngage(job) {

@@ -37,6 +37,8 @@ const CANONIQUE: Record<string, (id: string) => string | null> = {
   // Lot 7 Opla : /product/<art_…> est la route publique ; /article/ n'a jamais
   // été valide.
   opla: (id) => (/^art_[A-Za-z0-9_-]+$/.test(id) ? `https://www.opla.co/product/${id}` : null),
+  // Depop (09/10, relevé réel) : /products/<slug>/ — le slug EST l'identifiant.
+  depop: (id) => (/^[A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9]$/.test(id) ? `https://www.depop.com/products/${id}/` : null),
 };
 
 /** L'identifiant lu DANS une URL — mêmes motifs que update-job-status. */
@@ -46,6 +48,7 @@ const MOTIFS: Record<string, RegExp> = {
   ebay: /\/itm\/[^?#]*?(\d{9,})/,
   beebs: /\/p\/(\d+)/,
   opla: /\/(?:product|article)\/(art_[^/?#]+)/,
+  depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
 };
 
 export function idDepuisLien(platform: string, url: unknown): string | null {

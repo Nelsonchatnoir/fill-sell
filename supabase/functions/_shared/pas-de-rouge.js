@@ -47,7 +47,7 @@ import { lectureRefusBeebs, taillesCompatibles } from "./beebs-refus-formulaire.
 import { BUILD_COLIS_DANS_ENVOI, refusColisVinted, colisEnvoyeEtRefuse, messageColisAttendMiseAJour, messageColisRefuseMemeEnvoye, posteAvecEnvoiColis, messageColisNonAfficheParLaPage } from "./vinted-colis.js";
 
 const NOM = {
-  vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
+  vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
 };
 
 /** « la publication » / « la republication » / « le retrait ». */
@@ -88,7 +88,7 @@ const PANNEAU_RE = /panneau des racines introuvable|panneau de cat[ée]gorie int
 /** Mur de connexion nommé par nos propres handlers (ancres partagées). */
 const REAUTH_EBAY_RE = /^REAUTH VENTE eBay|reconnexion de s[ée]curit[ée] pour vendre|page inattendue.*session eBay est valide/i;
 const CONNEXION_RE =
-  /^Connexion (?:Vinted|Leboncoin|eBay|Beebs) requise|page de connexion à la place du formulaire|session Vinted refusée|mur de connexion|session (?:expirée|morte|refusée)/i;
+  /^Connexion (?:Vinted|Leboncoin|eBay|Beebs|Depop) requise|page de connexion à la place du formulaire|session Vinted refusée|mur de connexion|session (?:expirée|morte|refusée)/i;
 
 /** Opla : ce n'est pas une connexion, c'est la permission d'hôte de l'extension. */
 const OPLA_ACCES_RE = /accès à opla\.co a été refusé|permission.*opla\.co|host permission.*opla/i;

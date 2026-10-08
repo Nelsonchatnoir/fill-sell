@@ -15,7 +15,7 @@
 // Pur (Deno + Node), un seul import relatif.
 import { tailleDeService, brancheDeTaille } from "./taille-de-service.js";
 
-const CLES_TAILLE = /^(taille|size|oplasizechoice|pointure|shoe_size|clothing_st)$/i;
+const CLES_TAILLE = /^(taille|size|oplasizechoice|depoptaille|pointure|shoe_size|clothing_st)$/i;
 
 /** La question posée est-elle une question de TAILLE avec sa grille ? */
 export function estQuestionTaille(f) {

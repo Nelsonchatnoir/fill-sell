@@ -155,6 +155,20 @@ export function autorisationOplaRequise(action: string): string {
 }
 export const SOURCE_OPLA_ACCES = "opla_acces";
 
+// ── DEPOP (09/10/2026) : la même permission d'hôte optionnelle, le même geste.
+// Copie À L'OCTET dans chrome-extension/background.js (messageAutorisationDepop),
+// vérifiée par scripts/depop-acces-selftest.mjs.
+export function autorisationDepopRequise(action: string): string {
+  const quoi = action === "delete" ? "le retrait repart tout seul"
+    : action === "republish" ? "la republication repart toute seule"
+    : "la publication repart toute seule";
+  return (
+    "Depop attend ton autorisation pour que FillSell y dépose tes annonces. " +
+    `Appuie sur « Autoriser Depop » : c'est une seule fois, et ${quoi}.`
+  );
+}
+export const SOURCE_DEPOP_ACCES = "depop_acces";
+
 // ── OPLA : LES COOKIES DU SITE DÉPASSENT LA LIMITE DE SON HÉBERGEUR (2026-09-24)
 // Louis, nuit du 23 au 24/09 : six kits arrêtés sur « Arbre Opla indisponible
 // (HTTP 494) ». 494 = REQUEST_HEADER_TOO_LARGE chez Vercel, l'hébergeur
@@ -262,7 +276,7 @@ export function connexionEbayRequise(action: string): string {
 //    pas une cause — le texte ne dit donc pas à qui est la faute.
 export function fuiteDeDeveloppeur(platform: string, action: string, reprend: boolean): string {
   const nom = ({
-    vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
+    vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
   } as Record<string, string>)[platform] ?? "la plateforme";
   const quoi = action === "delete" ? "Le retrait de cette annonce"
     : action === "republish" ? "La republication de cette annonce"

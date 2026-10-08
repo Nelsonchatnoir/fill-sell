@@ -807,6 +807,13 @@ serve(async (req) => {
     const sessionId = sessionIdDuJwt(authHeader);
     let posteSansOpla = capacites.includes("sans_opla");
     let posteAvecOpla = capacites.includes("opla_acces");
+    // ── DEPOP (09/10) : servi au SEUL poste qui déclare « depop_acces » ──────
+    // (extension ≥ 0.6.105 avec la permission www.depop.com). Une extension
+    // plus ancienne ne déclare rien : elle ne connaît pas Depop, elle n'en
+    // reçoit jamais un job (il resterait « Plateforme inconnue », en file).
+    // Et la base ne laisse naître un job Depop que pour un compte autorisé
+    // (garde depop_autorise, migration 20261009020000).
+    const posteAvecDepop = capacites.includes("depop_acces");
     // ── LE POSTE CLOUD (05/10, FillSell Cloud) ──────────────────────────────
     // Déclaré par la copie Cloud de l'extension (scripts/cloud/build-extension-
     // cloud.mjs) — absent pour tout le parc, qui ne voit donc RIEN changer :
@@ -2466,7 +2473,7 @@ serve(async (req) => {
         // vendue : une pièce unique dont une annonce porte sale_signal 'sold' ne
         // se publie ni ne se republie ailleurs — RETENUE, jamais annulée.
         const LIBELLES_PLATEFORME: Record<string, string> = {
-          vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla",
+          vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop",
         };
         const nonVendus = ((fiches ?? []) as Array<{ id: number; statut: string; quantite: number | null }>)
           .filter((f) => !vendus.has(Number(f.id)) && (f.quantite == null || Number(f.quantite) <= 1));
@@ -3039,10 +3046,13 @@ serve(async (req) => {
     // Retraits (delete) non concernés : ils ciblent une annonce par son lien.
     // Best-effort : une lecture ratée → servi comme avant.
     try {
+      // Depop (09/10) : une annonce Depop n'a PAS de titre (description seule,
+      // relevé du formulaire) — jamais de question « Titre » pour elle.
       const sansTitre = (out as unknown as Array<Record<string, unknown>>)
-        .filter((j) => (j.action === "publish" || j.action === "republish") && titreVide(j.title));
+        .filter((j) => (j.action === "publish" || j.action === "republish") && titreVide(j.title))
+        .filter((j) => j.platform !== "depop");
       if (sansTitre.length) {
-        const NOM_PF: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" };
+        const NOM_PF: Record<string, string> = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" };
         const ids = [...new Set(sansTitre.map((j) => j.inventaire_id).filter((x) => x != null))];
         const titreParArticle = new Map<string, string>();
         let ficheLue = true;
@@ -3230,7 +3240,7 @@ serve(async (req) => {
           // `opla` ajoutée au lot C (2026-09-16) : une session Opla morte VUE
           // PAR LA PAGE retient, au lieu de brûler les 5 tentatives de chaque job.
           const httpDe = (s["http"] ?? {}) as Record<string, unknown>;
-          for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
+          for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"]) {
             if (s[pf] !== false) continue; // null = inconnu, true = vivante : jamais retenu
             // ── OPLA : SEULE LA PAGE PROUVE (2026-09-24, règle de Nico) ────
             // Le 401 de la sonde du service worker faisait écrire `opla: false`
@@ -3355,6 +3365,15 @@ serve(async (req) => {
       }
     }
 
+    // ── DEPOP (09/10) : aucun job Depop à un poste sans l'accès ─────────────
+    if (!posteAvecDepop) {
+      const avantD = out.length;
+      out = out.filter((j) => j.platform !== "depop");
+      if (out.length !== avantD) {
+        console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Depop : ${avantD - out.length} job(s) Depop laissé(s) en file`);
+      }
+    }
+
     // ── LA REPUBLICATION OPLA SE JUGE SUR L'ANNONCE (2026-09-27, doriane-henri)
     // Un poste plus ancien que la 0.6.74 juge la republication sur la fiche
     // IMPORTÉE : sans marque (ou refusée « exige une taille »), le pré-vol la
@@ -3396,7 +3415,7 @@ serve(async (req) => {
       };
       const moi = postesDuCompte[sessionId] as Record<string, unknown> | undefined;
       const laisses: string[] = [];
-      for (const pf of ["vinted", "leboncoin", "beebs", "opla"]) {
+      for (const pf of ["vinted", "leboncoin", "beebs", "opla", "depop"]) {
         if (!emmure(moi, pf) || !out.some((j) => j.platform === pf)) continue;
         const autre = Object.entries(postesDuCompte).find(([sid, p]) => {
           if (sid === sessionId) return false;
@@ -4487,7 +4506,7 @@ serve(async (req) => {
         if (a !== "republish") return false;
         return String(pfR(j)["republish_step"] ?? "a_capturer") === "captured";
       };
-      const NOM_PF: Record<string, string> = { leboncoin: "Leboncoin", beebs: "Beebs", vinted: "Vinted", ebay: "eBay", opla: "Opla" };
+      const NOM_PF: Record<string, string> = { leboncoin: "Leboncoin", beebs: "Beebs", vinted: "Vinted", ebay: "eBay", opla: "Opla", depop: "Depop" };
 
       // ── 1. Les réponses de la personne ─────────────────────────────────────
       const repondus = out.filter((j) => vaRetirer(j) && j.inventaire_id != null
@@ -5386,7 +5405,7 @@ serve(async (req) => {
         // c'est de renoncer pendant que l'annonce, elle, est en vente.
         const ATTENTE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
         const LABEL: Record<string, string> = {
-          beebs: "Beebs", leboncoin: "Leboncoin", vinted: "Vinted", ebay: "eBay", opla: "Opla",
+          beebs: "Beebs", leboncoin: "Leboncoin", vinted: "Vinted", ebay: "eBay", opla: "Opla", depop: "Depop",
         };
         const labelDe = (p: string) => LABEL[p] ?? p;
         // (02/10) Lecture du relevé de la plateforme, une fois par poll : les
@@ -6603,7 +6622,7 @@ serve(async (req) => {
     // l'utilisateur et tient un client scopé RLS — c'est zéro aller-retour de
     // plus. Derrière un flag : le BACKGROUND, qui poll toutes les 2 minutes,
     // ne paie rien de tout ça.
-    let contexte: { sync: unknown; sessions: unknown; verite: unknown; opla?: { relie: boolean | null; sortie_active: boolean } } | null = null;
+    let contexte: { sync: unknown; sessions: unknown; verite: unknown; opla?: { relie: boolean | null; sortie_active: boolean }; depop?: { ouverte: boolean } } | null = null;
     if (body?.include_context === true) {
       contexte = { sync: null, sessions: null, verite: null };
       // (02/10, sortie d'Opla) Le popup ≥ 0.6.86 n'affiche la ligne Opla (et
@@ -6614,6 +6633,13 @@ serve(async (req) => {
         // Avant la bascule : relie null → le popup garde l'affichage d'avant.
         contexte.opla = { relie: sortieOpla ? (oplaRelieCompte ?? await oplaRelieDuCompte(admin, user.id)) : null, sortie_active: sortieOpla };
       } catch (_e) { /* le contexte ne doit JAMAIS empêcher de publier */ }
+      // (09/10) Depop ouverte pour CE compte (depop_autorise : coin_config
+      // depop_ouvert = 1, ou bêta) — c'est ce qui fait paraître la ligne
+      // « Autoriser Depop » du popup, et rien d'autre. Illisible → false.
+      try {
+        const { data: ouverte } = await userClient.rpc("depop_autorise", { p_user: user.id });
+        contexte.depop = { ouverte: ouverte === true };
+      } catch (_e) { contexte.depop = { ouverte: false }; }
       try {
         const { data: runs } = await userClient
           .from("vinted_sync_runs")
@@ -7684,7 +7710,7 @@ serve(async (req) => {
             .from("cross_post_jobs")
             .select("id, platform")
             .eq("inventaire_id", tete.inventaire_id)
-            .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla"])
+            .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"])
             .eq("action", "publish")
             .in("status", ["pending", "processing", "needs_user"]);
           if (!vivErr) {
@@ -7692,7 +7718,7 @@ serve(async (req) => {
             const enCours = new Set(
               (vivants ?? []).filter((v) => !servis.has(String(v.id))).map((v) => String(v.platform)),
             );
-            for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
+            for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"]) {
               if (enCours.has(pf)) enFile[pf] = true;
             }
           } else {
@@ -8125,7 +8151,7 @@ serve(async (req) => {
             ?? ((snap && typeof snap === "object") ? (snap as Record<string, unknown>)["platform_listing_id"] : "") ?? "").trim();
         };
         const aRegler = (out as unknown as Array<Record<string, unknown>>).filter((j) => j.action === "republish"
-          && ["beebs", "leboncoin", "ebay", "opla"].includes(String(j.platform))
+          && (["beebs", "leboncoin", "ebay", "opla"].includes(String(j.platform)) || j.platform === "depop")
           && !["recreated"].includes(String(pfP(j)["republish_step"] ?? ""))
           && pfP(j)["prix_republication"] == null && pfP(j)["prix_repris_de_l_annonce"] == null
           && numeroDe(j));

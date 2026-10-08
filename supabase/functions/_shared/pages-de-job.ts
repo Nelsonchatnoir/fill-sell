@@ -88,6 +88,9 @@ export function estPageDeConnexionPlateforme(platform: unknown, u: unknown): boo
         return /^signin\.ebay\.[a-z]{2,3}(\.[a-z]{2,3})?$/.test(h);
       case "opla":
         return /(^|\.)opla\.co$/.test(h) && /^\/(login|signin|connexion|auth)(\/|$)/.test(p);
+      // depop (09/10) : la page de connexion du site (www.depop.com/login/).
+      case "depop":
+        return /(^|\.)depop\.com$/.test(h) && /^\/(?:[a-z]{2}\/)?(login|signup)(\/|$)/.test(p);
       default:
         return false;
     }
@@ -98,7 +101,7 @@ export function estPageDeConnexionPlateforme(platform: unknown, u: unknown): boo
 }
 
 /** Les plateformes qui ont un mur de connexion reconnu. */
-export const PLATEFORMES_AVEC_MUR = ["beebs", "vinted", "leboncoin", "ebay", "opla"] as const;
+export const PLATEFORMES_AVEC_MUR = ["beebs", "vinted", "leboncoin", "ebay", "opla", "depop"] as const;
 
 /**
  * L'adresse est-elle le mur de connexion d'UNE plateforme, laquelle qu'elle

@@ -50,8 +50,10 @@ export function estSansMarque(v) {
 
 /** Plateformes où le serveur traduit l'absence de marque au service du job.
  *  eBay (API) traduit de son côté, vers l'entrée générique de SA liste
- *  (ebay-publication.ts, assemblerAspects). */
-export const PLATEFORMES_TRADUITES = ["vinted", "beebs", "leboncoin", "opla"];
+ *  (ebay-publication.ts, assemblerAspects).
+ *  Depop (09/10) : « Sans marque » devient « Other » (unbranded) dans
+ *  content-scripts/depop.js — la liste des absences reste celle-ci. */
+export const PLATEFORMES_TRADUITES = ["vinted", "beebs", "leboncoin", "opla", "depop"];
 
 /**
  * Traduit, dans le platform_fields d'un job publish/republish, chaque valeur
@@ -73,6 +75,7 @@ export function traduireAbsenceMarqueJob(job, maintenant = new Date()) {
     }
   };
   traduire(pf, "marque", "marque");
+  if (String(job.platform) === "depop") traduire(pf, "depopMarque", "depopMarque");
   for (const [racine, cle] of [["vintedAspects", "brand"], ["beebsAspects", "Marque"]]) {
     const o = pf[racine];
     if (o && typeof o === "object") traduire(o, cle, `${racine}.${cle}`);

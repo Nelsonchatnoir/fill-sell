@@ -30,8 +30,8 @@
 
 import { ATTENTE_SESSION_RE } from "./attente-session.js";
 
-const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" };
-const SITE = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app", opla: "opla.co" };
+const NOM = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" };
+const SITE = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app", opla: "opla.co", depop: "depop.com" };
 
 export const CONNEXION_OBSERVATIONS_MIN = 3;
 export const ANTIROBOT_OBSERVATIONS_MIN = 2;

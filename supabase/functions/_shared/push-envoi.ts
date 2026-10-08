@@ -54,7 +54,7 @@ export function pemVersDer(pem: string): Uint8Array<ArrayBuffer> {
 
 // ── Les textes ──────────────────────────────────────────────────────────────
 const NOMS: Record<string, string> = {
-  vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla",
+  vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop",
 };
 
 export function formaterPrix(prix: unknown, devise: unknown, lang = "fr"): string | null {

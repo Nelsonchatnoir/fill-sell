@@ -270,7 +270,7 @@ serve(async (req) => {
   // Republication multiplateforme (2026-09-17) : les messages nomment la
   // plateforme du job — « sur Vinted » n'est plus vrai pour tout le monde.
   const libellePlateforme = (p: unknown): string =>
-    ({ vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" } as Record<string, string>)[String(p ?? "")] ?? "Vinted";
+    ({ vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla", depop: "Depop" } as Record<string, string>)[String(p ?? "")] ?? "Vinted";
 
   // ── Annonces HORS LIGNE orphelines (2026-08-07, 3d-b validé Nico) ─────────
   // Un job republish resté à l'étape 'deleted' plus de 30 min = une annonce
@@ -1985,6 +1985,7 @@ serve(async (req) => {
   const FRAICHEUR_SONDE_MS: Record<string, number> = {
     vinted: 60 * 60_000, leboncoin: 3 * 60 * 60_000, ebay: 3 * 60 * 60_000, beebs: 3 * 60 * 60_000,
     opla: 3 * 60 * 60_000,
+    depop: 3 * 60 * 60_000,
   };
   // Les murs de CONNEXION, reconnus sur le texte déjà écrit par nos handlers —
   // aucune signature neuve, aucune détection inventée.
@@ -1998,6 +1999,9 @@ serve(async (req) => {
     // autres, dès que la sonde revoit Opla vivant. La PERMISSION, elle, reste
     // sur son marqueur (murOplaLeve, ci-dessous) — deux murs, deux gestes.
     opla: /^Connexion Opla requise/i,
+    // Depop (09/10) : l'ancre écrite par content-scripts/depop.js (401 dans la
+    // page, ou jeton absent) — même reprise dès que la sonde revoit Depop vivant.
+    depop: /^Connexion Depop requise/i,
   };
   // ── OPLA : LA MÊME REPRISE, SUR UN MARQUEUR ET NON SUR UN TEXTE (22/09) ──
   // Le mur d'Opla n'est pas une connexion mais la permission d'hôte de
@@ -2018,7 +2022,7 @@ serve(async (req) => {
       .from("cross_post_jobs")
       .select("id, user_id, platform, action, status, error, platform_fields")
       .in("status", ["needs_user", "failed"])
-      .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla"])
+      .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"])
       .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString());
     // ── ANTI-ROBOT APRÈS LE RETRAIT : LA RECRÉATION REPART SUR PREUVE (25/09) ──
     // Le seul état vraiment FIGÉ trouvé au check anti-robot : une republication
@@ -2227,7 +2231,7 @@ serve(async (req) => {
       .from("cross_post_jobs")
       .select("id, user_id, platform, status, error, platform_fields")
       .eq("status", "pending")
-      .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla"])
+      .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla", "depop"])
       .not("platform_fields->>attente_session", "is", null)
       .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString());
     // deno-lint-ignore no-explicit-any
@@ -2312,7 +2316,7 @@ serve(async (req) => {
   // (05/10, règle de Nico) Un relevé ne démarre que sur « Synchroniser » :
   // plus de reprise automatique au retour de la connexion (cf. RELANCE_AUTOMATIQUE_RELEVE).
   if (RELANCE_AUTOMATIQUE_RELEVE) try {
-    const PF_RELEVE = ["leboncoin", "beebs", "ebay", "opla"];
+    const PF_RELEVE = ["leboncoin", "beebs", "ebay", "opla", "depop"];
     const depuis = new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString();
     const { data: arretes } = await supabase
       .from("vinted_sync_runs")
@@ -3860,7 +3864,7 @@ serve(async (req) => {
       const { data: fiches } = await supabase
         .from("inventaire")
         .select("id, user_id, photos")
-        .in("origine", ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla"])
+        .in("origine", ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla", "releve_depop"])
         .limit(500);
       for (const f of (fiches ?? [])) {
         if (budget <= 0) break;

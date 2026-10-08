@@ -15,7 +15,7 @@ export const MAX_PIXELS = 6_000_000;
 export const TIMEOUT_MS = 15_000;
 
 const CDN_DOMAINES = ["vinted.net", "vinted.fr", "vinted.com", "leboncoin.fr", "beebs.app", "ebayimg.com"];
-const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net"];
+const CDN_HOTES_EXACTS = ["d2f61lx5s6m7uh.cloudfront.net", "media-photos.depop.com"];
 
 /** Hôtes en liste fermée : sans elle, la fonction serait un proxy de téléchargement. */
 export function hoteAutorise(url: string, supabaseUrl: string): boolean {

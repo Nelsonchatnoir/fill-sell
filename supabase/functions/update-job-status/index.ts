@@ -122,6 +122,9 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
   // une route valide — les deux formes sont reconnues ici pour qu'un lien
   // écrit par un build antérieur rende quand même son identifiant.
   opla: /\/(?:product|article)\/(art_[^/?#]+)/,
+  // Depop (09/10, relevé réel) : /products/<slug>/ — le slug EST l'identifiant
+  // (unique, et c'est lui que le veilleur relit : products/by-slug/<slug>/).
+  depop: /\/products\/([A-Za-z0-9]+-[A-Za-z0-9-]*[A-Za-z0-9])(?:[/?#]|$)/,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2405,7 +2408,7 @@ serve(async (req) => {
               && Date.now() - Date.parse(String(passagerPrec.depuis ?? "")) < 3600_000;
             const nPassager = passagerRecent ? (Number(passagerPrec?.n ?? 0) || 0) : 0;
             if (preuveBonne && nPassager < 3) {
-              const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+              const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
               const { attente_session: _as, ...pfSansAttente } = pfSans as Record<string, unknown>;
               pfAttenteSession = {
                 ...pfSansAttente,
@@ -2448,7 +2451,7 @@ serve(async (req) => {
                 pose_par: "update-job-status (session morte = attente)",
               },
             };
-            const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+            const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", opla: "Opla", depop: "Depop" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
             const quoi = jrow.action === "delete" ? "le retrait de l'annonce"
               : jrow.action === "republish" ? "la republication" : "la publication";
             statutEffectif = "pending";
@@ -2517,8 +2520,8 @@ serve(async (req) => {
         const objet = typeof aChoisir?.objet === "string" ? aChoisir.objet.trim() : "";
         if (jrow?.platform && objet) {
           const ecarte = Array.isArray(aChoisir?.chemin_ecarte) ? (aChoisir!.chemin_ecarte as unknown[]).map(String).join(" > ") : "";
-          const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
-          const site = ({ vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+          const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs", depop: "Depop" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+          const site = ({ vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app", depop: "depop.com" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
           messageEffectif =
             `${label} n'a pas de rayon reconnu pour « ${objet} »` +
             (ecarte ? ` (le rayon « ${ecarte} » a été écarté après vérification : il ne correspond pas à l'objet)` : "") +
@@ -4311,7 +4314,7 @@ serve(async (req) => {
       }
       // (27/09) Une publication réussie par ce poste lève son mur sur la
       // plateforme (cf. « le mur est noté sur le poste »). Best-effort.
-      if (sessionIdPoste && jobRow?.platform && ["vinted", "leboncoin", "beebs", "opla"].includes(String(jobRow.platform))) {
+      if (sessionIdPoste && jobRow?.platform && ["vinted", "leboncoin", "beebs", "opla", "depop"].includes(String(jobRow.platform))) {
         try {
           const adminO = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
           const maintenantO = new Date().toISOString();
