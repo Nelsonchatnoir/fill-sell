@@ -22,8 +22,8 @@
 // Lu par handler-watch (balayage 3 min) ; testé par
 // scripts/relance-apres-maj-selftest.mjs.
 
-// BUILD_ID de la 0.6.104 (4a0a096), premier paquet téléversé depuis la 0.6.102.
-const BUILD_0_6_104 = "2026-10-08T14:25:38Z";
+// BUILD_ID de la 0.6.104 (0cec9e6), premier paquet téléversé depuis la 0.6.102.
+const BUILD_0_6_104 = "2026-10-08T14:53:27Z";
 
 // Une entrée vise soit une tâche « relancer » dont le message technique
 // commence par `brut`, soit (champ `source`) une tâche mise de côté pour ce

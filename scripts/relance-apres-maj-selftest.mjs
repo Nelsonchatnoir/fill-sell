@@ -109,11 +109,11 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   };
   const r = regleDeRelance(JONATHAN);
   ok("règle trouvée (vinted / republication / tache_sans_demarrage)", r?.cle === "vinted_republish_tache_sans_demarrage", JSON.stringify(r));
-  ok("   build correctif = BUILD_ID 0.6.104 (4a0a096)", r?.buildMin === "2026-10-08T14:25:38Z" && r?.version === "0.6.104", JSON.stringify(r));
+  ok("   build correctif = BUILD_ID 0.6.104 (0cec9e6)", r?.buildMin === "2026-10-08T14:53:27Z" && r?.version === "0.6.104", JSON.stringify(r));
   ok("poste en 0.6.102 (b230ebe, le sien) : pas encore", posteALeBuild("2026-10-06T18:38:36Z+b230ebe", r) === false);
   ok("poste en 0.6.103 (jamais téléversée) : pas encore", posteALeBuild("2026-10-07T22:58:10Z+008995b", r) === false);
-  ok("poste en 0.6.104 : oui", posteALeBuild("2026-10-08T14:25:38Z+4a0a096", r) === true);
-  const pf = champsRelance(JONATHAN, r, { maintenant: "2026-10-08T15:00:00Z", extensionBuild: "2026-10-08T14:25:38Z+4a0a096" });
+  ok("poste en 0.6.104 : oui", posteALeBuild("2026-10-08T14:53:27Z+0cec9e6", r) === true);
+  const pf = champsRelance(JONATHAN, r, { maintenant: "2026-10-08T15:00:00Z", extensionBuild: "2026-10-08T14:53:27Z+0cec9e6" });
   ok("relancée : le motif de mise de côté levé, marquée une fois", !pf.needs_user_source && pf.relance_apres_maj?.cle === r.cle && pf.needsUserAttempts === 0);
   ok("   la copie servie et l'étape sont gardées (republication reprise là où elle était)", pf.republish_step === "captured" && pf.republish_copie_servie?.capture_id === 12159);
   ok("déjà relancée une fois : jamais une seconde", regleDeRelance({ ...JONATHAN, platform_fields: { ...JONATHAN.platform_fields, relance_apres_maj: { le: "x" } } }) === null);
@@ -123,7 +123,7 @@ console.log("\n[5] (08/10 soir) Tâche mise de côté « sans démarrage » (Jon
   ok("Opla : non (pas de script du manifeste)", regleDeRelance({ ...JONATHAN, platform: "opla" }) === null);
   ok("« relancer » sans motif technique : toujours rien", regleDeRelance({ ...JONATHAN, platform_fields: { needs_user_source: "relancer" } }) === null);
   const muet = RELANCES_APRES_MAJ.filter((x) => /content_script_muet$/.test(x.cle));
-  ok("content script muet : 4 plateformes, build 0.6.104 (la 0.6.103 n'a jamais été téléversée)", muet.length === 4 && muet.every((x) => x.buildMin === "2026-10-08T14:25:38Z"));
+  ok("content script muet : 4 plateformes, build 0.6.104 (la 0.6.103 n'a jamais été téléversée)", muet.length === 4 && muet.every((x) => x.buildMin === "2026-10-08T14:53:27Z"));
 }
 
 console.log(ko ? `\n[selftest:relance-apres-maj] ÉCHEC — ${ko} vérification(s) en défaut.` : "\n[selftest:relance-apres-maj] OK");
