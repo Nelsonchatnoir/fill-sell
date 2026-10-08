@@ -19,8 +19,9 @@ contraire. Il se périme : `functions list`, `cron.job` et
   fonction — un fetch edge → edge est limité à 60/min, et le worker pg_net ne
   sert rien tant que la requête appelante n'a pas répondu (une fonction
   appelée par cron/trigger/script reste COURTE) ; `docs/multi-synchro.md`,
-  reprise `docs/reprise/terminal-multi-synchro-0810.md`. Extension 0.6.103 :
-  un content script chargé mais muet se relance avant tout envoi à la page.
+  reprise `docs/reprise/terminal-multi-synchro-0810.md`. Extension 0.6.104 :
+  un onglet de travail n'est rendu qu'avec un content script qui répond, PARTOUT
+  (`getOrCreateWorkTab`, la 0.6.103 jamais téléversée ne le faisait qu'à 2 endroits).
 - **⛔ AUCUNE FICHE NE NAÎT D'UN RELEVÉ SANS DÉCISION v3 (08/10 après-midi)** :
   une fiche `releve_*` ne sort que de `rapprocher_importer` (moteur v3 ou la
   personne) — garde en base `inventaire_releve_par_decision` ; les imports du
@@ -47,11 +48,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   n'a lieu que sur PREUVE de la suppression (extension). Migration
   **20261008140000 APPLIQUÉE** (08/10 11:20 UTC) : le balayage ne lance plus une
   republication qui ne peut pas finir dans le créneau (`republish_duree_estimee`).
-  Extension **0.6.104** (3f06744, BUILD_ID `2026-10-08T13:02:47Z+147ab9a`) :
-  zip NON LIVRÉ (`build/CWS-0.6.104-NE-PAS-TELEVERSER-preuve-beebs-en-attente/`)
-  tant que la republication Beebs réelle n'est pas prouvée (le mot « TEST » ne
-  passe pas la modération Beebs ; une annonce neutre à 999 € attend l'accord de
-  Nico) ; chargée sur le poste de Nico depuis le 08/10 13:07 UTC : preuve Beebs relue ~6 min par le background,
+  Extension **0.6.104** (BUILD_ID `2026-10-08T14:53:27Z+0cec9e6`, chargée chez
+  Nico) : zip NON LIVRÉ tant que la republication Beebs réelle n'est pas prouvée
+  ; un retrait Beebs ne se clôt plus « déjà retirée » pendant la modération
+  (annonce jamais vue en ligne, dépôt < 72 h) ; handler-watch v94 relance une
+  fois les tâches « sans démarrage » quand le poste a la 0.6.104 : preuve Beebs relue ~6 min par le background,
   aucun essai consommé sans preuve, relevé Beebs par le flux quand « Mes
   annonces » est peinte vide (`selftest:beebs-preuve-relue`).
   Selftest `selftest:republication-va-au-bout`.
@@ -70,17 +71,17 @@ contraire. Il se périme : `functions list`, `cron.job` et
   une annonce en ligne ou remplacée, remise retenue, note de vente ignorée.
 - **Servi** : extension **0.6.102** au CWS (b230ebe, téléversée le 06/10 au
   soir, 51 postes le 08/10 — le rapport du 08/10 nuit la disait « jamais
-  téléversée » : faux) ; **0.6.103 en examen au CWS**
-  (`build/CWS-0.6.103-A-TELEVERSER/fillsell-extension-0.6.103-008995b-cws.zip`,
-  BUILD_ID `2026-10-07T22:58:10Z+008995b` = 0.6.102 + onglet
-  muet relancé, toutes plateformes ; jamais d'EXTENSION_MIN_BUILD sans décision
-  de Nico) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
+  téléversée » : faux) ; **0.6.103 JAMAIS téléversée** (Nico, 08/10 —
+  `build/anciens-zips/`) ; **0.6.104 `0cec9e6` prête, NON livrée** :
+  `build/CWS-0.6.104-EN-ATTENTE-PREUVE-BEEBS/` (preuve de republication Beebs
+  bloquée : Beebs examine à la main les annonces ≥ 500 €) ; jamais
+  d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
   10:50, build 9d203ac) ; `get-pending-jobs` v223,
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v14, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v92, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
+  `rapprochement` v14, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v94, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
   `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations

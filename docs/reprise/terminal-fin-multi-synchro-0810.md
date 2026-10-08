@@ -4,6 +4,51 @@ Suite de `docs/reprise/terminal-complement-0810.md`. Mandat de Nico : appliquer
 les deux migrations (feux verts nommés), règle « fiche créée à la main face à
 une fiche Vinted », extension 0.6.104 codée (aucun zip).
 
+## 00. Fin de journée — extension 0.6.104 `0cec9e6` : prête, NON livrée (preuve Beebs bloquée par la modération)
+
+**Correction de contexte (Nico)** : la 0.6.103 n'a JAMAIS été téléversée (ni en examen) :
+la 0.6.104 sera le PREMIER paquet téléversé depuis la 0.6.102. Dossier rangé :
+`build/anciens-zips/CWS-0.6.103-008995b-JAMAIS-TELEVERSEE/`.
+
+- **Paquet** : `build/CWS-0.6.104-EN-ATTENTE-PREUVE-BEEBS/fillsell-extension-0.6.104-0cec9e6-cws.zip`
+  (BUILD_ID `2026-10-08T14:53:27Z+0cec9e6`, 31 fichiers, manifest à la racine,
+  BUILD_ID dans les 5 .js qui le portent, aucun jeton restant, sha256 b74a781a…).
+  Chargé sur le poste de Nico depuis 14:57 UTC. Anciens paquets 0.6.104
+  (147ab9a, 4a0a096) rangés dans `build/anciens-zips/` (jamais téléversés).
+- **Le correctif 0.6.103 est dedans** (36f105d ancêtre ; `relancerOngletMuet`,
+  `pingContentScript`, onglets non déchargés, `FILLSELL_PING` dans les 5 content
+  scripts) — mais il ne relançait l'onglet muet qu'à DEUX endroits (lecture du
+  dressing Vinted ; onglet de job au chargement non confirmé). **Ajouté (ec2797b)** :
+  `getOrCreateWorkTab` exige le PING du content script de la plateforme avant de
+  rendre TOUT onglet de travail (patience 10 s si pas encore injecté ; muet →
+  rechargement puis onglet neuf ; sinon erreur de la liste technique) : capture
+  Vinted avant republication, pré-vol, publication, retrait, relevés. Cause des
+  « tâche sans démarrage » (Jonathan Rabany : republications Vinted servies 61
+  fois sans commencer, sur 0.6.102). `selftest:onglet-muet-partout` (la garde
+  exécutée). Opla inchangé (pas de script du manifeste).
+- **Serveur** : `_shared/relance-apres-maj.js` + handler-watch **v94** (`false`) —
+  une tâche mise de côté « sans démarrage » (9 aujourd'hui : Jonathan Rabany,
+  ltouze, 1 Beebs) repart UNE fois dès que son poste a la 0.6.104 ; les relances
+  « content script muet » visent la 0.6.104.
+- **Défaut « déjà absente » corrigé à la racine (0ba9718)** : un retrait Beebs ne
+  se clôt plus « déjà retirée » sur une annonce jamais vue en ligne déposée il y a
+  moins de 72 h (Beebs l'examine encore) : il reste en file, sans essai consommé,
+  relu à 1 h, 3 h, 6 h puis 12 h. Prouvé en réel : retraits 8729a111 (34132220)
+  et 14b9cfac (34132869) gardés « pas encore visible sur Beebs ».
+- **Non-régression réelle (0cec9e6 / 4a0a096)** : publication Beebs 34132869 en 2 min ;
+  relevés Leboncoin 10/10, Beebs 9/9, eBay API 8/8, dressing Vinted 14/14, Opla
+  « accès non accordé » (identique depuis le 05/10). 214 selftests, 0 rouge.
+- **Preuve de republication Beebs : PAS FAITE — bloquée par Beebs, pas par le code.**
+  La version neutre à 999 € (accord de Nico) est publiée (34132869, 14:35 UTC), passée
+  en vérification, puis invisible : Beebs examine à la main les annonces chères.
+  Mesure : 7 annonces Beebs ≥ 500 € de FillSell en 60 jours, 0 vue en ligne ; une
+  annonce réelle passe en ligne 2 à 5 min après « en cours de vérification » (11 cas
+  dans la boîte de Nico) ; 34109673 (999 €, 04/10) n'a été visible qu'après 1 à
+  2 jours. Une republication exige une annonce EN LIGNE. Zip non livré (garde-fou).
+- **Annonces de test** : 34109673 retirée (404) ; 34132220 et 34132869 invisibles
+  (404, hors des deux onglets), retraits armés qui les retireront si Beebs les
+  valide (jusqu'à 72 h après leur dépôt). Aucune autre annonce de Nico touchée.
+
 ## 0. Fin d'après-midi — feu vert de Nico : 150000 APPLIQUÉE, rattrapage FAIT
 
 - **Avant** : aucune dérive (md5 prod = point de départ des 4 fonctions
@@ -194,19 +239,23 @@ icolFillSell-Extension-Nico`,
   ne conclure « déjà absente » que pour une annonce déjà VUE en ligne par un
   relevé, sinon relire plus tard.
 
-## 4. Ce qui reste (08/10 fin d'après-midi)
+## 4. Ce qui reste (08/10 fin de journée)
 
-1. **Preuve de republication Beebs** de la 0.6.104 (accord de Nico pour une
-   annonce neutre à 999 €) — puis livraison du zip (§ 3).
-2. **Pas « SUJET CLOS »** : chemins encore hors v3 au § 0 (dressing Vinted
-   jugé après, fiches de la personne, ligne « vendu » d'une vente partielle).
-3. **Ce soir — à relire** : premiers `_fin_de_creneau` de la 20261008140000
-   dans `republish_creneaux.sautes` (créneaux du soir) et qu'aucune
-   republication ne parte à moins de sa durée de la fin ; questions de la
-   règle « fiche à la main » (`inventaire_doublons.preuves->>'portee' = 'fiche_main'`)
-   posées par les passes normales ; `rapprochement_comptes.fiches_main_juge_le`
-   qui avance ; ops-digest de 8:50.
-4. jocaille270779 : présentation groupée des 57 questions (proposition au § 0).
-5. Les 23 fiches Vinted d'avant de romain.knc / tessy.galy : jugées à leur
-   prochaine fin de relevé.
-6. Défaut « déjà absente » Beebs (§ 3).
+1. **Livrer la 0.6.104** : la preuve de republication Beebs exige une annonce en
+   ligne. Soit Beebs valide 34132869 (alors : annuler son retrait 14b9cfac,
+   `spend_coins_and_republish(1791299785299, NULL, 'manuel', NULL, 'beebs')`
+   sous l'identité de Nico, suivre le job, retirer l'annonce republiée),
+   soit Nico désigne une autre voie (prix que Beebs valide sans examen, ou une
+   de ses annonces), soit il lève la preuve. Puis renommer le dossier en
+   `build/CWS-0.6.104-A-TELEVERSER/` (zip seul) ; après acceptation :
+   `ALREADY_PUBLISHED` / `EXTENSION_MIN_BUILD` sur sa décision.
+2. Retraits 8729a111 et 14b9cfac (annonces de test en modération) : à relire ;
+   s'ils restent « pas encore visible » 72 h, ils se clôtureront « déjà
+   retirée » — vérifier alors dans « Mes annonces » qu'aucune n'est en ligne.
+3. **Pas « SUJET CLOS »** (multi-synchro) : dressing Vinted jugé après, fiches de
+   la personne, ligne « vendu » d'une vente partielle (§ 0).
+4. **Ce soir — à relire** : premiers `_fin_de_creneau` de la 20261008140000
+   (`republish_creneaux.sautes`) ; questions « fiche à la main » des passes
+   normales ; tâches « sans démarrage » relancées par handler-watch v94 quand les
+   postes passeront en 0.6.104 ; ops-digest de 8:50.
+5. jocaille270779 : présentation groupée des 57 questions (proposition au § 0).

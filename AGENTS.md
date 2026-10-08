@@ -4,7 +4,7 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.102** ; **0.6.103** en examen ; **0.6.104** preuve en attente ; min **0.6.81** ; OTA 2.9.67 ; reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
+- **Servi** : ext. **0.6.102** ; 0.6.103 jamais téléversée ; **0.6.104** non livrée ; min **0.6.81** ; OTA 2.9.67 ; reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
   `rapprochement` v14 ; empreintes par la base, fonction courte ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
   nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; `docs/multi-synchro.md`.
