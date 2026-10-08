@@ -1392,7 +1392,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
 export const EXTENSION_LAST_COMMIT = '2026-10-07T22:47:48Z'; // 0.6.103 (36f105d) = 0.6.102 + un content script chargé mais muet se relance (rechargement, puis onglet neuf, bornés) avant tout envoi à la page, toutes plateformes ; page du dressing muette relue ; onglets de travail jamais déchargés (titaperry543, vtvente48, ornellaracano)
-// (avant : '2026-10-06T17:43:15Z' = 0.6.102, 169eac4, paquet CWS-0.6.102-A-TELEVERSER (b230ebe), JAMAIS téléversé — remplacé par 0.6.103, rangé dans build/anciens-zips)
+// (avant : '2026-10-06T17:43:15Z' = 0.6.102, 169eac4, paquet CWS-0.6.102 (b230ebe), TÉLÉVERSÉ au CWS le 06/10 au soir et SERVI — 51 postes le 08/10 ; zip rangé dans build/anciens-zips/CWS-0.6.102-PUBLIEE-06-10)
 // (avant, détail 0.6.102 : 169eac4) = 0.6.101 + format de colis Vinted : grille du rayon lue au référentiel de Vinted quand la page ne l'affiche pas (patrick giry, 06/10) — jamais de retrait ni de dépôt à l'aveugle, essais rapprochés, question au 3e constat ; jeton vérifié avant le choix du rayon. Paquet build/CWS-0.6.102-A-TELEVERSER. EXTENSION_MIN_BUILD inchangé (consigne : jamais de MIN_BUILD).
 // (avant : '2026-10-06T15:09:25Z' = 0.6.101, 0a1c742, paquet CWS-0.6.101-A-TELEVERSER (3e77bae), JAMAIS téléversé — remplacé par 0.6.102)
 // (avant : '2026-10-05T18:50:03Z' = 0.6.99, e7857d9, paquet CWS-0.6.99-A-TELEVERSER (a58e4bc), JAMAIS téléversé — remplacé par 0.6.100, rangé dans build/anciens-zips)

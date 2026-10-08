@@ -19,16 +19,18 @@ RATTACHÉ. » Conception et mesures : `docs/multi-synchro.md`.
 - **App** : OTA **2.9.66** servie sur `production` (lue avant : 2.9.65) :
   « Annonce en double ? », plateforme non connectée + « Me connecter » dans le
   résumé, Vinted en cadence = rangement relancé, « à vérifier » hors du stock.
-- **Extension** : **0.6.103** empaquetée, À TÉLÉVERSER :
+- **Extension** : **0.6.103** empaquetée, envoyée en examen au CWS le 08/10 :
   `build/CWS-0.6.103-A-TELEVERSER/fillsell-extension-0.6.103-008995b-cws.zip`
-  (BUILD_ID `2026-10-07T22:58:10Z+008995b`, 0.6.102 jamais téléversée → rangée
-  dans `build/anciens-zips/JAMAIS-TELEVERSE-0.6.102-remplacee-par-0.6.103/`).
+  (BUILD_ID `2026-10-07T22:58:10Z+008995b`). ⚠️ Correction du 08/10 matin : la
+  0.6.102 (b230ebe) a été TÉLÉVERSÉE le 06/10 au soir et elle est SERVIE (51
+  postes) — ce rapport la disait « jamais téléversée » ; son zip est rangé dans
+  `build/anciens-zips/CWS-0.6.102-PUBLIEE-06-10/`.
   Ce qui n'arrive QU'avec ce zip : un content script chargé mais muet se
   relance (rechargement de l'onglet puis onglet neuf, bornés) avant tout envoi
   à la page — synchro, publication, republication, retrait, toutes plateformes
   (`FILLSELL_PING`) ; page du dressing muette relue ; onglets de travail
   jamais déchargés par l'économiseur de mémoire. Tout le reste (serveur, app)
-  marche avec l'extension servie (0.6.100).
+  marche avec l'extension servie (0.6.102 ; 0.6.100 sur les postes pas encore mis à jour).
 
 ## Ce qu'on a appris en prod cette nuit (à ne pas réapprendre)
 

@@ -21,9 +21,11 @@ contraire. Il se périme : `functions list`, `cron.job` et
   appelée par cron/trigger/script reste COURTE) ; `docs/multi-synchro.md`,
   reprise `docs/reprise/terminal-multi-synchro-0810.md`. Extension 0.6.103 :
   un content script chargé mais muet se relance avant tout envoi à la page.
-- **Servi** : extension **0.6.100** au CWS ; **0.6.103 à téléverser**
+- **Servi** : extension **0.6.102** au CWS (b230ebe, téléversée le 06/10 au
+  soir, 51 postes le 08/10 — le rapport du 08/10 nuit la disait « jamais
+  téléversée » : faux) ; **0.6.103 en examen au CWS**
   (`build/CWS-0.6.103-A-TELEVERSER/fillsell-extension-0.6.103-008995b-cws.zip`,
-  BUILD_ID `2026-10-07T22:58:10Z+008995b` = 0.6.102 jamais téléversée + onglet
+  BUILD_ID `2026-10-07T22:58:10Z+008995b` = 0.6.102 + onglet
   muet relancé, toutes plateformes ; jamais d'EXTENSION_MIN_BUILD sans décision
   de Nico) ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.66** (à pousser avec le lot), OTA **2.9.66 servie** (08/10
