@@ -140,6 +140,7 @@
     "selftest:aucune-fiche-sans-v3": "node scripts/aucune-fiche-sans-v3-selftest.mjs",
     "selftest:republication-va-au-bout": "node scripts/republication-va-au-bout-selftest.mjs",
     "selftest:fiche-main-vinted": "node scripts/fiche-main-vinted-selftest.mjs",
+    "selftest:remise-en-ligne-vinted": "node scripts/remise-en-ligne-vinted-selftest.mjs",
     "selftest:beebs-preuve-relue": "node scripts/beebs-preuve-relue-selftest.mjs",
     "selftest:onglet-muet-partout": "node scripts/onglet-muet-partout-selftest.mjs",
     "selftest:vinted-annonce-en-ligne": "node scripts/vinted-annonce-en-ligne-selftest.mjs",
