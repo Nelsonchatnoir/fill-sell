@@ -1391,7 +1391,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-10-08T14:25:17Z'; // 0.6.104 (ec2797b) = 0.6.103 (onglet muet relancé) + Beebs : preuve de suppression relue ~6 min, aucun essai sans preuve, relevé par le flux + onglet de travail rendu SEULEMENT avec un content script qui répond, partout (getOrCreateWorkTab : Jonathan Rabany, Carla « tâche sans démarrage »). PREMIER paquet à téléverser depuis la 0.6.102 (la 0.6.103 n'a JAMAIS été téléversée)
+export const EXTENSION_LAST_COMMIT = '2026-10-08T14:53:15Z'; // 0.6.104 (0ba9718) = 0.6.103 (onglet muet) + Beebs (preuve relue ~6 min, aucun essai sans preuve, relevé par le flux, retrait jamais clos « déjà retirée » pendant la modération) + onglet de travail rendu seulement avec un content script qui répond, partout. PREMIER paquet téléversé depuis la 0.6.102 (la 0.6.103 n'a JAMAIS été téléversée)
+// (avant : '2026-10-08T14:25:17Z' = ec2797b, garde des onglets ; paquet 4a0a096 jamais téléversé)
 // (avant : '2026-10-08T11:51:17Z' = 0.6.104 première version, 3f06744)
 // (avant : '2026-10-07T22:47:48Z' = 0.6.103 (36f105d) = 0.6.102 + un content script chargé mais muet se relance (rechargement, puis onglet neuf, bornés) avant tout envoi à la page, toutes plateformes ; page du dressing muette relue ; onglets de travail jamais déchargés (titaperry543, vtvente48, ornellaracano) ; paquet CWS-0.6.103 (008995b), JAMAIS téléversé — remplacé par la 0.6.104)
 // (avant : '2026-10-06T17:43:15Z' = 0.6.102, 169eac4, paquet CWS-0.6.102 (b230ebe), TÉLÉVERSÉ au CWS le 06/10 au soir et SERVI — 51 postes le 08/10 ; zip rangé dans build/anciens-zips/CWS-0.6.102-PUBLIEE-06-10)

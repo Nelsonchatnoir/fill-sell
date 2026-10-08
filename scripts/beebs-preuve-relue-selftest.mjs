@@ -86,6 +86,37 @@ console.log('4. Relevé : le flux ne tranche que si tout concorde');
   ok(/beebsPageMuette = Number\(idx\.total\)/.test(b) && /listeRendue: beebsPageMuette == null/.test(b), 'sinon la page reste muette : rien n\'est conclu (comme avant)');
 }
 
+console.log('4 bis. Retrait : « déjà absente » n\'est pas « retirée » tant que Beebs modère (exécuté)');
+{
+  const { extraireFonctionJs } = await import('./lib/extraire-fonction-js.mjs');
+  const corps = extraireFonctionJs(b, 'beebsAbsenteParModeration');
+  const cst = [b.match(/const BEEBS_MODERATION_MAX_MS = [^;]+;/)?.[0], b.match(/const BEEBS_MODERATION_RELECTURES_MIN = [^;]+;/)?.[0]].join('\n');
+  const essai = async ({ vues = [], depots = [], panne = false }) => {
+    const ecrit = [];
+    const env = {
+      decodeJwtSub: () => 'u1',
+      restRequest: async (url) => { if (panne) throw new Error('réseau'); return url.startsWith('annonces_plateforme') ? vues : depots; },
+      updateJobStatus: async (_t, id, statut, champs) => { ecrit.push({ id, statut, champs }); },
+      console: { warn() {}, log() {} },
+    };
+    const f = new Function('env', `const { decodeJwtSub, restRequest, updateJobStatus, console } = env; ${cst}\n${corps}\nreturn beebsAbsenteParModeration;`)(env);
+    const job = { id: 'j1', platform: 'beebs', platform_listing_id: '34132869', platform_fields: { processing_since: 'x' } };
+    return { garde: await f(job, 'jeton'), ecrit };
+  };
+  const ilYa = (h) => new Date(Date.now() - h * 3600_000).toISOString();
+  const r1 = await essai({ depots: [{ published_at: ilYa(1.5), vu_en_ligne_le: null }] });
+  ok(r1.garde === true && r1.ecrit[0]?.statut === 'pending' && /pas encore visible sur Beebs/.test(r1.ecrit[0]?.champs?.error ?? '')
+    && r1.ecrit[0]?.champs?.platform_fields?.beebs_en_moderation?.n === 1 && !('processing_since' in r1.ecrit[0].champs.platform_fields),
+    'déposée il y a 1 h 30, jamais vue en ligne : retrait GARDÉ en file (relu dans 1 h), jamais clos « déjà retirée »');
+  ok(Date.parse(r1.ecrit[0]?.champs?.platform_fields?.next_action_after) - Date.now() > 55 * 60_000, '   prochaine vérification ~1 h, aucun essai consommé (needsUserAttempts intact)');
+  ok((await essai({ vues: [{ id: 'a1' }], depots: [{ published_at: ilYa(1), vu_en_ligne_le: null }] })).garde === false, 'vue en ligne par un relevé : « déjà retirée » comme avant');
+  ok((await essai({ depots: [{ published_at: ilYa(5), vu_en_ligne_le: ilYa(4) }] })).garde === false, 'vue en ligne après le dépôt : « déjà retirée » comme avant');
+  ok((await essai({ depots: [{ published_at: ilYa(80), vu_en_ligne_le: null }] })).garde === false, 'dépôt de plus de 72 h : « déjà retirée » (Beebs a tranché)');
+  ok((await essai({ depots: [] })).garde === false, 'pas un dépôt FillSell : comme avant');
+  ok((await essai({ panne: true, depots: [{ published_at: ilYa(1) }] })).garde === false, 'lecture impossible : comme avant (jamais bloqué)');
+  ok(/result\?\.success && job\.platform === "beebs" && result\.preuveRetrait\?\.moment === "deja_absente"\s*&& await beebsAbsenteParModeration\(job, accessToken\)\)/.test(b), 'branchée avant la clôture « deleted » du retrait');
+}
+
 console.log('5. Version');
 {
   ok(/"version": "0\.6\.104"/.test(lire('chrome-extension/manifest.json')), 'manifeste en 0.6.104');
