@@ -15,7 +15,7 @@ import { prixPrerempli } from '../../src/utils/venteModale.js';
 
 const C = { teal: '#1B6E62', text: '#10201B', sub: '#6B7A75', red: '#C0392B' };
 
-function Fenetre({ id, item, enLigne, plateformeInitiale = '', qteVendue = 1 }) {
+function Fenetre({ id, item, enLigne, plateformeInitiale = '', qteVendue = 1, depopVisible = undefined }) {
   const [plateforme, setPlateforme] = useState(plateformeInitiale);
   const [prix, setPrix] = useState(prixPrerempli(item));
   return (
@@ -30,7 +30,8 @@ function Fenetre({ id, item, enLigne, plateformeInitiale = '', qteVendue = 1 }) 
         <div style={{ fontSize: 13, fontWeight: 600, color: C.sub, marginBottom: 12 }}>Quantité à vendre : {qteVendue} / {item.quantite}</div>
       )}
       <ChoixVenteModale item={item} plateforme={plateforme} onPlateforme={setPlateforme}
-        quantiteVendue={qteVendue} lang="fr" couleurs={C} enLigneConnu={enLigne} />
+        quantiteVendue={qteVendue} lang="fr" couleurs={C} enLigneConnu={enLigne}
+        {...(depopVisible === undefined ? {} : { depopVisible })} />
     </div>
   );
 }
@@ -47,6 +48,11 @@ function Apercu() {
       <Fenetre id="aucune" item={{ id: 3, title: 'Casio vintage', sell: null, quantite: 1 }} enLigne={[]} />
       <Fenetre id="vide" item={{ id: 4, title: 'Pull Zara', sell: 7, quantite: 1 }}
         enLigne={[{ platform: 'vinted', url: null }, { platform: 'ebay', url: null }]} />
+      {/* (09/10) Depop : le compte AUTORISÉ (App.jsx passe depopVisible =
+          depopOuverte) — les fenêtres au-dessus sont celles de TOUS les autres
+          comptes, sans la prop, exactement comme App.jsx avant Depop. */}
+      <Fenetre id="beta-depop" item={{ id: 5, title: 'Casio vintage (compte bêta Depop)', sell: null, quantite: 1 }}
+        enLigne={[]} depopVisible />
     </div>
   );
 }

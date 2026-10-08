@@ -75,6 +75,13 @@ try {
     await page.click('[data-cas="vide"] >> text=Autre plateforme…');
     verifier((await puces('vide')).join(',') === 'vinted,ebay,ailleurs,leboncoin,beebs,opla', '« Autre plateforme… » les déplie', (await puces('vide')).join(','));
 
+    // (09/10) DEPOP : invisible pour tout compte non autorisé, proposée au seul compte bêta.
+    for (const cas of ['un-exemplaire', 'plusieurs', 'aucune', 'vide']) {
+      const texte = (await page.textContent(`[data-cas="${cas}"]`)) ?? '';
+      verifier(!/depop/i.test(texte) && !(await puces(cas)).includes('depop'), `compte non bêta (« ${cas} ») : Depop nulle part`);
+    }
+    verifier((await puces('beta-depop')).join(',') === 'ailleurs,vinted,leboncoin,beebs,ebay,opla,depop', 'compte bêta : Depop proposée, en dernier', (await puces('beta-depop')).join(','));
+
     const deborde = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     verifier(!deborde, 'aucun débordement horizontal');
     await page.screenshot({ path: path.join(SORTIE, `vente-modale-${largeur}.png`), fullPage: true });
