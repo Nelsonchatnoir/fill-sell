@@ -75,7 +75,8 @@ ok('le serveur sert la synchro avant les jobs', lire('supabase/functions/get-pen
 
 console.log('\n5. En passant : 0.6.100 publiée, seuil inchangé');
 const pkg = lire('scripts/package-extension.mjs');
-ok('0.6.100 dans ALREADY_PUBLISHED', /const ALREADY_PUBLISHED = \[[^\]]*'0\.6\.100'\]/.test(pkg));
+// (08/10) 0.6.100 n'est plus la dernière publiée (0.6.102 l'est) : elle doit être DANS la liste, pas en fin.
+ok('0.6.100 dans ALREADY_PUBLISHED', /const ALREADY_PUBLISHED = \[[^\]]*'0\.6\.100'[,\]]/.test(pkg));
 ok('EXTENSION_MIN_BUILD non touché', lire('supabase/functions/_shared/version-min-extension.js').includes("EXTENSION_MIN_BUILD = '2026-09-30T20:16:41Z'"));
 
 console.log(echecs ? `\n✗ ${echecs} échec(s)` : '\n✓ tout est vert');

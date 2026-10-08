@@ -55,7 +55,8 @@ ok(bloc.indexOf("if (formatExplicite && normalizeFuzzy(current) !== normalizeFuz
   && bloc.indexOf("if (formatExplicite && normalizeFuzzy(current)") < bloc.indexOf("déjà posé par Beebs"),
   "un format explicite passe AVANT « déjà posé par Beebs, conservé »");
 ok(/askBackground\(\{ type: "BEEBS_FORMATS_COLIS", formats: champFormat\.options\.map/.test(beebs), "les formats du formulaire sont envoyés au serveur, sans attendre");
-ok(/^const BEEBS_BUILD = "2026-10-04-format-colis-explicite \(0\.6\.95/m.test(beebs), "empreinte de version du content script à jour");
+// (08/10) Chaque version ajoute son entrée EN TÊTE de l'empreinte (0.6.103 : « ping ») : l'entrée 0.6.95 doit y rester, pas forcément en premier.
+ok(/^const BEEBS_BUILD = ".*2026-10-04-format-colis-explicite \(0\.6\.95/m.test(beebs), "empreinte de version du content script à jour");
 
 console.log("\n3. LE BACKGROUND");
 ok(/v\.sys && typeof v\.sys\.id === "string" \? \{ id: v\.sys\.id, t: texte\(v\) \}/.test(bg), "la lecture des champs garde l'identifiant de chaque option-objet");
