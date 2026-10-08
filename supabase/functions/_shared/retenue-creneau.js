@@ -32,3 +32,34 @@ export function messageRetenueCreneau(platform, reprise) {
     (q ? `${q} ` : "à l'ouverture de ton prochain créneau ") +
     "(heure de Paris), si Chrome est ouvert sur ton ordinateur à ce moment-là. Ton annonce est intacte, rien n'a été retiré.";
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UNE REPUBLICATION DONT LA SUPPRESSION EST PARTIE VA AU BOUT (08/10, Louis)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le 06/10, la suppression de « Insert / Rangement Bleu » (Beebs 32745154) est
+// partie à 21:58, dans le créneau 19:00–22:00. Beebs montrait encore l'annonce
+// deux minutes après (page et index en retard sur la suppression) : le job
+// s'est reprogrammé à 22:05, créneau fermé → retenu jusqu'au samedi 19:00 avec
+// « Ton annonce est intacte, rien n'a été retiré ». L'annonce n'était plus sur
+// Beebs (absente des relevés complets du 07/10 et du 08/10).
+// Règle : une retenue de gouvernance (créneau, plafond du jour, pause de
+// respiration) ne s'applique qu'à une annonce que personne n'a touchée. Dès que
+// la suppression est partie, le job va au bout, créneau fermé ou non : l'
+// extension relit d'abord « Mes annonces » et ne remet en ligne que sur PREUVE
+// de la suppression (jamais deux annonces). Marqueur posé depuis la 0.6.97
+// (republish_suppression_envoyee) ; avant, sa trace écrite (même lecture que
+// suppressionDejaEnvoyee dans l'extension).
+const SUPPRESSION_ENVOYEE_RE = /Suppression envoyée à (Beebs|Leboncoin|Opla|Vinted)/;
+
+/** Le retrait de l'annonce est-il engagé (supprimée, ou suppression envoyée) ? */
+export function retraitEngage(job) {
+  const pf = (job && typeof job.platform_fields === "object" && job.platform_fields) || {};
+  if (pf.republish_step === "deleted" || pf.deleted_at) return true;
+  if (pf.republish_suppression_envoyee && typeof pf.republish_suppression_envoyee === "object") return true;
+  const textes = [
+    String(job?.error ?? ""),
+    String(pf.error_technique?.brut ?? ""),
+    ...(Array.isArray(pf.erreurs_archivees) ? pf.erreurs_archivees.map((e) => String(e?.erreur ?? "")) : []),
+  ];
+  return textes.some((t) => SUPPRESSION_ENVOYEE_RE.test(t));
+}

@@ -37,7 +37,7 @@ import { ageBeebsDuReleve } from "../_shared/beebs-age-releve.js";
 import { attenteSessionEncoreEspacee } from "../_shared/attente-session.js";
 import { pausePageDepotLbc, decisionPausePageDepotLbc } from "../_shared/lbc-pause-page-depot.js";
 import { impasseRecreationVinted, decisionImpasseRecreation } from "../_shared/recreation-impasse-vinted.js";
-import { messageRetenueCreneau } from "../_shared/retenue-creneau.js";
+import { messageRetenueCreneau, retraitEngage } from "../_shared/retenue-creneau.js";
 import { posteApresDefaut } from "../_shared/defaut-fillsell.js";
 import { jugerMurGeste, messagePauseVintedGeste, PAUSE_VINTED_GESTE_MS } from "../_shared/mur-geste.js";
 // Champs exigés au dépôt par rayon Vinted, appris sur les refus 400 (cache de
@@ -4831,9 +4831,11 @@ serve(async (req) => {
         plafondRepublish = await etatPlafondRepublish();
         if (plafondRepublish.retenue) {
           const avant = out.length;
+          // (08/10, Louis) suppression envoyée = retrait engagé : jamais retenue non plus.
           out = out.filter((j) =>
             j.action !== "republish" ||
-            (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted");
+            (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted" ||
+            retraitEngage(j));
           heldRepublish = avant - out.length;
           // ══════════════════════════════════════════════════════════════
           // UNE FILE RETENUE LE DIT DANS SES PROPRES JOBS (2026-09-22)
@@ -4862,7 +4864,8 @@ serve(async (req) => {
             };
             const aTracer = (jobs ?? [])
               .filter((j) => j.action === "republish"
-                && (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] !== "deleted")
+                && (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] !== "deleted"
+                && !retraitEngage(j))
               .filter((j) => {
                 const r = ((j.platform_fields ?? {}) as Record<string, unknown>)["retenue_republication"] as
                   Record<string, unknown> | undefined;
@@ -4970,10 +4973,13 @@ serve(async (req) => {
       const fin = Date.parse(String(ex?.["jusqu_a"] ?? ""));
       return !!ex && Number.isFinite(fin) && fin > Date.now();
     };
-    const autoHorsDeleted = (j: { action: string; platform_fields: unknown }) => {
+    // (08/10, Louis) … ni une republication dont la suppression est PARTIE
+    // (retraitEngage, _shared/retenue-creneau.js) : elle va au bout, la remise
+    // en ligne n'ayant lieu que sur preuve de la suppression.
+    const autoHorsDeleted = (j: { action: string; platform_fields: unknown; error?: unknown }) => {
       const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
       return j.action === "republish" && pf["republish_source"] === "auto" && pf["republish_step"] !== "deleted"
-        && !exceptionCreneau(pf);
+        && !retraitEngage(j) && !exceptionCreneau(pf);
     };
     if (!includeProcessing && !includeNeedsUser && out.some(autoHorsDeleted)) {
       try {
