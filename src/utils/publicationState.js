@@ -41,6 +41,24 @@ export function idAnnonceDe(job) {
   const m = url.match(/\/itm\/(\d+)|\/items\/(\d+)|\/(\d{6,})(?:[/?#]|$)/);
   return m ? (m[1] || m[2] || m[3]) : null;
 }
+// ── « PLUS EN LIGNE — VENDUE ? » JAMAIS POUR UNE ANNONCE REMPLACÉE (08/10, Louis) ──
+// Une annonce Vinted dont la fiche vit sur une AUTRE annonce, en ligne au
+// dernier relevé du dressing (vinted_status 'active', aucune disparition,
+// synchro de moins de 48 h), n'est pas une vente : la question ne se pose pas.
+// Louis, 06/10 : 14 « Oui » sur des copies remplacées, 4 annonces toujours en
+// ligne, 14 remises en vente en double. La base refuse aussi cette vente
+// (enregistrer_vente_atomique, migration 20261008110000). Une preuve positive
+// (« 🎉 Vendue ») n'est jamais masquée.
+export function vintedRemplaceeParUneEnLigne(job, item, maintenant = Date.now()) {
+  if (!job || job.platform !== "vinted" || !item) return false;
+  if ((job.platform_fields ?? {}).sale_signal === "sold") return false;
+  const idFiche = String(item.vinted_item_id ?? "").trim();
+  const idJob = idAnnonceDe(job);
+  if (!idFiche || !idJob || idFiche === String(idJob)) return false;
+  if (item.vinted_status !== "active" || item.disparu_le) return false;
+  const synchro = Date.parse(item.last_synced_at ?? "");
+  return Number.isFinite(synchro) && maintenant - synchro < 48 * 3600_000;
+}
 export function miseEnLigneDe(job) {
   return Date.parse(job?.published_at || job?.created_at || 0);
 }
