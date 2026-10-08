@@ -10,6 +10,7 @@
 // une preuve avec une photo manquante : moins de photos = moins de paires).
 import { photoDepuisEmpreinte } from './photos.js';
 import { construireNoeuds, forcesDe, rapprocher, planifier, resumer, candidatsDe, autoDecidee, vintedAJuger } from './moteur.js';
+import { fichesMain } from './fiches-main.js';
 
 export function urlsDe(donnees, { maxPhotos = 6 } = {}) {
   const out = new Set();
@@ -34,7 +35,10 @@ export function manquantesDe(urls, empreintes, illisibles = new Set()) {
   });
 }
 
-export function passe(donnees, empreintes, { mode = 'normal' } = {}) {
+// `fichesMain` : portée de la règle « fiche à la main face à une fiche Vinted »
+// (fiches-main.js) — 'nouvelles' (défaut, inerte sans `donnees.fiches_main_actif`)
+// ou 'toutes' (le rattrapage du stock existant).
+export function passe(donnees, empreintes, { mode = 'normal', fichesMain: porteeMain = 'nouvelles' } = {}) {
   const t0 = Date.now();
   const photosDe = (urls) => urls.map((u) => photoDepuisEmpreinte(empreintes.get(u))).filter(Boolean);
   const N = construireNoeuds(donnees, photosDe);
@@ -83,9 +87,17 @@ export function passe(donnees, empreintes, { mode = 'normal' } = {}) {
     const d = R.dec.get(n.id)?.decision ?? '?';
     parPf[n.pf] ??= {}; parPf[n.pf][d] = (parPf[n.pf][d] || 0) + 1;
   }
+  // (08/10 soir) la fiche à la main face à une fiche Vinted : un sous-graphe à
+  // part, après le graphe complet (les décisions des annonces ne bougent pas) ;
+  // ses décisions passent après les rattachements (la fusion emporte avec elle
+  // ce qui vient d'être rattaché à la fiche du dressing) et avant les créations.
+  const main = fichesMain(donnees, N, { portee: porteeMain });
+  const rang = { fusionner: 0, attacher: 1, fusionner_fiche: 2, groupe: 3, a_verifier: 4, fiche_a_verifier: 5, annonce_en_double: 6, creer: 7, entrer_stock: 8, ignorer: 9, question_caduque: 10 };
+  const toutes = main.decisions.length ? decisions.concat(main.decisions).sort((p, q) => (rang[p.type] ?? 99) - (rang[q.type] ?? 99)) : decisions;
   return {
-    decisions,
-    bilan: { noeuds: N.length, aretes: R.aretes.length, doubles: R.doubles.length, par_plateforme: parPf, plan: resumer(decisions), vinted_a_juger: (donnees.vinted_a_juger ?? []).length, ms: Date.now() - t0 },
+    decisions: toutes,
+    bilan: { noeuds: N.length, aretes: R.aretes.length, doubles: R.doubles.length, par_plateforme: parPf, plan: resumer(toutes), vinted_a_juger: (donnees.vinted_a_juger ?? []).length,
+      ...(main.bilan ? { fiches_main: main.bilan } : {}), ms: Date.now() - t0 },
     N, R,
   };
 }

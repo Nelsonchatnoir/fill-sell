@@ -248,8 +248,10 @@ export function candidatsDe(N, actifs = null) {
 }
 
 // ── LA PASSE ────────────────────────────────────────────────────────────────
-export function rapprocher(N, { S = SEUILS, forces = [], actifs = null } = {}) {
-  POIDS = idf(N);
+// `poidsDe` : les nœuds qui pèsent les mots (idf) — par défaut N ; un sous-graphe
+// (fiches-main.js) passe le graphe complet pour peser ses titres comme lui.
+export function rapprocher(N, { S = SEUILS, forces = [], actifs = null, poidsDe = null } = {}) {
+  POIDS = idf(poidsDe ?? N);
   const parPf = new Map(); for (const n of N) { if (!parPf.has(n.pf)) parPf.set(n.pf, []); parPf.get(n.pf).push(n); }
   const aretes = [];
   const t0 = Date.now();

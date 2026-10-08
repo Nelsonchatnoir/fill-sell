@@ -48,6 +48,15 @@
 // fiches lui-même (extension) ; celles nées depuis la dernière passe
 // (rapprochement_v3_lire.vinted_a_juger) sont jugées ici contre les imports
 // déjà au stock, puis datées (rapprochement_comptes.vinted_juge_le).
+//
+// ⛔ FICHE CRÉÉE À LA MAIN FACE À UNE FICHE VINTED (v14, 08/10 soir, Nico).
+// Même règle que les imports (_shared/rapprochement/fiches-main.js, sous-graphe
+// des seules fiches : les décisions des annonces ne bougent pas) : photo ET
+// titre sans concurrent → la fiche Vinted se fond dans celle de la personne ;
+// un doute → la question, la fiche Vinted hors du stock. Les fiches à la main
+// nées depuis la dernière passe (fiches_main_a_juger) sont datées
+// (fiches_main_juge_le) comme les fiches Vinted. Inerte tant que la lecture ne
+// rend pas `fiches_main_actif` (migration 20261008150000).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { urlsDe, manquantesDe, passe } from "../_shared/rapprochement/passe.js";
@@ -67,7 +76,8 @@ const DECLENCHEURS_GESTE = ["bouton", "bouton_distant", "app", "bouton:redemande
 const json = (corps: unknown, status = 200) =>
   new Response(JSON.stringify(corps), { status, headers: { "Content-Type": "application/json" } });
 
-type Donnees = { fiches: unknown[]; annonces: unknown[]; geste_recent?: boolean; vinted_a_juger?: unknown[]; vinted_juge_jusqu_a?: string | null; vinted_reste?: boolean };
+type Donnees = { fiches: unknown[]; annonces: unknown[]; geste_recent?: boolean; vinted_a_juger?: unknown[]; vinted_juge_jusqu_a?: string | null; vinted_reste?: boolean;
+  fiches_main_a_juger?: unknown[]; fiches_main_juge_jusqu_a?: string | null; fiches_main_reste?: boolean };
 type Empreinte = { url: string; dhash: string; phash: string; variantes: unknown };
 
 serve(async (req) => {
@@ -75,7 +85,7 @@ serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!secret || !attendu || secret !== attendu) return json({ error: "unauthorized" }, 401);
 
-  let body: { user_id?: unknown; relance?: unknown; reparer?: unknown; simuler?: unknown; precedent?: unknown; passages?: unknown } = {};
+  let body: { user_id?: unknown; relance?: unknown; reparer?: unknown; simuler?: unknown; precedent?: unknown; passages?: unknown; fiches_main?: unknown } = {};
   try { body = await req.json(); } catch { /* corps vide : le filet */ }
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -83,6 +93,9 @@ serve(async (req) => {
   const reste = () => BUDGET_MS - (Date.now() - debut);
   const reparer = body.reparer === true;
   const simuler = body.simuler === true;
+  // (08/10 soir) « fiche à la main face à une fiche Vinted » : la passe normale
+  // juge les nouvelles ; { fiches_main: "toutes" } (rattrapage, Nico) tout le stock.
+  const porteeMain = body.fiches_main === "toutes" ? "toutes" : "nouvelles";
   // Le rang de cette invocation dans sa chaîne de relances (true = 1, compat).
   const rang = body.relance === true ? 1 : Math.max(0, Number(body.relance) || 0);
 
@@ -211,7 +224,7 @@ serve(async (req) => {
       await etat(user, { etat: "decision", photos_manquantes: manquantes.length });
       const mode = reparer ? "reparation" : "normal";
       const t0 = Date.now();
-      const { decisions, bilan: b } = passe(donnees, map, { mode });
+      const { decisions, bilan: b } = passe(donnees, map, { mode, fichesMain: porteeMain });
       parCompte.passe = b; parCompte.decisions = decisions.length; parCompte.photos_sans_empreinte = manquantes.length;
       if (simuler) { parCompte.etat = "simule"; parCompte.plan = decisions.slice(0, 2000); bilan.push(parCompte); continue; }
       // ── E. L'écriture, par lots ──
@@ -244,10 +257,14 @@ serve(async (req) => {
       parCompte.vinted_a_juger = (donnees.vinted_a_juger ?? []).length;
       // 200 fiches Vinted par passe : s'il en reste, le compte reste « à faire »
       // et le filet (rapprochement-1min) reprend la suite dans la minute.
-      const vintedReste = fini && erreurs.length === 0 && donnees.vinted_reste === true;
+      // (08/10 soir) Les fiches à la main lues par cette passe : même règle.
+      const mainJuge = fini && erreurs.length === 0 && donnees.fiches_main_juge_jusqu_a ? { fiches_main_juge_le: donnees.fiches_main_juge_jusqu_a } : {};
+      parCompte.fiches_main_a_juger = (donnees.fiches_main_a_juger ?? []).length;
+      const vintedReste = fini && erreurs.length === 0 && (donnees.vinted_reste === true || donnees.fiches_main_reste === true);
       if (vintedReste) { inacheve = true; parCompte.vinted_reste = true; }
       await etat(user, {
         ...vintedJuge,
+        ...mainJuge,
         passages: progres ? 0 : -(inachevees + 1),
         etat: vintedReste ? "a_faire" : fini ? "termine" : "creation", fin_le: fini && !vintedReste ? new Date().toISOString() : null, a_traiter: 0, photos_manquantes: 0,
         ms_decision: Date.now() - t0,
@@ -267,7 +284,8 @@ serve(async (req) => {
     const suite = new Promise((r) => setTimeout(r, relanceApres)).then(() => fetch(`${supabaseUrl}/functions/v1/rapprochement`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-cron-secret": attendu },
-      body: JSON.stringify({ ...(typeof body.user_id === "string" ? { user_id: body.user_id } : {}), ...(reparer ? { reparer: true } : {}), relance: rang + 1 }),
+      body: JSON.stringify({ ...(typeof body.user_id === "string" ? { user_id: body.user_id } : {}), ...(reparer ? { reparer: true } : {}),
+        ...(porteeMain === "toutes" ? { fiches_main: "toutes" } : {}), relance: rang + 1 }),
     })).catch(() => {});
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil?.(suite);
