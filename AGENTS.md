@@ -4,23 +4,24 @@
 fin) et `docs/agents/consignes-2026-09-28.md` (règles) remplacent tout historique
 contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 
-- **Servi** : ext. **0.6.102** ; 0.6.103 jamais téléversée ; **0.6.104** zip prêt ; min **0.6.81** ; OTA 2.9.67 ; reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
+- **Servi** : ext. **0.6.102** ; 0.6.104 zip prêt ; min **0.6.81** ; OTA 2.9.67 ; reprise : `docs/reprise/terminal-bebertdeals-0810.md`.
 - **⛔ MULTI-SYNCHRO (08/10)** : un appui = toutes les plateformes, stock DÉJÀ fusionné ; moteur v3,
-  `rapprochement` v14 ; empreintes par la base, fonction courte ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
-  nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; `docs/multi-synchro.md`.
+  `rapprochement` v15 ; empreintes par la base ; fiche `releve_*` = `rapprocher_importer` seul ; fiches Vinted
+  nouvelles jugées (mig 130000) ; fiche main ↔ Vinted : mig 150000 ; remise en ligne Vinted (mêmes photos + titre, jamais
+  en ligne ensemble → la plus ancienne ; vente sur annonce remplacée refusée) : mig 160000 NON appliquée ; `docs/multi-synchro.md`.
 - **Push ventes** : 2.9.62, cron 34, `pushDisponible()`.
 - **⛔ Mail à chaque vente** (`push-ventes`) : vente récente prouvée, jamais plafonné, sans récap.
-- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = va au bout, même hors créneau (mig 140000).
+- **⛔ Republication** : jamais bloquée sur une valeur que l'annonce porte (« EU N » ≡ « N ») ; `_shared/relance-apres-maj.js` ; suppression partie = va au bout, même hors créneau.
 - **05/10** : Free 50 repub./mois ; remise en vente ; palier unique ; eBay voie = création.
 - **CPU (04/10)** : tâche auto mesurée, bornée (interdit 11).
 - **04/10** : vente supprimée jamais recréée ; « Sans marque » ; texte = fiche ; colis jamais deviné.
 - **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; absent de deux relevés complets → « déjà
   retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans progression =
-  arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €. **Selftests** : 0 rouge.
+  arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €.
 - **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`).
 - **⛔ `platform_settings`** : `rpc platform_settings_fusionner` seulement.
 - **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
-- **Ouvert** : binaires **2.9.38** (AAB `build/AAB-A-TELEVERSER-2.9.38-vc32/`, iOS Codemagic) ; le reste : fin de l'état.
+- **Ouvert** : binaires **2.9.38** (AAB, iOS Codemagic) ; le reste : fin de l'état.
 
 > **Jumeau de `CLAUDE.md`** (lu par Claude Code). Ce fichier-ci est lu par Codex :
 > il reprend TOUTES les règles de `CLAUDE.md` et ajoute l'architecture, l'état des
@@ -292,7 +293,7 @@ qui survit à ça, c'est du code.
 
 ## 4. Règles métier qui ne se négocient pas
 
-⛔ **Relevé d'import = geste seul (05/10)** : jamais lancé seul ; la veille n'importe rien. **Refus de « Synchroniser » = jamais un cul-de-sac (06/10)** : boutique à confirmer → `stock/ConfirmationBoutique.jsx`, jamais rattachée sans clic. Détail : `docs/agents/consignes-2026-09-28.md`.
+⛔ **Relevé d'import = geste seul (05/10)** : la veille n'importe rien. **Refus de « Synchroniser » = jamais un cul-de-sac (06/10)** : boutique à confirmer → `stock/ConfirmationBoutique.jsx`, jamais sans clic. Détail : `docs/agents/consignes-2026-09-28.md`.
 
 ### 4.1 Import, publication, republication
 

@@ -155,3 +155,48 @@ Chemins qui créent encore des fiches hors v3 : le dressing Vinted (jugé après
 les fiches de la personne (app, generate-listing, Lens), la ligne « vendu »
 d'une vente partielle. Reprise : `docs/reprise/terminal-fin-multi-synchro-0810.md`.
 `npm run selftest:fiche-main-vinted`.
+
+## La remise en ligne Vinted (08/10 nuit, cas Bebertdeals)
+
+Une annonce Vinted SUPPRIMÉE puis republiée par la personne sous un nouvel
+identifiant devenait une fiche neuve (la synchro du dressing ne rattache que par
+identifiant) ; la fiche d'origine (copies Leboncoin, prix d'achat) restait en
+stock sur une annonce morte. Bebertdeals : 1 025 fiches pour 403 articles, deux
+annonces Leboncoin en ligne pour des articles déjà vendus sur Vinted sous leur
+nouvelle annonce. La règle du 25/09 (`vinted_remise_en_ligne`, annonces
+« closed ») ne voyait pas les annonces supprimées, et son balayage (cron 17) est
+coupé depuis le 28/09 ; v3 ne compare jamais deux fiches Vinted.
+Enquête : `docs/enquetes/bebertdeals-0810/RAPPORT.md`.
+
+- **Moteur** `_shared/rapprochement/remises-en-ligne.js` (passe normale, après
+  les fiches à la main) : deux fiches Vinted de la même boutique **jamais en
+  ligne ensemble** (l'ancienne datée disparue ou absente du dernier relevé
+  complet de sa boutique, jamais vue vendue ; la nouvelle apparue après la
+  dernière vue de l'ancienne) ; **même annonce** = au moins deux photos à ≤ 4
+  (une si l'une n'a qu'une photo) ET titre en accord fort ET aucun conflit
+  (type, couleur, taille, dimensions) — le FORT du moteur (photo ≤ 9) relie dans
+  un même dressing des articles différents (chinos posés sur le même fond) ;
+  **aucun rival** (autre exemplaire en ligne ou vendu aux mêmes photos, ancienne
+  en ligne en même temps, deux anciennes en ligne ensemble, quantité > 1).
+  → `remise_en_ligne` : la nouvelle se fond dans la PLUS ANCIENNE, les
+  intermédiaires (`chaine`) ensuite. Doute (ressemblance, ancienne sans photo
+  lisible au titre identique, rival) → `remise_en_ligne_a_verifier` (la
+  question), rien caché. Texte d'abord, photos ensuite (CPU : 200 fiches
+  nouvelles chez Bebertdeals 0,4 s pour la règle, 0,67 s pour la passe).
+- **Base** (migration 20261008160000) : `vinted_remise_en_ligne` élargie (l'échange
+  d'identités d'`inventaire_fusionner_pour` vaut aussi pour la fusion faite à la
+  main), `vinted_absente_dun_releve_complet`, `rapprochement_v3_remise_possible`
+  / `_maillon` (gardes), branche `remise_en_ligne` de `rapprochement_v3_appliquer`
+  (jobs Vinted des annonces mortes clos « remplacée, pas une vente »,
+  `platform_fields.remplacee_par`), lecture (`vinted_nouvelles`,
+  `vinted_releves_complets`, état Vinted des fiches). Garde de vente dans
+  `enregistrer_vente_atomique` : Vinted, sans preuve « sold », article de nouveau
+  en ligne sous une autre fiche (même titre, < 72 h) → refus, la vente se déclare
+  depuis la fiche en ligne.
+- **Drapeaux** (coin_config, posés à 0) : `rapprochement_remise_en_ligne`
+  (absent = coupé) et `vente_garde_remise_en_ligne` (absent = armé).
+- **Rattrapage** : `scripts/reparations/20261008_remises_en_ligne_vinted.mjs`
+  (`--user`, `--parc`, `--appliquer` après la migration et le feu vert),
+  sauvegarde `_backup_0810_remise_*`, inverse `20261008_remises_en_ligne_vinted_INVERSE.sql`.
+  Preuve en transaction annulée : `20261008_preuve_remise_en_ligne.mjs`.
+- `npm run selftest:remise-en-ligne-vinted` (`--prod` : la preuve en base).

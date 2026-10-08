@@ -4,7 +4,7 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » en fin ; reprises : `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » en fin ; reprises : `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
@@ -12,9 +12,10 @@ contraire. Il se périme : `functions list`, `cron.job` et
 - **⛔ MULTI-SYNCHRO (08/10 nuit, règle de Nico du 07/10)** : un appui sur
   « Synchroniser » relève TOUTES les plateformes, le stock arrive DÉJÀ fusionné ;
   moteur v3 `_shared/rapprochement/` (jamais la photo seule, jamais le titre
-  seul, jamais deux annonces d'une même plateforme ; « Annonce en double ? »
+  seul, jamais deux annonces d'une même plateforme — sauf la remise en ligne
+  Vinted, ci-dessous ; « Annonce en double ? »
   hors du stock ; décisions de la personne définitives) ; fonction
-  `rapprochement` (v14 au 08/10 soir) : les empreintes manquantes partent PAR LA BASE
+  `rapprochement` (v15 au 08/10 nuit) : les empreintes manquantes partent PAR LA BASE
   (`rapprochement_v3_empreinter`, pg_net) et ne sont JAMAIS attendues dans la
   fonction — un fetch edge → edge est limité à 60/min, et le worker pg_net ne
   sert rien tant que la requête appelante n'a pas répondu (une fonction
@@ -42,6 +43,20 @@ contraire. Il se périme : `functions list`, `cron.job` et
   Vinted du 28/09 au 08/10, à la main comme par le moteur) ; rattrapage FAIT
   (9 fusions vérifiées sur photo, 80 questions, 0 fiche cachée ;
   `_backup_0810_fiches_main_*`). Selftest `selftest:fiche-main-vinted`.
+- **⛔ REMISE EN LIGNE VINTED (08/10 nuit, Bebertdeals)** : une annonce Vinted
+  SUPPRIMÉE puis republiée par la personne (nouvel identifiant) faisait une
+  fiche neuve ; la fiche d'origine (copies, prix d'achat) restait en stock sur
+  une annonce morte (1 025 fiches pour 403 articles ; copies Leboncoin
+  d'articles déjà vendus ; « Plus en ligne — Vendue ? » posée sur l'annonce
+  morte). `_shared/rapprochement/remises-en-ligne.js` : jamais en ligne
+  ensemble + mêmes photos (≥ 2 à ≤ 4) + titre en accord fort, aucun conflit ni
+  rival → la nouvelle se fond dans la PLUS ANCIENNE ; doute → question.
+  Vente Vinted sans preuve « sold » sur une annonce remplacée : refusée
+  (`enregistrer_vente_atomique`). Migration **20261008160000 NON APPLIQUÉE**
+  (feu vert) ; drapeaux coin_config `rapprochement_remise_en_ligne` /
+  `vente_garde_remise_en_ligne` posés à 0 ; rattrapage
+  `scripts/reparations/20261008_remises_en_ligne_vinted.mjs`. Enquête
+  `docs/enquetes/bebertdeals-0810/RAPPORT.md`. Selftest `selftest:remise-en-ligne-vinted`.
 - **⛔ UNE REPUBLICATION DONT LA SUPPRESSION EST PARTIE VA AU BOUT (08/10, Louis)** :
   créneau fermé, plafond ou pause n'y changent rien (`retraitEngage`,
   `_shared/retenue-creneau.js`, `get-pending-jobs` v223) ; la remise en ligne
@@ -81,7 +96,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `generate-listing` v112, `lens-analysis` v106, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v14, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v94, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
+  `rapprochement` v15, `empreintes-urls` v4, `update-job-status` v131, `handler-watch` v94, `push-ventes` v8, `voice-intent` v155, `ops-digest` v34,
   `ebay-api-worker` v78, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v1, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
