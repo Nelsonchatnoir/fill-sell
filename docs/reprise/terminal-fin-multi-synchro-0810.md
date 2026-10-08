@@ -4,13 +4,28 @@ Suite de `docs/reprise/terminal-complement-0810.md`. Mandat de Nico : appliquer
 les deux migrations (feux verts nommés), règle « fiche créée à la main face à
 une fiche Vinted », extension 0.6.104 codée (aucun zip).
 
-## 00. Fin de journée — extension 0.6.104 `0cec9e6` : prête, NON livrée (preuve Beebs bloquée par la modération)
+## 000. Livraison — 0.6.104 `0cec9e6` LIVRÉE à Nico (preuve de republication Beebs levée, option d)
+
+Décision de Nico (08/10 soir) : « Je lève la preuve de republication Beebs.
+Publication et retrait sont prouvés en réel avec le build final, l'échec vient de
+la modération Beebs. » Dossier renommé :
+
+`C:Users
+icolill-and-selluildCWS-0.6.104-A-TELEVERSERillsell-extension-0.6.104-0cec9e6-cws.zip`
+
+(zip seul dans son dossier ; 0.6.104, BUILD_ID `2026-10-08T14:53:27Z+0cec9e6`,
+31 fichiers, sha256 b74a781a…). Les deux retraits de test (8729a111 → 34132220,
+14b9cfac → 34132869) restent programmés. Reste à Nico : téléverser et « Envoyer
+pour examen » ; après acceptation, `ALREADY_PUBLISHED` / `EXTENSION_MIN_BUILD`
+sur sa décision seulement.
+
+## 00. Fin de journée — extension 0.6.104 `0cec9e6` : prête (preuve Beebs bloquée par la modération — levée ensuite, § 000)
 
 **Correction de contexte (Nico)** : la 0.6.103 n'a JAMAIS été téléversée (ni en examen) :
 la 0.6.104 sera le PREMIER paquet téléversé depuis la 0.6.102. Dossier rangé :
 `build/anciens-zips/CWS-0.6.103-008995b-JAMAIS-TELEVERSEE/`.
 
-- **Paquet** : `build/CWS-0.6.104-EN-ATTENTE-PREUVE-BEEBS/fillsell-extension-0.6.104-0cec9e6-cws.zip`
+- **Paquet** : `build/CWS-0.6.104-A-TELEVERSER/fillsell-extension-0.6.104-0cec9e6-cws.zip` (dossier renommé, § 000)
   (BUILD_ID `2026-10-08T14:53:27Z+0cec9e6`, 31 fichiers, manifest à la racine,
   BUILD_ID dans les 5 .js qui le portent, aucun jeton restant, sha256 b74a781a…).
   Chargé sur le poste de Nico depuis 14:57 UTC. Anciens paquets 0.6.104
@@ -241,7 +256,8 @@ icolFillSell-Extension-Nico`,
 
 ## 4. Ce qui reste (08/10 fin de journée)
 
-1. **Livrer la 0.6.104** : la preuve de republication Beebs exige une annonce en
+1. ~~**Livrer la 0.6.104**~~ FAIT (§ 000 : preuve levée par Nico, zip dans
+   `build/CWS-0.6.104-A-TELEVERSER/`). Ce qui était prévu : la preuve exigeait une annonce en
    ligne. Soit Beebs valide 34132869 (alors : annuler son retrait 14b9cfac,
    `spend_coins_and_republish(1791299785299, NULL, 'manuel', NULL, 'beebs')`
    sous l'identité de Nico, suivre le job, retirer l'annonce republiée),

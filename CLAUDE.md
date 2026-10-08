@@ -49,8 +49,8 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **20261008140000 APPLIQUÉE** (08/10 11:20 UTC) : le balayage ne lance plus une
   republication qui ne peut pas finir dans le créneau (`republish_duree_estimee`).
   Extension **0.6.104** (BUILD_ID `2026-10-08T14:53:27Z+0cec9e6`, chargée chez
-  Nico) : zip NON LIVRÉ tant que la republication Beebs réelle n'est pas prouvée
-  ; un retrait Beebs ne se clôt plus « déjà retirée » pendant la modération
+  Nico) : zip LIVRÉ (`build/CWS-0.6.104-A-TELEVERSER/` ; preuve de republication
+  Beebs levée par Nico — option d, l'échec venait de la modération Beebs) ; un retrait Beebs ne se clôt plus « déjà retirée » pendant la modération
   (annonce jamais vue en ligne, dépôt < 72 h) ; handler-watch v94 relance une
   fois les tâches « sans démarrage » quand le poste a la 0.6.104 : preuve Beebs relue ~6 min par le background,
   aucun essai consommé sans preuve, relevé Beebs par le flux quand « Mes
@@ -72,9 +72,9 @@ contraire. Il se périme : `functions list`, `cron.job` et
 - **Servi** : extension **0.6.102** au CWS (b230ebe, téléversée le 06/10 au
   soir, 51 postes le 08/10 — le rapport du 08/10 nuit la disait « jamais
   téléversée » : faux) ; **0.6.103 JAMAIS téléversée** (Nico, 08/10 —
-  `build/anciens-zips/`) ; **0.6.104 `0cec9e6` prête, NON livrée** :
-  `build/CWS-0.6.104-EN-ATTENTE-PREUVE-BEEBS/` (preuve de republication Beebs
-  bloquée : Beebs examine à la main les annonces ≥ 500 €) ; jamais
+  `build/anciens-zips/`) ; **0.6.104 `0cec9e6` À TÉLÉVERSER** :
+  `build/CWS-0.6.104-A-TELEVERSER/` (zip seul ; preuve de republication Beebs
+  levée par Nico le 08/10 — Beebs examine à la main les annonces ≥ 500 €) ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
   10:50, build 9d203ac) ; `get-pending-jobs` v223,
