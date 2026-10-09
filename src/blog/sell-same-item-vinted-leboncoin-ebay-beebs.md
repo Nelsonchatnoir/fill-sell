@@ -71,7 +71,7 @@ Everything above can be done without a tool. What a tool should take off your ha
 
 That is how FillSell is built. You enter the item once, in the app, with its photos; the app prepares one version of the listing per platform, which you review and correct. You pick one or more platforms and click Publish. From there, the Chrome extension, on your computer, opens each site's real form and fills it field by field, using your own sessions — Chrome has to be open and the computer on; switched off, the listings wait in a queue. The register is your stock: every item carries the link to each of its live listings, and the app flags what has sold. You confirm, and remove the listings on the other platforms in one tap, or site by site by clicking a logo; the extension carries out the deletions the same way. Nothing is removed without your confirmation, because a listing that disappears is not always a sale.
 
-The full run of a publication is described in [Publier ses annonces sur plusieurs plateformes en une seule fois](/blog/publier-annonce-plusieurs-plateformes) (in French). To try it with your own items: [create your first listing on FillSell](https://fillsell.app).
+The full run of a publication is described in [Publier ses annonces sur plusieurs plateformes en une seule fois](/crosslisting) (in French). To try it with your own items: [create your first listing on FillSell](https://fillsell.app).
 
 ## FAQ
 
