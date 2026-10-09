@@ -1,5 +1,7 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
-import { appelEbay, lireEnvEbay, obtenirAccessToken } from "../_shared/ebay-oauth.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
+import { appelEbay, hotes, lireEnvEbay, obtenirAccessToken } from "../_shared/ebay-oauth.ts";
+import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
+import { lectureQuantiteEbay } from "../_shared/ebay-etat-annonce.js";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ebay-ventes-sync — LES VENTES eBAY, PAR L'API D'ORDRES, SERVEUR SEUL
@@ -73,6 +75,12 @@ const PAGES_MAX = 25;      // 5 000 commandes par compte et par passage — born
 // plus ANCIENNE à la plus récente : un lot refusé n'avance jamais le curseur
 // (ci-dessous) au-delà de ce qui est écrit, il sera relu au passage suivant.
 const LOT_RPC = 40;
+// (09/10 soir) Une commande dont la quantité eBay n'a pas été lue APRÈS elle reste
+// « à relire » (ventes_ebay_exemplaires) : on relit son annonce ici, par Browse
+// (jeton applicatif, lecture publique), au plus RELECTURES_MAX par compte et par
+// passage — la base dit lesquelles et quand (1 h, 2 h, 4 h… jusqu'à 24 h).
+const RELECTURES_MAX = 10;
+const MARKETPLACE = "EBAY_FR";   // = _shared/ebay-publication.ts (non importé : module lourd)
 
 interface LigneVente {
   ref: string; titre: string | null; prix: number | null; devise: string | null;
@@ -129,6 +137,32 @@ function lignesDeLaCommande(o: Record<string, any>): LigneVente[] {
     frais: null,
     lot: false,
   })).filter((l) => l.ref.length > 1);
+}
+
+// La lecture eBay des annonces dont une commande attend sa quantité, puis le
+// jugement de ces commandes par la base (ebay_quantite_lue → ebay_commande_appliquer).
+// Une réponse illisible (ni 200 ni 404) ne conclut rien : la commande sera relue.
+async function relireCommandesEnAttente(admin: SupabaseClient, env: ReturnType<typeof lireEnvEbay>, userId: string) {
+  const { data: aRelire, error } = await admin.rpc("ebay_commandes_a_relire", { p_user: userId, p_limite: RELECTURES_MAX });
+  if (error || !Array.isArray(aRelire) || !aRelire.length) return {};
+  let token: string;
+  try { token = await obtenirJetonApplicatif(env); } catch { return { relectures: 0, relecture_jeton: "refuse" }; }
+  let relues = 0, illisibles = 0;
+  for (const r of aRelire as Array<{ listing_id: string }>) {
+    const id = String(r.listing_id ?? "");
+    if (!/^\d{9,15}$/.test(id)) continue;
+    let lecture: Record<string, unknown> | null = null;
+    try {
+      const rep = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${id}`, {
+        headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+      });
+      lecture = lectureQuantiteEbay(rep.status, await rep.json().catch(() => ({})));
+    } catch { lecture = null; }
+    if (!lecture) { illisibles++; continue; }
+    const { error: e2 } = await admin.rpc("ebay_quantite_lue", { p_user: userId, p_listing: id, p_lecture: lecture });
+    if (e2) illisibles++; else relues++;
+  }
+  return { relectures: relues, relectures_illisibles: illisibles };
 }
 
 Deno.serve(async (req) => {
@@ -279,7 +313,8 @@ Deno.serve(async (req) => {
     }
     totalCreees += cumul.creees ?? 0;
     totalAdoptees += cumul.adoptees ?? 0;
-    bilan.push({ pages, lignes: lignes.length, appels, ...cumul, ...(refus ? { rpc: refus, appel_refuse: appels + 1 } : {}) });
+    const relues = await relireCommandesEnAttente(admin, env, c.user_id);
+    bilan.push({ pages, lignes: lignes.length, appels, ...cumul, ...relues, ...(refus ? { rpc: refus, appel_refuse: appels + 1 } : {}) });
   }
 
   return json({

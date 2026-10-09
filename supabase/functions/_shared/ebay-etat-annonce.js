@@ -94,3 +94,28 @@ export const CLES_QUESTION_PLUS_EN_LIGNE = [
   "unavailable_since", "unavailable_pending_since", "detected_price",
   "alerte_masquee_pour", "alerte_masquee_le", "fin_ebay",
 ];
+
+/**
+ * (09/10 soir) La lecture d'une annonce pour juger une COMMANDE (ebay_quantite_lue) :
+ * ce qu'eBay dit, maintenant, de la quantité — jamais une conclusion.
+ * 404 = annonce introuvable ; 200 = quantité (exacte ou non), épuisée, terminée.
+ * Toute autre réponse : null (rien n'est conclu, la commande sera relue).
+ * @param {number} http
+ * @param {Record<string, any>} j   la réponse Browse get_item_by_legacy_id
+ * @param {number} maintenant
+ */
+export function lectureQuantiteEbay(http, j, maintenant = Date.now()) {
+  const lu_le = new Date(maintenant).toISOString();
+  if (http === 404) return { http: 404, lu_le };
+  if (http !== 200) return null;
+  const dispo = (Array.isArray(j?.estimatedAvailabilities) ? j.estimatedAvailabilities[0] : null) ?? {};
+  const q = lireQuantiteEbay(dispo);
+  const statut = String(dispo.estimatedAvailabilityStatus ?? "");
+  const fin = typeof j?.itemEndDate === "string" && j.itemEndDate ? j.itemEndDate : null;
+  const finMs = fin ? Date.parse(fin) : Number.NaN;
+  return {
+    http: 200, lu_le, exacte: q.exacte, disponible: q.disponible, vendus: q.vendus,
+    epuisee: statut === "OUT_OF_STOCK" || (q.exacte && q.disponible === 0),
+    terminee: Number.isFinite(finMs) && finMs <= maintenant, fin, format: formatEbay(j?.buyingOptions),
+  };
+}

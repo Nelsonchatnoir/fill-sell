@@ -169,6 +169,10 @@ async function releverUnCompte(admin: SupabaseClient, env: EbayEnv, r: Run, comp
     user_id: r.user_id, platform: "ebay", listing_id: a.listing_id, url: a.url, titre: a.titre,
     prix: a.prix, photo_url: a.photo_url, favoris: a.favoris, statut_plateforme: "en_ligne",
     run_id: r.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
+    // (09/10 soir) La quantité eBay (QuantityAvailable) était lue puis jetée : la
+    // fiche en stock la suit désormais (déclencheur annonce_ebay_aligne_quantite,
+    // à l'import et à chaque relevé, journalisé). Illisible : rien n'est écrit.
+    ...(a.quantite != null ? { quantite: a.quantite, quantite_le: maintenant() } : {}),
   }));
   for (let i = 0; i < lignes.length; i += 100) {
     const { error } = await admin.from("annonces_plateforme")
