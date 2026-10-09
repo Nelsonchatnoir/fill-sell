@@ -178,7 +178,7 @@ When an item sells on Leboncoin, FillSell asks you to confirm the sale with one 
 
 On Leboncoin, climbing back to the top of the results is a paid option (“Remonter en tête de liste”). FillSell does something else: it reposts. The listing is removed and put back online, so it goes back to the top of the results — its views and favourites start from zero. FillSell never buys the paid option.
 
-Depending on your subscription, your listings bump themselves back up on Vinted, Leboncoin, Beebs, and Depop, on the days and in the time slot you choose, with your computer on; otherwise, you repost a listing with one tap. FillSell spaces out your reposts at a human pace to protect your account, and you switch it all off in one tap. More on [automatic reposting (in French)](page:fr:fonctions/republication).
+Depending on your subscription, your listings bump themselves back up on Vinted, Leboncoin, and Beebs (Depop: one tap), on the days and in the time slot you choose, with your computer on; otherwise, you repost a listing with one tap. FillSell spaces out your reposts at a human pace to protect your account, and you switch it all off in one tap. More on [automatic reposting (in French)](page:fr:fonctions/republication).
 
 ### One honest note
 
@@ -192,7 +192,7 @@ The extension's small panel, and its Chrome Web Store page, are in French for no
 | Post on Leboncoin | Leboncoin's form, in French | Tick Leboncoin in the app; the extension fills in the form |
 | Put the same item on other marketplaces | Write and post each listing again | One listing, five marketplaces: Vinted, Leboncoin, eBay, Beebs, and Depop |
 | An item sells | Find and delete the other listings yourself | Confirm with one tap; proven copies come down, “Already sold?” when in doubt |
-| Stay visible | Pay for a bump, or delete and repost by hand | One-tap reposting, or automatic reposting on your schedule depending on your subscription (Vinted, Leboncoin, Beebs, and Depop) |
+| Stay visible | Pay for a bump, or delete and repost by hand | One-tap reposting, or automatic reposting on your schedule depending on your subscription (Vinted, Leboncoin, and Beebs; Depop: one tap) |
 | Know what you earn | A spreadsheet | Stock, sales and margin calculated for you |
 
 ## Beyond Leboncoin: the same item on five marketplaces

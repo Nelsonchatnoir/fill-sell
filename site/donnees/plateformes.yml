@@ -91,10 +91,10 @@ plateformes:
     # depop_ouvert, extension avec Depop servie, OTA ≥ 2.9.68 — à constater au GO).
     ouverte: true
     mode: extension
-    republication_auto: true
+    republication_auto: false
     vente_enregistree_seule: false
     autorisation: true
-    # republication_auto : activée côté serveur par la migration 20261009230000
-    # (main), comme Vinted, Leboncoin et Beebs.
+    # VARIANTE (b) : republication automatique Depop pas encore activable dans
+    # l'app (PLATEFORMES_PLANIFIEES sans Depop) — republication d'un appui seulement.
     pays:
       - { code: FR, domaine: www.depop.com, ouvert: true }

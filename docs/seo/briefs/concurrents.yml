@@ -91,11 +91,11 @@ outils:
         ebay: {valeur: {fr: "oui — eBay.fr seulement ; par l'API officielle d'eBay si le compte est relié (OAuth), sinon par l'extension", en: "yes — eBay.fr only; through eBay's official API if the account is linked (OAuth), otherwise through the extension"}, note_interne: "pas de republication sur eBay (inutile chez eBay) : on n'en parle pas du tout (décision de Nico)", refs: [F12, F24, F31], verifie_fiche: oui, sources: ["docs/seo/etat-des-lieux/03-fiche-de-verite.md"], date: "2026-10-09", niveau: fiche_de_verite}
         beebs: {valeur: {fr: "oui — publication, import, retrait, republication", en: "yes — publishing, import, removal, reposting"}, refs: [F24, F33, F37, F44], verifie_fiche: oui, sources: ["docs/seo/etat-des-lieux/03-fiche-de-verite.md"], date: "2026-10-09", niveau: fiche_de_verite}
         depop:
-          valeur: {fr: "oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication (manuelle, et automatique selon ta formule depuis la bascule du 10/10 [R-DEPOP]) ; compte Depop en France, en euros ; exécutée par l'extension, ordinateur allumé", en: "yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, reposting (manual, and automatic depending on your subscription since the 10 October switchover [R-DEPOP]); Depop account in France, in euros; carried out by the extension, computer on"}
+          valeur: {fr: "oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication d'un appui (l'automatique par créneaux ne couvre pas encore Depop [R-DEPOP]) ; compte Depop en France, en euros ; exécutée par l'extension, ordinateur allumé", en: "yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, one-tap reposting (automatic time-slot reposting does not cover Depop yet [R-DEPOP]); Depop account in France, in euros; carried out by the extension, computer on"}
           publication: "oui (extension ; Depop n'a pas de champ titre)"
           import: "oui, sur « Synchroniser », rapprochement comme les autres plateformes"
           retrait: "oui — une vente lue sur Depop (statut « vendu ») fait retirer les copies prouvées sur les autres plateformes ; une vente ailleurs fait retirer l'annonce Depop"
-          republication: "oui ; automatique sur décision de Nico, avec la bascule [R-DEPOP]"
+          republication: "oui, d'un appui ; pas encore en automatique [R-DEPOP]"
           pays: "France (euros), www.depop.com"
           prouve_le_0910: "parcours réel sur le compte de Nico : relevé, publication, republication, retrait, retrait croisé (CLAUDE.md, « 09/10 fin de matinée ») ; vente réelle non prouvée de bout en bout (structure d'une vente lue sur une annonce publique vendue)"
           a_ne_pas_ecrire: ["Depop dans le monde entier", "ordinateur éteint", "vente Depop détectée en temps réel"]
@@ -112,8 +112,8 @@ outils:
       regroupement_multi_plateformes: {valeur: "oui — rapprochement côté serveur : mêmes photos ET accord du titre, sans conflit ni concurrent (ou identifiant d'un dépôt FillSell) ; jamais la photo seule ni le titre seul ; doute = question « Est-ce le même article ? », hors du stock", refs: [F35], verifie_fiche: oui, sources: ["docs/seo/etat-des-lieux/03-fiche-de-verite.md"], date: "2026-10-09", niveau: fiche_de_verite}
       retrait_auto_copies: {valeur: {fr: "oui, dans tous les forfaits, une fois la vente enregistrée : seule sur Vinted et eBay (preuve « vendu »), après ta confirmation d'un appui sur Leboncoin, Beebs et Depop ; copies liées par une preuve retirées, sinon question « Déjà vendu ? » ; Vinted, Leboncoin, Beebs, Depop : ordinateur allumé", en: "yes, on every plan, once the sale is recorded: on its own on Vinted and eBay (“sold” proof), after your one-tap confirmation on Leboncoin, Beebs and Depop; copies linked by a proof are removed, otherwise the question “Already sold?”; Vinted, Leboncoin, Beebs, Depop: computer on"}, refs: [F42, F43, F44], verifie_fiche: oui, sources: ["docs/seo/etat-des-lieux/03-fiche-de-verite.md", "docs/seo/etat-des-lieux/03c-decisions-nico-0910.md (P3 : vente Depop enregistrée seule codée, jamais observée → formulation prudente, Depop par confirmation comme site/donnees/plateformes.yml)"], date: "2026-10-09", niveau: fiche_de_verite, depop: decision_nico, a_ne_pas_ecrire: ["retrait automatique partout", "temps réel", "le retrait attend toujours ta confirmation"]}
       republication:
-        valeur: {fr: "d'un appui ou automatique selon ta formule ; d'un appui quelle que soit la formule, automatique par créneaux sur Vinted, Leboncoin, Beebs et Depop (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s'arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé", en: "with one tap or automatic depending on your subscription; one tap whatever the subscription, automatic in time slots on Vinted, Leboncoin, Beebs and Depop (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on"}
-        plateformes_auto: [vinted, leboncoin, beebs, depop]   # UN SEUL GESTE : retirer « depop » ici si la republication automatique Depop n'est pas active à la mise en ligne (formules de repli : rapport, marque [R-DEPOP]) ; aucun score ne change
+        valeur: {fr: "d'un appui ou automatique selon ta formule ; d'un appui quelle que soit la formule, automatique par créneaux sur Vinted, Leboncoin et Beebs, Depop d'un appui (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s'arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé", en: "with one tap or automatic depending on your subscription; one tap whatever the subscription, automatic in time slots on Vinted, Leboncoin and Beebs, Depop with one tap (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on"}
+        plateformes_auto: [vinted, leboncoin, beebs]   # UN SEUL GESTE : retirer « depop » ici si la republication automatique Depop n'est pas active à la mise en ligne (formules de repli : rapport, marque [R-DEPOP]) ; aucun score ne change
         plateformes_manuelle: [vinted, leboncoin, beebs, depop]
         paliers: "automatique : certaines formules seulement (republish_planifiee_etat, Pro et Business) ; d'un appui : toutes — sur le site, « selon ta formule » / « depending on your subscription », jamais un nom de palier ni « pour tous » à côté de la republication automatique (règle de Nico, 09/10 nuit)"
         ebay: "pas de republication (inutile chez eBay) — on n'en parle pas"
@@ -195,7 +195,7 @@ outils:
       - "eBay inclus dès le palier Gratuit (StoFlow : à partir de Starter, 14,99 €)."
       - "Stock sans limite d'articles sur tous les paliers (StoFlow : 100 / 500 / 2 000 produits publiés)."
       - "Rapprochement automatique d'un même article entre plateformes (photos et titre, doute = question) ; chez StoFlow, la liaison se fait à la main."
-      - "Republication automatique selon la formule, sur Beebs et Depop en plus de Vinted et Leboncoin [R-DEPOP] (StoFlow : Vinted et Leboncoin seulement)."
+      - "Republication automatique selon la formule, sur Beebs en plus de Vinted et Leboncoin [R-DEPOP] (StoFlow : Vinted et Leboncoin seulement)."
       - "App en français et en anglais (StoFlow : français seulement)."
     lui_fait_pas_fillsell:
       - "Vestiaire Collective, Etsy, eBay hors de France (9 pays)."
@@ -396,7 +396,7 @@ outils:
       - "Publication sur Vinted (Klork : Vinted est la source)."
       - "eBay par l'API officielle (publication et retrait)."
       - "Retrait automatique des copies dans tous les forfaits (Klork : Business, 35 €)."
-      - "Republication automatique par créneaux selon la formule, Depop compris [R-DEPOP] (Klork : « Bientôt », plan Entreprise à 69 €)."
+      - "Republication automatique par créneaux selon la formule, sur Vinted, Leboncoin et Beebs [R-DEPOP] (Klork : « Bientôt », plan Entreprise à 69 €)."
     lui_fait_pas_fillsell:
       - "Vestiaire Collective (et Whatnot, Grailed annoncés) ; Depop des deux côtés."
       - "Plusieurs comptes Vinted dès le gratuit ; offres automatiques aux intéressés ; messagerie centralisée."
@@ -521,7 +521,7 @@ outils:
     fillsell_fait_pas_lui:
       - "Beebs."
       - "Leboncoin complet : import, retrait des copies, republication (FLUF : crosslisting seul, le reste contradictoire ou absent)."
-      - "Republication automatique selon la formule, sur Leboncoin et Beebs en plus de Vinted et Depop [R-DEPOP] (FLUF : jamais sur Leboncoin, et pas de Beebs)."
+      - "Republication automatique selon la formule, sur Leboncoin et Beebs en plus de Vinted [R-DEPOP] (FLUF : jamais sur Leboncoin, et pas de Beebs)."
       - "Palier gratuit permanent (FLUF : essai de 7 jours pour 1 £)."
       - "Prix affichés en euros sur le site (FLUF : livres sterling, y compris en /fr/)."
       - "App et site en français de bout en bout (FLUF : fiche App Store en anglais, IA qui écrit en anglais par défaut, pages /fr/ en partie en anglais)."

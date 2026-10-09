@@ -62,10 +62,10 @@ outils:
           date: 2026-10-09
           niveau: fiche_de_verite
         depop:
-          valeur: 'oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication (manuelle, et automatique selon ta formule depuis la bascule du 10/10) ; compte Depop en France, en euros ; exécutée par l''extension, ordinateur allumé'
+          valeur: 'oui, ouverte à tous le 10/10/2026 — publication, synchronisation (import des annonces Depop sur « Synchroniser »), retrait des copies à la vente, republication d''un appui (l''automatique par créneaux ne couvre pas encore Depop) ; compte Depop en France, en euros ; exécutée par l''extension, ordinateur allumé'
           traductions:
             valeur:
-              en: 'yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, reposting (manual, and automatic depending on your subscription since the 10 October switchover); Depop account in France, in euros; carried out by the extension, computer on'
+              en: 'yes, open to all on 10 October 2026 — publishing, sync (import of Depop listings on “Sync”), removal of copies on a sale, one-tap reposting (automatic time-slot reposting does not cover Depop yet); Depop account in France, in euros; carried out by the extension, computer on'
           verdict: oui
           sources: []
           date: 2026-10-09
@@ -143,10 +143,10 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       republication:
-        valeur: 'd''un appui ou automatique selon ta formule ; d''un appui quelle que soit la formule, automatique par créneaux sur Vinted, Leboncoin, Beebs et Depop (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s''arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé'
+        valeur: 'd''un appui ou automatique selon ta formule ; d''un appui quelle que soit la formule, automatique par créneaux sur Vinted, Leboncoin et Beebs, Depop d''un appui (jours, créneau, ancienneté minimale, ordre ; FillSell espace les republications et s''arrête chaque jour pour protéger le compte ; coupure à tout moment) ; ordinateur allumé'
         traductions:
           valeur:
-            en: 'with one tap or automatic depending on your subscription; one tap whatever the subscription, automatic in time slots on Vinted, Leboncoin, Beebs and Depop (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on'
+            en: 'with one tap or automatic depending on your subscription; one tap whatever the subscription, automatic in time slots on Vinted, Leboncoin and Beebs, Depop with one tap (days, time slot, minimum age, order; FillSell spaces out reposts and stops each day to protect the account; can be switched off at any time); computer on'
         verdict: null
         sources: []
         date: 2026-10-09
@@ -387,7 +387,7 @@ outils:
       - 'eBay inclus dès le palier Gratuit (StoFlow : à partir de Starter, 14,99 €).'
       - 'Stock sans limite d''articles sur tous les paliers (StoFlow : 100 / 500 / 2 000 produits publiés).'
       - 'Rapprochement automatique d''un même article entre plateformes (photos et titre, doute = question) ; chez StoFlow, la liaison se fait à la main.'
-      - 'Republication automatique selon la formule, sur Beebs et Depop en plus de Vinted et Leboncoin (StoFlow : Vinted et Leboncoin seulement).'
+      - 'Republication automatique selon la formule, sur Beebs en plus de Vinted et Leboncoin (StoFlow : Vinted et Leboncoin seulement).'
       - 'App en français et en anglais (StoFlow : français seulement).'
     lui_fait_pas_fillsell:
       - 'Vestiaire Collective, Etsy, eBay hors de France (9 pays).'
@@ -979,7 +979,7 @@ outils:
       - 'Publication sur Vinted (Klork : Vinted est la source).'
       - eBay par l'API officielle (publication et retrait).
       - 'Retrait automatique des copies dans tous les forfaits (Klork : Business, 35 €).'
-      - 'Republication automatique par créneaux selon la formule, Depop compris (Klork : « Bientôt », plan Entreprise à 69 €).'
+      - 'Republication automatique par créneaux selon la formule, sur Vinted, Leboncoin et Beebs (Klork : « Bientôt », plan Entreprise à 69 €).'
     lui_fait_pas_fillsell:
       - 'Vestiaire Collective (et Whatnot, Grailed annoncés) ; Depop des deux côtés.'
       - Plusieurs comptes Vinted dès le gratuit ; offres automatiques aux intéressés ; messagerie centralisée.
@@ -1354,7 +1354,7 @@ outils:
     fillsell_fait_pas_lui:
       - Beebs.
       - 'Leboncoin complet : import, retrait des copies, republication (FLUF : crosslisting seul, le reste contradictoire ou absent).'
-      - 'Republication automatique selon la formule, sur Leboncoin et Beebs en plus de Vinted et Depop (FLUF : jamais sur Leboncoin, et pas de Beebs).'
+      - 'Republication automatique selon la formule, sur Leboncoin et Beebs en plus de Vinted (FLUF : jamais sur Leboncoin, et pas de Beebs).'
       - 'Palier gratuit permanent (FLUF : essai de 7 jours pour 1 £).'
       - 'Prix affichés en euros sur le site (FLUF : livres sterling, y compris en /fr/).'
       - 'App et site en français de bout en bout (FLUF : fiche App Store en anglais, IA qui écrit en anglais par défaut, pages /fr/ en partie en anglais).'

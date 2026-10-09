@@ -23,7 +23,7 @@ Avec FillSell, Lens rédige l'annonce à partir d'une photo, l'extension Chrome 
 - Pour un particulier, vendre est gratuit des deux côtés : les frais de service sont payés par l'acheteur, en règle générale 5 % + 0,70 € sur Vinted, et 0,70 € + 5 % du prix en livraison sur Leboncoin.
 - Le vrai danger du cross-listing, c'est la double vente. Vinted demande lui-même de masquer ou de supprimer une annonce dont l'article s'est vendu ailleurs.
 - Avec FillSell, une vente Vinted est enregistrée toute seule et l'annonce Leboncoin du même article est retirée ; une vente Leboncoin se confirme d'un appui, puis l'annonce Vinted s'en va. Au moindre doute : « Déjà vendu ? ».
-- Selon votre formule, vos annonces remontent toutes seules sur Vinted, Leboncoin, Beebs et Depop, les jours et sur le créneau que vous choisissez, ordinateur allumé ; sinon, une annonce remonte d'un appui.
+- Selon votre formule, vos annonces remontent toutes seules sur Vinted, Leboncoin et Beebs (sur Depop, d'un appui), les jours et sur le créneau que vous choisissez, ordinateur allumé ; sinon, une annonce remonte d'un appui.
 
 ## Peut-on vendre le même article sur Vinted et Leboncoin en même temps ?
 
@@ -138,7 +138,7 @@ Sur Vinted, faire remonter un article passe par le Boost, payant, de 3 ou 7 jour
 FillSell fait autre chose : il republie. L'annonce est retirée puis remise en ligne : elle repart en haut des résultats, mais ses vues et ses favoris repartent de zéro. L'extension, elle, ne souscrit jamais d'option payante à votre place.
 
 - **D'un appui**, pour une annonce qui s'essouffle.
-- **Automatiquement, sur Vinted, Leboncoin, Beebs et Depop, selon votre formule** : vos annonces remontent toutes seules, les jours et sur le créneau que vous choisissez, pendant que vous faites autre chose. Ordinateur allumé.
+- **Automatiquement, sur Vinted, Leboncoin et Beebs, selon votre formule (sur Depop, d'un appui)** : vos annonces remontent toutes seules, les jours et sur le créneau que vous choisissez, pendant que vous faites autre chose. Ordinateur allumé.
 - **À un rythme humain** : les republications se répartissent sur votre créneau, jamais en rafale ; une même annonce n'est jamais republiée deux fois en 24 heures ; vous coupez tout d'un geste, quand vous voulez.
 
 Pourquoi tant de soin ? Parce que les conditions de Vinted interdisent de « supprimer et ajouter à nouveau plusieurs fois le même Article ou plusieurs Articles en gros ». FillSell espace donc ses gestes pour protéger votre compte. Tout sur la [republication de vos annonces](page:fonctions/republication).

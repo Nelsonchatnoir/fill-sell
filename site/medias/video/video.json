@@ -1,7 +1,7 @@
 {
   "id": "fillsell-presentation",
-  "statut": "variante « site » refaite le 2026-10-09 (compte de démonstration « Camille », cinq plateformes) — version A (republication automatique sur Vinted, Leboncoin, Beebs ET Depop) — VALIDÉE PAR NICO le 09/10 au soir (version A, build/VIDEO-SITE-FINALE/fillsell-video-site-2026-10-09-8b34a58.mp4, même empreinte ; la version B est le même rendu, Depop retirée de la scène « Remonter »)",
-  "version_republication_depop": "A",
+  "statut": "variante « site » refaite le 2026-10-09 (compte de démonstration « Camille », cinq plateformes) — version B (republication automatique sur Vinted, Leboncoin et Beebs — Depop retirée) — VALIDÉE PAR NICO le 09/10 au soir (version A, build/VIDEO-SITE-FINALE/fillsell-video-site-2026-10-09-8b34a58.mp4, même empreinte ; la version B est le même rendu, Depop retirée de la scène « Remonter »)",
+  "version_republication_depop": "B",
   "basculer": "node docs/seo/briefs/video-variante-site/video-json.mjs A|B (B = Depop retirée de la republication automatique ; à basculer EN MÊME TEMPS que `republication_auto` de Depop dans site/donnees/plateformes.yml)",
   "source": {
     "projet": "C:\\Users\\nicol\\fillsell-video (Remotion 4.0.534, composition FillSell) — lu, jamais modifié ; rendu fait sur une copie (docs/seo/briefs/video-variante-site/)",
@@ -22,40 +22,40 @@
   "fichiers": [
     {
       "role": "video",
-      "chemin": "fillsell-presentation-av1.webm",
+      "chemin": "version-b/fillsell-presentation-av1.webm",
       "type": "video/webm; codecs=\"av01.0.05M.08\"",
       "codec": "AV1 profil 0 (Main), niveau 3.1, 8 bits, yuv420p, libaom-av1 CRF 34 cpu-used 5, image clé toutes les 5 s",
       "largeur": 720,
       "hauteur": 1280,
       "duree_s": 53.5,
-      "poids_octets": 1657358,
-      "debit_moyen_kbps": 248
+      "poids_octets": 1651885,
+      "debit_moyen_kbps": 247
     },
     {
       "role": "video",
-      "chemin": "fillsell-presentation.webm",
+      "chemin": "version-b/fillsell-presentation.webm",
       "type": "video/webm; codecs=\"vp9\"",
       "codec": "VP9 profil 0, yuv420p, libvpx-vp9 deux passes CRF 33, image clé toutes les 5 s",
       "largeur": 720,
       "hauteur": 1280,
       "duree_s": 53.5,
-      "poids_octets": 2535382,
-      "debit_moyen_kbps": 379
+      "poids_octets": 2529428,
+      "debit_moyen_kbps": 378
     },
     {
       "role": "video",
-      "chemin": "fillsell-presentation.mp4",
+      "chemin": "version-b/fillsell-presentation.mp4",
       "type": "video/mp4; codecs=\"avc1.64001F\"",
       "codec": "H.264 High, niveau 3.1, yuv420p, x264 veryslow tune animation, image clé toutes les 5 s, moov en tête (faststart)",
       "largeur": 720,
       "hauteur": 1280,
       "duree_s": 53.5,
-      "poids_octets": 4009563,
+      "poids_octets": 4012321,
       "debit_moyen_kbps": 600
     },
     {
       "role": "affiche",
-      "chemin": "fillsell-presentation-poster.webp",
+      "chemin": "version-b/fillsell-presentation-poster.webp",
       "type": "image/webp",
       "largeur": 720,
       "hauteur": 1280,
@@ -64,7 +64,7 @@
     },
     {
       "role": "affiche",
-      "chemin": "fillsell-presentation-poster-360.webp",
+      "chemin": "version-b/fillsell-presentation-poster-360.webp",
       "type": "image/webp",
       "largeur": 360,
       "hauteur": 640,
@@ -77,8 +77,8 @@
     "en": "FillSell in under a minute: one photo, one listing, five marketplaces"
   },
   "description": {
-    "fr": "Une photo, et Lens écrit l’annonce et propose le prix ; elle part sur Vinted, Leboncoin, eBay, Beebs et Depop, une annonce après l’autre, sans un copier-coller ; la republication automatique la fait remonter sur Vinted, Leboncoin, Beebs et Depop, les jours et au créneau choisis, ordinateur allumé ; vendue sur Vinted, la vente s’enregistre seule et FillSell retire les copies des autres plateformes — au moindre doute, il demande « Déjà vendu ? » ; puis le mois de Camille (profit, ventes sur cinq plateformes dont Depop, meilleures pièces parties en 1 à 3 jours) et la synchronisation du stock déjà en ligne. Compte de démonstration, chiffres fictifs : ni le résultat d’un client, ni une promesse de gains. Texte à l’écran en français, sans son.",
-    "en": "One photo, and Lens writes the listing and suggests the price; it goes live on Vinted, Leboncoin, eBay, Beebs and Depop, one listing after the other, without a single copy-paste; automatic reposting bumps it back up on Vinted, Leboncoin, Beebs and Depop, on the days and in the time slot you choose, with your computer on; once it sells on Vinted, the sale records itself and FillSell removes the copies from the other marketplaces — if in doubt, it asks “Already sold?”; then Camille’s month (profit, sales on five marketplaces including Depop, best pieces gone in 1 to 3 days) and syncing the stock already live. Demo account, illustrative figures: not a customer’s results and no promise of earnings. On-screen text in French, no sound."
+    "fr": "Une photo, et Lens écrit l’annonce et propose le prix ; elle part sur Vinted, Leboncoin, eBay, Beebs et Depop, une annonce après l’autre, sans un copier-coller ; la republication automatique la fait remonter sur Vinted, Leboncoin et Beebs, les jours et au créneau choisis, ordinateur allumé ; vendue sur Vinted, la vente s’enregistre seule et FillSell retire les copies des autres plateformes — au moindre doute, il demande « Déjà vendu ? » ; puis le mois de Camille (profit, ventes sur cinq plateformes dont Depop, meilleures pièces parties en 1 à 3 jours) et la synchronisation du stock déjà en ligne. Compte de démonstration, chiffres fictifs : ni le résultat d’un client, ni une promesse de gains. Texte à l’écran en français, sans son.",
+    "en": "One photo, and Lens writes the listing and suggests the price; it goes live on Vinted, Leboncoin, eBay, Beebs and Depop, one listing after the other, without a single copy-paste; automatic reposting bumps it back up on Vinted, Leboncoin and Beebs, on the days and in the time slot you choose, with your computer on; once it sells on Vinted, the sale records itself and FillSell removes the copies from the other marketplaces — if in doubt, it asks “Already sold?”; then Camille’s month (profit, sales on five marketplaces including Depop, best pieces gone in 1 to 3 days) and syncing the stock already live. Demo account, illustrative figures: not a customer’s results and no promise of earnings. On-screen text in French, no sound."
   },
   "accessibilite": {
     "aria_label_fr": "Vidéo de présentation de FillSell, 53,5 secondes, sans son, texte à l’écran en français. Transcription sous la vidéo.",
@@ -89,11 +89,11 @@
     "@context": "https://schema.org",
     "@type": "VideoObject",
     "name": "FillSell en moins d’une minute : une photo, une annonce, cinq plateformes",
-    "description": "Créer une annonce à partir d’une photo avec Lens, la publier sur Vinted, Leboncoin, eBay, Beebs et Depop, la faire remonter automatiquement sur Vinted, Leboncoin, Beebs et Depop, retirer les copies quand elle se vend, suivre son profit et synchroniser son stock. Compte de démonstration, chiffres fictifs.",
+    "description": "Créer une annonce à partir d’une photo avec Lens, la publier sur Vinted, Leboncoin, eBay, Beebs et Depop, la faire remonter automatiquement sur Vinted, Leboncoin et Beebs, retirer les copies quand elle se vend, suivre son profit et synchroniser son stock. Compte de démonstration, chiffres fictifs.",
     "thumbnailUrl": [
-      "A_REMPLIR_URL_ABSOLUE/fillsell-presentation-poster.webp"
+      "A_REMPLIR_URL_ABSOLUE/version-b/fillsell-presentation-poster.webp"
     ],
-    "contentUrl": "A_REMPLIR_URL_ABSOLUE/fillsell-presentation.mp4",
+    "contentUrl": "A_REMPLIR_URL_ABSOLUE/version-b/fillsell-presentation.mp4",
     "uploadDate": "A_REMPLIR_DATE_DE_MISE_EN_LIGNE",
     "duration": "PT53.5S",
     "inLanguage": "fr",
@@ -122,8 +122,8 @@
     {
       "debut_s": 20,
       "fin_s": 26,
-      "titre": "Étape 3 — Remonter : republication automatique sur Vinted, Leboncoin, Beebs et Depop",
-      "titre_en": "Step 3 — Bump: automatic reposting on Vinted, Leboncoin, Beebs and Depop"
+      "titre": "Étape 3 — Remonter : republication automatique sur Vinted, Leboncoin et Beebs",
+      "titre_en": "Step 3 — Bump: automatic reposting on Vinted, Leboncoin and Beebs"
     },
     {
       "debut_s": 26,
@@ -239,7 +239,7 @@
     {
       "debut_s": 20,
       "fin_s": 26,
-      "texte": "Republication automatique — Active sur Vinted, Leboncoin, Beebs et Depop (interrupteur allumé)"
+      "texte": "Republication automatique — Active sur Vinted, Leboncoin et Beebs (interrupteur allumé)"
     },
     {
       "debut_s": 20.1,
@@ -426,7 +426,7 @@
     {
       "debut_s": 20,
       "fin_s": 26,
-      "texte": "Automatic reposting — On for Vinted, Leboncoin, Beebs and Depop (switch on)"
+      "texte": "Automatic reposting — On for Vinted, Leboncoin and Beebs (switch on)"
     },
     {
       "debut_s": 20.1,
@@ -529,7 +529,7 @@
     "lecture": "au clic (PLAN.md § 5) ; transcription en texte sous la vidéo",
     "conditions_mise_en_ligne": [
       "D1 : Depop ouverte à tous (depop_ouvert), extension avec Depop servie par le Chrome Web Store, OTA ≥ 2.9.68",
-      "D2 : republication automatique Depop ACTIVE (non codée au 09/10) — sinon : node docs/seo/briefs/video-variante-site/video-json.mjs B"
+      "D2 non remplie : version B servie (Depop absente de la republication automatique)"
     ]
   }
 }
