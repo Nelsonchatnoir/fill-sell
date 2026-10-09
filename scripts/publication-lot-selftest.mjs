@@ -125,6 +125,9 @@ const job = (o) => ({ action: 'publish', status: 'published', created_at: '2026-
   verifier(bilanArticle(jum).motifs.some((x) => x.cle === 'jumeau'), 'un article qui ressemble, en ligne : « même article ? »');
   verifier(bilanArticle(jum, { jumeauxTranches: new Set(['leboncoin']) }).pret, 'tranché « autre article » : prêt');
   verifier(!bilanArticle({ ...base, jumeaux: [{ platform: 'beebs' }] }).motifs.some((x) => x.cle === 'jumeau'), 'jumeau sur une plateforme non visée : rien à demander');
+  // (09/10 soir, Louis) la ressemblance ne retient jamais une fiche à plusieurs exemplaires
+  verifier(bilanArticle({ ...jum, quantiteFiche: 9997 }).pret && !bilanArticle({ ...jum, quantiteFiche: 9997 }).motifs.some((x) => x.cle === 'jumeau'), 'fiche à 9 997 exemplaires : la ressemblance ne bloque jamais');
+  verifier(bilanArticle({ ...jum, quantiteFiche: 1 }).motifs.some((x) => x.cle === 'jumeau'), "fiche à un exemplaire : la question reste, posée sur l'écran du lot");
   verifier(bilanArticle({ ...base, plateformesPubliables: new Set() }).motifs.some((x) => x.cle === 'aucune'), 'plus aucune plateforme : dit');
   verifier(!bilanArticle({ ...base, ctaDisabled: true }).pret, 'le bouton du moteur gris : jamais prêt (même règle que le stepper)');
   verifier(bilanArticle({ ...base, ctaDisabled: true, motifsCtaGris: ['Adresse de remise manquante'] }).motifs[0]?.libelle === 'Adresse de remise manquante',

@@ -9592,8 +9592,6 @@ export default function ListingPreviewScreen({
       }
       let rowsEnvoyees = rows;
       let refuseesServeur = [];
-      // (2026-09-27) Fiche jumelle déjà en ligne : le serveur la nomme.
-      let jumeauxServeur = [];
       let pubRes = null;
       let pubErr = null;
       for (let tentative = 0; ; tentative++) {
@@ -9604,9 +9602,6 @@ export default function ListingPreviewScreen({
         pubRes = reponse.data;
         pubErr = reponse.error;
         if (pubErr) break;
-        if (pubRes?.allowed === false && pubRes.reason === "already_published" && Array.isArray(pubRes.jumeaux)) {
-          jumeauxServeur = [...jumeauxServeur, ...pubRes.jumeaux];
-        }
         if (variante === "nouvelle" && tentative === 0 && pubRes?.allowed === false && pubRes.reason === "already_published") {
           const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
           const restantes = rowsEnvoyees.filter(r => !refusees.includes(r.platform));
@@ -9667,7 +9662,7 @@ export default function ListingPreviewScreen({
           const refusees = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
           setSelected(prev => new Set([...prev].filter(p => !refusees.includes(p))));
           throw new Error(messageRefusPublication(refusees, {
-            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang, jumeaux: jumeauxServeur,
+            publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang,
           }));
         }
         // Filet générique (2026-08-04) : un refus futur du RPC qui porte un
@@ -9879,7 +9874,7 @@ export default function ListingPreviewScreen({
           ...exclusRun,
           ...refuseesServeur.map(p => ({
             platform: p, motif: "refusee_serveur",
-            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang, jumeaux: jumeauxServeur }),
+            texte: messageRefusPublication([p], { publiees: publishedSet, enFile: queuedSet, attentes: fetchedAttentes, lang }),
           })),
         ]);
         setFournee({ inventaireId: currentInvId ?? null, plateformes: rowsEnvoyees.map(r => r.platform), depuis: new Date().toISOString() });

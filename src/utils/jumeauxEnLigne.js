@@ -25,14 +25,21 @@
 //    JAMAIS « aucun jumeau ». Le rapprochement qui TRANCHE, lui, appartient à
 //    l'écran « Rattacher » — c'est lui qui devra faire disparaître la cause.
 //
-// COÛT. Deux lectures bornées, déclenchées seulement à l'étape Publier, et
+// ⛔ (09/10 soir, Louis — « Rangement Noir et Blanc » bloqué par « Noir et
+//    Jaune ») UNE ANNONCE RATTACHÉE À UNE AUTRE FICHE N'EST JAMAIS UN JUMEAU.
+//    Elle appartient à SA fiche : deux fiches = deux articles, le moteur de
+//    rattachement (ou la personne) l'a déjà décidé. Seules les annonces du
+//    relevé rattachées à AUCUNE fiche (hors du stock, à vérifier) peuvent
+//    ressembler à l'article qu'on publie. Les dépôts FillSell (toujours
+//    portés par une fiche) ne sont plus lus ici.
+//
+// COÛT. Une lecture bornée, déclenchée seulement à l'étape Publier, et
 // seulement sur les plateformes cochées : le filtre est posé CÔTÉ SERVEUR sur
 // les mots les plus rares du titre, jamais « tous les jobs du compte »
 // (44 651 lignes dans le parc, et PostgREST tronque à 1000 sans prévenir).
 // Extensions explicites : ce module est aussi importé tel quel par Node
 // (scripts/etats-publication-selftest.mjs) — Vite les accepte à l'identique.
 import { texteComparable } from "./texteComparable.js";
-import { idAnnonceDe } from "./publicationState.js";
 // ── LA COULEUR EXCLUT, LA PHOTO PROUVE (2026-09-23, kits de Louis) ──────────
 // « Rangement Blanc et Noir… » et « Rangement Blanc et Gris… » partagent six
 // mots et la même photo : deux kits, deux annonces. L'alerte les citait comme
@@ -149,7 +156,8 @@ export function verdictJumeau({ titre, prix, candidat, photo = null }) {
  * @param {object}   supabase
  * @param {object}   p
  * @param {string}   p.userId
- * @param {number?}  p.inventaireId  l'article qu'on publie (exclu de la recherche)
+ *   (p.inventaireId n'est plus lu depuis le 09/10 : seules les annonces
+ *   rattachées à AUCUNE fiche comptent.)
  * @param {string}   p.titre
  * @param {string?}  p.marque
  * @param {number?}  p.prix          le prix de CE lot (cf. estUnJumeau)
@@ -158,7 +166,7 @@ export function verdictJumeau({ titre, prix, candidat, photo = null }) {
  *          [] = rien trouvé, ou rien de cherchable, ou lecture en échec. Jamais
  *          null : un aléa réseau se tait, il n'alarme pas et ne bloque rien.
  */
-export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = null, titre, marque = null, prix = null, plateformes = [], photos = [] }) {
+export async function chercherJumeauxEnLigne(supabase, { userId, titre, marque = null, prix = null, plateformes = [], photos = [] }) {
   const cibles = [...new Set((plateformes ?? []).filter(Boolean))];
   if (!userId || !cibles.length) return [];
   const mots = motsDuTitre(titre, marque);
@@ -177,13 +185,9 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
   // Les photos de L'ARTICLE (jusqu'à 3) : la preuve se cherche contre elles.
   const photosArticle = urlsPhotos(photos ?? []).filter((u) => /^https?:\/\//.test(u)).slice(0, 3);
 
-  // 1. LE RELEVÉ DU COMPTE — la source la plus sûre : elle dit « en ligne »
-  //    parce que l'annonce a été VUE sur la plateforme, pas parce qu'un job
-  //    dit l'avoir posée. Ne couvre pas Vinted (rapprocher_releve ne traite
-  //    que leboncoin/beebs/ebay/opla) — d'où la seconde lecture.
-  //    L'article publié est écarté EN JS, pas par un `neq` : un `neq` sur
-  //    inventaire_id écarterait aussi les annonces encore à rattacher
-  //    (inventaire_id NULL), qui sont justement en ligne elles aussi.
+  // LE RELEVÉ DU COMPTE, annonces rattachées à AUCUNE fiche seulement
+  // (09/10 soir) : celles d'une autre fiche ne sont jamais un jumeau, celles
+  // de CET article non plus.
   try {
     const { data, error } = await supabase
       .from("annonces_plateforme")
@@ -191,13 +195,14 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
       .eq("user_id", userId)
       .is("disparu_le", null)
       .eq("statut_plateforme", "en_ligne")
+      .is("inventaire_id", null)
       .in("platform", cibles)
       .or(clauseOu("titre", titre, marque))
       .order("vu_le", { ascending: false })
       .range(0, MAX_LIGNES_LUES - 1);
     if (error) throw error;
     for (const a of data ?? []) {
-      if (inventaireId != null && a.inventaire_id === inventaireId) continue;
+      if (a.inventaire_id != null) continue;
       const communs = motsCommuns(mots, a.titre);
       // Au moins deux mots pour être CANDIDAT ; le verdict se rend plus bas,
       // avec la couleur et la photo.
@@ -210,55 +215,6 @@ export async function chercherJumeauxEnLigne(supabase, { userId, inventaireId = 
     }
   } catch (e) {
     console.warn("[jumeauxEnLigne] relevé:", e?.message ?? e);
-  }
-
-  // 2. NOS PROPRES DÉPÔTS — indispensable pour Vinted, et pour tout ce qui est
-  //    parti depuis le dernier relevé.
-  try {
-    const { data, error } = await supabase
-      .from("cross_post_jobs")
-      .select("inventaire_id, platform, title, price, listing_url, platform_listing_id, photos")
-      .eq("user_id", userId)
-      .in("platform", cibles)
-      .in("action", ["publish", "republish"])
-      .eq("status", "published")
-      .or(clauseOu("title", titre, marque))
-      .order("published_at", { ascending: false })
-      .range(0, MAX_LIGNES_LUES - 1);
-    if (error) throw error;
-    const candidats = (data ?? []).filter((j) =>
-      j.inventaire_id != null
-      && j.inventaire_id !== inventaireId
-      && motsCommuns(mots, j.title).length >= SEUIL_MOTS_COMMUNS);
-
-    // Un dépôt reste 'published' en base quelques minutes après un retrait
-    // réussi (cf. publicationState.js) : sans cette relecture, l'app
-    // avertirait d'un jumeau qui n'est plus en ligne. On ne lit que les
-    // retraits ABOUTIS des articles candidats — une poignée de lignes.
-    const retires = new Set();
-    if (candidats.length) {
-      const { data: dels } = await supabase
-        .from("cross_post_jobs")
-        .select("platform, listing_url, platform_listing_id")
-        .eq("user_id", userId)
-        .eq("action", "delete")
-        .eq("status", "deleted")
-        .in("inventaire_id", [...new Set(candidats.map((j) => j.inventaire_id))])
-        .range(0, MAX_LIGNES_LUES - 1);
-      for (const d of dels ?? []) retires.add(`${d.platform}:${idAnnonceDe(d)}`);
-    }
-    for (const j of candidats) {
-      const id = idAnnonceDe(j);
-      if (id && retires.has(`${j.platform}:${id}`)) continue;
-      ajouter({
-        platform: j.platform, id, url: j.listing_url || null,
-        titre: j.title || "", prix: j.price ?? null, inventaireId: j.inventaire_id,
-        mots: motsCommuns(mots, j.title),
-        photos: urlsPhotos(Array.isArray(j.photos) ? j.photos : []).filter((u) => /^https?:\/\//.test(u)).slice(0, 2),
-      });
-    }
-  } catch (e) {
-    console.warn("[jumeauxEnLigne] dépôts:", e?.message ?? e);
   }
 
   // ── LA COULEUR EXCLUT, LA PHOTO PROUVE ────────────────────────────────────

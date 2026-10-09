@@ -160,6 +160,17 @@ export function libelleDuree(min, lang = "fr") {
   return r ? `≈ ${h} h ${String(r).padStart(2, "0")}` : (lang === "en" ? `≈ ${h} h` : `≈ ${h} h`);
 }
 
+/**
+ * Les annonces qui ressemblent (m.jumeaux) et retiennent encore l'article :
+ * sur une plateforme visée, pas encore tranchées — et JAMAIS pour une fiche à
+ * plus d'un exemplaire (09/10 soir, Louis : la ressemblance ne bloque pas un
+ * article dont on a plusieurs exemplaires).
+ */
+export function jumeauxQuiRetiennent(m, plateformes, tranches = new Set()) {
+  if (Number(m?.quantiteFiche) > 1) return [];
+  return (m?.jumeaux ?? []).filter((j) => plateformes.includes(j.platform) && !tranches.has(j.platform));
+}
+
 // ── Lire l'état d'un article préparé (le moteur, en lecture seule) ─────────
 /**
  * Ce qui reste à faire pour CET article avant l'envoi, à partir de son moteur.
@@ -190,8 +201,10 @@ export function bilanArticle(m, decisions = {}, lang = "fr") {
   }
   // Un article qui ressemble, en ligne sur une plateforme visée : la question
   // « est-ce le même article ? » (jamais une fusion, jamais un refus muet).
+  // (09/10 soir, Louis) Une fiche à PLUSIEURS exemplaires n'est jamais
+  // retenue par une ressemblance (m.quantiteFiche, posée par le lot).
   const tranches = decisions.jumeauxTranches ?? new Set();
-  const jumeauxOuverts = (m.jumeaux ?? []).filter((j) => plateformes.includes(j.platform) && !tranches.has(j.platform));
+  const jumeauxOuverts = jumeauxQuiRetiennent(m, plateformes, tranches);
   if (jumeauxOuverts.length) {
     motifs.push({ cle: "jumeau", libelle: en ? "Same item?" : "Même article ?" });
   }

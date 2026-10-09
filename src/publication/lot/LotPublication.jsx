@@ -52,7 +52,7 @@ import { propsStepperArticle } from "./propsArticle";
 import {
   PLATEFORMES_LOT, PLATEFORMES_LOT_DEFAUT, PREPARATIONS_SIMULTANEES, REPOS_AVANT_LECTURE_MS,
   plateformesLibres, resumeParPlateforme, choixInitial, ficheCouvre, partagerQuota,
-  dureeEstimeeMin, libelleDuree, bilanArticle, marqueLot, groupesReponseCommune,
+  dureeEstimeeMin, libelleDuree, bilanArticle, jumeauxQuiRetiennent, marqueLot, groupesReponseCommune,
   palierCourant, palierSuivant, canalAppareil, canalAbonnement, monteePossibleIci, CLE_REPRISE_LOT,
   poidsConnu, lirePoidsSaisi,
 } from "./regles";
@@ -182,6 +182,9 @@ export default function LotPublication({
     id: String(item.id), item, jobs: jobsByInventaire?.[item.id] ?? [],
   })), [articles, jobsByInventaire]);
   const resume = useMemo(() => resumeParPlateforme(donnees, plateformesCompte), [donnees, plateformesCompte]);
+  // (09/10 soir) La quantité de la fiche : à plus d'un exemplaire, une
+  // ressemblance ne retient jamais l'article (regles.js, jumeauxQuiRetiennent).
+  const quantiteDe = (id) => donnees.find((d) => d.id === String(id))?.item?.quantite;
   const [verite, setVerite] = useState(null);
   const [pauses, setPauses] = useState({});
   const [quotas, setQuotas] = useState(null);
@@ -502,7 +505,7 @@ export default function LotPublication({
           else planifierTick(1500);
           continue;
         }
-        const b = bilanArticle({ ...m, preparationAuRepos: true }, decisions[id], lang);
+        const b = bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisions[id], lang);
         const nouvelle = b.pret ? "pret" : "questions";
         if (nouvelle !== phase || JSON.stringify(st.motifs ?? []) !== JSON.stringify(b.motifs)) patchs[id] = { phase: nouvelle, motifs: b.motifs };
       }
@@ -603,7 +606,7 @@ export default function LotPublication({
     let parti = 0;
     for (const id of ids) {
       const m = moteursRef.current.get(id);
-      const b = m ? bilanArticle({ ...m, preparationAuRepos: true }, decisionsRef.current[id], lang) : null;
+      const b = m ? bilanArticle({ ...m, preparationAuRepos: true, quantiteFiche: quantiteDe(id) }, decisionsRef.current[id], lang) : null;
       if (!m || !b?.pret) { majEtat(id, { phase: "questions", motifs: b?.motifs ?? [] }); setEnvoi((e) => ({ ...e, fait: e.fait + 1 })); continue; }
       majEtat(id, { phase: "envoi" });
       try { await m.publier(); } catch { /* le moteur pose publishError */ }
@@ -1177,7 +1180,7 @@ export function ArticleAQuestions({ id, en, item, m, st, decision, decider, tran
   const aPrix = motifs.some((x) => x.cle === "prix");
   const plateformes = [...(m.plateformesPubliables ?? [])];
   const tranches = decision.jumeauxTranches ?? new Set();
-  const jumeaux = (m.jumeaux ?? []).filter((j) => plateformes.includes(j.platform) && !tranches.has(j.platform));
+  const jumeaux = jumeauxQuiRetiennent({ ...m, quantiteFiche: item?.quantite }, plateformes, tranches);
   const general = m.generales ?? {};
   const premiere = plateformes[0] ?? [...(m.selected ?? [])][0];
   const titreQuiPart = String(general.titre || m.edited?.[premiere]?.title || titreDe(item) || "");

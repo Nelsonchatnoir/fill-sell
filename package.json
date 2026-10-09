@@ -106,6 +106,7 @@
     "selftest:annonce-partagee-tranchee": "node scripts/annonce-partagee-tranchee-selftest.mjs",
     "selftest:depop-app": "node --import ./scripts/loader-ext.mjs scripts/depop-app-selftest.mjs",
     "selftest:bascule-opla-depop": "node --import ./scripts/loader-ext.mjs scripts/bascule-opla-depop-selftest.mjs",
+    "selftest:annonce-autre-fiche-jamais-jumeau": "node --import ./scripts/loader-ext.mjs scripts/annonce-autre-fiche-jamais-jumeau-selftest.mjs",
     "selftest:depop-partout": "node scripts/depop-partout-selftest.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",
     "selftest:tailles": "node scripts/tailles-selftest.mjs",

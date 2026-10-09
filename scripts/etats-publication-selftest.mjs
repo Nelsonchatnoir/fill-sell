@@ -82,6 +82,9 @@ console.log("\n[4] Le refus serveur, plateforme par plateforme");
   ok("en ligne → « retire d'abord » (et seulement là)", /Beebs : déjà en ligne — retire d'abord/.test(enLigne), enLigne);
   const file = messageRefusPublication(["vinted"], { publiees: new Set(), enFile: new Set(["vinted"]), attentes: {}, lang: "fr" });
   ok("en file → « déjà en cours — rien à refaire »", /Vinted : une publication est déjà en cours — rien à refaire/.test(file), file);
+  // (09/10 soir, Louis) plus jamais de renvoi vers une question introuvable
+  const jum = messageRefusPublication(["leboncoin"], { publiees: new Set(), enFile: new Set(), attentes: {}, lang: "fr", jumeaux: [{ platform: "leboncoin", titre: "Rangement Noir et Jaune" }] });
+  ok("aucun refus ne renvoie à « Est-ce le même article ? »", !/même article|Mes annonces en ligne|Rangement Noir et Jaune/.test(jum), jum);
 }
 
 console.log("\n[5] L'alerte de ressemblance : la couleur exclut, la photo prouve");

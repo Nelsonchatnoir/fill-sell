@@ -130,24 +130,16 @@ export function phraseEtat(platform, etat, lang = "fr") {
  * avec le geste qui débloque — jamais « retire » ni « décoche » pour une
  * attente.
  */
-export function messageRefusPublication(platforms, { publiees = new Set(), enFile = new Set(), attentes = {}, lang = "fr", jumeaux = [] } = {}) {
+export function messageRefusPublication(platforms, { publiees = new Set(), enFile = new Set(), attentes = {}, lang = "fr" } = {}) {
   const en = lang === "en";
   const lignes = [];
   for (const p of platforms) {
     const nom = NOMS[p] ?? p;
     const a = attentes[p];
-    // ── UNE FICHE JUMELLE Y EST DÉJÀ EN LIGNE (2026-09-27, Louis) ────────────
-    // Le serveur refuse (motif 'jumeau_en_ligne') tant que la question « Est-ce
-    // le même article ? » n'est pas tranchée entre les deux fiches. On nomme
-    // la fiche, et le geste qui débloque — c'est la personne qui tranche.
-    const jumeau = (Array.isArray(jumeaux) ? jumeaux : []).find((j) => j?.platform === p);
-    if (jumeau) {
-      const titre = String(jumeau.titre ?? "").trim();
-      lignes.push(en
-        ? `${nom}: this item already seems to be online on ${nom} through your item “${titre || "another item"}”. If it's the same copy, nothing to do. If they are two different items, answer “No, they're two items” to “Is it the same item?” (Stock › My online listings), then publish again.`
-        : `${nom} : cet article semble déjà en ligne sur ${nom} par ta fiche « ${titre || "une autre fiche"} ». Si c'est le même exemplaire, rien à faire. Si ce sont deux articles différents, réponds « Non, ce sont deux articles » à « Est-ce le même article ? » (Stock › Mes annonces en ligne), puis publie de nouveau.`);
-      continue;
-    }
+    // (09/10 soir, Louis) Plus de refus « fiche jumelle en ligne » : l'annonce
+    // d'une AUTRE fiche ne bloque jamais celle-ci (migration 20261009233000).
+    // L'ancien texte renvoyait à une question « Est-ce le même article ? »
+    // introuvable — un cul-de-sac.
     if (a?.bloque) {
       if (a.kind === "attente_champ") lignes.push(en ? `${nom}: a publication is waiting for “${a.champ}” — complete it from the item card, it will go out on its own.` : `${nom} : une publication attend « ${a.champ} » — complète-le depuis la carte de l'article, elle partira toute seule.`);
       else if (a.kind === "attente_autorisation") lignes.push(en ? `${nom}: a publication is waiting for your permission — tap “Autoriser Opla”, it will go out on its own.` : `${nom} : une publication attend ton autorisation — appuie sur « Autoriser Opla », elle partira toute seule.`);
