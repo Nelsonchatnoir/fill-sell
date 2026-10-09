@@ -173,6 +173,54 @@ serve(async (req) => {
     return Number((data as { photos?: number } | null)?.photos) || 0;
   };
 
+  // (09/10, parcours Depop) L'IDENTIFIANT D'UN DÉPÔT FILLSELL D'ABORD.
+  // Depuis la v3, rapprocher_releve ne rattache plus rien lui-même : le seul
+  // chemin « identifiant → job » était le filet de handler-watch (toutes les
+  // 3 min). Le 09/10 07:11, cette passe a tranché 13 s après le relevé Depop de
+  // Nico, avant le filet : l'annonce que FillSell venait de publier (job
+  // 49217123) est entrée comme une fiche NEUVE. Désormais, avant toute lecture,
+  // une annonce sans article dont l'identifiant est celui d'un dépôt publié du
+  // compte rejoint l'article de ce dépôt — la règle du filet, mot pour mot
+  // (même plateforme, même identifiant, compare-and-swap), jamais un titre ni
+  // une photo. Deux lectures indexées par compte ; rien n'est écrit sans
+  // correspondance.
+  const rattacherParIdentifiant = async (user: string) => {
+    const { data: orphelines } = await admin.from("annonces_plateforme")
+      .select("id, platform, listing_id")
+      .eq("user_id", user).is("inventaire_id", null).is("ignoree_le", null).is("disparu_le", null)
+      .not("listing_id", "is", null).limit(1000);
+    const lignes = (orphelines ?? []) as Array<{ id: string; platform: string; listing_id: string }>;
+    if (!lignes.length) return 0;
+    const ids = [...new Set(lignes.map((a) => String(a.listing_id)))];
+    const parCle = new Map<string, { id: string; inventaire_id: number }>();
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data } = await admin.from("cross_post_jobs")
+        .select("id, platform, platform_listing_id, inventaire_id, published_at, created_at")
+        .eq("user_id", user).eq("status", "published").in("action", ["publish", "republish"])
+        .not("inventaire_id", "is", null).in("platform_listing_id", ids.slice(i, i + 100))
+        .order("published_at", { ascending: false, nullsFirst: false });
+      for (const j of (data ?? []) as Array<{ id: string; platform: string; platform_listing_id: string; inventaire_id: number }>) {
+        const cle = `${j.platform}|${j.platform_listing_id}`;
+        if (!parCle.has(cle)) parCle.set(cle, { id: String(j.id), inventaire_id: Number(j.inventaire_id) });
+      }
+    }
+    let n = 0;
+    for (const a of lignes) {
+      const j = parCle.get(`${a.platform}|${a.listing_id}`);
+      if (!j) continue;
+      const { data: maj, error } = await admin.from("annonces_plateforme")
+        .update({ inventaire_id: j.inventaire_id, job_id: j.id, source_rapprochement: "job", proposition: null, updated_at: new Date().toISOString() })
+        .eq("id", a.id).is("inventaire_id", null).select("id");
+      if (error || !maj?.length) continue;
+      await admin.from("rapprochements").insert({
+        user_id: user, annonce_id: a.id, inventaire_id: j.inventaire_id, decision: "attache", par: "job", score: 1,
+        detail: { job_id: j.id, motif: "identifiant_avant_moteur", source: "rapprochement" },
+      }).then(() => {}, () => {});
+      n++;
+    }
+    return n;
+  };
+
   const bilan: Record<string, unknown>[] = [];
   let inacheve = false;
   let relanceApres = 0; // ms avant la relance (le temps que les photos demandées arrivent)
@@ -211,6 +259,8 @@ serve(async (req) => {
       // Compté AVANT la lecture et la passe : une invocation tuée en route
       // (2 s de CPU, WORKER_RESOURCE_LIMIT) reste comptée.
       await etat(user, { etat: "decision", debut_le: new Date().toISOString(), passages: -(inachevees + 1) });
+      // ── A bis. L'identifiant d'un dépôt FillSell, avant tout le reste ──
+      if (!simuler) parCompte.par_identifiant = await rattacherParIdentifiant(user).catch(() => 0);
       // ── B. Tout le compte, en un appel ──
       const { data: lu, error: eLu } = await admin.rpc("rapprochement_v3_lire", { p_user: user });
       if (eLu) throw new Error(`lecture : ${eLu.message}`);
