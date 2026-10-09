@@ -104,12 +104,27 @@ const DEPOP_MSG_VENDEUR =
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. L'API
 // ═══════════════════════════════════════════════════════════════════════════
+// ⟦depop-lecture:début⟧
 function depopJeton() {
   const m = String(document.cookie ?? "").match(/(?:^|;\s*)access_token=([^;]+)/);
   if (!m) return null;
   try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 const depopAttendre = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ── UNE LECTURE QUI ÉCHOUE « RÉSEAU » EST REPRISE (09/10, parcours réel) ─────
+// Mesuré le 09/10 depuis la page de Nico, avec le MÊME jeton valable :
+// users/me en échec RAPIDE (« Failed to fetch » en 20 à 40 ms) 3 fois sur 19 à
+// 1,5 s d'intervalle, 200 autour ; sellerStatus aussi, par moments ; la
+// lecture publique (sans Authorization, donc sans pré-requête CORS) : 0 sur
+// 19. La publication croisée 1ad7fa87 a perdu 15 min sur ce tout premier appel
+// (« Session Depop illisible (reseau) », 09:11:03 UTC), passée telle quelle à
+// l'essai suivant. Une LECTURE (GET) qui échoue ainsi est relancée deux fois
+// (1 s, puis 2,5 s) avant d'être dite « reseau ». Une ÉCRITURE (POST, PUT,
+// DELETE) ne l'est JAMAIS ici : le geste qui l'a lancée relit Depop avant de
+// conclure — jamais une annonce créée deux fois, jamais un retrait aveugle.
+// Une réponse (401, 404, 429, 500…) n'est jamais reprise : elle se lit.
+const DEPOP_REPRISES_LECTURE_MS = Object.freeze([1000, 2500]);
 
 async function depopJson(chemin, { methode = "GET", corps, authentifie = true } = {}) {
   const jeton = authentifie ? depopJeton() : null;
@@ -118,19 +133,27 @@ async function depopJson(chemin, { methode = "GET", corps, authentifie = true } 
   if (jeton) headers.Authorization = `Bearer ${jeton}`;
   if (corps !== undefined) headers["Content-Type"] = "application/json";
   let r;
-  try {
-    r = await fetch(DEPOP_API + chemin, {
-      method: methode, headers, credentials: "omit", cache: "no-store",
-      ...(corps !== undefined ? { body: JSON.stringify(corps) } : {}),
-    });
-  } catch (e) {
-    return { statut: 0, ok: false, corps: null, erreurReseau: String(e?.message ?? e).slice(0, 120) };
+  for (let essai = 0; ; essai++) {
+    try {
+      r = await fetch(DEPOP_API + chemin, {
+        method: methode, headers, credentials: "omit", cache: "no-store",
+        ...(corps !== undefined ? { body: JSON.stringify(corps) } : {}),
+      });
+      break;
+    } catch (e) {
+      if (methode === "GET" && essai < DEPOP_REPRISES_LECTURE_MS.length) {
+        await depopAttendre(DEPOP_REPRISES_LECTURE_MS[essai]);
+        continue;
+      }
+      return { statut: 0, ok: false, corps: null, erreurReseau: String(e?.message ?? e).slice(0, 120), essais: essai + 1 };
+    }
   }
   const texte = await r.text().catch(() => "");
   let json = null;
   try { json = texte ? JSON.parse(texte) : null; } catch { json = null; }
   return { statut: r.status, ok: r.ok, corps: json, texte: json === null ? texte.slice(0, 200) : null };
 }
+// ⟦depop-lecture:fin⟧
 
 const DEPOP_ENDPOINTS = {
   moi: "/presentation/api/v1/users/me/",

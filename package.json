@@ -101,7 +101,7 @@
     "selftest:moteur-faiblesses-depop": "node --import ./scripts/loader-ext.mjs scripts/moteur-faiblesses-depop-selftest.mjs",
     "selftest:depop-acces": "node scripts/depop-acces-selftest.mjs",
     "selftest:identifiant-avant-moteur": "node scripts/identifiant-avant-moteur-selftest.mjs",
-    "selftest:depop-jeton": "node scripts/depop-jeton-selftest.mjs",
+    "selftest:depop-reprise-lecture": "node scripts/depop-reprise-lecture-selftest.mjs",
     "selftest:depop-app": "node --import ./scripts/loader-ext.mjs scripts/depop-app-selftest.mjs",
     "selftest:depop-partout": "node scripts/depop-partout-selftest.mjs",
     "gen:vinted-branche": "node scripts/gen-vinted-branche.mjs",

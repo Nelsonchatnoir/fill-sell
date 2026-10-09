@@ -11052,69 +11052,7 @@ async function retirerScriptsDepop() {
 
 // Le content script Depop répond-il ? Sinon réinjection, sinon on le DIT (même
 // parade qu'Opla : un onglet n'est confié à un geste qu'avec un script vivant).
-// (09/10, parcours réel) Puis le JETON de la page : un script vivant sur un
-// jeton mort ne fait rien partir (cf. assurerJetonDepop). Tous les gestes
-// Depop passent par ici (publication, republication, retrait, relevé,
-// capture, ventes, état d'une annonce) : aucun appelant à changer.
 async function assurerScriptDepopSurOnglet(tabId) {
-  const v = await scriptDepopVivantSurOnglet(tabId);
-  if (!v.ok) return v;
-  const j = await assurerJetonDepop(tabId).catch((e) => ({ ok: false, motif: `exception : ${String(e?.message ?? e).slice(0, 80)}` }));
-  if (j.renouvele) console.log(`[background] depop : jeton renouvelé par la page en ${j.attente_ms} ms`);
-  else if (!j.ok) console.log(`[background] depop : jeton non renouvelé (${j.motif}) — le geste dira lui-même ce qui manque`);
-  return v;
-}
-
-// ⟦depop-jeton:début⟧
-// ── LE JETON DEPOP, RENOUVELÉ PAR LA PAGE (09/10, parcours réel) ────────────
-// Mesuré le 09/10 : le jeton `access_token` de Depop expire (≈ 1 h) et seule
-// la PAGE le renouvelle, à son chargement. L'onglet de travail, chargé une
-// fois puis réutilisé sans navigation, envoyait donc un jeton mort : webapi
-// répond 401 SANS en-têtes CORS, fetch rejette (« Failed to fetch »), et
-// chaque geste Depop finissait « Session Depop illisible (reseau) », repris
-// toutes les 15 min sans fin, jusqu'à ce que la personne ouvre depop.com
-// (job 1ad7fa87, 09:11:03 UTC : lectures publiques à 200 au même instant,
-// users/me à 200 dès la page rechargée). On fait comme Leboncoin
-// (renouvelerJetonLeboncoinPage) : la session ne répond pas → l'onglet de
-// travail est rechargé UNE fois (même onglet, beforeunload neutralisé, jamais
-// au premier plan) et on attend que la page ait reposé un jeton qui répond.
-// ⛔ Seule une erreur RÉSEAU recharge : une session fermée (sans jeton, 401)
-//    se dit telle quelle, c'est le geste qui le dira à la personne.
-// ⛔ Jamais une rafale : un renouvellement raté met les suivants en pause
-//    30 min. On ne fabrique aucun jeton, on ne rejoue aucun échange : la page
-//    fait son travail, on lit ce qu'elle a posé.
-const DEPOP_JETON_ATTENTE_MS = 20_000;
-const DEPOP_RENOUVELLEMENT_PAUSE_MS = 30 * 60_000;
-let depopRenouvellementEchecLe = 0;
-
-async function assurerJetonDepop(tabId) {
-  const session = () => sendMessageToTabOnce(tabId, { type: "DEPOP_SESSION" }, 8000).catch(() => null);
-  const s = await session();
-  if (s?.connecte === true) return { ok: true, deja: true };
-  if (s?.connecte === false) return { ok: false, motif: "session_fermee" };
-  if (!s || s.motif !== "reseau") return { ok: false, motif: `session_illisible_${s?.motif ?? "sans_reponse"}` };
-  if (Date.now() - depopRenouvellementEchecLe < DEPOP_RENOUVELLEMENT_PAUSE_MS) return { ok: false, motif: "renouvellement_en_pause" };
-  const t0 = Date.now();
-  const echec = (motif) => { depopRenouvellementEchecLe = Date.now(); return { ok: false, motif, attente_ms: Date.now() - t0 }; };
-  if (!(await neutralizeBeforeUnload(tabId))) return echec("dialogue_possible");
-  try { await chrome.tabs.reload(tabId); }
-  catch (e) { return echec(`rechargement : ${String(e?.message ?? e).slice(0, 80)}`); }
-  while (Date.now() - t0 < DEPOP_JETON_ATTENTE_MS) {
-    await sleep(1500);
-    const t = await chrome.tabs.get(tabId).catch(() => null);
-    if (!t) return echec("onglet_disparu");
-    if (t.status !== "complete") continue;
-    const v = await scriptDepopVivantSurOnglet(tabId);
-    if (!v.ok) continue;
-    const s2 = await session();
-    if (s2?.connecte === true) { depopRenouvellementEchecLe = 0; return { ok: true, renouvele: true, attente_ms: Date.now() - t0 }; }
-    if (s2?.connecte === false) return echec("session_fermee");
-  }
-  return echec("jeton_non_renouvele");
-}
-// ⟦depop-jeton:fin⟧
-
-async function scriptDepopVivantSurOnglet(tabId) {
   const ping = () => sendMessageToTabOnce(tabId, { type: "DEPOP_PING" }, 4000).then((r) => !!r?.pong).catch(() => false);
   if (await ping()) return { ok: true };
   let avant = await chrome.tabs.get(tabId).catch(() => null);
