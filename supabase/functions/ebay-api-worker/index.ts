@@ -2380,7 +2380,11 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
   // que ce veilleur a posés lui-même sur une annonce dont la date de fin était
   // encore à venir (enchère en cours) : ils sont relus tout de suite, et levés.
   const [{ data: avantFin }, { data: signalees }, { data: bruts, error }] = await Promise.all([
-    base().not("platform_fields->fin_ebay", "is", null).not("platform_fields->>unavailable_since", "is", null).limit(100),
+    // Les dates de fin les plus TARDIVES d'abord : celles encore à venir (le
+    // défaut) en tête — 343 drapeaux fin_ebay au parc, sans ordre les 16 posés
+    // avant la fin n'étaient pas dans les 100 premiers.
+    base().not("platform_fields->fin_ebay", "is", null).not("platform_fields->>unavailable_since", "is", null)
+      .order("platform_fields->fin_ebay->>fin", { ascending: false }).limit(100),
     base().in("platform_fields->>sale_signal", ["unavailable", "sold"]).limit(100),
     base().order("platform_fields->>veille_ebay_le", { ascending: true, nullsFirst: true }).limit(VEILLE_CANDIDATS_MAX),
   ]);
