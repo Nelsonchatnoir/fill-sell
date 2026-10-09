@@ -3659,9 +3659,14 @@ export default function App({ loginOnly = false }){
     // seul rendait INVISIBLE toute vente d'une annonce republiée : le drapeau
     // était posé, personne ne le montrait. Ceinture supplémentaire ci-dessous :
     // un article dont une republication est VIVANTE n'affiche jamais ce bandeau.
+    // (09/10, audit eBay — XEWER) Un vieux dépôt SANS fiche ne pose jamais la
+    // question : son article n'est pas (ou plus) dans le stock, et le « Oui »
+    // écrivait une deuxième vente d'un article déjà vendu sous le même numéro.
+    // La base refuse aussi (enregistrer_vente_atomique, code job_sans_fiche).
     const{data:unavail}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, price, inventaire_id, listing_url, platform_fields')
       .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
+      .not('inventaire_id','is',null)
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
     // Propositions du moteur de rattachement (best-effort, jamais bloquant).
