@@ -127,7 +127,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v228 (09/10 22:11, port Depop), `photo-empreinte` v3,
+  10:50, build 9d203ac) ; `get-pending-jobs` v229 (09/10, port + interdits Depop), `photo-empreinte` v3,
   `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
@@ -259,6 +259,17 @@ contraire. Il se périme : `functions list`, `cron.job` et
   01/01/2027) ; gpj **v228** pose le défaut sur tout job Depop sans port, sinon
   une republication (annonce importée) passe en needs_user AVEC le champ, avant
   tout retrait (`_shared/port-depop.js`). Selftest `selftest:port-depop`.
+- **⛔ CATÉGORIES INTERDITES PAR DEPOP (09/10 soir, Nico)** : UNE table,
+  `_shared/depop-interdits.js` (icône de `detectObjectIcon` → règle + citation
+  officielle, centre d'aide en-gb lu le 09/10 : électrique/électronique —
+  « Items that use electrical power (including batteries and solar power) are
+  not allowed » —, puériculture). Appareils photo et montres classiques
+  autorisés ; aucune catégorie de mode bloquée (sauf ⏱️ montres connectées,
+  nommées par Depop) ; ambigus NON bloqués (`DEPOP_A_VERIFIER` : jeux en
+  disque, DVD, horloges…). App : case Depop grisée avec la phrase ; lot :
+  exclus de Depop seulement, comptés avant l'envoi (`lot/ExclusDepop.jsx`) ;
+  gpj **v229** : filet sur tout job Depop qui dépose → needs_user, jamais servi.
+  Selftest `selftest:depop-interdits`.
 - **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;
