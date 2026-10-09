@@ -127,7 +127,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   **0.6.103 JAMAIS téléversée** ; jamais
   d'EXTENSION_MIN_BUILD sans décision de Nico ; **minimum serveur 0.6.81** (inchangé : forcer la MAJ = décision de
   Nico) ; web **2.9.67** (poussé le 08/10), OTA **2.9.67 servie** (08/10
-  10:50, build 9d203ac) ; `get-pending-jobs` v229 (09/10, port + interdits Depop), `photo-empreinte` v3,
+  10:50, build 9d203ac) ; `get-pending-jobs` v230 (09/10, port + interdits Depop), `photo-empreinte` v3,
   `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
@@ -268,7 +268,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   nommées par Depop) ; ambigus NON bloqués (`DEPOP_A_VERIFIER` : jeux en
   disque, DVD, horloges…). App : case Depop grisée avec la phrase ; lot :
   exclus de Depop seulement, comptés avant l'envoi (`lot/ExclusDepop.jsx`) ;
-  gpj **v229** : filet sur tout job Depop qui dépose → needs_user, jamais servi.
+  gpj **v230** : filet sur tout job Depop qui dépose → needs_user, jamais servi.
   Selftest `selftest:depop-interdits`.
 - **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.

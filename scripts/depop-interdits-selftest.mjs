@@ -66,10 +66,16 @@ for (const [titre, attendu] of [
   ["Robe Zara fleurie taille M", false], ["Jean Levi's 501", false], ["Montre Casio vintage", false],
   ["Appareil photo Canon AE-1", false], ["Pull Ralph Lauren", false], ["Baskets Nike Air Max", false],
   ["Sac Longchamp Pliage", false], ["Peluche Doudou lapin", false], ["Vinyle Pink Floyd", false],
+  // Exception écrite par Depop : coques, housses, étuis, supports AUTORISÉS.
+  ["Coque iPhone 14 Pro Max MagSafe", false], ["Lot 2 coques neuve iPhone 13", false],
+  ["Housse MacBook Air 13 pouces", false], ["Étui Kindle Paperwhite", false],
+  ["iPhone 12 128 Go", true], ["Samsung Galaxy A55 neuf", true],
 ]) {
   const r = refuse(titre);
   dit(`« ${titre} » (${r.icone}) → ${attendu ? "refusé" : "autorisé"}`, Boolean(r.v) === attendu);
 }
+
+dit("une description « coque offerte » ne libère jamais un téléphone", Boolean(depopInterdit("📱", { titre: "iPhone 12 128 Go", description: "coque offerte" })));
 
 // ── 5. Le filet serveur et le lot ───────────────────────────────────────────
 const gpj = lire("supabase/functions/get-pending-jobs/index.ts");
