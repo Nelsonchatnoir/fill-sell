@@ -360,7 +360,9 @@ export function messageErreurEbay(json: unknown, texte: string): string {
 // ReturnSummary : UserID présent, EIASToken non vérifié). Si l'appel refuse,
 // les deux restent NULL et rien ne casse (le pseudo n'est qu'un confort
 // d'affichage, l'effacement retombe sur le pseudo).
-export interface IdentiteEbay { username: string | null; eiasToken: string | null; }
+// (09/10, Marta) <Site> : le site eBay d'INSCRIPTION du compte (« France »,
+// « Italy »…) — c'est lui qui dit où le vendeur vend (_shared/ebay-site.ts).
+export interface IdentiteEbay { username: string | null; eiasToken: string | null; site?: string | null; }
 
 export async function lireIdentiteEbay(env: EbayEnv, token: string): Promise<IdentiteEbay> {
   try {
@@ -378,8 +380,9 @@ export async function lireIdentiteEbay(env: EbayEnv, token: string): Promise<Ide
     const xml = await r.text();
     const u = xml.match(/<UserID>([^<]{1,64})<[/]UserID>/);
     const e = xml.match(/<EIASToken>([^<]{1,200})<[/]EIASToken>/);
-    return { username: u ? u[1] : null, eiasToken: e ? e[1] : null };
+    const s = xml.match(/<User>[\s\S]*?<Site>([A-Za-z_]{2,40})<[/]Site>/);
+    return { username: u ? u[1] : null, eiasToken: e ? e[1] : null, site: s ? s[1] : null };
   } catch {
-    return { username: null, eiasToken: null };
+    return { username: null, eiasToken: null, site: null };
   }
 }

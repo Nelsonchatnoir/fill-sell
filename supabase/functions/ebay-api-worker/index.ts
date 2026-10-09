@@ -42,6 +42,7 @@ import { cheminsRefusesParLApp, cleChemin, mappingRefuseParLApp, suggestionsSans
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { tailleDansGrille } from "../_shared/tailles.js";
 import { compteEbayApiUsable, MESSAGE_EBAY_COMPTE_A_FINIR, SOURCE_EBAY_COMPTE_A_FINIR } from "../_shared/ebay-voie.ts";
+import { messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger, SOURCE_EBAY_SITE_ETRANGER } from "../_shared/ebay-site.ts";
 import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuveRetraitRepublicationEbayMemorisee, verifierOffreRetraitEbay, verifierSourceRetraitEbay, type SourceRetraitEbay } from "../_shared/ebay-retrait-identite.ts";
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
@@ -3108,6 +3109,20 @@ Deno.serve(async (req) => {
       // consommée ; ré-armé tout seul quand le compte devient prêt
       // (rearmerJobsEbayConnexionSiUtilisable). Les retraits ne sont pas
       // concernés : ils ne dépendent pas des politiques.
+      // (09/10, Marta) UN COMPTE eBAY ÉTRANGER N'EST JAMAIS PUBLIÉ SUR ebay.fr
+      // (règle de Nico) : FillSell ne publie que sur EBAY_FR ; un compte inscrit
+      // sur un autre site (GetUser <Site>) est retenu AVANT tout appel, même
+      // inachevé — lui dire « finis ta configuration » l'enverrait la faire sur
+      // ebay.fr. Site illisible : rien n'est décidé ici (comme avant).
+      if (job.action === "publish" || job.action === "republish") {
+        const s = await siteDuCompteEbay(admin, env, job.user_id);
+        if (s.site && siteEbayEtranger(s.site)) {
+          job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_SITE_ETRANGER };
+          await marquer(admin, job, { status: "needs_user", error: messageSiteEtranger(s.site, s.pseudo) }, { etape: "compte", quoi: "site_ebay_etranger", site: s.site });
+          resultats.push({ job: job.id, issue: "needs_user", motif: "site_ebay_etranger" });
+          continue;
+        }
+      }
       if ((job.action === "publish" || job.action === "republish") && !(await compteEbayApiUsable(admin, job.user_id))) {
         job.platform_fields = { ...(job.platform_fields ?? {}), needs_user_source: SOURCE_EBAY_COMPTE_A_FINIR };
         await marquer(admin, job, { status: "needs_user", error: MESSAGE_EBAY_COMPTE_A_FINIR }, { etape: "compte", quoi: "compte_pas_pret" });

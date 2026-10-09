@@ -78,6 +78,7 @@ import {
 // (update-job-status) repart TOUTE SEULE en voie API dès que le compte devient
 // utilisable — c'est ici qu'on le sait (statut/checklist relisent l'état).
 import { compteEbayApiUsableDepuisLigne, rearmerJobsEbayConnexionSiUtilisable } from "../_shared/ebay-voie.ts";
+import { domaineSiteEbay, messageSiteEtranger, siteDuCompteEbay, siteEbayEtranger } from "../_shared/ebay-site.ts";
 
 // localhost:5177 : le serveur de développement des essais réels (session déjà
 // ouverte) — même statut que 5173 ; le JWT reste exigé, CORS n'est pas la garde.
@@ -518,6 +519,19 @@ Deno.serve(async (req) => {
     }
     const token = jeton.token;
 
+    // (09/10, Marta) Un compte eBay ÉTRANGER : jamais de politiques, de livraison
+    // ni d'emplacement créés sur ebay.fr à sa place (règle de Nico). Les lectures
+    // restent permises ; chaque écriture est refusée avec la phrase qui le dit.
+    const siteCompte = await siteDuCompteEbay(admin, env, user.id);
+    const etranger = !!siteCompte.site && siteEbayEtranger(siteCompte.site);
+    const siteEbay = siteCompte.site
+      ? { site: siteCompte.site, domaine: domaineSiteEbay(siteCompte.site), etranger, message: etranger ? messageSiteEtranger(siteCompte.site, siteCompte.pseudo) : null }
+      : null;
+    if (etranger && ["activer_politiques", "poser_livraison", "choisir_politique", "creer_politique"].includes(action)) {
+      console.log(`[ebay-account] action=${action} REFUSÉE : compte inscrit sur ${siteCompte.site} (user=${user.id})`);
+      return json({ error: siteEbay!.message, site_ebay: siteEbay }, 409);
+    }
+
     if (action === "checklist") {
       const checklist = await releverChecklist(admin, env, token, user.id);
       const { compte } = await lireCompte(admin, user.id);
@@ -527,7 +541,7 @@ Deno.serve(async (req) => {
       if (compteEbayApiUsableDepuisLigne(compte)) {
         await rearmerJobsEbayConnexionSiUtilisable(admin, user.id).catch(() => {});
       }
-      return json({ etat: etatPublic(compte), checklist });
+      return json({ etat: etatPublic(compte), checklist, site_ebay: siteEbay });
     }
 
     if (action === "activer_politiques") {

@@ -83,6 +83,9 @@ Deno.serve(async (req) => {
       user_id: userId,
       ebay_user_id: identite.username,
       ebay_eias_token: identite.eiasToken,
+      // (09/10) le site d'inscription : un compte étranger n'est jamais publié sur ebay.fr
+      ebay_site: identite.site ?? null,
+      ebay_site_lu_le: new Date().toISOString(),
       refresh_token: json.refresh_token,
       access_token: json.access_token,
       expires_at: accessExp.iso,
