@@ -4,7 +4,7 @@
 « 03/10 nuit — clôture Louis + marque + prix » et « 04/10 matin —
 complément », « 04/10 fin de matinée — chantier Louis », « 04/10 soir —
 incident CPU », « 04/10 nuit — six défauts clients » et « 05/10 — lot
-terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
+terminal Problèmes » / « 05/10 après-midi » / « 06/10 » / « 06/10 soir » / « 06/10 nuit » / « 08/10 nuit — MULTI-SYNCHRO » / « 08/10 matin — boucles » / « 08/10 fin de matinée — SUJET CLOS » / « 08/10 après-midi — complément » / « 08/10 soir — fin du chantier multi-synchro » / « 08/10 nuit — Bebertdeals : remise en ligne Vinted » / « 08/10 nuit — VENTES PROUVÉES » / « 09/10 nuit — DEPOP » / « 09/10 fin de matinée — DEPOP : reprise complète » en fin ; reprises : `docs/reprise/terminal-depop-0910.md`, `docs/reprise/terminal-ventes-prouvees-0810.md`, `docs/reprise/terminal-bebertdeals-0810.md`, `docs/reprise/terminal-boucles-0810.md`, `docs/reprise/terminal-cloture-multi-synchro-0810.md`, `docs/reprise/terminal-complement-0810.md`, `docs/reprise/terminal-fin-multi-synchro-0810.md`) et
 `docs/agents/consignes-2026-09-28.md` (règles), qui remplacent tout historique
 contraire. Il se périme : `functions list`, `cron.job` et
 `profiles.extension_build` font foi.
@@ -19,6 +19,13 @@ contraire. Il se périme : `functions list`, `cron.job` et
   dit pourquoi (`selftest:depop-partout`) ; jamais de rayon Depop par libellé ;
   l'annonce « Scotch » 945704866 est CELLE DE NICO. Reprise :
   `docs/reprise/terminal-depop-0910.md` ; contrats réels : `docs/plateformes/depop/CARTOGRAPHIE.md` § 8.
+  **09/10 fin de matinée** : `rapprochement` **v17** — l'identifiant d'un dépôt FillSell est
+  rattaché AVANT le moteur v3 (prouvé en réel, motif `identifiant_avant_moteur`) ; mig
+  **20261009100000 APPLIQUÉE** ; fiche en double 1791529881380 RÉPARÉE (inverse complet) ;
+  mig **20261009110000 NON APPLIQUÉE** (sept déclencheurs retrait/relevé : Depop ; feu vert) ;
+  extension `02f9f67` (lecture Depop « réseau » reprise, jamais une écriture) NON chargée, zip 0.6.105 INCHANGÉ
+  (= code du parcours) ; republication 9089e65c = réponse de Nico dans l'app ; annonce
+  de test 946325187 EN LIGNE (999 €) jusqu'à son retrait ; **OTA 2.9.68 NON lancée**.
 - **⛔ VENTES PROUVÉES : AUTOMATIQUES DEPUIS LE 08/10 23:40 (GO de Nico)** : la
   vente sur preuve « sold » (GO du 28/09) n'avait tourné que de 16:42 à 16:46 le
   28/09 (appel retiré de get-pending-jobs par précaution ; cause mesurée de la
@@ -122,7 +129,7 @@ contraire. Il se périme : `functions list`, `cron.job` et
   `generate-listing` v113, `lens-analysis` v107, `avis-demande` v4,
   `deal-analysis` v42, `voice-transcribe` v46,
   `ebay-account` v16, `send-extension-link` v13 (`true`) ;
-  `rapprochement` v16, `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v9, `voice-intent` v155, `ops-digest` v35,
+  `rapprochement` v17, `empreintes-urls` v5, `update-job-status` v132, `handler-watch` v95, `push-ventes` v9, `voice-intent` v155, `ops-digest` v35,
   `ebay-api-worker` v79, `ebay-releve-api` v4, `releve-completer` v2,
   `veille-cpu` v2, `ebay-ventes-sync` v5, `ebay-oauth-callback` v10, `ebay-notifications` v5,
   `email-tunnel` v72 et `stripe-webhook` v57 (`false`) ; migrations
