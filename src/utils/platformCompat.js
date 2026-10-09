@@ -44,7 +44,7 @@ import { familleJeuVideo } from "./jeuxVideo.js";
 /** Le refus Depop de l'article (ou null) — même calcul que le serveur. */
 export function depopInterdit(icon, article = null) {
   const famille = icon === "🎮" ? (familleJeuVideo(String(article?.titre ?? ""), String(article?.description ?? ""))?.famille ?? null) : null;
-  return verdictDepopInterdit(icon, famille);
+  return verdictDepopInterdit(icon, famille, String(article?.titre ?? ""));
 }
 
 /**

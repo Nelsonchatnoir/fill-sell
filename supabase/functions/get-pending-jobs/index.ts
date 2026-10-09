@@ -3409,7 +3409,7 @@ serve(async (req) => {
             if (!art) continue;
             const titre = String(art.titre ?? ""); const description = String(art.description ?? "");
             const icone = detectObjectIcon(titre, description, art.type ?? null);
-            const verdict = verdictDepopInterdit(icone, icone === "🎮" ? (familleJeuVideo(titre, description)?.famille ?? null) : null);
+            const verdict = verdictDepopInterdit(icone, icone === "🎮" ? (familleJeuVideo(titre, description)?.famille ?? null) : null, titre);
             if (!verdict) continue;
             const pfI = ((j.platform_fields as Record<string, unknown> | null) ?? {});
             const { data: maj } = await userClient.from("cross_post_jobs")

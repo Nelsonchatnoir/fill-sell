@@ -127,12 +127,22 @@ export const DEPOP_A_VERIFIER = Object.freeze({
  *   (texte muet), « console », « accessoire » ou inconnue le sont.
  * @returns {{ regle, quoi, citation, icone }|null}
  */
-export function verdictDepopInterdit(icon, familleJeu = null) {
+export function verdictDepopInterdit(icon, familleJeu = null, titre = "") {
   const e = DEPOP_INTERDITS_PAR_ICONE[icon];
   if (!e) return null;
   if (icon === "🎮" && familleJeu === "jeu") return null;
+  // EXCEPTION ÉCRITE PAR DEPOP [TECH] : « Mobile phone & laptop cases, covers,
+  // folios and holders » sont AUTORISÉS. Mesuré le 09/10 : 162 des 295
+  // « téléphones » en stock sont des coques. Lue sur le TITRE seul (une
+  // description qui dit « coque offerte » ne libère jamais un téléphone), et
+  // seulement pour LIBÉRER — jamais pour bloquer.
+  if (ICONES_AVEC_ETUIS.has(icon) && ETUI_RE.test(normaliser(titre))) return null;
   return { regle: e.regle, quoi: e.quoi, citation: e.citation, icone: icon };
 }
+
+const ICONES_AVEC_ETUIS = new Set(["📱", "💻", "📲", "📇"]);
+const normaliser = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const ETUI_RE = /\b(coques?|housses?|etuis?|folios?|cases?|sleeves?|supports?|porte[ -]?telephones?)\b/;
 
 /** La phrase écrite à la personne. */
 export function messageDepopInterdit(verdict, lang = "fr") {
