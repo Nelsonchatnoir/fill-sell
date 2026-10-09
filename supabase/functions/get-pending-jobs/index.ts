@@ -26,6 +26,7 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 // (25/09) Les correctifs d'extension qui réarment un job dès qu'un poste à jour polle.
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
 // synchronisation continue pour les seuls comptes déjà reliés.
 import { estPublicationOpla, oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
@@ -3379,6 +3380,58 @@ serve(async (req) => {
       out = out.filter((j) => j.platform !== "depop");
       if (out.length !== avantD) {
         console.log(`[get-pending-jobs] userId=${user.id} poste ${posteCourt(sessionId)} sans accès Depop : ${avantD - out.length} job(s) Depop laissé(s) en file`);
+      }
+    }
+
+    // ── DEPOP : LES FRAIS DE PORT PAR DÉFAUT (09/10 soir, Nico) ─────────────
+    // (_shared/port-depop.js) Un job Depop sans port reçoit le prix par défaut
+    // du compte (Réglages, platform_settings.depop.frais_port_defaut) — jamais
+    // par-dessus un port déjà dit. Sans prix par défaut, une REPUBLICATION qui
+    // n'a rien retiré passe en needs_user AVEC le champ « Frais de port Depop »
+    // (annonce importée : la synchro ne relève pas le port) ; une publication
+    // garde la question du connecteur. Une lecture de profil, au plus.
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.platform === "depop")) {
+      try {
+        let defautLu: number | null | undefined;
+        const portDefaut = async (): Promise<number | null> => {
+          if (defautLu !== undefined) return defautLu;
+          defautLu = null;
+          try {
+            const { data } = await userClient.from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+            defautLu = portDepopParDefaut((data as { platform_settings?: unknown } | null)?.platform_settings ?? null);
+          } catch (_e) { /* illisible : aucun défaut, rien d'inventé */ }
+          return defautLu;
+        };
+        const demandes = new Set<string>();
+        for (const j of out) {
+          if (j.platform !== "depop") continue;
+          const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          if (pfJ["depopPort"] != null && String(pfJ["depopPort"]).trim() !== "") continue;
+          const d = decisionPortDepop(j, await portDefaut());
+          if (d.action === "poser") {
+            const pfP = { ...pfJ, depopPort: d.valeur, depop_port_source: "defaut_reglages" };
+            const { data: maj } = await userClient.from("cross_post_jobs").update({ platform_fields: pfP })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((maj ?? []).length) {
+              (j as { platform_fields: unknown }).platform_fields = pfP;
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop ${j.action}) : frais de port ← ${d.valeur} € (prix par défaut)`);
+            }
+          } else if (d.action === "demander") {
+            const pfQ: Record<string, unknown> = { ...pfJ, needsUserField: QUESTION_PORT_DEPOP };
+            pfQ.erreurs_archivees = archiverErreur(pfQ.erreurs_archivees, (j as { error?: string | null }).error ?? null, "pending", "get-pending-jobs (frais de port Depop à indiquer)");
+            delete pfQ.next_action_after; delete pfQ.processing_since;
+            const { data: maj } = await userClient.from("cross_post_jobs")
+              .update({ status: "needs_user", error: MESSAGE_PORT_DEPOP_REPUBLICATION, platform_fields: pfQ })
+              .eq("id", String(j.id)).eq("status", "pending").select("id");
+            if ((maj ?? []).length) {
+              demandes.add(String(j.id));
+              console.log(`[get-pending-jobs] job ${String(j.id).slice(0, 8)} (depop republish) : aucun port ni prix par défaut → needs_user avec le champ, avant tout retrait`);
+            }
+          }
+        }
+        if (demandes.size) out = out.filter((j) => !demandes.has(String(j.id)));
+      } catch (e) {
+        console.warn(`[get-pending-jobs] frais de port Depop : ${String((e as Error)?.message ?? e)} — rien de modifié`);
       }
     }
 
