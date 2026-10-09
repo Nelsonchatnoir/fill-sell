@@ -1,0 +1,535 @@
+{
+  "id": "fillsell-presentation",
+  "statut": "variante « site » refaite le 2026-10-09 (compte de démonstration « Camille », cinq plateformes) — version A (republication automatique sur Vinted, Leboncoin, Beebs ET Depop) — À VALIDER PAR NICO avant toute mise en ligne (docs/seo/briefs/video.md § 5)",
+  "version_republication_depop": "A",
+  "basculer": "node docs/seo/briefs/video-variante-site/video-json.mjs A|B (B = Depop retirée de la republication automatique ; à basculer EN MÊME TEMPS que `republication_auto` de Depop dans site/donnees/plateformes.yml)",
+  "source": {
+    "projet": "C:\\Users\\nicol\\fillsell-video (Remotion 4.0.534, composition FillSell) — lu, jamais modifié ; rendu fait sur une copie (docs/seo/briefs/video-variante-site/)",
+    "donnees_affichees": "compte de démonstration « Camille » (mêmes chiffres et mêmes photos que les captures du site : scripts/apercu/site-donnees-demo.js, site/medias/captures/captures.json) — aucune donnée réelle, aucun chiffre de Nico, aucun client",
+    "mention_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+    "mention_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings."
+  },
+  "duree_s": 53.5,
+  "duree_iso8601": "PT53.5S",
+  "images_par_seconde": 30,
+  "nombre_images": 1605,
+  "largeur": 720,
+  "hauteur": 1280,
+  "format": "vertical 9:16",
+  "son": false,
+  "son_note": "Vidéo muette : aucune piste audio, tout le texte est incrusté à l’image. Lecture au clic.",
+  "sous_titres": "incrustés en français ; pas de fichier de sous-titres ; la transcription ci-dessous sert d’alternative textuelle",
+  "fichiers": [
+    {
+      "role": "video",
+      "chemin": "fillsell-presentation-av1.webm",
+      "type": "video/webm; codecs=\"av01.0.05M.08\"",
+      "codec": "AV1 profil 0 (Main), niveau 3.1, 8 bits, yuv420p, libaom-av1 CRF 34 cpu-used 5, image clé toutes les 5 s",
+      "largeur": 720,
+      "hauteur": 1280,
+      "duree_s": 53.5,
+      "poids_octets": 1657358,
+      "debit_moyen_kbps": 248
+    },
+    {
+      "role": "video",
+      "chemin": "fillsell-presentation.webm",
+      "type": "video/webm; codecs=\"vp9\"",
+      "codec": "VP9 profil 0, yuv420p, libvpx-vp9 deux passes CRF 33, image clé toutes les 5 s",
+      "largeur": 720,
+      "hauteur": 1280,
+      "duree_s": 53.5,
+      "poids_octets": 2535382,
+      "debit_moyen_kbps": 379
+    },
+    {
+      "role": "video",
+      "chemin": "fillsell-presentation.mp4",
+      "type": "video/mp4; codecs=\"avc1.64001F\"",
+      "codec": "H.264 High, niveau 3.1, yuv420p, x264 veryslow tune animation, image clé toutes les 5 s, moov en tête (faststart)",
+      "largeur": 720,
+      "hauteur": 1280,
+      "duree_s": 53.5,
+      "poids_octets": 4009563,
+      "debit_moyen_kbps": 600
+    },
+    {
+      "role": "affiche",
+      "chemin": "fillsell-presentation-poster.webp",
+      "type": "image/webp",
+      "largeur": 720,
+      "hauteur": 1280,
+      "poids_octets": 21036,
+      "image_source": "image 150 (5 s) : icône FillSell, « FillSell », les cinq plateformes (logos de l’app et noms), « Une seule app. »"
+    },
+    {
+      "role": "affiche",
+      "chemin": "fillsell-presentation-poster-360.webp",
+      "type": "image/webp",
+      "largeur": 360,
+      "hauteur": 640,
+      "poids_octets": 8866,
+      "image_source": "même image, rendue à 360×640"
+    }
+  ],
+  "titre": {
+    "fr": "FillSell en moins d’une minute : une photo, une annonce, cinq plateformes",
+    "en": "FillSell in under a minute: one photo, one listing, five marketplaces"
+  },
+  "description": {
+    "fr": "Une photo, et Lens écrit l’annonce et propose le prix ; elle part sur Vinted, Leboncoin, eBay, Beebs et Depop, une annonce après l’autre, sans un copier-coller ; la republication automatique la fait remonter sur Vinted, Leboncoin, Beebs et Depop, les jours et au créneau choisis, ordinateur allumé ; vendue sur Vinted, la vente s’enregistre seule et FillSell retire les copies des autres plateformes — au moindre doute, il demande « Déjà vendu ? » ; puis le mois de Camille (profit, ventes sur cinq plateformes dont Depop, meilleures pièces parties en 1 à 3 jours) et la synchronisation du stock déjà en ligne. Compte de démonstration, chiffres fictifs : ni le résultat d’un client, ni une promesse de gains. Texte à l’écran en français, sans son.",
+    "en": "One photo, and Lens writes the listing and suggests the price; it goes live on Vinted, Leboncoin, eBay, Beebs and Depop, one listing after the other, without a single copy-paste; automatic reposting bumps it back up on Vinted, Leboncoin, Beebs and Depop, on the days and in the time slot you choose, with your computer on; once it sells on Vinted, the sale records itself and FillSell removes the copies from the other marketplaces — if in doubt, it asks “Already sold?”; then Camille’s month (profit, sales on five marketplaces including Depop, best pieces gone in 1 to 3 days) and syncing the stock already live. Demo account, illustrative figures: not a customer’s results and no promise of earnings. On-screen text in French, no sound."
+  },
+  "accessibilite": {
+    "aria_label_fr": "Vidéo de présentation de FillSell, 53,5 secondes, sans son, texte à l’écran en français. Transcription sous la vidéo.",
+    "aria_label_en": "FillSell presentation video, 53.5 seconds, no sound, on-screen text in French. Transcript below the video.",
+    "lecture": "au clic seulement (pas de lecture automatique) ; respecter prefers-reduced-motion"
+  },
+  "json_ld_videoobject": {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    "name": "FillSell en moins d’une minute : une photo, une annonce, cinq plateformes",
+    "description": "Créer une annonce à partir d’une photo avec Lens, la publier sur Vinted, Leboncoin, eBay, Beebs et Depop, la faire remonter automatiquement sur Vinted, Leboncoin, Beebs et Depop, retirer les copies quand elle se vend, suivre son profit et synchroniser son stock. Compte de démonstration, chiffres fictifs.",
+    "thumbnailUrl": [
+      "A_REMPLIR_URL_ABSOLUE/fillsell-presentation-poster.webp"
+    ],
+    "contentUrl": "A_REMPLIR_URL_ABSOLUE/fillsell-presentation.mp4",
+    "uploadDate": "A_REMPLIR_DATE_DE_MISE_EN_LIGNE",
+    "duration": "PT53.5S",
+    "inLanguage": "fr",
+    "width": 720,
+    "height": 1280
+  },
+  "chapitres": [
+    {
+      "debut_s": 0,
+      "fin_s": 5.5,
+      "titre": "Une photo, cinq plateformes",
+      "titre_en": "One photo, five marketplaces"
+    },
+    {
+      "debut_s": 5.5,
+      "fin_s": 12.5,
+      "titre": "Étape 1 — Photo : Lens écrit l’annonce et propose le prix",
+      "titre_en": "Step 1 — Photo: Lens writes the listing and suggests the price"
+    },
+    {
+      "debut_s": 12.5,
+      "fin_s": 20,
+      "titre": "Étape 2 — Publier sur Vinted, Leboncoin, eBay, Beebs et Depop",
+      "titre_en": "Step 2 — Publish on Vinted, Leboncoin, eBay, Beebs and Depop"
+    },
+    {
+      "debut_s": 20,
+      "fin_s": 26,
+      "titre": "Étape 3 — Remonter : republication automatique sur Vinted, Leboncoin, Beebs et Depop",
+      "titre_en": "Step 3 — Bump: automatic reposting on Vinted, Leboncoin, Beebs and Depop"
+    },
+    {
+      "debut_s": 26,
+      "fin_s": 34,
+      "titre": "Étape 4 — Vendre : vendu ici, retiré là-bas",
+      "titre_en": "Step 4 — Sell: sold here, removed there"
+    },
+    {
+      "debut_s": 34,
+      "fin_s": 43,
+      "titre": "Étape 5 — Suivre : le mois de Camille (compte de démonstration)",
+      "titre_en": "Step 5 — Track: Camille’s month (demo account)"
+    },
+    {
+      "debut_s": 43,
+      "fin_s": 47.5,
+      "titre": "Synchroniser le stock déjà en ligne",
+      "titre_en": "Sync the stock already live"
+    },
+    {
+      "debut_s": 47.5,
+      "fin_s": 53.5,
+      "titre": "Commencer gratuitement — fillsell.app",
+      "titre_en": "Start for free — fillsell.app"
+    }
+  ],
+  "transcription_fr": [
+    {
+      "debut_s": 0,
+      "fin_s": 3,
+      "texte": "Une photo."
+    },
+    {
+      "debut_s": 0.5,
+      "fin_s": 3,
+      "texte": "Cinq plateformes. (logos : Vinted, Leboncoin, eBay, Beebs, Depop)"
+    },
+    {
+      "debut_s": 1.3,
+      "fin_s": 3,
+      "texte": "Ctrl + C · Ctrl + V (barrés)"
+    },
+    {
+      "debut_s": 1.7,
+      "fin_s": 3,
+      "texte": "Sans un copier-coller."
+    },
+    {
+      "debut_s": 3.3,
+      "fin_s": 5.5,
+      "texte": "FillSell — Vinted · Leboncoin · eBay · Beebs · Depop — Une seule app."
+    },
+    {
+      "debut_s": 5.5,
+      "fin_s": 7.6,
+      "texte": "Écran Lens : « Scanne. On gère le reste. »"
+    },
+    {
+      "debut_s": 5.5,
+      "fin_s": 12.5,
+      "texte": "Étape 1/5 · Photo"
+    },
+    {
+      "debut_s": 5.6,
+      "fin_s": 7.4,
+      "texte": "Prends une photo. Lens regarde l’article."
+    },
+    {
+      "debut_s": 7.5,
+      "fin_s": 9.7,
+      "texte": "Lens écrit l’annonce : titre, description, marque lue sur l’article, état proposé."
+    },
+    {
+      "debut_s": 7.5,
+      "fin_s": 12.5,
+      "texte": "Résultat du scan — Sweat à capuche Red Bull Racing gris, taille M — Pepe Jeans — Sweat à capuche gris Red Bull Racing, collection Pepe Jeans : logos imprimés sur la poitrine, poche kangourou, capuche à cordon. Très bon état, taille M. — Très bon état · Gris · Coton · Mode — Lu sur l’objet : Marque : Pepe Jeans (logo imprimé) ; Taille : M (étiquette du col) — 38,00 € prix de vente conseillé — Excellent, marge +27,00 € (+71 %) — basé sur 6 annonces (32,00 € – 45,00 €) — Créer l’annonce"
+    },
+    {
+      "debut_s": 9.8,
+      "fin_s": 12.5,
+      "texte": "Et propose le prix. Tu relis, tu publies."
+    },
+    {
+      "debut_s": 12.5,
+      "fin_s": 15.2,
+      "texte": "Étape 1 sur 3 — Où publier ? — Sweat à capuche Red Bull Racing gris, taille M, 38 € — Plateformes : Vinted, Leboncoin, Beebs, eBay, Depop (Connectée), toutes cochées — Publier sur 5 plateformes"
+    },
+    {
+      "debut_s": 12.5,
+      "fin_s": 20,
+      "texte": "Étape 2/5 · Publier"
+    },
+    {
+      "debut_s": 12.6,
+      "fin_s": 14.7,
+      "texte": "Coche tes plateformes. Vinted · Leboncoin · eBay · Beebs · Depop"
+    },
+    {
+      "debut_s": 14.8,
+      "fin_s": 20,
+      "texte": "En ligne sur les cinq : une annonce après l’autre, sans un copier-coller."
+    },
+    {
+      "debut_s": 14.9,
+      "fin_s": 20,
+      "texte": "Publication lancée — Vinted, Leboncoin, Beebs, eBay, Depop, l’une après l’autre : En file… / Dépôt en cours… / En ligne — Publié · 5 en ligne"
+    },
+    {
+      "debut_s": 20,
+      "fin_s": 26,
+      "texte": "Étape 3/5 · Remonter"
+    },
+    {
+      "debut_s": 20,
+      "fin_s": 26,
+      "texte": "Republication automatique — Active sur Vinted, Leboncoin, Beebs et Depop (interrupteur allumé)"
+    },
+    {
+      "debut_s": 20.1,
+      "fin_s": 22,
+      "texte": "Une annonce prend de l’âge… elle descend dans la liste."
+    },
+    {
+      "debut_s": 20.1,
+      "fin_s": 26,
+      "texte": "Annonces : Sweat à capuche Öhlins noir, taille L, 34 €, en ligne depuis 15 j · Short de bain Polo Ralph Lauren blanc, taille M, 35 €, depuis 22 j · Bottines cuir Cyrillus enfant, pointure 24, 29 €, depuis 27 j · Casquette Volcom beige brodée, 15 €, depuis 31 j · T-shirt Picture noir imprimé surf, taille M, 16 €, depuis 35 j → De retour en tête ✓"
+    },
+    {
+      "debut_s": 22.1,
+      "fin_s": 26,
+      "texte": "Elle remonte toute seule : les jours et au créneau que tu choisis, ordinateur allumé."
+    },
+    {
+      "debut_s": 26,
+      "fin_s": 34,
+      "texte": "Étape 4/5 · Vendre — Le sweat Red Bull Racing, 38 € sur Vinted, Leboncoin, eBay, Beebs et Depop"
+    },
+    {
+      "debut_s": 26.1,
+      "fin_s": 27.7,
+      "texte": "Vendu sur Vinted ! La vente s’enregistre toute seule. (VENDU ! · +27,00 €)"
+    },
+    {
+      "debut_s": 27.8,
+      "fin_s": 31.1,
+      "texte": "Vendu ici, retiré là-bas. Leboncoin, eBay, Beebs, Depop : FillSell retire les copies dès la vente enregistrée. (Leboncoin, eBay, Beebs, Depop : RETIRÉE ✓)"
+    },
+    {
+      "debut_s": 31.1,
+      "fin_s": 34,
+      "texte": "Un doute ? Il te demande, avant de toucher à une annonce. — Déjà vendu ? — Oui, la retirer — Non"
+    },
+    {
+      "debut_s": 34,
+      "fin_s": 43,
+      "texte": "Étape 5/5 · Suivre — Le mois de Camille — Compte de démonstration · chiffres fictifs"
+    },
+    {
+      "debut_s": 34.1,
+      "fin_s": 37.2,
+      "texte": "+1 268 € de profit ce mois · 62 ventes — Ce mois 1268,00 €, 62 ventes · Marge moy. 68.5% depuis le début"
+    },
+    {
+      "debut_s": 34.2,
+      "fin_s": 37,
+      "texte": "Sa marge, calculée toute seule : ventes, profit, stock, l’app fait les comptes."
+    },
+    {
+      "debut_s": 37.1,
+      "fin_s": 40.1,
+      "texte": "Vendu sur cinq plateformes, Depop compris."
+    },
+    {
+      "debut_s": 37.1,
+      "fin_s": 40.2,
+      "texte": "Ventes par plateforme : Vinted 870,00 € (31 ventes) · eBay 329,00 € (6 ventes) · Depop 322,00 € (8 ventes) · Leboncoin 281,00 € (10 ventes) · Beebs 99,00 € (7 ventes) — Meilleure marge : Depop 74.0%"
+    },
+    {
+      "debut_s": 40.1,
+      "fin_s": 43,
+      "texte": "Meilleurs vendeurs : Doudoune The North Face Nuptse, 80,00 € (55,00 € → 135,00 €), 2j en stock · Veste Carhartt Detroit vintage, 63,00 € (22,00 € → 85,00 €), 1j en stock · Appareil photo argentique Olympus, 57,00 € (22,00 € → 79,00 €), 3j en stock"
+    },
+    {
+      "debut_s": 40.2,
+      "fin_s": 43,
+      "texte": "Ses meilleures pièces : parties en 1 à 3 jours, sur Vinted, Depop et eBay."
+    },
+    {
+      "debut_s": 43,
+      "fin_s": 47.5,
+      "texte": "Synchroniser — Vinted 41 annonces · Leboncoin 24 · eBay 5 · Beebs 10 · Depop 10 — Synchronisé · 90 annonces"
+    },
+    {
+      "debut_s": 43.1,
+      "fin_s": 44.7,
+      "texte": "Déjà des annonces en ligne ? Un appui sur « Synchroniser »."
+    },
+    {
+      "debut_s": 44.8,
+      "fin_s": 47.5,
+      "texte": "Tout ton stock arrive, rangé. Gratuit et sans limite."
+    },
+    {
+      "debut_s": 47.5,
+      "fin_s": 53.5,
+      "texte": "FillSell — Une annonce. Cinq plateformes. — Vinted · Leboncoin · eBay · Beebs · Depop — iPhone · Android · Chrome — Commencer gratuitement — fillsell.app"
+    },
+    {
+      "debut_s": 48.8,
+      "fin_s": 53.5,
+      "texte": "Données de démonstration. Vinted, Leboncoin, eBay, Beebs et Depop sont des marques de leurs propriétaires respectifs. FillSell n’est affilié à aucune de ces plateformes, ni approuvé ni sponsorisé par elles."
+    }
+  ],
+  "transcription_en_traduction": [
+    {
+      "debut_s": 0,
+      "fin_s": 3,
+      "texte": "One photo."
+    },
+    {
+      "debut_s": 0.5,
+      "fin_s": 3,
+      "texte": "Five marketplaces. (logos: Vinted, Leboncoin, eBay, Beebs, Depop)"
+    },
+    {
+      "debut_s": 1.3,
+      "fin_s": 3,
+      "texte": "Ctrl + C · Ctrl + V (crossed out)"
+    },
+    {
+      "debut_s": 1.7,
+      "fin_s": 3,
+      "texte": "Without a single copy-paste."
+    },
+    {
+      "debut_s": 3.3,
+      "fin_s": 5.5,
+      "texte": "FillSell — Vinted · Leboncoin · eBay · Beebs · Depop — One app."
+    },
+    {
+      "debut_s": 5.5,
+      "fin_s": 7.6,
+      "texte": "Lens screen: “Scan. We handle the rest.”"
+    },
+    {
+      "debut_s": 5.5,
+      "fin_s": 12.5,
+      "texte": "Step 1/5 · Photo"
+    },
+    {
+      "debut_s": 5.6,
+      "fin_s": 7.4,
+      "texte": "Take a photo. Lens looks at the item."
+    },
+    {
+      "debut_s": 7.5,
+      "fin_s": 9.7,
+      "texte": "Lens writes the listing: title, description, brand read on the item, suggested condition."
+    },
+    {
+      "debut_s": 7.5,
+      "fin_s": 12.5,
+      "texte": "Scan result — Grey Red Bull Racing hoodie, size M — Pepe Jeans — Grey Red Bull Racing hoodie, Pepe Jeans collection: logos printed on the chest, kangaroo pocket, drawstring hood. Very good condition, size M. — Very good condition · Grey · Cotton · Fashion — Read on the item: Brand: Pepe Jeans (printed logo); Size: M (collar label) — €38.00 suggested selling price — Excellent, margin +€27.00 (+71%) — based on 6 listings (€32.00 – €45.00) — Create the listing"
+    },
+    {
+      "debut_s": 9.8,
+      "fin_s": 12.5,
+      "texte": "And suggests the price. You check, you publish."
+    },
+    {
+      "debut_s": 12.5,
+      "fin_s": 15.2,
+      "texte": "Step 1 of 3 — Where to publish? — Grey Red Bull Racing hoodie, size M, €38 — Marketplaces: Vinted, Leboncoin, Beebs, eBay, Depop (Connected), all ticked — Publish on 5 marketplaces"
+    },
+    {
+      "debut_s": 12.5,
+      "fin_s": 20,
+      "texte": "Step 2/5 · Publish"
+    },
+    {
+      "debut_s": 12.6,
+      "fin_s": 14.7,
+      "texte": "Tick your marketplaces. Vinted · Leboncoin · eBay · Beebs · Depop"
+    },
+    {
+      "debut_s": 14.8,
+      "fin_s": 20,
+      "texte": "Live on all five: one listing after the other, without a single copy-paste."
+    },
+    {
+      "debut_s": 14.9,
+      "fin_s": 20,
+      "texte": "Publishing started — Vinted, Leboncoin, Beebs, eBay, Depop, one after the other: Queued… / Listing… / Live — Published · 5 live"
+    },
+    {
+      "debut_s": 20,
+      "fin_s": 26,
+      "texte": "Step 3/5 · Bump"
+    },
+    {
+      "debut_s": 20,
+      "fin_s": 26,
+      "texte": "Automatic reposting — On for Vinted, Leboncoin, Beebs and Depop (switch on)"
+    },
+    {
+      "debut_s": 20.1,
+      "fin_s": 22,
+      "texte": "A listing gets older… it slides down the list."
+    },
+    {
+      "debut_s": 20.1,
+      "fin_s": 26,
+      "texte": "Listings: Black Öhlins hoodie, size L, €34, live for 15 days · White Polo Ralph Lauren swim shorts, size M, €35, 22 days · Cyrillus leather kids’ boots, size 24, €29, 27 days · Beige embroidered Volcom cap, €15, 31 days · Black Picture surf print T-shirt, size M, €16, 35 days → Back on top ✓"
+    },
+    {
+      "debut_s": 22.1,
+      "fin_s": 26,
+      "texte": "It bumps itself back up: on the days and in the time slot you choose, with your computer on."
+    },
+    {
+      "debut_s": 26,
+      "fin_s": 34,
+      "texte": "Step 4/5 · Sell — The Red Bull Racing hoodie, €38 on Vinted, Leboncoin, eBay, Beebs and Depop"
+    },
+    {
+      "debut_s": 26.1,
+      "fin_s": 27.7,
+      "texte": "Sold on Vinted! The sale records itself. (SOLD! · +€27.00)"
+    },
+    {
+      "debut_s": 27.8,
+      "fin_s": 31.1,
+      "texte": "Sold here, removed there. Leboncoin, eBay, Beebs, Depop: FillSell removes the copies as soon as the sale is recorded. (Leboncoin, eBay, Beebs, Depop: REMOVED ✓)"
+    },
+    {
+      "debut_s": 31.1,
+      "fin_s": 34,
+      "texte": "Any doubt? It asks you before touching a listing. — Already sold? — Yes, remove it — No"
+    },
+    {
+      "debut_s": 34,
+      "fin_s": 43,
+      "texte": "Step 5/5 · Track — Camille’s month — Demo account · illustrative figures"
+    },
+    {
+      "debut_s": 34.1,
+      "fin_s": 37.2,
+      "texte": "+€1,268 profit this month · 62 sales — This month €1,268.00, 62 sales · Avg. margin 68.5% since the start"
+    },
+    {
+      "debut_s": 34.2,
+      "fin_s": 37,
+      "texte": "Her margin, worked out on its own: sales, profit, stock — the app does the maths."
+    },
+    {
+      "debut_s": 37.1,
+      "fin_s": 40.1,
+      "texte": "Sold on five marketplaces, Depop included."
+    },
+    {
+      "debut_s": 37.1,
+      "fin_s": 40.2,
+      "texte": "Sales by marketplace: Vinted €870.00 (31 sales) · eBay €329.00 (6 sales) · Depop €322.00 (8 sales) · Leboncoin €281.00 (10 sales) · Beebs €99.00 (7 sales) — Best margin: Depop 74.0%"
+    },
+    {
+      "debut_s": 40.1,
+      "fin_s": 43,
+      "texte": "Best sellers: The North Face Nuptse puffer, €80.00 (€55.00 → €135.00), 2 days in stock · Vintage Carhartt Detroit jacket, €63.00 (€22.00 → €85.00), 1 day in stock · Olympus film camera, €57.00 (€22.00 → €79.00), 3 days in stock"
+    },
+    {
+      "debut_s": 40.2,
+      "fin_s": 43,
+      "texte": "Her best pieces: gone in 1 to 3 days, on Vinted, Depop and eBay."
+    },
+    {
+      "debut_s": 43,
+      "fin_s": 47.5,
+      "texte": "Sync — Vinted 41 listings · Leboncoin 24 · eBay 5 · Beebs 10 · Depop 10 — Synced · 90 listings"
+    },
+    {
+      "debut_s": 43.1,
+      "fin_s": 44.7,
+      "texte": "Already have listings live? One tap on “Sync”."
+    },
+    {
+      "debut_s": 44.8,
+      "fin_s": 47.5,
+      "texte": "Your whole stock comes in, neatly filed. Free and unlimited."
+    },
+    {
+      "debut_s": 47.5,
+      "fin_s": 53.5,
+      "texte": "FillSell — One listing. Five marketplaces. — Vinted · Leboncoin · eBay · Beebs · Depop — iPhone · Android · Chrome — Start for free — fillsell.app"
+    },
+    {
+      "debut_s": 48.8,
+      "fin_s": 53.5,
+      "texte": "Demo data. Vinted, Leboncoin, eBay, Beebs and Depop are trademarks of their respective owners. FillSell is not affiliated with, endorsed or sponsored by any of these marketplaces."
+    }
+  ],
+  "integration": {
+    "balise": "<video controls playsinline muted preload=\"none\" poster=\"…poster.webp\" width=\"720\" height=\"1280\">, sources dans l’ordre AV1, VP9, MP4 (le navigateur prend la première qu’il sait lire)",
+    "lecture": "au clic (PLAN.md § 5) ; transcription en texte sous la vidéo",
+    "conditions_mise_en_ligne": [
+      "D1 : Depop ouverte à tous (depop_ouvert), extension avec Depop servie par le Chrome Web Store, OTA ≥ 2.9.68",
+      "D2 : republication automatique Depop ACTIVE (non codée au 09/10) — sinon : node docs/seo/briefs/video-variante-site/video-json.mjs B"
+    ]
+  }
+}

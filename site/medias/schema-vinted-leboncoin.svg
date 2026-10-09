@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400">
+  <!-- Schéma PROVISOIRE (09/10/2026) : éprouve la chaîne des médias du site
+       (site:images → AVIF/WebP + manifeste). Sera remplacé par une vraie
+       capture de l'app avec le contenu final. -->
+  <rect width="960" height="400" fill="#F6F5F1"/>
+  <g font-family="Arial, Helvetica, sans-serif" text-anchor="middle">
+    <rect x="40" y="130" width="230" height="140" rx="22" fill="#FFFFFF" stroke="#E7E3D8" stroke-width="3"/>
+    <text x="155" y="195" font-size="34" font-weight="700" fill="#10201B">Vinted</text>
+    <text x="155" y="235" font-size="20" fill="#5C6560">annonce existante</text>
+    <rect x="365" y="110" width="230" height="180" rx="26" fill="#10302B"/>
+    <text x="480" y="195" font-size="38" font-weight="700" fill="#FFFFFF">FillSell</text>
+    <text x="480" y="235" font-size="20" fill="#C6F5EF">une fiche, un stock</text>
+    <rect x="690" y="130" width="230" height="140" rx="22" fill="#FFFFFF" stroke="#E7E3D8" stroke-width="3"/>
+    <text x="805" y="195" font-size="34" font-weight="700" fill="#10201B">Leboncoin</text>
+    <text x="805" y="235" font-size="20" fill="#5C6560">annonce adaptée</text>
+  </g>
+  <g stroke="#2F9E90" stroke-width="8" stroke-linecap="round" fill="none">
+    <path d="M285 200 H345"/><path d="M330 185 L348 200 L330 215"/>
+    <path d="M610 200 H670"/><path d="M655 185 L673 200 L655 215"/>
+  </g>
+</svg>

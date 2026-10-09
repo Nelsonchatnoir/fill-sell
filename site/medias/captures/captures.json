@@ -1,0 +1,485 @@
+{
+  "produit_le": "2026-10-09T16:35:51.412Z",
+  "produit_par": "scripts/apercu/site-capture.mjs",
+  "horloge_des_captures": "2026-10-30T17:40:00+01:00",
+  "donnees": "Compte de démonstration « Camille » (scripts/apercu/site-donnees-demo.js, générateur à graine fixe, horloge fixée au 2026-10-30T17:40:00+01:00) : aucune donnée réelle, aucun pseudo, aucune adresse, aucun numéro d’annonce réel, aucun chiffre de Nico.",
+  "chiffres_du_compte": {
+    "ventes_6_mois": 266,
+    "ca_6_mois": 7030,
+    "profit_6_mois": 4819,
+    "ventes_du_mois": 62,
+    "ca_du_mois": 1901,
+    "profit_du_mois": 1268,
+    "ventes_du_mois_par_plateforme": {
+      "Vinted": 31,
+      "Depop": 8,
+      "eBay": 6,
+      "Beebs": 7,
+      "Leboncoin": 10
+    },
+    "articles_en_stock": 42
+  },
+  "mention_obligatoire_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+  "mention_obligatoire_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+  "photos": "Photos produit libres : public/landing/*.webp et public/pata2.jpg (aucune donnée personnelle).",
+  "plateformes": "Vinted, Leboncoin, eBay, Beebs, Depop. Jamais Opla (contrôlé : texte et logo).",
+  "republication_automatique": {
+    "plateformes_servies": [
+      "vinted",
+      "leboncoin",
+      "beebs",
+      "depop"
+    ],
+    "retirer_depop": "enlever « depop » de PLATEFORMES_REPUBLICATION_AUTO (scripts/apercu/site-donnees-demo.js), puis relancer les captures"
+  },
+  "extension": {
+    "version": "0.6.105",
+    "commit": "8f88cdd",
+    "condition": "à publier seulement quand cette version (ou une plus récente qui garde Depop) est servie par le Chrome Web Store"
+  },
+  "avertissement_logos": "Décision de Nico (09/10) : dans les captures, les logos des plateformes restent tels que l’app les dessine ; sur les pages du site, noms en texte + mention de non-affiliation.",
+  "avertissements": [
+    "stock-vue-ensemble.png : la ligne « Republication automatique » de l'app dit « Active sur Vinted, Leboncoin et Beebs » — Depop absent(s) alors que l'état servi les active (src/hooks/useRepublicationPlanifiee.js : PLATEFORMES_PLANIFIEES)",
+    "republication-remonter.png : la ligne « Republication automatique » de l'app dit « Active sur Vinted, Leboncoin et Beebs » — Depop absent(s) alors que l'état servi les active (src/hooks/useRepublicationPlanifiee.js : PLATEFORMES_PLANIFIEES)"
+  ],
+  "images": [
+    {
+      "fichier": "accueil-tableau-de-bord.png",
+      "ecran": "1 · Tableau d’accueil",
+      "alt_fr": "Écran d'accueil de l'app FillSell sur téléphone : « Bonjour Camille », un profit net de 4 819 € depuis le début (266 ventes) avec sa courbe qui monte, puis quatre tuiles : 1 268 € de profit ce mois-ci sur 62 ventes, une marge moyenne de 68,5 %, 7 030 € de revenu brut et 42 articles en stock (268 € immobilisés).",
+      "alt_en": "FillSell app home screen on a phone: \"Bonjour Camille\", €4,819 net profit all-time (266 sales) with a rising trend line, then four tiles: €1,268 profit this month from 62 sales, a 68.5% average margin, €7,030 gross revenue and 42 items in stock (€268 tied up).",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/DashboardTab.jsx",
+        "coquille recopiée d’App.jsx (site-coquille.jsx : BrandMark, barre d’onglets ; ni compteur d’annonces ni pastille de palier)"
+      ],
+      "donnees": "266 ventes sur six mois dont 62 ce mois-ci (Vinted 31, Depop 8, eBay 6, Beebs 7, Leboncoin 10), 42 articles en stock. Le tableau d’accueil n’affiche aucune plateforme (Depop compris).",
+      "depop_visible": false,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-app.html?ecran=accueil",
+      "logos_plateformes_visibles": []
+    },
+    {
+      "fichier": "lens-scan-photo.png",
+      "ecran": "2 · Lens : la photo, avant l’analyse",
+      "alt_fr": "L'écran Lens de FillSell avant l'analyse : « Scanne. On gère le reste. — Une photo suffit. Fiche, prix et description générés pour chacune de tes plateformes. », le gros bouton appareil photo, « 1 photo ajoutée » (la vignette d'un t-shirt Picture gris), un champ de note avec micro et le bouton « Estimer et créer l'annonce ».",
+      "alt_en": "The FillSell Lens screen before analysis: \"Scanne. On gère le reste.\" (scan, we handle the rest — one photo is enough; listing, price and description generated for each of your marketplaces), the large camera button, \"1 photo added\" (a grey Picture T-shirt thumbnail), a note field with a microphone and the \"estimate and create the listing\" button.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/LensTab.jsx (LensTab, LensScanHome)",
+        "coquille recopiée d’App.jsx"
+      ],
+      "donnees": "Une photo de démonstration (public/landing/tshirt-ours.webp), aucune analyse lancée.",
+      "depop_visible": false,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-app.html?ecran=lens-photo",
+      "logos_plateformes_visibles": []
+    },
+    {
+      "fichier": "lens-analyse-photo.png",
+      "ecran": "2 · Lens : analyse photo",
+      "alt_fr": "Résultat d'un scan Lens dans l'app FillSell : l'article reconnu (« T-shirt Picture gris imprimé ours « Climate Change » », marque Picture), la description rédigée, les pastilles Très bon état, Gris chiné, Coton, Mode, ce qui a été lu sur l'objet (motif, coupe, taille S sur l'étiquette du col, composition, saison), puis le prix de vente conseillé de 14 €, une marge jugée excellente (+10 €) et la base du prix : 5 annonces comparables, de 12 € à 16 €.",
+      "alt_en": "A Lens scan result in the FillSell app: the recognised item (\"T-shirt Picture gris imprimé ours « Climate Change »\", brand Picture), the written description, the tags very good condition, grey marl, cotton, fashion, what was read on the item (print, cut, size S on the neck label, composition, season), then a suggested selling price of €14, a margin rated excellent (+€10) and what the price is based on: 5 comparable listings, €12 to €16.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/LensTab.jsx (LensTab, LensAnalysisResult)",
+        "src/components/LensIdentite.jsx",
+        "src/components/AnalyseMarche.jsx",
+        "coquille recopiée d’App.jsx"
+      ],
+      "donnees": "Résultat Lens de démonstration (forme de lens-analysis) pour public/landing/tshirt-ours.webp ; 5 annonces comparables inventées (aucune URL). L’encart « Ton annonce est prête » (qui dit « 4 plateformes », en dur dans src/tabs/LensTab.jsx:1084) reste sous la barre d’onglets.",
+      "depop_visible": false,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-app.html?ecran=lens",
+      "logos_plateformes_visibles": []
+    },
+    {
+      "fichier": "publication-choix-plateformes.png",
+      "ecran": "3 · Fiche article et choix des plateformes",
+      "alt_fr": "Étape 1 sur 3 de la publication dans FillSell, « Où publier ? » : la fiche du t-shirt Picture gris (Très bon état, 14 €) et cinq plateformes cochées — Vinted, Leboncoin, Beebs et Depop « Connectée », eBay « Part de nos serveurs, sans l'extension » (compte relié par l'API) — puis le choix des photos (Retouche IA ou Telles quelles) et le bouton « Continuer · 5 plateformes ». Mention : « Rien ne part encore. Tu vérifies à l'écran suivant. »",
+      "alt_en": "Step 1 of 3 of publishing in FillSell, \"Où publier ?\" (where to publish): the grey Picture T-shirt card (very good condition, €14) and five ticked marketplaces — Vinted, Leboncoin, Beebs and Depop \"Connectée\" (connected), eBay \"Part de nos serveurs, sans l'extension\" (sent from FillSell's servers through the linked account) — then the photo choice (AI touch-up or as they are) and the \"Continuer · 5 plateformes\" button. Note: nothing goes out yet, you check on the next screen.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/publication/StepperNouveau.jsx",
+        "src/publication/EcranOuPublier.jsx",
+        "moteur en dur au contrat de ListingPreviewScreen (plateformes affichées = PLATFORMS_DEFAULT + Depop « à venir » ouverte)"
+      ],
+      "donnees": "Article de démonstration « T-shirt Picture gris « Climate Change » » (14 €), annonce déjà rédigée par Lens ; cinq plateformes connectées, eBay relié. Depop n’est jamais précochée par l’app : la case cochée est le geste de Camille.",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-publication.html?ecran=ou-publier",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "Beebs",
+        "eBay",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "publication-verification-annonces.png",
+      "ecran": "3 · Fiche article : ce qui va partir",
+      "alt_fr": "Étape 2 sur 3 de la publication, « Ce qui va partir » : l'état de l'article (Très bon état) appliqué à toutes les plateformes, puis une carte par plateforme, chacune avec son rayon, son état, son prix de 14 € et la mention « Prêt » — Vinted (Hommes › … › T-shirts), Leboncoin (Mode › Vêtements), Beebs (Mode › … › T-shirts), eBay (Vêtements, accessoires › … › T-shirts) et Depop (Homme › … › T-shirts, sans titre : chez Depop, la description fait l'annonce).",
+      "alt_en": "Step 2 of 3 of publishing, \"Ce qui va partir\" (what will go out): the item condition (very good) applied to every marketplace, then one card per marketplace, each with its category, condition, €14 price and a \"Prêt\" (ready) label — Vinted (Men › … › T-shirts), Leboncoin (Fashion › Clothing), Beebs (Fashion › … › T-shirts), eBay (Clothing, accessories › … › T-shirts) and Depop (Men › … › T-shirts, no title: on Depop the description is the listing).",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/publication/StepperNouveau.jsx",
+        "src/publication/EcranVerifier.jsx",
+        "src/components/ListingPreviewScreen.jsx (cartes par plateforme)"
+      ],
+      "donnees": "Même article ; rayons par plateforme plausibles (Depop : menswear/tops/tshirts, chemin lu dans src/utils/arbres/depopFeuilles.js).",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-publication.html?ecran=verifier",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "Beebs",
+        "eBay",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "publication-en-lot.png",
+      "ecran": "4 · Publication en lot",
+      "alt_fr": "Publication en lot dans FillSell, étape 1 sur 3 : cinq articles choisis dans le stock (sweat Öhlins, casquette Volcom, t-shirt Picture, short Polo Ralph Lauren, bottines Cyrillus), « Chacun part là où il n'est pas encore ». Vinted est grisée (« Déjà en ligne pour tous »), Leboncoin, eBay et Depop sont cochées avec, pour chacune, le nombre d'articles à publier et ceux qui y sont déjà, Beebs reste décochée ; « 9 annonces à créer », « Avec ton ordinateur allumé : ≈ 5 min, une annonce après l'autre ».",
+      "alt_en": "Batch publishing in FillSell, step 1 of 3: five items picked from stock (Öhlins hoodie, Volcom cap, Picture T-shirt, Polo Ralph Lauren shorts, Cyrillus boots), each going \"where it isn't yet\". Vinted is greyed out (\"already live for all\"), Leboncoin, eBay and Depop are ticked, each showing how many items will be listed and how many are already there, Beebs stays unticked; \"9 listings to create\", \"with your computer on: ≈ 5 min, one listing after another\".",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/publication/lot/LotPublication.jsx (CoqueLot, EcranPlateformes)",
+        "src/publication/lot/regles.js (resumeParPlateforme, partagerQuota, dureeEstimeeMin, libelleDuree)"
+      ],
+      "donnees": "Cinq articles de démonstration avec leurs annonces en ligne (jobs publiés) ; durée calculée par la règle de l’app ; aucun quota affiché.",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-publication.html?ecran=lot-plateformes",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "eBay",
+        "Beebs",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "publication-en-lot-pret.png",
+      "ecran": "4 · Publication en lot : prêt à envoyer",
+      "alt_fr": "Publication en lot, étape 2 sur 3 : les transporteurs Leboncoin retenus (Colissimo coché), le format du colis sur Leboncoin (« Estimé par Leboncoin », Petit, Moyen, Volumineux), la note « eBay : ni poids ni format ici — les frais d'envoi viennent de ta politique d'expédition eBay », puis la liste des cinq articles préparés, chacun avec sa photo, les plateformes où il va partir (par exemple sweat Öhlins : Leboncoin · eBay · Depop) et l'état « Prêt ». En bas, le bouton « Envoyer 9 annonces » : « L'extension FillSell les dépose ensuite depuis ton ordinateur, une après l'autre. »",
+      "alt_en": "Batch publishing, step 2 of 3: the Leboncoin carriers kept (Colissimo ticked), the Leboncoin parcel size (estimated by Leboncoin, small, medium, bulky), the note that eBay shipping costs come from the eBay shipping policy, then the list of the five prepared items, each with its photo, the marketplaces it will go to (e.g. Öhlins hoodie: Leboncoin · eBay · Depop) and a \"Prêt\" (ready) status. At the bottom, the \"send 9 listings\" button: the FillSell extension then posts them from your computer, one after another.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/publication/lot/LotPublication.jsx (CoqueLot, EcranAvant)",
+        "src/publication/lot/LivraisonDuLot.jsx"
+      ],
+      "donnees": "Mêmes cinq articles, poids posés sur les fiches (120 g à 600 g), transporteurs Leboncoin retenus (section Livraison au-dessus, hors de l’image).",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-publication.html?ecran=lot-pret",
+      "logos_plateformes_visibles": [
+        "noms en texte : Leboncoin, eBay, Depop"
+      ]
+    },
+    {
+      "fichier": "stock-vue-ensemble.png",
+      "ecran": "5 · Stock unifié",
+      "alt_fr": "L'onglet Stock de FillSell : « Synchronisé il y a 2 h, 90 annonces » avec le nombre d'annonces par plateforme (Vinted 41, Leboncoin 24, Beebs 10, eBay 5, Depop 10), trois tuiles — Publier (6 articles pas encore sur toutes les plateformes), Republier (23 annonces à faire remonter), À régler (1) — et la ligne « Republication automatique — Active sur Vinted, Leboncoin et Beebs », interrupteur allumé.",
+      "alt_en": "The FillSell Stock tab: \"synced 2 h ago, 90 listings\" with the count per marketplace (Vinted 41, Leboncoin 24, Beebs 10, eBay 5, Depop 10), three tiles — Publish (6 items not yet on every marketplace), Repost (23 listings to bump), To sort out (1) — and the line \"automatic reposting — on for Vinted, Leboncoin and Beebs\", switched on.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/StockTab.jsx",
+        "src/stock/BlocSynchro.jsx",
+        "src/stock/Haut.jsx (Gestes, LigneRepublicationAuto)",
+        "coquille recopiée d’App.jsx"
+      ],
+      "donnees": "Compte de démonstration servi par faux-supabase.js : fiches, annonces (jobs) sur les cinq plateformes, relevés finis il y a 2 h, republication automatique active (état servi : Vinted, Leboncoin, Beebs et Depop).",
+      "depop_visible": true,
+      "republication_auto_ligne": "Active sur Vinted, Leboncoin et Beebs",
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-stock.html",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "Beebs",
+        "eBay",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "stock-cartes-multi-plateformes.png",
+      "ecran": "5 · Stock unifié : un article, plusieurs plateformes",
+      "alt_fr": "Les cartes du stock FillSell, deux par ligne, avec la photo de chaque article, son prix, son ancienneté en ligne et les logos des plateformes où il est en ligne : le t-shirt Picture gris « Pas en ligne », le sweat Öhlins sur Vinted seulement, le t-shirt Patagonia en ligne sur cinq plateformes (Depop, Beebs, eBay et deux autres) et le short Polo Ralph Lauren sur trois (Depop, Leboncoin, Vinted), chacun avec son bouton « Publier partout », ses vues et ses favoris.",
+      "alt_en": "FillSell stock cards, two per row, each with the item photo, price, time online and the logos of the marketplaces where it is live: the grey Picture T-shirt \"not online\", the Öhlins hoodie on Vinted only, the Patagonia T-shirt live on five marketplaces (Depop, Beebs, eBay and two more) and the Polo Ralph Lauren shorts on three (Depop, Leboncoin, Vinted), each with its \"publish everywhere\" button, views and favourites.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/StockTab.jsx",
+        "src/stock/Carte.jsx (CarteArticle, PileLogos, PastilleEtat, BoutonAction)",
+        "src/stock/Liste.jsx"
+      ],
+      "donnees": "Mêmes données ; photos libres public/landing/*.webp et public/pata2.jpg ; vues et favoris inventés.",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-stock.html",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "Beebs",
+        "eBay",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "synchronisation-en-cours.png",
+      "ecran": "6 · Synchronisation en cours",
+      "alt_fr": "Synchronisation en cours dans le Stock de FillSell : « 3 plateformes sur 5 », le logo de chaque plateforme autour de FillSell, la barre d'avancement « Synchronisation de Depop en cours — environ 1 min — Ton ordinateur travaille pendant ce temps », puis la liste : Vinted 41 annonces, Leboncoin 24 annonces, eBay 5 annonces (faites), Depop 9 sur 10 (en cours), Beebs en attente, Rapprochement en attente.",
+      "alt_en": "Sync in progress in the FillSell Stock: \"3 of 5 marketplaces\", each marketplace logo around FillSell, the progress bar \"syncing Depop — about 1 min — your computer is working meanwhile\", then the list: Vinted 41 listings, Leboncoin 24 listings, eBay 5 listings (done), Depop 9 of 10 (running), Beebs waiting, matching waiting.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/stock/BlocSynchro.jsx",
+        "src/annonces/ConstellationReleve.jsx",
+        "src/tabs/StockTab.jsx"
+      ],
+      "donnees": "Relevés en cours posés dans les données (Vinted, Leboncoin et eBay finis, Depop en cours, Beebs en file) ; avancement servi comme la RPC synchro_avancement.",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-stock.html?synchro=en-cours",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "Beebs",
+        "eBay",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "vente-retrait-copies.png",
+      "ecran": "7 · Vente détectée : les copies retirées",
+      "alt_fr": "La file de l'ordinateur dans FillSell, juste après une vente sur Vinted : en cours, le retrait de l'annonce Depop du sweat Red Bull Racing vendu (38 €), avec sa barre d'avancement ; à venir, le retrait de sa copie Leboncoin, puis la publication du sweat Öhlins sur Depop et sur Leboncoin, chacune « en attente de son tour ».",
+      "alt_en": "The computer's queue in FillSell right after a sale on Vinted: in progress, removing the Depop listing of the sold Red Bull Racing hoodie (€38), with its progress bar; next, removing its Leboncoin copy, then publishing the Öhlins hoodie on Depop and Leboncoin, each waiting its turn.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/components/FileDesJobs.jsx",
+        "src/components/BarreProgression.jsx",
+        "src/tabs/StockTab.jsx (bandeau de la file)"
+      ],
+      "donnees": "Variante « vente récente » : vente Vinted il y a 14 min ; ses copies Depop et Leboncoin, déposées par FillSell (donc prouvées), sont retirées l’une après l’autre ; deux dépôts du sweat Öhlins en file.",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-stock.html?vente=recente",
+      "logos_plateformes_visibles": [
+        "Depop",
+        "Leboncoin"
+      ]
+    },
+    {
+      "fichier": "vente-deja-vendu-question.png",
+      "ecran": "7 · Vente détectée : « Déjà vendu ? »",
+      "alt_fr": "La question « Déjà vendu ? » dans FillSell, sur le Stock : « « Sweat à capuche Red Bull Racing gris, taille M » s'est vendu sur Vinted. Ton annonce eBay du même nom, c'est le même article ? », la carte de l'article vendu (photo, 38 €, « Créée dans l'app », « Vendu »), la phrase « Si tu réponds oui, cette annonce sera retirée : eBay », et deux boutons : « Oui, la retirer » et « Non, c'est un autre exemplaire ».",
+      "alt_en": "The \"Déjà vendu ?\" (already sold?) question in FillSell, over the Stock: the grey Red Bull Racing hoodie sold on Vinted — is your eBay listing with the same name the same item? The sold item card (photo, €38, created in the app, \"sold\"), the line \"if you answer yes, this listing will be removed: eBay\", and two buttons: \"yes, remove it\" and \"no, it’s another copy\".",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/stock/EcranARegler.jsx",
+        "src/annonces/EcranDoublons.jsx",
+        "src/utils/doublons.js (texteQuestionCopie, annonceARetirer)"
+      ],
+      "donnees": "Une question inventaire_doublons de démonstration, motif copie_non_prouvee (annonce eBay liée par le seul titre), aucune URL. Les copies Depop et Leboncoin, prouvées, sont déjà retirées.",
+      "depop_visible": false,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-stock.html",
+      "logos_plateformes_visibles": []
+    },
+    {
+      "fichier": "republication-remonter.png",
+      "ecran": "8 · Republication : remonter ses annonces",
+      "alt_fr": "L'écran « Remonter mes annonces » de FillSell : « 23 annonces perdent en visibilité », toutes cochées, avec la photo, les logos des plateformes (dont Depop) et l'ancienneté de chacune (en ligne depuis 35, 31, 27, 22 jours…), la ligne « Republication automatique — Active sur Vinted, Leboncoin et Beebs », interrupteur allumé, et le bouton « Remonter 23 annonces » : « Ton ordinateur les republie une à une ».",
+      "alt_en": "The \"Remonter mes annonces\" (bump my listings) screen in FillSell: \"23 listings are losing visibility\", all ticked, each with its photo, marketplace logos (Depop among them) and age (live for 35, 31, 27, 22 days…), the line \"automatic reposting — on for Vinted, Leboncoin and Beebs\", switched on, and the \"bump 23 listings\" button: your computer reposts them one by one.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/stock/EcranSelection.jsx",
+        "src/stock/EcranPlein.jsx",
+        "src/stock/Haut.jsx (LigneRepublicationAuto)",
+        "src/tabs/StockTab.jsx"
+      ],
+      "donnees": "Annonces de démonstration en ligne depuis 7 à 35 jours ; état de republication automatique servi comme republish_planifiee_etat_multi (Vinted, Leboncoin, Beebs et Depop).",
+      "depop_visible": true,
+      "republication_auto_ligne": "Active sur Vinted, Leboncoin et Beebs",
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-stock.html",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "Beebs",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "republication-creneaux.png",
+      "ecran": "8 · Republication : créneaux et jours",
+      "alt_fr": "Réglage de la republication automatique dans FillSell : le créneau (Matin 8h–10h, Midi 12h–14h, Soir 19h–22h sélectionné, ou Personnalisé), « Heure locale · Chrome ouvert », la note « Les republications se répartissent sur le créneau, au rythme réel de ton compte. Jamais en rafale. », et les jours actifs (tous les jours, du lundi au dimanche).",
+      "alt_en": "Automatic reposting settings in FillSell: the time slot (morning 8–10, noon 12–14, evening 19–22 selected, or custom), \"local time · Chrome open\", the note that reposts are spread over the slot at the account's real pace, never in bursts, and the active days (every day, Monday to Sunday).",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/components/RepublicationPlanifiee.jsx (RepublicationPlanifieeReglages)"
+      ],
+      "donnees": "État de démonstration (republicationAutoDemo) : soir 19 h – 22 h, tous les jours (écran ouvert sur la plateforme Vinted ; le même réglage existe par plateforme). Image DÉCOUPÉE (voir rapport).",
+      "depop_visible": false,
+      "pixels": "1170×999",
+      "rendu": "découpe de la fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-republication.html?plateforme=vinted",
+      "logos_plateformes_visibles": []
+    },
+    {
+      "fichier": "ventes-et-marges.png",
+      "ecran": "9 · Ventes et marges",
+      "alt_fr": "L'onglet Ventes de FillSell : en haut, le bénéfice du mois (+1 268 €), le nombre de ventes (62) et la marge moyenne (66,7 %) ; dessous, les dernières ventes avec, pour chacune, le titre, la marque, le prix de vente, le logo de la plateforme où elle s'est faite (Depop, Beebs, Leboncoin, Vinted…), la date et la marge — par exemple un survêtement Adidas vendu 45 € sur Depop, +33 €.",
+      "alt_en": "The FillSell Sales tab: at the top, this month's profit (+€1,268), number of sales (62) and average margin (66.7%); below, the latest sales, each with title, brand, sale price, the logo of the marketplace where it sold (Depop, Beebs, Leboncoin, Vinted…), date and margin — e.g. an Adidas tracksuit sold for €45 on Depop, +€33.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/VentesTab.jsx",
+        "coquille recopiée d’App.jsx"
+      ],
+      "donnees": "266 ventes de démonstration (prix d’achat connus), dont 62 ce mois-ci ; une avec photo.",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-app.html?ecran=ventes",
+      "logos_plateformes_visibles": [
+        "Depop",
+        "Beebs",
+        "Leboncoin",
+        "Vinted"
+      ]
+    },
+    {
+      "fichier": "statistiques-ventes-par-plateforme.png",
+      "ecran": "9 · Statistiques : ventes par plateforme",
+      "alt_fr": "L'onglet Stats de FillSell sur le dernier mois : le délai moyen de vente par catégorie (10 jours pour la mode), puis les ventes par plateforme — Vinted 870 € (31 ventes), eBay 329 € (6 ventes), Depop 322 € (8 ventes), Leboncoin 281 € (10 ventes), Beebs 99 € (7 ventes) — et la plateforme à la meilleure marge : Depop.",
+      "alt_en": "The FillSell Stats tab over the last month: average days to sell by category (10 days for fashion), then sales by marketplace — Vinted €870 (31 sales), eBay €329 (6 sales), Depop €322 (8 sales), Leboncoin €281 (10 sales), Beebs €99 (7 sales) — and the marketplace with the best margin: Depop.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/StatsTab.jsx (AvgDaysChart, PlatformStatsSection ; période « 1M » choisie par le vrai bouton)"
+      ],
+      "donnees": "Ventes du dernier mois du compte de démonstration ; Depop seulement depuis son ouverture ; analyse IA non lancée (aucun appel).",
+      "depop_visible": true,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-app.html?ecran=stats",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "eBay",
+        "Depop",
+        "Leboncoin",
+        "Beebs"
+      ]
+    },
+    {
+      "fichier": "statistiques-meilleurs-vendeurs.png",
+      "ecran": "9 · Statistiques : vendus en 1 à 3 jours",
+      "alt_fr": "Les « Meilleurs vendeurs » du mois dans l'onglet Stats de FillSell : une doudoune The North Face Nuptse achetée 55 €, revendue 135 € après 2 jours en stock (+80 €) ; une veste Carhartt Detroit vintage achetée 22 €, revendue 85 € après 1 jour (+63 €) ; un appareil photo argentique Olympus OM-1 acheté 22 €, revendu 79 € après 3 jours (+57 €). Dessous, les « Articles lents » : ceux qui attendent depuis le plus longtemps.",
+      "alt_en": "The month's \"top sellers\" in the FillSell Stats tab: a The North Face Nuptse puffer bought for €55 and resold for €135 after 2 days in stock (+€80); a vintage Carhartt Detroit jacket bought for €22, resold for €85 after 1 day (+€63); an Olympus OM-1 film camera bought for €22, resold for €79 after 3 days (+€57). Below, \"slow movers\": the items waiting the longest.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "src/tabs/StatsTab.jsx (meilleurs vendeurs : jours en stock = date de vente − ajout de la fiche ; articles lents)"
+      ],
+      "donnees": "Les trois plus belles marges du compte de démonstration, écrites à la main (pièces recherchées, 1 à 3 jours en stock).",
+      "depop_visible": false,
+      "pixels": "1170×2532",
+      "rendu": "fenêtre 390×844, échelle 3",
+      "harnais": "scripts/apercu/site-app.html?ecran=stats",
+      "logos_plateformes_visibles": []
+    },
+    {
+      "fichier": "extension-popup-ordinateur.png",
+      "ecran": "10 · L’extension Chrome",
+      "alt_fr": "Le panneau de l'extension Chrome FillSell (version 0.6.105), ouvert en haut à droite d'un écran d'ordinateur : pastille « Active », dernier passage il y a 1 min, « FillSell garde ton ordinateur éveillé pendant la publication », les cinq plateformes « Connectée » (Vinted, Leboncoin, eBay — « Compte eBay relié à FillSell » —, Beebs et Depop), puis le sweat Öhlins « Prête à publier » : déjà en ligne sur Vinted, en file pour Leboncoin et Depop. Le bas du panneau sort de l'écran.",
+      "alt_en": "The FillSell Chrome extension panel (version 0.6.105), open at the top right of a computer screen: \"Active\" badge, last run 1 min ago, \"FillSell keeps your computer awake while publishing\", the five marketplaces \"connected\" (Vinted, Leboncoin, eBay — account linked to FillSell —, Beebs and Depop), then the Öhlins hoodie \"ready to publish\": already live on Vinted, queued for Leboncoin and Depop. The bottom of the panel runs off the screen.",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "chrome-extension/popup.html, popup.js, config.js, manifest.json, assets/ au commit 8f88cdd (0.6.105), lus par git show",
+        "scripts/apercu/site-extension-chrome.js (objet chrome simulé : seule la permission www.depop.com est accordée)"
+      ],
+      "donnees": "File et état de démonstration servis par l’objet chrome simulé (get-pending-jobs remplacé, contexte.depop.ouverte = vrai) ; fond neutre, aucun faux navigateur dessiné.",
+      "depop_visible": true,
+      "pixels": "2560×1600",
+      "rendu": "fenêtre 1280×800, échelle 2",
+      "harnais": "scripts/apercu/site-extension.html",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "eBay",
+        "Beebs",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "extension-popup.png",
+      "ecran": "10 · L’extension Chrome (panneau seul, dépôt en cours)",
+      "alt_fr": "Le panneau de l'extension Chrome FillSell (version 0.6.105) en entier, pendant un dépôt : « Active », dernier passage il y a 1 min, ordinateur gardé éveillé pendant la publication, les cinq plateformes connectées dont Depop, « En cours : Depop · publication » de la casquette Volcom avec sa barre, puis le sweat Öhlins prêt à publier (déjà en ligne sur Vinted, en file pour Leboncoin et Depop) et « 3 en file ».",
+      "alt_en": "The full FillSell Chrome extension panel (version 0.6.105) during a deposit: \"Active\", last run 1 min ago, computer kept awake while publishing, the five marketplaces connected including Depop, \"in progress: Depop · publishing\" for the Volcom cap with its bar, then the Öhlins hoodie ready to publish (already live on Vinted, queued for Leboncoin and Depop) and \"3 in queue\".",
+      "description_fr": "Compte de démonstration, chiffres fictifs. Ce n’est ni le résultat d’un client ni une promesse de gains.",
+      "description_en": "Demo account, illustrative figures. Not a customer’s results and no promise of earnings.",
+      "composants": [
+        "même rendu que extension-popup-ordinateur.png"
+      ],
+      "donnees": "Mêmes données ; le dépôt Depop de la casquette est en cours (?etat=en-cours).",
+      "depop_visible": true,
+      "pixels": "1140×3315",
+      "rendu": "élément #popup, fenêtre 1280×800, échelle 3",
+      "harnais": "scripts/apercu/site-extension.html?etat=en-cours",
+      "logos_plateformes_visibles": [
+        "Vinted",
+        "Leboncoin",
+        "eBay",
+        "Beebs",
+        "Depop"
+      ]
+    },
+    {
+      "fichier": "extension-barre-outils.png",
+      "ecran": "10 · L’extension Chrome : l’icône dans la barre d’outils",
+      "alt_fr": "La barre d'outils de Google Chrome avec l'icône FillSell épinglée à droite de la barre d'adresse, entre l'étoile des favoris et l'icône des extensions.",
+      "alt_en": "The Google Chrome toolbar with the FillSell icon pinned to the right of the address bar, between the bookmark star and the extensions icon.",
+      "description_fr": "Capture de la barre d’outils de Chrome (aucune donnée).",
+      "description_en": "Chrome toolbar screenshot (no data).",
+      "composants": [
+        "capture existante (public/extension-guide/extension-install-step-6-toolbar-icon.png, utilisée par la page /extension)"
+      ],
+      "donnees": "Aucune donnée : barre d’outils vide (aucune adresse, icône de profil générique).",
+      "depop_visible": false,
+      "pixels": "688×112",
+      "rendu": "copie à l’identique (pas de mise à l’échelle)",
+      "harnais": null,
+      "logos_plateformes_visibles": []
+    }
+  ]
+}

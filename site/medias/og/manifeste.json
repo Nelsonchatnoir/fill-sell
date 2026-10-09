@@ -1,0 +1,289 @@
+{
+  "cartes": {
+    "en/accueil": {
+      "fichier": "en/accueil.jpg",
+      "empreinte": "c2b8066a1fdba5c8",
+      "octets": 67679
+    },
+    "en/blog": {
+      "fichier": "en/blog.jpg",
+      "empreinte": "e2519be4190d6dd1",
+      "octets": 30103
+    },
+    "en/blog/how-to-calculate-reselling-profits": {
+      "fichier": "en/blog/how-to-calculate-reselling-profits.jpg",
+      "empreinte": "03c940b824f665b5",
+      "octets": 58180
+    },
+    "en/blog/sell-on-leboncoin-in-english": {
+      "fichier": "en/blog/sell-on-leboncoin-in-english.jpg",
+      "empreinte": "aaf776d49248182d",
+      "octets": 47806
+    },
+    "en/blog/sell-same-item-vinted-leboncoin-ebay-beebs": {
+      "fichier": "en/blog/sell-same-item-vinted-leboncoin-ebay-beebs.jpg",
+      "empreinte": "05aa8a40f49126d1",
+      "octets": 67817
+    },
+    "en/crosslisting/vinted-beebs": {
+      "fichier": "en/crosslisting/vinted-beebs.jpg",
+      "empreinte": "b153e77f497cd61d",
+      "octets": 58055
+    },
+    "en/crosslisting/vinted-leboncoin": {
+      "fichier": "en/crosslisting/vinted-leboncoin.jpg",
+      "empreinte": "89b8f963693fed9d",
+      "octets": 65333
+    },
+    "en/plateformes/beebs": {
+      "fichier": "en/plateformes/beebs.jpg",
+      "empreinte": "529af1e8a2b98c2c",
+      "octets": 59457
+    },
+    "en/plateformes/ebay": {
+      "fichier": "en/plateformes/ebay.jpg",
+      "empreinte": "1e73e4ea4e3a9ca2",
+      "octets": 61951
+    },
+    "en/plateformes/vinted": {
+      "fichier": "en/plateformes/vinted.jpg",
+      "empreinte": "7736c822ca98096a",
+      "octets": 55779
+    },
+    "en/tarifs": {
+      "fichier": "en/tarifs.jpg",
+      "empreinte": "2e57c66e959e384f",
+      "octets": 60599
+    },
+    "fr/accueil": {
+      "fichier": "fr/accueil.jpg",
+      "empreinte": "55ce4acd7512b2ec",
+      "octets": 68098
+    },
+    "fr/alternative/crosslist": {
+      "fichier": "fr/alternative/crosslist.jpg",
+      "empreinte": "31a7c4f79d32b29a",
+      "octets": 69057
+    },
+    "fr/alternative/list-perfectly": {
+      "fichier": "fr/alternative/list-perfectly.jpg",
+      "empreinte": "ea317f25a265e6fb",
+      "octets": 68457
+    },
+    "fr/alternative/vendoo": {
+      "fichier": "fr/alternative/vendoo.jpg",
+      "empreinte": "feb9f431948740b3",
+      "octets": 67255
+    },
+    "fr/blog": {
+      "fichier": "fr/blog.jpg",
+      "empreinte": "1c174a4bdd560049",
+      "octets": 35347
+    },
+    "fr/blog/combien-de-plateformes-pour-vendre": {
+      "fichier": "fr/blog/combien-de-plateformes-pour-vendre.jpg",
+      "empreinte": "396137269174ca7c",
+      "octets": 50386
+    },
+    "fr/blog/comment-calculer-profits-vinted": {
+      "fichier": "fr/blog/comment-calculer-profits-vinted.jpg",
+      "empreinte": "4ccba691427c0195",
+      "octets": 48265
+    },
+    "fr/blog/cross-listing-vinted-leboncoin": {
+      "fichier": "fr/blog/cross-listing-vinted-leboncoin.jpg",
+      "empreinte": "9ec92e79b4deca0a",
+      "octets": 51043
+    },
+    "fr/blog/rediger-une-annonce-qui-vend": {
+      "fichier": "fr/blog/rediger-une-annonce-qui-vend.jpg",
+      "empreinte": "4aafcfb60f0d80fa",
+      "octets": 49506
+    },
+    "fr/blog/republier-annonces-vinted": {
+      "fichier": "fr/blog/republier-annonces-vinted.jpg",
+      "empreinte": "aeb5ecc293c15a3a",
+      "octets": 50814
+    },
+    "fr/blog/vendre-meme-article-vinted-leboncoin-ebay-beebs": {
+      "fichier": "fr/blog/vendre-meme-article-vinted-leboncoin-ebay-beebs.jpg",
+      "empreinte": "f2b67d1f485af4db",
+      "octets": 48618
+    },
+    "fr/comment-ca-marche": {
+      "fichier": "fr/comment-ca-marche.jpg",
+      "empreinte": "566752ee70894371",
+      "octets": 69180
+    },
+    "fr/comparatif/fillsell-vs-clemz": {
+      "fichier": "fr/comparatif/fillsell-vs-clemz.jpg",
+      "empreinte": "5fb0bd7d52ba1155",
+      "octets": 64605
+    },
+    "fr/comparatif/fillsell-vs-crosslist": {
+      "fichier": "fr/comparatif/fillsell-vs-crosslist.jpg",
+      "empreinte": "ce430c4e0f5302d1",
+      "octets": 62630
+    },
+    "fr/comparatif/fillsell-vs-dresskare": {
+      "fichier": "fr/comparatif/fillsell-vs-dresskare.jpg",
+      "empreinte": "25d6b4e92d4adc89",
+      "octets": 68298
+    },
+    "fr/comparatif/fillsell-vs-flowdino": {
+      "fichier": "fr/comparatif/fillsell-vs-flowdino.jpg",
+      "empreinte": "4c3fe1b49383d32d",
+      "octets": 64682
+    },
+    "fr/comparatif/fillsell-vs-fluf-connect": {
+      "fichier": "fr/comparatif/fillsell-vs-fluf-connect.jpg",
+      "empreinte": "282732601846b716",
+      "octets": 65136
+    },
+    "fr/comparatif/fillsell-vs-klork": {
+      "fichier": "fr/comparatif/fillsell-vs-klork.jpg",
+      "empreinte": "0095c057c77c94dd",
+      "octets": 61445
+    },
+    "fr/comparatif/fillsell-vs-list-perfectly": {
+      "fichier": "fr/comparatif/fillsell-vs-list-perfectly.jpg",
+      "empreinte": "7ad44008219774dc",
+      "octets": 60813
+    },
+    "fr/comparatif/fillsell-vs-margeo": {
+      "fichier": "fr/comparatif/fillsell-vs-margeo.jpg",
+      "empreinte": "b42c998fb1f858b7",
+      "octets": 65198
+    },
+    "fr/comparatif/fillsell-vs-redrip": {
+      "fichier": "fr/comparatif/fillsell-vs-redrip.jpg",
+      "empreinte": "8e7febb6e22461a5",
+      "octets": 64703
+    },
+    "fr/comparatif/fillsell-vs-relistly": {
+      "fichier": "fr/comparatif/fillsell-vs-relistly.jpg",
+      "empreinte": "1e9e1d9b2ba3ce51",
+      "octets": 62842
+    },
+    "fr/comparatif/fillsell-vs-reposter": {
+      "fichier": "fr/comparatif/fillsell-vs-reposter.jpg",
+      "empreinte": "ce32d1d75146c0c1",
+      "octets": 64242
+    },
+    "fr/comparatif/fillsell-vs-stoflow": {
+      "fichier": "fr/comparatif/fillsell-vs-stoflow.jpg",
+      "empreinte": "26486f828a9ebe6f",
+      "octets": 60837
+    },
+    "fr/comparatif/fillsell-vs-vendoo": {
+      "fichier": "fr/comparatif/fillsell-vs-vendoo.jpg",
+      "empreinte": "6eaedebcb953782e",
+      "octets": 67291
+    },
+    "fr/comparatif/meilleures-applications-crosslisting": {
+      "fichier": "fr/comparatif/meilleures-applications-crosslisting.jpg",
+      "empreinte": "24ca483c603c0647",
+      "octets": 70369
+    },
+    "fr/crosslisting": {
+      "fichier": "fr/crosslisting.jpg",
+      "empreinte": "9068c78799faed4d",
+      "octets": 58691
+    },
+    "fr/crosslisting/depop-ebay": {
+      "fichier": "fr/crosslisting/depop-ebay.jpg",
+      "empreinte": "52170395970a05b8",
+      "octets": 53617
+    },
+    "fr/crosslisting/leboncoin-beebs": {
+      "fichier": "fr/crosslisting/leboncoin-beebs.jpg",
+      "empreinte": "edabe28b13a00093",
+      "octets": 62372
+    },
+    "fr/crosslisting/leboncoin-ebay": {
+      "fichier": "fr/crosslisting/leboncoin-ebay.jpg",
+      "empreinte": "4bfa88428fa1e133",
+      "octets": 58351
+    },
+    "fr/crosslisting/vinted-beebs": {
+      "fichier": "fr/crosslisting/vinted-beebs.jpg",
+      "empreinte": "49b7b5c91375e629",
+      "octets": 56034
+    },
+    "fr/crosslisting/vinted-depop": {
+      "fichier": "fr/crosslisting/vinted-depop.jpg",
+      "empreinte": "b746a6a7f32ce160",
+      "octets": 56811
+    },
+    "fr/crosslisting/vinted-ebay": {
+      "fichier": "fr/crosslisting/vinted-ebay.jpg",
+      "empreinte": "877907841d525347",
+      "octets": 56072
+    },
+    "fr/faq": {
+      "fichier": "fr/faq.jpg",
+      "empreinte": "cdc1e4442416e94d",
+      "octets": 62127
+    },
+    "fr/fonctions/lens": {
+      "fichier": "fr/fonctions/lens.jpg",
+      "empreinte": "00989684a92f8fbe",
+      "octets": 63178
+    },
+    "fr/fonctions/republication": {
+      "fichier": "fr/fonctions/republication.jpg",
+      "empreinte": "9cdf784978b49f41",
+      "octets": 67201
+    },
+    "fr/fonctions/synchronisation": {
+      "fichier": "fr/fonctions/synchronisation.jpg",
+      "empreinte": "4fe620f96a8c08a7",
+      "octets": 66943
+    },
+    "fr/fonctions/ventes-et-retraits": {
+      "fichier": "fr/fonctions/ventes-et-retraits.jpg",
+      "empreinte": "af03678ad329c27e",
+      "octets": 57377
+    },
+    "fr/glossaire": {
+      "fichier": "fr/glossaire.jpg",
+      "empreinte": "74685f042f1c1385",
+      "octets": 59724
+    },
+    "fr/plateformes/beebs": {
+      "fichier": "fr/plateformes/beebs.jpg",
+      "empreinte": "0f6108bc7362b903",
+      "octets": 52784
+    },
+    "fr/plateformes/depop": {
+      "fichier": "fr/plateformes/depop.jpg",
+      "empreinte": "b63e45994259afd2",
+      "octets": 60383
+    },
+    "fr/plateformes/ebay": {
+      "fichier": "fr/plateformes/ebay.jpg",
+      "empreinte": "82e6416bb392afdd",
+      "octets": 61768
+    },
+    "fr/plateformes/leboncoin": {
+      "fichier": "fr/plateformes/leboncoin.jpg",
+      "empreinte": "1cb4aad21a93e674",
+      "octets": 61442
+    },
+    "fr/plateformes/vinted": {
+      "fichier": "fr/plateformes/vinted.jpg",
+      "empreinte": "eaff6a6fa8aefbb5",
+      "octets": 59931
+    },
+    "fr/securite-des-comptes": {
+      "fichier": "fr/securite-des-comptes.jpg",
+      "empreinte": "a096746a810735c4",
+      "octets": 63963
+    },
+    "fr/tarifs": {
+      "fichier": "fr/tarifs.jpg",
+      "empreinte": "aa296ae0383db9d0",
+      "octets": 64069
+    }
+  }
+}
