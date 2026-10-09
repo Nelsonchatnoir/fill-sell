@@ -9,6 +9,29 @@
 > design final, gabarits et scores : `docs/seo/design/DESIGN.md` (09/10 soir).
 > Se périme : le code et `vercel.json` font foi.
 
+## Mise en ligne — procédure du GO (clôture du 09/10 nuit)
+
+Deux branches prêtes, poussées : `seo-crosslisting` (site tel quel, vidéo
+validée, republication automatique Depop annoncée) et
+`seo-crosslisting-variante-b` (la même + UN commit : `republication_auto: false`
+pour Depop, vidéo B, brief des concurrents, cinq articles du blog).
+1. **Choisir** : l'app montre-t-elle Depop dans le réglage de la republication
+   automatique (`PLATEFORMES_PLANIFIEES`, `useRepublicationPlanifiee.js`) sur
+   `origin/main` ET en production ? Oui → `seo-crosslisting` ; non →
+   `seo-crosslisting-variante-b`.
+2. **Jamais entre 23:30 et 00:30.** `git fetch` ; rebase de la branche choisie
+   sur `origin/main` (essai du 09/10 23:33 sur 2441cab : aucun conflit, site
+   construit, natif identique à main hors des 15 écarts nommés ci-dessous) ;
+   `npm run site:apercu -- --sans-serveur` (0 erreur) ; `npm run build:essai`.
+3. **Un seul push** sur `main`. Puis le contrôle `Origin` de l'accueil (plus
+   haut) et `npm run site:preuve-consentement -- https://fillsell.app` (le
+   bandeau doit être là, aucune requête Google avant « Accepter »).
+4. Écarts du build NATIF dus à la branche (mesurés le 09/10, aucun effet à
+   l'écran du natif) : marqueurs `site:balises` dans `index.html` (commentaires),
+   `app-shell.html` (inerte), textes et clé du bandeau dans le bundle (jamais
+   affiché en natif), articles du blog réécrits/retirés (prérendu inerte),
+   icônes recompressées, ordre des imports (minifieur). Extension et base : 0.
+
 ## ⛔ Les trois gestes que TOUT terminal doit connaître (une fois sur main)
 
 1. **Toucher ce qui s'écrit DANS une page = `npm run site:dater` dans le même
