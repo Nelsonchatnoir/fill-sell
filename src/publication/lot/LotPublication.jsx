@@ -36,6 +36,7 @@ import ListingPreviewScreen from "../../components/ListingPreviewScreen";
 import BlocQuestions from "../BlocQuestions";
 import CarteRayon from "../../components/CarteRayon";
 import { CartePortDepop } from "../../components/PortDepop";
+import ExclusDepop from "./ExclusDepop";
 import BoutonMeConnecter from "../../components/BoutonMeConnecter";
 import BarreProgression from "../../components/BarreProgression";
 import { Carte, Puce, Logo, Bouton } from "../composants";
@@ -646,6 +647,13 @@ export default function LotPublication({
   const aCompleter = lot ? lot.ids.filter((id) => etats[id]?.phase === "questions") : [];
   const annoncesPretes = prets.reduce((n, id) => n + [...(moteursRef.current.get(id)?.plateformesPubliables ?? [])].length, 0);
   const preparationFinie = Boolean(lot) && enPrep.length === 0;
+  // (09/10 soir) Les articles d'une catégorie que DEPOP INTERDIT : exclus de
+  // Depop seulement (la case de leur moteur est grisée), comptés et dits AVANT
+  // l'envoi — le reste du lot part normalement, jamais un lot bloqué pour ça.
+  const exclusDepop = lot && lot.plateformes.includes("depop")
+    ? lot.ids.filter((id) => !["retire", "envoye"].includes(etats[id]?.phase) && moteursRef.current.get(id)?.depopInterdit)
+      .map((id) => ({ id, message: moteursRef.current.get(id).depopInterdit.message, quoi: moteursRef.current.get(id).depopInterdit.quoi }))
+    : [];
   // La livraison du lot atteint chaque copie Leboncoin dès la préparation
   // finie (transporteurs retenus compris), puis à chaque changement.
   useEffect(() => {
@@ -1118,6 +1126,9 @@ export function EcranAvant({
           livraison={livraison} poserTransporteurs={poserTransporteurs} poserFormat={poserFormat}
           colisVinted={colisVinted} choisirColisVinted={choisirColisVinted} userId={userId} />
       )}
+
+      {/* (09/10 soir) Ce que Depop refuse : combien d'articles, et pourquoi. */}
+      {preparationFinie && !envoi && <ExclusDepop en={en} exclus={exclusDepop} />}
 
       {/* Une réponse pour plusieurs articles : même champ, même liste. */}
       {communes.map((g) => (

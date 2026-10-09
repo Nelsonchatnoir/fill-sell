@@ -47,10 +47,11 @@ import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMe
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryId } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
-import { getPlatformSupport } from "../utils/platformCompat";
+import { getPlatformSupport, depopInterdit } from "../utils/platformCompat";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que le filet serveur
 // (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
+import { messageDepopInterdit } from "../../supabase/functions/_shared/depop-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { chercherJumeauxEnLigne } from "../utils/jumeauxEnLigne";
 import { demarrerDictee, dicteeDisponible, ajouterDictee } from "../utils/dictee";
@@ -5322,10 +5323,17 @@ export default function ListingPreviewScreen({
   // Motif d'une case grisée, par plateforme : Beebs a SON texte (marque ou
   // catégorie nommée, « règle de Beebs », jamais culpabilisant), les autres
   // gardent le motif générique par statut.
+  // (09/10 soir) Depop : la phrase de SA règle (« Depop n'accepte pas les
+  // objets électriques ou électroniques »), même table que le serveur.
+  const depopInterditArticle = useMemo(() => depopInterdit(
+    detectObjectIcon(initialListing?.titre, initialListing?.description, initialListing?.categorie), articlePourCompat,
+  ), [initialListing, articlePourCompat]);
   const motifSupport = (p, support) =>
     p === "beebs" && support === "prohibited" && beebsInterdit
       ? messageBeebsInterdit(beebsInterdit, lang)
-      : supportMessage(t, support, PLATFORM_LABELS[p]);
+      : p === "depop" && support === "prohibited" && depopInterditArticle
+        ? messageDepopInterdit(depopInterditArticle, lang)
+        : supportMessage(t, support, PLATFORM_LABELS[p]);
   const platformSupport = useMemo(() => {
     const icon = detectObjectIcon(
       initialListing?.titre,
@@ -10616,6 +10624,9 @@ export default function ListingPreviewScreen({
     exclusionsPrevues, plateformesRetirables, questionsParPlateforme,
     // (25/09) Le rayon à choisir, posé sur « Confirmer » avec ses candidats.
     rayonsAChoisir, suggestionsParPf, choisirRayon,
+    // (09/10 soir) L'article est d'une catégorie que Depop interdit (le lot le
+    // compte et le dit avant l'envoi) : { regle, quoi, citation, message }.
+    depopInterdit: depopInterditArticle ? { ...depopInterditArticle, message: messageDepopInterdit(depopInterditArticle, lang) } : null,
     // (09/10 soir) Les frais de port Depop : le champ de « Confirmer » et du lot.
     portDepop: {
       visee: selected.has("depop") && [...plateformesPubliables].includes("depop"),

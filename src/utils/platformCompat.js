@@ -36,6 +36,16 @@ import { ebayCategoryStatus } from "./ebayCategories";
 // Règles du catalogue Beebs (2026-09-11) : UN fichier, partagé avec le serveur
 // (get-pending-jobs), chargé tel quel par Vite — cf. son en-tête.
 import { verdictBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
+// Les catégories que Depop interdit (09/10 soir) : UNE table, partagée avec le
+// serveur (get-pending-jobs). 🎮 : la famille dit « jeu » ou « console ».
+import { verdictDepopInterdit } from "../../supabase/functions/_shared/depop-interdits.js";
+import { familleJeuVideo } from "./jeuxVideo.js";
+
+/** Le refus Depop de l'article (ou null) — même calcul que le serveur. */
+export function depopInterdit(icon, article = null) {
+  const famille = icon === "🎮" ? (familleJeuVideo(String(article?.titre ?? ""), String(article?.description ?? ""))?.famille ?? null) : null;
+  return verdictDepopInterdit(icon, famille);
+}
 
 /**
  * @param {string} icon — emoji retourné par detectObjectIcon
@@ -54,9 +64,11 @@ export function getPlatformSupport(icon, article = null) {
   return {
     vinted: vintedCategoryStatus(icon),
     // Depop (09/10) : la table icône → feuille par IDENTIFIANT (depopCategories.js).
-    // Comme ailleurs, seul « prohibited » grise une case (cf. categorieFermee) ;
-    // Depop n'en pose aucun : un rayon introuvable se DEMANDE.
-    depop: depopCategoryStatus(icon),
+    // Comme ailleurs, seul « prohibited » grise une case (cf. categorieFermee) :
+    // (09/10 soir) les catégories que Depop INTERDIT par écrit (électrique,
+    // électronique, puériculture — _shared/depop-interdits.js, la même table
+    // que le filet de get-pending-jobs). Un rayon introuvable se DEMANDE.
+    depop: depopInterdit(icon, article) ? "prohibited" : depopCategoryStatus(icon),
     leboncoin: lbcCategoryStatus(icon, article),
     // Beebs (2026-09-11) : "prohibited" quand une source CERTAINE (marque ou
     // état relevés sur Vinted, catalogue Vinted) tombe sous les règles du
