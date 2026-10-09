@@ -134,10 +134,10 @@ outils:
         date: 2026-10-09
         niveau: fiche_de_verite
       retrait_auto_copies:
-        valeur: 'oui, dans tous les forfaits, une fois la vente enregistrée : seule sur Vinted, eBay et Depop (preuve « vendu »), après ta confirmation d''un appui sur Leboncoin et Beebs ; copies liées par une preuve retirées, sinon question « Déjà vendu ? » ; Vinted, Leboncoin, Beebs, Depop : ordinateur allumé'
+        valeur: 'oui, dans tous les forfaits, une fois la vente enregistrée : seule sur Vinted et eBay (preuve « vendu »), après ta confirmation d''un appui sur Leboncoin, Beebs et Depop ; copies liées par une preuve retirées, sinon question « Déjà vendu ? » ; Vinted, Leboncoin, Beebs, Depop : ordinateur allumé'
         traductions:
           valeur:
-            en: 'yes, on every plan, once the sale is recorded: on its own on Vinted, eBay and Depop (“sold” proof), after your one-tap confirmation on Leboncoin and Beebs; copies linked by a proof are removed, otherwise the question “Already sold?”; Vinted, Leboncoin, Beebs, Depop: computer on'
+            en: 'yes, on every plan, once the sale is recorded: on its own on Vinted and eBay (“sold” proof), after your one-tap confirmation on Leboncoin, Beebs and Depop; copies linked by a proof are removed, otherwise the question “Already sold?”; Vinted, Leboncoin, Beebs, Depop: computer on'
         verdict: oui
         sources: []
         date: 2026-10-09
