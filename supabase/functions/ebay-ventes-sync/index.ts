@@ -115,8 +115,14 @@ function lignesDeLaCommande(o: Record<string, any>): LigneVente[] {
   // annulée n'est pas une vente. Valeur relevée pour « rien demandé » :
   // NONE_REQUESTED. Toute autre valeur part en 'cancelled' — côté RPC, un
   // statut inconnu n'écrit rien de toute façon.
-  const annule = String(o?.cancelStatus?.cancelState ?? "NONE_REQUESTED").toUpperCase() !== "NONE_REQUESTED";
-  const statut = annule ? "cancelled" : String(o?.orderPaymentStatus ?? "");
+  // (09/10 soir) Une annulation DEMANDÉE (IN_PROGRESS) n'est pas une annulation : le
+  // vendeur peut la refuser. Elle part en « annulation_en_cours » (classe « en_cours » :
+  // rien d'écrit, rien de retiré), comme toute valeur inconnue ; seule CANCELED est
+  // « cancelled » — et c'est elle qui retire après coup la vente d'une commande déjà
+  // relevée (vente_commande_annulee).
+  const etatAnnulation = String(o?.cancelStatus?.cancelState ?? "NONE_REQUESTED").toUpperCase();
+  const statut = etatAnnulation === "NONE_REQUESTED" ? String(o?.orderPaymentStatus ?? "")
+    : etatAnnulation === "CANCELED" ? "cancelled" : "annulation_en_cours";
   const vendu = o?.creationDate ? String(o.creationDate) : null;
   return items.map((li) => ({
     // `lineItemCost` = le prix de L'ARTICLE (offre acceptée comprise, cf.

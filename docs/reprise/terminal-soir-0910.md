@@ -30,3 +30,9 @@
 - Extension : « page de connexion non ouvrable » quand Edge tourne sans fenêtre (Marta) → ouvrir une fenêtre au lieu d'un onglet.
 - Tables `_backup_0910_*` d'autres terminaux sans RLS (exposées à l'API) — à fermer.
 - Ce soir : 0.6.106 chez Nico (« je suis là »), preuve vinted.fr + Depop, CWS, OTA 2.9.68.
+
+## Complément — commandes eBay remboursées/annulées (09/10 soir, GO de Nico)
+- Migrations **20261009210000** (règle) et **20261009211000** (pause + liste en attente de GO) APPLIQUÉES ; ebay-ventes-sync **v9** (seule `CANCELED` est une annulation ; `IN_PROGRESS` = en cours).
+- Règle : à l'enregistrement rien n'est écrit ; après coup la vente née du relevé est retirée (ventes_supprimees source `releve_ebay`, motif `commande_<statut>`, usage_logs `vente_retiree`) ; une vente saisie n'est jamais retirée (usage_logs `vente_saisie_commande_annulee`) ; la fiche ne revient en stock que si cette commande l'avait vendue ; jamais de remise en ligne ; 0 mail.
+- Parc (lecture seule) : 43 commandes remboursées/annulées, 2 ventes en base : **28273** (relevé, RETIRÉE sur GO, sauvegarde `_backup_0910_vente_28273`, inverse prêt) et **88286** (Tony Messant, saisie : signalée, jamais retirée).
+- Ouvert : Leboncoin pro — quantité non lue par le relevé (rien lancé).

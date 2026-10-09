@@ -159,6 +159,7 @@
     "selftest:une-vente-par-article": "node scripts/une-vente-par-article-selftest.mjs",
     "selftest:ebay-commande-exemplaire": "node scripts/ebay-commande-exemplaire-selftest.mjs",
     "selftest:fiches-meme-photo": "node scripts/fiches-meme-photo-selftest.mjs",
+    "selftest:commande-ebay-annulee": "node scripts/commande-ebay-annulee-selftest.mjs",
     "banc:ventes-prouvees": "node scripts/cloud/pg-jetable.mjs scripts/ventes-prouvees-banc.mjs",
     "selftest:beebs-preuve-relue": "node scripts/beebs-preuve-relue-selftest.mjs",
     "selftest:onglet-muet-partout": "node scripts/onglet-muet-partout-selftest.mjs",
