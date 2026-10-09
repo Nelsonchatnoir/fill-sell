@@ -313,6 +313,16 @@ serve(async (req) => {
         await etat(user, { traitees: Math.min(decisions.length, i + DECISIONS_PAR_LOT), ms_decision: Date.now() - t0 });
       }
       const fini = !parCompte.ecriture_interrompue && !erreurs.some((e) => (e as { erreur?: string }).erreur === "occupe");
+      // (09/10 soir, audit eBay — le Xbox de XEWER) Deux fiches DÉJÀ existantes du même
+      // objet (même photo) reçoivent la question qui existe déjà (« Est-ce le même
+      // article ? » / « Déjà vendu ? ») — jamais une fusion. Une passe allée au bout,
+      // sans erreur ; au plus 20 questions ; une paire posée ou refusée n'est jamais
+      // reposée (fiches_meme_photo_questions, migration 20261009200000). Best-effort :
+      // un refus ici ne change rien à la passe.
+      if (fini && erreurs.length === 0) {
+        const { data: q, error: eQ } = await admin.rpc("fiches_meme_photo_questions", { p_user: user, p_limite: 20 });
+        parCompte.questions_meme_photo = eQ ? `refus : ${eQ.message.slice(0, 80)}` : (q ?? 0);
+      }
       // (v12) Une passe qui a écrit (ou n'avait rien à écrire) remet le compteur à zéro.
       const progres = decisions.length === 0 || lotsEcrits > 0;
       parCompte.passes_inachevees = progres ? 0 : inachevees + 1;
