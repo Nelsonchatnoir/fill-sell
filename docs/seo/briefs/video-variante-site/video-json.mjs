@@ -129,7 +129,7 @@ const description = {
 
 const sortie = {
   id: 'fillsell-presentation',
-  statut: `variante « site » refaite le 2026-10-09 (compte de démonstration « Camille », cinq plateformes) — version ${version} ${version === 'A' ? '(republication automatique sur Vinted, Leboncoin, Beebs ET Depop)' : '(republication automatique sur Vinted, Leboncoin et Beebs — Depop retirée)'} — À VALIDER PAR NICO avant toute mise en ligne (docs/seo/briefs/video.md § 5)`,
+  statut: `variante « site » refaite le 2026-10-09 (compte de démonstration « Camille », cinq plateformes) — version ${version} ${version === 'A' ? '(republication automatique sur Vinted, Leboncoin, Beebs ET Depop)' : '(republication automatique sur Vinted, Leboncoin et Beebs — Depop retirée)'} — VALIDÉE PAR NICO le 09/10 au soir (version A, build/VIDEO-SITE-FINALE/fillsell-video-site-2026-10-09-8b34a58.mp4, même empreinte ; la version B est le même rendu, Depop retirée de la scène « Remonter »)`,
   version_republication_depop: version,
   basculer: 'node docs/seo/briefs/video-variante-site/video-json.mjs A|B (B = Depop retirée de la republication automatique ; à basculer EN MÊME TEMPS que `republication_auto` de Depop dans site/donnees/plateformes.yml)',
   source: {
