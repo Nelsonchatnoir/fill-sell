@@ -118,12 +118,48 @@ SERVIE (23 comptes sur `0cec9e6`) : rangée dans `build/anciens-zips/` et ajout�
   absent de la prod de 10:18:52 à 10:33:29 UTC, rétabli en **v227** (archive de HEAD aad5b8b :
   son code + ce correctif), `verify_jwt` true. `selftest:annonce-partagee-tranchee`.
 
-### État final et ce qui reste (Nico)
-- **Zip** (inchangé = code de tout le parcours) :
-  `build/CWS-0.6.105-A-TELEVERSER/fillsell-extension-0.6.105-8f88cdd-cws.zip`, seul dans son dossier.
-- **OTA 2.9.68 NON lancée** : parcours vert, mais le dossier de travail unique est partagé —
-  21 changements non commités d'autres terminaux (`npm run build` refuse) et 10 commits locaux
-  non poussés d'un autre terminal, dont des changements d'app (`src/stock/BlocSynchro.jsx`,
-  `src/utils/navigateurExtension.js`) : une OTA les livrerait sans push ni décision.
-- **Push** : non fait — main local porte les commits de l'autre terminal (son push a été refusé
-  par le classifieur) ; un push les emporterait. Décision de Nico.
+## Clôture du terminal Depop (09/10, vers 11:00 UTC) — terminal fermé
+
+### Fait (en ligne)
+- Push `38e6d5b..0f24799` puis `0f24799..11b421d` (web servi `11b421d`). Depuis : mes commits
+  `57aeb3d` (selftest) et `b118d07` (docs) sont en LOCAL, NON poussés, au-dessus des commits non
+  poussés de l'autre terminal (« Marta »).
+- `rapprochement` **v17** (`verify_jwt` false) ; `get-pending-jobs` **v227** (`verify_jwt` true).
+- Migrations **20261009100000** et **20261009110000** APPLIQUÉES (+ historique), inverses dans
+  `supabase/rollbacks/` (110000) et dans l'en-tête de la 100000.
+- Réparation de la fiche en double EXÉCUTÉE (sauvegarde `_backup_0910_depop_doublon`, inverse
+  `scripts/reparations/20261009_depop_doublon_parcours_inverse.sql`).
+
+### Prouvé [mesuré]
+- Selftests : **230/230** verts (dernier passage, arbre final).
+- Rejeu sur 10 comptes réels : mêmes décisions ; cas du 09/10 : v16 fiche neuve → v17 rattachée.
+- Parc : aucun autre doublon né du trou v3.
+- Parcours Depop réel COMPLET (relevé, republication, retrait, croisé), chaque étape par la
+  réponse de Depop ; FIN relue chez Depop (plus aucune annonce de test ; « Scotch », compte et
+  statut vendeur identiques ; 0 vente).
+- `02f9f67` : prouvé EN PAGE seulement (15 lectures, 3 échecs absorbés, 0 final), jamais dans
+  l'extension.
+
+### Reste ouvert
+- Zip **0.6.105** inchangé (= code de tout le parcours) :
+  `build/CWS-0.6.105-A-TELEVERSER/fillsell-extension-0.6.105-8f88cdd-cws.zip`. Un zip **0.6.106**
+  existe aussi (`build/CWS-0.6.106-A-TELEVERSER/`, autre terminal) : il embarque `02f9f67` et le
+  chantier « Vinted hors de France », le parcours Depop n'a PAS tourné dessus.
+- **OTA 2.9.68 NON lancée** : HEAD porte des commits non poussés de l'autre terminal, dont du code
+  d'app (`src/stock/BlocSynchro.jsx`, `src/utils/navigateurExtension.js`) que l'OTA livrerait.
+- Extension chargée chez Nico : 0.6.105 (`f59c1c2`) ; rien copié dans son dossier.
+- Sauvegarde `_backup_0910_depop_doublon` gardée (inverse prêt).
+- Quatre conflits Leboncoin de septembre (comptes faf5021a, afeef3c7) non touchés.
+
+### Décisions qui attendent le GO de Nico
+1. **Push de main** : il emporte TOUS les commits locaux (ceux de l'autre terminal, dont le push
+   a été refusé par le classifieur, et mes deux).
+2. **OTA 2.9.68** (`--channel production`) : seulement depuis un main propre ET poussé (après 1).
+3. **Chrome Web Store** : téléverser la 0.6.105 (prouvée par le parcours Depop) OU passer
+   directement à la 0.6.106 — le Web Store refuse ensuite toute version inférieure : un seul
+   ordre possible.
+4. **Prouver `02f9f67` en réel** : recharger l'extension (0.6.106 ou `build/extension`) dans
+   chrome://extensions (geste de Nico), puis rejouer un geste Depop.
+5. Les quatre conflits Leboncoin de septembre : réparer ou non.
+6. Ouvrir Depop à tous (`depop_ouvert = 1`).
+7. Supprimer la sauvegarde `_backup_0910_depop_doublon` quand l'inverse n'est plus utile.
