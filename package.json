@@ -223,6 +223,7 @@
     "selftest:phrases-interdites": "node scripts/phrases-interdites-selftest.mjs",
     "selftest:republications-offertes": "node scripts/republications-offertes-selftest.mjs",
     "selftest:ebay-changer-compte": "node scripts/ebay-changer-compte-selftest.mjs",
+    "selftest:ebay-encheres": "node scripts/ebay-encheres-selftest.mjs",
     "selftest:pause-antirobot-toutes-versions": "node scripts/pause-antirobot-toutes-versions-selftest.mjs",
     "selftest:extension-a-mettre-a-jour": "node --import ./scripts/loader-ext.mjs scripts/extension-a-mettre-a-jour-selftest.mjs",
     "selftest:vinted-annonces-neuves": "node scripts/vinted-annonces-neuves-selftest.mjs",

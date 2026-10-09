@@ -46,6 +46,7 @@ import { idAnnonceEbay, preuveIntentionRetraitRepublicationEbayMemorisee, preuve
 // Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
 // appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
+import { CLES_QUESTION_PLUS_EN_LIGNE, drapeauAvantLaFin, lireQuantiteEbay as lireQuantiteEbayPur, verdictAnnonceEbay } from "../_shared/ebay-etat-annonce.js";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descripteursCondition, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, lireRefus25129, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
@@ -1928,7 +1929,7 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
         { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
       return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", listing_id: preuve.cible };
     }
-    if (etat.verdict !== "terminee_sans_vente") {
+    if (etat.verdict !== "terminee_sans_vente" && etat.verdict !== "enchere_sans_acheteur") {
       await marquer(admin, job, { status: "pending", error: "Retrait eBay reporté : l'offre est hors ligne, mais FillSell ne peut pas encore prouver qu'elle n'a pas été vendue. Aucun autre geste n'est lancé." },
         { etape: "controle_offre", quoi: "offre_hors_ligne_indeterminee", source_job_id: preuve.source_job_id, etat },
         { offer_id: preuve.offer_id, sku: preuve.sku, listing_id: preuve.cible });
@@ -2062,7 +2063,7 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
         { sku, offer_id: offerId, listing_id: preuve.cible });
       return { job: job.id, issue: "cancelled", motif: "annonce_deja_vendue", listing_id: preuve.cible };
     }
-    if (etat.verdict !== "terminee_sans_vente") {
+    if (etat.verdict !== "terminee_sans_vente" && etat.verdict !== "enchere_sans_acheteur") {
       await marquer(admin, job, { status: "pending", error: "Republication eBay reportée : l'offre est hors ligne, mais FillSell ne peut pas encore prouver qu'elle n'a pas été vendue. Aucune annonce n'est recréée." },
         { etape: "controle_vente_avant_recreation", quoi: "offre_hors_ligne_indeterminee", etat },
         { sku, offer_id: offerId, listing_id: preuve.cible });
@@ -2224,22 +2225,23 @@ type JobVeille = {
   platform_fields: Record<string, unknown> | null;
 };
 
-/** L'état d'une annonce chez eBay. `indetermine` n'écrit JAMAIS rien. */
+/** L'état d'une annonce chez eBay. `indetermine` n'écrit JAMAIS rien.
+ *  (09/10, Marta) Le verdict vient de `verdictAnnonceEbay` (_shared/ebay-etat-annonce.js) :
+ *  une date de fin FUTURE est une annonce vivante (enchère en cours), une enchère
+ *  terminée sans acheteur n'est jamais une vente ni une question « Vendue ? ». */
+type FormatEbay = "AUCTION" | "FIXED_PRICE" | null;
 type EtatAnnonce =
-  | { verdict: "vendue"; fin: string | null; vendus: number; prix: number | null; sans_fin?: boolean }
-  | { verdict: "terminee_sans_vente"; fin: string }
-  | { verdict: "vivante"; quantite: QuantiteEbay }
-  | { verdict: "indetermine"; motif: string; limite: boolean };
+  | { verdict: "vendue"; fin: string | null; vendus: number; prix: number | null; sans_fin?: boolean; format?: FormatEbay; encheres?: number | null }
+  | { verdict: "terminee_sans_vente"; fin: string; format?: FormatEbay }
+  | { verdict: "enchere_sans_acheteur"; fin: string; format: FormatEbay; encheres: number | null }
+  | { verdict: "vivante"; quantite: QuantiteEbay; format?: FormatEbay; fin?: string | null; encheres?: number | null }
+  | { verdict: "indetermine"; motif: string; limite: boolean; format?: FormatEbay };
 
 /** La quantité affichée par eBay. `exacte` = un nombre, pas un seuil « plus de N ». */
 type QuantiteEbay = { disponible: number | null; vendus: number | null; exacte: boolean };
 
 function lireQuantiteEbay(dispo: Record<string, unknown>): QuantiteEbay {
-  const brut = dispo.estimatedAvailableQuantity;
-  const seuil = dispo.availabilityThresholdType != null || dispo.availabilityThreshold != null;
-  const exacte = typeof brut === "number" && Number.isInteger(brut) && brut >= 0 && !seuil;
-  const vendus = Number(dispo.estimatedSoldQuantity ?? Number.NaN);
-  return { disponible: exacte ? (brut as number) : null, vendus: Number.isFinite(vendus) ? vendus : null, exacte };
+  return lireQuantiteEbayPur(dispo) as QuantiteEbay;
 }
 
 async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Promise<EtatAnnonce> {
@@ -2259,10 +2261,6 @@ async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Pro
     // vendue, retirée ou expirée sont indiscernables ici. On n'écrit rien.
     return { verdict: "indetermine", motif: `http_${r.status}`, limite: false };
   }
-  const fin = typeof j.itemEndDate === "string" && j.itemEndDate ? j.itemEndDate : null;
-  const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
-  const vendus = Number(dispo.estimatedSoldQuantity ?? 0);
-  const statut = String(dispo.estimatedAvailabilityStatus ?? "");
   // ── 0 DISPONIBLE + AU MOINS 1 VENDU = VENDU (01/10, décision Nico) ──────
   // Avec ou sans date de fin : une annonce « à durée illimitée » épuisée reste
   // en ligne à 0 disponible, sans fin. Les deux conditions, toujours réunies :
@@ -2271,14 +2269,10 @@ async function lireEtatAnnonceEbay(env: EbayEnv, token: string, id: string): Pro
   // ⛔ 0 disponible SANS aucune vente n'est pas une vente (rupture posée par la
   //    personne) ; une annonce multi-quantité dont il reste des pièces n'est
   //    pas vendue en entier.
-  const q = lireQuantiteEbay(dispo);
-  const epuisee = statut === "OUT_OF_STOCK" || (q.exacte && q.disponible === 0);
-  if (vendus >= 1 && epuisee) {
-    const prixBrut = Number((j.price as Record<string, unknown> | undefined)?.value ?? NaN);
-    return { verdict: "vendue", fin, vendus, prix: Number.isFinite(prixBrut) && prixBrut > 0 ? prixBrut : null, sans_fin: !fin };
-  }
-  if (!fin) return { verdict: "vivante", quantite: q };
-  return { verdict: "terminee_sans_vente", fin };
+  // ⛔ (09/10, Marta) Une date de fin n'est PAS une fin : elle est comparée à
+  //    maintenant. Une enchère en cours (fin future) est VIVANTE ; une enchère
+  //    terminée sans acheteur n'est ni une vente ni une question.
+  return verdictAnnonceEbay(j, Date.now()) as EtatAnnonce;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2319,7 +2313,7 @@ async function quantitesImportsEbay(admin: SupabaseClient, env: EbayEnv): Promis
     .filter((j) => /^\d{9,15}$/.test(String(j.platform_listing_id)) && j.inventaire_id != null);
   if (!lot.length) return { lues: 0 };
   const token = await obtenirJetonApplicatif(env);
-  const lire = async (id: string): Promise<{ disponible: number | null; vendus: number | null; exacte: boolean } | null> => {
+  const lire = async (id: string): Promise<{ disponible: number | null; vendus: number | null; exacte: boolean; terminee?: boolean } | null> => {
     const ctl = new AbortController();
     const minuteur = setTimeout(() => ctl.abort(), QUANTITE_IMPORT_DELAI_MS);
     try {
@@ -2329,13 +2323,18 @@ async function quantitesImportsEbay(admin: SupabaseClient, env: EbayEnv): Promis
       });
       if (r.status !== 200) return null;
       const j = await r.json().catch(() => null) as Record<string, unknown> | null;
-      if (!j || (typeof j.itemEndDate === "string" && j.itemEndDate)) return null;   // terminée : rien
+      if (!j) return null;
+      // (09/10) Une date de fin FUTURE (enchère en cours, annonce à durée fixe)
+      // est une annonce vivante : sa quantité se lit. Une annonce TERMINÉE est
+      // notée lue (`terminee`) — avant, elle restait vide et reprise à chaque
+      // passe : deux enchères importées le 04/10 tenaient les deux places de la
+      // file, plus aucune quantité n'était lue pour personne.
+      const fin = typeof j.itemEndDate === "string" && j.itemEndDate ? Date.parse(j.itemEndDate) : null;
       const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
-      const brut = dispo.estimatedAvailableQuantity;
-      const seuil = dispo.availabilityThresholdType != null || dispo.availabilityThreshold != null;
-      const exacte = typeof brut === "number" && Number.isInteger(brut) && brut >= 0 && !seuil;
-      const vendus = Number(dispo.estimatedSoldQuantity ?? Number.NaN);
-      return { disponible: exacte ? (brut as number) : null, vendus: Number.isFinite(vendus) ? vendus : null, exacte };
+      const q = lireQuantiteEbay(dispo);
+      if (fin != null && !Number.isFinite(fin)) return null;   // fin illisible : on repassera
+      if (fin != null && fin <= Date.now()) return { disponible: null, vendus: q.vendus, exacte: false, terminee: true };
+      return q;
     } catch { return null; } finally { clearTimeout(minuteur); }
   };
   const lus = await Promise.all(lot.map((j) => lire(String(j.platform_listing_id))));
@@ -2376,13 +2375,18 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
   // (01/10) D'abord les annonces que l'extension a vues partir (« Plus en
   // ligne ? ») ou déjà dites vendues par eBay mais pas encore enregistrées :
   // c'est là qu'une vente attend. Puis jamais visitées, puis les plus anciennes.
-  const [{ data: signalees }, { data: bruts, error }] = await Promise.all([
+  // (09/10, Marta) Puis, AVANT tout le reste, les « Plus en ligne — Vendue ? »
+  // que ce veilleur a posés lui-même sur une annonce dont la date de fin était
+  // encore à venir (enchère en cours) : ils sont relus tout de suite, et levés.
+  const [{ data: avantFin }, { data: signalees }, { data: bruts, error }] = await Promise.all([
+    base().not("platform_fields->fin_ebay", "is", null).not("platform_fields->>unavailable_since", "is", null).limit(100),
     base().in("platform_fields->>sale_signal", ["unavailable", "sold"]).limit(100),
     base().order("platform_fields->>veille_ebay_le", { ascending: true, nullsFirst: true }).limit(VEILLE_CANDIDATS_MAX),
   ]);
   if (error) return { erreur: error.message };
   const vus = new Set<string>();
-  const candidats = ([...(signalees ?? []), ...(bruts ?? [])] as JobVeille[]).filter((j) => {
+  const premieres = ((avantFin ?? []) as JobVeille[]).filter((j) => drapeauAvantLaFin(j.platform_fields ?? {}));
+  const candidats = ([...premieres, ...(signalees ?? []), ...(bruts ?? [])] as JobVeille[]).filter((j) => {
     if (vus.has(j.id)) return false;
     vus.add(j.id);
     return true;
@@ -2402,6 +2406,9 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
     if (Number.isFinite(refus) && maintenant - refus < 24 * 3600_000) return false;
     if (pf.sale_signal === "sold") return true;
     const vu = Date.parse(String(pf.veille_ebay_le ?? ""));
+    // Un drapeau posé avant la fin (09/10) se relit sans attendre les 6 h —
+    // au plus une fois toutes les 10 min s'il reste illisible.
+    if (pf.unavailable_since && drapeauAvantLaFin(pf)) return !Number.isFinite(vu) || maintenant - vu >= 10 * 60_000;
     return !Number.isFinite(vu) || maintenant - vu >= VEILLE_CADENCE_MS;
   });
   const lot = eligibles.slice(0, VEILLE_LOT_MAX);
@@ -2442,7 +2449,7 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
     }
   }
 
-  let visites = 0, ventes = 0, terminees = 0, indeterminees = 0;
+  let visites = 0, ventes = 0, terminees = 0, indeterminees = 0, dementis = 0, encheresSansAcheteur = 0;
   const ecritures: PromiseLike<unknown>[] = [];
   // Un drapeau « sold » sur une fiche DÉJÀ vendue : rien à enregistrer, et il
   // ne doit pas occuper la file à chaque passe (24 h de repos, tracé).
@@ -2484,17 +2491,58 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       }
       console.log(`[ebay-api-worker] VENTE eBay sur ${job.platform_listing_id} (fin ${etat.fin ?? "aucune"}, ${etat.vendus} vendu(s), plus rien de disponible) → job ${job.id}`);
     } else if (etat.verdict === "terminee_sans_vente") {
-      // Bandeau INTERROGATIF, jamais affirmatif : l'annonce est terminée, on
-      // ne sait pas pourquoi, et eBay dit explicitement 0 vendu.
+      // Bandeau INTERROGATIF, jamais affirmatif : l'annonce À PRIX FIXE est
+      // terminée (date de fin PASSÉE), on ne sait pas pourquoi, et eBay dit
+      // explicitement 0 vendu. Le vendeur qui arrête son annonce a souvent vendu
+      // ailleurs : c'est à lui de trancher.
       if (!pf.unavailable_since) pf.unavailable_since = new Date().toISOString();
-      pf.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
+      pf.fin_ebay = { fin: etat.fin, vendus: 0, format: etat.format ?? null, vu_le: new Date().toISOString() };
       terminees++;
+    } else if (etat.verdict === "enchere_sans_acheteur") {
+      // (09/10) ENCHÈRE terminée sans acheteur : ce n'est PAS une vente, et ce
+      // n'est pas une question. L'annonce n'existe plus chez eBay ; l'article
+      // reste en stock, intact (aucune vente, aucun retrait, aucune quantité
+      // touchée). Le job est clos comme le ferait « Non, je l'ai retirée ».
+      if (pf.sale_signal !== "sold") {
+        for (const k of CLES_QUESTION_PLUS_EN_LIGNE) delete pf[k];
+        if (pf.sale_signal === "unavailable") delete pf.sale_signal;
+        pf.fin_ebay = { fin: etat.fin, vendus: 0, format: "AUCTION", sans_acheteur: true, encheres: etat.encheres ?? null, vu_le: new Date().toISOString() };
+        encheresSansAcheteur++;
+        const jour = new Date(etat.fin).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" });
+        ecritures.push(
+          admin.from("cross_post_jobs")
+            .update({ status: "cancelled", platform_fields: pf,
+              error: `Enchère eBay terminée le ${jour} sans acheteur : rien n'a été vendu, l'article reste dans ton stock.` })
+            .eq("id", job.id).eq("status", "published")
+            .then(({ error: uErr }: { error: { message: string } | null }) => {
+              if (uErr) console.warn(`[ebay-api-worker] veille : clôture de l'enchère ${job.platform_listing_id} refusée — ${uErr.message}`);
+            }),
+        );
+        console.log(`[ebay-api-worker] enchère ${job.platform_listing_id} terminée le ${etat.fin} SANS ACHETEUR → job ${job.id} clos, aucune vente`);
+        continue;
+      }
     } else if (etat.verdict === "indetermine") {
       indeterminees++;
       pf.veille_ebay_indetermine = etat.motif;
     } else {
       delete pf.veille_ebay_indetermine;
       pf.quantite_ebay = { ...etat.quantite, vu_le: new Date().toISOString() };
+      pf.format_ebay = { format: etat.format ?? null, fin: etat.fin ?? null, encheres: etat.encheres ?? null, vu_le: new Date().toISOString() };
+      // (09/10, Marta) eBay DÉMENT la question « Plus en ligne — Vendue ? » :
+      // l'annonce est en vente (pas de fin, ou une fin à venir — enchère en
+      // cours). La question est levée, quelle que soit sa source (ce veilleur
+      // avant la fin, ou un relevé qui ne l'a pas vue) ; une preuve « sold »
+      // n'est jamais levée ici.
+      if (pf.unavailable_since && pf.sale_signal !== "sold") {
+        const ancien = { unavailable_since: pf.unavailable_since, sale_signal: pf.sale_signal ?? null, fin_ebay: pf.fin_ebay ?? null };
+        for (const k of CLES_QUESTION_PLUS_EN_LIGNE) delete pf[k];
+        if (pf.sale_signal === "unavailable") delete pf.sale_signal;
+        pf.revue_en_ligne_par_ebay = { at: new Date().toISOString(), format: etat.format ?? null, fin: etat.fin ?? null, ancien };
+        dementis++;
+        console.log(`[ebay-api-worker] ${job.platform_listing_id} EN VENTE chez eBay (${etat.format ?? "?"}, fin ${etat.fin ?? "aucune"}) → question « Plus en ligne » levée sur le job ${job.id}`);
+      } else if (pf.fin_ebay && !pf.unavailable_since) {
+        delete pf.fin_ebay;   // reste d'une ancienne lecture, démentie
+      }
     }
     // Compare-and-swap sur le statut : un job qui a changé d'état entre la
     // lecture et l'écriture n'est jamais écrasé. Écritures en parallèle.
@@ -2579,9 +2627,14 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
           cap.vente_ebay = { fin: etat.fin, vendus: etat.vendus, prix: etat.prix, sans_fin: etat.sans_fin === true, vu_le: new Date().toISOString() };
           console.log(`[ebay-api-worker] VENTE eBay sur l'annonce importée ${a.listing_id} (fin ${etat.fin ?? "aucune"}) — aucun job, trace posée sur la ligne d'annonce`);
         } else if (etat.verdict === "terminee_sans_vente") {
-          cap.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
+          cap.fin_ebay = { fin: etat.fin, vendus: 0, format: etat.format ?? null, vu_le: new Date().toISOString() };
+        } else if (etat.verdict === "enchere_sans_acheteur") {
+          // (09/10) Enchère terminée sans acheteur : jamais une vente.
+          cap.fin_ebay = { fin: etat.fin, vendus: 0, format: "AUCTION", sans_acheteur: true, encheres: etat.encheres ?? null, vu_le: new Date().toISOString() };
         } else if (etat.verdict === "vivante") {
           cap.quantite_ebay = { ...etat.quantite, vu_le: new Date().toISOString() };
+          cap.format_ebay = { format: etat.format ?? null, fin: etat.fin ?? null, encheres: etat.encheres ?? null };
+          delete cap.fin_ebay;
         }
         return admin.from("annonces_plateforme")
           .update({ capture: cap, updated_at: new Date().toISOString() })
@@ -2591,7 +2644,7 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       console.warn("[ebay-api-worker] veille des annonces importées :", (e as Error)?.message ?? e);
     }
   }
-  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, enregistrees, terminees, indeterminees, orphelines, coupe, duree_ms: Date.now() - debutVeille };
+  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, enregistrees, terminees, indeterminees, dementis, encheres_sans_acheteur: encheresSansAcheteur, orphelines, coupe, duree_ms: Date.now() - debutVeille };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
