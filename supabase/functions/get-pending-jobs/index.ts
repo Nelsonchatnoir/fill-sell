@@ -27,6 +27,8 @@ import { VINTED_COLORS } from "../../../src/utils/vintedColors.js";
 import { CORRECTIFS_EXTENSION, correctifPourJob, buildMsDe, BUILD_ISBN_CAPTURE_TEL_QUEL, BUILD_OPLA_REPUBLICATION_SUR_ANNONCE } from "../_shared/correctifs-extension.js";
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
 import { portDepopParDefaut, decisionPortDepop, QUESTION_PORT_DEPOP, MESSAGE_PORT_DEPOP_REPUBLICATION } from "../_shared/port-depop.js";
+import { verdictDepopInterdit, messageDepopInterdit } from "../_shared/depop-interdits.js";
+import { detectObjectIcon } from "../../../src/utils/shared.js";
 // (02/10) Sortie d'Opla : plus aucune publication ni republication Opla ; la
 // synchronisation continue pour les seuls comptes déjà reliés.
 import { estPublicationOpla, oplaACloreJob, clotureOpla, oplaRelie, MESSAGE_OPLA_INDISPONIBLE, OPLA_SORTIE, sortieOplaActive } from "../_shared/opla-sortie.js";
@@ -3383,6 +3385,54 @@ serve(async (req) => {
       }
     }
 
+    // ── DEPOP : LES CATÉGORIES QUE DEPOP INTERDIT (09/10 soir, Nico) ────────
+    // Filet de la case grisée de l'app (platformCompat.js) : MÊME table
+    // (_shared/depop-interdits.js), MÊME matière — la catégorie de la FICHE
+    // (detectObjectIcon(titre, description, type), comme l'écran ; 🎮 : la
+    // famille jeu / console de jeuxVideo.js). Tout job Depop qui dépose
+    // (publication, republication, remise en vente, ancienne app) d'un article
+    // interdit ne part JAMAIS vers l'extension : needs_user avec la phrase de
+    // la règle, rien n'est retiré ni débité de plus. Fiche absente = servi.
+    let heldDepopInterdit = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const depotsDepop = out.filter((j) =>
+        j.platform === "depop" && (j.action === "publish" || j.action === "republish") && j.inventaire_id != null);
+      if (depotsDepop.length) {
+        try {
+          const ids = [...new Set(depotsDepop.map((j) => j.inventaire_id))];
+          const { data: arts } = await userClient.from("inventaire").select("id, titre, description, type").in("id", ids);
+          const parArticle = new Map<string, Record<string, unknown>>();
+          for (const a of (arts ?? []) as Record<string, unknown>[]) parArticle.set(String(a.id), a);
+          const aRetenir = new Set<string>();
+          for (const j of depotsDepop) {
+            const art = parArticle.get(String(j.inventaire_id));
+            if (!art) continue;
+            const titre = String(art.titre ?? ""); const description = String(art.description ?? "");
+            const icone = detectObjectIcon(titre, description, art.type ?? null);
+            const verdict = verdictDepopInterdit(icone, icone === "🎮" ? (familleJeuVideo(titre, description)?.famille ?? null) : null);
+            if (!verdict) continue;
+            const pfI = ((j.platform_fields as Record<string, unknown> | null) ?? {});
+            const { data: maj } = await userClient.from("cross_post_jobs")
+              .update({
+                status: "needs_user",
+                error: `${messageDepopInterdit(verdict, "fr")} Cet article ne partira pas sur Depop : rien n'a été envoyé.`,
+                platform_fields: { ...pfI, depop_interdit: { ...verdict, depuis: new Date().toISOString(), source: "get-pending-jobs" } },
+              })
+              .eq("id", j.id).eq("status", "pending").select("id");
+            aRetenir.add(String(j.id));
+            console.log(`[get-pending-jobs] dépôt depop ${String(j.id).slice(0, 8)} (${j.action}) : catégorie interdite par Depop (${icone} ${verdict.quoi}) — needs_user${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+          }
+          if (aRetenir.size) {
+            const avant = out.length;
+            out = out.filter((j) => !aRetenir.has(String(j.id)));
+            heldDepopInterdit = avant - out.length;
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] interdits Depop : ${String((e as Error)?.message ?? e)} — rien de modifié`);
+        }
+      }
+    }
+
     // ── DEPOP : LES FRAIS DE PORT PAR DÉFAUT (09/10 soir, Nico) ─────────────
     // (_shared/port-depop.js) Un job Depop sans port reçoit le prix par défaut
     // du compte (Réglages, platform_settings.depop.frais_port_defaut) — jamais
@@ -6677,6 +6727,7 @@ serve(async (req) => {
       (heldRetraitSansLien ? `, ${heldRetraitSansLien} retrait(s) retenu(s) (sans lien : attente, jamais par titre)` : "") +
       (aspectsPoses ? `, ${aspectsPoses} job(s) ebay complété(s) (aspects obligatoires posés depuis le référentiel)` : "") +
       (heldBeebsInterdit ? `, ${heldBeebsInterdit} dépôt(s) beebs → needs_user (article refusé par le catalogue Beebs)` : "") +
+      (heldDepopInterdit ? `, ${heldDepopInterdit} dépôt(s) depop → needs_user (catégorie interdite par Depop)` : "") +
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : "") +
       (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
       (heldRequisDestination ? `, ${heldRequisDestination} republish → needs_user AVANT suppression (requis de la catégorie de destination introuvable)` : "") +
@@ -10131,6 +10182,8 @@ serve(async (req) => {
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
+      // depop_interdits (09/10 soir) : dépôts Depop d'une catégorie interdite par Depop.
+      depop_interdits: heldDepopInterdit,
       beebs_sans_identifiant_retenus: heldBeebsSansIdentifiant,
       retraits_point1_retenus: heldPreuvesRetraitsPoint1,
       retraits_point1_motif: heldPreuvesRetraitsPoint1 ? MOTIF_ATTENTE_PREUVES_POINT1 : null,
