@@ -44,6 +44,8 @@ import SousPageAbonnement from './SousPageAbonnement';
 import SousPagePlateformes from './SousPagePlateformes';
 import SousPageExpedition from './SousPageExpedition';
 import SousPageTransporteurs from './SousPageTransporteurs';
+import SousPagePortDepop from './SousPagePortDepop';
+import { usePortDepopParDefaut, formaterPort } from '../utils/fraisPortDepop';
 import SousPagePreferences from './SousPagePreferences';
 import SousPageCompte from './SousPageCompte';
 import SousPageCatalogueQuarantaine from './SousPageCatalogueQuarantaine';
@@ -62,6 +64,7 @@ const SOUS_PAGES = {
   plateformes:   { titre: (T) => T.gPlateformes,   Composant: SousPagePlateformes },
   expedition:    { titre: (T) => T.adresseRemise,  Composant: SousPageExpedition },
   transporteurs: { titre: (T) => T.transporteurs,  Composant: SousPageTransporteurs },
+  'port-depop':  { titre: (T) => T.portDepop,      Composant: SousPagePortDepop },
   preferences:   { titre: (T) => T.gPreferences,   Composant: SousPagePreferences },
   compte:        { titre: (T) => T.gCompte,        Composant: SousPageCompte },
   'catalogue-quarantaine': { titre: (T) => T.champsPlateformes, Composant: SousPageCatalogueQuarantaine },
@@ -121,6 +124,8 @@ export default function ReglagesPage({
   );
 
   const courante = pile.length ? pile[pile.length - 1] : null;
+  // (09/10 soir) Le prix de livraison Depop par défaut (ligne du hub).
+  const portDepop = usePortDepopParDefaut(user?.id);
 
   const ouvrir = (idSousPage, idEntree) => {
     track('reglages_ouvrir', { entree: idEntree ?? idSousPage });
@@ -226,6 +231,12 @@ export default function ReglagesPage({
     sessions, plateformesSession, verite,
     // (02/10) Opla encore proposée à la publication (avant la sortie du 10/10).
     oplaOuverte: (plateformesOuvertes ?? []).includes('opla'),
+    // (09/10 soir) Depop ouverte pour ce compte : la ligne « Frais de port Depop ».
+    depopOuverte: (plateformesOuvertes ?? []).includes('depop'),
+    portDepop: {
+      valeur: portDepop.valeur, lue: portDepop.lue,
+      texte: portDepop.valeur != null ? (lang === 'en' ? `€${formaterPort(portDepop.valeur, 'en')}` : `${formaterPort(portDepop.valeur, 'fr')} €`) : null,
+    },
     republication: {
       exposee: planifieeExposee,
       // ⚠️ 18/09 : le module porte QUATRE plateformes. « actif » veut donc dire
