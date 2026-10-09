@@ -10,8 +10,8 @@
 --   Nadia (bd380fbf…) : 3280170490 (Veste parka), 3280174176 (Veste Ralph
 --     Lauren), 3282746279 (Gilet Jacadi) ;
 --   Tech-t (6eb8400b…) : 3284211028 (Pokémon Rongrigou V).
--- Le geste : rejouer la règle MIGRÉE sur leur dernier relevé complet (exactement
--- ce que fera leur prochain relevé) — rejoué le 09/10 en transaction annulée :
+-- Le geste : lever la question puis rejouer la règle MIGRÉE sur leur dernier
+-- relevé complet (la migration, elle, ne touche jamais une question ouverte) — rejoué le 09/10 en transaction annulée :
 -- ces 4 jobs passent 'failed' (« Leboncoin n'a jamais mis cette annonce en
 -- ligne… »), aucun autre statut ne bouge, 0 vente, 0 retrait.
 -- Sauvegarde d'abord ; inverse en bas.
@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS public._backup_0910_depots_jamais_en_ligne AS
     FROM public.cross_post_jobs
    WHERE id IN ('3adc2b67-9ea6-4d32-a8e6-b068e2902b71', 'f2518adf-9756-4fc3-a142-973810563c28',
                 '4c056e58-6571-42a6-a489-b02937347f87', '4beff138-7c97-4c8a-b08c-b27369b87e0d');
+-- La migration appliquée laisse EXPRÈS intacte une question déjà ouverte : on
+-- la lève d'abord, sur ces 4 jobs seulement (sauvegardés ci-dessus), puis la
+-- règle conclut comme pour un dépôt sans question.
+UPDATE public.cross_post_jobs
+   SET platform_fields = platform_fields - ARRAY['unavailable_since', 'unavailable_pending_since', 'sale_signal']
+ WHERE id IN (SELECT id FROM public._backup_0910_depots_jamais_en_ligne) AND status = 'published';
 SELECT public.trancher_publications_sans_lien('bd380fbf-a120-4647-ab17-6bfdea14bafa', 'leboncoin', '03513d12-bc61-485a-8f36-ad6bbcb35856');
 SELECT public.trancher_publications_sans_lien('6eb8400b-a2a0-458d-8b85-a05c92d1f4b7', 'leboncoin', 'a5b7142f-da2b-4c97-82c5-a30f3fdb543f');
 SELECT id, status, left(error, 120) FROM public.cross_post_jobs
