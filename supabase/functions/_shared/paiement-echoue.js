@@ -108,6 +108,95 @@ export function faitsEchec({ facture, abonnement = null, estCloud = false }) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// QUAND LE MAIL PART : SUR UN ÉCHEC ACQUIS, JAMAIS PENDANT UN PAIEMENT EN COURS
+// (09/10/2026, cas Marta)
+// ═══════════════════════════════════════════════════════════════════════════
+// 09/10, 11:06:46 (Paris) : Marta paie son Pro au Checkout, sa banque demande
+// le 3D Secure. Stripe envoie AUSSITÔT invoice.payment_failed ET
+// invoice.payment_action_required (billing_reason subscription_create,
+// PaymentIntent requires_action) pendant qu'elle valide encore sur la page :
+// le mail « paiement échoué » part à 11:06:47, le paiement passe à 11:07:20.
+// Même chose le 08/10 pour romain.knc (mail à 10:20:53, payé à 10:23:47).
+// Règle de Nico (09/10) :
+//   · un paiement INITIAL (souscription au Checkout) en cours n'est jamais un
+//     échec : 3D Secure, nouvel essai, autre carte, tout se passe sur la même
+//     page, et Stripe garde la facture ouverte 23 h. Aucun mail sur ces
+//     événements, quel que soit le motif ;
+//   · on n'écrit que sur un échec ACQUIS : la tentative d'un renouvellement
+//     (ou d'une fin d'essai) a échoué, OU la souscription est définitivement
+//     abandonnée — Stripe le dit lui-même en passant l'abonnement à
+//     incomplete_expired (23 h sans paiement, facture annulée), par
+//     customer.subscription.updated (reçu en réel le 03/10 à 21:46 UTC) ;
+//   · avant tout envoi, la facture RELUE chez Stripe : payée → rien ;
+//   · un abandon ne s'écrit que si la personne n'a pas payé autrement entre-
+//     temps : aucun autre abonnement vivant de la même offre chez Stripe, et
+//     aucun palier (ou Cloud) déjà ouvert sur son compte.
+// Un échec suivi d'un succès n'écrit donc jamais : le succès arrive avant
+// l'abandon (23 h), et la facture relue est payée.
+
+export const EVENEMENTS_ECHEC = Object.freeze(['invoice.payment_failed', 'invoice.payment_action_required']);
+
+/**
+ * Le mail « paiement échoué » part-il ? Données de Stripe RELUES (facture,
+ * abonnement), jamais supposées.
+ * @param {{ evenement: string, facture: any, abonnement?: any,
+ *           memeOffreVivante?: boolean, compteDejaOuvert?: boolean }} p
+ *   memeOffreVivante : un AUTRE abonnement de la même offre (palier ou Cloud)
+ *   est active / trialing / past_due chez Stripe ; compteDejaOuvert : le compte
+ *   a déjà le palier (ou Cloud) par ailleurs. Ne servent qu'à l'abandon.
+ * @returns {{ envoyer: boolean, raison: string }}
+ */
+export function decisionMailEchec({ evenement, facture, abonnement = null, memeOffreVivante = false, compteDejaOuvert = false }) {
+  const raison = facture?.billing_reason ?? null;
+  if (EVENEMENTS_ECHEC.includes(evenement)) {
+    // Montée de palier : la personne valide sur la page Stripe (24/09).
+    if (raison === 'subscription_update') return { envoyer: false, raison: 'montee_de_palier' };
+    if (facture?.status === 'paid') return { envoyer: false, raison: 'facture_payee' };
+    // Le paiement initial est EN COURS sur la page de paiement : 3D Secure,
+    // nouvel essai, autre carte. Son abandon s'écrit à incomplete_expired.
+    if (raison === 'subscription_create') return { envoyer: false, raison: 'paiement_initial_en_cours' };
+    if (facture?.status === 'void') return { envoyer: false, raison: 'facture_annulee' };
+    return { envoyer: true, raison: 'echec_acquis' };
+  }
+  if (evenement === 'customer.subscription.updated' || evenement === 'customer.subscription.deleted') {
+    if (abonnement?.status !== 'incomplete_expired') return { envoyer: false, raison: 'pas_un_abandon' };
+    if (raison !== 'subscription_create') return { envoyer: false, raison: 'pas_une_souscription' };
+    if (facture?.status === 'paid') return { envoyer: false, raison: 'facture_payee' };
+    if (memeOffreVivante === true) return { envoyer: false, raison: 'paye_par_un_autre_abonnement' };
+    if (compteDejaOuvert === true) return { envoyer: false, raison: 'compte_deja_abonne' };
+    return { envoyer: true, raison: 'souscription_abandonnee' };
+  }
+  return { envoyer: false, raison: 'evenement_ignore' };
+}
+
+/**
+ * La cause fine, lue sur le PaymentIntent RELU (règle du 07/08, inchangée) :
+ * authentication_required ≠ carte refusée — l'un se règle en revalidant,
+ * l'autre en changeant de carte. PaymentIntent illisible → la cause de
+ * l'événement (action_required = 3ds), sinon 'autre'.
+ * @param {{ pi?: any, evenement?: string | null }} [p]
+ * @returns {{ cause: '3ds' | 'carte_refusee' | 'carte_expiree' | 'autre', code: string | null }}
+ */
+export function causeDuPaiement({ pi = null, evenement = null } = {}) {
+  let cause = evenement === 'invoice.payment_action_required' ? '3ds' : 'autre';
+  let code = null;
+  if (pi) {
+    const err = pi.last_payment_error ?? null;
+    if (pi.status === 'requires_action' || err?.code === 'authentication_required') {
+      cause = '3ds';
+    } else if (err?.code === 'expired_card' || err?.decline_code === 'expired_card') {
+      cause = 'carte_expiree';
+    } else if (err?.code === 'card_declined') {
+      cause = 'carte_refusee';
+      code = err?.decline_code ?? null;
+    } else if (err) {
+      code = err.code ?? null;
+    }
+  }
+  return { cause, code };
+}
+
 /** « jeudi 8 octobre » / « Thursday 8 October » — date de Paris. */
 export function dateRelance(iso, lang = 'fr') {
   const parts = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'fr-FR', {

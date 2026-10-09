@@ -3,7 +3,8 @@ import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
 import { drapeauxDepuisStripe, miseAJourProfilDepuisStripe, estAbonnementCloud } from "../_shared/cloud-option.js";
-import { faitsEchec } from "../_shared/paiement-echoue.js";
+import { faitsEchec, decisionMailEchec, causeDuPaiement } from "../_shared/paiement-echoue.js";
+import { palierDuProfil } from "../_shared/palier.js";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -130,6 +131,183 @@ async function recomputeStripeFlags(supabase: any, customerId: string) {
     "live subs:", (subs ?? []).filter((s: Stripe.Subscription) => ["active", "trialing", "past_due"].includes(s.status)).length,
     "→", JSON.stringify(update)
   );
+}
+
+// ── LE SIGNAL D'UN ÉCHEC ACQUIS (09/10/2026) ─────────────────────────────────
+// Un seul chemin pour les deux échecs qui s'écrivent (decisionMailEchec,
+// _shared/paiement-echoue.js) : la tentative d'un renouvellement / d'une fin
+// d'essai qui a échoué (invoice.payment_failed / payment_action_required), et
+// la souscription abandonnée (abonnement incomplete_expired). On établit les
+// FAITS (qui, quelle cause, quel contexte) puis on signale à email-tunnel
+// (mode payment_failed : mail client, alerte Nico, dédup PAR FACTURE). Jamais
+// d'incidence sur le code HTTP rendu à Stripe.
+// deno-lint-ignore no-explicit-any
+async function signalerEchecAcquis(supabase: any, p: {
+  // deno-lint-ignore no-explicit-any
+  invoice: any; facture: any; abonnement: any; evenement: string; userIdIndice?: string | null;
+}) {
+  const { invoice, facture, abonnement, evenement } = p;
+  const customerId = (typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id) ?? null;
+
+  // ── POURQUOI LE MAIL CLIENT N'EST JAMAIS PARTI (relevé du 19/09/2026) ──────
+  // Zéro ligne 'payment_failed:%' dans email_logs depuis la mise en service
+  // du 07/08, alors que des échecs RÉELS ont eu lieu (05/09 et 08/09, tous
+  // deux traités à la main ensuite). La cause n'est ni Stripe, ni la dédup :
+  // email-tunnel n'envoie au client que si user_id ET email sont présents,
+  // et user_id arrivait à NULL.
+  //
+  // profiles.stripe_customer_id n'est écrit qu'APRÈS un paiement abouti
+  // (checkout.session.completed / invoice.paid) ou sur le chemin d'upgrade
+  // in situ. Une PREMIÈRE souscription qui échoue ne l'a donc jamais écrit :
+  // la recherche par customer id ne rend rien. Filets : le compte nommé par
+  // l'abonnement (metadata.fillsell_user_id, posé par create-checkout-session),
+  // puis l'ADRESSE de la facture (celle que la personne a saisie dans
+  // Checkout, qui existe dès la première tentative).
+  let userId: string | null = null;
+  let lang: string | null = null;
+  let emailCompte: string | null = null;
+  if (customerId) {
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("id, lang, email")
+      .eq("stripe_customer_id", customerId)
+      .maybeSingle();
+    userId = prof?.id ?? null;
+    lang = prof?.lang ?? null;
+    emailCompte = prof?.email ?? null;
+  }
+  if (!userId && p.userIdIndice) {
+    const { data: parId } = await supabase
+      .from("profiles")
+      .select("id, lang, email")
+      .eq("id", p.userIdIndice)
+      .maybeSingle();
+    if (parId?.id) {
+      userId = parId.id;
+      lang = parId.lang ?? null;
+      emailCompte = parId.email ?? null;
+    }
+  }
+  const emailFacture = invoice.customer_email ?? null;
+  if (!userId && emailFacture) {
+    const adresse = emailFacture.trim().toLowerCase();
+    const { data: parMail } = await supabase
+      .from("profiles")
+      .select("id, lang, email")
+      .ilike("email", adresse)
+      .maybeSingle();
+    if (parMail?.id) {
+      userId = parMail.id;
+      lang = lang ?? parMail.lang ?? null;
+      emailCompte = emailCompte ?? parMail.email ?? null;
+      console.log(`[webhook] compte retrouvé par adresse (pas de stripe_customer_id) : ${userId}`);
+    }
+  }
+
+  // Cause FINE via le PaymentIntent relu (causeDuPaiement) : lecture
+  // best-effort, une cause illisible donne 'autre', jamais un blocage.
+  // deno-lint-ignore no-explicit-any
+  let pi: any = null;
+  try {
+    // deno-lint-ignore no-explicit-any
+    const piBrut = facture?.payment_intent ?? (invoice as any)?.payment_intent ?? null;
+    const piId = typeof piBrut === "string" ? piBrut : (piBrut?.id ?? null);
+    if (piId) pi = await stripe.paymentIntents.retrieve(piId);
+  } catch (e) {
+    console.warn("[webhook] PaymentIntent illisible (cause générique):", (e as Error)?.message);
+  }
+  const { cause, code } = causeDuPaiement({ pi, evenement });
+
+  // Libellé du plan dans le mail d'échec — purement informatif, mais il doit
+  // nommer le bon palier : Business d'abord (le plus cher, celui dont l'échec
+  // coûte le plus à laisser filer).
+  const portePrix = (envKey: string) => {
+    const priceId = Deno.env.get(envKey) ?? "";
+    return !!priceId && (facture?.lines?.data ?? invoice.lines?.data ?? []).some(
+      (l: Stripe.InvoiceLineItem) => prixDeLigne(l) === priceId
+    );
+  };
+  const estCloud = abonnement ? estAbonnementCloud(abonnement, prixConnus()) : portePrix("STRIPE_PRICE_CLOUD");
+  const nomPlan = estCloud ? "Cloud"
+    : portePrix("STRIPE_PRICE_BUSINESS") ? "Business"
+    : portePrix("STRIPE_PRICE_PRO") ? "Pro"
+    : "Premium";
+  // Fin d'essai = billing_reason subscription_cycle + une ligne dont
+  // period.start === abonnement.trial_end ; bouton = hosted_invoice_url d'une
+  // facture ouverte (jamais pour une souscription) ; relance =
+  // next_payment_attempt ; « reste actif » = abonnement active | past_due.
+  const faits = faitsEchec({ facture, abonnement, estCloud });
+  console.log(
+    `[webhook] échec ${invoice.id} : cause=${cause} contexte=${faits.contexte} ` +
+    `bouton=${faits.contexte === "souscription" ? "app" : faits.lien_facture ? "facture" : "aucun"} ` +
+    `relance=${faits.relance_le ?? "aucune"} actif=${faits.abonnement_actif} offre=${faits.offre ?? "-"} ` +
+    `(${evenement})`
+  );
+  await signalerPaiementEchoue({
+    user_id: userId,
+    // L'adresse de la facture d'abord (celle que la personne vient de
+    // saisir), le profil en repli — une facture sans customer_email ne doit
+    // plus faire sauter le mail.
+    email: emailFacture ?? emailCompte,
+    lang,
+    invoice_id: invoice.id,
+    cause,
+    code,
+    contexte: faits.contexte as "souscription" | "renouvellement" | "fin_essai",
+    montant: invoice.amount_due != null
+      ? `${(invoice.amount_due / 100).toFixed(2)} ${(invoice.currency ?? "eur").toUpperCase()}`
+      : null,
+    plan: nomPlan,
+    lien_facture: faits.lien_facture,
+    relance_le: faits.relance_le,
+    abonnement_actif: faits.abonnement_actif,
+    offre: faits.offre,
+  });
+}
+
+// ── LA SOUSCRIPTION ABANDONNÉE (09/10/2026) ──────────────────────────────────
+// Le seul moment où un paiement INITIAL a définitivement échoué : Stripe passe
+// l'abonnement à incomplete_expired 23 h après la première tentative, sans
+// paiement (facture annulée). C'est là, et seulement là, que le mail part —
+// si la personne n'a pas payé autrement entre-temps (autre abonnement vivant
+// de la même offre, palier ou Cloud déjà ouvert sur le compte). Toute erreur
+// est avalée : le recalcul des drapeaux qui suit ne doit jamais en dépendre.
+// deno-lint-ignore no-explicit-any
+async function signalerSouscriptionAbandonnee(supabase: any, subscription: Stripe.Subscription, customerId: string, evenement: string) {
+  try {
+    const li = subscription.latest_invoice as string | { id?: string } | null;
+    const factureId = typeof li === "string" ? li : (li?.id ?? null);
+    if (!factureId) {
+      console.log(`[webhook] abonnement ${subscription.id} incomplete_expired sans facture : aucun mail`);
+      return;
+    }
+    // deno-lint-ignore no-explicit-any
+    const facture: any = await stripe.invoices.retrieve(factureId);
+    const prix = prixConnus();
+    const cloud = estAbonnementCloud(subscription, prix);
+    const { data: subs } = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 20 });
+    const memeOffreVivante = (subs ?? []).some((s: Stripe.Subscription) =>
+      s.id !== subscription.id
+      && ["active", "trialing", "past_due"].includes(s.status)
+      && estAbonnementCloud(s, prix) === cloud
+    );
+    const userIdIndice = (subscription.metadata?.fillsell_user_id as string | undefined) || null;
+    const colonnes = "id, is_premium, is_pro, is_business, is_comped, is_cloud";
+    const { data: prof } = userIdIndice
+      ? await supabase.from("profiles").select(colonnes).eq("id", userIdIndice).maybeSingle()
+      : await supabase.from("profiles").select(colonnes).eq("stripe_customer_id", customerId).maybeSingle();
+    const compteDejaOuvert = !!prof && (cloud ? prof.is_cloud === true : palierDuProfil(prof) !== "gratuit");
+    const decision = decisionMailEchec({ evenement, facture, abonnement: subscription, memeOffreVivante, compteDejaOuvert });
+    if (!decision.envoyer) {
+      console.log(`[webhook] abonnement ${subscription.id} incomplete_expired (facture ${factureId}, ${facture?.status ?? "?"}) : aucun mail — ${decision.raison}`);
+      return;
+    }
+    await signalerEchecAcquis(supabase, {
+      invoice: facture, facture, abonnement: subscription, evenement, userIdIndice: userIdIndice ?? prof?.id ?? null,
+    });
+  } catch (e) {
+    console.error(`[webhook] abandon de la souscription ${subscription.id} non traité : ${(e as Error)?.message ?? e}`);
+  }
 }
 
 serve(async (req) => {
@@ -524,6 +702,13 @@ serve(async (req) => {
 
     console.log("[webhook] subscription.updated for customer:", customerId, "status:", status, "cancel_at_period_end:", cancelAtPeriodEnd);
 
+    // ── SOUSCRIPTION ABANDONNÉE : LE SEUL MAIL D'UN PAIEMENT INITIAL (09/10) ──
+    // Avant le chemin Cloud (qui sort plus bas) : une souscription Cloud payante
+    // abandonnée s'écrit aussi. Tout est avalé dans la fonction.
+    if (status === "incomplete_expired") {
+      await signalerSouscriptionAbandonnee(supabase, subscription, customerId, event.type);
+    }
+
     // ── LE PRIX A CHANGÉ : UNE MONTÉE EN ATTENTE VIENT D'ÊTRE APPLIQUÉE
     //    (2026-09-24) ─────────────────────────────────────────────────────────
     // Filet d'invoice.paid : si la facture est arrivée avant que Stripe
@@ -618,52 +803,6 @@ serve(async (req) => {
       });
     }
 
-    // ── POURQUOI LE MAIL CLIENT N'EST JAMAIS PARTI (relevé du 19/09/2026) ────
-    // Zéro ligne 'payment_failed:%' dans email_logs depuis la mise en service
-    // du 07/08, alors que des échecs RÉELS ont eu lieu (05/09 et 08/09, tous
-    // deux traités à la main ensuite). La cause n'est ni Stripe, ni la dédup :
-    // email-tunnel n'envoie au client que si user_id ET email sont présents,
-    // et user_id arrivait à NULL.
-    //
-    // profiles.stripe_customer_id n'est écrit qu'APRÈS un paiement abouti
-    // (checkout.session.completed / invoice.paid) ou sur le chemin d'upgrade
-    // in situ. Une PREMIÈRE souscription qui échoue ne l'a donc jamais écrit :
-    // la recherche par customer id ne rend rien, et tous les échecs observés
-    // étaient précisément des premières souscriptions. L'alerte ops partait
-    // bien (elle, ne dépend de rien) — c'est pour ça que l'incident était vu
-    // sans que le client soit prévenu.
-    //
-    // Second filet : l'ADRESSE de la facture. C'est celle que la personne a
-    // saisie dans Checkout, et elle existe dès la première tentative.
-    let userId: string | null = null;
-    let lang: string | null = null;
-    let emailCompte: string | null = null;
-    if (customerId) {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("id, lang, email")
-        .eq("stripe_customer_id", customerId)
-        .maybeSingle();
-      userId = prof?.id ?? null;
-      lang = prof?.lang ?? null;
-      emailCompte = prof?.email ?? null;
-    }
-    const emailFacture = invoice.customer_email ?? null;
-    if (!userId && emailFacture) {
-      const adresse = emailFacture.trim().toLowerCase();
-      const { data: parMail } = await supabase
-        .from("profiles")
-        .select("id, lang, email")
-        .ilike("email", adresse)
-        .maybeSingle();
-      if (parMail?.id) {
-        userId = parMail.id;
-        lang = lang ?? parMail.lang ?? null;
-        emailCompte = emailCompte ?? parMail.email ?? null;
-        console.log(`[webhook] compte retrouvé par adresse (pas de stripe_customer_id) : ${userId}`);
-      }
-    }
-
     // ── LES FAITS, RELUS CHEZ STRIPE (05/10/2026) ───────────────────────────
     // L'événement arrive au format d'API de l'endpoint (2026-03-25.dahlia,
     // relevé du 24/09, cf. abonnementDeFacture) : ni `payment_intent` ni
@@ -672,8 +811,8 @@ serve(async (req) => {
     // facture par le SDK, épinglé au 2023-10-16 (payment_intent, subscription,
     // status, hosted_invoice_url, next_payment_attempt, lignes et périodes),
     // puis son abonnement (trial_end, status, option Cloud). Une lecture ratée
-    // = l'événement seul, jamais un blocage : le mail part, sans bouton de
-    // facture s'il n'y en a pas. Règles et textes : _shared/paiement-echoue.js.
+    // = l'événement seul, jamais un blocage. Règles et textes :
+    // _shared/paiement-echoue.js.
     // deno-lint-ignore no-explicit-any
     let facture: any = invoice;
     try {
@@ -692,79 +831,24 @@ serve(async (req) => {
       }
     }
 
-    // Cause FINE via le PaymentIntent : authentication_required ≠ carte
-    // refusée — pour le client, ça change tout (l'un se règle en revalidant,
-    // l'autre en changeant de carte). Lecture best-effort : une cause
-    // illisible donne 'autre', jamais un blocage.
-    let cause: "3ds" | "carte_refusee" | "carte_expiree" | "autre" =
-      event.type === "invoice.payment_action_required" ? "3ds" : "autre";
-    let code: string | null = null;
-    try {
-      // deno-lint-ignore no-explicit-any
-      const piBrut = facture?.payment_intent ?? (invoice as any)?.payment_intent ?? null;
-      const piId = typeof piBrut === "string" ? piBrut : (piBrut?.id ?? null);
-      if (piId) {
-        const pi = await stripe.paymentIntents.retrieve(piId);
-        const err = pi.last_payment_error;
-        if (pi.status === "requires_action" || err?.code === "authentication_required") {
-          cause = "3ds";
-        } else if (err?.code === "expired_card" || err?.decline_code === "expired_card") {
-          cause = "carte_expiree";
-        } else if (err?.code === "card_declined") {
-          cause = "carte_refusee";
-          code = err?.decline_code ?? null;
-        } else if (err) {
-          code = err.code ?? null;
-        }
-      }
-    } catch (e) {
-      console.warn("[webhook] PaymentIntent illisible (cause générique):", (e as Error)?.message);
-    }
-
-    // Libellé du plan dans le mail d'échec — purement informatif, mais il doit
-    // nommer le bon palier : Business d'abord (le plus cher, celui dont l'échec
-    // coûte le plus à laisser filer).
-    const portePrix = (envKey: string) => {
-      const priceId = Deno.env.get(envKey) ?? "";
-      return !!priceId && (facture?.lines?.data ?? invoice.lines?.data ?? []).some(
-        (l: Stripe.InvoiceLineItem) => prixDeLigne(l) === priceId
+    // ── UN ÉCHEC ACQUIS, SINON RIEN (09/10/2026, cas Marta) ─────────────────
+    // Une souscription au Checkout dont la banque demande le 3D Secure fait
+    // partir CES DEUX événements pendant que la personne valide encore sur la
+    // page (Marta : mail à 11:06:47, payé à 11:07:20). Paiement initial en
+    // cours → ni mail ni alerte : son abandon s'écrit à incomplete_expired
+    // (signalerSouscriptionAbandonnee). Facture relue déjà payée → rien.
+    // Renouvellement / fin d'essai non payés → le mail part, comme avant.
+    const decision = decisionMailEchec({ evenement: event.type, facture, abonnement });
+    if (!decision.envoyer) {
+      console.log(
+        `[webhook] ${event.type} ${invoice.id} : aucun mail ni alerte — ${decision.raison} ` +
+        `(billing_reason=${facture?.billing_reason ?? "?"}, facture ${facture?.status ?? "?"}, abonnement ${abonnement?.status ?? "?"})`
       );
-    };
-    const estCloud = abonnement ? estAbonnementCloud(abonnement, prixConnus()) : portePrix("STRIPE_PRICE_CLOUD");
-    const nomPlan = estCloud ? "Cloud"
-      : portePrix("STRIPE_PRICE_BUSINESS") ? "Business"
-      : portePrix("STRIPE_PRICE_PRO") ? "Pro"
-      : "Premium";
-    // Fin d'essai = billing_reason subscription_cycle + une ligne dont
-    // period.start === abonnement.trial_end ; bouton = hosted_invoice_url d'une
-    // facture ouverte (jamais pour une souscription) ; relance =
-    // next_payment_attempt ; « reste actif » = abonnement active | past_due.
-    const faits = faitsEchec({ facture, abonnement, estCloud });
-    console.log(
-      `[webhook] échec ${invoice.id} : cause=${cause} contexte=${faits.contexte} ` +
-      `bouton=${faits.contexte === "souscription" ? "app" : faits.lien_facture ? "facture" : "aucun"} ` +
-      `relance=${faits.relance_le ?? "aucune"} actif=${faits.abonnement_actif} offre=${faits.offre ?? "-"}`
-    );
-    await signalerPaiementEchoue({
-      user_id: userId,
-      // L'adresse de la facture d'abord (celle que la personne vient de
-      // saisir), le profil en repli — une facture sans customer_email ne doit
-      // plus faire sauter le mail.
-      email: emailFacture ?? emailCompte,
-      lang,
-      invoice_id: invoice.id,
-      cause,
-      code,
-      contexte: faits.contexte as "souscription" | "renouvellement" | "fin_essai",
-      montant: invoice.amount_due != null
-        ? `${(invoice.amount_due / 100).toFixed(2)} ${(invoice.currency ?? "eur").toUpperCase()}`
-        : null,
-      plan: nomPlan,
-      lien_facture: faits.lien_facture,
-      relance_le: faits.relance_le,
-      abonnement_actif: faits.abonnement_actif,
-      offre: faits.offre,
-    });
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    await signalerEchecAcquis(supabase, { invoice, facture, abonnement, evenement: event.type });
   }
 
   return new Response(JSON.stringify({ received: true }), {

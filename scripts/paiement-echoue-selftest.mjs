@@ -160,7 +160,7 @@ titre('Les liens du pied mènent à des pages qui existent (relu dans l\'app)');
 titre('Le câblage : stripe-webhook → payment-notify → email-tunnel');
 {
   const wh = lire('../supabase/functions/stripe-webhook/index.ts');
-  ok(/import \{ faitsEchec \} from "\.\.\/_shared\/paiement-echoue\.js"/.test(wh), 'stripe-webhook importe faitsEchec');
+  ok(/import \{ faitsEchec[^}]*\} from "\.\.\/_shared\/paiement-echoue\.js"/.test(wh), 'stripe-webhook importe faitsEchec');
   ok(/stripe\.invoices\.retrieve\(invoice\.id\)/.test(wh) && /stripe\.subscriptions\.retrieve\(subEchec\)/.test(wh), 'stripe-webhook RELIT la facture et l\'abonnement chez Stripe');
   ok(/faitsEchec\(\{ facture, abonnement, estCloud \}\)/.test(wh), 'faits établis sur la facture et l\'abonnement relus');
   for (const champ of ['lien_facture: faits.lien_facture', 'relance_le: faits.relance_le', 'abonnement_actif: faits.abonnement_actif', 'offre: faits.offre', 'contexte: faits.contexte']) ok(wh.includes(champ), `stripe-webhook transmet ${champ.split(':')[0]}`);
