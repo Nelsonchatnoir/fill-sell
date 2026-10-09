@@ -39,6 +39,10 @@ function ok(cond, message, scenario) {
 const navigateur = await chromium.launch({ channel: 'chrome' }); // Chrome installé (comme scripts/site/og.mjs)
 async function contexte(nom, { stockage } = {}) {
   const ctx = await navigateur.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr-FR' });
+  // Prévisualisation Vercel protégée : FS_PARTAGE = lien « _vercel_share » (outil
+  // get_access_to_vercel_url) ; sa visite par l'API du contexte pose le cookie
+  // d'accès sans charger aucune page.
+  if (process.env.FS_PARTAGE) await ctx.request.get(process.env.FS_PARTAGE, { maxRedirects: 0 }).catch(() => {});
   if (stockage) {
     await ctx.addInitScript((s) => { for (const [k, v] of Object.entries(s)) { try { localStorage.setItem(k, v); } catch { /* rien */ } } }, stockage);
   }

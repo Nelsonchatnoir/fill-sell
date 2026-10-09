@@ -1,0 +1,175 @@
+{
+  "origine": "prévisualisation Vercel 749e453 (fill-sell-cmr70p8hx…vercel.app)",
+  "scenarios": {
+    "A-site-accepter": {
+      "journal": [
+        {
+          "etape": "accueil chargé, aucune réponse",
+          "requetes_google": 0
+        },
+        {
+          "etape": "après « Accepter »",
+          "requetes_google": 12
+        },
+        {
+          "etape": "page suivante de l'app (/login)",
+          "requetes_google": 23
+        }
+      ],
+      "verifs": [
+        {
+          "ok": true,
+          "message": "avant l'accord : 0 requête chez Google (0)"
+        },
+        {
+          "ok": true,
+          "message": "avant l'accord : 0 cookie Google ()"
+        },
+        {
+          "ok": true,
+          "message": "bandeau de consentement affiché"
+        },
+        {
+          "ok": true,
+          "message": "le bandeau nomme Google et Meta"
+        },
+        {
+          "ok": true,
+          "message": "après l'accord : GTM chargé"
+        },
+        {
+          "ok": true,
+          "message": "après l'accord : balise Google Ads chargée"
+        },
+        {
+          "ok": true,
+          "message": "après l'accord : requête Google Ads émise (https://googleads.g.doubleclick.net/pagead/viewthroughconversion/16622098460/?random=1791580088742&cv=11&fst=1791580088742&bg=ffffff&guid=ON&async=1&en=gtag.con)"
+        },
+        {
+          "ok": true,
+          "message": "après l'accord : Google Analytics chargé"
+        },
+        {
+          "ok": true,
+          "message": "après l'accord : cookies Google posés (_gcl_au, _ga_2ZYVK404G9, _ga)"
+        },
+        {
+          "ok": true,
+          "message": "page suivante (app /login) : balises chargées d'emblée, sans bandeau"
+        },
+        {
+          "ok": true,
+          "message": "page suivante : bandeau non reposé"
+        }
+      ],
+      "requetes_apres_accord": [
+        "https://www.googletagmanager.com/gtm.js?id=GTM-TJNKL6T5",
+        "https://www.googletagmanager.com/gtag/js?id=AW-16622098460",
+        "https://googleads.g.doubleclick.net/pagead/viewthroughconversion/16622098460/?random=1791580088742&cv=11&fst=1791580088742&bg=ffffff&guid=ON&async=1&en=gtag.con",
+        "https://www.google.com/rmkt/collect/16622098460/?random=1791580088742&cv=11&fst=1791580088742&fmt=8&bg=ffffff&guid=ON&async=1&en=gtag.config&gtm=45be6a72v925376",
+        "https://www.google.com/ccm/collect?rcb=0&frm=0&apvc=1&auid=1144186227.1791580089&dt=Application%20de%20crosslisting%20%3A%20une%20photo%2C%20cinq%20plateformes%",
+        "https://ad.doubleclick.net/ccm/s/collect?auid=1144186227.1791580089&gtm=45be6a72v9253762116za208zd9253762116xecxf1&fmt=8",
+        "https://www.googletagmanager.com/gtag/js?id=G-2ZYVK404G9&cx=c&gtm=4e6a72",
+        "https://www.google.com/rmkt/collect/16622098460/?random=1791580088742&cv=11&fst=1791580088742&fmt=3&bg=ffffff&guid=ON&async=1&en=gtag.config&gtm=45be6a72v925376",
+        "https://www.google.com/ccm/collect?rcb=0&frm=0&apvc=1&auid=1144186227.1791580089&dt=Application%20de%20crosslisting%20%3A%20une%20photo%2C%20cinq%20plateformes%",
+        "https://ad.doubleclick.net/ccm/s/collect?auid=1144186227.1791580089&gtm=45be6a72v9253762116za208zd9253762116xecxf1&fmt=3",
+        "https://googleads.g.doubleclick.net/pagead/viewthroughconversion/16622098460/?random=1791580088742&cv=11&fst=1791580088742&fmt=3&bg=ffffff&guid=ON&async=1&en=gt",
+        "https://region1.google-analytics.com/g/collect?v=2&tid=G-2ZYVK404G9&gtm=45je6a72v9249068916za20ozb9249048481zd9249048481xf1&_p=1791580088472&gcs=G111&gcd=13r3r3"
+      ]
+    },
+    "B-app-accepter": {
+      "journal": [
+        {
+          "etape": "/login chargé, aucune réponse",
+          "requetes_google": 0
+        },
+        {
+          "etape": "après « Accepter » (bandeau de l'app)",
+          "requetes_google": 13
+        }
+      ],
+      "verifs": [
+        {
+          "ok": true,
+          "message": "app avant l'accord : 0 requête chez Google (0)"
+        },
+        {
+          "ok": true,
+          "message": "app avant l'accord : 0 cookie Google"
+        },
+        {
+          "ok": true,
+          "message": "app : bandeau React affiché"
+        },
+        {
+          "ok": true,
+          "message": "app après l'accord : GTM et Google Ads chargés"
+        },
+        {
+          "ok": true,
+          "message": "app après l'accord : requête Google Ads émise"
+        }
+      ],
+      "requetes_apres_accord": [
+        "https://www.googletagmanager.com/gtm.js?id=GTM-TJNKL6T5",
+        "https://www.googletagmanager.com/gtag/js?id=AW-16622098460",
+        "https://www.googletagmanager.com/gtag/js?id=G-2ZYVK404G9&cx=c&gtm=4e6a72",
+        "https://googleads.g.doubleclick.net/pagead/viewthroughconversion/16622098460/?random=1791580104804&cv=11&fst=1791580104804&bg=ffffff&guid=ON&async=1&en=gtag.con",
+        "https://www.google.com/rmkt/collect/16622098460/?random=1791580104804&cv=11&fst=1791580104804&fmt=8&bg=ffffff&guid=ON&async=1&en=gtag.config&gtm=45be6a72v925376",
+        "https://www.google.com/ccm/collect?rcb=8&frm=0&apvc=1&auid=549380091.1791580105&dt=FillSell%20%E2%80%93%20Publie%20et%20republie%20sur%20toutes%20tes%20platefor",
+        "https://ad.doubleclick.net/ccm/s/collect?auid=549380091.1791580105&gtm=45be6a72v9253762116za208zd9253762116xecxf1&fmt=8",
+        "https://www.google.com/rmkt/collect/16622098460/?random=1791580104804&cv=11&fst=1791580104804&fmt=3&bg=ffffff&guid=ON&async=1&en=gtag.config&gtm=45be6a72v925376",
+        "https://www.google.com/ccm/collect?rcb=8&frm=0&apvc=1&auid=549380091.1791580105&dt=FillSell%20%E2%80%93%20Publie%20et%20republie%20sur%20toutes%20tes%20platefor",
+        "https://ad.doubleclick.net/ccm/s/collect?auid=549380091.1791580105&gtm=45be6a72v9253762116za208zd9253762116xecxf1&fmt=3",
+        "https://googleads.g.doubleclick.net/pagead/viewthroughconversion/16622098460/?random=1791580104804&cv=11&fst=1791580104804&fmt=3&bg=ffffff&guid=ON&async=1&en=gt",
+        "https://region1.google-analytics.com/g/collect?v=2&tid=G-2ZYVK404G9&gtm=45je6a72v9249068916za20ozb9249048481zd9249048481xf1&_p=1791580104526&gcs=G111&gcd=13r3r3",
+        "https://region1.google-analytics.com/g/collect?v=2&tid=G-2ZYVK404G9&gtm=45je6a72v9249068916za20gzb9249048481zd9249048481xf1&_p=1791580104526&gcs=G111&gcd=13r3r3"
+      ]
+    },
+    "C-site-refuser": {
+      "journal": [
+        {
+          "etape": "après « Refuser »",
+          "requetes_google": 0
+        },
+        {
+          "etape": "deux pages plus tard (/tarifs, /login)",
+          "requetes_google": 0
+        }
+      ],
+      "verifs": [
+        {
+          "ok": true,
+          "message": "refus : 0 requête chez Google sur trois pages (0)"
+        },
+        {
+          "ok": true,
+          "message": "refus : 0 cookie Google"
+        },
+        {
+          "ok": true,
+          "message": "refus : bandeau non reposé"
+        }
+      ]
+    },
+    "D-ancien-accord-meta": {
+      "journal": [
+        {
+          "etape": "accueil, ancien accord (Meta seul)",
+          "requetes_google": 0
+        }
+      ],
+      "verifs": [
+        {
+          "ok": true,
+          "message": "ancien accord Meta : 0 requête chez Google (0)"
+        },
+        {
+          "ok": true,
+          "message": "ancien accord Meta : la question est reposée (texte qui nomme Google)"
+        }
+      ]
+    }
+  },
+  "echecs": 0
+}
