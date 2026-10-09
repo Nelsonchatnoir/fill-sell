@@ -245,7 +245,10 @@ contraire. Il se périme : `functions list`, `cron.job` et
 - **Sortie d'Opla (Nico)** : BASCULE LE 10/10 à 00:00 Paris, interrupteur
   coin_config `opla_sortie_le` (0 = désactivée) ; avant, Opla comme avant ;
   après, plus aucune publication ni republication Opla, synchro gardée pour
-  les comptes reliés (`_shared/opla-sortie.js`).
+  les comptes reliés (`_shared/opla-sortie.js`). **Même instant : Depop pour tous**
+  (mig 20261009230000 : `depop_autorise` lit `opla_sortie_le` ; republication
+  auto Depop ouverte) ; l'app ne la montre qu'à une extension ≥ 0.6.106
+  (`src/utils/basculeOplaDepop.js`), le site bascule seul (`src/utils/siteAvecDepop.js`).
 - **⛔ `platform_settings`** (02/10) : jamais d'update/PATCH de l'objet entier,
   toujours `rpc platform_settings_fusionner` ; la garde en base refuse le reste.
 - **Ventes (02/10 soir)** : `ventes.annonce_id` = la preuve (numéro d'annonce) ;

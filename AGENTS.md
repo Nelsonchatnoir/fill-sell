@@ -18,7 +18,7 @@ contraire. `functions list`, `cron.job` et `profiles.extension_build` font foi.
 - **Retraits** : jamais arrêtés (1 h/3 h/6 h) ; absent de deux relevés complets → « déjà
   retirée ». **Boucles** → needs_user. **Cadence** : 50/j. **Relevés** : 5 min sans progression =
   arrêt ; partiel = `incomplete`. **Marque** hors catalogue → question. Test ≥ 999 €.
-- **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`).
+- **Sortie d'Opla** : 10/10 00:00 Paris (`opla_sortie_le`) ; même instant : Depop pour tous, extension ≥ 0.6.106 (mig 20261009230000).
 - **⛔ `platform_settings`** : `rpc platform_settings_fusionner` seulement.
 - **Crons coupés** : 17, 22. **Migrations** : § 3.4. **Données** : `scripts/reparations/` (`git add -f`), sauvegarde, inverse.
 - **Ouvert** : binaires **2.9.38** (AAB, iOS Codemagic) ; le reste : fin de l'état.
