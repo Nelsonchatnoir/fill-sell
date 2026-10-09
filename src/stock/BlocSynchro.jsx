@@ -37,6 +37,7 @@ import { pairesAffichables, estQuestionDejaVendu, lireQuestionsAVerifier, paires
 import Feuille from './Feuille';
 import { S, OMBRE, DEGRADE, DEGRADE_TUILE } from './jetons';
 import { nombreFr } from './regles';
+import { lireNavigateurExtension, navigateurDeLApp, noteNavigateur } from '../utils/navigateurExtension';
 
 // Le point d'une pastille de plateforme : teal = à jour ; ambre = à reprendre
 // ou un geste attend ; gris = jamais synchronisée / pas de compte.
@@ -210,6 +211,18 @@ export default function BlocSynchro({
   ouvrirAVerifierRef.current = () => (nbArticlesAVerifier > 0 ? setEcranAVerifier(true) : setEcran(true));
   const ouvrirAVerifier = useCallback(() => ouvrirAVerifierRef.current?.(), []);
   useEffect(() => { onARattacher?.({ n: nbAVerifier, ouvrir: ouvrirAVerifier }); }, [nbAVerifier, onARattacher, ouvrirAVerifier]);
+  // (09/10, Marta) Le navigateur où tourne l'extension : UNE lecture par
+  // ouverture du bloc, jamais en boucle. Il n'est nommé que s'il n'est pas
+  // celui de l'app (ou pas Chrome) — cf. utils/navigateurExtension.js.
+  const [navExt, setNavExt] = useState(null);
+  useEffect(() => {
+    if (!ouvert || !r.userId) return undefined;
+    let vivant = true;
+    lireNavigateurExtension(r.userId).then((n) => { if (vivant) setNavExt(n); }).catch(() => {});
+    return () => { vivant = false; };
+  }, [ouvert, r.userId]);
+  const navApp = useMemo(() => navigateurDeLApp(), []);
+  const noteNav = (plateforme) => noteNavigateur({ ext: navExt, app: navApp, plateforme, lang });
 
   if (!ouvert || !r.userId) return ligneVinted ? <div aria-hidden="true" style={{ display: 'none' }}>{ligneVinted}</div> : null;
 
@@ -277,7 +290,7 @@ export default function BlocSynchro({
   const signaux = [
     ...tuiles.filter((t) => t.vide).map((t) => ({ cle: `vide-${t.p}`, platform: t.p, titre: T.titrePointVide(t.nom), texte: T.signalVideRepete(t.nom), bouton: synchroDe(t) })),
     ...tuiles.filter((t) => t.e.phase === 'absente' && !murDe.has(t.p) && !(t.p === 'opla' && t.e.opla && oplaAutorisee))
-      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : T.signalNonConnecte(t.nom) })),
+      .map((t) => ({ cle: t.p, platform: t.p, titre: t.e.opla ? T.titrePointOpla : T.titrePointNonConnecte(t.nom), texte: t.e.opla ? T.signalOpla : [T.signalNonConnecte(t.nom), noteNav(t.nom)].filter(Boolean).join(' ') })),
     ...tuiles.filter((t) => t.e.phase === 'echec' && !murDe.has(t.p)).map((t) => {
       // (06/10) Vinted arrêté sur une boutique pas encore suivie : le geste est
       // « Choisir ma boutique » — il ouvre la confirmation (« Ajouter @x » /
@@ -298,7 +311,7 @@ export default function BlocSynchro({
         cle: t.p,
         platform: t.p,
         titre: technique ? T.titrePointTechnique(t.nom) : T.titrePointArret(t.nom),
-        texte: technique ? T.signalTechnique(t.nom) : texteSituation(t.e.situation, t.nom, T),
+        texte: technique ? T.signalTechnique(t.nom) : [texteSituation(t.e.situation, t.nom, T), t.e.situation === 'pas_connecte' ? noteNav(t.nom) : null].filter(Boolean).join(' '),
         bouton: reessayer(t),
       };
     }),
@@ -400,6 +413,9 @@ export default function BlocSynchro({
                     <BoutonMeConnecter userId={r.userId} platform={m.platform} motif={m.motif} lang={lang} variante="ligne" onOuverte={r.recharger} />
                   </div>
                 ))}
+                {noteNav(murs.map((m) => m.nom).join(', ')) && (
+                  <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ambreEncre }}>{noteNav(murs.map((m) => m.nom).join(', '))}</span>
+                )}
               </div>
             )}
             {nbAVerifier > 0 && (
@@ -518,6 +534,7 @@ export default function BlocSynchro({
               enfant={(
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <BoutonMeConnecter userId={r.userId} platform={m.platform} motif={m.motif} lang={lang} variante="ligne" onOuverte={r.recharger} />
+                  {noteNav(m.nom) && <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: 600, color: S.ambreEncre }}>{noteNav(m.nom)}</span>}
                   <span style={{ fontSize: 12, lineHeight: '16px', fontWeight: 500, color: S.ink2 }}>{T.murReprise}</span>
                 </div>
               )} />

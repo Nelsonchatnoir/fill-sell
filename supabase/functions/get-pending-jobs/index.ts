@@ -9,7 +9,8 @@ import { verifierBoutiqueOperation, identiteBoutiqueFraiche, origineBoutiqueProu
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.0";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
-import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, type LangueVinted } from "../_shared/vinted-pays.ts";
+import { ETATS_VINTED, langueVintedDuJob, paysDeLaLangue, PAYS_VINTED_EURO, type LangueVinted } from "../_shared/vinted-pays.ts";
+import { navigateurDeUA, paysDeEntete, vintedEtranger } from "../_shared/navigateur-poste.js";
 import { vintedIdsPourPublication } from "../_shared/vinted-ids-publication.ts";
 import { sessionIdDuJwt, identifiantPosteExtension, postesVivants, posteCourt, posteAvecAccesOpla, POSTE_TTL_MS, type Poste } from "../_shared/poste-extension.ts";
 import { preuveAccesOpla } from "../_shared/preuve-opla.ts";
@@ -871,6 +872,13 @@ serve(async (req) => {
           const avant: Poste = postes[sessionId] ?? {};
           const patchPoste: Poste = { le: new Date().toISOString() };
           if (build) patchPoste.build = build;
+          // (09/10, Marta) Le navigateur et le pays du poste : l'extension de
+          // Marta tournait dans Edge, son app dans Chrome — personne ne le
+          // voyait. Lus sur les en-têtes de CETTE requête (celle du poste).
+          const navPoste = navigateurDeUA(req.headers.get("user-agent"));
+          if (navPoste) patchPoste.navigateur = navPoste;
+          const paysPoste = paysDeEntete(req.headers.get("cf-ipcountry"));
+          if (paysPoste) patchPoste.pays = paysPoste;
           const declare = posteAvecOpla || posteSansOpla;
           if (posteAvecOpla) patchPoste.opla_acces = true;
           else if (posteSansOpla) patchPoste.opla_acces = false;
@@ -4539,6 +4547,13 @@ serve(async (req) => {
           if (garde === Number(j.inventaire_id)) {
             ap["tranche_le"] = new Date().toISOString();
             ap["garde"] = garde;
+            // (09/10, parcours Depop de Nico, job 9089e65c) La réponse est
+            // TRANCHÉE : elle sort de `choix` (gardée en trace). Restée dans
+            // `choix`, elle refaisait du job un « répondu » à CHAQUE passage —
+            // tranché, écarté, jamais servi (tranche_le réécrit 10:12:57,
+            // 10:14:57… ; le geste ne repartait pas). Seul job concerné en base.
+            ap["choix_tranche"] = ap["choix"];
+            delete ap["choix"];
             pf["annonce_partagee"] = ap;
             delete pf["retrait_bloque_url_partagee"];
             delete pf["needs_user_source"];
@@ -6622,7 +6637,7 @@ serve(async (req) => {
     // l'utilisateur et tient un client scopé RLS — c'est zéro aller-retour de
     // plus. Derrière un flag : le BACKGROUND, qui poll toutes les 2 minutes,
     // ne paie rien de tout ça.
-    let contexte: { sync: unknown; sessions: unknown; verite: unknown; opla?: { relie: boolean | null; sortie_active: boolean }; depop?: { ouverte: boolean } } | null = null;
+    let contexte: { sync: unknown; sessions: unknown; verite: unknown; opla?: { relie: boolean | null; sortie_active: boolean }; depop?: { ouverte: boolean }; vinted_etranger?: { pays: string; domaine: string; source: string } | null } | null = null;
     if (body?.include_context === true) {
       contexte = { sync: null, sessions: null, verite: null };
       // (02/10, sortie d'Opla) Le popup ≥ 0.6.86 n'affiche la ligne Opla (et
@@ -6654,6 +6669,25 @@ serve(async (req) => {
           .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
         contexte.sessions = prof?.extension_sessions ?? null;
       } catch (_e) { /* idem */ }
+      // (09/10, Marta) LE VENDEUR VINTED ÉTRANGER : le popup ≥ 0.6.106 lui
+      // propose « Autoriser vinted.<cc> » (permission OPTIONNELLE) — jamais à un
+      // Français, jamais à qui travaille déjà sur vinted.fr, jamais pour un pays
+      // fermé (coin_config vinted_pays_<cc>). Pays : celui du compte Vinted
+      // (sonde) s'il est connu, sinon celui du réseau (cf-ipcountry).
+      try {
+        const s = (contexte.sessions ?? {}) as Record<string, unknown>;
+        const ident = (s.vinted_identite ?? null) as { pays?: unknown } | null;
+        const { data: cfgPaysCtx } = await userClient.from("coin_config").select("key, value").like("key", "vinted_pays_%");
+        const ouvertsCtx = new Set(((cfgPaysCtx ?? []) as Array<{ key: string; value: number }>)
+          .filter((r) => Number(r.value) === 1).map((r) => r.key.replace("vinted_pays_", "").toUpperCase()));
+        contexte.vinted_etranger = vintedEtranger({
+          paysSonde: /^[A-Z]{2}$/.test(String(ident?.pays ?? "")) ? String(ident!.pays) : null,
+          paysReseau: paysDeEntete(req.headers.get("cf-ipcountry")),
+          ouverts: ouvertsCtx,
+          sessionVintedFr: s.vinted === true,
+          domaines: PAYS_VINTED_EURO,
+        });
+      } catch (_e) { contexte.vinted_etranger = null; }
       // ── LA VÉRITÉ DES PLATEFORMES (2026-09-23, cas Marine Rocher) ──────────
       // Le popup affichait « Connectée » sur eBay à quelqu'un qui n'a PAS de
       // compte eBay : la sonde de session teste une page publique (200 sans

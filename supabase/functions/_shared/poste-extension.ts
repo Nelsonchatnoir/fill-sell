@@ -30,6 +30,8 @@ export type Poste = {
   opla_acces_le?: string;         // (24/09) quand opla_acces a été appris/prouvé — borne les preuves plus anciennes
   opla_acces_preuve?: string;     // (24/09) la preuve lue en base qui a rendu l'accès (cf. _shared/preuve-opla.ts)
   preuve_opla_cherchee_le?: string; // (24/09) dernière recherche de preuve pour ce poste (au plus 1 / 10 min)
+  navigateur?: string | null;     // (09/10, Marta) navigateur du poste, lu sur le User-Agent (_shared/navigateur-poste.js)
+  pays?: string | null;           // (09/10) pays du réseau du poste (cf-ipcountry)
 };
 
 export const POSTE_TTL_MS = 48 * 3600_000;
