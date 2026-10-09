@@ -60,9 +60,12 @@ function ecrireLangue(code) {
 // eventCallback quand ses balises sont parties, ou au bout d'eventTimeout ;
 // la minuterie à nous couvre le cas où GTM ne tourne pas (bloqueur) — sans
 // elle, le clic ne mènerait nulle part.
+// GTM absent (pas encore d'accord, refus, bloqueur — 09/10 : il ne se charge
+// plus qu'après l'accord) : rien n'attend l'événement, le lien part aussitôt
+// au lieu de faire patienter 800 ms.
 function partirApres(evt, lien, e) {
   const nouvelOnglet = lien.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
-  if (nouvelOnglet || e.defaultPrevented) { pousser(evt); return; }
+  if (nouvelOnglet || e.defaultPrevented || !w.google_tag_manager) { pousser(evt); return; }
   e.preventDefault();
   let parti = false;
   const partir = () => {

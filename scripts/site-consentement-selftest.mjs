@@ -10,7 +10,7 @@
 //   2. il ne porte plus aucun texte en dur : tout vient de consentementTextes.js ;
 //   3. le bandeau du site dit le même texte, dans le même ordre, avec le même
 //      lien, le même libellé d'accessibilité et les mêmes valeurs de boutons ;
-//   4. site.js écrit la même clé (fs_consent_pub, via consentement.js) ;
+//   4. site.js écrit la même clé (fs_consent_pub_v2 depuis le 09/10, via consentement.js) ;
 //   5. FR et EN ont les mêmes clés de textes.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -112,7 +112,9 @@ try {
   });
   const sourceConsentement = readFileSync(path.join(racine, 'src', 'utils', 'consentement.js'), 'utf8');
   const cleStockage = /const CLE = '([^']+)'/.exec(sourceConsentement)?.[1];
-  ok(cleStockage === 'fs_consent_pub', `clé de consentement.js = fs_consent_pub (${cleStockage})`);
+  // 09/10 : nouvelle clé (le texte nomme Google et Meta ; l'accord d'avant ne
+  // couvrait que Meta) — selftest:site-balises prouve la reprise des refus.
+  ok(cleStockage === 'fs_consent_pub_v2', `clé de consentement.js = fs_consent_pub_v2 (${cleStockage})`);
   ok(siteJs.includes(cleStockage), 'site.js (bundle) écrit la même clé de stockage');
   ok(siteJs.includes(t.texte.slice(0, 30)) && siteJs.includes(TEXTES_CONSENTEMENT.en.texte.slice(0, 30)), 'site.js (bundle) porte les textes du module partagé');
   ok(!/supabase-js|createClient/.test(siteJs), 'site.js n\'embarque pas supabase-js');

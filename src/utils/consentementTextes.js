@@ -11,18 +11,22 @@
 // croix, le lien mène à la politique de confidentialité où le choix se révoque.
 // L'anglais ne sert qu'aux pages /en du site vitrine ; l'app garde le français
 // (le bandeau React n'a jamais été traduit).
+//
+// 09/10 : le texte nomme Google ET Meta — Google Tag Manager (Google
+// Analytics) et Google Ads ne se chargent plus qu'après cet accord sur le web
+// (consentement.js, nouvelle clé : l'accord d'avant ne couvrait que Meta).
 export const TEXTES_CONSENTEMENT = {
   fr: {
-    libelle: 'Consentement aux cookies publicitaires',
-    texte: "On aimerait mesurer l'efficacité de nos publicités, avec un traceur Meta. Ce n'est pas nécessaire au fonctionnement du site, et tu peux refuser sans rien perdre.",
+    libelle: 'Consentement aux traceurs de mesure et de publicité',
+    texte: "On aimerait mesurer la fréquentation du site et l'efficacité de nos publicités, avec les traceurs de Google et de Meta. Ce n'est pas nécessaire au fonctionnement du site, et tu peux refuser sans rien perdre.",
     lien: 'En savoir plus',
     lienHref: '/legal#confidentialite',
     refuser: 'Refuser',
     accepter: 'Accepter',
   },
   en: {
-    libelle: 'Consent to advertising cookies',
-    texte: "We'd like to measure how well our ads work, with a Meta tracker. It isn't needed for the site to work, and you can decline without losing anything.",
+    libelle: 'Consent to measurement and advertising trackers',
+    texte: "We'd like to measure site visits and how well our ads work, with Google and Meta trackers. It isn't needed for the site to work, and you can decline without losing anything.",
     // « Learn more » coûtait 8 points de SEO aux pages /en (texte de lien non
     // descriptif, revue technique M-1). L'app n'affiche jamais l'anglais : le
     // build natif ne change que de ces octets, pas de rendu (écart nommé).

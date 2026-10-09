@@ -18,6 +18,14 @@ import path from 'node:path';
 // marketing (pas de notifyAppReady → retour arrière Capgo à chaque lancement).
 // En local : `npm run site:apercu` (build/site-apercu). Pour forcer dist/ en
 // connaissance de cause (déploiement --prebuilt) : FILLSELL_SITE_DIST=1.
+//
+// Balises SOUS CONSENTEMENT (09/10, CNIL) : transformIndexHtml remplace, dans
+// la coquille de CE build seulement, les blocs gtm / gtag-aw / gtm-noscript
+// d'index.html par le script en ligne qui ne charge GTM et Google Ads qu'après
+// l'accord (scripts/site/lib/balises.mjs). appShell copie ensuite cette
+// coquille en app-shell.html : l'app WEB (/login, /app…) suit la même règle
+// que le site. Le natif et l'OTA (ce plugin n'y est pas) gardent index.html
+// octet pour octet.
 export default function siteStatique() {
   let dossier = 'dist';
   let racine = process.cwd();
@@ -35,6 +43,14 @@ export default function siteStatique() {
           '   → npm run site:apercu (sortie build/site-apercu), ou FILLSELL_SITE_DIST=1 en connaissance de cause.\n',
         );
       }
+    },
+    transformIndexHtml: {
+      order: 'pre',
+      async handler(html) {
+        const { lireBlocsBalises, scriptConsentement, appliquerConsentement } = await import('./site/lib/balises.mjs');
+        const script = await scriptConsentement(racine, lireBlocsBalises(html, 'index.html'));
+        return appliquerConsentement(html, script);
+      },
     },
     writeBundle: {
       order: 'post',

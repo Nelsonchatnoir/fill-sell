@@ -20,6 +20,7 @@
     "site:indexnow-liste": "node scripts/site/indexnow-liste.mjs",
     "site:concurrents": "node scripts/site/importer-concurrents.mjs",
     "site:og": "node scripts/site/og.mjs",
+    "site:preuve-consentement": "node scripts/site/preuve-consentement.mjs",
     "selftest:site-aiguillage": "node scripts/site-aiguillage-selftest.mjs",
     "selftest:site-routes-app": "node scripts/site-routes-app-selftest.mjs",
     "selftest:site-balises": "node scripts/site-balises-selftest.mjs",

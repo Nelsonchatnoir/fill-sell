@@ -10,9 +10,10 @@ import { attrsAutreLangue } from './composants.mjs';
 // Ce que la tête porte, et pourquoi :
 //   · le script d'aiguillage EN LIGNE, juste après le charset : il doit partir
 //     avant tout (confirmation, /app) et survivre à un 404 de site.js ;
-//   · les blocs de balises de mesure recopiés d'index.html entre leurs
-//     marqueurs (GTM, Insights, gtag AW, noscript) : rien d'ajouté, rien de
-//     retiré, parité vérifiée par site:verifier ;
+//   · les balises de mesure entre leurs marqueurs : le bloc « consentement »
+//     (GTM et Google Ads chargés SEULEMENT après l'accord, identifiants lus
+//     dans index.html — 09/10, CNIL) et « insights » recopié d'index.html ;
+//     parité avec app-shell.html vérifiée par site:verifier ;
 //   · les icônes et le manifeste, recopiés d'index.html (même source) ;
 //   · viewport SANS user-scalable=no (accessibilité, revue B M8) ;
 //   · canonical absolu sans slash final, hreflang réciproques + x-default
@@ -125,7 +126,7 @@ ${pied({ site, page, t })}`, page.lang);
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script${page.racine ? ' data-racine="1"' : ''}>${site.aiguillage}</script>
-${blocEnPage(site.balises, 'gtm')}
+${blocEnPage(site.balises, 'consentement')}
 <title>${esc(page.title)}</title>
 <meta name="description" content="${esc(page.description)}">
 <meta name="robots" content="${esc(page.robots)}">
@@ -149,11 +150,9 @@ ${site.liensIcones}
 <link rel="preload" href="${esc(site.police)}" as="font" type="font/woff2" crossorigin>
 <style>${site.cssPour(corps)}</style>
 ${blocEnPage(site.balises, 'insights')}
-${blocEnPage(site.balises, 'gtag-aw')}
 <script defer src="${esc(site.siteJs)}" onerror="document.documentElement.classList.remove('js')"></script>
 ${graphe}</head>
 <body class="type-${esc(page.type)}">
-${blocEnPage(site.balises, 'gtm-noscript')}
 ${corps}
 </body>
 </html>

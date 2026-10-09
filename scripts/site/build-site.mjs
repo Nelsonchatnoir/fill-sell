@@ -3,7 +3,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { lireBlocsBalises, RELS_PARTAGES } from './lib/balises.mjs';
+import { lireBlocsBalises, blocsSousConsentement, scriptConsentement, RELS_PARTAGES } from './lib/balises.mjs';
 import { lirePagesSite, lireArticlesBlog, jetonsDe } from './lib/contenu.mjs';
 import { lirePlateformes, lireTarifs, lireConcurrents, remplacerJetonsProfond } from './lib/donnees.mjs';
 import { rendreMarkdown } from './lib/markdown.mjs';
@@ -236,7 +236,11 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   // ── 1. Sources communes ──────────────────────────────────────────────────
   verifierLangues();
   const index = readFileSync(path.join(racine, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
-  const balises = lireBlocsBalises(index, 'index.html');
+  // Balises de mesure : lues dans index.html (la source, embarquée telle quelle
+  // par le natif), écrites dans les pages SOUS CONSENTEMENT (09/10, CNIL) :
+  // bloc « consentement » (GTM et Google Ads après l'accord) + « insights ».
+  const blocsIndex = lireBlocsBalises(index, 'index.html');
+  const balises = blocsSousConsentement(blocsIndex, await scriptConsentement(racine, blocsIndex));
   const entites = lireEntites(index);
   const liensIcones = lireLiensIcones(index);
   const supabase = constantesSupabase(racine);

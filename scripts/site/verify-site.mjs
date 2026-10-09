@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ORIGINE, urlAbsolue, texteBrut, mots, balisesOuvrantes, attributs, contenuPrincipal, texteComparable, decoderEntites,
 } from './lib/html.mjs';
-import { lireBlocsBalises, formeComparable, RELS_PARTAGES } from './lib/balises.mjs';
+import { lireBlocsBalises, formeComparable, idsBalises, traceursHorsConsentement, RE_TOUS_BLOCS, BLOCS_PAGE, RELS_PARTAGES } from './lib/balises.mjs';
 import { empreinteContenu, lireVerrou, verrouAuCommit } from './lib/dates.mjs';
 import { routeAppPour, cheminReserve, sourceVersRegex, ROUTES_APP, HTML_PUBLIC_PERMIS } from './routes-app.mjs';
 import { verifierCoquille, MARQUEUR_RACINE } from '../vite-plugin-app-shell.mjs';
@@ -332,7 +332,10 @@ export const sequencesDe = sequences;
 
 /** La coquille Vite, ramenée à index.html : retire ce que Vite injecte. */
 function coquilleCommeSource(html) {
+  // Les blocs de balises comptent à part : la coquille WEB les porte sous
+  // consentement, index.html tels quels (vérifié dans verifierSite).
   return html
+    .replace(RE_TOUS_BLOCS, '')
     .replace(/<script type="module" crossorigin src="\/assets\/[^"]+"><\/script>/g, '')
     .replace(/<link rel="(modulepreload|stylesheet)" crossorigin href="\/assets\/[^"]+">/g, '')
     .replace('<script type="module" src="/src/main.jsx"></script>', '')
@@ -425,8 +428,22 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     try { verifierCoquille(coquille, 'app-shell.html'); } catch (e) { err(e.message); }
     const entree = /\/assets\/(index-[^"']+\.js)/.exec(coquille)?.[1];
     if (entree && !existsSync(path.join(dossier, 'assets', entree))) err(`app-shell.html : entrée /assets/${entree} absente du dossier`);
-    try { blocsCoquille = lireBlocsBalises(coquille, 'app-shell.html'); } catch (e) { err(e.message); }
+    try { blocsCoquille = lireBlocsBalises(coquille, 'app-shell.html', BLOCS_PAGE); } catch (e) { err(e.message); }
     const source = readFileSync(path.join(racine, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+    // Balises SOUS CONSENTEMENT (09/10, CNIL) : la coquille web ne charge
+    // aucun traceur hors du bloc « consentement », ce bloc vise les
+    // identifiants d'index.html et « insights » est celui d'index.html.
+    const horsCoquille = traceursHorsConsentement(coquille);
+    if (horsCoquille.length) err(`app-shell.html : traceur(s) chargé(s) HORS du consentement (${horsCoquille.join(', ')}) — ils partiraient avant l'accord`);
+    if (blocsCoquille) {
+      try {
+        const blocsSource = lireBlocsBalises(source, 'index.html');
+        const { gtm, aw } = idsBalises(blocsSource);
+        if (!blocsCoquille.consentement.includes(gtm) || !blocsCoquille.consentement.includes(aw)) err(`app-shell.html : le bloc consentement ne vise pas ${gtm} et ${aw} (index.html)`);
+        if (!/[`"']consent[`"'],[`"']default[`"']/.test(blocsCoquille.consentement)) err('app-shell.html : le bloc consentement ne pose pas le consentement Google « refusé » par défaut');
+        if (formeComparable(blocsCoquille.insights) !== formeComparable(blocsSource.insights)) err('app-shell.html : bloc insights différent de celui d\'index.html');
+      } catch (e) { err(e.message); }
+    }
     if (coquilleCommeSource(coquille.replace(/\r\n/g, '\n')) !== coquilleCommeSource(source)) {
       err('app-shell.html n\'est pas la coquille Vite d\'index.html (au-delà des balises injectées par Vite) : copie retouchée ?');
     }
@@ -747,11 +764,13 @@ export async function verifierSite(dossier, { racine = process.cwd(), git = true
     // Parité des balises communes avec l'app.
     if (blocsCoquille) {
       try {
-        const blocs = lireBlocsBalises(h, o);
+        const blocs = lireBlocsBalises(h, o, BLOCS_PAGE);
         for (const [nom, contenu] of Object.entries(blocsCoquille)) {
           if (formeComparable(blocs[nom]) !== formeComparable(contenu)) err(`${o} : bloc de balises « ${nom} » différent de celui de l'app`);
         }
       } catch (e) { err(e.message); }
+      const hors = traceursHorsConsentement(h);
+      if (hors.length) err(`${o} : traceur(s) chargé(s) HORS du consentement (${hors.join(', ')}) — ils partiraient avant l'accord`);
       const liensCoquille = balisesOuvrantes(coquille, 'link').filter((l) => RELS_PARTAGES.includes(l.attrs.rel)).map((l) => `${l.attrs.rel} ${l.attrs.href}`);
       const liensPage = new Set(balisesOuvrantes(h, 'link').map((l) => `${l.attrs.rel} ${l.attrs.href}`));
       for (const l of liensCoquille) if (!liensPage.has(l)) err(`${o} : lien d'icône/manifeste de l'app absent (${l})`);
