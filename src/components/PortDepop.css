@@ -1,0 +1,151 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FRAIS DE PORT DEPOP — le champ et la feuille « Envoi suivi en France »
+   (09/10/2026 soir, Nico : « bien designé, ergonomique, pas une galère »)
+   ═══════════════════════════════════════════════════════════════════════════
+   Identité FillSell, mêmes jetons que le stepper (--fs-*) et les feuilles du
+   Stock (Feuille.jsx) : Space Grotesk, fond crème #EDEAE0, cartes blanches,
+   sarcelle #2F9E90 / #1B6E62, ambre = un geste attendu, filets #E7E3D8,
+   rayons 12 / 16 / 20 px, champs à 16 px (pas de zoom Safari iOS).
+
+   ⛔ TOUTES LES COULEURS SONT DES VARIABLES (--fpd-*). Le SOMBRE est complet
+      et s'active comme celui de CarteInfo.css : [data-theme="dark"] sur un
+      ancêtre (ou sur la feuille). L'app est claire partout aujourd'hui, même
+      téléphone en sombre (aucun thème sombre ailleurs) : la feuille reste donc
+      claire avec elle, au lieu de faire une tache noire sur un écran clair.
+   Contrastes (WCAG 2.1) : encre #10201B / blanc 16,9:1 · #5C6560 / #EDEAE0
+   4,9:1 · sarcelle #1B6E62 / #EFF4F2 5,8:1 · ambre #8A6100 / #FFF6E3 5,3:1 ·
+   sombre #EEF2EF / #17211E 14,6:1 · #A6B2AD / #17211E 7,5:1.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.fpd, .fpd-racine {
+  --fpd-fond: #EDEAE0;
+  --fpd-carte: #FFFFFF;
+  --fpd-papier: #F6F5F1;
+  --fpd-filet: #E7E3D8;
+  --fpd-filet-doux: #EFECE3;
+  --fpd-encre: #10201B;
+  --fpd-texte2: #5C6560;
+  --fpd-teal: #2F9E90;
+  --fpd-teal-encre: #1B6E62;
+  --fpd-teal-fond: #EFF4F2;
+  --fpd-teal-bord: #D6E2DE;
+  --fpd-ambre-fond: #FFF6E3;
+  --fpd-ambre-bord: #EED9A6;
+  --fpd-ambre-encre: #8A6100;
+  --fpd-rouge-encre: #9B5148;
+  --fpd-rouge-bord: #EBC9C2;
+  --fpd-voile: rgba(16, 32, 27, 0.45);
+  --fpd-poignee: #D8D2C4;
+  --fpd-ombre: 0 -8px 40px rgba(16, 32, 27, 0.22);
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+[data-theme="dark"] .fpd, .fpd[data-theme="dark"],
+[data-theme="dark"] .fpd-racine, .fpd-racine[data-theme="dark"] {
+  --fpd-fond: #17211E;
+  --fpd-carte: #1F2B27;
+  --fpd-papier: #1B2622;
+  --fpd-filet: rgba(255, 255, 255, 0.12);
+  --fpd-filet-doux: rgba(255, 255, 255, 0.08);
+  --fpd-encre: #EEF2EF;
+  --fpd-texte2: #A6B2AD;
+  --fpd-teal: #5CC2B4;
+  --fpd-teal-encre: #7AD3C6;
+  --fpd-teal-fond: rgba(47, 158, 144, 0.18);
+  --fpd-teal-bord: rgba(92, 194, 180, 0.35);
+  --fpd-ambre-fond: rgba(224, 165, 60, 0.14);
+  --fpd-ambre-bord: rgba(224, 165, 60, 0.40);
+  --fpd-ambre-encre: #F0C673;
+  --fpd-rouge-encre: #F2A99F;
+  --fpd-rouge-bord: rgba(242, 169, 159, 0.40);
+  --fpd-voile: rgba(0, 0, 0, 0.60);
+  --fpd-poignee: rgba(255, 255, 255, 0.28);
+  --fpd-ombre: 0 -8px 40px rgba(0, 0, 0, 0.55);
+}
+.fpd *, .fpd *::before, .fpd *::after,
+.fpd-racine *, .fpd-racine *::before, .fpd-racine *::after { box-sizing: border-box; }
+
+/* ── LE CHAMP ─────────────────────────────────────────────────────────────── */
+.fpd { display: flex; flex-direction: column; gap: 8px; color: var(--fpd-encre); }
+.fpd-libelle { font-size: 14px; line-height: 20px; font-weight: 700; color: var(--fpd-encre); margin: 0; }
+.fpd-aide { font-size: 12.5px; line-height: 18px; color: var(--fpd-texte2); margin: 0; }
+.fpd-boite { position: relative; display: flex; align-items: center; max-width: 220px; }
+.fpd-input {
+  width: 100%; height: 48px; padding: 0 44px 0 14px;
+  background: var(--fpd-carte); color: var(--fpd-encre);
+  border: 1px solid var(--fpd-filet); border-radius: 12px;
+  font: inherit; font-size: 18px; font-weight: 700; letter-spacing: 0.01em;
+  -webkit-appearance: none; appearance: none; outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.fpd-input::placeholder { color: var(--fpd-texte2); font-weight: 500; opacity: 0.8; }
+.fpd-input:focus { border-color: var(--fpd-teal); box-shadow: 0 0 0 3px var(--fpd-teal-fond); }
+.fpd--a-remplir .fpd-input { border-color: var(--fpd-ambre-bord); background: var(--fpd-ambre-fond); }
+.fpd--erreur .fpd-input { border-color: var(--fpd-rouge-bord); }
+.fpd-euro {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 18px; font-weight: 700; color: var(--fpd-texte2); pointer-events: none;
+}
+.fpd-message { font-size: 12.5px; line-height: 18px; font-weight: 600; margin: 0; }
+.fpd-message--geste { color: var(--fpd-ambre-encre); }
+.fpd-message--erreur { color: var(--fpd-rouge-encre); }
+.fpd-note { font-size: 12px; line-height: 16px; color: var(--fpd-texte2); margin: 0; }
+.fpd-lien {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 4px 0; background: none; border: none; cursor: pointer;
+  color: var(--fpd-teal-encre); font: inherit; font-size: 13.5px; font-weight: 700;
+  text-decoration: underline; text-underline-offset: 3px; text-align: left;
+}
+.fpd-lien:focus-visible, .fpd-prix:focus-visible, .fpd-croix:focus-visible { outline: 2px solid var(--fpd-teal); outline-offset: 2px; }
+
+/* ── LA FEUILLE ───────────────────────────────────────────────────────────── */
+.fpd-racine { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center; }
+.fpd-voile { position: absolute; inset: 0; border: none; padding: 0; margin: 0; background: var(--fpd-voile); cursor: pointer; animation: fpdFond 0.2s ease-out; }
+.fpd-feuille {
+  position: relative; width: 100%; max-width: 560px; max-height: calc(100dvh - 48px);
+  display: flex; flex-direction: column; background: var(--fpd-fond); color: var(--fpd-encre);
+  border-radius: 20px 20px 0 0; box-shadow: var(--fpd-ombre);
+  animation: fpdMonte 0.22s ease-out; will-change: transform;
+}
+.fpd-feuille--glisse { transition: none; }
+.fpd-feuille--revient { transition: transform 0.18s ease-out; }
+.fpd-poignee-zone { display: flex; justify-content: center; height: 20px; padding-top: 8px; flex-shrink: 0; touch-action: none; cursor: grab; }
+.fpd-poignee { width: 40px; height: 4px; border-radius: 999px; background: var(--fpd-poignee); }
+.fpd-tete { display: flex; align-items: center; height: 48px; padding: 0 8px; flex-shrink: 0; box-shadow: inset 0 -1px 0 var(--fpd-filet); touch-action: none; }
+.fpd-tete-vide { width: 40px; flex-shrink: 0; }
+.fpd-titre { flex: 1; min-width: 0; margin: 0; font-size: 16px; line-height: 24px; font-weight: 700; letter-spacing: -0.01em; text-align: center; color: var(--fpd-encre); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fpd-croix { width: 40px; height: 40px; flex-shrink: 0; padding: 0; border: none; border-radius: 50%; background: transparent; color: var(--fpd-encre); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.fpd-croix:active { background: var(--fpd-filet-doux); }
+.fpd-corps { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 20px); }
+.fpd-phrase { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--fpd-teal-fond); border: 1px solid var(--fpd-teal-bord); color: var(--fpd-teal-encre); font-size: 13.5px; line-height: 20px; font-weight: 500; }
+.fpd-phrase b { font-weight: 700; }
+.fpd-consigne { margin: 4px 0 0; font-size: 12.5px; line-height: 18px; color: var(--fpd-texte2); }
+
+.fpd-grille { display: flex; flex-direction: column; background: var(--fpd-carte); border: 1px solid var(--fpd-filet); border-radius: 16px; overflow: hidden; }
+.fpd-ligne { display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px; align-items: center; gap: 8px; padding: 10px 12px; }
+.fpd-ligne + .fpd-ligne { box-shadow: inset 0 1px 0 var(--fpd-filet-doux); }
+.fpd-ligne--tete { padding-top: 12px; padding-bottom: 8px; background: var(--fpd-papier); }
+.fpd-col-t { font-size: 12px; line-height: 16px; font-weight: 700; color: var(--fpd-encre); text-align: center; }
+.fpd-col-t small { display: block; font-size: 11px; line-height: 14px; font-weight: 500; color: var(--fpd-texte2); }
+.fpd-col-t--gauche { text-align: left; }
+.fpd-taille { font-size: 14.5px; line-height: 20px; font-weight: 700; color: var(--fpd-encre); }
+.fpd-poids { display: block; font-size: 12.5px; line-height: 16px; color: var(--fpd-texte2); }
+.fpd-prix {
+  height: 48px; width: 100%; padding: 0 6px; border-radius: 12px; cursor: pointer;
+  border: 1px solid var(--fpd-filet); background: var(--fpd-papier); color: var(--fpd-encre);
+  font: inherit; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.fpd-prix:active { background: var(--fpd-teal-fond); border-color: var(--fpd-teal); }
+.fpd-prix--choisi { background: var(--fpd-teal-fond); border-color: var(--fpd-teal); color: var(--fpd-teal-encre); }
+@media (hover: hover) { .fpd-prix:hover { border-color: var(--fpd-teal); } }
+.fpd-sources { margin: 0; font-size: 11.5px; line-height: 17px; color: var(--fpd-texte2); }
+.fpd-sources a { color: var(--fpd-teal-encre); font-weight: 600; }
+
+@media (max-width: 359px) {
+  .fpd-ligne { grid-template-columns: minmax(0, 1fr) 84px 84px; gap: 6px; padding: 10px; }
+  .fpd-prix { font-size: 15px; }
+}
+@keyframes fpdMonte { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fpdFond { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .fpd-feuille, .fpd-voile { animation: none !important; } }
