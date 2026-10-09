@@ -3362,7 +3362,15 @@ serve(async (req) => {
           let publiqueVivante: boolean | null = null;   // null = non mesuré
           if (idAnnonce) {
             try {
-              const rep = await fetch(`https://www.vinted.fr/items/${idAnnonce}`, {
+              // (09/10, Marta) Le domaine de l'annonce (www.vinted.it pour un vendeur
+              // italien), www.vinted.fr sinon — comme avant pour tout lien français.
+              const hoteAnnonce = (() => {
+                try {
+                  const h = new URL(String(jRow?.listing_url ?? "")).hostname.toLowerCase();
+                  return /^www\.vinted\.(fr|be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)$/.test(h) ? h : "www.vinted.fr";
+                } catch { return "www.vinted.fr"; }
+              })();
+              const rep = await fetch(`https://${hoteAnnonce}/items/${idAnnonce}`, {
                 method: "GET", redirect: "follow",
                 headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36" },
               });

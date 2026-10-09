@@ -67,6 +67,19 @@
   function motifOngletsVinted() { return `*://*.${domaineVintedAffiche()}/*`; }
   /** L'adresse d'une annonce Vinted (« https://www.vinted.fr/items/123 »). */
   function urlAnnonceVinted(id) { return `${origine}/items/${id}`; }
+  /**
+   * Une adresse Vinted venue du SERVEUR (listing_url d'un job : le serveur et
+   * quelques fonctions SQL les écrivent en www.vinted.fr) ramenée sur l'origine
+   * active. Vendeur français : rendue TELLE QUELLE (aucun changement).
+   */
+  function adresseSurOrigine(url) {
+    if (origine === ORIGINE_FR || !url) return url;
+    try {
+      const u = new URL(String(url));
+      if (!/^(www\.)?vinted\.(fr|com|be|lu|nl|de|at|it|es|pt|ie|fi|ee|lv|lt|sk|si|hr|gr)$/i.test(u.hostname)) return url;
+      return `${origine}${u.pathname}${u.search}${u.hash}`;
+    } catch { return url; }
+  }
   /** Un hôte d'onglet est-il un hôte Vinted de travail (le français, ou l'origine active) ? */
   function estHoteVintedDeTravail(hote) {
     const h = String(hote ?? "").toLowerCase();
@@ -196,7 +209,7 @@
 
   g.FILLSELL_VINTED = Object.freeze({
     ORIGINE_FR, HOTES_ETRANGERS, MOTIFS_PERMISSION_ETRANGERS, COOKIE_SESSION, CLE_STOCKAGE,
-    origineVinted, hoteVinted, domaineVintedAffiche, estOrigineEtrangere, motifOngletsVinted,
+    origineVinted, hoteVinted, domaineVintedAffiche, estOrigineEtrangere, motifOngletsVinted, adresseSurOrigine,
     urlAnnonceVinted, estHoteVintedDeTravail, hoteEtrangerAutorise, motifPermission,
     navigateurExtension, navigateurCourt, navigateurLong, navigateurPossessif,
     domainesEtrangersAccordes, rafraichirOrigineVinted, chargerOrigineVinted, domaineEtrangerDuServeur,

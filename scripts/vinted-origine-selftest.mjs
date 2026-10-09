@@ -103,6 +103,10 @@ await cas("b. sans permission étrangère : origine, motifs, adresses identiques
   assert.equal(`${VO.origineVinted()}/`, "https://www.vinted.fr/");
   assert.equal(`${VO.origineVinted()}/*`, "https://www.vinted.fr/*");
   assert.equal(`${VO.origineVinted()}/api/v2/users/current`, "https://www.vinted.fr/api/v2/users/current");
+  // Le lien d'un job (retrait, republication) n'est JAMAIS touché sur le chemin français.
+  for (const u of ["https://www.vinted.fr/items/9-pull?x=1#f", "https://www.vinted.com/items/9", "https://vinted.fr/items/9"]) {
+    assert.equal(VO.adresseSurOrigine(u), u);
+  }
   assert.equal(VO.motifOngletsVinted(), "*://*.vinted.fr/*");
   assert.equal(VO.domaineVintedAffiche(), "vinted.fr");
   assert.equal(VO.hoteVinted(), "www.vinted.fr");
@@ -121,6 +125,10 @@ await cas("c. vinted.it accordé, session v_uid sur vinted.it seulement → orig
   assert.equal(VO.motifOngletsVinted(), "*://*.vinted.it/*");
   assert.equal(VO.domaineVintedAffiche(), "vinted.it");
   assert.equal(VO.urlAnnonceVinted(9), "https://www.vinted.it/items/9");
+  // Un lien écrit par le serveur en vinted.fr (retrait, republication) est
+  // ramené sur vinted.it ; un lien d'une autre plateforme ne bouge pas.
+  assert.equal(VO.adresseSurOrigine("https://www.vinted.fr/items/9-pull?x=1"), "https://www.vinted.it/items/9-pull?x=1");
+  assert.equal(VO.adresseSurOrigine("https://www.leboncoin.fr/ad/x/1"), "https://www.leboncoin.fr/ad/x/1");
   assert.equal(VO.estHoteVintedDeTravail("www.vinted.it"), true);
   assert.equal(ch.store[VO.CLE_STOCKAGE], "https://www.vinted.it");
   // Redémarrage du service worker : l'origine mémorisée revient, permission toujours là.

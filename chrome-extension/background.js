@@ -3393,7 +3393,13 @@ async function processJob(rawJob, accessToken) {
   const job = sanitizeJob(rawJob);
   // (0.6.106) Un job Vinted travaille sur le domaine où la personne est
   // connectée (vinted.fr sauf vendeur étranger qui a autorisé le sien).
-  if (job.platform === "vinted") await VO.rafraichirOrigineVinted().catch(() => {});
+  if (job.platform === "vinted") {
+    await VO.rafraichirOrigineVinted().catch(() => {});
+    // Le lien d'annonce écrit par le serveur (www.vinted.fr) est ramené sur le
+    // domaine du vendeur étranger : publication, republication et RETRAIT
+    // (DELETE_TARGETS.vinted navigue sur job.listing_url). Français : inchangé.
+    if (job.listing_url) job.listing_url = VO.adresseSurOrigine(job.listing_url);
+  }
   const handler = PLATFORM_HANDLERS[job.platform];
   if (!handler) {
     console.warn(`[background] Plateforme inconnue "${job.platform}", job ${job.id} laissé en pending`);
