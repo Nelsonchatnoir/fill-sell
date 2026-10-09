@@ -105,7 +105,10 @@
   "redirects": [
     { "source": "/terms", "destination": "/legal", "permanent": true },
     { "source": "/privacy", "destination": "/legal", "permanent": true },
-    { "source": "/blog/publier-annonce-plusieurs-plateformes", "destination": "/crosslisting", "permanent": true }
+    { "source": "/blog/publier-annonce-plusieurs-plateformes", "destination": "/crosslisting", "permanent": true },
+    { "source": "/signup", "destination": "/login?mode=signup", "permanent": true },
+    { "source": "/inscription", "destination": "/login?mode=signup", "permanent": true },
+    { "source": "/register", "destination": "/login?mode=signup", "permanent": true }
   ],
   "rewrites": [
     { "source": "/app", "destination": "/app-shell.html" },

@@ -24,7 +24,7 @@ import { CODES_LANGUES, cheminDans } from '../../site/langues.mjs';
 //      coquille, sans attrape-tout.
 // Lecture de ~1 000 fichiers sources, ~0,2 s. Aucun réseau.
 
-const GENERES = new Set(['/sitemap.xml', '/robots.txt', '/llms.txt', '/llms-full.txt', '/build.json', '/fillsell-extension.zip', '/404.html', '/app-shell.html']);
+const GENERES = new Set(['/sitemap.xml', '/robots.txt', '/llms.txt', '/llms-full.txt', '/apple-touch-icon-precomposed.png', '/build.json', '/fillsell-extension.zip', '/404.html', '/app-shell.html']);
 
 function fichiers(dossier, extensions, sortie = []) {
   if (!existsSync(dossier)) return sortie;

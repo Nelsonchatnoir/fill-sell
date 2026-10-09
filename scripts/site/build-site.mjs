@@ -853,6 +853,11 @@ export async function genererSite({ dossier, racine = process.cwd(), mode = 'bui
   await writeFile(path.join(dossier, 'robots.txt'), await robots(racine));
   await writeFile(path.join(dossier, 'llms.txt'), llms(indexables, pagesSite));
   await writeFile(path.join(dossier, 'llms-full.txt'), llmsComplet(indexables));
+  // Chemin d'icône que les iPhone et le robot d'Apple demandent d'office : sans
+  // l'ancien attrape-tout, il répondait 404 (sonde du 09/10). Même image que
+  // apple-touch-icon.png, écrite par le seul build du site (le natif n'en a
+  // que faire).
+  await writeFile(path.join(dossier, 'apple-touch-icon-precomposed.png'), await readFile(path.join(racine, 'public', 'apple-touch-icon.png')));
 
   const duree = Math.round(performance.now() - t0);
   const nb = pages.length + 1;
