@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ACCEPTE, REFUSE, etatConsentement, poserConsentement } from '../utils/consentement';
 import { chargerPixel } from '../utils/metaPixel';
+import { TEXTES_CONSENTEMENT } from '../utils/consentementTextes';
 
 // ============================================================================
 // BANDEAU DE CONSENTEMENT PUBLICITAIRE — 13/09/2026
@@ -18,7 +19,12 @@ import { chargerPixel } from '../utils/metaPixel';
 //
 // N'apparaît pas dans l'app connectée (/app) : le bandeau vit sur les pages
 // publiques, là où arrive le trafic de campagne.
+//
+// Textes : src/utils/consentementTextes.js (09/10), partagés avec le bandeau
+// du site vitrine statique — un seul texte pour un seul consentement.
 // ============================================================================
+
+const TEXTES = TEXTES_CONSENTEMENT.fr;
 
 export default function BandeauConsentement() {
   // État initial lu directement au premier rendu : le bandeau ne doit pas
@@ -40,7 +46,7 @@ export default function BandeauConsentement() {
   return (
     <div
       role="dialog"
-      aria-label="Consentement aux cookies publicitaires"
+      aria-label={TEXTES.libelle}
       style={{
         position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9999,
         background: '#FFFFFF', borderTop: '1px solid #E6E3DD',
@@ -55,10 +61,8 @@ export default function BandeauConsentement() {
           margin: 0, flex: '1 1 380px', fontSize: 14, lineHeight: 1.6, color: '#3A3A38',
           fontFamily: "-apple-system,'Segoe UI',Arial,sans-serif",
         }}>
-          On aimerait mesurer l'efficacité de nos publicités, avec un traceur
-          Meta. Ce n'est pas nécessaire au fonctionnement du site, et tu peux
-          refuser sans rien perdre.{' '}
-          <a href="/legal#confidentialite" style={{ color: '#17835F' }}>En savoir plus</a>
+          {TEXTES.texte}{' '}
+          <a href={TEXTES.lienHref} style={{ color: '#17835F' }}>{TEXTES.lien}</a>
         </p>
         <div style={{ display: 'flex', gap: 10, flex: '0 0 auto' }}>
           <button
@@ -69,7 +73,7 @@ export default function BandeauConsentement() {
               fontWeight: 700, cursor: 'pointer',
             }}
           >
-            Refuser
+            {TEXTES.refuser}
           </button>
           <button
             onClick={() => repondre(ACCEPTE)}
@@ -79,7 +83,7 @@ export default function BandeauConsentement() {
               fontWeight: 700, cursor: 'pointer',
             }}
           >
-            Accepter
+            {TEXTES.accepter}
           </button>
         </div>
       </div>

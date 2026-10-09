@@ -7,3 +7,10 @@ patches/*.patch text eol=lf
 # FillSell Cloud (05/10) : le serveur tourne sous Linux — scripts, Dockerfiles et
 # configurations TOUJOURS en LF, même extraits sur un PC Windows (core.autocrlf).
 serveur-cloud/** text eol=lf
+
+# Site vitrine (09/10/2026) : contenu, gabarits, verrou des dates et manifeste
+# des médias TOUJOURS en LF — les empreintes (dates honnêtes, médias) sont
+# calculées sur ces fichiers et doivent être les mêmes sur un poste Windows
+# (core.autocrlf) et sur Vercel. text=auto laisse les binaires (woff2, avif,
+# webp) intacts.
+site/** text=auto eol=lf

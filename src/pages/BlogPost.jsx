@@ -16,9 +16,24 @@ function formatDate(dateStr, lang) {
   }
 }
 
+// Site vitrine statique (09/10/2026, revue de la fondation app § 4) : dans un
+// build du site, /blog et chaque /blog/<slug> CONNU sont des pages statiques
+// (scripts/site/build-site.mjs), écrites dans le même build que ce bundle. La
+// SPA n'arrive ici que par la coquille (slug INCONNU, réécrit par vercel.json)
+// ou par une navigation interne : elle peignait alors l'ANCIEN blog React (un
+// second blog qui dériverait du statique ; soft 404 en 200). On recharge la
+// page statique pour de bon — l'article, ou la liste si le slug est inconnu.
+// Aucune boucle : le fichier statique passe avant le rewrite. Natif, OTA,
+// dev : constante fausse, rien ne change.
+const SITE_STATIQUE = typeof __FILLSELL_SITE__ !== 'undefined' && __FILLSELL_SITE__ === true;
+
 export default function BlogPost() {
   const { slug } = useParams();
   const post = getPostBySlug(slug);
+  const versStatique = SITE_STATIQUE ? (post ? `/blog/${post.slug}` : '/blog') : null;
+  useEffect(() => {
+    if (versStatique) window.location.replace(versStatique);
+  }, [versStatique]);
 
   // Slug inconnu : la vue redirige vers /blog juste en dessous, donc on ne pose
   // pas un canonical sur une URL qui n'existe pas — on annonce déjà /blog.
@@ -93,6 +108,7 @@ export default function BlogPost() {
     return () => el.remove();
   }, [post]);
 
+  if (versStatique) return null;
   if (!post) return <Navigate to="/blog" replace />;
 
   const isFr = post.lang === 'fr';

@@ -28,6 +28,8 @@ export default defineConfig([
         __FILLSELL_EXT_MIN_BUILD__: 'readonly',
         __FILLSELL_EXT_MIN_VERSION__: 'readonly',
         __FILLSELL_APP_VERSION__: 'readonly',
+        // Vrai dans un build du site vitrine statique (09/10, AppRouter « / »).
+        __FILLSELL_SITE__: 'readonly',
       },
       parserOptions: {
         ecmaVersion: 'latest',
@@ -42,6 +44,31 @@ export default defineConfig([
       // RefreshCw, ChevronUp et REPUB_DUREES sont restés muets). Angle mort
       // connu, à vérifier à la main lors des suppressions.
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+    },
+  },
+
+  // ── SITE VITRINE STATIQUE (09/10/2026) ──────────────────────────────────────
+  // site/js/*.js : JS du navigateur, bundlé par le générateur (rolldown) ; les
+  // constantes __FS_…__ y sont remplacées au build (scripts/site/build-site.mjs).
+  {
+    files: ['site/js/**/*.js'],
+    languageOptions: {
+      globals: { __FS_CLE_JETON__: 'readonly', __FS_CSS_BANDEAUX__: 'readonly' },
+    },
+  },
+  // Générateur, gabarits, vérificateur, serveur d'aperçu et selftests du site :
+  // du Node. Sans ce bloc, les .mjs n'étaient couverts par aucune configuration.
+  // site/langues.mjs (09/10) : module pur, lu aussi par site.js (navigateur).
+  {
+    files: ['scripts/site/**/*.mjs', 'scripts/vite-plugin-app-shell.mjs', 'scripts/vite-plugin-site.mjs', 'scripts/site-*-selftest.mjs', 'site/gabarits/**/*.mjs', 'site/langues.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' }],
     },
   },
 

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { posts } from '../blog/posts';
 import useSeo from '../lib/seo';
@@ -13,6 +14,12 @@ function formatDate(dateStr, lang) {
   }
 }
 
+// Site vitrine statique (09/10/2026) : /blog est une page STATIQUE dans un
+// build du site. La SPA n'arrive ici que par une navigation interne (lien
+// « Blog » de l'ancien accueil, gardé en filet) : on recharge la liste
+// statique au lieu de peindre l'ancienne (même règle que BlogPost.jsx).
+const SITE_STATIQUE = typeof __FILLSELL_SITE__ !== 'undefined' && __FILLSELL_SITE__ === true;
+
 export default function BlogList() {
   useSeo({
     path: '/blog',
@@ -20,6 +27,10 @@ export default function BlogList() {
     description: 'Guides concrets pour vendre en seconde main : cross-listing, publication multi-plateformes, calcul de marges et gestion de stock. Écrits par l\'équipe FillSell, sans promesses en l\'air.',
     ogType: 'website',
   });
+  useEffect(() => {
+    if (SITE_STATIQUE) window.location.replace('/blog');
+  }, []);
+  if (SITE_STATIQUE) return null;
 
   return (
     <>

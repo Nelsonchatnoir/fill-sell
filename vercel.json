@@ -1,4 +1,6 @@
 {
+  "buildCommand": "npm run build:vercel",
+  "trailingSlash": false,
   "headers": [
     {
       "source": "/(.*)",
@@ -15,9 +17,21 @@
       ]
     },
     {
-      "source": "/assets/(.*)",
+      "source": "/assets/((?!site/).*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/assets/site/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/app-shell.html",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex" }
       ]
     },
     {
@@ -39,6 +53,13 @@
       ]
     },
     {
+      "source": "/(llms|llms-full)\\.txt",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
+        { "key": "X-Robots-Tag", "value": "noindex" }
+      ]
+    },
+    {
       "source": "/(login|success|cancel|reset-password)",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, follow" }
@@ -49,13 +70,58 @@
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, follow" }
       ]
+    },
+    {
+      "source": "/auth",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
+      ]
+    },
+    {
+      "source": "/auth/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
+      ]
+    },
+    {
+      "source": "/desinscription",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
+      ]
+    },
+    {
+      "source": "/ebay/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
+      ]
+    },
+    {
+      "source": "/demo/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
     }
   ],
   "redirects": [
     { "source": "/terms", "destination": "/legal", "permanent": true },
-    { "source": "/privacy", "destination": "/legal", "permanent": true }
+    { "source": "/privacy", "destination": "/legal", "permanent": true },
+    { "source": "/blog/publier-annonce-plusieurs-plateformes", "destination": "/crosslisting", "permanent": true }
   ],
   "rewrites": [
-    { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
+    { "source": "/app", "destination": "/app-shell.html" },
+    { "source": "/app/(.*)", "destination": "/app-shell.html" },
+    { "source": "/login", "destination": "/app-shell.html" },
+    { "source": "/auth", "destination": "/app-shell.html" },
+    { "source": "/auth/(.*)", "destination": "/app-shell.html" },
+    { "source": "/success", "destination": "/app-shell.html" },
+    { "source": "/cancel", "destination": "/app-shell.html" },
+    { "source": "/reset-password", "destination": "/app-shell.html" },
+    { "source": "/extension", "destination": "/app-shell.html" },
+    { "source": "/ebay/(.*)", "destination": "/app-shell.html" },
+    { "source": "/desinscription", "destination": "/app-shell.html" },
+    { "source": "/legal", "destination": "/app-shell.html" },
+    { "source": "/demo/(.*)", "destination": "/app-shell.html" },
+    { "source": "/blog", "destination": "/app-shell.html" },
+    { "source": "/blog/(.*)", "destination": "/app-shell.html" }
   ]
 }

@@ -73,6 +73,42 @@ function RedirectIfLoggedIn({ children }) {
   return children;
 }
 
+// ── « / » sur le web quand le site vitrine statique est servi (09/10) ────────
+// Depuis le site statique, un CHARGEMENT de « / » reçoit l'accueil statique
+// (dist/index.html) ; la route React « / » n'est plus atteinte que par une
+// navigation INTERNE à la SPA : déconnexion, bouton « ← » de /login,
+// RequireAuth, route « * » (/auth du popup de l'extension, adresse inconnue).
+// Elle peignait alors l'ANCIEN accueil React, qui dériverait du nouveau
+// (revue C I1). On recharge donc « / » pour de bon — mais SEULEMENT quand
+// RedirectIfLoggedIn a conclu « déconnecté » ET qu'aucun jeton de session
+// sb-…-auth-token ne subsiste : l'aiguillage en ligne de l'accueil statique
+// renverrait sur /app un visiteur porteur d'un jeton (même mort), et l'on
+// tournerait en rond. Avec un jeton, l'ancienne LandingPage reste le filet.
+// Hors build du site (__FILLSELL_SITE__ faux : natif, OTA, dev, build seul),
+// rien ne change.
+const SITE_STATIQUE = typeof __FILLSELL_SITE__ !== 'undefined' && __FILLSELL_SITE__ === true;
+
+function jetonDeSessionPresent() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const cle = localStorage.key(i);
+      if (cle && /^sb-.+-auth-token$/.test(cle)) return true;
+    }
+    return false;
+  } catch {
+    return true; // stockage illisible : dans le doute, on ne recharge pas
+  }
+}
+
+function AccueilWeb() {
+  const versStatique = SITE_STATIQUE && !jetonDeSessionPresent();
+  useEffect(() => {
+    if (versStatique) window.location.replace('/' + window.location.search + window.location.hash);
+  }, [versStatique]);
+  if (versStatique) return null;
+  return <LandingPage />;
+}
+
 // Protège /app : redirige vers / si non connecté, sinon reste sur place
 function RequireAuth({ children }) {
   const [user, setUser] = useState(undefined);
@@ -117,7 +153,7 @@ export default function AppRouter() {
       <Routes>
         <Route path="/" element={isNative
           ? <Navigate to="/login" replace />
-          : <RedirectIfLoggedIn><LandingPage /></RedirectIfLoggedIn>} />
+          : <RedirectIfLoggedIn><AccueilWeb /></RedirectIfLoggedIn>} />
         <Route path="/login" element={<RedirectIfLoggedIn><App loginOnly /></RedirectIfLoggedIn>} />
         <Route path="/app" element={<RequireAuth><App /></RequireAuth>} />
         <Route path="/success" element={<Success />} />

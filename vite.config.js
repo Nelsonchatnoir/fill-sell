@@ -2,6 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import zipExtension from './scripts/vite-plugin-zip-extension.mjs'
 import prerenderBlog from './scripts/vite-plugin-prerender-blog.mjs'
+import appShell from './scripts/vite-plugin-app-shell.mjs'
+import siteStatique, { controleSite } from './scripts/vite-plugin-site.mjs'
+import { siteActif } from './scripts/site/actif.mjs'
 import { computeBuildId, EXTENSION_MIN_BUILD, EXTENSION_MIN_VERSION, assertExtensionMinBuildCurrent, assertArbrePropre } from './scripts/build-id.mjs'
 import { readFileSync } from 'node:fs'
 
@@ -42,11 +45,35 @@ const emitBuildJson = () => ({
 // les aperçus de scripts/apercu n'y passent pas. Cf. assertArbrePropre.
 export default defineConfig(({ command }) => {
   if (command === 'build') assertArbrePropre()
+  // Site vitrine statique (09/10) : UNE fonction décide, lue une fois — le
+  // générateur du site OU le prérendu du blog, jamais les deux, jamais aucun
+  // (scripts/site/actif.mjs). Le journal le dit à chaque build : jamais de
+  // saut silencieux.
+  const SITE = siteActif()
+  if (command === 'build') {
+    console.log(SITE
+      ? '[site] FILLSELL_SITE=1 : site vitrine statique généré après le bundle (scripts/site/build-site.mjs)'
+      : '[site] site vitrine NON généré : FILLSELL_SITE ≠ 1 (build de l\'app seule, prérendu du blog actif)')
+  }
   return {
-    // prerenderBlog : HTML statique des articles + sitemap.xml, écrits APRÈS le
-    // bundle (closeBundle) — cf. scripts/vite-plugin-prerender-blog.mjs.
-    plugins: [react(), zipExtension({ buildId: FILLSELL_BUILD_ID }), emitBuildJson(), prerenderBlog()],
+    // appShell : copie la coquille Vite en app-shell.html dans TOUS les builds
+    // (destination des rewrites de l'app, vercel.json) — toujours AVANT le
+    // générateur, qui remplace ensuite index.html par l'accueil statique. Il
+    // contrôle aussi, AU DÉBUT de chaque build, que la liste fermée des routes
+    // couvre AppRouter.jsx, le code et vercel.json (09/10).
+    // prerenderBlog : HTML statique des articles + sitemap.xml pour les builds
+    // hors site — cf. scripts/vite-plugin-prerender-blog.mjs. controleSite :
+    // dans ces mêmes builds (natif, OTA), rejoue le site en jetable et refuse
+    // ce que Vercel refuserait (verrou des dates, fichiers de l'app lus par
+    // motif) — l'échec arrive en local, avant le push (09/10).
+    plugins: [
+      react(), zipExtension({ buildId: FILLSELL_BUILD_ID }), emitBuildJson(), appShell(),
+      ...(SITE ? [siteStatique()] : [prerenderBlog(), controleSite()]),
+    ],
     define: {
+      // Vrai seulement dans un build du site : la route « / » de la SPA renvoie
+      // alors vers l'accueil statique (AppRouter.jsx). Natif et OTA : faux.
+      __FILLSELL_SITE__: JSON.stringify(SITE),
       __FILLSELL_APP_BUILD__: JSON.stringify(FILLSELL_BUILD_ID),
       __FILLSELL_EXT_MIN_BUILD__: JSON.stringify(EXTENSION_MIN_BUILD),
       __FILLSELL_APP_VERSION__: JSON.stringify(FILLSELL_APP_VERSION),

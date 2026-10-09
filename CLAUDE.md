@@ -448,6 +448,25 @@ Alerte : `veille-cpu` (cron `veille-cpu-2min`) prévient support@fillsell.app
 au-delà de 70 % pendant 10 min, au plus une fois par heure, puis au retour
 sous 50 %. L'ops-digest affiche le maximum des 24 h.
 
+## ⛔ SITE VITRINE STATIQUE (09/10, branche `seo-crosslisting` — vaut dès sa fusion sur main)
+
+Le site public (accueil, guides, FAQ, blog) est généré en HTML statique par
+`npm run build:vercel` ; l'app reste la SPA. Trois gestes pour TOUT terminal
+(détail : `docs/agents/site-vitrine.md`) :
+- **toucher `src/blog/*.md`, `site/contenu/` ou `site/donnees/` = `npm run
+  site:dater` dans le même commit** (+ `site/dates.lock.json`) : sinon le build
+  du site (`npm run site:apercu`) refuse (« DATES PÉRIMÉES ») ; `npm run build`
+  (natif, OTA) et Vercel n'en font qu'un avertissement (revue technique C-6) ;
+- **nouvelle route dans `AppRouter.jsx`, ou nouvelle URL `https://fillsell.app/…`
+  dans un mail, une fonction edge, l'extension = l'ajouter à
+  `scripts/site/routes-app.mjs` ET aux `rewrites` de `vercel.json`, même
+  commit** : plus d'attrape-tout, sinon 404 en prod (tout build le refuse en
+  nommant la route) ;
+- **une page HTML dans `public/`** (vérification Search Console…) se nomme dans
+  `HTML_PUBLIC_PERMIS` (`routes-app.mjs`).
+⛔ `build:vercel` ne sert QUE Vercel : le natif et l'OTA restent `npm run build`
+(jamais `FILLSELL_SITE=1` vers `dist/`).
+
 ## Format des réponses
 
 Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ```) pour faciliter le copier-coller. Diagnostics, rapports, récapitulatifs, listes de changements — tout doit être dans un bloc.

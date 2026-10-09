@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="fr">
   <head>
+    <!-- site:balises:gtm:debut — bloc recopié tel quel dans chaque page du site vitrine (scripts/site/lib/balises.mjs) ; garder ce marqueur et celui de fin -->
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -8,13 +9,16 @@
     'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     })(window,document,'script','dataLayer','GTM-TJNKL6T5');</script>
     <!-- End Google Tag Manager -->
+    <!-- site:balises:gtm:fin -->
 
+    <!-- site:balises:insights:debut -->
     <!-- Vercel Web Analytics (27/09, audit du parcours du nouvel inscrit) :
          mesure sans cookie les vues de page (ex. /extension) par appareil.
          Le script ne sert que si Web Analytics est ACTIVÉ sur le projet
          Vercel (Dashboard → fill-sell → Analytics → Enable) ; sinon il rend
          404 en silence. Pas un traceur publicitaire : hors bandeau de consentement. -->
     <script defer src="/_vercel/insights/script.js"></script>
+    <!-- site:balises:insights:fin -->
 
 
     <!-- Primary Meta Tags -->
@@ -156,6 +160,7 @@
     }
     </script>
 
+    <!-- site:balises:gtag-aw:debut -->
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=AW-16622098460"></script>
     <script>
@@ -164,6 +169,7 @@
       gtag('js', new Date());
       gtag('config', 'AW-16622098460');
     </script>
+    <!-- site:balises:gtag-aw:fin -->
 
     <style>
       html {
@@ -211,10 +217,12 @@
        n'est PAS du traçage et reste en place. -->
   </head>
   <body>
+    <!-- site:balises:gtm-noscript:debut -->
     <!-- Google Tag Manager (noscript) -->
     <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TJNKL6T5"
     height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
+    <!-- site:balises:gtm-noscript:fin -->
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -68,6 +68,13 @@ utilisateur). Nico = le fondateur, seul décideur.
     `src/utils/relectureBornee.js`, jamais de `setInterval` qui relit la base
     (incident CPU 99 % du 04/10 ; `CLAUDE.md`, `docs/agents/pieges.md`).
 
+**Site vitrine statique** (09/10, dès la fusion de `seo-crosslisting`) :
+`src/blog/*.md`, `site/contenu/`, `site/donnees/` touchés = `npm run site:dater`
+même commit (sinon build du site rouge ; natif, OTA, Vercel : avertissement) ;
+route ou URL `https://fillsell.app/…` nouvelle = `scripts/site/routes-app.mjs`
+ET `rewrites` de `vercel.json` (sinon 404, tout build refuse).
+Détail : `docs/agents/site-vitrine.md`.
+
 ---
 
 ## 1. Le produit en une page
