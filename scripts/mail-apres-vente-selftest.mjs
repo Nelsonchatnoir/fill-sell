@@ -15,7 +15,8 @@
 //   3. le déclencheur de preuve ne vise que Vinted, la transition vers
 //      « sold », sans preuve déjà posée ; il exige la lecture (last_checked_at)
 //      et le signal au même instant et le numéro du lien = celui du job ;
-//   4. l'inverse remet la définition d'avant et retire ce que la migration ajoute.
+//   4. l'inverse remet la définition d'avant et retire push_vente_enregistree, sans
+//      toucher à la preuve de page (20261009130000).
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -83,10 +84,13 @@ ok(/substring\(new\.listing_url from '\/items\/\(\[0-9\]\+\)'\), ''\) <> v_id th
 ok(/'exact', true/.test(fPreuve) && /'source', 'page_annonce_veilleur'/.test(fPreuve), '3f. preuve exacte, source nommée');
 
 // 4. L'inverse.
-ok(/DROP TRIGGER IF EXISTS cross_post_jobs_vinted_preuve_page ON public\.cross_post_jobs;/.test(INV)
-  && /DROP FUNCTION IF EXISTS public\.vinted_preuve_page_veilleur\(\);/.test(INV)
+// (09/10, application) Le déclencheur de preuve et sa fonction appartiennent à
+// 20261009130000 (appliquée à part, son inverse est 20261009_inverse_vinted_preuve_page.sql) :
+// défaire le mail après la vente ne doit JAMAIS retirer la preuve de page.
+ok(!/DROP TRIGGER[^;]*cross_post_jobs_vinted_preuve_page/.test(INV)
+  && !/DROP FUNCTION[^;]*vinted_preuve_page_veilleur/.test(INV)
   && INV.indexOf('DROP FUNCTION IF EXISTS public.push_vente_enregistree(uuid)') > INV.indexOf('CREATE OR REPLACE FUNCTION public.push_ventes_a_envoyer('),
-  '4. inverse : déclencheur et fonctions retirés, décision d\'avant remise AVANT de retirer son aide');
+  '4. inverse : décision d\'avant remise AVANT de retirer son aide, preuve de page (130000) laissée en place');
 ok(!/push_vente_enregistree/.test(fProd ?? 'x'), '4b. la décision d\'avant ne connaît pas push_vente_enregistree');
 
 if (process.argv.includes('--prod')) {

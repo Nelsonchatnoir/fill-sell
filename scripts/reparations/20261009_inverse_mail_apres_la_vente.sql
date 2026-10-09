@@ -1,9 +1,10 @@
 -- INVERSE de la migration 20261009160000_mail_apres_la_vente (09/10) : remet EXACTEMENT
 -- la définition EN PROD de push_ventes_a_envoyer lue le 09/10 avant application
--- (pg_get_functiondef), retire le déclencheur et les deux fonctions ajoutées.
+-- (pg_get_functiondef, relue identique avant application) et retire push_vente_enregistree.
+-- ⛔ Ne touche PAS au déclencheur cross_post_jobs_vinted_preuve_page ni à sa fonction :
+-- ils appartiennent à 20261009130000 (appliquée à part, la preuve de page reste) ;
+-- leur inverse est 20261009_inverse_vinted_preuve_page.sql.
 -- npx supabase db query --linked -f scripts/reparations/20261009_inverse_mail_apres_la_vente.sql
-DROP TRIGGER IF EXISTS cross_post_jobs_vinted_preuve_page ON public.cross_post_jobs;
-DROP FUNCTION IF EXISTS public.vinted_preuve_page_veilleur();
 CREATE OR REPLACE FUNCTION public.push_ventes_a_envoyer(p_limite integer DEFAULT 50)
  RETURNS jsonb
  LANGUAGE plpgsql

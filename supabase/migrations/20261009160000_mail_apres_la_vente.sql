@@ -1,8 +1,12 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- LE MAIL « VENDU » APRÈS LA VENTE, JAMAIS AVANT NI SANS (09/10, Bebertdeals)
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ NON APPLIQUÉE — décision de Nico (le rejeu sur 30 jours fait perdre son mail
--- à UNE vraie vente non prouvée : RoCotCot, Leboncoin, note 808, 08/10). Sa
+-- ✅ APPLIQUÉE le 09/10 vers 14:10 Paris sur GO nommé de Nico (+ migration repair),
+-- après relecture : push_ventes_a_envoyer en prod = la définition ci-dessous hors des
+-- trois blocs « (09/10) » (aucune dérive) ; preuve 16/16 avant et après application.
+-- Coût accepté par Nico : une vraie vente non prouvée (cas RoCotCot, Leboncoin, note
+-- 808, 08/10) n'a plus de mail — seulement son bandeau « 🎉 Vendue sur … ! » (12/12
+-- notes sans vente des 30 derniers jours ont leur bandeau visible, relu le 09/10). Sa
 -- partie 1 (la lecture de page = preuve) est APPLIQUÉE à part, le 09/10, par
 -- 20261009130000_vinted_preuve_page.sql ; la rejouer ici est sans effet.
 -- Application (règle du 01/10) :
