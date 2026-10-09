@@ -73,14 +73,24 @@ Saut d'urgence, bruyant : `FILLSELL_SITE_CONTROLE=0` (OTA d'urgence seulement).
   (2 départs max en 20 s, page masquée, secours 4 s, rejoué sur `pageshow`).
   `capterOffre()` et `capterSource()` tournent en ligne sur TOUTES les pages
   vitrine, depuis les modules de l'app. `selftest:site-aiguillage`.
-- **Balises de mesure** : les blocs d'`index.html` entre
-  `<!-- site:balises:<nom>:debut/fin -->` (GTM, Insights, gtag AW, noscript GTM)
-  sont recopiés dans chaque page. ⛔ Une balise ajoutée à `index.html` va DANS un
-  bloc marqué, sinon `selftest:site-balises` tombe (elle manquerait sur tout le
-  site). Ne pas retirer les marqueurs (tout build rouge).
-- **Consentement** : textes dans `src/utils/consentementTextes.js`, lus par
-  `BandeauConsentement.jsx` (rendu identique, prouvé) et par le bandeau du site.
-  Clés de stockage : `consentement.js`, communes. `selftest:site-consentement`.
+- **Balises de mesure — SOUS CONSENTEMENT sur le web (09/10 soir, CNIL)** :
+  `index.html` garde ses blocs `<!-- site:balises:<nom>:debut/fin -->` (GTM,
+  Insights, gtag AW, noscript GTM) — c'est ce que le natif et l'OTA embarquent,
+  tel quel. Dans le build Vercel, les pages vitrine ET `app-shell.html` portent
+  à la place UN bloc `consentement` (script en ligne
+  `site/js/balises-consentement.js` : mode consentement Google v2 refusé par
+  défaut, GTM et gtag AW chargés SEULEMENT après « Accepter », cookies Google
+  effacés au refus) + `insights` (Vercel, sans cookie). Identifiants lus dans
+  les blocs d'`index.html`. ⛔ Une balise ajoutée à `index.html` va DANS un
+  bloc marqué (sinon `selftest:site-balises` tombe) ; un traceur hors du bloc
+  consentement dans une page ou dans la coquille web = build rouge
+  (`site:verifier`). Preuve en vrai Chrome : `npm run site:preuve-consentement`
+  ; mesures : `docs/seo/mesures/consentement-2026-10-09.md`.
+- **Consentement** : textes dans `src/utils/consentementTextes.js` (nomment
+  Google ET Meta depuis le 09/10), lus par `BandeauConsentement.jsx` et par le
+  bandeau du site. Clé de stockage `fs_consent_pub_v2` (`consentement.js`,
+  commune) : un accord donné à l'ancien texte (Meta seul, `fs_consent_pub`)
+  est redemandé, un refus d'avant reste un refus. `selftest:site-consentement`.
 - **`fs_lang`** n'est jamais écrit au chargement d'une page vitrine : seulement
   sur un choix de langue explicite ou un CTA depuis `/en/…` (`langueApp` de
   `site/langues.mjs`).
@@ -200,8 +210,10 @@ Si `/legal` portait `X-Robots-Tag` : retirer la règle `/app-shell.html` de
   sans JS) ; `/legal` reste au sitemap (non-régression), sans `lastmod`.
 - `/auth` (bouton « Se connecter » du popup de l'extension) passe par la SPA puis
   `/` : une redirection `/auth` → `/login` serait plus directe (revue A M2).
-- La balise Google Ads (gtag AW) se charge sans consentement, comme avant :
-  signalé, non modifié.
+- GTM et Google Ads : sous consentement sur le web depuis le 09/10 (ci-dessus).
+  RESTE : l'app NATIVE (aucun bandeau) les charge toujours sans accord, et
+  `/legal` (partagée avec le natif) les décrit encore comme avant — décision
+  de Nico (bandeau dans l'app ou balises retirées du natif), puis le texte.
 - Les contrôles de livraison OTA / binaires ne vérifient pas encore que
   `dist/index.html` est la coquille (revue A M4, point 2).
 - `site/donnees/plateformes.yml` : les pays ouverts (Vinted hors de France avec
